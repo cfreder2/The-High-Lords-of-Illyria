@@ -171,7 +171,17 @@ Nothing that happens on Illyria is cleaned up. Every corpse, arrow, crater, shat
 | Kind | Examples | Where it comes from | Same for every player? |
 |---|---|---|---|
 | **Major remains** | Corpses, arrows and bolts stuck in the ground, craters, rubble, wrecked siege engines, burnt buildings, felled trees | Already known exactly by the deterministic sim (death position, impact point, explosion centre, destruction event) | **Yes**: stored in the simulation state, included in saves, replays and late-join transfers, and usable by gameplay later |
-| **Minor remains** | Severed limbs, splinters, dropped swords and shields, blood splatter | Where the GPU cosmetic physics happened to drop them | No: local to each client, saved per client, rebuilt approximately for late joiners |
+| **Minor remains** | Severed limbs, splinters, dropped swords and shields | Where the GPU cosmetic physics happened to drop them | No: local to each client, saved per client, rebuilt approximately for late joiners |
+
+**Blood stains**
+
+Blood is not a pile of objects; it is **paint on the land**. Every wound, death, mutilation and explosion is already a deterministic sim event with a position, direction and force. Each one paints a stain pattern (pool, spray, drag trail) derived from that event and its seed, so every player sees the same stains, even though the flying droplets themselves are GPU-only.
+
+- **Storage:** a sparse stain layer over the terrain at ~0.5 m per texel, allocated only in 256 m tiles where blood has actually been spilled. Each texel holds amount and the tick it was last stained. Tiles near the camera live on the GPU; the rest are kept compressed (mostly empty, so roughly tens of KB each) and streamed in.
+- **Weathering:** bright red → dark brown → black → soaked into the soil over a very long half-life. Fresh blood is splashed on top of old, so a site fought over twice shows both. Rain speeds fading, snow covers it and thaws to reveal it again, and blood in a river or ford dilutes and drifts downstream.
+- **On units and objects:** a squad's soldiers, shields and walls they fought against carry stains too; veterans look like veterans.
+- **Wounded trails:** a wounded soldier walking away leaves drips. Because stains are deterministic, this can become gameplay (tracking a retreating enemy).
+- **At god zoom:** stain tiles feed the per-hex scar texture, so the bloodiest fields of the war are visible from the sky.
 
 **Weathering instead of deleting**
 
