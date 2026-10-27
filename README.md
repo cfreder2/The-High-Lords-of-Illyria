@@ -105,3 +105,12 @@ The Warlords map comes to life: 3D scenery, water, roads, 3D bodies
 | ![](builds/v0.1.5/04-battle.png) | ![](builds/v0.1.5/02-god-view.png) | ![](builds/v0.1.5/07-phone.png) |
 
 Fly-through: [`builds/v0.1.5/flythrough.webm`](builds/v0.1.5/flythrough.webm)
+
+### 27 Oct 2026 · v0.1.6 (`ecc8bdb`)
+Move the Eastreach label off Moonhaven; match far plains to the battlefield
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.6/04-battle.png) | ![](builds/v0.1.6/02-god-view.png) | ![](builds/v0.1.6/07-phone.png) |
+
+Fly-through: [`builds/v0.1.6/flythrough.webm`](builds/v0.1.6/flythrough.webm)
