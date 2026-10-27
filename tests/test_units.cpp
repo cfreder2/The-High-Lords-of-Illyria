@@ -1,6 +1,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "illyria/sim/hash.h"
 #include "illyria/sim/scenario.h"
 #include "illyria/sim/units.h"
 #include "test.h"
@@ -27,7 +28,33 @@ TEST(every_unit_type_has_sane_stats) {
         CHECK(s.radius > Fixed::zero() && s.height > Fixed::zero() && s.moveSpeed > Fixed::zero());
         CHECK(s.melee.damage > 0 || s.healing.amount > 0 || s.ranged.muzzleSpeed > Fixed::zero());
         CHECK(std::string(unitTypeName(static_cast<UnitType>(t))) != "?");
+        if (s.ranged.muzzleSpeed > Fixed::zero()) {
+            CHECK(s.ranged.autoRange <= s.ranged.maxRange);
+            CHECK(s.ranged.reloadTicks >= 3 * kTicksPerSecond);
+            // The weapon can physically reach its maximum range on flat ground.
+            const Fixed v = s.ranged.muzzleSpeed;
+            CHECK(v * v / Fixed::fromRatio(981, 100) >= s.ranged.maxRange);
+        }
+        if (s.flyAltitude > Fixed::zero()) {
+            CHECK(s.flySpeed > s.moveSpeed);
+            CHECK(s.takeoffRun > Fixed::zero() && s.staminaTicks > 0 && s.minFlight > Fixed::zero());
+            // Low enough for giants to swat at.
+            CHECK(s.flyAltitude <= unitStats(UnitType::Giants).height + unitStats(UnitType::Giants).melee.reach + m(3));
+        }
     }
+}
+
+TEST(unit_sheet_is_locked) {
+    // Any change to unit stats must update docs/UNITS.md and this constant together.
+    StateHasher h;
+    for (int t = 0; t < kUnitTypeCount; ++t) {
+        World w(WorldConfig{});
+        w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
+        h.addU64(w.checksum());
+    }
+    constexpr uint64_t kSheet = 0x3f74c65e81fdde04;
+    if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
+    CHECK(h.value() == kSheet);
 }
 
 TEST(shields_block_from_the_front_but_not_the_flank) {
@@ -71,14 +98,82 @@ TEST(healers_mend_wounded_friends_with_limited_charges) {
     (void)patient;
 }
 
-TEST(fliers_cruise_high_and_swoop_to_fight) {
+TEST(fliers_walk_short_hops_and_need_a_runway_for_long_flights) {
     World w(WorldConfig{});
-    const EntityId griffin = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Griffins));
-    CHECK(w.findUnit(griffin)->pos.z == m(12));
-    const EntityId footman = w.spawnUnit(1, {m(25), m(0), m(0)}, kWest, unitStats(UnitType::LightInfantry));
-    for (int i = 0; i < 30 * kTicksPerSecond && w.findUnit(footman)->alive(); ++i) w.step({});
-    CHECK(!w.findUnit(footman)->alive());
-    CHECK(w.findUnit(griffin)->pos.z < m(4));
+    const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Griffins));
+    CHECK(w.findUnit(g)->pos.z == Fixed::zero());
+    // A short move is walked.
+    Command hop{0, g, Command::Type::Move, {m(20), m(0), m(0)}};
+    w.step(std::span(&hop, 1));
+    for (int i = 0; i < 15 * kTicksPerSecond; ++i) {
+        w.step({});
+        CHECK(w.findUnit(g)->flight == Unit::Flight::Grounded);
+    }
+    // A long move: a ground run, then flight at cruise height, then a landing.
+    Command trip{0, g, Command::Type::Move, {m(260), m(0), m(0)}};
+    w.step(std::span(&trip, 1));
+    Fixed runwayAtLift = -Fixed::one(), maxAlt;
+    bool landed = false;
+    for (int i = 0; i < 60 * kTicksPerSecond; ++i) {
+        w.step({});
+        const Unit* u = w.findUnit(g);
+        if (u->flight == Unit::Flight::Flying && runwayAtLift < Fixed::zero()) runwayAtLift = u->runway;
+        maxAlt = max(maxAlt, u->pos.z);
+        if (runwayAtLift >= Fixed::zero() && u->flight == Unit::Flight::Grounded) landed = true;
+    }
+    CHECK(runwayAtLift >= unitStats(UnitType::Griffins).takeoffRun);
+    CHECK_NEAR(maxAlt.toDouble(), unitStats(UnitType::Griffins).flyAltitude.toDouble(), 0.1);
+    CHECK(landed);
+    CHECK(!w.findUnit(g)->hasMoveTarget);
+    CHECK_NEAR(w.findUnit(g)->pos.x.toDouble(), 260.0, 1.0);
+}
+
+TEST(tired_fliers_come_down_early_and_walk_on) {
+    World w(WorldConfig{});
+    const UnitStats stats = unitStats(UnitType::Griffins);
+    const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, stats);
+    // Farther than a full rest can fly.
+    const Fixed range = stats.flySpeed * stats.staminaTicks / kTicksPerSecond;
+    const Command trip{0, g, Command::Type::Move, {range + m(150), m(0), m(0)}};
+    w.step(std::span(&trip, 1));
+    bool landedShort = false;
+    for (int i = 0; i < 90 * kTicksPerSecond; ++i) {
+        w.step({});
+        const Unit* u = w.findUnit(g);
+        if (u->flight == Unit::Flight::Grounded && u->runway > Fixed::zero() && u->hasMoveTarget) landedShort = true;
+    }
+    CHECK(landedShort);
+}
+
+TEST(fliers_never_attack_from_the_air) {
+    World w(WorldConfig{});
+    const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Griffins));
+    // Enemies under the flight path, out of the griffin's reach once airborne.
+    for (int i = 0; i < 5; ++i) w.spawnUnit(1, {m(80 + i * 20), m(1), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+    const Command trip{0, g, Command::Type::Move, {m(300), m(0), m(0)}};
+    w.step(std::span(&trip, 1));
+    int hitsWhileFlying = 0;
+    for (int i = 0; i < 25 * kTicksPerSecond; ++i) {
+        w.step({});
+        if (w.findUnit(g)->flight != Unit::Flight::Flying) continue;
+        for (const ImpactEvent& e : w.impacts()) hitsWhileFlying += e.kind == ImpactEvent::Kind::Hit && e.hitUnit != g;
+    }
+    CHECK(hitsWhileFlying == 0);
+}
+
+TEST(missile_troops_close_to_range_before_shooting) {
+    World w(WorldConfig{});
+    const EntityId a = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
+    const Fixed maxRange = unitStats(UnitType::Archers).ranged.maxRange;
+    const Command shoot{0, a, Command::Type::AttackGround, {maxRange + m(40), m(0), m(0)}};
+    w.step(std::span(&shoot, 1));
+    int firstShotTick = -1;
+    for (int i = 0; i < 40 * kTicksPerSecond && firstShotTick < 0; ++i) {
+        w.step({});
+        if (!w.projectiles().empty()) firstShotTick = i;
+    }
+    CHECK(firstShotTick > 0);
+    CHECK(w.findUnit(a)->pos.x >= m(39));  // walked forward first
 }
 
 TEST(giants_knock_soldiers_flying) {
@@ -151,7 +246,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x1ee54ac1dfd96778;
+    constexpr uint64_t kGolden = 0x4667b3f8bed4d96c;
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

@@ -15,10 +15,22 @@ constexpr Fixed kMuzzleHeightFraction = Fixed::fromRatio(4, 5);
 // Each rank shrinks the dispersion circle by 15%, down to 40% of the base size.
 constexpr Fixed kDispersionPerRank = Fixed::fromRatio(3, 20);
 constexpr Fixed kMinDispersionFactor = Fixed::fromRatio(2, 5);
-// Fliers climb and dive at this rate, and drop to this height to fight.
-constexpr Fixed kFlyClimbRate = Fixed::fromInt(5);
-constexpr Fixed kSwoopAltitude = Fixed::fromRatio(6, 5);
-constexpr Fixed kSwoopDistance = Fixed::fromInt(8);
+// Fliers climb and descend at these rates; they land this many cruise heights short of the goal.
+constexpr Fixed kClimbRate = Fixed::fromInt(3);
+constexpr Fixed kDescentRate = Fixed::fromRatio(5, 2);
+constexpr int64_t kLandingGlide = 3;
+// Waypoints count as reached within this distance.
+constexpr Fixed kWaypointReach = Fixed::fromRatio(3, 2);
+// Corpses are smaller obstacles than the living, and get shoved aside.
+constexpr Fixed kCorpseRadiusScale = Fixed::fromRatio(3, 5);
+// Bodies walking through loose remains kick them along.
+constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
+constexpr int kMaxKicksPerTick = 2;
+// Slopes steeper than this slow walkers down.
+constexpr Fixed kSteepSlope = Fixed::fromRatio(7, 20);
+constexpr Fixed kSteepSpeed = Fixed::fromRatio(3, 5);
+// Largest obstacle extent, for grid queries.
+constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(5);
 // Ticks a thrown soldier needs to get back up.
 constexpr int32_t kRecoverTicks = kTicksPerSecond * 2 / 3;
 // Bodies thrown by explosions and blows.
@@ -26,6 +38,10 @@ constexpr Fixed kLiftFraction = Fixed::fromRatio(7, 10);
 constexpr Fixed kGroundFriction = Fixed::fromRatio(11, 20);
 constexpr Fixed kRestSpeed = Fixed::fromRatio(6, 5);
 constexpr Fixed kDebrisRestitution = Fixed::fromRatio(1, 4);
+// A satchel is a heavy bag: it bounces less and drags more than loose debris.
+constexpr Fixed kBombFriction = Fixed::fromRatio(2, 5);
+// Grenadiers throw short to allow for the bounce and roll.
+constexpr Fixed kBombAimFraction = Fixed::fromRatio(7, 10);
 // An arrow falling faster than this sticks into the ground; slower, it lies flat.
 constexpr Fixed kStickSpeed = Fixed::fromInt(9);
 // Melee blows are blocked less often than arrows: the attacker can work round the shield.
@@ -35,8 +51,6 @@ constexpr Fixed kOpenSlope = Fixed::fromRatio(3, 50);
 constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
-// Ground units do not chase fliers cruising out of reach.
-constexpr Fixed kMaxReachableAltitude = Fixed::fromInt(4);
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
 
@@ -65,6 +79,7 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.ranged.damage);
     h.addI64(s.ranged.dispersionAt100m.raw);
     h.addI64(s.ranged.autoRange.raw);
+    h.addI64(s.ranged.maxRange.raw);
     h.addU64(static_cast<uint64_t>(s.ranged.kind));
     hashExplosive(h, s.ranged.explosive);
     h.addI64(s.melee.damage);
@@ -82,6 +97,10 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.terrain.openPct);
     h.addI64(s.terrain.hillsPct);
     h.addI64(s.flyAltitude.raw);
+    h.addI64(s.flySpeed.raw);
+    h.addI64(s.takeoffRun.raw);
+    h.addI64(s.minFlight.raw);
+    h.addI64(s.staminaTicks);
     h.addI64(s.mass.raw);
     h.addU64(s.mounted);
     h.addU64(s.bleeds);
@@ -101,7 +120,17 @@ Vec3 normalized(const Vec3& v) {
 
 }  // namespace
 
-World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) {}
+World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) {
+    if (config_.region) {
+        // The region owns the terrain; share it without copying.
+        config_.terrain = std::shared_ptr<const Terrain>(config_.region, &config_.region->terrain());
+        nav_ = std::make_unique<NavGrid>(*config_.region);
+        const auto& obstacles = config_.region->obstacles();
+        for (uint32_t i = 0; i < obstacles.size(); ++i) {
+            if (obstacles[i].solid) obstacleGrid_.insert(i, obstacles[i].pos.x, obstacles[i].pos.y);
+        }
+    }
+}
 
 EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
                           const UnitStats& stats) {
@@ -111,10 +140,9 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     u.stats = stats;
     u.hp = stats.maxHp;
     u.healCharges = stats.healing.charges;
+    u.stamina = stats.staminaTicks;
     u.pos = pos;
-    if (config_.terrain || stats.flyAltitude > Fixed::zero()) {
-        u.pos.z = groundHeight(pos.x, pos.y) + stats.flyAltitude;
-    }
+    if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
     units_.push_back(u);
     return u.id;
@@ -133,6 +161,15 @@ Unit* World::mutableUnit(EntityId id) {
 
 Fixed World::groundHeight(Fixed x, Fixed y) const {
     return config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
+}
+
+Ground World::groundAt(Fixed x, Fixed y) const {
+    return config_.region ? config_.region->groundAt(x, y) : Ground::Plains;
+}
+
+bool World::isWater(Fixed x, Fixed y) const {
+    const Ground g = groundAt(x, y);
+    return g == Ground::Shallows || g == Ground::DeepWater;
 }
 
 Fixed World::slopeAt(Fixed x, Fixed y) const {
@@ -156,7 +193,9 @@ void World::step(std::span<const Command> commands) {
     for (const Command& cmd : ordered) applyCommand(cmd);
 
     for (Unit& u : units_) updateUnit(u);
+    separateBodies();
     updateProjectiles();
+    pathCache_.clear();
     ++tick_;
 }
 
@@ -168,11 +207,13 @@ void World::applyCommand(const Command& cmd) {
             u->hasMoveTarget = true;
             u->moveTarget = cmd.target;
             u->hasAttackTarget = false;
+            planPath(*u, cmd.target);
             break;
         case Command::Type::AttackGround:
             if (u->stats.ranged.muzzleSpeed == Fixed::zero()) return;
             u->hasAttackTarget = true;
-            u->attackTarget = cmd.target;
+            // "Attack ground" means the ground: never aim into or above the hillside.
+            u->attackTarget = {cmd.target.x, cmd.target.y, groundHeight(cmd.target.x, cmd.target.y)};
             u->hasMoveTarget = false;
             break;
         case Command::Type::Stop:
@@ -180,6 +221,50 @@ void World::applyCommand(const Command& cmd) {
             u->hasAttackTarget = false;
             break;
     }
+}
+
+void World::planPath(Unit& u, const Vec3& to) {
+    u.path.clear();
+    u.pathIndex = 0;
+    if (!nav_ || nav_->clearLine(u.pos, to)) {
+        u.path.push_back(to);
+        return;
+    }
+    // Units of a squad start and end in neighbouring cells; plan once per cell pair.
+    const auto cell = [](const Vec3& p) {
+        return (p.x.floorToInt() / NavGrid::kCellSize) * 4096 + p.y.floorToInt() / NavGrid::kCellSize;
+    };
+    const auto key = std::make_pair(cell(u.pos), cell(to));
+    auto it = pathCache_.find(key);
+    if (it == pathCache_.end()) {
+        std::vector<Vec3> route;
+        if (!nav_->findPath(u.pos, to, route)) route = {to};
+        it = pathCache_.emplace(key, std::move(route)).first;
+    }
+    u.path = it->second;
+    u.path.back() = to;
+}
+
+bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
+    const Vec3 delta = (to - u.pos).flat();
+    const Fixed dist = delta.length();
+    Fixed speed = u.stats.moveSpeed * speedScale * groundSpeed(groundAt(u.pos.x, u.pos.y));
+    if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
+    if (slopeAt(u.pos.x, u.pos.y) > kSteepSlope) speed *= kSteepSpeed;
+    const Fixed stepLen = speed * kTickDt;
+    if (dist == Fixed::zero()) return true;
+    u.facing = delta / dist;
+    Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
+    // Deep water stops walkers: slide along the bank if one axis is clear.
+    if (groundAt(next.x, next.y) == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) {
+        if (groundAt(next.x, u.pos.y) != Ground::DeepWater) next.y = u.pos.y;
+        else if (groundAt(u.pos.x, next.y) != Ground::DeepWater) next.x = u.pos.x;
+        else return false;
+    }
+    const Vec3 moved = (next - u.pos).flat();
+    u.pos = next;
+    if (moved.lengthSq() > Fixed::zero()) kickRemains(u, u.facing);
+    return dist <= stepLen;
 }
 
 void World::updateUnit(Unit& u) {
@@ -193,22 +278,38 @@ void World::updateUnit(Unit& u) {
     if (u.healCooldown > 0) --u.healCooldown;
     u.engaged = false;
 
+    const bool flier = u.stats.flyAltitude > Fixed::zero();
+    if (flier && u.flight != Unit::Flight::Grounded) {
+        updateFlight(u);
+        return;
+    }
+    // Resting on the ground restores a flier at half the rate flying spends it.
+    if (flier && u.stamina < u.stats.staminaTicks && (tick_ & 1) == 0) ++u.stamina;
+
     if (u.hasMoveTarget) {
         // Orders take priority over fighting: a moving unit ignores enemies.
-        const Vec3 delta = (u.moveTarget - u.pos).flat();
-        const Fixed dist = delta.length();
-        const Fixed stepLen = u.stats.moveSpeed * kTickDt;
-        if (dist <= stepLen) {
-            u.pos.x = u.moveTarget.x;
-            u.pos.y = u.moveTarget.y;
+        const Fixed remaining = (u.moveTarget - u.pos).flat().length();
+        if (flier && remaining >= u.stats.minFlight && u.stamina * 2 >= u.stats.staminaTicks) {
+            u.flight = Unit::Flight::TakingOff;
+            u.runway = Fixed::zero();
+            updateFlight(u);
+            return;
+        }
+        if (u.path.empty()) u.path.push_back(u.moveTarget);
+        const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
+        const bool last = u.pathIndex + 1 >= u.path.size();
+        const bool arrived = walk(u, waypoint);
+        if (!last && (arrived || (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach)) {
+            ++u.pathIndex;
+        } else if (last && arrived) {
             u.hasMoveTarget = false;
-        } else {
-            u.facing = delta / dist;
-            u.pos += u.facing * stepLen;
+            u.path.clear();
         }
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
-        if (u.reloadRemaining == 0) {
+        if ((u.attackTarget - u.pos).flat().length() > u.stats.ranged.maxRange) {
+            walk(u, u.attackTarget);  // close to range before loosing
+        } else if (u.reloadRemaining == 0) {
             fire(u, u.attackTarget);
             u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
@@ -225,16 +326,190 @@ void World::updateUnit(Unit& u) {
             u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
     }
+    u.pos.z = groundHeight(u.pos.x, u.pos.y);
+}
 
+void World::updateFlight(Unit& u) {
+    const Vec3 goal = u.hasMoveTarget ? u.moveTarget : u.pos;
+    const Vec3 delta = (goal - u.pos).flat();
+    const Fixed dist = delta.length();
+    if (dist > Fixed::zero()) u.facing = delta / dist;
     const Fixed ground = groundHeight(u.pos.x, u.pos.y);
-    if (u.stats.flyAltitude > Fixed::zero()) {
-        const Fixed want = ground + (u.engaged ? kSwoopAltitude : u.stats.flyAltitude);
-        const Fixed climb = kFlyClimbRate * kTickDt;
-        u.pos.z = clamp(want, u.pos.z - climb, u.pos.z + climb);
-        u.pos.z = max(u.pos.z, ground);
-    } else {
-        u.pos.z = ground;
+    switch (u.flight) {
+        case Unit::Flight::Grounded:
+            break;
+        case Unit::Flight::TakingOff: {
+            // A ground run, faster than a walk, before the wings can lift.
+            const Vec3 before = u.pos;
+            walk(u, u.pos + u.facing * Fixed::fromInt(50), Fixed::fromRatio(3, 2));
+            u.runway += (u.pos - before).flat().length();
+            u.pos.z = groundHeight(u.pos.x, u.pos.y);
+            if (u.runway >= u.stats.takeoffRun) u.flight = Unit::Flight::Flying;
+            break;
+        }
+        case Unit::Flight::Flying: {
+            u.pos += u.facing * min(u.stats.flySpeed * kTickDt, dist);
+            const Fixed below = groundHeight(u.pos.x, u.pos.y);
+            u.pos.z = min(u.pos.z + kClimbRate * kTickDt, below + u.stats.flyAltitude);
+            u.pos.z = max(u.pos.z, below);
+            --u.stamina;
+            if (u.stamina <= 0 || dist < u.stats.flyAltitude * kLandingGlide || !u.hasMoveTarget) {
+                u.flight = Unit::Flight::Landing;
+            }
+            break;
+        }
+        case Unit::Flight::Landing: {
+            u.pos += u.facing * min(u.stats.flySpeed / 2 * kTickDt, dist);
+            const Fixed below = groundHeight(u.pos.x, u.pos.y);
+            u.pos.z = max(u.pos.z - kDescentRate * kTickDt, below);
+            if (u.stamina > 0) --u.stamina;
+            if (u.pos.z <= below) {
+                u.flight = Unit::Flight::Grounded;
+                // Walk the rest of the way (a tired flier may have come down early).
+                if (u.hasMoveTarget) planPath(u, u.moveTarget);
+            }
+            break;
+        }
     }
+    (void)ground;
+}
+
+void World::separateBodies() {
+    // Bodies have size and mass: living soldiers push each other apart (the
+    // lighter gives way), shove corpses aside, and are kept out of scenery.
+    unitGrid_.clear();
+    for (uint32_t i = 0; i < units_.size(); ++i) {
+        const Unit& u = units_[i];
+        if (!u.inAir() && u.flight == Unit::Flight::Grounded) unitGrid_.insert(i, u.pos.x, u.pos.y);
+    }
+    const Fixed maxRadius = Fixed::fromInt(3);
+    for (uint32_t i = 0; i < units_.size(); ++i) {
+        Unit& a = units_[i];
+        if (!a.alive() || a.inAir()) continue;
+        unitGrid_.query(a.pos.x, a.pos.y, a.stats.radius + maxRadius, [&](uint32_t j) {
+            if (j == i) return;
+            Unit& b = units_[j];
+            if (b.inAir() || (b.alive() && j < i)) return;  // each living pair once
+            const Fixed rb = b.alive() ? b.stats.radius : b.stats.radius * kCorpseRadiusScale;
+            const Vec3 d = (b.pos - a.pos).flat();
+            const Fixed reach = a.stats.radius + rb;
+            const Fixed distSq = d.lengthSq();
+            if (distSq >= reach * reach) return;
+            Fixed dist = sqrt(distSq);
+            Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+            const Fixed overlap = reach - dist;
+            if (!b.alive()) {
+                b.pos += n * overlap;  // the dead give way entirely
+                b.pos.z = groundHeight(b.pos.x, b.pos.y);
+                return;
+            }
+            const Fixed total = a.stats.mass + b.stats.mass;
+            a.pos -= n * (overlap * b.stats.mass / total);
+            b.pos += n * (overlap * a.stats.mass / total);
+        });
+    }
+    if (!config_.region) return;
+    const auto& obstacles = config_.region->obstacles();
+    for (Unit& u : units_) {
+        if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
+        obstacleGrid_.query(u.pos.x, u.pos.y, u.stats.radius + kMaxObstacleExtent, [&](uint32_t k) {
+            const Obstacle& o = obstacles[k];
+            if (o.kind == Obstacle::Kind::House) {
+                // Push out of the footprint along the shallower side.
+                const Fixed cx = clamp(u.pos.x, o.pos.x - o.halfX, o.pos.x + o.halfX);
+                const Fixed cy = clamp(u.pos.y, o.pos.y - o.halfY, o.pos.y + o.halfY);
+                const Vec3 d{u.pos.x - cx, u.pos.y - cy, Fixed::zero()};
+                const Fixed distSq = d.lengthSq();
+                if (distSq >= u.stats.radius * u.stats.radius) return;
+                if (distSq > Fixed::zero()) {
+                    const Fixed dist = sqrt(distSq);
+                    u.pos += d / dist * (u.stats.radius - dist);
+                } else {
+                    const Fixed px = o.halfX - abs(u.pos.x - o.pos.x), py = o.halfY - abs(u.pos.y - o.pos.y);
+                    if (px < py) u.pos.x += (u.pos.x < o.pos.x ? -(px + u.stats.radius) : px + u.stats.radius);
+                    else u.pos.y += (u.pos.y < o.pos.y ? -(py + u.stats.radius) : py + u.stats.radius);
+                }
+                return;
+            }
+            const Vec3 d = (u.pos - o.pos).flat();
+            const Fixed reach = u.stats.radius + o.radius;
+            const Fixed distSq = d.lengthSq();
+            if (distSq >= reach * reach) return;
+            const Fixed dist = sqrt(distSq);
+            const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+            u.pos += n * (reach - dist);
+        });
+    }
+    for (Unit& u : units_) {
+        if (!u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = groundHeight(u.pos.x, u.pos.y);
+    }
+}
+
+void World::kickRemains(Unit& u, const Vec3& moveDir) {
+    const Fixed reach = u.stats.radius + kKickReach;
+    // Collect first: kicking edits the grid being searched.
+    std::vector<uint32_t> touched;
+    remainGrid_.query(u.pos.x, u.pos.y, reach, [&](uint32_t slot) {
+        if (touched.size() >= static_cast<size_t>(kMaxKicksPerTick)) return;
+        const Remain& r = remains_[slot];
+        // Stuck arrows stay put; loose things get kicked along.
+        if (r.kind == RemainKind::None || (r.kind == RemainKind::Arrow && r.dir.z < -Fixed::fromRatio(1, 5))) return;
+        if ((r.pos - u.pos).flat().lengthSq() > reach * reach) return;
+        touched.push_back(slot);
+    });
+    for (uint32_t slot : touched) {
+        const Remain& r = remains_[slot];
+        const Fixed push = u.stats.moveSpeed * (Fixed::fromRatio(1, 2) + rng_.nextUnit() / 2) * min(u.stats.mass, Fixed::fromInt(3));
+        const Fixed side = rng_.nextSigned();
+        const Fixed lift = Fixed::one() + rng_.nextUnit();
+        const Vec3 vel = moveDir * push + Vec3{-moveDir.y * side, moveDir.x * side, lift};
+        spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), vel);
+        clearRemain(slot);
+    }
+}
+
+Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
+    if (!config_.region) return -Fixed::one();
+    const auto& obstacles = config_.region->obstacles();
+    const Vec3 seg = b - a;
+    const Vec3 segFlat = seg.flat();
+    const Fixed lenSq = segFlat.lengthSq();
+    const Vec3 mid = a + seg * Fixed::fromRatio(1, 2);
+    Fixed best = limitT;
+    bool hit = false;
+    obstacleGrid_.query(mid.x, mid.y, sqrt(lenSq) / 2 + kMaxObstacleExtent, [&](uint32_t k) {
+        const Obstacle& o = obstacles[k];
+        // Trees catch missiles in their crowns as well as their trunks.
+        Fixed radius = o.radius;
+        if (o.kind == Obstacle::Kind::Pine) radius = Fixed::fromRatio(9, 10);
+        if (o.kind == Obstacle::Kind::Oak) radius = Fixed::fromRatio(6, 5);
+        if (o.kind == Obstacle::Kind::House) radius = min(o.halfX, o.halfY) + Fixed::fromRatio(1, 2);
+        Fixed t;
+        if (lenSq > Fixed::zero()) t = clamp((o.pos - a).flat().dot(segFlat) / lenSq, Fixed::zero(), Fixed::one());
+        if (t >= best) return;
+        const Vec3 p = a + seg * t;
+        if ((p - o.pos).flat().lengthSq() > radius * radius) return;
+        if (p.z < o.pos.z || p.z > o.pos.z + o.height) return;
+        best = t;
+        hit = true;
+    });
+    return hit ? best : -Fixed::one();
+}
+
+void World::clearRemain(uint32_t slot) {
+    Remain& r = remains_[slot];
+    if (r.kind == RemainKind::None) return;
+    remainGrid_.remove(slot, r.pos.x, r.pos.y);
+    r.kind = RemainKind::None;
+    changedRemains_.push_back(slot);
+}
+
+void World::SpatialHash::remove(uint32_t index, Fixed x, Fixed y) {
+    auto it = buckets_.find(key(cellOf(x), cellOf(y)));
+    if (it == buckets_.end()) return;
+    auto& v = it->second;
+    auto pos = std::find(v.begin(), v.end(), index);
+    if (pos != v.end()) v.erase(pos);
 }
 
 void World::updateAirborne(Unit& u) {
@@ -266,16 +541,15 @@ void World::updateAirborne(Unit& u) {
 
 Unit* World::nearestEnemy(const Unit& u, Fixed range) {
     if (range <= Fixed::zero()) return nullptr;
-    const bool groundBound = u.stats.flyAltitude == Fixed::zero() && u.stats.ranged.muzzleSpeed == Fixed::zero();
+    // Melee-only units ignore enemies flying above their reach (giants can swat low fliers).
+    const bool groundBound = u.stats.ranged.muzzleSpeed == Fixed::zero();
+    const Fixed reachUp = u.stats.height + u.stats.melee.reach;
     Unit* best = nullptr;
     Fixed bestDistSq = range * range;
     // Ascending id order, strict comparison: ties go to the lowest id.
     for (Unit& other : units_) {
         if (!other.alive() || other.owner == u.owner) continue;
-        if (groundBound &&
-            other.pos.z - groundHeight(other.pos.x, other.pos.y) > kMaxReachableAltitude) {
-            continue;
-        }
+        if (groundBound && other.pos.z - u.pos.z > reachUp) continue;
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
         if (d <= bestDistSq && (best == nullptr || d < bestDistSq)) {
             best = &other;
@@ -310,8 +584,7 @@ void World::fight(Unit& u, Unit& enemy) {
     const MeleeWeapon& m = u.stats.melee;
     const Fixed gap = dist - u.stats.radius - enemy.stats.radius;
     if (gap > m.reach) {
-        u.pos += u.facing * min(u.stats.moveSpeed * kTickDt, gap - m.reach);
-        u.engaged = gap < m.reach + kSwoopDistance;
+        walk(u, u.pos + u.facing * min(gap - m.reach, u.stats.moveSpeed));
         return;
     }
     u.engaged = true;
@@ -342,7 +615,7 @@ bool World::tryHeal(Unit& u) {
     Unit* best = nullptr;
     Fixed bestDistSq = kHealSeekRange * kHealSeekRange;
     for (Unit& other : units_) {
-        if (!other.alive() || other.owner != u.owner || other.id == u.id || other.airborne) continue;
+        if (!other.alive() || other.owner != u.owner || other.id == u.id || other.inAir()) continue;
         if (other.hp > other.stats.maxHp - h.amount / 2) continue;
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
         if (d < bestDistSq) {
@@ -356,7 +629,7 @@ bool World::tryHeal(Unit& u) {
     if (dist > Fixed::zero()) u.facing = delta / dist;
     const Fixed gap = dist - u.stats.radius - best->stats.radius;
     if (gap > h.range) {
-        u.pos += u.facing * min(u.stats.moveSpeed * kTickDt, gap - h.range);
+        walk(u, u.pos + u.facing * min(gap - h.range, u.stats.moveSpeed));
     } else if (u.healCooldown == 0) {
         best->hp = std::min(best->stats.maxHp, best->hp + h.amount);
         --u.healCharges;
@@ -389,7 +662,11 @@ void World::fire(Unit& u, const Vec3& target) {
         dx = rng_.nextSigned();
         dy = rng_.nextSigned();
     } while (dx * dx + dy * dy >= Fixed::one());
-    const Vec3 aim = target + Vec3{dx * radius, dy * radius, Fixed::zero()};
+    Vec3 aim = target + Vec3{dx * radius, dy * radius, Fixed::zero()};
+    if (w.kind == ProjectileKind::Bomb) {
+        aim = origin + (aim - origin).flat() * kBombAimFraction;
+        aim.z = groundHeight(aim.x, aim.y);
+    }
 
     Projectile p;
     p.id = nextId_++;
@@ -404,16 +681,24 @@ void World::fire(Unit& u, const Vec3& target) {
     projectiles_.push_back(p);
 }
 
-bool World::bounce(Projectile& p, Fixed restitution) {
+bool World::bounce(Projectile& p, Fixed restitution, Fixed friction) {
     if (p.resting) return true;
+    const Vec3 before = p.pos;
     p.pos += p.vel * kTickDt + up(-config_.gravity * (kTickDt * kTickDt / 2));
     p.vel.z -= config_.gravity * kTickDt;
+    // Rocks, trees and walls send bouncing things back the way they came.
+    if (obstacleHit(before, p.pos, Fixed::one()) >= Fixed::zero()) {
+        p.pos.x = before.x;
+        p.pos.y = before.y;
+        p.vel.x = -p.vel.x * restitution;
+        p.vel.y = -p.vel.y * restitution;
+    }
     const Fixed ground = groundHeight(p.pos.x, p.pos.y);
     if (p.pos.z > ground) return false;
     p.pos.z = ground;
     if (p.vel.z < Fixed::zero()) p.vel.z = -p.vel.z * restitution;
-    p.vel.x *= kGroundFriction;
-    p.vel.y *= kGroundFriction;
+    p.vel.x *= friction;
+    p.vel.y *= friction;
     if (p.vel.lengthSq() < kRestSpeed * kRestSpeed) {
         p.vel = {};
         p.resting = true;
@@ -423,7 +708,7 @@ bool World::bounce(Projectile& p, Fixed restitution) {
 
 void World::updateProjectiles() {
     const Vec3 accel = config_.wind + up(-config_.gravity);
-    spawned_.clear();
+    // spawned_ may already hold debris kicked up by walkers this tick.
     pendingExplosions_.clear();
     std::vector<uint8_t> removed(projectiles_.size(), 0);
 
@@ -432,7 +717,7 @@ void World::updateProjectiles() {
         ++p.ageTicks;
 
         if (p.kind == ProjectileKind::Bomb) {
-            bounce(p, p.explosive.bounce);
+            bounce(p, p.explosive.bounce, kBombFriction);
             if (--p.fuse <= 0) {
                 pendingExplosions_.push_back({p.pos, p.explosive, p.owner});
                 removed[i] = 1;
@@ -451,7 +736,7 @@ void World::updateProjectiles() {
                 continue;
             }
             const Vec3 travel = p.vel.flat();
-            if (bounce(p, kDebrisRestitution) || p.ageTicks >= kMaxProjectileAgeTicks) {
+            if (bounce(p, kDebrisRestitution, kGroundFriction) || p.ageTicks >= kMaxProjectileAgeTicks) {
                 Vec3 lie = normalized(travel);
                 if (lie.lengthSq() == Fixed::zero()) lie = {Fixed::one(), Fixed::zero(), Fixed::zero()};
                 placeRemain(p.remain, p.owner, p.pos, lie);
@@ -499,7 +784,18 @@ void World::updateProjectiles() {
             hitT = t;
         }
 
-        if (hit != nullptr) {
+        // Trees, rocks and walls in the way stop it first.
+        const Fixed obstacleT = obstacleHit(prev, p.pos, hitT);
+        if (obstacleT >= Fixed::zero()) {
+            const Vec3 at = prev + seg * obstacleT;
+            if (p.kind == ProjectileKind::Fireball) {
+                pendingExplosions_.push_back({at, p.explosive, p.owner});
+            } else {
+                placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
+                impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
+            }
+            removed[i] = 1;
+        } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
             if (p.kind == ProjectileKind::Fireball) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner});
@@ -535,6 +831,7 @@ void World::updateProjectiles() {
     }
     projectiles_.resize(keep);
     projectiles_.insert(projectiles_.end(), spawned_.begin(), spawned_.end());
+    spawned_.clear();
 }
 
 void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
@@ -565,7 +862,9 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
     }
 
     // Remains on the ground are thrown back into the air.
-    for (uint32_t i = 0; i < remains_.size(); ++i) {
+    std::vector<uint32_t> nearby;
+    remainGrid_.query(at.x, at.y, ex.radius, [&](uint32_t slot) { nearby.push_back(slot); });
+    for (uint32_t i : nearby) {
         Remain& r = remains_[i];
         if (r.kind == RemainKind::None) continue;
         const Fixed d = (r.pos - at).length();
@@ -578,8 +877,7 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
         const Vec3 jitter{jx, jy, jz};
         const Vec3 away = awayFrom(r.pos);
         spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), away * v + up(v) + jitter);
-        r.kind = RemainKind::None;
-        changedRemains_.push_back(i);
+        clearRemain(i);
     }
 
     // Other bombs nearby are thrown and their fuses cut short: chain reactions.
@@ -624,13 +922,17 @@ void World::spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const 
 }
 
 void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir) {
+    // Whatever falls in the water sinks out of sight.
+    if (isWater(pos.x, pos.y) && pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2)) return;
     const uint32_t slot = static_cast<uint32_t>(remainsAdded_ % config_.maxRemains);
     const Remain r{kind, owner, pos, dir, tick_};
     if (remains_.size() < config_.maxRemains) {
         remains_.push_back(r);
     } else {
+        if (remains_[slot].kind != RemainKind::None) remainGrid_.remove(slot, remains_[slot].pos.x, remains_[slot].pos.y);
         remains_[slot] = r;
     }
+    remainGrid_.insert(slot, pos.x, pos.y);
     ++remainsAdded_;
     changedRemains_.push_back(slot);
 }
@@ -661,6 +963,12 @@ uint64_t World::checksum() const {
         h.addI64(u.meleeCooldown);
         h.addI64(u.healCooldown);
         h.addI64(u.healCharges);
+        h.addU64(static_cast<uint64_t>(u.flight));
+        h.addI64(u.runway.raw);
+        h.addI64(u.stamina);
+        h.addU64(u.path.size());
+        for (const Vec3& w : u.path) hashVec(h, w);
+        h.addU64(u.pathIndex);
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

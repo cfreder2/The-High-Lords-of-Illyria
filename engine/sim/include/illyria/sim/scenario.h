@@ -48,5 +48,14 @@ struct Melee {
     static Replay replay(uint64_t seed);
 };
 
+// On the Illyria region: an army fords the river under archer and grenadier
+// fire while griffins fly over. The determinism benchmark for region
+// generation, pathfinding, collisions, flight and kicked remains.
+struct Crossing {
+    static constexpr uint32_t kTicks = 100 * kTicksPerSecond;
+    static void setup(World& world);
+    static Replay replay(uint64_t seed);
+};
+
 }  // namespace scenarios
 }  // namespace illyria::sim

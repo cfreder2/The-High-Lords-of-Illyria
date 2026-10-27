@@ -23,5 +23,6 @@ int main(int argc, char** argv) {
     const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1234;
     run<scenarios::Ford>("ford", seed);
     run<scenarios::Melee>("melee", seed);
+    run<scenarios::Crossing>("crossing", seed);
     return 0;
 }

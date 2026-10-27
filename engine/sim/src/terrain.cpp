@@ -1,37 +1,8 @@
 #include "illyria/sim/terrain.h"
 
+#include "illyria/sim/noise.h"
+
 namespace illyria::sim {
-
-namespace {
-
-// Integer hash of a lattice point to a value in [0, 1).
-Fixed latticeValue(uint64_t seed, int64_t x, int64_t y) {
-    uint64_t h = seed ^ (static_cast<uint64_t>(x) * 0x9E3779B97F4A7C15ULL) ^
-                 (static_cast<uint64_t>(y) * 0xC2B2AE3D27D4EB4FULL);
-    h ^= h >> 33;
-    h *= 0xFF51AFD7ED558CCDULL;
-    h ^= h >> 33;
-    h *= 0xC4CEB9FE1A85EC53ULL;
-    h ^= h >> 33;
-    return Fixed::fromRaw(static_cast<int64_t>(h & (Fixed::kOneRaw - 1)));
-}
-
-Fixed smoothstep(Fixed t) { return t * t * (Fixed::fromInt(3) - t * 2); }
-
-// Value noise with lattice spacing `spacing` metres, in [0, 1).
-Fixed valueNoise(uint64_t seed, Fixed x, Fixed y, int64_t spacing) {
-    const Fixed fx = x / spacing, fy = y / spacing;
-    const int64_t ix = fx.floorToInt(), iy = fy.floorToInt();
-    const Fixed tx = smoothstep(fx - Fixed::fromInt(ix));
-    const Fixed ty = smoothstep(fy - Fixed::fromInt(iy));
-    const Fixed a = latticeValue(seed, ix, iy), b = latticeValue(seed, ix + 1, iy);
-    const Fixed c = latticeValue(seed, ix, iy + 1), d = latticeValue(seed, ix + 1, iy + 1);
-    const Fixed top = a + (b - a) * tx;
-    const Fixed bottom = c + (d - c) * tx;
-    return top + (bottom - top) * ty;
-}
-
-}  // namespace
 
 Terrain Terrain::generate(uint64_t seed, int32_t cells, Fixed cellSize, Fixed maxHeight) {
     struct Octave {
@@ -54,13 +25,21 @@ Terrain Terrain::generate(uint64_t seed, int32_t cells, Fixed cellSize, Fixed ma
             Fixed h;
             uint64_t octaveSeed = seed;
             for (const Octave& o : octaves) {
-                h += valueNoise(octaveSeed, x, y, o.spacing) * o.weight;
+                h += noise::value(octaveSeed, x, y, o.spacing) * o.weight;
                 octaveSeed = octaveSeed * 6364136223846793005ULL + 1442695040888963407ULL;
             }
             // Square the noise to flatten valleys into plains and sharpen hilltops.
             t.samples_.push_back(h * h * maxHeight);
         }
     }
+    return t;
+}
+
+Terrain Terrain::fromSamples(int32_t cells, Fixed cellSize, std::vector<Fixed> samples) {
+    Terrain t;
+    t.cells_ = cells;
+    t.cellSize_ = cellSize;
+    t.samples_ = std::move(samples);
     return t;
 }
 

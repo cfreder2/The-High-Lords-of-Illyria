@@ -2,10 +2,15 @@
 
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <span>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "illyria/sim/fixed.h"
+#include "illyria/sim/nav.h"
+#include "illyria/sim/region.h"
 #include "illyria/sim/rng.h"
 #include "illyria/sim/terrain.h"
 #include "illyria/sim/vec3.h"
@@ -45,6 +50,7 @@ struct RangedWeapon {
     int32_t damage = 0;       // direct-hit damage (arrows)
     Fixed dispersionAt100m;   // radius of the dispersion circle at 100 m for a rank-0 unit
     Fixed autoRange;          // idle units shoot at enemies within this range; zero disables
+    Fixed maxRange;           // farther targets are approached on foot before shooting
     ProjectileKind kind = ProjectileKind::Arrow;
     Explosive explosive;      // bombs and fireballs
 };
@@ -89,7 +95,14 @@ struct UnitStats {
     Shield shield;
     Healing healing;
     TerrainBonus terrain;
-    Fixed flyAltitude;  // cruising height above ground; zero for ground units
+    // Fliers walk by default. They take off only for long moves, after a
+    // ground run, cruise over the terrain, tire, and must land to recover.
+    // They never fight from the air.
+    Fixed flyAltitude;       // cruising height above ground; zero for ground units
+    Fixed flySpeed;          // airspeed (moveSpeed is their ground speed)
+    Fixed takeoffRun;        // ground run before lifting off
+    Fixed minFlight;         // shorter moves are walked
+    int32_t staminaTicks = 0;  // flight time on a full rest
     Fixed mass = Fixed::one();
     bool mounted = false;
     bool bleeds = true;  // false: bones and dust instead of blood
@@ -106,8 +119,16 @@ struct Unit {
     Vec3 pos;
     Vec3 facing;  // unit-length, horizontal
     Vec3 vel;     // only while thrown through the air
-    bool airborne = false;
-    bool engaged = false;  // fought in melee this tick (fliers swoop down)
+    bool airborne = false;  // thrown by a blow or blast (not flying)
+    bool engaged = false;   // fought in melee this tick
+
+    enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
+    Flight flight = Flight::Grounded;
+    Fixed runway;           // distance run so far while taking off
+    int32_t stamina = 0;    // flight ticks left
+
+    std::vector<Vec3> path;  // waypoints of the current move order
+    uint32_t pathIndex = 0;
 
     bool hasMoveTarget = false;
     Vec3 moveTarget;
@@ -119,6 +140,7 @@ struct Unit {
     int32_t healCharges = 0;
 
     bool alive() const { return hp > 0; }
+    bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
 };
 
 struct Projectile {
@@ -172,8 +194,10 @@ struct WorldConfig {
     Fixed gravity = Fixed::fromRatio(981, 100);
     // Constant acceleration applied to projectiles, in m/s^2.
     Vec3 wind;
-    // Ground; a flat plane at z == 0 when null.
+    // Ground; a flat plane at z == 0 when null. Ignored when `region` is set.
     std::shared_ptr<const Terrain> terrain;
+    // A full region: terrain plus water, ground types and scenery.
+    std::shared_ptr<const Region> region;
     // Remains are kept in a ring; the oldest are recycled beyond this.
     uint32_t maxRemains = 40000;
 };
@@ -201,12 +225,47 @@ public:
     const std::vector<uint32_t>& changedRemains() const { return changedRemains_; }
     const Unit* findUnit(EntityId id) const;
     Fixed groundHeight(Fixed x, Fixed y) const;
+    const Region* region() const { return config_.region.get(); }
 
 private:
+    // Buckets of indices by grid cell. Lookups only, never iterated, so the
+    // unordered map cannot make results depend on hashing order.
+    class SpatialHash {
+    public:
+        explicit SpatialHash(int64_t cellMetres = 4) : cell_(cellMetres) {}
+        void clear() { buckets_.clear(); }
+        void insert(uint32_t index, Fixed x, Fixed y) { buckets_[key(cellOf(x), cellOf(y))].push_back(index); }
+        void remove(uint32_t index, Fixed x, Fixed y);
+        // Calls fn(index) for items whose cell overlaps the square of `radius` around (x, y).
+        template <typename Fn>
+        void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+            const int64_t x0 = cellOf(x - radius), x1 = cellOf(x + radius);
+            const int64_t y0 = cellOf(y - radius), y1 = cellOf(y + radius);
+            for (int64_t cy = y0; cy <= y1; ++cy)
+                for (int64_t cx = x0; cx <= x1; ++cx) {
+                    auto it = buckets_.find(key(cx, cy));
+                    if (it == buckets_.end()) continue;
+                    for (uint32_t i : it->second) fn(i);
+                }
+        }
+
+    private:
+        int64_t cellOf(Fixed v) const { return v.floorToInt() >= 0 ? v.floorToInt() / cell_ : (v.floorToInt() - cell_ + 1) / cell_; }
+        static int64_t key(int64_t cx, int64_t cy) { return (cx << 32) ^ (cy & 0xFFFFFFFF); }
+        int64_t cell_;
+        std::unordered_map<int64_t, std::vector<uint32_t>> buckets_;
+    };
+
     Unit* mutableUnit(EntityId id);
     void applyCommand(const Command& cmd);
     void updateUnit(Unit& unit);
+    void updateFlight(Unit& unit);
     void updateAirborne(Unit& unit);
+    // Walks toward `to` at the unit's ground speed; returns true on arrival.
+    bool walk(Unit& unit, const Vec3& to, Fixed speedScale = Fixed::one());
+    void planPath(Unit& unit, const Vec3& to);
+    void separateBodies();
+    void kickRemains(Unit& unit, const Vec3& moveDir);
     void fire(Unit& unit, const Vec3& target);
     void fight(Unit& unit, Unit& enemy);
     bool tryHeal(Unit& unit);
@@ -217,14 +276,20 @@ private:
     void knock(Unit& target, const Vec3& dir, Fixed impulse);
     void updateProjectiles();
     // Integrates a bouncing body; returns true once it has come to rest.
-    bool bounce(Projectile& p, Fixed restitution);
+    bool bounce(Projectile& p, Fixed restitution, Fixed friction);
+    // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
+    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner);
     void spawnGibs(const Unit& victim, const Vec3& from, Fixed strength);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
+    void clearRemain(uint32_t slot);
     Fixed slopeAt(Fixed x, Fixed y) const;
+    Ground groundAt(Fixed x, Fixed y) const;
+    bool isWater(Fixed x, Fixed y) const;
 
     WorldConfig config_;
+    std::unique_ptr<NavGrid> nav_;
     Rng rng_;
     uint32_t tick_ = 0;
     EntityId nextId_ = 1;
@@ -241,6 +306,11 @@ private:
         PlayerId owner;
     };
     std::vector<PendingExplosion> pendingExplosions_;
+    SpatialHash obstacleGrid_{8};
+    SpatialHash remainGrid_{4};
+    SpatialHash unitGrid_{4};
+    // Paths planned this tick, by (start cell, goal cell): squads share routes.
+    std::map<std::pair<int64_t, int64_t>, std::vector<Vec3>> pathCache_;
 };
 
 }  // namespace illyria::sim

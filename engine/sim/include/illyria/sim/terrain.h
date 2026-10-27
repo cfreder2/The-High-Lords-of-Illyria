@@ -15,6 +15,8 @@ public:
     // Rolling hills generated from `seed`: `cells` x `cells` grid cells of
     // `cellSize` metres each, heights in [0, maxHeight].
     static Terrain generate(uint64_t seed, int32_t cells, Fixed cellSize, Fixed maxHeight);
+    // Wraps precomputed samples: (cells + 1)^2 heights, row-major.
+    static Terrain fromSamples(int32_t cells, Fixed cellSize, std::vector<Fixed> samples);
 
     // Ground height at a point. Points outside the region use the nearest edge.
     Fixed heightAt(Fixed x, Fixed y) const;

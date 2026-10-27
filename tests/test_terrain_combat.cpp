@@ -48,7 +48,7 @@ TEST(units_stand_on_terrain_and_arrows_land_on_it) {
     World w(cfg);
     const EntityId archer = w.spawnUnit(0, {m(40), m(128), Fixed::zero()}, kEast, scenarios::archer());
     CHECK(w.findUnit(archer)->pos.z == cfg.terrain->heightAt(m(40), m(128)));
-    const Command cmd{0, archer, Command::Type::AttackGround, {m(160), m(128), Fixed::zero()}};
+    const Command cmd{0, archer, Command::Type::AttackGround, {m(100), m(128), Fixed::zero()}};
     int grounded = 0;
     for (int i = 0; i < 300; ++i) {
         w.step(i == 0 ? std::span(&cmd, 1) : std::span<const Command>{});

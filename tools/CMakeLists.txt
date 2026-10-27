@@ -7,3 +7,7 @@ if(EMSCRIPTEN)
     # Flush stdout and propagate the exit code when run under node.
     target_link_options(illyria_simcheck PRIVATE -sEXIT_RUNTIME=1)
 endif()
+
+# Prints docs/UNITS.md from the locked unit sheet.
+add_executable(illyria_unitsheet unitsheet.cpp)
+target_link_libraries(illyria_unitsheet PRIVATE illyria_sim)

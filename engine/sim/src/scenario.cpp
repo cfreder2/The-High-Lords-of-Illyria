@@ -1,5 +1,6 @@
 #include "illyria/sim/scenario.h"
 
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 
 #include <cstddef>
@@ -95,6 +96,29 @@ void Melee::setup(World& world) {
                             unitStats(UnitType::DwarfGrenadier));
         }
     }
+}
+
+void Crossing::setup(World& world) {
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    // Ids 1..24: the Red Hand west of the river. 25..36: archers on the far bank,
+    // 37..40 grenadiers, 41..43 griffins.
+    for (int i = 0; i < 24; ++i) world.spawnUnit(1, {m(480 + (i % 6) * 2), m(560 + (i / 6) * 2), m(0)}, east, unitStats(UnitType::LightInfantry));
+    for (int i = 0; i < 12; ++i) world.spawnUnit(0, {m(612), m(500 + i * 2), m(0)}, -east, unitStats(UnitType::Archers));
+    for (int i = 0; i < 4; ++i) world.spawnUnit(0, {m(598), m(506 + i * 3), m(0)}, -east, unitStats(UnitType::DwarfGrenadier));
+    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(700), m(470 + i * 4), m(0)}, -east, unitStats(UnitType::Griffins));
+}
+
+Replay Crossing::replay(uint64_t seed) {
+    Replay r;
+    r.config.seed = seed;
+    r.config.region = std::make_shared<const Region>(Region::generateIllyria(20261027));
+    for (EntityId id = 1; id <= 24; ++id) {
+        r.commands.push_back({0, {1, id, Command::Type::Move, {m(610), m(512), m(0)}}});
+    }
+    for (EntityId id = 41; id <= 43; ++id) {
+        r.commands.push_back({0, {0, id, Command::Type::Move, {m(380), m(600), m(0)}}});
+    }
+    return r;
 }
 
 Replay Melee::replay(uint64_t seed) {

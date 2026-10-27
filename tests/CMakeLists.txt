@@ -7,6 +7,7 @@ add_executable(illyria_tests
     test_terrain_combat.cpp
     test_game.cpp
     test_units.cpp
+    test_region.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game)
 
