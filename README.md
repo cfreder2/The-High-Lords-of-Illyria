@@ -4,6 +4,7 @@ A real-time tactical strategy game with grand-strategy campaign mechanics: the s
 
 - 📜 [Technical & Game Design Starter Document](docs/GAME_DESIGN.md)
 - 👥 [Target Audience Personas](docs/AUDIENCE_PERSONAS.md)
+- 🎞️ [Devlog: screenshots and videos of every build](https://github.com/cfreder2/The-High-Lords-of-Illyria/tree/devlog) (`devlog` branch, filled in automatically on each deploy)
 
 **Play the latest build:** https://cfreder2.github.io/The-High-Lords-of-Illyria/ (desktop or phone browser; the version is shown top-left and goes up with every deploy)
 

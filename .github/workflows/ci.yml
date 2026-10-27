@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # The devlog branch holds media only.
+    branches-ignore: [devlog]
   pull_request:
 
 jobs:
