@@ -147,7 +147,7 @@ Every object in the world belongs to exactly one tier. The tier decides who simu
 2. **Destruction is a state change.** When a house or wall (tier B) takes enough damage, the deterministic sim switches it to its "collapsed" collider (rubble you can walk over, a breach in the wall) and emits an event. The flying bricks are tier C.
 3. **Things that come to rest go to sleep.** A boulder that stops rolling drops from A to B; a limb that settles drops from C to D. Most objects on a battlefield spend most of their life asleep, which is what makes "tens of thousands" affordable.
 4. **If it must affect gameplay, it must be tier A or B.** Example design calls: a barrel of oil that can be shot to explode is tier B; a dropped sword is tier C, unless picking up weapons becomes a mechanic.
-5. **The battlefield remembers.** Tier D keeps Myth's persistent carnage: craters, corpses and arrows stay where they fell, capped per region and merged into larger decals as the camera pulls away.
+5. **Everything persists, with a very long half-life** (§5.5).
 
 **Measured (first broadphase prototype, native, single core, unoptimised):**
 
@@ -161,6 +161,43 @@ Every object in the world belongs to exactly one tier. The tier decides who simu
 The middle rows cover the 9-sieges worst case from §5.2 with room to spare. Static object count barely matters; the active (tier A) count is what has to be capped.
 
 **Rendering:** GPU-driven culling (a compute pass culls all instances and builds indirect draw lists) so 100k+ visible objects cost a handful of draw calls; trees, houses and rocks switch to impostors at strategic zoom.
+
+### 5.5 Persistence: The Land Remembers
+
+Nothing that happens on Illyria is cleaned up. Every corpse, arrow, crater, shattered shield and burnt house stays where it fell and **weathers slowly** over game time, so old battlefields become landmarks (*the Bone Field at Oakhaven Ford*).
+
+**Two kinds of remains**
+
+| Kind | Examples | Where it comes from | Same for every player? |
+|---|---|---|---|
+| **Major remains** | Corpses, arrows and bolts stuck in the ground, craters, rubble, wrecked siege engines, burnt buildings, felled trees | Already known exactly by the deterministic sim (death position, impact point, explosion centre, destruction event) | **Yes**: stored in the simulation state, included in saves, replays and late-join transfers, and usable by gameplay later |
+| **Minor remains** | Severed limbs, splinters, dropped swords and shields, blood splatter | Where the GPU cosmetic physics happened to drop them | No: local to each client, saved per client, rebuilt approximately for late joiners |
+
+**Weathering instead of deleting**
+
+Each remain records the tick it was created and moves through visual stages on a very long, deterministic schedule. For corpses: fresh → bloated → rotted → skeleton → scattered bones → grass mound. Craters soften and green over; arrows topple, then rot to shafts and arrowheads; rubble moss over. The stage is a pure function of age, so all players see the same thing.
+
+Nothing vanishes. Old remains **consolidate**: when a region's count passes its budget, the oldest items in a hex are merged into aggregate decals and meshes (a dense scatter of bones, a field of broken shafts). Individual objects become fewer, the scene looks the same, and the memory stays bounded.
+
+**Budget arithmetic**
+
+With remains created at rate *R* and half-life *H*, the steady-state population is *R × H / ln 2*. Example campaign: 200 battles × (400 dead + 5,000 arrows + 50 craters + rubble) ≈ 1.1 M major remains created.
+
+| Representation | Size | 1.1 M remains |
+|---|---|---|
+| Compact record (type, quantised position and yaw, creation tick, stage seed) | 16 bytes | ~18 MB of RAM, ~5 MB compressed in a save |
+
+That fits comfortably even in a browser. Consolidation keeps it bounded across arbitrarily long campaigns.
+
+**Drawing it**
+
+| Zoom | Remains drawn as |
+|---|---|
+| Ground / tactical | Individual instanced meshes and sprites near the camera, culled on the GPU |
+| Strategic | Clustered impostors per hex (one "bone field" or "broken shafts" scatter) |
+| God | A per-hex "scar" texture blended into the terrain: dark earth, craters, ruined settlements |
+
+**Optional gameplay hooks** (major remains are deterministic, so these are possible later): morale penalty marching past fresh mass graves; carrion birds revealing where a battle happened; looting battlefields for arrows and gear; old fortifications and rubble giving cover in the next war; temples gaining or losing blessing power from bloodshed nearby.
 
 ## 6. Development Roadmap
 
