@@ -26,8 +26,15 @@ public:
     struct River {
         std::string name;
         std::vector<Vec3> points;   // source to mouth; z = water surface (filled in)
-        Fixed halfWidth;
+        Fixed halfWidth;            // typical; widths has the value at each point
         Fixed depth;
+        std::vector<Fixed> widths = {};  // half width at each point (filled in)
+        // Bounding boxes of runs of kSpan segments, to skip far ones quickly.
+        static constexpr size_t kSpan = 16;
+        struct Box {
+            Fixed minX, minY, maxX, maxY;
+        };
+        std::vector<Box> boxes = {};
     };
     struct Ridge {
         std::string name;
@@ -123,6 +130,7 @@ public:
     Ground landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fixed roadDist) const;
 
 private:
+    void meanderRivers();
     void computeRiverSurfaces();
     void placeCities();
     void placeSites();

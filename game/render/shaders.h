@@ -152,6 +152,7 @@ int groundAt(ivec2 c) {
 }
 
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
+uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
 
 // Fades a pattern of feature size `size` metres out before it shimmers.
 float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, size * 1.2, px); }
@@ -208,6 +209,10 @@ void main() {
         // Forest floor: leaf litter, needles and moss.
         vec3 litter = mix(vec3(0.30, 0.22, 0.12), vec3(0.42, 0.30, 0.16), valueNoise(p * 2.7));
         litter = mix(litter, vec3(0.22, 0.30, 0.12), smoothstep(0.55, 0.8, valueNoise(p * 0.6 + 2.0)));
+        // From high up the trees are too small to see: show the canopy's green, not the floor.
+        // Same crowns-and-gaps pattern as the distant canopy, so the two meet seamlessly.
+        float crowns = noise2(p / 9.0) * 0.55 + noise2(p / 9.0 * 2.1 + 3.7) * 0.3 + noise2(p / 9.0 * 4.3 + 9.1) * 0.15;
+        litter = mix(litter, mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns), smoothstep(150.0, 600.0, dist));
         albedo = mix(albedo, litter, clamp(kind.y * 0.8 + canopy * 0.7, 0.0, 1.0));
         // Rock: strata and lichen.
         float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
@@ -252,9 +257,30 @@ void main() {
         float edge = 1.0 - smoothstep(2.4, 3.6 + fine * 0.6, d);
         albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
     }
-    // Snow on the high peaks, mud below the waterline.
+    // Snow on the high peaks.
     albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(250.0, 290.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
-    if (vWorld.z < uWater) albedo = mix(albedo, vec3(0.35, 0.32, 0.25), 0.6);
+    // Banks: the riverbed under the water, gravel and mud at the waterline,
+    // a dark wet band above it (the nearest water surface, not one level).
+    {
+        ivec2 cc = ivec2(floor(p / uCellSize));
+        float surf = -1e9;
+        for (int k = 0; k < 4; ++k) surf = max(surf, texelFetch(uWaterTex, clamp(cc + ivec2(k & 1, k >> 1), ivec2(0), ivec2(int(uCells))), 0).r);
+        if (feature(kFeatGroundDetail)) {
+            for (int k = 0; k < 4; ++k) {
+                ivec2 o = ivec2(k == 0 ? 2 : k == 1 ? -1 : 0, k == 2 ? 2 : k == 3 ? -1 : 0);
+                surf = max(surf, texelFetch(uWaterTex, clamp(cc + o, ivec2(0), ivec2(int(uCells))), 0).r);
+            }
+        }
+        if (surf > -1000.0) {
+            float above = vWorld.z - surf;
+            float wet = (1.0 - smoothstep(0.05, 0.8 + fine * 0.5, above)) * step(-0.05, above);
+            albedo = mix(albedo, albedo * vec3(0.6, 0.56, 0.5) + vec3(0.03, 0.02, 0.0), wet);
+            float line = 1.0 - smoothstep(0.0, 0.22 + fine * 0.1, abs(above - 0.04));
+            vec3 gravel = mix(vec3(0.50, 0.46, 0.39), vec3(0.36, 0.30, 0.22), valueNoise(p * 3.3));
+            albedo = mix(albedo, gravel, line * 0.75);
+            if (above < 0.0) albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75);
+        }
+    }
 
     // Low sun so the hills read clearly from above; groves shade the ground.
     float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
@@ -1014,25 +1040,50 @@ void main() {
 )";
 inline const char* kWaterFs = R"(
 in vec3 vWorld;
+uniform sampler2D uFlow;  // RG8: downstream direction per terrain sample (0.5 = still)
 out vec4 oColor;
+// Ripples drawn along the current: stretched noise drifting downstream.
+float current(vec2 along, float t) {
+    return noise2(along * vec2(0.35, 1.6) - vec2(t, 0.0)) * 0.55 + noise2(along * vec2(0.9, 3.1) - vec2(t * 1.7, 0.0) + 7.3) * 0.3 +
+           noise2(along * vec2(2.3, 6.5) - vec2(t * 2.6, 0.0) + 3.1) * 0.15;
+}
 void main() {
-    float depth = vWorld.z - groundZ(vWorld.xy);
-    if (depth <= 0.0) discard;
-    vec3 shallow = vec3(0.26, 0.52, 0.52), deep = vec3(0.05, 0.17, 0.30);
-    vec3 c = mix(shallow, deep, 1.0 - exp(-depth * 0.7));
     vec2 p = vWorld.xy;
-    vec3 n = normalize(vec3(sin(p.x * 0.9 + uTime * 1.6) * 0.06 + sin(p.y * 1.7 - uTime * 1.1) * 0.04,
-                            cos(p.y * 0.8 + uTime * 1.3) * 0.06 + cos(p.x * 1.5 + uTime * 0.9) * 0.04, 1.0));
+    float depth = vWorld.z - groundZ(p);
+    if (depth <= -0.02) discard;
+    float dist = distance(uEye, vWorld);
+    vec2 flow = texture(uFlow, p / (uCells * uCellSize)).rg * 2.0 - 1.0;
+    float speed = length(flow);
+    vec2 dir = speed > 0.05 ? flow / speed : vec2(1.0, 0.0);
+    vec2 along = vec2(dot(p, dir), dot(p, vec2(-dir.y, dir.x)));
+    // Faster in the middle and the shallows' riffles, slack at the edges.
+    float t = uTime * (0.8 + 1.6 * smoothstep(0.1, 1.2, depth)) * step(0.05, speed) + uTime * 0.15;
+    float e = 0.06;
+    float h0 = current(along, t), hx = current(along + vec2(e, 0.0), t), hy = current(along + vec2(0.0, e), t);
+    vec2 g = vec2(hx - h0, hy - h0) / e;
+    vec2 gw = dir * g.x + vec2(-dir.y, dir.x) * g.y;  // back to world axes
+    float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
+    vec3 n = normalize(vec3(-gw * 0.06 * calm, 1.0));
+    // Colour: the bed shows through the shallows; silt-green to deep blue.
+    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), noise2(p * 0.7));
+    vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
+    vec3 c = mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
+    // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);
-    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-    c = mix(c, kSky * 1.05, fresnel * 0.55);
-    float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(vWorld.xy);
+    vec3 refl = reflect(-v, n);
+    vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(refl.z, 0.0, 1.0));
+    float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+    c = mix(c, sky, clamp(fresnel * 1.3, 0.0, 0.85));
+    float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(p);
     c *= 0.75 + 0.25 * lit;
-    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 80.0) * 0.9 * lit;
-    float foam = 1.0 - smoothstep(0.0, 0.25, depth);
-    c = mix(c, vec3(0.9, 0.93, 0.95), foam * 0.6);
-    float alpha = clamp(0.45 + depth * 0.35, 0.45, 0.92);
-    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), alpha);
+    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 120.0) * 1.2 * lit;
+    // Foam: a thin wet line at the edge, and white water over the riffles.
+    float riffle = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(0.1, 0.45, depth)) * step(0.05, speed);
+    float edge = 1.0 - smoothstep(0.0, 0.08, depth);
+    c = mix(c, vec3(0.88, 0.91, 0.92), clamp(riffle * 0.7 + edge * 0.35, 0.0, 0.8));
+    // Soft edges: no hard cut where the water meets the bank.
+    float alpha = mix(0.0, 1.0, smoothstep(-0.02, 0.12, depth)) * clamp(0.55 + depth * 0.3, 0.55, 0.95);
+    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(dist)), alpha);
 }
 )";
 
@@ -1157,7 +1208,7 @@ flat in float vKind;
 in float vFog;
 out vec4 oColor;
 void main() {
-    vec3 c = vKind < 0.5 ? vec3(0.16, 0.36, 0.58) : vec3(0.48, 0.36, 0.22);
+    vec3 c = vKind < 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
 )";

@@ -45,7 +45,7 @@ private:
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
-        GLint ring = -1, sink = -1, camFwd = -1, camUp = -1, proj = -1;
+        GLint ring = -1, sink = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -92,7 +92,7 @@ private:
     void drawCover(const Camera& camera, double timeSeconds, float gameSeconds);
     void renderShadowMap(const Camera& camera, double timeSeconds, float gameSeconds);
     GLuint terrainVao_ = 0, terrainVbo_ = 0, terrainIbo_ = 0, heightTex_ = 0, groundTex_ = 0, roadTex_ = 0;
-    GLuint waterVao_ = 0, waterVbo_ = 0, waterTex_ = 0;
+    GLuint waterVao_ = 0, waterVbo_ = 0, waterTex_ = 0, flowTex_ = 0;
     GLsizei waterVertices_ = 0;
     // Land beyond the battlefield: see buildLand().
     struct LandMesh {

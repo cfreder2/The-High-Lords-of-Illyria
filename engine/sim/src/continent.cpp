@@ -50,6 +50,28 @@ Fixed polylineDist(const std::vector<Vec3>& pts, Fixed px, Fixed py, Fixed limit
     return found ? sqrt(best) : limit;
 }
 
+// polylineDist over a river, skipping runs of segments whose boxes are too far.
+Fixed riverDist(const Continent::River& rv, Fixed px, Fixed py, Fixed limit, size_t& seg, Fixed& segT) {
+    Fixed best = limit * limit;
+    bool found = false;
+    for (size_t b = 0; b < rv.boxes.size(); ++b) {
+        const Continent::River::Box& box = rv.boxes[b];
+        if (px < box.minX - limit || px > box.maxX + limit || py < box.minY - limit || py > box.maxY + limit) continue;
+        const size_t end = std::min(rv.points.size() - 1, (b + 1) * Continent::River::kSpan);
+        for (size_t i = b * Continent::River::kSpan; i < end; ++i) {
+            Fixed t;
+            const Fixed d = segDistSq(px, py, rv.points[i], rv.points[i + 1], t);
+            if (d < best) {
+                best = d;
+                seg = i;
+                segT = t;
+                found = true;
+            }
+        }
+    }
+    return found ? sqrt(best) : limit;
+}
+
 Fixed bump(Fixed t) {
     const Fixed a = abs(t);
     if (a >= Fixed::one()) return Fixed::zero();
@@ -61,17 +83,6 @@ Fixed bump(Fixed t) {
 Fixed ellipse(const Continent::Area& a, Fixed x, Fixed y) {
     const Fixed dx = (x - a.centre.x) / a.rx, dy = (y - a.centre.y) / a.ry;
     return sqrt(dx * dx + dy * dy);
-}
-
-std::vector<Vec3> densify(const std::vector<Vec3>& pts, Fixed step) {
-    std::vector<Vec3> out;
-    for (size_t i = 0; i + 1 < pts.size(); ++i) {
-        const Vec3 d = pts[i + 1] - pts[i];
-        const int64_t n = std::max<int64_t>(1, (d.flat().length() / step).floorToInt());
-        for (int64_t k = 0; k < n; ++k) out.push_back(pts[i] + d * Fixed::fromRatio(k, n));
-    }
-    out.push_back(pts.back());
-    return out;
 }
 
 constexpr Fixed kValleyReach = Fixed::fromInt(450);
@@ -224,11 +235,82 @@ Fixed Continent::baseHeight(Fixed x, Fixed y, Fixed& mountain) const {
     return z + mountain;
 }
 
+void Continent::meanderRivers() {
+    // Real rivers wind. Each course becomes a smooth curve through its control
+    // points, sampled every 20 m, then swings from side to side by an amount
+    // that grows with the river. It runs straight through fords, bridges and
+    // junctions, so crossings and branches stay exactly on the water.
+    std::vector<Vec3> anchors;  // (x, y), z = radius of calm water
+    for (const Crossing& c : crossings_) anchors.push_back({c.pos.x, c.pos.y, &c == &crossings_.front() ? m(110) : m(130)});
+    for (const River& rv : rivers_) {
+        anchors.push_back({rv.points.front().x, rv.points.front().y, m(300)});
+        anchors.push_back({rv.points.back().x, rv.points.back().y, m(300)});
+    }
+    for (size_t ri = 0; ri < rivers_.size(); ++ri) {
+        River& rv = rivers_[ri];
+        const std::vector<Vec3> ctrl = rv.points;
+        std::vector<Vec3> curve;
+        for (size_t i = 0; i + 1 < ctrl.size(); ++i) {
+            const Vec3 p0 = ctrl[i == 0 ? 0 : i - 1], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[std::min(i + 2, ctrl.size() - 1)];
+            const int64_t steps = std::max<int64_t>(1, ((p2 - p1).flat().length() / 20).floorToInt());
+            for (int64_t k = 0; k < steps; ++k) {
+                const Fixed t = Fixed::fromRatio(k, steps), t2 = t * t, t3 = t2 * t;
+                // Catmull-Rom.
+                const Fixed two = m(2), three = m(3), four = m(4), five = m(5);
+                const Vec3 a = p1 * two, b = p2 - p0, c = p0 * two - p1 * five + p2 * four - p3, d = p1 * three - p0 - p2 * three + p3;
+                curve.push_back((a + b * t + c * t2 + d * t3) * r(1, 2));
+            }
+        }
+        curve.push_back(ctrl.back());
+        // Swing sideways along the arc: wavelength and amplitude follow the river's size.
+        const uint64_t sm = noise::nextSeed(seed_ ^ (0xBE4D + ri * 977));
+        // Two scales: broad wandering over kilometres, and tighter meanders.
+        const Fixed amp = rv.halfWidth * 5 + m(6), bigAmp = rv.halfWidth * 18 + m(40);
+        const int64_t wave = (rv.halfWidth * 28).floorToInt() + 160, bigWave = 2600;
+        std::vector<Vec3> out(curve.size());
+        rv.widths.assign(curve.size(), rv.halfWidth);
+        Fixed arc;
+        for (size_t i = 0; i < curve.size(); ++i) {
+            if (i > 0) arc += (curve[i] - curve[i - 1]).flat().length();
+            const Vec3 prev = curve[i == 0 ? 0 : i - 1], next = curve[std::min(i + 1, curve.size() - 1)];
+            Vec3 dir = (next - prev).flat();
+            const Fixed len = dir.length();
+            Vec3 normal;
+            if (len > Fixed::zero()) normal = {-dir.y / len, dir.x / len, Fixed::zero()};
+            Fixed calm = Fixed::one(), bigCalm = Fixed::one();
+            for (const Vec3& an : anchors) {
+                const Fixed dist = (curve[i] - Vec3{an.x, an.y, Fixed::zero()}).flat().length();
+                calm = min(calm, noise::smoothstep(an.z, an.z * 2, dist));
+                bigCalm = min(bigCalm, noise::smoothstep(an.z, an.z + m(800), dist));
+            }
+            const Fixed swing = (noise::fbm(sm, arc, m(static_cast<int64_t>(ri) * 5000), wave) - r(1, 2)) * 2;
+            const Fixed wander = (noise::value(sm ^ 0xB16, arc, m(static_cast<int64_t>(ri) * 9000), bigWave) - r(1, 2)) * 2;
+            out[i] = curve[i] + normal * (swing * amp * calm + wander * bigAmp * bigCalm);
+            out[i].z = Fixed::zero();
+            // Wider in the slow reaches, narrower where it runs fast.
+            rv.widths[i] = rv.halfWidth * (r(4, 5) + noise::fbm(sm ^ 0x5157, arc, m(static_cast<int64_t>(ri) * 5000), wave / 2) * r(1, 2));
+        }
+        rv.points = std::move(out);
+        rv.boxes.clear();
+        for (size_t b = 0; b * River::kSpan + 1 < rv.points.size(); ++b) {
+            River::Box box{m(1000000), m(1000000), -m(1000000), -m(1000000)};
+            const size_t end = std::min(rv.points.size() - 1, (b + 1) * River::kSpan);
+            for (size_t i = b * River::kSpan; i <= end; ++i) {
+                box.minX = min(box.minX, rv.points[i].x);
+                box.minY = min(box.minY, rv.points[i].y);
+                box.maxX = max(box.maxX, rv.points[i].x);
+                box.maxY = max(box.maxY, rv.points[i].y);
+            }
+            rv.boxes.push_back(box);
+        }
+    }
+}
+
 void Continent::computeRiverSurfaces() {
     // Water surfaces fall monotonically downstream, a little below the land;
     // branches start at their parent's surface; rivers reaching the sea end at 0.
+    meanderRivers();
     for (River& rv : rivers_) {
-        rv.points = densify(rv.points, m(100));
         Fixed start;
         bool joined = false;
         for (const River& parent : rivers_) {
@@ -300,22 +382,27 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     for (const River& rv : rivers_) {
         size_t seg = 0;
         Fixed t;
-        const Fixed d = polylineDist(rv.points, x, y, kValleyReach + rv.halfWidth, seg, t);
+        const Fixed d = riverDist(rv, x, y, kValleyReach + rv.halfWidth * 2, seg, t);
         if (d < s.riverDist) {
             s.riverDist = d;
-            s.riverHalfWidth = rv.halfWidth;
+            s.riverHalfWidth = rv.widths[seg] + (rv.widths[seg + 1] - rv.widths[seg]) * t;
             s.riverDepth = rv.depth;
             s.riverSurface = rv.points[seg].z + (rv.points[seg + 1].z - rv.points[seg].z) * t;
         }
     }
     if (s.riverDist < kValleyReach + s.riverHalfWidth) {
+        // Fords: the river spreads wider and shallower over a gravel bar,
+        // easing in and out rather than starting at a line.
+        Fixed shoal;
         for (const Crossing& c : crossings_) {
             if (c.kind != Crossing::Kind::Ford) continue;
             const Fixed dx = x - c.pos.x, dy = y - c.pos.y;
-            if (dx * dx + dy * dy < m(45) * m(45)) s.atFord = true;
+            const Fixed d2 = dx * dx + dy * dy;
+            if (d2 < m(45) * m(45)) s.atFord = true;
+            if (d2 < m(90) * m(90)) shoal = max(shoal, Fixed::one() - noise::smoothstep(m(30), m(90), sqrt(d2)));
         }
-        const Fixed hw = s.riverHalfWidth + (s.atFord ? m(6) : Fixed::zero());
-        const Fixed depth = s.atFord ? r(3, 5) : s.riverDepth;
+        const Fixed hw = s.riverHalfWidth + shoal * 6;
+        const Fixed depth = s.riverDepth + (r(3, 5) - s.riverDepth) * shoal;
         if (s.riverDist < hw) {
             const Fixed t = s.riverDist / hw;
             z = min(z, s.riverSurface - depth * (Fixed::one() - t * t));

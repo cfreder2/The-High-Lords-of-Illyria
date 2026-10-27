@@ -242,6 +242,7 @@ bool Renderer::buildPrograms() {
         s.p.camFwd = glGetUniformLocation(s.p.id, "uCamFwd");
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
         s.p.proj = glGetUniformLocation(s.p.id, "uProj");
+        s.p.flow = glGetUniformLocation(s.p.id, "uFlow");
     }
     return true;
 }
@@ -509,6 +510,52 @@ void Renderer::uploadScenery(const Battle& battle) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, samples, samples, 0, GL_RED, GL_FLOAT, water.data());
+    // Which way the water runs at each wet sample: along the nearest river
+    // segment, downstream. Ponds and lakes are still.
+    {
+        std::vector<std::pair<V3, V3>> segs;
+        for (const sim::Polyline& rv : region.rivers()) {
+            for (size_t i = 0; i + 1 < rv.points.size(); ++i) {
+                const V3 a = toV3(rv.points[i]), b = toV3(rv.points[i + 1]);
+                if (std::max(a.x, b.x) < -100 || std::max(a.y, b.y) < -100 || std::min(a.x, b.x) > Battle::kWorldSize + 100 ||
+                    std::min(a.y, b.y) > Battle::kWorldSize + 100)
+                    continue;
+                segs.push_back({a, b});
+            }
+        }
+        std::vector<uint8_t> flow(static_cast<size_t>(samples) * samples * 2, 128);
+        for (int y = 0; y < samples; ++y) {
+            for (int x = 0; x < samples; ++x) {
+                const size_t k = static_cast<size_t>(y) * samples + x;
+                if (water[k] < -1e5f) continue;
+                const float px = x * Battle::kCellSize, py = y * Battle::kCellSize;
+                float best = 60.0f * 60.0f;
+                V3 dir{0, 0, 0};
+                for (const auto& sg : segs) {
+                    const V3 ab = sg.second - sg.first;
+                    const float len2 = ab.x * ab.x + ab.y * ab.y;
+                    if (len2 <= 0) continue;
+                    const float t = std::clamp(((px - sg.first.x) * ab.x + (py - sg.first.y) * ab.y) / len2, 0.0f, 1.0f);
+                    const float dx = sg.first.x + ab.x * t - px, dy = sg.first.y + ab.y * t - py;
+                    const float d2 = dx * dx + dy * dy;
+                    if (d2 < best) {
+                        best = d2;
+                        dir = V3{ab.x, ab.y, 0}.normalized();
+                    }
+                }
+                flow[k * 2] = static_cast<uint8_t>(std::clamp(128.0f + dir.x * 127.0f, 0.0f, 255.0f));
+                flow[k * 2 + 1] = static_cast<uint8_t>(std::clamp(128.0f + dir.y * 127.0f, 0.0f, 255.0f));
+            }
+        }
+        if (!flowTex_) glGenTextures(1, &flowTex_);
+        glBindTexture(GL_TEXTURE_2D, flowTex_);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, samples, samples, 0, GL_RG, GL_UNSIGNED_BYTE, flow.data());
+    }
     std::vector<float> wet;
     const float cs = Battle::kCellSize;
     for (int y = 0; y < Battle::kTerrainCells; ++y) {
@@ -642,8 +689,8 @@ void Renderer::uploadContinent(const Battle& battle) {
     const V3 o = battle.origin();
     std::vector<float> ribbons;
     for (const sim::Continent::River& r : cont.rivers()) {
-        const float hw = static_cast<float>(r.halfWidth.toDouble());
         for (size_t i = 0; i + 1 < r.points.size(); ++i) {
+            const float hw = static_cast<float>(r.widths[i].toDouble());
             const V3 a = toV3(r.points[i]) - V3{o.x, o.y, 0}, b = toV3(r.points[i + 1]) - V3{o.x, o.y, 0};
             ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 0});
         }
@@ -1139,6 +1186,12 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     if (p.lightViewProj >= 0) glUniformMatrix4fv(p.lightViewProj, 1, GL_FALSE, lightViewProj_.m);
     if (p.shadowInfo >= 0) glUniform4fv(p.shadowInfo, 1, shadowInfo_);
     if (p.focus >= 0) glUniform2f(p.focus, camera.target().x, camera.target().y);
+    if (p.flow >= 0) {
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D, flowTex_);
+        glUniform1i(p.flow, 6);
+        glActiveTexture(GL_TEXTURE0);
+    }
     if (p.canopy >= 0) {
         glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_2D, canopyTex_);
