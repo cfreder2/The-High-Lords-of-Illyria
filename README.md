@@ -123,3 +123,12 @@ Closer to the reference structure; variety everywhere instead of open grass
 | ![](builds/v0.1.7/04-battle.png) | ![](builds/v0.1.7/02-god-view.png) | ![](builds/v0.1.7/07-phone.png) |
 
 Fly-through: [`builds/v0.1.7/flythrough.webm`](builds/v0.1.7/flythrough.webm)
+
+### 27 Oct 2026 · v0.1.8 (`9748caf`)
+Rivers that wind and flow
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.8/04-battle.png) | ![](builds/v0.1.8/02-god-view.png) | ![](builds/v0.1.8/07-phone.png) |
+
+Fly-through: [`builds/v0.1.8/flythrough.webm`](builds/v0.1.8/flythrough.webm)
