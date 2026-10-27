@@ -53,20 +53,20 @@ Battle::Battle(uint64_t seed) {
     cfg.seed = seed;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
-    auto terrain = std::make_shared<const sim::Terrain>(sim::Terrain::generate(
-        seed, kTerrainCells, sim::Fixed::fromInt(static_cast<int64_t>(kCellSize)), sim::Fixed::fromInt(48)));
-    heights_.reserve(terrain->samples().size());
-    for (sim::Fixed h : terrain->samples()) heights_.push_back(static_cast<float>(h.toDouble()));
-    cfg.terrain = std::move(terrain);
+    region_ = std::make_shared<const sim::Region>(sim::Region::generateIllyria(kRegionSeed));
+    heights_.reserve(region_->terrain().samples().size());
+    for (sim::Fixed h : region_->terrain().samples()) heights_.push_back(static_cast<float>(h.toDouble()));
+    cfg.region = region_;
     world_ = std::make_unique<sim::World>(cfg);
     dirtyFlag_.assign(kMaxRemains, 0);
 
     const V3 east{1, 0, 0}, west{-1, 0, 0};
+    // The armies face each other across the river, either side of the ford.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
     const float px = cx - 60, ex = cx + 170;
 
-    // Oakhaven holds the western ridge: shield wall in front, archers and
-    // grenadiers behind, healers at the rear, horse on the flanks, wings above.
+    // Oakhaven holds the berm above the ford: shield wall in front, archers and
+    // grenadiers behind, healers at the rear, horse on the flanks, fliers behind.
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, {px, cy - 12, 0}, east);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, {px, cy + 12, 0}, east);
     spawnSquad("Ferry Pikes", kPlayer, UnitType::Pikemen, 12, {px, cy + 36, 0}, east);
@@ -180,6 +180,9 @@ std::vector<uint32_t> Battle::takeDirtyRemains() {
 }
 
 void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed) {
+    // Water carries blood and scorch marks away.
+    const sim::Ground g = region_->groundAt(toFixed(pos.x), toFixed(pos.y));
+    if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater) return;
     pos.z = heightAt(pos.x, pos.y);
     const GroundMark m{kind, pos, yaw, size, world_->tick(), seed};
     if (marks_.size() < kMaxGroundMarks) {

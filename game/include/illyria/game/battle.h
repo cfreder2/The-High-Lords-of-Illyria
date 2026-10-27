@@ -7,6 +7,7 @@
 
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
 
@@ -53,6 +54,7 @@ class Battle {
 public:
     static constexpr sim::PlayerId kPlayer = 0;
     static constexpr sim::PlayerId kEnemy = 1;
+    static constexpr uint64_t kRegionSeed = 20261027;
     static constexpr int32_t kTerrainCells = 256;
     static constexpr float kCellSize = 4.0f;
     static constexpr float kWorldSize = kTerrainCells * kCellSize;
@@ -87,6 +89,7 @@ public:
     int squadOf(sim::EntityId id) const { return squadOfUnit_[id - 1]; }
 
     float heightAt(float x, float y) const;
+    const sim::Region& region() const { return *region_; }
     const std::vector<float>& heights() const { return heights_; }
 
     // Interpolated presentation positions.
@@ -118,6 +121,7 @@ private:
     void moveSquad(const Squad& squad, const V3& to);
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
 
+    std::shared_ptr<const sim::Region> region_;
     std::unique_ptr<sim::World> world_;
     std::vector<float> heights_;
     std::vector<Squad> squads_;

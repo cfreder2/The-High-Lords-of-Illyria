@@ -19,6 +19,7 @@ uniform float uGameSeconds;   // simulation time, for weathering
 uniform float uCamDist;
 uniform float uPxScale;       // world units per pixel at distance 1
 uniform vec3 uCamRight;
+uniform float uWater;         // water level
 
 const vec3 kSun = normalize(vec3(-0.62, 0.38, 0.52));
 const vec3 kSky = vec3(0.64, 0.74, 0.84);
@@ -83,18 +84,58 @@ float hexEdge(vec2 p, float s) {
     g = abs(g);
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
+uniform sampler2D uGround;  // R8: ground type / 8, one texel per terrain cell
+uniform sampler2D uRoad;    // RG8, linear: R = 0.5 + lateral offset / 16 m, G = road weight
+
+// Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock.
+vec3 groundColor(int id, float broad, float fine) {
+    vec3 grass = mix(vec3(0.30, 0.42, 0.17), vec3(0.42, 0.50, 0.22), broad) * (0.9 + 0.2 * fine);
+    if (id == 1) return vec3(0.46, 0.38, 0.26) * (0.85 + 0.3 * fine);
+    if (id == 2) return mix(vec3(0.16, 0.24, 0.10), vec3(0.24, 0.20, 0.12), fine) * (0.9 + 0.2 * broad);
+    if (id == 3) return mix(vec3(0.24, 0.30, 0.16), vec3(0.20, 0.24, 0.18), fine);
+    if (id == 4) return vec3(0.52, 0.46, 0.34) * (0.85 + 0.3 * fine);
+    if (id == 5) return vec3(0.30, 0.28, 0.24);
+    if (id == 6) return vec3(0.48, 0.46, 0.43) * (0.8 + 0.4 * fine);
+    return grass;
+}
+int groundAt(ivec2 c) {
+    c = clamp(c, ivec2(0), ivec2(int(uCells) - 1));
+    return int(texelFetch(uGround, c, 0).r * 8.0 + 0.5);
+}
+
 void main() {
     vec3 n = normalize(vNormal);
     float slope = 1.0 - n.z;
     float broad = valueNoise(vWorld.xy * 0.02);
     float fine = valueNoise(vWorld.xy * 0.35);
-    vec3 grassA = vec3(0.28, 0.40, 0.17), grassB = vec3(0.40, 0.48, 0.22);
-    vec3 grass = mix(grassA, grassB, broad) * (0.9 + 0.2 * fine);
-    vec3 dirt = vec3(0.45, 0.37, 0.25) * (0.85 + 0.3 * fine);
-    vec3 rock = vec3(0.47, 0.45, 0.42) * (0.8 + 0.4 * fine);
-    vec3 albedo = mix(grass, dirt, smoothstep(0.08, 0.2, slope + (broad - 0.5) * 0.1));
-    albedo = mix(albedo, rock, smoothstep(0.25, 0.4, slope));
-    albedo *= mix(0.85, 1.05, smoothstep(2.0, 20.0, vWorld.z));
+    // Blend the ground colours of the four nearest cells.
+    vec2 c = vWorld.xy / uCellSize - 0.5;
+    ivec2 i0 = ivec2(floor(c));
+    vec2 f = fract(c);
+    vec3 albedo = mix(mix(groundColor(groundAt(i0), broad, fine), groundColor(groundAt(i0 + ivec2(1, 0)), broad, fine), f.x),
+                      mix(groundColor(groundAt(i0 + ivec2(0, 1)), broad, fine), groundColor(groundAt(i0 + ivec2(1, 1)), broad, fine), f.x), f.y);
+    // Bare earth and scree on steep slopes.
+    albedo = mix(albedo, vec3(0.45, 0.40, 0.33) * (0.85 + 0.3 * fine), smoothstep(0.18, 0.3, slope) * 0.6);
+    albedo = mix(albedo, vec3(0.47, 0.45, 0.42) * (0.8 + 0.4 * fine), smoothstep(0.3, 0.45, slope));
+    // Wagon-worn roads: packed dirt, two ruts, a grassy hump, puddles in the ruts.
+    vec2 road = texture(uRoad, vWorld.xy / (uCells * uCellSize)).rg;
+    if (road.g > 0.02) {
+        float lateral = (road.r - 0.5) * 16.0;
+        float d = abs(lateral);
+        float w = fwidth(lateral) + 0.02;
+        vec3 dirt = vec3(0.50, 0.41, 0.28) * (0.88 + 0.24 * fine);
+        float rut = 1.0 - smoothstep(0.12, 0.12 + w * 2.0, abs(d - 0.85));
+        float hump = 1.0 - smoothstep(0.25, 0.45, d);
+        dirt = mix(dirt, vec3(0.33, 0.26, 0.17), rut * 0.8);
+        dirt = mix(dirt, vec3(0.38, 0.44, 0.22), hump * 0.5);
+        float puddle = rut * step(0.78, valueNoise(vWorld.xy * vec2(0.6, 0.6) + 17.0));
+        dirt = mix(dirt, vec3(0.35, 0.42, 0.48), puddle * 0.8);
+        float edge = 1.0 - smoothstep(2.4, 3.6 + fine * 0.6, d);
+        albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
+    }
+    // Snow on the high peaks, mud below the waterline.
+    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(92.0, 105.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    if (vWorld.z < uWater) albedo = mix(albedo, vec3(0.35, 0.32, 0.25), 0.6);
 
     // Low sun so the hills read clearly from above.
     float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0);
@@ -108,6 +149,7 @@ void main() {
         color = mix(color, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
     }
     float size = uCells * uCellSize;
+    // (edges of the region darken)
     if (vWorld.x < 0.5 || vWorld.y < 0.5 || vWorld.x > size - 0.5 || vWorld.y > size - 0.5) color *= 0.6;
     oColor = vec4(mix(color, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
 }
@@ -248,7 +290,7 @@ flat out float vStuck;
 flat out float vAge;
 void main() {
     float state = iInfo.y;
-    if (state > 2.5 || dot(iDir, iDir) < 1e-6) { gl_Position = kCulled; return; }
+    if ((state > 2.5 && state < 3.5) || dot(iDir, iDir) < 1e-6) { gl_Position = kCulled; return; }
     float dist = distance(uEye, iPos);
     float px = uPxScale * dist;
     vec3 dir = normalize(iDir);
@@ -264,7 +306,11 @@ void main() {
         if (0.85 < px * 2.0 || dist > uCamDist * 2.0 + 200.0) { gl_Position = kCulled; return; }
         width = max(0.03, px * 1.4);
         vec3 base = vec3(iPos.xy, groundZ(iPos.xy));
-        if (state < 1.5) {
+        if (state > 3.5) {
+            // Embedded in a tree or wall where it struck.
+            tip = iPos + dir * 0.12;
+            tail = iPos - dir * 0.7;
+        } else if (state < 1.5) {
             // Stuck: buried tip first, shaft standing out of the ground.
             vec3 d = normalize(vec3(dir.xy * 0.8, min(dir.z, -0.55)));
             tip = base + d * 0.22;
@@ -641,6 +687,82 @@ void main() {
     }
     if (gA < 0.5) discard;
     oColor = vec4(mix(gCol, kSky, vFog), 1.0);
+}
+)";
+
+// ---------------------------------------------------------------- meshes
+// Instanced lit meshes: scenery and bodies. Per vertex: pos, normal, colour.
+// Per instance: position, rotation quaternion, scale, tint.
+inline const char* kMeshVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec3 iPos;
+layout(location = 4) in vec4 iQuat;
+layout(location = 5) in vec3 iScale;
+layout(location = 6) in vec3 iTint;
+uniform float uSway;
+out vec3 vColor;
+out vec3 vNormal;
+out vec3 vWorld;
+vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+void main() {
+    if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
+    vec3 local = aPos * iScale;
+    if (uSway > 0.0) {
+        // Crowns sway in the wind; trunks stay put.
+        float h = aPos.z * aPos.z;
+        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z;
+    }
+    vec3 world = iPos + rotate(iQuat, local);
+    vNormal = normalize(rotate(iQuat, aNormal / iScale));
+    vColor = aColor * iTint;
+    vWorld = world;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kMeshFs = R"(
+in vec3 vColor;
+in vec3 vNormal;
+in vec3 vWorld;
+out vec4 oColor;
+void main() {
+    vec3 n = normalize(vNormal);
+    float light = 0.36 + 0.8 * max(dot(n, kSun), 0.0) + 0.12 * max(-dot(n, kSun), 0.0);
+    vec3 c = vColor * light;
+    if (vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
+    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
+}
+)";
+
+// ---------------------------------------------------------------- water
+inline const char* kWaterVs = R"(
+layout(location = 0) in vec2 aPos;
+out vec3 vWorld;
+void main() {
+    vWorld = vec3(aPos, uWater);
+    gl_Position = uViewProj * vec4(vWorld, 1.0);
+}
+)";
+inline const char* kWaterFs = R"(
+in vec3 vWorld;
+out vec4 oColor;
+void main() {
+    float depth = uWater - groundZ(vWorld.xy);
+    if (depth <= 0.0) discard;
+    vec3 shallow = vec3(0.26, 0.52, 0.52), deep = vec3(0.05, 0.17, 0.30);
+    vec3 c = mix(shallow, deep, 1.0 - exp(-depth * 0.7));
+    vec2 p = vWorld.xy;
+    vec3 n = normalize(vec3(sin(p.x * 0.9 + uTime * 1.6) * 0.06 + sin(p.y * 1.7 - uTime * 1.1) * 0.04,
+                            cos(p.y * 0.8 + uTime * 1.3) * 0.06 + cos(p.x * 1.5 + uTime * 0.9) * 0.04, 1.0));
+    vec3 v = normalize(uEye - vWorld);
+    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+    c = mix(c, kSky * 1.05, fresnel * 0.55);
+    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 80.0) * 0.9;
+    float foam = 1.0 - smoothstep(0.0, 0.25, depth);
+    c = mix(c, vec3(0.9, 0.93, 0.95), foam * 0.6);
+    float alpha = clamp(0.45 + depth * 0.35, 0.45, 0.92);
+    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), alpha);
 }
 )";
 

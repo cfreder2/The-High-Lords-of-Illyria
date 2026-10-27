@@ -56,6 +56,9 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 
 ### 4.1 The Seamless Continent ("God to Ground")
 
+*Built so far:* one 1 km region of Illyria (`engine/sim/src/region.cpp`): northern mountains with snow, a river through a ford into a lake, swamp, wagon roads with ruts, an earthwork berm above the ford, pine and oak forests with undergrowth, boulder fields, a village and a temple ruin. Ground types follow Warlords (road, plains, forest, swamp, shallows, deep water, rock) and set movement speed; armies path around water and cross at fords.
+
+
 - There are no separate battle maps. Illyria is **one continuous 3D continent** (*original geography — see Q5*), and the camera zooms smoothly from a god's-eye view, where armies are ant-like columns and banners, down to ground level, where individual arrows, shields and bodies are physically simulated.
 - Strategy still happens on a hex grid laid over the terrain (Roads, Plains, Forests, Swamps, Mountain Passes): hexes govern movement cost, supply, ownership and the 8-squad stack limit.
 - When hostile armies meet, combat starts **in place**, on the real terrain where they met. Several battles can rage across the continent at once; the player watches whichever they choose and AI generals command the rest (§4.3).
@@ -104,6 +107,14 @@ Every army type from *Warlords* (with Warlords II's terrain bonuses) plus Myth's
 | Journeymen | Myth | Healers with a limited number of charges |
 | Warriors | Myth | Sword and shield; shields block from the front only |
 | Berserkers | Myth | Fast, no shield, hit hard |
+
+Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are locked in [`UNITS.md`](UNITS.md), generated from the code and pinned by a test.
+
+**Fliers** walk by default. Only moves longer than about 50 m make them take off, and they need a ground run first. They cruise over the terrain low enough for giants to swat and archers to shoot, tire, and must land to recover. They never attack from the air; flight is purely a movement advantage.
+
+**Missile troops** have a real maximum range (archers 70 m, grenadiers 19 m). Ordered to shoot farther, they walk into range first.
+
+**Bodies have space and mass.** Soldiers cannot overlap, the lighter one gives way, corpses are shoved aside, and trees, rocks, houses and deep water block movement. Loose body parts are physical objects that get kicked along by anyone walking through them.
 
 ### 4.3 AI Generals & Attention
 

@@ -4,6 +4,7 @@ A real-time tactical strategy game with grand-strategy campaign mechanics: the s
 
 - 📜 [Technical & Game Design Starter Document](docs/GAME_DESIGN.md)
 - 👥 [Target Audience Personas](docs/AUDIENCE_PERSONAS.md)
+- ⚔️ [Unit Sheet](docs/UNITS.md) (locked stats for every unit type)
 - 🎞️ [Devlog: screenshots and videos of every build](https://github.com/cfreder2/The-High-Lords-of-Illyria/tree/devlog) (`devlog` branch, filled in automatically on each deploy)
 
 **Play the latest build:** https://cfreder2.github.io/The-High-Lords-of-Illyria/ (desktop or phone browser; the version is shown top-left and goes up with every deploy)
@@ -24,7 +25,7 @@ A real-time tactical strategy game with grand-strategy campaign mechanics: the s
 
 | Path | Contents |
 |---|---|
-| `engine/sim/` | Deterministic gameplay simulation: fixed-point math, RNG, terrain, ballistics, melee, world tick. No engine, platform or floating-point dependencies. |
+| `engine/sim/` | Deterministic gameplay simulation: fixed-point math, RNG, region generation, pathfinding, ballistics, melee, flight, collisions, remains. No engine, platform or floating-point dependencies. |
 | `game/` | Client logic shared by all platforms: camera, touch/mouse gestures, battle flow, remains. |
 | `game/render/` | OpenGL ES 3 / WebGL 2 renderer. |
 | `game/web/` | Browser entry point and page (HUD, input forwarding). |

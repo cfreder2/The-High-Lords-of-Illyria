@@ -4,6 +4,7 @@ set(ILLYRIA_VERSION "0.0.0-dev" CACHE STRING "Version shown in the game")
 add_executable(illyria_web
     main.cpp
     ../render/renderer.cpp
+    ../render/meshes.cpp
 )
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")
 target_link_libraries(illyria_web PRIVATE illyria_game)
