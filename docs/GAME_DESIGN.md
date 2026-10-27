@@ -68,11 +68,6 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 | Tactical (battlefield) | Formations, individual soldiers, projectile arcs | Billboard sprites, full terrain detail |
 | Ground (close-up) | Shields deflecting blades, ragdolls, debris, gore | Full animation + cosmetic GPU physics |
 
-### 4.3 AI Generals & Attention
-
-- Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).
-- Attention is the scarce resource: a "hot spot" control jumps the camera to the most dramatic fight in progress.
-
 ### 4.2 Unit Identity, Progression & Attrition
 
 - **Stack Limit (from *Warlords*):** At most **8 squads** may occupy a map hex, and an attack commits at most 8. A defended city (2×2 hexes) fights with everything inside it, up to **32 squads**. This caps the largest possible battle at **40 squads** (~480 soldiers at ~12 per squad), which is what keeps several simultaneous full-physics battles inside the frame budget (§5.2).
@@ -81,6 +76,11 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 - **Veterancy & Blessings**
   - **Level Progression:** Units gain rank through battles, shrinking their dispersion circle and increasing poise/stamina reserves.
   - **Temple Blessings:** Controlling sacred shrines across Illyria unlocks probability buffs (e.g., +15% shield block arc, elemental projectile imbues, panic resistance).
+
+### 4.3 AI Generals & Attention
+
+- Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).
+- Attention is the scarce resource: a "hot spot" control jumps the camera to the most dramatic fight in progress.
 
 ## 5. Technical Network Architecture
 
