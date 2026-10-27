@@ -1,0 +1,20 @@
+PASS fixed_arithmetic
+PASS fixed_large_products_do_not_overflow
+PASS fixed_sqrt
+PASS fixed_trig_matches_libm
+PASS rng_matches_pcg32_reference
+PASS rng_ranges
+PASS ballistics_hits_targets_in_range
+PASS ballistics_out_of_range_fires_max_range_arc
+PASS world_is_deterministic
+PASS world_matches_golden_checksum
+PASS world_command_order_between_players_does_not_matter
+  52 hits, 117 misses, 10 footmen dead, mean miss 0.4 m south
+PASS world_arrows_kill_and_wind_pushes_them
+PASS world_rejects_commands_for_other_players_units
+PASS terrain_is_deterministic_and_bounded
+PASS terrain_interpolates_between_samples
+PASS units_stand_on_terrain_and_arrows_land_on_it
+PASS footmen_charge_and_kill_an_archer_in_melee
+PASS idle_archers_shoot_approaching_enemies
+18 tests, 0 failed checks

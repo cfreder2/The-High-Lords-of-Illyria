@@ -1,0 +1,1 @@
+hud after ~65 s: tick 2547, sim 0.285 ms/tick
