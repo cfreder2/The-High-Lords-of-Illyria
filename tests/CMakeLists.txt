@@ -1,0 +1,16 @@
+add_executable(illyria_tests
+    test_main.cpp
+    test_fixed.cpp
+    test_rng.cpp
+    test_ballistics.cpp
+    test_world.cpp
+)
+target_link_libraries(illyria_tests PRIVATE illyria_sim)
+
+if(EMSCRIPTEN)
+    # Propagate main()'s return value as the node process exit code.
+    target_link_options(illyria_tests PRIVATE -sEXIT_RUNTIME=1)
+    add_test(NAME illyria_tests COMMAND node $<TARGET_FILE:illyria_tests>)
+else()
+    add_test(NAME illyria_tests COMMAND illyria_tests)
+endif()

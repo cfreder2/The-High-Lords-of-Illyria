@@ -4,8 +4,8 @@
 |---|---|
 | **Version** | 1.0.0 |
 | **Project Codename** | Project Illyria |
-| **Engine Target** | Unity / Unreal Engine 5 (Deterministic Lockstep Custom Pipeline) — *see Open Question Q1* |
-| **Target Platform** | PC (Steam / GOG / itch.io) |
+| **Engine Target** | Custom C++20 engine, deterministic lockstep simulation — see §5.1 |
+| **Target Platform** | Web browser first (itch.io, via WebAssembly); native PC later (Steam / GOG) |
 
 ---
 
@@ -80,13 +80,25 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
   - Per-tick **state checksums** exchanged between peers for desync detection, plus input-log replays for debugging.
   - Ragdolls and cosmetic debris that don't affect gameplay may run in non-deterministic engine physics on each client.
 
+### 5.1 Technology Decisions
+
+| Area | Decision | Why |
+|---|---|---|
+| Engine | **Custom engine in C++20** | No licences or vendor tools needed; a deterministic lockstep simulation must be custom anyway, since neither Unity's nor Unreal's physics is bit-reproducible across machines. |
+| Web build | **Emscripten → WebAssembly + WebGL 2**, hosted on itch.io | Lowest-friction release: playable in a browser with no download (the approach used by the Avara community port). |
+| Native build | Same codebase compiled with Clang/GCC for Windows, macOS, Linux | Path to a Steam/GOG release without a rewrite. Windows builds use clang-cl or MinGW (the simulation needs 128-bit integers, which MSVC lacks). |
+| Platform layer | SDL2 (window, input, audio) + OpenGL ES 3.0 / WebGL 2 | One rendering API that works natively and in the browser. |
+| Simulation math | 64-bit fixed point (16 fractional bits), PCG32 RNG, FNV-1a state checksums | Identical results on x86-64, ARM and WebAssembly. Enforced by CI, which compares a full simulation trace from every platform. |
+| Networking | Lockstep inputs over WebSockets through a small relay server (WebRTC data channels later) | Browsers cannot open raw UDP sockets; lockstep sends only inputs, so bandwidth is tiny. |
+| Threading | Single-threaded simulation at first | Web threads need cross-origin isolation (itch.io supports it, but it adds friction); the 30 Hz simulation fits comfortably on one core. |
+
 ## 6. Development Roadmap
 
 > *Proposed — durations assume a small core team and are placeholders for planning.*
 
 | Phase | Goal | Key Deliverables | Exit Criteria |
 |---|---|---|---|
-| **0. Pre-Production** (≈2 mo) | Lock tech decisions | Engine choice (Q1); fixed-point math + deterministic RNG library; sim/render separation spec; art style test (one billboard unit, one 3D unit, one terrain tile) | Written tech decision record; style test approved |
+| **0. Pre-Production** (≈2 mo) | Lock tech decisions | ✅ Engine choice (§5.1); ✅ fixed-point math + deterministic RNG library; ✅ cross-platform determinism CI; SDL2/WebGL 2 platform layer running in the browser; art style test (one billboard unit, one 3D unit, one terrain tile) | Written tech decision record; style test approved; a build playable on itch.io |
 | **1. Deterministic Core** (≈3 mo) | Headless simulation | Fixed 30 Hz tick loop; input command queue; checksums; replay recorder; heightfield terrain collision | Same replay produces identical checksums across two machines/OSes |
 | **2. Combat Vertical Slice** (≈4 mo) | Prove the "Myth feel" | Ballistic projectiles + dispersion circle; shield cone deflection; dodge envelopes; flanking; 2 infantry types, 1 archer type, 1 large 3D creature; billboard depth pre-pass & shadows | 10 v 10 skirmish is fun and readable; 200 projectiles in flight at 30 Hz sim without frame drops |
 | **3. Campaign Map Prototype** (≈3 mo) | Prove the "Warlords loop" | Hex map with terrain types; armies, cities, production queues; named unit generator; veterancy; shrine blessings; map → battle → map transition with persistent casualties | One full campaign playable vs. simple AI with meaningful attrition decisions |
@@ -96,7 +108,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 
 ## 7. Open Questions
 
-- **Q1 — Engine:** Unity vs. Unreal 5. Neither engine's built-in physics is deterministic across machines; the gameplay simulation will need to be a custom, engine-agnostic core either way. Unity (C#, simpler sprite pipeline) vs. UE5 (stronger 3D lighting, C++ control) should be decided by the Phase 0 style test.
+- ~~**Q1 — Engine:**~~ *Resolved:* custom C++ engine, web-first via WebAssembly (§5.1).
 - **Q2 — Battle timing in multiplayer:** When two human armies meet on the campaign map, do other players wait, watch, or continue their turns?
 - **Q3 — Recruitment time units:** "Turns" on the campaign map vs. "minutes" inside battles — define whether reinforcements can arrive mid-battle.
 - **Q4 — Shield arc value:** Confirm default frontal shield cone (placeholder 120°) and how Temple Blessings (+15%) scale it.

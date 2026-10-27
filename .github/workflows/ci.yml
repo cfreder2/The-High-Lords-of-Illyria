@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-gcc, os: ubuntu-24.04, cxx: g++ }
+          - { name: linux-clang, os: ubuntu-24.04, cxx: clang++ }
+          - { name: macos-arm64, os: macos-14, cxx: clang++ }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Simulation trace
+        run: ./build/tools/illyria_simcheck > simcheck-${{ matrix.name }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simcheck-${{ matrix.name }}
+          path: simcheck-${{ matrix.name }}.txt
+
+  wasm:
+    name: wasm
+    runs-on: ubuntu-24.04
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Simulation trace
+        run: node build/tools/illyria_simcheck.js > simcheck-wasm.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simcheck-wasm
+          path: simcheck-wasm.txt
+
+  # Lockstep multiplayer only works if every build simulates identically.
+  determinism:
+    needs: [native, wasm]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: simcheck-*
+          merge-multiple: true
+      - name: Compare simulation traces across platforms
+        run: |
+          ls simcheck-*.txt
+          for f in simcheck-*.txt; do
+            diff -u simcheck-linux-gcc.txt "$f"
+          done
+          echo "All platforms produced identical simulation traces."
