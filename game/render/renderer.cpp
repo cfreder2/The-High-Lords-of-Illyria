@@ -485,7 +485,7 @@ void Renderer::uploadContinent(const Battle& battle) {
             case sim::Ground::DeepWater: c = {0.10f, 0.26f, 0.42f}; break;
             case sim::Ground::Rock: c = {0.48f, 0.46f, 0.43f}; break;
             case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
-            default: c = {0.36f, 0.46f, 0.19f}; break;
+            default: c = {0.40f, 0.49f, 0.21f}; break;
         }
         if (static_cast<sim::Ground>(ground) != sim::Ground::DeepWater) {
             const float snow = std::clamp((h - 250.0f) / 40.0f, 0.0f, 1.0f);
