@@ -16,3 +16,6 @@ target_link_libraries(illyria_unitsheet PRIVATE illyria_sim)
 #   illyria_continentmap map.ppm map.json && python3 tools/continentmap/label.py map.ppm map.json out.png
 add_executable(illyria_continentmap continentmap/continentmap.cpp)
 target_link_libraries(illyria_continentmap PRIVATE illyria_sim)
+
+# Dumps the renderer's shaders for offline checking (tools/shaders/check.sh).
+add_executable(illyria_shaderdump shaders/shaderdump.cpp)

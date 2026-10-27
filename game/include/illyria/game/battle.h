@@ -48,15 +48,22 @@ struct Particle {
     float size;
 };
 
-// The whole continent at low resolution, in battle-local coordinates, for
-// drawing beyond the battlefield and for the camera at strategic heights.
+// A grid of continent samples in battle-local coordinates, for drawing beyond
+// the battlefield and for the camera: the whole continent every 64 m, and a
+// finer ring every 16 m around the battlefield.
 struct FarGrid {
     static constexpr float kCell = 64.0f;
+    float cell = kCell;
     int nx = 0, ny = 0;
     V3 min;                       // local coordinates of sample (0, 0)
     std::vector<float> height;    // ground, or the water surface where wet
     std::vector<uint8_t> ground;  // sim::Ground
     float heightAt(float x, float y) const;
+    bool contains(float x, float y) const {
+        return x >= min.x && y >= min.y && x <= min.x + cell * static_cast<float>(nx - 1) && y <= min.y + cell * static_cast<float>(ny - 1);
+    }
+    // Samples the continent over [min, min + cell * (n - 1)].
+    void fill(const sim::Continent& c, const V3& origin, V3 localMin, int nxIn, int nyIn, float cellIn);
 };
 
 // One playable battle: owns the deterministic world, turns player input into
@@ -104,6 +111,7 @@ public:
     float heightAt(float x, float y) const;
     bool inBattlefield(float x, float y) const { return x >= 0 && y >= 0 && x <= kWorldSize && y <= kWorldSize; }
     const FarGrid& farGrid() const { return far_; }
+    const FarGrid& nearGrid() const { return near_; }
     const sim::Region& region() const { return *region_; }
     const sim::Continent& continent() const { return *continent_; }
     // Continent coordinates of this battlefield's (0, 0).
@@ -141,7 +149,7 @@ private:
 
     std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;
-    FarGrid far_;
+    FarGrid far_, near_;
     std::unique_ptr<sim::World> world_;
     std::vector<float> heights_;
     std::vector<Squad> squads_;

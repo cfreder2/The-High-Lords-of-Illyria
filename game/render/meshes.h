@@ -19,6 +19,13 @@ struct Mesh {
 };
 
 namespace meshes {
+// Several shapes per kind, so no grove is a row of clones (same unit space as
+// the single versions below).
+std::vector<Mesh> pineVariants();   // spruce, tall fir, young bushy pine, dead snag
+std::vector<Mesh> oakVariants();    // oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak
+std::vector<Mesh> bushVariants();   // round, berry, dark thorn, reeds (variant 3)
+std::vector<Mesh> rockVariants();   // blob, slab, shard, cluster
+Mesh stump();                       // a stump with its fallen top: base at origin, ~1 across
 Mesh pine();
 Mesh oak();
 Mesh bush();
@@ -37,6 +44,15 @@ Mesh sageTower();
 Mesh log();
 // A clump of tree crowns for the distant continent, about 1 across.
 Mesh copse();
+std::vector<Mesh> copseVariants();  // broadleaf, pines, autumn
+// Ground cover, in metres (not scaled to unit size). All normals point up so
+// they light like the ground they grow from; colour (2, 2, 2) marks petals,
+// which the shader colours per plant.
+Mesh grassTuft();
+Mesh flowers();
+Mesh pebbles();
+Mesh twigs();
+Mesh fern();
 }  // namespace meshes
 
 }  // namespace illyria::game

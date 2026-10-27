@@ -68,6 +68,16 @@ struct M4 {
         r.m[14] = 2 * zFar * zNear / (zNear - zFar);
         return r;
     }
+    static M4 ortho(float l, float r, float b, float t, float n, float f) {
+        M4 o = identity();
+        o.m[0] = 2 / (r - l);
+        o.m[5] = 2 / (t - b);
+        o.m[10] = -2 / (f - n);
+        o.m[12] = -(r + l) / (r - l);
+        o.m[13] = -(t + b) / (t - b);
+        o.m[14] = -(f + n) / (f - n);
+        return o;
+    }
     static M4 lookAt(const V3& eye, const V3& at, const V3& up) {
         const V3 f = (at - eye).normalized();
         const V3 s = f.cross(up).normalized();

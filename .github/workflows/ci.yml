@@ -32,6 +32,18 @@ jobs:
           name: simcheck-${{ matrix.name }}
           path: simcheck-${{ matrix.name }}.txt
 
+  # Every renderer shader must compile as GLSL ES 3.00 (WebGL 2).
+  shaders:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install glslang
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Build the shader dump tool
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target illyria_shaderdump
+      - name: Compile every shader
+        run: tools/shaders/check.sh build/tools/illyria_shaderdump
+
   wasm:
     name: wasm
     runs-on: ubuntu-24.04

@@ -9,6 +9,7 @@ inline const char* kCommon = R"(#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2D;
+precision highp sampler2DShadow;
 uniform mat4 uViewProj;
 uniform vec3 uEye;
 uniform sampler2D uHeights;   // R32F, (cells+1)^2 texels
@@ -20,6 +21,16 @@ uniform float uCamDist;
 uniform float uPxScale;       // world units per pixel at distance 1
 uniform vec3 uCamRight;
 uniform float uWater;         // water level
+
+// Graphics settings (Renderer::Feature bits): cosmetic only, never gameplay.
+uniform int uFeatures;
+const int kFeatGroundDetail = 1, kFeatCover = 2, kFeatShadows = 4, kFeatFarDetail = 16, kFeatAtmosphere = 32;
+bool feature(int f) { return (uFeatures & f) != 0; }
+// Sun shadows: a depth map over the area around the camera target.
+uniform sampler2DShadow uShadowMap;
+uniform mat4 uLightViewProj;
+uniform vec4 uShadowInfo;  // texel size (uv), fade start, fade end (metres from centre), depth bias
+uniform vec2 uFocus;       // camera target on the ground
 
 const vec3 kSun = normalize(vec3(-0.62, 0.38, 0.52));
 const vec3 kSky = vec3(0.64, 0.74, 0.84);
@@ -49,6 +60,43 @@ float fogFactor(float d) {
 }
 // Degenerate vertex: nothing is rasterised.
 const vec4 kCulled = vec4(2.0, 2.0, 2.0, 1.0);
+
+// 1 in full sun, toward 0 in shadow. Five taps of hardware 2x2 PCF.
+float shadowAt(vec3 world, vec3 n) {
+    if (!feature(kFeatShadows)) return 1.0;
+    float fromFocus = distance(world.xy, uFocus);
+    if (fromFocus > uShadowInfo.z) return 1.0;
+    // Offset along the normal to keep surfaces from shadowing themselves.
+    vec4 l = uLightViewProj * vec4(world + n * 0.08 + kSun * 0.05, 1.0);
+    vec3 c = l.xyz / l.w * 0.5 + 0.5;
+    if (any(lessThan(c.xy, vec2(0.0))) || any(greaterThan(c.xy, vec2(1.0)))) return 1.0;
+    float t = uShadowInfo.x, z = c.z - uShadowInfo.w;
+    float s = texture(uShadowMap, vec3(c.xy, z)) * 0.4;
+    s += texture(uShadowMap, vec3(c.xy + vec2(t, t), z)) * 0.15;
+    s += texture(uShadowMap, vec3(c.xy + vec2(-t, t), z)) * 0.15;
+    s += texture(uShadowMap, vec3(c.xy + vec2(t, -t), z)) * 0.15;
+    s += texture(uShadowMap, vec3(c.xy + vec2(-t, -t), z)) * 0.15;
+    return mix(s, 1.0, smoothstep(uShadowInfo.y, uShadowInfo.z, fromFocus));
+}
+float noise2(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
+}
+// Drifting cloud shadows over the land: 1 in sun, ~0.62 under a cloud.
+float cloudShade(vec2 xy) {
+    if (!feature(kFeatAtmosphere)) return 1.0;
+    vec2 p = xy / 1400.0 + vec2(uTime * 0.004, uTime * 0.0025);
+    float c = noise2(p) * 0.6 + noise2(p * 2.3 + 7.1) * 0.3 + noise2(p * 5.1 + 3.7) * 0.1;
+    return 1.0 - 0.38 * smoothstep(0.5, 0.72, c);
+}
+// Aerial perspective: distant land fades toward the horizon, warmer toward the sun.
+vec3 hazeColor(vec3 world) {
+    if (!feature(kFeatAtmosphere)) return kSky;
+    vec3 v = normalize(world - uEye);
+    float sun = pow(max(dot(v, kSun), 0.0), 6.0);
+    return mix(kSky * 1.02, vec3(0.92, 0.84, 0.72), sun * 0.35);
+}
 )";
 
 // ---------------------------------------------------------------- terrain
@@ -103,17 +151,88 @@ int groundAt(ivec2 c) {
     return int(texelFetch(uGround, c, 0).r * 8.0 + 0.5);
 }
 
+uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
+
+// Fades a pattern of feature size `size` metres out before it shimmers.
+float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, size * 1.2, px); }
+
 void main() {
     vec3 n = normalize(vNormal);
     float slope = 1.0 - n.z;
-    float broad = valueNoise(vWorld.xy * 0.02);
-    float fine = valueNoise(vWorld.xy * 0.35);
-    // Blend the ground colours of the four nearest cells.
-    vec2 c = vWorld.xy / uCellSize - 0.5;
+    vec2 p = vWorld.xy;
+    float dist = distance(uEye, vWorld);
+    float px = max(fwidth(p.x), fwidth(p.y));  // metres per pixel here
+    float broad = valueNoise(p * 0.02);
+    float fine = valueNoise(p * 0.35);
+    // Blend the ground colours of the four nearest cells, and their kinds.
+    vec2 c = p / uCellSize - 0.5;
     ivec2 i0 = ivec2(floor(c));
     vec2 f = fract(c);
-    vec3 albedo = mix(mix(groundColor(groundAt(i0), broad, fine), groundColor(groundAt(i0 + ivec2(1, 0)), broad, fine), f.x),
-                      mix(groundColor(groundAt(i0 + ivec2(0, 1)), broad, fine), groundColor(groundAt(i0 + ivec2(1, 1)), broad, fine), f.x), f.y);
+    int g00 = groundAt(i0), g10 = groundAt(i0 + ivec2(1, 0)), g01 = groundAt(i0 + ivec2(0, 1)), g11 = groundAt(i0 + ivec2(1, 1));
+    vec3 albedo = mix(mix(groundColor(g00, broad, fine), groundColor(g10, broad, fine), f.x),
+                      mix(groundColor(g01, broad, fine), groundColor(g11, broad, fine), f.x), f.y);
+    vec4 w00 = vec4(g00 == 0, g00 == 2, g00 == 6, g00 == 3), w10 = vec4(g10 == 0, g10 == 2, g10 == 6, g10 == 3);
+    vec4 w01 = vec4(g01 == 0, g01 == 2, g01 == 6, g01 == 3), w11 = vec4(g11 == 0, g11 == 2, g11 == 6, g11 == 3);
+    vec4 kind = mix(mix(w00, w10, f.x), mix(w01, w11, f.x), f.y);  // plains, forest, rock, swamp
+    float canopy = texture(uCanopy, p / (uCells * uCellSize)).r;
+
+    // Meadows are not one green: lush and dry patches at a few scales (always
+    // on; it is what keeps mid zoom from looking like felt).
+    float lush = valueNoise(p * 0.045 + 3.1) * 0.65 + valueNoise(p * 0.13 + 8.7) * 0.35;
+    vec3 dry = vec3(0.50, 0.50, 0.25), wet = vec3(0.24, 0.40, 0.15);
+    albedo = mix(albedo, mix(albedo, mix(dry, wet, lush), 0.55), kind.x);
+
+    if (feature(kFeatGroundDetail)) {
+        float near = 1.0 - smoothstep(60.0, 220.0, dist);
+        // Bare soil and trampled patches in the grass.
+        float soilMask = smoothstep(0.7, 0.84, valueNoise(p * 0.085 + 41.0) * 0.6 + valueNoise(p * 0.5 + 5.0) * 0.4);
+        vec3 soil = mix(vec3(0.42, 0.33, 0.22), vec3(0.52, 0.43, 0.30), valueNoise(p * 1.7));
+        albedo = mix(albedo, soil, soilMask * kind.x * 0.85 * (1.0 - canopy));
+        // Grass: clumps, then blades (streaky noise), fading before they alias.
+        float clump = valueNoise(p * 0.75 + 13.0);
+        float blades = valueNoise(p * vec2(6.3, 2.2) + 1.7) * 0.5 + valueNoise(p * vec2(2.1, 6.9) + 9.3) * 0.5;
+        float grass = kind.x * (1.0 - soilMask);
+        albedo *= mix(1.0, 0.8 + 0.4 * clump, grass * detailFade(1.3, px));
+        albedo *= mix(1.0, 0.78 + 0.44 * blades, grass * detailFade(0.25, px));
+        // Wildflowers: sparse dots of white, yellow, violet and red.
+        vec2 fc = floor(p / 0.45);
+        float fh = hash12(fc + 0.37);
+        if (fh > 0.955 && grass > 0.5) {
+            vec2 centre = (fc + 0.25 + 0.5 * vec2(hash12(fc + 3.1), hash12(fc + 7.7))) * 0.45;
+            float d = length(p - centre);
+            float k = hash12(fc + 11.0);
+            vec3 petal = k < 0.4 ? vec3(0.95, 0.94, 0.88) : k < 0.7 ? vec3(0.95, 0.82, 0.25) : k < 0.9 ? vec3(0.62, 0.45, 0.85) : vec3(0.85, 0.22, 0.2);
+            float spot = (1.0 - smoothstep(0.035, 0.07, d)) * detailFade(0.1, px);
+            albedo = mix(albedo, petal, spot * smoothstep(0.4, 0.8, lush));
+        }
+        // Forest floor: leaf litter, needles and moss.
+        vec3 litter = mix(vec3(0.30, 0.22, 0.12), vec3(0.42, 0.30, 0.16), valueNoise(p * 2.7));
+        litter = mix(litter, vec3(0.22, 0.30, 0.12), smoothstep(0.55, 0.8, valueNoise(p * 0.6 + 2.0)));
+        albedo = mix(albedo, litter, clamp(kind.y * 0.8 + canopy * 0.7, 0.0, 1.0));
+        // Rock: strata and lichen.
+        float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
+        vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * valueNoise(p * 3.1));
+        stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(p * 1.9 + 4.0)) * 0.6);
+        albedo = mix(albedo, stone, max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8);
+        // Swamp: dark wet mud and standing puddles.
+        float puddles = smoothstep(0.6, 0.7, valueNoise(p * 0.5 + 20.0));
+        albedo = mix(albedo, mix(vec3(0.20, 0.22, 0.14), vec3(0.18, 0.24, 0.26), puddles), kind.w * 0.7);
+        // Stones lying in the grass and soil.
+        vec2 sc = floor(p / 0.8);
+        if (hash12(sc + 5.5) > 0.93) {
+            vec2 centre = (sc + 0.3 + 0.4 * vec2(hash12(sc + 1.3), hash12(sc + 2.9))) * 0.8;
+            float d = length((p - centre) * vec2(1.0, 1.4));
+            albedo = mix(albedo, vec3(0.55, 0.53, 0.5) * (0.8 + 0.4 * hash12(sc)), (1.0 - smoothstep(0.06, 0.11, d)) * detailFade(0.15, px));
+        }
+        // Bumps that catch the light: tussocks, clods and roots.
+        float e = 0.15;
+        float h0 = valueNoise(p * 1.6) + 0.5 * valueNoise(p * 4.3 + 2.0);
+        float hx = valueNoise((p + vec2(e, 0.0)) * 1.6) + 0.5 * valueNoise((p + vec2(e, 0.0)) * 4.3 + 2.0);
+        float hy = valueNoise((p + vec2(0.0, e)) * 1.6) + 0.5 * valueNoise((p + vec2(0.0, e)) * 4.3 + 2.0);
+        float bump = 0.06 * near * detailFade(0.4, px);
+        n = normalize(n + vec3(-(hx - h0) / e, -(hy - h0) / e, 0.0) * bump);
+        slope = 1.0 - n.z;
+    }
     // Bare earth and scree on steep slopes.
     albedo = mix(albedo, vec3(0.45, 0.40, 0.33) * (0.85 + 0.3 * fine), smoothstep(0.18, 0.3, slope) * 0.6);
     albedo = mix(albedo, vec3(0.47, 0.45, 0.42) * (0.8 + 0.4 * fine), smoothstep(0.3, 0.45, slope));
@@ -137,9 +256,11 @@ void main() {
     albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(250.0, 290.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     if (vWorld.z < uWater) albedo = mix(albedo, vec3(0.35, 0.32, 0.25), 0.6);
 
-    // Low sun so the hills read clearly from above.
-    float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0);
-    vec3 color = albedo * light;
+    // Low sun so the hills read clearly from above; groves shade the ground.
+    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
+    float ambient = 0.30 * (1.0 - canopy * 0.45);
+    if (!feature(kFeatShadows)) sun *= 1.0 - canopy * 0.55;  // no shadow map: fake the groves' shade
+    vec3 color = albedo * (ambient + 0.95 * sun);
 
     // The tactical hex grid fades in as the camera rises, then hands over to
     // the continent's campaign grid (the same one the far terrain draws).
@@ -155,7 +276,7 @@ void main() {
         float w = fwidth(e) * 1.5;
         color = mix(color, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
     }
-    oColor = vec4(mix(color, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
+    oColor = vec4(mix(color, hazeColor(vWorld), fogFactor(dist)), 1.0);
 }
 )";
 
@@ -373,6 +494,7 @@ flat out float vAspect;
 flat out float vDot;
 flat out float vSelected;
 out float vFog;
+flat out float vShade;
 void main() {
     float height = iSize.x;
     float dist = distance(uEye, iPos);
@@ -396,6 +518,7 @@ void main() {
     vAspect = aspect;
     vSelected = iSelected;
     vFog = fogFactor(dist);
+    vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, height * 0.6), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -409,6 +532,7 @@ flat in float vAspect;
 flat in float vDot;
 flat in float vSelected;
 in float vFog;
+flat in float vShade;
 out vec4 oColor;
 
 vec3 gCol;
@@ -690,7 +814,7 @@ void main() {
         }
     }
     if (gA < 0.5) discard;
-    oColor = vec4(mix(gCol, kSky, vFog), 1.0);
+    oColor = vec4(mix(gCol * vShade, kSky, vFog), 1.0);
 }
 )";
 
@@ -732,14 +856,135 @@ in vec3 vWorld;
 out vec4 oColor;
 void main() {
     vec3 n = normalize(vNormal);
-    float light = 0.36 + 0.8 * max(dot(n, kSun), 0.0) + 0.12 * max(-dot(n, kSun), 0.0);
+    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(vWorld.xy);
+    float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
     vec3 c = vColor * light;
     // Under the battlefield's river (the rest of the continent has no water level).
     vec2 cell = vWorld.xy / uCellSize;
     bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
     if (onField && vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
-    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
+    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
 }
+)";
+
+// ---------------------------------------------------------------- ground cover
+// Grass tufts, flowers, pebbles, twigs and ferns on a grid that follows the
+// camera (snapped to the ground so nothing swims). No per-frame CPU work:
+// gl_InstanceID picks the grid cell, hashes pick place, size and spin.
+// uCover: spacing (m), grid size, seed, kind (0 grass 1 flowers 2 pebbles 3 twigs 4 ferns).
+inline const char* kCoverVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+uniform vec4 uCover;
+uniform sampler2D uGround;
+uniform sampler2D uRoad;
+uniform sampler2D uCanopy;
+out vec3 vColor;
+out vec3 vWorld;
+int coverGround(vec2 xy) {
+    ivec2 c = clamp(ivec2(xy / uCellSize), ivec2(0), ivec2(int(uCells) - 1));
+    return int(texelFetch(uGround, c, 0).r * 8.0 + 0.5);
+}
+void main() {
+    float spacing = uCover.x;
+    int n = int(uCover.y);
+    float kind = uCover.w;
+    vec2 cf = vec2(ivec2(gl_InstanceID % n, gl_InstanceID / n) + ivec2(floor(uFocus / spacing)) - n / 2);
+    float h1 = hash12(cf * 1.13 + uCover.z), h2 = hash12(cf * 0.71 + uCover.z + 3.3);
+    float h3 = hash12(cf + uCover.z * 1.7 + 9.1), h4 = hash12(cf * 1.9 + uCover.z + 5.2);
+    vec2 xy = (cf + vec2(h1, h2)) * spacing;
+    float size = uCells * uCellSize;
+    float radius = float(n) * spacing * 0.5;
+    // Fades out at the grid's edge, and as the camera rises (by then the
+    // painted ground carries the look).
+    float fade = (1.0 - smoothstep(radius * 0.55, radius * 0.95, distance(xy, uFocus))) * (1.0 - smoothstep(55.0, 110.0, uCamDist));
+    if (fade <= 0.0 || xy.x < 1.0 || xy.y < 1.0 || xy.x > size - 1.0 || xy.y > size - 1.0) { gl_Position = kCulled; return; }
+    int g = coverGround(xy);
+    float canopy = texture(uCanopy, xy / size).r;
+    vec2 road = texture(uRoad, xy / size).rg;
+    float onRoad = road.g > 0.3 && abs((road.r - 0.5) * 16.0) < 3.0 ? 1.0 : 0.0;
+    // Same patches the ground shader paints, so tufts avoid the bare soil.
+    float soil = smoothstep(0.7, 0.84, noise2(xy * 0.085 + 41.0) * 0.6 + noise2(xy * 0.5 + 5.0) * 0.4);
+    float lush = noise2(xy * 0.045 + 3.1) * 0.65 + noise2(xy * 0.13 + 8.7) * 0.35;
+    bool plains = g == 0, forest = g == 2, swamp = g == 3, rock = g == 6, wet = g == 4 || g == 5;
+    float density = 0.0;
+    if (kind < 0.5) density = plains ? 0.95 * (1.0 - soil) * (1.0 - canopy * 0.75) : forest ? 0.2 : swamp ? 0.8 : rock ? 0.12 : 0.0;
+    else if (kind < 1.5) density = plains ? smoothstep(0.45, 0.85, lush) * (1.0 - soil) * (1.0 - canopy) * 0.8 : 0.0;
+    else if (kind < 2.5) density = wet ? 0.0 : plains ? 0.25 + soil * 0.6 : rock ? 0.9 : 0.3;
+    else if (kind < 3.5) density = forest ? 0.8 : plains ? canopy * 0.9 + 0.05 : 0.0;
+    else density = forest ? 0.65 * (0.4 + canopy) : plains ? canopy * 0.5 : swamp ? 0.3 : 0.0;
+    density *= 1.0 - onRoad * (kind < 2.5 && kind > 1.5 ? 0.0 : 0.95);
+    if (wet || h3 >= density) { gl_Position = kCulled; return; }
+    float scale = (0.7 + 0.6 * h4) * (0.35 + 0.65 * fade);
+    if (kind < 0.5 && swamp) scale *= 1.8;  // sedge
+    float a = h4 * 6.2831853 + h1 * 3.0;
+    vec2 cs = vec2(cos(a), sin(a));
+    vec3 local = aPos * scale;
+    local.xy = vec2(cs.x * local.x - cs.y * local.y, cs.y * local.x + cs.x * local.y);
+    // Wind through the grass.
+    float sway = sin(uTime * 2.1 + xy.x * 0.45 + xy.y * 0.3) * 0.5 + sin(uTime * 3.7 + xy.y * 0.9) * 0.25;
+    local.xy += vec2(0.8, 0.5) * sway * aPos.z * aPos.z * 1.6;
+    vec3 world = vec3(xy, groundZ(xy) - 0.01) + local;
+    // Colour: the meadow's own green, drier or lusher; petals per plant.
+    vec3 tint = kind < 0.5 ? mix(vec3(0.55, 0.56, 0.27), vec3(0.26, 0.45, 0.16), lush) : vec3(1.0);
+    if (kind < 0.5 && forest) tint = vec3(0.28, 0.38, 0.17);
+    vec3 col = aColor * tint;
+    if (aColor.r > 1.5) {
+        float k = hash12(cf + 17.0);
+        col = k < 0.4 ? vec3(0.95, 0.94, 0.88) : k < 0.7 ? vec3(0.95, 0.8, 0.22) : k < 0.9 ? vec3(0.6, 0.42, 0.85) : vec3(0.85, 0.2, 0.18);
+    }
+    vColor = col * (0.9 + 0.2 * h2);
+    vWorld = world;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kCoverFs = R"(
+in vec3 vColor;
+in vec3 vWorld;
+out vec4 oColor;
+void main() {
+    float sun = max(kSun.z, 0.0) * shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(vWorld.xy);
+    vec3 c = vColor * (0.32 + 0.95 * sun);
+    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+}
+)";
+
+// ---------------------------------------------------------------- sky
+// A full-screen gradient behind everything: deep blue overhead, the haze
+// colour at the horizon (matching the fog), a glow around the sun.
+inline const char* kSkyVs = R"(
+out vec2 vNdc;
+void main() {
+    vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+    vNdc = c;
+    gl_Position = vec4(c, 0.9999, 1.0);
+}
+)";
+inline const char* kSkyFs = R"(
+in vec2 vNdc;
+uniform vec3 uCamFwd;
+uniform vec3 uCamUp;
+uniform vec2 uProj;  // tan(fov / 2), aspect
+out vec4 oColor;
+void main() {
+    vec3 d = normalize(uCamFwd + uCamRight * vNdc.x * uProj.x * uProj.y + uCamUp * vNdc.y * uProj.x);
+    float up = clamp(d.z, 0.0, 1.0);
+    vec3 zenith = vec3(0.30, 0.47, 0.74);
+    vec3 c = mix(kSky, zenith, pow(up, 0.55));
+    float sun = max(dot(d, kSun), 0.0);
+    c += vec3(1.0, 0.86, 0.6) * (pow(sun, 8.0) * 0.25 + pow(sun, 400.0) * 1.5);
+    // Faint high cloud.
+    vec2 q = d.xy / max(d.z, 0.08) * 1.6 + vec2(uTime * 0.003, 0.0);
+    float cl = smoothstep(0.55, 0.85, noise2(q) * 0.6 + noise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
+    c = mix(c, vec3(0.97, 0.97, 0.98), cl * 0.55);
+    oColor = vec4(c, 1.0);
+}
+)";
+
+// Depth only, for the sun's shadow map.
+inline const char* kDepthFs = R"(
+void main() {}
 )";
 
 // ---------------------------------------------------------------- water
@@ -781,7 +1026,9 @@ void main() {
     vec3 v = normalize(uEye - vWorld);
     float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.0);
     c = mix(c, kSky * 1.05, fresnel * 0.55);
-    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 80.0) * 0.9;
+    float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(vWorld.xy);
+    c *= 0.75 + 0.25 * lit;
+    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 80.0) * 0.9 * lit;
     float foam = 1.0 - smoothstep(0.0, 0.25, depth);
     c = mix(c, vec3(0.9, 0.93, 0.95), foam * 0.6);
     float alpha = clamp(0.45 + depth * 0.35, 0.45, 0.92);
@@ -795,20 +1042,28 @@ inline const char* kFarVs = R"(
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec4 aKinds;  // forest, rock, swamp, water
+uniform vec4 uRing;   // the fine ring's extent; coarse land sinks beneath it
+uniform float uSink;
 out vec3 vWorld;
 out vec3 vNormal;
 out vec3 vColor;
+out vec4 vKinds;
 void main() {
-    vWorld = aPos;
+    vec3 p = aPos;
+    if (uSink > 0.0 && p.x > uRing.x && p.y > uRing.y && p.x < uRing.z && p.y < uRing.w) p.z -= uSink;
+    vWorld = p;
     vNormal = aNormal;
     vColor = aColor;
-    gl_Position = uViewProj * vec4(aPos, 1.0);
+    vKinds = aKinds;
+    gl_Position = uViewProj * vec4(p, 1.0);
 }
 )";
 inline const char* kFarFs = R"(
 in vec3 vWorld;
 in vec3 vNormal;
 in vec3 vColor;
+in vec4 vKinds;
 out vec4 oColor;
 float hexEdge(vec2 p, float s) {
     vec2 r = vec2(1.0, 1.7320508);
@@ -819,10 +1074,47 @@ float hexEdge(vec2 p, float s) {
     g = abs(g);
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
+float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
 void main() {
     vec3 n = normalize(vNormal);
-    float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0);  // as the battlefield terrain
-    vec3 c = vColor * light;
+    vec3 albedo = vColor;
+    vec2 p = vWorld.xy;
+    if (feature(kFeatFarDetail)) {
+        // Ground kinds meet along ragged, natural edges instead of the grid.
+        float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (noise2(p / 28.0) - 0.5) * 0.35;
+        float forest = smoothstep(0.4, 0.6, vKinds.x + edge);
+        float rock = smoothstep(0.35, 0.65, vKinds.y + edge * 0.8);
+        float swamp = smoothstep(0.4, 0.6, vKinds.z + edge);
+        float water = vKinds.w;
+        float slope = 1.0 - n.z;
+        // Meadows: lush and dry patches, as on the battlefield.
+        float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
+        vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * noise2(p * 0.4));
+        float land = 1.0 - water;
+        albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(vColor.r, 0.55));
+        // Forest canopy: crowns and gaps, lit as a rough surface.
+        float crowns = fbm3(p / 9.0);
+        vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
+        canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, noise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
+        albedo = mix(albedo, canopy, forest * land);
+        n = normalize(n + vec3(noise2(p / 6.0) - 0.5, noise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+        // Rock: strata, crags and scree.
+        // Broken bands, warped hard so they read as rock, not contour lines.
+        float strata = 0.5 + 0.5 * sin(vWorld.z * 0.22 + fbm3(p / 55.0) * 14.0 + noise2(p / 9.0) * 3.0);
+        float tone = fbm3(p / 18.0);
+        vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.88 + 0.24 * noise2(p / 5.0));
+        stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
+        float rocky = max(rock, smoothstep(0.25, 0.5, slope)) * land;
+        albedo = mix(albedo, stone, rocky);
+        vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
+        n = normalize(n + vec3(crag, 0.0) * 1.1 * rocky);
+        // Snow lies on the heights, but not on cliffs.
+        float snow = smoothstep(235.0, 285.0, vWorld.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
+        albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
+        albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
+    }
+    float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);  // as the battlefield terrain
+    vec3 c = albedo * light;
     // The strategic hex grid of the campaign map, at continent scale.
     float gridFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
     if (gridFade > 0.0) {
@@ -830,7 +1122,7 @@ void main() {
         float w = fwidth(e) * 1.5;
         c = mix(c, vec3(0.95, 0.9, 0.78), gridFade * (1.0 - smoothstep(0.0, w, e)));
     }
-    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
+    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
 }
 )";
 

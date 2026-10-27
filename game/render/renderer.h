@@ -16,6 +16,23 @@ namespace illyria::game {
 // remains and stains stay cheap on phones.
 class Renderer {
 public:
+    // Graphics settings. Everything here is cosmetic: none of it changes the
+    // simulation, so players on different settings stay in lockstep.
+    enum Feature : int {
+        kGroundDetail = 1,   // grass, soil, flowers and stones painted into the ground; shade under trees
+        kGroundCover = 2,    // grass tufts, flowers, pebbles and twigs around the camera
+        kShadows = 4,        // sun shadows
+        kShadowsHigh = 8,    // sharper, wider sun shadows
+        kFarDetail = 16,     // finer land around the battlefield, detailed far terrain
+        kAtmosphere = 32,    // sky, haze and drifting cloud shadows
+        kCoverDense = 64,    // denser, wider ground cover
+    };
+    static constexpr int kHigh = kGroundDetail | kGroundCover | kShadows | kShadowsHigh | kFarDetail | kAtmosphere | kCoverDense;
+    static constexpr int kMedium = kGroundDetail | kGroundCover | kShadows | kFarDetail | kAtmosphere;
+    static constexpr int kLow = 0;
+    void setFeatures(int features);
+    int features() const { return features_; }
+
     bool init(Battle& battle);
     // Forget uploaded remains and marks (call after the battle is replaced).
     void reset(Battle& battle);
@@ -27,6 +44,8 @@ private:
         GLint viewProj = -1, eye = -1, heights = -1, cells = -1, cellSize = -1;
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
+        GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
+        GLint ring = -1, sink = -1, camFwd = -1, camUp = -1, proj = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -45,6 +64,8 @@ private:
     };
 
     bool buildPrograms();
+    void ensureShadowMap();
+    void uploadCanopy(const Battle& battle);
     void makeBatch(Batch& b, std::initializer_list<int> layout, size_t capacity);
     void zeroBatch(Batch& b, size_t count);
     void uploadDynamic(Batch& b, const std::vector<float>& data);
@@ -57,25 +78,54 @@ private:
     void uploadScenery(const Battle& battle);
     void uploadContinent(const Battle& battle);
     void uploadSettlements(const Battle& battle);
-    void drawMeshes(std::initializer_list<MeshBatch*> batches, const Camera& camera, double timeSeconds, float gameSeconds);
+    void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
-    Program terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_;
+    Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, cover_, meshDepth_, terrainDepth_;
+    // A ground-cover mesh drawn on a camera-following grid (see kCoverVs).
+    struct CoverLayer {
+        GLuint vao = 0, vbo = 0;
+        GLsizei vertices = 0;
+        float kind = 0, seed = 0;
+    };
+    CoverLayer cover_layers_[5];
+    void makeCoverLayer(CoverLayer& l, const Mesh& mesh, float kind, float seed);
+    void drawCover(const Camera& camera, double timeSeconds, float gameSeconds);
+    void renderShadowMap(const Camera& camera, double timeSeconds, float gameSeconds);
     GLuint terrainVao_ = 0, terrainVbo_ = 0, terrainIbo_ = 0, heightTex_ = 0, groundTex_ = 0, roadTex_ = 0;
     GLuint waterVao_ = 0, waterVbo_ = 0, waterTex_ = 0;
     GLsizei waterVertices_ = 0;
-    GLuint farVao_ = 0, farVbo_ = 0, farIbo_ = 0;
-    GLsizei farIndexCount_ = 0;
+    // Land beyond the battlefield: see buildLand().
+    struct LandMesh {
+        GLuint vao = 0, vbo = 0, ibo = 0;
+        GLsizei count = 0;
+    };
+    LandMesh farLand_, nearLand_;
+    GLuint skyVao_ = 0;
+    float ring_[4] = {0, 0, 0, 0};  // the fine ring's extent (min x, min y, max x, max y)
+    void buildLand(const Battle& battle, const FarGrid& grid, LandMesh& out, bool skirt);
     float waterLevel_ = 0;
     GLsizei terrainIndexCount_ = 0;
     int cells_ = 0;
     float cellSize_ = 1;
 
     Batch ribbons_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
-    MeshBatch pines_, oaks_, bushes_, rocks_, houses_, pillars_, capsules_, spheres_;
+    MeshBatch houses_, pillars_, capsules_, spheres_;
+    // Several shapes per kind of scenery (meshes::pineVariants() and so on).
+    std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
+    MeshBatch stumps_;
+    std::vector<MeshBatch*> scenery(bool includeSmall);
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
-    MeshBatch logs_, copses_;
+    MeshBatch logs_;
+    std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant
     uint64_t marksUploaded_ = 0;
+
+    int features_ = kHigh;
+    GLuint shadowTex_ = 0, shadowFbo_ = 0, canopyTex_ = 0, blankShadowTex_ = 0;
+    int shadowSize_ = 0;
+    M4 lightViewProj_;
+    float shadowInfo_[4] = {0, 0, 0, 0};
+    const M4* viewProjOverride_ = nullptr;  // the shadow pass renders from the sun
 };
 
 }  // namespace illyria::game

@@ -35,6 +35,7 @@ struct App {
     Renderer renderer;
     double lastMs = 0;
     float pixelRatio = 1;
+    double maxPixelRatio = kMaxPixelRatio;  // lowered by the graphics settings
     double fps = 60;
     std::string hud, labels;
     // The opening swoop from the whole continent down to the battle.
@@ -96,7 +97,7 @@ void newBattle() {
 void resizeCanvas() {
     double cssW = 0, cssH = 0;
     emscripten_get_element_css_size("#canvas", &cssW, &cssH);
-    app->pixelRatio = static_cast<float>(std::min(emscripten_get_device_pixel_ratio(), kMaxPixelRatio));
+    app->pixelRatio = static_cast<float>(std::min(emscripten_get_device_pixel_ratio(), app->maxPixelRatio));
     const int w = std::max(1, static_cast<int>(cssW * app->pixelRatio));
     const int h = std::max(1, static_cast<int>(cssH * app->pixelRatio));
     int curW = 0, curH = 0;
@@ -177,6 +178,17 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
     app->introStartMs = -1;
     app->camera.lookAt(x, y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
+}
+
+// Graphics settings from the page: Renderer::Feature bits and a resolution cap.
+// Purely cosmetic: the simulation never sees them.
+EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRatio) {
+    if (!app) return;
+    app->renderer.setFeatures(features);
+    app->maxPixelRatio = std::clamp(maxPixelRatio, 0.5, kMaxPixelRatio);
+}
+EMSCRIPTEN_KEEPALIVE int illyria_graphics_preset(int level) {
+    return level <= 0 ? Renderer::kLow : level == 1 ? Renderer::kMedium : Renderer::kHigh;
 }
 
 // Test hook: look down on the whole continent.

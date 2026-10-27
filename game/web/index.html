@@ -90,6 +90,15 @@
   #labels .k2, #labels .k3, #labels .k4 { font-size: 11px; font-style: italic; color: #e2d8c4; }
   #labels .k5 { font-size: 22px; letter-spacing: 0.12em; color: rgba(255, 236, 200, 0.85); font-weight: 600; }
   #labels .k6 { font-size: 12px; font-style: italic; color: rgba(230, 240, 255, 0.8); }
+  #gfx { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); padding: 10px 12px; width: 250px; z-index: 5;
+         max-height: calc(100% - 70px - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
+  #gfx h3 { margin: 0 0 6px; font-size: 14px; color: var(--gold); font-weight: 600; }
+  #gfx .presets { display: flex; gap: 6px; margin-bottom: 8px; }
+  #gfx .presets button { flex: 1; min-height: 34px; padding: 0 6px; }
+  #gfx .presets button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); }
+  #gfx label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--ink); }
+  #gfx input { width: 18px; height: 18px; accent-color: var(--gold); }
+  #gfx .note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; }
   .hidden { display: none !important; }
   .fade { opacity: 0; }
   /* Landscape phones: keep the battlefield visible. */
@@ -106,6 +115,8 @@
     .card { width: 120px; padding: 4px 8px; grid-template-columns: 18px 1fr; }
     .card svg { width: 18px; height: 18px; }
     .card .name { font-size: 12px; }
+    #gfx { top: calc(44px + var(--safe-t)); padding: 6px 10px; }
+    #gfx label { padding: 2px 0; }
   }
   @media (max-width: 560px) {
     #title h1 { font-size: 13px; }
@@ -129,7 +140,24 @@
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
     <button id="restart" aria-label="Restart battle">Restart</button>
+    <button id="gfxButton" aria-label="Graphics settings">⚙</button>
   </div>
+</div>
+
+<div id="gfx" class="panel hidden">
+  <h3>Graphics</h3>
+  <div class="presets">
+    <button data-preset="0">Low</button><button data-preset="1">Medium</button><button data-preset="2">High</button>
+  </div>
+  <label><input type="checkbox" data-bit="1"> Ground detail</label>
+  <label><input type="checkbox" data-bit="2"> Grass and ground cover</label>
+  <label><input type="checkbox" data-bit="64"> Dense ground cover</label>
+  <label><input type="checkbox" data-bit="4"> Sun shadows</label>
+  <label><input type="checkbox" data-bit="8"> Sharp, wide shadows</label>
+  <label><input type="checkbox" data-bit="16"> Detailed distant land</label>
+  <label><input type="checkbox" data-bit="32"> Sky, haze and clouds</label>
+  <label><input type="checkbox" data-res="1"> Full resolution</label>
+  <div class="note">Looks only: everyone sees the same battle on any setting.</div>
 </div>
 
 <div id="hint" class="panel">
@@ -196,7 +224,10 @@
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
+      setGraphics: Module.cwrap("illyria_set_graphics", null, ["number", "number"]),
+      preset: Module.cwrap("illyria_graphics_preset", "number", ["number"]),
     };
+    initGraphics();
     window.illyria = api;
     $("overlay").classList.add("hidden");
     setTimeout(hideHint, 9000);
@@ -204,6 +235,34 @@
     setInterval(updateHud, 250);
     requestAnimationFrame(updateLabels);
   };
+
+  // Graphics settings: saved per device. Phones start on Medium.
+  const gfxKey = "illyria.graphics.v1";
+  let gfx = null;
+  function initGraphics() {
+    try { gfx = JSON.parse(localStorage.getItem(gfxKey)); } catch (e) { gfx = null; }
+    if (!gfx || typeof gfx.features !== "number") {
+      const phone = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
+      const level = phone ? 1 : 2;
+      gfx = { preset: level, features: api.preset(level), fullRes: !phone };
+    }
+    applyGraphics();
+  }
+  function applyGraphics() {
+    api.setGraphics(gfx.features, gfx.fullRes ? 2 : 1.25);
+    try { localStorage.setItem(gfxKey, JSON.stringify(gfx)); } catch (e) {}
+    for (const b of document.querySelectorAll("#gfx [data-preset]")) b.classList.toggle("on", +b.dataset.preset === gfx.preset);
+    for (const c of document.querySelectorAll("#gfx [data-bit]")) c.checked = (gfx.features & +c.dataset.bit) !== 0;
+    document.querySelector("#gfx [data-res]").checked = gfx.fullRes;
+  }
+  $("gfxButton").onclick = () => $("gfx").classList.toggle("hidden");
+  for (const b of document.querySelectorAll("#gfx [data-preset]")) {
+    b.onclick = () => { const l = +b.dataset.preset; gfx = { preset: l, features: api.preset(l), fullRes: l === 2 }; applyGraphics(); };
+  }
+  for (const c of document.querySelectorAll("#gfx [data-bit]")) {
+    c.onchange = () => { gfx.features = c.checked ? gfx.features | +c.dataset.bit : gfx.features & ~+c.dataset.bit; gfx.preset = -1; applyGraphics(); };
+  }
+  document.querySelector("#gfx [data-res]").onchange = (e) => { gfx.fullRes = e.target.checked; gfx.preset = -1; applyGraphics(); };
 
   // Map labels track the camera every frame; elements are reused.
   const labelPool = [];

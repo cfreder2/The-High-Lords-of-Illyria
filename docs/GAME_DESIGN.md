@@ -296,6 +296,19 @@ The complete game (campaign, battles, multiplayer) must be playable in a phone b
 
 **Minimum spec (proposed):** iPhone 12 (A14, iOS 26 Safari) and Android phones of Snapdragon 7-series / Pixel 6a class (Chrome) from 2021 onward, ~4 GB RAM. WebGPU on both (Safari since iOS 26, Chrome on Android 12+), WebGL 2 fallback with reduced cosmetics.
 
+**Graphics settings (built).** Everything that only changes the look can be switched off: the ⚙ panel, `Renderer::Feature`. Every setting simulates the same battle, so players on different settings stay in lockstep. Phones start on Medium; anything else starts on High.
+
+| Feature | High | Medium | Low |
+|---|---|---|---|
+| Ground detail: grass, soil, flowers and stones painted into the ground, shade under trees | ✓ | ✓ | (meadow colour variation only) |
+| Ground cover: grass tufts, flowers, pebbles, twigs and ferns around the camera | dense, ~42 m around the camera | ~33 m | off |
+| Sun shadows from trees, buildings and soldiers | 2048², up to 900 m | 1024², up to 550 m | blob shadows |
+| Detailed distant land: 16 m ring around the battlefield, ragged ground edges, crags, canopy | ✓ | ✓ | coarse colours |
+| Sky gradient, haze, drifting cloud shadows | ✓ | ✓ | flat sky |
+| Resolution | up to 2× | up to 1.25× | up to 1.25× |
+
+Tree, rock and bush variety is always on: it costs draw calls, not frame time.
+
 **Performance on a phone**
 
 | Concern | Response |

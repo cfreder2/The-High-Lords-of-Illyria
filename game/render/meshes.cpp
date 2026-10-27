@@ -41,6 +41,17 @@ struct Builder {
             else tri(p0, p1, q0, color);
         }
     }
+    // A tapered limb from a to b (radius r0 to r1).
+    void limb(V3 a, V3 b, float r0, float r1, int n, V3 color) {
+        const V3 axis = (b - a).normalized();
+        const V3 helper = std::fabs(axis.z) < 0.9f ? V3{0, 0, 1} : V3{1, 0, 0};
+        const V3 u = axis.cross(helper).normalized(), v = axis.cross(u);
+        for (int i = 0; i < n; ++i) {
+            const float a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+            const V3 d0 = u * std::cos(a0) + v * std::sin(a0), d1 = u * std::cos(a1) + v * std::sin(a1);
+            quad(a + d0 * r0, a + d1 * r0, b + d1 * r1, b + d0 * r1, color * (0.85f + 0.15f * std::cos(a0 - 0.6f)));
+        }
+    }
     // Faceted blob: an icosahedron, optionally squashed and dented.
     void blob(V3 centre, V3 radii, V3 color, float dent = 0, int seed = 0) {
         const float t = (1.0f + std::sqrt(5.0f)) / 2;
@@ -67,6 +78,182 @@ const V3 kBark{0.36f, 0.26f, 0.17f};
 }  // namespace
 
 namespace meshes {
+
+std::vector<Mesh> pineVariants() {
+    std::vector<Mesh> out;
+    const V3 needles{0.13f, 0.30f, 0.17f};
+    out.push_back(pine());
+    {   // Tall narrow fir: five tight tiers.
+        Builder b;
+        b.frustum(0, 0.07f, 0.3f, 0.05f, 5, kBark);
+        for (int i = 0; i < 5; ++i) {
+            const float z0 = 0.16f + i * 0.16f, r = 0.24f - i * 0.035f;
+            b.frustum(z0, r, z0 + 0.26f, 0, 7, needles * (0.92f + i * 0.07f), i * 0.5f);
+        }
+        out.push_back(b.mesh);
+    }
+    {   // Young pine: low, wide and bushy, a bluer green.
+        Builder b;
+        const V3 blue{0.14f, 0.30f, 0.24f};
+        b.frustum(0, 0.07f, 0.2f, 0.06f, 5, kBark);
+        b.frustum(0.08f, 0.42f, 0.5f, 0.05f, 8, blue);
+        b.frustum(0.35f, 0.32f, 0.75f, 0, 8, blue * 1.12f, 0.3f);
+        b.frustum(0.6f, 0.2f, 0.9f, 0, 8, blue * 1.25f, 0.7f);
+        out.push_back(b.mesh);
+    }
+    {   // Dead snag: a grey spike with broken branch stubs.
+        Builder b;
+        const V3 grey{0.45f, 0.42f, 0.38f};
+        b.frustum(0, 0.08f, 0.85f, 0.015f, 6, grey);
+        for (int i = 0; i < 6; ++i) {
+            const float z = 0.3f + i * 0.09f, a = i * 2.4f;
+            b.limb({0, 0, z}, {std::cos(a) * 0.16f, std::sin(a) * 0.16f, z + 0.05f}, 0.02f, 0.006f, 4, grey * 0.9f);
+        }
+        out.push_back(b.mesh);
+    }
+    return out;
+}
+
+std::vector<Mesh> oakVariants() {
+    std::vector<Mesh> out;
+    const V3 leaves{0.22f, 0.38f, 0.14f};
+    out.push_back(oak());
+    {   // Broad oak: a wide, flat-topped crown on a short trunk.
+        Builder b;
+        b.frustum(0, 0.12f, 0.42f, 0.08f, 6, kBark);
+        b.limb({0, 0, 0.38f}, {0.3f, 0.05f, 0.58f}, 0.06f, 0.03f, 5, kBark);
+        b.limb({0, 0, 0.38f}, {-0.25f, -0.15f, 0.56f}, 0.06f, 0.03f, 5, kBark);
+        b.blob({0.25f, 0.05f, 0.66f}, {0.38f, 0.36f, 0.22f}, leaves * 0.95f, 0.18f, 31);
+        b.blob({-0.22f, -0.12f, 0.64f}, {0.36f, 0.34f, 0.21f}, leaves * 1.08f, 0.18f, 32);
+        b.blob({0, 0.08f, 0.78f}, {0.32f, 0.3f, 0.2f}, leaves * 1.18f, 0.15f, 33);
+        out.push_back(b.mesh);
+    }
+    {   // Elm: tall trunk, a high rounded crown.
+        Builder b;
+        const V3 elm{0.25f, 0.36f, 0.15f};
+        b.frustum(0, 0.08f, 0.66f, 0.05f, 6, kBark);
+        b.blob({0, 0, 0.8f}, {0.3f, 0.3f, 0.24f}, elm, 0.15f, 34);
+        b.blob({0.1f, -0.08f, 0.93f}, {0.22f, 0.22f, 0.16f}, elm * 1.15f, 0.12f, 35);
+        b.blob({-0.12f, 0.1f, 0.68f}, {0.2f, 0.2f, 0.14f}, elm * 0.9f, 0.12f, 36);
+        out.push_back(b.mesh);
+    }
+    {   // Autumn oak.
+        Builder b;
+        const V3 gold{0.62f, 0.42f, 0.12f}, rust{0.58f, 0.24f, 0.08f};
+        b.frustum(0, 0.1f, 0.5f, 0.07f, 6, kBark);
+        b.blob({0, 0, 0.68f}, {0.42f, 0.42f, 0.3f}, gold, 0.15f, 37);
+        b.blob({0.16f, 0.1f, 0.82f}, {0.28f, 0.28f, 0.2f}, rust, 0.1f, 38);
+        b.blob({-0.15f, -0.08f, 0.78f}, {0.26f, 0.26f, 0.2f}, gold * 1.1f, 0.1f, 39);
+        out.push_back(b.mesh);
+    }
+    for (int autumn = 0; autumn < 2; ++autumn) {
+        // Birch: slim white trunk with dark marks, small light crowns.
+        Builder b;
+        const V3 bark{0.86f, 0.84f, 0.78f}, mark{0.15f, 0.14f, 0.13f};
+        const V3 crown = autumn ? V3{0.78f, 0.65f, 0.2f} : V3{0.36f, 0.52f, 0.2f};
+        b.frustum(0, 0.05f, 0.18f, 0.045f, 6, bark);
+        b.frustum(0.18f, 0.045f, 0.2f, 0.045f, 6, mark);
+        b.frustum(0.2f, 0.045f, 0.42f, 0.04f, 6, bark);
+        b.frustum(0.42f, 0.04f, 0.44f, 0.04f, 6, mark);
+        b.frustum(0.44f, 0.04f, 0.7f, 0.025f, 6, bark);
+        b.blob({0.03f, 0, 0.66f}, {0.2f, 0.2f, 0.26f}, crown, 0.15f, 40 + autumn);
+        b.blob({-0.06f, 0.05f, 0.84f}, {0.15f, 0.15f, 0.18f}, crown * 1.12f, 0.12f, 42 + autumn);
+        b.blob({0.08f, -0.06f, 0.52f}, {0.14f, 0.14f, 0.14f}, crown * 0.9f, 0.12f, 44 + autumn);
+        out.push_back(b.mesh);
+    }
+    {   // Dead oak: bare grey limbs.
+        Builder b;
+        const V3 grey{0.4f, 0.36f, 0.32f};
+        b.frustum(0, 0.1f, 0.45f, 0.07f, 6, grey);
+        const V3 fork{0, 0, 0.45f};
+        const V3 tips[5] = {{0.32f, 0.1f, 0.8f}, {-0.28f, 0.18f, 0.75f}, {0.05f, -0.3f, 0.85f}, {-0.1f, 0.05f, 0.95f}, {0.22f, -0.2f, 0.66f}};
+        for (int i = 0; i < 5; ++i) {
+            b.limb(fork, tips[i], 0.05f, 0.012f, 4, grey * (0.9f + 0.05f * i));
+            const V3 twig = tips[i] + V3{tips[i].y * 0.4f, -tips[i].x * 0.4f, 0.06f};
+            b.limb(tips[i], twig, 0.012f, 0.004f, 3, grey);
+        }
+        out.push_back(b.mesh);
+    }
+    return out;
+}
+
+std::vector<Mesh> bushVariants() {
+    std::vector<Mesh> out;
+    out.push_back(bush());
+    {   // Berry bush: speckled with red.
+        Builder b;
+        const V3 leaves{0.22f, 0.34f, 0.15f};
+        b.blob({0, 0, 0.45f}, {0.75f, 0.75f, 0.5f}, leaves, 0.2f, 50);
+        b.blob({-0.3f, 0.2f, 0.4f}, {0.45f, 0.45f, 0.4f}, leaves * 1.1f, 0.15f, 51);
+        for (int i = 0; i < 9; ++i) {
+            const float a = i * 2.39f, r = 0.55f + 0.1f * std::sin(i * 1.7f);
+            b.blob({std::cos(a) * r, std::sin(a) * r, 0.35f + 0.05f * (i % 3)}, {0.07f, 0.07f, 0.07f}, {0.7f, 0.08f, 0.08f}, 0, 52 + i);
+        }
+        out.push_back(b.mesh);
+    }
+    {   // Dark thorn: taller, darker, scraggly.
+        Builder b;
+        const V3 dark{0.16f, 0.24f, 0.11f};
+        b.blob({0, 0, 0.6f}, {0.55f, 0.55f, 0.65f}, dark, 0.35f, 60);
+        b.blob({0.3f, -0.15f, 0.45f}, {0.4f, 0.4f, 0.45f}, dark * 1.2f, 0.3f, 61);
+        b.blob({-0.25f, 0.2f, 0.75f}, {0.3f, 0.3f, 0.35f}, dark * 0.9f, 0.3f, 62);
+        out.push_back(b.mesh);
+    }
+    {   // Reeds: a clump of tall thin blades with seed heads.
+        Builder b;
+        const V3 green{0.45f, 0.52f, 0.25f}, tan{0.62f, 0.55f, 0.32f}, head{0.38f, 0.26f, 0.15f};
+        for (int i = 0; i < 14; ++i) {
+            const float a = i * 2.39f, r = 0.15f + 0.6f * std::fmod(i * 0.618f, 1.0f);
+            const V3 base{std::cos(a) * r, std::sin(a) * r, 0};
+            const V3 top = base + V3{std::cos(a) * 0.15f, std::sin(a) * 0.15f, 1.1f + 0.4f * std::sin(i * 3.1f)};
+            b.limb(base, top, 0.02f, 0.005f, 3, i % 3 ? green : tan);
+            if (i % 4 == 0) b.limb(top - V3{0, 0, 0.18f}, top, 0.035f, 0.03f, 4, head);
+        }
+        out.push_back(b.mesh);
+    }
+    return out;
+}
+
+std::vector<Mesh> rockVariants() {
+    std::vector<Mesh> out;
+    const V3 stone{0.5f, 0.48f, 0.45f};
+    out.push_back(rock());
+    {   // Slab: flat and broad, a mossy top.
+        Builder b;
+        b.blob({0, 0, 0.18f}, {1.1f, 0.9f, 0.32f}, stone * 1.05f, 0.25f, 70);
+        b.blob({0.1f, 0.05f, 0.33f}, {0.6f, 0.5f, 0.08f}, {0.32f, 0.4f, 0.22f}, 0.2f, 71);
+        out.push_back(b.mesh);
+    }
+    {   // Shard: tall and angular, darker.
+        Builder b;
+        b.blob({0, 0, 0.5f}, {0.6f, 0.5f, 1.0f}, stone * 0.85f, 0.45f, 72);
+        b.blob({0.45f, 0.2f, 0.2f}, {0.35f, 0.3f, 0.3f}, stone * 0.9f, 0.4f, 73);
+        out.push_back(b.mesh);
+    }
+    {   // Cluster: three stones together, warmer.
+        Builder b;
+        const V3 warm{0.55f, 0.5f, 0.44f};
+        b.blob({0, 0, 0.3f}, {0.7f, 0.6f, 0.6f}, warm, 0.35f, 74);
+        b.blob({0.7f, 0.3f, 0.18f}, {0.4f, 0.35f, 0.35f}, warm * 0.9f, 0.3f, 75);
+        b.blob({-0.5f, 0.55f, 0.14f}, {0.32f, 0.3f, 0.28f}, warm * 1.1f, 0.3f, 76);
+        out.push_back(b.mesh);
+    }
+    return out;
+}
+
+Mesh stump() {
+    Builder b;
+    const V3 wood{0.62f, 0.5f, 0.34f};
+    // Base at the origin, about 0.5 across; the broken top lies beside it.
+    b.frustum(0, 0.32f, 0.35f, 0.26f, 8, kBark);
+    b.frustum(0.35f, 0.26f, 0.36f, 0, 8, wood);
+    for (int i = 0; i < 4; ++i) {
+        const float a = i * 1.57f + 0.4f;
+        b.limb({std::cos(a) * 0.25f, std::sin(a) * 0.25f, 0.08f}, {std::cos(a) * 0.5f, std::sin(a) * 0.5f, -0.05f}, 0.07f, 0.03f, 4, kBark * 0.9f);
+    }
+    b.limb({0.4f, 0.1f, 0.18f}, {1.6f, 0.5f, 0.15f}, 0.2f, 0.16f, 7, kBark);
+    return b.mesh;
+}
 
 Mesh pine() {
     Builder b;
@@ -263,6 +450,128 @@ Mesh copse() {
     b.blob({0.35f, 0.2f, 0.4f}, {0.35f, 0.35f, 0.35f}, leaves * 1.12f, 0.2f, 22);
     b.blob({-0.3f, 0.25f, 0.35f}, {0.32f, 0.3f, 0.3f}, leaves * 0.88f, 0.2f, 23);
     return b.mesh;
+}
+
+std::vector<Mesh> copseVariants() {
+    std::vector<Mesh> out;
+    out.push_back(copse());
+    {   // Pines: a cluster of dark cones.
+        Builder b;
+        const V3 needles{0.12f, 0.26f, 0.15f};
+        const float spots[5][3] = {{0, 0, 1.0f}, {0.3f, 0.15f, 0.8f}, {-0.28f, 0.2f, 0.85f}, {0.1f, -0.32f, 0.75f}, {-0.2f, -0.25f, 0.9f}};
+        for (int i = 0; i < 5; ++i) {
+            const V3 c{spots[i][0], spots[i][1], 0};
+            const float h = spots[i][2];
+            for (const auto& tier : {std::pair<float, float>{0.15f, 0.2f}, {0.45f, 0.15f}}) {
+                const float z0 = h * tier.first;
+                for (int k = 0; k < 6; ++k) {
+                    const float a0 = 2 * kPi * k / 6, a1 = 2 * kPi * (k + 1) / 6;
+                    b.tri(c + V3{std::cos(a0) * tier.second, std::sin(a0) * tier.second, z0},
+                          c + V3{std::cos(a1) * tier.second, std::sin(a1) * tier.second, z0}, c + V3{0, 0, h}, needles * (0.9f + 0.1f * i));
+                }
+            }
+        }
+        out.push_back(b.mesh);
+    }
+    {   // Autumn: gold and rust crowns.
+        Builder b;
+        b.blob({0, 0, 0.5f}, {0.5f, 0.45f, 0.45f}, {0.62f, 0.42f, 0.12f}, 0.2f, 24);
+        b.blob({0.35f, 0.2f, 0.4f}, {0.35f, 0.35f, 0.35f}, {0.58f, 0.25f, 0.08f}, 0.2f, 25);
+        b.blob({-0.3f, 0.25f, 0.35f}, {0.32f, 0.3f, 0.3f}, {0.5f, 0.45f, 0.15f}, 0.2f, 26);
+        out.push_back(b.mesh);
+    }
+    return out;
+}
+
+namespace {
+// A flat-lit triangle (normal up), for ground cover.
+void flatTri(Mesh& m, V3 a, V3 b, V3 c, V3 ca, V3 cb, V3 cc) {
+    const V3 pts[3] = {a, b, c}, cols[3] = {ca, cb, cc};
+    for (int i = 0; i < 3; ++i)
+        m.data.insert(m.data.end(), {pts[i].x, pts[i].y, pts[i].z, 0, 0, 1, cols[i].x, cols[i].y, cols[i].z});
+}
+float frand(int i) { return 0.5f + 0.5f * std::sin(static_cast<float>(i) * 12.9898f + 78.233f); }
+}  // namespace
+
+Mesh grassTuft() {
+    Mesh m;
+    const V3 base{0.62f, 0.66f, 0.55f}, tip{1.04f, 1.06f, 0.9f};
+    for (int i = 0; i < 9; ++i) {
+        const float a = 2 * kPi * (static_cast<float>(i) / 9 + frand(i) * 0.2f);
+        const float r = 0.03f + frand(i + 20) * 0.07f, h = 0.16f + frand(i + 40) * 0.26f, lean = 0.05f + frand(i + 60) * 0.1f;
+        const V3 dir{std::cos(a), std::sin(a), 0}, side{-std::sin(a) * 0.022f, std::cos(a) * 0.022f, 0};
+        const V3 root = dir * r;
+        flatTri(m, root - side, root + side, root + dir * lean + V3{0, 0, h}, base, base, tip);
+    }
+    return m;
+}
+
+Mesh flowers() {
+    Mesh m;
+    const V3 stem{0.5f, 0.75f, 0.4f}, petal{2, 2, 2};
+    for (int i = 0; i < 3; ++i) {
+        const float a = 2 * kPi * i / 3 + frand(i) * 0.6f;
+        const V3 root{std::cos(a) * 0.05f, std::sin(a) * 0.05f, 0};
+        const float h = 0.2f + frand(i + 7) * 0.16f;
+        const V3 top = root + V3{0.02f, 0.01f, h};
+        flatTri(m, root + V3{-0.01f, 0, 0}, root + V3{0.01f, 0, 0}, top, stem * 0.7f, stem * 0.7f, stem);
+        const float s = 0.035f;
+        flatTri(m, top + V3{-s, 0, 0}, top + V3{s, 0, 0}, top + V3{0, s, 0.01f}, petal, petal, petal);
+        flatTri(m, top + V3{-s, 0, 0}, top + V3{s, 0, 0}, top + V3{0, -s, 0.01f}, petal, petal, petal);
+        flatTri(m, top + V3{0, -s, 0}, top + V3{0, s, 0}, top + V3{s, 0, 0.012f}, petal, petal, petal);
+    }
+    return m;
+}
+
+Mesh pebbles() {
+    Mesh m;
+    const V3 stone{0.62f, 0.6f, 0.56f};
+    for (int k = 0; k < 3; ++k) {
+        const V3 c{(frand(k) - 0.5f) * 0.4f, (frand(k + 5) - 0.5f) * 0.4f, 0};
+        const float r = 0.03f + frand(k + 9) * 0.05f;
+        const V3 top = c + V3{0, 0, r * 0.7f};
+        for (int i = 0; i < 5; ++i) {
+            const float a0 = 2 * kPi * i / 5, a1 = 2 * kPi * (i + 1) / 5;
+            const V3 p0 = c + V3{std::cos(a0) * r, std::sin(a0) * r, 0}, p1 = c + V3{std::cos(a1) * r, std::sin(a1) * r, 0};
+            const float shade = 0.8f + 0.25f * frand(i + k * 5);
+            flatTri(m, p0, p1, top, stone * shade * 0.8f, stone * shade * 0.8f, stone * shade * 1.1f);
+        }
+    }
+    return m;
+}
+
+Mesh twigs() {
+    Mesh m;
+    const V3 wood{0.42f, 0.32f, 0.2f}, leaf{0.6f, 0.38f, 0.16f};
+    for (int k = 0; k < 2; ++k) {
+        const float a = frand(k) * kPi;
+        const V3 d{std::cos(a) * 0.35f, std::sin(a) * 0.35f, 0}, s{-std::sin(a) * 0.012f, std::cos(a) * 0.012f, 0};
+        const V3 z{0, 0, 0.015f};
+        flatTri(m, z - d - s, d - s + z, d + s + z, wood, wood, wood * 0.8f);
+        flatTri(m, z - d - s, d + s + z, z - d + s, wood, wood * 0.8f, wood);
+    }
+    // A few fallen leaves.
+    for (int i = 0; i < 5; ++i) {
+        const V3 c{(frand(i + 3) - 0.5f) * 0.6f, (frand(i + 13) - 0.5f) * 0.6f, 0.01f};
+        const float r = 0.04f;
+        const V3 col = leaf * (0.7f + 0.5f * frand(i + 23));
+        flatTri(m, c + V3{-r, 0, 0}, c + V3{r, 0, 0}, c + V3{0, r * 1.4f, 0.005f}, col, col, col);
+        flatTri(m, c + V3{-r, 0, 0}, c + V3{r, 0, 0}, c + V3{0, -r * 1.2f, 0.005f}, col, col, col);
+    }
+    return m;
+}
+
+Mesh fern() {
+    Mesh m;
+    const V3 dark{0.35f, 0.55f, 0.3f}, light{0.8f, 1.0f, 0.6f};
+    for (int i = 0; i < 6; ++i) {
+        const float a = 2 * kPi * i / 6 + frand(i) * 0.4f;
+        const V3 dir{std::cos(a), std::sin(a), 0}, side{-std::sin(a) * 0.06f, std::cos(a) * 0.06f, 0};
+        const V3 mid = dir * 0.22f + V3{0, 0, 0.22f}, tip = dir * 0.45f + V3{0, 0, 0.12f};
+        flatTri(m, {0, 0, 0}, mid - side, mid + side, dark, dark * 1.1f, dark * 1.1f);
+        flatTri(m, mid - side, tip, mid + side, dark * 1.1f, light, dark * 1.1f);
+    }
+    return m;
 }
 
 }  // namespace meshes

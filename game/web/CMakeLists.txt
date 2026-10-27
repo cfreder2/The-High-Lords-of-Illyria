@@ -15,7 +15,7 @@ target_link_options(illyria_web PRIVATE
     -sMAX_WEBGL_VERSION=2
     -sALLOW_MEMORY_GROWTH=1
     -sENVIRONMENT=web
-    "-sEXPORTED_FUNCTIONS=['_main','_illyria_version','_illyria_pointer','_illyria_wheel','_illyria_select_squad','_illyria_focus_squad','_illyria_stop','_illyria_hot_spot','_illyria_toggle_pause','_illyria_cycle_speed','_illyria_restart','_illyria_fast_forward','_illyria_set_camera','_illyria_overview','_illyria_hud','_illyria_labels']"
+    "-sEXPORTED_FUNCTIONS=['_main','_illyria_version','_illyria_pointer','_illyria_wheel','_illyria_select_squad','_illyria_focus_squad','_illyria_stop','_illyria_hot_spot','_illyria_toggle_pause','_illyria_cycle_speed','_illyria_restart','_illyria_fast_forward','_illyria_set_camera','_illyria_overview','_illyria_set_graphics','_illyria_graphics_preset','_illyria_hud','_illyria_labels']"
     "-sEXPORTED_RUNTIME_METHODS=['cwrap','ccall','UTF8ToString']"
 )
 

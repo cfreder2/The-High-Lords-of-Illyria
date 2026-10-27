@@ -21,6 +21,8 @@ A real-time tactical strategy game with grand-strategy campaign mechanics: the s
 | Select a squad | Tap a blue soldier or a squad card | Click |
 | March / attack | Tap ground / tap an enemy | Click |
 
+The ⚙ button opens the graphics settings: Low, Medium or High, or switch individual effects on and off. They change only the look; every setting plays the same battle.
+
 ## Layout
 
 | Path | Contents |

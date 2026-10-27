@@ -1,0 +1,15 @@
+// Every program the renderer links: name, vertex body, fragment body.
+// Included by renderer.cpp and tools/shaders/shaderdump.cpp.
+ILLYRIA_SHADER("terrain", shaders::kTerrainVs, shaders::kTerrainFs)
+ILLYRIA_SHADER("decal", shaders::kDecalVs, shaders::kDecalFs)
+ILLYRIA_SHADER("arrow", shaders::kArrowVs, shaders::kArrowFs)
+ILLYRIA_SHADER("sprite", shaders::kSpriteVs, shaders::kSpriteFs)
+ILLYRIA_SHADER("particle", shaders::kParticleVs, shaders::kParticleFs)
+ILLYRIA_SHADER("mesh", shaders::kMeshVs, shaders::kMeshFs)
+ILLYRIA_SHADER("water", shaders::kWaterVs, shaders::kWaterFs)
+ILLYRIA_SHADER("far", shaders::kFarVs, shaders::kFarFs)
+ILLYRIA_SHADER("ribbon", shaders::kRibbonVs, shaders::kRibbonFs)
+ILLYRIA_SHADER("cover", shaders::kCoverVs, shaders::kCoverFs)
+ILLYRIA_SHADER("meshDepth", shaders::kMeshVs, shaders::kDepthFs)
+ILLYRIA_SHADER("terrainDepth", shaders::kTerrainVs, shaders::kDepthFs)
+ILLYRIA_SHADER("sky", shaders::kSkyVs, shaders::kSkyFs)
