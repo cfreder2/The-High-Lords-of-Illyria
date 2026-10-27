@@ -17,10 +17,10 @@ enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, 
 // A static object in the world: scenery that blocks movement and stops
 // missiles (docs/GAME_DESIGN.md §5.4, tier B).
 struct Obstacle {
-    enum class Kind : uint8_t { Pine, Oak, Bush, Rock, Boulder, House, Pillar };
+    enum class Kind : uint8_t { Pine, Oak, Bush, Rock, Boulder, House, Pillar, Log };
     Kind kind = Kind::Rock;
     Vec3 pos;           // base, on the ground
-    Fixed radius;       // collision radius (houses: unused)
+    Fixed radius;       // collision radius (houses: unused; logs: half the length)
     Fixed height;
     Fixed halfX, halfY; // houses: axis-aligned footprint
     uint8_t variant = 0;
@@ -58,6 +58,8 @@ public:
     const std::vector<Polyline>& roads() const { return roads_; }
     const std::vector<Polyline>& rivers() const { return rivers_; }
     const std::vector<Polyline>& berms() const { return berms_; }
+    // Ponds: (x, y) centre, z = radius.
+    const std::vector<Vec3>& ponds() const { return ponds_; }
     // Where armies are meant to meet: the ford.
     Vec3 ford() const { return ford_; }
     // Hash of everything generated, for cross-platform checks.
@@ -73,6 +75,7 @@ private:
     std::vector<Ground> ground_;  // per terrain cell
     std::vector<Obstacle> obstacles_;
     std::vector<Polyline> roads_, rivers_, berms_;
+    std::vector<Vec3> ponds_;
     Vec3 ford_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample

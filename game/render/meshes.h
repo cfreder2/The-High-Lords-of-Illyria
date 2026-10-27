@@ -33,6 +33,10 @@ Mesh banner();
 Mesh ruin();
 Mesh temple();
 Mesh sageTower();
+// A fallen trunk along x from -1 to 1, radius 1 (scale: half length, girth, girth).
+Mesh log();
+// A clump of tree crowns for the distant continent, about 1 across.
+Mesh copse();
 }  // namespace meshes
 
 }  // namespace illyria::game

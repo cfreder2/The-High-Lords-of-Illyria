@@ -238,6 +238,33 @@ Mesh sageTower() {
     return b.mesh;
 }
 
+Mesh log() {
+    Builder b;
+    const V3 bark{0.34f, 0.25f, 0.17f}, wood{0.62f, 0.5f, 0.34f}, moss{0.32f, 0.4f, 0.2f};
+    // An eight-sided trunk lying along x, resting on the ground.
+    const int n = 8;
+    for (int i = 0; i < n; ++i) {
+        const float a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+        const V3 p0{-1, std::cos(a0), 1 + std::sin(a0)}, p1{-1, std::cos(a1), 1 + std::sin(a1)};
+        const V3 q0{1, std::cos(a0) * 0.85f, 1 + std::sin(a0) * 0.85f}, q1{1, std::cos(a1) * 0.85f, 1 + std::sin(a1) * 0.85f};
+        b.quad(p0, q0, q1, p1, (i == 2 || i == 3) ? moss : bark * (0.85f + 0.05f * static_cast<float>(i % 3)));
+        b.tri({-1, 0, 1}, p0, p1, wood);  // sawn or broken ends show pale wood
+        b.tri({1, 0, 1}, q1, q0, wood);
+    }
+    // A snapped branch stub.
+    b.frustum(0, 0.3f, 1.4f, 0.12f, 5, bark);
+    return b.mesh;
+}
+
+Mesh copse() {
+    Builder b;
+    const V3 leaves{0.2f, 0.32f, 0.13f};
+    b.blob({0, 0, 0.5f}, {0.5f, 0.45f, 0.45f}, leaves, 0.2f, 21);
+    b.blob({0.35f, 0.2f, 0.4f}, {0.35f, 0.35f, 0.35f}, leaves * 1.12f, 0.2f, 22);
+    b.blob({-0.3f, 0.25f, 0.35f}, {0.32f, 0.3f, 0.3f}, leaves * 0.88f, 0.2f, 23);
+    return b.mesh;
+}
+
 }  // namespace meshes
 
 }  // namespace illyria::game

@@ -288,17 +288,56 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
                 o.radius = boulder ? r(7, 5) + size * 8 / 5 : r(1, 2) + size * 3 / 5;
                 o.height = boulder ? r(6, 5) + size * 2 : r(1, 2) + size * 3 / 5;
             };
+            const auto log = [&] {
+                // A fallen trunk: radius is half its length, height its girth.
+                o.kind = Obstacle::Kind::Log;
+                o.radius = r(3, 2) + size * 2;
+                o.height = r(2, 5) + size * r(2, 5);
+                o.solid = false;
+            };
+            const auto reeds = [&] {
+                bush();
+                o.variant = 3;
+            };
+            // The open country is not uniform: groves, rocky outcrops and
+            // bare meadow come in patches (noise fields, not extra RNG draws).
+            const Fixed grove = noise::value(seed ^ 0x6A0E, x, y, 70);
+            const Fixed outcrop = noise::value(seed ^ 0x0C7, x, y, 55);
+            bool byWater = false;
+            for (int k = 0; k < 4 && !byWater; ++k) {
+                const Ground w = groundAt(x + m(k == 0 ? 4 : k == 1 ? -4 : 0), y + m(k == 2 ? 4 : k == 3 ? -4 : 0));
+                byWater = w == Ground::Shallows || w == Ground::DeepWater;
+            }
             switch (g) {
                 case Ground::Forest:
                     if (roll < r(2, 5)) tree(o.pos.z > m(30) || variant < 2);
                     else if (roll < r(31, 50)) bush();
+                    else if (roll < r(33, 50)) log();
+                    else if (roll < r(67, 100) && outcrop > r(3, 4)) rock(variant == 0);
                     else place = false;
                     break;
                 case Ground::Plains:
-                    if (roll < r(9, 500)) tree(false);
-                    else if (roll < r(1, 20)) bush();
-                    else if (roll < r(31, 500)) rock(false);
-                    else place = false;
+                    if (byWater) {
+                        // Only reeds at the water's edge: nothing solid to shove waders in.
+                        if (roll < r(2, 5)) reeds();
+                        else place = false;
+                    } else if (grove > r(18, 25)) {
+                        if (roll < r(1, 3)) tree(variant == 0);
+                        else if (roll < r(1, 2)) bush();
+                        else if (roll < r(53, 100)) log();
+                        else place = false;
+                    } else if (outcrop > r(4, 5)) {
+                        if (roll < r(3, 25)) rock(true);
+                        else if (roll < r(8, 25)) rock(false);
+                        else if (roll < r(9, 25)) bush();
+                        else place = false;
+                    } else {
+                        if (roll < r(6, 1000)) tree(false);
+                        else if (roll < r(2, 50)) bush();
+                        else if (roll < r(27, 500)) rock(false);
+                        else if (roll < r(28, 500)) log();
+                        else place = false;
+                    }
                     break;
                 case Ground::Rock:
                     if (roll < r(1, 10)) rock(true);
@@ -364,6 +403,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             const Fixed edge = m(std::min(std::min(ix, iy), std::min(cells - ix, cells - iy)) * kCellSize);
             const Fixed fade = min(Fixed::one(), edge / 48);
             s.height += (noise::fbm(sDetail, x, y, 48) - r(1, 2)) * (m(2) + s.mountain / 20) * fade;
+            s.height += (noise::value(sDetail ^ 0xB0B, x, y, 14) - r(1, 2)) * r(4, 5) * fade;  // tussocks and dips
             c.carve(s, x, y);
             const size_t i = static_cast<size_t>(iy) * n + ix;
             h[i] = s.height;
@@ -408,6 +448,51 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             const size_t i = static_cast<size_t>(iy) * n + ix;
             const Fixed d = distanceTo(rg.berms_, cell * ix, cell * iy, m(5));
             if (d < m(5) && rg.water_[i].raw == kDryRaw) shaped[i] += r(9, 5) * bump(d / 5);
+        }
+    }
+    // Ponds: hollows in the open country holding still water, some shallow
+    // enough to wade, some not. One candidate per 96 m block.
+    {
+        const uint64_t sp = noise::nextSeed(c.seed() ^ 0x90D5);
+        const int64_t block = 96;
+        const int64_t bx0 = ox / block, by0 = oy / block;
+        for (int64_t by = by0; by * block < oy + cells * kCellSize; ++by) {
+            for (int64_t bx = bx0; bx * block < ox + cells * kCellSize; ++bx) {
+                if (noise::lattice(sp, bx, by) > r(3, 20)) continue;
+                const Fixed px = m(bx * block + 20) + noise::lattice(sp ^ 1, bx, by) * 56 - OX;
+                const Fixed py = m(by * block + 20) + noise::lattice(sp ^ 2, bx, by) * 56 - OY;
+                const Fixed radius = m(6) + noise::lattice(sp ^ 3, bx, by) * 12;
+                const Fixed depth = r(3, 5) + noise::lattice(sp ^ 4, bx, by) * r(6, 5);
+                const int32_t ci = static_cast<int32_t>((px / cell).floorToInt()), cj = static_cast<int32_t>((py / cell).floorToInt());
+                const int32_t reach = static_cast<int32_t>((radius * 2 / cell).floorToInt()) + 1;
+                if (ci - reach < 2 || cj - reach < 2 || ci + reach > cells - 2 || cj + reach > cells - 2) continue;
+                if (flatDist(px, py, rg.ford_) < m(140)) continue;
+                // Dry, gentle, open ground well clear of rivers, roads and the berm.
+                bool ok = true;
+                Fixed rim = m(100000), top = -m(100000);
+                for (int32_t j = cj - reach; j <= cj + reach && ok; ++j) {
+                    for (int32_t i = ci - reach; i <= ci + reach && ok; ++i) {
+                        const size_t k = static_cast<size_t>(j) * n + i;
+                        ok = rg.water_[k].raw == kDryRaw && roadDist[k] > m(12) && mountain[k] < m(30);
+                        const Fixed d = flatDist(cell * i, cell * j, {px, py, Fixed::zero()});
+                        if (d >= radius && d < radius + cell) rim = min(rim, shaped[k]);
+                        if (d < radius) top = max(top, shaped[k]);
+                    }
+                }
+                if (!ok || rim > m(99999) || top - rim > m(3)) continue;
+                if (distanceTo(rg.berms_, px, py, radius + m(10)) < radius + m(8)) continue;
+                const Fixed surface = rim - r(1, 4);
+                for (int32_t j = cj - reach; j <= cj + reach; ++j) {
+                    for (int32_t i = ci - reach; i <= ci + reach; ++i) {
+                        const size_t k = static_cast<size_t>(j) * n + i;
+                        const Fixed t = flatDist(cell * i, cell * j, {px, py, Fixed::zero()}) / radius;
+                        if (t >= Fixed::one()) continue;
+                        shaped[k] = min(shaped[k], surface - r(1, 5) - depth * (Fixed::one() - t * t));
+                        rg.water_[k] = surface;
+                    }
+                }
+                rg.ponds_.push_back({px, py, radius});
+            }
         }
     }
     rg.terrain_ = Terrain::fromSamples(cells, cell, shaped);

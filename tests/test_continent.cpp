@@ -55,7 +55,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x92f4aab60026dd7d;
+    constexpr uint64_t kGolden = 0x05aaa61db58192c6;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x6cb38ee6aafa9d0a;
+    constexpr uint64_t kGolden = 0x412941d92a02d82e;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -101,7 +101,28 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0x5271c50326d11be7;
+    constexpr uint64_t kGolden = 0x24613a8d88628918;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
+}
+
+TEST(battlefield_is_varied_not_open_grass) {
+    // The full 1 km battlefield: ponds, fallen logs, groves and rock outcrops, not empty grass.
+    static const Region r = Region::fromContinent(continent(), continent().crossings().front().pos, 256);
+    CHECK(r.ponds().size() >= 5);
+    int logs = 0, trees = 0, boulders = 0;
+    for (const Obstacle& o : r.obstacles()) {
+        logs += o.kind == Obstacle::Kind::Log;
+        trees += o.kind == Obstacle::Kind::Oak || o.kind == Obstacle::Kind::Pine;
+        boulders += o.kind == Obstacle::Kind::Boulder;
+        CHECK(o.kind != Obstacle::Kind::Log || !o.solid);  // stepped over
+    }
+    CHECK(logs > 200);
+    CHECK(trees > 2000);
+    CHECK(boulders > 200);
+    // Every pond holds water.
+    for (const Vec3& p : r.ponds()) {
+        const Ground g = r.groundAt(p.x, p.y);
+        CHECK(g == Ground::Shallows || g == Ground::DeepWater);
+    }
 }

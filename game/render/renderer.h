@@ -74,6 +74,7 @@ private:
     MeshBatch pines_, oaks_, bushes_, rocks_, houses_, pillars_, capsules_, spheres_;
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
+    MeshBatch logs_, copses_;
     uint64_t marksUploaded_ = 0;
 };
 

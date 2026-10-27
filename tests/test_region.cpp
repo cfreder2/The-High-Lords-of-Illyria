@@ -31,7 +31,7 @@ TEST(region_has_every_kind_of_ground_and_scenery) {
     for (int y = 0; y < r.terrain().cells(); ++y)
         for (int x = 0; x < r.terrain().cells(); ++x) ++ground[static_cast<int>(r.cellGround(x, y))];
     for (int g = 0; g < 7; ++g) CHECK(ground[g] > 50);
-    int kinds[7] = {};
+    int kinds[8] = {};
     for (const Obstacle& o : r.obstacles()) ++kinds[static_cast<int>(o.kind)];
     CHECK(kinds[0] > 500 && kinds[1] > 500 && kinds[2] > 500);  // pines, oaks, undergrowth
     CHECK(kinds[3] > 100 && kinds[4] > 100);                      // rocks, boulders
@@ -45,7 +45,7 @@ TEST(region_is_deterministic_and_pinned) {
     CHECK(Region::generateIllyria(20261027).checksum() == illyriaRegion()->checksum());
     CHECK(Region::generateIllyria(1).checksum() != illyriaRegion()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x7763e599ce28c640;
+    constexpr uint64_t kGolden = 0xf5ea7711390db4cc;
     if (illyriaRegion()->checksum() != kGolden) std::printf("  region checksum: 0x%016llx\n", static_cast<unsigned long long>(illyriaRegion()->checksum()));
     CHECK(illyriaRegion()->checksum() == kGolden);
 }
@@ -171,7 +171,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x24aee36c35b6375a;
+    constexpr uint64_t kGolden = 0x1383c013425d3969;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

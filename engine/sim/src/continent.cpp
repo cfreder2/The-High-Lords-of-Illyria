@@ -97,9 +97,13 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
                        {N(562, 450), N(566, 380), N(572, 300), N(560, 220), N(566, 140), N(555, 60), N(560, -20)},
                        m(13), m(3)});
     rivers_.push_back({"Emberflow", {N(790, 425), N(780, 390), N(730, 372), N(660, 380), N(600, 386), N(566, 380)}, m(9), r(5, 2)});
-    rivers_.push_back({"Greymere", {N(330, 700), N(270, 690), N(210, 705), N(150, 715), N(90, 712), N(0, 710)}, m(9), r(5, 2)});
+    // The Greymere leaves the Aldwater and runs west to the sea, cutting off the
+    // north-west country: only Greymere Bridge and Greymere Ford lead in.
+    rivers_.push_back({"Greymere",
+                       {N(575, 760), N(500, 748), N(420, 735), N(330, 722), N(270, 712), N(210, 705), N(150, 715), N(90, 712), N(0, 710)},
+                       m(11), r(11, 4)});
     rivers_.push_back({"Wending", {N(300, 290), N(230, 282), N(170, 268), N(110, 262), N(0, 255)}, m(8), m(2)});
-    rivers_.push_back({"Coldbrook", {N(800, 900), N(720, 880), N(650, 855), N(590, 840)}, m(7), m(2)});
+    rivers_.push_back({"Coldbrook", {N(725, 880), N(650, 855), N(590, 840)}, m(7), m(2)});
 
     // Mountain chains. The gaps between them, and the passes, are the chokepoints.
     ridges_.push_back({"Thornspine Mountains", {{N(200, 930), N(260, 905), N(330, 885), N(400, 905), N(470, 880), N(530, 900)}, m(700)}, m(430)});
@@ -113,8 +117,14 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
     ridges_.push_back({"Cinder Spur", {{N(905, 300), N(830, 280), N(760, 290)}, m(450)}, m(260)});
     ridges_.push_back({"Dragonback Mountains", {{N(60, 90), N(140, 60), N(220, 85), N(290, 55), N(340, 90)}, m(650)}, m(390)});
     ridges_.push_back({"Northmoor Hills", {{N(700, 940), N(790, 960)}, m(600)}, m(140)});
-    ridges_.push_back({"Longwood Ridge", {{N(420, 360), N(425, 260), N(415, 160), N(420, 100)}, m(220)}, m(60)});
     ridges_.push_back({"Southdown Hills", {{N(690, 90), N(790, 70)}, m(400)}, m(120)});
+    // The east is broken mountain country, not open plain.
+    ridges_.push_back({"Beren Heights", {{N(640, 775), N(700, 760), N(760, 785)}, m(420)}, m(190)});
+    ridges_.push_back({"Ungoeth Mountains", {{N(790, 925), N(835, 885), N(870, 850)}, m(480)}, m(330)});
+    ridges_.push_back({"Kestrel Fells", {{N(735, 575), N(790, 570), N(845, 545)}, m(360)}, m(170)});
+    ridges_.push_back({"Grimtor Hills", {{N(660, 300), N(700, 330)}, m(360)}, m(140)});
+    ridges_.push_back({"Barrow Downs", {{N(120, 380), N(170, 360)}, m(320)}, m(90)});
+    ridges_.push_back({"Witchmoor Hills", {{N(330, 120), N(380, 160)}, m(300)}, m(100)});
     // Passes: notches through the ranges (z = radius).
     passes_.push_back({N(905, 640).x, N(905, 640).y, m(550)});
     passes_.push_back({N(330, 885).x, N(330, 885).y, m(450)});
@@ -130,11 +140,13 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
     forests_.push_back({"Northwood", N(700, 820), m(500), m(400)});
     lakes_.push_back({"Mirrormere", N(200, 275), m(300), m(220)});
     lakes_.push_back({"Silverlake", N(790, 425), m(340), m(250)});
+    lakes_.push_back({"Longmere", N(420, 235), m(110), m(1300)});  // the long lake in the Longwood
 
     crossings_.push_back({Crossing::Kind::Ford, "Oakhaven Ford", N(582, 680)});
     crossings_.push_back({Crossing::Kind::Ford, "Westrun Ford", N(300, 440)});
     crossings_.push_back({Crossing::Kind::Ford, "Sorrow Ford", N(560, 220)});
     crossings_.push_back({Crossing::Kind::Ford, "Emberflow Ford", N(730, 372)});
+    crossings_.push_back({Crossing::Kind::Ford, "Greymere Ford", N(420, 735)});
     crossings_.push_back({Crossing::Kind::Bridge, "Kingsbridge", N(576, 520)});
     crossings_.push_back({Crossing::Kind::Bridge, "Old Bridge", N(160, 462)});
     crossings_.push_back({Crossing::Kind::Bridge, "Southbridge", N(566, 140)});
@@ -143,7 +155,7 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
     // Roads join the realms through the crossings and passes.
     const Fixed roadHalf = m(3);
     roads_.push_back({{N(80, 560), N(200, 555), N(330, 540), N(450, 530), N(576, 520), N(680, 515), N(790, 540), N(860, 600), N(905, 640), N(1000, 650)}, roadHalf});
-    roads_.push_back({{N(300, 760), N(420, 720), N(582, 680), N(700, 690), N(760, 690)}, roadHalf});
+    roads_.push_back({{N(300, 760), N(360, 750), N(420, 735), N(500, 700), N(582, 680), N(700, 690), N(760, 690)}, roadHalf});
     roads_.push_back({{N(330, 1000), N(330, 885), N(330, 800), N(250, 760), N(210, 705), N(230, 620), N(300, 560), N(330, 540), N(300, 440),
                        N(320, 330), N(230, 300), N(160, 180), N(220, 85), N(230, 0)}, roadHalf});
     roads_.push_back({{N(680, 515), N(640, 420), N(730, 372), N(700, 250), N(566, 140), N(450, 120), N(330, 90)}, roadHalf});
@@ -155,7 +167,9 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
                {"Thornspine Mts", N(380, 930), 1}, {"Graycrown Mts", N(330, 645), 1}, {"Ironveil Range", N(940, 830), 1},
                {"Dragonback Mts", N(200, 30), 1}, {"Ashen Hills", N(300, 330), 1}, {"Frostfang Spur", N(840, 740), 1},
                {"Cinder Spur", N(830, 255), 1}, {"Darkwood", N(170, 840), 3}, {"Longwood", N(450, 300), 3},
-               {"Mirefen", N(700, 640), 3}, {"Oakhaven Ford", N(582, 680), 4}, {"Kingsbridge", N(576, 520), 4}};
+               {"Mirefen", N(700, 640), 3}, {"Oakhaven Ford", N(582, 680), 4}, {"Kingsbridge", N(576, 520), 4},
+               {"Ungoeth Mts", N(830, 930), 1}, {"Beren Heights", N(700, 795), 1}, {"Kestrel Fells", N(790, 600), 1},
+               {"Longmere", N(445, 235), 2}};
 
     computeRiverSurfaces();
     for (const Area& lake : lakes_) {
@@ -182,6 +196,13 @@ Fixed Continent::landDistance(Fixed x, Fixed y) const {
 Fixed Continent::baseHeight(Fixed x, Fixed y, Fixed& mountain) const {
     const uint64_t sBase = noise::nextSeed(seed_ ^ 0xBA5E), sSmall = noise::nextSeed(sBase), sRidge = noise::nextSeed(sSmall);
     Fixed z = m(10) + noise::fbm(sBase, x, y, 1800) * 55 + (noise::fbm(sSmall, x, y, 450) - r(1, 2)) * 14;
+    // Rolling hill country comes and goes in patches a few kilometres across,
+    // with open plains between; it grows rougher toward the east.
+    const uint64_t sHillMask = noise::nextSeed(sRidge ^ 0x4111), sHill = noise::nextSeed(sHillMask);
+    const Fixed east = x / kWidth;
+    const Fixed hilly = noise::smoothstep(r(2, 5), r(7, 10), noise::fbm(sHillMask, x, y, 2600) + east / 5);
+    z += noise::fbm(sHill, x, y, 520) * hilly * (m(26) + east * 30);
+    z += (noise::value(sHill ^ 0x77, x, y, 140) - r(1, 2)) * 5;  // hummocks
     mountain = Fixed::zero();
     for (const Ridge& rg : ridges_) {
         size_t seg = 0;
@@ -215,6 +236,15 @@ void Continent::computeRiverSurfaces() {
             if ((parent.points.back() - rv.points.front()).flat().lengthSq() < m(1)) {
                 start = parent.points.back().z;
                 joined = true;
+            }
+            // Leaving mid-course: start at the parent's surface where they part.
+            if (&parent < &rv && !joined) {
+                for (const Vec3& p : parent.points) {
+                    if ((p - rv.points.front()).flat().lengthSq() < m(2500)) {
+                        start = p.z;
+                        joined = true;
+                    }
+                }
             }
         }
         Fixed surface = m(100000);
@@ -305,7 +335,9 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
             s.lakeSurface = surface;
             z = min(z, surface - Fixed::one() - (Fixed::one() - q) * 3);
         } else {
-            z = min(z, surface + r(2, 5) + (q - Fixed::one()) * lake.rx / 20);
+            // The basin rim rises fast so nearby hills keep their shape.
+            const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
+            z = min(z, surface + r(2, 5) + (q - Fixed::one()) * lake.rx / 6 + beyond * beyond * 600);
         }
     }
 

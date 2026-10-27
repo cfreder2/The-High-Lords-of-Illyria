@@ -322,7 +322,7 @@ void Renderer::drawMeshes(std::initializer_list<MeshBatch*> batches, const Camer
 
 void Renderer::uploadScenery(const Battle& battle) {
     const sim::Region& region = battle.region();
-    std::vector<float> pine, oak, bush, rock, house, pillar, shadows;
+    std::vector<float> pine, oak, bush, rock, house, pillar, logs, shadows;
     for (size_t i = 0; i < region.obstacles().size(); ++i) {
         const sim::Obstacle& o = region.obstacles()[i];
         const V3 pos = toV3(o.pos);
@@ -369,6 +369,11 @@ void Renderer::uploadScenery(const Battle& battle) {
                 pushInstance(pillar, pos, q, {r, r, h}, {1, 1, 1});
                 shadow = r * 1.5f;
                 break;
+            case sim::Obstacle::Kind::Log:
+                // Radius is half the length, height the girth; sunk a little into the turf.
+                pushInstance(logs, pos - V3{0, 0, h * 0.15f}, q, {r, h / 2, h / 2}, {tintVar, tintVar, tintVar});
+                shadow = 0;
+                break;
         }
         shadows.insert(shadows.end(), {pos.x, pos.y, pos.z, 0, shadow, 0, 1, 0, 0, 0, 0});
     }
@@ -378,6 +383,7 @@ void Renderer::uploadScenery(const Battle& battle) {
     uploadMeshInstances(rocks_, rock);
     uploadMeshInstances(houses_, house);
     uploadMeshInstances(pillars_, pillar);
+    uploadMeshInstances(logs_, logs);
     uploadDynamic(sceneryShadows_, shadows);
 
     // Ground types, one texel per cell.
@@ -650,6 +656,28 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(ruins_, ruins);
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
+
+    // Woods across the continent as clumps of crowns, so the land beyond the
+    // battlefield is not bare from mid zoom (the battlefield has real trees).
+    const FarGrid& g = battle.farGrid();
+    std::vector<float> copses;
+    for (int j = 0; j < g.ny; ++j) {
+        for (int i = 0; i < g.nx; ++i) {
+            const uint32_t h = static_cast<uint32_t>(j * 7919 + i * 104729);
+            const auto ground = static_cast<sim::Ground>(g.ground[static_cast<size_t>(j) * g.nx + i]);
+            const float chance = ground == sim::Ground::Forest ? 0.55f : ground == sim::Ground::Plains ? 0.04f : ground == sim::Ground::Swamp ? 0.08f : 0;
+            if (hash01(h) >= chance) continue;
+            const float x = g.min.x + (static_cast<float>(i) + hash01(h + 1) - 0.5f) * FarGrid::kCell;
+            const float y = g.min.y + (static_cast<float>(j) + hash01(h + 2) - 0.5f) * FarGrid::kCell;
+            if (x > -20 && y > -20 && x < Battle::kWorldSize + 20 && y < Battle::kWorldSize + 20) continue;
+            float q[4];
+            yawQuat(hash01(h + 3) * 6.283f, q);
+            const float w = 28.0f + hash01(h + 4) * 22.0f, tall = 16.0f + hash01(h + 5) * 10.0f;
+            const float t = 0.85f + 0.3f * hash01(h + 6);
+            pushInstance(copses, {x, y, battle.heightAt(x, y) - 1.0f}, q, {w, w, tall}, {t, t, t});
+        }
+    }
+    uploadMeshInstances(copses_, copses);
 }
 
 bool Renderer::init(Battle& battle) {
@@ -673,6 +701,8 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(ruins_, meshes::ruin(), 0);
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
+    makeMeshBatch(logs_, meshes::log(), 0);
+    makeMeshBatch(copses_, meshes::copse(), 0.01f);
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
@@ -961,10 +991,12 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_}, camera, timeSeconds, gameSeconds);
+    // Distant woods: sub-pixel and covered by the terrain colour from very high up.
+    if (camera.distance() < 6000.0f) drawMeshes({&copses_}, camera, timeSeconds, gameSeconds);
     if (camera.distance() > 450.0f) {
         drawMeshes({&houses_, &pillars_, &pines_, &oaks_, &capsules_, &spheres_}, camera, timeSeconds, gameSeconds);
     } else {
-        drawMeshes({&rocks_, &houses_, &pillars_, &pines_, &oaks_, &bushes_, &capsules_, &spheres_}, camera, timeSeconds,
+        drawMeshes({&rocks_, &logs_, &houses_, &pillars_, &pines_, &oaks_, &bushes_, &capsules_, &spheres_}, camera, timeSeconds,
                    gameSeconds);
     }
 
