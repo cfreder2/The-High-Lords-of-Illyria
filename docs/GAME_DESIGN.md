@@ -5,7 +5,7 @@
 | **Version** | 1.0.0 |
 | **Project Codename** | Project Illyria |
 | **Engine Target** | Custom C++20 engine, deterministic lockstep simulation — see §5.1 |
-| **Target Platform** | Web browser first (itch.io, via WebAssembly); native PC later (Steam / GOG) |
+| **Target Platform** | Web browser first (itch.io, via WebAssembly), **fully playable on phones**; native PC later (Steam / GOG), native mobile stores optional |
 
 ---
 
@@ -106,7 +106,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 | Networking | Lockstep inputs over WebSockets through a small relay server (WebRTC data channels later) | Browsers cannot open raw UDP sockets; lockstep sends only inputs, so bandwidth is tiny. |
 | Threading | Single-threaded simulation at first | Web threads need cross-origin isolation (itch.io supports it, but it adds friction); the 30 Hz simulation fits comfortably on one core. |
 
-### 5.2 Performance Budget (60 fps on laptop integrated graphics)
+### 5.2 Performance Budget (60 fps on laptop integrated graphics and mid-range phones)
 
 - **Rendering is always 60 fps**, interpolated between 30 Hz simulation ticks. Only the battle the player is viewing is rendered; the minimap draws dots from simulation state.
 - **One world, many independent battle zones.** When armies engage, the soldiers involved form a battle zone with its own spatial grid for hit tests; zones never test against each other. Measured on the first core (native, before optimisation): one 450-soldier battle costs 0.8 ms/tick, while nine such battles sharing one unpartitioned world cost 69 ms/tick, so partitioning is mandatory.
@@ -119,7 +119,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 | Full, headless | Every other battle involving a human player | Deterministic sim only |
 | Auto-resolve | AI-vs-AI battles away from human players | Warlords-style combat rolls on the campaign layer |
 
-- **Worst case target:** 9 simultaneous 40-squad battles in under 4 ms/tick in the WebAssembly build. CI will fail the build when a benchmark exceeds this.
+- **Worst case target:** 9 simultaneous 40-squad battles in under 4 ms/tick in the WebAssembly build **on the minimum-spec phone** (§5.6). In lockstep the slowest peer sets the pace, so the deterministic simulation's caps are sized for that phone, not for a laptop. CI will fail the build when a benchmark exceeds the budget scaled to that device.
 
 ### 5.3 GPU Physics: Cosmetic Only
 
@@ -209,13 +209,51 @@ That fits comfortably even in a browser. Consolidation keeps it bounded across a
 
 **Optional gameplay hooks** (major remains are deterministic, so these are possible later): morale penalty marching past fresh mass graves; carrion birds revealing where a battle happened; looting battlefields for arrows and gear; old fortifications and rubble giving cover in the next war; temples gaining or losing blessing power from bloodshed nearby.
 
+### 5.6 Phones: Fully Playable
+
+The complete game (campaign, battles, multiplayer) must be playable in a phone browser. A cut-down mobile companion doesn't count.
+
+**Minimum spec (proposed):** iPhone 12 (A14, iOS 26 Safari) and Android phones of Snapdragon 7-series / Pixel 6a class (Chrome) from 2021 onward, ~4 GB RAM. WebGPU on both (Safari since iOS 26, Chrome on Android 12+), WebGL 2 fallback with reduced cosmetics.
+
+**Performance on a phone**
+
+| Concern | Response |
+|---|---|
+| Deterministic sim must fit the weakest peer | Tier A caps (§5.4) are set by min-spec phone measurements. Scenery, remains and blood (tiers B and D) don't affect this. |
+| Thermal throttling (phones sustain ~50–70% of peak after a few minutes) | Budgets are measured *after* 10 minutes of sustained load, not on a cold device. |
+| Locked 60 fps | Dynamic render resolution, per-device cosmetic budgets (particles, ragdolls, remains density), and impostors at closer range. The sim never changes; only the cosmetics scale. |
+| Memory (iOS Safari kills tabs at roughly 1–1.5 GB) | Total budget under 700 MB; remains and blood tiles stream from compressed storage (§5.5). |
+| Download size on mobile data | First playable under ~40 MB; regions, sounds and art stream in as the camera approaches. |
+| Battery | 60 fps only while something moves; drop to a low-power idle when paused or on the strategic map with nothing happening. |
+
+**Touch controls.** Pinch-to-zoom *is* the god-to-ground camera, which makes this game a natural fit for touch.
+
+| Gesture | Action |
+|---|---|
+| Pinch | Zoom (god ↔ ground) |
+| Two-finger drag / twist | Pan / rotate camera |
+| Tap | Select squad or army; tap ground to move |
+| One-finger drag from a selected squad | Draw a path or formation line |
+| One-finger drag on empty ground | Box-select |
+| Long-press | Context radial menu (attack ground, formation, stance, special ability) |
+| Edge buttons (thumb reach) | Pause, hot-spot jump, AI general toggle, squad cards |
+
+Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is slower than a mouse, so the design rewards decisions over clicks per minute. All UI text scales and is readable at phone size.
+
+**Phones in multiplayer.** Mobile browsers suspend background tabs, and phones drop between Wi-Fi and cellular. Lockstep can't stall a whole match for one phone, so:
+- A player who drops is covered by their AI generals until they return.
+- Reconnecting players resync from a state snapshot plus fast-forward simulation of the missed ticks.
+- Input delay adapts to the worst current connection.
+
+**Distribution.** itch.io HTML builds marked mobile-friendly; installable as a home-screen web app (PWA) for fullscreen on iPhone, where Safari has no fullscreen API. Native iOS/Android builds from the same C++ code are an option later, not a requirement.
+
 ## 6. Development Roadmap
 
 > *Proposed — durations assume a small core team and are placeholders for planning.*
 
 | Phase | Goal | Key Deliverables | Exit Criteria |
 |---|---|---|---|
-| **0. Pre-Production** (≈2 mo) | Lock tech decisions | ✅ Engine choice (§5.1); ✅ fixed-point math + deterministic RNG library; ✅ cross-platform determinism CI; SDL2/WebGL 2 platform layer running in the browser; art style test (one billboard unit, one 3D unit, one terrain tile) | Written tech decision record; style test approved; a build playable on itch.io |
+| **0. Pre-Production** (≈2 mo) | Lock tech decisions | ✅ Engine choice (§5.1); ✅ fixed-point math + deterministic RNG library; ✅ cross-platform determinism CI; platform layer running in desktop **and phone** browsers; min-spec phone benchmark; touch-control prototype; art style test (one billboard unit, one 3D unit, one terrain tile) | Written tech decision record; style test approved; a build playable on itch.io |
 | **1. Deterministic Core** (≈3 mo) | Headless simulation | Fixed 30 Hz tick loop; input command queue; checksums; replay recorder; heightfield terrain collision | Same replay produces identical checksums across two machines/OSes |
 | **2. Combat Vertical Slice** (≈4 mo) | Prove the "Myth feel" | Ballistic projectiles + dispersion circle; shield cone deflection; dodge envelopes; flanking; 2 infantry types, 1 archer type, 1 large 3D creature; billboard depth pre-pass & shadows | 10 v 10 skirmish is fun and readable; 200 projectiles in flight at 30 Hz sim without frame drops |
 | **3. Campaign Map Prototype** (≈3 mo) | Prove the "Warlords loop" | Hex map with terrain types; armies, cities, production queues; named unit generator; veterancy; shrine blessings; map → battle → map transition with persistent casualties | One full campaign playable vs. simple AI with meaningful attrition decisions |

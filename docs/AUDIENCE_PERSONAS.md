@@ -134,6 +134,20 @@ Reads epic fantasy; plays games for their worlds.
 - **Wants:** A narrative single-player campaign, faction stories, a reason to care which banner wins.
 - **Appeal:** ★★★☆☆ — depends on writing that doesn't exist yet.
 
+### 19. Ade, 30 — The Commuter
+Plays strategy on an Android phone on a 40-minute train ride, twice a day. Doesn't own a gaming PC.
+- **Hooks:** A real strategy game on a phone, not a gacha; pinch-zooming from the continent into a fight.
+- **Turn-offs:** Tiny buttons, controls that need precision, losing progress when the train goes into a tunnel.
+- **Wants:** Save anywhere, pause, offline single-player, a match that survives a dropped connection.
+- **Appeal:** ★★★★★ — almost nothing like this exists on phones.
+
+### 20. Mei, 16 — The Phone-Only Gamer
+Her phone is her only gaming device; plays with friends on Discord.
+- **Hooks:** Joining her friends' war from a link, no install.
+- **Turn-offs:** "Desktop only"; overheating; draining her battery before school ends.
+- **Wants:** Co-op with friends on PC while she's on her phone; short sessions she can drop in and out of.
+- **Appeal:** ★★★★☆
+
 ---
 
 ## What the personas agree on
@@ -146,7 +160,7 @@ Reads epic fantasy; plays games for their worlds.
 | **Pause / slow time in single-player** | 2, 7, 17 | Real-time continent for multiplayer; real-time-with-pause for single-player. |
 | **Auto-resolve and delegation** | 2, 7, 4 | Nobody can micro nine fronts. Let players delegate fronts to AI generals. |
 | **Co-op on a shared continent** | 13, 7, 14 | Co-op vs AI may be a stronger multiplayer pitch than competitive. |
-| **Runs on weak hardware, instantly** | 6, 15 | Validates web-first and the 60 fps laptop budget. |
+| **Runs on weak hardware, instantly, including phones** | 6, 15, 19, 20 | Validates web-first and the 60 fps laptop budget. |
 | **Competitive ladder players are a poor fit for the main mode** | 8 | Offer a small-map skirmish mode later; don't design around them. |
 
 ## Recommended design responses
