@@ -4,6 +4,7 @@ add_executable(illyria_tests
     test_rng.cpp
     test_ballistics.cpp
     test_world.cpp
+    test_terrain_combat.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_sim)
 

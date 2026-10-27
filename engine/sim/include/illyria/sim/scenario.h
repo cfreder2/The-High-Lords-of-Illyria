@@ -30,10 +30,11 @@ namespace scenarios {
 UnitStats archer();
 UnitStats footman();
 
-// Six archers on a hillside volley a column of ten footmen advancing through a
-// crosswind. Used as the cross-platform determinism benchmark.
+// Six archers volley a column of ten footmen advancing over hills through a
+// crosswind, then fight them hand to hand. Used as the cross-platform
+// determinism benchmark: terrain, ballistics, wind, auto-fire and melee.
 struct Ford {
-    static constexpr uint32_t kTicks = 20 * kTicksPerSecond;
+    static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
     static void setup(World& world);
     static Replay replay(uint64_t seed);
 };

@@ -1,6 +1,7 @@
 #include "illyria/sim/scenario.h"
 
 #include <cstddef>
+#include <memory>
 
 namespace illyria::sim {
 
@@ -27,6 +28,10 @@ constexpr int kArcherCount = 6;
 constexpr int kFootmanCount = 10;
 
 Fixed m(int64_t metres) { return Fixed::fromInt(metres); }
+
+// The Ford is laid out around this point of a 256 m terrain patch.
+constexpr int64_t kOx = 80, kOy = 128;
+constexpr int64_t kColumnStart = 70;  // metres east of the archers
 }  // namespace
 
 UnitStats archer() {
@@ -39,6 +44,11 @@ UnitStats archer() {
     s.ranged.reloadTicks = 2 * kTicksPerSecond;
     s.ranged.damage = 18;
     s.ranged.dispersionAt100m = m(4);
+    s.ranged.autoRange = m(120);
+    s.melee.damage = 6;
+    s.melee.reach = Fixed::fromRatio(1, 2);
+    s.melee.cooldownTicks = kTicksPerSecond;
+    s.aggroRange = m(6);
     return s;
 }
 
@@ -48,6 +58,10 @@ UnitStats footman() {
     s.height = Fixed::fromRatio(19, 10);
     s.moveSpeed = Fixed::fromRatio(3, 2);
     s.maxHp = 60;
+    s.melee.damage = 14;
+    s.melee.reach = Fixed::fromRatio(3, 5);
+    s.melee.cooldownTicks = kTicksPerSecond * 6 / 5;
+    s.aggroRange = m(20);
     return s;
 }
 
@@ -56,12 +70,13 @@ void Ford::setup(World& world) {
     const Vec3 west = -east;
     for (int i = 0; i < kArcherCount; ++i) {
         // EntityIds 1..6, standing on a 4 m rise.
-        world.spawnUnit(kArchers, {m(0), m(i * 3 - 8), m(4)}, east, archer());
+        world.spawnUnit(kArchers, {m(kOx), m(kOy + i * 3 - 8), m(0)}, east, archer());
     }
     for (int i = 0; i < kFootmanCount; ++i) {
-        // EntityIds 7..16, a two-file column 110 m away.
-        world.spawnUnit(kInvaders, {m(110 + (i / 2) * 2), m((i % 2) * 2 - 1), m(0)}, west,
-                        footman());
+        // EntityIds 7..16, a two-file column.
+        world.spawnUnit(kInvaders,
+                        {m(kOx + kColumnStart + (i / 2) * 2), m(kOy + (i % 2) * 2 - 1), m(0)},
+                        west, footman());
     }
 }
 
@@ -70,18 +85,24 @@ Replay Ford::replay(uint64_t seed) {
     r.config.seed = seed;
     // A stiff northerly crosswind pushing arrows south.
     r.config.wind = {Fixed::zero(), -Fixed::fromRatio(3, 2), Fixed::zero()};
+    r.config.terrain = std::make_shared<const Terrain>(
+        Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(24)));
 
     for (EntityId id = kArcherCount + 1; id <= kArcherCount + kFootmanCount; ++id) {
-        r.commands.push_back({0, {kInvaders, id, Command::Type::Move, {m(0), m(0), m(0)}}});
+        r.commands.push_back({0, {kInvaders, id, Command::Type::Move, {m(kOx + 10), m(kOy), m(0)}}});
     }
-    // The archers re-aim every 3 seconds to lead the advancing column, but do
-    // not correct for the wind.
-    for (uint32_t t = 0; t < Ford::kTicks; t += 3 * kTicksPerSecond) {
-        const int64_t columnX = 110 - static_cast<int64_t>(t) * 3 / 2 / kTicksPerSecond - 4;
+    // For the first 30 seconds the archers re-aim every 3 seconds to lead the
+    // advancing column, without correcting for the wind. After that they are
+    // left to fight on their own (auto-fire, then melee).
+    for (uint32_t t = 0; t < 30 * kTicksPerSecond; t += 3 * kTicksPerSecond) {
+        const int64_t columnX = kOx + kColumnStart - static_cast<int64_t>(t) * 3 / 2 / kTicksPerSecond - 4;
         for (EntityId id = 1; id <= kArcherCount; ++id) {
             r.commands.push_back(
-                {t, {kArchers, id, Command::Type::AttackGround, {m(columnX), m(0), m(0)}}});
+                {t, {kArchers, id, Command::Type::AttackGround, {m(columnX), m(kOy), m(0)}}});
         }
+    }
+    for (EntityId id = 1; id <= kArcherCount; ++id) {
+        r.commands.push_back({30 * kTicksPerSecond, {kArchers, id, Command::Type::Stop, {}}});
     }
     return r;
 }

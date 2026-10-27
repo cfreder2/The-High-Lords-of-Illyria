@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <vector>
 
 #include "illyria/sim/fixed.h"
 #include "illyria/sim/rng.h"
+#include "illyria/sim/terrain.h"
 #include "illyria/sim/vec3.h"
 
 namespace illyria::sim {
@@ -22,6 +24,13 @@ struct RangedWeapon {
     int32_t reloadTicks = 0;  // ticks between shots
     int32_t damage = 0;
     Fixed dispersionAt100m;   // radius of the dispersion circle at 100 m for a rank-0 unit
+    Fixed autoRange;          // idle units shoot at enemies within this range; zero disables
+};
+
+struct MeleeWeapon {
+    int32_t damage = 0;  // zero means the unit cannot fight in melee
+    Fixed reach;         // gap between the two units' edges at which blows land
+    int32_t cooldownTicks = 0;
 };
 
 struct UnitStats {
@@ -30,6 +39,8 @@ struct UnitStats {
     Fixed moveSpeed;  // metres/second
     int32_t maxHp = 1;
     RangedWeapon ranged;
+    MeleeWeapon melee;
+    Fixed aggroRange;  // idle units close to melee with enemies within this range
 };
 
 // One soldier. Squads are a campaign-layer grouping of these.
@@ -48,6 +59,7 @@ struct Unit {
     bool hasAttackTarget = false;
     Vec3 attackTarget;
     int32_t reloadRemaining = 0;
+    int32_t meleeCooldown = 0;
 
     bool alive() const { return hp > 0; }
 };
@@ -72,11 +84,13 @@ struct Command {
 };
 
 // Something that happened this tick, for rendering and audio. Not part of the
-// simulation state.
+// simulation state, but derived only from it, so identical on every peer.
 struct ImpactEvent {
     Vec3 pos;
-    EntityId projectile = kNoEntity;
-    EntityId hitUnit = kNoEntity;  // kNoEntity when the projectile hit the ground
+    Vec3 dir;                        // direction of the blow or projectile
+    EntityId projectile = kNoEntity; // kNoEntity for a melee blow
+    EntityId hitUnit = kNoEntity;    // kNoEntity when a projectile hit the ground
+    bool killed = false;
 };
 
 struct WorldConfig {
@@ -84,6 +98,8 @@ struct WorldConfig {
     Fixed gravity = Fixed::fromRatio(981, 100);
     // Constant acceleration applied to projectiles, in m/s^2.
     Vec3 wind;
+    // Ground; a flat plane at z == 0 when null.
+    std::shared_ptr<const Terrain> terrain;
 };
 
 class World {
@@ -104,12 +120,17 @@ public:
     const std::vector<Projectile>& projectiles() const { return projectiles_; }
     const std::vector<ImpactEvent>& impacts() const { return impacts_; }
     const Unit* findUnit(EntityId id) const;
+    Fixed groundHeight(Fixed x, Fixed y) const;
 
 private:
     Unit* mutableUnit(EntityId id);
     void applyCommand(const Command& cmd);
     void updateUnit(Unit& unit);
-    void fire(Unit& unit);
+    void fire(Unit& unit, const Vec3& target);
+    void fight(Unit& unit, Unit& enemy);
+    Unit* nearestEnemy(const Unit& unit, Fixed range);
+    // Returns true if the blow killed the target.
+    bool damage(Unit& target, int32_t amount);
     void updateProjectiles();
 
     WorldConfig config_;
