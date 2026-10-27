@@ -114,3 +114,12 @@ Move the Eastreach label off Moonhaven; match far plains to the battlefield
 | ![](builds/v0.1.6/04-battle.png) | ![](builds/v0.1.6/02-god-view.png) | ![](builds/v0.1.6/07-phone.png) |
 
 Fly-through: [`builds/v0.1.6/flythrough.webm`](builds/v0.1.6/flythrough.webm)
+
+### 27 Oct 2026 · v0.1.7 (`fa28078`)
+Closer to the reference structure; variety everywhere instead of open grass
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.7/04-battle.png) | ![](builds/v0.1.7/02-god-view.png) | ![](builds/v0.1.7/07-phone.png) |
+
+Fly-through: [`builds/v0.1.7/flythrough.webm`](builds/v0.1.7/flythrough.webm)
