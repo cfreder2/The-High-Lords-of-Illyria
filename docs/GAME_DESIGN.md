@@ -54,11 +54,24 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 
 ## 4. Macro Campaign Map & Unit Mechanics
 
-### 4.1 3D Strategic Map
+### 4.1 The Seamless Continent ("God to Ground")
 
-- The campaign map is a 3D recreation of the classic Warlords-style continent layout (*original Illyrian geography — see Q5*).
-- Players maneuver armies across hex-based terrain tiles: Roads, Plains, Forests, Swamps, Mountain Passes.
-- Moving into enemy territory or encountering hostile armies seamlessly transitions into a local real-time physics battlefield matching the regional terrain topology.
+- There are no separate battle maps. Illyria is **one continuous 3D continent** (*original geography — see Q5*), and the camera zooms smoothly from a god's-eye view, where armies are ant-like columns and banners, down to ground level, where individual arrows, shields and bodies are physically simulated.
+- Strategy still happens on a hex grid laid over the terrain (Roads, Plains, Forests, Swamps, Mountain Passes): hexes govern movement cost, supply, ownership and the 8-squad stack limit.
+- When hostile armies meet, combat starts **in place**, on the real terrain where they met. Several battles can rage across the continent at once; the player watches whichever they choose and AI generals command the rest (§4.3).
+- **Real-time-with-pause** in single-player; real-time in multiplayer.
+
+| Zoom level | What the player sees | How it is drawn |
+|---|---|---|
+| God (continent) | Faction territories, army banners, battle "hot spots" | Terrain far-LOD, one icon per army |
+| Strategic (region) | Army columns as moving clusters of dots, cities, roads | Point sprites per soldier, simplified terrain |
+| Tactical (battlefield) | Formations, individual soldiers, projectile arcs | Billboard sprites, full terrain detail |
+| Ground (close-up) | Shields deflecting blades, ragdolls, debris, gore | Full animation + cosmetic GPU physics |
+
+### 4.3 AI Generals & Attention
+
+- Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).
+- Attention is the scarce resource: a "hot spot" control jumps the camera to the most dramatic fight in progress.
 
 ### 4.2 Unit Identity, Progression & Attrition
 
@@ -88,7 +101,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 | Engine | **Custom engine in C++20** | No licences or vendor tools needed; a deterministic lockstep simulation must be custom anyway, since neither Unity's nor Unreal's physics is bit-reproducible across machines. |
 | Web build | **Emscripten → WebAssembly + WebGL 2**, hosted on itch.io | Lowest-friction release: playable in a browser with no download (the approach used by the Avara community port). |
 | Native build | Same codebase compiled with Clang/GCC for Windows, macOS, Linux | Path to a Steam/GOG release without a rewrite. Windows builds use clang-cl or MinGW (the simulation needs 128-bit integers, which MSVC lacks). |
-| Platform layer | SDL2 (window, input, audio) + OpenGL ES 3.0 / WebGL 2 | One rendering API that works natively and in the browser. |
+| Platform layer | SDL2 (window, input, audio) + **WebGPU** (via Dawn/wgpu natively), WebGL 2 fallback | WebGPU gives compute shaders for cosmetic physics and instancing for tens of thousands of soldiers; one API for browser and native. |
 | Simulation math | 64-bit fixed point (16 fractional bits), PCG32 RNG, FNV-1a state checksums | Identical results on x86-64, ARM and WebAssembly. Enforced by CI, which compares a full simulation trace from every platform. |
 | Networking | Lockstep inputs over WebSockets through a small relay server (WebRTC data channels later) | Browsers cannot open raw UDP sockets; lockstep sends only inputs, so bandwidth is tiny. |
 | Threading | Single-threaded simulation at first | Web threads need cross-origin isolation (itch.io supports it, but it adds friction); the 30 Hz simulation fits comfortably on one core. |
@@ -96,16 +109,26 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 ### 5.2 Performance Budget (60 fps on laptop integrated graphics)
 
 - **Rendering is always 60 fps**, interpolated between 30 Hz simulation ticks. Only the battle the player is viewing is rendered; the minimap draws dots from simulation state.
-- **Each battle is its own simulation world**, with a spatial grid for hit tests. Measured on the first core (native, before optimisation): one 450-soldier battle costs 0.8 ms/tick, while nine such battles sharing one world cost 69 ms/tick. Separating them is mandatory.
+- **One world, many independent battle zones.** When armies engage, the soldiers involved form a battle zone with its own spatial grid for hit tests; zones never test against each other. Measured on the first core (native, before optimisation): one 450-soldier battle costs 0.8 ms/tick, while nine such battles sharing one unpartitioned world cost 69 ms/tick, so partitioning is mandatory.
+- **Marching armies are single entities.** An army that isn't fighting moves as one stack on the hex grid; its soldiers are only expanded into individually simulated bodies (deterministically, on every peer) when it engages, and collapsed again when the battle ends. This keeps tens of thousands of soldiers on the continent cheap.
 - **Simulation tiers:**
 
 | Tier | Applies to | Runs |
 |---|---|---|
-| Full + visible | The battle on screen | Deterministic sim + cosmetic physics (ragdolls, debris, gore) + rendering |
+| Full + visible | Battles inside the camera view | Deterministic sim + cosmetic GPU physics (ragdolls, debris, gore) + rendering |
 | Full, headless | Every other battle involving a human player | Deterministic sim only |
 | Auto-resolve | AI-vs-AI battles away from human players | Warlords-style combat rolls on the campaign layer |
 
 - **Worst case target:** 9 simultaneous 40-squad battles in under 4 ms/tick in the WebAssembly build. CI will fail the build when a benchmark exceeds this.
+
+### 5.3 GPU Physics: Cosmetic Only
+
+GPU physics can't be used for gameplay outcomes. GPUs from different vendors, and even different drivers, produce slightly different floating-point results, and parallel work completes in a nondeterministic order, so lockstep peers would desync within seconds. The split is:
+
+- **Gameplay physics (CPU, fixed-point, deterministic):** projectiles, hit detection, shield blocks, dodges, knockback, unit movement, wall collapse *states*. Kept deliberately simple (capsules, cylinders, heightfield) so the CPU can afford thousands of soldiers.
+- **Cosmetic physics (GPU, float, per-client):** ragdolls, flying debris chunks, blood and gore particles, dust, grass, cloth banners, water splashes. Only simulated for the area near the camera, and free to differ between players because they never affect the outcome.
+- **API:** WebGPU compute shaders (available in current Chrome, Edge and Safari, with Firefox catching up) with a CPU fallback at reduced particle counts for browsers on WebGL 2, which has no compute shaders. Native builds use the same WebGPU code through Dawn or wgpu.
+- **Budget:** a laptop integrated GPU comfortably handles ~100k cosmetic particles and a few hundred simplified ragdolls per frame, alongside instanced sprite rendering for 20k–50k soldiers. The low-poly, sprite-heavy art style is what makes this possible.
 
 ## 6. Development Roadmap
 
@@ -124,7 +147,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 ## 7. Open Questions
 
 - ~~**Q1 — Engine:**~~ *Resolved:* custom C++ engine, web-first via WebAssembly (§5.1).
-- **Q2 — Campaign timing:** Turn-based campaign with real-time battles (one battle at a time in single-player), or a fully real-time continent (up to one battle per faction at once)? The budget in §5.2 covers the second. In multiplayer, do other players wait, watch, or keep playing during a battle?
+- ~~**Q2 — Campaign timing:**~~ *Resolved:* seamless real-time continent, with pause in single-player (§4.1). Open sub-question: the time scale. How fast armies march across the continent relative to how long a battle lasts.
 - **Q3 — Recruitment time units:** "Turns" on the campaign map vs. "minutes" inside battles — define whether reinforcements can arrive mid-battle.
 - **Q4 — Shield arc value:** Confirm default frontal shield cone (placeholder 120°) and how Temple Blessings (+15%) scale it.
 - **Q5 — IP:** The campaign map and naming must be original to Illyria; avoid reproducing *Warlords* or *Myth* assets, maps, or names.

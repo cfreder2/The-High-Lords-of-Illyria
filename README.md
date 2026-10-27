@@ -3,6 +3,7 @@
 A real-time tactical strategy game with grand-strategy campaign mechanics: the spatial physics combat of *Myth: The Fallen Lords* meets the named-army attrition campaign of *Warlords*. Built on a custom C++ engine, web-first (itch.io via WebAssembly), native later (Steam).
 
 - 📜 [Technical & Game Design Starter Document](docs/GAME_DESIGN.md)
+- 👥 [Target Audience Personas](docs/AUDIENCE_PERSONAS.md)
 
 **Status:** Phase 0 (pre-production): deterministic simulation core.
 
