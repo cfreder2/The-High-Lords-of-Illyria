@@ -7,27 +7,27 @@
 
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
 
 namespace illyria::game {
 
 struct Squad {
-    enum class Kind { Archers, Footmen };
     std::string name;
     sim::PlayerId owner;
-    Kind kind;
+    sim::UnitType type;
     std::vector<sim::EntityId> members;
 };
 
-// Remains are derived only from simulation events, so every peer
-// accumulates the same ones (docs/GAME_DESIGN.md §5.5).
-struct StuckArrow {
-    V3 pos;
-    V3 dir;
-    uint32_t tick;
-};
+// What a squad does on the battlefield, for orders, the AI and HUD icons.
+enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier };
+Role roleOf(sim::UnitType type);
 
-struct BloodStain {
+// Decals derived only from simulation events, so every peer accumulates the
+// same ones (docs/GAME_DESIGN.md §5.5).
+struct GroundMark {
+    enum class Kind : uint8_t { Blood, Crater, Dust };
+    Kind kind;
     V3 pos;
     float yaw;
     float size;
@@ -35,9 +35,20 @@ struct BloodStain {
     uint32_t seed;
 };
 
+// Purely cosmetic, per client: fire, smoke, sparks, dirt, healing light.
+struct Particle {
+    enum class Kind : uint8_t { Fire, Smoke, Spark, Dirt, Heal, Flash };
+    Kind kind;
+    V3 pos;
+    V3 vel;
+    float age;
+    float life;
+    float size;
+};
+
 // One playable battle: owns the deterministic world, turns player input into
 // commands, drives the enemy, and keeps presentation state (interpolation,
-// remains) for the renderer.
+// ground marks, particles) for the renderer.
 class Battle {
 public:
     static constexpr sim::PlayerId kPlayer = 0;
@@ -45,8 +56,9 @@ public:
     static constexpr int32_t kTerrainCells = 256;
     static constexpr float kCellSize = 4.0f;
     static constexpr float kWorldSize = kTerrainCells * kCellSize;
-    static constexpr size_t kMaxStuckArrows = 40000;
-    static constexpr size_t kMaxBloodStains = 30000;
+    static constexpr uint32_t kMaxRemains = 30000;
+    static constexpr size_t kMaxGroundMarks = 30000;
+    static constexpr size_t kMaxParticles = 4000;
 
     explicit Battle(uint64_t seed);
 
@@ -84,20 +96,25 @@ public:
     template <typename Fn>
     void forEachProjectile(Fn&& fn) const;
 
-    // Remains are stored in fixed-capacity rings: the k-th one ever added
-    // lives at index k % capacity.
-    const std::vector<StuckArrow>& stuckArrows() const { return stuckArrows_; }
-    const std::vector<BloodStain>& bloodStains() const { return blood_; }
-    uint64_t stuckArrowsAdded() const { return arrowsAdded_; }
-    uint64_t bloodStainsAdded() const { return bloodAdded_; }
+    // Ground marks live in a ring: the k-th one ever added is at index k % capacity.
+    const std::vector<GroundMark>& groundMarks() const { return marks_; }
+    uint64_t groundMarksAdded() const { return marksAdded_; }
+    // Remain slots changed since the renderer last asked (then cleared).
+    std::vector<uint32_t> takeDirtyRemains();
+    const std::vector<Particle>& particles() const { return particles_; }
+    // Centre of the fiercest fighting of the last few seconds; false if all is quiet.
+    bool hotSpot(V3& at) const;
     double stepMs() const { return stepMs_; }
 
 private:
-    void spawnSquad(const std::string& name, sim::PlayerId owner, Squad::Kind kind, int count, V3 centre,
+    void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
     void step();
     void runEnemyAi();
-    void collectRemains();
+    void collectEvents();
+    void addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed);
+    void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
+    void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
 
@@ -111,13 +128,22 @@ private:
     int speed_ = 1;
     double accumulator_ = 0;
     double stepMs_ = 0;
+    uint32_t fxSeed_ = 1;
 
     std::vector<V3> prevUnitPos_;
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<std::pair<sim::EntityId, V3>> prevProjectilePos_;  // sorted by id
-    std::vector<StuckArrow> stuckArrows_;
-    std::vector<BloodStain> blood_;
-    uint64_t arrowsAdded_ = 0, bloodAdded_ = 0;
+    std::vector<GroundMark> marks_;
+    uint64_t marksAdded_ = 0;
+    std::vector<uint32_t> dirtyRemains_;
+    std::vector<uint8_t> dirtyFlag_;
+    std::vector<Particle> particles_;
+    struct Recent {
+        V3 pos;
+        uint32_t tick;
+        float weight;
+    };
+    std::vector<Recent> recent_;
 };
 
 template <typename Fn>
@@ -129,7 +155,7 @@ void Battle::forEachProjectile(Fn&& fn) const {
         while (prev < prevProjectilePos_.size() && prevProjectilePos_[prev].first < p.id) ++prev;
         const V3 before =
             prev < prevProjectilePos_.size() && prevProjectilePos_[prev].first == p.id ? prevProjectilePos_[prev].second : now;
-        fn(lerp(before, now, a), toV3(p.vel).normalized());
+        fn(p, lerp(before, now, a), toV3(p.vel));
     }
 }
 

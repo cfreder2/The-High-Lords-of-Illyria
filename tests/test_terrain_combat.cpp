@@ -34,8 +34,10 @@ TEST(terrain_is_deterministic_and_bounded) {
 TEST(terrain_interpolates_between_samples) {
     const Terrain t = Terrain::generate(7, 64, m(4), m(30));
     CHECK(t.heightAt(m(8), m(12)) == t.sample(2, 3));
-    const Fixed mid = t.heightAt(m(10), m(12));
-    CHECK(mid == (t.sample(2, 3) + t.sample(3, 3)) / 2);
+    // Midway along a cell edge.
+    CHECK(t.heightAt(m(10), m(12)) == (t.sample(2, 3) + t.sample(3, 3)) / 2);
+    // The cell centre lies on the a-d diagonal shared by both triangles.
+    CHECK(t.heightAt(m(10), m(14)) == (t.sample(2, 3) + t.sample(3, 4)) / 2);
     // Outside the region clamps to the edge.
     CHECK(t.heightAt(m(-50), m(-50)) == t.sample(0, 0));
 }

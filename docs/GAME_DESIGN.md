@@ -77,6 +77,34 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
   - **Level Progression:** Units gain rank through battles, shrinking their dispersion circle and increasing poise/stamina reserves.
   - **Temple Blessings:** Controlling sacred shrines across Illyria unlocks probability buffs (e.g., +15% shield block arc, elemental projectile imbues, panic resistance).
 
+### 4.2.1 Unit Roster
+
+Every army type from *Warlords* (with Warlords II's terrain bonuses) plus Myth's signature units. Stats live in `engine/sim/src/units.cpp`.
+
+| Unit | Origin | Character |
+|---|---|---|
+| Light Infantry, Heavy Infantry | Warlords | Line troops; heavy infantry carry big shields |
+| Elven Archers | Warlords | Longbows; +1 in woods in Warlords |
+| Pikemen | Warlords | Long reach, big bonus against mounted troops; +1 in the open |
+| Light Cavalry, Heavy Cavalry | Warlords | Fast; heavy cavalry lance, barding, knockback; +1 / +2 in the open |
+| Dwarven Legion | Warlords | Axes and shields; +1 in the hills |
+| Wolf Riders | Warlords | Fast goblin riders |
+| Giants, Minotaurs | Warlords | Huge, slow, knock soldiers flying |
+| Giant Spiders | Warlords | Fast, many-legged |
+| Griffins, Pegasi | Warlords | Fliers: cruise high, swoop down to fight |
+| Elephants | Warlords | Enormous, trample and toss |
+| Unicorns | Warlords | Fast, piercing horn |
+| Wizards | Warlords allies | Fireballs that explode on impact |
+| Dragons | Warlords allies | Flying, fireballs, devastating melee |
+| Devils, Demons | Warlords allies | Hulking melee monsters |
+| Undead | Warlords allies | Relentless, no blood, bones instead |
+| Archons | Warlords allies | Winged angels |
+| Hero | Warlords | A named champion |
+| Dwarven Grenadiers | Myth | Satchel charges that bounce, roll and explode on a fuse; chain reactions |
+| Journeymen | Myth | Healers with a limited number of charges |
+| Warriors | Myth | Sword and shield; shields block from the front only |
+| Berserkers | Myth | Fast, no shield, hit hard |
+
 ### 4.3 AI Generals & Attention
 
 - Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).

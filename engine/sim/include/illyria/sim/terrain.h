@@ -8,8 +8,8 @@
 namespace illyria::sim {
 
 // Heightfield over a square region whose corner is the world origin. Heights
-// are sampled on a regular grid and bilinearly interpolated, all in fixed
-// point, so every peer (and the renderer) agrees on the ground exactly.
+// are sampled on a regular grid and interpolated over two triangles per cell,
+// all in fixed point, so every peer (and the renderer) agrees on the ground.
 class Terrain {
 public:
     // Rolling hills generated from `seed`: `cells` x `cells` grid cells of

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <vector>
 
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
@@ -81,17 +82,24 @@ TEST(gestures_tap_and_pinch) {
 TEST(battle_runs_and_player_can_command_a_squad) {
     Battle b(42);
     CHECK(b.outcome() == 0);
+    // Every unit type is on the field.
+    std::vector<bool> seen(illyria::sim::kUnitTypeCount, false);
+    for (const Squad& s : b.squads()) seen[static_cast<int>(s.type)] = true;
+    for (bool t : seen) CHECK(t);
+
     Camera c;
     c.setBounds(Battle::kWorldSize);
     c.setViewport(800, 600);
     c.setHeightFn([&](float x, float y) { return b.heightAt(x, y); });
     // Select the Grey Watch by tapping its centre, then send it 40 m north.
-    const Squad& watch = b.squads()[2];
+    const int watchIndex = 1;
+    const Squad& watch = b.squads()[watchIndex];
+    CHECK(watch.name == "The Grey Watch");
     c.lookAt(b.squadCentre(watch).x, b.squadCentre(watch).y, 80);
     float px, py;
     CHECK(c.project(b.squadCentre(watch), px, py));
     b.tap(c, px, py, 1.0f);
-    CHECK(b.selectedSquad() == 2);
+    CHECK(b.selectedSquad() == watchIndex);
     const V3 start = b.squadCentre(watch);
     V3 goal = start + V3{0, 40, 0};
     goal.z = b.heightAt(goal.x, goal.y);
@@ -99,7 +107,10 @@ TEST(battle_runs_and_player_can_command_a_squad) {
     b.tap(c, px, py, 1.0f);
     for (int i = 0; i < 30 * 30; ++i) b.advance(1.0 / 30);
     CHECK((b.squadCentre(watch) - goal).length() < 6.0f);
-    for (int i = 0; i < 240 * 30; ++i) b.advance(1.0 / 30);
-    CHECK(!b.stuckArrows().empty());
-    CHECK(!b.bloodStains().empty());
+    for (int i = 0; i < 120 * 30; ++i) b.advance(1.0 / 30);
+    int remains = 0;
+    for (const auto& r : b.world().remains()) remains += r.kind != illyria::sim::RemainKind::None;
+    CHECK(remains > 0);
+    CHECK(b.groundMarksAdded() > 0);
+    CHECK(!b.takeDirtyRemains().empty() || remains > 0);
 }

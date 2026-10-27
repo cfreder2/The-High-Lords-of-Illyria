@@ -76,9 +76,10 @@ Fixed Terrain::heightAt(Fixed x, Fixed y) const {
     const Fixed tx = fx - Fixed::fromInt(ix), ty = fy - Fixed::fromInt(iy);
     const Fixed a = sample(ix, iy), b = sample(ix + 1, iy);
     const Fixed c = sample(ix, iy + 1), d = sample(ix + 1, iy + 1);
-    const Fixed top = a + (b - a) * tx;
-    const Fixed bottom = c + (d - c) * tx;
-    return top + (bottom - top) * ty;
+    // Each cell is two triangles split along the a-d diagonal, exactly as the
+    // renderer draws it, so what lands on the ground sits on the visible ground.
+    if (tx >= ty) return a + (b - a) * tx + (d - b) * ty;
+    return a + (c - a) * ty + (d - c) * tx;
 }
 
 }  // namespace illyria::sim

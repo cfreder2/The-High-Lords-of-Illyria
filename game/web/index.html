@@ -112,6 +112,7 @@
   </div>
   <div id="enemy" class="panel">Red Hand <b id="enemyCount">–</b></div>
   <div id="controls">
+    <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
     <button id="restart" aria-label="Restart battle">Restart</button>
@@ -120,7 +121,7 @@
 
 <div id="hint" class="panel">
   <b>Pinch</b> to zoom from the gods to the mud · <b>drag</b> to pan · <b>twist</b> or right-drag to turn<br>
-  <b>Tap</b> a blue squad, then tap ground to march or an enemy to attack
+  <b>Tap</b> a blue squad, then tap ground to march or an enemy to attack (archers, dwarves and wizards fire on it)
 </div>
 
 <div id="bottom">
@@ -146,9 +147,14 @@
   let lastSquadsKey = "";
   let hintShown = true;
 
+  const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const icons = {
-    archers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3c7 3 9 12 0 18"/><path d="M6 3v18"/><path d="M3 12h15"/><path d="M15 9l3 3-3 3"/></svg>',
-    footmen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M12 7v10"/></svg>',
+    ranged: svg('<path d="M6 3c7 3 9 12 0 18"/><path d="M6 3v18"/><path d="M3 12h15"/><path d="M15 9l3 3-3 3"/>'),
+    melee: svg('<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M12 7v10"/>'),
+    bomber: svg('<circle cx="11" cy="14" r="6"/><path d="M15 9l3-3"/><path d="M19 3l1 1M20 6h1M17 3v-1"/>'),
+    caster: svg('<path d="M12 3c3 4 5 6 5 10a5 5 0 0 1-10 0c0-3 2-5 3-7 1 2 2 3 2 5"/>'),
+    healer: svg('<path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/>'),
+    flier: svg('<path d="M3 14c4-1 6-4 9-9 3 5 5 8 9 9-4 0-7 1-9 5-2-4-5-5-9-5z"/>'),
   };
 
   function hideHint() {
@@ -174,6 +180,7 @@
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
+      hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
     };
     window.illyria = api;
@@ -205,6 +212,8 @@
   document.addEventListener("gesturestart", (e) => e.preventDefault());
 
   $("pause").onclick = () => api && api.pause();
+  $("hot").onclick = () => api && api.hotSpot();
+  for (const b of document.querySelectorAll("#controls button, #actions button")) b.addEventListener("click", hideHint);
   $("speed").onclick = () => api && api.speed();
   $("restart").onclick = () => api && api.restart();
   $("overlayButton").onclick = () => { api && api.restart(); };
@@ -232,7 +241,8 @@
         const b = document.createElement("button");
         b.className = "card panel";
         b.dataset.index = q.i;
-        b.innerHTML = `${icons[q.kind]}<span class="name"></span><span class="bar"><i></i></span>`;
+        b.innerHTML = `${icons[q.role] || icons.melee}<span class="name"></span><span class="bar"><i></i></span>`;
+        b.title = `${q.name}: ${q.type}`;
         b.querySelector(".name").textContent = q.name;
         b.onclick = () => {
           if (!api) return;

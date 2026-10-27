@@ -40,9 +40,9 @@ App* app = nullptr;
 
 void frameCamera() {
     const Battle& b = *app->battle;
-    // Open just behind the Grey Watch, close enough to see soldiers, looking
+    // Open just behind the Oakhaven shield wall, close enough to see soldiers, looking
     // east toward the Red Hand.
-    const V3 c = b.squadCentre(b.squads()[2]);
+    const V3 c = b.squadCentre(b.squads()[0]);
     app->camera.lookAt(c.x + 10, c.y, 55);
 }
 
@@ -102,6 +102,12 @@ EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
 
+EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
+    if (!app) return;
+    V3 at;
+    if (app->battle->hotSpot(at)) app->camera.lookAt(at.x, at.y, std::clamp(app->camera.distance(), 30.0f, 70.0f));
+}
+
 EMSCRIPTEN_KEEPALIVE void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
@@ -142,8 +148,11 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     s = buf;
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];
-        std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"owner\":%d,\"kind\":\"%s\",\"alive\":%d,\"total\":%zu}",
-                      i ? "," : "", q.name.c_str(), q.owner, q.kind == Squad::Kind::Archers ? "archers" : "footmen",
+        static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier"};
+        std::snprintf(buf, sizeof buf,
+                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"alive\":%d,\"total\":%zu}",
+                      i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
+                      kRoles[static_cast<int>(roleOf(q.type))],
                       b.aliveCount(q), q.members.size());
         s += buf;
     }
