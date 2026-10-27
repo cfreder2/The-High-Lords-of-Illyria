@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "illyria/sim/continent.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 #include "illyria/sim/rng.h"
@@ -70,6 +71,7 @@ Fixed groundSpeed(Ground g) {
         case Ground::Shallows: return r(2, 5);
         case Ground::DeepWater: return Fixed::zero();
         case Ground::Rock: return r(1, 2);
+        case Ground::Bridge: return Fixed::one();
     }
     return Fixed::one();
 }
@@ -170,6 +172,8 @@ Region Region::generateIllyria(uint64_t seed) {
         }
     }
     rg.terrain_ = Terrain::fromSamples(kCells, cell, shaped);
+    rg.water_.resize(shaped.size());
+    for (size_t i = 0; i < shaped.size(); ++i) rg.water_[i] = shaped[i] < kWater ? kWater : Fixed::fromRaw(kDryRaw);
 
     // Ground types per cell, from the cell centre.
     rg.ground_.resize(static_cast<size_t>(kCells) * kCells);
@@ -236,31 +240,37 @@ Region Region::generateIllyria(uint64_t seed) {
     }
     const size_t buildings = rg.obstacles_.size();
 
+    rg.scatterScenery(seed, buildings, temple, m(15));
+    return rg;
+}
+
+void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius) {
     // Trees, undergrowth and rocks on a jittered 5 m grid. Exactly five RNG
     // draws per point, one per statement, so the sequence never shifts.
     Rng rng(seed, 7);
+    const int32_t extent = static_cast<int32_t>(terrain_.size().floorToInt());
     const int32_t step = 5;
-    for (int32_t gy = 0; gy < 1024 / step; ++gy) {
-        for (int32_t gx = 0; gx < 1024 / step; ++gx) {
+    for (int32_t gy = 0; gy < extent / step; ++gy) {
+        for (int32_t gx = 0; gx < extent / step; ++gx) {
             const Fixed jx = rng.nextUnit() * 4;
             const Fixed jy = rng.nextUnit() * 4;
             const Fixed roll = rng.nextUnit();
             const uint32_t variant = rng.nextBelow(4);
             const Fixed size = rng.nextUnit();
             const Fixed x = m(gx * step) + jx, y = m(gy * step) + jy;
-            const Ground g = rg.groundAt(x, y);
-            if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater) continue;
-            if (distanceTo(rg.roads_, x, y, m(5)) < r(9, 2)) continue;
-            if (flatDist(x, y, temple) < m(15)) continue;
+            const Ground g = groundAt(x, y);
+            if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
+            if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
+            if (flatDist(x, y, clearCentre) < clearRadius) continue;
             bool nearBuilding = false;
             for (size_t b = 0; b < buildings; ++b) {
-                nearBuilding = nearBuilding || flatDist(x, y, rg.obstacles_[b].pos) < m(8);
+                nearBuilding = nearBuilding || flatDist(x, y, obstacles_[b].pos) < m(8);
             }
             if (nearBuilding) continue;
 
             Obstacle o;
             o.variant = static_cast<uint8_t>(variant);
-            o.pos = {x, y, rg.terrain_.heightAt(x, y)};
+            o.pos = {x, y, terrain_.heightAt(x, y)};
             bool place = true;
             const auto tree = [&](bool pine) {
                 o.kind = pine ? Obstacle::Kind::Pine : Obstacle::Kind::Oak;
@@ -307,9 +317,216 @@ Region Region::generateIllyria(uint64_t seed) {
                 default:
                     place = false;
             }
-            if (place) rg.obstacles_.push_back(o);
+            if (place) obstacles_.push_back(o);
         }
     }
+}
+
+Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cells) {
+    Region rg;
+    const Fixed cell = m(kCellSize);
+    const Fixed size = cell * cells;
+    // Align the window to the 4 m grid.
+    const int64_t ox = ((centre.x - size / 2).floorToInt() / kCellSize) * kCellSize;
+    const int64_t oy = ((centre.y - size / 2).floorToInt() / kCellSize) * kCellSize;
+    rg.origin_ = {m(ox), m(oy), Fixed::zero()};
+    const Fixed OX = rg.origin_.x, OY = rg.origin_.y;
+    const auto toLocal = [&](const Vec3& p) { return Vec3{p.x - OX, p.y - OY, p.z}; };
+
+    // Coast and mountains change slowly: sample them every 16 m and interpolate.
+    const int32_t macroStep = 4;  // samples
+    const int32_t mn = cells / macroStep + 1;
+    std::vector<Continent::Sample> macro(static_cast<size_t>(mn) * mn);
+    for (int32_t my = 0; my < mn; ++my)
+        for (int32_t mx = 0; mx < mn; ++mx)
+            macro[static_cast<size_t>(my) * mn + mx] = c.landform(OX + cell * (mx * macroStep), OY + cell * (my * macroStep));
+
+    const int32_t n = cells + 1;
+    std::vector<Fixed> h(static_cast<size_t>(n) * n), roadDist(h.size()), mountain(h.size());
+    rg.water_.assign(h.size(), Fixed::fromRaw(kDryRaw));
+    const uint64_t sDetail = noise::nextSeed(c.seed() ^ 0xDE7A11);
+    for (int32_t iy = 0; iy < n; ++iy) {
+        for (int32_t ix = 0; ix < n; ++ix) {
+            const int32_t mx = std::min(ix / macroStep, mn - 2), my = std::min(iy / macroStep, mn - 2);
+            const Fixed tx = Fixed::fromRatio(ix - mx * macroStep, macroStep), ty = Fixed::fromRatio(iy - my * macroStep, macroStep);
+            const auto lerp2 = [&](auto field) {
+                const Fixed a = field(macro[static_cast<size_t>(my) * mn + mx]), b = field(macro[static_cast<size_t>(my) * mn + mx + 1]);
+                const Fixed cc = field(macro[static_cast<size_t>(my + 1) * mn + mx]), d = field(macro[static_cast<size_t>(my + 1) * mn + mx + 1]);
+                const Fixed top = a + (b - a) * tx, bottom = cc + (d - cc) * tx;
+                return top + (bottom - top) * ty;
+            };
+            Continent::Sample s;
+            s.height = lerp2([](const Continent::Sample& q) { return q.height; });
+            s.land = lerp2([](const Continent::Sample& q) { return q.land; });
+            s.mountain = lerp2([](const Continent::Sample& q) { return q.mountain; });
+            const Fixed x = OX + cell * ix, y = OY + cell * iy;
+            // Fine detail, faded out at the window's edge so it meets the coarse continent.
+            const Fixed edge = m(std::min(std::min(ix, iy), std::min(cells - ix, cells - iy)) * kCellSize);
+            const Fixed fade = min(Fixed::one(), edge / 48);
+            s.height += (noise::fbm(sDetail, x, y, 48) - r(1, 2)) * (m(2) + s.mountain / 20) * fade;
+            c.carve(s, x, y);
+            const size_t i = static_cast<size_t>(iy) * n + ix;
+            h[i] = s.height;
+            roadDist[i] = s.roadDist;
+            mountain[i] = s.mountain;
+            Fixed surface;
+            if (c.waterSurfaceOf(s, surface)) rg.water_[i] = surface;
+        }
+    }
+
+    // Roads settle into smoothed, slightly sunken beds (not under water).
+    std::vector<Fixed> shaped = h;
+    for (int32_t iy = 0; iy < n; ++iy) {
+        for (int32_t ix = 0; ix < n; ++ix) {
+            const size_t i = static_cast<size_t>(iy) * n + ix;
+            if (roadDist[i] >= m(7) || rg.water_[i].raw != kDryRaw) continue;
+            Fixed sum;
+            for (int32_t dy = -2; dy <= 2; ++dy)
+                for (int32_t dx = -2; dx <= 2; ++dx)
+                    sum += h[static_cast<size_t>(std::clamp(iy + dy, 0, n - 1)) * n + std::clamp(ix + dx, 0, n - 1)];
+            const Fixed smooth = sum / 25;
+            const Fixed w = noise::smoothstep(m(2), m(7), roadDist[i]);
+            shaped[i] = smooth + (h[i] - smooth) * w - (Fixed::one() - w) * r(3, 10);
+        }
+    }
+
+    // The ford: an earthwork berm on the west bank, a road through it.
+    Vec3 ford = c.crossings().front().pos;
+    Fixed best = m(1000000);
+    for (const Continent::Crossing& cr : c.crossings()) {
+        const Fixed d = (cr.pos - centre).flat().length();
+        if (d < best) {
+            best = d;
+            ford = cr.pos;
+        }
+    }
+    rg.ford_ = toLocal(ford);
+    rg.berms_.push_back({{Vec3{rg.ford_.x - m(57), rg.ford_.y - m(72), Fixed::zero()},
+                          Vec3{rg.ford_.x - m(50), rg.ford_.y + m(78), Fixed::zero()}}, r(7, 2)});
+    for (int32_t iy = 0; iy < n; ++iy) {
+        for (int32_t ix = 0; ix < n; ++ix) {
+            const size_t i = static_cast<size_t>(iy) * n + ix;
+            const Fixed d = distanceTo(rg.berms_, cell * ix, cell * iy, m(5));
+            if (d < m(5) && rg.water_[i].raw == kDryRaw) shaped[i] += r(9, 5) * bump(d / 5);
+        }
+    }
+    rg.terrain_ = Terrain::fromSamples(cells, cell, shaped);
+    rg.waterLevel_ = c.sample(ford.x, ford.y).riverSurface;
+
+    for (const Polyline& road : c.roads()) {
+        Polyline local{{}, road.halfWidth};
+        for (const Vec3& p : road.points) local.points.push_back(toLocal(p));
+        rg.roads_.push_back(local);
+    }
+    for (const Continent::River& rv : c.rivers()) {
+        Polyline local{{}, rv.halfWidth};
+        for (const Vec3& p : rv.points) local.points.push_back(toLocal(p));
+        rg.rivers_.push_back(local);
+    }
+
+    // Ground types per cell, from the cell's four corners.
+    rg.ground_.resize(static_cast<size_t>(cells) * cells);
+    for (int32_t iy = 0; iy < cells; ++iy) {
+        for (int32_t ix = 0; ix < cells; ++ix) {
+            const size_t i00 = static_cast<size_t>(iy) * n + ix, i10 = i00 + 1, i01 = i00 + n, i11 = i01 + 1;
+            const Fixed a = shaped[i00], b = shaped[i10], cc = shaped[i01], d = shaped[i11];
+            const Fixed z = (a + b + cc + d) / 4;
+            const Fixed slope = max(max(abs(a - b), abs(cc - d)), max(abs(a - cc), abs(b - d))) / kCellSize;
+            const Fixed x = OX + cell * ix + cell / 2, y = OY + cell * iy + cell / 2;
+            int wet = 0;
+            Fixed surface;
+            for (size_t k : {i00, i10, i01, i11}) {
+                if (rg.water_[k].raw == kDryRaw) continue;
+                ++wet;
+                surface += rg.water_[k];
+            }
+            const Fixed road = (roadDist[i00] + roadDist[i10] + roadDist[i01] + roadDist[i11]) / 4;
+            Ground g;
+            if (wet >= 2 && surface / wet > z) {
+                if (c.onBridge(x, y, road)) g = Ground::Bridge;
+                else g = surface / wet - z < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
+            } else if (slope > r(3, 5) && road >= m(3)) {
+                g = Ground::Rock;
+            } else {
+                const Fixed mtn = (mountain[i00] + mountain[i10] + mountain[i01] + mountain[i11]) / 4;
+                g = c.landGround(x, y, z, mtn, road);
+            }
+            rg.ground_[static_cast<size_t>(iy) * cells + ix] = g;
+        }
+    }
+
+    // A hamlet along the road west of the ford.
+    {
+        const Polyline* road = nullptr;
+        Fixed nearest = m(1000000);
+        for (const Polyline& rd : rg.roads_) {
+            const Fixed d = distanceTo({rd}, rg.ford_.x, rg.ford_.y, m(1000000));
+            if (d < nearest) {
+                nearest = d;
+                road = &rd;
+            }
+        }
+        int placed = 0;
+        for (int64_t along = 120; road && along <= 330 && placed < 9; along += 24) {
+            // Walk west from the ford along the road's general direction.
+            const Fixed px = rg.ford_.x - m(along);
+            Fixed bestD = m(1000000), py = rg.ford_.y;
+            for (int64_t dy = -200; dy <= 200; dy += 2) {
+                const Fixed d = distanceTo({*road}, px, rg.ford_.y + m(dy), m(1000));
+                if (d < bestD) {
+                    bestD = d;
+                    py = rg.ford_.y + m(dy);
+                }
+            }
+            const Fixed side = (placed % 2 == 0) ? m(15) : -m(15);
+            const Fixed hx = px, hy = py + side;
+            if (rg.groundAt(hx, hy) == Ground::DeepWater || rg.groundAt(hx, hy) == Ground::Shallows) continue;
+            Obstacle o;
+            o.kind = Obstacle::Kind::House;
+            o.pos = {hx, hy, rg.terrain_.heightAt(hx, hy)};
+            o.halfX = r(18, 5);
+            o.halfY = r(13, 5);
+            o.height = r(9, 2);
+            o.variant = static_cast<uint8_t>(placed % 3);
+            rg.obstacles_.push_back(o);
+            ++placed;
+        }
+    }
+    // A shrine of standing pillars on the highest dry ground in the window.
+    Vec3 shrine{m(200), m(800), Fixed::zero()};
+    {
+        Fixed top = -m(1000);
+        for (int32_t iy = 32; iy < cells - 32; iy += 4) {
+            for (int32_t ix = 32; ix < cells - 32; ix += 4) {
+                const Fixed z = shaped[static_cast<size_t>(iy) * n + ix];
+                const Ground g = rg.cellGround(ix, iy);
+                if (z > top && g != Ground::Rock && g != Ground::Shallows && g != Ground::DeepWater) {
+                    top = z;
+                    shrine = {cell * ix, cell * iy, z};
+                }
+            }
+        }
+        for (int i = 0; i < 8; ++i) {
+            Obstacle o;
+            o.kind = Obstacle::Kind::Pillar;
+            const Fixed angle = kTwoPi * i / 8;
+            const Fixed x = shrine.x + cos(angle) * 10, y = shrine.y + sin(angle) * 10;
+            o.pos = {x, y, rg.terrain_.heightAt(x, y)};
+            o.radius = r(3, 5);
+            o.height = i % 3 == 1 ? r(8, 5) : r(11, 2);
+            o.variant = static_cast<uint8_t>(i % 3);
+            rg.obstacles_.push_back(o);
+        }
+        Obstacle altar;
+        altar.kind = Obstacle::Kind::House;
+        altar.pos = {shrine.x, shrine.y, rg.terrain_.heightAt(shrine.x, shrine.y)};
+        altar.halfX = r(3, 2);
+        altar.halfY = r(3, 2);
+        altar.height = r(6, 5);
+        altar.variant = 3;
+        rg.obstacles_.push_back(altar);
+    }
+    rg.scatterScenery(c.seed() ^ static_cast<uint64_t>(ox * 31 + oy), rg.obstacles_.size(), shrine, m(15));
     return rg;
 }
 
@@ -317,6 +534,9 @@ uint64_t Region::checksum() const {
     StateHasher h;
     for (Fixed s : terrain_.samples()) h.addI64(s.raw);
     for (Ground g : ground_) h.addU64(static_cast<uint64_t>(g));
+    h.addI64(origin_.x.raw);
+    h.addI64(origin_.y.raw);
+    for (Fixed w : water_) h.addI64(w.raw);
     h.addU64(obstacles_.size());
     for (const Obstacle& o : obstacles_) {
         h.addU64(static_cast<uint64_t>(o.kind));

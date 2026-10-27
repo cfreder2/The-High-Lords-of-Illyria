@@ -10,5 +10,6 @@ add_library(illyria_sim
     src/units.cpp
     src/region.cpp
     src/nav.cpp
+    src/continent.cpp
 )
 target_include_directories(illyria_sim PUBLIC include)

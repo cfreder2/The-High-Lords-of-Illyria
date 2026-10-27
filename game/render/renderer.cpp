@@ -204,7 +204,9 @@ bool Renderer::buildPrograms() {
                  {sprite_, shaders::kSpriteVs, shaders::kSpriteFs},
                  {particle_, shaders::kParticleVs, shaders::kParticleFs},
                  {mesh_, shaders::kMeshVs, shaders::kMeshFs},
-                 {water_, shaders::kWaterVs, shaders::kWaterFs}};
+                 {water_, shaders::kWaterVs, shaders::kWaterFs},
+                 {far_, shaders::kFarVs, shaders::kFarFs},
+                 {ribbon_, shaders::kRibbonVs, shaders::kRibbonFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -221,6 +223,8 @@ bool Renderer::buildPrograms() {
         s.p.sway = glGetUniformLocation(s.p.id, "uSway");
         s.p.ground = glGetUniformLocation(s.p.id, "uGround");
         s.p.road = glGetUniformLocation(s.p.id, "uRoad");
+        s.p.waterTex = glGetUniformLocation(s.p.id, "uWaterTex");
+        s.p.hole = glGetUniformLocation(s.p.id, "uHole");
     }
     return true;
 }
@@ -427,25 +431,140 @@ void Renderer::uploadScenery(const Battle& battle) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, rn, rn, 0, GL_RG, GL_UNSIGNED_BYTE, road.data());
 
-    // Water: one big quad at the water level, coloured by depth in the shader.
+    // Water: the surface per sample (rivers slope downhill), drawn over the wet cells.
     waterLevel_ = static_cast<float>(region.waterLevel().toDouble());
-    const float s = Battle::kWorldSize;
-    const float quad[] = {0, 0, s, 0, 0, s, s, s};
+    const int samples = Battle::kTerrainCells + 1;
+    const std::vector<sim::Fixed>& surfaces = region.waterSurfaces();
+    std::vector<float> water(static_cast<size_t>(samples) * samples, -1e6f);
+    for (size_t i = 0; i < water.size() && i < surfaces.size(); ++i)
+        if (surfaces[i].raw != sim::Region::kDryRaw) water[i] = static_cast<float>(surfaces[i].toDouble());
+    if (!waterTex_) glGenTextures(1, &waterTex_);
+    glBindTexture(GL_TEXTURE_2D, waterTex_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, samples, samples, 0, GL_RED, GL_FLOAT, water.data());
+    std::vector<float> wet;
+    const float cs = Battle::kCellSize;
+    for (int y = 0; y < Battle::kTerrainCells; ++y) {
+        for (int x = 0; x < Battle::kTerrainCells; ++x) {
+            bool any = false;
+            for (int k = 0; k < 4 && !any; ++k)
+                any = water[static_cast<size_t>(y + (k >> 1)) * samples + x + (k & 1)] > -1e5f;
+            if (!any) continue;
+            const float x0 = x * cs, y0 = y * cs, x1 = x0 + cs, y1 = y0 + cs;
+            wet.insert(wet.end(), {x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1});
+        }
+    }
+    waterVertices_ = static_cast<GLsizei>(wet.size() / 2);
     if (!waterVao_) {
         glGenVertexArrays(1, &waterVao_);
         glGenBuffers(1, &waterVbo_);
     }
     glBindVertexArray(waterVao_);
     glBindBuffer(GL_ARRAY_BUFFER, waterVbo_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(std::max<size_t>(wet.size(), 1) * 4), wet.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8, nullptr);
     glBindVertexArray(0);
 }
 
+void Renderer::uploadContinent(const Battle& battle) {
+    // The far continent: one coarse mesh. Inside the battlefield it sinks a
+    // few metres under the full-detail terrain.
+    const FarGrid& g = battle.farGrid();
+    const auto colourOf = [](uint8_t ground, float h) -> V3 {
+        V3 c;
+        switch (static_cast<sim::Ground>(ground)) {
+            case sim::Ground::Road: c = {0.55f, 0.47f, 0.33f}; break;
+            case sim::Ground::Forest: c = {0.20f, 0.36f, 0.17f}; break;
+            case sim::Ground::Swamp: c = {0.33f, 0.38f, 0.24f}; break;
+            case sim::Ground::Shallows: c = {0.30f, 0.50f, 0.55f}; break;
+            case sim::Ground::DeepWater: c = {0.10f, 0.26f, 0.42f}; break;
+            case sim::Ground::Rock: c = {0.50f, 0.47f, 0.43f}; break;
+            case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
+            default: c = {0.42f, 0.54f, 0.28f}; break;
+        }
+        if (static_cast<sim::Ground>(ground) != sim::Ground::DeepWater) {
+            const float snow = std::clamp((h - 260.0f) / 80.0f, 0.0f, 1.0f);
+            c = c + (V3{0.93f, 0.94f, 0.96f} - c) * snow;
+        }
+        return c;
+    };
+    std::vector<float> verts;
+    verts.reserve(static_cast<size_t>(g.nx) * g.ny * 9);
+    const auto hAt = [&](int i, int j) {
+        i = std::clamp(i, 0, g.nx - 1);
+        j = std::clamp(j, 0, g.ny - 1);
+        return g.height[static_cast<size_t>(j) * g.nx + i];
+    };
+    for (int j = 0; j < g.ny; ++j) {
+        for (int i = 0; i < g.nx; ++i) {
+            const float x = g.min.x + i * FarGrid::kCell, y = g.min.y + j * FarGrid::kCell;
+            float z = hAt(i, j);
+            if (battle.inBattlefield(x, y)) z -= 3.0f;
+            const V3 n = V3{hAt(i - 1, j) - hAt(i + 1, j), hAt(i, j - 1) - hAt(i, j + 1), 2 * FarGrid::kCell}.normalized();
+            const V3 c = colourOf(g.ground[static_cast<size_t>(j) * g.nx + i], z);
+            verts.insert(verts.end(), {x, y, z, n.x, n.y, n.z, c.x, c.y, c.z});
+        }
+    }
+    std::vector<uint32_t> idx;
+    idx.reserve(static_cast<size_t>(g.nx - 1) * (g.ny - 1) * 6);
+    for (int j = 0; j + 1 < g.ny; ++j) {
+        for (int i = 0; i + 1 < g.nx; ++i) {
+            const uint32_t a = static_cast<uint32_t>(j * g.nx + i), b = a + 1, c = a + g.nx, d = c + 1;
+            idx.insert(idx.end(), {a, b, d, a, d, c});
+        }
+    }
+    farIndexCount_ = static_cast<GLsizei>(idx.size());
+    if (!farVao_) {
+        glGenVertexArrays(1, &farVao_);
+        glGenBuffers(1, &farVbo_);
+        glGenBuffers(1, &farIbo_);
+    }
+    glBindVertexArray(farVao_);
+    glBindBuffer(GL_ARRAY_BUFFER, farVbo_);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * 4), verts.data(), GL_STATIC_DRAW);
+    for (int a = 0; a < 3; ++a) {
+        glEnableVertexAttribArray(a);
+        glVertexAttribPointer(a, 3, GL_FLOAT, GL_FALSE, 36, reinterpret_cast<const void*>(static_cast<uintptr_t>(a * 12)));
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, farIbo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(idx.size() * 4), idx.data(), GL_STATIC_DRAW);
+    glBindVertexArray(0);
+
+    // Rivers and roads as ribbons, so they read from god view.
+    const sim::Continent& cont = battle.continent();
+    const V3 o = battle.origin();
+    std::vector<float> ribbons;
+    for (const sim::Continent::River& r : cont.rivers()) {
+        const float hw = static_cast<float>(r.halfWidth.toDouble());
+        for (size_t i = 0; i + 1 < r.points.size(); ++i) {
+            const V3 a = toV3(r.points[i]) - V3{o.x, o.y, 0}, b = toV3(r.points[i + 1]) - V3{o.x, o.y, 0};
+            ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 0});
+        }
+    }
+    for (const sim::Polyline& road : cont.roads()) {
+        for (size_t i = 0; i + 1 < road.points.size(); ++i) {
+            V3 a = toV3(road.points[i]) - V3{o.x, o.y, 0}, b = toV3(road.points[i + 1]) - V3{o.x, o.y, 0};
+            // Long road legs follow the ground in 100 m steps.
+            const int steps = std::max(1, static_cast<int>((b - a).length() / 100.0f));
+            for (int s = 0; s < steps; ++s) {
+                V3 p = a + (b - a) * (static_cast<float>(s) / steps), q = a + (b - a) * (static_cast<float>(s + 1) / steps);
+                p.z = std::max(battle.heightAt(p.x, p.y), battle.farGrid().heightAt(p.x, p.y));
+                q.z = std::max(battle.heightAt(q.x, q.y), battle.farGrid().heightAt(q.x, q.y));
+                ribbons.insert(ribbons.end(), {p.x, p.y, p.z, q.x, q.y, q.z, 3.0f, 1});
+            }
+        }
+    }
+    uploadDynamic(ribbons_, ribbons);
+}
+
 bool Renderer::init(Battle& battle) {
     if (!buildPrograms()) return false;
     makeBatch(marks_, {3, 4, 4}, Battle::kMaxGroundMarks);
+    makeBatch(ribbons_, {3, 3, 2}, 0);
     makeBatch(remainArrows_, {3, 3, 2}, Battle::kMaxRemains);
     makeBatch(sceneryShadows_, {3, 4, 4}, 0);
     makeMeshBatch(pines_, meshes::pine(), 0.03f);
@@ -472,6 +591,7 @@ void Renderer::reset(Battle& battle) {
     battle.takeDirtyRemains();
     uploadTerrain(battle);
     uploadScenery(battle);
+    uploadContinent(battle);
 }
 
 void Renderer::uploadTerrain(const Battle& battle) {
@@ -590,6 +710,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     const V3 right = f.cross({0, 0, 1}).normalized();
     glUniform3f(p.camRight, right.x, right.y, right.z);
     glUniform1f(p.water, waterLevel_);
+    if (p.waterTex >= 0) {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, waterTex_);
+        glUniform1i(p.waterTex, 3);
+        glActiveTexture(GL_TEXTURE0);
+    }
+    if (p.hole >= 0) glUniform4f(p.hole, 0, 0, Battle::kWorldSize, Battle::kWorldSize);
     if (p.ground >= 0) {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, groundTex_);
@@ -710,6 +837,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glBindVertexArray(terrainVao_);
     glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
 
+    // The rest of the continent, coarse, with its rivers and roads on top.
+    setCommon(far_, camera, timeSeconds, gameSeconds);
+    glBindVertexArray(farVao_);
+    glDrawElements(GL_TRIANGLES, farIndexCount_, GL_UNSIGNED_INT, nullptr);
+    if (ribbons_.count > 0) {
+        setCommon(ribbon_, camera, timeSeconds, gameSeconds);
+        glBindVertexArray(ribbons_.vao);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
+    }
+
     // Decals: blended, no depth writes. Ground marks first, then body parts, then per-frame.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -751,7 +888,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glDepthMask(GL_FALSE);
     setCommon(water_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(waterVao_);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDrawArrays(GL_TRIANGLES, 0, waterVertices_);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 

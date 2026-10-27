@@ -736,11 +736,27 @@ void main() {
 )";
 
 // ---------------------------------------------------------------- water
+// The water surface per terrain sample (rivers slope downhill); a mesh of
+// the wet cells only.
 inline const char* kWaterVs = R"(
 layout(location = 0) in vec2 aPos;
+uniform sampler2D uWaterTex;  // R32F per sample; very negative where dry
 out vec3 vWorld;
+float waterTexel(vec2 c) {
+    ivec2 i = ivec2(clamp(c, vec2(0.0), vec2(uCells)));
+    return texelFetch(uWaterTex, i, 0).r;
+}
 void main() {
-    vWorld = vec3(aPos, uWater);
+    // The cell's wet corners decide its surface; dry corners borrow it.
+    vec2 c = aPos / uCellSize;
+    float w = waterTexel(c);
+    if (w < -1000.0) {
+        float best = -1e9;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) best = max(best, waterTexel(c + vec2(dx, dy)));
+        w = best;
+    }
+    vWorld = vec3(aPos, w);
     gl_Position = uViewProj * vec4(vWorld, 1.0);
 }
 )";
@@ -748,7 +764,7 @@ inline const char* kWaterFs = R"(
 in vec3 vWorld;
 out vec4 oColor;
 void main() {
-    float depth = uWater - groundZ(vWorld.xy);
+    float depth = vWorld.z - groundZ(vWorld.xy);
     if (depth <= 0.0) discard;
     vec3 shallow = vec3(0.26, 0.52, 0.52), deep = vec3(0.05, 0.17, 0.30);
     vec3 c = mix(shallow, deep, 1.0 - exp(-depth * 0.7));
@@ -763,6 +779,87 @@ void main() {
     c = mix(c, vec3(0.9, 0.93, 0.95), foam * 0.6);
     float alpha = clamp(0.45 + depth * 0.35, 0.45, 0.92);
     oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), alpha);
+}
+)";
+
+// ---------------------------------------------------------------- far continent
+// Everything beyond the battlefield: a coarse mesh coloured by ground type.
+inline const char* kFarVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vColor;
+void main() {
+    vWorld = aPos;
+    vNormal = aNormal;
+    vColor = aColor;
+    gl_Position = uViewProj * vec4(aPos, 1.0);
+}
+)";
+inline const char* kFarFs = R"(
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vColor;
+out vec4 oColor;
+float hexEdge(vec2 p, float s) {
+    vec2 r = vec2(1.0, 1.7320508);
+    vec2 h = r * 0.5;
+    vec2 a = mod(p / s, r) - h;
+    vec2 b = mod(p / s - h, r) - h;
+    vec2 g = dot(a, a) < dot(b, b) ? a : b;
+    g = abs(g);
+    return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
+}
+void main() {
+    vec3 n = normalize(vNormal);
+    float light = 0.32 + 0.9 * max(dot(n, kSun), 0.0);
+    vec3 c = vColor * light;
+    // The strategic hex grid of the campaign map, at continent scale.
+    float gridFade = smoothstep(2500.0, 7000.0, uCamDist) * 0.3;
+    if (gridFade > 0.0) {
+        float e = hexEdge(vWorld.xy, 400.0);
+        float w = fwidth(e) * 1.5;
+        c = mix(c, vec3(0.95, 0.9, 0.78), gridFade * (1.0 - smoothstep(0.0, w, e)));
+    }
+    oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
+}
+)";
+
+// Rivers and roads drawn as ribbons on the far map, never thinner than a few pixels.
+// Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road).
+inline const char* kRibbonVs = R"(
+layout(location = 0) in vec3 iA;
+layout(location = 1) in vec3 iB;
+layout(location = 2) in vec2 iInfo;
+uniform vec4 uHole;  // battlefield (min x, min y, max x, max y): drawn in full detail there
+flat out float vKind;
+out float vFog;
+void main() {
+    vec3 mid = (iA + iB) * 0.5;
+    if (mid.x > uHole.x && mid.y > uHole.y && mid.x < uHole.z && mid.y < uHole.w) { gl_Position = kCulled; return; }
+    float dist = distance(uEye, mid);
+    float px = uPxScale * dist;
+    float hw = max(iInfo.x, px * (iInfo.y > 0.5 ? 0.9 : 1.6));
+    vec3 d = iB - iA;
+    vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0)) * hw;
+    float t = float(gl_VertexID & 1);
+    float s = float((gl_VertexID >> 1) & 1) * 2.0 - 1.0;
+    vec3 world = mix(iA, iB, t) + side * s;
+    world.z += max(1.5, dist * 0.003);  // ride above the coarse mesh
+    vKind = iInfo.y;
+    vFog = fogFactor(dist);
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kRibbonFs = R"(
+flat in float vKind;
+in float vFog;
+out vec4 oColor;
+void main() {
+    vec3 c = vKind < 0.5 ? vec3(0.16, 0.36, 0.58) : vec3(0.48, 0.36, 0.22);
+    oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
 )";
 

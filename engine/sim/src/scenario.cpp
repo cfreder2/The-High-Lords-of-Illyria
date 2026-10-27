@@ -1,5 +1,6 @@
 #include "illyria/sim/scenario.h"
 
+#include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 
@@ -118,6 +119,26 @@ Replay Crossing::replay(uint64_t seed) {
     for (EntityId id = 41; id <= 43; ++id) {
         r.commands.push_back({0, {0, id, Command::Type::Move, {m(380), m(600), m(0)}}});
     }
+    return r;
+}
+
+void Oakhaven::setup(World& world) {
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    // Ids 1..24: the Red Hand east of the ford. 25..36: archers on the west
+    // bank, 37..40 grenadiers, 41..43 griffins.
+    for (int i = 0; i < 24; ++i) world.spawnUnit(1, {m(620 + (i % 6) * 2), m(500 + (i / 6) * 2), m(0)}, -east, unitStats(UnitType::LightInfantry));
+    for (int i = 0; i < 12; ++i) world.spawnUnit(0, {m(440), m(488 + i * 2), m(0)}, east, unitStats(UnitType::Archers));
+    for (int i = 0; i < 4; ++i) world.spawnUnit(0, {m(452), m(494 + i * 3), m(0)}, east, unitStats(UnitType::DwarfGrenadier));
+    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(300), m(520 + i * 4), m(0)}, east, unitStats(UnitType::Griffins));
+}
+
+Replay Oakhaven::replay(uint64_t seed) {
+    Replay r;
+    r.config.seed = seed;
+    const Continent continent(20261027);
+    r.config.region = std::make_shared<const Region>(Region::fromContinent(continent, continent.crossings().front().pos, 256));
+    for (EntityId id = 1; id <= 24; ++id) r.commands.push_back({0, {1, id, Command::Type::Move, {m(440), m(500), m(0)}}});
+    for (EntityId id = 41; id <= 43; ++id) r.commands.push_back({0, {0, id, Command::Type::Move, {m(760), m(560), m(0)}}});
     return r;
 }
 

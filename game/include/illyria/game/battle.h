@@ -7,6 +7,7 @@
 
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
@@ -45,6 +46,17 @@ struct Particle {
     float age;
     float life;
     float size;
+};
+
+// The whole continent at low resolution, in battle-local coordinates, for
+// drawing beyond the battlefield and for the camera at strategic heights.
+struct FarGrid {
+    static constexpr float kCell = 64.0f;
+    int nx = 0, ny = 0;
+    V3 min;                       // local coordinates of sample (0, 0)
+    std::vector<float> height;    // ground, or the water surface where wet
+    std::vector<uint8_t> ground;  // sim::Ground
+    float heightAt(float x, float y) const;
 };
 
 // One playable battle: owns the deterministic world, turns player input into
@@ -88,8 +100,14 @@ public:
     V3 squadCentre(const Squad& s, bool interpolated = true) const;
     int squadOf(sim::EntityId id) const { return squadOfUnit_[id - 1]; }
 
+    // Ground height anywhere: the battlefield exactly, the rest of the continent coarsely.
     float heightAt(float x, float y) const;
+    bool inBattlefield(float x, float y) const { return x >= 0 && y >= 0 && x <= kWorldSize && y <= kWorldSize; }
+    const FarGrid& farGrid() const { return far_; }
     const sim::Region& region() const { return *region_; }
+    const sim::Continent& continent() const { return *continent_; }
+    // Continent coordinates of this battlefield's (0, 0).
+    V3 origin() const { return toV3(region_->origin()); }
     const std::vector<float>& heights() const { return heights_; }
 
     // Interpolated presentation positions.
@@ -121,7 +139,9 @@ private:
     void moveSquad(const Squad& squad, const V3& to);
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
 
+    std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;
+    FarGrid far_;
     std::unique_ptr<sim::World> world_;
     std::vector<float> heights_;
     std::vector<Squad> squads_;

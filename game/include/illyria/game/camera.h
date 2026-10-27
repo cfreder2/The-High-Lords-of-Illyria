@@ -14,10 +14,16 @@ public:
     using HeightFn = std::function<float(float x, float y)>;
 
     static constexpr float kMinDistance = 6.0f;
-    static constexpr float kMaxDistance = 1800.0f;
+    static constexpr float kMaxDistance = 22000.0f;
     static constexpr float kFovY = 0.785398f;  // 45 degrees
 
-    void setBounds(float size) { worldSize_ = size; }
+    void setBounds(float size) { setBounds(0, 0, size, size); }
+    void setBounds(float minX, float minY, float maxX, float maxY) {
+        minX_ = minX;
+        minY_ = minY;
+        maxX_ = maxX;
+        maxY_ = maxY;
+    }
     void setHeightFn(HeightFn fn) { heightFn_ = std::move(fn); }
     void setViewport(float width, float height) {
         width_ = width;
@@ -57,7 +63,7 @@ private:
     void clampTarget();
 
     HeightFn heightFn_;
-    float worldSize_ = 1024.0f;
+    float minX_ = 0, minY_ = 0, maxX_ = 1024.0f, maxY_ = 1024.0f;
     float width_ = 1, height_ = 1;
     float tx_ = 0, ty_ = 0;
     float distance_ = 300.0f;

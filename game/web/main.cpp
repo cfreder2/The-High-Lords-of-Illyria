@@ -5,6 +5,7 @@
 #include <emscripten/html5.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -34,6 +35,10 @@ struct App {
     float pixelRatio = 1;
     double fps = 60;
     std::string hud;
+    // The opening swoop from the whole continent down to the battle.
+    double introStartMs = -1;
+    V3 introFrom, introTo;
+    float introFromDist = 0, introToDist = 0;
 };
 
 App* app = nullptr;
@@ -46,9 +51,39 @@ void frameCamera() {
     app->camera.lookAt(c.x + 10, c.y, 55);
 }
 
+// Start over the whole continent and swoop down to the battle.
+void startIntro() {
+    const Battle& b = *app->battle;
+    frameCamera();
+    app->introTo = app->camera.target();
+    app->introToDist = app->camera.distance();
+    const V3 o = b.origin();
+    app->introFrom = {illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 0};
+    app->introFromDist = 19000.0f;
+    app->camera.lookAt(app->introFrom.x, app->introFrom.y, app->introFromDist);
+    app->introStartMs = 0;  // set on the first frame
+}
+
+void stepIntro(double now) {
+    if (app->introStartMs < 0) return;
+    if (app->introStartMs == 0) app->introStartMs = now;
+    constexpr double kHoldMs = 1200, kSwoopMs = 5000;
+    const double t = std::clamp((now - app->introStartMs - kHoldMs) / kSwoopMs, 0.0, 1.0);
+    const float s = static_cast<float>(t * t * (3 - 2 * t));
+    // Pan early, descend on a log scale so the zoom feels even all the way down.
+    const float pan = std::min(1.0f, s * 1.6f);
+    const float x = app->introFrom.x + (app->introTo.x - app->introFrom.x) * pan;
+    const float y = app->introFrom.y + (app->introTo.y - app->introFrom.y) * pan;
+    const float d = app->introFromDist * std::pow(app->introToDist / app->introFromDist, s);
+    app->camera.lookAt(x, y, d);
+    if (t >= 1) app->introStartMs = -1;
+}
+
 void newBattle() {
     app->battle = std::make_unique<Battle>(kBattleSeed);
-    app->camera.setBounds(Battle::kWorldSize);
+    // The whole continent, in battle-local coordinates.
+    const V3 o = app->battle->origin();
+    app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
     app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
 }
 
@@ -71,6 +106,7 @@ void frame() {
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
     resizeCanvas();
+    stepIntro(now);
     app->battle->advance(dtMs / 1000.0);
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
 }
@@ -85,10 +121,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_version() { return ILLYRIA_VERSION; }
 EMSCRIPTEN_KEEPALIVE void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
     if (!app) return;
     const float s = app->pixelRatio;
+    if (type == 0) app->introStartMs = -1;  // any touch takes the camera
     app->gestures->pointer(static_cast<PointerEvent>(type), id, x * s, y * s, button, timeMs);
 }
 
 EMSCRIPTEN_KEEPALIVE void illyria_wheel(float deltaY, float x, float y) {
+    if (app) app->introStartMs = -1;
     if (app) app->gestures->wheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
 }
 
@@ -130,8 +168,17 @@ EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
 }
 EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, float yaw) {
     if (!app) return;
+    app->introStartMs = -1;
     app->camera.lookAt(x, y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
+}
+
+// Test hook: look down on the whole continent.
+EMSCRIPTEN_KEEPALIVE void illyria_overview() {
+    if (!app) return;
+    app->introStartMs = -1;
+    const V3 o = app->battle->origin();
+    app->camera.lookAt(illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 19000.0f);
 }
 
 // HUD state as JSON, polled by the page a few times a second.
@@ -187,7 +234,7 @@ int main() {
         EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("Graphics initialisation failed."); });
         return 1;
     }
-    frameCamera();
+    startIntro();
     EM_ASM({ if (window.illyriaReady) window.illyriaReady(); });
     emscripten_set_main_loop(frame, 0, false);
     return 0;

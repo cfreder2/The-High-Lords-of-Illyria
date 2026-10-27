@@ -53,7 +53,35 @@ Battle::Battle(uint64_t seed) {
     cfg.seed = seed;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
-    region_ = std::make_shared<const sim::Region>(sim::Region::generateIllyria(kRegionSeed));
+    // The battle is fought at Oakhaven Ford, a full-detail window of the continent.
+    continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
+    region_ = std::make_shared<const sim::Region>(
+        sim::Region::fromContinent(*continent_, continent_->crossings().front().pos, kTerrainCells));
+    // The continent around the battlefield, every 64 m.
+    {
+        const V3 o = toV3(region_->origin());
+        far_.nx = static_cast<int>(sim::Continent::kWidth / FarGrid::kCell) + 1;
+        far_.ny = static_cast<int>(sim::Continent::kHeight / FarGrid::kCell) + 1;
+        far_.min = {-o.x, -o.y, 0};
+        far_.height.resize(static_cast<size_t>(far_.nx) * far_.ny);
+        far_.ground.resize(far_.height.size());
+        for (int j = 0; j < far_.ny; ++j) {
+            for (int i = 0; i < far_.nx; ++i) {
+                const sim::Fixed x = sim::Fixed::fromInt(static_cast<int64_t>(i * FarGrid::kCell));
+                const sim::Fixed y = sim::Fixed::fromInt(static_cast<int64_t>(j * FarGrid::kCell));
+                const sim::Continent::Sample smp = continent_->sample(x, y);
+                sim::Fixed surface;
+                const size_t k = static_cast<size_t>(j) * far_.nx + i;
+                if (continent_->waterSurfaceOf(smp, surface)) {
+                    far_.height[k] = static_cast<float>(surface.toDouble());
+                    far_.ground[k] = static_cast<uint8_t>(sim::Ground::DeepWater);
+                } else {
+                    far_.height[k] = static_cast<float>(smp.height.toDouble());
+                    far_.ground[k] = static_cast<uint8_t>(continent_->landGround(x, y, smp.height, smp.mountain, smp.roadDist));
+                }
+            }
+        }
+    }
     heights_.reserve(region_->terrain().samples().size());
     for (sim::Fixed h : region_->terrain().samples()) heights_.push_back(static_cast<float>(h.toDouble()));
     cfg.region = region_;
@@ -128,7 +156,19 @@ void Battle::spawnSquad(const std::string& name, sim::PlayerId owner, UnitType t
     squads_.push_back(std::move(s));
 }
 
+float FarGrid::heightAt(float x, float y) const {
+    const float fx = std::clamp((x - min.x) / kCell, 0.0f, static_cast<float>(nx - 1) - 0.001f);
+    const float fy = std::clamp((y - min.y) / kCell, 0.0f, static_cast<float>(ny - 1) - 0.001f);
+    const int ix = static_cast<int>(fx), iy = static_cast<int>(fy);
+    const float tx = fx - ix, ty = fy - iy;
+    const auto h = [&](int i, int j) { return height[static_cast<size_t>(j) * nx + i]; };
+    const float top = h(ix, iy) + (h(ix + 1, iy) - h(ix, iy)) * tx;
+    const float bottom = h(ix, iy + 1) + (h(ix + 1, iy + 1) - h(ix, iy + 1)) * tx;
+    return top + (bottom - top) * ty;
+}
+
 float Battle::heightAt(float x, float y) const {
+    if (!inBattlefield(x, y)) return far_.heightAt(x, y);
     const int n = kTerrainCells;
     const float fx = std::clamp(x / kCellSize, 0.0f, static_cast<float>(n));
     const float fy = std::clamp(y / kCellSize, 0.0f, static_cast<float>(n));

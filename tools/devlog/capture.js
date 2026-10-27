@@ -50,6 +50,7 @@ const call = (page, fn, ...args) => page.evaluate(([fn, args]) => Module[`_${fn}
     const canForward = await has(page, 'illyria_fast_forward');
     const canHot = await has(page, 'illyria_hot_spot');
     if (canCamera) {
+      if (await has(page, 'illyria_overview')) { await call(page, 'illyria_overview'); await shot('02a-continent'); }
       await call(page, 'illyria_set_camera', 512, 512, 1700, 0.3); await shot('02-god-view');
       await call(page, 'illyria_set_camera', 500, 512, 420, 0.3); await shot('03-strategic');
     }

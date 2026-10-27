@@ -19,6 +19,7 @@ int32_t groundCost(Ground g) {
         case Ground::Shallows: return 25;
         case Ground::Rock: return 20;
         case Ground::DeepWater: return 0;
+        case Ground::Bridge: return 9;
     }
     return 10;
 }

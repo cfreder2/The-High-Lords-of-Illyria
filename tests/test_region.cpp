@@ -27,7 +27,7 @@ WorldConfig regionConfig() {
 
 TEST(region_has_every_kind_of_ground_and_scenery) {
     const Region& r = *illyriaRegion();
-    int ground[7] = {};
+    int ground[8] = {};
     for (int y = 0; y < r.terrain().cells(); ++y)
         for (int x = 0; x < r.terrain().cells(); ++x) ++ground[static_cast<int>(r.cellGround(x, y))];
     for (int g = 0; g < 7; ++g) CHECK(ground[g] > 50);
@@ -45,7 +45,7 @@ TEST(region_is_deterministic_and_pinned) {
     CHECK(Region::generateIllyria(20261027).checksum() == illyriaRegion()->checksum());
     CHECK(Region::generateIllyria(1).checksum() != illyriaRegion()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0xba8edfb74527e3c3;
+    constexpr uint64_t kGolden = 0x7763e599ce28c640;
     if (illyriaRegion()->checksum() != kGolden) std::printf("  region checksum: 0x%016llx\n", static_cast<unsigned long long>(illyriaRegion()->checksum()));
     CHECK(illyriaRegion()->checksum() == kGolden);
 }

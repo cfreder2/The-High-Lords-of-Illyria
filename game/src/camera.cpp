@@ -18,8 +18,10 @@ void Camera::lookAt(float x, float y, float distance) {
 }
 
 float Camera::pitch() const {
-    // Interpolate on a log scale so each pinch step feels the same.
-    const float t = std::log(distance_ / kMinDistance) / std::log(kMaxDistance / kMinDistance);
+    // Interpolate on a log scale so each pinch step feels the same; above
+    // kTopDownDistance the view stays near top-down like the campaign map.
+    constexpr float kTopDownDistance = 3000.0f;
+    const float t = std::clamp(std::log(distance_ / kMinDistance) / std::log(kTopDownDistance / kMinDistance), 0.0f, 1.0f);
     const float s = t * t * (3 - 2 * t);
     return kPitchNear + (kPitchFar - kPitchNear) * s;
 }
@@ -120,8 +122,8 @@ void Camera::zoomAt(float factor, float px, float py) {
 }
 
 void Camera::clampTarget() {
-    tx_ = std::clamp(tx_, 0.0f, worldSize_);
-    ty_ = std::clamp(ty_, 0.0f, worldSize_);
+    tx_ = std::clamp(tx_, minX_, maxX_);
+    ty_ = std::clamp(ty_, minY_, maxY_);
 }
 
 }  // namespace illyria::game
