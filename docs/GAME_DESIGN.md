@@ -62,6 +62,7 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 
 ### 4.2 Unit Identity, Progression & Attrition
 
+- **Stack Limit (from *Warlords*):** At most **8 squads** may occupy a map hex, and an attack commits at most 8. A defended city (2×2 hexes) fights with everything inside it, up to **32 squads**. This caps the largest possible battle at **40 squads** (~480 soldiers at ~12 per squad), which is what keeps several simultaneous full-physics battles inside the frame budget (§5.2).
 - **Named Units:** Every unit batch recruited receives a unique name (e.g., *1st Oakhaven Footmen*, *The Grey Watch*).
 - **Slow Recruitment Cycle:** Units take multiple turns/minutes to produce. Replacing a wiped-out veteran squad is extremely costly, encouraging strategic retreats and tactical preservation.
 - **Veterancy & Blessings**
@@ -92,6 +93,20 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 | Networking | Lockstep inputs over WebSockets through a small relay server (WebRTC data channels later) | Browsers cannot open raw UDP sockets; lockstep sends only inputs, so bandwidth is tiny. |
 | Threading | Single-threaded simulation at first | Web threads need cross-origin isolation (itch.io supports it, but it adds friction); the 30 Hz simulation fits comfortably on one core. |
 
+### 5.2 Performance Budget (60 fps on laptop integrated graphics)
+
+- **Rendering is always 60 fps**, interpolated between 30 Hz simulation ticks. Only the battle the player is viewing is rendered; the minimap draws dots from simulation state.
+- **Each battle is its own simulation world**, with a spatial grid for hit tests. Measured on the first core (native, before optimisation): one 450-soldier battle costs 0.8 ms/tick, while nine such battles sharing one world cost 69 ms/tick. Separating them is mandatory.
+- **Simulation tiers:**
+
+| Tier | Applies to | Runs |
+|---|---|---|
+| Full + visible | The battle on screen | Deterministic sim + cosmetic physics (ragdolls, debris, gore) + rendering |
+| Full, headless | Every other battle involving a human player | Deterministic sim only |
+| Auto-resolve | AI-vs-AI battles away from human players | Warlords-style combat rolls on the campaign layer |
+
+- **Worst case target:** 9 simultaneous 40-squad battles in under 4 ms/tick in the WebAssembly build. CI will fail the build when a benchmark exceeds this.
+
 ## 6. Development Roadmap
 
 > *Proposed — durations assume a small core team and are placeholders for planning.*
@@ -109,7 +124,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
 ## 7. Open Questions
 
 - ~~**Q1 — Engine:**~~ *Resolved:* custom C++ engine, web-first via WebAssembly (§5.1).
-- **Q2 — Battle timing in multiplayer:** When two human armies meet on the campaign map, do other players wait, watch, or continue their turns?
+- **Q2 — Campaign timing:** Turn-based campaign with real-time battles (one battle at a time in single-player), or a fully real-time continent (up to one battle per faction at once)? The budget in §5.2 covers the second. In multiplayer, do other players wait, watch, or keep playing during a battle?
 - **Q3 — Recruitment time units:** "Turns" on the campaign map vs. "minutes" inside battles — define whether reinforcements can arrive mid-battle.
 - **Q4 — Shield arc value:** Confirm default frontal shield cone (placeholder 120°) and how Temple Blessings (+15%) scale it.
 - **Q5 — IP:** The campaign map and naming must be original to Illyria; avoid reproducing *Warlords* or *Myth* assets, maps, or names.
