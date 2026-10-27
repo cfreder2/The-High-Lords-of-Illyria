@@ -1,0 +1,10 @@
+{
+  "name": "The High Lords of Illyria",
+  "short_name": "Illyria",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#14110d",
+  "theme_color": "#14110d",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

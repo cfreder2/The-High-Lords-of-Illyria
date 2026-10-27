@@ -1,0 +1,185 @@
+// Browser entry point: WebGL 2 context, main loop, and the C functions the
+// page's JavaScript calls for input and HUD state.
+
+#include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <memory>
+#include <string>
+
+#include "../render/renderer.h"
+#include "illyria/game/battle.h"
+#include "illyria/game/camera.h"
+#include "illyria/game/gestures.h"
+
+#ifndef ILLYRIA_VERSION
+#define ILLYRIA_VERSION "0.0.0-dev"
+#endif
+
+using namespace illyria::game;
+
+namespace {
+
+constexpr uint64_t kBattleSeed = 20261027;
+constexpr double kMaxPixelRatio = 2.0;
+
+struct App {
+    std::unique_ptr<Battle> battle;
+    Camera camera;
+    std::unique_ptr<Gestures> gestures;
+    Renderer renderer;
+    double lastMs = 0;
+    float pixelRatio = 1;
+    double fps = 60;
+    std::string hud;
+};
+
+App* app = nullptr;
+
+void frameCamera() {
+    const Battle& b = *app->battle;
+    // Open just behind the Grey Watch, close enough to see soldiers, looking
+    // east toward the Red Hand.
+    const V3 c = b.squadCentre(b.squads()[2]);
+    app->camera.lookAt(c.x + 10, c.y, 55);
+}
+
+void newBattle() {
+    app->battle = std::make_unique<Battle>(kBattleSeed);
+    app->camera.setBounds(Battle::kWorldSize);
+    app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
+}
+
+void resizeCanvas() {
+    double cssW = 0, cssH = 0;
+    emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+    app->pixelRatio = static_cast<float>(std::min(emscripten_get_device_pixel_ratio(), kMaxPixelRatio));
+    const int w = std::max(1, static_cast<int>(cssW * app->pixelRatio));
+    const int h = std::max(1, static_cast<int>(cssH * app->pixelRatio));
+    int curW = 0, curH = 0;
+    emscripten_get_canvas_element_size("#canvas", &curW, &curH);
+    if (curW != w || curH != h) emscripten_set_canvas_element_size("#canvas", w, h);
+    app->camera.setViewport(static_cast<float>(w), static_cast<float>(h));
+    app->gestures->setPixelScale(app->pixelRatio);
+}
+
+void frame() {
+    const double now = emscripten_get_now();
+    const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
+    app->lastMs = now;
+    app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
+    resizeCanvas();
+    app->battle->advance(dtMs / 1000.0);
+    app->renderer.draw(*app->battle, app->camera, now / 1000.0);
+}
+
+}  // namespace
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE const char* illyria_version() { return ILLYRIA_VERSION; }
+
+// type: 0 down, 1 move, 2 up, 3 cancel. Coordinates in CSS pixels.
+EMSCRIPTEN_KEEPALIVE void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
+    if (!app) return;
+    const float s = app->pixelRatio;
+    app->gestures->pointer(static_cast<PointerEvent>(type), id, x * s, y * s, button, timeMs);
+}
+
+EMSCRIPTEN_KEEPALIVE void illyria_wheel(float deltaY, float x, float y) {
+    if (app) app->gestures->wheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
+}
+
+EMSCRIPTEN_KEEPALIVE void illyria_select_squad(int index) {
+    if (app) app->battle->selectSquad(index);
+}
+
+EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
+    if (!app || index < 0 || index >= static_cast<int>(app->battle->squads().size())) return;
+    const V3 c = app->battle->squadCentre(app->battle->squads()[index]);
+    app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
+}
+
+EMSCRIPTEN_KEEPALIVE void illyria_stop() {
+    if (app) app->battle->stopSelected();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_toggle_pause() {
+    if (app) app->battle->togglePause();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_cycle_speed() {
+    if (app) app->battle->cycleSpeed();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_restart() {
+    if (!app) return;
+    newBattle();
+    app->renderer.reset(*app->battle);
+    frameCamera();
+}
+// Test hook: run the simulation forward instantly.
+EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
+    if (!app) return;
+    for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, float yaw) {
+    if (!app) return;
+    app->camera.lookAt(x, y, distance);
+    app->camera.rotate(yaw - app->camera.yaw());
+}
+
+// HUD state as JSON, polled by the page a few times a second.
+EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
+    if (!app) return "{}";
+    const Battle& b = *app->battle;
+    std::string& s = app->hud;
+    char buf[256];
+    std::snprintf(buf, sizeof buf,
+                  "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"squads\":[",
+                  ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
+                  b.stepMs(), app->camera.distance(), b.selectedSquad());
+    s = buf;
+    for (size_t i = 0; i < b.squads().size(); ++i) {
+        const Squad& q = b.squads()[i];
+        std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"owner\":%d,\"kind\":\"%s\",\"alive\":%d,\"total\":%zu}",
+                      i ? "," : "", q.name.c_str(), q.owner, q.kind == Squad::Kind::Archers ? "archers" : "footmen",
+                      b.aliveCount(q), q.members.size());
+        s += buf;
+    }
+    s += "]}";
+    return s.c_str();
+}
+
+}  // extern "C"
+
+int main() {
+    EmscriptenWebGLContextAttributes attrs;
+    emscripten_webgl_init_context_attributes(&attrs);
+    attrs.majorVersion = 2;
+    attrs.minorVersion = 0;
+    attrs.alpha = false;
+    attrs.antialias = true;
+    attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
+    const EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context("#canvas", &attrs);
+    if (ctx <= 0) {
+        EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("WebGL 2 is not available on this device."); });
+        return 1;
+    }
+    emscripten_webgl_make_context_current(ctx);
+
+    app = new App();
+    app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
+        app->battle->tap(app->camera, x, y, app->pixelRatio);
+    });
+    newBattle();
+    resizeCanvas();
+    if (!app->renderer.init(*app->battle)) {
+        EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("Graphics initialisation failed."); });
+        return 1;
+    }
+    frameCamera();
+    EM_ASM({ if (window.illyriaReady) window.illyriaReady(); });
+    emscripten_set_main_loop(frame, 0, false);
+    return 0;
+}

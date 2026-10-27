@@ -14,6 +14,7 @@ endif()
 add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wno-sign-conversion)
 
 add_subdirectory(engine/sim)
+add_subdirectory(game)
 add_subdirectory(tools)
 
 if(ILLYRIA_BUILD_TESTS)

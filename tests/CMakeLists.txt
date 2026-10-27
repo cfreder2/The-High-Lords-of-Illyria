@@ -5,8 +5,9 @@ add_executable(illyria_tests
     test_ballistics.cpp
     test_world.cpp
     test_terrain_combat.cpp
+    test_game.cpp
 )
-target_link_libraries(illyria_tests PRIVATE illyria_sim)
+target_link_libraries(illyria_tests PRIVATE illyria_game)
 
 if(EMSCRIPTEN)
     # Propagate main()'s return value as the node process exit code.

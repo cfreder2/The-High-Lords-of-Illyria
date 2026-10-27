@@ -1,0 +1,54 @@
+name: Deploy playable build
+
+# Every push to master builds the browser version and publishes it to GitHub
+# Pages. The version shown in the game is VERSION + this workflow's run number,
+# so it goes up by one with every deploy.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute version
+        id: version
+        run: echo "version=$(cat VERSION).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - name: Configure
+        run: emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DILLYRIA_VERSION=${{ steps.version.outputs.version }}
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Stamp build info
+        run: |
+          printf '{"version":"%s","commit":"%s","built":"%s"}\n' \
+            "${{ steps.version.outputs.version }}" "${{ github.sha }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > build/site/version.json
+          ls -la build/site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

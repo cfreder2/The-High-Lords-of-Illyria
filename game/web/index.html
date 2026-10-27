@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14110d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Illyria">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>The High Lords of Illyria</title>
+<style>
+  :root {
+    --ink: #f3ead8;
+    --ink-dim: #c9bc9f;
+    --panel: rgba(20, 17, 13, 0.78);
+    --panel-edge: rgba(214, 180, 110, 0.35);
+    --gold: #d6b46e;
+    --blue: #4a78e6;
+    --red: #d9402f;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #14110d; color: var(--ink);
+    font: 14px/1.3 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    -webkit-user-select: none; user-select: none; overscroll-behavior: none;
+  }
+  #canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  .panel { background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  button {
+    font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 9px; min-height: 40px; min-width: 44px; padding: 0 12px; cursor: pointer; touch-action: manipulation;
+  }
+  button:active { background: rgba(214, 180, 110, 0.25); }
+  #top {
+    position: fixed; top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l)); right: calc(8px + var(--safe-r));
+    display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; pointer-events: none;
+  }
+  #top > * { pointer-events: auto; }
+  #title { padding: 6px 10px; }
+  #title h1 { margin: 0; font-size: 15px; letter-spacing: 0.04em; color: var(--gold); font-weight: 600; }
+  #title .meta { font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-dim); }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  #enemy { padding: 4px 10px; font-size: 13px; color: var(--ink-dim); white-space: nowrap; }
+  #enemy b { color: var(--red); }
+  #bottom {
+    position: fixed; left: 0; right: 0; bottom: calc(8px + var(--safe-b));
+    padding: 0 calc(8px + var(--safe-r)) 0 calc(8px + var(--safe-l)); pointer-events: none;
+  }
+  #cards { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
+  #cards::-webkit-scrollbar { display: none; }
+  .card {
+    flex: 0 0 auto; width: 148px; padding: 8px 10px; text-align: left; min-height: 0;
+    display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; align-items: center;
+  }
+  .card.selected { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
+  .card.dead { opacity: 0.45; }
+  .card svg { width: 22px; height: 22px; grid-row: span 2; color: var(--gold); }
+  .card .name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+  .card .bar i { display: block; height: 100%; background: var(--blue); }
+  #actions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; }
+  #hint {
+    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); padding: 12px 16px; max-width: min(88vw, 420px);
+    text-align: center; color: var(--ink); pointer-events: none; transition: opacity 0.6s;
+  }
+  #hint b { color: var(--gold); font-weight: 600; }
+  #overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 8, 6, 0.72);
+    flex-direction: column; gap: 14px; text-align: center; padding: 24px;
+  }
+  #overlay h2 { margin: 0; font-size: 30px; color: var(--gold); letter-spacing: 0.06em; font-weight: 600; }
+  #overlay p { margin: 0; color: var(--ink-dim); max-width: 420px; }
+  .hidden { display: none !important; }
+  .fade { opacity: 0; }
+  /* Landscape phones: keep the battlefield visible. */
+  @media (max-height: 480px) {
+    #top { top: calc(4px + var(--safe-t)); }
+    #title { padding: 3px 8px; }
+    #title h1 { font-size: 12px; }
+    #title .meta { font-size: 10px; }
+    button { min-height: 34px; padding: 0 9px; font-size: 13px; }
+    #enemy { padding: 2px 8px; font-size: 12px; }
+    #bottom { bottom: calc(4px + var(--safe-b)); }
+    #actions { position: absolute; bottom: 0; right: calc(8px + var(--safe-r)); margin: 0; flex-direction: column; }
+    #cards { margin-right: 70px; }
+    .card { width: 120px; padding: 4px 8px; grid-template-columns: 18px 1fr; }
+    .card svg { width: 18px; height: 18px; }
+    .card .name { font-size: 12px; }
+  }
+  @media (max-width: 560px) {
+    #title h1 { font-size: 13px; }
+    .card { width: 128px; }
+    #enemy { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="top">
+  <div id="title" class="panel">
+    <h1>The High Lords of Illyria</h1>
+    <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
+  </div>
+  <div id="enemy" class="panel">Red Hand <b id="enemyCount">–</b></div>
+  <div id="controls">
+    <button id="pause" aria-label="Pause">Pause</button>
+    <button id="speed" aria-label="Game speed">1×</button>
+    <button id="restart" aria-label="Restart battle">Restart</button>
+  </div>
+</div>
+
+<div id="hint" class="panel">
+  <b>Pinch</b> to zoom from the gods to the mud · <b>drag</b> to pan · <b>twist</b> or right-drag to turn<br>
+  <b>Tap</b> a blue squad, then tap ground to march or an enemy to attack
+</div>
+
+<div id="bottom">
+  <div id="actions" class="hidden">
+    <button id="hold">Hold</button>
+    <button id="focus">Find</button>
+  </div>
+  <div id="cards"></div>
+</div>
+
+<div id="overlay">
+  <h2 id="overlayTitle">Loading…</h2>
+  <p id="overlayText">Raising the banners of Oakhaven.</p>
+  <button id="overlayButton" class="hidden">Fight again</button>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const canvas = $("canvas");
+  const version = "@ILLYRIA_VERSION@";
+  let api = null;
+  let lastSquadsKey = "";
+  let hintShown = true;
+
+  const icons = {
+    archers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3c7 3 9 12 0 18"/><path d="M6 3v18"/><path d="M3 12h15"/><path d="M15 9l3 3-3 3"/></svg>',
+    footmen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M12 7v10"/></svg>',
+  };
+
+  function hideHint() {
+    if (!hintShown) return;
+    hintShown = false;
+    $("hint").classList.add("fade");
+    setTimeout(() => $("hint").classList.add("hidden"), 700);
+  }
+
+  window.illyriaFatal = function (msg) {
+    $("overlay").classList.remove("hidden");
+    $("overlayTitle").textContent = "Cannot start";
+    $("overlayText").textContent = msg + " Try a recent Chrome, Safari or Firefox.";
+  };
+
+  window.illyriaReady = function () {
+    api = {
+      pointer: Module.cwrap("illyria_pointer", null, ["number", "number", "number", "number", "number", "number"]),
+      wheel: Module.cwrap("illyria_wheel", null, ["number", "number", "number"]),
+      select: Module.cwrap("illyria_select_squad", null, ["number"]),
+      focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
+      stop: Module.cwrap("illyria_stop", null, []),
+      pause: Module.cwrap("illyria_toggle_pause", null, []),
+      speed: Module.cwrap("illyria_cycle_speed", null, []),
+      restart: Module.cwrap("illyria_restart", null, []),
+      hud: Module.cwrap("illyria_hud", "string", []),
+    };
+    window.illyria = api;
+    $("overlay").classList.add("hidden");
+    setTimeout(hideHint, 9000);
+    updateHud();
+    setInterval(updateHud, 250);
+  };
+
+  // Pointer input → engine. Touch, mouse and pen share one path.
+  function send(type, e) {
+    if (!api) return;
+    const r = canvas.getBoundingClientRect();
+    api.pointer(type, e.pointerId, e.clientX - r.left, e.clientY - r.top, e.button < 0 ? 0 : e.button, e.timeStamp);
+  }
+  canvas.addEventListener("pointerdown", (e) => { canvas.setPointerCapture(e.pointerId); send(0, e); hideHint(); e.preventDefault(); });
+  canvas.addEventListener("pointermove", (e) => send(1, e));
+  canvas.addEventListener("pointerup", (e) => send(2, e));
+  canvas.addEventListener("pointercancel", (e) => send(3, e));
+  canvas.addEventListener("wheel", (e) => {
+    if (!api) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    api.wheel(e.deltaY * scale, e.clientX - r.left, e.clientY - r.top);
+    hideHint();
+  }, { passive: false });
+  // iOS Safari pinch-zooms the page itself unless told not to.
+  document.addEventListener("gesturestart", (e) => e.preventDefault());
+
+  $("pause").onclick = () => api && api.pause();
+  $("speed").onclick = () => api && api.speed();
+  $("restart").onclick = () => api && api.restart();
+  $("overlayButton").onclick = () => { api && api.restart(); };
+  $("hold").onclick = () => api && api.stop();
+  let selected = -1;
+  $("focus").onclick = () => api && selected >= 0 && api.focus(selected);
+
+  function updateHud() {
+    if (!api) return;
+    const s = JSON.parse(api.hud());
+    selected = s.selected;
+    $("perf").textContent = `${s.fps} fps · sim ${s.stepMs.toFixed(2)} ms`;
+    $("pause").textContent = s.paused ? "Resume" : "Pause";
+    $("speed").textContent = `${s.speed}×`;
+    const enemies = s.squads.filter((q) => q.owner === 1);
+    $("enemyCount").textContent = `${enemies.reduce((n, q) => n + q.alive, 0)} / ${enemies.reduce((n, q) => n + q.total, 0)}`;
+    $("actions").classList.toggle("hidden", s.selected < 0);
+
+    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.owner === 0);
+    const key = mine.map((q) => q.name).join("|");
+    if (key !== lastSquadsKey) {
+      lastSquadsKey = key;
+      $("cards").innerHTML = "";
+      for (const q of mine) {
+        const b = document.createElement("button");
+        b.className = "card panel";
+        b.dataset.index = q.i;
+        b.innerHTML = `${icons[q.kind]}<span class="name"></span><span class="bar"><i></i></span>`;
+        b.querySelector(".name").textContent = q.name;
+        b.onclick = () => {
+          if (!api) return;
+          if (selected === q.i) api.focus(q.i); else api.select(q.i);
+          hideHint();
+          updateHud();
+        };
+        $("cards").appendChild(b);
+      }
+    }
+    for (const b of $("cards").children) {
+      const q = s.squads[+b.dataset.index];
+      b.classList.toggle("selected", +b.dataset.index === s.selected);
+      b.classList.toggle("dead", q.alive === 0);
+      b.querySelector("i").style.width = `${(100 * q.alive) / q.total}%`;
+      b.querySelector(".name").textContent = `${q.name} · ${q.alive}`;
+    }
+
+    if (s.outcome !== 0) {
+      $("overlay").classList.remove("hidden");
+      $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
+      $("overlayText").textContent = s.outcome === 1
+        ? "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember."
+        : "Oakhaven has fallen. The Red Hand marches west.";
+      $("overlayButton").classList.remove("hidden");
+    } else if ($("overlayButton").offsetParent !== null) {
+      $("overlay").classList.add("hidden");
+    }
+  }
+
+  window.Module = {
+    canvas,
+    locateFile: (path) => `${path}?v=${encodeURIComponent(version)}`,
+    print: (t) => console.log(t),
+    printErr: (t) => console.warn(t),
+  };
+})();
+</script>
+<script src="illyria.js?v=@ILLYRIA_VERSION@"></script>
+</body>
+</html>
