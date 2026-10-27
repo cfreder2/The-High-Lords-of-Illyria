@@ -5,7 +5,7 @@
 | **Version** | 1.0.0 |
 | **Project Codename** | Project Illyria |
 | **Engine Target** | Custom C++20 engine, deterministic lockstep simulation — see §5.1 |
-| **Target Platform** | Web browser first (itch.io, via WebAssembly), **fully playable on phones**; native PC later (Steam / GOG), native mobile stores optional |
+| **Target Platform** | Web browser first (itch.io, via WebAssembly), **fully playable on phones**; then native PC (Steam / GOG) and a native iOS app if successful |
 
 ---
 
@@ -257,7 +257,11 @@ Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is
 
 **Testing.** Automated: CI runs two headless simulation peers through the relay with simulated cellular latency, jitter, packet loss and disconnects, and checks their checksums every tick. Manual: two real min-spec phones (one iPhone, one Android) playing each other over cellular data are the release gate for every milestone.
 
-**Distribution.** itch.io HTML builds marked mobile-friendly; installable as a home-screen web app (PWA) for fullscreen on iPhone, where Safari has no fullscreen API. Native iOS/Android builds from the same C++ code are an option later, not a requirement.
+**Distribution.** itch.io HTML builds marked mobile-friendly; installable as a home-screen web app (PWA) for fullscreen on iPhone, where Safari has no fullscreen API. **Native iOS app if the web version succeeds.** To keep that cheap, the codebase stays native-ready from day one:
+- The simulation, renderer and platform layer are plain C++ with no browser-only dependencies. SDL runs on iOS, and the WebGPU rendering code runs on Apple's Metal through Dawn or wgpu, so the iOS app is a new build target, not a port.
+- Determinism across web and native is already enforced: CI's macOS ARM64 build uses the same CPU architecture and compiler family as iPhones. An iOS build job gets added once the platform layer exists, and native iPhone players can play web players.
+- A native app (rather than a wrapped web page) avoids App Store rejection for "minimum functionality" web wrappers and gets full-screen display, better thermals and offline play.
+- Any purchases sold inside the iOS app must go through Apple's in-app purchase system. The business model should be decided with that in mind.
 
 ## 6. Development Roadmap
 
