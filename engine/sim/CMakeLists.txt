@@ -7,5 +7,6 @@ add_library(illyria_sim
     src/world.cpp
     src/scenario.cpp
     src/terrain.cpp
+    src/units.cpp
 )
 target_include_directories(illyria_sim PUBLIC include)

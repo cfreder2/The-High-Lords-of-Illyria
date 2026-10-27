@@ -58,6 +58,6 @@ Deploys: every push to `master` runs `.github/workflows/deploy.yml`, which build
 Lockstep multiplayer requires every machine to compute identical results, so code in `engine/sim` must:
 
 - use `Fixed` / `Vec3`, never `float` or `double` (except `toDouble()` for display);
-- draw randomness only from the world's `Rng`;
+- draw randomness only from the world's `Rng`, **at most one draw per expression** (C++ leaves the order of `a() + b()` unspecified, and GCC and Clang really do differ);
 - iterate containers in a defined order (no `unordered_map` iteration, no pointer-keyed ordering);
 - include any new state in `World::checksum()`.

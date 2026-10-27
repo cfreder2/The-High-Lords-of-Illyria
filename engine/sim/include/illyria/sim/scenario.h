@@ -39,5 +39,14 @@ struct Ford {
     static Replay replay(uint64_t seed);
 };
 
+// Every unit type on both sides, plus extra dwarven grenadiers, charging
+// each other across a valley. The determinism benchmark for shields, fliers,
+// healing, knockback, explosions and remains.
+struct Melee {
+    static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
+    static void setup(World& world);
+    static Replay replay(uint64_t seed);
+};
+
 }  // namespace scenarios
 }  // namespace illyria::sim

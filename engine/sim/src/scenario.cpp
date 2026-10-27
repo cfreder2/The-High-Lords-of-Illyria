@@ -1,5 +1,7 @@
 #include "illyria/sim/scenario.h"
 
+#include "illyria/sim/units.h"
+
 #include <cstddef>
 #include <memory>
 
@@ -34,36 +36,9 @@ constexpr int64_t kOx = 80, kOy = 128;
 constexpr int64_t kColumnStart = 70;  // metres east of the archers
 }  // namespace
 
-UnitStats archer() {
-    UnitStats s;
-    s.radius = Fixed::fromRatio(2, 5);
-    s.height = Fixed::fromRatio(9, 5);
-    s.moveSpeed = Fixed::fromRatio(5, 2);
-    s.maxHp = 40;
-    s.ranged.muzzleSpeed = m(55);
-    s.ranged.reloadTicks = 2 * kTicksPerSecond;
-    s.ranged.damage = 18;
-    s.ranged.dispersionAt100m = m(4);
-    s.ranged.autoRange = m(120);
-    s.melee.damage = 6;
-    s.melee.reach = Fixed::fromRatio(1, 2);
-    s.melee.cooldownTicks = kTicksPerSecond;
-    s.aggroRange = m(6);
-    return s;
-}
+UnitStats archer() { return unitStats(UnitType::Archers); }
 
-UnitStats footman() {
-    UnitStats s;
-    s.radius = Fixed::fromRatio(1, 2);
-    s.height = Fixed::fromRatio(19, 10);
-    s.moveSpeed = Fixed::fromRatio(3, 2);
-    s.maxHp = 60;
-    s.melee.damage = 14;
-    s.melee.reach = Fixed::fromRatio(3, 5);
-    s.melee.cooldownTicks = kTicksPerSecond * 6 / 5;
-    s.aggroRange = m(20);
-    return s;
-}
+UnitStats footman() { return unitStats(UnitType::LightInfantry); }
 
 void Ford::setup(World& world) {
     const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
@@ -103,6 +78,38 @@ Replay Ford::replay(uint64_t seed) {
     }
     for (EntityId id = 1; id <= kArcherCount; ++id) {
         r.commands.push_back({30 * kTicksPerSecond, {kArchers, id, Command::Type::Stop, {}}});
+    }
+    return r;
+}
+
+void Melee::setup(World& world) {
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    for (PlayerId side = 0; side < 2; ++side) {
+        const int64_t x = side == 0 ? 98 : 158;
+        const Vec3 facing = side == 0 ? east : -east;
+        for (int t = 0; t < kUnitTypeCount; ++t) {
+            world.spawnUnit(side, {m(x), m(60 + t * 5), m(0)}, facing, unitStats(static_cast<UnitType>(t)));
+        }
+        for (int i = 0; i < 4; ++i) {
+            world.spawnUnit(side, {m(side == 0 ? x - 6 : x + 6), m(100 + i * 6), m(0)}, facing,
+                            unitStats(UnitType::DwarfGrenadier));
+        }
+    }
+}
+
+Replay Melee::replay(uint64_t seed) {
+    Replay r;
+    r.config.seed = seed;
+    r.config.terrain = std::make_shared<const Terrain>(
+        Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(16)));
+    // Everyone advances to the middle of the valley, then fights on their own.
+    const uint32_t perSide = kUnitTypeCount + 4;
+    for (PlayerId side = 0; side < 2; ++side) {
+        for (uint32_t i = 0; i < perSide; ++i) {
+            const EntityId id = side * perSide + i + 1;
+            const int64_t y = i < static_cast<uint32_t>(kUnitTypeCount) ? 60 + i * 5 : 100 + (i - kUnitTypeCount) * 6;
+            r.commands.push_back({0, {side, id, Command::Type::Move, {m(side == 0 ? 120 : 136), m(y), m(0)}}});
+        }
     }
     return r;
 }

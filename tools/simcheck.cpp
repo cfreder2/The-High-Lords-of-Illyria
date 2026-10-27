@@ -6,16 +6,22 @@
 
 using namespace illyria::sim;
 
-int main(int argc, char** argv) {
-    const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1234;
-    const Replay replay = scenarios::Ford::replay(seed);
+template <typename Scenario>
+void run(const char* name, uint64_t seed) {
+    const Replay replay = Scenario::replay(seed);
     World world(replay.config);
-    scenarios::Ford::setup(world);
-    runReplay(world, replay, scenarios::Ford::kTicks, [](const World& w) {
+    Scenario::setup(world);
+    runReplay(world, replay, Scenario::kTicks, [&](const World& w) {
         if (w.tick() % kTicksPerSecond == 0) {
-            std::printf("tick %4" PRIu32 "  projectiles %3zu  checksum %016" PRIx64 "\n", w.tick(),
+            std::printf("%s tick %4" PRIu32 "  projectiles %3zu  checksum %016" PRIx64 "\n", name, w.tick(),
                         w.projectiles().size(), w.checksum());
         }
     });
+}
+
+int main(int argc, char** argv) {
+    const uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1234;
+    run<scenarios::Ford>("ford", seed);
+    run<scenarios::Melee>("melee", seed);
     return 0;
 }
