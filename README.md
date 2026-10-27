@@ -96,3 +96,12 @@ Devlog: film every deployed build into the devlog branch
 | ![](builds/v0.1.4/04-battle.png) | ![](builds/v0.1.4/02-god-view.png) | ![](builds/v0.1.4/07-phone.png) |
 
 Fly-through: [`builds/v0.1.4/flythrough.webm`](builds/v0.1.4/flythrough.webm)
+
+### 27 Oct 2026 · v0.1.5 (`301964a`)
+The Warlords map comes to life: 3D scenery, water, roads, 3D bodies
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.5/04-battle.png) | ![](builds/v0.1.5/02-god-view.png) | ![](builds/v0.1.5/07-phone.png) |
+
+Fly-through: [`builds/v0.1.5/flythrough.webm`](builds/v0.1.5/flythrough.webm)
