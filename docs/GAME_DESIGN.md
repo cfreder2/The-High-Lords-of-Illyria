@@ -130,6 +130,38 @@ GPU physics can't be used for gameplay outcomes. GPUs from different vendors, an
 - **API:** WebGPU compute shaders (available in current Chrome, Edge and Safari, with Firefox catching up) with a CPU fallback at reduced particle counts for browsers on WebGL 2, which has no compute shaders. Native builds use the same WebGPU code through Dawn or wgpu.
 - **Budget:** a laptop integrated GPU comfortably handles ~100k cosmetic particles and a few hundred simplified ragdolls per frame, alongside instanced sprite rendering for 20k–50k soldiers. The low-poly, sprite-heavy art style is what makes this possible.
 
+### 5.4 Object Tiers (tens of thousands of things on the field)
+
+Every object in the world belongs to exactly one tier. The tier decides who simulates it and what it may touch.
+
+| Tier | Examples | Simulated by | Per-tick cost | Budget (whole continent) |
+|---|---|---|---|---|
+| **A. Gameplay, moving** | Soldiers, arrows and bolts in flight, satchel charges, thrown molotovs, rolling boulders, siege engines | CPU, fixed-point, every peer | Full | ~5k soldiers engaged + ~3k projectiles at once |
+| **B. Gameplay, static** | Trees, rocks, boulders at rest, houses, walls, barrels, fences, bridges | CPU, fixed-point, every peer | **~Zero** until hit; lives in the static spatial grid | 200k+ |
+| **C. Cosmetic, moving** | Severed limbs, heads, dropped shields and swords, debris chunks, splinters, sparks, blood, smoke, dust, fire | GPU compute, float, per client, near the camera only | GPU only | ~5–10k rigid pieces + ~100–250k particles in view |
+| **D. Cosmetic, settled** | Corpses, arrows stuck in the ground, blood decals, craters, scorched grass, rubble | Nothing: baked into instanced meshes/decals once at rest | None (rendering only) | Hundreds of thousands; merged/faded with distance and time |
+
+**Rules**
+
+1. **Coupling is one-way: gameplay drives cosmetics, never the reverse.** A satchel explosion (tier A) emits an event; every client's GPU blasts nearby limbs, shields and debris (tier C) outward. Those pieces can never block an arrow or trigger anything, so they may differ between players without desyncing.
+2. **Destruction is a state change.** When a house or wall (tier B) takes enough damage, the deterministic sim switches it to its "collapsed" collider (rubble you can walk over, a breach in the wall) and emits an event. The flying bricks are tier C.
+3. **Things that come to rest go to sleep.** A boulder that stops rolling drops from A to B; a limb that settles drops from C to D. Most objects on a battlefield spend most of their life asleep, which is what makes "tens of thousands" affordable.
+4. **If it must affect gameplay, it must be tier A or B.** Example design calls: a barrel of oil that can be shot to explode is tier B; a dropped sword is tier C, unless picking up weapons becomes a mechanic.
+5. **The battlefield remembers.** Tier D keeps Myth's persistent carnage: craters, corpses and arrows stay where they fell, capped per region and merged into larger decals as the camera pulls away.
+
+**Measured (first broadphase prototype, native, single core, unoptimised):**
+
+| Static colliders (B) | Soldiers (A) | Arrows in flight (A) | Tick |
+|---|---|---|---|
+| 50,000 | 500 | 500 | 0.15 ms |
+| 50,000 | 4,300 | 3,000 | 0.7 ms |
+| 200,000 | 4,300 | 3,000 | 1.5 ms |
+| 200,000 | 10,000 | 10,000 | 6.2 ms (over budget once WebAssembly overhead is added) |
+
+The middle rows cover the 9-sieges worst case from §5.2 with room to spare. Static object count barely matters; the active (tier A) count is what has to be capped.
+
+**Rendering:** GPU-driven culling (a compute pass culls all instances and builds indirect draw lists) so 100k+ visible objects cost a handful of draw calls; trees, houses and rocks switch to impostors at strategic zoom.
+
 ## 6. Development Roadmap
 
 > *Proposed — durations assume a small core team and are placeholders for planning.*
