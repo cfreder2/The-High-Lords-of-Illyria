@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "illyria/game/factions.h"
 #include "shaders.h"
 
 namespace illyria::game {
@@ -477,17 +478,17 @@ void Renderer::uploadContinent(const Battle& battle) {
     const auto colourOf = [](uint8_t ground, float h) -> V3 {
         V3 c;
         switch (static_cast<sim::Ground>(ground)) {
-            case sim::Ground::Road: c = {0.55f, 0.47f, 0.33f}; break;
-            case sim::Ground::Forest: c = {0.20f, 0.36f, 0.17f}; break;
-            case sim::Ground::Swamp: c = {0.33f, 0.38f, 0.24f}; break;
+            case sim::Ground::Road: c = {0.48f, 0.40f, 0.27f}; break;
+            case sim::Ground::Forest: c = {0.18f, 0.25f, 0.11f}; break;
+            case sim::Ground::Swamp: c = {0.24f, 0.29f, 0.17f}; break;
             case sim::Ground::Shallows: c = {0.30f, 0.50f, 0.55f}; break;
             case sim::Ground::DeepWater: c = {0.10f, 0.26f, 0.42f}; break;
-            case sim::Ground::Rock: c = {0.50f, 0.47f, 0.43f}; break;
+            case sim::Ground::Rock: c = {0.48f, 0.46f, 0.43f}; break;
             case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
-            default: c = {0.42f, 0.54f, 0.28f}; break;
+            default: c = {0.36f, 0.46f, 0.19f}; break;
         }
         if (static_cast<sim::Ground>(ground) != sim::Ground::DeepWater) {
-            const float snow = std::clamp((h - 260.0f) / 80.0f, 0.0f, 1.0f);
+            const float snow = std::clamp((h - 250.0f) / 40.0f, 0.0f, 1.0f);
             c = c + (V3{0.93f, 0.94f, 0.96f} - c) * snow;
         }
         return c;
@@ -505,7 +506,14 @@ void Renderer::uploadContinent(const Battle& battle) {
             float z = hAt(i, j);
             if (battle.inBattlefield(x, y)) z -= 3.0f;
             const V3 n = V3{hAt(i - 1, j) - hAt(i + 1, j), hAt(i, j - 1) - hAt(i, j + 1), 2 * FarGrid::kCell}.normalized();
-            const V3 c = colourOf(g.ground[static_cast<size_t>(j) * g.nx + i], z);
+            V3 c = colourOf(g.ground[static_cast<size_t>(j) * g.nx + i], z);
+            // Cobbles and roofs: a city reads as a pale patch from god view.
+            for (const sim::Continent::City& city : battle.continent().cities()) {
+                const V3 cp = toV3(city.pos) - V3{battle.origin().x, battle.origin().y, 0};
+                const float r = static_cast<float>(city.radius.toDouble());
+                const float d2 = (x - cp.x) * (x - cp.x) + (y - cp.y) * (y - cp.y);
+                if (d2 < r * r) c = {0.62f, 0.56f, 0.5f};
+            }
             verts.insert(verts.end(), {x, y, z, n.x, n.y, n.z, c.x, c.y, c.z});
         }
     }
@@ -559,6 +567,89 @@ void Renderer::uploadContinent(const Battle& battle) {
         }
     }
     uploadDynamic(ribbons_, ribbons);
+    uploadSettlements(battle);
+}
+
+void Renderer::uploadSettlements(const Battle& battle) {
+    const sim::Continent& cont = battle.continent();
+    const V3 o = battle.origin();
+    std::vector<float> walls, towers, banners, houses, ruins, temples, sages;
+    float flat[4];
+    yawQuat(0, flat);
+    float side[4];
+    yawQuat(1.5707963f, side);
+    const V3 stone{1, 1, 1};
+    for (size_t ci = 0; ci < cont.cities().size(); ++ci) {
+        const sim::Continent::City& c = cont.cities()[ci];
+        const V3 p = toV3(c.pos) - V3{o.x, o.y, 0};
+        const float half = static_cast<float>(c.radius.toDouble()) * 0.72f;
+        const float wallH = c.capital ? 12.0f : 8.0f, towerR = c.capital ? 7.0f : 5.0f, towerH = wallH * 1.7f;
+        const V3 colour = factionColor(c.owner);
+        // Curtain walls with a gate gap on the south side, towers at the corners.
+        pushInstance(walls, p + V3{0, half, 0}, flat, {half, 1.6f, wallH}, stone);
+        pushInstance(walls, p + V3{half, 0, 0}, side, {half, 1.6f, wallH}, stone);
+        pushInstance(walls, p + V3{-half, 0, 0}, side, {half, 1.6f, wallH}, stone);
+        const float gate = 9.0f, seg = (half - gate) / 2;
+        pushInstance(walls, p + V3{-half + seg, -half, 0}, flat, {seg, 1.6f, wallH}, stone);
+        pushInstance(walls, p + V3{half - seg, -half, 0}, flat, {seg, 1.6f, wallH}, stone);
+        for (int k = 0; k < 4; ++k) {
+            const V3 at = p + V3{(k & 1 ? half : -half), (k & 2 ? half : -half), 0};
+            pushInstance(towers, at, flat, {towerR, towerR, towerH}, stone);
+        }
+        pushInstance(towers, p + V3{-gate - 3, -half, 0}, flat, {4, 4, wallH * 1.4f}, stone);
+        pushInstance(towers, p + V3{gate + 3, -half, 0}, flat, {4, 4, wallH * 1.4f}, stone);
+        if (c.capital) {
+            for (int k = 0; k < 4; ++k) {
+                const V3 at = p + V3{k == 0 ? half : k == 1 ? -half : 0, k == 2 ? half : 0, 0};
+                if (k < 3) pushInstance(towers, at, flat, {5.5f, 5.5f, towerH * 0.9f}, stone);
+            }
+        }
+        // The keep and its banner.
+        const float keepH = c.capital ? 30.0f : 16.0f, keepHalf = c.capital ? 14.0f : 8.0f;
+        pushInstance(walls, p + V3{0, half * 0.35f, 0}, flat, {keepHalf, keepHalf, keepH}, stone * 0.95f);
+        pushInstance(towers, p + V3{keepHalf, half * 0.35f + keepHalf, 0}, flat, {4.5f, 4.5f, keepH * 1.3f}, stone);
+        pushInstance(banners, p + V3{-keepHalf * 0.5f, half * 0.35f, keepH + 1.5f}, flat,
+                     {c.capital ? 14.0f : 9.0f, c.capital ? 14.0f : 9.0f, c.capital ? 14.0f : 9.0f}, colour);
+        for (int k = 0; k < 4; ++k) {
+            const V3 at = p + V3{(k & 1 ? half : -half), (k & 2 ? half : -half), towerH * 1.7f};
+            pushInstance(banners, at, flat, {6, 6, 6}, colour);
+        }
+        // Streets of houses filling the walls.
+        const int n = c.capital ? 7 : 5;
+        const float step = half * 2 / (n + 1);
+        for (int iy = 0; iy < n; ++iy) {
+            for (int ix = 0; ix < n; ++ix) {
+                const float x = -half + step * (ix + 1), y = -half + step * (iy + 1);
+                if (std::fabs(x) < keepHalf + 8 && std::fabs(y - half * 0.35f) < keepHalf + 8) continue;
+                if (std::fabs(x) < 7) continue;  // the main street from the gate
+                const uint32_t h = static_cast<uint32_t>(ci * 131 + iy * 17 + ix);
+                const float hx = 3.5f + hash01(h) * 2.5f, hy = 2.8f + hash01(h + 99) * 2.0f;
+                const float jx = (hash01(h + 7) - 0.5f) * step * 0.3f, jy = (hash01(h + 13) - 0.5f) * step * 0.3f;
+                float q[4];
+                yawQuat(hash01(h + 5) < 0.5f ? 0 : 1.5707963f, q);
+                const float t = 0.85f + 0.3f * hash01(h + 3);
+                pushInstance(houses, p + V3{x + jx, y + jy, 0}, q, {hx, hy, 3.2f}, {t, t * 0.97f, t * 0.92f});
+            }
+        }
+    }
+    for (size_t si = 0; si < cont.sites().size(); ++si) {
+        const sim::Continent::Site& st = cont.sites()[si];
+        const V3 p = toV3(st.pos) - V3{o.x, o.y, 0};
+        float q[4];
+        yawQuat(hash01(static_cast<uint32_t>(si) * 7919u) * 6.283f, q);
+        switch (st.kind) {
+            case sim::Continent::Site::Kind::Ruin: pushInstance(ruins, p, q, {40, 40, 40}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Temple: pushInstance(temples, p, q, {44, 44, 44}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Sage: pushInstance(sages, p, q, {26, 26, 26}, {1, 1, 1}); break;
+        }
+    }
+    uploadMeshInstances(walls_, walls);
+    uploadMeshInstances(towers_, towers);
+    uploadMeshInstances(banners_, banners);
+    uploadMeshInstances(cityHouses_, houses);
+    uploadMeshInstances(ruins_, ruins);
+    uploadMeshInstances(temples_, temples);
+    uploadMeshInstances(sages_, sages);
 }
 
 bool Renderer::init(Battle& battle) {
@@ -575,6 +666,13 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(pillars_, meshes::pillar(), 0);
     makeMeshBatch(capsules_, meshes::capsule(), 0);
     makeMeshBatch(spheres_, meshes::sphere(), 0);
+    makeMeshBatch(walls_, meshes::wall(), 0);
+    makeMeshBatch(towers_, meshes::tower(), 0);
+    makeMeshBatch(banners_, meshes::banner(), 0.02f);
+    makeMeshBatch(cityHouses_, meshes::house(), 0);
+    makeMeshBatch(ruins_, meshes::ruin(), 0);
+    makeMeshBatch(temples_, meshes::temple(), 0);
+    makeMeshBatch(sages_, meshes::sageTower(), 0);
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
@@ -862,6 +960,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
+    drawMeshes({&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_}, camera, timeSeconds, gameSeconds);
     if (camera.distance() > 450.0f) {
         drawMeshes({&houses_, &pillars_, &pines_, &oaks_, &capsules_, &spheres_}, camera, timeSeconds, gameSeconds);
     } else {

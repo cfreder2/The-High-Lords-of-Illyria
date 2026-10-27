@@ -134,23 +134,27 @@ void main() {
         albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
     }
     // Snow on the high peaks, mud below the waterline.
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(92.0, 105.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(250.0, 290.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     if (vWorld.z < uWater) albedo = mix(albedo, vec3(0.35, 0.32, 0.25), 0.6);
 
     // Low sun so the hills read clearly from above.
     float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0);
     vec3 color = albedo * light;
 
-    // Strategic hex grid fades in as the camera rises.
-    float gridFade = smoothstep(120.0, 400.0, uCamDist) * 0.35;
+    // The tactical hex grid fades in as the camera rises, then hands over to
+    // the continent's campaign grid (the same one the far terrain draws).
+    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
     if (gridFade > 0.0) {
         float e = hexEdge(vWorld.xy, 48.0);
         float w = fwidth(e) * 1.5;
         color = mix(color, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
     }
-    float size = uCells * uCellSize;
-    // (edges of the region darken)
-    if (vWorld.x < 0.5 || vWorld.y < 0.5 || vWorld.x > size - 0.5 || vWorld.y > size - 0.5) color *= 0.6;
+    float bigFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
+    if (bigFade > 0.0) {
+        float e = hexEdge(vWorld.xy, 400.0);
+        float w = fwidth(e) * 1.5;
+        color = mix(color, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
+    }
     oColor = vec4(mix(color, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
 }
 )";
@@ -730,7 +734,10 @@ void main() {
     vec3 n = normalize(vNormal);
     float light = 0.36 + 0.8 * max(dot(n, kSun), 0.0) + 0.12 * max(-dot(n, kSun), 0.0);
     vec3 c = vColor * light;
-    if (vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
+    // Under the battlefield's river (the rest of the continent has no water level).
+    vec2 cell = vWorld.xy / uCellSize;
+    bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
+    if (onField && vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
     oColor = vec4(mix(c, kSky, fogFactor(distance(uEye, vWorld))), 1.0);
 }
 )";
@@ -814,10 +821,10 @@ float hexEdge(vec2 p, float s) {
 }
 void main() {
     vec3 n = normalize(vNormal);
-    float light = 0.32 + 0.9 * max(dot(n, kSun), 0.0);
+    float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0);  // as the battlefield terrain
     vec3 c = vColor * light;
     // The strategic hex grid of the campaign map, at continent scale.
-    float gridFade = smoothstep(2500.0, 7000.0, uCamDist) * 0.3;
+    float gridFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
     if (gridFade > 0.0) {
         float e = hexEdge(vWorld.xy, 400.0);
         float w = fwidth(e) * 1.5;

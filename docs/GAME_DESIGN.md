@@ -56,7 +56,13 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 
 ### 4.1 The Seamless Continent ("God to Ground")
 
-*Built so far:* one 1 km region of Illyria (`engine/sim/src/region.cpp`): northern mountains with snow, a river through a ford into a lake, swamp, wagon roads with ruts, an earthwork berm above the ford, pine and oak forests with undergrowth, boulder fields, a village and a temple ruin. Ground types follow Warlords (road, plains, forest, swamp, shallows, deep water, rock) and set movement speed; armies path around water and cross at fords.
+*Built so far:* the whole continent, 12.8 × 16 km ([MAP.md](MAP.md), `engine/sim/src/continent.cpp`):
+- **Landscape:** a western sea, a great river that forks to divide the realms, mountain chains whose passes are chokepoints, and an unbroken eastern range. Swamps, forests, lakes, and roads crossing the rivers at four fords and four bridges.
+- **Settlements:** 80 walled cities, 8 of them faction capitals (castles).
+- **Places to explore (§4.4):** 34 ruins, 4 temples and 2 sages.
+- **The battle window:** today's battle is fought at Oakhaven Ford, a full-detail 1 km window into the continent (`Region::fromContinent`). Wagon roads have ruts, an earthwork berm stands above the ford, a hamlet sits along the road, and rivers slope downhill.
+- **Ground and movement:** ground types follow Warlords (road, plains, forest, swamp, shallows, deep water, rock, bridge) and set movement speed. Armies path around deep water and cross at fords and bridges.
+- **Zoom:** the camera zooms from the whole continent down to a single soldier.
 
 
 - There are no separate battle maps. Illyria is **one continuous 3D continent** (*original geography — see Q5*), and the camera zooms smoothly from a god's-eye view, where armies are ant-like columns and banners, down to ground level, where individual arrows, shields and bodies are physically simulated.
@@ -115,6 +121,42 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 **Missile troops** have a real maximum range (archers 70 m, grenadiers 19 m). Ordered to shoot farther, they walk into range first.
 
 **Bodies have space and mass.** Soldiers cannot overlap, the lighter one gives way, corpses are shoved aside, and trees, rocks, houses and deep water block movement. Loose body parts are physical objects that get kicked along by anyone walking through them.
+
+### 4.2.2 Cities & Castles
+
+Following Warlords: **80 cities**, and whoever holds two thirds of them (or all of them) wins.
+- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers. The other 72 cities start neutral, held by their own garrisons.
+- **What a city gives:** it produces armies (a few unit types per city, each with a build time) and pays gold to its owner every turn. Owners can raze it, which turns it into a ruin forever (§5.5).
+- **Siege:** an attack commits at most 8 squads, but a city defends with everything inside it, up to 32 (§4.2). In the 3D battle the walls, towers and gates are real obstacles. Fliers clear walls, giants and devils batter gates, and grenadiers' satchels breach them.
+
+| Side | Capital | After (Warlords archetype) | Banner |
+|---|---|---|---|
+| The Aurelian Throne | Kingshold | Knights of the central realm | White |
+| The Highcrag Giants | Highcrag | Giants of the north-west heights | Gold |
+| The Ironhold Dwarves | Deepforge | Dwarves of the southern mountains | Red |
+| The Orcs of Grath | Grathmaw | Orc hordes of the eastern spurs | Orange |
+| The Sylvaran Elves | Sylvaris | Elves of Northwood | Green |
+| The Sunreach Riders | Sunreach | Horse lords of the Valdor plains | Tan |
+| The Moonward Order | Moonhaven | Mystic order of Eastreach | Blue |
+| Lord Malvoren | Dreadspire | The dark lord of the south-east | Black |
+
+Names, factions and the map are original (Q5); only the structure follows Warlords.
+
+### 4.4 Heroes, Ruins, Temples & Sages
+
+Heroes are what make the campaign more than a war of production. A hero is a single named champion who leads a stack (adding to every squad's strength, as in Warlords). Above all, a hero **explores**.
+
+- **Ruins (34):** a hero alone may search a ruin. Inside waits a guardian, fought as a small real-time battle in the ruin's own 3D interior: the hero, maybe a companion, against a monster or a crypt full of undead. If the hero dies, they are gone, along with everything they carried. A hero who wins finds one of these rewards:
+  - gold;
+  - an artifact, which gives the hero's stack a bonus or a power such as flight, a strength bonus, or a ward against fireballs;
+  - allies that join the hero's stack: dragons, wizards, devils, archons or undead (§4.2.1 already has them all).
+
+  Each ruin is searched once; after that it lies empty for good (the land remembers, §5.5).
+- **Temples (4):** blessings. A blessed stack gains strength for its next battles, which in the 3D battle means block arc, poise and morale (Q4). A temple may also hand out a quest whose reward is an artifact.
+- **Sages (2):** the Seer's Tower on its island and the Hermit of the Peaks. Each tells the first hero to reach them where artifacts or unsearched ruins lie, so it is first come, first served.
+- **New heroes** offer their service now and then, for gold, to sides that hold enough cities.
+
+Rules to settle while building it: guardian strength by distance from the capitals; how many artifacts exist; whether allies can later be recruited in cities (a Warlords II option).
 
 ### 4.3 AI Generals & Attention
 
@@ -311,7 +353,7 @@ Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is
 | **0. Pre-Production** (≈2 mo) | Lock tech decisions | ✅ Engine choice (§5.1); ✅ fixed-point math + deterministic RNG library; ✅ cross-platform determinism CI; ✅ platform layer running in desktop **and phone** browsers (WebGL 2; WebGPU later); min-spec phone benchmark; ✅ touch-control prototype; ✅ playable build auto-deployed to GitHub Pages with a visible version; art style test (one billboard unit, one 3D unit, one terrain tile) | Written tech decision record; style test approved; a build playable on itch.io |
 | **1. Deterministic Core** (≈3 mo) | Headless simulation | Fixed 30 Hz tick loop; input command queue; checksums; replay recorder; heightfield terrain collision | Same replay produces identical checksums across two machines/OSes |
 | **2. Combat Vertical Slice** (≈4 mo) | Prove the "Myth feel" | Ballistic projectiles + dispersion circle; shield cone deflection; dodge envelopes; flanking; 2 infantry types, 1 archer type, 1 large 3D creature; billboard depth pre-pass & shadows | 10 v 10 skirmish is fun and readable; 200 projectiles in flight at 30 Hz sim without frame drops |
-| **3. Campaign Map Prototype** (≈3 mo) | Prove the "Warlords loop" | Hex map with terrain types; armies, cities, production queues; named unit generator; veterancy; shrine blessings; map → battle → map transition with persistent casualties | One full campaign playable vs. simple AI with meaningful attrition decisions |
+| **3. Campaign Map Prototype** (≈3 mo) | Prove the "Warlords loop" | ✅ continent with terrain types, 80 cities, 8 capitals, ruins, temples, sages; armies, city production queues, gold; heroes searching ruins; named unit generator; veterancy; shrine blessings; map → battle → map transition with persistent casualties | One full campaign playable vs. simple AI with meaningful attrition decisions |
 | **4. Multiplayer Alpha** (≈3 mo) | Lockstep over the wire | Peer-to-peer/relay lockstep; input delay tuning; desync reporting; lobby | 2–4 players complete battles over internet with zero unrecovered desyncs in test suite |
 | **5. Content & AI** (≈6 mo) | Fill Illyria | Full faction rosters; full continent map; tactical + strategic AI; heroes & siege; mutilation/gore pass; audio | Feature complete; campaign completable for every faction |
 | **6. Beta & Launch** (≈3 mo) | Ship | Balance, performance, Steam/GOG/itch.io builds, achievements, mod/replay sharing | Release candidate passes cert/QA; launch |

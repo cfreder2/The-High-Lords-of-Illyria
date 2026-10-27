@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 
 namespace illyria::sim {
@@ -161,6 +162,8 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
         Fixed mountain;
         lakeSurfaces_.push_back(baseHeight(lake.centre.x, lake.centre.y, mountain) - m(3));
     }
+    placeCities();
+    placeSites();
 }
 
 Fixed Continent::landDistance(Fixed x, Fixed y) const {
@@ -306,6 +309,16 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         }
     }
 
+    // Cities stand on levelled pads that blend into the land around them.
+    for (const City& c : cities_) {
+        const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y), reach = c.radius * 2;
+        if (dx >= reach || dy >= reach) continue;
+        const Fixed d = sqrt(dx * dx + dy * dy);
+        if (d >= reach) continue;
+        const Fixed w = Fixed::one() - noise::smoothstep(c.radius, reach, d);
+        z = z + (c.pos.z - z) * w;
+    }
+
     size_t seg = 0;
     Fixed t;
     s.roadDist = m(60);
@@ -341,6 +354,10 @@ bool Continent::onBridge(Fixed x, Fixed y, Fixed roadDist) const {
 
 Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fixed roadDist) const {
     if (roadDist < m(3)) return Ground::Road;
+    for (const City& c : cities_) {
+        const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y);
+        if (dx < c.radius && dy < c.radius && dx * dx + dy * dy < c.radius * c.radius) return Ground::Plains;
+    }
     if ((mountain > m(70) && height > m(70)) || height > m(180)) return Ground::Rock;
     for (const Area& a : swamps_) {
         const uint64_t sw = noise::nextSeed(seed_ ^ 0x5A4);
@@ -368,6 +385,218 @@ Ground Continent::groundAt(Fixed x, Fixed y) const {
         return surface - s.height < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
     }
     return landGround(x, y, s.height, s.mountain, s.roadDist);
+}
+
+namespace {
+
+const char* const kCityNames[] = {
+    "Abbotsmere", "Alder Cross", "Amberley", "Ashcombe", "Barrowdale", "Beckhollow", "Blackwater", "Brackenford",
+    "Bramblegate", "Briarwick", "Brightwell", "Brookhaven", "Cairnmoor", "Caldermouth", "Coldharbour", "Copperhill",
+    "Crowmarsh", "Dawnmere", "Deepdale", "Dunmarrow", "Eastwatch", "Elmstead", "Embervale", "Fairhollow",
+    "Fallowfield", "Fenwick", "Foxburrow", "Galeshead", "Glenmarsh", "Goldfurrow", "Greywater", "Hallowmere",
+    "Harrowgate", "Hawksridge", "Hearthstone", "Highbarrow", "Hollowmere", "Juniper Hill", "Kestrel Point", "Larkspur",
+    "Lindenholt", "Lonmere", "Marrowby", "Millbrook", "Mistlow", "Northgate", "Oakenshaw", "Pennyroyal",
+    "Quarrystone", "Ravenmoor", "Redcliff", "Rookhaven", "Rowanbury", "Saltcombe", "Silverdale", "Southmere",
+    "Stonebridge", "Stormwatch", "Thistledown", "Thornbury", "Tidewater", "Valewick", "Wardenhold", "Westerholm",
+    "Whitecliff", "Willowmere", "Windholt", "Wolfsden", "Wyrmhold", "Yarrowby", "Yewdale", "Cindergate",
+    "Frosthollow", "Mossbank", "Highmoor", "Larchmont"};
+constexpr size_t kCityNameCount = sizeof kCityNames / sizeof kCityNames[0];
+
+const char* const kRuinAdjectives[] = {"Ashen", "Sunken", "Hollow", "Broken", "Black", "Silent",
+                                       "Drowned", "Weeping", "Shattered", "Forsaken", "Howling", "Grey"};
+const char* const kRuinNouns[] = {"Barrow", "Tomb", "Crypt", "Tower", "Keep", "Shrine",
+                                  "Vault", "Halls", "Catacombs", "Spire", "Henge"};
+const char* const kTempleNames[] = {"Temple of the Dawn", "Temple of the Tides", "Temple of the Stars", "Temple of the Oak"};
+
+}  // namespace
+
+const std::vector<Continent::Faction>& Continent::factions() {
+    static const std::vector<Faction> kFactions = {
+        {"The Aurelian Throne", "Kingshold"}, {"The Highcrag Giants", "Highcrag"}, {"The Ironhold Dwarves", "Deepforge"},
+        {"The Orcs of Grath", "Grathmaw"},    {"The Sylvaran Elves", "Sylvaris"},   {"The Sunreach Riders", "Sunreach"},
+        {"The Moonward Order", "Moonhaven"},  {"Lord Malvoren", "Dreadspire"}};
+    return kFactions;
+}
+
+bool Continent::buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const {
+    if (x < m(250) || y < m(250) || x > m(kWidth - 250) || y > m(kHeight - 250)) return false;
+    centre = sample(x, y);
+    Fixed surface;
+    if (centre.land < m(40) || centre.height < m(2) || centre.mountain > maxMountain) return false;
+    if (waterSurfaceOf(centre, surface)) return false;
+    if (centre.riverDist < centre.riverHalfWidth + radius + m(25)) return false;
+    for (const Area& lake : lakes_)
+        if (ellipse(lake, x, y) < r(9, 5)) return false;
+    if (landGround(x, y, centre.height, centre.mountain, centre.roadDist) == Ground::Swamp) return false;
+    Fixed worst;
+    const Fixed dirs[4][2] = {{Fixed::one(), Fixed::zero()}, {-Fixed::one(), Fixed::zero()}, {Fixed::zero(), Fixed::one()}, {Fixed::zero(), -Fixed::one()}};
+    for (const auto& d : dirs) {
+        const Sample e = sample(x + d[0] * radius, y + d[1] * radius);
+        if (waterSurfaceOf(e, surface)) return false;
+        worst = max(worst, abs(e.height - centre.height));
+    }
+    slope = worst / radius;
+    return true;
+}
+
+void Continent::placeCities() {
+    // Capitals: one castle in each faction's homeland, on the flattest spot nearby.
+    const Vec3 homes[kFactionCount] = {N(470, 545), N(260, 860), N(250, 150), N(810, 770),
+                                       N(700, 830), N(200, 360), N(700, 470), N(800, 160)};
+    std::vector<City> cities;
+    for (int f = 0; f < kFactionCount; ++f) {
+        Fixed bestScore = m(1000000);
+        City best{factions()[f].capital, homes[f], m(170), static_cast<uint8_t>(f), true};
+        for (int64_t dy = -700; dy <= 700; dy += 50) {
+            for (int64_t dx = -700; dx <= 700; dx += 50) {
+                const Fixed x = homes[f].x + m(dx), y = homes[f].y + m(dy);
+                Sample c;
+                Fixed slope;
+                if (!buildable(x, y, m(170), m(60), c, slope)) continue;
+                const Fixed score = slope * 4000 + sqrt(m(dx * dx + dy * dy));
+                if (score < bestScore) {
+                    bestScore = score;
+                    best.pos = {x, y, c.height};
+                }
+            }
+        }
+        cities.push_back(best);
+    }
+
+    // The neutral cities: the best of a jittered grid, preferring roads and
+    // river valleys, never crowding each other or the battlefield at the ford.
+    struct Candidate {
+        Vec3 pos;
+        Fixed score;
+        int64_t order;
+    };
+    std::vector<Candidate> candidates;
+    const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
+    const Vec3 ford = crossings_.front().pos;
+    int64_t order = 0;
+    for (int64_t j = 0; j * 200 < kHeight; ++j) {
+        for (int64_t i = 0; i * 200 < kWidth; ++i, ++order) {
+            const Fixed x = m(i * 200 + 100) + (noise::lattice(sj, i, j) - r(1, 2)) * 120;
+            const Fixed y = m(j * 200 + 100) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * 120;
+            if ((Vec3{x, y, Fixed::zero()} - ford).flat().lengthSq() < m(750) * m(750)) continue;
+            Sample c;
+            Fixed slope;
+            if (!buildable(x, y, m(110), m(40), c, slope)) continue;
+            if (slope > r(1, 8)) continue;
+            Fixed score = noise::lattice(sj ^ 0x5C0, i, j) - slope * 3;
+            if (c.roadDist < m(250)) score += r(3, 5);
+            if (c.riverDist < m(600)) score += r(2, 5);
+            candidates.push_back({{x, y, c.height}, score, order});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        return a.score != b.score ? a.score > b.score : a.order < b.order;
+    });
+    constexpr size_t kTotal = 80;
+    std::vector<City> chosen;
+    for (int64_t spacing = 1300; spacing >= 600; spacing -= 50) {
+        chosen = cities;
+        for (const Candidate& c : candidates) {
+            if (chosen.size() >= kTotal) break;
+            bool clear = true;
+            for (const City& o : chosen) clear = clear && (c.pos - o.pos).flat().lengthSq() >= m(spacing) * m(spacing);
+            if (clear) chosen.push_back({"", c.pos, m(110), kNeutral, false});
+        }
+        if (chosen.size() >= kTotal) break;
+    }
+    for (size_t i = kFactionCount; i < chosen.size(); ++i) chosen[i].name = kCityNames[(i - kFactionCount) % kCityNameCount];
+    cities_ = std::move(chosen);
+}
+
+void Continent::placeSites() {
+    const uint64_t sj = noise::nextSeed(seed_ ^ 0x5173);
+    const auto farFrom = [&](const Vec3& p, Fixed fromCities, Fixed fromSites) {
+        for (const City& c : cities_)
+            if ((p - c.pos).flat().lengthSq() < fromCities * fromCities) return false;
+        for (const Site& s : sites_)
+            if ((p - s.pos).flat().lengthSq() < fromSites * fromSites) return false;
+        return true;
+    };
+    // The best spot within `reach` of a point.
+    const auto near = [&](const Vec3& at, int64_t reach, Fixed maxMountain, Vec3& out) {
+        Fixed bestScore = m(1000000);
+        for (int64_t dy = -reach; dy <= reach; dy += 25) {
+            for (int64_t dx = -reach; dx <= reach; dx += 25) {
+                Sample c;
+                Fixed slope;
+                const Fixed x = at.x + m(dx), y = at.y + m(dy);
+                if (!buildable(x, y, m(25), maxMountain, c, slope) || !farFrom({x, y, Fixed::zero()}, m(500), m(500))) continue;
+                const Fixed score = slope * 400 + sqrt(m(dx * dx + dy * dy));
+                if (score < bestScore) {
+                    bestScore = score;
+                    out = {x, y, c.height};
+                }
+            }
+        }
+        return bestScore < m(1000000);
+    };
+    // The two sages: one on the Isle of the Seer, one high in the Ironveil.
+    Vec3 p;
+    if (near(N(66, 893), 300, m(400), p)) sites_.push_back({Site::Kind::Sage, "The Seer's Tower", p});
+    if (near(N(880, 560), 500, m(400), p)) sites_.push_back({Site::Kind::Sage, "The Hermit of the Peaks", p});
+    // Four temples, one in each quarter of the land.
+    const Vec3 temples[4] = {N(400, 800), N(650, 900), N(380, 300), N(650, 330)};
+    for (int i = 0; i < 4; ++i)
+        if (near(temples[i], 800, m(80), p)) sites_.push_back({Site::Kind::Temple, kTempleNames[i], p});
+
+    // Ruins: in the wild places, away from cities and from each other.
+    struct Candidate {
+        Vec3 pos;
+        Fixed score;
+        int64_t order;
+    };
+    std::vector<Candidate> candidates;
+    int64_t order = 0;
+    for (int64_t j = 0; j * 160 < kHeight; ++j) {
+        for (int64_t i = 0; i * 160 < kWidth; ++i, ++order) {
+            const Fixed x = m(i * 160 + 80) + (noise::lattice(sj, i, j) - r(1, 2)) * 100;
+            const Fixed y = m(j * 160 + 80) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * 100;
+            Sample c;
+            Fixed slope;
+            if (!buildable(x, y, m(25), m(150), c, slope) || slope > r(1, 3)) continue;
+            Fixed score = noise::lattice(sj ^ 0x2A1, i, j);
+            if (landGround(x, y, c.height, c.mountain, c.roadDist) == Ground::Forest) score += r(1, 2);
+            if (c.mountain > m(15)) score += r(2, 5);
+            if (c.roadDist > m(300)) score += r(3, 10);
+            candidates.push_back({{x, y, c.height}, score, order});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        return a.score != b.score ? a.score > b.score : a.order < b.order;
+    });
+    constexpr size_t kRuins = 34;
+    size_t ruins = 0;
+    for (const Candidate& c : candidates) {
+        if (ruins >= kRuins) break;
+        if (!farFrom(c.pos, m(650), m(950))) continue;
+        std::string name = std::string(kRuinAdjectives[ruins % 12]) + " " + kRuinNouns[(ruins * 7) % 11];
+        sites_.push_back({Site::Kind::Ruin, std::move(name), c.pos});
+        ++ruins;
+    }
+}
+
+uint64_t Continent::checksum() const {
+    StateHasher h;
+    for (const City& c : cities_) {
+        h.addI64(c.pos.x.raw);
+        h.addI64(c.pos.y.raw);
+        h.addI64(c.pos.z.raw);
+        h.addU64(c.owner);
+    }
+    for (const Site& s : sites_) {
+        h.addU64(static_cast<uint64_t>(s.kind));
+        h.addI64(s.pos.x.raw);
+        h.addI64(s.pos.y.raw);
+        h.addI64(s.pos.z.raw);
+    }
+    for (const River& rv : rivers_)
+        for (const Vec3& p : rv.points) h.addI64(p.z.raw);
+    return h.value();
 }
 
 }  // namespace illyria::sim

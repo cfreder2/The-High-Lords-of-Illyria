@@ -78,3 +78,30 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
+
+TEST(continent_has_cities_castles_and_places_to_explore) {
+    const Continent& c = continent();
+    CHECK(c.cities().size() == 80);
+    int capitals[Continent::kFactionCount] = {};
+    for (const Continent::City& city : c.cities()) {
+        if (city.capital) ++capitals[city.owner];
+        else CHECK(city.owner == Continent::kNeutral);
+        // On dry land, and never inside another city's walls.
+        Fixed surface;
+        CHECK(!c.waterSurface(city.pos.x, city.pos.y, surface));
+        CHECK(c.heightAt(city.pos.x, city.pos.y) == city.pos.z);  // the levelled pad
+        for (const Continent::City& other : c.cities())
+            if (&other != &city) CHECK((other.pos - city.pos).flat().length() > Fixed::fromInt(500));
+    }
+    for (int f = 0; f < Continent::kFactionCount; ++f) CHECK(capitals[f] == 1);
+    int kinds[3] = {};
+    for (const Continent::Site& s : c.sites()) {
+        ++kinds[static_cast<int>(s.kind)];
+        Fixed surface;
+        CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
+    }
+    CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
+    constexpr uint64_t kGolden = 0x5271c50326d11be7;
+    if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
+    CHECK(c.checksum() == kGolden);
+}

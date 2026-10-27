@@ -13,6 +13,7 @@
 #include "../render/renderer.h"
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
+#include "illyria/game/factions.h"
 #include "illyria/game/gestures.h"
 
 #ifndef ILLYRIA_VERSION
@@ -25,6 +26,7 @@ namespace {
 
 constexpr uint64_t kBattleSeed = 20261027;
 constexpr double kMaxPixelRatio = 2.0;
+constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
 
 struct App {
     std::unique_ptr<Battle> battle;
@@ -34,11 +36,11 @@ struct App {
     double lastMs = 0;
     float pixelRatio = 1;
     double fps = 60;
-    std::string hud;
+    std::string hud, labels;
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
     V3 introFrom, introTo;
-    float introFromDist = 0, introToDist = 0;
+    float introFromDist = 0, introToDist = 0, introToYaw = 0;
 };
 
 App* app = nullptr;
@@ -60,6 +62,9 @@ void startIntro() {
     const V3 o = b.origin();
     app->introFrom = {illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 0};
     app->introFromDist = 19000.0f;
+    app->introToYaw = app->camera.yaw();
+    // North up over the continent, like the campaign map.
+    app->camera.rotate(kNorthUp - app->camera.yaw());
     app->camera.lookAt(app->introFrom.x, app->introFrom.y, app->introFromDist);
     app->introStartMs = 0;  // set on the first frame
 }
@@ -76,6 +81,7 @@ void stepIntro(double now) {
     const float y = app->introFrom.y + (app->introTo.y - app->introFrom.y) * pan;
     const float d = app->introFromDist * std::pow(app->introToDist / app->introFromDist, s);
     app->camera.lookAt(x, y, d);
+    app->camera.rotate(kNorthUp + (app->introToYaw - kNorthUp) * s - app->camera.yaw());
     if (t >= 1) app->introStartMs = -1;
 }
 
@@ -177,8 +183,51 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
 EMSCRIPTEN_KEEPALIVE void illyria_overview() {
     if (!app) return;
     app->introStartMs = -1;
+    app->camera.rotate(kNorthUp - app->camera.yaw());
     const V3 o = app->battle->origin();
     app->camera.lookAt(illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 19000.0f);
+}
+
+// Map labels for the page to draw: one line per visible label,
+// "kind|colour|x|y|name" in CSS pixels. Kinds: 0 city, 1 capital, 2 ruin,
+// 3 temple, 4 sage, 5 realm, 6 landmark. Which appear depends on the zoom.
+EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
+    if (!app) return "";
+    std::string& out = app->labels;
+    out.clear();
+    const Camera& cam = app->camera;
+    const float d = cam.distance();
+    if (d < 700) return out.c_str();
+    const illyria::sim::Continent& c = app->battle->continent();
+    const V3 o = app->battle->origin();
+    char buf[160];
+    const auto add = [&](int kind, const V3& colour, const illyria::sim::Vec3& at, const std::string& name) {
+        V3 p = toV3(at) - V3{o.x, o.y, 0};
+        p.z = app->battle->heightAt(p.x, p.y) + 10;
+        float px, py;
+        if (!cam.project(p, px, py)) return;
+        px /= app->pixelRatio;
+        py /= app->pixelRatio;
+        if (px < -80 || py < -40 || px > cam.width() / app->pixelRatio + 80 || py > cam.height() / app->pixelRatio + 40) return;
+        std::snprintf(buf, sizeof buf, "%d|#%02x%02x%02x|%.0f|%.0f|%s\n", kind, static_cast<int>(colour.x * 255),
+                      static_cast<int>(colour.y * 255), static_cast<int>(colour.z * 255), px, py, name.c_str());
+        out += buf;
+    };
+    for (const auto& city : c.cities()) {
+        if (!city.capital && d > 9000) {
+            add(0, factionColor(city.owner), city.pos, "");  // a marker only
+            continue;
+        }
+        add(city.capital ? 1 : 0, factionColor(city.owner), city.pos, city.name);
+    }
+    if (d < 9000) {
+        for (const auto& site : c.sites()) add(2 + static_cast<int>(site.kind), {1, 1, 1}, site.pos, site.name);
+    }
+    for (const auto& l : c.labels()) {
+        if (l.kind == 0 && d > 3000) add(5, {1, 1, 1}, l.pos, l.name);
+        else if (l.kind != 0 && l.kind != 4 && d > 2000 && d < 12000) add(6, {1, 1, 1}, l.pos, l.name);
+    }
+    return out.c_str();
 }
 
 // HUD state as JSON, polled by the page a few times a second.

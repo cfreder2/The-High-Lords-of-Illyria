@@ -56,6 +56,7 @@ private:
     void uploadMeshInstances(MeshBatch& b, const std::vector<float>& data);
     void uploadScenery(const Battle& battle);
     void uploadContinent(const Battle& battle);
+    void uploadSettlements(const Battle& battle);
     void drawMeshes(std::initializer_list<MeshBatch*> batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
     Program terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_;
@@ -71,6 +72,8 @@ private:
 
     Batch ribbons_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
     MeshBatch pines_, oaks_, bushes_, rocks_, houses_, pillars_, capsules_, spheres_;
+    // Cities, castles and the places heroes explore, across the whole continent.
+    MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     uint64_t marksUploaded_ = 0;
 };
 

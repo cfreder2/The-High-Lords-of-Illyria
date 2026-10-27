@@ -45,6 +45,30 @@ public:
         Vec3 centre;
         Fixed rx, ry;
     };
+    // The eight warring sides (docs/MAP.md), each starting from its capital.
+    static constexpr int kFactionCount = 8;
+    static constexpr uint8_t kNeutral = 255;
+    struct Faction {
+        std::string name;
+        std::string capital;
+    };
+    // A walled city on a levelled pad; capitals are castles. Every city produces
+    // armies and income for its owner (the campaign layer).
+    struct City {
+        std::string name;
+        Vec3 pos;      // z = the pad's height
+        Fixed radius;  // the walls
+        uint8_t owner = kNeutral;
+        bool capital = false;
+    };
+    // Places heroes explore: ruins hold a guardian and a reward, temples bless,
+    // sages tell what they know (first come, first served).
+    struct Site {
+        enum class Kind : uint8_t { Ruin, Temple, Sage };
+        Kind kind;
+        std::string name;
+        Vec3 pos;  // z = ground height
+    };
     struct Label {  // realm and region names for the map
         std::string name;
         Vec3 pos;
@@ -67,6 +91,11 @@ public:
     const std::vector<Area>& forests() const { return forests_; }
     const std::vector<Area>& lakes() const { return lakes_; }
     const std::vector<Label>& labels() const { return labels_; }
+    static const std::vector<Faction>& factions();
+    const std::vector<City>& cities() const { return cities_; }
+    const std::vector<Site>& sites() const { return sites_; }
+    // Everything placed on the map: cities, sites and the river surfaces.
+    uint64_t checksum() const;
     uint64_t seed() const { return seed_; }
 
     // Pieces of the height function, exposed for chunk generation.
@@ -95,6 +124,10 @@ public:
 
 private:
     void computeRiverSurfaces();
+    void placeCities();
+    void placeSites();
+    // Whether a footprint of this radius is dry, gentle land clear of rivers; returns the slope.
+    bool buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const;
     Fixed landDistance(Fixed x, Fixed y) const;
     Fixed baseHeight(Fixed x, Fixed y, Fixed& mountain) const;  // before rivers
 
@@ -107,6 +140,8 @@ private:
     std::vector<Area> swamps_, forests_, lakes_;
     std::vector<Fixed> lakeSurfaces_;
     std::vector<Label> labels_;
+    std::vector<City> cities_;
+    std::vector<Site> sites_;
     struct SeaShape {
         Vec3 a, b;
         Fixed radius;

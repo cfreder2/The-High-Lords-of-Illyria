@@ -11,3 +11,8 @@ endif()
 # Prints docs/UNITS.md from the locked unit sheet.
 add_executable(illyria_unitsheet unitsheet.cpp)
 target_link_libraries(illyria_unitsheet PRIVATE illyria_sim)
+
+# Renders the continent top-down for docs/images/continent-map.png:
+#   illyria_continentmap map.ppm map.json && python3 tools/continentmap/label.py map.ppm map.json out.png
+add_executable(illyria_continentmap continentmap/continentmap.cpp)
+target_link_libraries(illyria_continentmap PRIVATE illyria_sim)
