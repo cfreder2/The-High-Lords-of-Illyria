@@ -87,3 +87,12 @@ Broken along the way:
 ---
 
 *From here on, every deploy adds a `builds/vX.Y.Z/` folder automatically.*
+
+### 27 Oct 2026 · v0.1.4 (`8c2c9d3`)
+Devlog: film every deployed build into the devlog branch
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.4/04-battle.png) | ![](builds/v0.1.4/02-god-view.png) | ![](builds/v0.1.4/07-phone.png) |
+
+Fly-through: [`builds/v0.1.4/flythrough.webm`](builds/v0.1.4/flythrough.webm)
