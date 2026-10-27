@@ -245,6 +245,18 @@ Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is
 - Reconnecting players resync from a state snapshot plus fast-forward simulation of the missed ticks.
 - Input delay adapts to the worst current connection.
 
+**Phone vs phone is the reference match.** The hardest supported case, two min-spec phones on cellular data playing each other, is what every multiplayer feature is designed and tested against. If it works there, PC players are covered.
+
+| Problem | Response |
+|---|---|
+| Neither player can host (phones sit behind carrier NAT and get suspended in the background) | A small relay server owns the match: it orders and forwards inputs, keeps the full input log, and stores periodic state snapshots. No peer is the host. |
+| Cellular latency (50–150 ms) and jitter | Adaptive input delay (~100–250 ms). Fine for this genre: orders are tactical, not twitch, and Myth ran on worse. The local player's orders get instant visual and audio acknowledgement so it never feels laggy. |
+| Mobile data cost | Lockstep sends only inputs: about 1–5 KB/s, roughly 5–20 MB per hour. |
+| One or both phones drop (tunnel, app switch, call) | The match keeps running on the relay; AI generals command a missing player's armies. In a 1v1 where *both* drop, the relay pauses the match. Rejoin = latest snapshot + fast-forward through the logged inputs. |
+| Heat and battery over a long match | Thermal-sustained budgets (above); matches can be saved and resumed later by both players. |
+
+**Testing.** Automated: CI runs two headless simulation peers through the relay with simulated cellular latency, jitter, packet loss and disconnects, and checks their checksums every tick. Manual: two real min-spec phones (one iPhone, one Android) playing each other over cellular data are the release gate for every milestone.
+
 **Distribution.** itch.io HTML builds marked mobile-friendly; installable as a home-screen web app (PWA) for fullscreen on iPhone, where Safari has no fullscreen API. Native iOS/Android builds from the same C++ code are an option later, not a requirement.
 
 ## 6. Development Roadmap
