@@ -56,6 +56,7 @@ Look lookOf(UnitType t) {
         case UnitType::Journeyman: return {0, 6, 2, 0, 1, {0.86f, 0.68f, 0.55f}, 0.75f};
         case UnitType::Warrior: return {0, 1, 1, 2, 0, {0.86f, 0.68f, 0.55f}, 0.75f};
         case UnitType::Berserker: return {0, 10, 0, 0, 64, {0.86f, 0.68f, 0.55f}, 0.8f};
+        case UnitType::Catapult: return {9, 0, 0, 0, 0, {0.43f, 0.29f, 0.16f}, 1.6f};
         case UnitType::Count: break;
     }
     return {};
@@ -887,6 +888,53 @@ void Renderer::uploadContinent(const Battle& battle) {
     uploadMeshInstances(bridges_, one);
 }
 
+void Renderer::uploadGates(const Battle& battle) {
+    // Every town's gate: those of the battlefield as the battle has left them
+    // (shut, or broken in), the rest of the continent's shut. Uploaded again
+    // only when one breaks.
+    const std::vector<sim::GateState>& state = battle.world().gates();
+    std::vector<uint8_t> broken(state.size());
+    for (size_t i = 0; i < state.size(); ++i) broken[i] = state[i].broken();
+    if (!gatesShown_.empty() && broken == gatesShown_) return;
+    gatesShown_ = broken;
+    gatesShown_.push_back(1);  // never empty once uploaded
+    std::vector<float> shut, open;
+    const auto put = [](std::vector<float>& out, V3 a, V3 b, V3 out_, float top) {
+        const float half = (b - a).length() / 2;
+        float q[4];
+        yawQuat(std::atan2(-out_.x, out_.y), q);
+        pushInstance(out, (a + b) * 0.5f, q, {half, half, top - a.z}, {1, 1, 1});
+    };
+    const auto& gates = battle.region().gates();
+    for (size_t i = 0; i < gates.size(); ++i) {
+        const sim::Gate& g = gates[i];
+        put(broken[i] ? open : shut, toV3(g.a), toV3(g.b), toV3(g.out), static_cast<float>(g.top.toDouble()));
+    }
+    const sim::Continent& cont = battle.continent();
+    const V3 o = battle.origin();
+    for (const sim::Continent::City& c : cont.cities()) {
+        const V3 centre = toV3(c.pos) - V3{o.x, o.y, 0};
+        for (const sim::Continent::Castle::Ring& ring : c.castle.rings) {
+            const size_t n = ring.corners.size();
+            const V3 a = toV3(ring.corners[ring.gateEdge]) - V3{o.x, o.y, 0}, b = toV3(ring.corners[(ring.gateEdge + 1) % n]) - V3{o.x, o.y, 0};
+            V3 mid = (a + b) * 0.5f;
+            mid.z = centre.z;
+            bool onField = false;
+            for (const sim::Gate& g : gates) {
+                const V3 gm = toV3(g.a + g.b) * 0.5f;
+                onField = onField || (gm.x - mid.x) * (gm.x - mid.x) + (gm.y - mid.y) * (gm.y - mid.y) < 4.0f;
+            }
+            if (onField) continue;
+            V3 along = V3{b.x - a.x, b.y - a.y, 0}.normalized();
+            V3 outward = V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized();
+            const float half = static_cast<float>(ring.gateWidth.toDouble()) / 2;
+            put(shut, mid - along * half, mid + along * half, outward, centre.z + static_cast<float>(ring.height.toDouble()) * 0.62f);
+        }
+    }
+    uploadMeshInstances(gates_, shut);
+    uploadMeshInstances(brokenGates_, open);
+}
+
 void Renderer::uploadSettlements(const Battle& battle) {
     const sim::Continent& cont = battle.continent();
     const V3 o = battle.origin();
@@ -1074,6 +1122,8 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(drums_, meshes::drum(), 0);
     makeMeshBatch(keeps_, meshes::keep(), 0);
     makeMeshBatch(stairs_, meshes::stairs(), 0);
+    makeMeshBatch(gates_, meshes::gate(false), 0);
+    makeMeshBatch(brokenGates_, meshes::gate(true), 0);
     for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_}) b->masonry = true;
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
@@ -1111,6 +1161,7 @@ void Renderer::reset(Battle& battle) {
     uploadContinent(battle);
     walked_.clear();
     lastSeen_.clear();
+    gatesShown_.clear();
     unitsChecked_ = SIZE_MAX;
 }
 
@@ -1472,7 +1523,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
-    for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_}) casters.push_back(b);
+    for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}) casters.push_back(b);
     for (MeshBatch& b : copses_) casters.push_back(&b);
     if (features_ & kFarDetail)
         for (MeshBatch& b : nearCopses_) casters.push_back(&b);
@@ -1644,6 +1695,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     uploadMarks(battle);
     uploadRemains(battle);
+    uploadGates(battle);
 
     const V3 eye = camera.eye();
     const V3 fwd = (camera.target() - eye).normalized();
@@ -1677,8 +1729,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         if (!u.alive()) {
             const float died = ago(battle.deathTick(i));
             const float decay = std::clamp((died - 3600.0f) / week, 0.0f, 1.0f);
-            if (decay > 0) {
-                // Long dead: the body rots where it lies.
+            if (decay > 0 && type != UnitType::Catapult) {
+                // Long dead: the body rots where it lies (a wrecked engine stays a heap of timber).
                 const Look look = lookOf(type);
                 pushCorpse(capsules, spheres, pos, std::atan2(fy, fx) + 3.14159f, height / 1.8f, {team[0], team[1], team[2]},
                            {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id);
@@ -1734,6 +1786,14 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             case sim::ProjectileKind::Fireball:
                 sprite(kPlanOrb, 0.9f, 0);
                 break;
+            case sim::ProjectileKind::Stone: {
+                // A dressed boulder, turning over in its flight.
+                const float t = static_cast<float>(timeSeconds) * 3.0f + static_cast<float>(p.id);
+                float q[4];
+                yprQuat(t, t * 0.6f, 0, q);
+                pushInstance(spheres, pos, q, {0.36f, 0.32f, 0.34f}, {0.62f, 0.6f, 0.56f});
+                break;
+            }
             case sim::ProjectileKind::Debris:
                 if (p.remain == sim::RemainKind::Arrow) {
                     // Tumbling end over end.
@@ -1861,7 +1921,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_}, camera, timeSeconds, gameSeconds);
+    drawMeshes({&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
     if (camera.distance() < 6000.0f) {
         std::vector<MeshBatch*> woods;

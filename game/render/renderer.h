@@ -90,6 +90,7 @@ private:
     void uploadScenery(const Battle& battle);
     void uploadContinent(const Battle& battle);
     void uploadSettlements(const Battle& battle);
+    void uploadGates(const Battle& battle);
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
     Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
@@ -160,6 +161,8 @@ private:
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch drums_, keeps_, stairs_;
+    MeshBatch gates_, brokenGates_;
+    std::vector<uint8_t> gatesShown_;  // broken flags last uploaded
     MeshBatch logs_;
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant

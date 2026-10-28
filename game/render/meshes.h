@@ -50,6 +50,9 @@ Mesh curtain();
 Mesh drum();
 Mesh keep();
 Mesh stairs();
+//   gate: two timber doors banded with iron across x in [-1, 1] (+y outward),
+//     z from 0 to 1; broken: battered in, hanging and strewn in the passage
+Mesh gate(bool broken);
 Mesh banner();
 Mesh ruin();
 Mesh temple();

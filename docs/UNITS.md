@@ -39,17 +39,21 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 | Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | 1.20 s | 0.5 | 0 |  | heals 35 every 2.5 s, 6 charges;  |
 | Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | 1.20 s | 0.6 | 0 | 65% |  |
 | Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | 0.93 s | 0.6 | 0 |  |  |
+| Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 0.8 | 0 | 0.00 s | 0.0 | 0 |  | no blood;  |
 
 ## Missile troops
 
-Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**.
+Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
+but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;
+against a castle gate they do five times their blast damage (satchels three times, fireballs one and a half).
 
-| Unit | Missile | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Blast radius | Blast damage | Fuse |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Elven Archers | arrow | 42 m/s | 4.0 s | 70 m | 55 m | 16 | 6 m |  |  |  |
-| Wizards | fireball | 24 m/s | 9.0 s | 50 m | 45 m |  | 4 m | 3.5 m | 40 |  |
-| Dragons | fireball | 30 m/s | 6.0 s | 60 m | 50 m |  | 4 m | 5.0 m | 50 |  |
-| Dwarven Grenadiers | satchel charge | 14 m/s | 6.0 s | 19 m | 16 m |  | 10 m | 4.0 m | 80 | 2 s |
+| Unit | Missile | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Elven Archers | arrow | 42 m/s | 4.0 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
+| Wizards | fireball | 24 m/s | 9.0 s | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
+| Dragons | fireball | 30 m/s | 6.0 s | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
+| Dwarven Grenadiers | satchel charge | 14 m/s | 6.0 s | 19 m | 16 m |  | 10 m |  | 4.0 m | 80 | 2 s |
+| Catapults | stone | 40 m/s | 14.0 s | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 
 ## Fliers
 

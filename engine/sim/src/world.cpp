@@ -95,6 +95,8 @@ constexpr Fixed kOpenSlope = Fixed::fromRatio(3, 50);
 constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
+// Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
+constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
 
@@ -124,6 +126,7 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.ranged.dispersionAt100m.raw);
     h.addI64(s.ranged.autoRange.raw);
     h.addI64(s.ranged.maxRange.raw);
+    h.addI64(s.ranged.minRange.raw);
     h.addU64(static_cast<uint64_t>(s.ranged.kind));
     hashExplosive(h, s.ranged.explosive);
     h.addI64(s.melee.damage);
@@ -173,6 +176,7 @@ World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) 
         for (uint32_t i = 0; i < obstacles.size(); ++i) {
             if (obstacles[i].solid) obstacleGrid_.insert(i, obstacles[i].pos.x, obstacles[i].pos.y);
         }
+        for (const Gate& g : config_.region->gates()) gates_.push_back({g.maxHp});
     }
 }
 
@@ -263,11 +267,30 @@ void World::applyCommand(const Command& cmd) {
             u->moveTarget = cmd.target;
             u->marchSpeed = max(Fixed::zero(), cmd.speed);
             u->hasAttackTarget = false;
+            u->attackGate = -1;
             planPath(*u, cmd.target);
             break;
+        case Command::Type::AttackGate:
         case Command::Type::AttackGround:
             if (u->stats.ranged.muzzleSpeed == Fixed::zero()) return;
             u->hasAttackTarget = true;
+            u->hasMoveTarget = false;
+            u->attackGate = -1;
+            if (cmd.type == Command::Type::AttackGate && config_.region) {
+                // The standing gate nearest the spot shown.
+                const auto& gs = config_.region->gates();
+                Fixed best = Fixed::fromInt(12);
+                for (size_t i = 0; i < gs.size(); ++i) {
+                    const Fixed d = (cmd.target - (gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2)).flat().length();
+                    if (gates_[i].broken() || d >= best) continue;
+                    best = d;
+                    u->attackGate = static_cast<int32_t>(i);
+                }
+                if (u->attackGate >= 0) {
+                    u->attackTarget = gateAimPoint(u->attackGate, u->pos);
+                    break;
+                }
+            }
             // "Attack ground" means the ground: never aim into or above the hillside.
             u->attackTarget = {cmd.target.x, cmd.target.y, groundHeight(cmd.target.x, cmd.target.y)};
             u->hasMoveTarget = false;
@@ -275,6 +298,7 @@ void World::applyCommand(const Command& cmd) {
         case Command::Type::Stop:
             u->hasMoveTarget = false;
             u->hasAttackTarget = false;
+            u->attackGate = -1;
             break;
     }
 }
@@ -298,7 +322,7 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out)
     auto it = pathCache_.find(key);
     if (it == pathCache_.end()) {
         std::vector<Vec3> route;
-        if (!nav_->findPath(from, to, route)) route = {to};
+        if (!nav_->findPath(from, to, route) && !routeToGate(from, to, route)) route = {to};
         it = pathCache_.emplace(key, std::move(route)).first;
     }
     out.insert(out.end(), it->second.begin(), it->second.end());
@@ -508,7 +532,10 @@ void World::updateUnit(Unit& u) {
     // Resting on the ground restores a flier at half the rate flying spends it.
     if (flier && u.stamina < u.stats.staminaTicks && (tick_ & 1) == 0) ++u.stamina;
 
-    if (u.hasMoveTarget) {
+    if (const int gate = gateToHack(u); gate >= 0) {
+        // At a shut gate on the way in: hack at the timbers.
+        hackGate(u, gate);
+    } else if (u.hasMoveTarget) {
         // Orders take priority over fighting: a moving unit ignores enemies.
         const Fixed remaining = (u.moveTarget - u.pos).flat().length();
         if (flier && remaining >= u.stats.minFlight && u.stamina * 2 >= u.stats.staminaTicks) {
@@ -531,9 +558,10 @@ void World::updateUnit(Unit& u) {
         }
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
-        if ((u.attackTarget - u.pos).flat().length() > u.stats.ranged.maxRange) {
+        const Fixed range = (u.attackTarget - u.pos).flat().length();
+        if (range > u.stats.ranged.maxRange) {
             walk(u, u.attackTarget);  // close to range before loosing
-        } else if (u.reloadRemaining == 0) {
+        } else if (u.reloadRemaining == 0 && range >= u.stats.ranged.minRange) {
             fire(u, u.attackTarget);
             u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
@@ -545,7 +573,7 @@ void World::updateUnit(Unit& u) {
                                   ? nearestEnemy(u, u.stats.ranged.autoRange)
                                   : nullptr) {
         u.facing = flatDirection(u.pos, target->pos, u.facing);
-        if (u.reloadRemaining == 0) {
+        if (u.reloadRemaining == 0 && (target->pos - u.pos).flat().length() >= u.stats.ranged.minRange) {
             fire(u, target->pos);
             u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
@@ -664,6 +692,7 @@ void World::separateBodies() {
             const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
             u.pos += n * (reach - dist);
         });
+        keepOutOfGates(u);
         // Castle walls: out of the slab, unless walking along its top.
         for (const WallSeg& wl : config_.region->walls()) {
             if (u.pos.z > wl.top - kWallClear) continue;
@@ -767,6 +796,8 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
             break;
         }
     }
+    const Fixed gate = gateHit(a, b, best);
+    if (gate >= Fixed::zero()) return gate;
     return hit ? best : -Fixed::one();
 }
 
@@ -999,7 +1030,11 @@ void World::fire(Unit& u, const Vec3& target) {
     p.owner = u.owner;
     p.kind = w.kind;
     p.pos = origin;
-    p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
+    if (w.kind == ProjectileKind::Stone) {
+        p.vel = solveFixedElevation(origin, aim, kStoneElevation, w.muzzleSpeed, config_.gravity).velocity;
+    } else {
+        p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
+    }
     p.damage = w.damage * prowessPct(u) / 100;
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
@@ -1093,7 +1128,7 @@ void World::updateProjectiles() {
         if (p.kind == ProjectileKind::Bomb) {
             bounce(p, p.explosive.bounce, kBombFriction);
             if (--p.fuse <= 0) {
-                pendingExplosions_.push_back({p.pos, p.explosive, p.owner});
+                pendingExplosions_.push_back({p.pos, p.explosive, p.owner, p.kind});
                 removed[i] = 1;
             }
             continue;
@@ -1122,8 +1157,10 @@ void World::updateProjectiles() {
         // Arrows and fireballs: ballistic flight, hitting the first thing in their path.
         const Vec3 prev = p.pos;
         // Exact for constant acceleration, so flight paths match the aiming solution.
-        p.pos += p.vel * kTickDt + accel * (kTickDt * kTickDt / 2);
-        p.vel += accel * kTickDt;
+        // A stone is too heavy for the wind to carry.
+        const Vec3 a = p.kind == ProjectileKind::Stone ? up(-config_.gravity) : accel;
+        p.pos += p.vel * kTickDt + a * (kTickDt * kTickDt / 2);
+        p.vel += a * kTickDt;
         const Vec3 seg = p.pos - prev;
 
         // Fraction of this tick's path at which the projectile reaches the
@@ -1162,8 +1199,8 @@ void World::updateProjectiles() {
         const Fixed obstacleT = obstacleHit(prev, p.pos, hitT);
         if (obstacleT >= Fixed::zero()) {
             const Vec3 at = prev + seg * obstacleT;
-            if (p.kind == ProjectileKind::Fireball) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner});
+            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -1171,8 +1208,8 @@ void World::updateProjectiles() {
             removed[i] = 1;
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
-            if (p.kind == ProjectileKind::Fireball) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner});
+            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
             } else if (onRampartFacing(*hit, p.vel) && rng_.nextUnit() < kMerlonCover) {
                 // Behind the merlons: the missile strikes stone instead.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
@@ -1190,8 +1227,8 @@ void World::updateProjectiles() {
             removed[i] = 1;
         } else if (groundT <= Fixed::one()) {
             const Vec3 at = prev + seg * groundT;
-            if (p.kind == ProjectileKind::Fireball) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner});
+            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -1202,7 +1239,7 @@ void World::updateProjectiles() {
         }
     }
 
-    for (const PendingExplosion& e : pendingExplosions_) explode(e.at, e.ex, e.owner);
+    for (const PendingExplosion& e : pendingExplosions_) explode(e.at, e.ex, e.owner, e.kind);
 
     size_t keep = 0;
     for (size_t i = 0; i < projectiles_.size(); ++i) {
@@ -1213,8 +1250,11 @@ void World::updateProjectiles() {
     spawned_.clear();
 }
 
-void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
-    impacts_.push_back({ImpactEvent::Kind::Explosion, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius});
+void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind) {
+    // A stone smashes and scatters, without fire.
+    const ImpactEvent::Kind event = kind == ProjectileKind::Stone ? ImpactEvent::Kind::Smash : ImpactEvent::Kind::Explosion;
+    impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius});
+    blastGates(at, ex, kind);
     const auto awayFrom = [&](const Vec3& p) {
         Vec3 d = flatDirection(at, p, {});
         if (d.lengthSq() == Fixed::zero()) {
@@ -1235,7 +1275,8 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
         if (u.alive()) {
             const bool killed = damage(u, static_cast<int32_t>((f * ex.damage).floorToInt()));
             impacts_.push_back({ImpactEvent::Kind::Hit, centre, dir, kNoEntity, u.id, killed, {}});
-            if (killed) spawnGibs(u, at, ex.impulse * f);
+            // An engine breaks up into timber; soldiers into pieces.
+            if (killed && u.stats.type != static_cast<uint8_t>(UnitType::Catapult)) spawnGibs(u, at, ex.impulse * f);
         }
         knock(u, dir, ex.impulse * f);
     }
@@ -1359,6 +1400,13 @@ uint64_t World::checksum() const {
         h.addU64(u.path.size());
         for (const Vec3& w : u.path) hashVec(h, w);
         h.addU64(u.pathIndex);
+        h.addI64(u.attackGate);
+    }
+    h.addU64(gates_.size());
+    for (const GateState& g : gates_) {
+        h.addI64(g.hp);
+        h.addU64(g.holder);
+        h.addU64(g.brokenTick);
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

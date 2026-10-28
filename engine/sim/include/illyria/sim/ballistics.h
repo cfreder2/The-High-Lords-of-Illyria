@@ -16,4 +16,11 @@ struct LaunchSolution {
 // archers aim at where they see the target and the wind is part of the miss.
 LaunchSolution solveLowArc(const Vec3& origin, const Vec3& target, Fixed speed, Fixed gravity);
 
+// Velocity needed to hit `target` from `origin` launching at a fixed
+// elevation (its tangent; a catapult's arm always stops against the same
+// crossbar) with whatever speed that takes, as an engineer winds the skein
+// tighter or looser for the range. Beyond `maxSpeed` it throws as hard as it
+// can at that elevation and inRange is false.
+LaunchSolution solveFixedElevation(const Vec3& origin, const Vec3& target, Fixed tanElevation, Fixed maxSpeed, Fixed gravity);
+
 }  // namespace illyria::sim

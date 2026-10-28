@@ -1009,10 +1009,151 @@ V3 beast(Builder& b, const Hide& h, const BeastPose& p, const Kit* riderKit, con
     return at(0.02f, 0, d.bodyH * 0.95f);
 }
 
+// ------------------------------------------------------------------ engines
+
+// A mangonel: a timber bed on four spoked wheels, a throwing arm sprung from
+// a twisted skein of rope, a padded crossbar it slams against, and a cup at
+// its tip for the stone. Built from square timbers so that its death can
+// tumble each one to the ground.
+struct Timber {
+    V3 a, b;
+    float r;
+    V3 col;
+    int sides = 4;
+};
+
+// Where a timber lies once the engine has collapsed (each falls its own way).
+Timber fallen(const Timber& t, int i) {
+    const V3 low = t.a.z <= t.b.z ? t.a : t.b, high = t.a.z <= t.b.z ? t.b : t.a;
+    const float len = (high - low).length();
+    const float ang = static_cast<float>(i) * 2.39996f;  // golden angle: every timber a different way
+    const V3 away{std::cos(ang), std::sin(ang), 0};
+    V3 flat{high.x - low.x, high.y - low.y, 0};
+    flat = (flat + away * (high.z - low.z)).normalized();
+    Timber f = t;
+    f.a = V3{low.x + away.x * 0.25f, low.y + away.y * 0.25f, t.r};
+    f.b = f.a + flat * len;
+    f.b.z = t.r + 0.05f * static_cast<float>(i % 3);
+    return f;
+}
+
+void catapult(Builder& b, const V3& team, Anim anim, int frame) {
+    const V3 F{1, 0, 0}, L{0, 1, 0}, U{0, 0, 1};
+    const V3 wood = kWood, dark = kWood * 0.7f, rope{0.36f, 0.31f, 0.22f};
+    const float n = static_cast<float>(kFrames[static_cast<int>(anim)]);
+    const float t = anim == Anim::Die ? frame / (n - 1) : (frame + 0.5f) / n;
+    // The arm's angle from the front (+x) up and over: at rest it lies back on its cradle.
+    constexpr float kRest = 168 * kPi / 180;
+    float arm = kRest, wheel = 0, flutter = 0, jolt = 0;
+    bool stone = true;
+    V3 flying{};
+    switch (anim) {
+        case Anim::Idle: flutter = std::sin(2 * kPi * t); break;
+        case Anim::Walk: wheel = 2 * kPi * frame / n, flutter = std::sin(4 * kPi * t); break;
+        case Anim::Attack: {
+            // Released: the arm whips up and slams the crossbar; the stone flies on.
+            const float keys[6] = {168, 145, 97, 101, 124, 152};
+            arm = keys[frame] * kPi / 180;
+            stone = frame < 2;
+            flutter = std::sin(2 * kPi * t * 3);
+            if (frame == 2) flying = V3{0.85f, 0, 3.0f};
+            if (frame == 3) flying = V3{2.2f, 0, 3.6f};
+            break;
+        }
+        case Anim::Flinch: jolt = 0.05f * std::sin(kPi * t), arm = kRest - 0.06f * std::sin(kPi * t); break;
+        case Anim::Die: break;
+    }
+    const float die = anim == Anim::Die ? ease(std::clamp(t * 1.15f, 0.0f, 1.0f)) : 0.0f;
+
+    std::vector<Timber> ts;
+    const float bed = 0.55f, sideY = 0.62f;
+    for (float y : {-sideY, sideY}) {
+        ts.push_back({{-1.6f, y, bed}, {1.5f, y, bed}, 0.1f, wood});            // side beams
+        ts.push_back({{0.05f, y, bed}, {-0.05f, y, 2.15f}, 0.08f, wood});       // uprights
+        ts.push_back({{1.3f, y, bed}, {0.05f, y, 1.75f}, 0.06f, dark});         // braces
+    }
+    for (float x : {-1.5f, -0.2f, 1.4f}) ts.push_back({{x, -sideY, bed}, {x, sideY, bed}, 0.08f, wood});  // cross beams
+    ts.push_back({{0.02f, -sideY - 0.05f, 2.05f}, {0.02f, sideY + 0.05f, 2.05f}, 0.09f, wood});  // the stop bar
+    ts.push_back({{-1.5f, 0, bed}, {-1.5f, 0, 0.92f}, 0.06f, dark});                             // the cradle post
+    ts.push_back({{-1.45f, -sideY, 0.78f}, {-1.45f, sideY, 0.78f}, 0.07f, dark});                // the windlass
+    const size_t fixedTimbers = ts.size();
+    // The arm and its cup.
+    const V3 pivot{-0.2f, 0, 0.66f};
+    const V3 along = F * std::cos(arm) + U * std::sin(arm), normal = F * -std::sin(arm) + U * std::cos(arm);
+    const V3 tip = pivot + along * 2.25f;
+    ts.push_back({pivot - along * 0.2f, tip, 0.085f, wood});
+    for (Timber& tm : ts) {
+        // A jolt rocks the whole engine back on its wheels.
+        tm.a.z += jolt * (tm.a.x + 1.6f) * 0.3f;
+        tm.b.z += jolt * (tm.b.x + 1.6f) * 0.3f;
+    }
+    for (size_t i = 0; i < ts.size(); ++i) {
+        Timber tm = ts[i];
+        if (die > 0) {
+            const Timber f = fallen(tm, static_cast<int>(i));
+            const float len = (tm.b - tm.a).length();
+            tm.a = lerp(tm.a, f.a, die);
+            tm.b = tm.a + lerp(ts[i].b - ts[i].a, f.b - f.a, die).normalized() * len;
+            tm.b.z = std::max(tm.b.z, tm.r);
+        }
+        b.limb(tm.a, tm.b, tm.r, tm.r, tm.col, tm.sides);
+    }
+    (void)fixedTimbers;
+    // The skein: rope twisted round the arm's foot, between iron washers.
+    {
+        const V3 c = lerp(pivot, V3{pivot.x + 0.3f, 0.3f, 0.12f}, die);
+        b.limb(c - L * sideY, c + L * sideY, 0.15f, 0.15f, rope, 7);
+        for (float y : {-sideY, sideY}) b.limb(c + L * (y * 1.02f), c + L * (y * 1.1f), 0.2f, 0.2f, kDarkSteel, 7);
+    }
+    // The cup and the stone in it.
+    if (die < 0.5f) {
+        b.limb(tip, tip + normal * 0.2f, 0.13f, 0.24f, dark, 7);
+        if (stone) b.ball(tip + normal * 0.28f, 0.17f, grey(0.6f), 7);
+    }
+    if (flying.x != 0) b.ball(flying, 0.17f, grey(0.6f), 7);
+    // The padding where the arm strikes, in the side's colours, and a pennant.
+    {
+        const V3 pad = lerp(V3{-0.1f, 0, 2.02f}, V3{0.6f, -0.4f, 0.16f}, die);
+        b.limb(pad - L * 0.32f, pad + L * 0.32f, 0.13f, 0.13f, team, 6);
+        const V3 pole = lerp(V3{-0.05f, sideY, 2.15f}, V3{0.9f, sideY + 0.6f, 0.05f}, die);
+        const V3 poleTop = pole + lerp(U * 0.65f, F * 0.65f, die);
+        b.limb(pole, poleTop, 0.025f, 0.02f, dark, 4);
+        const V3 fly = (F * -1.0f + L * (0.25f * flutter)).normalized() * 0.55f;
+        const V3 drop = lerp(U * -0.32f, L * 0.32f, die);
+        b.plate(poleTop, poleTop + fly + U * (0.04f * flutter), poleTop + fly + drop * 0.7f, poleTop + drop, team);
+    }
+    // Wheels: rim, hub and six spokes, turning as it rolls; one comes off as it falls.
+    for (int w = 0; w < 4; ++w) {
+        const float x = w < 2 ? -1.05f : 1.05f, y = (w % 2 ? 1 : -1) * 0.84f;
+        const float r = 0.42f;
+        V3 c{x, y, r + jolt * (x + 1.6f) * 0.3f};
+        V3 axle = L, e1 = F, e2 = U;
+        if (die > 0) {
+            // Off its axle and onto its side.
+            const float lie = die * (kPi / 2) * (w == 1 || w == 2 ? 1.0f : 0.35f);
+            axle = (L * std::cos(lie) + U * std::sin(lie)).normalized();
+            e2 = (U * std::cos(lie) - L * std::sin(lie)).normalized();
+            c = lerp(c, V3{x * 1.2f, y * 1.5f, 0.06f + r * std::cos(lie)}, die);
+            c.z = std::max(c.z, r * std::cos(lie) + 0.04f);
+        }
+        const int segs = 10;
+        for (int i = 0; i < segs; ++i) {
+            const float a0 = wheel + 2 * kPi * i / segs, a1 = wheel + 2 * kPi * (i + 1) / segs;
+            b.limb(c + (e1 * std::cos(a0) + e2 * std::sin(a0)) * r, c + (e1 * std::cos(a1) + e2 * std::sin(a1)) * r, 0.045f, 0.045f, dark, 4);
+        }
+        for (int i = 0; i < 6; ++i) {
+            const float a = wheel + kPi * i / 3;
+            b.limb(c, c + (e1 * std::cos(a) + e2 * std::sin(a)) * (r - 0.03f), 0.022f, 0.022f, wood, 4);
+        }
+        b.limb(c - axle * 0.08f, c + axle * 0.08f, 0.07f, 0.07f, kDarkSteel, 6);
+    }
+}
+
 // ------------------------------------------------------------------ the roster
 
 struct Figure {
     bool person = true;
+    bool engine = false;  // a siege engine (catapult), not a living thing
     Kit kit;
     bool mounted = false;
     Hide hide;
@@ -1138,6 +1279,9 @@ Figure figureOf(UnitType type, const float team[3]) {
             k.head = Head::Wild, k.weapon = Weapon::Greatsword, k.strike = Strike::Overhead, k.bareChest = true, k.kilt = true, k.bulk = 1.12f;
             k.hair = V3{0.55f, 0.32f, 0.12f};
             break;
+        case UnitType::Catapult:
+            fg.person = false, fg.engine = true;
+            break;
         case UnitType::Count: break;
     }
     if (twoHanded(k.weapon) && k.strike == Strike::Swing) k.strike = Strike::Overhead;
@@ -1150,6 +1294,10 @@ Mesh build(UnitType type, const float team[3], Anim anim, int frame) {
     Mesh mesh;
     Builder b{mesh};
     const Figure fg = figureOf(type, team);
+    if (fg.engine) {
+        catapult(b, fg.kit.team, anim, frame);
+        return mesh;
+    }
     if (fg.person) {
         const Pose p = personPose(fg.kit, false, anim, frame);
         // A fall turns the whole figure backward about its heels.
@@ -1251,12 +1399,14 @@ float stride(UnitType type) {
         case UnitType::Dragons: return 5.0f;
         case UnitType::Griffins: return 2.8f;
         case UnitType::Dwarves: case UnitType::DwarfGrenadier: return 1.1f;
+        case UnitType::Catapult: return 2 * kPi * 0.42f;  // a turn of its wheels
         default: return h * 0.85f;
     }
 }
 
 float attackSeconds(UnitType type) {
     const sim::UnitStats st = sim::unitStats(type);
+    if (type == UnitType::Catapult) return 1.0f;
     if (st.ranged.muzzleSpeed > sim::Fixed::zero()) return type == UnitType::Archers ? 0.9f : 0.8f;
     const float cooldown = static_cast<float>(st.melee.cooldownTicks) / sim::kTicksPerSecond;
     return std::clamp(cooldown * 0.6f, 0.45f, 0.9f);

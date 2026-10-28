@@ -41,6 +41,7 @@ Role roleOf(UnitType type) {
         case UnitType::DwarfGrenadier: return Role::Bomber;
         case UnitType::Wizards: return Role::Caster;
         case UnitType::Journeyman: return Role::Healer;
+        case UnitType::Catapult: return Role::Siege;
         case UnitType::Griffins:
         case UnitType::Pegasi:
         case UnitType::Archons:
@@ -58,6 +59,7 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     build(seed, centre);
     if (scenario_ == Scenario::Siege) setUpSiege();
     else setUpFord();
+    if (scenario_ == Scenario::Siege) holdGates(kEnemy);
     finish();
 }
 
@@ -65,6 +67,7 @@ Battle::Battle(uint64_t seed, const BattlePlan& plan) : scenario_(Scenario::Camp
     continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
     build(seed, plan.centre);
     setUpCampaign(plan);
+    if (plan.city >= 0) holdGates(kEnemy);
     finish();
 }
 
@@ -268,6 +271,7 @@ void Battle::setUpFord() {
     spawnSquad("Witch-Kings", kEnemy, UnitType::Wizards, 2, {ex + 36, cy + 26, 0}, west);
     spawnSquad("Red Hand Menders", kEnemy, UnitType::Journeyman, 3, {ex + 40, cy - 30, 0}, west);
     spawnSquad("Ashen Wyrm", kEnemy, UnitType::Dragons, 1, {ex + 60, cy, 0}, west);
+    spawnSquad("Red Hand Mangonel", kEnemy, UnitType::Catapult, 1, {ex + 48, cy - 12, 0}, west);
 
 }
 
@@ -342,6 +346,78 @@ void Battle::setUpSiege() {
     spawnSquad("Brothers of the Root", kPlayer, UnitType::Journeyman, 4, camp + out * 30.0f, in);
     spawnSquad("Lord Aldric", kPlayer, UnitType::Hero, 1, camp + out * 6.0f, in);
     spawnSquad("Eyrie Griffins", kPlayer, UnitType::Griffins, 3, camp + out * 36.0f + side * -30.0f, in);
+    // Two mangonels well back, within a long throw of the gate.
+    spawnSquad("Oakhaven Siege Train", kPlayer, UnitType::Catapult, 2, camp + out * 26.0f + side * 34.0f, in);
+}
+
+void Battle::holdGates(sim::PlayerId holder) {
+    for (size_t i = 0; i < world_->gates().size(); ++i) world_->setGateHolder(i, holder);
+}
+
+int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) const {
+    int best = -1;
+    float bestD2 = kSquadTapRadiusPx * pixelScale * kSquadTapRadiusPx * pixelScale;
+    const auto& gates = region_->gates();
+    for (size_t i = 0; i < gates.size(); ++i) {
+        if (world_->gates()[i].broken()) continue;
+        V3 c = toV3(gates[i].a + gates[i].b) * 0.5f;
+        c.z = (c.z + static_cast<float>(gates[i].top.toDouble())) * 0.5f;
+        float px, py;
+        if (!camera.project(c, px, py)) continue;
+        const float d2 = (px - x) * (px - x) + (py - y) * (py - y);
+        if (d2 < bestD2) {
+            bestD2 = d2;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+
+void Battle::attackGate(const Squad& squad, int gate) {
+    const sim::Gate& g = region_->gates()[static_cast<size_t>(gate)];
+    const V3 centre = toV3(g.a + g.b) * 0.5f;
+    const Role role = roleOf(squad.type);
+    if (role == Role::Siege || role == Role::Bomber) {
+        for (sim::EntityId id : squad.members) issue(squad.owner, id, sim::Command::Type::AttackGate, centre);
+        return;
+    }
+    // Through it, to the far side: they hack at it until it gives.
+    const V3 out = toV3(g.out);
+    const V3 from = squadCentre(squad, false);
+    const float side = (from - centre).dot(out) >= 0 ? -1.0f : 1.0f;
+    moveSquad(squad, centre + out * (10.0f * side));
+}
+
+void Battle::orderAtGate(int gate) {
+    if (selected_ < 0 || gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
+    attackGate(squads_[static_cast<size_t>(selected_)], gate);
+}
+
+void Battle::aimEngines(const Squad& s) {
+    // A town the enemy besieges: batter its gate. Otherwise they throw at
+    // whoever comes within reach on their own (the wall-walks included).
+    const V3 c = squadCentre(s, false);
+    int best = -1;
+    float bestD = 1e30f;
+    for (size_t i = 0; i < region_->gates().size(); ++i) {
+        const sim::GateState& gs = world_->gates()[i];
+        if (gs.broken() || gs.holder != kPlayer) continue;
+        const V3 g = toV3(region_->gates()[i].a + region_->gates()[i].b) * 0.5f;
+        const float d = V3{g.x - c.x, g.y - c.y, 0}.length();
+        if (d < bestD) {
+            bestD = d;
+            best = static_cast<int>(i);
+        }
+    }
+    if (best < 0) return;
+    // Already at it.
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.alive() && u.attackGate != best) {
+            attackGate(s, best);
+            break;
+        }
+    }
 }
 
 void Battle::spawnSquad(const std::string& name, sim::PlayerId owner, UnitType type, int count, V3 centre,
@@ -544,6 +620,22 @@ void Battle::collectEvents() {
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());
                 for (int i = 0; i < 24; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 6, srnd() * 6, 5 + rnd() * 9}, 1.6f, 0.08f + rnd() * 0.1f);
+                break;
+            }
+            case K::Smash: {
+                // A stone shatters: a scar in the ground, a burst of dust and chips.
+                const float r = static_cast<float>(e.radius.toDouble());
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.5f, seed);
+                for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.3f}, {srnd() * 2, srnd() * 2, 0.8f + rnd()}, 1.8f + rnd(), 0.8f + rnd() * 0.6f);
+                for (int i = 0; i < 20; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 5, srnd() * 5, 3 + rnd() * 6}, 1.4f, 0.07f + rnd() * 0.1f);
+                break;
+            }
+            case K::Gate: {
+                // Splinters off the doors; when they give, a cloud of them.
+                const int chips = e.killed ? 40 : 4;
+                for (int i = 0; i < chips; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3, srnd() * 3, 1.5f + rnd() * 3} - dir * 2, 1.0f, 0.06f + rnd() * 0.08f);
+                if (e.killed)
+                    for (int i = 0; i < 16; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * 3, srnd() * 3, srnd()}, {srnd(), srnd(), 1 + rnd()}, 3.0f + rnd() * 2, 1.2f + rnd());
                 break;
             }
             case K::Hit: {
@@ -808,6 +900,11 @@ void Battle::runEnemyAi() {
         }
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
+        if (role == Role::Siege) {
+            // Engines never march at the foe; they throw from where they stand.
+            if (!s.garrison) aimEngines(s);
+            continue;
+        }
         if (s.garrison) {
             // Hold the town: archers keep their places on the walk (they shoot
             // on their own); the rest meet whoever gets near their post, and
@@ -864,7 +961,7 @@ void Battle::stopSelected() {
 
 void Battle::chargeAll() {
     for (Squad& mine : squads_) {
-        if (mine.owner != kPlayer || aliveCount(mine) == 0) continue;
+        if (mine.owner != kPlayer || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
         const V3 from = squadCentre(mine, false);
         const Squad* target = nullptr;
         float best = 1e18f;
@@ -928,6 +1025,11 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale) {
     if (selected_ < 0 || aliveCount(squads_[selected_]) == 0) return;
     const Squad& mine = squads_[selected_];
     const bool shoots = sim::unitStats(mine.type).ranged.muzzleSpeed > sim::Fixed::zero();
+    // Tapped a standing gate: engines and bombers shoot at it, the rest go to break it.
+    if (const int gate = gateAt(camera, x, y, pixelScale); gate >= 0 && (roleOf(mine.type) == Role::Siege || roleOf(mine.type) == Role::Bomber || (!shoots && bestUnit < 0))) {
+        attackGate(mine, gate);
+        return;
+    }
 
     if (bestSquad >= 0) {
         // Tapped an enemy: missile troops loose on that spot, everyone else charges it.

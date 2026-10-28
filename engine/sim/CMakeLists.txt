@@ -5,6 +5,7 @@ add_library(illyria_sim
     src/fixed.cpp
     src/ballistics.cpp
     src/world.cpp
+    src/world_gates.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp

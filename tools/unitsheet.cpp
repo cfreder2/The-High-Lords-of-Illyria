@@ -46,17 +46,23 @@ int main() {
     }
 
     std::printf("\n## Missile troops\n\n");
-    std::printf("Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**.\n\n");
-    std::printf("| Unit | Missile | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Blast radius | Blast damage | Fuse |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|\n");
+    std::printf("Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,\n"
+                "but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;\n"
+                "against a castle gate they do five times their blast damage (satchels three times, fireballs one and a half).\n\n");
+    std::printf("| Unit | Missile | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         const UnitStats s = unitStats(static_cast<UnitType>(t));
         if (s.ranged.muzzleSpeed == Fixed::zero()) continue;
-        const char* kind = s.ranged.kind == ProjectileKind::Arrow ? "arrow" : s.ranged.kind == ProjectileKind::Bomb ? "satchel charge" : "fireball";
+        const char* kind = s.ranged.kind == ProjectileKind::Arrow  ? "arrow"
+                           : s.ranged.kind == ProjectileKind::Bomb ? "satchel charge"
+                           : s.ranged.kind == ProjectileKind::Stone ? "stone"
+                                                                    : "fireball";
         const bool blast = s.ranged.kind != ProjectileKind::Arrow;
-        std::printf("| %s | %s | %.0f m/s | %.1f s | %.0f m | %.0f m | %s | %.0f m | %s | %s | %s |\n", unitTypeName(static_cast<UnitType>(t)),
+        std::printf("| %s | %s | %.0f m/s | %.1f s | %.0f m | %.0f m | %s | %.0f m | %s | %s | %s | %s |\n", unitTypeName(static_cast<UnitType>(t)),
                     kind, d(s.ranged.muzzleSpeed), secs(s.ranged.reloadTicks), d(s.ranged.maxRange), d(s.ranged.autoRange),
                     blast ? "" : std::to_string(s.ranged.damage).c_str(), d(s.ranged.dispersionAt100m),
+                    s.ranged.minRange > Fixed::zero() ? (std::to_string(static_cast<int>(d(s.ranged.minRange))) + " m").c_str() : "",
                     blast ? (std::to_string(static_cast<int>(d(s.ranged.explosive.radius) * 10) / 10.0).substr(0, 3) + " m").c_str() : "",
                     blast ? std::to_string(s.ranged.explosive.damage).c_str() : "",
                     s.ranged.explosive.fuseTicks ? (std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");

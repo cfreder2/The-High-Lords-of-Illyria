@@ -305,6 +305,44 @@ EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
     if (!app) return;
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
 }
+// Test hooks for sieges: the battlefield's gate nearest the player's first squad.
+int nearestGate() {
+    if (!app || app->battle->squads().empty()) return -1;
+    const V3 c = app->battle->squadCentre(app->battle->squads().back());
+    int best = -1;
+    float bestD = 1e30f;
+    const auto& gates = app->battle->region().gates();
+    for (size_t i = 0; i < gates.size(); ++i) {
+        const V3 g = toV3(gates[i].a + gates[i].b) * 0.5f;
+        const float d = (g - c).length();
+        if (d < bestD) {
+            bestD = d;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+// The squad's orders at that gate, as if the player tapped the squad, then the gate.
+EMSCRIPTEN_KEEPALIVE void illyria_test_order_gate(int squad) {
+    if (!app) return;
+    app->battle->selectSquad(squad);
+    app->battle->orderAtGate(nearestGate());
+}
+// Hit points left in that gate (-1: none).
+EMSCRIPTEN_KEEPALIVE int illyria_test_gate_hp() {
+    const int g = nearestGate();
+    return g < 0 ? -1 : app->battle->world().gates()[static_cast<size_t>(g)].hp;
+}
+// Camera on that gate, from outside the town.
+EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
+    const int g = nearestGate();
+    if (g < 0) return;
+    const illyria::sim::Gate& gate = app->battle->region().gates()[static_cast<size_t>(g)];
+    const V3 c = toV3(gate.a + gate.b) * 0.5f;
+    app->introStartMs = -1;
+    app->camera.lookAt(c.x, c.y, distance);
+    app->camera.rotate(yaw - app->camera.yaw());
+}
 EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, float yaw) {
     if (!app) return;
     app->introStartMs = -1;
