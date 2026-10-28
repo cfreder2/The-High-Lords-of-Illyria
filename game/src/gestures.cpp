@@ -34,6 +34,13 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
             if (find(id) != nullptr) return;
             pointers_.push_back({id, x, y, x, y, button, timeMs});
             tapCandidate_ = pointers_.size() == 1 && button == 0;
+            holdTried_ = false;
+            // A second finger: a pinch, not a box or a line.
+            if (holding_ && pointers_.size() > 1) endHold(x, y, true);
+            if (tapCandidate_ && shift_ && onHold_ && onHold_(x, y, true)) {
+                holding_ = true;
+                tapCandidate_ = false;
+            }
             resetBaseline();
             return;
         }
@@ -43,6 +50,12 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
             const float prevX = p->x, prevY = p->y;
             p->x = x;
             p->y = y;
+            if (holding_) {
+                if (onHoldMove_) onHoldMove_(x, y);
+                return;
+            }
+            update(timeMs);
+            if (holding_) return;
             if (std::hypot(x - p->startX, y - p->startY) > kTapSlopPx * pixelScale_) tapCandidate_ = false;
 
             if (pointers_.size() == 1) {
@@ -77,6 +90,7 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
             const bool tap = type == PointerEvent::Up && tapCandidate_ && pointers_.size() == 1 &&
                              timeMs - p->startMs <= kTapMaxMs;
             pointers_.erase(pointers_.begin() + (p - pointers_.data()));
+            if (holding_) endHold(x, y, type == PointerEvent::Cancel);
             if (tap && onTap_) onTap_(x, y);
             // Lifting one finger of a pinch must not turn the other into a tap.
             if (!pointers_.empty()) tapCandidate_ = false;
@@ -84,6 +98,21 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
             return;
         }
     }
+}
+
+void Gestures::update(double timeMs) {
+    // Held still long enough: the press is the hold handler's, if it wants it.
+    if (holding_ || holdTried_ || !tapCandidate_ || pointers_.size() != 1 || !onHold_) return;
+    const Pointer& p = pointers_.front();
+    if (timeMs - p.startMs < kHoldMs) return;
+    holdTried_ = true;
+    holding_ = onHold_(p.x, p.y, false);
+    if (holding_) tapCandidate_ = false;  // else a slow tap is still a tap
+}
+
+void Gestures::endHold(float x, float y, bool cancelled) {
+    holding_ = false;
+    if (onHoldEnd_) onHoldEnd_(x, y, cancelled);
 }
 
 void Gestures::wheel(float deltaY, float x, float y) {

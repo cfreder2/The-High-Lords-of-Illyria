@@ -97,6 +97,34 @@ Topography is strategy. The rules the battle simulation already applies:
 - **Coasts and water:** beaches of sand along the sea; surf rolling in over the shallows; waterfalls where creeks drop steeply off the mountains.
 - **Strategic consequences:** hills make the set-piece battles; fortresses on heights and at passes are hard to take; ruins and shrines in the mountains are reached only through the passes (§4.4).
 
+### 4.1.2 Commanding the Battle (built)
+
+As in Myth, every soldier is worth commanding on his own (`game/src/battle_command.cpp`). Every order becomes ordinary `sim::Command`s, so it reaches the simulation, and every lockstep peer, the same way; a move may carry the way to face on arrival (`Command::face`, in the unit's state and checksum only when given).
+
+**Selecting.** A tap on one of your soldiers selects him alone; a second tap on him (or a double-tap or double-click) selects every soldier of his type the camera can see. A squad card selects that squad. A held press drawn into a box selects all of yours inside it. Shift-click adds or removes one man; shift-drag draws a box at once. Selected soldiers wear a blue ring, and the cards of squads wholly selected light up (dashed when only partly).
+
+**Groups.** Up to ten saved groups (keys 1-9 and 0). On a phone, whenever the selection is not already a card, a **+ Save group** card appears at the start of the row; a saved group gets its own card (its key, its kind, how many live). A long press on a group card puts the current selection in it instead, or forgets the group when it is already selected. On the desktop **Alt** (or Ctrl, where the browser allows) + number saves, the number recalls, the number twice moves the camera there. Heroes and special troops (wizards, grenadiers, healers, engines) have their own cards at the front of the row, heroes in gold; **`** selects the heroes.
+
+**Moving and facing.** Tap the ground: the selection marches there in its formation and halts facing the way it marched. Press and hold at the destination (0.3 s), and a gold ghost of the formation appears there; drag, and a dotted line follows the finger: the formation turns to face along the line, laid out across it (Myth's gesture rotation). Let go to send them; they arrive facing that way, wherever their road took them. A selection of several squads moves as one formation, spaced for its biggest soldier and paced to its slowest. A held press that starts on your own soldiers, or with nothing selected, draws a selection box instead. Tapping an enemy still sends the foot at him and has the missile troops loose on that spot; tapping a gate sends engines and bombers to batter it and the rest through it.
+
+**Formations** (the Formation button opens a picker of eight, each sketched as it stands; desktop keypad 1-8 or shift + 1-8):
+
+| Key | Formation | Layout | Pace | Use |
+|---|---|---|---|---|
+| 1 | Line | two ranks | 90% | the shield wall; the default for foot |
+| 2 | Short line | three ranks, narrower | 90% | a narrow front: a ford, a gate, a gap in a wall |
+| 3 | Staggered | a checkerboard of two ranks, nobody within 1.8 gaps of another | 95% | missile troops and grenadiers (their default): one stray bomb or fireball takes one man |
+| 4 | Box | a near-square block | 85% | all-round, slowest |
+| 5 | Wedge | one at the point, two behind, three behind them | 90% | horse and wolf riders (their default) |
+| 6 | Column | two abreast | 100% | the column of march |
+| 7 | Loose | a wide, ragged skirmish line | 100% | wizards, healers, fliers, berserkers (their default) |
+| 8 | Encircle | a wide crescent (220 degrees) around the point itself, every man facing outward | 90% | pinning a lone champion, or ringing a hero |
+| 0 | **Scatter** | not a formation: everyone selected runs flat out 7-10 m directly away from the group's centre (the man at the centre picks his own way) | full speed | the moment a bomb, stone or fireball is in the air |
+
+Spacing is the biggest selected soldier's size (2.6 x his radius, at least 1.8 m); Staggered and Loose open it wider, so the loose formations are also the safe ones against blasts. A squad marches at its slowest member's pace times the formation's pace above: the tight formations a little slower than the loose ones. The computer forms its squads the same way (archers and grenadiers Staggered, foot in Line, horse in a Wedge, wizards and healers Loose).
+
+**Other orders.** **Scatter** (button, S, or keypad 0), **Hold** (H) stops, **Find** (F) brings the camera to the selection, **Esc** lets go of the selection, **Space** pauses.
+
 ### 4.2 Unit Identity, Progression & Attrition
 
 - **Stack Limit (from *Warlords*):** At most **8 squads** may occupy a map hex, and an attack commits at most 8. A defended city (2×2 hexes) fights with everything inside it, up to **32 squads**. This caps the largest possible battle at **40 squads** (~480 soldiers at ~12 per squad), which is what keeps several simultaneous full-physics battles inside the frame budget (§5.2).
@@ -448,11 +476,15 @@ Tree, rock and bush variety is always on: it costs draw calls, not frame time.
 |---|---|
 | Pinch | Zoom (god ↔ ground) |
 | Two-finger drag / twist | Pan / rotate camera |
-| Tap | Select squad or army; tap ground to move |
-| One-finger drag from a selected squad | Draw a path or formation line |
-| One-finger drag on empty ground | Box-select |
-| Long-press | Context radial menu (attack ground, formation, stance, special ability) |
-| Edge buttons (thumb reach) | Pause, hot-spot jump, AI general toggle, squad cards |
+| One-finger drag | Pan |
+| Tap a soldier / tap him again | Select him alone / every soldier of his type in view (§4.1.2) |
+| Tap a card | Select that squad or saved group (again: the camera goes to it) |
+| Tap ground / an enemy | March there / attack |
+| Hold at the destination, then drag | Move with facing: the ghost formation turns along the line |
+| Hold on your own men (or with nothing selected), then drag | Box-select |
+| **+ Save group** card; long-press a group card | Save the selection as a card; put the selection in that card, or forget it |
+| Formation button; Scatter button | Formation picker; everyone selected runs outward |
+| Edge buttons (thumb reach) | Pause, hot-spot jump, charge, squad cards |
 
 Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is slower than a mouse, so the design rewards decisions over clicks per minute. All UI text scales and is readable at phone size.
 

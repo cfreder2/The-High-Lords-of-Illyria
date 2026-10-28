@@ -105,7 +105,7 @@ bool link(const char* vs, const char* fs, GLuint& out) {
 constexpr int kDecalFloats = 11;  // centre 3, params 4, extra 4
 constexpr int kArrowFloats = 8;   // pos 3, dir 3, info 2
 
-constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5;
+constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5, kDecalDot = 7, kDecalArrow = 8;
 constexpr float kPlanBomb = 9, kPlanOrb = 10;
 
 // Instance record for a mesh: position, quaternion, scale, tint.
@@ -1884,7 +1884,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const V3 camRight = fwd.cross({0, 0, 1}).normalized();
     std::vector<float> decals, sprites, arrows, particles, capsules, spheres;
     const auto& units = world.units();
-    const int selected = battle.selectedSquad();
     const float week = 86400.0f * 7.0f;
 
     // Each soldier's frame: dying, striking, hurt, walking or at ease.
@@ -1901,7 +1900,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const float* team = u.owner == Battle::kPlayer ? kPlayerColor : kEnemyColor;
         const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
         const float height = static_cast<float>(u.stats.height.toDouble());
-        const bool isSelected = selected >= 0 && battle.squadOf(u.id) == selected;
+        const bool isSelected = battle.isSelected(u.id);
         const auto type = static_cast<UnitType>(u.stats.type);
         const V3 step = pos - lastSeen_[i];
         walked_[i] += std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
@@ -1992,6 +1991,24 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 break;
         }
     });
+
+    // An order being drawn (Battle::pressBegin): the line from the destination
+    // the way they will face, and the formation standing there.
+    if (const Battle::Drag& drag = battle.drag(); drag.mode == Battle::Drag::Mode::Facing) {
+        const float gold[3] = {1.0f, 0.82f, 0.32f};
+        const auto mark = [&](const V3& p, float yaw, float size, float type) {
+            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, size, 0, type, gold[0], gold[1], gold[2], 0});
+        };
+        for (const FormationSlot& g : drag.ghost) {
+            mark(g.pos, 0, 0.8f, kDecalRing);
+            mark(g.pos + g.face * 0.75f, std::atan2(g.face.y, g.face.x), 0.4f, kDecalArrow);
+        }
+        const V3 tip{drag.tip.x - drag.anchor.x, drag.tip.y - drag.anchor.y, 0};
+        const float len = std::max(4.0f, drag.aimed ? tip.length() : 0.0f);
+        const float yaw = std::atan2(drag.facing.y, drag.facing.x);
+        for (float d = 0; d < len - 0.6f; d += 0.7f) mark(drag.anchor + drag.facing * d, 0, 0.16f, kDecalDot);
+        mark(drag.anchor + drag.facing * len, yaw, 1.1f, kDecalArrow);
+    }
 
     // Body parts at rest on the ground.
     for (const sim::Remain& r : world.remains()) {

@@ -144,6 +144,7 @@ struct Unit {
     bool hasMoveTarget = false;
     Vec3 moveTarget;
     Fixed marchSpeed;       // pace of the current move order (0 = own speed)
+    Vec3 arriveFacing;      // the way to turn on arrival (zero: as he walked)
     bool gibbed = false;    // blown apart: no corpse, only its parts
     bool hasAttackTarget = false;
     Vec3 attackTarget;
@@ -196,6 +197,9 @@ struct Command {
     // (target is this soldier's place there): all follow the squad's route.
     bool march = false;
     Vec3 marchFrom = {}, marchTo = {};
+    // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
+    // the way he walked.
+    Vec3 face = {};
 };
 
 // Something that happened this tick, for rendering and audio. Not part of the

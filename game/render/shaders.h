@@ -543,6 +543,14 @@ void main() {
         float heal = smoothstep(86400.0, 86400.0 * 60.0, age);
         vec3 c = mix(vec3(0.08, 0.06, 0.05), vec3(0.18, 0.13, 0.08), 1.0 - pit);
         color = vec4(c, scorch * mix(0.85, 0.15, heal));
+    } else if (type > 6.5 && type < 7.5) {
+        // Order marker: a soft dot (the facing line).
+        color = vec4(vExtra.rgb, 0.9 * (1.0 - smoothstep(0.55, 0.95, r)));
+    } else if (type > 7.5) {
+        // Order marker: an arrowhead pointing along +x (the way to face).
+        float halfW = (0.9 - vUv.x) * 0.45;
+        float inside = step(-0.5, vUv.x) * step(vUv.x, 0.9) * (1.0 - smoothstep(halfW - 0.06, halfW, abs(vUv.y)));
+        color = vec4(vExtra.rgb, 0.9 * inside);
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;

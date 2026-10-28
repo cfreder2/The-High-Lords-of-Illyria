@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -15,11 +16,39 @@
 namespace illyria::game {
 
 // How a squad arranges itself, as in Myth: each soldier keeps his place as
-// the squad marches, and the whole squad moves at its slowest member's pace.
-enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column };
+// the squad marches, and the whole squad moves at its slowest member's pace
+// (slower still in the tight formations: see formationPace).
+//   Line        two ranks: the shield wall
+//   ShortLine   three ranks, narrower and deeper
+//   Staggered   a loose checkerboard of two ranks: missile troops, out of
+//               reach of one stray blast
+//   Box, Wedge, Column, Loose
+//   Encircle    a wide crescent around the point, everyone facing outward
+enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column, Staggered, ShortLine, Encircle };
+constexpr int kFormationCount = 8;
+// The picker's order, which is also the desktop keys 1-8 (0 is Scatter).
+constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::ShortLine, Formation::Staggered,
+                                                        Formation::Box,   Formation::Wedge,     Formation::Column,
+                                                        Formation::Loose, Formation::Encircle};
 const char* formationName(Formation f);
-// Slots relative to the squad's centre: x to the right, y forward.
+// A place in a formation, relative to its centre (x to the right, y forward),
+// and the way to face there (forward is {0, 1}).
+struct FormationSlot {
+    V3 pos;
+    V3 face{0, 1, 0};
+};
+// `spacing` is the gap between neighbours, from the biggest soldier's size
+// (formationSpacing); the loose formations open it wider.
+std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing);
 std::vector<V3> formationSlots(Formation f, int count, float spacing);
+// Marching pace in this formation, as a share of the slowest member's: the
+// tight ones (Box, the lines) a little slower than the loose ones.
+float formationPace(Formation f);
+// The gap a formation of this soldier keeps between neighbours.
+float formationSpacing(sim::UnitType type);
+// What a squad of this type forms by default (the computer's choice too):
+// lines for foot, a checkerboard for missile troops, a wedge for horse.
+Formation defaultFormation(sim::UnitType type);
 
 struct Squad {
     std::string name;
@@ -155,26 +184,85 @@ public:
     // Fraction of the way from the previous tick to the current one, for interpolation.
     float alpha() const { return static_cast<float>(accumulator_ * sim::kTicksPerSecond); }
 
-    // Input.
-    void tap(const Camera& camera, float x, float y, float pixelScale);
+    // Input. Selection is as in Myth (game/src/battle_command.cpp): tapping
+    // one of ours selects him alone, tapping him again everyone of his type
+    // in view; `additive` (shift-click) adds or removes him instead.
+    void tap(const Camera& camera, float x, float y, float pixelScale, bool additive = false);
     void selectSquad(int index);
-    // The selected squad's orders at a gate (as tapping it), for tests and hooks.
+    void select(std::vector<sim::EntityId> units);
+    void clearSelection();
+    // Every living soldier of ours of this type that the camera can see.
+    void selectVisibleOfType(const Camera& camera, sim::UnitType type);
+    // Ours inside a screen rectangle (pixels).
+    void selectInRect(const Camera& camera, float x0, float y0, float x1, float y1, bool additive = false);
+    // Every hero of ours.
+    void selectHeroes();
+    // Saved groups, keys 1-9 and 0 (slots 0-9): Alt+number on the desktop,
+    // the "+" card on a phone.
+    struct Group {
+        std::vector<sim::EntityId> units;
+        Formation formation = Formation::Line;
+    };
+    static constexpr int kGroupSlots = 10;
+    void assignGroup(int slot);
+    // The first free slot, or -1 when all are taken.
+    int saveGroup();
+    bool recallGroup(int slot);
+    void clearGroup(int slot);
+    const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
+
+    // Orders to the selection (for tests and hooks as well as the input).
+    // At a gate, as tapping it.
     void orderAtGate(int gate);
-    // The selected squad marched to a spot (as tapping the ground), for tests and hooks.
+    // March there, as tapping the ground: the formation faces the way it marched.
     void orderMove(const V3& to);
+    // March there and face that way on arrival, the formation laid out across
+    // it (Myth's gesture rotation).
+    void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
+    // Run! Everyone selected scatters a few metres outward from their centre.
+    void scatter();
     // Every one of the player's squads at the nearest enemy: the foot charge,
     // missile troops close to a long bowshot.
     void chargeAll();
-    // Next formation for the selected squad; it re-forms where it stands.
+    // The selection's formation; it re-forms where it stands.
+    void setFormation(Formation f);
     void cycleFormation();
+
+    // A press held on the battlefield (Gestures' hold): drawing a selection
+    // box, or the direction line of a move with facing. `box` forces a box
+    // (shift on the desktop); otherwise it is a box when nothing is selected
+    // or the press starts on one of ours. False: not taken (the camera pans).
+    bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);
+    void pressMove(const Camera& camera, float x, float y);
+    void pressEnd(const Camera& camera, float x, float y, bool cancelled, bool additive = false);
+    struct Drag {
+        enum class Mode : uint8_t { None, Box, Facing };
+        Mode mode = Mode::None;
+        float x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // the box, in pixels
+        float pixelScale = 1;
+        V3 anchor, facing{1, 0, 0};             // the line: from the destination, the way to face
+        bool aimed = false;                     // dragged far enough to set a facing
+        V3 tip;                                 // where the finger is, on the ground
+        std::vector<FormationSlot> ghost;       // the formation there, in battle coordinates
+    };
+    const Drag& drag() const { return drag_; }
     void togglePause() { paused_ = !paused_; }
     void cycleSpeed() { speed_ = speed_ >= 4 ? 1 : speed_ * 2; }
 
     // Queries.
     const sim::World& world() const { return *world_; }
     const std::vector<Squad>& squads() const { return squads_; }
-    int selectedSquad() const { return selected_; }
+    // The squad the selection is (all its living soldiers and no one else), or -1.
+    int selectedSquad() const;
+    const std::vector<sim::EntityId>& selection() const { return selection_; }
+    // Living selected soldiers.
+    std::vector<sim::EntityId> selectedAlive() const;
+    bool isSelected(sim::EntityId id) const { return id > 0 && id <= selectedFlag_.size() && selectedFlag_[id - 1]; }
+    Formation selectionFormation() const { return selFormation_; }
+    // 0 none of the squad selected, 1 some, 2 all its living soldiers.
+    int squadSelection(const Squad& s) const;
+    int groupSelection(int slot) const;
     bool paused() const { return paused_; }
     int speed() const { return speed_; }
     // 0 in progress, 1 victory, 2 defeat.
@@ -233,6 +321,18 @@ private:
     void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
     void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
+    // Soldiers marching as one formation to `to`: facing `face` there when
+    // given, else the way they march.
+    void moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> units, Formation formation, const V3& to,
+                   const V3* face, const V3& fallbackFacing);
+    std::vector<FormationSlot> placeFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
+                                              const V3& facing) const;
+    V3 centreOf(const std::vector<sim::EntityId>& units) const;
+    V3 selectionFacing() const;
+    void refreshSelection();
+    // The nearest living soldier under the finger (index), or -1.
+    int unitAt(const Camera& camera, float x, float y, float pixelScale) const;
+    void updateGhost();
     // The computer's orders: the same as moveSquad, but a squad already on
     // its way to about the same place keeps its route (routes cost time).
     void steerSquad(const Squad& squad, const V3& to);
@@ -243,6 +343,7 @@ private:
     int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
     // The squad's orders at a gate: engines and bombers shoot at it, the rest go through it.
     void attackGate(const Squad& squad, int gate);
+    void attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId>& units, Formation formation, int gate);
     // Enemy catapults: the player's gate when they besiege, else the nearest foe in reach.
     void aimEngines(const Squad& s);
 
@@ -254,7 +355,11 @@ private:
     std::vector<Squad> squads_;
     std::vector<int> squadOfUnit_;  // indexed by EntityId - 1
     std::vector<sim::Command> pending_;
-    int selected_ = -1;
+    std::vector<sim::EntityId> selection_;  // ascending, so orders go out in one order everywhere
+    std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
+    Formation selFormation_ = Formation::Line;
+    std::array<Group, kGroupSlots> groups_;
+    Drag drag_;
     bool paused_ = false;
     int speed_ = 1;
     double accumulator_ = 0;

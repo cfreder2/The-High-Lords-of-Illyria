@@ -98,6 +98,10 @@ TEST(battle_runs_and_player_can_command_a_squad) {
     c.lookAt(b.squadCentre(watch).x, b.squadCentre(watch).y, 80);
     float px, py;
     CHECK(c.project(b.squadCentre(watch), px, py));
+    // One tap: that soldier alone; again: every heavy infantryman in view (the Watch).
+    b.tap(c, px, py, 1.0f);
+    CHECK(b.selectedAlive().size() == 1);
+    CHECK(b.squadOf(b.selectedAlive().front()) == watchIndex);
     b.tap(c, px, py, 1.0f);
     CHECK(b.selectedSquad() == watchIndex);
     const V3 start = b.squadCentre(watch);
