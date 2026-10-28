@@ -180,6 +180,7 @@ void Battle::select(std::vector<sim::EntityId> units) {
     selection_ = std::move(units);
     refreshSelection();
     if (selection_.empty()) return;
+    voice_.order(Situation::Selected, *world_, selection_);
     // Their own squad's formation if they are of one squad, else what suits their kind.
     const int squad = squadOfUnit_[selection_.front() - 1];
     bool oneSquad = squad >= 0, oneType = true;
@@ -462,16 +463,22 @@ void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId
 void Battle::orderAtGate(int gate) {
     if (gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
     attackGateWith(kPlayer, selectedAlive(), selFormation_, gate);
+    voice_.order(Situation::Attack, *world_, selection_);
 }
 
-void Battle::orderMove(const V3& to) { moveGroup(kPlayer, selectedAlive(), selFormation_, to, nullptr, selectionFacing()); }
+void Battle::orderMove(const V3& to) {
+    moveGroup(kPlayer, selectedAlive(), selFormation_, to, nullptr, selectionFacing());
+    voice_.order(Situation::Move, *world_, selection_);
+}
 
 void Battle::orderMoveFacing(const V3& to, const V3& facing) {
     moveGroup(kPlayer, selectedAlive(), selFormation_, to, &facing, selectionFacing());
+    voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::stopSelected() {
     for (sim::EntityId id : selectedAlive()) issue(kPlayer, id, sim::Command::Type::Stop, {});
+    voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::scatter() {
@@ -491,6 +498,7 @@ void Battle::scatter() {
         const float run = kScatterMetres + static_cast<float>((h >> 16) % 300) / 100.0f;
         issue(kPlayer, id, sim::Command::Type::Move, p + away * run);
     }
+    voice_.order(Situation::Move, *world_, alive);
 }
 
 void Battle::setFormation(Formation f) {
@@ -580,6 +588,7 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
             else charge.push_back(id);
         }
         moveGroup(kPlayer, std::move(charge), selFormation_, at, nullptr, selectionFacing());
+        voice_.order(Situation::Attack, *world_, mine);
         return;
     }
     V3 ground;

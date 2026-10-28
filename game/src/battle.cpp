@@ -514,6 +514,7 @@ void Battle::step() {
     stepMs_ = stepMs_ * 0.95 + ms * 0.05;
     pending_.clear();
     collectEvents();
+    voice_.observe(*world_, outcome());
 }
 
 std::vector<uint32_t> Battle::takeDirtyRemains() {
@@ -906,6 +907,10 @@ void Battle::chargeAll() {
         }
         moveSquad(mine, at);
     }
+    std::vector<sim::EntityId> ours;
+    for (const sim::Unit& u : world_->units())
+        if (u.owner == kPlayer && u.alive()) ours.push_back(u.id);
+    voice_.order(Situation::Charge, *world_, ours);
 }
 
 }  // namespace illyria::game

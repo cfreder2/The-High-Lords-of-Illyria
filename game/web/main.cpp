@@ -30,6 +30,11 @@ void fetchPrerenderedSheets(Renderer& renderer);  // sheets.cpp
 
 namespace {
 
+// Hands a voice cue to the page (game/web/voice.js), which plays it.
+EM_JS(void, play_voice_cue, (const char* set, const char* situation, int enemy, float pan, float gain, int priority, int speaker, int tick), {
+    if (window.IllyriaVoice) window.IllyriaVoice.cue(UTF8ToString(set), UTF8ToString(situation), !!enemy, pan, gain, priority, speaker, tick);
+});
+
 constexpr uint64_t kBattleSeed = 20261027;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
@@ -390,7 +395,15 @@ void frame() {
         }
         placeBoats();
     } else {
+        // The soldiers are heard from the view centre, the camera's right to the right.
+        const V3 eye = app->camera.eye(), at = app->camera.target();
+        const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
+        Voice& voice = app->battle->voice();
+        voice.setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
         app->battle->advance(dtMs / 1000.0);
+        for (const VoiceCue& c : voice.take())
+            play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority,
+                           static_cast<int>(c.speaker), static_cast<int>(c.tick));
     }
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
 }
@@ -400,6 +413,18 @@ void frame() {
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE const char* illyria_version() { return ILLYRIA_VERSION; }
+
+// Test hook: the last `n` voice cues the battle made (JSON), with how many
+// were made and held back in all.
+EMSCRIPTEN_KEEPALIVE const char* illyria_voice_log(int n) {
+    static std::string out;
+    if (!app || !app->battle) return "{}";
+    const Voice& v = app->battle->voice();
+    out = "{\"emitted\":" + std::to_string(v.emitted()) + ",\"dropped\":" + std::to_string(v.dropped()) +
+          ",\"tick\":" + std::to_string(app->battle->world().tick()) +
+          ",\"cues\":" + v.logJson(static_cast<size_t>(std::max(n, 0))) + "}";
+    return out.c_str();
+}
 
 // type: 0 down, 1 move, 2 up, 3 cancel. Coordinates in CSS pixels.
 EMSCRIPTEN_KEEPALIVE void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
@@ -575,6 +600,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_restart() {
 EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
     if (!app) return;
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
+    app->battle->voice().take();  // what was said while skipping ahead goes unheard
 }
 // Test hooks for sieges: the battlefield's gate nearest the player's first squad.
 int nearestGate() {

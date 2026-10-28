@@ -149,6 +149,11 @@ struct Unit {
     int32_t morale = 1000;
     bool routed = false;
     int32_t calmTicks = 0;  // since the last shock, for recovering
+    // Steadiness lent by the veterans and heroes near him (percent off a
+    // shock), counted at each morale census; and the ticks before he may
+    // call "Hold the line!" again.
+    int32_t steady = 0;
+    int32_t callCooldown = 0;
     bool wavering() const;
 
     enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
@@ -254,6 +259,19 @@ struct HeroDeath {
     EntityId killer = kNoEntity;  // kNoEntity for a blast or anything without a striker
 };
 
+// A veteran, elite or hero called out to steady wavering or broken friends
+// this tick ("Hold the line!"), lifting the morale of those within earshot.
+// Derived from the simulation like HeroDeath, for the voices and the HUD.
+struct RallyCall {
+    enum class Kind : uint8_t { Veteran, Hero };
+    EntityId caller = kNoEntity;
+    PlayerId owner = 0;
+    Vec3 pos;
+    Kind kind = Kind::Veteran;
+    int32_t heard = 0;    // friends whose morale it lifted
+    int32_t rallied = 0;  // of them, broken men it brought back
+};
+
 inline constexpr int32_t kMoraleFull = 1000;
 inline constexpr int32_t kMoraleWaver = 450;
 inline constexpr int32_t kMoraleBreak = 200;
@@ -301,8 +319,10 @@ public:
     const std::vector<Unit>& units() const { return units_; }
     const std::vector<Projectile>& projectiles() const { return projectiles_; }
     const std::vector<ImpactEvent>& impacts() const { return impacts_; }
-    // Heroes killed during the last step: the hook for morale (not yet modelled).
+    // Heroes killed during the last step (for morale, the HUD and the voices).
     const std::vector<HeroDeath>& heroDeaths() const { return heroDeaths_; }
+    // Rally calls made during the last step (world_morale.cpp).
+    const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -414,6 +434,12 @@ private:
     // Morale (world_morale.cpp): shocks from this tick's deaths, the census of
     // friends and foes, recovery, breaking and rallying; and a broken unit's flight.
     void updateMorale();
+    // Veterans and heroes who see friends wavering or broken call out to them.
+    void callRallies();
+    // The morale at which a broken soldier rallies, and how clear of foes he
+    // must be: veterans come back sooner.
+    int32_t rallyMorale(const Unit& u) const;
+    Fixed safeReach(const Unit& u) const;
     void flee(Unit& u);
     void shakeBySide(Unit& u, HitSide side, bool missile);
     // Missile reach from the unit's height over the target: farther down a hill, shorter up one.
@@ -461,6 +487,7 @@ private:
     std::vector<Projectile> spawned_;  // created while projectiles_ is being updated
     std::vector<ImpactEvent> impacts_;
     std::vector<HeroDeath> heroDeaths_;
+    std::vector<RallyCall> rallyCalls_;
     // Soldiers killed this step (owner, where), for their friends' morale.
     std::vector<std::pair<PlayerId, Vec3>> deaths_;
     std::vector<Remain> remains_;

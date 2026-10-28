@@ -236,6 +236,7 @@ Fixed World::slopeAt(Fixed x, Fixed y) const {
 void World::step(std::span<const Command> commands) {
     impacts_.clear();
     heroDeaths_.clear();
+    rallyCalls_.clear();
     deaths_.clear();
     changedRemains_.clear();
 
@@ -1479,6 +1480,11 @@ uint64_t World::checksum() const {
         h.addI64(u.morale);
         h.addU64(u.routed);
         h.addI64(u.calmTicks);
+        // Only once some veteran steadies him, so battles without any hash as before.
+        if (u.steady != 0 || u.callCooldown != 0) {
+            h.addI64(u.steady);
+            h.addI64(u.callCooldown);
+        }
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);

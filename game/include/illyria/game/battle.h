@@ -8,6 +8,7 @@
 
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/game/voice.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
@@ -309,6 +310,9 @@ public:
     // Centre of the fiercest fighting of the last few seconds; false if all is quiet.
     bool hotSpot(V3& at) const;
     double stepMs() const { return stepMs_; }
+    // The soldiers' voices (voice.h): cues from each tick and every order.
+    Voice& voice() { return voice_; }
+    const Voice& voice() const { return voice_; }
 
 private:
     Scenario scenario_ = Scenario::Ford;
@@ -391,6 +395,7 @@ private:
         float weight;
     };
     std::vector<Recent> recent_;
+    Voice voice_{kPlayer};
 };
 
 template <typename Fn>
