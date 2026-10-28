@@ -4,6 +4,7 @@ set(ILLYRIA_VERSION "0.0.0-dev" CACHE STRING "Version shown in the game")
 add_executable(illyria_web
     main.cpp
     ../render/renderer.cpp
+    ../render/renderer_detail.cpp
     ../render/meshes.cpp
 )
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")
@@ -15,7 +16,7 @@ target_link_options(illyria_web PRIVATE
     -sMAX_WEBGL_VERSION=2
     -sALLOW_MEMORY_GROWTH=1
     -sENVIRONMENT=web
-    "-sEXPORTED_FUNCTIONS=['_main','_illyria_version','_illyria_pointer','_illyria_wheel','_illyria_select_squad','_illyria_focus_squad','_illyria_stop','_illyria_charge','_illyria_hot_spot','_illyria_toggle_pause','_illyria_cycle_formation','_illyria_cycle_speed','_illyria_restart','_illyria_fast_forward','_illyria_set_camera','_illyria_overview','_illyria_set_graphics','_illyria_graphics_preset','_illyria_hud','_illyria_labels']"
+    "-sEXPORTED_FUNCTIONS=['_main','_illyria_version','_illyria_pointer','_illyria_wheel','_illyria_select_squad','_illyria_focus_squad','_illyria_stop','_illyria_charge','_illyria_hot_spot','_illyria_toggle_pause','_illyria_cycle_formation','_illyria_cycle_speed','_illyria_restart','_illyria_fast_forward','_illyria_set_camera','_illyria_finish_detail','_illyria_overview','_illyria_set_graphics','_illyria_graphics_preset','_illyria_hud','_illyria_labels']"
     "-sEXPORTED_RUNTIME_METHODS=['cwrap','ccall','UTF8ToString']"
 )
 

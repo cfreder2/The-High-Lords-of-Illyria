@@ -66,6 +66,7 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 - **The battle window:** today's battle is fought at Oakhaven Ford, a full-detail 1 km window into the continent (`Region::fromContinent`). Wagon roads have ruts, an earthwork berm stands above the ford, a hamlet sits along the road, and rivers slope downhill.
 - **Ground and movement:** ground types follow Warlords (road, plains, forest, swamp, shallows, deep water, rock, bridge) and set movement speed. Armies path around deep water and cross at fords and bridges.
 - **Zoom:** the camera zooms from the whole continent down to a single soldier.
+- **Close up anywhere (built):** wherever the camera looks closer than about 850 m, on the campaign map too, the land around it is drawn at the battlefield's own detail: 4 m heights, the same ground kinds, roads with ruts, forest floor, rock, snow, banks and water, and the same 3D grass, flowers and ferns (`game::DetailLand`). It is sampled exactly as `Region::fromContinent` cuts a battlefield out (a test checks they match), so a battle fought there later looks the same. It is built in 64 m chunks around the camera, nearest first, a couple of milliseconds a frame (all 144 chunks of the 768 m window take about 0.27 s of WebAssembly time); each new chunk fades in, and the window's edge and the zoom-out cross-fade into the coarse land by a screen dither, so nothing pops. The battlefield keeps priority where both exist, and the two meet without a step (the fine detail fades in from the battlefield's edge just as the battlefield fades it out). Off with ground detail and ground cover (Low).
 
 
 - There are no separate battle maps. Illyria is **one continuous 3D continent** (*original geography — see Q5*), and the camera zooms smoothly from a god's-eye view, where armies are ant-like columns and banners, down to ground level, where individual arrows, shields and bodies are physically simulated.
@@ -419,6 +420,7 @@ The complete game (campaign, battles, multiplayer) must be playable in a phone b
 | Ground cover: grass tufts, flowers, pebbles, twigs and ferns around the camera | dense, ~42 m around the camera | ~33 m | off |
 | Sun shadows from trees, buildings and soldiers | 2048², up to 900 m | 1024², up to 550 m | blob shadows |
 | Detailed distant land: 16 m ring around the battlefield, ragged ground edges, crags, canopy | ✓ | ✓ | coarse colours |
+| Close-up land off the battlefield at its full detail (with ground detail or cover on) | ✓ | ✓ | coarse land |
 | Sky gradient, haze, drifting cloud shadows | ✓ | ✓ | flat sky |
 | Resolution | up to 2× | up to 1.25× | up to 1.25× |
 

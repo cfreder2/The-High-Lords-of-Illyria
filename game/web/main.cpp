@@ -480,6 +480,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
     app->camera.rotate(yaw - app->camera.yaw());
 }
 
+// Test hook: build the close-up land around the camera at once (screenshots).
+EMSCRIPTEN_KEEPALIVE void illyria_finish_detail() {
+    if (app) app->renderer.finishDetail(*app->battle, app->camera);
+}
+
 // Graphics settings from the page: Renderer::Feature bits and a resolution cap.
 // Purely cosmetic: the simulation never sees them.
 EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRatio) {

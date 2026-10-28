@@ -13,6 +13,7 @@ add_executable(illyria_tests
     test_castle.cpp
     test_campaign.cpp
     test_figures.cpp
+    test_detail_land.cpp
     test_campaign_quests.cpp
     test_campaign_sea.cpp
     test_campaign_ai.cpp

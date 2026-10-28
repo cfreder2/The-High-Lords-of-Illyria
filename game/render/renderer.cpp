@@ -226,7 +226,10 @@ bool Renderer::buildPrograms() {
                  {resolve_, shaders::kResolveVs, shaders::kResolveFs},
                  {unit_, shaders::kUnitVs, shaders::kUnitFs},
                  {figureDepth_, shaders::kFigureDepthVs, shaders::kDepthFs},
-                 {sheetView_, shaders::kSheetViewVs, shaders::kSheetViewFs}};
+                 {sheetView_, shaders::kSheetViewVs, shaders::kSheetViewFs},
+                 {detailTerrain_, shaders::kPatchVs, shaders::kPatchFs},
+                 {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
+                 {farCut_, shaders::kFarVs, shaders::kFarCutFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -281,6 +284,10 @@ bool Renderer::buildPrograms() {
         s.p.lift = glGetUniformLocation(s.p.id, "uLift");
         s.p.team = glGetUniformLocation(s.p.id, "uTeam");
         s.p.sheet = glGetUniformLocation(s.p.id, "uSheet");
+        s.p.wrap = glGetUniformLocation(s.p.id, "uWrap");
+        s.p.detailMask = glGetUniformLocation(s.p.id, "uDetailMask");
+        s.p.detailRect = glGetUniformLocation(s.p.id, "uDetailRect");
+        s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
     }
     return true;
 }
@@ -1193,6 +1200,7 @@ void Renderer::reset(Battle& battle) {
     uploadScenery(battle);
     uploadCanopy(battle);
     uploadContinent(battle);
+    resetDetail(battle);
     walked_.clear();
     lastSeen_.clear();
     gatesShown_.clear();
@@ -1575,12 +1583,21 @@ void Renderer::drawCover(const Camera& camera, double timeSeconds, float gameSec
     // Spacing (m) and grid size per layer: grass, flowers, pebbles, twigs, ferns.
     const float spacing[5] = {dense ? 0.42f : 0.6f, dense ? 1.1f : 1.5f, dense ? 1.4f : 1.9f, dense ? 1.6f : 2.2f, dense ? 1.3f : 1.8f};
     const int grid[5] = {dense ? 200 : 110, dense ? 76 : 44, dense ? 60 : 36, dense ? 52 : 30, dense ? 64 : 38};
-    setCommon(cover_, camera, timeSeconds, gameSeconds);
-    for (int i = 0; i < 5; ++i) {
-        const CoverLayer& l = cover_layers_[i];
-        glUniform4f(cover_.cover, spacing[i], static_cast<float>(grid[i]), l.seed, l.kind);
-        glBindVertexArray(l.vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
+    // On the battlefield, and off it on the close-up land: a pass for each the grid reaches.
+    const V3 t = camera.target();
+    const float reach = 50.0f;
+    const bool onField = t.x > -reach && t.y > -reach && t.x < Battle::kWorldSize + reach && t.y < Battle::kWorldSize + reach;
+    const bool offField = detailOn_ && !(t.x > reach && t.y > reach && t.x < Battle::kWorldSize - reach && t.y < Battle::kWorldSize - reach);
+    for (int pass = 0; pass < 2; ++pass) {
+        if (!(pass == 0 ? onField : offField)) continue;
+        setCommon(cover_, camera, timeSeconds, gameSeconds);
+        if (pass == 1) bindDetail(cover_);
+        for (int i = 0; i < 5; ++i) {
+            const CoverLayer& l = cover_layers_[i];
+            glUniform4f(cover_.cover, spacing[i], static_cast<float>(grid[i]), l.seed, l.kind);
+            glBindVertexArray(l.vao);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
+        }
     }
 }
 
@@ -1620,6 +1637,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     setCommon(terrainDepth_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
     glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
     for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}) casters.push_back(b);
@@ -1735,6 +1753,15 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     glBindTexture(GL_TEXTURE_2D, heightTex_);
     glUniform1i(p.heights, 0);
     glUniform1f(p.cells, static_cast<float>(cells_));
+    if (p.wrap >= 0) glUniform1f(p.wrap, 0.0f);  // the battlefield's textures (bindDetail: the close-up land's)
+    if (p.detailRect >= 0) glUniform4fv(p.detailRect, 1, detailRect_);
+    if (p.detailFade >= 0) glUniform1f(p.detailFade, detailFade_);
+    if (p.detailMask >= 0) {
+        glActiveTexture(GL_TEXTURE9);
+        glBindTexture(GL_TEXTURE_2D, detailMask_);
+        glUniform1i(p.detailMask, 9);
+        glActiveTexture(GL_TEXTURE0);
+    }
     glUniform1f(p.cellSize, cellSize_);
     glUniform1f(p.time, static_cast<float>(std::fmod(timeSeconds, 3600.0)));
     glUniform1f(p.gameSeconds, gameSeconds);
@@ -1790,6 +1817,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         unitsChecked_ = battle.world().units().size();
     }
     updatePatch(battle, camera);
+    updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     uploadMarks(battle);
@@ -1962,29 +1990,40 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     setCommon(terrain_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
     glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    drawDetailTerrain(detailTerrain_, camera, timeSeconds, gameSeconds);
     drawCover(camera, timeSeconds, gameSeconds);
 
-    // The rest of the continent, coarse, with its rivers and roads on top.
-    setCommon(far_, camera, timeSeconds, gameSeconds);
+    // The rest of the continent, coarse, with its rivers and roads on top. The
+    // land that meets the close-up land gives way to it, cut exactly at its edge.
     const bool farDetail = features_ & kFarDetail;
-    glUniform4fv(far_.ring, 1, ring_);
-    glUniform1f(far_.sink, farDetail ? 6.0f : 0.0f);
     const bool patchShown = farDetail && patchLand_.count > 0;
-    glUniform4fv(far_.patch, 1, patch_);
-    glUniform1f(far_.patchSink, patchShown ? 6.0f : 0.0f);
+    const auto farProgram = [&](const Program& p, float sink, float patchSink) {
+        setCommon(p, camera, timeSeconds, gameSeconds);
+        glUniform4fv(p.ring, 1, ring_);
+        glUniform1f(p.sink, sink);
+        glUniform4fv(p.patch, 1, patch_);
+        glUniform1f(p.patchSink, patchSink);
+    };
+    // The continent-wide land only needs the cut where no finer land sinks it out of the way.
+    const auto covers = [&](const float* r) {
+        return detailRect_[0] >= r[0] && detailRect_[1] >= r[1] && detailRect_[2] <= r[2] && detailRect_[3] <= r[3];
+    };
+    const bool farSunk = farDetail && (covers(ring_) || (patchShown && covers(patch_)));
+    farProgram(detailOn_ && !farSunk ? farCut_ : far_, farDetail ? 6.0f : 0.0f, patchShown ? 6.0f : 0.0f);
     glBindVertexArray(farLand_.vao);
     glDrawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT, nullptr);
     if (ocean_.count > 0) {
         glBindVertexArray(ocean_.vao);
         glDrawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT, nullptr);
     }
+    const Program& nearProgram = detailOn_ ? farCut_ : far_;
     if (farDetail) {
-        glUniform1f(far_.sink, 0.0f);
+        farProgram(nearProgram, 0.0f, patchShown ? 6.0f : 0.0f);
         glBindVertexArray(nearLand_.vao);
         glDrawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT, nullptr);
     }
     if (patchShown) {
-        glUniform1f(far_.patchSink, 0.0f);
+        farProgram(nearProgram, 0.0f, 0.0f);
         glBindVertexArray(patchLand_.vao);
         glDrawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT, nullptr);
     }
@@ -2060,6 +2099,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     setCommon(water_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(waterVao_);
     glDrawArrays(GL_TRIANGLES, 0, waterVertices_);
+    drawDetailWater(camera, timeSeconds, gameSeconds);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 
