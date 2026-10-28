@@ -45,6 +45,10 @@ constexpr Fixed kMaxStepDown = Fixed::fromRatio(3, 2);
 constexpr Fixed kWallClear = Fixed::fromInt(2);
 // Merlons stop this share of the missiles shot up at defenders on a wall-walk.
 constexpr Fixed kMerlonCover = Fixed::fromRatio(1, 2);
+// Shot blind over a wall, at a mark the archer cannot see, arrows scatter this much wider.
+constexpr Fixed kBlindDispersion = Fixed::fromInt(2);
+// A missile's path is checked for obstacles up to this short of its mark.
+constexpr Fixed kClearShort = Fixed::fromInt(2);
 // Veterancy. A soldier is promoted at these kill counts (regular, veteran,
 // elite); a hero gains a level at these (levels 2 to 9).
 constexpr int32_t kSoldierRanks[] = {2, 5, 10};
@@ -632,8 +636,7 @@ void World::updateUnit(Unit& u) {
         if (range > u.stats.ranged.maxRange) {
             walk(u, u.attackTarget);  // close to range before loosing
         } else if (u.reloadRemaining == 0 && range >= u.stats.ranged.minRange) {
-            fire(u, u.attackTarget);
-            u.reloadRemaining = u.stats.ranged.reloadTicks;
+            if (fire(u, u.attackTarget)) u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
@@ -644,8 +647,7 @@ void World::updateUnit(Unit& u) {
                                   : nullptr) {
         u.facing = flatDirection(u.pos, target->pos, u.facing);
         if (u.reloadRemaining == 0 && (target->pos - u.pos).flat().length() >= u.stats.ranged.minRange) {
-            fire(u, target->pos);
-            u.reloadRemaining = u.stats.ranged.reloadTicks;
+            if (fire(u, target->pos)) u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
     }
     u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
@@ -820,7 +822,7 @@ bool World::onRampartFacing(const Unit& u, const Vec3& vel) const {
     return vel.flat().dot((config_.region->ramparts()[static_cast<size_t>(ri)].centre - u.pos).flat()) > Fixed::zero();
 }
 
-Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
+Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly) const {
     if (!config_.region) return -Fixed::one();
     const auto& obstacles = config_.region->obstacles();
     const Vec3 seg = b - a;
@@ -831,6 +833,7 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
     bool hit = false;
     obstacleGrid_.query(mid.x, mid.y, sqrt(lenSq) / 2 + kMaxObstacleExtent, [&](uint32_t k) {
         const Obstacle& o = obstacles[k];
+        if (masonryOnly && o.kind != Obstacle::Kind::House && o.kind != Obstacle::Kind::Tower && o.kind != Obstacle::Kind::Pillar) return;
         // Trees catch missiles in their crowns as well as their trunks.
         Fixed radius = o.radius;
         if (o.kind == Obstacle::Kind::Pine) radius = Fixed::fromRatio(9, 10);
@@ -1075,14 +1078,46 @@ int32_t World::prowessPct(const Unit& u) const {
     return pct + lead * kLeadershipPct;
 }
 
-void World::fire(Unit& u, const Vec3& target) {
+bool World::clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target) const {
+    const Vec3 flat = velocity.flat();
+    const Fixed speed = flat.length();
+    if (speed <= Fixed::zero()) return true;
+    // Up to a couple of metres short of the mark: what stands at it is the mark.
+    const Fixed reach = max(Fixed::zero(), (target - origin).flat().length() - kClearShort);
+    const Fixed flight = reach / speed;
+    constexpr int kSteps = 16;
+    Vec3 prev = origin;
+    for (int i = 1; i <= kSteps; ++i) {
+        const Fixed t = flight * Fixed::fromRatio(i, kSteps);
+        const Vec3 at = origin + velocity * t + up(-config_.gravity * (t * t / 2));
+        if (obstacleHit(prev, at, Fixed::one(), true) >= Fixed::zero()) return false;
+        prev = at;
+    }
+    return true;
+}
+
+bool World::fire(Unit& u, const Vec3& target) {
     const RangedWeapon& w = u.stats.ranged;
     const Vec3 origin = u.pos + up(u.stats.height * kMuzzleHeightFraction);
 
     // Pick the aim point uniformly inside the dispersion circle around the target.
     const Fixed range = (target - origin).flat().length();
     const Fixed rankFactor = max(Fixed::one() - kDispersionPerRank * u.rank, kMinDispersionFactor);
-    const Fixed radius = w.dispersionAt100m * range / 100 * rankFactor;
+    Fixed radius = w.dispersionAt100m * range / 100 * rankFactor;
+    // Arrows and fireballs go over what is in the way when the flat shot
+    // would strike it; shot blind (the mark itself hidden), they scatter more.
+    Vec3 lob;
+    bool lobbed = false;
+    if (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball) {
+        const Vec3 mark = target + up(Fixed::one());
+        if (!clearFlight(origin, solveLowArc(origin, mark, w.muzzleSpeed, config_.gravity).velocity, mark)) {
+            const LaunchSolution high = solveHighArc(origin, mark, w.muzzleSpeed, config_.gravity);
+            if (!high.inRange || !clearFlight(origin, high.velocity, mark)) return false;
+            lobbed = true;
+            lob = high.velocity;
+            if (obstacleHit(origin, mark, Fixed::one(), true) >= Fixed::zero()) radius = radius * kBlindDispersion;
+        }
+    }
     Fixed dx, dy;
     do {
         dx = rng_.nextSigned();
@@ -1102,6 +1137,9 @@ void World::fire(Unit& u, const Vec3& target) {
     p.pos = origin;
     if (w.kind == ProjectileKind::Stone) {
         p.vel = solveFixedElevation(origin, aim, kStoneElevation, w.muzzleSpeed, config_.gravity).velocity;
+    } else if (lobbed) {
+        p.vel = solveHighArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
+        if (p.vel.lengthSq() == Fixed::zero()) p.vel = lob;
     } else {
         p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
     }
@@ -1109,6 +1147,7 @@ void World::fire(Unit& u, const Vec3& target) {
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     projectiles_.push_back(p);
+    return true;
 }
 
 bool World::bounce(Projectile& p, Fixed restitution, Fixed friction) {
@@ -1283,7 +1322,7 @@ void World::updateProjectiles() {
             } else if (onRampartFacing(*hit, p.vel) && rng_.nextUnit() < kMerlonCover) {
                 // Behind the merlons: the missile strikes stone instead.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
-                const Vec3 glance{-p.vel.x / 6, -p.vel.y / 6, Fixed::fromInt(1)};
+                const Vec3 glance{-p.vel.x / 24, -p.vel.y / 24, Fixed::fromRatio(1, 2)};  // drops at the stone
                 spawnDebris(RemainKind::Arrow, p.owner, at, glance);
             } else if (shieldBlocks(*hit, p.vel, Fixed::one())) {
                 // Deflected: the arrow glances off and tumbles to the ground.

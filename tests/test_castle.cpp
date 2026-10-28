@@ -351,3 +351,31 @@ TEST(the_siege_train_batters_the_gate_when_ordered) {
     std::printf("  gate after 30 s of the siege train: %d hp (%.0f m away)\n", b.world().gates()[g].hp, best);
     CHECK(b.world().gates()[g].hp < b.region().gates()[g].maxHp);
 }
+
+TEST(archers_shoot_over_a_wall_not_into_it) {
+    // Archers in the field, men behind the town wall: the flat shot would
+    // strike the stone, so they lob over it (blind, and so more scattered).
+    WorldConfig cfg;
+    cfg.region = siege();
+    cfg.seed = 5;
+    World w(cfg);
+    const Region& r = *cfg.region;
+    const Continent::Castle::Ring& ring = town().castle.rings.front();
+    const size_t e = (ring.gateEdge + 1) % ring.corners.size();
+    const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
+    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
+    const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
+    const Vec3 along = (b - a).flat() / (b - a).flat().length();
+    for (int i = 0; i < 6; ++i) w.spawnUnit(1, mid - out * m(12) + along * m(i * 2 - 5), out, unitStats(UnitType::Pikemen));
+    for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(35) + along * m(i * 2 - 5), -out, unitStats(UnitType::Archers));
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) w.step({});
+    int inWall = 0, over = 0;
+    for (const Remain& rm : w.remains()) {
+        if (rm.kind != RemainKind::Arrow) continue;
+        if (Gate::inside(r.ramparts().front(), rm.pos)) ++over;
+        else if (rm.pos.z > w.groundHeight(rm.pos.x, rm.pos.y) + m(1)) ++inWall;
+    }
+    std::printf("  arrows over the wall %d, stuck in it %d\n", over, inWall);
+    CHECK(over >= 10);
+    CHECK(inWall * 5 <= over);
+}

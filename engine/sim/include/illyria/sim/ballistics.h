@@ -16,6 +16,9 @@ struct LaunchSolution {
 // archers aim at where they see the target and the wind is part of the miss.
 LaunchSolution solveLowArc(const Vec3& origin, const Vec3& target, Fixed speed, Fixed gravity);
 
+// The same along the high (lobbed) arc, over a wall or a wood in the way.
+LaunchSolution solveHighArc(const Vec3& origin, const Vec3& target, Fixed speed, Fixed gravity);
+
 // Velocity needed to hit `target` from `origin` launching at a fixed
 // elevation (its tangent; a catapult's arm always stops against the same
 // crossbar) with whatever speed that takes, as an engineer winds the skein

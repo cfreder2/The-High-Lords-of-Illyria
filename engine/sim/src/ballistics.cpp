@@ -35,6 +35,18 @@ LaunchSolution solveLowArc(const Vec3& origin, const Vec3& target, Fixed speed, 
     return {d / t + Vec3{Fixed::zero(), Fixed::zero(), gravity * t / 2}, true};
 }
 
+LaunchSolution solveHighArc(const Vec3& origin, const Vec3& target, Fixed speed, Fixed gravity) {
+    const Vec3 d = target - origin;
+    const Fixed b = speed * speed - gravity * d.z;
+    const Fixed disc = b * b - gravity * gravity * d.lengthSq();
+    // Out of reach either way: the low arc's answer (the 45-degree shot) serves.
+    if (b <= Fixed::zero() || disc < Fixed::zero() || d.flat().lengthSq() == Fixed::zero()) return solveLowArc(origin, target, speed, gravity);
+    // The larger root of the quadratic in solveLowArc.
+    const Fixed s = (b + sqrt(disc)) * 2 / (gravity * gravity);
+    const Fixed t = sqrt(s);
+    return {d / t + Vec3{Fixed::zero(), Fixed::zero(), gravity * t / 2}, true};
+}
+
 LaunchSolution solveFixedElevation(const Vec3& origin, const Vec3& target, Fixed tanElevation, Fixed maxSpeed, Fixed gravity) {
     const Vec3 d = target - origin;
     const Vec3 flat = d.flat();

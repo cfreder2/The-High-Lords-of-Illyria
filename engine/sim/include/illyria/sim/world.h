@@ -315,7 +315,12 @@ private:
     bool planRampartPath(Unit& unit, const Vec3& to);
     void separateBodies();
     void kickRemains(Unit& unit, const Vec3& moveDir);
-    void fire(Unit& unit, const Vec3& target);
+    // Looses at a target; false (and nothing loosed) when no arc gets there
+    // past the walls, gates and trees in the way.
+    bool fire(Unit& unit, const Vec3& target);
+    // Whether a missile launched so flies clear of walls, gates and houses
+    // until near its mark (woods catch some arrows; archers shoot into them).
+    bool clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target) const;
     // Castle gates (world_gates.cpp).
     // The intact gate this soldier should hack at, or -1.
     int gateToHack(Unit& unit);
@@ -358,7 +363,7 @@ private:
     // True for a defender on a wall-walk struck from outside (behind the merlons).
     bool onRampartFacing(const Unit& u, const Vec3& vel) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
-    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
+    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false) const;
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind = ProjectileKind::Bomb);
     void spawnGibs(Unit& victim, const Vec3& from, Fixed strength);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);

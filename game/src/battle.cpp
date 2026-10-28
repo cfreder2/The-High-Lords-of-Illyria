@@ -1056,7 +1056,8 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale) {
         // Tapped an enemy: missile troops loose on that spot, everyone else charges it.
         V3 at = bestUnit >= 0 ? unitPosition(bestUnit) : squadCentre(squads_[bestSquad]);
         if (shoots) {
-            at.z = heightAt(at.x, at.y);
+            // At the soldier where he stands (on a wall-walk, not the ground beneath it).
+            if (bestUnit < 0) at.z = heightAt(at.x, at.y);
             for (sim::EntityId id : mine.members) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
         } else {
             moveSquad(mine, at);
