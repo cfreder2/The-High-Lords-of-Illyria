@@ -20,14 +20,14 @@ const Continent& continent() {
     return c;
 }
 // The first neutral town (not a capital) with no other town's walls in its
-// 1 km battle window, and the window on it.
+// 1 km battle window (corners included), and the window on it.
 const Continent::City& town() {
     static const Continent::City* chosen = [] {
         const auto& cs = continent().cities();
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
             bool alone = true;
             for (size_t k = 0; k < cs.size(); ++k)
-                alone = alone && (k == i || (cs[k].pos - cs[i].pos).flat().length() > Fixed::fromInt(800));
+                alone = alone && (k == i || (cs[k].pos - cs[i].pos).flat().length() > Fixed::fromInt(1100));
             if (alone) return &cs[i];
         }
         return &cs[Continent::kFactionCount];
@@ -112,8 +112,14 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
     const Continent::Castle& k = town().castle;
     const Vec3 yard = local(k.courtyard), centre = local(town().pos);
     // Start well outside, behind the castle from the gate, and head for the courtyard.
-    const Vec3 away = (centre - yard).flat() / (centre - yard).flat().length();
-    const Vec3 start = centre + away * (town().radius + m(60));
+    Vec3 away = (centre - yard).flat() / (centre - yard).flat().length();
+    Vec3 start = centre + away * (town().radius + m(60));
+    // On open ground (not a creek's bridge or the water), turning round the town if need be.
+    for (int k = 0; k < 12 && cfg.region->groundAt(start.x, start.y) != Ground::Plains; ++k) {
+        const Fixed c = Fixed::fromRatio(866, 1000), sn = Fixed::fromRatio(1, 2);  // 30 degrees
+        away = Vec3{away.x * c - away.y * sn, away.x * sn + away.y * c, Fixed::zero()};
+        start = centre + away * (town().radius + m(60));
+    }
     const EntityId id = w.spawnUnit(0, start, -away, unitStats(UnitType::LightInfantry));
     const Command go{0, id, Command::Type::Move, yard};
     w.step(std::span(&go, 1));
@@ -125,11 +131,6 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
         const Unit* u = w.findUnit(id);
         inside = (u->pos - yard).flat().length() < m(4);
         breached = breached || inWall(*cfg.region, *u);
-    }
-    {
-        const Gate& g = cfg.region->gates()[gate];
-        const Unit* u = w.findUnit(id);
-        std::printf("  at the gate: %.0f m from it (%.0f from the start), gate hp %d/%d, town %s, ground %d, path %zu/%u, slope z %.1f vs town %.1f\n", (u->pos - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().length().toDouble(), (u->pos - start).flat().length().toDouble(), w.gates()[gate].hp, g.maxHp, town().name.c_str(), static_cast<int>(cfg.region->groundAt(u->pos.x, u->pos.y)), u->path.size(), u->pathIndex, u->pos.z.toDouble(), town().pos.z.toDouble());
     }
     CHECK(!inside);
     CHECK(w.gates()[gate].hp < cfg.region->gates()[gate].maxHp);
@@ -323,7 +324,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xcfec4d027aad5384;
+    constexpr uint64_t kGolden = 0x86d93144f65cc2a8;
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

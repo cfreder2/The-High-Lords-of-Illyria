@@ -76,6 +76,9 @@ void Campaign::initSites() {
         st.kind = site.kind;
         st.cx = std::clamp(cellOf(static_cast<int32_t>(site.pos.x.floorToInt())), 0, nx_ - 1);
         st.cy = std::clamp(cellOf(static_cast<int32_t>(site.pos.y.floorToInt())), 0, ny_ - 1);
+        // The site stands on dry ground even where its cell's middle is wet.
+        Lay& lay = terrain_[static_cast<size_t>(st.cy) * nx_ + st.cx];
+        if (lay == Lay::Water) lay = Lay::Plain;
         if (site.kind == Continent::Site::Kind::Temple) st.bit = static_cast<uint8_t>(1u << (temples++ % 8));
         if (site.kind == Continent::Site::Kind::Ruin) {
             int32_t near = INT32_MAX;

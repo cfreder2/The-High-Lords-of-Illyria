@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <type_traits>
 #include <cmath>
 
 #include "illyria/sim/noise.h"
@@ -33,7 +34,12 @@ std::vector<Seg> segmentsNear(const Lines& lines, PointsOf points, float ox, flo
             const float bx = static_cast<float>(p[i + 1].x.toDouble()) - ox, by = static_cast<float>(p[i + 1].y.toDouble()) - oy;
             if (std::max(ax, bx) < x0 - reach || std::min(ax, bx) > x1 + reach || std::max(ay, by) < y0 - reach || std::min(ay, by) > y1 + reach)
                 continue;
-            out.push_back({ax, ay, bx, by});
+            Seg sg{ax, ay, bx, by};
+            if constexpr (std::is_same_v<std::decay_t<decltype(l)>, sim::Polyline>) {
+                sg.wa = static_cast<float>(l.widthAt(i, sim::Fixed::zero()).toDouble());
+                sg.wb = static_cast<float>(l.widthAt(i, sim::Fixed::one()).toDouble());
+            }
+            out.push_back(sg);
         }
     }
     return out;
@@ -405,7 +411,9 @@ bool DetailLand::finishStep(int s) {
                 if (dist >= best) continue;
                 best = dist;
                 const float side = (abx * (py - sg.ay) - aby * (px - sg.ax)) >= 0 ? 1.0f : -1.0f;
-                lateral = static_cast<uint8_t>(std::clamp(128.0f + side * dist * 16.0f, 0.0f, 255.0f));
+                // Across the road in units of a 3 m half width, so wider stretches paint wider.
+                const float across = dist * 3.0f / (sg.wa + (sg.wb - sg.wa) * t);
+                lateral = static_cast<uint8_t>(std::clamp(128.0f + side * across * 16.0f, 0.0f, 255.0f));
                 weight = 255;
             }
             road_[k * 2] = lateral;

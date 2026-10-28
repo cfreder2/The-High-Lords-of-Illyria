@@ -163,6 +163,8 @@ vec3 landGrids(vec3 c, vec2 xy) {
 // forest, rock, swamp and water): the coarse land's (kFarFs), and the
 // battlefield's and the close-up land's as the camera rises, so they all look
 // alike from high up.
+// The far land's waterline (kinds.w = 1) wanders a little between samples.
+float farShoreWobble(vec2 p) { return (noise2(p / 23.0) - 0.5) * 0.03 + (noise2(p / 7.0) - 0.5) * 0.012; }
 vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     vec3 albedo = base;
     vec2 p = world.xy;
@@ -171,7 +173,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     float forest = smoothstep(0.4, 0.6, kinds.x + edge);
     float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
     float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
-    float water = min(kinds.w, 1.0);
+    float water = step(1.0, kinds.w + farShoreWobble(p));
     float slope = 1.0 - n.z;
     // Meadows: lush and dry patches, as on the battlefield.
     float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
@@ -1608,7 +1610,8 @@ void main() {
     // Open water: coloured by depth, with swells, chop, surf and glints.
     float glint = 0.0;
     vec3 inland = vec3(-1.0);
-    if (feature(kFeatFarDetail) && vKinds.w > 0.5 && vWorld.z >= 0.8) {
+    bool wetHere = vKinds.w + farShoreWobble(p) >= 1.0;
+    if (feature(kFeatFarDetail) && wetHere && vWorld.z >= 0.8) {
         // Rivers, lakes and pools: the battlefield's water (kWaterFs) over its
         // bed, seen from high up: silt-green shallows to deep blue, calm.
         float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
@@ -1618,7 +1621,7 @@ void main() {
         inland = mix(bed, wc, clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
         n = vec3(0.0, 0.0, 1.0);
         glint = 0.25;
-    } else if (feature(kFeatFarDetail) && vKinds.w > 0.5) {
+    } else if (feature(kFeatFarDetail) && wetHere) {
         float depth = clamp(vKinds.w - 1.0, 0.0, 1.0);  // 1 = 12 m or more
         float t = uTime;
         albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
@@ -1643,7 +1646,7 @@ void main() {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));
         c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
     }
-    if (vKinds.w < 0.5) c = landGrids(c, vWorld.xy);  // the grid is the land's; the sea goes unmarked
+    if (!wetHere) c = landGrids(c, vWorld.xy);  // the grid is the land's; the sea goes unmarked
     oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
 }
 )"

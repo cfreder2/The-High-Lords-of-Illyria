@@ -196,7 +196,16 @@ private:
                 const int32_t sa = C::strength(a), sb = C::strength(b);
                 return sa != sb ? sa < sb : a.id < b.id;
             });
-            const size_t keep = threatened(v) ? pool.size() : 1;
+            // Under threat, everyone stays. So they do when the threat is
+            // held off only by those inside: judged against the one guard
+            // that would be left, else the defence undoes itself.
+            bool hold = threatened(v);
+            if (!hold && v.threatStack != SIZE_MAX && pool.size() > 1) {
+                const C::Stack& e = c_.stacks_[v.threatStack];
+                const std::vector<const Army*> lone = {&pool.front()};
+                hold = C::winChance(c_.lineup(view(e), e.owner, cx, cy, false), c_.lineup(lone, side_, cx, cy, true)) > t_.accept;
+            }
+            const size_t keep = hold ? pool.size() : 1;
             std::vector<Army> guard, strike;
             // Siege engines are for taking towns, not for holding them.
             for (const Army& a : pool) {

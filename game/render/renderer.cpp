@@ -560,7 +560,9 @@ void Renderer::uploadScenery(const Battle& battle) {
                     if (dist >= best[idx] || dist > 8) continue;
                     best[idx] = dist;
                     const float side = (ab.x * (py - a.y) - ab.y * (px - a.x)) >= 0 ? 1.0f : -1.0f;
-                    road[idx * 2] = static_cast<uint8_t>(std::clamp(128.0f + side * dist * 16.0f, 0.0f, 255.0f));
+                    // Across the road in units of a 3 m half width, so wider stretches paint wider.
+                    const float w = static_cast<float>(line.widthAt(i, toFixed(t)).toDouble());
+                    road[idx * 2] = static_cast<uint8_t>(std::clamp(128.0f + side * dist * 3.0f / w * 16.0f, 0.0f, 255.0f));
                     road[idx * 2 + 1] = 255;
                 }
             }
@@ -688,6 +690,24 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
         j = std::clamp(j, 0, g.ny - 1);
         return g.height[static_cast<size_t>(j) * g.nx + i];
     };
+    // The water, as 1 + depth / 12 where wet. On dry land beside it, 1 less
+    // its height above the water next door / 12: the shader's waterline (1)
+    // falls between samples where the shore really is, not halfway.
+    const auto wetAt = [&](int i, int j) {
+        const auto gr = static_cast<sim::Ground>(g.ground[static_cast<size_t>(j) * g.nx + i]);
+        return gr == sim::Ground::DeepWater || gr == sim::Ground::Shallows;
+    };
+    const auto waterOf = [&](int i, int j) {
+        if (wetAt(i, j)) return 1.0f + std::clamp(g.depth[static_cast<size_t>(j) * g.nx + i] / 12.0f, 0.0f, 1.0f);
+        float surface = -1e6f;
+        for (int dj = -1; dj <= 1; ++dj)
+            for (int di = -1; di <= 1; ++di) {
+                const int a = i + di, b = j + dj;
+                if (a >= 0 && b >= 0 && a < g.nx && b < g.ny && wetAt(a, b)) surface = std::max(surface, hAt(a, b));
+            }
+        if (surface < -1e5f) return 0.0f;
+        return std::clamp(1.0f - (hAt(i, j) - surface) / 12.0f, 0.0f, 0.999f);
+    };
     const V3 o = battle.origin();
     std::vector<float> verts;
     verts.reserve(static_cast<size_t>(g.nx) * g.ny * 13);
@@ -716,10 +736,8 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             }
             if (inside) c = {0.56f, 0.48f, 0.36f};
         }
-        const bool wet = ground == sim::Ground::DeepWater || ground == sim::Ground::Shallows;
         verts.insert(verts.end(), {x, y, z, n.x, n.y, n.z, c.x, c.y, c.z, ground == sim::Ground::Forest ? 1.0f : 0.0f,
-                                   ground == sim::Ground::Rock ? 1.0f : 0.0f, ground == sim::Ground::Swamp ? 1.0f : 0.0f,
-                                   wet ? 1.0f + std::clamp(g.depth[static_cast<size_t>(j) * g.nx + i] / 12.0f, 0.0f, 1.0f) : 0.0f});
+                                   ground == sim::Ground::Rock ? 1.0f : 0.0f, ground == sim::Ground::Swamp ? 1.0f : 0.0f, waterOf(i, j)});
     };
     for (int j = 0; j < g.ny; ++j)
         for (int i = 0; i < g.nx; ++i) vertex(i, j, 0);
@@ -867,7 +885,7 @@ void Renderer::uploadContinent(const Battle& battle) {
                 V3 p = a + (b - a) * (static_cast<float>(s) / steps), q = a + (b - a) * (static_cast<float>(s + 1) / steps);
                 p.z = std::max(battle.heightAt(p.x, p.y), battle.farGrid().heightAt(p.x, p.y));
                 q.z = std::max(battle.heightAt(q.x, q.y), battle.farGrid().heightAt(q.x, q.y));
-                ribbons.insert(ribbons.end(), {p.x, p.y, p.z, q.x, q.y, q.z, 3.0f, 1});
+                ribbons.insert(ribbons.end(), {p.x, p.y, p.z, q.x, q.y, q.z, static_cast<float>(road.widthAt(i, toFixed(static_cast<float>(s) / steps)).toDouble()), 1});
             }
         }
     }

@@ -189,6 +189,7 @@ public:
 
 private:
     void meanderRivers();
+    void shapeRoads();
     void computeRiverSurfaces();
     void placeCities();
     void placeSites();
@@ -219,6 +220,14 @@ private:
     std::vector<Crossing> crossings_;
     std::vector<Polyline> roads_;
     std::vector<Area> swamps_, forests_, lakes_;
+    // Land in a lake: the isle in the Heartmere and the spit that reaches it.
+    struct Isle {
+        Area area;
+        size_t lake;
+        Fixed rise;  // metres above the water at its middle
+    };
+    std::vector<Isle> isles_;
+    std::vector<std::vector<std::pair<uint32_t, uint32_t>>> roadBuckets_;  // road and segment near each bucket
     std::vector<Fixed> lakeSurfaces_;
     std::vector<Label> labels_;
     std::vector<City> cities_;

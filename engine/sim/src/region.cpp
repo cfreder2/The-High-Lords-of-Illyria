@@ -714,7 +714,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
     rg.waterLevel_ = c.sample(ford.x, ford.y).riverSurface;
 
     for (const Polyline& road : c.roads()) {
-        Polyline local{{}, road.halfWidth};
+        Polyline local{{}, road.halfWidth, road.widths};
         for (const Vec3& p : road.points) local.points.push_back(toLocal(p));
         rg.roads_.push_back(local);
     }

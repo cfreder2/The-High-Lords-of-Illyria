@@ -82,6 +82,7 @@ public:
     static constexpr int kFineApron = 4;
     struct Seg {
         float ax, ay, bx, by;
+        float wa = 3, wb = 3;  // half widths at its ends (roads vary)
     };
 
 private:

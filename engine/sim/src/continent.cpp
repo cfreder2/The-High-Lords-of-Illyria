@@ -158,6 +158,14 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     lakes_.push_back({"Mirrormere", N(200, 275), m(300), m(220)});
     lakes_.push_back({"Silverlake", N(790, 425), m(340), m(250)});
     lakes_.push_back({"Longmere", N(420, 235), m(110), m(1300)});  // the long lake in the Longwood
+    // The Heartmere, where the Aldwater meets the Westrun and the Sorrow: a
+    // broad lake at the rivers' own level, an isle off its eastern shore with
+    // an abbey's ruins, and a narrow spit of land, one company wide, the only
+    // way across on foot. It must stay last of the lakes (its surface is the
+    // rivers', see below).
+    lakes_.push_back({"Heartmere", N(578, 449), m(900), m(720)});
+    isles_.push_back({{"Abbey Isle", N(598, 444), m(190), m(150)}, lakes_.size() - 1, m(7)});
+    isles_.push_back({{"the Spit", N(633, 446), m(330), m(16)}, lakes_.size() - 1, r(6, 5)});
 
     crossings_.push_back({Crossing::Kind::Ford, "Oakhaven Ford", N(582, 680)});
     crossings_.push_back({Crossing::Kind::Ford, "Westrun Ford", N(300, 440)});
@@ -193,6 +201,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
                {"Ungoeth Mts", N(830, 930), 1}, {"Beren Heights", N(700, 795), 1}, {"Kestrel Fells", N(790, 600), 1},
                {"Longmere", N(445, 235), 2}};
 
+    shapeRoads();
     // The sea took the old shores: rivers end a little way out to sea (so
     // they meet the water), and roads stop where they come down to it.
     {
@@ -229,10 +238,38 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
             ashore(rv.points, true);
         }
         for (Polyline& rd : roads_) {
-            ashore(rd.points, false);
-            std::reverse(rd.points.begin(), rd.points.end());
-            ashore(rd.points, false);
-            std::reverse(rd.points.begin(), rd.points.end());
+            // Points and widths trimmed together (the coast point takes its neighbour's width).
+            std::vector<Vec3> withW(rd.points.size());
+            for (size_t i = 0; i < rd.points.size(); ++i) withW[i] = {rd.points[i].x, rd.points[i].y, rd.widths[i]};
+            ashore(withW, false);
+            std::reverse(withW.begin(), withW.end());
+            ashore(withW, false);
+            std::reverse(withW.begin(), withW.end());
+            rd.points.clear();
+            rd.widths.clear();
+            for (const Vec3& p : withW) {
+                rd.points.push_back({p.x, p.y, Fixed::zero()});
+                rd.widths.push_back(p.z > Fixed::zero() ? p.z : rd.halfWidth);
+            }
+        }
+    }
+    {
+        // Roads by bucket, so sampling looks only at the segments near a point.
+        bucketNx_ = static_cast<int32_t>(kWidth / kStreamBucket) + 1;
+        bucketNy_ = static_cast<int32_t>(kHeight / kStreamBucket) + 1;
+        roadBuckets_.assign(static_cast<size_t>(bucketNx_) * bucketNy_, {});
+        const Fixed reach = m(66);
+        for (uint32_t ri = 0; ri < roads_.size(); ++ri) {
+            const Polyline& road = roads_[ri];
+            for (uint32_t si = 0; si + 1 < road.points.size(); ++si) {
+                const Vec3 &a = road.points[si], &b = road.points[si + 1];
+                const int64_t x0 = std::max<int64_t>(0, ((min(a.x, b.x) - reach) / kStreamBucket).floorToInt());
+                const int64_t x1 = std::min<int64_t>(bucketNx_ - 1, ((max(a.x, b.x) + reach) / kStreamBucket).floorToInt());
+                const int64_t y0 = std::max<int64_t>(0, ((min(a.y, b.y) - reach) / kStreamBucket).floorToInt());
+                const int64_t y1 = std::min<int64_t>(bucketNy_ - 1, ((max(a.y, b.y) + reach) / kStreamBucket).floorToInt());
+                for (int64_t by = y0; by <= y1; ++by)
+                    for (int64_t bx = x0; bx <= x1; ++bx) roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)].push_back({ri, si});
+            }
         }
     }
     if (relief == Relief::Baked) loadBakedRelief();
@@ -241,6 +278,8 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
         Fixed mountain;
         lakeSurfaces_.push_back(reliefHeight(lake.centre.x, lake.centre.y, mountain) - m(3));
     }
+    // The Heartmere lies at the level of the rivers that meet in it.
+    lakeSurfaces_.back() = rivers_.front().points.back().z;
     placeBridges();
     placeCities();
     planCastles();
@@ -625,6 +664,55 @@ Fixed Continent::baseHeight(Fixed x, Fixed y, Fixed& mountain) const {
     return z + mountain;
 }
 
+void Continent::shapeRoads() {
+    // Dirt roads, not ruled lines: a smooth curve through the road's way
+    // points, sampled every 40 m, wandering gently from side to side (but
+    // straight through its way points, where roads meet, cross rivers and climb
+    // passes), and wider or narrower as it goes, from about 2 m to 4.5 m each
+    // side of its middle.
+    std::vector<Vec3> anchors;  // (x, y), z = radius held straight
+    for (const Polyline& rd : roads_)
+        for (const Vec3& p : rd.points) anchors.push_back({p.x, p.y, m(140)});
+    for (const Crossing& c : crossings_) anchors.push_back({c.pos.x, c.pos.y, m(160)});
+    for (size_t ri = 0; ri < roads_.size(); ++ri) {
+        Polyline& rd = roads_[ri];
+        const std::vector<Vec3> ctrl = rd.points;
+        std::vector<Vec3> curve;
+        for (size_t i = 0; i + 1 < ctrl.size(); ++i) {
+            const Vec3 p0 = ctrl[i == 0 ? 0 : i - 1], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[std::min(i + 2, ctrl.size() - 1)];
+            const int64_t steps = std::max<int64_t>(1, ((p2 - p1).flat().length() / 40).floorToInt());
+            for (int64_t k = 0; k < steps; ++k) {
+                const Fixed t = Fixed::fromRatio(k, steps), t2 = t * t, t3 = t2 * t;
+                const Fixed two = m(2), three = m(3), four = m(4), five = m(5);
+                const Vec3 a = p1 * two, b = p2 - p0, c = p0 * two - p1 * five + p2 * four - p3, d = p1 * three - p0 - p2 * three + p3;
+                curve.push_back((a + b * t + c * t2 + d * t3) * r(1, 2));
+            }
+        }
+        curve.push_back(ctrl.back());
+        const uint64_t sr = noise::nextSeed(seed_ ^ (0x40AD + ri * 1013));
+        std::vector<Vec3> out(curve.size());
+        rd.widths.assign(curve.size(), rd.halfWidth);
+        Fixed arc;
+        for (size_t i = 0; i < curve.size(); ++i) {
+            if (i > 0) arc += (curve[i] - curve[i - 1]).flat().length();
+            const Vec3 prev = curve[i == 0 ? 0 : i - 1], next = curve[std::min(i + 1, curve.size() - 1)];
+            const Vec3 dir = (next - prev).flat();
+            const Fixed len = dir.length();
+            Vec3 normal;
+            if (len > Fixed::zero()) normal = {-dir.y / len, dir.x / len, Fixed::zero()};
+            Fixed calm = Fixed::one();
+            for (const Vec3& an : anchors) calm = min(calm, noise::smoothstep(an.z, an.z * 3, (curve[i] - Vec3{an.x, an.y, Fixed::zero()}).flat().length()));
+            // Bends round every hillock and copse, and broad sweeps over a few kilometres.
+            const Fixed bend = (noise::fbm(sr, arc, m(static_cast<int64_t>(ri) * 6000), 420) - r(1, 2)) * 2 * m(22);
+            const Fixed sweep = (noise::value(sr ^ 0x5EE, arc, m(static_cast<int64_t>(ri) * 8000), 2200) - r(1, 2)) * 2 * m(80);
+            out[i] = curve[i] + normal * ((bend + sweep) * calm);
+            out[i].z = Fixed::zero();
+            rd.widths[i] = m(3) * (r(7, 10) + noise::fbm(sr ^ 0x31D, arc, m(static_cast<int64_t>(ri) * 7000), 700) * r(4, 5));
+        }
+        rd.points = std::move(out);
+    }
+}
+
 void Continent::meanderRivers() {
     // Real rivers wind. Each course becomes a smooth curve through its control
     // points, sampled every 20 m, then swings from side to side by an amount
@@ -678,7 +766,7 @@ void Continent::meanderRivers() {
             out[i] = curve[i] + normal * (swing * amp * calm + wander * bigAmp * bigCalm);
             out[i].z = Fixed::zero();
             // Wider in the slow reaches, narrower where it runs fast.
-            rv.widths[i] = rv.halfWidth * (r(4, 5) + noise::fbm(sm ^ 0x5157, arc, m(static_cast<int64_t>(ri) * 5000), wave / 2) * r(1, 2));
+            rv.widths[i] = rv.halfWidth * (r(11, 20) + noise::fbm(sm ^ 0x5157, arc, m(static_cast<int64_t>(ri) * 5000), wave / 2) * r(11, 10));
         }
         rv.points = std::move(out);
         rv.boxes.clear();
@@ -807,18 +895,35 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     // Lakes sit in basins with a flat surface.
     for (size_t i = 0; i < lakes_.size(); ++i) {
         const Area& lake = lakes_[i];
-        const Fixed q = ellipse(lake, x, y);
+        Fixed q = ellipse(lake, x, y);
         if (q > m(3)) continue;
+        // Shores wander: bays, points and coves, not a drawn ellipse.
+        const uint64_t sl = noise::nextSeed(seed_ ^ (0x1A4E + i * 131));
+        q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(120, (lake.rx / 3).floorToInt())) * r(2, 5));
         const Fixed surface = lakeSurfaces_[i];
+        // A shelving shore, about 1 in 6, that runs on into the basin rim:
+        // no step at the waterline, so no band of rock along it.
+        const Fixed shelf = (q - Fixed::one()) * max(lake.rx / 6, m(40));
         if (q < Fixed::one()) {
             s.inLake = true;
             s.lakeSurface = surface;
-            z = min(z, surface - Fixed::one() - (Fixed::one() - q) * 3);
+            z = min(z, max(surface - Fixed::one() - (Fixed::one() - q) * 3, surface + shelf));
         } else {
             // The basin rim rises fast so nearby hills keep their shape.
             const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
-            z = min(z, surface + r(2, 5) + (q - Fixed::one()) * lake.rx / 6 + beyond * beyond * 600);
+            z = min(z, surface + shelf + beyond * beyond * 600);
         }
+    }
+    // Isles rise out of their lake: a rounded hump, its shore a little above the water.
+    for (const Isle& isle : isles_) {
+        const Fixed q = ellipse(isle.area, x, y);
+        if (q >= r(3, 2)) continue;
+        const Fixed surface = lakeSurfaces_[isle.lake];
+        const Fixed hump = max(Fixed::zero(), Fixed::one() - q * q);
+        // Its shore shelves into the lake as gently as the lake's own.
+        const Fixed shore = surface + r(1, 2) + (Fixed::one() - q) * max(isle.area.ry / 6, m(4));
+        z = max(z, min(surface + r(1, 2) + isle.rise * hump * hump, shore));
+        if (z >= surface) s.inLake = false;
     }
 
     // Streams from the drainage bake: a creek in a small gully of its own.
@@ -871,10 +976,24 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         z = z + (c.pos.z - z) * w;
     }
 
-    size_t seg = 0;
-    Fixed t;
+    // Distance to the nearest road, as if every road were 3 m from its middle
+    // to its edge: wider stretches count as nearer, narrow ones farther.
     s.roadDist = m(60);
-    for (const Polyline& road : roads_) s.roadDist = min(s.roadDist, polylineDist(road.points, x, y, m(60), seg, t));
+    if (!roadBuckets_.empty()) {
+        const int64_t bx = clamp(x / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNx_ - 1)).floorToInt();
+        const int64_t by = clamp(y / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNy_ - 1)).floorToInt();
+        for (const auto& [ri, si] : roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
+            const Polyline& road = roads_[ri];
+            Fixed t;
+            const Fixed centre = sqrt(segDistSq(x, y, road.points[si], road.points[si + 1], t));  // sets t first
+            const Fixed d = centre - (road.widthAt(si, t) - m(3));
+            s.roadDist = min(s.roadDist, max(Fixed::zero(), d));
+        }
+    } else {
+        size_t seg = 0;
+        Fixed t;
+        for (const Polyline& road : roads_) s.roadDist = min(s.roadDist, polylineDist(road.points, x, y, m(60), seg, t));
+    }
     s.height = z;
 }
 
@@ -1141,7 +1260,12 @@ void Continent::placeSites() {
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
         return a.score != b.score ? a.score > b.score : a.order < b.order;
     });
-    constexpr size_t kRuins = 34;
+    // The abbey's ruins on Abbey Isle in the Heartmere, reached by the Spit.
+    {
+        const Vec3 at = isles_.front().area.centre;
+        sites_.push_back({Site::Kind::Ruin, "The Drowned Abbey", {at.x, at.y, sample(at.x, at.y).height}});
+    }
+    constexpr size_t kRuins = 33;
     size_t ruins = 0;
     for (const Candidate& c : candidates) {
         if (ruins >= kRuins) break;

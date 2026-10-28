@@ -32,6 +32,11 @@ struct Obstacle {
 struct Polyline {
     std::vector<Vec3> points;  // z unused
     Fixed halfWidth;
+    std::vector<Fixed> widths = {};  // half width at each point, where it varies (roads); else halfWidth
+    Fixed widthAt(size_t seg, Fixed t) const {
+        if (widths.size() != points.size() || seg + 1 >= widths.size()) return halfWidth;
+        return widths[seg] + (widths[seg + 1] - widths[seg]) * t;
+    }
 };
 
 // A walkway above the ground: a bridge deck, a castle's wall-walk or a stair.

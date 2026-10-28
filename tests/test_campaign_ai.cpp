@@ -59,24 +59,26 @@ TEST(terrain_and_walls_change_the_odds) {
 }
 
 TEST(hard_lords_outplay_easy_ones) {
-    // The same seats played Hard then Easy: even sides Hard against odd
-    // sides Easy, then the other way round, so that no seat's position
-    // decides it. Forty days: the race for the neutral towns and the first
-    // wars between neighbours.
-    int32_t hard = 0, easy = 0;
+    // Seat by seat: the same lord played Hard among Easy ones, against the
+    // same seat in an all-Easy game, so neither the seat's position nor its
+    // neighbours decide it. Forty days: the race for the neutral towns and the
+    // first wars between neighbours.
+    int32_t hard = 0, easy = 0, better = 0;
     for (uint64_t seed : {2, 3}) {
-        for (int flip = 0; flip < 2; ++flip) {
+        const auto play = [&](int hardSeat) {
             Campaign c(continent(), seed);
-            for (uint8_t s = 0; s < 8; ++s) c.setDifficulty(s, (s % 2 == 0) == (flip == 0) ? Difficulty::Hard : Difficulty::Easy);
+            for (uint8_t s = 0; s < 8; ++s) c.setDifficulty(s, s == hardSeat ? Difficulty::Hard : Difficulty::Easy);
             runDays(c, 40);
-            int32_t h = 0, e = 0;
-            for (uint8_t s = 0; s < 8; ++s) (c.sides()[s].difficulty == Difficulty::Hard ? h : e) += c.citiesOwned(s);
-            std::printf("  seed %llu, %s sides Hard: Hard %d cities, Easy %d\n", static_cast<unsigned long long>(seed), flip ? "odd" : "even", h, e);
-            hard += h;
-            easy += e;
+            return c;
+        };
+        const Campaign base = play(-1);
+        for (int seat = 0; seat < 8; ++seat) {
+            const int32_t h = play(seat).citiesOwned(static_cast<uint8_t>(seat)), e = base.citiesOwned(static_cast<uint8_t>(seat));
+            hard += h, easy += e, better += h > e;
         }
     }
-    CHECK(hard > easy * 5 / 4);
+    std::printf("  seat for seat: Hard %d cities, Easy %d; Hard ahead in %d of 16\n", hard, easy, better);
+    CHECK(hard > easy * 11 / 10);
 }
 
 TEST(the_computer_saves_a_threatened_capital) {

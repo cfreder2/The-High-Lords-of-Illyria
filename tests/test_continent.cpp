@@ -55,7 +55,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x201d5afb53031941;
+    constexpr uint64_t kGolden = 0x5822664e77864b03;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xf002e1a6a21e1242;
+    constexpr uint64_t kGolden = 0xf3dca3755508bbd0;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -101,7 +101,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0xa927573f6be52139;
+    constexpr uint64_t kGolden = 0xafd7e11dfb465651;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
