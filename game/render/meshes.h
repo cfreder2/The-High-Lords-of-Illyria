@@ -56,6 +56,14 @@ Mesh temple();
 Mesh sageTower();
 // A fallen trunk along x from -1 to 1, radius 1 (scale: half length, girth, girth).
 Mesh log();
+// A campaign boat: a timber hull along x from -1 (stern) to 1 (bow), beam
+// about 0.5, the waterline at z = 0, a mast to z = 1.5. The sail is its own
+// mesh in white, to tint with the side's colour; same unit space.
+Mesh ship();
+Mesh sail();
+// A timber pier running along x from 0 (the shore) to 1, [-1, 1] across, its
+// deck top at z = 0 on piles reaching down to z = -1.
+Mesh pier();
 // A clump of tree crowns for the distant continent, about 1 across.
 Mesh copse();
 std::vector<Mesh> copseVariants();  // broadleaf, pines, autumn

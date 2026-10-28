@@ -26,3 +26,9 @@ add_executable(illyria_shaderdump shaders/shaderdump.cpp)
 add_executable(illyria_terrainbake terrainbake/bake.cpp)
 target_link_libraries(illyria_terrainbake PRIVATE illyria_sim)
 target_compile_options(illyria_terrainbake PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wno-conversion -Wno-sign-conversion -Wno-double-promotion>)
+
+# Draws the soldiers' sprite sheets in software, for looking at the figures:
+#   illyria_spritesheet out.ppm [type]   (no type: one row of samples per type)
+add_executable(illyria_spritesheet spritesheet/preview.cpp)
+target_link_libraries(illyria_spritesheet PRIVATE illyria_figures)
+target_compile_options(illyria_spritesheet PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wno-conversion -Wno-sign-conversion -Wno-double-promotion>)

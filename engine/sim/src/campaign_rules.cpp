@@ -93,15 +93,15 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
     // The AFCM (or DFCM): the best hero's leadership (strength 4-6: 1, 7-8: 2,
     // 9: 3), one for fliers, one for special armies (a dragon is both), the
     // empire's liking for the ground, and the city's walls for a defender.
-    // TODO(artifacts): add the value of the heroes' command items here.
-    int32_t hero = 0;
+    int32_t hero = 0, items = 0;
     bool flying = false, magic = false;
     for (const Army* a : armies) {
         if (a->hero()) hero = std::max(hero, strength(*a));
+        items += command(*a);  // the heroes' command artifacts
         flying = flying || flies(a->type);
         magic = magic || special(a->type);
     }
-    int32_t m = hero >= 9 ? 3 : hero >= 7 ? 2 : hero >= 4 ? 1 : 0;
+    int32_t m = (hero >= 9 ? 3 : hero >= 7 ? 2 : hero >= 4 ? 1 : 0) + items;
     m += flying + magic;
     m += empireTerrain(owner, terrainAt(cx, cy));
     const int32_t city = cityAt(cx, cy);
@@ -117,7 +117,7 @@ void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int3
     const int32_t fcm = forceModifier(view, owner, cx, cy, defending);
     const Lay lay = terrainAt(cx, cy);
     // AS (DS) = strength + force modifier + the type's liking for the ground,
-    // never past 9 (and never below 1). TODO(artifacts): battle items add to a hero's.
+    // never past 9 (and never below 1); a hero's battle artifacts are in his strength.
     const auto as = [&](const Army* a) { return std::clamp(strength(*a) + fcm + typeTerrain(a->type, lay), 1, 9); };
     // Lined up with the most valuable on the right: heroes last, then the strongest.
     std::stable_sort(armies.begin(), armies.end(), [&](const Army* a, const Army* b) {
@@ -299,7 +299,7 @@ int32_t Campaign::upkeepOf(uint8_t side) const {
     int32_t gold = 0;
     for (const Stack& st : stacks_)
         if (st.owner == side)
-            for (const Army& a : st.armies) gold += upkeep(a.type);
+            for (const Army& a : st.armies) gold += armyUpkeep(a);
     for (const Transit& t : transits_)
         if (t.owner == side) gold += upkeep(t.army.type);
     return gold;

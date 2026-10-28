@@ -94,6 +94,8 @@ void Battle::build(uint64_t seed, const sim::Vec3& centre) {
 void Battle::finish() {
     const size_t n = world_->units().size();
     deathTick_.assign(n, UINT32_MAX);
+    attackTick_.assign(n, UINT32_MAX);
+    hitTick_.assign(n, UINT32_MAX);
     prevUnitPos_.resize(n);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
 }
@@ -449,8 +451,13 @@ void Battle::step() {
 
     if (world_->tick() % kAiIntervalTicks == 0) runEnemyAi();
 
+    // Who strikes or looses this tick, for the attack animation.
+    readied_.resize(units.size());
+    for (size_t i = 0; i < units.size(); ++i) readied_[i] = {units[i].meleeCooldown, units[i].reloadRemaining};
     const auto start = std::chrono::steady_clock::now();
     world_->step(pending_);
+    for (size_t i = 0; i < units.size() && i < readied_.size(); ++i)
+        if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     stepMs_ = stepMs_ * 0.95 + ms * 0.05;
     pending_.clear();
@@ -544,6 +551,7 @@ void Battle::collectEvents() {
                 const size_t index = e.hitUnit - 1;
                 const sim::Unit& victim = world_->units()[index];
                 if (e.killed) deathTick_[index] = tick;
+                else hitTick_[index] = tick;
                 const V3 body = toV3(victim.pos);
                 const float scale = static_cast<float>(victim.stats.height.toDouble()) / 1.8f;
                 const int splats = e.killed ? 3 : 1;

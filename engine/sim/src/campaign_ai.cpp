@@ -183,7 +183,7 @@ private:
         std::map<int32_t, std::vector<size_t>> byCell;  // idle stacks of ours in our cities
         for (size_t k = 0; k < c_.stacks_.size(); ++k) {
             const C::Stack& s = c_.stacks_[k];
-            if (!ours(s) || !s.path.empty() || !ownCity(cityHere(s))) continue;
+            if (!ours(s) || !s.path.empty() || s.boat || !ownCity(cityHere(s))) continue;
             byCell[s.cy * c_.nx_ + s.cx].push_back(k);
         }
         for (const auto& [cell, list] : byCell) {
@@ -241,7 +241,7 @@ private:
     bool march(size_t k, int32_t cx, int32_t cy) {
         C::Stack& s = c_.stacks_[k];
         std::vector<std::pair<int32_t, int32_t>> path;
-        if (!c_.findPath(s, cx, cy, path) || path.empty()) return false;
+        if (!c_.planRoute(s, cx, cy, path) || path.empty()) return false;  // on foot, or by boat
         s.path = std::move(path);
         s.progress = 0;
         used_[k] = 1;
@@ -323,13 +323,6 @@ private:
         return best;
     }
 
-    // TODO(heroes-explore): hook for the ruins and temples work. Send a hero
-    // (alone or with his stack) to search a ruin, visit a sage or be blessed
-    // at a temple when that is worth more than his next battle; return true
-    // if the stack was given orders. Until then heroes lead the strongest
-    // strike stack and fight only at the odds a hero is worth (heroOdds).
-    bool sendHeroExploring(size_t /*stack*/) { return false; }
-
     void attack() {
         const int32_t lead = leader();
         for (size_t k = 0; k < c_.stacks_.size(); ++k) {
@@ -373,7 +366,6 @@ private:
         for (size_t k : strikers) {
             if (used_[k]) continue;
             if (chance(t_.forget)) continue;  // an Easy lord forgets what he was doing
-            if (hasHero(c_.stacks_[k]) && sendHeroExploring(k)) continue;
             if (strikeFrom(k, lead)) continue;
             if (pinned(k)) continue;  // stays to hold a threatened city
             if (t_.gather && gather(k, lead)) continue;
@@ -507,15 +499,16 @@ private:
         C::Side& side = c_.sides_[side_];
         const int32_t income = c_.income(side_);
         int32_t upkeep = c_.upkeepOf(side_);
-        // Tomorrow's pay would empty the chest: send the weakest home first.
-        while (upkeep > 0 && side.gold + income - upkeep < 10) {
+        // Tomorrow's pay would all but empty the chest (and a city lost would
+        // empty it): send the weakest home first.
+        while (upkeep > 0 && side.gold + income - upkeep < std::max(10, income / 4)) {
             size_t bestStack = SIZE_MAX, bestArmy = 0;
             int32_t weakest = INT32_MAX;
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
                 const C::Stack& s = c_.stacks_[k];
                 if (!ours(s)) continue;
                 for (size_t a = 0; a < s.armies.size(); ++a) {
-                    if (s.armies[a].hero()) continue;
+                    if (s.armies[a].hero() || s.armies[a].ally) continue;  // allies cost nothing
                     const int32_t w = C::strength(s.armies[a]) * 100 - C::upkeep(s.armies[a].type);
                     if (w < weakest) {
                         weakest = w;
@@ -571,6 +564,10 @@ private:
     }
 };
 
-void Campaign::runAi(uint8_t side) { CampaignAi(*this, side).run(); }
+void Campaign::runAi(uint8_t side) {
+    questAi(side);   // heroes go exploring when it is safe (campaign_quests.cpp)
+    runSeaAi(side);  // boats first: targets across the water (campaign_sea.cpp)
+    CampaignAi(*this, side).run();  // then the war on land
+}
 
 }  // namespace illyria::sim

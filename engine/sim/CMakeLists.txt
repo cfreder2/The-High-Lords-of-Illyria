@@ -14,6 +14,8 @@ add_library(illyria_sim
     src/campaign.cpp
     src/campaign_rules.cpp
     src/campaign_ai.cpp
+    src/campaign_quests.cpp
+    src/campaign_sea.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/relief_data.cpp
 )
 

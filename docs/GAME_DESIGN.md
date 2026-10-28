@@ -23,8 +23,11 @@ To replicate the iconic aesthetic of late-90s tactical games while leveraging mo
 ### 2.1 Visual Categorization
 
 - **Terrain & Architecture (Full 3D):** Fully modeled 3D heightfield mesh terrain, physical cliffs, dynamic water, destructible stone walls, and trees with individual collision capsules.
-- **Standard Infantry & Light Units (2.5D Sprites / Billboards):** Multi-directional sprite sheets rendered onto camera-facing quads in 3D space — 16 directional angles with distinct animation states: Idle, Walk, Attack, Block, Dodge, Hit, Death, Mutilation.
-- **Large Creatures, Siege Engines & Heroes (Full 3D Models):** Giant units (e.g., Minotaurs, Siege Engines, Dragons, Mounted Heroes) are rendered as full 3D skeletal meshes with physical ragdolls to allow complex spatial deformation and multi-joint weapon swings.
+- **Soldiers and creatures (2.5D sprites, made the way Myth's were):** every unit type is a small articulated 3D figure built and posed in code (`game/render/figures.cpp`): a person with hips, knees, shoulders, elbows, a head and a kit of helmets, hoods, weapons, shields, robes, capes, wings and tails; or a beast (horse, wolf, elephant, griffin, dragon, spider) with a gait, and a rider astride when it has one. At battle load the GPU photographs each figure's poses from five directions 45° apart, 30° above the horizon. The other three directions are mirror images. The pictures are rendered at twice their size, resolved to hard edges with a dark one-pixel outline, and packed into one sprite sheet per type.
+  - **Animations (26 frames a view):** idle 4 (breathing, wings and tails stirring), walk 8 (tied to distance walked, so feet do not slide; fliers flap), attack 6 (sword swing, two-handed overhead blow, pike or lance thrust, bow drawn and loosed, satchel thrown, spell cast, beasts rearing and biting), flinch 2 (on every wound), death 6 (people fall backwards, beasts roll onto their sides; the last frame stays where they lie).
+  - **In battle:** each soldier is a billboard showing its sheet's frame for the view the camera has of it. The view comes from the camera's bearing against the soldier's facing. The frame comes from its deeds: when it last struck or loosed, when it was last hurt, when it died, and how far it has walked. The side's colours are a mask in the sheet, tinted when drawn, so both sides share one sheet. Close up the pixels stay crisp; far out, soldiers become coloured specks. The same sprites, turned to the sun, cast the soldiers' shadows.
+  - **Budget:** about 28 pixels a metre, no picture more than 160 pixels across (a dragon is coarser than a man); every frame cropped to its outline. The whole roster for both sides is about 56 MB, and a battle bakes only the types it has. `tools/spritesheet` draws the same sheets in software for review.
+- **Large Creatures, Siege Engines & Heroes:** the original plan was full 3D skeletal models for giants, dragons and siege engines. The sprite figures above now cover every creature; siege engines remain to be designed.
 
 ### 2.2 Shadow & Lighting Integration
 
@@ -174,7 +177,7 @@ Money is gold only, as in Warlords:
 
 *Built so far* (`engine/sim/src/campaign.cpp`, the **Campaign** button or `?campaign`):
 - **The start:** each of the eight sides holds its capital, one hero (with an escort of light infantry) and a war chest (the Dwarves richest, the Giants poorest, after Warlords). The other 72 cities are neutral, each with a garrison of one to four armies, more where the walls are stronger.
-- **The map:** a 200 m grid over the continent, each cell road, bridge, water, forest, hill, mountain, plain, marsh or city. Movement costs and movement points per day come from the Warlords tables; mountains and water are closed to all but fliers, rivers are crossed only at fords and bridges, roads are cheapest. A hero goes where the stack goes (on a griffin, over the peaks).
+- **The map:** a 200 m grid over the continent, each cell road, bridge, water, forest, hill, mountain, plain, marsh or city (road cells are every cell a road passes through). Movement costs and movement points per day come from the Warlords tables; mountains and water are closed to all but fliers, rivers are crossed only at fords and bridges, roads are cheapest. A hero goes where the stack goes (on a griffin, over the peaks).
 - **Time:** real time with pause; a campaign day is 30 seconds at normal speed (2×, 4×, 8× faster).
 - **Gold:** each city pays every day (capitals 30, towns 21 to 33 by their walls); each army costs half its training price a day in upkeep; a side that cannot pay loses its newest armies. Taking a city takes the loser's share of the treasury in proportion to its cities, half of it to the victor.
 - **Training:** a city trains one army at a time from up to four types (light infantry everywhere; capitals their side's specialties; towns what the land around them raises: dwarves and giants in the hills, archers and wolf riders in the woods, horse on the plains). It is paid for when training starts; open a city's panel by tapping it.
@@ -182,7 +185,22 @@ Money is gold only, as in Warlords:
 - **The computer lords** keep every city training its quickest troops and send their stacks at the nearest city they can take, neutral towns first, leaving a guard behind.
 - **Victory:** two thirds of the cities.
 - **The player's battles:** when the player's stack marches into an enemy, the campaign stops and asks: **Fight it** or **Resolve**. Resolve rolls the dice. Fight it opens the real 3D battle on that exact ground with those exact armies: their numbers, ranks and heroes. A town is held from its walls, with archers on the walk and the rest at the gate, courtyard and keep. In the field the two lines form up a bowshot apart. **Charge** sends every squad at the nearest enemy, with archers stopping at a long bowshot. When it is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks. Winning a town captures it; withdrawing counts as being thrown back.
-- **Next:** ruins and temples for heroes, ports and boats.
+- **Heroes, ruins, temples, sages and heroes for hire:** see §4.4.
+
+### 4.2.5 Ports & Boats (built)
+
+After Warlords' navies, "the only units that can travel the seas and rivers ... a navy can carry a maximum of seven other armies" and "ignores the movement points of the armies it carries" (`engine/sim/src/campaign_sea.cpp`):
+- **Navigable water:** every water cell of the campaign grid in a body of at least 24 cells (about 1 km²): on this continent the Sunderwave Sea along the west coast and round the north. The lakes and rivers are too narrow on the 200 m grid to sail; rivers stay edges crossed at fords and bridges. A road reaching into the sea does not dam it.
+- **Ports:** cities with navigable water within two cells (nine of the eighty, all on the sea). Each port's **harbour** is its nearest water cell, where its boats put out and come in. A port has a pier below its walls on the map.
+- **Building:** a port's panel has **Build a boat**: 20 gold, ready in 4 days, 2 gold a day upkeep; it runs beside the city's army training. Boats are named (the *Grey Swan*, the *Sea Hawk*...).
+- **Capacity:** 7 armies, a Warlords navy's load, one short of a full stack. A stack of eight boarding leaves its weakest army (never a hero) on the quay.
+- **Sailing:** a stack in a port with a free boat of its side boards it by stepping onto the water (**Embark**, which also takes friends idle in the port aboard up to seven). Afloat it moves 40 points a day at 2 a water cell: 20 cells, 4 km, a day, whatever it carries (light infantry walk 5 cells a day on the plain, 10 on a road). It lands on any coast it can walk (**Land**, or by being ordered inland), and sails straight into a friendly port from its harbour.
+- **Route finding:** an order plans by land and, when the side has a free boat, also by a search over (cell, afloat) that may walk to a port, board, sail and land; it takes the boat only when that is quicker (from the northern port of Thistledown to Whitecliff in the far south: 4 days by sea, 11 on foot).
+- **After landing:** the boat ties up if it landed in a port of its side, else rides at anchor off that coast, where a stack of its side next to it can board it again.
+- **Losses:** a boat whose armies all fall goes down with them. Armies fighting from a deck fight a point weaker (both sides, at sea). An empty boat in a port that falls changes hands; one at anchor is burnt by an enemy boat that reaches it.
+- **The 3D battle:** a battle fought from or against a boat has no ground to fight on, so it is settled with the dice (the prompt offers only **Resolve**). A stack that lands first and then attacks fights its 3D battle as usual.
+- **The computer lords** build a boat at a port when some city they could take is out of reach on foot or much quicker by water (60% of the walking time or less), keep at most three, and sail stacks of three or more from a port with a boat (leaving a guard) at the best such city; a stack aboard sails for the nearest city it can take. `Campaign::runSeaAi`, called from the first line of `runAi`.
+- **Determinism:** boats, ports, the harbour cells, navigable water and the voyage count are all in `Campaign::checksum()`.
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 
@@ -198,7 +216,17 @@ Heroes are what make the campaign more than a war of production. A hero is a sin
 - **Sages (2):** the Seer's Tower on its island and the Hermit of the Peaks. Each tells the first hero to reach them where artifacts or unsearched ruins lie, so it is first come, first served.
 - **New heroes** offer their service now and then, for gold, to sides that hold enough cities.
 
-Rules to settle while building it: guardian strength by distance from the capitals; how many artifacts exist; whether allies can later be recruited in cities (a Warlords II option).
+*Built so far* (`engine/sim/src/campaign_quests.cpp`, in the campaign with the dice; the guardian fight in a 3D ruin interior is still to come):
+- **Searching:** a stack standing still on a ruin, temple or sage shows a **Search** (ruin), **Visit** (temple) or **Consult** (sage) button. Ruins and sages need a hero in the stack; the strongest hero goes in.
+- **Ruins:** the hero fights the guardian alone with Warlords' dice (a d10 against the other's strength, two hits kill). Guardians run from a pack of wolves (strength 2) to an ancient wyrm (8), fiercer the further the ruin lies from the nearest capital, so a young hero starts near home. A hero who falls is gone; what they carried lies in the ruin for the next hero, and the guardian waits on. A hero who wins gains the kills (and maybe a level) and finds one reward: gold (100 to 300, more behind a fiercer guardian), an artifact, or allies (undead or wizards behind weak guardians, devils or archons, then dragons) who join the stack and draw no pay. Each ruin is searched once.
+- **Artifacts (15, each unique):** battle items add to the hero's own strength (+1: Firebrand, Frostblade, Spear of Ashkar; +2: Sunblade, Shadowblade, Bow of the Morning Star; +3: Staff of Thunders); command items add to every army fighting beside the hero, as Warlords' command modifier (+1: Crown of Kings, Sceptre of Dawn, Scarlet Banner; +2: Ring of Dominion, Horn of the North; +3: Rod of the High Lords); the Winged Sandals add 4 movement a day to the stack and the Purse of Plenty pays 10 gold a day. Fiercer guardians guard greater artifacts. They show on the hero's card and carry into the 3D battle as extra strength. A hero who dies in battle drops them where they fell; the next hero to enter that cell takes them up.
+- **Temples (4):** as in Warlords, any stack (no hero needed) is blessed: every army in it gains +1 strength, once per temple, so an army can carry up to four blessings (never past strength 9). Blessings carry into the 3D battle.
+- **Sages (2):** the first hero to consult one is given 100 to 150 gold and told the name of the nearest unexplored ruin.
+- **Heroes for hire:** at dawn a side with more than two cities for each hero it has may be offered a hero (one chance in twelve a day), waiting in one of its cities for 150 gold plus 100 for every hero already serving. The player sees **Hire for N gold** / **Decline**; the offer lasts until the next dawn. A side whose heroes have all fallen is offered another in time.
+- **The computer lords** search whatever their heroes stand on, then send each hero (alone, if it is in a city, leaving the rest on guard) to the nearest ruin within 24 cells whose guardian is weaker than the hero, an unvisited sage, or (outside cities) a temple that has not yet blessed the stack, as long as no enemy stack is within 3 cells of it. They hire a hero when they can pay and keep 100 gold for training.
+- **News:** what the player's heroes did is in the news ("Sir Aldric found the Crown of Kings in Sunken Halls"); explored ruins are greyed on the map.
+
+Still to settle: whether allies can later be recruited in cities (a Warlords II option); temple quests; heroes offering with allies of their own.
 
 ### 4.3 AI Generals & Attention
 

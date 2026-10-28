@@ -849,6 +849,309 @@ void main() {
 }
 )";
 
+// ---------------------------------------------------------------- soldiers' sheets
+// Baking: one posed figure (figures::build) photographed orthographically
+// from a sheet view, lit from over the viewer's left shoulder, into a
+// scratch target twice the cell's size.
+inline const char* kFigureVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in float aTeam;
+layout(location = 4) in float aMat;
+uniform vec3 uBakeRight, uBakeUp, uBakeToward;
+uniform vec4 uBakeRect;  // the picture's extent: left, bottom, width, height (m)
+out vec3 vNormal;
+out vec3 vColor;
+out vec3 vPos;
+out float vTeam;
+flat out int vMat;
+void main() {
+    vNormal = aNormal;
+    vColor = aColor;
+    vPos = aPos;
+    vTeam = aTeam;
+    vMat = int(aMat + 0.5);
+    vec2 c = (vec2(dot(aPos, uBakeRight), dot(aPos, uBakeUp)) - uBakeRect.xy) / uBakeRect.zw;
+    gl_Position = vec4(c * 2.0 - 1.0, -dot(aPos, uBakeToward) / 40.0, 1.0);
+}
+)";
+// The figure seen from its key light, for its own shadows (arms across the
+// chest, a shield over the body, the rider on the horse).
+inline const char* kFigureDepthVs = R"(
+layout(location = 0) in vec3 aPos;
+uniform vec3 uLightRight, uLightUp, uLightToward;
+uniform vec4 uLightRect;   // left, bottom, width, height (m) across the light
+uniform vec2 uLightRange;  // nearest along the light, depth range (m)
+void main() {
+    vec2 c = (vec2(dot(aPos, uLightRight), dot(aPos, uLightUp)) - uLightRect.xy) / uLightRect.zw;
+    float d = (uLightRange.x - dot(aPos, uLightToward)) / uLightRange.y;  // 0 nearest the light
+    gl_Position = vec4(c * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+}
+)";
+inline const char* kFigureFs = R"(
+uniform vec3 uBakeRight, uBakeUp, uBakeToward;
+uniform highp sampler2DShadow uLightDepth;
+uniform vec3 uLightRight, uLightUp, uLightToward;
+uniform vec4 uLightRect;
+uniform vec2 uLightRange;
+in vec3 vNormal;
+in vec3 vColor;
+in vec3 vPos;
+in float vTeam;
+flat in int vMat;
+out vec4 oColor;
+// Materials, as in figures.cpp.
+const int kPlain = 0, kCloth = 1, kSkin = 2, kSteel = 3, kMail = 4, kLeather = 5, kWood = 6, kHair = 7, kBone = 8;
+const int kGold = 9, kFur = 10, kScale = 11, kFeather = 12, kMembrane = 13, kHide = 14, kChitin = 15;
+float h3(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float n3(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p) { return (0.5 * n3(p) + 0.25 * n3(p * 2.03 + 7.1) + 0.125 * n3(p * 4.07 + 3.3) + 0.0625 * n3(p * 8.13 + 1.7)) / 0.9375; }
+void main() {
+    // Alpha marks what was drawn: 1, or 0.5 where the side's colour goes.
+    float mark = vTeam > 0.5 ? 0.5 : 1.0;
+    // Colours above 1.5 glow: drawn unlit, less 2 (see figures.cpp).
+    if (vColor.r > 1.5) { oColor = vec4(vColor - 2.0, mark); return; }
+    vec3 n = normalize(vNormal);
+    vec3 V = uBakeToward;
+    if (dot(n, V) < 0.0) n = -n;  // the inside of a cape or a wing
+    vec3 L = uLightToward;
+    vec3 p = vPos;
+    // Self-shadow from the key light.
+    vec2 luv = (vec2(dot(p, uLightRight), dot(p, uLightUp)) - uLightRect.xy) / uLightRect.zw;
+    float ld = (uLightRange.x - dot(p, uLightToward)) / uLightRange.y;
+    float lit = texture(uLightDepth, vec3(luv, ld - 0.012));
+    // Surface: albedo variation, specular strength and tightness, per material.
+    float albedo = 1.0, spec = 0.04, shine = 8.0;
+    vec3 tint = vec3(1.0);
+    if (vMat == kCloth) {
+        albedo = 0.74 + 0.4 * fbm(p * vec3(11.0, 11.0, 4.0));          // folds hang down
+        albedo *= 0.94 + 0.06 * sin((p.x + p.y) * 260.0) * sin(p.z * 260.0);  // weave
+        albedo *= mix(0.72, 1.0, smoothstep(0.05, 0.55, p.z));          // mud at the hem
+    } else if (vMat == kSkin) {
+        albedo = 0.9 + 0.16 * fbm(p * 24.0);
+        spec = 0.1, shine = 10.0;
+    } else if (vMat == kSteel) {
+        albedo = 0.72 + 0.3 * fbm(p * vec3(5.0, 5.0, 38.0));            // brushed, dented
+        albedo *= 1.0 - 0.25 * step(0.82, n3(p * 70.0));               // nicks and rust spots
+        spec = 0.95, shine = 36.0;
+    } else if (vMat == kMail) {
+        vec3 q = p * vec3(60.0, 60.0, 75.0);
+        float ring = abs(fract(q.x + 0.5 * floor(q.z)) - 0.5) + abs(fract(q.z) - 0.5);
+        albedo = 0.55 + 0.6 * smoothstep(0.25, 0.55, ring) + 0.15 * fbm(p * 9.0);
+        spec = 0.7, shine = 18.0;
+    } else if (vMat == kLeather) {
+        albedo = 0.76 + 0.36 * fbm(p * 22.0);
+        spec = 0.18, shine = 9.0;
+    } else if (vMat == kWood) {
+        float g = fbm(vec3(p.x * 7.0, p.y * 7.0, p.z * 44.0)) + fbm(vec3(p.x * 44.0, p.y * 7.0, p.z * 7.0));
+        albedo = 0.68 + 0.5 * abs(sin(g * 9.0)) * 0.6;
+        spec = 0.08;
+    } else if (vMat == kHair) {
+        albedo = 0.66 + 0.55 * fbm(p * vec3(70.0, 70.0, 10.0));
+        spec = 0.3, shine = 22.0;
+    } else if (vMat == kBone) {
+        albedo = 0.82 + 0.24 * fbm(p * 18.0);
+        spec = 0.12;
+    } else if (vMat == kGold) {
+        albedo = 0.8 + 0.25 * fbm(p * 12.0);
+        spec = 1.1, shine = 26.0, tint = vec3(1.0, 0.82, 0.45);
+    } else if (vMat == kFur) {
+        albedo = 0.74 + 0.42 * fbm(p * vec3(30.0, 30.0, 18.0));
+        spec = 0.06;
+    } else if (vMat == kScale) {
+        vec3 q = p * 13.0;
+        vec2 c = fract(vec2(q.x + 0.5 * floor(q.z), q.z)) - 0.5;
+        float edge = smoothstep(0.28, 0.48, length(c));
+        albedo = (0.85 + 0.25 * fbm(p * 6.0)) * (1.0 - 0.38 * edge);
+        spec = 0.45, shine = 16.0;
+    } else if (vMat == kFeather) {
+        albedo = 0.72 + 0.4 * fbm(p * vec3(34.0, 9.0, 34.0));
+        albedo *= 0.9 + 0.1 * sin(dot(p, vec3(40.0, 40.0, 10.0)));
+        spec = 0.08;
+    } else if (vMat == kMembrane) {
+        albedo = 0.78 + 0.3 * fbm(p * 5.0);
+        albedo *= 1.0 - 0.3 * smoothstep(0.46, 0.5, abs(fract(dot(p, vec3(3.0, 3.0, 1.0))) - 0.5));  // finger bones
+        spec = 0.15, shine = 12.0;
+    } else if (vMat == kHide) {
+        albedo = 0.66 + 0.48 * fbm(p * vec3(10.0, 10.0, 26.0));      // wrinkled
+        spec = 0.05;
+    } else if (vMat == kChitin) {
+        albedo = 0.8 + 0.3 * fbm(p * 8.0);
+        spec = 0.8, shine = 30.0;
+    }
+    vec3 base = vColor * albedo;
+    // Light: a warm key over the viewer's shoulder (shadowed), a cool sky
+    // from above, a little light thrown up from the ground, a rim.
+    float key = max(0.0, dot(n, L)) * mix(0.5, 1.0, lit);
+    float sky = 0.5 + 0.5 * n.z;
+    float bounce = max(0.0, -n.z) * 0.12;
+    float rim = pow(1.0 - max(0.0, dot(n, V)), 3.0) * 0.2;
+    float ao = 0.75 + 0.25 * clamp(p.z / 1.1, 0.0, 1.0);
+    vec3 light = vec3(1.0, 0.95, 0.86) * key * 1.02 + vec3(0.62, 0.68, 0.78) * sky * 0.62 * ao + vec3(0.5, 0.45, 0.35) * bounce + rim;
+    vec3 c = base * light;
+    if (vMat == kSkin) c += vColor * vec3(0.12, 0.03, 0.0) * (1.0 - key);  // warmth where the light is low
+    // Highlights.
+    vec3 h = normalize(L + V);
+    float s = pow(max(0.0, dot(n, h)), shine) * spec * lit;
+    c += tint * s * 0.75;
+    if (vMat == kSteel || vMat == kGold || vMat == kChitin) c += tint * vColor * mix(vec3(0.16, 0.14, 0.1), vec3(0.42, 0.46, 0.5), sky) * 0.45;  // the sky in the metal
+    oColor = vec4(c, mark);
+}
+)";
+// A sheet drawn over the screen, for looking at it (?sheet=<type>).
+inline const char* kSheetViewVs = R"(
+out vec2 vUv;
+void main() {
+    vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    vUv = c;
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+inline const char* kSheetViewFs = R"(
+uniform sampler2D uSheet;
+uniform vec3 uCloth;
+uniform vec4 uSheetView;  // visible part of the sheet: u0, v0, u1, v1
+in vec2 vUv;
+out vec4 oColor;
+void main() {
+    vec4 t = texture(uSheet, mix(uSheetView.xy, uSheetView.zw, vUv));
+    vec3 bg = vec3(0.24, 0.3, 0.18);
+    vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    oColor = vec4(t.a < 0.5 ? bg : c, 1.0);
+}
+)";
+// Resolving the scratch into its sheet cell: 2x2 samples to one pixel, hard
+// edges, and a dark outline one pixel wide, as Myth's sprites had. Alpha in
+// the sheet: 1 plain, 0.75 the side's colour (tinted when drawn), 0.6 outline.
+inline const char* kResolveVs = R"(
+void main() {
+    vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+inline const char* kResolveFs = R"(
+uniform sampler2D uScratch;
+uniform vec4 uResolve;  // cell origin in the sheet (px), cell size (px)
+out vec4 oColor;
+float cover(ivec2 p) {
+    if (p.x < 0 || p.y < 0 || p.x >= int(uResolve.z) || p.y >= int(uResolve.w)) return 0.0;
+    ivec2 s = p * 2;
+    return (step(0.25, texelFetch(uScratch, s, 0).a) + step(0.25, texelFetch(uScratch, s + ivec2(1, 0), 0).a) +
+            step(0.25, texelFetch(uScratch, s + ivec2(0, 1), 0).a) + step(0.25, texelFetch(uScratch, s + ivec2(1, 1), 0).a)) * 0.25;
+}
+void main() {
+    ivec2 p = ivec2(floor(gl_FragCoord.xy - uResolve.xy));
+    ivec2 s = p * 2;
+    vec3 col = vec3(0.0);
+    float k = 0.0, team = 0.0;
+    for (int j = 0; j < 2; ++j)
+        for (int i = 0; i < 2; ++i) {
+            vec4 t = texelFetch(uScratch, s + ivec2(i, j), 0);
+            if (t.a < 0.25) continue;
+            col += t.rgb;
+            k += 1.0;
+            team += t.a < 0.75 ? 1.0 : 0.0;
+        }
+    float l = cover(p + ivec2(-1, 0)), r = cover(p + ivec2(1, 0)), dn = cover(p + ivec2(0, -1)), up = cover(p + ivec2(0, 1));
+    bool solidAround = l >= 0.5 && r >= 0.5 && dn >= 0.5 && up >= 0.5;
+    bool anyAround = l >= 0.5 || r >= 0.5 || dn >= 0.5 || up >= 0.5;
+    if (k >= 2.0) oColor = vec4(col / k * (solidAround ? 1.0 : 0.78), team * 2.0 >= k ? 0.75 : 1.0);
+    else if (anyAround) oColor = vec4(0.05, 0.045, 0.04, 0.6);
+    else oColor = vec4(0.0);
+}
+)";
+// In battle: each soldier a billboard showing the frame of its sheet for its
+// facing (view and mirror chosen here) and deed (frame chosen on the CPU).
+// Per instance: feet, facing (radians), frame, selected. uCellTable holds, per
+// cell (view x 26 + frame), its place in the sheet (px: x, y, w, h; row 0)
+// and the picture's extent about the feet (m: left, bottom, w, h; row 1).
+inline const char* kUnitVs = R"(
+layout(location = 0) in vec3 iPos;
+layout(location = 1) in float iYaw;
+layout(location = 2) in float iFrame;
+layout(location = 3) in float iSelected;
+uniform highp sampler2D uCellTable;
+uniform vec2 uSheetSize;  // px
+uniform vec2 uViewDir;    // horizontal: from the viewer into the scene
+uniform float uLift;      // metres drawn toward the viewer, against the ground
+out vec2 vUv;
+flat out float vSelected;
+flat out float vDot;
+out float vFog;
+flat out float vShade;
+const float kFramesPerView = 26.0, kElevation = 0.52;
+void main() {
+    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    // Which of the eight views: the viewer's bearing seen from the soldier.
+    float toViewer = atan(-uViewDir.y, -uViewDir.x);
+    float d = mod(floor(-(toViewer - iYaw) / 0.7853982 + 0.5), 8.0);
+    bool mirror = d > 4.5;
+    float view = mirror ? 8.0 - d : d;
+    int cell = int(view * kFramesPerView + iFrame + 0.5);
+    vec4 place = texelFetch(uCellTable, ivec2(cell, 0), 0);
+    vec4 extent = texelFetch(uCellTable, ivec2(cell, 1), 0);
+    float dist = distance(uEye, iPos);
+    // Zoomed far out, soldiers are coloured specks (as the old sprites were).
+    float px = uPxScale * dist;
+    vDot = extent.w < px * 7.0 ? 1.0 : 0.0;
+    vec3 world;
+    if (vDot > 0.5) {
+        float size = px * 4.5;
+        world = iPos + uCamRight * ((corner.x - 0.5) * size) + vec3(0.0, 0.0, corner.y * size + size * 0.25);
+    } else {
+        float u = mirror ? -(extent.x + extent.z) + corner.x * extent.z : extent.x + corner.x * extent.z;
+        float v = extent.y + corner.y * extent.w;
+        world = iPos + uCamRight * u + vec3(0.0, 0.0, v / cos(kElevation));
+    }
+    vec2 inCell = vec2(mirror ? 1.0 - corner.x : corner.x, corner.y) * place.zw;
+    vUv = (place.xy + inCell) / uSheetSize;
+    vSelected = iSelected;
+    vFog = fogFactor(dist);
+    vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
+    // Drawn as if a little nearer the viewer, so the part of the picture
+    // below the feet (the ground in front of them) is not lost in the earth;
+    // moving along the line of sight leaves the picture where it is.
+    vec3 toEye = uEye - world;
+    float len = length(toEye);
+    world += toEye * (min(uLift, len * 0.5) / max(len, 1e-3));
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kUnitFs = R"(
+uniform sampler2D uSheet;
+uniform vec3 uTeam;   // the side's colour, for specks
+uniform vec3 uCloth;  // and as its cloth is dyed
+in vec2 vUv;
+flat in float vSelected;
+flat in float vDot;
+in float vFog;
+flat in float vShade;
+out vec4 oColor;
+void main() {
+    vec3 team = uTeam * (vSelected > 0.5 ? 1.35 : 1.0);
+    if (vDot > 0.5) {
+        oColor = vec4(mix(team, kSky, vFog * 0.5), 1.0);
+        return;
+    }
+    vec4 t = texture(uSheet, vUv);
+    if (t.a < 0.5) discard;
+    vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    c *= vShade;
+    if (vSelected > 0.5) c = c * 1.15 + team * 0.12;
+    oColor = vec4(mix(c, kSky, vFog), 1.0);
+}
+)";
+
 // ---------------------------------------------------------------- meshes
 // Instanced lit meshes: scenery and bodies. Per vertex: pos, normal, colour.
 // Per instance: position, rotation quaternion, scale, tint.
