@@ -84,6 +84,8 @@ Topography is strategy. The rules the battle simulation already applies:
 - **Cliffs are walls:** no one walks a face steeper than 45 degrees, and pathfinding routes around them. High mountains are impassable except where a pass or a road is carved through, so passes, fords and bridges are the chokepoints.
 - **The high ground:** a soldier striking down the slope deals up to 35% more damage (about +20% on a 1 in 3 slope) and throws the foe harder; striking up the slope deals up to 25% less. Arrows from a height fly further on their own (the ballistics are real).
 - **Mud:** the trodden margins of rivers and ponds and the churned approaches to fords are mud, at a little over half speed: a ford is slow to cross and slower to climb out of.
+- **Bridges:** stone road bridges on arches carry the roads over rivers (and small ones over every creek a road meets); narrow timber footbridges away from the roads let infantry over in single file. Bridge decks are real ground: soldiers walk on them, arrows land on them, and the pathfinder routes end to end along them.
+- **Coasts and water:** beaches of sand along the sea; surf rolling in over the shallows; waterfalls where creeks drop steeply off the mountains.
 - **Strategic consequences:** hills make the set-piece battles; fortresses on heights and at passes are hard to take; ruins and shrines in the mountains are reached only through the passes (§4.4).
 
 ### 4.2 Unit Identity, Progression & Attrition

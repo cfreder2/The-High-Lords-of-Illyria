@@ -73,8 +73,37 @@ Fixed groundSpeed(Ground g) {
         case Ground::Rock: return r(1, 2);
         case Ground::Bridge: return Fixed::one();
         case Ground::Mud: return r(11, 20);
+        case Ground::Sand: return r(17, 20);
     }
     return Fixed::one();
+}
+
+bool Deck::contains(Fixed x, Fixed y) const {
+    const Fixed dx = x - centre.x, dy = y - centre.y;
+    if (abs(dx) > halfSpan + halfWidth || abs(dy) > halfSpan + halfWidth) return false;
+    return abs(dx * dir.x + dy * dir.y) <= halfSpan && abs(dx * dir.y - dy * dir.x) <= halfWidth;
+}
+
+bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
+    for (const Deck& d : decks_) {
+        if (d.contains(x, y)) {
+            height = d.centre.z;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Region::underWater(Fixed x, Fixed y) const {
+    const int32_t n = terrain_.cells() + 1;
+    const Fixed cs = terrain_.cellSize();
+    const int64_t ix = std::clamp<int64_t>((x / cs).floorToInt(), 0, n - 2), iy = std::clamp<int64_t>((y / cs).floorToInt(), 0, n - 2);
+    Fixed surface = -Fixed::fromInt(100000);
+    for (int64_t k = 0; k < 4; ++k) {
+        const Fixed w = water_[static_cast<size_t>((iy + k / 2) * n + ix + k % 2)];
+        if (w.raw != kDryRaw) surface = max(surface, w);
+    }
+    return terrain_.heightAt(x, y) < surface;
 }
 
 Ground Region::groundAt(Fixed x, Fixed y) const {
@@ -263,6 +292,9 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
             if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
+            bool nearDeck = false;  // keep bridge approaches open
+            for (const Deck& d : decks_) nearDeck = nearDeck || Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth + m(3)}.contains(x, y);
+            if (nearDeck) continue;
             bool nearBuilding = false;
             for (size_t b = 0; b < buildings; ++b) {
                 nearBuilding = nearBuilding || flatDist(x, y, obstacles_[b].pos) < m(8);
@@ -442,6 +474,14 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         }
     }
     rg.ford_ = toLocal(ford);
+    for (const Continent::Crossing& cr : c.crossings()) {
+        if (!cr.bridged()) continue;
+        const Vec3 local = toLocal(cr.pos);
+        const Fixed reach = cr.halfSpan + cr.halfWidth;
+        const Fixed size = cell * cells;
+        if (local.x < -reach || local.y < -reach || local.x > size + reach || local.y > size + reach) continue;
+        rg.decks_.push_back({{local.x, local.y, cr.deck}, cr.dir, cr.halfSpan, cr.halfWidth, cr.kind == Continent::Crossing::Kind::Footbridge});
+    }
     rg.berms_.push_back({{Vec3{rg.ford_.x - m(57), rg.ford_.y - m(72), Fixed::zero()},
                           Vec3{rg.ford_.x - m(50), rg.ford_.y + m(78), Fixed::zero()}}, r(7, 2)});
     for (int32_t iy = 0; iy < n; ++iy) {
@@ -530,9 +570,19 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             }
             const Fixed road = (roadDist[i00] + roadDist[i10] + roadDist[i01] + roadDist[i11]) / 4;
             Ground g;
-            if (wet >= 2 && surface / wet > z) {
-                if (c.onBridge(x, y, road)) g = Ground::Bridge;
-                else g = surface / wet - z < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
+            // Any cell the deck passes through, however narrow the deck.
+            bool decked = false;
+            Fixed deck;
+            for (const Deck& dk : rg.decks_) {
+                if (Deck{dk.centre, dk.dir, dk.halfSpan, dk.halfWidth + cell * 3 / 4}.contains(x - OX, y - OY)) {
+                    decked = true;
+                    deck = dk.centre.z;
+                }
+            }
+            if (decked && deck > z + r(1, 2)) {
+                g = Ground::Bridge;
+            } else if (wet >= 2 && surface / wet > z) {
+                g = surface / wet - z < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
             } else if (slope > r(3, 5) && road >= m(3)) {
                 g = Ground::Rock;
             } else {
@@ -664,6 +714,8 @@ uint64_t Region::checksum() const {
         h.addU64(o.variant);
         h.addU64(o.solid);
     }
+    for (const Deck& d : decks_)
+        for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth}) h.addI64(v.raw);
     return h.value();
 }
 

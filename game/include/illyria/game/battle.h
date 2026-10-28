@@ -67,6 +67,7 @@ struct FarGrid {
     V3 min;                       // local coordinates of sample (0, 0)
     std::vector<float> height;    // ground, or the water surface where wet
     std::vector<uint8_t> ground;  // sim::Ground
+    std::vector<float> depth;     // water depth where wet, else 0
     float heightAt(float x, float y) const;
     bool contains(float x, float y) const {
         return x >= min.x && y >= min.y && x <= min.x + cell * static_cast<float>(nx - 1) && y <= min.y + cell * static_cast<float>(ny - 1);

@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <memory>
 
+#include "illyria/sim/continent.h"
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
 #include "test.h"
@@ -81,4 +83,31 @@ TEST(the_high_ground_wins) {
     }
     std::printf("  high ground duels: upper %d, lower %d\n", upperWins, lowerWins);
     CHECK(upperWins > lowerWins * 2);
+}
+
+TEST(soldiers_cross_a_footbridge_without_wading) {
+    // The Heron Footbridge spans the Aldwater upstream of Oakhaven Ford.
+    const Continent continent(20261027);
+    WorldConfig cfg;
+    cfg.region = std::make_shared<const Region>(Region::fromContinent(continent, continent.crossings().front().pos, 256));
+    CHECK(cfg.region->decks().size() == 1);
+    const Deck& d = cfg.region->decks().front();
+    CHECK(d.foot);
+    const Vec3 west = d.centre - d.dir * (d.halfSpan + m(12)), east = d.centre + d.dir * (d.halfSpan + m(12));
+    World w(cfg);
+    const EntityId id = w.spawnUnit(0, west, d.dir, unitStats(UnitType::LightInfantry));
+    const Command go{0, id, Command::Type::Move, {east.x, east.y, m(0)}};
+    w.step(std::span(&go, 1));
+    bool wet = false, crossed = false, onDeck = false;
+    for (int t = 0; t < 60 * kTicksPerSecond && !crossed; ++t) {
+        w.step({});
+        const Unit* u = w.findUnit(id);
+        const Ground g = cfg.region->groundAt(u->pos.x, u->pos.y);
+        wet = wet || g == Ground::DeepWater || g == Ground::Shallows;
+        onDeck = onDeck || (d.contains(u->pos.x, u->pos.y) && u->pos.z >= d.centre.z - Fixed::fromRatio(1, 10));
+        crossed = (u->pos - east).flat().length() < m(3);
+    }
+    CHECK(crossed);
+    CHECK(onDeck);
+    CHECK(!wet);
 }

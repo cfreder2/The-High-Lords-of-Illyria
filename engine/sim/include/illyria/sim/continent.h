@@ -42,10 +42,17 @@ public:
         Fixed peak;     // metres above the land
     };
     struct Crossing {
-        enum class Kind : uint8_t { Ford, Bridge };
+        // Fords are waded; stone bridges carry roads over rivers and creeks;
+        // footbridges are narrow timber spans, a file of infantry wide.
+        enum class Kind : uint8_t { Ford, Bridge, Footbridge };
         Kind kind;
         std::string name;
         Vec3 pos;
+        // Bridges: the deck runs from pos - dir * halfSpan to pos + dir * halfSpan,
+        // halfWidth either side, its top at height deck.
+        Vec3 dir = {};
+        Fixed halfSpan = {}, halfWidth = {}, deck = {};
+        bool bridged() const { return kind != Kind::Ford; }
     };
     struct Area {  // swamps, forests and lakes: soft-edged ellipses
         std::string name;
@@ -139,7 +146,8 @@ public:
     // Applies rivers, lakes and roads to a landform sample.
     void carve(Sample& s, Fixed x, Fixed y) const;
     bool waterSurfaceOf(const Sample& s, Fixed& surface) const;
-    bool onBridge(Fixed x, Fixed y, Fixed roadDist) const;
+    // True on a bridge deck, with the deck's height.
+    bool onBridge(Fixed x, Fixed y, Fixed& deck) const;
     // Ground type for dry land.
     Ground landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fixed roadDist) const;
 
@@ -156,6 +164,7 @@ private:
     Fixed reliefHeight(Fixed x, Fixed y, Fixed& mountain) const;
     Fixed massifMask(Fixed x, Fixed y, Fixed& peak) const;
     void loadBakedRelief();
+    void placeBridges();
 
     uint64_t seed_;
     std::vector<River> rivers_, streams_;

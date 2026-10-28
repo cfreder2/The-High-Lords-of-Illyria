@@ -215,6 +215,7 @@ bool Renderer::buildPrograms() {
                  {water_, shaders::kWaterVs, shaders::kWaterFs},
                  {far_, shaders::kFarVs, shaders::kFarFs},
                  {ribbon_, shaders::kRibbonVs, shaders::kRibbonFs},
+                 {falls_, shaders::kFallsVs, shaders::kFallsFs},
                  {cover_, shaders::kCoverVs, shaders::kCoverFs},
                  {meshDepth_, shaders::kMeshVs, shaders::kDepthFs},
                  {terrainDepth_, shaders::kTerrainVs, shaders::kDepthFs},
@@ -605,6 +606,7 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             case sim::Ground::Rock: c = {0.48f, 0.46f, 0.43f}; break;
             case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
             case sim::Ground::Mud: c = {0.33f, 0.27f, 0.18f}; break;
+            case sim::Ground::Sand: c = {0.80f, 0.73f, 0.55f}; break;
             default: c = {0.40f, 0.49f, 0.21f}; break;
         }
         if (ground != sim::Ground::DeepWater) {
@@ -637,7 +639,8 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
         }
         const bool wet = ground == sim::Ground::DeepWater || ground == sim::Ground::Shallows;
         verts.insert(verts.end(), {x, y, z, n.x, n.y, n.z, c.x, c.y, c.z, ground == sim::Ground::Forest ? 1.0f : 0.0f,
-                                   ground == sim::Ground::Rock ? 1.0f : 0.0f, ground == sim::Ground::Swamp ? 1.0f : 0.0f, wet ? 1.0f : 0.0f});
+                                   ground == sim::Ground::Rock ? 1.0f : 0.0f, ground == sim::Ground::Swamp ? 1.0f : 0.0f,
+                                   wet ? 1.0f + std::clamp(g.depth[static_cast<size_t>(j) * g.nx + i] / 12.0f, 0.0f, 1.0f) : 0.0f});
     };
     for (int j = 0; j < g.ny; ++j)
         for (int i = 0; i < g.nx; ++i) vertex(i, j, 0);
@@ -717,6 +720,37 @@ void Renderer::uploadContinent(const Battle& battle) {
     // battlefield (drawn with kFarDetail; the coarse land sinks beneath it).
     buildLand(battle, battle.farGrid(), farLand_, false);
     buildLand(battle, battle.nearGrid(), nearLand_, true);
+    {
+        // The sea runs on past the edges of the map, out to the haze.
+        const FarGrid& fg = battle.farGrid();
+        const float x0 = fg.min.x, y0 = fg.min.y, x1 = x0 + fg.cell * static_cast<float>(fg.nx - 1), y1 = y0 + fg.cell * static_cast<float>(fg.ny - 1);
+        const float far = 40000.0f;
+        const float xs[4] = {x0 - far, x0, x1, x1 + far}, ys[4] = {y0 - far, y0, y1, y1 + far};
+        std::vector<float> verts;
+        for (int j = 0; j < 4; ++j)
+            for (int i = 0; i < 4; ++i) verts.insert(verts.end(), {xs[i], ys[j], -0.05f, 0, 0, 1, 0.10f, 0.26f, 0.42f, 0, 0, 0, 2.0f});
+        std::vector<uint32_t> idx;
+        for (int j = 0; j < 3; ++j)
+            for (int i = 0; i < 3; ++i) {
+                if (i == 1 && j == 1) continue;  // the map itself
+                const uint32_t a = static_cast<uint32_t>(j * 4 + i), b = a + 1, cc = a + 4, d = cc + 1;
+                idx.insert(idx.end(), {a, b, d, a, d, cc});
+            }
+        ocean_.count = static_cast<GLsizei>(idx.size());
+        glGenVertexArrays(1, &ocean_.vao);
+        glGenBuffers(1, &ocean_.vbo);
+        glGenBuffers(1, &ocean_.ibo);
+        glBindVertexArray(ocean_.vao);
+        glBindBuffer(GL_ARRAY_BUFFER, ocean_.vbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * 4), verts.data(), GL_STATIC_DRAW);
+        for (int a = 0; a < 4; ++a) {
+            glEnableVertexAttribArray(a);
+            glVertexAttribPointer(a, a == 3 ? 4 : 3, GL_FLOAT, GL_FALSE, 52, reinterpret_cast<const void*>(static_cast<uintptr_t>(a * 12)));
+        }
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ocean_.ibo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(idx.size() * 4), idx.data(), GL_STATIC_DRAW);
+        glBindVertexArray(0);
+    }
     const FarGrid& ng = battle.nearGrid();
     ring_[0] = ng.min.x;
     ring_[1] = ng.min.y;
@@ -757,7 +791,59 @@ void Renderer::uploadContinent(const Battle& battle) {
         }
     }
     uploadDynamic(ribbons_, ribbons);
+    // Waterfalls wherever a creek drops steeply: a sheet down each run of
+    // steep segments and a foam pool at its foot.
+    {
+        std::vector<float> falls;
+        for (const sim::Continent::River& st : cont.streams()) {
+            const size_t n = st.points.size();
+            size_t i = 0;
+            while (i + 1 < n) {
+                const auto steep = [&](size_t k) {
+                    const V3 a = toV3(st.points[k]), b = toV3(st.points[k + 1]);
+                    const float run = std::hypot(b.x - a.x, b.y - a.y);
+                    return run > 0.1f && (a.z - b.z) / run > 0.45f;
+                };
+                if (!steep(i)) {
+                    ++i;
+                    continue;
+                }
+                size_t j = i;
+                while (j + 1 < n && steep(j)) ++j;
+                const float drop = static_cast<float>((st.points[i].z - st.points[j].z).toDouble());
+                if (drop > 3.0f) {
+                    const float hw = std::max(1.2f, static_cast<float>(st.widths[i].toDouble()));
+                    float along = 0;
+                    for (size_t k = i; k < j; ++k) {
+                        const V3 a = toV3(st.points[k]) - V3{o.x, o.y, 0}, b = toV3(st.points[k + 1]) - V3{o.x, o.y, 0};
+                        const float len = (b - a).length();
+                        falls.insert(falls.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 0, along / 4.0f, len / 4.0f});
+                        along += len;
+                    }
+                    const V3 a = toV3(st.points[j - 1]) - V3{o.x, o.y, 0}, b = toV3(st.points[j]) - V3{o.x, o.y, 0};
+                    falls.insert(falls.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 1, 0, 1});
+                }
+                i = j + 1;
+            }
+        }
+        uploadDynamic(waterfalls_, falls);
+    }
     uploadSettlements(battle);
+
+    // Bridges: stone road bridges on arches, timber footbridges on piles.
+    Mesh bridges;
+    for (const sim::Continent::Crossing& cr : cont.crossings()) {
+        if (!cr.bridged()) continue;
+        const V3 c = toV3(cr.pos) - V3{o.x, o.y, 0};
+        meshes::bridge(bridges, c, toV3(cr.dir), static_cast<float>(cr.halfSpan.toDouble()), static_cast<float>(cr.halfWidth.toDouble()),
+                       static_cast<float>(cr.deck.toDouble()), cr.kind == sim::Continent::Crossing::Kind::Footbridge,
+                       [&](float x, float y) { return battle.heightAt(x, y); });
+    }
+    makeMeshBatch(bridges_, bridges, 0);
+    std::vector<float> one;
+    const float identity[4] = {0, 0, 0, 1};
+    pushInstance(one, {0, 0, 0}, identity, {1, 1, 1}, {1, 1, 1});
+    uploadMeshInstances(bridges_, one);
 }
 
 void Renderer::uploadSettlements(const Battle& battle) {
@@ -887,6 +973,7 @@ bool Renderer::init(Battle& battle) {
     makeCoverLayer(cover_layers_[4], meshes::fern(), 4, 5.57f);
     makeBatch(marks_, {3, 4, 4}, Battle::kMaxGroundMarks);
     makeBatch(ribbons_, {3, 3, 2}, 0);
+    makeBatch(waterfalls_, {3, 3, 4}, 0);
     makeBatch(remainArrows_, {3, 3, 2}, Battle::kMaxRemains);
     makeBatch(sceneryShadows_, {3, 4, 4}, 0);
     const auto makeAll = [&](std::vector<MeshBatch>& out, const std::vector<Mesh>& meshes, float sway) {
@@ -1099,7 +1186,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
-    for (MeshBatch* b : {&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_}) casters.push_back(b);
+    for (MeshBatch* b : {&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_}) casters.push_back(b);
     for (MeshBatch& b : copses_) casters.push_back(&b);
     if (features_ & kFarDetail)
         for (MeshBatch& b : nearCopses_) casters.push_back(&b);
@@ -1397,6 +1484,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glUniform1f(far_.patchSink, patchShown ? 6.0f : 0.0f);
     glBindVertexArray(farLand_.vao);
     glDrawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT, nullptr);
+    if (ocean_.count > 0) {
+        glBindVertexArray(ocean_.vao);
+        glDrawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT, nullptr);
+    }
     if (farDetail) {
         glUniform1f(far_.sink, 0.0f);
         glBindVertexArray(nearLand_.vao);
@@ -1411,6 +1502,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         setCommon(ribbon_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(ribbons_.vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
+    }
+    if (waterfalls_.count > 0 && farDetail) {
+        setCommon(falls_, camera, timeSeconds, gameSeconds);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glBindVertexArray(waterfalls_.vao);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
     }
 
     // Decals: blended, no depth writes. Ground marks first, then body parts, then per-frame.
@@ -1429,7 +1530,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_}, camera, timeSeconds, gameSeconds);
+    drawMeshes({&walls_, &towers_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
     if (camera.distance() < 6000.0f) {
         std::vector<MeshBatch*> woods;

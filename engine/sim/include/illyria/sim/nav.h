@@ -30,6 +30,11 @@ private:
 
     int32_t n_ = 0;
     std::vector<int32_t> cost_;  // 0: blocked
+    std::vector<Deck> decks_;    // routes over a bridge go end to end along its deck
+    // Deep water per terrain cell, where a bridge cell is otherwise open.
+    std::vector<uint8_t> deep_;
+    int32_t fine_ = 0;
+    Fixed fineSize_;
 };
 
 }  // namespace illyria::sim

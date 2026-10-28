@@ -1,6 +1,9 @@
 #pragma once
 
+#include <functional>
 #include <vector>
+
+#include "illyria/game/gmath.h"
 
 namespace illyria::game {
 
@@ -53,6 +56,12 @@ Mesh flowers();
 Mesh pebbles();
 Mesh twigs();
 Mesh fern();
+// A whole bridge in world coordinates (drawn with an identity instance): a
+// stone road bridge on arches and piers, or a timber footbridge on piles.
+// The deck runs from centre - dir * halfSpan to centre + dir * halfSpan, its
+// top at deck; ground(x, y) gives the bed and banks below.
+void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, bool foot,
+            const std::function<float(float, float)>& ground);
 }  // namespace meshes
 
 }  // namespace illyria::game

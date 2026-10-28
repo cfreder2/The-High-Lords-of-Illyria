@@ -12,7 +12,7 @@ class Continent;
 
 // What the ground is made of, after Warlords' terrain types. Decides movement
 // speed and where things can stand.
-enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud };
+enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud, Sand };
 
 // A static object in the world: scenery that blocks movement and stops
 // missiles (docs/GAME_DESIGN.md §5.4, tier B).
@@ -30,6 +30,15 @@ struct Obstacle {
 struct Polyline {
     std::vector<Vec3> points;  // z unused
     Fixed halfWidth;
+};
+
+// A bridge deck: a flat walkway from centre - dir * halfSpan to centre + dir *
+// halfSpan, halfWidth either side, its top at centre.z.
+struct Deck {
+    Vec3 centre, dir;
+    Fixed halfSpan, halfWidth;
+    bool foot = false;  // a narrow timber footbridge, not a stone road bridge
+    bool contains(Fixed x, Fixed y) const;
 };
 
 // A generated tactical region: terrain, water, ground types, roads and
@@ -58,6 +67,11 @@ public:
     const std::vector<Polyline>& roads() const { return roads_; }
     const std::vector<Polyline>& rivers() const { return rivers_; }
     const std::vector<Polyline>& berms() const { return berms_; }
+    const std::vector<Deck>& decks() const { return decks_; }
+    // True on a bridge deck, with the deck's height.
+    bool deckAt(Fixed x, Fixed y, Fixed& height) const;
+    // True where the ground at this exact point lies under water.
+    bool underWater(Fixed x, Fixed y) const;
     // Ponds: (x, y) centre, z = radius.
     const std::vector<Vec3>& ponds() const { return ponds_; }
     // Where armies are meant to meet: the ford.
@@ -76,6 +90,7 @@ private:
     std::vector<Obstacle> obstacles_;
     std::vector<Polyline> roads_, rivers_, berms_;
     std::vector<Vec3> ponds_;
+    std::vector<Deck> decks_;
     Vec3 ford_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample

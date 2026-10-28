@@ -80,7 +80,7 @@ private:
     void uploadSettlements(const Battle& battle);
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
-    Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, cover_, meshDepth_, terrainDepth_;
+    Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
     // A ground-cover mesh drawn on a camera-following grid (see kCoverVs).
     struct CoverLayer {
         GLuint vao = 0, vbo = 0;
@@ -100,6 +100,7 @@ private:
         GLsizei count = 0;
     };
     LandMesh farLand_, nearLand_;
+    LandMesh ocean_;  // open sea beyond the edges of the map
     // Close up anywhere off the battlefield: the land every 8 m around where
     // the camera looks, sampled a few rows a frame (the coarse land sinks beneath it).
     LandMesh patchLand_;
@@ -116,7 +117,7 @@ private:
     int cells_ = 0;
     float cellSize_ = 1;
 
-    Batch ribbons_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
+    Batch ribbons_, waterfalls_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
     MeshBatch houses_, pillars_, capsules_, spheres_;
     // Several shapes per kind of scenery (meshes::pineVariants() and so on).
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
@@ -125,6 +126,7 @@ private:
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch logs_;
+    MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant
     uint64_t marksUploaded_ = 0;
 

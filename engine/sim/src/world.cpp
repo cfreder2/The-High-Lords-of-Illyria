@@ -180,7 +180,11 @@ Unit* World::mutableUnit(EntityId id) {
 }
 
 Fixed World::groundHeight(Fixed x, Fixed y) const {
-    return config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
+    const Fixed ground = config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
+    // On a bridge, the deck is the ground.
+    Fixed deck;
+    if (config_.region && !config_.region->decks().empty() && config_.region->deckAt(x, y, deck)) return max(ground, deck);
+    return ground;
 }
 
 Ground World::groundAt(Fixed x, Fixed y) const {
@@ -287,7 +291,13 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     // Deep water and cliffs stop walkers: slide along if one axis is clear.
     const Fixed here = groundHeight(u.pos.x, u.pos.y);
     const auto barred = [&](Fixed x, Fixed y) {
-        if (groundAt(x, y) == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
+        const Ground g = groundAt(x, y);
+        if (g == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
+        // Over the water beside a narrow deck: off the edge is the river.
+        Fixed deck;
+        if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
+        // Onto or along a deck is never a cliff, whatever lies below its edges.
+        if (g == Ground::Bridge || (config_.region && config_.region->deckAt(x, y, deck))) return false;
         const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
         return run > Fixed::zero() && abs(groundHeight(x, y) - here) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
     };

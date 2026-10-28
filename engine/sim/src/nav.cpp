@@ -21,28 +21,40 @@ int32_t groundCost(Ground g) {
         case Ground::DeepWater: return 0;
         case Ground::Bridge: return 9;
         case Ground::Mud: return 18;
+        case Ground::Sand: return 12;
     }
     return 10;
 }
 
 }  // namespace
 
-NavGrid::NavGrid(const Region& region) {
+NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
     const Terrain& t = region.terrain();
     const int32_t sub = static_cast<int32_t>(kCellSize / t.cellSize().floorToInt());
     n_ = t.cells() / sub;
+    fine_ = t.cells();
+    fineSize_ = t.cellSize();
+    deep_.resize(static_cast<size_t>(fine_) * fine_);
+    for (int32_t y = 0; y < fine_; ++y)
+        for (int32_t x = 0; x < fine_; ++x) deep_[static_cast<size_t>(y) * fine_ + x] = region.cellGround(x, y) == Ground::DeepWater;
     cost_.assign(static_cast<size_t>(n_) * n_, 0);
     for (int32_t y = 0; y < n_; ++y) {
         for (int32_t x = 0; x < n_; ++x) {
             // Deep water anywhere in the cell blocks it; otherwise the worst ground decides.
+            // A bridge through the cell carries the way over, however narrow.
             int32_t c = 0;
-            bool water = false;
+            bool water = false, bridge = false;
             for (int32_t sy = 0; sy < sub; ++sy) {
                 for (int32_t sx = 0; sx < sub; ++sx) {
                     const Ground g = region.cellGround(x * sub + sx, y * sub + sy);
                     water = water || g == Ground::DeepWater;
-                    c = std::max(c, groundCost(g));
+                    bridge = bridge || g == Ground::Bridge;
+                    if (g != Ground::DeepWater) c = std::max(c, groundCost(g));
                 }
+            }
+            if (bridge) {
+                water = false;
+                c = groundCost(Ground::Bridge);
             }
             // Climbing costs; a face too steep to walk (a cliff) is a wall.
             const Fixed step = t.cellSize() * sub;
@@ -50,8 +62,10 @@ NavGrid::NavGrid(const Region& region) {
             const Fixed h00 = t.heightAt(p0.x, p0.y), h10 = t.heightAt(p0.x + step, p0.y);
             const Fixed h01 = t.heightAt(p0.x, p0.y + step), h11 = t.heightAt(p0.x + step, p0.y + step);
             const Fixed slope = max(max(abs(h10 - h00), abs(h11 - h01)), max(abs(h01 - h00), abs(h11 - h10))) / step;
-            if (slope > Fixed::one()) water = true;
-            c += static_cast<int32_t>((slope * 30).floorToInt());
+            if (!bridge) {
+                if (slope > Fixed::one()) water = true;
+                c += static_cast<int32_t>((slope * 30).floorToInt());
+            }
             cost_[index(x, y)] = water ? 0 : c;
         }
     }
@@ -73,10 +87,18 @@ bool NavGrid::blocked(const Vec3& p) const { return cost_[index(cellOf(p.x), cel
 bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
     const Vec3 d = (to - from).flat();
     const Fixed len = d.length();
-    const int64_t steps = (len / 4).floorToInt() + 1;
+    const int64_t steps = (len / 2).floorToInt() + 1;
     for (int64_t i = 0; i <= steps; ++i) {
         const Vec3 p = from + d * Fixed::fromRatio(i, steps);
         if (blocked(p)) return false;
+        if (decks_.empty()) continue;
+        // Over deep water only on a deck.
+        const int64_t fx = std::clamp<int64_t>((p.x / fineSize_).floorToInt(), 0, fine_ - 1);
+        const int64_t fy = std::clamp<int64_t>((p.y / fineSize_).floorToInt(), 0, fine_ - 1);
+        if (!deep_[static_cast<size_t>(fy * fine_ + fx)]) continue;
+        bool onDeck = false;
+        for (const Deck& k : decks_) onDeck = onDeck || k.contains(p.x, p.y);
+        if (!onDeck) return false;
     }
     return true;
 }
@@ -151,12 +173,45 @@ bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out)
     if (!cells.empty()) cells.back() = to;
     else cells.push_back(to);
 
-    // String-pull: from each point, skip ahead to the farthest waypoint in clear sight.
+    // Over a bridge, walk its deck from end to end: those two points must stay.
+    std::vector<bool> pinned(cells.size(), false);
+    for (const Deck& d : decks_) {
+        size_t first = cells.size(), last = 0;
+        for (size_t k = 0; k + 1 < cells.size(); ++k) {
+            if (!Deck{d.centre, d.dir, d.halfSpan + Fixed::fromInt(kCellSize), d.halfWidth + Fixed::fromInt(kCellSize)}.contains(cells[k].x, cells[k].y)) continue;
+            first = std::min(first, k);
+            last = k;
+        }
+        if (first > last) continue;
+        const Vec3 a = d.centre + d.dir * d.halfSpan, b = d.centre - d.dir * d.halfSpan;
+        const Vec3 before = first > 0 ? cells[first - 1] : from;
+        const bool aFirst = (a - before).flat().lengthSq() < (b - before).flat().lengthSq();
+        std::vector<Vec3> rest(cells.begin() + static_cast<long>(last) + 1, cells.end());
+        std::vector<bool> restPinned(pinned.begin() + static_cast<long>(last) + 1, pinned.end());
+        cells.resize(first);
+        pinned.resize(first);
+        cells.push_back({aFirst ? a.x : b.x, aFirst ? a.y : b.y, Fixed::zero()});
+        cells.push_back({aFirst ? b.x : a.x, aFirst ? b.y : a.y, Fixed::zero()});
+        pinned.push_back(true);
+        pinned.push_back(true);
+        cells.insert(cells.end(), rest.begin(), rest.end());
+        pinned.insert(pinned.end(), restPinned.begin(), restPinned.end());
+    }
+
+    // String-pull: from each point, skip ahead to the farthest waypoint in
+    // clear sight, but never past a pinned one.
     Vec3 at = from;
     size_t i = 0;
     while (i < cells.size()) {
+        size_t limit = cells.size();
+        for (size_t k = i; k < cells.size(); ++k) {
+            if (pinned[k]) {
+                limit = k + 1;
+                break;
+            }
+        }
         size_t far = i;
-        for (size_t j = cells.size(); j-- > i + 1;) {
+        for (size_t j = limit; j-- > i + 1;) {
             if (clearLine(at, cells[j])) {
                 far = j;
                 break;

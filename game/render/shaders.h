@@ -137,6 +137,7 @@ uniform sampler2D uRoad;    // RG8, linear: R = 0.5 + lateral offset / 16 m, G =
 
 // Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud.
 vec3 groundColor(int id, float broad, float fine) {
+    if (id == 9) return vec3(0.80, 0.73, 0.55) * (0.9 + 0.2 * fine);
     if (id == 8) return mix(vec3(0.27, 0.21, 0.14), vec3(0.36, 0.29, 0.19), broad) * (0.85 + 0.3 * fine);
     vec3 grass = mix(vec3(0.30, 0.42, 0.17), vec3(0.42, 0.50, 0.22), broad) * (0.9 + 0.2 * fine);
     if (id == 1) return vec3(0.46, 0.38, 0.26) * (0.85 + 0.3 * fine);
@@ -1143,7 +1144,7 @@ void main() {
         float forest = smoothstep(0.4, 0.6, vKinds.x + edge);
         float rock = smoothstep(0.35, 0.65, vKinds.y + edge * 0.8);
         float swamp = smoothstep(0.4, 0.6, vKinds.z + edge);
-        float water = vKinds.w;
+        float water = min(vKinds.w, 1.0);
         float slope = 1.0 - n.z;
         // Meadows: lush and dry patches, as on the battlefield.
         float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
@@ -1179,9 +1180,35 @@ void main() {
         albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
         albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
     }
+    // Open water: coloured by depth, with swells, chop, surf and glints.
+    float glint = 0.0;
+    if (feature(kFeatFarDetail) && vKinds.w > 0.5) {
+        float depth = clamp(vKinds.w - 1.0, 0.0, 1.0);  // 1 = 12 m or more
+        float t = uTime;
+        albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
+        vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.09 - t * 1.1) * 0.10;
+        g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
+        g += (vec2(noise2(p / 6.0 + t * 0.35), noise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
+        n = normalize(vec3(-g, 1.0));
+        if (vWorld.z < 0.8) {
+            // The sea: lines of foam roll in over the shallows and break on the sand.
+            float shore = 1.0 - smoothstep(0.0, 0.3, depth);
+            float roll = sin(depth * 55.0 + t * 1.7 + noise2(p / 45.0) * 7.0);
+            float foam = smoothstep(0.55, 0.95, roll) * shore * (0.55 + 0.45 * noise2(p / 3.0 + t * 0.4));
+            foam = max(foam, (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * noise2(p / 2.0 + t * 0.8)));
+            albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
+            glint = 1.0 - foam;
+        } else {
+            glint = 0.6;
+        }
+    }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
     float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
     vec3 c = albedo * light;
+    if (glint > 0.0) {
+        vec3 h = normalize(kSun + normalize(uEye - vWorld));
+        c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
+    }
     // The strategic hex grid of the campaign map, at continent scale.
     float gridFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
     if (gridFade > 0.0) {
@@ -1226,6 +1253,67 @@ out vec4 oColor;
 void main() {
     vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
+}
+)";
+
+// Waterfalls: a sheet of white water down each steep drop of a creek, and a
+// churned pool at its foot. Per instance: a (top), b (bottom), info (half
+// width, kind: 0 sheet 1 pool, run start, run length along the falls).
+inline const char* kFallsVs = R"(
+layout(location = 0) in vec3 iA;
+layout(location = 1) in vec3 iB;
+layout(location = 2) in vec4 iInfo;
+out vec2 vUv;
+flat out float vKind;
+out float vFog;
+void main() {
+    vec3 mid = (iA + iB) * 0.5;
+    float dist = distance(uEye, mid);
+    if (dist > 2500.0) { gl_Position = kCulled; return; }
+    float t = float(gl_VertexID & 1);
+    float s = float((gl_VertexID >> 1) & 1) * 2.0 - 1.0;
+    vec3 d = iB - iA;
+    vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0));
+    vec3 world;
+    if (iInfo.y < 0.5) {
+        world = mix(iA, iB, t) + side * s * iInfo.x * (1.0 + 0.25 * t);
+        world.z += 0.35;
+        vUv = vec2(s * 0.5 + 0.5, iInfo.z + t * iInfo.w);
+    } else {
+        // The pool: a flat patch of foam around the foot.
+        vec3 f = normalize(vec3(d.xy, 0.0) + vec3(1e-5, 0.0, 0.0));
+        world = iB + side * s * iInfo.x * 2.2 + f * (t * 2.0 - 1.0) * iInfo.x * 2.2;
+        world.z += 0.15;
+        vUv = vec2(s * 0.5 + 0.5, t);
+    }
+    vKind = iInfo.y;
+    vFog = fogFactor(dist);
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kFallsFs = R"(
+in vec2 vUv;
+flat in float vKind;
+in float vFog;
+out vec4 oColor;
+void main() {
+    float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+    float a;
+    vec3 c;
+    if (vKind < 0.5) {
+        // Streaks pour down the sheet; it thins to spray at the edges.
+        float streak = noise2(vec2(vUv.x * 9.0, vUv.y * 0.6 - uTime * 2.6)) * 0.6 + noise2(vec2(vUv.x * 23.0, vUv.y * 1.7 - uTime * 4.1)) * 0.4;
+        c = mix(vec3(0.55, 0.68, 0.74), vec3(0.95, 0.97, 0.98), smoothstep(0.35, 0.75, streak));
+        a = edge * (0.55 + 0.4 * streak);
+    } else {
+        vec2 q = vUv * 2.0 - 1.0;
+        float r = length(q);
+        float churn = noise2(q * 5.0 + uTime * 0.9) * 0.6 + noise2(q * 11.0 - uTime * 1.4) * 0.4;
+        c = vec3(0.92, 0.95, 0.96);
+        a = (1.0 - smoothstep(0.4, 1.0, r)) * smoothstep(0.3, 0.7, churn) * 0.8;
+    }
+    float light = 0.55 + 0.45 * max(kSun.z, 0.0);
+    oColor = vec4(mix(c * light, kSky, vFog * 0.6) * a, a);
 }
 )";
 

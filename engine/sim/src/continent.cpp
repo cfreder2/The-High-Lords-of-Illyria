@@ -163,6 +163,11 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     crossings_.push_back({Crossing::Kind::Bridge, "Old Bridge", N(160, 462)});
     crossings_.push_back({Crossing::Kind::Bridge, "Southbridge", N(566, 140)});
     crossings_.push_back({Crossing::Kind::Bridge, "Greymere Bridge", N(210, 705)});
+    // Footbridges: narrow timber spans away from the roads, a way over for
+    // infantry that no cart or column can use quickly.
+    crossings_.push_back({Crossing::Kind::Footbridge, "Heron Footbridge", N(583, 702)});
+    crossings_.push_back({Crossing::Kind::Footbridge, "Millrace Footbridge", N(568, 300)});
+    crossings_.push_back({Crossing::Kind::Footbridge, "Hangman's Span", N(240, 451)});
 
     // Roads join the realms through the crossings and passes.
     const Fixed roadHalf = m(3);
@@ -189,8 +194,100 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
         Fixed mountain;
         lakeSurfaces_.push_back(reliefHeight(lake.centre.x, lake.centre.y, mountain) - m(3));
     }
+    placeBridges();
     placeCities();
     placeSites();
+}
+
+namespace {
+Vec3 unitFlat(const Vec3& v) {
+    const Fixed len = v.flat().length();
+    return len > Fixed::zero() ? v.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+}
+}  // namespace
+
+void Continent::placeBridges() {
+    // Where roads cross creeks: small stone bridges, one per crossing.
+    for (const Polyline& road : roads_) {
+        for (size_t i = 0; i + 1 < road.points.size(); ++i) {
+            const Vec3 a = road.points[i], b = road.points[i + 1];
+            const Fixed minX = min(a.x, b.x), maxX = max(a.x, b.x), minY = min(a.y, b.y), maxY = max(a.y, b.y);
+            for (const River& st : streams_) {
+                for (size_t bi = 0; bi < st.boxes.size(); ++bi) {
+                    const River::Box& box = st.boxes[bi];
+                    if (box.maxX < minX || box.minX > maxX || box.maxY < minY || box.minY > maxY) continue;
+                    const size_t end = std::min(st.points.size() - 1, (bi + 1) * River::kSpan);
+                    for (size_t k = bi * River::kSpan; k < end; ++k) {
+                        const Vec3 p = st.points[k], q = st.points[k + 1];
+                        // Segment intersection, in road (t) and stream (u) parameters.
+                        const Fixed rx = b.x - a.x, ry = b.y - a.y, sx = q.x - p.x, sy = q.y - p.y;
+                        const Fixed den = rx * sy - ry * sx;
+                        if (abs(den) < r(1, 100)) continue;
+                        const Fixed t = ((p.x - a.x) * sy - (p.y - a.y) * sx) / den;
+                        const Fixed u = ((p.x - a.x) * ry - (p.y - a.y) * rx) / den;
+                        if (t < Fixed::zero() || t > Fixed::one() || u < Fixed::zero() || u > Fixed::one()) continue;
+                        Crossing cr{Crossing::Kind::Bridge, "", {a.x + rx * t, a.y + ry * t, Fixed::zero()}};
+                        cr.halfWidth = m(5) / 2;
+                        cr.halfSpan = st.widths[k] + m(9);
+                        crossings_.push_back(cr);
+                    }
+                }
+            }
+        }
+    }
+    for (Crossing& cr : crossings_) {
+        if (!cr.bridged()) continue;
+        const bool foot = cr.kind == Crossing::Kind::Footbridge;
+        // Along the road it carries, or straight across the river it spans.
+        size_t seg = 0;
+        Fixed t, best = m(1000000);
+        for (const Polyline& road : roads_) {
+            const Fixed d = polylineDist(road.points, cr.pos.x, cr.pos.y, m(30), seg, t);
+            if (!foot && d < best) {
+                best = d;
+                cr.dir = unitFlat((road.points[seg + 1] - road.points[seg]).flat());
+            }
+        }
+        if (foot || best > m(29)) {
+            Fixed nearest = m(400);
+            const Vec3 wanted = cr.pos;
+            for (const River& rv : rivers_) {
+                const Fixed d = riverDist(rv, wanted.x, wanted.y, m(400), seg, t);
+                if (d >= nearest) continue;
+                nearest = d;
+                const Vec3 along = unitFlat((rv.points[seg + 1] - rv.points[seg]).flat());
+                cr.pos = rv.points[seg] + (rv.points[seg + 1] - rv.points[seg]) * t;
+                cr.dir = {-along.y, along.x, Fixed::zero()};
+            }
+        }
+        cr.pos.z = Fixed::zero();
+        if (cr.halfWidth == Fixed::zero()) cr.halfWidth = foot ? r(9, 10) : m(4);
+        // Span the water to dry banks on both sides.
+        Fixed surface = -m(1000), reach[2] = {m(6), m(6)}, bank = -m(1000);
+        {
+            Fixed s0;
+            if (waterSurfaceOf(sample(cr.pos.x, cr.pos.y), s0)) surface = s0;
+        }
+        for (int side = 0; side < 2; ++side) {
+            const Vec3 d = side ? -cr.dir : cr.dir;
+            for (int64_t k = 2; k <= 90; k += 2) {
+                const Vec3 p = cr.pos + d * m(k);
+                const Sample s = sample(p.x, p.y);
+                Fixed sf;
+                if (waterSurfaceOf(s, sf)) {
+                    surface = max(surface, sf);
+                    continue;
+                }
+                if (s.height < surface + r(1, 2)) continue;
+                reach[side] = m(k + 4);
+                bank = max(bank, s.height);
+                break;
+            }
+        }
+        cr.halfSpan = max(cr.halfSpan, max(reach[0], reach[1]));
+        cr.deck = max(bank, surface + (foot ? r(3, 2) : m(3)));
+        if (surface < -m(999)) cr.deck = max(bank, heightAt(cr.pos.x, cr.pos.y) + Fixed::one());
+    }
 }
 
 Fixed Continent::landDistance(Fixed x, Fixed y) const {
@@ -569,12 +666,16 @@ bool Continent::waterSurfaceOf(const Sample& s, Fixed& surface) const {
     return false;
 }
 
-bool Continent::onBridge(Fixed x, Fixed y, Fixed roadDist) const {
-    if (roadDist > m(4)) return false;
+bool Continent::onBridge(Fixed x, Fixed y, Fixed& deck) const {
     for (const Crossing& c : crossings_) {
-        if (c.kind != Crossing::Kind::Bridge) continue;
+        if (!c.bridged()) continue;
         const Fixed dx = x - c.pos.x, dy = y - c.pos.y;
-        if (dx * dx + dy * dy < m(40) * m(40)) return true;
+        if (abs(dx) > c.halfSpan + c.halfWidth || abs(dy) > c.halfSpan + c.halfWidth) continue;
+        const Fixed along = dx * c.dir.x + dy * c.dir.y, across = dx * c.dir.y - dy * c.dir.x;
+        if (abs(along) <= c.halfSpan && abs(across) <= c.halfWidth) {
+            deck = c.deck;
+            return true;
+        }
     }
     return false;
 }
@@ -586,6 +687,12 @@ Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fix
         if (dx < c.radius && dy < c.radius && dx * dx + dy * dy < c.radius * c.radius) return Ground::Plains;
     }
     if ((mountain > m(70) && height > m(70)) || height > m(180)) return Ground::Rock;
+    // Beaches: low ground along the sea is sand, wider where the shore is flat.
+    if (height < m(5)) {
+        const uint64_t sb = noise::nextSeed(seed_ ^ 0xBEAC);
+        const Fixed reach = m(50) + noise::fbm(sb, x, y, 400) * 120 - height * 12;
+        if (landDistance(x, y) < reach) return Ground::Sand;
+    }
     for (const Area& a : swamps_) {
         const uint64_t sw = noise::nextSeed(seed_ ^ 0x5A4);
         if (ellipse(a, x, y) + (noise::fbm(sw, x, y, 300) - r(1, 2)) / 2 < Fixed::one()) return Ground::Swamp;
@@ -608,7 +715,8 @@ Ground Continent::groundAt(Fixed x, Fixed y) const {
     const Sample s = sample(x, y);
     Fixed surface;
     if (waterSurfaceOf(s, surface)) {
-        if (onBridge(x, y, s.roadDist)) return Ground::Bridge;
+        Fixed deck;
+        if (onBridge(x, y, deck)) return Ground::Bridge;
         return surface - s.height < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
     }
     return landGround(x, y, s.height, s.mountain, s.roadDist);
@@ -824,6 +932,10 @@ uint64_t Continent::checksum() const {
     }
     for (const River& rv : rivers_)
         for (const Vec3& p : rv.points) h.addI64(p.z.raw);
+    for (const Crossing& cr : crossings_) {
+        h.addU64(static_cast<uint64_t>(cr.kind));
+        for (Fixed v : {cr.pos.x, cr.pos.y, cr.dir.x, cr.dir.y, cr.halfSpan, cr.halfWidth, cr.deck}) h.addI64(v.raw);
+    }
     h.addU64(streams_.size());
     for (const River& st : streams_)
         for (const Vec3& p : st.points) {

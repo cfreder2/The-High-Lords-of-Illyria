@@ -157,6 +157,7 @@ void FarGrid::reset(V3 localMin, int nxIn, int nyIn, float cellIn) {
     min = localMin;
     height.assign(static_cast<size_t>(nx) * ny, 0.0f);
     ground.assign(height.size(), 0);
+    depth.assign(height.size(), 0.0f);
 }
 
 void FarGrid::fillRows(const sim::Continent& c, const V3& origin, int j0, int j1) {
@@ -171,6 +172,7 @@ void FarGrid::fillRows(const sim::Continent& c, const V3& origin, int j0, int j1
             if (c.waterSurfaceOf(smp, surface)) {
                 height[k] = static_cast<float>(surface.toDouble());
                 ground[k] = static_cast<uint8_t>(sim::Ground::DeepWater);
+                depth[k] = static_cast<float>((surface - smp.height).toDouble());
             } else {
                 height[k] = static_cast<float>(smp.height.toDouble());
                 ground[k] = static_cast<uint8_t>(c.landGround(x, y, smp.height, smp.mountain, smp.roadDist));

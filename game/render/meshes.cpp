@@ -576,4 +576,111 @@ Mesh fern() {
 
 }  // namespace meshes
 
+namespace meshes {
+
+void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, bool foot,
+            const std::function<float(float, float)>& ground) {
+    Builder b;
+    const V3 u = V3{dir.x, dir.y, 0}.normalized(), v{-u.y, u.x, 0};
+    // Local frame: s along the span, t across it, z up.
+    const auto at = [&](float s, float t, float z) { return V3{centre.x + u.x * s + v.x * t, centre.y + u.y * s + v.y * t, z}; };
+    const auto bed = [&](float s, float t) { const V3 p = at(s, t, 0); return ground(p.x, p.y); };
+    // An oriented box in the local frame.
+    const auto block = [&](float s0, float s1, float t0, float t1, float z0, float z1, V3 col) {
+        const V3 c[8] = {at(s0, t0, z0), at(s1, t0, z0), at(s1, t1, z0), at(s0, t1, z0),
+                         at(s0, t0, z1), at(s1, t0, z1), at(s1, t1, z1), at(s0, t1, z1)};
+        b.quad(c[0], c[1], c[5], c[4], col * 0.92f);
+        b.quad(c[1], c[2], c[6], c[5], col * 0.85f);
+        b.quad(c[2], c[3], c[7], c[6], col * 0.92f);
+        b.quad(c[3], c[0], c[4], c[7], col * 0.85f);
+        b.quad(c[4], c[5], c[6], c[7], col * 1.05f);
+    };
+    if (foot) {
+        const V3 plank{0.46f, 0.34f, 0.22f}, post{0.36f, 0.26f, 0.17f};
+        const float W = halfWidth;
+        // Planks laid across, a little uneven.
+        int k = 0;
+        for (float s = -halfSpan; s < halfSpan; s += 0.35f, ++k)
+            block(s, s + 0.32f, -W, W, deck - 0.12f, deck - (k % 3 == 1 ? 0.02f : 0.0f), plank * (k % 4 == 0 ? 0.88f : 1.0f));
+        // Stringers under the planks, piles down to the bed, and hand rails.
+        block(-halfSpan, halfSpan, -W, -W + 0.18f, deck - 0.4f, deck - 0.12f, post);
+        block(-halfSpan, halfSpan, W - 0.18f, W, deck - 0.4f, deck - 0.12f, post);
+        for (float s = -halfSpan; s <= halfSpan + 0.01f; s += 4.0f) {
+            for (float t : {-W, W - 0.16f}) {
+                const float floor = std::min(bed(s, t), deck - 0.4f) - 0.5f;
+                block(s - 0.08f, s + 0.08f, t, t + 0.16f, floor, deck + 1.0f, post);
+            }
+        }
+        for (float t : {-W, W - 0.1f}) {
+            block(-halfSpan, halfSpan, t, t + 0.1f, deck + 0.9f, deck + 1.0f, post * 1.1f);
+            block(-halfSpan, halfSpan, t, t + 0.06f, deck + 0.45f, deck + 0.5f, post);
+        }
+        out.data.insert(out.data.end(), b.mesh.data.begin(), b.mesh.data.end());
+        return;
+    }
+    // Stone: arches between piers, spandrel walls up to the parapets.
+    const V3 stone{0.58f, 0.55f, 0.50f}, dark{0.46f, 0.44f, 0.40f}, coping{0.66f, 0.63f, 0.58f};
+    const float W = halfWidth, thick = 0.9f, parapet = 1.05f;
+    const int bays = std::max(1, static_cast<int>(std::round(halfSpan * 2 / 11.0f)));
+    const float pier = 1.8f, bay = (halfSpan * 2 - pier * (bays - 1)) / bays;
+    // Where the soffit is at s: the intrados of an arch, or the ground under a pier.
+    const auto soffit = [&](float s) {
+        float x = s + halfSpan;
+        for (int i = 0; i < bays; ++i) {
+            if (x <= bay) {
+                const float half = bay / 2, c = x - half;
+                const float low = std::min(bed(s, 0), deck - thick - 0.5f);
+                const float rise = std::min(half, deck - thick - low);
+                const float spring = deck - thick - rise;
+                return spring + rise * std::sqrt(std::max(0.0f, 1 - (c / half) * (c / half)));
+            }
+            x -= bay;
+            if (x <= pier) return std::min(bed(s, 0), deck - thick) - 1.0f;
+            x -= pier;
+        }
+        return deck - thick;
+    };
+    const float step = 0.6f;
+    for (float s = -halfSpan; s < halfSpan - 1e-3f; s += step) {
+        const float s1 = std::min(halfSpan, s + step);
+        const float z0 = soffit(s), z1 = soffit(s1);
+        // Faces either side, from the soffit to the parapet top.
+        b.quad(at(s, -W, z0), at(s1, -W, z1), at(s1, -W, deck + parapet), at(s, -W, deck + parapet), stone * 0.9f);
+        b.quad(at(s1, W, z1), at(s, W, z0), at(s, W, deck + parapet), at(s1, W, deck + parapet), stone * 0.9f);
+        // The underside of the arch.
+        b.quad(at(s1, -W, z1), at(s, -W, z0), at(s, W, z0), at(s1, W, z1), dark);
+    }
+    // Deck, parapets (inner faces and coping) and abutment ends into the banks.
+    block(-halfSpan - 3, halfSpan + 3, -W + 0.45f, W - 0.45f, deck - 0.2f, deck, V3{0.50f, 0.45f, 0.36f});
+    for (float t : {-W, W - 0.45f}) {
+        block(-halfSpan - 3, halfSpan + 3, t, t + 0.45f, deck - 0.2f, deck + parapet, stone);
+        block(-halfSpan - 3.1f, halfSpan + 3.1f, t - 0.05f, t + 0.5f, deck + parapet, deck + parapet + 0.14f, coping);
+    }
+    for (float sgn : {-1.0f, 1.0f}) {
+        const float s0 = sgn < 0 ? -halfSpan - 3 : halfSpan, s1 = sgn < 0 ? -halfSpan : halfSpan + 3;
+        block(s0, s1, -W, W, std::min(bed(s0, 0), bed(s1, 0)) - 1.0f, deck - 0.2f, stone * 0.95f);
+    }
+    // Cutwaters on the piers, pointing upstream and down.
+    float x = -halfSpan + bay;
+    for (int i = 1; i < bays; ++i, x += bay + pier) {
+        const float low = std::min(bed(x + pier / 2, 0), deck - thick) - 1.0f, top = deck - thick - 0.6f;
+        for (float sgn : {-1.0f, 1.0f}) {
+            const V3 tip = at(x + pier / 2, sgn * (W + 1.4f), low), tipTop = at(x + pier / 2, sgn * (W + 1.4f), top);
+            const V3 a0 = at(x, sgn * W, low), a1 = at(x, sgn * W, top), b0 = at(x + pier, sgn * W, low), b1 = at(x + pier, sgn * W, top);
+            if (sgn > 0) {
+                b.quad(a0, tip, tipTop, a1, dark);
+                b.quad(tip, b0, b1, tipTop, dark * 0.9f);
+                b.tri(a1, tipTop, b1, coping);
+            } else {
+                b.quad(tip, a0, a1, tipTop, dark);
+                b.quad(b0, tip, tipTop, b1, dark * 0.9f);
+                b.tri(tipTop, a1, b1, coping);
+            }
+        }
+    }
+    out.data.insert(out.data.end(), b.mesh.data.begin(), b.mesh.data.end());
+}
+
+}  // namespace meshes
+
 }  // namespace illyria::game
