@@ -24,6 +24,10 @@
 
 using namespace illyria::game;
 
+namespace illyria::game {
+void fetchPrerenderedSheets(Renderer& renderer);  // sheets.cpp
+}
+
 namespace {
 
 constexpr uint64_t kBattleSeed = 20261027;
@@ -1001,6 +1005,7 @@ int main() {
         EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("Graphics initialisation failed."); });
         return 1;
     }
+    fetchPrerenderedSheets(app->renderer);
     startIntro();
     EM_ASM({ if (window.illyriaReady) window.illyriaReady(); });
     emscripten_set_main_loop(frame, 0, false);

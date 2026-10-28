@@ -1217,6 +1217,9 @@ void Renderer::bakeMissing(const Battle& battle) {
         const auto t = static_cast<UnitType>(u.stats.type);
         if (!sheets_[static_cast<int>(t)].tex && std::find(need.begin(), need.end(), t) == need.end()) need.push_back(t);
     }
+    // Ask for the pre-rendered sheets too; the bake stands in until they come.
+    for (UnitType t : need)
+        if (sheetRequest_ && sheetsRequested_.insert(static_cast<int>(t)).second) sheetRequest_(static_cast<int>(t));
     if (need.empty()) return;
     std::vector<figures::Plan> plans;
     double texels = 0;
@@ -1425,6 +1428,7 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type, const figures::Plan& plan, fl
     glEnable(GL_DEPTH_TEST);
     glBindVertexArray(0);
     sheetTexels_ += static_cast<double>(sh.texW) * sh.texH;
+    sh.table = table;
     std::printf("sprite sheet %s: %dx%d at %.1f px/m, %.0f ms\n", sim::unitTypeName(type), sh.texW, sh.texH, scale,
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
