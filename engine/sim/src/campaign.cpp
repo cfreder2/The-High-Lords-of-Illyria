@@ -69,7 +69,9 @@ bool special(UnitType t) {
 }  // namespace
 
 int32_t Campaign::strength(const Army& a) {
-    return std::min(9, warlordsStrength(a.type) + a.rank + a.blessings);
+    int32_t battle = 0;
+    for (uint8_t k : a.artifacts) battle += artifacts()[k].battle;  // a hero's swords and staves
+    return std::min(9, warlordsStrength(a.type) + a.rank + a.blessings + battle);
 }
 
 int32_t Campaign::squadSize(UnitType t) {
@@ -174,6 +176,7 @@ Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(conti
     for (const Continent::Faction& f : Continent::factions()) sides_.push_back({f.name, 0, true});
     armiesRaised_.assign(sides_.size(), 0);
     initCities();
+    initSites();
 }
 
 void Campaign::initTerrain() {
@@ -349,8 +352,12 @@ bool Campaign::produce(int32_t city, int32_t option) {
 
 int32_t Campaign::stackMoves(const Stack& s) const {
     int32_t mp = INT32_MAX;
-    for (const Army& a : s.armies) mp = std::min(mp, movesPerDay(a.type));
-    return mp == INT32_MAX ? 0 : mp;
+    int32_t boots = 0;  // the best of the heroes' winged things
+    for (const Army& a : s.armies) {
+        mp = std::min(mp, movesPerDay(a.type));
+        for (uint8_t k : a.artifacts) boots = std::max(boots, artifacts()[k].moves);
+    }
+    return mp == INT32_MAX ? 0 : mp + boots;
 }
 
 int32_t Campaign::stackCost(const Stack& s, int32_t cx, int32_t cy) const {
@@ -459,14 +466,14 @@ void Campaign::newDay() {
             if (c.owner == s && !c.razed) side.gold += c.income;
         for (const Stack& st : stacks_)
             if (st.owner == s)
-                for (const Army& a : st.armies) side.gold -= upkeep(a.type);
+                for (const Army& a : st.armies) side.gold -= armyUpkeep(a);
         while (side.gold < 0) {
             Stack* newest = nullptr;
             size_t which = 0;
             for (Stack& st : stacks_) {
                 if (st.owner != s) continue;
                 for (size_t k = 0; k < st.armies.size(); ++k) {
-                    if (st.armies[k].hero()) continue;
+                    if (st.armies[k].hero() || st.armies[k].ally) continue;
                     if (!newest || st.armies[k].bornDay >= newest->armies[which].bornDay) {
                         newest = &st;
                         which = k;
@@ -481,6 +488,7 @@ void Campaign::newDay() {
             newest->armies.erase(newest->armies.begin() + static_cast<long>(which));
         }
     }
+    questsNewDay();
     // Training: one army at a time per city, paid for when it starts.
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
@@ -515,6 +523,7 @@ void Campaign::runAi(uint8_t side) {
     // A plain Warlord, as Warlords advises: keep every city training its
     // quickest troops, and send every idle stack at the nearest city it does
     // not hold, neutral towns first, once it is strong enough to try.
+    questAi(side);
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         if (c.owner != side || c.razed || c.producing >= 0) continue;
@@ -598,6 +607,7 @@ void Campaign::moveStacks() {
         s.cx = nx;
         s.cy = ny;
         s.path.erase(s.path.begin());
+        pickUp(s);
         if (s.path.empty()) arrive(s);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
@@ -646,7 +656,8 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
         int32_t m = 0, hero = 0;
         bool flying = false, magic = false;
         for (const Army* a : side) {
-            if (a->hero()) hero = std::max(hero, std::min(9, 4 + a->rank + a->blessings));
+            if (a->hero()) hero = std::max(hero, strength(*a));
+            m += command(*a);
             flying = flying || flies(a->type);
             magic = magic || special(a->type);
         }
@@ -695,12 +706,9 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     }
     fight.attackerWon = di >= def.size();
     // The fallen are gone; the wounded heal before the next fight.
-    const auto bury = [](std::vector<Army>& armies) {
-        armies.erase(std::remove_if(armies.begin(), armies.end(), [](const Army& a) { return a.soldiers <= 0; }), armies.end());
-        for (Army& a : armies) a.hits = 0;
-    };
-    bury(attacker.armies);
-    for (Stack* d : defenders) bury(d->armies);
+    bury(attacker, cx, cy);
+    for (Stack* d : defenders) bury(*d, cx, cy);
+    for (Stack* d : defenders) pickUp(*d);  // the spoils of the fallen, to a hero holding the field
     // The city is taken, and its treasure: the loser loses a share of the war
     // chest in proportion to its cities, and the victor gets half.
     if (fight.attackerWon && !attacker.armies.empty()) capture(attacker, cx, cy, fight);
@@ -756,6 +764,7 @@ void Campaign::capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight) {
     }
     attacker.cx = cx;
     attacker.cy = cy;
+    pickUp(attacker);
 }
 
 void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon) {
@@ -783,7 +792,7 @@ void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWo
                 a.rank = std::max(0, o.rank);
             }
         }
-        st.armies.erase(std::remove_if(st.armies.begin(), st.armies.end(), [](const Army& a) { return a.soldiers <= 0; }), st.armies.end());
+        bury(st, p.cx, p.cy);
     }
     if (fight.city >= 0 && fight.defender == 0 && cities_[static_cast<size_t>(fight.city)].owner != att->owner)
         fight.defender = cities_[static_cast<size_t>(fight.city)].owner;
@@ -817,8 +826,12 @@ uint64_t Campaign::checksum() const {
             h.addI64(a.soldiers);
             h.addI64(a.kills);
             h.addI64(a.rank);
+            h.addI64(a.blessings);
+            h.addU64(a.temples | (a.ally ? 0x100u : 0u));
+            for (uint8_t k : a.artifacts) h.addU64(k);
         }
     }
+    hashQuests(h);
     for (Lay t : terrain_) h.addU64(static_cast<uint64_t>(t));
     return h.value();
 }

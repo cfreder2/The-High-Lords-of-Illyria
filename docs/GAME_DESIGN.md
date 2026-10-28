@@ -185,7 +185,8 @@ Money is gold only, as in Warlords:
 - **The computer lords** keep every city training its quickest troops and send their stacks at the nearest city they can take, neutral towns first, leaving a guard behind.
 - **Victory:** two thirds of the cities.
 - **The player's battles:** when the player's stack marches into an enemy, the campaign stops and asks: **Fight it** or **Resolve**. Resolve rolls the dice. Fight it opens the real 3D battle on that exact ground with those exact armies: their numbers, ranks and heroes. A town is held from its walls, with archers on the walk and the rest at the gate, courtyard and keep. In the field the two lines form up a bowshot apart. **Charge** sends every squad at the nearest enemy, with archers stopping at a long bowshot. When it is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks. Winning a town captures it; withdrawing counts as being thrown back.
-- **Next:** ruins and temples for heroes, ports and boats.
+- **Heroes, ruins, temples, sages and heroes for hire:** see §4.4.
+- **Next:** ports and boats.
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 
@@ -201,7 +202,17 @@ Heroes are what make the campaign more than a war of production. A hero is a sin
 - **Sages (2):** the Seer's Tower on its island and the Hermit of the Peaks. Each tells the first hero to reach them where artifacts or unsearched ruins lie, so it is first come, first served.
 - **New heroes** offer their service now and then, for gold, to sides that hold enough cities.
 
-Rules to settle while building it: guardian strength by distance from the capitals; how many artifacts exist; whether allies can later be recruited in cities (a Warlords II option).
+*Built so far* (`engine/sim/src/campaign_quests.cpp`, in the campaign with the dice; the guardian fight in a 3D ruin interior is still to come):
+- **Searching:** a stack standing still on a ruin, temple or sage shows a **Search** (ruin), **Visit** (temple) or **Consult** (sage) button. Ruins and sages need a hero in the stack; the strongest hero goes in.
+- **Ruins:** the hero fights the guardian alone with Warlords' dice (a d10 against the other's strength, two hits kill). Guardians run from a pack of wolves (strength 2) to an ancient wyrm (8), fiercer the further the ruin lies from the nearest capital, so a young hero starts near home. A hero who falls is gone; what they carried lies in the ruin for the next hero, and the guardian waits on. A hero who wins gains the kills (and maybe a level) and finds one reward: gold (100 to 300, more behind a fiercer guardian), an artifact, or allies (undead or wizards behind weak guardians, devils or archons, then dragons) who join the stack and draw no pay. Each ruin is searched once.
+- **Artifacts (15, each unique):** battle items add to the hero's own strength (+1: Firebrand, Frostblade, Spear of Ashkar; +2: Sunblade, Shadowblade, Bow of the Morning Star; +3: Staff of Thunders); command items add to every army fighting beside the hero, as Warlords' command modifier (+1: Crown of Kings, Sceptre of Dawn, Scarlet Banner; +2: Ring of Dominion, Horn of the North; +3: Rod of the High Lords); the Winged Sandals add 4 movement a day to the stack and the Purse of Plenty pays 10 gold a day. Fiercer guardians guard greater artifacts. They show on the hero's card and carry into the 3D battle as extra strength. A hero who dies in battle drops them where they fell; the next hero to enter that cell takes them up.
+- **Temples (4):** as in Warlords, any stack (no hero needed) is blessed: every army in it gains +1 strength, once per temple, so an army can carry up to four blessings (never past strength 9). Blessings carry into the 3D battle.
+- **Sages (2):** the first hero to consult one is given 100 to 150 gold and told the name of the nearest unexplored ruin.
+- **Heroes for hire:** at dawn a side with more than two cities for each hero it has may be offered a hero (one chance in twelve a day), waiting in one of its cities for 150 gold plus 100 for every hero already serving. The player sees **Hire for N gold** / **Decline**; the offer lasts until the next dawn. A side whose heroes have all fallen is offered another in time.
+- **The computer lords** search whatever their heroes stand on, then send each hero (alone, if it is in a city, leaving the rest on guard) to the nearest ruin within 24 cells whose guardian is weaker than the hero, an unvisited sage, or (outside cities) a temple that has not yet blessed the stack, as long as no enemy stack is within 3 cells of it. They hire a hero when they can pay and keep 100 gold for training.
+- **News:** what the player's heroes did is in the news ("Sir Aldric found the Crown of Kings in Sunken Halls"); explored ruins are greyed on the map.
+
+Still to settle: whether allies can later be recruited in cities (a Warlords II option); temple quests; heroes offering with allies of their own.
 
 ### 4.3 AI Generals & Attention
 

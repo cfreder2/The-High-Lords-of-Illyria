@@ -13,6 +13,7 @@ add_executable(illyria_tests
     test_castle.cpp
     test_campaign.cpp
     test_figures.cpp
+    test_campaign_quests.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 
