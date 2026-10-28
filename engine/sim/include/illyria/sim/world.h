@@ -39,6 +39,15 @@ enum class ProjectileKind : uint8_t {
 // throw them about again.
 enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk };
 
+// What a weapon does to flesh (docs/GAME_DESIGN.md §5.5, the death matrix):
+// how the killing blow decides the body that is left, and the sound it makes.
+enum class DamageType : uint8_t { Slash, Cleave, Blunt, Pierce, Explosive, Fire };
+// How a soldier died (world_death.cpp): fell whole, lost a limb or his head,
+// was blown (or hacked) to pieces, was shot dead, or burned.
+enum class DeathKind : uint8_t { None, Fell, Severed, Gibbed, Pierced, Charred };
+const char* damageTypeName(DamageType t);
+const char* deathKindName(DeathKind k);
+
 struct Explosive {
     Fixed radius;
     int32_t damage = 0;      // at the centre, falling off linearly to the edge
@@ -56,6 +65,7 @@ struct RangedWeapon {
     Fixed maxRange;           // farther targets are approached on foot before shooting
     Fixed minRange;           // nearer targets are not shot at (a catapult would hit itself)
     ProjectileKind kind = ProjectileKind::Arrow;
+    DamageType damageType = DamageType::Pierce;
     Explosive explosive;      // bombs and fireballs
 };
 
@@ -65,6 +75,7 @@ struct MeleeWeapon {
     int32_t cooldownTicks = 0;
     Fixed knockback;              // m/s given to a 1-mass target
     int32_t bonusVsMountedPct = 0;
+    DamageType damageType = DamageType::Slash;
 };
 
 // A physical shield covering a frontal arc (§3.2). Blows and arrows from
@@ -176,6 +187,21 @@ struct Unit {
     int32_t meleeCooldown = 0;
     int32_t healCooldown = 0;
     int32_t healCharges = 0;
+    // How he died (world_death.cpp), for the body left behind and its sound.
+    struct Death {
+        DeathKind kind = DeathKind::None;
+        DamageType cause = DamageType::Blunt;
+        Vec3 dir;              // the killing blow's travel, flat and unit length
+        int32_t overkill = 0;  // how far below zero health the blow went
+        RemainKind severed = RemainKind::None;  // the part cut off
+        uint32_t tick = 0;
+        // The killing arrow, left in him: its shaft (tip first) and how high up it went in.
+        bool arrowPinned = false;
+        Vec3 arrowDir;
+        Fixed arrowHeight;
+    };
+    Death death;
+    int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
 
     bool alive() const { return hp > 0; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
@@ -192,6 +218,7 @@ struct Projectile {
     int32_t damage = 0;
     int32_t ageTicks = 0;
     int32_t fuse = 0;
+    DamageType cause = DamageType::Pierce;  // the shooter's missile
     bool resting = false;
     bool bleeding = false;  // a fresh body part: leaves blood where it strikes and skids
     Fixed smear;            // distance skidded since its last blood mark
@@ -240,7 +267,40 @@ struct ImpactEvent {
     bool killed = false;
     Fixed radius;                     // explosions
     int32_t gate = -1;
+    DamageType cause = DamageType::Blunt;  // melee blows: the striker's weapon
 };
+
+// A soldier killed this tick, and how (the death matrix, world_death.cpp):
+// for the sounds and voices. Derived from the simulation like ImpactEvent.
+struct DeathEvent {
+    EntityId unit = kNoEntity;
+    PlayerId owner = 0;
+    uint8_t type = 0;  // UnitType
+    DeathKind kind = DeathKind::Fell;
+    DamageType cause = DamageType::Blunt;
+    Vec3 pos;
+    Vec3 dir;
+    int32_t overkill = 0;
+    EntityId killer = kNoEntity;
+    RemainKind severed = RemainKind::None;
+};
+
+// The killing blow's character, for the death matrix.
+struct Blow {
+    DamageType type = DamageType::Blunt;
+    Vec3 dir;  // travel of the blow or missile (missiles: their velocity)
+    Vec3 at;   // where it struck
+    bool missile = false;  // an arrow (or other missile) rather than a hand blow
+    bool blast = false;    // a blast or stone: explode() throws the pieces itself
+};
+// Thresholds of the death matrix (world_death.cpp): the overkill at which a
+// cut takes off a limb (twice that, the head), and at which a blast, or any
+// blow at all, tears a body apart.
+inline constexpr int32_t kSeverOverkillSlash = 12;
+inline constexpr int32_t kSeverOverkillCleave = 7;
+inline constexpr int32_t kGibOverkillBlast = 5;
+inline constexpr int32_t kObliterateOverkill = 50;
+inline constexpr int32_t kMaxShieldArrows = 5;
 
 // Where a blow or missile lands on its target, by the way the target faces
 // (world_combat.cpp): the front, a flank, or the rear.
@@ -323,6 +383,8 @@ public:
     const std::vector<HeroDeath>& heroDeaths() const { return heroDeaths_; }
     // Rally calls made during the last step (world_morale.cpp).
     const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
+    // Everyone killed during the last step, and how (world_death.cpp).
+    const std::vector<DeathEvent>& deathEvents() const { return deathEvents_; }
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -447,7 +509,9 @@ private:
     bool tryHeal(Unit& unit);
     Unit* nearestEnemy(const Unit& unit, Fixed range);
     // Returns true if the blow killed the target.
-    bool damage(Unit& target, int32_t amount, Unit* attacker = nullptr);
+    bool damage(Unit& target, int32_t amount, Unit* attacker = nullptr, const Blow& blow = {});
+    // The death matrix (world_death.cpp): how the killing blow leaves the body.
+    void resolveDeath(Unit& victim, const Blow& blow, int32_t overkill, const Unit* killer);
     bool shieldBlocks(const Unit& target, const Vec3& incomingDir, Fixed chanceScale);
     void knock(Unit& target, const Vec3& dir, Fixed impulse);
     void updateProjectiles();
@@ -468,8 +532,12 @@ private:
     bool onRampartFacing(const Unit& u, const Vec3& vel) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false) const;
-    void explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind = ProjectileKind::Bomb);
+    void explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind = ProjectileKind::Bomb,
+                 DamageType cause = DamageType::Explosive);
     void spawnGibs(Unit& victim, const Vec3& from, Fixed strength);
+    // A part skidding on a slope too steep to grip rolls and slides on down it (world_death.cpp).
+    // Returns true while it is rolling.
+    bool rollDownhill(Projectile& p);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
     void clearRemain(uint32_t slot);
@@ -488,6 +556,7 @@ private:
     std::vector<ImpactEvent> impacts_;
     std::vector<HeroDeath> heroDeaths_;
     std::vector<RallyCall> rallyCalls_;
+    std::vector<DeathEvent> deathEvents_;
     // Soldiers killed this step (owner, where), for their friends' morale.
     std::vector<std::pair<PlayerId, Vec3>> deaths_;
     std::vector<Remain> remains_;
@@ -499,6 +568,7 @@ private:
         Explosive ex;
         PlayerId owner;
         ProjectileKind kind;
+        DamageType cause;
     };
     std::vector<PendingExplosion> pendingExplosions_;
     SpatialHash obstacleGrid_{8};

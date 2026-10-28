@@ -29,6 +29,10 @@ constexpr float kSighted = 55.0f;
 constexpr uint32_t kContactLost = 60 * kTps;
 // Idle chatter: only after kQuiet without a blow.
 constexpr uint32_t kQuiet = 20 * kTps;
+// Cries keep this far apart (each kind its own cooldown too).
+constexpr uint32_t kCryGap = kTps / 3;
+// The herald reports when these shares (percent) of the player's soldiers have fallen.
+constexpr int kCasualtyPct[3] = {25, 50, 80};
 
 // Cooldown of each situation per side, in tenths of a second.
 constexpr int kCooldownTenths[kSituationCount] = {
@@ -60,15 +64,30 @@ constexpr int kCooldownTenths[kSituationCount] = {
     0,    // Victory
     0,    // Defeat
     450,  // Idle
+    30,   // Pain
+    5,    // Death
+    8,    // DeathMoan
+    80,   // Cackle
+    150,  // Groan
+    0,    // Casualties
+    0,    // SevereCasualties
+    0,    // TotalCasualties
 };
 
 constexpr const char* kSetNames[kVoiceSetCount] = {"soldier", "archer", "dwarf",  "rider", "hero",   "wizard", "berserker",
-                                                   "archon",  "brute",  "undead", "fiend", "beast", "engine"};
+                                                   "archon",  "brute",  "undead", "fiend", "beast", "engine", "herald"};
 constexpr const char* kSituationNames[kSituationCount] = {
     "selected",   "move",          "attack",        "charge",  "charge_seen", "hold_line", "hero_rally",
     "rallied",    "wavering",      "breaking",      "hero_fell", "enemy_hero_fell", "friend_killed", "kill",
     "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "friendly_fire", "fuse",
-    "healing",    "engine_loose",  "gate_broken",   "enemy_sighted", "victory", "defeat", "idle"};
+    "healing",    "engine_loose",  "gate_broken",   "enemy_sighted", "victory", "defeat", "idle",
+    "pain",       "death",         "death_moan",    "cackle",  "groan",       "casualties", "severe_casualties",
+    "total_casualties"};
+
+bool isCry(Situation s) { return s == Situation::Pain || s == Situation::Death || s == Situation::DeathMoan; }
+bool isReport(Situation s) {
+    return s == Situation::Casualties || s == Situation::SevereCasualties || s == Situation::TotalCasualties;
+}
 
 bool nonVerbal(VoiceSet set) {
     return set == VoiceSet::Brute || set == VoiceSet::Undead || set == VoiceSet::Fiend || set == VoiceSet::Beast;
@@ -112,6 +131,14 @@ VoiceSet voiceSetOf(UnitType type) {
 
 bool voices(VoiceSet set, Situation s) {
     using S = Situation;
+    // The herald only reports; nobody else does.
+    if (set == VoiceSet::Herald) return isReport(s);
+    if (isReport(s)) return false;
+    // Everyone cries out when hurt and killed; the wordless have no choking moan.
+    if (s == S::Pain || s == S::Death) return true;
+    if (s == S::DeathMoan) return !nonVerbal(set);
+    if (s == S::Cackle) return set == VoiceSet::Dwarf;
+    if (s == S::Groan) return set == VoiceSet::Undead;
     if (nonVerbal(set)) {
         // Calls and cries, no words: what a beast would make a sound about.
         switch (s) {
@@ -150,7 +177,15 @@ bool voices(VoiceSet set, Situation s) {
 int priorityOf(Situation s) {
     using S = Situation;
     switch (s) {
-        case S::Idle: return 0;
+        case S::Idle:
+        case S::Groan: return 0;
+        case S::Pain: return 1;
+        case S::Death:
+        case S::DeathMoan:
+        case S::Cackle: return 2;
+        case S::Casualties:
+        case S::SevereCasualties: return 4;
+        case S::TotalCasualties: return 5;
         case S::ArrowFire:
         case S::Flanked:
         case S::FriendKilled:
@@ -207,8 +242,8 @@ sim::EntityId Voice::nearestVoice(const sim::World& world, sim::PlayerId side, c
     return best;
 }
 
-void Voice::want(Situation s, sim::EntityId speaker, bool positional) {
-    if (speaker != sim::kNoEntity) wanted_.push_back({s, speaker, positional});
+void Voice::want(Situation s, sim::EntityId speaker, bool positional, VoiceSet set) {
+    if (speaker != sim::kNoEntity) wanted_.push_back({s, speaker, positional, set});
 }
 
 void Voice::order(Situation s, const sim::World& world, const std::vector<sim::EntityId>& units) {
@@ -235,12 +270,12 @@ void Voice::order(Situation s, const sim::World& world, const std::vector<sim::E
 bool Voice::gate(const sim::World& world, const Candidate& c) {
     const sim::Unit* u = world.findUnit(c.speaker);
     if (!u) return false;
-    const VoiceSet set = voiceSetOf(static_cast<UnitType>(u->stats.type));
+    const VoiceSet set = c.set != VoiceSet::Count ? c.set : voiceSetOf(static_cast<UnitType>(u->stats.type));
     if (!voices(set, c.situation)) return false;
     const int side = u->owner == player_ ? 0 : 1;
     const int si = static_cast<int>(c.situation);
     const int prio = priorityOf(c.situation);
-    const bool isOrder = c.situation == Situation::Selected || c.situation == Situation::Move || c.situation == Situation::Attack ||
+    const bool isOrder = isReport(c.situation) || c.situation == Situation::Selected || c.situation == Situation::Move || c.situation == Situation::Attack ||
                          (!c.positional && c.situation == Situation::Charge);
 
     VoiceCue cue;
@@ -262,10 +297,24 @@ bool Voice::gate(const sim::World& world, const Candidate& c) {
         cue.pan = horiz > 1 ? std::clamp(d.dot(listenRight_) / std::max(horiz, eff * 0.5f), -0.8f, 0.8f) : 0.0f;
     }
     if (!c.positional) cue.gain = std::max(cue.gain, 0.85f);
+    if (isReport(c.situation)) cue.pan = 0, cue.gain = 1;  // the herald speaks in the player's ear
     if (cue.gain < kMinGain) return false;  // out of earshot: costs no throttle
 
     const uint32_t cd = static_cast<uint32_t>(kCooldownTenths[si] * kTps / 10);
     if (heardSituation_[side][si] && tick_ - lastSituation_[side][si] < cd) return false;
+    if (isCry(c.situation)) {
+        // Cries have their own pace and leave the talk alone.
+        if (anyCry_ && tick_ - lastCry_ < kCryGap) return false;
+        anyCry_ = true;
+        lastCry_ = tick_;
+        heardSituation_[side][si] = true;
+        lastSituation_[side][si] = tick_;
+        out_.push_back(cue);
+        log_.push_back(cue);
+        if (log_.size() > kLogSize) log_.pop_front();
+        ++emitted_;
+        return true;
+    }
     if (lastSpoke_.size() < world.units().size() + 1) lastSpoke_.resize(world.units().size() + 1, 0);
     const bool grave = cue.priority >= 4;
     if (!grave && !isOrder && lastSpoke_[c.speaker] != 0 && tick_ - lastSpoke_[c.speaker] < kSpeakerGap) return false;
@@ -304,6 +353,7 @@ void Voice::observe(const sim::World& world, int outcome) {
     if (!primed_) {
         track(world);
         primed_ = true;
+        for (const sim::Unit& u : units) strength_ += u.owner == player_;
         return;
     }
     if (seen_.size() < units.size()) seen_.resize(units.size());
@@ -424,6 +474,72 @@ void Voice::observe(const sim::World& world, int outcome) {
             if (b.owner == victim->owner) want(S::FriendlyFire, victim->id);
         }
         if (!blasted && e.kind == K::Hit && sim::hitSide(victim->facing, e.dir) != sim::HitSide::Front) want(S::Flanked, victim->id);
+    }
+
+    // The dying, by how they died (sim::DeathEvent): shot men choke, the rest scream.
+    for (const sim::DeathEvent& d : world.deathEvents()) {
+        const VoiceSet set = voiceSetOf(static_cast<UnitType>(d.type));
+        want(d.kind == sim::DeathKind::Pierced && voices(set, S::DeathMoan) ? S::DeathMoan : S::Death, d.unit);
+    }
+    // Hurt and still standing.
+    for (const sim::ImpactEvent& e : world.impacts())
+        if (e.kind == sim::ImpactEvent::Kind::Hit && !e.killed && unitAt(e.hitUnit) && unitAt(e.hitUnit)->alive()) want(S::Pain, e.hitUnit);
+    // A grenadier whose satchel just killed: the bomb nearest the blast was his.
+    if (!world.deathEvents().empty()) {
+        for (const sim::ImpactEvent& e : world.impacts()) {
+            if (e.kind != sim::ImpactEvent::Kind::Explosion) continue;
+            const V3 at = toV3(e.pos);
+            const Flight* bomb = nullptr;
+            float best = 16.0f;
+            for (const Flight& f : flights_) {
+                const V3 d = f.pos - at;
+                if (f.kind == sim::ProjectileKind::Bomb && d.dot(d) < best) {
+                    best = d.dot(d);
+                    bomb = &f;
+                }
+            }
+            if (!bomb) continue;
+            for (const sim::DeathEvent& d : world.deathEvents()) {
+                const V3 dd = flat(toV3(d.pos) - at);
+                if (d.owner != bomb->owner && dd.dot(dd) < 36.0f) {
+                    const sim::Unit* thrower = unitAt(bomb->shooter);
+                    if (thrower && thrower->alive()) want(S::Cackle, thrower->id);
+                    break;
+                }
+            }
+        }
+    }
+    // The herald: the player's losses passing a quarter, half and four fifths.
+    if (strength_ > 0 && reported_ < 3) {
+        int lost = 0;
+        sim::EntityId any = sim::kNoEntity;
+        for (const sim::Unit& u : units) {
+            if (u.owner != player_) continue;
+            if (any == sim::kNoEntity) any = u.id;
+            lost += !u.alive();
+        }
+        int due = reported_;
+        while (due < 3 && lost * 100 >= strength_ * kCasualtyPct[due]) ++due;
+        if (due > reported_) {
+            // Only the gravest news if several thresholds fell at once.
+            const S report = due == 1 ? S::Casualties : due == 2 ? S::SevereCasualties : S::TotalCasualties;
+            reported_ = due;
+            want(report, any, false, VoiceSet::Herald);
+        }
+    }
+    // The walking dead groan to themselves, now and then.
+    if (tick_ % kTps == 7) {
+        idleSeed_ = idleSeed_ * 1664525u + 1013904223u;
+        if ((idleSeed_ >> 24) < 50) {
+            const V3 at = hasListener_ ? listenAt_ : V3{};
+            for (sim::PlayerId side : {sim::PlayerId(0), sim::PlayerId(1)}) {
+                const sim::EntityId g = nearestVoice(world, side, at, 50, S::Groan);
+                if (g != sim::kNoEntity) {
+                    want(S::Groan, g);
+                    break;
+                }
+            }
+        }
     }
 
     // Satchels lit and stones thrown: new missiles since last tick.

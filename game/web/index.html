@@ -294,6 +294,11 @@
   <label><input type="checkbox" id="voiceOn"> Soldiers' voices</label>
   <label>Volume <input type="range" id="voiceVolume" min="0" max="100" step="5" aria-label="Voice volume"></label>
   <label><input type="checkbox" id="voiceSpeech"> Read unrecorded lines aloud</label>
+  <h3 class="sub">Sound</h3>
+  <label><input type="checkbox" id="sfxOn"> Sound effects</label>
+  <label>Volume <input type="range" id="sfxVolume" min="0" max="100" step="5" aria-label="Sound effects volume"></label>
+  <label><input type="checkbox" id="ambienceOn"> Ambience: wind, swamp, flies, drums</label>
+  <a class="note" href="sfx-test.html" target="_blank" rel="noopener">Test sounds ›</a>
 </div>
 
 <div id="hint" class="panel">
@@ -1032,7 +1037,9 @@
   };
 })();
 </script>
+<script src="audio.js?v=@ILLYRIA_VERSION@"></script>
 <script src="voice.js?v=@ILLYRIA_VERSION@"></script>
+<script src="sfx.js?v=@ILLYRIA_VERSION@"></script>
 <script src="illyria.js?v=@ILLYRIA_VERSION@"></script>
 </body>
 </html>

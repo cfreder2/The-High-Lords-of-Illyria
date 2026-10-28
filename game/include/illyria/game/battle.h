@@ -8,6 +8,7 @@
 
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/game/sfx.h"
 #include "illyria/game/voice.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
@@ -313,6 +314,9 @@ public:
     // The soldiers' voices (voice.h): cues from each tick and every order.
     Voice& voice() { return voice_; }
     const Voice& voice() const { return voice_; }
+    // The sound effects (sfx.h): cues from each tick, and the ambience.
+    Sfx& sfx() { return sfx_; }
+    const Sfx& sfx() const { return sfx_; }
 
 private:
     Scenario scenario_ = Scenario::Ford;
@@ -327,6 +331,8 @@ private:
     void step();
     void runEnemyAi();
     void collectEvents();
+    // Each tick's deaths, seen and heard (battle_deaths.cpp): blood rain, smoke, sound effects.
+    void presentDeaths();
     void addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed);
     void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
     void updateParticles(float seconds);
@@ -396,6 +402,12 @@ private:
     };
     std::vector<Recent> recent_;
     Voice voice_{kPlayer};
+    Sfx sfx_{kPlayer};
+    struct Smoulder {
+        sim::EntityId unit;
+        uint32_t since;
+    };
+    std::vector<Smoulder> smouldering_;  // the burned, still smoking
 };
 
 template <typename Fn>

@@ -65,6 +65,41 @@ void flier(UnitStats& s, Fixed altitude, Fixed airSpeed, Fixed takeoffRun, int32
 
 void shield(UnitStats& s, Fixed blockChance) { s.shield.blockChance = blockChance; }
 
+// What each type's weapons do to flesh (the death matrix, world_death.cpp).
+DamageType meleeDamageType(UnitType type) {
+    using T = UnitType;
+    switch (type) {
+        case T::Pikemen:
+        case T::HeavyCavalry:  // the lance
+        case T::Spiders:       // fangs
+        case T::Unicorns:      // the horn
+            return DamageType::Pierce;
+        case T::Dwarves:  // axes
+        case T::Minotaurs:
+        case T::Dragons:
+        case T::Devils:
+        case T::Demons:
+        case T::Berserker:  // two-handed swords
+            return DamageType::Cleave;
+        case T::Giants:  // clubs
+        case T::Elephants:
+        case T::Wizards:  // staves
+        case T::DwarfGrenadier:
+        case T::Journeyman:
+            return DamageType::Blunt;
+        default: return DamageType::Slash;  // swords, sabres, claws
+    }
+}
+
+DamageType missileDamageType(ProjectileKind kind) {
+    switch (kind) {
+        case ProjectileKind::Bomb: return DamageType::Explosive;
+        case ProjectileKind::Fireball: return DamageType::Fire;
+        case ProjectileKind::Stone: return DamageType::Blunt;
+        default: return DamageType::Pierce;
+    }
+}
+
 }  // namespace
 
 // Fliers walk like men.
@@ -313,6 +348,8 @@ UnitStats unitStats(UnitType type) {
     }
     s.gait = gaitOf(type);
     s.moraleShockPct = moraleShockPct(type);
+    s.melee.damageType = meleeDamageType(type);
+    s.ranged.damageType = missileDamageType(s.ranged.kind);
     return s;
 }
 

@@ -515,6 +515,7 @@ void Battle::step() {
     pending_.clear();
     collectEvents();
     voice_.observe(*world_, outcome());
+    presentDeaths();
 }
 
 std::vector<uint32_t> Battle::takeDirtyRemains() {

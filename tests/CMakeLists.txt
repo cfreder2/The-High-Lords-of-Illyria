@@ -4,6 +4,26 @@ file(READ "${ILLYRIA_VOICE_MANIFEST_FILE}" ILLYRIA_VOICE_MANIFEST)
 configure_file(voice_manifest.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_VOICE_MANIFEST_FILE}")
 
+# The sound effects manifest and the rendered files' stats (tools/sfx/synth), likewise;
+# and every file the manifest lists must be there.
+set(ILLYRIA_SFX_DIR "${CMAKE_SOURCE_DIR}/game/web/sfx")
+file(READ "${ILLYRIA_SFX_DIR}/sounds.json" ILLYRIA_SFX_MANIFEST)
+file(READ "${ILLYRIA_SFX_DIR}/stats.json" ILLYRIA_SFX_STATS)
+configure_file(sfx_manifest.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SFX_DIR}/sounds.json" "${ILLYRIA_SFX_DIR}/stats.json")
+string(JSON _sounds LENGTH "${ILLYRIA_SFX_MANIFEST}" sounds)
+math(EXPR _last "${_sounds} - 1")
+foreach(i RANGE ${_last})
+    string(JSON _files LENGTH "${ILLYRIA_SFX_MANIFEST}" sounds ${i} files)
+    math(EXPR _lastFile "${_files} - 1")
+    foreach(j RANGE ${_lastFile})
+        string(JSON _file GET "${ILLYRIA_SFX_MANIFEST}" sounds ${i} files ${j})
+        if(NOT EXISTS "${CMAKE_SOURCE_DIR}/game/web/${_file}")
+            message(FATAL_ERROR "game/web/${_file} is missing: run python3 tools/sfx/synth/render.py")
+        endif()
+    endforeach()
+endforeach()
+
 add_executable(illyria_tests
     test_main.cpp
     test_fixed.cpp
@@ -29,7 +49,10 @@ add_executable(illyria_tests
     test_command.cpp
     test_morale_rally.cpp
     test_voice.cpp
+    test_death.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
+    test_sfx.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 
@@ -41,4 +64,5 @@ else()
     add_test(NAME illyria_tests COMMAND illyria_tests)
 endif()
 # The manifest is one long string; every compiler here takes it.
-set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" "${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp"
+                            PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

@@ -79,6 +79,8 @@ constexpr Fixed kStrikeSpeed = Fixed::fromRatio(3, 2);
 constexpr Fixed kSkidDecel = Fixed::fromInt(7);
 constexpr Fixed kTumbleRest = Fixed::fromRatio(1, 2);
 constexpr Fixed kSmearSpacing = Fixed::fromRatio(9, 20);
+// Parts roll down slopes only in their first seconds (then they lodge somewhere).
+constexpr int32_t kRollTicks = 12 * kTicksPerSecond;
 // A satchel is a heavy bag: it bounces less and drags more than loose debris.
 constexpr Fixed kBombFriction = Fixed::fromRatio(2, 5);
 // Grenadiers throw short to allow for the bounce and roll.
@@ -120,12 +122,14 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.ranged.maxRange.raw);
     h.addI64(s.ranged.minRange.raw);
     h.addU64(static_cast<uint64_t>(s.ranged.kind));
+    h.addU64(static_cast<uint64_t>(s.ranged.damageType));
     hashExplosive(h, s.ranged.explosive);
     h.addI64(s.melee.damage);
     h.addI64(s.melee.reach.raw);
     h.addI64(s.melee.cooldownTicks);
     h.addI64(s.melee.knockback.raw);
     h.addI64(s.melee.bonusVsMountedPct);
+    h.addU64(static_cast<uint64_t>(s.melee.damageType));
     h.addI64(s.aggroRange.raw);
     h.addI64(s.shield.blockChance.raw);
     h.addI64(s.shield.arcCos.raw);
@@ -237,6 +241,7 @@ void World::step(std::span<const Command> commands) {
     impacts_.clear();
     heroDeaths_.clear();
     rallyCalls_.clear();
+    deathEvents_.clear();
     deaths_.clear();
     changedRemains_.clear();
 
@@ -1000,9 +1005,11 @@ bool World::tryHeal(Unit& u) {
     return true;
 }
 
-bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
+bool World::damage(Unit& target, int32_t amount, Unit* attacker, const Blow& blow) {
     if (!target.alive()) return false;
-    target.hp = std::max(target.hp - defendedDamage(target, amount), 0);
+    const int32_t dealt = defendedDamage(target, amount);
+    const int32_t overkill = dealt - target.hp;
+    target.hp = std::max(target.hp - dealt, 0);
     if (target.alive()) return false;
     target.hasMoveTarget = false;
     target.hasAttackTarget = false;
@@ -1010,6 +1017,7 @@ bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
     if (target.stats.type == static_cast<uint8_t>(UnitType::Hero))
         heroDeaths_.push_back({target.id, target.owner, target.pos, attacker != nullptr ? attacker->id : kNoEntity});
     if (attacker != nullptr && attacker->owner != target.owner) creditKill(*attacker);
+    resolveDeath(target, blow, overkill, attacker);
     return true;
 }
 
@@ -1123,6 +1131,7 @@ bool World::fire(Unit& u, const Vec3& target) {
     p.damage = w.damage * prowessPct(u) / 100;
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
+    p.cause = w.damageType;
     projectiles_.push_back(p);
     return true;
 }
@@ -1166,6 +1175,7 @@ bool World::tumble(Projectile& p) {
     const Fixed ground = groundHeight(p.pos.x, p.pos.y);
     if (p.pos.z > ground) return false;
     p.pos.z = ground;
+    bool rolling = false;
     const Vec3 travel = p.vel.flat();
     const auto bleed = [&](Fixed size) {
         if (!p.bleeding || isWater(p.pos.x, p.pos.y)) return;
@@ -1180,13 +1190,17 @@ bool World::tumble(Projectile& p) {
         bleed(clamp(speed * Fixed::fromRatio(1, 15), Fixed::fromRatio(1, 6), Fixed::fromRatio(1, 2)));
         p.smear = Fixed::zero();
     } else {
-        // Skidding: the ground drags it to a stop, smearing as it goes.
+        // Skidding: the ground drags it to a stop, smearing as it goes;
+        // on a slope too steep for it to grip, it rolls on down instead.
         p.vel.z = Fixed::zero();
         const Fixed speed = travel.length();
-        const Fixed slower = max(Fixed::zero(), speed - kSkidDecel * kTickDt);
-        if (speed > Fixed::zero()) {
-            p.vel.x = p.vel.x * slower / speed;
-            p.vel.y = p.vel.y * slower / speed;
+        rolling = p.ageTicks < kRollTicks && rollDownhill(p);
+        if (!rolling) {
+            const Fixed slower = max(Fixed::zero(), speed - kSkidDecel * kTickDt);
+            if (speed > Fixed::zero()) {
+                p.vel.x = p.vel.x * slower / speed;
+                p.vel.y = p.vel.y * slower / speed;
+            }
         }
         p.smear += speed * kTickDt;
         if (p.smear >= kSmearSpacing) {
@@ -1194,7 +1208,7 @@ bool World::tumble(Projectile& p) {
             p.smear = Fixed::zero();
         }
     }
-    if (p.vel.lengthSq() < kTumbleRest * kTumbleRest) {
+    if (!rolling && p.vel.lengthSq() < kTumbleRest * kTumbleRest) {
         p.vel = {};
         p.resting = true;
     }
@@ -1214,7 +1228,7 @@ void World::updateProjectiles() {
         if (p.kind == ProjectileKind::Bomb) {
             bounce(p, p.explosive.bounce, kBombFriction);
             if (--p.fuse <= 0) {
-                pendingExplosions_.push_back({p.pos, p.explosive, p.owner, p.kind});
+                pendingExplosions_.push_back({p.pos, p.explosive, p.owner, p.kind, p.cause});
                 removed[i] = 1;
             }
             continue;
@@ -1286,7 +1300,7 @@ void World::updateProjectiles() {
         if (obstacleT >= Fixed::zero()) {
             const Vec3 at = prev + seg * obstacleT;
             if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -1295,22 +1309,26 @@ void World::updateProjectiles() {
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
             if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else if (onRampartFacing(*hit, p.vel) && rng_.nextUnit() < kMerlonCover) {
                 // Behind the merlons: the missile strikes stone instead.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
                 const Vec3 glance{-p.vel.x / 24, -p.vel.y / 24, Fixed::fromRatio(1, 2)};  // drops at the stone
                 spawnDebris(RemainKind::Arrow, p.owner, at, glance);
             } else if (shieldBlocks(*hit, p.vel, Fixed::one())) {
-                // Deflected: the arrow glances off and tumbles to the ground.
+                // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
-                const Vec3 glance{-p.vel.x / 5, -p.vel.y / 5, abs(p.vel.z) / 5 + Fixed::fromInt(2)};
-                spawnDebris(RemainKind::Arrow, p.owner, at, glance);
+                if (hit->shieldArrows < kMaxShieldArrows && rng_.nextBelow(2) == 0) {
+                    ++hit->shieldArrows;
+                } else {
+                    const Vec3 glance{-p.vel.x / 5, -p.vel.y / 5, abs(p.vel.z) / 5 + Fixed::fromInt(2)};
+                    spawnDebris(RemainKind::Arrow, p.owner, at, glance);
+                }
             } else {
                 // Worse in the flank or back, and from a plunging shot from above.
                 const HitSide side = hitSide(hit->facing, p.vel);
                 const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100;
-                const bool killed = damage(*hit, amount, mutableUnit(p.shooter));
+                const bool killed = damage(*hit, amount, mutableUnit(p.shooter), {p.cause, p.vel, at, true});
                 shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
@@ -1318,7 +1336,7 @@ void World::updateProjectiles() {
         } else if (groundT <= Fixed::one()) {
             const Vec3 at = prev + seg * groundT;
             if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind});
+                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -1329,7 +1347,7 @@ void World::updateProjectiles() {
         }
     }
 
-    for (const PendingExplosion& e : pendingExplosions_) explode(e.at, e.ex, e.owner, e.kind);
+    for (const PendingExplosion& e : pendingExplosions_) explode(e.at, e.ex, e.owner, e.kind, e.cause);
 
     size_t keep = 0;
     for (size_t i = 0; i < projectiles_.size(); ++i) {
@@ -1340,7 +1358,7 @@ void World::updateProjectiles() {
     spawned_.clear();
 }
 
-void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind) {
+void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind, DamageType cause) {
     // A stone smashes and scatters, without fire.
     const ImpactEvent::Kind event = kind == ProjectileKind::Stone ? ImpactEvent::Kind::Smash : ImpactEvent::Kind::Explosion;
     impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius});
@@ -1363,10 +1381,10 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
         const Fixed f = Fixed::one() - d / ex.radius;
         const Vec3 dir = awayFrom(u.pos);
         if (u.alive()) {
-            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage).floorToInt()));
-            impacts_.push_back({ImpactEvent::Kind::Hit, centre, dir, kNoEntity, u.id, killed, {}});
-            // An engine breaks up into timber; soldiers into pieces.
-            if (killed && u.stats.type != static_cast<uint8_t>(UnitType::Catapult)) spawnGibs(u, at, ex.impulse * f);
+            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage).floorToInt()), nullptr, {cause, dir, centre, false, true});
+            impacts_.push_back({ImpactEvent::Kind::Hit, centre, dir, kNoEntity, u.id, killed, {}, -1, cause});
+            // Blown far past death, he is torn to pieces (world_death.cpp decides).
+            if (killed && u.death.kind == DeathKind::Gibbed) spawnGibs(u, at, ex.impulse * f);
         }
         knock(u, dir, ex.impulse * f);
     }
@@ -1405,9 +1423,15 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
 
 void World::spawnGibs(Unit& victim, const Vec3& from, Fixed strength) {
     // Torn apart: head, torso, both arms and legs, and gobbets of flesh.
+    // Bigger bodies make more gobbets and fly less far.
     victim.gibbed = true;
-    const RemainKind parts[] = {RemainKind::Head, RemainKind::Torso, RemainKind::Arm, RemainKind::Arm,
-                                RemainKind::Leg,  RemainKind::Leg,   RemainKind::Chunk, RemainKind::Chunk};
+    std::vector<RemainKind> parts = {RemainKind::Head, RemainKind::Torso, RemainKind::Arm, RemainKind::Arm,
+                                     RemainKind::Leg,  RemainKind::Leg};
+    // A limb already cut off is not there to fly.
+    if (victim.death.severed != RemainKind::None) parts.erase(std::find(parts.begin(), parts.end(), victim.death.severed));
+    const int64_t chunks = std::clamp<int64_t>(victim.stats.mass.floorToInt() + 1, 2, 6);
+    for (int64_t i = 0; i < chunks; ++i) parts.push_back(RemainKind::Chunk);
+    strength = strength * sqrt(Fixed::fromInt(2) / (Fixed::one() + min(victim.stats.mass, Fixed::fromInt(15))));
     const Vec3 origin = victim.pos + up(victim.stats.height * 3 / 5);
     const Vec3 away = flatDirection(from, victim.pos, victim.facing);
     for (RemainKind part : parts) {
@@ -1491,6 +1515,19 @@ uint64_t World::checksum() const {
         // Only when ordered, so battles without facing orders hash as before.
         if (u.arriveFacing != Vec3{}) hashVec(h, u.arriveFacing);
         h.addU64(u.gibbed);
+        // Only once someone has died or caught an arrow in his shield, so older battles hash alike.
+        if (u.death.kind != DeathKind::None) {
+            h.addU64(static_cast<uint64_t>(u.death.kind));
+            h.addU64(static_cast<uint64_t>(u.death.cause));
+            hashVec(h, u.death.dir);
+            h.addI64(u.death.overkill);
+            h.addU64(static_cast<uint64_t>(u.death.severed));
+            h.addU64(u.death.tick);
+            h.addU64(u.death.arrowPinned);
+            hashVec(h, u.death.arrowDir);
+            h.addI64(u.death.arrowHeight.raw);
+        }
+        if (u.shieldArrows != 0) h.addI64(u.shieldArrows);
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);
@@ -1526,6 +1563,7 @@ uint64_t World::checksum() const {
         h.addU64(p.resting);
         h.addU64(p.bleeding);
         h.addI64(p.smear.raw);
+        h.addU64(static_cast<uint64_t>(p.cause));
         hashExplosive(h, p.explosive);
     }
     h.addU64(remainsAdded_);

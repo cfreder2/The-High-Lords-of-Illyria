@@ -171,6 +171,54 @@
    "title": "Idle chatter",
    "when": "Rare, when nothing has happened for a while.",
    "priority": 0
+  },
+  {
+   "id": "pain",
+   "title": "Hurt",
+   "when": "Struck and hurt, still standing: a grunt or a cry.",
+   "priority": 1
+  },
+  {
+   "id": "death",
+   "title": "Death cry",
+   "when": "Killed: a scream, or a last grunt as he goes down.",
+   "priority": 2
+  },
+  {
+   "id": "death_moan",
+   "title": "Shot dead",
+   "when": "Killed by an arrow: a short, choking moan.",
+   "priority": 2
+  },
+  {
+   "id": "cackle",
+   "title": "Grenadier's glee",
+   "when": "A grenadier whose satchel has just killed: a manic cackle.",
+   "priority": 2
+  },
+  {
+   "id": "groan",
+   "title": "Undead groan",
+   "when": "The walking dead, idly: a groan, a click of the jaw.",
+   "priority": 0
+  },
+  {
+   "id": "casualties",
+   "title": "Casualties",
+   "when": "A quarter of the player's soldiers have fallen.",
+   "priority": 4
+  },
+  {
+   "id": "severe_casualties",
+   "title": "Severe casualties",
+   "when": "Half of the player's soldiers have fallen.",
+   "priority": 4
+  },
+  {
+   "id": "total_casualties",
+   "title": "Total casualties",
+   "when": "Four fifths of the player's soldiers have fallen.",
+   "priority": 5
   }
  ],
  "sets": [
@@ -744,6 +792,90 @@
        "file": "voice/soldier/idle_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "soldier.pain.1",
+       "text": "Agh!",
+       "file": "voice/soldier/pain_1.mp3",
+       "placeholder": "voice/placeholder/soldier/pain_1.mp3"
+      },
+      {
+       "id": "soldier.pain.2",
+       "text": "Ungh!",
+       "file": "voice/soldier/pain_2.mp3",
+       "placeholder": "voice/placeholder/soldier/pain_2.mp3"
+      },
+      {
+       "id": "soldier.pain.3",
+       "text": "Argh, damn it!",
+       "file": "voice/soldier/pain_3.mp3",
+       "placeholder": "voice/placeholder/soldier/pain_3.mp3"
+      },
+      {
+       "id": "soldier.pain.4",
+       "text": "Hnngh!",
+       "file": "voice/soldier/pain_4.mp3",
+       "placeholder": "voice/placeholder/soldier/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "soldier.death.1",
+       "text": "Aaargh!",
+       "file": "voice/soldier/death_1.mp3",
+       "placeholder": "voice/placeholder/soldier/death_1.mp3"
+      },
+      {
+       "id": "soldier.death.2",
+       "text": "Nooo... (falling)",
+       "file": "voice/soldier/death_2.mp3",
+       "placeholder": "voice/placeholder/soldier/death_2.mp3"
+      },
+      {
+       "id": "soldier.death.3",
+       "text": "Aaagh... (dying)",
+       "file": "voice/soldier/death_3.mp3",
+       "placeholder": "voice/placeholder/soldier/death_3.mp3"
+      },
+      {
+       "id": "soldier.death.4",
+       "text": "Ugh... (last breath)",
+       "file": "voice/soldier/death_4.mp3",
+       "placeholder": "voice/placeholder/soldier/death_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "soldier.death_moan.1",
+       "text": "Hukk... (choking)",
+       "file": "voice/soldier/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/soldier/death_moan_1.mp3"
+      },
+      {
+       "id": "soldier.death_moan.2",
+       "text": "Uhhh... (a gurgling moan)",
+       "file": "voice/soldier/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/soldier/death_moan_2.mp3"
+      },
+      {
+       "id": "soldier.death_moan.3",
+       "text": "Ghh... (choking)",
+       "file": "voice/soldier/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/soldier/death_moan_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -1307,6 +1439,90 @@
        "id": "archer.idle.4",
        "text": "Bet I hit that crow.",
        "file": "voice/archer/idle_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "archer.pain.1",
+       "text": "Ah!",
+       "file": "voice/archer/pain_1.mp3",
+       "placeholder": "voice/placeholder/archer/pain_1.mp3"
+      },
+      {
+       "id": "archer.pain.2",
+       "text": "Ow, curse it!",
+       "file": "voice/archer/pain_2.mp3",
+       "placeholder": "voice/placeholder/archer/pain_2.mp3"
+      },
+      {
+       "id": "archer.pain.3",
+       "text": "Hnn!",
+       "file": "voice/archer/pain_3.mp3",
+       "placeholder": "voice/placeholder/archer/pain_3.mp3"
+      },
+      {
+       "id": "archer.pain.4",
+       "text": "Agh!",
+       "file": "voice/archer/pain_4.mp3",
+       "placeholder": "voice/placeholder/archer/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "archer.death.1",
+       "text": "Aaah!",
+       "file": "voice/archer/death_1.mp3",
+       "placeholder": "voice/placeholder/archer/death_1.mp3"
+      },
+      {
+       "id": "archer.death.2",
+       "text": "Ah... (dying)",
+       "file": "voice/archer/death_2.mp3",
+       "placeholder": "voice/placeholder/archer/death_2.mp3"
+      },
+      {
+       "id": "archer.death.3",
+       "text": "Nnno...",
+       "file": "voice/archer/death_3.mp3",
+       "placeholder": "voice/placeholder/archer/death_3.mp3"
+      },
+      {
+       "id": "archer.death.4",
+       "text": "Aaagh!",
+       "file": "voice/archer/death_4.mp3",
+       "placeholder": "voice/placeholder/archer/death_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "archer.death_moan.1",
+       "text": "Hhk... (choking)",
+       "file": "voice/archer/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/archer/death_moan_1.mp3"
+      },
+      {
+       "id": "archer.death_moan.2",
+       "text": "Ohh... (a short moan)",
+       "file": "voice/archer/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/archer/death_moan_2.mp3"
+      },
+      {
+       "id": "archer.death_moan.3",
+       "text": "Ghh...",
+       "file": "voice/archer/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/archer/death_moan_3.mp3"
       }
      ]
     }
@@ -1901,6 +2117,120 @@
        "file": "voice/dwarf/idle_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "dwarf.pain.1",
+       "text": "Grah!",
+       "file": "voice/dwarf/pain_1.mp3",
+       "placeholder": "voice/placeholder/dwarf/pain_1.mp3"
+      },
+      {
+       "id": "dwarf.pain.2",
+       "text": "Oof!",
+       "file": "voice/dwarf/pain_2.mp3",
+       "placeholder": "voice/placeholder/dwarf/pain_2.mp3"
+      },
+      {
+       "id": "dwarf.pain.3",
+       "text": "Argh, me arm!",
+       "file": "voice/dwarf/pain_3.mp3",
+       "placeholder": "voice/placeholder/dwarf/pain_3.mp3"
+      },
+      {
+       "id": "dwarf.pain.4",
+       "text": "Hrrgh!",
+       "file": "voice/dwarf/pain_4.mp3",
+       "placeholder": "voice/placeholder/dwarf/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "dwarf.death.1",
+       "text": "Aaargh!",
+       "file": "voice/dwarf/death_1.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_1.mp3"
+      },
+      {
+       "id": "dwarf.death.2",
+       "text": "Graah... (falling)",
+       "file": "voice/dwarf/death_2.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_2.mp3"
+      },
+      {
+       "id": "dwarf.death.3",
+       "text": "Me beard... (dying)",
+       "file": "voice/dwarf/death_3.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_3.mp3"
+      },
+      {
+       "id": "dwarf.death.4",
+       "text": "Hrrk!",
+       "file": "voice/dwarf/death_4.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "dwarf.death_moan.1",
+       "text": "Hrrk... (choking)",
+       "file": "voice/dwarf/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_moan_1.mp3"
+      },
+      {
+       "id": "dwarf.death_moan.2",
+       "text": "Uhhh...",
+       "file": "voice/dwarf/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_moan_2.mp3"
+      },
+      {
+       "id": "dwarf.death_moan.3",
+       "text": "Ghh... (gurgling)",
+       "file": "voice/dwarf/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/dwarf/death_moan_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "cackle",
+     "note": "manic, breathless glee; 1-1.5 s",
+     "lines": [
+      {
+       "id": "dwarf.cackle.1",
+       "text": "Heh heh heh HAH!",
+       "file": "voice/dwarf/cackle_1.mp3",
+       "placeholder": "voice/placeholder/dwarf/cackle_1.mp3"
+      },
+      {
+       "id": "dwarf.cackle.2",
+       "text": "Hahaha! Boom!",
+       "file": "voice/dwarf/cackle_2.mp3",
+       "placeholder": "voice/placeholder/dwarf/cackle_2.mp3"
+      },
+      {
+       "id": "dwarf.cackle.3",
+       "text": "Hee hee! Look at 'em fly!",
+       "file": "voice/dwarf/cackle_3.mp3",
+       "placeholder": "voice/placeholder/dwarf/cackle_3.mp3"
+      },
+      {
+       "id": "dwarf.cackle.4",
+       "text": "Ha! Another!",
+       "file": "voice/dwarf/cackle_4.mp3",
+       "placeholder": "voice/placeholder/dwarf/cackle_4.mp3"
+      }
+     ]
     }
    ]
   },
@@ -2468,6 +2798,90 @@
        "file": "voice/rider/idle_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "rider.pain.1",
+       "text": "Agh!",
+       "file": "voice/rider/pain_1.mp3",
+       "placeholder": "voice/placeholder/rider/pain_1.mp3"
+      },
+      {
+       "id": "rider.pain.2",
+       "text": "Hah... hit!",
+       "file": "voice/rider/pain_2.mp3",
+       "placeholder": "voice/placeholder/rider/pain_2.mp3"
+      },
+      {
+       "id": "rider.pain.3",
+       "text": "Ungh!",
+       "file": "voice/rider/pain_3.mp3",
+       "placeholder": "voice/placeholder/rider/pain_3.mp3"
+      },
+      {
+       "id": "rider.pain.4",
+       "text": "Argh!",
+       "file": "voice/rider/pain_4.mp3",
+       "placeholder": "voice/placeholder/rider/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "rider.death.1",
+       "text": "Aaaagh!",
+       "file": "voice/rider/death_1.mp3",
+       "placeholder": "voice/placeholder/rider/death_1.mp3"
+      },
+      {
+       "id": "rider.death.2",
+       "text": "Uhh... (falling from the saddle)",
+       "file": "voice/rider/death_2.mp3",
+       "placeholder": "voice/placeholder/rider/death_2.mp3"
+      },
+      {
+       "id": "rider.death.3",
+       "text": "Nooo!",
+       "file": "voice/rider/death_3.mp3",
+       "placeholder": "voice/placeholder/rider/death_3.mp3"
+      },
+      {
+       "id": "rider.death.4",
+       "text": "Agh... (dying)",
+       "file": "voice/rider/death_4.mp3",
+       "placeholder": "voice/placeholder/rider/death_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "rider.death_moan.1",
+       "text": "Hukk... (choking)",
+       "file": "voice/rider/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/rider/death_moan_1.mp3"
+      },
+      {
+       "id": "rider.death_moan.2",
+       "text": "Ohh...",
+       "file": "voice/rider/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/rider/death_moan_2.mp3"
+      },
+      {
+       "id": "rider.death_moan.3",
+       "text": "Ghh... (gurgling)",
+       "file": "voice/rider/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/rider/death_moan_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -2973,6 +3387,84 @@
        "id": "hero.idle.4",
        "text": "Stay sharp.",
        "file": "voice/hero/idle_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "hero.pain.1",
+       "text": "Hngh!",
+       "file": "voice/hero/pain_1.mp3",
+       "placeholder": "voice/placeholder/hero/pain_1.mp3"
+      },
+      {
+       "id": "hero.pain.2",
+       "text": "Argh!",
+       "file": "voice/hero/pain_2.mp3",
+       "placeholder": "voice/placeholder/hero/pain_2.mp3"
+      },
+      {
+       "id": "hero.pain.3",
+       "text": "Is that all?",
+       "file": "voice/hero/pain_3.mp3",
+       "placeholder": "voice/placeholder/hero/pain_3.mp3"
+      },
+      {
+       "id": "hero.pain.4",
+       "text": "Ugh!",
+       "file": "voice/hero/pain_4.mp3",
+       "placeholder": "voice/placeholder/hero/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "hero.death.1",
+       "text": "Aaargh!",
+       "file": "voice/hero/death_1.mp3",
+       "placeholder": "voice/placeholder/hero/death_1.mp3"
+      },
+      {
+       "id": "hero.death.2",
+       "text": "Not... like this...",
+       "file": "voice/hero/death_2.mp3",
+       "placeholder": "voice/placeholder/hero/death_2.mp3"
+      },
+      {
+       "id": "hero.death.3",
+       "text": "Ugh... (falling)",
+       "file": "voice/hero/death_3.mp3",
+       "placeholder": "voice/placeholder/hero/death_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "hero.death_moan.1",
+       "text": "Hukk... (choking)",
+       "file": "voice/hero/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/hero/death_moan_1.mp3"
+      },
+      {
+       "id": "hero.death_moan.2",
+       "text": "Uhhh...",
+       "file": "voice/hero/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/hero/death_moan_2.mp3"
+      },
+      {
+       "id": "hero.death_moan.3",
+       "text": "Ghh...",
+       "file": "voice/hero/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/hero/death_moan_3.mp3"
       }
      ]
     }
@@ -3567,6 +4059,90 @@
        "file": "voice/wizard/idle_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "wizard.pain.1",
+       "text": "Ah!",
+       "file": "voice/wizard/pain_1.mp3",
+       "placeholder": "voice/placeholder/wizard/pain_1.mp3"
+      },
+      {
+       "id": "wizard.pain.2",
+       "text": "Oh!",
+       "file": "voice/wizard/pain_2.mp3",
+       "placeholder": "voice/placeholder/wizard/pain_2.mp3"
+      },
+      {
+       "id": "wizard.pain.3",
+       "text": "Ngh!",
+       "file": "voice/wizard/pain_3.mp3",
+       "placeholder": "voice/placeholder/wizard/pain_3.mp3"
+      },
+      {
+       "id": "wizard.pain.4",
+       "text": "Ow!",
+       "file": "voice/wizard/pain_4.mp3",
+       "placeholder": "voice/placeholder/wizard/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "wizard.death.1",
+       "text": "Aaah!",
+       "file": "voice/wizard/death_1.mp3",
+       "placeholder": "voice/placeholder/wizard/death_1.mp3"
+      },
+      {
+       "id": "wizard.death.2",
+       "text": "Ohh... (dying)",
+       "file": "voice/wizard/death_2.mp3",
+       "placeholder": "voice/placeholder/wizard/death_2.mp3"
+      },
+      {
+       "id": "wizard.death.3",
+       "text": "Nnno...",
+       "file": "voice/wizard/death_3.mp3",
+       "placeholder": "voice/placeholder/wizard/death_3.mp3"
+      },
+      {
+       "id": "wizard.death.4",
+       "text": "Aaieee!",
+       "file": "voice/wizard/death_4.mp3",
+       "placeholder": "voice/placeholder/wizard/death_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "wizard.death_moan.1",
+       "text": "Hhk... (choking)",
+       "file": "voice/wizard/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/wizard/death_moan_1.mp3"
+      },
+      {
+       "id": "wizard.death_moan.2",
+       "text": "Ohh...",
+       "file": "voice/wizard/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/wizard/death_moan_2.mp3"
+      },
+      {
+       "id": "wizard.death_moan.3",
+       "text": "Ghh...",
+       "file": "voice/wizard/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/wizard/death_moan_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -4130,6 +4706,84 @@
        "id": "berserker.idle.4",
        "text": "Need a fight.",
        "file": "voice/berserker/idle_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "berserker.pain.1",
+       "text": "Raargh!",
+       "file": "voice/berserker/pain_1.mp3",
+       "placeholder": "voice/placeholder/berserker/pain_1.mp3"
+      },
+      {
+       "id": "berserker.pain.2",
+       "text": "Hah! More!",
+       "file": "voice/berserker/pain_2.mp3",
+       "placeholder": "voice/placeholder/berserker/pain_2.mp3"
+      },
+      {
+       "id": "berserker.pain.3",
+       "text": "Grraah!",
+       "file": "voice/berserker/pain_3.mp3",
+       "placeholder": "voice/placeholder/berserker/pain_3.mp3"
+      },
+      {
+       "id": "berserker.pain.4",
+       "text": "Hrrgh!",
+       "file": "voice/berserker/pain_4.mp3",
+       "placeholder": "voice/placeholder/berserker/pain_4.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "berserker.death.1",
+       "text": "Raaaargh! (dying roar)",
+       "file": "voice/berserker/death_1.mp3",
+       "placeholder": "voice/placeholder/berserker/death_1.mp3"
+      },
+      {
+       "id": "berserker.death.2",
+       "text": "Ha... ha... (dying)",
+       "file": "voice/berserker/death_2.mp3",
+       "placeholder": "voice/placeholder/berserker/death_2.mp3"
+      },
+      {
+       "id": "berserker.death.3",
+       "text": "Graaah!",
+       "file": "voice/berserker/death_3.mp3",
+       "placeholder": "voice/placeholder/berserker/death_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "berserker.death_moan.1",
+       "text": "Hrrk... (choking)",
+       "file": "voice/berserker/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/berserker/death_moan_1.mp3"
+      },
+      {
+       "id": "berserker.death_moan.2",
+       "text": "Grrr... (a dying growl)",
+       "file": "voice/berserker/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/berserker/death_moan_2.mp3"
+      },
+      {
+       "id": "berserker.death_moan.3",
+       "text": "Ghh...",
+       "file": "voice/berserker/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/berserker/death_moan_3.mp3"
       }
      ]
     }
@@ -4697,6 +5351,78 @@
        "file": "voice/archon/idle_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "archon.pain.1",
+       "text": "Ah!",
+       "file": "voice/archon/pain_1.mp3",
+       "placeholder": "voice/placeholder/archon/pain_1.mp3"
+      },
+      {
+       "id": "archon.pain.2",
+       "text": "Hnn!",
+       "file": "voice/archon/pain_2.mp3",
+       "placeholder": "voice/placeholder/archon/pain_2.mp3"
+      },
+      {
+       "id": "archon.pain.3",
+       "text": "Oh!",
+       "file": "voice/archon/pain_3.mp3",
+       "placeholder": "voice/placeholder/archon/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "archon.death.1",
+       "text": "Aaaah! (a ringing cry)",
+       "file": "voice/archon/death_1.mp3",
+       "placeholder": "voice/placeholder/archon/death_1.mp3"
+      },
+      {
+       "id": "archon.death.2",
+       "text": "Ohh... (fading)",
+       "file": "voice/archon/death_2.mp3",
+       "placeholder": "voice/placeholder/archon/death_2.mp3"
+      },
+      {
+       "id": "archon.death.3",
+       "text": "Aaah!",
+       "file": "voice/archon/death_3.mp3",
+       "placeholder": "voice/placeholder/archon/death_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "archon.death_moan.1",
+       "text": "Hhk...",
+       "file": "voice/archon/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/archon/death_moan_1.mp3"
+      },
+      {
+       "id": "archon.death_moan.2",
+       "text": "Ohh... (fading)",
+       "file": "voice/archon/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/archon/death_moan_2.mp3"
+      },
+      {
+       "id": "archon.death_moan.3",
+       "text": "Ah...",
+       "file": "voice/archon/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/archon/death_moan_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -5042,6 +5768,78 @@
        "file": "voice/engine/engine_loose_4.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "engine.pain.1",
+       "text": "Agh!",
+       "file": "voice/engine/pain_1.mp3",
+       "placeholder": "voice/placeholder/engine/pain_1.mp3"
+      },
+      {
+       "id": "engine.pain.2",
+       "text": "Ow!",
+       "file": "voice/engine/pain_2.mp3",
+       "placeholder": "voice/placeholder/engine/pain_2.mp3"
+      },
+      {
+       "id": "engine.pain.3",
+       "text": "Ungh!",
+       "file": "voice/engine/pain_3.mp3",
+       "placeholder": "voice/placeholder/engine/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "engine.death.1",
+       "text": "Aaargh!",
+       "file": "voice/engine/death_1.mp3",
+       "placeholder": "voice/placeholder/engine/death_1.mp3"
+      },
+      {
+       "id": "engine.death.2",
+       "text": "Ugh... (dying)",
+       "file": "voice/engine/death_2.mp3",
+       "placeholder": "voice/placeholder/engine/death_2.mp3"
+      },
+      {
+       "id": "engine.death.3",
+       "text": "Aaagh!",
+       "file": "voice/engine/death_3.mp3",
+       "placeholder": "voice/placeholder/engine/death_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death_moan",
+     "note": "short, choked, as if the breath were cut off; 0.4-0.8 s; quieter",
+     "lines": [
+      {
+       "id": "engine.death_moan.1",
+       "text": "Hukk... (choking)",
+       "file": "voice/engine/death_moan_1.mp3",
+       "placeholder": "voice/placeholder/engine/death_moan_1.mp3"
+      },
+      {
+       "id": "engine.death_moan.2",
+       "text": "Uhhh...",
+       "file": "voice/engine/death_moan_2.mp3",
+       "placeholder": "voice/placeholder/engine/death_moan_2.mp3"
+      },
+      {
+       "id": "engine.death_moan.3",
+       "text": "Ghh...",
+       "file": "voice/engine/death_moan_3.mp3",
+       "placeholder": "voice/placeholder/engine/death_moan_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -5352,6 +6150,54 @@
        "file": "voice/brute/idle_3.mp3"
       }
      ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "brute.pain.1",
+       "text": "(a pained bellow)",
+       "file": "voice/brute/pain_1.mp3",
+       "placeholder": "voice/placeholder/brute/pain_1.mp3"
+      },
+      {
+       "id": "brute.pain.2",
+       "text": "(a grunting snarl)",
+       "file": "voice/brute/pain_2.mp3",
+       "placeholder": "voice/placeholder/brute/pain_2.mp3"
+      },
+      {
+       "id": "brute.pain.3",
+       "text": "(a short roar of pain)",
+       "file": "voice/brute/pain_3.mp3",
+       "placeholder": "voice/placeholder/brute/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "brute.death.1",
+       "text": "(a long dying bellow)",
+       "file": "voice/brute/death_1.mp3",
+       "placeholder": "voice/placeholder/brute/death_1.mp3"
+      },
+      {
+       "id": "brute.death.2",
+       "text": "(a groaning roar, falling)",
+       "file": "voice/brute/death_2.mp3",
+       "placeholder": "voice/placeholder/brute/death_2.mp3"
+      },
+      {
+       "id": "brute.death.3",
+       "text": "(a final grunt)",
+       "file": "voice/brute/death_3.mp3",
+       "placeholder": "voice/placeholder/brute/death_3.mp3"
+      }
+     ]
     }
    ]
   },
@@ -5554,6 +6400,84 @@
        "id": "undead.idle.3",
        "text": "(whisper, unintelligible)",
        "file": "voice/undead/idle_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "undead.pain.1",
+       "text": "(a dry hiss)",
+       "file": "voice/undead/pain_1.mp3",
+       "placeholder": "voice/placeholder/undead/pain_1.mp3"
+      },
+      {
+       "id": "undead.pain.2",
+       "text": "(bones grinding, a rasp)",
+       "file": "voice/undead/pain_2.mp3",
+       "placeholder": "voice/placeholder/undead/pain_2.mp3"
+      },
+      {
+       "id": "undead.pain.3",
+       "text": "(a hollow moan)",
+       "file": "voice/undead/pain_3.mp3",
+       "placeholder": "voice/placeholder/undead/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "undead.death.1",
+       "text": "(a long rattling wail)",
+       "file": "voice/undead/death_1.mp3",
+       "placeholder": "voice/placeholder/undead/death_1.mp3"
+      },
+      {
+       "id": "undead.death.2",
+       "text": "(a sigh as the bones fall apart)",
+       "file": "voice/undead/death_2.mp3",
+       "placeholder": "voice/placeholder/undead/death_2.mp3"
+      },
+      {
+       "id": "undead.death.3",
+       "text": "(a hollow shriek, fading)",
+       "file": "voice/undead/death_3.mp3",
+       "placeholder": "voice/placeholder/undead/death_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "groan",
+     "note": "slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s",
+     "lines": [
+      {
+       "id": "undead.groan.1",
+       "text": "(a long low groan)",
+       "file": "voice/undead/groan_1.mp3",
+       "placeholder": "voice/placeholder/undead/groan_1.mp3"
+      },
+      {
+       "id": "undead.groan.2",
+       "text": "(a jaw clicking, then a rasp)",
+       "file": "voice/undead/groan_2.mp3",
+       "placeholder": "voice/placeholder/undead/groan_2.mp3"
+      },
+      {
+       "id": "undead.groan.3",
+       "text": "(a hollow sigh)",
+       "file": "voice/undead/groan_3.mp3",
+       "placeholder": "voice/placeholder/undead/groan_3.mp3"
+      },
+      {
+       "id": "undead.groan.4",
+       "text": "(teeth chattering)",
+       "file": "voice/undead/groan_4.mp3",
+       "placeholder": "voice/placeholder/undead/groan_4.mp3"
       }
      ]
     }
@@ -5843,6 +6767,54 @@
        "id": "fiend.idle.3",
        "text": "(crackle and hiss)",
        "file": "voice/fiend/idle_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "fiend.pain.1",
+       "text": "(a shriek of pain)",
+       "file": "voice/fiend/pain_1.mp3",
+       "placeholder": "voice/placeholder/fiend/pain_1.mp3"
+      },
+      {
+       "id": "fiend.pain.2",
+       "text": "(a hissing snarl)",
+       "file": "voice/fiend/pain_2.mp3",
+       "placeholder": "voice/placeholder/fiend/pain_2.mp3"
+      },
+      {
+       "id": "fiend.pain.3",
+       "text": "(a high screech)",
+       "file": "voice/fiend/pain_3.mp3",
+       "placeholder": "voice/placeholder/fiend/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "fiend.death.1",
+       "text": "(a piercing death shriek)",
+       "file": "voice/fiend/death_1.mp3",
+       "placeholder": "voice/placeholder/fiend/death_1.mp3"
+      },
+      {
+       "id": "fiend.death.2",
+       "text": "(a howling scream)",
+       "file": "voice/fiend/death_2.mp3",
+       "placeholder": "voice/placeholder/fiend/death_2.mp3"
+      },
+      {
+       "id": "fiend.death.3",
+       "text": "(a gurgling screech)",
+       "file": "voice/fiend/death_3.mp3",
+       "placeholder": "voice/placeholder/fiend/death_3.mp3"
       }
      ]
     }
@@ -6136,6 +7108,133 @@
        "id": "beast.idle.3",
        "text": "(rumbling breath)",
        "file": "voice/beast/idle_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "pain",
+     "note": "short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch",
+     "lines": [
+      {
+       "id": "beast.pain.1",
+       "text": "(a yelp)",
+       "file": "voice/beast/pain_1.mp3",
+       "placeholder": "voice/placeholder/beast/pain_1.mp3"
+      },
+      {
+       "id": "beast.pain.2",
+       "text": "(a pained screech)",
+       "file": "voice/beast/pain_2.mp3",
+       "placeholder": "voice/placeholder/beast/pain_2.mp3"
+      },
+      {
+       "id": "beast.pain.3",
+       "text": "(a snorting squeal)",
+       "file": "voice/beast/pain_3.mp3",
+       "placeholder": "voice/placeholder/beast/pain_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "death",
+     "note": "a real scream or a last grunt, falling away; 0.5-1.2 s; full voice",
+     "lines": [
+      {
+       "id": "beast.death.1",
+       "text": "(a dying scream)",
+       "file": "voice/beast/death_1.mp3",
+       "placeholder": "voice/placeholder/beast/death_1.mp3"
+      },
+      {
+       "id": "beast.death.2",
+       "text": "(a long screech)",
+       "file": "voice/beast/death_2.mp3",
+       "placeholder": "voice/placeholder/beast/death_2.mp3"
+      },
+      {
+       "id": "beast.death.3",
+       "text": "(a last snorting groan)",
+       "file": "voice/beast/death_3.mp3",
+       "placeholder": "voice/placeholder/beast/death_3.mp3"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "herald",
+   "name": "Herald",
+   "units": [
+    "(the battle's narrator)"
+   ],
+   "casting": "The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses; heard in the centre, never positional.",
+   "verbal": true,
+   "fallback": null,
+   "placeholder": {
+    "pitch": 0.8,
+    "rate": 0.9
+   },
+   "situations": [
+    {
+     "id": "casualties",
+     "note": "clear and grave, a herald's report, mono; not shouted",
+     "lines": [
+      {
+       "id": "herald.casualties.1",
+       "text": "Casualties.",
+       "file": "voice/herald/casualties_1.mp3"
+      },
+      {
+       "id": "herald.casualties.2",
+       "text": "We are taking casualties.",
+       "file": "voice/herald/casualties_2.mp3"
+      },
+      {
+       "id": "herald.casualties.3",
+       "text": "Men are falling.",
+       "file": "voice/herald/casualties_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "severe_casualties",
+     "note": "clear and grave, a herald's report, mono; not shouted",
+     "lines": [
+      {
+       "id": "herald.severe_casualties.1",
+       "text": "Severe casualties.",
+       "file": "voice/herald/severe_casualties_1.mp3"
+      },
+      {
+       "id": "herald.severe_casualties.2",
+       "text": "Half our strength is gone.",
+       "file": "voice/herald/severe_casualties_2.mp3"
+      },
+      {
+       "id": "herald.severe_casualties.3",
+       "text": "Severe casualties, my lord.",
+       "file": "voice/herald/severe_casualties_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "total_casualties",
+     "note": "clear and grave, a herald's report, mono; not shouted",
+     "lines": [
+      {
+       "id": "herald.total_casualties.1",
+       "text": "Total casualties.",
+       "file": "voice/herald/total_casualties_1.mp3"
+      },
+      {
+       "id": "herald.total_casualties.2",
+       "text": "The army is all but lost.",
+       "file": "voice/herald/total_casualties_2.mp3"
+      },
+      {
+       "id": "herald.total_casualties.3",
+       "text": "Total casualties, my lord.",
+       "file": "voice/herald/total_casualties_3.mp3"
       }
      ]
     }

@@ -469,6 +469,66 @@ That fits comfortably even in a browser. Consolidation keeps it bounded across a
 
 **Optional gameplay hooks** (major remains are deterministic, so these are possible later): morale penalty marching past fresh mass graves; carrion birds revealing where a battle happened; looting battlefields for arrows and gear; old fortifications and rubble giving cover in the next war; temples gaining or losing blessing power from bloodshed nearby.
 
+### 5.5.1 The Death Matrix (built)
+
+How a soldier dies decides what is left of him and how it sounds (`engine/sim/src/world_death.cpp`, tests in
+`tests/test_death.cpp`). Every weapon has a damage type (`UnitStats`: melee and missile, in `docs/UNITS.md`):
+**slash** (swords, sabres, claws), **cleave** (axes, great blades, a fiend's or dragon's claws), **blunt** (clubs,
+staves, an elephant's weight, a catapult's stone), **pierce** (pikes, lances, fangs, horns, arrows), **explosive**
+(satchel charges) and **fire** (fireballs). The killing blow's type, its direction and its **overkill** (how far below
+zero health it went) choose the body:
+
+| Killing blow | Body | Left behind |
+|---|---|---|
+| Slash past 12 overkill, cleave past 7 (man-sized bodies, mass under 4) | lies whole but for a limb, or past twice the threshold the head | the part, thrown on along the blow, bleeding as it skids; a pool where he fell |
+| Explosive past 5 overkill | torn apart | head, trunk, limbs and gobbets (more for heavier bodies, thrown less far), flung from the blast centre, rolling down slopes too steep to grip, leaving blood trails; they can be kicked |
+| Any blow but fire and arrows past 50 overkill | torn apart (a catapult stone landing on a man) | as above, burst from the side the blow came from |
+| An arrow | whole, fallen the way the arrow flew | the arrow, pinned in him where it struck |
+| Fire | whole, burned black | smoke rising from it for 25 s (presentation) |
+| Anything else | whole, fallen the way the blow drove him | |
+
+Arrows a shield turns stick in it half the time (up to 5), drawn on the shield. The death (kind, cause, direction,
+overkill, the part cut off, the pinned arrow) is part of each unit's state and the checksum, and each death is
+published as `World::deathEvents()` (unit, side, type, kind, cause, where, the blow's direction, overkill, killer) for
+the sounds and voices.
+
+### 5.5.2 Sound Effects (built)
+
+No music in battle, as in Myth: every sound tells the player what is happening (`game/src/sfx.cpp`,
+`game/web/sfx.js`; the list of every sound with how to record or source it is `docs/SOUND_EFFECTS.md`, generated from
+`game/web/sfx/sounds.json`; tests in `tests/test_sfx.cpp`).
+
+- **Cues from the simulation:** bowstrings, satchel throws and fuses, fireballs cast, catapults loosing (new missiles);
+  arrows landing by surface (earth, wood, stone, water) and on what they hit (a shield's splintering crack, armour's
+  ring, flesh's wet thwack, bone); blows by damage type and armour (a swing, then a wet slash, a metallic clash, a crush,
+  a point going in, a shield's thud, bone); blasts, stones, gates struck and broken; and the death matrix (a
+  dismembering snap, a gib burst then blood rain, a body's fall, armour's clatter, bones collapsing, burning flesh).
+  Arrows passing within 7 m of a low camera whistle, pitched by their closing speed. Victory gets a fanfare, defeat a
+  drone. Each sound plays at most once a tick, the loudest of its kind standing for a volley, with its own least
+  gap; at most 6 cues a tick, the gravest and nearest first. They fade over 160 m (420 m for blasts, stones, gates and
+  engines) with the camera's height counting against them; beyond hearing they cost nothing.
+- **Ambience** (every half second): wind by the continent under the view (the high passes' howl by its mountain value,
+  the lowlands' sweep, louder as the camera rises); swamp insects and the odd frog near marsh and mud, panned towards
+  it; carrion flies over the dead near the view, 12 s after they fall, louder with more bodies; the enemy's war drums
+  while he comes on beyond bowshot (and in held land: a siege), silent once the armies meet; rain and thunder by a
+  weather hook (`Sfx::setRain`, `Module._illyria_set_rain`) until there is weather.
+- **The voices:** cries of pain, death screams and the choking moan of the shot (by the death matrix), a grenadier's
+  cackle when his satchel kills, the undead's groans, and the herald's "Casualties", "Severe casualties" and "Total
+  casualties" at a quarter, half and four fifths of the player's soldiers lost (`docs/VOICE_LINES.md`). Cries have their
+  own throttle (a third of a second apart) so they never crowd out the talk.
+- **Playback:** Web Audio on the AudioContext shared with the voices (`game/web/audio.js`, unlocked on the first touch
+  for iOS): 12 reused channel strips (filter, gain, pan, reverb send), the gravest cue taking the slightest strip;
+  distance dulls and reverberates a sound; a compressor guards the master. Files load lazily, a sound's variants the
+  first time it plays (a core set when audio starts). The ⚙ panel has sound effects on or off, their volume, ambience on
+  or off (kept per device), and a link to `sfx-test.html`, where every sound and cry can be auditioned through the same
+  chain, placed left, right, near or far, and rated with a note to copy back.
+- **The files:** rendered offline by `python3 tools/sfx/synth/render.py` (numpy, scipy, ffmpeg; deterministic seeds),
+  layered as a sound designer would (transient, body, tail): Karplus-Strong strings, modal resonator banks for metal
+  and wood, filtered noise for cuts, blood, wind and rain, membrane drums in a synthetic room, a convolution reverb for
+  the outdoors; one-shots mono at -18 LUFS, loops stereo at -24 LUFS, made seamless; about 4 MB in all with the
+  placeholder cries. `stats.json` records each file's length, peak, loudness and DC, checked by the tests. A
+  recording dropped in by `tools/sfx/convert.sh` replaces any rendered file and is never overwritten.
+
 ### 5.6 Phones: Fully Playable
 
 The complete game (campaign, battles, multiplayer) must be playable in a phone browser. A cut-down mobile companion doesn't count.
@@ -565,7 +625,7 @@ Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is
 
 ## Voices (built)
 
-Soldiers speak, as in Myth (`game/src/voice.cpp`, `game/web/voice.js`; tests in `tests/test_voice.cpp`). Every line is listed once, in `game/web/voice/lines.json`: 13 voices (soldier, archer, dwarf, rider, hero, wizard, berserker, archon, engine crew, and the wordless brute, undead, fiend and beast), 28 situations, 849 lines. The recording script `docs/VOICE_LINES.md` and its checklist are generated from it (`python3 tools/voice/script.py`); `tools/voice/convert.sh` turns recorded WAV takes into the game's MP3s.
+Soldiers speak, as in Myth (`game/src/voice.cpp`, `game/web/voice.js`; tests in `tests/test_voice.cpp`). Every line is listed once, in `game/web/voice/lines.json`: 14 voices (soldier, archer, dwarf, rider, hero, wizard, berserker, archon, engine crew, the wordless brute, undead, fiend and beast, and the herald who reports casualties), 36 situations (with the cries of pain and death of §5.5.2), 983 lines; the cries have rendered placeholders (`voice/placeholder/`) until they are recorded. The recording script `docs/VOICE_LINES.md` and its checklist are generated from it (`python3 tools/voice/script.py`); `tools/voice/convert.sh` turns recorded WAV takes into the game's MP3s.
 
 - **What is said:** orders answered (selected, move, attack, charge; a hero answers for those he leads, else the most senior), the simulation's events (rally calls, a hero's fall on either side, breaking, wavering, rallying, kills and a veteran's taunts, promotions, bad wounds, arrows falling, blows in the flank or back, friendly fire, a grenadier's satchel, healing, the catapult throwing, a gate broken, first contact, riders breaking into the gallop and the men they ride at, victory and defeat) and rare idle chatter after 20 s without a blow. The enemy plays the same lines a little lower.
 - **Throttles:** each situation has a cooldown per side (0.3 s for orders up to 12 s for arrows, 45 s for idle chatter); a speaker keeps quiet 5 s after he spoke; chatter (priority 2 and below) keeps 1.5 s apart and at most 5 in any 10 s; orders skip that gap; grave news (hold the line, a hero's rally, a fallen hero, a broken gate, victory, defeat) skips all but its own cooldown. Cues fade over 140 m from the view centre, the camera's height counting against them; beyond hearing they are dropped before they spend any throttle. Orders, victory, defeat and our own hero's fall are always heard. In the page at most 3 voices sound at once, the graver cutting in; a Ford battle says about 15-20 lines a minute out of a few hundred events.
