@@ -1,3 +1,9 @@
+# The voice manifest, built in so the tests can check it on every platform.
+set(ILLYRIA_VOICE_MANIFEST_FILE "${CMAKE_SOURCE_DIR}/game/web/voice/lines.json")
+file(READ "${ILLYRIA_VOICE_MANIFEST_FILE}" ILLYRIA_VOICE_MANIFEST)
+configure_file(voice_manifest.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_VOICE_MANIFEST_FILE}")
+
 add_executable(illyria_tests
     test_main.cpp
     test_fixed.cpp
@@ -20,6 +26,9 @@ add_executable(illyria_tests
     test_campaign_ai.cpp
     test_paths.cpp
     test_command.cpp
+    test_morale_rally.cpp
+    test_voice.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 
@@ -30,3 +39,5 @@ if(EMSCRIPTEN)
 else()
     add_test(NAME illyria_tests COMMAND illyria_tests)
 endif()
+# The manifest is one long string; every compiler here takes it.
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

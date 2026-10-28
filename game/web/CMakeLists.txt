@@ -27,10 +27,15 @@ set(ILLYRIA_SITE_DIR "${CMAKE_BINARY_DIR}/site")
 configure_file(index.html "${ILLYRIA_SITE_DIR}/index.html" @ONLY)
 configure_file(manifest.webmanifest "${ILLYRIA_SITE_DIR}/manifest.webmanifest" @ONLY)
 configure_file(icon.svg "${ILLYRIA_SITE_DIR}/icon.svg" COPYONLY)
+configure_file(voice.js "${ILLYRIA_SITE_DIR}/voice.js" COPYONLY)
 add_custom_command(TARGET illyria_web POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:illyria_web>/illyria.js $<TARGET_FILE_DIR:illyria_web>/illyria.wasm "${ILLYRIA_SITE_DIR}/"
 )
 # Pre-rendered sprite sheets (tools/blender), fetched as battles need them.
 add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
+)
+# The voices: the manifest of lines and whatever has been recorded (tools/voice).
+add_custom_target(illyria_web_voice ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/voice" "${ILLYRIA_SITE_DIR}/voice"
 )

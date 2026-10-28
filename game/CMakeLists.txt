@@ -5,6 +5,7 @@ add_library(illyria_game
     src/gestures.cpp
     src/battle.cpp
     src/battle_command.cpp
+    src/voice.cpp
     src/detail_land.cpp
 )
 target_include_directories(illyria_game PUBLIC include)

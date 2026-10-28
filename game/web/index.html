@@ -188,6 +188,8 @@
   #gfx label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--ink); }
   #gfx input { width: 18px; height: 18px; accent-color: var(--gold); }
   #gfx .note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; }
+  #gfx h3.sub { margin-top: 12px; }
+  #gfx input[type=range] { flex: 1; width: auto; height: 28px; }
   .hidden { display: none !important; }
   .fade { opacity: 0; }
   /* Landscape phones: keep the battlefield visible. */
@@ -248,7 +250,7 @@
       <button id="restart" class="nofight" aria-label="Restart battle">Restart</button>
       <button id="scenario" class="battle-only nofight" aria-label="Switch battle">Siege</button>
       <button id="campaign" class="nofight" aria-label="Play the campaign">Campaign</button>
-      <button id="gfxButton" aria-label="Graphics settings">⚙</button>
+      <button id="gfxButton" aria-label="Settings: graphics and voices">⚙</button>
     </div>
   </div>
 </div>
@@ -267,6 +269,10 @@
   <label><input type="checkbox" data-bit="32"> Sky, haze and clouds</label>
   <label><input type="checkbox" data-res="1"> Full resolution</label>
   <div class="note">Looks only: everyone sees the same battle on any setting.</div>
+  <h3 class="sub">Voices</h3>
+  <label><input type="checkbox" id="voiceOn"> Soldiers' voices</label>
+  <label>Volume <input type="range" id="voiceVolume" min="0" max="100" step="5" aria-label="Voice volume"></label>
+  <label><input type="checkbox" id="voiceSpeech"> Read unrecorded lines aloud</label>
 </div>
 
 <div id="hint" class="panel">
@@ -976,6 +982,7 @@
   };
 })();
 </script>
+<script src="voice.js?v=@ILLYRIA_VERSION@"></script>
 <script src="illyria.js?v=@ILLYRIA_VERSION@"></script>
 </body>
 </html>
