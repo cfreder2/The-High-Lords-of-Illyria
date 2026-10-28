@@ -62,23 +62,52 @@ TEST(hard_lords_outplay_easy_ones) {
     // Seat by seat: the same lord played Hard among Easy ones, against the
     // same seat in an all-Easy game, so neither the seat's position nor its
     // neighbours decide it. Forty days: the race for the neutral towns and the
-    // first wars between neighbours.
-    int32_t hard = 0, easy = 0, better = 0;
+    // first wars between neighbours. Armies are slow to train and rare troops
+    // never come back, so the Hard lord also loses fewer of its veterans and
+    // rare troops for every battle it fights.
+    struct Tally {
+        int32_t cities = 0, fights = 0, lost = 0;
+    };
+    // Every side's tally in one game (hardSeat: the side played Hard, or -1).
+    const auto play = [](uint64_t seed, int hardSeat) {
+        Campaign c(continent(), seed);
+        for (uint8_t s = 0; s < 8; ++s) c.setDifficulty(s, s == hardSeat ? Difficulty::Hard : Difficulty::Easy);
+        std::vector<Tally> t(8);
+        std::vector<std::vector<uint32_t>> precious(8);  // each side's veterans and rare troops (not heroes), yesterday
+        for (int day = 0; day < 40 && !c.winner(); ++day) {
+            runDays(c, 1);
+            std::vector<std::vector<uint32_t>> now(8);
+            for (const Campaign::Stack& s : c.stacks())
+                if (s.owner < 8)
+                    for (const Army& a : s.armies)
+                        if (Campaign::precious(a) && !a.hero()) now[s.owner].push_back(a.id);
+            for (size_t side = 0; side < 8; ++side)
+                for (uint32_t id : precious[side]) t[side].lost += std::find(now[side].begin(), now[side].end(), id) == now[side].end();
+            precious = std::move(now);
+        }
+        for (uint8_t side = 0; side < 8; ++side) t[side].cities = c.citiesOwned(side);
+        for (const Campaign::Fight& f : c.fights()) {
+            if (f.attacker < 8) ++t[f.attacker].fights;
+            if (f.defender < 8) ++t[f.defender].fights;
+        }
+        return t;
+    };
+    Tally hard, easy;
+    int32_t better = 0;
     for (uint64_t seed : {2, 3}) {
-        const auto play = [&](int hardSeat) {
-            Campaign c(continent(), seed);
-            for (uint8_t s = 0; s < 8; ++s) c.setDifficulty(s, s == hardSeat ? Difficulty::Hard : Difficulty::Easy);
-            runDays(c, 40);
-            return c;
-        };
-        const Campaign base = play(-1);
-        for (int seat = 0; seat < 8; ++seat) {
-            const int32_t h = play(seat).citiesOwned(static_cast<uint8_t>(seat)), e = base.citiesOwned(static_cast<uint8_t>(seat));
-            hard += h, easy += e, better += h > e;
+        const std::vector<Tally> base = play(seed, -1);
+        for (uint8_t seat = 0; seat < 8; ++seat) {
+            const Tally h = play(seed, seat)[seat], e = base[seat];
+            hard.cities += h.cities, hard.fights += h.fights, hard.lost += h.lost;
+            easy.cities += e.cities, easy.fights += e.fights, easy.lost += e.lost;
+            better += h.cities > e.cities;
         }
     }
-    std::printf("  seat for seat: Hard %d cities, Easy %d; Hard ahead in %d of 16\n", hard, easy, better);
-    CHECK(hard > easy * 11 / 10);
+    std::printf("  seat for seat: Hard %d cities, Easy %d; Hard ahead in %d of 16; veterans and rare troops lost: Hard %d in %d fights, Easy %d in %d\n",
+                hard.cities, easy.cities, better, hard.lost, hard.fights, easy.lost, easy.fights);
+    CHECK(hard.cities >= easy.cities * 3 / 2);
+    CHECK(better >= 11);
+    CHECK(hard.lost * easy.fights < easy.lost * hard.fights);
 }
 
 TEST(the_computer_saves_a_threatened_capital) {
@@ -89,6 +118,11 @@ TEST(the_computer_saves_a_threatened_capital) {
     c.setHuman(1, true);
     const int32_t capital = capitalOf(c, 0);
     const Campaign::CityState home = c.cities()[static_cast<size_t>(capital)];
+    // Send the realm's rare troops home: the hero's escort alone holds the walls.
+    for (const Campaign::Stack& s : std::vector<Campaign::Stack>(c.stacks()))
+        if (s.owner == 0)
+            for (const Army& a : s.armies)
+                if (Campaign::rare(a.type) && !a.hero()) c.disband(s.id, a.id);
     // A road out of the capital: the way to the furthest city within reach.
     const uint32_t probe = c.raise(0, home.cx, home.cy, {UnitType::LightInfantry});
     std::vector<std::pair<int32_t, int32_t>> road;

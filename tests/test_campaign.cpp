@@ -42,12 +42,12 @@ TEST(cities_pay_gold_and_train_armies_that_cost_upkeep) {
         return -1;
     }();
     const int32_t before = c.sides()[0].gold;
-    CHECK(c.produce(capital, 0));  // light infantry: a day, 4 gold
+    CHECK(c.produce(capital, 0));  // light infantry: two days, 12 gold
     for (int t = 0; t < Campaign::kTicksPerDay * 3; ++t) c.step();
     int armies = 0;
     for (const Campaign::Stack& st : c.stacks())
         if (st.owner == 0) armies += static_cast<int>(st.armies.size());
-    CHECK(armies >= 4);  // hero, escort and new recruits
+    CHECK(armies >= 4);  // hero, escort, the realm's rare troops and a recruit
     CHECK(c.sides()[0].gold > before);  // the capital's 30 a day outpaces a few recruits
 }
 
@@ -149,7 +149,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0xb407851cf38a9e2a;
+    constexpr uint64_t kGolden = 0x4123a10958c73ec3;
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

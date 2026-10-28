@@ -18,6 +18,7 @@ add_executable(illyria_tests
     test_campaign_quests.cpp
     test_campaign_sea.cpp
     test_campaign_ai.cpp
+    test_campaign_rare.cpp
     test_paths.cpp
     test_command.cpp
 )

@@ -14,49 +14,44 @@ namespace {
 using T = UnitType;
 
 // What each side trains at its capital (light infantry is everywhere), and
-// the gold it starts with, after the empires of Warlords.
+// the gold it starts with, after the empires of Warlords. Only common troops:
+// each realm's rare ones march with its hero from the start, and its capital
+// holds a one-off levy of more (campaign_rare.cpp).
 struct Realm {
     std::vector<UnitType> specialties;
     int32_t gold;
 };
 const Realm& realm(uint8_t side) {
     static const Realm kRealms[] = {
-        {{T::HeavyCavalry, T::HeavyInfantry, T::Pegasi, T::Catapult}, 300},  // Aurelian Throne: knights and engines
-        {{T::Giants, T::HeavyInfantry}, 200},                    // Highcrag Giants
-        {{T::Dwarves, T::Griffins, T::DwarfGrenadier, T::Catapult}, 450},  // Ironhold Dwarves: rich, and engineers
-        {{T::WolfRiders, T::Minotaurs, T::Berserker}, 250},      // Orcs of Grath
-        {{T::Archers, T::Pegasi, T::Unicorns}, 250},             // Sylvaran Elves
+        {{T::HeavyCavalry, T::HeavyInfantry, T::Catapult}, 300},  // Aurelian Throne: knights and engines
+        {{T::HeavyInfantry, T::Pikemen}, 200},                   // Highcrag Giants
+        {{T::Dwarves, T::HeavyInfantry, T::Catapult}, 450},      // Ironhold Dwarves: rich, and engineers
+        {{T::WolfRiders, T::Warrior}, 250},                      // Orcs of Grath
+        {{T::Archers, T::LightCavalry}, 250},                    // Sylvaran Elves
         {{T::LightCavalry, T::HeavyCavalry}, 300},               // Sunreach Riders
-        {{T::Archers, T::Journeyman, T::Pikemen}, 300},          // Moonward Order
-        {{T::Spiders, T::Minotaurs, T::Giants, T::Catapult}, 350},  // Lord Malvoren
+        {{T::Archers, T::Pikemen}, 300},                         // Moonward Order
+        {{T::HeavyInfantry, T::WolfRiders, T::Catapult}, 350},   // Lord Malvoren
     };
     return kRealms[side % 8];
 }
 
-// Training time (days) and cost (gold), as in the Warlords city table.
+// Training time (days) and cost (gold): the Warlords city table made slow
+// and dear (about twice the days, three to five times the gold), so that an
+// army lost is not soon replaced. Rare types are never trained; a levy of
+// them takes three days and five gold a point of strength to muster.
 Campaign::Option trained(UnitType t) {
     switch (t) {
-        case T::LightInfantry: return {t, 1, 4};
-        case T::HeavyInfantry: return {t, 2, 4};
-        case T::Archers: return {t, 3, 4};
-        case T::Pikemen: return {t, 2, 5};
-        case T::LightCavalry: return {t, 3, 6};
-        case T::HeavyCavalry: return {t, 4, 8};
-        case T::Dwarves: return {t, 2, 4};
-        case T::WolfRiders: return {t, 3, 8};
-        case T::Giants: return {t, 4, 8};  // dear for their strength, or the Giants' lord runs away with the war
-        case T::Minotaurs: return {t, 4, 8};
-        case T::Spiders: return {t, 3, 6};
-        case T::Griffins: return {t, 6, 16};
-        case T::Pegasi: return {t, 6, 16};
-        case T::Elephants: return {t, 5, 12};
-        case T::Unicorns: return {t, 5, 14};
-        case T::DwarfGrenadier: return {t, 3, 8};
-        case T::Journeyman: return {t, 3, 6};
-        case T::Warrior: return {t, 3, 6};
-        case T::Berserker: return {t, 3, 6};
-        case T::Catapult: return {t, 5, 10};  // dear and slow to build, as Warlords II's siege engines
-        default: return {t, 6, 20};
+        case T::LightInfantry: return {t, 2, 12};
+        case T::HeavyInfantry: return {t, 4, 20};
+        case T::Archers: return {t, 4, 20};
+        case T::Pikemen: return {t, 4, 20};
+        case T::LightCavalry: return {t, 5, 28};
+        case T::HeavyCavalry: return {t, 6, 36};
+        case T::Dwarves: return {t, 4, 24};
+        case T::WolfRiders: return {t, 5, 28};
+        case T::Warrior: return {t, 4, 24};
+        case T::Catapult: return {t, 6, 40};  // dear and slow to build, as Warlords II's siege engines
+        default: return {t, 3, 5 * warlordsStrength(t)};  // a levy
     }
 }
 
@@ -164,8 +159,23 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
 }
 
 int32_t Campaign::upkeep(UnitType t) {
+    // Common troops: a quarter of their training price a day. Rare ones what
+    // Warlords asked for them (half their price in its city table).
     if (t == T::Hero) return 0;
-    return (trained(t).cost + 1) / 2;
+    if (trainable(t)) return (trained(t).cost + 3) / 4;
+    switch (t) {
+        case T::Giants:
+        case T::Minotaurs:
+        case T::DwarfGrenadier: return 4;
+        case T::Spiders:
+        case T::Journeyman:
+        case T::Berserker: return 3;
+        case T::Griffins:
+        case T::Pegasi: return 8;
+        case T::Elephants: return 6;
+        case T::Unicorns: return 7;
+        default: return 10;  // the allies of the ruins (who mostly serve for nothing)
+    }
 }
 
 Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
@@ -175,6 +185,7 @@ Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(conti
     for (const Continent::Faction& f : Continent::factions()) sides_.push_back({f.name, 0, true});
     armiesRaised_.assign(sides_.size(), 0);
     initCities();
+    initRare();
     initSites();
     initSea();
 }
@@ -273,7 +284,7 @@ void Campaign::initCities() {
             st.options.push_back(trained(T::LightInfantry));
             const Continent::Sample s = continent_.sample(c.pos.x, c.pos.y);
             const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(300), c.pos.y, s.height, s.mountain, s.roadDist);
-            const UnitType hills[] = {T::Dwarves, T::Giants, T::Griffins}, woods[] = {T::Archers, T::WolfRiders, T::Spiders},
+            const UnitType hills[] = {T::Dwarves, T::HeavyInfantry, T::Pikemen}, woods[] = {T::Archers, T::WolfRiders, T::Warrior},
                            plains[] = {T::HeavyInfantry, T::LightCavalry, T::Pikemen, T::HeavyCavalry};
             const int32_t extra = 1 + (roll(3) < Fixed::fromRatio(1, 2));
             for (int32_t k = 0; k < extra; ++k) {
@@ -487,11 +498,15 @@ void Campaign::newDay() {
         while (side.gold < 0) {
             Stack* newest = nullptr;
             size_t which = 0;
+            // The newest go first, green common troops before veterans and rare ones.
             for (Stack& st : stacks_) {
                 if (st.owner != s) continue;
                 for (size_t k = 0; k < st.armies.size(); ++k) {
-                    if (st.armies[k].hero() || st.armies[k].ally) continue;
-                    if (!newest || st.armies[k].bornDay >= newest->armies[which].bornDay) {
+                    const Army& a = st.armies[k];
+                    if (a.hero() || a.ally) continue;
+                    const bool later = !newest || precious(newest->armies[which]) > precious(a) ||
+                                       (precious(newest->armies[which]) == precious(a) && a.bornDay >= newest->armies[which].bornDay);
+                    if (later) {
                         newest = &st;
                         which = k;
                     }
@@ -524,7 +539,14 @@ void Campaign::newDay() {
         c.progress = 0;
         const int32_t n = ++armiesRaised_[c.owner];
         const char* suffix = n % 10 == 1 && n % 100 != 11 ? "st" : n % 10 == 2 && n % 100 != 12 ? "nd" : n % 10 == 3 && n % 100 != 13 ? "rd" : "th";
-        Army army = makeArmy(o.type, std::to_string(n) + suffix + " " + continent_.cities()[i].name + " " + unitTypeName(o.type));
+        const bool levy = o.left > 0;
+        Army army = levy ? makeArmy(o.type, continent_.cities()[i].name + " " + unitTypeName(o.type) + " (levy)")
+                         : makeArmy(o.type, std::to_string(n) + suffix + " " + continent_.cities()[i].name + " " + unitTypeName(o.type));
+        if (levy && --c.options[static_cast<size_t>(c.producing)].left == 0) {
+            // The levy is spent: the option goes, and the city stops.
+            c.options.erase(c.options.begin() + c.producing);
+            c.producing = -1;
+        }
         if (sent) {
             // LOC: it reaches the other city two days later.
             transits_.push_back({c.owner, static_cast<int32_t>(i), c.vectorTo, day() + 2, army});
@@ -791,6 +813,8 @@ uint64_t Campaign::checksum() const {
         h.addI64(c.vectorTo);
         h.addU64(c.port);
         h.addI64(c.boatDays);
+        h.addU64(c.options.size());
+        for (const Option& o : c.options) h.addI64(o.left);
     }
     for (const Transit& t : transits_) {
         h.addU64(t.owner);

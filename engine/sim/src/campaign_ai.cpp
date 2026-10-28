@@ -33,24 +33,31 @@ struct Temper {
     int32_t heroOdds;     // ... with a hero in the stack
     int32_t accept;       // the enemy's chance of taking a city we can live with
     int32_t reactDays10;  // how far off (tenths of days) an enemy marching on us counts as a threat
+    int32_t sittingDays10;  // ... and one sitting in its own city (the Warlord waits for it to march)
     int32_t rangeDays10;  // how far a stack will march to attack
     int32_t upkeepShare;  // percent of the income the armies may cost
     int32_t forget;       // percent chance a stack is forgotten for the day
     int32_t blunder;      // percent chance of a random target instead of the best
+    int32_t whim;         // percent chance a city trains whatever takes the lord's fancy
     bool gather;          // merges small stacks into big ones for a purpose
     bool vector;          // sends what rear cities train to the front (LOC)
     bool fortify;         // raises the walls of frontier towns
     bool gangUp;          // turns on the leader late in the war
     bool thrifty;         // trains what fights best for the days (else the quickest)
+    int32_t care;         // thousandths more needed to attack for each precious army risked
+    int32_t mostOdds;     // ... but never more than this
 };
 // The Warlord: the best odds-taking we found (bolder loses armies, timider
-// loses the race for the neutral towns), and every strategy.
-constexpr Temper kHard{450, 500, 300, 20, 45, 95, 0, 0, true, true, true, true, true};
+// loses the race for the neutral towns; with armies slow to train, bolder than
+// it was), six points more for each veteran or rare army a stack would risk,
+// an enemy counted a threat once it marches (not while it sits in its own
+// walls, which would keep every army home), and every strategy.
+constexpr Temper kHard{350, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, true, 60, 850};
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
-// trains whatever is quickest, never gathers or fortifies (and wastes a fifth
-// of its income: Campaign::income).
-constexpr Temper kEasy{300, 300, 650, 5, 45, 95, 25, 35, false, false, false, false, false};
+// trains whatever takes its fancy (the quickest with an enemy at the gates),
+// never gathers or fortifies, and wastes a fifth of its income (Campaign::income).
+constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, false, 0, 1000};
 
 }  // namespace
 
@@ -95,11 +102,12 @@ private:
     bool chance(int32_t percent) { return percent > 0 && static_cast<int32_t>(c_.aiRng_.nextBelow(100)) < percent; }
     bool ours(const C::Stack& s) const { return s.owner == side_ && !s.armies.empty(); }
     bool foe(const C::Stack& s) const { return s.owner != side_ && s.owner != C::kNeutral && !s.garrison && !s.armies.empty(); }
-    static std::vector<const Army*> view(const C::Stack& s) {
+    static std::vector<const Army*> viewOf(const std::vector<Army>& armies) {
         std::vector<const Army*> v;
-        for (const Army& a : s.armies) v.push_back(&a);
+        for (const Army& a : armies) v.push_back(&a);
         return v;
     }
+    static std::vector<const Army*> view(const C::Stack& s) { return viewOf(s.armies); }
     static bool hasHero(const C::Stack& s) {
         for (const Army& a : s.armies)
             if (a.hero()) return true;
@@ -112,6 +120,17 @@ private:
             any = any || C::flies(a.type);
         }
         return all && any;
+    }
+    // The odds a stack needs before it attacks: better with a hero in it, and
+    // better still for each veteran or rare army that could be lost for good.
+    int32_t needed(const std::vector<Army>& armies) const {
+        int32_t precious = 0;
+        bool hero = false;
+        for (const Army& a : armies) {
+            hero = hero || a.hero();
+            precious += !a.hero() && C::precious(a);
+        }
+        return std::min(t_.mostOdds, (hero ? t_.heroOdds : t_.attackOdds) + t_.care * precious);
     }
     // Tenths of days for a stack to reach a city.
     int32_t eta(const C::Stack& s, int32_t city) const {
@@ -160,8 +179,8 @@ private:
                 // A garrison next door, or a stack marching elsewhere: only
                 // when it is all but at the gates.
                 const bool atUs = !e.path.empty() && e.path.back() == std::make_pair(cs.cx, cs.cy);
-                const int32_t reach = atUs || (e.path.empty() && !garrisoned) ? t_.reactDays10 : garrisoned ? 10 : 5;
-                if (when > std::max(reach, 5)) continue;
+                const int32_t reach = atUs || (e.path.empty() && !garrisoned) ? t_.reactDays10 : garrisoned ? t_.sittingDays10 : 5;
+                if (when > reach) continue;
                 const int32_t odds = c_.attackOdds(view(e), e.owner, cs.cx, cs.cy);
                 if (odds > v.threatOdds || (odds == v.threatOdds && when < v.threatEta)) {
                     v.threatOdds = odds;
@@ -192,20 +211,39 @@ private:
             std::vector<Army> pool;
             for (size_t k : list)
                 for (const Army& a : c_.stacks_[k].armies) pool.push_back(a);
+            // Green common troops first: they garrison; veterans and rare
+            // troops (precious: nobody can replace them) ride out last.
             std::stable_sort(pool.begin(), pool.end(), [](const Army& a, const Army& b) {
+                if (C::precious(a) != C::precious(b)) return C::precious(b);
                 const int32_t sa = C::strength(a), sb = C::strength(b);
                 return sa != sb ? sa < sb : a.id < b.id;
             });
-            // Under threat, everyone stays. So they do when the threat is
-            // held off only by those inside: judged against the one guard
-            // that would be left, else the defence undoes itself.
-            bool hold = threatened(v);
-            if (!hold && v.threatStack != SIZE_MAX && pool.size() > 1) {
+            // As many guards as it takes to hold off the threat at the odds
+            // we accept (all of them when even that is not enough), else one.
+            size_t keep = 1;
+            if (threatened(v)) {
+                // Everyone stays, unless all but one guard could go out and
+                // destroy the threat itself (the best defence, when the odds are good).
+                keep = pool.size();
+                if (t_.gather && pool.size() > 1) {
+                    const C::Stack& e = c_.stacks_[v.threatStack];
+                    std::vector<Army> out(pool.begin() + 1, pool.end());
+                    if (c_.attackOdds(viewOf(out), side_, e.cx, e.cy) >= needed(out)) keep = 1;
+                }
+            } else if (v.threatStack != SIZE_MAX && pool.size() > 1) {
                 const C::Stack& e = c_.stacks_[v.threatStack];
-                const std::vector<const Army*> lone = {&pool.front()};
-                hold = C::winChance(c_.lineup(view(e), e.owner, cx, cy, false), c_.lineup(lone, side_, cx, cy, true)) > t_.accept;
+                const std::vector<int32_t> att = c_.lineup(view(e), e.owner, cx, cy, false);
+                std::vector<const Army*> held;
+                keep = pool.size();
+                for (size_t n = 0; n < pool.size(); ++n) {
+                    if (pool[n].hero() || pool[n].type == UnitType::Catapult) continue;
+                    held.push_back(&pool[n]);
+                    if (C::winChance(att, c_.lineup(held, side_, cx, cy, true)) <= t_.accept) {
+                        keep = held.size();
+                        break;
+                    }
+                }
             }
-            const size_t keep = hold ? pool.size() : 1;
             std::vector<Army> guard, strike;
             // Siege engines are for taking towns, not for holding them.
             for (const Army& a : pool) {
@@ -420,13 +458,19 @@ private:
             int32_t score, cx, cy, city, odds;
         };
         std::vector<Option> options;
-        const int32_t need = hasHero(s) ? t_.heroOdds : t_.attackOdds;
+        const int32_t need = needed(s.armies);
         if (!pinned(k)) {
             for (const auto& [rough, city] : prizes(s, lead, 8)) {
                 const C::CityState& t = c_.cities_[static_cast<size_t>(city)];
                 const int32_t odds = c_.attackOdds(view(s), side_, t.cx, t.cy);
                 if (odds >= need) options.push_back({-rough * odds / 1000, t.cx, t.cy, city, odds});
             }
+        } else if (t_.gather) {
+            // Held at home by a threat: strike the threat itself, in a city or not.
+            const CityView& m = mine_[cityView_.at(cityHere(s))];
+            const C::Stack& e = c_.stacks_[m.threatStack];
+            const int32_t odds = c_.attackOdds(view(s), side_, e.cx, e.cy);
+            if (odds >= need) options.push_back({1000, e.cx, e.cy, c_.cityAt(e.cx, e.cy), odds});
         }
         if (t_.reactDays10 >= 10) {
             for (const CityView& m : mine_) {
@@ -450,9 +494,43 @@ private:
         for (size_t o = 0; o < options.size() && o < 3; ++o) {
             if (!march(k, options[o].cx, options[o].cy)) continue;
             if (options[o].city >= 0) claimed_.push_back(options[o].city);
+            if (t_.gather) spare(k, options[o].cx, options[o].cy);
             return true;
         }
         return false;
+    }
+
+    // A stack setting out from one of our cities leaves its veterans and
+    // rare troops behind, the best first, when the attack does not need
+    // them: those who are not there cannot fall.
+    void spare(size_t k, int32_t tx, int32_t ty) {
+        if (!ownCity(cityHere(c_.stacks_[k]))) return;
+        std::vector<Army> go = c_.stacks_[k].armies, stay;
+        std::vector<size_t> order;
+        for (size_t a = 0; a < go.size(); ++a)
+            if (!go[a].hero() && C::precious(go[a])) order.push_back(a);
+        if (order.empty()) return;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return C::strength(go[a]) > C::strength(go[b]); });
+        std::vector<uint8_t> left(go.size(), 0);
+        for (size_t a : order) {
+            std::vector<Army> rest;
+            bool soldiers = false;
+            left[a] = 1;
+            for (size_t b = 0; b < go.size(); ++b)
+                if (!left[b]) {
+                    rest.push_back(go[b]);
+                    soldiers = soldiers || !go[b].hero();
+                }
+            if (!soldiers || c_.attackOdds(viewOf(rest), side_, tx, ty) < needed(rest)) left[a] = 0;
+        }
+        std::vector<Army> rest;
+        for (size_t b = 0; b < go.size(); ++b) (left[b] ? stay : rest).push_back(go[b]);
+        if (stay.empty()) return;
+        c_.stacks_[k].armies = std::move(rest);
+        const int32_t cx = c_.stacks_[k].cx, cy = c_.stacks_[k].cy;
+        C::Stack& home = c_.newStack(side_, cx, cy);  // (may move the stacks: nothing above is kept)
+        home.armies = std::move(stay);
+        used_.push_back(1);
     }
 
     // The best odds a stack has on its own against the prizes near it.
@@ -478,7 +556,9 @@ private:
             if (!ownCity(city) || eta(s, city) > 15) continue;
             std::vector<const Army*> both = view(o);
             for (const Army& a : s.armies) both.push_back(&a);
-            const int32_t need = std::max(hasHero(s) || hasHero(o) ? t_.heroOdds : t_.attackOdds, bestAlone(o, lead) + 1);
+            std::vector<Army> together = o.armies;
+            together.insert(together.end(), s.armies.begin(), s.armies.end());
+            const int32_t need = std::max(needed(together), bestAlone(o, lead) + 1);
             for (const auto& [rough, target] : prizes(o, lead, 4)) {
                 const C::CityState& t = c_.cities_[static_cast<size_t>(target)];
                 if (c_.attackOdds(both, side_, t.cx, t.cy) < need) continue;
@@ -513,7 +593,7 @@ private:
         int32_t upkeep = c_.upkeepOf(side_);
         // Tomorrow's pay would all but empty the chest (and a city lost would
         // empty it): send the weakest home first.
-        while (upkeep > 0 && side.gold + income - upkeep < std::max(10, income / 4)) {
+        while (upkeep > 0 && side.gold + income - upkeep < std::max(25, income / 3)) {
             size_t bestStack = SIZE_MAX, bestArmy = 0;
             int32_t weakest = INT32_MAX;
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
@@ -521,7 +601,8 @@ private:
                 if (!ours(s)) continue;
                 for (size_t a = 0; a < s.armies.size(); ++a) {
                     if (s.armies[a].hero() || s.armies[a].ally) continue;  // allies cost nothing
-                    const int32_t w = C::strength(s.armies[a]) * 100 - C::upkeep(s.armies[a].type);
+                    // Green common troops go first: veterans and rare troops cannot be had again.
+                    const int32_t w = (C::precious(s.armies[a]) ? 1000 : 0) + C::strength(s.armies[a]) * 100 - C::upkeep(s.armies[a].type);
                     if (w < weakest) {
                         weakest = w;
                         bestStack = k;
@@ -556,15 +637,22 @@ private:
             for (size_t o = 0; o < cs.options.size(); ++o) {
                 const C::Option& op = cs.options[o];
                 // What an army is worth in the dice: against a strength-5
-                // foe it lands s(10-5) hits for every 5(10-s) it takes.
+                // foe it lands s(10-5) hits for every 5(10-s) it takes. Now
+                // that training is slow, the days count twice over: in the
+                // race for the towns an army today beats a better one next
+                // week. (A levy of rare troops, quick to muster and strong,
+                // comes out on top.)
                 const int32_t s = warlordsStrength(op.type), w = s * 100 / (10 - std::min(s, 9));
                 const int32_t score = danger || !t_.thrifty ? 1000 - op.days * 100 + s  // the quickest
-                                                            : w * 10 / op.days - op.cost;  // the best fighting for the days
+                                                            : w * 20 / (op.days * op.days) - op.cost;  // the best fighting for the days
                 if (score > bestScore) {
                     bestScore = score;
                     want = static_cast<int32_t>(o);
                 }
             }
+            // An Easy lord's fancy: whatever, as long as no enemy is at the gates.
+            if (!danger && !cs.options.empty() && (cs.progress == 0 || cs.producing < 0) && chance(t_.whim))
+                want = static_cast<int32_t>(c_.aiRng_.nextBelow(static_cast<uint32_t>(cs.options.size())));
             if (wantEngines && !danger && v.frontier) {
                 for (size_t o = 0; o < cs.options.size(); ++o)
                     if (cs.options[o].type == UnitType::Catapult) {
@@ -589,7 +677,7 @@ private:
             // BUILD: the gold left over raises the walls of threatened and frontier towns.
             if (t_.fortify && fortified < 2 && (danger || v.frontier) && cs.defense < 8) {
                 const int32_t cost = c_.fortifyCost(v.index);
-                if (side.gold >= cost + 150 && c_.fortify(v.index)) ++fortified;
+                if (side.gold >= cost + 400 && c_.fortify(v.index)) ++fortified;  // only from a full chest: troops come first
             }
         }
     }

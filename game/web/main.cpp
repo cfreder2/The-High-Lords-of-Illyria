@@ -852,6 +852,24 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_attack() {
     }
     if (target >= 0) app->camp.c->move(s->id, app->camp.c->cities()[static_cast<size_t>(target)].cx, app->camp.c->cities()[static_cast<size_t>(target)].cy);
 }
+// Test hook: settle the pending battle as a 3D victory in which the
+// player's armies come out veterans and elites (the hero a level up),
+// and open the player's capital.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_veterans() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on || !app->camp.c->pending()) return;
+    App::CampaignView& cv = app->camp;
+    std::vector<C::Outcome> out;
+    int32_t k = 0;
+    for (const illyria::sim::Army* a : cv.c->pendingAttackers()) {
+        const int32_t rank = a->hero() ? a->rank + 1 : std::min<int32_t>(3, 2 + k++);
+        out.push_back({a->id, a->soldiers, 2 + 3 * rank, rank});
+    }
+    for (const illyria::sim::Army* a : cv.c->pendingDefenders()) out.push_back({a->id, 0, 0, a->rank});
+    cv.c->applyBattle(out, true);
+    for (size_t i = 0; i < cv.c->cities().size(); ++i)
+        if (cv.c->continent().cities()[i].capital && cv.c->cities()[i].owner == 0) cv.city = static_cast<int32_t>(i);
+}
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.
 EMSCRIPTEN_KEEPALIVE int illyria_campaign_search() {
@@ -991,15 +1009,16 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         px /= app->pixelRatio;
         py /= app->pixelRatio;
         if (px < -40 || py < -40 || px > app->camera.width() / app->pixelRatio + 40 || py > app->camera.height() / app->pixelRatio + 40) continue;
-        int32_t strongest = 0;
+        int32_t strongest = 0, vets = 0;
         bool hero = false;
         for (const illyria::sim::Army& a : st.armies) {
             strongest = std::max(strongest, C::strength(a));
             hero = hero || a.hero();
+            vets += !a.hero() && a.rank >= 2;  // veterans and elites
         }
         const V3 col = factionColor(st.owner);
-        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"moving\":%s,\"boat\":%s,\"color\":\"#%02x%02x%02x\"}",
-                      first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false",
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"vets\":%d,\"moving\":%s,\"boat\":%s,\"color\":\"#%02x%02x%02x\"}",
+                      first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false", vets,
                       st.path.empty() ? "false" : "true", st.boat ? "true" : "false", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255),
                       static_cast<int>(col.z * 255));
         s += buf;
@@ -1012,9 +1031,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             std::string arts;
             for (uint8_t i : a.artifacts) arts += (arts.empty() ? "" : ", ") + std::string(C::artifacts()[i].name);
             std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d,"
-                          "\"ally\":%s,\"command\":%d,\"artifacts\":\"",
+                          "\"ally\":%s,\"rare\":%s,\"command\":%d,\"artifacts\":\"",
                           k ? "," : "", a.id, a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
-                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills, a.ally ? "true" : "false", C::command(a));
+                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills, a.ally ? "true" : "false",
+                          C::rare(a.type) && !a.hero() ? "true" : "false", C::command(a));
             s += buf;
             s += arts + "\"}";
         }
@@ -1037,8 +1057,8 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     // A hero offering their sword.
     if (c.offer(0).open) {
         const C::Offer& o = c.offer(0);
-        std::snprintf(buf, sizeof buf, ",\"offer\":{\"name\":\"%s\",\"price\":%d,\"city\":\"%s\"}", o.name.c_str(), o.price,
-                      c.continent().cities()[static_cast<size_t>(o.city)].name.c_str());
+        std::snprintf(buf, sizeof buf, ",\"offer\":{\"name\":\"%s\",\"price\":%d,\"city\":\"%s\",\"companion\":\"%s\"}", o.name.c_str(), o.price,
+                      c.continent().cities()[static_cast<size_t>(o.city)].name.c_str(), o.companions ? illyria::sim::unitTypeName(o.companion) : "");
         s += buf;
     }
     // The selected stack's boat, or the boat it could board here.
@@ -1067,9 +1087,24 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         s += buf;
         for (size_t k = 0; k < cs.options.size(); ++k) {
             const C::Option& op = cs.options[k];
-            std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"days\":%d,\"cost\":%d,\"upkeep\":%d,\"strength\":%d}", k ? "," : "",
-                          illyria::sim::unitTypeName(op.type), op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type));
+            std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"days\":%d,\"cost\":%d,\"upkeep\":%d,\"strength\":%d,\"levy\":%d}", k ? "," : "",
+                          illyria::sim::unitTypeName(op.type), op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type), op.left);
             s += buf;
+        }
+        // The rare troops no city trains, and where each can be had.
+        s += "],\"rare\":[";
+        bool any = false;
+        for (int k = 0; k < illyria::sim::kUnitTypeCount; ++k) {
+            const auto t = static_cast<illyria::sim::UnitType>(k);
+            if (!C::rare(t) || t == illyria::sim::UnitType::Hero) continue;
+            static const char* kFrom[] = {"start", "levy", "ruins", "temples", "heroes"};
+            std::string from;
+            for (int b = 0; b < 5; ++b)
+                if (C::sources(t) & (1 << b)) from += std::string(from.empty() ? "" : ",") + kFrom[b];
+            std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"strength\":%d,\"from\":\"%s\"}", any ? "," : "", illyria::sim::unitTypeName(t),
+                          illyria::sim::warlordsStrength(t), from.c_str());
+            s += buf;
+            any = true;
         }
         s += "]}";
     }

@@ -123,7 +123,7 @@ bool Campaign::canSearch(uint32_t stackId) const {
     if (st.kind == Continent::Site::Kind::Temple) {
         for (const Army& a : s->armies)
             if (!(a.temples & st.bit)) return true;
-        return false;
+        return !st.gifted && bestHero(*s) >= 0 && s->armies.size() < static_cast<size_t>(kMaxStack);  // its guard waits for a hero
     }
     return !st.searched && bestHero(*s) >= 0;
 }
@@ -143,7 +143,8 @@ bool Campaign::search(uint32_t stackId) {
             ++a.blessings;
             ++n;
         }
-        deed(s.owner, where + " blessed " + (n == 1 ? std::string("one army") : std::to_string(n) + " armies"));
+        if (n) deed(s.owner, where + " blessed " + (n == 1 ? std::string("one army") : std::to_string(n) + " armies"));
+        templeGift(s, st, where);  // the temple's guard follows the first hero (campaign_rare.cpp)
         return true;
     }
     Army& hero = s.armies[static_cast<size_t>(bestHero(s))];
@@ -208,7 +209,7 @@ bool Campaign::search(uint32_t stackId) {
         }
     } else if (roll >= 75 && s.armies.size() < static_cast<size_t>(kMaxStack)) {
         // Allies: special armies that join the hero's stack and want no pay.
-        static const UnitType kWeak[] = {T::Undead, T::Wizards}, kStrong[] = {T::Devils, T::Archons}, kMighty[] = {T::Dragons, T::Devils};
+        static const UnitType kWeak[] = {T::Undead, T::Wizards}, kStrong[] = {T::Devils, T::Archons}, kMighty[] = {T::Dragons, T::Demons};
         const uint32_t pick = rng_.nextBelow(2);
         const UnitType type = gs <= 3 ? T::Undead : gs <= 5 ? kWeak[pick] : gs <= 6 ? kStrong[pick] : kMighty[pick];
         const int32_t n = std::min<int32_t>(gs >= 5 && pick == 0 && type != T::Dragons ? 2 : 1, kMaxStack - static_cast<int32_t>(s.armies.size()));
@@ -280,6 +281,7 @@ void Campaign::questsNewDay() {
         constexpr int32_t kNames = static_cast<int32_t>(sizeof kHeroNames / sizeof kHeroNames[0]);
         o.name = kHeroNames[n % kNames];
         if (n >= kNames) o.name += " the Younger";
+        offerCompanions(o);  // some come with rare troops of their own (campaign_rare.cpp)
         if (!side.human) hire(static_cast<uint8_t>(s), side.gold >= o.price + 100);  // keeping enough to train troops
     }
 }
@@ -300,6 +302,7 @@ bool Campaign::hire(uint8_t side, bool accept) {
         if (st.owner == side && st.cx == c.cx && st.cy == c.cy && st.path.empty() && st.armies.size() < kMaxStack) home = &st;
     if (!home) home = &newStack(side, c.cx, c.cy);
     home->armies.push_back(makeArmy(T::Hero, o.name));
+    hireCompanions(home, side, o, o.city);
     deed(side, o.name + " took service at " + continent_.cities()[static_cast<size_t>(o.city)].name + " for " + std::to_string(o.price) + " gold");
     return true;
 }
@@ -331,6 +334,7 @@ void Campaign::questAi(uint8_t side) {
             bool want = false;
             if (st.kind == Continent::Site::Kind::Ruin) want = !st.searched && guardianStrength(st.guardian) < hs;
             else if (st.kind == Continent::Site::Kind::Sage) want = !st.searched;
+            else if (!st.gifted) want = true;  // its guard follows the first hero to come
             else if (!inCity)
                 for (const Army& a : s.armies) want = want || !(a.temples & st.bit);
             if (!want) continue;
@@ -374,7 +378,7 @@ void Campaign::questAi(uint8_t side) {
 }
 
 void Campaign::hashQuests(StateHasher& h) const {
-    for (const SiteState& s : sites_) h.addU64(s.searched);
+    for (const SiteState& s : sites_) h.addU64(s.searched | (s.gifted ? 2u : 0u));
     for (const Loot& l : loot_) {
         h.addI64(l.cx);
         h.addI64(l.cy);
@@ -384,6 +388,8 @@ void Campaign::hashQuests(StateHasher& h) const {
         h.addU64(o.open);
         h.addI64(o.city);
         h.addI64(o.price);
+        h.addU64(static_cast<uint64_t>(o.companion));
+        h.addI64(o.companions);
     }
     for (uint8_t f : artifactFound_) h.addU64(f);
     h.addI64(heroesHired_);
