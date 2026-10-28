@@ -72,6 +72,7 @@ Fixed groundSpeed(Ground g) {
         case Ground::DeepWater: return Fixed::zero();
         case Ground::Rock: return r(1, 2);
         case Ground::Bridge: return Fixed::one();
+        case Ground::Mud: return r(11, 20);
     }
     return Fixed::one();
 }
@@ -540,6 +541,32 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             }
             rg.ground_[static_cast<size_t>(iy) * cells + ix] = g;
         }
+    }
+
+    // Mud: the trodden margins of the water, where the ground sits barely above
+    // it, in patches; and the churned approaches to the ford.
+    {
+        const uint64_t sm = noise::nextSeed(c.seed() ^ 0x3D0D);
+        std::vector<Ground> muddy = rg.ground_;
+        for (int32_t iy = 2; iy + 2 < cells; ++iy) {
+            for (int32_t ix = 2; ix + 2 < cells; ++ix) {
+                const size_t k = static_cast<size_t>(iy) * cells + ix;
+                const Ground g = rg.ground_[k];
+                if (g != Ground::Plains && g != Ground::Road) continue;
+                const Fixed x = cell * ix + cell / 2, y = cell * iy + cell / 2;
+                const Fixed z = shaped[static_cast<size_t>(iy) * n + ix];
+                bool margin = false;
+                for (int32_t dy = -2; dy <= 2 && !margin; ++dy)
+                    for (int32_t dx = -2; dx <= 2 && !margin; ++dx) {
+                        const Fixed w = rg.water_[static_cast<size_t>(iy + dy) * n + ix + dx];
+                        margin = w.raw != kDryRaw && z - w < r(9, 10);
+                    }
+                const Fixed patch = noise::fbm(sm, x, y, 24);
+                const bool ford = g == Ground::Road && flatDist(x, y, rg.ford_) < m(40);
+                if ((margin && patch > r(2, 5)) || ford) muddy[k] = Ground::Mud;
+            }
+        }
+        rg.ground_.swap(muddy);
     }
 
     // A hamlet along the road west of the ford.

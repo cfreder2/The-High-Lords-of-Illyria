@@ -246,7 +246,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x461148eb73d113f2;
+    constexpr uint64_t kGolden = 0x7f0779d5f66b10f9;
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

@@ -12,7 +12,7 @@ class Continent;
 
 // What the ground is made of, after Warlords' terrain types. Decides movement
 // speed and where things can stand.
-enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge };
+enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud };
 
 // A static object in the world: scenery that blocks movement and stops
 // missiles (docs/GAME_DESIGN.md §5.4, tier B).

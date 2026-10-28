@@ -20,6 +20,7 @@ int32_t groundCost(Ground g) {
         case Ground::Rock: return 20;
         case Ground::DeepWater: return 0;
         case Ground::Bridge: return 9;
+        case Ground::Mud: return 18;
     }
     return 10;
 }
@@ -43,6 +44,14 @@ NavGrid::NavGrid(const Region& region) {
                     c = std::max(c, groundCost(g));
                 }
             }
+            // Climbing costs; a face too steep to walk (a cliff) is a wall.
+            const Fixed step = t.cellSize() * sub;
+            const Vec3 p0{t.cellSize() * (x * sub), t.cellSize() * (y * sub), Fixed::zero()};
+            const Fixed h00 = t.heightAt(p0.x, p0.y), h10 = t.heightAt(p0.x + step, p0.y);
+            const Fixed h01 = t.heightAt(p0.x, p0.y + step), h11 = t.heightAt(p0.x + step, p0.y + step);
+            const Fixed slope = max(max(abs(h10 - h00), abs(h11 - h01)), max(abs(h01 - h00), abs(h11 - h10))) / step;
+            if (slope > Fixed::one()) water = true;
+            c += static_cast<int32_t>((slope * 30).floorToInt());
             cost_[index(x, y)] = water ? 0 : c;
         }
     }

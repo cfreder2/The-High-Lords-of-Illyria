@@ -132,11 +132,12 @@ float hexEdge(vec2 p, float s) {
     g = abs(g);
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
-uniform sampler2D uGround;  // R8: ground type / 8, one texel per terrain cell
+uniform sampler2D uGround;  // R8: ground type / 16, one texel per terrain cell
 uniform sampler2D uRoad;    // RG8, linear: R = 0.5 + lateral offset / 16 m, G = road weight
 
-// Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock.
+// Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud.
 vec3 groundColor(int id, float broad, float fine) {
+    if (id == 8) return mix(vec3(0.27, 0.21, 0.14), vec3(0.36, 0.29, 0.19), broad) * (0.85 + 0.3 * fine);
     vec3 grass = mix(vec3(0.30, 0.42, 0.17), vec3(0.42, 0.50, 0.22), broad) * (0.9 + 0.2 * fine);
     if (id == 1) return vec3(0.46, 0.38, 0.26) * (0.85 + 0.3 * fine);
     if (id == 2) return mix(vec3(0.16, 0.24, 0.10), vec3(0.24, 0.20, 0.12), fine) * (0.9 + 0.2 * broad);
@@ -148,7 +149,7 @@ vec3 groundColor(int id, float broad, float fine) {
 }
 int groundAt(ivec2 c) {
     c = clamp(c, ivec2(0), ivec2(int(uCells) - 1));
-    return int(texelFetch(uGround, c, 0).r * 8.0 + 0.5);
+    return int(texelFetch(uGround, c, 0).r * 16.0 + 0.5);
 }
 
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels

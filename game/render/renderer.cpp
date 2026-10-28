@@ -457,7 +457,7 @@ void Renderer::uploadScenery(const Battle& battle) {
     const int n = Battle::kTerrainCells;
     std::vector<uint8_t> ground(static_cast<size_t>(n) * n);
     for (int y = 0; y < n; ++y)
-        for (int x = 0; x < n; ++x) ground[static_cast<size_t>(y) * n + x] = static_cast<uint8_t>(static_cast<int>(region.cellGround(x, y)) * 32);
+        for (int x = 0; x < n; ++x) ground[static_cast<size_t>(y) * n + x] = static_cast<uint8_t>(static_cast<int>(region.cellGround(x, y)) * 16);
     if (!groundTex_) glGenTextures(1, &groundTex_);
     glBindTexture(GL_TEXTURE_2D, groundTex_);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -604,6 +604,7 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             case sim::Ground::DeepWater: c = {0.10f, 0.26f, 0.42f}; break;
             case sim::Ground::Rock: c = {0.48f, 0.46f, 0.43f}; break;
             case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
+            case sim::Ground::Mud: c = {0.33f, 0.27f, 0.18f}; break;
             default: c = {0.40f, 0.49f, 0.21f}; break;
         }
         if (ground != sim::Ground::DeepWater) {

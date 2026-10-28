@@ -26,9 +26,21 @@ constexpr Fixed kCorpseRadiusScale = Fixed::fromRatio(3, 5);
 // Bodies walking through loose remains kick them along.
 constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
 constexpr int kMaxKicksPerTick = 2;
-// Slopes steeper than this slow walkers down.
+// Slopes steeper than this slow walkers down even across them.
 constexpr Fixed kSteepSlope = Fixed::fromRatio(7, 20);
-constexpr Fixed kSteepSpeed = Fixed::fromRatio(3, 5);
+constexpr Fixed kSteepSpeed = Fixed::fromRatio(4, 5);
+// Climbing costs: speed divides by 1 + grade x this; going down is a little quicker.
+constexpr Fixed kClimbCost = Fixed::fromRatio(5, 2);
+constexpr Fixed kDescentGain = Fixed::fromRatio(1, 2);
+constexpr Fixed kDescentMax = Fixed::fromRatio(3, 20);
+// No one walks up or down a face steeper than 45 degrees: cliffs are walls.
+constexpr Fixed kCliffGrade = Fixed::one();
+// High ground: striking down the slope at a foe adds this much melee damage
+// per unit of grade between them (a 1 in 3 slope: +20%), within limits; blows
+// struck downhill also throw harder.
+constexpr int32_t kHighGroundPctPerGrade = 60;
+constexpr int32_t kHighGroundPctMax = 35;
+constexpr int32_t kHighGroundPctMin = -25;
 // Largest obstacle extent, for grid queries.
 constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(5);
 // Ticks a thrown soldier needs to get back up.
@@ -260,14 +272,28 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     Fixed speed = u.stats.moveSpeed * speedScale * groundSpeed(groundAt(u.pos.x, u.pos.y));
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
     if (slopeAt(u.pos.x, u.pos.y) > kSteepSlope) speed *= kSteepSpeed;
-    const Fixed stepLen = speed * kTickDt;
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
+    // Uphill is slow going; downhill a little quicker.
+    {
+        const Fixed probe = Fixed::one();
+        const Fixed here = groundHeight(u.pos.x, u.pos.y);
+        const Fixed grade = groundHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe) - here;
+        if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost);
+        else speed = speed * (Fixed::one() + min(kDescentMax, -grade * kDescentGain));
+    }
+    const Fixed stepLen = speed * kTickDt;
     Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
-    // Deep water stops walkers: slide along the bank if one axis is clear.
-    if (groundAt(next.x, next.y) == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) {
-        if (groundAt(next.x, u.pos.y) != Ground::DeepWater) next.y = u.pos.y;
-        else if (groundAt(u.pos.x, next.y) != Ground::DeepWater) next.x = u.pos.x;
+    // Deep water and cliffs stop walkers: slide along if one axis is clear.
+    const Fixed here = groundHeight(u.pos.x, u.pos.y);
+    const auto barred = [&](Fixed x, Fixed y) {
+        if (groundAt(x, y) == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
+        const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
+        return run > Fixed::zero() && abs(groundHeight(x, y) - here) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
+    };
+    if (barred(next.x, next.y)) {
+        if (!barred(next.x, u.pos.y)) next.y = u.pos.y;
+        else if (!barred(u.pos.x, next.y)) next.x = u.pos.x;
         else return false;
     }
     const Vec3 moved = (next - u.pos).flat();
@@ -617,8 +643,16 @@ void World::fight(Unit& u, Unit& enemy) {
     if (slope <= kOpenSlope) pct += u.stats.terrain.openPct;
     if (slope >= kHillsSlope) pct += u.stats.terrain.hillsPct;
     if (enemy.stats.mounted) pct += m.bonusVsMountedPct;
-    const bool killed = damage(enemy, m.damage * pct / 100);
-    if (m.knockback > Fixed::zero()) knock(enemy, u.facing, m.knockback);
+    // The high ground: striking down at a foe below is easier than reaching up.
+    if (dist > Fixed::zero()) {
+        const int32_t downhill = static_cast<int32_t>((-dz / dist * kHighGroundPctPerGrade).floorToInt());
+        pct += std::clamp(downhill, kHighGroundPctMin, kHighGroundPctMax);
+    }
+    const bool killed = damage(enemy, m.damage * std::max<int32_t>(pct, 10) / 100);
+    if (m.knockback > Fixed::zero()) {
+        const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
+        knock(enemy, u.facing, m.knockback * (Fixed::one() + downhill));
+    }
     impacts_.push_back({ImpactEvent::Kind::Hit, at, u.facing, kNoEntity, enemy.id, killed, {}});
 }
 

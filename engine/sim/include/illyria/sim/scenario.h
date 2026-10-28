@@ -61,7 +61,7 @@ struct Crossing {
 // ford into archers and grenadiers while griffins fly east over the river.
 // The determinism benchmark for continent generation.
 struct Oakhaven {
-    static constexpr uint32_t kTicks = 100 * kTicksPerSecond;
+    static constexpr uint32_t kTicks = 150 * kTicksPerSecond;  // the far bank is muddy and uphill
     static void setup(World& world);
     static Replay replay(uint64_t seed);
 };

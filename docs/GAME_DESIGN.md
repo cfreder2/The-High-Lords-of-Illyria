@@ -77,6 +77,15 @@ Melee combat is dictated by physical bounding volumes and weapon trace envelopes
 | Tactical (battlefield) | Formations, individual soldiers, projectile arcs | Billboard sprites, full terrain detail |
 | Ground (close-up) | Shields deflecting blades, ragdolls, debris, gore | Full animation + cosmetic GPU physics |
 
+### 4.1.1 The Lie of the Land
+
+Topography is strategy. The rules the battle simulation already applies:
+- **Climbing is slow:** walking speed divides by 1 + 2.5 x the grade uphill (a 1 in 4 slope takes about 1.6 times as long), and is up to 15% quicker downhill. An army charging uphill arrives late and tired; one holding a crest picks its moment.
+- **Cliffs are walls:** no one walks a face steeper than 45 degrees, and pathfinding routes around them. High mountains are impassable except where a pass or a road is carved through, so passes, fords and bridges are the chokepoints.
+- **The high ground:** a soldier striking down the slope deals up to 35% more damage (about +20% on a 1 in 3 slope) and throws the foe harder; striking up the slope deals up to 25% less. Arrows from a height fly further on their own (the ballistics are real).
+- **Mud:** the trodden margins of rivers and ponds and the churned approaches to fords are mud, at a little over half speed: a ford is slow to cross and slower to climb out of.
+- **Strategic consequences:** hills make the set-piece battles; fortresses on heights and at passes are hard to take; ruins and shrines in the mountains are reached only through the passes (§4.4).
+
 ### 4.2 Unit Identity, Progression & Attrition
 
 - **Stack Limit (from *Warlords*):** At most **8 squads** may occupy a map hex, and an attack commits at most 8. A defended city (2×2 hexes) fights with everything inside it, up to **32 squads**. This caps the largest possible battle at **40 squads** (~480 soldiers at ~12 per squad), which is what keeps several simultaneous full-physics battles inside the frame budget (§5.2).
@@ -143,6 +152,14 @@ Following Warlords: **80 cities**, and whoever holds two thirds of them (or all 
 | Lord Malvoren | Dreadspire | The dark lord of the south-east | Black |
 
 Names, factions and the map are original (Q5); only the structure follows Warlords.
+
+### 4.2.3 Gold (as in Warlords)
+
+Money is gold only, as in Warlords:
+- **Income:** every city pays its owner gold each campaign day; bigger and richer cities pay more. Capturing a city takes over its income; sacking it pays a one-off haul but leaves it poorer; razing it ends it.
+- **Production:** a city can build a few unit types. Each type costs gold to set up in that city, and each unit costs gold to build. Barracks in a city decide which types it can train.
+- **Upkeep:** every unit costs gold each day. A side that cannot pay sees units desert, so a large army needs a large realm behind it.
+- **Other gold:** heroes find it in ruins; heroes for hire cost it (§4.4).
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 

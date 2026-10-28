@@ -55,7 +55,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x0a07da8a7bfa407f;
+    constexpr uint64_t kGolden = 0x9bfa65ba2784053a;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x743d3f955eedc02e;
+    constexpr uint64_t kGolden = 0xe086d7f874511b53;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
