@@ -328,20 +328,110 @@ Region Region::generateIllyria(uint64_t seed) {
     return rg;
 }
 
+Region::SceneryPoint Region::sceneryPoint(uint64_t seed, int64_t gx, int64_t gy) {
+    SceneryPoint p;
+    p.x = m(gx * kSceneryStep) + noise::lattice(seed ^ 0x51, gx, gy) * 4;
+    p.y = m(gy * kSceneryStep) + noise::lattice(seed ^ 0x52, gx, gy) * 4;
+    p.roll = noise::lattice(seed ^ 0x53, gx, gy);
+    p.variant = static_cast<uint32_t>((noise::lattice(seed ^ 0x54, gx, gy) * 4).floorToInt());
+    p.size = noise::lattice(seed ^ 0x55, gx, gy);
+    return p;
+}
+
+bool Region::sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWater, Fixed z, Obstacle& o) {
+    const Fixed roll = p.roll, size = p.size;
+    const uint32_t variant = p.variant;
+    o.variant = static_cast<uint8_t>(variant);
+    o.solid = true;
+    const auto tree = [&](bool pine) {
+        o.kind = pine ? Obstacle::Kind::Pine : Obstacle::Kind::Oak;
+        o.radius = pine ? r(7, 20) + size * 3 / 20 : r(9, 20) + size / 5;
+        o.height = pine ? m(9) + size * 6 : m(7) + size * 4;
+    };
+    const auto bush = [&] {
+        o.kind = Obstacle::Kind::Bush;
+        o.radius = r(9, 10) + size * 4 / 5;
+        o.height = r(4, 5) + size * 4 / 5;
+        o.solid = false;
+    };
+    const auto rock = [&](bool boulder) {
+        o.kind = boulder ? Obstacle::Kind::Boulder : Obstacle::Kind::Rock;
+        o.radius = boulder ? r(7, 5) + size * 8 / 5 : r(1, 2) + size * 3 / 5;
+        o.height = boulder ? r(6, 5) + size * 2 : r(1, 2) + size * 3 / 5;
+    };
+    const auto log = [&] {
+        // A fallen trunk: radius is half its length, height its girth.
+        o.kind = Obstacle::Kind::Log;
+        o.radius = r(3, 2) + size * 2;
+        o.height = r(2, 5) + size * r(2, 5);
+        o.solid = false;
+    };
+    const auto reeds = [&] {
+        bush();
+        o.variant = 3;
+    };
+    // The open country is not uniform: groves, rocky outcrops and bare meadow
+    // come in patches (noise fields over the continent).
+    const Fixed grove = noise::value(seed ^ 0x6A0E, p.x, p.y, 70);
+    const Fixed outcrop = noise::value(seed ^ 0x0C7, p.x, p.y, 55);
+    switch (g) {
+        case Ground::Forest:
+            if (roll < r(2, 5)) tree(z > m(30) || variant < 2);
+            else if (roll < r(31, 50)) bush();
+            else if (roll < r(33, 50)) log();
+            else if (roll < r(67, 100) && outcrop > r(3, 4)) rock(variant == 0);
+            else return false;
+            return true;
+        case Ground::Plains:
+            if (byWater) {
+                // Only reeds at the water's edge: nothing solid to shove waders in.
+                if (roll < r(2, 5)) reeds();
+                else return false;
+            } else if (grove > r(18, 25)) {
+                if (roll < r(1, 3)) tree(variant == 0);
+                else if (roll < r(1, 2)) bush();
+                else if (roll < r(53, 100)) log();
+                else return false;
+            } else if (outcrop > r(4, 5)) {
+                if (roll < r(3, 25)) rock(true);
+                else if (roll < r(8, 25)) rock(false);
+                else if (roll < r(9, 25)) bush();
+                else return false;
+            } else {
+                if (roll < r(6, 1000)) tree(false);
+                else if (roll < r(2, 50)) bush();
+                else if (roll < r(27, 500)) rock(false);
+                else if (roll < r(28, 500)) log();
+                else return false;
+            }
+            return true;
+        case Ground::Rock:
+            if (roll < r(1, 10)) rock(true);
+            else if (roll < r(13, 50)) rock(false);
+            else if (roll < r(3, 10) && z < m(90)) tree(true);
+            else return false;
+            return true;
+        case Ground::Swamp:
+            if (roll < r(2, 25)) {
+                reeds();
+                return true;
+            }
+            return false;
+        default:
+            return false;
+    }
+}
+
 void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius) {
-    // Trees, undergrowth and rocks on a jittered 5 m grid. Exactly five RNG
-    // draws per point, one per statement, so the sequence never shifts.
-    Rng rng(seed, 7);
-    const int32_t extent = static_cast<int32_t>(terrain_.size().floorToInt());
-    const int32_t step = 5;
-    for (int32_t gy = 0; gy < extent / step; ++gy) {
-        for (int32_t gx = 0; gx < extent / step; ++gx) {
-            const Fixed jx = rng.nextUnit() * 4;
-            const Fixed jy = rng.nextUnit() * 4;
-            const Fixed roll = rng.nextUnit();
-            const uint32_t variant = rng.nextBelow(4);
-            const Fixed size = rng.nextUnit();
-            const Fixed x = m(gx * step) + jx, y = m(gy * step) + jy;
+    // Trees, undergrowth and rocks on the continent's jittered 5 m grid.
+    const int64_t extent = terrain_.size().floorToInt();
+    const int64_t ox = origin_.x.floorToInt(), oy = origin_.y.floorToInt();
+    const auto first = [](int64_t v) { return (v >= 0 ? v / kSceneryStep : -((-v + kSceneryStep - 1) / kSceneryStep)) - 1; };
+    for (int64_t gy = first(oy); gy * kSceneryStep < oy + extent; ++gy) {
+        for (int64_t gx = first(ox); gx * kSceneryStep < ox + extent; ++gx) {
+            const SceneryPoint pt = sceneryPoint(seed, gx, gy);
+            const Fixed x = pt.x - origin_.x, y = pt.y - origin_.y;
+            if (x < Fixed::zero() || y < Fixed::zero() || x >= m(extent) || y >= m(extent)) continue;
             const Ground g = groundAt(x, y);
             if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
             if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
@@ -361,96 +451,16 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
                 nearBuilding = nearBuilding || flatDist(x, y, obstacles_[b].pos) < m(8);
             }
             if (nearBuilding) continue;
-
-            Obstacle o;
-            o.variant = static_cast<uint8_t>(variant);
-            o.pos = {x, y, terrain_.heightAt(x, y)};
-            bool place = true;
-            const auto tree = [&](bool pine) {
-                o.kind = pine ? Obstacle::Kind::Pine : Obstacle::Kind::Oak;
-                o.radius = pine ? r(7, 20) + size * 3 / 20 : r(9, 20) + size / 5;
-                o.height = pine ? m(9) + size * 6 : m(7) + size * 4;
-            };
-            const auto bush = [&] {
-                o.kind = Obstacle::Kind::Bush;
-                o.radius = r(9, 10) + size * 4 / 5;
-                o.height = r(4, 5) + size * 4 / 5;
-                o.solid = false;
-            };
-            const auto rock = [&](bool boulder) {
-                o.kind = boulder ? Obstacle::Kind::Boulder : Obstacle::Kind::Rock;
-                o.radius = boulder ? r(7, 5) + size * 8 / 5 : r(1, 2) + size * 3 / 5;
-                o.height = boulder ? r(6, 5) + size * 2 : r(1, 2) + size * 3 / 5;
-            };
-            const auto log = [&] {
-                // A fallen trunk: radius is half its length, height its girth.
-                o.kind = Obstacle::Kind::Log;
-                o.radius = r(3, 2) + size * 2;
-                o.height = r(2, 5) + size * r(2, 5);
-                o.solid = false;
-            };
-            const auto reeds = [&] {
-                bush();
-                o.variant = 3;
-            };
-            // The open country is not uniform: groves, rocky outcrops and
-            // bare meadow come in patches (noise fields, not extra RNG draws).
-            const Fixed grove = noise::value(seed ^ 0x6A0E, x, y, 70);
-            const Fixed outcrop = noise::value(seed ^ 0x0C7, x, y, 55);
             bool byWater = false;
             for (int k = 0; k < 4 && !byWater; ++k) {
                 const Ground w = groundAt(x + m(k == 0 ? 4 : k == 1 ? -4 : 0), y + m(k == 2 ? 4 : k == 3 ? -4 : 0));
                 byWater = w == Ground::Shallows || w == Ground::DeepWater;
             }
-            switch (g) {
-                case Ground::Forest:
-                    if (roll < r(2, 5)) tree(o.pos.z > m(30) || variant < 2);
-                    else if (roll < r(31, 50)) bush();
-                    else if (roll < r(33, 50)) log();
-                    else if (roll < r(67, 100) && outcrop > r(3, 4)) rock(variant == 0);
-                    else place = false;
-                    break;
-                case Ground::Plains:
-                    if (byWater) {
-                        // Only reeds at the water's edge: nothing solid to shove waders in.
-                        if (roll < r(2, 5)) reeds();
-                        else place = false;
-                    } else if (grove > r(18, 25)) {
-                        if (roll < r(1, 3)) tree(variant == 0);
-                        else if (roll < r(1, 2)) bush();
-                        else if (roll < r(53, 100)) log();
-                        else place = false;
-                    } else if (outcrop > r(4, 5)) {
-                        if (roll < r(3, 25)) rock(true);
-                        else if (roll < r(8, 25)) rock(false);
-                        else if (roll < r(9, 25)) bush();
-                        else place = false;
-                    } else {
-                        if (roll < r(6, 1000)) tree(false);
-                        else if (roll < r(2, 50)) bush();
-                        else if (roll < r(27, 500)) rock(false);
-                        else if (roll < r(28, 500)) log();
-                        else place = false;
-                    }
-                    break;
-                case Ground::Rock:
-                    if (roll < r(1, 10)) rock(true);
-                    else if (roll < r(13, 50)) rock(false);
-                    else if (roll < r(3, 10) && o.pos.z < m(90)) tree(true);
-                    else place = false;
-                    break;
-                case Ground::Swamp:
-                    if (roll < r(2, 25)) {
-                        bush();
-                        o.variant = 3;  // reeds
-                    } else {
-                        place = false;
-                    }
-                    break;
-                default:
-                    place = false;
-            }
-            if (place) obstacles_.push_back(o);
+            Obstacle o;
+            const Fixed z = terrain_.heightAt(x, y);
+            if (!sceneryAt(seed, pt, g, byWater, z, o)) continue;
+            o.pos = {x, y, z};
+            obstacles_.push_back(o);
         }
     }
 }
@@ -854,7 +864,8 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         altar.variant = 3;
         rg.obstacles_.push_back(altar);
     }
-    rg.scatterScenery(c.seed() ^ static_cast<uint64_t>(ox * 31 + oy), rg.obstacles_.size(), shrine, m(15));
+    // The same trees wherever the window is cut (see sceneryPoint).
+    rg.scatterScenery(sceneryContinentSeed(c.seed()), rg.obstacles_.size(), shrine, m(15));
     return rg;
 }
 

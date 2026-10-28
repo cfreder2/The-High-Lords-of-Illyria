@@ -288,6 +288,7 @@ bool Renderer::buildPrograms() {
         s.p.detailMask = glGetUniformLocation(s.p.id, "uDetailMask");
         s.p.detailRect = glGetUniformLocation(s.p.id, "uDetailRect");
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
+        s.p.lod = glGetUniformLocation(s.p.id, "uLod");
     }
     return true;
 }
@@ -378,11 +379,10 @@ void Renderer::uploadMeshInstances(MeshBatch& b, const std::vector<float>& data)
 
 std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
     std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_};
-    for (auto* list : {&pines_, &oaks_}) for (MeshBatch& b : *list) out.push_back(&b);
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_}) for (MeshBatch& b : *list) out.push_back(&b);
     if (includeSmall) {
-        for (auto* list : {&bushes_, &rocks_}) for (MeshBatch& b : *list) out.push_back(&b);
-        out.push_back(&logs_);
-        out.push_back(&stumps_);
+        for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_}) for (MeshBatch& b : *list) out.push_back(&b);
+        for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) out.push_back(b);
     }
     return out;
 }
@@ -394,68 +394,97 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         if (b->count == 0) continue;
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
+        glUniform1f(mesh_.lod, b->lod);
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
 }
 
 
+namespace {
+// A stable pick from weights (they need not sum to one).
+size_t pick(float u, std::initializer_list<float> weights) {
+    float total = 0;
+    for (float w : weights) total += w;
+    u *= total;
+    size_t k = 0;
+    for (float w : weights) {
+        if (u < w) return k;
+        u -= w;
+        ++k;
+    }
+    return weights.size() - 1;
+}
+}  // namespace
+
+uint32_t Renderer::sceneryId(const Battle& battle, const sim::Obstacle& o) {
+    // Its look comes from where it stands on the continent, so a tree looks the
+    // same drawn on a battlefield or on the close-up land around it.
+    const V3 at = battle.origin() + toV3(o.pos);
+    return static_cast<uint32_t>(std::lround(at.x * 8.0f)) * 73856093u ^ static_cast<uint32_t>(std::lround(at.y * 8.0f)) * 19349663u;
+}
+
+float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out) {
+    const V3 pos = toV3(o.pos);
+    const float r = static_cast<float>(o.radius.toDouble()), h = static_cast<float>(o.height.toDouble());
+    const float yaw = hash01(id * 2654435761u) * 6.283f;
+    const float tintVar = 0.85f + 0.3f * hash01(id * 40503u + 7);
+    float q[4];
+    yawQuat(yaw, q);
+    switch (o.kind) {
+        case sim::Obstacle::Kind::Pine: {
+            // Spruce, tall fir, young pine, dead snag.
+            const size_t v = pick(hash01(id * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
+            pushInstance(out.pine[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
+            return h * 0.3f;
+        }
+        case sim::Obstacle::Kind::Oak: {
+            // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
+            const size_t v = pick(hash01(id * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
+            pushInstance(out.oak[v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
+            return h * 0.45f;
+        }
+        case sim::Obstacle::Kind::Bush: {
+            // Reeds (the simulation's variant 3) or round, berry and thorn bushes.
+            const size_t v = o.variant == 3 ? 3 : pick(hash01(id * 2246822519u + 3), {0.5f, 0.2f, 0.3f});
+            const float reedH = v == 3 ? h * 1.2f : h;
+            pushInstance(out.bush[v], pos, q, {r * 0.8f, r * 0.8f, reedH}, {tintVar, tintVar, tintVar});
+            return r * 0.8f;
+        }
+        case sim::Obstacle::Kind::Rock:
+        case sim::Obstacle::Kind::Boulder: {
+            const size_t v = pick(hash01(id * 2246822519u + 4), {0.4f, 0.2f, 0.2f, 0.2f});
+            pushInstance(out.rock[v], pos - V3{0, 0, h * 0.15f}, q, {r, r * 0.9f, h}, {tintVar, tintVar, tintVar * 0.95f});
+            return r * 1.1f;
+        }
+        case sim::Obstacle::Kind::Log:
+            // Radius is half the length, height the girth; sunk a little into the turf.
+            if (hash01(id * 2246822519u + 5) < 0.3f) {
+                const float girth = h * 1.6f;  // a stump with its fallen top beside it
+                pushInstance(out.stumps, pos, q, {girth, girth, girth}, {tintVar, tintVar, tintVar});
+            } else {
+                pushInstance(out.logs, pos - V3{0, 0, h * 0.15f}, q, {r, h / 2, h / 2}, {tintVar, tintVar, tintVar});
+            }
+            return 0;
+        default: return 0;
+    }
+}
+
 void Renderer::uploadScenery(const Battle& battle) {
     const sim::Region& region = battle.region();
-    std::vector<float> house, pillar, logs, stumps, shadows;
-    std::vector<std::vector<float>> pine(pines_.size()), oak(oaks_.size()), bush(bushes_.size()), rock(rocks_.size());
-    // A stable pick from weights (they need not sum to one).
-    const auto pick = [](float u, std::initializer_list<float> weights) {
-        float total = 0;
-        for (float w : weights) total += w;
-        u *= total;
-        size_t k = 0;
-        for (float w : weights) {
-            if (u < w) return k;
-            u -= w;
-            ++k;
-        }
-        return weights.size() - 1;
-    };
+    std::vector<float> house, pillar, shadows;
+    SceneryLists natural;
+    natural.pine.resize(pines_.size());
+    natural.oak.resize(oaks_.size());
+    natural.bush.resize(bushes_.size());
+    natural.rock.resize(rocks_.size());
     for (size_t i = 0; i < region.obstacles().size(); ++i) {
         const sim::Obstacle& o = region.obstacles()[i];
         const V3 pos = toV3(o.pos);
-        const float r = static_cast<float>(o.radius.toDouble()), h = static_cast<float>(o.height.toDouble());
-        const float yaw = hash01(static_cast<uint32_t>(i) * 2654435761u) * 6.283f;
+        const float h = static_cast<float>(o.height.toDouble());
         const float tintVar = 0.85f + 0.3f * hash01(static_cast<uint32_t>(i) * 40503u + 7);
-        float q[4];
-        yawQuat(yaw, q);
-        float shadow = 0;
+        float shadow = pushScenery(o, sceneryId(battle, o), natural);
         switch (o.kind) {
-            case sim::Obstacle::Kind::Pine: {
-                // Spruce, tall fir, young pine, dead snag.
-                const size_t v = pick(hash01(static_cast<uint32_t>(i) * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
-                pushInstance(pine[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
-                shadow = h * 0.3f;
-                break;
-            }
-            case sim::Obstacle::Kind::Oak: {
-                // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
-                const size_t v = pick(hash01(static_cast<uint32_t>(i) * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
-                pushInstance(oak[v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
-                shadow = h * 0.45f;
-                break;
-            }
-            case sim::Obstacle::Kind::Bush: {
-                // Reeds (the simulation's variant 3) or round, berry and thorn bushes.
-                const size_t v = o.variant == 3 ? 3 : pick(hash01(static_cast<uint32_t>(i) * 2246822519u + 3), {0.5f, 0.2f, 0.3f});
-                const float reedH = v == 3 ? h * 1.2f : h;
-                pushInstance(bush[v], pos, q, {r * 0.8f, r * 0.8f, reedH}, {tintVar, tintVar, tintVar});
-                shadow = r * 0.8f;
-                break;
-            }
-            case sim::Obstacle::Kind::Rock:
-            case sim::Obstacle::Kind::Boulder: {
-                const size_t v = pick(hash01(static_cast<uint32_t>(i) * 2246822519u + 4), {0.4f, 0.2f, 0.2f, 0.2f});
-                pushInstance(rock[v], pos - V3{0, 0, h * 0.15f}, q, {r, r * 0.9f, h}, {tintVar, tintVar, tintVar * 0.95f});
-                shadow = r * 1.1f;
-                break;
-            }
             case sim::Obstacle::Kind::Tower: break;  // drawn with its castle
             case sim::Obstacle::Kind::House: {
                 if (o.variant == sim::Obstacle::kTownHouse) break;  // drawn with its castle
@@ -471,31 +500,26 @@ void Renderer::uploadScenery(const Battle& battle) {
                 shadow = std::max(hx, hy) * 1.3f;
                 break;
             }
-            case sim::Obstacle::Kind::Pillar:
+            case sim::Obstacle::Kind::Pillar: {
+                const float r = static_cast<float>(o.radius.toDouble());
+                float q[4];
+                yawQuat(hash01(static_cast<uint32_t>(i) * 2654435761u) * 6.283f, q);
                 pushInstance(pillar, pos, q, {r, r, h}, {1, 1, 1});
                 shadow = r * 1.5f;
                 break;
-            case sim::Obstacle::Kind::Log:
-                // Radius is half the length, height the girth; sunk a little into the turf.
-                if (hash01(static_cast<uint32_t>(i) * 2246822519u + 5) < 0.3f) {
-                    const float girth = h * 1.6f;  // a stump with its fallen top beside it
-                    pushInstance(stumps, pos, q, {girth, girth, girth}, {tintVar, tintVar, tintVar});
-                } else {
-                    pushInstance(logs, pos - V3{0, 0, h * 0.15f}, q, {r, h / 2, h / 2}, {tintVar, tintVar, tintVar});
-                }
-                shadow = 0;
-                break;
+            }
+            default: break;  // trees, undergrowth, rocks and logs: pushScenery
         }
         shadows.insert(shadows.end(), {pos.x, pos.y, pos.z, 0, shadow, 0, 1, 0, 0, 0, 0});
     }
-    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], pine[v]);
-    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], oak[v]);
-    for (size_t v = 0; v < bushes_.size(); ++v) uploadMeshInstances(bushes_[v], bush[v]);
-    for (size_t v = 0; v < rocks_.size(); ++v) uploadMeshInstances(rocks_[v], rock[v]);
-    uploadMeshInstances(stumps_, stumps);
+    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.pine[v]);
+    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.oak[v]);
+    for (size_t v = 0; v < bushes_.size(); ++v) uploadMeshInstances(bushes_[v], natural.bush[v]);
+    for (size_t v = 0; v < rocks_.size(); ++v) uploadMeshInstances(rocks_[v], natural.rock[v]);
+    uploadMeshInstances(stumps_, natural.stumps);
     uploadMeshInstances(houses_, house);
     uploadMeshInstances(pillars_, pillar);
-    uploadMeshInstances(logs_, logs);
+    uploadMeshInstances(logs_, natural.logs);
     uploadDynamic(sceneryShadows_, shadows);
 
     // Ground types, one texel per cell.
@@ -1081,7 +1105,6 @@ void Renderer::uploadSettlements(const Battle& battle) {
                 const float step = g.cell * static_cast<float>(stride);
                 const float x = g.min.x + static_cast<float>(i) * g.cell + (hash01(h + 1) - 0.5f) * step;
                 const float y = g.min.y + static_cast<float>(j) * g.cell + (hash01(h + 2) - 0.5f) * step;
-                if (x > -20 && y > -20 && x < Battle::kWorldSize + 20 && y < Battle::kWorldSize + 20) continue;
                 bool inTown = false;  // no woods inside the walls
                 for (const sim::Continent::City& city : battle.continent().cities()) {
                     const float cx = static_cast<float>(city.pos.x.toDouble()) - battle.origin().x, cy = static_cast<float>(city.pos.y.toDouble()) - battle.origin().y;
@@ -1175,6 +1198,19 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(piers_, meshes::pier(), 0);
     makeAll(copses_, meshes::copseVariants(), 0.01f);
     makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
+    makeAll(detailPines_, meshes::pineVariants(), 0.03f);
+    makeAll(detailOaks_, meshes::oakVariants(), 0.02f);
+    makeAll(detailBushes_, meshes::bushVariants(), 0.04f);
+    makeAll(detailRocks_, meshes::rockVariants(), 0);
+    makeMeshBatch(detailLogs_, meshes::log(), 0);
+    makeMeshBatch(detailStumps_, meshes::stump(), 0);
+    // Individual scenery near the camera, the woods' clumps beyond, on the
+    // battlefield and off it alike.
+    for (auto* list : {&pines_, &oaks_, &bushes_, &rocks_, &detailPines_, &detailOaks_, &detailBushes_, &detailRocks_})
+        for (MeshBatch& b : *list) b.lod = 1;
+    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 1;
+    for (auto* list : {&copses_, &nearCopses_})
+        for (MeshBatch& b : *list) b.lod = -1;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
@@ -1647,6 +1683,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
+        glUniform1f(meshDepth_.lod, b->lod);
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
@@ -2050,7 +2087,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     setCommon(decal_, camera, timeSeconds, gameSeconds);
     const bool realShadows = shadowInfo_[2] > 0;
     for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_}) {
-        if (b->count == 0 || (realShadows && b == &sceneryShadows_)) continue;
+        // Blob shadows under the battlefield's trees only while they stand (see sceneryNear in kMeshVs).
+        if (b->count == 0 || (b == &sceneryShadows_ && (realShadows || camera.distance() > 850.0f))) continue;
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, b->count);
     }

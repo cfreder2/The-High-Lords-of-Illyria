@@ -45,7 +45,7 @@ TEST(region_is_deterministic_and_pinned) {
     CHECK(Region::generateIllyria(20261027).checksum() == illyriaRegion()->checksum());
     CHECK(Region::generateIllyria(1).checksum() != illyriaRegion()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0xf5ea7711390db4cc;
+    constexpr uint64_t kGolden = 0x9bbbb6cc6cb300ad;
     if (illyriaRegion()->checksum() != kGolden) std::printf("  region checksum: 0x%016llx\n", static_cast<unsigned long long>(illyriaRegion()->checksum()));
     CHECK(illyriaRegion()->checksum() == kGolden);
 }
@@ -242,7 +242,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x69a0273b97ff6978;
+    constexpr uint64_t kGolden = 0x763919b16edbbc5f;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
