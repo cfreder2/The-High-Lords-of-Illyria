@@ -213,6 +213,7 @@ Standing Battle::standing(const Squad& s) const {
         st.kills += u->kills;
         if (!u->alive()) continue;
         ++alive;
+        st.broken += u->routed;
         ranks += u->rank;
         bless = std::max(bless, u->blessings);
         best = std::max(best, u->rank);
@@ -875,6 +876,55 @@ void Battle::cycleFormation() {
     moveSquad(s, squadCentre(s, false));
 }
 
+bool Battle::flankPoint(const Squad& riders, V3& out) const {
+    // Once in the melee themselves, they fight it out.
+    for (sim::EntityId id : riders.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.alive() && (u.engaged || u.foe != sim::kNoEntity)) return false;
+    }
+    // The nearest foe within 120 m that is fighting someone else.
+    const V3 c = squadCentre(riders, false);
+    const Squad* target = nullptr;
+    float best = 120.0f;
+    for (const Squad& t : squads_) {
+        if (t.owner == riders.owner || aliveCount(t) == 0) continue;
+        bool engaged = false;
+        V3 facing;
+        for (sim::EntityId id : t.members) {
+            const sim::Unit& u = world_->units()[id - 1];
+            if (!u.alive()) continue;
+            engaged = engaged || u.engaged || u.foe != sim::kNoEntity;
+            facing = facing + V3{static_cast<float>(u.facing.x.toDouble()), static_cast<float>(u.facing.y.toDouble()), 0};
+        }
+        const float d = (squadCentre(t, false) - c).length();
+        if (engaged && facing.length() > 0.1f && d < best) {
+            best = d;
+            target = &t;
+        }
+    }
+    if (target == nullptr) return false;
+    V3 facing;
+    for (sim::EntityId id : target->members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.alive()) facing = facing + V3{static_cast<float>(u.facing.x.toDouble()), static_cast<float>(u.facing.y.toDouble()), 0};
+    }
+    facing = facing.normalized();
+    const V3 tc = squadCentre(*target, false);
+    const V3 rel = c - tc;
+    const V3 side{-facing.y, facing.x, 0};
+    const float ahead = rel.dot(facing);
+    if (ahead > -8.0f) {
+        // Still in front or beside it: swing wide round the nearer flank first.
+        out = tc + side * (rel.dot(side) >= 0 ? 28.0f : -28.0f) - facing * 10.0f;
+        if ((out - c).length() > 12.0f) return true;
+    }
+    // Behind it: charge home into its back; close in, they fight on their own
+    // (stopped, they pick the nearest foe, at its back, and ride it down).
+    if (rel.length() < 18.0f) return false;
+    out = tc - facing * 4.0f;
+    return true;
+}
+
 void Battle::runEnemyAi() {
     // Depends only on simulation state (never on interpolated positions), so in
     // multiplayer the relay or every peer can run it and issue identical
@@ -899,7 +949,7 @@ void Battle::runEnemyAi() {
     };
 
     for (const Squad& s : squads_) {
-        if (s.owner != kEnemy || aliveCount(s) == 0) continue;
+        if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
         float dist;
         const Role role = roleOf(s.type);
@@ -939,7 +989,11 @@ void Battle::runEnemyAi() {
         }
         const sim::UnitStats stats = sim::unitStats(s.type);
         const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
-        if (range > 0 && role != Role::Flier) {
+        V3 flank;
+        if (stats.mounted && role == Role::Melee && flankPoint(s, flank)) {
+            // Horse ride round a foe already locked in melee and charge its rear.
+            steerSquad(s, flank);
+        } else if (range > 0 && role != Role::Flier) {
             const float keep = range * 0.8f;
             if (dist > keep) steerSquad(s, c + (goal - c) * ((dist - keep + 4) / dist));
             else stop(s);

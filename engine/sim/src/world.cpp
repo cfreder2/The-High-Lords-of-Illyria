@@ -64,16 +64,8 @@ constexpr int32_t kHeroLevelHpPct = 8;
 // damage to friends within reach.
 constexpr Fixed kLeadershipReach = Fixed::fromInt(30);
 constexpr int32_t kLeadershipPct = 5;
-// High ground: striking down the slope at a foe adds this much melee damage
-// per unit of grade between them (a 1 in 3 slope: +20%), within limits; blows
-// struck downhill also throw harder.
-constexpr int32_t kHighGroundPctPerGrade = 60;
-constexpr int32_t kHighGroundPctMax = 35;
-constexpr int32_t kHighGroundPctMin = -25;
 // Largest obstacle extent, for grid queries.
 constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(7);
-// Ticks a thrown soldier needs to get back up.
-constexpr int32_t kRecoverTicks = kTicksPerSecond * 2 / 3;
 // Bodies thrown by explosions and blows.
 constexpr Fixed kLiftFraction = Fixed::fromRatio(7, 10);
 constexpr Fixed kGroundFriction = Fixed::fromRatio(11, 20);
@@ -93,11 +85,6 @@ constexpr Fixed kBombFriction = Fixed::fromRatio(2, 5);
 constexpr Fixed kBombAimFraction = Fixed::fromRatio(7, 10);
 // An arrow falling faster than this sticks into the ground; slower, it lies flat.
 constexpr Fixed kStickSpeed = Fixed::fromInt(9);
-// Melee blows are blocked less often than arrows: the attacker can work round the shield.
-constexpr Fixed kMeleeBlockScale = Fixed::fromRatio(7, 10);
-// Terrain bonus thresholds (rise over run).
-constexpr Fixed kOpenSlope = Fixed::fromRatio(3, 50);
-constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
 // Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
@@ -157,6 +144,7 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.mass.raw);
     h.addU64(s.mounted);
     h.addU64(s.bleeds);
+    h.addI64(s.moraleShockPct);
 }
 
 // Unit-length horizontal direction from `from` to `to`, or `fallback` if they coincide.
@@ -247,6 +235,8 @@ Fixed World::slopeAt(Fixed x, Fixed y) const {
 
 void World::step(std::span<const Command> commands) {
     impacts_.clear();
+    heroDeaths_.clear();
+    deaths_.clear();
     changedRemains_.clear();
 
     // Peers may receive one tick's commands from different players in any
@@ -257,16 +247,22 @@ void World::step(std::span<const Command> commands) {
                      [](const Command& a, const Command& b) { return a.player < b.player; });
     for (const Command& cmd : ordered) applyCommand(cmd);
 
-    for (Unit& u : units_) updateUnit(u);
+    for (Unit& u : units_) {
+        const Vec3 before = u.pos;
+        updateUnit(u);
+        trackMomentum(u, before);
+    }
     separateBodies();
     updateProjectiles();
+    updateMorale();
     pathCache_.clear();
     ++tick_;
 }
 
 void World::applyCommand(const Command& cmd) {
     Unit* u = mutableUnit(cmd.unit);
-    if (u == nullptr || !u->alive() || u->owner != cmd.player) return;
+    // A broken unit heeds no orders until it rallies.
+    if (u == nullptr || !u->alive() || u->owner != cmd.player || u->routed) return;
     switch (cmd.type) {
         case Command::Type::Move:
             u->hasMoveTarget = true;
@@ -579,6 +575,8 @@ void World::updateUnit(Unit& u) {
     if (u.meleeCooldown > 0) --u.meleeCooldown;
     if (u.healCooldown > 0) --u.healCooldown;
     u.engaged = false;
+    const EntityId lastFoe = u.foe;
+    u.foe = kNoEntity;
 
     const bool flier = u.stats.flyAltitude > Fixed::zero();
     if (flier && u.flight != Unit::Flight::Grounded) {
@@ -587,6 +585,12 @@ void World::updateUnit(Unit& u) {
     }
     // Resting on the ground restores a flier at half the rate flying spends it.
     if (flier && u.stamina < u.stats.staminaTicks && (tick_ & 1) == 0) ++u.stamina;
+
+    if (u.routed) {
+        flee(u);
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        return;
+    }
 
     if (const int gate = gateToHack(u); gate >= 0) {
         // At a shut gate on the way in: hack at the timbers.
@@ -633,21 +637,23 @@ void World::updateUnit(Unit& u) {
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
         const Fixed range = (u.attackTarget - u.pos).flat().length();
-        if (range > u.stats.ranged.maxRange) {
+        if (range > shotRange(u, u.stats.ranged.maxRange, u.attackTarget)) {
             walk(u, u.attackTarget);  // close to range before loosing
         } else if (u.reloadRemaining == 0 && range >= u.stats.ranged.minRange) {
-            if (fire(u, u.attackTarget)) u.reloadRemaining = u.stats.ranged.reloadTicks;
+            if (fire(u, u.attackTarget)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
         }
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
-    } else if (Unit* enemy = u.stats.melee.damage > 0 ? nearestEnemy(u, u.stats.aggroRange) : nullptr) {
+    } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr) {
         fight(u, *enemy);
     } else if (Unit* target = u.stats.ranged.autoRange > Fixed::zero()
-                                  ? nearestEnemy(u, u.stats.ranged.autoRange)
-                                  : nullptr) {
+                                  ? nearestEnemy(u, u.stats.ranged.autoRange * 3 / 2)
+                                  : nullptr;
+               target != nullptr && (target->pos - u.pos).flat().length() <= shotRange(u, u.stats.ranged.autoRange, target->pos)) {
+        // From high ground the bow carries farther (shotRange).
         u.facing = flatDirection(u.pos, target->pos, u.facing);
         if (u.reloadRemaining == 0 && (target->pos - u.pos).flat().length() >= u.stats.ranged.minRange) {
-            if (fire(u, target->pos)) u.reloadRemaining = u.stats.ranged.reloadTicks;
+            if (fire(u, target->pos)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
         }
     }
     u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
@@ -912,8 +918,8 @@ void World::updateAirborne(Unit& u) {
     u.vel = {};
     u.airborne = false;
     if (u.alive()) {
-        u.reloadRemaining = std::max(u.reloadRemaining, kRecoverTicks);
-        u.meleeCooldown = std::max(u.meleeCooldown, kRecoverTicks);
+        u.reloadRemaining = std::max(u.reloadRemaining, recoverTicks(u));
+        u.meleeCooldown = std::max(u.meleeCooldown, recoverTicks(u));
     }
 }
 
@@ -927,7 +933,11 @@ Unit* World::nearestEnemy(const Unit& u, Fixed range) {
     // Ascending id order, strict comparison: ties go to the lowest id.
     for (Unit& other : units_) {
         if (!other.alive() || other.owner == u.owner) continue;
-        if (groundBound && other.pos.z - u.pos.z > reachUp) continue;
+        // (Above the land itself, or above the soldier: a foe up a hillside is fair game.)
+        if (groundBound) {
+            const Fixed land = config_.terrain ? config_.terrain->heightAt(other.pos.x, other.pos.y) : Fixed::zero();
+            if (other.pos.z - max(u.pos.z, land) > reachUp) continue;
+        }
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
         if (d <= bestDistSq && (best == nullptr || d < bestDistSq)) {
             best = &other;
@@ -944,7 +954,8 @@ bool World::shieldBlocks(const Unit& target, const Vec3& incomingDir, Fixed chan
     if (len == Fixed::zero()) return false;
     // The blow comes from the front if it travels against the way the target faces.
     const Fixed facingDot = -(target.facing.dot(in) / len);
-    if (facingDot < target.stats.shield.arcCos) return false;
+    // Never from behind, however wide the shield's arc.
+    if (facingDot < target.stats.shield.arcCos || hitSide(target.facing, in) == HitSide::Rear) return false;
     return rng_.nextUnit() < (target.stats.shield.blockChance + kRankBlockBonus * (target.rank + target.blessings)) * chanceScale;
 }
 
@@ -953,47 +964,6 @@ void World::knock(Unit& target, const Vec3& dir, Fixed impulse) {
     if (v <= Fixed::one()) return;
     target.vel += dir * v + up(v * kLiftFraction);
     target.airborne = true;
-}
-
-void World::fight(Unit& u, Unit& enemy) {
-    const Vec3 delta = (enemy.pos - u.pos).flat();
-    const Fixed dist = delta.length();
-    if (dist > Fixed::zero()) u.facing = delta / dist;
-    const MeleeWeapon& m = u.stats.melee;
-    const Fixed gap = dist - u.stats.radius - enemy.stats.radius;
-    if (gap > m.reach) {
-        walk(u, u.pos + u.facing * min(gap - m.reach, u.stats.moveSpeed));
-        return;
-    }
-    u.engaged = true;
-    // Out of reach vertically (a flier still diving, or one above a ground unit).
-    const Fixed dz = enemy.pos.z - u.pos.z;
-    if (dz > u.stats.height + m.reach || -dz > enemy.stats.height + m.reach) return;
-    if (u.meleeCooldown > 0) return;
-    u.meleeCooldown = m.cooldownTicks;
-
-    const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
-    if (shieldBlocks(enemy, u.facing, kMeleeBlockScale)) {
-        impacts_.push_back({ImpactEvent::Kind::Blocked, at, u.facing, kNoEntity, enemy.id, false, {}});
-        return;
-    }
-    int32_t pct = 100;
-    const Fixed slope = slopeAt(u.pos.x, u.pos.y);
-    if (slope <= kOpenSlope) pct += u.stats.terrain.openPct;
-    if (slope >= kHillsSlope) pct += u.stats.terrain.hillsPct;
-    if (enemy.stats.mounted) pct += m.bonusVsMountedPct;
-    // The high ground: striking down at a foe below is easier than reaching up.
-    if (dist > Fixed::zero()) {
-        const int32_t downhill = static_cast<int32_t>((-dz / dist * kHighGroundPctPerGrade).floorToInt());
-        pct += std::clamp(downhill, kHighGroundPctMin, kHighGroundPctMax);
-    }
-    pct += prowessPct(u) - 100;
-    const bool killed = damage(enemy, m.damage * std::max<int32_t>(pct, 10) / 100, &u);
-    if (m.knockback > Fixed::zero()) {
-        const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
-        knock(enemy, u.facing, m.knockback * (Fixed::one() + downhill));
-    }
-    impacts_.push_back({ImpactEvent::Kind::Hit, at, u.facing, kNoEntity, enemy.id, killed, {}});
 }
 
 bool World::tryHeal(Unit& u) {
@@ -1029,10 +999,13 @@ bool World::tryHeal(Unit& u) {
 
 bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
     if (!target.alive()) return false;
-    target.hp = std::max(target.hp - amount, 0);
+    target.hp = std::max(target.hp - defendedDamage(target, amount), 0);
     if (target.alive()) return false;
     target.hasMoveTarget = false;
     target.hasAttackTarget = false;
+    deaths_.push_back({target.owner, target.pos});
+    if (target.stats.type == static_cast<uint8_t>(UnitType::Hero))
+        heroDeaths_.push_back({target.id, target.owner, target.pos, attacker != nullptr ? attacker->id : kNoEntity});
     if (attacker != nullptr && attacker->owner != target.owner) creditKill(*attacker);
     return true;
 }
@@ -1102,7 +1075,8 @@ bool World::fire(Unit& u, const Vec3& target) {
 
     // Pick the aim point uniformly inside the dispersion circle around the target.
     const Fixed range = (target - origin).flat().length();
-    const Fixed rankFactor = max(Fixed::one() - kDispersionPerRank * u.rank, kMinDispersionFactor);
+    Fixed rankFactor = max(Fixed::one() - kDispersionPerRank * u.rank, kMinDispersionFactor);
+    if (u.wavering()) rankFactor = rankFactor * 3 / 2;  // shaken hands shoot wide
     Fixed radius = w.dispersionAt100m * range / 100 * rankFactor;
     // Arrows and fireballs go over what is in the way when the flat shot
     // would strike it; shot blind (the mark itself hidden), they scatter more.
@@ -1330,7 +1304,11 @@ void World::updateProjectiles() {
                 const Vec3 glance{-p.vel.x / 5, -p.vel.y / 5, abs(p.vel.z) / 5 + Fixed::fromInt(2)};
                 spawnDebris(RemainKind::Arrow, p.owner, at, glance);
             } else {
-                const bool killed = damage(*hit, p.damage, mutableUnit(p.shooter));
+                // Worse in the flank or back, and from a plunging shot from above.
+                const HitSide side = hitSide(hit->facing, p.vel);
+                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100;
+                const bool killed = damage(*hit, amount, mutableUnit(p.shooter));
+                shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
             removed[i] = 1;
@@ -1493,6 +1471,12 @@ uint64_t World::checksum() const {
         hashVec(h, u.vel);
         h.addU64(u.airborne);
         h.addU64(u.engaged);
+        h.addU64(u.foe);
+        h.addI64(u.momentum.raw);
+        h.addI64(u.chargeGrade.raw);
+        h.addI64(u.morale);
+        h.addU64(u.routed);
+        h.addI64(u.calmTicks);
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);

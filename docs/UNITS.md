@@ -11,35 +11,37 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 
 **Strength** is the Warlords number (1 to 9) shown on the squad's banner; each rank, hero level and blessing adds one, to 9.
 
-| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Notes |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Light Infantry | 3 | 60 | 1.80 | 0.40 | 1.0 | 2.4 | 11 | 1.30 s | 0.6 | 0 | 25% |  |
-| Heavy Infantry | 4 | 90 | 1.90 | 0.45 | 1.3 | 1.9 | 15 | 1.50 s | 0.6 | 0 | 55% |  |
-| Elven Archers | 4 | 45 | 1.80 | 0.40 | 1.0 | 2.4 | 5 | 1.20 s | 0.5 | 0 |  |  |
-| Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | 1.60 s | 2.2 | 0 |  | +150% vs mounted; +20% in the open;  |
-| Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | 1.20 s | 0.8 | 3 |  | mounted; +20% in the open;  |
-| Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | 1.50 s | 0.8 | 5 | 40% | mounted; +40% in the open;  |
-| Dwarven Legion | 5 | 90 | 1.35 | 0.45 | 1.4 | 1.7 | 17 | 1.50 s | 0.5 | 0 | 30% | +25% in hills;  |
-| Wolf Riders | 5 | 75 | 1.90 | 0.80 | 2.0 | 7.5 | 12 | 1.10 s | 0.6 | 2 |  | mounted;  |
-| Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 2.4 | 45 | 2.20 s | 1.6 | 12 |  |  |
-| Minotaurs | 6 | 230 | 3.00 | 0.90 | 4.0 | 3.0 | 32 | 1.70 s | 1.0 | 8 |  |  |
-| Giant Spiders | 5 | 120 | 1.30 | 1.10 | 2.0 | 5.0 | 18 | 1.00 s | 0.6 | 0 |  |  |
-| Griffins | 6 | 150 | 2.20 | 1.20 | 3.0 | 3.0 | 24 | 1.20 s | 0.8 | 4 |  |  |
-| Pegasi | 6 | 95 | 2.30 | 1.10 | 2.5 | 4.5 | 14 | 1.20 s | 0.8 | 0 |  | mounted;  |
-| Elephants | 7 | 450 | 4.00 | 1.80 | 12.0 | 3.2 | 38 | 2.20 s | 1.2 | 14 |  | mounted;  |
-| Unicorns | 6 | 115 | 2.20 | 0.90 | 3.0 | 7.0 | 24 | 1.30 s | 1.0 | 3 |  |  |
-| Wizards | 7 | 45 | 1.90 | 0.40 | 1.0 | 2.0 | 4 | 1.20 s | 0.5 | 0 |  |  |
-| Dragons | 9 | 650 | 4.50 | 2.50 | 15.0 | 2.5 | 40 | 1.80 s | 1.2 | 10 |  |  |
-| Devils | 8 | 270 | 3.00 | 1.00 | 4.0 | 3.2 | 36 | 1.50 s | 1.0 | 6 |  |  |
-| Demons | 8 | 320 | 3.60 | 1.10 | 5.0 | 3.4 | 40 | 1.60 s | 1.2 | 8 |  |  |
-| Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.6 | 11 | 1.40 s | 0.6 | 0 |  | no blood;  |
-| Archons | 8 | 170 | 2.40 | 0.80 | 2.0 | 2.8 | 26 | 1.20 s | 0.8 | 3 |  |  |
-| Hero | 4 | 260 | 2.00 | 0.50 | 2.0 | 2.8 | 30 | 1.10 s | 0.8 | 3 | 55% |  |
-| Dwarven Grenadiers | 4 | 50 | 1.30 | 0.45 | 1.0 | 1.8 | 5 | 1.20 s | 0.5 | 0 |  |  |
-| Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | 1.20 s | 0.5 | 0 |  | heals 35 every 2.5 s, 6 charges;  |
-| Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | 1.20 s | 0.6 | 0 | 65% |  |
-| Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | 0.93 s | 0.6 | 0 |  |  |
-| Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 0.8 | 0 | 0.00 s | 0.0 | 0 |  | no blood;  |
+**Morale** is how hard shocks shake the type, in percent of a man's (lower is steadier); "never" types never break.
+
+| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Morale | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Light Infantry | 3 | 60 | 1.80 | 0.40 | 1.0 | 2.4 | 11 | 1.30 s | 0.6 | 0 | 25% | 110% |  |
+| Heavy Infantry | 4 | 90 | 1.90 | 0.45 | 1.3 | 1.9 | 15 | 1.50 s | 0.6 | 0 | 55% | 85% |  |
+| Elven Archers | 4 | 45 | 1.80 | 0.40 | 1.0 | 2.4 | 5 | 1.20 s | 0.5 | 0 |  | 110% |  |
+| Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | 1.60 s | 2.2 | 0 |  | 90% | +150% vs mounted; +20% in the open;  |
+| Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | 1.20 s | 0.8 | 3 |  | 100% | mounted; +20% in the open;  |
+| Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +40% in the open;  |
+| Dwarven Legion | 5 | 90 | 1.35 | 0.45 | 1.4 | 1.7 | 17 | 1.50 s | 0.5 | 0 | 30% | 75% | +25% in hills;  |
+| Wolf Riders | 5 | 75 | 1.90 | 0.80 | 2.0 | 7.5 | 12 | 1.10 s | 0.6 | 2 |  | 100% | mounted;  |
+| Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 2.4 | 45 | 2.20 s | 1.6 | 12 |  | 60% |  |
+| Minotaurs | 6 | 230 | 3.00 | 0.90 | 4.0 | 3.0 | 32 | 1.70 s | 1.0 | 8 |  | 60% |  |
+| Giant Spiders | 5 | 120 | 1.30 | 1.10 | 2.0 | 5.0 | 18 | 1.00 s | 0.6 | 0 |  | 70% |  |
+| Griffins | 6 | 150 | 2.20 | 1.20 | 3.0 | 3.0 | 24 | 1.20 s | 0.8 | 4 |  | 70% |  |
+| Pegasi | 6 | 95 | 2.30 | 1.10 | 2.5 | 4.5 | 14 | 1.20 s | 0.8 | 0 |  | 90% | mounted;  |
+| Elephants | 7 | 450 | 4.00 | 1.80 | 12.0 | 3.2 | 38 | 2.20 s | 1.2 | 14 |  | 120% | mounted;  |
+| Unicorns | 6 | 115 | 2.20 | 0.90 | 3.0 | 7.0 | 24 | 1.30 s | 1.0 | 3 |  | 70% |  |
+| Wizards | 7 | 45 | 1.90 | 0.40 | 1.0 | 2.0 | 4 | 1.20 s | 0.5 | 0 |  | 100% |  |
+| Dragons | 9 | 650 | 4.50 | 2.50 | 15.0 | 2.5 | 40 | 1.80 s | 1.2 | 10 |  | 25% |  |
+| Devils | 8 | 270 | 3.00 | 1.00 | 4.0 | 3.2 | 36 | 1.50 s | 1.0 | 6 |  | 20% |  |
+| Demons | 8 | 320 | 3.60 | 1.10 | 5.0 | 3.4 | 40 | 1.60 s | 1.2 | 8 |  | 30% |  |
+| Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.6 | 11 | 1.40 s | 0.6 | 0 |  | never | no blood;  |
+| Archons | 8 | 170 | 2.40 | 0.80 | 2.0 | 2.8 | 26 | 1.20 s | 0.8 | 3 |  | 30% |  |
+| Hero | 4 | 260 | 2.00 | 0.50 | 2.0 | 2.8 | 30 | 1.10 s | 0.8 | 3 | 55% | never |  |
+| Dwarven Grenadiers | 4 | 50 | 1.30 | 0.45 | 1.0 | 1.8 | 5 | 1.20 s | 0.5 | 0 |  | 100% |  |
+| Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | 1.20 s | 0.5 | 0 |  | 120% | heals 35 every 2.5 s, 6 charges;  |
+| Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | 1.20 s | 0.6 | 0 | 65% | 85% |  |
+| Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | 0.93 s | 0.6 | 0 |  | 35% |  |
+| Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 0.8 | 0 | 0.00 s | 0.0 | 0 |  | 110% | no blood;  |
 
 ## Missile troops
 

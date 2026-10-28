@@ -90,6 +90,44 @@ Gait gaitOf(UnitType type) {
     }
 }
 
+// How hard shocks shake each type (percent of a man's; 0 never breaks): the
+// mindless dead and heroes never run; fiends and dragons all but never;
+// berserkers are past caring; elephants panic.
+int32_t moraleShockPct(UnitType type) {
+    using T = UnitType;
+    switch (type) {
+        case T::LightInfantry: return 110;
+        case T::HeavyInfantry: return 85;
+        case T::Archers: return 110;
+        case T::Pikemen: return 90;
+        case T::LightCavalry: return 100;
+        case T::HeavyCavalry: return 80;
+        case T::Dwarves: return 75;
+        case T::WolfRiders: return 100;
+        case T::Giants: return 60;
+        case T::Minotaurs: return 60;
+        case T::Spiders: return 70;
+        case T::Griffins: return 70;
+        case T::Pegasi: return 90;
+        case T::Elephants: return 120;
+        case T::Unicorns: return 70;
+        case T::Wizards: return 100;
+        case T::Dragons: return 25;
+        case T::Devils: return 20;
+        case T::Demons: return 30;
+        case T::Undead: return 0;
+        case T::Archons: return 30;
+        case T::Hero: return 0;
+        case T::DwarfGrenadier: return 100;
+        case T::Journeyman: return 120;
+        case T::Warrior: return 85;
+        case T::Berserker: return 35;
+        case T::Catapult: return 110;
+        case T::Count: break;
+    }
+    return 100;
+}
+
 UnitStats unitStats(UnitType type) {
     using T = UnitType;
     UnitStats s;
@@ -274,6 +312,7 @@ UnitStats unitStats(UnitType type) {
             break;
     }
     s.gait = gaitOf(type);
+    s.moraleShockPct = moraleShockPct(type);
     return s;
 }
 

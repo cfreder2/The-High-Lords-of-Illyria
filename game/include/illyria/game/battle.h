@@ -46,6 +46,7 @@ struct Standing {
     int level = 0;      // heroes: 1..9; 0 for other squads
     int blessings = 0;
     int kills = 0;
+    int broken = 0;     // soldiers routed (fleeing, deaf to orders)
 };
 
 // Which battle to fight.
@@ -174,6 +175,11 @@ public:
     // Queries.
     const sim::World& world() const { return *world_; }
     const std::vector<Squad>& squads() const { return squads_; }
+    // Test hook: every soldier of a squad raised to this rank (shield pips on the health bars).
+    void promoteSquad(size_t squad, int rank) {
+        if (squad < squads_.size())
+            for (sim::EntityId id : squads_[squad].members) world_->setVeterancy(id, rank, 0);
+    }
     int selectedSquad() const { return selected_; }
     bool paused() const { return paused_; }
     int speed() const { return speed_; }
@@ -236,6 +242,9 @@ private:
     // The computer's orders: the same as moveSquad, but a squad already on
     // its way to about the same place keeps its route (routes cost time).
     void steerSquad(const Squad& squad, const V3& to);
+    // Where riders should ride to take a foe locked in melee in the flank or
+    // rear; false when there is none (or they are already on its back).
+    bool flankPoint(const Squad& riders, V3& out) const;
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
     // Sieges: the town's gates belong to its defenders.
     void holdGates(sim::PlayerId holder);

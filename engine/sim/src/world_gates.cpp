@@ -155,7 +155,7 @@ void World::hackGate(Unit& u, int gate) {
     if (len > Fixed::zero()) u.facing = d / len;
     u.engaged = true;
     if (u.meleeCooldown > 0) return;
-    u.meleeCooldown = u.stats.melee.cooldownTicks;
+    u.meleeCooldown = attackTicks(u, u.stats.melee.cooldownTicks);
     const int32_t amount = std::max<int32_t>(1, u.stats.melee.damage * prowessPct(u) / 100 / kGateBlowDivisor);
     damageGate(gate, amount, at + Vec3{Fixed::zero(), Fixed::zero(), u.stats.height * 3 / 5}, u.facing);
 }

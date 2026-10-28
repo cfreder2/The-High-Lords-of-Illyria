@@ -198,6 +198,18 @@ void pushCorpse(std::vector<float>& capsules, std::vector<float>& spheres, const
     pushInstance(capsules, at(0.15f, -0.3f, 0.07f), q, V3{0.5f, 0.12f, 0.12f} * scale, cloth * 0.9f);
 }
 
+// A soldier's health bar, with a gold shield for each rank he has earned
+// (sim::veteranGrade) and a white flag when he has broken: shown when he is
+// hurt, a veteran, shaken or selected.
+void pushHealthBar(std::vector<float>& bars, const sim::Unit& u, const V3& pos, bool selected) {
+    const int pips = sim::veteranGrade(u);
+    const float morale = u.routed ? 2.0f : u.wavering() ? 1.0f : 0.0f;
+    if (u.hp >= u.stats.maxHp && pips == 0 && !selected && morale == 0.0f) return;
+    const float height = static_cast<float>(u.stats.height.toDouble());
+    const float hp = static_cast<float>(u.hp) / static_cast<float>(std::max(1, u.stats.maxHp));
+    bars.insert(bars.end(), {pos.x, pos.y, pos.z + height, hp, static_cast<float>(pips), morale, height});
+}
+
 const float kPlayerColor[3] = {0.22f, 0.42f, 0.92f};
 const float kEnemyColor[3] = {0.86f, 0.18f, 0.14f};
 
@@ -229,7 +241,8 @@ bool Renderer::buildPrograms() {
                  {sheetView_, shaders::kSheetViewVs, shaders::kSheetViewFs},
                  {detailTerrain_, shaders::kPatchVs, shaders::kPatchFs},
                  {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
-                 {farCut_, shaders::kFarVs, shaders::kFarCutFs}};
+                 {farCut_, shaders::kFarVs, shaders::kFarCutFs},
+                 {bar_, shaders::kBarVs, shaders::kBarFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -1234,6 +1247,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
     makeBatch(units_, {3, 1, 1, 1}, 0);
     makeBatch(particles_, {3, 4}, 0);
+    makeBatch(bars_, {3, 4}, 0);
     reset(battle);
     return true;
 }
@@ -1886,7 +1900,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const V3 eye = camera.eye();
     const V3 fwd = (camera.target() - eye).normalized();
     const V3 camRight = fwd.cross({0, 0, 1}).normalized();
-    std::vector<float> decals, sprites, arrows, particles, capsules, spheres;
+    std::vector<float> decals, sprites, arrows, particles, capsules, spheres, bars;
     const auto& units = world.units();
     const int selected = battle.selectedSquad();
     const float week = 86400.0f * 7.0f;
@@ -1927,6 +1941,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         } else {
             const float radius = static_cast<float>(u.stats.radius.toDouble());
             decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});
+            pushHealthBar(bars, u, pos, isSelected);
             if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
             const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
             if (struck >= 0 && struck < strike) {
@@ -2017,6 +2032,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     uploadDynamic(sprites_, sprites);
     uploadDynamic(flyingArrows_, arrows);
     uploadDynamic(particles_, particles);
+    uploadDynamic(bars_, bars);
     uploadMeshInstances(capsules_, capsules);
     uploadMeshInstances(spheres_, spheres);
 
@@ -2150,6 +2166,11 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     {
         const V3 toward = V3{fwd.x, fwd.y, 0}.normalized();
         drawUnits(camera, timeSeconds, gameSeconds, toward, camRight, false);
+    }
+    if (bars_.count > 0) {
+        setCommon(bar_, camera, timeSeconds, gameSeconds);
+        glBindVertexArray(bars_.vao);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
     }
 
     // Water over everything below it: soldiers wading show through.

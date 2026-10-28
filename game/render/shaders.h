@@ -1813,4 +1813,66 @@ void main() {
 }
 )";
 
+// ---------------------------------------------------------------- health bars
+// Per instance: the top of the soldier (3); info: health 0..1, shield pips
+// (0..3, the veteran's rank), morale (0 steady, 1 wavering, 2 broken), the
+// soldier's height. A small bar of fixed pixel size over his head, gold
+// shields above it, an amber frame when wavering, a white flag when broken.
+inline const char* kBarVs = R"(
+layout(location = 0) in vec3 iPos;
+layout(location = 1) in vec4 iInfo;
+out vec2 vPx;
+flat out vec4 vInfo;
+const vec2 kBarPx = vec2(26.0, 13.0);
+void main() {
+    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    float px = uPxScale * distance(uEye, iPos);
+    // Zoomed out, where soldiers are a few pixels tall, there are no bars.
+    if (iInfo.w / px < 14.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    vec3 world = iPos + vec3(0.0, 0.0, px * 4.0) + uCamRight * ((corner.x - 0.5) * kBarPx.x * px) + vec3(0.0, 0.0, corner.y * kBarPx.y * px);
+    vPx = corner * kBarPx;
+    vInfo = iInfo;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kBarFs = R"(
+in vec2 vPx;
+flat in vec4 vInfo;
+out vec4 oColor;
+void main() {
+    float hp = vInfo.x, pips = vInfo.y, morale = vInfo.z;
+    vec2 p = vPx;
+    // Broken: a white flag on a pole, left of the bar.
+    if (morale > 1.5 && p.x < 7.0 && p.y >= 4.0) {
+        if (p.x >= 1.0 && p.x < 2.0) { oColor = vec4(0.25, 0.17, 0.05, 1.0); return; }
+        if (p.x >= 2.0 && p.y > 7.0) { oColor = vec4(0.96, 0.96, 0.92, 1.0); return; }
+        discard;
+    }
+    // The bar: 4 px tall with a dark frame; green when whole, red when nearly dead.
+    if (p.y < 4.0) {
+        if (p.x < 1.0 || p.x > 25.0 || p.y < 1.0 || p.y > 3.0) {
+            oColor = vec4(morale > 0.5 ? vec3(0.95, 0.6, 0.1) : vec3(0.05), 1.0);
+            return;
+        }
+        bool filled = (p.x - 1.0) / 24.0 <= hp;
+        vec3 c = mix(vec3(0.9, 0.15, 0.1), vec3(0.25, 0.85, 0.2), smoothstep(0.25, 0.75, hp));
+        oColor = vec4(filled ? c : vec3(0.2, 0.16, 0.14), 1.0);
+        return;
+    }
+    // Shield pips, 6 px wide with 2 px between, centred above the bar.
+    float n = pips;
+    if (n < 0.5) discard;
+    float left = 13.0 - (n * 6.0 + (n - 1.0) * 2.0) * 0.5;
+    float k = floor((p.x - left) / 8.0);
+    if (k < 0.0 || k > n - 1.0) discard;
+    vec2 q = vec2(p.x - left - k * 8.0 - 3.0, p.y - 5.0);  // x -3..3, y 0..8 from the shield's point
+    if (abs(q.x) > 3.0 || q.y > 8.0) discard;
+    // Flat top, pointed bottom.
+    float hw = q.y > 4.0 ? 3.0 : 3.0 * q.y / 4.0;
+    if (abs(q.x) > hw) discard;
+    bool edge = abs(q.x) > hw - 1.0 || q.y > 7.0;
+    oColor = vec4(edge ? vec3(0.25, 0.17, 0.05) : vec3(0.98, 0.8, 0.28), 1.0);
+}
+)";
+
 }  // namespace illyria::game::shaders
