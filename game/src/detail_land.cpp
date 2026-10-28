@@ -12,6 +12,7 @@ namespace illyria::game {
 namespace {
 
 using sim::Fixed;
+using Seg = DetailLand::Seg;
 constexpr Fixed m(int64_t v) { return Fixed::fromInt(v); }
 constexpr Fixed r(int64_t num, int64_t den) { return Fixed::fromRatio(num, den); }
 constexpr int64_t kCellM = 4;
@@ -20,27 +21,6 @@ constexpr int kApron = 1;  // samples and cells written beyond a chunk's own, fo
 constexpr int kShapedSide = DetailLand::kChunk + 2 * kApron + 1;  // shaped samples -1..17
 
 int floorDiv(int v, int d) { return v >= 0 ? v / d : -((-v + d - 1) / d); }
-
-float hashf(int x, int y, uint32_t salt) {
-    uint32_t h = static_cast<uint32_t>(x) * 73856093u ^ static_cast<uint32_t>(y) * 19349663u ^ salt;
-    h ^= h >> 13;
-    h *= 0x5bd1e995u;
-    h ^= h >> 15;
-    return static_cast<float>(h & 0xFFFFFF) / static_cast<float>(0x1000000);
-}
-float valueNoise(float x, float y, uint32_t salt) {
-    const float fx = std::floor(x), fy = std::floor(y);
-    const int ix = static_cast<int>(fx), iy = static_cast<int>(fy);
-    float tx = x - fx, ty = y - fy;
-    tx = tx * tx * (3 - 2 * tx);
-    ty = ty * ty * (3 - 2 * ty);
-    const float a = hashf(ix, iy, salt), b = hashf(ix + 1, iy, salt), c = hashf(ix, iy + 1, salt), d = hashf(ix + 1, iy + 1, salt);
-    return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
-}
-
-struct Seg {
-    float ax, ay, bx, by;
-};
 
 // Segments of polylines whose bounding boxes come within `reach` of the box.
 template <typename Lines, typename PointsOf>
@@ -72,10 +52,12 @@ void DetailLand::reset(std::shared_ptr<const sim::Continent> continent, V3 origi
     hole_ = hole;
     detailSeed_ = continent_ ? sim::noise::nextSeed(continent_->seed() ^ 0xDE7A11) : 0;
     mudSeed_ = continent_ ? sim::noise::nextSeed(continent_->seed() ^ 0x3D0D) : 0;
+    scenerySeed_ = continent_ ? sim::Region::sceneryContinentSeed(continent_->seed()) : 0;
     wx_ = wy_ = INT32_MIN / 2;
     ++generation_;
     slots_.assign(static_cast<size_t>(kSlots) * kSlots, Slot{});
     lattice_.assign(slots_.size(), {});
+    scenery_.assign(slots_.size(), {});
     raw_.assign(static_cast<size_t>(kSamples) * kSamples, Raw{});
     height_.assign(static_cast<size_t>(kSamples) * kSamples, 0.0f);
     water_.assign(height_.size(), -1e6f);
@@ -102,6 +84,7 @@ void DetailLand::claim(int cx, int cy) {
     Slot& sl = slots_[static_cast<size_t>(s)];
     if (sl.cx == cx && sl.cy == cy) return;
     sl = Slot{};
+    scenery_[static_cast<size_t>(s)].clear();
     sl.cx = cx;
     sl.cy = cy;
     if (finishing_ == s) finishing_ = -1;
@@ -192,6 +175,73 @@ Fixed DetailLand::shapedAt(int sx, int sy) const {
     const Fixed smooth = sum / 25;
     const Fixed w = sim::noise::smoothstep(m(2), m(7), rw.roadDist);
     return smooth + (rw.h - smooth) * w - (Fixed::one() - w) * r(3, 10);
+}
+
+void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
+    // Trees, undergrowth and rocks: the continent's 5 m scenery grid, with
+    // the same rules and exclusions as Region::scatterScenery, for the points
+    // that fall in this chunk.
+    Slot& sl = slots_[static_cast<size_t>(s)];
+    const sim::Continent& c = *continent_;
+    std::vector<sim::Obstacle>& out = scenery_[static_cast<size_t>(s)];
+    out.clear();
+    const int64_t step = sim::Region::kSceneryStep;
+    const int64_t ox = ox_.floorToInt(), oy = oy_.floorToInt();
+    const int64_t x0 = ox + sl.cx * static_cast<int64_t>(kChunkSize), y0 = oy + sl.cy * static_cast<int64_t>(kChunkSize);
+    const int64_t x1 = x0 + static_cast<int64_t>(kChunkSize), y1 = y0 + static_cast<int64_t>(kChunkSize);
+    const auto floorDiv64 = [](int64_t v, int64_t d) { return v >= 0 ? v / d : -((-v + d - 1) / d); };
+    // The castles near the chunk: nothing grows inside the walls or right against them.
+    struct Keep {
+        float x, y, reach;
+    };
+    std::vector<Keep> keeps;
+    const float lx0 = sl.cx * kChunkSize, ly0 = sl.cy * kChunkSize, ox_f = static_cast<float>(ox), oy_f = static_cast<float>(oy);
+    for (const sim::Continent::City& city : c.cities()) {
+        const float cx = static_cast<float>(city.pos.x.toDouble()) - ox_f, cy = static_cast<float>(city.pos.y.toDouble()) - oy_f;
+        for (const sim::Continent::Castle::Ring& ring : city.castle.rings) {
+            float reach = 0;
+            for (const sim::Vec3& q : ring.corners)
+                reach = std::max(reach, std::hypot(static_cast<float>(q.x.toDouble()) - ox_f - cx, static_cast<float>(q.y.toDouble()) - oy_f - cy));
+            reach += 12;
+            if (cx + reach < lx0 || cy + reach < ly0 || cx - reach > lx0 + kChunkSize || cy - reach > ly0 + kChunkSize) continue;
+            keeps.push_back({cx, cy, reach});
+        }
+    }
+    const auto groundOf = [&](float x, float y) {
+        const int ix = static_cast<int>(std::floor(x / kCell)), iy = static_cast<int>(std::floor(y / kCell));
+        return static_cast<sim::Ground>(ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] / 16);
+    };
+    for (int64_t gy = floorDiv64(y0, step) - 1; gy * step < y1; ++gy) {
+        for (int64_t gx = floorDiv64(x0, step) - 1; gx * step < x1; ++gx) {
+            const sim::Region::SceneryPoint pt = sim::Region::sceneryPoint(scenerySeed_, gx, gy);
+            if (pt.x < m(x0) || pt.y < m(y0) || pt.x >= m(x1) || pt.y >= m(y1)) continue;
+            const Fixed lx = pt.x - ox_, ly = pt.y - oy_;
+            const float x = static_cast<float>(lx.toDouble()), y = static_cast<float>(ly.toDouble());
+            const sim::Ground g = groundOf(x, y);
+            if (g == sim::Ground::Road || g == sim::Ground::Shallows || g == sim::Ground::DeepWater || g == sim::Ground::Bridge) continue;
+            bool clear = true;
+            for (const Seg& sg : roads) {
+                const float abx = sg.bx - sg.ax, aby = sg.by - sg.ay, len2 = abx * abx + aby * aby;
+                const float t = len2 > 0 ? std::clamp(((x - sg.ax) * abx + (y - sg.ay) * aby) / len2, 0.0f, 1.0f) : 0.0f;
+                const float ex = sg.ax + abx * t - x, ey = sg.ay + aby * t - y;
+                if (ex * ex + ey * ey < 4.5f * 4.5f) clear = false;
+            }
+            for (const Keep& k : keeps) clear = clear && std::hypot(x - k.x, y - k.y) >= k.reach;
+            for (const sim::Deck& d : decks_) clear = clear && !sim::Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth}.contains(lx, ly);
+            if (!clear) continue;
+            bool byWater = false;
+            for (int k = 0; k < 4 && !byWater; ++k) {
+                const sim::Ground w = groundOf(x + (k == 0 ? 4.0f : k == 1 ? -4.0f : 0.0f), y + (k == 2 ? 4.0f : k == 3 ? -4.0f : 0.0f));
+                byWater = w == sim::Ground::Shallows || w == sim::Ground::DeepWater;
+            }
+            float z = 0;
+            heightAt(x, y, z, true);
+            sim::Obstacle o;
+            if (!sim::Region::sceneryAt(scenerySeed_, pt, g, byWater, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw))), o)) continue;
+            o.pos = {lx, ly, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw)))};
+            out.push_back(o);
+        }
+    }
 }
 
 bool DetailLand::finishStep(int s) {
@@ -324,11 +374,22 @@ bool DetailLand::finishStep(int s) {
         }
     }
 
-    // Road field at 2 m (signed distance across the nearest road, for ruts) and
-    // tree shade, two texels beyond the chunk for filtering.
     const auto pts = [](const sim::Polyline& p) -> const std::vector<sim::Vec3>& { return p.points; };
-    const std::vector<Seg> roads = segmentsNear(c.roads(), pts, ox, oy, x0, y0, x1, y1, 12);
-    const int fx0 = bx * 2 - 2, fy0 = by * 2 - 2, fn = kChunk * 2 + 4;
+    const std::vector<Seg> roads = segmentsNear(c.roads(), pts, ox, oy, x0, y0, x1, y1, 16);
+    growScenery(s, roads);
+
+    // Road field at 2 m (signed distance across the nearest road, for ruts) and
+    // the shade of the trees' crowns, kFineApron texels beyond the chunk: enough
+    // for filtering, and for the crowns of this chunk's trees to reach into its
+    // neighbours' (whose trees, where they are built, are counted too).
+    std::vector<const sim::Obstacle*> crowns;
+    for (int k = 0; k < 9; ++k) {
+        const Slot& n = slots_[static_cast<size_t>(slotOf(sl.cx + k % 3 - 1, sl.cy + k / 3 - 1))];
+        if (k != 4 && !n.finished) continue;
+        for (const sim::Obstacle& o : scenery_[static_cast<size_t>(slotOf(sl.cx + k % 3 - 1, sl.cy + k / 3 - 1))])
+            if (o.kind == sim::Obstacle::Kind::Pine || o.kind == sim::Obstacle::Kind::Oak || o.kind == sim::Obstacle::Kind::Bush) crowns.push_back(&o);
+    }
+    const int fx0 = bx * 2 - kFineApron, fy0 = by * 2 - kFineApron, fn = kChunk * 2 + 2 * kFineApron;
     for (int ty = fy0; ty < fy0 + fn; ++ty) {
         for (int tx = fx0; tx < fx0 + fn; ++tx) {
             const size_t k = static_cast<size_t>(wrap(ty, kFine)) * kFine + wrap(tx, kFine);
@@ -349,12 +410,17 @@ bool DetailLand::finishStep(int s) {
             }
             road_[k * 2] = lateral;
             road_[k * 2 + 1] = weight;
-            // Woods shade the ground beneath them, with gaps between the crowns.
-            const int cxl = floorDiv(tx, 2), cyl = floorDiv(ty, 2);
-            const auto g = static_cast<sim::Ground>(ground_[static_cast<size_t>(wrap(cyl, kSamples)) * kSamples + wrap(cxl, kSamples)] / 16);
+            // Groves shade the ground beneath them, as on a battlefield.
             float shade = 0;
-            if (g == sim::Ground::Forest) shade = std::clamp(0.25f + 0.9f * valueNoise(px / 7.0f, py / 7.0f, 0xC0FFEE), 0.0f, 1.0f);
-            canopy_[k] = static_cast<uint8_t>(shade * 255);
+            for (const sim::Obstacle* o : crowns) {
+                const float crown = o->kind == sim::Obstacle::Kind::Pine ? 2.6f : o->kind == sim::Obstacle::Kind::Oak ? 3.6f : 1.2f;
+                const float dx = px - static_cast<float>(o->pos.x.toDouble()), dy = py - static_cast<float>(o->pos.y.toDouble());
+                const float reach = crown * 1.6f;
+                if (std::fabs(dx) >= reach || std::fabs(dy) >= reach) continue;
+                const float d = std::sqrt(dx * dx + dy * dy) / reach;
+                if (d < 1) shade += (1 - d * d) * (o->kind == sim::Obstacle::Kind::Bush ? 0.3f : 0.6f);
+            }
+            canopy_[k] = static_cast<uint8_t>(std::min(1.0f, shade) * 255);
         }
     }
     sl.finished = true;
@@ -406,12 +472,12 @@ void DetailLand::finishAll() {
     }
 }
 
-bool DetailLand::heightAt(float x, float y, float& z) const {
+bool DetailLand::heightAt(float x, float y, float& z, bool unchecked) const {
     if (!active()) return false;
     const float fx = x / kCell, fy = y / kCell;
     const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
     const Slot& sl = slots_[static_cast<size_t>(slotOf(floorDiv(ix, kChunk), floorDiv(iy, kChunk)))];
-    if (!sl.finished || sl.cx != floorDiv(ix, kChunk) || sl.cy != floorDiv(iy, kChunk)) return false;
+    if (!unchecked && (!sl.finished || sl.cx != floorDiv(ix, kChunk) || sl.cy != floorDiv(iy, kChunk))) return false;
     const auto h = [&](int i, int j) { return height_[static_cast<size_t>(wrap(j, kSamples)) * kSamples + wrap(i, kSamples)]; };
     const float tx = fx - ix, ty = fy - iy;
     const float a = h(ix, iy), b = h(ix + 1, iy), c = h(ix, iy + 1), d = h(ix + 1, iy + 1);

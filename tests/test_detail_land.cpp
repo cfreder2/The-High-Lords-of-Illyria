@@ -47,6 +47,25 @@ TEST(detail_land_matches_the_battlefield) {
         }
     }
     std::printf("detail land: %d/%d heights, %d/%d cells match; worst %.2f m\n", heightsSame, heights, cellsSame, cells, worst);
+    // The same trees, undergrowth and rocks in the same places.
+    int trees = 0, treesSame = 0;
+    for (int s = 0; s < game::DetailLand::kSlots * game::DetailLand::kSlots; ++s) {
+        if (!land.shown(s)) continue;
+        for (const sim::Obstacle& o : land.scenery(s)) {
+            const float x = static_cast<float>(o.pos.x.toDouble()), y = static_cast<float>(o.pos.y.toDouble());
+            if (x < 136 || y < 136 || x > 888 || y > 888 || special(x, y)) continue;
+            ++trees;
+            for (const sim::Obstacle& b : rg.obstacles()) {
+                if (b.kind == o.kind && b.pos.x == o.pos.x && b.pos.y == o.pos.y && b.height == o.height) {
+                    ++treesSame;
+                    break;
+                }
+            }
+        }
+    }
+    std::printf("detail land: %d/%d trees, bushes and rocks match\n", treesSame, trees);
+    CHECK(trees > 2000);
+    CHECK(treesSame > trees * 97 / 100);
     CHECK(heights > 20000);
     CHECK(heightsSame > heights * 97 / 100);
     CHECK(cellsSame > cells * 97 / 100);

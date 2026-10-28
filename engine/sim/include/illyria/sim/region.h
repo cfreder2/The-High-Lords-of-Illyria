@@ -125,6 +125,24 @@ public:
     // Hash of everything generated, for cross-platform checks.
     uint64_t checksum() const;
 
+    // The scenery grid: a point every 5 m of the continent (at continent
+    // metres 5 gx, 5 gy, jittered), each drawn from its own hash, so every
+    // window cut from the continent grows the same trees in the same places
+    // (and the renderer can grow them anywhere: game::DetailLand).
+    static constexpr int64_t kSceneryStep = 5;
+    struct SceneryPoint {
+        Fixed x, y;  // continent coordinates
+        Fixed roll, size;
+        uint32_t variant = 0;
+    };
+    static SceneryPoint sceneryPoint(uint64_t seed, int64_t gx, int64_t gy);
+    // The scenery seed of windows cut from a continent with this seed.
+    static uint64_t sceneryContinentSeed(uint64_t continentSeed) { return continentSeed ^ 0x5CE7E; }
+    // What grows at a point whose ground is `g` (byWater: shallows or deep
+    // water within 4 m) at height z; false if nothing. Sets the obstacle's
+    // kind, radius, height, variant and solidity (not its position).
+    static bool sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWater, Fixed z, Obstacle& o);
+
 private:
     // Trees, undergrowth and rocks on a jittered grid, clear of roads, water,
     // the first `buildings` obstacles, and a circle around `clearCentre`.

@@ -59,6 +59,7 @@ void Renderer::resetDetail(const Battle& battle) {
     detailGen_ = UINT32_MAX;
     detailChunks_ = detailWetChunks_ = 0;
     detailOn_ = false;
+    detailSceneryGen_ = UINT32_MAX;
     detailRect_[0] = detailRect_[1] = 1e9f;
     detailRect_[2] = detailRect_[3] = -1e9f;
     texture2d(detailTex_[0], GL_R32F, kN, GL_RED, GL_FLOAT, detail_.heights().data(), false);
@@ -146,6 +147,11 @@ void Renderer::updateDetail(const Battle& battle, const Camera& camera, double b
         detailRect_[0] = detailRect_[1] = 1e9f;
         detailRect_[2] = detailRect_[3] = -1e9f;
         detailFade_ = 0;
+        // Its scenery is not drawn either (gathered again when it shows).
+        for (auto* list : {&detailPines_, &detailOaks_, &detailBushes_, &detailRocks_})
+            for (MeshBatch& b : *list) b.count = 0;
+        detailLogs_.count = detailStumps_.count = 0;
+        detailSceneryGen_ = UINT32_MAX;
     };
     if (!(features_ & (kGroundDetail | kGroundCover)) || camera.distance() > kDetailBelow || !detail_.active()) {
         hide();
@@ -160,8 +166,9 @@ void Renderer::updateDetail(const Battle& battle, const Camera& camera, double b
         uploadWrapped(detailTex_[1], kN, bx - 1, by - 1, kC + 2, GL_RED, GL_UNSIGNED_BYTE, detail_.ground().data());
         uploadWrapped(detailTex_[2], kN, bx - 1, by - 1, kC + 3, GL_RED, GL_FLOAT, detail_.water().data());
         uploadWrapped(detailTex_[3], kN, bx - 1, by - 1, kC + 3, GL_RG, GL_UNSIGNED_BYTE, detail_.flow().data());
-        uploadWrapped(detailTex_[4], kF, bx * 2 - 2, by * 2 - 2, kC * 2 + 4, GL_RG, GL_UNSIGNED_BYTE, detail_.road().data());
-        uploadWrapped(detailTex_[5], kF, bx * 2 - 2, by * 2 - 2, kC * 2 + 4, GL_RED, GL_UNSIGNED_BYTE, detail_.canopy().data());
+        constexpr int kA = DetailLand::kFineApron;
+        uploadWrapped(detailTex_[4], kF, bx * 2 - kA, by * 2 - kA, kC * 2 + 2 * kA, GL_RG, GL_UNSIGNED_BYTE, detail_.road().data());
+        uploadWrapped(detailTex_[5], kF, bx * 2 - kA, by * 2 - kA, kC * 2 + 2 * kA, GL_RED, GL_UNSIGNED_BYTE, detail_.canopy().data());
     }
     constexpr int kS = DetailLand::kSlots;
     // Each shown chunk fades in from the moment it is finished; where the
@@ -207,7 +214,52 @@ void Renderer::updateDetail(const Battle& battle, const Camera& camera, double b
     const float d = camera.distance();
     detailFade_ = d <= kDetailFull ? 1.0f : 1.0f - (d - kDetailFull) / (kDetailBelow - kDetailFull);
     detailOn_ = detailChunks_ > 0 && detailFade_ > 0;
+    updateDetailScenery(battle, camera, now, instant);
     if (!detailOn_) hide();
+}
+
+void Renderer::updateDetailScenery(const Battle& battle, const Camera& camera, double now, bool instant) {
+    // The trees and rocks of the built chunks near the focus (only those near
+    // enough to be drawn as themselves: see sceneryNear in kMeshVs), gathered
+    // again when chunks are built or the focus has moved on, a few times a
+    // second at most, and capped for phones.
+    constexpr float kReach = 270.0f + DetailLand::kChunkSize * 0.75f, kMove = 32.0f;
+    constexpr size_t kMaxInstances = 14000;
+    const V3 t = camera.target();
+    const bool moved = std::hypot(t.x - detailSceneryAt_.x, t.y - detailSceneryAt_.y) > kMove;
+    if (detailSceneryGen_ == detail_.generation() && !moved) return;
+    if (!instant && now - detailSceneryClock_ < 0.3) return;
+    detailSceneryGen_ = detail_.generation();
+    detailSceneryAt_ = t;
+    detailSceneryClock_ = now;
+    std::vector<std::pair<float, int>> near;
+    constexpr int kS = DetailLand::kSlots;
+    for (int s = 0; s < kS * kS; ++s) {
+        if (!detail_.shown(s)) continue;
+        const DetailLand::Slot& sl = detail_.slot(s);
+        const float d = std::hypot((sl.cx + 0.5f) * DetailLand::kChunkSize - t.x, (sl.cy + 0.5f) * DetailLand::kChunkSize - t.y);
+        if (d < kReach) near.push_back({d, s});
+    }
+    std::sort(near.begin(), near.end());
+    SceneryLists lists;
+    lists.pine.resize(detailPines_.size());
+    lists.oak.resize(detailOaks_.size());
+    lists.bush.resize(detailBushes_.size());
+    lists.rock.resize(detailRocks_.size());
+    size_t count = 0;
+    for (const auto& [d, s] : near) {
+        (void)d;
+        const std::vector<sim::Obstacle>& objs = detail_.scenery(s);
+        if (count + objs.size() > kMaxInstances) break;
+        count += objs.size();
+        for (const sim::Obstacle& o : objs) pushScenery(o, sceneryId(battle, o), lists);
+    }
+    for (size_t v = 0; v < detailPines_.size(); ++v) uploadMeshInstances(detailPines_[v], lists.pine[v]);
+    for (size_t v = 0; v < detailOaks_.size(); ++v) uploadMeshInstances(detailOaks_[v], lists.oak[v]);
+    for (size_t v = 0; v < detailBushes_.size(); ++v) uploadMeshInstances(detailBushes_[v], lists.bush[v]);
+    for (size_t v = 0; v < detailRocks_.size(); ++v) uploadMeshInstances(detailRocks_[v], lists.rock[v]);
+    uploadMeshInstances(detailLogs_, lists.logs);
+    uploadMeshInstances(detailStumps_, lists.stumps);
 }
 
 void Renderer::bindDetail(const Program& p) {

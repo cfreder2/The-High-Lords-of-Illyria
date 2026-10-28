@@ -72,7 +72,7 @@ private:
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
-        GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1;
+        GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -82,6 +82,9 @@ private:
         size_t capacity = 0;
         float sway = 0;
         bool masonry = false;
+        // 1: individual scenery, drawn near the camera; -1: the woods' clumps
+        // that stand in for it beyond (see sceneryNear in kMeshVs); 0: always.
+        float lod = 0;
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {
@@ -183,6 +186,13 @@ private:
     std::vector<float> chunkFade_;  // per slot: fading in once finished
     double detailClock_ = -1;
     bool detailOn_ = false;  // drawn this frame
+    // The close-up land's trees, undergrowth and rocks, near the camera.
+    std::vector<MeshBatch> detailPines_, detailOaks_, detailBushes_, detailRocks_;
+    MeshBatch detailLogs_, detailStumps_;
+    uint32_t detailSceneryGen_ = UINT32_MAX;
+    V3 detailSceneryAt_{1e9f, 1e9f, 0};
+    double detailSceneryClock_ = 0;
+    void updateDetailScenery(const Battle& battle, const Camera& camera, double now, bool instant);
     void resetDetail(const Battle& battle);
     void updateDetail(const Battle& battle, const Camera& camera, double budgetMs, bool instant = false);
     void bindDetail(const Program& p);
@@ -202,6 +212,14 @@ private:
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
     MeshBatch stumps_;
     std::vector<MeshBatch*> scenery(bool includeSmall);
+    // Trees, undergrowth, rocks and logs as instances, by mesh variant.
+    struct SceneryLists {
+        std::vector<std::vector<float>> pine, oak, bush, rock;
+        std::vector<float> logs, stumps;
+    };
+    static uint32_t sceneryId(const Battle& battle, const sim::Obstacle& o);
+    // Adds one; returns the radius of its blob shadow.
+    static float pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out);
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch drums_, keeps_, stairs_;

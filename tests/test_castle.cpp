@@ -140,7 +140,8 @@ TEST(merlons_shelter_defenders_from_arrows_shot_from_outside) {
     // A defender placed on the walk (it walks the stairs in play; here it starts there).
     // Archers have no shields: whatever stops a missile here is the stone.
     const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
-    for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(45) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
+    // Six archers 40 m out, with a clear shot (no tree in the way).
+    for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
     int blocked = 0, hits = 0;
     for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
         w.step({});

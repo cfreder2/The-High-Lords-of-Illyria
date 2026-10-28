@@ -65,12 +65,15 @@ float groundZ(vec2 p) {
 uniform sampler2D uDetailMask;
 uniform vec4 uDetailRect;
 uniform float uDetailFade;
-float detailWeight(vec2 p) {
+float detailMask(vec2 p) {  // whether its chunk is built (and how far faded in)
     if (any(lessThan(p, uDetailRect.xy)) || any(greaterThanEqual(p, uDetailRect.zw))) return 0.0;
     vec2 n = vec2(textureSize(uDetailMask, 0));
     ivec2 c = ivec2(clamp(mod(floor(p / 64.0), n), vec2(0.0), n - 1.0));
+    return texelFetch(uDetailMask, c, 0).r;
+}
+float detailWeight(vec2 p) {
     vec2 e = min(p - uDetailRect.xy, uDetailRect.zw - p);
-    return texelFetch(uDetailMask, c, 0).r * clamp(min(e.x, e.y) / 128.0, 0.0, 1.0) * uDetailFade;
+    return detailMask(p) * clamp(min(e.x, e.y) / 128.0, 0.0, 1.0) * uDetailFade;
 }
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -124,6 +127,88 @@ vec3 hazeColor(vec3 world) {
 )";
 
 // ---------------------------------------------------------------- terrain
+// What every land fragment shader shares (the terrain's, the close-up
+// land's and the coarse land's): prefixed to their bodies.
+#define ILLYRIA_LAND_FS R"(
+// Distance to the nearest hex edge for a pointy-top hex grid of circumradius s.
+float hexEdge(vec2 p, float s) {
+    vec2 r = vec2(1.0, 1.7320508);
+    vec2 h = r * 0.5;
+    vec2 a = mod(p / s, r) - h;
+    vec2 b = mod(p / s - h, r) - h;
+    vec2 g = dot(a, a) < dot(b, b) ? a : b;
+    g = abs(g);
+    return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
+}
+float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
+// The grids over all land alike, world-aligned so they run on unbroken across
+// the battlefield's edge: the tactical hex grid fades in as the camera rises,
+// then hands over to the campaign's.
+vec3 landGrids(vec3 c, vec2 xy) {
+    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
+    if (gridFade > 0.0) {
+        float e = hexEdge(xy, 48.0);
+        float w = fwidth(e) * 1.5;
+        c = mix(c, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
+    }
+    float bigFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
+    if (bigFade > 0.0) {
+        float e = hexEdge(xy, 400.0);
+        float w = fwidth(e) * 1.5;
+        c = mix(c, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
+    }
+    return c;
+}
+// The land's look from afar, from its base colour and ground kinds (weights of
+// forest, rock, swamp and water): the coarse land's (kFarFs), and the
+// battlefield's and the close-up land's as the camera rises, so they all look
+// alike from high up.
+vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
+    vec3 albedo = base;
+    vec2 p = world.xy;
+    // Ground kinds meet along ragged, natural edges instead of the grid.
+    float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (noise2(p / 28.0) - 0.5) * 0.35;
+    float forest = smoothstep(0.4, 0.6, kinds.x + edge);
+    float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
+    float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
+    float water = min(kinds.w, 1.0);
+    float slope = 1.0 - n.z;
+    // Meadows: lush and dry patches, as on the battlefield.
+    float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
+    vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * noise2(p * 0.4));
+    float land = 1.0 - water;
+    albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
+    // Forest canopy: crowns and gaps, lit as a rough surface.
+    float crowns = fbm3(p / 9.0);
+    vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
+    canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, noise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
+    albedo = mix(albedo, canopy, forest * land);
+    n = normalize(n + vec3(noise2(p / 6.0) - 0.5, noise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+    // Rock: strata, crags and scree.
+    // Broken bands, warped hard so they read as rock, not contour lines.
+    float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + noise2(p / 9.0) * 3.0);
+    float tone = fbm3(p / 18.0) * 0.6 + 0.2;
+    vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * noise2(p / 5.0));
+    // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
+    stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
+    stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
+    // Bare rock on the steeps and the heights; alpine turf holds on the
+    // gentler mountain ground and climbs the ravines, so the cover follows the land.
+    float high = smoothstep(190.0, 320.0, world.z + (fbm3(p / 80.0) - 0.5) * 70.0);
+    float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
+    float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
+    vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * noise2(p / 7.0));
+    albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
+    albedo = mix(albedo, stone, rocky);
+    vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
+    n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
+    // Snow lies on the heights, but not on cliffs.
+    float snow = smoothstep(300.0, 360.0, world.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
+    albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
+    albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
+    return albedo;
+}
+)"
 inline const char* kTerrainVs = R"(
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -164,16 +249,6 @@ float valueNoise(vec2 p) {
     return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x),
                mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
 }
-// Distance to the nearest hex edge for a pointy-top hex grid of circumradius s.
-float hexEdge(vec2 p, float s) {
-    vec2 r = vec2(1.0, 1.7320508);
-    vec2 h = r * 0.5;
-    vec2 a = mod(p / s, r) - h;
-    vec2 b = mod(p / s - h, r) - h;
-    vec2 g = dot(a, a) < dot(b, b) ? a : b;
-    g = abs(g);
-    return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
-}
 uniform sampler2D uGround;  // R8: ground type / 16, one texel per terrain cell
 uniform sampler2D uRoad;    // RG8, linear: R = 0.5 + lateral offset / 16 m, G = road weight
 
@@ -194,6 +269,14 @@ int groundAt(ivec2 c) {
     return int(texelFetch(uGround, texCell(vec2(c), uCells - 1.0), 0).r * 16.0 + 0.5);
 }
 
+// The coarse land's colour of a ground kind (Renderer::buildLand).
+vec3 farGroundColor(int id, float z) {
+    vec3 c = id == 1 ? vec3(0.48, 0.40, 0.27) : id == 2 ? vec3(0.18, 0.25, 0.11) : id == 3 ? vec3(0.24, 0.29, 0.17)
+           : id == 4 ? vec3(0.30, 0.50, 0.55) : id == 5 ? vec3(0.10, 0.26, 0.42) : id == 6 ? vec3(0.48, 0.46, 0.43)
+           : id == 7 ? vec3(0.45, 0.36, 0.26) : id == 8 ? vec3(0.33, 0.27, 0.18) : id == 9 ? vec3(0.80, 0.73, 0.55) : vec3(0.40, 0.49, 0.21);
+    if (id != 5) c = mix(c, vec3(0.93, 0.94, 0.96), clamp((z - 320.0) / 40.0, 0.0, 1.0));
+    return c;
+}
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
 uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
 
@@ -305,6 +388,16 @@ void main() {
     }
     // Snow on the high peaks.
     albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(310.0, 350.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    // From high up, the coarse land's look, so the battlefield and the land
+    // around it read as one (the coarse land beyond knows nothing finer).
+    float farBlend = feature(kFeatFarDetail) ? smoothstep(450.0, 1100.0, uCamDist) : 0.0;
+    if (farBlend > 0.0) {
+        vec3 base = mix(mix(farGroundColor(g00, vWorld.z), farGroundColor(g10, vWorld.z), f.x),
+                        mix(farGroundColor(g01, vWorld.z), farGroundColor(g11, vWorld.z), f.x), f.y);
+        vec3 nFar = n;
+        albedo = mix(albedo, farAlbedo(base, vec4(kind.y, kind.z, kind.w, 0.0), vWorld, nFar), farBlend);
+        n = normalize(mix(n, nFar, farBlend));
+    }
     // Banks: the riverbed under the water, gravel and mud at the waterline,
     // a dark wet band above it (the nearest water surface, not one level).
     {
@@ -333,31 +426,20 @@ void main() {
 
     // Low sun so the hills read clearly from above; groves shade the ground.
     float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
-    float ambient = 0.30 * (1.0 - canopy * 0.45);
-    if (!feature(kFeatShadows)) sun *= 1.0 - canopy * 0.55;  // no shadow map: fake the groves' shade
+    float grove = canopy * (1.0 - farBlend);  // from high up the coarse land's canopy carries the woods
+    float ambient = 0.30 * (1.0 - grove * 0.45);
+    if (!feature(kFeatShadows)) sun *= 1.0 - grove * 0.55;  // no shadow map: fake the groves' shade
     vec3 color = albedo * (ambient + 0.95 * sun);
 
-    // The tactical hex grid fades in as the camera rises, then hands over to
-    // the continent's campaign grid (the same one the far terrain draws).
-    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
-    if (gridFade > 0.0 && uWrap < 0.5) {  // the battlefield's, not the close-up land's
-        float e = hexEdge(vWorld.xy, 48.0);
-        float w = fwidth(e) * 1.5;
-        color = mix(color, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
-    }
-    float bigFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
-    if (bigFade > 0.0) {
-        float e = hexEdge(vWorld.xy, 400.0);
-        float w = fwidth(e) * 1.5;
-        color = mix(color, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
-    }
-    oColor = vec4(mix(color, hazeColor(vWorld), fogFactor(dist)), 1.0);
+    // The grids, as on all the land; haze as on the coarse land.
+    color = landGrids(color, vWorld.xy);
+    oColor = vec4(mix(color, hazeColor(vWorld), fogFactor(dist) * 0.6), 1.0);
 }
 )"
-inline const char* kTerrainFs = ILLYRIA_TERRAIN_FS;
+inline const char* kTerrainFs = ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
 // The close-up land off the battlefield: the same, cross-fading at its edges
 // (a separate program, so the battlefield's ground never pays for discard).
-inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_TERRAIN_FS;
+inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
 #undef ILLYRIA_TERRAIN_FS
 
 // ---------------------------------------------------------------- decals
@@ -1216,17 +1298,30 @@ layout(location = 4) in vec4 iQuat;
 layout(location = 5) in vec3 iScale;
 layout(location = 6) in vec3 iTint;
 uniform float uSway;
+uniform float uLod;  // 1: individual scenery; -1: the woods' clumps standing in for it; 0: always drawn
+uniform vec4 uHole;  // the battlefield
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vWorld;
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+// How much individual scenery (trees, undergrowth, rocks) stands here rather
+// than the clumps of crowns: near the camera's focus while the camera is low,
+// wherever it exists (the battlefield, or the close-up land's built chunks).
+// The same on the battlefield and off it, so no edge shows at any zoom; the
+// one shrinks away as the other grows.
+float sceneryNear(vec2 p) {
+    float there = all(greaterThanEqual(p, uHole.xy)) && all(lessThan(p, uHole.zw)) ? 1.0 : detailMask(p);
+    return there * (1.0 - smoothstep(600.0, 850.0, uCamDist)) * (1.0 - smoothstep(180.0, 270.0, distance(p, uFocus)));
+}
 void main() {
     if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
-    vec3 local = aPos * iScale;
+    float lod = uLod > 0.5 ? sceneryNear(iPos.xy) : uLod < -0.5 ? 1.0 - sceneryNear(iPos.xy) : 1.0;
+    if (lod < 0.02) { gl_Position = kCulled; return; }
+    vec3 local = aPos * iScale * lod;
     if (uSway > 0.0) {
         // Crowns sway in the wind; trunks stay put.
         float h = aPos.z * aPos.z;
-        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z;
+        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z * lod;
     }
     vec3 world = iPos + rotate(iQuat, local);
     vNormal = normalize(rotate(iQuat, aNormal / iScale));
@@ -1502,16 +1597,6 @@ in vec3 vNormal;
 in vec3 vColor;
 in vec4 vKinds;
 out vec4 oColor;
-float hexEdge(vec2 p, float s) {
-    vec2 r = vec2(1.0, 1.7320508);
-    vec2 h = r * 0.5;
-    vec2 a = mod(p / s, r) - h;
-    vec2 b = mod(p / s - h, r) - h;
-    vec2 g = dot(a, a) < dot(b, b) ? a : b;
-    g = abs(g);
-    return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
-}
-float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
 void main() {
 #ifdef DETAIL_CUT
     if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land is drawn there
@@ -1519,51 +1604,21 @@ void main() {
     vec3 n = normalize(vNormal);
     vec3 albedo = vColor;
     vec2 p = vWorld.xy;
-    if (feature(kFeatFarDetail)) {
-        // Ground kinds meet along ragged, natural edges instead of the grid.
-        float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (noise2(p / 28.0) - 0.5) * 0.35;
-        float forest = smoothstep(0.4, 0.6, vKinds.x + edge);
-        float rock = smoothstep(0.35, 0.65, vKinds.y + edge * 0.8);
-        float swamp = smoothstep(0.4, 0.6, vKinds.z + edge);
-        float water = min(vKinds.w, 1.0);
-        float slope = 1.0 - n.z;
-        // Meadows: lush and dry patches, as on the battlefield.
-        float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
-        vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * noise2(p * 0.4));
-        float land = 1.0 - water;
-        albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(vColor.r, 0.55));
-        // Forest canopy: crowns and gaps, lit as a rough surface.
-        float crowns = fbm3(p / 9.0);
-        vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
-        canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, noise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
-        albedo = mix(albedo, canopy, forest * land);
-        n = normalize(n + vec3(noise2(p / 6.0) - 0.5, noise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
-        // Rock: strata, crags and scree.
-        // Broken bands, warped hard so they read as rock, not contour lines.
-        float strata = 0.5 + 0.5 * sin(vWorld.z * 0.22 + fbm3(p / 55.0) * 14.0 + noise2(p / 9.0) * 3.0);
-        float tone = fbm3(p / 18.0) * 0.6 + 0.2;
-        vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * noise2(p / 5.0));
-        // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
-        stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
-        stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
-        // Bare rock on the steeps and the heights; alpine turf holds on the
-        // gentler mountain ground and climbs the ravines, so the cover follows the land.
-        float high = smoothstep(190.0, 320.0, vWorld.z + (fbm3(p / 80.0) - 0.5) * 70.0);
-        float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
-        float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
-        vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * noise2(p / 7.0));
-        albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
-        albedo = mix(albedo, stone, rocky);
-        vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
-        n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
-        // Snow lies on the heights, but not on cliffs.
-        float snow = smoothstep(300.0, 360.0, vWorld.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
-        albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
-        albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
-    }
+    if (feature(kFeatFarDetail)) albedo = farAlbedo(vColor, vKinds, vWorld, n);
     // Open water: coloured by depth, with swells, chop, surf and glints.
     float glint = 0.0;
-    if (feature(kFeatFarDetail) && vKinds.w > 0.5) {
+    vec3 inland = vec3(-1.0);
+    if (feature(kFeatFarDetail) && vKinds.w > 0.5 && vWorld.z >= 0.8) {
+        // Rivers, lakes and pools: the battlefield's water (kWaterFs) over its
+        // bed, seen from high up: silt-green shallows to deep blue, calm.
+        float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
+        vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), noise2(p * 0.7)) * 0.8;
+        vec3 wc = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, dm));
+        wc = mix(bed, wc, 1.0 - exp(-dm * 1.6));
+        inland = mix(bed, wc, clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
+        n = vec3(0.0, 0.0, 1.0);
+        glint = 0.25;
+    } else if (feature(kFeatFarDetail) && vKinds.w > 0.5) {
         float depth = clamp(vKinds.w - 1.0, 0.0, 1.0);  // 1 = 12 m or more
         float t = uTime;
         albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
@@ -1571,7 +1626,7 @@ void main() {
         g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
         g += (vec2(noise2(p / 6.0 + t * 0.35), noise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
         n = normalize(vec3(-g, 1.0));
-        if (vWorld.z < 0.8) {
+        {
             // The sea: lines of foam roll in over the shallows and break on the sand.
             float shore = 1.0 - smoothstep(0.0, 0.3, depth);
             float roll = sin(depth * 55.0 + t * 1.7 + noise2(p / 45.0) * 7.0);
@@ -1579,32 +1634,25 @@ void main() {
             foam = max(foam, (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * noise2(p / 2.0 + t * 0.8)));
             albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
             glint = 1.0 - foam;
-        } else {
-            glint = 0.6;
         }
     }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
     float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
-    vec3 c = albedo * light;
+    vec3 c = inland.r >= 0.0 ? inland : albedo * light;
     if (glint > 0.0) {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));
         c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
     }
-    // The strategic hex grid of the campaign map, at continent scale.
-    float gridFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
-    if (gridFade > 0.0) {
-        float e = hexEdge(vWorld.xy, 400.0);
-        float w = fwidth(e) * 1.5;
-        c = mix(c, vec3(0.95, 0.9, 0.78), gridFade * (1.0 - smoothstep(0.0, w, e)));
-    }
+    c = landGrids(c, vWorld.xy);
     oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
 }
 )"
-inline const char* kFarFs = ILLYRIA_FAR_FS;
+inline const char* kFarFs = ILLYRIA_LAND_FS ILLYRIA_FAR_FS;
 // The same, giving way where the close-up land is drawn (a separate program:
 // discard costs some GPUs their early depth test, so only the land near it pays).
-inline const char* kFarCutFs = "#define DETAIL_CUT 1\n" ILLYRIA_FAR_FS;
+inline const char* kFarCutFs = "#define DETAIL_CUT 1\n" ILLYRIA_LAND_FS ILLYRIA_FAR_FS;
 #undef ILLYRIA_FAR_FS
+#undef ILLYRIA_LAND_FS
 
 // Rivers and roads drawn as ribbons on the far map, never thinner than a few pixels.
 // Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road 2 creek).
@@ -1622,6 +1670,7 @@ void main() {
     float dist = distance(uEye, mid);
     float px = uPxScale * dist;
     float hw = max(iInfo.x, px * (iInfo.y > 1.5 ? 0.6 : iInfo.y > 0.5 ? 0.9 : 1.6));
+    if (abs(iInfo.y - 1.0) < 0.5) hw = max(hw, 3.4);  // a road: its ruts and verges, as on the battlefield
     vec3 d = iB - iA;
     vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0)) * hw;
     float t = float(gl_VertexID & 1);
@@ -1641,7 +1690,9 @@ in vec2 vXy;
 out vec4 oColor;
 void main() {
     if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land draws its own roads and water
-    vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
+    // Water as the battlefield's river looks from high up; roads as its
+    // wagon-worn dirt (ruts, grassy hump, verges) does, lit like the land.
+    vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.09, 0.21, 0.27) : vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
 )";

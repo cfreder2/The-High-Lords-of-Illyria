@@ -75,7 +75,14 @@ public:
     static int wrap(int v, int n) { return ((v % n) + n) % n; }
 
     // The ground height at battle-local (x, y), if its chunk is finished.
-    bool heightAt(float x, float y, float& z) const;
+    bool heightAt(float x, float y, float& z, bool unchecked = false) const;
+    // A slot's trees, undergrowth, rocks and logs (battle-local), once finished.
+    const std::vector<sim::Obstacle>& scenery(int s) const { return scenery_[static_cast<size_t>(s)]; }
+    // Road and tree-shade texels written beyond a chunk's own.
+    static constexpr int kFineApron = 4;
+    struct Seg {
+        float ax, ay, bx, by;
+    };
 
 private:
     struct Raw {
@@ -85,6 +92,7 @@ private:
     void claim(int cx, int cy);
     void rawRow(int s);
     bool finishStep(int s);  // true when the chunk is finished
+    void growScenery(int s, const std::vector<Seg>& roads);
     bool inHole(int cx, int cy) const;
     const Raw& raw(int sx, int sy) const { return raw_[static_cast<size_t>(wrap(sy, kSamples)) * kSamples + wrap(sx, kSamples)]; }
     sim::Fixed shapedAt(int sx, int sy) const;
@@ -92,7 +100,8 @@ private:
     std::shared_ptr<const sim::Continent> continent_;
     sim::Fixed ox_, oy_;  // the battlefield's origin, whole metres
     int hole_ = 0;
-    uint64_t detailSeed_ = 0, mudSeed_ = 0;
+    uint64_t detailSeed_ = 0, mudSeed_ = 0, scenerySeed_ = 0;
+    std::vector<std::vector<sim::Obstacle>> scenery_;  // per slot
     int wx_ = INT32_MIN / 2, wy_ = INT32_MIN / 2;
     uint32_t generation_ = 0;
     std::vector<Slot> slots_;
