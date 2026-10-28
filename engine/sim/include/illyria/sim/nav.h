@@ -12,8 +12,11 @@ namespace illyria::sim {
 class NavGrid {
 public:
     static constexpr int64_t kCellSize = 8;
+    // Castles need finer cells, so a gate is open and a wall is closed.
+    static constexpr int64_t kCastleCellSize = 4;
 
     explicit NavGrid(const Region& region);
+    int64_t cellSize() const { return cell_; }
 
     // Fills `out` with waypoints ending at `to`. A clear straight line gives a
     // single waypoint. Returns false if no route was found (callers then walk
@@ -29,6 +32,7 @@ private:
     int32_t index(int32_t x, int32_t y) const { return y * n_ + x; }
 
     int32_t n_ = 0;
+    int64_t cell_ = kCellSize;
     std::vector<int32_t> cost_;  // 0: blocked
     std::vector<Deck> decks_;    // routes over a bridge go end to end along its deck
     // Deep water per terrain cell, where a bridge cell is otherwise open.

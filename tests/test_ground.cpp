@@ -90,9 +90,12 @@ TEST(soldiers_cross_a_footbridge_without_wading) {
     const Continent continent(20261027);
     WorldConfig cfg;
     cfg.region = std::make_shared<const Region>(Region::fromContinent(continent, continent.crossings().front().pos, 256));
-    CHECK(cfg.region->decks().size() == 1);
-    const Deck& d = cfg.region->decks().front();
-    CHECK(d.foot);
+    const Deck* foot = nullptr;
+    for (const Deck& k : cfg.region->decks())
+        if (k.foot) foot = &k;
+    CHECK(foot != nullptr);
+    if (foot == nullptr) return;
+    const Deck& d = *foot;
     const Vec3 west = d.centre - d.dir * (d.halfSpan + m(12)), east = d.centre + d.dir * (d.halfSpan + m(12));
     World w(cfg);
     const EntityId id = w.spawnUnit(0, west, d.dir, unitStats(UnitType::LightInfantry));

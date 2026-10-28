@@ -30,7 +30,8 @@ int32_t groundCost(Ground g) {
 
 NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
     const Terrain& t = region.terrain();
-    const int32_t sub = static_cast<int32_t>(kCellSize / t.cellSize().floorToInt());
+    if (!region.walls().empty()) cell_ = kCastleCellSize;
+    const int32_t sub = static_cast<int32_t>(cell_ / t.cellSize().floorToInt());
     n_ = t.cells() / sub;
     fine_ = t.cells();
     fineSize_ = t.cellSize();
@@ -69,6 +70,25 @@ NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
             cost_[index(x, y)] = water ? 0 : c;
         }
     }
+    // Castle walls and towers close the cells they stand in (the centre within reach).
+    for (int32_t y = 0; y < n_; ++y) {
+        for (int32_t x = 0; x < n_; ++x) {
+            if (region.walls().empty()) break;
+            const Vec3 p{Fixed::fromInt(x * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(y * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
+            for (const WallSeg& w : region.walls()) {
+                const Vec3 ab = (w.b - w.a).flat();
+                const Fixed len2 = ab.lengthSq();
+                const Fixed t = len2 > Fixed::zero() ? std::clamp((p - w.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+                const Fixed reach = w.halfThick + Fixed::fromRatio(1, 2);
+                if ((p - (w.a + ab * t)).flat().lengthSq() < reach * reach) cost_[index(x, y)] = 0;
+            }
+            for (const Obstacle& o : region.obstacles()) {
+                if (o.kind != Obstacle::Kind::Tower) continue;
+                const Fixed reach = o.radius + Fixed::fromRatio(1, 2);
+                if ((p - o.pos).flat().lengthSq() < reach * reach) cost_[index(x, y)] = 0;
+            }
+        }
+    }
     for (const Obstacle& o : region.obstacles()) {
         if (o.kind != Obstacle::Kind::House) continue;
         const int32_t x0 = cellOf(o.pos.x - o.halfX), x1 = cellOf(o.pos.x + o.halfX);
@@ -79,7 +99,7 @@ NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
 }
 
 int32_t NavGrid::cellOf(Fixed v) const {
-    return static_cast<int32_t>(std::clamp<int64_t>(v.floorToInt() / kCellSize, 0, n_ - 1));
+    return static_cast<int32_t>(std::clamp<int64_t>(v.floorToInt() / cell_, 0, n_ - 1));
 }
 
 bool NavGrid::blocked(const Vec3& p) const { return cost_[index(cellOf(p.x), cellOf(p.y))] == 0; }
@@ -97,7 +117,7 @@ bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
         const int64_t fy = std::clamp<int64_t>((p.y / fineSize_).floorToInt(), 0, fine_ - 1);
         if (!deep_[static_cast<size_t>(fy * fine_ + fx)]) continue;
         bool onDeck = false;
-        for (const Deck& k : decks_) onDeck = onDeck || k.contains(p.x, p.y);
+        for (const Deck& k : decks_) onDeck = onDeck || (!k.raised && k.contains(p.x, p.y));
         if (!onDeck) return false;
     }
     return true;
@@ -165,8 +185,8 @@ bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out)
 
     std::vector<Vec3> cells;
     for (int32_t i = goal; i != -1 && i != start; i = parent[i]) {
-        const Fixed half = Fixed::fromInt(kCellSize) / 2;
-        cells.push_back({Fixed::fromInt((i % n_) * kCellSize) + half, Fixed::fromInt((i / n_) * kCellSize) + half,
+        const Fixed half = Fixed::fromInt(cell_) / 2;
+        cells.push_back({Fixed::fromInt((i % n_) * cell_) + half, Fixed::fromInt((i / n_) * cell_) + half,
                          Fixed::zero()});
     }
     std::reverse(cells.begin(), cells.end());
@@ -176,9 +196,10 @@ bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out)
     // Over a bridge, walk its deck from end to end: those two points must stay.
     std::vector<bool> pinned(cells.size(), false);
     for (const Deck& d : decks_) {
+        if (d.raised) continue;
         size_t first = cells.size(), last = 0;
         for (size_t k = 0; k + 1 < cells.size(); ++k) {
-            if (!Deck{d.centre, d.dir, d.halfSpan + Fixed::fromInt(kCellSize), d.halfWidth + Fixed::fromInt(kCellSize)}.contains(cells[k].x, cells[k].y)) continue;
+            if (!Deck{d.centre, d.dir, d.halfSpan + Fixed::fromInt(cell_), d.halfWidth + Fixed::fromInt(cell_)}.contains(cells[k].x, cells[k].y)) continue;
             first = std::min(first, k);
             last = k;
         }

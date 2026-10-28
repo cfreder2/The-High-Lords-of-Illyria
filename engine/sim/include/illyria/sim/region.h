@@ -17,7 +17,7 @@ enum class Ground : uint8_t { Plains, Road, Forest, Swamp, Shallows, DeepWater, 
 // A static object in the world: scenery that blocks movement and stops
 // missiles (docs/GAME_DESIGN.md §5.4, tier B).
 struct Obstacle {
-    enum class Kind : uint8_t { Pine, Oak, Bush, Rock, Boulder, House, Pillar, Log };
+    enum class Kind : uint8_t { Pine, Oak, Bush, Rock, Boulder, House, Pillar, Log, Tower };
     Kind kind = Kind::Rock;
     Vec3 pos;           // base, on the ground
     Fixed radius;       // collision radius (houses: unused; logs: half the length)
@@ -25,6 +25,7 @@ struct Obstacle {
     Fixed halfX, halfY; // houses: axis-aligned footprint
     uint8_t variant = 0;
     bool solid = true;  // bushes are not
+    Fixed passAbove = {};  // towers: soldiers this high above the base walk through (the wall-walk); 0: never
 };
 
 struct Polyline {
@@ -32,13 +33,33 @@ struct Polyline {
     Fixed halfWidth;
 };
 
-// A bridge deck: a flat walkway from centre - dir * halfSpan to centre + dir *
-// halfSpan, halfWidth either side, its top at centre.z.
+// A walkway above the ground: a bridge deck, a castle's wall-walk or a stair.
+// It runs from centre - dir * halfSpan to centre + dir * halfSpan, halfWidth
+// either side; its top is centre.z in the middle and rises by `rise` end to end.
 struct Deck {
     Vec3 centre, dir;
     Fixed halfSpan, halfWidth;
-    bool foot = false;  // a narrow timber footbridge, not a stone road bridge
+    bool foot = false;   // a narrow timber footbridge, not a stone road bridge
+    Fixed rise = {};     // stairs climb; bridges and walls are level
+    bool raised = false; // on a castle (walls and stairs), not over water
     bool contains(Fixed x, Fixed y) const;
+    Fixed heightAt(Fixed x, Fixed y) const;
+};
+
+// A wall that blocks soldiers and missiles: a slab from a to b (z = its
+// base), halfThick either side, up to top. Soldiers on its walk pass over.
+struct WallSeg {
+    Vec3 a, b;
+    Fixed halfThick, top;
+    Fixed walk = {};  // the wall-walk's height, if it has one: missiles above it meet the merlons instead
+};
+
+// A ring of castle walls with a walk along the top, and the stairs up to it.
+struct Rampart {
+    std::vector<Vec3> corners;  // z = the walk
+    Fixed halfThick;
+    Vec3 centre;  // inside the ring
+    std::vector<std::pair<Vec3, Vec3>> stairs;  // (foot, head)
 };
 
 // A generated tactical region: terrain, water, ground types, roads and
@@ -68,8 +89,15 @@ public:
     const std::vector<Polyline>& rivers() const { return rivers_; }
     const std::vector<Polyline>& berms() const { return berms_; }
     const std::vector<Deck>& decks() const { return decks_; }
+    const std::vector<WallSeg>& walls() const { return walls_; }
+    const std::vector<Rampart>& ramparts() const { return ramparts_; }
+    // The rampart whose walk this point is on, or -1.
+    int rampartAt(Fixed x, Fixed y, Fixed z) const;
     // True on a bridge deck, with the deck's height.
     bool deckAt(Fixed x, Fixed y, Fixed& height) const;
+    // The highest deck here no higher than `ceiling` (one can stand under a
+    // wall-walk, in a gate passage); false if there is none.
+    bool deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const;
     // True where the ground at this exact point lies under water.
     bool underWater(Fixed x, Fixed y) const;
     // Ponds: (x, y) centre, z = radius.
@@ -91,6 +119,8 @@ private:
     std::vector<Polyline> roads_, rivers_, berms_;
     std::vector<Vec3> ponds_;
     std::vector<Deck> decks_;
+    std::vector<WallSeg> walls_;
+    std::vector<Rampart> ramparts_;
     Vec3 ford_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample

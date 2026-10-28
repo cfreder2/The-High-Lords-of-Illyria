@@ -84,14 +84,52 @@ bool Deck::contains(Fixed x, Fixed y) const {
     return abs(dx * dir.x + dy * dir.y) <= halfSpan && abs(dx * dir.y - dy * dir.x) <= halfWidth;
 }
 
+Fixed Deck::heightAt(Fixed x, Fixed y) const {
+    if (rise == Fixed::zero() || halfSpan == Fixed::zero()) return centre.z;
+    const Fixed along = (x - centre.x) * dir.x + (y - centre.y) * dir.y;
+    return centre.z + rise * along / (halfSpan * 2);
+}
+
 bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
+    bool found = false;
     for (const Deck& d : decks_) {
-        if (d.contains(x, y)) {
-            height = d.centre.z;
-            return true;
+        if (!d.contains(x, y)) continue;
+        const Fixed h = d.heightAt(x, y);
+        if (!found || h > height) height = h;
+        found = true;
+    }
+    return found;
+}
+
+bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
+    bool found = false;
+    for (const Deck& d : decks_) {
+        if (!d.contains(x, y)) continue;
+        const Fixed h = d.heightAt(x, y);
+        if (h > ceiling || (found && h <= height)) continue;
+        height = h;
+        found = true;
+    }
+    return found;
+}
+
+int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
+    for (size_t i = 0; i < ramparts_.size(); ++i) {
+        const Rampart& rp = ramparts_[i];
+        const size_t n = rp.corners.size();
+        for (size_t e = 0; e < n; ++e) {
+            const Vec3& a = rp.corners[e];
+            const Vec3& b = rp.corners[(e + 1) % n];
+            if (abs(z - a.z) > Fixed::fromInt(2)) continue;
+            Fixed t;
+            const Vec3 ab = (b - a).flat();
+            const Fixed len2 = ab.lengthSq();
+            t = len2 > Fixed::zero() ? clamp((Vec3{x, y, Fixed::zero()} - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+            const Vec3 p = a + ab * t;
+            if ((Vec3{x - p.x, y - p.y, Fixed::zero()}).lengthSq() <= (rp.halfThick + Fixed::fromRatio(1, 2)) * (rp.halfThick + Fixed::fromRatio(1, 2))) return static_cast<int>(i);
         }
     }
-    return false;
+    return -1;
 }
 
 bool Region::underWater(Fixed x, Fixed y) const {
@@ -292,6 +330,13 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
             if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
+            bool inCastle = false;  // nothing grows inside the walls or right against them
+            for (const Rampart& rp : ramparts_) {
+                Fixed reach;
+                for (const Vec3& q : rp.corners) reach = max(reach, flatDist(q.x, q.y, rp.centre));
+                inCastle = inCastle || flatDist(x, y, rp.centre) < reach + m(12);
+            }
+            if (inCastle) continue;
             bool nearDeck = false;  // keep bridge approaches open
             for (const Deck& d : decks_) nearDeck = nearDeck || Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth + m(3)}.contains(x, y);
             if (nearDeck) continue;
@@ -482,6 +527,90 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         if (local.x < -reach || local.y < -reach || local.x > size + reach || local.y > size + reach) continue;
         rg.decks_.push_back({{local.x, local.y, cr.deck}, cr.dir, cr.halfSpan, cr.halfWidth, cr.kind == Continent::Crossing::Kind::Footbridge});
     }
+    // Castles: walls and towers that block, a walk along the top, stairs up to it.
+    for (const Continent::City& city : c.cities()) {
+        const Vec3 at = toLocal(city.pos);
+        const Fixed size = cell * cells, reach = city.radius * 2;
+        if (at.x < -reach || at.y < -reach || at.x > size + reach || at.y > size + reach) continue;
+        const Continent::Castle& k = city.castle;
+        const auto unit = [](const Vec3& v) {
+            const Fixed len = v.flat().length();
+            return len > Fixed::zero() ? v.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+        };
+        for (const Continent::Castle::Ring& ring : k.rings) {
+            Rampart rp;
+            rp.halfThick = ring.thick / 2;
+            rp.centre = at;
+            const Fixed walk = city.pos.z + ring.height - Fixed::fromRatio(13, 10);
+            const size_t nc = ring.corners.size();
+            for (size_t e = 0; e < nc; ++e) {
+                const Vec3 a = toLocal(ring.corners[e]), b = toLocal(ring.corners[(e + 1) % nc]);
+                rp.corners.push_back({a.x, a.y, walk});
+                const Vec3 along = unit(b - a);
+                const Fixed len = (b - a).flat().length();
+                const Fixed top = city.pos.z + ring.height;
+                if (e == ring.gateEdge) {
+                    const Vec3 mid = a + along * (len / 2);
+                    rg.walls_.push_back({a, mid - along * (ring.gateWidth / 2), ring.thick / 2, top, walk});
+                    rg.walls_.push_back({mid + along * (ring.gateWidth / 2), b, ring.thick / 2, top, walk});
+                } else {
+                    rg.walls_.push_back({a, b, ring.thick / 2, top, walk});
+                }
+                // The walk runs the whole edge, over the gate too, into the corner towers.
+                Deck d{{(a.x + b.x) / 2, (a.y + b.y) / 2, walk}, along, len / 2 + ring.thick / 2, ring.thick / 2};
+                d.raised = true;
+                rg.decks_.push_back(d);
+            }
+            rg.ramparts_.push_back(rp);
+        }
+        for (const Continent::Castle::Tower& t : k.towers) {
+            Obstacle o;
+            o.kind = Obstacle::Kind::Tower;
+            o.pos = toLocal(t.pos);
+            o.pos.z = city.pos.z;
+            o.radius = t.radius;
+            o.height = t.height;
+            // Soldiers on the wall-walk pass through the tower (its doors at walk level).
+            o.passAbove = k.rings.front().height - Fixed::fromInt(3);
+            rg.obstacles_.push_back(o);
+        }
+        {
+            // The keep: four walls nobody walks on.
+            const Vec3 kc = toLocal(k.keep), ax = k.keepAxis, ay{-ax.y, ax.x, Fixed::zero()};
+            const Fixed hk = k.keepHalf;
+            const Vec3 corner[4] = {kc + (ax + ay) * hk, kc + (ax - ay) * hk, kc - (ax + ay) * hk, kc - (ax - ay) * hk};
+            for (int i = 0; i < 4; ++i) {
+                Vec3 a = corner[i], b = corner[(i + 1) % 4];
+                a.z = b.z = city.pos.z;
+                rg.walls_.push_back({a, b, Fixed::one(), city.pos.z + k.keepHeight});
+            }
+        }
+        for (const Continent::Castle::Stair& st : k.stairs) {
+            const Vec3 foot = toLocal(st.foot), head = toLocal(st.head);
+            const Vec3 dir = unit(head - foot);
+            Deck d{{(foot.x + head.x) / 2, (foot.y + head.y) / 2, (city.pos.z + st.head.z) / 2}, dir, (head - foot).flat().length() / 2, st.halfWidth};
+            d.rise = st.head.z - city.pos.z;
+            d.raised = true;
+            rg.decks_.push_back(d);
+            // A level landing at the top, beside the walk.
+            const Fixed landing = Fixed::fromInt(3);
+            Deck top{{head.x + dir.x * landing / 2, head.y + dir.y * landing / 2, st.head.z}, dir, landing / 2, st.halfWidth};
+            top.raised = true;
+            rg.decks_.push_back(top);
+            const Vec3 end = head + dir * (landing - Fixed::fromRatio(1, 2));
+            if (!rg.ramparts_.empty()) rg.ramparts_[rg.ramparts_.size() - k.rings.size()].stairs.push_back({{foot.x, foot.y, city.pos.z}, {end.x, end.y, st.head.z}});
+        }
+        for (const Continent::Castle::House& hs : k.houses) {
+            Obstacle o;
+            o.kind = Obstacle::Kind::House;
+            o.pos = toLocal(hs.pos);
+            o.pos.z = city.pos.z;
+            o.halfX = hs.halfX;
+            o.halfY = hs.halfY;
+            o.height = hs.height;
+            rg.obstacles_.push_back(o);
+        }
+    }
     rg.berms_.push_back({{Vec3{rg.ford_.x - m(57), rg.ford_.y - m(72), Fixed::zero()},
                           Vec3{rg.ford_.x - m(50), rg.ford_.y + m(78), Fixed::zero()}}, r(7, 2)});
     for (int32_t iy = 0; iy < n; ++iy) {
@@ -508,6 +637,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 const int32_t reach = static_cast<int32_t>((radius * 2 / cell).floorToInt()) + 1;
                 if (ci - reach < 2 || cj - reach < 2 || ci + reach > cells - 2 || cj + reach > cells - 2) continue;
                 if (flatDist(px, py, rg.ford_) < m(140)) continue;
+                bool town = false;  // not inside a city's walls
+                for (const Continent::City& city : c.cities()) town = town || flatDist(px + OX, py + OY, city.pos) < city.radius * 2;
+                if (town) continue;
                 // Dry, gentle, open ground well clear of rivers, roads and the berm.
                 bool ok = true;
                 Fixed rim = m(100000), top = -m(100000);
@@ -715,7 +847,9 @@ uint64_t Region::checksum() const {
         h.addU64(o.solid);
     }
     for (const Deck& d : decks_)
-        for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth}) h.addI64(v.raw);
+        for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth, d.rise}) h.addI64(v.raw);
+    for (const WallSeg& w : walls_)
+        for (Fixed v : {w.a.x, w.a.y, w.b.x, w.b.y, w.halfThick, w.top}) h.addI64(v.raw);
     return h.value();
 }
 

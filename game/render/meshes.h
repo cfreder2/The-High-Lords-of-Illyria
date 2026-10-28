@@ -39,6 +39,17 @@ Mesh capsule();
 Mesh sphere();
 Mesh wall();
 Mesh tower();
+// Castle pieces (stone; the mesh shader lays masonry over them):
+//   curtain: a wall section [-1, 1] x [-1, 1], walk at z = 1, with a
+//     crenellated parapet on the +y (outer) side and a low one inside
+//   drum: a round tower radius 1, 1 high, crenellated, no roof
+//   keep: a square keep [-1, 1]^2, 1 high, battlements and corner turrets
+//   stairs: a flight rising along x from z = 0 at x = -1 to z = 1 at x = 1,
+//     [-1, 1] across, on a solid base
+Mesh curtain();
+Mesh drum();
+Mesh keep();
+Mesh stairs();
 Mesh banner();
 Mesh ruin();
 Mesh temple();

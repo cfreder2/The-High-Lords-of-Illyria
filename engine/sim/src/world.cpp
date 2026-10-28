@@ -35,6 +35,14 @@ constexpr Fixed kDescentGain = Fixed::fromRatio(1, 2);
 constexpr Fixed kDescentMax = Fixed::fromRatio(3, 20);
 // No one walks up or down a face steeper than 45 degrees: cliffs are walls.
 constexpr Fixed kCliffGrade = Fixed::one();
+// No one steps up a ledge higher than this, or down a drop deeper than this
+// (a wall-walk's edge, the side of a stair).
+constexpr Fixed kMaxStepUp = Fixed::fromRatio(9, 10);
+constexpr Fixed kMaxStepDown = Fixed::fromRatio(3, 2);
+// Soldiers this far below a wall's top are blocked by it; above, they walk its top.
+constexpr Fixed kWallClear = Fixed::fromInt(2);
+// Merlons stop this share of the missiles shot up at defenders on a wall-walk.
+constexpr Fixed kMerlonCover = Fixed::fromRatio(1, 2);
 // High ground: striking down the slope at a foe adds this much melee damage
 // per unit of grade between them (a 1 in 3 slope: +20%), within limits; blows
 // struck downhill also throw harder.
@@ -42,7 +50,7 @@ constexpr int32_t kHighGroundPctPerGrade = 60;
 constexpr int32_t kHighGroundPctMax = 35;
 constexpr int32_t kHighGroundPctMin = -25;
 // Largest obstacle extent, for grid queries.
-constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(5);
+constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(7);
 // Ticks a thrown soldier needs to get back up.
 constexpr int32_t kRecoverTicks = kTicksPerSecond * 2 / 3;
 // Bodies thrown by explosions and blows.
@@ -187,6 +195,13 @@ Fixed World::groundHeight(Fixed x, Fixed y) const {
     return ground;
 }
 
+Fixed World::standingHeight(Fixed x, Fixed y, Fixed z) const {
+    const Fixed ground = config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
+    Fixed deck;
+    if (config_.region && !config_.region->decks().empty() && config_.region->deckBelow(x, y, z + kMaxStepUp, deck)) return max(ground, deck);
+    return ground;
+}
+
 Ground World::groundAt(Fixed x, Fixed y) const {
     return config_.region ? config_.region->groundAt(x, y) : Ground::Plains;
 }
@@ -251,23 +266,167 @@ void World::applyCommand(const Command& cmd) {
 void World::planPath(Unit& u, const Vec3& to) {
     u.path.clear();
     u.pathIndex = 0;
-    if (!nav_ || nav_->clearLine(u.pos, to)) {
-        u.path.push_back(to);
+    if (config_.region && !config_.region->ramparts().empty() && planRampartPath(u, to)) return;
+    groundPath(u.pos, to, u.path);
+}
+
+void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out) {
+    if (!nav_ || nav_->clearLine(from, to)) {
+        out.push_back(to);
         return;
     }
     // Units of a squad start and end in neighbouring cells; plan once per cell pair.
-    const auto cell = [](const Vec3& p) {
-        return (p.x.floorToInt() / NavGrid::kCellSize) * 4096 + p.y.floorToInt() / NavGrid::kCellSize;
-    };
-    const auto key = std::make_pair(cell(u.pos), cell(to));
+    const int64_t cs = nav_->cellSize();
+    const auto cell = [cs](const Vec3& p) { return (p.x.floorToInt() / cs) * 4096 + p.y.floorToInt() / cs; };
+    const auto key = std::make_pair(cell(from), cell(to));
     auto it = pathCache_.find(key);
     if (it == pathCache_.end()) {
         std::vector<Vec3> route;
-        if (!nav_->findPath(u.pos, to, route)) route = {to};
+        if (!nav_->findPath(from, to, route)) route = {to};
         it = pathCache_.emplace(key, std::move(route)).first;
     }
-    u.path = it->second;
-    u.path.back() = to;
+    out.insert(out.end(), it->second.begin(), it->second.end());
+    out.back() = to;
+}
+
+namespace {
+// Where a point lies along a closed ring of walk corners: edge index and
+// distance from that edge's start.
+struct RingPos {
+    size_t edge = 0;
+    Fixed along;
+};
+RingPos ringPos(const Rampart& rp, const Vec3& p) {
+    RingPos best;
+    Fixed bestD = Fixed::fromInt(1000000);
+    const size_t n = rp.corners.size();
+    for (size_t e = 0; e < n; ++e) {
+        const Vec3 a = rp.corners[e], b = rp.corners[(e + 1) % n];
+        const Vec3 ab = (b - a).flat();
+        const Fixed len = ab.length();
+        if (len == Fixed::zero()) continue;
+        const Fixed t = clamp((p - a).flat().dot(ab) / len, Fixed::zero(), len);
+        const Vec3 q = a + ab * (t / len);
+        const Fixed d = (p - q).flat().length();
+        if (d < bestD) {
+            bestD = d;
+            best = {e, t};
+        }
+    }
+    return best;
+}
+// The point on the walk's centreline nearest p.
+Vec3 onWalk(const Rampart& rp, const Vec3& p) {
+    const RingPos rpos = ringPos(rp, p);
+    const Vec3 a = rp.corners[rpos.edge], b = rp.corners[(rpos.edge + 1) % rp.corners.size()];
+    const Fixed len = (b - a).flat().length();
+    return len > Fixed::zero() ? a + (b - a) * (rpos.along / len) : a;
+}
+// The shorter way round the ring from one point to another: the corners passed.
+std::vector<Vec3> ringRoute(const Rampart& rp, const Vec3& from, const Vec3& to, Fixed* length) {
+    const size_t n = rp.corners.size();
+    const RingPos a = ringPos(rp, from), b = ringPos(rp, to);
+    std::vector<Fixed> lens(n);
+    Fixed total;
+    for (size_t e = 0; e < n; ++e) {
+        lens[e] = (rp.corners[(e + 1) % n] - rp.corners[e]).flat().length();
+        total += lens[e];
+    }
+    // Forward distance from a to b.
+    Fixed fwd;
+    if (a.edge == b.edge && b.along >= a.along) {
+        fwd = b.along - a.along;
+    } else {
+        fwd = lens[a.edge] - a.along;
+        for (size_t e = (a.edge + 1) % n; e != b.edge; e = (e + 1) % n) fwd += lens[e];
+        fwd += b.along;
+    }
+    std::vector<Vec3> out;
+    if (fwd <= total - fwd) {
+        if (!(a.edge == b.edge && b.along >= a.along))
+            for (size_t e = (a.edge + 1) % n;; e = (e + 1) % n) {
+                out.push_back(rp.corners[e]);
+                if (e == b.edge) break;
+            }
+        if (length) *length = fwd;
+    } else {
+        if (!(a.edge == b.edge && b.along <= a.along))
+            for (size_t e = a.edge;; e = (e + n - 1) % n) {
+                out.push_back(rp.corners[e]);
+                if (e == (b.edge + 1) % n) break;
+            }
+        if (length) *length = total - fwd;
+    }
+    out.push_back(to);
+    return out;
+}
+}  // namespace
+
+bool World::planRampartPath(Unit& u, const Vec3& to) {
+    // Up the stairs to a wall-walk, along it, and down again.
+    const Region& rg = *config_.region;
+    const int from = rg.rampartAt(u.pos.x, u.pos.y, u.pos.z);
+    int target = -1;
+    for (size_t i = 0; i < rg.ramparts().size() && target < 0; ++i) {
+        const Fixed walk = rg.ramparts()[i].corners.front().z;
+        if (rg.rampartAt(to.x, to.y, walk) == static_cast<int>(i)) target = static_cast<int>(i);
+    }
+    if (from < 0 && target < 0) return false;
+    if (from >= 0 && target == from) {
+        u.path = ringRoute(rg.ramparts()[static_cast<size_t>(from)], u.pos, to, nullptr);
+        return true;
+    }
+    if (from >= 0) {
+        // Down the nearest stair (along the walk, then to the ground target).
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(from)];
+        if (rp.stairs.empty()) return false;
+        size_t best = 0;
+        Fixed bestCost = Fixed::fromInt(1000000);
+        for (size_t s = 0; s < rp.stairs.size(); ++s) {
+            Fixed along;
+            ringRoute(rp, u.pos, rp.stairs[s].second, &along);
+            const Fixed cost = along + (rp.stairs[s].first - to).flat().length();
+            if (cost < bestCost) {
+                bestCost = cost;
+                best = s;
+            }
+        }
+        u.path = ringRoute(rp, u.pos, onWalk(rp, rp.stairs[best].second), nullptr);
+        u.path.push_back(rp.stairs[best].second);
+        u.path.push_back(rp.stairs[best].first);
+        if (target >= 0) {
+            const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
+            if (tr.stairs.empty()) return true;
+            groundPath(rp.stairs[best].first, tr.stairs.front().first, u.path);
+            u.path.push_back(tr.stairs.front().second);
+            u.path.push_back(onWalk(tr, tr.stairs.front().second));
+            const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs.front().second), to, nullptr);
+            u.path.insert(u.path.end(), walk.begin(), walk.end());
+            return true;
+        }
+        groundPath(rp.stairs[best].first, to, u.path);
+        return true;
+    }
+    // From the ground: to the stair foot that makes the trip shortest, up, along.
+    const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
+    if (tr.stairs.empty()) return false;
+    size_t best = 0;
+    Fixed bestCost = Fixed::fromInt(1000000);
+    for (size_t s = 0; s < tr.stairs.size(); ++s) {
+        Fixed along;
+        ringRoute(tr, tr.stairs[s].second, to, &along);
+        const Fixed cost = (tr.stairs[s].first - u.pos).flat().length() + along;
+        if (cost < bestCost) {
+            bestCost = cost;
+            best = s;
+        }
+    }
+    groundPath(u.pos, tr.stairs[best].first, u.path);
+    u.path.push_back(tr.stairs[best].second);
+    u.path.push_back(onWalk(tr, tr.stairs[best].second));
+    const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs[best].second), to, nullptr);
+    u.path.insert(u.path.end(), walk.begin(), walk.end());
+    return true;
 }
 
 bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
@@ -281,25 +440,27 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     // Uphill is slow going; downhill a little quicker.
     {
         const Fixed probe = Fixed::one();
-        const Fixed here = groundHeight(u.pos.x, u.pos.y);
-        const Fixed grade = groundHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe) - here;
+        const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        const Fixed grade = standingHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe, u.pos.z) - here;
         if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost);
         else speed = speed * (Fixed::one() + min(kDescentMax, -grade * kDescentGain));
     }
     const Fixed stepLen = speed * kTickDt;
     Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
     // Deep water and cliffs stop walkers: slide along if one axis is clear.
-    const Fixed here = groundHeight(u.pos.x, u.pos.y);
+    const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     const auto barred = [&](Fixed x, Fixed y) {
         const Ground g = groundAt(x, y);
         if (g == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
         // Over the water beside a narrow deck: off the edge is the river.
         Fixed deck;
         if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
-        // Onto or along a deck is never a cliff, whatever lies below its edges.
-        if (g == Ground::Bridge || (config_.region && config_.region->deckAt(x, y, deck))) return false;
         const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
-        return run > Fixed::zero() && abs(groundHeight(x, y) - here) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
+        const Fixed dh = standingHeight(x, y, u.pos.z) - here;
+        if (dh > kMaxStepUp || dh < -kMaxStepDown) return true;  // a ledge: off a wall-walk, up the side of a stair
+        // Onto or along a deck is never a cliff, whatever lies below its edges.
+        if (g == Ground::Bridge || (config_.region && config_.region->deckBelow(x, y, u.pos.z + kMaxStepUp, deck))) return false;
+        return run > Fixed::zero() && abs(dh) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
     };
     if (barred(next.x, next.y)) {
         if (!barred(next.x, u.pos.y)) next.y = u.pos.y;
@@ -373,7 +534,7 @@ void World::updateUnit(Unit& u) {
             u.reloadRemaining = u.stats.ranged.reloadTicks;
         }
     }
-    u.pos.z = groundHeight(u.pos.x, u.pos.y);
+    u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
 }
 
 void World::updateFlight(Unit& u) {
@@ -390,7 +551,7 @@ void World::updateFlight(Unit& u) {
             const Vec3 before = u.pos;
             walk(u, u.pos + u.facing * Fixed::fromInt(50), Fixed::fromRatio(3, 2));
             u.runway += (u.pos - before).flat().length();
-            u.pos.z = groundHeight(u.pos.x, u.pos.y);
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             if (u.runway >= u.stats.takeoffRun) u.flight = Unit::Flight::Flying;
             break;
         }
@@ -447,7 +608,7 @@ void World::separateBodies() {
             const Fixed overlap = reach - dist;
             if (!b.alive()) {
                 b.pos += n * overlap;  // the dead give way entirely
-                b.pos.z = groundHeight(b.pos.x, b.pos.y);
+                b.pos.z = standingHeight(b.pos.x, b.pos.y, b.pos.z);
                 return;
             }
             const Fixed total = a.stats.mass + b.stats.mass;
@@ -478,6 +639,7 @@ void World::separateBodies() {
                 }
                 return;
             }
+            if (o.passAbove > Fixed::zero() && u.pos.z >= o.pos.z + o.passAbove) return;  // on the wall-walk
             const Vec3 d = (u.pos - o.pos).flat();
             const Fixed reach = u.stats.radius + o.radius;
             const Fixed distSq = d.lengthSq();
@@ -486,9 +648,27 @@ void World::separateBodies() {
             const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
             u.pos += n * (reach - dist);
         });
+        // Castle walls: out of the slab, unless walking along its top.
+        for (const WallSeg& wl : config_.region->walls()) {
+            if (u.pos.z > wl.top - kWallClear) continue;
+            const Fixed reach = wl.halfThick + u.stats.radius;
+            if (u.pos.x < min(wl.a.x, wl.b.x) - reach || u.pos.x > max(wl.a.x, wl.b.x) + reach ||
+                u.pos.y < min(wl.a.y, wl.b.y) - reach || u.pos.y > max(wl.a.y, wl.b.y) + reach)
+                continue;
+            const Vec3 ab = (wl.b - wl.a).flat();
+            const Fixed len2 = ab.lengthSq();
+            const Fixed t = len2 > Fixed::zero() ? clamp((u.pos - wl.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+            const Vec3 p = wl.a + ab * t;
+            const Vec3 d = (u.pos - p).flat();
+            const Fixed distSq = d.lengthSq();
+            if (distSq >= reach * reach) continue;
+            const Fixed dist = sqrt(distSq);
+            const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{-ab.y, ab.x, Fixed::zero()} / sqrt(len2);
+            u.pos += n * (reach - dist);
+        }
     }
     for (Unit& u : units_) {
-        if (!u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = groundHeight(u.pos.x, u.pos.y);
+        if (!u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     }
 }
 
@@ -517,6 +697,14 @@ void World::kickRemains(Unit& u, const Vec3& moveDir) {
     }
 }
 
+bool World::onRampartFacing(const Unit& u, const Vec3& vel) const {
+    if (!config_.region || config_.region->ramparts().empty()) return false;
+    const int ri = config_.region->rampartAt(u.pos.x, u.pos.y, u.pos.z);
+    if (ri < 0) return false;
+    // Coming in from outside the ring.
+    return vel.flat().dot((config_.region->ramparts()[static_cast<size_t>(ri)].centre - u.pos).flat()) > Fixed::zero();
+}
+
 Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
     if (!config_.region) return -Fixed::one();
     const auto& obstacles = config_.region->obstacles();
@@ -542,6 +730,27 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
         best = t;
         hit = true;
     });
+    // Castle walls: the first of a few points along the path inside a slab, below its top.
+    for (const WallSeg& wl : config_.region->walls()) {
+        const Fixed pad = wl.halfThick + Fixed::fromInt(2);
+        if (max(a.x, b.x) < min(wl.a.x, wl.b.x) - pad || min(a.x, b.x) > max(wl.a.x, wl.b.x) + pad ||
+            max(a.y, b.y) < min(wl.a.y, wl.b.y) - pad || min(a.y, b.y) > max(wl.a.y, wl.b.y) + pad)
+            continue;
+        const Vec3 ab = (wl.b - wl.a).flat();
+        const Fixed len2 = ab.lengthSq();
+        for (int k = 1; k <= 4; ++k) {
+            const Fixed t = Fixed::fromRatio(k, 4);
+            if (t >= best) break;
+            const Vec3 p = a + seg * t;
+            const Fixed solid = wl.walk > Fixed::zero() ? wl.walk : wl.top - Fixed::fromRatio(3, 10);
+            if (p.z > solid || p.z < wl.a.z) continue;
+            const Fixed u = len2 > Fixed::zero() ? clamp((p - wl.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+            if ((p - (wl.a + ab * u)).flat().lengthSq() > wl.halfThick * wl.halfThick) continue;
+            best = t;
+            hit = true;
+            break;
+        }
+    }
     return hit ? best : -Fixed::one();
 }
 
@@ -570,7 +779,7 @@ void World::updateAirborne(Unit& u) {
         u.airborne = false;
         return;
     }
-    const Fixed ground = groundHeight(u.pos.x, u.pos.y);
+    const Fixed ground = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     if (u.pos.z > ground) return;
     u.pos.z = ground;
     if (u.vel.z < -Fixed::fromInt(4)) {
@@ -905,6 +1114,11 @@ void World::updateProjectiles() {
             const Vec3 at = prev + seg * hitT;
             if (p.kind == ProjectileKind::Fireball) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner});
+            } else if (onRampartFacing(*hit, p.vel) && rng_.nextUnit() < kMerlonCover) {
+                // Behind the merlons: the missile strikes stone instead.
+                impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
+                const Vec3 glance{-p.vel.x / 6, -p.vel.y / 6, Fixed::fromInt(1)};
+                spawnDebris(RemainKind::Arrow, p.owner, at, glance);
             } else if (shieldBlocks(*hit, p.vel, Fixed::one())) {
                 // Deflected: the arrow glances off and tumbles to the ground.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});

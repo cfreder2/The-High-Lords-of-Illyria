@@ -48,15 +48,17 @@ Role roleOf(UnitType type) {
     }
 }
 
-Battle::Battle(uint64_t seed) {
+Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     sim::WorldConfig cfg;
     cfg.seed = seed;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
-    // The battle is fought at Oakhaven Ford, a full-detail window of the continent.
+    // The battle is fought in a full-detail window of the continent: at
+    // Oakhaven Ford, or at the neutral town nearest it.
     continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
-    region_ = std::make_shared<const sim::Region>(
-        sim::Region::fromContinent(*continent_, continent_->crossings().front().pos, kTerrainCells));
+    sim::Vec3 centre = continent_->crossings().front().pos;
+    if (scenario_ == Scenario::Siege) centre = siegeTown(*continent_).pos;
+    region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
     // The continent around the battlefield: all of it every 64 m, and a ring
     // a kilometre wide around the battlefield every 16 m.
     {
@@ -73,6 +75,16 @@ Battle::Battle(uint64_t seed) {
     world_ = std::make_unique<sim::World>(cfg);
     dirtyFlag_.assign(kMaxRemains, 0);
 
+    if (scenario_ == Scenario::Siege) setUpSiege();
+    else setUpFord();
+
+    const size_t n = world_->units().size();
+    deathTick_.assign(n, UINT32_MAX);
+    prevUnitPos_.resize(n);
+    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+}
+
+void Battle::setUpFord() {
     const V3 east{1, 0, 0}, west{-1, 0, 0};
     // The armies face each other across the river, either side of the ford.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
@@ -116,10 +128,79 @@ Battle::Battle(uint64_t seed) {
     spawnSquad("Red Hand Menders", kEnemy, UnitType::Journeyman, 3, {ex + 40, cy - 30, 0}, west);
     spawnSquad("Ashen Wyrm", kEnemy, UnitType::Dragons, 1, {ex + 60, cy, 0}, west);
 
-    const size_t n = world_->units().size();
-    deathTick_.assign(n, UINT32_MAX);
-    prevUnitPos_.resize(n);
-    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+}
+
+const sim::Continent::City& siegeTown(const sim::Continent& c) {
+    // The neutral town nearest Oakhaven Ford.
+    const sim::Vec3 ford = c.crossings().front().pos;
+    const sim::Continent::City* best = nullptr;
+    for (const sim::Continent::City& city : c.cities()) {
+        if (city.capital) continue;
+        if (!best || (city.pos - ford).flat().lengthSq() < (best->pos - ford).flat().lengthSq()) best = &city;
+    }
+    return *best;
+}
+
+void Battle::setUpSiege() {
+    // A neutral town's own garrison: few, but behind walls. Archers line the
+    // walk, pikes hold the gate, militia wait in the courtyard.
+    const sim::Continent::City& town = siegeTown(*continent_);
+    foeName_ = "Garrison of " + town.name;
+    const sim::Continent::Castle& k = town.castle;
+    const V3 o = origin();
+    const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
+    const sim::Continent::Castle::Ring& ring = k.rings.front();
+    const size_t nc = ring.corners.size();
+    const V3 centre = local(town.pos);
+    const V3 ga = local(ring.corners[ring.gateEdge]), gb = local(ring.corners[(ring.gateEdge + 1) % nc]);
+    const V3 gate = (ga + gb) * 0.5f;
+    V3 out = V3{gate.x - centre.x, gate.y - centre.y, 0};
+    out = out * (1.0f / out.length());
+
+    // Archers spread along the walk, a pair to each wall, facing out.
+    {
+        Squad s{"Town Watch", kEnemy, UnitType::Archers, {}};
+        s.formation = Formation::Loose;
+        s.garrison = true;
+        const sim::UnitStats stats = sim::unitStats(UnitType::Archers);
+        for (size_t e = 0; e < nc; ++e) {
+            const V3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % nc]);
+            V3 mid = (a + b) * 0.5f;
+            V3 facing = V3{mid.x - centre.x, mid.y - centre.y, 0};
+            facing = facing * (1.0f / facing.length());
+            for (float t : {0.33f, 0.67f}) {
+                const V3 p = a + (b - a) * t;
+                const sim::EntityId id = world_->spawnUnit(kEnemy, toSim(p), toSim(facing), stats);
+                s.members.push_back(id);
+                if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+                squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
+            }
+            s.post = mid;
+        }
+        s.post = centre;
+        squads_.push_back(std::move(s));
+    }
+    const auto hold = [&](const std::string& name, UnitType type, int count, V3 at, V3 facing) {
+        spawnSquad(name, kEnemy, type, count, at, facing);
+        squads_.back().garrison = true;
+        squads_.back().post = at;
+    };
+    hold("Gate Wardens", UnitType::Pikemen, 8, gate - out * 12.0f, out);
+    hold("Town Militia", UnitType::LightInfantry, 12, local(k.courtyard), out);
+    hold("Castellan's Guard", UnitType::HeavyInfantry, 6, local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8), out);
+
+    // The besiegers form up on the road before the gate.
+    const V3 camp = gate + out * 110.0f, in = out * -1.0f;
+    const V3 side{out.y, -out.x, 0};
+    spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
+    spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, camp + side * 14.0f, in);
+    spawnSquad("Iron Hill Legion", kPlayer, UnitType::Dwarves, 10, camp + side * 40.0f, in);
+    spawnSquad("1st Oakhaven Bowmen", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * -16.0f, in);
+    spawnSquad("Silverwood Archers", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * 16.0f, in);
+    spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 6, camp + out * 10.0f, in);
+    spawnSquad("Brothers of the Root", kPlayer, UnitType::Journeyman, 4, camp + out * 30.0f, in);
+    spawnSquad("Lord Aldric", kPlayer, UnitType::Hero, 1, camp + out * 6.0f, in);
+    spawnSquad("Eyrie Griffins", kPlayer, UnitType::Griffins, 3, camp + out * 36.0f + side * -30.0f, in);
 }
 
 void Battle::spawnSquad(const std::string& name, sim::PlayerId owner, UnitType type, int count, V3 centre,
@@ -580,6 +661,17 @@ void Battle::runEnemyAi() {
         }
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
+        if (s.garrison) {
+            // Hold the town: archers keep their places on the walk (they shoot
+            // on their own); the rest meet whoever gets near their post, and
+            // otherwise return to it.
+            if (role == Role::Ranged) continue;
+            float near;
+            const V3 threat = nearest(s.post, kPlayer, near);
+            if (near < 45.0f) moveSquad(s, threat);
+            else if ((c - s.post).length() > 6.0f) moveSquad(s, s.post);
+            continue;
+        }
         const sim::UnitStats stats = sim::unitStats(s.type);
         const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
         if (range > 0 && role != Role::Flier) {

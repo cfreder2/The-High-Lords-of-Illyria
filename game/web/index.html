@@ -134,12 +134,13 @@
     <h1>The High Lords of Illyria</h1>
     <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
   </div>
-  <div id="enemy" class="panel">Red Hand <b id="enemyCount">–</b></div>
+  <div id="enemy" class="panel"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
   <div id="controls">
     <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
     <button id="restart" aria-label="Restart battle">Restart</button>
+    <button id="scenario" aria-label="Switch battle">Siege</button>
     <button id="gfxButton" aria-label="Graphics settings">⚙</button>
   </div>
 </div>
@@ -223,6 +224,7 @@
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
+      setScenario: Module.cwrap("illyria_set_scenario", null, ["number"]),
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
@@ -231,6 +233,8 @@
     };
     initGraphics();
     window.illyria = api;
+    // ?siege opens on the siege of the neutral town.
+    if (/[?&]siege\b/.test(location.search)) api.setScenario(1);
     $("overlay").classList.add("hidden");
     setTimeout(hideHint, 9000);
     updateHud();
@@ -326,6 +330,8 @@
   for (const b of document.querySelectorAll("#controls button, #actions button")) b.addEventListener("click", hideHint);
   $("speed").onclick = () => api && api.speed();
   $("restart").onclick = () => api && api.restart();
+  let scenario = 0;
+  $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
   $("overlayButton").onclick = () => { api && api.restart(); };
   $("hold").onclick = () => api && api.stop();
   $("formation").onclick = () => { if (api) { api.formation(); updateHud(); } };
@@ -340,6 +346,9 @@
     $("pause").textContent = s.paused ? "Resume" : "Pause";
     $("speed").textContent = `${s.speed}×`;
     const enemies = s.squads.filter((q) => q.owner === 1);
+    scenario = s.scenario;
+    $("scenario").textContent = s.scenario === 1 ? "Ford" : "Siege";
+    $("foe").textContent = s.foe;
     $("enemyCount").textContent = `${enemies.reduce((n, q) => n + q.alive, 0)} / ${enemies.reduce((n, q) => n + q.total, 0)}`;
     $("actions").classList.toggle("hidden", s.selected < 0);
     if (s.selected >= 0) $("formation").textContent = s.squads[s.selected].formation;

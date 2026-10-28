@@ -66,6 +66,41 @@ public:
         std::string name;
         std::string capital;
     };
+    // The plan of a city's defences, in continent coordinates (z = ground).
+    // Walls run corner to corner round each ring (outer first; capitals have
+    // an inner bailey too), with a gate in one edge. Archers stand on the
+    // wall-walk, reached by stairs against the inner faces; the courtyard
+    // behind the gate is left open for mustering troops and siege engines.
+    struct Castle {
+        struct Ring {
+            std::vector<Vec3> corners;
+            Fixed height, thick;  // walls; the walk is near the top
+            size_t gateEdge = 0;  // edge corners[i] -> corners[i + 1] holding the gate
+            Fixed gateWidth;
+        };
+        struct Tower {
+            Vec3 pos;
+            Fixed radius, height;
+            bool roofed = false;
+        };
+        struct Stair {
+            Vec3 foot, head;  // head.z = the wall-walk
+            Fixed halfWidth;
+        };
+        struct House {
+            Vec3 pos;
+            Fixed halfX, halfY, height;  // axis-aligned
+        };
+        std::vector<Ring> rings;
+        std::vector<Tower> towers;
+        std::vector<Stair> stairs;
+        std::vector<House> houses;
+        Vec3 keep, keepAxis;  // the keep: centre (z = ground) and facing
+        Fixed keepHalf, keepHeight;
+        Vec3 courtyard;  // open ground, radius courtyardRadius
+        Fixed courtyardRadius;
+        uint8_t shape = 0;  // 0 square, 1 long, 2 polygon, 3 shield
+    };
     // A walled city on a levelled pad; capitals are castles. Every city produces
     // armies and income for its owner (the campaign layer).
     struct City {
@@ -74,6 +109,7 @@ public:
         Fixed radius;  // the walls
         uint8_t owner = kNeutral;
         bool capital = false;
+        Castle castle = {};
     };
     // Places heroes explore: ruins hold a guardian and a reward, temples bless,
     // sages tell what they know (first come, first served).
@@ -165,6 +201,7 @@ private:
     Fixed massifMask(Fixed x, Fixed y, Fixed& peak) const;
     void loadBakedRelief();
     void placeBridges();
+    void planCastles();
 
     uint64_t seed_;
     std::vector<River> rivers_, streams_;

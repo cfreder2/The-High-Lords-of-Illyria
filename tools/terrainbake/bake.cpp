@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
     g.nx = nx;
     g.ny = ny;
     g.h.resize(n);
-    std::vector<float> carved(n), soft(n);
+    std::vector<float> carved(n), soft(n), shore(n);
     std::vector<uint8_t> water(n);
     for (int j = 0; j < ny; ++j) {
         for (int i = 0; i < nx; ++i) {
@@ -236,6 +236,8 @@ int main(int argc, char** argv) {
             // Mountains are cut deepest; the farmland plains mostly keep their shape.
             const float mountain = static_cast<float>(s.mountain.toDouble());
             soft[c] = param("BAKE_PLAIN", 0.2f) + (1 - param("BAKE_PLAIN", 0.2f)) * std::clamp(mountain / 120.0f, 0.0f, 1.0f);
+            // Near the sea the land is left as designed (beaches, not terraces).
+            shore[c] = std::clamp((static_cast<float>(s.land.toDouble()) - 60.0f) / 300.0f, 0.0f, 1.0f);
             design.carve(s, x, y);
             carved[c] = static_cast<float>(s.height.toDouble());
             Fixed surface;
@@ -252,7 +254,7 @@ int main(int argc, char** argv) {
     // What erosion did to the land, softened so no valley is narrower than a
     // few samples (the game adds it to the full-detail design).
     std::vector<float> delta(n);
-    for (size_t c = 0; c < n; ++c) delta[c] = g.h[c] - carved[c];
+    for (size_t c = 0; c < n; ++c) delta[c] = (g.h[c] - carved[c]) * shore[c] * shore[c] * (3 - 2 * shore[c]);
     for (int pass = 0; pass < static_cast<int>(param("BAKE_SOFTEN", 2)); ++pass) {
         std::vector<float> next = delta;
         for (int j = 1; j + 1 < ny; ++j)

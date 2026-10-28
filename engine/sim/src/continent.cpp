@@ -73,6 +73,11 @@ Fixed riverDist(const Continent::River& rv, Fixed px, Fixed py, Fixed limit, siz
     return found ? sqrt(best) : limit;
 }
 
+Vec3 unitFlat(const Vec3& v) {
+    const Fixed len = v.flat().length();
+    return len > Fixed::zero() ? v.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+}
+
 Fixed bump(Fixed t) {
     const Fixed a = abs(t);
     if (a >= Fixed::one()) return Fixed::zero();
@@ -196,15 +201,182 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     }
     placeBridges();
     placeCities();
+    planCastles();
     placeSites();
 }
 
-namespace {
-Vec3 unitFlat(const Vec3& v) {
-    const Fixed len = v.flat().length();
-    return len > Fixed::zero() ? v.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+void Continent::planCastles() {
+    const uint64_t sc = noise::nextSeed(seed_ ^ 0xCA571E);
+    for (size_t ci = 0; ci < cities_.size(); ++ci) {
+        City& city = cities_[ci];
+        Castle& k = city.castle;
+        const auto roll = [&](int64_t n) { return noise::lattice(sc, static_cast<int64_t>(ci), n); };
+        const Vec3 c = city.pos;
+        // The gate faces the nearest road.
+        Vec3 toward{Fixed::zero(), -Fixed::one(), Fixed::zero()};
+        {
+            Fixed best = m(100000);
+            for (const Polyline& road : roads_) {
+                size_t seg = 0;
+                Fixed t;
+                const Fixed d = polylineDist(road.points, c.x, c.y, m(3000), seg, t);
+                if (d >= best || d < m(1)) continue;
+                best = d;
+                const Vec3 p = road.points[seg] + (road.points[seg + 1] - road.points[seg]) * t;
+                toward = unitFlat(p - c);
+            }
+        }
+        const Vec3 side{-toward.y, toward.x, Fixed::zero()};
+        const Fixed R = city.radius * 4 / 5;
+        k.shape = city.capital ? 2 : static_cast<uint8_t>((roll(1) * 4).floorToInt());
+        // Corners in the frame (side, toward), then into the world.
+        std::vector<Vec3> local;
+        switch (k.shape) {
+            case 0: {  // square
+                for (int i = 0; i < 4; ++i) {
+                    const Fixed sx = (i == 0 || i == 3) ? -R : R, sy = i < 2 ? R : -R;
+                    local.push_back({sx * r(17, 20), sy * r(17, 20), Fixed::zero()});
+                }
+                break;
+            }
+            case 1: {  // long: a rectangle stretched along the road
+                for (int i = 0; i < 4; ++i) {
+                    const Fixed sx = (i == 0 || i == 3) ? -R * r(3, 5) : R * r(3, 5), sy = i < 2 ? R * r(23, 20) : -R * r(23, 20);
+                    local.push_back({sx, sy, Fixed::zero()});
+                }
+                break;
+            }
+            case 2: {  // polygon of 5 to 8 sides, its corners pushed in and out
+                const int n = city.capital ? 8 : 5 + static_cast<int>((roll(2) * 4).floorToInt());
+                for (int i = 0; i < n; ++i) {
+                    // Rotate so an edge, not a corner, faces the gate.
+                    const Fixed a = Fixed::fromRatio(2 * i + 1, 2 * n) * 6283 / 1000 + Fixed::fromRatio(1571, 1000);
+                    const Fixed rr = R * (r(17, 20) + roll(10 + i) * r(1, 4));
+                    local.push_back({cos(a) * rr, sin(a) * rr, Fixed::zero()});
+                }
+                break;
+            }
+            default: {  // shield: flat front with the gate, pointed back
+                local = {{-R, R * r(3, 5), Fixed::zero()}, {R, R * r(3, 5), Fixed::zero()}, {R * r(4, 5), -R * r(1, 2), Fixed::zero()},
+                         {Fixed::zero(), -R * r(6, 5), Fixed::zero()}, {-R * r(4, 5), -R * r(1, 2), Fixed::zero()}};
+                break;
+            }
+        }
+        const auto world = [&](const Vec3& l) { return Vec3{c.x + side.x * l.x + toward.x * l.y, c.y + side.y * l.x + toward.y * l.y, c.z}; };
+        const Fixed wallH = city.capital ? m(11) : m(7) + roll(3) * 3, thick = city.capital ? m(4) : m(3);
+        Castle::Ring outer;
+        outer.height = wallH;
+        outer.thick = thick;
+        outer.gateWidth = m(8);
+        for (const Vec3& l : local) outer.corners.push_back(world(l));
+        // The gate goes in the edge whose middle faces the road best.
+        Fixed bestDot = -m(10);
+        for (size_t i = 0; i < outer.corners.size(); ++i) {
+            const Vec3 mid = (outer.corners[i] + outer.corners[(i + 1) % outer.corners.size()]) * r(1, 2);
+            const Fixed dot = unitFlat(mid - c).dot(toward);
+            if (dot > bestDot) {
+                bestDot = dot;
+                outer.gateEdge = i;
+            }
+        }
+        k.rings.push_back(outer);
+        if (city.capital) {
+            // An inner bailey: higher walls round the keep.
+            Castle::Ring inner;
+            inner.height = wallH * 4 / 3;
+            inner.thick = thick;
+            inner.gateWidth = m(6);
+            for (int i = 0; i < 6; ++i) {
+                const Fixed a = Fixed::fromRatio(2 * i + 1, 12) * 6283 / 1000 + Fixed::fromRatio(1571, 1000);
+                inner.corners.push_back(world({cos(a) * R * r(9, 20), sin(a) * R * r(9, 20) - R * r(1, 5), Fixed::zero()}));
+            }
+            inner.gateEdge = 0;
+            Fixed bd = -m(10);
+            for (size_t i = 0; i < inner.corners.size(); ++i) {
+                const Vec3 mid = (inner.corners[i] + inner.corners[(i + 1) % inner.corners.size()]) * r(1, 2);
+                const Fixed dot = unitFlat(mid - c).dot(toward);
+                if (dot > bd) {
+                    bd = dot;
+                    inner.gateEdge = i;
+                }
+            }
+            k.rings.push_back(inner);
+        }
+        // Towers on every corner, and a pair flanking each gate.
+        for (const Castle::Ring& ring : k.rings) {
+            const size_t n = ring.corners.size();
+            for (size_t i = 0; i < n; ++i) {
+                k.towers.push_back({ring.corners[i], ring.thick * 3 / 2, ring.height * 4 / 3, roll(40 + static_cast<int64_t>(i)) < r(2, 5)});
+            }
+            const Vec3 a = ring.corners[ring.gateEdge], b = ring.corners[(ring.gateEdge + 1) % n];
+            const Vec3 mid = (a + b) * r(1, 2), along = unitFlat(b - a);
+            for (int s = -1; s <= 1; s += 2) {
+                k.towers.push_back({mid + along * ((ring.gateWidth / 2 + ring.thick) * s), ring.thick * 6 / 5, ring.height * 5 / 4, false});
+            }
+        }
+        // The keep stands back from the gate; the courtyard lies between.
+        k.keepAxis = toward;
+        k.keepHalf = city.capital ? m(13) : m(7) + roll(4) * 3;
+        k.keepHeight = city.capital ? m(28) : m(15) + roll(5) * 6;
+        k.keep = world({(roll(6) - r(1, 2)) * R * r(2, 5), -R * (city.capital ? r(1, 5) : r(2, 5)), Fixed::zero()});
+        k.courtyard = world({Fixed::zero(), R * r(3, 10), Fixed::zero()});
+        k.courtyardRadius = R * r(7, 20);
+        // Stairs up the inner face of the walls either side of the gate, and the back wall.
+        {
+            const Castle::Ring& ring = k.rings.front();
+            const size_t n = ring.corners.size();
+            const Fixed climb = ring.height - Fixed::fromRatio(13, 10);
+            const Fixed run = climb * 4 / 3;
+            for (size_t e : {(ring.gateEdge + n - 1) % n, (ring.gateEdge + 1) % n, (ring.gateEdge + n / 2) % n}) {
+                const Vec3 a = ring.corners[e], b = ring.corners[(e + 1) % n];
+                const Vec3 along = unitFlat(b - a);
+                Vec3 in{-along.y, along.x, Fixed::zero()};
+                if (in.dot(c - a) < Fixed::zero()) in = -in;
+                const Fixed len = (b - a).flat().length();
+                const Fixed halfWidth = Fixed::fromRatio(13, 10);
+                const Vec3 start = a + along * (len / 2 - run / 2) + in * (ring.thick / 2 + halfWidth);
+                Castle::Stair st{start, start + along * run, halfWidth};
+                st.head.z = c.z + climb;
+                k.stairs.push_back(st);
+            }
+        }
+        // Houses in rows, clear of the walls, keep, courtyard and the street to the gate.
+        const int rows = city.capital ? 16 : 11;
+        const Fixed step = R * 2 / rows;
+        for (int iy = 0; iy < rows; ++iy) {
+            for (int ix = 0; ix < rows; ++ix) {
+                const Fixed lx = -R + step * ix + step / 2 + (roll(1000 + iy * 32 + ix) - r(1, 2)) * step / 3;
+                const Fixed ly = -R + step * iy + step / 2 + (roll(2000 + iy * 32 + ix) - r(1, 2)) * step / 3;
+                if (abs(lx) < m(6)) continue;  // the high street
+                const Vec3 p = world({lx, ly, Fixed::zero()});
+                if ((p - k.courtyard).flat().length() < k.courtyardRadius + m(4)) continue;
+                if ((p - k.keep).flat().length() < k.keepHalf * 3 / 2 + m(6)) continue;
+                // Inside the outer ring with room to spare from its walls.
+                bool inside = true;
+                const Castle::Ring& ring = k.rings.front();
+                for (size_t i = 0; i < ring.corners.size() && inside; ++i) {
+                    const Vec3 a = ring.corners[i], b = ring.corners[(i + 1) % ring.corners.size()];
+                    const Vec3 e = unitFlat(b - a);
+                    Vec3 in{-e.y, e.x, Fixed::zero()};
+                    if (in.dot(c - a) < Fixed::zero()) in = -in;
+                    inside = (p - a).flat().dot(in) > ring.thick + m(9);
+                }
+                if (!inside) continue;
+                if (k.rings.size() > 1) {
+                    // Not across the inner bailey's walls either.
+                    const Castle::Ring& in2 = k.rings[1];
+                    Vec3 mid{};
+                    for (const Vec3& q : in2.corners) mid += q;
+                    mid = mid / Fixed::fromInt(static_cast<int64_t>(in2.corners.size()));
+                    if ((p - mid).flat().length() < R * r(3, 5)) continue;
+                }
+                const bool turned = roll(3000 + iy * 32 + ix) < r(1, 2);
+                const Fixed hx = m(2) + roll(4000 + iy * 32 + ix) * 2, hy = Fixed::fromRatio(17, 10) + roll(5000 + iy * 32 + ix) * Fixed::fromRatio(13, 10);
+                k.houses.push_back({p, turned ? hy : hx, turned ? hx : hy, m(3) + roll(6000 + iy * 32 + ix) * 3});
+            }
+        }
+    }
 }
-}  // namespace
 
 void Continent::placeBridges() {
     // Where roads cross creeks: small stone bridges, one per crossing.

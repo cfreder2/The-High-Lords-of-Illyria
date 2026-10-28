@@ -45,7 +45,7 @@ private:
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
-        GLint ring = -1, sink = -1, patch = -1, patchSink = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
+        GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -54,6 +54,7 @@ private:
         GLsizei vertices = 0, count = 0;
         size_t capacity = 0;
         float sway = 0;
+        bool masonry = false;
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {
@@ -125,6 +126,7 @@ private:
     std::vector<MeshBatch*> scenery(bool includeSmall);
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
+    MeshBatch drums_, keeps_, stairs_;
     MeshBatch logs_;
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant

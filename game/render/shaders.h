@@ -885,11 +885,31 @@ in vec3 vColor;
 in vec3 vNormal;
 in vec3 vWorld;
 out vec4 oColor;
+uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
 void main() {
     vec3 n = normalize(vNormal);
     float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(vWorld.xy);
     float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
-    vec3 c = vColor * light;
+    vec3 albedo = vColor;
+    if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
+        // Courses of dressed blocks, staggered row by row, each its own tone;
+        // mortar lines fade out before they shimmer; rain streaks and lichen.
+        vec2 uv = abs(n.z) > 0.7 ? vWorld.xy : vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
+        vec2 size = vec2(0.95, 0.45);
+        float row = floor(uv.y / size.y);
+        float x = uv.x / size.x + 0.5 * mod(row, 2.0) + hash12(vec2(row, 3.7)) * 0.3;
+        vec2 cell = vec2(floor(x), row);
+        vec2 f = vec2(fract(x), fract(uv.y / size.y));
+        float px = max(fwidth(uv.x), fwidth(uv.y));
+        float fade = 1.0 - smoothstep(0.03, 0.12, px);
+        float mortar = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.09, f.y) * smoothstep(1.0, 0.91, f.y);
+        float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (noise2(uv * 3.1) - 0.5);
+        albedo *= mix(1.0, mix(0.6, tone, mortar), fade);
+        albedo *= 0.9 + 0.14 * noise2(vec2(uv.x * 0.8, uv.y * 0.07));  // streaks running down
+        float lichen = smoothstep(0.62, 0.8, noise2(uv * 0.35 + 7.0)) * (abs(n.z) > 0.7 ? 0.3 : 0.55);
+        albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
+    }
+    vec3 c = albedo * light;
     // Under the battlefield's river (the rest of the continent has no water level).
     vec2 cell = vWorld.xy / uCellSize;
     bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));

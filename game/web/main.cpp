@@ -86,8 +86,10 @@ void stepIntro(double now) {
     if (t >= 1) app->introStartMs = -1;
 }
 
+Scenario gScenario = Scenario::Ford;
+
 void newBattle() {
-    app->battle = std::make_unique<Battle>(kBattleSeed);
+    app->battle = std::make_unique<Battle>(kBattleSeed, gScenario);
     // The whole continent, in battle-local coordinates.
     const V3 o = app->battle->origin();
     app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
@@ -164,6 +166,14 @@ EMSCRIPTEN_KEEPALIVE void illyria_toggle_pause() {
 }
 EMSCRIPTEN_KEEPALIVE void illyria_cycle_speed() {
     if (app) app->battle->cycleSpeed();
+}
+// Switch battle: 0 Oakhaven Ford, 1 the siege of a neutral town.
+EMSCRIPTEN_KEEPALIVE void illyria_set_scenario(int scenario) {
+    gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
+    if (!app) return;
+    newBattle();
+    app->renderer.reset(*app->battle);
+    frameCamera();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_restart() {
     if (!app) return;
@@ -253,9 +263,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     char buf[256];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
-                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"squads\":[",
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"squads\":[",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
-                  b.stepMs(), app->camera.distance(), b.selectedSquad());
+                  b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str());
     s = buf;
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];

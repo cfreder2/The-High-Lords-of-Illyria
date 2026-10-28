@@ -366,6 +366,98 @@ Mesh tower() {
     return b.mesh;
 }
 
+Mesh curtain() {
+    Builder b;
+    b.box({-1, -1, 0}, {1, 1, 1}, kStone);
+    // Outer parapet with merlons and crenels between them.
+    b.box({-1, 0.62f, 1}, {1, 1, 1.12f}, kStone * 0.97f);
+    for (int i = 0; i < 8; ++i) {
+        const float x0 = -1 + i * 0.25f + 0.03f;
+        b.box({x0, 0.62f, 1.12f}, {x0 + 0.13f, 1, 1.26f}, kStone * 0.95f);
+    }
+    // A low inner parapet.
+    b.box({-1, -1, 1}, {1, -0.82f, 1.06f}, kStone * 0.92f);
+    // The walk itself, worn darker.
+    b.quad({-1, -0.82f, 1.002f}, {1, -0.82f, 1.002f}, {1, 0.62f, 1.002f}, {-1, 0.62f, 1.002f}, kStone * 0.8f);
+    return b.mesh;
+}
+
+Mesh drum() {
+    Builder b;
+    b.frustum(0, 1.08f, 0.15f, 1.0f, 14, kStone * 0.92f);  // battered base
+    b.frustum(0.15f, 1.0f, 0.95f, 0.96f, 14, kStone);
+    b.frustum(0.95f, 1.06f, 1.0f, 1.06f, 14, kStone * 0.9f);  // corbels
+    b.frustum(1.0f, 1.06f, 1.0f, 0.0f, 14, kStone * 0.8f);    // the top
+    for (int i = 0; i < 10; ++i) {
+        const float a = 2 * kPi * i / 10;
+        const V3 c{std::cos(a) * 0.98f, std::sin(a) * 0.98f, 1.0f};
+        const V3 t{-std::sin(a), std::cos(a), 0};
+        const V3 r{std::cos(a), std::sin(a), 0};
+        const V3 p0 = c - t * 0.16f - r * 0.08f, p1 = c + t * 0.16f - r * 0.08f;
+        const V3 p2 = c + t * 0.16f + r * 0.08f, p3 = c - t * 0.16f + r * 0.08f;
+        const V3 up{0, 0, 0.16f};
+        b.quad(p3, p2, p2 + up, p3 + up, kStone * 0.95f);
+        b.quad(p1, p0, p0 + up, p1 + up, kStone * 0.85f);
+        b.quad(p2, p1, p1 + up, p2 + up, kStone * 0.9f);
+        b.quad(p0, p3, p3 + up, p0 + up, kStone * 0.9f);
+        b.quad(p0 + up, p1 + up, p2 + up, p3 + up, kStone);
+    }
+    // Arrow slits.
+    for (int i = 0; i < 4; ++i) {
+        const float a = 2 * kPi * (i + 0.5f) / 4;
+        const V3 r{std::cos(a) * 1.002f, std::sin(a) * 1.002f, 0}, t{-std::sin(a) * 0.03f, std::cos(a) * 0.03f, 0};
+        for (float z : {0.45f, 0.72f}) b.quad(r - t + V3{0, 0, z}, r + t + V3{0, 0, z}, r + t + V3{0, 0, z + 0.12f}, r - t + V3{0, 0, z + 0.12f}, V3{0.12f, 0.11f, 0.1f});
+    }
+    return b.mesh;
+}
+
+Mesh keep() {
+    Builder b;
+    b.box({-1, -1, 0}, {1, 1, 1}, kStone);
+    b.box({-1.05f, -1.05f, 0.94f}, {1.05f, 1.05f, 1.0f}, kStone * 0.9f);
+    for (int side = 0; side < 4; ++side) {
+        for (int i = 0; i < 7; ++i) {
+            const float t0 = -1 + i * 0.3f + 0.05f, t1 = t0 + 0.15f;
+            const V3 lo = side == 0 ? V3{t0, -1.05f, 1} : side == 1 ? V3{t0, 0.95f, 1} : side == 2 ? V3{-1.05f, t0, 1} : V3{0.95f, t0, 1};
+            const V3 hi = side == 0 ? V3{t1, -0.95f, 1.08f} : side == 1 ? V3{t1, 1.05f, 1.08f} : side == 2 ? V3{-0.95f, t1, 1.08f} : V3{1.05f, t1, 1.08f};
+            b.box(lo, hi, kStone * 0.95f);
+        }
+    }
+    // Corner turrets rise above the roof, with slate caps.
+    for (int k = 0; k < 4; ++k) {
+        const float x = k & 1 ? 0.92f : -0.92f, y = k & 2 ? 0.92f : -0.92f;
+        Builder t;
+        t.frustum(0.6f, 0.2f, 1.18f, 0.2f, 8, kStone * 0.95f);
+        t.frustum(1.18f, 0.24f, 1.42f, 0.0f, 8, kSlate);
+        for (size_t v = 0; v < t.mesh.data.size(); v += 9) {
+            t.mesh.data[v] += x;
+            t.mesh.data[v + 1] += y;
+        }
+        b.mesh.data.insert(b.mesh.data.end(), t.mesh.data.begin(), t.mesh.data.end());
+    }
+    // A door and windows.
+    b.quad({-0.15f, -1.002f, 0}, {0.15f, -1.002f, 0}, {0.15f, -1.002f, 0.12f}, {-0.15f, -1.002f, 0.12f}, V3{0.25f, 0.17f, 0.1f});
+    for (int side = 0; side < 4; ++side)
+        for (float z : {0.4f, 0.65f}) {
+            const float w = 0.05f;
+            if (side == 0) b.quad({-w, -1.003f, z}, {w, -1.003f, z}, {w, -1.003f, z + 0.08f}, {-w, -1.003f, z + 0.08f}, V3{0.1f, 0.09f, 0.08f});
+            if (side == 1) b.quad({w, 1.003f, z}, {-w, 1.003f, z}, {-w, 1.003f, z + 0.08f}, {w, 1.003f, z + 0.08f}, V3{0.1f, 0.09f, 0.08f});
+            if (side == 2) b.quad({-1.003f, w, z}, {-1.003f, -w, z}, {-1.003f, -w, z + 0.08f}, {-1.003f, w, z + 0.08f}, V3{0.1f, 0.09f, 0.08f});
+            if (side == 3) b.quad({1.003f, -w, z}, {1.003f, w, z}, {1.003f, w, z + 0.08f}, {1.003f, -w, z + 0.08f}, V3{0.1f, 0.09f, 0.08f});
+        }
+    return b.mesh;
+}
+
+Mesh stairs() {
+    Builder b;
+    const int steps = 10;
+    for (int i = 0; i < steps; ++i) {
+        const float x0 = -1 + 2.0f * i / steps, x1 = -1 + 2.0f * (i + 1) / steps, z = static_cast<float>(i + 1) / steps;
+        b.box({x0, -1, 0}, {x1, 1, z}, kStone * (i % 2 ? 0.93f : 1.0f));
+    }
+    return b.mesh;
+}
+
 Mesh banner() {
     Builder b;
     b.frustum(0, 0.03f, 1.0f, 0.02f, 4, {0.35f, 0.3f, 0.25f});

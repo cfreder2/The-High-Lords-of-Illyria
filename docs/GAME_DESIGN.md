@@ -142,6 +142,10 @@ Following Warlords: **80 cities**, and whoever holds two thirds of them (or all 
 - **What a city gives:** it produces armies (a few unit types per city, each with a build time) and pays gold to its owner every turn. Owners can raze it, which turns it into a ruin forever (§5.5).
 - **Siege:** an attack commits at most 8 squads, but a city defends with everything inside it, up to 32 (§4.2). In the 3D battle the walls, towers and gates are real obstacles. Fliers clear walls, giants and devils batter gates, and grenadiers' satchels breach them.
 
+- **Every castle is different:** square, long, many-sided or shield-shaped curtain walls; capitals add an inner bailey round a great keep. Drum towers with battlements stand at the corners and either side of the gate. Inside are a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops and siege engines.
+- **Walls are real in battle:** they stop soldiers and missiles; the only way in on foot is the gate (or over the top, for fliers). Stairs against the inner faces lead up to a wall-walk where archers stand and shoot over the merlons. The merlons stop half the missiles shot up at defenders from outside.
+- **Neutral towns resist:** each neutral town keeps a small garrison (in the siege battle: a watch of archers along the walls, pikes at the gate, militia in the courtyard and the castellan's guard at the keep). A garrison holds its town: it fights whoever comes near its post and never marches out. Every side starts with only its capital and must take the rest.
+
 | Side | Capital | After (Warlords archetype) | Banner |
 |---|---|---|---|
 | The Aurelian Throne | Kingshold | Knights of the central realm | White |

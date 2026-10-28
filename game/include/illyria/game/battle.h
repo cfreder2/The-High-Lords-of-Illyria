@@ -28,7 +28,19 @@ struct Squad {
     std::vector<sim::EntityId> members;
     Formation formation = Formation::Box;
     mutable V3 facing{1, 0, 0};  // the way it last marched (presentation of orders, not sim state)
+    // A garrison holds its town: it fights whoever comes within reach of its
+    // post, then goes back to it, and never marches out.
+    bool garrison = false;
+    V3 post{};
 };
+
+// Which battle to fight.
+enum class Scenario {
+    Ford,   // Oakhaven Ford: the Red Hand comes over the river
+    Siege,  // a neutral town near Oakhaven, held by its own small garrison
+};
+// The town besieged in Scenario::Siege: the neutral town nearest Oakhaven Ford.
+const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
 enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier };
@@ -94,7 +106,10 @@ public:
     static constexpr size_t kMaxGroundMarks = 30000;
     static constexpr size_t kMaxParticles = 4000;
 
-    explicit Battle(uint64_t seed);
+    explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
+    Scenario scenario() const { return scenario_; }
+    // Who the player is fighting, for the HUD.
+    const std::string& foeName() const { return foeName_; }
 
     // Runs as many fixed ticks as `seconds` of wall time covers (times the game speed).
     void advance(double seconds);
@@ -151,6 +166,10 @@ public:
     double stepMs() const { return stepMs_; }
 
 private:
+    Scenario scenario_ = Scenario::Ford;
+    std::string foeName_ = "Red Hand";
+    void setUpFord();
+    void setUpSiege();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
     void step();

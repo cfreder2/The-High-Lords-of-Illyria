@@ -270,6 +270,9 @@ private:
     // Walks toward `to` at the unit's ground speed; returns true on arrival.
     bool walk(Unit& unit, const Vec3& to, Fixed speedScale = Fixed::one());
     void planPath(Unit& unit, const Vec3& to);
+    void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out);
+    // Routes onto, along and off castle wall-walks by their stairs; false if neither end is on one.
+    bool planRampartPath(Unit& unit, const Vec3& to);
     void separateBodies();
     void kickRemains(Unit& unit, const Vec3& moveDir);
     void fire(Unit& unit, const Vec3& target);
@@ -286,6 +289,11 @@ private:
     // Debris (body parts, thrown arrows): low bounces that keep their speed,
     // then a skid to rest. Returns true once at rest.
     bool tumble(Projectile& p);
+    // The surface a walker at height z stands on here: the ground, or a deck
+    // within a step of z (not a wall-walk high above a gate passage).
+    Fixed standingHeight(Fixed x, Fixed y, Fixed z) const;
+    // True for a defender on a wall-walk struck from outside (behind the merlons).
+    bool onRampartFacing(const Unit& u, const Vec3& vel) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner);
