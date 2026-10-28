@@ -180,6 +180,7 @@ void World::fight(Unit& u, Unit& enemy) {
     }
     u.engaged = true;
     u.foe = enemy.id;
+    noteAttack(enemy, u);
     // Out of reach vertically (a flier still diving, or one above a ground unit).
     const Fixed dz = enemy.pos.z - u.pos.z;
     if (dz > u.stats.height + m.reach || -dz > enemy.stats.height + m.reach) return;
@@ -231,7 +232,8 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
 
     // Braced pikes, met head on: the charge runs onto their points.
     const MeleeWeapon& pike = enemy.stats.melee;
-    if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() && !enemy.hasMoveTarget) {
+    if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() &&
+        (!enemy.hasMoveTarget || enemy.engageFoe != kNoEntity)) {
         const int32_t amount = pike.damage * blowPct(enemy, u, dist, -dz) / 100 + impact / 2;
         const bool killed = damage(u, amount, &enemy);
         knock(u, -dir, weight * kChargeKnock);

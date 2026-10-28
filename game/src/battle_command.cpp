@@ -16,11 +16,11 @@ namespace {
 
 constexpr float kMinSpacing = 1.8f;
 constexpr float kTapRadiusPx = 30.0f;
-constexpr float kSquadTapRadiusPx = 48.0f;
 constexpr float kScatterMetres = 7.0f;  // how far they run from the centre
 constexpr float kAimMetres = 1.5f;      // drag this far from the destination to set a facing
 constexpr float kBoxSlopPx = 12.0f;     // a smaller box is a tap
 constexpr float kCrescent = 3.84f;      // Encircle: 220 degrees of arc
+constexpr float kVeeStep = 0.8f;        // V: each man this many gaps forward and out (1.13 gaps apart)
 
 uint32_t hash32(uint32_t x) {
     x ^= x >> 16;
@@ -45,6 +45,7 @@ const char* formationName(Formation f) {
         case Formation::Staggered: return "Staggered";
         case Formation::ShortLine: return "Short line";
         case Formation::Encircle: return "Encircle";
+        case Formation::Vee: return "V";
     }
     return "?";
 }
@@ -89,6 +90,15 @@ std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing
                     slots.push_back({{(static_cast<float>(k) - (inRow - 1) / 2.0f) * spacing, -row * spacing, 0}});
             }
             break;
+        case Formation::Vee:
+            // The point at the back, the arms reaching forward and out at 45
+            // degrees, one man a step forward and to the side of the last.
+            for (int i = 0; i < count; ++i) {
+                const int k = (i + 1) / 2;
+                const float side = i == 0 ? 0.0f : (i % 2 == 1 ? -1.0f : 1.0f);
+                slots.push_back({{side * k * spacing * kVeeStep, k * spacing * kVeeStep, 0}});
+            }
+            break;
         case Formation::Encircle: {
             // A crescent around the point itself (the foe to pin, or the hero
             // to guard), bowed forward, everyone facing out. The radius gives
@@ -123,6 +133,7 @@ float formationPace(Formation f) {
         case Formation::Line:
         case Formation::ShortLine:
         case Formation::Wedge:
+        case Formation::Vee:
         case Formation::Encircle: return 0.9f;
         case Formation::Staggered: return 0.95f;
         case Formation::Loose:
@@ -365,8 +376,9 @@ void Battle::moveSquad(const Squad& squad, const V3& to) {
 }
 
 void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Formation formation, const V3& to,
-                       const V3* face, const V3& fallbackFacing) {
+                       const V3* face, const V3& fallbackFacing, bool force) {
     if (alive.empty()) return;
+    if (owner == kPlayer) markOrdered(alive);
     const V3 from = centreOf(alive);
     V3 facing = flat(face ? *face : to - from).normalized();
     if (facing.length() == 0) facing = fallbackFacing;
@@ -420,6 +432,7 @@ void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Fo
         c.speed = sim::Fixed::fromRatio(static_cast<int64_t>(slowest * share * pace * 1000.0f), 1000);
         // And turn to the front when there (outward, in an encirclement).
         c.face = toSim(o.face);
+        c.force = force;
         pending_.push_back(c);
     }
     // Squads that marched whole remember the way they face.
@@ -498,6 +511,7 @@ void Battle::scatter() {
         const float run = kScatterMetres + static_cast<float>((h >> 16) % 300) / 100.0f;
         issue(kPlayer, id, sim::Command::Type::Move, p + away * run);
     }
+    markOrdered(alive);
     voice_.order(Situation::Move, *world_, alive);
 }
 
@@ -523,76 +537,83 @@ void Battle::cycleFormation() {
 // --- Taps and presses -------------------------------------------------------
 
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
-    const int bestUnit = unitAt(camera, x, y, pixelScale);
+    const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
-    // Zoomed far out, soldiers are specks: fall back to the nearest squad centre.
-    int bestSquad = bestUnit >= 0 ? squadOfUnit_[static_cast<size_t>(bestUnit)] : -1;
-    if (bestUnit < 0) {
-        float bestS = kSquadTapRadiusPx * pixelScale * kSquadTapRadiusPx * pixelScale;
-        for (size_t s = 0; s < squads_.size(); ++s) {
-            if (aliveCount(squads_[s]) == 0) continue;
-            float px, py;
-            if (!camera.project(squadCentre(squads_[s]), px, py)) continue;
-            const float d2 = (px - x) * (px - x) + (py - y) * (py - y);
-            if (d2 < bestS) {
-                bestS = d2;
-                bestSquad = static_cast<int>(s);
-            }
+    const std::vector<sim::EntityId> mine = selectedAlive();
+    // Attack and force-march modes (the phone's button, A or M) last one
+    // order; Ctrl and Alt held on the desktop do the same for one click.
+    const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
+    using K = Pick::Kind;
+    if (!mine.empty() && mode != OrderMode::Normal && pick.kind != K::None) {
+        orderMode_ = OrderMode::Normal;
+        if (mode == OrderMode::ForceMarch) {
+            V3 ground;
+            if (camera.pickGround(x, y, ground)) orderForceMarch(ground);
+            return;
+        }
+        switch (pick.kind) {
+            case K::Own:
+            case K::Enemy:
+                // Whoever was tapped, of either side: a force attack on a friend.
+                if (pick.index >= 0) orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
+                else orderAttackUnit(nearestOf(squads_[static_cast<size_t>(pick.squad)].members, centreOf(mine)));
+                return;
+            case K::Gate:
+            case K::Wall:
+            case K::Obstacle: orderAttackObject(pick); return;
+            case K::Ground: orderAttackGround(pick.at); return;
+            case K::None: return;
         }
     }
 
     // One of ours: him alone; him again, everyone of his kind in view.
-    if (bestUnit >= 0 && units[static_cast<size_t>(bestUnit)].owner == kPlayer) {
-        const sim::EntityId id = units[static_cast<size_t>(bestUnit)].id;
+    if (pick.kind == K::Own && pick.index >= 0) {
+        const sim::EntityId id = units[static_cast<size_t>(pick.index)].id;
         if (additive) {
             std::vector<sim::EntityId> next = selection_;
             if (isSelected(id)) std::erase(next, id);
             else next.push_back(id);
             const Formation keep = selFormation_;
-            const bool had = !selectedAlive().empty();
+            const bool had = !mine.empty();
             select(std::move(next));
             if (had) selFormation_ = keep;
             return;
         }
-        const std::vector<sim::EntityId> alive = selectedAlive();
-        if (alive.size() == 1 && alive.front() == id) selectVisibleOfType(camera, static_cast<UnitType>(units[static_cast<size_t>(bestUnit)].stats.type));
+        if (mine.size() == 1 && mine.front() == id) selectVisibleOfType(camera, static_cast<UnitType>(units[static_cast<size_t>(pick.index)].stats.type));
         else select({id});
         return;
     }
-    if (bestUnit < 0 && bestSquad >= 0 && squads_[static_cast<size_t>(bestSquad)].owner == kPlayer) {
-        selectSquad(bestSquad);
+    if (pick.kind == K::Own) {
+        selectSquad(pick.squad);
         return;
     }
-    const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
-    const auto shoots = [&](sim::EntityId id) { return units[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero(); };
-    bool engines = false, walkers = false;
-    for (sim::EntityId id : mine) {
-        const Role role = roleOf(static_cast<UnitType>(units[id - 1].stats.type));
-        engines = engines || role == Role::Siege || role == Role::Bomber;
-        walkers = walkers || !shoots(id);
+    switch (pick.kind) {
+        case K::Enemy:
+            // Tapped an enemy: everyone selected goes after him (missile troops
+            // shoot him); zoomed far out, each after the nearest of that squad.
+            if (pick.index >= 0) {
+                orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
+            } else {
+                const std::vector<sim::EntityId> all = selection_;
+                const std::vector<sim::EntityId>& foes = squads_[static_cast<size_t>(pick.squad)].members;
+                for (sim::EntityId id : mine) {
+                    selection_ = {id};
+                    orderAttackUnit(nearestOf(foes, toV3(units[id - 1].pos)));
+                }
+                selection_ = all;
+            }
+            return;
+        case K::Gate:
+            // A standing gate: engines and bombers shoot at it, the rest go to break it.
+            orderAtGate(pick.index);
+            return;
+        case K::Wall:
+        case K::Obstacle:
+        case K::Ground: orderMove(pick.at); return;
+        case K::Own:
+        case K::None: return;
     }
-    // Tapped a standing gate: engines and bombers shoot at it, the rest go to break it.
-    if (const int gate = gateAt(camera, x, y, pixelScale); gate >= 0 && (engines || (walkers && bestUnit < 0))) {
-        orderAtGate(gate);
-        return;
-    }
-    if (bestSquad >= 0) {
-        // Tapped an enemy: missile troops loose on that spot, everyone else charges it.
-        V3 at = bestUnit >= 0 ? unitPosition(static_cast<size_t>(bestUnit)) : squadCentre(squads_[static_cast<size_t>(bestSquad)]);
-        std::vector<sim::EntityId> charge;
-        // At the soldier where he stands (on a wall-walk, not the ground beneath it).
-        if (bestUnit < 0) at.z = heightAt(at.x, at.y);
-        for (sim::EntityId id : mine) {
-            if (shoots(id)) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
-            else charge.push_back(id);
-        }
-        moveGroup(kPlayer, std::move(charge), selFormation_, at, nullptr, selectionFacing());
-        voice_.order(Situation::Attack, *world_, mine);
-        return;
-    }
-    V3 ground;
-    if (camera.pickGround(x, y, ground)) orderMove(ground);
 }
 
 bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box) {
@@ -647,7 +668,10 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
         else selectInRect(camera, d.x0, d.y0, x, y, additive);
         return;
     }
-    if (d.aimed) orderMoveFacing(d.anchor, d.facing);
+    const bool force = marchKey_ || orderMode_ == OrderMode::ForceMarch;
+    orderMode_ = OrderMode::Normal;
+    if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
+    else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
     else orderMove(d.anchor);
 }
 

@@ -313,6 +313,11 @@ void Voice::observe(const sim::World& world, int outcome) {
     for (const sim::RallyCall& c : world.rallyCalls())
         want(c.kind == sim::RallyCall::Kind::Hero ? S::HeroRally : S::HoldLine, c.caller);
 
+    // A target down: one who presses on cries out as he goes at the next
+    // (going back to his friends, he goes quietly).
+    for (const sim::OrderDecision& d : world.orderDecisions())
+        if (d.pressOn) want(S::Charge, d.unit);
+
     // A hero's fall: his own side despairs (the player must hear it), the other exults.
     for (const sim::HeroDeath& d : world.heroDeaths()) {
         const V3 at = toV3(d.pos);

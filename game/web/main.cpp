@@ -450,6 +450,21 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_shift(int down) {
     app->shift = down != 0;
     app->gestures->setShift(app->shift && !app->camp.on);
 }
+// Ctrl (or Cmd) and Alt held: the next click is an attack on whatever is
+// under it (a friend too), or a force march (battle_orders.cpp).
+EMSCRIPTEN_KEEPALIVE void illyria_set_keys(int force, int march) {
+    if (app) app->battle->setKeys(force != 0, march != 0);
+}
+// 0 as usual, 1 attack, 2 force march: for one order (the phone's attack button, A, M).
+EMSCRIPTEN_KEEPALIVE void illyria_set_order_mode(int mode) {
+    if (app && mode >= 0 && mode <= 2) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
+}
+// What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
+EMSCRIPTEN_KEEPALIVE int illyria_hover(float x, float y) {
+    if (!app || app->camp.on) return 0;
+    const float s = app->pixelRatio;
+    return static_cast<int>(app->battle->intentAt(app->camera, x * s, y * s, s));
+}
 EMSCRIPTEN_KEEPALIVE void illyria_clear_selection() {
     if (app) app->battle->clearSelection();
 }
@@ -544,6 +559,44 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_press_box(float x0, float y0, float x1, f
 }
 EMSCRIPTEN_KEEPALIVE void illyria_test_press_end() {
     if (app) app->battle->pressEnd(app->camera, app->battle->drag().x1, app->battle->drag().y1, false);
+}
+
+// Test hooks for screenshots of orders: a squad sent (dx, dy) metres from
+// where it stands, or after the soldier of squad `foe` nearest it, the
+// camera looking on from `distance`.
+EMSCRIPTEN_KEEPALIVE void illyria_test_move(int squad, float dx, float dy, float distance) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
+    Battle& b = *app->battle;
+    b.selectSquad(squad);
+    const V3 c = b.squadCentre(b.squads()[static_cast<size_t>(squad)], false);
+    V3 at{c.x + dx, c.y + dy, 0};
+    at.z = b.heightAt(at.x, at.y);
+    b.orderMove(at);
+    app->introStartMs = -1;
+    app->camera.lookAt((c.x + at.x) / 2, (c.y + at.y) / 2, distance);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_test_attack(int squad, int foe, float distance) {
+    const int n = app ? static_cast<int>(app->battle->squads().size()) : 0;
+    if (!app || squad < 0 || squad >= n || foe < 0 || foe >= n) return;
+    Battle& b = *app->battle;
+    b.selectSquad(squad);
+    const V3 c = b.squadCentre(b.squads()[static_cast<size_t>(squad)], false);
+    illyria::sim::EntityId best = 0;
+    float bestD = 1e30f;
+    for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(foe)].members) {
+        if (!b.world().units()[id - 1].alive()) continue;
+        const V3 d = b.unitPosition(id - 1) - c;
+        if (d.length() < bestD) {
+            bestD = d.length();
+            best = id;
+        }
+    }
+    if (best == 0) return;
+    b.orderAttackUnit(best);
+    const V3 t = b.unitPosition(best - 1);
+    app->introStartMs = -1;
+    // Nearer the attackers: their lines run off toward the ring.
+    app->camera.lookAt(c.x + (t.x - c.x) * 0.4f, c.y + (t.y - c.y) * 0.4f, distance);
 }
 
 EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
@@ -1197,6 +1250,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
             return ids.empty() ? "" : one ? typeName(ids.front()) : "Mixed";
         };
         const std::vector<illyria::sim::EntityId> sel = b.selectedAlive();
+        // The order mode, and a refused order's reason while fresh (3 s).
+        const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
+        bool batter = false;
+        for (illyria::sim::EntityId id : sel) batter = batter || illyria::sim::World::canBatter(units[id - 1].stats);
+        std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
+                      batter ? "true" : "false", fresh ? b.notice().c_str() : "");
+        s += buf;
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
                       sel.size(), label(sel), formationName(b.selectionFormation()), static_cast<int>(b.selectionFormation()));
         s += buf;

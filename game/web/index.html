@@ -82,9 +82,16 @@
   #actions svg { width: 18px; height: 18px; vertical-align: -4px; margin-right: 4px; }
   #formation { min-width: 112px; }
   #scatter { border-color: rgba(230, 110, 80, 0.85); color: #ffd9c8; font-weight: 600; }
+  /* The attack button: lit red while the next tap attacks, gold for a force march. */
+  #attack { font-weight: 600; }
+  #attack.on { background: rgba(200, 40, 30, 0.85); border-color: #ff8a70; color: #fff; box-shadow: 0 0 0 2px rgba(255, 120, 90, 0.5); }
+  #attack.march { background: rgba(170, 130, 30, 0.85); border-color: #ffd36e; color: #fff; box-shadow: 0 0 0 2px rgba(255, 210, 110, 0.5); }
+  #modeBar { font-size: 13px; padding: 6px 10px; margin-bottom: 6px; pointer-events: auto; max-width: 420px; color: #fff; }
+  #modeBar.attack { border-color: #ff8a70; background: rgba(110, 20, 14, 0.82); }
+  #modeBar.march { border-color: #ffd36e; background: rgba(90, 66, 10, 0.82); }
   #selInfo { font-size: 12px; color: var(--ink-dim); margin: 0 0 4px 2px; text-shadow: 0 1px 2px #000; pointer-events: none; }
   /* The formation picker: one tap for any formation, a sketch of each. */
-  #picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px; margin-bottom: 8px; pointer-events: auto; max-width: 420px; }
+  #picker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 6px; margin-bottom: 8px; pointer-events: auto; max-width: 420px; }
   #picker button { min-height: 52px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; position: relative; }
   #picker button svg { width: 30px; height: 22px; }
   #picker button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
@@ -293,7 +300,8 @@
 
 <div id="hint" class="panel">
   <b>Pinch</b> to zoom from the gods to the mud · <b>drag</b> to pan · <b>twist</b> or right-drag to turn<br>
-  <b>Tap</b> a soldier to pick him, again for all his kind in view, or a card for a squad · <b>tap</b> ground to march, an enemy to attack<br>
+  <b>Tap</b> a soldier to pick him, again for all his kind in view, or a card for a squad · <b>tap</b> ground to march, an enemy to go after him<br>
+  <b>⚔ Attack</b>, then tap: any soldier (ours too), a gate, wall, house or tree, or the ground · <b>hold ⚔</b> for a force march<br>
   <b>Hold</b> where they should go and <b>drag</b> the way they should face · <b>hold</b> on your own men and drag to box-select
 </div>
 
@@ -327,8 +335,10 @@
   <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button></div>
   <div id="selInfo" class="hidden battle-only"></div>
   <div id="picker" class="panel hidden battle-only" role="menu" aria-label="Formations"></div>
+  <div id="modeBar" class="panel hidden battle-only" role="status"></div>
   <div id="actions" class="hidden battle-only">
     <button id="formation" aria-label="Choose a formation" aria-haspopup="menu">Line</button>
+    <button id="attack" aria-label="Attack: the next tap attacks what you tap (hold for a force march)">⚔ Attack</button>
     <button id="scatter" aria-label="Scatter: everyone selected runs outward">Scatter</button>
     <button id="hold">Hold</button>
     <button id="focus">Find</button>
@@ -393,6 +403,9 @@
       selectHeroes: Module.cwrap("illyria_select_heroes", null, []),
       focusSelection: Module.cwrap("illyria_focus_selection", null, []),
       setShift: Module.cwrap("illyria_set_shift", null, ["number"]),
+      setKeys: Module.cwrap("illyria_set_keys", null, ["number", "number"]),
+      setMode: Module.cwrap("illyria_set_order_mode", null, ["number"]),
+      hover: Module.cwrap("illyria_hover", "number", ["number", "number"]),
       dragBox: Module.cwrap("illyria_drag_box", "string", []),
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
@@ -515,8 +528,37 @@
     const r = canvas.getBoundingClientRect();
     api.pointer(type, e.pointerId, e.clientX - r.left, e.clientY - r.top, e.button < 0 ? 0 : e.button, e.timeStamp);
   }
-  canvas.addEventListener("pointerdown", (e) => { canvas.setPointerCapture(e.pointerId); send(0, e); hideHint(); e.preventDefault(); });
-  canvas.addEventListener("pointermove", (e) => send(1, e));
+  // Ctrl (Cmd) and Alt with a click: attack whatever is under it, or force march.
+  const keys = (e) => api && api.setKeys(e.ctrlKey || e.metaKey ? 1 : 0, e.altKey ? 1 : 0);
+  canvas.addEventListener("pointerdown", (e) => { keys(e); canvas.setPointerCapture(e.pointerId); send(0, e); hideHint(); e.preventDefault(); });
+  canvas.addEventListener("pointermove", (e) => { send(1, e); if (e.pointerType === "mouse" && !e.buttons) hoverAt(e); });
+  // The desktop's cursor says what a click would do (Battle::Intent): select,
+  // attack (a sword), attack a gate, wall or tree (a target), attack the
+  // ground (a crosshair), cannot, move, force march (double chevron).
+  const cursorSvg = (body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>${body}</svg>`)}") 16 16`;
+  const kCursors = [
+    "", "pointer",
+    cursorSvg("<g stroke='#000' stroke-width='4' stroke-linecap='round'><path d='M6 6 L22 22'/><path d='M18 26 L26 18'/><path d='M24 24 L28 28'/></g><g stroke='#ff4a3a' stroke-width='2' stroke-linecap='round'><path d='M6 6 L22 22'/><path d='M18 26 L26 18'/><path d='M24 24 L28 28'/></g>") + ", crosshair",
+    cursorSvg("<circle cx='16' cy='16' r='10' fill='none' stroke='#000' stroke-width='4'/><circle cx='16' cy='16' r='10' fill='none' stroke='#ff4a3a' stroke-width='2'/><circle cx='16' cy='16' r='4' fill='none' stroke='#ff4a3a' stroke-width='2'/>") + ", crosshair",
+    cursorSvg("<g stroke='#000' stroke-width='4'><path d='M16 3 V12 M16 20 V29 M3 16 H12 M20 16 H29'/></g><g stroke='#ff4a3a' stroke-width='2'><path d='M16 3 V12 M16 20 V29 M3 16 H12 M20 16 H29'/></g><circle cx='16' cy='16' r='2' fill='#ff4a3a'/>") + ", crosshair",
+    "not-allowed", "",
+    cursorSvg("<g fill='none' stroke='#000' stroke-width='4' stroke-linejoin='round'><path d='M8 6 L18 16 L8 26'/><path d='M16 6 L26 16 L16 26'/></g><g fill='none' stroke='#ffd36e' stroke-width='2' stroke-linejoin='round'><path d='M8 6 L18 16 L8 26'/><path d='M16 6 L26 16 L16 26'/></g>") + ", e-resize",
+  ];
+  let hoverQueued = false, hoverX = 0, hoverY = 0, lastIntent = -1;
+  function hoverAt(e) {
+    const r = canvas.getBoundingClientRect();
+    hoverX = e.clientX - r.left;
+    hoverY = e.clientY - r.top;
+    keys(e);
+    if (hoverQueued) return;
+    hoverQueued = true;
+    requestAnimationFrame(() => {
+      hoverQueued = false;
+      if (!api || campaign) return;
+      const intent = api.hover(hoverX, hoverY);
+      if (intent !== lastIntent) { lastIntent = intent; canvas.style.cursor = kCursors[intent] || ""; }
+    });
+  }
   canvas.addEventListener("pointerup", (e) => send(2, e));
   canvas.addEventListener("pointercancel", (e) => send(3, e));
   canvas.addEventListener("wheel", (e) => {
@@ -604,8 +646,13 @@
   $("hold").onclick = () => api && api.stop();
   $("charge").onclick = () => api && api.charge();
   $("scatter").onclick = () => api && api.scatter();
+  // Attack mode for the next tap; held, a force march instead. Tap again to cancel.
+  let orderMode = 0;
+  const setMode = (m) => { if (!api) return; api.setMode(m); orderMode = m; updateHud(); };
+  onLongPress($("attack"), () => setMode(orderMode === 2 ? 0 : 2));
+  $("attack").onclick = () => setMode(orderMode === 0 ? 1 : 0);
   $("formation").onclick = () => $("picker").classList.toggle("hidden");
-  let selected = -1, selCount = 0;
+  let selected = -1, selCount = 0, lastNotice = "";
   $("focus").onclick = () => api && api.focusSelection();
 
   // Formations: a sketch of each from the game's own slots (9 men, seen from above, front up).
@@ -644,6 +691,7 @@
   let lastGroupKey = -1, lastGroupMs = 0;
   document.addEventListener("keydown", (e) => {
     if (e.key === "Shift" && api) api.setShift(1);
+    if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
     if (!api || campaign || e.repeat) return;
     const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
@@ -661,17 +709,25 @@
     }
     switch (e.code) {
       case "KeyS": api.scatter(); break;
+      case "KeyA": setMode(orderMode === 1 ? 0 : 1); break;
+      case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyH": api.stop(); break;
       case "KeyF": api.focusSelection(); break;
       case "Backquote": api.selectHeroes(); break;
-      case "Escape": api.clearSelection(); $("picker").classList.add("hidden"); break;
+      case "Escape":
+        if (orderMode) setMode(0);
+        else { api.clearSelection(); $("picker").classList.add("hidden"); }
+        break;
       case "Space": api.pause(); break;
       default: return;
     }
     e.preventDefault();
     updateHud();
   });
-  document.addEventListener("keyup", (e) => { if (e.key === "Shift" && api) api.setShift(0); });
+  document.addEventListener("keyup", (e) => {
+    if (e.key === "Shift" && api) api.setShift(0);
+    if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
+  });
   window.addEventListener("blur", () => api && api.setShift(0));
 
   // A press held on a card (half a second) for the groups: on a group card
@@ -901,6 +957,22 @@
       $("formation").innerHTML = (fm ? glyph(fm.slots) : "") + s.formation;
     }
     for (const b of $("picker").children) b.classList.toggle("on", +b.dataset.id === s.formationId);
+    // The order mode: the button lit and a line saying what the next tap does.
+    orderMode = s.selCount ? s.mode : 0;
+    if (!s.selCount && s.mode) api.setMode(0);
+    $("attack").classList.toggle("on", orderMode === 1);
+    $("attack").classList.toggle("march", orderMode === 2);
+    $("attack").textContent = orderMode === 2 ? "» March" : "⚔ Attack";
+    const bar = $("modeBar");
+    bar.classList.toggle("hidden", !orderMode);
+    bar.classList.toggle("attack", orderMode === 1);
+    bar.classList.toggle("march", orderMode === 2);
+    const modeText = orderMode === 1
+      ? `⚔ Attack: tap a soldier (ours too), a gate${s.batter ? ", a wall, house or tree" : ""}, or the ground`
+      : orderMode === 2 ? "» Force march: tap where to go; they ignore the enemy on the way" : "";
+    if (bar.textContent !== modeText) bar.textContent = modeText;
+    if (s.notice && s.notice !== lastNotice) toast(s.notice);
+    lastNotice = s.notice;
 
     // Cards: saving the selection (when it is not already a card), the saved
     // groups, then heroes, the special troops, and the rest.

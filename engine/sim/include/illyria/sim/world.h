@@ -176,6 +176,26 @@ struct Unit {
     int32_t meleeCooldown = 0;
     int32_t healCooldown = 0;
     int32_t healCharges = 0;
+    // Orders beyond walking and shooting (world_orders.cpp).
+    // AttackUnit: the soldier (any side's, when ordered) he goes after; chosen
+    // when he picked it himself after a kill (then he lets it run if it flees).
+    EntityId targetUnit = kNoEntity;
+    bool targetChosen = false;
+    Vec3 targetSeen;  // where the target stood last tick: missile troops lead him
+    // AttackUnit: the friend to rejoin once the target is down, and where
+    // beside him (his old place in the formation).
+    EntityId rally = kNoEntity;
+    Vec3 rallyOffset;
+    // Move: deaf to the enemy on the way (Myth's force march); else he
+    // marches with initiative: fights whoever strikes him or crosses his
+    // path, on a leash from his route (engageFoe), then marches on.
+    bool forceMarch = false;
+    EntityId engageFoe = kNoEntity;
+    Vec3 routeFrom;          // where his current leg of the route began
+    int32_t graceTicks = 0;  // just ordered away from a melee: no initiative yet
+    // A marching soldier remembers who last struck at him, and when.
+    EntityId lastAttacker = kNoEntity;
+    uint32_t attackedTick = 0;
 
     bool alive() const { return hp > 0; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
@@ -209,7 +229,11 @@ struct Remain {
 // Player input, the only thing exchanged between lockstep peers.
 struct Command {
     // AttackGate: missile troops shoot at the gate nearest `target`.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate };
+    // AttackUnit: go after `targetUnit` (of either side: a force attack on a
+    // friend only ever when ordered). AttackObject: a gate, wall or piece of
+    // scenery (world_orders.cpp says who can harm what).
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject };
+    enum class Object : uint8_t { Gate, Wall, Obstacle };
 
     PlayerId player = 0;
     EntityId unit = kNoEntity;
@@ -223,6 +247,26 @@ struct Command {
     // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
     // the way he walked.
     Vec3 face = {};
+    // Move: a force march, deaf to the enemy on the way.
+    bool force = false;
+    // AttackUnit: the target, and a friend to rejoin once it is down.
+    EntityId targetUnit = kNoEntity;
+    EntityId rally = kNoEntity;
+    // AttackObject: what (`target` is the spot tapped on it): a gate's or a
+    // wall ring's index in the region, or an obstacle's.
+    Object object = Object::Gate;
+    int32_t objectIndex = -1;
+};
+
+// A soldier whose target went down chose what to do next (world_orders.cpp):
+// press on against another foe, or go back to his friends (or his march).
+// Derived from the simulation like RallyCall, for the voices.
+struct OrderDecision {
+    EntityId unit = kNoEntity;
+    PlayerId owner = 0;
+    bool pressOn = false;
+    EntityId target = kNoEntity;  // the new foe when pressing on
+    int32_t odds = 0;             // his chance against it, per mille, as it truly was
 };
 
 // Something that happened this tick, for rendering and audio. Not part of the
@@ -323,6 +367,17 @@ public:
     const std::vector<HeroDeath>& heroDeaths() const { return heroDeaths_; }
     // Rally calls made during the last step (world_morale.cpp).
     const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
+    // What soldiers whose targets fell chose during the last step.
+    const std::vector<OrderDecision>& orderDecisions() const { return decisions_; }
+    // Who can harm what (world_orders.cpp): engines and bombers batter walls,
+    // houses and trees; anyone can attack a gate (missile troops shoot it,
+    // the rest hack at it).
+    static bool canBatter(const UnitStats& s);
+    // A soldier's fighting power as he sees it (hit points x blows a second x
+    // prowess), and his perceived chance, per mille, against `foe` there
+    // with the friends and foes about (world_orders.cpp).
+    int64_t fightingPower(const Unit& u) const;
+    int32_t oddsAgainst(const Unit& u, const Unit& foe) const;
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -374,6 +429,23 @@ private:
 
     Unit* mutableUnit(EntityId id);
     void applyCommand(const Command& cmd);
+    // Orders (world_orders.cpp).
+    void applyOrder(Unit& u, const Command& cmd);
+    // Goes after his AttackUnit target: closes and fights it, or keeps to a
+    // good bowshot and shoots it.
+    void pursue(Unit& u);
+    // Marching with initiative: true when he is fighting this tick instead of walking on.
+    bool marchInitiative(Unit& u);
+    // His target is down: press on against another or go back (OrderDecision).
+    void targetDown(Unit& u, bool marching);
+    // The enemy within `reach` of him and within the leash of his route, or null.
+    Unit* crosser(Unit& u, Fixed reach);
+    // How far he is from the leg of his route he is on.
+    Fixed offRoute(const Unit& u, const Vec3& p) const;
+    // Walks along u.path; returns true at its end.
+    bool followPath(Unit& u, Fixed pace);
+    // A marching soldier struck by `by` remembers it (to answer him).
+    void noteAttack(Unit& target, const Unit& by);
     void updateUnit(Unit& unit);
     void updateFlight(Unit& unit);
     void updateAirborne(Unit& unit);
@@ -488,6 +560,7 @@ private:
     std::vector<ImpactEvent> impacts_;
     std::vector<HeroDeath> heroDeaths_;
     std::vector<RallyCall> rallyCalls_;
+    std::vector<OrderDecision> decisions_;
     // Soldiers killed this step (owner, where), for their friends' morale.
     std::vector<std::pair<PlayerId, Vec3>> deaths_;
     std::vector<Remain> remains_;

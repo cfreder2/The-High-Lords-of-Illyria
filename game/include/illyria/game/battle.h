@@ -25,12 +25,14 @@ namespace illyria::game {
 //               reach of one stray blast
 //   Box, Wedge, Column, Loose
 //   Encircle    a wide crescent around the point, everyone facing outward
-enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column, Staggered, ShortLine, Encircle };
-constexpr int kFormationCount = 8;
-// The picker's order, which is also the desktop keys 1-8 (0 is Scatter).
+//   Vee         a V, the point at the back and the arms reaching forward:
+//               whatever comes at the point is taken in both flanks
+enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column, Staggered, ShortLine, Encircle, Vee };
+constexpr int kFormationCount = 9;
+// The picker's order, which is also the desktop keys 1-9 (0 is Scatter).
 constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::ShortLine, Formation::Staggered,
                                                         Formation::Box,   Formation::Wedge,     Formation::Column,
-                                                        Formation::Loose, Formation::Encircle};
+                                                        Formation::Loose, Formation::Encircle,  Formation::Vee};
 const char* formationName(Formation f);
 // A place in a formation, relative to its centre (x to the right, y forward),
 // and the way to face there (forward is {0, 1}).
@@ -222,6 +224,61 @@ public:
     // it (Myth's gesture rotation).
     void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
+    // Attacks (game/src/battle_orders.cpp). Everyone selected after one
+    // soldier, of either side (a force attack on a friend): missile troops
+    // keep to a bowshot and shoot him, the rest run him down. When he falls
+    // each decides for himself: another foe, or back to his squad.
+    void orderAttackUnit(sim::EntityId target);
+    // Missile troops shoot at the spot; the rest march there, fighting
+    // whoever they meet.
+    void orderAttackGround(const V3& at);
+    // March there deaf to the enemy (Myth's force march): to break away, or
+    // to run past.
+    void orderForceMarch(const V3& to, const V3* facing = nullptr);
+    // What lies under the finger.
+    struct Pick {
+        enum class Kind : uint8_t { None, Own, Enemy, Gate, Wall, Obstacle, Ground };
+        Kind kind = Kind::None;
+        int index = -1;  // the unit (index), gate, wall ring or obstacle
+        int squad = -1;  // zoomed far out: the squad nearest the finger (index -1)
+        V3 at;           // where on the ground
+    };
+    Pick pickAt(const Camera& camera, float x, float y, float pixelScale) const;
+    // At a gate, a wall or a house or tree: who can, attacks it (missile
+    // troops shoot a gate and the rest go to hack it; only engines,
+    // grenadiers and wizards harm anything at a wall, house or tree).
+    void orderAttackObject(const Pick& pick);
+    // How the next tap is read: as usual, as an attack on whatever is tapped
+    // (the phone's attack button, Ctrl-click or A on the desktop), or as a
+    // force march (a long press on the attack button, Alt-click or M).
+    // Attack and force-march modes last for one order.
+    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch };
+    void setOrderMode(OrderMode m) { orderMode_ = m; }
+    OrderMode orderMode() const { return orderMode_; }
+    // Modifier keys held on the desktop: force (Ctrl/Cmd) and march (Alt).
+    void setKeys(bool force, bool march) {
+        forceKey_ = force;
+        marchKey_ = march;
+    }
+    // What a tap there would do, for the desktop cursor and the tests.
+    enum class Intent : uint8_t { None, Select, Attack, AttackObject, AttackGround, Cannot, Move, ForceMarch };
+    Intent intentAt(const Camera& camera, float x, float y, float pixelScale) const;
+    // The last order refused or explained ("Only engines ... can harm walls"), and when (tick).
+    const std::string& notice() const { return notice_; }
+    uint32_t noticeTick() const { return noticeTick_; }
+    // Where the player's soldiers are going and what they are after, for the
+    // ground markers: shown for those selected (or of a squad or group with
+    // anyone selected) and for a few seconds after any order, until there.
+    struct OrderMark {
+        enum class Kind : uint8_t { Slot, Target, Spot };
+        Kind kind = Kind::Slot;
+        sim::EntityId unit = sim::kNoEntity;  // who is going (Slot) or attacking
+        V3 pos;     // the place he will stand, or the target (interpolated), or the spot
+        V3 face;    // Slot: the way he will face there
+        V3 from;    // Target, Spot: the attacker, for the line
+        float size = 1;
+    };
+    std::vector<OrderMark> orderMarks() const;
     // Run! Everyone selected scatters a few metres outward from their centre.
     void scatter();
     // Every one of the player's squads at the nearest enemy: the foot charge,
@@ -333,8 +390,9 @@ private:
     void moveSquad(const Squad& squad, const V3& to);
     // Soldiers marching as one formation to `to`: facing `face` there when
     // given, else the way they march.
+    // `force`: a force march, deaf to the enemy on the way.
     void moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> units, Formation formation, const V3& to,
-                   const V3* face, const V3& fallbackFacing);
+                   const V3* face, const V3& fallbackFacing, bool force = false);
     std::vector<FormationSlot> placeFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
                                               const V3& facing) const;
     V3 centreOf(const std::vector<sim::EntityId>& units) const;
@@ -350,6 +408,11 @@ private:
     // rear; false when there is none (or they are already on its back).
     bool flankPoint(const Squad& riders, V3& out) const;
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
+    // The player just gave these soldiers an order (their markers show a while).
+    void markOrdered(const std::vector<sim::EntityId>& units);
+    void say(const std::string& notice);
+    // Of these, the one nearest p.
+    sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.
     void holdGates(sim::PlayerId holder);
     // The standing gate under the finger, or -1.
@@ -373,6 +436,11 @@ private:
     Formation selFormation_ = Formation::Line;
     std::array<Group, kGroupSlots> groups_;
     Drag drag_;
+    OrderMode orderMode_ = OrderMode::Normal;
+    bool forceKey_ = false, marchKey_ = false;
+    std::vector<uint32_t> orderTick_;  // by EntityId - 1: when the player last ordered him
+    std::string notice_;
+    uint32_t noticeTick_ = 0;
     bool paused_ = false;
     int speed_ = 1;
     double accumulator_ = 0;

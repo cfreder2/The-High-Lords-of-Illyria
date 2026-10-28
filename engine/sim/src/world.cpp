@@ -237,6 +237,7 @@ void World::step(std::span<const Command> commands) {
     impacts_.clear();
     heroDeaths_.clear();
     rallyCalls_.clear();
+    decisions_.clear();
     deaths_.clear();
     changedRemains_.clear();
 
@@ -264,7 +265,12 @@ void World::applyCommand(const Command& cmd) {
     Unit* u = mutableUnit(cmd.unit);
     // A broken unit heeds no orders until it rallies.
     if (u == nullptr || !u->alive() || u->owner != cmd.player || u->routed) return;
+    // Pursuits, force marches and attacks on things (world_orders.cpp).
+    applyOrder(*u, cmd);
     switch (cmd.type) {
+        case Command::Type::AttackUnit:
+        case Command::Type::AttackObject:
+            break;
         case Command::Type::Move:
             u->hasMoveTarget = true;
             u->moveTarget = cmd.target;
@@ -567,6 +573,33 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     return dist <= stepLen;
 }
 
+bool World::followPath(Unit& u, Fixed pace) {
+    if (u.path.empty()) return true;
+    const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
+    const bool last = u.pathIndex + 1 >= u.path.size();
+    const bool arrived = walk(u, waypoint, pace);
+    bool onward = false;
+    if (!last && !arrived && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
+        const Vec3& next = u.path[u.pathIndex + 1];
+        onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
+                 (next - u.pos).flat().lengthSq() < (next - waypoint).flat().lengthSq();
+        if (onward && nav_) {
+            // ... unless that cuts over slower ground than the way by the waypoint.
+            Fixed slowest = Fixed::fromInt(100), via = Fixed::fromInt(100);
+            nav_->travelTime(u.pos, next, u.stats.gait, &slowest);
+            nav_->travelTime(waypoint, next, u.stats.gait, &via);
+            onward = slowest >= via && nav_->clearLine(u.pos, next);
+        }
+    }
+    if (!last && (arrived || onward)) {
+        // The next leg of the route begins (the leash is measured from it).
+        u.routeFrom = waypoint;
+        ++u.pathIndex;
+        return false;
+    }
+    return last && arrived;
+}
+
 void World::updateUnit(Unit& u) {
     if (u.airborne) {
         updateAirborne(u);
@@ -597,8 +630,16 @@ void World::updateUnit(Unit& u) {
     if (const int gate = gateToHack(u); gate >= 0) {
         // At a shut gate on the way in: hack at the timbers.
         hackGate(u, gate);
+    } else if (u.targetUnit != kNoEntity) {
+        // Ordered at one soldier: after him, wherever he goes.
+        pursue(u);
     } else if (u.hasMoveTarget) {
-        // Orders take priority over fighting: a moving unit ignores enemies.
+        // Marching with initiative: he answers whoever strikes him or
+        // crosses his path, on a leash from his route (world_orders.cpp).
+        if (marchInitiative(u)) {
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+            return;
+        }
         const Fixed remaining = (u.moveTarget - u.pos).flat().length();
         if (flier && remaining >= u.stats.minFlight && u.stamina * 2 >= u.stats.staminaTicks) {
             u.flight = Unit::Flight::TakingOff;
@@ -612,27 +653,9 @@ void World::updateUnit(Unit& u) {
             return;
         }
         if (u.path.empty()) u.path.push_back(u.moveTarget);
-        const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
-        const bool last = u.pathIndex + 1 >= u.path.size();
         // A squad marches at its slowest member's pace, keeping its formation.
         const Fixed pace = u.marchSpeed > Fixed::zero() && u.marchSpeed < u.stats.moveSpeed ? u.marchSpeed / u.stats.moveSpeed : Fixed::one();
-        const bool arrived = walk(u, waypoint, pace);
-        bool onward = false;
-        if (!last && !arrived && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
-            const Vec3& next = u.path[u.pathIndex + 1];
-            onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
-                     (next - u.pos).flat().lengthSq() < (next - waypoint).flat().lengthSq();
-            if (onward && nav_) {
-                // ... unless that cuts over slower ground than the way by the waypoint.
-                Fixed slowest = Fixed::fromInt(100), via = Fixed::fromInt(100);
-                nav_->travelTime(u.pos, next, u.stats.gait, &slowest);
-                nav_->travelTime(waypoint, next, u.stats.gait, &via);
-                onward = slowest >= via && nav_->clearLine(u.pos, next);
-            }
-        }
-        if (!last && (arrived || onward)) {
-            ++u.pathIndex;
-        } else if (last && arrived) {
+        if (followPath(u, pace)) {
             u.hasMoveTarget = false;
             u.path.clear();
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
@@ -1002,10 +1025,13 @@ bool World::tryHeal(Unit& u) {
 
 bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
     if (!target.alive()) return false;
+    if (attacker != nullptr) noteAttack(target, *attacker);
     target.hp = std::max(target.hp - defendedDamage(target, amount), 0);
     if (target.alive()) return false;
     target.hasMoveTarget = false;
     target.hasAttackTarget = false;
+    target.targetUnit = kNoEntity;
+    target.engageFoe = kNoEntity;
     deaths_.push_back({target.owner, target.pos});
     if (target.stats.type == static_cast<uint8_t>(UnitType::Hero))
         heroDeaths_.push_back({target.id, target.owner, target.pos, attacker != nullptr ? attacker->id : kNoEntity});
@@ -1504,6 +1530,22 @@ uint64_t World::checksum() const {
         for (const Vec3& w : u.path) hashVec(h, w);
         h.addU64(u.pathIndex);
         h.addI64(u.attackGate);
+        // Orders (world_orders.cpp): only once given, so battles without them hash as before.
+        if (u.targetUnit != kNoEntity || u.rally != kNoEntity || u.forceMarch || u.engageFoe != kNoEntity ||
+            u.graceTicks != 0 || u.lastAttacker != kNoEntity) {
+            h.addU64(u.targetUnit);
+            h.addU64(u.targetChosen);
+            hashVec(h, u.targetSeen);
+            h.addU64(u.rally);
+            hashVec(h, u.rallyOffset);
+            h.addU64(u.forceMarch);
+            h.addU64(u.engageFoe);
+            h.addI64(u.graceTicks);
+            h.addU64(u.lastAttacker);
+            h.addU64(u.attackedTick);
+        }
+        // Where his leg of the route began, for the leash.
+        if (u.hasMoveTarget) hashVec(h, u.routeFrom);
     }
     h.addU64(gates_.size());
     for (const GateState& g : gates_) {
