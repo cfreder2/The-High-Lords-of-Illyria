@@ -31,7 +31,7 @@ def _noise(nt, scale, detail=4.0, coord='Generated', loc=(-900, 0)):
 
 def make(name, color, rough=0.6, metal=0.0, team=False, sheen=0.0, sss=0.0, sss_radius=(0.05, 0.02, 0.01),
          var=0.0, var_scale=40.0, bump=0.0, bump_scale=120.0, bump_coord='Generated', emission=None,
-         coat=0.0, aniso=0.0, weave=0.0, spec=0.5, streaks=0.0, rings=0.0):
+         coat=0.0, aniso=0.0, weave=0.0, spec=0.5, streaks=0.0, rings=0.0, rows=0.0, rows_depth=0.4):
     """A Principled material. var: colour variation by noise; bump: surface
     relief; weave: a cloth weave on the UVs; streaks: hair or feather barbs
     along the UVs' v direction."""
@@ -58,7 +58,7 @@ def make(name, color, rough=0.6, metal=0.0, team=False, sheen=0.0, sss=0.0, sss_
     if aniso:
         bsdf.inputs['Anisotropic'].default_value = aniso
     col = (*color, 1.0)
-    if var or streaks or weave:
+    if var or streaks or weave or rows:
         ramp_in = None
         mix = _node(nt, 'ShaderNodeMix', (-300, 200))
         mix.data_type = 'RGBA'
@@ -122,6 +122,28 @@ def make(name, color, rough=0.6, metal=0.0, team=False, sheen=0.0, sss=0.0, sss_
                 nt.links.new(fac, mm2.inputs[0])
                 nt.links.new(mr3.outputs['Result'], mm2.inputs[1])
                 fac = mm2.outputs['Value']
+        if rows:
+            # Rows of mail (or scales) dark and light round the body: what reads
+            # as mail at a sprite's size, where single rings are below a pixel.
+            tc = nt.nodes.get('coords') or _node(nt, 'ShaderNodeTexCoord', (-1200, 0))
+            tc.name = 'coords'
+            rw = _node(nt, 'ShaderNodeTexWave', (-900, 1200), Scale=rows, Distortion=0.4, Detail=1.0)
+            rw.wave_type = 'BANDS'
+            rw.bands_direction = 'Z'
+            rw.wave_profile = 'SAW'
+            nt.links.new(tc.outputs['Generated'], rw.inputs['Vector'])
+            mr4 = _node(nt, 'ShaderNodeMapRange', (-600, 1200))
+            mr4.inputs['To Min'].default_value = 1.0 - rows_depth
+            mr4.inputs['To Max'].default_value = 1.0 + rows_depth * 0.3
+            nt.links.new(rw.outputs['Fac'], mr4.inputs['Value'])
+            if fac is None:
+                fac = mr4.outputs['Result']
+            else:
+                mm3 = _node(nt, 'ShaderNodeMath', (-450, 1200))
+                mm3.operation = 'MULTIPLY'
+                nt.links.new(fac, mm3.inputs[0])
+                nt.links.new(mr4.outputs['Result'], mm3.inputs[1])
+                fac = mm3.outputs['Value']
         comb = _node(nt, 'ShaderNodeCombineColor', (-450, 200))
         for k in range(3):
             nt.links.new(fac, comb.inputs[k])
@@ -210,7 +232,8 @@ def library():
     L['steel'] = make('steel', (0.78, 0.78, 0.8), rough=0.22, metal=1.0, var=0.08, var_scale=6, bump=0.03, bump_scale=60)
     L['steel_dark'] = make('steel_dark', (0.5, 0.5, 0.52), rough=0.32, metal=1.0, var=0.15, var_scale=8, bump=0.06, bump_scale=60)
     L['blade'] = make('blade', (0.88, 0.89, 0.92), rough=0.34, metal=0.65, aniso=0.3, coat=0.3)
-    L['mail'] = make('mail', (0.4, 0.4, 0.42), rough=0.5, metal=1.0, var=0.5, var_scale=140, rings=75)
+    L['mail'] = make('mail', (0.46, 0.46, 0.48), rough=0.5, metal=1.0, var=0.5, var_scale=140, rings=75, rows=9, rows_depth=0.5)
+    L['mail_rust'] = make('mail_rust', (0.34, 0.27, 0.22), rough=0.65, metal=0.8, var=0.5, var_scale=60, rings=75, rows=9, rows_depth=0.5)
     L['gold'] = make('gold', (0.9, 0.66, 0.3), rough=0.25, metal=1.0, var=0.05)
     L['halo'] = make('halo', (1.0, 0.85, 0.5), rough=0.3, metal=0.5, emission=((1.0, 0.75, 0.3), 1.3))
     L['feather'] = make('feather', (0.86, 0.84, 0.79), rough=0.55, sheen=0.6, streaks=90, var=0.06, var_scale=4, sss=0.08, sss_radius=(0.02, 0.02, 0.02))
@@ -221,4 +244,61 @@ def library():
     L['mane'] = make('mane', (0.03, 0.025, 0.02), rough=0.38, streaks=80, aniso=0.6, var=0.25, var_scale=10, sheen=0.3)
     L['hoof'] = make('hoof', (0.07, 0.06, 0.05), rough=0.35, coat=0.3)
     L['horse_eye'] = make('horse_eye', (0.02, 0.015, 0.01), rough=0.05, coat=1.0)
+    # The rest of the roster.
+    L['wood_pale'] = make('wood_pale', (0.5, 0.36, 0.2), rough=0.6, streaks=40, var=0.15)
+    L['wood_dark'] = make('wood_dark', (0.17, 0.1, 0.05), rough=0.55, streaks=40, var=0.2)
+    L['wood_rough'] = make('wood_rough', (0.28, 0.19, 0.11), rough=0.8, streaks=25, var=0.3, var_scale=8, bump=0.3, bump_scale=40)
+    L['rope'] = make('rope', (0.45, 0.37, 0.24), rough=0.9, streaks=80, var=0.1)
+    L['string'] = make('string', (0.8, 0.78, 0.7), rough=0.6)
+    L['fire'] = make('fire', (0.9, 0.35, 0.05), rough=0.5, emission=((1.0, 0.38, 0.06), 1.6))
+    L['glow'] = make('glow', (0.7, 0.85, 1.0), rough=0.2, emission=((0.55, 0.8, 1.0), 5.0))
+    L['eye_glow'] = make('eye_glow', (0.6, 1.0, 0.5), rough=0.3, emission=((0.5, 1.0, 0.35), 8.0))
+    L['eye_red'] = make('eye_red', (1.0, 0.4, 0.1), rough=0.3, emission=((1.0, 0.35, 0.05), 6.0))
+    L['ruby'] = make('ruby', (0.6, 0.05, 0.08), rough=0.1, coat=1.0)
+    L['feather_red'] = make('feather_red', (0.55, 0.12, 0.08), rough=0.6, sheen=0.4)
+    L['horn'] = make('horn', (0.55, 0.48, 0.36), rough=0.4, var=0.3, var_scale=30, coat=0.3, streaks=30)
+    L['horn_dark'] = make('horn_dark', (0.09, 0.07, 0.06), rough=0.35, var=0.3, var_scale=30, coat=0.4)
+    L['ivory'] = make('ivory', (0.85, 0.8, 0.66), rough=0.3, coat=0.4, var=0.08)
+    L['bone'] = make('bone', (0.74, 0.69, 0.56), rough=0.6, var=0.25, var_scale=20, bump=0.25, bump_scale=90)
+    L['iron'] = make('iron', (0.3, 0.3, 0.32), rough=0.45, metal=1.0, var=0.3, var_scale=10, bump=0.1, bump_scale=60)
+    L['rust'] = make('rust', (0.33, 0.2, 0.12), rough=0.7, metal=0.5, var=0.4, var_scale=20, bump=0.2, bump_scale=80)
+    L['bronze'] = make('bronze', (0.62, 0.4, 0.2), rough=0.3, metal=1.0, var=0.1)
+    L['gambeson'] = make('gambeson', (0.6, 0.53, 0.4), rough=0.9, sheen=0.3, var=0.1, rows=14, rows_depth=0.35)
+    L['cloak_green'] = make('cloak_green', (0.15, 0.24, 0.12), rough=0.85, sheen=0.4, var=0.1, weave=300)
+    L['robe_brown'] = make('robe_brown', (0.33, 0.24, 0.14), rough=0.9, sheen=0.4, var=0.12, weave=300)
+    L['wizard_hat'] = make('wizard_hat', (0.08, 0.08, 0.16), rough=0.8, sheen=0.5, var=0.1)
+    L['tartan'] = make('tartan', (0.25, 0.3, 0.16), rough=0.85, sheen=0.3, weave=60, var=0.2)
+    L['fur'] = make('fur', (0.36, 0.27, 0.17), rough=0.85, sheen=0.6, streaks=50, var=0.3, var_scale=12, bump=0.25, bump_scale=150)
+    L['fur_grey'] = make('fur_grey', (0.38, 0.37, 0.35), rough=0.85, sheen=0.6, streaks=50, var=0.3, var_scale=12, bump=0.25, bump_scale=150)
+    L['fur_dark'] = make('fur_dark', (0.12, 0.1, 0.09), rough=0.8, sheen=0.6, streaks=50, var=0.25, var_scale=12, bump=0.25, bump_scale=150)
+    L['fur_light'] = make('fur_light', (0.7, 0.68, 0.62), rough=0.85, sheen=0.6, streaks=50, var=0.15, var_scale=12, bump=0.2, bump_scale=150)
+    L['hair_red'] = make('hair_red', (0.45, 0.17, 0.05), rough=0.4, streaks=60, var=0.2, aniso=0.6)
+    L['hair_white'] = make('hair_white', (0.8, 0.79, 0.76), rough=0.45, streaks=60, var=0.1, aniso=0.5, sheen=0.4)
+    L['hair_black'] = make('hair_black', (0.04, 0.035, 0.03), rough=0.4, streaks=60, var=0.2, aniso=0.6)
+    L['skin_goblin'] = make('skin_goblin', (0.3, 0.4, 0.15), rough=0.55, sss=0.15, var=0.2, var_scale=25, bump=0.15, bump_scale=200)
+    L['skin_devil'] = make('skin_devil', (0.5, 0.08, 0.05), rough=0.45, sss=0.2, var=0.15, var_scale=25, bump=0.1, bump_scale=200)
+    L['skin_demon'] = make('skin_demon', (0.24, 0.09, 0.2), rough=0.5, sss=0.15, var=0.2, var_scale=20, bump=0.2, bump_scale=150)
+    L['skin_giant'] = make('skin_giant', (0.62, 0.45, 0.33), rough=0.6, sss=0.2, var=0.15, var_scale=10, bump=0.12, bump_scale=120)
+    L['skin_woad'] = make('skin_woad', (0.6, 0.45, 0.36), rough=0.55, sss=0.25, var=0.12, var_scale=25)
+    L['hide_bull'] = make('hide_bull', (0.22, 0.13, 0.07), rough=0.7, sheen=0.4, var=0.2, var_scale=15, bump=0.12, bump_scale=200)
+    L['hide_elephant'] = make('hide_elephant', (0.36, 0.34, 0.33), rough=0.85, var=0.18, var_scale=6, bump=0.6, bump_scale=60)
+    L['scale_green'] = make('scale_green', (0.17, 0.26, 0.08), rough=0.4, var=0.3, var_scale=5, bump=0.5, bump_scale=90, coat=0.25, rows=12, rows_depth=0.3)
+    L['scale_belly'] = make('scale_belly', (0.55, 0.48, 0.25), rough=0.45, var=0.15, rows=8, rows_depth=0.4)
+    L['membrane'] = make('membrane', (0.3, 0.13, 0.08), rough=0.55, sss=0.3, sss_radius=(0.1, 0.03, 0.02), var=0.25, var_scale=6)
+    L['membrane_dark'] = make('membrane_dark', (0.14, 0.05, 0.1), rough=0.5, sss=0.2, sss_radius=(0.08, 0.02, 0.05), var=0.25, var_scale=6)
+    L['chitin'] = make('chitin', (0.07, 0.06, 0.06), rough=0.25, coat=0.6, var=0.25, var_scale=10, bump=0.2, bump_scale=60)
+    L['chitin_hair'] = make('chitin_hair', (0.16, 0.12, 0.09), rough=0.7, sheen=0.5, streaks=60, var=0.3)
+    L['coat_white'] = make('coat_white', (0.8, 0.79, 0.76), rough=0.5, sheen=0.3, var=0.06, var_scale=5, bump=0.03, bump_scale=400)
+    L['coat_grey'] = make('coat_grey', (0.3, 0.29, 0.28), rough=0.45, sheen=0.2, var=0.25, var_scale=9, bump=0.04, bump_scale=400)
+    L['mane_white'] = make('mane_white', (0.85, 0.83, 0.78), rough=0.4, streaks=80, aniso=0.5, var=0.1, sheen=0.4)
+    L['mane_gold'] = make('mane_gold', (0.85, 0.65, 0.3), rough=0.35, streaks=80, aniso=0.6, var=0.15, sheen=0.4)
+    L['tawny'] = make('tawny', (0.55, 0.38, 0.17), rough=0.75, sheen=0.4, var=0.15, var_scale=8, bump=0.08, bump_scale=300)
+    L['feather_brown'] = make('feather_brown', (0.4, 0.25, 0.12), rough=0.55, sheen=0.6, streaks=90, var=0.15, var_scale=4)
+    L['beak'] = make('beak', (0.85, 0.62, 0.15), rough=0.3, coat=0.5)
+    L['talon'] = make('talon', (0.08, 0.07, 0.06), rough=0.3, coat=0.5)
+    L['charge'] = make('charge', (0.45, 0.1, 0.06), rough=0.7, var=0.2)
+    L['canvas'] = make('canvas', (0.7, 0.64, 0.5), rough=0.9, sheen=0.3, weave=200, var=0.1)
+    L['mouth'] = make('mouth', (0.3, 0.05, 0.05), rough=0.4)
+    L['teeth'] = make('teeth', (0.88, 0.85, 0.75), rough=0.3)
+    L['stone'] = make('stone', (0.42, 0.4, 0.37), rough=0.9, var=0.3, var_scale=10, bump=0.4, bump_scale=40)
     return L

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "illyria/game/battle.h"
@@ -147,9 +148,14 @@ public:
     // A type's sheet read back (baked first if need be), for tests and tools:
     // RGBA bottom row first, and the cells as uCellTable holds them.
     bool readSheet(int type, std::vector<uint8_t>& rgba, int& width, int& height, std::vector<float>& table);
+    // The sheets held now, for tests: "Name=pre" (tools/blender) or "Name=baked", comma separated.
+    std::string sheetReport() const;
+    // One type's sheet: 1 pre-rendered, 0 baked, -1 none yet.
+    int sheetSource(int type) const;
 private:
     std::function<void(int)> sheetRequest_;
     std::set<int> sheetsRequested_;
+    double prerenderedTexels_ = 0;  // of the loaded sheets, against kSheetBudget
     void uploadSheet(Sheet& sh, const uint8_t* rgba, const float* table);
     void bakeMissing(const Battle& battle);
     // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.

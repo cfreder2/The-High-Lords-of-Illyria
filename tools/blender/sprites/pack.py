@@ -115,9 +115,9 @@ def pack(d, name, number, meta):
     for c in cells:
         atlas[c['ytop']:c['ytop'] + c['h'], c['x']:c['x'] + c['w']] = to8(c['img'])
     Image.fromarray(atlas, 'RGBA').save(os.path.join(d, name + '.png'), optimize=True)
-    # What the game downloads: WebP, the colour lossy (quality 90) but the
+    # What the game downloads: WebP, the colour lossy (quality 82) but the
     # alpha codes lossless (exact), about a third of the PNG.
-    Image.fromarray(atlas, 'RGBA').save(os.path.join(d, name + '.webp'), quality=90, alpha_quality=100, method=6, exact=True)
+    Image.fromarray(atlas, 'RGBA').save(os.path.join(d, name + '.webp'), quality=82, alpha_quality=100, method=6, exact=True)
     table = [[c['x'], H - (c['ytop'] + c['h']), c['w'], c['h'], round(c['u0'], 5), round(c['v0'], 5), round(c['w'] / ppm, 5), round(c['h'] / ppm, 5)] for c in cells]
     with open(os.path.join(d, name + '.json'), 'w') as fh:
         json.dump({'type': number, 'name': name, 'ppm': ppm, 'size': [W, H], 'cells': table}, fh, separators=(',', ':'))

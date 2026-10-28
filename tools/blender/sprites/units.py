@@ -8,7 +8,7 @@ import math
 
 from mathutils import Vector
 
-from . import geo, horse, human, mats, outfit, rig, wings
+from . import gear, geo, horse, human, mats, outfit, rig, wings
 from .geo import smooth
 from .human import X, Y, Z, Stance, keyed
 from .rig import Pose
@@ -101,6 +101,7 @@ def heavy_infantry():
     head = geo.Part('head')
     human.head(head, B, 'skin')
     outfit.great_helm(head, B)
+    gear.plume(head, B, 'team', back=0.32, rise=0.2, width=0.055, at=human.head_center(B) + Vector((0, 0, human.head_radii(B)[2] * 1.15)))
     mail = geo.Part('hauberk')
     outfit.coif(mail, B)
     outfit.skirt(mail, B, 'mail', 1.0, 0.56, (0.105, 0.17), (0.15, 0.21), fold_depth=0.02, seed=3)
@@ -108,18 +109,18 @@ def heavy_infantry():
     human.torso(coat, B, 'team', grow=0.024, z_from=0.93, z_to=1.49)
     outfit.skirt(coat, B, 'team', 1.0, 0.44, (0.125, 0.19), (0.17, 0.24), fold_depth=0.07, seed=5, a=(-1.2, 1.2), n=22)
     outfit.skirt(coat, B, 'team', 1.0, 0.44, (0.125, 0.19), (0.17, 0.24), fold_depth=0.07, seed=7, a=(math.pi - 1.2, math.pi + 1.2), n=22)
-    gear = geo.Part('gear')
-    outfit.belt(gear, B, 'leather_dark', 1.02, 0.172, 0.118, buckle='gold')
+    kit = geo.Part('kit')
+    outfit.belt(kit, B, 'leather_dark', 1.02, 0.172, 0.118, buckle='gold')
     for side in (1, -1):
         sf = 'L' if side > 0 else 'R'
         # Poleyns and couters: plates on the knees and elbows.
-        gear.ellipsoid(B.P(0.05, 0.1 * side, 0.53), (0.032 * B.s, 0.05 * B.s, 0.055 * B.s), 'steel', B.w('shin.' + sf, 0.5, 'thigh.' + sf, 0.5), seg=12, rings=8)
-        gear.ellipsoid(B.P(-0.035, 0.235 * side, 1.15), (0.04 * B.s, 0.042 * B.s, 0.045 * B.s), 'steel', B.w('upperarm.' + sf, 0.5, 'forearm.' + sf, 0.5), seg=12, rings=8)
+        kit.ellipsoid(B.P(0.05, 0.1 * side, 0.53), (0.032 * B.s, 0.05 * B.s, 0.055 * B.s), 'steel', B.w('shin.' + sf, 0.5, 'thigh.' + sf, 0.5), seg=12, rings=8)
+        kit.ellipsoid(B.P(-0.035, 0.235 * side, 1.15), (0.04 * B.s, 0.042 * B.s, 0.045 * B.s), 'steel', B.w('upperarm.' + sf, 0.5, 'forearm.' + sf, 0.5), seg=12, rings=8)
     shield = geo.Part('shield')
     outfit.heater_shield(shield, B, height=0.82, width=0.6)
     blade = geo.Part('sword')
     outfit.sword(blade, B, side=-1, blade=0.8)
-    _parts(col, arm, L, [(body, 2, 0), (hands, 2, 0), (head, 2, 0), (mail, 2, 0.006), (coat, 2, 0.008), (gear, 1, 0), (shield, 1, 0), (blade, 0, 0)])
+    _parts(col, arm, L, [(body, 2, 0), (hands, 2, 0), (head, 2, 0), (mail, 2, 0.006), (coat, 2, 0.008), (kit, 1, 0), (shield, 1, 0), (blade, 0, 0)])
 
     guard = Stance()
     guard.lean = 4
@@ -242,8 +243,19 @@ def archons():
             # Wings raised and half open, as angels are drawn.
             wings_pose(p, 0.3 - 0.03 * b, 20 + 3 * b, 40, 25, ripple=1.5 * b)
             return p
+        if anim == 'walk' and i < 4:
+            # On foot (frames 0-3): a stately walk, the wings half folded and raised.
+            st = base.copy()
+            walk_legs(st, i / 4, swing=20, knee=40)
+            a, _ = _cycle(i / 4)
+            st.lean = 4
+            st.shoulder = [st.shoulder[0] - 6 * a, st.shoulder[1] + 5 * a]
+            p = human.to_pose(st, B)
+            wings_pose(p, 0.32, 20 + 3 * a, 40, 25, ripple=1.5 * a)
+            return p
         if anim == 'walk':
-            # Flight: a full wingbeat, the body leaning in, legs trailing.
+            # Flight (frames 4-7): a full wingbeat, the body leaning in, legs trailing.
+            t = (i - 4) / 4
             st = base.copy()
             a, c = _cycle(t)
             st.lean = 14 + 3 * c
@@ -324,6 +336,7 @@ def light_cavalry():
     head = geo.Part('rider_head')
     human.head(head, B, 'skin')
     outfit.nasal_helm(head, B)
+    gear.plume(head, B, 'team', back=0.3)
     mail = geo.Part('rider_mail')
     outfit.coif(mail, B)
     coat = geo.Part('rider_coat')

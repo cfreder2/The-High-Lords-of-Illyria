@@ -1936,6 +1936,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             } else if (battle.unitMoving(i) || u.inAir()) {
                 const float cycle = u.inAir() ? gameSeconds * 1.6f : walked_[i] / figures::stride(type);
                 frame = figures::kFirstFrame[1] + static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[1]) % figures::kFrames[1];
+                // A pre-rendered flier's walk holds two cycles: frames 0-3 on foot, 4-7 a wingbeat.
+                const auto sheet = sheets_.find(static_cast<int>(type));
+                if (u.stats.flyAltitude > sim::Fixed::zero() && sheet != sheets_.end() && sheet->second.prerendered) {
+                    const int half = figures::kFrames[1] / 2;
+                    const float c = u.inAir() ? gameSeconds * 1.1f : walked_[i] / figures::stride(type);
+                    frame = figures::kFirstFrame[1] + (u.inAir() ? half : 0) + static_cast<int>((c - std::floor(c)) * half) % half;
+                }
             } else {
                 const float cycle = gameSeconds * 0.45f + static_cast<float>(u.id % 13) * 0.37f;
                 frame = static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[0]) % figures::kFrames[0];
