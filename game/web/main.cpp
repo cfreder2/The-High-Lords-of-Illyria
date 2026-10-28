@@ -52,6 +52,7 @@ struct App {
     double minPixelRatio = 1.0, ratio = 1.5;
     double slowSince = -1, fastSince = -1;
     double fps = 60;
+    double drawMs = 0;  // CPU time preparing and issuing a frame's drawing (smoothed)
     std::string hud, labels;
     bool shift = false;  // held on the desktop
     // The campaign, when playing it: the war on the continent map.
@@ -405,7 +406,9 @@ void frame() {
             play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority,
                            static_cast<int>(c.speaker), static_cast<int>(c.tick));
     }
+    const double drawStart = emscripten_get_now();
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
+    app->drawMs = app->drawMs * 0.9 + (emscripten_get_now() - drawStart) * 0.1;
 }
 
 }  // namespace
@@ -413,6 +416,15 @@ void frame() {
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE const char* illyria_version() { return ILLYRIA_VERSION; }
+
+// The frame rate and where a frame's time goes, for the title panel (battle and campaign alike).
+EMSCRIPTEN_KEEPALIVE const char* illyria_perf() {
+    static char buf[96];
+    if (!app) return "";
+    std::snprintf(buf, sizeof buf, "%.0f fps \u00b7 sim %.1f \u00b7 draw %.1f ms \u00b7 %.2gx", app->fps, app->battle ? app->battle->stepMs() : 0.0,
+                  app->drawMs, app->ratio);
+    return buf;
+}
 
 // Test hook: the last `n` voice cues the battle made (JSON), with how many
 // were made and held back in all.

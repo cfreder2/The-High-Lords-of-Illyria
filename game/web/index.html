@@ -164,6 +164,10 @@
   #voyage button { padding: 6px 12px; }
   #news { position: fixed; left: calc(8px + var(--safe-l)); top: calc(64px + var(--safe-t)); max-width: 320px; font-size: 12px; padding: 6px 10px; }
   #news div { margin: 2px 0; }
+  #news { padding-right: 34px; }
+  /* Every pop-up closes with its ✕, a tap on the map, or Esc. */
+  .popup > .x { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; min-height: 0; padding: 0; font-size: 14px; line-height: 1;
+                border-radius: 8px; z-index: 1; }
   #battlePrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
   #battlePrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
   #battlePrompt p { margin: 0 0 12px; font-size: 13px; }
@@ -271,7 +275,8 @@
   </div>
 </div>
 
-<div id="gfx" class="panel hidden">
+<div id="gfx" class="panel hidden popup">
+  <button class="x" aria-label="Close">✕</button>
   <h3>Graphics</h3>
   <div class="presets">
     <button data-preset="0">Low</button><button data-preset="1">Medium</button><button data-preset="2">High</button>
@@ -298,7 +303,7 @@
 </div>
 
 <div id="banners"></div>
-<div id="news" class="panel camp-only hidden"></div>
+<div id="news" class="panel camp-only hidden popup"><button class="x" aria-label="Close">✕</button><div id="newsList"></div></div>
 <div id="cityPanel" class="panel hidden"></div>
 <div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
 <div id="levelPrompt" class="panel hidden" role="dialog" aria-labelledby="levelTitle">
@@ -326,7 +331,7 @@
 <div id="bottom">
   <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button></div>
   <div id="selInfo" class="hidden battle-only"></div>
-  <div id="picker" class="panel hidden battle-only" role="menu" aria-label="Formations"></div>
+  <div id="picker" class="panel hidden battle-only popup" role="menu" aria-label="Formations"></div>
   <div id="actions" class="hidden battle-only">
     <button id="formation" aria-label="Choose a formation" aria-haspopup="menu">Line</button>
     <button id="scatter" aria-label="Scatter: everyone selected runs outward">Scatter</button>
@@ -404,6 +409,7 @@
       campDisband: Module.cwrap("illyria_campaign_disband", null, ["number"]),
       campLeave: Module.cwrap("illyria_campaign_leave", null, []),
       campState: Module.cwrap("illyria_campaign_state", "string", []),
+      perf: Module.cwrap("illyria_perf", "string", []),
       campProduce: Module.cwrap("illyria_campaign_produce", null, ["number", "number"]),
       campCloseCity: Module.cwrap("illyria_campaign_close_city", null, []),
       campPause: Module.cwrap("illyria_campaign_pause", null, []),
@@ -458,6 +464,16 @@
     document.querySelector("#gfx [data-res]").checked = gfx.fullRes;
   }
   $("gfxButton").onclick = () => $("gfx").classList.toggle("hidden");
+  // Pop-ups and the ☰ menu: closed by their ✕, a tap on the map, or Esc.
+  function closePopups() {
+    document.body.classList.remove("menu-open");
+    $("gfx").classList.add("hidden");
+    $("picker").classList.add("hidden");
+  }
+  $("gfx").querySelector(".x").onclick = () => $("gfx").classList.add("hidden");
+  $("news").querySelector(".x").onclick = () => { newsDismissed = true; $("news").classList.add("hidden"); };
+  canvas.addEventListener("pointerdown", closePopups);
+  document.addEventListener("keydown", (e) => { if (e.code === "Escape") closePopups(); });
   for (const b of document.querySelectorAll("#gfx [data-preset]")) {
     b.onclick = () => { const l = +b.dataset.preset; gfx = { preset: l, features: api.preset(l), fullRes: l === 2 }; applyGraphics(); };
   }
@@ -693,6 +709,7 @@
     return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   }
   // The campaign HUD: banners follow the map every frame; panels a few times a second.
+  let newsShown = "", newsDismissed = false;
   let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "", campRareOpen = false;
   const campRanks = ["Recruit", "Regular", "Veteran", "Elite"];
   const campFrom = { start: "realm", levy: "levy", ruins: "ruins", temples: "temples", heroes: "heroes" };
@@ -733,8 +750,9 @@
     $("pause").textContent = campState.paused ? "Resume" : "Pause";
     $("speed").textContent = `${campState.speed}×`;
     const news = $("news");
-    news.classList.toggle("hidden", campState.news.length === 0);
-    news.innerHTML = campState.news.map((n) => `<div>${n}</div>`).join("");
+    const newsKey = campState.news.join("|");
+    if (newsKey !== newsShown) { newsShown = newsKey; newsDismissed = false; $("newsList").innerHTML = campState.news.map((n) => `<div>${n}</div>`).join(""); }
+    news.classList.toggle("hidden", campState.news.length === 0 || newsDismissed);
     // The selected stack's armies, as cards.
     const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}${a.blessings}${a.artifacts}${a.kills}`).join("|");
     if (armiesKey !== campArmiesKey) {
@@ -878,10 +896,10 @@
     return "melee";
   }
   function updateHud() {
+    if (api) $("perf").textContent = api.perf();
     if (!api || campaign) return;
     const s = JSON.parse(api.hud());
     selected = s.selected;
-    $("perf").textContent = `${s.fps} fps · sim ${s.stepMs.toFixed(2)} ms`;
     $("pause").textContent = s.paused ? "Resume" : "Pause";
     $("speed").textContent = `${s.speed}×`;
     const enemies = s.squads.filter((q) => q.owner === 1);
