@@ -67,6 +67,29 @@ void shield(UnitStats& s, Fixed blockChance) { s.shield.blockChance = blockChanc
 
 }  // namespace
 
+// Fliers walk like men.
+Gait gaitOf(UnitType type) {
+    using T = UnitType;
+    switch (type) {
+        case T::LightCavalry:
+        case T::HeavyCavalry:
+        case T::Unicorns: return Gait::Horse;
+        case T::WolfRiders: return Gait::Wolf;
+        case T::Dwarves:
+        case T::DwarfGrenadier: return Gait::Dwarf;
+        case T::Archers:
+        case T::Spiders: return Gait::Woodland;
+        case T::Giants:
+        case T::Minotaurs:
+        case T::Elephants:
+        case T::Devils:
+        case T::Demons: return Gait::Giant;
+        case T::Undead: return Gait::Undead;
+        case T::Catapult: return Gait::Wheeled;
+        default: return Gait::Foot;
+    }
+}
+
 UnitStats unitStats(UnitType type) {
     using T = UnitType;
     UnitStats s;
@@ -250,6 +273,7 @@ UnitStats unitStats(UnitType type) {
         case T::Count:
             break;
     }
+    s.gait = gaitOf(type);
     return s;
 }
 

@@ -172,7 +172,7 @@ void World::damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir
     }
 }
 
-bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out) {
+bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) {
     // Through the shut gate of the ring between here and there: up to its face,
     // then on against the doors (which those who can will hack at).
     if (!config_.region || !nav_) return false;
@@ -193,7 +193,7 @@ bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out
         const Vec3 c = (g.a + g.b) * Fixed::fromRatio(1, 2);
         const Vec3 front = c + g.out * (outside ? kGateApproach : -kGateApproach);
         std::vector<Vec3> route;
-        if (!nav_->findPath(from, front, route)) continue;
+        if (!nav_->findPath(from, front, route, gait)) continue;
         out = std::move(route);
         out.push_back(c);
         out.push_back(to);

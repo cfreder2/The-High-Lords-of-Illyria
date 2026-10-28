@@ -6,9 +6,11 @@
 #include <span>
 #include <unordered_map>
 #include <utility>
+#include <tuple>
 #include <vector>
 
 #include "illyria/sim/fixed.h"
+#include "illyria/sim/gait.h"
 #include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/rng.h"
@@ -97,6 +99,7 @@ struct UnitStats {
     Shield shield;
     Healing healing;
     TerrainBonus terrain;
+    Gait gait = Gait::Foot;  // speed over each kind of ground (gait.h)
     // Fliers walk by default. They take off only for long moves, after a
     // ground run, cruise over the terrain, tire, and must land to recover.
     // They never fight from the air.
@@ -189,6 +192,10 @@ struct Command {
     Type type = Type::Stop;
     Vec3 target;
     Fixed speed = {};  // Move: marching pace (m/s) so a squad keeps formation; 0 = the unit's own
+    // Move: one of a squad marching from its centre `marchFrom` to `marchTo`
+    // (target is this soldier's place there): all follow the squad's route.
+    bool march = false;
+    Vec3 marchFrom = {}, marchTo = {};
 };
 
 // Something that happened this tick, for rendering and audio. Not part of the
@@ -300,7 +307,10 @@ private:
     // Walks toward `to` at the unit's ground speed; returns true on arrival.
     bool walk(Unit& unit, const Vec3& to, Fixed speedScale = Fixed::one());
     void planPath(Unit& unit, const Vec3& to);
-    void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out);
+    // A soldier's share of its squad's route: the squad's one fastest route
+    // from `from` to `goal`, with the soldier's file kept where the ground allows.
+    void planMarch(Unit& unit, const Vec3& to, const Vec3& from, const Vec3& goal);
+    void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     // Routes onto, along and off castle wall-walks by their stairs; false if neither end is on one.
     bool planRampartPath(Unit& unit, const Vec3& to);
     void separateBodies();
@@ -320,7 +330,7 @@ private:
     // Where to aim at a gate from `from`: its face on that side, half way up.
     Vec3 gateAimPoint(int gate, const Vec3& from) const;
     // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
-    bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out);
+    bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);
     bool tryHeal(Unit& unit);
     Unit* nearestEnemy(const Unit& unit, Fixed range);
@@ -378,8 +388,8 @@ private:
     SpatialHash obstacleGrid_{8};
     SpatialHash remainGrid_{4};
     SpatialHash unitGrid_{4};
-    // Paths planned this tick, by (start cell, goal cell): squads share routes.
-    std::map<std::pair<int64_t, int64_t>, std::vector<Vec3>> pathCache_;
+    // Paths planned this tick, by (gait, start cell, goal cell): squads share routes.
+    std::map<std::tuple<int, int64_t, int64_t>, std::vector<Vec3>> pathCache_;
 };
 
 }  // namespace illyria::sim

@@ -50,5 +50,7 @@ UnitStats unitStats(UnitType type);
 // what the campaign map and the HUD show (ranks, levels and blessings add to it).
 int warlordsStrength(UnitType type);
 const char* unitTypeName(UnitType type);
+// How this type gets over the ground (gait.h).
+Gait gaitOf(UnitType type);
 
 }  // namespace illyria::sim

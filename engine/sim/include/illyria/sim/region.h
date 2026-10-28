@@ -91,6 +91,9 @@ public:
     // `centre` (continent coordinates). Region coordinates are local: the
     // window's south-west corner is (0, 0); origin() maps back to the continent.
     static Region fromContinent(const Continent& continent, const Vec3& centre, int32_t cells);
+    // A bare test ground: `cells` x 4 m, heights per sample ((cells + 1)^2, or
+    // empty for level), ground per cell, no water, roads or scenery.
+    static Region fromGround(int32_t cells, const std::vector<Ground>& ground, std::vector<Fixed> heights = {});
 
     const Terrain& terrain() const { return terrain_; }
     Fixed waterLevel() const { return waterLevel_; }

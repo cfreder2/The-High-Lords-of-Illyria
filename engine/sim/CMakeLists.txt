@@ -11,6 +11,7 @@ add_library(illyria_sim
     src/units.cpp
     src/region.cpp
     src/nav.cpp
+    src/gait.cpp
     src/continent.cpp
     src/campaign.cpp
     src/campaign_rules.cpp

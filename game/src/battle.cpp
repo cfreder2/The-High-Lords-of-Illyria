@@ -388,6 +388,10 @@ void Battle::attackGate(const Squad& squad, int gate) {
     moveSquad(squad, centre + out * (10.0f * side));
 }
 
+void Battle::orderMove(const V3& to) {
+    if (selected_ >= 0) moveSquad(squads_[static_cast<size_t>(selected_)], to);
+}
+
 void Battle::orderAtGate(int gate) {
     if (selected_ < 0 || gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
     attackGate(squads_[static_cast<size_t>(selected_)], gate);
@@ -795,7 +799,19 @@ std::vector<V3> formationSlots(Formation f, int count, float spacing) {
     return slots;
 }
 
+void Battle::steerSquad(const Squad& squad, const V3& to) {
+    if (squad.hasGoal) {
+        const V3 c = squadCentre(squad, false);
+        bool moving = false;
+        for (sim::EntityId id : squad.members) moving = moving || (world_->units()[id - 1].alive() && world_->units()[id - 1].hasMoveTarget);
+        if (moving && (to - squad.goal).length() < std::max(6.0f, (to - c).length() * 0.15f)) return;
+    }
+    moveSquad(squad, to);
+}
+
 void Battle::moveSquad(const Squad& squad, const V3& to) {
+    squad.goal = to;
+    squad.hasGoal = true;
     const V3 from = squadCentre(squad, false);
     V3 facing = V3{to.x - from.x, to.y - from.y, 0}.normalized();
     if (facing.length() == 0) facing = squad.facing;
@@ -843,6 +859,10 @@ void Battle::moveSquad(const Squad& squad, const V3& to) {
     for (const auto& [id, target] : plan) {
         const float share = farthest > 0 ? std::clamp((target - pos(id)).length() / farthest, 0.35f, 1.0f) : 1.0f;
         sim::Command c{squad.owner, id, sim::Command::Type::Move, toSim(target)};
+        // All take the squad's one route (a column on the road), each keeping his file.
+        c.march = true;
+        c.marchFrom = toSim(from);
+        c.marchTo = toSim(to);
         c.speed = sim::Fixed::fromRatio(static_cast<int64_t>(slowest * share * 0.95f * 1000.0f), 1000);
         pending_.push_back(c);
     }
@@ -874,6 +894,7 @@ void Battle::runEnemyAi() {
         return goal;
     };
     const auto stop = [&](const Squad& s) {
+        s.hasGoal = false;
         for (sim::EntityId id : s.members) issue(kEnemy, id, sim::Command::Type::Stop, {});
     };
 
@@ -895,7 +916,7 @@ void Battle::runEnemyAi() {
                     friendPos = fc;
                 }
             }
-            if (friendDist < 1e30f && friendDist > 15.0f) moveSquad(s, friendPos + V3{10, 0, 0});
+            if (friendDist < 1e30f && friendDist > 15.0f) steerSquad(s, friendPos + V3{10, 0, 0});
             continue;
         }
         const V3 goal = nearest(c, kPlayer, dist);
@@ -912,18 +933,18 @@ void Battle::runEnemyAi() {
             if (role == Role::Ranged) continue;
             float near;
             const V3 threat = nearest(s.post, kPlayer, near);
-            if (near < 45.0f) moveSquad(s, threat);
-            else if ((c - s.post).length() > 6.0f) moveSquad(s, s.post);
+            if (near < 45.0f) steerSquad(s, threat);
+            else if ((c - s.post).length() > 6.0f) steerSquad(s, s.post);
             continue;
         }
         const sim::UnitStats stats = sim::unitStats(s.type);
         const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
         if (range > 0 && role != Role::Flier) {
             const float keep = range * 0.8f;
-            if (dist > keep) moveSquad(s, c + (goal - c) * ((dist - keep + 4) / dist));
+            if (dist > keep) steerSquad(s, c + (goal - c) * ((dist - keep + 4) / dist));
             else stop(s);
         } else if (dist > 15.0f) {
-            moveSquad(s, goal);
+            steerSquad(s, goal);
         } else {
             stop(s);
         }
