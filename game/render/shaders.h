@@ -858,39 +858,176 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
 layout(location = 3) in float aTeam;
+layout(location = 4) in float aMat;
 uniform vec3 uBakeRight, uBakeUp, uBakeToward;
 uniform vec4 uBakeRect;  // the picture's extent: left, bottom, width, height (m)
 out vec3 vNormal;
 out vec3 vColor;
-out float vZ;
+out vec3 vPos;
 out float vTeam;
+flat out int vMat;
 void main() {
     vNormal = aNormal;
     vColor = aColor;
-    vZ = aPos.z;
+    vPos = aPos;
     vTeam = aTeam;
+    vMat = int(aMat + 0.5);
     vec2 c = (vec2(dot(aPos, uBakeRight), dot(aPos, uBakeUp)) - uBakeRect.xy) / uBakeRect.zw;
     gl_Position = vec4(c * 2.0 - 1.0, -dot(aPos, uBakeToward) / 40.0, 1.0);
 }
 )";
+// The figure seen from its key light, for its own shadows (arms across the
+// chest, a shield over the body, the rider on the horse).
+inline const char* kFigureDepthVs = R"(
+layout(location = 0) in vec3 aPos;
+uniform vec3 uLightRight, uLightUp, uLightToward;
+uniform vec4 uLightRect;   // left, bottom, width, height (m) across the light
+uniform vec2 uLightRange;  // nearest along the light, depth range (m)
+void main() {
+    vec2 c = (vec2(dot(aPos, uLightRight), dot(aPos, uLightUp)) - uLightRect.xy) / uLightRect.zw;
+    float d = (uLightRange.x - dot(aPos, uLightToward)) / uLightRange.y;  // 0 nearest the light
+    gl_Position = vec4(c * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+}
+)";
 inline const char* kFigureFs = R"(
 uniform vec3 uBakeRight, uBakeUp, uBakeToward;
+uniform highp sampler2DShadow uLightDepth;
+uniform vec3 uLightRight, uLightUp, uLightToward;
+uniform vec4 uLightRect;
+uniform vec2 uLightRange;
 in vec3 vNormal;
 in vec3 vColor;
-in float vZ;
+in vec3 vPos;
 in float vTeam;
+flat in int vMat;
 out vec4 oColor;
+// Materials, as in figures.cpp.
+const int kPlain = 0, kCloth = 1, kSkin = 2, kSteel = 3, kMail = 4, kLeather = 5, kWood = 6, kHair = 7, kBone = 8;
+const int kGold = 9, kFur = 10, kScale = 11, kFeather = 12, kMembrane = 13, kHide = 14, kChitin = 15;
+float h3(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float n3(vec3 x) {
+    vec3 i = floor(x), f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p) { return (0.5 * n3(p) + 0.25 * n3(p * 2.03 + 7.1) + 0.125 * n3(p * 4.07 + 3.3) + 0.0625 * n3(p * 8.13 + 1.7)) / 0.9375; }
 void main() {
     // Alpha marks what was drawn: 1, or 0.5 where the side's colour goes.
     float mark = vTeam > 0.5 ? 0.5 : 1.0;
     // Colours above 1.5 glow: drawn unlit, less 2 (see figures.cpp).
     if (vColor.r > 1.5) { oColor = vec4(vColor - 2.0, mark); return; }
     vec3 n = normalize(vNormal);
-    vec3 key = normalize(uBakeToward * 0.45 + uBakeUp * 0.75 - uBakeRight * 0.55);
-    float diffuse = max(0.0, dot(n, key));
-    float rim = pow(max(0.0, 1.0 - abs(dot(n, uBakeToward))), 3.0) * 0.18;
-    float ao = 0.68 + 0.32 * clamp(vZ / 1.2, 0.0, 1.0);
-    oColor = vec4(vColor * ((0.47 + 0.6 * diffuse + rim) * ao), mark);
+    vec3 V = uBakeToward;
+    if (dot(n, V) < 0.0) n = -n;  // the inside of a cape or a wing
+    vec3 L = uLightToward;
+    vec3 p = vPos;
+    // Self-shadow from the key light.
+    vec2 luv = (vec2(dot(p, uLightRight), dot(p, uLightUp)) - uLightRect.xy) / uLightRect.zw;
+    float ld = (uLightRange.x - dot(p, uLightToward)) / uLightRange.y;
+    float lit = texture(uLightDepth, vec3(luv, ld - 0.012));
+    // Surface: albedo variation, specular strength and tightness, per material.
+    float albedo = 1.0, spec = 0.04, shine = 8.0;
+    vec3 tint = vec3(1.0);
+    if (vMat == kCloth) {
+        albedo = 0.74 + 0.4 * fbm(p * vec3(11.0, 11.0, 4.0));          // folds hang down
+        albedo *= 0.94 + 0.06 * sin((p.x + p.y) * 260.0) * sin(p.z * 260.0);  // weave
+        albedo *= mix(0.72, 1.0, smoothstep(0.05, 0.55, p.z));          // mud at the hem
+    } else if (vMat == kSkin) {
+        albedo = 0.9 + 0.16 * fbm(p * 24.0);
+        spec = 0.1, shine = 10.0;
+    } else if (vMat == kSteel) {
+        albedo = 0.72 + 0.3 * fbm(p * vec3(5.0, 5.0, 38.0));            // brushed, dented
+        albedo *= 1.0 - 0.25 * step(0.82, n3(p * 70.0));               // nicks and rust spots
+        spec = 0.95, shine = 36.0;
+    } else if (vMat == kMail) {
+        vec3 q = p * vec3(60.0, 60.0, 75.0);
+        float ring = abs(fract(q.x + 0.5 * floor(q.z)) - 0.5) + abs(fract(q.z) - 0.5);
+        albedo = 0.55 + 0.6 * smoothstep(0.25, 0.55, ring) + 0.15 * fbm(p * 9.0);
+        spec = 0.7, shine = 18.0;
+    } else if (vMat == kLeather) {
+        albedo = 0.76 + 0.36 * fbm(p * 22.0);
+        spec = 0.18, shine = 9.0;
+    } else if (vMat == kWood) {
+        float g = fbm(vec3(p.x * 7.0, p.y * 7.0, p.z * 44.0)) + fbm(vec3(p.x * 44.0, p.y * 7.0, p.z * 7.0));
+        albedo = 0.68 + 0.5 * abs(sin(g * 9.0)) * 0.6;
+        spec = 0.08;
+    } else if (vMat == kHair) {
+        albedo = 0.66 + 0.55 * fbm(p * vec3(70.0, 70.0, 10.0));
+        spec = 0.3, shine = 22.0;
+    } else if (vMat == kBone) {
+        albedo = 0.82 + 0.24 * fbm(p * 18.0);
+        spec = 0.12;
+    } else if (vMat == kGold) {
+        albedo = 0.8 + 0.25 * fbm(p * 12.0);
+        spec = 1.1, shine = 26.0, tint = vec3(1.0, 0.82, 0.45);
+    } else if (vMat == kFur) {
+        albedo = 0.74 + 0.42 * fbm(p * vec3(30.0, 30.0, 18.0));
+        spec = 0.06;
+    } else if (vMat == kScale) {
+        vec3 q = p * 13.0;
+        vec2 c = fract(vec2(q.x + 0.5 * floor(q.z), q.z)) - 0.5;
+        float edge = smoothstep(0.28, 0.48, length(c));
+        albedo = (0.85 + 0.25 * fbm(p * 6.0)) * (1.0 - 0.38 * edge);
+        spec = 0.45, shine = 16.0;
+    } else if (vMat == kFeather) {
+        albedo = 0.72 + 0.4 * fbm(p * vec3(34.0, 9.0, 34.0));
+        albedo *= 0.9 + 0.1 * sin(dot(p, vec3(40.0, 40.0, 10.0)));
+        spec = 0.08;
+    } else if (vMat == kMembrane) {
+        albedo = 0.78 + 0.3 * fbm(p * 5.0);
+        albedo *= 1.0 - 0.3 * smoothstep(0.46, 0.5, abs(fract(dot(p, vec3(3.0, 3.0, 1.0))) - 0.5));  // finger bones
+        spec = 0.15, shine = 12.0;
+    } else if (vMat == kHide) {
+        albedo = 0.66 + 0.48 * fbm(p * vec3(10.0, 10.0, 26.0));      // wrinkled
+        spec = 0.05;
+    } else if (vMat == kChitin) {
+        albedo = 0.8 + 0.3 * fbm(p * 8.0);
+        spec = 0.8, shine = 30.0;
+    }
+    vec3 base = vColor * albedo;
+    // Light: a warm key over the viewer's shoulder (shadowed), a cool sky
+    // from above, a little light thrown up from the ground, a rim.
+    float key = max(0.0, dot(n, L)) * mix(0.5, 1.0, lit);
+    float sky = 0.5 + 0.5 * n.z;
+    float bounce = max(0.0, -n.z) * 0.12;
+    float rim = pow(1.0 - max(0.0, dot(n, V)), 3.0) * 0.2;
+    float ao = 0.75 + 0.25 * clamp(p.z / 1.1, 0.0, 1.0);
+    vec3 light = vec3(1.0, 0.95, 0.86) * key * 1.02 + vec3(0.62, 0.68, 0.78) * sky * 0.62 * ao + vec3(0.5, 0.45, 0.35) * bounce + rim;
+    vec3 c = base * light;
+    if (vMat == kSkin) c += vColor * vec3(0.12, 0.03, 0.0) * (1.0 - key);  // warmth where the light is low
+    // Highlights.
+    vec3 h = normalize(L + V);
+    float s = pow(max(0.0, dot(n, h)), shine) * spec * lit;
+    c += tint * s * 0.75;
+    if (vMat == kSteel || vMat == kGold || vMat == kChitin) c += tint * vColor * mix(vec3(0.16, 0.14, 0.1), vec3(0.42, 0.46, 0.5), sky) * 0.45;  // the sky in the metal
+    oColor = vec4(c, mark);
+}
+)";
+// A sheet drawn over the screen, for looking at it (?sheet=<type>).
+inline const char* kSheetViewVs = R"(
+out vec2 vUv;
+void main() {
+    vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    vUv = c;
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+inline const char* kSheetViewFs = R"(
+uniform sampler2D uSheet;
+uniform vec3 uCloth;
+uniform vec4 uSheetView;  // visible part of the sheet: u0, v0, u1, v1
+in vec2 vUv;
+out vec4 oColor;
+void main() {
+    vec4 t = texture(uSheet, mix(uSheetView.xy, uSheetView.zw, vUv));
+    vec3 bg = vec3(0.24, 0.3, 0.18);
+    vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    oColor = vec4(t.a < 0.5 ? bg : c, 1.0);
 }
 )";
 // Resolving the scratch into its sheet cell: 2x2 samples to one pixel, hard

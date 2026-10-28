@@ -71,10 +71,10 @@ Cell render(const figures::Plan& plan, int viewIndex, int frame, float scale, V3
         y = (1.0f - (p.dot(v.up) - e.v0) / (e.v1 - e.v0)) * NH;
         d = p.dot(v.toward);
     };
-    for (size_t t = 0; t + 29 < m.size(); t += 30) {
+    for (size_t t = 0; t + 3 * figures::kVertexFloats - 1 < m.size(); t += 3 * figures::kVertexFloats) {
         float xs[3], ys[3], ds[3];
         for (int k = 0; k < 3; ++k) {
-            const float* q = &m[t + k * 10];
+            const float* q = &m[t + k * figures::kVertexFloats];
             px({q[0], q[1], q[2]}, xs[k], ys[k], ds[k]);
         }
         const float area = (xs[1] - xs[0]) * (ys[2] - ys[0]) - (xs[2] - xs[0]) * (ys[1] - ys[0]);
@@ -98,7 +98,7 @@ Cell render(const figures::Plan& plan, int viewIndex, int frame, float scale, V3
                 V3 nrm{}, c{};
                 float z = 0, team = 0;
                 for (int k = 0; k < 3; ++k) {
-                    const float* q = &m[t + k * 10];
+                    const float* q = &m[t + k * figures::kVertexFloats];
                     const float w = k == 0 ? w0 : (k == 1 ? w1 : w2);
                     nrm += V3{q[3], q[4], q[5]} * w;
                     c += V3{q[6], q[7], q[8]} * w;

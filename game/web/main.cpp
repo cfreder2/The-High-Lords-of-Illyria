@@ -274,6 +274,10 @@ EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
 EMSCRIPTEN_KEEPALIVE void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+// Debugging: draw a unit type's sprite sheet over the screen (-1 hides it).
+EMSCRIPTEN_KEEPALIVE void illyria_show_sheet(int type) {
+    if (app) app->renderer.showSheet(type);
+}
 EMSCRIPTEN_KEEPALIVE void illyria_charge() {
     if (app) app->battle->chargeAll();
 }

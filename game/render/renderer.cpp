@@ -223,7 +223,9 @@ bool Renderer::buildPrograms() {
                  {sky_, shaders::kSkyVs, shaders::kSkyFs},
                  {figure_, shaders::kFigureVs, shaders::kFigureFs},
                  {resolve_, shaders::kResolveVs, shaders::kResolveFs},
-                 {unit_, shaders::kUnitVs, shaders::kUnitFs}};
+                 {unit_, shaders::kUnitVs, shaders::kUnitFs},
+                 {figureDepth_, shaders::kFigureDepthVs, shaders::kDepthFs},
+                 {sheetView_, shaders::kSheetViewVs, shaders::kSheetViewFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -265,6 +267,13 @@ bool Renderer::buildPrograms() {
         s.p.scratch = glGetUniformLocation(s.p.id, "uScratch");
         s.p.resolve = glGetUniformLocation(s.p.id, "uResolve");
         s.p.cellTable = glGetUniformLocation(s.p.id, "uCellTable");
+        s.p.lightDepth = glGetUniformLocation(s.p.id, "uLightDepth");
+        s.p.lightRight = glGetUniformLocation(s.p.id, "uLightRight");
+        s.p.lightUp = glGetUniformLocation(s.p.id, "uLightUp");
+        s.p.lightToward = glGetUniformLocation(s.p.id, "uLightToward");
+        s.p.lightRect = glGetUniformLocation(s.p.id, "uLightRect");
+        s.p.lightRange = glGetUniformLocation(s.p.id, "uLightRange");
+        s.p.sheetView = glGetUniformLocation(s.p.id, "uSheetView");
         s.p.cloth = glGetUniformLocation(s.p.id, "uCloth");
         s.p.sheetSize = glGetUniformLocation(s.p.id, "uSheetSize");
         s.p.viewDir = glGetUniformLocation(s.p.id, "uViewDir");
@@ -1116,27 +1125,41 @@ void Renderer::reset(Battle& battle) {
 
 // ------------------------------------------------------------- sprite sheets
 
-Renderer::Sheet& Renderer::sheet(UnitType type) {
-    Sheet& s = sheets_[static_cast<int>(type)];
-    if (!s.tex) bakeSheet(s, type);
-    return s;
-}
-
 void Renderer::bakeMissing(const Battle& battle) {
     if (!showUnits_) return;
-    for (const sim::Unit& u : battle.world().units()) sheet(static_cast<UnitType>(u.stats.type));
+    // The types this battle needs that have no sheet yet, in order.
+    std::vector<UnitType> need;
+    for (const sim::Unit& u : battle.world().units()) {
+        const auto t = static_cast<UnitType>(u.stats.type);
+        if (!sheets_[static_cast<int>(t)].tex && std::find(need.begin(), need.end(), t) == need.end()) need.push_back(t);
+    }
+    if (need.empty()) return;
+    std::vector<figures::Plan> plans;
+    double texels = 0;
+    for (UnitType t : need) {
+        plans.push_back(figures::plan(t));
+        float big = 0.1f;
+        for (int v = 0; v < figures::kViews; ++v)
+            for (const figures::Extent& e : plans.back().extents[v]) big = std::max({big, e.u1 - e.u0, e.v1 - e.v0});
+        const float s = std::min(figures::kPixelsPerMetre, figures::kMaxPixels / big);
+        for (int v = 0; v < figures::kViews; ++v)
+            for (const figures::Extent& e : plans.back().extents[v]) texels += ((e.u1 - e.u0) * s + 4) * ((e.v1 - e.v0) * s + 4);
+    }
+    // A battle with many kinds of soldier shares the budget: every sheet a little coarser.
+    const double room = std::max(kSheetBudget * 0.25, kSheetBudget - sheetTexels_);
+    const float scale = texels > room ? static_cast<float>(std::sqrt(room / texels)) : 1.0f;
+    for (size_t i = 0; i < need.size(); ++i) bakeSheet(sheets_[static_cast<int>(need[i])], need[i], plans[i], scale);
 }
 
-void Renderer::bakeSheet(Sheet& sh, UnitType type) {
+void Renderer::bakeSheet(Sheet& sh, UnitType type, const figures::Plan& plan, float budgetScale) {
     const auto started = std::chrono::steady_clock::now();
-    const figures::Plan plan = figures::plan(type);
     sh.lift = 0.5f + static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.2f;
     constexpr int kCells = figures::kViews * figures::kFramesPerView;
     // Every picture at one scale, the finest that keeps the largest within kMaxPixels.
     float big = 0.1f;
     for (int v = 0; v < figures::kViews; ++v)
         for (const figures::Extent& e : plan.extents[v]) big = std::max({big, e.u1 - e.u0, e.v1 - e.v0});
-    float scale = std::min({figures::kPixelsPerMetre, figures::kMaxPixels / big, kScratch / 2 / big});
+    float scale = std::min({figures::kPixelsPerMetre, figures::kMaxPixels / big, kScratch / 2 / big}) * budgetScale;
     struct Slot {
         int w, h, x = 0, y = 0;
     };
@@ -1188,11 +1211,25 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type) {
         glGenBuffers(1, &figureVbo_);
         glBindVertexArray(figureVao_);
         glBindBuffer(GL_ARRAY_BUFFER, figureVbo_);
-        for (int a = 0; a < 4; ++a) {
+        // Position, normal, colour, team mark, material (figures::kVertexFloats).
+        const int offsets[5] = {0, 3, 6, 9, 10}, sizes[5] = {3, 3, 3, 1, 1};
+        for (int a = 0; a < 5; ++a) {
             glEnableVertexAttribArray(a);
-            glVertexAttribPointer(a, a == 3 ? 1 : 3, GL_FLOAT, GL_FALSE, 40, reinterpret_cast<void*>(static_cast<intptr_t>(a * 12)));
+            glVertexAttribPointer(a, sizes[a], GL_FLOAT, GL_FALSE, figures::kVertexFloats * 4, reinterpret_cast<void*>(static_cast<intptr_t>(offsets[a] * 4)));
         }
         glGenVertexArrays(1, &emptyVao_);
+        glGenTextures(1, &lightTex_);
+        glBindTexture(GL_TEXTURE_2D, lightTex_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, kScratch, kScratch, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+        glGenFramebuffers(1, &lightFbo_);
+        glBindFramebuffer(GL_FRAMEBUFFER, lightFbo_);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, lightTex_, 0);
     }
     glGenTextures(1, &sh.tex);
     glBindTexture(GL_TEXTURE_2D, sh.tex);
@@ -1222,6 +1259,33 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type) {
             float* row1 = &table[(static_cast<size_t>(kCells) + c) * 4];
             row0[0] = static_cast<float>(slot.x), row0[1] = static_cast<float>(slot.y), row0[2] = static_cast<float>(slot.w), row0[3] = static_cast<float>(slot.h);
             row1[0] = e.u0, row1[1] = e.v0, row1[2] = w, row1[3] = h;
+            // Its key light: over the viewer's left shoulder. First the
+            // figure seen from the light, for its own shadows.
+            const V3 key = (view.toward * 0.7f + view.up * 0.5f - view.right * 0.5f).normalized();
+            const V3 lr = key.cross({0, 0, 1}).length() > 0.1f ? key.cross({0, 0, 1}).normalized() : V3{1, 0, 0};
+            const V3 lu = lr.cross(key).normalized();
+            float a0 = 1e9f, a1 = -1e9f, b0 = 1e9f, b1 = -1e9f, d0 = 1e9f, d1 = -1e9f;
+            for (size_t i = 0; i + 2 < mesh.size(); i += figures::kVertexFloats) {
+                const V3 q{mesh[i], mesh[i + 1], mesh[i + 2]};
+                a0 = std::min(a0, q.dot(lr)), a1 = std::max(a1, q.dot(lr));
+                b0 = std::min(b0, q.dot(lu)), b1 = std::max(b1, q.dot(lu));
+                d0 = std::min(d0, q.dot(key)), d1 = std::max(d1, q.dot(key));
+            }
+            const float lrect[4] = {a0 - 0.05f, b0 - 0.05f, a1 - a0 + 0.1f, b1 - b0 + 0.1f};
+            const float lrange[2] = {d1 + 0.1f, d1 - d0 + 0.2f};
+            glBindFramebuffer(GL_FRAMEBUFFER, lightFbo_);
+            glViewport(0, 0, kScratch, kScratch);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glUseProgram(figureDepth_.id);
+            glUniform3f(figureDepth_.lightRight, lr.x, lr.y, lr.z);
+            glUniform3f(figureDepth_.lightUp, lu.x, lu.y, lu.z);
+            glUniform3f(figureDepth_.lightToward, key.x, key.y, key.z);
+            glUniform4fv(figureDepth_.lightRect, 1, lrect);
+            glUniform2fv(figureDepth_.lightRange, 1, lrange);
+            glBindVertexArray(figureVao_);
+            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.size() / figures::kVertexFloats));
             // The figure, twice the size, into the scratch.
             glBindFramebuffer(GL_FRAMEBUFFER, scratchFbo_);
             glViewport(0, 0, slot.w * 2, slot.h * 2);
@@ -1234,8 +1298,17 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type) {
             glUniform3f(figure_.bakeUp, view.up.x, view.up.y, view.up.z);
             glUniform3f(figure_.bakeToward, view.toward.x, view.toward.y, view.toward.z);
             glUniform4f(figure_.bakeRect, e.u0, e.v0, w, h);
+            glUniform3f(figure_.lightRight, lr.x, lr.y, lr.z);
+            glUniform3f(figure_.lightUp, lu.x, lu.y, lu.z);
+            glUniform3f(figure_.lightToward, key.x, key.y, key.z);
+            glUniform4fv(figure_.lightRect, 1, lrect);
+            glUniform2fv(figure_.lightRange, 1, lrange);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, lightTex_);
+            glUniform1i(figure_.lightDepth, 1);
+            glActiveTexture(GL_TEXTURE0);
             glBindVertexArray(figureVao_);
-            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.size() / 10));
+            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.size() / figures::kVertexFloats));
             // Down into its slot.
             glBindFramebuffer(GL_FRAMEBUFFER, sheetFbo_);
             glViewport(slot.x, slot.y, slot.w, slot.h);
@@ -1267,6 +1340,7 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type) {
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     glEnable(GL_DEPTH_TEST);
     glBindVertexArray(0);
+    sheetTexels_ += static_cast<double>(sh.texW) * sh.texH;
     std::printf("sprite sheet %s: %dx%d at %.1f px/m, %.0f ms\n", sim::unitTypeName(type), sh.texW, sh.texH, scale,
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
 }
@@ -1913,6 +1987,30 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, particles_.count);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
+    }
+    if (debugSheet_ >= 0) {
+        // A sheet over the screen at its own pixels' shape, for looking at it.
+        auto it = sheets_.find(debugSheet_);
+        if (it == sheets_.end() || !it->second.tex) {
+            const auto type = static_cast<UnitType>(debugSheet_);
+            bakeSheet(sheets_[debugSheet_], type, figures::plan(type), 1.0f);
+            it = sheets_.find(debugSheet_);
+        }
+        const Sheet& sh = it->second;
+        GLint vp[4];
+        glGetIntegerv(GL_VIEWPORT, vp);
+        const float k = std::min(static_cast<float>(vp[2]) / sh.texW, static_cast<float>(vp[3]) / sh.texH);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(sheetView_.id);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sh.tex);
+        glUniform1i(sheetView_.sheet, 0);
+        const V3 cloth = figures::cloth(kPlayerColor);
+        glUniform3f(sheetView_.cloth, cloth.x, cloth.y, cloth.z);
+        glUniform4f(sheetView_.sheetView, 0, 1 - vp[3] / (k * sh.texH), vp[2] / (k * sh.texW), 1);
+        glBindVertexArray(emptyVao_);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glEnable(GL_DEPTH_TEST);
     }
     glBindVertexArray(0);
 }

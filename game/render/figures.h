@@ -27,6 +27,7 @@ constexpr float kElevation = 0.52f;  // ~30 degrees
 
 // The figure of a type posed for one frame: metres, feet at the origin,
 // facing +x, +z up. Colours are linear RGB with the team's colour applied.
+// Vertices of ten floats: position, normal, colour, material (figures.cpp).
 Mesh build(sim::UnitType type, const float team[3], Anim anim, int frame);
 
 // The camera of view v (0 front, 2 the figure's right side, 4 its back):
@@ -39,9 +40,11 @@ View view(int v);
 // for each view of each, the picture's extent in metres (u across, v up,
 // relative to the feet, as seen in that view).
 //
-// Mesh vertices here have ten floats: position, normal, colour, and a team
-// mark (1 where the side's colour shows). Team areas are built in white;
-// the sheet shader tints them with cloth(team).
+// Mesh vertices here have kVertexFloats: position, normal, colour, a team
+// mark (1 where the side's colour shows) and the material (cloth, steel,
+// wood... see figures.cpp). Team areas are built in white; the sheet shader
+// tints them with cloth(team).
+constexpr int kVertexFloats = 11;
 struct Extent {
     float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 };
@@ -51,8 +54,8 @@ struct Plan {
 };
 Plan plan(sim::UnitType type);
 // Sheet resolution: pixels a metre, but no frame more than kMaxPixels across.
-constexpr float kPixelsPerMetre = 28.0f;
-constexpr float kMaxPixels = 160.0f;
+constexpr float kPixelsPerMetre = 48.0f;
+constexpr float kMaxPixels = 256.0f;
 // The colour team-marked pixels are multiplied by (Myth's dulled colours).
 V3 cloth(const float team[3]);
 

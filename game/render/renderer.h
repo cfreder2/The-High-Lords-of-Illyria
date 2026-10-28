@@ -56,6 +56,7 @@ private:
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
+        GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
@@ -93,7 +94,7 @@ private:
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
     Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
-    Program figure_, resolve_, unit_;
+    Program figure_, resolve_, unit_, figureDepth_, sheetView_;
     // The soldiers' sprite sheets, one per unit type and side, baked on the
     // GPU from figures::build when a battle first needs them.
     struct Sheet {
@@ -103,9 +104,16 @@ private:
     };
     std::map<int, Sheet> sheets_;  // by unit type
     GLuint scratchFbo_ = 0, scratchTex_ = 0, scratchDepth_ = 0, sheetFbo_ = 0, figureVao_ = 0, figureVbo_ = 0, emptyVao_ = 0;
+    GLuint lightFbo_ = 0, lightTex_ = 0;  // the figure's own shadow map while baking
     static constexpr int kScratch = 512, kSheetMax = 2048, kGutter = 2;
-    Sheet& sheet(sim::UnitType type);
-    void bakeSheet(Sheet& s, sim::UnitType type);
+    // Texels all the sheets may use (four bytes each, plus mipmaps).
+    static constexpr double kSheetBudget = 26e6;
+    double sheetTexels_ = 0;
+    void bakeSheet(Sheet& s, sim::UnitType type, const figures::Plan& plan, float scale);
+    int debugSheet_ = -1;  // a sheet drawn over the screen, for looking at it
+public:
+    void showSheet(int type) { debugSheet_ = type; }
+private:
     void bakeMissing(const Battle& battle);
     // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.
     Batch units_;

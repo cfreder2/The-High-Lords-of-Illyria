@@ -27,17 +27,42 @@ V3 perpTo(V3 v, V3 axis, V3 fallback) {
     return p.normalized();
 }
 
+// What a surface is made of: the sheet shader paints each differently
+// (weave and grime, rings, polish, grain, pores, strands, scales...).
+enum Material : int { kPlain, kClothM, kSkinM, kSteelM, kMailM, kLeatherM, kWoodM, kHairM, kBoneM, kGoldM, kFurM, kScaleM, kFeatherM, kMembraneM, kHideM, kChitinM };
+
+// A colour and what it is painted on. Arithmetic keeps the material.
+struct Paint : V3 {
+    int mat = kPlain;
+    Paint() = default;
+    Paint(V3 c) : V3(c) {}
+    Paint(V3 c, int m) : V3(c), mat(m) {}
+    Paint(float r, float g, float b, int m) : V3{r, g, b}, mat(m) {}
+    // Recolouring keeps what the surface is made of.
+    Paint& operator=(const V3& c) {
+        static_cast<V3&>(*this) = c;
+        return *this;
+    }
+    Paint(const Paint&) = default;
+    Paint& operator=(const Paint&) = default;
+    Paint operator*(float f) const { return {static_cast<const V3&>(*this) * f, mat}; }
+    Paint operator+(const V3& o) const { return {static_cast<const V3&>(*this) + o, mat}; }
+};
+Paint as(V3 c, int m) { return {c, m}; }
+
 // Muted colours, Myth's grey-green world: worn cloth, dull steel.
-const V3 kSkin{0.74f, 0.56f, 0.43f};
-const V3 kSteel{0.58f, 0.6f, 0.64f};
-const V3 kDarkSteel{0.36f, 0.37f, 0.4f};
-const V3 kLeather{0.44f, 0.32f, 0.2f};
-const V3 kDarkLeather{0.3f, 0.22f, 0.15f};
-const V3 kWood{0.43f, 0.29f, 0.16f};
-const V3 kGold{0.9f, 0.7f, 0.26f};
-const V3 kBone{0.8f, 0.76f, 0.64f};
-const V3 kHair{0.24f, 0.17f, 0.11f};
-const V3 kCloth{0.38f, 0.34f, 0.28f};
+const Paint kSkin{0.74f, 0.56f, 0.43f, kSkinM};
+const Paint kSteel{0.58f, 0.6f, 0.64f, kSteelM};
+const Paint kDarkSteel{0.36f, 0.37f, 0.4f, kSteelM};
+const Paint kMail{0.44f, 0.45f, 0.48f, kMailM};
+const Paint kLeather{0.44f, 0.32f, 0.2f, kLeatherM};
+const Paint kDarkLeather{0.3f, 0.22f, 0.15f, kLeatherM};
+const Paint kWood{0.43f, 0.29f, 0.16f, kWoodM};
+const Paint kGold{0.9f, 0.7f, 0.26f, kGoldM};
+const Paint kBone{0.8f, 0.76f, 0.64f, kBoneM};
+const Paint kHair{0.24f, 0.17f, 0.11f, kHairM};
+const Paint kCloth{0.38f, 0.34f, 0.28f, kClothM};
+const Paint kHose{0.52f, 0.42f, 0.3f, kClothM};
 
 // Triangles into a Mesh, through a whole-figure transform (for falls).
 struct Builder {
@@ -51,31 +76,31 @@ struct Builder {
     }
     V3 xf(V3 p) const { return rx * p.x + ry * p.y + rz * p.z + t; }
     V3 xn(V3 n) const { return rx * n.x + ry * n.y + rz * n.z; }
-    void vert(V3 p, V3 n, V3 c) {
+    void vert(V3 p, V3 n, const Paint& c) {
         p = xf(p);
         n = xn(n);
-        m.data.insert(m.data.end(), {p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z});
+        m.data.insert(m.data.end(), {p.x, p.y, p.z, n.x, n.y, n.z, c.x, c.y, c.z, static_cast<float>(c.mat)});
     }
-    void tri(V3 a, V3 b, V3 c, V3 col) {
+    void tri(V3 a, V3 b, V3 c, Paint col) {
         const V3 n = (b - a).cross(c - a).normalized();
         vert(a, n, col);
         vert(b, n, col);
         vert(c, n, col);
     }
     // Both faces: wings, cloaks, ears.
-    void plate(V3 a, V3 b, V3 c, V3 d, V3 col) {
+    void plate(V3 a, V3 b, V3 c, V3 d, Paint col) {
         col = col * jitter();
         tri(a, b, c, col);
         tri(a, c, d, col);
         tri(a, c, b, col * 0.85f);
         tri(a, d, c, col * 0.85f);
     }
-    void flat(V3 a, V3 b, V3 c, V3 col) {
+    void flat(V3 a, V3 b, V3 c, Paint col) {
         tri(a, b, c, col);
         tri(a, c, b, col * 0.85f);
     }
     // An ellipsoid with axes ax, ay, az (unit) and radii r.
-    void ellipsoid(V3 c, V3 ax, V3 ay, V3 az, V3 r, V3 col, int seg = 8, int rings = 5) {
+    void ellipsoid(V3 c, V3 ax, V3 ay, V3 az, V3 r, Paint col, int seg = 8, int rings = 5) {
         col = col * jitter();
         const auto at = [&](int i, int j, V3& p, V3& n) {
             const float th = kPi * j / rings, ph = 2 * kPi * i / seg;
@@ -102,9 +127,9 @@ struct Builder {
                 }
             }
     }
-    void ball(V3 c, float r, V3 col, int seg = 7) { ellipsoid(c, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {r, r, r}, col, seg, 4); }
+    void ball(V3 c, float r, Paint col, int seg = 7) { ellipsoid(c, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {r, r, r}, col, seg, 4); }
     // A tapered limb from a to b, capped at both ends.
-    void limb(V3 a, V3 b, float ra, float rb, V3 col, int sides = 6) {
+    void limb(V3 a, V3 b, float ra, float rb, Paint col, int sides = 6) {
         col = col * jitter();
         const V3 d = (b - a).normalized();
         const V3 u = perpTo({0, 0, 1}, d, {1, 0, 0}), v = d.cross(u);
@@ -124,11 +149,11 @@ struct Builder {
         }
     }
     // A limb with a round joint at its far end.
-    void bone(V3 a, V3 b, float ra, float rb, V3 col) {
+    void bone(V3 a, V3 b, float ra, float rb, Paint col) {
         limb(a, b, ra, rb, col);
         ball(b, rb * 1.05f, col, 6);
     }
-    void box(V3 c, V3 ax, V3 ay, V3 az, V3 h, V3 col) {
+    void box(V3 c, V3 ax, V3 ay, V3 az, V3 h, Paint col) {
         col = col * jitter();
         const V3 X = ax * h.x, Y = ay * h.y, Z = az * h.z;
         const V3 p[8] = {c - X - Y - Z, c + X - Y - Z, c + X + Y - Z, c - X + Y - Z,
@@ -139,7 +164,7 @@ struct Builder {
             tri(p[q[0]], p[q[2]], p[q[3]], col);
         }
     }
-    void cone(V3 base, V3 tip, float r, V3 col, int sides = 6) { limb(base, tip, r, 0.0f, col, sides); }
+    void cone(V3 base, V3 tip, float r, Paint col, int sides = 6) { limb(base, tip, r, 0.0f, col, sides); }
 };
 
 // ------------------------------------------------------------------ people
@@ -154,8 +179,8 @@ struct Kit {
     float bulk = 1.0f;    // breadth
     float legs = 1.0f;    // leg length relative to a man's
     float headSize = 1.12f;
-    V3 skin = kSkin, tunic = kCloth, trousers = kLeather, boots = kDarkLeather, belt = kDarkLeather;
-    V3 hair = kHair, wing = grey(0.9f), team = grey(0.5f);
+    Paint skin = kSkin, tunic = kCloth, trousers = kHose, boots = kDarkLeather, belt = kDarkLeather;
+    Paint hair = kHair, wing = as(grey(0.9f), kFeatherM), team = as(grey(0.5f), kClothM);
     Head head = Head::Bare;
     Weapon weapon = Weapon::Sword;
     Shield shield = Shield::None;
@@ -407,12 +432,12 @@ void weaponMesh(Builder& b, const Kit& k, const Pose& p, const Skeleton& sk) {
         }
         case Weapon::Satchel:
             if (p.held > 0.5f) {
-                b.ellipsoid(g - sk.u * (0.06f * s), sk.f, sk.l, sk.u, V3{0.09f, 0.08f, 0.08f} * s, V3{0.42f, 0.33f, 0.18f});
+                b.ellipsoid(g - sk.u * (0.06f * s), sk.f, sk.l, sk.u, V3{0.09f, 0.08f, 0.08f} * s, as(V3{0.42f, 0.33f, 0.18f}, kLeatherM));
                 b.ball(g + sk.u * (0.04f * s), 0.025f * s, glow(V3{1.0f, 0.8f, 0.3f}), 4);
             }
             break;
         case Weapon::Club:
-            b.limb(g - w * (0.12f * s), g + w * (0.95f * s), 0.045f * s, 0.11f * s, V3{0.38f, 0.26f, 0.14f}, 6);
+            b.limb(g - w * (0.12f * s), g + w * (0.95f * s), 0.045f * s, 0.11f * s, as(V3{0.38f, 0.26f, 0.14f}, kWoodM), 6);
             break;
         case Weapon::Greatsword:
             b.limb(g - w * (0.22f * s), g + w * (0.06f * s), 0.018f * s, 0.018f * s, kDarkLeather, 4);
@@ -434,7 +459,7 @@ void bowMesh(Builder& b, const Pose& p, const Skeleton& sk) {
     for (int i = 0; i <= 6; ++i) {
         const float y = -1.0f + 2.0f * i / 6.0f;
         const V3 q = g + up * (0.62f * s * y) + away * ((bend * (1 - y * y) - bend * 0.7f) * s);
-        if (i > 0) b.limb(prev, q, 0.016f * s, 0.016f * s, V3{0.34f, 0.22f, 0.12f}, 4);
+        if (i > 0) b.limb(prev, q, 0.016f * s, 0.016f * s, as(V3{0.34f, 0.22f, 0.12f}, kWoodM), 4);
         prev = q;
         if (i == 0) tips[0] = q;
         if (i == 6) tips[1] = q;
@@ -452,7 +477,7 @@ void bowMesh(Builder& b, const Pose& p, const Skeleton& sk) {
 void headMesh(Builder& b, const Kit& k, const Skeleton& sk) {
     const float s = sk.s, r = 0.115f * s * k.headSize;
     const V3 c = sk.head, f = sk.hf, u = sk.hu, l = u.cross(f).normalized();
-    const auto face = [&](V3 col) {
+    const auto face = [&](Paint col) {
         b.ellipsoid(c + f * (0.035f * s) - u * (0.015f * s), f, l, u, V3{0.8f, 0.85f, 0.85f} * r, col, 7, 4);
         b.ball(c + f * (r * 0.95f), r * 0.17f, col * 0.9f, 4);  // nose
     };
@@ -468,19 +493,20 @@ void headMesh(Builder& b, const Kit& k, const Skeleton& sk) {
                 }
             }
             if (k.head == Head::Crown) {
-                b.limb(c + u * (r * 0.55f), c + u * (r * 0.95f), r * 0.98f, r * 1.02f, kGold, 8);
+                // A circlet above the brow, with five small points.
+                b.limb(c + u * (r * 0.62f), c + u * (r * 0.86f), r * 0.86f, r * 0.84f, kGold, 10);
                 for (int i = 0; i < 5; ++i) {
                     const float a = 2 * kPi * i / 5;
                     const V3 e = f * std::cos(a) + l * std::sin(a);
-                    b.cone(c + u * (r * 0.9f) + e * r, c + u * (r * 1.4f) + e * r, r * 0.18f, kGold, 4);
+                    b.cone(c + u * (r * 0.84f) + e * (r * 0.82f), c + u * (r * 1.2f) + e * (r * 0.8f), r * 0.12f, kGold, 4);
                 }
             }
             if (k.head == Head::Horns) {
                 for (int sd : {-1, 1}) {
                     const V3 root = c + u * (r * 0.6f) + l * (r * 0.55f * sd);
                     const V3 mid = root + u * (r * 0.6f) + l * (r * 0.35f * sd) - f * (r * 0.15f);
-                    b.limb(root, mid, r * 0.2f, r * 0.12f, grey(0.12f), 5);
-                    b.cone(mid, mid + u * (r * 0.4f) - f * (r * 0.4f), r * 0.12f, grey(0.1f), 5);
+                    b.limb(root, mid, r * 0.2f, r * 0.12f, as(grey(0.12f), kBoneM), 5);
+                    b.cone(mid, mid + u * (r * 0.4f) - f * (r * 0.4f), r * 0.12f, as(grey(0.1f), kBoneM), 5);
                 }
             }
             break;
@@ -513,7 +539,7 @@ void headMesh(Builder& b, const Kit& k, const Skeleton& sk) {
         case Head::WizardHat:
             b.ellipsoid(c, f, l, u, {r, r * 0.9f, r}, k.skin);
             face(k.skin);
-            b.ellipsoid(c + f * (r * 0.6f) - u * (r * 0.75f), f, l, u, V3{0.45f, 0.6f, 0.8f} * r, grey(0.82f));  // beard
+            b.ellipsoid(c + f * (r * 0.6f) - u * (r * 0.75f), f, l, u, V3{0.45f, 0.6f, 0.8f} * r, as(grey(0.82f), kHairM));  // beard
             b.limb(c + u * (r * 0.55f), c + u * (r * 0.62f), r * 2.0f, r * 1.9f, k.team * 0.45f, 9);
             b.cone(c + u * (r * 0.6f), c + u * (r * 3.4f) - f * (r * 0.8f), r * 1.0f, k.team * 0.5f, 8);
             break;
@@ -539,7 +565,7 @@ void headMesh(Builder& b, const Kit& k, const Skeleton& sk) {
             face(k.skin);
             b.ellipsoid(c + u * (0.025f * s), f, l, u, V3{1.08f, 1.08f, 1.0f} * r, kSteel);
             b.limb(c - u * (r * 0.02f), c + u * (r * 0.12f), r * 1.12f, r * 1.12f, kGold * 0.8f, 8);
-            b.ellipsoid(c + f * (r * 0.7f) - u * (r * 0.85f), f, l, u, V3{0.55f, 0.85f, 1.05f} * r, V3{0.62f, 0.32f, 0.12f});
+            b.ellipsoid(c + f * (r * 0.7f) - u * (r * 0.85f), f, l, u, V3{0.55f, 0.85f, 1.05f} * r, as(V3{0.62f, 0.32f, 0.12f}, kHairM));
             break;
         case Head::Goblin:
             b.ellipsoid(c, f, l, u, {r * 1.05f, r * 0.95f, r * 0.9f}, k.skin);
@@ -550,7 +576,8 @@ void headMesh(Builder& b, const Kit& k, const Skeleton& sk) {
     }
 }
 
-void wing(Builder& b, V3 root, V3 f, V3 l, V3 u, float sd, float span, float flap, V3 col, bool bat) {
+void wing(Builder& b, V3 root, V3 f, V3 l, V3 u, float sd, float span, float flap, Paint col, bool bat) {
+    col.mat = bat ? kMembraneM : kFeatherM;
     // Two segments rising and spreading from the shoulder blades; flap lifts both.
     const V3 out = (l * sd * std::cos(flap) + u * std::sin(flap)).normalized();
     const V3 elbow = root + out * (span * 0.45f) - f * (span * 0.08f);
@@ -657,7 +684,7 @@ Skeleton person(Builder& b, const Kit& k, const Pose& p, const V3* seat) {
     }
 
     // Legs and feet.
-    const V3 legC = k.bones ? kBone : (k.bareChest && k.kilt ? k.skin : k.trousers);
+    const Paint legC = k.bones ? kBone : (k.bareChest && k.kilt ? k.skin : k.trousers);
     const float limbR = (k.bones ? 0.035f : 0.076f) * s * bw;
     for (int i = 0; i < 2; ++i) {
         if (!k.robe || seat) {
@@ -687,7 +714,7 @@ Skeleton person(Builder& b, const Kit& k, const Pose& p, const V3* seat) {
         }
         b.ellipsoid(P, sk.f, sk.l, sk.u, V3{0.08f, 0.13f, 0.05f} * s, kBone * 0.9f);
     } else {
-        const V3 torsoC = k.bareChest ? k.skin : (k.armour ? kSteel : (k.mail ? kDarkSteel * 1.3f : k.tunic));
+        const Paint torsoC = k.bareChest ? k.skin : (k.armour ? kSteel : (k.mail ? kMail : k.tunic));
         b.ellipsoid(P + sk.u * (0.04f * s), sk.f, sk.l, sk.u, V3{0.145f, 0.185f, 0.13f} * (s * bw), k.robe ? k.tunic * 0.9f : legC);
         b.ellipsoid(P + sk.u * (torso * s * 0.58f), sk.f, sk.l, sk.u, V3{0.16f, 0.235f, torso * 0.52f} * (s * bw), torsoC);
         if (k.mail || k.armour) b.limb(waist, waist - sk.u * (0.18f * s), 0.18f * s * bw, 0.21f * s * bw, k.team * 0.85f, 8);  // tabard skirt
@@ -699,7 +726,7 @@ Skeleton person(Builder& b, const Kit& k, const Pose& p, const V3* seat) {
         for (int i = 0; i < 2; ++i) b.ellipsoid(sk.shoulder[i] + sk.u * (0.02f * s), sk.f, sk.l, sk.u, V3{0.09f, 0.1f, 0.07f} * (s * bw), k.armour ? kSteel : kDarkSteel);
     // Arms.
     for (int i = 0; i < 2; ++i) {
-        const V3 sleeve = k.bones ? kBone : (k.bareChest || k.armour ? k.skin : k.tunic * 0.92f);
+        const Paint sleeve = k.bones ? kBone : (k.bareChest || k.armour ? k.skin : (k.mail ? kMail : k.tunic * 0.92f));
         const float ar = (k.bones ? 0.03f : 0.058f) * s * bw;
         b.limb(sk.shoulder[i], sk.elbow[i], ar, ar * 0.85f, sleeve);
         b.ball(sk.elbow[i], ar * 0.85f, sleeve, 5);
@@ -734,9 +761,9 @@ enum class Beast : uint8_t { Horse, Wolf, Elephant, Griffin, Dragon, Spider };
 struct Hide {
     Beast kind = Beast::Horse;
     float height = 1.6f;  // withers (back) height, metres
-    V3 coat{0.45f, 0.3f, 0.18f}, mane = kHair, team = grey(0.5f);
+    Paint coat{0.45f, 0.3f, 0.18f, kFurM}, mane = kHair, team = as(grey(0.5f), kClothM);
     bool horn = false, wings = false, barding = false, saddle = false, cloth = false, collar = false;
-    V3 wingCol = grey(0.9f);
+    Paint wingCol = as(grey(0.9f), kFeatherM);
 };
 
 struct BeastPose {
@@ -868,17 +895,17 @@ V3 beast(Builder& b, const Hide& h, const BeastPose& p, const Kit* riderKit, con
     const float drop = p.roll > 0 ? 0.0f : -lowest + 0.02f * s;
     centre.z += drop;
     for (Leg& g : legs) g.hip.z += drop, g.knee.z += drop, g.foot.z += drop;
-    const V3 legCol = h.kind == Beast::Griffin ? h.coat * 0.85f : h.coat * 0.9f;
+    const Paint legCol = h.kind == Beast::Griffin ? h.coat * 0.85f : h.coat * 0.9f;
     for (int i = 0; i < 4; ++i) {
         const Leg& g = legs[i];
         const bool talon = h.kind == Beast::Griffin && i < 2;
         const float r = d.legR * s;
         b.limb(g.hip, g.knee, r * 1.5f, r, i % 2 == 0 ? legCol : legCol * 0.85f);
         b.ball(g.knee, r, legCol, 5);
-        b.limb(g.knee, g.foot, r, r * (h.kind == Beast::Elephant ? 1.1f : 0.75f), talon ? V3{0.8f, 0.65f, 0.25f} : legCol * 0.9f);
-        if (h.kind == Beast::Horse) b.limb(g.foot, g.foot - U * (0.03f * s), r * 0.95f, r * 1.05f, grey(0.15f), 5);
+        b.limb(g.knee, g.foot, r, r * (h.kind == Beast::Elephant ? 1.1f : 0.75f), talon ? as(V3{0.8f, 0.65f, 0.25f}, kBoneM) : legCol * 0.9f);
+        if (h.kind == Beast::Horse) b.limb(g.foot, g.foot - U * (0.03f * s), r * 0.95f, r * 1.05f, as(grey(0.15f), kBoneM), 5);
         if (talon || h.kind == Beast::Dragon)
-            for (int t = -1; t <= 1; ++t) b.cone(g.foot, g.foot + rot(F, U, 0.4f * t) * (0.08f * s) - U * (0.02f * s), r * 0.35f, grey(0.15f), 3);
+            for (int t = -1; t <= 1; ++t) b.cone(g.foot, g.foot + rot(F, U, 0.4f * t) * (0.08f * s) - U * (0.02f * s), r * 0.35f, as(grey(0.15f), kBoneM), 3);
     }
     // Body.
     const V3 body = at(0, 0, 0);
@@ -988,7 +1015,7 @@ V3 beast(Builder& b, const Hide& h, const BeastPose& p, const Kit* riderKit, con
         }
         case Beast::Griffin:
             b.ellipsoid(headAt + hf * (0.03f * s), hf, L, hu, V3{0.11f, 0.09f, 0.1f} * s, h.mane);
-            b.cone(headAt + hf * (0.1f * s), headAt + hf * (0.22f * s) - hu * (0.07f * s), 0.045f * s, V3{0.85f, 0.65f, 0.2f}, 5);
+            b.cone(headAt + hf * (0.1f * s), headAt + hf * (0.22f * s) - hu * (0.07f * s), 0.045f * s, as(V3{0.85f, 0.65f, 0.2f}, kBoneM), 5);
             for (float sd : {-1.0f, 1.0f}) b.ball(headAt + hf * (0.07f * s) + L * (0.05f * s * sd) + hu * (0.03f * s), 0.014f * s, glow(V3{0.95f, 0.7f, 0.15f}), 3);
             break;
         case Beast::Dragon: {
@@ -1018,9 +1045,9 @@ struct Figure {
     Hide hide;
 };
 
-V3 teamCloth(const float team[3]) {
+Paint teamCloth(const float team[3]) {
     // Team colours dulled toward the land's greys, as Myth's were.
-    return cloth(team) * 0.85f;
+    return as(cloth(team), kClothM);
 }
 
 Figure figureOf(UnitType type, const float team[3]) {
@@ -1141,6 +1168,13 @@ Figure figureOf(UnitType type, const float team[3]) {
         case UnitType::Count: break;
     }
     if (twoHanded(k.weapon) && k.strike == Strike::Swing) k.strike = Strike::Overhead;
+    switch (h.kind) {
+        case Beast::Elephant: h.coat.mat = kHideM; break;
+        case Beast::Dragon: h.coat.mat = kScaleM, h.mane.mat = kBoneM; break;
+        case Beast::Spider: h.coat.mat = kChitinM; break;
+        case Beast::Griffin: h.mane.mat = kFeatherM; break;
+        default: break;
+    }
     return fg;
 }
 
@@ -1215,19 +1249,21 @@ Plan plan(UnitType type) {
             const Mesh lit = build(type, white, static_cast<Anim>(a), f);
             const Mesh dark = build(type, black, static_cast<Anim>(a), f);
             std::vector<float>& out = p.frames[i];
-            const size_t n = lit.data.size() / 9;
-            out.resize(n * 10);
+            const size_t n = lit.data.size() / 10;
+            out.resize(n * kVertexFloats);
             for (size_t v = 0; v < n; ++v) {
-                const float* q = &lit.data[v * 9];
-                const float* r = &dark.data[v * 9];
-                std::copy(q, q + 9, &out[v * 10]);
-                out[v * 10 + 9] = std::fabs(q[6] - r[6]) + std::fabs(q[7] - r[7]) + std::fabs(q[8] - r[8]) > 1e-3f ? 1.0f : 0.0f;
+                const float* q = &lit.data[v * 10];
+                const float* r = &dark.data[v * 10];
+                float* o = &out[v * kVertexFloats];
+                std::copy(q, q + 9, o);
+                o[9] = std::fabs(q[6] - r[6]) + std::fabs(q[7] - r[7]) + std::fabs(q[8] - r[8]) > 1e-3f ? 1.0f : 0.0f;
+                o[10] = q[9];
             }
             for (int w = 0; w < kViews; ++w) {
                 const View vw = view(w);
                 Extent e{1e9f, 1e9f, -1e9f, -1e9f};
                 for (size_t v = 0; v < n; ++v) {
-                    const V3 pos{out[v * 10], out[v * 10 + 1], out[v * 10 + 2]};
+                    const V3 pos{out[v * kVertexFloats], out[v * kVertexFloats + 1], out[v * kVertexFloats + 2]};
                     const float x = pos.dot(vw.right), y = pos.dot(vw.up);
                     e.u0 = std::min(e.u0, x), e.u1 = std::max(e.u1, x);
                     e.v0 = std::min(e.v0, y), e.v1 = std::max(e.v1, y);
