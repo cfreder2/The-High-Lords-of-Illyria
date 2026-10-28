@@ -24,8 +24,9 @@ int main() {
 
     std::printf("## Body and melee\n\n");
     std::printf("**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each rank, hero level and blessing adds one, to 9.\n\n");
-    std::printf("| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Notes |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    std::printf("**Morale** is how hard shocks shake the type, in percent of a man's (lower is steadier); \"never\" types never break.\n\n");
+    std::printf("| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Morale | Notes |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         const UnitStats s = unitStats(static_cast<UnitType>(t));
         char notes[160] = "";
@@ -38,11 +39,12 @@ int main() {
         if (s.healing.amount)
             n += std::snprintf(notes + n, sizeof notes - n, "heals %d every %.1f s, %d charges; ", s.healing.amount,
                                secs(s.healing.cooldownTicks), s.healing.charges);
-        std::printf("| %s | %d | %d | %.2f | %.2f | %.1f | %.1f | %d | %.2f s | %.1f | %.0f | %s | %s |\n",
+        const std::string morale = s.moraleShockPct == 0 ? "never" : std::to_string(s.moraleShockPct) + "%";
+        std::printf("| %s | %d | %d | %.2f | %.2f | %.1f | %.1f | %d | %.2f s | %.1f | %.0f | %s | %s | %s |\n",
                     unitTypeName(static_cast<UnitType>(t)), warlordsStrength(static_cast<UnitType>(t)), s.maxHp, d(s.height), d(s.radius), d(s.mass),
                     d(s.moveSpeed), s.melee.damage, secs(s.melee.cooldownTicks), d(s.melee.reach), d(s.melee.knockback),
                     s.shield.blockChance > Fixed::zero() ? (std::to_string(static_cast<int>(d(s.shield.blockChance) * 100 + 0.5)) + "%").c_str() : "",
-                    notes);
+                    morale.c_str(), notes);
     }
 
     std::printf("\n## Missile troops\n\n");

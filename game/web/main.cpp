@@ -418,6 +418,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
 
+// Test hook: a squad's soldiers promoted to a rank (0..3), to see their shield pips.
+EMSCRIPTEN_KEEPALIVE void illyria_test_promote(int squad, int rank) {
+    if (app && squad >= 0) app->battle->promoteSquad(static_cast<size_t>(squad), rank);
+}
+
 EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
     if (!app) return;
     V3 at;
@@ -1016,10 +1021,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const Standing st = b.standing(q);
         std::snprintf(buf, sizeof buf,
                       "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
-                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d}",
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
-                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills);
+                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken);
         s += buf;
     }
     s += "]}";

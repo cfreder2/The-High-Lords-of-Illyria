@@ -111,6 +111,9 @@ struct UnitStats {
     Fixed mass = Fixed::one();
     bool mounted = false;
     bool bleeds = true;  // false: bones and dust instead of blood
+    // Morale (world_morale.cpp): how hard shocks shake it, in percent of a
+    // man's; 0 never breaks (the mindless dead, heroes).
+    int32_t moraleShockPct = 100;
 };
 
 // One soldier (or beast). Squads are a campaign-layer grouping of these.
@@ -132,6 +135,21 @@ struct Unit {
     Vec3 vel;     // only while thrown through the air
     bool airborne = false;  // thrown by a blow or blast (not flying)
     bool engaged = false;   // fought in melee this tick
+    // The enemy it is trading blows with: it keeps to that one while in reach,
+    // so anyone else coming at its flank or rear finds it off guard.
+    EntityId foe = kNoEntity;
+    // A rider's momentum: speed built up at the gallop (m/s), spent in the
+    // first blow of a charge, lost on stopping or in melee; and the grade of
+    // that run (negative downhill), which multiplies or saps the impact.
+    Fixed momentum;
+    Fixed chargeGrade;
+    // Morale, 0..kMoraleFull: shaken by losses, blows from behind, charges,
+    // being outnumbered and a hero's fall; it wavers below kMoraleWaver and
+    // breaks below kMoraleBreak, fleeing and ignoring orders until it rallies.
+    int32_t morale = 1000;
+    bool routed = false;
+    int32_t calmTicks = 0;  // since the last shock, for recovering
+    bool wavering() const;
 
     enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
     Flight flight = Flight::Grounded;
@@ -215,6 +233,28 @@ struct ImpactEvent {
     int32_t gate = -1;
 };
 
+// Where a blow or missile lands on its target, by the way the target faces
+// (world_combat.cpp): the front, a flank, or the rear.
+enum class HitSide : uint8_t { Front, Flank, Rear };
+HitSide hitSide(const Vec3& targetFacing, const Vec3& travel);
+// A veteran's shield pips, 0 to 3: a soldier's rank (regular, veteran,
+// elite), or a hero's level in thirds. What the health bar shows.
+int32_t veteranGrade(const Unit& u);
+
+// A hero fell this tick (for morale, the HUD, a campaign log). Like
+// ImpactEvent, derived from the simulation state and not part of it.
+struct HeroDeath {
+    EntityId hero = kNoEntity;
+    PlayerId owner = 0;
+    Vec3 pos;
+    EntityId killer = kNoEntity;  // kNoEntity for a blast or anything without a striker
+};
+
+inline constexpr int32_t kMoraleFull = 1000;
+inline constexpr int32_t kMoraleWaver = 450;
+inline constexpr int32_t kMoraleBreak = 200;
+inline bool Unit::wavering() const { return !routed && morale < kMoraleWaver; }
+
 // A castle gate's state in battle; its shape is the Region's Gate.
 struct GateState {
     static constexpr PlayerId kNoHolder = 255;
@@ -257,6 +297,8 @@ public:
     const std::vector<Unit>& units() const { return units_; }
     const std::vector<Projectile>& projectiles() const { return projectiles_; }
     const std::vector<ImpactEvent>& impacts() const { return impacts_; }
+    // Heroes killed during the last step: the hook for morale (not yet modelled).
+    const std::vector<HeroDeath>& heroDeaths() const { return heroDeaths_; }
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -269,6 +311,13 @@ public:
     void setGateHp(size_t gate, int32_t hp);
     Fixed groundHeight(Fixed x, Fixed y) const;
     const Region* region() const { return config_.region.get(); }
+    // Damage multipliers, in percent (world_combat.cpp): for where a blow
+    // (or missile) lands, and for an arrow plunging at `vel` from above.
+    static int32_t sidePct(HitSide side, bool missile);
+    static int32_t plungePct(const Vec3& vel);
+    // Shakes a unit's morale by `points` (at a man's resolve), scaled by its
+    // type's moraleShockPct and steadied by veterancy.
+    void shakeMorale(Unit& u, int32_t points);
 
 private:
     // Buckets of indices by grid cell. Lookups only, never iterated, so the
@@ -335,6 +384,31 @@ private:
     // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
     bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);
+    // Battle mechanics in world_combat.cpp.
+    // The enemy to fight: the foe still in reach, or the nearest within aggro range.
+    Unit* meleeTarget(Unit& unit, EntityId lastFoe);
+    // Turns toward a flat unit direction at the unit's own pace; true once facing it.
+    bool turnToward(Unit& unit, const Vec3& dir) const;
+    // Melee damage multiplier (percent) of a blow from `attacker` to `target`,
+    // before facing: ground, high ground, prowess, the bonus against riders.
+    int32_t blowPct(const Unit& attacker, const Unit& target, Fixed dist, Fixed dz) const;
+    // A rider's first blow with momentum behind it.
+    bool chargeReady(const Unit& unit) const;
+    void charge(Unit& unit, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz);
+    // Builds or spends a rider's momentum from how far it moved this tick.
+    void trackMomentum(Unit& unit, const Vec3& before);
+    // Veterancy beyond damage: quicker blows and reloads, quicker to rise, harder to hurt.
+    int32_t veteranSteps(const Unit& u) const;
+    int32_t attackTicks(const Unit& u, int32_t baseTicks) const;
+    int32_t recoverTicks(const Unit& u) const;
+    int32_t defendedDamage(const Unit& u, int32_t amount) const;
+    // Morale (world_morale.cpp): shocks from this tick's deaths, the census of
+    // friends and foes, recovery, breaking and rallying; and a broken unit's flight.
+    void updateMorale();
+    void flee(Unit& u);
+    void shakeBySide(Unit& u, HitSide side, bool missile);
+    // Missile reach from the unit's height over the target: farther down a hill, shorter up one.
+    Fixed shotRange(const Unit& u, Fixed base, const Vec3& target) const;
     bool tryHeal(Unit& unit);
     Unit* nearestEnemy(const Unit& unit, Fixed range);
     // Returns true if the blow killed the target.
@@ -377,6 +451,9 @@ private:
     std::vector<Projectile> projectiles_;
     std::vector<Projectile> spawned_;  // created while projectiles_ is being updated
     std::vector<ImpactEvent> impacts_;
+    std::vector<HeroDeath> heroDeaths_;
+    // Soldiers killed this step (owner, where), for their friends' morale.
+    std::vector<std::pair<PlayerId, Vec3>> deaths_;
     std::vector<Remain> remains_;
     std::vector<GateState> gates_;
     uint64_t remainsAdded_ = 0;

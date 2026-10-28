@@ -114,6 +114,8 @@ private:
 
     Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
     Program figure_, resolve_, unit_, figureDepth_, sheetView_;
+    Program bar_;  // health bars with veterans' shield pips
+    Batch bars_;
     // The soldiers' sprite sheets, one per unit type and side, baked on the
     // GPU from figures::build when a battle first needs them.
     struct Sheet {
