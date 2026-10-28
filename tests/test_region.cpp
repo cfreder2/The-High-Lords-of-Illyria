@@ -137,6 +137,77 @@ TEST(walking_through_body_parts_kicks_them_along) {
     CHECK(kicked > 0);
 }
 
+TEST(walkers_leave_arrows_where_they_fell) {
+    World w(WorldConfig{});
+    // A volley into open ground, then a heavy soldier marches through it.
+    std::vector<EntityId> archers;
+    for (int i = 0; i < 6; ++i) archers.push_back(w.spawnUnit(0, {m(-40), m(i * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers)));
+    std::vector<Command> fire;
+    for (EntityId a : archers) fire.push_back({0, a, Command::Type::AttackGround, {m(0), m(0), m(0)}});
+    w.step(fire);
+    for (int i = 0; i < 12 * kTicksPerSecond; ++i) w.step({});
+    std::vector<Command> stop;
+    for (EntityId a : archers) stop.push_back({0, a, Command::Type::Stop, {}});
+    w.step(stop);
+    for (int i = 0; i < 5 * kTicksPerSecond; ++i) w.step({});
+    std::vector<Remain> before;
+    for (const Remain& r : w.remains())
+        if (r.kind == RemainKind::Arrow) before.push_back(r);
+    CHECK(before.size() > 5);
+    const EntityId walker = w.spawnUnit(0, {m(-12), m(0), m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
+    for (int pass = 0; pass < 3; ++pass) {
+        const Command go{0, walker, Command::Type::Move, {pass % 2 ? m(-12) : m(12), m(pass - 1), m(0)}};
+        w.step(std::span(&go, 1));
+        for (int i = 0; i < 8 * kTicksPerSecond; ++i) {
+            w.step({});
+            for (const Projectile& p : w.projectiles()) CHECK(!(p.kind == ProjectileKind::Debris && p.remain == RemainKind::Arrow));
+        }
+    }
+    size_t same = 0;
+    for (const Remain& r : w.remains())
+        for (const Remain& b : before) same += r.kind == RemainKind::Arrow && r.pos == b.pos && r.dir == b.dir;
+    CHECK(same == before.size());
+}
+
+TEST(blasted_parts_skid_away_leaving_blood_trails) {
+    World w(WorldConfig{});
+    const EntityId dwarf = w.spawnUnit(0, {m(-15), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+    for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(0), Fixed::fromRatio(i * 9 - 13, 10), m(0)}, kWest, unitStats(UnitType::Archers));
+    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+    w.step(std::span(&bomb, 1));
+    int bleeds = 0;
+    Vec3 blast;
+    bool exploded = false;
+    for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
+        if (i == 7 * kTicksPerSecond) {
+            const Command hold{0, dwarf, Command::Type::Stop, {}};
+            w.step(std::span(&hold, 1));
+        } else {
+            w.step({});
+        }
+        for (const ImpactEvent& e : w.impacts()) {
+            bleeds += e.kind == ImpactEvent::Kind::Bleed;
+            if (e.kind == ImpactEvent::Kind::Explosion && !exploded) {
+                blast = e.pos;
+                exploded = true;
+            }
+        }
+    }
+    CHECK(exploded);
+    // Every part leaves a dotted trail, not one splat...
+    int parts = 0;
+    Fixed farthest;
+    for (const Remain& r : w.remains()) {
+        if (r.kind != RemainKind::Head && r.kind != RemainKind::Arm && r.kind != RemainKind::Leg) continue;
+        ++parts;
+        farthest = max(farthest, (r.pos - blast).flat().length());
+    }
+    CHECK(parts >= 3);
+    CHECK(bleeds >= parts * 3);
+    // ...and some are thrown well clear of the blast.
+    CHECK(farthest > m(8));
+}
+
 TEST(arrows_stick_in_trees) {
     const Region& r = *illyriaRegion();
     const Obstacle* oak = nullptr;
@@ -171,7 +242,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x1383c013425d3969;
+    constexpr uint64_t kGolden = 0xcc497343e82c8ed4;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

@@ -265,7 +265,7 @@ void Battle::collectEvents() {
     std::erase_if(recent_, [&](const Recent& r) { return tick - r.tick > 4 * sim::kTicksPerSecond; });
     for (const sim::ImpactEvent& e : world_->impacts()) {
         const V3 pos = toV3(e.pos);
-        if (e.kind != sim::ImpactEvent::Kind::Ground && recent_.size() < 600) {
+        if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600) {
             recent_.push_back({pos, tick, e.kind == sim::ImpactEvent::Kind::Explosion ? 8.0f : (e.killed ? 3.0f : 1.0f)});
         }
         const V3 dir = toV3(e.dir).normalized();
@@ -275,6 +275,21 @@ void Battle::collectEvents() {
             case K::Ground:
                 for (int i = 0; i < 2; ++i) emit(Particle::Kind::Dirt, pos, {srnd(), srnd(), 1.5f + rnd()}, 0.5f, 0.06f);
                 break;
+            case K::Bleed: {
+                // A flung part struck or skidded here: a splat, and a few
+                // droplets thrown on ahead.
+                const float size = static_cast<float>(e.radius.toDouble());
+                const float yaw = std::atan2(dir.y, dir.x);
+                addMark(GroundMark::Kind::Blood, pos, yaw, size, seed);
+                if (size > 0.3f) {
+                    for (int i = 0; i < 2; ++i) {
+                        const uint32_t s = mix(seed, static_cast<uint32_t>(i + 1));
+                        const V3 p = pos + V3{dir.x, dir.y, 0} * (0.4f + unit01(s) * 0.8f) + V3{-dir.y, dir.x, 0} * (unit01(s >> 8) - 0.5f) * 0.5f;
+                        addMark(GroundMark::Kind::Blood, p, yaw, size * 0.35f, s);
+                    }
+                }
+                break;
+            }
             case K::Blocked:
                 for (int i = 0; i < 6; ++i) emit(Particle::Kind::Spark, pos, V3{srnd() * 3, srnd() * 3, 1 + rnd() * 3} - dir * 2, 0.35f, 0.05f);
                 break;
@@ -283,7 +298,7 @@ void Battle::collectEvents() {
                 break;
             case K::Explosion: {
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.55f, seed);
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.5f}, {}, 0.18f, r * 1.3f);
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());

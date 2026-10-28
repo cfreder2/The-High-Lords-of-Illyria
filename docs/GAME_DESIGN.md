@@ -120,7 +120,9 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 
 **Missile troops** have a real maximum range (archers 70 m, grenadiers 19 m). Ordered to shoot farther, they walk into range first.
 
-**Bodies have space and mass.** Soldiers cannot overlap, the lighter one gives way, corpses are shoved aside, and trees, rocks, houses and deep water block movement. Loose body parts are physical objects that get kicked along by anyone walking through them.
+**Bodies have space and mass.** Soldiers cannot overlap, the lighter one gives way, corpses are shoved aside, and trees, rocks, houses and deep water block movement. Loose body parts are physical objects that walkers nudge aside. Arrows are different: stuck or lying, they stay exactly where they fell until an explosion throws them.
+
+**Explosions, as in Myth.** A blast throws body parts long and low. Each one strikes the ground, hops on and skids to a stop, leaving a splat of blood at every strike and a dotted smear along the skid. The result is the red trails radiating out from the blast, each ending where the part came to rest. The scorch is a ragged star of blackened spokes. All of it stays (§5.5).
 
 ### 4.2.2 Cities & Castles
 

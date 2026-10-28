@@ -342,7 +342,7 @@ out vec4 oColor;
 
 vec3 bloodColor(float age) {
     // Bright red, to brown within minutes, to near-black within the hour.
-    vec3 fresh = vec3(0.55, 0.02, 0.02);
+    vec3 fresh = vec3(0.42, 0.03, 0.02);
     vec3 brown = vec3(0.30, 0.07, 0.03);
     vec3 old = vec3(0.13, 0.07, 0.05);
     return mix(mix(fresh, brown, smoothstep(0.0, 240.0, age)), old, smoothstep(240.0, 3600.0, age));
@@ -394,11 +394,14 @@ void main() {
         if (head > 0.5) { c = skin; a = 1.0; }
         color = vec4(c, a);
     } else if (type < 4.5) {
-        // Scorched crater: dark pit, blackened ring, slowly greening over months.
+        // Scorched crater: a dark pit and a ragged star of blackened spokes
+        // thrown out by the blast, slowly greening over months.
         float a = atan(vUv.y, vUv.x);
-        float edge = 0.85 + 0.08 * sin(a * 5.0 + seed * 9.0);
-        float pit = 1.0 - smoothstep(0.35, 0.55, r);
-        float scorch = 1.0 - smoothstep(edge - 0.25, edge, r);
+        float spokes = 0.5 + 0.5 * sin(a * 7.0 + seed * 9.0);
+        spokes = spokes * 0.6 + (0.5 + 0.5 * sin(a * 11.0 + seed * 3.7)) * 0.4;
+        float reach = 0.42 + 0.56 * pow(spokes, 3.0);
+        float pit = 1.0 - smoothstep(0.18, 0.32, r);
+        float scorch = (1.0 - smoothstep(reach - 0.2, reach, r)) * (1.0 - smoothstep(0.55, 1.0, r) * 0.45);
         float heal = smoothstep(86400.0, 86400.0 * 60.0, age);
         vec3 c = mix(vec3(0.08, 0.06, 0.05), vec3(0.18, 0.13, 0.08), 1.0 - pit);
         color = vec4(c, scorch * mix(0.85, 0.15, heal));

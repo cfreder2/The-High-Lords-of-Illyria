@@ -38,6 +38,14 @@ constexpr Fixed kLiftFraction = Fixed::fromRatio(7, 10);
 constexpr Fixed kGroundFriction = Fixed::fromRatio(11, 20);
 constexpr Fixed kRestSpeed = Fixed::fromRatio(6, 5);
 constexpr Fixed kDebrisRestitution = Fixed::fromRatio(1, 4);
+// Flung body parts (see World::tumble): what they keep at each strike, how hard
+// the ground drags them while skidding, and how far apart their blood marks fall.
+constexpr Fixed kTumbleRestitution = Fixed::fromRatio(3, 10);
+constexpr Fixed kTumbleKeep = Fixed::fromRatio(4, 5);
+constexpr Fixed kStrikeSpeed = Fixed::fromRatio(3, 2);
+constexpr Fixed kSkidDecel = Fixed::fromInt(7);
+constexpr Fixed kTumbleRest = Fixed::fromRatio(1, 2);
+constexpr Fixed kSmearSpacing = Fixed::fromRatio(9, 20);
 // A satchel is a heavy bag: it bounces less and drags more than loose debris.
 constexpr Fixed kBombFriction = Fixed::fromRatio(2, 5);
 // Grenadiers throw short to allow for the bounce and roll.
@@ -452,16 +460,18 @@ void World::kickRemains(Unit& u, const Vec3& moveDir) {
     remainGrid_.query(u.pos.x, u.pos.y, reach, [&](uint32_t slot) {
         if (touched.size() >= static_cast<size_t>(kMaxKicksPerTick)) return;
         const Remain& r = remains_[slot];
-        // Stuck arrows stay put; loose things get kicked along.
-        if (r.kind == RemainKind::None || (r.kind == RemainKind::Arrow && r.dir.z < -Fixed::fromRatio(1, 5))) return;
+        // Arrows stay where they fell, stuck or lying (only explosions move
+        // them); body parts get nudged along.
+        if (r.kind == RemainKind::None || r.kind == RemainKind::Arrow) return;
         if ((r.pos - u.pos).flat().lengthSq() > reach * reach) return;
         touched.push_back(slot);
     });
     for (uint32_t slot : touched) {
         const Remain& r = remains_[slot];
-        const Fixed push = u.stats.moveSpeed * (Fixed::fromRatio(1, 2) + rng_.nextUnit() / 2) * min(u.stats.mass, Fixed::fromInt(3));
-        const Fixed side = rng_.nextSigned();
-        const Fixed lift = Fixed::one() + rng_.nextUnit();
+        // A nudge and a short roll, not a launch.
+        const Fixed push = u.stats.moveSpeed * (Fixed::fromRatio(1, 4) + rng_.nextUnit() / 4) * min(u.stats.mass, Fixed::fromInt(2));
+        const Fixed side = rng_.nextSigned() / 2;
+        const Fixed lift = Fixed::fromRatio(3, 10) + rng_.nextUnit() * 3 / 10;
         const Vec3 vel = moveDir * push + Vec3{-moveDir.y * side, moveDir.x * side, lift};
         spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), vel);
         clearRemain(slot);
@@ -706,6 +716,55 @@ bool World::bounce(Projectile& p, Fixed restitution, Fixed friction) {
     return p.resting;
 }
 
+bool World::tumble(Projectile& p) {
+    if (p.resting) return true;
+    const Vec3 before = p.pos;
+    p.pos += p.vel * kTickDt + up(-config_.gravity * (kTickDt * kTickDt / 2));
+    p.vel.z -= config_.gravity * kTickDt;
+    if (obstacleHit(before, p.pos, Fixed::one()) >= Fixed::zero()) {
+        p.pos.x = before.x;
+        p.pos.y = before.y;
+        p.vel.x = -p.vel.x * kTumbleRestitution;
+        p.vel.y = -p.vel.y * kTumbleRestitution;
+    }
+    const Fixed ground = groundHeight(p.pos.x, p.pos.y);
+    if (p.pos.z > ground) return false;
+    p.pos.z = ground;
+    const Vec3 travel = p.vel.flat();
+    const auto bleed = [&](Fixed size) {
+        if (!p.bleeding || isWater(p.pos.x, p.pos.y)) return;
+        impacts_.push_back({ImpactEvent::Kind::Bleed, p.pos, normalized(travel), p.id, kNoEntity, false, size});
+    };
+    if (p.vel.z < -kStrikeSpeed) {
+        // A strike: it hops on, keeping most of its speed; blood where it hit.
+        const Fixed speed = -p.vel.z;
+        p.vel.z = speed * kTumbleRestitution;
+        p.vel.x *= kTumbleKeep;
+        p.vel.y *= kTumbleKeep;
+        bleed(clamp(speed * Fixed::fromRatio(1, 15), Fixed::fromRatio(1, 6), Fixed::fromRatio(1, 2)));
+        p.smear = Fixed::zero();
+    } else {
+        // Skidding: the ground drags it to a stop, smearing as it goes.
+        p.vel.z = Fixed::zero();
+        const Fixed speed = travel.length();
+        const Fixed slower = max(Fixed::zero(), speed - kSkidDecel * kTickDt);
+        if (speed > Fixed::zero()) {
+            p.vel.x = p.vel.x * slower / speed;
+            p.vel.y = p.vel.y * slower / speed;
+        }
+        p.smear += speed * kTickDt;
+        if (p.smear >= kSmearSpacing) {
+            bleed(Fixed::fromRatio(1, 10) + min(speed, Fixed::fromInt(6)) / 50);
+            p.smear = Fixed::zero();
+        }
+    }
+    if (p.vel.lengthSq() < kTumbleRest * kTumbleRest) {
+        p.vel = {};
+        p.resting = true;
+    }
+    return p.resting;
+}
+
 void World::updateProjectiles() {
     const Vec3 accel = config_.wind + up(-config_.gravity);
     // spawned_ may already hold debris kicked up by walkers this tick.
@@ -736,7 +795,7 @@ void World::updateProjectiles() {
                 continue;
             }
             const Vec3 travel = p.vel.flat();
-            if (bounce(p, kDebrisRestitution, kGroundFriction) || p.ageTicks >= kMaxProjectileAgeTicks) {
+            if (tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks) {
                 Vec3 lie = normalized(travel);
                 if (lie.lengthSq() == Fixed::zero()) lie = {Fixed::one(), Fixed::zero(), Fixed::zero()};
                 placeRemain(p.remain, p.owner, p.pos, lie);
@@ -901,12 +960,14 @@ void World::spawnGibs(const Unit& victim, const Vec3& from, Fixed strength) {
         const RemainKind kind = victim.stats.bleeds ? part : RemainKind::Bone;
         // One RNG draw per statement: the evaluation order of operands within
         // an expression is unspecified and differs between compilers.
-        const Fixed outward = Fixed::fromRatio(1, 2) + rng_.nextUnit() / 2;
-        const Fixed lift = Fixed::fromRatio(3, 5) + rng_.nextUnit() / 2;
+        // Flung long and low, so they strike, hop and skid away from the blast.
+        const Fixed outward = Fixed::fromRatio(9, 10) + rng_.nextUnit() * 3 / 5;
+        const Fixed lift = Fixed::fromRatio(7, 20) + rng_.nextUnit() * 7 / 20;
         const Fixed sideX = rng_.nextSigned() * 3;
         const Fixed sideY = rng_.nextSigned() * 3;
         const Vec3 vel = away * (strength * outward) + up(strength * lift) + Vec3{sideX, sideY, Fixed::zero()};
         spawnDebris(kind, victim.owner, origin, vel);
+        spawned_.back().bleeding = victim.stats.bleeds;
     }
 }
 
@@ -983,6 +1044,8 @@ uint64_t World::checksum() const {
         h.addI64(p.ageTicks);
         h.addI64(p.fuse);
         h.addU64(p.resting);
+        h.addU64(p.bleeding);
+        h.addI64(p.smear.raw);
         hashExplosive(h, p.explosive);
     }
     h.addU64(remainsAdded_);

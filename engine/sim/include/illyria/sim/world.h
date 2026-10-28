@@ -155,6 +155,8 @@ struct Projectile {
     int32_t ageTicks = 0;
     int32_t fuse = 0;
     bool resting = false;
+    bool bleeding = false;  // a fresh body part: leaves blood where it strikes and skids
+    Fixed smear;            // distance skidded since its last blood mark
     Explosive explosive;
 };
 
@@ -179,7 +181,8 @@ struct Command {
 // Something that happened this tick, for rendering and audio. Not part of the
 // simulation state, but derived only from it, so identical on every peer.
 struct ImpactEvent {
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal };
+    // Bleed: a flung body part struck or skidded here (radius = size of the mark).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -277,6 +280,9 @@ private:
     void updateProjectiles();
     // Integrates a bouncing body; returns true once it has come to rest.
     bool bounce(Projectile& p, Fixed restitution, Fixed friction);
+    // Debris (body parts, thrown arrows): low bounces that keep their speed,
+    // then a skid to rest. Returns true once at rest.
+    bool tumble(Projectile& p);
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner);
