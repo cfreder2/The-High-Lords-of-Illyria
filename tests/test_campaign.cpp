@@ -35,6 +35,7 @@ TEST(each_side_starts_with_a_capital_a_hero_and_gold) {
 
 TEST(cities_pay_gold_and_train_armies_that_cost_upkeep) {
     Campaign c(continent(), 1);
+    c.setHuman(0, true);  // the hero stays home rather than going off exploring
     const int32_t capital = [&] {
         for (size_t i = 0; i < c.cities().size(); ++i)
             if (c.cities()[i].owner == 0) return static_cast<int32_t>(i);
@@ -148,7 +149,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x7f2114dadd818c59;
+    constexpr uint64_t kGolden = 0x81572d64a1e1f6ad;
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

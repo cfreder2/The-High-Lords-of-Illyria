@@ -242,7 +242,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xff59ba01a6c5f960;
+    constexpr uint64_t kGolden = 0x69a0273b97ff6978;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

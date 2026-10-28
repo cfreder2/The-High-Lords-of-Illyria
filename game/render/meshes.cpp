@@ -1,5 +1,6 @@
 #include "meshes.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "illyria/game/gmath.h"
@@ -51,6 +52,15 @@ struct Builder {
             const V3 d0 = u * std::cos(a0) + v * std::sin(a0), d1 = u * std::cos(a1) + v * std::sin(a1);
             quad(a + d0 * r0, a + d1 * r0, b + d1 * r1, b + d0 * r1, color * (0.85f + 0.15f * std::cos(a0 - 0.6f)));
         }
+    }
+    // A box on axes ax, ay, az (unit) with half sizes h, all six faces.
+    void block(V3 c, V3 ax, V3 ay, V3 az, V3 h, V3 color) {
+        const V3 X = ax * h.x, Y = ay * h.y, Z = az * h.z;
+        const V3 p[8] = {c - X - Y - Z, c + X - Y - Z, c + X + Y - Z, c - X + Y - Z,
+                         c - X - Y + Z, c + X - Y + Z, c + X + Y + Z, c - X + Y + Z};
+        const int f[6][4] = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {2, 3, 7, 6}, {1, 2, 6, 5}, {3, 0, 4, 7}};
+        const float shade[6] = {0.7f, 1.08f, 0.95f, 0.95f, 0.88f, 0.88f};
+        for (int i = 0; i < 6; ++i) quad(p[f[i][0]], p[f[i][1]], p[f[i][2]], p[f[i][3]], color * shade[i]);
     }
     // Faceted blob: an icosahedron, optionally squashed and dented.
     void blob(V3 centre, V3 radii, V3 color, float dent = 0, int seed = 0) {
@@ -382,6 +392,64 @@ Mesh curtain() {
     return b.mesh;
 }
 
+namespace {
+const V3 kOak{0.40f, 0.27f, 0.15f}, kIron{0.17f, 0.17f, 0.19f};
+// One door leaf of planks, hinged at `hinge`, running `dir` (unit, flat) for
+// `len`, swung so its outer face looks along `face`. Heights are per plank
+// (a broken leaf is jagged); bands of iron cross what is left.
+void leaf(Builder& b, V3 hinge, V3 dir, V3 face, float len, const float* heights, int planks, float thick) {
+    const V3 up{0, 0, 1};
+    const float w = len / planks;
+    float lowest = 1;
+    for (int i = 0; i < planks; ++i) {
+        const float h = heights[i];
+        lowest = std::min(lowest, h);
+        const float shade = 0.9f + 0.2f * std::fabs(std::sin(static_cast<float>(i) * 2.3f + hinge.x * 5));
+        b.block(hinge + dir * (w * (i + 0.5f)) + up * (h / 2), dir, face, up, {w * 0.47f, thick, h / 2}, kOak * shade);
+    }
+    // Iron bands and their studs, on the outer face, only where every plank still reaches.
+    for (float z : {0.12f, 0.48f, 0.84f}) {
+        if (z + 0.03f > lowest) break;
+        b.block(hinge + dir * (len / 2) + face * (thick * 1.25f) + up * z, dir, face, up, {len * 0.48f, thick * 0.3f, 0.025f}, kIron);
+        for (int i = 0; i < planks; i += 2)
+            b.block(hinge + dir * (w * (i + 0.5f)) + face * (thick * 1.6f) + up * z, dir, face, up, {0.012f, 0.012f, 0.012f}, kIron * 1.4f);
+    }
+}
+}  // namespace
+
+Mesh gate(bool broken) {
+    // Across x in [-1, 1], +y outward, z in [0, 1]: scaled by the half-width
+    // across and out, and by the passage height up.
+    Builder b;
+    const float thick = 0.03f;
+    const int planks = 6;
+    if (!broken) {
+        const float full[planks] = {1, 1, 1, 1, 1, 1};
+        leaf(b, {-1, 0, 0}, {1, 0, 0}, {0, 1, 0}, 0.995f, full, planks, thick);
+        leaf(b, {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, 0.995f, full, planks, thick);
+        // Ring pulls on the outer face, and the crossbar's ends showing past the posts.
+        for (float x : {-0.12f, 0.12f}) b.limb({x, thick * 2.2f, 0.43f}, {x, thick * 2.2f, 0.37f}, 0.03f, 0.03f, 5, kIron * 1.3f);
+        b.block({0, -thick * 2, 0.5f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1.0f, thick, 0.035f}, kOak * 0.8f);
+        return b.mesh;
+    }
+    // Battered in: each leaf hangs inward off its hinges, splintered, and
+    // the rest of the timbers lie strewn in the passage.
+    const float left[planks] = {0.62f, 0.44f, 0.51f, 0.3f, 0.22f, 0.14f};
+    const float right[planks] = {0.55f, 0.6f, 0.33f, 0.4f, 0.18f, 0.25f};
+    const float swing = 1.15f;
+    leaf(b, {-1, 0, 0}, {std::cos(swing), -std::sin(swing), 0}, {std::sin(swing), std::cos(swing), 0}, 0.9f, left, planks, thick);
+    leaf(b, {1, 0, 0}, {-std::cos(swing * 0.8f), -std::sin(swing * 0.8f), 0}, {-std::sin(swing * 0.8f), std::cos(swing * 0.8f), 0}, 0.9f, right, planks, thick);
+    for (int i = 0; i < 7; ++i) {
+        const float a = static_cast<float>(i) * 1.7f + 0.4f;
+        const V3 dir{std::cos(a), std::sin(a), 0};
+        const V3 at{std::sin(static_cast<float>(i) * 2.9f) * 0.55f, -0.15f - 0.13f * static_cast<float>(i % 4), 0.012f};
+        b.block(at, dir, {-dir.y, dir.x, 0}, {0, 0, 1}, {0.16f + 0.06f * static_cast<float>(i % 3), 0.035f, 0.012f}, kOak * (0.75f + 0.05f * static_cast<float>(i % 4)));
+    }
+    // A bent band lying among them.
+    b.block({0.2f, -0.35f, 0.006f}, {0.94f, 0.34f, 0}, {-0.34f, 0.94f, 0}, {0, 0, 1}, {0.3f, 0.02f, 0.005f}, kIron);
+    return b.mesh;
+}
+
 Mesh drum() {
     Builder b;
     b.frustum(0, 1.08f, 0.15f, 1.0f, 14, kStone * 0.92f);  // battered base
@@ -514,6 +582,71 @@ Mesh sageTower() {
     b.frustum(0.8f, 0.3f, 1.15f, 0, 8, roof);
     b.blob({0, 0, 1.17f}, {0.04f, 0.04f, 0.04f}, {1.0f, 0.9f, 0.5f}, 0, 11);
     b.box({0.22f, -0.05f, 0.4f}, {0.3f, 0.05f, 0.52f}, {0.95f, 0.8f, 0.4f});
+    return b.mesh;
+}
+
+Mesh ship() {
+    Builder b;
+    const V3 wood{0.45f, 0.3f, 0.17f}, dark{0.3f, 0.2f, 0.12f}, deck{0.62f, 0.5f, 0.34f};
+    // The hull: a section at each station, from a pointed stern to a pointed
+    // bow, the sides flaring out from a narrow keel.
+    struct Station { float x, half, keel, rail; };
+    const Station st[] = {{-1.0f, 0.02f, -0.02f, 0.34f}, {-0.75f, 0.2f, -0.12f, 0.28f}, {-0.3f, 0.27f, -0.16f, 0.24f},
+                          {0.3f, 0.27f, -0.16f, 0.24f},   {0.75f, 0.18f, -0.12f, 0.3f},  {1.05f, 0.02f, -0.02f, 0.42f}};
+    constexpr int kStations = static_cast<int>(sizeof st / sizeof st[0]);
+    for (int i = 0; i + 1 < kStations; ++i) {
+        const Station& a = st[i];
+        const Station& c = st[i + 1];
+        for (int side = -1; side <= 1; side += 2) {
+            const float s = static_cast<float>(side);
+            const V3 ak{a.x, 0, a.keel}, ck{c.x, 0, c.keel};
+            const V3 aw{a.x, s * a.half, 0.05f}, cw{c.x, s * c.half, 0.05f};  // the widest, just above the water
+            const V3 ar{a.x, s * a.half * 0.85f, a.rail}, cr{c.x, s * c.half * 0.85f, c.rail};
+            if (side > 0) {
+                b.quad(ak, ck, cw, aw, dark);
+                b.quad(aw, cw, cr, ar, wood);
+            } else {
+                b.quad(ak, aw, cw, ck, dark);
+                b.quad(aw, ar, cr, cw, wood);
+            }
+        }
+        // The deck, a little below the rail.
+        const float az = std::min(a.rail, c.rail) - 0.05f;
+        b.quad({a.x, -a.half * 0.8f, az}, {c.x, -c.half * 0.8f, az}, {c.x, c.half * 0.8f, az}, {a.x, a.half * 0.8f, az}, deck);
+    }
+    // Mast and yard.
+    b.frustum(0.15f, 0.035f, 1.5f, 0.02f, 5, dark);
+    b.limb({0.12f, -0.45f, 1.3f}, {0.12f, 0.45f, 1.3f}, 0.02f, 0.02f, 4, dark);
+    // A raised stern deck, and the steering oar.
+    b.box({-0.85f, -0.15f, 0.18f}, {-0.55f, 0.15f, 0.3f}, wood);
+    b.limb({-0.9f, 0.2f, 0.3f}, {-1.05f, 0.24f, -0.12f}, 0.025f, 0.02f, 4, dark);
+    return b.mesh;
+}
+
+Mesh sail() {
+    Builder b;
+    // A square sail hanging from the yard, bellied forward, two-sided.
+    const V3 cloth{1, 1, 1};
+    const V3 tl{0.12f, -0.43f, 1.29f}, tr{0.12f, 0.43f, 1.29f}, ml{0.2f, -0.42f, 0.85f}, mr{0.2f, 0.42f, 0.85f}, bl{0.14f, -0.4f, 0.42f},
+        br{0.14f, 0.4f, 0.42f};
+    b.quad(tl, ml, mr, tr, cloth);
+    b.quad(ml, bl, br, mr, cloth * 0.92f);
+    b.quad(tl, tr, mr, ml, cloth * 0.85f);
+    b.quad(ml, mr, br, bl, cloth * 0.8f);
+    return b.mesh;
+}
+
+Mesh pier() {
+    Builder b;
+    const V3 plank{0.55f, 0.43f, 0.3f}, pile{0.3f, 0.22f, 0.15f};
+    b.box({0, -1, -0.25f}, {1, 1, 0}, plank);
+    for (int i = 0; i <= 4; ++i) {
+        const float x = 0.04f + 0.23f * static_cast<float>(i);
+        for (int side = -1; side <= 1; side += 2) {
+            const float y = 0.8f * static_cast<float>(side);
+            b.box({x - 0.012f, y - 0.12f, -1}, {x + 0.012f, y + 0.12f, 0.15f}, pile);
+        }
+    }
     return b.mesh;
 }
 

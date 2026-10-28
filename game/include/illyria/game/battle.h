@@ -76,7 +76,7 @@ struct ArmyResult {
 const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
-enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier };
+enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier, Siege };
 Role roleOf(sim::UnitType type);
 
 // Decals derived only from simulation events, so every peer accumulates the
@@ -155,6 +155,8 @@ public:
     // Input.
     void tap(const Camera& camera, float x, float y, float pixelScale);
     void selectSquad(int index);
+    // The selected squad's orders at a gate (as tapping it), for tests and hooks.
+    void orderAtGate(int gate);
     void stopSelected();
     // Every one of the player's squads at the nearest enemy: the foot charge,
     // missile troops close to a long bowshot.
@@ -227,6 +229,14 @@ private:
     void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
+    // Sieges: the town's gates belong to its defenders.
+    void holdGates(sim::PlayerId holder);
+    // The standing gate under the finger, or -1.
+    int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
+    // The squad's orders at a gate: engines and bombers shoot at it, the rest go through it.
+    void attackGate(const Squad& squad, int gate);
+    // Enemy catapults: the player's gate when they besiege, else the nearest foe in reach.
+    void aimEngines(const Squad& s);
 
     std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;

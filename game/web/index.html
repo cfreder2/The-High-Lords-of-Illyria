@@ -122,12 +122,31 @@
   #cityPanel .meta { font-size: 12px; opacity: 0.85; margin-bottom: 8px; }
   #cityPanel button { display: flex; justify-content: space-between; width: 100%; margin: 4px 0; padding: 6px 8px; font-size: 13px; }
   #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
+  #cityPanel .port { font-size: 12px; margin: 8px 0 2px; color: #bcd8f0; }
+  #voyage { position: fixed; left: calc(8px + var(--safe-l)); bottom: calc(80px + var(--safe-b)); display: flex; align-items: center; gap: 10px;
+            padding: 6px 8px 6px 12px; font-size: 13px; z-index: 4; }
+  #voyage.hidden { display: none; }
+  #voyage button { padding: 6px 12px; }
   #news { position: fixed; left: calc(8px + var(--safe-l)); top: calc(64px + var(--safe-t)); max-width: 320px; font-size: 12px; padding: 6px 10px; }
   #news div { margin: 2px 0; }
   #battlePrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
   #battlePrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
   #battlePrompt p { margin: 0 0 12px; font-size: 13px; }
   #battlePrompt button { margin: 0 4px; padding: 8px 14px; }
+  /* Heroes: search a ruin, kneel at a temple, hire a sword. */
+  #campActions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; }
+  body:not(.campaign) #campActions { display: none; }
+  #campActions button { min-height: 44px; padding: 0 14px; font-size: 14px; border-color: var(--gold); }
+  #campActions button:disabled { opacity: 0.55; border-color: var(--panel-edge); }
+  #hirePrompt { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(320px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
+  #hirePrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 16px; }
+  #hirePrompt p { margin: 0 0 12px; font-size: 13px; }
+  #hirePrompt button { margin: 0 4px; padding: 8px 14px; }
+  #hirePrompt button:disabled { opacity: 0.5; }
+  #toast { position: fixed; left: 50%; bottom: calc(150px + var(--safe-b)); transform: translateX(-50%); width: max-content; max-width: min(90vw, 420px);
+           padding: 8px 14px; font-size: 14px; text-align: center; z-index: 5; pointer-events: none; color: #fff3d6; }
+  .card .arts { grid-column: 1 / -1; font-size: 11px; color: #ffe27a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.has-arts { width: 200px; }
   #withdraw { display: none; }
   body.campfight #withdraw { display: inline-block; }
   body.campfight .nofight { display: none !important; }
@@ -166,6 +185,7 @@
     #title h1 { font-size: 13px; }
     .card { width: 146px; }
     #enemy { display: none; }
+    #cityPanel:not(.hidden) + #voyage { display: none; }  /* no room for both: close the city to sail */
   }
 </style>
 </head>
@@ -217,13 +237,22 @@
 <div id="banners"></div>
 <div id="news" class="panel camp-only hidden"></div>
 <div id="cityPanel" class="panel hidden"></div>
+<div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
 <div id="battlePrompt" class="panel hidden">
   <h3 id="promptTitle">Battle</h3>
   <p id="promptText"></p>
   <button id="promptFight">Fight it</button><button id="promptResolve">Resolve</button>
 </div>
 
+<div id="hirePrompt" class="panel camp-only hidden">
+  <h3 id="hireTitle">A hero offers their sword</h3>
+  <p id="hireText"></p>
+  <button id="hireYes">Hire</button><button id="hireNo">Decline</button>
+</div>
+<div id="toast" class="panel camp-only hidden"></div>
+
 <div id="bottom">
+  <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button></div>
   <div id="actions" class="hidden battle-only">
     <button id="hold">Hold</button>
     <button id="formation" aria-label="Change formation">Box</button>
@@ -294,6 +323,11 @@
       campResolve: Module.cwrap("illyria_campaign_resolve", null, []),
       campFight: Module.cwrap("illyria_campaign_fight", null, []),
       campReturn: Module.cwrap("illyria_campaign_return", null, []),
+      campSearch: Module.cwrap("illyria_campaign_search", "number", []),
+      campHire: Module.cwrap("illyria_campaign_hire", "number", ["number"]),
+      campBuildBoat: Module.cwrap("illyria_campaign_build_boat", null, ["number"]),
+      campEmbark: Module.cwrap("illyria_campaign_embark", null, []),
+      campLand: Module.cwrap("illyria_campaign_land", null, []),
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
@@ -438,6 +472,22 @@
     campArmiesKey = "";
   }
   $("withdraw").onclick = () => api && returnToCampaign();
+  // Heroes: what a search found shows for a few seconds, and stays in the news.
+  let toastTimer = 0;
+  function toast(text) {
+    $("toast").textContent = text;
+    $("toast").classList.remove("hidden");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $("toast").classList.add("hidden"), 5000);
+  }
+  $("campSearch").onclick = () => {
+    if (!api || !api.campSearch()) return;
+    const st = JSON.parse(api.campState());
+    if (st.news && st.news.length) toast(st.news[0].replace(/^Day \d+: /, ""));
+    campArmiesKey = "";
+  };
+  $("hireYes").onclick = () => { if (api && api.campHire(1)) toast(`${campState.offer.name} rides to your banner`); };
+  $("hireNo").onclick = () => api && api.campHire(0);
   let scenario = 0;
   $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
   $("overlayButton").onclick = () => { if (!api) return; if (campFight) returnToCampaign(); else api.restart(); };
@@ -480,7 +530,7 @@
       d.classList.toggle("sel", s.id === campState.selected);
       d.classList.toggle("moving", s.moving);
       d.querySelector("b").textContent = s.strength;
-      d.querySelector("i").textContent = (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
+      d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
     });
     for (let k = campState.stacks.length; k < root.children.length; ++k) root.children[k].style.display = "none";
     if (t - campTick < 250) return;
@@ -494,7 +544,7 @@
     news.classList.toggle("hidden", campState.news.length === 0);
     news.innerHTML = campState.news.map((n) => `<div>${n}</div>`).join("");
     // The selected stack's armies, as cards.
-    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}`).join("|");
+    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}${a.blessings}${a.artifacts}`).join("|");
     if (armiesKey !== campArmiesKey) {
       campArmiesKey = armiesKey;
       $("cards").innerHTML = "";
@@ -506,16 +556,41 @@
         b.querySelector("i").style.width = `${(100 * a.soldiers) / a.full}%`;
         b.querySelector(".badge").innerHTML = `<b>${a.strength}</b>` + (a.level ? `<small>Lv ${a.level}</small>` : chevrons(a.rank)) +
           (a.blessings ? `<span class="bless">${"✦".repeat(a.blessings)}</span>` : "");
-        b.title = `${a.name || a.type}: ${a.type}, strength ${a.strength}, ${a.kills} slain`;
+        b.title = `${a.name || a.type}: ${a.type}, strength ${a.strength}, ${a.kills} slain` + (a.ally ? ", an ally (no upkeep)" : "") +
+          (a.command ? `, +${a.command} command to the stack` : "");
+        if (a.artifacts) {
+          // The hero's artifacts, under the name (tap the card for the full list).
+          b.classList.add("has-arts");
+          const arts = document.createElement("span");
+          arts.className = "arts";
+          arts.textContent = "✧ " + a.artifacts;
+          b.appendChild(arts);
+          b.title += `. Carries: ${a.artifacts}`;
+          b.onclick = () => toast(`${a.name} carries the ${a.artifacts.split(", ").join(", the ").replace(/, the ([^,]*)$/, " and the $1")}` + (a.command ? ` (+${a.command} to every army beside them)` : ""));
+        }
         $("cards").appendChild(b);
       }
+    }
+    // Afloat, or in a port with a boat: aboard which, and the way on or off.
+    const voyage = $("voyage"), ab = campState.aboard, em = campState.embark;
+    voyage.classList.toggle("hidden", !ab && !em);
+    if (ab) {
+      $("voyageText").textContent = `⛵ Aboard the ${ab.name}, ${ab.count}/${ab.cap}`;
+      $("voyageButton").textContent = "Land";
+      $("voyageButton").style.display = ab.canLand ? "" : "none";
+      $("voyageButton").onclick = () => api.campLand();
+    } else if (em) {
+      $("voyageText").textContent = `⛵ The ${em.name} lies in port (${em.cap} armies)`;
+      $("voyageButton").textContent = "Embark";
+      $("voyageButton").style.display = "";
+      $("voyageButton").onclick = () => api.campEmbark();
     }
     // The city panel: what it trains, at what price.
     const panel = $("cityPanel");
     const c = campState.city;
     panel.classList.toggle("hidden", !c);
     if (c) {
-      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}`;
+      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}`;
       if (key !== campCityKey) {
         campCityKey = key;
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
@@ -523,21 +598,48 @@
           (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` +
           c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}"><span>${o.type} <small>(${o.strength})</small></span>` +
             `<span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
-          `<button data-i="-1"><span>Stop training</span></button><button data-close="1"><span>Close</span></button>`;
+          `<button data-i="-1"><span>Stop training</span></button>` +
+          (c.port ? `<div class="port">⚓ Port · ${c.boats ? `${c.boats} ${c.boats === 1 ? "boat" : "boats"} in harbour` : "no boats in harbour"}` +
+            (c.boatDays ? ` · a boat on the slips, ${c.boatDays} ${c.boatDays === 1 ? "day" : "days"} to go` : "") + `</div>` +
+            (c.boatDays ? "" : `<button data-boat="1" ${campState.gold < c.boatCost ? "disabled" : ""}><span>Build a boat ⛵ <small>(7 armies)</small></span>` +
+              `<span>${c.boatTime}d · ${c.boatCost}g · ${c.boatUpkeep}/day</span></button>`) : "") +
+          `<button data-close="1"><span>Close</span></button>`;
         panel.querySelectorAll("button").forEach((b) => {
           b.onclick = () => {
             if (b.dataset.close) api.campCloseCity();
+            else if (b.dataset.boat) api.campBuildBoat(c.index);
             else api.campProduce(c.index, +b.dataset.i);
             campCityKey = "";
           };
         });
       }
     }
+    // On a ruin, temple or sage: the Search / Visit button.
+    const site = campState.site;
+    $("campActions").classList.toggle("hidden", !site);
+    if (site) {
+      const btn = $("campSearch");
+      if (site.kind === "temple") btn.textContent = site.can ? `Visit ${site.name}` : "Blessed here already";
+      else if (site.searched) btn.textContent = site.kind === "ruin" ? `${site.name} lies empty` : `${site.name} has spoken`;
+      else if (!site.hero) btn.textContent = "Only a hero can search here";
+      else btn.textContent = site.kind === "ruin" ? `Search ${site.name}` : `Consult ${site.name}`;
+      btn.disabled = !site.can;
+    }
+    const of = campState.offer;
+    $("hirePrompt").classList.toggle("hidden", !of || !!campState.pending);
+    if (of) {
+      $("hireTitle").textContent = `${of.name} offers their sword`;
+      $("hireText").textContent = `${of.name} waits at ${of.city} and will serve you for ${of.price} gold, paid now. The offer stands until dawn.`;
+      $("hireYes").textContent = `Hire for ${of.price} gold`;
+      $("hireYes").disabled = campState.gold < of.price;
+    }
     const pr = campState.pending;
     $("battlePrompt").classList.toggle("hidden", !pr);
     if (pr) {
       $("promptTitle").textContent = `Battle at ${pr.where}`;
-      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).`;
+      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).` +
+        (pr.afloat ? " Fought from the boats (armies on a deck fight a point weaker): the dice decide." : "");
+      $("promptFight").style.display = pr.afloat ? "none" : "";
     }
     if (campState.winner) {
       $("overlay").classList.remove("hidden");

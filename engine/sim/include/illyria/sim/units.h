@@ -38,6 +38,8 @@ enum class UnitType : uint8_t {
     Journeyman,
     Warrior,
     Berserker,
+    // Siege engines
+    Catapult,
     Count
 };
 

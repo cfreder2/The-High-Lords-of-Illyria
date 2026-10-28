@@ -15,10 +15,10 @@ TEST(every_figure_poses_stands_and_wears_its_colours) {
         bool finite = true, marked = false, grounded = true;
         for (int f = 0; f < figures::kFramesPerView; ++f) {
             const std::vector<float>& m = plan.frames[f];
-            CHECK(m.size() >= 300 && m.size() % 30 == 0);
+            CHECK(m.size() >= 30u * figures::kVertexFloats && m.size() % (3 * figures::kVertexFloats) == 0);
             float lowest = 1e9f;
-            for (size_t i = 0; i < m.size(); i += 10) {
-                for (int k = 0; k < 10; ++k) finite = finite && std::isfinite(m[i + k]);
+            for (size_t i = 0; i < m.size(); i += figures::kVertexFloats) {
+                for (int k = 0; k < figures::kVertexFloats; ++k) finite = finite && std::isfinite(m[i + k]);
                 marked = marked || m[i + 9] > 0.5f;
                 lowest = std::min(lowest, m[i + 2]);
             }

@@ -14,6 +14,8 @@ add_executable(illyria_tests
     test_campaign.cpp
     test_figures.cpp
     test_detail_land.cpp
+    test_campaign_quests.cpp
+    test_campaign_sea.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 

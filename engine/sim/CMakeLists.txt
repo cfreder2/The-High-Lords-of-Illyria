@@ -5,6 +5,7 @@ add_library(illyria_sim
     src/fixed.cpp
     src/ballistics.cpp
     src/world.cpp
+    src/world_gates.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp
@@ -12,6 +13,8 @@ add_library(illyria_sim
     src/nav.cpp
     src/continent.cpp
     src/campaign.cpp
+    src/campaign_quests.cpp
+    src/campaign_sea.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/relief_data.cpp
 )
 

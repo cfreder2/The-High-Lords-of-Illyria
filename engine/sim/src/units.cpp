@@ -239,6 +239,14 @@ UnitStats unitStats(UnitType type) {
             s.mass = r(6, 5);
             s.aggroRange = m(30);
             break;
+        case T::Catapult:  // a wheeled mangonel and its crew: a 15 kg stone up to 150 m
+            s = base(type, r(8, 5), r(5, 2), r(4, 5), 380);
+            explosive(s, ProjectileKind::Stone, m(40), sec(14), m(4), m(140), m(150), m(3), 100, m(9));
+            s.ranged.minRange = m(30);
+            s.aggroRange = Fixed::zero();
+            s.mass = m(25);
+            s.bleeds = false;
+            break;
         case T::Count:
             break;
     }
@@ -274,6 +282,7 @@ const char* unitTypeName(UnitType type) {
         case T::Journeyman: return "Journeymen";
         case T::Warrior: return "Warriors";
         case T::Berserker: return "Berserkers";
+        case T::Catapult: return "Catapults";
         case T::Count: break;
     }
     return "?";
@@ -308,6 +317,7 @@ int warlordsStrength(UnitType type) {
         case T::Journeyman: return 2;
         case T::Warrior: return 5;
         case T::Berserker: return 5;
+        case T::Catapult: return 3;  // weak in the field; +2 against a town (Campaign::battle)
         case T::Count: break;
     }
     return 1;
