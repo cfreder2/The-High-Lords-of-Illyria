@@ -141,3 +141,12 @@ The lie of the land: climbing, cliffs, high ground, mud
 | ![](builds/v0.1.9/04-battle.png) | ![](builds/v0.1.9/02-god-view.png) | ![](builds/v0.1.9/07-phone.png) |
 
 Fly-through: [`builds/v0.1.9/flythrough.webm`](builds/v0.1.9/flythrough.webm)
+
+### 28 Oct 2026 · v0.1.13 (`61fc662`)
+Myth-style soldiers: articulated figures baked into animated 8-direction sprite sheets
+
+| Battle | God view | Phone |
+|---|---|---|
+| ![](builds/v0.1.13/04-battle.png) | ![](builds/v0.1.13/02-god-view.png) | ![](builds/v0.1.13/07-phone.png) |
+
+Fly-through: [`builds/v0.1.13/flythrough.webm`](builds/v0.1.13/flythrough.webm)

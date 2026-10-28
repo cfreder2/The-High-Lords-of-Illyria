@@ -1,0 +1,79 @@
+hud after ~65 s: tick 2266, sim 0.591 ms/tick
+desktop log: sprite sheet Warriors: 1024x320 at 28.0 px/m, 46 ms
+desktop log: sprite sheet Heavy Infantry: 1024x320 at 28.0 px/m, 327 ms
+desktop log: sprite sheet Pikemen: 1024x562 at 28.0 px/m, 195 ms
+desktop log: sprite sheet Dwarven Legion: 512x456 at 28.0 px/m, 156 ms
+desktop log: sprite sheet Berserkers: 1024x385 at 28.0 px/m, 124 ms
+desktop log: sprite sheet Elven Archers: 1024x275 at 28.0 px/m, 119 ms
+desktop log: sprite sheet Dwarven Grenadiers: 512x339 at 28.0 px/m, 102 ms
+desktop log: sprite sheet Journeymen: 1024x289 at 28.0 px/m, 89 ms
+desktop log: sprite sheet Wizards: 1024x368 at 28.0 px/m, 91 ms
+desktop log: sprite sheet Hero: 1024x389 at 28.0 px/m, 112 ms
+desktop log: sprite sheet Heavy Cavalry: 2048x554 at 28.0 px/m, 154 ms
+desktop log: sprite sheet Light Cavalry: 1024x708 at 28.0 px/m, 271 ms
+desktop log: sprite sheet Unicorns: 1024x587 at 28.0 px/m, 239 ms
+desktop log: sprite sheet Elephants: 2048x696 at 17.9 px/m, 168 ms
+desktop log: sprite sheet Pegasi: 2048x717 at 28.0 px/m, 299 ms
+desktop log: sprite sheet Griffins: 2048x701 at 28.0 px/m, 302 ms
+desktop log: sprite sheet Archons: 2048x570 at 28.0 px/m, 263 ms
+desktop log: sprite sheet Light Infantry: 1024x302 at 28.0 px/m, 228 ms
+desktop log: sprite sheet Undead: 1024x298 at 28.0 px/m, 134 ms
+desktop log: sprite sheet Wolf Riders: 1024x354 at 28.0 px/m, 109 ms
+desktop log: sprite sheet Giants: 2048x678 at 18.5 px/m, 150 ms
+desktop log: sprite sheet Minotaurs: 2048x545 at 28.0 px/m, 479 ms
+desktop log: sprite sheet Giant Spiders: 1024x861 at 28.0 px/m, 436 ms
+desktop log: sprite sheet Devils: 2048x618 at 27.1 px/m, 323 ms
+desktop log: sprite sheet Demons: 2048x839 at 21.6 px/m, 400 ms
+desktop log: sprite sheet Dragons: 2048x814 at 11.0 px/m, 517 ms
+phone log: sprite sheet Warriors: 1024x320 at 28.0 px/m, 18 ms
+phone log: sprite sheet Heavy Infantry: 1024x320 at 28.0 px/m, 181 ms
+phone log: sprite sheet Pikemen: 1024x562 at 28.0 px/m, 151 ms
+phone log: sprite sheet Dwarven Legion: 512x456 at 28.0 px/m, 156 ms
+phone log: sprite sheet Berserkers: 1024x385 at 28.0 px/m, 125 ms
+phone log: sprite sheet Elven Archers: 1024x275 at 28.0 px/m, 155 ms
+phone log: sprite sheet Dwarven Grenadiers: 512x339 at 28.0 px/m, 102 ms
+phone log: sprite sheet Journeymen: 1024x289 at 28.0 px/m, 86 ms
+phone log: sprite sheet Wizards: 1024x368 at 28.0 px/m, 88 ms
+phone log: sprite sheet Hero: 1024x389 at 28.0 px/m, 110 ms
+phone log: sprite sheet Heavy Cavalry: 2048x554 at 28.0 px/m, 154 ms
+phone log: sprite sheet Light Cavalry: 1024x708 at 28.0 px/m, 260 ms
+phone log: sprite sheet Unicorns: 1024x587 at 28.0 px/m, 254 ms
+phone log: sprite sheet Elephants: 2048x696 at 17.9 px/m, 173 ms
+phone log: sprite sheet Pegasi: 2048x717 at 28.0 px/m, 289 ms
+phone log: sprite sheet Griffins: 2048x701 at 28.0 px/m, 317 ms
+phone log: sprite sheet Archons: 2048x570 at 28.0 px/m, 260 ms
+phone log: sprite sheet Light Infantry: 1024x302 at 28.0 px/m, 226 ms
+phone log: sprite sheet Undead: 1024x298 at 28.0 px/m, 130 ms
+phone log: sprite sheet Wolf Riders: 1024x354 at 28.0 px/m, 102 ms
+phone log: sprite sheet Giants: 2048x678 at 18.5 px/m, 113 ms
+phone log: sprite sheet Minotaurs: 2048x545 at 28.0 px/m, 265 ms
+phone log: sprite sheet Giant Spiders: 1024x861 at 28.0 px/m, 272 ms
+phone log: sprite sheet Devils: 2048x618 at 27.1 px/m, 204 ms
+phone log: sprite sheet Demons: 2048x839 at 21.6 px/m, 261 ms
+phone log: sprite sheet Dragons: 2048x814 at 11.0 px/m, 306 ms
+video log: sprite sheet Warriors: 1024x320 at 28.0 px/m, 17 ms
+video log: sprite sheet Heavy Infantry: 1024x320 at 28.0 px/m, 170 ms
+video log: sprite sheet Pikemen: 1024x562 at 28.0 px/m, 148 ms
+video log: sprite sheet Dwarven Legion: 512x456 at 28.0 px/m, 149 ms
+video log: sprite sheet Berserkers: 1024x385 at 28.0 px/m, 113 ms
+video log: sprite sheet Elven Archers: 1024x275 at 28.0 px/m, 118 ms
+video log: sprite sheet Dwarven Grenadiers: 512x339 at 28.0 px/m, 171 ms
+video log: sprite sheet Journeymen: 1024x289 at 28.0 px/m, 171 ms
+video log: sprite sheet Wizards: 1024x368 at 28.0 px/m, 179 ms
+video log: sprite sheet Hero: 1024x389 at 28.0 px/m, 175 ms
+video log: sprite sheet Heavy Cavalry: 2048x554 at 28.0 px/m, 162 ms
+video log: sprite sheet Light Cavalry: 1024x708 at 28.0 px/m, 274 ms
+video log: sprite sheet Unicorns: 1024x587 at 28.0 px/m, 237 ms
+video log: sprite sheet Elephants: 2048x696 at 17.9 px/m, 165 ms
+video log: sprite sheet Pegasi: 2048x717 at 28.0 px/m, 285 ms
+video log: sprite sheet Griffins: 2048x701 at 28.0 px/m, 300 ms
+video log: sprite sheet Archons: 2048x570 at 28.0 px/m, 257 ms
+video log: sprite sheet Light Infantry: 1024x302 at 28.0 px/m, 227 ms
+video log: sprite sheet Undead: 1024x298 at 28.0 px/m, 135 ms
+video log: sprite sheet Wolf Riders: 1024x354 at 28.0 px/m, 102 ms
+video log: sprite sheet Giants: 2048x678 at 18.5 px/m, 120 ms
+video log: sprite sheet Minotaurs: 2048x545 at 28.0 px/m, 256 ms
+video log: sprite sheet Giant Spiders: 1024x861 at 28.0 px/m, 256 ms
+video log: sprite sheet Devils: 2048x618 at 27.1 px/m, 208 ms
+video log: sprite sheet Demons: 2048x839 at 21.6 px/m, 257 ms
+video log: sprite sheet Dragons: 2048x814 at 11.0 px/m, 300 ms
