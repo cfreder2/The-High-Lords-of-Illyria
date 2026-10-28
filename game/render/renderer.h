@@ -3,6 +3,8 @@
 #include <GLES3/gl3.h>
 
 #include <cstdint>
+#include <functional>
+#include <set>
 #include <vector>
 
 #include "illyria/game/battle.h"
@@ -120,6 +122,8 @@ private:
         GLuint tex = 0, cells = 0;  // the pictures; where each cell is (see kUnitVs)
         int texW = 0, texH = 0;
         float lift = 0.5f;
+        bool prerendered = false;  // loaded from tools/blender's sheets, not baked
+        std::vector<float> table;  // the cells, as uploaded (for readSheet)
     };
     std::map<int, Sheet> sheets_;  // by unit type
     GLuint scratchFbo_ = 0, scratchTex_ = 0, scratchDepth_ = 0, sheetFbo_ = 0, figureVao_ = 0, figureVbo_ = 0, emptyVao_ = 0;
@@ -132,7 +136,21 @@ private:
     int debugSheet_ = -1;  // a sheet drawn over the screen, for looking at it
 public:
     void showSheet(int type) { debugSheet_ = type; }
+    // Pre-rendered sheets (tools/blender, renderer_sheets.cpp): the first time a
+    // battle needs a type, request(type) is called so the page can fetch its
+    // sheet; until it arrives, or if there is none, the type is baked as before.
+    void setSheetRequest(std::function<void(int)> request) { sheetRequest_ = std::move(request); }
+    // A fetched sheet: RGBA rows top first (as image files store them), and
+    // 130 cells of 8 floats (x, y from the bottom, w, h in pixels; u0, v0, w,
+    // h in metres). Replaces the type's baked sheet. False if malformed.
+    bool loadSheet(int type, const uint8_t* rgba, int width, int height, const float* cells);
+    // A type's sheet read back (baked first if need be), for tests and tools:
+    // RGBA bottom row first, and the cells as uCellTable holds them.
+    bool readSheet(int type, std::vector<uint8_t>& rgba, int& width, int& height, std::vector<float>& table);
 private:
+    std::function<void(int)> sheetRequest_;
+    std::set<int> sheetsRequested_;
+    void uploadSheet(Sheet& sh, const uint8_t* rgba, const float* table);
     void bakeMissing(const Battle& battle);
     // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.
     Batch units_;
