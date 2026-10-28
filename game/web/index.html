@@ -187,8 +187,19 @@
     #gfx { top: calc(44px + var(--safe-t)); padding: 6px 10px; }
     #gfx label { padding: 2px 0; }
   }
+  #menu { display: contents; }
+  #menuButton { display: none; }
   @media (max-width: 560px) {
-    #title h1 { font-size: 13px; }
+    /* Portrait phones: one row of buttons; the rest in a menu. */
+    #controls { flex-wrap: nowrap; position: relative; }
+    #menuButton { display: inline-block; }
+    #menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; flex-direction: column; gap: 6px; z-index: 6; }
+    body.menu-open #menu { display: flex; }
+    #menu button { min-width: 120px; }
+    #title { padding: 4px 8px; max-width: 34vw; }
+    #title h1 { font-size: 12px; line-height: 1.15; }
+    #title .meta { font-size: 9px; }
+    #controls button { padding: 0 10px; }
     .card { width: 146px; }
     #enemy { display: none; }
     #cityPanel:not(.hidden) + #voyage { display: none; }  /* no room for both: close the city to sail */
@@ -211,11 +222,14 @@
     <button id="hot" class="battle-only" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
-    <button id="restart" class="nofight" aria-label="Restart battle">Restart</button>
     <button id="withdraw" aria-label="Withdraw to the campaign">Withdraw</button>
-    <button id="scenario" class="battle-only nofight" aria-label="Switch battle">Siege</button>
-    <button id="campaign" class="nofight" aria-label="Play the campaign">Campaign</button>
-    <button id="gfxButton" aria-label="Graphics settings">⚙</button>
+    <button id="menuButton" aria-label="More">☰</button>
+    <div id="menu">
+      <button id="restart" class="nofight" aria-label="Restart battle">Restart</button>
+      <button id="scenario" class="battle-only nofight" aria-label="Switch battle">Siege</button>
+      <button id="campaign" class="nofight" aria-label="Play the campaign">Campaign</button>
+      <button id="gfxButton" aria-label="Graphics settings">⚙</button>
+    </div>
   </div>
 </div>
 
@@ -378,7 +392,7 @@
     applyGraphics();
   }
   function applyGraphics() {
-    api.setGraphics(gfx.features, gfx.fullRes ? 2 : 1.25);
+    api.setGraphics(gfx.features, gfx.fullRes ? 3 : 2);  // not full: adapts to the frame rate, up to 2
     try { localStorage.setItem(gfxKey, JSON.stringify(gfx)); } catch (e) {}
     for (const b of document.querySelectorAll("#gfx [data-preset]")) b.classList.toggle("on", +b.dataset.preset === gfx.preset);
     for (const c of document.querySelectorAll("#gfx [data-bit]")) c.checked = (gfx.features & +c.dataset.bit) !== 0;
@@ -451,6 +465,8 @@
   $("pause").onclick = () => api && (campaign ? api.campPause() : api.pause());
   $("hot").onclick = () => api && api.hotSpot();
   for (const b of document.querySelectorAll("#controls button, #actions button")) b.addEventListener("click", hideHint);
+  $("menuButton").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("menu-open"); };
+  for (const b of document.querySelectorAll("#menu button")) b.addEventListener("click", () => document.body.classList.remove("menu-open"));
   $("speed").onclick = () => api && (campaign ? api.campSpeed() : api.speed());
   $("restart").onclick = () => { if (!api) return; if (campaign) api.campStart(campLevel); else api.restart(); };
   let campaign = false, campLevel = 1;  // 0: Easy computer lords, 1: Hard

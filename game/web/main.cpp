@@ -27,7 +27,7 @@ using namespace illyria::game;
 namespace {
 
 constexpr uint64_t kBattleSeed = 20261027;
-constexpr double kMaxPixelRatio = 2.0;
+constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
 
 struct App {
@@ -38,6 +38,10 @@ struct App {
     double lastMs = 0;
     float pixelRatio = 1;
     double maxPixelRatio = kMaxPixelRatio;  // lowered by the graphics settings
+    // Dynamic resolution: as sharp as the device can draw at a steady rate,
+    // between the settings' floor and ceiling (see adaptResolution).
+    double minPixelRatio = 1.0, ratio = 1.5;
+    double slowSince = -1, fastSince = -1;
     double fps = 60;
     std::string hud, labels;
     // The campaign, when playing it: the war on the continent map.
@@ -118,10 +122,32 @@ void newBattle() {
     app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
 }
 
+// Below 28 frames a second for two seconds: a quarter step coarser; above 50
+// for four: a quarter step finer. Phones differ by ten times in speed.
+void adaptResolution(double now) {
+    if (app->fps < 28) {
+        app->fastSince = -1;
+        if (app->slowSince < 0) app->slowSince = now;
+        if (now - app->slowSince > 2000 && app->ratio > app->minPixelRatio) {
+            app->ratio = std::max(app->minPixelRatio, app->ratio - 0.25);
+            app->slowSince = now;
+        }
+    } else if (app->fps > 50) {
+        app->slowSince = -1;
+        if (app->fastSince < 0) app->fastSince = now;
+        if (now - app->fastSince > 4000 && app->ratio < std::min(app->maxPixelRatio, emscripten_get_device_pixel_ratio())) {
+            app->ratio = std::min(app->maxPixelRatio, app->ratio + 0.25);
+            app->fastSince = now;
+        }
+    } else {
+        app->slowSince = app->fastSince = -1;
+    }
+}
+
 void resizeCanvas() {
     double cssW = 0, cssH = 0;
     emscripten_get_element_css_size("#canvas", &cssW, &cssH);
-    app->pixelRatio = static_cast<float>(std::min(emscripten_get_device_pixel_ratio(), app->maxPixelRatio));
+    app->pixelRatio = static_cast<float>(std::min({emscripten_get_device_pixel_ratio(), app->maxPixelRatio, std::max(app->ratio, app->minPixelRatio)}));
     const int w = std::max(1, static_cast<int>(cssW * app->pixelRatio));
     const int h = std::max(1, static_cast<int>(cssH * app->pixelRatio));
     int curW = 0, curH = 0;
@@ -345,6 +371,7 @@ void frame() {
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
+    adaptResolution(now);
     resizeCanvas();
     stepIntro(now);
     if (app->camp.on) {
@@ -490,7 +517,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_finish_detail() {
 EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRatio) {
     if (!app) return;
     app->renderer.setFeatures(features);
+    // "Full resolution" pins the device's own; otherwise the frame rate decides, up to 2.
     app->maxPixelRatio = std::clamp(maxPixelRatio, 0.5, kMaxPixelRatio);
+    app->minPixelRatio = maxPixelRatio >= kMaxPixelRatio ? kMaxPixelRatio : 1.0;
 }
 EMSCRIPTEN_KEEPALIVE int illyria_graphics_preset(int level) {
     return level <= 0 ? Renderer::kLow : level == 1 ? Renderer::kMedium : Renderer::kHigh;
