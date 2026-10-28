@@ -18,6 +18,7 @@ add_executable(illyria_tests
     test_continent.cpp
     test_ground.cpp
     test_castle.cpp
+    test_walls.cpp
     test_campaign.cpp
     test_figures.cpp
     test_detail_land.cpp

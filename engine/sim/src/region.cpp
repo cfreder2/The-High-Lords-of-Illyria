@@ -565,18 +565,36 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             Rampart rp;
             rp.halfThick = ring.thick / 2;
             rp.centre = at;
-            const Fixed walk = city.pos.z + ring.height - Fixed::fromRatio(13, 10);
+            using Castle = Continent::Castle;
+            const Fixed walk = city.pos.z + ring.walk();
             const size_t nc = ring.corners.size();
             for (size_t e = 0; e < nc; ++e) {
                 const Vec3 a = toLocal(ring.corners[e]), b = toLocal(ring.corners[(e + 1) % nc]);
                 rp.corners.push_back({a.x, a.y, walk});
                 const Vec3 along = unit(b - a);
                 const Fixed len = (b - a).flat().length();
-                const Fixed top = city.pos.z + ring.height;
+                const Fixed top = walk + Castle::kMerlonTop;
+                Vec3 outward{along.y, -along.x, Fixed::zero()};
+                if (outward.dot((a - at).flat()) < Fixed::zero()) outward = -outward;
+                // The embrasures, each with its archer's place behind the parapet.
+                const std::vector<Fixed> crenels = ring.crenels(e);
+                for (const Fixed c : crenels) {
+                    Vec3 p = a + along * c + outward * (ring.thick / 2 - Castle::kParapetThick - r(9, 20));
+                    p.z = walk;
+                    rp.embrasures.push_back({p, outward});
+                }
+                // Those of [from, to) along the edge, measured from `from`.
+                const auto within = [&](Fixed from, Fixed to) {
+                    std::vector<Fixed> out;
+                    for (const Fixed c : crenels)
+                        if (c >= from && c < to) out.push_back(c - from);
+                    return out;
+                };
                 if (e == ring.gateEdge) {
                     const Vec3 mid = a + along * (len / 2);
-                    rg.walls_.push_back({a, mid - along * (ring.gateWidth / 2), ring.thick / 2, top, walk});
-                    rg.walls_.push_back({mid + along * (ring.gateWidth / 2), b, ring.thick / 2, top, walk});
+                    const Fixed g0 = len / 2 - ring.gateWidth / 2, g1 = len / 2 + ring.gateWidth / 2;
+                    rg.walls_.push_back({a, mid - along * (ring.gateWidth / 2), ring.thick / 2, top, walk, outward, within(Fixed::zero(), g0)});
+                    rg.walls_.push_back({mid + along * (ring.gateWidth / 2), b, ring.thick / 2, top, walk, outward, within(g1, len + m(1))});
                     // The doors hang across the gap under the lintel, flush with the
                     // wall's outer face (the walk overhead shelters nothing in front
                     // of them); a quarter of a metre of oak and iron either side.
@@ -592,8 +610,12 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                     g.maxHp = static_cast<int32_t>((ring.gateWidth * kGateHpPerMetre).floorToInt());
                     g.ring = static_cast<int32_t>(rg.ramparts_.size());
                     rg.gates_.push_back(g);
+                    // The stone over the passage, from the doors' lintel up to the walk.
+                    Vec3 la = mid - along * (ring.gateWidth / 2), lb = mid + along * (ring.gateWidth / 2);
+                    la.z = lb.z = g.top;
+                    rg.walls_.push_back({la, lb, ring.thick / 2, top, walk, outward, within(g0, g1)});
                 } else {
-                    rg.walls_.push_back({a, b, ring.thick / 2, top, walk});
+                    rg.walls_.push_back({a, b, ring.thick / 2, top, walk, outward, crenels});
                 }
                 // The walk runs the whole edge, over the gate too, into the corner towers.
                 Deck d{{(a.x + b.x) / 2, (a.y + b.y) / 2, walk}, along, len / 2 + ring.thick / 2, ring.thick / 2};
@@ -889,8 +911,13 @@ uint64_t Region::checksum() const {
     }
     for (const Deck& d : decks_)
         for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth, d.rise}) h.addI64(v.raw);
-    for (const WallSeg& w : walls_)
-        for (Fixed v : {w.a.x, w.a.y, w.b.x, w.b.y, w.halfThick, w.top}) h.addI64(v.raw);
+    for (const WallSeg& w : walls_) {
+        for (Fixed v : {w.a.x, w.a.y, w.a.z, w.b.x, w.b.y, w.halfThick, w.top, w.walk, w.out.x, w.out.y}) h.addI64(v.raw);
+        for (Fixed c : w.crenels) h.addI64(c.raw);
+    }
+    for (const Rampart& rp : ramparts_)
+        for (const Rampart::Embrasure& e : rp.embrasures)
+            for (Fixed v : {e.pos.x, e.pos.y, e.pos.z}) h.addI64(v.raw);
     for (const Gate& g : gates_) {
         for (Fixed v : {g.a.x, g.a.y, g.a.z, g.b.x, g.b.y, g.halfThick, g.top, g.out.x, g.out.y}) h.addI64(v.raw);
         h.addI64(g.maxHp);

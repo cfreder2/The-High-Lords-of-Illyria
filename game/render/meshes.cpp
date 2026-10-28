@@ -379,16 +379,14 @@ Mesh tower() {
 Mesh curtain() {
     Builder b;
     b.box({-1, -1, 0}, {1, 1, 1}, kStone);
-    // Outer parapet with merlons and crenels between them.
-    b.box({-1, 0.62f, 1}, {1, 1, 1.12f}, kStone * 0.97f);
-    for (int i = 0; i < 8; ++i) {
-        const float x0 = -1 + i * 0.25f + 0.03f;
-        b.box({x0, 0.62f, 1.12f}, {x0 + 0.13f, 1, 1.26f}, kStone * 0.95f);
-    }
-    // A low inner parapet.
-    b.box({-1, -1, 1}, {1, -0.82f, 1.06f}, kStone * 0.92f);
-    // The walk itself, worn darker.
-    b.quad({-1, -0.82f, 1.002f}, {1, -0.82f, 1.002f}, {1, 0.62f, 1.002f}, {-1, 0.62f, 1.002f}, kStone * 0.8f);
+    // The walk itself, worn darker (the parapet is drawn on it, as blocks).
+    b.quad({-1, -1, 1.002f}, {1, -1, 1.002f}, {1, 1, 1.002f}, {-1, 1, 1.002f}, kStone * 0.8f);
+    return b.mesh;
+}
+
+Mesh block() {
+    Builder b;
+    b.box({-1, -1, 0}, {1, 1, 1}, kStone * 0.95f);
     return b.mesh;
 }
 

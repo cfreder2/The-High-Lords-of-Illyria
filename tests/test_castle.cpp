@@ -1,5 +1,5 @@
 // Castles in battle: walls keep soldiers out except at the gate, stairs lead
-// up to the wall-walk, and defenders up there shelter behind the merlons.
+// up to the wall-walk, and gates hold until broken (the parapet: test_walls.cpp).
 #include <cstdio>
 #include <memory>
 
@@ -40,10 +40,11 @@ std::shared_ptr<const Region> siege() {
 }
 Vec3 local(const Vec3& p) { return {p.x - siege()->origin().x, p.y - siege()->origin().y, p.z}; }
 
-// Inside any wall slab (below its top)?
+// Inside any wall slab (below its walk, above a gate passage's head)?
 bool inWall(const Region& r, const Unit& u) {
     for (const WallSeg& w : r.walls()) {
-        if (u.pos.z > w.top - m(2)) continue;
+        if (w.walk > Fixed::zero() ? u.pos.z >= w.walk - Fixed::fromRatio(1, 2) : u.pos.z > w.top - m(2)) continue;
+        if (u.pos.z + u.stats.height <= w.a.z) continue;
         const Vec3 ab = (w.b - w.a).flat();
         const Fixed len2 = ab.lengthSq();
         const Fixed t = clamp((u.pos - w.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one());
@@ -146,39 +147,7 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
     CHECK(!breached);
 }
 
-TEST(merlons_shelter_defenders_from_arrows_shot_from_outside) {
-    // Over a few volleys (seeds), so a tree or a lucky roll does not decide it.
-    int blocked = 0, hits = 0;
-    bool onWalk = true;
-    for (const uint64_t seed : {3u, 7u, 11u, 19u}) {
-        WorldConfig cfg;
-        cfg.region = siege();
-        cfg.seed = seed;
-        World w(cfg);
-        const Continent::Castle::Ring& ring = town().castle.rings.front();
-        const size_t e = (ring.gateEdge + 1) % ring.corners.size();
-        const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
-        const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
-        const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
-        // A defender placed on the walk (it walks the stairs in play; here it starts there).
-        // Archers have no shields: whatever stops a missile here is the stone.
-        const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
-        // Six archers 40 m out.
-        for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
-        for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
-            w.step({});
-            for (const ImpactEvent& ev : w.impacts()) {
-                if (ev.hitUnit != target) continue;
-                blocked += ev.kind == ImpactEvent::Kind::Blocked;
-                hits += ev.kind == ImpactEvent::Kind::Hit;
-            }
-        }
-        onWalk = onWalk && w.findUnit(target)->pos.z > town().pos.z + ring.height - m(2);  // it really stood on the walk
-    }
-    std::printf("  on the walk: %d arrows stopped by merlons, %d hits\n", blocked, hits);
-    CHECK(onWalk);
-    CHECK(blocked >= 4 && blocked * 3 >= hits);
-}
+// How the parapet shelters defenders from arrows: tests/test_walls.cpp.
 
 TEST(a_neutral_garrison_mans_its_walls_and_holds_them) {
     illyria::game::Battle b(1, illyria::game::Scenario::Siege);

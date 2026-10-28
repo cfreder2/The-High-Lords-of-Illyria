@@ -53,11 +53,16 @@ struct Deck {
 };
 
 // A wall that blocks soldiers and missiles: a slab from a to b (z = its
-// base), halfThick either side, up to top. Soldiers on its walk pass over.
+// base: above the ground over a gate passage), halfThick either side, up to
+// top. A curtain wall's slab stops at its walk, which soldiers walk on; along
+// the walk's outer edge (the `out` side) stands the parapet, low at the
+// embrasures and up to top on the merlons between them (Continent::Castle).
 struct WallSeg {
     Vec3 a, b;
     Fixed halfThick, top;
-    Fixed walk = {};  // the wall-walk's height, if it has one: missiles above it meet the merlons instead
+    Fixed walk = {};  // the wall-walk's height, if it has one
+    Vec3 out = {};    // unit, flat: the parapet's side (zero: no walk, no parapet)
+    std::vector<Fixed> crenels = {};  // embrasure middles, metres from a
 };
 
 struct Rampart;
@@ -82,6 +87,12 @@ struct Rampart {
     Fixed halfThick;
     Vec3 centre;  // inside the ring
     std::vector<std::pair<Vec3, Vec3>> stairs;  // (foot, head)
+    // Where an archer stands to shoot out through each embrasure: on the
+    // walk against the parapet (z = the walk), and the way out.
+    struct Embrasure {
+        Vec3 pos, out;
+    };
+    std::vector<Embrasure> embrasures;
 };
 
 // A generated tactical region: terrain, water, ground types, roads and
