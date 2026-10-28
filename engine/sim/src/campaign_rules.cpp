@@ -119,6 +119,8 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
         const int32_t walls = d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
         m += walls - std::min(walls, engines);  // each siege engine breaks a point of the walls
     }
+    // Holding a temple or a ruin's stones is worth a point, as in the manual.
+    if (defending && city < 0 && siteAt(cx, cy) >= 0) m += 1;
     return m;
 }
 

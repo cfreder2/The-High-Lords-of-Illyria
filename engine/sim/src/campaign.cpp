@@ -44,7 +44,7 @@ Campaign::Option trained(UnitType t) {
         case T::HeavyCavalry: return {t, 4, 8};
         case T::Dwarves: return {t, 2, 4};
         case T::WolfRiders: return {t, 3, 8};
-        case T::Giants: return {t, 4, 4};
+        case T::Giants: return {t, 4, 8};  // dear for their strength, or the Giants' lord runs away with the war
         case T::Minotaurs: return {t, 4, 8};
         case T::Spiders: return {t, 3, 6};
         case T::Griffins: return {t, 6, 16};

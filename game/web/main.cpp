@@ -54,6 +54,7 @@ struct App {
         std::unique_ptr<Battle> backdrop;
         bool fighting = false;
         bool hard = true;  // how the computer lords play (the player picks at the start)
+        int vectorFrom = -1;  // choosing where this city sends its new armies: the next city tapped
         // Ports: where each city's pier runs out to the water (battle-local), and its heading.
         std::vector<V3> pier;
         std::vector<float> pierYaw;
@@ -248,6 +249,24 @@ void campaignTap(float px, float py) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
     const C& c = *cv.c;
+    if (cv.vectorFrom >= 0) {
+        // Sending a city's new armies: the tapped city of ours receives them.
+        V3 hit;
+        const int from = cv.vectorFrom;
+        cv.vectorFrom = -1;
+        if (!app->camera.pickGround(px, py, hit)) return;
+        const V3 o = app->battle->origin();
+        const int32_t tx = std::clamp(C::cellOf(static_cast<int32_t>(hit.x + o.x)), 0, c.width() - 1);
+        const int32_t ty = std::clamp(C::cellOf(static_cast<int32_t>(hit.y + o.y)), 0, c.height() - 1);
+        int32_t to = -1;
+        for (int dy = -1; dy <= 1 && to < 0; ++dy)
+            for (int dx = -1; dx <= 1 && to < 0; ++dx) {
+                const int32_t k = c.cityAt(std::clamp(tx + dx, 0, c.width() - 1), std::clamp(ty + dy, 0, c.height() - 1));
+                if (k >= 0 && c.cities()[static_cast<size_t>(k)].owner == 0) to = k;
+            }
+        if (to >= 0) cv.c->vectorProduction(from, to);
+        return;
+    }
     // A banner near the tap: select one of ours (or fall through to march on theirs).
     const illyria::sim::Campaign::Stack* nearest = nullptr;
     float best = 34.0f * app->pixelRatio;
@@ -674,6 +693,16 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
     if (app && app->camp.on) app->camp.c->produce(city, option);
 }
 // Warlords' BUILD: raise the open city's walls by one, for gold.
+// Where a city sends its new armies: start choosing (the next city tapped), or -1 to keep them home.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_vector(int city, int choose) {
+    if (!app || !app->camp.on) return;
+    if (choose) app->camp.vectorFrom = city;
+    else app->camp.c->vectorProduction(city, -1), app->camp.vectorFrom = -1;
+}
+// Sends an army of the selected stack home for good (no more upkeep).
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_disband(int army) {
+    if (app && app->camp.on && app->camp.selected) app->camp.c->disband(app->camp.selected, static_cast<uint32_t>(army));
+}
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_fortify(int city) {
     if (app && app->camp.on) app->camp.c->fortify(city);
 }
@@ -781,9 +810,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             const illyria::sim::Army& a = sel->armies[k];
             std::string arts;
             for (uint8_t i : a.artifacts) arts += (arts.empty() ? "" : ", ") + std::string(C::artifacts()[i].name);
-            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d,"
+            std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d,"
                           "\"ally\":%s,\"command\":%d,\"artifacts\":\"",
-                          k ? "," : "", a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
+                          k ? "," : "", a.id, a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
                           a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills, a.ally ? "true" : "false", C::command(a));
             s += buf;
             s += arts + "\"}";
@@ -828,9 +857,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         for (const C::Boat& b : c.boats()) docked += b.port == cv.city && !b.stack;
         std::snprintf(buf, sizeof buf,
                       ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,"
-                      "\"port\":%s,\"boatDays\":%d,\"boats\":%d,\"boatCost\":%d,\"boatTime\":%d,\"boatUpkeep\":%d,\"wallsCost\":%d,\"options\":[",
+                      "\"port\":%s,\"boatDays\":%d,\"boats\":%d,\"boatCost\":%d,\"boatTime\":%d,\"boatUpkeep\":%d,\"wallsCost\":%d,"
+                      "\"vectorTo\":\"%s\",\"choosing\":%s,\"options\":[",
                       cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress,
-                      cs.port ? "true" : "false", cs.boatDays, docked, C::kBoatCost, C::kBoatDays, C::kBoatUpkeep, cs.defense < 9 ? c.fortifyCost(cv.city) : 0);
+                      cs.port ? "true" : "false", cs.boatDays, docked, C::kBoatCost, C::kBoatDays, C::kBoatUpkeep, cs.defense < 9 ? c.fortifyCost(cv.city) : 0,
+                      cs.vectorTo >= 0 ? c.continent().cities()[static_cast<size_t>(cs.vectorTo)].name.c_str() : "",
+                      cv.vectorFrom == cv.city ? "true" : "false");
         s += buf;
         for (size_t k = 0; k < cs.options.size(); ++k) {
             const C::Option& op = cs.options[k];

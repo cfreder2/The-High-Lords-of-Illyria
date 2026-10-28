@@ -328,6 +328,8 @@
       setScenario: Module.cwrap("illyria_set_scenario", null, ["number"]),
       campStart: Module.cwrap("illyria_campaign_start", null, ["number"]),
       campFortify: Module.cwrap("illyria_campaign_fortify", null, ["number"]),
+      campVector: Module.cwrap("illyria_campaign_vector", null, ["number", "number"]),
+      campDisband: Module.cwrap("illyria_campaign_disband", null, ["number"]),
       campLeave: Module.cwrap("illyria_campaign_leave", null, []),
       campState: Module.cwrap("illyria_campaign_state", "string", []),
       campProduce: Module.cwrap("illyria_campaign_produce", null, ["number", "number"]),
@@ -593,6 +595,15 @@
           b.title += `. Carries: ${a.artifacts}`;
           b.onclick = () => toast(`${a.name} carries the ${a.artifacts.split(", ").join(", the ").replace(/, the ([^,]*)$/, " and the $1")}` + (a.command ? ` (+${a.command} to every army beside them)` : ""));
         }
+        if (!a.level && !a.artifacts) {
+          // Tap twice to disband: the army goes home and costs no more upkeep.
+          b.onclick = () => {
+            if (b.dataset.armed) { api.campDisband(a.id); toast(`${a.name || a.type} disbanded and went home`); return; }
+            b.dataset.armed = "1";
+            toast(`Tap ${a.name || a.type} again to disband it (no more upkeep)`);
+            setTimeout(() => delete b.dataset.armed, 2500);
+          };
+        }
         $("cards").appendChild(b);
       }
     }
@@ -615,7 +626,7 @@
     const c = campState.city;
     panel.classList.toggle("hidden", !c);
     if (c) {
-      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}|${c.defense}`;
+      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}|${c.defense}|${c.vectorTo}|${c.choosing}`;
       if (key !== campCityKey) {
         campCityKey = key;
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
@@ -624,6 +635,9 @@
           c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}"><span>${o.type} <small>(${o.strength})</small></span>` +
             `<span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
           `<button data-i="-1"><span>Stop training</span></button>` +
+          (c.choosing ? `<div class="port">Tap one of your cities to send new armies there</div>` :
+            `<button data-vector="1"><span>${c.vectorTo ? `New armies march to ${c.vectorTo}` : "Send new armies to…"}</span><span>${c.vectorTo ? "change" : ""}</span></button>`) +
+          (c.vectorTo && !c.choosing ? `<button data-home="1"><span>Keep new armies here</span></button>` : "") +
           (c.wallsCost ? `<button data-walls="1" ${campState.gold < c.wallsCost ? "disabled" : ""}><span>Raise the walls <small>(to ${c.defense + 1})</small></span><span>${c.wallsCost}g</span></button>` : "") +
           (c.port ? `<div class="port">⚓ Port · ${c.boats ? `${c.boats} ${c.boats === 1 ? "boat" : "boats"} in harbour` : "no boats in harbour"}` +
             (c.boatDays ? ` · a boat on the slips, ${c.boatDays} ${c.boatDays === 1 ? "day" : "days"} to go` : "") + `</div>` +
@@ -635,6 +649,8 @@
             if (b.dataset.close) api.campCloseCity();
             else if (b.dataset.boat) api.campBuildBoat(c.index);
             else if (b.dataset.walls) api.campFortify(c.index);
+            else if (b.dataset.vector) api.campVector(c.index, 1);
+            else if (b.dataset.home) api.campVector(c.index, 0);
             else api.campProduce(c.index, +b.dataset.i);
             campCityKey = "";
           };
