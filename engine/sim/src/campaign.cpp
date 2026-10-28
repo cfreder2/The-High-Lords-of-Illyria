@@ -37,7 +37,7 @@ const Realm& realm(uint8_t side) {
 Campaign::Option trained(UnitType t) {
     switch (t) {
         case T::LightInfantry: return {t, 1, 4};
-        case T::HeavyInfantry: return {t, 2, 5};
+        case T::HeavyInfantry: return {t, 2, 4};
         case T::Archers: return {t, 3, 4};
         case T::Pikemen: return {t, 2, 5};
         case T::LightCavalry: return {t, 3, 6};
@@ -57,13 +57,6 @@ Campaign::Option trained(UnitType t) {
         case T::Berserker: return {t, 3, 6};
         default: return {t, 6, 20};
     }
-}
-
-bool flies(UnitType t) {
-    return t == T::Pegasi || t == T::Griffins || t == T::Dragons || t == T::Archons;
-}
-bool special(UnitType t) {
-    return t == T::Wizards || t == T::Undead || t == T::Demons || t == T::Devils || t == T::Dragons;
 }
 
 }  // namespace
@@ -134,7 +127,8 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
     static const int32_t kCavalry[] = {1, 1, P, 5, 6, P, 2, 5, 1};
     static const int32_t kWolves[] = {1, 1, P, 4, 6, P, 2, 4, 1};
     static const int32_t kFliers[] = {2, 2, 2, 2, 2, 3, 2, 2, 2};
-    static const int32_t kDark[] = {1, 1, P, 4, 5, P, 2, 4, 1};
+    static const int32_t kUndead[] = {1, 1, P, 4, 5, P, 2, 4, 1};
+    static const int32_t kDemons[] = {1, 1, P, 4, 5, P, 2, 5, 1};  // demons and devils; wizards walk like light infantry
     const int32_t* row = kLight;
     switch (t) {
         case T::Giants:
@@ -151,10 +145,9 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
         case T::Unicorns: row = kCavalry; break;
         case T::WolfRiders:
         case T::Spiders: row = kWolves; break;
-        case T::Undead:
+        case T::Undead: row = kUndead; break;
         case T::Demons:
-        case T::Devils:
-        case T::Wizards: row = kDark; break;
+        case T::Devils: row = kDemons; break;
         default:
             if (flies(t)) row = kFliers;
             break;
@@ -167,7 +160,7 @@ int32_t Campaign::upkeep(UnitType t) {
     return (trained(t).cost + 1) / 2;
 }
 
-Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), rng_(seed, 0xCA4A16) {
+Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
     nx_ = static_cast<int32_t>(Continent::kWidth / kCell);
     ny_ = static_cast<int32_t>(Continent::kHeight / kCell);
     initTerrain();
@@ -332,12 +325,6 @@ int32_t Campaign::citiesOwned(uint8_t side) const {
     return n;
 }
 
-int32_t Campaign::winner() const {
-    for (size_t s = 0; s < sides_.size(); ++s)
-        if (citiesOwned(static_cast<uint8_t>(s)) * 3 >= static_cast<int32_t>(cities_.size()) * 2) return static_cast<int32_t>(s) + 1;
-    return 0;
-}
-
 bool Campaign::produce(int32_t city, int32_t option) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
@@ -388,6 +375,18 @@ bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std:
     flier = flier && anyFlier;
     const size_t n = static_cast<size_t>(nx_) * ny_;
     std::vector<int32_t> g(n, INT32_MAX), parent(n, -1);
+    // Who stands where, once: another side's stack blocks the way, and so
+    // does a cell of our own already too full to take this stack (Warlords
+    // 9.2), except where the route ends (an attack, or joining them).
+    std::vector<int16_t> ours(n, 0);
+    std::vector<uint8_t> foe(n, 0);
+    for (const Stack& o : stacks_) {
+        if (o.armies.empty() || &o == &s) continue;
+        const size_t k = static_cast<size_t>(o.cy) * nx_ + o.cx;
+        if (o.owner != s.owner) foe[k] = 1;
+        else ours[k] = static_cast<int16_t>(ours[k] + static_cast<int16_t>(o.armies.size()));
+    }
+    const int32_t mine = static_cast<int32_t>(s.armies.size());
     using Node = std::pair<int32_t, int32_t>;  // (f, index)
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
     const auto idx = [&](int32_t x, int32_t y) { return y * nx_ + x; };
@@ -412,9 +411,8 @@ bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std:
                 // Another side's stack blocks the way, except where the route ends (an attack).
                 const int32_t ni = idx(x, y);
                 if (ni != goal) {
-                    bool blocked = false;
-                    for (const Stack& o : stacks_) blocked = blocked || (o.owner != s.owner && o.cx == x && o.cy == y && !o.armies.empty());
-                    if (blocked) continue;
+                    const size_t k = static_cast<size_t>(ni);
+                    if (foe[k] || ours[k] + mine > cellCapacity(x, y)) continue;
                 }
                 if (dx != 0 && dy != 0) cost = cost * 3 / 2;
                 const int32_t ng = g[static_cast<size_t>(cur)] + cost;
@@ -455,11 +453,7 @@ void Campaign::newDay() {
     // Income, then upkeep; a side that cannot pay loses its newest armies.
     for (size_t s = 0; s < sides_.size(); ++s) {
         Side& side = sides_[s];
-        for (const CityState& c : cities_)
-            if (c.owner == s && !c.razed) side.gold += c.income;
-        for (const Stack& st : stacks_)
-            if (st.owner == s)
-                for (const Army& a : st.armies) side.gold -= upkeep(a.type);
+        side.gold += income(static_cast<uint8_t>(s)) - upkeepOf(static_cast<uint8_t>(s));
         while (side.gold < 0) {
             Stack* newest = nullptr;
             size_t which = 0;
@@ -479,27 +473,38 @@ void Campaign::newDay() {
             }
             side.gold += upkeep(newest->armies[which].type);  // deserters take no pay
             newest->armies.erase(newest->armies.begin() + static_cast<long>(which));
+            ++side.deserted;
         }
     }
+    deliverTransits();
     // Training: one army at a time per city, paid for when it starts.
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         if (c.producing < 0 || c.owner == kNeutral || c.razed) continue;
         const Option& o = c.options[static_cast<size_t>(c.producing)];
+        const bool sent = c.vectorTo >= 0;
+        // A full city (32 armies) trains no more until some march out.
+        if (c.progress == 0 && !sent && armiesAt(c.owner, c.cx, c.cy) >= kMaxInCity) continue;
         if (c.progress == 0) {
             if (sides_[c.owner].gold < o.cost) continue;  // waits for the money
             sides_[c.owner].gold -= o.cost;
         }
         if (++c.progress < o.days) continue;
         c.progress = 0;
+        const int32_t n = ++armiesRaised_[c.owner];
+        const char* suffix = n % 10 == 1 && n % 100 != 11 ? "st" : n % 10 == 2 && n % 100 != 12 ? "nd" : n % 10 == 3 && n % 100 != 13 ? "rd" : "th";
+        Army army = makeArmy(o.type, std::to_string(n) + suffix + " " + continent_.cities()[i].name + " " + unitTypeName(o.type));
+        if (sent) {
+            // LOC: it reaches the other city two days later.
+            transits_.push_back({c.owner, static_cast<int32_t>(i), c.vectorTo, day() + 2, army});
+            continue;
+        }
         // Into a stack of its own side in the city, or a new one.
         Stack* home = nullptr;
         for (Stack& st : stacks_)
-            if (st.owner == c.owner && st.cx == c.cx && st.cy == c.cy && st.armies.size() < kMaxStack) home = &st;
+            if (st.owner == c.owner && st.cx == c.cx && st.cy == c.cy && st.armies.size() < kMaxStack && st.path.empty()) home = &st;
         if (!home) home = &newStack(c.owner, c.cx, c.cy);
-        const int32_t n = ++armiesRaised_[c.owner];
-        const char* suffix = n % 10 == 1 && n % 100 != 11 ? "st" : n % 10 == 2 && n % 100 != 12 ? "nd" : n % 10 == 3 && n % 100 != 13 ? "rd" : "th";
-        home->armies.push_back(makeArmy(o.type, std::to_string(n) + suffix + " " + continent_.cities()[i].name + " " + unitTypeName(o.type)));
+        home->armies.push_back(army);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
     for (size_t s = 0; s < sides_.size(); ++s)
@@ -511,80 +516,28 @@ void Campaign::newDay() {
     }
 }
 
-void Campaign::runAi(uint8_t side) {
-    // A plain Warlord, as Warlords advises: keep every city training its
-    // quickest troops, and send every idle stack at the nearest city it does
-    // not hold, neutral towns first, once it is strong enough to try.
-    for (size_t i = 0; i < cities_.size(); ++i) {
-        CityState& c = cities_[i];
-        if (c.owner != side || c.razed || c.producing >= 0) continue;
-        int32_t best = 0;
-        for (size_t k = 1; k < c.options.size(); ++k)
-            if (c.options[k].days < c.options[static_cast<size_t>(best)].days) best = static_cast<int32_t>(k);
-        c.producing = best;
-        c.progress = 0;
-    }
-    for (Stack& s : stacks_) {
-        if (s.owner != side || s.garrison || !s.path.empty() || s.armies.empty()) continue;
-        const int32_t here = cityAt(s.cx, s.cy);
-        // Leave one army to hold a city; march with the rest once there are three.
-        if (here >= 0 && s.armies.size() < 3) continue;
-        int32_t power = 0;
-        for (const Army& a : s.armies) power += strength(a);
-        int32_t target = -1, best = INT32_MAX;
-        for (size_t i = 0; i < cities_.size(); ++i) {
-            const CityState& c = cities_[i];
-            if (c.owner == side || c.razed) continue;
-            int32_t guard = 0;
-            for (const Stack& o : stacks_)
-                if (o.cx == c.cx && o.cy == c.cy && o.owner != side)
-                    for (const Army& a : o.armies) guard += strength(a);
-            if (guard * 3 > power * 2 + c.defense) continue;  // too strong for us yet
-            const int32_t d = std::max(std::abs(c.cx - s.cx), std::abs(c.cy - s.cy)) + (c.owner == kNeutral ? 0 : 6);
-            if (d < best) {
-                best = d;
-                target = static_cast<int32_t>(i);
-            }
-        }
-        if (target < 0) continue;
-        std::vector<std::pair<int32_t, int32_t>> path;
-        if (!findPath(s, cities_[static_cast<size_t>(target)].cx, cities_[static_cast<size_t>(target)].cy, path)) continue;
-        if (here >= 0 && s.armies.size() > 1) {
-            // Split off the strongest to march; the weakest stays behind on guard.
-            Stack left;
-            left.id = nextId_++;
-            left.owner = side;
-            left.cx = s.cx;
-            left.cy = s.cy;
-            size_t weakest = 0;
-            for (size_t k = 1; k < s.armies.size(); ++k)
-                if (!s.armies[k].hero() && (s.armies[weakest].hero() || strength(s.armies[k]) < strength(s.armies[weakest]))) weakest = k;
-            left.armies.push_back(s.armies[weakest]);
-            s.armies.erase(s.armies.begin() + static_cast<long>(weakest));
-            s.path = std::move(path);
-            s.progress = 0;
-            stacks_.push_back(left);
-            return;  // the stack list moved; the rest wait for tomorrow
-        }
-        s.path = std::move(path);
-        s.progress = 0;
-    }
-}
-
 void Campaign::moveStacks() {
     for (size_t i = 0; i < stacks_.size(); ++i) {
         if (stacks_[i].path.empty() || stacks_[i].armies.empty()) continue;
         Stack& s = stacks_[i];
         s.progress += stackMoves(s);
         const auto [nx, ny] = s.path.front();
-        const int32_t cost = stackCost(s, nx, ny) * kTicksPerDay;
-        if (s.progress < cost) continue;
-        s.progress -= cost;
-        // Into enemies or a city not ours: fight for it.
+        // Into enemies or a city not ours: fight for it. An attack costs two
+        // movement points, as in Warlords, whatever the ground.
         bool hostile = false;
         for (const Stack& o : stacks_) hostile = hostile || (o.owner != s.owner && o.cx == nx && o.cy == ny && !o.armies.empty());
         const int32_t city = cityAt(nx, ny);
-        if (hostile || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s.owner)) {
+        const bool attack = hostile || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s.owner);
+        const int32_t cost = (attack ? 2 : stackCost(s, nx, ny)) * kTicksPerDay;
+        if (s.progress < cost) continue;
+        s.progress -= cost;
+        if (!attack && s.path.size() > 1 && armiesAt(s.owner, nx, ny) + static_cast<int32_t>(s.armies.size()) > cellCapacity(nx, ny)) {
+            // Our own armies fill the way (Warlords 9.2): halt here.
+            s.path.clear();
+            s.progress = 0;
+            continue;
+        }
+        if (attack) {
             s.path.clear();
             s.progress = 0;
             if (sides_[s.owner].human) {
@@ -641,41 +594,22 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     fight.city = city;
     fight.day = day();
 
-    // The modifiers every army of a side adds (Warlords' AFCM and DFCM).
-    const auto modifier = [&](const std::vector<Army*>& side, bool defending) {
-        int32_t m = 0, hero = 0;
-        bool flying = false, magic = false;
-        for (const Army* a : side) {
-            if (a->hero()) hero = std::max(hero, std::min(9, 4 + a->rank + a->blessings));
-            flying = flying || flies(a->type);
-            magic = magic || special(a->type);
-        }
-        m += hero >= 9 ? 3 : hero >= 7 ? 2 : hero >= 4 ? 1 : 0;
-        m += flying + magic;
-        if (defending && city >= 0) {
-            const int32_t d = cities_[static_cast<size_t>(city)].defense;
-            m += d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
-        }
-        return m;
-    };
+    // Every modifier of the manual's appendix (AFCM, DFCM, the empire's and
+    // the army type's liking for the ground), and the order they fight in.
     std::vector<Army*> att, def;
     for (Army& a : attacker.armies) att.push_back(&a);
     for (Stack* d : defenders)
         for (Army& a : d->armies) def.push_back(&a);
-    const int32_t am = modifier(att, false), dm = modifier(def, true);
-    const auto byValue = [](const Army* a, const Army* b) {
-        const int32_t sa = strength(*a) + (a->hero() ? 10 : 0), sb = strength(*b) + (b->hero() ? 10 : 0);
-        return sa != sb ? sa < sb : a->id < b->id;
-    };
-    std::stable_sort(att.begin(), att.end(), byValue);
-    std::stable_sort(def.begin(), def.end(), byValue);
+    std::vector<int32_t> asOf, dsOf;
+    order(att, attacker.owner, cx, cy, false, asOf);
+    order(def, fight.defender, cx, cy, true, dsOf);
     for (Army* a : att) a->hits = 0;
     for (Army* a : def) a->hits = 0;
     size_t ai = 0, di = 0;
     while (ai < att.size() && di < def.size()) {
         Army& a = *att[ai];
         Army& d = *def[di];
-        const int32_t as = std::min(9, strength(a) + am), ds = std::min(9, strength(d) + dm);
+        const int32_t as = asOf[ai], ds = dsOf[di];
         const bool aLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= ds;
         const bool dLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= as;
         if (aLow == dLow) continue;
@@ -752,6 +686,11 @@ void Campaign::capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight) {
         c.owner = attacker.owner;
         c.producing = -1;
         c.progress = 0;
+        c.vectorTo = -1;
+        // Each successful siege lowers the walls by one (Warlords 12).
+        c.defense = std::max(1, c.defense - 1);
+        for (CityState& o : cities_)
+            if (o.vectorTo == city) o.vectorTo = -1;
         fight.captured = true;
     }
     attacker.cx = cx;
@@ -799,12 +738,27 @@ void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWo
 uint64_t Campaign::checksum() const {
     StateHasher h;
     h.addU64(tick_);
-    for (const Side& s : sides_) h.addI64(s.gold);
+    for (const Side& s : sides_) {
+        h.addI64(s.gold);
+        h.addU64(static_cast<uint64_t>(s.difficulty));
+        h.addI64(s.deserted);
+        h.addU64(s.alive);
+    }
     for (const CityState& c : cities_) {
         h.addU64(c.owner);
         h.addI64(c.producing);
         h.addI64(c.progress);
+        h.addI64(c.defense);
+        h.addI64(c.vectorTo);
     }
+    for (const Transit& t : transits_) {
+        h.addU64(t.owner);
+        h.addI64(t.to);
+        h.addU64(t.arriveDay);
+        h.addU64(t.army.id);
+    }
+    h.addU64(rng_.state());
+    h.addU64(aiRng_.state());
     for (const Stack& s : stacks_) {
         h.addU64(s.id);
         h.addU64(s.owner);

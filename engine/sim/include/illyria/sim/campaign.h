@@ -35,12 +35,19 @@ struct Army {
 // The lay of a campaign cell, as in the Warlords movement table.
 enum class Lay : uint8_t { Road, Bridge, Water, Forest, Hill, Mountain, Plain, Marsh, City };
 
+// How well the computer plays a side (docs/GAME_DESIGN.md §4.2.5). Easy is
+// Warlords' Knight: it wastes money, forgets orders, reacts late and attacks
+// at poor odds. Hard is the Warlord: full strategy, and no secret bonuses
+// (the Warlords manual is firm that the computer plays by the same rules).
+enum class Difficulty : uint8_t { Easy, Hard };
+
 class Campaign {
 public:
     static constexpr int32_t kCell = 200;                 // metres
     static constexpr int32_t kTicksPerDay = 300;          // 30 s a day at 10 ticks a second
     static constexpr int32_t kTicksPerSecond = 10;
     static constexpr int32_t kMaxStack = 8;
+    static constexpr int32_t kMaxInCity = 32;  // a Warlords city is four squares of eight
     static constexpr uint8_t kNeutral = Continent::kNeutral;
     static constexpr int32_t kProhibited = 1000;
 
@@ -49,6 +56,8 @@ public:
         int32_t gold = 0;
         bool alive = true;
         bool human = false;  // the computer plays the others (Campaign::runAi)
+        Difficulty difficulty = Difficulty::Hard;
+        int32_t deserted = 0;  // armies lost for want of pay
     };
     struct Option {  // something a city can train
         UnitType type;
@@ -63,6 +72,7 @@ public:
         int32_t progress = 0;    // ticks trained so far
         int32_t cx = 0, cy = 0;  // its cell
         bool razed = false;
+        int32_t vectorTo = -1;   // Warlords' LOC: new armies march to this city instead (two days more)
     };
     struct Stack {
         uint32_t id = 0;
@@ -97,12 +107,33 @@ public:
         int32_t rank = 0;      // the survivors' rank (heroes: level - 1)
     };
 
+    // An army trained for another city (LOC), on its way there.
+    struct Transit {
+        uint8_t owner = 0;
+        int32_t from = 0, to = 0;  // cities
+        uint32_t arriveDay = 0;
+        Army army;
+    };
+
     Campaign(const Continent& continent, uint64_t seed);
 
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
     bool produce(int32_t city, int32_t option);           // -1 stops
+    // Warlords' LOC: send what a city trains to another city of ours (-1
+    // stops); at most four cities may send to one.
+    bool vectorProduction(int32_t city, int32_t to);
+    // Warlords' BUILD: raise a city's defence by one, to 9, for gold.
+    bool fortify(int32_t city);
+    int32_t fortifyCost(int32_t city) const;
+    // Warlords' DISBAND: send an army home to stop paying for it (never a hero).
+    bool disband(uint32_t stackId, uint32_t armyId);
     void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
+    void setDifficulty(uint8_t side, Difficulty d) { sides_[side].difficulty = d; }
+    // Every computer side at once (what the player picks at the start).
+    void setComputerDifficulty(Difficulty d);
+    // Scenario and test setup: a new stack of fresh armies. Returns its id.
+    uint32_t raise(uint8_t owner, int32_t cx, int32_t cy, const std::vector<UnitType>& types);
     // Advances one tick (a tenth of a second at normal speed). Nothing moves
     // while a battle is pending.
     void step();
@@ -140,18 +171,49 @@ public:
     static int32_t squadSize(UnitType t);
     int32_t cityAt(int32_t cx, int32_t cy) const;
     int32_t citiesOwned(uint8_t side) const;
-    // 0 while the war goes on, else the winning side + 1 (holding two thirds of the cities).
+    // Gold a side's cities pay it a day (an Easy computer side wastes a fifth).
+    int32_t income(uint8_t side) const;
+    // Gold a day its armies cost.
+    int32_t upkeepOf(uint8_t side) const;
+    // 0 while the war goes on, else the winning side + 1: the last side
+    // standing, or the one the others surrender to (Warlords §14: more than
+    // half the cities, and no rival within 15 of it).
     int32_t winner() const;
+    const std::vector<Transit>& transits() const { return transits_; }
+    // Warlords' combat, for prediction: the attack strength (AS) or defence
+    // strength (DS) of each army at a cell, in the order they fight (weakest
+    // first, heroes last), with every modifier of the manual's appendix.
+    std::vector<int32_t> lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const;
+    // The chance, in thousandths, that the first lineup destroys the second
+    // (exact, from the Warlords dice rules).
+    static int32_t winChance(const std::vector<int32_t>& attack, const std::vector<int32_t>& defence);
+    // The chance, in thousandths, that these armies of a side take the cell.
+    int32_t attackOdds(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy) const;
+    // Everyone not of this side standing on a cell.
+    std::vector<const Army*> defendersAt(uint8_t attacker, int32_t cx, int32_t cy) const;
+    static bool flies(UnitType t);
+    static bool special(UnitType t);
     uint64_t checksum() const;
 
 private:
     void initTerrain();
     void initCities();
     void newDay();
-    void runAi(uint8_t side);
+    void runAi(uint8_t side);  // campaign_ai.cpp
+    friend class CampaignAi;
+    void deliverTransits();
+    int32_t armiesAt(uint8_t owner, int32_t cx, int32_t cy) const;
+    int32_t cellCapacity(int32_t cx, int32_t cy) const;
     void moveStacks();
     void arrive(Stack& s);
     void battle(Stack& attacker, int32_t cx, int32_t cy);
+    // Sorts armies into battle order and gives each its AS or DS (campaign_rules.cpp).
+    void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power) const;
+    int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const;
+    // Movement points from every cell to a city, for a walking army (the
+    // computer lords' sense of distance; derived from the map, so not state).
+    const std::vector<uint16_t>& marchField(int32_t city) const;
+    mutable std::vector<std::vector<uint16_t>> marchFields_;
     int32_t stackCost(const Stack& s, int32_t cx, int32_t cy) const;
     int32_t stackMoves(const Stack& s) const;
     bool edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const;
@@ -173,6 +235,8 @@ private:
     std::vector<Fight> fights_;
     std::vector<int32_t> armiesRaised_;  // per side, for naming
     Pending pending_;
+    std::vector<Transit> transits_;
+    Rng aiRng_;  // the computer lords' own choices, apart from the battle dice
     Stack* stackById(uint32_t id);
     void capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight);
 };
