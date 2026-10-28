@@ -7,7 +7,7 @@ add_executable(illyria_web
     ../render/meshes.cpp
 )
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")
-target_link_libraries(illyria_web PRIVATE illyria_game)
+target_link_libraries(illyria_web PRIVATE illyria_game illyria_figures)
 target_compile_definitions(illyria_web PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}")
 target_compile_options(illyria_web PRIVATE -Wno-conversion)
 target_link_options(illyria_web PRIVATE

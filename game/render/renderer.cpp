@@ -1,6 +1,7 @@
 #include "renderer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 
@@ -219,7 +220,10 @@ bool Renderer::buildPrograms() {
                  {cover_, shaders::kCoverVs, shaders::kCoverFs},
                  {meshDepth_, shaders::kMeshVs, shaders::kDepthFs},
                  {terrainDepth_, shaders::kTerrainVs, shaders::kDepthFs},
-                 {sky_, shaders::kSkyVs, shaders::kSkyFs}};
+                 {sky_, shaders::kSkyVs, shaders::kSkyFs},
+                 {figure_, shaders::kFigureVs, shaders::kFigureFs},
+                 {resolve_, shaders::kResolveVs, shaders::kResolveFs},
+                 {unit_, shaders::kUnitVs, shaders::kUnitFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -254,6 +258,19 @@ bool Renderer::buildPrograms() {
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
         s.p.proj = glGetUniformLocation(s.p.id, "uProj");
         s.p.flow = glGetUniformLocation(s.p.id, "uFlow");
+        s.p.bakeRight = glGetUniformLocation(s.p.id, "uBakeRight");
+        s.p.bakeUp = glGetUniformLocation(s.p.id, "uBakeUp");
+        s.p.bakeToward = glGetUniformLocation(s.p.id, "uBakeToward");
+        s.p.bakeRect = glGetUniformLocation(s.p.id, "uBakeRect");
+        s.p.scratch = glGetUniformLocation(s.p.id, "uScratch");
+        s.p.resolve = glGetUniformLocation(s.p.id, "uResolve");
+        s.p.cellTable = glGetUniformLocation(s.p.id, "uCellTable");
+        s.p.cloth = glGetUniformLocation(s.p.id, "uCloth");
+        s.p.sheetSize = glGetUniformLocation(s.p.id, "uSheetSize");
+        s.p.viewDir = glGetUniformLocation(s.p.id, "uViewDir");
+        s.p.lift = glGetUniformLocation(s.p.id, "uLift");
+        s.p.team = glGetUniformLocation(s.p.id, "uTeam");
+        s.p.sheet = glGetUniformLocation(s.p.id, "uSheet");
     }
     return true;
 }
@@ -1070,6 +1087,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
+    makeBatch(units_, {3, 1, 1, 1}, 0);
     makeBatch(particles_, {3, 4}, 0);
     reset(battle);
     return true;
@@ -1091,6 +1109,200 @@ void Renderer::reset(Battle& battle) {
     uploadScenery(battle);
     uploadCanopy(battle);
     uploadContinent(battle);
+    walked_.clear();
+    lastSeen_.clear();
+    unitsChecked_ = SIZE_MAX;
+}
+
+// ------------------------------------------------------------- sprite sheets
+
+Renderer::Sheet& Renderer::sheet(UnitType type) {
+    Sheet& s = sheets_[static_cast<int>(type)];
+    if (!s.tex) bakeSheet(s, type);
+    return s;
+}
+
+void Renderer::bakeMissing(const Battle& battle) {
+    if (!showUnits_) return;
+    for (const sim::Unit& u : battle.world().units()) sheet(static_cast<UnitType>(u.stats.type));
+}
+
+void Renderer::bakeSheet(Sheet& sh, UnitType type) {
+    const auto started = std::chrono::steady_clock::now();
+    const figures::Plan plan = figures::plan(type);
+    sh.lift = 0.5f + static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.2f;
+    constexpr int kCells = figures::kViews * figures::kFramesPerView;
+    // Every picture at one scale, the finest that keeps the largest within kMaxPixels.
+    float big = 0.1f;
+    for (int v = 0; v < figures::kViews; ++v)
+        for (const figures::Extent& e : plan.extents[v]) big = std::max({big, e.u1 - e.u0, e.v1 - e.v0});
+    float scale = std::min({figures::kPixelsPerMetre, figures::kMaxPixels / big, kScratch / 2 / big});
+    struct Slot {
+        int w, h, x = 0, y = 0;
+    };
+    Slot slots[kCells];
+    // Shelves, tallest first, in a sheet as narrow as keeps it roughly square.
+    for (;;) {
+        double area = 0;
+        for (int c = 0; c < kCells; ++c) {
+            const figures::Extent& e = plan.extents[c / figures::kFramesPerView][c % figures::kFramesPerView];
+            slots[c].w = std::max(2, static_cast<int>(std::ceil((e.u1 - e.u0) * scale)));
+            slots[c].h = std::max(2, static_cast<int>(std::ceil((e.v1 - e.v0) * scale)));
+            area += static_cast<double>(slots[c].w + 2 * kGutter) * (slots[c].h + 2 * kGutter);
+        }
+        sh.texW = 256;
+        while (sh.texW < kSheetMax && static_cast<double>(sh.texW) * sh.texW < area * 1.2) sh.texW *= 2;
+        int order[kCells];
+        for (int c = 0; c < kCells; ++c) order[c] = c;
+        std::sort(order, order + kCells, [&](int a, int b) { return slots[a].h > slots[b].h; });
+        int x = 0, y = 0, shelf = 0;
+        for (int c : order) {
+            const int w = slots[c].w + 2 * kGutter, h = slots[c].h + 2 * kGutter;
+            if (x + w > sh.texW) x = 0, y += shelf, shelf = 0;
+            slots[c].x = x + kGutter, slots[c].y = y + kGutter;
+            x += w;
+            shelf = std::max(shelf, h);
+        }
+        sh.texH = y + shelf;
+        if (sh.texH <= kSheetMax) break;
+        scale *= 0.9f;
+    }
+
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    if (!scratchFbo_) {
+        glGenTextures(1, &scratchTex_);
+        glBindTexture(GL_TEXTURE_2D, scratchTex_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kScratch, kScratch, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenRenderbuffers(1, &scratchDepth_);
+        glBindRenderbuffer(GL_RENDERBUFFER, scratchDepth_);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, kScratch, kScratch);
+        glGenFramebuffers(1, &scratchFbo_);
+        glBindFramebuffer(GL_FRAMEBUFFER, scratchFbo_);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, scratchTex_, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, scratchDepth_);
+        glGenFramebuffers(1, &sheetFbo_);
+        glGenVertexArrays(1, &figureVao_);
+        glGenBuffers(1, &figureVbo_);
+        glBindVertexArray(figureVao_);
+        glBindBuffer(GL_ARRAY_BUFFER, figureVbo_);
+        for (int a = 0; a < 4; ++a) {
+            glEnableVertexAttribArray(a);
+            glVertexAttribPointer(a, a == 3 ? 1 : 3, GL_FLOAT, GL_FALSE, 40, reinterpret_cast<void*>(static_cast<intptr_t>(a * 12)));
+        }
+        glGenVertexArrays(1, &emptyVao_);
+    }
+    glGenTextures(1, &sh.tex);
+    glBindTexture(GL_TEXTURE_2D, sh.tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sh.texW, sh.texH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindFramebuffer(GL_FRAMEBUFFER, sheetFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sh.tex, 0);
+    glViewport(0, 0, sh.texW, sh.texH);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
+    std::vector<float> table(static_cast<size_t>(kCells) * 2 * 4);
+    for (int f = 0; f < figures::kFramesPerView; ++f) {
+        const std::vector<float>& mesh = plan.frames[f];
+        glBindVertexArray(figureVao_);
+        glBindBuffer(GL_ARRAY_BUFFER, figureVbo_);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(mesh.size() * 4), mesh.data(), GL_STREAM_DRAW);
+        for (int v = 0; v < figures::kViews; ++v) {
+            const figures::View view = figures::view(v);
+            const figures::Extent& e = plan.extents[v][f];
+            const int c = v * figures::kFramesPerView + f;
+            const Slot& slot = slots[c];
+            // Exactly the slot's pixels: widen the extent to whole pixels.
+            const float w = slot.w / scale, h = slot.h / scale;
+            float* row0 = &table[static_cast<size_t>(c) * 4];
+            float* row1 = &table[(static_cast<size_t>(kCells) + c) * 4];
+            row0[0] = static_cast<float>(slot.x), row0[1] = static_cast<float>(slot.y), row0[2] = static_cast<float>(slot.w), row0[3] = static_cast<float>(slot.h);
+            row1[0] = e.u0, row1[1] = e.v0, row1[2] = w, row1[3] = h;
+            // The figure, twice the size, into the scratch.
+            glBindFramebuffer(GL_FRAMEBUFFER, scratchFbo_);
+            glViewport(0, 0, slot.w * 2, slot.h * 2);
+            glClearColor(0, 0, 0, 0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glUseProgram(figure_.id);
+            glUniform3f(figure_.bakeRight, view.right.x, view.right.y, view.right.z);
+            glUniform3f(figure_.bakeUp, view.up.x, view.up.y, view.up.z);
+            glUniform3f(figure_.bakeToward, view.toward.x, view.toward.y, view.toward.z);
+            glUniform4f(figure_.bakeRect, e.u0, e.v0, w, h);
+            glBindVertexArray(figureVao_);
+            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(mesh.size() / 10));
+            // Down into its slot.
+            glBindFramebuffer(GL_FRAMEBUFFER, sheetFbo_);
+            glViewport(slot.x, slot.y, slot.w, slot.h);
+            glDisable(GL_DEPTH_TEST);
+            glUseProgram(resolve_.id);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, scratchTex_);
+            glUniform1i(resolve_.scratch, 0);
+            glUniform4f(resolve_.resolve, static_cast<float>(slot.x), static_cast<float>(slot.y), static_cast<float>(slot.w), static_cast<float>(slot.h));
+            glBindVertexArray(emptyVao_);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+    }
+    glBindTexture(GL_TEXTURE_2D, sh.tex);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    // Close up the pixels stay crisp, as Myth's did; far off they average.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 2);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenTextures(1, &sh.cells);
+    glBindTexture(GL_TEXTURE_2D, sh.cells);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCells, 2, 0, GL_RGBA, GL_FLOAT, table.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+    glEnable(GL_DEPTH_TEST);
+    glBindVertexArray(0);
+    std::printf("sprite sheet %s: %dx%d at %.1f px/m, %.0f ms\n", sim::unitTypeName(type), sh.texW, sh.texH, scale,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+}
+
+void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSeconds, V3 viewDir, V3 right, bool shadow) {
+    if (unitGroups_.empty()) return;
+    setCommon(unit_, camera, timeSeconds, gameSeconds);
+    glUniform3f(unit_.camRight, right.x, right.y, right.z);
+    glUniform2f(unit_.viewDir, viewDir.x, viewDir.y);
+    glUniform1i(unit_.sheet, 7);
+    glUniform1i(unit_.cellTable, 8);
+    glBindVertexArray(units_.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, units_.vbo);
+    for (const auto& group : unitGroups_) {
+        const Sheet& sh = sheets_[group.first / 2];
+        const auto range = group.second;
+        const float* team = group.first % 2 == 0 ? kPlayerColor : kEnemyColor;
+        const V3 cloth = figures::cloth(team);
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_2D, sh.tex);
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_2D, sh.cells);
+        glUniform2f(unit_.sheetSize, static_cast<float>(sh.texW), static_cast<float>(sh.texH));
+        glUniform1f(unit_.lift, shadow ? 0.0f : sh.lift);
+        glUniform3f(unit_.team, team[0], team[1], team[2]);
+        glUniform3f(unit_.cloth, cloth.x, cloth.y, cloth.z);
+        // WebGL 2 has no base instance: point the attributes at this group.
+        const int stride = units_.floats * 4;
+        const auto at = [&](int floats) { return reinterpret_cast<void*>(static_cast<intptr_t>(range.first * stride + floats * 4)); };
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, at(0));
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, at(3));
+        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, at(4));
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, at(5));
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
+    }
+    glActiveTexture(GL_TEXTURE0);
 }
 
 void Renderer::uploadTerrain(const Battle& battle) {
@@ -1279,6 +1491,10 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         glBindVertexArray(sprites_.vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
     }
+    {
+        const V3 toward = V3{-sun.x, -sun.y, 0}.normalized();
+        drawUnits(camera, timeSeconds, gameSeconds, toward, V3{toward.y, -toward.x, 0}, true);
+    }
     features_ = features;
     viewProjOverride_ = nullptr;
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1419,6 +1635,10 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 }
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
+    if (showUnits_ && unitsChecked_ != battle.world().units().size()) {
+        bakeMissing(battle);
+        unitsChecked_ = battle.world().units().size();
+    }
     updatePatch(battle, camera);
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
@@ -1433,6 +1653,14 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const int selected = battle.selectedSquad();
     const float week = 86400.0f * 7.0f;
 
+    // Each soldier's frame: dying, striking, hurt, walking or at ease.
+    std::map<int, std::vector<float>> byGroup;
+    if (walked_.size() != units.size()) {
+        walked_.assign(units.size(), 0.0f);
+        lastSeen_.resize(units.size());
+        for (size_t i = 0; i < units.size(); ++i) lastSeen_[i] = battle.unitPosition(i);
+    }
+    const auto ago = [&](uint32_t tick) { return tick == UINT32_MAX ? 1e9f : gameSeconds - tick / static_cast<float>(sim::kTicksPerSecond); };
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         const V3 pos = battle.unitPosition(i);
@@ -1440,25 +1668,54 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
         const float height = static_cast<float>(u.stats.height.toDouble());
         const bool isSelected = selected >= 0 && battle.squadOf(u.id) == selected;
+        const auto type = static_cast<UnitType>(u.stats.type);
+        const V3 step = pos - lastSeen_[i];
+        walked_[i] += std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
+        lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
-        if (!u.alive() && !u.airborne) {
-            const float died = battle.deathTick(i) / static_cast<float>(sim::kTicksPerSecond);
-            const Look look = lookOf(static_cast<UnitType>(u.stats.type));
-            const float decay = std::clamp((gameSeconds - died - 3600.0f) / week, 0.0f, 1.0f);
-            pushCorpse(capsules, spheres, pos, std::atan2(fy, fx) + 3.14159f, height / 1.8f, {team[0], team[1], team[2]},
-                       {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id);
-            continue;
+        int frame;
+        if (!u.alive()) {
+            const float died = ago(battle.deathTick(i));
+            const float decay = std::clamp((died - 3600.0f) / week, 0.0f, 1.0f);
+            if (decay > 0) {
+                // Long dead: the body rots where it lies.
+                const Look look = lookOf(type);
+                pushCorpse(capsules, spheres, pos, std::atan2(fy, fx) + 3.14159f, height / 1.8f, {team[0], team[1], team[2]},
+                           {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id);
+                continue;
+            }
+            const int f = u.airborne ? 2 : static_cast<int>(died / figures::kDieSeconds * figures::kFrames[4]);
+            frame = figures::kFirstFrame[4] + std::clamp(f, 0, figures::kFrames[4] - 1);
+        } else {
+            const float radius = static_cast<float>(u.stats.radius.toDouble());
+            decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});
+            if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+            const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
+            if (struck >= 0 && struck < strike) {
+                frame = figures::kFirstFrame[2] + std::min(figures::kFrames[2] - 1, static_cast<int>(struck / strike * figures::kFrames[2]));
+            } else if (hurt >= 0 && hurt < figures::kFlinchSeconds) {
+                frame = figures::kFirstFrame[3] + (hurt < figures::kFlinchSeconds * 0.5f ? 0 : 1);
+            } else if (battle.unitMoving(i) || u.inAir()) {
+                const float cycle = u.inAir() ? gameSeconds * 1.6f : walked_[i] / figures::stride(type);
+                frame = figures::kFirstFrame[1] + static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[1]) % figures::kFrames[1];
+            } else {
+                const float cycle = gameSeconds * 0.45f + static_cast<float>(u.id % 13) * 0.37f;
+                frame = static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[0]) % figures::kFrames[0];
+            }
         }
-        const float radius = static_cast<float>(u.stats.radius.toDouble());
-        decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});
-        if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
-        const Look look = lookOf(static_cast<UnitType>(u.stats.type));
-        const float facingSide = fx * camRight.x + fy * camRight.y;
-        sprites.insert(sprites.end(), {pos.x, pos.y, pos.z, team[0], team[1], team[2], look.plan,
-                                       battle.unitMoving(i) ? 1.0f : 0.0f, facingSide < 0 ? 1.0f : 0.0f,
-                                       static_cast<float>(u.id % 17), look.weapon, look.head, look.shield, look.flags,
-                                       look.body[0], look.body[1], look.body[2], height, look.width,
-                                       isSelected ? 1.0f : 0.0f});
+        const int key = static_cast<int>(type) * 2 + (u.owner == Battle::kPlayer ? 0 : 1);
+        if (!sheets_.count(key / 2) || !sheets_[key / 2].tex) continue;  // baked before the next frame (bakeMissing)
+        std::vector<float>& g = byGroup[key];
+        g.insert(g.end(), {pos.x, pos.y, pos.z, std::atan2(fy, fx), static_cast<float>(frame), isSelected ? 1.0f : 0.0f});
+    }
+    {
+        std::vector<float> all;
+        unitGroups_.clear();
+        for (auto& [key, data] : byGroup) {
+            unitGroups_.push_back({key, {all.size() / 6, data.size() / 6}});
+            all.insert(all.end(), data.begin(), data.end());
+        }
+        uploadDynamic(units_, all);
     }
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
@@ -1630,6 +1887,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         setCommon(sprite_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(sprites_.vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
+    }
+    {
+        const V3 toward = V3{fwd.x, fwd.y, 0}.normalized();
+        drawUnits(camera, timeSeconds, gameSeconds, toward, camRight, false);
     }
 
     // Water over everything below it: soldiers wading show through.

@@ -193,6 +193,9 @@ public:
     V3 unitPosition(size_t index) const;
     bool unitMoving(size_t index) const;
     uint32_t deathTick(size_t index) const { return deathTick_[index]; }
+    // When a soldier last struck or loosed, and was last hurt (UINT32_MAX: never).
+    uint32_t attackTick(size_t index) const { return attackTick_[index]; }
+    uint32_t hitTick(size_t index) const { return hitTick_[index]; }
     template <typename Fn>
     void forEachProjectile(Fn&& fn) const;
 
@@ -242,6 +245,8 @@ private:
 
     std::vector<V3> prevUnitPos_;
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
+    std::vector<uint32_t> attackTick_, hitTick_;
+    std::vector<std::pair<int32_t, int32_t>> readied_;  // melee cooldown and reload before the tick
     std::vector<std::pair<sim::EntityId, V3>> prevProjectilePos_;  // sorted by id
     std::vector<GroundMark> marks_;
     uint64_t marksAdded_ = 0;

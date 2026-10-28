@@ -12,8 +12,9 @@ add_executable(illyria_tests
     test_ground.cpp
     test_castle.cpp
     test_campaign.cpp
+    test_figures.cpp
 )
-target_link_libraries(illyria_tests PRIVATE illyria_game)
+target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 
 if(EMSCRIPTEN)
     # Propagate main()'s return value as the node process exit code.

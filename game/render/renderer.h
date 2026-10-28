@@ -7,6 +7,9 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
+#include <map>
+
+#include "figures.h"
 #include "meshes.h"
 
 namespace illyria::game {
@@ -38,7 +41,10 @@ public:
     void reset(Battle& battle);
     void draw(Battle& battle, const Camera& camera, double timeSeconds);
     // The campaign map shows the land, not the battle's soldiers.
-    void setShowUnits(bool show) { showUnits_ = show; }
+    void setShowUnits(bool show) {
+        showUnits_ = show;
+        unitsChecked_ = SIZE_MAX;
+    }
 
 private:
     bool showUnits_ = true;
@@ -49,6 +55,8 @@ private:
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
+        GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
+        GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -85,6 +93,28 @@ private:
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
     Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
+    Program figure_, resolve_, unit_;
+    // The soldiers' sprite sheets, one per unit type and side, baked on the
+    // GPU from figures::build when a battle first needs them.
+    struct Sheet {
+        GLuint tex = 0, cells = 0;  // the pictures; where each cell is (see kUnitVs)
+        int texW = 0, texH = 0;
+        float lift = 0.5f;
+    };
+    std::map<int, Sheet> sheets_;  // by unit type
+    GLuint scratchFbo_ = 0, scratchTex_ = 0, scratchDepth_ = 0, sheetFbo_ = 0, figureVao_ = 0, figureVbo_ = 0, emptyVao_ = 0;
+    static constexpr int kScratch = 512, kSheetMax = 2048, kGutter = 2;
+    Sheet& sheet(sim::UnitType type);
+    void bakeSheet(Sheet& s, sim::UnitType type);
+    void bakeMissing(const Battle& battle);
+    // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.
+    Batch units_;
+    std::vector<std::pair<int, std::pair<size_t, size_t>>> unitGroups_;  // type x 2 + side, first instance, count
+    void drawUnits(const Camera& camera, double timeSeconds, float gameSeconds, V3 viewDir, V3 right, bool shadow);
+    // Presentation per soldier: metres walked, for the stride.
+    std::vector<float> walked_;
+    std::vector<V3> lastSeen_;
+    size_t unitsChecked_ = SIZE_MAX;  // the unit count sheets were last checked for
     // A ground-cover mesh drawn on a camera-following grid (see kCoverVs).
     struct CoverLayer {
         GLuint vao = 0, vbo = 0;

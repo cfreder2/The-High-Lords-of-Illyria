@@ -849,6 +849,172 @@ void main() {
 }
 )";
 
+// ---------------------------------------------------------------- soldiers' sheets
+// Baking: one posed figure (figures::build) photographed orthographically
+// from a sheet view, lit from over the viewer's left shoulder, into a
+// scratch target twice the cell's size.
+inline const char* kFigureVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+layout(location = 3) in float aTeam;
+uniform vec3 uBakeRight, uBakeUp, uBakeToward;
+uniform vec4 uBakeRect;  // the picture's extent: left, bottom, width, height (m)
+out vec3 vNormal;
+out vec3 vColor;
+out float vZ;
+out float vTeam;
+void main() {
+    vNormal = aNormal;
+    vColor = aColor;
+    vZ = aPos.z;
+    vTeam = aTeam;
+    vec2 c = (vec2(dot(aPos, uBakeRight), dot(aPos, uBakeUp)) - uBakeRect.xy) / uBakeRect.zw;
+    gl_Position = vec4(c * 2.0 - 1.0, -dot(aPos, uBakeToward) / 40.0, 1.0);
+}
+)";
+inline const char* kFigureFs = R"(
+uniform vec3 uBakeRight, uBakeUp, uBakeToward;
+in vec3 vNormal;
+in vec3 vColor;
+in float vZ;
+in float vTeam;
+out vec4 oColor;
+void main() {
+    // Alpha marks what was drawn: 1, or 0.5 where the side's colour goes.
+    float mark = vTeam > 0.5 ? 0.5 : 1.0;
+    // Colours above 1.5 glow: drawn unlit, less 2 (see figures.cpp).
+    if (vColor.r > 1.5) { oColor = vec4(vColor - 2.0, mark); return; }
+    vec3 n = normalize(vNormal);
+    vec3 key = normalize(uBakeToward * 0.45 + uBakeUp * 0.75 - uBakeRight * 0.55);
+    float diffuse = max(0.0, dot(n, key));
+    float rim = pow(max(0.0, 1.0 - abs(dot(n, uBakeToward))), 3.0) * 0.18;
+    float ao = 0.68 + 0.32 * clamp(vZ / 1.2, 0.0, 1.0);
+    oColor = vec4(vColor * ((0.47 + 0.6 * diffuse + rim) * ao), mark);
+}
+)";
+// Resolving the scratch into its sheet cell: 2x2 samples to one pixel, hard
+// edges, and a dark outline one pixel wide, as Myth's sprites had. Alpha in
+// the sheet: 1 plain, 0.75 the side's colour (tinted when drawn), 0.6 outline.
+inline const char* kResolveVs = R"(
+void main() {
+    vec2 c = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+inline const char* kResolveFs = R"(
+uniform sampler2D uScratch;
+uniform vec4 uResolve;  // cell origin in the sheet (px), cell size (px)
+out vec4 oColor;
+float cover(ivec2 p) {
+    if (p.x < 0 || p.y < 0 || p.x >= int(uResolve.z) || p.y >= int(uResolve.w)) return 0.0;
+    ivec2 s = p * 2;
+    return (step(0.25, texelFetch(uScratch, s, 0).a) + step(0.25, texelFetch(uScratch, s + ivec2(1, 0), 0).a) +
+            step(0.25, texelFetch(uScratch, s + ivec2(0, 1), 0).a) + step(0.25, texelFetch(uScratch, s + ivec2(1, 1), 0).a)) * 0.25;
+}
+void main() {
+    ivec2 p = ivec2(floor(gl_FragCoord.xy - uResolve.xy));
+    ivec2 s = p * 2;
+    vec3 col = vec3(0.0);
+    float k = 0.0, team = 0.0;
+    for (int j = 0; j < 2; ++j)
+        for (int i = 0; i < 2; ++i) {
+            vec4 t = texelFetch(uScratch, s + ivec2(i, j), 0);
+            if (t.a < 0.25) continue;
+            col += t.rgb;
+            k += 1.0;
+            team += t.a < 0.75 ? 1.0 : 0.0;
+        }
+    float l = cover(p + ivec2(-1, 0)), r = cover(p + ivec2(1, 0)), dn = cover(p + ivec2(0, -1)), up = cover(p + ivec2(0, 1));
+    bool solidAround = l >= 0.5 && r >= 0.5 && dn >= 0.5 && up >= 0.5;
+    bool anyAround = l >= 0.5 || r >= 0.5 || dn >= 0.5 || up >= 0.5;
+    if (k >= 2.0) oColor = vec4(col / k * (solidAround ? 1.0 : 0.78), team * 2.0 >= k ? 0.75 : 1.0);
+    else if (anyAround) oColor = vec4(0.05, 0.045, 0.04, 0.6);
+    else oColor = vec4(0.0);
+}
+)";
+// In battle: each soldier a billboard showing the frame of its sheet for its
+// facing (view and mirror chosen here) and deed (frame chosen on the CPU).
+// Per instance: feet, facing (radians), frame, selected. uCellTable holds, per
+// cell (view x 26 + frame), its place in the sheet (px: x, y, w, h; row 0)
+// and the picture's extent about the feet (m: left, bottom, w, h; row 1).
+inline const char* kUnitVs = R"(
+layout(location = 0) in vec3 iPos;
+layout(location = 1) in float iYaw;
+layout(location = 2) in float iFrame;
+layout(location = 3) in float iSelected;
+uniform highp sampler2D uCellTable;
+uniform vec2 uSheetSize;  // px
+uniform vec2 uViewDir;    // horizontal: from the viewer into the scene
+uniform float uLift;      // metres drawn toward the viewer, against the ground
+out vec2 vUv;
+flat out float vSelected;
+flat out float vDot;
+out float vFog;
+flat out float vShade;
+const float kFramesPerView = 26.0, kElevation = 0.52;
+void main() {
+    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    // Which of the eight views: the viewer's bearing seen from the soldier.
+    float toViewer = atan(-uViewDir.y, -uViewDir.x);
+    float d = mod(floor(-(toViewer - iYaw) / 0.7853982 + 0.5), 8.0);
+    bool mirror = d > 4.5;
+    float view = mirror ? 8.0 - d : d;
+    int cell = int(view * kFramesPerView + iFrame + 0.5);
+    vec4 place = texelFetch(uCellTable, ivec2(cell, 0), 0);
+    vec4 extent = texelFetch(uCellTable, ivec2(cell, 1), 0);
+    float dist = distance(uEye, iPos);
+    // Zoomed far out, soldiers are coloured specks (as the old sprites were).
+    float px = uPxScale * dist;
+    vDot = extent.w < px * 7.0 ? 1.0 : 0.0;
+    vec3 world;
+    if (vDot > 0.5) {
+        float size = px * 4.5;
+        world = iPos + uCamRight * ((corner.x - 0.5) * size) + vec3(0.0, 0.0, corner.y * size + size * 0.25);
+    } else {
+        float u = mirror ? -(extent.x + extent.z) + corner.x * extent.z : extent.x + corner.x * extent.z;
+        float v = extent.y + corner.y * extent.w;
+        world = iPos + uCamRight * u + vec3(0.0, 0.0, v / cos(kElevation));
+    }
+    vec2 inCell = vec2(mirror ? 1.0 - corner.x : corner.x, corner.y) * place.zw;
+    vUv = (place.xy + inCell) / uSheetSize;
+    vSelected = iSelected;
+    vFog = fogFactor(dist);
+    vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
+    // Drawn as if a little nearer the viewer, so the part of the picture
+    // below the feet (the ground in front of them) is not lost in the earth;
+    // moving along the line of sight leaves the picture where it is.
+    vec3 toEye = uEye - world;
+    float len = length(toEye);
+    world += toEye * (min(uLift, len * 0.5) / max(len, 1e-3));
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kUnitFs = R"(
+uniform sampler2D uSheet;
+uniform vec3 uTeam;   // the side's colour, for specks
+uniform vec3 uCloth;  // and as its cloth is dyed
+in vec2 vUv;
+flat in float vSelected;
+flat in float vDot;
+in float vFog;
+flat in float vShade;
+out vec4 oColor;
+void main() {
+    vec3 team = uTeam * (vSelected > 0.5 ? 1.35 : 1.0);
+    if (vDot > 0.5) {
+        oColor = vec4(mix(team, kSky, vFog * 0.5), 1.0);
+        return;
+    }
+    vec4 t = texture(uSheet, vUv);
+    if (t.a < 0.5) discard;
+    vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    c *= vShade;
+    if (vSelected > 0.5) c = c * 1.15 + team * 0.12;
+    oColor = vec4(mix(c, kSky, vFog), 1.0);
+}
+)";
+
 // ---------------------------------------------------------------- meshes
 // Instanced lit meshes: scenery and bodies. Per vertex: pos, normal, colour.
 // Per instance: position, rotation quaternion, scale, tint.
