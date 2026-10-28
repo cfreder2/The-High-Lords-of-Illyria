@@ -25,6 +25,9 @@ public:
     // True if a ground unit can walk the straight segment.
     bool clearLine(const Vec3& from, const Vec3& to) const;
     bool blocked(const Vec3& p) const;
+    // Castle gates start shut, closing the cells they stand in; a broken gate
+    // opens them again for good.
+    void openGate(size_t gate);
     int32_t cells() const { return n_; }
 
 private:
@@ -34,6 +37,8 @@ private:
     int32_t n_ = 0;
     int64_t cell_ = kCellSize;
     std::vector<int32_t> cost_;  // 0: blocked
+    // Per gate: the cells it closes, with the cost each had before.
+    std::vector<std::vector<std::pair<int32_t, int32_t>>> gateCells_;
     std::vector<Deck> decks_;    // routes over a bridge go end to end along its deck
     // Deep water per terrain cell, where a bridge cell is otherwise open.
     std::vector<uint8_t> deep_;

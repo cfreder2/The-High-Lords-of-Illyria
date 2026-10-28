@@ -21,14 +21,14 @@ struct Realm {
 };
 const Realm& realm(uint8_t side) {
     static const Realm kRealms[] = {
-        {{T::HeavyCavalry, T::HeavyInfantry, T::Pegasi}, 300},  // Aurelian Throne: knights
+        {{T::HeavyCavalry, T::HeavyInfantry, T::Pegasi, T::Catapult}, 300},  // Aurelian Throne: knights and engines
         {{T::Giants, T::HeavyInfantry}, 200},                    // Highcrag Giants
-        {{T::Dwarves, T::Griffins, T::DwarfGrenadier}, 450},     // Ironhold Dwarves: rich
+        {{T::Dwarves, T::Griffins, T::DwarfGrenadier, T::Catapult}, 450},  // Ironhold Dwarves: rich, and engineers
         {{T::WolfRiders, T::Minotaurs, T::Berserker}, 250},      // Orcs of Grath
         {{T::Archers, T::Pegasi, T::Unicorns}, 250},             // Sylvaran Elves
         {{T::LightCavalry, T::HeavyCavalry}, 300},               // Sunreach Riders
         {{T::Archers, T::Journeyman, T::Pikemen}, 300},          // Moonward Order
-        {{T::Spiders, T::Minotaurs, T::Giants}, 350},            // Lord Malvoren
+        {{T::Spiders, T::Minotaurs, T::Giants, T::Catapult}, 350},  // Lord Malvoren
     };
     return kRealms[side % 8];
 }
@@ -55,9 +55,13 @@ Campaign::Option trained(UnitType t) {
         case T::Journeyman: return {t, 3, 6};
         case T::Warrior: return {t, 3, 6};
         case T::Berserker: return {t, 3, 6};
+        case T::Catapult: return {t, 5, 10};  // dear and slow to build, as Warlords II's siege engines
         default: return {t, 6, 20};
     }
 }
+
+// A catapult's strength against a town's walls, over its strength in the field.
+constexpr int32_t kCatapultSiegeBonus = 2;
 
 bool flies(UnitType t) {
     return t == T::Pegasi || t == T::Griffins || t == T::Dragons || t == T::Archons;
@@ -92,6 +96,7 @@ int32_t Campaign::squadSize(UnitType t) {
         case T::Demons: return 2;
         case T::Dragons:
         case T::Hero: return 1;
+        case T::Catapult: return 2;
         case T::Dwarves:
         case T::Berserker: return 10;
         case T::Spiders:
@@ -121,6 +126,7 @@ int32_t Campaign::movesPerDay(UnitType t) {
         case T::Hero: return 12;
         case T::Elephants:
         case T::Spiders: return 12;
+        case T::Catapult: return 6;  // dragged on wheels
         default: return 10;
     }
 }
@@ -137,6 +143,8 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
     static const int32_t kWolves[] = {1, 1, P, 4, 6, P, 2, 4, 1};
     static const int32_t kFliers[] = {2, 2, 2, 2, 2, 3, 2, 2, 2};
     static const int32_t kDark[] = {1, 1, P, 4, 5, P, 2, 4, 1};
+    // Wheels want roads: slow through woods and up hills, never into a marsh.
+    static const int32_t kWheels[] = {1, 1, P, 6, 6, P, 2, P, 1};
     const int32_t* row = kLight;
     switch (t) {
         case T::Giants:
@@ -157,6 +165,7 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
         case T::Demons:
         case T::Devils:
         case T::Wizards: row = kDark; break;
+        case T::Catapult: row = kWheels; break;
         default:
             if (flies(t)) row = kFliers;
             break;
@@ -696,7 +705,18 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     // Armies fighting from a boat's deck fight at a penalty (campaign_sea.cpp).
     int32_t defAfloat = 0;
     for (const Stack* d : defenders) defAfloat = std::max(defAfloat, afloatPenalty(*d));
-    const int32_t am = modifier(att, false) - afloatPenalty(attacker), dm = modifier(def, true) - defAfloat;
+    const int32_t am = modifier(att, false) - afloatPenalty(attacker);
+    int32_t dm = modifier(def, true) - defAfloat;
+    // Siege engines against a town: their stones break the walls' advantage.
+    // Each catapult in the attacking stack takes a point off the defenders'
+    // bonus for the walls, and catapults fight two points stronger there.
+    int32_t engines = 0;
+    for (const Army* a : att) engines += a->type == T::Catapult;
+    if (city >= 0 && engines > 0) {
+        const int32_t walls = modifier(def, true) - modifier(def, false);
+        dm -= std::min(walls, engines);
+    }
+    const auto siege = [&](const Army& a) { return city >= 0 && a.type == T::Catapult ? kCatapultSiegeBonus : 0; };
     const auto byValue = [](const Army* a, const Army* b) {
         const int32_t sa = strength(*a) + (a->hero() ? 10 : 0), sb = strength(*b) + (b->hero() ? 10 : 0);
         return sa != sb ? sa < sb : a->id < b->id;
@@ -709,7 +729,7 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     while (ai < att.size() && di < def.size()) {
         Army& a = *att[ai];
         Army& d = *def[di];
-        const int32_t as = std::clamp(strength(a) + am, 1, 9), ds = std::clamp(strength(d) + dm, 1, 9);
+        const int32_t as = std::clamp(strength(a) + am + siege(a), 1, 9), ds = std::clamp(strength(d) + dm, 1, 9);
         const bool aLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= ds;
         const bool dLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= as;
         if (aLow == dLow) continue;

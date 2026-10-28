@@ -16,6 +16,9 @@ constexpr Fixed r(int64_t num, int64_t den) { return Fixed::fromRatio(num, den);
 constexpr int32_t kCells = 256;
 constexpr int64_t kCellSize = 4;
 constexpr Fixed kWater = m(8);
+// A gate holds 250 hit points a metre of its width: an 8 m town gate takes
+// about a minute of hacking by a squad, or three or four good catapult stones.
+constexpr int32_t kGateHpPerMetre = 250;
 
 Vec3 P(int64_t x, int64_t y) { return {m(x), m(y), Fixed::zero()}; }
 
@@ -111,6 +114,19 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
         found = true;
     }
     return found;
+}
+
+bool Gate::inside(const Rampart& ring, const Vec3& p) {
+    // Crossing number: a ray east from p crosses the walls an odd number of times.
+    bool in = false;
+    const size_t n = ring.corners.size();
+    for (size_t i = 0, j = n - 1; i < n; j = i++) {
+        const Vec3& a = ring.corners[i];
+        const Vec3& b = ring.corners[j];
+        if ((a.y > p.y) == (b.y > p.y)) continue;
+        if (p.x < a.x + (b.x - a.x) * ((p.y - a.y) / (b.y - a.y))) in = !in;
+    }
+    return in;
 }
 
 int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
@@ -553,6 +569,21 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                     const Vec3 mid = a + along * (len / 2);
                     rg.walls_.push_back({a, mid - along * (ring.gateWidth / 2), ring.thick / 2, top, walk});
                     rg.walls_.push_back({mid + along * (ring.gateWidth / 2), b, ring.thick / 2, top, walk});
+                    // The doors hang across the gap under the lintel, flush with the
+                    // wall's outer face (the walk overhead shelters nothing in front
+                    // of them); a quarter of a metre of oak and iron either side.
+                    Gate g;
+                    g.out = Vec3{-along.y, along.x, Fixed::zero()};
+                    if (g.out.dot((mid - at).flat()) < Fixed::zero()) g.out = -g.out;
+                    g.halfThick = r(1, 4);
+                    const Vec3 face = g.out * (ring.thick / 2 - g.halfThick);
+                    g.a = mid - along * (ring.gateWidth / 2) + face;
+                    g.b = mid + along * (ring.gateWidth / 2) + face;
+                    g.a.z = g.b.z = city.pos.z;
+                    g.top = city.pos.z + ring.height * 31 / 50;  // up to the lintel
+                    g.maxHp = static_cast<int32_t>((ring.gateWidth * kGateHpPerMetre).floorToInt());
+                    g.ring = static_cast<int32_t>(rg.ramparts_.size());
+                    rg.gates_.push_back(g);
                 } else {
                     rg.walls_.push_back({a, b, ring.thick / 2, top, walk});
                 }
@@ -851,6 +882,11 @@ uint64_t Region::checksum() const {
         for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth, d.rise}) h.addI64(v.raw);
     for (const WallSeg& w : walls_)
         for (Fixed v : {w.a.x, w.a.y, w.b.x, w.b.y, w.halfThick, w.top}) h.addI64(v.raw);
+    for (const Gate& g : gates_) {
+        for (Fixed v : {g.a.x, g.a.y, g.a.z, g.b.x, g.b.y, g.halfThick, g.top, g.out.x, g.out.y}) h.addI64(v.raw);
+        h.addI64(g.maxHp);
+        h.addI64(g.ring);
+    }
     return h.value();
 }
 

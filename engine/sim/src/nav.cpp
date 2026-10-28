@@ -89,6 +89,21 @@ NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
             }
         }
     }
+    // Gates: every cell the doors cross, sampled every half metre along them.
+    for (const Gate& g : region.gates()) {
+        std::vector<std::pair<int32_t, int32_t>> cells;
+        const Fixed len = (g.b - g.a).flat().length();
+        const int64_t steps = (len * 2).floorToInt() + 1;
+        for (int64_t i = 0; i <= steps; ++i) {
+            const Vec3 p = g.a + (g.b - g.a) * Fixed::fromRatio(i, steps);
+            const int32_t k = index(cellOf(p.x), cellOf(p.y));
+            bool seen = false;
+            for (const auto& c : cells) seen = seen || c.first == k;
+            if (!seen) cells.push_back({k, cost_[k]});
+        }
+        for (const auto& c : cells) cost_[c.first] = 0;
+        gateCells_.push_back(std::move(cells));
+    }
     for (const Obstacle& o : region.obstacles()) {
         if (o.kind != Obstacle::Kind::House) continue;
         const int32_t x0 = cellOf(o.pos.x - o.halfX), x1 = cellOf(o.pos.x + o.halfX);
@@ -100,6 +115,12 @@ NavGrid::NavGrid(const Region& region) : decks_(region.decks()) {
 
 int32_t NavGrid::cellOf(Fixed v) const {
     return static_cast<int32_t>(std::clamp<int64_t>(v.floorToInt() / cell_, 0, n_ - 1));
+}
+
+void NavGrid::openGate(size_t gate) {
+    if (gate >= gateCells_.size()) return;
+    for (const auto& c : gateCells_[gate]) cost_[c.first] = c.second;
+    gateCells_[gate].clear();
 }
 
 bool NavGrid::blocked(const Vec3& p) const { return cost_[index(cellOf(p.x), cellOf(p.y))] == 0; }

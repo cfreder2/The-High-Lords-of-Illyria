@@ -55,6 +55,22 @@ struct WallSeg {
     Fixed walk = {};  // the wall-walk's height, if it has one: missiles above it meet the merlons instead
 };
 
+struct Rampart;
+
+// A castle gate: two heavy timber doors across the gap left in the curtain
+// wall, from a to b (z = the ground), halfThick either side, up to top. While
+// it stands it blocks walkers and missiles like the wall; once its hit points
+// are gone (World tracks them) it lies broken open for good.
+struct Gate {
+    Vec3 a, b;
+    Fixed halfThick, top;
+    Vec3 out;           // unit, horizontal: from the town out through the gate
+    int32_t maxHp = 1;
+    int32_t ring = 0;   // the rampart (ring of walls) it opens
+    // True inside that ring's walls.
+    static bool inside(const Rampart& ring, const Vec3& p);
+};
+
 // A ring of castle walls with a walk along the top, and the stairs up to it.
 struct Rampart {
     std::vector<Vec3> corners;  // z = the walk
@@ -92,6 +108,7 @@ public:
     const std::vector<Deck>& decks() const { return decks_; }
     const std::vector<WallSeg>& walls() const { return walls_; }
     const std::vector<Rampart>& ramparts() const { return ramparts_; }
+    const std::vector<Gate>& gates() const { return gates_; }
     // The rampart whose walk this point is on, or -1.
     int rampartAt(Fixed x, Fixed y, Fixed z) const;
     // True on a bridge deck, with the deck's height.
@@ -122,6 +139,7 @@ private:
     std::vector<Deck> decks_;
     std::vector<WallSeg> walls_;
     std::vector<Rampart> ramparts_;
+    std::vector<Gate> gates_;
     Vec3 ford_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample

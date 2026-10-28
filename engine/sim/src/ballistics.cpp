@@ -35,4 +35,24 @@ LaunchSolution solveLowArc(const Vec3& origin, const Vec3& target, Fixed speed, 
     return {d / t + Vec3{Fixed::zero(), Fixed::zero(), gravity * t / 2}, true};
 }
 
+LaunchSolution solveFixedElevation(const Vec3& origin, const Vec3& target, Fixed tanElevation, Fixed maxSpeed, Fixed gravity) {
+    const Vec3 d = target - origin;
+    const Vec3 flat = d.flat();
+    const Fixed dist = flat.length();
+    const Vec3 dir = dist > Fixed::zero() ? flat / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    // Horizontal speed u over distance d, rising h: d * tan - g d^2 / (2 u^2) == h.
+    const Fixed rise = dist * tanElevation - d.z;
+    // At full speed: u^2 (1 + tan^2) == maxSpeed^2.
+    const Fixed maxU = maxSpeed / sqrt(Fixed::one() + tanElevation * tanElevation);
+    bool inRange = rise > Fixed::zero();
+    Fixed u = maxU;
+    if (inRange) {
+        // Divide before squaring: d^2 at a few hundred metres is large in fixed point.
+        const Fixed uSq = gravity * dist / 2 * (dist / rise);
+        if (uSq > maxU * maxU) inRange = false;
+        else u = sqrt(uSq);
+    }
+    return {dir * u + Vec3{Fixed::zero(), Fixed::zero(), u * tanElevation}, inRange};
+}
+
 }  // namespace illyria::sim
