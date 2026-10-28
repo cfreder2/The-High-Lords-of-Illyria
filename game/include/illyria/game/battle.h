@@ -222,6 +222,10 @@ public:
     // it (Myth's gesture rotation).
     void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
+    // Tests and hooks: a gate battered down at once; every archer of ours
+    // looses at a spot on the ground.
+    void breakGate(int gate);
+    void testShootAt(const V3& at);
     // Run! Everyone selected scatters a few metres outward from their centre.
     void scatter();
     // Every one of the player's squads at the nearest enemy: the foot charge,
@@ -359,6 +363,8 @@ private:
     void attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId>& units, Formation formation, int gate);
     // Enemy catapults: the player's gate when they besiege, else the nearest foe in reach.
     void aimEngines(const Squad& s);
+    // A garrison's archers: those not at an embrasure go up to an empty one.
+    void manTheWalls(const Squad& s);
 
     std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;

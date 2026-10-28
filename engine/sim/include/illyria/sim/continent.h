@@ -74,10 +74,26 @@ public:
     struct Castle {
         struct Ring {
             std::vector<Vec3> corners;
-            Fixed height, thick;  // walls; the walk is near the top
+            Fixed height, thick;  // walls; the walk lies kWalkBelow under the height
             size_t gateEdge = 0;  // edge corners[i] -> corners[i + 1] holding the gate
             Fixed gateWidth;
+            // The wall-walk's height above the ground.
+            Fixed walk() const { return height - kWalkBelow; }
+            // The embrasures along edge e (castle_walls.cpp): their middles, in
+            // metres from corners[e], kCrenelPitch apart, clear of the towers.
+            std::vector<Fixed> crenels(size_t edge) const;
         };
+        // The top of a curtain wall (castle_walls.cpp). Along the walk's outer
+        // edge a parapet kParapetThick deep rises kParapetSill (a low breastwork
+        // a man stands at, about knee high) and between the embrasures, which
+        // are kCrenelWidth wide every kCrenelPitch, merlons rise to kMerlonTop,
+        // higher than a man.
+        static constexpr Fixed kWalkBelow = Fixed::fromRatio(13, 10);
+        static constexpr Fixed kParapetThick = Fixed::fromRatio(3, 5);
+        static constexpr Fixed kParapetSill = Fixed::fromRatio(1, 2);
+        static constexpr Fixed kMerlonTop = Fixed::fromInt(2);
+        static constexpr Fixed kCrenelWidth = Fixed::fromInt(1);
+        static constexpr Fixed kCrenelPitch = Fixed::fromInt(4);
         struct Tower {
             Vec3 pos;
             Fixed radius, height;

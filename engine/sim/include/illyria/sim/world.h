@@ -390,10 +390,11 @@ private:
     void kickRemains(Unit& unit, const Vec3& moveDir);
     // Looses at a target; false (and nothing loosed) when no arc gets there
     // past the walls, gates and trees in the way.
-    bool fire(Unit& unit, const Vec3& target);
+    // `atWalk`: the target is a defender on a wall-walk, shot at direct (never lobbed).
+    bool fire(Unit& unit, const Vec3& target, bool atWalk = false);
     // Whether a missile launched so flies clear of walls, gates and houses
     // until near its mark (woods catch some arrows; archers shoot into them).
-    bool clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target) const;
+    bool clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target, Fixed shortOf) const;
     // Castle gates (world_gates.cpp).
     // The intact gate this soldier should hack at, or -1.
     int gateToHack(Unit& unit);
@@ -464,10 +465,37 @@ private:
     // The surface a walker at height z stands on here: the ground, or a deck
     // within a step of z (not a wall-walk high above a gate passage).
     Fixed standingHeight(Fixed x, Fixed y, Fixed z) const;
-    // True for a defender on a wall-walk struck from outside (behind the merlons).
-    bool onRampartFacing(const Unit& u, const Vec3& vel) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
-    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false) const;
+    // `stone` (if given) tells whether it was stone (walls, towers, houses,
+    // rocks), off which arrows glance, or wood (trees, gates), which they stick in.
+    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false, bool* stone = nullptr) const;
+    // Castle walls (world_walls.cpp).
+    // Earliest entry of segment a->b into a wall's stone: its slab below the
+    // walk, the parapet, a merlon (not an embrasure); -1 if none.
+    Fixed wallHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
+    // What a falling thing at height z lands on here: the ground, or a deck
+    // not far above it (not the wall-walk over a gate passage it flies through).
+    Fixed surfaceBelow(Fixed x, Fixed y, Fixed z) const;
+    // A point on a curtain wall's walk: the wall, its direction, and where
+    // along it and how far out from its middle line the point lies.
+    struct WalkSpot {
+        const WallSeg* seg = nullptr;
+        Vec3 dir;
+        Fixed along, across, len;
+    };
+    bool walkSpot(const Vec3& p, WalkSpot& spot) const;
+    // Keeps a soldier on a wall-walk inside the parapet, the living and the
+    // dead (who lie along the walk); stops a body thrown against the parapet.
+    void keepOnWalk(Unit& u);
+    // A soldier on the walk shooting out over the wall leans into his
+    // embrasure (origin moves out to it); false when he stands behind a merlon.
+    bool walkShot(const Unit& shooter, const Vec3& target, Vec3& origin) const;
+    // Where to aim at a mark standing at `aim` (his feet), `height` tall: a
+    // defender up on a wall-walk is shot at in the chest, over the parapet
+    // (true; aim moves up), anyone else at their feet.
+    bool aimHigh(const Unit& shooter, Vec3& aim, Fixed height) const;
+    // A gate breaking lets the arrows stuck in it fall.
+    void dropGateArrows(int gate);
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind = ProjectileKind::Bomb);
     void spawnGibs(Unit& victim, const Vec3& from, Fixed strength);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);

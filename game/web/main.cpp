@@ -630,6 +630,48 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_gate_hp() {
     const int g = nearestGate();
     return g < 0 ? -1 : app->battle->world().gates()[static_cast<size_t>(g)].hp;
 }
+// That gate battered down at once.
+EMSCRIPTEN_KEEPALIVE void illyria_test_break_gate() {
+    const int g = nearestGate();
+    if (g >= 0) app->battle->breakGate(g);
+}
+// Camera on a defender up on the walls, living (dead = 0) or dead (1): the
+// first such, seen from inside the town looking out over him (turned by
+// `turn` radians); returns 1 when there is one.
+EMSCRIPTEN_KEEPALIVE int illyria_test_view_walk(int dead, float distance, float turn) {
+    if (!app) return 0;
+    const illyria::sim::Region& rg = app->battle->region();
+    for (const illyria::sim::Unit& u : app->battle->world().units()) {
+        if (u.owner == illyria::game::Battle::kPlayer || u.alive() == (dead != 0) || u.airborne) continue;
+        if (u.pos.z < rg.terrain().heightAt(u.pos.x, u.pos.y) + illyria::sim::Fixed::fromInt(3)) continue;
+        const V3 p = toV3(u.pos);
+        V3 c{};
+        float best = 1e30f;
+        for (const illyria::sim::Rampart& rp : rg.ramparts()) {
+            const V3 q = toV3(rp.centre);
+            const float d = (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y);
+            if (d < best) {
+                best = d;
+                c = q;
+            }
+        }
+        const float yaw = std::atan2(p.y - c.y, p.x - c.x) + turn;
+        const float ahead = distance * 0.35f;
+        app->introStartMs = -1;
+        app->camera.lookAt(p.x + std::cos(yaw) * ahead, p.y + std::sin(yaw) * ahead, distance);
+        app->camera.rotate(yaw - app->camera.yaw());
+        return 1;
+    }
+    return 0;
+}
+// The player's archers loose at a spot this far inside the town, through its gate.
+EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_through_gate(float inside) {
+    const int g = nearestGate();
+    if (!app || g < 0) return;
+    const illyria::sim::Gate& gate = app->battle->region().gates()[static_cast<size_t>(g)];
+    const V3 at = toV3(gate.a + gate.b) * 0.5f - toV3(gate.out) * inside;
+    app->battle->testShootAt(at);
+}
 // Camera on that gate, from outside the town.
 EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
     const int g = nearestGate();

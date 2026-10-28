@@ -189,6 +189,7 @@ void World::damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir
     // Broken open for good: the way in is clear, and nobody shoots at it any more.
     gs.brokenTick = tick_;
     if (nav_) nav_->openGate(static_cast<size_t>(gate));
+    dropGateArrows(gate);
     for (Unit& u : units_) {
         if (u.attackGate == gate) {
             u.attackGate = -1;

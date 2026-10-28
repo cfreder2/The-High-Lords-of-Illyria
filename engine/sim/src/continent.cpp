@@ -406,7 +406,7 @@ void Continent::planCastles() {
         {
             const Castle::Ring& ring = k.rings.front();
             const size_t n = ring.corners.size();
-            const Fixed climb = ring.height - Fixed::fromRatio(13, 10);
+            const Fixed climb = ring.walk();
             const Fixed run = climb * 4 / 3;
             for (size_t e : {(ring.gateEdge + n - 1) % n, (ring.gateEdge + 1) % n, (ring.gateEdge + n / 2) % n}) {
                 const Vec3 a = ring.corners[e], b = ring.corners[(e + 1) % n];

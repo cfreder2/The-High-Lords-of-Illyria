@@ -31,6 +31,33 @@ uint32_t mix(uint32_t a, uint32_t b) {
 
 float unit01(uint32_t h) { return static_cast<float>(h & 0xFFFF) / 65535.0f; }
 
+// A town's outer ring of walls on the battlefield (the rampart round `centre`), or null.
+const sim::Rampart* townRampart(const sim::Region& rg, V3 centre) {
+    const sim::Rampart* best = nullptr;
+    float bestD = 1e30f;
+    for (const sim::Rampart& rp : rg.ramparts()) {
+        const V3 c = toV3(rp.centre);
+        const float d = (c.x - centre.x) * (c.x - centre.x) + (c.y - centre.y) * (c.y - centre.y);
+        if (d < bestD) {  // the outer ring comes first, and keeps ties
+            bestD = d;
+            best = &rp;
+        }
+    }
+    return best;
+}
+
+// `want` of the walls' embrasures (one archer each), spread evenly round them.
+std::vector<sim::Rampart::Embrasure> spreadEmbrasures(const sim::Rampart& rp, int want) {
+    std::vector<sim::Rampart::Embrasure> out;
+    const size_t n = rp.embrasures.size();
+    const size_t k = std::min(n, static_cast<size_t>(std::max(0, want)));
+    for (size_t i = 0; i < k; ++i) out.push_back(rp.embrasures[(i * n + n / (2 * k)) / k]);
+    return out;
+}
+
+// Archers within this of an embrasure hold it.
+constexpr float kEmbrasureHeld = 1.2f;
+
 }  // namespace
 
 Role roleOf(UnitType type) {
@@ -132,23 +159,27 @@ void Battle::setUpCampaign(const BattlePlan& plan) {
         // Defenders: archers on the walls, the rest at the gate, the courtyard and the keep.
         const V3 posts[3] = {gate - out * 12.0f, local(k.courtyard), local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8)};
         int next = 0;
-        size_t wall = 0;
+        const sim::Rampart* walls = townRampart(*region_, centre);
+        int archers = 0, manned = 0;
+        for (const BattleArmy& a : plan.foe) archers += a.type == UnitType::Archers ? a.soldiers : 0;
+        const std::vector<sim::Rampart::Embrasure> spots = walls ? spreadEmbrasures(*walls, archers) : std::vector<sim::Rampart::Embrasure>{};
         for (const BattleArmy& a : plan.foe) {
-            if (a.type == UnitType::Archers && a.soldiers > 0) {
-                // Spread along two walls, facing out.
+            if (a.type == UnitType::Archers && a.soldiers > 0 && walls) {
+                // One to each embrasure, spread round the walls while they
+                // last; the rest wait at the foot of a stair to step up.
                 Squad s{a.name.empty() ? "Archers" : a.name, kEnemy, a.type, {}};
                 s.formation = Formation::Loose;
                 s.garrison = true;
                 s.armyId = a.id;
                 s.post = centre;
                 const sim::UnitStats stats = sim::unitStats(a.type);
+                const V3 foot = walls->stairs.empty() ? gate - out * 12.0f : toV3(walls->stairs.front().first);
                 for (int i = 0; i < a.soldiers; ++i) {
-                    const size_t e = (wall + static_cast<size_t>(i) * 2 / static_cast<size_t>(std::max(1, a.soldiers / 2))) % nc;
-                    const V3 p0 = local(ring.corners[e]), p1 = local(ring.corners[(e + 1) % nc]);
-                    const float t = 0.2f + 0.6f * static_cast<float>(i % std::max(1, a.soldiers / 2)) / std::max(1, a.soldiers / 2);
-                    const V3 p = p0 + (p1 - p0) * t;
-                    V3 facing = V3{(p0.x + p1.x) * 0.5f - centre.x, (p0.y + p1.y) * 0.5f - centre.y, 0};
-                    facing = facing * (1.0f / facing.length());
+                    const bool up = static_cast<size_t>(manned) < spots.size();
+                    const V3 p = up ? toV3(spots[static_cast<size_t>(manned)].pos)
+                                    : foot + in * (3.0f + static_cast<float>(i / 4 % 4) * 1.5f) + side * (static_cast<float>((i % 4) - 2) * 1.5f);
+                    const V3 facing = up ? toV3(spots[static_cast<size_t>(manned)].out) : out;
+                    manned += up;
                     const sim::EntityId id = world_->spawnUnit(kEnemy, toSim(p), toSim(facing), stats);
                     world_->setVeterancy(id, a.rank, a.blessings);
                     s.members.push_back(id);
@@ -156,7 +187,6 @@ void Battle::setUpCampaign(const BattlePlan& plan) {
                     squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
                 }
                 squads_.push_back(std::move(s));
-                wall += 2;
                 continue;
             }
             raise(a, kEnemy, posts[next % 3] + side * static_cast<float>((next / 3) * 14), out, true);
@@ -302,25 +332,18 @@ void Battle::setUpSiege() {
     V3 out = V3{gate.x - centre.x, gate.y - centre.y, 0};
     out = out * (1.0f / out.length());
 
-    // Archers spread along the walk, a pair to each wall, facing out.
+    // Archers spread round the walk, one to an embrasure, a pair to a wall.
     {
         Squad s{"Town Watch", kEnemy, UnitType::Archers, {}};
         s.formation = Formation::Loose;
         s.garrison = true;
         const sim::UnitStats stats = sim::unitStats(UnitType::Archers);
-        for (size_t e = 0; e < nc; ++e) {
-            const V3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % nc]);
-            V3 mid = (a + b) * 0.5f;
-            V3 facing = V3{mid.x - centre.x, mid.y - centre.y, 0};
-            facing = facing * (1.0f / facing.length());
-            for (float t : {0.33f, 0.67f}) {
-                const V3 p = a + (b - a) * t;
-                const sim::EntityId id = world_->spawnUnit(kEnemy, toSim(p), toSim(facing), stats);
-                s.members.push_back(id);
-                if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
-                squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
-            }
-            s.post = mid;
+        const sim::Rampart* walls = townRampart(*region_, centre);
+        for (const sim::Rampart::Embrasure& e : walls ? spreadEmbrasures(*walls, static_cast<int>(nc * 2)) : std::vector<sim::Rampart::Embrasure>{}) {
+            const sim::EntityId id = world_->spawnUnit(kEnemy, e.pos, e.out, stats);
+            s.members.push_back(id);
+            if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+            squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
         }
         s.post = centre;
         squads_.push_back(std::move(s));
@@ -348,6 +371,16 @@ void Battle::setUpSiege() {
     spawnSquad("Eyrie Griffins", kPlayer, UnitType::Griffins, 3, camp + out * 36.0f + side * -30.0f, in);
     // Two mangonels well back, within a long throw of the gate.
     spawnSquad("Oakhaven Siege Train", kPlayer, UnitType::Catapult, 2, camp + out * 26.0f + side * 34.0f, in);
+}
+
+void Battle::breakGate(int gate) {
+    if (gate >= 0) world_->setGateHp(static_cast<size_t>(gate), 0);
+}
+
+void Battle::testShootAt(const V3& at) {
+    for (const Squad& s : squads_)
+        if (s.owner == kPlayer && s.type == UnitType::Archers)
+            for (sim::EntityId id : s.members) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
 }
 
 void Battle::holdGates(sim::PlayerId holder) {
@@ -782,6 +815,45 @@ bool Battle::flankPoint(const Squad& riders, V3& out) const {
     return true;
 }
 
+void Battle::manTheWalls(const Squad& s) {
+    // Archers below or behind a merlon step up to the embrasures left empty
+    // (by the dead, or never manned): one archer to each.
+    const sim::Rampart* walls = townRampart(*region_, s.post);
+    if (!walls || walls->embrasures.empty()) return;
+    const auto& units = world_->units();
+    std::vector<uint8_t> held(walls->embrasures.size(), 0);
+    for (const sim::Unit& u : units) {
+        if (!u.alive() || u.owner != s.owner) continue;
+        const V3 p = toV3(u.hasMoveTarget ? u.moveTarget : u.pos);
+        for (size_t k = 0; k < held.size(); ++k) {
+            const V3 e = toV3(walls->embrasures[k].pos);
+            if ((p.x - e.x) * (p.x - e.x) + (p.y - e.y) * (p.y - e.y) < kEmbrasureHeld * kEmbrasureHeld && std::fabs(p.z - e.z) < 1.5f) held[k] = 1;
+        }
+    }
+    for (sim::EntityId id : s.members) {
+        const sim::Unit* u = world_->findUnit(id);
+        if (!u || !u->alive() || u->hasMoveTarget || u->routed) continue;
+        const V3 p = toV3(u->pos);
+        size_t best = held.size();
+        float bestD = 1e30f;
+        for (size_t k = 0; k < held.size(); ++k) {
+            const V3 e = toV3(walls->embrasures[k].pos);
+            const float d = (p.x - e.x) * (p.x - e.x) + (p.y - e.y) * (p.y - e.y);
+            if (d < kEmbrasureHeld * kEmbrasureHeld && std::fabs(p.z - e.z) < 1.5f) {
+                best = held.size();  // at one already
+                break;
+            }
+            if (!held[k] && d < bestD) {
+                bestD = d;
+                best = k;
+            }
+        }
+        if (best == held.size()) continue;
+        held[best] = 1;
+        issue(s.owner, id, sim::Command::Type::Move, toV3(walls->embrasures[best].pos));
+    }
+}
+
 void Battle::runEnemyAi() {
     // Depends only on simulation state (never on interpolated positions), so in
     // multiplayer the relay or every peer can run it and issue identical
@@ -837,7 +909,10 @@ void Battle::runEnemyAi() {
             // Hold the town: archers keep their places on the walk (they shoot
             // on their own); the rest meet whoever gets near their post, and
             // otherwise return to it.
-            if (role == Role::Ranged) continue;
+            if (role == Role::Ranged) {
+                manTheWalls(s);
+                continue;
+            }
             float near;
             const V3 threat = nearest(s.post, kPlayer, near);
             if (near < 45.0f) steerSquad(s, threat);
