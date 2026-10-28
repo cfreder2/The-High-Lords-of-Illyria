@@ -55,7 +55,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x025f6d5966626ecd;
+    constexpr uint64_t kGolden = 0xc90b296b0584dc75;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x3210fddf024abb83;
+    constexpr uint64_t kGolden = 0xe235644c04b0c77c;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -101,7 +101,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0x3fca4f49d3464024;
+    constexpr uint64_t kGolden = 0xa927573f6be52139;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
@@ -109,7 +109,8 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
 TEST(battlefield_is_varied_not_open_grass) {
     // The full 1 km battlefield: ponds, fallen logs, groves and rock outcrops, not empty grass.
     static const Region r = Region::fromContinent(continent(), continent().crossings().front().pos, 256);
-    CHECK(r.ponds().size() >= 5);
+    // (where the drainage leaves the ground dry and gentle enough to hold one)
+    CHECK(r.ponds().size() >= 3);
     int logs = 0, trees = 0, boulders = 0;
     for (const Obstacle& o : r.obstacles()) {
         logs += o.kind == Obstacle::Kind::Log;

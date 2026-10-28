@@ -1,13 +1,15 @@
 // Top-down render of the continent plus a JSON overlay of its named features.
 #include <chrono>
 #include <cstdio>
+#include <string>
 #include "illyria/sim/continent.h"
 using namespace illyria::sim;
 int main(int argc, char** argv) {
     if (argc < 3) { fprintf(stderr, "usage: illyria_continentmap out.ppm out.json\n"); return 2; }
     const int W = 640, H = 800;  // 20 m per pixel
     auto t0 = std::chrono::steady_clock::now();
-    Continent c(20261027);
+    // A third argument "design" skips the baked erosion (for trying out the design quickly).
+    Continent c(20261027, argc > 3 && std::string(argv[3]) == "design" ? Continent::Relief::Design : Continent::Relief::Baked);
     std::vector<float> h(W * H); std::vector<int> g(W * H);
     for (int py = 0; py < H; ++py) for (int px = 0; px < W; ++px) {
         Fixed x = Fixed::fromInt(px * 20 + 10), y = Fixed::fromInt((H - 1 - py) * 20 + 10);

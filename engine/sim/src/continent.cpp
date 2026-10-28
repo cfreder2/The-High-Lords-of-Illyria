@@ -471,6 +471,28 @@ Fixed Continent::landDistance(Fixed x, Fixed y) const {
         else sea = min(sea, d);
     }
     const uint64_t s1 = noise::nextSeed(seed_ ^ 0xC0A57), s2 = noise::nextSeed(s1);
+    // The open sea all round: Illyria is an island. Its coast runs a half to
+    // two kilometres inside the map's edge, its corners worn round, with bays
+    // and headlands at every scale.
+    {
+        const Fixed hx = m(kWidth / 2), hy = m(kHeight / 2), round = m(3200);
+        const Fixed qx = abs(x - hx) - (hx - round), qy = abs(y - hy) - (hy - round);
+        const Fixed ox = max(qx, Fixed::zero()), oy = max(qy, Fixed::zero());
+        const Fixed inside = round - sqrt(ox * ox + oy * oy) - min(max(qx, qy), Fixed::zero());  // metres in from the worn edge
+        const uint64_t s3 = noise::nextSeed(s2 ^ 0x15A1D), s4 = noise::nextSeed(s3), s5 = noise::nextSeed(s4);
+        const uint64_t s6 = noise::nextSeed(s5);
+        Fixed margin = m(150) + noise::fbm(s6, x, y, 7000) * 2600 + noise::fbm(s3, x, y, 2600) * 900 +
+                       (noise::fbm(s4, x, y, 1100) - r(1, 2)) * 600 + (noise::fbm(s5, x, y, 340) - r(1, 2)) * 220;
+        // The mountains run out to the sea as headlands rather than drown.
+        for (const Ridge& rg : ridges_) {
+            Fixed t;
+            for (size_t i = 0; i + 1 < rg.line.points.size(); ++i) {
+                const Fixed d = sqrt(segDistSq(x, y, rg.line.points[i], rg.line.points[i + 1], t));
+                if (d < m(1500)) margin = margin - (m(1500) - d) * r(3, 4);
+            }
+        }
+        sea = min(sea, inside - margin);
+    }
     const Fixed wobble = (noise::fbm(s1, x, y, 2400) - r(1, 2)) * 900 + (noise::fbm(s2, x, y, 500) - r(1, 2)) * 200;
     return max(sea + wobble, island + wobble / 2);
 }
