@@ -933,6 +933,18 @@ bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
     return true;
 }
 
+void World::setVeterancy(EntityId id, int32_t rank, int32_t blessings) {
+    Unit* u = mutableUnit(id);
+    if (!u) return;
+    u->rank = std::max<int32_t>(0, rank);
+    u->blessings = std::max<int32_t>(0, blessings);
+    if (u->stats.type == static_cast<uint8_t>(UnitType::Hero)) {
+        const int32_t gain = unitStats(UnitType::Hero).maxHp * kHeroLevelHpPct / 100 * u->rank;
+        u->stats.maxHp += gain;
+        u->hp += gain;
+    }
+}
+
 void World::creditKill(Unit& killer) {
     ++killer.kills;
     if (killer.stats.type == static_cast<uint8_t>(UnitType::Hero)) {

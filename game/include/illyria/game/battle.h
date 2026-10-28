@@ -32,6 +32,7 @@ struct Squad {
     // post, then goes back to it, and never marches out.
     bool garrison = false;
     V3 post{};
+    uint32_t armyId = 0;  // the campaign army it is, when fought from the campaign
 };
 
 // What a squad's banner shows, as in Warlords: one strength from 1 to 9,
@@ -46,8 +47,30 @@ struct Standing {
 
 // Which battle to fight.
 enum class Scenario {
-    Ford,   // Oakhaven Ford: the Red Hand comes over the river
-    Siege,  // a neutral town near Oakhaven, held by its own small garrison
+    Ford,      // Oakhaven Ford: the Red Hand comes over the river
+    Siege,     // a neutral town near Oakhaven, held by its own small garrison
+    Campaign,  // where two campaign stacks met (see BattlePlan)
+};
+
+// A battle fought from the campaign: the armies of each side, as they stand.
+struct BattleArmy {
+    uint32_t id = 0;
+    sim::UnitType type = sim::UnitType::LightInfantry;
+    std::string name;
+    int soldiers = 1;
+    int rank = 0;  // heroes: level - 1
+    int blessings = 0;
+};
+struct BattlePlan {
+    sim::Vec3 centre;      // continent coordinates: the town, or the field
+    int city = -1;         // the town fought over (continent index), or -1
+    std::vector<BattleArmy> player, foe;
+    std::string foeName;
+};
+// How each campaign army came out of the battle.
+struct ArmyResult {
+    uint32_t id = 0;
+    int soldiers = 0, kills = 0, rank = 0;
 };
 // The town besieged in Scenario::Siege: the neutral town nearest Oakhaven Ford.
 const sim::Continent::City& siegeTown(const sim::Continent& c);
@@ -117,6 +140,9 @@ public:
     static constexpr size_t kMaxParticles = 4000;
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
+    Battle(uint64_t seed, const BattlePlan& plan);
+    // For a campaign battle: what became of every army.
+    std::vector<ArmyResult> results() const;
     Scenario scenario() const { return scenario_; }
     // Who the player is fighting, for the HUD.
     const std::string& foeName() const { return foeName_; }
@@ -130,6 +156,9 @@ public:
     void tap(const Camera& camera, float x, float y, float pixelScale);
     void selectSquad(int index);
     void stopSelected();
+    // Every one of the player's squads at the nearest enemy: the foot charge,
+    // missile troops close to a long bowshot.
+    void chargeAll();
     // Next formation for the selected squad; it re-forms where it stands.
     void cycleFormation();
     void togglePause() { paused_ = !paused_; }
@@ -182,6 +211,9 @@ private:
     std::string foeName_ = "Red Hand";
     void setUpFord();
     void setUpSiege();
+    void setUpCampaign(const BattlePlan& plan);
+    void build(uint64_t seed, const sim::Vec3& centre);
+    void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
     void step();

@@ -299,6 +299,12 @@ void Renderer::uploadDynamic(Batch& b, const std::vector<float>& data) {
 }
 
 void Renderer::makeMeshBatch(MeshBatch& b, const Mesh& mesh, float sway) {
+    if (b.vao) {
+        // Rebuilt (a new battlefield): free the old buffers.
+        glDeleteVertexArrays(1, &b.vao);
+        glDeleteBuffers(1, &b.vertexVbo);
+        glDeleteBuffers(1, &b.instanceVbo);
+    }
     b.sway = sway;
     b.vertices = mesh.vertexCount();
     glGenVertexArrays(1, &b.vao);
@@ -752,9 +758,11 @@ void Renderer::uploadContinent(const Battle& battle) {
                 idx.insert(idx.end(), {a, b, d, a, d, cc});
             }
         ocean_.count = static_cast<GLsizei>(idx.size());
-        glGenVertexArrays(1, &ocean_.vao);
-        glGenBuffers(1, &ocean_.vbo);
-        glGenBuffers(1, &ocean_.ibo);
+        if (!ocean_.vao) {
+            glGenVertexArrays(1, &ocean_.vao);
+            glGenBuffers(1, &ocean_.vbo);
+            glGenBuffers(1, &ocean_.ibo);
+        }
         glBindVertexArray(ocean_.vao);
         glBindBuffer(GL_ARRAY_BUFFER, ocean_.vbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * 4), verts.data(), GL_STATIC_DRAW);
@@ -1073,6 +1081,12 @@ void Renderer::reset(Battle& battle) {
     zeroBatch(remainArrows_, Battle::kMaxRemains);
     remainArrows_.count = 0;
     battle.takeDirtyRemains();
+    // The close-up patch belongs to the old battlefield's coordinates.
+    patchLand_.count = 0;
+    patchRow_ = -1;
+    patchCentre_ = {1e9f, 1e9f, 0};
+    patch_[0] = patch_[1] = 1e9f;
+    patch_[2] = patch_[3] = -1e9f;
     uploadTerrain(battle);
     uploadScenery(battle);
     uploadCanopy(battle);

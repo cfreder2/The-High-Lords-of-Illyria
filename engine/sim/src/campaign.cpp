@@ -445,6 +445,7 @@ bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
 }
 
 void Campaign::step() {
+    if (pending_.stack) return;
     ++tick_;
     if (tick_ % kTicksPerDay == 0) newDay();
     moveStacks();
@@ -586,6 +587,11 @@ void Campaign::moveStacks() {
         if (hostile || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s.owner)) {
             s.path.clear();
             s.progress = 0;
+            if (sides_[s.owner].human) {
+                // The player decides how this one is fought.
+                pending_ = {s.id, nx, ny};
+                return;
+            }
             battle(stacks_[i], nx, ny);
             continue;
         }
@@ -695,27 +701,99 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     };
     bury(attacker.armies);
     for (Stack* d : defenders) bury(d->armies);
-    if (fight.attackerWon && !attacker.armies.empty()) {
-        if (city >= 0) {
-            // The city is taken, and its treasure: the loser loses a share of
-            // the war chest in proportion to its cities, and the victor gets half.
-            CityState& c = cities_[static_cast<size_t>(city)];
-            const uint8_t loser = c.owner;
-            if (loser != kNeutral) {
-                const int32_t owned = std::max(1, citiesOwned(loser));
-                const int32_t lost = sides_[loser].gold / owned;
-                sides_[loser].gold -= lost;
-                sides_[attacker.owner].gold += lost / 2;
-            }
-            c.owner = attacker.owner;
-            c.producing = -1;
-            c.progress = 0;
-            fight.captured = true;
-        }
-        attacker.cx = cx;
-        attacker.cy = cy;
-    }
+    // The city is taken, and its treasure: the loser loses a share of the war
+    // chest in proportion to its cities, and the victor gets half.
+    if (fight.attackerWon && !attacker.armies.empty()) capture(attacker, cx, cy, fight);
     fights_.push_back(fight);
+}
+
+Campaign::Stack* Campaign::stackById(uint32_t id) {
+    for (Stack& s : stacks_)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
+std::vector<const Army*> Campaign::pendingAttackers() const {
+    std::vector<const Army*> out;
+    if (const Stack* s = findStack(pending_.stack))
+        for (const Army& a : s->armies) out.push_back(&a);
+    return out;
+}
+
+std::vector<const Army*> Campaign::pendingDefenders() const {
+    std::vector<const Army*> out;
+    const Stack* att = findStack(pending_.stack);
+    if (!att) return out;
+    for (const Stack& o : stacks_)
+        if (o.owner != att->owner && o.cx == pending_.cx && o.cy == pending_.cy)
+            for (const Army& a : o.armies) out.push_back(&a);
+    return out;
+}
+
+void Campaign::resolvePending() {
+    Stack* s = stackById(pending_.stack);
+    const Pending p = pending_;
+    pending_ = {};
+    if (s) battle(*s, p.cx, p.cy);
+    stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
+}
+
+void Campaign::capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight) {
+    const int32_t city = cityAt(cx, cy);
+    if (city >= 0) {
+        CityState& c = cities_[static_cast<size_t>(city)];
+        const uint8_t loser = c.owner;
+        if (loser != kNeutral) {
+            const int32_t owned = std::max(1, citiesOwned(loser));
+            const int32_t lost = sides_[loser].gold / owned;
+            sides_[loser].gold -= lost;
+            sides_[attacker.owner].gold += lost / 2;
+        }
+        c.owner = attacker.owner;
+        c.producing = -1;
+        c.progress = 0;
+        fight.captured = true;
+    }
+    attacker.cx = cx;
+    attacker.cy = cy;
+}
+
+void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon) {
+    // The 3D battle has been fought: every army that took part comes out with
+    // its survivors, its new kills and its rank.
+    Stack* att = stackById(pending_.stack);
+    const Pending p = pending_;
+    pending_ = {};
+    if (!att) return;
+    Fight fight;
+    fight.attacker = att->owner;
+    fight.city = cityAt(p.cx, p.cy);
+    fight.day = day();
+    for (Stack& st : stacks_) {
+        if (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner) fight.defender = st.owner;
+        const bool inBattle = &st == att || (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner);
+        if (!inBattle) continue;
+        for (Army& a : st.armies) {
+            for (const Outcome& o : outcomes) {
+                if (o.army != a.id) continue;
+                const bool lost = o.soldiers <= 0;
+                (&st == att ? fight.attackerLost : fight.defenderLost) += lost;
+                a.soldiers = o.soldiers;
+                a.kills += o.kills;
+                a.rank = std::max(0, o.rank);
+            }
+        }
+        st.armies.erase(std::remove_if(st.armies.begin(), st.armies.end(), [](const Army& a) { return a.soldiers <= 0; }), st.armies.end());
+    }
+    if (fight.city >= 0 && fight.defender == 0 && cities_[static_cast<size_t>(fight.city)].owner != att->owner)
+        fight.defender = cities_[static_cast<size_t>(fight.city)].owner;
+    bool defendersLeft = false;
+    for (const Stack& st : stacks_)
+        defendersLeft = defendersLeft || (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner && !st.armies.empty());
+    fight.attackerWon = attackerWon && !defendersLeft && !att->armies.empty();
+    if (fight.attackerWon) capture(*att, p.cx, p.cy, fight);
+    fights_.push_back(fight);
+    stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
 }
 
 uint64_t Campaign::checksum() const {

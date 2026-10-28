@@ -181,7 +181,8 @@ Money is gold only, as in Warlords:
 - **Fighting:** stacks of up to eight armies fight Warlords' dice battles where they meet: weakest first, one on one, ten-sided dice against the opponent's strength, two hits destroy an army. Heroes, fliers and special armies add Warlords' modifiers; city walls help defenders. Kills raise ranks and hero levels exactly as in the 3D battle.
 - **The computer lords** keep every city training its quickest troops and send their stacks at the nearest city they can take, neutral towns first, leaving a guard behind.
 - **Victory:** two thirds of the cities.
-- **Next:** fighting the full 3D battle where the player's stack meets the enemy (survivors and their ranks carried back), ruins and temples for heroes, ports and boats.
+- **The player's battles:** when the player's stack marches into an enemy, the campaign stops and asks: **Fight it** or **Resolve**. Resolve rolls the dice. Fight it opens the real 3D battle on that exact ground with those exact armies: their numbers, ranks and heroes. A town is held from its walls, with archers on the walk and the rest at the gate, courtyard and keep. In the field the two lines form up a bowshot apart. **Charge** sends every squad at the nearest enemy, with archers stopping at a long bowshot. When it is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks. Winning a town captures it; withdrawing counts as being thrown back.
+- **Next:** ruins and temples for heroes, ports and boats.
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 

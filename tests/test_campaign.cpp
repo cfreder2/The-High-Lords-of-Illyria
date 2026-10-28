@@ -82,6 +82,60 @@ TEST(a_heros_stack_marches_and_takes_a_neutral_town) {
     CHECK(f.city == target);
 }
 
+TEST(a_players_battle_waits_for_them_and_survivors_keep_their_ranks) {
+    Campaign c(continent(), 3);
+    c.setHuman(0, true);
+    const Campaign::Stack* home = nullptr;
+    for (const Campaign::Stack& st : c.stacks())
+        if (st.owner == 0) home = &st;
+    CHECK(home != nullptr);
+    if (!home) return;
+    const uint32_t id = home->id;
+    int32_t target = -1, best = 1 << 30;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const Campaign::CityState& city = c.cities()[i];
+        if (city.owner != Campaign::kNeutral) continue;
+        const int32_t d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
+        if (d < best) {
+            best = d;
+            target = static_cast<int32_t>(i);
+        }
+    }
+    CHECK(c.move(id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy));
+    for (int t = 0; t < Campaign::kTicksPerDay * 20 && !c.pending(); ++t) c.step();
+    CHECK(c.pending() != nullptr);
+    if (!c.pending()) return;
+    // The campaign holds still while the player fights.
+    const uint32_t tick = c.tick();
+    c.step();
+    CHECK(c.tick() == tick);
+    CHECK(c.fights().empty());
+    const std::vector<const Army*> attackers = c.pendingAttackers(), defenders = c.pendingDefenders();
+    CHECK(!attackers.empty() && !defenders.empty());
+    // The 3D battle: every defender falls; the first attacker loses a man and rises a rank.
+    std::vector<Campaign::Outcome> out;
+    for (const Army* a : attackers) out.push_back({a->id, a->soldiers, 3, a->rank});
+    out.front().soldiers = std::max(1, out.front().soldiers - 1);
+    out.front().rank += 1;
+    const Campaign::Outcome first = out.front();
+    for (const Army* a : defenders) out.push_back({a->id, 0, 0, a->rank});
+    c.applyBattle(out, true);
+    CHECK(!c.pending());
+    CHECK(c.cities()[static_cast<size_t>(target)].owner == 0);
+    const Campaign::Stack* after = c.findStack(id);
+    CHECK(after != nullptr);
+    if (!after) return;
+    bool found = false;
+    for (const Army& a : after->armies)
+        if (a.id == first.army) {
+            found = true;
+            CHECK(a.soldiers == first.soldiers);
+            CHECK(a.rank == first.rank);
+            CHECK(a.kills >= 3);
+        }
+    CHECK(found);
+}
+
 TEST(campaign_is_deterministic) {
     const auto run = [](uint64_t seed) {
         Campaign c(continent(), seed);

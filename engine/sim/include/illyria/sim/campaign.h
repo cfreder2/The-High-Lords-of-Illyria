@@ -83,14 +83,36 @@ public:
         uint32_t day = 0;
     };
 
+    // A human's stack has marched into the enemy: the campaign waits while the
+    // player fights the battle in 3D, or has it resolved with the dice.
+    struct Pending {
+        uint32_t stack = 0;       // the attacking stack
+        int32_t cx = 0, cy = 0;   // the cell attacked
+    };
+    // How an army came out of a 3D battle.
+    struct Outcome {
+        uint32_t army = 0;
+        int32_t soldiers = 0;  // still standing
+        int32_t kills = 0;     // slain in this battle
+        int32_t rank = 0;      // the survivors' rank (heroes: level - 1)
+    };
+
     Campaign(const Continent& continent, uint64_t seed);
 
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
     bool produce(int32_t city, int32_t option);           // -1 stops
     void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
-    // Advances one tick (a tenth of a second at normal speed).
+    // Advances one tick (a tenth of a second at normal speed). Nothing moves
+    // while a battle is pending.
     void step();
+    const Pending* pending() const { return pending_.stack ? &pending_ : nullptr; }
+    // The armies that will fight the pending battle.
+    std::vector<const Army*> pendingAttackers() const;
+    std::vector<const Army*> pendingDefenders() const;
+    // Settles the pending battle with the dice, or with the outcome of the 3D battle.
+    void resolvePending();
+    void applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon);
 
     // Queries.
     const Continent& continent() const { return continent_; }
@@ -150,6 +172,9 @@ private:
     std::vector<Stack> stacks_;
     std::vector<Fight> fights_;
     std::vector<int32_t> armiesRaised_;  // per side, for naming
+    Pending pending_;
+    Stack* stackById(uint32_t id);
+    void capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight);
 };
 
 }  // namespace illyria::sim

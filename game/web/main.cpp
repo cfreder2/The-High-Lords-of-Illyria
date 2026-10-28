@@ -49,6 +49,9 @@ struct App {
         int city = -1;  // the city whose panel is open
         double acc = 0;
         std::string json;
+        // While a campaign battle is fought in 3D, the campaign's own scene waits here.
+        std::unique_ptr<Battle> backdrop;
+        bool fighting = false;
     } camp;
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
@@ -271,6 +274,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
 EMSCRIPTEN_KEEPALIVE void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+EMSCRIPTEN_KEEPALIVE void illyria_charge() {
+    if (app) app->battle->chargeAll();
+}
 EMSCRIPTEN_KEEPALIVE void illyria_cycle_formation() {
     if (app) app->battle->cycleFormation();
 }
@@ -375,6 +381,88 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_start() {
     if (app) startCampaign();
 }
+// The pending battle: settle it with the dice, or fight it in 3D.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_resolve() {
+    if (app && app->camp.on && app->camp.c->pending()) app->camp.c->resolvePending();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_fight() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return;
+    App::CampaignView& cv = app->camp;
+    const C::Pending* p = cv.c->pending();
+    if (!p) return;
+    BattlePlan plan;
+    plan.city = cv.c->cityAt(p->cx, p->cy);
+    plan.centre = plan.city >= 0 ? cv.c->continent().cities()[static_cast<size_t>(plan.city)].pos
+                                 : illyria::sim::Vec3{illyria::sim::Fixed::fromInt(C::centre(p->cx)), illyria::sim::Fixed::fromInt(C::centre(p->cy)), {}};
+    const auto take = [](const illyria::sim::Army* a) {
+        return BattleArmy{a->id, a->type, a->name, a->soldiers, a->rank, a->blessings};
+    };
+    for (const illyria::sim::Army* a : cv.c->pendingAttackers()) plan.player.push_back(take(a));
+    uint8_t foe = C::kNeutral;
+    for (const C::Stack& s : cv.c->stacks())
+        if (s.cx == p->cx && s.cy == p->cy && s.owner != 0) foe = s.owner;
+    for (const illyria::sim::Army* a : cv.c->pendingDefenders()) plan.foe.push_back(take(a));
+    plan.foeName = plan.city >= 0 ? (foe == C::kNeutral ? "Garrison of " : "Defenders of ") + cv.c->continent().cities()[static_cast<size_t>(plan.city)].name
+                                  : cv.c->sides()[foe == C::kNeutral ? 0 : foe].name;
+    cv.backdrop = std::move(app->battle);
+    app->battle = std::make_unique<Battle>(kBattleSeed + cv.c->day(), plan);
+    app->renderer.reset(*app->battle);
+    app->renderer.setShowUnits(true);
+    cv.on = false;
+    cv.fighting = true;
+    const V3 o = app->battle->origin();
+    app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
+    // Frame the player's armies and the ground they march on.
+    V3 c = app->battle->squadCentre(app->battle->squads()[0]);
+    for (const Squad& s : app->battle->squads())
+        if (s.owner == Battle::kPlayer) {
+            c = app->battle->squadCentre(s);
+            break;
+        }
+    const V3 at = plan.city >= 0 ? (c + (toV3(plan.centre) - V3{o.x, o.y, 0})) * 0.5f : V3{Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0};
+    app->camera.lookAt(at.x, at.y, 190);
+}
+// Back from the 3D battle (won, lost or withdrawn): the survivors, their kills
+// and their ranks go back on the campaign map.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_return() {
+    if (!app || !app->camp.fighting) return;
+    App::CampaignView& cv = app->camp;
+    std::vector<illyria::sim::Campaign::Outcome> outcomes;
+    for (const ArmyResult& r : app->battle->results()) outcomes.push_back({r.id, r.soldiers, r.kills, r.rank});
+    cv.c->applyBattle(outcomes, app->battle->outcome() == 1);
+    app->battle = std::move(cv.backdrop);
+    app->renderer.reset(*app->battle);
+    app->renderer.setShowUnits(false);
+    cv.fighting = false;
+    cv.on = true;
+    const V3 o = app->battle->origin();
+    app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
+    if (const illyria::sim::Campaign::Stack* s = cv.c->findStack(cv.selected)) {
+        const V3 p = stackPosition(*cv.c, *s);
+        app->camera.lookAt(p.x, p.y, 2600);
+    }
+}
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_fighting() { return app && app->camp.fighting ? 1 : 0; }
+
+// Test hook: march the selected stack on the nearest neutral town.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_attack() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return;
+    const C::Stack* s = app->camp.c->findStack(app->camp.selected);
+    if (!s) return;
+    int best = 1 << 30, target = -1;
+    for (size_t i = 0; i < app->camp.c->cities().size(); ++i) {
+        const C::CityState& city = app->camp.c->cities()[i];
+        if (city.owner != C::kNeutral) continue;
+        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
+        if (d < best) {
+            best = d;
+            target = static_cast<int>(i);
+        }
+    }
+    if (target >= 0) app->camp.c->move(s->id, app->camp.c->cities()[static_cast<size_t>(target)].cx, app->camp.c->cities()[static_cast<size_t>(target)].cy);
+}
 // Test hook: run the campaign forward a number of days at once.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_fast_forward(int days) {
     if (!app || !app->camp.on) return;
@@ -466,6 +554,17 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             s += buf;
         }
         s += "]}";
+    }
+    // A battle waiting for the player's choice.
+    if (const C::Pending* p = c.pending()) {
+        const int32_t city = c.cityAt(p->cx, p->cy);
+        int32_t mine = 0, theirs = 0;
+        for (const illyria::sim::Army* a : c.pendingAttackers()) mine += C::strength(*a);
+        for (const illyria::sim::Army* a : c.pendingDefenders()) theirs += C::strength(*a);
+        std::snprintf(buf, sizeof buf, ",\"pending\":{\"where\":\"%s\",\"mine\":%zu,\"theirs\":%zu,\"myStrength\":%d,\"theirStrength\":%d}",
+                      city >= 0 ? c.continent().cities()[static_cast<size_t>(city)].name.c_str() : "the open field", c.pendingAttackers().size(),
+                      c.pendingDefenders().size(), mine, theirs);
+        s += buf;
     }
     // The latest fights, newest first.
     s += ",\"news\":[";

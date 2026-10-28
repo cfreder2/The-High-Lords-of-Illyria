@@ -18,6 +18,7 @@ constexpr int kMaxTicksPerFrame = 8;
 constexpr int kAiIntervalTicks = sim::kTicksPerSecond * 2;
 constexpr float kFormationSpacing = 1.8f;
 constexpr float kTapRadiusPx = 30.0f;
+constexpr float kChargeBowshot = 60.0f;  // where missile troops halt when the line charges
 constexpr float kSquadTapRadiusPx = 48.0f;
 constexpr float kGravity = 9.81f;
 
@@ -49,17 +50,31 @@ Role roleOf(UnitType type) {
 }
 
 Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
-    sim::WorldConfig cfg;
-    cfg.seed = seed;
-    cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
-    cfg.maxRemains = kMaxRemains;
     // The battle is fought in a full-detail window of the continent: at
     // Oakhaven Ford, or at the neutral town nearest it.
     continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
     sim::Vec3 centre = continent_->crossings().front().pos;
     if (scenario_ == Scenario::Siege) centre = siegeTown(*continent_).pos;
+    build(seed, centre);
+    if (scenario_ == Scenario::Siege) setUpSiege();
+    else setUpFord();
+    finish();
+}
+
+Battle::Battle(uint64_t seed, const BattlePlan& plan) : scenario_(Scenario::Campaign) {
+    continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
+    build(seed, plan.centre);
+    setUpCampaign(plan);
+    finish();
+}
+
+void Battle::build(uint64_t seed, const sim::Vec3& centre) {
+    sim::WorldConfig cfg;
+    cfg.seed = seed;
+    cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
+    cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
-    // The continent around the battlefield: all of it every 64 m, and a ring
+    // The continent around the battlefield: all of it every 32 m, and a ring
     // a kilometre wide around the battlefield every 16 m.
     {
         const V3 o = toV3(region_->origin());
@@ -74,14 +89,115 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     cfg.region = region_;
     world_ = std::make_unique<sim::World>(cfg);
     dirtyFlag_.assign(kMaxRemains, 0);
+}
 
-    if (scenario_ == Scenario::Siege) setUpSiege();
-    else setUpFord();
-
+void Battle::finish() {
     const size_t n = world_->units().size();
     deathTick_.assign(n, UINT32_MAX);
     prevUnitPos_.resize(n);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+}
+
+void Battle::setUpCampaign(const BattlePlan& plan) {
+    // Where the stacks met, with the armies as they stand: their numbers,
+    // their ranks and their heroes. A town is held from its walls, as in a
+    // siege; in the field the two lines face each other.
+    foeName_ = plan.foeName;
+    const V3 o = origin();
+    const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
+    const auto raise = [&](const BattleArmy& a, sim::PlayerId owner, V3 at, V3 facing, bool garrison) {
+        if (a.soldiers <= 0) return;
+        spawnSquad(a.name.empty() ? sim::unitTypeName(a.type) : a.name, owner, a.type, a.soldiers, at, facing);
+        Squad& s = squads_.back();
+        s.armyId = a.id;
+        s.garrison = garrison;
+        s.post = at;
+        for (sim::EntityId id : s.members) world_->setVeterancy(id, a.rank, a.blessings);
+    };
+    if (plan.city >= 0) {
+        const sim::Continent::City& town = continent_->cities()[static_cast<size_t>(plan.city)];
+        const sim::Continent::Castle& k = town.castle;
+        const sim::Continent::Castle::Ring& ring = k.rings.front();
+        const size_t nc = ring.corners.size();
+        const V3 centre = local(town.pos);
+        const V3 ga = local(ring.corners[ring.gateEdge]), gb = local(ring.corners[(ring.gateEdge + 1) % nc]);
+        const V3 gate = (ga + gb) * 0.5f;
+        V3 out = V3{gate.x - centre.x, gate.y - centre.y, 0};
+        out = out * (1.0f / out.length());
+        const V3 in = out * -1.0f, side{out.y, -out.x, 0};
+        // Defenders: archers on the walls, the rest at the gate, the courtyard and the keep.
+        const V3 posts[3] = {gate - out * 12.0f, local(k.courtyard), local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8)};
+        int next = 0;
+        size_t wall = 0;
+        for (const BattleArmy& a : plan.foe) {
+            if (a.type == UnitType::Archers && a.soldiers > 0) {
+                // Spread along two walls, facing out.
+                Squad s{a.name.empty() ? "Archers" : a.name, kEnemy, a.type, {}};
+                s.formation = Formation::Loose;
+                s.garrison = true;
+                s.armyId = a.id;
+                s.post = centre;
+                const sim::UnitStats stats = sim::unitStats(a.type);
+                for (int i = 0; i < a.soldiers; ++i) {
+                    const size_t e = (wall + static_cast<size_t>(i) * 2 / static_cast<size_t>(std::max(1, a.soldiers / 2))) % nc;
+                    const V3 p0 = local(ring.corners[e]), p1 = local(ring.corners[(e + 1) % nc]);
+                    const float t = 0.2f + 0.6f * static_cast<float>(i % std::max(1, a.soldiers / 2)) / std::max(1, a.soldiers / 2);
+                    const V3 p = p0 + (p1 - p0) * t;
+                    V3 facing = V3{(p0.x + p1.x) * 0.5f - centre.x, (p0.y + p1.y) * 0.5f - centre.y, 0};
+                    facing = facing * (1.0f / facing.length());
+                    const sim::EntityId id = world_->spawnUnit(kEnemy, toSim(p), toSim(facing), stats);
+                    world_->setVeterancy(id, a.rank, a.blessings);
+                    s.members.push_back(id);
+                    if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+                    squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
+                }
+                squads_.push_back(std::move(s));
+                wall += 2;
+                continue;
+            }
+            raise(a, kEnemy, posts[next % 3] + side * static_cast<float>((next / 3) * 14), out, true);
+            ++next;
+        }
+        // The attackers form up on the road before the gate.
+        const V3 camp = gate + out * 100.0f;
+        int k2 = 0;
+        for (const BattleArmy& a : plan.player) {
+            const float across = static_cast<float>((k2 % 4) * 2 - 3) * 14.0f;
+            const float back = static_cast<float>(k2 / 4) * 18.0f;
+            raise(a, kPlayer, camp + side * across + out * back, in, false);
+            ++k2;
+        }
+        return;
+    }
+    // In the field: lines a bowshot apart, the player to the west.
+    const V3 mid{kWorldSize / 2, kWorldSize / 2, 0}, east{1, 0, 0}, west{-1, 0, 0}, north{0, 1, 0};
+    for (int sideIdx = 0; sideIdx < 2; ++sideIdx) {
+        const std::vector<BattleArmy>& armies = sideIdx == 0 ? plan.player : plan.foe;
+        const V3 front = mid + (sideIdx == 0 ? west : east) * 80.0f;
+        int k2 = 0;
+        for (const BattleArmy& a : armies) {
+            const float across = static_cast<float>((k2 % 4) * 2 - 3) * 16.0f;
+            const float back = static_cast<float>(k2 / 4) * 20.0f;
+            raise(a, sideIdx == 0 ? kPlayer : kEnemy, front + north * across + (sideIdx == 0 ? west : east) * back,
+                  sideIdx == 0 ? east : west, false);
+            ++k2;
+        }
+    }
+}
+
+std::vector<ArmyResult> Battle::results() const {
+    std::vector<ArmyResult> out;
+    for (const Squad& s : squads_) {
+        if (!s.armyId) continue;
+        const Standing st = standing(s);
+        ArmyResult r;
+        r.id = s.armyId;
+        r.soldiers = aliveCount(s);
+        r.kills = st.kills;
+        r.rank = s.type == UnitType::Hero ? st.level - 1 : st.rank;
+        out.push_back(r);
+    }
+    return out;
 }
 
 Standing Battle::standing(const Squad& s) const {
@@ -736,6 +852,33 @@ void Battle::selectSquad(int index) {
 void Battle::stopSelected() {
     if (selected_ < 0) return;
     for (sim::EntityId id : squads_[selected_].members) issue(kPlayer, id, sim::Command::Type::Stop, {});
+}
+
+void Battle::chargeAll() {
+    for (Squad& mine : squads_) {
+        if (mine.owner != kPlayer || aliveCount(mine) == 0) continue;
+        const V3 from = squadCentre(mine, false);
+        const Squad* target = nullptr;
+        float best = 1e18f;
+        for (const Squad& s : squads_) {
+            if (s.owner == kPlayer || aliveCount(s) == 0) continue;
+            const V3 d = squadCentre(s, false) - from;
+            const float d2 = d.x * d.x + d.y * d.y;
+            if (d2 < best) {
+                best = d2;
+                target = &s;
+            }
+        }
+        if (!target) return;
+        V3 at = squadCentre(*target, false);
+        if (sim::unitStats(mine.type).ranged.muzzleSpeed > sim::Fixed::zero()) {
+            const V3 d = V3{at.x - from.x, at.y - from.y, 0};
+            const float len = d.length();
+            if (len <= kChargeBowshot) continue;
+            at = from + d * ((len - kChargeBowshot) / len);
+        }
+        moveSquad(mine, at);
+    }
 }
 
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale) {

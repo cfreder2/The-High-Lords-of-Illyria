@@ -219,6 +219,9 @@ public:
     explicit World(const WorldConfig& config);
 
     EntityId spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing, const UnitStats& stats);
+    // A unit raised by the campaign: its rank (a hero's level less one) and
+    // blessings, with a hero's extra hit points for the levels gained.
+    void setVeterancy(EntityId id, int32_t rank, int32_t blessings);
 
     // Advances the simulation by exactly one tick. Every peer must call this
     // with the same commands for the same tick.

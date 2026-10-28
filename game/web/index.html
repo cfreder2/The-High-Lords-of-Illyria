@@ -124,6 +124,13 @@
   #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
   #news { position: fixed; left: calc(8px + var(--safe-l)); top: calc(64px + var(--safe-t)); max-width: 320px; font-size: 12px; padding: 6px 10px; }
   #news div { margin: 2px 0; }
+  #battlePrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
+  #battlePrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
+  #battlePrompt p { margin: 0 0 12px; font-size: 13px; }
+  #battlePrompt button { margin: 0 4px; padding: 8px 14px; }
+  #withdraw { display: none; }
+  body.campfight #withdraw { display: inline-block; }
+  body.campfight .nofight { display: none !important; }
   .camp-only { display: none; }
   body.campaign .camp-only { display: block; }
   body.campaign .battle-only { display: none !important; }
@@ -174,12 +181,14 @@
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
   <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities</div>
   <div id="controls">
+    <button id="charge" class="battle-only" aria-label="Send every squad at the nearest enemy">Charge</button>
     <button id="hot" class="battle-only" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
-    <button id="restart" aria-label="Restart battle">Restart</button>
-    <button id="scenario" class="battle-only" aria-label="Switch battle">Siege</button>
-    <button id="campaign" aria-label="Play the campaign">Campaign</button>
+    <button id="restart" class="nofight" aria-label="Restart battle">Restart</button>
+    <button id="withdraw" aria-label="Withdraw to the campaign">Withdraw</button>
+    <button id="scenario" class="battle-only nofight" aria-label="Switch battle">Siege</button>
+    <button id="campaign" class="nofight" aria-label="Play the campaign">Campaign</button>
     <button id="gfxButton" aria-label="Graphics settings">⚙</button>
   </div>
 </div>
@@ -208,6 +217,11 @@
 <div id="banners"></div>
 <div id="news" class="panel camp-only hidden"></div>
 <div id="cityPanel" class="panel hidden"></div>
+<div id="battlePrompt" class="panel hidden">
+  <h3 id="promptTitle">Battle</h3>
+  <p id="promptText"></p>
+  <button id="promptFight">Fight it</button><button id="promptResolve">Resolve</button>
+</div>
 
 <div id="bottom">
   <div id="actions" class="hidden battle-only">
@@ -263,6 +277,7 @@
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
+      charge: Module.cwrap("illyria_charge", null, []),
       formation: Module.cwrap("illyria_cycle_formation", null, []),
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
@@ -276,6 +291,9 @@
       campPause: Module.cwrap("illyria_campaign_pause", null, []),
       campSpeed: Module.cwrap("illyria_campaign_speed", null, []),
       campSelect: Module.cwrap("illyria_campaign_select", null, ["number"]),
+      campResolve: Module.cwrap("illyria_campaign_resolve", null, []),
+      campFight: Module.cwrap("illyria_campaign_fight", null, []),
+      campReturn: Module.cwrap("illyria_campaign_return", null, []),
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
@@ -394,10 +412,37 @@
     if (!on) { $("banners").innerHTML = ""; $("cityPanel").classList.add("hidden"); }
   }
   $("campaign").onclick = () => api && setCampaign(!campaign);
+  // A campaign battle: fought in 3D, then back to the map with the survivors.
+  let campFight = false;
+  $("promptResolve").onclick = () => { api.campResolve(); $("battlePrompt").classList.add("hidden"); };
+  $("promptFight").onclick = () => {
+    $("battlePrompt").classList.add("hidden");
+    api.campFight();
+    campaign = false;
+    campFight = true;
+    document.body.classList.remove("campaign");
+    document.body.classList.add("campfight");
+    $("banners").innerHTML = "";
+    $("cityPanel").classList.add("hidden");
+    $("cards").innerHTML = "";
+    lastSquadsKey = "";
+  };
+  function returnToCampaign() {
+    api.campReturn();
+    campFight = false;
+    campaign = true;
+    document.body.classList.remove("campfight");
+    document.body.classList.add("campaign");
+    $("overlay").classList.add("hidden");
+    $("cards").innerHTML = "";
+    campArmiesKey = "";
+  }
+  $("withdraw").onclick = () => api && returnToCampaign();
   let scenario = 0;
   $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
-  $("overlayButton").onclick = () => { api && api.restart(); };
+  $("overlayButton").onclick = () => { if (!api) return; if (campFight) returnToCampaign(); else api.restart(); };
   $("hold").onclick = () => api && api.stop();
+  $("charge").onclick = () => api && api.charge();
   $("formation").onclick = () => { if (api) { api.formation(); updateHud(); } };
   let selected = -1;
   $("focus").onclick = () => api && selected >= 0 && api.focus(selected);
@@ -488,6 +533,12 @@
         });
       }
     }
+    const pr = campState.pending;
+    $("battlePrompt").classList.toggle("hidden", !pr);
+    if (pr) {
+      $("promptTitle").textContent = `Battle at ${pr.where}`;
+      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).`;
+    }
     if (campState.winner) {
       $("overlay").classList.remove("hidden");
       $("overlayTitle").textContent = campState.winner === 1 ? "High Lord of Illyria" : "Illyria is lost";
@@ -562,6 +613,13 @@
       $("overlayText").textContent = s.outcome === 1
         ? (s.scenario === 1 ? `The town is yours. Its dead lie where they fell; the land will remember.` : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
         : (s.scenario === 1 ? `The walls held. ${s.foe} keeps its town.` : "Oakhaven has fallen. The Red Hand marches west.");
+      if (campFight) {
+        $("overlayText").textContent = s.outcome === 1 ? `${s.foe} are beaten. The survivors carry their scars, and their ranks, back to the campaign.`
+                                                        : `Your armies are broken at the hands of ${s.foe}.`;
+        $("overlayButton").textContent = "Return to the campaign";
+      } else {
+        $("overlayButton").textContent = "Fight again";
+      }
       $("overlayButton").classList.remove("hidden");
     } else if ($("overlayButton").offsetParent !== null) {
       $("overlay").classList.add("hidden");
