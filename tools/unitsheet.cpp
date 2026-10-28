@@ -82,9 +82,27 @@ int main() {
     }
 
     std::printf("\n## Ground\n\n");
-    std::printf("Speed multipliers by ground type, after Warlords' terrain: road %.2f, plains %.2f, forest %.2f, swamp %.2f,\n"
-                "shallows %.2f, rock %.2f; deep water is impassable on foot. Slopes steeper than 35%% slow walkers a further 40%%.\n",
-                d(groundSpeed(Ground::Road)), d(groundSpeed(Ground::Plains)), d(groundSpeed(Ground::Forest)),
-                d(groundSpeed(Ground::Swamp)), d(groundSpeed(Ground::Shallows)), d(groundSpeed(Ground::Rock)));
+    std::printf("Terrain is tactical. A unit moves at its speed times its gait's multiplier for the ground under it\n"
+                "(`engine/sim/src/gait.cpp`), and its paths cost travel time with the same table, so each kind takes its\n"
+                "own fastest way: to the road and along it rather than straight over the fields, round a wood that\n"
+                "slows it more than the detour does. Deep water is impassable on foot. Climbing divides speed by\n"
+                "1 + grade x 2.5 x the gait's climb percentage; going down is up to 15%% quicker; slopes steeper than\n"
+                "35%% slow walkers a further 20%%. Fliers walk like men.\n\n");
+    const Ground grounds[] = {Ground::Road, Ground::Plains, Ground::Forest, Ground::Swamp, Ground::Shallows,
+                              Ground::Rock, Ground::Mud, Ground::Sand, Ground::Bridge};
+    std::printf("| Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    for (int g = 0; g < kGaitCount; ++g) {
+        const Gait gait = static_cast<Gait>(g);
+        std::printf("| %s |", gaitName(gait));
+        for (Ground gr : grounds) std::printf(" %.2f |", d(gaitSpeed(gait, gr)));
+        std::string units;
+        for (int t = 0; t < kUnitTypeCount; ++t) {
+            if (unitStats(static_cast<UnitType>(t)).gait != gait) continue;
+            if (!units.empty()) units += ", ";
+            units += unitTypeName(static_cast<UnitType>(t));
+        }
+        std::printf(" %d%% | %s |\n", gaitClimbPct(gait), units.c_str());
+    }
     return 0;
 }

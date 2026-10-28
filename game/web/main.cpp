@@ -500,6 +500,59 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
     app->camera.lookAt(c.x, c.y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
 }
+// Test hook: march a squad to a spot on a road 200-320 m off whose straight
+// way lies mostly over the fields (it should make for the road), and look on
+// from above the middle of the way.
+EMSCRIPTEN_KEEPALIVE int illyria_test_march_road(int squad, float distance) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return 0;
+    const illyria::game::Squad& sq = app->battle->squads()[static_cast<size_t>(squad)];
+    V3 c{};
+    int n = 0;
+    for (illyria::sim::EntityId id : sq.members) {
+        c = c + toV3(app->battle->world().units()[id - 1].pos);
+        ++n;
+    }
+    if (n == 0) return 0;
+    c = c * (1.0f / static_cast<float>(n));
+    // Away from the enemy, so the march is not a charge.
+    V3 foe{};
+    int foes = 0;
+    for (const illyria::sim::Unit& u : app->battle->world().units()) {
+        if (u.owner == sq.owner || !u.alive()) continue;
+        foe = foe + toV3(u.pos);
+        ++foes;
+    }
+    if (foes > 0) foe = foe * (1.0f / static_cast<float>(foes));
+    const illyria::sim::Region& rg = app->battle->region();
+    const auto ground =[&](const V3& p) { return rg.groundAt(illyria::sim::Fixed::fromRatio(static_cast<int64_t>(p.x * 1000), 1000), illyria::sim::Fixed::fromRatio(static_cast<int64_t>(p.y * 1000), 1000)); };
+    for (const illyria::sim::Polyline& road : rg.roads()) {
+        for (size_t k = 0; k + 1 < road.points.size(); ++k) {
+            const V3 a = toV3(road.points[k]), b = toV3(road.points[k + 1]);
+            const int steps = static_cast<int>((b - a).length() / 8.0f) + 1;
+            for (int i = 0; i < steps; ++i) {
+                const V3 g = a + (b - a) * (static_cast<float>(i) / static_cast<float>(steps));
+                const float d = V3{g.x - c.x, g.y - c.y, 0}.length();
+                if (d < 200 || d > 320 || g.x < 40 || g.y < 40 || g.x > 984 || g.y > 984) continue;
+                if (foes > 0 && (g.x - c.x) * (c.x - foe.x) + (g.y - c.y) * (c.y - foe.y) < 0) continue;
+                if (ground(g) != illyria::sim::Ground::Road) continue;
+                int onRoad = 0, wet = 0;
+                for (int q = 0; q <= 40; ++q) {
+                    const illyria::sim::Ground gr = ground(c + (g - c) * (static_cast<float>(q) / 40.0f));
+                    onRoad += gr == illyria::sim::Ground::Road;
+                    wet += gr == illyria::sim::Ground::DeepWater;
+                }
+                if (onRoad > 6 || wet > 0) continue;
+                app->battle->selectSquad(squad);
+                app->battle->orderMove(g);
+                const V3 mid = (c + g) * 0.5f;
+                app->introStartMs = -1;
+                app->camera.lookAt(mid.x, mid.y, distance);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
 EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, float yaw) {
     if (!app) return;
     app->introStartMs = -1;

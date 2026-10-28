@@ -71,5 +71,20 @@ arrows can hit them.
 
 ## Ground
 
-Speed multipliers by ground type, after Warlords' terrain: road 1.25, plains 1.00, forest 0.70, swamp 0.50,
-shallows 0.40, rock 0.50; deep water is impassable on foot. Slopes steeper than 35% slow walkers a further 40%.
+Terrain is tactical. A unit moves at its speed times its gait's multiplier for the ground under it
+(`engine/sim/src/gait.cpp`), and its paths cost travel time with the same table, so each kind takes its
+own fastest way: to the road and along it rather than straight over the fields, round a wood that
+slows it more than the detour does. Deep water is impassable on foot. Climbing divides speed by
+1 + grade x 2.5 x the gait's climb percentage; going down is up to 15% quicker; slopes steeper than
+35% slow walkers a further 20%. Fliers walk like men.
+
+| Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Foot | 1.25 | 1.00 | 0.70 | 0.50 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Light Infantry, Heavy Infantry, Pikemen, Griffins, Pegasi, Wizards, Dragons, Archons, Hero, Journeymen, Warriors, Berserkers |
+| Horse | 1.30 | 1.00 | 0.50 | 0.30 | 0.35 | 0.40 | 0.40 | 0.80 | 1.00 | 120% | Light Cavalry, Heavy Cavalry, Unicorns |
+| Wolf | 1.25 | 1.00 | 0.85 | 0.35 | 0.35 | 0.55 | 0.45 | 0.80 | 1.00 | 90% | Wolf Riders |
+| Dwarf | 1.20 | 1.00 | 0.70 | 0.50 | 0.35 | 0.80 | 0.55 | 0.85 | 1.00 | 50% | Dwarven Legion, Dwarven Grenadiers |
+| Woodland | 1.25 | 1.00 | 0.95 | 0.55 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Elven Archers, Giant Spiders |
+| Giant | 1.15 | 1.00 | 0.65 | 0.60 | 0.65 | 0.60 | 0.90 | 0.90 | 1.00 | 80% | Giants, Minotaurs, Elephants, Devils, Demons |
+| Undead | 1.20 | 1.00 | 0.70 | 1.00 | 0.55 | 0.50 | 0.80 | 0.85 | 1.00 | 100% | Undead |
+| Wheeled | 1.35 | 1.00 | 0.40 | 0.25 | 0.30 | 0.30 | 0.30 | 0.60 | 1.00 | 150% | Catapults |

@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "illyria/sim/continent.h"
+#include "illyria/sim/gait.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 #include "illyria/sim/rng.h"
@@ -65,21 +66,7 @@ Fixed flatDist(Fixed x, Fixed y, const Vec3& c) {
 
 }  // namespace
 
-Fixed groundSpeed(Ground g) {
-    switch (g) {
-        case Ground::Plains: return Fixed::one();
-        case Ground::Road: return r(5, 4);
-        case Ground::Forest: return r(7, 10);
-        case Ground::Swamp: return r(1, 2);
-        case Ground::Shallows: return r(2, 5);
-        case Ground::DeepWater: return Fixed::zero();
-        case Ground::Rock: return r(1, 2);
-        case Ground::Bridge: return Fixed::one();
-        case Ground::Mud: return r(11, 20);
-        case Ground::Sand: return r(17, 20);
-    }
-    return Fixed::one();
-}
+Fixed groundSpeed(Ground g) { return gaitSpeed(Gait::Foot, g); }
 
 bool Deck::contains(Fixed x, Fixed y) const {
     const Fixed dx = x - centre.x, dy = y - centre.y;
@@ -165,6 +152,17 @@ Ground Region::groundAt(Fixed x, Fixed y) const {
     const int32_t ix = static_cast<int32_t>(std::clamp<int64_t>((x / terrain_.cellSize()).floorToInt(), 0, n - 1));
     const int32_t iy = static_cast<int32_t>(std::clamp<int64_t>((y / terrain_.cellSize()).floorToInt(), 0, n - 1));
     return cellGround(ix, iy);
+}
+
+Region Region::fromGround(int32_t cells, const std::vector<Ground>& ground, std::vector<Fixed> heights) {
+    Region rg;
+    const size_t samples = static_cast<size_t>(cells + 1) * static_cast<size_t>(cells + 1);
+    if (heights.size() != samples) heights.assign(samples, Fixed::zero());
+    rg.terrain_ = Terrain::fromSamples(cells, m(kCellSize), std::move(heights));
+    rg.water_.assign(samples, Fixed::fromRaw(kDryRaw));
+    rg.ground_ = ground;
+    rg.ground_.resize(static_cast<size_t>(cells) * static_cast<size_t>(cells), Ground::Plains);
+    return rg;
 }
 
 Region Region::generateIllyria(uint64_t seed) {

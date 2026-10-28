@@ -22,16 +22,17 @@ constexpr Fixed kDescentRate = Fixed::fromRatio(5, 2);
 constexpr int64_t kLandingGlide = 3;
 // Waypoints count as reached within this distance.
 constexpr Fixed kWaypointReach = Fixed::fromRatio(3, 2);
+// Near a waypoint, one already closer to the next with the way clear moves on
+// (soldiers jostling on a road need not all touch the same spot).
+constexpr Fixed kWaypointNear = Fixed::fromInt(4);
+// Marching soldiers keep their files this far either side of the squad's route.
+constexpr Fixed kMarchFile = Fixed::fromInt(2);
 // Corpses are smaller obstacles than the living, and get shoved aside.
 constexpr Fixed kCorpseRadiusScale = Fixed::fromRatio(3, 5);
 // Bodies walking through loose remains kick them along.
 constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
 constexpr int kMaxKicksPerTick = 2;
-// Slopes steeper than this slow walkers down even across them.
-constexpr Fixed kSteepSlope = Fixed::fromRatio(7, 20);
-constexpr Fixed kSteepSpeed = Fixed::fromRatio(4, 5);
 // Climbing costs: speed divides by 1 + grade x this; going down is a little quicker.
-constexpr Fixed kClimbCost = Fixed::fromRatio(5, 2);
 constexpr Fixed kDescentGain = Fixed::fromRatio(1, 2);
 constexpr Fixed kDescentMax = Fixed::fromRatio(3, 20);
 // No one walks up or down a face steeper than 45 degrees: cliffs are walls.
@@ -143,6 +144,7 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addI64(s.healing.charges);
     h.addI64(s.terrain.openPct);
     h.addI64(s.terrain.hillsPct);
+    h.addU64(static_cast<uint64_t>(s.gait));
     h.addI64(s.flyAltitude.raw);
     h.addI64(s.flySpeed.raw);
     h.addI64(s.takeoffRun.raw);
@@ -268,7 +270,8 @@ void World::applyCommand(const Command& cmd) {
             u->marchSpeed = max(Fixed::zero(), cmd.speed);
             u->hasAttackTarget = false;
             u->attackGate = -1;
-            planPath(*u, cmd.target);
+            if (cmd.march) planMarch(*u, cmd.target, cmd.marchFrom, cmd.marchTo);
+            else planPath(*u, cmd.target);
             break;
         case Command::Type::AttackGate:
         case Command::Type::AttackGround:
@@ -307,22 +310,61 @@ void World::planPath(Unit& u, const Vec3& to) {
     u.path.clear();
     u.pathIndex = 0;
     if (config_.region && !config_.region->ramparts().empty() && planRampartPath(u, to)) return;
-    groundPath(u.pos, to, u.path);
+    groundPath(u.pos, to, u.path, u.stats.gait);
 }
 
-void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out) {
-    if (!nav_ || nav_->clearLine(from, to)) {
+void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goal) {
+    if (!nav_ || !config_.region->ramparts().empty()) {
+        planPath(u, to);
+        return;
+    }
+    u.path.clear();
+    u.pathIndex = 0;
+    // One route for the squad (planned once a tick for all of them).
+    std::vector<Vec3> route;
+    groundPath(from, goal, route, u.stats.gait);
+    if (route.size() <= 1) {
+        groundPath(u.pos, to, u.path, u.stats.gait);
+        return;
+    }
+    // Each soldier keeps his file, a little to the side of the route, where
+    // the ground there is the same (on the road, not the field beside it).
+    const Vec3 dir = flatDirection(route[route.size() - 2], goal, flatDirection(from, goal, u.facing));
+    const Fixed file = clamp((to - goal).flat().dot(Vec3{dir.y, -dir.x, Fixed::zero()}), -kMarchFile, kMarchFile);
+    for (size_t k = 0; k + 1 < route.size(); ++k) {
+        const Vec3 w = route[k];
+        const Vec3 d = flatDirection(k == 0 ? from : route[k - 1], route[k + 1], dir);
+        const Vec3 p = w + Vec3{d.y, -d.x, Fixed::zero()} * file;
+        const bool same = groundAt(p.x, p.y) == groundAt(w.x, w.y) && !nav_->blocked(p);
+        u.path.push_back(same ? p : w);
+    }
+    // Skip waypoints already behind him, and join the route where he can.
+    size_t skip = 0;
+    while (skip + 1 < u.path.size() &&
+           (u.path[skip + 1] - u.pos).flat().lengthSq() <= (u.path[skip + 1] - u.path[skip]).flat().lengthSq())
+        ++skip;
+    u.path.erase(u.path.begin(), u.path.begin() + static_cast<long>(skip));
+    if (!nav_->clearLine(u.pos, u.path.front())) {
+        std::vector<Vec3> join;
+        groundPath(u.pos, u.path.front(), join, u.stats.gait);
+        u.path.insert(u.path.begin(), join.begin(), join.end() - 1);
+    }
+    u.path.push_back(to);
+}
+
+void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) {
+    if (!nav_) {
         out.push_back(to);
         return;
     }
     // Units of a squad start and end in neighbouring cells; plan once per cell pair.
     const int64_t cs = nav_->cellSize();
     const auto cell = [cs](const Vec3& p) { return (p.x.floorToInt() / cs) * 4096 + p.y.floorToInt() / cs; };
-    const auto key = std::make_pair(cell(from), cell(to));
+    const auto key = std::make_tuple(static_cast<int>(gait), cell(from), cell(to));
     auto it = pathCache_.find(key);
     if (it == pathCache_.end()) {
         std::vector<Vec3> route;
-        if (!nav_->findPath(from, to, route) && !routeToGate(from, to, route)) route = {to};
+        if (!nav_->findPath(from, to, route, gait) && !routeToGate(from, to, route, gait)) route = {to};
         it = pathCache_.emplace(key, std::move(route)).first;
     }
     out.insert(out.end(), it->second.begin(), it->second.end());
@@ -437,14 +479,14 @@ bool World::planRampartPath(Unit& u, const Vec3& to) {
         if (target >= 0) {
             const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
             if (tr.stairs.empty()) return true;
-            groundPath(rp.stairs[best].first, tr.stairs.front().first, u.path);
+            groundPath(rp.stairs[best].first, tr.stairs.front().first, u.path, u.stats.gait);
             u.path.push_back(tr.stairs.front().second);
             u.path.push_back(onWalk(tr, tr.stairs.front().second));
             const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs.front().second), to, nullptr);
             u.path.insert(u.path.end(), walk.begin(), walk.end());
             return true;
         }
-        groundPath(rp.stairs[best].first, to, u.path);
+        groundPath(rp.stairs[best].first, to, u.path, u.stats.gait);
         return true;
     }
     // From the ground: to the stair foot that makes the trip shortest, up, along.
@@ -461,7 +503,7 @@ bool World::planRampartPath(Unit& u, const Vec3& to) {
             best = s;
         }
     }
-    groundPath(u.pos, tr.stairs[best].first, u.path);
+    groundPath(u.pos, tr.stairs[best].first, u.path, u.stats.gait);
     u.path.push_back(tr.stairs[best].second);
     u.path.push_back(onWalk(tr, tr.stairs[best].second));
     const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs[best].second), to, nullptr);
@@ -472,7 +514,7 @@ bool World::planRampartPath(Unit& u, const Vec3& to) {
 bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Vec3 delta = (to - u.pos).flat();
     const Fixed dist = delta.length();
-    Fixed speed = u.stats.moveSpeed * speedScale * groundSpeed(groundAt(u.pos.x, u.pos.y));
+    Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, groundAt(u.pos.x, u.pos.y));
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
     if (slopeAt(u.pos.x, u.pos.y) > kSteepSlope) speed *= kSteepSpeed;
     if (dist == Fixed::zero()) return true;
@@ -482,7 +524,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         const Fixed probe = Fixed::one();
         const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         const Fixed grade = standingHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe, u.pos.z) - here;
-        if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost);
+        if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost * gaitClimbPct(u.stats.gait) / 100);
         else speed = speed * (Fixed::one() + min(kDescentMax, -grade * kDescentGain));
     }
     const Fixed stepLen = speed * kTickDt;
@@ -497,7 +539,17 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
         const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
         const Fixed dh = standingHeight(x, y, u.pos.z) - here;
-        if (dh > kMaxStepUp || dh < -kMaxStepDown) return true;  // a ledge: off a wall-walk, up the side of a stair
+        // Off the end of a bridge deck onto the bank is a step down, never a ledge.
+        const auto offDeckEnd = [&] {
+            if (!config_.region || dh < -kMaxStepDown * 2) return false;
+            for (const Deck& k : config_.region->decks()) {
+                if (k.raised || !k.contains(u.pos.x, u.pos.y)) continue;
+                const Fixed dx = x - k.centre.x, dy = y - k.centre.y;
+                if (abs(dx * k.dir.x + dy * k.dir.y) > k.halfSpan && abs(dx * k.dir.y - dy * k.dir.x) <= k.halfWidth) return true;
+            }
+            return false;
+        };
+        if (dh > kMaxStepUp || (dh < -kMaxStepDown && !offDeckEnd())) return true;  // a ledge: off a wall-walk, up the side of a stair
         // Onto or along a deck is never a cliff, whatever lies below its edges.
         if (g == Ground::Bridge || (config_.region && config_.region->deckBelow(x, y, u.pos.z + kMaxStepUp, deck))) return false;
         return run > Fixed::zero() && abs(dh) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
@@ -544,13 +596,31 @@ void World::updateUnit(Unit& u) {
             updateFlight(u);
             return;
         }
+        if (Vec3 spot; placeAtGate(u, spot)) {
+            walk(u, spot);  // up to the doors beside the others, to hack at them too
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+            return;
+        }
         if (u.path.empty()) u.path.push_back(u.moveTarget);
         const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
         const bool last = u.pathIndex + 1 >= u.path.size();
         // A squad marches at its slowest member's pace, keeping its formation.
         const Fixed pace = u.marchSpeed > Fixed::zero() && u.marchSpeed < u.stats.moveSpeed ? u.marchSpeed / u.stats.moveSpeed : Fixed::one();
         const bool arrived = walk(u, waypoint, pace);
-        if (!last && (arrived || (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach)) {
+        bool onward = false;
+        if (!last && !arrived && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
+            const Vec3& next = u.path[u.pathIndex + 1];
+            onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
+                     (next - u.pos).flat().lengthSq() < (next - waypoint).flat().lengthSq();
+            if (onward && nav_) {
+                // ... unless that cuts over slower ground than the way by the waypoint.
+                Fixed slowest = Fixed::fromInt(100), via = Fixed::fromInt(100);
+                nav_->travelTime(u.pos, next, u.stats.gait, &slowest);
+                nav_->travelTime(waypoint, next, u.stats.gait, &via);
+                onward = slowest >= via && nav_->clearLine(u.pos, next);
+            }
+        }
+        if (!last && (arrived || onward)) {
             ++u.pathIndex;
         } else if (last && arrived) {
             u.hasMoveTarget = false;

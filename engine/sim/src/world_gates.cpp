@@ -120,6 +120,33 @@ int World::gateToHack(Unit& u) {
     return -1;
 }
 
+bool World::placeAtGate(const Unit& u, Vec3& spot) const {
+    if (!config_.region || gates_.empty() || u.stats.melee.damage == 0 || !u.hasMoveTarget) return false;
+    const Region& rg = *config_.region;
+    const auto& gs = rg.gates();
+    constexpr Fixed kQueue = Fixed::fromInt(10);
+    for (size_t i = 0; i < gs.size(); ++i) {
+        const Gate& g = gs[i];
+        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top) continue;
+        const Vec3 at = nearestOnGate(g, u.pos);
+        const Vec3 off = (u.pos - at).flat();
+        if (off.lengthSq() > kQueue * kQueue) continue;
+        const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+        if (Gate::inside(ring, u.moveTarget) == Gate::inside(ring, u.pos)) continue;
+        // Its own place along the doors, by where it stands, on its side of them.
+        const Vec3 along = (g.b - g.a).flat();
+        const Fixed len = along.length();
+        if (len <= Fixed::zero()) continue;
+        const Vec3 dir = along / len;
+        const Fixed t = clamp((u.pos - g.a).flat().dot(dir), u.stats.radius, max(u.stats.radius, len - u.stats.radius));
+        const Vec3 side = off.dot(g.out) >= Fixed::zero() ? g.out : -g.out;
+        spot = g.a + dir * t + side * (g.halfThick + u.stats.radius + u.stats.melee.reach / 2);
+        spot.z = u.pos.z;
+        return true;
+    }
+    return false;
+}
+
 void World::hackGate(Unit& u, int gate) {
     const Gate& g = config_.region->gates()[static_cast<size_t>(gate)];
     const Vec3 at = nearestOnGate(g, u.pos);
@@ -172,7 +199,7 @@ void World::damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir
     }
 }
 
-bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out) {
+bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) {
     // Through the shut gate of the ring between here and there: up to its face,
     // then on against the doors (which those who can will hack at).
     if (!config_.region || !nav_) return false;
@@ -193,7 +220,7 @@ bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out
         const Vec3 c = (g.a + g.b) * Fixed::fromRatio(1, 2);
         const Vec3 front = c + g.out * (outside ? kGateApproach : -kGateApproach);
         std::vector<Vec3> route;
-        if (!nav_->findPath(from, front, route)) continue;
+        if (!nav_->findPath(from, front, route, gait)) continue;
         out = std::move(route);
         out.push_back(c);
         out.push_back(to);

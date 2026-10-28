@@ -33,6 +33,9 @@ struct Squad {
     bool garrison = false;
     V3 post{};
     uint32_t armyId = 0;  // the campaign army it is, when fought from the campaign
+    // Where it was last sent (the computer re-plans a chase only when that moves enough).
+    mutable V3 goal{};
+    mutable bool hasGoal = false;
 };
 
 // What a squad's banner shows, as in Warlords: one strength from 1 to 9,
@@ -157,6 +160,8 @@ public:
     void selectSquad(int index);
     // The selected squad's orders at a gate (as tapping it), for tests and hooks.
     void orderAtGate(int gate);
+    // The selected squad marched to a spot (as tapping the ground), for tests and hooks.
+    void orderMove(const V3& to);
     void stopSelected();
     // Every one of the player's squads at the nearest enemy: the foot charge,
     // missile troops close to a long bowshot.
@@ -228,6 +233,9 @@ private:
     void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
     void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
+    // The computer's orders: the same as moveSquad, but a squad already on
+    // its way to about the same place keeps its route (routes cost time).
+    void steerSquad(const Squad& squad, const V3& to);
     void issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type type, const V3& target);
     // Sieges: the town's gates belong to its defenders.
     void holdGates(sim::PlayerId holder);
