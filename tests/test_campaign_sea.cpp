@@ -175,7 +175,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0x3b0898ea02d48f06;
+    constexpr uint64_t kGolden = 0xc14902684e41fc28;
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

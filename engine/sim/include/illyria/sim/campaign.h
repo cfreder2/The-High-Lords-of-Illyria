@@ -74,6 +74,7 @@ public:
     struct Option {  // something a city can train
         UnitType type;
         int32_t days, cost;
+        int32_t left = -1;  // a levy of rare troops: armies still to raise, once each (-1: common, for ever)
     };
     struct CityState {
         uint8_t owner = kNeutral;
@@ -152,6 +153,7 @@ public:
         bool searched = false;  // ruins: the guardian slain and the treasure taken; sages: already consulted
         int32_t guardian = -1;  // ruins: which monster waits inside (guardianName, guardianStrength)
         uint8_t bit = 0;        // temples: their bit in Army::temples
+        bool gifted = false;    // temples: their guard has gone with the first hero to kneel there
     };
     struct Loot {  // an artifact lying where its hero fell
         int32_t cx = 0, cy = 0;
@@ -166,6 +168,8 @@ public:
         bool open = false;
         int32_t city = -1, price = 0;
         std::string name;
+        UnitType companion = UnitType::Count;  // rare troops who ride with the hero, if any
+        int32_t companions = 0;
     };
     static const char* guardianName(int32_t guardian);
     static int32_t guardianStrength(int32_t guardian);
@@ -283,11 +287,24 @@ public:
     std::vector<const Army*> defendersAt(uint8_t attacker, int32_t cx, int32_t cy) const;
     static bool flies(UnitType t);
     static bool special(UnitType t);
+    // Common troops are trained in cities, slowly and dearly; rare ones
+    // (heroes, beasts, monsters, allies, Myth's specialists) never are: each
+    // that falls is gone for good (campaign_rare.cpp, docs/GAME_DESIGN.md §4.2.4).
+    static bool trainable(UnitType t);
+    static bool rare(UnitType t) { return !trainable(t); }
+    // Where a rare type can be had: a bit each.
+    enum Source : uint8_t { kFromStart = 1, kFromLevy = 2, kFromRuin = 4, kFromTemple = 8, kFromHire = 16 };
+    static uint8_t sources(UnitType t);
+    // The band of rare troops guarding a temple, who follow the first hero to kneel there.
+    static UnitType templeGuard(uint8_t bit, int32_t& count);
+    // Veterans (and better) and rare troops: what a lord cannot replace.
+    static bool precious(const Army& a) { return a.hero() || rare(a.type) || a.rank >= 2; }
     uint64_t checksum() const;
 
 private:
     void initTerrain();
     void initCities();
+    void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies
     void newDay();
     void runAi(uint8_t side);  // campaign_ai.cpp
     friend class CampaignAi;
@@ -337,6 +354,9 @@ private:
     void pickUp(Stack& s);                          // a hero takes up artifacts lying here
     void hashQuests(StateHasher& h) const;
     void deed(uint8_t side, std::string text);
+    void templeGift(Stack& s, SiteState& site, const std::string& where);  // campaign_rare.cpp
+    void offerCompanions(Offer& o);
+    void hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_t city);
 
     const Continent& continent_;
     Rng rng_;

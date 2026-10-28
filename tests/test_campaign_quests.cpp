@@ -133,7 +133,8 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         if (gotArtifact) CHECK(Campaign::strength(*hero) + Campaign::command(*hero) > 4 + hero->rank);
         for (const Army& a : after->armies)
             if (!a.hero() && a.ally) CHECK(a.type == UnitType::Undead || a.type == UnitType::Wizards || a.type == UnitType::Devils ||
-                                           a.type == UnitType::Archons || a.type == UnitType::Dragons);
+                                           a.type == UnitType::Archons || a.type == UnitType::Dragons ||
+                                           a.type == UnitType::Demons);
         // Once: the ruin is empty now.
         const int32_t g = c.sides()[0].gold;
         CHECK(!c.canSearch(id));

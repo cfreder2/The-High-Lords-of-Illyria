@@ -123,6 +123,21 @@
   #cityPanel button { display: flex; justify-content: space-between; width: 100%; margin: 4px 0; padding: 6px 8px; font-size: 13px; }
   #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
   #cityPanel .port { font-size: 12px; margin: 8px 0 2px; color: #bcd8f0; }
+  #cityPanel { max-height: calc(100vh - 150px - var(--safe-b)); overflow-y: auto; }
+  /* Rare troops (never trained, never replaced) are marked in violet: a levy, the list of where they come from. */
+  #cityPanel button.levy { border-color: rgba(201, 166, 255, 0.6); }
+  #cityPanel .lv { color: #c9a6ff; }
+  #cityPanel details { font-size: 12px; margin: 6px 0 4px; }
+  #cityPanel summary { cursor: pointer; color: #c9a6ff; padding: 6px 0; min-height: 20px; }
+  #cityPanel details div { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }
+  #cityPanel details div span:last-child { opacity: 0.8; text-align: right; }
+  #cityPanel details p { margin: 2px 0 4px; opacity: 0.8; }
+  /* Campaign army cards: rank pips (recruit to elite) and kills; rare troops in violet. */
+  body.campaign .card .vet { grid-column: 1 / -1; font-size: 10px; letter-spacing: 0.02em; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.campaign .card .vet.seasoned { color: var(--gold); opacity: 1; }
+  body.campaign .card.rare { border-color: rgba(201, 166, 255, 0.7); }
+  body.campaign .card.rare .vet::after { content: " · rare"; color: #c9a6ff; }
+  #banners .flag span em { font-style: normal; font-size: 10px; font-weight: 700; }
   #voyage { position: fixed; left: calc(8px + var(--safe-l)); bottom: calc(80px + var(--safe-b)); display: flex; align-items: center; gap: 10px;
             padding: 6px 8px 6px 12px; font-size: 13px; z-index: 4; }
   #voyage.hidden { display: none; }
@@ -547,7 +562,9 @@
     return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   }
   // The campaign HUD: banners follow the map every frame; panels a few times a second.
-  let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "";
+  let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "", campRareOpen = false;
+  const campRanks = ["Recruit", "Regular", "Veteran", "Elite"];
+  const campFrom = { start: "realm", levy: "levy", ruins: "ruins", temples: "temples", heroes: "heroes" };
   function updateCampaign(t) {
     requestAnimationFrame(updateCampaign);
     if (!api || !campaign) return;
@@ -557,7 +574,7 @@
     while (root.children.length < campState.stacks.length) {
       const d = document.createElement("div");
       d.className = "flag";
-      d.innerHTML = "<span><b></b><i></i></span>";
+      d.innerHTML = "<span><b></b><i></i><em></em></span>";
       root.appendChild(d);
     }
     campState.stacks.forEach((s, k) => {
@@ -573,6 +590,7 @@
       d.classList.toggle("moving", s.moving);
       d.querySelector("b").textContent = s.strength;
       d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
+      d.querySelector("em").textContent = s.vets ? `◆${s.vets > 1 ? s.vets : ""}` : "";  // veterans in the stack
     });
     for (let k = campState.stacks.length; k < root.children.length; ++k) root.children[k].style.display = "none";
     if (t - campTick < 250) return;
@@ -587,7 +605,7 @@
     news.classList.toggle("hidden", campState.news.length === 0);
     news.innerHTML = campState.news.map((n) => `<div>${n}</div>`).join("");
     // The selected stack's armies, as cards.
-    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}${a.blessings}${a.artifacts}`).join("|");
+    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}${a.blessings}${a.artifacts}${a.kills}`).join("|");
     if (armiesKey !== campArmiesKey) {
       campArmiesKey = armiesKey;
       $("cards").innerHTML = "";
@@ -600,7 +618,14 @@
         b.querySelector(".badge").innerHTML = `<b>${a.strength}</b>` + (a.level ? `<small>Lv ${a.level}</small>` : chevrons(a.rank)) +
           (a.blessings ? `<span class="bless">${"✦".repeat(a.blessings)}</span>` : "");
         b.title = `${a.name || a.type}: ${a.type}, strength ${a.strength}, ${a.kills} slain` + (a.ally ? ", an ally (no upkeep)" : "") +
-          (a.command ? `, +${a.command} command to the stack` : "");
+          (a.command ? `, +${a.command} command to the stack` : "") + (a.rare ? ". Rare: no city trains them, and none will replace them" : "");
+        // Rank pips: veterans carry over from battle to battle, and are worth keeping alive.
+        const vet = document.createElement("span");
+        vet.className = "vet" + (a.level || a.rank >= 2 ? " seasoned" : "");
+        vet.textContent = a.level ? `Hero, level ${a.level}` + (a.kills ? ` · ${a.kills} slain` : "")
+          : `${"◆".repeat(a.rank)}${"◇".repeat(3 - a.rank)} ${campRanks[a.rank]}` + (a.kills ? ` · ${a.kills} slain` : "");
+        b.appendChild(vet);
+        b.classList.toggle("rare", !!a.rare);
         if (a.artifacts) {
           // The hero's artifacts, under the name (tap the card for the full list).
           b.classList.add("has-arts");
@@ -616,7 +641,8 @@
           b.onclick = () => {
             if (b.dataset.armed) { api.campDisband(a.id); toast(`${a.name || a.type} disbanded and went home`); return; }
             b.dataset.armed = "1";
-            toast(`Tap ${a.name || a.type} again to disband it (no more upkeep)`);
+            toast(`Tap ${a.name || a.type} again to disband it (no more upkeep)` +
+              (a.rare || a.rank >= 2 ? `: ${a.rare ? "rare troops" : `${campRanks[a.rank].toLowerCase()}s`} can never be replaced` : ""));
             setTimeout(() => delete b.dataset.armed, 2500);
           };
         }
@@ -648,9 +674,12 @@
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
         panel.innerHTML = `<h3>${c.name}</h3><div class="meta">Walls ${c.defense} · ${c.income} gold a day` +
           (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` +
-          c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}"><span>${o.type} <small>(${o.strength})</small></span>` +
-            `<span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
+          c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}${o.levy > 0 ? " levy" : ""}"><span>${o.type} <small>(${o.strength})</small>` +
+            (o.levy > 0 ? ` <small class="lv">levy, ${o.levy} left</small>` : "") + `</span><span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
           `<button data-i="-1"><span>Stop training</span></button>` +
+          `<details ${campRareOpen ? "open" : ""}><summary>◆ Rare troops are never trained</summary><p>Each one lost is gone for good. They come from:</p>` +
+          c.rare.map((r) => `<div><span>${r.type} <small>(${r.strength})</small></span><span>${r.from.split(",").map((f) => campFrom[f]).join(" · ")}</span></div>`).join("") +
+          `</details>` +
           (c.choosing ? `<div class="port">Tap one of your cities to send new armies there</div>` :
             `<button data-vector="1"><span>${c.vectorTo ? `New armies march to ${c.vectorTo}` : "Send new armies to…"}</span><span>${c.vectorTo ? "change" : ""}</span></button>`) +
           (c.vectorTo && !c.choosing ? `<button data-home="1"><span>Keep new armies here</span></button>` : "") +
@@ -660,6 +689,7 @@
             (c.boatDays ? "" : `<button data-boat="1" ${campState.gold < c.boatCost ? "disabled" : ""}><span>Build a boat ⛵ <small>(7 armies)</small></span>` +
               `<span>${c.boatTime}d · ${c.boatCost}g · ${c.boatUpkeep}/day</span></button>`) : "") +
           `<button data-close="1"><span>Close</span></button>`;
+        panel.querySelector("details").ontoggle = (e) => { campRareOpen = e.target.open; };
         panel.querySelectorAll("button").forEach((b) => {
           b.onclick = () => {
             if (b.dataset.close) api.campCloseCity();
@@ -688,7 +718,8 @@
     $("hirePrompt").classList.toggle("hidden", !of || !!campState.pending);
     if (of) {
       $("hireTitle").textContent = `${of.name} offers their sword`;
-      $("hireText").textContent = `${of.name} waits at ${of.city} and will serve you for ${of.price} gold, paid now. The offer stands until dawn.`;
+      $("hireText").textContent = `${of.name} waits at ${of.city} and will serve you for ${of.price} gold, paid now.` +
+        (of.companion ? ` ${of.companion} ride with them: rare troops, who serve for nothing.` : "") + " The offer stands until dawn.";
       $("hireYes").textContent = `Hire for ${of.price} gold`;
       $("hireYes").disabled = campState.gold < of.price;
     }
