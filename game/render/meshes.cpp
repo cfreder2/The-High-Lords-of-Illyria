@@ -517,6 +517,71 @@ Mesh sageTower() {
     return b.mesh;
 }
 
+Mesh ship() {
+    Builder b;
+    const V3 wood{0.45f, 0.3f, 0.17f}, dark{0.3f, 0.2f, 0.12f}, deck{0.62f, 0.5f, 0.34f};
+    // The hull: a section at each station, from a pointed stern to a pointed
+    // bow, the sides flaring out from a narrow keel.
+    struct Station { float x, half, keel, rail; };
+    const Station st[] = {{-1.0f, 0.02f, -0.02f, 0.34f}, {-0.75f, 0.2f, -0.12f, 0.28f}, {-0.3f, 0.27f, -0.16f, 0.24f},
+                          {0.3f, 0.27f, -0.16f, 0.24f},   {0.75f, 0.18f, -0.12f, 0.3f},  {1.05f, 0.02f, -0.02f, 0.42f}};
+    constexpr int kStations = static_cast<int>(sizeof st / sizeof st[0]);
+    for (int i = 0; i + 1 < kStations; ++i) {
+        const Station& a = st[i];
+        const Station& c = st[i + 1];
+        for (int side = -1; side <= 1; side += 2) {
+            const float s = static_cast<float>(side);
+            const V3 ak{a.x, 0, a.keel}, ck{c.x, 0, c.keel};
+            const V3 aw{a.x, s * a.half, 0.05f}, cw{c.x, s * c.half, 0.05f};  // the widest, just above the water
+            const V3 ar{a.x, s * a.half * 0.85f, a.rail}, cr{c.x, s * c.half * 0.85f, c.rail};
+            if (side > 0) {
+                b.quad(ak, ck, cw, aw, dark);
+                b.quad(aw, cw, cr, ar, wood);
+            } else {
+                b.quad(ak, aw, cw, ck, dark);
+                b.quad(aw, ar, cr, cw, wood);
+            }
+        }
+        // The deck, a little below the rail.
+        const float az = std::min(a.rail, c.rail) - 0.05f;
+        b.quad({a.x, -a.half * 0.8f, az}, {c.x, -c.half * 0.8f, az}, {c.x, c.half * 0.8f, az}, {a.x, a.half * 0.8f, az}, deck);
+    }
+    // Mast and yard.
+    b.frustum(0.15f, 0.035f, 1.5f, 0.02f, 5, dark);
+    b.limb({0.12f, -0.45f, 1.3f}, {0.12f, 0.45f, 1.3f}, 0.02f, 0.02f, 4, dark);
+    // A raised stern deck, and the steering oar.
+    b.box({-0.85f, -0.15f, 0.18f}, {-0.55f, 0.15f, 0.3f}, wood);
+    b.limb({-0.9f, 0.2f, 0.3f}, {-1.05f, 0.24f, -0.12f}, 0.025f, 0.02f, 4, dark);
+    return b.mesh;
+}
+
+Mesh sail() {
+    Builder b;
+    // A square sail hanging from the yard, bellied forward, two-sided.
+    const V3 cloth{1, 1, 1};
+    const V3 tl{0.12f, -0.43f, 1.29f}, tr{0.12f, 0.43f, 1.29f}, ml{0.2f, -0.42f, 0.85f}, mr{0.2f, 0.42f, 0.85f}, bl{0.14f, -0.4f, 0.42f},
+        br{0.14f, 0.4f, 0.42f};
+    b.quad(tl, ml, mr, tr, cloth);
+    b.quad(ml, bl, br, mr, cloth * 0.92f);
+    b.quad(tl, tr, mr, ml, cloth * 0.85f);
+    b.quad(ml, mr, br, bl, cloth * 0.8f);
+    return b.mesh;
+}
+
+Mesh pier() {
+    Builder b;
+    const V3 plank{0.55f, 0.43f, 0.3f}, pile{0.3f, 0.22f, 0.15f};
+    b.box({0, -1, -0.25f}, {1, 1, 0}, plank);
+    for (int i = 0; i <= 4; ++i) {
+        const float x = 0.04f + 0.23f * static_cast<float>(i);
+        for (int side = -1; side <= 1; side += 2) {
+            const float y = 0.8f * static_cast<float>(side);
+            b.box({x - 0.012f, y - 0.12f, -1}, {x + 0.012f, y + 0.12f, 0.15f}, pile);
+        }
+    }
+    return b.mesh;
+}
+
 Mesh log() {
     Builder b;
     const V3 bark{0.34f, 0.25f, 0.17f}, wood{0.62f, 0.5f, 0.34f}, moss{0.32f, 0.4f, 0.2f};

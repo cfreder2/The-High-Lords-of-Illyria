@@ -177,6 +177,7 @@ Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(conti
     armiesRaised_.assign(sides_.size(), 0);
     initCities();
     initSites();
+    initSea();
 }
 
 void Campaign::initTerrain() {
@@ -184,6 +185,20 @@ void Campaign::initTerrain() {
     riverEast_.assign(terrain_.size(), 0);
     riverNorth_.assign(terrain_.size(), 0);
     std::vector<uint8_t> nearRiver(terrain_.size(), 0);
+    // Road cells: every cell a road passes through, walked every 40 m (the
+    // samples' road distance only reaches 60 m, short of a cell's corners).
+    std::vector<uint8_t> road(terrain_.size(), 0);
+    for (const Polyline& r : continent_.roads()) {
+        for (size_t k = 0; k + 1 < r.points.size(); ++k) {
+            const Vec3 a = r.points[k], d = r.points[k + 1] - r.points[k];
+            const int32_t steps = std::max(1, static_cast<int32_t>((d.flat().length() / 40).floorToInt()));
+            for (int32_t i = 0; i <= steps; ++i) {
+                const Vec3 p = a + d * Fixed::fromRatio(i, steps);
+                const int32_t x = cellOf(static_cast<int32_t>(p.x.floorToInt())), y = cellOf(static_cast<int32_t>(p.y.floorToInt()));
+                if (x >= 0 && y >= 0 && x < nx_ && y < ny_) road[static_cast<size_t>(y) * nx_ + x] = 1;
+            }
+        }
+    }
     for (int32_t y = 0; y < ny_; ++y) {
         for (int32_t x = 0; x < nx_; ++x) {
             const Fixed px = Fixed::fromInt(centre(x)), py = Fixed::fromInt(centre(y));
@@ -191,7 +206,8 @@ void Campaign::initTerrain() {
             Fixed surface;
             Lay t = Lay::Plain;
             Fixed deck;
-            if (s.roadDist < Fixed::fromInt(kCell / 2)) {  // a road crosses the cell
+            const bool open = (s.land < Fixed::zero() && s.height < Fixed::zero()) || (s.inLake && s.height < s.lakeSurface);
+            if (road[static_cast<size_t>(y) * nx_ + x] && !open) {  // a road crosses the cell (rivers it bridges or fords)
                 t = Lay::Road;
             } else if (continent_.waterSurfaceOf(s, surface) && !continent_.onBridge(px, py, deck)) {
                 t = Lay::Water;
@@ -443,7 +459,7 @@ bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
     for (Stack& s : stacks_) {
         if (s.id != stackId || s.garrison) continue;
         std::vector<std::pair<int32_t, int32_t>> path;
-        if (!findPath(s, cx, cy, path)) return false;
+        if (!planRoute(s, cx, cy, path)) return false;  // by land, or by boat where that is quicker
         s.path = std::move(path);
         s.progress = 0;
         return true;
@@ -459,6 +475,7 @@ void Campaign::step() {
 }
 
 void Campaign::newDay() {
+    seaDay();  // shipwrights and the boats' upkeep
     // Income, then upkeep; a side that cannot pay loses its newest armies.
     for (size_t s = 0; s < sides_.size(); ++s) {
         Side& side = sides_[s];
@@ -524,6 +541,7 @@ void Campaign::runAi(uint8_t side) {
     // quickest troops, and send every idle stack at the nearest city it does
     // not hold, neutral towns first, once it is strong enough to try.
     questAi(side);
+    runSeaAi(side);  // boats first: targets across the water (campaign_sea.cpp)
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         if (c.owner != side || c.razed || c.producing >= 0) continue;
@@ -583,10 +601,11 @@ void Campaign::runAi(uint8_t side) {
 void Campaign::moveStacks() {
     for (size_t i = 0; i < stacks_.size(); ++i) {
         if (stacks_[i].path.empty() || stacks_[i].armies.empty()) continue;
+        if (!boardIfSailing(i)) continue;  // stepping from a port onto the water boards a boat
         Stack& s = stacks_[i];
-        s.progress += stackMoves(s);
+        s.progress += stepMoves(s);
         const auto [nx, ny] = s.path.front();
-        const int32_t cost = stackCost(s, nx, ny) * kTicksPerDay;
+        const int32_t cost = stepCost(s, nx, ny) * kTicksPerDay;
         if (s.progress < cost) continue;
         s.progress -= cost;
         // Into enemies or a city not ours: fight for it.
@@ -611,12 +630,13 @@ void Campaign::moveStacks() {
         if (s.path.empty()) arrive(s);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
+    syncBoats();
 }
 
 void Campaign::arrive(Stack& s) {
     // Join a friendly stack already here, as far as the limit of eight allows.
     for (Stack& o : stacks_) {
-        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty()) continue;
+        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty() || o.boat || s.boat) continue;
         while (!s.armies.empty() && o.armies.size() < kMaxStack) {
             o.armies.push_back(s.armies.back());
             s.armies.pop_back();
@@ -673,7 +693,10 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     for (Army& a : attacker.armies) att.push_back(&a);
     for (Stack* d : defenders)
         for (Army& a : d->armies) def.push_back(&a);
-    const int32_t am = modifier(att, false), dm = modifier(def, true);
+    // Armies fighting from a boat's deck fight at a penalty (campaign_sea.cpp).
+    int32_t defAfloat = 0;
+    for (const Stack* d : defenders) defAfloat = std::max(defAfloat, afloatPenalty(*d));
+    const int32_t am = modifier(att, false) - afloatPenalty(attacker), dm = modifier(def, true) - defAfloat;
     const auto byValue = [](const Army* a, const Army* b) {
         const int32_t sa = strength(*a) + (a->hero() ? 10 : 0), sb = strength(*b) + (b->hero() ? 10 : 0);
         return sa != sb ? sa < sb : a->id < b->id;
@@ -686,7 +709,7 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
     while (ai < att.size() && di < def.size()) {
         Army& a = *att[ai];
         Army& d = *def[di];
-        const int32_t as = std::min(9, strength(a) + am), ds = std::min(9, strength(d) + dm);
+        const int32_t as = std::clamp(strength(a) + am, 1, 9), ds = std::clamp(strength(d) + dm, 1, 9);
         const bool aLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= ds;
         const bool dLow = static_cast<int32_t>(rng_.nextBelow(10)) + 1 <= as;
         if (aLow == dLow) continue;
@@ -744,6 +767,7 @@ void Campaign::resolvePending() {
     pending_ = {};
     if (s) battle(*s, p.cx, p.cy);
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
+    syncBoats();
 }
 
 void Campaign::capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight) {
@@ -803,6 +827,7 @@ void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWo
     if (fight.attackerWon) capture(*att, p.cx, p.cy, fight);
     fights_.push_back(fight);
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
+    syncBoats();
 }
 
 uint64_t Campaign::checksum() const {
@@ -813,6 +838,8 @@ uint64_t Campaign::checksum() const {
         h.addU64(c.owner);
         h.addI64(c.producing);
         h.addI64(c.progress);
+        h.addU64(c.port);
+        h.addI64(c.boatDays);
     }
     for (const Stack& s : stacks_) {
         h.addU64(s.id);
@@ -820,6 +847,7 @@ uint64_t Campaign::checksum() const {
         h.addI64(s.cx);
         h.addI64(s.cy);
         h.addI64(s.progress);
+        h.addU64(s.boat);
         for (const Army& a : s.armies) {
             h.addU64(a.id);
             h.addU64(static_cast<uint64_t>(a.type));
@@ -832,7 +860,17 @@ uint64_t Campaign::checksum() const {
         }
     }
     hashQuests(h);
+    for (const Boat& b : boats_) {
+        h.addU64(b.id);
+        h.addU64(b.owner);
+        h.addI64(b.cx);
+        h.addI64(b.cy);
+        h.addI64(b.port);
+        h.addU64(b.stack);
+    }
+    h.addI64(voyages_);
     for (Lay t : terrain_) h.addU64(static_cast<uint64_t>(t));
+    for (uint8_t w : navigable_) h.addU64(w);
     return h.value();
 }
 

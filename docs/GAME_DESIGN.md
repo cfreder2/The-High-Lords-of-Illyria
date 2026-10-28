@@ -177,7 +177,7 @@ Money is gold only, as in Warlords:
 
 *Built so far* (`engine/sim/src/campaign.cpp`, the **Campaign** button or `?campaign`):
 - **The start:** each of the eight sides holds its capital, one hero (with an escort of light infantry) and a war chest (the Dwarves richest, the Giants poorest, after Warlords). The other 72 cities are neutral, each with a garrison of one to four armies, more where the walls are stronger.
-- **The map:** a 200 m grid over the continent, each cell road, bridge, water, forest, hill, mountain, plain, marsh or city. Movement costs and movement points per day come from the Warlords tables; mountains and water are closed to all but fliers, rivers are crossed only at fords and bridges, roads are cheapest. A hero goes where the stack goes (on a griffin, over the peaks).
+- **The map:** a 200 m grid over the continent, each cell road, bridge, water, forest, hill, mountain, plain, marsh or city (road cells are every cell a road passes through). Movement costs and movement points per day come from the Warlords tables; mountains and water are closed to all but fliers, rivers are crossed only at fords and bridges, roads are cheapest. A hero goes where the stack goes (on a griffin, over the peaks).
 - **Time:** real time with pause; a campaign day is 30 seconds at normal speed (2×, 4×, 8× faster).
 - **Gold:** each city pays every day (capitals 30, towns 21 to 33 by their walls); each army costs half its training price a day in upkeep; a side that cannot pay loses its newest armies. Taking a city takes the loser's share of the treasury in proportion to its cities, half of it to the victor.
 - **Training:** a city trains one army at a time from up to four types (light infantry everywhere; capitals their side's specialties; towns what the land around them raises: dwarves and giants in the hills, archers and wolf riders in the woods, horse on the plains). It is paid for when training starts; open a city's panel by tapping it.
@@ -186,7 +186,21 @@ Money is gold only, as in Warlords:
 - **Victory:** two thirds of the cities.
 - **The player's battles:** when the player's stack marches into an enemy, the campaign stops and asks: **Fight it** or **Resolve**. Resolve rolls the dice. Fight it opens the real 3D battle on that exact ground with those exact armies: their numbers, ranks and heroes. A town is held from its walls, with archers on the walk and the rest at the gate, courtyard and keep. In the field the two lines form up a bowshot apart. **Charge** sends every squad at the nearest enemy, with archers stopping at a long bowshot. When it is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks. Winning a town captures it; withdrawing counts as being thrown back.
 - **Heroes, ruins, temples, sages and heroes for hire:** see §4.4.
-- **Next:** ports and boats.
+
+### 4.2.5 Ports & Boats (built)
+
+After Warlords' navies, "the only units that can travel the seas and rivers ... a navy can carry a maximum of seven other armies" and "ignores the movement points of the armies it carries" (`engine/sim/src/campaign_sea.cpp`):
+- **Navigable water:** every water cell of the campaign grid in a body of at least 24 cells (about 1 km²): on this continent the Sunderwave Sea along the west coast and round the north. The lakes and rivers are too narrow on the 200 m grid to sail; rivers stay edges crossed at fords and bridges. A road reaching into the sea does not dam it.
+- **Ports:** cities with navigable water within two cells (nine of the eighty, all on the sea). Each port's **harbour** is its nearest water cell, where its boats put out and come in. A port has a pier below its walls on the map.
+- **Building:** a port's panel has **Build a boat**: 20 gold, ready in 4 days, 2 gold a day upkeep; it runs beside the city's army training. Boats are named (the *Grey Swan*, the *Sea Hawk*...).
+- **Capacity:** 7 armies, a Warlords navy's load, one short of a full stack. A stack of eight boarding leaves its weakest army (never a hero) on the quay.
+- **Sailing:** a stack in a port with a free boat of its side boards it by stepping onto the water (**Embark**, which also takes friends idle in the port aboard up to seven). Afloat it moves 40 points a day at 2 a water cell: 20 cells, 4 km, a day, whatever it carries (light infantry walk 5 cells a day on the plain, 10 on a road). It lands on any coast it can walk (**Land**, or by being ordered inland), and sails straight into a friendly port from its harbour.
+- **Route finding:** an order plans by land and, when the side has a free boat, also by a search over (cell, afloat) that may walk to a port, board, sail and land; it takes the boat only when that is quicker (from the northern port of Thistledown to Whitecliff in the far south: 4 days by sea, 11 on foot).
+- **After landing:** the boat ties up if it landed in a port of its side, else rides at anchor off that coast, where a stack of its side next to it can board it again.
+- **Losses:** a boat whose armies all fall goes down with them. Armies fighting from a deck fight a point weaker (both sides, at sea). An empty boat in a port that falls changes hands; one at anchor is burnt by an enemy boat that reaches it.
+- **The 3D battle:** a battle fought from or against a boat has no ground to fight on, so it is settled with the dice (the prompt offers only **Resolve**). A stack that lands first and then attacks fights its 3D battle as usual.
+- **The computer lords** build a boat at a port when some city they could take is out of reach on foot or much quicker by water (60% of the walking time or less), keep at most three, and sail stacks of three or more from a port with a boat (leaving a guard) at the best such city; a stack aboard sails for the nearest city it can take. `Campaign::runSeaAi`, called from the first line of `runAi`.
+- **Determinism:** boats, ports, the harbour cells, navigable water and the voyage count are all in `Campaign::checksum()`.
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 

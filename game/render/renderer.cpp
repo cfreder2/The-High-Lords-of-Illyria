@@ -1053,6 +1053,28 @@ void Renderer::uploadSettlements(const Battle& battle) {
     for (size_t v = 0; v < nearCopses_.size(); ++v) uploadMeshInstances(nearCopses_[v], nearCopses[v]);
 }
 
+void Renderer::setBoats(const std::vector<Prop>& boats) {
+    std::vector<float> hulls, sails;
+    for (const Prop& p : boats) {
+        float q[4];
+        yawQuat(p.yaw, q);
+        pushInstance(hulls, p.pos, q, {p.scale, p.scale, p.scale}, {1, 1, 1});
+        pushInstance(sails, p.pos, q, {p.scale, p.scale, p.scale}, p.tint);
+    }
+    uploadMeshInstances(ships_, hulls);
+    uploadMeshInstances(sails_, sails);
+}
+
+void Renderer::setPiers(const std::vector<Prop>& piers) {
+    std::vector<float> out;
+    for (const Prop& p : piers) {
+        float q[4];
+        yawQuat(p.yaw, q);
+        pushInstance(out, p.pos, q, {p.scale, p.scale * 0.09f, 5}, p.tint);
+    }
+    uploadMeshInstances(piers_, out);
+}
+
 bool Renderer::init(Battle& battle) {
     if (!buildPrograms()) return false;
     ensureShadowMap();
@@ -1091,6 +1113,9 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
     makeMeshBatch(logs_, meshes::log(), 0);
+    makeMeshBatch(ships_, meshes::ship(), 0);
+    makeMeshBatch(sails_, meshes::sail(), 0.01f);
+    makeMeshBatch(piers_, meshes::pier(), 0);
     makeAll(copses_, meshes::copseVariants(), 0.01f);
     makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
@@ -1936,6 +1961,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_}, camera, timeSeconds, gameSeconds);
+    if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
     if (camera.distance() < 6000.0f) {
         std::vector<MeshBatch*> woods;

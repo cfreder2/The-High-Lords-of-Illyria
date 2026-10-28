@@ -122,6 +122,11 @@
   #cityPanel .meta { font-size: 12px; opacity: 0.85; margin-bottom: 8px; }
   #cityPanel button { display: flex; justify-content: space-between; width: 100%; margin: 4px 0; padding: 6px 8px; font-size: 13px; }
   #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
+  #cityPanel .port { font-size: 12px; margin: 8px 0 2px; color: #bcd8f0; }
+  #voyage { position: fixed; left: calc(8px + var(--safe-l)); bottom: calc(80px + var(--safe-b)); display: flex; align-items: center; gap: 10px;
+            padding: 6px 8px 6px 12px; font-size: 13px; z-index: 4; }
+  #voyage.hidden { display: none; }
+  #voyage button { padding: 6px 12px; }
   #news { position: fixed; left: calc(8px + var(--safe-l)); top: calc(64px + var(--safe-t)); max-width: 320px; font-size: 12px; padding: 6px 10px; }
   #news div { margin: 2px 0; }
   #battlePrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
@@ -180,6 +185,7 @@
     #title h1 { font-size: 13px; }
     .card { width: 146px; }
     #enemy { display: none; }
+    #cityPanel:not(.hidden) + #voyage { display: none; }  /* no room for both: close the city to sail */
   }
 </style>
 </head>
@@ -231,6 +237,7 @@
 <div id="banners"></div>
 <div id="news" class="panel camp-only hidden"></div>
 <div id="cityPanel" class="panel hidden"></div>
+<div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
 <div id="battlePrompt" class="panel hidden">
   <h3 id="promptTitle">Battle</h3>
   <p id="promptText"></p>
@@ -318,6 +325,9 @@
       campReturn: Module.cwrap("illyria_campaign_return", null, []),
       campSearch: Module.cwrap("illyria_campaign_search", "number", []),
       campHire: Module.cwrap("illyria_campaign_hire", "number", ["number"]),
+      campBuildBoat: Module.cwrap("illyria_campaign_build_boat", null, ["number"]),
+      campEmbark: Module.cwrap("illyria_campaign_embark", null, []),
+      campLand: Module.cwrap("illyria_campaign_land", null, []),
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
@@ -520,7 +530,7 @@
       d.classList.toggle("sel", s.id === campState.selected);
       d.classList.toggle("moving", s.moving);
       d.querySelector("b").textContent = s.strength;
-      d.querySelector("i").textContent = (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
+      d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
     });
     for (let k = campState.stacks.length; k < root.children.length; ++k) root.children[k].style.display = "none";
     if (t - campTick < 250) return;
@@ -561,12 +571,26 @@
         $("cards").appendChild(b);
       }
     }
+    // Afloat, or in a port with a boat: aboard which, and the way on or off.
+    const voyage = $("voyage"), ab = campState.aboard, em = campState.embark;
+    voyage.classList.toggle("hidden", !ab && !em);
+    if (ab) {
+      $("voyageText").textContent = `⛵ Aboard the ${ab.name}, ${ab.count}/${ab.cap}`;
+      $("voyageButton").textContent = "Land";
+      $("voyageButton").style.display = ab.canLand ? "" : "none";
+      $("voyageButton").onclick = () => api.campLand();
+    } else if (em) {
+      $("voyageText").textContent = `⛵ The ${em.name} lies in port (${em.cap} armies)`;
+      $("voyageButton").textContent = "Embark";
+      $("voyageButton").style.display = "";
+      $("voyageButton").onclick = () => api.campEmbark();
+    }
     // The city panel: what it trains, at what price.
     const panel = $("cityPanel");
     const c = campState.city;
     panel.classList.toggle("hidden", !c);
     if (c) {
-      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}`;
+      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}`;
       if (key !== campCityKey) {
         campCityKey = key;
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
@@ -574,10 +598,16 @@
           (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` +
           c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}"><span>${o.type} <small>(${o.strength})</small></span>` +
             `<span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
-          `<button data-i="-1"><span>Stop training</span></button><button data-close="1"><span>Close</span></button>`;
+          `<button data-i="-1"><span>Stop training</span></button>` +
+          (c.port ? `<div class="port">⚓ Port · ${c.boats ? `${c.boats} ${c.boats === 1 ? "boat" : "boats"} in harbour` : "no boats in harbour"}` +
+            (c.boatDays ? ` · a boat on the slips, ${c.boatDays} ${c.boatDays === 1 ? "day" : "days"} to go` : "") + `</div>` +
+            (c.boatDays ? "" : `<button data-boat="1" ${campState.gold < c.boatCost ? "disabled" : ""}><span>Build a boat ⛵ <small>(7 armies)</small></span>` +
+              `<span>${c.boatTime}d · ${c.boatCost}g · ${c.boatUpkeep}/day</span></button>`) : "") +
+          `<button data-close="1"><span>Close</span></button>`;
         panel.querySelectorAll("button").forEach((b) => {
           b.onclick = () => {
             if (b.dataset.close) api.campCloseCity();
+            else if (b.dataset.boat) api.campBuildBoat(c.index);
             else api.campProduce(c.index, +b.dataset.i);
             campCityKey = "";
           };
@@ -607,7 +637,9 @@
     $("battlePrompt").classList.toggle("hidden", !pr);
     if (pr) {
       $("promptTitle").textContent = `Battle at ${pr.where}`;
-      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).`;
+      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).` +
+        (pr.afloat ? " Fought from the boats (armies on a deck fight a point weaker): the dice decide." : "");
+      $("promptFight").style.display = pr.afloat ? "none" : "";
     }
     if (campState.winner) {
       $("overlay").classList.remove("hidden");
