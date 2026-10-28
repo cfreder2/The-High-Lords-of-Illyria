@@ -155,6 +155,7 @@ public:
     const FarGrid& nearGrid() const { return near_; }
     const sim::Region& region() const { return *region_; }
     const sim::Continent& continent() const { return *continent_; }
+    std::shared_ptr<const sim::Continent> continentShared() const { return continent_; }
     // Continent coordinates of this battlefield's (0, 0).
     V3 origin() const { return toV3(region_->origin()); }
     const std::vector<float>& heights() const { return heights_; }

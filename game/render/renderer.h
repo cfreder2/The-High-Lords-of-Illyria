@@ -37,8 +37,11 @@ public:
     // Forget uploaded remains and marks (call after the battle is replaced).
     void reset(Battle& battle);
     void draw(Battle& battle, const Camera& camera, double timeSeconds);
+    // The campaign map shows the land, not the battle's soldiers.
+    void setShowUnits(bool show) { showUnits_ = show; }
 
 private:
+    bool showUnits_ = true;
     struct Program {
         GLuint id = 0;
         GLint viewProj = -1, eye = -1, heights = -1, cells = -1, cellSize = -1;

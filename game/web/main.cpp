@@ -15,6 +15,7 @@
 #include "illyria/game/camera.h"
 #include "illyria/game/factions.h"
 #include "illyria/game/gestures.h"
+#include "illyria/sim/campaign.h"
 
 #ifndef ILLYRIA_VERSION
 #define ILLYRIA_VERSION "0.0.0-dev"
@@ -38,6 +39,17 @@ struct App {
     double maxPixelRatio = kMaxPixelRatio;  // lowered by the graphics settings
     double fps = 60;
     std::string hud, labels;
+    // The campaign, when playing it: the war on the continent map.
+    struct CampaignView {
+        std::unique_ptr<illyria::sim::Campaign> c;
+        std::shared_ptr<const illyria::sim::Continent> continent;  // outlives restarts of the battle
+        bool on = false, paused = false;
+        int speed = 1;
+        uint32_t selected = 0;
+        int city = -1;  // the city whose panel is open
+        double acc = 0;
+        std::string json;
+    } camp;
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
     V3 introFrom, introTo;
@@ -109,6 +121,97 @@ void resizeCanvas() {
     app->gestures->setPixelScale(app->pixelRatio);
 }
 
+// Where a campaign stack stands now, in battle-local metres: between the cell
+// it holds and the next on its road, by how far it has got.
+V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
+    using C = illyria::sim::Campaign;
+    const V3 o = app->battle->origin();
+    float x = static_cast<float>(C::centre(s.cx)), y = static_cast<float>(C::centre(s.cy));
+    if (!s.path.empty()) {
+        int32_t cost = 0;
+        for (const illyria::sim::Army& a : s.armies) cost = std::max(cost, C::moveCost(a.type, c.terrainAt(s.path.front().first, s.path.front().second)));
+        const float t = cost > 0 ? std::clamp(static_cast<float>(s.progress) / (cost * C::kTicksPerDay), 0.0f, 1.0f) : 0;
+        x += (C::centre(s.path.front().first) - x) * t;
+        y += (C::centre(s.path.front().second) - y) * t;
+    }
+    V3 p{x - o.x, y - o.y, 0};
+    p.z = app->battle->heightAt(p.x, p.y);
+    return p;
+}
+
+void campaignTap(float px, float py) {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    // A banner near the tap: select one of ours (or fall through to march on theirs).
+    const illyria::sim::Campaign::Stack* nearest = nullptr;
+    float best = 34.0f * app->pixelRatio;
+    for (const C::Stack& s : c.stacks()) {
+        if (s.armies.empty()) continue;
+        V3 p = stackPosition(c, s);
+        p.z += 30;
+        float sx, sy;
+        if (!app->camera.project(p, sx, sy)) continue;
+        const float d = std::hypot(sx - px, sy - py);
+        if (d < best) {
+            best = d;
+            nearest = &s;
+        }
+    }
+    if (nearest && nearest->owner == 0 && nearest->id != cv.selected) {
+        cv.selected = nearest->id;
+        cv.city = c.cityAt(nearest->cx, nearest->cy);
+        if (cv.city >= 0 && c.cities()[static_cast<size_t>(cv.city)].owner != 0) cv.city = -1;
+        return;
+    }
+    V3 hit;
+    if (!app->camera.pickGround(px, py, hit)) return;
+    const V3 o = app->battle->origin();
+    const int32_t cx = std::clamp(C::cellOf(static_cast<int32_t>(hit.x + o.x)), 0, c.width() - 1);
+    const int32_t cy = std::clamp(C::cellOf(static_cast<int32_t>(hit.y + o.y)), 0, c.height() - 1);
+    if (nearest && nearest->owner != 0) {
+        // On an enemy banner: attack it.
+        if (cv.selected) cv.c->move(cv.selected, nearest->cx, nearest->cy);
+        return;
+    }
+    const int32_t city = c.cityAt(cx, cy);
+    const C::Stack* sel = c.findStack(cv.selected);
+    if (sel && !(sel->cx == cx && sel->cy == cy)) {
+        cv.c->move(cv.selected, cx, cy);
+        return;
+    }
+    if (city >= 0 && c.cities()[static_cast<size_t>(city)].owner == 0) {
+        cv.city = city;
+        return;
+    }
+    cv.selected = 0;
+    cv.city = -1;
+}
+
+void startCampaign() {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    cv.continent = app->battle->continentShared();
+    cv.c = std::make_unique<C>(*cv.continent, kBattleSeed);
+    cv.c->setHuman(0, true);
+    cv.on = true;
+    cv.paused = false;
+    cv.speed = 1;
+    cv.selected = 0;
+    cv.city = -1;
+    app->renderer.setShowUnits(false);
+    // Over your capital, high enough to see the neighbouring towns.
+    for (const C::Stack& s : cv.c->stacks()) {
+        if (s.owner != 0) continue;
+        cv.selected = s.id;
+        const V3 p = stackPosition(*cv.c, s);
+        app->introStartMs = -1;
+        app->camera.lookAt(p.x, p.y - 400, 2600);
+        app->camera.rotate(kNorthUp - app->camera.yaw());
+        break;
+    }
+}
+
 void frame() {
     const double now = emscripten_get_now();
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
@@ -116,7 +219,17 @@ void frame() {
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
     resizeCanvas();
     stepIntro(now);
-    app->battle->advance(dtMs / 1000.0);
+    if (app->camp.on) {
+        // Ten campaign ticks a second, times the speed.
+        App::CampaignView& cv = app->camp;
+        if (!cv.paused && cv.c->winner() == 0) {
+            cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
+            for (int k = 0; k < 40 && cv.acc >= 1; ++k, cv.acc -= 1) cv.c->step();
+            cv.acc = std::min(cv.acc, 1.0);
+        }
+    } else {
+        app->battle->advance(dtMs / 1000.0);
+    }
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
 }
 
@@ -238,12 +351,15 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
                       static_cast<int>(colour.y * 255), static_cast<int>(colour.z * 255), px, py, name.c_str());
         out += buf;
     };
-    for (const auto& city : c.cities()) {
+    for (size_t ci = 0; ci < c.cities().size(); ++ci) {
+        const auto& city = c.cities()[ci];
+        // In the campaign, cities fly the colours of whoever holds them now.
+        const uint8_t owner = app->camp.on ? app->camp.c->cities()[ci].owner : city.owner;
         if (!city.capital && d > 9000) {
-            add(0, factionColor(city.owner), city.pos, "");  // a marker only
+            add(0, factionColor(owner), city.pos, "");  // a marker only
             continue;
         }
-        add(city.capital ? 1 : 0, factionColor(city.owner), city.pos, city.name);
+        add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name);
     }
     if (d < 9000) {
         for (const auto& site : c.sites()) add(2 + static_cast<int>(site.kind), {1, 1, 1}, site.pos, site.name);
@@ -253,6 +369,117 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         else if (l.kind != 0 && l.kind != 4 && d > 2000 && d < 12000) add(6, {1, 1, 1}, l.pos, l.name);
     }
     return out.c_str();
+}
+
+// The campaign: start it, give orders, and read its state.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_start() {
+    if (app) startCampaign();
+}
+// Test hook: run the campaign forward a number of days at once.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_fast_forward(int days) {
+    if (!app || !app->camp.on) return;
+    for (int t = 0; t < days * illyria::sim::Campaign::kTicksPerDay; ++t) app->camp.c->step();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
+    if (!app) return;
+    app->camp.on = false;
+    app->renderer.setShowUnits(true);
+    frameCamera();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
+    if (app && app->camp.on) app->camp.c->produce(city, option);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
+    if (app) app->camp.city = -1;
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_pause() {
+    if (app) app->camp.paused = !app->camp.paused;
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_speed() {
+    if (app) app->camp.speed = app->camp.speed >= 8 ? 1 : app->camp.speed * 2;
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_select(unsigned id) {
+    if (!app || !app->camp.on) return;
+    app->camp.selected = id;
+    if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(id)) {
+        const V3 p = stackPosition(*app->camp.c, *s);
+        app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), 2600.0f));
+    }
+}
+// Everything the campaign HUD shows, as JSON: the day and the treasury, every
+// banner on screen, the selected stack's armies and the open city's panel.
+EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return "{}";
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    std::string& s = cv.json;
+    char buf[512];
+    const C::Stack* sel = c.findStack(cv.selected);
+    if (!sel) cv.selected = 0;
+    std::snprintf(buf, sizeof buf, "{\"day\":%u,\"gold\":%d,\"cities\":%d,\"speed\":%d,\"paused\":%s,\"winner\":%d,\"selected\":%u,\"stacks\":[",
+                  c.day() + 1, c.sides()[0].gold, c.citiesOwned(0), cv.speed, cv.paused ? "true" : "false", c.winner(), cv.selected);
+    s = buf;
+    bool first = true;
+    for (const C::Stack& st : c.stacks()) {
+        if (st.armies.empty()) continue;
+        V3 p = stackPosition(c, st);
+        p.z += 30;
+        float px, py;
+        if (!app->camera.project(p, px, py)) continue;
+        px /= app->pixelRatio;
+        py /= app->pixelRatio;
+        if (px < -40 || py < -40 || px > app->camera.width() / app->pixelRatio + 40 || py > app->camera.height() / app->pixelRatio + 40) continue;
+        int32_t strongest = 0;
+        bool hero = false;
+        for (const illyria::sim::Army& a : st.armies) {
+            strongest = std::max(strongest, C::strength(a));
+            hero = hero || a.hero();
+        }
+        const V3 col = factionColor(st.owner);
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"moving\":%s,\"color\":\"#%02x%02x%02x\"}",
+                      first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false",
+                      st.path.empty() ? "false" : "true", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
+        s += buf;
+        first = false;
+    }
+    s += "],\"armies\":[";
+    if (sel) {
+        for (size_t k = 0; k < sel->armies.size(); ++k) {
+            const illyria::sim::Army& a = sel->armies[k];
+            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d}",
+                          k ? "," : "", a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
+                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills);
+            s += buf;
+        }
+    }
+    s += "]";
+    if (cv.city >= 0) {
+        const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
+        std::snprintf(buf, sizeof buf, ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,\"options\":[",
+                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress);
+        s += buf;
+        for (size_t k = 0; k < cs.options.size(); ++k) {
+            const C::Option& op = cs.options[k];
+            std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"days\":%d,\"cost\":%d,\"upkeep\":%d,\"strength\":%d}", k ? "," : "",
+                          illyria::sim::unitTypeName(op.type), op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type));
+            s += buf;
+        }
+        s += "]}";
+    }
+    // The latest fights, newest first.
+    s += ",\"news\":[";
+    for (size_t k = 0, n = c.fights().size(); k < std::min<size_t>(n, 4); ++k) {
+        const C::Fight& f = c.fights()[n - 1 - k];
+        const std::string where = f.city >= 0 ? c.continent().cities()[static_cast<size_t>(f.city)].name : std::string("the field");
+        const auto sideName = [&](uint8_t side) { return side == C::kNeutral ? std::string("the garrison") : c.sides()[side].name; };
+        if (f.captured) std::snprintf(buf, sizeof buf, "%s\"Day %u: %s took %s\"", k ? "," : "", f.day + 1, sideName(f.attacker).c_str(), where.c_str());
+        else if (f.attackerWon) std::snprintf(buf, sizeof buf, "%s\"Day %u: %s beat %s at %s\"", k ? "," : "", f.day + 1, sideName(f.attacker).c_str(), sideName(f.defender).c_str(), where.c_str());
+        else std::snprintf(buf, sizeof buf, "%s\"Day %u: %s were thrown back at %s\"", k ? "," : "", f.day + 1, sideName(f.attacker).c_str(), where.c_str());
+        s += buf;
+    }
+    s += "]}";
+    return s.c_str();
 }
 
 // HUD state as JSON, polled by the page a few times a second.
@@ -302,7 +529,8 @@ int main() {
 
     app = new App();
     app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
-        app->battle->tap(app->camera, x, y, app->pixelRatio);
+        if (app->camp.on) campaignTap(x, y);
+        else app->battle->tap(app->camera, x, y, app->pixelRatio);
     });
     newBattle();
     resizeCanvas();

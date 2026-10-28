@@ -11,6 +11,7 @@ add_library(illyria_sim
     src/region.cpp
     src/nav.cpp
     src/continent.cpp
+    src/campaign.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/relief_data.cpp
 )
 

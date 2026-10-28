@@ -1,0 +1,100 @@
+// The campaign, after Warlords: a capital and a hero to start, neutral towns
+// with small garrisons, gold from cities, armies that cost upkeep.
+#include <cstdio>
+
+#include "illyria/sim/campaign.h"
+#include "test.h"
+
+using namespace illyria::sim;
+
+namespace {
+const Continent& continent() {
+    static const Continent c(20261027);
+    return c;
+}
+}  // namespace
+
+TEST(each_side_starts_with_a_capital_a_hero_and_gold) {
+    const Campaign c(continent(), 1);
+    for (size_t s = 0; s < c.sides().size(); ++s) {
+        CHECK(c.citiesOwned(static_cast<uint8_t>(s)) == 1);
+        CHECK(c.sides()[s].gold > 0);
+        int heroes = 0;
+        for (const Campaign::Stack& st : c.stacks())
+            if (st.owner == s)
+                for (const Army& a : st.armies) heroes += a.hero();
+        CHECK(heroes == 1);
+    }
+    // The other 72 are neutral, each with a garrison.
+    int neutral = 0, garrisons = 0;
+    for (const Campaign::CityState& city : c.cities()) neutral += city.owner == Campaign::kNeutral;
+    for (const Campaign::Stack& st : c.stacks()) garrisons += st.garrison && !st.armies.empty();
+    CHECK(neutral == 72);
+    CHECK(garrisons == 72);
+}
+
+TEST(cities_pay_gold_and_train_armies_that_cost_upkeep) {
+    Campaign c(continent(), 1);
+    const int32_t capital = [&] {
+        for (size_t i = 0; i < c.cities().size(); ++i)
+            if (c.cities()[i].owner == 0) return static_cast<int32_t>(i);
+        return -1;
+    }();
+    const int32_t before = c.sides()[0].gold;
+    CHECK(c.produce(capital, 0));  // light infantry: a day, 4 gold
+    for (int t = 0; t < Campaign::kTicksPerDay * 3; ++t) c.step();
+    int armies = 0;
+    for (const Campaign::Stack& st : c.stacks())
+        if (st.owner == 0) armies += static_cast<int>(st.armies.size());
+    CHECK(armies >= 4);  // hero, escort and new recruits
+    CHECK(c.sides()[0].gold > before);  // the capital's 30 a day outpaces a few recruits
+}
+
+TEST(a_heros_stack_marches_and_takes_a_neutral_town) {
+    Campaign c(continent(), 3);
+    // The player's stack (side 0) and the nearest neutral town to its capital.
+    const Campaign::Stack* home = nullptr;
+    for (const Campaign::Stack& st : c.stacks())
+        if (st.owner == 0) home = &st;
+    CHECK(home != nullptr);
+    if (!home) return;
+    const uint32_t id = home->id;
+    int32_t target = -1, best = 1 << 30;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const Campaign::CityState& city = c.cities()[i];
+        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+        const int32_t d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
+        if (d < best) {
+            best = d;
+            target = static_cast<int32_t>(i);
+        }
+    }
+    CHECK(target >= 0);
+    // Reinforce the stack so the attack is fair, then march.
+    for (int k = 0; k < 4; ++k) c.produce(static_cast<int32_t>(0), 0);
+    CHECK(c.move(id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy));
+    for (int t = 0; t < Campaign::kTicksPerDay * 20 && c.fights().empty(); ++t) c.step();
+    CHECK(!c.fights().empty());
+    if (c.fights().empty()) return;
+    const Campaign::Fight& f = c.fights().front();
+    std::printf("  day %u: attacked %s, %s (lost %d armies, killed %d)\n", f.day, continent().cities()[static_cast<size_t>(f.city)].name.c_str(),
+                f.captured ? "captured" : "repulsed", f.attackerLost, f.defenderLost);
+    CHECK(f.city == target);
+}
+
+TEST(campaign_is_deterministic) {
+    const auto run = [](uint64_t seed) {
+        Campaign c(continent(), seed);
+        for (size_t i = 0; i < c.cities().size(); ++i)
+            if (c.cities()[i].owner != Campaign::kNeutral) c.produce(static_cast<int32_t>(i), 0);
+        for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+            if (!st.garrison) c.move(st.id, std::min(c.width() - 1, st.cx + 10), st.cy);
+        for (int t = 0; t < Campaign::kTicksPerDay * 10; ++t) c.step();
+        return c.checksum();
+    };
+    const uint64_t a = run(5);
+    CHECK(a == run(5));
+    constexpr uint64_t kGolden = 0x7f2114dadd818c59;
+    if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
+    CHECK(a == kGolden);
+}

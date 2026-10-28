@@ -170,6 +170,19 @@ Money is gold only, as in Warlords:
 - **Upkeep:** every unit costs gold each day. A side that cannot pay sees units desert, so a large army needs a large realm behind it.
 - **Other gold:** heroes find it in ruins; heroes for hire cost it (§4.4).
 
+### 4.2.4 The Campaign (built)
+
+*Built so far* (`engine/sim/src/campaign.cpp`, the **Campaign** button or `?campaign`):
+- **The start:** each of the eight sides holds its capital, one hero (with an escort of light infantry) and a war chest (the Dwarves richest, the Giants poorest, after Warlords). The other 72 cities are neutral, each with a garrison of one to four armies, more where the walls are stronger.
+- **The map:** a 200 m grid over the continent, each cell road, bridge, water, forest, hill, mountain, plain, marsh or city. Movement costs and movement points per day come from the Warlords tables; mountains and water are closed to all but fliers, rivers are crossed only at fords and bridges, roads are cheapest. A hero goes where the stack goes (on a griffin, over the peaks).
+- **Time:** real time with pause; a campaign day is 30 seconds at normal speed (2×, 4×, 8× faster).
+- **Gold:** each city pays every day (capitals 30, towns 21 to 33 by their walls); each army costs half its training price a day in upkeep; a side that cannot pay loses its newest armies. Taking a city takes the loser's share of the treasury in proportion to its cities, half of it to the victor.
+- **Training:** a city trains one army at a time from up to four types (light infantry everywhere; capitals their side's specialties; towns what the land around them raises: dwarves and giants in the hills, archers and wolf riders in the woods, horse on the plains). It is paid for when training starts; open a city's panel by tapping it.
+- **Fighting:** stacks of up to eight armies fight Warlords' dice battles where they meet: weakest first, one on one, ten-sided dice against the opponent's strength, two hits destroy an army. Heroes, fliers and special armies add Warlords' modifiers; city walls help defenders. Kills raise ranks and hero levels exactly as in the 3D battle.
+- **The computer lords** keep every city training its quickest troops and send their stacks at the nearest city they can take, neutral towns first, leaving a guard behind.
+- **Victory:** two thirds of the cities.
+- **Next:** fighting the full 3D battle where the player's stack meets the enemy (survivors and their ranks carried back), ruins and temples for heroes, ports and boats.
+
 ### 4.4 Heroes, Ruins, Temples & Sages
 
 Heroes are what make the campaign more than a war of production. A hero is a single named champion who leads a stack (adding to every squad's strength, as in Warlords). Above all, a hero **explores**.

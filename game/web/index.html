@@ -102,6 +102,31 @@
   #labels .k2, #labels .k3, #labels .k4 { font-size: 11px; font-style: italic; color: #e2d8c4; }
   #labels .k5 { font-size: 22px; letter-spacing: 0.12em; color: rgba(255, 236, 200, 0.85); font-weight: 600; }
   #labels .k6 { font-size: 12px; font-style: italic; color: rgba(230, 240, 255, 0.8); }
+  /* The campaign: banners on the map, the treasury, the stack and city panels. */
+  #banners { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  #banners .flag {
+    position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;
+  }
+  #banners .flag span {
+    display: flex; align-items: center; gap: 3px; padding: 2px 6px 3px; border-radius: 3px 3px 9px 9px; font-weight: 700; font-size: 13px;
+    background: var(--c); color: #111; border: 1px solid rgba(0, 0, 0, 0.6); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  }
+  #banners .flag span i { font-style: normal; font-size: 10px; font-weight: 600; opacity: 0.75; }
+  #banners .flag::after { content: ""; width: 2px; height: 14px; background: #2a2017; }
+  #banners .flag.sel span { outline: 2px solid #8fd0ff; outline-offset: 1px; }
+  #banners .flag.moving span { opacity: 0.88; }
+  #campBar { padding: 6px 12px; font-size: 13px; }
+  #campBar b { color: var(--gold); }
+  #cityPanel { position: fixed; right: calc(8px + var(--safe-r)); bottom: calc(80px + var(--safe-b)); width: 250px; padding: 10px 12px; z-index: 4; }
+  #cityPanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
+  #cityPanel .meta { font-size: 12px; opacity: 0.85; margin-bottom: 8px; }
+  #cityPanel button { display: flex; justify-content: space-between; width: 100%; margin: 4px 0; padding: 6px 8px; font-size: 13px; }
+  #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
+  #news { position: fixed; left: calc(8px + var(--safe-l)); top: calc(64px + var(--safe-t)); max-width: 320px; font-size: 12px; padding: 6px 10px; }
+  #news div { margin: 2px 0; }
+  .camp-only { display: none; }
+  body.campaign .camp-only { display: block; }
+  body.campaign .battle-only { display: none !important; }
   #gfx { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); padding: 10px 12px; width: 250px; z-index: 5;
          max-height: calc(100% - 70px - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
   #gfx h3 { margin: 0 0 6px; font-size: 14px; color: var(--gold); font-weight: 600; }
@@ -146,13 +171,15 @@
     <h1>The High Lords of Illyria</h1>
     <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
   </div>
-  <div id="enemy" class="panel"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
+  <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
+  <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities</div>
   <div id="controls">
-    <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
+    <button id="hot" class="battle-only" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
     <button id="restart" aria-label="Restart battle">Restart</button>
-    <button id="scenario" aria-label="Switch battle">Siege</button>
+    <button id="scenario" class="battle-only" aria-label="Switch battle">Siege</button>
+    <button id="campaign" aria-label="Play the campaign">Campaign</button>
     <button id="gfxButton" aria-label="Graphics settings">⚙</button>
   </div>
 </div>
@@ -178,8 +205,12 @@
   <b>Tap</b> a blue squad, then tap ground to march or an enemy to attack (archers, dwarves and wizards fire on it)
 </div>
 
+<div id="banners"></div>
+<div id="news" class="panel camp-only hidden"></div>
+<div id="cityPanel" class="panel hidden"></div>
+
 <div id="bottom">
-  <div id="actions" class="hidden">
+  <div id="actions" class="hidden battle-only">
     <button id="hold">Hold</button>
     <button id="formation" aria-label="Change formation">Box</button>
     <button id="focus">Find</button>
@@ -237,6 +268,14 @@
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
       setScenario: Module.cwrap("illyria_set_scenario", null, ["number"]),
+      campStart: Module.cwrap("illyria_campaign_start", null, []),
+      campLeave: Module.cwrap("illyria_campaign_leave", null, []),
+      campState: Module.cwrap("illyria_campaign_state", "string", []),
+      campProduce: Module.cwrap("illyria_campaign_produce", null, ["number", "number"]),
+      campCloseCity: Module.cwrap("illyria_campaign_close_city", null, []),
+      campPause: Module.cwrap("illyria_campaign_pause", null, []),
+      campSpeed: Module.cwrap("illyria_campaign_speed", null, []),
+      campSelect: Module.cwrap("illyria_campaign_select", null, ["number"]),
       hotSpot: Module.cwrap("illyria_hot_spot", null, []),
       hud: Module.cwrap("illyria_hud", "string", []),
       labels: Module.cwrap("illyria_labels", "string", []),
@@ -245,8 +284,10 @@
     };
     initGraphics();
     window.illyria = api;
-    // ?siege opens on the siege of the neutral town.
+    // ?siege opens on the siege of the neutral town; ?campaign on the campaign.
     if (/[?&]siege\b/.test(location.search)) api.setScenario(1);
+    if (/[?&]campaign\b/.test(location.search)) setCampaign(true);
+    requestAnimationFrame(updateCampaign);
     $("overlay").classList.add("hidden");
     setTimeout(hideHint, 9000);
     updateHud();
@@ -337,11 +378,22 @@
   // iOS Safari pinch-zooms the page itself unless told not to.
   document.addEventListener("gesturestart", (e) => e.preventDefault());
 
-  $("pause").onclick = () => api && api.pause();
+  $("pause").onclick = () => api && (campaign ? api.campPause() : api.pause());
   $("hot").onclick = () => api && api.hotSpot();
   for (const b of document.querySelectorAll("#controls button, #actions button")) b.addEventListener("click", hideHint);
-  $("speed").onclick = () => api && api.speed();
-  $("restart").onclick = () => api && api.restart();
+  $("speed").onclick = () => api && (campaign ? api.campSpeed() : api.speed());
+  $("restart").onclick = () => { if (!api) return; if (campaign) api.campStart(); else api.restart(); };
+  let campaign = false;
+  function setCampaign(on) {
+    campaign = on;
+    document.body.classList.toggle("campaign", on);
+    $("campaign").textContent = on ? "Battle" : "Campaign";
+    $("cards").innerHTML = "";
+    lastSquadsKey = "";
+    if (on) api.campStart(); else api.campLeave();
+    if (!on) { $("banners").innerHTML = ""; $("cityPanel").classList.add("hidden"); }
+  }
+  $("campaign").onclick = () => api && setCampaign(!campaign);
   let scenario = 0;
   $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
   $("overlayButton").onclick = () => { api && api.restart(); };
@@ -357,8 +409,101 @@
     for (let i = 0; i < n; ++i) paths += `<path d="M2 ${4 + i * 4} L8 ${1 + i * 4} L14 ${4 + i * 4}" />`;
     return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   }
+  // The campaign HUD: banners follow the map every frame; panels a few times a second.
+  let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "";
+  function updateCampaign(t) {
+    requestAnimationFrame(updateCampaign);
+    if (!api || !campaign) return;
+    campState = JSON.parse(api.campState());
+    if (!campState.stacks) return;
+    const root = $("banners");
+    while (root.children.length < campState.stacks.length) {
+      const d = document.createElement("div");
+      d.className = "flag";
+      d.innerHTML = "<span><b></b><i></i></span>";
+      root.appendChild(d);
+    }
+    campState.stacks.forEach((s, k) => {
+      const d = root.children[k];
+      d.style.display = "";
+      d.style.left = `${s.x}px`;
+      d.style.top = `${s.y}px`;
+      d.style.setProperty("--c", s.color);
+      // Light text on dark banners.
+      const lum = parseInt(s.color.slice(1, 3), 16) * 0.3 + parseInt(s.color.slice(3, 5), 16) * 0.59 + parseInt(s.color.slice(5, 7), 16) * 0.11;
+      d.firstChild.style.color = lum < 90 ? "#f2e6cc" : "#111";
+      d.classList.toggle("sel", s.id === campState.selected);
+      d.classList.toggle("moving", s.moving);
+      d.querySelector("b").textContent = s.strength;
+      d.querySelector("i").textContent = (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
+    });
+    for (let k = campState.stacks.length; k < root.children.length; ++k) root.children[k].style.display = "none";
+    if (t - campTick < 250) return;
+    campTick = t;
+    $("campDay").textContent = campState.day;
+    $("campGold").textContent = campState.gold;
+    $("campCities").textContent = campState.cities;
+    $("pause").textContent = campState.paused ? "Resume" : "Pause";
+    $("speed").textContent = `${campState.speed}×`;
+    const news = $("news");
+    news.classList.toggle("hidden", campState.news.length === 0);
+    news.innerHTML = campState.news.map((n) => `<div>${n}</div>`).join("");
+    // The selected stack's armies, as cards.
+    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}`).join("|");
+    if (armiesKey !== campArmiesKey) {
+      campArmiesKey = armiesKey;
+      $("cards").innerHTML = "";
+      for (const a of campState.armies) {
+        const b = document.createElement("button");
+        b.className = "card panel";
+        b.innerHTML = `${a.level ? icons.melee : icons[roleOfType(a.type)] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
+        b.querySelector(".name").textContent = `${a.name || a.type} · ${a.soldiers}`;
+        b.querySelector("i").style.width = `${(100 * a.soldiers) / a.full}%`;
+        b.querySelector(".badge").innerHTML = `<b>${a.strength}</b>` + (a.level ? `<small>Lv ${a.level}</small>` : chevrons(a.rank)) +
+          (a.blessings ? `<span class="bless">${"✦".repeat(a.blessings)}</span>` : "");
+        b.title = `${a.name || a.type}: ${a.type}, strength ${a.strength}, ${a.kills} slain`;
+        $("cards").appendChild(b);
+      }
+    }
+    // The city panel: what it trains, at what price.
+    const panel = $("cityPanel");
+    const c = campState.city;
+    panel.classList.toggle("hidden", !c);
+    if (c) {
+      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}`;
+      if (key !== campCityKey) {
+        campCityKey = key;
+        const prod = c.producing >= 0 ? c.options[c.producing] : null;
+        panel.innerHTML = `<h3>${c.name}</h3><div class="meta">Walls ${c.defense} · ${c.income} gold a day` +
+          (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` +
+          c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}"><span>${o.type} <small>(${o.strength})</small></span>` +
+            `<span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
+          `<button data-i="-1"><span>Stop training</span></button><button data-close="1"><span>Close</span></button>`;
+        panel.querySelectorAll("button").forEach((b) => {
+          b.onclick = () => {
+            if (b.dataset.close) api.campCloseCity();
+            else api.campProduce(c.index, +b.dataset.i);
+            campCityKey = "";
+          };
+        });
+      }
+    }
+    if (campState.winner) {
+      $("overlay").classList.remove("hidden");
+      $("overlayTitle").textContent = campState.winner === 1 ? "High Lord of Illyria" : "Illyria is lost";
+      $("overlayText").textContent = campState.winner === 1 ? "Two thirds of the cities fly your banner." : "Another lord holds two thirds of Illyria.";
+    }
+  }
+  function roleOfType(type) {
+    if (/Archer/.test(type)) return "ranged";
+    if (/Griffin|Pegas|Dragon|Archon/.test(type)) return "flier";
+    if (/Journeyman/.test(type)) return "healer";
+    if (/Grenadier/.test(type)) return "bomber";
+    if (/Wizard/.test(type)) return "caster";
+    return "melee";
+  }
   function updateHud() {
-    if (!api) return;
+    if (!api || campaign) return;
     const s = JSON.parse(api.hud());
     selected = s.selected;
     $("perf").textContent = `${s.fps} fps · sim ${s.stepMs.toFixed(2)} ms`;

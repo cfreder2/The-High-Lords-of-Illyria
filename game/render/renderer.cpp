@@ -1419,7 +1419,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const int selected = battle.selectedSquad();
     const float week = 86400.0f * 7.0f;
 
-    for (size_t i = 0; i < units.size(); ++i) {
+    for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         const V3 pos = battle.unitPosition(i);
         const float* team = u.owner == Battle::kPlayer ? kPlayerColor : kEnemyColor;

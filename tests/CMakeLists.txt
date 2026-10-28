@@ -11,6 +11,7 @@ add_executable(illyria_tests
     test_continent.cpp
     test_ground.cpp
     test_castle.cpp
+    test_campaign.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game)
 
