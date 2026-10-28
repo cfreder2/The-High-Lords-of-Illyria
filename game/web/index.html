@@ -216,9 +216,10 @@
     #menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; flex-direction: column; gap: 6px; z-index: 6; }
     body.menu-open #menu { display: flex; }
     #menu button { min-width: 120px; }
-    #title { padding: 4px 8px; max-width: 34vw; }
-    #title h1 { font-size: 12px; line-height: 1.15; }
-    #title .meta { font-size: 9px; }
+    #title { padding: 4px 8px; max-width: 24vw; min-width: 0; overflow: hidden; }
+    #title h1 { font-size: 13px; line-height: 1.15; white-space: nowrap; }
+    #title h1 .long { display: none; }  /* "Illyria" alone: room for the buttons */
+    #title .meta { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #controls button { padding: 0 10px; }
     .card { width: 146px; }
     #enemy { display: none; }
@@ -232,7 +233,7 @@
 <div id="labels"></div>
 <div id="top">
   <div id="title" class="panel">
-    <h1>The High Lords of Illyria</h1>
+    <h1><span class="long">The High Lords of </span>Illyria</h1>
     <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
   </div>
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
