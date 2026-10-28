@@ -16,8 +16,6 @@ namespace {
 constexpr double kTickSeconds = 1.0 / sim::kTicksPerSecond;
 constexpr int kMaxTicksPerFrame = 8;
 constexpr int kAiIntervalTicks = sim::kTicksPerSecond * 2;
-constexpr float kFormationSpacing = 1.8f;
-constexpr float kTapRadiusPx = 30.0f;
 constexpr float kChargeBowshot = 60.0f;  // where missile troops halt when the line charges
 constexpr float kSquadTapRadiusPx = 48.0f;
 constexpr float kGravity = 9.81f;
@@ -99,6 +97,7 @@ void Battle::finish() {
     deathTick_.assign(n, UINT32_MAX);
     attackTick_.assign(n, UINT32_MAX);
     hitTick_.assign(n, UINT32_MAX);
+    selectedFlag_.assign(n, 0);
     prevUnitPos_.resize(n);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
 }
@@ -374,30 +373,6 @@ int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) con
     return best;
 }
 
-void Battle::attackGate(const Squad& squad, int gate) {
-    const sim::Gate& g = region_->gates()[static_cast<size_t>(gate)];
-    const V3 centre = toV3(g.a + g.b) * 0.5f;
-    const Role role = roleOf(squad.type);
-    if (role == Role::Siege || role == Role::Bomber) {
-        for (sim::EntityId id : squad.members) issue(squad.owner, id, sim::Command::Type::AttackGate, centre);
-        return;
-    }
-    // Through it, to the far side: they hack at it until it gives.
-    const V3 out = toV3(g.out);
-    const V3 from = squadCentre(squad, false);
-    const float side = (from - centre).dot(out) >= 0 ? -1.0f : 1.0f;
-    moveSquad(squad, centre + out * (10.0f * side));
-}
-
-void Battle::orderMove(const V3& to) {
-    if (selected_ >= 0) moveSquad(squads_[static_cast<size_t>(selected_)], to);
-}
-
-void Battle::orderAtGate(int gate) {
-    if (selected_ < 0 || gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
-    attackGate(squads_[static_cast<size_t>(selected_)], gate);
-}
-
 void Battle::aimEngines(const Squad& s) {
     // A town the enemy besieges: batter its gate. Otherwise they throw at
     // whoever comes within reach on their own (the wall-walks included).
@@ -428,14 +403,10 @@ void Battle::aimEngines(const Squad& s) {
 void Battle::spawnSquad(const std::string& name, sim::PlayerId owner, UnitType type, int count, V3 centre,
                         V3 facing) {
     Squad s{name, owner, type, {}};
-    // Shield walls and missile troops stand in line; the rest in a box.
-    const Role role = roleOf(type);
-    s.formation = type == UnitType::Warrior || type == UnitType::HeavyInfantry || type == UnitType::Pikemen || role == Role::Ranged
-                      ? Formation::Line
-                      : Formation::Box;
+    s.formation = defaultFormation(type);
     s.facing = facing;
     const sim::UnitStats stats = sim::unitStats(type);
-    const float spacing = std::max(kFormationSpacing, static_cast<float>(stats.radius.toDouble()) * 2.6f);
+    const float spacing = formationSpacing(type);
     const std::vector<V3> slots = formationSlots(s.formation, count, spacing);
     const V3 right{facing.y, -facing.x, 0};
     for (int i = 0; i < count; ++i) {
@@ -751,55 +722,6 @@ V3 Battle::squadCentre(const Squad& s, bool interpolated) const {
     return sum * (1.0f / static_cast<float>(n));
 }
 
-const char* formationName(Formation f) {
-    switch (f) {
-        case Formation::Line: return "Line";
-        case Formation::Box: return "Box";
-        case Formation::Wedge: return "Wedge";
-        case Formation::Loose: return "Loose";
-        case Formation::Column: return "Column";
-    }
-    return "?";
-}
-
-std::vector<V3> formationSlots(Formation f, int count, float spacing) {
-    std::vector<V3> slots;
-    const auto rows = [&](int perRow, float gap) {
-        for (int i = 0; i < count; ++i) {
-            const int row = i / perRow, inRow = std::min(perRow, count - row * perRow);
-            const float col = static_cast<float>(i % perRow) - (inRow - 1) / 2.0f;
-            slots.push_back({col * gap, -row * gap, 0});
-        }
-    };
-    switch (f) {
-        case Formation::Line: rows(std::max(1, (count + 1) / 2), spacing); break;  // two ranks
-        case Formation::Box: rows(std::max(1, static_cast<int>(std::ceil(std::sqrt(count * 1.4f)))), spacing); break;
-        case Formation::Column: rows(2, spacing); break;
-        case Formation::Loose:
-            // A wide skirmish line, each man a little out of true.
-            rows(std::max(1, (count + 1) / 2), spacing * 2.2f);
-            for (size_t i = 0; i < slots.size(); ++i) {
-                const float h = static_cast<float>((i * 2654435761u) % 1000) / 1000.0f;
-                slots[i] = slots[i] + V3{(h - 0.5f) * spacing * 0.6f, (std::fmod(h * 7.0f, 1.0f) - 0.5f) * spacing * 0.8f, 0};
-            }
-            break;
-        case Formation::Wedge:
-            // One at the point, two behind, three behind them...
-            for (int row = 0, placed = 0; placed < count; ++row) {
-                const int inRow = std::min(row + 1, count - placed);
-                for (int k = 0; k < inRow; ++k, ++placed)
-                    slots.push_back({(static_cast<float>(k) - (inRow - 1) / 2.0f) * spacing, -row * spacing * 0.9f, 0});
-            }
-            break;
-    }
-    // Centre the formation on its own centroid.
-    V3 mean;
-    for (const V3& p : slots) mean = mean + p;
-    if (!slots.empty()) mean = mean * (1.0f / static_cast<float>(slots.size()));
-    for (V3& p : slots) p = p - mean;
-    return slots;
-}
-
 void Battle::steerSquad(const Squad& squad, const V3& to) {
     if (squad.hasGoal) {
         const V3 c = squadCentre(squad, false);
@@ -808,72 +730,6 @@ void Battle::steerSquad(const Squad& squad, const V3& to) {
         if (moving && (to - squad.goal).length() < std::max(6.0f, (to - c).length() * 0.15f)) return;
     }
     moveSquad(squad, to);
-}
-
-void Battle::moveSquad(const Squad& squad, const V3& to) {
-    squad.goal = to;
-    squad.hasGoal = true;
-    const V3 from = squadCentre(squad, false);
-    V3 facing = V3{to.x - from.x, to.y - from.y, 0}.normalized();
-    if (facing.length() == 0) facing = squad.facing;
-    squad.facing = facing;
-    const V3 right{facing.y, -facing.x, 0};
-    std::vector<sim::EntityId> alive;
-    for (sim::EntityId id : squad.members)
-        if (world_->units()[id - 1].alive()) alive.push_back(id);
-    if (alive.empty()) return;
-    const float spacing =
-        std::max(kFormationSpacing, static_cast<float>(sim::unitStats(squad.type).radius.toDouble()) * 2.6f);
-    std::vector<V3> slots = formationSlots(squad.formation, static_cast<int>(alive.size()), spacing);
-    // Who goes where: the soldiers nearest the front take the front ranks, and
-    // within a rank keep their left-to-right order, so nobody crosses another.
-    const auto pos = [&](sim::EntityId id) { return toV3(world_->units()[id - 1].pos); };
-    std::vector<size_t> order(slots.size());
-    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
-    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-        return slots[a].y != slots[b].y ? slots[a].y > slots[b].y : slots[a].x < slots[b].x;
-    });
-    std::stable_sort(alive.begin(), alive.end(), [&](sim::EntityId a, sim::EntityId b) {
-        return (pos(a) - from).dot(facing) > (pos(b) - from).dot(facing);
-    });
-    std::vector<std::pair<sim::EntityId, V3>> plan;
-    for (size_t start = 0; start < order.size();) {
-        size_t end = start;
-        while (end < order.size() && slots[order[end]].y == slots[order[start]].y) ++end;
-        std::vector<sim::EntityId> rank(alive.begin() + static_cast<long>(start), alive.begin() + static_cast<long>(end));
-        std::stable_sort(rank.begin(), rank.end(), [&](sim::EntityId a, sim::EntityId b) {
-            return (pos(a) - from).dot(right) < (pos(b) - from).dot(right);
-        });
-        for (size_t k = start; k < end; ++k) {
-            const V3 slot = slots[order[k]];
-            plan.push_back({rank[k - start], to + right * slot.x + facing * slot.y});
-        }
-        start = end;
-    }
-    // Everyone arrives together at the slowest member's pace: the farthest
-    // walks at that pace, the others slower in proportion.
-    float slowest = 1e9f, farthest = 0;
-    for (const auto& [id, target] : plan) {
-        slowest = std::min(slowest, static_cast<float>(world_->units()[id - 1].stats.moveSpeed.toDouble()));
-        farthest = std::max(farthest, (target - pos(id)).length());
-    }
-    for (const auto& [id, target] : plan) {
-        const float share = farthest > 0 ? std::clamp((target - pos(id)).length() / farthest, 0.35f, 1.0f) : 1.0f;
-        sim::Command c{squad.owner, id, sim::Command::Type::Move, toSim(target)};
-        // All take the squad's one route (a column on the road), each keeping his file.
-        c.march = true;
-        c.marchFrom = toSim(from);
-        c.marchTo = toSim(to);
-        c.speed = sim::Fixed::fromRatio(static_cast<int64_t>(slowest * share * 0.95f * 1000.0f), 1000);
-        pending_.push_back(c);
-    }
-}
-
-void Battle::cycleFormation() {
-    if (selected_ < 0) return;
-    Squad& s = squads_[static_cast<size_t>(selected_)];
-    s.formation = static_cast<Formation>((static_cast<int>(s.formation) + 1) % 5);
-    moveSquad(s, squadCentre(s, false));
 }
 
 bool Battle::flankPoint(const Squad& riders, V3& out) const {
@@ -1025,15 +881,6 @@ bool Battle::unitMoving(size_t index) const {
     return d.x * d.x + d.y * d.y > 1e-6f;
 }
 
-void Battle::selectSquad(int index) {
-    if (index >= 0 && index < static_cast<int>(squads_.size()) && squads_[index].owner == kPlayer) selected_ = index;
-}
-
-void Battle::stopSelected() {
-    if (selected_ < 0) return;
-    for (sim::EntityId id : squads_[selected_].members) issue(kPlayer, id, sim::Command::Type::Stop, {});
-}
-
 void Battle::chargeAll() {
     for (Squad& mine : squads_) {
         if (mine.owner != kPlayer || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
@@ -1059,67 +906,6 @@ void Battle::chargeAll() {
         }
         moveSquad(mine, at);
     }
-}
-
-void Battle::tap(const Camera& camera, float x, float y, float pixelScale) {
-    // Nearest living soldier under the finger.
-    int bestUnit = -1;
-    float bestD2 = kTapRadiusPx * pixelScale * kTapRadiusPx * pixelScale;
-    const auto& units = world_->units();
-    for (size_t i = 0; i < units.size(); ++i) {
-        if (!units[i].alive()) continue;
-        float px, py;
-        const V3 p = unitPosition(i) + V3{0, 0, static_cast<float>(units[i].stats.height.toDouble()) * 0.5f};
-        if (!camera.project(p, px, py)) continue;
-        const float d2 = (px - x) * (px - x) + (py - y) * (py - y);
-        if (d2 < bestD2) {
-            bestD2 = d2;
-            bestUnit = static_cast<int>(i);
-        }
-    }
-    // Zoomed far out, soldiers are specks: fall back to the nearest squad centre.
-    int bestSquad = bestUnit >= 0 ? squadOfUnit_[bestUnit] : -1;
-    if (bestSquad < 0) {
-        float bestS = kSquadTapRadiusPx * pixelScale * kSquadTapRadiusPx * pixelScale;
-        for (size_t s = 0; s < squads_.size(); ++s) {
-            if (aliveCount(squads_[s]) == 0) continue;
-            float px, py;
-            if (!camera.project(squadCentre(squads_[s]), px, py)) continue;
-            const float d2 = (px - x) * (px - x) + (py - y) * (py - y);
-            if (d2 < bestS) {
-                bestS = d2;
-                bestSquad = static_cast<int>(s);
-            }
-        }
-    }
-
-    if (bestSquad >= 0 && squads_[bestSquad].owner == kPlayer) {
-        selected_ = bestSquad;
-        return;
-    }
-    if (selected_ < 0 || aliveCount(squads_[selected_]) == 0) return;
-    const Squad& mine = squads_[selected_];
-    const bool shoots = sim::unitStats(mine.type).ranged.muzzleSpeed > sim::Fixed::zero();
-    // Tapped a standing gate: engines and bombers shoot at it, the rest go to break it.
-    if (const int gate = gateAt(camera, x, y, pixelScale); gate >= 0 && (roleOf(mine.type) == Role::Siege || roleOf(mine.type) == Role::Bomber || (!shoots && bestUnit < 0))) {
-        attackGate(mine, gate);
-        return;
-    }
-
-    if (bestSquad >= 0) {
-        // Tapped an enemy: missile troops loose on that spot, everyone else charges it.
-        V3 at = bestUnit >= 0 ? unitPosition(bestUnit) : squadCentre(squads_[bestSquad]);
-        if (shoots) {
-            // At the soldier where he stands (on a wall-walk, not the ground beneath it).
-            if (bestUnit < 0) at.z = heightAt(at.x, at.y);
-            for (sim::EntityId id : mine.members) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
-        } else {
-            moveSquad(mine, at);
-        }
-        return;
-    }
-    V3 ground;
-    if (camera.pickGround(x, y, ground)) moveSquad(mine, ground);
 }
 
 }  // namespace illyria::game

@@ -48,6 +48,7 @@ struct App {
     double slowSince = -1, fastSince = -1;
     double fps = 60;
     std::string hud, labels;
+    bool shift = false;  // held on the desktop
     // The campaign, when playing it: the war on the continent map.
     struct CampaignView {
         std::unique_ptr<illyria::sim::Campaign> c;
@@ -378,6 +379,7 @@ void frame() {
     adaptResolution(now);
     resizeCanvas();
     stepIntro(now);
+    app->gestures->update(now);
     if (app->camp.on) {
         // Ten campaign ticks a second, times the speed.
         App::CampaignView& cv = app->camp;
@@ -414,6 +416,109 @@ EMSCRIPTEN_KEEPALIVE void illyria_wheel(float deltaY, float x, float y) {
 
 EMSCRIPTEN_KEEPALIVE void illyria_select_squad(int index) {
     if (app) app->battle->selectSquad(index);
+}
+
+// Commanding (game/src/battle_command.cpp). Shift held: a press starts a
+// selection box at once, and a tap adds to the selection.
+EMSCRIPTEN_KEEPALIVE void illyria_set_shift(int down) {
+    if (!app) return;
+    app->shift = down != 0;
+    app->gestures->setShift(app->shift && !app->camp.on);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_clear_selection() {
+    if (app) app->battle->clearSelection();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_select_heroes() {
+    if (app) app->battle->selectHeroes();
+}
+// A formation for the selection, by Formation value.
+EMSCRIPTEN_KEEPALIVE void illyria_set_formation(int f) {
+    if (app && f >= 0 && f < kFormationCount) app->battle->setFormation(static_cast<Formation>(f));
+}
+EMSCRIPTEN_KEEPALIVE void illyria_scatter() {
+    if (app) app->battle->scatter();
+}
+// Groups, by slot (the key 0-9): 0 recall, 1 assign the selection, 2 save
+// the selection in the first free slot (returns it), 3 forget.
+EMSCRIPTEN_KEEPALIVE int illyria_group(int op, int slot) {
+    if (!app) return -1;
+    Battle& b = *app->battle;
+    switch (op) {
+        case 0: return b.recallGroup(slot) ? slot : -1;
+        case 1: b.assignGroup(slot); return slot;
+        case 2: return b.saveGroup();
+        case 3: b.clearGroup(slot); return slot;
+    }
+    return -1;
+}
+// The camera to the selection.
+EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
+    if (!app) return;
+    const std::vector<illyria::sim::EntityId> alive = app->battle->selectedAlive();
+    if (alive.empty()) return;
+    V3 c;
+    for (illyria::sim::EntityId id : alive) c += app->battle->unitPosition(id - 1);
+    c = c * (1.0f / static_cast<float>(alive.size()));
+    app->introStartMs = -1;
+    app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
+}
+// Every formation's shape for the picker's glyphs, in picker order:
+// [{"id","name","slots":[[x,y],...]}].
+EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
+    static std::string out;
+    out = "[";
+    char buf[96];
+    for (int k = 0; k < kFormationCount; ++k) {
+        const Formation f = kFormationOrder[k];
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%d,\"name\":\"%s\",\"slots\":[", k ? "," : "", static_cast<int>(f), formationName(f));
+        out += buf;
+        const std::vector<FormationSlot> slots = formationLayout(f, 9, 1.0f);
+        for (size_t i = 0; i < slots.size(); ++i) {
+            std::snprintf(buf, sizeof buf, "%s[%.2f,%.2f]", i ? "," : "", slots[i].pos.x, slots[i].pos.y);
+            out += buf;
+        }
+        out += "]}";
+    }
+    out += "]";
+    return out.c_str();
+}
+// The selection box being drawn, in CSS pixels: "x0 y0 x1 y1", or "" when none.
+EMSCRIPTEN_KEEPALIVE const char* illyria_drag_box() {
+    static char buf[96];
+    buf[0] = 0;
+    if (!app || app->camp.on) return buf;
+    const Battle::Drag& d = app->battle->drag();
+    if (d.mode != Battle::Drag::Mode::Box) return buf;
+    const float s = app->pixelRatio;
+    std::snprintf(buf, sizeof buf, "%.0f %.0f %.0f %.0f", d.x0 / s, d.y0 / s, d.x1 / s, d.y1 / s);
+    return buf;
+}
+// Test hooks for screenshots: a press held and dragged but not let go. From
+// the squad's centre (dx, dy) metres to the destination, then (fx, fy) metres
+// on for the facing line; or a selection box in CSS pixels.
+EMSCRIPTEN_KEEPALIVE void illyria_test_press_facing(int squad, float dx, float dy, float fx, float fy, float distance) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
+    Battle& b = *app->battle;
+    b.selectSquad(squad);
+    const V3 c = b.squadCentre(b.squads()[static_cast<size_t>(squad)], false);
+    V3 at{c.x + dx, c.y + dy, 0}, tip{c.x + dx + fx, c.y + dy + fy, 0};
+    at.z = b.heightAt(at.x, at.y);
+    tip.z = b.heightAt(tip.x, tip.y);
+    app->introStartMs = -1;
+    app->camera.lookAt((c.x + at.x) / 2, (c.y + at.y) / 2, distance);
+    float px, py, qx, qy;
+    if (!app->camera.project(at, px, py) || !app->camera.project(tip, qx, qy)) return;
+    b.pressBegin(app->camera, px, py, app->pixelRatio, false);
+    b.pressMove(app->camera, qx, qy);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_test_press_box(float x0, float y0, float x1, float y1) {
+    if (!app) return;
+    const float s = app->pixelRatio;
+    app->battle->pressBegin(app->camera, x0 * s, y0 * s, s, true);
+    app->battle->pressMove(app->camera, x1 * s, y1 * s);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_test_press_end() {
+    if (app) app->battle->pressEnd(app->camera, app->battle->drag().x1, app->battle->drag().y1, false);
 }
 
 EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
@@ -1015,20 +1120,50 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     char buf[512];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
-                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"squads\":[",
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
                   b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str());
     s = buf;
+    // The selection (how many, in what formation, of what kind) and the saved groups.
+    {
+        const auto& units = b.world().units();
+        const auto typeName = [&](illyria::sim::EntityId id) {
+            return illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(units[id - 1].stats.type));
+        };
+        const auto label = [&](const std::vector<illyria::sim::EntityId>& ids) {
+            bool one = true;
+            for (illyria::sim::EntityId id : ids) one = one && units[id - 1].stats.type == units[ids.front() - 1].stats.type;
+            return ids.empty() ? "" : one ? typeName(ids.front()) : "Mixed";
+        };
+        const std::vector<illyria::sim::EntityId> sel = b.selectedAlive();
+        std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
+                      sel.size(), label(sel), formationName(b.selectionFormation()), static_cast<int>(b.selectionFormation()));
+        s += buf;
+        bool first = true;
+        for (int k = 1; k <= Battle::kGroupSlots; ++k) {
+            const int slot = k % Battle::kGroupSlots;
+            const Battle::Group& g = b.group(slot);
+            if (g.units.empty()) continue;
+            int alive = 0;
+            for (illyria::sim::EntityId id : g.units) alive += units[id - 1].alive();
+            std::snprintf(buf, sizeof buf, "%s{\"slot\":%d,\"alive\":%d,\"total\":%zu,\"label\":\"%s\",\"sel\":%d}", first ? "" : ",", slot,
+                          alive, g.units.size(), label(g.units), b.groupSelection(slot));
+            s += buf;
+            first = false;
+        }
+        s += "],\"squads\":[";
+    }
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];
-        static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier"};
+        static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
         const Standing st = b.standing(q);
         std::snprintf(buf, sizeof buf,
                       "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
-                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d}",
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
-                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken);
+                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken,
+                      q.owner == Battle::kPlayer ? b.squadSelection(q) : 0);
         s += buf;
     }
     s += "]}";
@@ -1055,8 +1190,13 @@ int main() {
     app = new App();
     app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
         if (app->camp.on) campaignTap(x, y);
-        else app->battle->tap(app->camera, x, y, app->pixelRatio);
+        else app->battle->tap(app->camera, x, y, app->pixelRatio, app->shift);
     });
+    // A press held on the battlefield: a selection box, or a move's facing line.
+    app->gestures->setHold(
+        [](float x, float y, bool box) { return !app->camp.on && app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box); },
+        [](float x, float y) { app->battle->pressMove(app->camera, x, y); },
+        [](float x, float y, bool cancelled) { app->battle->pressEnd(app->camera, x, y, cancelled, app->shift); });
     newBattle();
     resizeCanvas();
     if (!app->renderer.init(*app->battle)) {

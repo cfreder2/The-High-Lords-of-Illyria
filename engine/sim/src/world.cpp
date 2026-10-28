@@ -268,6 +268,7 @@ void World::applyCommand(const Command& cmd) {
             u->hasMoveTarget = true;
             u->moveTarget = cmd.target;
             u->marchSpeed = max(Fixed::zero(), cmd.speed);
+            u->arriveFacing = cmd.face.flat() == Vec3{} ? Vec3{} : normalized(cmd.face.flat());
             u->hasAttackTarget = false;
             u->attackGate = -1;
             if (cmd.march) planMarch(*u, cmd.target, cmd.marchFrom, cmd.marchTo);
@@ -633,6 +634,7 @@ void World::updateUnit(Unit& u) {
         } else if (last && arrived) {
             u.hasMoveTarget = false;
             u.path.clear();
+            if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
         }
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
@@ -1480,6 +1482,8 @@ uint64_t World::checksum() const {
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);
+        // Only when ordered, so battles without facing orders hash as before.
+        if (u.arriveFacing != Vec3{}) hashVec(h, u.arriveFacing);
         h.addU64(u.gibbed);
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
