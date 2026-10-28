@@ -39,6 +39,16 @@ public:
     void draw(Battle& battle, const Camera& camera, double timeSeconds);
     // The campaign map shows the land, not the battle's soldiers.
     void setShowUnits(bool show) { showUnits_ = show; }
+    // Campaign map dressing, in battle-local metres, drawn only while the map
+    // is shown: boats on the water (a sail in the side's colour) and piers at
+    // the ports. scale: the boat's half length, the pier's length.
+    struct Prop {
+        V3 pos;
+        float yaw = 0, scale = 1;
+        V3 tint{1, 1, 1};
+    };
+    void setBoats(const std::vector<Prop>& boats);
+    void setPiers(const std::vector<Prop>& piers);
 
 private:
     bool showUnits_ = true;
@@ -131,6 +141,7 @@ private:
     MeshBatch walls_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch drums_, keeps_, stairs_;
     MeshBatch logs_;
+    MeshBatch ships_, sails_, piers_;  // the campaign's boats and ports
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant
     uint64_t marksUploaded_ = 0;

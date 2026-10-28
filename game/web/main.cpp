@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -52,6 +53,10 @@ struct App {
         // While a campaign battle is fought in 3D, the campaign's own scene waits here.
         std::unique_ptr<Battle> backdrop;
         bool fighting = false;
+        // Ports: where each city's pier runs out to the water (battle-local), and its heading.
+        std::vector<V3> pier;
+        std::vector<float> pierYaw;
+        std::map<uint32_t, float> heading;  // each boat's last course, so it turns smoothly
     } camp;
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
@@ -124,8 +129,19 @@ void resizeCanvas() {
     app->gestures->setPixelScale(app->pixelRatio);
 }
 
+// The ground, or the water over it, at a battle-local point.
+float surfaceAt(float x, float y) {
+    const V3 o = app->battle->origin();
+    float z = app->battle->heightAt(x, y);
+    illyria::sim::Fixed w;
+    if (app->battle->continent().waterSurface(illyria::sim::Fixed::fromInt(static_cast<int64_t>(x + o.x)),
+                                              illyria::sim::Fixed::fromInt(static_cast<int64_t>(y + o.y)), w))
+        z = std::max(z, static_cast<float>(w.toDouble()));
+    return z;
+}
+
 // Where a campaign stack stands now, in battle-local metres: between the cell
-// it holds and the next on its road, by how far it has got.
+// it holds and the next on its road, by how far it has got (afloat, at the boat's pace).
 V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
     using C = illyria::sim::Campaign;
     const V3 o = app->battle->origin();
@@ -133,13 +149,98 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
     if (!s.path.empty()) {
         int32_t cost = 0;
         for (const illyria::sim::Army& a : s.armies) cost = std::max(cost, C::moveCost(a.type, c.terrainAt(s.path.front().first, s.path.front().second)));
+        if (s.boat) cost = C::kSeaCost;
         const float t = cost > 0 ? std::clamp(static_cast<float>(s.progress) / (cost * C::kTicksPerDay), 0.0f, 1.0f) : 0;
         x += (C::centre(s.path.front().first) - x) * t;
         y += (C::centre(s.path.front().second) - y) * t;
     }
     V3 p{x - o.x, y - o.y, 0};
-    p.z = app->battle->heightAt(p.x, p.y);
+    p.z = s.boat ? surfaceAt(p.x, p.y) : app->battle->heightAt(p.x, p.y);
     return p;
+}
+
+// Every port's pier: from the shore below its walls out toward its harbour.
+void placePiers() {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    const V3 o = app->battle->origin();
+    cv.pier.assign(c.cities().size(), V3{});
+    cv.pierYaw.assign(c.cities().size(), 0);
+    std::vector<Renderer::Prop> piers;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const C::CityState& cs = c.cities()[i];
+        if (!cs.port) continue;
+        const V3 from = toV3(c.continent().cities()[i].pos) - V3{o.x, o.y, 0};
+        V3 dir = V3{C::centre(cs.hx) - o.x - from.x, C::centre(cs.hy) - o.y - from.y, 0};
+        const float len = dir.length();
+        dir = dir * (1.0f / std::max(len, 1.0f));
+        // Walk out to the water's edge.
+        V3 shore = from;
+        for (float d = 0; d < len + 200; d += 6) {
+            shore = from + dir * d;
+            const illyria::sim::Continent::Sample smp = c.continent().sample(illyria::sim::Fixed::fromInt(static_cast<int64_t>(shore.x + o.x)),
+                                                                             illyria::sim::Fixed::fromInt(static_cast<int64_t>(shore.y + o.y)));
+            illyria::sim::Fixed w;
+            if (c.continent().waterSurfaceOf(smp, w) && smp.height + illyria::sim::Fixed::fromRatio(1, 2) < w) break;
+        }
+        shore = shore - dir * 12.0f;
+        const float yaw = std::atan2(dir.y, dir.x);
+        shore.z = surfaceAt(shore.x + dir.x * 20, shore.y + dir.y * 20) + 2.0f;
+        piers.push_back({shore, yaw, 70.0f, {1, 1, 1}});
+        cv.pier[i] = shore + dir * 62.0f;
+        cv.pierYaw[i] = yaw;
+    }
+    app->renderer.setPiers(piers);
+}
+
+// The boats, every frame: with their stacks as they sail, along a pier in
+// port, or riding at anchor.
+void placeBoats() {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    const V3 o = app->battle->origin();
+    std::vector<Renderer::Prop> out;
+    std::map<int32_t, int> moored;  // boats already at each pier
+    for (const C::Boat& b : c.boats()) {
+        Renderer::Prop p;
+        p.scale = std::clamp(app->camera.distance() / 80.0f, 26.0f, 80.0f);  // larger than life, to read on the map
+        p.tint = factionColor(b.owner);
+        float& yaw = cv.heading.try_emplace(b.id, 0.0f).first->second;
+        if (const C::Stack* s = b.stack ? c.findStack(b.stack) : nullptr) {
+            p.pos = stackPosition(c, *s);
+            p.pos.z = surfaceAt(p.pos.x, p.pos.y);
+            if (!s->path.empty()) {
+                const float want = std::atan2(C::centre(s->path.front().second) - o.y - p.pos.y, C::centre(s->path.front().first) - o.x - p.pos.x);
+                float turn = std::remainder(want - yaw, 6.2831853f);
+                yaw += turn * 0.15f;
+            }
+        } else if (b.port >= 0 && static_cast<size_t>(b.port) < cv.pier.size()) {
+            const int k = moored[b.port]++;
+            const float py = cv.pierYaw[static_cast<size_t>(b.port)];
+            const V3 side{-std::sin(py), std::cos(py), 0};
+            p.pos = cv.pier[static_cast<size_t>(b.port)] + side * (k % 2 ? -22.0f : 22.0f) - V3{std::cos(py), std::sin(py), 0} * (20.0f * static_cast<float>(k / 2));
+            p.pos.z = surfaceAt(p.pos.x, p.pos.y);
+            yaw = py;
+        } else {
+            p.pos = {C::centre(b.cx) - o.x, C::centre(b.cy) - o.y, 0};
+            p.pos.z = surfaceAt(p.pos.x, p.pos.y);
+        }
+        p.yaw = yaw;
+        out.push_back(p);
+    }
+    app->renderer.setBoats(out);
+}
+
+// Whether the pending battle is fought from a boat or against one (settled with the dice).
+bool pendingAfloat(const illyria::sim::Campaign& c) {
+    const illyria::sim::Campaign::Pending* p = c.pending();
+    if (!p) return false;
+    const illyria::sim::Campaign::Stack* att = c.findStack(p->stack);
+    bool afloat = (att && att->boat) || c.navigable(p->cx, p->cy);
+    for (const illyria::sim::Campaign::Stack& s : c.stacks()) afloat = afloat || (s.cx == p->cx && s.cy == p->cy && s.boat);
+    return afloat;
 }
 
 void campaignTap(float px, float py) {
@@ -203,6 +304,8 @@ void startCampaign() {
     cv.selected = 0;
     cv.city = -1;
     app->renderer.setShowUnits(false);
+    cv.heading.clear();
+    placePiers();
     // Over your capital, high enough to see the neighbouring towns.
     for (const C::Stack& s : cv.c->stacks()) {
         if (s.owner != 0) continue;
@@ -230,6 +333,7 @@ void frame() {
             for (int k = 0; k < 40 && cv.acc >= 1; ++k, cv.acc -= 1) cv.c->step();
             cv.acc = std::min(cv.acc, 1.0);
         }
+        placeBoats();
     } else {
         app->battle->advance(dtMs / 1000.0);
     }
@@ -391,6 +495,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_fight() {
     App::CampaignView& cv = app->camp;
     const C::Pending* p = cv.c->pending();
     if (!p) return;
+    // Fought from the boats, or against them: there is no ground to fight on, so the dice decide.
+    if (pendingAfloat(*cv.c)) {
+        cv.c->resolvePending();
+        return;
+    }
     BattlePlan plan;
     plan.city = cv.c->cityAt(p->cx, p->cy);
     plan.centre = plan.city >= 0 ? cv.c->continent().cities()[static_cast<size_t>(plan.city)].pos
@@ -477,6 +586,48 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
     if (app && app->camp.on) app->camp.c->produce(city, option);
 }
+// Boats: lay one down in the open city's port; board or leave one with the selected stack.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_build_boat(int city) {
+    if (app && app->camp.on) app->camp.c->buildBoat(city);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_embark() {
+    if (app && app->camp.on && app->camp.selected) app->camp.c->embark(app->camp.selected);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_land() {
+    if (app && app->camp.on && app->camp.selected) app->camp.c->land(app->camp.selected);
+}
+// Test hook: order the selected stack to a cell (by land or by sea).
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_move(int cx, int cy) {
+    if (!app || !app->camp.on || !app->camp.selected) return 0;
+    return app->camp.c->move(app->camp.selected, cx, cy) ? 1 : 0;
+}
+// Test hook: look at the selected stack from this distance.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_look(float distance) {
+    if (!app || !app->camp.on) return;
+    if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(app->camp.selected)) {
+        const V3 p = stackPosition(*app->camp.c, *s);
+        app->camera.lookAt(p.x, p.y, distance);
+    }
+}
+// Test hook: hand the player the northernmost port, a stack there and a boat
+// built for it, and look at it with the city panel open.
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_port() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return -1;
+    App::CampaignView& cv = app->camp;
+    int32_t port = -1;
+    for (size_t i = 0; i < cv.c->cities().size(); ++i)
+        if (cv.c->cities()[i].port && (port < 0 || cv.c->cities()[i].cy > cv.c->cities()[static_cast<size_t>(port)].cy)) port = static_cast<int32_t>(i);
+    if (port < 0) return -1;
+    cv.selected = cv.c->grant(port, 0, illyria::sim::UnitType::HeavyInfantry, 5);
+    cv.c->buildBoat(port);
+    for (int t = 0; t < (C::kBoatDays + 1) * C::kTicksPerDay && !cv.c->pending(); ++t) cv.c->step();
+    cv.city = port;
+    const C::CityState& cs = cv.c->cities()[static_cast<size_t>(port)];
+    const V3 o = app->battle->origin();
+    app->camera.lookAt(C::centre(cs.cx) - o.x - 150, C::centre(cs.cy) - o.y, 1300);
+    return port;
+}
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
     if (app) app->camp.city = -1;
 }
@@ -525,9 +676,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             hero = hero || a.hero();
         }
         const V3 col = factionColor(st.owner);
-        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"moving\":%s,\"color\":\"#%02x%02x%02x\"}",
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"moving\":%s,\"boat\":%s,\"color\":\"#%02x%02x%02x\"}",
                       first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false",
-                      st.path.empty() ? "false" : "true", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
+                      st.path.empty() ? "false" : "true", st.boat ? "true" : "false", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255),
+                      static_cast<int>(col.z * 255));
         s += buf;
         first = false;
     }
@@ -542,10 +694,26 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         }
     }
     s += "]";
+    // The selected stack's boat, or the boat it could board here.
+    if (sel) {
+        if (const C::Boat* b = sel->boat ? c.findBoat(sel->boat) : nullptr) {
+            std::snprintf(buf, sizeof buf, ",\"aboard\":{\"name\":\"%s\",\"count\":%zu,\"cap\":%d,\"canLand\":%s}", b->name.c_str(), sel->armies.size(),
+                          C::kBoatCapacity, c.navigable(sel->cx, sel->cy) ? "true" : "false");
+            s += buf;
+        } else if (const C::Boat* p = c.boatInPort(c.cityAt(sel->cx, sel->cy)); p && p->owner == sel->owner) {
+            std::snprintf(buf, sizeof buf, ",\"embark\":{\"name\":\"%s\",\"cap\":%d}", p->name.c_str(), C::kBoatCapacity);
+            s += buf;
+        }
+    }
     if (cv.city >= 0) {
         const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
-        std::snprintf(buf, sizeof buf, ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,\"options\":[",
-                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress);
+        int docked = 0;
+        for (const C::Boat& b : c.boats()) docked += b.port == cv.city && !b.stack;
+        std::snprintf(buf, sizeof buf,
+                      ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,"
+                      "\"port\":%s,\"boatDays\":%d,\"boats\":%d,\"boatCost\":%d,\"boatTime\":%d,\"boatUpkeep\":%d,\"options\":[",
+                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress,
+                      cs.port ? "true" : "false", cs.boatDays, docked, C::kBoatCost, C::kBoatDays, C::kBoatUpkeep);
         s += buf;
         for (size_t k = 0; k < cs.options.size(); ++k) {
             const C::Option& op = cs.options[k];
@@ -561,9 +729,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         int32_t mine = 0, theirs = 0;
         for (const illyria::sim::Army* a : c.pendingAttackers()) mine += C::strength(*a);
         for (const illyria::sim::Army* a : c.pendingDefenders()) theirs += C::strength(*a);
-        std::snprintf(buf, sizeof buf, ",\"pending\":{\"where\":\"%s\",\"mine\":%zu,\"theirs\":%zu,\"myStrength\":%d,\"theirStrength\":%d}",
-                      city >= 0 ? c.continent().cities()[static_cast<size_t>(city)].name.c_str() : "the open field", c.pendingAttackers().size(),
-                      c.pendingDefenders().size(), mine, theirs);
+        std::snprintf(buf, sizeof buf, ",\"pending\":{\"where\":\"%s\",\"mine\":%zu,\"theirs\":%zu,\"myStrength\":%d,\"theirStrength\":%d,\"afloat\":%s}",
+                      city >= 0 ? c.continent().cities()[static_cast<size_t>(city)].name.c_str() : c.navigable(p->cx, p->cy) ? "sea" : "the open field",
+                      c.pendingAttackers().size(), c.pendingDefenders().size(), mine, theirs, pendingAfloat(c) ? "true" : "false");
         s += buf;
     }
     // The latest fights, newest first.
