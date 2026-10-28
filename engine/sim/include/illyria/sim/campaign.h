@@ -29,11 +29,16 @@ struct Army {
     int32_t blessings = 0;
     int32_t hits = 0;                        // wounds in the current fight (two destroy it)
     uint32_t bornDay = 0;
+    bool ally = false;               // joined a hero from a ruin: fights for no pay
+    uint8_t temples = 0;             // the temples that have blessed it, a bit each
+    std::vector<uint8_t> artifacts;  // heroes: what they carry (Campaign::artifacts())
     bool hero() const { return type == UnitType::Hero; }
 };
 
 // The lay of a campaign cell, as in the Warlords movement table.
 enum class Lay : uint8_t { Road, Bridge, Water, Forest, Hill, Mountain, Plain, Marsh, City };
+
+class StateHasher;
 
 class Campaign {
 public:
@@ -97,12 +102,60 @@ public:
         int32_t rank = 0;      // the survivors' rank (heroes: level - 1)
     };
 
+    // Heroes, ruins, temples and sages, after Warlords (campaign_quests.cpp).
+    // Battle artifacts add to the hero's strength, command artifacts to every
+    // army fighting beside the hero; some speed the stack or pay gold daily.
+    struct Artifact {
+        const char* name;
+        int32_t battle, command, moves, gold;
+    };
+    static const std::vector<Artifact>& artifacts();
+    struct SiteState {
+        Continent::Site::Kind kind = Continent::Site::Kind::Ruin;
+        int32_t cx = 0, cy = 0;
+        bool searched = false;  // ruins: the guardian slain and the treasure taken; sages: already consulted
+        int32_t guardian = -1;  // ruins: which monster waits inside (guardianName, guardianStrength)
+        uint8_t bit = 0;        // temples: their bit in Army::temples
+    };
+    struct Loot {  // an artifact lying where its hero fell
+        int32_t cx = 0, cy = 0;
+        uint8_t artifact = 0;
+    };
+    struct Deed {  // a line for the news: what a side's heroes did
+        uint32_t day = 0;
+        uint8_t side = 0;
+        std::string text;
+    };
+    struct Offer {  // a hero offering their sword, until the next dawn
+        bool open = false;
+        int32_t city = -1, price = 0;
+        std::string name;
+    };
+    static const char* guardianName(int32_t guardian);
+    static int32_t guardianStrength(int32_t guardian);
+    // The site at a cell, or -1; sites() follows Continent::sites().
+    int32_t siteAt(int32_t cx, int32_t cy) const;
+    const std::vector<SiteState>& sites() const { return sites_; }
+    const std::vector<Loot>& loot() const { return loot_; }
+    const std::vector<Deed>& deeds() const { return deeds_; }
+    const Offer& offer(uint8_t side) const { return offers_[side]; }
+    // Whether the stack could search where it stands now (a hero at a ruin or
+    // sage, anyone at a temple that has not yet blessed them all).
+    bool canSearch(uint32_t stackId) const;
+    // Command bonus an army brings its side in battle (heroes' command artifacts).
+    static int32_t command(const Army& a);
+
     Campaign(const Continent& continent, uint64_t seed);
 
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
     bool produce(int32_t city, int32_t option);           // -1 stops
     void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
+    // A hero searches the ruin or sage the stack stands on, or the whole stack
+    // is blessed at a temple. False if there is nothing to search.
+    bool search(uint32_t stackId);
+    // Take (or turn down) the hero offering their service to this side.
+    bool hire(uint8_t side, bool accept);
     // Advances one tick (a tenth of a second at normal speed). Nothing moves
     // while a battle is pending.
     void step();
@@ -136,6 +189,7 @@ public:
     static int32_t moveCost(UnitType t, Lay terrain);
     // Gold a day an army costs to keep: half its training cost, as in Warlords.
     static int32_t upkeep(UnitType t);
+    static int32_t armyUpkeep(const Army& a) { return a.ally ? 0 : upkeep(a.type); }  // allies serve for nothing
     // How many soldiers a fresh army of this type has.
     static int32_t squadSize(UnitType t);
     int32_t cityAt(int32_t cx, int32_t cy) const;
@@ -159,6 +213,14 @@ private:
     Army makeArmy(UnitType type, const std::string& name);
     Stack& newStack(uint8_t owner, int32_t cx, int32_t cy);
     void promote(Army& a);
+    // campaign_quests.cpp
+    void initSites();
+    void questsNewDay();                            // artifact gold and heroes for hire
+    void questAi(uint8_t side);                     // the computer's heroes go exploring
+    void bury(Stack& s, int32_t cx, int32_t cy);    // the fallen leave; heroes drop what they carry
+    void pickUp(Stack& s);                          // a hero takes up artifacts lying here
+    void hashQuests(StateHasher& h) const;
+    void deed(uint8_t side, std::string text);
 
     const Continent& continent_;
     Rng rng_;
@@ -173,6 +235,12 @@ private:
     std::vector<Fight> fights_;
     std::vector<int32_t> armiesRaised_;  // per side, for naming
     Pending pending_;
+    std::vector<SiteState> sites_;
+    std::vector<Loot> loot_;
+    std::vector<Deed> deeds_;
+    std::vector<Offer> offers_;           // per side
+    std::vector<uint8_t> artifactFound_;  // per artifact: found by someone (each exists once)
+    int32_t heroesHired_ = 0;             // for naming
     Stack* stackById(uint32_t id);
     void capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight);
 };

@@ -368,7 +368,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name);
     }
     if (d < 9000) {
-        for (const auto& site : c.sites()) add(2 + static_cast<int>(site.kind), {1, 1, 1}, site.pos, site.name);
+        for (size_t k = 0; k < c.sites().size(); ++k) {
+            const auto& site = c.sites()[k];
+            // In the campaign, a ruin whose guardian is slain lies empty.
+            const bool explored = app->camp.on && site.kind == illyria::sim::Continent::Site::Kind::Ruin && app->camp.c->sites()[k].searched;
+            add(2 + static_cast<int>(site.kind), explored ? V3{0.6f, 0.6f, 0.6f} : V3{1, 1, 1}, site.pos, explored ? site.name + " (explored)" : site.name);
+        }
     }
     for (const auto& l : c.labels()) {
         if (l.kind == 0 && d > 3000) add(5, {1, 1, 1}, l.pos, l.name);
@@ -395,14 +400,24 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_fight() {
     plan.city = cv.c->cityAt(p->cx, p->cy);
     plan.centre = plan.city >= 0 ? cv.c->continent().cities()[static_cast<size_t>(plan.city)].pos
                                  : illyria::sim::Vec3{illyria::sim::Fixed::fromInt(C::centre(p->cx)), illyria::sim::Fixed::fromInt(C::centre(p->cy)), {}};
-    const auto take = [](const illyria::sim::Army* a) {
-        return BattleArmy{a->id, a->type, a->name, a->soldiers, a->rank, a->blessings};
+    // Blessings, a hero's battle artifacts and the command artifacts of the
+    // heroes alongside all count as extra strength in the 3D battle too.
+    const auto command = [](const std::vector<const illyria::sim::Army*>& side) {
+        int n = 0;
+        for (const illyria::sim::Army* a : side) n += C::command(*a);
+        return n;
     };
-    for (const illyria::sim::Army* a : cv.c->pendingAttackers()) plan.player.push_back(take(a));
+    const auto take = [](const illyria::sim::Army* a, int command) {
+        int arms = 0;
+        for (uint8_t k : a->artifacts) arms += C::artifacts()[k].battle;
+        return BattleArmy{a->id, a->type, a->name, a->soldiers, a->rank, a->blessings + arms + command};
+    };
+    const int ours = command(cv.c->pendingAttackers()), theirs = command(cv.c->pendingDefenders());
+    for (const illyria::sim::Army* a : cv.c->pendingAttackers()) plan.player.push_back(take(a, ours));
     uint8_t foe = C::kNeutral;
     for (const C::Stack& s : cv.c->stacks())
         if (s.cx == p->cx && s.cy == p->cy && s.owner != 0) foe = s.owner;
-    for (const illyria::sim::Army* a : cv.c->pendingDefenders()) plan.foe.push_back(take(a));
+    for (const illyria::sim::Army* a : cv.c->pendingDefenders()) plan.foe.push_back(take(a, theirs));
     plan.foeName = plan.city >= 0 ? (foe == C::kNeutral ? "Garrison of " : "Defenders of ") + cv.c->continent().cities()[static_cast<size_t>(plan.city)].name
                                   : cv.c->sides()[foe == C::kNeutral ? 0 : foe].name;
     cv.backdrop = std::move(app->battle);
@@ -462,6 +477,33 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_attack() {
         }
     }
     if (target >= 0) app->camp.c->move(s->id, app->camp.c->cities()[static_cast<size_t>(target)].cx, app->camp.c->cities()[static_cast<size_t>(target)].cy);
+}
+// Heroes: search the ruin (or sage) the selected stack stands on, or be
+// blessed at a temple; take or turn down a hero offering their sword.
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_search() {
+    if (!app || !app->camp.on) return 0;
+    return app->camp.c->search(app->camp.selected) ? 1 : 0;
+}
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_hire(int accept) {
+    if (!app || !app->camp.on) return 0;
+    return app->camp.c->hire(0, accept != 0) ? 1 : 0;
+}
+// Test hook: march the selected stack on the nearest unsearched ruin (kind 0), temple (1) or sage (2).
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_site(int kind) {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return;
+    const C::Stack* s = app->camp.c->findStack(app->camp.selected);
+    if (!s) return;
+    int best = 1 << 30, target = -1;
+    for (size_t i = 0; i < app->camp.c->sites().size(); ++i) {
+        const C::SiteState& st = app->camp.c->sites()[i];
+        const int d = std::max(std::abs(st.cx - s->cx), std::abs(st.cy - s->cy));
+        if (static_cast<int>(st.kind) == kind && !st.searched && d < best) {
+            best = d;
+            target = static_cast<int>(i);
+        }
+    }
+    if (target >= 0) app->camp.c->move(s->id, app->camp.c->sites()[static_cast<size_t>(target)].cx, app->camp.c->sites()[static_cast<size_t>(target)].cy);
 }
 // Test hook: run the campaign forward a number of days at once.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_fast_forward(int days) {
@@ -535,13 +577,38 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     if (sel) {
         for (size_t k = 0; k < sel->armies.size(); ++k) {
             const illyria::sim::Army& a = sel->armies[k];
-            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d}",
+            std::string arts;
+            for (uint8_t i : a.artifacts) arts += (arts.empty() ? "" : ", ") + std::string(C::artifacts()[i].name);
+            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d,"
+                          "\"ally\":%s,\"command\":%d,\"artifacts\":\"",
                           k ? "," : "", a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
-                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills);
+                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills, a.ally ? "true" : "false", C::command(a));
             s += buf;
+            s += arts + "\"}";
         }
     }
     s += "]";
+    // The ruin, temple or sage the selected stack stands on, and whether it can search there.
+    if (sel && sel->path.empty()) {
+        const int32_t site = c.siteAt(sel->cx, sel->cy);
+        if (site >= 0) {
+            static const char* kKinds[] = {"ruin", "temple", "sage"};
+            const C::SiteState& st = c.sites()[static_cast<size_t>(site)];
+            bool hero = false;
+            for (const illyria::sim::Army& a : sel->armies) hero = hero || a.hero();
+            std::snprintf(buf, sizeof buf, ",\"site\":{\"name\":\"%s\",\"kind\":\"%s\",\"can\":%s,\"searched\":%s,\"hero\":%s}",
+                          c.continent().sites()[static_cast<size_t>(site)].name.c_str(), kKinds[static_cast<int>(st.kind)],
+                          c.canSearch(sel->id) ? "true" : "false", st.searched ? "true" : "false", hero ? "true" : "false");
+            s += buf;
+        }
+    }
+    // A hero offering their sword.
+    if (c.offer(0).open) {
+        const C::Offer& o = c.offer(0);
+        std::snprintf(buf, sizeof buf, ",\"offer\":{\"name\":\"%s\",\"price\":%d,\"city\":\"%s\"}", o.name.c_str(), o.price,
+                      c.continent().cities()[static_cast<size_t>(o.city)].name.c_str());
+        s += buf;
+    }
     if (cv.city >= 0) {
         const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
         std::snprintf(buf, sizeof buf, ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,\"options\":[",
@@ -566,10 +633,23 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
                       c.pendingDefenders().size(), mine, theirs);
         s += buf;
     }
-    // The latest fights, newest first.
+    // The latest fights and the player's heroes' deeds, newest first.
     s += ",\"news\":[";
-    for (size_t k = 0, n = c.fights().size(); k < std::min<size_t>(n, 4); ++k) {
-        const C::Fight& f = c.fights()[n - 1 - k];
+    std::vector<const C::Deed*> deeds;
+    for (size_t k = c.deeds().size(); k-- > 0 && deeds.size() < 4;)
+        if (c.deeds()[k].side == 0) deeds.push_back(&c.deeds()[k]);
+    size_t fk = 0, dk = 0;
+    const size_t nf = c.fights().size();
+    for (size_t k = 0; k < 5; ++k) {
+        const bool fightLeft = fk < std::min<size_t>(nf, 4), deedLeft = dk < deeds.size();
+        if (!fightLeft && !deedLeft) break;
+        if (deedLeft && (!fightLeft || deeds[dk]->day >= c.fights()[nf - 1 - fk].day)) {
+            std::snprintf(buf, sizeof buf, "%s\"Day %u: %s\"", k ? "," : "", deeds[dk]->day + 1, deeds[dk]->text.c_str());
+            s += buf;
+            ++dk;
+            continue;
+        }
+        const C::Fight& f = c.fights()[nf - 1 - fk++];
         const std::string where = f.city >= 0 ? c.continent().cities()[static_cast<size_t>(f.city)].name : std::string("the field");
         const auto sideName = [&](uint8_t side) { return side == C::kNeutral ? std::string("the garrison") : c.sides()[side].name; };
         if (f.captured) std::snprintf(buf, sizeof buf, "%s\"Day %u: %s took %s\"", k ? "," : "", f.day + 1, sideName(f.attacker).c_str(), where.c_str());
