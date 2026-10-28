@@ -60,7 +60,8 @@ float groundZ(vec2 p) {
 // marks (one texel per chunk, repeating like the land's textures, rising as a
 // chunk fades in), fading out toward the rect's edge and as the camera rises
 // (uDetailFade). Where it is between 0 and 1 the two cross-fade by a screen
-// dither, each drawing the pixels the other leaves.
+// dither, each drawing the pixels the other leaves (overlapping a little, so
+// that where their surfaces part no pixel is left to the sky).
 uniform sampler2D uDetailMask;
 uniform vec4 uDetailRect;
 uniform float uDetailFade;
@@ -201,7 +202,7 @@ float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, si
 
 void main() {
 #ifdef DETAIL_FADE
-    if (detailWeight(vWorld.xy) <= hash12(floor(gl_FragCoord.xy))) discard;  // cross-fading with the coarse land
+    if (detailWeight(vWorld.xy) <= hash12(floor(gl_FragCoord.xy)) * 0.92) discard;  // cross-fading with the coarse land
 #endif
     vec3 n = normalize(vNormal);
     float slope = 1.0 - n.z;
@@ -308,19 +309,22 @@ void main() {
     // a dark wet band above it (the nearest water surface, not one level).
     {
         ivec2 cc = ivec2(floor(p / uCellSize));
-        float surf = -1e9;
-        for (int k = 0; k < 4; ++k) surf = max(surf, texelFetch(uWaterTex, texCell(vec2(cc + ivec2(k & 1, k >> 1)), uCells), 0).r);
-        if (feature(kFeatGroundDetail)) {
-            for (int k = 0; k < 4; ++k) {
-                ivec2 o = ivec2(k == 0 ? 2 : k == 1 ? -1 : 0, k == 2 ? 2 : k == 3 ? -1 : 0);
-                surf = max(surf, texelFetch(uWaterTex, texCell(vec2(cc + o), uCells), 0).r);
-            }
+        float surf = -1e9, nearest = 1e9;  // and how far off the nearest wet sample is
+        for (int k = 0; k < 8; ++k) {
+            if (k >= 4 && !feature(kFeatGroundDetail)) break;
+            int j = k - 4;
+            ivec2 o = k < 4 ? ivec2(k & 1, k >> 1) : ivec2(j == 0 ? 2 : j == 1 ? -1 : 0, j == 2 ? 2 : j == 3 ? -1 : 0);
+            float w = texelFetch(uWaterTex, texCell(vec2(cc + o), uCells), 0).r;
+            if (w > -1000.0) nearest = min(nearest, distance(p, vec2(cc + o) * uCellSize));
+            surf = max(surf, w);
         }
         if (surf > -1000.0) {
             float above = vWorld.z - surf;
-            float wet = (1.0 - smoothstep(0.05, 0.8 + fine * 0.5, above)) * step(-0.05, above);
+            // The wet band thins out with the distance to the water, not at a cell's edge.
+            float reach = 1.0 - smoothstep(5.0, 9.5, nearest);
+            float wet = (1.0 - smoothstep(0.05, 0.8 + fine * 0.5, above)) * step(-0.05, above) * reach;
             albedo = mix(albedo, albedo * vec3(0.6, 0.56, 0.5) + vec3(0.03, 0.02, 0.0), wet);
-            float line = 1.0 - smoothstep(0.0, 0.22 + fine * 0.1, abs(above - 0.04));
+            float line = (1.0 - smoothstep(0.0, 0.22 + fine * 0.1, abs(above - 0.04))) * reach;
             vec3 gravel = mix(vec3(0.50, 0.46, 0.39), vec3(0.36, 0.30, 0.22), valueNoise(p * 3.3));
             albedo = mix(albedo, gravel, line * 0.75);
             if (above < 0.0) albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75);
@@ -1427,7 +1431,7 @@ float current(vec2 along, float t) {
 }
 void main() {
     vec2 p = vWorld.xy;
-    if (uWrap > 0.5 && detailWeight(p) <= hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land's, cross-fading
+    if (uWrap > 0.5 && detailWeight(p) <= hash12(floor(gl_FragCoord.xy)) * 0.92) discard;  // the close-up land's, cross-fading
     float depth = vWorld.z - groundZ(p);
     if (depth <= -0.02) discard;
     float dist = distance(uEye, vWorld);
@@ -1510,7 +1514,7 @@ float hexEdge(vec2 p, float s) {
 float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
 void main() {
 #ifdef DETAIL_CUT
-    if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land is drawn there
+    if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land is drawn there
 #endif
     vec3 n = normalize(vNormal);
     vec3 albedo = vColor;
@@ -1636,7 +1640,7 @@ in float vFog;
 in vec2 vXy;
 out vec4 oColor;
 void main() {
-    if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land draws its own roads and water
+    if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land draws its own roads and water
     vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
