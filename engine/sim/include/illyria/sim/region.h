@@ -23,7 +23,8 @@ struct Obstacle {
     Fixed radius;       // collision radius (houses: unused; logs: half the length)
     Fixed height;
     Fixed halfX, halfY; // houses: axis-aligned footprint
-    uint8_t variant = 0;
+    uint8_t variant = 0;  // houses: kTownHouse for those in a castle (drawn with the castle)
+    static constexpr uint8_t kTownHouse = 200;
     bool solid = true;  // bushes are not
     Fixed passAbove = {};  // towers: soldiers this high above the base walk through (the wall-walk); 0: never
 };

@@ -84,6 +84,29 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
 }
 
+Standing Battle::standing(const Squad& s) const {
+    Standing st;
+    int alive = 0, ranks = 0, bless = 0, best = 0;
+    for (sim::EntityId id : s.members) {
+        const sim::Unit* u = world_->findUnit(id);
+        st.kills += u->kills;
+        if (!u->alive()) continue;
+        ++alive;
+        ranks += u->rank;
+        bless = std::max(bless, u->blessings);
+        best = std::max(best, u->rank);
+    }
+    st.blessings = bless;
+    if (s.type == UnitType::Hero) {
+        st.level = best + 1;
+        st.strength = std::min(9, sim::warlordsStrength(s.type) + best + bless);
+        return st;
+    }
+    st.rank = alive > 0 ? (ranks * 2 + alive) / (alive * 2) : 0;  // rounded average
+    st.strength = std::min(9, sim::warlordsStrength(s.type) + st.rank + bless);
+    return st;
+}
+
 void Battle::setUpFord() {
     const V3 east{1, 0, 0}, west{-1, 0, 0};
     // The armies face each other across the river, either side of the ford.

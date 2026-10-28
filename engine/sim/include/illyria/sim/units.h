@@ -44,6 +44,9 @@ enum class UnitType : uint8_t {
 inline constexpr int kUnitTypeCount = static_cast<int>(UnitType::Count);
 
 UnitStats unitStats(UnitType type);
+// Strength on the Warlords scale of 1 to 9 for a fresh unit of this type:
+// what the campaign map and the HUD show (ranks, levels and blessings add to it).
+int warlordsStrength(UnitType type);
 const char* unitTypeName(UnitType type);
 
 }  // namespace illyria::sim

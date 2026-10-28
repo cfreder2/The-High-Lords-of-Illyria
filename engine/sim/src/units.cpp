@@ -279,4 +279,38 @@ const char* unitTypeName(UnitType type) {
     return "?";
 }
 
+int warlordsStrength(UnitType type) {
+    using T = UnitType;
+    switch (type) {
+        case T::LightInfantry: return 3;
+        case T::HeavyInfantry: return 4;
+        case T::Archers: return 4;
+        case T::Pikemen: return 4;
+        case T::LightCavalry: return 4;
+        case T::HeavyCavalry: return 6;
+        case T::Dwarves: return 5;
+        case T::WolfRiders: return 5;
+        case T::Giants: return 6;
+        case T::Minotaurs: return 6;
+        case T::Spiders: return 5;
+        case T::Griffins: return 6;
+        case T::Pegasi: return 6;
+        case T::Elephants: return 7;
+        case T::Unicorns: return 6;
+        case T::Wizards: return 7;
+        case T::Dragons: return 9;
+        case T::Devils: return 8;
+        case T::Demons: return 8;
+        case T::Undead: return 5;
+        case T::Archons: return 8;
+        case T::Hero: return 4;  // level 1; every level adds one, to 9
+        case T::DwarfGrenadier: return 4;
+        case T::Journeyman: return 2;
+        case T::Warrior: return 5;
+        case T::Berserker: return 5;
+        case T::Count: break;
+    }
+    return 1;
+}
+
 }  // namespace illyria::sim

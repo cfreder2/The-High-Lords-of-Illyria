@@ -4,6 +4,7 @@
 
 #include "illyria/sim/ballistics.h"
 #include "illyria/sim/hash.h"
+#include "illyria/sim/units.h"
 
 namespace illyria::sim {
 
@@ -43,6 +44,21 @@ constexpr Fixed kMaxStepDown = Fixed::fromRatio(3, 2);
 constexpr Fixed kWallClear = Fixed::fromInt(2);
 // Merlons stop this share of the missiles shot up at defenders on a wall-walk.
 constexpr Fixed kMerlonCover = Fixed::fromRatio(1, 2);
+// Veterancy. A soldier is promoted at these kill counts (regular, veteran,
+// elite); a hero gains a level at these (levels 2 to 9).
+constexpr int32_t kSoldierRanks[] = {2, 5, 10};
+constexpr int32_t kHeroLevels[] = {3, 7, 12, 18, 25, 33, 42, 52};
+// Each rank or blessing adds this much to a soldier's damage, and to the
+// chance its shield turns a blow; a hero level adds less but also hit points.
+constexpr int32_t kRankDamagePct = 10;
+constexpr int32_t kHeroLevelDamagePct = 6;
+constexpr Fixed kRankBlockBonus = Fixed::fromRatio(3, 100);
+constexpr int32_t kHeroLevelHpPct = 8;
+// A hero leads the soldiers near them: their Warlords strength (3 + level, at
+// most 9) gives 1 to 3 leadership points, as in Warlords, each worth this much
+// damage to friends within reach.
+constexpr Fixed kLeadershipReach = Fixed::fromInt(30);
+constexpr int32_t kLeadershipPct = 5;
 // High ground: striking down the slope at a foe adds this much melee damage
 // per unit of grade between them (a 1 in 3 slope: +20%), within limits; blows
 // struck downhill also throw harder.
@@ -825,7 +841,7 @@ bool World::shieldBlocks(const Unit& target, const Vec3& incomingDir, Fixed chan
     // The blow comes from the front if it travels against the way the target faces.
     const Fixed facingDot = -(target.facing.dot(in) / len);
     if (facingDot < target.stats.shield.arcCos) return false;
-    return rng_.nextUnit() < target.stats.shield.blockChance * chanceScale;
+    return rng_.nextUnit() < (target.stats.shield.blockChance + kRankBlockBonus * (target.rank + target.blessings)) * chanceScale;
 }
 
 void World::knock(Unit& target, const Vec3& dir, Fixed impulse) {
@@ -867,7 +883,8 @@ void World::fight(Unit& u, Unit& enemy) {
         const int32_t downhill = static_cast<int32_t>((-dz / dist * kHighGroundPctPerGrade).floorToInt());
         pct += std::clamp(downhill, kHighGroundPctMin, kHighGroundPctMax);
     }
-    const bool killed = damage(enemy, m.damage * std::max<int32_t>(pct, 10) / 100);
+    pct += prowessPct(u) - 100;
+    const bool killed = damage(enemy, m.damage * std::max<int32_t>(pct, 10) / 100, &u);
     if (m.knockback > Fixed::zero()) {
         const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
         knock(enemy, u.facing, m.knockback * (Fixed::one() + downhill));
@@ -906,13 +923,43 @@ bool World::tryHeal(Unit& u) {
     return true;
 }
 
-bool World::damage(Unit& target, int32_t amount) {
+bool World::damage(Unit& target, int32_t amount, Unit* attacker) {
     if (!target.alive()) return false;
     target.hp = std::max(target.hp - amount, 0);
     if (target.alive()) return false;
     target.hasMoveTarget = false;
     target.hasAttackTarget = false;
+    if (attacker != nullptr && attacker->owner != target.owner) creditKill(*attacker);
     return true;
+}
+
+void World::creditKill(Unit& killer) {
+    ++killer.kills;
+    if (killer.stats.type == static_cast<uint8_t>(UnitType::Hero)) {
+        while (killer.rank < 8 && killer.kills >= kHeroLevels[killer.rank]) {
+            ++killer.rank;
+            // Tougher with every level, and the new strength shows at once.
+            const int32_t gain = unitStats(UnitType::Hero).maxHp * kHeroLevelHpPct / 100;
+            killer.stats.maxHp += gain;
+            if (killer.alive()) killer.hp += gain;
+        }
+        return;
+    }
+    while (killer.rank < 3 && killer.kills >= kSoldierRanks[killer.rank]) ++killer.rank;
+}
+
+int32_t World::prowessPct(const Unit& u) const {
+    const bool hero = u.stats.type == static_cast<uint8_t>(UnitType::Hero);
+    int32_t pct = 100 + u.rank * (hero ? kHeroLevelDamagePct : kRankDamagePct) + u.blessings * kRankDamagePct;
+    // The best hero near them leads them.
+    int32_t lead = 0;
+    for (const Unit& h : units_) {
+        if (h.owner != u.owner || !h.alive() || h.stats.type != static_cast<uint8_t>(UnitType::Hero) || h.id == u.id) continue;
+        if ((h.pos - u.pos).flat().lengthSq() > kLeadershipReach * kLeadershipReach) continue;
+        const int32_t strength = std::min(9, 4 + h.rank);  // level + 3
+        lead = std::max(lead, strength >= 9 ? 3 : strength >= 7 ? 2 : strength >= 4 ? 1 : 0);
+    }
+    return pct + lead * kLeadershipPct;
 }
 
 void World::fire(Unit& u, const Vec3& target) {
@@ -941,7 +988,7 @@ void World::fire(Unit& u, const Vec3& target) {
     p.kind = w.kind;
     p.pos = origin;
     p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
-    p.damage = w.damage;
+    p.damage = w.damage * prowessPct(u) / 100;
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     projectiles_.push_back(p);
@@ -1125,7 +1172,7 @@ void World::updateProjectiles() {
                 const Vec3 glance{-p.vel.x / 5, -p.vel.y / 5, abs(p.vel.z) / 5 + Fixed::fromInt(2)};
                 spawnDebris(RemainKind::Arrow, p.owner, at, glance);
             } else {
-                const bool killed = damage(*hit, p.damage);
+                const bool killed = damage(*hit, p.damage, mutableUnit(p.shooter));
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
             removed[i] = 1;
@@ -1276,6 +1323,9 @@ uint64_t World::checksum() const {
         hashStats(h, u.stats);
         h.addI64(u.hp);
         h.addI64(u.rank);
+        h.addI64(u.kills);
+        h.addI64(u.blessings);
+        h.addI64(u.stats.maxHp);
         hashVec(h, u.pos);
         hashVec(h, u.facing);
         hashVec(h, u.vel);

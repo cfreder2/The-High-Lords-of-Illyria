@@ -23,8 +23,9 @@ int main() {
     std::printf("Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s and a gallop 7 m/s.\n\n");
 
     std::printf("## Body and melee\n\n");
-    std::printf("| Unit | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Notes |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    std::printf("**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each rank, hero level and blessing adds one, to 9.\n\n");
+    std::printf("| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Notes |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         const UnitStats s = unitStats(static_cast<UnitType>(t));
         char notes[160] = "";
@@ -37,8 +38,8 @@ int main() {
         if (s.healing.amount)
             n += std::snprintf(notes + n, sizeof notes - n, "heals %d every %.1f s, %d charges; ", s.healing.amount,
                                secs(s.healing.cooldownTicks), s.healing.charges);
-        std::printf("| %s | %d | %.2f | %.2f | %.1f | %.1f | %d | %.2f s | %.1f | %.0f | %s | %s |\n",
-                    unitTypeName(static_cast<UnitType>(t)), s.maxHp, d(s.height), d(s.radius), d(s.mass),
+        std::printf("| %s | %d | %d | %.2f | %.2f | %.1f | %.1f | %d | %.2f s | %.1f | %.0f | %s | %s |\n",
+                    unitTypeName(static_cast<UnitType>(t)), warlordsStrength(static_cast<UnitType>(t)), s.maxHp, d(s.height), d(s.radius), d(s.mass),
                     d(s.moveSpeed), s.melee.damage, secs(s.melee.cooldownTicks), d(s.melee.reach), d(s.melee.knockback),
                     s.shield.blockChance > Fixed::zero() ? (std::to_string(static_cast<int>(d(s.shield.blockChance) * 100 + 0.5)) + "%").c_str() : "",
                     notes);

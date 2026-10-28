@@ -416,7 +416,9 @@ void Renderer::uploadScenery(const Battle& battle) {
                 shadow = r * 1.1f;
                 break;
             }
+            case sim::Obstacle::Kind::Tower: break;  // drawn with its castle
             case sim::Obstacle::Kind::House: {
+                if (o.variant == sim::Obstacle::kTownHouse) break;  // drawn with its castle
                 float aligned[4];
                 yawQuat(0, aligned);
                 const float hx = static_cast<float>(o.halfX.toDouble()), hy = static_cast<float>(o.halfY.toDouble());

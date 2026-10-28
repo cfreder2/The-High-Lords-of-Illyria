@@ -57,9 +57,21 @@
   #cards { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; pointer-events: auto; padding-bottom: 2px; }
   #cards::-webkit-scrollbar { display: none; }
   .card {
-    flex: 0 0 auto; width: 148px; padding: 8px 10px; text-align: left; min-height: 0;
-    display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; align-items: center;
+    flex: 0 0 auto; width: 172px; padding: 8px 10px; text-align: left; min-height: 0;
+    display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; align-items: center;
   }
+  /* Warlords' one number: strength 1-9 on a little shield, rank chevrons under
+     it (recruit none, regular one, veteran two, elite three), Lv for heroes,
+     a gold star per blessing. */
+  .card .badge {
+    grid-row: span 2; grid-column: 3; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 26px; padding: 2px 3px 3px; border-radius: 4px 4px 11px 11px; line-height: 1;
+    background: linear-gradient(#3b3226, #241e17); border: 1px solid rgba(232, 196, 120, 0.55); color: var(--gold);
+  }
+  .card .badge b { font-size: 15px; font-weight: 700; }
+  .card .badge svg { width: 16px; height: auto; grid-row: auto; margin-top: 1px; }
+  .card .badge small { font-size: 9px; letter-spacing: 0.02em; margin-top: 1px; }
+  .card .badge .bless { color: #ffe27a; font-size: 9px; }
   .card.selected { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
   .card.dead { opacity: 0.45; }
   .card svg { width: 22px; height: 22px; grid-row: span 2; color: var(--gold); }
@@ -112,7 +124,7 @@
     #bottom { bottom: calc(4px + var(--safe-b)); }
     #actions { position: absolute; bottom: 0; right: calc(8px + var(--safe-r)); margin: 0; flex-direction: column; }
     #cards { margin-right: 70px; }
-    .card { width: 120px; padding: 4px 8px; grid-template-columns: 18px 1fr; }
+    .card { width: 138px; padding: 4px 8px; grid-template-columns: 18px 1fr auto; }
     .card svg { width: 18px; height: 18px; }
     .card .name { font-size: 12px; }
     #gfx { top: calc(44px + var(--safe-t)); padding: 6px 10px; }
@@ -120,7 +132,7 @@
   }
   @media (max-width: 560px) {
     #title h1 { font-size: 13px; }
-    .card { width: 128px; }
+    .card { width: 146px; }
     #enemy { display: none; }
   }
 </style>
@@ -338,6 +350,13 @@
   let selected = -1;
   $("focus").onclick = () => api && selected >= 0 && api.focus(selected);
 
+  // Rank chevrons, stacked like a sergeant's stripes.
+  function chevrons(n) {
+    if (!n) return "";
+    let paths = "";
+    for (let i = 0; i < n; ++i) paths += `<path d="M2 ${4 + i * 4} L8 ${1 + i * 4} L14 ${4 + i * 4}" />`;
+    return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  }
   function updateHud() {
     if (!api) return;
     const s = JSON.parse(api.hud());
@@ -362,7 +381,7 @@
         const b = document.createElement("button");
         b.className = "card panel";
         b.dataset.index = q.i;
-        b.innerHTML = `${icons[q.role] || icons.melee}<span class="name"></span><span class="bar"><i></i></span>`;
+        b.innerHTML = `${icons[q.role] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
         b.title = `${q.name}: ${q.type}`;
         b.querySelector(".name").textContent = q.name;
         b.onclick = () => {
@@ -380,14 +399,24 @@
       b.classList.toggle("dead", q.alive === 0);
       b.querySelector("i").style.width = `${(100 * q.alive) / q.total}%`;
       b.querySelector(".name").textContent = `${q.name} · ${q.alive}`;
+      const badge = b.querySelector(".badge");
+      const look = `${q.strength}|${q.rank}|${q.level}|${q.blessings}`;
+      if (badge.dataset.look !== look) {
+        badge.dataset.look = look;
+        badge.innerHTML = `<b>${q.strength}</b>` + (q.level ? `<small>Lv ${q.level}</small>` : chevrons(q.rank)) +
+          (q.blessings ? `<span class="bless">${"✦".repeat(q.blessings)}</span>` : "");
+        const ranks = ["Recruits", "Regulars", "Veterans", "Elite"];
+        b.title = `${q.name}: ${q.type}, strength ${q.strength}` + (q.level ? `, level ${q.level}` : `, ${ranks[q.rank]}`) +
+          (q.blessings ? `, blessed ${q.blessings}×` : "") + `, ${q.kills} slain`;
+      }
     }
 
     if (s.outcome !== 0) {
       $("overlay").classList.remove("hidden");
       $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
       $("overlayText").textContent = s.outcome === 1
-        ? "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember."
-        : "Oakhaven has fallen. The Red Hand marches west.";
+        ? (s.scenario === 1 ? `The town is yours. Its dead lie where they fell; the land will remember.` : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
+        : (s.scenario === 1 ? `The walls held. ${s.foe} keeps its town.` : "Oakhaven has fallen. The Red Hand marches west.");
       $("overlayButton").classList.remove("hidden");
     } else if ($("overlayButton").offsetParent !== null) {
       $("overlay").classList.add("hidden");

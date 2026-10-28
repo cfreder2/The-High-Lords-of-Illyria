@@ -52,7 +52,7 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    constexpr uint64_t kSheet = 0x3ce39693a6cef975;
+    constexpr uint64_t kSheet = 0x3cf9c6507191ff47;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }
@@ -246,7 +246,26 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x7f0779d5f66b10f9;
+    constexpr uint64_t kGolden = 0x0d1de67ea7bcdffa;
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
+}
+
+TEST(soldiers_earn_ranks_and_heroes_gain_levels) {
+    // A hero and a veteran-to-be cut through a stream of skeletons.
+    World w(WorldConfig{});
+    const EntityId hero = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Hero));
+    const EntityId knight = w.spawnUnit(0, {m(0), m(6), m(0)}, kEast, unitStats(UnitType::HeavyCavalry));
+    const int32_t heroHp = w.findUnit(hero)->stats.maxHp;
+    for (int wave = 0; wave < 30; ++wave) {
+        w.spawnUnit(1, {m(3), m(wave % 2 ? 6 : 0), m(0)}, -kEast, unitStats(UnitType::LightInfantry));
+        for (int t = 0; t < 8 * kTicksPerSecond; ++t) w.step({});
+    }
+    const Unit* h = w.findUnit(hero);
+    const Unit* k = w.findUnit(knight);
+    std::printf("  hero: %d kills, level %d; cavalry: %d kills, rank %d\n", h->kills, h->rank + 1, k->kills, k->rank);
+    CHECK(h->kills >= 3 && h->rank >= 1);
+    CHECK(h->stats.maxHp > heroHp);
+    CHECK(k->kills < 2 || k->rank >= 1);
+    CHECK(h->kills + k->kills >= 20);
 }

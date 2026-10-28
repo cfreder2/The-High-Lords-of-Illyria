@@ -29,7 +29,7 @@ TEST(world_matches_golden_checksum) {
     // x86-64/ARM, WebAssembly) must reproduce it bit for bit; if a deliberate
     // simulation change alters it, update the constant in the same commit.
     const uint64_t actual = runFord(1234);
-    constexpr uint64_t kGolden = 0x51931f6a81c6a1bf;
+    constexpr uint64_t kGolden = 0xaba9e960078a9840;
     if (actual != kGolden) std::printf("  Ford checksum: 0x%016llx\n", static_cast<unsigned long long>(actual));
     CHECK(actual == kGolden);
 }

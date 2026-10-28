@@ -114,7 +114,13 @@ struct Unit {
     PlayerId owner = 0;
     UnitStats stats;
     int32_t hp = 0;
-    int32_t rank = 0;  // veterancy; shrinks the dispersion circle
+    // Veterancy, earned by kills (World::promote). Soldiers rise from recruit
+    // (0) through regular and veteran to elite (3); a hero's rank is their
+    // level less one (0-8). Each rank hits harder, blocks more often and
+    // shoots tighter; a hero also leads (see kLeadershipReach).
+    int32_t rank = 0;
+    int32_t kills = 0;
+    int32_t blessings = 0;  // from temples, each like one more rank in a fight
 
     Vec3 pos;
     Vec3 facing;  // unit-length, horizontal
@@ -280,7 +286,7 @@ private:
     bool tryHeal(Unit& unit);
     Unit* nearestEnemy(const Unit& unit, Fixed range);
     // Returns true if the blow killed the target.
-    bool damage(Unit& target, int32_t amount);
+    bool damage(Unit& target, int32_t amount, Unit* attacker = nullptr);
     bool shieldBlocks(const Unit& target, const Vec3& incomingDir, Fixed chanceScale);
     void knock(Unit& target, const Vec3& dir, Fixed impulse);
     void updateProjectiles();
@@ -289,6 +295,11 @@ private:
     // Debris (body parts, thrown arrows): low bounces that keep their speed,
     // then a skid to rest. Returns true once at rest.
     bool tumble(Projectile& p);
+    // Credits a kill and promotes the killer when it has earned a rank.
+    void creditKill(Unit& killer);
+    // Damage multiplier, in percent, from the unit's rank, blessings and any
+    // hero leading it.
+    int32_t prowessPct(const Unit& u) const;
     // The surface a walker at height z stands on here: the ground, or a deck
     // within a step of z (not a wall-walk high above a gate passage).
     Fixed standingHeight(Fixed x, Fixed y, Fixed z) const;

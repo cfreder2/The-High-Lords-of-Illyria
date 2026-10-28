@@ -260,7 +260,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     if (!app) return "{}";
     const Battle& b = *app->battle;
     std::string& s = app->hud;
-    char buf[256];
+    char buf[512];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
                   "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"squads\":[",
@@ -270,11 +270,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];
         static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier"};
+        const Standing st = b.standing(q);
         std::snprintf(buf, sizeof buf,
-                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu}",
+                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
-                      b.aliveCount(q), q.members.size());
+                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills);
         s += buf;
     }
     s += "]}";

@@ -603,6 +603,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         for (const Continent::Castle::House& hs : k.houses) {
             Obstacle o;
             o.kind = Obstacle::Kind::House;
+            o.variant = Obstacle::kTownHouse;
             o.pos = toLocal(hs.pos);
             o.pos.z = city.pos.z;
             o.halfX = hs.halfX;

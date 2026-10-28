@@ -34,6 +34,16 @@ struct Squad {
     V3 post{};
 };
 
+// What a squad's banner shows, as in Warlords: one strength from 1 to 9,
+// the soldiers' rank (chevrons), a hero's level and the blessings carried.
+struct Standing {
+    int strength = 1;
+    int rank = 0;       // soldiers: 0 recruit .. 3 elite (the survivors' average)
+    int level = 0;      // heroes: 1..9; 0 for other squads
+    int blessings = 0;
+    int kills = 0;
+};
+
 // Which battle to fight.
 enum class Scenario {
     Ford,   // Oakhaven Ford: the Red Hand comes over the river
@@ -134,6 +144,7 @@ public:
     // 0 in progress, 1 victory, 2 defeat.
     int outcome() const;
     int aliveCount(const Squad& s) const;
+    Standing standing(const Squad& s) const;
     V3 squadCentre(const Squad& s, bool interpolated = true) const;
     int squadOf(sim::EntityId id) const { return squadOfUnit_[id - 1]; }
 

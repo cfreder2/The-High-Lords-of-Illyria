@@ -93,9 +93,12 @@ Topography is strategy. The rules the battle simulation already applies:
 - **Stack Limit (from *Warlords*):** At most **8 squads** may occupy a map hex, and an attack commits at most 8. A defended city (2×2 hexes) fights with everything inside it, up to **32 squads**. This caps the largest possible battle at **40 squads** (~480 soldiers at ~12 per squad), which is what keeps several simultaneous full-physics battles inside the frame budget (§5.2).
 - **Named Units:** Every unit batch recruited receives a unique name (e.g., *1st Oakhaven Footmen*, *The Grey Watch*).
 - **Slow Recruitment Cycle:** Units take multiple turns/minutes to produce. Replacing a wiped-out veteran squad is extremely costly, encouraging strategic retreats and tactical preservation.
-- **Veterancy & Blessings**
-  - **Level Progression:** Units gain rank through battles, shrinking their dispersion circle and increasing poise/stamina reserves.
-  - **Temple Blessings:** Controlling sacred shrines across Illyria unlocks probability buffs (e.g., +15% shield block arc, elemental projectile imbues, panic resistance).
+- **One number, as in Warlords.** Every squad shows a single **strength from 1 to 9** on its banner (the HUD card's shield badge), and that is all a player needs to read. A fresh squad has its type's strength (light infantry 3, heavy cavalry 6, dragons 9: docs/UNITS.md); everything below adds one to it, never past 9.
+- **Ranks (soldiers):** kills promote a soldier from recruit to **regular** (2 kills), **veteran** (5) and **elite** (10), shown as one to three chevrons under the strength. Each rank: +10% damage, +3% chance to turn a blow with a shield, a 15% tighter arrow spread. A squad shows its survivors' average rank, so losses cost rank as well as men.
+- **Levels (heroes):** every side starts the campaign with its capital and **one hero**, free. Heroes level from 1 to 9 by kills (3, 7, 12, 18, 25, 33, 42, 52); the badge reads "Lv". Each level: +6% damage and +8% hit points. A hero's Warlords strength is 3 + level, and it **leads** the soldiers within 30 m exactly as in Warlords: strength 4-6 gives 1 leadership point, 7-8 two, 9 three, each +5% damage.
+- **Blessings:** each of the four temples blesses a stack once (§4.4), shown as a gold star; each counts like one more rank. As in Warlords, blessings stack to the cap of 9.
+- **Artifacts:** battle artifacts add to a hero's own strength; command artifacts add to the leadership of the stack (§4.4).
+- **Hover a card** for the full story: type, rank or level, blessings and the tally of kills.
 
 ### 4.2.1 Unit Roster
 
