@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sound Test · Illyria</title>
+<style>
+  :root { --bg: #15130f; --panel: #221e18; --ink: #efe6d2; --dim: #a99d84; --gold: #d8b25a; --line: #3a3328; --good: #6fae5a; --bad: #c4553f; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 Georgia, "Times New Roman", serif; }
+  body { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); max-width: 760px; margin: 0 auto; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 12px 0 10px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 22px; margin: 0 0 4px; color: var(--gold); letter-spacing: 0.02em; }
+  .meta { color: var(--dim); font-size: 13px; }
+  a { color: var(--gold); }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 10px; align-items: center; }
+  .controls label { font-size: 14px; color: var(--dim); display: flex; flex-direction: column; gap: 4px; }
+  input[type=range] { width: 100%; height: 32px; accent-color: var(--gold); }
+  .seg { display: flex; gap: 4px; }
+  .seg button { flex: 1; }
+  button { font: inherit; font-size: 15px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+           min-height: 44px; min-width: 44px; padding: 6px 10px; cursor: pointer; touch-action: manipulation; }
+  button.on { border-color: var(--gold); color: var(--gold); }
+  button:active { background: #2e281f; }
+  #unlock { width: 100%; margin-top: 10px; background: #3b2f1a; border-color: var(--gold); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+  nav a { font-size: 14px; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; padding: 6px 10px; }
+  h2 { font-size: 19px; color: var(--gold); margin: 22px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .sound { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+  .sound .title { font-weight: bold; }
+  .sound .id { font: 12px/1.3 ui-monospace, Menlo, monospace; color: var(--dim); word-break: break-all; }
+  .sound .when { font-size: 14px; color: var(--dim); margin: 4px 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .rate { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  .rate input[type=text] { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--ink); background: #1a1712; border: 1px solid var(--line);
+                           border-radius: 8px; padding: 10px; min-height: 44px; }
+  .rate button.up.on { border-color: var(--good); color: var(--good); }
+  .rate button.down.on { border-color: var(--bad); color: var(--bad); }
+  .future { opacity: 0.75; }
+  .tag { font-size: 12px; color: var(--dim); border: 1px solid var(--line); border-radius: 10px; padding: 1px 6px; margin-left: 6px; }
+  #copied { color: var(--good); font-size: 14px; margin-left: 8px; }
+  footer { margin-top: 28px; color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sound Test</h1>
+  <div class="meta">Version <span id="ver">sfx1</span> · <span id="size">…</span> · <a href="../">Back to the game</a></div>
+  <button id="unlock">Tap to start the sound</button>
+  <div class="controls">
+    <label>Volume <input type="range" id="vol" min="0" max="100" value="80" aria-label="Master volume"></label>
+    <label>Distance
+      <span class="seg" id="dist"><button data-d="0" class="on">Near</button><button data-d="0.45">Mid</button><button data-d="0.85">Far</button></span>
+    </label>
+    <label style="grid-column: 1 / -1">Position
+      <span class="seg" id="pan"><button data-p="-0.8">Left</button><button data-p="0" class="on">Centre</button><button data-p="0.8">Right</button></span>
+    </label>
+  </div>
+  <nav id="toc"></nav>
+</header>
+<main id="list"><p class="meta">Loading the list of sounds…</p></main>
+<section>
+  <h2>Your notes</h2>
+  <p class="meta">Ratings and notes stay on this device. Copy them and paste them back to us.</p>
+  <button id="copy">Copy my notes</button><span id="copied"></span>
+</section>
+<footer>Every sound here is made by the game's own synthesis (tools/sfx/synth) until a recording replaces it. They play
+through the same chain as in battle: panned, duller and more distant-sounding with the distance setting.</footer>
+
+<script src="audio.js?v=sfx1"></script>
+<script src="voice.js?v=sfx1"></script>
+<script src="sfx.js?v=sfx1"></script>
+<script>
+(function () {
+  "use strict";
+  const notesKey = "illyria.sfxtest.notes.v1";
+  let notes = {};
+  try { notes = JSON.parse(localStorage.getItem(notesKey)) || {}; } catch (e) { notes = {}; }
+  const saveNotes = () => { try { localStorage.setItem(notesKey, JSON.stringify(notes)); } catch (e) {} };
+  let pan = 0, dist = 0;
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs, ...kids) => {
+    const e = document.createElement(tag);
+    for (const k in attrs || {}) { if (k === "class") e.className = attrs[k]; else if (k.startsWith("on")) e[k] = attrs[k]; else e.setAttribute(k, attrs[k]); }
+    for (const c of kids) e.append(c);
+    return e;
+  };
+
+  $("unlock").onclick = () => {
+    window.IllyriaAudio.unlock();
+    $("unlock").textContent = "Sound is on";
+    $("unlock").disabled = true;
+  };
+  $("vol").oninput = () => { IllyriaSfx.settings.volume = +$("vol").value / 100; IllyriaSfx.settings.on = true; };
+  IllyriaSfx.settings.on = true;
+  IllyriaSfx.settings.ambience = true;
+  IllyriaSfx.settings.volume = 0.8;
+  const seg = (id, key, set) => {
+    for (const b of $(id).querySelectorAll("button")) b.onclick = () => {
+      for (const o of $(id).querySelectorAll("button")) o.classList.toggle("on", o === b);
+      set(+b.dataset[key]);
+    };
+  };
+  seg("pan", "p", (v) => { pan = v; });
+  seg("dist", "d", (v) => { dist = v; });
+
+  function rating(key) {
+    const n = notes[key] || {};
+    const up = el("button", { class: "up" + (n.r === 1 ? " on" : ""), "aria-label": "Good" }, "👍");
+    const down = el("button", { class: "down" + (n.r === -1 ? " on" : ""), "aria-label": "Needs work" }, "👎");
+    const text = el("input", { type: "text", placeholder: "Note (optional)", "aria-label": "Note on " + key });
+    text.value = n.t || "";
+    const set = (r) => {
+      notes[key] = Object.assign(notes[key] || {}, { r: (notes[key] || {}).r === r ? 0 : r });
+      up.classList.toggle("on", notes[key].r === 1);
+      down.classList.toggle("on", notes[key].r === -1);
+      saveNotes();
+    };
+    up.onclick = () => set(1);
+    down.onclick = () => set(-1);
+    text.oninput = () => { notes[key] = Object.assign(notes[key] || {}, { t: text.value }); saveNotes(); };
+    return el("div", { class: "rate" }, up, down, text);
+  }
+
+  const playing = new Map();
+  function soundCard(s) {
+    const card = el("div", { class: "sound" + (s.emitted_by === "future" ? " future" : ""), id: s.id });
+    card.append(el("div", { class: "title" }, s.title, s.emitted_by === "future" ? el("span", { class: "tag" }, "future") : "",
+                   s.emitted_by === "page" ? el("span", { class: "tag" }, "page") : ""));
+    card.append(el("div", { class: "id" }, s.id));
+    card.append(el("div", { class: "when" }, s.when));
+    const row = el("div", { class: "row" });
+    if (s.behaviour.startsWith("loop")) {
+      const b = el("button", {}, "▶ Play loop");
+      b.onclick = () => {
+        const on = !playing.get(s.id);
+        playing.set(s.id, on);
+        b.classList.toggle("on", on);
+        b.textContent = on ? "■ Stop" : "▶ Play loop";
+        IllyriaSfx.layer(s.id, on ? Math.max(0.15, 1 - dist) : 0, pan);
+      };
+      row.append(b);
+    } else {
+      s.files.forEach((f, i) => {
+        const b = el("button", { "aria-label": `${s.title}, variant ${i + 1}` }, String(i + 1));
+        b.onclick = () => IllyriaSfx.audition(s.id, i, { pan, dist });
+        row.append(b);
+      });
+      const r = el("button", {}, "🎲 Random");
+      r.onclick = () => IllyriaSfx.audition(s.id, -1, { pan, dist });
+      row.append(r);
+    }
+    card.append(row, rating(s.id));
+    return card;
+  }
+
+  function voiceCard(set, sit, title, when) {
+    const key = `voice/${set.id}/${sit.id}`;
+    const card = el("div", { class: "sound", id: key });
+    card.append(el("div", { class: "title" }, `${set.name}: ${title}`), el("div", { class: "id" }, key), el("div", { class: "when" }, when));
+    const row = el("div", { class: "row" });
+    sit.lines.forEach((l, i) => {
+      const b = el("button", { title: l.text }, String(i + 1));
+      b.onclick = () => IllyriaVoice.playLine(set.id, sit.id, i, pan, 1 - dist * 0.7);
+      row.append(b);
+    });
+    const r = el("button", {}, "🎲 Random");
+    r.onclick = () => IllyriaVoice.playLine(set.id, sit.id, Math.floor(Math.random() * sit.lines.length), pan, 1 - dist * 0.7);
+    row.append(r);
+    card.append(row, el("div", { class: "when" }, sit.lines.map((l) => l.text).join(" · ")), rating(key));
+    return card;
+  }
+
+  const order = ["ambience", "weapons", "impacts", "explosions", "gore", "deaths", "vocals", "notifications", "ui"];
+  const titles = { vocals: "Deaths and vocals (voices)" };
+  const cries = ["pain", "death", "death_moan", "cackle", "groan", "casualties", "severe_casualties", "total_casualties"];
+  const v = encodeURIComponent($("ver").textContent);
+  Promise.all([
+    IllyriaSfx.load().then(() => IllyriaSfx.manifest()),
+    fetch(`voice/lines.json?v=${v}`).then((r) => r.json()),
+  ]).then(([m, lines]) => {
+    const list = $("list");
+    list.textContent = "";
+    const stats = IllyriaSfx.stats();
+    let bytes = 0, files = 0;
+    for (const f in stats) { bytes += stats[f].bytes || 0; files++; }
+    $("size").textContent = `${files} files, ${(bytes / 1e6).toFixed(1)} MB in all (each loads when first played)`;
+    const cats = new Map(m.categories.map((c) => [c.id, c.title]));
+    const sits = new Map(lines.situations.map((s) => [s.id, s]));
+    for (const cat of order) {
+      const title = titles[cat] || cats.get(cat) || cat;
+      const anchor = "cat-" + cat;
+      $("toc").append(el("a", { href: "#" + anchor }, title));
+      list.append(el("h2", { id: anchor }, title));
+      if (cat === "vocals") {
+        for (const set of lines.sets)
+          for (const sit of set.situations)
+            if (cries.includes(sit.id)) list.append(voiceCard(set, sit, sits.get(sit.id).title, sits.get(sit.id).when));
+        continue;
+      }
+      for (const s of m.sounds) if (s.category === cat) list.append(soundCard(s));
+    }
+  }).catch((e) => { $("list").textContent = "Could not load the sounds: " + e; });
+
+  $("copy").onclick = () => {
+    const out = [`Illyria sound notes (version ${$("ver").textContent})`];
+    for (const k of Object.keys(notes).sort()) {
+      const n = notes[k];
+      if (!n.r && !n.t) continue;
+      out.push(`${k}: ${n.r === 1 ? "👍" : n.r === -1 ? "👎" : "-"}${n.t ? ", " + n.t : ""}`);
+    }
+    const text = out.join("\n");
+    const done = () => { $("copied").textContent = `Copied ${out.length - 1} notes`; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => fallback(text, done));
+    else fallback(text, done);
+  };
+  function fallback(text, done) {
+    const ta = el("textarea", {});
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { alert(text); }
+    ta.remove();
+  }
+})();
+</script>
+</body>
+</html>

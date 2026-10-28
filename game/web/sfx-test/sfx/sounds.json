@@ -1,0 +1,875 @@
+{
+ "version": 1,
+ "about": "Every sound effect in the game. The single source of truth: game/src/sfx.cpp emits the game's sounds by these ids, game/web/sfx.js plays them, tools/sfx/synth/render.py renders a placeholder for each and docs/SOUND_EFFECTS.md is generated from this file (python3 tools/sfx/script.py). Drop a recording at any listed path (tools/sfx/convert.sh) to replace the rendered one.",
+ "format": "mp3",
+ "path": "sfx/{id}_{n}.mp3",
+ "categories": [
+  {
+   "id": "ambience",
+   "title": "Ambience"
+  },
+  {
+   "id": "weapons",
+   "title": "Weapons"
+  },
+  {
+   "id": "impacts",
+   "title": "Impacts"
+  },
+  {
+   "id": "explosions",
+   "title": "Explosions"
+  },
+  {
+   "id": "gore",
+   "title": "Gore"
+  },
+  {
+   "id": "deaths",
+   "title": "Deaths"
+  },
+  {
+   "id": "notifications",
+   "title": "Notifications"
+  },
+  {
+   "id": "ui",
+   "title": "UI"
+  }
+ ],
+ "sounds": [
+  {
+   "id": "snd_weap_arrow_bowstring_release",
+   "category": "weapons",
+   "title": "Bowstring release",
+   "when": "An archer looses an arrow (a volley: one louder twang).",
+   "behaviour": "one-shot, positional, pitch +-5%",
+   "variants": 5,
+   "record": "A recurve or longbow released without an arrow in a quiet room (dry fire can break a bow: use a blank arrow into a bale). Close mic, 30 cm.",
+   "emitted_by": "game",
+   "level": -3,
+   "files": [
+    "sfx/snd_weap_arrow_bowstring_release_1.mp3",
+    "sfx/snd_weap_arrow_bowstring_release_2.mp3",
+    "sfx/snd_weap_arrow_bowstring_release_3.mp3",
+    "sfx/snd_weap_arrow_bowstring_release_4.mp3",
+    "sfx/snd_weap_arrow_bowstring_release_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_arrow_whistle",
+   "category": "weapons",
+   "title": "Arrow passing",
+   "when": "An arrow flies close past the listener while the camera is low; pitched by its closing speed (doppler).",
+   "behaviour": "one-shot, positional, pitch swept by the page",
+   "variants": 4,
+   "record": "Whip a thin dowel or an arrow past the mic, or swing a fishing rod tip; trim to the pass.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_weap_arrow_whistle_1.mp3",
+    "sfx/snd_weap_arrow_whistle_2.mp3",
+    "sfx/snd_weap_arrow_whistle_3.mp3",
+    "sfx/snd_weap_arrow_whistle_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_sword_swing",
+   "category": "weapons",
+   "title": "Sword swing",
+   "when": "A cut or thrust is struck (just before it lands).",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Swing a wooden sword or a thin stick fast past the mic; several speeds.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_weap_sword_swing_1.mp3",
+    "sfx/snd_weap_sword_swing_2.mp3",
+    "sfx/snd_weap_sword_swing_3.mp3",
+    "sfx/snd_weap_sword_swing_4.mp3",
+    "sfx/snd_weap_sword_swing_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_heavy_swing",
+   "category": "weapons",
+   "title": "Heavy swing",
+   "when": "A club, axe or great beast's swipe.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Swing a broom handle or a towel hard past the mic; low and slow.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_weap_heavy_swing_1.mp3",
+    "sfx/snd_weap_heavy_swing_2.mp3",
+    "sfx/snd_weap_heavy_swing_3.mp3",
+    "sfx/snd_weap_heavy_swing_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_sword_flesh",
+   "category": "weapons",
+   "title": "Blade into flesh",
+   "when": "A cut or chop lands on an unarmoured body: wet tearing slash.",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Knife into a cabbage or a raw chicken, wet celery snapped and twisted; layer with a short wet squelch.",
+   "emitted_by": "game",
+   "level": -3,
+   "files": [
+    "sfx/snd_weap_sword_flesh_1.mp3",
+    "sfx/snd_weap_sword_flesh_2.mp3",
+    "sfx/snd_weap_sword_flesh_3.mp3",
+    "sfx/snd_weap_sword_flesh_4.mp3",
+    "sfx/snd_weap_sword_flesh_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_sword_armor",
+   "category": "weapons",
+   "title": "Blade on armour",
+   "when": "A blow lands on mail or plate: bright metallic clash.",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Strike a steel pan lid, a shovel or a tool with a metal bar; hold it loosely so it rings.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_weap_sword_armor_1.mp3",
+    "sfx/snd_weap_sword_armor_2.mp3",
+    "sfx/snd_weap_sword_armor_3.mp3",
+    "sfx/snd_weap_sword_armor_4.mp3",
+    "sfx/snd_weap_sword_armor_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_blunt_crush",
+   "category": "weapons",
+   "title": "Blunt crush",
+   "when": "A club, hoof or staff lands: heavy concussive crush.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "A rubber mallet into a pumpkin or a wet phone book; a thump on a sandbag.",
+   "emitted_by": "game",
+   "level": -3,
+   "files": [
+    "sfx/snd_weap_blunt_crush_1.mp3",
+    "sfx/snd_weap_blunt_crush_2.mp3",
+    "sfx/snd_weap_blunt_crush_3.mp3",
+    "sfx/snd_weap_blunt_crush_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_pierce_flesh",
+   "category": "weapons",
+   "title": "Point into flesh",
+   "when": "A pike, lance, fang or horn goes in.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Stab a melon or a cabbage with a screwdriver; a short wet push.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_weap_pierce_flesh_1.mp3",
+    "sfx/snd_weap_pierce_flesh_2.mp3",
+    "sfx/snd_weap_pierce_flesh_3.mp3",
+    "sfx/snd_weap_pierce_flesh_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_block_shield",
+   "category": "weapons",
+   "title": "Blow on a shield",
+   "when": "A blow is taken on a wooden shield: a solid wooden thud.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Hit a thick plank or a wooden chopping board with a stick.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_weap_block_shield_1.mp3",
+    "sfx/snd_weap_block_shield_2.mp3",
+    "sfx/snd_weap_block_shield_3.mp3",
+    "sfx/snd_weap_block_shield_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_hit_bone",
+   "category": "weapons",
+   "title": "Blow on bone",
+   "when": "A blow or arrow strikes the walking dead: dry bone crack and rattle.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Snap dry twigs or a chicken bone, rattle a bag of sticks.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_weap_hit_bone_1.mp3",
+    "sfx/snd_weap_hit_bone_2.mp3",
+    "sfx/snd_weap_hit_bone_3.mp3",
+    "sfx/snd_weap_hit_bone_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_satchel_throw",
+   "category": "weapons",
+   "title": "Satchel thrown",
+   "when": "A dwarf grenadier lobs a satchel charge (the grunt is the dwarf's voice).",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A cloth bag of gravel and a half-full bottle swung and tossed onto grass.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_weap_satchel_throw_1.mp3",
+    "sfx/snd_weap_satchel_throw_2.mp3",
+    "sfx/snd_weap_satchel_throw_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_satchel_fuse",
+   "category": "weapons",
+   "title": "Fuse hissing",
+   "when": "A satchel's lit fuse fizzing as it flies and rolls.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A sparkler or a match head hissing, close mic (outdoors, safely).",
+   "emitted_by": "game",
+   "level": -10,
+   "files": [
+    "sfx/snd_weap_satchel_fuse_1.mp3",
+    "sfx/snd_weap_satchel_fuse_2.mp3",
+    "sfx/snd_weap_satchel_fuse_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_fireball_cast",
+   "category": "weapons",
+   "title": "Fireball cast",
+   "when": "A wizard gathers fire and hurls it: crackle building to a whoosh.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A torch whooshed past the mic, a gas burner lit; layer with crackling paper.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_weap_fireball_cast_1.mp3",
+    "sfx/snd_weap_fireball_cast_2.mp3",
+    "sfx/snd_weap_fireball_cast_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_catapult_release",
+   "category": "weapons",
+   "title": "Catapult release",
+   "when": "A catapult's arm slams into its crossbar: creak and thunk.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "A heavy door slammed into its frame, a log dropped on a beam; creak a wooden chair first.",
+   "emitted_by": "game",
+   "level": -2,
+   "files": [
+    "sfx/snd_weap_catapult_release_1.mp3",
+    "sfx/snd_weap_catapult_release_2.mp3",
+    "sfx/snd_weap_catapult_release_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_spear_scream",
+   "category": "weapons",
+   "title": "Thrown spear (future)",
+   "when": "For a future javelin unit (Myth's Soulless): a metallic scream into an air-rending whistle.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A metal rod scraped then whipped past the mic.",
+   "emitted_by": "future",
+   "level": -4,
+   "future": "javelin throwers",
+   "files": [
+    "sfx/snd_weap_spear_scream_1.mp3",
+    "sfx/snd_weap_spear_scream_2.mp3",
+    "sfx/snd_weap_spear_scream_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_lightning",
+   "category": "weapons",
+   "title": "Lightning bolt (future)",
+   "when": "For a future storm caster (Myth's Fetch): an electric crackle building, then a huge snap.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A cracking whip close up layered with crackling foil and a big thunder clap.",
+   "emitted_by": "future",
+   "level": -2,
+   "future": "storm casters",
+   "files": [
+    "sfx/snd_weap_lightning_1.mp3",
+    "sfx/snd_weap_lightning_2.mp3",
+    "sfx/snd_weap_lightning_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_dirt",
+   "category": "impacts",
+   "title": "Arrow into the ground",
+   "when": "An arrow strikes earth or grass: a dull dead thud.",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Push a stick sharply into soft earth or a bale of straw.",
+   "emitted_by": "game",
+   "level": -10,
+   "files": [
+    "sfx/snd_impact_arrow_dirt_1.mp3",
+    "sfx/snd_impact_arrow_dirt_2.mp3",
+    "sfx/snd_impact_arrow_dirt_3.mp3",
+    "sfx/snd_impact_arrow_dirt_4.mp3",
+    "sfx/snd_impact_arrow_dirt_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_wood",
+   "category": "impacts",
+   "title": "Arrow into wood",
+   "when": "An arrow sticks in a tree, a door or a beam.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Throw a dart into a plank; a knife into a log.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_impact_arrow_wood_1.mp3",
+    "sfx/snd_impact_arrow_wood_2.mp3",
+    "sfx/snd_impact_arrow_wood_3.mp3",
+    "sfx/snd_impact_arrow_wood_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_stone",
+   "category": "impacts",
+   "title": "Arrow off stone",
+   "when": "An arrow glances off a wall, rock or merlon.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Flick a nail or a pencil against a stone step; a short tick and skitter.",
+   "emitted_by": "game",
+   "level": -7,
+   "files": [
+    "sfx/snd_impact_arrow_stone_1.mp3",
+    "sfx/snd_impact_arrow_stone_2.mp3",
+    "sfx/snd_impact_arrow_stone_3.mp3",
+    "sfx/snd_impact_arrow_stone_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_shield",
+   "category": "impacts",
+   "title": "Arrow into a shield",
+   "when": "A shield catches an arrow: a splintering wooden crack.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Snap a thin batten, or hit a plywood sheet with a dart.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_impact_arrow_shield_1.mp3",
+    "sfx/snd_impact_arrow_shield_2.mp3",
+    "sfx/snd_impact_arrow_shield_3.mp3",
+    "sfx/snd_impact_arrow_shield_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_armor",
+   "category": "impacts",
+   "title": "Arrow off armour",
+   "when": "An arrow strikes mail or plate: a metallic ring.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Flick a nail at a steel pan or a shovel blade.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_impact_arrow_armor_1.mp3",
+    "sfx/snd_impact_arrow_armor_2.mp3",
+    "sfx/snd_impact_arrow_armor_3.mp3",
+    "sfx/snd_impact_arrow_armor_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_flesh",
+   "category": "impacts",
+   "title": "Arrow into flesh",
+   "when": "An arrow hits a man: a wet thwack.",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Slap a wet towel; a dart into a raw steak.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_impact_arrow_flesh_1.mp3",
+    "sfx/snd_impact_arrow_flesh_2.mp3",
+    "sfx/snd_impact_arrow_flesh_3.mp3",
+    "sfx/snd_impact_arrow_flesh_4.mp3",
+    "sfx/snd_impact_arrow_flesh_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_arrow_water",
+   "category": "impacts",
+   "title": "Arrow into water",
+   "when": "An arrow falls in a river or lake.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Drop a pencil into a bath from a height.",
+   "emitted_by": "game",
+   "level": -10,
+   "files": [
+    "sfx/snd_impact_arrow_water_1.mp3",
+    "sfx/snd_impact_arrow_water_2.mp3",
+    "sfx/snd_impact_arrow_water_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_stone_smash",
+   "category": "impacts",
+   "title": "Stone lands",
+   "when": "A catapult stone smashes down: crash, crunch and scattering grit.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "Drop a paving slab onto gravel; a rock onto a pile of stones.",
+   "emitted_by": "game",
+   "level": 0,
+   "files": [
+    "sfx/snd_impact_stone_smash_1.mp3",
+    "sfx/snd_impact_stone_smash_2.mp3",
+    "sfx/snd_impact_stone_smash_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_gate_wood",
+   "category": "impacts",
+   "title": "Gate struck",
+   "when": "A blow or blast hits a castle gate: a deep wooden boom.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 4,
+   "record": "A sledgehammer on a thick wooden door; record from inside the room too.",
+   "emitted_by": "game",
+   "level": -2,
+   "files": [
+    "sfx/snd_impact_gate_wood_1.mp3",
+    "sfx/snd_impact_gate_wood_2.mp3",
+    "sfx/snd_impact_gate_wood_3.mp3",
+    "sfx/snd_impact_gate_wood_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_gate_break",
+   "category": "impacts",
+   "title": "Gate breaks",
+   "when": "A gate gives way: splintering timbers and a crash.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "Break a pallet or old crates with a sledgehammer; layer a heavy fall.",
+   "emitted_by": "game",
+   "level": 0,
+   "files": [
+    "sfx/snd_impact_gate_break_1.mp3",
+    "sfx/snd_impact_gate_break_2.mp3",
+    "sfx/snd_impact_gate_break_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_expl_satchel",
+   "category": "explosions",
+   "title": "Satchel charge",
+   "when": "A satchel charge explodes: huge sub-bass blast with a long tail.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 4,
+   "record": "Not recordable at home: use a CC0 explosion library, or a balloon burst close up pitched down an octave and layered with a sub sine drop.",
+   "emitted_by": "game",
+   "level": 0,
+   "files": [
+    "sfx/snd_expl_satchel_1.mp3",
+    "sfx/snd_expl_satchel_2.mp3",
+    "sfx/snd_expl_satchel_3.mp3",
+    "sfx/snd_expl_satchel_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_expl_fireball",
+   "category": "explosions",
+   "title": "Fireball bursts",
+   "when": "A fireball (or a dwarf's cocktail) lands: glass shatter crossfaded into a roaring, crackling fire whoosh.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 4,
+   "record": "A bottle broken in a bin (wear goggles) layered with a gas burner whoosh and crackling kindling.",
+   "emitted_by": "game",
+   "level": -1,
+   "files": [
+    "sfx/snd_expl_fireball_1.mp3",
+    "sfx/snd_expl_fireball_2.mp3",
+    "sfx/snd_expl_fireball_3.mp3",
+    "sfx/snd_expl_fireball_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_dismember_snap",
+   "category": "gore",
+   "title": "Dismember snap",
+   "when": "A cut takes off a limb or head: a sharp organic crunch, a tendon snapping.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Snap a stick of celery or a carrot wrapped in a wet cloth; twist a raw chicken wing apart.",
+   "emitted_by": "game",
+   "level": -3,
+   "files": [
+    "sfx/snd_gore_dismember_snap_1.mp3",
+    "sfx/snd_gore_dismember_snap_2.mp3",
+    "sfx/snd_gore_dismember_snap_3.mp3",
+    "sfx/snd_gore_dismember_snap_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_gib_burst",
+   "category": "gore",
+   "title": "Gib burst",
+   "when": "A body is torn apart (a blast, or a blow far past death): a saturated, wet, low organic burst.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Drop a water-soaked sponge or a wet bag of jelly onto concrete; layer a stomped melon.",
+   "emitted_by": "game",
+   "level": -1,
+   "files": [
+    "sfx/snd_gore_gib_burst_1.mp3",
+    "sfx/snd_gore_gib_burst_2.mp3",
+    "sfx/snd_gore_gib_burst_3.mp3",
+    "sfx/snd_gore_gib_burst_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_blood_rain",
+   "category": "gore",
+   "title": "Blood rain",
+   "when": "After a gib burst: drops and bits pattering down all round.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Flick water from a brush onto paper and leaves; drop wet pasta onto a board.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_gore_blood_rain_1.mp3",
+    "sfx/snd_gore_blood_rain_2.mp3",
+    "sfx/snd_gore_blood_rain_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_body_fall",
+   "category": "deaths",
+   "title": "Body falls",
+   "when": "A body hits the ground (after the death cry).",
+   "behaviour": "one-shot, positional",
+   "variants": 5,
+   "record": "Drop a sack of potatoes or a duffel bag of clothes onto earth.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_gore_body_fall_1.mp3",
+    "sfx/snd_gore_body_fall_2.mp3",
+    "sfx/snd_gore_body_fall_3.mp3",
+    "sfx/snd_gore_body_fall_4.mp3",
+    "sfx/snd_gore_body_fall_5.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_body_fall_armor",
+   "category": "deaths",
+   "title": "Armoured body falls",
+   "when": "A man in armour (or a great beast) hits the ground: thud and clatter.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Drop a duffel bag with a few pans and chains in it.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_gore_body_fall_armor_1.mp3",
+    "sfx/snd_gore_body_fall_armor_2.mp3",
+    "sfx/snd_gore_body_fall_armor_3.mp3",
+    "sfx/snd_gore_body_fall_armor_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_bones_collapse",
+   "category": "deaths",
+   "title": "Bones collapse",
+   "when": "One of the walking dead falls apart: a dry clattering heap.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Drop a bundle of dry sticks and a few wooden spoons onto a floor.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_gore_bones_collapse_1.mp3",
+    "sfx/snd_gore_bones_collapse_2.mp3",
+    "sfx/snd_gore_bones_collapse_3.mp3",
+    "sfx/snd_gore_bones_collapse_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_gore_flesh_burn",
+   "category": "deaths",
+   "title": "Burning body",
+   "when": "A body killed by fire: sizzle and crackle as it burns.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Bacon in a hot pan, close; crackling twigs on a fire.",
+   "emitted_by": "game",
+   "level": -7,
+   "files": [
+    "sfx/snd_gore_flesh_burn_1.mp3",
+    "sfx/snd_gore_flesh_burn_2.mp3",
+    "sfx/snd_gore_flesh_burn_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_magic_heal",
+   "category": "weapons",
+   "title": "Healing",
+   "when": "A journeyman mends a wounded friend: a soft rising shimmer.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Rub a wet finger round a wine glass; brush wind chimes gently.",
+   "emitted_by": "game",
+   "level": -10,
+   "files": [
+    "sfx/snd_magic_heal_1.mp3",
+    "sfx/snd_magic_heal_2.mp3",
+    "sfx/snd_magic_heal_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_victory_fanfare",
+   "category": "notifications",
+   "title": "Victory",
+   "when": "The battle is won: a short brass fanfare.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "A brass player, or CC0: a short major fanfare, 3-4 s.",
+   "emitted_by": "game",
+   "level": -2,
+   "files": [
+    "sfx/snd_state_victory_fanfare_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_defeat_drone",
+   "category": "notifications",
+   "title": "Defeat",
+   "when": "The battle is lost: a low minor-chord string drone with sub-bass.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "Cello or synth strings holding a low minor chord, 5-6 s, fading.",
+   "emitted_by": "game",
+   "level": -3,
+   "files": [
+    "sfx/snd_state_defeat_drone_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_click",
+   "category": "ui",
+   "title": "Button",
+   "when": "Any button tapped.",
+   "behaviour": "one-shot, 2D, quiet",
+   "variants": 3,
+   "record": "A pen click or a wooden bead tapped on a table.",
+   "emitted_by": "page",
+   "level": -16,
+   "files": [
+    "sfx/snd_ui_click_1.mp3",
+    "sfx/snd_ui_click_2.mp3",
+    "sfx/snd_ui_click_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_page_turn",
+   "category": "ui",
+   "title": "Page turn",
+   "when": "A panel opens (settings, news, a town, a briefing).",
+   "behaviour": "one-shot, 2D, quiet",
+   "variants": 3,
+   "record": "Turn a stiff page of an old book, close mic.",
+   "emitted_by": "page",
+   "level": -12,
+   "files": [
+    "sfx/snd_ui_page_turn_1.mp3",
+    "sfx/snd_ui_page_turn_2.mp3",
+    "sfx/snd_ui_page_turn_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_wind_mountain",
+   "category": "ambience",
+   "title": "Mountain wind",
+   "when": "Over high passes and peaks (the continent's mountain value under the view): a hollow high howl.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "Wind across a bottle mouth; a real gale through a gap (wind shield on the mic).",
+   "emitted_by": "ambience",
+   "level": -18,
+   "files": [
+    "sfx/snd_amb_wind_mountain_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_wind_valley",
+   "category": "ambience",
+   "title": "Valley wind",
+   "when": "Over the lowlands: broad low gusts with grit; louder as the camera rises.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "Wind in grass and trees on an open field, no traffic.",
+   "emitted_by": "ambience",
+   "level": -20,
+   "files": [
+    "sfx/snd_amb_wind_valley_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_swamp_insects",
+   "category": "ambience",
+   "title": "Swamp insects",
+   "when": "Near marsh and mud: cicadas and crickets, panned towards the wet ground.",
+   "behaviour": "loop, stereo, panned",
+   "variants": 1,
+   "record": "A summer marsh at dusk, or CC0 insect field recordings.",
+   "emitted_by": "ambience",
+   "level": -22,
+   "files": [
+    "sfx/snd_amb_swamp_insects_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_swamp_frogs",
+   "category": "ambience",
+   "title": "Frog",
+   "when": "Now and then out in the marsh: a single croak at a random point.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Any frog recording; or a balloon squeaked and a comb strummed.",
+   "emitted_by": "game",
+   "level": -12,
+   "files": [
+    "sfx/snd_amb_swamp_frogs_1.mp3",
+    "sfx/snd_amb_swamp_frogs_2.mp3",
+    "sfx/snd_amb_swamp_frogs_3.mp3",
+    "sfx/snd_amb_swamp_frogs_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_carrion_flies",
+   "category": "ambience",
+   "title": "Carrion flies",
+   "when": "Over the dead (12 s after they fall), louder the more bodies lie near the view.",
+   "behaviour": "loop, stereo, panned",
+   "variants": 1,
+   "record": "Flies over rotting fruit in a bin, close mic.",
+   "emitted_by": "ambience",
+   "level": -20,
+   "files": [
+    "sfx/snd_amb_carrion_flies_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_war_drums",
+   "category": "ambience",
+   "title": "War drums",
+   "when": "Distant, muffled: the enemy approaching (beyond bowshot), or held land (a siege).",
+   "behaviour": "loop, stereo, panned",
+   "variants": 1,
+   "record": "Floor toms or a big drum in a large room, recorded from the next room.",
+   "emitted_by": "ambience",
+   "level": -16,
+   "files": [
+    "sfx/snd_amb_war_drums_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_rain_light",
+   "category": "ambience",
+   "title": "Light rain",
+   "when": "Weather hook: light rain, a soft patter.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "Rain on leaves and a tent.",
+   "emitted_by": "ambience",
+   "level": -20,
+   "files": [
+    "sfx/snd_amb_rain_light_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_rain_heavy",
+   "category": "ambience",
+   "title": "Heavy rain",
+   "when": "Weather hook: a downpour, roaring white noise (damps open fuses).",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "A heavy shower on a roof, mic indoors by an open window.",
+   "emitted_by": "ambience",
+   "level": -18,
+   "files": [
+    "sfx/snd_amb_rain_heavy_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_thunder",
+   "category": "ambience",
+   "title": "Thunder",
+   "when": "Weather hook: a low rolling rumble 3-8 s after a lightning flash.",
+   "behaviour": "one-shot, 2D",
+   "variants": 3,
+   "record": "A sheet of thin metal shaken, pitched down; or CC0 thunder.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_amb_thunder_1.mp3",
+    "sfx/snd_amb_thunder_2.mp3",
+    "sfx/snd_amb_thunder_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_cave_drip",
+   "category": "ambience",
+   "title": "Cave drips (future)",
+   "when": "For future cave maps: water drops with a long reverb.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Drops from a tap into a bucket in a tiled bathroom.",
+   "emitted_by": "future",
+   "level": -14,
+   "future": "cave maps",
+   "files": [
+    "sfx/snd_amb_cave_drip_1.mp3",
+    "sfx/snd_amb_cave_drip_2.mp3",
+    "sfx/snd_amb_cave_drip_3.mp3",
+    "sfx/snd_amb_cave_drip_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_subterranean_rumble",
+   "category": "ambience",
+   "title": "Deep rumble (future)",
+   "when": "For future cave or quake moments: a sub-bass rumble.",
+   "behaviour": "loop, 2D",
+   "variants": 1,
+   "record": "A car engine idling heard through a wall, pitched down.",
+   "emitted_by": "future",
+   "level": -18,
+   "future": "caves",
+   "files": [
+    "sfx/snd_amb_subterranean_rumble_1.mp3"
+   ]
+  }
+ ]
+}

@@ -37,6 +37,9 @@ add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
 )
 # The voices: the manifest of lines and whatever has been recorded (tools/voice).
+# The sound test page with its own copy of the sounds and players (game/web/sfx-test).
+add_custom_target(illyria_web_sfx_test ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sfx-test" "${ILLYRIA_SITE_DIR}/sfx-test")
 add_custom_target(illyria_web_voice ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/voice" "${ILLYRIA_SITE_DIR}/voice"
 )
