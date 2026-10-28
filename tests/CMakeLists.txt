@@ -27,6 +27,7 @@ add_executable(illyria_tests
     test_campaign_rare.cpp
     test_paths.cpp
     test_command.cpp
+    test_orders.cpp
     test_morale_rally.cpp
     test_voice.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp

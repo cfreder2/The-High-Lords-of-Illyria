@@ -259,4 +259,7 @@ private:
     const M4* viewProjOverride_ = nullptr;  // the shadow pass renders from the sun
 };
 
+// Order markers (renderer_orders.cpp): destinations, targets, attack lines.
+void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals);
+
 }  // namespace illyria::game

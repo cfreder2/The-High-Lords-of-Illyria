@@ -2029,6 +2029,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         mark(drag.anchor + drag.facing * len, yaw, 1.1f, kDecalArrow);
     }
 
+    // Where the player's soldiers are going, and what they are after.
+    pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
+
     // Body parts at rest on the ground.
     for (const sim::Remain& r : world.remains()) {
         if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
