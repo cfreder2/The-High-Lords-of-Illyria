@@ -7,6 +7,7 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
+#include "illyria/game/detail_land.h"
 #include <map>
 
 #include "figures.h"
@@ -41,6 +42,9 @@ public:
     void reset(Battle& battle);
     void draw(Battle& battle, const Camera& camera, double timeSeconds);
     // The campaign map shows the land, not the battle's soldiers.
+    // Builds all of the close-up land around the camera now (test hook; it is
+    // otherwise built a little each frame).
+    void finishDetail(const Battle& battle, const Camera& camera) { updateDetail(battle, camera, 1e9, true); }
     void setShowUnits(bool show) {
         showUnits_ = show;
         unitsChecked_ = SIZE_MAX;
@@ -57,6 +61,7 @@ private:
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
+        GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -143,6 +148,27 @@ private:
     V3 patchCentre_{1e9f, 1e9f, 0};
     float patch_[4] = {1e9f, 1e9f, -1e9f, -1e9f};  // the shown patch's extent, inside its skirt
     void updatePatch(const Battle& battle, const Camera& camera);
+    // Close up anywhere off the battlefield, the land at the battlefield's own
+    // detail (DetailLand), drawn by the terrain, cover and water programs with
+    // its own repeating textures (renderer_detail.cpp); the coarse land and the
+    // ribbons give way where it is shown.
+    DetailLand detail_;
+    Program detailTerrain_, detailDepth_, farCut_;
+    GLuint detailTex_[6] = {0, 0, 0, 0, 0, 0};  // heights, ground, water, flow, road, canopy
+    GLuint detailMask_ = 0, detailVao_ = 0, detailVbo_ = 0, detailIbo_ = 0, detailInst_ = 0;
+    GLuint detailWaterVao_ = 0, detailWaterVbo_ = 0, detailWetInst_ = 0;
+    GLsizei detailIndices_ = 0, detailWaterIndices_ = 0, detailChunks_ = 0, detailWetChunks_ = 0;
+    uint32_t detailGen_ = UINT32_MAX;
+    float detailRect_[4] = {1e9f, 1e9f, -1e9f, -1e9f};
+    float detailFade_ = 0;   // by the camera's height (see detailWeight in kCommon)
+    std::vector<float> chunkFade_;  // per slot: fading in once finished
+    double detailClock_ = -1;
+    bool detailOn_ = false;  // drawn this frame
+    void resetDetail(const Battle& battle);
+    void updateDetail(const Battle& battle, const Camera& camera, double budgetMs, bool instant = false);
+    void bindDetail(const Program& p);
+    void drawDetailTerrain(const Program& p, const Camera& camera, double timeSeconds, float gameSeconds);
+    void drawDetailWater(const Camera& camera, double timeSeconds, float gameSeconds);
     GLuint skyVao_ = 0;
     float ring_[4] = {0, 0, 0, 0};  // the fine ring's extent (min x, min y, max x, max y)
     void buildLand(const Battle& battle, const FarGrid& grid, LandMesh& out, bool skirt);

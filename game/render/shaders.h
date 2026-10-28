@@ -35,18 +35,41 @@ uniform vec2 uFocus;       // camera target on the ground
 const vec3 kSun = normalize(vec3(-0.62, 0.38, 0.52));
 const vec3 kSky = vec3(0.64, 0.74, 0.84);
 
-float heightTexel(vec2 c) {
-    ivec2 i = ivec2(clamp(c, vec2(0.0), vec2(uCells)));
-    return texelFetch(uHeights, i, 0).r;
+// Which land the ground textures hold. 0: the battlefield, from (0, 0),
+// clamped at its edges. 1: the close-up land around the camera off the
+// battlefield (game::DetailLand), whose textures repeat every uCells samples.
+uniform float uWrap;
+ivec2 texCell(vec2 c, float last) {
+    if (uWrap > 0.5) return ivec2(clamp(mod(c, uCells), vec2(0.0), vec2(uCells - 1.0)));
+    return ivec2(clamp(c, vec2(0.0), vec2(last)));
 }
+float heightTexel(vec2 c) { return texelFetch(uHeights, texCell(c, uCells), 0).r; }
 // Same two-triangle interpolation as the simulation and the terrain mesh.
 float groundZ(vec2 p) {
-    vec2 f = clamp(p / uCellSize, vec2(0.0), vec2(uCells));
-    vec2 i = min(floor(f), vec2(uCells - 1.0));
+    vec2 f = p / uCellSize;
+    if (uWrap < 0.5) f = clamp(f, vec2(0.0), vec2(uCells));
+    vec2 i = floor(f);
+    if (uWrap < 0.5) i = min(i, vec2(uCells - 1.0));
     vec2 t = f - i;
     float a = heightTexel(i), b = heightTexel(i + vec2(1, 0));
     float c = heightTexel(i + vec2(0, 1)), d = heightTexel(i + vec2(1, 1));
     return t.x >= t.y ? a + (b - a) * t.x + (d - b) * t.y : a + (c - a) * t.y + (d - c) * t.x;
+}
+// How much the close-up land shows here, 0..1 (the coarse land and the
+// ribbons give way to it): inside uDetailRect, in the 64 m chunks uDetailMask
+// marks (one texel per chunk, repeating like the land's textures, rising as a
+// chunk fades in), fading out toward the rect's edge and as the camera rises
+// (uDetailFade). Where it is between 0 and 1 the two cross-fade by a screen
+// dither, each drawing the pixels the other leaves.
+uniform sampler2D uDetailMask;
+uniform vec4 uDetailRect;
+uniform float uDetailFade;
+float detailWeight(vec2 p) {
+    if (any(lessThan(p, uDetailRect.xy)) || any(greaterThanEqual(p, uDetailRect.zw))) return 0.0;
+    vec2 n = vec2(textureSize(uDetailMask, 0));
+    ivec2 c = ivec2(clamp(mod(floor(p / 64.0), n), vec2(0.0), n - 1.0));
+    vec2 e = min(p - uDetailRect.xy, uDetailRect.zw - p);
+    return texelFetch(uDetailMask, c, 0).r * clamp(min(e.x, e.y) / 128.0, 0.0, 1.0) * uDetailFade;
 }
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -111,7 +134,25 @@ void main() {
     gl_Position = uViewProj * vec4(aPos, 1.0);
 }
 )";
-inline const char* kTerrainFs = R"(
+// The close-up land off the battlefield: one 16 x 16 cell grid per chunk,
+// instanced, its heights from the (repeating) height texture, with a skirt
+// hanging from its edges to hide any crack with the coarser land.
+inline const char* kPatchVs = R"(
+layout(location = 0) in vec3 aGrid;   // sample in the chunk (0..16), and 1 on the skirt
+layout(location = 1) in vec2 aChunk;  // per instance: the chunk's corner
+out vec3 vWorld;
+out vec3 vNormal;
+void main() {
+    vec2 c = floor(aChunk / uCellSize + 0.5) + aGrid.xy;
+    float z = heightTexel(c);
+    float l = heightTexel(c - vec2(1, 0)), r = heightTexel(c + vec2(1, 0));
+    float d = heightTexel(c - vec2(0, 1)), u = heightTexel(c + vec2(0, 1));
+    vNormal = normalize(vec3(l - r, d - u, 2.0 * uCellSize));
+    vWorld = vec3(c * uCellSize, z - aGrid.z * 10.0);
+    gl_Position = uViewProj * vec4(vWorld, 1.0);
+}
+)";
+#define ILLYRIA_TERRAIN_FS R"(
 in vec3 vWorld;
 in vec3 vNormal;
 out vec4 oColor;
@@ -149,8 +190,7 @@ vec3 groundColor(int id, float broad, float fine) {
     return grass;
 }
 int groundAt(ivec2 c) {
-    c = clamp(c, ivec2(0), ivec2(int(uCells) - 1));
-    return int(texelFetch(uGround, c, 0).r * 16.0 + 0.5);
+    return int(texelFetch(uGround, texCell(vec2(c), uCells - 1.0), 0).r * 16.0 + 0.5);
 }
 
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
@@ -160,6 +200,9 @@ uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative wh
 float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, size * 1.2, px); }
 
 void main() {
+#ifdef DETAIL_FADE
+    if (detailWeight(vWorld.xy) <= hash12(floor(gl_FragCoord.xy))) discard;  // cross-fading with the coarse land
+#endif
     vec3 n = normalize(vNormal);
     float slope = 1.0 - n.z;
     vec2 p = vWorld.xy;
@@ -266,11 +309,11 @@ void main() {
     {
         ivec2 cc = ivec2(floor(p / uCellSize));
         float surf = -1e9;
-        for (int k = 0; k < 4; ++k) surf = max(surf, texelFetch(uWaterTex, clamp(cc + ivec2(k & 1, k >> 1), ivec2(0), ivec2(int(uCells))), 0).r);
+        for (int k = 0; k < 4; ++k) surf = max(surf, texelFetch(uWaterTex, texCell(vec2(cc + ivec2(k & 1, k >> 1)), uCells), 0).r);
         if (feature(kFeatGroundDetail)) {
             for (int k = 0; k < 4; ++k) {
                 ivec2 o = ivec2(k == 0 ? 2 : k == 1 ? -1 : 0, k == 2 ? 2 : k == 3 ? -1 : 0);
-                surf = max(surf, texelFetch(uWaterTex, clamp(cc + o, ivec2(0), ivec2(int(uCells))), 0).r);
+                surf = max(surf, texelFetch(uWaterTex, texCell(vec2(cc + o), uCells), 0).r);
             }
         }
         if (surf > -1000.0) {
@@ -293,7 +336,7 @@ void main() {
     // The tactical hex grid fades in as the camera rises, then hands over to
     // the continent's campaign grid (the same one the far terrain draws).
     float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
-    if (gridFade > 0.0) {
+    if (gridFade > 0.0 && uWrap < 0.5) {  // the battlefield's, not the close-up land's
         float e = hexEdge(vWorld.xy, 48.0);
         float w = fwidth(e) * 1.5;
         color = mix(color, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
@@ -306,7 +349,12 @@ void main() {
     }
     oColor = vec4(mix(color, hazeColor(vWorld), fogFactor(dist)), 1.0);
 }
-)";
+)"
+inline const char* kTerrainFs = ILLYRIA_TERRAIN_FS;
+// The close-up land off the battlefield: the same, cross-fading at its edges
+// (a separate program, so the battlefield's ground never pays for discard).
+inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_TERRAIN_FS;
+#undef ILLYRIA_TERRAIN_FS
 
 // ---------------------------------------------------------------- decals
 // Per instance: centre (xyz), params (yaw, size, spawn seconds, type), extra (rgb, seed).
@@ -1099,9 +1147,9 @@ uniform sampler2D uRoad;
 uniform sampler2D uCanopy;
 out vec3 vColor;
 out vec3 vWorld;
+uniform vec4 uHole;  // the battlefield: the close-up land's cover stops at its edge
 int coverGround(vec2 xy) {
-    ivec2 c = clamp(ivec2(xy / uCellSize), ivec2(0), ivec2(int(uCells) - 1));
-    return int(texelFetch(uGround, c, 0).r * 8.0 + 0.5);
+    return int(texelFetch(uGround, texCell(floor(xy / uCellSize), uCells - 1.0), 0).r * 16.0 + 0.5);
 }
 void main() {
     float spacing = uCover.x;
@@ -1116,7 +1164,9 @@ void main() {
     // Fades out at the grid's edge, and as the camera rises (by then the
     // painted ground carries the look).
     float fade = (1.0 - smoothstep(radius * 0.55, radius * 0.95, distance(xy, uFocus))) * (1.0 - smoothstep(55.0, 110.0, uCamDist));
-    if (fade <= 0.0 || xy.x < 1.0 || xy.y < 1.0 || xy.x > size - 1.0 || xy.y > size - 1.0) { gl_Position = kCulled; return; }
+    bool outside = uWrap > 0.5 ? (all(greaterThan(xy, uHole.xy + 1.0)) && all(lessThan(xy, uHole.zw - 1.0))) || h1 >= detailWeight(xy)
+                               : xy.x < 1.0 || xy.y < 1.0 || xy.x > size - 1.0 || xy.y > size - 1.0;
+    if (fade <= 0.0 || outside) { gl_Position = kCulled; return; }
     int g = coverGround(xy);
     float canopy = texture(uCanopy, xy / size).r;
     vec2 road = texture(uRoad, xy / size).rg;
@@ -1209,23 +1259,23 @@ void main() {}
 // the wet cells only.
 inline const char* kWaterVs = R"(
 layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aChunk;  // the close-up land: per instance, the chunk's corner (else 0)
 uniform sampler2D uWaterTex;  // R32F per sample; very negative where dry
 out vec3 vWorld;
-float waterTexel(vec2 c) {
-    ivec2 i = ivec2(clamp(c, vec2(0.0), vec2(uCells)));
-    return texelFetch(uWaterTex, i, 0).r;
-}
+float waterTexel(vec2 c) { return texelFetch(uWaterTex, texCell(c, uCells), 0).r; }
 void main() {
     // The cell's wet corners decide its surface; dry corners borrow it.
-    vec2 c = aPos / uCellSize;
+    vec2 pos = aPos + aChunk;
+    vec2 c = floor(pos / uCellSize + 0.5);
     float w = waterTexel(c);
     if (w < -1000.0) {
         float best = -1e9;
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx) best = max(best, waterTexel(c + vec2(dx, dy)));
-        w = best;
+        // Nowhere near water (the close-up land draws whole chunks): far below, discarded.
+        w = best < -1000.0 ? -1.0e4 : best;
     }
-    vWorld = vec3(aPos, w);
+    vWorld = vec3(pos, w);
     gl_Position = uViewProj * vec4(vWorld, 1.0);
 }
 )";
@@ -1240,6 +1290,7 @@ float current(vec2 along, float t) {
 }
 void main() {
     vec2 p = vWorld.xy;
+    if (uWrap > 0.5 && detailWeight(p) <= hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land's, cross-fading
     float depth = vWorld.z - groundZ(p);
     if (depth <= -0.02) discard;
     float dist = distance(uEye, vWorld);
@@ -1304,7 +1355,7 @@ void main() {
     gl_Position = uViewProj * vec4(p, 1.0);
 }
 )";
-inline const char* kFarFs = R"(
+#define ILLYRIA_FAR_FS R"(
 in vec3 vWorld;
 in vec3 vNormal;
 in vec3 vColor;
@@ -1321,6 +1372,9 @@ float hexEdge(vec2 p, float s) {
 }
 float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
 void main() {
+#ifdef DETAIL_CUT
+    if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land is drawn there
+#endif
     vec3 n = normalize(vNormal);
     vec3 albedo = vColor;
     vec2 p = vWorld.xy;
@@ -1404,7 +1458,12 @@ void main() {
     }
     oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
 }
-)";
+)"
+inline const char* kFarFs = ILLYRIA_FAR_FS;
+// The same, giving way where the close-up land is drawn (a separate program:
+// discard costs some GPUs their early depth test, so only the land near it pays).
+inline const char* kFarCutFs = "#define DETAIL_CUT 1\n" ILLYRIA_FAR_FS;
+#undef ILLYRIA_FAR_FS
 
 // Rivers and roads drawn as ribbons on the far map, never thinner than a few pixels.
 // Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road 2 creek).
@@ -1415,6 +1474,7 @@ layout(location = 2) in vec2 iInfo;
 uniform vec4 uHole;  // battlefield (min x, min y, max x, max y): drawn in full detail there
 flat out float vKind;
 out float vFog;
+out vec2 vXy;
 void main() {
     vec3 mid = (iA + iB) * 0.5;
     if (mid.x > uHole.x && mid.y > uHole.y && mid.x < uHole.z && mid.y < uHole.w) { gl_Position = kCulled; return; }
@@ -1429,14 +1489,17 @@ void main() {
     world.z += max(1.5, dist * 0.003);  // ride above the coarse mesh
     vKind = iInfo.y;
     vFog = fogFactor(dist);
+    vXy = world.xy;
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
 inline const char* kRibbonFs = R"(
 flat in float vKind;
 in float vFog;
+in vec2 vXy;
 out vec4 oColor;
 void main() {
+    if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy))) discard;  // the close-up land draws its own roads and water
     vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
