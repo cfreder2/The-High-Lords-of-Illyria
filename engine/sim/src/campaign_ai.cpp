@@ -198,16 +198,19 @@ private:
             });
             const size_t keep = threatened(v) ? pool.size() : 1;
             std::vector<Army> guard, strike;
+            // Siege engines are for taking towns, not for holding them.
             for (const Army& a : pool) {
-                if (!a.hero() && guard.size() < keep) guard.push_back(a);
+                if (!a.hero() && a.type != UnitType::Catapult && guard.size() < keep) guard.push_back(a);
                 else strike.push_back(a);
             }
-            // A hero never rides out alone: with nobody to lead, he stays.
-            if (strike.size() == 1 && strike.front().hero()) {
+            // A hero (or an engine) never rides out alone: with nobody to fight beside, he stays.
+            if (strike.size() == 1 && (strike.front().hero() || strike.front().type == UnitType::Catapult)) {
                 guard.push_back(strike.front());
                 strike.clear();
             }
             std::reverse(strike.begin(), strike.end());  // strongest (the hero) first
+            // ... and the engines with the first stack, which goes for the walls.
+            std::stable_partition(strike.begin(), strike.end(), [](const Army& a) { return a.hero() || a.type == UnitType::Catapult; });
             std::vector<std::vector<Army>> stacks;
             for (size_t g = 0; g < guard.size(); g += C::kMaxStack)
                 stacks.emplace_back(guard.begin() + static_cast<long>(g), guard.begin() + static_cast<long>(std::min(guard.size(), g + C::kMaxStack)));
@@ -523,6 +526,18 @@ private:
             s.armies.erase(s.armies.begin() + static_cast<long>(bestArmy));
         }
         const int32_t allowed = income * t_.upkeepShare / 100 + side.gold / 20;
+        // Siege engines, for the walled enemy towns of the later war (from day
+        // 40): about one for every eight cities. They are slow and dear; more
+        // cost the race for towns more than they win at the walls.
+        int32_t engines = 0;
+        for (const C::Stack& s : c_.stacks_)
+            if (ours(s))
+                for (const Army& a : s.armies) engines += a.type == UnitType::Catapult;
+        for (const CityView& v : mine_) {
+            const C::CityState& cs = c_.cities_[static_cast<size_t>(v.index)];
+            engines += cs.producing >= 0 && cs.options[static_cast<size_t>(cs.producing)].type == UnitType::Catapult;
+        }
+        bool wantEngines = t_.thrifty && engines * 8 < static_cast<int32_t>(mine_.size()) && c_.day() >= 40;
         int32_t fortified = 0;
         for (const CityView& v : mine_) {
             C::CityState& cs = c_.cities_[static_cast<size_t>(v.index)];
@@ -540,6 +555,13 @@ private:
                     bestScore = score;
                     want = static_cast<int32_t>(o);
                 }
+            }
+            if (wantEngines && !danger && v.frontier) {
+                for (size_t o = 0; o < cs.options.size(); ++o)
+                    if (cs.options[o].type == UnitType::Catapult) {
+                        want = static_cast<int32_t>(o);
+                        wantEngines = cs.producing == want;  // one more a day at most
+                    }
             }
             // Can we afford to keep another? (A city with nobody home always trains.)
             if (want >= 0 && !danger && home >= 1) {

@@ -21,14 +21,14 @@ struct Realm {
 };
 const Realm& realm(uint8_t side) {
     static const Realm kRealms[] = {
-        {{T::HeavyCavalry, T::HeavyInfantry, T::Pegasi}, 300},  // Aurelian Throne: knights
+        {{T::HeavyCavalry, T::HeavyInfantry, T::Pegasi, T::Catapult}, 300},  // Aurelian Throne: knights and engines
         {{T::Giants, T::HeavyInfantry}, 200},                    // Highcrag Giants
-        {{T::Dwarves, T::Griffins, T::DwarfGrenadier}, 450},     // Ironhold Dwarves: rich
+        {{T::Dwarves, T::Griffins, T::DwarfGrenadier, T::Catapult}, 450},  // Ironhold Dwarves: rich, and engineers
         {{T::WolfRiders, T::Minotaurs, T::Berserker}, 250},      // Orcs of Grath
         {{T::Archers, T::Pegasi, T::Unicorns}, 250},             // Sylvaran Elves
         {{T::LightCavalry, T::HeavyCavalry}, 300},               // Sunreach Riders
         {{T::Archers, T::Journeyman, T::Pikemen}, 300},          // Moonward Order
-        {{T::Spiders, T::Minotaurs, T::Giants}, 350},            // Lord Malvoren
+        {{T::Spiders, T::Minotaurs, T::Giants, T::Catapult}, 350},  // Lord Malvoren
     };
     return kRealms[side % 8];
 }
@@ -55,6 +55,7 @@ Campaign::Option trained(UnitType t) {
         case T::Journeyman: return {t, 3, 6};
         case T::Warrior: return {t, 3, 6};
         case T::Berserker: return {t, 3, 6};
+        case T::Catapult: return {t, 5, 10};  // dear and slow to build, as Warlords II's siege engines
         default: return {t, 6, 20};
     }
 }
@@ -85,6 +86,7 @@ int32_t Campaign::squadSize(UnitType t) {
         case T::Demons: return 2;
         case T::Dragons:
         case T::Hero: return 1;
+        case T::Catapult: return 2;
         case T::Dwarves:
         case T::Berserker: return 10;
         case T::Spiders:
@@ -114,6 +116,7 @@ int32_t Campaign::movesPerDay(UnitType t) {
         case T::Hero: return 12;
         case T::Elephants:
         case T::Spiders: return 12;
+        case T::Catapult: return 6;  // dragged on wheels
         default: return 10;
     }
 }
@@ -131,6 +134,8 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
     static const int32_t kFliers[] = {2, 2, 2, 2, 2, 3, 2, 2, 2};
     static const int32_t kUndead[] = {1, 1, P, 4, 5, P, 2, 4, 1};
     static const int32_t kDemons[] = {1, 1, P, 4, 5, P, 2, 5, 1};  // demons and devils; wizards walk like light infantry
+    // Wheels want roads: slow through woods and up hills, never into a marsh.
+    static const int32_t kWheels[] = {1, 1, P, 6, 6, P, 2, P, 1};
     const int32_t* row = kLight;
     switch (t) {
         case T::Giants:
@@ -150,6 +155,7 @@ int32_t Campaign::moveCost(UnitType t, Lay terrain) {
         case T::Undead: row = kUndead; break;
         case T::Demons:
         case T::Devils: row = kDemons; break;
+        case T::Catapult: row = kWheels; break;
         default:
             if (flies(t)) row = kFliers;
             break;
@@ -630,7 +636,7 @@ void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
         for (Army& a : d->armies) def.push_back(&a);
     std::vector<int32_t> asOf, dsOf;
     order(att, attacker.owner, cx, cy, false, asOf);
-    order(def, fight.defender, cx, cy, true, dsOf);
+    order(def, fight.defender, cx, cy, true, dsOf, engines(std::vector<const Army*>(att.begin(), att.end())));
     // Armies fighting from a boat's deck fight at a penalty (campaign_sea.cpp).
     int32_t defAfloat = 0;
     for (const Stack* d : defenders) defAfloat = std::max(defAfloat, afloatPenalty(*d));

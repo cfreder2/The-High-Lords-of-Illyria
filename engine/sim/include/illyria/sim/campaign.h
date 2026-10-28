@@ -270,7 +270,10 @@ public:
     // Warlords' combat, for prediction: the attack strength (AS) or defence
     // strength (DS) of each army at a cell, in the order they fight (weakest
     // first, heroes last), with every modifier of the manual's appendix.
-    std::vector<int32_t> lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const;
+    // A town's defenders lose a point of their walls' bonus for each of the
+    // attackers' siege engines (engines: how many catapults attack).
+    std::vector<int32_t> lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines = 0) const;
+    static int32_t engines(const std::vector<const Army*>& armies);
     // The chance, in thousandths, that the first lineup destroys the second
     // (exact, from the Warlords dice rules).
     static int32_t winChance(const std::vector<int32_t>& attack, const std::vector<int32_t>& defence);
@@ -313,8 +316,8 @@ private:
     void arrive(Stack& s);
     void battle(Stack& attacker, int32_t cx, int32_t cy);
     // Sorts armies into battle order and gives each its AS or DS (campaign_rules.cpp).
-    void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power) const;
-    int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const;
+    void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power, int32_t engines = 0) const;
+    int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const;
     // Movement points from every cell to a city, for a walking army (the
     // computer lords' sense of distance; derived from the map, so not state).
     const std::vector<uint16_t>& marchField(int32_t city) const;

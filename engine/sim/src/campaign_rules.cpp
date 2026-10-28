@@ -14,6 +14,9 @@ namespace {
 
 using T = UnitType;
 
+// A catapult's strength against a town's walls, over its strength in the field.
+constexpr int32_t kCatapultSiegeBonus = 2;
+
 // How each empire likes the ground it fights on (the appendix's first
 // terrain table), by side: road, water, shore, forest, hill, plain, marsh.
 // Ours follow the Warlords archetypes: knights, giants, dwarves, orcs, elves,
@@ -89,7 +92,13 @@ bool Campaign::special(UnitType t) {
     return t == T::Wizards || t == T::Undead || t == T::Demons || t == T::Devils || t == T::Dragons;
 }
 
-int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const {
+int32_t Campaign::engines(const std::vector<const Army*>& armies) {
+    int32_t n = 0;
+    for (const Army* a : armies) n += a->type == T::Catapult;
+    return n;
+}
+
+int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const {
     // The AFCM (or DFCM): the best hero's leadership (strength 4-6: 1, 7-8: 2,
     // 9: 3), one for fliers, one for special armies (a dragon is both), the
     // empire's liking for the ground, and the city's walls for a defender.
@@ -107,18 +116,24 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
     const int32_t city = cityAt(cx, cy);
     if (defending && city >= 0) {
         const int32_t d = cities_[static_cast<size_t>(city)].defense;
-        m += d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
+        const int32_t walls = d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
+        m += walls - std::min(walls, engines);  // each siege engine breaks a point of the walls
     }
     return m;
 }
 
-void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power) const {
+void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power,
+                     int32_t engines) const {
     const std::vector<const Army*> view(armies.begin(), armies.end());
-    const int32_t fcm = forceModifier(view, owner, cx, cy, defending);
+    const int32_t fcm = forceModifier(view, owner, cx, cy, defending, engines);
     const Lay lay = terrainAt(cx, cy);
+    const bool siege = !defending && cityAt(cx, cy) >= 0;  // catapults hurl their stones at walls
     // AS (DS) = strength + force modifier + the type's liking for the ground,
     // never past 9 (and never below 1); a hero's battle artifacts are in his strength.
-    const auto as = [&](const Army* a) { return std::clamp(strength(*a) + fcm + typeTerrain(a->type, lay), 1, 9); };
+    const auto as = [&](const Army* a) {
+        const int32_t engine = siege && a->type == T::Catapult ? kCatapultSiegeBonus : 0;
+        return std::clamp(strength(*a) + fcm + typeTerrain(a->type, lay) + engine, 1, 9);
+    };
     // Lined up with the most valuable on the right: heroes last, then the strongest.
     std::stable_sort(armies.begin(), armies.end(), [&](const Army* a, const Army* b) {
         if (a->hero() != b->hero()) return b->hero();
@@ -129,11 +144,12 @@ void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int3
     for (const Army* a : armies) power.push_back(as(a));
 }
 
-std::vector<int32_t> Campaign::lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending) const {
+std::vector<int32_t> Campaign::lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending,
+                                      int32_t engines) const {
     std::vector<Army*> list;
     for (const Army* a : armies) list.push_back(const_cast<Army*>(a));  // order() only reorders the pointers
     std::vector<int32_t> power;
-    order(list, owner, cx, cy, defending, power);
+    order(list, owner, cx, cy, defending, power, engines);
     return power;
 }
 
@@ -201,7 +217,7 @@ int32_t Campaign::attackOdds(const std::vector<const Army*>& armies, uint8_t own
     else
         for (const Stack& o : stacks_)
             if (o.owner != owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defOwner = o.owner;
-    return winChance(lineup(armies, owner, cx, cy, false), lineup(def, defOwner, cx, cy, true));
+    return winChance(lineup(armies, owner, cx, cy, false), lineup(def, defOwner, cx, cy, true, engines(armies)));
 }
 
 int32_t Campaign::fortifyCost(int32_t city) const {

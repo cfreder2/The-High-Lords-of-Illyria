@@ -1,7 +1,9 @@
 // Heroes, ruins, temples and sages in the campaign, after Warlords.
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "illyria/sim/campaign.h"
 #include "test.h"
@@ -155,14 +157,23 @@ TEST(a_temple_blesses_each_army_once) {
     Campaign c(continent(), 2);
     // Nobody else moves: a computer hero standing on the temple would make it a battle.
     for (size_t s = 0; s < c.sides().size(); ++s) c.setHuman(static_cast<uint8_t>(s), true);
-    const Campaign::Stack* s = heroStack(c);
-    CHECK(s != nullptr);
-    if (!s) return;
-    const uint32_t id = s->id;
-    const int32_t temple = nearestSite(c, *s, Kind::Temple);
+    // A stack in the city nearest a temple, marched there (any stack is
+    // blessed, hero or not; mountains close some routes, so try each temple).
+    uint32_t id = 0;
+    int32_t temple = -1;
+    for (size_t k = 0; k < c.sites().size() && temple < 0; ++k) {
+        const Campaign::SiteState st = c.sites()[k];
+        if (st.kind != Kind::Temple) continue;
+        int32_t best = 1 << 30, city = -1;
+        for (size_t i = 0; i < c.cities().size(); ++i) {
+            const int32_t d = std::max(std::abs(c.cities()[i].cx - st.cx), std::abs(c.cities()[i].cy - st.cy));
+            if (d < best) best = d, city = static_cast<int32_t>(i);
+        }
+        id = c.grant(city, 0, UnitType::LightInfantry, 2);
+        if (march(c, id, st.cx, st.cy)) temple = static_cast<int32_t>(k);
+    }
     CHECK(temple >= 0);
-    const Campaign::SiteState site = c.sites()[static_cast<size_t>(temple)];
-    CHECK(march(c, id, site.cx, site.cy));
+    if (temple < 0) return;
     std::vector<int32_t> before;
     for (const Army& a : c.findStack(id)->armies) before.push_back(Campaign::strength(a));
     CHECK(c.canSearch(id));

@@ -130,12 +130,15 @@ Every army type from *Warlords* (with Warlords II's terrain bonuses) plus Myth's
 | Journeymen | Myth | Healers with a limited number of charges |
 | Warriors | Myth | Sword and shield; shields block from the front only |
 | Berserkers | Myth | Fast, no shield, hit hard |
+| Catapults | Siege engine | A wheeled mangonel: slow, no melee, throws a stone 150 m that smashes gates, walls' defenders and anyone near where it lands |
 
 Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are locked in [`UNITS.md`](UNITS.md), generated from the code and pinned by a test.
 
 **Fliers** walk by default. Only moves longer than about 50 m make them take off, and they need a ground run first. They cruise over the terrain low enough for giants to swat and archers to shoot, tire, and must land to recover. They never attack from the air; flight is purely a movement advantage.
 
 **Missile troops** have a real maximum range (archers 70 m, grenadiers 19 m). Ordered to shoot farther, they walk into range first.
+
+**Catapults** (siege engines) roll at 0.8 m/s, cannot fight hand to hand, and reload for 14 s. The arm always slams the same padded crossbar, so the stone leaves at a fixed 53 degrees and the crew wind the skein for the range: out to 150 m, never nearer than 30 m (it would come down on them). The wind that carries arrows does not move a 15 kg stone. A stone lands in a plunging arc and smashes everything within 3 m: 100 damage at the centre, falling off to the edge, throwing men off their feet and off the wall-walks (the merlons are no shelter from above). It does five times that to a gate. Idle catapults throw at any foe within 140 m. Tap a catapult, then a gate, and it batters the gate until it falls, then stands down. Their figure is a timber bed on four spoked wheels whose wheels turn as it rolls, the arm whipping up to the crossbar as it throws, and a heap of timbers when it is destroyed.
 
 **Bodies have space and mass.** Soldiers cannot overlap, the lighter one gives way, corpses are shoved aside, and trees, rocks, houses and deep water block movement. Loose body parts are physical objects that walkers nudge aside. Arrows are different: stuck or lying, they stay exactly where they fell until an explosion throws them.
 
@@ -146,10 +149,12 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 Following Warlords: **80 cities**, and whoever holds two thirds of them (or all of them) wins.
 - **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers. The other 72 cities start neutral, held by their own garrisons.
 - **What a city gives:** it produces armies (a few unit types per city, each with a build time) and pays gold to its owner every turn. Owners can raze it, which turns it into a ruin forever (§5.5).
-- **Siege:** an attack commits at most 8 squads, but a city defends with everything inside it, up to 32 (§4.2). In the 3D battle the walls, towers and gates are real obstacles. Fliers clear walls, giants and devils batter gates, and grenadiers' satchels breach them.
+- **Siege:** an attack commits at most 8 squads, but a city defends with everything inside it, up to 32 (§4.2). In the 3D battle the walls, towers and gates are real obstacles. Fliers clear walls, soldiers hack at gates, grenadiers' satchels and catapult stones breach them.
+- **Siege engines in the campaign:** catapults are trained at the capitals of the Aurelian Throne, the Ironhold Dwarves and Lord Malvoren (5 days, 10 gold, 2 engines to an army; wheels want roads: 6 movement points a day, slow in woods and hills, no marshes). They are weak in the field (strength 3), but in a Warlords dice battle against a city each catapult in the attacking stack takes a point off the defenders' bonus for the walls (down to nothing), and catapults fight two points stronger there. In the 3D battle the attackers' catapults are brought along to the siege (the Siege scenario gives the besiegers two); the enemy's battle AI never marches its engines at the foe, but turns them on the player's gate when it besieges a town of the player's.
 
 - **Every castle is different:** square, long, many-sided or shield-shaped curtain walls; capitals add an inner bailey round a great keep. Drum towers with battlements stand at the corners and either side of the gate. Inside are a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops and siege engines.
-- **Walls are real in battle:** they stop soldiers and missiles; the only way in on foot is the gate (or over the top, for fliers). Stairs against the inner faces lead up to a wall-walk where archers stand and shoot over the merlons. The merlons stop half the missiles shot up at defenders from outside.
+- **Gates are shut:** every gate is two leaves of oak banded with iron, closed to everyone (the defenders are already inside, as in Myth). While it stands it blocks walkers and missiles like the wall, and the pathfinder treats it as closed; a march ordered into the town leads up to its face. It has 250 hit points per metre of width (an 8 m town gate: 2000). Attackers at a shut gate hack at it when their orders lead through it, or when they stand idle there with no foe on their side: a blow does a quarter of its damage to the timbers, so a legion of dwarves needs well over a minute. Blasts do far more: satchels three times their damage, fireballs one and a half, catapult stones five times (three or four good stones break a gate). A broken gate stays broken: the leaves hang shattered from their hinges, the timbers lie in the passage, and everyone on the march finds the new way in. The town's own side never hacks at its gate. Gate hit points are part of the simulation state and its checksum.
+- **Walls are real in battle:** they stop soldiers and missiles; the only way in on foot is the gate, once it is broken (or over the top, for fliers). Stairs against the inner faces lead up to a wall-walk where archers stand and shoot over the merlons. The merlons stop half the missiles shot up at defenders from outside.
 - **Neutral towns resist:** each neutral town keeps a small garrison (in the siege battle: a watch of archers along the walls, pikes at the gate, militia in the courtyard and the castellan's guard at the keep). A garrison holds its town: it fights whoever comes near its post and never marches out. Every side starts with only its capital and must take the rest.
 
 | Side | Capital | After (Warlords archetype) | Banner |
@@ -182,8 +187,8 @@ Money is gold only, as in Warlords:
 - **Gold:** each city pays every day (capitals 30, towns 21 to 33 by their walls); each army costs half its training price a day in upkeep; a side that cannot pay loses its newest armies. Taking a city takes the loser's share of the treasury in proportion to its cities, half of it to the victor.
 - **Training:** a city trains one army at a time from up to four types (light infantry everywhere; capitals their side's specialties; towns what the land around them raises: dwarves and giants in the hills, archers and wolf riders in the woods, horse on the plains). It is paid for when training starts; open a city's panel by tapping it.
 - **Fighting:** stacks of up to eight armies fight Warlords' dice battles where they meet: weakest first, one on one, ten-sided dice against the opponent's strength, two hits destroy an army. Heroes, fliers and special armies add Warlords' modifiers; city walls help defenders. Kills raise ranks and hero levels exactly as in the 3D battle.
-- **The computer lords** keep every city training its quickest troops and send their stacks at the nearest city they can take, neutral towns first, leaving a guard behind.
-- **Victory:** two thirds of the cities.
+- **The computer lords:** a strategic AI with two levels, picked when the campaign starts; see §4.2.6.
+- **Victory:** as in Warlords, the last side standing; and, as in its §14 "Surrender", the others give in to a side holding more than half the cities (41 of 80) when no rival is within 15 of it.
 - **The player's battles:** when the player's stack marches into an enemy, the campaign stops and asks: **Fight it** or **Resolve**. Resolve rolls the dice. Fight it opens the real 3D battle on that exact ground with those exact armies: their numbers, ranks and heroes. A town is held from its walls, with archers on the walk and the rest at the gate, courtyard and keep. In the field the two lines form up a bowshot apart. **Charge** sends every squad at the nearest enemy, with archers stopping at a long bowshot. When it is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks. Winning a town captures it; withdrawing counts as being thrown back.
 - **Heroes, ruins, temples, sages and heroes for hire:** see §4.4.
 
@@ -201,6 +206,46 @@ After Warlords' navies, "the only units that can travel the seas and rivers ... 
 - **The 3D battle:** a battle fought from or against a boat has no ground to fight on, so it is settled with the dice (the prompt offers only **Resolve**). A stack that lands first and then attacks fights its 3D battle as usual.
 - **The computer lords** build a boat at a port when some city they could take is out of reach on foot or much quicker by water (60% of the walking time or less), keep at most three, and sail stacks of three or more from a port with a boat (leaving a guard) at the best such city; a stack aboard sails for the nearest city it can take. `Campaign::runSeaAi`, called from the first line of `runAi`.
 - **Determinism:** boats, ports, the harbour cells, navigable water and the voyage count are all in `Campaign::checksum()`.
+
+### 4.2.6 The Computer Lords (built)
+
+`engine/sim/src/campaign_ai.cpp` (`Campaign::runAi`, once a day for each computer side, after the heroes' quests and the boats). Like Warlords' computer players it sees the whole map and plays by the player's rules, with no secret bonuses.
+- **What it knows:** for each of its cities, the enemy stacks marching on it or idle in the field within reach, and the exact chance (`Campaign::winChance`, the Warlords dice worked out state by state, with every modifier of the manual's appendix: `Campaign::lineup`) that they would take it. For each city it does not hold: its worth (income, a neutral town early, an enemy one later, a capital, the leader's cities, and how close it lies to its own), its defenders, and the chance a given stack has of taking it. Distances are in days of marching (a Dijkstra field per city over the movement table, computed once from the map; boats through `planRoute`).
+- **Defence:** a threatened city keeps everything inside it and trains its quickest army; stacks that can get there before the enemy are pulled back, as many as it takes, unless the city is lost anyway. Stacks in the field strike enemy stacks near its cities when the odds are good. Gold left over raises the walls of frontier towns (BUILD).
+- **Attack:** each city keeps one army (the weakest) as its garrison; the rest join into strike stacks of up to eight, strongest first, hero and siege engines in the first. A stack attacks the best prize for the risk within four and a half days that it takes with good odds; a small stack joins a bigger one nearby when together they could take a prize neither can alone (the bigger one waits a day for it). Late in the war it gangs up on a runaway leader. Rear cities send what they train to the city nearest the next prize (LOC).
+- **Production and gold:** it trains what fights best for the days it takes (an army's worth in the dice is s(10-5) / 5(10-s) against a strength-5 foe), the quickest under threat, a few catapults for the walled towns of the later war; it stops training when the armies would cost more of the income than it can bear, and disbands its weakest armies rather than see them desert.
+- **Heroes:** `questAi` (§4.4) sends them exploring when it is safe; otherwise they lead the first strike stack and need better odds (a hero is worth more than a battle) before they attack.
+- **Easy and Hard** (`Difficulty`, per side, in the checksum; `setComputerDifficulty`): the player picks with the two buttons shown when **Campaign** is tapped (`?campaign=easy` for Easy, `?campaign` Hard). Easy is Warlords' Knight, which "deliberately wastes money and sometimes forgets what it is doing": it loses a fifth of its income, forgets a stack one day in four, picks a random target one time in three, attacks at 30% odds, sees an attack coming only at the gates, trains whatever is quickest, never gathers stacks, sends recruits to the front or builds walls. Hard is the Warlord: attacks at 45% (50% with a hero: bolder loses armies, more careful loses the race for the neutral towns, measured over many seeded all-computer games), reacts two days out, and uses everything above; no gold bonus, as the manual promises. Computer sides default to Hard.
+- **Tests** (`tests/test_campaign_ai.cpp`): the dice odds are exact; Hard lords hold more cities than Easy ones after 40 days from the same seats swapped; a capital with a stack half a day out is saved from an attack that would otherwise take it; nobody's armies desert while their side holds a realm.
+
+### 4.2.7 Warlords Rules: How We Follow Them
+
+From the Warlords (1990) manual, rule by rule. "Ours" says where we differ and why.
+
+| Rule (manual section) | Warlords | Ours |
+|---|---|---|
+| Combat order (App. 5) | Weakest on the left fight first, one on one; heroes, the most valuable, last | Same (`Campaign::order`) |
+| Dice (App. 5) | Both roll d10; low (≤ the other's strength) against high is a hit on the low roller; two hits destroy | Same; odds computed exactly for the AI |
+| AFCM / DFCM (App. 1-2) | Hero 4-6: +1, 7-8: +2, 9: +3; flier +1; special army +1; command items; empire's terrain likes | Same, empire likes by side (knights, giants, dwarves, orcs, elves, horse lords, the Selentine-like order, the dark lord) |
+| Army type and terrain (App. 3) | Forest, hill and marsh modifiers per type, AS/DS never past 9 | Same (and never below 1) |
+| City defence (App. 2h) | Defence 0-1: +0, 2-6: +1, 7-8: +2, 9: +3 | Same; capitals 6, towns 3-6 |
+| Towers (App. 2f), temple or ruin (App. 2g) | +2, +1 | Not built: battles are never fought at sites; no towers |
+| Siege lowers walls (§12) | Each successful siege: defence -1 | Same (to 1 at least) |
+| BUILD (§4.3.2) | Raise a city's defence for gold | 25 × (defence + 1) gold, to 9; city panel button |
+| Attack cost (§10.1) | Two movement points | Same, whatever the ground |
+| Movement table (App.) | Per type and terrain, P = prohibited | Same table; wizards walk as light infantry, demons and devils as the manual; no shore column (boats, §4.2.5) |
+| Stack movement (§9.3) | Slowest army's points, dearest army's cost; a hero uses the stack's costs, not its points | Same |
+| Stacks (§5.2, §9.2) | 8 a square; no moving through a square that would hold more; 32 in a city | Same: 8 a cell, 32 in a city; a full city trains no more |
+| Production (§8) | One army at a time, paid when it starts; LOC sends it to another city two turns later, four cities at most to one | Same (`vectorProduction`; the AI uses it, no player button yet) |
+| Upkeep (§7.1) | Half the training cost a turn | Same; heavy infantry 4 gold as in the city table |
+| Lack of money (§7.2) | No training; armies cannot be paid | Armies desert, newest first; DISBAND (`Campaign::disband`) |
+| Capture (§7.1) | The loser loses its treasury's share for that city, half to the victor | Same |
+| Victory (§2, §14) | All 80 cities; surrender when the leader has more than 40 and no rival within 15 | Last side standing, or that surrender |
+| Computer players (§4.1) | Knight to Warlord, no secret bonuses; Knights waste money and forget | Easy and Hard, §4.2.6 |
+| Strengths and speeds (App. city table) | Per city, e.g. heavy infantry 5, pegasi 4-5 | Per type (docs/UNITS.md), heavy infantry 4, pegasi 6: kept to match the 3D battle's units |
+| Hatreds (§4.3.4) | Computer players' attitudes to each side | Not built; the AI gangs up on the leader instead |
+| RAZE (§4.3.2) | Destroy a city for good | Not built (the state has `razed`) |
+| Capital lost (§4.3.2) | A new capital is chosen | Not built: no rule depends on the capital after the start |
 
 ### 4.4 Heroes, Ruins, Temples & Sages
 

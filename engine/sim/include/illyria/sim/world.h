@@ -29,6 +29,7 @@ enum class ProjectileKind : uint8_t {
     Bomb,      // bounces and rolls until its fuse runs out, then explodes
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
+    Stone,     // a catapult's stone: a high arc, then it smashes whatever it lands on
 };
 
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
@@ -51,6 +52,7 @@ struct RangedWeapon {
     Fixed dispersionAt100m;   // radius of the dispersion circle at 100 m for a rank-0 unit
     Fixed autoRange;          // idle units shoot at enemies within this range; zero disables
     Fixed maxRange;           // farther targets are approached on foot before shooting
+    Fixed minRange;           // nearer targets are not shot at (a catapult would hit itself)
     ProjectileKind kind = ProjectileKind::Arrow;
     Explosive explosive;      // bombs and fireballs
 };
@@ -142,6 +144,7 @@ struct Unit {
     bool gibbed = false;    // blown apart: no corpse, only its parts
     bool hasAttackTarget = false;
     Vec3 attackTarget;
+    int32_t attackGate = -1;  // the gate the attack target is on, if any
     int32_t reloadRemaining = 0;
     int32_t meleeCooldown = 0;
     int32_t healCooldown = 0;
@@ -178,7 +181,8 @@ struct Remain {
 
 // Player input, the only thing exchanged between lockstep peers.
 struct Command {
-    enum class Type : uint8_t { Move, AttackGround, Stop };
+    // AttackGate: missile troops shoot at the gate nearest `target`.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate };
 
     PlayerId player = 0;
     EntityId unit = kNoEntity;
@@ -191,7 +195,9 @@ struct Command {
 // simulation state, but derived only from it, so identical on every peer.
 struct ImpactEvent {
     // Bleed: a flung body part struck or skidded here (radius = size of the mark).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed };
+    // Smash: a stone shattered here (radius = its reach). Gate: a blow or blast
+    // struck a gate (gate = which; killed = it broke).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -199,6 +205,16 @@ struct ImpactEvent {
     EntityId hitUnit = kNoEntity;     // unit hit, blocking or healed
     bool killed = false;
     Fixed radius;                     // explosions
+    int32_t gate = -1;
+};
+
+// A castle gate's state in battle; its shape is the Region's Gate.
+struct GateState {
+    static constexpr PlayerId kNoHolder = 255;
+    int32_t hp = 0;
+    PlayerId holder = kNoHolder;  // whose town it is: they do not hack at it (kNoHolder: nobody's)
+    uint32_t brokenTick = 0;      // when it broke (hp 0)
+    bool broken() const { return hp <= 0; }
 };
 
 struct WorldConfig {
@@ -239,6 +255,11 @@ public:
     // Remain slots that changed during the last step.
     const std::vector<uint32_t>& changedRemains() const { return changedRemains_; }
     const Unit* findUnit(EntityId id) const;
+    // Castle gates, in the order of the region's gates.
+    const std::vector<GateState>& gates() const { return gates_; }
+    // Battle setup: whose town each gate belongs to, and a gate already battered.
+    void setGateHolder(size_t gate, PlayerId holder);
+    void setGateHp(size_t gate, int32_t hp);
     Fixed groundHeight(Fixed x, Fixed y) const;
     const Region* region() const { return config_.region.get(); }
 
@@ -285,6 +306,21 @@ private:
     void separateBodies();
     void kickRemains(Unit& unit, const Vec3& moveDir);
     void fire(Unit& unit, const Vec3& target);
+    // Castle gates (world_gates.cpp).
+    // The intact gate this soldier should hack at, or -1.
+    int gateToHack(Unit& unit);
+    void hackGate(Unit& unit, int gate);
+    void damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir);
+    // Earliest crossing of an intact gate by segment a->b, as a fraction; -1 if none.
+    Fixed gateHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
+    // Pushes a walker out of the intact gates.
+    void keepOutOfGates(Unit& unit);
+    // Blasts and stones batter the gates within reach.
+    void blastGates(const Vec3& at, const Explosive& ex, ProjectileKind kind);
+    // Where to aim at a gate from `from`: its face on that side, half way up.
+    Vec3 gateAimPoint(int gate, const Vec3& from) const;
+    // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
+    bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out);
     void fight(Unit& unit, Unit& enemy);
     bool tryHeal(Unit& unit);
     Unit* nearestEnemy(const Unit& unit, Fixed range);
@@ -310,7 +346,7 @@ private:
     bool onRampartFacing(const Unit& u, const Vec3& vel) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
-    void explode(const Vec3& at, const Explosive& ex, PlayerId owner);
+    void explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind = ProjectileKind::Bomb);
     void spawnGibs(Unit& victim, const Vec3& from, Fixed strength);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
@@ -329,12 +365,14 @@ private:
     std::vector<Projectile> spawned_;  // created while projectiles_ is being updated
     std::vector<ImpactEvent> impacts_;
     std::vector<Remain> remains_;
+    std::vector<GateState> gates_;
     uint64_t remainsAdded_ = 0;
     std::vector<uint32_t> changedRemains_;
     struct PendingExplosion {
         Vec3 at;
         Explosive ex;
         PlayerId owner;
+        ProjectileKind kind;
     };
     std::vector<PendingExplosion> pendingExplosions_;
     SpatialHash obstacleGrid_{8};
