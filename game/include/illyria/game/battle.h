@@ -14,11 +14,20 @@
 
 namespace illyria::game {
 
+// How a squad arranges itself, as in Myth: each soldier keeps his place as
+// the squad marches, and the whole squad moves at its slowest member's pace.
+enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column };
+const char* formationName(Formation f);
+// Slots relative to the squad's centre: x to the right, y forward.
+std::vector<V3> formationSlots(Formation f, int count, float spacing);
+
 struct Squad {
     std::string name;
     sim::PlayerId owner;
     sim::UnitType type;
     std::vector<sim::EntityId> members;
+    Formation formation = Formation::Box;
+    mutable V3 facing{1, 0, 0};  // the way it last marched (presentation of orders, not sim state)
 };
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
@@ -52,7 +61,7 @@ struct Particle {
 // the battlefield and for the camera: the whole continent every 64 m, and a
 // finer ring every 16 m around the battlefield.
 struct FarGrid {
-    static constexpr float kCell = 64.0f;
+    static constexpr float kCell = 32.0f;
     float cell = kCell;
     int nx = 0, ny = 0;
     V3 min;                       // local coordinates of sample (0, 0)
@@ -64,6 +73,9 @@ struct FarGrid {
     }
     // Samples the continent over [min, min + cell * (n - 1)].
     void fill(const sim::Continent& c, const V3& origin, V3 localMin, int nxIn, int nyIn, float cellIn);
+    // The same a few rows at a time: reset, then fill rows [j0, j1).
+    void reset(V3 localMin, int nxIn, int nyIn, float cellIn);
+    void fillRows(const sim::Continent& c, const V3& origin, int j0, int j1);
 };
 
 // One playable battle: owns the deterministic world, turns player input into
@@ -92,6 +104,8 @@ public:
     void tap(const Camera& camera, float x, float y, float pixelScale);
     void selectSquad(int index);
     void stopSelected();
+    // Next formation for the selected squad; it re-forms where it stands.
+    void cycleFormation();
     void togglePause() { paused_ = !paused_; }
     void cycleSpeed() { speed_ = speed_ >= 4 ? 1 : speed_ * 2; }
 

@@ -82,7 +82,12 @@ public:
         uint8_t kind;  // 0 realm, 1 mountains, 2 water, 3 forest/swamp, 4 crossing
     };
 
-    explicit Continent(uint64_t seed);
+    // Where the land's shape comes from: the relief baked offline by
+    // tools/terrainbake (hydraulic erosion and drainage, stored as data, so
+    // identical everywhere), or the procedural design it was baked from.
+    enum class Relief : uint8_t { Baked, Design };
+    explicit Continent(uint64_t seed, Relief relief = Relief::Baked);
+    bool baked() const { return baked_; }
 
     // Macro terrain: no fine detail, but rivers, coast and mountains are exact.
     Fixed heightAt(Fixed x, Fixed y) const;
@@ -91,6 +96,9 @@ public:
     bool waterSurface(Fixed x, Fixed y, Fixed& surface) const;
 
     const std::vector<River>& rivers() const { return rivers_; }
+    // Streams found by the drainage bake: they rise where enough water
+    // gathers and run down to a river, lake or the sea.
+    const std::vector<River>& streams() const { return streams_; }
     const std::vector<Ridge>& ridges() const { return ridges_; }
     const std::vector<Crossing>& crossings() const { return crossings_; }
     const std::vector<Polyline>& roads() const { return roads_; }
@@ -118,6 +126,12 @@ public:
         Fixed lakeSurface;  // valid if inLake
         bool inLake = false;
         bool atFord = false;
+        // Streams and creeks from the drainage bake.
+        Fixed streamDist = Fixed::fromInt(1000);
+        Fixed streamHalfWidth;
+        Fixed streamSurface;
+        Fixed basinSurface;  // valid if inBasin: water pooled in a hollow
+        bool inBasin = false;
     };
     Sample sample(Fixed x, Fixed y) const;
     // Coast and mountains only (height, land, mountain filled in).
@@ -137,10 +151,23 @@ private:
     // Whether a footprint of this radius is dry, gentle land clear of rivers; returns the slope.
     bool buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const;
     Fixed landDistance(Fixed x, Fixed y) const;
-    Fixed baseHeight(Fixed x, Fixed y, Fixed& mountain) const;  // before rivers
+    Fixed baseHeight(Fixed x, Fixed y, Fixed& mountain) const;  // the procedural design, before rivers
+    // The land before rivers: baked relief (plus fine detail) or the design.
+    Fixed reliefHeight(Fixed x, Fixed y, Fixed& mountain) const;
+    Fixed massifMask(Fixed x, Fixed y, Fixed& peak) const;
+    void loadBakedRelief();
 
     uint64_t seed_;
-    std::vector<River> rivers_;
+    std::vector<River> rivers_, streams_;
+    bool baked_ = false;
+    // The baked relief: decimetres on a regular grid.
+    int32_t reliefNx_ = 0, reliefNy_ = 0;
+    int64_t reliefCell_ = 32;
+    std::vector<int16_t> reliefDelta_, reliefBasin_;
+    // Streams by 256 m bucket: (stream, box) pairs to test.
+    static constexpr int64_t kStreamBucket = 256;
+    int32_t bucketNx_ = 0, bucketNy_ = 0;
+    std::vector<std::vector<std::pair<uint32_t, uint32_t>>> streamBuckets_;
     std::vector<Ridge> ridges_;
     std::vector<Vec3> passes_;  // z = radius
     std::vector<Crossing> crossings_;

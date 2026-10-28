@@ -458,7 +458,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         const int64_t bx0 = ox / block, by0 = oy / block;
         for (int64_t by = by0; by * block < oy + cells * kCellSize; ++by) {
             for (int64_t bx = bx0; bx * block < ox + cells * kCellSize; ++bx) {
-                if (noise::lattice(sp, bx, by) > r(3, 20)) continue;
+                if (noise::lattice(sp, bx, by) > r(1, 4)) continue;
                 const Fixed px = m(bx * block + 20) + noise::lattice(sp ^ 1, bx, by) * 56 - OX;
                 const Fixed py = m(by * block + 20) + noise::lattice(sp ^ 2, bx, by) * 56 - OY;
                 const Fixed radius = m(6) + noise::lattice(sp ^ 3, bx, by) * 12;
@@ -503,10 +503,12 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         for (const Vec3& p : road.points) local.points.push_back(toLocal(p));
         rg.roads_.push_back(local);
     }
-    for (const Continent::River& rv : c.rivers()) {
-        Polyline local{{}, rv.halfWidth};
-        for (const Vec3& p : rv.points) local.points.push_back(toLocal(p));
-        rg.rivers_.push_back(local);
+    for (const std::vector<Continent::River>* list : {&c.rivers(), &c.streams()}) {
+        for (const Continent::River& rv : *list) {
+            Polyline local{{}, rv.halfWidth};
+            for (const Vec3& p : rv.points) local.points.push_back(toLocal(p));
+            rg.rivers_.push_back(local);
+        }
     }
 
     // Ground types per cell, from the cell's four corners.

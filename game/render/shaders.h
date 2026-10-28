@@ -258,7 +258,7 @@ void main() {
         albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
     }
     // Snow on the high peaks.
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(250.0, 290.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(310.0, 350.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     // Banks: the riverbed under the water, gravel and mud at the waterline,
     // a dark wet band above it (the nearest water surface, not one level).
     {
@@ -1099,6 +1099,8 @@ layout(location = 2) in vec3 aColor;
 layout(location = 3) in vec4 aKinds;  // forest, rock, swamp, water
 uniform vec4 uRing;   // the fine ring's extent; coarse land sinks beneath it
 uniform float uSink;
+uniform vec4 uPatch;  // the close-up patch's extent; everything else sinks beneath it
+uniform float uPatchSink;
 out vec3 vWorld;
 out vec3 vNormal;
 out vec3 vColor;
@@ -1106,6 +1108,7 @@ out vec4 vKinds;
 void main() {
     vec3 p = aPos;
     if (uSink > 0.0 && p.x > uRing.x && p.y > uRing.y && p.x < uRing.z && p.y < uRing.w) p.z -= uSink;
+    if (uPatchSink > 0.0 && p.x > uPatch.x && p.y > uPatch.y && p.x < uPatch.z && p.y < uPatch.w) p.z -= uPatchSink;
     vWorld = p;
     vNormal = aNormal;
     vColor = aColor;
@@ -1155,19 +1158,28 @@ void main() {
         // Rock: strata, crags and scree.
         // Broken bands, warped hard so they read as rock, not contour lines.
         float strata = 0.5 + 0.5 * sin(vWorld.z * 0.22 + fbm3(p / 55.0) * 14.0 + noise2(p / 9.0) * 3.0);
-        float tone = fbm3(p / 18.0);
-        vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.88 + 0.24 * noise2(p / 5.0));
+        float tone = fbm3(p / 18.0) * 0.6 + 0.2;
+        vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * noise2(p / 5.0));
+        // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
+        stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
         stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
-        float rocky = max(rock, smoothstep(0.25, 0.5, slope)) * land;
+        // Bare rock on the steeps and the heights; alpine turf holds on the
+        // gentler mountain ground and climbs the ravines, so the cover follows the land.
+        float high = smoothstep(190.0, 320.0, vWorld.z + (fbm3(p / 80.0) - 0.5) * 70.0);
+        float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
+        float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
+        vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * noise2(p / 7.0));
+        albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
         albedo = mix(albedo, stone, rocky);
         vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
-        n = normalize(n + vec3(crag, 0.0) * 1.1 * rocky);
+        n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
         // Snow lies on the heights, but not on cliffs.
-        float snow = smoothstep(235.0, 285.0, vWorld.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
+        float snow = smoothstep(300.0, 360.0, vWorld.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
         albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
         albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
     }
-    float light = 0.30 + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);  // as the battlefield terrain
+    // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
+    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
     vec3 c = albedo * light;
     // The strategic hex grid of the campaign map, at continent scale.
     float gridFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
@@ -1181,7 +1193,7 @@ void main() {
 )";
 
 // Rivers and roads drawn as ribbons on the far map, never thinner than a few pixels.
-// Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road).
+// Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road 2 creek).
 inline const char* kRibbonVs = R"(
 layout(location = 0) in vec3 iA;
 layout(location = 1) in vec3 iB;
@@ -1194,7 +1206,7 @@ void main() {
     if (mid.x > uHole.x && mid.y > uHole.y && mid.x < uHole.z && mid.y < uHole.w) { gl_Position = kCulled; return; }
     float dist = distance(uEye, mid);
     float px = uPxScale * dist;
-    float hw = max(iInfo.x, px * (iInfo.y > 0.5 ? 0.9 : 1.6));
+    float hw = max(iInfo.x, px * (iInfo.y > 1.5 ? 0.6 : iInfo.y > 0.5 ? 0.9 : 1.6));
     vec3 d = iB - iA;
     vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0)) * hw;
     float t = float(gl_VertexID & 1);
@@ -1211,7 +1223,7 @@ flat in float vKind;
 in float vFog;
 out vec4 oColor;
 void main() {
-    vec3 c = vKind < 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
+    vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.10, 0.24, 0.36) : vec3(0.48, 0.36, 0.22);
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
 )";

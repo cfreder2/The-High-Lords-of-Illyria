@@ -214,6 +214,7 @@ void World::applyCommand(const Command& cmd) {
         case Command::Type::Move:
             u->hasMoveTarget = true;
             u->moveTarget = cmd.target;
+            u->marchSpeed = max(Fixed::zero(), cmd.speed);
             u->hasAttackTarget = false;
             planPath(*u, cmd.target);
             break;
@@ -306,7 +307,9 @@ void World::updateUnit(Unit& u) {
         if (u.path.empty()) u.path.push_back(u.moveTarget);
         const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
         const bool last = u.pathIndex + 1 >= u.path.size();
-        const bool arrived = walk(u, waypoint);
+        // A squad marches at its slowest member's pace, keeping its formation.
+        const Fixed pace = u.marchSpeed > Fixed::zero() && u.marchSpeed < u.stats.moveSpeed ? u.marchSpeed / u.stats.moveSpeed : Fixed::one();
+        const bool arrived = walk(u, waypoint, pace);
         if (!last && (arrived || (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach)) {
             ++u.pathIndex;
         } else if (last && arrived) {
@@ -952,8 +955,11 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner) {
     (void)owner;
 }
 
-void World::spawnGibs(const Unit& victim, const Vec3& from, Fixed strength) {
-    const RemainKind parts[] = {RemainKind::Head, RemainKind::Arm, RemainKind::Leg};
+void World::spawnGibs(Unit& victim, const Vec3& from, Fixed strength) {
+    // Torn apart: head, torso, both arms and legs, and gobbets of flesh.
+    victim.gibbed = true;
+    const RemainKind parts[] = {RemainKind::Head, RemainKind::Torso, RemainKind::Arm, RemainKind::Arm,
+                                RemainKind::Leg,  RemainKind::Leg,   RemainKind::Chunk, RemainKind::Chunk};
     const Vec3 origin = victim.pos + up(victim.stats.height * 3 / 5);
     const Vec3 away = flatDirection(from, victim.pos, victim.facing);
     for (RemainKind part : parts) {
@@ -965,7 +971,8 @@ void World::spawnGibs(const Unit& victim, const Vec3& from, Fixed strength) {
         const Fixed lift = Fixed::fromRatio(7, 20) + rng_.nextUnit() * 7 / 20;
         const Fixed sideX = rng_.nextSigned() * 3;
         const Fixed sideY = rng_.nextSigned() * 3;
-        const Vec3 vel = away * (strength * outward) + up(strength * lift) + Vec3{sideX, sideY, Fixed::zero()};
+        const Fixed heft = part == RemainKind::Torso ? Fixed::fromRatio(3, 5) : Fixed::one();  // the trunk flies less far
+        const Vec3 vel = away * (strength * outward * heft) + up(strength * lift * heft) + Vec3{sideX, sideY, Fixed::zero()};
         spawnDebris(kind, victim.owner, origin, vel);
         spawned_.back().bleeding = victim.stats.bleeds;
     }
@@ -1018,6 +1025,8 @@ uint64_t World::checksum() const {
         h.addU64(u.engaged);
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
+        h.addI64(u.marchSpeed.raw);
+        h.addU64(u.gibbed);
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);

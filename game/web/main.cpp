@@ -156,6 +156,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
 EMSCRIPTEN_KEEPALIVE void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+EMSCRIPTEN_KEEPALIVE void illyria_cycle_formation() {
+    if (app) app->battle->cycleFormation();
+}
 EMSCRIPTEN_KEEPALIVE void illyria_toggle_pause() {
     if (app) app->battle->togglePause();
 }
@@ -258,9 +261,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const Squad& q = b.squads()[i];
         static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier"};
         std::snprintf(buf, sizeof buf,
-                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"alive\":%d,\"total\":%zu}",
+                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
-                      kRoles[static_cast<int>(roleOf(q.type))],
+                      kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
                       b.aliveCount(q), q.members.size());
         s += buf;
     }

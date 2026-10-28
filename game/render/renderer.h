@@ -45,7 +45,7 @@ private:
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
-        GLint ring = -1, sink = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
+        GLint ring = -1, sink = -1, patch = -1, patchSink = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -100,6 +100,14 @@ private:
         GLsizei count = 0;
     };
     LandMesh farLand_, nearLand_;
+    // Close up anywhere off the battlefield: the land every 8 m around where
+    // the camera looks, sampled a few rows a frame (the coarse land sinks beneath it).
+    LandMesh patchLand_;
+    FarGrid patchBuild_;
+    int patchRow_ = -1;          // next row to sample, or -1 when idle
+    V3 patchCentre_{1e9f, 1e9f, 0};
+    float patch_[4] = {1e9f, 1e9f, -1e9f, -1e9f};  // the shown patch's extent, inside its skirt
+    void updatePatch(const Battle& battle, const Camera& camera);
     GLuint skyVao_ = 0;
     float ring_[4] = {0, 0, 0, 0};  // the fine ring's extent (min x, min y, max x, max y)
     void buildLand(const Battle& battle, const FarGrid& grid, LandMesh& out, bool skirt);

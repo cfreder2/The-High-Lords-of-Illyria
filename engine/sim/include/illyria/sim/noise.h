@@ -60,4 +60,79 @@ inline Fixed ridged(uint64_t seed, Fixed x, Fixed y, int64_t spacing) {
     return r * r;
 }
 
+// Value noise and its gradient (per lattice cell), in [0, 1).
+inline Fixed valueD(uint64_t seed, Fixed x, Fixed y, int64_t spacing, Fixed& dx, Fixed& dy) {
+    const Fixed fx = x / spacing, fy = y / spacing;
+    const int64_t ix = fx.floorToInt(), iy = fy.floorToInt();
+    const Fixed tx = fx - Fixed::fromInt(ix), ty = fy - Fixed::fromInt(iy);
+    const Fixed ux = smoothstep(tx), uy = smoothstep(ty);
+    const Fixed dux = tx * (Fixed::one() - tx) * 6, duy = ty * (Fixed::one() - ty) * 6;
+    const Fixed a = lattice(seed, ix, iy), b = lattice(seed, ix + 1, iy);
+    const Fixed c = lattice(seed, ix, iy + 1), d = lattice(seed, ix + 1, iy + 1);
+    const Fixed k1 = b - a, k2 = c - a, k3 = a - b - c + d;
+    dx = dux * (k1 + k3 * uy);
+    dy = duy * (k2 + k3 * ux);
+    return a + k1 * ux + k2 * uy + k3 * ux * uy;
+}
+
+// Eroded fractal noise, in [0, 1): each finer octave is damped where the
+// coarser ones already slope, so hillsides stay smooth while crests sharpen
+// and valleys branch, much like land worn by water (after Inigo Quilez).
+inline Fixed eroded(uint64_t seed, Fixed x, Fixed y, int64_t spacing, int octaves) {
+    Fixed sum, norm, gx, gy, amp = Fixed::fromRatio(1, 2);
+    for (int i = 0; i < octaves; ++i) {
+        Fixed dx, dy;
+        const Fixed v = valueD(seed, x, y, spacing, dx, dy);
+        gx += dx;
+        gy += dy;
+        sum += amp * v / (Fixed::one() + gx * gx + gy * gy);
+        norm += amp;
+        amp = amp / 2;
+        seed = nextSeed(seed);
+        spacing = spacing > 2 ? spacing / 2 : 1;
+    }
+    return sum / norm;
+}
+
+// Gradient (Perlin) noise, roughly in [-1, 1]. Unlike value noise it has no
+// lattice-aligned creases, which matters for ridges built from |noise|.
+inline Fixed gradient(uint64_t seed, Fixed x, Fixed y, int64_t spacing) {
+    const Fixed fx = x / spacing, fy = y / spacing;
+    const int64_t ix = fx.floorToInt(), iy = fy.floorToInt();
+    const Fixed tx = fx - Fixed::fromInt(ix), ty = fy - Fixed::fromInt(iy);
+    // Twelve directions around the circle.
+    static const Fixed kCos[12] = {Fixed::fromRatio(1000, 1000), Fixed::fromRatio(866, 1000), Fixed::fromRatio(500, 1000),
+                                   Fixed::zero(), Fixed::fromRatio(-500, 1000), Fixed::fromRatio(-866, 1000),
+                                   Fixed::fromRatio(-1000, 1000), Fixed::fromRatio(-866, 1000), Fixed::fromRatio(-500, 1000),
+                                   Fixed::zero(), Fixed::fromRatio(500, 1000), Fixed::fromRatio(866, 1000)};
+    const auto corner = [&](int64_t cx, int64_t cy, Fixed dx, Fixed dy) {
+        const int k = static_cast<int>((lattice(seed, cx, cy).raw * 12) >> 16);
+        return kCos[k] * dx + kCos[(k + 3) % 12] * dy;
+    };
+    const auto fade = [](Fixed t) { return t * t * t * (t * (t * 6 - Fixed::fromInt(15)) + Fixed::fromInt(10)); };
+    const Fixed u = fade(tx), v = fade(ty);
+    const Fixed n00 = corner(ix, iy, tx, ty), n10 = corner(ix + 1, iy, tx - Fixed::one(), ty);
+    const Fixed n01 = corner(ix, iy + 1, tx, ty - Fixed::one()), n11 = corner(ix + 1, iy + 1, tx - Fixed::one(), ty - Fixed::one());
+    const Fixed top = n00 + (n10 - n00) * u, bottom = n01 + (n11 - n01) * u;
+    return (top + (bottom - top) * v) * Fixed::fromRatio(7, 5);
+}
+
+// Ridged multifractal, in [0, 1]: sharp crests whose finer ridges grow only
+// where the coarser ones are already high, so ranges branch into spurs and
+// ravines rather than lumps (after Musgrave).
+inline Fixed ridgedMF(uint64_t seed, Fixed x, Fixed y, int64_t spacing, int octaves) {
+    Fixed sum, norm, weight = Fixed::one(), amp = Fixed::one();
+    for (int i = 0; i < octaves; ++i) {
+        Fixed signal = Fixed::one() - min(Fixed::one(), abs(gradient(seed, x, y, spacing)));
+        signal = signal * signal * weight;
+        weight = clamp(signal * 2, Fixed::zero(), Fixed::one());
+        sum += signal * amp;
+        norm += amp;
+        amp = amp * Fixed::fromRatio(11, 20);
+        seed = nextSeed(seed);
+        spacing = spacing > 2 ? spacing / 2 : 1;
+    }
+    return sum / norm;
+}
+
 }  // namespace illyria::sim::noise

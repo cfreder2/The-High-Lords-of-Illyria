@@ -168,6 +168,7 @@
 <div id="bottom">
   <div id="actions" class="hidden">
     <button id="hold">Hold</button>
+    <button id="formation" aria-label="Change formation">Box</button>
     <button id="focus">Find</button>
   </div>
   <div id="cards"></div>
@@ -218,6 +219,7 @@
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
+      formation: Module.cwrap("illyria_cycle_formation", null, []),
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
@@ -326,6 +328,7 @@
   $("restart").onclick = () => api && api.restart();
   $("overlayButton").onclick = () => { api && api.restart(); };
   $("hold").onclick = () => api && api.stop();
+  $("formation").onclick = () => { if (api) { api.formation(); updateHud(); } };
   let selected = -1;
   $("focus").onclick = () => api && selected >= 0 && api.focus(selected);
 
@@ -339,6 +342,7 @@
     const enemies = s.squads.filter((q) => q.owner === 1);
     $("enemyCount").textContent = `${enemies.reduce((n, q) => n + q.alive, 0)} / ${enemies.reduce((n, q) => n + q.total, 0)}`;
     $("actions").classList.toggle("hidden", s.selected < 0);
+    if (s.selected >= 0) $("formation").textContent = s.squads[s.selected].formation;
 
     const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.owner === 0);
     const key = mine.map((q) => q.name).join("|");

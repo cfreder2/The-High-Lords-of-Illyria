@@ -156,6 +156,13 @@ void pushPart(std::vector<float>& capsules, std::vector<float>& spheres, sim::Re
         case sim::RemainKind::Bone:
             pushInstance(capsules, pos + V3{0, 0, 0.04f}, q, {0.5f, 0.07f, 0.07f}, kBoneColor);
             break;
+        case sim::RemainKind::Torso:
+            // The trunk in its tunic, torn and bloody.
+            pushInstance(capsules, pos + V3{0, 0, 0.14f}, q, {0.62f, 0.3f, 0.26f}, team * (0.75f * (1 - decay)) + V3{0.3f, 0.04f, 0.03f} * (1 - decay) + kBoneColor * decay);
+            break;
+        case sim::RemainKind::Chunk:
+            pushInstance(spheres, pos + V3{0, 0, 0.05f}, q, {0.17f, 0.13f, 0.11f}, V3{0.42f, 0.06f, 0.05f} * (1 - decay) + kBoneColor * decay * 0.8f);
+            break;
         default:
             break;
     }
@@ -239,6 +246,8 @@ bool Renderer::buildPrograms() {
         s.p.cover = glGetUniformLocation(s.p.id, "uCover");
         s.p.ring = glGetUniformLocation(s.p.id, "uRing");
         s.p.sink = glGetUniformLocation(s.p.id, "uSink");
+        s.p.patch = glGetUniformLocation(s.p.id, "uPatch");
+        s.p.patchSink = glGetUniformLocation(s.p.id, "uPatchSink");
         s.p.camFwd = glGetUniformLocation(s.p.id, "uCamFwd");
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
         s.p.proj = glGetUniformLocation(s.p.id, "uProj");
@@ -598,7 +607,7 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             default: c = {0.40f, 0.49f, 0.21f}; break;
         }
         if (ground != sim::Ground::DeepWater) {
-            const float snow = std::clamp((h - 250.0f) / 40.0f, 0.0f, 1.0f);
+            const float snow = std::clamp((h - 320.0f) / 40.0f, 0.0f, 1.0f);
             c = c + (V3{0.93f, 0.94f, 0.96f} - c) * snow;
         }
         return c;
@@ -673,6 +682,35 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
     glBindVertexArray(0);
 }
 
+void Renderer::updatePatch(const Battle& battle, const Camera& camera) {
+    constexpr float kPatchCell = 8.0f, kPatchSize = 1280.0f, kRebuildAt = 320.0f, kShowBelow = 1800.0f;
+    constexpr int kRowsPerFrame = 2;  // ~320 samples a frame: no hitch on phones
+    if (!(features_ & kFarDetail) || camera.distance() > kShowBelow) return;
+    const V3 t = camera.target();
+    if (patchRow_ < 0) {
+        const float dx = t.x - patchCentre_.x, dy = t.y - patchCentre_.y;
+        if (dx * dx + dy * dy < kRebuildAt * kRebuildAt) return;
+        // The battlefield and the ring around it are already fine enough.
+        const FarGrid& ng = battle.nearGrid();
+        const float half = kPatchSize / 2;
+        if (t.x - half > ng.min.x && t.y - half > ng.min.y && t.x + half < ring_[2] && t.y + half < ring_[3]) return;
+        patchCentre_ = {std::round(t.x / 32.0f) * 32.0f, std::round(t.y / 32.0f) * 32.0f, 0};
+        const int n = static_cast<int>(kPatchSize / kPatchCell) + 1;
+        patchBuild_.reset({patchCentre_.x - half, patchCentre_.y - half, 0}, n, n, kPatchCell);
+        patchRow_ = 0;
+    }
+    patchBuild_.fillRows(battle.continent(), battle.origin(), patchRow_, patchRow_ + kRowsPerFrame);
+    patchRow_ += kRowsPerFrame;
+    if (patchRow_ < patchBuild_.ny) return;
+    patchRow_ = -1;
+    buildLand(battle, patchBuild_, patchLand_, true);
+    const float inset = kPatchCell;
+    patch_[0] = patchBuild_.min.x + inset;
+    patch_[1] = patchBuild_.min.y + inset;
+    patch_[2] = patchBuild_.min.x + patchBuild_.cell * static_cast<float>(patchBuild_.nx - 1) - inset;
+    patch_[3] = patchBuild_.min.y + patchBuild_.cell * static_cast<float>(patchBuild_.ny - 1) - inset;
+}
+
 void Renderer::uploadContinent(const Battle& battle) {
     // The whole continent every 64 m, and a finer ring every 16 m around the
     // battlefield (drawn with kFarDetail; the coarse land sinks beneath it).
@@ -693,6 +731,15 @@ void Renderer::uploadContinent(const Battle& battle) {
             const float hw = static_cast<float>(r.widths[i].toDouble());
             const V3 a = toV3(r.points[i]) - V3{o.x, o.y, 0}, b = toV3(r.points[i + 1]) - V3{o.x, o.y, 0};
             ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 0});
+        }
+    }
+    // Creeks: thinner, every other point (they are finely sampled).
+    for (const sim::Continent::River& st : cont.streams()) {
+        for (size_t i = 0; i + 1 < st.points.size(); i += 2) {
+            const size_t j = std::min(i + 2, st.points.size() - 1);
+            const float hw = static_cast<float>(st.widths[i].toDouble());
+            const V3 a = toV3(st.points[i]) - V3{o.x, o.y, 0}, b = toV3(st.points[j]) - V3{o.x, o.y, 0};
+            ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 2});
         }
     }
     for (const sim::Polyline& road : cont.roads()) {
@@ -1210,6 +1257,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 }
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
+    updatePatch(battle, camera);
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     uploadMarks(battle);
@@ -1230,6 +1278,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
         const float height = static_cast<float>(u.stats.height.toDouble());
         const bool isSelected = selected >= 0 && battle.squadOf(u.id) == selected;
+        if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
         if (!u.alive() && !u.airborne) {
             const float died = battle.deathTick(i) / static_cast<float>(sim::kTicksPerSecond);
             const Look look = lookOf(static_cast<UnitType>(u.stats.type));
@@ -1342,12 +1391,20 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const bool farDetail = features_ & kFarDetail;
     glUniform4fv(far_.ring, 1, ring_);
     glUniform1f(far_.sink, farDetail ? 6.0f : 0.0f);
+    const bool patchShown = farDetail && patchLand_.count > 0;
+    glUniform4fv(far_.patch, 1, patch_);
+    glUniform1f(far_.patchSink, patchShown ? 6.0f : 0.0f);
     glBindVertexArray(farLand_.vao);
     glDrawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT, nullptr);
     if (farDetail) {
         glUniform1f(far_.sink, 0.0f);
         glBindVertexArray(nearLand_.vao);
         glDrawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT, nullptr);
+    }
+    if (patchShown) {
+        glUniform1f(far_.patchSink, 0.0f);
+        glBindVertexArray(patchLand_.vao);
+        glDrawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT, nullptr);
     }
     if (ribbons_.count > 0) {
         setCommon(ribbon_, camera, timeSeconds, gameSeconds);

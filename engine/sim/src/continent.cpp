@@ -1,6 +1,7 @@
 #include "illyria/sim/continent.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
@@ -91,7 +92,7 @@ constexpr Fixed kSurfaceBelowLand = Fixed::fromRatio(3, 2);
 
 }  // namespace
 
-Continent::Continent(uint64_t seed) : seed_(seed) {
+Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     // The sea along the west coast and around the north-west, and an isle.
     sea_.push_back({N(-100, 0), N(-60, 1000), m(2100), false});
     sea_.push_back({N(0, 1080), N(400, 1100), m(2000), false});
@@ -182,10 +183,11 @@ Continent::Continent(uint64_t seed) : seed_(seed) {
                {"Ungoeth Mts", N(830, 930), 1}, {"Beren Heights", N(700, 795), 1}, {"Kestrel Fells", N(790, 600), 1},
                {"Longmere", N(445, 235), 2}};
 
+    if (relief == Relief::Baked) loadBakedRelief();
     computeRiverSurfaces();
     for (const Area& lake : lakes_) {
         Fixed mountain;
-        lakeSurfaces_.push_back(baseHeight(lake.centre.x, lake.centre.y, mountain) - m(3));
+        lakeSurfaces_.push_back(reliefHeight(lake.centre.x, lake.centre.y, mountain) - m(3));
     }
     placeCities();
     placeSites();
@@ -204,33 +206,88 @@ Fixed Continent::landDistance(Fixed x, Fixed y) const {
     return max(sea + wobble, island + wobble / 2);
 }
 
-Fixed Continent::baseHeight(Fixed x, Fixed y, Fixed& mountain) const {
+Fixed Continent::massifMask(Fixed x, Fixed y, Fixed& peak) const {
     const uint64_t sBase = noise::nextSeed(seed_ ^ 0xBA5E), sSmall = noise::nextSeed(sBase), sRidge = noise::nextSeed(sSmall);
-    Fixed z = m(10) + noise::fbm(sBase, x, y, 1800) * 55 + (noise::fbm(sSmall, x, y, 450) - r(1, 2)) * 14;
-    // Rolling hill country comes and goes in patches a few kilometres across,
-    // with open plains between; it grows rougher toward the east.
-    const uint64_t sHillMask = noise::nextSeed(sRidge ^ 0x4111), sHill = noise::nextSeed(sHillMask);
-    const Fixed east = x / kWidth;
-    const Fixed hilly = noise::smoothstep(r(2, 5), r(7, 10), noise::fbm(sHillMask, x, y, 2600) + east / 5);
-    z += noise::fbm(sHill, x, y, 520) * hilly * (m(26) + east * 30);
-    z += (noise::value(sHill ^ 0x77, x, y, 140) - r(1, 2)) * 5;  // hummocks
-    mountain = Fixed::zero();
+    Fixed massif;
+    peak = Fixed::zero();
     for (const Ridge& rg : ridges_) {
         size_t seg = 0;
         Fixed t;
-        const Fixed reach = rg.line.halfWidth * r(8, 5);
+        const Fixed reach = rg.line.halfWidth * r(11, 5);
         const Fixed d = polylineDist(rg.line.points, x, y, reach, seg, t);
         if (d >= reach) continue;
-        // A spine of crests and peaks: sharp ridged noise, strongest along the chain's axis.
-        const Fixed shape = Fixed::one() - noise::smoothstep(Fixed::zero(), reach, d);
-        const Fixed crest = noise::ridged(sRidge, x, y, 650);
-        const Fixed peaks = noise::value(sRidge ^ 0x9EAC, x, y, 260);
-        const Fixed rough = r(3, 20) + crest * 13 / 20 + peaks * crest / 5;
-        mountain = max(mountain, rg.peak * shape * rough * (shape + Fixed::one()) / 2);
+        const Fixed ragged = d + (noise::fbm(sRidge ^ 0x7A6, x, y, 700) - r(1, 2)) * rg.line.halfWidth;
+        const Fixed shape = Fixed::one() - noise::smoothstep(Fixed::zero(), reach, max(Fixed::zero(), ragged));
+        if (shape * rg.peak > massif * max(peak, Fixed::one())) {
+            massif = shape;
+            peak = rg.peak;
+        }
+    }
+    return massif;
+}
+
+Fixed Continent::reliefHeight(Fixed x, Fixed y, Fixed& mountain) const {
+    const Fixed z = baseHeight(x, y, mountain);
+    if (!baked_) return z;
+    // What the rain did to the design, between the bake's 32 m samples
+    // (Catmull-Rom, so no creases run along the grid).
+    const Fixed fx = clamp(x / reliefCell_, Fixed::one(), Fixed::fromInt(reliefNx_ - 3));
+    const Fixed fy = clamp(y / reliefCell_, Fixed::one(), Fixed::fromInt(reliefNy_ - 3));
+    const int64_t ix = fx.floorToInt(), iy = fy.floorToInt();
+    const auto weights = [](Fixed t, Fixed w[4]) {
+        const Fixed t2 = t * t, t3 = t2 * t;
+        w[0] = (-t + t2 * 2 - t3) / 2;
+        w[1] = (Fixed::fromInt(2) - t2 * 5 + t3 * 3) / 2;
+        w[2] = (t + t2 * 4 - t3 * 3) / 2;
+        w[3] = (t3 - t2) / 2;
+    };
+    Fixed wx[4], wy[4];
+    weights(fx - Fixed::fromInt(ix), wx);
+    weights(fy - Fixed::fromInt(iy), wy);
+    int64_t sum = 0;  // dm, scaled by both weights' raw units
+    for (int j = 0; j < 4; ++j) {
+        const int16_t* row = &reliefDelta_[static_cast<size_t>((iy - 1 + j) * reliefNx_ + ix - 1)];
+        int64_t line = 0;
+        for (int i = 0; i < 4; ++i) line += static_cast<int64_t>(row[i]) * wx[i].raw;
+        sum += line * wy[j].raw;
+    }
+    return z + Fixed::fromRaw((sum >> 16) / 10);
+}
+
+Fixed Continent::baseHeight(Fixed x, Fixed y, Fixed& mountain) const {
+    const uint64_t sBase = noise::nextSeed(seed_ ^ 0xBA5E), sSmall = noise::nextSeed(sBase), sRidge = noise::nextSeed(sSmall);
+    const uint64_t sHillMask = noise::nextSeed(sRidge ^ 0x4111), sHill = noise::nextSeed(sHillMask), sRoll = noise::nextSeed(sHill);
+    const Fixed east = x / kWidth;
+    // Broad swells of the land.
+    Fixed z = m(10) + noise::fbm(sBase, x, y, 2400) * 60;
+    // Gentle rolling relief everywhere, worn by water (no ground is dead flat).
+    z += (noise::eroded(sRoll, x, y, 650, 6) - r(1, 3)) * 22;
+    // Hill country comes and goes in patches kilometres across, rougher eastward.
+    const Fixed hilly = noise::smoothstep(r(7, 20), r(7, 10), noise::fbm(sHillMask, x, y, 2600) + east / 4);
+    z += noise::eroded(sHill, x, y, 1300, 7) * hilly * (m(55) + east * 60);
+    z += (noise::value(sHill ^ 0x77, x, y, 140) - r(1, 2)) * 4;  // hummocks
+    // Mountains: each range is a massif whose ragged edge fades into
+    // foothills, carved by ridged multifractal crests and ravines.
+    mountain = Fixed::zero();
+    Fixed peak;
+    const Fixed massif = massifMask(x, y, peak);
+    if (massif > Fixed::zero()) {
+        // Warp the domain a little so ridgelines wander rather than run on a grid.
+        const Fixed wx = x + (noise::value(sRidge ^ 0x51, x, y, 1700) - r(1, 2)) * 600;
+        const Fixed wy = y + (noise::value(sRidge ^ 0x52, x, y, 1700) - r(1, 2)) * 600;
+        const Fixed crests = noise::ridgedMF(sRidge, wx, wy, 2200, 5);
+        const Fixed worn = noise::eroded(sRidge ^ 0xE20D, x, y, 900, 5);
+        const Fixed lift = massif * massif * (Fixed::fromInt(3) - massif * 2);  // smooth foothills
+        mountain = peak * lift * (r(1, 5) + crests * r(7, 10) + worn * r(1, 10));
+        // Crags, buttresses and gullies tens of metres across, rougher the higher it climbs.
+        const Fixed crag = noise::ridgedMF(sRidge ^ 0xC4A6, wx, wy, 240, 3);
+        mountain += lift * (crag - r(1, 3)) * (m(6) + mountain / 12);
     }
     for (const Vec3& p : passes_) {
+        // A saddle with a ragged outline, not a round notch.
         const Fixed dx = x - p.x, dy = y - p.y;
-        mountain = mountain * (Fixed::one() - bump(sqrt(dx * dx + dy * dy) / p.z) * 4 / 5);
+        const Fixed rr = p.z * (r(4, 5) + noise::value(sRidge ^ 0x9A55, x, y, 300) * r(2, 5));
+        mountain = mountain * (Fixed::one() - bump(sqrt(dx * dx + dy * dy) / rr) * r(7, 10));
     }
     return z + mountain;
 }
@@ -333,7 +390,7 @@ void Continent::computeRiverSurfaces() {
         for (size_t i = 0; i < rv.points.size(); ++i) {
             Fixed mountain;
             const Fixed land = landDistance(rv.points[i].x, rv.points[i].y);
-            Fixed ground = baseHeight(rv.points[i].x, rv.points[i].y, mountain);
+            Fixed ground = reliefHeight(rv.points[i].x, rv.points[i].y, mountain);
             if (land < Fixed::zero()) ground = Fixed::zero();
             surface = min(surface, ground - kSurfaceBelowLand);
             if (i == 0 && joined) surface = start;
@@ -363,12 +420,12 @@ Continent::Sample Continent::sample(Fixed x, Fixed y) const {
 Continent::Sample Continent::landform(Fixed x, Fixed y) const {
     Sample s;
     s.land = landDistance(x, y);
-    Fixed z = baseHeight(x, y, s.mountain);
+    Fixed z = reliefHeight(x, y, s.mountain);
     if (s.land < Fixed::zero()) {
         z = max(-m(40), -m(2) + s.land / 60);
     } else {
-        // Gentle beaches near the shore; inland the land may rise freely.
-        z = min(z, r(1, 2) + s.land * 4 / 100 + max(Fixed::zero(), s.land - m(400)) * 2 / 5);
+        // Beaches at the shore, the land rising smoothly behind them (no capped plateau).
+        z = r(1, 2) + (z - r(1, 2)) * noise::smoothstep(Fixed::zero(), m(700), s.land) + s.land / 200;
     }
     s.height = z;
     return s;
@@ -407,7 +464,10 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
             const Fixed t = s.riverDist / hw;
             z = min(z, s.riverSurface - depth * (Fixed::one() - t * t));
         } else {
-            z = min(z, s.riverSurface + r(2, 5) + (s.riverDist - hw) * kValleySlope);
+            // The valley floor near the river, its walls blending back into
+            // the land's own slopes (no crease where a limit cuts in).
+            const Fixed floor = s.riverSurface + r(2, 5) + (s.riverDist - hw) * kValleySlope;
+            if (z > floor) z = floor + (z - floor) * noise::smoothstep(kValleyReach * r(3, 10), kValleyReach, s.riverDist - hw);
         }
     }
 
@@ -425,6 +485,46 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
             // The basin rim rises fast so nearby hills keep their shape.
             const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
             z = min(z, surface + r(2, 5) + (q - Fixed::one()) * lake.rx / 6 + beyond * beyond * 600);
+        }
+    }
+
+    // Streams from the drainage bake: a creek in a small gully of its own.
+    if (!streams_.empty()) {
+        const int64_t bx = clamp(x / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNx_ - 1)).floorToInt();
+        const int64_t by = clamp(y / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNy_ - 1)).floorToInt();
+        constexpr Fixed kGully = Fixed::fromInt(40);
+        for (const auto& [si, bi] : streamBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
+            const River& st = streams_[si];
+            const River::Box& box = st.boxes[bi];
+            const Fixed limit = kGully + st.halfWidth * 2;
+            if (x < box.minX - limit || x > box.maxX + limit || y < box.minY - limit || y > box.maxY + limit) continue;
+            const size_t end = std::min(st.points.size() - 1, (bi + 1) * River::kSpan);
+            for (size_t i = bi * River::kSpan; i < end; ++i) {
+                Fixed t;
+                const Fixed d2 = segDistSq(x, y, st.points[i], st.points[i + 1], t);
+                if (d2 >= s.streamDist * s.streamDist) continue;
+                s.streamDist = sqrt(d2);
+                s.streamHalfWidth = st.widths[i] + (st.widths[i + 1] - st.widths[i]) * t;
+                s.streamSurface = st.points[i].z + (st.points[i + 1].z - st.points[i].z) * t;
+            }
+        }
+        const Fixed hw = s.streamHalfWidth;
+        if (s.streamDist < hw) {
+            const Fixed t = s.streamDist / hw;
+            z = min(z, s.streamSurface - (r(2, 5) + hw / 5) * (Fixed::one() - t * t));
+        } else if (s.streamDist < hw + kGully) {
+            const Fixed floor = s.streamSurface + r(1, 5) + (s.streamDist - hw) * r(3, 10);
+            if (z > floor) z = floor + (z - floor) * noise::smoothstep(kGully * r(1, 5), kGully, s.streamDist - hw);
+        }
+    }
+    // Water pooled in hollows the bake found (its shore follows the land).
+    if (baked_ && !reliefBasin_.empty()) {
+        const int64_t ix = clamp((x + Fixed::fromInt(reliefCell_ / 2)) / reliefCell_, Fixed::zero(), Fixed::fromInt(reliefNx_ - 1)).floorToInt();
+        const int64_t iy = clamp((y + Fixed::fromInt(reliefCell_ / 2)) / reliefCell_, Fixed::zero(), Fixed::fromInt(reliefNy_ - 1)).floorToInt();
+        const int16_t b = reliefBasin_[static_cast<size_t>(iy * reliefNx_ + ix)];
+        if (b != INT16_MIN) {
+            s.inBasin = true;
+            s.basinSurface = Fixed::fromRatio(b, 10);
         }
     }
 
@@ -456,6 +556,14 @@ bool Continent::waterSurfaceOf(const Sample& s, Fixed& surface) const {
     }
     if (s.riverDist < s.riverHalfWidth + m(6) && s.height < s.riverSurface) {
         surface = s.riverSurface;
+        return true;
+    }
+    if (s.streamDist < s.streamHalfWidth + m(2) && s.height < s.streamSurface) {
+        surface = s.streamSurface;
+        return true;
+    }
+    if (s.inBasin && s.height < s.basinSurface) {
+        surface = s.basinSurface;
         return true;
     }
     return false;
@@ -544,6 +652,7 @@ bool Continent::buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sam
     if (centre.land < m(40) || centre.height < m(2) || centre.mountain > maxMountain) return false;
     if (waterSurfaceOf(centre, surface)) return false;
     if (centre.riverDist < centre.riverHalfWidth + radius + m(25)) return false;
+    if (centre.streamDist < centre.streamHalfWidth + radius / 2 || centre.inBasin) return false;
     for (const Area& lake : lakes_)
         if (ellipse(lake, x, y) < r(9, 5)) return false;
     if (landGround(x, y, centre.height, centre.mountain, centre.roadDist) == Ground::Swamp) return false;
@@ -715,7 +824,97 @@ uint64_t Continent::checksum() const {
     }
     for (const River& rv : rivers_)
         for (const Vec3& p : rv.points) h.addI64(p.z.raw);
+    h.addU64(streams_.size());
+    for (const River& st : streams_)
+        for (const Vec3& p : st.points) {
+            h.addI64(p.x.raw);
+            h.addI64(p.z.raw);
+        }
     return h.value();
+}
+
+// The baked relief, compiled in from engine/sim/data/illyria_relief.bin
+// (generated by tools/terrainbake). Little-endian:
+//   "ILRF", u32 version, i32 nx, ny, cell;
+//   i16 delta[nx * ny] (dm the land was worn down or built up from the design),
+//   i16 basin[nx * ny] (dm water level, INT16_MIN = none);
+//   u32 streams; per stream u32 n, then n x {i32 x dm, i32 y dm, i16 surface dm, u16 half width cm}.
+namespace data {
+extern const unsigned char kRelief[];
+extern const size_t kReliefSize;
+}  // namespace data
+
+void Continent::loadBakedRelief() {
+    size_t at = 0;
+    const auto u32 = [&] {
+        uint32_t v = 0;
+        for (int k = 0; k < 4; ++k) v |= static_cast<uint32_t>(data::kRelief[at++]) << (8 * k);
+        return v;
+    };
+    const auto i32 = [&] { return static_cast<int32_t>(u32()); };
+    const auto i16 = [&] {
+        const uint16_t v = static_cast<uint16_t>(data::kRelief[at] | (data::kRelief[at + 1] << 8));
+        at += 2;
+        return static_cast<int16_t>(v);
+    };
+    if (data::kReliefSize < 20 || data::kRelief[0] != 'I' || data::kRelief[1] != 'L' || data::kRelief[2] != 'R' || data::kRelief[3] != 'F') return;
+    at = 4;
+    if (u32() != 3) return;
+    reliefNx_ = i32();
+    reliefNy_ = i32();
+    reliefCell_ = i32();
+    const size_t n = static_cast<size_t>(reliefNx_) * reliefNy_;
+    if (data::kReliefSize < at + n * 4 + 4) return;
+    reliefDelta_.resize(n);
+    reliefBasin_.resize(n);
+    for (size_t i = 0; i < n; ++i) reliefDelta_[i] = i16();
+    for (size_t i = 0; i < n; ++i) reliefBasin_[i] = i16();
+    const uint32_t count = u32();
+    for (uint32_t k = 0; k < count; ++k) {
+        River st;
+        const uint32_t points = u32();
+        Fixed widest;
+        for (uint32_t i = 0; i < points; ++i) {
+            const int32_t xd = i32(), yd = i32();
+            const int16_t surf = i16();
+            const uint16_t hw = static_cast<uint16_t>(i16());
+            st.points.push_back({Fixed::fromRatio(xd, 10), Fixed::fromRatio(yd, 10), Fixed::fromRatio(surf, 10)});
+            st.widths.push_back(Fixed::fromRatio(hw, 100));
+            widest = max(widest, st.widths.back());
+        }
+        st.halfWidth = widest;
+        st.depth = widest / 3 + r(2, 5);
+        for (size_t b = 0; b * River::kSpan + 1 < st.points.size(); ++b) {
+            River::Box box{m(1000000), m(1000000), -m(1000000), -m(1000000)};
+            const size_t end = std::min(st.points.size() - 1, (b + 1) * River::kSpan);
+            for (size_t i = b * River::kSpan; i <= end; ++i) {
+                box.minX = min(box.minX, st.points[i].x);
+                box.minY = min(box.minY, st.points[i].y);
+                box.maxX = max(box.maxX, st.points[i].x);
+                box.maxY = max(box.maxY, st.points[i].y);
+            }
+            st.boxes.push_back(box);
+        }
+        if (st.points.size() >= 2) streams_.push_back(std::move(st));
+    }
+    // Bucket every box into the 256 m cells it may affect.
+    bucketNx_ = static_cast<int32_t>(kWidth / kStreamBucket) + 1;
+    bucketNy_ = static_cast<int32_t>(kHeight / kStreamBucket) + 1;
+    streamBuckets_.assign(static_cast<size_t>(bucketNx_) * bucketNy_, {});
+    for (uint32_t si = 0; si < streams_.size(); ++si) {
+        const River& st = streams_[si];
+        const Fixed reach = m(40) + st.halfWidth * 2 + m(1);
+        for (uint32_t bi = 0; bi < st.boxes.size(); ++bi) {
+            const River::Box& box = st.boxes[bi];
+            const int64_t x0 = std::max<int64_t>(0, ((box.minX - reach) / kStreamBucket).floorToInt());
+            const int64_t x1 = std::min<int64_t>(bucketNx_ - 1, ((box.maxX + reach) / kStreamBucket).floorToInt());
+            const int64_t y0 = std::max<int64_t>(0, ((box.minY - reach) / kStreamBucket).floorToInt());
+            const int64_t y1 = std::min<int64_t>(bucketNy_ - 1, ((box.maxY + reach) / kStreamBucket).floorToInt());
+            for (int64_t by = y0; by <= y1; ++by)
+                for (int64_t bx = x0; bx <= x1; ++bx) streamBuckets_[static_cast<size_t>(by * bucketNx_ + bx)].push_back({si, bi});
+        }
+    }
+    baked_ = true;
 }
 
 }  // namespace illyria::sim

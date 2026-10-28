@@ -34,7 +34,7 @@ enum class ProjectileKind : uint8_t {
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
 // the simulation so every peer sees the same battlefield and explosions can
 // throw them about again.
-enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone };
+enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk };
 
 struct Explosive {
     Fixed radius;
@@ -132,6 +132,8 @@ struct Unit {
 
     bool hasMoveTarget = false;
     Vec3 moveTarget;
+    Fixed marchSpeed;       // pace of the current move order (0 = own speed)
+    bool gibbed = false;    // blown apart: no corpse, only its parts
     bool hasAttackTarget = false;
     Vec3 attackTarget;
     int32_t reloadRemaining = 0;
@@ -176,6 +178,7 @@ struct Command {
     EntityId unit = kNoEntity;
     Type type = Type::Stop;
     Vec3 target;
+    Fixed speed = {};  // Move: marching pace (m/s) so a squad keeps formation; 0 = the unit's own
 };
 
 // Something that happened this tick, for rendering and audio. Not part of the
@@ -286,7 +289,7 @@ private:
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT) const;
     void explode(const Vec3& at, const Explosive& ex, PlayerId owner);
-    void spawnGibs(const Unit& victim, const Vec3& from, Fixed strength);
+    void spawnGibs(Unit& victim, const Vec3& from, Fixed strength);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
     void clearRemain(uint32_t slot);
