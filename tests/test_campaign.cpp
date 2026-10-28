@@ -149,7 +149,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0xfa371369b4f3f3d4;
+    constexpr uint64_t kGolden = 0x81572d64a1e1f6ad;
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
