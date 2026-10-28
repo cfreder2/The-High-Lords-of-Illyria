@@ -7,6 +7,7 @@
 
 #include <emscripten/emscripten.h>
 
+#include <string>
 #include <vector>
 
 #include "../render/renderer.h"
@@ -58,6 +59,12 @@ EMSCRIPTEN_KEEPALIVE const uint8_t* illyria_test_sheet(int type) {
     return readPixels.data();
 }
 EMSCRIPTEN_KEEPALIVE const int* illyria_test_sheet_size() { return readSize; }
+// Test hook: which sheets the renderer holds and where each came from ("Name=pre,Name=baked,...").
+EMSCRIPTEN_KEEPALIVE const char* illyria_test_sheet_report() {
+    static std::string report;
+    report = target ? target->sheetReport() : std::string();
+    return report.c_str();
+}
 EMSCRIPTEN_KEEPALIVE const float* illyria_test_sheet_cells() { return readCells.data(); }
 
 EMSCRIPTEN_KEEPALIVE int illyria_sheet_loaded(int type, const uint8_t* rgba, int width, int height, const float* cells) {

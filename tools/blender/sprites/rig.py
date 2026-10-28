@@ -65,6 +65,7 @@ class Pose(dict):
     def __init__(self):
         super().__init__()
         self.loc = {}
+        self.size = {}  # bone -> scale (0 hides what hangs on it: a loosed arrow, a thrown charge)
 
     def turn(self, bone, axis, deg):
         self.setdefault(bone, []).append((tuple(axis), deg))
@@ -79,6 +80,10 @@ class Pose(dict):
     def both(self, base, axis, deg):
         self.lr(base, 1, axis, deg)
         return self.lr(base, -1, axis, deg)
+
+    def scale(self, bone, k):
+        self.size[bone] = k
+        return self
 
     def move(self, bone, delta):
         self.loc[bone] = self.loc.get(bone, Vector()) + Vector(delta)
@@ -100,12 +105,15 @@ def apply(ob, pose):
             pb.location = rest.inverted() @ d
         else:
             pb.location = (0, 0, 0)
+        k = max(1e-3, pose.size.get(pb.name, 1.0))
+        pb.scale = (k, k, k)
 
 
 def key(ob, frame):
     for pb in ob.pose.bones:
         pb.keyframe_insert('rotation_quaternion', frame=frame)
         pb.keyframe_insert('location', frame=frame)
+        pb.keyframe_insert('scale', frame=frame)
 
 
 def key_all(ob, pose_of):
@@ -137,3 +145,20 @@ def _fcurves(act):
             for bag in strip.channelbags:
                 out.extend(bag.fcurves)
     return out
+
+
+def ik(ob, bone, target, pole=None, chain=2, pole_angle=-90.0):
+    """An IK constraint: bone (and chain - 1 parents) reach for target's head;
+    pole bends the joint toward it. Evaluated on every frame after the keys,
+    so a second hand stays on a two-handed haft whatever the first does."""
+    pb = ob.pose.bones[bone]
+    c = pb.constraints.new('IK')
+    c.target = ob
+    c.subtarget = target
+    c.use_tail = True
+    c.chain_count = chain
+    if pole:
+        c.pole_target = ob
+        c.pole_subtarget = pole
+        c.pole_angle = math.radians(pole_angle)
+    return c

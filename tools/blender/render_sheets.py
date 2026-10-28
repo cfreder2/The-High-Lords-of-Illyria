@@ -1,6 +1,6 @@
 """Pre-rendered sprite sheets for The High Lords of Illyria, made with Blender.
 
-Each pilot unit type is modelled, rigged and animated from scratch by the
+Each unit type is modelled, rigged and animated from scratch by the
 scripts in sprites/ (no downloaded models), then rendered with Cycles from the
 game's five views into a sheet the renderer can load in place of its runtime
 bake (game/render/renderer.cpp, Renderer::bakeSheet; format in sprites/pack.py).
@@ -13,6 +13,7 @@ virtualenv of its own:
 
 Run headless (no Blender executable needed):
 
+    /tmp/bpyvenv/bin/python tools/blender/render_sheets.py list
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py sheet heavy_infantry build/sprites
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py sheet all build/sprites
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py look archons out.png [view,frame ...] [ppm]
@@ -31,7 +32,7 @@ open in Blender.
 
 Output is deterministic: fixed seeds everywhere (Cycles' seed, the models'
 own generator), so the same Blender version gives the same pixels.
-Units: heavy_infantry (UnitType 1), light_cavalry (4), archons (20).
+"list" prints every unit's name and UnitType number (build_all.sh renders them all).
 """
 
 import os
@@ -43,6 +44,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy  # noqa: E402
 
 from sprites import pack, render, units  # noqa: E402
+from sprites import beasts, beasts2, roster, roster2  # noqa: E402,F401  (register the rest of the roster in units.TYPES)
 
 
 def build(name):
@@ -55,13 +57,17 @@ def build(name):
 
 
 def main(argv):
+    if argv[:1] == ['list']:
+        for n, (number, f) in sorted(units.TYPES.items(), key=lambda kv: kv[1][0]):
+            print('unit %s %d' % (n, number))
+        return 0
     if len(argv) < 3:
         print(__doc__)
         return 1
     cmd, name = argv[0], argv[1]
     if cmd == 'sheet':
         out = argv[2]
-        ppm = float(argv[3]) if len(argv) > 3 else 48.0
+        ppm = float(argv[3]) if len(argv) > 3 else None  # None: chosen per type (render.choose_ppm)
         names = sorted(units.TYPES) if name == 'all' else [name]
         for n in names:
             number = build(n)

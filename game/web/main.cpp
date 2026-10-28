@@ -622,6 +622,37 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_promote(int squad, int rank) {
     if (app && squad >= 0) app->battle->promoteSquad(static_cast<size_t>(squad), rank);
 }
 
+// Test hook: the camera close on the first squad of a unit type (0 if none in the battle).
+EMSCRIPTEN_KEEPALIVE int illyria_test_focus_type(int type, float distance, float yaw) {
+    if (!app) return 0;
+    for (const Squad& s : app->battle->squads())
+        if (static_cast<int>(s.type) == type) {
+            const V3 c = app->battle->squadCentre(s);
+            app->introStartMs = -1;
+            app->camera.lookAt(c.x, c.y, distance);
+            app->camera.rotate(yaw - app->camera.yaw());
+            return 1;
+        }
+    return 0;
+}
+
+// Test hook: every unit type in this battle and where its sprite sheet came
+// from ("Name=pre", "Name=baked" or "Name=none"), comma separated.
+EMSCRIPTEN_KEEPALIVE const char* illyria_test_battle_sheets() {
+    static std::string out;
+    out.clear();
+    if (!app) return out.c_str();
+    std::set<int> types;
+    for (const Squad& s : app->battle->squads()) types.insert(static_cast<int>(s.type));
+    for (int t : types) {
+        const int source = app->renderer.sheetSource(t);
+        if (!out.empty()) out += ',';
+        out += illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(t));
+        out += source > 0 ? "=pre" : (source == 0 ? "=baked" : "=none");
+    }
+    return out.c_str();
+}
+
 EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
     if (!app) return;
     V3 at;

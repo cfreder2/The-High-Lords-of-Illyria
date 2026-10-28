@@ -188,6 +188,18 @@ def _load_png(path):
     return np.asarray(im, dtype=np.float32) / 255.0
 
 
+def choose_ppm(ext, base=48.0, max_px=256.0, budget=2048 * 2048 / 1.35):
+    """Pixels a metre for a type's sheet, as Renderer::bakeSheet chooses them:
+    the game's 48 unless a picture would be more than max_px across (giants,
+    dragons), and less still if all 130 would not fit a 2048 atlas."""
+    big = max(max(e[1] - e[0], e[3] - e[2]) for row in ext for e in row)
+    ppm = min(base, max_px / big)
+    area = sum((e[1] - e[0]) * (e[3] - e[2]) for row in ext for e in row)
+    while area * ppm * ppm > budget:
+        ppm *= 0.95
+    return round(ppm, 1)
+
+
 def render_cells(out_dir, ppm=48.0, ss=2, samples=96, log=print, views=range(VIEWS), frames=None):
     """Renders every cell (view x frame) at ppm * ss pixels a metre, picture
     and team mask, into out_dir/raw/. Returns the cells' lattice placement."""
@@ -199,46 +211,51 @@ def render_cells(out_dir, ppm=48.0, ss=2, samples=96, log=print, views=range(VIE
     t0 = time.time()
     ext = extents(frames)
     log('extents of %d frames: %.1f s' % (len(frames), time.time() - t0))
+    if ppm is None:
+        ppm = choose_ppm(ext)
+        log('%.1f px/m' % ppm)
     pp = ppm * ss
     cells = {}
     timing = {'picture': 0.0, 'mask': 0.0}
+    # Each view's picture: the union of its frames on the lattice, a margin round.
+    lattice = {}
     for v in views:
-        # This view's picture: the union of its frames on the lattice, a margin round.
         u0 = min(e[v][0] for e in ext)
         u1 = max(e[v][1] for e in ext)
         w0 = min(e[v][2] for e in ext)
         w1 = max(e[v][3] for e in ext)
-        i0 = int(math.floor(u0 * ppm)) - 2
-        i1 = int(math.ceil(u1 * ppm)) + 2
-        j0 = int(math.floor(w0 * ppm)) - 2
-        j1 = int(math.ceil(w1 * ppm)) + 2
-        W, H = (i1 - i0) * ss, (j1 - j0) * ss
-        scene.render.resolution_x, scene.render.resolution_y = W, H
-        studio.aim(v, (i0 + i1) / 2 / ppm, (j0 + j1) / 2 / ppm, max(W, H) / pp)
-        for k, f in enumerate(frames):
-            e = ext[k][v]
-            a0 = max(i0, int(math.floor(e[0] * ppm)) - 2)
-            a1 = min(i1, int(math.ceil(e[1] * ppm)) + 2)
-            b0 = max(j0, int(math.floor(e[2] * ppm)) - 2)
-            b1 = min(j1, int(math.ceil(e[3] * ppm)) + 2)
-            scene.render.border_min_x = (a0 - i0) / (i1 - i0)
-            scene.render.border_max_x = (a1 - i0) / (i1 - i0)
-            scene.render.border_min_y = (b0 - j0) / (j1 - j0)
-            scene.render.border_max_y = (b1 - j0) / (j1 - j0)
-            scene.frame_set(f)
-            name = 'v%d_f%02d' % (v, f - 1)
-            for mask in (0, 1):
+        lattice[v] = (int(math.floor(u0 * ppm)) - 2, int(math.floor(w0 * ppm)) - 2, int(math.ceil(u1 * ppm)) + 2, int(math.ceil(w1 * ppm)) + 2)
+    # Frames outermost, then picture and matte, then the views: the deformed
+    # meshes and the shaders are synced as few times as can be.
+    for k, f in enumerate(frames):
+        scene.frame_set(f)
+        for mask in (0, 1):
+            bpy.context.view_layer['mask'] = float(mask)
+            scene.cycles.samples = samples if not mask else 16
+            scene.cycles.use_denoising = not mask
+            scene.cycles.use_adaptive_sampling = not mask
+            for v in views:
+                i0, j0, i1, j1 = lattice[v]
+                W, H = (i1 - i0) * ss, (j1 - j0) * ss
+                scene.render.resolution_x, scene.render.resolution_y = W, H
+                studio.aim(v, (i0 + i1) / 2 / ppm, (j0 + j1) / 2 / ppm, max(W, H) / pp)
+                e = ext[k][v]
+                a0 = max(i0, int(math.floor(e[0] * ppm)) - 2)
+                a1 = min(i1, int(math.ceil(e[1] * ppm)) + 2)
+                b0 = max(j0, int(math.floor(e[2] * ppm)) - 2)
+                b1 = min(j1, int(math.ceil(e[3] * ppm)) + 2)
+                scene.render.border_min_x = (a0 - i0) / (i1 - i0)
+                scene.render.border_max_x = (a1 - i0) / (i1 - i0)
+                scene.render.border_min_y = (b0 - j0) / (j1 - j0)
+                scene.render.border_max_y = (b1 - j0) / (j1 - j0)
                 t = time.time()
-                bpy.context.view_layer['mask'] = float(mask)
-                scene.cycles.samples = samples if not mask else 16
-                scene.cycles.use_denoising = not mask
-                scene.cycles.use_adaptive_sampling = not mask
+                name = 'v%d_f%02d' % (v, f - 1)
                 scene.render.filepath = os.path.join(raw, name + ('_mask' if mask else '') + '.png')
                 bpy.ops.render.render(write_still=True)
                 timing['mask' if mask else 'picture'] += time.time() - t
-            bpy.context.view_layer['mask'] = 0.0
-            cells[(v, f - 1)] = {'lattice': (i0, j0, i1, j1), 'ss': ss}
-        log('view %d: %dx%d px, %.0f s so far' % (v, W, H, time.time() - t0))
+                cells[(v, f - 1)] = {'lattice': lattice[v], 'ss': ss}
+        bpy.context.view_layer['mask'] = 0.0
+        log('frame %d: %.0f s so far' % (f, time.time() - t0))
     log('rendered %d cells: pictures %.0f s, masks %.0f s' % (len(cells), timing['picture'], timing['mask']))
     meta = {'ppm': ppm, 'ss': ss, 'cells': {'%d_%d' % k: c for k, c in cells.items()},
             'seconds': {'pictures': round(timing['picture'], 1), 'masks': round(timing['mask'], 1), 'total': round(time.time() - t0, 1)}}

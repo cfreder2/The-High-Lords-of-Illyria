@@ -20,14 +20,27 @@ from .rig import Bone, Pose
 class Body:
     """Scales the 1.8 m measurements: P(x, y, z) for points, R(r) for radii."""
 
-    def __init__(self, height=1.8, bulk=1.0, offset=None, prefix=''):
-        self.s = height / 1.8
+    def __init__(self, height=1.8, bulk=1.0, offset=None, prefix='', legs=1.0, head=1.0):
+        """legs: leg length against a man's (a dwarf's are short); head: the
+        head's size against a man's. height is still the top of the head."""
+        self.legs, self.head = legs, head
+        top = 1.685 + 0.118 * (2 * head - 1) - 0.85 * (1 - legs)
+        self.s = height / (1.8 + top - 1.803)
         self.b = bulk
         self.o = offset or Vector()
         self.p = prefix
 
+    def Z(self, z):
+        """A height on the 1.8 m man to this figure's (before scaling): the
+        legs between ankle and hip shortened, the rest shifted down with them."""
+        if self.legs == 1.0 or z <= 0.1:
+            return z
+        if z <= 0.95:
+            return 0.1 + (z - 0.1) * self.legs
+        return z - 0.85 * (1 - self.legs)
+
     def P(self, x, y, z):
-        return Vector((x * self.s, y * self.s * self.b, z * self.s)) + self.o
+        return Vector((x * self.s, y * self.s * self.b, self.Z(z) * self.s)) + self.o
 
     def R(self, r):
         if isinstance(r, tuple):
@@ -259,11 +272,11 @@ def face_shape(q):
 
 
 def head_center(B):
-    return B.P(0.015, 0, 1.685)
+    return B.P(0.015, 0, 1.685) + Vector((0, 0, 0.118 * (B.head - 1) * B.s))
 
 
 def head_radii(B):
-    s = B.s * (0.5 + 0.5 * B.b)
+    s = B.s * (0.5 + 0.5 * B.b) * B.head
     return (0.102 * s, 0.078 * s, 0.118 * s)
 
 
