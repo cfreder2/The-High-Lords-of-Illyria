@@ -28,18 +28,24 @@ int32_t capitalOf(const Campaign& c, uint8_t side) {
 }  // namespace
 
 TEST(warlords_dice_odds_are_exact) {
-    // Equal strengths: a coin toss. One army against nobody: certain.
-    CHECK(Campaign::winChance({5}, {5}) == 500);
-    CHECK(Campaign::winChance({3}, {}) == 1000);
-    CHECK(Campaign::winChance({}, {3}) == 0);
+    // Strengths in hundredths. Equal strengths: a coin toss. One army against nobody: certain.
+    CHECK(Campaign::winChance({500}, {500}) == 500);
+    CHECK(Campaign::winChance({300}, {}) == 1000);
+    CHECK(Campaign::winChance({}, {300}) == 0);
     // Strength 6 against 4: the next hit lands on the 4 with chance
     // 6*6 / (6*6 + 4*4) = 36/52; two hits before two: p^2 (3 - 2p) = 0.774.
-    CHECK(std::abs(Campaign::winChance({6}, {4}) - 774) <= 1);
+    CHECK(std::abs(Campaign::winChance({600}, {400}) - 774) <= 1);
     // Quality over quantity, as the manual warns: a dragon (9) beats four light infantry (3).
-    CHECK(Campaign::winChance({9}, {3, 3, 3, 3}) > 500);
+    CHECK(Campaign::winChance({900}, {300, 300, 300, 300}) > 500);
     // More armies, better odds; a stronger defence, worse.
-    CHECK(Campaign::winChance({4, 4, 4}, {5, 5}) > Campaign::winChance({4, 4}, {5, 5}));
-    CHECK(Campaign::winChance({4, 4}, {6, 6}) < Campaign::winChance({4, 4}, {5, 5}));
+    CHECK(Campaign::winChance({400, 400, 400}, {500, 500}) > Campaign::winChance({400, 400}, {500, 500}));
+    CHECK(Campaign::winChance({400, 400}, {600, 600}) < Campaign::winChance({400, 400}, {500, 500}));
+    // A small edge is a small shift: 4.4 against 4 (+10%) is better than a
+    // coin toss, but nothing like a whole point (5 against 4).
+    const int32_t edge = Campaign::winChance({440, 440, 440, 440}, {400, 400, 400, 400}), point = Campaign::winChance({500, 500, 500, 500}, {400, 400, 400, 400});
+    std::printf("  four against four: +10%% %d/1000, a whole point %d/1000\n", edge, point);
+    CHECK(edge > 550 && edge < 750);
+    CHECK(point > edge + 100);
 }
 
 TEST(terrain_and_walls_change_the_odds) {
@@ -55,7 +61,7 @@ TEST(terrain_and_walls_change_the_odds) {
     CHECK(!garrison.empty());
     const std::vector<int32_t> walled = c.lineup(garrison, Campaign::kNeutral, t.cx, t.cy, true);
     const std::vector<int32_t> open = c.lineup(garrison, Campaign::kNeutral, t.cx, t.cy, false);
-    for (size_t k = 0; k < walled.size(); ++k) CHECK(walled[k] == std::min(9, open[k] + 1));
+    for (size_t k = 0; k < walled.size(); ++k) CHECK(walled[k] == std::min(900, open[k] + 100));  // hundredths
 }
 
 TEST(hard_lords_outplay_easy_ones) {

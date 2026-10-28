@@ -536,6 +536,33 @@ Mesh banner() {
     return b.mesh;
 }
 
+Mesh flagPole() {
+    Builder b;
+    b.frustum(0, 1, 1, 0.7f, 6, {0.33f, 0.27f, 0.2f});
+    b.box({-1.4f, -1.4f, 1}, {1.4f, 1.4f, 1.02f}, {0.85f, 0.7f, 0.3f});  // a gilt finial
+    return b.mesh;
+}
+
+Mesh flagCloth() {
+    // A swallow-tailed banner flying along +x from the pole, hanging down
+    // from z = 0; white, so the instance tint is the owner's colour. Two-sided,
+    // with a darker hoist band so it reads against its own colour.
+    Builder b;
+    const V3 cloth{1, 1, 1}, hoist{0.72f, 0.72f, 0.72f};
+    const V3 a{0.0f, 0, 0}, h0{0.16f, 0, 0}, top{1.0f, 0, -0.02f}, notch{0.74f, 0, -0.33f}, tail{1.0f, 0, -0.64f}, h1{0.16f, 0, -0.62f},
+        bot{0.0f, 0, -0.62f};
+    const auto both = [&](V3 p, V3 q, V3 r, V3 c) {
+        b.tri(p, q, r, c);
+        b.tri(p, r, q, c * 0.85f);
+    };
+    both(a, h1, h0, hoist);
+    both(a, bot, h1, hoist);
+    both(h0, notch, top, cloth);
+    both(h0, h1, notch, cloth);
+    both(h1, tail, notch, cloth);
+    return b.mesh;
+}
+
 Mesh ruin() {
     Builder b;
     const V3 old{0.55f, 0.54f, 0.48f}, moss{0.38f, 0.45f, 0.30f};

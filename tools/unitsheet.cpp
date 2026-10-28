@@ -23,7 +23,7 @@ int main() {
     std::printf("Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s and a gallop 7 m/s.\n\n");
 
     std::printf("## Body and melee\n\n");
-    std::printf("**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each rank, hero level and blessing adds one, to 9.\n\n");
+    std::printf("**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each hero level and blessing adds one, to 9 (a soldier's rank is a small edge instead: +3%% a rank, docs/GAME_DESIGN.md §3.4).\n\n");
     std::printf("**Morale** is how hard shocks shake the type, in percent of a man's (lower is steadier); \"never\" types never break.\n\n");
     std::printf("| Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Every | Reach | Knockback | Shield | Morale | Notes |\n");
     std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");

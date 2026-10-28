@@ -29,6 +29,8 @@ add_executable(illyria_tests
     test_command.cpp
     test_morale_rally.cpp
     test_voice.cpp
+    test_capture.cpp
+    test_territory.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)

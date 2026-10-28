@@ -153,7 +153,7 @@ UnitStats unitStats(UnitType type) {
             s = base(type, r(2, 5), r(9, 5), m(2), 65);
             melee(s, 14, r(11, 5), sec(8, 5));
             s.melee.bonusVsMountedPct = 150;
-            s.terrain.openPct = 20;  // Warlords II: +1 in the open
+            s.terrain.openPct = 3;  // Warlords II: +1 in the open; a small edge here (edges.h)
             break;
         case T::LightCavalry:
             s = base(type, r(9, 10), r(5, 2), m(7), 85);
@@ -161,7 +161,7 @@ UnitStats unitStats(UnitType type) {
             s.mounted = true;
             s.mass = m(3);
             s.aggroRange = m(30);
-            s.terrain.openPct = 20;  // +1 in the open
+            s.terrain.openPct = 3;  // +1 in the open
             break;
         case T::HeavyCavalry:
             s = base(type, r(19, 20), r(27, 10), r(11, 2), 130);
@@ -170,14 +170,14 @@ UnitStats unitStats(UnitType type) {
             s.mounted = true;
             s.mass = m(4);
             s.aggroRange = m(30);
-            s.terrain.openPct = 40;  // +2 in the open
+            s.terrain.openPct = 5;  // +2 in the open
             break;
         case T::Dwarves:  // Warlords' Dwarven Legions: axes and shields
             s = base(type, r(9, 20), r(27, 20), r(17, 10), 90);
             melee(s, 17, r(1, 2), sec(3, 2));
             shield(s, r(3, 10));
             s.mass = r(7, 5);
-            s.terrain.hillsPct = 25;  // +1 in the hills
+            s.terrain.hillsPct = 4;  // +1 in the hills
             break;
         case T::WolfRiders:
             s = base(type, r(4, 5), r(19, 10), r(15, 2), 75);

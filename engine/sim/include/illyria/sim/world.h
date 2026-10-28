@@ -9,6 +9,7 @@
 #include <tuple>
 #include <vector>
 
+#include "illyria/sim/edges.h"
 #include "illyria/sim/fixed.h"
 #include "illyria/sim/gait.h"
 #include "illyria/sim/nav.h"
@@ -297,6 +298,9 @@ struct WorldConfig {
     std::shared_ptr<const Region> region;
     // Remains are kept in a ring; the oldest are recycled beyond this.
     uint32_t maxRemains = 40000;
+    // The side whose land the battle is fought on (the home-land edge,
+    // edges.h), or -1 for nobody's.
+    int32_t homeSide = -1;
 };
 
 class World {
@@ -335,6 +339,11 @@ public:
     void setGateHp(size_t gate, int32_t hp);
     Fixed groundHeight(Fixed x, Fixed y) const;
     const Region* region() const { return config_.region.get(); }
+    int32_t homeSide() const { return config_.homeSide; }
+    // The small edges a soldier fights with (world_edges.cpp, edges.h): his
+    // side's land, ground his kind knows, his rank, a hero beside him, and
+    // (against a foe dz above him over dist) the high ground.
+    Edges edgesOf(const Unit& u, Fixed dist = Fixed::zero(), Fixed dz = Fixed::zero()) const;
     // Damage multipliers, in percent (world_combat.cpp): for where a blow
     // (or missile) lands, and for an arrow plunging at `vel` from above.
     static int32_t sidePct(HitSide side, bool missile);
@@ -458,9 +467,14 @@ private:
     bool tumble(Projectile& p);
     // Credits a kill and promotes the killer when it has earned a rank.
     void creditKill(Unit& killer);
-    // Damage multiplier, in percent, from the unit's rank, blessings and any
-    // hero leading it.
+    // Damage multiplier, in percent: a hero's levels, blessings, and the edges.
     int32_t prowessPct(const Unit& u) const;
+    // The same without the edges: what a hero's levels and blessings add.
+    int32_t gracePct(const Unit& u) const;
+    // base x pctA% x pctB%, the fraction rounded up by chance in proportion
+    // (world_edges.cpp): so a few percent more is a few percent more on
+    // average, not nothing until it crosses a whole point.
+    int32_t scaledDamage(int32_t base, int32_t pctA, int32_t pctB = 100);
     // The surface a walker at height z stands on here: the ground, or a deck
     // within a step of z (not a wall-walk high above a gate passage).
     Fixed standingHeight(Fixed x, Fixed y, Fixed z) const;

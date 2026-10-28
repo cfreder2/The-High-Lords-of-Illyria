@@ -141,10 +141,41 @@ float hexEdge(vec2 p, float s) {
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
 float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
+// Territory (sim campaign_territory.cpp): one texel per campaign hex, the
+// holder's colour with alpha for how firmly; drawn on the campaign map only.
+uniform sampler2D uTerritory;
+uniform vec4 uTerritoryInfo;  // xy: the battlefield's origin on the continent (m); z: tint strength, 0 off
+// The campaign hex (column, row) nearest p in continent metres: rows 346.41 m
+// apart, odd rows half a hex east (as Campaign::hexOfMetres).
+ivec2 campaignHex(vec2 p) {
+    const float rowH = 346.41016;
+    float r0 = floor(p.y / rowH);
+    vec2 best = vec2(0.0);
+    float bd = 1e20;
+    for (int k = 0; k < 2; ++k) {
+        float r = r0 + float(k);
+        float shift = mod(r, 2.0) * 200.0;
+        float col = floor((p.x - shift + 200.0) / 400.0);
+        vec2 d = p - vec2(col * 400.0 + shift, r * rowH);
+        float dd = dot(d, d);
+        if (dd < bd) { bd = dd; best = vec2(col, r); }
+    }
+    return ivec2(best);
+}
 // The grids over all land alike, world-aligned so they run on unbroken across
 // the battlefield's edge: the tactical hex grid fades in as the camera rises,
-// then hands over to the campaign's.
+// then hands over to the campaign's (laid on the continent's own hexes).
 vec3 landGrids(vec3 c, vec2 xy) {
+    vec2 land = xy + uTerritoryInfo.xy;
+    if (uTerritoryInfo.z > 0.0 && uCamDist > 500.0) {
+        // Whose land: a faint wash of the holder's colour, stronger along each hex's rim.
+        ivec2 size = textureSize(uTerritory, 0);
+        vec4 t = texelFetch(uTerritory, clamp(campaignHex(land), ivec2(0), size - 1), 0);
+        float e = hexEdge(land, 400.0);
+        float rim = 1.0 - smoothstep(0.0, max(0.035, fwidth(e) * 2.5), e);
+        float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(500.0, 900.0, uCamDist);
+        c = mix(c, t.rgb, k);
+    }
     float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
     if (gridFade > 0.0) {
         float e = hexEdge(xy, 48.0);
@@ -153,7 +184,7 @@ vec3 landGrids(vec3 c, vec2 xy) {
     }
     float bigFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
     if (bigFade > 0.0) {
-        float e = hexEdge(xy, 400.0);
+        float e = hexEdge(land, 400.0);
         float w = fwidth(e) * 1.5;
         c = mix(c, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
     }

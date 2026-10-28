@@ -54,6 +54,11 @@ Mesh stairs();
 //     z from 0 to 1; broken: battered in, hanging and strewn in the passage
 Mesh gate(bool broken);
 Mesh banner();
+// A flagpole: radius 1 (scale it), z from 0 to 1, a gilt finial on top; and
+// its cloth, a swallow-tailed banner flying along +x from the pole, hanging
+// from z = 0 to -0.64 (scale it by its length).
+Mesh flagPole();
+Mesh flagCloth();
 Mesh ruin();
 Mesh temple();
 Mesh sageTower();

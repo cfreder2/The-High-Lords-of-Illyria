@@ -61,6 +61,19 @@ public:
     };
     void setBoats(const std::vector<Prop>& boats);
     void setPiers(const std::vector<Prop>& piers);
+    // Flags on poles (renderer_flags.cpp), in battle-local metres, drawn in
+    // both views: the siege's capture point, the banners rising over the
+    // campaign's towns. raised: how far up the pole the cloth is (0 to 1).
+    struct Flag {
+        V3 base;
+        float height = 10, raised = 1, size = 3;
+        V3 colour{1, 1, 1};
+    };
+    void setFlags(const std::vector<Flag>& flags);
+    // The castles' tower banners in each town's holder's colour (by city index).
+    void setCityColours(const std::vector<V3>& colours);
+    // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
+    void setTerritory(const std::vector<uint8_t>& rgba, int cols, int rows, float strength);
 
 private:
     bool showUnits_ = true;
@@ -75,6 +88,7 @@ private:
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1;
+        GLint territory = -1, territoryInfo = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -246,6 +260,13 @@ private:
     MeshBatch gates_, brokenGates_;
     std::vector<uint8_t> gatesShown_;  // broken flags last uploaded
     MeshBatch logs_;
+    // Flags (renderer_flags.cpp): poles and their cloth, drawn in both views;
+    // the castles' tower banners, retinted with whoever holds each town; territory.
+    MeshBatch poles_, cloths_;
+    std::vector<float> bannerData_;
+    std::vector<uint32_t> bannerCity_;
+    GLuint territoryTex_ = 0;
+    float territoryInfo_[4] = {0, 0, 0, 0};
     MeshBatch ships_, sails_, piers_;  // the campaign's boats and ports
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant

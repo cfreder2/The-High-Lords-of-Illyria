@@ -302,6 +302,8 @@ bool Renderer::buildPrograms() {
         s.p.detailRect = glGetUniformLocation(s.p.id, "uDetailRect");
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
         s.p.lod = glGetUniformLocation(s.p.id, "uLod");
+        s.p.territory = glGetUniformLocation(s.p.id, "uTerritory");
+        s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
     }
     return true;
 }
@@ -1007,6 +1009,7 @@ void Renderer::uploadGates(const Battle& battle) {
 }
 
 void Renderer::uploadSettlements(const Battle& battle) {
+    bannerCity_.clear();
     const sim::Continent& cont = battle.continent();
     const V3 o = battle.origin();
     std::vector<float> walls, towers, banners, houses, ruins, temples, sages;
@@ -1067,6 +1070,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             if (t.roofed) pushInstance(towers, p, flat, {r, r, h}, stone);
             else pushInstance(drums, p, flat, {r, r, h}, stone);
             pushInstance(banners, p + V3{0, 0, h + (t.roofed ? h * 0.75f : 0.4f)}, flat, {4.5f, 4.5f, 4.5f}, colour);
+            bannerCity_.push_back(static_cast<uint32_t>(ci));
         }
         {
             float q[4];
@@ -1076,6 +1080,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             pushInstance(keeps, p, q, {half, half, h}, {0.97f, 0.97f, 0.97f});
             const float s = c.capital ? 14.0f : 9.0f;
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
+            bannerCity_.push_back(static_cast<uint32_t>(ci));
         }
         for (const sim::Continent::Castle::Stair& st : k.stairs) {
             const V3 foot = local(st.foot), head = local(st.head);
@@ -1114,6 +1119,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(drums_, drums);
     uploadMeshInstances(keeps_, keeps);
     uploadMeshInstances(stairs_, stairs);
+    bannerData_ = banners;  // retinted as towns change hands (setCityColours)
     uploadMeshInstances(banners_, banners);
     uploadMeshInstances(cityHouses_, houses);
     uploadMeshInstances(ruins_, ruins);
@@ -1227,6 +1233,8 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(ships_, meshes::ship(), 0);
     makeMeshBatch(sails_, meshes::sail(), 0.01f);
     makeMeshBatch(piers_, meshes::pier(), 0);
+    makeMeshBatch(poles_, meshes::flagPole(), 0);
+    makeMeshBatch(cloths_, meshes::flagCloth(), 0.05f);
     makeAll(copses_, meshes::copseVariants(), 0.01f);
     makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
     makeAll(detailPines_, meshes::pineVariants(), 0.03f);
@@ -1858,6 +1866,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
         glUniform1i(p.shadowMap, 4);
         glActiveTexture(GL_TEXTURE0);
     }
+    if (p.territoryInfo >= 0) {  // renderer_flags.cpp
+        glUniform4fv(p.territoryInfo, 1, territoryInfo_);
+        glActiveTexture(GL_TEXTURE10);
+        glBindTexture(GL_TEXTURE_2D, territoryTex_);
+        glUniform1i(p.territory, 10);
+        glActiveTexture(GL_TEXTURE0);
+    }
     if (p.lightViewProj >= 0) glUniformMatrix4fv(p.lightViewProj, 1, GL_FALSE, lightViewProj_.m);
     if (p.shadowInfo >= 0) glUniform4fv(p.shadowInfo, 1, shadowInfo_);
     if (p.focus >= 0) glUniform2f(p.focus, camera.target().x, camera.target().y);
@@ -1885,6 +1900,9 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 }
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
+    // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
+    territoryInfo_[0] = battle.origin().x;
+    territoryInfo_[1] = battle.origin().y;
     if (showUnits_ && unitsChecked_ != battle.world().units().size()) {
         bakeMissing(battle);
         unitsChecked_ = battle.world().units().size();
@@ -2152,7 +2170,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}, camera, timeSeconds, gameSeconds);
+    drawMeshes({&walls_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
     if (camera.distance() < 6000.0f) {

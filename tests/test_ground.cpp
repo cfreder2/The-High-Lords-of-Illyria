@@ -63,9 +63,8 @@ TEST(cliffs_are_walls) {
     CHECK(w.findUnit(id)->pos.x < m(129));
 }
 
-TEST(the_high_ground_wins) {
-    // Equal skirmishers meet on a slope; the one standing above should win
-    // most duels (each seed shuffles the dice).
+TEST(the_high_ground_is_a_small_edge) {
+    // Equal skirmishers meet on a slope (each seed shuffles the dice).
     const WorldConfig slope = shaped([](int64_t x) { return Fixed::fromInt(x) / 3; });
     int upperWins = 0, lowerWins = 0;
     for (uint64_t seed = 1; seed <= 12; ++seed) {
@@ -81,8 +80,20 @@ TEST(the_high_ground_wins) {
         upperWins += w.findUnit(upper)->alive() && !w.findUnit(lower)->alive();
         lowerWins += w.findUnit(lower)->alive() && !w.findUnit(upper)->alive();
     }
+    // The high ground is a small edge (edges.h): +4% at most to the blow
+    // struck down at the foe, nothing for the one below. It tips close
+    // fights, it does not decide them: no more lopsided duels.
+    World w(slope);
+    const EntityId lower = w.spawnUnit(0, {m(120), m(128), m(0)}, kEast, unitStats(UnitType::LightInfantry));
+    const EntityId upper = w.spawnUnit(1, {m(122), m(128), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+    const Unit& lo = *w.findUnit(lower);
+    const Unit& up = *w.findUnit(upper);
+    const Fixed dist = (up.pos - lo.pos).flat().length();
+    CHECK(w.edgesOf(up, dist, lo.pos.z - up.pos.z).height == kEdgeHeightPct);
+    CHECK(w.edgesOf(lo, dist, up.pos.z - lo.pos.z).height == 0);
     std::printf("  high ground duels: upper %d, lower %d\n", upperWins, lowerWins);
-    CHECK(upperWins > lowerWins * 2);
+    CHECK(upperWins + lowerWins >= 8);
+    CHECK(upperWins >= 2 && lowerWins >= 2);
 }
 
 TEST(soldiers_cross_a_footbridge_without_wading) {

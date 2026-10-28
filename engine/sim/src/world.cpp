@@ -53,17 +53,14 @@ constexpr Fixed kClearShort = Fixed::fromInt(2);
 // elite); a hero gains a level at these (levels 2 to 9).
 constexpr int32_t kSoldierRanks[] = {2, 5, 10};
 constexpr int32_t kHeroLevels[] = {3, 7, 12, 18, 25, 33, 42, 52};
-// Each rank or blessing adds this much to a soldier's damage, and to the
-// chance its shield turns a blow; a hero level adds less but also hit points.
-constexpr int32_t kRankDamagePct = 10;
+// Each blessing adds this much to a soldier's damage, and each rank or
+// blessing to the chance his shield turns a blow; a hero level adds damage
+// and hit points. (A rank's damage is a small edge: world_edges.cpp.)
+constexpr int32_t kBlessingDamagePct = 10;
 constexpr int32_t kHeroLevelDamagePct = 6;
 constexpr Fixed kRankBlockBonus = Fixed::fromRatio(3, 100);
 constexpr int32_t kHeroLevelHpPct = 8;
-// A hero leads the soldiers near them: their Warlords strength (3 + level, at
-// most 9) gives 1 to 3 leadership points, as in Warlords, each worth this much
-// damage to friends within reach.
-constexpr Fixed kLeadershipReach = Fixed::fromInt(30);
-constexpr int32_t kLeadershipPct = 5;
+
 // Largest obstacle extent, for grid queries.
 constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(7);
 // Bodies thrown by explosions and blows.
@@ -1040,19 +1037,15 @@ void World::creditKill(Unit& killer) {
     while (killer.rank < 3 && killer.kills >= kSoldierRanks[killer.rank]) ++killer.rank;
 }
 
-int32_t World::prowessPct(const Unit& u) const {
+int32_t World::gracePct(const Unit& u) const {
+    // A hero's levels are his strength; blessings (and the artifacts the
+    // campaign counts with them) the gods' favour. A soldier's rank is an
+    // edge instead (world_edges.cpp), and so is a hero leading him.
     const bool hero = u.stats.type == static_cast<uint8_t>(UnitType::Hero);
-    int32_t pct = 100 + u.rank * (hero ? kHeroLevelDamagePct : kRankDamagePct) + u.blessings * kRankDamagePct;
-    // The best hero near them leads them.
-    int32_t lead = 0;
-    for (const Unit& h : units_) {
-        if (h.owner != u.owner || !h.alive() || h.stats.type != static_cast<uint8_t>(UnitType::Hero) || h.id == u.id) continue;
-        if ((h.pos - u.pos).flat().lengthSq() > kLeadershipReach * kLeadershipReach) continue;
-        const int32_t strength = std::min(9, 4 + h.rank);  // level + 3
-        lead = std::max(lead, strength >= 9 ? 3 : strength >= 7 ? 2 : strength >= 4 ? 1 : 0);
-    }
-    return pct + lead * kLeadershipPct;
+    return 100 + (hero ? u.rank * kHeroLevelDamagePct : 0) + u.blessings * kBlessingDamagePct;
 }
+
+int32_t World::prowessPct(const Unit& u) const { return gracePct(u) + edgesOf(u).total(); }
 
 bool World::clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target) const {
     const Vec3 flat = velocity.flat();
@@ -1120,7 +1113,7 @@ bool World::fire(Unit& u, const Vec3& target) {
     } else {
         p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
     }
-    p.damage = w.damage * prowessPct(u) / 100;
+    p.damage = scaledDamage(w.damage, prowessPct(u));
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     projectiles_.push_back(p);

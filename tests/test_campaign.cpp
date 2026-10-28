@@ -122,6 +122,10 @@ TEST(a_players_battle_waits_for_them_and_survivors_keep_their_ranks) {
     for (const Army* a : defenders) out.push_back({a->id, 0, 0, a->rank});
     c.applyBattle(out, true);
     CHECK(!c.pending());
+    // Not yet ours: the banner has to rise first, while we stand in the town.
+    CHECK(c.cities()[static_cast<size_t>(target)].owner == Campaign::kNeutral);
+    CHECK(c.cities()[static_cast<size_t>(target)].banner == 0);
+    for (int t = 0; t < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(target)].owner != 0; ++t) c.step();
     CHECK(c.cities()[static_cast<size_t>(target)].owner == 0);
     const Campaign::Stack* after = c.findStack(id);
     CHECK(after != nullptr);
@@ -149,7 +153,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x4123a10958c73ec3;
+    constexpr uint64_t kGolden = 0x5aac569ae466b5e5;
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
