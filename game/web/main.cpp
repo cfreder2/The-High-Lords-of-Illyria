@@ -656,13 +656,41 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_view_walk(int dead, float distance, float 
             }
         }
         const float yaw = std::atan2(p.y - c.y, p.x - c.x) + turn;
-        const float ahead = distance * 0.35f;
+        const float ahead = distance * 0.1f;
         app->introStartMs = -1;
         app->camera.lookAt(p.x + std::cos(yaw) * ahead, p.y + std::sin(yaw) * ahead, distance);
         app->camera.rotate(yaw - app->camera.yaw());
         return 1;
     }
     return 0;
+}
+// The player's archers loose at the defender up on the walls nearest them.
+EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_walk() {
+    if (!app) return;
+    const illyria::sim::Region& rg = app->battle->region();
+    const auto& units = app->battle->world().units();
+    V3 from{};
+    int n = 0;
+    for (const illyria::sim::Unit& u : units) {
+        if (u.owner != illyria::game::Battle::kPlayer || u.stats.type != static_cast<uint8_t>(illyria::sim::UnitType::Archers)) continue;
+        from = from + toV3(u.pos);
+        ++n;
+    }
+    if (n == 0) return;
+    from = from * (1.0f / static_cast<float>(n));
+    const illyria::sim::Unit* best = nullptr;
+    float bestD = 1e30f;
+    for (const illyria::sim::Unit& u : units) {
+        if (u.owner == illyria::game::Battle::kPlayer || !u.alive()) continue;
+        if (u.pos.z < rg.terrain().heightAt(u.pos.x, u.pos.y) + illyria::sim::Fixed::fromInt(3)) continue;
+        const V3 p = toV3(u.pos);
+        const float d = (p.x - from.x) * (p.x - from.x) + (p.y - from.y) * (p.y - from.y);
+        if (d < bestD) {
+            bestD = d;
+            best = &u;
+        }
+    }
+    if (best) app->battle->testShootAt(toV3(best->pos));
 }
 // The player's archers loose at a spot this far inside the town, through its gate.
 EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_through_gate(float inside) {
