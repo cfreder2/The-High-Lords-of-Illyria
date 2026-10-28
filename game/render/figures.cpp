@@ -719,7 +719,21 @@ Skeleton person(Builder& b, const Kit& k, const Pose& p, const V3* seat) {
         b.ellipsoid(P + sk.u * (torso * s * 0.58f), sk.f, sk.l, sk.u, V3{0.16f, 0.235f, torso * 0.52f} * (s * bw), torsoC);
         if (k.mail || k.armour) b.limb(waist, waist - sk.u * (0.18f * s), 0.18f * s * bw, 0.21f * s * bw, k.team * 0.85f, 8);  // tabard skirt
         if (k.armour) b.ellipsoid(sk.chest - sk.u * (0.12f * s) + sk.f * (0.06f * s), sk.f, sk.l, sk.u, V3{0.1f, 0.16f, 0.12f} * (s * bw), k.team * 0.8f);
-        if (!k.bareChest) b.limb(waist - sk.u * (0.01f * s), waist + sk.u * (0.04f * s), 0.155f * s * bw, 0.155f * s * bw, k.belt, 8);
+        if (!k.bareChest) {
+            b.limb(waist - sk.u * (0.01f * s), waist + sk.u * (0.04f * s), 0.155f * s * bw, 0.155f * s * bw, k.belt, 8);
+            b.box(waist + sk.f * (0.15f * s * bw), sk.f, sk.l, sk.u, V3{0.01f, 0.025f, 0.022f} * s, kGold);  // buckle
+            // A pouch on the right hip, and a scabbard on the left for swordsmen.
+            b.ellipsoid(waist - sk.l * (0.13f * s * bw) - sk.u * (0.06f * s) + sk.f * (0.05f * s), sk.f, sk.l, sk.u, V3{0.04f, 0.035f, 0.05f} * s, kLeather);
+            if (k.weapon == Weapon::Sword && !seat) {
+                const V3 top = waist + sk.l * (0.15f * s * bw) - sk.f * (0.02f * s);
+                b.limb(top, top - sk.u * (0.5f * s) - sk.f * (0.2f * s), 0.022f * s, 0.018f * s, kDarkLeather, 5);
+            }
+        }
+        if (!k.robe && !k.kilt && !k.bones && !k.bareChest && !seat) {
+            // The tunic's skirt below the belt (over a mail coat: its hem).
+            const Paint hem = k.armour || k.mail ? k.team * 0.85f : k.tunic * 0.95f;
+            b.limb(waist - sk.u * (0.02f * s), P - sk.u * (0.17f * s), 0.158f * s * bw, 0.18f * s * bw, hem, 9);
+        }
     }
     b.limb(sk.chest, sk.neck + sk.u * (0.02f * s), 0.05f * s * bw, 0.045f * s, k.bones ? kBone : k.skin, 5);
     if (k.armour || k.mail)
@@ -731,7 +745,7 @@ Skeleton person(Builder& b, const Kit& k, const Pose& p, const V3* seat) {
         b.limb(sk.shoulder[i], sk.elbow[i], ar, ar * 0.85f, sleeve);
         b.ball(sk.elbow[i], ar * 0.85f, sleeve, 5);
         b.limb(sk.elbow[i], sk.hand[i], ar * 0.85f, ar * 0.7f, k.bones ? kBone : (k.armour ? kSteel : k.skin));
-        b.ball(sk.hand[i], ar * 0.95f, k.bones ? kBone : (k.armour ? kDarkSteel : k.skin * 0.95f), 5);
+        b.ball(sk.hand[i], ar * 0.95f, k.bones ? kBone : (k.armour ? kDarkSteel : (k.mail ? kDarkLeather : k.skin * 0.95f)), 5);  // gauntlet, glove or hand
     }
     headMesh(b, k, sk);
     if (p.held > 0.5f || k.weapon == Weapon::Bow) weaponMesh(b, k, p, sk);
@@ -921,7 +935,12 @@ V3 beast(Builder& b, const Hide& h, const BeastPose& p, const Kit* riderKit, con
         b.limb(at(d.bodyX * 0.62f, 0, -d.bodyH * 0.1f), at(d.bodyX * 0.8f, 0, d.bodyH * 0.9f), d.bodyY * 0.95f * s, d.bodyY * 0.75f * s, h.team, 8);
         b.plate(at(d.bodyX * 0.7f, 0, d.bodyH * 1.0f), at(d.bodyX * 0.55f, 0, d.bodyH * 1.05f), at(d.bodyX * 0.1f, d.bodyY * 0.3f, d.bodyH * 1.1f), at(d.bodyX * 0.2f, d.bodyY * 0.25f, d.bodyH * 0.95f), h.team);
     }
-    if (h.saddle) b.ellipsoid(at(0.02f, 0, d.bodyH * 0.8f), fb, L, ub, V3{0.12f, 0.16f, 0.05f} * s, kLeather);
+    if (h.saddle) {
+        // A blanket in the side's colours under the saddle, girth and stirrup leathers.
+        b.ellipsoid(at(0.0f, 0, d.bodyH * 0.62f), fb, L, ub, V3{d.bodyX * 0.42f, d.bodyY * 1.07f, d.bodyH * 0.5f} * s, h.team * 0.9f, 10, 4);
+        b.ellipsoid(at(0.02f, 0, d.bodyH * 0.85f), fb, L, ub, V3{0.12f, 0.16f, 0.05f} * s, kLeather);
+        b.limb(at(0.05f, -d.bodyY * 1.02f, d.bodyH * 0.3f), at(0.05f, d.bodyY * 1.02f, d.bodyH * 0.3f), 0.012f * s, 0.012f * s, kDarkLeather, 4);
+    }
     if (h.cloth) {
         b.ellipsoid(at(0.0f, 0, d.bodyH * 0.55f), fb, L, ub, V3{d.bodyX * 0.55f, d.bodyY * 1.08f, d.bodyH * 0.55f} * s, h.team * 0.8f, 10, 4);
         b.box(at(0.0f, 0, d.bodyH * 1.05f), fb, L, ub, V3{0.15f, 0.12f, 0.06f} * s, kWood);
@@ -1003,6 +1022,11 @@ V3 beast(Builder& b, const Hide& h, const BeastPose& p, const Kit* riderKit, con
             for (float sd : {-1.0f, 1.0f}) b.cone(headAt + L * (0.035f * s * sd) - hf * (0.02f * s), headAt + L * (0.04f * s * sd) - hf * (0.05f * s) + rot(hu, L, -0.4f) * (0.09f * s), 0.02f * s, h.coat * 0.8f, 3);
             if (h.horn) b.cone(headAt + hf * (0.05f * s) + hu * (0.06f * s), headAt + hf * (0.07f * s) + rot(hu, L, -0.9f) * (0.32f * s), 0.022f * s, glow(V3{0.95f, 0.85f, 0.55f}), 5);
             if (h.barding) b.limb(headAt + hu * (0.01f * s), headAt + hf * (hl * 0.7f) + hu * (0.01f * s), hr * 1.32f, hr * 0.95f, kSteel, 6);
+            if (h.saddle) {
+                // Bridle, and reins back to the rider's hands.
+                b.limb(headAt + hf * (hl * 0.55f) - hu * (hr * 0.2f), headAt + hu * (hr * 1.1f), hr * 1.08f * 0.15f + 0.008f * s, 0.008f * s, kDarkLeather, 4);
+                b.limb(headAt + hf * (hl * 0.6f) - hu * (hr * 0.5f), at(0.18f, 0, d.bodyH * 1.6f), 0.007f * s, 0.007f * s, kDarkLeather, 3);
+            }
             break;
         case Beast::Wolf: {
             b.ellipsoid(headAt + hf * (0.04f * s), hf, L, hu, V3{0.1f, 0.09f, 0.085f} * s, h.coat);
