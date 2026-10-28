@@ -19,8 +19,21 @@ const Continent& continent() {
     static const Continent c(20261027);
     return c;
 }
-// The first neutral town (not a capital), and a 1 km battle window on it.
-const Continent::City& town() { return continent().cities()[Continent::kFactionCount]; }
+// The first neutral town (not a capital) with no other town's walls in its
+// 1 km battle window, and the window on it.
+const Continent::City& town() {
+    static const Continent::City* chosen = [] {
+        const auto& cs = continent().cities();
+        for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
+            bool alone = true;
+            for (size_t k = 0; k < cs.size(); ++k)
+                alone = alone && (k == i || (cs[k].pos - cs[i].pos).flat().length() > Fixed::fromInt(800));
+            if (alone) return &cs[i];
+        }
+        return &cs[Continent::kFactionCount];
+    }();
+    return *chosen;
+}
 std::shared_ptr<const Region> siege() {
     static const auto r = std::make_shared<const Region>(Region::fromContinent(continent(), town().pos, 256));
     return r;
@@ -113,6 +126,11 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
         inside = (u->pos - yard).flat().length() < m(4);
         breached = breached || inWall(*cfg.region, *u);
     }
+    {
+        const Gate& g = cfg.region->gates()[gate];
+        const Unit* u = w.findUnit(id);
+        std::printf("  at the gate: %.0f m from it (%.0f from the start), gate hp %d/%d, town %s, ground %d, path %zu/%u, slope z %.1f vs town %.1f\n", (u->pos - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().length().toDouble(), (u->pos - start).flat().length().toDouble(), w.gates()[gate].hp, g.maxHp, town().name.c_str(), static_cast<int>(cfg.region->groundAt(u->pos.x, u->pos.y)), u->path.size(), u->pathIndex, u->pos.z.toDouble(), town().pos.z.toDouble());
+    }
     CHECK(!inside);
     CHECK(w.gates()[gate].hp < cfg.region->gates()[gate].maxHp);
     CHECK(!w.gates()[gate].broken());
@@ -128,32 +146,37 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
 }
 
 TEST(merlons_shelter_defenders_from_arrows_shot_from_outside) {
-    WorldConfig cfg;
-    cfg.region = siege();
-    cfg.seed = 7;
-    World w(cfg);
-    const Continent::Castle::Ring& ring = town().castle.rings.front();
-    const size_t e = (ring.gateEdge + 1) % ring.corners.size();
-    const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
-    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
-    const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
-    // A defender placed on the walk (it walks the stairs in play; here it starts there).
-    // Archers have no shields: whatever stops a missile here is the stone.
-    const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
-    // Six archers 40 m out, with a clear shot (no tree in the way).
-    for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
+    // Over a few volleys (seeds), so a tree or a lucky roll does not decide it.
     int blocked = 0, hits = 0;
-    for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
-        w.step({});
-        for (const ImpactEvent& ev : w.impacts()) {
-            if (ev.hitUnit != target) continue;
-            blocked += ev.kind == ImpactEvent::Kind::Blocked;
-            hits += ev.kind == ImpactEvent::Kind::Hit;
+    bool onWalk = true;
+    for (const uint64_t seed : {3u, 7u, 11u, 19u}) {
+        WorldConfig cfg;
+        cfg.region = siege();
+        cfg.seed = seed;
+        World w(cfg);
+        const Continent::Castle::Ring& ring = town().castle.rings.front();
+        const size_t e = (ring.gateEdge + 1) % ring.corners.size();
+        const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
+        const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
+        const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
+        // A defender placed on the walk (it walks the stairs in play; here it starts there).
+        // Archers have no shields: whatever stops a missile here is the stone.
+        const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
+        // Six archers 40 m out.
+        for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
+        for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
+            w.step({});
+            for (const ImpactEvent& ev : w.impacts()) {
+                if (ev.hitUnit != target) continue;
+                blocked += ev.kind == ImpactEvent::Kind::Blocked;
+                hits += ev.kind == ImpactEvent::Kind::Hit;
+            }
         }
+        onWalk = onWalk && w.findUnit(target)->pos.z > town().pos.z + ring.height - m(2);  // it really stood on the walk
     }
     std::printf("  on the walk: %d arrows stopped by merlons, %d hits\n", blocked, hits);
-    CHECK(w.findUnit(target)->pos.z > town().pos.z + ring.height - m(2));  // it really stood on the walk
-    CHECK(blocked >= 2 && blocked * 3 >= hits);
+    CHECK(onWalk);
+    CHECK(blocked >= 4 && blocked * 3 >= hits);
 }
 
 TEST(a_neutral_garrison_mans_its_walls_and_holds_them) {

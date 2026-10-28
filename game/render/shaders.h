@@ -1643,7 +1643,7 @@ void main() {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));
         c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
     }
-    c = landGrids(c, vWorld.xy);
+    if (vKinds.w < 0.5) c = landGrids(c, vWorld.xy);  // the grid is the land's; the sea goes unmarked
     oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
 }
 )"

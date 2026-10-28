@@ -193,6 +193,48 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
                {"Ungoeth Mts", N(830, 930), 1}, {"Beren Heights", N(700, 795), 1}, {"Kestrel Fells", N(790, 600), 1},
                {"Longmere", N(445, 235), 2}};
 
+    // The sea took the old shores: rivers end a little way out to sea (so
+    // they meet the water), and roads stop where they come down to it.
+    {
+        const auto land = [&](const Vec3& p) { return landDistance(p.x, p.y) > Fixed::zero(); };
+        const auto coast = [&](Vec3 in, Vec3 out) {  // in on land, out at sea
+            for (int k = 0; k < 24; ++k) {
+                const Vec3 mid = (in + out) * r(1, 2);
+                (land(mid) ? in : out) = mid;
+            }
+            return out;
+        };
+        const auto ashore = [&](std::vector<Vec3>& p, bool mouth) {  // trims the sea off the end
+            for (size_t i = 1; i < p.size(); ++i) {
+                if (land(p[i]) || !land(p[i - 1])) continue;
+                Vec3 c = coast(p[i - 1], p[i]);
+                if (mouth) {
+                    const Vec3 d = (p[i] - p[i - 1]).flat();
+                    c = c + d / d.length() * m(80);
+                }
+                p.resize(i);
+                p.push_back(c);
+                return;
+            }
+        };
+        for (River& rv : rivers_) {
+            // A spring the sea took rises again just inside the coast.
+            std::reverse(rv.points.begin(), rv.points.end());
+            ashore(rv.points, false);
+            std::reverse(rv.points.begin(), rv.points.end());
+            if (!rv.points.empty() && !land(rv.points.front()) && rv.points.size() > 1) {
+                const Vec3 d = (rv.points[1] - rv.points[0]).flat();
+                rv.points.front() = rv.points.front() + d / d.length() * m(120);
+            }
+            ashore(rv.points, true);
+        }
+        for (Polyline& rd : roads_) {
+            ashore(rd.points, false);
+            std::reverse(rd.points.begin(), rd.points.end());
+            ashore(rd.points, false);
+            std::reverse(rd.points.begin(), rd.points.end());
+        }
+    }
     if (relief == Relief::Baked) loadBakedRelief();
     computeRiverSurfaces();
     for (const Area& lake : lakes_) {

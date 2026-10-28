@@ -236,6 +236,8 @@ TEST(the_player_is_offered_a_hero_for_gold) {
         c.applyBattle(out, true);
     }
     CHECK(c.citiesOwned(0) == 3);
+    // The other lords hold still meanwhile (else one may retake a town).
+    for (uint8_t side = 1; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
     for (int t = 0; t < Campaign::kTicksPerDay * 60 && !c.offer(0).open; ++t) c.step();
     CHECK(c.offer(0).open);
     if (!c.offer(0).open) return;
