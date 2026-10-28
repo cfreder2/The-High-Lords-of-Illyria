@@ -128,32 +128,37 @@ TEST(walls_keep_soldiers_out_but_the_gate_lets_them_in) {
 }
 
 TEST(merlons_shelter_defenders_from_arrows_shot_from_outside) {
-    WorldConfig cfg;
-    cfg.region = siege();
-    cfg.seed = 7;
-    World w(cfg);
-    const Continent::Castle::Ring& ring = town().castle.rings.front();
-    const size_t e = (ring.gateEdge + 1) % ring.corners.size();
-    const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
-    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
-    const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
-    // A defender placed on the walk (it walks the stairs in play; here it starts there).
-    // Archers have no shields: whatever stops a missile here is the stone.
-    const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
-    // Six archers 40 m out, with a clear shot (no tree in the way).
-    for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
+    // Over a few volleys (seeds), so a tree or a lucky roll does not decide it.
     int blocked = 0, hits = 0;
-    for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
-        w.step({});
-        for (const ImpactEvent& ev : w.impacts()) {
-            if (ev.hitUnit != target) continue;
-            blocked += ev.kind == ImpactEvent::Kind::Blocked;
-            hits += ev.kind == ImpactEvent::Kind::Hit;
+    bool onWalk = true;
+    for (const uint64_t seed : {3u, 7u, 11u, 19u}) {
+        WorldConfig cfg;
+        cfg.region = siege();
+        cfg.seed = seed;
+        World w(cfg);
+        const Continent::Castle::Ring& ring = town().castle.rings.front();
+        const size_t e = (ring.gateEdge + 1) % ring.corners.size();
+        const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
+        const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
+        const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
+        // A defender placed on the walk (it walks the stairs in play; here it starts there).
+        // Archers have no shields: whatever stops a missile here is the stone.
+        const EntityId target = w.spawnUnit(1, {mid.x, mid.y, m(0)}, out, unitStats(UnitType::Archers));
+        // Six archers 40 m out.
+        for (int i = 0; i < 6; ++i) w.spawnUnit(0, mid + out * m(40) + Vec3{m(i % 3) * 2, m(i / 3) * 2, m(0)}, -out, unitStats(UnitType::Archers));
+        for (int t = 0; t < 120 * kTicksPerSecond && w.findUnit(target)->alive(); ++t) {
+            w.step({});
+            for (const ImpactEvent& ev : w.impacts()) {
+                if (ev.hitUnit != target) continue;
+                blocked += ev.kind == ImpactEvent::Kind::Blocked;
+                hits += ev.kind == ImpactEvent::Kind::Hit;
+            }
         }
+        onWalk = onWalk && w.findUnit(target)->pos.z > town().pos.z + ring.height - m(2);  // it really stood on the walk
     }
     std::printf("  on the walk: %d arrows stopped by merlons, %d hits\n", blocked, hits);
-    CHECK(w.findUnit(target)->pos.z > town().pos.z + ring.height - m(2));  // it really stood on the walk
-    CHECK(blocked >= 2 && blocked * 3 >= hits);
+    CHECK(onWalk);
+    CHECK(blocked >= 4 && blocked * 3 >= hits);
 }
 
 TEST(a_neutral_garrison_mans_its_walls_and_holds_them) {
