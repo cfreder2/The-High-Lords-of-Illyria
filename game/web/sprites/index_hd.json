@@ -1,4 +1,12 @@
 {
+ "0": {
+  "name": "light_infantry_hd",
+  "size": [
+   2048,
+   1024
+  ],
+  "ppm": 96.0
+ },
  "1": {
   "name": "heavy_infantry_hd",
   "size": [
@@ -12,6 +20,30 @@
   "size": [
    2048,
    1216
+  ],
+  "ppm": 96.0
+ },
+ "3": {
+  "name": "pikemen_hd",
+  "size": [
+   4096,
+   1128
+  ],
+  "ppm": 96.0
+ },
+ "19": {
+  "name": "undead_hd",
+  "size": [
+   2048,
+   1036
+  ],
+  "ppm": 96.0
+ },
+ "24": {
+  "name": "warrior_hd",
+  "size": [
+   2048,
+   1376
   ],
   "ppm": 96.0
  }
