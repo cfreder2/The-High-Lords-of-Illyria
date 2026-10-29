@@ -636,6 +636,71 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_focus_type(int type, float distance, float
     return 0;
 }
 
+int nearestGate();
+// Test hook: the first squad of ours of a unit type sent `inside` metres in
+// through the nearest gate, or (onWall) to the wall-walk beside it; the
+// squad's index, or -1.
+EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int onWall) {
+    const int g = nearestGate();
+    if (!app || g < 0) return -1;
+    Battle& b = *app->battle;
+    for (size_t i = 0; i < b.squads().size(); ++i) {
+        const Squad& s = b.squads()[i];
+        if (s.owner != Battle::kPlayer || static_cast<int>(s.type) != type) continue;
+        const illyria::sim::Gate& gate = b.region().gates()[static_cast<size_t>(g)];
+        V3 to = toV3(gate.a + gate.b) * 0.5f - toV3(gate.out) * inside;
+        to.z = b.heightAt(to.x, to.y);
+        if (onWall) {
+            float best = 1e30f;
+            for (const illyria::sim::Rampart& rp : b.region().ramparts())
+                for (const illyria::sim::Rampart::Embrasure& e : rp.embrasures) {
+                    const V3 p = toV3(e.pos) - toV3(e.out) * 0.6f;
+                    const float d = (p.x - to.x) * (p.x - to.x) + (p.y - to.y) * (p.y - to.y);
+                    if (d < best) best = d, to = p;
+                }
+        }
+        b.selectSquad(static_cast<int>(i));
+        b.orderMove(to);
+        return static_cast<int>(i);
+    }
+    return -1;
+}
+// Test hook: for each living soldier of a squad, how high he stands above the
+// ground and what Battle::floorAt gives there ("z-ground/floor-ground;...").
+EMSCRIPTEN_KEEPALIVE const char* illyria_test_heights(int squad) {
+    static std::string out;
+    out.clear();
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return out.c_str();
+    const Battle& b = *app->battle;
+    for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(squad)].members) {
+        if (!b.world().units()[id - 1].alive()) continue;
+        const V3 p = b.unitPosition(id - 1);
+        const float g = b.heightAt(p.x, p.y);
+        char buf[64];
+        std::snprintf(buf, sizeof buf, "%.2f/%.2f;", p.z - g, b.floorAt(p) - g);
+        out += buf;
+    }
+    return out.c_str();
+}
+// Test hook: one soldier picked out of a squad (its first living one).
+EMSCRIPTEN_KEEPALIVE void illyria_test_select_one(int squad) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
+    for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members)
+        if (app->battle->world().units()[id - 1].alive()) return app->battle->select({id});
+}
+// Test hook: the camera close on a squad's first living soldier.
+EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad(int squad, float distance, float yaw) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
+    for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members) {
+        if (!app->battle->world().units()[id - 1].alive()) continue;
+        const V3 p = app->battle->unitPosition(id - 1);
+        app->introStartMs = -1;
+        app->camera.lookAt(p.x, p.y, distance);
+        app->camera.rotate(yaw - app->camera.yaw());
+        return;
+    }
+}
+
 // Test hook: every unit type in this battle and where its sprite sheet came
 // from ("Name=pre", "Name=baked" or "Name=none"), comma separated.
 EMSCRIPTEN_KEEPALIVE const char* illyria_test_battle_sheets() {
