@@ -112,7 +112,8 @@ void Camera::zoomAt(float factor, float px, float py) {
     const float planeZ = target().z;
     V3 before;
     const bool anchored = pickPlane(px, py, planeZ, before);
-    distance_ = std::clamp(distance_ / factor, kMinDistance, kMaxDistance);
+    // Never closer than the sprites allow (setMinDistance), nor nearer than now if already inside that.
+    distance_ = std::clamp(distance_ / factor, std::min(minDistance_, distance_), kMaxDistance);
     V3 after;
     if (anchored && pickPlane(px, py, planeZ, after)) {
         tx_ += before.x - after.x;

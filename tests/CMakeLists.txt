@@ -23,6 +23,11 @@ foreach(i RANGE ${_last})
         endif()
     endforeach()
 endforeach()
+# The sprite manifest's file list (tools/sprites/templates.py), for tests/test_sprite_layout.cpp.
+set(ILLYRIA_SPRITE_FILES_FILE "${CMAKE_SOURCE_DIR}/docs/sprite_templates/files.txt")
+file(READ "${ILLYRIA_SPRITE_FILES_FILE}" ILLYRIA_SPRITE_FILES)
+configure_file(sprite_files.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SPRITE_FILES_FILE}")
 
 add_executable(illyria_tests
     test_main.cpp
@@ -54,6 +59,8 @@ add_executable(illyria_tests
     test_death.cpp
     test_capture.cpp
     test_territory.cpp
+    test_sprite_layout.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
     test_sfx.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
@@ -69,4 +76,4 @@ else()
 endif()
 # The manifest is one long string; every compiler here takes it.
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" "${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp"
-                            PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)
+                            "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

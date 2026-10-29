@@ -16,11 +16,14 @@ Run headless (no Blender executable needed):
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py list
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py sheet heavy_infantry build/sprites
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py sheet all build/sprites
+    /tmp/bpyvenv/bin/python tools/blender/render_sheets.py sheet archers build/sprites --hd
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py look archons out.png [view,frame ...] [ppm]
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py pack archons build/sprites
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py install all build/sprites
     /tmp/bpyvenv/bin/python tools/blender/render_sheets.py blend archons out.blend
 
+"--hd" renders the cells at four times the sheet's pixels (not two) and also
+packs <unit>_hd.png/.webp/.json, the close-up sheet at twice the pixels a metre.
 "sheet" writes <out>/<unit>/raw/ (every cell's picture and team mask at twice
 the sheet's resolution), then <out>/<unit>/<unit>.png and .json (the packed
 sheet, sprites/pack.py) and <unit>_color.png / <unit>_mask.png (the cells laid
@@ -64,6 +67,8 @@ def main(argv):
     if len(argv) < 3:
         print(__doc__)
         return 1
+    hd = '--hd' in argv  # also the close-up sheet at twice the pixels a metre (cells rendered at 4x)
+    argv = [a for a in argv if a != '--hd']
     cmd, name = argv[0], argv[1]
     if cmd == 'sheet':
         out = argv[2]
@@ -72,8 +77,10 @@ def main(argv):
         for n in names:
             number = build(n)
             d = os.path.join(out, n)
-            meta = render.render_cells(d, ppm=ppm, ss=2)
+            meta = render.render_cells(d, ppm=ppm, ss=4 if hd else 2)
             pack.pack(d, n, number, meta)
+            if hd:
+                pack.pack(d, n, number, meta, scale=2, suffix='_hd')
         return 0
     if cmd == 'pack':  # again, from the cells already rendered into <out>/<unit>/raw
         import json
@@ -81,6 +88,8 @@ def main(argv):
         with open(os.path.join(d, 'raw', 'lattice.json')) as fh:
             meta = json.load(fh)
         pack.pack(d, name, units.TYPES[name][0], meta)
+        if meta['ss'] >= 4:
+            pack.pack(d, name, units.TYPES[name][0], meta, scale=2, suffix='_hd')
         return 0
     if cmd == 'install':  # the packed sheets into the game's site: <dest>/<unit>.webp, .json, index.json
         import json
@@ -89,15 +98,25 @@ def main(argv):
         os.makedirs(dest, exist_ok=True)
         index_path = os.path.join(dest, 'index.json')
         index = json.load(open(index_path)) if os.path.exists(index_path) else {}
+        # The close-up sheets: number -> name, size and pixels a metre (sheets.cpp).
+        hd_path = os.path.join(dest, 'index_hd.json')
+        hd_index = json.load(open(hd_path)) if os.path.exists(hd_path) else {}
         for n in (sorted(units.TYPES) if name == 'all' else [name]):
             d = os.path.join(src, n)
             if not os.path.exists(os.path.join(d, n + '.webp')):
                 continue
-            for ext in ('.webp', '.json'):
-                shutil.copyfile(os.path.join(d, n + ext), os.path.join(dest, n + ext))
+            for ext in ('.webp', '.json', '_hd.webp', '_hd.json'):
+                if os.path.exists(os.path.join(d, n + ext)):
+                    shutil.copyfile(os.path.join(d, n + ext), os.path.join(dest, n + ext))
             index[str(units.TYPES[n][0])] = n
+            if os.path.exists(os.path.join(d, n + '_hd.json')):
+                with open(os.path.join(d, n + '_hd.json')) as fh:
+                    hd = json.load(fh)
+                hd_index[str(units.TYPES[n][0])] = {'name': n + '_hd', 'size': hd['size'], 'ppm': hd['ppm']}
         with open(index_path, 'w') as fh:
             json.dump(dict(sorted(index.items(), key=lambda kv: int(kv[0]))), fh, indent=1)
+        with open(hd_path, 'w') as fh:
+            json.dump(dict(sorted(hd_index.items(), key=lambda kv: int(kv[0]))), fh, indent=1)
         print('installed', index)
         return 0
     if cmd == 'look':

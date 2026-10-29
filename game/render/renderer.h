@@ -15,6 +15,7 @@
 
 #include "figures.h"
 #include "meshes.h"
+#include "sprite_layout.h"
 
 namespace illyria::game {
 
@@ -87,7 +88,7 @@ private:
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
-        GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
+        GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1;
         GLint territory = -1, territoryInfo = -1;
     };
@@ -141,6 +142,10 @@ private:
         float lift = 0.5f;
         bool prerendered = false;  // loaded from tools/blender's sheets, not baked
         std::vector<float> table;  // the cells, as uploaded (for readSheet)
+        // The layout (sprite_layout.h): 26 frames a view and no gibs for the old one.
+        int framesPerView = figures::kFramesPerView, cellCount = figures::kViews * figures::kFramesPerView;
+        float ppm = figures::kPixelsPerMetre;  // as uploaded (less if halved)
+        double fullTexels = 0;                 // before any halving
     };
     std::map<int, Sheet> sheets_;  // by unit type
     GLuint scratchFbo_ = 0, scratchTex_ = 0, scratchDepth_ = 0, sheetFbo_ = 0, figureVao_ = 0, figureVbo_ = 0, emptyVao_ = 0;
@@ -158,9 +163,27 @@ public:
     // sheet; until it arrives, or if there is none, the type is baked as before.
     void setSheetRequest(std::function<void(int)> request) { sheetRequest_ = std::move(request); }
     // A fetched sheet: RGBA rows top first (as image files store them), and
-    // 130 cells of 8 floats (x, y from the bottom, w, h in pixels; u0, v0, w,
-    // h in metres). Replaces the type's baked sheet. False if malformed.
-    bool loadSheet(int type, const uint8_t* rgba, int width, int height, const float* cells);
+    // cellCount cells of 8 floats (x, y from the bottom, w, h in pixels; u0, v0, w,
+    // h in metres), framesPerView frames a view (sprite_layout.h: 26 the old
+    // layout, 44 the new, gib cells after the views'). Replaces the type's
+    // baked sheet, or with closeup its close-up sheet. False if malformed.
+    bool loadSheet(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount = sprites::kLegacyCells,
+                   int framesPerView = sprites::kLegacyFramesPerView, bool closeup = false);
+    // Close-up sheets (closeup.h, renderer_sheets.cpp): the page lists the types
+    // that have one (its size), the renderer asks for it with request(type)
+    // when the camera comes close to that type and drops it when it pulls back.
+    void listCloseup(int type, int width, int height, float ppm);
+    void setCloseupRequest(std::function<void(int)> request) { closeupRequest_ = std::move(request); }
+    // The screen height, in pixels, sheets should look sharp at (the canvas's
+    // CSS height times the device pixel ratio, at most two); 0: the camera's.
+    void setCloseupScreen(float px) { closeupScreen_ = px; }
+    // The closest the camera should come to its target now, so the sheets of
+    // the soldiers there are never magnified past closeup::kMaxMagnification.
+    float closeupMinDistance() const { return closeupMinDistance_; }
+    // For tests: the close-up sheets held ("Name=WxH", comma separated).
+    std::string closeupReport() const;
+    // For before/after comparisons: off, no close-up sheets and no zoom limit (as before them).
+    void enableCloseups(bool on) { closeupsOn_ = on; }
     // A type's sheet read back (baked first if need be), for tests and tools:
     // RGBA bottom row first, and the cells as uCellTable holds them.
     bool readSheet(int type, std::vector<uint8_t>& rgba, int& width, int& height, std::vector<float>& table);
@@ -173,6 +196,25 @@ private:
     std::set<int> sheetsRequested_;
     double prerenderedTexels_ = 0;  // of the loaded sheets, against kSheetBudget
     void uploadSheet(Sheet& sh, const uint8_t* rgba, const float* table);
+    // Close-up sheets by type, those the page has, and their texels.
+    std::map<int, Sheet> closeups_;
+    struct Listed {
+        double texels = 0;
+        float ppm = 0;
+    };
+    std::map<int, Listed> closeupListed_;
+    std::set<int> closeupsRequested_;
+    std::function<void(int)> closeupRequest_;
+    float closeupScreen_ = 0, closeupMinDistance_ = Camera::kMinDistance;
+    bool closeupsOn_ = true;
+    void updateCloseups(const Battle& battle, const Camera& camera);
+    void dropSheet(Sheet& sh, bool closeup);
+    // The sheet a type is drawn with now: its close-up one if held.
+    const Sheet& sheetFor(int type);
+    // Frame i of clip c in the cell table of the type's sheet now (falling back
+    // to the clips an old sheet has); the dying soldier's frame by how he died.
+    int clipFrame(int type, sprites::Clip c, int i);
+    int deathFrame(int type, const sim::Unit& u, float secondsDead);
     void bakeMissing(const Battle& battle);
     // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.
     Batch units_;

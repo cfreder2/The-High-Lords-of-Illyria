@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 
 #include "illyria/game/gmath.h"
@@ -36,6 +37,14 @@ public:
     // Multiplies distance by 1/factor, keeping the ground point under (px, py) fixed.
     void zoomAt(float factor, float px, float py);
     void rotate(float radians) { yaw_ += radians; }
+    // The closest pinching may bring the camera (at least kMinDistance): the
+    // renderer's limit for the sprites in view (Renderer::closeupMinDistance).
+    // Called every frame; if the camera is already closer it eases out to it.
+    void setMinDistance(float d) {
+        minDistance_ = std::clamp(d, kMinDistance, kMaxDistance);
+        if (distance_ < minDistance_) distance_ += (minDistance_ - distance_) * 0.12f;
+    }
+    float minDistance() const { return minDistance_; }
 
     V3 eye() const;
     V3 target() const { return {tx_, ty_, groundAt(tx_, ty_)}; }
@@ -67,6 +76,7 @@ private:
     float width_ = 1, height_ = 1;
     float tx_ = 0, ty_ = 0;
     float distance_ = 300.0f;
+    float minDistance_ = kMinDistance;
     float yaw_ = 0.0f;
 };
 
