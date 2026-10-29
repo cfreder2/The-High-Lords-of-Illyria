@@ -526,11 +526,30 @@ Mesh stairs() {
 
 Mesh banner() {
     Builder b;
-    b.frustum(0, 0.03f, 1.0f, 0.02f, 4, {0.35f, 0.3f, 0.25f});
-    // White so the instance tint shows the owner's colour; two-sided.
-    const V3 cloth{1, 1, 1};
-    b.quad({0, 0, 0.95f}, {0.7f, 0, 0.93f}, {0.7f, 0, 0.63f}, {0, 0, 0.6f}, cloth);
-    b.quad({0, 0, 0.6f}, {0.7f, 0, 0.63f}, {0.7f, 0, 0.93f}, {0, 0, 0.95f}, cloth * 0.85f);
+    // A turned pole, a collar and a gilt finial.
+    const V3 wood{0.3f, 0.22f, 0.15f}, gilt{0.85f, 0.66f, 0.25f};
+    b.frustum(0, 0.016f, 0.955f, 0.011f, 8, wood);
+    b.frustum(0.93f, 0.017f, 0.945f, 0.017f, 8, gilt);
+    b.frustum(0.955f, 0.011f, 0.97f, 0.024f, 8, gilt);
+    b.frustum(0.97f, 0.024f, 1.0f, 0, 8, gilt);
+    // The cloth: one sheet of cells along x (the fly) and z (the hoist), so
+    // the mesh shader can wave it (uFlag). Its colour holds where on the
+    // cloth each vertex is (u along, v up) and 2 as a mark, for the shader to
+    // paint the owner's colour and device; one-sided, lit from either face.
+    constexpr int kAlong = 12, kUp = 4;
+    constexpr float kX0 = 0.012f, kX1 = 0.52f, kZ0 = 0.6f, kZ1 = 0.93f;
+    const auto at = [&](int i, int j) {
+        const float u = static_cast<float>(i) / kAlong, v = static_cast<float>(j) / kUp;
+        return V3{kX0 + (kX1 - kX0) * u, 0, kZ0 + (kZ1 - kZ0) * v};
+    };
+    const auto vertex = [&](int i, int j) {
+        const V3 p = at(i, j);
+        b.mesh.data.insert(b.mesh.data.end(), {p.x, p.y, p.z, 0, 1, 0, static_cast<float>(i) / kAlong, static_cast<float>(j) / kUp, 2});
+    };
+    constexpr int kTri[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+    for (int j = 0; j < kUp; ++j)
+        for (int i = 0; i < kAlong; ++i)
+            for (const auto& d : kTri) vertex(i + d[0], j + d[1]);
     return b.mesh;
 }
 

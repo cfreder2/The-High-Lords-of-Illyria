@@ -270,8 +270,9 @@ public:
     const std::string& notice() const { return notice_; }
     uint32_t noticeTick() const { return noticeTick_; }
     // Where the player's soldiers are going and what they are after, for the
-    // ground markers: shown for those selected (or of a squad or group with
-    // anyone selected) and for a few seconds after any order, until there.
+    // ground markers: shown for each soldier selected (not his squad- or
+    // group-mates) and, fading, for a few seconds after any order; only his
+    // current order, until he is there. Heights are the floor (floorAt).
     struct OrderMark {
         enum class Kind : uint8_t { Slot, Target, Spot };
         Kind kind = Kind::Slot;
@@ -280,8 +281,11 @@ public:
         V3 face;    // Slot: the way he will face there
         V3 from;    // Target, Spot: the attacker, for the line
         float size = 1;
+        float opacity = 1;  // 1 while selected; fading after an order
     };
     std::vector<OrderMark> orderMarks() const;
+    // How strongly a soldier's order markers show (0: not at all).
+    float markOpacity(size_t index) const;
     // Tests and hooks: a gate battered down at once; every archer of ours
     // looses at a spot on the ground.
     void breakGate(int gate);
@@ -349,6 +353,10 @@ public:
 
     // Ground height anywhere: the battlefield exactly, the rest of the continent coarsely.
     float heightAt(float x, float y) const;
+    // What something at p stands on, or is above: the ground, or a deck (a
+    // castle's wall-walk or stair, a bridge) under it. Where the decals under
+    // a soldier (shadow, selection ring) and the order markers lie.
+    float floorAt(const V3& p) const;
     bool inBattlefield(float x, float y) const { return x >= 0 && y >= 0 && x <= kWorldSize && y <= kWorldSize; }
     const FarGrid& farGrid() const { return far_; }
     const FarGrid& nearGrid() const { return near_; }

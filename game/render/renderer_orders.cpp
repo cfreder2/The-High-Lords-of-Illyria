@@ -2,6 +2,8 @@
 // soldier of a moving formation will stand, with a tick the way he will face;
 // a red ring under the soldier they are after (it follows him) or on the
 // spot or gate they shoot at, and a dotted red line from each attacker.
+// They lie on the floor (Battle::floorAt): the ground, or the wall-walk,
+// stair or bridge deck there; the decal shader drapes them over the ground.
 
 #include <algorithm>
 #include <cmath>
@@ -19,13 +21,15 @@ constexpr int kMaxLineDots = 45;
 }  // namespace
 
 void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals) {
+    float fade = 0;  // 1 - the mark's opacity (decal extra.w)
     const auto mark = [&](const V3& p, float yaw, float size, float type, const float* rgb) {
-        decals.insert(decals.end(), {p.x, p.y, p.z, yaw, size, 0, type, rgb[0], rgb[1], rgb[2], 0});
+        decals.insert(decals.end(), {p.x, p.y, p.z, yaw, size, 0, type, rgb[0], rgb[1], rgb[2], fade});
     };
     // Each target once, however many are after it: a ring that breathes.
     const float pulse = 1.0f + 0.12f * std::sin(seconds * 6.0f);
     std::vector<V3> ringed;
     for (const Battle::OrderMark& m : battle.orderMarks()) {
+        fade = 1.0f - m.opacity;
         switch (m.kind) {
             case Battle::OrderMark::Kind::Slot:
                 mark(m.pos, 0, m.size, kDecalRing, kYellow);
@@ -50,7 +54,11 @@ void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& dec
                 const float gap = std::max(kLineGap, end / kMaxLineDots);
                 // The dots creep toward the target.
                 const float phase = std::fmod(seconds * 2.0f, 1.0f) * gap;
-                for (float t = 0.8f + phase; t < end; t += gap) mark(m.from + dir * t, 0, 0.13f, kDecalDot, kRed);
+                for (float t = 0.8f + phase; t < end; t += gap) {
+                    V3 p = m.from + dir * t;
+                    p.z = battle.floorAt(p);  // off the wall-walk, down on the ground
+                    mark(p, 0, 0.13f, kDecalDot, kRed);
+                }
                 break;
             }
         }

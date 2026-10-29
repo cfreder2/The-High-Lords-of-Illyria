@@ -61,6 +61,7 @@ add_executable(illyria_tests
     test_territory.cpp
     test_sprite_layout.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
+    test_markers.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
     test_sfx.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp

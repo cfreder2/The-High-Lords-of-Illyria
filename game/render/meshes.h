@@ -14,7 +14,8 @@ namespace illyria::game {
 //   house: footprint [-1, 1] x [-1, 1], walls 1 high, roof above
 //   capsule: along x from -0.5 to 0.5, radius 0.5; sphere: radius 0.5
 //   wall: [-1, 1] x [-1, 1], 1 high, with merlons above; tower: radius 1, walls
-//   1 high under a cone roof; banner: a pole 1 high with a white flag (tinted)
+//   1 high under a cone roof; banner: a pole 1 high with a flag along +x
+//     (its cloth vertices carry their place on it as colour, see banner())
 //   ruin, temple, sage tower: whole buildings about 1 across
 struct Mesh {
     std::vector<float> data;
