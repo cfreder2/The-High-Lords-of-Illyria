@@ -638,8 +638,8 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_focus_type(int type, float distance, float
 
 int nearestGate();
 // Test hook: the first squad of ours of a unit type sent `inside` metres in
-// through the nearest gate, or (onWall) to the wall-walk beside it; the
-// squad's index, or -1.
+// through the nearest gate, or (onWall) to the wall-walk beside it (2: its
+// first soldier alone); the squad's index, or -1.
 EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int onWall) {
     const int g = nearestGate();
     if (!app || g < 0) return -1;
@@ -662,6 +662,13 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int o
                 }
         }
         b.selectSquad(static_cast<int>(i));
+        // onWall 2: only its first soldier (his place is the spot itself).
+        if (onWall == 2)
+            for (illyria::sim::EntityId id : s.members)
+                if (b.world().units()[id - 1].alive()) {
+                    b.select({id});
+                    break;
+                }
         b.orderMove(to);
         return static_cast<int>(i);
     }
