@@ -647,6 +647,8 @@
     $("campaign").textContent = on ? "Battle" : "Campaign";
     $("cards").innerHTML = "";
     lastSquadsKey = "";
+    // A battle's end (won at its capture point, say) is not the campaign's.
+    $("overlay").classList.add("hidden");
     if (on) { campLevel = level; api.campStart(level); } else api.campLeave();
     if (!on) { $("banners").innerHTML = ""; $("cityPanel").classList.add("hidden"); }
   }
