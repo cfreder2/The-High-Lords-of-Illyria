@@ -4,6 +4,12 @@ file(READ "${ILLYRIA_VOICE_MANIFEST_FILE}" ILLYRIA_VOICE_MANIFEST)
 configure_file(voice_manifest.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_VOICE_MANIFEST_FILE}")
 
+# The sprite manifest's file list (tools/sprites/templates.py), for tests/test_sprite_layout.cpp.
+set(ILLYRIA_SPRITE_FILES_FILE "${CMAKE_SOURCE_DIR}/docs/sprite_templates/files.txt")
+file(READ "${ILLYRIA_SPRITE_FILES_FILE}" ILLYRIA_SPRITE_FILES)
+configure_file(sprite_files.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SPRITE_FILES_FILE}")
+
 add_executable(illyria_tests
     test_main.cpp
     test_fixed.cpp
@@ -31,6 +37,8 @@ add_executable(illyria_tests
     test_orders.cpp
     test_morale_rally.cpp
     test_voice.cpp
+    test_sprite_layout.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
@@ -43,4 +51,4 @@ else()
     add_test(NAME illyria_tests COMMAND illyria_tests)
 endif()
 # The manifest is one long string; every compiler here takes it.
-set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

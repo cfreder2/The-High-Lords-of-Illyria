@@ -25,6 +25,13 @@ CPU cores. To redo some types only:
 
     tools/blender/build_all.sh /tmp/bpyvenv/bin/python build/sprites dragons griffins
 
+Close-up sheets (twice the pixels a metre, `<unit>_hd.webp/.json`, listed in
+`index_hd.json`; see `docs/SPRITE_SPEC.md`): render with `HD=1`, which renders
+the cells at four times the sheet's resolution (not two) and packs both sheets
+from them. About 20-35 minutes a man-sized type on four shared cores:
+
+    HD=1 tools/blender/build_all.sh /tmp/bpyvenv/bin/python build/sprites heavy_infantry archers
+
 The contact sheet of the whole roster (`docs/images/sprites/roster.png`, idle, front view, in
 both sides' colours) is made from the installed sheets by:
 

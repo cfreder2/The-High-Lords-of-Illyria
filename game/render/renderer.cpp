@@ -284,6 +284,7 @@ bool Renderer::buildPrograms() {
         s.p.scratch = glGetUniformLocation(s.p.id, "uScratch");
         s.p.resolve = glGetUniformLocation(s.p.id, "uResolve");
         s.p.cellTable = glGetUniformLocation(s.p.id, "uCellTable");
+        s.p.framesPerView = glGetUniformLocation(s.p.id, "uFramesPerView");
         s.p.lightDepth = glGetUniformLocation(s.p.id, "uLightDepth");
         s.p.lightRight = glGetUniformLocation(s.p.id, "uLightRight");
         s.p.lightUp = glGetUniformLocation(s.p.id, "uLightUp");
@@ -1530,7 +1531,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
     glBindVertexArray(units_.vao);
     glBindBuffer(GL_ARRAY_BUFFER, units_.vbo);
     for (const auto& group : unitGroups_) {
-        const Sheet& sh = sheets_[group.first / 2];
+        const Sheet& sh = sheetFor(group.first / 2);
         const auto range = group.second;
         const float* team = group.first % 2 == 0 ? kPlayerColor : kEnemyColor;
         const V3 cloth = figures::cloth(team);
@@ -1539,6 +1540,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
         glActiveTexture(GL_TEXTURE8);
         glBindTexture(GL_TEXTURE_2D, sh.cells);
         glUniform2f(unit_.sheetSize, static_cast<float>(sh.texW), static_cast<float>(sh.texH));
+        glUniform1f(unit_.framesPerView, static_cast<float>(sh.framesPerView));
         glUniform1f(unit_.lift, shadow ? 0.0f : sh.lift);
         glUniform3f(unit_.team, team[0], team[1], team[2]);
         glUniform3f(unit_.cloth, cloth.x, cloth.y, cloth.z);
@@ -1908,6 +1910,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         bakeMissing(battle);
         unitsChecked_ = battle.world().units().size();
     }
+    updateCloseups(battle, camera);  // close-up sprite sheets near the camera (renderer_sheets.cpp)
     updatePatch(battle, camera);
     updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
     const sim::World& world = battle.world();
@@ -1954,8 +1957,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                            {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id);
                 continue;
             }
-            const int f = u.airborne ? 2 : static_cast<int>(died / figures::kDieSeconds * figures::kFrames[4]);
-            frame = figures::kFirstFrame[4] + std::clamp(f, 0, figures::kFrames[4] - 1);
+            frame = deathFrame(static_cast<int>(type), u, died);  // the death clip by how he died (renderer_sheets.cpp)
         } else {
             const float radius = static_cast<float>(u.stats.radius.toDouble());
             decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});

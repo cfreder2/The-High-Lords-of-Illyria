@@ -22,7 +22,7 @@ fi
 failed=()
 for u in "${units[@]}"; do
     start=$(date +%s)
-    if "$py" "$here/render_sheets.py" sheet "$u" "$work" > "$work/$u.log" 2>&1; then
+    if "$py" "$here/render_sheets.py" sheet "$u" "$work" ${HD:+--hd} > "$work/$u.log" 2>&1; then
         "$py" "$here/render_sheets.py" install "$u" "$work" >> "$work/$u.log" 2>&1
         echo "$u: $(( $(date +%s) - start )) s, $(grep -o '[0-9]* KB webp' "$work/$u.log" | tail -1)"
     else

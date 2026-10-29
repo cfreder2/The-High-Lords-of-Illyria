@@ -166,6 +166,8 @@ void resizeCanvas() {
     if (curW != w || curH != h) emscripten_set_canvas_element_size("#canvas", w, h);
     app->camera.setViewport(static_cast<float>(w), static_cast<float>(h));
     app->gestures->setPixelScale(app->pixelRatio);
+    // Sprite sheets should look sharp at up to two device pixels a CSS pixel (closeup.h).
+    app->renderer.setCloseupScreen(static_cast<float>(cssH * std::min(emscripten_get_device_pixel_ratio(), 2.0)));
 }
 
 // The ground, or the water over it, at a battle-local point.
@@ -408,6 +410,7 @@ void frame() {
     }
     const double drawStart = emscripten_get_now();
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
+    app->camera.setMinDistance(app->renderer.closeupMinDistance());  // sprites never magnified past 1.5x
     app->drawMs = app->drawMs * 0.9 + (emscripten_get_now() - drawStart) * 0.1;
 }
 

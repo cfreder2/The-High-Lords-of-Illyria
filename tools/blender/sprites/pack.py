@@ -72,14 +72,18 @@ def to8(a):
     return np.clip(np.round(a * 255.0), 0, 255).astype(np.uint8)
 
 
-def pack(d, name, number, meta):
+def pack(d, name, number, meta, scale=1, suffix=''):
+    """Packs <d>/raw into <d>/<name><suffix>.png/.webp/.json. scale 2 makes the
+    close-up (high-resolution) sheet from the same cells: twice the pixels a
+    metre, half the supersampling (the cells must be rendered with ss >= 2 * scale)."""
     raw = os.path.join(d, 'raw')
-    ppm, ss = meta['ppm'], meta['ss']
+    ppm, ss = meta['ppm'] * scale, meta['ss'] // scale
+    assert ss >= 1 and meta['ss'] % scale == 0, 'cells rendered at ss %d cannot make a x%d sheet' % (meta['ss'], scale)
     cells, previews, mpreviews = [], {}, {}
     for v in range(VIEWS):
         for f in range(FRAMES):
             c = meta['cells']['%d_%d' % (v, f)]
-            i0, j0, i1, j1 = c['lattice']
+            i0, j0, i1, j1 = (k * scale for k in c['lattice'])
             pic = _load(os.path.join(raw, 'v%d_f%02d.png' % (v, f)))
             mask = _load(os.path.join(raw, 'v%d_f%02d_mask.png' % (v, f)))
             rgb, cover, team = reduce(pic, mask, ss)
@@ -114,13 +118,14 @@ def pack(d, name, number, meta):
     atlas = np.zeros((H, W, 4), np.uint8)
     for c in cells:
         atlas[c['ytop']:c['ytop'] + c['h'], c['x']:c['x'] + c['w']] = to8(c['img'])
+    name_in, name = name, name + suffix
     Image.fromarray(atlas, 'RGBA').save(os.path.join(d, name + '.png'), optimize=True)
     # What the game downloads: WebP, the colour lossy (quality 82) but the
     # alpha codes lossless (exact), about a third of the PNG.
     Image.fromarray(atlas, 'RGBA').save(os.path.join(d, name + '.webp'), quality=82, alpha_quality=100, method=6, exact=True)
     table = [[c['x'], H - (c['ytop'] + c['h']), c['w'], c['h'], round(c['u0'], 5), round(c['v0'], 5), round(c['w'] / ppm, 5), round(c['h'] / ppm, 5)] for c in cells]
     with open(os.path.join(d, name + '.json'), 'w') as fh:
-        json.dump({'type': number, 'name': name, 'ppm': ppm, 'size': [W, H], 'cells': table}, fh, separators=(',', ':'))
+        json.dump({'type': number, 'name': name_in, 'ppm': ppm, 'size': [W, H], 'cells': table}, fh, separators=(',', ':'))
     # Contact sheets: views down, frames across, feet on a common line.
     for suffix, pv in (('_color', previews), ('_mask', mpreviews)):
         grid(pv, ppm, os.path.join(d, name + suffix + '.png'))

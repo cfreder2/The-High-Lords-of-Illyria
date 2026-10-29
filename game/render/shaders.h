@@ -1233,7 +1233,8 @@ flat out float vSelected;
 flat out float vDot;
 out float vFog;
 flat out float vShade;
-const float kFramesPerView = 26.0, kElevation = 0.52;
+uniform float uFramesPerView;  // 26 in the old layout, 44 in the new (sprite_layout.h)
+const float kElevation = 0.52;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
     // Which of the eight views: the viewer's bearing seen from the soldier.
@@ -1241,7 +1242,7 @@ void main() {
     float d = mod(floor(-(toViewer - iYaw) / 0.7853982 + 0.5), 8.0);
     bool mirror = d > 4.5;
     float view = mirror ? 8.0 - d : d;
-    int cell = int(view * kFramesPerView + iFrame + 0.5);
+    int cell = int(view * uFramesPerView + iFrame + 0.5);
     vec4 place = texelFetch(uCellTable, ivec2(cell, 0), 0);
     vec4 extent = texelFetch(uCellTable, ivec2(cell, 1), 0);
     float dist = distance(uEye, iPos);

@@ -1,0 +1,18 @@
+{
+ "1": {
+  "name": "heavy_infantry_hd",
+  "size": [
+   2048,
+   1552
+  ],
+  "ppm": 96.0
+ },
+ "2": {
+  "name": "archers_hd",
+  "size": [
+   2048,
+   1216
+  ],
+  "ppm": 96.0
+ }
+}
