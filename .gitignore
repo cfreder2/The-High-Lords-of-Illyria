@@ -6,3 +6,7 @@
 node_modules/
 .claude/worktrees/
 __pycache__/
+
+# Art drawn with tools/sprites/codex_draw.py, its raw plates and guides: kept out of git;
+# what ships is the packed sheet in game/web/sprites/.
+art/
