@@ -170,32 +170,88 @@ void pushPart(std::vector<float>& capsules, std::vector<float>& spheres, sim::Re
     }
 }
 
-// A dead soldier lying where he fell: torso, head and limbs, scaled to size.
+// A dead soldier lying where he fell, head towards `yaw`: torso, head and
+// limbs, scaled to size; less the part a blow cut off, and burned black by fire.
 void pushCorpse(std::vector<float>& capsules, std::vector<float>& spheres, const V3& pos, float yaw, float scale,
-                const V3& team, const V3& body, bool humanoid, float decay, uint32_t seed) {
+                const V3& team, const V3& body, bool humanoid, float decay, uint32_t seed,
+                sim::RemainKind severed = sim::RemainKind::None, bool charred = false) {
     const float c = std::cos(yaw), s = std::sin(yaw);
     const auto at = [&](float x, float y, float z) { return pos + V3{c * x - s * y, s * x + c * y, z} * scale; };
-    const V3 cloth = team * (1 - decay) + V3{0.25f, 0.22f, 0.18f} * decay;
-    const V3 flesh = (humanoid ? kSkinColor : body) * (1 - decay) + kBoneColor * decay;
+    const V3 char1{0.07f, 0.055f, 0.045f}, char2{0.13f, 0.08f, 0.06f};
+    const V3 cloth = charred ? char1 : team * (1 - decay) + V3{0.25f, 0.22f, 0.18f} * decay;
+    const V3 flesh = charred ? char2 : (humanoid ? kSkinColor : body) * (1 - decay) + kBoneColor * decay;
+    const V3 legs = charred ? char1 : kLegColor;
     float q[4];
     if (!humanoid) {
         yprQuat(yaw, 0, 1.4f, q);
         pushInstance(capsules, at(0, 0, 0.3f), q, V3{1.3f, 0.55f, 0.5f} * scale, flesh);
-        pushInstance(spheres, at(0.75f, 0.1f, 0.2f), q, V3{0.4f, 0.4f, 0.4f} * scale, flesh);
+        if (severed != sim::RemainKind::Head) pushInstance(spheres, at(0.75f, 0.1f, 0.2f), q, V3{0.4f, 0.4f, 0.4f} * scale, flesh);
         return;
     }
     const float twist = (hash01(seed) - 0.5f) * 0.8f;
+    // Which arm or leg a cut took: the one on the side the seed picks.
+    const bool left = hash01(seed * 7u + 3u) < 0.5f;
     yprQuat(yaw, 0, 0, q);
     pushInstance(capsules, at(0, 0, 0.16f), q, V3{0.62f, 0.34f, 0.24f} * scale, cloth);
-    pushInstance(spheres, at(0.45f, 0, 0.12f), q, V3{0.24f, 0.24f, 0.24f} * scale, flesh);
-    yprQuat(yaw + 0.12f, 0, 0, q);
-    pushInstance(capsules, at(-0.58f, 0.1f, 0.08f), q, V3{0.62f, 0.15f, 0.15f} * scale, kLegColor);
-    yprQuat(yaw - 0.15f + twist * 0.3f, 0, 0, q);
-    pushInstance(capsules, at(-0.58f, -0.12f, 0.08f), q, V3{0.62f, 0.15f, 0.15f} * scale, kLegColor);
-    yprQuat(yaw + 0.6f + twist, 0, 0, q);
-    pushInstance(capsules, at(0.15f, 0.3f, 0.07f), q, V3{0.5f, 0.12f, 0.12f} * scale, cloth * 0.9f);
-    yprQuat(yaw - 0.5f - twist, 0, 0, q);
-    pushInstance(capsules, at(0.15f, -0.3f, 0.07f), q, V3{0.5f, 0.12f, 0.12f} * scale, cloth * 0.9f);
+    if (severed != sim::RemainKind::Head) {
+        pushInstance(spheres, at(0.45f, 0, 0.12f), q, V3{0.24f, 0.24f, 0.24f} * scale, flesh);
+    } else if (!charred) {
+        // The stump.
+        pushInstance(spheres, at(0.33f, 0, 0.13f), q, V3{0.1f, 0.1f, 0.06f} * scale, V3{0.45f, 0.05f, 0.04f});
+    }
+    if (severed != sim::RemainKind::Leg || left) {
+        yprQuat(yaw + 0.12f, 0, 0, q);
+        pushInstance(capsules, at(-0.58f, 0.1f, 0.08f), q, V3{0.62f, 0.15f, 0.15f} * scale, legs);
+    }
+    if (severed != sim::RemainKind::Leg || !left) {
+        yprQuat(yaw - 0.15f + twist * 0.3f, 0, 0, q);
+        pushInstance(capsules, at(-0.58f, -0.12f, 0.08f), q, V3{0.62f, 0.15f, 0.15f} * scale, legs);
+    }
+    if (severed != sim::RemainKind::Arm || left) {
+        yprQuat(yaw + 0.6f + twist, 0, 0, q);
+        pushInstance(capsules, at(0.15f, 0.3f, 0.07f), q, V3{0.5f, 0.12f, 0.12f} * scale, cloth * 0.9f);
+    }
+    if (severed != sim::RemainKind::Arm || !left) {
+        yprQuat(yaw - 0.5f - twist, 0, 0, q);
+        pushInstance(capsules, at(0.15f, -0.3f, 0.07f), q, V3{0.5f, 0.12f, 0.12f} * scale, cloth * 0.9f);
+    }
+}
+
+// The way a dead soldier's head lies: along the killing blow (he falls the
+// way it drove him), or behind him for the deaths before the death matrix.
+float lieYaw(const sim::Unit& u) {
+    if (u.death.kind == sim::DeathKind::None) return std::atan2(-static_cast<float>(u.facing.y.toDouble()), -static_cast<float>(u.facing.x.toDouble()));
+    return std::atan2(static_cast<float>(u.death.dir.y.toDouble()), static_cast<float>(u.death.dir.x.toDouble()));
+}
+
+// Arrows left in a soldier (state 4: embedded where they struck): the one that
+// killed him, toppling with him as he falls (`fallen` 0 standing .. 1 lying),
+// and those his shield caught, while he still holds it up.
+void pushStuckArrows(std::vector<float>& arrows, const sim::Unit& u, const V3& pos, float fallen) {
+    const float height = static_cast<float>(u.stats.height.toDouble()), scale = height / 1.8f;
+    if (u.death.arrowPinned) {
+        const V3 d = toV3(u.death.arrowDir).normalized();
+        const float h = static_cast<float>(u.death.arrowHeight.toDouble()) / std::max(height, 0.1f);
+        const float yaw = lieYaw(u);
+        const V3 lie{std::cos(yaw), std::sin(yaw), 0};
+        const V3 standing = pos + V3{0, 0, h * height} - V3{d.x, d.y, 0} * 0.15f;
+        const V3 lying = pos + lie * ((-0.9f + 1.45f * h) * scale) + V3{0, 0, 0.22f * scale};
+        const V3 stuckLying = V3{d.x * 0.6f, d.y * 0.6f, -0.8f}.normalized();
+        const V3 at = standing * (1 - fallen) + lying * fallen;
+        const V3 dir = (d * (1 - fallen) + stuckLying * fallen).normalized();
+        arrows.insert(arrows.end(), {at.x, at.y, at.z, dir.x, dir.y, dir.z, 0, 4});
+    }
+    if (u.shieldArrows > 0 && u.alive()) {
+        const V3 f{static_cast<float>(u.facing.x.toDouble()), static_cast<float>(u.facing.y.toDouble()), 0};
+        const V3 side{-f.y, f.x, 0};
+        const float r = static_cast<float>(u.stats.radius.toDouble());
+        for (int i = 0; i < u.shieldArrows; ++i) {
+            const float a = hash01(u.id * 31u + static_cast<uint32_t>(i)) - 0.5f, b = hash01(u.id * 17u + static_cast<uint32_t>(i) * 5u) - 0.5f;
+            const V3 at = pos + f * (r * 0.95f) + side * (0.35f * a * scale) + V3{0, 0, height * (0.5f + 0.25f * b)};
+            const V3 dir = (V3{-f.x, -f.y, -0.25f} + side * (a * 0.6f)).normalized();
+            arrows.insert(arrows.end(), {at.x, at.y, at.z, dir.x, dir.y, dir.z, 0, 4});
+        }
+    }
 }
 
 // A soldier's health bar, with a gold shield for each rank he has earned
@@ -1944,19 +2000,29 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
         int frame;
+        float yaw = std::atan2(fy, fx);
         if (!u.alive()) {
             const float died = ago(battle.deathTick(i));
             const float decay = std::clamp((died - 3600.0f) / week, 0.0f, 1.0f);
-            if (decay > 0 && type != UnitType::Catapult) {
+            // The death matrix (sim world_death.cpp): a body missing a part, or burned, is a
+            // model from the start; the rest play the sprite's fall, the way the blow drove them.
+            const bool marked = u.death.kind == sim::DeathKind::Severed || u.death.kind == sim::DeathKind::Charred;
+            if ((decay > 0 || marked) && type != UnitType::Catapult) {
                 // Long dead: the body rots where it lies (a wrecked engine stays a heap of timber).
                 const Look look = lookOf(type);
-                pushCorpse(capsules, spheres, pos, std::atan2(fy, fx) + 3.14159f, height / 1.8f, {team[0], team[1], team[2]},
-                           {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id);
+                pushCorpse(capsules, spheres, pos, lieYaw(u), height / 1.8f, {team[0], team[1], team[2]},
+                           {look.body[0], look.body[1], look.body[2]}, look.plan < 0.5f, decay, u.id, u.death.severed,
+                           u.death.kind == sim::DeathKind::Charred);
+                pushStuckArrows(arrows, u, pos, 1);
                 continue;
             }
             const int f = u.airborne ? 2 : static_cast<int>(died / figures::kDieSeconds * figures::kFrames[4]);
             frame = figures::kFirstFrame[4] + std::clamp(f, 0, figures::kFrames[4] - 1);
+            // The figure falls backward: turned so that its head lands the way the blow went.
+            if (u.death.kind != sim::DeathKind::None) yaw = lieYaw(u) + 3.14159265f;
+            pushStuckArrows(arrows, u, pos, u.airborne ? 0.3f : std::clamp(died / figures::kDieSeconds, 0.0f, 1.0f));
         } else {
+            if (u.shieldArrows > 0) pushStuckArrows(arrows, u, pos, 0);
             const float radius = static_cast<float>(u.stats.radius.toDouble());
             decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});
             pushHealthBar(bars, u, pos, isSelected);
@@ -1984,7 +2050,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const int key = static_cast<int>(type) * 2 + (u.owner == Battle::kPlayer ? 0 : 1);
         if (!sheets_.count(key / 2) || !sheets_[key / 2].tex) continue;  // baked before the next frame (bakeMissing)
         std::vector<float>& g = byGroup[key];
-        g.insert(g.end(), {pos.x, pos.y, pos.z, std::atan2(fy, fx), static_cast<float>(frame), isSelected ? 1.0f : 0.0f});
+        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f});
     }
     {
         std::vector<float> all;

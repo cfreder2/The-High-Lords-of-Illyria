@@ -198,17 +198,17 @@ void World::fight(Unit& u, Unit& enemy) {
     // Busy with someone else, it is off guard: a flank is as open as its back.
     if (side == HitSide::Flank && enemy.foe != kNoEntity && enemy.foe != u.id) side = HitSide::Rear;
     if (shieldBlocks(enemy, dir, kMeleeBlockScale)) {
-        impacts_.push_back({ImpactEvent::Kind::Blocked, at, dir, kNoEntity, enemy.id, false, {}});
+        impacts_.push_back({ImpactEvent::Kind::Blocked, at, dir, kNoEntity, enemy.id, false, {}, -1, m.damageType});
         return;
     }
     const int32_t amount = m.damage * blowPct(u, enemy, dist, dz) / 100 * sidePct(side, false) / 100;
-    const bool killed = damage(enemy, amount, &u);
+    const bool killed = damage(enemy, amount, &u, {m.damageType, dir, at});
     shakeBySide(enemy, side, false);
     if (m.knockback > Fixed::zero()) {
         const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
         knock(enemy, dir, m.knockback * (Fixed::one() + downhill));
     }
-    impacts_.push_back({ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}});
+    impacts_.push_back({ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}, -1, m.damageType});
 }
 
 bool World::chargeReady(const Unit& u) const {
@@ -235,9 +235,10 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() &&
         (!enemy.hasMoveTarget || enemy.engageFoe != kNoEntity)) {
         const int32_t amount = pike.damage * blowPct(enemy, u, dist, -dz) / 100 + impact / 2;
-        const bool killed = damage(u, amount, &enemy);
+        const Vec3 at = u.pos + up(u.stats.height * 3 / 5);
+        const bool killed = damage(u, amount, &enemy, {pike.damageType, -dir, at});
         knock(u, -dir, weight * kChargeKnock);
-        impacts_.push_back({ImpactEvent::Kind::Hit, u.pos + up(u.stats.height * 3 / 5), -dir, kNoEntity, u.id, killed, {}});
+        impacts_.push_back({ImpactEvent::Kind::Hit, at, -dir, kNoEntity, u.id, killed, {}, -1, pike.damageType});
         return;
     }
 
@@ -246,10 +247,11 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const bool blocked = shieldBlocks(enemy, dir, kMeleeBlockScale);
     const int32_t blow = blocked ? 0 : u.stats.melee.damage * blowPct(u, enemy, dist, dz) / 100;
     const int32_t amount = (blow + (blocked ? impact / 2 : impact)) * sidePct(side, false) / 100;
-    const bool killed = damage(enemy, amount, &u);
+    const bool killed = damage(enemy, amount, &u, {u.stats.melee.damageType, dir, at});
     shakeMorale(enemy, kChargedShock * sidePct(side, false) / 100);
     knock(enemy, dir, weight * kChargeKnock * (blocked ? Fixed::fromRatio(1, 2) : Fixed::one()) + u.stats.melee.knockback);
-    impacts_.push_back({blocked ? ImpactEvent::Kind::Blocked : ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}});
+    impacts_.push_back({blocked ? ImpactEvent::Kind::Blocked : ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}, -1,
+                        u.stats.melee.damageType});
 }
 
 void World::trackMomentum(Unit& u, const Vec3& before) {

@@ -34,6 +34,7 @@ enum class VoiceSet : uint8_t {
     Fiend,      // devils and demons: snarls
     Beast,      // spiders, griffins, pegasi, elephants, unicorns, dragons
     Engine,     // a catapult's crew
+    Herald,     // the battle's narrator: casualty reports, no soldier of its own
     Count
 };
 constexpr int kVoiceSetCount = static_cast<int>(VoiceSet::Count);
@@ -68,6 +69,17 @@ enum class Situation : uint8_t {
     Victory,
     Defeat,
     Idle,           // rare chatter when all is quiet
+    // Cries (the death matrix's voices): heard through their own throttle, so
+    // they never crowd out the talk.
+    Pain,              // struck and hurt
+    Death,             // killed: a scream or a last grunt
+    DeathMoan,         // shot dead: a short choking moan
+    Cackle,            // a grenadier's glee when his satchel kills
+    Groan,             // the walking dead, idly
+    // The herald's reports of the player's losses (a quarter, half, four fifths).
+    Casualties,
+    SevereCasualties,
+    TotalCasualties,
     Count
 };
 constexpr int kSituationCount = static_cast<int>(Situation::Count);
@@ -123,9 +135,10 @@ private:
         Situation situation;
         sim::EntityId speaker;
         bool positional;
+        VoiceSet set;  // Count: the speaker's own
     };
     // Queues a cue for this tick; flush() gates them, gravest first.
-    void want(Situation s, sim::EntityId speaker, bool positional = true);
+    void want(Situation s, sim::EntityId speaker, bool positional = true, VoiceSet set = VoiceSet::Count);
     void flush(const sim::World& world);
     bool gate(const sim::World& world, const Candidate& c);
     // The nearest living soldier of `side` within `reach` of `at` whose voice says `s`.
@@ -155,6 +168,11 @@ private:
     };
     std::vector<Flight> flights_;
     int lastOutcome_ = 0;
+    // The player's losses, for the herald: soldiers seen, and reports made (0-3).
+    int strength_ = 0;
+    int reported_ = 0;
+    uint32_t lastCry_ = 0;
+    bool anyCry_ = false;
     bool contact_[2] = {false, false};
     uint32_t lastContact_[2] = {0, 0};
     uint32_t lastFight_ = 0;  // the player's last blow struck or taken

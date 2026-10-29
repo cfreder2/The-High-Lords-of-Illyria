@@ -244,6 +244,48 @@ TEST(a_defender_killed_on_the_walk_lies_on_it) {
     CHECK(wall.across(u.pos) <= wall.inner(u.stats.radius) + r(1, 100));
     CHECK(abs(u.facing.dot(wall.out)) < r(1, 10));  // along the walk, not across it into the stone
     CHECK(!inStone(u));
+    // Shot dead, he keeps the arrow (the death matrix), and the way the blow
+    // laid him down (which the body is drawn by) is along the walk too.
+    CHECK(u.death.kind == DeathKind::Pierced);
+    CHECK(u.death.arrowPinned);
+    CHECK(u.death.arrowHeight > Fixed::zero() && u.death.arrowHeight < u.stats.height);
+    CHECK(abs(u.death.dir.dot(wall.out)) < r(1, 10));
+}
+
+TEST(a_defender_cut_down_on_the_walk_loses_his_limb_onto_the_walk) {
+    // A hero's sword on the walk beside him: the part cut off lands on the
+    // walk (or goes over the parapet), never in the stone or down the hill under it.
+    WorldConfig cfg;
+    cfg.region = siege();
+    int severed = 0, onWalk = 0, inSlab = 0;
+    for (uint64_t seed = 1; seed <= 6; ++seed) {
+        cfg.seed = seed;
+        World w(cfg);
+        const Wall wall = longestWall();
+        const Fixed s = wall.len / 2 + m(static_cast<int64_t>(seed));
+        w.spawnUnit(0, wall.at(s, Fixed::zero()), wall.dir, unitStats(UnitType::Hero));
+        const EntityId victim = w.spawnUnit(1, wall.at(s + r(7, 5), Fixed::zero()), -wall.dir, unitStats(UnitType::Archers));
+        bool cut = false;
+        for (int t = 0; t < 30 * kTicksPerSecond && w.findUnit(victim)->alive(); ++t) w.step({});
+        cut = w.findUnit(victim)->death.kind == DeathKind::Severed;
+        for (int t = 0; t < 10 * kTicksPerSecond; ++t) w.step({});
+        if (!cut) continue;
+        ++severed;
+        for (const Remain& rm : w.remains()) {
+            if (rm.kind != RemainKind::Head && rm.kind != RemainKind::Arm && rm.kind != RemainKind::Leg) continue;
+            const Fixed v = wall.across(rm.pos), a = wall.along(rm.pos);
+            if (a < Fixed::zero() || a > wall.len || abs(v) >= wall.seg->halfThick) continue;
+            if (abs(rm.pos.z - wall.seg->walk) < r(3, 10)) ++onWalk;
+            else ++inSlab;
+        }
+        const Unit& u = *w.findUnit(victim);
+        CHECK(abs(u.pos.z - wall.seg->walk) < r(1, 10));
+        CHECK(abs(u.death.dir.dot(wall.out)) < r(1, 10));
+    }
+    std::printf("  %d of 6 cut down on the walk: %d parts on it, %d in its stone\n", severed, onWalk, inSlab);
+    CHECK(severed >= 1);
+    CHECK(onWalk >= 1);
+    CHECK(inSlab == 0);
 }
 
 TEST(bodies_thrown_by_stones_on_the_walls_never_rest_in_the_stone) {

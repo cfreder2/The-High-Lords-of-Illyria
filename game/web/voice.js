@@ -3,8 +3,10 @@
 // voice/available.json by tools/voice/convert.sh) are fetched per voice the
 // first time that voice speaks; a line not yet recorded is read aloud by the
 // browser instead (speechSynthesis), or, for the wordless voices, a short
-// growl is made up, until the real file exists. Positional by pan and
-// volume; at most kMaxVoices at once, the graver cues cutting in.
+// growl is made up, until the real file exists. Cries of pain and death have
+// rendered placeholders (tools/sfx/synth), played until they are recorded.
+// Positional by pan and volume; at most kMaxVoices at once, the graver cues
+// cutting in. The AudioContext is shared with the sound effects (audio.js).
 (function () {
   "use strict";
   const kMaxVoices = 3;
@@ -58,22 +60,19 @@
     return manifestLoading;
   }
 
-  // Audio needs a user gesture on iOS: made (and woken) on the first touch.
+  // Audio needs a user gesture on iOS: the shared context (audio.js) is made
+  // (and woken) on the first touch.
   function unlock() {
     if (!settings.on) return;
     try {
       if (!ctx) {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return;
-        ctx = new AC();
+        ctx = window.IllyriaAudio ? window.IllyriaAudio.context() : null;
+        if (!ctx) return;
         master = ctx.createGain();
         master.connect(ctx.destination);
         applyVolume();
       }
-      if (ctx.state !== "running") ctx.resume();
-      // A silent sample to open the gate on old iOS.
-      const b = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
-      src.buffer = b; src.connect(master); src.start(0);
+      if (window.IllyriaAudio) window.IllyriaAudio.unlock();
     } catch (e) { /* no audio: voices stay quiet */ }
     if (settings.speech && window.speechSynthesis && !unlock.spoke) {
       try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); unlock.spoke = true; } catch (e) {}
@@ -89,7 +88,7 @@
     if (setsLoading.has(set.id) || !ctx) return;
     setsLoading.add(set.id);
     const files = [];
-    for (const s of set.situations) for (const l of s.lines) if (available.has(l.file)) files.push(l.file);
+    for (const s of set.situations) for (const l of s.lines) { const f = sourceOf(l); if (f) files.push(f); }
     let next = 0;
     const worker = () => {
       if (next >= files.length) return Promise.resolve();
@@ -102,6 +101,12 @@
         .then(worker);
     };
     for (let i = 0; i < 4; i++) worker();
+  }
+
+  // What plays for a line: its recording, else its rendered placeholder, else nothing.
+  function sourceOf(line) {
+    if (available.has(line.file)) return line.file;
+    return line.placeholder || null;
   }
 
   // The lines for a situation in this voice, or its fallback's.
@@ -228,13 +233,15 @@
     const lines = found.sit.lines;
     const line = lines[pickVariant(found.set.id + "/" + situation, lines.length)];
     if (ctx) loadSet(found.set);
-    const buf = buffers.get(line.file);
+    const buf = buffers.get(sourceOf(line));
     let mode = null;
+    const src = sourceOf(line);
+    if (!buf && src && line.placeholder && (!ctx || buffers.has(src))) { note({ ...c, line: line.id, mode: "dropped: loading" }); return; }
     if (buf && ctx) {
       if (!makeRoom(priority, now)) { note({ ...c, line: line.id, mode: "dropped: busy" }); return; }
       const p = playBuffer(buf, c, gain);
       playing.push({ priority, end: now + p.seconds * 1000, stop: p.stop });
-      mode = "file";
+      mode = available.has(line.file) ? "file" : "placeholder";
     } else if (!found.set.verbal && ctx && settings.speech) {
       if (!makeRoom(priority, now)) { note({ ...c, line: line.id, mode: "dropped: busy" }); return; }
       const p = playGrowl(found.set, c, gain, line.text);
@@ -279,8 +286,35 @@
 
   if (settings.on) loadManifest();
 
+  // The sound test page: one line of a voice, by its index (loads that voice first).
+  function playLine(setId, situation, index, pan, gain) {
+    unlock();
+    return loadManifest().then(() => {
+      const set = sets.get(setId);
+      const found = set && linesFor(set, situation);
+      if (!found || !ctx) return "no line";
+      loadSet(found.set);
+      const line = found.sit.lines[Math.min(index, found.sit.lines.length - 1)];
+      const file = sourceOf(line);
+      const play = () => {
+        const buf = buffers.get(file);
+        if (buf) { playBuffer(buf, { pan: pan || 0, enemy: false }, gain == null ? 1 : gain); return "played"; }
+        if (settings.speech) { speak(found.set, { priority: 5, enemy: false }, gain == null ? 1 : gain, line.text, performance.now()); return "speech"; }
+        return "unrecorded";
+      };
+      if (!file || buffers.get(file)) return play();
+      // Wait for its file to arrive.
+      return new Promise((done) => {
+        let tries = 0;
+        const wait = () => (buffers.get(file) || !buffers.has(file) || ++tries > 40 ? done(play()) : setTimeout(wait, 100));
+        wait();
+      });
+    });
+  }
+
   window.IllyriaVoice = {
     cue,
+    playLine,
     settings,
     log,
     // Test hook: the last n played or dropped cues.

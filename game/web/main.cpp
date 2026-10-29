@@ -35,6 +35,25 @@ EM_JS(void, play_voice_cue, (const char* set, const char* situation, int enemy, 
     if (window.IllyriaVoice) window.IllyriaVoice.cue(UTF8ToString(set), UTF8ToString(situation), !!enemy, pan, gain, priority, speaker, tick);
 });
 
+// Hands a sound effect cue, and the ambience, to the page (game/web/sfx.js).
+EM_JS(void, play_sfx_cue, (const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick), {
+    if (window.IllyriaSfx) window.IllyriaSfx.cue(UTF8ToString(id), gain, pan, dist, delay, doppler, priority, count, tick);
+});
+EM_JS(void, set_sfx_ambience, (float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain), {
+    if (window.IllyriaSfx) window.IllyriaSfx.ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+});
+
+// The battle's sounds since the last frame, and the ambience when it changed.
+void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
+    for (const SfxCue& c : sfx.take())
+        play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
+    if (sfx.ambienceVersion() != ambienceSeen) {
+        ambienceSeen = sfx.ambienceVersion();
+        const Ambience& a = sfx.ambience();
+        set_sfx_ambience(a.windMountain, a.windValley, a.swamp, a.swampPan, a.flies, a.fliesPan, a.drums, a.drumsPan, a.rain);
+    }
+}
+
 constexpr uint64_t kBattleSeed = 20261027;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
@@ -52,6 +71,9 @@ struct App {
     double minPixelRatio = 1.0, ratio = 1.5;
     double slowSince = -1, fastSince = -1;
     double fps = 60;
+    float rain = 0;              // weather hook (illyria_set_rain)
+    uint32_t ambienceSeen = ~0u;  // the ambience last sent to the page
+    bool hushed = false;          // ambience silenced on the campaign map
     double drawMs = 0;  // CPU time preparing and issuing a frame's drawing (smoothed)
     std::string hud, labels;
     bool shift = false;  // held on the desktop
@@ -395,16 +417,26 @@ void frame() {
             cv.acc = std::min(cv.acc, 1.0);
         }
         placeBoats();
+        // No battle sounds over the campaign map.
+        if (!app->hushed) {
+            set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
+            app->hushed = true;
+            app->ambienceSeen = ~0u;
+        }
     } else {
         // The soldiers are heard from the view centre, the camera's right to the right.
         const V3 eye = app->camera.eye(), at = app->camera.target();
         const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
         Voice& voice = app->battle->voice();
         voice.setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+        app->battle->sfx().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+        app->battle->sfx().setRain(app->rain);
         app->battle->advance(dtMs / 1000.0);
         for (const VoiceCue& c : voice.take())
             play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority,
                            static_cast<int>(c.speaker), static_cast<int>(c.tick));
+        app->hushed = false;
+        playSounds(app->battle->sfx(), app->ambienceSeen);
     }
     const double drawStart = emscripten_get_now();
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
@@ -436,6 +468,34 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_voice_log(int n) {
           ",\"tick\":" + std::to_string(app->battle->world().tick()) +
           ",\"cues\":" + v.logJson(static_cast<size_t>(std::max(n, 0))) + "}";
     return out.c_str();
+}
+
+// Test hook: the last `n` sound effect cues (JSON), with how many were made
+// and held back, how many of each sound, and the ambience now.
+EMSCRIPTEN_KEEPALIVE const char* illyria_sfx_log(int n) {
+    static std::string out;
+    if (!app || !app->battle) return "{}";
+    const Sfx& s = app->battle->sfx();
+    const Ambience& a = s.ambience();
+    char amb[320];
+    std::snprintf(amb, sizeof amb,
+                  "{\"windMountain\":%.2f,\"windValley\":%.2f,\"swamp\":%.2f,\"flies\":%.2f,\"drums\":%.2f,\"rain\":%.2f}",
+                  a.windMountain, a.windValley, a.swamp, a.flies, a.drums, a.rain);
+    std::string counts = "{";
+    for (int i = 0; i < kSoundCount; ++i) {
+        const int k = s.emittedOf(static_cast<Sound>(i));
+        if (k == 0) continue;
+        if (counts.size() > 1) counts += ",";
+        counts += "\"" + std::string(soundName(static_cast<Sound>(i))) + "\":" + std::to_string(k);
+    }
+    out = "{\"emitted\":" + std::to_string(s.emitted()) + ",\"dropped\":" + std::to_string(s.dropped()) +
+          ",\"tick\":" + std::to_string(app->battle->world().tick()) + ",\"ambience\":" + amb + ",\"counts\":" + counts +
+          "},\"cues\":" + s.logJson(static_cast<size_t>(std::max(n, 0))) + "}";
+    return out.c_str();
+}
+// Weather hook (none is simulated yet): rain from 0 to 1, thunder above a half.
+EMSCRIPTEN_KEEPALIVE void illyria_set_rain(float rain) {
+    if (app) app->rain = std::clamp(rain, 0.0f, 1.0f);
 }
 
 // type: 0 down, 1 move, 2 up, 3 cancel. Coordinates in CSS pixels.
@@ -697,6 +757,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
     if (!app) return;
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
     app->battle->voice().take();  // what was said while skipping ahead goes unheard
+    app->battle->sfx().take();
 }
 // Test hooks for sieges: the battlefield's gate nearest the player's first squad.
 int nearestGate() {
@@ -864,6 +925,19 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
     app->introStartMs = -1;
     app->camera.lookAt(x, y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
+}
+
+// Test hook: the camera close on the `nth` body that died this way (sim::DeathKind:
+// 1 fell, 2 severed, 3 gibbed, 4 pierced, 5 charred); 0 if there is none.
+EMSCRIPTEN_KEEPALIVE int illyria_view_death(int kind, int nth, float distance) {
+    if (!app || !app->battle) return 0;
+    for (const illyria::sim::Unit& u : app->battle->world().units()) {
+        if (u.alive() || static_cast<int>(u.death.kind) != kind || nth-- > 0) continue;
+        const V3 p = toV3(u.pos);
+        illyria_set_camera(p.x, p.y, distance, app->camera.yaw());
+        return 1;
+    }
+    return 0;
 }
 
 // Test hook: build the close-up land around the camera at once (screenshots).

@@ -7,6 +7,8 @@ add_library(illyria_game
     src/battle_command.cpp
     src/battle_orders.cpp
     src/voice.cpp
+    src/sfx.cpp
+    src/battle_deaths.cpp
     src/detail_land.cpp
 )
 target_include_directories(illyria_game PUBLIC include)

@@ -29,6 +29,11 @@ configure_file(index.html "${ILLYRIA_SITE_DIR}/index.html" @ONLY)
 configure_file(manifest.webmanifest "${ILLYRIA_SITE_DIR}/manifest.webmanifest" @ONLY)
 configure_file(icon.svg "${ILLYRIA_SITE_DIR}/icon.svg" COPYONLY)
 configure_file(voice.js "${ILLYRIA_SITE_DIR}/voice.js" COPYONLY)
+configure_file(audio.js "${ILLYRIA_SITE_DIR}/audio.js" COPYONLY)
+configure_file(sfx.js "${ILLYRIA_SITE_DIR}/sfx.js" COPYONLY)
+configure_file(sfx-test.html "${ILLYRIA_SITE_DIR}/sfx-test.html" @ONLY)
+# The old address of the sound test page sends you on to it.
+configure_file(sfx-test/index.html "${ILLYRIA_SITE_DIR}/sfx-test/index.html" COPYONLY)
 add_custom_command(TARGET illyria_web POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:illyria_web>/illyria.js $<TARGET_FILE_DIR:illyria_web>/illyria.wasm "${ILLYRIA_SITE_DIR}/"
 )
@@ -37,9 +42,10 @@ add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
 )
 # The voices: the manifest of lines and whatever has been recorded (tools/voice).
-# The sound test page with its own copy of the sounds and players (game/web/sfx-test).
-add_custom_target(illyria_web_sfx_test ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sfx-test" "${ILLYRIA_SITE_DIR}/sfx-test")
 add_custom_target(illyria_web_voice ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/voice" "${ILLYRIA_SITE_DIR}/voice"
+)
+# The sound effects: the manifest, the rendered (or recorded) files and their stats (tools/sfx).
+add_custom_target(illyria_web_sfx ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sfx" "${ILLYRIA_SITE_DIR}/sfx"
 )

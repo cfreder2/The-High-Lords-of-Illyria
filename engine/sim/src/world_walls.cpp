@@ -156,7 +156,12 @@ void World::keepOnWalk(Unit& u) {
         if (u.airborne && outward > Fixed::zero()) u.vel -= wl.out * outward;
     }
     // The dead lie along the walk, not across it into the stone.
-    if (!u.alive() && !u.airborne) u.facing = u.facing.dot(w.dir) >= Fixed::zero() ? w.dir : -w.dir;
+    // So does the way the killing blow laid him down (the death matrix, which
+    // the body is drawn by), and the arrow in him stays in him.
+    if (!u.alive() && !u.airborne) {
+        u.facing = u.facing.dot(w.dir) >= Fixed::zero() ? w.dir : -w.dir;
+        if (u.death.kind != DeathKind::None) u.death.dir = u.death.dir.dot(w.dir) >= Fixed::zero() ? w.dir : -w.dir;
+    }
 }
 
 bool World::walkShot(const Unit& shooter, const Vec3& target, Vec3& origin) const {

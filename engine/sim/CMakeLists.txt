@@ -11,6 +11,7 @@ add_library(illyria_sim
     src/world_combat.cpp
     src/world_morale.cpp
     src/world_orders.cpp
+    src/world_death.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp

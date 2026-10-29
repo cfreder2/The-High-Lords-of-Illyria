@@ -45,20 +45,21 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 
 | Voice | Used by | Situations | Lines |
 |---|---|---:|---:|
-| Soldier (`soldier`) | Light Infantry, Heavy Infantry, Pikemen, Warriors | 24 | 82 |
-| Archer (`archer`) | Archers | 24 | 81 |
-| Dwarf (`dwarf`) | Dwarves, Dwarf Grenadiers | 25 | 85 |
-| Rider (`rider`) | Light Cavalry, Heavy Cavalry, Wolf Riders | 24 | 81 |
-| Hero (`hero`) | Heroes | 21 | 73 |
-| Wizard (`wizard`) | Wizards, Journeymen | 25 | 85 |
-| Berserker (`berserker`) | Berserkers | 24 | 81 |
-| Archon (`archon`) | Archons | 24 | 81 |
-| Engine crew (`engine`) (else soldier) | Catapult | 14 | 49 |
-| Brute (`brute`) | Giants, Minotaurs | 13 | 43 |
-| Undead (`undead`) | Undead | 8 | 28 |
-| Fiend (`fiend`) | Devils, Demons | 12 | 40 |
-| Beast (`beast`) | Spiders, Griffins, Pegasi, Elephants, Unicorns, Dragons | 12 | 40 |
-| **Total** | | | **849** |
+| Soldier (`soldier`) | Light Infantry, Heavy Infantry, Pikemen, Warriors | 27 | 93 |
+| Archer (`archer`) | Archers | 27 | 92 |
+| Dwarf (`dwarf`) | Dwarves, Dwarf Grenadiers | 29 | 100 |
+| Rider (`rider`) | Light Cavalry, Heavy Cavalry, Wolf Riders | 27 | 92 |
+| Hero (`hero`) | Heroes | 24 | 83 |
+| Wizard (`wizard`) | Wizards, Journeymen | 28 | 96 |
+| Berserker (`berserker`) | Berserkers | 27 | 91 |
+| Archon (`archon`) | Archons | 27 | 90 |
+| Engine crew (`engine`) (else soldier) | Catapult | 17 | 58 |
+| Brute (`brute`) | Giants, Minotaurs | 15 | 49 |
+| Undead (`undead`) | Undead | 11 | 38 |
+| Fiend (`fiend`) | Devils, Demons | 14 | 46 |
+| Beast (`beast`) | Spiders, Griffins, Pegasi, Elephants, Unicorns, Dragons | 14 | 46 |
+| Herald (`herald`) | (the battle's narrator) | 3 | 9 |
+| **Total** | | | **983** |
 
 ## Situations
 
@@ -92,10 +93,18 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 | `victory` | Victory | The battle is won. | 5 |
 | `defeat` | Defeat | The battle is lost. | 5 |
 | `idle` | Idle chatter | Rare, when nothing has happened for a while. | 0 |
+| `pain` | Hurt | Struck and hurt, still standing: a grunt or a cry. | 1 |
+| `death` | Death cry | Killed: a scream, or a last grunt as he goes down. | 2 |
+| `death_moan` | Shot dead | Killed by an arrow: a short, choking moan. | 2 |
+| `cackle` | Grenadier's glee | A grenadier whose satchel has just killed: a manic cackle. | 2 |
+| `groan` | Undead groan | The walking dead, idly: a groan, a click of the jaw. | 0 |
+| `casualties` | Casualties | A quarter of the player's soldiers have fallen. | 4 |
+| `severe_casualties` | Severe casualties | Half of the player's soldiers have fallen. | 4 |
+| `total_casualties` | Total casualties | Four fifths of the player's soldiers have fallen. | 5 |
 
 Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only when all is quiet).
 
-## Soldier (`soldier`): 82 lines
+## Soldier (`soldier`): 93 lines
 
 *Used by:* Light Infantry, Heavy Infantry, Pikemen, Warriors.  
 *Casting:* A seasoned foot soldier of thirty or forty: plain-spoken, rough, dependable. Myth's dwarf-less warriors; no accent needed.
@@ -374,7 +383,42 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `soldier/idle_3.wav` | Wish I was home. | relaxed, bored aside; quiet |
 | `soldier/idle_4.wav` | Anyone got bread? | relaxed, bored aside; quiet |
 
-## Archer (`archer`): 81 lines
+### Soldier: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `soldier/pain_1.wav` | Agh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `soldier/pain_2.wav` | Ungh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `soldier/pain_3.wav` | Argh, damn it! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `soldier/pain_4.wav` | Hnngh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Soldier: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `soldier/death_1.wav` | Aaargh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `soldier/death_2.wav` | Nooo... (falling) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `soldier/death_3.wav` | Aaagh... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `soldier/death_4.wav` | Ugh... (last breath) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Soldier: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `soldier/death_moan_1.wav` | Hukk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `soldier/death_moan_2.wav` | Uhhh... (a gurgling moan) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `soldier/death_moan_3.wav` | Ghh... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Archer (`archer`): 92 lines
 
 *Used by:* Archers.  
 *Casting:* A younger bowman: sharp-eyed, a little cocky, quick-tongued. Lighter and higher than the Soldier.
@@ -652,7 +696,42 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `archer/idle_3.wav` | Wind's shifting. | relaxed, bored aside; quiet |
 | `archer/idle_4.wav` | Bet I hit that crow. | relaxed, bored aside; quiet |
 
-## Dwarf (`dwarf`): 85 lines
+### Archer: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `archer/pain_1.wav` | Ah! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `archer/pain_2.wav` | Ow, curse it! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `archer/pain_3.wav` | Hnn! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `archer/pain_4.wav` | Agh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Archer: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `archer/death_1.wav` | Aaah! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `archer/death_2.wav` | Ah... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `archer/death_3.wav` | Nnno... | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `archer/death_4.wav` | Aaagh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Archer: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `archer/death_moan_1.wav` | Hhk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `archer/death_moan_2.wav` | Ohh... (a short moan) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `archer/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Dwarf (`dwarf`): 100 lines
 
 *Used by:* Dwarves, Dwarf Grenadiers.  
 *Casting:* A gruff old dwarf: deep, gravelly, stubborn, dry humour. Myth's dwarves: a Scots or northern burr suits.
@@ -942,7 +1021,54 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `dwarf/idle_3.wav` | Too much sky up here. | relaxed, bored aside; quiet |
 | `dwarf/idle_4.wav` | Rain again... | relaxed, bored aside; quiet |
 
-## Rider (`rider`): 81 lines
+### Dwarf: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/pain_1.wav` | Grah! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `dwarf/pain_2.wav` | Oof! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `dwarf/pain_3.wav` | Argh, me arm! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `dwarf/pain_4.wav` | Hrrgh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Dwarf: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/death_1.wav` | Aaargh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `dwarf/death_2.wav` | Graah... (falling) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `dwarf/death_3.wav` | Me beard... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `dwarf/death_4.wav` | Hrrk! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Dwarf: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/death_moan_1.wav` | Hrrk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `dwarf/death_moan_2.wav` | Uhhh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `dwarf/death_moan_3.wav` | Ghh... (gurgling) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+### Dwarf: Grenadier's glee (`cackle`)
+
+*When:* A grenadier whose satchel has just killed: a manic cackle.  
+*Delivery:* manic, breathless glee; 1-1.5 s
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/cackle_1.wav` | Heh heh heh HAH! | manic, breathless glee; 1-1.5 s |
+| `dwarf/cackle_2.wav` | Hahaha! Boom! | manic, breathless glee; 1-1.5 s |
+| `dwarf/cackle_3.wav` | Hee hee! Look at 'em fly! | manic, breathless glee; 1-1.5 s |
+| `dwarf/cackle_4.wav` | Ha! Another! | manic, breathless glee; 1-1.5 s |
+
+## Rider (`rider`): 92 lines
 
 *Used by:* Light Cavalry, Heavy Cavalry, Wolf Riders.  
 *Casting:* A horseman: proud, dashing, loud from the saddle. Breathier on the move lines, as if riding.
@@ -1220,7 +1346,42 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `rider/idle_3.wav` | Easy, girl. | relaxed, bored aside; quiet |
 | `rider/idle_4.wav` | Nothing to chase. | relaxed, bored aside; quiet |
 
-## Hero (`hero`): 73 lines
+### Rider: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `rider/pain_1.wav` | Agh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `rider/pain_2.wav` | Hah... hit! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `rider/pain_3.wav` | Ungh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `rider/pain_4.wav` | Argh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Rider: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `rider/death_1.wav` | Aaaagh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `rider/death_2.wav` | Uhh... (falling from the saddle) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `rider/death_3.wav` | Nooo! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `rider/death_4.wav` | Agh... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Rider: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `rider/death_moan_1.wav` | Hukk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `rider/death_moan_2.wav` | Ohh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `rider/death_moan_3.wav` | Ghh... (gurgling) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Hero (`hero`): 83 lines
 
 *Used by:* Heroes.  
 *Casting:* The lord or lady at the army's head: noble, commanding, warm with his own men and iron with the foe. One actor; the enemy's heroes play the same lines pitched darker.
@@ -1466,7 +1627,41 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `hero/idle_3.wav` | I have seen too many wars. | relaxed, bored aside; quiet |
 | `hero/idle_4.wav` | Stay sharp. | relaxed, bored aside; quiet |
 
-## Wizard (`wizard`): 85 lines
+### Hero: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `hero/pain_1.wav` | Hngh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `hero/pain_2.wav` | Argh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `hero/pain_3.wav` | Is that all? | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `hero/pain_4.wav` | Ugh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Hero: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `hero/death_1.wav` | Aaargh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `hero/death_2.wav` | Not... like this... | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `hero/death_3.wav` | Ugh... (falling) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Hero: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `hero/death_moan_1.wav` | Hukk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `hero/death_moan_2.wav` | Uhhh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `hero/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Wizard (`wizard`): 96 lines
 
 *Used by:* Wizards, Journeymen.  
 *Casting:* An old scholar-mage and healer: measured, faintly eerie, a little proud. Speaks as if half his mind is elsewhere.
@@ -1756,7 +1951,42 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `wizard/idle_3.wav` | Do you hear that? | relaxed, bored aside; quiet |
 | `wizard/idle_4.wav` | The air tastes of rain. | relaxed, bored aside; quiet |
 
-## Berserker (`berserker`): 81 lines
+### Wizard: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `wizard/pain_1.wav` | Ah! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `wizard/pain_2.wav` | Oh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `wizard/pain_3.wav` | Ngh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `wizard/pain_4.wav` | Ow! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Wizard: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `wizard/death_1.wav` | Aaah! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `wizard/death_2.wav` | Ohh... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `wizard/death_3.wav` | Nnno... | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `wizard/death_4.wav` | Aaieee! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Wizard: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `wizard/death_moan_1.wav` | Hhk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `wizard/death_moan_2.wav` | Ohh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `wizard/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Berserker (`berserker`): 91 lines
 
 *Used by:* Berserkers.  
 *Casting:* A wild northman, half-mad with battle joy: hoarse, laughing, shouting. Little patience for orders.
@@ -2034,7 +2264,41 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `berserker/idle_3.wav` | Hrrr... | relaxed, bored aside; quiet |
 | `berserker/idle_4.wav` | Need a fight. | relaxed, bored aside; quiet |
 
-## Archon (`archon`): 81 lines
+### Berserker: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `berserker/pain_1.wav` | Raargh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `berserker/pain_2.wav` | Hah! More! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `berserker/pain_3.wav` | Grraah! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `berserker/pain_4.wav` | Hrrgh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Berserker: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `berserker/death_1.wav` | Raaaargh! (dying roar) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `berserker/death_2.wav` | Ha... ha... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `berserker/death_3.wav` | Graaah! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Berserker: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `berserker/death_moan_1.wav` | Hrrk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `berserker/death_moan_2.wav` | Grrr... (a dying growl) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `berserker/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Archon (`archon`): 90 lines
 
 *Used by:* Archons.  
 *Casting:* A winged warrior of the heavens: calm, resonant, unearthly, never hurried. Record dry; the page adds no reverb.
@@ -2312,7 +2576,40 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `archon/idle_3.wav` | All is still. | relaxed, bored aside; quiet |
 | `archon/idle_4.wav` | Patience, mortal. | relaxed, bored aside; quiet |
 
-## Engine crew (`engine`): 49 lines
+### Archon: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `archon/pain_1.wav` | Ah! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `archon/pain_2.wav` | Hnn! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `archon/pain_3.wav` | Oh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Archon: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `archon/death_1.wav` | Aaaah! (a ringing cry) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `archon/death_2.wav` | Ohh... (fading) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `archon/death_3.wav` | Aaah! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Archon: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `archon/death_moan_1.wav` | Hhk... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `archon/death_moan_2.wav` | Ohh... (fading) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `archon/death_moan_3.wav` | Ah... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Engine crew (`engine`): 58 lines
 
 *Used by:* Catapult.  
 *Casting:* A siege engineer shouting to his crew: practical, sweaty, effortful. Falls back to the Soldier voice for the rest.
@@ -2480,7 +2777,40 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `engine/engine_loose_3.wav` | Release! | crew call, effortful as the arm swings |
 | `engine/engine_loose_4.wav` | Stand clear of the arm! | crew call, effortful as the arm swings |
 
-## Brute (`brute`): 43 lines
+### Engine crew: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `engine/pain_1.wav` | Agh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `engine/pain_2.wav` | Ow! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `engine/pain_3.wav` | Ungh! | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Engine crew: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `engine/death_1.wav` | Aaargh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `engine/death_2.wav` | Ugh... (dying) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `engine/death_3.wav` | Aaagh! | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Engine crew: Shot dead (`death_moan`)
+
+*When:* Killed by an arrow: a short, choking moan.  
+*Delivery:* short, choked, as if the breath were cut off; 0.4-0.8 s; quieter
+
+| File | Line | Delivery |
+|---|---|---|
+| `engine/death_moan_1.wav` | Hukk... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `engine/death_moan_2.wav` | Uhhh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+| `engine/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
+
+## Brute (`brute`): 49 lines
 
 *Used by:* Giants, Minotaurs.  
 *Casting:* Huge creatures: deep grunts, bellows and the odd slow word. Record low and close, then it is pitched down further.
@@ -2632,7 +2962,29 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `brute/idle_2.wav` | (scratching grunt) | relaxed, soft; non-verbal: no words; the text describes the sound |
 | `brute/idle_3.wav` | (stomach rumble) | relaxed, soft; non-verbal: no words; the text describes the sound |
 
-## Undead (`undead`): 28 lines
+### Brute: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `brute/pain_1.wav` | (a pained bellow) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `brute/pain_2.wav` | (a grunting snarl) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `brute/pain_3.wav` | (a short roar of pain) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Brute: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `brute/death_1.wav` | (a long dying bellow) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `brute/death_2.wav` | (a groaning roar, falling) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `brute/death_3.wav` | (a final grunt) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+## Undead (`undead`): 38 lines
 
 *Used by:* Undead.  
 *Casting:* The walking dead: moans, rattling breaths, dry hisses. Never words. Record breathy and hollow.
@@ -2729,7 +3081,41 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `undead/idle_2.wav` | (dry creak) | relaxed, soft; non-verbal: no words; the text describes the sound |
 | `undead/idle_3.wav` | (whisper, unintelligible) | relaxed, soft; non-verbal: no words; the text describes the sound |
 
-## Fiend (`fiend`): 40 lines
+### Undead: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `undead/pain_1.wav` | (a dry hiss) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `undead/pain_2.wav` | (bones grinding, a rasp) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `undead/pain_3.wav` | (a hollow moan) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Undead: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `undead/death_1.wav` | (a long rattling wail) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `undead/death_2.wav` | (a sigh as the bones fall apart) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `undead/death_3.wav` | (a hollow shriek, fading) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+### Undead: Undead groan (`groan`)
+
+*When:* The walking dead, idly: a groan, a click of the jaw.  
+*Delivery:* slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s
+
+| File | Line | Delivery |
+|---|---|---|
+| `undead/groan_1.wav` | (a long low groan) | slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s |
+| `undead/groan_2.wav` | (a jaw clicking, then a rasp) | slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s |
+| `undead/groan_3.wav` | (a hollow sigh) | slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s |
+| `undead/groan_4.wav` | (teeth chattering) | slow, hollow, from deep in the throat; jaw clicks are welcome; 1-2 s |
+
+## Fiend (`fiend`): 46 lines
 
 *Used by:* Devils, Demons.  
 *Casting:* Devils and demons: snarls, hissing laughter, guttural roars. No words. Record harsh, then pitched down.
@@ -2870,7 +3256,29 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `fiend/idle_2.wav` | (snuffling) | relaxed, soft; non-verbal: no words; the text describes the sound |
 | `fiend/idle_3.wav` | (crackle and hiss) | relaxed, soft; non-verbal: no words; the text describes the sound |
 
-## Beast (`beast`): 40 lines
+### Fiend: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `fiend/pain_1.wav` | (a shriek of pain) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `fiend/pain_2.wav` | (a hissing snarl) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `fiend/pain_3.wav` | (a high screech) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Fiend: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `fiend/death_1.wav` | (a piercing death shriek) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `fiend/death_2.wav` | (a howling scream) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `fiend/death_3.wav` | (a gurgling screech) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+## Beast (`beast`): 46 lines
 
 *Used by:* Spiders, Griffins, Pegasi, Elephants, Unicorns, Dragons.  
 *Casting:* Beasts of every kind share one set of calls: screeches, trumpets, whinnies, chitters. Pick sounds that could be any of them, or record a mix; the page pitches the enemy's lower.
@@ -3010,4 +3418,64 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `beast/idle_1.wav` | (soft snort) | relaxed, soft; non-verbal: no words; the text describes the sound |
 | `beast/idle_2.wav` | (preening chirr) | relaxed, soft; non-verbal: no words; the text describes the sound |
 | `beast/idle_3.wav` | (rumbling breath) | relaxed, soft; non-verbal: no words; the text describes the sound |
+
+### Beast: Hurt (`pain`)
+
+*When:* Struck and hurt, still standing: a grunt or a cry.  
+*Delivery:* short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch
+
+| File | Line | Delivery |
+|---|---|---|
+| `beast/pain_1.wav` | (a yelp) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `beast/pain_2.wav` | (a pained screech) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+| `beast/pain_3.wav` | (a snorting squeal) | short and sharp, from the gut; 0.2-0.5 s; vary the vowel and pitch |
+
+### Beast: Death cry (`death`)
+
+*When:* Killed: a scream, or a last grunt as he goes down.  
+*Delivery:* a real scream or a last grunt, falling away; 0.5-1.2 s; full voice
+
+| File | Line | Delivery |
+|---|---|---|
+| `beast/death_1.wav` | (a dying scream) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `beast/death_2.wav` | (a long screech) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+| `beast/death_3.wav` | (a last snorting groan) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
+
+## Herald (`herald`): 9 lines
+
+*Used by:* (the battle's narrator).  
+*Casting:* The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses; heard in the centre, never positional.
+
+### Herald: Casualties (`casualties`)
+
+*When:* A quarter of the player's soldiers have fallen.  
+*Delivery:* clear and grave, a herald's report, mono; not shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/casualties_1.wav` | Casualties. | clear and grave, a herald's report, mono; not shouted |
+| `herald/casualties_2.wav` | We are taking casualties. | clear and grave, a herald's report, mono; not shouted |
+| `herald/casualties_3.wav` | Men are falling. | clear and grave, a herald's report, mono; not shouted |
+
+### Herald: Severe casualties (`severe_casualties`)
+
+*When:* Half of the player's soldiers have fallen.  
+*Delivery:* clear and grave, a herald's report, mono; not shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/severe_casualties_1.wav` | Severe casualties. | clear and grave, a herald's report, mono; not shouted |
+| `herald/severe_casualties_2.wav` | Half our strength is gone. | clear and grave, a herald's report, mono; not shouted |
+| `herald/severe_casualties_3.wav` | Severe casualties, my lord. | clear and grave, a herald's report, mono; not shouted |
+
+### Herald: Total casualties (`total_casualties`)
+
+*When:* Four fifths of the player's soldiers have fallen.  
+*Delivery:* clear and grave, a herald's report, mono; not shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/total_casualties_1.wav` | Total casualties. | clear and grave, a herald's report, mono; not shouted |
+| `herald/total_casualties_2.wav` | The army is all but lost. | clear and grave, a herald's report, mono; not shouted |
+| `herald/total_casualties_3.wav` | Total casualties, my lord. | clear and grave, a herald's report, mono; not shouted |
 
