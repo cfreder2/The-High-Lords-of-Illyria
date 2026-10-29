@@ -2204,7 +2204,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
     glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.0f, -4.0f);
+    glPolygonOffset(0.0f, -2.0f);  // constant: a slope term pulls grazing decals through nearby stone
     setCommon(decal_, camera, timeSeconds, gameSeconds);
     const bool realShadows = shadowInfo_[2] > 0;
     for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_}) {
