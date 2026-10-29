@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "illyria/game/battle_capture.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
 #include "illyria/game/sfx.h"
@@ -101,6 +102,7 @@ struct BattleArmy {
 struct BattlePlan {
     sim::Vec3 centre;      // continent coordinates: the town, or the field
     int city = -1;         // the town fought over (continent index), or -1
+    int homeSide = -1;     // whose land it is: 0 the player's, 1 the foe's, -1 nobody's (the home-land edge)
     std::vector<BattleArmy> player, foe;
     std::string foeName;
 };
@@ -336,6 +338,10 @@ public:
     int speed() const { return speed_; }
     // 0 in progress, 1 victory, 2 defeat.
     int outcome() const;
+    // A town's capture point (battle_capture.h); inactive in the field.
+    const CapturePoint& capturePoint() const { return capture_; }
+    // Test hook: the gates battered in and every squad of ours sent to the capture point.
+    void testStorm();
     int aliveCount(const Squad& s) const;
     Standing standing(const Squad& s) const;
     V3 squadCentre(const Squad& s, bool interpolated = true) const;
@@ -385,7 +391,7 @@ private:
     void setUpFord();
     void setUpSiege();
     void setUpCampaign(const BattlePlan& plan);
-    void build(uint64_t seed, const sim::Vec3& centre);
+    void build(uint64_t seed, const sim::Vec3& centre, int homeSide = -1);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
@@ -482,6 +488,8 @@ private:
         uint32_t since;
     };
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
+    CapturePoint capture_;
+    void placeCapturePoint(const sim::Continent::City& town);
 };
 
 template <typename Fn>

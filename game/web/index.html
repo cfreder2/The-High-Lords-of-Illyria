@@ -131,17 +131,51 @@
   #labels .k6 { font-size: 12px; font-style: italic; color: rgba(230, 240, 255, 0.8); }
   /* The campaign: banners on the map, the treasury, the stack and city panels. */
   #banners { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-  #banners .flag {
-    position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;
+  /* A stack's banner: a thin pole standing on the stack, a swallow-tailed
+     pennant in the owner's colour at its top with the strength (and how many
+     armies), a gold crown on the finial for a hero. While its banner goes up
+     over a town the pennant climbs the pole. */
+  #banners .flag { position: absolute; left: 0; top: 0; width: 0; height: 0; --pole: 34px; --up: 1; }
+  #banners .flag.raising { --pole: 50px; }
+  #banners .flag .pole {
+    position: absolute; left: -1px; bottom: 0; width: 2px; height: var(--pole); background: #2a2017;
+    box-shadow: 0 0 0 1px rgba(255, 240, 210, 0.35);
   }
-  #banners .flag span {
-    display: flex; align-items: center; gap: 3px; padding: 2px 6px 3px; border-radius: 3px 3px 9px 9px; font-weight: 700; font-size: 13px;
-    background: var(--c); color: #111; border: 1px solid rgba(0, 0, 0, 0.6); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  #banners .flag .foot { position: absolute; left: -5px; bottom: -3px; width: 10px; height: 5px; border-radius: 50%; background: rgba(0, 0, 0, 0.45); }
+  #banners .flag .cloth {
+    position: absolute; left: 1px; bottom: calc(var(--pole) * var(--up) - 18px); height: 18px; display: flex; align-items: center; gap: 2px;
+    padding: 0 11px 0 5px; background: var(--c); color: #111; font-weight: 700; font-size: 13px; line-height: 1; white-space: nowrap;
+    clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 3px 0 0 rgba(0, 0, 0, 0.25);
   }
-  #banners .flag span i { font-style: normal; font-size: 10px; font-weight: 600; opacity: 0.75; }
-  #banners .flag::after { content: ""; width: 2px; height: 14px; background: #2a2017; }
-  #banners .flag.sel span { outline: 2px solid #8fd0ff; outline-offset: 1px; }
-  #banners .flag.moving span { opacity: 0.88; }
+  #banners .flag .shadow { position: absolute; inset: 0; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.8)); }
+  #banners .flag .cloth i { font-style: normal; font-size: 10px; font-weight: 600; opacity: 0.8; }
+  #banners .flag .cloth em { font-style: normal; font-size: 9px; font-weight: 700; }
+  #banners .flag .crown {
+    position: absolute; left: -6px; bottom: calc(var(--pole) - 3px); width: 12px; height: 12px; line-height: 12px; text-align: center;
+    font-size: 10px; color: #3a2800; background: #e8c478; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  }
+  #banners .flag.sel .cloth { box-shadow: inset 0 0 0 2px #8fd0ff, inset 3px 0 0 rgba(0, 0, 0, 0.25); }
+  #banners .flag.sel .foot { background: #8fd0ff; box-shadow: 0 0 6px #8fd0ff; }
+  #banners .flag.moving .cloth { opacity: 0.9; }
+  /* A banner going up over a town: a bar under its name (the raiser's colour), and what holds it up. */
+  #banners .raise { position: absolute; left: 0; top: 0; transform: translate(-6px, 10px); font-size: 10px; font-weight: 600;
+                    color: var(--ink); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+  #banners .raise .bar { width: 64px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); overflow: hidden; }
+  #banners .raise .bar b { display: block; height: 100%; background: var(--c); }
+  #banners .raise.held { color: #ffd27a; }
+  #banners .raise.losing { color: #ff8a7a; }
+  #labels .k7 { font-size: 11px; font-style: italic; color: #e2d8c4; }
+  #labels .k7 .tw { font-style: normal; font-size: 12px; margin-right: 3px; }
+  /* The siege's capture point, at the top of the battle. */
+  #capture { position: fixed; left: 50%; top: calc(56px + var(--safe-t)); transform: translateX(-50%); width: min(300px, 70vw); padding: 5px 10px 6px;
+             font-size: 12px; text-align: center; z-index: 3; }
+  #capture .bar { position: relative; height: 8px; margin-top: 4px; border-radius: 4px; background: #8a2a20; overflow: hidden; }
+  #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: #3a6ce8; }
+  #capture.taken { border-color: #8fd0ff; }
+  #landTag { position: fixed; left: calc(8px + var(--safe-l)); top: calc(56px + var(--safe-t)); padding: 3px 8px; font-size: 11px; z-index: 3; }
+  #battlePrompt .edges { font-size: 12px; margin: -6px 0 10px; opacity: 0.9; }
+  #battlePrompt .edges b { color: var(--gold); font-weight: 600; }
   #campBar { padding: 6px 12px; font-size: 13px; }
   #campBar b { color: var(--gold); }
   #cityPanel { position: fixed; right: calc(8px + var(--safe-r)); bottom: calc(80px + var(--safe-b)); width: 250px; padding: 10px 12px; z-index: 4; }
@@ -164,7 +198,6 @@
   body.campaign .card .vet.seasoned { color: var(--gold); opacity: 1; }
   body.campaign .card.rare { border-color: rgba(201, 166, 255, 0.7); }
   body.campaign .card.rare .vet::after { content: " · rare"; color: #c9a6ff; }
-  #banners .flag span em { font-style: normal; font-size: 10px; font-weight: 700; }
   #voyage { position: fixed; left: calc(8px + var(--safe-l)); bottom: calc(80px + var(--safe-b)); display: flex; align-items: center; gap: 10px;
             padding: 6px 8px 6px 12px; font-size: 13px; z-index: 4; }
   #voyage.hidden { display: none; }
@@ -265,7 +298,7 @@
     <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
   </div>
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
-  <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities<span id="campLevel"></span></div>
+  <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
   <div id="controls">
     <button id="charge" class="battle-only" aria-label="Send every squad at the nearest enemy">Charge</button>
     <button id="hot" class="battle-only" aria-label="Jump to the fiercest fighting">Fight!</button>
@@ -316,6 +349,8 @@
 </div>
 
 <div id="banners"></div>
+<div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
+<div id="landTag" class="panel battle-only hidden"></div>
 <div id="news" class="panel camp-only hidden popup"><button class="x" aria-label="Close">✕</button><div id="newsList"></div></div>
 <div id="cityPanel" class="panel hidden"></div>
 <div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
@@ -532,11 +567,16 @@
           el.innerHTML = '<span class="mk"></span>';
           el.firstChild.style.background = colour;
           el.appendChild(document.createTextNode(name));
+        } else if (kind === "7") {
+          // An outpost tower, in the colours of whoever holds its land.
+          el.innerHTML = '<span class="tw">♜︎</span>';
+          el.firstChild.style.color = colour;
+          el.appendChild(document.createTextNode(name));
         } else {
           el.textContent = (kIcons[kind] ? kIcons[kind] + " " : "") + name;
         }
       }
-      const w = kind === "5" ? el.offsetWidth / 2 : (kind === "0" || kind === "1") ? 6 : el.offsetWidth / 2;
+      const w = kind === "5" ? el.offsetWidth / 2 : (kind === "0" || kind === "1" || kind === "7") ? 6 : el.offsetWidth / 2;
       el.style.transform = `translate(${(+x - w).toFixed(0)}px, ${(+y - 8).toFixed(0)}px)`;
       n++;
     }
@@ -780,33 +820,60 @@
     campState = JSON.parse(api.campState());
     if (!campState.stacks) return;
     const root = $("banners");
-    while (root.children.length < campState.stacks.length) {
+    const flags = root.getElementsByClassName("flag"), raises = root.getElementsByClassName("raise");
+    while (flags.length < campState.stacks.length) {
       const d = document.createElement("div");
       d.className = "flag";
-      d.innerHTML = "<span><b></b><i></i><em></em></span>";
+      d.innerHTML = '<span class="foot"></span><span class="pole"></span><div class="shadow"><span class="cloth"><b></b><i></i><em></em></span></div><span class="crown">♛</span>';
       root.appendChild(d);
     }
     campState.stacks.forEach((s, k) => {
-      const d = root.children[k];
+      const d = flags[k];
       d.style.display = "";
-      d.style.left = `${s.x}px`;
-      d.style.top = `${s.y}px`;
+      d.style.transform = `translate(${s.x}px, ${s.y + 8}px)`;  // the pennant clears a town's name
       d.style.setProperty("--c", s.color);
       // Light text on dark banners.
       const lum = parseInt(s.color.slice(1, 3), 16) * 0.3 + parseInt(s.color.slice(3, 5), 16) * 0.59 + parseInt(s.color.slice(5, 7), 16) * 0.11;
-      d.firstChild.style.color = lum < 90 ? "#f2e6cc" : "#111";
+      const cloth = d.querySelector(".cloth");
+      cloth.style.color = lum < 90 ? "#f2e6cc" : "#111";
       d.classList.toggle("sel", s.id === campState.selected);
       d.classList.toggle("moving", s.moving);
+      // Raising its banner over a town: the pennant climbs the pole.
+      d.classList.toggle("raising", s.raising >= 0);
+      d.style.setProperty("--up", s.raising >= 0 ? (0.7 + 0.3 * s.raising / 100).toFixed(3) : "1");
+      d.querySelector(".crown").style.display = s.hero ? "" : "none";
       d.querySelector("b").textContent = s.strength;
-      d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.hero ? "♛" : "") + (s.count > 1 ? `×${s.count}` : "");
+      d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.count > 1 ? `×${s.count}` : "");
       d.querySelector("em").textContent = s.vets ? `◆${s.vets > 1 ? s.vets : ""}` : "";  // veterans in the stack
     });
-    for (let k = campState.stacks.length; k < root.children.length; ++k) root.children[k].style.display = "none";
+    for (let k = campState.stacks.length; k < flags.length; ++k) flags[k].style.display = "none";
+    // Banners going up over towns: a bar under the town's name, and what is happening.
+    while (raises.length < campState.banners.length) {
+      const d = document.createElement("div");
+      d.className = "raise";
+      d.innerHTML = '<div class="bar"><b></b></div><span></span>';
+      root.appendChild(d);
+    }
+    campState.banners.forEach((b, k) => {
+      const d = raises[k];
+      d.style.display = "";
+      d.style.left = `${b.x}px`;
+      d.style.top = `${b.y}px`;
+      d.style.setProperty("--c", b.byColor);
+      d.querySelector("b").style.width = `${b.p}%`;
+      const held = b.foes > 0 && b.foes <= b.raisers, losing = b.foes > b.raisers;
+      d.classList.toggle("held", held);
+      d.classList.toggle("losing", losing);
+      const who = b.by === 0 ? "Your banner" : `${b.byName}'s banner`;
+      d.querySelector("span").textContent = losing ? `${who} coming down · ${b.p}%` : held ? `${who} held up · ${b.p}%` : `${who} rising · ${b.p}%`;
+    });
+    for (let k = campState.banners.length; k < raises.length; ++k) raises[k].style.display = "none";
     if (t - campTick < 250) return;
     campTick = t;
     $("campDay").textContent = campState.day;
     $("campGold").textContent = campState.gold;
     $("campCities").textContent = campState.cities;
+    $("campHexes").textContent = campState.land;
     $("campLevel").textContent = campState.hard ? " · Hard lords" : " · Easy lords";
     $("pause").textContent = campState.paused ? "Resume" : "Pause";
     $("speed").textContent = `${campState.speed}×`;
@@ -878,12 +945,22 @@
     const c = campState.city;
     panel.classList.toggle("hidden", !c);
     if (c) {
-      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}|${c.defense}|${c.vectorTo}|${c.choosing}`;
+      const key = `${c.index}|${c.producing}|${c.progress}|${campState.gold}|${c.boatDays}|${c.boats}|${c.defense}|${c.vectorTo}|${c.choosing}|${c.banner}|${c.bannerP}|${c.bannerFoes}|${c.mine}`;
+      // A banner going up over the town (ours over theirs, or theirs over ours).
+      const bannerLine = c.banner < 0 ? "" : `<div class="port">⚑ ${c.banner === 0 ? "Your banner" : `${c.bannerBy}'s banner`} over ${c.name}: ${c.bannerP}%` +
+        (c.bannerFoes ? ` · ${c.bannerFoes} ${c.bannerFoes === 1 ? "army" : "armies"} of another lord near hold it up` : " · rising") +
+        (c.banner === 0 ? ". Stay in the town until it is up; leaving gives it up." : ". Drive them out before it is up! The town trains nothing while they hold it.") + `</div>`;
+      if (key !== campCityKey && !c.mine) {
+        campCityKey = key;
+        panel.innerHTML = `<h3>${c.name}</h3><div class="meta">Walls ${c.defense} · ${c.income} gold a day · not yet yours</div>` + bannerLine +
+          `<button data-close="1"><span>Close</span></button>`;
+        panel.querySelector("button").onclick = () => { api.campCloseCity(); campCityKey = ""; };
+      }
       if (key !== campCityKey) {
         campCityKey = key;
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
         panel.innerHTML = `<h3>${c.name}</h3><div class="meta">Walls ${c.defense} · ${c.income} gold a day` +
-          (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` +
+          (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` + bannerLine +
           c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}${o.levy > 0 ? " levy" : ""}"><span>${o.type} <small>(${o.strength})</small>` +
             (o.levy > 0 ? ` <small class="lv">levy, ${o.levy} left</small>` : "") + `</span><span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
           `<button data-i="-1"><span>Stop training</span></button>` +
@@ -938,7 +1015,18 @@
     if (pr) {
       $("promptTitle").textContent = `Battle at ${pr.where}`;
       $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).` +
-        (pr.afloat ? " Fought from the boats (armies on a deck fight a point weaker): the dice decide." : "");
+        (pr.land ? ` On ${pr.land === "yours" ? "your" : `${pr.land}'s`} land.` : "") +
+        (pr.afloat ? " Fought from the boats (armies on a deck fight a point weaker): the dice decide." : "") +
+        (pr.town && !pr.afloat ? " Win, then hold the town while your banner rises (in 3D: take its courtyard)." : "");
+      // The small edges each side brings: a few percent each, never the whole battle.
+      let ed = $("promptEdges");
+      if (!ed) {
+        ed = document.createElement("div");
+        ed.id = "promptEdges";
+        ed.className = "edges";
+        $("promptText").after(ed);
+      }
+      ed.innerHTML = `<b>Your edges:</b> ${pr.myEdges || "none"}<br><b>Theirs:</b> ${pr.theirEdges || "none"}`;
       $("promptFight").style.display = pr.afloat ? "none" : "";
     }
     if (campState.winner) {
@@ -963,6 +1051,18 @@
     selected = s.selected;
     $("pause").textContent = s.paused ? "Resume" : "Pause";
     $("speed").textContent = `${s.speed}×`;
+    // The town's heart: whoever has more men in the courtyard raises their flag; the attackers' at the top takes the town.
+    const cap = s.capture;
+    $("capture").classList.toggle("hidden", !cap.on);
+    if (cap.on) {
+      $("captureBar").style.width = `${cap.p}%`;
+      $("capture").classList.toggle("taken", cap.taken);
+      $("captureText").textContent = cap.taken ? "The town is yours: your flag flies over its courtyard" :
+        `Take the courtyard: your flag ${cap.p}% · ${cap.att} of yours there, ${cap.def} of theirs` +
+        (cap.att > cap.def ? " (rising)" : cap.def > cap.att ? " (falling)" : cap.att ? " (held)" : "");
+    }
+    $("landTag").classList.toggle("hidden", s.land < 0);
+    $("landTag").textContent = s.land === 0 ? "⚑ Your land: home edge +3%" : s.land === 1 ? "⚑ Their land: their home edge +3%" : "";
     const enemies = s.squads.filter((q) => q.owner === 1);
     scenario = s.scenario;
     $("scenario").textContent = s.scenario === 1 ? "Ford" : "Siege";
@@ -972,7 +1072,8 @@
     $("actions").classList.toggle("hidden", s.selCount === 0);
     $("selInfo").classList.toggle("hidden", s.selCount === 0);
     if (s.selCount === 0) $("picker").classList.add("hidden");
-    $("selInfo").textContent = s.selCount ? `${s.selCount} ${s.selCount === 1 ? s.selLabel : s.selLabel === "Mixed" ? "of mixed kinds" : s.selLabel}` : "";
+    // With the selection's small edges (the first soldier's: his land, his ground, his rank, a hero near; the high ground counts blow by blow).
+    $("selInfo").textContent = s.selCount ? `${s.selCount} ${s.selCount === 1 ? s.selLabel : s.selLabel === "Mixed" ? "of mixed kinds" : s.selLabel}` + (s.edges ? ` · edges: ${s.edges}` : "") : "";
     const fm = formations.find((f) => f.id === s.formationId);
     const fmKey = `${s.formationId}`;
     if ($("formation").dataset.key !== fmKey) {

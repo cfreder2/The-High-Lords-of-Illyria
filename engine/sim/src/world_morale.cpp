@@ -28,9 +28,9 @@ constexpr int32_t kOutnumberedShock = 10;
 constexpr int32_t kCalmTicks = 2 * kTicksPerSecond;
 constexpr int32_t kRecoverBase = 15, kRecoverHero = 15, kRecoverPerFriend = 2, kRecoverFriendsMax = 6;
 constexpr Fixed kLeadReach = Fixed::fromInt(30);
-// Veterans are steadier: each step of veterancy takes 8% off a shock, and
+// Veterans are steadier: each step of veterancy takes 3% off a shock, and
 // they recover a quarter faster per step.
-constexpr int32_t kVetSteadyPct = 8, kVetRecoverPct = 25;
+constexpr int32_t kVetSteadyPct = 3, kVetRecoverPct = 25;  // (8% before the small edges: a rank is a slight edge, edges.h)
 // A broken unit rallies at this morale with no foe within kSafeReachM metres; each
 // veterancy step lowers the bar by kRallyPerStep and shortens the reach by
 // kSafePerStepM metres, so elites come back to the fight first. It flees from

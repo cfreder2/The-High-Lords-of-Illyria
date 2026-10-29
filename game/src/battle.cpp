@@ -84,21 +84,24 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     build(seed, centre);
     if (scenario_ == Scenario::Siege) setUpSiege();
     else setUpFord();
+    if (scenario_ == Scenario::Siege) placeCapturePoint(siegeTown(*continent_));
     if (scenario_ == Scenario::Siege) holdGates(kEnemy);
     finish();
 }
 
 Battle::Battle(uint64_t seed, const BattlePlan& plan) : scenario_(Scenario::Campaign) {
     continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
-    build(seed, plan.centre);
+    build(seed, plan.centre, plan.homeSide);
     setUpCampaign(plan);
+    if (plan.city >= 0) placeCapturePoint(continent_->cities()[static_cast<size_t>(plan.city)]);
     if (plan.city >= 0) holdGates(kEnemy);
     finish();
 }
 
-void Battle::build(uint64_t seed, const sim::Vec3& centre) {
+void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide) {
     sim::WorldConfig cfg;
     cfg.seed = seed;
+    cfg.homeSide = homeSide;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
@@ -254,7 +257,7 @@ Standing Battle::standing(const Squad& s) const {
         return st;
     }
     st.rank = alive > 0 ? (ranks * 2 + alive) / (alive * 2) : 0;  // rounded average
-    st.strength = std::min(9, sim::warlordsStrength(s.type) + st.rank + bless);
+    st.strength = std::min(9, sim::warlordsStrength(s.type) + bless);  // a rank is a small edge, not strength (edges.h)
     return st;
 }
 
@@ -546,6 +549,7 @@ void Battle::step() {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     stepMs_ = stepMs_ * 0.95 + ms * 0.05;
     pending_.clear();
+    capture_.step(*world_);  // battle_capture.cpp
     collectEvents();
     voice_.observe(*world_, outcome());
     presentDeaths();
@@ -951,6 +955,7 @@ int Battle::outcome() const {
     }
     if (!enemyAlive) return 1;
     if (!playerAlive) return 2;
+    if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
     return 0;
 }
 

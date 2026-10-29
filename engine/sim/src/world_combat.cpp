@@ -30,15 +30,6 @@ constexpr Fixed kStrikeCos = Fixed::fromRatio(7071, 10000);
 constexpr Fixed kCloseIn = Fixed::fromRatio(1, 10);
 // A foe is kept while within this much more than reach (bodies jostle).
 constexpr Fixed kFoeSlack = Fixed::fromRatio(1, 2);
-// Melee terrain: Warlords' bonuses in the open and in the hills (rise over run).
-constexpr Fixed kOpenSlope = Fixed::fromRatio(3, 50);
-constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
-// High ground: striking down the slope at a foe adds this much melee damage
-// per unit of grade between them (a 1 in 3 slope: +20%), within limits; blows
-// struck downhill also throw harder.
-constexpr int32_t kHighGroundPctPerGrade = 60;
-constexpr int32_t kHighGroundPctMax = 35;
-constexpr int32_t kHighGroundPctMin = -25;
 // Melee blows are blocked less often than arrows: the attacker can work round the shield.
 constexpr Fixed kMeleeBlockScale = Fixed::fromRatio(7, 10);
 // Charges. Momentum builds toward the rider's speed by this share a tick
@@ -60,8 +51,10 @@ constexpr int32_t kChargedShock = 150;
 constexpr int32_t kChargeDownhillPctPerGrade = 200, kChargeDownhillPctMax = 100;
 constexpr int32_t kChargeUphillPctPerGrade = 250, kChargeUphillPctMin = -75;
 // Veterans, per step of veterancy (a soldier's rank, a hero's level in thirds,
-// each blessing): blows and reloads 7% quicker, back on their feet 15% sooner,
-// 6% less damage taken. At most five steps.
+// each blessing): back on their feet 15% sooner. Each blessing (the gods'
+// favour, and the artifacts the campaign counts with them; not a rank, whose
+// worth in a fight is a small edge: world_edges.cpp): blows and reloads 7%
+// quicker and 6% less damage taken. At most five steps.
 constexpr int32_t kVetQuickPct = 7, kVetRecoverPct = 15, kVetDefencePct = 6, kVetMaxSteps = 5;
 // Ticks a thrown soldier needs to get back up (a recruit).
 constexpr int32_t kRecoverTicks = kTicksPerSecond * 2 / 3;
@@ -96,14 +89,14 @@ int32_t World::veteranSteps(const Unit& u) const { return std::min(kVetMaxSteps,
 int32_t World::attackTicks(const Unit& u, int32_t baseTicks) const {
     // A wavering soldier hangs back: a quarter slower.
     const int32_t ticks = u.wavering() ? baseTicks * 5 / 4 : baseTicks;
-    return std::max(1, ticks * (100 - kVetQuickPct * veteranSteps(u)) / 100);
+    return std::max(1, ticks * (100 - kVetQuickPct * std::min(kVetMaxSteps, u.blessings)) / 100);
 }
 
 int32_t World::recoverTicks(const Unit& u) const { return kRecoverTicks * (100 - kVetRecoverPct * veteranSteps(u)) / 100; }
 
 int32_t World::defendedDamage(const Unit& u, int32_t amount) const {
     if (amount <= 0) return amount;
-    return std::max(1, amount * (100 - kVetDefencePct * veteranSteps(u)) / 100);
+    return std::max(1, amount * (100 - kVetDefencePct * std::min(kVetMaxSteps, u.blessings)) / 100);
 }
 
 int32_t World::sidePct(HitSide side, bool missile) {
@@ -157,14 +150,12 @@ Unit* World::meleeTarget(Unit& u, EntityId lastFoe) {
 }
 
 int32_t World::blowPct(const Unit& u, const Unit& enemy, Fixed dist, Fixed dz) const {
-    int32_t pct = 100;
-    const Fixed slope = slopeAt(u.pos.x, u.pos.y);
-    if (slope <= kOpenSlope) pct += u.stats.terrain.openPct;
-    if (slope >= kHillsSlope) pct += u.stats.terrain.hillsPct;
+    // The weapon against riders, a hero's levels and blessings, and the
+    // small edges (world_edges.cpp): the ground, the rank, a hero near, and
+    // the high ground over this foe.
+    int32_t pct = gracePct(u) + edgesOf(u, dist, dz).total();
     if (enemy.stats.mounted) pct += u.stats.melee.bonusVsMountedPct;
-    // The high ground: striking down at a foe below is easier than reaching up.
-    if (dist > Fixed::zero()) pct += std::clamp(floorPct(-dz / dist * kHighGroundPctPerGrade), kHighGroundPctMin, kHighGroundPctMax);
-    return std::max(10, pct + prowessPct(u) - 100);
+    return std::max(10, pct);
 }
 
 void World::fight(Unit& u, Unit& enemy) {
@@ -201,7 +192,7 @@ void World::fight(Unit& u, Unit& enemy) {
         impacts_.push_back({ImpactEvent::Kind::Blocked, at, dir, kNoEntity, enemy.id, false, {}, -1, m.damageType});
         return;
     }
-    const int32_t amount = m.damage * blowPct(u, enemy, dist, dz) / 100 * sidePct(side, false) / 100;
+    const int32_t amount = scaledDamage(m.damage, blowPct(u, enemy, dist, dz), sidePct(side, false));
     const bool killed = damage(enemy, amount, &u, {m.damageType, dir, at});
     shakeBySide(enemy, side, false);
     if (m.knockback > Fixed::zero()) {
@@ -234,7 +225,7 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const MeleeWeapon& pike = enemy.stats.melee;
     if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() &&
         (!enemy.hasMoveTarget || enemy.engageFoe != kNoEntity)) {
-        const int32_t amount = pike.damage * blowPct(enemy, u, dist, -dz) / 100 + impact / 2;
+        const int32_t amount = scaledDamage(pike.damage, blowPct(enemy, u, dist, -dz)) + impact / 2;
         const Vec3 at = u.pos + up(u.stats.height * 3 / 5);
         const bool killed = damage(u, amount, &enemy, {pike.damageType, -dir, at});
         knock(u, -dir, weight * kChargeKnock);
@@ -245,7 +236,7 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
     // A shield turns the lance or sword but not the weight behind it.
     const bool blocked = shieldBlocks(enemy, dir, kMeleeBlockScale);
-    const int32_t blow = blocked ? 0 : u.stats.melee.damage * blowPct(u, enemy, dist, dz) / 100;
+    const int32_t blow = blocked ? 0 : scaledDamage(u.stats.melee.damage, blowPct(u, enemy, dist, dz));
     const int32_t amount = (blow + (blocked ? impact / 2 : impact)) * sidePct(side, false) / 100;
     const bool killed = damage(enemy, amount, &u, {u.stats.melee.damageType, dir, at});
     shakeMorale(enemy, kChargedShock * sidePct(side, false) / 100);

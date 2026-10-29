@@ -96,6 +96,9 @@ struct App {
         std::vector<V3> pier;
         std::vector<float> pierYaw;
         std::map<uint32_t, float> heading;  // each boat's last course, so it turns smoothly
+        // What the renderer was last given: the towns' holders (tower banners) and the land's reckoning.
+        std::vector<uint8_t> owners;
+        int64_t territoryTick = -1;
     } camp;
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
@@ -294,6 +297,72 @@ void placeBoats() {
     app->renderer.setBoats(out);
 }
 
+// The flags on poles, every frame: on the campaign map the banners rising
+// over towns being taken (the old colours coming down as the new go up) and
+// the outposts' flags, with the towns' tower banners and the land in their
+// holders' colours; in a siege, the capture point's pole.
+void placeFlags() {
+    using C = illyria::sim::Campaign;
+    std::vector<Renderer::Flag> flags;
+    const V3 o = app->battle->origin();
+    if (app->camp.on) {
+        App::CampaignView& cv = app->camp;
+        const C& c = *cv.c;
+        std::vector<uint8_t> owners;
+        for (const C::CityState& cs : c.cities()) owners.push_back(cs.owner);
+        if (owners != cv.owners) {
+            cv.owners = owners;
+            std::vector<V3> colours;
+            for (uint8_t w : owners) colours.push_back(factionColor(w));
+            app->renderer.setCityColours(colours);
+        }
+        const int64_t reckoned = c.tick() / C::kTerritoryTicks;
+        if (reckoned != cv.territoryTick) {
+            cv.territoryTick = reckoned;
+            std::vector<uint8_t> rgba(c.hexes().size() * 4, 0);
+            for (size_t k = 0; k < c.hexes().size(); ++k) {
+                const C::Hex& h = c.hexes()[k];
+                if (h.owner >= C::kNeutral) continue;
+                const V3 col = factionColor(h.owner);
+                rgba[k * 4] = static_cast<uint8_t>(col.x * 255);
+                rgba[k * 4 + 1] = static_cast<uint8_t>(col.y * 255);
+                rgba[k * 4 + 2] = static_cast<uint8_t>(col.z * 255);
+                rgba[k * 4 + 3] = static_cast<uint8_t>(90 + 165 * h.claim / C::kClaimFull);  // firmer, stronger
+            }
+            app->renderer.setTerritory(rgba, C::kHexCols, C::kHexRows, 1.0f);
+        }
+        // Larger than life from high up, so they read on a phone.
+        const float s = std::clamp(app->camera.distance() / 2600.0f, 0.4f, 3.0f);
+        for (size_t i = 0; i < c.cities().size(); ++i) {
+            const C::CityState& cs = c.cities()[i];
+            if (cs.banner == C::kNeutral) continue;
+            const illyria::sim::Continent::Castle& k = c.continent().cities()[i].castle;
+            V3 base = toV3(k.keep) - V3{o.x, o.y, 0};
+            base.z = app->battle->heightAt(base.x, base.y) + static_cast<float>(k.keepHeight.toDouble());
+            const float p = static_cast<float>(cs.bannerProgress) / C::kBannerFull;
+            flags.push_back({base, 70 * s, 1 - p, 26 * s, factionColor(cs.owner)});
+            flags.push_back({base, 70 * s, p, 26 * s, factionColor(cs.banner)});
+        }
+        for (const C::Outpost& op : c.outposts()) {
+            V3 base{C::centre(op.cx) - o.x, C::centre(op.cy) - o.y, 0};
+            base.z = app->battle->heightAt(base.x, base.y);
+            const C::Hex& h = c.hexes()[static_cast<size_t>(op.hex)];
+            flags.push_back({base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, factionColor(h.owner)});
+        }
+    } else {
+        app->renderer.setTerritory({}, 0, 0, 0);
+        const CapturePoint& cap = app->battle->capturePoint();
+        if (cap.active()) {
+            V3 base = toV3(cap.at());
+            base.z = app->battle->heightAt(base.x, base.y);
+            const float p = static_cast<float>(cap.progress()) / CapturePoint::kFull;
+            flags.push_back({base, 14, 1 - p, 3.4f, {0.86f, 0.18f, 0.14f}});  // the battle's colours: the defenders red
+            flags.push_back({base, 14, p, 3.4f, {0.22f, 0.42f, 0.92f}});  // ... the player blue
+        }
+    }
+    app->renderer.setFlags(flags);
+}
+
 // Whether the pending battle is fought from a boat or against one (settled with the dice).
 bool pendingAfloat(const illyria::sim::Campaign& c) {
     const illyria::sim::Campaign::Pending* p = c.pending();
@@ -344,7 +413,8 @@ void campaignTap(float px, float py) {
     if (nearest && nearest->owner == 0 && nearest->id != cv.selected) {
         cv.selected = nearest->id;
         cv.city = c.cityAt(nearest->cx, nearest->cy);
-        if (cv.city >= 0 && c.cities()[static_cast<size_t>(cv.city)].owner != 0) cv.city = -1;
+        // A town of ours, or one our banner is going up over (its panel shows how far).
+        if (cv.city >= 0 && c.cities()[static_cast<size_t>(cv.city)].owner != 0 && c.cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
         return;
     }
     V3 hit;
@@ -438,6 +508,7 @@ void frame() {
         app->hushed = false;
         playSounds(app->battle->sfx(), app->ambienceSeen);
     }
+    placeFlags();
     const double drawStart = emscripten_get_now();
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
     app->drawMs = app->drawMs * 0.9 + (emscripten_get_now() - drawStart) * 0.1;
@@ -1010,6 +1081,16 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
             add(2 + static_cast<int>(site.kind), explored ? V3{0.6f, 0.6f, 0.6f} : V3{1, 1, 1}, site.pos, explored ? site.name + " (explored)" : site.name);
         }
     }
+    // The campaign's outpost towers (kind 7), in the colours of whoever holds their land.
+    if (app->camp.on && d < 9000) {
+        const illyria::sim::Campaign& cc = *app->camp.c;
+        for (const illyria::sim::Campaign::Outpost& op : cc.outposts()) {
+            const uint8_t w = cc.hexes()[static_cast<size_t>(op.hex)].owner;
+            const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cx)),
+                                        illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cy)), {}};
+            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 4500 && !op.name.empty() ? op.name + " tower" : "");
+        }
+    }
     for (const auto& l : c.labels()) {
         if (l.kind == 0 && d > 3000) add(5, {1, 1, 1}, l.pos, l.name);
         else if (l.kind != 0 && l.kind != 4 && d > 2000 && d < 12000) add(6, {1, 1, 1}, l.pos, l.name);
@@ -1058,6 +1139,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_fight() {
     for (const C::Stack& s : cv.c->stacks())
         if (s.cx == p->cx && s.cy == p->cy && s.owner != 0) foe = s.owner;
     for (const illyria::sim::Army* a : cv.c->pendingDefenders()) plan.foe.push_back(take(a, theirs));
+    // Whose land it is (the home-land edge): ours, the defenders', or nobody's.
+    const uint8_t land = cv.c->landOwner(p->cx, p->cy);
+    plan.homeSide = land == 0 ? Battle::kPlayer : land != C::kNeutral && land == foe ? Battle::kEnemy : -1;
     plan.foeName = plan.city >= 0 ? (foe == C::kNeutral ? "Garrison of " : "Defenders of ") + cv.c->continent().cities()[static_cast<size_t>(plan.city)].name
                                   : cv.c->sides()[foe == C::kNeutral ? 0 : foe].name;
     cv.backdrop = std::move(app->battle);
@@ -1085,8 +1169,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_return() {
     App::CampaignView& cv = app->camp;
     std::vector<illyria::sim::Campaign::Outcome> outcomes;
     for (const ArmyResult& r : app->battle->results()) outcomes.push_back({r.id, r.soldiers, r.kills, r.rank});
-    cv.c->applyBattle(outcomes, app->battle->outcome() == 1);
+    // Taken at the capture point: the banner rose in the battle itself.
+    cv.c->applyBattle(outcomes, app->battle->outcome() == 1, app->battle->capturePoint().taken());
     app->battle = std::move(cv.backdrop);
+    cv.owners.clear();  // the map's dressing goes up again
+    cv.territoryTick = -1;
     app->renderer.reset(*app->battle);
     app->renderer.setShowUnits(false);
     cv.fighting = false;
@@ -1135,6 +1222,45 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_veterans() {
     cv.c->applyBattle(out, true);
     for (size_t i = 0; i < cv.c->cities().size(); ++i)
         if (cv.c->continent().cities()[i].capital && cv.c->cities()[i].owner == 0) cv.city = static_cast<int32_t>(i);
+}
+// Test hooks for banners. Storm a siege's capture point (gates down, every
+// squad of ours to it). Take the neutral town nearest the selected stack (a
+// strong stack of ours beside it, the dice settle it), let its banner climb
+// for `ticks`, with an enemy stack of `foes` armies next door if asked, and
+// look at it from above, paused.
+EMSCRIPTEN_KEEPALIVE void illyria_test_storm() {
+    if (app && !app->camp.on) app->battle->testStorm();
+}
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_banner(int ticks, int foes) {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return -1;
+    App::CampaignView& cv = app->camp;
+    const C::Stack* s = cv.c->findStack(cv.selected);
+    if (!s) return -1;
+    int best = 1 << 30, target = -1;
+    for (size_t i = 0; i < cv.c->cities().size(); ++i) {
+        const C::CityState& city = cv.c->cities()[i];
+        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
+        if (city.owner == C::kNeutral && city.banner == C::kNeutral && d < best) {
+            best = d;
+            target = static_cast<int>(i);
+        }
+    }
+    if (target < 0) return -1;
+    const C::CityState& t = cv.c->cities()[static_cast<size_t>(target)];
+    const illyria::sim::UnitType h = illyria::sim::UnitType::HeavyCavalry;
+    cv.selected = cv.c->raise(0, t.cx - 1, t.cy, {h, h, h, h, h, h});
+    if (foes > 0) cv.c->raise(3, t.cx + 1, t.cy + 1, std::vector<illyria::sim::UnitType>(static_cast<size_t>(foes), illyria::sim::UnitType::LightInfantry));
+    cv.c->move(cv.selected, t.cx, t.cy);
+    for (int k = 0; k < C::kTicksPerDay && !cv.c->pending(); ++k) cv.c->step();
+    if (cv.c->pending()) cv.c->resolvePending();
+    for (int k = 0; k < ticks && t.banner != C::kNeutral; ++k) cv.c->step();
+    cv.paused = true;
+    cv.city = target;
+    const V3 o = app->battle->origin();
+    const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
+    app->camera.lookAt(at.x, at.y - 150, 1500);
+    return target;
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.
@@ -1258,7 +1384,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     App::CampaignView& cv = app->camp;
     const C& c = *cv.c;
     std::string& s = cv.json;
-    char buf[512];
+    char buf[1024];
     const C::Stack* sel = c.findStack(cv.selected);
     if (!sel) cv.selected = 0;
     std::snprintf(buf, sizeof buf, "{\"day\":%u,\"gold\":%d,\"cities\":%d,\"speed\":%d,\"paused\":%s,\"winner\":%d,\"selected\":%u,\"hard\":%s,\"stacks\":[",
@@ -1283,14 +1409,53 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             vets += !a.hero() && a.rank >= 2;  // veterans and elites
         }
         const V3 col = factionColor(st.owner);
-        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"vets\":%d,\"moving\":%s,\"boat\":%s,\"color\":\"#%02x%02x%02x\"}",
+        // Standing in a town while its banner goes up: the stack's flag says so.
+        const int32_t town = c.cityAt(st.cx, st.cy);
+        const int raising = st.path.empty() && town >= 0 && c.cities()[static_cast<size_t>(town)].banner == st.owner
+                                ? 100 * c.cities()[static_cast<size_t>(town)].bannerProgress / C::kBannerFull : -1;
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"vets\":%d,\"moving\":%s,\"boat\":%s,\"raising\":%d,\"color\":\"#%02x%02x%02x\"}",
                       first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false", vets,
-                      st.path.empty() ? "false" : "true", st.boat ? "true" : "false", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255),
-                      static_cast<int>(col.z * 255));
+                      st.path.empty() ? "false" : "true", st.boat ? "true" : "false", raising, static_cast<int>(col.x * 255),
+                      static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
         s += buf;
         first = false;
     }
-    s += "],\"armies\":[";
+    // Banners going up over towns: where, whose, how far, and whether enemies near have stopped them.
+    s += "],\"banners\":[";
+    {
+        bool any = false;
+        const V3 o = app->battle->origin();
+        const auto hex = [](const V3& col) {
+            char h[8];
+            std::snprintf(h, sizeof h, "#%02x%02x%02x", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
+            return std::string(h);
+        };
+        for (size_t i = 0; i < c.cities().size(); ++i) {
+            const C::CityState& cs = c.cities()[i];
+            if (cs.banner == C::kNeutral) continue;
+            const illyria::sim::Continent::City& town = c.continent().cities()[i];
+            V3 at = toV3(town.pos) - V3{o.x, o.y, 0};
+            at.z = app->battle->heightAt(at.x, at.y) + 10;
+            float px, py;
+            if (!app->camera.project(at, px, py)) continue;
+            px /= app->pixelRatio;
+            py /= app->pixelRatio;
+            int32_t raisers = 0;
+            for (const C::Stack& st : c.stacks())
+                if (st.owner == cs.banner && st.cx == cs.cx && st.cy == cs.cy) raisers += static_cast<int32_t>(st.armies.size());
+            std::snprintf(buf, sizeof buf,
+                          "%s{\"city\":%zu,\"name\":\"%s\",\"x\":%.0f,\"y\":%.0f,\"p\":%d,\"by\":%d,\"owner\":%d,\"byColor\":\"%s\",\"ownerColor\":\"%s\","
+                          "\"foes\":%d,\"raisers\":%d,\"byName\":\"%s\"}",
+                          any ? "," : "", i, town.name.c_str(), px, py, 100 * cs.bannerProgress / C::kBannerFull, cs.banner, cs.owner,
+                          hex(factionColor(cs.banner)).c_str(), hex(factionColor(cs.owner)).c_str(), c.bannerContest(static_cast<int32_t>(i), cs.banner),
+                          raisers, c.sides()[cs.banner].name.c_str());
+            s += buf;
+            any = true;
+        }
+    }
+    std::snprintf(buf, sizeof buf, "],\"land\":%d,\"landGold\":%d", c.hexesHeld(0), c.hexesHeld(0) / C::kHexesPerGold);
+    s += buf;
+    s += ",\"armies\":[";
     if (sel) {
         for (size_t k = 0; k < sel->armies.size(); ++k) {
             const illyria::sim::Army& a = sel->armies[k];
@@ -1372,7 +1537,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             s += buf;
             any = true;
         }
-        s += "]}";
+        s += "]";
+        const uint8_t land = c.landOwner(cs.cx, cs.cy);
+        std::snprintf(buf, sizeof buf, ",\"mine\":%s,\"landOwner\":\"%s\",\"banner\":%d,\"bannerP\":%d,\"bannerBy\":\"%s\",\"bannerFoes\":%d}", cs.owner == 0 ? "true" : "false",
+                      land < C::kNeutral ? c.sides()[land].name.c_str() : "", cs.banner == C::kNeutral ? -1 : cs.banner,
+                      100 * cs.bannerProgress / C::kBannerFull, cs.banner < C::kNeutral ? c.sides()[cs.banner].name.c_str() : "",
+                      cs.banner < C::kNeutral ? c.bannerContest(cv.city, cs.banner) : 0);
+        s += buf;
     }
     // A battle waiting for the player's choice.
     if (const C::Pending* p = c.pending()) {
@@ -1380,9 +1551,21 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         int32_t mine = 0, theirs = 0;
         for (const illyria::sim::Army* a : c.pendingAttackers()) mine += C::strength(*a);
         for (const illyria::sim::Army* a : c.pendingDefenders()) theirs += C::strength(*a);
-        std::snprintf(buf, sizeof buf, ",\"pending\":{\"where\":\"%s\",\"mine\":%zu,\"theirs\":%zu,\"myStrength\":%d,\"theirStrength\":%d,\"afloat\":%s}",
+        // The small edges each side brings (the best of its armies'), and whose land it is.
+        const C::Stack* att = c.findStack(p->stack);
+        uint8_t defOwner = city >= 0 ? c.cities()[static_cast<size_t>(city)].owner : C::kNeutral;
+        for (const C::Stack& st : c.stacks())
+            if (city < 0 && st.cx == p->cx && st.cy == p->cy && st.owner != 0 && !st.armies.empty()) defOwner = st.owner;
+        const int32_t ax = att ? att->cx : -1, ay = att ? att->cy : -1;
+        const std::string myEdges = c.stackEdges(c.pendingAttackers(), 0, p->cx, p->cy, false, ax, ay).describe();
+        const std::string theirEdges = c.stackEdges(c.pendingDefenders(), defOwner, p->cx, p->cy, true, ax, ay).describe();
+        const uint8_t land = c.landOwner(p->cx, p->cy);
+        std::snprintf(buf, sizeof buf,
+                      ",\"pending\":{\"where\":\"%s\",\"mine\":%zu,\"theirs\":%zu,\"myStrength\":%d,\"theirStrength\":%d,\"afloat\":%s,"
+                      "\"myEdges\":\"%s\",\"theirEdges\":\"%s\",\"land\":\"%s\",\"town\":%s}",
                       city >= 0 ? c.continent().cities()[static_cast<size_t>(city)].name.c_str() : c.navigable(p->cx, p->cy) ? "sea" : "the open field",
-                      c.pendingAttackers().size(), c.pendingDefenders().size(), mine, theirs, pendingAfloat(c) ? "true" : "false");
+                      c.pendingAttackers().size(), c.pendingDefenders().size(), mine, theirs, pendingAfloat(c) ? "true" : "false", myEdges.c_str(),
+                      theirEdges.c_str(), land == 0 ? "yours" : land < C::kNeutral ? c.sides()[land].name.c_str() : "", city >= 0 ? "true" : "false");
         s += buf;
     }
     // The latest fights and the player's heroes' deeds, newest first.
@@ -1418,13 +1601,27 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     if (!app) return "{}";
     const Battle& b = *app->battle;
     std::string& s = app->hud;
-    char buf[512];
+    char buf[1024];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
                   "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
                   b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str());
     s = buf;
+    // The town's capture point, whose land this is, and the selection's small edges.
+    {
+        const CapturePoint& cap = b.capturePoint();
+        std::string edges;
+        for (illyria::sim::EntityId id : b.selectedAlive()) {
+            edges = b.world().edgesOf(*b.world().findUnit(id)).describe();
+            break;
+        }
+        const int home = b.world().homeSide();
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"land\":%d,\"edges\":\"%s\",",
+                      cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
+                      cap.taken() ? "true" : "false", home, edges.c_str());
+        s += buf;
+    }
     // The selection (how many, in what formation, of what kind) and the saved groups.
     {
         const auto& units = b.world().units();

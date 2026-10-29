@@ -197,7 +197,7 @@ TEST(momentum_is_lost_when_stopped) {
     CHECK(w.findUnit(k)->momentum == Fixed::zero());
 }
 
-TEST(veterans_strike_faster_and_take_less_damage) {
+TEST(veterans_have_a_small_edge_and_blessings_quicken_the_arm) {
     const auto blows = [](int32_t rank) {
         World w(WorldConfig{});
         const EntityId b = w.spawnUnit(0, {m(2), m(0), m(0)}, kWest, unitStats(UnitType::Berserker));
@@ -221,11 +221,34 @@ TEST(veterans_strike_faster_and_take_less_damage) {
         return firstBlow(w, t);
     };
     const int32_t onRecruit = taken(0), onElite = taken(3);
-    std::printf("  blows in 20 s: recruit %d, elite %d; a blow on a recruit %d, on an elite %d\n", recruit, elite, onRecruit,
-                onElite);
-    CHECK(elite > recruit * 6 / 5);
-    CHECK(onElite < onRecruit);
-    CHECK_NEAR(static_cast<double>(onElite) / onRecruit, 0.82, 0.04);
+    // A rank is a small edge (+3% damage a rank, edges.h); the gods' favour
+    // (a blessing) still quickens the arm and turns blows.
+    const auto dealt = [](int32_t rank, int32_t blessings) {
+        World w(WorldConfig{});
+        const EntityId b = w.spawnUnit(0, {m(2), m(0), m(0)}, kWest, unitStats(UnitType::Berserker));
+        w.setVeterancy(b, rank, blessings);
+        const EntityId t = w.spawnUnit(1, {}, kEast, dummy());
+        return firstBlow(w, t);
+    };
+    const int32_t byRecruit = dealt(0, 0), byElite = dealt(3, 0);
+    const auto blessedBlows = [](int32_t blessings) {
+        World w(WorldConfig{});
+        const EntityId b = w.spawnUnit(0, {m(2), m(0), m(0)}, kWest, unitStats(UnitType::Berserker));
+        w.setVeterancy(b, 0, blessings);
+        const EntityId t = w.spawnUnit(1, {}, kEast, dummy());
+        int n = 0;
+        for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
+            w.step({});
+            for (const ImpactEvent& e : w.impacts()) n += e.hitUnit == t && e.kind == ImpactEvent::Kind::Hit;
+        }
+        return n;
+    };
+    std::printf("  blows in 20 s: recruit %d, elite %d, twice blessed %d; a blow by a recruit %d, by an elite %d; on a recruit %d, on an elite %d\n",
+                recruit, elite, blessedBlows(2), byRecruit, byElite, onRecruit, onElite);
+    CHECK(elite >= recruit);
+    CHECK(blessedBlows(2) > recruit);
+    CHECK_NEAR(static_cast<double>(byElite) / byRecruit, 1.09, 0.04);  // +9%: a slight edge, not a different soldier
+    CHECK(onElite <= onRecruit);
 }
 
 TEST(veterans_get_up_sooner) {

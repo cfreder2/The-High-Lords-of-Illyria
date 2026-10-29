@@ -51,8 +51,10 @@ struct Temper {
 // loses the race for the neutral towns; with armies slow to train, bolder than
 // it was), six points more for each veteran or rare army a stack would risk,
 // an enemy counted a threat once it marches (not while it sits in its own
-// walls, which would keep every army home), and every strategy.
-constexpr Temper kHard{350, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, true, 60, 850};
+// walls, which would keep every army home), and every strategy. (40% since
+// the small edges made the odds finer and a town must be held while the
+// banner rises: at 35% it threw armies away at the walls.)
+constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, true, 60, 850};
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
 // trains whatever takes its fancy (the quickest with an enemy at the gates),
@@ -77,6 +79,46 @@ public:
                              return s.armies.empty() && s.id != c_.pending_.stack;
                          }),
                          c_.stacks_.end());
+    }
+
+    // An enemy has marched into one of our towns and begun raising its
+    // banner (the Warlord hears of it at once; the Knight only at dawn): send
+    // the nearest stack that can beat them there before the banner is up, and
+    // failing that the nearest that can reach the walls in time to hold it up.
+    void respond(int32_t city) {
+        survey();
+        const C::CityState& cs = c_.cities_[static_cast<size_t>(city)];
+        const std::vector<const Army*> raisers = c_.defendersAt(side_, cs.cx, cs.cy);
+        if (raisers.empty()) return;
+        const int32_t rate = C::kBannerBase + std::min(static_cast<int32_t>(raisers.size()), C::kMaxStack);
+        const int32_t left10 = (C::kBannerFull - cs.bannerProgress) / rate * 10 / C::kTicksPerDay + 1;  // tenths of days
+        std::vector<std::pair<int32_t, size_t>> near;
+        for (size_t k = 0; k < c_.stacks_.size(); ++k) {
+            const C::Stack& s = c_.stacks_[k];
+            if (!ours(s) || s.boat || (s.cx == cs.cx && s.cy == cs.cy)) continue;
+            if (s.path.empty() && ownCity(cityHere(s))) continue;  // the guards of our other towns stay where they are
+            const int32_t when = eta(s, city);
+            if (when <= left10 + 2) near.push_back({when, k});
+        }
+        std::stable_sort(near.begin(), near.end());
+        for (const auto& [when, k] : near) {
+            if (c_.attackOdds(view(c_.stacks_[k]), side_, cs.cx, cs.cy) < needed(c_.stacks_[k].armies)) continue;
+            if (march(k, cs.cx, cs.cy)) return;
+        }
+        // None can win: the nearest one stands at the gates, which stops the banner.
+        for (const auto& [when, k] : near) {
+            const C::Stack& s = c_.stacks_[k];
+            int32_t bx = -1, by = -1, best = INT32_MAX;
+            for (int32_t dy = -1; dy <= 1; ++dy)
+                for (int32_t dx = -1; dx <= 1; ++dx) {
+                    const int32_t x = cs.cx + dx, y = cs.cy + dy;
+                    if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= c_.nx_ || y >= c_.ny_) continue;
+                    if (c_.stackCost(s, x, y) >= C::kProhibited || !c_.defendersAt(side_, x, y).empty() || c_.cityAt(x, y) >= 0) continue;
+                    const int32_t d = std::max(std::abs(x - s.cx), std::abs(y - s.cy));
+                    if (d < best) best = d, bx = x, by = y;
+                }
+            if (bx >= 0 && march(k, bx, by)) return;
+        }
     }
 
 private:
@@ -154,6 +196,12 @@ private:
     }
     int32_t cityHere(const C::Stack& s) const { return c_.cityAt(s.cx, s.cy); }
     bool ownCity(int32_t city) const { return city >= 0 && c_.cities_[static_cast<size_t>(city)].owner == side_; }
+    // Standing in a city where our banner is going up: it holds there until
+    // the city is ours (leaving would throw the banner away).
+    bool raising(const C::Stack& s) const {
+        const int32_t city = cityHere(s);
+        return s.path.empty() && city >= 0 && c_.cities_[static_cast<size_t>(city)].banner == side_;
+    }
     bool threatened(const CityView& v) const { return v.threatOdds > t_.accept; }
 
     // What we hold and what threatens it.
@@ -316,7 +364,7 @@ private:
             std::vector<std::pair<int32_t, size_t>> help;  // (eta, stack), nearest first
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
                 const C::Stack& s = c_.stacks_[k];
-                if (!ours(s) || used_[k] || (s.cx == cs.cx && s.cy == cs.cy && s.path.empty())) continue;
+                if (!ours(s) || used_[k] || (s.cx == cs.cx && s.cy == cs.cy && s.path.empty()) || raising(s)) continue;
                 if (s.path.empty() && (isGarrison(k) || pinned(k))) continue;  // another city's guard stays
                 const int32_t when = eta(s, v.index);
                 if (when <= v.threatEta + 5) help.push_back({when, k});
@@ -352,6 +400,14 @@ private:
         // Position: a town among our own is easy to hold.
         for (const CityView& m : mine_)
             if (cityDays10(m.index, city) <= 20) v += 3;
+        // Land: a town brings the hexes round it, and those are worth a
+        // little (gold, and the home-land edge): one point for every two
+        // not yet ours.
+        std::vector<int32_t> ring{c_.hexAt(t.cx, t.cy)};
+        C::hexNeighbours(ring.front(), ring);
+        int32_t land = 0;
+        for (int32_t h : ring) land += c_.hexes_[static_cast<size_t>(h)].land && c_.hexes_[static_cast<size_t>(h)].owner != side_;
+        v += land / 2;
         return v;
     }
 
@@ -410,7 +466,7 @@ private:
         std::vector<size_t> strikers;
         for (size_t k = 0; k < c_.stacks_.size(); ++k) {
             const C::Stack& s = c_.stacks_[k];
-            if (ours(s) && s.path.empty() && !used_[k] && !isGarrison(k)) strikers.push_back(k);
+            if (ours(s) && s.path.empty() && !used_[k] && !isGarrison(k) && !raising(s)) strikers.push_back(k);
         }
         std::stable_sort(strikers.begin(), strikers.end(), [&](size_t a, size_t b) { return c_.stacks_[a].armies.size() > c_.stacks_[b].armies.size(); });
         for (size_t k : strikers) {
@@ -682,6 +738,12 @@ private:
         }
     }
 };
+
+void Campaign::bannerAlarm(int32_t city) {
+    const uint8_t side = cities_[static_cast<size_t>(city)].owner;
+    if (side >= kNeutral || sides_[side].human || !sides_[side].alive || sides_[side].difficulty != Difficulty::Hard) return;
+    CampaignAi(*this, side).respond(city);
+}
 
 void Campaign::runAi(uint8_t side) {
     questAi(side);   // heroes go exploring when it is safe (campaign_quests.cpp)

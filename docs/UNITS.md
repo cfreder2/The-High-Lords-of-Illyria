@@ -9,7 +9,7 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 
 ## Body and melee
 
-**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each rank, hero level and blessing adds one, to 9.
+**Strength** is the Warlords number (1 to 9) shown on the squad's banner; each hero level and blessing adds one, to 9 (a soldier's rank is a small edge instead: +3% a rank, docs/GAME_DESIGN.md §3.4).
 
 **Morale** is how hard shocks shake the type, in percent of a man's (lower is steadier); "never" types never break.
 
@@ -18,10 +18,10 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 | Light Infantry | 3 | 60 | 1.80 | 0.40 | 1.0 | 2.4 | 11 | slash | 1.30 s | 0.6 | 0 | 25% | 110% |  |
 | Heavy Infantry | 4 | 90 | 1.90 | 0.45 | 1.3 | 1.9 | 15 | slash | 1.50 s | 0.6 | 0 | 55% | 85% |  |
 | Elven Archers | 4 | 45 | 1.80 | 0.40 | 1.0 | 2.4 | 5 | slash | 1.20 s | 0.5 | 0 |  | 110% |  |
-| Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | pierce | 1.60 s | 2.2 | 0 |  | 90% | +150% vs mounted; +20% in the open;  |
-| Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | slash | 1.20 s | 0.8 | 3 |  | 100% | mounted; +20% in the open;  |
-| Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | pierce | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +40% in the open;  |
-| Dwarven Legion | 5 | 90 | 1.35 | 0.45 | 1.4 | 1.7 | 17 | cleave | 1.50 s | 0.5 | 0 | 30% | 75% | +25% in hills;  |
+| Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | pierce | 1.60 s | 2.2 | 0 |  | 90% | +150% vs mounted; +3% in the open;  |
+| Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | slash | 1.20 s | 0.8 | 3 |  | 100% | mounted; +3% in the open;  |
+| Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | pierce | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +5% in the open;  |
+| Dwarven Legion | 5 | 90 | 1.35 | 0.45 | 1.4 | 1.7 | 17 | cleave | 1.50 s | 0.5 | 0 | 30% | 75% | +4% in hills;  |
 | Wolf Riders | 5 | 75 | 1.90 | 0.80 | 2.0 | 7.5 | 12 | slash | 1.10 s | 0.6 | 2 |  | 100% | mounted;  |
 | Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 2.4 | 45 | blunt | 2.20 s | 1.6 | 12 |  | 60% |  |
 | Minotaurs | 6 | 230 | 3.00 | 0.90 | 4.0 | 3.0 | 32 | cleave | 1.70 s | 1.0 | 8 |  | 60% |  |

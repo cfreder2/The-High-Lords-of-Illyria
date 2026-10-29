@@ -6,6 +6,7 @@ add_library(illyria_game
     src/battle.cpp
     src/battle_command.cpp
     src/battle_orders.cpp
+    src/battle_capture.cpp
     src/voice.cpp
     src/sfx.cpp
     src/battle_deaths.cpp

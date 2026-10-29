@@ -52,6 +52,8 @@ add_executable(illyria_tests
     test_morale_rally.cpp
     test_voice.cpp
     test_death.cpp
+    test_capture.cpp
+    test_territory.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
     test_sfx.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp

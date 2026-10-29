@@ -8,6 +8,7 @@ add_executable(illyria_web
     ../render/renderer_detail.cpp
     ../render/renderer_sheets.cpp
     ../render/renderer_orders.cpp
+    ../render/renderer_flags.cpp
     ../render/meshes.cpp
 )
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")

@@ -99,42 +99,80 @@ int32_t Campaign::engines(const std::vector<const Army*>& armies) {
 }
 
 int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const {
-    // The AFCM (or DFCM): the best hero's leadership (strength 4-6: 1, 7-8: 2,
-    // 9: 3), one for fliers, one for special armies (a dragon is both), the
-    // empire's liking for the ground, and the city's walls for a defender.
-    int32_t hero = 0, items = 0;
+    // The whole points of the AFCM (or DFCM): the heroes' command artifacts,
+    // one for fliers, one for special armies (a dragon is both), and the
+    // city's walls for a defender. The manual's smaller things (a hero's
+    // leadership, the ground, holding a temple) are the edges (armyEdges):
+    // a few percent each, not a whole point.
+    (void)owner;
+    int32_t items = 0;
     bool flying = false, magic = false;
     for (const Army* a : armies) {
-        if (a->hero()) hero = std::max(hero, strength(*a));
         items += command(*a);  // the heroes' command artifacts
         flying = flying || flies(a->type);
         magic = magic || special(a->type);
     }
-    int32_t m = (hero >= 9 ? 3 : hero >= 7 ? 2 : hero >= 4 ? 1 : 0) + items;
-    m += flying + magic;
-    m += empireTerrain(owner, terrainAt(cx, cy));
+    int32_t m = items + flying + magic;
     const int32_t city = cityAt(cx, cy);
     if (defending && city >= 0) {
         const int32_t d = cities_[static_cast<size_t>(city)].defense;
         const int32_t walls = d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
         m += walls - std::min(walls, engines);  // each siege engine breaks a point of the walls
     }
-    // Holding a temple or a ruin's stones is worth a point, as in the manual.
-    if (defending && city < 0 && siteAt(cx, cy) >= 0) m += 1;
     return m;
 }
 
+Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
+                          int32_t oppX, int32_t oppY) const {
+    Edges e;
+    const Lay lay = terrainAt(cx, cy);
+    if (owner < kNeutral && landOwner(cx, cy) == owner) e.home = kEdgeHomePct;
+    // The type's liking for the ground (the manual's second table, its
+    // pluses only) and the empire's (the first): 4% and 2% a point.
+    const int32_t likes = std::max(0, typeTerrain(a.type, lay)) * kEdgeGroundPct + std::max(0, empireTerrain(owner, lay)) * 2;
+    e.ground = std::min(kEdgeGroundMaxPct, likes);
+    if (!a.hero()) e.seniority = kEdgeRankPct * std::clamp(a.rank, 0, 3);
+    int32_t hero = 0;
+    for (const Army* o : side)
+        if (o->hero()) hero = std::max(hero, strength(*o));
+    e.hero = heroLeadPct(hero);
+    // The high ground: fifteen metres or more above the other side's cell
+    // (defenders above the approach, or attackers coming down on them).
+    if (oppX >= 0 && oppY >= 0 && oppX < nx_ && oppY < ny_) {
+        const int32_t above = defending ? cellHeight(cx, cy) - cellHeight(oppX, oppY) : cellHeight(oppX, oppY) - cellHeight(cx, cy);
+        if (above >= 15) e.height = kEdgeHeightPct;
+    }
+    // Holding a temple, a ruin's stones or an outpost tower (the manual's +1 and +2).
+    if (defending && cityAt(cx, cy) < 0 && (siteAt(cx, cy) >= 0 || hexes_[static_cast<size_t>(hexAt(cx, cy))].outpost >= 0)) e.holding = kEdgeHoldPct;
+    return e;
+}
+
+Edges Campaign::stackEdges(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t oppX,
+                           int32_t oppY) const {
+    Edges best;
+    for (const Army* a : armies) {
+        const Edges e = armyEdges(*a, armies, owner, cx, cy, defending, oppX, oppY);
+        best.home = std::max(best.home, e.home);
+        best.ground = std::max(best.ground, e.ground);
+        best.seniority = std::max(best.seniority, e.seniority);
+        best.hero = std::max(best.hero, e.hero);
+        best.height = std::max(best.height, e.height);
+        best.holding = std::max(best.holding, e.holding);
+    }
+    return best;
+}
+
 void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power,
-                     int32_t engines) const {
+                     int32_t engines, int32_t oppX, int32_t oppY) const {
     const std::vector<const Army*> view(armies.begin(), armies.end());
     const int32_t fcm = forceModifier(view, owner, cx, cy, defending, engines);
-    const Lay lay = terrainAt(cx, cy);
     const bool siege = !defending && cityAt(cx, cy) >= 0;  // catapults hurl their stones at walls
-    // AS (DS) = strength + force modifier + the type's liking for the ground,
+    // AS (DS), in hundredths: (strength + force modifier) x (1 + the edges),
     // never past 9 (and never below 1); a hero's battle artifacts are in his strength.
     const auto as = [&](const Army* a) {
         const int32_t engine = siege && a->type == T::Catapult ? kCatapultSiegeBonus : 0;
-        return std::clamp(strength(*a) + fcm + typeTerrain(a->type, lay) + engine, 1, 9);
+        const int32_t edge = armyEdges(*a, view, owner, cx, cy, defending, oppX, oppY).total();
+        return std::clamp((strength(*a) + fcm + engine) * (100 + edge), 100, 900);
     };
     // Lined up with the most valuable on the right: heroes last, then the strongest.
     std::stable_sort(armies.begin(), armies.end(), [&](const Army* a, const Army* b) {
@@ -147,19 +185,19 @@ void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int3
 }
 
 std::vector<int32_t> Campaign::lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending,
-                                      int32_t engines) const {
+                                      int32_t engines, int32_t oppX, int32_t oppY) const {
     std::vector<Army*> list;
     for (const Army* a : armies) list.push_back(const_cast<Army*>(a));  // order() only reorders the pointers
     std::vector<int32_t> power;
-    order(list, owner, cx, cy, defending, power, engines);
+    order(list, owner, cx, cy, defending, power, engines, oppX, oppY);
     return power;
 }
 
 int32_t Campaign::winChance(const std::vector<int32_t>& attack, const std::vector<int32_t>& defence) {
-    // Each round both roll a d10; a roll no higher than the other's strength
-    // is low; one low and one high puts a hit on the low roller, two hits
-    // destroy. So the next hit lands on the attacker with chance
-    // ds(10-as) / (ds(10-as) + as(10-ds)). Walk every state of the battle
+    // Each round both roll a d10 (a d1000 against strengths in hundredths); a roll
+    // no higher than the other's strength is low; one low and one high puts a
+    // hit on the low roller, two hits destroy. So the next hit lands on the
+    // attacker with chance ds(1000-as) / (ds(1000-as) + as(1000-ds)). Walk every state of the battle
     // (who is fighting, and their hits) in order, carrying the probabilities.
     const size_t n = attack.size(), m = defence.size();
     if (m == 0) return 1000;
@@ -175,7 +213,7 @@ int32_t Campaign::winChance(const std::vector<int32_t>& attack, const std::vecto
             const size_t j = s - i;
             if (j >= m) continue;
             const int64_t as = attack[i], ds = defence[j];
-            const int64_t pa = ds * (10 - as), pd = as * (10 - ds);
+            const int64_t pa = ds * (1000 - as), pd = as * (1000 - ds);
             const int64_t qa = pa + pd > 0 ? pa * kOne / (pa + pd) : kOne / 2;  // the attacker takes the hit
             for (int t = 0; t <= 2; ++t) {
                 for (int ha = 0; ha <= 1; ++ha) {
@@ -214,11 +252,10 @@ int32_t Campaign::attackOdds(const std::vector<const Army*>& armies, uint8_t own
     const std::vector<const Army*> def = defendersAt(owner, cx, cy);
     if (def.empty()) return 1000;
     const int32_t city = cityAt(cx, cy);
-    uint8_t defOwner = kNeutral;
-    if (city >= 0) defOwner = cities_[static_cast<size_t>(city)].owner;
-    else
-        for (const Stack& o : stacks_)
-            if (o.owner != owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defOwner = o.owner;
+    // Whoever stands there: the town's lord, or an enemy raising its banner in it (as Campaign::battle).
+    uint8_t defOwner = city >= 0 ? cities_[static_cast<size_t>(city)].owner : kNeutral;
+    for (const Stack& o : stacks_)
+        if (o.owner != owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defOwner = o.owner;
     return winChance(lineup(armies, owner, cx, cy, false), lineup(def, defOwner, cx, cy, true, engines(armies)));
 }
 
@@ -279,7 +316,7 @@ void Campaign::deliverTransits() {
         int32_t where = -1;
         for (const int32_t c : {t.to, t.from}) {
             const CityState& cs = cities_[static_cast<size_t>(c)];
-            if (where < 0 && cs.owner == t.owner && !cs.razed && armiesAt(t.owner, cs.cx, cs.cy) < kMaxInCity) where = c;
+            if (where < 0 && cs.owner == t.owner && !cs.razed && cs.banner == kNeutral && armiesAt(t.owner, cs.cx, cs.cy) < kMaxInCity) where = c;
         }
         if (where < 0) continue;
         const CityState& cs = cities_[static_cast<size_t>(where)];
@@ -307,6 +344,8 @@ int32_t Campaign::income(uint8_t side) const {
     int32_t gold = 0;
     for (const CityState& c : cities_)
         if (c.owner == side && !c.razed) gold += c.income;
+    // The land pays a little (campaign_territory.cpp).
+    gold += hexesHeld(side) / kHexesPerGold;
     // Warlords' Knights "deliberately waste money": an Easy lord loses a fifth.
     const Side& s = sides_[side];
     if (!s.human && s.difficulty == Difficulty::Easy) gold -= gold / 5;

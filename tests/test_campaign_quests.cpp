@@ -235,6 +235,8 @@ TEST(the_player_is_offered_a_hero_for_gold) {
         for (const Army* a : c.pendingAttackers()) out.push_back({a->id, a->soldiers, 0, a->rank});
         for (const Army* a : c.pendingDefenders()) out.push_back({a->id, 0, 0, a->rank});
         c.applyBattle(out, true);
+        // Hold the town while the banner rises.
+        for (int t = 0; t < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(target)].owner != 0; ++t) c.step();
     }
     CHECK(c.citiesOwned(0) == 3);
     // The other lords hold still meanwhile (else one may retake a town).

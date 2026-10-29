@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "illyria/sim/continent.h"
+#include "illyria/sim/edges.h"
 #include "illyria/sim/rng.h"
 #include "illyria/sim/units.h"
 
@@ -62,6 +63,22 @@ public:
     static constexpr int32_t kSeaCost = 2;       // per water cell (plain is 2 on foot): 20 cells, 4 km, a day
     static constexpr int32_t kBoatCost = 20, kBoatDays = 4;  // gold and days to build one
     static constexpr int32_t kBoatUpkeep = 2;    // gold a day
+    // Raising a banner (campaign_capture.cpp): a city changes hands only when
+    // the victors' banner has risen over it, while they stand in it unopposed.
+    // Each tick it climbs kBannerBase + one point an army there (eight at
+    // most): a lone army takes 160 ticks (about 13 hours of campaign time), a
+    // full stack 48 (about 4 hours). Enemies in or beside the city stop it,
+    // and pull it down when they outnumber the raisers.
+    static constexpr int32_t kBannerFull = 480;
+    static constexpr int32_t kBannerBase = 2;
+    // Territory (campaign_territory.cpp): the map's campaign hexes, 400 m
+    // between centres (pointy-top; odd rows shifted half a hex east), each
+    // claimed by the side whose armies stand in it uncontested.
+    static constexpr int32_t kHexSpacing = 400;   // metres between neighbouring centres
+    static constexpr int32_t kHexRowX100 = 34641; // rows apart, in centimetres (400 * sqrt(3) / 2)
+    static constexpr int32_t kHexCols = 33, kHexRows = 47;
+    static constexpr int32_t kClaimFull = 100;
+    static constexpr int32_t kTerritoryTicks = 30;  // the land is reckoned ten times a day
 
     struct Side {
         std::string name;
@@ -89,6 +106,21 @@ public:
         bool port = false;          // on the coast: builds boats, which put out to its harbour cell
         int32_t hx = -1, hy = -1;   // the harbour: the nearest navigable water cell
         int32_t boatDays = 0;       // days left on a boat being built, or 0
+        uint8_t banner = kNeutral;  // the side raising its banner here (its armies in the city), or kNeutral
+        int32_t bannerProgress = 0; // to kBannerFull
+    };
+    // A campaign hex: who holds it and how firmly (0 to kClaimFull).
+    struct Hex {
+        uint8_t owner = kNeutral;
+        int32_t claim = 0;
+        bool land = false;     // its centre is not open water (only land is claimed)
+        int32_t outpost = -1;  // the outpost tower in it (outposts()), or -1
+    };
+    // An outpost tower with a flag, after Warlords' towers: at the river
+    // crossings, a stronger claim on the land around it.
+    struct Outpost {
+        int32_t hex = 0, cx = 0, cy = 0;
+        std::string name;
     };
     struct Boat {
         uint32_t id = 0;
@@ -224,7 +256,7 @@ public:
     std::vector<const Army*> pendingDefenders() const;
     // Settles the pending battle with the dice, or with the outcome of the 3D battle.
     void resolvePending();
-    void applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon);
+    void applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon) { applyBattle(outcomes, attackerWon, false); }
 
     // Queries.
     const Continent& continent() const { return continent_; }
@@ -276,7 +308,10 @@ public:
     // first, heroes last), with every modifier of the manual's appendix.
     // A town's defenders lose a point of their walls' bonus for each of the
     // attackers' siege engines (engines: how many catapults attack).
-    std::vector<int32_t> lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines = 0) const;
+    // In hundredths (100-900): the small edges (armyEdges) make strengths fractional.
+    // opp: the cell the other side fights from, for the high ground.
+    std::vector<int32_t> lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines = 0,
+                                int32_t oppX = -1, int32_t oppY = -1) const;
     static int32_t engines(const std::vector<const Army*>& armies);
     // The chance, in thousandths, that the first lineup destroys the second
     // (exact, from the Warlords dice rules).
@@ -299,6 +334,33 @@ public:
     static UnitType templeGuard(uint8_t bit, int32_t& count);
     // Veterans (and better) and rare troops: what a lord cannot replace.
     static bool precious(const Army& a) { return a.hero() || rare(a.type) || a.rank >= 2; }
+    // Territory: the hex of a cell, a hex's centre in continent metres, and
+    // who holds the land a cell lies in (kNeutral: nobody).
+    static int32_t hexOfMetres(int32_t x, int32_t y);
+    static void hexCentre(int32_t hex, int32_t& x, int32_t& y);
+    static void hexNeighbours(int32_t hex, std::vector<int32_t>& out);
+    int32_t hexAt(int32_t cx, int32_t cy) const { return cellHex_[static_cast<size_t>(cy) * nx_ + cx]; }
+    const std::vector<Hex>& hexes() const { return hexes_; }
+    const std::vector<Outpost>& outposts() const { return outposts_; }
+    uint8_t landOwner(int32_t cx, int32_t cy) const { return hexes_[static_cast<size_t>(hexAt(cx, cy))].owner; }
+    int32_t hexesHeld(uint8_t side) const;
+    // Gold a day a side's land pays: one for every kHexesPerGold hexes it holds.
+    static constexpr int32_t kHexesPerGold = 5;
+    // The small edges an army fights with here (edges.h); opp: the cell the
+    // other side fights from, for the high ground (-1: unknown).
+    Edges armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
+                    int32_t oppX = -1, int32_t oppY = -1) const;
+    // The same for a whole stack: the best any of its armies has.
+    Edges stackEdges(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t oppX = -1,
+                     int32_t oppY = -1) const;
+    // Metres above the sea at a cell's centre.
+    int32_t cellHeight(int32_t cx, int32_t cy) const { return cellHeight_[static_cast<size_t>(cy) * nx_ + cx]; }
+    // For a 3D battle won by taking the capture point: the banner rose
+    // there, so the city falls at once and the surviving defenders fall back.
+    void applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon, bool bannerRaised);
+    // Test and set-piece hook: the armies of a side in and beside a city
+    // that are not raising its banner there.
+    int32_t bannerContest(int32_t city, uint8_t raiser) const;
     uint64_t checksum() const;
 
 private:
@@ -307,6 +369,7 @@ private:
     void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies
     void newDay();
     void runAi(uint8_t side);  // campaign_ai.cpp
+    void bannerAlarm(int32_t city);  // campaign_ai.cpp: a Hard lord answers an enemy banner over his town at once
     friend class CampaignAi;
     void deliverTransits();
     int32_t armiesAt(uint8_t owner, int32_t cx, int32_t cy) const;
@@ -333,7 +396,8 @@ private:
     void arrive(Stack& s);
     void battle(Stack& attacker, int32_t cx, int32_t cy);
     // Sorts armies into battle order and gives each its AS or DS (campaign_rules.cpp).
-    void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power, int32_t engines = 0) const;
+    void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power, int32_t engines = 0,
+               int32_t oppX = -1, int32_t oppY = -1) const;
     int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const;
     // Movement points from every cell to a city, for a walking army (the
     // computer lords' sense of distance; derived from the map, so not state).
@@ -384,7 +448,20 @@ private:
     std::vector<int32_t> boatsBuilt_;  // per side, for naming
     int32_t voyages_ = 0;
     Stack* stackById(uint32_t id);
+    // The victors march into the cell; in a city they start raising their banner.
     void capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight);
+    // campaign_capture.cpp: the banners rising over cities, and a city changing hands.
+    void bannerStep();
+    void transfer(int32_t city, uint8_t side);
+    void fallBack(Stack& s);
+    // campaign_territory.cpp
+    void initTerritory();
+    void territoryStep();
+    void hashTerritory(StateHasher& h) const;
+    std::vector<Hex> hexes_;
+    std::vector<Outpost> outposts_;
+    std::vector<int16_t> cellHex_;
+    std::vector<int16_t> cellHeight_;
 };
 
 }  // namespace illyria::sim

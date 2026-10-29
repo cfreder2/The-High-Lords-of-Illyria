@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x4f0b5b296fc9a7bb;
+    constexpr uint64_t kGolden = 0x0c9e8492632082b0;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

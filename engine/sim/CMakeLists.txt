@@ -25,6 +25,10 @@ add_library(illyria_sim
     src/campaign_quests.cpp
     src/campaign_sea.cpp
     src/campaign_rare.cpp
+    src/campaign_capture.cpp
+    src/campaign_territory.cpp
+    src/edges.cpp
+    src/world_edges.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/relief_data.cpp
 )
 

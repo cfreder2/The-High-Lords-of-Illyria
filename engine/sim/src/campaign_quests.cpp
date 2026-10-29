@@ -294,7 +294,7 @@ bool Campaign::hire(uint8_t side, bool accept) {
         return true;
     }
     CityState& c = cities_[static_cast<size_t>(o.city)];
-    if (sides_[side].gold < o.price || c.owner != side || c.razed) return false;
+    if (sides_[side].gold < o.price || c.owner != side || c.razed || c.banner != kNeutral) return false;  // not while an enemy holds the town
     o.open = false;
     sides_[side].gold -= o.price;
     Stack* home = nullptr;
