@@ -286,6 +286,8 @@ public:
     // looses at a spot on the ground.
     void breakGate(int gate);
     void testShootAt(const V3& at);
+    // Test hook: one soldier (of either side) ordered to walk to a spot.
+    void testMove(sim::EntityId unit, const V3& to);
     // Run! Everyone selected scatters a few metres outward from their centre.
     void scatter();
     // Every one of the player's squads at the nearest enemy: the foot charge,

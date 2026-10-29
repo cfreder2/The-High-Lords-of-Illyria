@@ -103,6 +103,9 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
                 const Fixed reach = o.radius + Fixed::fromRatio(1, 2);
                 if ((p - o.pos).flat().lengthSq() < reach * reach) open_[static_cast<size_t>(index(x, y))] = 0;
             }
+            // So does a ramp where it stands higher than a step: the way up is its foot.
+            const Fixed ground = t.heightAt(p.x, p.y);
+            if (region.inRamp(p.x, p.y, ground + Fixed::one())) open_[static_cast<size_t>(index(x, y))] = 0;
         }
     }
     // Gates: every cell the doors cross, sampled every half metre along them.

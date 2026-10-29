@@ -45,13 +45,13 @@ Mesh tower();
 //   block: a stone block [-1, 1] x [-1, 1] x [0, 1]
 //   drum: a round tower radius 1, 1 high, crenellated, no roof
 //   keep: a square keep [-1, 1]^2, 1 high, battlements and corner turrets
-//   stairs: a flight rising along x from z = 0 at x = -1 to z = 1 at x = 1,
-//     [-1, 1] across, on a solid base
+//   ramp: a solid wedge whose top rises along x from z = 0 at x = -1 to
+//     z = 1 at x = 1, [-1, 1] across; its sides run on a little below z = 0
 Mesh curtain();
 Mesh block();
 Mesh drum();
 Mesh keep();
-Mesh stairs();
+Mesh ramp();
 //   gate: two timber doors banded with iron across x in [-1, 1] (+y outward),
 //     z from 0 to 1; broken: battered in, hanging and strewn in the passage
 Mesh gate(bool broken);

@@ -514,12 +514,25 @@ Mesh keep() {
     return b.mesh;
 }
 
-Mesh stairs() {
+Mesh ramp() {
+    // A solid wedge of stone; its sides run on below the ground (z < 0) so
+    // the foot meets the ground wherever the ground dips a little. Low
+    // cleats across the slope give a footing.
     Builder b;
-    const int steps = 10;
-    for (int i = 0; i < steps; ++i) {
-        const float x0 = -1 + 2.0f * i / steps, x1 = -1 + 2.0f * (i + 1) / steps, z = static_cast<float>(i + 1) / steps;
-        b.box({x0, -1, 0}, {x1, 1, z}, kStone * (i % 2 ? 0.93f : 1.0f));
+    const float base = -0.15f;
+    const V3 s = kStone, side = kStone * 0.9f;
+    const V3 a0{-1, -1, 0}, a1{-1, 1, 0}, b0{1, -1, 1}, b1{1, 1, 1};
+    const V3 lo0{-1, -1, base}, lo1{-1, 1, base}, hi0{1, -1, base}, hi1{1, 1, base};
+    b.quad(a0, b0, b1, a1, s);              // the slope
+    b.quad(lo0, hi0, b0, a0, side);         // the sides
+    b.quad(hi1, lo1, a1, b1, side);
+    b.quad(hi0, hi1, b1, b0, s * 0.85f);    // the high end
+    b.quad(lo1, lo0, a0, a1, side);         // the toe, below ground
+    const int cleats = 12;
+    for (int i = 1; i < cleats; ++i) {
+        const float x = -1 + 2.0f * i / cleats, z = (x + 1) / 2;
+        b.quad({x, -0.94f, z}, {x + 0.03f, -0.94f, z + 0.015f}, {x + 0.03f, 0.94f, z + 0.015f}, {x, 0.94f, z}, kStone * 0.8f);
+        b.quad({x + 0.03f, -0.94f, z + 0.015f}, {x + 0.06f, -0.94f, z + 0.03f + 0.012f}, {x + 0.06f, 0.94f, z + 0.03f + 0.012f}, {x + 0.03f, 0.94f, z + 0.015f}, kStone * 0.86f);
     }
     return b.mesh;
 }

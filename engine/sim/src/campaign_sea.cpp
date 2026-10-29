@@ -24,7 +24,7 @@ namespace {
 
 using T = UnitType;
 
-// Water bodies smaller than this (cells of 200 m) are ponds and narrow reaches: no boats.
+// Water bodies smaller than this (cells of 133 m) are ponds and narrow reaches: no boats.
 constexpr int32_t kMinWater = 24;
 // Route times are in 1/kTimeScale day-moves: exact for every army's movement points.
 constexpr int32_t kTimeScale = 10080;
