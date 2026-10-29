@@ -651,12 +651,14 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int o
         V3 to = toV3(gate.a + gate.b) * 0.5f - toV3(gate.out) * inside;
         to.z = b.heightAt(to.x, to.y);
         if (onWall) {
+            // The embrasure nearest the gate but clear of its towers.
+            const V3 from = to;
             float best = 1e30f;
             for (const illyria::sim::Rampart& rp : b.region().ramparts())
                 for (const illyria::sim::Rampart::Embrasure& e : rp.embrasures) {
                     const V3 p = toV3(e.pos) - toV3(e.out) * 0.6f;
-                    const float d = (p.x - to.x) * (p.x - to.x) + (p.y - to.y) * (p.y - to.y);
-                    if (d < best) best = d, to = p;
+                    const float d = (p.x - from.x) * (p.x - from.x) + (p.y - from.y) * (p.y - from.y);
+                    if (d > 18.0f * 18.0f && d < best) best = d, to = p;
                 }
         }
         b.selectSquad(static_cast<int>(i));
@@ -696,6 +698,22 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad(int squad, float distance, flo
         const V3 p = app->battle->unitPosition(id - 1);
         app->introStartMs = -1;
         app->camera.lookAt(p.x, p.y, distance);
+        app->camera.rotate(yaw - app->camera.yaw());
+        return;
+    }
+}
+
+// Test hook: the camera on a squad's first living soldier from inside the
+// town, looking out over him (turned by `turn`), as illyria_test_view_walk.
+EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad_from_town(int squad, float distance, float turn) {
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size()) || app->battle->region().ramparts().empty()) return;
+    for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members) {
+        if (!app->battle->world().units()[id - 1].alive()) continue;
+        const V3 p = app->battle->unitPosition(id - 1);
+        const V3 c = toV3(app->battle->region().ramparts().front().centre);
+        const float yaw = std::atan2(p.y - c.y, p.x - c.x) + turn;
+        app->introStartMs = -1;
+        app->camera.lookAt(p.x + std::cos(yaw) * distance * 0.1f, p.y + std::sin(yaw) * distance * 0.1f, distance);
         app->camera.rotate(yaw - app->camera.yaw());
         return;
     }
