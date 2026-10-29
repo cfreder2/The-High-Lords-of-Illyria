@@ -323,7 +323,13 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
             V3 face = toV3(u.arriveFacing);
             if (face.length() < 0.5f) face = V3{dest.x - at.x, dest.y - at.y, 0}.normalized();
             if (face.length() < 0.5f) face = toV3(u.facing);
-            OrderMark m{OrderMark::Kind::Slot, u.id, {dest.x, dest.y, floorAt(dest)}, face, at};
+            // A flier that flies there lands on the topmost deck there (a
+            // wall-walk), whatever height his slot was given.
+            const bool flies = u.stats.flyAltitude > sim::Fixed::zero() &&
+                               (u.flight != sim::Unit::Flight::Grounded ||
+                                dx * dx + dy * dy >= static_cast<float>((u.stats.minFlight * u.stats.minFlight).toDouble()));
+            const float floor = floorAt(flies ? V3{dest.x, dest.y, dest.z + 1000.0f} : dest);
+            OrderMark m{OrderMark::Kind::Slot, u.id, {dest.x, dest.y, floor}, face, at};
             m.size = size;
             m.opacity = opacity;
             out.push_back(m);

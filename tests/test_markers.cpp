@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -132,4 +133,40 @@ TEST(a_soldier_on_the_wall_walk_has_his_ring_on_the_walk) {
     const V3 out = V3{corner.x - illyria::game::toV3(rp.centre).x, corner.y - illyria::game::toV3(rp.centre).y, 0}.normalized();
     const V3 beyond = corner + out * 25.0f;
     CHECK_NEAR(b.floorAt({beyond.x, beyond.y, corner.z}), b.heightAt(beyond.x, beyond.y), 1e-3);
+}
+
+TEST(a_flier_sent_onto_the_wall_walk_has_his_marker_on_the_walk) {
+    Battle b(1, illyria::game::Scenario::Siege);
+    const int griffins = squadNamed(b, "Eyrie Griffins");
+    CHECK(griffins >= 0);
+    b.select({b.squads()[static_cast<size_t>(griffins)].members.front()});  // one: his slot is the spot itself
+    // A spot on the walk (behind an embrasure), from far enough off to fly there.
+    const Rampart::Embrasure& e = b.region().ramparts().front().embrasures.front();
+    const V3 out = illyria::game::toV3(e.out);
+    const V3 spot = illyria::game::toV3(e.pos) - out * 0.6f;
+    V3 away = spot + out * 120.0f;
+    away.z = b.heightAt(away.x, away.y);
+    b.orderMove(away);
+    run(b, 40);
+    V3 onGround = spot;
+    onGround.z = b.heightAt(spot.x, spot.y);  // the height a tap on the wall gives
+    b.orderMove(onGround);
+    b.advance(0.05);
+    const std::vector<Battle::OrderMark> marks = slots(b);
+    CHECK(!marks.empty());
+    for (const Battle::OrderMark& m : marks) {
+        // Where he will land: the walk if his place is on it, else the ground.
+        Fixed deck;
+        const float ground = b.heightAt(m.pos.x, m.pos.y);
+        const bool decked = b.region().deckAt(illyria::game::toFixed(m.pos.x), illyria::game::toFixed(m.pos.y), deck);
+        CHECK_NEAR(m.pos.z, decked ? std::max(static_cast<float>(deck.toDouble()), ground) : ground, 0.02);
+    }
+    CHECK(std::any_of(marks.begin(), marks.end(), [&](const Battle::OrderMark& m) { return m.pos.z > b.heightAt(m.pos.x, m.pos.y) + 3; }));
+    // And there he lands, his ring with him.
+    run(b, 40);
+    const EntityId id = b.squads()[static_cast<size_t>(griffins)].members.front();
+    const V3 p = b.unitPosition(id - 1);
+    std::printf("  the griffin stands %.2f m above the ground, %.1f m from the spot\n", p.z - b.heightAt(p.x, p.y), std::hypot(p.x - spot.x, p.y - spot.y));
+    CHECK(p.z > b.heightAt(p.x, p.y) + 3);
+    CHECK_NEAR(b.floorAt(p), p.z, 0.02);
 }
