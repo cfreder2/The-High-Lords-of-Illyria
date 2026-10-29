@@ -1,4 +1,4 @@
-// Castles in battle: walls keep soldiers out except at the gate, stairs lead
+// Castles in battle: walls keep soldiers out except at the gate, ramps lead
 // up to the wall-walk, and gates hold until broken (the parapet: test_walls.cpp).
 #include <cstdio>
 #include <memory>
@@ -67,11 +67,11 @@ size_t townGate(const Region& r) {
 }
 }  // namespace
 
-TEST(a_town_has_walls_a_gate_stairs_and_a_walk) {
+TEST(a_town_has_walls_a_gate_ramps_and_a_walk) {
     const Region& r = *siege();
     CHECK(!r.walls().empty());
     CHECK(r.ramparts().size() == 1);
-    CHECK(r.ramparts().front().stairs.size() == 3);
+    CHECK(r.ramparts().front().ramps.size() == 3);
     int towers = 0, houses = 0;
     for (const Obstacle& o : r.obstacles()) {
         towers += o.kind == Obstacle::Kind::Tower;
@@ -81,7 +81,7 @@ TEST(a_town_has_walls_a_gate_stairs_and_a_walk) {
     CHECK(houses >= 10);
 }
 
-TEST(archers_climb_the_stairs_and_man_the_walls) {
+TEST(archers_climb_the_ramps_and_man_the_walls) {
     WorldConfig cfg;
     cfg.region = siege();
     World w(cfg);
@@ -293,7 +293,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xcead3f4276719ae0;
+    constexpr uint64_t kGolden = 0x223103382eeaf9a8;
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

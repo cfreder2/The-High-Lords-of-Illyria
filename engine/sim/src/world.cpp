@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "illyria/sim/ballistics.h"
+#include "illyria/sim/continent.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/units.h"
 
@@ -25,6 +26,8 @@ constexpr Fixed kWaypointReach = Fixed::fromRatio(3, 2);
 // Near a waypoint, one already closer to the next with the way clear moves on
 // (soldiers jostling on a road need not all touch the same spot).
 constexpr Fixed kWaypointNear = Fixed::fromInt(4);
+// A waypoint on a castle's ramps or walk counts as reached this near.
+constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 // Marching soldiers keep their files this far either side of the squad's route.
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
 // Corpses are smaller obstacles than the living, and get shoved aside.
@@ -455,11 +458,62 @@ std::vector<Vec3> ringRoute(const Rampart& rp, const Vec3& from, const Vec3& to,
     out.push_back(to);
     return out;
 }
+// Along a walk, keep to the right of it: the walk is wide enough for two
+// lanes, so men going opposite ways pass instead of meeting head on. The
+// route's corners are mitred onto the lane, and lane points are added a
+// metre into the first and last legs (the destination stays where it is).
+std::vector<Vec3> keepRight(const Rampart& rp, const Vec3& from, std::vector<Vec3> route) {
+    if (route.empty()) return route;
+    // Lanes either side of the middle of the walk (inside the parapet).
+    const Fixed parapet = Continent::Castle::kParapetThick;
+    const Fixed lane = (rp.halfThick * 2 - parapet) / 4, shift = parapet / 2;
+    const auto unit = [](const Vec3& v) {
+        const Fixed len = v.flat().length();
+        return len > Fixed::zero() ? v.flat() / len : Vec3{};
+    };
+    const auto rightOf = [](const Vec3& d) { return Vec3{d.y, -d.x, Fixed::zero()}; };
+    // The lane's offset from the middle of the wall for a leg running `dir` past p.
+    const auto laneAt = [&](const Vec3& right, const Vec3& p) {
+        const bool outward = right.dot((p - rp.centre).flat()) > Fixed::zero();
+        return outward ? lane - shift : lane + shift;
+    };
+    std::vector<Vec3> pts{from};
+    pts.insert(pts.end(), route.begin(), route.end());
+    std::vector<Vec3> out;
+    const size_t n = pts.size();
+    for (size_t i = 1; i + 1 < n; ++i) {  // the corners
+        const Vec3 rin = rightOf(unit(pts[i] - pts[i - 1])), rout = rightOf(unit(pts[i + 1] - pts[i]));
+        const Vec3 b = rin + rout;
+        const Fixed b2 = b.flat().lengthSq();
+        if (i == 1 && (pts[1] - from).flat().length() > Fixed::fromInt(3)) {
+            const Vec3 d = unit(pts[1] - from), mid = onWalk(rp, from + d);
+            out.push_back(mid + rightOf(d) * laneAt(rightOf(d), mid));
+        }
+        out.push_back(b2 > Fixed::fromRatio(1, 10) ? pts[i] + b * (laneAt(rin, pts[i]) * 2 / b2) : pts[i]);
+    }
+    // The last leg: onto the lane, then off it to the destination.
+    const Vec3 to = pts[n - 1], prev = out.empty() ? from : out.back();
+    if ((to - prev).flat().length() > Fixed::fromInt(3)) {
+        const Vec3 d = unit(to - prev), first = onWalk(rp, prev + d), last = onWalk(rp, to - d);
+        if (out.empty()) out.push_back(first + rightOf(d) * laneAt(rightOf(d), first));
+        out.push_back(last + rightOf(d) * laneAt(rightOf(d), last));
+    }
+    for (Vec3& p : out) p.z = to.z;
+    out.push_back(to);
+    return out;
+}
+// Men on foot (and dwarves, elves, giants, the dead) climb castle ramps to
+// the walls; horses, wolves, engines and beasts too big for the walk do not.
+bool climbsRamps(const UnitStats& s) {
+    return s.gait != Gait::Horse && s.gait != Gait::Wolf && s.gait != Gait::Wheeled && s.radius <= Fixed::fromRatio(6, 5);
+}
 }  // namespace
 
 bool World::planRampartPath(Unit& u, const Vec3& to) {
-    // Up the stairs to a wall-walk, along it, and down again.
+    // Up a ramp to a wall-walk, along it, and down again. Horses, wolves,
+    // wheels and the largest beasts do not go up on the walls.
     const Region& rg = *config_.region;
+    if (!climbsRamps(u.stats)) return false;
     const int from = rg.rampartAt(u.pos.x, u.pos.y, u.pos.z);
     int target = -1;
     for (size_t i = 0; i < rg.ramparts().size() && target < 0; ++i) {
@@ -468,58 +522,59 @@ bool World::planRampartPath(Unit& u, const Vec3& to) {
     }
     if (from < 0 && target < 0) return false;
     if (from >= 0 && target == from) {
-        u.path = ringRoute(rg.ramparts()[static_cast<size_t>(from)], u.pos, to, nullptr);
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(from)];
+        u.path = keepRight(rp, u.pos, ringRoute(rp, u.pos, to, nullptr));
         return true;
     }
     if (from >= 0) {
-        // Down the nearest stair (along the walk, then to the ground target).
+        // Down the nearest ramp (along the walk, then to the ground target).
         const Rampart& rp = rg.ramparts()[static_cast<size_t>(from)];
-        if (rp.stairs.empty()) return false;
+        if (rp.ramps.empty()) return false;
         size_t best = 0;
         Fixed bestCost = Fixed::fromInt(1000000);
-        for (size_t s = 0; s < rp.stairs.size(); ++s) {
+        for (size_t s = 0; s < rp.ramps.size(); ++s) {
             Fixed along;
-            ringRoute(rp, u.pos, rp.stairs[s].second, &along);
-            const Fixed cost = along + (rp.stairs[s].first - to).flat().length();
+            ringRoute(rp, u.pos, rp.ramps[s].second, &along);
+            const Fixed cost = along + (rp.ramps[s].first - to).flat().length();
             if (cost < bestCost) {
                 bestCost = cost;
                 best = s;
             }
         }
-        u.path = ringRoute(rp, u.pos, onWalk(rp, rp.stairs[best].second), nullptr);
-        u.path.push_back(rp.stairs[best].second);
-        u.path.push_back(rp.stairs[best].first);
+        u.path = keepRight(rp, u.pos, ringRoute(rp, u.pos, onWalk(rp, rp.ramps[best].second), nullptr));
+        u.path.push_back(rp.ramps[best].second);
+        u.path.push_back(rp.ramps[best].first);
         if (target >= 0) {
             const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
-            if (tr.stairs.empty()) return true;
-            groundPath(rp.stairs[best].first, tr.stairs.front().first, u.path, u.stats.gait);
-            u.path.push_back(tr.stairs.front().second);
-            u.path.push_back(onWalk(tr, tr.stairs.front().second));
-            const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs.front().second), to, nullptr);
+            if (tr.ramps.empty()) return true;
+            groundPath(rp.ramps[best].first, tr.ramps.front().first, u.path, u.stats.gait);
+            u.path.push_back(tr.ramps.front().second);
+            u.path.push_back(onWalk(tr, tr.ramps.front().second));
+            const std::vector<Vec3> walk = keepRight(tr, onWalk(tr, tr.ramps.front().second), ringRoute(tr, onWalk(tr, tr.ramps.front().second), to, nullptr));
             u.path.insert(u.path.end(), walk.begin(), walk.end());
             return true;
         }
-        groundPath(rp.stairs[best].first, to, u.path, u.stats.gait);
+        groundPath(rp.ramps[best].first, to, u.path, u.stats.gait);
         return true;
     }
-    // From the ground: to the stair foot that makes the trip shortest, up, along.
+    // From the ground: to the ramp foot that makes the trip shortest, up, along.
     const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
-    if (tr.stairs.empty()) return false;
+    if (tr.ramps.empty()) return false;
     size_t best = 0;
     Fixed bestCost = Fixed::fromInt(1000000);
-    for (size_t s = 0; s < tr.stairs.size(); ++s) {
+    for (size_t s = 0; s < tr.ramps.size(); ++s) {
         Fixed along;
-        ringRoute(tr, tr.stairs[s].second, to, &along);
-        const Fixed cost = (tr.stairs[s].first - u.pos).flat().length() + along;
+        ringRoute(tr, tr.ramps[s].second, to, &along);
+        const Fixed cost = (tr.ramps[s].first - u.pos).flat().length() + along;
         if (cost < bestCost) {
             bestCost = cost;
             best = s;
         }
     }
-    groundPath(u.pos, tr.stairs[best].first, u.path, u.stats.gait);
-    u.path.push_back(tr.stairs[best].second);
-    u.path.push_back(onWalk(tr, tr.stairs[best].second));
-    const std::vector<Vec3> walk = ringRoute(tr, onWalk(tr, tr.stairs[best].second), to, nullptr);
+    groundPath(u.pos, tr.ramps[best].first, u.path, u.stats.gait);
+    u.path.push_back(tr.ramps[best].second);
+    u.path.push_back(onWalk(tr, tr.ramps[best].second));
+    const std::vector<Vec3> walk = keepRight(tr, onWalk(tr, tr.ramps[best].second), ringRoute(tr, onWalk(tr, tr.ramps[best].second), to, nullptr));
     u.path.insert(u.path.end(), walk.begin(), walk.end());
     return true;
 }
@@ -562,7 +617,10 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
             }
             return false;
         };
-        if (dh > kMaxStepUp || (dh < -kMaxStepDown && !offDeckEnd())) return true;  // a ledge: off a wall-walk, up the side of a stair
+        const bool deckEnd = offDeckEnd();
+        if (dh > kMaxStepUp || (dh < -kMaxStepDown && !deckEnd)) return true;  // a ledge: off a wall-walk, up the side of a ramp
+        if (deckEnd) return false;  // off a bridge's end onto its bank: a step down, never a cliff
+        if (config_.region && config_.region->inRamp(x, y, u.pos.z + kMaxStepUp)) return true;  // into a ramp's side, below its slope
         // Onto or along a deck is never a cliff, whatever lies below its edges.
         if (g == Ground::Bridge || (config_.region && config_.region->deckBelow(x, y, u.pos.z + kMaxStepUp, deck))) return false;
         return run > Fixed::zero() && abs(dh) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
@@ -584,7 +642,11 @@ bool World::followPath(Unit& u, Fixed pace) {
     const bool last = u.pathIndex + 1 >= u.path.size();
     const bool arrived = walk(u, waypoint, pace);
     bool onward = false;
-    if (!last && !arrived && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
+    // A ramp's foot and the walk's lanes (their heights given) are reached,
+    // not cut: beside a ramp is not on it.
+    const bool raised = waypoint.z != Fixed::zero();
+    if (raised && !last && !arrived && (waypoint - u.pos).flat().lengthSq() < kRaisedReach * kRaisedReach) onward = true;
+    if (!last && !arrived && !raised && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
         const Vec3& next = u.path[u.pathIndex + 1];
         onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
                  (next - u.pos).flat().lengthSq() < (next - waypoint).flat().lengthSq();
@@ -646,7 +708,12 @@ void World::updateUnit(Unit& u) {
             return;
         }
         const Fixed remaining = (u.moveTarget - u.pos).flat().length();
-        if (flier && remaining >= u.stats.minFlight && u.stamina * 2 >= u.stats.staminaTicks) {
+        // Fliers take wing for long moves, and for a hop up onto a wall-walk
+        // from below (they do not use the ramps).
+        const bool hopUp = flier && config_.region && !config_.region->ramparts().empty() &&
+                           config_.region->rampartAt(u.moveTarget.x, u.moveTarget.y, groundHeight(u.moveTarget.x, u.moveTarget.y)) >= 0 &&
+                           config_.region->rampartAt(u.pos.x, u.pos.y, u.pos.z) < 0;
+        if (flier && (remaining >= u.stats.minFlight || hopUp) && u.stamina * 2 >= u.stats.staminaTicks) {
             u.flight = Unit::Flight::TakingOff;
             u.runway = Fixed::zero();
             updateFlight(u);

@@ -18,7 +18,7 @@ std::vector<Fixed> Continent::Castle::Ring::crenels(size_t edge) const {
     if (n < 2) return {};
     const Fixed len = (corners[(edge + 1) % n] - corners[edge]).flat().length();
     // The corner towers (radius 3/2 thick) and, on the gate's edge, the pair
-    // flanking it (6/5 thick, their middles a thickness beyond the gate).
+    // flanking it (6/5 thick, their faces flush with the passage).
     std::vector<std::pair<Fixed, Fixed>> towers;
     const Fixed corner = thick * 3 / 2 + kTowerClear;
     towers.push_back({-corner, corner});
@@ -26,7 +26,7 @@ std::vector<Fixed> Continent::Castle::Ring::crenels(size_t edge) const {
     if (edge == gateEdge) {
         const Fixed reach = thick * 6 / 5 + kTowerClear;
         for (int s = -1; s <= 1; s += 2) {
-            const Fixed at = len / 2 + (gateWidth / 2 + thick) * s;
+            const Fixed at = len / 2 + gateTowerAt() * s;
             towers.push_back({at - reach, at + reach});
         }
     }

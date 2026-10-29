@@ -54,20 +54,20 @@ TEST(the_hexes_are_the_maps_grid) {
         int32_t x, y;
         Campaign::hexCentre(h, x, y);
         CHECK(Campaign::hexOfMetres(x, y) == h);
-        // Every neighbour's centre is 400 m away (within a metre: sqrt(3) in centimetres).
+        // Every neighbour's centre is 267 m away (within a metre: sqrt(3) in centimetres).
         std::vector<int32_t> ring;
         Campaign::hexNeighbours(h, ring);
         for (int32_t n : ring) {
             int32_t nx, ny;
             Campaign::hexCentre(n, nx, ny);
             const int64_t d2 = int64_t(nx - x) * (nx - x) + int64_t(ny - y) * (ny - y);
-            CHECK(d2 > 399 * 399 && d2 < 401 * 401);
+            CHECK(d2 > 266 * 266 && d2 < 268 * 268);
         }
         land += c.hexes()[static_cast<size_t>(h)].land;
     }
     // A point is in the hex whose centre is nearest.
-    CHECK(Campaign::hexOfMetres(210, 10) == 0 || Campaign::hexOfMetres(210, 10) == 1);
-    CHECK(Campaign::hexOfMetres(100, 330) == Campaign::kHexCols);       // row 1 (shifted east), column 0
+    CHECK(Campaign::hexOfMetres(140, 7) == 0 || Campaign::hexOfMetres(140, 7) == 1);
+    CHECK(Campaign::hexOfMetres(67, 220) == Campaign::kHexCols);        // row 1 (shifted east), column 0
     std::printf("  %zu hexes, %d of them land; %zu outpost towers\n", c.hexes().size(), land, c.outposts().size());
     CHECK(land > 600);
     CHECK(c.outposts().size() >= 8);

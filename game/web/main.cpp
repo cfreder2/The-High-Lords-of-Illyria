@@ -57,6 +57,10 @@ void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
 constexpr uint64_t kBattleSeed = 20261027;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
+// The whole continent in view (8.5 x 10.7 km), and a campaign stack with the
+// towns round it.
+constexpr float kOverviewDistance = 12700.0f;
+constexpr float kStackView = 1750.0f;
 
 struct App {
     std::unique_ptr<Battle> battle;
@@ -124,7 +128,7 @@ void startIntro() {
     app->introToDist = app->camera.distance();
     const V3 o = b.origin();
     app->introFrom = {illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 0};
-    app->introFromDist = 19000.0f;
+    app->introFromDist = kOverviewDistance;
     app->introToYaw = app->camera.yaw();
     // North up over the continent, like the campaign map.
     app->camera.rotate(kNorthUp - app->camera.yaw());
@@ -465,7 +469,7 @@ void startCampaign(bool hard) {
         cv.selected = s.id;
         const V3 p = stackPosition(*cv.c, s);
         app->introStartMs = -1;
-        app->camera.lookAt(p.x, p.y - 400, 2600);
+        app->camera.lookAt(p.x, p.y - 270, kStackView);
         app->camera.rotate(kNorthUp - app->camera.yaw());
         break;
     }
@@ -1031,6 +1035,66 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
     app->camera.lookAt(c.x, c.y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
 }
+// Test hook (screenshots of the ramps): the town's militia sent up the
+// ramp nearest its courtyard onto the walk, half to each side, and the two
+// archers on the walk nearest its head sent the other way past them; the
+// camera on the ramp from inside the town. Returns 1 when there is a ramp.
+EMSCRIPTEN_KEEPALIVE int illyria_test_ramp(float distance, float yaw) {
+    if (!app) return 0;
+    const illyria::sim::Region& rg = app->battle->region();
+    // The town the militia holds (the outer ring nearest them).
+    V3 militia{};
+    int n = 0;
+    for (const illyria::game::Squad& s : app->battle->squads())
+        if (s.owner != illyria::game::Battle::kPlayer && s.type == illyria::sim::UnitType::LightInfantry)
+            for (illyria::sim::EntityId id : s.members) {
+                militia = militia + toV3(app->battle->world().findUnit(id)->pos);
+                ++n;
+            }
+    if (n == 0) return 0;
+    militia = militia * (1.0f / static_cast<float>(n));
+    const illyria::sim::Rampart* rp = nullptr;
+    float best = 1e30f;
+    for (const illyria::sim::Rampart& r : rg.ramparts()) {
+        const V3 q = toV3(r.centre);
+        const float d = (q.x - militia.x) * (q.x - militia.x) + (q.y - militia.y) * (q.y - militia.y);
+        if (!r.ramps.empty() && (d < best - 1 || (d < best + 1 && rp && r.ramps.size() > rp->ramps.size()))) {
+            best = std::min(best, d);
+            rp = &r;
+        }
+    }
+    if (!rp) return 0;
+    const V3 foot = toV3(rp->ramps.front().first), head = toV3(rp->ramps.front().second), centre = toV3(rp->centre);
+    V3 dir{head.x - foot.x, head.y - foot.y, 0};
+    dir = dir * (1.0f / dir.length());
+    V3 in{-dir.y, dir.x, 0};
+    if (in.dot(V3{centre.x - head.x, centre.y - head.y, 0}) < 0) in = in * -1.0f;
+    const float half = static_cast<float>(rp->halfThick.toDouble());
+    const V3 walk = head - in * (half + 1.5f);
+    const V3 c = foot + (head - foot) * 0.5f;
+    int sent = 0, archers = 0;
+    for (const illyria::game::Squad& s : app->battle->squads()) {
+        if (s.owner == illyria::game::Battle::kPlayer) continue;
+        if (s.type == illyria::sim::UnitType::LightInfantry)
+            for (illyria::sim::EntityId id : s.members) {
+                const float side = sent % 2 ? 1.0f : -1.0f;
+                app->battle->testMove(id, walk + dir * side * (6.0f + 1.5f * static_cast<float>(sent / 2)));
+                ++sent;
+            }
+        if (s.type == illyria::sim::UnitType::Archers)
+            for (illyria::sim::EntityId id : s.members) {
+                const V3 p = toV3(app->battle->world().findUnit(id)->pos);
+                if (archers < 2 && (p - walk).length() < 16) {
+                    app->battle->testMove(id, walk - dir * ((p - walk).dot(dir) > 0 ? 18.0f : -18.0f));
+                    ++archers;
+                }
+            }
+    }
+    app->introStartMs = -1;
+    app->camera.lookAt(c.x + in.x * 4, c.y + in.y * 4, distance);
+    app->camera.rotate(yaw + std::atan2(-in.y, -in.x) - app->camera.yaw());
+    return 1;
+}
 // Test hook: march a squad to a spot on a road 200-320 m off whose straight
 // way lies mostly over the fields (it should make for the road), and look on
 // from above the middle of the way.
@@ -1128,7 +1192,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_overview() {
     app->introStartMs = -1;
     app->camera.rotate(kNorthUp - app->camera.yaw());
     const V3 o = app->battle->origin();
-    app->camera.lookAt(illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 19000.0f);
+    app->camera.lookAt(illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, kOverviewDistance);
 }
 
 // Map labels for the page to draw: one line per visible label,
@@ -1160,13 +1224,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         const auto& city = c.cities()[ci];
         // In the campaign, cities fly the colours of whoever holds them now.
         const uint8_t owner = app->camp.on ? app->camp.c->cities()[ci].owner : city.owner;
-        if (!city.capital && d > 9000) {
+        if (!city.capital && d > 6000) {
             add(0, factionColor(owner), city.pos, "");  // a marker only
             continue;
         }
         add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name);
     }
-    if (d < 9000) {
+    if (d < 6000) {
         for (size_t k = 0; k < c.sites().size(); ++k) {
             const auto& site = c.sites()[k];
             // In the campaign, a ruin whose guardian is slain lies empty.
@@ -1175,18 +1239,18 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         }
     }
     // The campaign's outpost towers (kind 7), in the colours of whoever holds their land.
-    if (app->camp.on && d < 9000) {
+    if (app->camp.on && d < 6000) {
         const illyria::sim::Campaign& cc = *app->camp.c;
         for (const illyria::sim::Campaign::Outpost& op : cc.outposts()) {
             const uint8_t w = cc.hexes()[static_cast<size_t>(op.hex)].owner;
             const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cx)),
                                         illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cy)), {}};
-            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 4500 && !op.name.empty() ? op.name + " tower" : "");
+            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 3000 && !op.name.empty() ? op.name + " tower" : "");
         }
     }
     for (const auto& l : c.labels()) {
-        if (l.kind == 0 && d > 3000) add(5, {1, 1, 1}, l.pos, l.name);
-        else if (l.kind != 0 && l.kind != 4 && d > 2000 && d < 12000) add(6, {1, 1, 1}, l.pos, l.name);
+        if (l.kind == 0 && d > 2000) add(5, {1, 1, 1}, l.pos, l.name);
+        else if (l.kind != 0 && l.kind != 4 && d > 1350 && d < 8000) add(6, {1, 1, 1}, l.pos, l.name);
     }
     return out.c_str();
 }
@@ -1275,7 +1339,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_return() {
     app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
     if (const illyria::sim::Campaign::Stack* s = cv.c->findStack(cv.selected)) {
         const V3 p = stackPosition(*cv.c, *s);
-        app->camera.lookAt(p.x, p.y, 2600);
+        app->camera.lookAt(p.x, p.y, kStackView);
     }
 }
 EMSCRIPTEN_KEEPALIVE int illyria_campaign_fighting() { return app && app->camp.fighting ? 1 : 0; }
@@ -1352,7 +1416,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_banner(int ticks, int foes) {
     cv.city = target;
     const V3 o = app->battle->origin();
     const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
-    app->camera.lookAt(at.x, at.y - 150, 1500);
+    app->camera.lookAt(at.x, at.y - 100, 1000);
     return target;
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
@@ -1449,7 +1513,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_port() {
     cv.city = port;
     const C::CityState& cs = cv.c->cities()[static_cast<size_t>(port)];
     const V3 o = app->battle->origin();
-    app->camera.lookAt(C::centre(cs.cx) - o.x - 150, C::centre(cs.cy) - o.y, 1300);
+    app->camera.lookAt(C::centre(cs.cx) - o.x - 100, C::centre(cs.cy) - o.y, 870);
     return port;
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
@@ -1466,7 +1530,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_select(unsigned id) {
     app->camp.selected = id;
     if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(id)) {
         const V3 p = stackPosition(*app->camp.c, *s);
-        app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), 2600.0f));
+        app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), kStackView));
     }
 }
 // Everything the campaign HUD shows, as JSON: the day and the treasury, every

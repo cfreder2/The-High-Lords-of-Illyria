@@ -20,8 +20,9 @@ namespace illyria::sim {
 // whole continent. Fine 4 m detail is added per chunk on top (ContinentChunk).
 class Continent {
 public:
-    static constexpr int64_t kWidth = 12800;   // metres, west to east
-    static constexpr int64_t kHeight = 16000;  // metres, south to north
+    // Two thirds of the 12.8 x 16 km it was first laid out at (docs/MAP.md).
+    static constexpr int64_t kWidth = 8533;    // metres, west to east
+    static constexpr int64_t kHeight = 10667;  // metres, south to north
 
     struct River {
         std::string name;
@@ -69,7 +70,7 @@ public:
     // The plan of a city's defences, in continent coordinates (z = ground).
     // Walls run corner to corner round each ring (outer first; capitals have
     // an inner bailey too), with a gate in one edge. Archers stand on the
-    // wall-walk, reached by stairs against the inner faces; the courtyard
+    // wall-walk, reached by ramps against the inner faces; the courtyard
     // behind the gate is left open for mustering troops and siege engines.
     struct Castle {
         struct Ring {
@@ -79,6 +80,14 @@ public:
             Fixed gateWidth;
             // The wall-walk's height above the ground.
             Fixed walk() const { return height - kWalkBelow; }
+            // The middle of the gate-flanking towers, from the gate's middle
+            // (their faces flush with the passage).
+            Fixed gateTowerAt() const { return gateWidth / 2 + thick * 6 / 5; }
+            Vec3 centre() const {
+                Vec3 mid{};
+                for (const Vec3& q : corners) mid += q;
+                return corners.empty() ? mid : mid / Fixed::fromInt(static_cast<int64_t>(corners.size()));
+            }
             // The embrasures along edge e (castle_walls.cpp): their middles, in
             // metres from corners[e], kCrenelPitch apart, clear of the towers.
             std::vector<Fixed> crenels(size_t edge) const;
@@ -99,17 +108,24 @@ public:
             Fixed radius, height;
             bool roofed = false;
         };
-        struct Stair {
-            Vec3 foot, head;  // head.z = the wall-walk
+        // A ramp of earth faced with stone up a wall's inner face, from the
+        // ground (foot) to a level landing kRampLanding long beside the walk
+        // (head.z = the walk): gentle enough for men on foot, two abreast.
+        // Horses and wheels stay below (docs/GAME_DESIGN.md, castles).
+        struct Ramp {
+            Vec3 foot, head;
             Fixed halfWidth;
+            size_t ring = 0;  // the ring whose walk it climbs to
         };
+        static constexpr Fixed kRampHalfWidth = Fixed::fromRatio(3, 2);
+        static constexpr Fixed kRampLanding = Fixed::fromInt(3);
         struct House {
             Vec3 pos;
             Fixed halfX, halfY, height;  // axis-aligned
         };
         std::vector<Ring> rings;
         std::vector<Tower> towers;
-        std::vector<Stair> stairs;
+        std::vector<Ramp> ramps;
         std::vector<House> houses;
         Vec3 keep, keepAxis;  // the keep: centre (z = ground) and facing
         Fixed keepHalf, keepHeight;

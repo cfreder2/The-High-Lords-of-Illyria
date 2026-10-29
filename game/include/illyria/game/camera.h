@@ -15,7 +15,7 @@ public:
     using HeightFn = std::function<float(float x, float y)>;
 
     static constexpr float kMinDistance = 6.0f;
-    static constexpr float kMaxDistance = 22000.0f;
+    static constexpr float kMaxDistance = 14700.0f;  // a little beyond the whole continent
     static constexpr float kFovY = 0.785398f;  // 45 degrees
 
     void setBounds(float size) { setBounds(0, 0, size, size); }

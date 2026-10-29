@@ -22,7 +22,9 @@ using namespace illyria::sim;
 namespace {
 
 constexpr int kCell = 32;  // metres between samples
-const int kStreamArea = static_cast<int>(std::getenv("BAKE_AREA") ? std::atoi(std::getenv("BAKE_AREA")) : 400);  // cells draining into a point before a stream rises there
+// Cells draining into a point before a stream rises there (half what it was
+// before the map shrank to two thirds, so it keeps most of its streams).
+const int kStreamArea = static_cast<int>(std::getenv("BAKE_AREA") ? std::atoi(std::getenv("BAKE_AREA")) : 200);
 constexpr float kBasinDepth = 1.2f;  // metres of water before a hollow counts as a pool
 constexpr int kBasinCells = 4;
 

@@ -136,11 +136,11 @@ Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, u
     for (const Army* o : side)
         if (o->hero()) hero = std::max(hero, strength(*o));
     e.hero = heroLeadPct(hero);
-    // The high ground: fifteen metres or more above the other side's cell
+    // The high ground: ten metres or more above the other side's cell
     // (defenders above the approach, or attackers coming down on them).
     if (oppX >= 0 && oppY >= 0 && oppX < nx_ && oppY < ny_) {
         const int32_t above = defending ? cellHeight(cx, cy) - cellHeight(oppX, oppY) : cellHeight(oppX, oppY) - cellHeight(cx, cy);
-        if (above >= 15) e.height = kEdgeHeightPct;
+        if (above >= 10) e.height = kEdgeHeightPct;
     }
     // Holding a temple, a ruin's stones or an outpost tower (the manual's +1 and +2).
     if (defending && cityAt(cx, cy) < 0 && (siteAt(cx, cy) >= 0 || hexes_[static_cast<size_t>(hexAt(cx, cy))].outpost >= 0)) e.holding = kEdgeHoldPct;
