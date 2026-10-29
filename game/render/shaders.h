@@ -1328,9 +1328,12 @@ layout(location = 6) in vec3 iTint;
 uniform float uSway;
 uniform float uLod;  // 1: individual scenery; -1: the woods' clumps standing in for it; 0: always drawn
 uniform vec4 uHole;  // the battlefield
+uniform float uFlag; // 1: banners, whose cloth (colour.b = 2, colour.rg its place on it) waves
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vWorld;
+out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
+flat out float vIsCloth;
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
 // How much individual scenery (trees, undergrowth, rocks) stands here rather
 // than the clumps of crowns: near the camera's focus while the camera is low,
@@ -1345,15 +1348,35 @@ void main() {
     if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
     float lod = uLod > 0.5 ? sceneryNear(iPos.xy) : uLod < -0.5 ? 1.0 - sceneryNear(iPos.xy) : 1.0;
     if (lod < 0.02) { gl_Position = kCulled; return; }
-    vec3 local = aPos * iScale * lod;
+    vec3 pos = aPos, nrm = aNormal;
+    vIsCloth = 0.0;
+    vCloth = vec2(0.0);
+    if (uFlag > 0.5 && aColor.b > 1.5) {
+        // Cloth in the wind, pinned at the pole: travelling waves growing
+        // toward the fly, a little droop; each flag on its own beat.
+        float u = aColor.r, v = aColor.g;
+        float seed = iPos.x * 0.37 + iPos.y * 0.23;
+        float a1 = u * 7.0 - uTime * 4.2 + seed, a2 = u * 12.0 - uTime * 6.9 + v * 2.5 + seed * 1.7;
+        float amp = 0.045 * u + 0.012 * u * u;
+        float wave = sin(a1) + 0.35 * sin(a2);
+        pos.y += amp * wave;
+        pos.x -= 0.03 * u * u * (0.6 + 0.4 * sin(uTime * 1.3 + seed));
+        pos.z -= 0.025 * u * u * (1.0 - v * 0.5);
+        // Its slope along the fly, for the light (0.508: the cloth's length).
+        float slope = (amp * (cos(a1) * 7.0 + 0.35 * cos(a2) * 12.0) + (0.045 + 0.024 * u) * wave) / 0.508;
+        nrm = normalize(vec3(-slope, 1.0, 0.0));
+        vIsCloth = 1.0;
+        vCloth = vec2(u, v);
+    }
+    vec3 local = pos * iScale * lod;
     if (uSway > 0.0) {
         // Crowns sway in the wind; trunks stay put.
         float h = aPos.z * aPos.z;
         local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z * lod;
     }
     vec3 world = iPos + rotate(iQuat, local);
-    vNormal = normalize(rotate(iQuat, aNormal / iScale));
-    vColor = aColor * iTint;
+    vNormal = normalize(rotate(iQuat, nrm / iScale));
+    vColor = vIsCloth > 0.5 ? iTint : aColor * iTint;
     vWorld = world;
     gl_Position = uViewProj * vec4(world, 1.0);
 }
@@ -1362,13 +1385,49 @@ inline const char* kMeshFs = R"(
 in vec3 vColor;
 in vec3 vNormal;
 in vec3 vWorld;
+in vec2 vCloth;
+flat in float vIsCloth;
 out vec4 oColor;
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
+// A flag's face: the owner's colour with a hem, and a cross pattee in white
+// (or deep red on a pale field), smoothed over a pixel and blended into the
+// field when it shrinks to a few pixels.
+vec3 flagCloth(vec3 field, vec2 uv) {
+    vec2 p = (uv - 0.5) * vec2(1.54, 1.0);  // the cloth is about 3:2
+    float lum = dot(field, vec3(0.3, 0.55, 0.15));
+    vec3 device = lum > 0.62 ? vec3(0.62, 0.1, 0.08) : vec3(0.96, 0.94, 0.88);
+    const float kArm = 0.36;
+    // Each arm narrow at the middle, flaring toward its end.
+    vec2 q = abs(p);
+    float wx = 0.055 + 0.11 * (q.x / kArm) * (q.x / kArm);
+    float wy = 0.055 + 0.11 * (q.y / kArm) * (q.y / kArm);
+    float d = min(max(q.y - wx, q.x - kArm), max(q.x - wy, q.y - kArm));
+    float px = max(fwidth(p.x), fwidth(p.y));
+    float arms = 1.0 - smoothstep(-px, px, d);
+    // The hem: a darker band round the edge (not along the pole).
+    float edge = min(min(uv.y, 1.0 - uv.y) * 0.66, 1.0 - uv.x);
+    float hem = 1.0 - smoothstep(0.03 - px, 0.03 + px, edge);
+    vec3 c = mix(field, field * 0.62, hem);
+    // Too small to read: the average of field and device instead.
+    float tiny = smoothstep(0.04, 0.1, px);
+    c = mix(mix(c, device, arms), mix(field, device, 0.2), tiny);
+    return c;
+}
 void main() {
     vec3 n = normalize(vNormal);
+    vec3 albedo = vColor;
+    if (vIsCloth > 0.5) {
+        // Thin cloth: lit through from either face, its own folds shading it.
+        if (dot(n, kSun) < 0.0) n = -n;
+        if (!gl_FrontFacing) albedo *= 0.97;
+        albedo = flagCloth(albedo, vCloth);
+        float sunC = (0.35 + 0.65 * dot(n, kSun)) * mix(1.0, shadowAt(vWorld, n), 0.6) * cloudShade(vWorld.xy);
+        vec3 cc = albedo * (0.42 + 0.75 * sunC);
+        oColor = vec4(mix(cc, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+        return;
+    }
     float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(vWorld.xy);
     float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
-    vec3 albedo = vColor;
     if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.

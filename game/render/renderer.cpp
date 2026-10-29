@@ -410,6 +410,7 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
         glUniform1f(mesh_.lod, b->lod);
+        glUniform1f(mesh_.flag, b == &banners_ ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
@@ -1025,7 +1026,9 @@ void Renderer::uploadSettlements(const Battle& battle) {
         const sim::Continent::City& c = cont.cities()[ci];
         const sim::Continent::Castle& k = c.castle;
         const V3 centre = local(c.pos);
-        const V3 colour = factionColor(c.owner);
+        // The banners: the owner's colour; a neutral town's are undyed linen
+        // (its flag shader paints a red cross on so pale a field).
+        const V3 colour = c.owner < sim::Continent::kFactionCount ? factionColor(c.owner) : V3{0.8f, 0.74f, 0.6f};
         // Curtain walls, corner to corner, in sections up to the walk; the gate
         // edge leaves an opening under a lintel. The parapet faces outward:
         // the sill, and the merlons between the embrasures, where the sim has them.
@@ -1742,6 +1745,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
         glUniform1f(meshDepth_.lod, b->lod);
+        glUniform1f(meshDepth_.flag, b == &banners_ ? 1.0f : 0.0f);  // the waving cloth's shadow
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
