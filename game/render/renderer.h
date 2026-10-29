@@ -75,7 +75,7 @@ private:
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1;
-        GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1;
+        GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).

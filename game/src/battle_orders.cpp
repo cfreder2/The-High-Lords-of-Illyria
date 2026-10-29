@@ -22,6 +22,10 @@ constexpr float kObstaclePickMetres = 1.0f;
 constexpr float kObstaclePickPx = 26.0f;
 // Order markers show this long after an order even when not selected.
 constexpr uint32_t kMarkTicks = sim::kTicksPerSecond * 5 / 2;
+// Closer than this to his marker, a soldier is there (it is hidden).
+constexpr float kArrivedMetres = 0.6f;
+// Higher than this above the ground, a point is on (or over) a deck.
+constexpr float kOnDeck = 0.12f;
 
 bool attackable(sim::Obstacle::Kind k) {
     return k == sim::Obstacle::Kind::House || k == sim::Obstacle::Kind::Pine || k == sim::Obstacle::Kind::Oak;
@@ -266,42 +270,62 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     return Intent::None;
 }
 
+float Battle::floorAt(const V3& p) const {
+    // The ground, or a deck (a wall-walk, a stair, a bridge) he stands on or is above.
+    const float ground = heightAt(p.x, p.y);
+    sim::Fixed deck;
+    if (p.z > ground + kOnDeck && inBattlefield(p.x, p.y) &&
+        region_->deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + 0.5f), deck))
+        return std::max(ground, static_cast<float>(deck.toDouble()));
+    return ground;
+}
+
+float Battle::markOpacity(size_t index) const {
+    if (isSelected(static_cast<sim::EntityId>(index + 1))) return 1.0f;
+    if (index >= orderTick_.size() || orderTick_[index] == UINT32_MAX) return 0.0f;
+    const uint32_t since = world_->tick() - orderTick_[index];
+    if (since >= kMarkTicks) return 0.0f;
+    // Full at first, fading out over the last second.
+    return std::min(1.0f, static_cast<float>(kMarkTicks - since) / static_cast<float>(sim::kTicksPerSecond));
+}
+
 std::vector<Battle::OrderMark> Battle::orderMarks() const {
     std::vector<OrderMark> out;
     const auto& units = world_->units();
-    // Whose orders show: the selected, their squads and groups, and anyone just ordered.
-    std::vector<uint8_t> shown(units.size(), 0);
-    for (sim::EntityId id : selection_) shown[id - 1] = 1;
-    for (const Squad& s : squads_) {
-        if (s.owner != kPlayer || squadSelection(s) == 0) continue;
-        for (sim::EntityId id : s.members) shown[id - 1] = 1;
-    }
-    for (const Group& g : groups_) {
-        if (std::none_of(g.units.begin(), g.units.end(), [&](sim::EntityId id) { return isSelected(id); })) continue;
-        for (sim::EntityId id : g.units) shown[id - 1] = 1;
-    }
-    const uint32_t now = world_->tick();
-    for (size_t i = 0; i < orderTick_.size() && i < units.size(); ++i)
-        if (orderTick_[i] != UINT32_MAX && now - orderTick_[i] < kMarkTicks) shown[i] = 1;
+    // Whose orders show: each soldier selected (not the rest of his squad or
+    // group), and for a moment, fading, anyone just ordered. Only his current
+    // order: a new one, or his arrival, takes the old marker away.
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
-        if (!shown[i] || !u.alive() || u.owner != kPlayer || u.routed) continue;
+        if (!u.alive() || u.owner != kPlayer || u.routed) continue;
+        const float opacity = markOpacity(i);
+        if (opacity <= 0.0f) continue;
         const V3 at = unitPosition(i);
         if (u.targetUnit != sim::kNoEntity) {
             const sim::Unit& t = units[u.targetUnit - 1];
             if (!t.alive()) continue;
-            OrderMark m{OrderMark::Kind::Target, u.id, unitPosition(u.targetUnit - 1), {}, at};
+            const V3 tp = unitPosition(u.targetUnit - 1);
+            OrderMark m{OrderMark::Kind::Target, u.id, {tp.x, tp.y, floorAt(tp)}, {}, at};
             m.size = static_cast<float>(t.stats.radius.toDouble()) * 2.0f + 0.5f;
+            m.opacity = opacity;
             out.push_back(m);
         } else if (u.hasAttackTarget) {
-            out.push_back({OrderMark::Kind::Spot, u.id, toV3(u.attackTarget), {}, at, u.attackGate >= 0 ? 2.2f : 1.6f});
+            const V3 aim = toV3(u.attackTarget);
+            OrderMark m{OrderMark::Kind::Spot, u.id, {aim.x, aim.y, floorAt(aim)}, {}, at, u.attackGate >= 0 ? 2.2f : 1.6f};
+            m.opacity = opacity;
+            out.push_back(m);
         } else if (u.hasMoveTarget) {
             const V3 dest = toV3(u.moveTarget);
+            const float size = std::max(0.7f, static_cast<float>(u.stats.radius.toDouble()) * 1.6f);
+            // As good as there (jostled just off his place): no marker.
+            const float dx = dest.x - at.x, dy = dest.y - at.y;
+            if (dx * dx + dy * dy < kArrivedMetres * kArrivedMetres && std::abs(dest.z - at.z) < 1.0f) continue;
             V3 face = toV3(u.arriveFacing);
             if (face.length() < 0.5f) face = V3{dest.x - at.x, dest.y - at.y, 0}.normalized();
             if (face.length() < 0.5f) face = toV3(u.facing);
-            OrderMark m{OrderMark::Kind::Slot, u.id, dest, face, at};
-            m.size = std::max(0.7f, static_cast<float>(u.stats.radius.toDouble()) * 1.6f);
+            OrderMark m{OrderMark::Kind::Slot, u.id, {dest.x, dest.y, floorAt(dest)}, face, at};
+            m.size = size;
+            m.opacity = opacity;
             out.push_back(m);
         }
     }

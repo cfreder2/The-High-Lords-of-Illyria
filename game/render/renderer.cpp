@@ -302,6 +302,8 @@ bool Renderer::buildPrograms() {
         s.p.detailRect = glGetUniformLocation(s.p.id, "uDetailRect");
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
         s.p.lod = glGetUniformLocation(s.p.id, "uLod");
+        s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
+        s.p.flag = glGetUniformLocation(s.p.id, "uFlag");
     }
     return true;
 }
@@ -523,7 +525,8 @@ void Renderer::uploadScenery(const Battle& battle) {
             }
             default: break;  // trees, undergrowth, rocks and logs: pushScenery
         }
-        shadows.insert(shadows.end(), {pos.x, pos.y, pos.z, 0, shadow, 0, 1, 0, 0, 0, 0});
+        // Draped over the ground (a town house's base may stand above it).
+        shadows.insert(shadows.end(), {pos.x, pos.y, battle.heightAt(pos.x, pos.y), 0, shadow, 0, 1, 0, 0, 0, 0});
     }
     for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.pine[v]);
     for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.oak[v]);
@@ -1958,9 +1961,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             frame = figures::kFirstFrame[4] + std::clamp(f, 0, figures::kFrames[4] - 1);
         } else {
             const float radius = static_cast<float>(u.stats.radius.toDouble());
-            decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.3f, 0, kDecalShadow, 0, 0, 0, 0});
+            // On what he stands on (a wall-walk, a bridge), or under him when aloft.
+            const float floor = battle.floorAt(pos);
+            // His contact shadow: a dark core at his feet, so that he stands on
+            // the ground even in the shade of a wall (where his sun shadow is
+            // lost); long along a horse's or beast's body (extra.x).
+            const float plan = lookOf(type).plan;
+            const float stretch = plan > 0.5f && std::fabs(plan - 6.0f) > 0.5f ? 0.8f : 0.0f;
+            decals.insert(decals.end(), {pos.x, pos.y, floor, std::atan2(fy, fx), radius * (1.3f + stretch * 0.35f), 0, kDecalShadow, stretch, 1, 0, 0});
             pushHealthBar(bars, u, pos, isSelected);
-            if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, pos.z, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+            if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
             const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
             if (struck >= 0 && struck < strike) {
                 frame = figures::kFirstFrame[2] + std::min(figures::kFrames[2] - 1, static_cast<int>(struck / strike * figures::kFrames[2]));
@@ -2042,7 +2052,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     if (const Battle::Drag& drag = battle.drag(); drag.mode == Battle::Drag::Mode::Facing) {
         const float gold[3] = {1.0f, 0.82f, 0.32f};
         const auto mark = [&](const V3& p, float yaw, float size, float type) {
-            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, size, 0, type, gold[0], gold[1], gold[2], 0});
+            decals.insert(decals.end(), {p.x, p.y, battle.floorAt(p), yaw, size, 0, type, gold[0], gold[1], gold[2], 0});
         };
         for (const FormationSlot& g : drag.ghost) {
             mark(g.pos, 0, 0.8f, kDecalRing);
@@ -2164,21 +2174,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glDisable(GL_BLEND);
     }
 
-    // Decals: blended, no depth writes. Ground marks first, then body parts, then per-frame.
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
-    setCommon(decal_, camera, timeSeconds, gameSeconds);
-    const bool realShadows = shadowInfo_[2] > 0;
-    for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_}) {
-        // Blob shadows under the battlefield's trees only while they stand (see sceneryNear in kMeshVs).
-        if (b->count == 0 || (b == &sceneryShadows_ && (realShadows || camera.distance() > 850.0f))) continue;
-        glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, b->count);
-    }
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
-
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}, camera, timeSeconds, gameSeconds);
@@ -2196,6 +2191,30 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     } else {
         drawMeshes(scenery(true), camera, timeSeconds, gameSeconds);
     }
+
+    // Decals: blended, no depth writes. Ground marks first, then body parts,
+    // then per-frame. After the castles and bridges, so that those on a
+    // wall-walk or a deck are not painted over; pulled a little toward the
+    // eye so that none sinks into the surface it lies on.
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.0f, -4.0f);
+    setCommon(decal_, camera, timeSeconds, gameSeconds);
+    const bool realShadows = shadowInfo_[2] > 0;
+    for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_}) {
+        // Blob shadows under the battlefield's trees only while they stand (see sceneryNear in kMeshVs).
+        if (b->count == 0 || (b == &sceneryShadows_ && (realShadows || camera.distance() > 850.0f))) continue;
+        // Per-frame marks (rings, order markers) can be big: more cells to follow the land.
+        const int grid = b == &dynamicDecals_ ? 4 : b == &marks_ ? 2 : 1;
+        glUniform1f(decal_.decalGrid, static_cast<float>(grid));
+        glBindVertexArray(b->vao);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6 * grid * grid, b->count);
+    }
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
 
     setCommon(arrow_, camera, timeSeconds, gameSeconds);
     for (Batch* b : {&remainArrows_, &flyingArrows_}) {

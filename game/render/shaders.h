@@ -447,23 +447,36 @@ inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_LAND_FS ILLYRIA_
 // ---------------------------------------------------------------- decals
 // Per instance: centre (xyz), params (yaw, size, spawn seconds, type), extra (rgb, seed).
 // Types: 0 blood, 1 shadow, 2 selection ring, 3 corpse, 4 crater, 5 dust, 6 body part.
+// Drawn as triangles, uDecalGrid x uDecalGrid cells per decal, each vertex
+// on the ground there: a big marker follows the land's folds (the terrain
+// mesh is 4 m cells, so a single quad's chord cut into ridges and banks).
+// iCentre.z is the floor the caller found (Battle::floorAt): well above the
+// ground it is a deck (a wall-walk, stair or bridge) and the decal lies flat
+// on it; off the battlefield (no height texture there) it lies flat too.
 inline const char* kDecalVs = R"(
 layout(location = 0) in vec3 iCentre;
 layout(location = 1) in vec4 iParams;
 layout(location = 2) in vec4 iExtra;
+uniform float uDecalGrid;
 out vec2 vUv;
 flat out vec4 vParams;
 flat out vec4 vExtra;
 out float vFog;
+const ivec2 kTri[6] = ivec2[6](ivec2(0, 0), ivec2(1, 0), ivec2(1, 1), ivec2(0, 0), ivec2(1, 1), ivec2(0, 1));
 void main() {
     if (iParams.y <= 0.0) { gl_Position = kCulled; return; }
-    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
+    int n = max(int(uDecalGrid + 0.5), 1);
+    int cell = gl_VertexID / 6;
+    vec2 corner = vec2(ivec2(cell % n, cell / n) + kTri[gl_VertexID % 6]) / float(n) * 2.0 - 1.0;
     float c = cos(iParams.x), s = sin(iParams.x);
     vec2 local = corner * iParams.y;
     vec2 xy = iCentre.xy + vec2(c * local.x - s * local.y, s * local.x + c * local.y);
-    // Drape over the terrain; lift grows with distance to avoid z-fighting.
+    // Lift grows with distance to avoid z-fighting.
     float lift = 0.04 + uCamDist * 0.0004 + (iParams.w > 5.5 ? 0.04 : 0.0);
-    vec3 world = vec3(xy, groundZ(xy) + lift);
+    float size = uCells * uCellSize;
+    bool onField = all(greaterThanEqual(iCentre.xy, vec2(0.0))) && all(lessThanEqual(iCentre.xy, vec2(size)));
+    bool onDeck = iCentre.z > groundZ(iCentre.xy) + 0.12;
+    vec3 world = vec3(xy, (onField && !onDeck ? groundZ(xy) : iCentre.z) + lift);
     vUv = corner;
     vParams = iParams;
     vExtra = iExtra;
@@ -510,10 +523,15 @@ void main() {
         vec3 c = type < 0.5 ? bloodColor(age) : vec3(0.62, 0.6, 0.55);
         color = vec4(c, alpha * soak * (type < 0.5 ? 1.0 : 0.6));
     } else if (type < 1.5) {
-        color = vec4(0.0, 0.0, 0.0, 0.32 * (1.0 - smoothstep(0.3, 1.0, r)));
+        // A soldier's shadow (extra.x: how much narrower across his body than
+        // along it), darker in the middle where he stands (extra.y: 1; not
+        // under scenery).
+        float q = length(vec2(vUv.x, vUv.y * (1.0 + vExtra.x)));
+        color = vec4(0.0, 0.0, 0.0, 0.3 * (1.0 - smoothstep(0.3, 1.0, q)) + 0.25 * vExtra.y * (1.0 - smoothstep(0.0, 0.5, q)));
     } else if (type < 2.5) {
+        // Rings and order markers: extra.w fades them (1 - opacity).
         float ring = smoothstep(0.62, 0.72, r) * (1.0 - smoothstep(0.86, 0.96, r));
-        color = vec4(vExtra.rgb, ring * 0.9);
+        color = vec4(vExtra.rgb, ring * 0.9 * (1.0 - vExtra.w));
     } else if (type < 3.5) {
         // Corpse seen from above, lying along +x. Fades from team colours to bone over a week.
         vec2 p = vUv;
@@ -545,12 +563,12 @@ void main() {
         color = vec4(c, scorch * mix(0.85, 0.15, heal));
     } else if (type > 6.5 && type < 7.5) {
         // Order marker: a soft dot (the facing line).
-        color = vec4(vExtra.rgb, 0.9 * (1.0 - smoothstep(0.55, 0.95, r)));
+        color = vec4(vExtra.rgb, 0.9 * (1.0 - smoothstep(0.55, 0.95, r)) * (1.0 - vExtra.w));
     } else if (type > 7.5) {
         // Order marker: an arrowhead pointing along +x (the way to face).
         float halfW = (0.9 - vUv.x) * 0.45;
         float inside = step(-0.5, vUv.x) * step(vUv.x, 0.9) * (1.0 - smoothstep(halfW - 0.06, halfW, abs(vUv.y)));
-        color = vec4(vExtra.rgb, 0.9 * inside);
+        color = vec4(vExtra.rgb, 0.9 * inside * (1.0 - vExtra.w));
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;

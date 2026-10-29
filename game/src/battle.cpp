@@ -562,11 +562,7 @@ void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint3
     const sim::Ground g = region_->groundAt(toFixed(pos.x), toFixed(pos.y));
     if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater) return;
     // On the ground, or on the deck it happened above (a wall-walk, a bridge).
-    float z = heightAt(pos.x, pos.y);
-    sim::Fixed deck;
-    if (pos.z > z + 1.0f && region_->deckBelow(toFixed(pos.x), toFixed(pos.y), toFixed(pos.z + 0.5f), deck))
-        z = std::max(z, static_cast<float>(deck.toDouble()));
-    pos.z = z;
+    pos.z = floorAt(pos);
     const GroundMark m{kind, pos, yaw, size, world_->tick(), seed};
     if (marks_.size() < kMaxGroundMarks) {
         marks_.push_back(m);
