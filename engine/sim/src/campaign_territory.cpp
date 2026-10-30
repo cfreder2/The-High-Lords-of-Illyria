@@ -1,5 +1,5 @@
 // Territory (docs/GAME_DESIGN.md §4.2.9), after the little towers with flags
-// that Warlords sets by its river crossings: the map's campaign hexes (400 m
+// that Warlords sets by its river crossings: the map's campaign hexes (267 m
 // between centres, the grid the map draws) each fly a side's banner, or none.
 // Ten times a day (every kTerritoryTicks):
 // - a hex where one side's armies stand, and nobody else's, is claimed for it:

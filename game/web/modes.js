@@ -1,10 +1,10 @@
 // The matches' pages (game/src/mode_*.cpp): the setup panel (where to fight,
 // seats, difficulty, the army), Horde's HUD and its reinforcements between
-// waves, capture the flag's teams and alerts, and the end of a match. Kept
-// apart from the title screen: it starts a match with
-// Module._illyria_start_mode(id, optionsJson) ("horde" or "ctf"); without a
-// "place" that opens this setup panel. When the player leaves a match the page
-// hears the "illyria:mode-exit" event (and window.illyriaReturnToMenu is called).
+// waves, capture the flag's teams and alerts, and the end of a match. The
+// title screen (title.js, docs/GAME_DESIGN.md §4.6) finds "horde" and "ctf" in
+// window.IllyriaModes: their menu() is this setup panel, which starts the match
+// with IllyriaGame.startMode(id, options) (the engine's illyria_start_mode);
+// leaving goes back with IllyriaGame.toMenu() (and fires "illyria:mode-exit").
 // Test addresses: ?mode=horde or ?mode=ctf open the setup; &place=N&go starts at once.
 (function () {
   "use strict";
@@ -86,7 +86,7 @@
   let places = null, offers = null;
   const state = { id: "horde", place: 0, difficulty: 1, waves: 10, allies: 0, teams: 2, budget: 36, time: 900, teamAlly: false, army: [] };
   let lastOptions = null;
-  const M = (window.IllyriaModes = { active: false });
+  const M = (window.IllyriaMatch = { active: false });
 
   function seg(label, items, get, set) {
     const h = el("h4", {}, label), row = el("div", { class: "md-seg" });
@@ -169,7 +169,9 @@
   function begin(opts) {
     closeSetup();
     lastOptions = opts || options();
-    call("illyria_start_mode", "number", ["string", "string"], [state.id, JSON.stringify(lastOptions)]);
+    const game = window.IllyriaGame;
+    const ok = game ? game.startMode(state.id, lastOptions) : call("illyria_start_mode", "number", ["string", "string"], [state.id, JSON.stringify(lastOptions)]);
+    if (!ok && game && game.toast) game.toast(call("illyria_mode_error", "string", [], []) || "The match could not start.");
   }
   function closeSetup() {
     setup.classList.add("md-hidden");
@@ -177,9 +179,10 @@
   }
   function leave() {
     end.classList.add("md-hidden");
-    if (M.active) call("illyria_mode_exit", null, [], []);
-    else document.dispatchEvent(new CustomEvent("illyria:mode-exit", { detail: { id: state.id, result: null } }));
+    const result = M.active ? json("illyria_mode_hud") : null;
     stop();
+    document.dispatchEvent(new CustomEvent("illyria:mode-exit", { detail: { id: state.id, result } }));
+    if (window.IllyriaGame) window.IllyriaGame.toMenu();
   }
   function stop() {
     M.active = false;
@@ -187,7 +190,7 @@
     for (const e of [hud, alertBox, reinforce, end]) e.classList.add("md-hidden");
   }
 
-  // Called by illyria_start_mode: without a place, the setup panel asks.
+  // The setup panel: where to fight, and the rest.
   M.setup = function (id, optionsJson) {
     state.id = id === "ctf" ? "ctf" : "horde";
     if (!places) places = json("illyria_mode_places");
@@ -198,6 +201,7 @@
     const first = places.find((p) => p.recommended && (state.id === "ctf" || p.kind === "hill")) || places[0];
     if (first && !places.some((p) => p.i === state.place && state.place !== 0)) state.place = first.i;
     stop();
+    document.body.classList.remove("at-title");  // the title screen makes way
     document.body.classList.add("mode-setup");
     setup.classList.remove("md-hidden");
     call("illyria_mode_preview", null, ["number"], [state.place]);
@@ -211,8 +215,11 @@
     lastKey = "";
     update();
   };
-  M.start = (id, opts) => call("illyria_start_mode", "number", ["string", "string"], [id, JSON.stringify(opts || {})]);
   M.leave = leave;
+  // For the title screen (title.js): playable, their menu is the setup panel.
+  window.IllyriaModes = window.IllyriaModes || {};
+  for (const id of ["horde", "ctf"])
+    window.IllyriaModes[id] = { available: true, menu: () => M.setup(id, "{}"), started: () => M.started(id), stopped: () => stop() };
 
   // The HUD, a few times a second.
   let lastKey = "", alertUntil = 0;
@@ -301,7 +308,7 @@
       begin({ place: +place[1], seats: m[1] === "ctf" ? ["human", "computer", "computer", "computer"] : ["human", "empty", "empty", "empty"],
               teams: m[1] === "ctf" ? (+(/[?&]teams=(\d)/.exec(location.search) || [0, 2])[1]) : undefined });
     } else {
-      call("illyria_start_mode", "number", ["string", "string"], [m[1], "{}"]);
+      M.setup(m[1], "{}");
     }
   };
 })();

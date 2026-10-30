@@ -126,7 +126,7 @@ void Campaign::initRare() {
         if ((noise::lattice(sl, static_cast<int64_t>(i), 1) * kLevyOdds).floorToInt() != 0) continue;
         // The land decides what the levy is, as it does the town's training.
         const Continent::Sample s = continent_.sample(c.pos.x, c.pos.y);
-        const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(300), c.pos.y, s.height, s.mountain, s.roadDist);
+        const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(200), c.pos.y, s.height, s.mountain, s.roadDist);
         const int32_t pick = static_cast<int32_t>((noise::lattice(sl, static_cast<int64_t>(i), 2) * 3).floorToInt());
         const UnitType t = s.mountain > Fixed::fromInt(15) ? kHillLevies[pick] : g == Ground::Forest ? kWoodLevies[pick] : kPlainLevies[pick];
         st.options.push_back(levy(t, warlordsStrength(t) >= 7 ? 1 : 2));

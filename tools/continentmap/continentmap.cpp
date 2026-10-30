@@ -6,13 +6,14 @@
 using namespace illyria::sim;
 int main(int argc, char** argv) {
     if (argc < 3) { fprintf(stderr, "usage: illyria_continentmap out.ppm out.json\n"); return 2; }
-    const int W = 640, H = 800;  // 20 m per pixel
+    const int W = 640, H = 800;  // the whole continent, about 13.3 m per pixel
+    const double mpp = static_cast<double>(Continent::kWidth) / W;
     auto t0 = std::chrono::steady_clock::now();
     // A third argument "design" skips the baked erosion (for trying out the design quickly).
     Continent c(20261027, argc > 3 && std::string(argv[3]) == "design" ? Continent::Relief::Design : Continent::Relief::Baked);
     std::vector<float> h(W * H); std::vector<int> g(W * H);
     for (int py = 0; py < H; ++py) for (int px = 0; px < W; ++px) {
-        Fixed x = Fixed::fromInt(px * 20 + 10), y = Fixed::fromInt((H - 1 - py) * 20 + 10);
+        Fixed x = Fixed::fromRatio((2 * px + 1) * Continent::kWidth, 2 * W), y = Fixed::fromRatio((2 * (H - 1 - py) + 1) * Continent::kHeight, 2 * H);
         h[py * W + px] = (float)c.heightAt(x, y).toDouble();
         g[py * W + px] = (int)c.groundAt(x, y);
     }
@@ -24,7 +25,7 @@ int main(int argc, char** argv) {
     for (int py = 0; py < H; ++py) for (int px = 0; px < W; ++px) {
         int i = py * W + px; float z = h[i];
         float zl = px > 0 ? h[i - 1] : z, zu = py > 0 ? h[i - W] : z;
-        float shade = 1.0f + ((z - zl) - (z - zu)) * 0.05f; shade = shade < 0.45f ? 0.45f : shade > 1.5f ? 1.5f : shade;
+        float shade = 1.0f + ((z - zl) - (z - zu)) * 0.075f; shade = shade < 0.45f ? 0.45f : shade > 1.5f ? 1.5f : shade;
         float c3[3] = {0, 0, 0};
         switch (g[i]) {
             case 0: c3[0]=120;c3[1]=158;c3[2]=72; break;   // plains
@@ -47,7 +48,7 @@ int main(int argc, char** argv) {
     fclose(f);
     // Overlays for the Python labeller: rivers, roads, crossings, labels (pixel coords).
     FILE* j = fopen(argv[2], "w");
-    auto P = [&](const Vec3& p, double& x, double& y) { x = p.x.toDouble() / 20.0; y = H - 1 - p.y.toDouble() / 20.0; };
+    auto P = [&](const Vec3& p, double& x, double& y) { x = p.x.toDouble() / mpp; y = H - 1 - p.y.toDouble() / mpp; };
     fprintf(j, "{\"rivers\":[");
     for (size_t r = 0; r < c.rivers().size(); ++r) { fprintf(j, "%s{\"w\":%.1f,\"pts\":[", r ? "," : "", c.rivers()[r].halfWidth.toDouble()); for (size_t k = 0; k < c.rivers()[r].points.size(); ++k) { double x, y; P(c.rivers()[r].points[k], x, y); fprintf(j, "%s[%.1f,%.1f]", k ? "," : "", x, y);} fprintf(j, "]}"); }
     fprintf(j, "],\"roads\":[");

@@ -41,13 +41,16 @@ int32_t nearTown(const Campaign& c) {
     return best;
 }
 
-// A stack of side 0 one step from the town, ordered into it. 0 if no cell fits.
+// A stack of side 0 one step from the town, ordered into it: from open
+// ground if there is any (a quick step in and out). 0 if no cell fits.
 uint32_t besiege(Campaign& c, int32_t city, const std::vector<UnitType>& types, int32_t* fromX = nullptr, int32_t* fromY = nullptr) {
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(city)];
+    for (int pass = 0; pass < 2; ++pass)
     for (int32_t dy = -1; dy <= 1; ++dy)
         for (int32_t dx = -1; dx <= 1; ++dx) {
             const int32_t x = t.cx + dx, y = t.cy + dy;
             if ((dx == 0 && dy == 0) || c.terrainAt(x, y) == Lay::Water || c.terrainAt(x, y) == Lay::Mountain || c.cityAt(x, y) >= 0) continue;
+            if (pass == 0 && c.terrainAt(x, y) != Lay::Plain && c.terrainAt(x, y) != Lay::Road) continue;
             const uint32_t id = c.raise(0, x, y, types);
             if (c.move(id, t.cx, t.cy) && c.findStack(id)->path.size() == 1) {
                 if (fromX) *fromX = x;
@@ -162,7 +165,7 @@ TEST(leaving_the_town_abandons_the_banner) {
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(town)];
     CHECK(t.bannerProgress > 0);
     CHECK(c.move(id, fx, fy));
-    for (int k = 0; k < Campaign::kTicksPerDay && c.findStack(id)->cx != fx; ++k) c.step();
+    for (int k = 0; k < Campaign::kTicksPerDay && (c.findStack(id)->cx != fx || c.findStack(id)->cy != fy); ++k) c.step();
     c.step();
     CHECK(t.banner == Campaign::kNeutral);
     CHECK(t.bannerProgress == 0);

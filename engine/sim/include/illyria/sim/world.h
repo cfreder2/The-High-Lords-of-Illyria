@@ -541,7 +541,7 @@ private:
     // from `from` to `goal`, with the soldier's file kept where the ground allows.
     void planMarch(Unit& unit, const Vec3& to, const Vec3& from, const Vec3& goal);
     void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
-    // Routes onto, along and off castle wall-walks by their stairs; false if neither end is on one.
+    // Routes onto, along and off castle wall-walks by their ramps; false if neither end is on one (or the unit cannot climb).
     bool planRampartPath(Unit& unit, const Vec3& to);
     void separateBodies();
     void kickRemains(Unit& unit, const Vec3& moveDir);

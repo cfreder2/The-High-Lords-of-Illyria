@@ -170,14 +170,14 @@ void Battle::setUpCampaign(const BattlePlan& plan) {
         for (const BattleArmy& a : plan.foe) {
             if (a.type == UnitType::Archers && a.soldiers > 0 && walls) {
                 // One to each embrasure, spread round the walls while they
-                // last; the rest wait at the foot of a stair to step up.
+                // last; the rest wait at the foot of a ramp to step up.
                 Squad s{a.name.empty() ? "Archers" : a.name, kEnemy, a.type, {}};
                 s.formation = Formation::Loose;
                 s.garrison = true;
                 s.armyId = a.id;
                 s.post = centre;
                 const sim::UnitStats stats = sim::unitStats(a.type);
-                const V3 foot = walls->stairs.empty() ? gate - out * 12.0f : toV3(walls->stairs.front().first);
+                const V3 foot = walls->ramps.empty() ? gate - out * 12.0f : toV3(walls->ramps.front().first);
                 for (int i = 0; i < a.soldiers; ++i) {
                     const bool up = static_cast<size_t>(manned) < spots.size();
                     const V3 p = up ? toV3(spots[static_cast<size_t>(manned)].pos)
@@ -385,6 +385,10 @@ void Battle::testShootAt(const V3& at) {
     for (const Squad& s : squads_)
         if (s.owner == kPlayer && s.type == UnitType::Archers)
             for (sim::EntityId id : s.members) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
+}
+
+void Battle::testMove(sim::EntityId unit, const V3& to) {
+    if (const sim::Unit* u = world_->findUnit(unit)) issue(u->owner, unit, sim::Command::Type::Move, to);
 }
 
 void Battle::holdGates(sim::PlayerId holder) {

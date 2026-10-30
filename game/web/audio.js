@@ -7,6 +7,30 @@
   let ctx = null;
   const waiting = [];
   let unlocked = false;
+  // The master volume over the voices and the sound effects (Settings, Sound).
+  const settingsKey = "illyria.audio.v1";
+  const settings = { master: 1 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(settingsKey));
+    if (saved && typeof saved.master === "number") Object.assign(settings, saved);
+  } catch (e) { /* private mode: defaults */ }
+  let out = null;
+  // Where the voices and effects play into: the master gain, made with the context.
+  function output() {
+    const c = context();
+    if (!c) return null;
+    if (!out) {
+      out = c.createGain();
+      out.gain.value = settings.master;
+      out.connect(c.destination);
+    }
+    return out;
+  }
+  function setMaster(v) {
+    settings.master = Math.max(0, Math.min(1, v));
+    if (out) out.gain.value = settings.master;
+    try { localStorage.setItem(settingsKey, JSON.stringify(settings)); } catch (e) {}
+  }
 
   function context() {
     if (ctx) return ctx;
@@ -36,6 +60,9 @@
 
   window.IllyriaAudio = {
     context,
+    output,
+    settings,
+    setMaster,
     unlock,
     unlocked: () => unlocked && !!ctx,
     // Runs cb(ctx) once audio is allowed (at once if it already is).

@@ -39,15 +39,16 @@ struct Polyline {
     }
 };
 
-// A walkway above the ground: a bridge deck, a castle's wall-walk or a stair.
+// A walkway above the ground: a bridge deck, a castle's wall-walk or a ramp up to one.
 // It runs from centre - dir * halfSpan to centre + dir * halfSpan, halfWidth
 // either side; its top is centre.z in the middle and rises by `rise` end to end.
 struct Deck {
     Vec3 centre, dir;
     Fixed halfSpan, halfWidth;
     bool foot = false;   // a narrow timber footbridge, not a stone road bridge
-    Fixed rise = {};     // stairs climb; bridges and walls are level
-    bool raised = false; // on a castle (walls and stairs), not over water
+    Fixed rise = {};     // ramps climb; bridges and walls are level
+    bool raised = false; // on a castle (walls and ramps), not over water
+    bool ramp = false;   // a castle ramp: solid down to the ground
     bool contains(Fixed x, Fixed y) const;
     Fixed heightAt(Fixed x, Fixed y) const;
 };
@@ -81,12 +82,12 @@ struct Gate {
     static bool inside(const Rampart& ring, const Vec3& p);
 };
 
-// A ring of castle walls with a walk along the top, and the stairs up to it.
+// A ring of castle walls with a walk along the top, and the ramps up to it.
 struct Rampart {
     std::vector<Vec3> corners;  // z = the walk
     Fixed halfThick;
     Vec3 centre;  // inside the ring
-    std::vector<std::pair<Vec3, Vec3>> stairs;  // (foot, head)
+    std::vector<std::pair<Vec3, Vec3>> ramps;  // (foot on the ground, head at the walk)
     // Where an archer stands to shoot out through each embrasure: on the
     // walk against the parapet (z = the walk), and the way out.
     struct Embrasure {
@@ -135,6 +136,9 @@ public:
     // The highest deck here no higher than `ceiling` (one can stand under a
     // wall-walk, in a gate passage); false if there is none.
     bool deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const;
+    // True where a castle ramp's slope here rises above z: inside its solid
+    // body (it is earth and stone down to the ground, not a bridge).
+    bool inRamp(Fixed x, Fixed y, Fixed z) const;
     // True where the ground at this exact point lies under water.
     bool underWater(Fixed x, Fixed y) const;
     // Ponds: (x, y) centre, z = radius.

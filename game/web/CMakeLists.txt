@@ -21,7 +21,7 @@ target_link_options(illyria_web PRIVATE
     -sALLOW_MEMORY_GROWTH=1
     -sENVIRONMENT=web
     "-sEXPORTED_FUNCTIONS=['_main','_illyria_version','_illyria_pointer','_illyria_wheel','_illyria_select_squad','_illyria_focus_squad','_illyria_stop','_illyria_charge','_illyria_hot_spot','_illyria_toggle_pause','_illyria_cycle_formation','_illyria_cycle_speed','_illyria_restart','_illyria_fast_forward','_illyria_set_camera','_illyria_finish_detail','_illyria_overview','_illyria_set_graphics','_illyria_graphics_preset','_illyria_hud','_illyria_labels','_malloc','_free']"
-    "-sEXPORTED_RUNTIME_METHODS=['cwrap','ccall','UTF8ToString']"
+    "-sEXPORTED_RUNTIME_METHODS=['cwrap','ccall','UTF8ToString','stringToUTF8','lengthBytesUTF8']"
 )
 
 # Assemble a deployable site in <build>/site.
@@ -32,6 +32,8 @@ configure_file(icon.svg "${ILLYRIA_SITE_DIR}/icon.svg" COPYONLY)
 configure_file(voice.js "${ILLYRIA_SITE_DIR}/voice.js" COPYONLY)
 configure_file(audio.js "${ILLYRIA_SITE_DIR}/audio.js" COPYONLY)
 configure_file(sfx.js "${ILLYRIA_SITE_DIR}/sfx.js" COPYONLY)
+configure_file(title.js "${ILLYRIA_SITE_DIR}/title.js" COPYONLY)
+configure_file(title.css "${ILLYRIA_SITE_DIR}/title.css" COPYONLY)
 configure_file(modes.js "${ILLYRIA_SITE_DIR}/modes.js" COPYONLY)
 configure_file(sfx-test.html "${ILLYRIA_SITE_DIR}/sfx-test.html" @ONLY)
 # The old address of the sound test page sends you on to it.

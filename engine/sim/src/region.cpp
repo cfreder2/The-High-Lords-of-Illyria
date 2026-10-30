@@ -103,6 +103,12 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
     return found;
 }
 
+bool Region::inRamp(Fixed x, Fixed y, Fixed z) const {
+    for (const Deck& d : decks_)
+        if (d.ramp && d.contains(x, y) && d.heightAt(x, y) > z) return true;
+    return false;
+}
+
 bool Gate::inside(const Rampart& ring, const Vec3& p) {
     // Crossing number: a ray east from p crosses the walls an odd number of times.
     bool in = false;
@@ -551,7 +557,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         if (local.x < -reach || local.y < -reach || local.x > size + reach || local.y > size + reach) continue;
         rg.decks_.push_back({{local.x, local.y, cr.deck}, cr.dir, cr.halfSpan, cr.halfWidth, cr.kind == Continent::Crossing::Kind::Footbridge});
     }
-    // Castles: walls and towers that block, a walk along the top, stairs up to it.
+    // Castles: walls and towers that block, a walk along the top, ramps up to it.
     for (const Continent::City& city : c.cities()) {
         const Vec3 at = toLocal(city.pos);
         const Fixed size = cell * cells, reach = city.radius * 2;
@@ -646,20 +652,25 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 rg.walls_.push_back({a, b, Fixed::one(), city.pos.z + k.keepHeight});
             }
         }
-        for (const Continent::Castle::Stair& st : k.stairs) {
-            const Vec3 foot = toLocal(st.foot), head = toLocal(st.head);
+        const size_t firstRampart = rg.ramparts_.size() - k.rings.size();
+        for (const Continent::Castle::Ramp& rp : k.ramps) {
+            // The slope starts on the pad's ground (which the courtyard is,
+            // exactly) and rises evenly to the landing.
+            const Vec3 foot = toLocal(rp.foot), head = toLocal(rp.head);
             const Vec3 dir = unit(head - foot);
-            Deck d{{(foot.x + head.x) / 2, (foot.y + head.y) / 2, (city.pos.z + st.head.z) / 2}, dir, (head - foot).flat().length() / 2, st.halfWidth};
-            d.rise = st.head.z - city.pos.z;
+            Deck d{{(foot.x + head.x) / 2, (foot.y + head.y) / 2, (city.pos.z + rp.head.z) / 2}, dir, (head - foot).flat().length() / 2, rp.halfWidth};
+            d.rise = rp.head.z - city.pos.z;
             d.raised = true;
+            d.ramp = true;
             rg.decks_.push_back(d);
             // A level landing at the top, beside the walk.
-            const Fixed landing = Fixed::fromInt(3);
-            Deck top{{head.x + dir.x * landing / 2, head.y + dir.y * landing / 2, st.head.z}, dir, landing / 2, st.halfWidth};
+            const Fixed landing = Continent::Castle::kRampLanding;
+            Deck top{{head.x + dir.x * landing / 2, head.y + dir.y * landing / 2, rp.head.z}, dir, landing / 2, rp.halfWidth};
             top.raised = true;
+            top.ramp = true;
             rg.decks_.push_back(top);
             const Vec3 end = head + dir * (landing - Fixed::fromRatio(1, 2));
-            if (!rg.ramparts_.empty()) rg.ramparts_[rg.ramparts_.size() - k.rings.size()].stairs.push_back({{foot.x, foot.y, city.pos.z}, {end.x, end.y, st.head.z}});
+            rg.ramparts_[firstRampart + rp.ring].ramps.push_back({{foot.x, foot.y, city.pos.z}, {end.x, end.y, rp.head.z}});
         }
         for (const Continent::Castle::House& hs : k.houses) {
             Obstacle o;
@@ -731,7 +742,11 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         }
     }
     rg.terrain_ = Terrain::fromSamples(cells, cell, shaped);
-    rg.waterLevel_ = c.sample(ford.x, ford.y).riverSurface;
+    // The level below which things look drowned: the lowest water in the
+    // window (a town far from the ford may stand below the ford's river).
+    rg.waterLevel_ = -m(1000);
+    for (const Fixed w : rg.water_)
+        if (w.raw != kDryRaw && (rg.waterLevel_ == -m(1000) || w < rg.waterLevel_)) rg.waterLevel_ = w;
 
     for (const Polyline& road : c.roads()) {
         Polyline local{{}, road.halfWidth, road.widths};

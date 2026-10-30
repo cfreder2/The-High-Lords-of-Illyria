@@ -1176,14 +1176,17 @@ void Renderer::uploadSettlements(const Battle& battle) {
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
         }
-        for (const sim::Continent::Castle::Stair& st : k.stairs) {
-            const V3 foot = local(st.foot), head = local(st.head);
+        for (const sim::Continent::Castle::Ramp& rp : k.ramps) {
+            // The slope from the ground, then its landing beside the walk (a block down to the ground).
+            const V3 foot = local(rp.foot), head = local(rp.head);
             V3 run{head.x - foot.x, head.y - foot.y, 0};
-            const float len = run.length();
+            const float len = run.length(), half = static_cast<float>(rp.halfWidth.toDouble());
+            const float landing = static_cast<float>(sim::Continent::Castle::kRampLanding.toDouble());
             float q[4];
             yawQuat(yawOf(run), q);
-            pushInstance(stairs, V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z}, q,
-                         {len / 2, static_cast<float>(st.halfWidth.toDouble()), head.z - foot.z}, {1, 1, 1});
+            pushInstance(stairs, V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z}, q, {len / 2, half, head.z - foot.z}, {1, 1, 1});
+            const V3 dir = run * (1.0f / len);
+            pushInstance(parapets, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {0.97f, 0.97f, 0.97f});
         }
         for (size_t hi = 0; hi < k.houses.size(); ++hi) {
             const sim::Continent::Castle::House& hs = k.houses[hi];
@@ -1315,7 +1318,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(parapets_, meshes::block(), 0);
     makeMeshBatch(drums_, meshes::drum(), 0);
     makeMeshBatch(keeps_, meshes::keep(), 0);
-    makeMeshBatch(stairs_, meshes::stairs(), 0);
+    makeMeshBatch(stairs_, meshes::ramp(), 0);  // the castles' ramps
     makeMeshBatch(gates_, meshes::gate(false), 0);
     makeMeshBatch(brokenGates_, meshes::gate(true), 0);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_}) b->masonry = true;

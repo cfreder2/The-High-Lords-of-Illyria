@@ -29,10 +29,10 @@ TEST(continent_rivers_run_downhill_to_the_sea) {
         for (size_t i = 0; i + 1 < r.points.size(); ++i) CHECK(r.points[i + 1].z <= r.points[i].z);
     }
     // The western sea, the eastern mountains.
-    CHECK(continent().heightAt(Fixed::fromInt(200), Fixed::fromInt(8000)) < Fixed::zero());
+    CHECK(continent().heightAt(Fixed::fromInt(133), Fixed::fromInt(5333)) < Fixed::zero());
     Fixed highest = Fixed::zero();
-    for (int y = 1000; y < Continent::kHeight; y += 500)
-        highest = std::max(highest, continent().heightAt(Fixed::fromInt(Continent::kWidth - 600), Fixed::fromInt(y)));
+    for (int y = 667; y < Continent::kHeight; y += 333)
+        highest = std::max(highest, continent().heightAt(Fixed::fromInt(Continent::kWidth - 400), Fixed::fromInt(y)));
     CHECK(highest > Fixed::fromInt(150));
 }
 
@@ -55,7 +55,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x5822664e77864b03;
+    constexpr uint64_t kGolden = 0xef362b62e0f9db70;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +74,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x0c9e8492632082b0;
+    constexpr uint64_t kGolden = 0xd6f7e538af94ad99;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -91,7 +91,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(city.pos.x, city.pos.y, surface));
         CHECK(c.heightAt(city.pos.x, city.pos.y) == city.pos.z);  // the levelled pad
         for (const Continent::City& other : c.cities())
-            if (&other != &city) CHECK((other.pos - city.pos).flat().length() > Fixed::fromInt(500));
+            if (&other != &city) CHECK((other.pos - city.pos).flat().length() > Fixed::fromInt(333));
     }
     for (int f = 0; f < Continent::kFactionCount; ++f) CHECK(capitals[f] == 1);
     int kinds[3] = {};
@@ -101,7 +101,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0xafd7e11dfb465651;
+    constexpr uint64_t kGolden = 0x3c65cc08cd070098;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
