@@ -50,3 +50,12 @@ add_custom_target(illyria_web_voice ALL
 add_custom_target(illyria_web_sfx ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sfx" "${ILLYRIA_SITE_DIR}/sfx"
 )
+# The manual: the book reader (manual/) and its chapters, written in Markdown
+# (docs/manual/), with the unit sheet its compendium reads its numbers from.
+# manual.html at the root (where the title screen looks for it) opens the book.
+configure_file(manual.html "${ILLYRIA_SITE_DIR}/manual.html" COPYONLY)
+add_custom_target(illyria_web_manual ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/manual" "${ILLYRIA_SITE_DIR}/manual"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/docs/manual" "${ILLYRIA_SITE_DIR}/manual/book"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/docs/UNITS.md" "${ILLYRIA_SITE_DIR}/manual/book/UNITS.md"
+)
