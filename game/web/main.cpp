@@ -363,14 +363,14 @@ void placeFlags() {
             V3 base = toV3(k.keep) - V3{o.x, o.y, 0};
             base.z = app->battle->heightAt(base.x, base.y) + static_cast<float>(k.keepHeight.toDouble());
             const float p = static_cast<float>(cs.bannerProgress) / C::kBannerFull;
-            flags.push_back({base, 70 * s, 1 - p, 26 * s, factionColor(cs.owner)});
-            flags.push_back({base, 70 * s, p, 26 * s, factionColor(cs.banner)});
+            flags.push_back({base, 70 * s, 1 - p, 26 * s, bannerColor(cs.owner)});
+            flags.push_back({base, 70 * s, p, 26 * s, bannerColor(cs.banner)});
         }
         for (const C::Outpost& op : c.outposts()) {
             V3 base{C::centre(op.cx) - o.x, C::centre(op.cy) - o.y, 0};
             base.z = app->battle->heightAt(base.x, base.y);
             const C::Hex& h = c.hexes()[static_cast<size_t>(op.hex)];
-            flags.push_back({base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, factionColor(h.owner)});
+            flags.push_back({base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, bannerColor(h.owner)});
         }
     } else {
         app->renderer.setTerritory({}, 0, 0, 0);
@@ -1918,10 +1918,11 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_mode_hud() {
     s = app && app->battle->mode() ? app->battle->mode()->hudJson(*app->battle) : "{}";
     return s.c_str();
 }
-// The local player's action: 0 recruit offer `option`, 1 ready.
+// The local player's action: 0 recruit offer `option`, 1 ready, 2 recall the fallen hero.
 EMSCRIPTEN_KEEPALIVE void illyria_mode_act(int kind, int option) {
     if (!app || !app->battle->mode()) return;
-    app->battle->mode()->act({kind == 1 ? illyria::sim::MatchAction::Kind::Ready : illyria::sim::MatchAction::Kind::Recruit,
+    using K = illyria::sim::MatchAction::Kind;
+    app->battle->mode()->act({kind == 1 ? K::Ready : kind == 2 ? K::Recall : K::Recruit,
                               static_cast<uint8_t>(std::clamp(option, 0, 255))});
 }
 // The places to fight over, for the setup panel.
@@ -1964,6 +1965,16 @@ EMSCRIPTEN_KEEPALIVE void illyria_mode_test_skip() {
     if (!app) return;
     if (auto* h = dynamic_cast<HordeMode*>(app->battle->mode())) h->skipBreak();
 }
+// Test hook (the manual's pictures of a fallen hero): the local seat's first
+// squad after its hero turns on him, an order like any other.
+EMSCRIPTEN_KEEPALIVE void illyria_mode_test_strike_hero() {
+    if (!app) return;
+    auto* h = dynamic_cast<HordeMode*>(app->battle->mode());
+    if (!h || h->heroSquad(h->localSeat()) < 0) return;
+    app->battle->selectSquad(h->heroSquad(h->localSeat()) + 1);
+    app->battle->orderAttackUnit(h->hero(*app->battle, h->localSeat()));
+    app->battle->clearSelection();
+}
 // Test hook: the camera over a flag of the match (capture the flag's, or the hill's).
 EMSCRIPTEN_KEEPALIVE void illyria_mode_test_view_flag(int index, float distance, float yaw) {
     if (!app || !app->battle->mode()) return;
@@ -1982,9 +1993,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     char buf[1024];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
-                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",",
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"side\":%d,",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
-                  b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str());
+                  b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str(),
+                  b.localSide());
     s = buf;
     // The town's capture point, whose land this is, and the selection's small edges.
     {
@@ -2040,14 +2052,19 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const Squad& q = b.squads()[i];
         static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
         const Standing st = b.standing(q);
+        // Whose it is, seen from the local side (Battle::localSide): mine to
+        // order, an ally's (my side, another seat), or a foe's.
+        const bool mine = b.controllable(b.world().units()[q.members.front() - 1]);
+        const bool friendly = q.owner == b.localSide();
         std::snprintf(buf, sizeof buf,
                       "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
-                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"ally\":%s}",
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
+                      "\"ally\":%s,\"foe\":%s}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
                       b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken,
-                      q.owner == Battle::kPlayer ? b.squadSelection(q) : 0,
-                      q.owner == Battle::kPlayer && !b.controllable(b.world().units()[q.members.front() - 1]) ? "true" : "false");
+                      mine ? b.squadSelection(q) : 0, mine ? "true" : "false", friendly && !mine ? "true" : "false",
+                      friendly ? "false" : "true");
         s += buf;
     }
     s += "]}";

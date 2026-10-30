@@ -22,4 +22,10 @@ inline V3 factionColor(uint8_t owner) {
     return owner < sim::Continent::kFactionCount ? kColors[owner] : V3{0.6f, 0.6f, 0.6f};
 }
 
+// A banner's cloth: the lord's colour, or for nobody's (a neutral town, an
+// outpost unclaimed) undyed linen, which the flag shader marks with a red cross.
+inline V3 bannerColor(uint8_t owner) {
+    return owner < sim::Continent::kFactionCount ? factionColor(owner) : V3{0.8f, 0.74f, 0.6f};
+}
+
 }  // namespace illyria::game

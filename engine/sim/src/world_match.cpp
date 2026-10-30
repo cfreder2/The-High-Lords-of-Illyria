@@ -1,5 +1,5 @@
 // Match rules on the soldiers (world.h): mending between Horde's rounds, a
-// hero's level for surviving one, and a side put out of a capture-the-flag
+// hero's level for surviving one, a fallen hero raised again, and a side put out of a capture-the-flag
 // match. Called by the game modes from simulation state only, at the same
 // tick on every peer.
 #include <algorithm>
@@ -27,6 +27,19 @@ void World::levelUp(EntityId id) {
         return;
     }
     u->rank = std::min(3, u->rank + 1);
+}
+
+EntityId World::raiseFallen(EntityId fallen, const Vec3& pos, const Vec3& facing, int32_t hpPct) {
+    const Unit* f = findUnit(fallen);
+    if (!f || f->alive()) return kNoEntity;
+    const Unit was = *f;  // spawning may move the units
+    const EntityId id = spawnUnit(was.owner, pos, facing, was.stats);
+    Unit* u = mutableUnit(id);
+    u->rank = was.rank;
+    u->kills = was.kills;
+    u->blessings = was.blessings;
+    u->hp = std::max<int32_t>(1, u->stats.maxHp * std::clamp(hpPct, 1, 100) / 100);
+    return id;
 }
 
 void World::breakSide(PlayerId owner) {

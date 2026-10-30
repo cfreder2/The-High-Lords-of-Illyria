@@ -68,6 +68,7 @@ add_executable(illyria_tests
     test_sfx.cpp
     test_horde.cpp
     test_ctf.cpp
+    test_match_seats.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)

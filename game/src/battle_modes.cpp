@@ -45,13 +45,38 @@ int Battle::addSquad(const std::string& name, sim::PlayerId owner, UnitType type
     return static_cast<int>(squads_.size()) - 1;
 }
 
-void Battle::markForeign(size_t squad) {
+void Battle::setLocalSide(sim::PlayerId side) {
+    local_ = side;
+    voice_.setPlayer(side);
+    sfx_.setPlayer(side);
+    std::erase_if(selection_, [&](sim::EntityId id) { return !controllable(world_->units()[id - 1]); });
+    refreshSelection();
+}
+
+void Battle::setForeign(size_t squad, bool foreign) {
     if (squad >= squads_.size()) return;
     foreign_.resize(world_->units().size(), 0);
-    for (sim::EntityId id : squads_[squad].members) foreign_[id - 1] = 1;
+    for (sim::EntityId id : squads_[squad].members) foreign_[id - 1] = foreign ? 1 : 0;
     // Nobody keeps an ally's men selected.
-    std::erase_if(selection_, [&](sim::EntityId id) { return foreign_[id - 1] != 0; });
+    std::erase_if(selection_, [&](sim::EntityId id) { return !controllable(world_->units()[id - 1]); });
     refreshSelection();
+}
+
+sim::EntityId Battle::returnFallen(size_t squad, sim::EntityId fallen, V3 at, V3 facing, int32_t hpPct) {
+    if (squad >= squads_.size()) return sim::kNoEntity;
+    Squad& s = squads_[squad];
+    const auto place = std::find(s.members.begin(), s.members.end(), fallen);
+    if (place == s.members.end()) return sim::kNoEntity;
+    const sim::EntityId id = world_->raiseFallen(fallen, toSim(at), toSim(facing.normalized()), hpPct);
+    if (id == sim::kNoEntity) return id;
+    // He takes the fallen one's place in the squad (its card, its banner).
+    *place = id;
+    if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+    squadOfUnit_[id - 1] = static_cast<int>(squad);
+    const bool wasForeign = fallen <= foreign_.size() && foreign_[fallen - 1];
+    growUnits();
+    if (wasForeign) foreign_[id - 1] = 1;
+    return id;
 }
 
 void Battle::aiSteer(size_t squad, const V3& to) {

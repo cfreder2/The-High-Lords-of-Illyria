@@ -76,7 +76,7 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     if (mine.empty()) return;
     for (sim::EntityId id : mine) {
         const sim::Unit& u = world_->units()[id - 1];
-        sim::Command c{kPlayer, id, sim::Command::Type::AttackUnit, t->pos};
+        sim::Command c{local_, id, sim::Command::Type::AttackUnit, t->pos};
         c.targetUnit = target;
         // The squad-mate left behind (nearest him) is whom he goes back to.
         if (const int s = squadOfUnit_[id - 1]; s >= 0) {
@@ -89,7 +89,7 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     }
     markOrdered(mine);
     voice_.order(Situation::Attack, *world_, mine);
-    if (t->owner == kPlayer) say("Attacking our own!");
+    if (t->owner == local_) say("Attacking our own!");
 }
 
 void Battle::orderAttackGround(const V3& at) {
@@ -97,11 +97,11 @@ void Battle::orderAttackGround(const V3& at) {
     if (mine.empty()) return;
     std::vector<sim::EntityId> march;
     for (sim::EntityId id : mine) {
-        if (world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) issue(kPlayer, id, sim::Command::Type::AttackGround, at);
+        if (world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) issue(local_, id, sim::Command::Type::AttackGround, at);
         else march.push_back(id);
     }
     // The rest march there, fighting whoever they meet on the way.
-    moveGroup(kPlayer, march, selFormation_, at, nullptr, selectionFacing());
+    moveGroup(local_, march, selFormation_, at, nullptr, selectionFacing());
     markOrdered(mine);
     voice_.order(Situation::Attack, *world_, mine);
 }
@@ -109,7 +109,7 @@ void Battle::orderAttackGround(const V3& at) {
 void Battle::orderForceMarch(const V3& to, const V3* facing) {
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
-    moveGroup(kPlayer, mine, selFormation_, to, facing, selectionFacing(), true);
+    moveGroup(local_, mine, selFormation_, to, facing, selectionFacing(), true);
     voice_.order(Situation::Move, *world_, mine);
 }
 
@@ -122,7 +122,7 @@ void Battle::orderAttackObject(const Pick& pick) {
         std::vector<sim::EntityId> through;
         for (sim::EntityId id : mine) {
             if (world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
-                sim::Command c{kPlayer, id, sim::Command::Type::AttackObject, g.a};
+                sim::Command c{local_, id, sim::Command::Type::AttackObject, g.a};
                 c.object = sim::Command::Object::Gate;
                 c.objectIndex = pick.index;
                 pending_.push_back(c);
@@ -133,7 +133,7 @@ void Battle::orderAttackObject(const Pick& pick) {
         if (!through.empty()) {
             const V3 centre = toV3(g.a + g.b) * 0.5f, out = toV3(g.out);
             const float side = (centreOf(through) - centre).dot(out) >= 0 ? -1.0f : 1.0f;
-            moveGroup(kPlayer, through, selFormation_, centre + out * (10.0f * side), nullptr, out * side);
+            moveGroup(local_, through, selFormation_, centre + out * (10.0f * side), nullptr, out * side);
         }
         markOrdered(mine);
         voice_.order(Situation::Attack, *world_, mine);
@@ -149,7 +149,7 @@ void Battle::orderAttackObject(const Pick& pick) {
         return;
     }
     for (sim::EntityId id : able) {
-        sim::Command c{kPlayer, id, sim::Command::Type::AttackObject, toSim(pick.at)};
+        sim::Command c{local_, id, sim::Command::Type::AttackObject, toSim(pick.at)};
         c.object = pick.kind == Pick::Kind::Wall ? sim::Command::Object::Wall : sim::Command::Object::Obstacle;
         c.objectIndex = pick.index;
         pending_.push_back(c);
@@ -162,7 +162,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
     Pick p;
     const auto& units = world_->units();
     if (const int u = unitAt(camera, x, y, pixelScale); u >= 0) {
-        p.kind = units[static_cast<size_t>(u)].owner == kPlayer ? Pick::Kind::Own : Pick::Kind::Enemy;
+        p.kind = units[static_cast<size_t>(u)].owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
         p.index = u;
         p.squad = squadOfUnit_[static_cast<size_t>(u)];
         p.at = unitPosition(static_cast<size_t>(u));
@@ -184,7 +184,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
             const float d2 = (px - x) * (px - x) + (py - y) * (py - y);
             if (d2 < best) {
                 best = d2;
-                p.kind = squads_[s].owner == kPlayer ? Pick::Kind::Own : Pick::Kind::Enemy;
+                p.kind = squads_[s].owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
                 p.squad = static_cast<int>(s);
                 p.at = squadCentre(squads_[s]);
             }
@@ -298,7 +298,7 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
     // order: a new one, or his arrival, takes the old marker away.
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
-        if (!u.alive() || u.owner != kPlayer || u.routed) continue;
+        if (!u.alive() || u.owner != local_ || u.routed) continue;
         const float opacity = markOpacity(i);
         if (opacity <= 0.0f) continue;
         const V3 at = unitPosition(i);

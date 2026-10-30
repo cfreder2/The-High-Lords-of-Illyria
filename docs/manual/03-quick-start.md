@@ -10,7 +10,7 @@ The game runs in a web browser, on a phone, a tablet or a computer, with nothing
 
 ## The title screen and settings {#title-screen}
 
-The game opens on its title screen, where you choose what to play: a **battle** on its own, the **campaign** (a new war, or one you saved), this **manual**, or the **settings**. The same choices are in the ☰ menu at the top right while you play; the manual opens in a tab of its own, so the game waits where you left it.
+The game opens on its title screen, where you choose what to play: a **battle** on its own (a skirmish at the ford or the siege), the **campaign** (a new war, or one you saved), **Horde** or **Capture the Flag** (chapter [](#other-wars)), this **manual**, or the **settings**. The same choices are in the ☰ menu at the top right while you play; the manual opens in a tab of its own, so the game waits where you left it.
 
 The **settings** (⚙) hold three groups, and the game keeps your choices on the device:
 

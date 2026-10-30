@@ -6,7 +6,9 @@
 // edges of the field, each stronger and stranger than the last, with elite
 // and boss waves. Between waves a short break: each seat spends its points
 // on reinforcements, the wounded mend, veterans keep their ranks and the
-// heroes rise a level. The hill is lost when the horde stands on it with none
+// heroes rise a level. A hero who falls comes back: at once in the break
+// after his fall for kRecallPoints, or by himself once the next wave is
+// beaten, on the hill with kReturnHpPct of his health and his levels kept. The hill is lost when the horde stands on it with none
 // of the holders there for HillRule::kLoseSeconds, or when the holders are all
 // dead. Up to four seats hold it together (the computer plays the empty ones
 // it is given, and the horde itself, from seat kHordeSeat).
@@ -28,6 +30,7 @@ struct HordeOptions {
     std::array<sim::SeatControl, sim::kMaxSeats> seats{sim::SeatControl::Human, sim::SeatControl::Empty,
                                                        sim::SeatControl::Empty, sim::SeatControl::Empty};
     uint64_t seed = 1;
+    int localSeat = -1;      // the seat at this screen (-1: the first a person plays)
     int musterSeconds = 30;  // before the first wave
     int breakSeconds = 45;   // between waves (or until every person is ready)
 };
@@ -43,6 +46,11 @@ public:
     static constexpr int32_t kHealPct = 50;
     static constexpr int32_t kRoundPoints = 10;
     static constexpr int kOffersShown = 6;
+    // A fallen hero returns to the hill with this share of his health: in
+    // the break after his fall for kRecallPoints of his seat's points, or by
+    // himself when the next wave is beaten (he sits that one out).
+    static constexpr int32_t kReturnHpPct = 50;
+    static constexpr int32_t kRecallPoints = 5;
     enum class Phase : uint8_t { Muster, Wave, Break, Lost, Won };
 
     // Sets up the match on `b`, an empty field (Battle(seed, centre)): the
@@ -76,6 +84,12 @@ public:
     int kills(const Battle& b) const;
     // A seat's hero (squad index), or -1.
     int heroSquad(int seat) const { return seat >= 0 && seat < sim::kMaxSeats ? heroes_[static_cast<size_t>(seat)] : -1; }
+    // A seat's hero, the soldier (kNoEntity: none), and whether he lies fallen.
+    sim::EntityId hero(const Battle& b, int seat) const;
+    bool heroFallen(const Battle& b, int seat) const;
+    // The wave a fallen hero fell in, once a wave has ended without him (0: none);
+    // he returns by himself when wave heroFellIn + 1 is beaten.
+    int heroFellIn(int seat) const { return seat >= 0 && seat < sim::kMaxSeats ? fellIn_[static_cast<size_t>(seat)] : 0; }
     // Test hook: the break or muster ends now.
     void skipBreak() {
         if (phase_ == Phase::Muster || phase_ == Phase::Break) timer_ = 1;
@@ -88,6 +102,9 @@ private:
     void startWave(Battle& b);
     void endWave(Battle& b);
     void chooseOffers();
+    // A seat's fallen hero back on the hill (kReturnHpPct of his health).
+    void returnHero(Battle& b, int seat);
+    std::string heroJson(const Battle& b, int seat) const;
     // Where a seat's men stand on the hill: their side of it.
     sim::Vec3 sector(int seat) const;
     int playingSeats() const;
@@ -103,6 +120,7 @@ private:
     std::array<bool, sim::kMaxSeats> ready_{};
     std::array<int, sim::kMaxSeats> heroes_{-1, -1, -1, -1};
     std::array<int, sim::kMaxSeats> recruits_{};  // squads bought, for where they arrive
+    std::array<int, sim::kMaxSeats> fellIn_{};    // heroFellIn
     std::vector<uint8_t> offers_;
     int32_t contestedSeen_ = 0;  // the hill's clock when last looked at (for the herald)
     std::vector<uint8_t> reached_;  // the ground joined to the hill (mode.h reachFrom): where waves form up

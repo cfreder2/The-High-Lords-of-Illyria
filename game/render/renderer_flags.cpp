@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "meshes.h"
 #include "renderer.h"
 
 namespace illyria::game {
@@ -18,14 +19,18 @@ void push(std::vector<float>& out, const V3& pos, float yaw, const V3& scale, co
 }  // namespace
 
 void Renderer::setFlags(const std::vector<Flag>& flags) {
+    // The castles' banner (meshes::banner) on a taller pole: the turned pole
+    // and gilt finial, and the waving cloth with its owner's device, which
+    // climbs the pole as the flag is raised. The cloth is `size` long; the
+    // pole is scaled by its height, the cloth by its length.
     std::vector<float> poles, cloths;
     for (const Flag& f : flags) {
-        const float r = std::max(0.08f, f.height * 0.012f);
-        push(poles, f.base, 0, {r, r, f.height}, {1, 1, 1});
-        // The cloth hangs from its top edge: at the finial when fully raised.
-        const float drop = f.size * 0.64f;
-        const float z = drop + (f.height - drop) * std::clamp(f.raised, 0.0f, 1.0f);
-        push(cloths, f.base + V3{0, 0, z}, kFlyYaw, {f.size, f.size, f.size}, f.colour);
+        push(poles, f.base, kFlyYaw, {f.height, f.height, f.height}, {1, 1, 1});
+        const float s = f.size / meshes::kBannerClothLength, drop = meshes::kBannerClothDrop * s;
+        // Its top edge: under the collar when fully raised, its foot on the ground when down.
+        const float top = f.height * 0.93f;
+        const float z = drop + (top - drop) * std::clamp(f.raised, 0.0f, 1.0f);
+        push(cloths, f.base + V3{0, 0, z}, kFlyYaw, {s, s, s}, f.colour);
     }
     uploadMeshInstances(poles_, poles);
     uploadMeshInstances(cloths_, cloths);

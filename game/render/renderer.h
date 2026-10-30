@@ -103,6 +103,7 @@ private:
         // 1: individual scenery, drawn near the camera; -1: the woods' clumps
         // that stand in for it beyond (see sceneryNear in kMeshVs); 0: always.
         float lod = 0;
+        bool cloth = false;  // a banner's waving cloth (uFlag): the castles' and the flags'
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {

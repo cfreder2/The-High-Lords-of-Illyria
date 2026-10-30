@@ -119,6 +119,8 @@ struct VoiceCue {
 class Voice {
 public:
     explicit Voice(sim::PlayerId player = 0) : player_(player) {}
+    // The side heard as ours (Battle::setLocalSide).
+    void setPlayer(sim::PlayerId player) { player_ = player; }
 
     // Where the player listens from: the camera's view centre, the way to its
     // right, and how far out it is zoomed (hearing fades with both).

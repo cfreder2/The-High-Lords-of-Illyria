@@ -19,7 +19,7 @@ Every lord begins with one hero, its lord, named for its capital (*Lord of Kings
 - draws no upkeep;
 - **never breaks** in battle (chapter [](#morale)).
 
-A hero who dies is gone for good. What he carried lies where he fell, and the next hero of any side to enter that cell takes it up ("*Dame Rowena took up the Sunblade*").
+A hero who dies in the campaign is gone for good (in Horde he comes back between the waves: chapter [](#hero-returns)). What he carried lies where he fell, and the next hero of any side to enter that cell takes it up ("*Dame Rowena took up the Sunblade*").
 
 ## Searching {#searching}
 

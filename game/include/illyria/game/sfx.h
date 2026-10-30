@@ -96,6 +96,8 @@ struct Ambience {
 class Sfx {
 public:
     explicit Sfx(sim::PlayerId player = 0) : player_(player) {}
+    // The side heard as ours (Battle::setLocalSide).
+    void setPlayer(sim::PlayerId player) { player_ = player; }
 
     // Where the player listens from (as Voice::setListener).
     void setListener(const V3& at, const V3& right, float zoom);

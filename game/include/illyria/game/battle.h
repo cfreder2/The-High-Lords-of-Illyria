@@ -337,12 +337,22 @@ public:
     // A squad raised during the battle (a wave, reinforcements); its index.
     int addSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre, V3 facing,
                  int rank = 0);
+    // The side the person at this screen plays (kPlayer unless a match seats
+    // him elsewhere): whose soldiers he selects and orders, whose voices he
+    // hears as his own. Presentation only: the simulation never reads it, so
+    // every peer of a match plays the same world from its own side.
+    sim::PlayerId localSide() const { return local_; }
+    void setLocalSide(sim::PlayerId side);
     // A squad of the local player's side seated by someone else (an ally):
     // seen and fought beside, but not his to order.
-    void markForeign(size_t squad);
+    void setForeign(size_t squad, bool foreign);
     bool controllable(const sim::Unit& u) const {
-        return u.owner == kPlayer && !(u.id <= foreign_.size() && foreign_[u.id - 1]);
+        return u.owner == local_ && !(u.id <= foreign_.size() && foreign_[u.id - 1]);
     }
+    // A fallen soldier back in his squad (Horde's hero returning): a fresh
+    // soldier with the fallen one's stats, rank, kills and blessings, at
+    // `hpPct` of his health, takes his place in the squad. Its id.
+    sim::EntityId returnFallen(size_t squad, sim::EntityId fallen, V3 at, V3 facing, int32_t hpPct);
     // The computer's orders to a squad. Steer: march there with initiative
     // (a squad already on its way to about the same place keeps its route).
     // ForceMarch: deaf to the enemy. Attack: every soldier after one foe.
@@ -528,6 +538,7 @@ private:
         float weight;
     };
     std::vector<Recent> recent_;
+    sim::PlayerId local_ = kPlayer;  // localSide()
     Voice voice_{kPlayer};
     Sfx sfx_{kPlayer};
     struct Smoulder {
@@ -538,7 +549,7 @@ private:
     CapturePoint capture_;
     void placeCapturePoint(const sim::Continent::City& town);
     std::unique_ptr<BattleMode> mode_;
-    std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (markForeign)
+    std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)
     // The computer's memory of each squad it handles (aiFight): where it was
     // at its last look, how many looks it has stood stuck, and how many more
     // it spends marching round to its goal (a foe across a cliff is no foe).

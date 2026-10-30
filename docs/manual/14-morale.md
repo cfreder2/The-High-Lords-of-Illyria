@@ -68,7 +68,7 @@ A broken man whose morale so reaches the waver line (450, or his own lower rally
 
 A hero is a squad on his own: 260 hit points at level 1 and 8% more a level, a blow of 30 (and 6% more a level), a big shield, and blows every 1.1 s. He **never breaks**. Every soldier of his side within **30 m** fights with his leadership edge, takes 15% less from every shock, and recovers 45 morale a second faster; and he calls the broken back.
 
-The price of all that is his death. A hero who falls takes 850 morale from every soldier of his side within 30 m, and 425 from those within 60 m: green troops near him break where they stand. Keep your hero behind the first line, close enough to lead and to rally, never alone at the front. The enemy's hero is worth the same to you: kill him, and watch his line.
+The price of all that is his death. A hero who falls takes 850 morale from every soldier of his side within 30 m, and 425 from those within 60 m: green troops near him break where they stand. Keep your hero behind the first line, close enough to lead and to rally, never alone at the front. The enemy's hero is worth the same to you: kill him, and watch his line. (In Horde the blow is the same, but the hero himself comes back between the waves: chapter [](#hero-returns).)
 
 ::: tip
 The two ways to beat a stronger army in 3D are to **break it** and to **flank it**. A charge into the flank shakes more than a charge into the front; a blow in the back does twice the damage and costs the man struck twice the morale; and a hero's fall does more than any of it.

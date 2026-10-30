@@ -57,11 +57,14 @@ Mesh ramp();
 //     z from 0 to 1; broken: battered in, hanging and strewn in the passage
 Mesh gate(bool broken);
 Mesh banner();
-// A flagpole: radius 1 (scale it), z from 0 to 1, a gilt finial on top; and
-// its cloth, a swallow-tailed banner flying along +x from the pole, hanging
-// from z = 0 to -0.64 (scale it by its length).
-Mesh flagPole();
-Mesh flagCloth();
+// The banner in two, for a flag that can rise and fall (a capture point, a
+// match's flags, the banners rising over the campaign's towns): its pole (as
+// banner's, z from 0 to 1) and its cloth (as banner's, flying along +x from
+// x = 0.012 to 0.52 and hanging from its top edge at z = 0 to
+// -kBannerClothDrop). Scale both alike: the cloth is 0.508 long to the scale.
+inline constexpr float kBannerClothLength = 0.508f, kBannerClothDrop = 0.33f;
+Mesh bannerPole();
+Mesh bannerCloth();
 Mesh ruin();
 Mesh temple();
 Mesh sageTower();

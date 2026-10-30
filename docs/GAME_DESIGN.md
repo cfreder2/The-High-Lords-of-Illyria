@@ -465,6 +465,21 @@ rules that decide the match (`engine/sim/src/mode_rules.cpp`: the hill, the flag
 the simulation only, in integers and fixed point. A replay of the log reproduces the match exactly
 (the four-seat tests). An ally's squads show on the field but are not the local player's to order.
 
+**The local seat** (`SeatedMode::setLocalSeat`, the options' `localSeat`, `"local"` from the page):
+which seat the person at this screen plays. It is presentation only: the battle's local side
+(`Battle::localSide()`, the team of that seat) decides whose soldiers are selected and ordered
+(`controllable`: of the local side and seated at the local seat; an ally's squads, another seat's,
+are seen but not ordered), the squad cards and enemy count (`illyria_hud` marks each squad `mine`,
+`ally` or `foe`), whose orders and markers show, whose voices are "ours" (`Voice`/`Sfx::setPlayer`),
+whose flag's alarm sounds, and the HUD's "you". The simulation never reads it, so the same inputs
+make the same match whichever seat is local (`tests/test_match_seats.cpp`: a Horde played at seat 0
+and replayed from seat 2, and a capture-the-flag match from blue and from gold, hash alike); an online
+peer sits down by setting it and nothing else. The setup panel lets the player choose his seat on
+Horde's hill when he has allies (1-4: Lord Aldric east, Lady Wren north, Sir Corvin west, Dame Isolde
+south) and, in capture the flag, his colour (the team: blue, red, gold, green) and where his flag
+stands among the places round the field (the options' `starts`, each team's place; the team whose
+place he takes gets his). Each team keeps its colour whoever sits on it.
+
 **Horde** (`mode_horde.cpp`), as in Myth: hold the hill.
 - The hill is the field's highest open ground near its middle that can be climbed from every side
   (no rock, water or face steeper than about 25° within its radius), flagged in the holders' blue.
@@ -477,15 +492,25 @@ the simulation only, in integers and fixed point. A replay of the log reproduces
   Wyrm), ranks rising every four waves. The herald and the war horn announce each.
 - A wave is beaten when none of it is left standing (dead or fled). Then a break (45 s, or until
   every person is Ready): the wounded mend half their wounds, veterans keep their ranks (they were
-  earned by kills), each hero rises a level, and each seat gets 10 points (+1 every second wave) to
-  spend on six of the squads on offer (`squadOffers`: warriors 6 for 4, pikes 6 for 3, archers 6
-  for 4, ... wizards 2 for 6), different six each break; unspent points carry over.
+  earned by kills), each standing hero rises a level, and each seat gets 10 points (+1 every second
+  wave) to spend on six of the squads on offer (`squadOffers`: warriors 6 for 4, pikes 6 for 3, archers
+  6 for 4, ... wizards 2 for 6), different six each break; unspent points carry over.
+- **A fallen hero returns.** His fall shakes the men who see it as in any battle (850 within 30 m,
+  425 within 60 m: green troops near him break). At the end of the wave he fell in he is still down;
+  in that break his seat may **recall** him at once for 5 points (`MatchAction::Recall`, the first
+  card on the reinforcement panel; the computer's seats recall theirs first). Otherwise he sits out
+  the next wave and returns by himself when it is beaten. Either way he comes back at the crest on
+  his seat's side with **half his health**, keeping his levels (and the hit points they gave), his
+  kills and his blessings: a fresh soldier (`World::raiseFallen`) takes his place in his squad, so
+  his card and banner carry on; he does not gain the level of a wave he missed. All of it is the
+  seats' inputs and the simulation's state (the wave he fell in is part of the match's checksum).
+  The HUD shows him (level, or fallen and when he returns), and so does the end panel.
 - The hill is lost when the horde stands on it (22 m) and no holder does for 12 seconds (the clock
   winds back the moment a holder sets foot on it), or when every holder is dead. Surviving the set
   number of waves (10 by default; 5, 20 or endless) wins. Score: waves survived, kills, time on the hill.
 - HUD: wave n of N (boss, elite), enemies left, the time to the next wave, the hill's bar
-  (draining while the horde holds it alone: "Retake the hill!"), and the reinforcement panel in the
-  breaks. Seats 2-4 can be computer allies, who hold their side of the hill and buy their own picks.
+  (draining while the horde holds it alone: "Retake the hill!"), the local hero (level, or fallen),
+  and the reinforcement panel in the breaks. Seats 2-4 can be computer allies, who hold their side of the hill and buy their own picks.
 
 **Capture the flag** (`mode_ctf.cpp`), Myth's rule: 2-4 teams, each of one or more seats, each with
 its flag at its start (evenly round the middle of the field) and a fixed army bought before the match
@@ -495,7 +520,12 @@ its own team does. A team whose flag falls is **out**: its army breaks and flees
 (`World::breakSide`), so it can neither win nor hold anything, and its soldiers are hunted down or
 scatter. The last team with its flag standing wins; with a time limit (10 or 15 minutes, or none)
 the team with its flag standing and the most strength left wins when it runs out. Enemies within 35 m
-of the player's flag sound the alarm and the herald ("Our flag is under attack!"). The computer
+of the local team's flag sound the alarm and the herald ("Our flag is under attack!"), and the
+HUD flashes "Your flag (Gold) is under attack!" in that team's colour.
+The flags (and Horde's hill, a siege's courtyard, the banners rising over the campaign's towns)
+fly the castles' banner: a turned pole with a gilt finial and the waving cloth with the team's colour
+and its cross pattée (undyed linen for nobody's), casting its waving shadow; the cloth climbs the
+pole as the flag is raised (`Renderer::setFlags`, `meshes::bannerPole`/`bannerCloth`). The computer
 plays a team by keeping its missile troops, healers and every third squad of the line at its flag,
 sending the rest at the nearest enemy flag (marching with initiative, cutting down the guards on it,
 then force-marching onto it); when its attack is spent, or after six minutes, its guards go too.
@@ -506,7 +536,8 @@ which starts the match with `IllyriaGame.startMode(id, options)` (`illyria_start
 `startOtherMode` in `game/web/main.cpp`; the options are `makeMatch`'s in `mode.h`; without a place,
 the first recommended). The end panel's Menu, and Back on the setup, return with
 `IllyriaGame.toMenu()` (the page also hears `illyria:mode-exit`). Test addresses: `?mode=horde`,
-`?mode=ctf` (`&place=N&go` starts at once).
+`?mode=ctf` (`&place=N&go` starts at once; `&allies=N&seat=S` for Horde, `&teams=N&team=T&start=P`
+for capture the flag).
 
 ## 5. Technical Network Architecture
 

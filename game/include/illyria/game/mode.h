@@ -66,7 +66,8 @@ inline sim::Vec3 rightOf(const sim::Vec3& d) { return {d.y, -d.x, sim::Fixed::ze
 // p kept `margin` metres inside a battlefield `size` metres square.
 sim::Vec3 insideField(const sim::Vec3& p, int32_t size, int32_t margin);
 
-// The colours of a match's teams: blue (the local player's), red, gold, green.
+// The colours of a match's teams, by team: blue, red, gold, green (each team keeps
+// its colour whoever sits on it; the local player picks his team, and so his colour).
 V3 teamColour(sim::PlayerId team);
 const char* teamName(sim::PlayerId team);
 
@@ -84,10 +85,11 @@ struct ModeFlag {
 std::string placesJson(const std::vector<Place>& places);
 // A match ("horde" or "ctf") from the page's options, a flat JSON object:
 // "place" (an index into `places`), "seed", "seats" (["human", "computer",
-// "empty", ...]); Horde: "difficulty" 0-2, "waves" (0 endless),
+// "empty", ...]), "local" (the seat at this screen; -1 or none: the first
+// person's); Horde: "difficulty" 0-2, "waves" (0 endless),
 // "breakSeconds", "musterSeconds"; capture the flag: "teams" 2-4,
-// "seatTeams" ([0, 1, ...]), "budget", "army" (offer indices), "time"
-// (seconds; 0 none). Null without a valid place or id.
+// "seatTeams" ([0, 1, ...]), "starts" (each team's place among the flags,
+// [0, 1, ...]), "budget", "army" (offer indices), "time" (seconds; 0 none). Null without a valid place or id.
 std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& options, const std::vector<Place>& places,
                                   std::shared_ptr<const sim::Continent> continent);
 
@@ -122,7 +124,14 @@ public:
     static constexpr uint32_t kThinkTicks = 2 * sim::kTicksPerSecond;
 
     const std::vector<sim::Seat>& seats() const { return seats_; }
+    // The seat played at this screen: its soldiers are the ones selected and
+    // ordered here, its team's the HUD, the alerts and the voices follow.
+    // Presentation only (the match's state never reads it), so every peer
+    // of an online match plays the same match, each from its own seat:
+    // setting it is all a peer does to sit down (docs/NETCODE.md).
     int localSeat() const { return localSeat_; }
+    sim::PlayerId localTeam() const { return seats_.empty() ? 0 : seats_[static_cast<size_t>(localSeat_)].team; }
+    void setLocalSeat(Battle& b, int seat);
     // Everything every seat did, tick by tick (docs/NETCODE.md).
     const sim::InputLog& log() const { return log_; }
     const sim::SeatRoster& roster() const { return roster_; }
@@ -148,6 +157,9 @@ protected:
     int raise(Battle& b, int seat, const std::string& name, sim::PlayerId team, sim::UnitType type, int count, V3 at,
               V3 facing, int rank = 0);
     void hashSeats(sim::StateHasher& h) const;
+    // The seat to sit at: `wanted` when someone plays it, else the first a
+    // person plays (else the first).
+    int seatFor(int wanted) const;
 
     std::vector<sim::Seat> seats_;
     int localSeat_ = 0;

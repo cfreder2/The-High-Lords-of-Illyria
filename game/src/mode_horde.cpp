@@ -81,9 +81,7 @@ void HordeMode::setUp(Battle& b) {
     bool anyone = false;
     for (int s = 0; s < sim::kMaxSeats; ++s) anyone = anyone || seats_[static_cast<size_t>(s)].playing();
     if (!anyone) seats_[0].control = sim::SeatControl::Human;
-    localSeat_ = 0;
-    for (int s = sim::kMaxSeats - 1; s >= 0; --s)
-        if (seats_[static_cast<size_t>(s)].control == sim::SeatControl::Human) localSeat_ = s;
+    setLocalSeat(b, seatFor(opt_.localSeat));
 
     // The hill: the field's high ground near its middle, flagged.
     const Vec3 mid{m(kField / 2), m(kField / 2), Fixed::zero()};
@@ -154,6 +152,11 @@ void HordeMode::think(Battle& b) {
     for (int s = 0; s < sim::kMaxSeats; ++s) {
         if (seats_[static_cast<size_t>(s)].control != sim::SeatControl::Computer || ready_[static_cast<size_t>(s)]) continue;
         int32_t budget = points_[static_cast<size_t>(s)];
+        // Their hero back first, if he fell.
+        if (heroFallen(b, s) && budget >= kRecallPoints) {
+            computerAct(s, {sim::MatchAction::Kind::Recall, 0});
+            budget -= kRecallPoints;
+        }
         for (bool bought = true; bought;) {
             bought = false;
             for (UnitType want : kComputerPrefers)
@@ -176,6 +179,13 @@ void HordeMode::applyAction(Battle& b, int seat, const sim::MatchAction& a) {
         if (phase_ == Phase::Muster || phase_ == Phase::Break) ready_[si] = true;
         return;
     }
+    if (a.kind == sim::MatchAction::Kind::Recall) {
+        // The fallen hero back at once, for the price.
+        if (phase_ != Phase::Break || !heroFallen(b, seat) || points_[si] < kRecallPoints) return;
+        points_[si] -= kRecallPoints;
+        returnHero(b, seat);
+        return;
+    }
     if (phase_ != Phase::Break || a.option >= offers_.size()) return;
     const sim::Offer& o = sim::squadOffers()[offers_[a.option]];
     if (points_[si] < o.cost) return;
@@ -186,6 +196,29 @@ void HordeMode::applyAction(Battle& b, int seat, const sim::MatchAction& a) {
     const Vec3 at = hill_.at() + d * m(4 + (k / 3 % 3) * 5) + r * m((k % 3 - 1) * 11);
     raise(b, seat, std::string("Fresh ") + sim::unitTypeName(o.type), kHolders, o.type, o.count,
           toV3(firmGround(b.region(), at, 24)), toV3(d));
+    if (seat == localSeat_) b.voice().announce(b.world(), Situation::Reinforcements);
+}
+
+sim::EntityId HordeMode::hero(const Battle& b, int seat) const {
+    const int h = heroSquad(seat);
+    if (h < 0 || static_cast<size_t>(h) >= b.squads().size() || b.squads()[static_cast<size_t>(h)].members.empty()) return sim::kNoEntity;
+    return b.squads()[static_cast<size_t>(h)].members.front();
+}
+
+bool HordeMode::heroFallen(const Battle& b, int seat) const {
+    const sim::Unit* u = b.world().findUnit(hero(b, seat));
+    return u && !u->alive();
+}
+
+void HordeMode::returnHero(Battle& b, int seat) {
+    const size_t si = static_cast<size_t>(seat);
+    // At the crest on his seat's side, where he first stood.
+    const Vec3 d = sector(seat);
+    const V3 at = toV3(firmGround(b.region(), hill_.at() + d * m(6), 24));
+    const sim::EntityId id = b.returnFallen(static_cast<size_t>(heroes_[si]), hero(b, seat), at, toV3(d), kReturnHpPct);
+    if (id == sim::kNoEntity) return;
+    roster_.assign(id, seat);
+    fellIn_[si] = 0;
     if (seat == localSeat_) b.voice().announce(b.world(), Situation::Reinforcements);
 }
 
@@ -225,11 +258,16 @@ void HordeMode::endWave(Battle& b) {
     sim::World& w = b.mutableWorld();
     for (const sim::Unit& u : b.world().units())
         if (u.owner == kHolders && u.alive() && u.hp < u.stats.maxHp) w.heal(u.id, (u.stats.maxHp - u.hp) * kHealPct / 100);
+    // A fallen hero sits out the next wave (unless recalled), then comes back.
     for (int s = 0; s < sim::kMaxSeats; ++s) {
-        if (!seats_[static_cast<size_t>(s)].playing()) continue;
-        if (const int h = heroes_[static_cast<size_t>(s)]; h >= 0)
-            for (sim::EntityId id : b.squads()[static_cast<size_t>(h)].members) w.levelUp(id);
-        points_[static_cast<size_t>(s)] += kRoundPoints + wave_ / 2;
+        const size_t si = static_cast<size_t>(s);
+        if (!seats_[si].playing()) continue;
+        if (heroes_[si] >= 0) {
+            if (!heroFallen(b, s)) w.levelUp(hero(b, s));
+            else if (fellIn_[si] == 0) fellIn_[si] = wave_;
+            else returnHero(b, s);
+        }
+        points_[si] += kRoundPoints + wave_ / 2;
     }
     chooseOffers();
     ready_.fill(false);
@@ -289,10 +327,27 @@ uint64_t HordeMode::checksum() const {
         h.addU64(ready_[static_cast<size_t>(s)]);
         h.addI64(heroes_[static_cast<size_t>(s)]);
         h.addI64(recruits_[static_cast<size_t>(s)]);
+        h.addI64(fellIn_[static_cast<size_t>(s)]);
     }
     h.addU64(offers_.size());
     for (uint8_t o : offers_) h.addU64(o);
     return h.value();
+}
+
+std::string HordeMode::heroJson(const Battle& b, int seat) const {
+    // "hero":{...}: his name, whether he stands, his level and kills; fallen,
+    // the wave he fell in, the wave after which he returns by himself, and
+    // the price of having him back now.
+    const sim::Unit* u = b.world().findUnit(hero(b, seat));
+    const bool up = u && u->alive();
+    char buf[320];
+    std::snprintf(buf, sizeof buf,
+                  "\"hero\":{\"name\":\"%s\",\"alive\":%s,\"level\":%d,\"kills\":%d,\"hp\":%d,\"fellIn\":%d,\"returnsAfter\":%d,"
+                  "\"recall\":%d}",
+                  seat >= 0 && seat < sim::kMaxSeats ? kHeroNames[seat] : "", up ? "true" : "false", u ? u->rank + 1 : 0,
+                  u ? u->kills : 0, up ? u->hp * 100 / std::max(1, u->stats.maxHp) : 0, heroFellIn(seat),
+                  !u || up ? 0 : heroFellIn(seat) > 0 ? heroFellIn(seat) + 1 : wave_ + 1, kRecallPoints);
+    return buf;
 }
 
 std::string HordeMode::hudJson(const Battle& b) const {
@@ -307,7 +362,7 @@ std::string HordeMode::hudJson(const Battle& b) const {
                   "{\"mode\":\"horde\",\"phase\":\"%s\",\"place\":\"%s\",\"difficulty\":%d,\"wave\":%d,\"waves\":%d,"
                   "\"boss\":%s,\"elite\":%s,\"survived\":%d,\"enemies\":%d,\"enemiesTotal\":%d,\"toWave\":%d,"
                   "\"hill\":{\"holders\":%d,\"foes\":%d,\"contested\":%.1f,\"lose\":%d,\"lost\":%s},"
-                  "\"held\":%d,\"kills\":%d,\"points\":%d,\"ready\":%s,\"heroLevel\":%d,\"outcome\":%d,\"offers\":[",
+                  "\"held\":%d,\"kills\":%d,\"points\":%d,\"ready\":%s,\"heroLevel\":%d,\"outcome\":%d,",
                   kPhases[static_cast<int>(phase_)], opt_.place.c_str(), opt_.difficulty, wave_, opt_.waves,
                   plan_.boss && wave_ > 0 ? "true" : "false", plan_.elite && wave_ > 0 ? "true" : "false", survived_,
                   enemiesLeft(b), waveSoldiers_, (timer_ + kTps - 1) / kTps, hill_.holdersIn(), hill_.foesIn(),
@@ -315,7 +370,7 @@ std::string HordeMode::hudJson(const Battle& b) const {
                   hill_.lost() ? "true" : "false", hill_.heldTicks() / kTps, kills(b), points(local),
                   local >= 0 && local < sim::kMaxSeats && ready_[static_cast<size_t>(local)] ? "true" : "false", heroLevel,
                   outcome());
-    std::string s = buf;
+    std::string s = buf + heroJson(b, local) + ",\"localSeat\":" + std::to_string(local) + ",\"offers\":[";
     for (size_t i = 0; i < offers_.size(); ++i) {
         const sim::Offer& o = sim::squadOffers()[offers_[i]];
         std::snprintf(buf, sizeof buf, "%s{\"i\":%zu,\"type\":\"%s\",\"role\":\"%s\",\"count\":%d,\"cost\":%d}", i ? "," : "", i,
@@ -329,9 +384,9 @@ std::string HordeMode::hudJson(const Battle& b) const {
         for (size_t q = 0; q < b.squads().size(); ++q)
             if (seatOfSquad(q) == k) alive += b.aliveCount(b.squads()[q]);
         static const char* kControl[] = {"empty", "human", "computer"};
-        std::snprintf(buf, sizeof buf, "%s{\"control\":\"%s\",\"hero\":\"%s\",\"alive\":%d,\"points\":%d,\"local\":%s}", k ? "," : "",
-                      kControl[static_cast<int>(seat.control)], kHeroNames[k], alive, points(k), k == local ? "true" : "false");
-        s += buf;
+        std::snprintf(buf, sizeof buf, "%s{\"seat\":%d,\"control\":\"%s\",\"alive\":%d,\"points\":%d,\"local\":%s,", k ? "," : "",
+                      k, kControl[static_cast<int>(seat.control)], alive, points(k), k == local ? "true" : "false");
+        s += buf + heroJson(b, k) + "}";
     }
     return s + "]}";
 }

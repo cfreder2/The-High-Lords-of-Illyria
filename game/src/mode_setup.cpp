@@ -85,6 +85,7 @@ std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& opti
         o.breakSeconds = std::clamp(intOf(options, "breakSeconds", o.breakSeconds), 5, 300);
         o.musterSeconds = std::clamp(intOf(options, "musterSeconds", o.musterSeconds), 3, 300);
         for (size_t k = 0; k < seats.size() && k < o.seats.size(); ++k) o.seats[k] = controlOf(seats[k]);
+        o.localSeat = intOf(options, "local", -1);
         HordeMode::start(*b, o);
         return b;
     }
@@ -101,6 +102,9 @@ std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& opti
         for (size_t k = 0; k < seats.size() && k < o.seats.size(); ++k)
             o.seats[k] = {controlOf(seats[k]), k < teams.size() ? std::atoi(teams[k].c_str()) : static_cast<int>(k)};
         for (const std::string& a : listOf(options, "army")) o.army.push_back(static_cast<uint8_t>(std::atoi(a.c_str())));
+        const std::vector<std::string> starts = listOf(options, "starts");
+        for (size_t t = 0; t < starts.size() && t < o.starts.size(); ++t) o.starts[t] = std::atoi(starts[t].c_str());
+        o.localSeat = intOf(options, "local", -1);
         CtfMode::start(*b, o);
         return b;
     }

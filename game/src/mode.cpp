@@ -97,9 +97,24 @@ int SeatedMode::raise(Battle& b, int seat, const std::string& name, sim::PlayerI
     for (sim::EntityId id : b.squads()[static_cast<size_t>(q)].members) roster_.assign(id, seat);
     if (squadSeat_.size() <= static_cast<size_t>(q)) squadSeat_.resize(static_cast<size_t>(q) + 1, static_cast<int8_t>(sim::kNoSeat));
     squadSeat_[static_cast<size_t>(q)] = static_cast<int8_t>(seat);
-    // The local player's side, seated by someone else: an ally's.
-    if (team == Battle::kPlayer && seat != localSeat_) b.markForeign(static_cast<size_t>(q));
+    // Seated by someone else: not the local player's to order (an ally's, or a foe's).
+    b.setForeign(static_cast<size_t>(q), seat != localSeat_);
     return q;
+}
+
+int SeatedMode::seatFor(int wanted) const {
+    const int n = static_cast<int>(std::min<size_t>(seats_.size(), sim::kMaxSeats));
+    if (wanted >= 0 && wanted < n && seats_[static_cast<size_t>(wanted)].playing()) return wanted;
+    for (int s = 0; s < n; ++s)
+        if (seats_[static_cast<size_t>(s)].control == sim::SeatControl::Human) return s;
+    return 0;
+}
+
+void SeatedMode::setLocalSeat(Battle& b, int seat) {
+    if (seat < 0 || seat >= static_cast<int>(seats_.size())) return;
+    localSeat_ = seat;
+    b.setLocalSide(seats_[static_cast<size_t>(seat)].team);
+    for (size_t q = 0; q < squadSeat_.size(); ++q) b.setForeign(q, squadSeat_[q] != seat);
 }
 
 void SeatedMode::hashSeats(sim::StateHasher& h) const {

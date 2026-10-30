@@ -30,6 +30,11 @@ struct CtfOptions {
         int team = 0;
     };
     std::array<SeatSpec, sim::kMaxSeats> seats{};
+    int localSeat = -1;  // the seat at this screen (-1: the first a person plays)
+    // Where each team's flag stands among the places round the field (by
+    // team; a place is what team t would have by default). Not a shuffle of
+    // 0..teams-1: the default.
+    std::array<int, 4> starts{0, 1, 2, 3};
     int budget = 36;  // points for each team's army, shared by its seats
     // The local seat's picks (indices into sim::squadOffers()); empty: a balanced army.
     std::vector<uint8_t> army;
@@ -63,7 +68,6 @@ public:
     Phase phase() const { return phase_; }
     const sim::FlagRule& flagRule() const { return flags_; }
     int teams() const { return teams_; }
-    sim::PlayerId localTeam() const { return seats_[static_cast<size_t>(localSeat_)].team; }
     // The winner (kNobody while playing, or after a draw).
     sim::PlayerId winner() const { return winner_; }
     bool draw() const { return phase_ == Phase::Over && winner_ == kNobody; }
@@ -77,7 +81,9 @@ private:
     void think(Battle& b) override;
     void applyAction(Battle&, int, const sim::MatchAction&) override {}
     void setUp(Battle& b);
+    // Where team's flag stands: its place (opt_.starts) round the middle.
     sim::Vec3 startOf(int team) const;
+    int placeOf(int team) const;
 
     CtfOptions opt_;
     int teams_ = 2;

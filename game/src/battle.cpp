@@ -975,12 +975,12 @@ bool Battle::unitMoving(size_t index) const {
 
 void Battle::chargeAll() {
     for (Squad& mine : squads_) {
-        if (mine.owner != kPlayer || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
+        if (!controllable(world_->units()[mine.members.front() - 1]) || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
         const V3 from = squadCentre(mine, false);
         const Squad* target = nullptr;
         float best = 1e18f;
         for (const Squad& s : squads_) {
-            if (s.owner == kPlayer || aliveCount(s) == 0) continue;
+            if (s.owner == local_ || aliveCount(s) == 0) continue;
             const V3 d = squadCentre(s, false) - from;
             const float d2 = d.x * d.x + d.y * d.y;
             if (d2 < best) {
@@ -1000,7 +1000,7 @@ void Battle::chargeAll() {
     }
     std::vector<sim::EntityId> ours;
     for (const sim::Unit& u : world_->units())
-        if (u.owner == kPlayer && u.alive()) ours.push_back(u.id);
+        if (u.alive() && controllable(u)) ours.push_back(u.id);
     voice_.order(Situation::Charge, *world_, ours);
 }
 

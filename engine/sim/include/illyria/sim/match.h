@@ -33,7 +33,8 @@ struct Seat {
 struct MatchAction {
     // Recruit: buys one of the round's offers (Horde's reinforcements).
     // Ready: done with the break; the next wave may come.
-    enum class Kind : uint8_t { Recruit, Ready };
+    // Recall: pays to have the seat's fallen hero back at once (Horde).
+    enum class Kind : uint8_t { Recruit, Ready, Recall };
     Kind kind = Kind::Recruit;
     uint8_t option = 0;  // Recruit: the offer's index
 };

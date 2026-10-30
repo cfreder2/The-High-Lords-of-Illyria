@@ -478,6 +478,11 @@ public:
     void heal(EntityId id, int32_t amount);
     // A hero one level up (to 9, tougher at once), a soldier one rank (to elite).
     void levelUp(EntityId id);
+    // A fallen soldier raised again (Horde's hero returning between waves): a
+    // fresh soldier of his side with his stats (levels and all), rank, kills
+    // and blessings, at `hpPct` of his full health, at `pos`. The fallen one
+    // stays where he fell. Its id, or kNoEntity when `fallen` is not dead.
+    EntityId raiseFallen(EntityId fallen, const Vec3& pos, const Vec3& facing, int32_t hpPct);
     // A side out of the match (its flag taken): every soldier of it breaks,
     // and none ever rallies.
     void breakSide(PlayerId owner);

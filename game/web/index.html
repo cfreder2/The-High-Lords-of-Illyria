@@ -861,7 +861,7 @@
   onLongPress($("attack"), () => setMode(orderMode === 2 ? 0 : 2));
   $("attack").onclick = () => setMode(orderMode === 0 ? 1 : 0);
   $("formation").onclick = () => $("picker").classList.toggle("hidden");
-  let selected = -1, selCount = 0, lastNotice = "";
+  let selected = -1, selCount = 0, lastNotice = "", lastSideColour = "";
   $("focus").onclick = () => api && api.focusSelection();
 
   // Formations: a sketch of each from the game's own slots (9 men, seen from above, front up).
@@ -1215,7 +1215,10 @@
     }
     $("landTag").classList.toggle("hidden", s.land < 0);
     $("landTag").textContent = s.land === 0 ? "⚑ Your land: home edge +3%" : s.land === 1 ? "⚑ Their land: their home edge +3%" : "";
-    const enemies = s.squads.filter((q) => q.owner === 1);
+    const enemies = s.squads.filter((q) => q.foe);  // anyone not of the local side (a match may seat the player on any)
+    // The cards' strength bars in the local side's colour (mode.cpp teamColour: blue, red, gold, green).
+    const sideColour = ["#4a78e6", "#db2e24", "#eab829", "#38a34c"][s.side & 3];
+    if (sideColour !== lastSideColour) document.documentElement.style.setProperty("--blue", (lastSideColour = sideColour));
     scenario = s.scenario;
     $("scenario").textContent = s.scenario === 1 ? "Ford" : "Siege";
     $("foe").textContent = s.foe;
@@ -1253,7 +1256,7 @@
     // Cards: saving the selection (when it is not already a card), the saved
     // groups, then heroes, the special troops, and the rest.
     const roleRank = (q) => (q.type === "Hero" ? 0 : ["caster", "bomber", "healer", "siege"].includes(q.role) ? 1 : 2);
-    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.owner === 0 && !q.ally).sort((a, b) => roleRank(a) - roleRank(b) || a.i - b.i);
+    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.mine).sort((a, b) => roleRank(a) - roleRank(b) || a.i - b.i);
     const isCard = s.selected >= 0 || s.groups.some((g) => g.sel === 2);  // already one squad, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
     const key = (canSave ? "+|" : "") + s.groups.map((g) => g.slot).join(",") + "|" + mine.map((q) => q.name).join("|");

@@ -22,7 +22,7 @@ input stream. Offline, one machine fills every stream; online, the streams come 
   the seat's team, so a peer can neither command an ally's army nor the enemy's.
 - A seat's **input** for a tick (`sim::SeatInput`) is its orders (`sim::Command`: move, attack a
   soldier, a spot, a gate or a wall, stop, force march, with formation places and facing) and its
-  **match actions** (`sim::MatchAction`: Horde's Recruit an offer, Ready). Ticks without input are
+  **match actions** (`sim::MatchAction`: Horde's Recruit an offer, Ready, Recall the fallen hero). Ticks without input are
   sent as empty (or not at all; see below).
 - `sim::InputLog` keeps every seat's inputs in (tick, seat) order. It is the match's replay: a
   battle fed the same log from the same setup reproduces the match bit for bit (`SeatedMode::replay`;
@@ -109,9 +109,10 @@ delay above.
 
 - The network transport and the relay; the lobby screens; input delay and the stall/catch-up loop
   (today `Battle::advance` steps as fast as wall time allows).
-- The UI assumes the local player is on team 0 (`Battle::kPlayer`: selection, voices, colours); an
-  online peer on another team needs that made a per-battle setting (the renderer already colours by
-  side, the modes by team).
+- (Done) The local seat is a setting: `SeatedMode::setLocalSeat` (the options' `localSeat`, `"local"`)
+  sets the battle's local side (`Battle::localSide`): selection, orders, cards, voices, alerts and the
+  HUD follow it; nothing in the simulation reads it, so a peer sits down by setting it and nothing else
+  (`tests/test_match_seats.cpp` replays one match from two seats and gets the same hashes).
 - `Battle::runEnemyAi` (the non-match battles) still issues orders outside any seat; the matches do not
   use it.
 - State snapshots for joining late, and a host migration message.

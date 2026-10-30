@@ -209,7 +209,7 @@ void Battle::clearSelection() {
 }
 
 void Battle::selectSquad(int index) {
-    if (index < 0 || index >= static_cast<int>(squads_.size()) || squads_[static_cast<size_t>(index)].owner != kPlayer) return;
+    if (index < 0 || index >= static_cast<int>(squads_.size()) || squads_[static_cast<size_t>(index)].owner != local_) return;
     select(squads_[static_cast<size_t>(index)].members);
 }
 
@@ -268,7 +268,7 @@ void Battle::selectVisibleOfType(const Camera& camera, UnitType type) {
     const auto& units = world_->units();
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
-        if (!u.alive() || u.owner != kPlayer || static_cast<UnitType>(u.stats.type) != type) continue;
+        if (!u.alive() || u.owner != local_ || static_cast<UnitType>(u.stats.type) != type) continue;
         float px, py;
         if (!camera.project(unitPosition(i), px, py)) continue;
         if (px >= 0 && py >= 0 && px <= camera.width() && py <= camera.height()) out.push_back(u.id);
@@ -283,7 +283,7 @@ void Battle::selectInRect(const Camera& camera, float x0, float y0, float x1, fl
     const auto& units = world_->units();
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
-        if (!u.alive() || u.owner != kPlayer) continue;
+        if (!u.alive() || u.owner != local_) continue;
         float px, py;
         const V3 p = unitPosition(i) + V3{0, 0, static_cast<float>(u.stats.height.toDouble()) * 0.5f};
         if (camera.project(p, px, py) && px >= x0 && px <= x1 && py >= y0 && py <= y1) out.push_back(u.id);
@@ -294,7 +294,7 @@ void Battle::selectInRect(const Camera& camera, float x0, float y0, float x1, fl
 void Battle::selectHeroes() {
     std::vector<sim::EntityId> out;
     for (const sim::Unit& u : world_->units())
-        if (u.alive() && u.owner == kPlayer && static_cast<UnitType>(u.stats.type) == UnitType::Hero) out.push_back(u.id);
+        if (u.alive() && u.owner == local_ && static_cast<UnitType>(u.stats.type) == UnitType::Hero) out.push_back(u.id);
     select(std::move(out));
 }
 
@@ -378,7 +378,7 @@ void Battle::moveSquad(const Squad& squad, const V3& to) {
 void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Formation formation, const V3& to,
                        const V3* face, const V3& fallbackFacing, bool force) {
     if (alive.empty()) return;
-    if (owner == kPlayer) markOrdered(alive);
+    if (owner == local_) markOrdered(alive);
     const V3 from = centreOf(alive);
     V3 facing = flat(face ? *face : to - from).normalized();
     if (facing.length() == 0) facing = fallbackFacing;
@@ -475,22 +475,22 @@ void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId
 
 void Battle::orderAtGate(int gate) {
     if (gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
-    attackGateWith(kPlayer, selectedAlive(), selFormation_, gate);
+    attackGateWith(local_, selectedAlive(), selFormation_, gate);
     voice_.order(Situation::Attack, *world_, selection_);
 }
 
 void Battle::orderMove(const V3& to) {
-    moveGroup(kPlayer, selectedAlive(), selFormation_, to, nullptr, selectionFacing());
+    moveGroup(local_, selectedAlive(), selFormation_, to, nullptr, selectionFacing());
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::orderMoveFacing(const V3& to, const V3& facing) {
-    moveGroup(kPlayer, selectedAlive(), selFormation_, to, &facing, selectionFacing());
+    moveGroup(local_, selectedAlive(), selFormation_, to, &facing, selectionFacing());
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::stopSelected() {
-    for (sim::EntityId id : selectedAlive()) issue(kPlayer, id, sim::Command::Type::Stop, {});
+    for (sim::EntityId id : selectedAlive()) issue(local_, id, sim::Command::Type::Stop, {});
     voice_.order(Situation::Move, *world_, selection_);
 }
 
@@ -509,7 +509,7 @@ void Battle::scatter() {
         away = away.normalized();
         // Flat out, each on his own (no route, no formation, no pace).
         const float run = kScatterMetres + static_cast<float>((h >> 16) % 300) / 100.0f;
-        issue(kPlayer, id, sim::Command::Type::Move, p + away * run);
+        issue(local_, id, sim::Command::Type::Move, p + away * run);
     }
     markOrdered(alive);
     voice_.order(Situation::Move, *world_, alive);
@@ -521,11 +521,11 @@ void Battle::setFormation(Formation f) {
     const V3 facing = selectionFacing();
     selFormation_ = f;
     for (Squad& s : squads_)
-        if (s.owner == kPlayer && squadSelection(s) == 2) s.formation = f;
+        if (s.owner == local_ && squadSelection(s) == 2) s.formation = f;
     for (int k = 0; k < kGroupSlots; ++k)
         if (groupSelection(k) == 2) groups_[static_cast<size_t>(k)].formation = f;
     // Re-form where they stand, keeping their front.
-    moveGroup(kPlayer, alive, f, centreOf(alive), &facing, facing);
+    moveGroup(local_, alive, f, centreOf(alive), &facing, facing);
 }
 
 void Battle::cycleFormation() {
@@ -623,7 +623,7 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     drag_.y0 = drag_.y1 = y;
     if (!box) {
         const int u = unitAt(camera, x, y, pixelScale);
-        box = selectedAlive().empty() || (u >= 0 && world_->units()[static_cast<size_t>(u)].owner == kPlayer);
+        box = selectedAlive().empty() || (u >= 0 && world_->units()[static_cast<size_t>(u)].owner == local_);
     }
     if (box) {
         drag_.mode = Drag::Mode::Box;

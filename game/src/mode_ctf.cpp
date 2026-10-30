@@ -79,9 +79,21 @@ CtfMode& CtfMode::start(Battle& b, const CtfOptions& o) {
     return c;
 }
 
-Vec3 CtfMode::startOf(int team) const {
+int CtfMode::placeOf(int team) const {
+    // The places asked for, when they are each of 0..teams-1 once.
+    std::array<bool, 4> seen{};
+    for (int t = 0; t < teams_; ++t) {
+        const int p = opt_.starts[static_cast<size_t>(t)];
+        if (p < 0 || p >= teams_ || seen[static_cast<size_t>(p)]) return team;
+        seen[static_cast<size_t>(p)] = true;
+    }
+    return opt_.starts[static_cast<size_t>(team)];
+}
+
+Vec3 CtfMode::startOf(int t) const {
     // Evenly round the middle: opposite for two, a third of a turn apart for
     // three, the corners for four (the pairs across from each other).
+    const int team = placeOf(t);
     const Fixed h = Fixed::fromRatio(1, 2), s = Fixed::fromRatio(8660, 10000), z = Fixed::zero();
     Vec3 d;
     if (teams_ == 2) d = compass(team == 0 ? 4 : 0);
@@ -111,9 +123,7 @@ void CtfMode::setUp(Battle& b) {
                 break;
             }
     }
-    localSeat_ = 0;
-    for (int k = sim::kMaxSeats - 1; k >= 0; --k)
-        if (seats_[static_cast<size_t>(k)].control == sim::SeatControl::Human) localSeat_ = k;
+    setLocalSeat(b, seatFor(opt_.localSeat));
 
     // The flags, and beside each its team's army facing the middle.
     const Vec3 mid{m(kField / 2), m(kField / 2), Fixed::zero()};

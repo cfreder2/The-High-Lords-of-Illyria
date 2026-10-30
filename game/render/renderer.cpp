@@ -483,7 +483,7 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
         glUniform1f(mesh_.lod, b->lod);
-        glUniform1f(mesh_.flag, b == &banners_ ? 1.0f : 0.0f);
+        glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
@@ -1100,9 +1100,8 @@ void Renderer::uploadSettlements(const Battle& battle) {
         const sim::Continent::City& c = cont.cities()[ci];
         const sim::Continent::Castle& k = c.castle;
         const V3 centre = local(c.pos);
-        // The banners: the owner's colour; a neutral town's are undyed linen
-        // (its flag shader paints a red cross on so pale a field).
-        const V3 colour = c.owner < sim::Continent::kFactionCount ? factionColor(c.owner) : V3{0.8f, 0.74f, 0.6f};
+        // The banners: the owner's colour; a neutral town's are undyed linen.
+        const V3 colour = bannerColor(c.owner);
         // Curtain walls, corner to corner, in sections up to the walk; the gate
         // edge leaves an opening under a lintel. The parapet faces outward:
         // the sill, and the merlons between the embrasures, where the sim has them.
@@ -1332,8 +1331,11 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(ships_, meshes::ship(), 0);
     makeMeshBatch(sails_, meshes::sail(), 0.01f);
     makeMeshBatch(piers_, meshes::pier(), 0);
-    makeMeshBatch(poles_, meshes::flagPole(), 0);
-    makeMeshBatch(cloths_, meshes::flagCloth(), 0.05f);
+    // The flags that rise and fall: the castles' banner in two (no sway: the
+    // cloth must stay on its pole), waving like it.
+    makeMeshBatch(poles_, meshes::bannerPole(), 0);
+    makeMeshBatch(cloths_, meshes::bannerCloth(), 0);
+    banners_.cloth = cloths_.cloth = true;
     makeAll(copses_, meshes::copseVariants(), 0.01f);
     makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
     makeAll(detailPines_, meshes::pineVariants(), 0.03f);
@@ -1820,7 +1822,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_}) casters.push_back(b);
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
     for (MeshBatch& b : copses_) casters.push_back(&b);
     if (features_ & kFarDetail)
         for (MeshBatch& b : nearCopses_) casters.push_back(&b);
@@ -1828,7 +1830,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
         glUniform1f(meshDepth_.lod, b->lod);
-        glUniform1f(meshDepth_.flag, b == &banners_ ? 1.0f : 0.0f);  // the waving cloth's shadow
+        glUniform1f(meshDepth_.flag, b->cloth ? 1.0f : 0.0f);  // the waving cloth's shadow
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
