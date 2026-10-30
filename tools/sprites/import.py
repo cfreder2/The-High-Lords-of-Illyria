@@ -50,6 +50,9 @@ from sprites import pack  # noqa: E402  (resolve: the cutout, edge darkening and
 NORMAL_AREA = 2048 * 2048 / 1.35  # texels the normal sheet's cells may cover (render.choose_ppm)
 HD_AREA = 5.5e6                   # the close-up sheet's, so the atlas stays inside closeup::kBudget
 LIVING = ('idle', 'walk', 'attack', 'flinch')
+PLANT_Y_M = 0.03  # how far a living frame's feet may stray from its view's ground line (plant)
+PLANT_X_M = 0.04  # and an idle or walking frame's head from its view's
+STRIDE_DROP_M = 0.2  # how much lower a stride's near foot may sit, seen from in front or behind
 FILE_RE = re.compile(r'^(?:(?P<clip>[a-z_]+)/v(?P<view>\d)_f(?P<frame>\d\d)|gibs/(?P<part>[a-z_]+)_(?P<var>[ab]))(?P<team>_team)?\.png$')
 
 
@@ -164,6 +167,58 @@ def rescale_cell(c, src_ppm, dst_ppm):
     rgb = c['img'][..., :3].astype(np.float32) / 255.0
     ax, ay = -c['u0'] * src_ppm, c['h'] + c['v0'] * src_ppm
     return to_cell(*resample(rgb, solid, team, ax, ay, src_ppm, dst_ppm), dst_ppm)
+
+
+def helmet_x(alpha):
+    """The middle of the head (a band just below the figure's top, under any plume), in pixels."""
+    solid = alpha > 0.5
+    rows = np.where(solid.any(axis=1))[0]
+    tall = rows[-1] + 1 - rows[0]
+    band = solid[rows[0] + int(0.08 * tall):rows[0] + int(0.2 * tall)]
+    xs = np.where(band.any(axis=0))[0]
+    return float(xs.min() + xs.max() + 1) / 2 if len(xs) else None
+
+
+def plant(pics, unit, ppm, report):
+    """Hold each living frame's feet to its view's ground line, and the head
+    of each idle and walking frame over the same spot: frames drawn one at a
+    time drift, and a man whose feet leave the ground mid-stride seems to
+    float. The line is where the idle frames (feet together) stand. A stride
+    toward or away from the viewer brings the near foot lower in the picture,
+    by up to STRIDE_DROP_M in the front and back views (none side on), so a
+    frame may sit that much lower; never higher. Frames are moved only as far
+    as they stray beyond PLANT_Y_M / PLANT_X_M."""
+    for v in sorted({p['entry'].get('view') for p in pics.values() if p['entry']['anim'] in LIVING}):
+        living = [p for p in pics.values() if p['entry']['anim'] in LIVING and p['entry'].get('view') == v]
+        low, head = {}, {}
+        for p in living:
+            ft = feet(p['alpha'], ppm)
+            if ft:
+                low[id(p)] = ft[0][1] - p['anchor'][1]
+                if p['entry']['anim'] in ('idle', 'walk'):
+                    hx = helmet_x(p['alpha'])
+                    if hx is not None:
+                        head[id(p)] = hx - p['anchor'][0]
+        stand = [low[id(p)] for p in living if p['entry']['anim'] == 'idle' and id(p) in low]
+        if not stand:
+            continue
+        line = float(np.median(stand))
+        drop = STRIDE_DROP_M * abs(math.cos(math.radians(v * 45)))
+        over = float(np.median(list(head.values()))) if head else 0.0
+        moved = []
+        for p in living:
+            ax, ay = p['anchor']
+            dy = dx = 0.0
+            if id(p) in low:
+                dy = low[id(p)] - float(np.clip(low[id(p)], line - PLANT_Y_M * ppm, line + (PLANT_Y_M + drop) * ppm))
+            if id(p) in head:
+                dx = head[id(p)] - float(np.clip(head[id(p)], over - PLANT_X_M * ppm, over + PLANT_X_M * ppm))
+            if dx or dy:
+                p['anchor'] = (ax + dx, ay + dy)
+            if max(abs(dx), abs(dy)) >= 0.01 * ppm:
+                moved.append('%s f%02d %+.0f,%+.0f cm' % (p['entry']['anim'], p['entry']['frame'], dx / ppm * 100, dy / ppm * 100))
+        if moved:
+            report.note('%s v%d: planted %s' % (unit, v, '; '.join(moved)))
 
 
 def feet(alpha, ppm):
@@ -312,6 +367,7 @@ def import_unit(art, unit, man, args, report):
             continue
         sh = shifts.get((e['anim'], e['view'])) or (shifts.get(('idle', e['view'])) if e['anim'] not in LIVING else None) or (0, 0)
         p['anchor'] = (ax0 + sh[0], ay0 + sh[1])
+    plant(pics, unit, src_ppm, report)
 
     old = {sfx: baseline_sheet(unit, args.out, args.baseline, sfx, not args.check) for sfx in ('', '_hd')}
     meta0, cells0 = old['']
