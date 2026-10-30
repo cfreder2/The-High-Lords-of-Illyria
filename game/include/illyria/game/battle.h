@@ -539,6 +539,14 @@ private:
     void placeCapturePoint(const sim::Continent::City& town);
     std::unique_ptr<BattleMode> mode_;
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (markForeign)
+    // The computer's memory of each squad it handles (aiFight): where it was
+    // at its last look, how many looks it has stood stuck, and how many more
+    // it spends marching round to its goal (a foe across a cliff is no foe).
+    struct AiMemo {
+        V3 last;
+        int still = 0, detour = 0;
+    };
+    std::vector<AiMemo> aiMemo_;
     // The per-soldier presentation state grown for soldiers raised mid-battle.
     void growUnits();
 };

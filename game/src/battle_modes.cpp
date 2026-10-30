@@ -78,15 +78,20 @@ void Battle::aiAttack(size_t squad, sim::EntityId target) {
     for (sim::EntityId id : s.members) {
         const sim::Unit& u = world_->units()[id - 1];
         if (!u.alive() || u.routed) continue;
-        // Already after someone still standing his ground: let him finish
-        // (one running away is not worth the chase).
-        if (u.targetUnit != sim::kNoEntity && u.targetUnit != target) {
+        // Each goes for a foe at hand before the squad's (in a crowd, one
+        // target for all leaves most of them pushing past the men striking them).
+        const V3 at = toV3(u.pos);
+        const sim::EntityId near = nearestFoe(s.owner, at, 4.0f);
+        const sim::EntityId pick = near != sim::kNoEntity ? near : target;
+        if (u.targetUnit == pick) continue;
+        // Already after someone still standing his ground, and near: let him finish.
+        if (u.targetUnit != sim::kNoEntity) {
             const sim::Unit* cur = world_->findUnit(u.targetUnit);
-            if (cur && cur->alive() && !cur->routed) continue;
+            if (cur && cur->alive() && !cur->routed && (near == sim::kNoEntity || (toV3(cur->pos) - at).length() < 4.0f)) continue;
         }
-        if (u.targetUnit == target) continue;
-        sim::Command c{s.owner, id, sim::Command::Type::AttackUnit, t->pos};
-        c.targetUnit = target;
+        const sim::Unit& p = world_->units()[pick - 1];
+        sim::Command c{s.owner, id, sim::Command::Type::AttackUnit, p.pos};
+        c.targetUnit = pick;
         pending_.push_back(c);
     }
 }
@@ -143,6 +148,32 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         }
         if (best > 15.0f) go(at + (c - at).normalized() * 8.0f);
         return;
+    }
+    // Stuck (not moving, not fighting) while after a foe: the foe cannot be
+    // reached from here (a cliff, a wood packed with men); march to the goal
+    // deaf to him for a few looks.
+    if (aiMemo_.size() < squads_.size()) aiMemo_.resize(squads_.size());
+    AiMemo& memo = aiMemo_[squad];
+    bool fighting = false, ordered = false;
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (!u.alive()) continue;
+        fighting = fighting || u.engaged || u.reloadRemaining > 0;
+        ordered = ordered || u.targetUnit != sim::kNoEntity || u.hasMoveTarget;
+    }
+    const float moved = V3{c.x - memo.last.x, c.y - memo.last.y, 0}.length();
+    memo.last = c;
+    memo.still = !fighting && ordered && moved < 1.0f ? memo.still + 1 : 0;
+    if (memo.still >= 3) {
+        memo.still = 0;
+        memo.detour = 4;
+        aiForceMarch(squad, goal);
+        return;
+    }
+    if (memo.detour > 0) {
+        --memo.detour;
+        if (V3{goal.x - c.x, goal.y - c.y, 0}.length() > 6.0f) return;  // still on the way round
+        memo.detour = 0;
     }
     const sim::EntityId foe = nearestFoe(s.owner, around, reach);
     if (foe == sim::kNoEntity) {

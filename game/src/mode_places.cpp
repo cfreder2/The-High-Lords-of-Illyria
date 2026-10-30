@@ -83,21 +83,21 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
             Fixed prom;
         };
         std::vector<Rise> rises;
-        const int64_t kStep = 400;
+        const int64_t kStep = 320;
         for (int64_t y = 800; y < sim::Continent::kHeight - 700; y += kStep)
             for (int64_t x = 800; x < sim::Continent::kWidth - 700; x += kStep) {
                 // Not a mountain: a hill a horde can climb.
-                if (!fieldable(c, m(x), m(y), s) || s.height < m(15) || s.height > m(165) || s.mountain > m(30)) continue;
+                if (!fieldable(c, m(x), m(y), s) || s.height < m(15) || s.height > m(165) || s.mountain > m(55)) continue;
                 const Vec3 p{m(x), m(y), s.height};
-                if (!clearOfTowns(c, p, 600)) continue;
-                const Fixed prom = prominence(c, m(x), m(y), s.height, 320);
-                if (prom >= m(6) && prom <= m(45)) rises.push_back({p, prom});
+                if (!clearOfTowns(c, p, 300)) continue;
+                const Fixed prom = prominence(c, m(x), m(y), s.height, 260);
+                if (prom >= m(4) && prom <= m(60)) rises.push_back({p, prom});
             }
         std::stable_sort(rises.begin(), rises.end(), [](const Rise& a, const Rise& b) { return a.prom > b.prom; });
         std::vector<Vec3> taken;
         for (const Rise& r : rises) {
             bool apart = true;
-            for (const Vec3& t : taken) apart = apart && (t - r.pos).flat().length() > m(1500);
+            for (const Vec3& t : taken) apart = apart && (t - r.pos).flat().length() > m(1200);
             if (!apart) continue;
             taken.push_back(r.pos);
             const sim::Continent::City* city = nearestCity(c, r.pos);
@@ -214,8 +214,10 @@ sim::Vec3 highGround(const sim::Region& r, const sim::Vec3& near, int32_t search
             spots.push_back({h - dist / 40, ix, iy});
         }
     std::stable_sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.score > b.score; });
-    // The best clear of trees, rocks and houses.
-    for (size_t k = 0; k < spots.size() && k < 200; ++k) {
+    // The best clear of trees, rocks and houses, that can be climbed to from
+    // at least six of the eight compass edges of the field (where waves form up).
+    int tries = 0;
+    for (size_t k = 0; k < spots.size() && k < 400 && tries < 16; ++k) {
         const Vec3 p{cell * spots[k].ix, cell * spots[k].iy, Fixed::zero()};
         bool clear = true;
         for (const sim::Obstacle& o : r.obstacles())
@@ -223,9 +225,78 @@ sim::Vec3 highGround(const sim::Region& r, const sim::Vec3& near, int32_t search
                 clear = false;
                 break;
             }
-        if (clear) return {p.x, p.y, t.heightAt(p.x, p.y)};
+        if (!clear) continue;
+        ++tries;
+        const std::vector<uint8_t> reached = reachFrom(r, p);
+        int open = 0;
+        for (int e = 0; e < 8; ++e) {
+            const Vec3 edge = insideField(p + compass(e) * m(150), static_cast<int32_t>((cell * n).floorToInt()), 30);
+            const Vec3 q = nearestReached(r, reached, edge, 30);
+            open += !(q == edge) || reached[static_cast<size_t>((edge.y / cell).floorToInt() * (n + 1) + (edge.x / cell).floorToInt())];
+        }
+        if (open >= 6) return {p.x, p.y, t.heightAt(p.x, p.y)};
     }
     return firmGround(r, {near.x, near.y, Fixed::zero()}, searchM);
+}
+
+std::vector<uint8_t> reachFrom(const sim::Region& r, const sim::Vec3& from) {
+    const sim::Terrain& t = r.terrain();
+    const Fixed cell = t.cellSize();
+    const int32_t n = t.cells() + 1;
+    std::vector<uint8_t> seen(static_cast<size_t>(n) * n, 0);
+    const auto walkable = [&](int32_t ix, int32_t iy) {
+        const Fixed x = cell * ix, y = cell * iy;
+        return !r.underWater(x, y) && sim::groundSpeed(r.groundAt(x, y)) > Fixed::zero();
+    };
+    const int32_t sx = std::clamp(static_cast<int32_t>((from.x / cell).floorToInt()), 0, n - 1);
+    const int32_t sy = std::clamp(static_cast<int32_t>((from.y / cell).floorToInt()), 0, n - 1);
+    std::vector<int32_t> queue{sy * n + sx};
+    seen[static_cast<size_t>(sy * n + sx)] = 1;
+    static constexpr int kSteps[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (size_t head = 0; head < queue.size(); ++head) {
+        const int32_t ix = queue[head] % n, iy = queue[head] / n;
+        for (const auto& d : kSteps) {
+            const int32_t jx = ix + d[0], jy = iy + d[1];
+            if (jx < 0 || jy < 0 || jx >= n || jy >= n || seen[static_cast<size_t>(jy * n + jx)]) continue;
+            // Steeper than about 37 degrees between samples: a cliff (the world's walls start at 45).
+            if (abs(t.sample(jx, jy) - t.sample(ix, iy)) > m(3) || !walkable(jx, jy)) continue;
+            seen[static_cast<size_t>(jy * n + jx)] = 1;
+            queue.push_back(jy * n + jx);
+        }
+    }
+    return seen;
+}
+
+sim::Vec3 nearestReached(const sim::Region& r, const std::vector<uint8_t>& reached, const sim::Vec3& p, int32_t searchM,
+                         int32_t clearM) {
+    const sim::Terrain& t = r.terrain();
+    const Fixed cell = t.cellSize();
+    const int32_t n = t.cells() + 1;
+    if (reached.size() != static_cast<size_t>(n) * n) return p;
+    const int32_t cx = std::clamp(static_cast<int32_t>((p.x / cell).floorToInt()), 0, n - 1);
+    const int32_t cy = std::clamp(static_cast<int32_t>((p.y / cell).floorToInt()), 0, n - 1);
+    const int32_t reach = std::max(1, searchM / static_cast<int32_t>(cell.floorToInt()));
+    for (int32_t ring = 0; ring <= reach; ++ring)
+        for (int32_t k = -ring; k <= ring; ++k) {
+            const int32_t cand[4][2] = {{cx + k, cy - ring}, {cx + ring, cy + k}, {cx - k, cy + ring}, {cx - ring, cy - k}};
+            for (const auto& c2 : cand) {
+                if (c2[0] < 2 || c2[1] < 2 || c2[0] >= n - 2 || c2[1] >= n - 2 || !reached[static_cast<size_t>(c2[1] * n + c2[0])]) continue;
+                const Fixed x = cell * c2[0], y = cell * c2[1];
+                if (clearM > 0) {
+                    if (!openGround(r.groundAt(x, y))) continue;
+                    const Vec3 q{x, y, Fixed::zero()};
+                    bool clear = true;
+                    for (const sim::Obstacle& o : r.obstacles())
+                        if (o.solid && (o.pos - q).flat().lengthSq() < m(clearM) * m(clearM)) {
+                            clear = false;
+                            break;
+                        }
+                    if (!clear) continue;
+                }
+                return {x, y, t.heightAt(x, y)};
+            }
+        }
+    return p;
 }
 
 sim::Vec3 firmGround(const sim::Region& r, const sim::Vec3& p, int32_t searchM) {

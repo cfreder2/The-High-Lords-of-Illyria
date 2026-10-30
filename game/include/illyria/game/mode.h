@@ -46,6 +46,15 @@ std::vector<Place> battlePlaces(const sim::Continent& c);
 // The hill to hold: the highest open, dry, walkable ground within `searchM`
 // of `near` (battle coordinates), nearer the centre on a tie.
 sim::Vec3 highGround(const sim::Region& r, const sim::Vec3& near, int32_t searchM);
+// The terrain samples of a battlefield that can be walked to from `from`:
+// dry, passable ground, no step between neighbours steeper than a cliff
+// (by (cells + 1)^2 samples, row-major). Where the horde can reach the hill.
+std::vector<uint8_t> reachFrom(const sim::Region& r, const sim::Vec3& from);
+// The reached sample nearest p within `searchM` (p itself when none is);
+// with `clearM`, only on open ground (no wood or swamp) with no tree, rock or
+// house within that many metres: room for a squad to form up.
+sim::Vec3 nearestReached(const sim::Region& r, const std::vector<uint8_t>& reached, const sim::Vec3& p, int32_t searchM,
+                         int32_t clearM = 0);
 // Open, dry, walkable ground at p or the nearest such within `searchM`.
 sim::Vec3 firmGround(const sim::Region& r, const sim::Vec3& p, int32_t searchM);
 

@@ -114,6 +114,23 @@ TEST(horde_waves_escalate_deterministically) {
     CHECK(h1.value() != h2.value());
 }
 
+TEST(horde_places_from_the_continent) {
+    // The picker's places: hills among them, the recommended first, each in the continent.
+    const std::vector<Place> places = battlePlaces(*continent());
+    int hills = 0, recommended = 0;
+    bool sorted = true;
+    for (size_t i = 0; i < places.size(); ++i) {
+        hills += places[i].kind == Place::Kind::Hill;
+        recommended += places[i].recommended;
+        if (i > 0 && places[i].recommended && !places[i - 1].recommended) sorted = false;
+        CHECK(places[i].pos.x > Fixed::zero() && places[i].pos.x < Fixed::fromInt(sim::Continent::kWidth));
+        CHECK(places[i].pos.y > Fixed::zero() && places[i].pos.y < Fixed::fromInt(sim::Continent::kHeight));
+    }
+    std::printf("  %zu places, %d hills, %d recommended\n", places.size(), hills, recommended);
+    CHECK(hills >= 2 && recommended >= 3 && sorted);
+    CHECK(places.front().kind == Place::Kind::Hill);
+}
+
 TEST(horde_hill_rule) {
     // A flat field: the horde alone on the hill takes it after kLoseSeconds;
     // one holder on it keeps it however many foes stand there.
@@ -238,12 +255,13 @@ TEST(horde_four_seats_deterministic) {
         o.difficulty = 0;
         HordeMode& h = HordeMode::start(*b, o);
         if (replay) h.replay(*replay);
-        for (int t = 0; t < 200 * sim::kTicksPerSecond; ++t) {
+        for (int t = 0; t < 240 * sim::kTicksPerSecond; ++t) {
             if (!replay && t == 4 * sim::kTicksPerSecond) {
                 b->selectSquad(1);
                 b->orderMove(toV3(h.hill().at()) + V3{6, 4, 0});
             }
             if (!replay && h.phase() == HordeMode::Phase::Break && h.points(0) >= 3) h.act({sim::MatchAction::Kind::Recruit, 0});
+            if (!replay && t % (5 * sim::kTicksPerSecond) == 0 && h.phase() == HordeMode::Phase::Wave) charge(*b, h);
             run(*b, 1);
         }
         world = b->world().checksum();

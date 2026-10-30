@@ -89,6 +89,7 @@ void HordeMode::setUp(Battle& b) {
     const Vec3 mid{m(kField / 2), m(kField / 2), Fixed::zero()};
     hill_.place(highGround(b.region(), mid, 150), kHolders);
     const Vec3 hill = hill_.at();
+    reached_ = reachFrom(b.region(), hill);
     // Each seat's hero and its small army hold their side of the top: the
     // line forward, pikes on its flank, bowmen behind, the healers at the crest.
     for (int s = 0; s < sim::kMaxSeats; ++s) {
@@ -200,7 +201,9 @@ void HordeMode::startWave(Battle& b) {
         const int k = fromEdge[g.edge]++;
         const int side = k == 0 ? 0 : (k % 2 ? 1 : -1) * ((k + 1) / 2);
         const Vec3 want = insideField(hill_.at() + d * m(kSpawnM + (k / 3) * 14) + r * m(side * 20), kField, 30);
-        const Vec3 at = firmGround(b.region(), want, 40);
+        // On ground that leads up to the hill (not across a cliff or a lake from it).
+        Vec3 at = nearestReached(b.region(), reached_, want, 90, 9);
+        if (at == want) at = firmGround(b.region(), nearestReached(b.region(), reached_, want, 60), 12);
         const std::string name = g.boss ? (g.type == UnitType::Dragons ? "The Ashen Wyrm" : "Vashgar of the Rift") : hordeName(g.type);
         raise(b, kHordeSeat, name, kHorde, g.type, g.count, toV3(at), toV3(-d), g.rank);
         waveSoldiers_ += g.count;

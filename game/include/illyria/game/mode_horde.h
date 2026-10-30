@@ -105,6 +105,7 @@ private:
     std::array<int, sim::kMaxSeats> recruits_{};  // squads bought, for where they arrive
     std::vector<uint8_t> offers_;
     int32_t contestedSeen_ = 0;  // the hill's clock when last looked at (for the herald)
+    std::vector<uint8_t> reached_;  // the ground joined to the hill (mode.h reachFrom): where waves form up
 };
 
 }  // namespace illyria::game
