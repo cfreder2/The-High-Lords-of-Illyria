@@ -156,6 +156,32 @@ public:
         Vec3 pos;
         uint8_t kind;  // 0 realm, 1 mountains, 2 water, 3 forest/swamp, 4 crossing
     };
+    // Ground shaped for a battle to be fought over, a few hundred metres
+    // across, laid on the land once the towns and sites stand
+    // (continent_relief.cpp): set pieces made by hand, and gorges found
+    // wherever the land has room for one.
+    struct Landmark {
+        // ChurchHill: a steep hill, a church and a pond on its level top,
+        // and a road cut into its side winding up to them. Gorge: a
+        // tableland split by a cleft whose floor is the old ground, cliffs
+        // either side. Terraces: a hill stepped into level fields.
+        enum class Kind : uint8_t { ChurchHill, Gorge, Terraces };
+        Kind kind = Kind::Gorge;
+        std::string name;  // empty for the gorges found by search
+        Vec3 centre;       // z = the land there before it was shaped
+        Fixed radius;      // the ground within is the landmark's own
+        Fixed rise;        // how far it stands above the land
+        // Hills: the level top (its height, and its radius); terraces: the steps.
+        Fixed top, summit;
+        int32_t steps = 0;
+        // Gorges: a tableland halfLength x halfWidth along `axis`, the floor
+        // `floor` metres either side of `line`.
+        Vec3 axis;
+        Fixed halfLength, halfWidth, floor;
+        // Gorges: the floor's middle (z unused). Church hill: its road's bench, z = the surface.
+        std::vector<Vec3> line;
+        std::vector<Obstacle> buildings;  // pos.z = the ground they stand on
+    };
 
     // Where the land's shape comes from: the relief baked offline by
     // tools/terrainbake (hydraulic erosion and drainage, stored as data, so
@@ -186,6 +212,9 @@ public:
     const std::vector<Site>& sites() const { return sites_; }
     // The mountain passes: centre (z = how wide they are).
     const std::vector<Vec3>& passes() const { return passes_; }
+    const std::vector<Landmark>& landmarks() const { return landmarks_; }
+    // The landmark whose ground this is, or null.
+    const Landmark* landmarkAt(Fixed x, Fixed y) const;
     // Everything placed on the map: cities, sites and the river surfaces.
     uint64_t checksum() const;
     uint64_t seed() const { return seed_; }
@@ -209,6 +238,9 @@ public:
         Fixed streamSurface;
         Fixed basinSurface;  // valid if inBasin: water pooled in a hollow
         bool inBasin = false;
+        // The battle-scale relief in `height` (knolls, ridges, landmarks):
+        // height - relief is the land's broad shape, as the design drew it.
+        Fixed relief;
     };
     Sample sample(Fixed x, Fixed y) const;
     // Coast and mountains only (height, land, mountain filled in).
@@ -237,6 +269,26 @@ private:
     void loadBakedRelief();
     void placeBridges();
     void planCastles();
+    void bucketRoads();
+    void applyLake(size_t lake, Fixed& z, Sample& s, Fixed x, Fixed y) const;
+    // The lakes of the design; the landmarks' ponds follow them in lakes_.
+    size_t naturalLakes() const { return naturalLakes_ ? naturalLakes_ : lakes_.size(); }
+
+    // The battle-scale relief (continent_relief.cpp). dress() lays it on
+    // once everything else is placed (which it keeps clear of), so towns,
+    // sites and bridges stand where the design put them.
+    void dress();
+    void addChurchHill(const std::string& name, Vec3 at);
+    void addGorgeOnRoad(const std::string& name, Vec3 at, Fixed halfLength);
+    void addTerraces(const std::string& name, Vec3 at);
+    void findGorges();
+    bool roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed) const;
+    void buildClearGrid();
+    // Knolls and ridges, scaled by how clear the ground is (metres to add).
+    Fixed reliefAt(Fixed x, Fixed y, const Sample& s) const;
+    // A landmark's own rise at a point, before its level ground (summit, road) is cut.
+    Fixed landmarkRise(const Landmark& lm, Fixed x, Fixed y) const;
+    void shapeLandmarks(Fixed& z, Fixed x, Fixed y) const;
 
     uint64_t seed_;
     std::vector<River> rivers_, streams_;
@@ -266,6 +318,15 @@ private:
     std::vector<Label> labels_;
     std::vector<City> cities_;
     std::vector<Site> sites_;
+    std::vector<Landmark> landmarks_;
+    bool dressed_ = false;
+    size_t naturalLakes_ = 0;
+    // How freely battle-scale relief may rise (0..255) every kClearCell
+    // metres: none at towns, sites, crossings, creeks, pools, lakes and landmarks.
+    static constexpr int64_t kClearCell = 16;
+    int32_t clearNx_ = 0, clearNy_ = 0;
+    std::vector<uint8_t> clear_;
+    std::vector<std::vector<uint32_t>> landmarkBuckets_;  // landmarks near each 256 m bucket
     struct SeaShape {
         Vec3 a, b;
         Fixed radius;

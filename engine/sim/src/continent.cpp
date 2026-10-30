@@ -3,60 +3,15 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "continent_shapes.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 
 namespace illyria::sim {
 
+using namespace continent_shapes;
+
 namespace {
-
-constexpr Fixed m(int64_t v) { return Fixed::fromInt(v); }
-constexpr Fixed r(int64_t num, int64_t den) { return Fixed::fromRatio(num, den); }
-// The map is laid out at two thirds of the size it was first designed at
-// (docs/MAP.md): every distance on the map's own scale (coasts, ranges,
-// lakes, forests, the spacing of cities, noise wavelengths) goes through
-// these, so the land keeps its shape. What a battle sees up close keeps its
-// size: river and road widths, bridges, gates, walls, peaks' heights.
-constexpr int64_t scaledI(int64_t v) { return v * 2 / 3; }
-constexpr Fixed scaled(int64_t v) { return Fixed::fromRatio(v * 2, 3); }
-
-// A point given in per-mille of the continent's width and height.
-Vec3 N(int64_t u, int64_t v) {
-    return {Fixed::fromRatio(u * Continent::kWidth, 1000), Fixed::fromRatio(v * Continent::kHeight, 1000), Fixed::zero()};
-}
-
-Fixed segDistSq(Fixed px, Fixed py, const Vec3& a, const Vec3& b, Fixed& t) {
-    const Fixed dx = b.x - a.x, dy = b.y - a.y;
-    const Fixed len2 = dx * dx + dy * dy;
-    t = Fixed::zero();
-    if (len2 > Fixed::zero()) t = clamp(((px - a.x) * dx + (py - a.y) * dy) / len2, Fixed::zero(), Fixed::one());
-    const Fixed cx = a.x + dx * t - px, cy = a.y + dy * t - py;
-    return cx * cx + cy * cy;
-}
-
-// Nearest distance from (px, py) to a polyline, ignoring segments farther than `limit`.
-// Also reports the segment index and parameter of the nearest point.
-Fixed polylineDist(const std::vector<Vec3>& pts, Fixed px, Fixed py, Fixed limit, size_t& seg, Fixed& segT) {
-    Fixed best = limit * limit;
-    bool found = false;
-    for (size_t i = 0; i + 1 < pts.size(); ++i) {
-        const Vec3& a = pts[i];
-        const Vec3& b = pts[i + 1];
-        if (px < min(a.x, b.x) - limit || px > max(a.x, b.x) + limit || py < min(a.y, b.y) - limit ||
-            py > max(a.y, b.y) + limit) {
-            continue;
-        }
-        Fixed t;
-        const Fixed d = segDistSq(px, py, a, b, t);
-        if (d < best) {
-            best = d;
-            seg = i;
-            segT = t;
-            found = true;
-        }
-    }
-    return found ? sqrt(best) : limit;
-}
 
 // polylineDist over a river, skipping runs of segments whose boxes are too far.
 Fixed riverDist(const Continent::River& rv, Fixed px, Fixed py, Fixed limit, size_t& seg, Fixed& segT) {
@@ -78,18 +33,6 @@ Fixed riverDist(const Continent::River& rv, Fixed px, Fixed py, Fixed limit, siz
         }
     }
     return found ? sqrt(best) : limit;
-}
-
-Vec3 unitFlat(const Vec3& v) {
-    const Fixed len = v.flat().length();
-    return len > Fixed::zero() ? v.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-}
-
-Fixed bump(Fixed t) {
-    const Fixed a = abs(t);
-    if (a >= Fixed::one()) return Fixed::zero();
-    const Fixed s = Fixed::one() - a * a;
-    return s * s;
 }
 
 // Normalised elliptical distance: < 1 inside.
@@ -263,25 +206,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
             }
         }
     }
-    {
-        // Roads by bucket, so sampling looks only at the segments near a point.
-        bucketNx_ = static_cast<int32_t>(kWidth / kStreamBucket) + 1;
-        bucketNy_ = static_cast<int32_t>(kHeight / kStreamBucket) + 1;
-        roadBuckets_.assign(static_cast<size_t>(bucketNx_) * bucketNy_, {});
-        const Fixed reach = m(66);
-        for (uint32_t ri = 0; ri < roads_.size(); ++ri) {
-            const Polyline& road = roads_[ri];
-            for (uint32_t si = 0; si + 1 < road.points.size(); ++si) {
-                const Vec3 &a = road.points[si], &b = road.points[si + 1];
-                const int64_t x0 = std::max<int64_t>(0, ((min(a.x, b.x) - reach) / kStreamBucket).floorToInt());
-                const int64_t x1 = std::min<int64_t>(bucketNx_ - 1, ((max(a.x, b.x) + reach) / kStreamBucket).floorToInt());
-                const int64_t y0 = std::max<int64_t>(0, ((min(a.y, b.y) - reach) / kStreamBucket).floorToInt());
-                const int64_t y1 = std::min<int64_t>(bucketNy_ - 1, ((max(a.y, b.y) + reach) / kStreamBucket).floorToInt());
-                for (int64_t by = y0; by <= y1; ++by)
-                    for (int64_t bx = x0; bx <= x1; ++bx) roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)].push_back({ri, si});
-            }
-        }
-    }
+    bucketRoads();
     if (relief == Relief::Baked) loadBakedRelief();
     computeRiverSurfaces();
     for (const Area& lake : lakes_) {
@@ -294,6 +219,28 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     placeCities();
     planCastles();
     placeSites();
+    // Then the battle-scale relief and the landmarks, clear of all of them.
+    dress();
+}
+
+void Continent::bucketRoads() {
+    // Roads by bucket, so sampling looks only at the segments near a point.
+    bucketNx_ = static_cast<int32_t>(kWidth / kStreamBucket) + 1;
+    bucketNy_ = static_cast<int32_t>(kHeight / kStreamBucket) + 1;
+    roadBuckets_.assign(static_cast<size_t>(bucketNx_) * bucketNy_, {});
+    const Fixed reach = m(66);
+    for (uint32_t ri = 0; ri < roads_.size(); ++ri) {
+        const Polyline& road = roads_[ri];
+        for (uint32_t si = 0; si + 1 < road.points.size(); ++si) {
+            const Vec3 &a = road.points[si], &b = road.points[si + 1];
+            const int64_t x0 = std::max<int64_t>(0, ((min(a.x, b.x) - reach) / kStreamBucket).floorToInt());
+            const int64_t x1 = std::min<int64_t>(bucketNx_ - 1, ((max(a.x, b.x) + reach) / kStreamBucket).floorToInt());
+            const int64_t y0 = std::max<int64_t>(0, ((min(a.y, b.y) - reach) / kStreamBucket).floorToInt());
+            const int64_t y1 = std::min<int64_t>(bucketNy_ - 1, ((max(a.y, b.y) + reach) / kStreamBucket).floorToInt());
+            for (int64_t by = y0; by <= y1; ++by)
+                for (int64_t bx = x0; bx <= x1; ++bx) roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)].push_back({ri, si});
+        }
+    }
 }
 
 void Continent::planCastles() {
@@ -892,6 +839,25 @@ Continent::Sample Continent::landform(Fixed x, Fixed y) const {
 void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     Fixed z = s.height;
 
+    // Distance to the nearest road, as if every road were 3 m from its middle
+    // to its edge: wider stretches count as nearer, narrow ones farther.
+    s.roadDist = m(60);
+    if (!roadBuckets_.empty()) {
+        const int64_t bx = clamp(x / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNx_ - 1)).floorToInt();
+        const int64_t by = clamp(y / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNy_ - 1)).floorToInt();
+        for (const auto& [ri, si] : roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
+            const Polyline& road = roads_[ri];
+            Fixed t;
+            const Fixed centre = sqrt(segDistSq(x, y, road.points[si], road.points[si + 1], t));  // sets t first
+            const Fixed d = centre - (road.widthAt(si, t) - m(3));
+            s.roadDist = min(s.roadDist, max(Fixed::zero(), d));
+        }
+    } else {
+        size_t seg = 0;
+        Fixed t;
+        for (const Polyline& road : roads_) s.roadDist = min(s.roadDist, polylineDist(road.points, x, y, m(60), seg, t));
+    }
+
     // Rivers: a broad valley, then the channel itself.
     s.riverDist = kValleyReach + m(1000);
     for (const River& rv : rivers_) {
@@ -929,50 +895,8 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         }
     }
 
-    // Distance to the nearest road, as if every road were 3 m from its middle
-    // to its edge: wider stretches count as nearer, narrow ones farther.
-    s.roadDist = m(60);
-    if (!roadBuckets_.empty()) {
-        const int64_t bx = clamp(x / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNx_ - 1)).floorToInt();
-        const int64_t by = clamp(y / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNy_ - 1)).floorToInt();
-        for (const auto& [ri, si] : roadBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
-            const Polyline& road = roads_[ri];
-            Fixed t;
-            const Fixed centre = sqrt(segDistSq(x, y, road.points[si], road.points[si + 1], t));  // sets t first
-            const Fixed d = centre - (road.widthAt(si, t) - m(3));
-            s.roadDist = min(s.roadDist, max(Fixed::zero(), d));
-        }
-    } else {
-        size_t seg = 0;
-        Fixed t;
-        for (const Polyline& road : roads_) s.roadDist = min(s.roadDist, polylineDist(road.points, x, y, m(60), seg, t));
-    }
     // Lakes sit in basins with a flat surface.
-    for (size_t i = 0; i < lakes_.size(); ++i) {
-        const Area& lake = lakes_[i];
-        Fixed q = ellipse(lake, x, y);
-        if (q > m(3)) continue;
-        // Shores wander: bays, points and coves, not a drawn ellipse.
-        const uint64_t sl = noise::nextSeed(seed_ ^ (0x1A4E + i * 131));
-        q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(120, (lake.rx / 3).floorToInt())) * r(2, 5));
-        const Fixed surface = lakeSurfaces_[i];
-        // A shelving shore, about 1 in 6, that runs on into the basin rim:
-        // no step at the waterline, so no band of rock along it.
-        const Fixed scale = max(lake.rx / 6, m(40));
-        // A road along the shore keeps to a low causeway above the water.
-        const Fixed causeway = Fixed::one() - noise::smoothstep(m(6), m(16), s.roadDist);
-        if (causeway > Fixed::zero()) q = max(q, Fixed::one() + causeway * r(3, 5) / scale);
-        const Fixed shelf = (q - Fixed::one()) * scale;
-        if (q < Fixed::one()) {
-            s.inLake = true;
-            s.lakeSurface = surface;
-            z = min(z, max(surface - Fixed::one() - (Fixed::one() - q) * 3, surface + shelf));
-        } else {
-            // The basin rim rises fast so nearby hills keep their shape.
-            const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
-            z = min(z, surface + shelf + beyond * beyond * 600);
-        }
-    }
+    for (size_t i = 0; i < naturalLakes(); ++i) applyLake(i, z, s, x, y);
     // Isles rise out of their lake: a rounded hump, its shore a little above the water.
     for (const Isle& isle : isles_) {
         const Fixed q = ellipse(isle.area, x, y);
@@ -983,6 +907,16 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         const Fixed shore = surface + r(1, 2) + (Fixed::one() - q) * max(isle.area.ry / 6, m(4));
         z = max(z, min(surface + r(1, 2) + isle.rise * hump * hump, shore));
         if (z >= surface) s.inLake = false;
+    }
+
+    // The battle-scale relief: knolls, ridges and the landmarks, then the
+    // landmarks' own ponds in the ground they shaped (continent_relief.cpp).
+    if (dressed_) {
+        const Fixed before = z;
+        z += reliefAt(x, y, s);
+        shapeLandmarks(z, x, y);
+        for (size_t i = naturalLakes(); i < lakes_.size(); ++i) applyLake(i, z, s, x, y);
+        s.relief = z - before;
     }
 
     // Streams from the drainage bake: a creek in a small gully of its own.
@@ -1036,6 +970,32 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     }
 
     s.height = z;
+}
+
+void Continent::applyLake(size_t i, Fixed& z, Sample& s, Fixed x, Fixed y) const {
+    const Area& lake = lakes_[i];
+    Fixed q = ellipse(lake, x, y);
+    if (q > m(3)) return;
+    // Shores wander: bays, points and coves, not a drawn ellipse.
+    const uint64_t sl = noise::nextSeed(seed_ ^ (0x1A4E + i * 131));
+    q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(120, (lake.rx / 3).floorToInt())) * r(2, 5));
+    const Fixed surface = lakeSurfaces_[i];
+    // A shelving shore, about 1 in 6, that runs on into the basin rim:
+    // no step at the waterline, so no band of rock along it.
+    const Fixed scale = max(lake.rx / 6, m(40));
+    // A road along the shore keeps to a low causeway above the water.
+    const Fixed causeway = Fixed::one() - noise::smoothstep(m(6), m(16), s.roadDist);
+    if (causeway > Fixed::zero()) q = max(q, Fixed::one() + causeway * r(3, 5) / scale);
+    const Fixed shelf = (q - Fixed::one()) * scale;
+    if (q < Fixed::one()) {
+        s.inLake = true;
+        s.lakeSurface = surface;
+        z = min(z, max(surface - Fixed::one() - (Fixed::one() - q) * 3, surface + shelf));
+    } else {
+        // The basin rim rises fast so nearby hills keep their shape.
+        const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
+        z = min(z, surface + shelf + beyond * beyond * 600);
+    }
 }
 
 bool Continent::waterSurfaceOf(const Sample& s, Fixed& surface) const {
@@ -1345,6 +1305,15 @@ uint64_t Continent::checksum() const {
             h.addI64(p.x.raw);
             h.addI64(p.z.raw);
         }
+    h.addU64(landmarks_.size());
+    for (const Landmark& lm : landmarks_) {
+        h.addU64(static_cast<uint64_t>(lm.kind));
+        for (Fixed v : {lm.centre.x, lm.centre.y, lm.centre.z, lm.radius, lm.rise, lm.top}) h.addI64(v.raw);
+        for (const Vec3& p : lm.line)
+            for (Fixed v : {p.x, p.y, p.z}) h.addI64(v.raw);
+        for (const Obstacle& o : lm.buildings)
+            for (Fixed v : {o.pos.x, o.pos.y, o.pos.z, o.halfX, o.halfY, o.height}) h.addI64(v.raw);
+    }
     return h.value();
 }
 

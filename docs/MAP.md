@@ -19,6 +19,16 @@ An **original** map with the strategic structure of the 1990 *Warlords* map: a w
   - The east is broken country: the Ungoeth Mountains, Beren Heights, Kestrel Fells and Grimtor Hills, as well as the Mirefen swamp.
   - The Dragonback Mountains lie to the south, and the Ashen Hills, Northmoor Hills and Southdown Hills stand inland.
 - **Hills:** rolling hill country comes and goes in patches a kilometre or two across, with open plains between. It grows rougher toward the east, and the whole land is hummocky up close.
+- **Relief at battle scale** (`continent_relief.cpp`): over the design's broad shape, on every battlefield:
+  - knolls 40 to 100 m across and hillocks twice that, up to a quarter as high as they are wide, scattered thinly over open country and crowded together in patches of broken ground; here and there a tor, a steep knob of rock;
+  - ridge country: patches a kilometre or so long of parallel ridges 140 to 210 m apart, one behind another, their crests rising and falling;
+  - gorges: a tableland a few hundred metres long split by a cleft, sheer walls 20 to 30 m high either side of a floor 20 to 30 m wide, with a ledge and a second cliff set back where the tableland is thickest. A search places one wherever there is room (four on this map).
+  - None of it is dug out: a gorge's floor is the old ground, and every slope but a cliff stays under 1 in 1, so nowhere that could be reached before is cut off. It keeps clear of the towns, sites, crossings, rivers, creeks, lakes and pools, which stand where the design put them, and eases off on the mountains.
+- **Landmarks** (set pieces, made by hand):
+  - *Church Hill*, above the Heartmere below Kingshold: a hill 330 m across standing 40 m over the land, rocky in its upper part. A church and a pond stand on its level top, and a lane leaves the Kingshold road and winds up round it at 1 in 13, cut into the slope as a level bench.
+  - *The Narrows*, on the south road through the downs by Wardenhold: the road runs along the floor of a gorge 400 m long.
+  - *The Terraces*, in the fields above Hallowmere: a low hill stepped into five level fields, about 3 m apart.
+  - Each is a place a match can be fought over (Horde, Capture the Flag), as is each gorge.
 - **Up close (any battlefield):** groves and copses, rocky outcrops, fallen logs, ponds ringed with reeds, tussocks and dips. They are placed in patches, not spread evenly.
 - **Crossings:** the fords (Oakhaven, Westrun, Sorrow, Emberflow, Greymere) can be waded but slow an army to a crawl. The bridges (Kingsbridge, Old Bridge, Southbridge, Greymere Bridge) are quick but narrow. Elsewhere the rivers are too deep to cross.
 - **Cities:** 80, placed by a deterministic search that prefers roads and river valleys and keeps cities apart. Eight are capitals (see [GAME_DESIGN.md §4.2.2](GAME_DESIGN.md)); the rest start neutral.
