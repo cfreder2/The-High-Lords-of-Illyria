@@ -1,0 +1,542 @@
+# art-cli's profile for this game (tools/art-cli). docs/SPRITE_SPEC.md is the
+# spec; this says what to ask the generator for. One sheet is one clip of one
+# view, every frame drawn together on one plate. A unit's sheets are written
+# by `python3 tools/sprites/plates.py sheets UNIT`; its description and clips
+# are written here by hand. `plates.py run UNIT` draws them all.
+#
+# tile_px is the delivery canvas's pixels a metre for a man-sized unit, so a
+# subject's height_tiles is its height in metres.
+tile_px: 192
+canvas: 1254
+backdrop: '#00FF00'
+style: 'Fantasy medieval, painterly and realistic like classic 1990s strategy game unit art: crisp clean
+  edges, rich detail in the armour and cloth, a thin dark outline. Orthographic view from 30 degrees above
+  the horizon, no perspective distortion. Lighting, the same in every frame whichever way he faces: the
+  main light comes from the UPPER LEFT of the picture and from in front, over the viewer''s left shoulder,
+  so the surfaces facing the left and the viewer are brightest, with the strongest highlights on the left
+  of the helm, armour and shield, and the shading falls to the right and below. A soft, dimmer fill light
+  from the right. A thin rim light from behind on the right edge.'
+subjects:
+  heavy_infantry:
+    kind: character
+    height_tiles: 1.9
+    description: 'Heavy infantry: a mail and plate swordsman in a great helm with a plume, carrying a
+      kite shield with a cross. While he is on his feet he holds a drawn longsword in his right hand and
+      the kite shield on his left arm -- never sheathed, hidden, doubled or moved to the other hand. ONE
+      sword, ONE shield, in every frame. Team colour: his tabard, the shield''s field and the plume are
+      saturated pure blue #0050FF, shaded naturally; no other blue anywhere, and no green anywhere on
+      him.'
+    reference:
+      identity: art/refs/heavy_infantry.png
+    anims:
+      idle:
+        frame_count: 4
+        summary: 'standing at ease, a slow breathing loop. The four frames differ only a little -- the
+          chest rising and falling, a small shift of weight -- so the loop never jumps. Each frame is
+          drawn OVER the grey mannequin in the same cell of the pose reference: the same stance, the same
+          size, the same place in the cell. He carries the sword LOW at his right side, the point down
+          and a little out from his leg, as in the identity image -- not raised in front of him, even
+          where the mannequin holds it up.'
+      walk:
+        height_tiles: 1.7
+        summary: 'walking, one full stride of both feet in eight evenly spaced frames, a steady armoured
+          march. Each frame is drawn OVER the grey mannequin in the same cell of the pose reference: the
+          same pose, the same size, the same place in the cell, the feet at the same height. He carries
+          the sword LOW at his right side, the point down and a little out from his leg, swinging slightly
+          with his arm, as in the identity image -- not raised in front of him, even where the mannequin
+          holds it up.'
+        frames:
+        - His RIGHT foot forward and planted; his LEFT foot back and lifting off.
+        - Weight rolling over the right foot as it passes under him; the left foot swinging through.
+        - His LEFT foot planted well forward; the right foot raised behind, knee bent.
+        - Passing pose. The right foot at its highest, swinging through under him; the left leg straight
+          and carrying all his weight.
+        - His LEFT foot forward and planted; his RIGHT foot back and lifting off. The mirror of frame
+          1.
+        - Weight rolling over the left foot; the right foot swinging through.
+        - His RIGHT foot planted well forward; the left foot raised behind, knee bent.
+        - Passing pose. The left foot at its highest, swinging through under him; the right leg straight
+          and carrying all his weight.
+      attack:
+        summary: 'one heavy overhand sword cut. Each frame is drawn OVER the grey mannequin in the same
+          cell of the pose reference, and here the sword goes exactly where the mannequin''s goes. Put
+          his weight into it: the torso twists, the front knee bends, the shield swings out of the way.
+          The blow LANDS on frame 4.'
+        frames:
+        - On guard, the sword ready in front of him, the shield up.
+        - Winding up, drawing the sword back and up over his right shoulder, torso turning away.
+        - The top of the swing, the sword high above and behind his head, body coiled.
+        - THE BLOW LANDS. The cut has swept down and forward; the blade is out in front of him at waist
+          height, his weight on the front foot.
+        - Follow-through, the blade carried on down and across, low in front.
+        - Recovering to guard, the sword coming back up, the shield raised.
+      flinch:
+        summary: struck by a blow and recoiling, drawn OVER the grey mannequin in the same cell of the
+          pose reference. He keeps the sword low at his right side, as in the idle.
+        frames:
+        - Recoiling hard -- head and shoulders jerked back, the shield arm pulled in, knees bent.
+        - Half recovered, straightening up, still braced behind the shield.
+      die_back:
+        height_tiles: 1.1
+        summary: 'killed by a blow from the front: he is thrown BACKWARD, away from the way he faces,
+          and lands on his back. A violent, heavy, loose fall -- NOT stiff, NOT a plank tipping over.
+          Every joint gives: the knees fold, the waist bends and twists, the head lolls, the arms trail
+          behind the motion of the body and flop where they land. The template has a GROUNDLINE and a
+          standing mark in each cell: in frame 2 he stands on the line at the mark, and he falls on that
+          spot, the body ending across the mark and ON the groundline. Frames 6 and 7 lie flat on the
+          ground; nothing is drawn in the air in them. The FIRST frame is not part of the death: it is
+          him standing over the grey mannequin in cell 1, which sets his size and the way he faces for
+          the whole sheet. Draw every later frame at that same size -- do not enlarge him to fill a cell.'
+        frames:
+        - 'A REFERENCE FRAME before the death begins: him standing at ease, drawn exactly OVER the grey
+          mannequin in cell 1 -- the same pose, the same size, the same place, facing the same way. Every
+          later frame is drawn at exactly this size, and the death begins facing this way.'
+        - The blow lands in his chest. His head and shoulders snap back, the sword arm flies up and out,
+          his feet are still planted.
+        - Staggering back a step, knees bending, back arching, the shield arm flung wide, the sword slipping
+          from his grip.
+        - His legs go out from under him. The hips drop, the torso falls back past 45 degrees, the head
+          is thrown back, the arms trail up and forward. The sword spins loose in the air beside him.
+        - He hits the ground hips first, the back still coming down, one knee raised, the arms flopping,
+          the helm tipping back.
+        - Flat on his back now. Shoulders and helm on the ground, the legs splayed apart, one arm thrown
+          out to the side. The sword lies on the ground nearby.
+        - Lying still, sprawled on his back, legs apart and a little bent, arms out, the shield still
+          on his left arm, the sword on the ground beside him.
+      die_front:
+        height_tiles: 1.1
+        summary: 'killed by a blow from behind: he pitches FORWARD, the way he faces, and lands face down.
+          A violent, heavy, loose fall -- NOT stiff, NOT a plank tipping over. Every joint gives: the
+          knees fold, the waist bends, the head lolls, the arms flail and flop where they land. The template
+          has a GROUNDLINE and a standing mark in each cell: in frame 2 he stands on the line at the mark,
+          and he falls on that spot, the body ending across the mark and ON the groundline. Frames 6 and
+          7 lie flat on the ground; nothing is drawn in the air in them. The FIRST frame is not part of
+          the death: it is him standing over the grey mannequin in cell 1, which sets his size and the
+          way he faces for the whole sheet. Draw every later frame at that same size -- do not enlarge
+          him to fill a cell.'
+        frames:
+        - 'A REFERENCE FRAME before the death begins: him standing at ease, drawn exactly OVER the grey
+          mannequin in cell 1 -- the same pose, the same size, the same place, facing the same way. Every
+          later frame is drawn at exactly this size, and the death begins facing this way.'
+        - Struck between the shoulder blades. The chest is thrust forward, the head jerks back, the arms
+          fly out behind him.
+        - Stumbling forward a step, body pitching forward from the hips, the knees bending, the sword
+          arm swinging forward.
+        - His knees give way and he pitches forward, the torso nearly level, the arms reaching out to
+          break the fall. The sword falls from his hand.
+        - He slams down chest first, the helm striking the ground, the legs still bent up behind him at
+          the knee.
+        - Sprawled face down, one leg bent, the arms flung out, settling.
+        - Lying still, face down and sprawled, the shield on his left arm, the sword on the ground by
+          his outstretched right hand.
+      die_crumple:
+        height_tiles: 1.1
+        summary: 'cut down where he stands: his knees buckle and he slumps to one side. A heavy, loose
+          collapse -- NOT stiff, NOT a plank tipping over: the body folds at the knees and waist, the
+          head drops, the arms hang limp. The template has a GROUNDLINE and a standing mark in each cell:
+          in frame 2 he stands on the line at the mark, and he crumples on that spot, ON the groundline.
+          Frames 6 and 7 lie on the ground. The FIRST frame is not part of the death: it is him standing
+          over the grey mannequin in cell 1, which sets his size and the way he faces for the whole sheet.
+          Draw every later frame at that same size -- do not enlarge him to fill a cell.'
+        frames:
+        - 'A REFERENCE FRAME before the death begins: him standing at ease, drawn exactly OVER the grey
+          mannequin in cell 1 -- the same pose, the same size, the same place, facing the same way. Every
+          later frame is drawn at exactly this size, and the death begins facing this way.'
+        - Struck. He doubles over the wound, head dropping, shoulders hunched, the sword arm sagging.
+        - His knees buckle and he drops straight down, the body folding forward.
+        - On his knees and swaying, the torso sagging to one side, the sword's point resting on the ground.
+        - Toppling sideways off his knees, a shoulder going down first, the arms limp. The sword falls
+          from his hand.
+        - Collapsed on his side, the legs still folded under him, the helm resting on the ground.
+        - Lying still on his side in a heap, the legs bent, the sword fallen beside him.
+      die_burn:
+        height_tiles: 1.1
+        summary: 'dying on fire. A frantic, twisting, loose death -- NOT stiff. Small bright flames and
+          smoke cling to HIM (his tabard, plume and shoulders); no fire on the ground and no fire away
+          from his body. The template has a GROUNDLINE and a standing mark in each cell: in frame 2 he
+          stands on the line at the mark, and he falls on that spot, ON the groundline. Frames 6 and 7
+          lie on the ground. The FIRST frame is not part of the death: it is him standing over the grey
+          mannequin in cell 1, which sets his size and the way he faces for the whole sheet. Draw every
+          later frame at that same size -- do not enlarge him to fill a cell.'
+        frames:
+        - 'A REFERENCE FRAME before the death begins: him standing at ease, drawn exactly OVER the grey
+          mannequin in cell 1 -- the same pose, the same size, the same place, facing the same way. Every
+          later frame is drawn at exactly this size, and the death begins facing this way.'
+        - Flames burst over him. He flings his arms up, head thrown back, flames licking up from his tabard
+          and plume.
+        - Writhing, twisting at the waist, beating at the flames with his shield arm, fire on his back
+          and shoulders.
+        - Staggering doubled over, flames rising from his shoulders. The sword is dropped.
+        - Falling to his knees, the arms curled to his chest, thick smoke rising.
+        - Collapsing onto his side, the fire dying to embers on him, smoke.
+        - A charred corpse curled on its side. The armour blackened and scorched, the tabard and plume
+          burned to black rags, a wisp of smoke. No blue left on him anywhere.
+    sheets:
+      heavy_infantry-idle-v0:
+        anims:
+        - idle
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          pose: art/templates/heavy_infantry-idle-v0.png
+      heavy_infantry-idle-v1:
+        anims:
+        - idle
+        cols: 4
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-idle-v1.png
+      heavy_infantry-idle-v2:
+        anims:
+        - idle
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-idle-v2.png
+      heavy_infantry-idle-v3:
+        anims:
+        - idle
+        cols: 2
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-idle-v3.png
+      heavy_infantry-idle-v4:
+        anims:
+        - idle
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          pose: art/templates/heavy_infantry-idle-v4.png
+      heavy_infantry-walk-v0:
+        anims:
+        - walk
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          pose: art/templates/heavy_infantry-walk-v0.png
+      heavy_infantry-walk-v1:
+        anims:
+        - walk
+        cols: 4
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-walk-v1.png
+      heavy_infantry-walk-v2:
+        anims:
+        - walk
+        cols: 3
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-walk-v2.png
+      heavy_infantry-walk-v3:
+        anims:
+        - walk
+        cols: 4
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-walk-v3.png
+      heavy_infantry-walk-v4:
+        anims:
+        - walk
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          pose: art/templates/heavy_infantry-walk-v4.png
+      heavy_infantry-attack-v0:
+        anims:
+        - attack
+        cols: 3
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          pose: art/templates/heavy_infantry-attack-v0.png
+      heavy_infantry-attack-v1:
+        anims:
+        - attack
+        cols: 3
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-attack-v1.png
+      heavy_infantry-attack-v2:
+        anims:
+        - attack
+        cols: 3
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-attack-v2.png
+      heavy_infantry-attack-v3:
+        anims:
+        - attack
+        cols: 3
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-attack-v3.png
+      heavy_infantry-attack-v4:
+        anims:
+        - attack
+        cols: 3
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          pose: art/templates/heavy_infantry-attack-v4.png
+      heavy_infantry-flinch-v0:
+        anims:
+        - flinch
+        cols: 2
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          pose: art/templates/heavy_infantry-flinch-v0.png
+      heavy_infantry-flinch-v1:
+        anims:
+        - flinch
+        cols: 2
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-flinch-v1.png
+      heavy_infantry-flinch-v2:
+        anims:
+        - flinch
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-flinch-v2.png
+      heavy_infantry-flinch-v3:
+        anims:
+        - flinch
+        cols: 2
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          pose: art/templates/heavy_infantry-flinch-v3.png
+      heavy_infantry-flinch-v4:
+        anims:
+        - flinch
+        cols: 2
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          pose: art/templates/heavy_infantry-flinch-v4.png
+      heavy_infantry-die_back-v0:
+        anims:
+        - die_back
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          template: art/templates/heavy_infantry-die_back-v0.png
+      heavy_infantry-die_back-v1:
+        anims:
+        - die_back
+        cols: 2
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_back-v1.png
+      heavy_infantry-die_back-v2:
+        anims:
+        - die_back
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_back-v2.png
+      heavy_infantry-die_back-v3:
+        anims:
+        - die_back
+        cols: 3
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_back-v3.png
+      heavy_infantry-die_back-v4:
+        anims:
+        - die_back
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          template: art/templates/heavy_infantry-die_back-v4.png
+      heavy_infantry-die_front-v0:
+        anims:
+        - die_front
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          template: art/templates/heavy_infantry-die_front-v0.png
+      heavy_infantry-die_front-v1:
+        anims:
+        - die_front
+        cols: 3
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_front-v1.png
+      heavy_infantry-die_front-v2:
+        anims:
+        - die_front
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_front-v2.png
+      heavy_infantry-die_front-v3:
+        anims:
+        - die_front
+        cols: 2
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_front-v3.png
+      heavy_infantry-die_front-v4:
+        anims:
+        - die_front
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          template: art/templates/heavy_infantry-die_front-v4.png
+      heavy_infantry-die_crumple-v0:
+        anims:
+        - die_crumple
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          template: art/templates/heavy_infantry-die_crumple-v0.png
+      heavy_infantry-die_crumple-v1:
+        anims:
+        - die_crumple
+        cols: 2
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_crumple-v1.png
+      heavy_infantry-die_crumple-v2:
+        anims:
+        - die_crumple
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_crumple-v2.png
+      heavy_infantry-die_crumple-v3:
+        anims:
+        - die_crumple
+        cols: 3
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_crumple-v3.png
+      heavy_infantry-die_crumple-v4:
+        anims:
+        - die_crumple
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          template: art/templates/heavy_infantry-die_crumple-v4.png
+      heavy_infantry-die_burn-v0:
+        anims:
+        - die_burn
+        cols: 4
+        facing: 'toward the viewer: the FRONT view, seen from 30 degrees above. His right side is on the
+          picture''s left'
+        reference:
+          template: art/templates/heavy_infantry-die_burn-v0.png
+      heavy_infantry-die_burn-v1:
+        anims:
+        - die_burn
+        cols: 2
+        facing: 'three-quarters toward the viewer and turned to the RIGHT of the picture: his front-right,
+          seen from 30 degrees above. His chest, face-plate and shield are turned toward the lower RIGHT
+          of the picture and his right side is nearer us. NOT square to the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_burn-v1.png
+      heavy_infantry-die_burn-v2:
+        anims:
+        - die_burn
+        cols: 2
+        facing: 'the RIGHT of the picture, in PROFILE: we see his right side, from 30 degrees above. His
+          chest faces the right edge of the picture, the shield on his far arm, out in front of him. NOT
+          turned toward the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_burn-v2.png
+      heavy_infantry-die_burn-v3:
+        anims:
+        - die_burn
+        cols: 3
+        facing: 'three-quarters AWAY from the viewer and turned to the RIGHT of the picture: his back-right,
+          seen from 30 degrees above. We see his BACK -- the back of his helm, his back plate, the back
+          of his tabard -- and only the edge of his face-plate, turned to the right. The shield, on his
+          far arm, shows its plain back or its edge. NOT facing the viewer'
+        reference:
+          template: art/templates/heavy_infantry-die_burn-v3.png
+      heavy_infantry-die_burn-v4:
+        anims:
+        - die_burn
+        cols: 4
+        facing: 'AWAY from the viewer: the BACK view, seen from 30 degrees above. We see the back of his
+          helm, his back plate and the back of his tabard, and his right side is on the picture''s right.
+          The shield, on his left arm on the picture''s left, shows its plain back. NOT his face-plate,
+          NOT the front of the shield'
+        reference:
+          template: art/templates/heavy_infantry-die_burn-v4.png

@@ -227,25 +227,27 @@ def fit(plate_path, alone, clip, frame):
     return out, s
 
 
-def settle(alpha, want, s, feet, spot, lying_down):
+def settle(alpha, want, s, feet, spot, lying_down, ks=np.linspace(0.88, 1.12, 13), reach=None):
     """Scale and place (s, x, y) of a drawing whose solid pixels best cover the guide's
     silhouette `want`: the drawing scaled by s about its feet (feet, in its own pixels)
-    standing on spot is the first guess, then scale and offset are searched round it on
-    a quarter-size grid. One scale for both axes: the drawing is moved, never stretched."""
+    standing on spot is the first guess, then scale (s times each of ks) and offset are
+    searched round it on a quarter-size grid (reach: how far, in those pixels). One
+    scale for both axes: the drawing is moved, never stretched."""
     q = 4
     W, H = want.shape[1] // q, want.shape[0] // q
     target = np.asarray(Image.fromarray(want.astype(np.uint8) * 255).resize((W, H), Image.Resampling.BOX)) > 127
     tsum = int(target.sum())
     src = Image.fromarray((np.clip(alpha, 0, 1) * 255).astype(np.uint8))
     best = (-1.0, s, round(spot[0] - feet[0] * s), round(spot[1] - feet[1] * s))
-    for k in np.linspace(0.88, 1.12, 13):
+    for k in ks:
         sk = s * k
         w, h = max(1, round(src.width * sk / q)), max(1, round(src.height * sk / q))
         m = np.asarray(src.resize((w, h), Image.Resampling.BOX)) > 127
         msum = int(m.sum())
         x0, y0 = (spot[0] - feet[0] * sk) / q, (spot[1] - feet[1] * sk) / q
-        for dx in range(-12, 13):
-            for dy in range(-10 if lying_down else -6, 11 if lying_down else 7):
+        rx, ry = reach or (12, 10 if lying_down else 6)  # in quarter-size pixels
+        for dx in range(-rx, rx + 1):
+            for dy in range(-ry, ry + 1):
                 ox, oy = int(round(x0)) + dx, int(round(y0)) + dy
                 cx0, cy0, cx1, cy1 = max(0, ox), max(0, oy), min(W, ox + w), min(H, oy + h)
                 if cx1 <= cx0 or cy1 <= cy0:
