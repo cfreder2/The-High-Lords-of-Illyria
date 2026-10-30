@@ -1,0 +1,28 @@
+{
+  "title": "The High Lords of Illyria: the Manual",
+  "about": "The chapters of the manual, in order. Each is a Markdown file in this folder (the dialect is described in game/web/manual/md.js); numbered chapters get chapter and section numbers. The reader (game/web/manual) lays them out as pages at run time. Pictures are in images/: the screenshots are taken from the game, the unit pictures and formation diagrams are drawn from its data by tools/manual/figures.py.",
+  "chapters": [
+    { "file": "00-cover.md" },
+    { "file": "01-front.md" },
+    { "file": "02-realms.md", "numbered": true },
+    { "file": "03-quick-start.md", "numbered": true },
+    { "file": "04-continent.md", "numbered": true },
+    { "file": "05-cities.md", "numbered": true },
+    { "file": "06-armies.md", "numbered": true },
+    { "file": "07-moving.md", "numbered": true },
+    { "file": "08-war-on-the-map.md", "numbered": true },
+    { "file": "09-heroes.md", "numbered": true },
+    { "file": "10-lords.md", "numbered": true },
+    { "file": "11-battlefield.md", "numbered": true },
+    { "file": "12-orders.md", "numbered": true },
+    { "file": "13-rules-of-battle.md", "numbered": true },
+    { "file": "14-morale.md", "numbered": true },
+    { "file": "15-sieges.md", "numbered": true },
+    { "file": "16-blood-and-sound.md", "numbered": true },
+    { "file": "17-compendium.md", "numbered": true },
+    { "file": "18-strategy.md", "numbered": true },
+    { "file": "19-coming.md", "numbered": true },
+    { "file": "20-tables.md", "numbered": true },
+    { "file": "21-index.md" }
+  ]
+}

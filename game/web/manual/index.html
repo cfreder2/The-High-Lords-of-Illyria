@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14110d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<title>The Manual · The High Lords of Illyria</title>
+<link rel="stylesheet" href="manual.css">
+</head>
+<body class="loading">
+<div id="desk">
+  <div id="stage" aria-live="polite"></div>
+</div>
+
+<div id="bar" role="toolbar" aria-label="Manual">
+  <div class="row top">
+    <a id="toGame" href="../" aria-label="Back to the game">‹ Game</a>
+    <span id="where">The High Lords of Illyria</span>
+    <button id="back" class="hidden" aria-label="Back to where you were">↩</button>
+  </div>
+  <div class="row">
+    <button id="tocButton" aria-label="Contents">☰</button>
+    <button id="find" aria-label="Search">⌕</button>
+    <button id="prev" aria-label="Previous page">‹</button>
+    <span id="counter">–</span>
+    <button id="next" aria-label="Next page">›</button>
+    <button id="smaller" aria-label="Smaller type">A−</button>
+    <button id="bigger" aria-label="Larger type">A+</button>
+    <button id="theme" aria-label="Light or dark pages">◐</button>
+  </div>
+  <div id="progressTrack"><b id="progress"></b></div>
+</div>
+
+<div id="search" class="hidden" role="search">
+  <input id="q" type="search" placeholder="Search the manual" autocomplete="off" aria-label="Search the manual">
+  <div id="results"></div>
+</div>
+
+<div id="loadingCard"><div class="orn">❦</div><p id="loadingText">Binding the pages…</p></div>
+
+<script src="md.js"></script>
+<script src="manual.js"></script>
+</body>
+</html>
