@@ -710,6 +710,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 const int32_t reach = static_cast<int32_t>((radius * 2 / cell).floorToInt()) + 1;
                 if (ci - reach < 2 || cj - reach < 2 || ci + reach > cells - 2 || cj + reach > cells - 2) continue;
                 if (flatDist(px, py, rg.ford_) < m(140)) continue;
+                if (c.landmarkAt(px + OX, py + OY)) continue;  // its ground is shaped already
                 bool town = false;  // not inside a city's walls
                 for (const Continent::City& city : c.cities()) town = town || flatDist(px + OX, py + OY, city.pos) < city.radius * 2;
                 if (town) continue;
@@ -865,7 +866,18 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             ++placed;
         }
     }
-    // A shrine of standing pillars on the highest dry ground in the window.
+    // The landmarks' buildings: Church Hill's church, its tower and graves.
+    for (const Continent::Landmark& lm : c.landmarks()) {
+        for (const Obstacle& b : lm.buildings) {
+            Obstacle o = b;
+            o.pos = toLocal(b.pos);
+            const Fixed reach = max(max(o.halfX, o.halfY), o.radius);
+            if (o.pos.x < reach || o.pos.y < reach || o.pos.x > cell * cells - reach || o.pos.y > cell * cells - reach) continue;
+            rg.obstacles_.push_back(o);
+        }
+    }
+    // A shrine of standing pillars on the highest dry ground in the window
+    // (not on a landmark with buildings of its own).
     Vec3 shrine{m(200), m(800), Fixed::zero()};
     {
         Fixed top = -m(1000);
@@ -873,6 +885,8 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             for (int32_t ix = 32; ix < cells - 32; ix += 4) {
                 const Fixed z = shaped[static_cast<size_t>(iy) * n + ix];
                 const Ground g = rg.cellGround(ix, iy);
+                const Continent::Landmark* lm = c.landmarkAt(OX + cell * ix, OY + cell * iy);
+                if (lm && !lm->buildings.empty()) continue;
                 if (z > top && g != Ground::Rock && g != Ground::Shallows && g != Ground::DeepWater) {
                     top = z;
                     shrine = {cell * ix, cell * iy, z};

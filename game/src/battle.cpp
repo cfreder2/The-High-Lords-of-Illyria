@@ -501,6 +501,22 @@ void FarGrid::fillRows(const sim::Continent& c, const V3& origin, int j0, int j1
             } else {
                 height[k] = static_cast<float>(smp.height.toDouble());
                 ground[k] = static_cast<uint8_t>(c.landGround(x, y, smp.height, smp.mountain, smp.roadDist));
+                // A landmark's ground changes faster than this grid: its
+                // cliffs are bare rock, and the coarse land keeps under the
+                // close-up land (a gorge's floor, a road's cut) rather than
+                // bridging over it at the height of its rims.
+                if (c.landmarkAt(x, y)) {
+                    const sim::Fixed half = sim::Fixed::fromInt(static_cast<int64_t>(cell / 2));
+                    sim::Fixed lowest = smp.height, steepest;
+                    for (int n = 0; n < 4; ++n) {
+                        const sim::Fixed dx = n == 0 ? half : n == 1 ? -half : sim::Fixed::zero(), dy = n == 2 ? half : n == 3 ? -half : sim::Fixed::zero();
+                        const sim::Fixed h = c.sample(x + dx, y + dy).height;
+                        lowest = sim::min(lowest, h);
+                        steepest = sim::max(steepest, sim::abs(h - smp.height) / half);
+                    }
+                    height[k] = static_cast<float>(lowest.toDouble());
+                    if (steepest > sim::Fixed::fromRatio(3, 5)) ground[k] = static_cast<uint8_t>(sim::Ground::Rock);
+                }
             }
         }
     }

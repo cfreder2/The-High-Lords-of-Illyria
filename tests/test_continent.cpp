@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "illyria/sim/continent.h"
+#include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/scenario.h"
 #include "test.h"
@@ -55,7 +56,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0xef362b62e0f9db70;
+    constexpr uint64_t kGolden = 0xce11946213507e79;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -74,7 +75,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xd6f7e538af94ad99;
+    constexpr uint64_t kGolden = 0x4f1f51e3c2a4f075;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -101,7 +102,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0x3c65cc08cd070098;
+    constexpr uint64_t kGolden = 0xff3e70551bc6a219;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
@@ -125,5 +126,70 @@ TEST(battlefield_is_varied_not_open_grass) {
     for (const Vec3& p : r.ponds()) {
         const Ground g = r.groundAt(p.x, p.y);
         CHECK(g == Ground::Shallows || g == Ground::DeepWater);
+    }
+}
+
+TEST(landmarks_are_shaped_and_can_be_walked) {
+    // The set pieces made by hand, and the gorges found where there is room.
+    const Continent& c = continent();
+    const Continent::Landmark *church = nullptr, *narrows = nullptr, *terraces = nullptr;
+    int gorges = 0;
+    for (const Continent::Landmark& lm : c.landmarks()) {
+        if (lm.name == "Church Hill") church = &lm;
+        if (lm.name == "The Narrows") narrows = &lm;
+        if (lm.name == "The Terraces") terraces = &lm;
+        gorges += lm.kind == Continent::Landmark::Kind::Gorge;
+    }
+    CHECK(church && narrows && terraces);
+    CHECK(gorges >= 3);
+    if (!church || !narrows || !terraces) return;
+    const auto local = [](const Region& rg, const Vec3& p) { return Vec3{p.x - rg.origin().x, p.y - rg.origin().y, Fixed::zero()}; };
+    std::vector<Vec3> path;
+
+    // Church Hill: its road climbs no steeper than 1 in 10 (a walk, not a
+    // scramble), its top stands 40 m over the land with the church and a pond
+    // on it, and from the foot of the road a soldier can walk up to the church.
+    for (size_t i = 0; i + 1 < church->line.size(); ++i) {
+        const Fixed run = (church->line[i + 1] - church->line[i]).flat().length(), rise = church->line[i + 1].z - church->line[i].z;
+        CHECK(rise >= Fixed::zero() && rise <= run / 10 + Fixed::fromRatio(1, 20));
+    }
+    CHECK(church->buildings.size() >= 2);
+    CHECK(c.heightAt(church->line.back().x, church->line.back().y) > church->centre.z + Fixed::fromInt(35));
+    bool pond = false;
+    for (const Continent::Area& lake : c.lakes()) {
+        Fixed surface;
+        if (lake.name == "Church Hill Pond") pond = c.waterSurface(lake.centre.x, lake.centre.y, surface);
+    }
+    CHECK(pond);
+    {
+        const Region rg = Region::fromContinent(c, church->centre, 256);
+        const NavGrid nav(rg);
+        CHECK(nav.findPath(local(rg, church->line.front()), local(rg, church->line.back()), path));
+        CHECK(!nav.blocked(local(rg, church->line[church->line.size() / 2])));  // the road itself is open
+    }
+
+    // The Narrows: its floor, the road, lies in a cleft 15 m and more below the
+    // tableland either side, and stays open end to end.
+    {
+        const Region rg = Region::fromContinent(c, narrows->centre, 256);
+        const NavGrid nav(rg);
+        const Vec3 mid = local(rg, narrows->centre), side{-narrows->axis.y, narrows->axis.x, Fixed::zero()};
+        const Fixed floor = rg.terrain().heightAt(mid.x, mid.y);
+        for (int s = -1; s <= 1; s += 2) {
+            const Vec3 rim = mid + side * (narrows->floor * 2 + Fixed::fromInt(30)) * Fixed::fromInt(s);
+            CHECK(rg.terrain().heightAt(rim.x, rim.y) > floor + Fixed::fromInt(15));
+        }
+        for (const Vec3& p : narrows->line)
+            if ((p - narrows->centre).flat().length() < narrows->halfLength) CHECK(!nav.blocked(local(rg, p)));
+        CHECK(nav.findPath(local(rg, narrows->line.front()), local(rg, narrows->line.back()), path));
+    }
+
+    // The Terraces: their top can be walked up to from the fields below.
+    {
+        const Region rg = Region::fromContinent(c, terraces->centre, 256);
+        const NavGrid nav(rg);
+        const Vec3 top = local(rg, terraces->centre), below = top + Vec3{terraces->radius + Fixed::fromInt(40), Fixed::zero(), Fixed::zero()};
+        CHECK(rg.terrain().heightAt(top.x, top.y) > terraces->centre.z + Fixed::fromInt(12));
+        CHECK(nav.findPath(below, top, path));
     }
 }

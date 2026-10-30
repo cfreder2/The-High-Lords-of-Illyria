@@ -19,6 +19,7 @@ add_library(illyria_sim
     src/nav.cpp
     src/gait.cpp
     src/continent.cpp
+    src/continent_relief.cpp
     src/campaign.cpp
     src/campaign_rules.cpp
     src/campaign_ai.cpp

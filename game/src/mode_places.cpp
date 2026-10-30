@@ -14,13 +14,15 @@ namespace {
 
 Fixed m(int64_t metres) { return Fixed::fromInt(metres); }
 
-// How far the ground here stands above the land around it (at `reach`).
+// How far the ground here stands above the land around it (at `reach`), by
+// the land's broad shape: a knoll on the way is not a hill.
 Fixed prominence(const sim::Continent& c, Fixed x, Fixed y, Fixed h, int64_t reach) {
     static constexpr int kDirs[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
     Fixed sum;
     for (const auto& d : kDirs) {
         const int64_t k = d[0] != 0 && d[1] != 0 ? reach * 7 / 10 : reach;  // the diagonals as far out
-        sum += c.sample(x + m(d[0] * k), y + m(d[1] * k)).height;
+        const sim::Continent::Sample s = c.sample(x + m(d[0] * k), y + m(d[1] * k));
+        sum += s.height - s.relief;
     }
     return h - sum / 8;
 }
@@ -86,11 +88,12 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
         const int64_t kStep = 320;
         for (int64_t y = 800; y < sim::Continent::kHeight - 700; y += kStep)
             for (int64_t x = 800; x < sim::Continent::kWidth - 700; x += kStep) {
-                // Not a mountain: a hill a horde can climb.
+                // Not a mountain: a hill a horde can climb. (The landmarks come by name, below.)
                 if (!fieldable(c, m(x), m(y), s) || s.height < m(15) || s.height > m(165) || s.mountain > m(55)) continue;
+                if (c.landmarkAt(m(x), m(y))) continue;
                 const Vec3 p{m(x), m(y), s.height};
                 if (!clearOfTowns(c, p, 300)) continue;
-                const Fixed prom = prominence(c, m(x), m(y), s.height, 260);
+                const Fixed prom = prominence(c, m(x), m(y), s.height - s.relief, 260);
                 if (prom >= m(4) && prom <= m(60)) rises.push_back({p, prom});
             }
         std::stable_sort(rises.begin(), rises.end(), [](const Rise& a, const Rise& b) { return a.prom > b.prom; });
@@ -139,6 +142,18 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
         pl.score = 70;
         out.push_back(pl);
     }
+    // The landmarks: the hills made by hand to hold, and the gorges.
+    for (const sim::Continent::Landmark& lm : c.landmarks()) {
+        if (!roomFor(lm.centre)) continue;
+        Place pl;
+        const bool hill = lm.kind != sim::Continent::Landmark::Kind::Gorge;
+        pl.kind = hill ? Place::Kind::Hill : Place::Kind::Pass;
+        const sim::Continent::City* city = nearestCity(c, lm.centre);
+        pl.name = !lm.name.empty() ? lm.name : city ? "Gorge by " + city->name : "The Gorge";
+        pl.pos = {lm.centre.x, lm.centre.y, hill ? lm.top : lm.centre.z};
+        pl.score = lm.name.empty() ? 50 : 66;
+        out.push_back(pl);
+    }
     // Ruins and temples, the higher the better.
     for (const sim::Continent::Site& site : c.sites()) {
         if (site.kind == sim::Continent::Site::Kind::Sage || !roomFor(site.pos) || !clearOfTowns(c, site.pos, 300)) continue;
@@ -147,7 +162,7 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
         pl.kind = site.kind == sim::Continent::Site::Kind::Ruin ? Place::Kind::Ruin : Place::Kind::Temple;
         pl.name = site.name;
         pl.pos = site.pos;
-        const Fixed prom = prominence(c, site.pos.x, site.pos.y, s.height, 300);
+        const Fixed prom = prominence(c, site.pos.x, site.pos.y, s.height - s.relief, 300);
         pl.score = (pl.kind == Place::Kind::Ruin ? 72 : 55) + std::clamp<int32_t>(static_cast<int32_t>(prom.floorToInt()), -10, 20);
         out.push_back(pl);
     }
