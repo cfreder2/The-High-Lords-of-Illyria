@@ -12,6 +12,7 @@ add_library(illyria_game
     src/mode_places.cpp
     src/mode_horde.cpp
     src/mode_ctf.cpp
+    src/mode_sandbox.cpp
     src/mode_setup.cpp
     src/voice.cpp
     src/sfx.cpp

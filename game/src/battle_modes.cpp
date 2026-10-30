@@ -12,12 +12,18 @@ namespace illyria::game {
 
 using sim::UnitType;
 
-Battle::Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent)
+Battle::Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent, float farReachM)
     : scenario_(Scenario::Mode) {
     continent_ = continent ? std::move(continent) : std::make_shared<const sim::Continent>(kRegionSeed);
     foeName_.clear();
-    build(seed, centre);
+    build(seed, centre, -1, farReachM);
     finish();
+}
+
+void Battle::setZone(V3 centre, float radius, int32_t pctPerSecond) {
+    zoneCentre_ = {centre.x, centre.y, 0};
+    zoneRadius_ = std::max(0.0f, radius);
+    world_->setZone(toSim(zoneCentre_), sim::Fixed::fromInt(static_cast<int64_t>(zoneRadius_)), pctPerSecond);
 }
 
 Battle::~Battle() = default;

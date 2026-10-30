@@ -235,6 +235,7 @@
     render();
   };
   M.started = function (id) {
+    if (id !== "horde" && id !== "ctf") return;  // the sandbox has its own panel (sandbox.js)
     state.id = id;
     M.active = true;
     document.body.classList.add("mode-on");

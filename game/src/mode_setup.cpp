@@ -1,5 +1,7 @@
 // A match from the page's options (mode.h makeMatch): the place, the seats,
 // the difficulty and the army, read from a small JSON object.
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -7,6 +9,7 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/mode_ctf.h"
 #include "illyria/game/mode_horde.h"
+#include "illyria/game/mode_sandbox.h"
 
 namespace illyria::game {
 
@@ -53,6 +56,45 @@ sim::SeatControl controlOf(const std::string& s) {
     return sim::SeatControl::Empty;
 }
 
+// A field anywhere on the map (the sandbox's, picked on its setup map): the
+// dry ground nearest (x, y) in metres, a whole battlefield inside the map's
+// edge (a click in a lake or the sea moves out to the shore), named for the
+// place it is near if one is close.
+Place openGround(const sim::Continent& c, int x, int y, const std::vector<Place>& places) {
+    constexpr int kEdge = 600;
+    const auto inside = [](int v, int64_t size) { return static_cast<int>(std::clamp<int64_t>(v, kEdge, size - kEdge)); };
+    const auto dry = [&](int px, int py) {
+        sim::Fixed surface;
+        return !c.waterSurface(sim::Fixed::fromInt(px), sim::Fixed::fromInt(py), surface);
+    };
+    x = inside(x, sim::Continent::kWidth);
+    y = inside(y, sim::Continent::kHeight);
+    int bx = x, by = y;
+    for (int r = 40; !dry(bx, by) && r <= 3000; r += 40)
+        for (int k = 0; k < 24; ++k) {
+            const double a = k * (2 * 3.14159265358979 / 24);
+            const int px = inside(x + static_cast<int>(std::lround(r * std::cos(a))), sim::Continent::kWidth);
+            const int py = inside(y + static_cast<int>(std::lround(r * std::sin(a))), sim::Continent::kHeight);
+            if (dry(px, py)) {
+                bx = px, by = py;
+                break;
+            }
+        }
+    Place p;
+    p.name = "Open ground";
+    p.pos = {sim::Fixed::fromInt(bx), sim::Fixed::fromInt(by), c.heightAt(sim::Fixed::fromInt(bx), sim::Fixed::fromInt(by))};
+    double best = 1500.0 * 1500.0;
+    for (const Place& q : places) {
+        if (q.name.empty()) continue;
+        const double dx = q.pos.x.toDouble() - bx, dy = q.pos.y.toDouble() - by;
+        if (dx * dx + dy * dy < best) {
+            best = dx * dx + dy * dy;
+            p.name = "Near " + q.name;
+        }
+    }
+    return p;
+}
+
 }  // namespace
 
 std::string placesJson(const std::vector<Place>& places) {
@@ -74,8 +116,21 @@ std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& opti
     const Place& where = places[static_cast<size_t>(place)];
     const uint64_t seed = static_cast<uint64_t>(intOf(options, "seed", 20261029));
     const std::vector<std::string> seats = listOf(options, "seats");
+    if (id == "sandbox") {
+        // Anywhere on the map when the page gives x and y (metres), else the place.
+        const int x = intOf(options, "x", -1), y = intOf(options, "y", -1);
+        const Place here = x >= 0 && y >= 0 ? openGround(*continent, x, y, places) : where;
+        auto b = std::make_unique<Battle>(seed, here.pos, std::move(continent), kMatchFarReachM);
+        SandboxOptions o;
+        o.centre = here.pos;
+        o.place = here.name;
+        o.seed = seed;
+        o.radiusM = std::clamp(intOf(options, "radius", o.radiusM), 80, 480);
+        SandboxMode::start(*b, o);
+        return b;
+    }
     if (id == "horde") {
-        auto b = std::make_unique<Battle>(seed, where.pos, std::move(continent));
+        auto b = std::make_unique<Battle>(seed, where.pos, std::move(continent), kMatchFarReachM);
         HordeOptions o;
         o.centre = where.pos;
         o.place = where.name;
@@ -86,11 +141,13 @@ std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& opti
         o.musterSeconds = std::clamp(intOf(options, "musterSeconds", o.musterSeconds), 3, 300);
         for (size_t k = 0; k < seats.size() && k < o.seats.size(); ++k) o.seats[k] = controlOf(seats[k]);
         o.localSeat = intOf(options, "local", -1);
-        HordeMode::start(*b, o);
+        const HordeMode& m = HordeMode::start(*b, o);
+        // The field: round the hill, out past where the waves form up.
+        b->setZone(toV3(m.hill().at()), static_cast<float>(HordeMode::kSpawnM + 120), kZonePctPerSecond);
         return b;
     }
     if (id == "ctf") {
-        auto b = std::make_unique<Battle>(seed, where.pos, std::move(continent));
+        auto b = std::make_unique<Battle>(seed, where.pos, std::move(continent), kMatchFarReachM);
         CtfOptions o;
         o.centre = where.pos;
         o.place = where.name;
@@ -106,6 +163,8 @@ std::unique_ptr<Battle> makeMatch(const std::string& id, const std::string& opti
         for (size_t t = 0; t < starts.size() && t < o.starts.size(); ++t) o.starts[t] = std::atoi(starts[t].c_str());
         o.localSeat = intOf(options, "local", -1);
         CtfMode::start(*b, o);
+        // The field: round the middle, a hundred metres past the flags.
+        b->setZone({Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0}, static_cast<float>(o.ringM + 100), kZonePctPerSecond);
         return b;
     }
     return nullptr;

@@ -182,12 +182,64 @@ int Renderer::clipFrame(int type, sprites::Clip c, int i) {
     return sprites::frameIndex(c, i, frames);
 }
 
-int Renderer::deathFrame(int type, const sim::Unit& u, float secondsDead) {
+void Renderer::playClip(const std::vector<sim::EntityId>& ids, int clip, bool loop) {
+    for (sim::EntityId id : ids) {
+        if (clip < 0 || clip >= sprites::kClipCount) played_.erase(id);
+        else played_[id] = {clip, loop, gameSeconds_};
+    }
+}
+
+namespace {
+
+// How far a dying man is down, 0 standing .. 1 lying, `t` through his fall:
+// a burning man stays on his feet most of his clip.
+float downAt(sprites::Clip clip, float t) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    return clip == sprites::Clip::DieBurn ? t * t : t;
+}
+
+}  // namespace
+
+int Renderer::playedFrame(int type, sim::EntityId id, float gameSeconds, float* down) {
+    const auto it = played_.find(id);
+    if (it == played_.end()) return -1;
+    const Played& p = it->second;
+    const auto clip = static_cast<sprites::Clip>(p.clip);
+    // As long as the game plays it: an idle breath, a stride, the type's
+    // stroke, a flinch, a fall.
+    float seconds = 2.2f;
+    switch (clip) {
+        case sprites::Clip::Idle: seconds = 2.2f; break;
+        case sprites::Clip::Walk: seconds = 1.0f; break;
+        case sprites::Clip::Attack: seconds = figures::attackSeconds(static_cast<sim::UnitType>(type)); break;
+        case sprites::Clip::Flinch: seconds = figures::kFlinchSeconds; break;
+        case sprites::Clip::DieBurn: seconds = sprites::kBurnSeconds; break;
+        default: seconds = sprites::kDieSeconds; break;
+    }
+    const int n = sprites::kClipFrames[p.clip];
+    const float t = std::max(0.0f, gameSeconds - p.start) / seconds;
+    int i = static_cast<int>(t * static_cast<float>(n));
+    const bool dies = clip >= sprites::Clip::DieBack;
+    if (down) *down = dies ? downAt(clip, p.loop ? t - std::floor(t) : t) : 0.0f;
+    if (p.loop) {
+        i %= n;
+    } else if (i >= n) {
+        if (!dies) {
+            played_.erase(it);
+            return -1;
+        }
+        i = n - 1;
+    }
+    return clipFrame(type, clip, i);
+}
+
+int Renderer::deathFrame(int type, const sim::Unit& u, float secondsDead, float* down) {
     const sprites::Clip clip = deathClipOf(u);
     const float seconds = clip == sprites::Clip::DieBurn ? sprites::kBurnSeconds : sprites::kDieSeconds;
     const int n = sprites::kClipFrames[static_cast<int>(clip)];
     // Thrown through the air by a blow, he stays mid-fall until he lands.
     const int i = u.airborne ? 2 : static_cast<int>(secondsDead / seconds * static_cast<float>(n));
+    if (down) *down = u.airborne ? 0.0f : downAt(clip, secondsDead / seconds);
     return clipFrame(type, clip, i);
 }
 

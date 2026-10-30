@@ -25,6 +25,18 @@ public:
         maxX_ = maxX;
         maxY_ = maxY;
     }
+    // A match's field (Battle::zone): the view's centre kept within `radius`
+    // of (cx, cy) and the camera no further out than `maxDistance`, so the
+    // match never shows (or loads) the continent beyond it. Radius zero: no circle.
+    void setCircle(float cx, float cy, float radius, float maxDistance) {
+        cx_ = cx;
+        cy_ = cy;
+        radius_ = radius;
+        maxDistance_ = radius > 0 ? std::clamp(maxDistance, kMinDistance, kMaxDistance) : kMaxDistance;
+        distance_ = std::min(distance_, maxDistance_);
+        clampTarget();
+    }
+    float maxDistance() const { return maxDistance_; }
     void setHeightFn(HeightFn fn) { heightFn_ = std::move(fn); }
     void setViewport(float width, float height) {
         width_ = width;
@@ -77,6 +89,8 @@ private:
     float tx_ = 0, ty_ = 0;
     float distance_ = 300.0f;
     float minDistance_ = kMinDistance;
+    float maxDistance_ = kMaxDistance;
+    float cx_ = 0, cy_ = 0, radius_ = 0;
     float yaw_ = 0.0f;
 };
 

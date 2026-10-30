@@ -72,6 +72,12 @@ public:
         V3 colour{1, 1, 1};
     };
     void setFlags(const std::vector<Flag>& flags);
+    // The sandbox (mode_sandbox.h): these soldiers play clip `clip`
+    // (sprites::Clip) from now, in game time (so pausing, slow motion and the
+    // frame step hold it too), once or over and over; -1 hands them back to
+    // what they are doing. A clip played once ends where it began, except a
+    // death, which stays on its last frame.
+    void playClip(const std::vector<sim::EntityId>& ids, int clip, bool loop);
     // The castles' tower banners in each town's holder's colour (by city index).
     void setCityColours(const std::vector<V3>& colours);
     // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
@@ -88,7 +94,7 @@ private:
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
-        GLint cellTable = -1, cloth = -1, sheetSize = -1, viewDir = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
+        GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1;
     };
@@ -215,9 +221,19 @@ private:
     // Frame i of clip c in the cell table of the type's sheet now (falling back
     // to the clips an old sheet has); the dying soldier's frame by how he died.
     int clipFrame(int type, sprites::Clip c, int i);
-    int deathFrame(int type, const sim::Unit& u, float secondsDead);
+    // The frame of a clip a soldier is made to play (playClip), or -1 when none is (or it ended).
+    // `down`, if given: how far he has fallen, 0 standing .. 1 lying (a death clip).
+    int playedFrame(int type, sim::EntityId id, float gameSeconds, float* down = nullptr);
+    struct Played {
+        int clip = 0;
+        bool loop = false;
+        float start = 0;
+    };
+    std::map<sim::EntityId, Played> played_;
+    float gameSeconds_ = 0;  // at the last draw
+    int deathFrame(int type, const sim::Unit& u, float secondsDead, float* down = nullptr);
     void bakeMissing(const Battle& battle);
-    // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected.
+    // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected, down.
     Batch units_;
     std::vector<std::pair<int, std::pair<size_t, size_t>>> unitGroups_;  // type x 2 + side, first instance, count
     void drawUnits(const Camera& camera, double timeSeconds, float gameSeconds, V3 viewDir, V3 right, bool shadow);

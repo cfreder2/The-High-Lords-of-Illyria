@@ -13,7 +13,7 @@ constexpr float kPitchFar = 1.31f;   // ~75 degrees, near top-down at god view
 void Camera::lookAt(float x, float y, float distance) {
     tx_ = x;
     ty_ = y;
-    distance_ = std::clamp(distance, kMinDistance, kMaxDistance);
+    distance_ = std::clamp(distance, kMinDistance, maxDistance_);
     clampTarget();
 }
 
@@ -113,7 +113,7 @@ void Camera::zoomAt(float factor, float px, float py) {
     V3 before;
     const bool anchored = pickPlane(px, py, planeZ, before);
     // Never closer than the sprites allow (setMinDistance), nor nearer than now if already inside that.
-    distance_ = std::clamp(distance_ / factor, std::min(minDistance_, distance_), kMaxDistance);
+    distance_ = std::clamp(distance_ / factor, std::min(minDistance_, distance_), maxDistance_);
     V3 after;
     if (anchored && pickPlane(px, py, planeZ, after)) {
         tx_ += before.x - after.x;
@@ -125,6 +125,13 @@ void Camera::zoomAt(float factor, float px, float py) {
 void Camera::clampTarget() {
     tx_ = std::clamp(tx_, minX_, maxX_);
     ty_ = std::clamp(ty_, minY_, maxY_);
+    if (radius_ > 0) {
+        const float dx = tx_ - cx_, dy = ty_ - cy_, d = std::sqrt(dx * dx + dy * dy);
+        if (d > radius_) {
+            tx_ = cx_ + dx * radius_ / d;
+            ty_ = cy_ + dy * radius_ / d;
+        }
+    }
 }
 
 }  // namespace illyria::game

@@ -364,7 +364,7 @@ bool Renderer::buildPrograms() {
         s.p.sheetView = glGetUniformLocation(s.p.id, "uSheetView");
         s.p.cloth = glGetUniformLocation(s.p.id, "uCloth");
         s.p.sheetSize = glGetUniformLocation(s.p.id, "uSheetSize");
-        s.p.viewDir = glGetUniformLocation(s.p.id, "uViewDir");
+        s.p.toViewer = glGetUniformLocation(s.p.id, "uToViewer");
         s.p.lift = glGetUniformLocation(s.p.id, "uLift");
         s.p.team = glGetUniformLocation(s.p.id, "uTeam");
         s.p.sheet = glGetUniformLocation(s.p.id, "uSheet");
@@ -1354,7 +1354,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
-    makeBatch(units_, {3, 1, 1, 1}, 0);
+    makeBatch(units_, {3, 1, 1, 1, 1}, 0);
     makeBatch(particles_, {3, 4}, 0);
     makeBatch(bars_, {3, 4}, 0);
     reset(battle);
@@ -1614,7 +1614,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
     if (unitGroups_.empty()) return;
     setCommon(unit_, camera, timeSeconds, gameSeconds);
     glUniform3f(unit_.camRight, right.x, right.y, right.z);
-    glUniform2f(unit_.viewDir, viewDir.x, viewDir.y);
+    glUniform1f(unit_.toViewer, std::atan2(-viewDir.y, -viewDir.x));  // here, not in the shader (kUnitVs)
     glUniform1i(unit_.sheet, 7);
     glUniform1i(unit_.cellTable, 8);
     glBindVertexArray(units_.vao);
@@ -1640,6 +1640,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
         glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, at(3));
         glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, at(4));
         glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, at(5));
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, at(6));
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
     }
     glActiveTexture(GL_TEXTURE0);
@@ -2015,6 +2016,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
+    gameSeconds_ = gameSeconds;
     uploadMarks(battle);
     uploadRemains(battle);
     uploadGates(battle);
@@ -2047,6 +2049,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
         int frame;
+        float down = 0;  // 0 standing .. 1 lying: the picture follows the slope under him (kUnitVs)
         float yaw = std::atan2(fy, fx);
         if (!u.alive()) {
             const float died = ago(battle.deathTick(i));
@@ -2063,7 +2066,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 pushStuckArrows(arrows, u, pos, 1);
                 continue;
             }
-            frame = deathFrame(static_cast<int>(type), u, died);  // the death clip by how he died (renderer_sheets.cpp)
+            frame = deathFrame(static_cast<int>(type), u, died, &down);  // the death clip by how he died (renderer_sheets.cpp)
             // The figure falls backward: turned so that its head lands the way the blow went.
             if (u.death.kind != sim::DeathKind::None) yaw = lieYaw(u) + 3.14159265f;
             pushStuckArrows(arrows, u, pos, u.airborne ? 0.3f : std::clamp(died / figures::kDieSeconds, 0.0f, 1.0f));
@@ -2081,7 +2084,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             pushHealthBar(bars, u, pos, isSelected);
             if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
             const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
-            if (struck >= 0 && struck < strike) {
+            if (const int played = playedFrame(static_cast<int>(type), u.id, gameSeconds, &down); played >= 0) {
+                frame = played;  // the sandbox's choice (playClip)
+            } else if (struck >= 0 && struck < strike) {
                 frame = figures::kFirstFrame[2] + std::min(figures::kFrames[2] - 1, static_cast<int>(struck / strike * figures::kFrames[2]));
             } else if (hurt >= 0 && hurt < figures::kFlinchSeconds) {
                 frame = figures::kFirstFrame[3] + (hurt < figures::kFlinchSeconds * 0.5f ? 0 : 1);
@@ -2103,13 +2108,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const int key = static_cast<int>(type) * kSides + (u.owner & 3);
         if (!sheets_.count(key / kSides) || !sheets_[key / kSides].tex) continue;  // baked before the next frame (bakeMissing)
         std::vector<float>& g = byGroup[key];
-        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f});
+        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
     }
     {
         std::vector<float> all;
         unitGroups_.clear();
         for (auto& [key, data] : byGroup) {
-            unitGroups_.push_back({key, {all.size() / 6, data.size() / 6}});
+            unitGroups_.push_back({key, {all.size() / 7, data.size() / 7}});
             all.insert(all.end(), data.begin(), data.end());
         }
         uploadDynamic(units_, all);

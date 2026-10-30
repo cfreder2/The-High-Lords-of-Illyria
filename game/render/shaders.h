@@ -1265,18 +1265,23 @@ void main() {
 )";
 // In battle: each soldier a billboard showing the frame of its sheet for its
 // facing (view and mirror chosen here) and deed (frame chosen on the CPU).
-// Per instance: feet, facing (radians), frame, selected. uCellTable holds, per
-// cell (view x 26 + frame), its place in the sheet (px: x, y, w, h; row 0)
-// and the picture's extent about the feet (m: left, bottom, w, h; row 1).
+// Per instance: feet, facing (radians), frame, selected, down (0 standing ..
+// 1 lying). uCellTable holds, per cell (view x 26 + frame), its place in the
+// sheet (px: x, y, w, h; row 0) and the picture's extent about the feet (m:
+// left, bottom, w, h; row 1).
 inline const char* kUnitVs = R"(
 layout(location = 0) in vec3 iPos;
 layout(location = 1) in float iYaw;
 layout(location = 2) in float iFrame;
 layout(location = 3) in float iSelected;
+layout(location = 4) in float iDown;
 uniform highp sampler2D uCellTable;
 uniform vec2 uSheetSize;  // px
-uniform vec2 uViewDir;    // horizontal: from the viewer into the scene
-uniform float uLift;      // metres drawn toward the viewer, against the ground
+// The viewer's bearing seen from the soldiers (radians), worked out on the
+// CPU: ANGLE on Metal turns atan(y, -0.0) the wrong way, and a camera at
+// exactly 90 or 270 degrees gives a view direction whose x is zero.
+uniform float uToViewer;
+uniform float uLift;     // metres drawn toward the viewer, against the ground
 out vec2 vUv;
 flat out float vSelected;
 flat out float vDot;
@@ -1287,8 +1292,7 @@ const float kElevation = 0.52;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
     // Which of the eight views: the viewer's bearing seen from the soldier.
-    float toViewer = atan(-uViewDir.y, -uViewDir.x);
-    float d = mod(floor(-(toViewer - iYaw) / 0.7853982 + 0.5), 8.0);
+    float d = mod(floor(-(uToViewer - iYaw) / 0.7853982 + 0.5), 8.0);
     bool mirror = d > 4.5;
     float view = mirror ? 8.0 - d : d;
     int cell = int(view * uFramesPerView + iFrame + 0.5);
@@ -1306,6 +1310,13 @@ void main() {
         float u = mirror ? -(extent.x + extent.z) + corner.x * extent.z : extent.x + corner.x * extent.z;
         float v = extent.y + corner.y * extent.w;
         world = iPos + uCamRight * u + vec3(0.0, 0.0, v / cos(kElevation));
+        // A man standing on a hillside stands upright; one lying on it lies
+        // along it: each side of his picture rises or sinks with the ground
+        // under it, as much as he is down. Not on a wall-walk or a bridge.
+        if (iDown > 0.0) {
+            float under = groundZ(iPos.xy);
+            if (abs(iPos.z - under) < 0.5) world.z += (groundZ(iPos.xy + uCamRight.xy * u) - under) * iDown;
+        }
     }
     vec2 inCell = vec2(mirror ? 1.0 - corner.x : corner.x, corner.y) * place.zw;
     vUv = (place.xy + inCell) / uSheetSize;

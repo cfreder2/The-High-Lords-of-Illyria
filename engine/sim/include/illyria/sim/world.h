@@ -487,6 +487,17 @@ public:
     // and none ever rallies.
     void breakSide(PlayerId owner);
     bool sideBroken(PlayerId owner) const;
+    // A match's field, a circle round `centre` (radius zero: none, the
+    // default): a soldier outside it loses `pctPerSecond` of his full health
+    // every second, so armies stay on the field the match loaded (and a
+    // straggler cannot hide off it).
+    void setZone(const Vec3& centre, Fixed radius, int32_t pctPerSecond);
+    const Vec3& zoneCentre() const { return zoneCentre_; }
+    Fixed zoneRadius() const { return zoneRadius_; }
+    bool outsideZone(const Vec3& p) const;
+    // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
+    // every living soldier of `type` takes `stats`, his wounds kept in proportion.
+    void retune(uint8_t type, const UnitStats& stats);
 
 private:
     // Buckets of indices by grid cell. Lookups only, never iterated, so the
@@ -674,6 +685,7 @@ private:
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
     void clearRemain(uint32_t slot);
+    void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
     Ground groundAt(Fixed x, Fixed y) const;
     bool isWater(Fixed x, Fixed y) const;
@@ -682,6 +694,9 @@ private:
     std::unique_ptr<NavGrid> nav_;
     Rng rng_;
     uint32_t tick_ = 0;
+    Vec3 zoneCentre_;
+    Fixed zoneRadius_;
+    int32_t zonePct_ = 0;
     EntityId nextId_ = 1;
     std::vector<Unit> units_;
     std::vector<Projectile> projectiles_;

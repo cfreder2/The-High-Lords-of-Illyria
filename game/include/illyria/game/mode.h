@@ -78,12 +78,21 @@ struct ModeFlag {
     V3 colour;
     float height = 12, size = 3;
 };
+// The stakes that mark a battle's field (Battle::setZone), every few metres
+// round its edge; none without one.
+std::vector<ModeFlag> zoneStakes(const Battle& b);
 
 // --- Starting one (mode_setup.cpp) -----------------------------------------
 
+// A match loads the continent only this far round its field, for the horizon
+// (Battle's farReachM): its camera never leaves the field (Battle::setZone).
+inline constexpr float kMatchFarReachM = 3000.0f;
+// Beyond the field's edge a soldier loses this share of his health a second.
+inline constexpr int32_t kZonePctPerSecond = 5;
+
 // The places as JSON for the page's picker.
 std::string placesJson(const std::vector<Place>& places);
-// A match ("horde" or "ctf") from the page's options, a flat JSON object:
+// A match ("horde", "ctf" or "sandbox") from the page's options, a flat JSON object:
 // "place" (an index into `places`), "seed", "seats" (["human", "computer",
 // "empty", ...]), "local" (the seat at this screen; -1 or none: the first
 // person's); Horde: "difficulty" 0-2, "waves" (0 endless),

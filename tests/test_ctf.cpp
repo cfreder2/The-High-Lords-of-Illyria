@@ -3,6 +3,7 @@
 // that), a fallen team out of the match for good, the last flag standing
 // winning, the computer's teams playing a match to its end, and four teams
 // reproduced exactly by a replay of their inputs.
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 
@@ -145,6 +146,35 @@ TEST(ctf_elimination_and_victory) {
     w.step({&c, 1});
     CHECK(!w.findUnit(twos[0])->hasMoveTarget);
     CHECK(w.findUnit(raider)->alive());
+}
+
+TEST(zone_wounds_only_those_outside) {
+    // The field's edge: a man beyond it loses his share each second until he
+    // falls; a man inside is untouched; no zone, no harm and the old checksum.
+    const auto ground = flatGround();
+    sim::WorldConfig cfg;
+    cfg.region = ground;
+    const sim::UnitStats man = sim::unitStats(UnitType::LightInfantry);
+    const sim::Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    sim::World plain(cfg), zoned(cfg);
+    for (sim::World* w : {&plain, &zoned}) {
+        w->spawnUnit(0, at(60, 60), east, man);
+        w->spawnUnit(1, at(130, 60), east, man);
+    }
+    zoned.setZone(at(60, 60), Fixed::fromInt(40), 10);
+    CHECK(!zoned.outsideZone(at(90, 60)) && zoned.outsideZone(at(101, 60)) && !plain.outsideZone(at(500, 500)));
+    for (int t = 0; t < 3 * sim::kTicksPerSecond; ++t) {
+        plain.step({});
+        zoned.step({});
+    }
+    const sim::Unit& in = zoned.units()[0];
+    const sim::Unit& out = zoned.units()[1];
+    CHECK(in.hp == man.maxHp);
+    CHECK(out.hp < man.maxHp && out.hp >= man.maxHp - 3 * std::max<int32_t>(1, man.maxHp / 10));
+    CHECK(plain.units()[1].hp == man.maxHp);
+    CHECK(plain.checksum() != zoned.checksum());
+    for (int t = 0; t < 12 * sim::kTicksPerSecond; ++t) zoned.step({});
+    CHECK(!zoned.units()[1].alive() && zoned.units()[0].alive());
 }
 
 TEST(ctf_computer_teams_play_to_a_winner) {

@@ -268,6 +268,7 @@ void World::step(std::span<const Command> commands) {
     separateBodies();
     updateProjectiles();
     updateMorale();
+    applyZone();
     pathCache_.clear();
     ++tick_;
 }
@@ -1568,6 +1569,12 @@ uint64_t World::checksum() const {
     h.addU64(nextId_);
     h.addU64(rng_.state());
     h.addU64(rng_.increment());
+    // Only for a match with a field's edge, so battles without one hash as before.
+    if (zoneRadius_ > Fixed::zero()) {
+        hashVec(h, zoneCentre_);
+        h.addI64(zoneRadius_.raw);
+        h.addI64(zonePct_);
+    }
     h.addU64(units_.size());
     for (const Unit& u : units_) {
         h.addU64(u.id);

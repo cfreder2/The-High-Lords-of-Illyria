@@ -19,6 +19,7 @@
 #include "illyria/game/gestures.h"
 #include "illyria/game/mode.h"
 #include "illyria/game/mode_horde.h"
+#include "illyria/game/mode_sandbox.h"
 #include "illyria/sim/campaign.h"
 
 #ifndef ILLYRIA_VERSION
@@ -377,6 +378,8 @@ void placeFlags() {
         // A match's flags: Horde's hill, capture the flag's (mode.h).
         if (const BattleMode* mode = app->battle->mode())
             for (const ModeFlag& f : mode->flags(*app->battle)) flags.push_back({f.base, f.height, f.raised, f.size, f.colour});
+        // ... and the stakes round its field's edge.
+        for (const ModeFlag& f : zoneStakes(*app->battle)) flags.push_back({f.base, f.height, f.raised, f.size, f.colour});
         const CapturePoint& cap = app->battle->capturePoint();
         if (cap.active()) {
             V3 base = toV3(cap.at());
@@ -510,6 +513,7 @@ void startCampaign(bool hard) {
 // Out of whatever is being played (a campaign, its 3D battle, a skirmish), back
 // to a battlefield to show behind the title screen.
 void stopPlaying() {
+    app->camera.setCircle(0, 0, 0, 0);  // a match's field no longer holds the camera
     App::CampaignView& cv = app->camp;
     if (cv.fighting) {
         app->battle = std::move(cv.backdrop);
@@ -558,7 +562,7 @@ void stepTitle(double dtMs) {
 // startOtherMode starts it (stopPlaying() first) and is true when it has. See
 // docs/GAME_DESIGN.md §4.6 for the contract; until a mode is built in, the
 // title screen marks it "coming soon".
-bool otherModeAvailable(const std::string& id) { return id == "horde" || id == "ctf"; }
+bool otherModeAvailable(const std::string& id) { return id == "horde" || id == "ctf" || id == "sandbox"; }
 
 // The places a match can be fought over, read once from the continent.
 const std::vector<Place>& modePlaces() {
@@ -596,6 +600,11 @@ bool startOtherMode(const std::string& id, const std::string& options) {
     app->battle = std::move(b);
     const V3 o = app->battle->origin();
     app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
+    // A match's field: the camera stays over it, and no further out than it needs to see all of it.
+    if (const float r = app->battle->zoneRadius(); r > 0) {
+        const V3 z = app->battle->zoneCentre();
+        app->camera.setCircle(z.x, z.y, r + 30, std::max(300.0f, r * 2.6f));
+    }
     app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
     app->renderer.reset(*app->battle);
     app->renderer.setShowUnits(true);
@@ -606,7 +615,7 @@ bool startOtherMode(const std::string& id, const std::string& options) {
             c = app->battle->squadCentre(q);
             break;
         }
-    app->camera.lookAt(c.x, c.y, 120);
+    app->camera.lookAt(c.x, c.y, id == "sandbox" ? 60 : 120);  // the sandbox: near enough to watch them move
     mode_started_page(id.c_str());
     return true;
 }
@@ -975,6 +984,29 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_test_heights(int squad) {
         const float g = b.heightAt(p.x, p.y);
         char buf[64];
         std::snprintf(buf, sizeof buf, "%.2f/%.2f;", p.z - g, b.floorAt(p) - g);
+        out += buf;
+    }
+    return out.c_str();
+}
+// Test hook: for each living soldier of a squad, where he stands, the way he
+// faces, and where he is bound if anywhere ("x,y fx,fy -> tx,ty;").
+EMSCRIPTEN_KEEPALIVE const char* illyria_test_facing(int squad) {
+    static std::string out;
+    out.clear();
+    if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return out.c_str();
+    const Battle& b = *app->battle;
+    // The view the unit shader picks (kUnitVs): d 0 front, 2 his right side, 4 back; past 4 mirrored.
+    const float toViewer = std::atan2(-std::sin(app->camera.yaw()), -std::cos(app->camera.yaw()));
+    for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(squad)].members) {
+        const illyria::sim::Unit& u = b.world().units()[id - 1];
+        if (!u.alive()) continue;
+        const V3 p = b.unitPosition(id - 1);
+        const float yaw = std::atan2(static_cast<float>(u.facing.y.toDouble()), static_cast<float>(u.facing.x.toDouble()));
+        const int d = static_cast<int>(std::floor(-(toViewer - yaw) / 0.7853982f + 0.5f)) & 7;
+        char buf[128];
+        std::snprintf(buf, sizeof buf, "%.2f,%.2f %.2f,%.2f -> %s%.1f,%.1f cam %.2f d %d;", p.x, p.y, u.facing.x.toDouble(),
+                      u.facing.y.toDouble(), u.hasMoveTarget ? "" : "(none) ", u.moveTarget.x.toDouble(), u.moveTarget.y.toDouble(),
+                      app->camera.yaw(), d);
         out += buf;
     }
     return out.c_str();
@@ -1947,9 +1979,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_mode_offers() {
     s += "]";
     return s.c_str();
 }
-// While choosing: the camera over a place, high enough to see the land around it.
-EMSCRIPTEN_KEEPALIVE void illyria_mode_preview(int place) {
-    if (!app || place < 0 || place >= static_cast<int>(modePlaces().size())) return;
+// While choosing: the camera over a spot on the continent (metres), high
+// enough to see the land around it.
+static void previewAt(float x, float y) {
     app->introStartMs = -1;
     // Off the title's slow circling, the battlefield behind it held still.
     if (app->title) {
@@ -1957,8 +1989,70 @@ EMSCRIPTEN_KEEPALIVE void illyria_mode_preview(int place) {
         if (!app->battle->paused()) app->battle->togglePause();
     }
     const V3 o = app->battle->origin();
+    app->camera.lookAt(x - o.x, y - o.y, 2200);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_mode_preview(int place) {
+    if (!app || place < 0 || place >= static_cast<int>(modePlaces().size())) return;
     const V3 p = toV3(modePlaces()[static_cast<size_t>(place)].pos);
-    app->camera.lookAt(p.x - o.x, p.y - o.y, 2200);
+    previewAt(p.x, p.y);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_mode_preview_at(int x, int y) {
+    if (app) previewAt(static_cast<float>(x), static_cast<float>(y));
+}
+// The continent's size in metres ("width,height"), for the setup map.
+EMSCRIPTEN_KEEPALIVE const char* illyria_continent_extent() {
+    static std::string s;
+    s = std::to_string(illyria::sim::Continent::kWidth) + "," + std::to_string(illyria::sim::Continent::kHeight);
+    return s.c_str();
+}
+// The continent from above for the sandbox's setup map: `w` pixels wide and
+// as tall as the land is, RGBA, north at the top. Sea and lakes, then the
+// ground by kind, shaded by its slope (lit from the north-west) and paling
+// toward the peaks. Rows j0 to j1 are drawn now (the page asks for a band at
+// a time, top first, so it is not held up); the whole picture is returned.
+EMSCRIPTEN_KEEPALIVE const uint8_t* illyria_continent_map(int w, int j0, int j1) {
+    using illyria::sim::Continent;
+    using illyria::sim::Fixed;
+    static std::vector<uint8_t> px;
+    static std::vector<float> north;  // the row above's heights, for the shading
+    if (!app || w < 16 || w > 1024) return nullptr;
+    const Continent& c = app->battle->continent();
+    const int h = static_cast<int>(std::lround(static_cast<double>(w) * Continent::kHeight / Continent::kWidth));
+    const double step = static_cast<double>(Continent::kWidth) / w;
+    if (j0 <= 0 || px.size() != static_cast<size_t>(w) * h * 4) {
+        px.assign(static_cast<size_t>(w) * h * 4, 255);
+        north.assign(static_cast<size_t>(w), 0.0f);
+        j0 = 0;
+    }
+    for (int j = j0; j < std::min(j1, h); ++j) {
+        float west = 0;
+        for (int i = 0; i < w; ++i) {
+            const Fixed x = Fixed::fromInt(static_cast<int64_t>((i + 0.5) * step));
+            const Fixed y = Fixed::fromInt(static_cast<int64_t>(Continent::kHeight - (j + 0.5) * step));
+            const Continent::Sample s = c.sample(x, y);
+            const float z = static_cast<float>(s.height.toDouble());
+            float col[3];
+            Fixed surface;
+            if (c.waterSurfaceOf(s, surface)) {
+                const bool sea = s.land < Fixed::zero();
+                col[0] = sea ? 0.17f : 0.24f, col[1] = sea ? 0.31f : 0.44f, col[2] = sea ? 0.43f : 0.58f;
+            } else {
+                static const float kinds[][3] = {{0.48f, 0.60f, 0.31f}, {0.70f, 0.61f, 0.43f}, {0.25f, 0.42f, 0.21f}, {0.36f, 0.42f, 0.27f},
+                                                 {0.36f, 0.56f, 0.68f}, {0.17f, 0.31f, 0.43f}, {0.55f, 0.52f, 0.47f}, {0.60f, 0.52f, 0.38f},
+                                                 {0.48f, 0.42f, 0.30f}, {0.79f, 0.72f, 0.50f}};
+                const int k = std::min(9, static_cast<int>(c.landGround(x, y, s.height, s.mountain, s.roadDist)));
+                const float lit = std::clamp(1.0f + 0.9f * ((z - (i ? west : z)) + (z - (j ? north[static_cast<size_t>(i)] : z))) / static_cast<float>(step),
+                                             0.55f, 1.35f);
+                const float pale = std::clamp((z - 150.0f) / 700.0f, 0.0f, 0.6f);
+                for (int q = 0; q < 3; ++q) col[q] = (kinds[k][q] * (1 - pale) + 0.86f * pale) * lit;
+            }
+            uint8_t* p = &px[(static_cast<size_t>(j) * w + i) * 4];
+            for (int q = 0; q < 3; ++q) p[q] = static_cast<uint8_t>(std::clamp(col[q] * 255.0f, 0.0f, 255.0f));
+            west = z;
+            north[static_cast<size_t>(i)] = z;
+        }
+    }
+    return px.data();
 }
 // Test hook: Horde's muster or break ends now.
 EMSCRIPTEN_KEEPALIVE void illyria_mode_test_skip() {
@@ -1983,6 +2077,68 @@ EMSCRIPTEN_KEEPALIVE void illyria_mode_test_view_flag(int index, float distance,
     const V3 p = f[static_cast<size_t>(std::clamp(index, 0, static_cast<int>(f.size()) - 1))].base;
     app->camera.rotate(yaw - app->camera.yaw());
     app->camera.lookAt(p.x, p.y, distance);
+}
+
+// The sandbox (mode_sandbox.h, the page's sandbox.js); nothing when another mode runs.
+static SandboxMode* sandbox() {
+    if (!app || !app->battle->mode() || std::string(app->battle->mode()->id()) != "sandbox") return nullptr;
+    return static_cast<SandboxMode*>(app->battle->mode());
+}
+// Every unit type's name, by type number, for the page's picker.
+EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_types() {
+    static std::string s;
+    s = "[";
+    for (int i = 0; i < illyria::sim::kUnitTypeCount; ++i)
+        s += (i ? ",\"" : "\"") + std::string(illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(i))) + "\"";
+    s += "]";
+    return s.c_str();
+}
+// A squad of `count` of `type` for `side` where the page was clicked (CSS
+// pixels); 1 when it was set down (on the field, inside its edge).
+EMSCRIPTEN_KEEPALIVE int illyria_sandbox_spawn(int type, int side, int count, float x, float y) {
+    SandboxMode* m = sandbox();
+    if (!m || type < 0 || type >= illyria::sim::kUnitTypeCount) return 0;
+    V3 at;
+    if (!app->camera.pickGround(x * app->pixelRatio, y * app->pixelRatio, at)) return 0;
+    const V3 c = app->battle->zoneCentre();
+    if (V3{at.x - c.x, at.y - c.y, 0}.length() > app->battle->zoneRadius() || !app->battle->inBattlefield(at.x, at.y)) return 0;
+    m->spawn(*app->battle, static_cast<illyria::sim::UnitType>(type), static_cast<illyria::sim::PlayerId>(side & 3),
+             std::clamp(count, 1, 60), at);
+    return 1;
+}
+// The side commanded from this screen.
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_side(int side) {
+    if (sandbox()) app->battle->setLocalSide(static_cast<illyria::sim::PlayerId>(side & 3));
+}
+// Whether `side` fights on its own.
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_fight(int side, int on) {
+    if (SandboxMode* m = sandbox()) m->setFights(static_cast<illyria::sim::PlayerId>(side & 3), on != 0);
+}
+// Time: `share` of its pace (1 as usual), and, paused, one tick on.
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_slow(float share) {
+    if (sandbox()) app->battle->setSlowMotion(share);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_speed(int speed) {
+    if (sandbox()) app->battle->setSpeed(speed);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_step() {
+    if (sandbox()) app->battle->stepOnce();
+}
+// A unit type's fighting numbers (SandboxMode::statsJson), and tuning them (tune; "{}": the unit sheet's).
+EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_stats(int type) {
+    static std::string s;
+    SandboxMode* m = sandbox();
+    s = m && type >= 0 && type < illyria::sim::kUnitTypeCount ? m->statsJson(static_cast<illyria::sim::UnitType>(type)) : "{}";
+    return s.c_str();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_tune(int type, const char* json) {
+    SandboxMode* m = sandbox();
+    if (m && type >= 0 && type < illyria::sim::kUnitTypeCount)
+        m->tune(*app->battle, static_cast<illyria::sim::UnitType>(type), json ? json : "{}");
+}
+// The selected soldiers play clip `clip` (sprites::Clip; -1: what they are doing), once or looped.
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_clip(int clip, int loop) {
+    if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), clip, loop != 0);
 }
 
 // HUD state as JSON, polled by the page a few times a second.

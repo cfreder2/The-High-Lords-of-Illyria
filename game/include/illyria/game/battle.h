@@ -185,7 +185,11 @@ public:
     Battle(uint64_t seed, const BattlePlan& plan);
     // An empty field for a match (Scenario::Mode): the mode raises the armies.
     // `continent` may be one already built (it is the same for every battle).
-    Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent = {});
+    // With `farReachM`, only the continent within that many metres of the
+    // field is loaded for the horizon (a match's camera never leaves its
+    // field, setZone), else all of it.
+    Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent = {},
+           float farReachM = 0);
     ~Battle();
     // For a campaign battle: what became of every army.
     std::vector<ArmyResult> results() const;
@@ -328,6 +332,21 @@ public:
     const Drag& drag() const { return drag_; }
     void togglePause() { paused_ = !paused_; }
     void cycleSpeed() { speed_ = speed_ >= 4 ? 1 : speed_ * 2; }
+    void setSpeed(int speed) { speed_ = std::clamp(speed, 1, 4); }
+    // Time slowed to this share (the sandbox's slow motion; 1 as usual).
+    void setSlowMotion(float share) { slow_ = std::clamp(share, 0.05f, 1.0f); }
+    float slowMotion() const { return slow_; }
+    // Paused: one tick on (the sandbox's frame step).
+    void stepOnce() {
+        if (paused_) step();
+    }
+
+    // A match's field (sim World::setZone): a circle round `centre` (battle
+    // coordinates) whose edge wounds whoever stands beyond it, `pctPerSecond`
+    // of his health a second. Radius zero: none.
+    void setZone(V3 centre, float radius, int32_t pctPerSecond);
+    V3 zoneCentre() const { return zoneCentre_; }
+    float zoneRadius() const { return zoneRadius_; }
 
     // Matches (mode.h, game/src/battle_modes.cpp). The mode runs every tick:
     // it gathers each seat's orders, plays the computer's seats and keeps the
@@ -448,7 +467,7 @@ private:
     void setUpFord();
     void setUpSiege();
     void setUpCampaign(const BattlePlan& plan);
-    void build(uint64_t seed, const sim::Vec3& centre, int homeSide = -1);
+    void build(uint64_t seed, const sim::Vec3& centre, int homeSide = -1, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
@@ -518,6 +537,9 @@ private:
     uint32_t noticeTick_ = 0;
     bool paused_ = false;
     int speed_ = 1;
+    float slow_ = 1;
+    V3 zoneCentre_{};
+    float zoneRadius_ = 0;
     double accumulator_ = 0;
     double stepMs_ = 0;
     uint32_t fxSeed_ = 1;

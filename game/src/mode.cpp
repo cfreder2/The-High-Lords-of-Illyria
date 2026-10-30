@@ -2,10 +2,31 @@
 #include "illyria/game/mode.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "illyria/game/battle.h"
 
 namespace illyria::game {
+
+std::vector<ModeFlag> zoneStakes(const Battle& b) {
+    // Tall poles with a bright pennant, about every 14 m, to read over the scrub and between the trees.
+    std::vector<ModeFlag> out;
+    const float r = b.zoneRadius();
+    if (r <= 0) return out;
+    const V3 c = b.zoneCentre();
+    const int n = std::max(12, static_cast<int>(2 * 3.14159265f * r / 14.0f));
+    for (int i = 0; i < n; ++i) {
+        const float a = 2 * 3.14159265f * static_cast<float>(i) / static_cast<float>(n);
+        ModeFlag f;
+        f.base = {c.x + r * std::cos(a), c.y + r * std::sin(a), 0};
+        f.base.z = b.heightAt(f.base.x, f.base.y);
+        f.colour = {0.3f, 0.65f, 1.0f};
+        f.height = 7.0f;
+        f.size = 1.8f;
+        out.push_back(f);
+    }
+    return out;
+}
 
 sim::Vec3 compass(int eighth) {
     const sim::Fixed o = sim::Fixed::one(), z = sim::Fixed::zero(), r = sim::Fixed::fromRatio(7071, 10000);

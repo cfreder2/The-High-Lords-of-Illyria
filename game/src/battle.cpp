@@ -99,19 +99,29 @@ Battle::Battle(uint64_t seed, const BattlePlan& plan) : scenario_(Scenario::Camp
     finish();
 }
 
-void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide) {
+void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide, float farReachM) {
     sim::WorldConfig cfg;
     cfg.seed = seed;
     cfg.homeSide = homeSide;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
-    // The continent around the battlefield: all of it every 32 m, and a ring
-    // a kilometre wide around the battlefield every 16 m.
+    // The continent around the battlefield: all of it every 32 m (a match:
+    // only within farReachM of the field), and a ring a kilometre wide around
+    // the battlefield every 16 m.
     {
         const V3 o = toV3(region_->origin());
-        far_.fill(*continent_, o, {-o.x, -o.y, 0}, static_cast<int>(sim::Continent::kWidth / FarGrid::kCell) + 1,
-                  static_cast<int>(sim::Continent::kHeight / FarGrid::kCell) + 1, FarGrid::kCell);
+        float x0 = -o.x, y0 = -o.y, x1 = static_cast<float>(sim::Continent::kWidth) - o.x,
+              y1 = static_cast<float>(sim::Continent::kHeight) - o.y;
+        if (farReachM > 0) {
+            const float mid = kWorldSize / 2;
+            x0 = std::max(x0, mid - farReachM);
+            y0 = std::max(y0, mid - farReachM);
+            x1 = std::min(x1, mid + farReachM);
+            y1 = std::min(y1, mid + farReachM);
+        }
+        far_.fill(*continent_, o, {x0, y0, 0}, static_cast<int>((x1 - x0) / FarGrid::kCell) + 1,
+                  static_cast<int>((y1 - y0) / FarGrid::kCell) + 1, FarGrid::kCell);
         constexpr float kRing = 1024.0f, kNearCell = 16.0f;
         const int n = static_cast<int>((kWorldSize + 2 * kRing) / kNearCell) + 1;
         near_.fill(*continent_, o, {-kRing, -kRing, 0}, n, n, kNearCell);
@@ -523,7 +533,7 @@ float Battle::heightAt(float x, float y) const {
 
 void Battle::advance(double seconds) {
     if (paused_) return;
-    const double scaled = std::min(seconds, 0.25) * speed_;
+    const double scaled = std::min(seconds, 0.25) * speed_ * slow_;
     accumulator_ += scaled;
     int ticks = 0;
     while (accumulator_ >= kTickSeconds && ticks < kMaxTicksPerFrame) {

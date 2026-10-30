@@ -1,6 +1,6 @@
 // Match rules on the soldiers (world.h): mending between Horde's rounds, a
-// hero's level for surviving one, a fallen hero raised again, and a side put out of a capture-the-flag
-// match. Called by the game modes from simulation state only, at the same
+// hero's level for surviving one, a fallen hero raised again, a side put out of a capture-the-flag
+// match, and the field's edge that wounds whoever stands beyond it. Called by the game modes from simulation state only, at the same
 // tick on every peer.
 #include <algorithm>
 
@@ -61,6 +61,44 @@ void World::breakSide(PlayerId owner) {
 
 bool World::sideBroken(PlayerId owner) const {
     return std::binary_search(brokenSides_.begin(), brokenSides_.end(), owner);
+}
+
+void World::retune(uint8_t type, const UnitStats& stats) {
+    for (Unit& u : units_) {
+        if (!u.alive() || u.stats.type != type) continue;
+        const int32_t was = std::max<int32_t>(1, u.stats.maxHp);
+        u.hp = std::max<int32_t>(1, static_cast<int32_t>(static_cast<int64_t>(u.hp) * stats.maxHp / was));
+        u.stats = stats;
+        u.stats.type = type;
+    }
+}
+
+void World::setZone(const Vec3& centre, Fixed radius, int32_t pctPerSecond) {
+    zoneCentre_ = {centre.x, centre.y, Fixed::zero()};
+    zoneRadius_ = radius > Fixed::zero() ? radius : Fixed::zero();
+    zonePct_ = std::max<int32_t>(0, pctPerSecond);
+}
+
+bool World::outsideZone(const Vec3& p) const {
+    if (zoneRadius_ <= Fixed::zero()) return false;
+    const Vec3 d{p.x - zoneCentre_.x, p.y - zoneCentre_.y, Fixed::zero()};
+    return d.lengthSq() > zoneRadius_ * zoneRadius_;
+}
+
+// Once a second: everyone alive beyond the edge loses his share, a dull blow
+// from no one, pushing him back toward the middle.
+void World::applyZone() {
+    if (zonePct_ <= 0 || zoneRadius_ <= Fixed::zero() || tick_ % kTicksPerSecond != 0) return;
+    for (Unit& u : units_) {
+        if (!u.alive() || !outsideZone(u.pos)) continue;
+        Blow blow;
+        blow.type = DamageType::Blunt;
+        const Vec3 in{zoneCentre_.x - u.pos.x, zoneCentre_.y - u.pos.y, Fixed::zero()};
+        const Fixed len = in.length();
+        blow.dir = len > Fixed::zero() ? in / len : Vec3{};
+        blow.at = u.pos;
+        damage(u, std::max<int32_t>(1, u.stats.maxHp * zonePct_ / 100), nullptr, blow);
+    }
 }
 
 }  // namespace illyria::sim
