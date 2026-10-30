@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 132" width="150" height="132">
+<style>.m{fill:#3f6fe0;stroke:#141008;stroke-width:1.4}.f{stroke:#d6b46e;stroke-width:2.2;stroke-linecap:round}.a{fill:#b8941f;font:600 12px Georgia,serif;text-anchor:middle}</style>
+<path class="f" d="M61 14 L75 4 L89 14" fill="none"/>
+<text class="a" x="75" y="130" style="opacity:.0">.</text>
+<line class="f" x1="30.9" y1="50.9" x2="30.9" y2="37.4"/>
+<circle class="m" cx="30.9" cy="50.9" r="7.5"/>
+<line class="f" x1="52.9" y1="50.9" x2="52.9" y2="37.4"/>
+<circle class="m" cx="52.9" cy="50.9" r="7.5"/>
+<line class="f" x1="75.0" y1="50.9" x2="75.0" y2="37.4"/>
+<circle class="m" cx="75.0" cy="50.9" r="7.5"/>
+<line class="f" x1="97.1" y1="50.9" x2="97.1" y2="37.4"/>
+<circle class="m" cx="97.1" cy="50.9" r="7.5"/>
+<line class="f" x1="119.1" y1="50.9" x2="119.1" y2="37.4"/>
+<circle class="m" cx="119.1" cy="50.9" r="7.5"/>
+<line class="f" x1="30.9" y1="72.9" x2="30.9" y2="59.4"/>
+<circle class="m" cx="30.9" cy="72.9" r="7.5"/>
+<line class="f" x1="52.9" y1="72.9" x2="52.9" y2="59.4"/>
+<circle class="m" cx="52.9" cy="72.9" r="7.5"/>
+<line class="f" x1="75.0" y1="72.9" x2="75.0" y2="59.4"/>
+<circle class="m" cx="75.0" cy="72.9" r="7.5"/>
+<line class="f" x1="97.1" y1="72.9" x2="97.1" y2="59.4"/>
+<circle class="m" cx="97.1" cy="72.9" r="7.5"/>
+<line class="f" x1="119.1" y1="72.9" x2="119.1" y2="59.4"/>
+<circle class="m" cx="119.1" cy="72.9" r="7.5"/>
+<line class="f" x1="64.0" y1="95.0" x2="64.0" y2="81.5"/>
+<circle class="m" cx="64.0" cy="95.0" r="7.5"/>
+<line class="f" x1="86.0" y1="95.0" x2="86.0" y2="81.5"/>
+<circle class="m" cx="86.0" cy="95.0" r="7.5"/>
+</svg>
