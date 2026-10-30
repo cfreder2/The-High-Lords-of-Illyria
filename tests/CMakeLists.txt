@@ -64,6 +64,8 @@ add_executable(illyria_tests
     test_markers.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
     test_sfx.cpp
+    test_horde.cpp
+    test_ctf.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)

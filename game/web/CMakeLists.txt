@@ -32,6 +32,7 @@ configure_file(icon.svg "${ILLYRIA_SITE_DIR}/icon.svg" COPYONLY)
 configure_file(voice.js "${ILLYRIA_SITE_DIR}/voice.js" COPYONLY)
 configure_file(audio.js "${ILLYRIA_SITE_DIR}/audio.js" COPYONLY)
 configure_file(sfx.js "${ILLYRIA_SITE_DIR}/sfx.js" COPYONLY)
+configure_file(modes.js "${ILLYRIA_SITE_DIR}/modes.js" COPYONLY)
 configure_file(sfx-test.html "${ILLYRIA_SITE_DIR}/sfx-test.html" @ONLY)
 # The old address of the sound test page sends you on to it.
 configure_file(sfx-test/index.html "${ILLYRIA_SITE_DIR}/sfx-test/index.html" COPYONLY)

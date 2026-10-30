@@ -127,7 +127,7 @@ void World::updateMorale() {
             u.attackGate = -1;
             u.path.clear();
             u.foe = kNoEntity;
-        } else if (u.routed && u.morale >= rallyMorale(u) && nearestEnemy(u, safeReach(u)) == nullptr) {
+        } else if (u.routed && u.morale >= rallyMorale(u) && nearestEnemy(u, safeReach(u)) == nullptr && !sideBroken(u.owner)) {
             u.routed = false;  // rallied: stands where it is, ready for orders
         }
     }
@@ -156,7 +156,7 @@ void World::callRallies() {
             if ((o.pos - c.pos).flat().lengthSq() >= kCallReach * kCallReach) continue;
             o.morale = std::min(kMoraleFull, o.morale + lift);
             ++call.heard;
-            if (o.routed && o.morale >= std::min(kMoraleWaver, rallyMorale(o))) {
+            if (o.routed && o.morale >= std::min(kMoraleWaver, rallyMorale(o)) && !sideBroken(o.owner)) {
                 o.routed = false;  // turns back to the fight, ready for orders
                 ++call.rallied;
             }

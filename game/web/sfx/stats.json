@@ -687,6 +687,13 @@
 "dc": 0.0,
 "bytes": 23853
 },
+"sfx/snd_state_alarm_1.mp3": {
+"seconds": 2.114,
+"peak_db": -6.24,
+"lufs": -18.28,
+"dc": -0.00011,
+"bytes": 17517
+},
 "sfx/snd_state_defeat_drone_1.mp3": {
 "seconds": 8.566,
 "peak_db": -5.71,
@@ -700,6 +707,13 @@
 "lufs": -18.19,
 "dc": -0.00013,
 "bytes": 35949
+},
+"sfx/snd_state_war_horn_1.mp3": {
+"seconds": 5.862,
+"peak_db": -5.4,
+"lufs": -18.16,
+"dc": 8e-05,
+"bytes": 47469
 },
 "sfx/snd_ui_click_1.mp3": {
 "seconds": 0.112,

@@ -7,6 +7,12 @@ add_library(illyria_game
     src/battle_command.cpp
     src/battle_orders.cpp
     src/battle_capture.cpp
+    src/battle_modes.cpp
+    src/mode.cpp
+    src/mode_places.cpp
+    src/mode_horde.cpp
+    src/mode_ctf.cpp
+    src/mode_setup.cpp
     src/voice.cpp
     src/sfx.cpp
     src/battle_deaths.cpp

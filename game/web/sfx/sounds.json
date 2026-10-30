@@ -676,6 +676,34 @@
    ]
   },
   {
+   "id": "snd_state_war_horn",
+   "category": "notifications",
+   "title": "War horn",
+   "when": "Horde: the next wave sets out for the hill.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "A cow horn or brass, two long low calls a fifth apart, 3-4 s.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_state_war_horn_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_alarm",
+   "category": "notifications",
+   "title": "Alarm",
+   "when": "Capture the flag: enemies close on the player's flag.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "Three short rising blasts of a hand horn, about 1.2 s.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_state_alarm_1.mp3"
+   ]
+  },
+  {
    "id": "snd_ui_click",
    "category": "ui",
    "title": "Button",

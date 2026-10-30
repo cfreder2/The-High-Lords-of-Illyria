@@ -72,6 +72,14 @@ constexpr int kCooldownTenths[kSituationCount] = {
     0,    // Casualties
     0,    // SevereCasualties
     0,    // TotalCasualties
+    0,    // WaveIncoming
+    0,    // BossWave
+    0,    // WaveCleared
+    0,    // Reinforcements
+    150,  // HillContested
+    200,  // FlagAttacked
+    0,    // FlagLost
+    0,    // EnemyFlagTaken
 };
 
 constexpr const char* kSetNames[kVoiceSetCount] = {"soldier", "archer", "dwarf",  "rider", "hero",   "wizard", "berserker",
@@ -82,11 +90,13 @@ constexpr const char* kSituationNames[kSituationCount] = {
     "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "friendly_fire", "fuse",
     "healing",    "engine_loose",  "gate_broken",   "enemy_sighted", "victory", "defeat", "idle",
     "pain",       "death",         "death_moan",    "cackle",  "groan",       "casualties", "severe_casualties",
-    "total_casualties"};
+    "total_casualties", "wave_incoming", "boss_wave", "wave_cleared", "reinforcements", "hill_contested",
+    "flag_attacked", "flag_lost", "enemy_flag_taken"};
 
 bool isCry(Situation s) { return s == Situation::Pain || s == Situation::Death || s == Situation::DeathMoan; }
 bool isReport(Situation s) {
-    return s == Situation::Casualties || s == Situation::SevereCasualties || s == Situation::TotalCasualties;
+    return s == Situation::Casualties || s == Situation::SevereCasualties || s == Situation::TotalCasualties ||
+           s >= Situation::WaveIncoming;
 }
 
 bool nonVerbal(VoiceSet set) {
@@ -186,6 +196,14 @@ int priorityOf(Situation s) {
         case S::Casualties:
         case S::SevereCasualties: return 4;
         case S::TotalCasualties: return 5;
+        case S::Reinforcements: return 3;
+        case S::WaveIncoming:
+        case S::WaveCleared:
+        case S::EnemyFlagTaken: return 4;
+        case S::BossWave:
+        case S::HillContested:
+        case S::FlagAttacked:
+        case S::FlagLost: return 5;
         case S::ArrowFire:
         case S::Flanked:
         case S::FriendKilled:
@@ -627,6 +645,15 @@ void Voice::track(const sim::World& world) {
     flights_.clear();
     for (const sim::Projectile& p : world.projectiles()) flights_.push_back({p.id, p.shooter, p.owner, p.kind, toV3(p.pos)});
     std::sort(flights_.begin(), flights_.end(), [](const Flight& a, const Flight& b) { return a.id < b.id; });
+}
+
+void Voice::announce(const sim::World& world, Situation s) {
+    // The herald has no soldier of his own: he speaks for the player's side.
+    for (const sim::Unit& u : world.units())
+        if (u.owner == player_) {
+            want(s, u.id, false, VoiceSet::Herald);
+            return;
+        }
 }
 
 std::vector<VoiceCue> Voice::take() {

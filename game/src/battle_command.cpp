@@ -186,7 +186,7 @@ void Battle::refreshSelection() {
 void Battle::select(std::vector<sim::EntityId> units) {
     std::erase_if(units, [&](sim::EntityId id) {
         const sim::Unit* u = world_->findUnit(id);
-        return u == nullptr || !u->alive() || u->owner != kPlayer;
+        return u == nullptr || !u->alive() || !controllable(*u);
     });
     selection_ = std::move(units);
     refreshSelection();

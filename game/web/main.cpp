@@ -16,6 +16,8 @@
 #include "illyria/game/camera.h"
 #include "illyria/game/factions.h"
 #include "illyria/game/gestures.h"
+#include "illyria/game/mode.h"
+#include "illyria/game/mode_horde.h"
 #include "illyria/sim/campaign.h"
 
 #ifndef ILLYRIA_VERSION
@@ -41,6 +43,20 @@ EM_JS(void, play_sfx_cue, (const char* id, float gain, float pan, float dist, fl
 });
 EM_JS(void, set_sfx_ambience, (float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain), {
     if (window.IllyriaSfx) window.IllyriaSfx.ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+});
+
+// A match asked for without a place: the page's setup panel (modes.js); and one begun.
+EM_JS(void, mode_setup_page, (const char* id, const char* options), {
+    if (window.IllyriaModes) window.IllyriaModes.setup(UTF8ToString(id), UTF8ToString(options));
+});
+EM_JS(void, mode_started_page, (const char* id), {
+    if (window.IllyriaModes) window.IllyriaModes.started(UTF8ToString(id));
+});
+// A match left (illyria_mode_exit): the page's "illyria:mode-exit" event, with the match's last HUD.
+EM_JS(void, mode_exit_event, (const char* id, const char* hud), {
+    const detail = { id: UTF8ToString(id), result: JSON.parse(UTF8ToString(hud)) };
+    document.dispatchEvent(new CustomEvent("illyria:mode-exit", { detail }));
+    if (window.illyriaReturnToMenu) window.illyriaReturnToMenu(detail);
 });
 
 // The battle's sounds since the last frame, and the ambience when it changed.
@@ -353,6 +369,9 @@ void placeFlags() {
         }
     } else {
         app->renderer.setTerritory({}, 0, 0, 0);
+        // A match's flags: Horde's hill, capture the flag's (mode.h).
+        if (const BattleMode* mode = app->battle->mode())
+            for (const ModeFlag& f : mode->flags(*app->battle)) flags.push_back({f.base, f.height, f.raised, f.size, f.colour});
         const CapturePoint& cap = app->battle->capturePoint();
         if (cap.active()) {
             V3 base = toV3(cap.at());
@@ -1689,6 +1708,116 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     return s.c_str();
 }
 
+// --- Matches: Horde and capture the flag (mode.h) ---------------------------
+// The title screen starts one with illyria_start_mode(id, options); without a
+// place in the options the page's setup panel (modes.js) asks for one first.
+// Leaving a match tells the page (the "illyria:mode-exit" event).
+
+extern "C++" {
+const std::vector<Place>& modePlaces() {
+    static std::vector<Place> places;
+    if (places.empty() && app) places = battlePlaces(app->battle->continent());
+    return places;
+}
+}
+
+EMSCRIPTEN_KEEPALIVE int illyria_start_mode(const char* id, const char* options) {
+    if (!app) return 0;
+    const std::string mode = id ? id : "", opts = options ? options : "{}";
+    std::unique_ptr<Battle> b = makeMatch(mode, opts, modePlaces(), app->battle->continentShared());
+    if (!b) {
+        mode_setup_page(mode.c_str(), opts.c_str());
+        return 0;
+    }
+    if (app->camp.on || app->camp.fighting) {
+        app->camp.on = app->camp.fighting = false;
+        app->camp.backdrop.reset();
+    }
+    app->introStartMs = -1;
+    app->battle = std::move(b);
+    const V3 o = app->battle->origin();
+    app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
+    app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
+    app->renderer.reset(*app->battle);
+    app->renderer.setShowUnits(true);
+    // Over the local player's army, looking toward the middle of the field.
+    V3 c{Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0};
+    for (const Squad& s : app->battle->squads())
+        if (app->battle->controllable(app->battle->world().units()[s.members.front() - 1])) {
+            c = app->battle->squadCentre(s);
+            break;
+        }
+    app->camera.lookAt(c.x, c.y, 120);
+    mode_started_page(mode.c_str());
+    return 1;
+}
+// The match's HUD as JSON ("{}" when none).
+EMSCRIPTEN_KEEPALIVE const char* illyria_mode_hud() {
+    static std::string s;
+    s = app && app->battle->mode() ? app->battle->mode()->hudJson(*app->battle) : "{}";
+    return s.c_str();
+}
+// The local player's action: 0 recruit offer `option`, 1 ready.
+EMSCRIPTEN_KEEPALIVE void illyria_mode_act(int kind, int option) {
+    if (!app || !app->battle->mode()) return;
+    app->battle->mode()->act({kind == 1 ? illyria::sim::MatchAction::Kind::Ready : illyria::sim::MatchAction::Kind::Recruit,
+                              static_cast<uint8_t>(std::clamp(option, 0, 255))});
+}
+// The places to fight over, for the setup panel.
+EMSCRIPTEN_KEEPALIVE const char* illyria_mode_places() {
+    static std::string s;
+    s = placesJson(modePlaces());
+    return s.c_str();
+}
+// The squads on offer (Horde's reinforcements, capture the flag's armies).
+EMSCRIPTEN_KEEPALIVE const char* illyria_mode_offers() {
+    static std::string s;
+    s = "[";
+    char buf[160];
+    const auto& offers = illyria::sim::squadOffers();
+    static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
+    for (size_t i = 0; i < offers.size(); ++i) {
+        std::snprintf(buf, sizeof buf, "%s{\"i\":%zu,\"type\":\"%s\",\"role\":\"%s\",\"count\":%d,\"cost\":%d}", i ? "," : "", i,
+                      illyria::sim::unitTypeName(offers[i].type), kRoles[static_cast<int>(roleOf(offers[i].type))], offers[i].count,
+                      offers[i].cost);
+        s += buf;
+    }
+    s += "]";
+    return s.c_str();
+}
+// While choosing: the camera over a place, high enough to see the land around it.
+EMSCRIPTEN_KEEPALIVE void illyria_mode_preview(int place) {
+    if (!app || place < 0 || place >= static_cast<int>(modePlaces().size())) return;
+    app->introStartMs = -1;
+    const V3 o = app->battle->origin();
+    const V3 p = toV3(modePlaces()[static_cast<size_t>(place)].pos);
+    app->camera.lookAt(p.x - o.x, p.y - o.y, 2200);
+}
+// Leaving a match: back to the default battle, and the page told.
+EMSCRIPTEN_KEEPALIVE void illyria_mode_exit() {
+    if (!app || !app->battle->mode()) return;
+    const std::string id = app->battle->mode()->id();
+    const std::string hud = app->battle->mode()->hudJson(*app->battle);
+    newBattle();
+    app->renderer.reset(*app->battle);
+    frameCamera();
+    mode_exit_event(id.c_str(), hud.c_str());
+}
+// Test hook: Horde's muster or break ends now.
+EMSCRIPTEN_KEEPALIVE void illyria_mode_test_skip() {
+    if (!app) return;
+    if (auto* h = dynamic_cast<HordeMode*>(app->battle->mode())) h->skipBreak();
+}
+// Test hook: the camera over a flag of the match (capture the flag's, or the hill's).
+EMSCRIPTEN_KEEPALIVE void illyria_mode_test_view_flag(int index, float distance, float yaw) {
+    if (!app || !app->battle->mode()) return;
+    const std::vector<ModeFlag> f = app->battle->mode()->flags(*app->battle);
+    if (f.empty()) return;
+    const V3 p = f[static_cast<size_t>(std::clamp(index, 0, static_cast<int>(f.size()) - 1))].base;
+    app->camera.rotate(yaw - app->camera.yaw());
+    app->camera.lookAt(p.x, p.y, distance);
+}
+
 // HUD state as JSON, polled by the page a few times a second.
 EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     if (!app) return "{}";
@@ -1757,11 +1886,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const Standing st = b.standing(q);
         std::snprintf(buf, sizeof buf,
                       "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
-                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d}",
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"ally\":%s}",
                       i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
                       b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken,
-                      q.owner == Battle::kPlayer ? b.squadSelection(q) : 0);
+                      q.owner == Battle::kPlayer ? b.squadSelection(q) : 0,
+                      q.owner == Battle::kPlayer && !b.controllable(b.world().units()[q.members.front() - 1]) ? "true" : "false");
         s += buf;
     }
     s += "]}";

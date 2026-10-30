@@ -58,8 +58,8 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 | Undead (`undead`) | Undead | 11 | 38 |
 | Fiend (`fiend`) | Devils, Demons | 14 | 46 |
 | Beast (`beast`) | Spiders, Griffins, Pegasi, Elephants, Unicorns, Dragons | 14 | 46 |
-| Herald (`herald`) | (the battle's narrator) | 3 | 9 |
-| **Total** | | | **983** |
+| Herald (`herald`) | (the battle's narrator) | 11 | 33 |
+| **Total** | | | **1007** |
 
 ## Situations
 
@@ -101,6 +101,14 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 | `casualties` | Casualties | A quarter of the player's soldiers have fallen. | 4 |
 | `severe_casualties` | Severe casualties | Half of the player's soldiers have fallen. | 4 |
 | `total_casualties` | Total casualties | Four fifths of the player's soldiers have fallen. | 5 |
+| `wave_incoming` | A wave comes | Horde: the next wave sets out for the hill. | 4 |
+| `boss_wave` | A champion comes | Horde: a boss wave, a demon or a dragon at its head. | 5 |
+| `wave_cleared` | Wave beaten | Horde: the last of the wave is down or fled; the break begins. | 4 |
+| `reinforcements` | Reinforcements | Horde: fresh troops bought in the break reach the hill. | 3 |
+| `hill_contested` | The hill is taken | Horde: the enemy stands on the hill and none of ours do; it is lost unless retaken. | 5 |
+| `flag_attacked` | Flag under attack | Capture the flag: enemies close on the player's flag. | 5 |
+| `flag_lost` | Our flag fell | Capture the flag: an enemy stood on the player's flag with none of ours there. | 5 |
+| `enemy_flag_taken` | An enemy flag fell | Capture the flag: another team's flag is taken. | 4 |
 
 Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only when all is quiet).
 
@@ -3441,10 +3449,10 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `beast/death_2.wav` | (a long screech) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
 | `beast/death_3.wav` | (a last snorting groan) | a real scream or a last grunt, falling away; 0.5-1.2 s; full voice |
 
-## Herald (`herald`): 9 lines
+## Herald (`herald`): 33 lines
 
 *Used by:* (the battle's narrator).  
-*Casting:* The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses; heard in the centre, never positional.
+*Casting:* The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses and the turns of a match (waves, the hill, the flags); heard in the centre, never positional.
 
 ### Herald: Casualties (`casualties`)
 
@@ -3478,4 +3486,92 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `herald/total_casualties_1.wav` | Total casualties. | clear and grave, a herald's report, mono; not shouted |
 | `herald/total_casualties_2.wav` | The army is all but lost. | clear and grave, a herald's report, mono; not shouted |
 | `herald/total_casualties_3.wav` | Total casualties, my lord. | clear and grave, a herald's report, mono; not shouted |
+
+### Herald: A wave comes (`wave_incoming`)
+
+*When:* Horde: the next wave sets out for the hill.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/wave_incoming_1.wav` | They are coming! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/wave_incoming_2.wav` | Another wave approaches. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/wave_incoming_3.wav` | To arms! They come again! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: A champion comes (`boss_wave`)
+
+*When:* Horde: a boss wave, a demon or a dragon at its head.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/boss_wave_1.wav` | Something terrible comes. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/boss_wave_2.wav` | A champion leads them. Stand fast! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/boss_wave_3.wav` | Beware: a great foe approaches. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: Wave beaten (`wave_cleared`)
+
+*When:* Horde: the last of the wave is down or fled; the break begins.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/wave_cleared_1.wav` | The hill holds. For now. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/wave_cleared_2.wav` | They are broken. Rest while you can. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/wave_cleared_3.wav` | The wave is spent. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: Reinforcements (`reinforcements`)
+
+*When:* Horde: fresh troops bought in the break reach the hill.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/reinforcements_1.wav` | Reinforcements have arrived. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/reinforcements_2.wav` | Fresh troops, my lord. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/reinforcements_3.wav` | More swords for the hill. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: The hill is taken (`hill_contested`)
+
+*When:* Horde: the enemy stands on the hill and none of ours do; it is lost unless retaken.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/hill_contested_1.wav` | They are on the hill! Retake it! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/hill_contested_2.wav` | The hill is lost unless we retake it! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/hill_contested_3.wav` | The enemy holds the hill! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: Flag under attack (`flag_attacked`)
+
+*When:* Capture the flag: enemies close on the player's flag.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/flag_attacked_1.wav` | Our flag is under attack! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/flag_attacked_2.wav` | The enemy is at our flag! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/flag_attacked_3.wav` | Defend the flag! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: Our flag fell (`flag_lost`)
+
+*When:* Capture the flag: an enemy stood on the player's flag with none of ours there.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/flag_lost_1.wav` | Our flag has fallen. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/flag_lost_2.wav` | The flag is taken. All is lost. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/flag_lost_3.wav` | They have our flag. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+
+### Herald: An enemy flag fell (`enemy_flag_taken`)
+
+*When:* Capture the flag: another team's flag is taken.  
+*Delivery:* clear and grave, a herald's report, mono; urgent for the alarms, never shouted
+
+| File | Line | Delivery |
+|---|---|---|
+| `herald/enemy_flag_taken_1.wav` | An enemy flag has fallen! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/enemy_flag_taken_2.wav` | Their flag is ours! | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
+| `herald/enemy_flag_taken_3.wav` | One banner fewer against us. | clear and grave, a herald's report, mono; urgent for the alarms, never shouted |
 

@@ -426,6 +426,63 @@ Still to settle: temple quests.
 - Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).
 - Attention is the scarce resource: a "hot spot" control jumps the camera to the most dramatic fight in progress.
 
+### 4.5 Matches: Horde and Capture the Flag (built)
+
+Two battle modes outside the campaign, played offline now against the computer and built for up to
+four players online (the lockstep protocol: `docs/NETCODE.md`). Both are fought on a field cut from
+the continent (`Region::fromContinent`) at a place the player picks from a list read from the
+continent itself (`battlePlaces`, `game/src/mode_places.cpp`): its most prominent climbable hills
+("Hill above <town>"), its fords and bridges, its passes and its ruins and temples, the recommended
+first (the two best hills, the best ford, pass and ruin). Tapping a place flies the camera over it.
+
+A match is a `BattleMode` set on the battle (`game/include/illyria/game/mode.h`). Each tick it
+gathers every **seat**'s input (the local player's orders and HUD actions, the computer seats'
+orders): a seat owns its own soldiers and sits on a team (the simulation's side, so allies are
+friends). The inputs are logged per seat and merged in seat order into the world's commands; the
+rules that decide the match (`engine/sim/src/mode_rules.cpp`: the hill, the flags, the waves) read
+the simulation only, in integers and fixed point. A replay of the log reproduces the match exactly
+(the four-seat tests). An ally's squads show on the field but are not the local player's to order.
+
+**Horde** (`mode_horde.cpp`), as in Myth: hold the hill.
+- The hill is the field's highest open ground near its middle that can be climbed from every side
+  (no rock, water or face steeper than about 25° within its radius), flagged in the holders' blue.
+- Each seat starts with its hero (Lord Aldric, Lady Wren, Sir Corvin, Dame Isolde) and a fixed small
+  army on its side of the top: 8 warriors, 6 pikes, 8 bowmen, 2 menders.
+- Waves come from the edges of the field (150 m out, from one compass edge at first, up to four),
+  each heavier than the last ordinary wave (24 threat, +12 a wave; ×0.7 / ×1.4 easy / hard; +60%
+  for each further seat): the dead first, then men, beasts, brutes, fiends and sorcerers; every third
+  wave an elite one (a rank up), every fifth a boss wave led by a demon (every tenth by the Ashen
+  Wyrm), ranks rising every four waves. The herald and the war horn announce each.
+- A wave is beaten when none of it is left standing (dead or fled). Then a break (45 s, or until
+  every person is Ready): the wounded mend half their wounds, veterans keep their ranks (they were
+  earned by kills), each hero rises a level, and each seat gets 10 points (+1 every second wave) to
+  spend on six of the squads on offer (`squadOffers`: warriors 6 for 4, pikes 6 for 3, archers 6
+  for 4, ... wizards 2 for 6), different six each break; unspent points carry over.
+- The hill is lost when the horde stands on it (22 m) and no holder does for 12 seconds (the clock
+  winds back the moment a holder sets foot on it), or when every holder is dead. Surviving the set
+  number of waves (10 by default; 5, 20 or endless) wins. Score: waves survived, kills, time on the hill.
+- HUD: wave n of N (boss, elite), enemies left, the time to the next wave, the hill's bar
+  (draining while the horde holds it alone: "Retake the hill!"), and the reinforcement panel in the
+  breaks. Seats 2-4 can be computer allies, who hold their side of the hill and buy their own picks.
+
+**Capture the flag** (`mode_ctf.cpp`), Myth's rule: 2-4 teams, each of one or more seats, each with
+its flag at its start (evenly round the middle of the field) and a fixed army bought before the match
+from a points budget (36 by default, shared by the team's seats; the default army is a balance of
+line, missiles and healers). A flag falls the moment an enemy soldier stands on it (5 m) while none of
+its own team does. A team whose flag falls is **out**: its army breaks and flees and never rallies
+(`World::breakSide`), so it can neither win nor hold anything, and its soldiers are hunted down or
+scatter. The last team with its flag standing wins; with a time limit (10 or 15 minutes, or none)
+the team with its flag standing and the most strength left wins when it runs out. Enemies within 35 m
+of the player's flag sound the alarm and the herald ("Our flag is under attack!"). The computer
+plays a team by keeping its missile troops, healers and every third squad of the line at its flag,
+sending the rest at the nearest enemy flag (marching with initiative, cutting down the guards on it,
+then force-marching onto it); when its attack is spent, or after six minutes, its guards go too.
+
+Entry: the title screen calls `Module._illyria_start_mode(id, optionsJson)` with "horde" or "ctf"
+(options in `mode.h` makeMatch); without a place it opens the setup panel (`game/web/modes.js`).
+Leaving a match fires the page's `illyria:mode-exit` event. Test addresses: `?mode=horde`,
+`?mode=ctf` (`&place=N&go` starts at once).
+
 ## 5. Technical Network Architecture
 
 To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit interactions perfectly synchronized across multiplayer:
@@ -437,6 +494,7 @@ To keep hundreds of physical projectiles, dynamic ragdolls, and multi-unit inter
   - A single seeded RNG stream owned by the simulation; render/VFX code uses a separate non-authoritative RNG.
   - Per-tick **state checksums** exchanged between peers for desync detection, plus input-log replays for debugging.
   - Ragdolls and cosmetic debris that don't affect gameplay may run in non-deterministic engine physics on each client.
+- **The protocol for matches** (seats, their input streams, the relay, the host playing the computer's seats): `docs/NETCODE.md`.
 
 ### 5.1 Technology Decisions
 

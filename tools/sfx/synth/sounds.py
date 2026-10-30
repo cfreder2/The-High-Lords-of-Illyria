@@ -568,6 +568,24 @@ def defeat(rng, v):
     return fade(x + sub, 0.05, 0.5)
 
 
+@recipe("snd_state_war_horn", space=(2.5, 0.35))
+def war_horn(rng, v):
+    # A long low horn call, answered a fifth higher: the next wave sets out (Horde).
+    x = silence(3.6)
+    x = place(x, lowpass(brass(98.0, 1.4, rng, 0.5), 1800, 2), 0.0, 0.9)
+    x = place(x, lowpass(brass(147.0, 1.9, rng, 0.5), 2000, 2) * 0.85, 1.5, 0.9)
+    return trim_tail(x, -60)
+
+
+@recipe("snd_state_alarm", space=(1.2, 0.25))
+def alarm(rng, v):
+    # Three quick rising blasts of a hand horn: the flag is in danger (capture the flag).
+    x = silence(1.6)
+    for k in range(3):
+        x = place(x, brass(233.0 * (1 + 0.125 * k), 0.26, rng, 1.3), k * 0.34, 0.85)
+    return trim_tail(x, -60)
+
+
 # ---------------------------------------------------------------- UI
 
 @recipe("snd_ui_click", space=(0.15, 0.05))

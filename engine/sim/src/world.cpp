@@ -62,7 +62,6 @@ constexpr int32_t kHeroLevels[] = {3, 7, 12, 18, 25, 33, 42, 52};
 constexpr int32_t kBlessingDamagePct = 10;
 constexpr int32_t kHeroLevelDamagePct = 6;
 constexpr Fixed kRankBlockBonus = Fixed::fromRatio(3, 100);
-constexpr int32_t kHeroLevelHpPct = 8;
 
 // Largest obstacle extent, for grid queries.
 constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(7);
@@ -180,8 +179,12 @@ World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) 
 
 EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
                           const UnitStats& stats) {
+    // A soldier's id is his place in units_ plus one (the game indexes by it),
+    // even when he joins once missiles are flying (they take ids from the
+    // same counter, but are never looked up among the soldiers).
     Unit u;
-    u.id = nextId_++;
+    u.id = static_cast<EntityId>(units_.size() + 1);
+    nextId_ = std::max(nextId_, u.id + 1);
     u.owner = owner;
     u.stats = stats;
     u.hp = stats.maxHp;
@@ -1596,6 +1599,11 @@ uint64_t World::checksum() const {
         h.addI64(p.smear.raw);
         h.addU64(static_cast<uint64_t>(p.cause));
         hashExplosive(h, p.explosive);
+    }
+    // Only once a side is out of a match, so battles without one hash as before.
+    if (!brokenSides_.empty()) {
+        h.addU64(brokenSides_.size());
+        for (PlayerId o : brokenSides_) h.addU64(o);
     }
     h.addU64(remainsAdded_);
     h.addU64(remains_.size());

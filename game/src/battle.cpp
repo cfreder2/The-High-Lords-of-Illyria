@@ -5,6 +5,7 @@
 #include <climits>
 #include <cmath>
 
+#include "illyria/game/mode.h"
 #include "illyria/sim/terrain.h"
 
 namespace illyria::game {
@@ -537,7 +538,9 @@ void Battle::step() {
     prevProjectilePos_.clear();
     for (const sim::Projectile& p : world_->projectiles()) prevProjectilePos_.push_back({p.id, toV3(p.pos)});
 
-    if (world_->tick() % kAiIntervalTicks == 0) runEnemyAi();
+    // A match gathers every seat's orders and plays the computer's (mode.h).
+    if (mode_) mode_->beforeStep(*this, pending_);
+    else if (world_->tick() % kAiIntervalTicks == 0) runEnemyAi();
 
     // Who strikes or looses this tick, for the attack animation.
     readied_.resize(units.size());
@@ -550,6 +553,7 @@ void Battle::step() {
     stepMs_ = stepMs_ * 0.95 + ms * 0.05;
     pending_.clear();
     capture_.step(*world_);  // battle_capture.cpp
+    if (mode_) mode_->afterStep(*this);  // its rules: the hill, the flags, the waves
     collectEvents();
     voice_.observe(*world_, outcome());
     presentDeaths();
@@ -944,6 +948,7 @@ void Battle::runEnemyAi() {
 }
 
 int Battle::outcome() const {
+    if (mode_) return mode_->outcome();
     bool playerAlive = false, enemyAlive = false;
     for (const sim::Unit& u : world_->units()) {
         if (!u.alive()) continue;

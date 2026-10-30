@@ -29,6 +29,9 @@ add_library(illyria_sim
     src/campaign_territory.cpp
     src/edges.cpp
     src/world_edges.cpp
+    src/world_match.cpp
+    src/match.cpp
+    src/mode_rules.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/relief_data.cpp
 )
 

@@ -168,6 +168,8 @@ public:
     static const std::vector<Faction>& factions();
     const std::vector<City>& cities() const { return cities_; }
     const std::vector<Site>& sites() const { return sites_; }
+    // The mountain passes: centre (z = how wide they are).
+    const std::vector<Vec3>& passes() const { return passes_; }
     // Everything placed on the map: cities, sites and the river surfaces.
     uint64_t checksum() const;
     uint64_t seed() const { return seed_; }

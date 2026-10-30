@@ -1103,7 +1103,7 @@
     // Cards: saving the selection (when it is not already a card), the saved
     // groups, then heroes, the special troops, and the rest.
     const roleRank = (q) => (q.type === "Hero" ? 0 : ["caster", "bomber", "healer", "siege"].includes(q.role) ? 1 : 2);
-    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.owner === 0).sort((a, b) => roleRank(a) - roleRank(b) || a.i - b.i);
+    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.owner === 0 && !q.ally).sort((a, b) => roleRank(a) - roleRank(b) || a.i - b.i);
     const isCard = s.selected >= 0 || s.groups.some((g) => g.sel === 2);  // already one squad, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
     const key = (canSave ? "+|" : "") + s.groups.map((g) => g.slot).join(",") + "|" + mine.map((q) => q.name).join("|");
@@ -1185,7 +1185,8 @@
       }
     }
 
-    if (s.outcome !== 0) {
+    // A match (modes.js) shows its own end.
+    if (s.outcome !== 0 && !(window.IllyriaModes && window.IllyriaModes.active)) {
       $("overlay").classList.remove("hidden");
       $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
       $("overlayText").textContent = s.outcome === 1
@@ -1215,6 +1216,7 @@
 <script src="audio.js?v=@ILLYRIA_VERSION@"></script>
 <script src="voice.js?v=@ILLYRIA_VERSION@"></script>
 <script src="sfx.js?v=@ILLYRIA_VERSION@"></script>
+<script src="modes.js?v=@ILLYRIA_VERSION@"></script>
 <script src="illyria.js?v=@ILLYRIA_VERSION@"></script>
 </body>
 </html>

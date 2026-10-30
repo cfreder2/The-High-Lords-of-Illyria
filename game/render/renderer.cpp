@@ -268,6 +268,20 @@ void pushHealthBar(std::vector<float>& bars, const sim::Unit& u, const V3& pos, 
 
 const float kPlayerColor[3] = {0.22f, 0.42f, 0.92f};
 const float kEnemyColor[3] = {0.86f, 0.18f, 0.14f};
+// A match's third and fourth teams (mode.h teamColour): gold and green.
+const float kGoldColor[3] = {0.92f, 0.72f, 0.16f};
+const float kGreenColor[3] = {0.22f, 0.64f, 0.30f};
+// Each side's colour: the player's blue and the enemy's red, and in a match of
+// more teams gold and green (sides 2 and 3).
+const float* sideColor(int owner) {
+    switch (owner & 3) {
+        case 0: return kPlayerColor;
+        case 1: return kEnemyColor;
+        case 2: return kGoldColor;
+        default: return kGreenColor;
+    }
+}
+constexpr int kSides = 4;  // unit groups by type and side
 
 }  // namespace
 
@@ -1601,9 +1615,9 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
     glBindVertexArray(units_.vao);
     glBindBuffer(GL_ARRAY_BUFFER, units_.vbo);
     for (const auto& group : unitGroups_) {
-        const Sheet& sh = sheetFor(group.first / 2);
+        const Sheet& sh = sheetFor(group.first / kSides);
         const auto range = group.second;
-        const float* team = group.first % 2 == 0 ? kPlayerColor : kEnemyColor;
+        const float* team = sideColor(group.first % kSides);
         const V3 cloth = figures::cloth(team);
         glActiveTexture(GL_TEXTURE7);
         glBindTexture(GL_TEXTURE_2D, sh.tex);
@@ -2018,7 +2032,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         const V3 pos = battle.unitPosition(i);
-        const float* team = u.owner == Battle::kPlayer ? kPlayerColor : kEnemyColor;
+        const float* team = sideColor(u.owner);
         const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
         const float height = static_cast<float>(u.stats.height.toDouble());
         const bool isSelected = battle.isSelected(u.id);
@@ -2081,8 +2095,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 frame = static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[0]) % figures::kFrames[0];
             }
         }
-        const int key = static_cast<int>(type) * 2 + (u.owner == Battle::kPlayer ? 0 : 1);
-        if (!sheets_.count(key / 2) || !sheets_[key / 2].tex) continue;  // baked before the next frame (bakeMissing)
+        const int key = static_cast<int>(type) * kSides + (u.owner & 3);
+        if (!sheets_.count(key / kSides) || !sheets_[key / kSides].tex) continue;  // baked before the next frame (bakeMissing)
         std::vector<float>& g = byGroup[key];
         g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f});
     }
@@ -2097,7 +2111,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     }
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
-        const float* team = p.owner == Battle::kPlayer ? kPlayerColor : kEnemyColor;
+        const float* team = sideColor(p.owner);
         const auto sprite = [&](float plan, float size, float style) {
             sprites.insert(sprites.end(), {pos.x, pos.y, pos.z, team[0], team[1], team[2], plan, 0, 0, 0, style, 0,
                                            0, 0, 1, 1, 1, size, 1, 0});
@@ -2162,7 +2176,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (const sim::Remain& r : world.remains()) {
         if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
         const V3 pos = toV3(r.pos), dir = toV3(r.dir);
-        const float* team = r.owner == Battle::kPlayer ? kPlayerColor : kEnemyColor;
+        const float* team = sideColor(r.owner);
         const float decay = std::clamp((gameSeconds - r.tick / 30.0f - 3600.0f) / week, 0.0f, 1.0f);
         float q[4];
         yprQuat(std::atan2(dir.y, dir.x), 0, (hash01(r.tick) - 0.5f) * 0.6f, q);

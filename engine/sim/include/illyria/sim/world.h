@@ -377,6 +377,9 @@ struct RallyCall {
     int32_t rallied = 0;  // of them, broken men it brought back
 };
 
+// A hero's hit points grow by this share of a fresh hero's with every level.
+inline constexpr int32_t kHeroLevelHpPct = 8;
+
 inline constexpr int32_t kMoraleFull = 1000;
 inline constexpr int32_t kMoraleWaver = 450;
 inline constexpr int32_t kMoraleBreak = 200;
@@ -468,6 +471,17 @@ public:
     // Shakes a unit's morale by `points` (at a man's resolve), scaled by its
     // type's moraleShockPct and steadied by veterancy.
     void shakeMorale(Unit& u, int32_t points);
+
+    // Match rules (world_match.cpp): what a game mode does to the soldiers
+    // outside their own doing, the same on every peer.
+    // A living soldier mended by up to `amount` (Horde's rest between rounds).
+    void heal(EntityId id, int32_t amount);
+    // A hero one level up (to 9, tougher at once), a soldier one rank (to elite).
+    void levelUp(EntityId id);
+    // A side out of the match (its flag taken): every soldier of it breaks,
+    // and none ever rallies.
+    void breakSide(PlayerId owner);
+    bool sideBroken(PlayerId owner) const;
 
 private:
     // Buckets of indices by grid cell. Lookups only, never iterated, so the
@@ -676,6 +690,7 @@ private:
     std::vector<std::pair<PlayerId, Vec3>> deaths_;
     std::vector<Remain> remains_;
     std::vector<GateState> gates_;
+    std::vector<PlayerId> brokenSides_;  // breakSide, ascending
     uint64_t remainsAdded_ = 0;
     std::vector<uint32_t> changedRemains_;
     struct PendingExplosion {

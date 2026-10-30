@@ -219,6 +219,54 @@
    "title": "Total casualties",
    "when": "Four fifths of the player's soldiers have fallen.",
    "priority": 5
+  },
+  {
+   "id": "wave_incoming",
+   "title": "A wave comes",
+   "when": "Horde: the next wave sets out for the hill.",
+   "priority": 4
+  },
+  {
+   "id": "boss_wave",
+   "title": "A champion comes",
+   "when": "Horde: a boss wave, a demon or a dragon at its head.",
+   "priority": 5
+  },
+  {
+   "id": "wave_cleared",
+   "title": "Wave beaten",
+   "when": "Horde: the last of the wave is down or fled; the break begins.",
+   "priority": 4
+  },
+  {
+   "id": "reinforcements",
+   "title": "Reinforcements",
+   "when": "Horde: fresh troops bought in the break reach the hill.",
+   "priority": 3
+  },
+  {
+   "id": "hill_contested",
+   "title": "The hill is taken",
+   "when": "Horde: the enemy stands on the hill and none of ours do; it is lost unless retaken.",
+   "priority": 5
+  },
+  {
+   "id": "flag_attacked",
+   "title": "Flag under attack",
+   "when": "Capture the flag: enemies close on the player's flag.",
+   "priority": 5
+  },
+  {
+   "id": "flag_lost",
+   "title": "Our flag fell",
+   "when": "Capture the flag: an enemy stood on the player's flag with none of ours there.",
+   "priority": 5
+  },
+  {
+   "id": "enemy_flag_taken",
+   "title": "An enemy flag fell",
+   "when": "Capture the flag: another team's flag is taken.",
+   "priority": 4
   }
  ],
  "sets": [
@@ -7167,7 +7215,7 @@
    "units": [
     "(the battle's narrator)"
    ],
-   "casting": "The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses; heard in the centre, never positional.",
+   "casting": "The voice over the battle, as in Myth: older, grave, unhurried, close to the microphone. Reports the player's losses and the turns of a match (waves, the hill, the flags); heard in the centre, never positional.",
    "verbal": true,
    "fallback": null,
    "placeholder": {
@@ -7235,6 +7283,174 @@
        "id": "herald.total_casualties.3",
        "text": "Total casualties, my lord.",
        "file": "voice/herald/total_casualties_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "wave_incoming",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.wave_incoming.1",
+       "text": "They are coming!",
+       "file": "voice/herald/wave_incoming_1.mp3"
+      },
+      {
+       "id": "herald.wave_incoming.2",
+       "text": "Another wave approaches.",
+       "file": "voice/herald/wave_incoming_2.mp3"
+      },
+      {
+       "id": "herald.wave_incoming.3",
+       "text": "To arms! They come again!",
+       "file": "voice/herald/wave_incoming_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "boss_wave",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.boss_wave.1",
+       "text": "Something terrible comes.",
+       "file": "voice/herald/boss_wave_1.mp3"
+      },
+      {
+       "id": "herald.boss_wave.2",
+       "text": "A champion leads them. Stand fast!",
+       "file": "voice/herald/boss_wave_2.mp3"
+      },
+      {
+       "id": "herald.boss_wave.3",
+       "text": "Beware: a great foe approaches.",
+       "file": "voice/herald/boss_wave_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "wave_cleared",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.wave_cleared.1",
+       "text": "The hill holds. For now.",
+       "file": "voice/herald/wave_cleared_1.mp3"
+      },
+      {
+       "id": "herald.wave_cleared.2",
+       "text": "They are broken. Rest while you can.",
+       "file": "voice/herald/wave_cleared_2.mp3"
+      },
+      {
+       "id": "herald.wave_cleared.3",
+       "text": "The wave is spent.",
+       "file": "voice/herald/wave_cleared_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "reinforcements",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.reinforcements.1",
+       "text": "Reinforcements have arrived.",
+       "file": "voice/herald/reinforcements_1.mp3"
+      },
+      {
+       "id": "herald.reinforcements.2",
+       "text": "Fresh troops, my lord.",
+       "file": "voice/herald/reinforcements_2.mp3"
+      },
+      {
+       "id": "herald.reinforcements.3",
+       "text": "More swords for the hill.",
+       "file": "voice/herald/reinforcements_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "hill_contested",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.hill_contested.1",
+       "text": "They are on the hill! Retake it!",
+       "file": "voice/herald/hill_contested_1.mp3"
+      },
+      {
+       "id": "herald.hill_contested.2",
+       "text": "The hill is lost unless we retake it!",
+       "file": "voice/herald/hill_contested_2.mp3"
+      },
+      {
+       "id": "herald.hill_contested.3",
+       "text": "The enemy holds the hill!",
+       "file": "voice/herald/hill_contested_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "flag_attacked",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.flag_attacked.1",
+       "text": "Our flag is under attack!",
+       "file": "voice/herald/flag_attacked_1.mp3"
+      },
+      {
+       "id": "herald.flag_attacked.2",
+       "text": "The enemy is at our flag!",
+       "file": "voice/herald/flag_attacked_2.mp3"
+      },
+      {
+       "id": "herald.flag_attacked.3",
+       "text": "Defend the flag!",
+       "file": "voice/herald/flag_attacked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "flag_lost",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.flag_lost.1",
+       "text": "Our flag has fallen.",
+       "file": "voice/herald/flag_lost_1.mp3"
+      },
+      {
+       "id": "herald.flag_lost.2",
+       "text": "The flag is taken. All is lost.",
+       "file": "voice/herald/flag_lost_2.mp3"
+      },
+      {
+       "id": "herald.flag_lost.3",
+       "text": "They have our flag.",
+       "file": "voice/herald/flag_lost_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "enemy_flag_taken",
+     "note": "clear and grave, a herald's report, mono; urgent for the alarms, never shouted",
+     "lines": [
+      {
+       "id": "herald.enemy_flag_taken.1",
+       "text": "An enemy flag has fallen!",
+       "file": "voice/herald/enemy_flag_taken_1.mp3"
+      },
+      {
+       "id": "herald.enemy_flag_taken.2",
+       "text": "Their flag is ours!",
+       "file": "voice/herald/enemy_flag_taken_2.mp3"
+      },
+      {
+       "id": "herald.enemy_flag_taken.3",
+       "text": "One banner fewer against us.",
+       "file": "voice/herald/enemy_flag_taken_3.mp3"
       }
      ]
     }

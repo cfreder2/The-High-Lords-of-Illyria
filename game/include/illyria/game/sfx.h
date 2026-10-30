@@ -61,6 +61,8 @@ enum class Sound : uint8_t {
     Defeat,          // a low minor drone
     Thunder,         // after a lightning flash (weather)
     Frog,            // a croak from the marsh
+    WarHorn,         // Horde: the next wave sets out
+    Alarm,           // capture the flag: the player's flag in danger
     Count
 };
 constexpr int kSoundCount = static_cast<int>(Sound::Count);
@@ -103,6 +105,9 @@ public:
     // continent and the battlefield's origin in it place the wind; in
     // enemy-held land the drums beat on.
     void observe(const sim::World& world, int outcome, const sim::Continent& continent, const V3& origin, bool enemyLand);
+
+    // A match's alarm (mode.h): heard in the player's ears with this tick's cues.
+    void alert(Sound s) { want(s, listenAt_, 0, false); }
 
     // Cues since the last take, for the page to play.
     std::vector<SfxCue> take();

@@ -76,6 +76,8 @@ constexpr Spec kSpecs[kSoundCount] = {
     {"snd_state_defeat_drone", 5, 0, false},
     {"snd_amb_thunder", 3, 0, false},
     {"snd_amb_swamp_frogs", 0, 20, false},
+    {"snd_state_war_horn", 5, 0, false},
+    {"snd_state_alarm", 5, 150, false},
 };
 
 V3 flat(V3 v) { return {v.x, v.y, 0}; }

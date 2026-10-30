@@ -18,6 +18,8 @@
 
 namespace illyria::game {
 
+class BattleMode;  // mode.h
+
 // How a squad arranges itself, as in Myth: each soldier keeps his place as
 // the squad marches, and the whole squad moves at its slowest member's pace
 // (slower still in the tight formations: see formationPace).
@@ -88,6 +90,7 @@ enum class Scenario {
     Ford,      // Oakhaven Ford: the Red Hand comes over the river
     Siege,     // a neutral town near Oakhaven, held by its own small garrison
     Campaign,  // where two campaign stacks met (see BattlePlan)
+    Mode,      // a match: Horde or capture the flag (mode.h), on a field it fills itself
 };
 
 // A battle fought from the campaign: the armies of each side, as they stand.
@@ -180,6 +183,10 @@ public:
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
     Battle(uint64_t seed, const BattlePlan& plan);
+    // An empty field for a match (Scenario::Mode): the mode raises the armies.
+    // `continent` may be one already built (it is the same for every battle).
+    Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent = {});
+    ~Battle();
     // For a campaign battle: what became of every army.
     std::vector<ArmyResult> results() const;
     Scenario scenario() const { return scenario_; }
@@ -320,8 +327,38 @@ public:
     void togglePause() { paused_ = !paused_; }
     void cycleSpeed() { speed_ = speed_ >= 4 ? 1 : speed_ * 2; }
 
+    // Matches (mode.h, game/src/battle_modes.cpp). The mode runs every tick:
+    // it gathers each seat's orders, plays the computer's seats and keeps the
+    // score; while one runs, the built-in enemy stands down.
+    void setMode(std::unique_ptr<BattleMode> mode);
+    BattleMode* mode() const { return mode_.get(); }
+    // A squad raised during the battle (a wave, reinforcements); its index.
+    int addSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre, V3 facing,
+                 int rank = 0);
+    // A squad of the local player's side seated by someone else (an ally):
+    // seen and fought beside, but not his to order.
+    void markForeign(size_t squad);
+    bool controllable(const sim::Unit& u) const {
+        return u.owner == kPlayer && !(u.id <= foreign_.size() && foreign_[u.id - 1]);
+    }
+    // The computer's orders to a squad. Steer: march there with initiative
+    // (a squad already on its way to about the same place keeps its route).
+    // ForceMarch: deaf to the enemy. Attack: every soldier after one foe.
+    void aiSteer(size_t squad, const V3& to);
+    void aiForceMarch(size_t squad, const V3& to);
+    void aiAttack(size_t squad, sim::EntityId target);
+    void aiHalt(size_t squad);
+    // The computer's general handling of a squad: the nearest foe within
+    // `reach` of `around` is met (missile troops keep a bowshot, horse take
+    // it in the flank), else it goes to `goal`; healers keep near their
+    // friends, engines throw from where they stand. Routed: beyond orders.
+    void aiFight(size_t squad, const V3& goal, const V3& around, float reach);
+    // The nearest living, unbroken foe of `owner` to `at` within `reach` (or kNoEntity).
+    sim::EntityId nearestFoe(sim::PlayerId owner, const V3& at, float reach) const;
+
     // Queries.
     const sim::World& world() const { return *world_; }
+    sim::World& mutableWorld() { return *world_; }
     const std::vector<Squad>& squads() const { return squads_; }
     // Test hook: every soldier of a squad raised to this rank (shield pips on the health bars).
     void promoteSquad(size_t squad, int rank) {
@@ -498,6 +535,10 @@ private:
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
     CapturePoint capture_;
     void placeCapturePoint(const sim::Continent::City& town);
+    std::unique_ptr<BattleMode> mode_;
+    std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (markForeign)
+    // The per-soldier presentation state grown for soldiers raised mid-battle.
+    void growUnits();
 };
 
 template <typename Fn>

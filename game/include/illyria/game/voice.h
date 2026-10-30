@@ -80,6 +80,15 @@ enum class Situation : uint8_t {
     Casualties,
     SevereCasualties,
     TotalCasualties,
+    // The herald's news of a match (mode.h): Horde's waves and hill, the flags.
+    WaveIncoming,
+    BossWave,
+    WaveCleared,
+    Reinforcements,
+    HillContested,
+    FlagAttacked,
+    FlagLost,
+    EnemyFlagTaken,
     Count
 };
 constexpr int kSituationCount = static_cast<int>(Situation::Count);
@@ -119,6 +128,10 @@ public:
     void observe(const sim::World& world, int outcome);
     // The player's order to these soldiers: one of them answers.
     void order(Situation s, const sim::World& world, const std::vector<sim::EntityId>& units);
+
+    // The herald announces a turn of a match (a wave, the hill, a flag): heard
+    // with this tick's cues.
+    void announce(const sim::World& world, Situation s);
 
     // Cues since the last take, for the page to play.
     std::vector<VoiceCue> take();

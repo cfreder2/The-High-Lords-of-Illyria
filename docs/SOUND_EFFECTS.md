@@ -1,7 +1,7 @@
 # Sound effects
 
 Generated from `game/web/sfx/sounds.json` by `python3 tools/sfx/script.py`; do not edit by hand.
-51 sounds in 166 files (2.9 MB of MP3, each sound fetched the first time it plays).
+53 sounds in 168 files (3.0 MB of MP3, each sound fetched the first time it plays).
 
 ## How it works
 
@@ -116,6 +116,8 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 |---|---|---|---:|---:|---|
 | **Victory**<br>`snd_state_victory_fanfare` | The battle is won: a short brass fanfare. | one-shot, 2D, 4.4-4.4 s | 1 (rendered) | -2 dB | A brass player, or CC0: a short major fanfare, 3-4 s. |
 | **Defeat**<br>`snd_state_defeat_drone` | The battle is lost: a low minor-chord string drone with sub-bass. | one-shot, 2D, 8.6-8.6 s | 1 (rendered) | -3 dB | Cello or synth strings holding a low minor chord, 5-6 s, fading. |
+| **War horn**<br>`snd_state_war_horn` | Horde: the next wave sets out for the hill. | one-shot, 2D, 5.9-5.9 s | 1 (rendered) | -4 dB | A cow horn or brass, two long low calls a fifth apart, 3-4 s. |
+| **Alarm**<br>`snd_state_alarm` | Capture the flag: enemies close on the player's flag. | one-shot, 2D, 2.1-2.1 s | 1 (rendered) | -4 dB | Three short rising blasts of a hand horn, about 1.2 s. |
 
 ## UI
 

@@ -43,7 +43,8 @@ float segDist(const V3& p, const V3& a, const V3& b) {
 
 void Battle::markOrdered(const std::vector<sim::EntityId>& units) {
     if (orderTick_.size() < world_->units().size()) orderTick_.resize(world_->units().size(), UINT32_MAX);
-    for (sim::EntityId id : units) orderTick_[id - 1] = world_->tick();
+    for (sim::EntityId id : units)
+        if (controllable(world_->units()[id - 1])) orderTick_[id - 1] = world_->tick();  // an ally's orders are his own business
 }
 
 void Battle::say(const std::string& notice) {
