@@ -1,0 +1,132 @@
+/* The title screen and the full-screen pages over the game: the campaign's
+   save slots, skirmishes, settings, controls, credits (title.js). Phone first:
+   the buttons sit low, in thumb reach; nothing scrolls sideways. */
+body.at-title #top, body.at-title #bottom, body.at-title #labels, body.at-title #banners,
+body.at-title #hint, body.at-title #news, body.at-title #cityPanel, body.at-title #voyage,
+body.at-title #capture, body.at-title #landTag,
+body.at-title #battlePrompt, body.at-title #hirePrompt, body.at-title #levelPrompt { display: none !important; }
+body.screen-open #top, body.screen-open #bottom { visibility: hidden; }
+#top { z-index: 7; }  /* the ☰ menu over the news and panels */
+
+#titleScreen, .screen {
+  position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; color: var(--ink);
+  padding: calc(14px + var(--safe-t)) calc(16px + var(--safe-r)) calc(14px + var(--safe-b)) calc(16px + var(--safe-l));
+  overflow-x: hidden;
+}
+#titleScreen {
+  z-index: 19;
+  /* The battlefield shows through the middle, darkened toward the edges. */
+  background:
+    radial-gradient(ellipse 120% 70% at 50% 42%, rgba(10, 8, 6, 0) 0%, rgba(10, 8, 6, 0.35) 55%, rgba(10, 8, 6, 0.92) 100%),
+    linear-gradient(rgba(10, 8, 6, 0.55), rgba(10, 8, 6, 0) 28%, rgba(10, 8, 6, 0) 50%, rgba(10, 8, 6, 0.88) 78%);
+  align-items: center; justify-content: space-between; text-align: center;
+}
+body:not(.at-title) #titleScreen, .screen.hidden { display: none; }
+#toast { z-index: 50; }
+.title-head { margin-top: 4vh; animation: titleIn 1.6s ease-out both; }
+.title-head .crest { width: 54px; height: 54px; color: var(--gold); opacity: 0.9; filter: drop-shadow(0 2px 6px #000); }
+.title-head .pre { display: block; font-size: 15px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--ink-dim); text-shadow: 0 1px 3px #000; }
+.title-head h1 {
+  margin: 2px 0 0; font-size: clamp(44px, 14vw, 76px); line-height: 1; font-weight: 600; letter-spacing: 0.05em; color: var(--gold);
+  text-shadow: 0 2px 0 #3a2a10, 0 4px 18px rgba(0, 0, 0, 0.9);
+}
+.title-head .rule { width: 160px; height: 1px; margin: 10px auto 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+@keyframes titleIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+.title-menu { margin-top: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; animation: titleIn 1.2s 0.3s ease-out both; }
+.title-menu .big, .screen .big {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 52px; padding: 8px 16px;
+  font-size: 18px; letter-spacing: 0.02em; text-align: left; background: rgba(20, 17, 13, 0.82); border-color: rgba(214, 180, 110, 0.45);
+}
+.title-menu .big small, .screen .big small { font-size: 12px; color: var(--ink-dim); letter-spacing: 0; text-align: right; }
+:is(.title-menu, .screen) .big.primary { border-color: var(--gold); background: linear-gradient(rgba(120, 88, 32, 0.55), rgba(60, 44, 18, 0.75)); color: #fff3d6; }
+:is(.title-menu, .screen) .big.primary small { color: #f0dcae; }
+.title-menu .row { display: flex; gap: 8px; }
+.title-menu .row button { flex: 1; min-height: 46px; padding: 0 6px; font-size: 14px; background: rgba(20, 17, 13, 0.78); }
+.title-menu .soon, .screen .soon { font-size: 11px; color: #c9a6ff; border: 1px solid rgba(201, 166, 255, 0.5); border-radius: 6px; padding: 1px 6px; }
+.title-foot { margin-top: 8px; font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-dim); opacity: 0.8; }
+:is(#titleScreen, .screen) button:focus-visible { outline: 2px solid #8fd0ff; outline-offset: 2px; }
+:is(#titleScreen, .screen) button.kbd-focus { outline: 2px solid #8fd0ff; outline-offset: 2px; }
+
+/* The pages: a header with the way back, then whatever the page holds. */
+.screen { background: rgba(14, 12, 9, 0.94); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding-bottom: 0; }
+.screen > header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; max-width: 720px; width: 100%; margin: 0 auto 10px; }
+.screen > header h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.04em; color: var(--gold); flex: 1; }
+.screen > header .back { min-width: 44px; font-size: 18px; }
+.screen .body { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; max-width: 720px; width: 100%; margin: 0 auto;
+                padding-bottom: calc(18px + var(--safe-b)); overscroll-behavior: contain; touch-action: pan-y; }
+.screen p.lead { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; }
+.screen h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 600; color: var(--gold); letter-spacing: 0.03em; }
+.screen h3:first-child { margin-top: 4px; }
+
+/* Save slots. */
+.slot { padding: 12px 14px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.slot .name { font-size: 16px; color: var(--gold); font-weight: 600; }
+.slot .when { font-size: 12px; color: var(--ink-dim); text-align: right; }
+.slot .facts { grid-column: 1 / -1; font-size: 14px; }
+.slot .facts b { color: var(--gold); font-weight: 600; }
+.slot .acts { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.slot .acts button { flex: 1 1 auto; min-height: 44px; }
+.slot .acts button.go { border-color: var(--gold); color: #fff3d6; background: rgba(120, 88, 32, 0.45); }
+.slot .acts button.del { flex: 0 0 auto; color: #ffb4a6; }
+.slot.empty .facts { color: var(--ink-dim); font-style: italic; }
+.slot.bad .facts { color: #ffb4a6; }
+.choice { display: flex; gap: 8px; }
+.choice button { flex: 1; min-height: 72px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.choice button small { font-size: 12px; opacity: 0.8; }
+.choice button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.18); box-shadow: 0 0 0 2px rgba(214, 180, 110, 0.35) inset; }
+
+/* Settings: tabs, then rows of switches and sliders. */
+.tabs { display: flex; gap: 6px; margin: 0 auto 10px; max-width: 720px; width: 100%; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex: 1 0 auto; min-height: 40px; font-size: 14px; }
+.tabs button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); color: #fff3d6; }
+.set { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 6px 2px; border-bottom: 1px solid rgba(214, 180, 110, 0.12); font-size: 15px; }
+.set > span { flex: 1; }
+.set > span small { display: block; font-size: 12px; color: var(--ink-dim); }
+.set input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--gold); flex: 0 0 auto; }
+.set input[type=range] { flex: 0 1 46%; min-width: 110px; height: 30px; accent-color: var(--gold); }
+.set select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; min-height: 38px; padding: 0 8px; }
+.presets { display: flex; gap: 6px; margin-bottom: 6px; }
+.presets button { flex: 1; min-height: 40px; }
+.presets button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); }
+.screen .note { font-size: 12px; color: var(--ink-dim); margin: 8px 0; }
+.screen a { color: var(--gold); }
+
+/* Controls: a sketch of each gesture beside what it does. */
+.ctl { display: grid; grid-template-columns: 52px 1fr; gap: 2px 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(214, 180, 110, 0.12); }
+.ctl svg { width: 52px; height: 40px; color: var(--gold); grid-row: span 2; }
+.ctl b { font-weight: 600; color: #fff3d6; font-size: 15px; }
+.ctl span { font-size: 13px; color: var(--ink-dim); }
+.keys { width: 100%; border-collapse: collapse; font-size: 14px; }
+.keys td { padding: 7px 4px; border-bottom: 1px solid rgba(214, 180, 110, 0.12); vertical-align: top; }
+.keys td:first-child { width: 42%; white-space: nowrap; }
+kbd.k { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 1px 2px 1px 0; border: 1px solid rgba(214, 180, 110, 0.55); border-bottom-width: 2px;
+        border-radius: 5px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #fff3d6; text-align: center; background: rgba(255, 255, 255, 0.05); }
+
+/* Small confirmations over everything. */
+#confirmBox { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 6, 4, 0.6); }
+#confirmBox.hidden { display: none; }
+#confirmBox .panel { width: min(360px, 100%); padding: 16px; text-align: center; }
+#confirmBox h3 { margin: 0 0 6px; color: var(--gold); font-size: 18px; font-weight: 600; }
+#confirmBox p { margin: 0 0 14px; font-size: 14px; color: var(--ink-dim); }
+#confirmBox .choice button { min-height: 48px; }
+#busy { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+        background: rgba(10, 8, 6, 0.82); text-align: center; padding: 24px; }
+#busy.hidden { display: none; }
+#busy h2 { margin: 0; color: var(--gold); font-size: 24px; font-weight: 600; letter-spacing: 0.05em; }
+#busy p { margin: 0; color: var(--ink-dim); }
+
+/* The overlay's way back to the menu. */
+#overlay .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+#overlay .acts button { min-height: 46px; padding: 0 18px; }
+
+/* Landscape phones: the name to the left, the buttons to the right. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #titleScreen { flex-direction: row; align-items: center; justify-content: space-around; gap: 16px; }
+  .title-head { margin-top: 0; }
+  .title-head h1 { font-size: clamp(36px, 9vh, 56px); }
+  .title-menu { max-width: 360px; max-height: 100%; overflow-y: auto; gap: 6px; }
+  .title-menu .big { min-height: 44px; font-size: 16px; }
+  .title-foot { position: absolute; left: calc(16px + var(--safe-l)); bottom: calc(8px + var(--safe-b)); }
+}

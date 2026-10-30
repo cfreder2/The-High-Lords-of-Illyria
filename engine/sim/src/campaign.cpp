@@ -180,7 +180,7 @@ int32_t Campaign::upkeep(UnitType t) {
     }
 }
 
-Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
+Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), seed_(seed), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
     nx_ = static_cast<int32_t>(Continent::kWidth / kCell);
     ny_ = static_cast<int32_t>(Continent::kHeight / kCell);
     initTerrain();

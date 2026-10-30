@@ -41,6 +41,13 @@ public:
 
     uint64_t state() const { return state_; }
     uint64_t increment() const { return inc_; }
+    // A generator exactly where another stood (saved games).
+    static Rng fromState(uint64_t state, uint64_t increment) {
+        Rng r;
+        r.state_ = state;
+        r.inc_ = increment;
+        return r;
+    }
 
 private:
     uint64_t state_ = 0;

@@ -12,6 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
 <title>The High Lords of Illyria</title>
+<link rel="stylesheet" href="title.css?v=@ILLYRIA_VERSION@">
 <style>
   :root {
     --ink: #f3ead8;
@@ -238,17 +239,7 @@
   .camp-only { display: none; }
   body.campaign .camp-only { display: block; }
   body.campaign .battle-only { display: none !important; }
-  #gfx { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); padding: 10px 12px; width: 250px; z-index: 5;
-         max-height: calc(100% - 70px - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
-  #gfx h3 { margin: 0 0 6px; font-size: 14px; color: var(--gold); font-weight: 600; }
-  #gfx .presets { display: flex; gap: 6px; margin-bottom: 8px; }
-  #gfx .presets button { flex: 1; min-height: 34px; padding: 0 6px; }
-  #gfx .presets button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); }
-  #gfx label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; color: var(--ink); }
-  #gfx input { width: 18px; height: 18px; accent-color: var(--gold); }
-  #gfx .note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; }
-  #gfx h3.sub { margin-top: 12px; }
-  #gfx input[type=range] { flex: 1; width: auto; height: 28px; }
+  body.no-perf #title .meta .perf-part { display: none; }
   .hidden { display: none !important; }
   .fade { opacity: 0; }
   /* Landscape phones: keep the battlefield visible. */
@@ -265,18 +256,17 @@
     .card { width: 138px; padding: 4px 8px; grid-template-columns: 18px 1fr auto; }
     .card svg { width: 18px; height: 18px; }
     .card .name { font-size: 12px; }
-    #gfx { top: calc(44px + var(--safe-t)); padding: 6px 10px; }
-    #gfx label { padding: 2px 0; }
   }
-  #menu { display: contents; }
-  #menuButton { display: none; }
+  /* The ☰ menu: restart, save, settings, the manual, the main menu. */
+  #controls { position: relative; }
+  #menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; flex-direction: column; gap: 6px; z-index: 6; }
+  body.menu-open #menu { display: flex; }
+  #menu button { min-width: 150px; text-align: left; }
+  #menu .legacy { display: none; }
+  body.campaign #menu .camp-only { display: block; }
   @media (max-width: 560px) {
-    /* Portrait phones: one row of buttons; the rest in a menu. */
-    #controls { flex-wrap: nowrap; position: relative; }
-    #menuButton { display: inline-block; }
-    #menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; flex-direction: column; gap: 6px; z-index: 6; }
-    body.menu-open #menu { display: flex; }
-    #menu button { min-width: 120px; }
+    /* Portrait phones: one row of buttons; the rest in the menu. */
+    #controls { flex-wrap: nowrap; }
     #title { padding: 4px 8px; max-width: 24vw; min-width: 0; overflow: hidden; }
     #title h1 { font-size: 13px; line-height: 1.15; white-space: nowrap; }
     #title h1 .long { display: none; }  /* "Illyria" alone: room for the buttons */
@@ -295,7 +285,7 @@
 <div id="top">
   <div id="title" class="panel">
     <h1><span class="long">The High Lords of </span>Illyria</h1>
-    <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span> · <span id="perf">–</span></div>
+    <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span><span class="perf-part"> · <span id="perf">–</span></span></div>
   </div>
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
   <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
@@ -306,42 +296,71 @@
     <button id="speed" aria-label="Game speed">1×</button>
     <button id="withdraw" aria-label="Withdraw to the campaign">Withdraw</button>
     <button id="menuButton" aria-label="More">☰</button>
-    <div id="menu">
-      <button id="restart" class="nofight" aria-label="Restart battle">Restart</button>
-      <button id="scenario" class="battle-only nofight" aria-label="Switch battle">Siege</button>
-      <button id="campaign" class="nofight" aria-label="Play the campaign">Campaign</button>
-      <button id="gfxButton" aria-label="Settings: graphics and voices">⚙</button>
+    <div id="menu" role="menu">
+      <button id="restart" class="nofight battle-only" aria-label="Restart battle">↻ Restart</button>
+      <button id="saveGame" class="camp-only" aria-label="Save the campaign">💾︎ Save</button>
+      <button id="gfxButton" aria-label="Settings: graphics, sound, gameplay, controls">⚙ Settings</button>
+      <button id="controlsButton" aria-label="Controls">✋︎ Controls</button>
+      <button id="manualButton" aria-label="The manual">📖︎ Manual</button>
+      <button id="mainMenu" aria-label="Back to the main menu">⌂ Main menu</button>
+      <!-- The old switches, kept for scripts and tests (the title screen starts the modes now). -->
+      <button id="scenario" class="battle-only nofight legacy" aria-label="Switch battle">Siege</button>
+      <button id="campaign" class="nofight legacy" aria-label="Play the campaign">Campaign</button>
     </div>
   </div>
 </div>
 
-<div id="gfx" class="panel hidden popup">
-  <button class="x" aria-label="Close">✕</button>
-  <h3>Graphics</h3>
-  <div class="presets">
-    <button data-preset="0">Low</button><button data-preset="1">Medium</button><button data-preset="2">High</button>
+<div id="settingsScreen" class="screen hidden popup" role="dialog" aria-labelledby="settingsTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="settingsTitle">Settings</h2></header>
+  <nav class="tabs" role="tablist">
+    <button data-tab="graphics" role="tab">Graphics</button><button data-tab="sound" role="tab">Sound</button>
+    <button data-tab="gameplay" role="tab">Gameplay</button><button data-tab="controls" role="tab">Controls</button>
+  </nav>
+  <div class="body">
+    <section data-pane="graphics">
+      <div class="presets">
+        <button data-preset="0">Low</button><button data-preset="1">Medium</button><button data-preset="2">High</button>
+      </div>
+      <label class="set"><span>Ground detail</span><input type="checkbox" data-bit="1"></label>
+      <label class="set"><span>Grass and ground cover</span><input type="checkbox" data-bit="2"></label>
+      <label class="set"><span>Dense ground cover</span><input type="checkbox" data-bit="64"></label>
+      <label class="set"><span>Sun shadows</span><input type="checkbox" data-bit="4"></label>
+      <label class="set"><span>Sharp, wide shadows</span><input type="checkbox" data-bit="8"></label>
+      <label class="set"><span>Detailed distant land</span><input type="checkbox" data-bit="16"></label>
+      <label class="set"><span>Sky, haze and clouds</span><input type="checkbox" data-bit="32"></label>
+      <label class="set"><span>Full resolution<small>Every pixel the screen has: sharpest, slowest</small></span><input type="checkbox" data-res="1"></label>
+      <label class="set"><span>Dynamic resolution<small>Drawn coarser when the frame rate drops, finer when it recovers</small></span><input type="checkbox" id="dynamicRes"></label>
+      <label class="set"><span>Show frame rate<small>fps and where a frame's time goes, by the game's name</small></span><input type="checkbox" id="showPerf"></label>
+      <div class="note">Looks only: everyone sees the same battle on any setting.</div>
+    </section>
+    <section data-pane="sound">
+      <label class="set"><span>Master volume</span><input type="range" id="masterVolume" min="0" max="100" step="5" aria-label="Master volume"></label>
+      <h3>Voices</h3>
+      <label class="set"><span>Soldiers' voices</span><input type="checkbox" id="voiceOn"></label>
+      <label class="set"><span>Volume</span><input type="range" id="voiceVolume" min="0" max="100" step="5" aria-label="Voice volume"></label>
+      <label class="set"><span>Read unrecorded lines aloud<small>The browser's own voice, for lines not yet recorded</small></span><input type="checkbox" id="voiceSpeech"></label>
+      <h3>Effects</h3>
+      <label class="set"><span>Sound effects</span><input type="checkbox" id="sfxOn"></label>
+      <label class="set"><span>Volume</span><input type="range" id="sfxVolume" min="0" max="100" step="5" aria-label="Sound effects volume"></label>
+      <h3>Ambience</h3>
+      <label class="set"><span>Ambience<small>Wind, swamp, flies, drums, rain</small></span><input type="checkbox" id="ambienceOn"></label>
+      <label class="set"><span>Volume</span><input type="range" id="ambienceVolume" min="0" max="100" step="5" aria-label="Ambience volume"></label>
+      <p class="note"><a href="sfx-test.html" target="_blank" rel="noopener">Test sounds ›</a></p>
+    </section>
+    <section data-pane="gameplay">
+      <label class="set"><span>Campaign speed<small>How fast the days pass when a campaign starts</small></span>
+        <select id="optSpeed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
+      <label class="set"><span>Other lords<small>How well the computer plays, for a new campaign</small></span>
+        <select id="optDifficulty"><option value="0">Easy (Knights)</option><option value="1">Hard (Warlords)</option></select></label>
+      <label class="set"><span>Autosave every day<small>Into the campaign's slot, each dawn</small></span><input type="checkbox" id="optAutosave"></label>
+      <label class="set"><span>Confirm before disbanding<small>Tap an army's card twice to send it home</small></span><input type="checkbox" id="optConfirmDisband"></label>
+      <label class="set"><span>Show hints<small>The reminder of the controls when a battle starts</small></span><input type="checkbox" id="optHints"></label>
+    </section>
+    <section data-pane="controls"></section>
   </div>
-  <label><input type="checkbox" data-bit="1"> Ground detail</label>
-  <label><input type="checkbox" data-bit="2"> Grass and ground cover</label>
-  <label><input type="checkbox" data-bit="64"> Dense ground cover</label>
-  <label><input type="checkbox" data-bit="4"> Sun shadows</label>
-  <label><input type="checkbox" data-bit="8"> Sharp, wide shadows</label>
-  <label><input type="checkbox" data-bit="16"> Detailed distant land</label>
-  <label><input type="checkbox" data-bit="32"> Sky, haze and clouds</label>
-  <label><input type="checkbox" data-res="1"> Full resolution</label>
-  <div class="note">Looks only: everyone sees the same battle on any setting.</div>
-  <h3 class="sub">Voices</h3>
-  <label><input type="checkbox" id="voiceOn"> Soldiers' voices</label>
-  <label>Volume <input type="range" id="voiceVolume" min="0" max="100" step="5" aria-label="Voice volume"></label>
-  <label><input type="checkbox" id="voiceSpeech"> Read unrecorded lines aloud</label>
-  <h3 class="sub">Sound</h3>
-  <label><input type="checkbox" id="sfxOn"> Sound effects</label>
-  <label>Volume <input type="range" id="sfxVolume" min="0" max="100" step="5" aria-label="Sound effects volume"></label>
-  <label><input type="checkbox" id="ambienceOn"> Ambience: wind, swamp, flies, drums</label>
-  <a class="note" href="sfx-test.html" target="_blank" rel="noopener">Test sounds ›</a>
 </div>
 
-<div id="hint" class="panel">
+<div id="hint" class="panel hidden">
   <b>Pinch</b> to zoom from the gods to the mud · <b>drag</b> to pan · <b>twist</b> or right-drag to turn<br>
   <b>Tap</b> a soldier to pick him, again for all his kind in view, or a card for a squad · <b>tap</b> ground to march, an enemy to go after him<br>
   <b>⚔ Attack</b>, then tap: any soldier (ours too), a gate, wall, house or tree, or the ground · <b>hold ⚔</b> for a force march<br>
@@ -394,8 +413,42 @@
 <div id="overlay">
   <h2 id="overlayTitle">Loading…</h2>
   <p id="overlayText">Raising the banners of Oakhaven.</p>
-  <button id="overlayButton" class="hidden">Fight again</button>
+  <div class="acts"><button id="overlayButton" class="hidden">Fight again</button><button id="overlayMenu" class="hidden">Main menu</button></div>
 </div>
+
+<div id="titleScreen" role="main">
+  <div class="title-head">
+    <svg class="crest" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+      <path d="M24 4l16 6v12c0 10-7 17-16 22C15 39 8 32 8 22V10z"/><path d="M14 20l5-5 5 6 5-6 5 5-3 10H17z"/><path d="M17 34h14"/>
+    </svg>
+    <span class="pre">The High Lords of</span>
+    <h1>Illyria</h1>
+    <div class="rule"></div>
+  </div>
+  <div class="title-menu" id="titleMenu"></div>
+  <div class="title-foot"><span>v@ILLYRIA_VERSION@</span></div>
+</div>
+<div id="campaignScreen" class="screen hidden popup" role="dialog" aria-labelledby="campaignTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="campaignTitle">Campaign</h2></header>
+  <div class="body"></div>
+</div>
+<div id="skirmishScreen" class="screen hidden popup" role="dialog" aria-labelledby="skirmishTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="skirmishTitle">Skirmish</h2></header>
+  <div class="body"></div>
+</div>
+<div id="controlsScreen" class="screen hidden popup" role="dialog" aria-labelledby="controlsTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="controlsTitle">Controls</h2></header>
+  <div class="body"></div>
+</div>
+<div id="creditsScreen" class="screen hidden popup" role="dialog" aria-labelledby="creditsTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="creditsTitle">About</h2></header>
+  <div class="body"></div>
+</div>
+<div id="confirmBox" class="hidden" role="alertdialog" aria-labelledby="confirmTitle">
+  <div class="panel"><h3 id="confirmTitle"></h3><p id="confirmText"></p>
+    <div class="choice"><button id="confirmNo">Cancel</button><button id="confirmYes">Yes</button></div></div>
+</div>
+<div id="busy" class="hidden"><h2 id="busyTitle">Loading…</h2><p id="busyText"></p></div>
 
 <script>
 (function () {
@@ -404,7 +457,7 @@
   const version = "@ILLYRIA_VERSION@";
   let api = null;
   let lastSquadsKey = "";
-  let hintShown = true;
+  let hintShown = false;
 
   const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const icons = {
@@ -418,6 +471,24 @@
     siege: svg('<circle cx="7" cy="18" r="3"/><circle cx="17" cy="18" r="3"/><path d="M4 14h16M8 14l9-10"/>'),
   };
 
+  // The controls' reminder when a battle starts (Settings, Gameplay, Show hints).
+  let hintTimer = 0;
+  function showHint() {
+    if (window.IllyriaTitle && !IllyriaTitle.pref("hints")) return;
+    hintShown = true;
+    $("hint").classList.remove("hidden", "fade");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(hideHint, 9000);
+  }
+  // Strings for the engine through the heap: a saved campaign is far too big for the stack ccall uses.
+  function callWithStrings(name, ...strings) {
+    const ptrs = strings.map((t) => {
+      const n = Module.lengthBytesUTF8(t) + 1, p = Module._malloc(n);
+      Module.stringToUTF8(t, p, n);
+      return p;
+    });
+    try { return Module["_" + name](...ptrs); } finally { for (const p of ptrs) Module._free(p); }
+  }
   function hideHint() {
     if (!hintShown) return;
     hintShown = false;
@@ -481,17 +552,28 @@
       labels: Module.cwrap("illyria_labels", "string", []),
       setGraphics: Module.cwrap("illyria_set_graphics", null, ["number", "number"]),
       preset: Module.cwrap("illyria_graphics_preset", "number", ["number"]),
+      setDynamicRes: Module.cwrap("illyria_set_dynamic_resolution", null, ["number"]),
+      campSave: Module.cwrap("illyria_campaign_save", "string", []),
+      campSetSpeed: Module.cwrap("illyria_campaign_set_speed", null, ["number"]),
+      modeError: Module.cwrap("illyria_mode_error", "string", []),
+      modeAvailable: (id) => callWithStrings("illyria_mode_available", id),
+      startMode: (id, options) => callWithStrings("illyria_start_mode", id, options),
     };
     initGraphics();
     buildPicker();
     window.illyria = api;
-    // ?siege opens on the siege of the neutral town; ?campaign on the campaign.
-    if (/[?&]siege\b/.test(location.search)) api.setScenario(1);
+    // ?siege opens on the siege of the neutral town; ?campaign on the campaign;
+    // ?play on the Ford battle; anything else on the title screen. Automated
+    // tests (navigator.webdriver) skip the title unless they ask for ?title.
+    const q = location.search;
+    const skipTitle = /[?&](siege|campaign|play)\b/.test(q) || (navigator.webdriver && !/[?&]title\b/.test(q));
+    if (/[?&]siege\b/.test(q)) api.setScenario(1);
     // ?campaign starts it against Hard lords (?campaign=easy: Easy ones).
-    if (/[?&]campaign\b/.test(location.search)) setCampaign(true, /[?&]campaign=easy\b/.test(location.search) ? 0 : 1);
+    if (/[?&]campaign\b/.test(q)) setCampaign(true, /[?&]campaign=easy\b/.test(q) ? 0 : 1);
     requestAnimationFrame(updateCampaign);
     $("overlay").classList.add("hidden");
-    setTimeout(hideHint, 9000);
+    if (!skipTitle && window.IllyriaTitle) toMenu(false);
+    else { mode = campaign ? "campaign" : "skirmish"; showHint(); }
     updateHud();
     setInterval(updateHud, 250);
     requestAnimationFrame(updateLabels);
@@ -507,33 +589,46 @@
       const level = phone ? 1 : 2;
       gfx = { preset: level, features: api.preset(level), fullRes: !phone };
     }
+    if (typeof gfx.dynamicRes !== "boolean") gfx.dynamicRes = true;
+    if (typeof gfx.showPerf !== "boolean") gfx.showPerf = true;
     applyGraphics();
   }
+  const gfxQ = (sel) => document.querySelectorAll("#settingsScreen " + sel);
   function applyGraphics() {
+    api.setDynamicRes(gfx.dynamicRes ? 1 : 0);
     api.setGraphics(gfx.features, gfx.fullRes ? 3 : 2);  // not full: adapts to the frame rate, up to 2
     try { localStorage.setItem(gfxKey, JSON.stringify(gfx)); } catch (e) {}
-    for (const b of document.querySelectorAll("#gfx [data-preset]")) b.classList.toggle("on", +b.dataset.preset === gfx.preset);
-    for (const c of document.querySelectorAll("#gfx [data-bit]")) c.checked = (gfx.features & +c.dataset.bit) !== 0;
-    document.querySelector("#gfx [data-res]").checked = gfx.fullRes;
+    for (const b of gfxQ("[data-preset]")) b.classList.toggle("on", +b.dataset.preset === gfx.preset);
+    for (const c of gfxQ("[data-bit]")) c.checked = (gfx.features & +c.dataset.bit) !== 0;
+    gfxQ("[data-res]")[0].checked = gfx.fullRes;
+    $("dynamicRes").checked = gfx.dynamicRes;
+    $("dynamicRes").disabled = gfx.fullRes;
+    $("showPerf").checked = gfx.showPerf;
+    document.body.classList.toggle("no-perf", !gfx.showPerf);
   }
-  $("gfxButton").onclick = () => $("gfx").classList.toggle("hidden");
+  $("dynamicRes").onchange = (e) => { gfx.dynamicRes = e.target.checked; applyGraphics(); };
+  $("showPerf").onchange = (e) => { gfx.showPerf = e.target.checked; applyGraphics(); };
+  $("gfxButton").onclick = () => window.IllyriaTitle && IllyriaTitle.open("settings");
+  $("controlsButton").onclick = () => window.IllyriaTitle && IllyriaTitle.open("controls");
+  $("manualButton").onclick = () => window.IllyriaTitle && IllyriaTitle.manual();
+  $("mainMenu").onclick = () => window.IllyriaTitle && IllyriaTitle.confirm("Leave for the main menu?",
+    campaign ? "The campaign is saved first, if it has a slot." : "This battle will be lost.", "Main menu", () => toMenu(true));
+  $("saveGame").onclick = () => window.IllyriaTitle && IllyriaTitle.saveNow();
   // Pop-ups and the ☰ menu: closed by their ✕, a tap on the map, or Esc.
   function closePopups() {
     document.body.classList.remove("menu-open");
-    $("gfx").classList.add("hidden");
     $("picker").classList.add("hidden");
   }
-  $("gfx").querySelector(".x").onclick = () => $("gfx").classList.add("hidden");
   $("news").querySelector(".x").onclick = () => { newsDismissed = true; $("news").classList.add("hidden"); };
   canvas.addEventListener("pointerdown", closePopups);
-  document.addEventListener("keydown", (e) => { if (e.code === "Escape") closePopups(); });
-  for (const b of document.querySelectorAll("#gfx [data-preset]")) {
-    b.onclick = () => { const l = +b.dataset.preset; gfx = { preset: l, features: api.preset(l), fullRes: l === 2 }; applyGraphics(); };
+  document.addEventListener("keydown", (e) => { if (e.code === "Escape" && !document.body.classList.contains("screen-open")) closePopups(); });
+  for (const b of gfxQ("[data-preset]")) {
+    b.onclick = () => { const l = +b.dataset.preset; gfx = { ...gfx, preset: l, features: api.preset(l), fullRes: l === 2 }; applyGraphics(); };
   }
-  for (const c of document.querySelectorAll("#gfx [data-bit]")) {
+  for (const c of gfxQ("[data-bit]")) {
     c.onchange = () => { gfx.features = c.checked ? gfx.features | +c.dataset.bit : gfx.features & ~+c.dataset.bit; gfx.preset = -1; applyGraphics(); };
   }
-  document.querySelector("#gfx [data-res]").onchange = (e) => { gfx.fullRes = e.target.checked; gfx.preset = -1; applyGraphics(); };
+  gfxQ("[data-res]")[0].onchange = (e) => { gfx.fullRes = e.target.checked; gfx.preset = -1; applyGraphics(); };
 
   // Map labels track the camera every frame; elements are reused.
   const labelPool = [];
@@ -641,6 +736,54 @@
   $("speed").onclick = () => api && (campaign ? api.campSpeed() : api.speed());
   $("restart").onclick = () => { if (!api) return; if (campaign) api.campStart(campLevel); else api.restart(); };
   let campaign = false, campLevel = 1;  // 0: Easy computer lords, 1: Hard
+  let mode = "title";  // the mode being played (docs/GAME_DESIGN.md §4.6)
+  // The page's side of a mode starting: the HUD cleared and set for it.
+  function resetHud() {
+    campaign = false;
+    campFight = false;
+    document.body.classList.remove("campaign", "campfight", "at-title", "menu-open");
+    for (const id of ["overlay", "cityPanel", "battlePrompt", "hirePrompt", "levelPrompt", "voyage", "news", "picker", "toast"]) $(id).classList.add("hidden");
+    $("overlayMenu").classList.add("hidden");
+    $("banners").innerHTML = "";
+    $("cards").innerHTML = "";
+    lastSquadsKey = "";
+    campArmiesKey = "";
+    campCityKey = "";
+    newsShown = "";
+    newsDismissed = false;
+    hideHint();
+  }
+  // Starts a mode by its id with its options (an object): false (and why, in
+  // the toast) when the engine has no such mode or it could not start.
+  function startMode(id, options) {
+    if (!api) return false;
+    if (!api.startMode(id, JSON.stringify(options || {}))) return false;
+    resetHud();
+    mode = id;
+    if (id === "title") document.body.classList.add("at-title");
+    else if (id === "campaign") {
+      campaign = true;
+      campLevel = options && options.hard === 0 ? 0 : 1;
+      document.body.classList.add("campaign");
+      $("campaign").textContent = "Battle";
+    } else {
+      $("campaign").textContent = "Campaign";
+      showHint();
+    }
+    // A mode built elsewhere (Horde, Capture the Flag) sets up its own HUD.
+    const m = window.IllyriaModes && window.IllyriaModes[id];
+    if (m && m.started) m.started(options || {});
+    updateHud();
+    return true;
+  }
+  // Back to the title screen; from a campaign, saving it first (when asked and it has a slot).
+  function toMenu(save) {
+    if (save && window.IllyriaTitle && (campaign || campFight)) IllyriaTitle.autosave(true);
+    const m = window.IllyriaModes && window.IllyriaModes[mode];
+    if (m && m.stopped) m.stopped();
+    startMode("title");
+    if (window.IllyriaTitle) IllyriaTitle.show();
+  }
   function setCampaign(on, level) {
     campaign = on;
     document.body.classList.toggle("campaign", on);
@@ -649,6 +792,8 @@
     lastSquadsKey = "";
     // A battle's end (won at its capture point, say) is not the campaign's.
     $("overlay").classList.add("hidden");
+    document.body.classList.remove("at-title");
+    mode = on ? "campaign" : "skirmish";
     if (on) { campLevel = level; api.campStart(level); } else api.campLeave();
     if (!on) { $("banners").innerHTML = ""; $("cityPanel").classList.add("hidden"); }
   }
@@ -706,6 +851,7 @@
   let scenario = 0;
   $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
   $("overlayButton").onclick = () => { if (!api) return; if (campFight) returnToCampaign(); else api.restart(); };
+  $("overlayMenu").onclick = () => api && toMenu(true);
   $("hold").onclick = () => api && api.stop();
   $("charge").onclick = () => api && api.charge();
   $("scatter").onclick = () => api && api.scatter();
@@ -753,6 +899,7 @@
   // F finds, ` picks the heroes, Esc lets go; shift-drag draws a box, shift-click adds.
   let lastGroupKey = -1, lastGroupMs = 0;
   document.addEventListener("keydown", (e) => {
+    if (document.body.classList.contains("screen-open") || document.body.classList.contains("at-title")) return;
     if (e.key === "Shift" && api) api.setShift(1);
     if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
     if (!api || campaign || e.repeat) return;
@@ -872,6 +1019,7 @@
     for (let k = campState.banners.length; k < raises.length; ++k) raises[k].style.display = "none";
     if (t - campTick < 250) return;
     campTick = t;
+    if (window.IllyriaTitle) IllyriaTitle.campaignTick(campState);
     $("campDay").textContent = campState.day;
     $("campGold").textContent = campState.gold;
     $("campCities").textContent = campState.cities;
@@ -918,7 +1066,8 @@
         if (!a.level && !a.artifacts) {
           // Tap twice to disband: the army goes home and costs no more upkeep.
           b.onclick = () => {
-            if (b.dataset.armed) { api.campDisband(a.id); toast(`${a.name || a.type} disbanded and went home`); return; }
+            const confirmFirst = !window.IllyriaTitle || IllyriaTitle.pref("confirmDisband");
+            if (b.dataset.armed || !confirmFirst) { api.campDisband(a.id); toast(`${a.name || a.type} disbanded and went home`); return; }
             b.dataset.armed = "1";
             toast(`Tap ${a.name || a.type} again to disband it (no more upkeep)` +
               (a.rare || a.rank >= 2 ? `: ${a.rare ? "rare troops" : `${campRanks[a.rank].toLowerCase()}s`} can never be replaced` : ""));
@@ -1033,6 +1182,7 @@
     }
     if (campState.winner) {
       $("overlay").classList.remove("hidden");
+      $("overlayMenu").classList.remove("hidden");
       $("overlayTitle").textContent = campState.winner === 1 ? "High Lord of Illyria" : "Illyria is lost";
       $("overlayText").textContent = campState.winner === 1 ? "The other lords of Illyria lay down their arms before you."
                                                               : "Another lord has won Illyria, and the rest bow to him.";
@@ -1185,7 +1335,7 @@
       }
     }
 
-    if (s.outcome !== 0) {
+    if (s.outcome !== 0 && mode !== "title") {
       $("overlay").classList.remove("hidden");
       $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
       $("overlayText").textContent = s.outcome === 1
@@ -1199,10 +1349,23 @@
         $("overlayButton").textContent = "Fight again";
       }
       $("overlayButton").classList.remove("hidden");
+      $("overlayMenu").classList.remove("hidden");
     } else if ($("overlayButton").offsetParent !== null) {
       $("overlay").classList.add("hidden");
     }
   }
+
+  window.IllyriaGame = {
+    startMode,
+    toMenu,
+    toast,
+    mode: () => mode,
+    api: () => api,
+    inCampaign: () => campaign || campFight,
+    fighting: () => campFight,
+    campState: () => (api && campaign ? JSON.parse(api.campState()) : null),
+    closePopups,
+  };
 
   window.Module = {
     canvas,
@@ -1212,6 +1375,7 @@
   };
 })();
 </script>
+<script src="title.js?v=@ILLYRIA_VERSION@"></script>
 <script src="audio.js?v=@ILLYRIA_VERSION@"></script>
 <script src="voice.js?v=@ILLYRIA_VERSION@"></script>
 <script src="sfx.js?v=@ILLYRIA_VERSION@"></script>

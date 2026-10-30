@@ -21,7 +21,7 @@ A real-time tactical strategy game with grand-strategy campaign mechanics: the s
 | Select a squad | Tap a blue soldier or a squad card | Click |
 | March / attack | Tap ground / tap an enemy | Click |
 
-The ⚙ button opens the graphics settings: Low, Medium or High, or switch individual effects on and off. They change only the look; every setting plays the same battle.
+Settings (on the title screen, or ⚙ Settings in the in-game ☰ menu) hold the graphics (Low, Medium or High, or each effect on and off: they change only the look, every setting plays the same battle), the sound and gameplay settings, and Controls lists every gesture, click and key. The campaign keeps three save slots in the browser.
 
 ## Layout
 

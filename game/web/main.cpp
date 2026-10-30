@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
@@ -73,6 +74,7 @@ struct App {
     // Dynamic resolution: as sharp as the device can draw at a steady rate,
     // between the settings' floor and ceiling (see adaptResolution).
     double minPixelRatio = 1.0, ratio = 1.5;
+    bool dynamicResolution = true;  // off: always the settings' ceiling
     double slowSince = -1, fastSince = -1;
     double fps = 60;
     float rain = 0;              // weather hook (illyria_set_rain)
@@ -104,6 +106,12 @@ struct App {
         std::vector<uint8_t> owners;
         int64_t territoryTick = -1;
     } camp;
+    // The title screen: the battlefield, still, the camera slowly circling it
+    // (cheaply: low resolution, every other frame) behind the page's menu.
+    bool title = false;
+    V3 titleAt;
+    unsigned frameCount = 0;
+    std::string saved, error;  // the last save written, and why the last load failed
     // The opening swoop from the whole continent down to the battle.
     double introStartMs = -1;
     V3 introFrom, introTo;
@@ -188,6 +196,7 @@ void resizeCanvas() {
     double cssW = 0, cssH = 0;
     emscripten_get_element_css_size("#canvas", &cssW, &cssH);
     app->pixelRatio = static_cast<float>(std::min({emscripten_get_device_pixel_ratio(), app->maxPixelRatio, std::max(app->ratio, app->minPixelRatio)}));
+    if (app->title) app->pixelRatio = std::min(app->pixelRatio, 1.0f);  // behind the menu: cheap
     const int w = std::max(1, static_cast<int>(cssW * app->pixelRatio));
     const int h = std::max(1, static_cast<int>(cssH * app->pixelRatio));
     int curW = 0, curH = 0;
@@ -447,14 +456,17 @@ void campaignTap(float px, float py) {
     cv.city = -1;
 }
 
-void startCampaign(bool hard) {
+// A new campaign, or one read back from a save.
+void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
-    cv.continent = app->battle->continentShared();
-    cv.c = std::make_unique<C>(*cv.continent, kBattleSeed);
-    cv.c->setHuman(0, true);
-    cv.hard = hard;
-    cv.c->setComputerDifficulty(hard ? illyria::sim::Difficulty::Hard : illyria::sim::Difficulty::Easy);
+    cv.c = std::move(campaign);
+    cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
+    cv.owners.clear();
+    cv.territoryTick = -1;
+    cv.vectorFrom = -1;
+    cv.acc = 0;
+    app->title = false;
     cv.on = true;
     cv.paused = false;
     cv.speed = 1;
@@ -475,12 +487,97 @@ void startCampaign(bool hard) {
     }
 }
 
+void startCampaign(bool hard) {
+    App::CampaignView& cv = app->camp;
+    cv.continent = app->battle->continentShared();
+    auto c = std::make_unique<illyria::sim::Campaign>(*cv.continent, kBattleSeed);
+    c->setHuman(0, true);
+    c->setComputerDifficulty(hard ? illyria::sim::Difficulty::Hard : illyria::sim::Difficulty::Easy);
+    startCampaign(std::move(c));
+}
+
+// Out of whatever is being played (a campaign, its 3D battle, a skirmish), back
+// to a battlefield to show behind the title screen.
+void stopPlaying() {
+    App::CampaignView& cv = app->camp;
+    if (cv.fighting) {
+        app->battle = std::move(cv.backdrop);
+        app->renderer.reset(*app->battle);
+        cv.fighting = false;
+    }
+    if (cv.on) {
+        cv.on = false;
+        cv.city = -1;
+        cv.selected = 0;
+        app->renderer.setTerritory({}, 0, 0, 0);
+        app->renderer.setBoats({});
+        app->renderer.setPiers({});
+    }
+    app->renderer.setShowUnits(true);
+    app->battle->voice().take();
+    app->battle->sfx().take();
+    set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    app->ambienceSeen = ~0u;
+}
+
+void startTitle() {
+    stopPlaying();
+    app->title = true;
+    app->introStartMs = -1;
+    // Circle the player's army, near enough to see men and banners.
+    const Battle& b = *app->battle;
+    V3 sum{0, 0, 0};
+    int n = 0;
+    for (const Squad& q : b.squads()) {
+        if (q.owner != Battle::kPlayer || b.aliveCount(q) == 0) continue;
+        sum = sum + b.squadCentre(q);
+        ++n;
+    }
+    app->titleAt = n ? sum * (1.0f / static_cast<float>(n)) : V3{Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0};
+    app->camera.lookAt(app->titleAt.x, app->titleAt.y, 95);
+}
+
+void stepTitle(double dtMs) {
+    app->camera.rotate(static_cast<float>(dtMs / 1000.0 * 0.035));  // a full turn in three minutes
+    app->camera.lookAt(app->titleAt.x, app->titleAt.y, 95);
+}
+
+// The other game modes (Horde, Capture the Flag: game/src/mode_*.cpp) are
+// listed and started here: otherModeAvailable says whether one is built in,
+// startOtherMode starts it (stopPlaying() first) and is true when it has. See
+// docs/GAME_DESIGN.md §4.6 for the contract; until a mode is built in, the
+// title screen marks it "coming soon".
+bool otherModeAvailable(const std::string& id) {
+    (void)id;
+    return false;
+}
+bool startOtherMode(const std::string& id, const std::string& options) {
+    (void)options;
+    if (!otherModeAvailable(id)) return false;
+    stopPlaying();
+    return false;
+}
+
+// A number in a flat JSON object of options, or the fallback.
+double optionNumber(const std::string& json, const char* key, double fallback) {
+    const std::string k = std::string("\"") + key + "\":";
+    const size_t at = json.find(k);
+    if (at == std::string::npos) return fallback;
+    return std::atof(json.c_str() + at + k.size());
+}
+
 void frame() {
     const double now = emscripten_get_now();
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
     adaptResolution(now);
+    ++app->frameCount;
+    if (app->title) {
+        // Behind the menu: half the frames, and no sharper than a pixel a point.
+        stepTitle(dtMs);
+        if (app->frameCount % 2) return;
+    }
     resizeCanvas();
     stepIntro(now);
     app->gestures->update(now);
@@ -499,7 +596,7 @@ void frame() {
             app->hushed = true;
             app->ambienceSeen = ~0u;
         }
-    } else {
+    } else if (!app->title) {
         // The soldiers are heard from the view centre, the camera's right to the right.
         const V3 eye = app->camera.eye(), at = app->camera.target();
         const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
@@ -910,12 +1007,14 @@ EMSCRIPTEN_KEEPALIVE void illyria_cycle_speed() {
 EMSCRIPTEN_KEEPALIVE void illyria_set_scenario(int scenario) {
     gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
     if (!app) return;
+    app->title = false;
     newBattle();
     app->renderer.reset(*app->battle);
     frameCamera();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_restart() {
     if (!app) return;
+    app->title = false;
     newBattle();
     app->renderer.reset(*app->battle);
     frameCamera();
@@ -1180,7 +1279,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRati
     app->renderer.setFeatures(features);
     // "Full resolution" pins the device's own; otherwise the frame rate decides, up to 2.
     app->maxPixelRatio = std::clamp(maxPixelRatio, 0.5, kMaxPixelRatio);
-    app->minPixelRatio = maxPixelRatio >= kMaxPixelRatio ? kMaxPixelRatio : 1.0;
+    app->minPixelRatio = maxPixelRatio >= kMaxPixelRatio || !app->dynamicResolution ? app->maxPixelRatio : 1.0;
+}
+// Dynamic resolution on or off (Settings, Graphics); takes effect with the next illyria_set_graphics.
+EMSCRIPTEN_KEEPALIVE void illyria_set_dynamic_resolution(int on) {
+    if (app) app->dynamicResolution = on != 0;
 }
 EMSCRIPTEN_KEEPALIVE int illyria_graphics_preset(int level) {
     return level <= 0 ? Renderer::kLow : level == 1 ? Renderer::kMedium : Renderer::kHigh;
@@ -1258,6 +1361,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
 // The campaign: start it (0: Easy computer lords, 1: Hard), give orders, and read its state.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_start(int hard) {
     if (app) startCampaign(hard != 0);
+    if (app) app->title = false;
 }
 // The pending battle: settle it with the dice, or fight it in 3D.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_resolve() {
@@ -1830,6 +1934,77 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     }
     s += "]}";
     return s.c_str();
+}
+
+// The game modes (docs/GAME_DESIGN.md §4.6): one entry for all of them, so
+// the title screen starts each the same way. Ids: "title" (the menu's
+// backdrop: the last battlefield, still), "skirmish" ({"scenario":0} Ford,
+// 1 Siege), "campaign" ({"hard":1} new, {"hard":0} Easy lords, or
+// {"save":"ILC1...."} to carry on a saved one), and the modes built into
+// startOtherMode ("horde", "ctf"). 1 when started, 0 when the mode is not
+// built in or could not start (illyria_mode_error says why).
+EMSCRIPTEN_KEEPALIVE int illyria_start_mode(const char* id, const char* options) {
+    if (!app) return 0;
+    const std::string mode = id ? id : "", opts = options ? options : "{}";
+    app->error.clear();
+    if (mode == "title") {
+        startTitle();
+        return 1;
+    }
+    if (mode == "skirmish") {
+        stopPlaying();
+        app->title = false;
+        gScenario = optionNumber(opts, "scenario", 0) == 1 ? Scenario::Siege : Scenario::Ford;
+        newBattle();
+        app->renderer.reset(*app->battle);
+        frameCamera();
+        return 1;
+    }
+    if (mode == "campaign") {
+        const size_t at = opts.find("\"save\":\"");
+        if (at != std::string::npos) {
+            const size_t from = at + 8, to = opts.find('"', from);
+            std::string why;
+            const std::shared_ptr<const illyria::sim::Continent> continent =
+                app->camp.fighting && app->camp.backdrop ? app->camp.backdrop->continentShared() : app->battle->continentShared();
+            std::unique_ptr<illyria::sim::Campaign> c = illyria::sim::Campaign::load(*continent, opts.substr(from, to - from), &why);
+            if (!c) {
+                app->error = "This save cannot be read: " + why + ".";
+                return 0;
+            }
+            stopPlaying();
+            app->camp.continent = continent;
+            startCampaign(std::move(c));
+        } else {
+            stopPlaying();
+            startCampaign(optionNumber(opts, "hard", 1) != 0);
+        }
+        app->title = false;
+        app->camp.speed = std::clamp(static_cast<int>(optionNumber(opts, "speed", 1)), 1, 8);
+        return 1;
+    }
+    if (startOtherMode(mode, opts)) {
+        app->title = false;
+        return 1;
+    }
+    if (app->error.empty()) app->error = "Not built yet.";
+    return 0;
+}
+EMSCRIPTEN_KEEPALIVE const char* illyria_mode_error() { return app ? app->error.c_str() : ""; }
+// Whether a mode is built into this version (the title screen asks, to mark the rest "coming soon").
+EMSCRIPTEN_KEEPALIVE int illyria_mode_available(const char* id) {
+    const std::string mode = id ? id : "";
+    return mode == "title" || mode == "skirmish" || mode == "campaign" || otherModeAvailable(mode) ? 1 : 0;
+}
+
+// The campaign as text, to keep in a save slot ("" when none is being played).
+EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_save() {
+    if (!app || !app->camp.c || !(app->camp.on || app->camp.fighting)) return "";
+    app->saved = app->camp.c->save();
+    return app->saved.c_str();
+}
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_set_speed(int speed) {
+    if (app) app->camp.speed = std::clamp(speed, 1, 8);
 }
 
 }  // extern "C"
