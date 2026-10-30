@@ -69,7 +69,7 @@
         ctx = window.IllyriaAudio ? window.IllyriaAudio.context() : null;
         if (!ctx) return;
         master = ctx.createGain();
-        master.connect(ctx.destination);
+        master.connect((window.IllyriaAudio && window.IllyriaAudio.output()) || ctx.destination);
         applyVolume();
       }
       if (window.IllyriaAudio) window.IllyriaAudio.unlock();
@@ -316,6 +316,8 @@
     cue,
     playLine,
     settings,
+    // The settings screen: change some settings, apply and keep them.
+    set(o) { Object.assign(settings, o); if (!settings.on && window.speechSynthesis) speechSynthesis.cancel(); if (settings.on) unlock(); applyVolume(); save(); },
     log,
     // Test hook: the last n played or dropped cues.
     recent: (n) => log.slice(-(n || 20)),

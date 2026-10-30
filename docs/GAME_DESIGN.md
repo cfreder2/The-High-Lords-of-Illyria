@@ -421,6 +421,26 @@ Heroes are what make the campaign more than a war of production. A hero is a sin
 
 Still to settle: temple quests.
 
+### 4.6 The Title Screen, Game Modes and Saved Games (built)
+
+The game opens on a **title screen** (`game/web/title.js`, `title.css`): the name in the HUD's gold serif over the battlefield, which the engine keeps drawing behind a vignette, still, the camera slowly circling the player's army (a full turn in three minutes; cheap on phones: one pixel a CSS point and every other frame). Its buttons sit low, in thumb reach: **Continue** (the most recently saved campaign, when there is one), **Campaign**, **Skirmish** (Oakhaven Ford or the siege), **Horde**, **Capture the Flag** (marked *soon* until built in), then **Manual** (`manual.html`, opened beside the game), **Settings**, **Controls** and **About** (version, credits). Arrow keys move between buttons, Enter chooses, Esc goes back. The address can skip it: `?play` (the Ford battle), `?siege`, `?campaign` (`=easy`); automated browsers (`navigator.webdriver`) skip it unless the address has `?title`, so the screenshot scripts keep working.
+
+**Save slots.** Three, in the browser's local storage (`illyria.save.1` to `.3`), each showing the day, gold, cities, the lords' difficulty and when it was saved, with Continue, New game and Delete. A slot holds the campaign's **whole state** (`Campaign::save`, `engine/sim/src/campaign_save.cpp`): every changing field as varints and length-prefixed strings, base64 text with the prefix `ILC1.`, sealed with a hash of its bytes and ending with the campaign's checksum; what the map decides (terrain, rivers, hexes, outposts, march fields) is rebuilt by the constructor from the same continent and seed. `Campaign::load` refuses a save that is damaged, from another layout, or from another map (a print of the campaign grid and the cities' cells), and one whose restored state does not hash to the saved checksum. About 45 KB at day 30; loading is instant. The campaign **autosaves into its slot at every dawn** (Settings, Gameplay), and on the way to the main menu; the ☰ menu's **Save** saves now, or asks for a slot when the campaign has none. A campaign saved while a battle waits comes back with that battle waiting (one saved in the middle of its 3D battle comes back at the choice to fight or resolve it). `tests/test_campaign_save.cpp` checks that a restored campaign hashes and saves the same as the original and then carries on identically day after day, with a pending battle too, and that damaged and foreign saves are refused. **New campaign state must be written and read in `campaign_save.cpp`**; the round-trip test fails otherwise.
+
+**Settings** (from the title or the ☰ menu's ⚙ Settings; the old ⚙ panel's controls, on one page with tabs): *Graphics* (Low / Medium / High, each feature, full resolution, dynamic resolution, show the frame rate), *Sound* (master volume, then voices, effects and ambience each on/off with a volume, and reading unrecorded lines aloud; `audio.js` owns the master gain both `voice.js` and `sfx.js` play into), *Gameplay* (the campaign's starting speed, the default difficulty, autosave, confirm before disbanding, show hints), *Controls* (below). Kept in local storage: `illyria.graphics.v1`, `illyria.audio.v1`, `illyria.voice.v1`, `illyria.sfx.v1`, `illyria.settings.v1`.
+
+**Controls** is the reference for every gesture, click and key there is (§4.1.2, §5.6), sketched: phone and tablet (pan, pinch, twist; tap, tap again, cards, hold-and-drag box; tap to march or attack, hold-and-drag to face, ⚔ Attack and its held force march, the formation picker, Scatter, Hold, Find; saving and holding group cards; the top bar; the campaign map) and mouse and keys (clicks with Shift, Ctrl/⌘ and Alt, right-drag, wheel, the number keys, formations, S A M H F ` Esc Space, the menus' keys).
+
+In play, the ☰ menu has Restart (a battle), Save (a campaign), Settings, Controls, Manual and **Main menu** (after a confirmation); Victory, Defeat and the war's end offer **Main menu** too.
+
+**The mode contract.** Every mode starts through one entry, so the title screen starts each the same way:
+
+- C++: `int illyria_start_mode(const char* id, const char* optionsJson)` (`game/web/main.cpp`), 1 when started, 0 when the mode is not built in or could not start (`illyria_mode_error()` says why); `int illyria_mode_available(const char* id)`.
+- JS: `IllyriaGame.startMode(id, options)` (index.html) calls it with the options as JSON (through the heap: a save is too big for the stack), clears the HUD and sets the page up for the mode; `IllyriaGame.toMenu(save)` goes back to the title (saving a campaign first when asked).
+- Ids and options: `"title"` (the menu's backdrop: the last battlefield, still), `"skirmish"` `{"scenario": 0 Ford | 1 Siege}`, `"campaign"` `{"hard": 0|1, "speed": 1-8}` or `{"save": "ILC1....", "speed": n}`, `"horde"`, `"ctf"`.
+- A new mode (Horde, Capture the Flag: `game/src/mode_*.cpp`) answers in `otherModeAvailable(id)` and starts in `startOtherMode(id, options)` in main.cpp (calling `stopPlaying()` first, then setting up its battle); the title screen then lists it as playable. On the page it may register `window.IllyriaModes[id] = { available, menu(), started(options), stopped() }`: `menu` shows its own page of options before calling `IllyriaGame.startMode` itself, `started` sets up its HUD, `stopped` tears it down.
+- Returning to the menu: the player's ☰ Main menu, the Victory/Defeat overlay's Main menu (the battle's `outcome` in `illyria_hud`), or the mode calling `IllyriaGame.toMenu()` (from C++: `EM_ASM(window.IllyriaGame && IllyriaGame.toMenu(false))`).
+
 ### 4.3 AI Generals & Attention
 
 - Nobody can micromanage nine fronts. Any army can be delegated to an AI general (with a stance: hold, skirmish, assault, retreat at X% losses).
@@ -620,7 +640,7 @@ The complete game (campaign, battles, multiplayer) must be playable in a phone b
 
 **Minimum spec (proposed):** iPhone 12 (A14, iOS 26 Safari) and Android phones of Snapdragon 7-series / Pixel 6a class (Chrome) from 2021 onward, ~4 GB RAM. WebGPU on both (Safari since iOS 26, Chrome on Android 12+), WebGL 2 fallback with reduced cosmetics.
 
-**Graphics settings (built).** Everything that only changes the look can be switched off: the ⚙ panel, `Renderer::Feature`. Every setting simulates the same battle, so players on different settings stay in lockstep. Phones start on Medium; anything else starts on High.
+**Graphics settings (built).** Everything that only changes the look can be switched off: Settings, Graphics (§4.6), `Renderer::Feature`. Every setting simulates the same battle, so players on different settings stay in lockstep. Phones start on Medium; anything else starts on High.
 
 | Feature | High | Medium | Low |
 |---|---|---|---|

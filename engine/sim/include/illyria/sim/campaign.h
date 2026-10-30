@@ -9,6 +9,7 @@
 // player chooses to). Deterministic: integers and the seeded Rng only.
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -362,6 +363,14 @@ public:
     // that are not raising its banner there.
     int32_t bannerContest(int32_t city, uint8_t raiser) const;
     uint64_t checksum() const;
+    // Saved games (campaign_save.cpp): the whole state as printable text, and
+    // a campaign rebuilt from it on the same continent, identical to the one
+    // saved (nullptr, and why, for a damaged save or one from another map).
+    // New state must be written and read there too: tests/test_campaign_save.cpp
+    // checks that a restored campaign carries on exactly like the original.
+    std::string save() const;
+    static std::unique_ptr<Campaign> load(const Continent& continent, const std::string& text, std::string* error = nullptr);
+    uint64_t seed() const { return seed_; }
 
 private:
     void initTerrain();
@@ -423,6 +432,7 @@ private:
     void hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_t city);
 
     const Continent& continent_;
+    uint64_t seed_ = 0;
     Rng rng_;
     uint32_t tick_ = 0;
     uint32_t nextId_ = 1;

@@ -15,7 +15,7 @@
   let version = "";
   try { version = new URL(document.currentScript.src).searchParams.get("v") || ""; } catch (e) {}
 
-  const settings = { on: true, volume: 0.8, ambience: true };
+  const settings = { on: true, volume: 0.8, ambience: true, ambienceVolume: 1 };
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey));
     if (saved && typeof saved.on === "boolean") Object.assign(settings, saved);
@@ -65,7 +65,7 @@
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -8; limiter.knee.value = 6; limiter.ratio.value = 8;
     limiter.attack.value = 0.003; limiter.release.value = 0.2;
-    master.connect(limiter); limiter.connect(ctx.destination);
+    master.connect(limiter); limiter.connect((window.IllyriaAudio && window.IllyriaAudio.output()) || ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.connect(master);
     ambBus = ctx.createGain(); ambBus.connect(master);
     reverb = ctx.createConvolver();
@@ -106,7 +106,7 @@
   function applyVolume() {
     if (!master) return;
     master.gain.value = settings.on ? settings.volume : 0;
-    ambBus.gain.setTargetAtTime(settings.on && settings.ambience ? 1 : 0, ctx.currentTime, 0.3);
+    ambBus.gain.setTargetAtTime(settings.on && settings.ambience ? settings.ambienceVolume : 0, ctx.currentTime, 0.3);
   }
 
   function unlock(c) {
@@ -298,13 +298,16 @@
   function bind() {
     watchPanels();
     const on = document.getElementById("sfxOn"), vol = document.getElementById("sfxVolume"), amb = document.getElementById("ambienceOn");
+    const ambVol = document.getElementById("ambienceVolume");
     if (!on || !vol || !amb) return;
     const show = () => {
       on.checked = settings.on;
       vol.value = Math.round(settings.volume * 100);
       amb.checked = settings.ambience;
       vol.disabled = amb.disabled = !settings.on;
+      if (ambVol) { ambVol.value = Math.round(settings.ambienceVolume * 100); ambVol.disabled = !settings.on || !settings.ambience; }
     };
+    if (ambVol) ambVol.oninput = () => { settings.ambienceVolume = +ambVol.value / 100; applyVolume(); save(); };
     on.onchange = () => {
       settings.on = on.checked;
       if (settings.on && window.IllyriaAudio) { window.IllyriaAudio.unlock(); window.IllyriaAudio.onUnlock(unlock); }
@@ -312,7 +315,7 @@
       if (settings.on && lastAmbience) { const a = lastAmbience; ambience(a.windMountain, a.windValley, a.swamp, a.swampPan, a.flies, a.fliesPan, a.drums, a.drumsPan, a.rain); }
     };
     vol.oninput = () => { settings.volume = +vol.value / 100; applyVolume(); save(); };
-    amb.onchange = () => { settings.ambience = amb.checked; applyVolume(); save(); if (!amb.checked) stopAmbience(); };
+    amb.onchange = () => { settings.ambience = amb.checked; applyVolume(); save(); show(); if (!amb.checked) stopAmbience(); };
     show();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
