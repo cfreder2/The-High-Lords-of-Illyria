@@ -87,6 +87,8 @@ constexpr Fixed kBombFriction = Fixed::fromRatio(2, 5);
 constexpr Fixed kBombAimFraction = Fixed::fromRatio(7, 10);
 // An arrow falling faster than this sticks into the ground; slower, it lies flat.
 constexpr Fixed kStickSpeed = Fixed::fromInt(9);
+// A body part flying faster than this hurts whoever it strikes (a kick is far slower).
+constexpr Fixed kDebrisHurtSpeed = Fixed::fromInt(6);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
 // Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
@@ -916,7 +918,7 @@ void World::kickRemains(Unit& u, const Vec3& moveDir) {
         const Fixed side = rng_.nextSigned() / 2;
         const Fixed lift = Fixed::fromRatio(3, 10) + rng_.nextUnit() * 3 / 10;
         const Vec3 vel = moveDir * push + Vec3{-moveDir.y * side, moveDir.x * side, lift};
-        spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), vel);
+        spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), vel, r.source);
         clearRemain(slot);
     }
 }
@@ -1322,10 +1324,29 @@ void World::updateProjectiles() {
                 continue;
             }
             const Vec3 travel = p.vel.flat();
-            if (tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks) {
+            const Vec3 prev = p.pos;
+            const Fixed speedSq = p.vel.lengthSq();
+            const bool done = tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks;
+            // A body part flying fast (thrown by a blast, or by a hand) hurts
+            // the first man it strikes, a little, once; a kick never does.
+            if (!done && p.remain != RemainKind::Arrow && p.damage == 0 && speedSq >= kDebrisHurtSpeed * kDebrisHurtSpeed) {
+                if (Unit* hit = debrisHit(prev, p.pos)) {
+                    const Fixed speed = sqrt(speedSq);
+                    int32_t amount = std::clamp<int32_t>((speed / 3).floorToInt(), 2, 8);
+                    if (p.remain == RemainKind::Torso) amount = amount * 3 / 2;
+                    Blow blow;
+                    blow.type = DamageType::Blunt;
+                    blow.dir = normalized(p.vel);
+                    blow.at = p.pos;
+                    damage(*hit, amount, nullptr, blow);
+                    p.damage = amount;  // spent: it strikes no one else
+                    p.vel = p.vel / Fixed::fromInt(4);  // and drops
+                }
+            }
+            if (done) {
                 Vec3 lie = normalized(travel);
                 if (lie.lengthSq() == Fixed::zero()) lie = {Fixed::one(), Fixed::zero(), Fixed::zero()};
-                placeRemain(p.remain, p.owner, p.pos, lie);
+                placeRemain(p.remain, p.owner, p.pos, lie, p.source);
                 removed[i] = 1;
             }
             continue;
@@ -1482,7 +1503,7 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
         const Fixed jz = rng_.nextUnit() * 2;
         const Vec3 jitter{jx, jy, jz};
         const Vec3 away = awayFrom(r.pos);
-        spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), away * v + up(v) + jitter);
+        spawnDebris(r.kind, r.owner, r.pos + up(Fixed::fromRatio(1, 10)), away * v + up(v) + jitter, r.source);
         clearRemain(i);
     }
 
@@ -1523,15 +1544,37 @@ void World::spawnGibs(Unit& victim, const Vec3& from, Fixed strength) {
         const Fixed sideY = rng_.nextSigned() * 3;
         const Fixed heft = part == RemainKind::Torso ? Fixed::fromRatio(3, 5) : Fixed::one();  // the trunk flies less far
         const Vec3 vel = away * (strength * outward * heft) + up(strength * lift * heft) + Vec3{sideX, sideY, Fixed::zero()};
-        spawnDebris(kind, victim.owner, origin, vel);
+        spawnDebris(kind, victim.owner, origin, vel, static_cast<uint8_t>(victim.stats.type));
         spawned_.back().bleeding = victim.stats.bleeds;
     }
 }
 
-void World::spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel) {
+// The first living man a flying body part passes through between two points
+// (his upright cylinder, as an arrow finds him), or null.
+Unit* World::debrisHit(const Vec3& a, const Vec3& b) {
+    const Vec3 seg = b - a;
+    const Vec3 segFlat = seg.flat();
+    const Fixed lenSq = segFlat.lengthSq();
+    Unit* hit = nullptr;
+    Fixed hitT = Fixed::fromInt(2);
+    for (Unit& u : units_) {
+        if (!u.alive() || u.inAir()) continue;
+        const Fixed t = lenSq != Fixed::zero() ? clamp((u.pos - a).flat().dot(segFlat) / lenSq, Fixed::zero(), Fixed::one()) : Fixed::zero();
+        if (t >= hitT) continue;
+        const Vec3 closest = a + seg * t;
+        if ((closest - u.pos).flat().lengthSq() > u.stats.radius * u.stats.radius) continue;
+        if (closest.z < u.pos.z || closest.z > u.pos.z + u.stats.height) continue;
+        hit = &u;
+        hitT = t;
+    }
+    return hit;
+}
+
+void World::spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source) {
     Projectile p;
     p.id = nextId_++;
     p.owner = owner;
+    p.source = source;
     p.kind = ProjectileKind::Debris;
     p.remain = kind;
     p.pos = pos;
@@ -1539,11 +1582,11 @@ void World::spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const 
     spawned_.push_back(p);
 }
 
-void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir) {
+void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source) {
     // Whatever falls in the water sinks out of sight.
     if (isWater(pos.x, pos.y) && pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2)) return;
     const uint32_t slot = static_cast<uint32_t>(remainsAdded_ % config_.maxRemains);
-    const Remain r{kind, owner, pos, dir, tick_};
+    const Remain r{kind, owner, pos, dir, tick_, source};
     if (remains_.size() < config_.maxRemains) {
         remains_.push_back(r);
     } else {

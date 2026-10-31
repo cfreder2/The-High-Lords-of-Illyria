@@ -1,9 +1,10 @@
 // Body parts as pieces of the soldier's own picture: a sheet's gib cells
 // (sprite_layout.h; cut from the idle pictures by tools/sprites/gibs.py),
 // drawn by the unit program (kUnitVs) as small billboards that spin while
-// they fly and lie where they land. The sim's flying parts and remains know
-// only whose side they were on, so each is matched to the soldier it came
-// from when it first appears: the body blown apart or cut beside it.
+// they fly and lie where they land. The sim's flying parts and remains carry
+// the type of the soldier they came from (Projectile/Remain::source); the
+// body blown apart beside a fresh one still decides which of his gobbets fly
+// as his sword and shield.
 
 #include <algorithm>
 #include <cmath>
@@ -101,15 +102,18 @@ Renderer::GibLook Renderer::gibLookFor(const Battle& battle, const sim::Projecti
     }
     look.mirror = hashUnit(h * 3u + 1u) < 0.5f;
     look.angle = hashUnit(h * 5u + 2u) * kTau;
-    // Fresh: from the body cut or blown apart where it starts (within a few metres; in the last two seconds).
+    // Fresh: a piece of the soldier the sim says it came from; parts from
+    // before that was kept, of the body cut or blown apart where it starts
+    // (within a few metres; in the last two seconds).
     const int src = sourceOf(battle, p.owner, look.pos, 4.0f, 2 * sim::kTicksPerSecond);
-    if (src < 0) return look;
-    const sim::Unit& u = battle.world().units()[static_cast<size_t>(src)];
+    if (p.source == sim::kNoSource && src < 0) return look;
     const int variant = hashUnit(h) < 0.5f ? 0 : 1;
     sprites::Gib g = gibOf(p.remain);
-    look.type = u.stats.type;
+    look.type = p.source != sim::kNoSource ? p.source : battle.world().units()[static_cast<size_t>(src)].stats.type;
     // His weapon and shield fly with the first two gobbets, if his sheet has them.
-    if (g == sprites::Gib::Chunk && u.gibbed) {
+    const sim::Unit* body = src >= 0 ? &battle.world().units()[static_cast<size_t>(src)] : nullptr;
+    if (g == sprites::Gib::Chunk && body && body->gibbed && body->stats.type == look.type) {
+        const sim::Unit& u = *body;
         const int n = gibChunks_[u.id]++;
         if (n == 0 && hasGibCell(look.type, sprites::gibSlot(sprites::Gib::Weapon, variant))) g = sprites::Gib::Weapon;
         if (n == 1 && hasGibCell(look.type, sprites::gibSlot(sprites::Gib::Shield, variant))) g = sprites::Gib::Shield;
@@ -162,11 +166,12 @@ Renderer::GibLook Renderer::restingLook(const Battle& battle, const sim::Remain&
         look = *best;
         landed_.erase(best);
     } else {
-        // Not seen flying (the battle ran on unseen): from the nearest body cut or blown apart.
-        const int src = sourceOf(battle, r.owner, at, 25.0f, 0);
-        if (src < 0) return GibLook{};
+        // Not seen flying (the battle ran on unseen): the soldier it came from,
+        // else (parts from before that was kept) the nearest body cut or blown apart.
+        const int src = r.source != sim::kNoSource ? -1 : sourceOf(battle, r.owner, at, 25.0f, 0);
+        if (r.source == sim::kNoSource && src < 0) return GibLook{};
         const uint32_t h = slot * 2654435761u + r.tick;
-        look.type = battle.world().units()[static_cast<size_t>(src)].stats.type;
+        look.type = r.source != sim::kNoSource ? r.source : battle.world().units()[static_cast<size_t>(src)].stats.type;
         look.cell = sprites::gibSlot(gibOf(r.kind), hashUnit(h) < 0.5f ? 0 : 1);
         look.mirror = hashUnit(h * 3u + 1u) < 0.5f;
         look.angle = hashUnit(h * 5u + 2u) * kTau;

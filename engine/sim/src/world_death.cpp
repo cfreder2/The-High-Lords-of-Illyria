@@ -110,7 +110,7 @@ void World::resolveDeath(Unit& u, const Blow& blow, int32_t overkill, const Unit
         const Fixed side = rng_.nextSigned();
         const Fixed speed = min(kSeverSpeed + Fixed::fromInt(d.overkill) / 8, kSeverSpeedMax);
         const Vec3 vel = d.dir * speed + Vec3{-d.dir.y * side, d.dir.x * side, lift};
-        spawnDebris(u.stats.bleeds ? part : RemainKind::Bone, u.owner, u.pos + up(height), vel);
+        spawnDebris(u.stats.bleeds ? part : RemainKind::Bone, u.owner, u.pos + up(height), vel, static_cast<uint8_t>(u.stats.type));
         spawned_.back().bleeding = u.stats.bleeds;
         // A pool where he fell.
         if (u.stats.bleeds && !isWater(u.pos.x, u.pos.y))

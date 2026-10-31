@@ -228,6 +228,9 @@ struct Unit {
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
 };
 
+// A body part's soldier type unknown (arrows, and parts from before it was kept).
+inline constexpr uint8_t kNoSource = 0xFF;
+
 struct Projectile {
     EntityId id = kNoEntity;
     EntityId shooter = kNoEntity;
@@ -244,6 +247,9 @@ struct Projectile {
     bool bleeding = false;  // a fresh body part: leaves blood where it strikes and skids
     Fixed smear;            // distance skidded since its last blood mark
     Explosive explosive;
+    // A body part: the type of the soldier it came from, so it is drawn as a
+    // piece of him (not hashed: it only chooses the picture).
+    uint8_t source = kNoSource;
 };
 
 struct Remain {
@@ -252,6 +258,7 @@ struct Remain {
     Vec3 pos;
     Vec3 dir;            // arrows: shaft direction (tip first); parts: lying direction
     uint32_t tick = 0;   // when it came to rest
+    uint8_t source = kNoSource;  // as Projectile::source
 };
 
 // Player input, the only thing exchanged between lockstep peers.
@@ -495,6 +502,12 @@ public:
     const Vec3& zoneCentre() const { return zoneCentre_; }
     Fixed zoneRadius() const { return zoneRadius_; }
     bool outsideZone(const Vec3& p) const;
+    // A body part (`kind`, from a soldier of `source`'s type, of `owner`'s
+    // side) flung from `pos` at `vel`: by a hand, or in tests. Flying fast,
+    // it hurts the first man it strikes.
+    void launchPart(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source = kNoSource) {
+        spawnDebris(kind, owner, pos, vel, source);
+    }
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -684,8 +697,9 @@ private:
     // A part skidding on a slope too steep to grip rolls and slides on down it (world_death.cpp).
     // Returns true while it is rolling.
     bool rollDownhill(Projectile& p);
-    void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel);
-    void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir);
+    void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source = kNoSource);
+    Unit* debrisHit(const Vec3& a, const Vec3& b);
+    void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source = kNoSource);
     void clearRemain(uint32_t slot);
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;

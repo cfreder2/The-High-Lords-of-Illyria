@@ -328,7 +328,33 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xb5b071987dbb70d6;
+    constexpr uint64_t kGolden = 0x3d376a5e3b310bb8;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
+}
+
+// A body part flying fast hurts the first man it strikes, a little and once;
+// one kicked along (slow) hurts no one.
+TEST(flying_body_parts_hurt_once_and_kicks_never) {
+    World w(WorldConfig{});
+    UnitStats dummy = unitStats(UnitType::LightInfantry);
+    dummy.melee.damage = 0;
+    dummy.shield.blockChance = Fixed::zero();
+    dummy.aggroRange = Fixed::zero();
+    const EntityId front = w.spawnUnit(1, {m(0), m(0), m(0)}, kWest, dummy);
+    const EntityId behind = w.spawnUnit(1, {m(2), m(0), m(0)}, kWest, dummy);
+    const EntityId kicked = w.spawnUnit(1, {m(0), m(10), m(0)}, kWest, dummy);
+    w.launchPart(RemainKind::Head, 0, {m(-5), m(0), Fixed::fromRatio(6, 5)}, {m(14), m(0), Fixed::one()}, static_cast<uint8_t>(UnitType::HeavyInfantry));
+    w.launchPart(RemainKind::Arm, 0, {-Fixed::fromRatio(6, 5), m(10), Fixed::fromRatio(1, 2)}, {m(3), m(0), Fixed::fromRatio(1, 2)});
+    for (int i = 0; i < 2 * kTicksPerSecond; ++i) w.step({});
+    const int32_t hurt = dummy.maxHp - w.findUnit(front)->hp;
+    std::printf("  struck: %d hp; the man behind %d; the kicked-at %d\n", hurt, dummy.maxHp - w.findUnit(behind)->hp,
+                dummy.maxHp - w.findUnit(kicked)->hp);
+    CHECK(hurt >= 2 && hurt <= 8);
+    CHECK(w.findUnit(behind)->hp == dummy.maxHp);
+    CHECK(w.findUnit(kicked)->hp == dummy.maxHp);
+    // It came to rest as a piece of the soldier it came from.
+    bool kept = false;
+    for (const Remain& r : w.remains()) kept = kept || (r.kind == RemainKind::Head && r.source == static_cast<uint8_t>(UnitType::HeavyInfantry));
+    CHECK(kept);
 }
