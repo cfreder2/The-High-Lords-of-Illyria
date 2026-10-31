@@ -21,7 +21,7 @@ The same table sets every soldier's path: each takes the way that is quickest **
 - **Bridges** are real: men walk on their decks, arrows land on them, and narrow timber footbridges take infantry over one at a time.
 - **Climbing.** Speed divides by 1 + 2.5 × the slope × the gait's climb (a 1 in 4 slope takes a man about 1.6 times as long), and going down is up to 15% quicker. Slopes steeper than 35% slow a walker a further fifth. An army that charges uphill arrives late and tired.
 - **Cliffs are walls.** No one walks a face steeper than 45 degrees.
-- **Bodies have room and weight.** Soldiers do not pass through one another: the lighter gives way, and the dead are shoved aside. Trees, rocks, houses and deep water stand in the way.
+- **Bodies have room and weight.** Soldiers do not pass through one another: the lighter gives way. The dead lie where they fell and are walked over; only a blast or a heavy blow moves them. Trees, rocks, houses and deep water stand in the way.
 
 ![Fighting in the ford: health bars over the hurt, riders in the shallows, spiders crossing; the water slows everyone.](images/shots/battle_ford.jpg)
 

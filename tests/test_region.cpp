@@ -1,5 +1,8 @@
+#include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
@@ -169,6 +172,89 @@ TEST(walkers_leave_arrows_where_they_fell) {
     CHECK(same == before.size());
 }
 
+TEST(walkers_leave_bodies_where_they_fell_but_blasts_throw_them) {
+    World w(WorldConfig{});
+    // A volley into a field of unarmed men: shot dead, each where he stood.
+    std::vector<EntityId> archers;
+    for (int i = 0; i < 6; ++i) archers.push_back(w.spawnUnit(0, {m(-20), m(i * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers)));
+    UnitStats victim = unitStats(UnitType::LightInfantry);
+    victim.maxHp = 1;
+    victim.melee.damage = 0;
+    victim.shield.blockChance = Fixed::zero();
+    victim.aggroRange = Fixed::zero();
+    for (int x = 0; x < 4; ++x)
+        for (int y = 0; y < 5; ++y) w.spawnUnit(1, {m(x * 2 - 3), m(y * 2 - 4), m(0)}, kWest, victim);
+    const auto anyLeft = [&] {
+        for (const Unit& u : w.units())
+            if (u.owner == 1 && u.alive()) return true;
+        return false;
+    };
+    for (int i = 0; i < 150 * kTicksPerSecond && anyLeft(); ++i) w.step({});
+    CHECK(!anyLeft());
+    std::vector<Command> stop;
+    for (EntityId a : archers) stop.push_back({0, a, Command::Type::Stop, {}});
+    w.step(stop);
+    for (int i = 0; i < 3 * kTicksPerSecond; ++i) w.step({});
+    std::vector<std::pair<EntityId, Vec3>> bodies;
+    for (const Unit& u : w.units())
+        if (!u.alive() && !u.inAir()) bodies.push_back({u.id, u.pos});
+    CHECK(bodies.size() == 20);
+    const auto stillThere = [&] {
+        size_t n = 0;
+        for (const auto& [id, pos] : bodies) n += w.findUnit(id)->pos == pos;
+        return n;
+    };
+
+    // A rank of heavy infantry marches back and forth through them.
+    std::vector<EntityId> walkers;
+    for (int i = 0; i < 6; ++i) walkers.push_back(w.spawnUnit(0, {m(-12), m(i * 2 - 5), m(0)}, kEast, unitStats(UnitType::HeavyInfantry)));
+    // Bodies a walker came near enough to have shoved aside, before.
+    std::vector<bool> trodden(bodies.size());
+    size_t fewest = bodies.size();
+    for (int pass = 0; pass < 3; ++pass) {
+        std::vector<Command> go;
+        for (size_t i = 0; i < walkers.size(); ++i)
+            go.push_back({0, walkers[i], Command::Type::Move, {pass % 2 ? m(-12) : m(12), m(static_cast<int64_t>(i) * 2 - 5 + pass), m(0)}});
+        w.step(go);
+        for (int t = 0; t < 18 * kTicksPerSecond; ++t) {
+            w.step({});
+            fewest = std::min(fewest, stillThere());
+            for (size_t b = 0; b < bodies.size(); ++b)
+                for (EntityId id : walkers) {
+                    const Unit& u = *w.findUnit(id);
+                    const Fixed reach = u.stats.radius + w.findUnit(bodies[b].first)->stats.radius * 3 / 5;
+                    trodden[b] = trodden[b] || (u.pos - bodies[b].second).flat().lengthSq() < reach * reach;
+                }
+        }
+    }
+    int stepped = 0;
+    for (bool t : trodden) stepped += t;
+    std::printf("  %d of %zu bodies walked over, %zu always where they fell\n", stepped, bodies.size(), fewest);
+    CHECK(stepped >= 15);
+    CHECK(fewest == bodies.size());
+    // Every walker got where he was sent: the dead are no obstacle.
+    for (EntityId id : walkers) CHECK(!w.findUnit(id)->hasMoveTarget);
+
+    // A satchel in their midst throws them.
+    const EntityId dwarf = w.spawnUnit(0, {m(-14), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+    w.step(std::span(&bomb, 1));
+    bool blown = false;
+    int thrown = 0;
+    for (int i = 0; i < 20 * kTicksPerSecond && !blown; ++i) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts()) blown = blown || e.kind == ImpactEvent::Kind::Explosion;
+        for (const auto& [id, pos] : bodies) thrown += w.findUnit(id)->airborne;
+    }
+    const Command hold{0, dwarf, Command::Type::Stop, {}};
+    w.step(std::span(&hold, 1));
+    for (int i = 0; i < 5 * kTicksPerSecond; ++i) w.step({});
+    CHECK(blown);
+    CHECK(thrown > 0);
+    std::printf("  %zu of %zu moved by the blast\n", bodies.size() - stillThere(), bodies.size());
+    CHECK(bodies.size() - stillThere() >= 3);
+}
+
 TEST(blasted_parts_skid_away_leaving_blood_trails) {
     World w(WorldConfig{});
     const EntityId dwarf = w.spawnUnit(0, {m(-15), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
@@ -242,7 +328,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x1235a0e67c41989a;
+    constexpr uint64_t kGolden = 0xb5b071987dbb70d6;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

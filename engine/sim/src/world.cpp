@@ -30,8 +30,6 @@ constexpr Fixed kWaypointNear = Fixed::fromInt(4);
 constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 // Marching soldiers keep their files this far either side of the squad's route.
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
-// Corpses are smaller obstacles than the living, and get shoved aside.
-constexpr Fixed kCorpseRadiusScale = Fixed::fromRatio(3, 5);
 // Bodies walking through loose remains kick them along.
 constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
 constexpr int kMaxKicksPerTick = 2;
@@ -811,33 +809,27 @@ void World::updateFlight(Unit& u) {
 
 void World::separateBodies() {
     // Bodies have size and mass: living soldiers push each other apart (the
-    // lighter gives way), shove corpses aside, and are kept out of scenery.
+    // lighter gives way) and are kept out of scenery. The dead lie where they
+    // fell and are walked over; only a blast or a blow moves them (knock).
     unitGrid_.clear();
     for (uint32_t i = 0; i < units_.size(); ++i) {
         const Unit& u = units_[i];
-        if (!u.inAir() && u.flight == Unit::Flight::Grounded) unitGrid_.insert(i, u.pos.x, u.pos.y);
+        if (u.alive() && !u.inAir() && u.flight == Unit::Flight::Grounded) unitGrid_.insert(i, u.pos.x, u.pos.y);
     }
     const Fixed maxRadius = Fixed::fromInt(3);
     for (uint32_t i = 0; i < units_.size(); ++i) {
         Unit& a = units_[i];
         if (!a.alive() || a.inAir()) continue;
         unitGrid_.query(a.pos.x, a.pos.y, a.stats.radius + maxRadius, [&](uint32_t j) {
-            if (j == i) return;
+            if (j <= i) return;  // each pair once
             Unit& b = units_[j];
-            if (b.inAir() || (b.alive() && j < i)) return;  // each living pair once
-            const Fixed rb = b.alive() ? b.stats.radius : b.stats.radius * kCorpseRadiusScale;
             const Vec3 d = (b.pos - a.pos).flat();
-            const Fixed reach = a.stats.radius + rb;
+            const Fixed reach = a.stats.radius + b.stats.radius;
             const Fixed distSq = d.lengthSq();
             if (distSq >= reach * reach) return;
             Fixed dist = sqrt(distSq);
             Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
             const Fixed overlap = reach - dist;
-            if (!b.alive()) {
-                b.pos += n * overlap;  // the dead give way entirely
-                b.pos.z = standingHeight(b.pos.x, b.pos.y, b.pos.z);
-                return;
-            }
             const Fixed total = a.stats.mass + b.stats.mass;
             a.pos -= n * (overlap * b.stats.mass / total);
             b.pos += n * (overlap * a.stats.mass / total);
