@@ -356,6 +356,10 @@ public:
     // A squad raised during the battle (a wave, reinforcements); its index.
     int addSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre, V3 facing,
                  int rank = 0);
+    // Where such a squad can stand: `centre` if every man of its formation
+    // can, else the nearest place within `reachM` where they all can (a ruin,
+    // a house or a pond in the way), else `centre`.
+    V3 clearSpot(sim::UnitType type, int count, V3 centre, V3 facing, float reachM = 150) const;
     // The side the person at this screen plays (kPlayer unless a match seats
     // him elsewhere): whose soldiers he selects and orders, whose voices he
     // hears as his own. Presentation only: the simulation never reads it, so

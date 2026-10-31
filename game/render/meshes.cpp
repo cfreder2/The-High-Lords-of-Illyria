@@ -584,36 +584,42 @@ Mesh bannerCloth() {
     return b.mesh;
 }
 
+// The sites' platforms: a step a soldier walks over, at a battle's scale (a
+// ruin is Continent::Site::kRuinSize metres across). The battle's stones
+// (engine/sim/src/region.cpp siteStones) follow these models: keep them together.
+constexpr float kSitePlinth = 0.005f;
+
 Mesh ruin() {
     Builder b;
     const V3 old{0.55f, 0.54f, 0.48f}, moss{0.38f, 0.45f, 0.30f};
+    const float p = kSitePlinth;
     // A broken ring of columns around a collapsed hall, a dark stair going down.
-    b.box({-0.5f, -0.4f, 0}, {0.5f, 0.4f, 0.06f}, old * 0.9f);
+    b.box({-0.5f, -0.4f, 0}, {0.5f, 0.4f, p}, old * 0.9f);
     const float heights[8] = {0.55f, 0.2f, 0.42f, 0.08f, 0.5f, 0.32f, 0.12f, 0.46f};
     for (int i = 0; i < 8; ++i) {
         const float a = 2 * kPi * i / 8;
         const V3 c{std::cos(a) * 0.42f, std::sin(a) * 0.34f, 0};
-        b.box({c.x - 0.04f, c.y - 0.04f, 0.06f}, {c.x + 0.04f, c.y + 0.04f, 0.06f + heights[i]}, i % 3 ? old : moss);
+        b.box({c.x - 0.04f, c.y - 0.04f, p}, {c.x + 0.04f, c.y + 0.04f, p + heights[i]}, i % 3 ? old : moss);
     }
     b.box({-0.5f, 0.3f, 0}, {0.1f, 0.38f, 0.3f}, old);
     b.box({-0.5f, -0.38f, 0}, {-0.42f, 0.1f, 0.22f}, moss);
-    b.quad({-0.12f, -0.12f, 0.061f}, {0.12f, -0.12f, 0.061f}, {0.12f, 0.12f, 0.061f}, {-0.12f, 0.12f, 0.061f}, {0.05f, 0.05f, 0.06f});
-    b.blob({0.3f, -0.15f, 0.06f}, {0.12f, 0.1f, 0.06f}, old * 0.8f, 0.3f, 9);
-    b.blob({-0.2f, 0.15f, 0.06f}, {0.1f, 0.12f, 0.05f}, old * 0.75f, 0.3f, 10);
+    b.quad({-0.12f, -0.12f, p + 0.001f}, {0.12f, -0.12f, p + 0.001f}, {0.12f, 0.12f, p + 0.001f}, {-0.12f, 0.12f, p + 0.001f}, {0.05f, 0.05f, 0.06f});
+    b.blob({0.3f, -0.15f, p}, {0.12f, 0.1f, 0.05f}, old * 0.8f, 0.3f, 9);
+    b.blob({-0.2f, 0.15f, p}, {0.1f, 0.12f, 0.05f}, old * 0.75f, 0.3f, 10);
     return b.mesh;
 }
 
 Mesh temple() {
     Builder b;
     const V3 marble{0.92f, 0.9f, 0.84f}, roof{0.7f, 0.42f, 0.28f};
-    b.box({-0.5f, -0.32f, 0}, {0.5f, 0.32f, 0.08f}, marble * 0.92f);
+    b.box({-0.5f, -0.32f, 0}, {0.5f, 0.32f, kSitePlinth}, marble * 0.92f);
     for (int i = 0; i < 6; ++i) {
         for (int side = -1; side <= 1; side += 2) {
             const float x = -0.42f + i * 0.168f, y = side * 0.25f;
-            b.box({x - 0.03f, y - 0.03f, 0.08f}, {x + 0.03f, y + 0.03f, 0.5f}, marble);
+            b.box({x - 0.03f, y - 0.03f, kSitePlinth}, {x + 0.03f, y + 0.03f, 0.5f}, marble);
         }
     }
-    b.box({-0.3f, -0.18f, 0.08f}, {0.3f, 0.18f, 0.45f}, marble * 0.85f);
+    b.box({-0.3f, -0.18f, kSitePlinth}, {0.3f, 0.18f, 0.45f}, marble * 0.85f);
     b.box({-0.5f, -0.3f, 0.5f}, {0.5f, 0.3f, 0.56f}, marble * 0.95f);
     b.quad({-0.52f, -0.32f, 0.56f}, {0.52f, -0.32f, 0.56f}, {0.52f, 0, 0.74f}, {-0.52f, 0, 0.74f}, roof);
     b.quad({0.52f, 0.32f, 0.56f}, {-0.52f, 0.32f, 0.56f}, {-0.52f, 0, 0.74f}, {0.52f, 0, 0.74f}, roof * 0.85f);

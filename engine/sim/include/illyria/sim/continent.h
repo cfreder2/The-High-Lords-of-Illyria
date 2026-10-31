@@ -150,6 +150,13 @@ public:
         Kind kind;
         std::string name;
         Vec3 pos;  // z = ground height
+        // How big its building stands (metres; the renderer's model of it,
+        // game/render/meshes.cpp, is a unit across) and the quarter turns it
+        // is set at, from its place in the list: the battle lays its stones
+        // out the same way (Region, siteStones).
+        static constexpr int kRuinSize = 40, kTempleSize = 44, kSageSize = 26;
+        static int size(Kind k) { return k == Kind::Ruin ? kRuinSize : k == Kind::Temple ? kTempleSize : kSageSize; }
+        static int turns(size_t index) { return static_cast<int>((index * 2654435761u >> 11) & 3u); }
     };
     struct Label {  // realm and region names for the map
         std::string name;

@@ -56,7 +56,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0xce11946213507e79;
+    constexpr uint64_t kGolden = 0xd0bae2eb1a888504;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);

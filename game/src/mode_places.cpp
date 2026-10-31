@@ -326,8 +326,13 @@ sim::Vec3 firmGround(const sim::Region& r, const sim::Vec3& p, int32_t searchM) 
         const sim::Ground g = r.groundAt(x, y);
         if (r.underWater(x, y) || g == sim::Ground::Rock || g == sim::Ground::DeepWater || sim::groundSpeed(g) == Fixed::zero()) return false;
         const Vec3 q{x, y, Fixed::zero()};
-        for (const sim::Obstacle& o : r.obstacles())
-            if (o.solid && (o.pos - q).flat().lengthSq() < m(4) * m(4)) return false;
+        for (const sim::Obstacle& o : r.obstacles()) {
+            if (!o.solid) continue;
+            // Clear of a building's walls (its footprint and 2 m round it), else 4 m from its middle.
+            if (o.kind == sim::Obstacle::Kind::House ? abs(x - o.pos.x) < o.halfX + m(2) && abs(y - o.pos.y) < o.halfY + m(2)
+                                                     : (o.pos - q).flat().lengthSq() < m(4) * m(4))
+                return false;
+        }
         for (const sim::Rampart& rp : r.ramparts())
             if ((rp.centre - q).flat().lengthSq() < m(90) * m(90)) return false;  // not in a castle
         return true;

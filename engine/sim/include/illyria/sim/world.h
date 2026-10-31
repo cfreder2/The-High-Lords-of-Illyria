@@ -495,6 +495,8 @@ public:
     const Vec3& zoneCentre() const { return zoneCentre_; }
     Fixed zoneRadius() const { return zoneRadius_; }
     bool outsideZone(const Vec3& p) const;
+    // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
+    bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
     // every living soldier of `type` takes `stats`, his wounds kept in proportion.
     void retune(uint8_t type, const UnitStats& stats);

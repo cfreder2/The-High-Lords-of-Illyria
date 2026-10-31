@@ -51,6 +51,27 @@ int Battle::addSquad(const std::string& name, sim::PlayerId owner, UnitType type
     return static_cast<int>(squads_.size()) - 1;
 }
 
+V3 Battle::clearSpot(UnitType type, int count, V3 centre, V3 facing, float reachM) const {
+    facing = facing.normalized();
+    const V3 right{facing.y, -facing.x, 0};
+    const std::vector<V3> slots = formationSlots(defaultFormation(type), std::max(1, count), formationSpacing(type));
+    const auto fits = [&](V3 c) {
+        if (c.x < 2 || c.y < 2 || c.x > kWorldSize - 2 || c.y > kWorldSize - 2) return false;
+        for (const V3& s : slots)
+            if (!world_->standable(toSim(c + right * s.x + facing * s.y))) return false;
+        return true;
+    };
+    if (fits(centre)) return centre;
+    // Out in rings, a few metres at a time, the way round taken in turn.
+    for (float r = 4; r <= reachM; r += 4)
+        for (int k = 0; k < 24; ++k) {
+            const float a = static_cast<float>(k) * 0.2617994f;
+            const V3 c = centre + V3{std::cos(a), std::sin(a), 0} * r;
+            if (fits(c)) return c;
+        }
+    return centre;
+}
+
 void Battle::setLocalSide(sim::PlayerId side) {
     local_ = side;
     voice_.setPlayer(side);

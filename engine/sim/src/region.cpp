@@ -68,6 +68,31 @@ Fixed flatDist(Fixed x, Fixed y, const Vec3& c) {
 
 Fixed groundSpeed(Ground g) { return gaitSpeed(Gait::Foot, g); }
 
+// A site's stones as the renderer's model of it has them (game/render/meshes.cpp
+// ruin, temple, sageTower; keep the two together): each a box, its middle
+// and half sizes and its top in thousandths of the site's size, unturned.
+// The columns (square, a few metres across) are pillars: round, and left
+// out of the paths (as trees are), so the rings of them do not wall in the
+// ground they stand round; the rest are blocks.
+struct SiteStone {
+    int64_t x, y, hx, hy, top;
+};
+const std::vector<SiteStone>& siteStones(Continent::Site::Kind k) {
+    // A broken ring of columns, two walls and two heaps of rubble round a fallen hall.
+    static const std::vector<SiteStone> ruin = {
+        {420, 0, 40, 40, 555},     {297, 240, 40, 40, 205},  {0, 340, 40, 40, 425},    {-297, 240, 40, 40, 85},
+        {-420, 0, 40, 40, 505},    {-297, -240, 40, 40, 325}, {0, -340, 40, 40, 125},  {297, -240, 40, 40, 465},
+        {-200, 340, 300, 40, 300}, {-460, -140, 40, 240, 220}, {300, -150, 100, 80, 55}, {-200, 150, 80, 100, 55}};
+    // Two rows of six columns either side of the hall.
+    static const std::vector<SiteStone> temple = {
+        {-420, 250, 30, 30, 500},  {-252, 250, 30, 30, 500},  {-84, 250, 30, 30, 500},  {84, 250, 30, 30, 500},
+        {252, 250, 30, 30, 500},   {420, 250, 30, 30, 500},   {-420, -250, 30, 30, 500}, {-252, -250, 30, 30, 500},
+        {-84, -250, 30, 30, 500},  {84, -250, 30, 30, 500},   {252, -250, 30, 30, 500},  {420, -250, 30, 30, 500},
+        {0, 0, 300, 180, 450}};
+    static const std::vector<SiteStone> sage = {{0, 0, 250, 250, 1150}};
+    return k == Continent::Site::Kind::Ruin ? ruin : k == Continent::Site::Kind::Temple ? temple : sage;
+}
+
 bool Deck::contains(Fixed x, Fixed y) const {
     const Fixed dx = x - centre.x, dy = y - centre.y;
     if (abs(dx) > halfSpan + halfWidth || abs(dy) > halfSpan + halfWidth) return false;
@@ -426,7 +451,8 @@ bool Region::sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWa
     }
 }
 
-void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius) {
+void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius,
+                            const std::vector<Vec3>& clearings) {
     // Trees, undergrowth and rocks on the continent's jittered 5 m grid.
     const int64_t extent = terrain_.size().floorToInt();
     const int64_t ox = origin_.x.floorToInt(), oy = origin_.y.floorToInt();
@@ -440,6 +466,9 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
             if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
+            bool cleared = false;
+            for (const Vec3& c : clearings) cleared = cleared || flatDist(x, y, {c.x, c.y, Fixed::zero()}) < c.z;
+            if (cleared) continue;
             bool inCastle = false;  // nothing grows inside the walls or right against them
             for (const Rampart& rp : ramparts_) {
                 Fixed reach;
@@ -876,6 +905,41 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             rg.obstacles_.push_back(o);
         }
     }
+    // The sites' stones (Continent::Site; the renderer draws each site as one
+    // model, game/render/meshes.cpp, and these follow it): a ruin's columns,
+    // walls and rubble, a temple's columns and hall, a sage's tower. Solid, so
+    // no one stands inside them; the platform under them is a step.
+    std::vector<Vec3> clearings;  // nothing grows on a site (x, y, radius)
+    for (size_t si = 0; si < c.sites().size(); ++si) {
+        const Continent::Site& st = c.sites()[si];
+        const Vec3 at = toLocal(st.pos);
+        const Fixed size = m(Continent::Site::size(st.kind));
+        if (at.x < -size || at.y < -size || at.x > cell * cells + size || at.y > cell * cells + size) continue;
+        clearings.push_back({at.x, at.y, size * 3 / 5});
+        const int turns = Continent::Site::turns(si);
+        for (const SiteStone& s : siteStones(st.kind)) {
+            // Its middle and half sizes in the model (thousandths), turned and scaled.
+            Fixed x = r(s.x, 1000) * size, y = r(s.y, 1000) * size, hx = r(s.hx, 1000) * size, hy = r(s.hy, 1000) * size;
+            for (int k = 0; k < turns; ++k) {
+                const Fixed t = x;
+                x = -y;
+                y = t;
+                std::swap(hx, hy);
+            }
+            Obstacle o;
+            const bool column = s.hx == s.hy && s.hx <= 40;
+            o.kind = column ? Obstacle::Kind::Pillar : Obstacle::Kind::House;
+            o.variant = Obstacle::kSiteStone;
+            o.pos = {at.x + x, at.y + y, Fixed::zero()};
+            if (o.pos.x < hx || o.pos.y < hy || o.pos.x > cell * cells - hx || o.pos.y > cell * cells - hy) continue;
+            o.pos.z = rg.terrain_.heightAt(o.pos.x, o.pos.y);
+            o.radius = hx * 9 / 8;  // between the square's inner and outer circles
+            o.halfX = hx;
+            o.halfY = hy;
+            o.height = r(s.top, 1000) * size;
+            rg.obstacles_.push_back(o);
+        }
+    }
     // A shrine of standing pillars on the highest dry ground in the window
     // (not on a landmark with buildings of its own).
     Vec3 shrine{m(200), m(800), Fixed::zero()};
@@ -914,7 +978,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         rg.obstacles_.push_back(altar);
     }
     // The same trees wherever the window is cut (see sceneryPoint).
-    rg.scatterScenery(sceneryContinentSeed(c.seed()), rg.obstacles_.size(), shrine, m(15));
+    rg.scatterScenery(sceneryContinentSeed(c.seed()), rg.obstacles_.size(), shrine, m(15), clearings);
     return rg;
 }
 

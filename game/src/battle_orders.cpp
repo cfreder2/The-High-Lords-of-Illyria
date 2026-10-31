@@ -213,7 +213,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
     float bestPx = kObstaclePickPx * pixelScale * kObstaclePickPx * pixelScale;
     for (size_t i = 0; i < obs.size(); ++i) {
         const sim::Obstacle& o = obs[i];
-        if (!attackable(o.kind)) continue;
+        if (!attackable(o.kind) || o.variant == sim::Obstacle::kSiteStone) continue;  // not the old stones
         const V3 c = toV3(o.pos);
         const float dx = ground.x - c.x, dy = ground.y - c.y;
         bool on;

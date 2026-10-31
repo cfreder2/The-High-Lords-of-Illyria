@@ -35,6 +35,8 @@ int SandboxMode::spawn(Battle& b, sim::UnitType type, sim::PlayerId side, int co
     }
     V3 facing{to.x - at.x, to.y - at.y, 0};
     if (facing.length() < 0.01f) facing = {1, 0, 0};
+    // Not into a ruin's walls, a house or a pond: the nearest ground they all fit on.
+    at = b.clearSpot(type, count, at, facing);
     char name[48];
     std::snprintf(name, sizeof name, "%s %d", sim::unitTypeName(type), static_cast<int>(b.squads().size()) + 1);
     const int q = b.addSquad(name, side, type, count, at, facing);

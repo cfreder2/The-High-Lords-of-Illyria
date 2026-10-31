@@ -25,6 +25,7 @@ struct Obstacle {
     Fixed halfX, halfY; // houses: axis-aligned footprint
     uint8_t variant = 0;  // houses: kTownHouse for those in a castle (drawn with the castle)
     static constexpr uint8_t kTownHouse = 200;
+    static constexpr uint8_t kSiteStone = 201;  // a ruin's, temple's or sage's tower's stones (drawn with the site)
     bool solid = true;  // bushes are not
     Fixed passAbove = {};  // towers: soldiers this high above the base walk through (the wall-walk); 0: never
 };
@@ -168,8 +169,10 @@ public:
 
 private:
     // Trees, undergrowth and rocks on a jittered grid, clear of roads, water,
-    // the first `buildings` obstacles, and a circle around `clearCentre`.
-    void scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius);
+    // the first `buildings` obstacles, a circle around `clearCentre`, and the
+    // `clearings` (centre, radius in x: the sites standing in the window).
+    void scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius,
+                        const std::vector<Vec3>& clearings = {});
 
     Terrain terrain_;
     Fixed waterLevel_;

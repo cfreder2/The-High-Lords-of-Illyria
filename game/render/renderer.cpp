@@ -576,7 +576,7 @@ void Renderer::uploadScenery(const Battle& battle) {
         switch (o.kind) {
             case sim::Obstacle::Kind::Tower: break;  // drawn with its castle
             case sim::Obstacle::Kind::House: {
-                if (o.variant == sim::Obstacle::kTownHouse) break;  // drawn with its castle
+                if (o.variant == sim::Obstacle::kTownHouse || o.variant == sim::Obstacle::kSiteStone) break;  // drawn with its castle, its site
                 float aligned[4];
                 yawQuat(0, aligned);
                 const float hx = static_cast<float>(o.halfX.toDouble()), hy = static_cast<float>(o.halfY.toDouble());
@@ -590,6 +590,7 @@ void Renderer::uploadScenery(const Battle& battle) {
                 break;
             }
             case sim::Obstacle::Kind::Pillar: {
+                if (o.variant == sim::Obstacle::kSiteStone) break;  // drawn with its site
                 const float r = static_cast<float>(o.radius.toDouble());
                 float q[4];
                 yawQuat(hash01(static_cast<uint32_t>(i) * 2654435761u) * 6.283f, q);
@@ -1202,12 +1203,14 @@ void Renderer::uploadSettlements(const Battle& battle) {
     for (size_t si = 0; si < cont.sites().size(); ++si) {
         const sim::Continent::Site& st = cont.sites()[si];
         const V3 p = toV3(st.pos) - V3{o.x, o.y, 0};
+        // Turned and sized as the battle lays out its stones (Region).
         float q[4];
-        yawQuat(hash01(static_cast<uint32_t>(si) * 7919u) * 6.283f, q);
+        yawQuat(static_cast<float>(sim::Continent::Site::turns(si)) * 1.5707963f, q);
+        const float s = static_cast<float>(sim::Continent::Site::size(st.kind));
         switch (st.kind) {
-            case sim::Continent::Site::Kind::Ruin: pushInstance(ruins, p, q, {40, 40, 40}, {1, 1, 1}); break;
-            case sim::Continent::Site::Kind::Temple: pushInstance(temples, p, q, {44, 44, 44}, {1, 1, 1}); break;
-            case sim::Continent::Site::Kind::Sage: pushInstance(sages, p, q, {26, 26, 26}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Ruin: pushInstance(ruins, p, q, {s, s, s}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Temple: pushInstance(temples, p, q, {s, s, s}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Sage: pushInstance(sages, p, q, {s, s, s}, {1, 1, 1}); break;
         }
     }
     uploadMeshInstances(walls_, walls);
