@@ -33,6 +33,7 @@ Settings (on the title screen, or ⚙ Settings in the in-game ☰ menu) hold the
 | `game/web/` | Browser entry point and page (HUD, input forwarding). |
 | `tests/` | Unit tests, including a pinned "golden" checksum every platform must reproduce. |
 | `tools/simcheck` | Headless runner that prints a simulation checksum trace; CI diffs it across platforms. |
+| `tools/models` | Turns a set piece's 3D model into what the game loads (`game/web/models/`) and derives its battle stones from the same mesh (`engine/sim/src/site_ruin.inc`): `<bpy-python> -I tools/models/ruin.py -- <ruin.fbx>`. |
 
 ## Building
 
