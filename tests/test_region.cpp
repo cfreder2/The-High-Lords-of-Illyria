@@ -110,10 +110,8 @@ TEST(scenery_blocks_soldiers) {
 TEST(walking_through_body_parts_kicks_them_along) {
     World w(WorldConfig{});
     // A satchel kills a soldier, scattering parts; then someone walks through them.
-    const EntityId dwarf = w.spawnUnit(0, {m(-15), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
     for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(0), Fixed::fromRatio(i * 9 - 13, 10), m(0)}, kWest, unitStats(UnitType::Archers));
-    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
-    w.step(std::span(&bomb, 1));
+    w.placeSatchel(0, {m(0), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge, kTicksPerSecond);
     Vec3 part;
     bool found = false;
     for (int i = 0; i < 40 * kTicksPerSecond && !found; ++i) {
@@ -125,8 +123,6 @@ TEST(walking_through_body_parts_kicks_them_along) {
                 found = true;
             }
     }
-    const Command hold{0, dwarf, Command::Type::Stop, {}};
-    w.step(std::span(&hold, 1));
     CHECK(found);
     if (!found) return;
     const EntityId walker = w.spawnUnit(0, {part.x - m(6), part.y, m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
@@ -236,9 +232,7 @@ TEST(walkers_leave_bodies_where_they_fell_but_blasts_throw_them) {
     for (EntityId id : walkers) CHECK(!w.findUnit(id)->hasMoveTarget);
 
     // A satchel in their midst throws them.
-    const EntityId dwarf = w.spawnUnit(0, {m(-14), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
-    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
-    w.step(std::span(&bomb, 1));
+    w.placeSatchel(0, {m(0), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge, kTicksPerSecond);
     bool blown = false;
     int thrown = 0;
     for (int i = 0; i < 20 * kTicksPerSecond && !blown; ++i) {
@@ -246,8 +240,6 @@ TEST(walkers_leave_bodies_where_they_fell_but_blasts_throw_them) {
         for (const ImpactEvent& e : w.impacts()) blown = blown || e.kind == ImpactEvent::Kind::Explosion;
         for (const auto& [id, pos] : bodies) thrown += w.findUnit(id)->airborne;
     }
-    const Command hold{0, dwarf, Command::Type::Stop, {}};
-    w.step(std::span(&hold, 1));
     for (int i = 0; i < 5 * kTicksPerSecond; ++i) w.step({});
     CHECK(blown);
     CHECK(thrown > 0);
@@ -257,20 +249,13 @@ TEST(walkers_leave_bodies_where_they_fell_but_blasts_throw_them) {
 
 TEST(blasted_parts_skid_away_leaving_blood_trails) {
     World w(WorldConfig{});
-    const EntityId dwarf = w.spawnUnit(0, {m(-15), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
     for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(0), Fixed::fromRatio(i * 9 - 13, 10), m(0)}, kWest, unitStats(UnitType::Archers));
-    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
-    w.step(std::span(&bomb, 1));
+    w.placeSatchel(0, {m(0), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge, kTicksPerSecond);
     int bleeds = 0;
     Vec3 blast;
     bool exploded = false;
     for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
-        if (i == 7 * kTicksPerSecond) {
-            const Command hold{0, dwarf, Command::Type::Stop, {}};
-            w.step(std::span(&hold, 1));
-        } else {
-            w.step({});
-        }
+        w.step({});
         for (const ImpactEvent& e : w.impacts()) {
             bleeds += e.kind == ImpactEvent::Kind::Bleed;
             if (e.kind == ImpactEvent::Kind::Explosion && !exploded) {
@@ -328,7 +313,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x3d376a5e3b310bb8;
+    constexpr uint64_t kGolden = 0x98b29570452a9bfa;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

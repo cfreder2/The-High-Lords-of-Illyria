@@ -16,7 +16,7 @@ enum class UnitType : uint8_t {
     Pikemen,
     LightCavalry,
     HeavyCavalry,
-    Dwarves,
+    Dwarves,  // the Dwarven Legion: retired (retired()), its number kept
     WolfRiders,
     Giants,
     Minotaurs,
@@ -56,6 +56,10 @@ int warlordsStrength(UnitType type);
 const char* unitTypeName(UnitType type);
 // How this type gets over the ground (gait.h).
 Gait gaitOf(UnitType type);
+// A type no longer raised anywhere: kept so its number (sprite sheets,
+// campaign saves) keeps its meaning. The Dwarven Legion is retired: the
+// grenadiers are the one dwarf, and old saves' legions load as grenadiers.
+bool retired(UnitType type);
 // Whether his body keeps a blade (a sword, axe or spear) a scavenger can take.
 bool bearsBlade(UnitType type);
 // Armoured, or too big and strong for a scavenger to stand up to in melee:

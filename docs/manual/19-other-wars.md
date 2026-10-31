@@ -52,14 +52,16 @@ Then comes a **break** of 45 seconds, and the panel of **reinforcements** rises:
 - **Each hero still standing rises a level** (a hero's level is +6% damage and +8% hit points: chapter [](#veterans-in-battle)).
 - **Your points:** 10 a break, and one more every second wave (10, 11, 11, 12...). Spend them on the six squads on offer; what you do not spend carries over. Each squad bought comes up behind your line at once, and is yours to order.
 
-| Offered after waves 1, 3, 5... | Men | Points | Offered after waves 2, 4, 6... | Men | Points |
+Six of these eleven are offered at each break, a different six as the waves go by:
+
+| Squad | Men | Points | Squad | Men | Points |
 |---|---|---|---|---|---|
-| Heavy Infantry | 6 | 4 | Warriors | 6 | 4 |
-| Elven Archers | 6 | 4 | Pikemen | 6 | 3 |
-| Berserkers | 5 | 4 | Dwarven Legion | 5 | 4 |
-| Journeymen | 2 | 3 | Dwarven Grenadiers | 3 | 4 |
-| Heavy Cavalry | 4 | 6 | Light Cavalry | 4 | 4 |
-| Griffins | 2 | 6 | Wizards | 2 | 6 |
+| Warriors | 6 | 4 | Dwarven Grenadiers | 3 | 4 |
+| Heavy Infantry | 6 | 4 | Journeymen | 2 | 3 |
+| Pikemen | 6 | 3 | Light Cavalry | 4 | 4 |
+| Elven Archers | 6 | 4 | Heavy Cavalry | 4 | 6 |
+| Berserkers | 5 | 4 | Wizards | 2 | 6 |
+| | | | Griffins | 2 | 6 |
 
 Press **Ready: bring them on** when you are done: the next wave comes at once when every person on the hill is ready, or when the break runs out.
 

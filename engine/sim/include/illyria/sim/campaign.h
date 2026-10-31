@@ -329,7 +329,7 @@ public:
     // (heroes, beasts, monsters, allies, Myth's specialists) never are: each
     // that falls is gone for good (campaign_rare.cpp, docs/GAME_DESIGN.md §4.2.4).
     static bool trainable(UnitType t);
-    static bool rare(UnitType t) { return !trainable(t) && !fieldOnly(t); }
+    static bool rare(UnitType t) { return !trainable(t) && !fieldOnly(t) && !retired(t); }
     // Types not in the campaign at all (no city trains them, no realm has
     // them): the hyena-folk, so far only in the sandbox and the battles laid out with them.
     static bool fieldOnly(UnitType t) { return t == UnitType::Hyena; }

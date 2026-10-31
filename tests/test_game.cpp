@@ -82,10 +82,10 @@ TEST(gestures_tap_and_pinch) {
 TEST(battle_runs_and_player_can_command_a_squad) {
     Battle b(42);
     CHECK(b.outcome() == 0);
-    // Every unit type is on the field.
+    // Every unit type is on the field (but the retired legion: units.h retired()).
     std::vector<bool> seen(illyria::sim::kUnitTypeCount, false);
     for (const Squad& s : b.squads()) seen[static_cast<int>(s.type)] = true;
-    for (bool t : seen) CHECK(t);
+    for (int t = 0; t < illyria::sim::kUnitTypeCount; ++t) CHECK(seen[static_cast<size_t>(t)] != illyria::sim::retired(static_cast<illyria::sim::UnitType>(t)));
 
     Camera c;
     c.setBounds(Battle::kWorldSize);

@@ -25,7 +25,7 @@ const Realm& realm(uint8_t side) {
     static const Realm kRealms[] = {
         {{T::HeavyCavalry, T::HeavyInfantry, T::Catapult}, 300},  // Aurelian Throne: knights and engines
         {{T::HeavyInfantry, T::Pikemen}, 200},                   // Highcrag Giants
-        {{T::Dwarves, T::HeavyInfantry, T::Catapult}, 450},      // Ironhold Dwarves: rich, and engineers
+        {{T::DwarfGrenadier, T::HeavyInfantry, T::Catapult}, 450},  // Ironhold Dwarves: rich, and engineers
         {{T::WolfRiders, T::Warrior}, 250},                      // Orcs of Grath
         {{T::Archers, T::LightCavalry}, 250},                    // Sylvaran Elves
         {{T::LightCavalry, T::HeavyCavalry}, 300},               // Sunreach Riders
@@ -47,7 +47,7 @@ Campaign::Option trained(UnitType t) {
         case T::Pikemen: return {t, 4, 20};
         case T::LightCavalry: return {t, 5, 28};
         case T::HeavyCavalry: return {t, 6, 36};
-        case T::Dwarves: return {t, 4, 24};
+        case T::DwarfGrenadier: return {t, 4, 24};  // where the retired legion was trained
         case T::WolfRiders: return {t, 5, 28};
         case T::Warrior: return {t, 4, 24};
         case T::Catapult: return {t, 6, 40};  // dear and slow to build, as Warlords II's siege engines
@@ -290,7 +290,7 @@ void Campaign::initCities() {
             st.options.push_back(trained(T::LightInfantry));
             const Continent::Sample s = continent_.sample(c.pos.x, c.pos.y);
             const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(200), c.pos.y, s.height, s.mountain, s.roadDist);
-            const UnitType hills[] = {T::Dwarves, T::HeavyInfantry, T::Pikemen}, woods[] = {T::Archers, T::WolfRiders, T::Warrior},
+            const UnitType hills[] = {T::DwarfGrenadier, T::HeavyInfantry, T::Pikemen}, woods[] = {T::Archers, T::WolfRiders, T::Warrior},
                            plains[] = {T::HeavyInfantry, T::LightCavalry, T::Pikemen, T::HeavyCavalry};
             const int32_t extra = 1 + (roll(3) < Fixed::fromRatio(1, 2));
             for (int32_t k = 0; k < extra; ++k) {

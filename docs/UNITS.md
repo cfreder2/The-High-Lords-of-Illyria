@@ -13,6 +13,8 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 
 **Morale** is how hard shocks shake the type, in percent of a man's (lower is steadier); "never" types never break.
 
+Retired, no longer raised anywhere (the type number is kept for old saves and sprite sheets; old saves' armies of it load as grenadiers): Dwarven Legion.
+
 | Unit | Strength | HP | Height | Radius | Mass | Speed | Melee dmg | Blow | Every | Reach | Knockback | Shield | Morale | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Light Infantry | 3 | 60 | 1.80 | 0.40 | 1.0 | 2.4 | 11 | slash | 1.30 s | 0.6 | 0 | 25% | 110% |  |
@@ -21,7 +23,6 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 | Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | pierce | 1.60 s | 2.2 | 0 |  | 90% | +150% vs mounted; +3% in the open;  |
 | Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | slash | 1.20 s | 0.8 | 3 |  | 100% | mounted; +3% in the open;  |
 | Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | pierce | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +5% in the open;  |
-| Dwarven Legion | 5 | 90 | 1.35 | 0.45 | 1.4 | 1.7 | 17 | cleave | 1.50 s | 0.5 | 0 | 30% | 75% | +4% in hills;  |
 | Wolf Riders | 5 | 75 | 1.90 | 0.80 | 2.0 | 7.5 | 12 | slash | 1.10 s | 0.6 | 2 |  | 100% | mounted;  |
 | Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 2.4 | 45 | blunt | 2.20 s | 1.6 | 12 |  | 60% |  |
 | Minotaurs | 6 | 230 | 3.00 | 0.90 | 4.0 | 3.0 | 32 | cleave | 1.70 s | 1.0 | 8 |  | 60% |  |
@@ -48,15 +49,29 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
 but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;
-against a castle gate they do five times their blast damage (satchels three times, fireballs one and a half).
+against a castle gate they do five times their blast damage (satchels three times, fireballs and Molotovs one and a half).
+A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges.
 
 | Unit | Missile | Wounds | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Elven Archers | arrow | pierce | 42 m/s | 4.0 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
 | Wizards | fireball | fire | 24 m/s | 9.0 s | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
 | Dragons | fireball | fire | 30 m/s | 6.0 s | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
-| Dwarven Grenadiers | satchel charge | explosive | 14 m/s | 6.0 s | 19 m | 16 m |  | 10 m |  | 4.0 m | 80 | 2 s |
+| Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
 | Catapults | stone | blunt | 40 m/s | 14.0 s | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
+
+## Satchel charges
+
+Carried into battle and laid on the ground, where a satchel lies still and never goes off by itself. A blast or
+a Molotov's fire reaching it sets it off a moment later, and its blast the next: chains. Left to himself a
+grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), steps back out of its blast,
+and throws his Molotovs at a satchel with foes beside it (and none of his friends) before any one man. Killed by
+fire or a blast with satchels still on him, he goes up with all of them at once: a blast a quarter wider and half
+again as hard for each one beyond the first; any other death spills them, unlit, where he falls.
+
+| Unit | Carried | Blast radius | Blast damage | Between lays | All of them at once |
+|---|---|---|---|---|---|
+| Dwarven Grenadiers | 5 | 4.0 m | 80 | 4.0 s | 8.0 m, 240 |
 
 ## Fliers
 
@@ -89,7 +104,7 @@ where it strikes. A burning satchel is taken only with the fuse to throw it on.
 |---|---|---|---|---|---|---|
 | Hyena-folk | 30 m | 17 m/s | 24 m | 14 m | 5 m | 0.3 s |
 
-Blades are taken from the bodies of: Light Infantry, Heavy Infantry, Pikemen, Light Cavalry, Heavy Cavalry, Dwarven Legion, Wolf Riders, Pegasi, Undead, Archons, Hero, Warriors, Berserkers, Hyena-folk.
+Blades are taken from the bodies of: Light Infantry, Heavy Infantry, Pikemen, Light Cavalry, Heavy Cavalry, Wolf Riders, Pegasi, Undead, Archons, Hero, Warriors, Berserkers, Hyena-folk.
 
 ## Ground
 
@@ -105,7 +120,7 @@ slows it more than the detour does. Deep water is impassable on foot. Climbing d
 | Foot | 1.25 | 1.00 | 0.70 | 0.50 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Light Infantry, Heavy Infantry, Pikemen, Griffins, Pegasi, Wizards, Dragons, Archons, Hero, Journeymen, Warriors, Berserkers |
 | Horse | 1.30 | 1.00 | 0.50 | 0.30 | 0.35 | 0.40 | 0.40 | 0.80 | 1.00 | 120% | Light Cavalry, Heavy Cavalry, Unicorns |
 | Wolf | 1.25 | 1.00 | 0.85 | 0.35 | 0.35 | 0.55 | 0.45 | 0.80 | 1.00 | 90% | Wolf Riders |
-| Dwarf | 1.20 | 1.00 | 0.70 | 0.50 | 0.35 | 0.80 | 0.55 | 0.85 | 1.00 | 50% | Dwarven Legion, Dwarven Grenadiers |
+| Dwarf | 1.20 | 1.00 | 0.70 | 0.50 | 0.35 | 0.80 | 0.55 | 0.85 | 1.00 | 50% | Dwarven Grenadiers |
 | Woodland | 1.25 | 1.00 | 0.95 | 0.55 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Elven Archers, Giant Spiders |
 | Giant | 1.15 | 1.00 | 0.65 | 0.60 | 0.65 | 0.60 | 0.90 | 0.90 | 1.00 | 80% | Giants, Minotaurs, Elephants, Devils, Demons |
 | Undead | 1.20 | 1.00 | 0.70 | 1.00 | 0.55 | 0.50 | 0.80 | 0.85 | 1.00 | 100% | Undead |

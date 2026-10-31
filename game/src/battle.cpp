@@ -284,7 +284,7 @@ void Battle::setUpFord() {
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, {px, cy - 12, 0}, east);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, {px, cy + 12, 0}, east);
     spawnSquad("Ferry Pikes", kPlayer, UnitType::Pikemen, 12, {px, cy + 36, 0}, east);
-    spawnSquad("Iron Hill Legion", kPlayer, UnitType::Dwarves, 10, {px, cy - 36, 0}, east);
+    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 8, {px, cy - 36, 0}, east);
     spawnSquad("Wildmen of Kell", kPlayer, UnitType::Berserker, 10, {px + 6, cy - 58, 0}, east);
     spawnSquad("1st Oakhaven Bowmen", kPlayer, UnitType::Archers, 12, {px - 18, cy - 14, 0}, east);
     spawnSquad("Silverwood Archers", kPlayer, UnitType::Archers, 12, {px - 18, cy + 14, 0}, east);
@@ -378,7 +378,7 @@ void Battle::setUpSiege() {
     const V3 side{out.y, -out.x, 0};
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, camp + side * 14.0f, in);
-    spawnSquad("Iron Hill Legion", kPlayer, UnitType::Dwarves, 10, camp + side * 40.0f, in);
+    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 8, camp + side * 40.0f, in);
     spawnSquad("1st Oakhaven Bowmen", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * -16.0f, in);
     spawnSquad("Silverwood Archers", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * 16.0f, in);
     spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 6, camp + out * 10.0f, in);
@@ -635,7 +635,8 @@ void Battle::collectEvents() {
     for (const sim::ImpactEvent& e : world_->impacts()) {
         const V3 pos = toV3(e.pos);
         if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600) {
-            recent_.push_back({pos, tick, e.kind == sim::ImpactEvent::Kind::Explosion ? 8.0f : (e.killed ? 3.0f : 1.0f)});
+            const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst;
+            recent_.push_back({pos, tick, blast ? 8.0f : (e.killed ? 3.0f : 1.0f)});
         }
         const V3 dir = toV3(e.dir).normalized();
         const uint32_t seed = mix(e.projectile ? e.projectile : e.hitUnit, tick);
@@ -672,6 +673,20 @@ void Battle::collectEvents() {
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());
                 for (int i = 0; i < 24; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 6, srnd() * 6, 5 + rnd() * 9}, 1.6f, 0.08f + rnd() * 0.1f);
+                break;
+            }
+            case K::Burst: {
+                // A Molotov shatters: a sheet of flame rolling out low over the
+                // ground and burning a while, a black scorch, smoke; no blast of dirt.
+                const float r = static_cast<float>(e.radius.toDouble());
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
+                emit(Particle::Kind::Flash, pos + V3{0, 0, 0.3f}, {}, 0.12f, r * 0.8f);
+                for (int i = 0; i < 30; ++i) {
+                    const float a = rnd() * 6.2832f, d = r * (0.2f + rnd() * 0.8f);
+                    emit(Particle::Kind::Fire, pos + V3{std::cos(a) * d * 0.4f, std::sin(a) * d * 0.4f, 0.15f},
+                         V3{std::cos(a) * d * 1.6f, std::sin(a) * d * 1.6f, 0.4f + rnd() * 1.2f}, 0.9f + rnd() * 1.1f, 0.35f + rnd() * 0.45f);
+                }
+                for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * r * 0.6f, srnd() * r * 0.6f, 0.6f}, {srnd(), srnd(), 1.2f + rnd() * 1.5f}, 3.0f + rnd() * 2, 0.8f + rnd());
                 break;
             }
             case K::Smash: {
@@ -713,11 +728,14 @@ void Battle::collectEvents() {
         }
     }
 
-    // Trails: fireballs burn, satchel fuses fizz.
+    // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
+    // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
     for (const sim::Projectile& p : world_->projectiles()) {
         if (p.kind == sim::ProjectileKind::Fireball) {
             emit(Particle::Kind::Fire, toV3(p.pos), V3{srnd(), srnd(), srnd()} * 0.6f, 0.35f, 0.45f);
-        } else if (p.kind == sim::ProjectileKind::Bomb && (tick & 1)) {
+        } else if (p.kind == sim::ProjectileKind::Molotov) {
+            emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
+        } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
             emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
         }
     }
@@ -971,7 +989,7 @@ void Battle::runEnemyAi() {
         } else if (range > 0 && role != Role::Flier) {
             const float keep = range * 0.8f;
             if (dist > keep) steerSquad(s, c + (goal - c) * ((dist - keep + 4) / dist));
-            else stop(s);
+            else if (role != Role::Bomber) stop(s);  // (grenadiers in range lay satchels and step back from them: no halt)
         } else if (dist > 15.0f) {
             steerSquad(s, goal);
         } else {

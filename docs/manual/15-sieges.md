@@ -29,8 +29,8 @@ Every castle is different: square, long, many-sided or shield-shaped, with drum 
 
 Every gate is two leaves of oak banded with iron, shut. While it stands it blocks walkers and missiles like the wall. It has **250 hit points for every metre** of its width: a town gate eight metres wide has 2,000.
 
-- **Blows.** Attackers whose orders lead through a gate, or who stand idle at it with no enemy on their side, hack at it. A blow does a quarter of its damage to the timbers: a legion of dwarves needs well over a minute.
-- **Blasts do far more:** grenadiers' satchels **three times** their blast, fireballs **one and a half**, catapult stones **five times**. Three or four good stones break a gate.
+- **Blows.** Attackers whose orders lead through a gate, or who stand idle at it with no enemy on their side, hack at it. A blow does a quarter of its damage to the timbers: a squad of foot needs well over a minute.
+- **Blasts do far more:** grenadiers' satchels **three times** their blast (laid at the doors and set off with a Molotov), fireballs and Molotovs **one and a half**, catapult stones **five times**. Three or four good stones break a gate.
 - **Broken is broken.** The leaves hang shattered from their hinges and the timbers lie in the passage; everyone on the march finds the new way in, and missiles fly through. Arrows stuck in the doors fall when they break. A town's own side never hacks at its own gate.
 
 **Walls do not break.** Stones and fireballs kill the men on them, and break gates; the stone stands.
@@ -54,7 +54,7 @@ A bar at the top of the screen says how it goes: *Take the courtyard: your flag 
 Back on the campaign map, a town taken at its courtyard is yours at once: the banner rose in the battle. The defenders still standing fall back to an open cell next to the town, or (a neutral garrison, or with nowhere to go) lay down their arms. A town won by killing or routing every defender instead is held, and its banner raised on the map, as after the dice (chapter [](#banners)).
 
 ::: tip "Taking a town"
-Batter the gate with stones and satchels while your archers keep heads down on the walk near it; send fliers over the wall at the courtyard; then put more men round the flagpole than they have. Six men to their two take the courtyard in under seventeen seconds.
+Batter the gate with stones, and with satchels laid at it and set off with fire, while your archers keep heads down on the walk near it; send fliers over the wall at the courtyard; then put more men round the flagpole than they have. Six men to their two take the courtyard in under seventeen seconds.
 :::
 
 ![The courtyard's flagpole, the defenders' red flag flying, and the bar at the top of the screen: who is there, and which way the flag is going.](images/shots/siege_capture.jpg)

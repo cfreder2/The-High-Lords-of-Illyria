@@ -33,10 +33,14 @@ constexpr int kFootmanCount = 10;
 
 Fixed m(int64_t metres) { return Fixed::fromInt(metres); }
 
-// The Melee's roster: every type up to the catapult, as when its checksum was
-// pinned (tests/test_units.cpp). Types added since have benchmarks of their
-// own (the hyena-folk: the Raid), so the Melee keeps its checksum.
-constexpr int kMeleeRoster = static_cast<int>(UnitType::Catapult) + 1;
+// The Melee's roster: every type up to the catapult (types added since have
+// benchmarks of their own: the hyena-folk, the Raid), less the retired.
+std::vector<UnitType> meleeRoster() {
+    std::vector<UnitType> r;
+    for (int t = 0; t <= static_cast<int>(UnitType::Catapult); ++t)
+        if (!retired(static_cast<UnitType>(t))) r.push_back(static_cast<UnitType>(t));
+    return r;
+}
 
 // The Ford is laid out around this point of a 256 m terrain patch.
 constexpr int64_t kOx = 80, kOy = 128;
@@ -94,8 +98,9 @@ void Melee::setup(World& world) {
     for (PlayerId side = 0; side < 2; ++side) {
         const int64_t x = side == 0 ? 98 : 158;
         const Vec3 facing = side == 0 ? east : -east;
-        for (int t = 0; t < kMeleeRoster; ++t) {
-            world.spawnUnit(side, {m(x), m(60 + t * 5), m(0)}, facing, unitStats(static_cast<UnitType>(t)));
+        const std::vector<UnitType> roster = meleeRoster();
+        for (size_t t = 0; t < roster.size(); ++t) {
+            world.spawnUnit(side, {m(x), m(60 + static_cast<int64_t>(t) * 5), m(0)}, facing, unitStats(roster[t]));
         }
         for (int i = 0; i < 4; ++i) {
             world.spawnUnit(side, {m(side == 0 ? x - 6 : x + 6), m(100 + i * 6), m(0)}, facing,
@@ -153,11 +158,12 @@ Replay Melee::replay(uint64_t seed) {
     r.config.terrain = std::make_shared<const Terrain>(
         Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(16)));
     // Everyone advances to the middle of the valley, then fights on their own.
-    const uint32_t perSide = kMeleeRoster + 4;
+    const uint32_t kinds = static_cast<uint32_t>(meleeRoster().size());
+    const uint32_t perSide = kinds + 4;
     for (PlayerId side = 0; side < 2; ++side) {
         for (uint32_t i = 0; i < perSide; ++i) {
             const EntityId id = side * perSide + i + 1;
-            const int64_t y = i < static_cast<uint32_t>(kMeleeRoster) ? 60 + i * 5 : 100 + (i - kMeleeRoster) * 6;
+            const int64_t y = i < kinds ? 60 + i * 5 : 100 + (i - kinds) * 6;
             r.commands.push_back({0, {side, id, Command::Type::Move, {m(side == 0 ? 120 : 136), m(y), m(0)}}});
         }
     }

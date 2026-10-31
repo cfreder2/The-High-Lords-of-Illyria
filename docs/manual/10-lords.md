@@ -60,7 +60,7 @@ Each lord's start shapes its war. The computer lords play their realms this way,
 
 **The Highcrag Giants (slow and tough).** The poorest chest and only foot to train, but the Greymere is a moat round the whole north-west: only Greymere Bridge and Greymere Ford lead in. Take the north-west, then the crossings, then come down when you are ready. Two giants and the levy's third make a stack that walls cannot stop for long.
 
-**The Ironhold Dwarves (take to the hills).** The richest chest in Illyria, the dwarven legion (strength 5, the best common foot), catapults, griffins and grenadiers. The dwarves are slow everywhere but the hills. Expand fast in every direction; the plains of Valdor are next door, and so are the Riders.
+**The Ironhold Dwarves (take to the hills).** The richest chest in Illyria, grenadiers to train (Molotovs and satchel charges), catapults and griffins. The dwarves are slow everywhere but the hills. Expand fast in every direction; the plains of Valdor are next door, and so are the Riders.
 
 **The Orcs of Grath (down and dirty).** Wolf riders are fast (14 points a day), strength 5, and at home among the trees in battle; warriors are the best sword-and-shield foot. Two levies of berserkers wait in Grathmaw. The eastern spurs are a strong position with few roads in; take the Eastreach towns quickly before the Order wakes up.
 

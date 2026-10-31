@@ -230,9 +230,10 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             switch (p.kind) {
                 case sim::ProjectileKind::Arrow: want(Sound::BowRelease, at); break;
                 case sim::ProjectileKind::Bomb:
-                    want(Sound::SatchelThrow, at);
-                    want(Sound::SatchelFuse, at, 0.25f);
+                    // Laid (or spilled) a satchel makes no sound; hurled by a hyena it whooshes.
+                    if (p.thrown) want(Sound::SatchelThrow, at);
                     break;
+                case sim::ProjectileKind::Molotov: want(Sound::SatchelThrow, at); break;
                 case sim::ProjectileKind::Fireball: want(Sound::FireballCast, at); break;
                 case sim::ProjectileKind::Stone: want(Sound::CatapultRelease, at); break;
                 default: break;
@@ -247,11 +248,15 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
         std::vector<Blast> blasts;
         for (const sim::ImpactEvent& e : world.impacts()) {
             using K = sim::ImpactEvent::Kind;
-            if (e.kind != K::Explosion && e.kind != K::Smash) continue;
+            if (e.kind != K::Explosion && e.kind != K::Smash && e.kind != K::Burst) continue;
             const V3 at = toV3(e.pos);
             blasts.push_back({at, static_cast<float>(e.radius.toDouble()) + 1.0f});
             if (e.kind == K::Smash) {
                 want(Sound::StoneSmash, at);
+                continue;
+            }
+            if (e.kind == K::Burst) {
+                want(Sound::FireballBlast, at);  // glass shatter and fire roar: a Molotov
                 continue;
             }
             // Whose: the bomb or fireball nearest there last tick.

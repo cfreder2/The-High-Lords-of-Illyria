@@ -578,6 +578,11 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
             if (camera.pickGround(x, y, ground)) orderForceMarch(ground);
             return;
         }
+        if (mode == OrderMode::LaySatchel) {
+            V3 ground;
+            if (camera.pickGround(x, y, ground)) orderLaySatchels(ground);
+            return;
+        }
         switch (pick.kind) {
             case K::Own:
             case K::Enemy:

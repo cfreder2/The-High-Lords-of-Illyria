@@ -922,6 +922,7 @@
       case "KeyS": api.scatter(); break;
       case "KeyA": setMode(orderMode === 1 ? 0 : 1); break;
       case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
+      case "KeyL": setMode(orderMode === 3 ? 0 : 3); break;
       case "KeyH": api.stop(); break;
       case "KeyF": api.focusSelection(); break;
       case "Backquote": api.selectHeroes(); break;
@@ -1249,7 +1250,8 @@
     bar.classList.toggle("march", orderMode === 2);
     const modeText = orderMode === 1
       ? `⚔ Attack: tap a soldier (ours too), a gate${s.batter ? ", a wall, house or tree" : ""}, or the ground`
-      : orderMode === 2 ? "» Force march: tap where to go; they ignore the enemy on the way" : "";
+      : orderMode === 2 ? "» Force march: tap where to go; they ignore the enemy on the way"
+      : orderMode === 3 ? "Lay satchels: tap the ground; grenadiers walk there and lay one each (fire sets them off)" : "";
     if (bar.textContent !== modeText) bar.textContent = modeText;
     if (s.notice && s.notice !== lastNotice) toast(s.notice);
     lastNotice = s.notice;

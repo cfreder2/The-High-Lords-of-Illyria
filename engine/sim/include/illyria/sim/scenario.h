@@ -39,10 +39,10 @@ struct Ford {
     static Replay replay(uint64_t seed);
 };
 
-// Every unit type on both sides (up to the catapult: the roster when its
-// checksum was pinned), plus extra dwarven grenadiers, charging each other
-// across a valley. The determinism benchmark for shields, fliers, healing,
-// knockback, explosions and remains.
+// Every unit type on both sides (up to the catapult, less the retired legion),
+// plus extra dwarven grenadiers, charging each other across a valley. The
+// determinism benchmark for shields, fliers, healing, knockback, Molotovs,
+// satchels, explosions and remains.
 struct Melee {
     static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
     static void setup(World& world);

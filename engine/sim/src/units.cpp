@@ -94,7 +94,8 @@ DamageType meleeDamageType(UnitType type) {
 DamageType missileDamageType(ProjectileKind kind) {
     switch (kind) {
         case ProjectileKind::Bomb: return DamageType::Explosive;
-        case ProjectileKind::Fireball: return DamageType::Fire;
+        case ProjectileKind::Fireball:
+        case ProjectileKind::Molotov: return DamageType::Fire;
         case ProjectileKind::Stone: return DamageType::Blunt;
         default: return DamageType::Pierce;
     }
@@ -125,6 +126,8 @@ Gait gaitOf(UnitType type) {
         default: return Gait::Foot;
     }
 }
+
+bool retired(UnitType type) { return type == UnitType::Dwarves; }
 
 bool bearsBlade(UnitType type) {
     using T = UnitType;
@@ -339,9 +342,10 @@ UnitStats unitStats(UnitType type) {
             s.mass = m(2);
             s.aggroRange = m(25);
             break;
-        case T::DwarfGrenadier:  // Myth's dwarves: satchel charges that bounce, roll and explode
+        case T::DwarfGrenadier:  // the one dwarf: Molotovs to throw, five satchel charges to lay and set off with them
             s = base(type, r(9, 20), r(13, 10), r(9, 5), 50);
-            explosive(s, ProjectileKind::Bomb, m(14), sec(6), m(10), m(16), m(19), m(4), 80, m(9), sec(2));
+            explosive(s, ProjectileKind::Molotov, m(14), sec(5), m(10), m(16), m(19), m(3), 40, m(1));
+            s.satchels = {5, {m(4), 80, m(9), 0, r(7, 20)}, sec(4)};
             melee(s, 5, r(1, 2), sec(6, 5));
             s.aggroRange = m(4);
             break;

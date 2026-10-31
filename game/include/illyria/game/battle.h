@@ -248,6 +248,8 @@ public:
     // Missile troops shoot at the spot; the rest march there, fighting
     // whoever they meet.
     void orderAttackGround(const V3& at);
+    // The selected who carry satchels walk there and lay one each, a few metres apart.
+    void orderLaySatchels(const V3& at);
     // March there deaf to the enemy (Myth's force march): to break away, or
     // to run past.
     void orderForceMarch(const V3& to, const V3* facing = nullptr);
@@ -273,7 +275,9 @@ public:
     // (the phone's attack button, Ctrl-click or A on the desktop), or as a
     // force march (a long press on the attack button, Alt-click or M).
     // Attack and force-march modes last for one order.
-    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch };
+    // LaySatchel: the next tap on the ground sends the selected grenadiers
+    // there to lay a satchel each (sim Command::LaySatchel).
+    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel };
     void setOrderMode(OrderMode m) { orderMode_ = m; }
     OrderMode orderMode() const { return orderMode_; }
     // Modifier keys held on the desktop: force (Ctrl/Cmd) and march (Alt).

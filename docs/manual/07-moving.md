@@ -24,7 +24,7 @@ Every kind of army has its **movement points**, the distance it can cover in a d
 | Wolf Riders | 14 |
 | Elven Archers, Heroes, Elephants, Giant Spiders | 12 |
 | Light Infantry, Giants, Minotaurs, Undead, Devils, Demons, Journeymen, Berserkers | 10 |
-| Dwarven Legion, Dwarven Grenadiers | 9 |
+| Dwarven Grenadiers | 9 |
 | Heavy Infantry, Pikemen, Warriors | 8 |
 | Catapults | 6 |
 
@@ -38,7 +38,7 @@ The costs are those of the *Warlords* movement table; P means the army may not g
 | Light Infantry, Heroes, Wizards, Journeymen, Berserkers | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
 | Heavy Infantry, Pikemen, Warriors | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
 | Elven Archers | 1 | 1 | 2 | **2** | 5 | 6 | P | P |
-| Dwarven Legion, Grenadiers | 1 | 1 | 2 | 6 | **3** | 6 | P | P |
+| Dwarven Grenadiers | 1 | 1 | 2 | 6 | **3** | 6 | P | P |
 | Light and Heavy Cavalry, Elephants, Unicorns | 1 | 1 | 2 | 5 | 6 | 5 | P | P |
 | Wolf Riders, Giant Spiders | 1 | 1 | 2 | 4 | 6 | **4** | P | P |
 | Giants, Minotaurs | 1 | 1 | 2 | 5 | **4** | 5 | P | P |

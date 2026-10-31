@@ -24,7 +24,7 @@ Fixed m(int64_t metres) { return Fixed::fromInt(metres); }
 
 // The computer's (and the default) army, bought in this order while the points last.
 constexpr UnitType kArmyOrder[] = {UnitType::Warrior,   UnitType::Archers,      UnitType::Pikemen,
-                                   UnitType::HeavyInfantry, UnitType::Journeyman, UnitType::Dwarves,
+                                   UnitType::HeavyInfantry, UnitType::Journeyman, UnitType::DwarfGrenadier,
                                    UnitType::Berserker, UnitType::LightCavalry, UnitType::Archers,
                                    UnitType::Warrior,   UnitType::DwarfGrenadier, UnitType::HeavyCavalry};
 

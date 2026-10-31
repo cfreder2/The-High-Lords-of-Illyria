@@ -765,9 +765,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_shift(int down) {
 EMSCRIPTEN_KEEPALIVE void illyria_set_keys(int force, int march) {
     if (app) app->battle->setKeys(force != 0, march != 0);
 }
-// 0 as usual, 1 attack, 2 force march: for one order (the phone's attack button, A, M).
+// 0 as usual, 1 attack, 2 force march, 3 lay satchels: for one order (the phone's attack button, A, M, L).
 EMSCRIPTEN_KEEPALIVE void illyria_set_order_mode(int mode) {
-    if (app && mode >= 0 && mode <= 2) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
+    if (app && mode >= 0 && mode <= 3) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
 }
 // What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
 EMSCRIPTEN_KEEPALIVE int illyria_hover(float x, float y) {
@@ -2089,8 +2089,10 @@ static SandboxMode* sandbox() {
 EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_types() {
     static std::string s;
     s = "[";
-    for (int i = 0; i < illyria::sim::kUnitTypeCount; ++i)
-        s += (i ? ",\"" : "\"") + std::string(illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(i))) + "\"";
+    for (int i = 0; i < illyria::sim::kUnitTypeCount; ++i) {
+        const auto t = static_cast<illyria::sim::UnitType>(i);
+        s += (i ? ",\"" : "\"") + std::string(illyria::sim::retired(t) ? "" : illyria::sim::unitTypeName(t)) + "\"";
+    }
     s += "]";
     return s.c_str();
 }

@@ -26,7 +26,7 @@ const RealmRare& realmRare(uint8_t side) {
     static const RealmRare kRealms[] = {
         {{T::Pegasi}, T::Pegasi, 1},                      // Aurelian Throne: knights on winged horses
         {{T::Giants, T::Giants}, T::Giants, 1},           // Highcrag Giants
-        {{T::Griffins, T::DwarfGrenadier}, T::DwarfGrenadier, 2},  // Ironhold Dwarves: griffin riders and demolitionists
+        {{T::Griffins, T::Griffins}, T::Griffins, 1},     // Ironhold Dwarves: griffin riders (their grenadiers are trained)
         {{T::Minotaurs, T::Berserker}, T::Berserker, 2},  // Orcs of Grath
         {{T::Unicorns, T::Pegasi}, T::Unicorns, 1},       // Sylvaran Elves
         {{T::Elephants}, T::Elephants, 1},                // Sunreach Riders
@@ -39,11 +39,11 @@ const RealmRare& realmRare(uint8_t side) {
 // The levies a town may hold, after the land around it; about one town in twelve has one.
 constexpr UnitType kHillLevies[] = {T::Giants, T::Griffins, T::Minotaurs};
 constexpr UnitType kWoodLevies[] = {T::Spiders, T::Unicorns, T::Berserker};
-constexpr UnitType kPlainLevies[] = {T::Elephants, T::Pegasi, T::DwarfGrenadier};
+constexpr UnitType kPlainLevies[] = {T::Elephants, T::Pegasi, T::Unicorns};
 constexpr int32_t kLevyOdds = 12;
 
 // Who rides with a hero for hire (one time in three), and the temples' guards.
-constexpr UnitType kCompanions[] = {T::Griffins, T::Pegasi, T::Unicorns, T::Wizards, T::Berserker, T::DwarfGrenadier};
+constexpr UnitType kCompanions[] = {T::Griffins, T::Pegasi, T::Unicorns, T::Wizards, T::Berserker, T::Journeyman};
 constexpr int32_t kCompanionCount = static_cast<int32_t>(sizeof kCompanions / sizeof kCompanions[0]);
 struct Guard {
     UnitType type;
@@ -70,7 +70,7 @@ bool Campaign::trainable(UnitType t) {
         case T::Pikemen:
         case T::LightCavalry:
         case T::HeavyCavalry:
-        case T::Dwarves:
+        case T::DwarfGrenadier:  // the one dwarf, where the legion was
         case T::WolfRiders:
         case T::Warrior:
         case T::Catapult: return true;  // siege engines: built at three capitals, or no wall would ever fall

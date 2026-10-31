@@ -48,7 +48,7 @@ const char* hordeName(UnitType t) {
 
 // What the computer's seats buy first.
 constexpr UnitType kComputerPrefers[] = {UnitType::Warrior,  UnitType::Archers,   UnitType::Pikemen,
-                                         UnitType::Journeyman, UnitType::Dwarves, UnitType::HeavyInfantry,
+                                         UnitType::Journeyman, UnitType::DwarfGrenadier, UnitType::HeavyInfantry,
                                          UnitType::Berserker, UnitType::HeavyCavalry, UnitType::Wizards};
 
 const char* roleName(UnitType t) {

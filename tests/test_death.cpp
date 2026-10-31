@@ -85,7 +85,7 @@ TEST(weapons_have_the_damage_types_of_their_kind) {
     CHECK(unitStats(UnitType::Giants).melee.damageType == DamageType::Blunt);
     CHECK(unitStats(UnitType::Pikemen).melee.damageType == DamageType::Pierce);
     CHECK(unitStats(UnitType::Archers).ranged.damageType == DamageType::Pierce);
-    CHECK(unitStats(UnitType::DwarfGrenadier).ranged.damageType == DamageType::Explosive);
+    CHECK(unitStats(UnitType::DwarfGrenadier).ranged.damageType == DamageType::Fire);  // the Molotov (its satchels blast)
     CHECK(unitStats(UnitType::Wizards).ranged.damageType == DamageType::Fire);
     CHECK(unitStats(UnitType::Catapult).ranged.damageType == DamageType::Blunt);
 }
@@ -199,10 +199,11 @@ TEST(blasts_gib_past_the_threshold_and_throw_the_rest_whole) {
         WorldConfig cfg;
         cfg.seed = seed;
         World w(cfg);
-        const EntityId dwarf = w.spawnUnit(0, {m(-14), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+        // A satchel in their midst, its fuse burning.
         for (int i = 0; i < 6; ++i) w.spawnUnit(1, {m(i % 3), m(i / 3 * 2 - 1), m(0)}, kWest, unitStats(UnitType::Archers));
-        const Outcome o = run(w, 30, {{0, dwarf, Command::Type::AttackGround, {m(1), m(0), m(0)}}});
-        CHECK(mismatches(o, true) == 0);  // (the archers shoot back)
+        w.placeSatchel(0, {m(1), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge, kTicksPerSecond);
+        const Outcome o = run(w, 30);
+        CHECK(mismatches(o, true) == 0);
         gibbed += o.count(DeathKind::Gibbed);
         whole += o.count(DeathKind::Fell);
         for (const Unit& u : w.units())
@@ -239,10 +240,10 @@ TEST(body_parts_roll_down_slopes) {
     for (uint64_t seed = 1; seed <= 3; ++seed) {
         cfg.seed = seed;
         World w(cfg);
-        // The grenadier throws across the slope (north), so the blast scatters parts evenly east and west.
-        const EntityId dwarf = w.spawnUnit(0, {m(64), m(40), m(0)}, {Fixed::zero(), Fixed::one(), Fixed::zero()}, unitStats(UnitType::DwarfGrenadier));
+        // Two burning satchels among them, in the middle of the slope, so the blast scatters parts evenly east and west.
         for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(63 + i % 2 * 2), m(52 + i / 2 * 2), m(0)}, kWest, unitStats(UnitType::Journeyman));
-        run(w, 40, {{0, dwarf, Command::Type::AttackGround, {m(64), m(54), m(0)}}});
+        for (int k = 0; k < 2; ++k) w.placeSatchel(0, {m(64), m(53), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge, kTicksPerSecond);
+        run(w, 40);
         for (const Remain& r : w.remains()) {
             if (r.kind != RemainKind::Head && r.kind != RemainKind::Arm && r.kind != RemainKind::Leg && r.kind != RemainKind::Chunk &&
                 r.kind != RemainKind::Torso)

@@ -48,8 +48,8 @@ const Projectile* thrownBy(const World& w, EntityId thrower) {
 TEST(hyena_picks_the_satchel_over_a_nearer_head) {
     World w(WorldConfig{});
     lay(w, RemainKind::Head, 5, 3);  // 5.8 m off
-    // A satchel left burning 14 m the other way, its fuse long.
-    w.placeSatchel(1, {m(-14), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).ranged.explosive, 8 * kTicksPerSecond);
+    // A satchel a grenadier laid 14 m the other way (it never goes off by itself).
+    w.placeSatchel(1, {m(-14), m(0), m(0)}, unitStats(UnitType::DwarfGrenadier).satchels.charge);
     const EntityId hyena = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Hyena));
     // Men to throw it at, out of their own aggro range.
     for (int i = 0; i < 3; ++i) w.spawnUnit(1, {m(-14), m(22 + i * 2), m(0)}, kWest, standing(UnitType::LightInfantry));
@@ -73,7 +73,7 @@ TEST(hyena_picks_the_satchel_over_a_nearer_head) {
                 first == First::Satchel ? "satchel" : first == First::Head ? "head" : "nothing", explosions, hurt, h->hp);
     CHECK(first == First::Satchel);
     CHECK(headStillLying);
-    // Thrown on at the men, it burst among them, not in his hands.
+    // Thrown at the men, it burst where it struck, among them, not in his hands.
     CHECK(explosions == 1);
     CHECK(hurt > 0);
     CHECK(h->alive());
@@ -227,7 +227,7 @@ TEST(raid_scenario_is_deterministic) {
     std::printf("  raid: %d things thrown (%d heads), %d killed by hyena-folk\n", thrown, heads, kills);
     CHECK(a == run(1234, nullptr, nullptr, nullptr));
     CHECK(thrown > 0);
-    constexpr uint64_t kGolden = 0x8b8645712f35abd8;
+    constexpr uint64_t kGolden = 0x8bd712213f0491ae;
     if (a != kGolden) std::printf("  Raid checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

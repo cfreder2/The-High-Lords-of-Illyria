@@ -281,7 +281,7 @@ const std::vector<Offer>& squadOffers() {
     // specialists, and the costly heavy troops.
     static const std::vector<Offer> kOffers = {
         {UnitType::Warrior, 6, 4},       {UnitType::HeavyInfantry, 6, 4}, {UnitType::Pikemen, 6, 3},
-        {UnitType::Archers, 6, 4},       {UnitType::Dwarves, 5, 4},       {UnitType::Berserker, 5, 4},
+        {UnitType::Archers, 6, 4},       {UnitType::Berserker, 5, 4},
         {UnitType::DwarfGrenadier, 3, 4}, {UnitType::Journeyman, 2, 3},   {UnitType::LightCavalry, 4, 4},
         {UnitType::HeavyCavalry, 4, 6},  {UnitType::Wizards, 2, 6},       {UnitType::Griffins, 2, 6},
     };

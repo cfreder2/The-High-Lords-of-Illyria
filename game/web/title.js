@@ -436,6 +436,7 @@
     `<tr><td>${k("S")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("A")}</td><td>Attack mode: the next click attacks.</td></tr>` +
     `<tr><td>${k("M")}</td><td>Force-march mode.</td></tr>` +
+    `<tr><td>${k("L")}</td><td>Lay satchels: the next click sends the selected grenadiers there to lay one each.</td></tr>` +
     `<tr><td>${k("H")} · ${k("F")}</td><td>Hold · find (the camera to the selection).</td></tr>` +
     `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +

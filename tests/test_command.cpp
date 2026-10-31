@@ -288,7 +288,7 @@ TEST(encircled_soldiers_face_outward_from_the_point) {
 
 TEST(scatter_spreads_them_outward) {
     Battle b(42);
-    b.selectSquad(squadNamed(b, "Iron Hill Legion"));
+    b.selectSquad(squadNamed(b, "Iron Hill Sappers"));
     const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
     const auto spread = [&] {
         V3 c;

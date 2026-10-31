@@ -2170,6 +2170,15 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             case sim::ProjectileKind::Fireball:
                 sprite(kPlanOrb, 0.9f, 0);
                 break;
+            case sim::ProjectileKind::Molotov: {
+                // A bottle tumbling end over end, green glass; its burning rag
+                // is the flame the battle trails at its neck (Battle::collectEvents).
+                const float t = static_cast<float>(timeSeconds) * 10.0f + static_cast<float>(p.id);
+                float q[4];
+                yprQuat(t, t * 0.8f, 0, q);
+                pushInstance(capsules, pos, q, {0.26f, 0.065f, 0.065f}, {0.3f, 0.48f, 0.28f});
+                break;
+            }
             case sim::ProjectileKind::Stone: {
                 // A dressed boulder, turning over in its flight.
                 const float t = static_cast<float>(timeSeconds) * 3.0f + static_cast<float>(p.id);

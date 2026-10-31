@@ -106,6 +106,24 @@ void Battle::orderAttackGround(const V3& at) {
     voice_.order(Situation::Attack, *world_, mine);
 }
 
+void Battle::orderLaySatchels(const V3& at) {
+    const std::vector<sim::EntityId> mine = selectedAlive();
+    std::vector<sim::EntityId> layers;
+    for (sim::EntityId id : mine)
+        if (world_->units()[id - 1].satchels > 0) layers.push_back(id);
+    if (layers.empty()) {
+        say("No satchels to lay");
+        return;
+    }
+    // Three abreast, three metres apart, a row behind for each three more.
+    for (size_t k = 0; k < layers.size(); ++k) {
+        const V3 spot = at + V3{(static_cast<float>(k % 3) - 1.0f) * 3.0f, static_cast<float>(k / 3) * 3.0f, 0};
+        issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
+    }
+    markOrdered(layers);
+    voice_.order(Situation::Attack, *world_, layers);
+}
+
 void Battle::orderForceMarch(const V3& to, const V3* facing) {
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
@@ -245,6 +263,7 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
     using K = Pick::Kind;
     if (mode == OrderMode::ForceMarch) return p.kind == K::None ? Intent::None : Intent::ForceMarch;
+    if (mode == OrderMode::LaySatchel) return p.kind == K::None ? Intent::None : Intent::AttackGround;
     if (mode == OrderMode::Attack) {
         switch (p.kind) {
             case K::Own:

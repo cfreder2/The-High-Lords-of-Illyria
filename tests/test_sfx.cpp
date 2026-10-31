@@ -207,15 +207,18 @@ TEST(sounds_follow_the_death_matrix) {
         sim::WorldConfig cfg;
         cfg.seed = seed;
         sim::World g(cfg);
+        // A satchel laid among them, set off by the grenadier's Molotov.
         const sim::EntityId dwarf = g.spawnUnit(0, {m(-14), m(0), m(0)}, kEast, sim::unitStats(UnitType::DwarfGrenadier));
         for (int i = 0; i < 6; ++i) g.spawnUnit(1, {m(i % 3), m(i / 3 * 2 - 1), m(0)}, kWest, sim::unitStats(UnitType::Archers));
+        g.placeSatchel(0, {m(1), m(0), m(0)}, sim::unitStats(UnitType::DwarfGrenadier).satchels.charge);
         const sim::Command bomb{0, dwarf, sim::Command::Type::AttackGround, {m(1), m(0), m(0)}};
         g.step(std::span(&bomb, 1));
         const std::vector<SfxCue> c = listen(g, {0, 0, 0}, 20);
         gibs += count(c, Sound::GibBurst);
         rain += count(c, Sound::BloodRain);
         blasts += count(c, Sound::SatchelBlast);
-        CHECK(count(c, Sound::SatchelThrow) > 0);
+        CHECK(count(c, Sound::SatchelThrow) > 0);    // the bottle thrown
+        CHECK(count(c, Sound::FireballBlast) > 0);   // and shattering into flame
     }
     CHECK(blasts > 0 && gibs > 0 && rain > 0);
 }

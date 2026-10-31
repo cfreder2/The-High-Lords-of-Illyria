@@ -80,7 +80,7 @@ Fixed toSegment(const Vec3& p, const Vec3& a, const Vec3& b) {
 bool World::canBatter(const UnitStats& s) {
     if (s.ranged.muzzleSpeed == Fixed::zero()) return false;
     const ProjectileKind k = s.ranged.kind;
-    return k == ProjectileKind::Stone || k == ProjectileKind::Bomb || k == ProjectileKind::Fireball;
+    return k == ProjectileKind::Stone || k == ProjectileKind::Bomb || k == ProjectileKind::Fireball || k == ProjectileKind::Molotov;
 }
 
 int64_t World::fightingPower(const Unit& u) const {
@@ -129,6 +129,10 @@ void World::applyOrder(Unit& u, const Command& cmd) {
     switch (cmd.type) {
         case Command::Type::Move:
             u.forceMarch = cmd.force;
+            u.routeFrom = u.pos;
+            if (inMelee) u.graceTicks = kGraceTicks;
+            break;
+        case Command::Type::LaySatchel:  // a walk there, then the satchel (World::applyCommand)
             u.routeFrom = u.pos;
             if (inMelee) u.graceTicks = kGraceTicks;
             break;

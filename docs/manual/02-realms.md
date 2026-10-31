@@ -28,7 +28,7 @@ Giants of the north-west heights, twice and three times the height of a man, who
 
 ### The Ironhold Dwarves <span class="swatch" style="background:#c8382a"></span> {#ironhold-dwarves}
 
-The dwarves of the southern mountains, under the Dragonback. **Deepforge** is the richest treasury in Illyria, and the dwarves intend to make it richer: every mine and quarry of the land, they hold, was dwarf work once. They train the dwarven legion and heavy infantry, and their engineers build siege engines. Their lord rides a griffin and keeps a company of grenadiers, whose satchel charges are the only thing in the land that likes a wall. Red is their colour.
+The dwarves of the southern mountains, under the Dragonback. **Deepforge** is the richest treasury in Illyria, and the dwarves intend to make it richer: every mine and quarry of the land, they hold, was dwarf work once. They train grenadiers and heavy infantry, and their engineers build siege engines. Their lord rides a griffin, with griffin riders beside him. Their grenadiers throw fire and lay satchel charges, the only thing in the land that likes a wall. Red is their colour.
 
 ### The Orcs of Grath <span class="swatch" style="background:#e07a22"></span> {#orcs-of-grath}
 

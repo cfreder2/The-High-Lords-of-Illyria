@@ -57,20 +57,20 @@ Cities train **common troops** only, and slowly. In *Warlords* light infantry to
 | Heavy Infantry | 4 | 20 | 5 | hill and plain towns; the Throne, Giants, Dwarves, Malvoren |
 | Elven Archers | 4 | 20 | 5 | woodland towns; the Elves, the Order |
 | Pikemen | 4 | 20 | 5 | hill and plain towns; the Giants, the Order |
-| Dwarven Legion | 4 | 24 | 6 | hill towns; the Dwarves |
+| Dwarven Grenadiers | 4 | 24 | 4 | hill towns; the Dwarves |
 | Warriors | 4 | 24 | 6 | woodland towns; the Orcs |
 | Light Cavalry | 5 | 28 | 7 | plain towns; the Elves, the Riders |
 | Wolf Riders | 5 | 28 | 7 | woodland towns; the Orcs, Malvoren |
 | Heavy Cavalry | 6 | 36 | 9 | plain towns; the Throne, the Riders |
 | Catapults | 6 | 40 | 10 | the capitals of the Throne, the Dwarves and Malvoren |
 
-A town trains light infantry and one or two more kinds, by the land round it: in the hills dwarves, heavy infantry or pikemen; in the woods archers, wolf riders or warriors; on the plains heavy infantry, light cavalry, pikemen or heavy cavalry. A capital trains light infantry and its realm's specialties:
+A town trains light infantry and one or two more kinds, by the land round it: in the hills dwarven grenadiers, heavy infantry or pikemen; in the woods archers, wolf riders or warriors; on the plains heavy infantry, light cavalry, pikemen or heavy cavalry. A capital trains light infantry and its realm's specialties:
 
 | Capital | Trains |
 |---|---|
 | Kingshold (the Aurelian Throne) | Light Infantry, Heavy Cavalry, Heavy Infantry, Catapults |
 | Highcrag (the Highcrag Giants) | Light Infantry, Heavy Infantry, Pikemen |
-| Deepforge (the Ironhold Dwarves) | Light Infantry, Dwarven Legion, Heavy Infantry, Catapults |
+| Deepforge (the Ironhold Dwarves) | Light Infantry, Dwarven Grenadiers, Heavy Infantry, Catapults |
 | Grathmaw (the Orcs of Grath) | Light Infantry, Wolf Riders, Warriors |
 | Sylvaris (the Sylvaran Elves) | Light Infantry, Elven Archers, Light Cavalry |
 | Sunreach (the Sunreach Riders) | Light Infantry, Light Cavalry, Heavy Cavalry |

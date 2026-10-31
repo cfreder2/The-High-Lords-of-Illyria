@@ -244,7 +244,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         // A good bowshot off, then they shoot on their own.
         const float keep = range * 0.8f;
         if (dist > keep) aiSteer(squad, c + (fp - c) * ((dist - keep + 4) / dist));
-        else aiHalt(squad);
+        else if (role != Role::Bomber) aiHalt(squad);  // (grenadiers in range lay satchels and step back from them: no halt)
     } else if (dist < 30.0f) {
         aiAttack(squad, foe);
     } else {

@@ -52,7 +52,7 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    constexpr uint64_t kSheet = 0xfcb6b251c5b4fe5a;
+    constexpr uint64_t kSheet = 0xe0340f87a4afc338;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }
@@ -189,7 +189,7 @@ TEST(giants_knock_soldiers_flying) {
     CHECK(thrown);
 }
 
-TEST(satchel_charges_bounce_explode_gib_and_throw_remains) {
+TEST(a_molotov_sets_off_a_laid_satchel_which_gibs_and_throws_remains) {
     WorldConfig cfg;
     World w(cfg);
     // Archers first litter the ground with arrows around the target spot.
@@ -209,31 +209,45 @@ TEST(satchel_charges_bounce_explode_gib_and_throw_remains) {
     for (const Remain& r : w.remains()) stuck += r.kind == RemainKind::Arrow;
     CHECK(stuck > 5);
 
-    // Enemies walk into the arrow field; the dwarf lobs a satchel among them.
-    for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(5), m(i * 2 - 3), m(0)}, kWest, unitStats(UnitType::LightInfantry));
-    const Command bomb{0, dwarf, Command::Type::AttackGround, {m(5), m(0), m(0)}};
-    w.step(std::span(&bomb, 1));
-    int explosions = 0, relaunched = 0, kills = 0;
-    bool bounced = false;
-    for (int i = 0; i < 6 * kTicksPerSecond; ++i) {
+    // The dwarf lays a satchel there: it lies still, and never goes off by itself.
+    const Command lay{0, dwarf, Command::Type::LaySatchel, {m(5), m(0), m(0)}};
+    w.step(std::span(&lay, 1));
+    int explosions = 0;
+    for (int i = 0; i < 15 * kTicksPerSecond; ++i) {
         w.step({});
         explosions += count(w, ImpactEvent::Kind::Explosion);
+    }
+    int laid = 0;
+    for (const Projectile& p : w.projectiles()) laid += p.kind == ProjectileKind::Bomb && p.resting && p.fuse == 0;
+    CHECK(laid == 1 && explosions == 0);
+    CHECK(w.findUnit(dwarf)->satchels == unitStats(UnitType::DwarfGrenadier).satchels.count - 1);
+
+    // Enemies walk into the arrow field; the dwarf's Molotov sets it off among them.
+    for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(5), m(i * 2 - 3), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+    const Command fire{0, dwarf, Command::Type::AttackGround, {m(5), m(0), m(0)}};
+    w.step(std::span(&fire, 1));
+    int bursts = 0, relaunched = 0, kills = 0, blastKills = 0, burstTick = -1, blastTick = -1;
+    for (int i = 0; i < 8 * kTicksPerSecond; ++i) {
+        w.step({});
+        if (count(w, ImpactEvent::Kind::Burst) > 0 && burstTick < 0) burstTick = i;
+        if (count(w, ImpactEvent::Kind::Explosion) > 0 && blastTick < 0) blastTick = i;
+        bursts += count(w, ImpactEvent::Kind::Burst);
+        explosions += count(w, ImpactEvent::Kind::Explosion);
         for (const ImpactEvent& e : w.impacts()) kills += e.killed;
-        for (const Projectile& p : w.projectiles()) {
+        for (const DeathEvent& d : w.deathEvents()) blastKills += d.cause == DamageType::Explosive;
+        for (const Projectile& p : w.projectiles())
             relaunched += p.kind == ProjectileKind::Debris && p.remain == RemainKind::Arrow && p.ageTicks == 1;
-            const bool nearGround = p.pos.z - w.groundHeight(p.pos.x, p.pos.y) < Fixed::fromRatio(1, 2);
-            bounced = bounced || (p.kind == ProjectileKind::Bomb && nearGround && p.vel.z > Fixed::zero());
-        }
         if (explosions > 0 && i > 3 * kTicksPerSecond) break;
     }
-    CHECK(explosions > 0);
+    CHECK(bursts > 0 && explosions > 0);
+    CHECK(burstTick >= 0 && blastTick > burstTick);  // the fire first, then the satchel
     CHECK(relaunched > 0);
-    CHECK(bounced);
     int parts = 0;
     for (int i = 0; i < 10 * kTicksPerSecond; ++i) w.step({});
     for (const Remain& r : w.remains()) parts += r.kind == RemainKind::Head || r.kind == RemainKind::Arm || r.kind == RemainKind::Leg;
-    CHECK(kills == 0 || parts > 0);
-    std::printf("  stuck %d, relaunched %d, kills %d, body parts %d\n", stuck, relaunched, kills, parts);
+    CHECK(blastKills == 0 || parts > 0);  // (the fire burns its dead whole)
+    std::printf("  stuck %d, relaunched %d, kills %d (%d by the blast), body parts %d; the satchel %.1f s after the bottle\n", stuck, relaunched, kills, blastKills, parts,
+                (blastTick - burstTick) / static_cast<double>(kTicksPerSecond));
 }
 
 TEST(melee_scenario_is_deterministic) {
@@ -246,7 +260,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x8a02317edadfc5df;
+    constexpr uint64_t kGolden = 0x068f9e5b3658db04;
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

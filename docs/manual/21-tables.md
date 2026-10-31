@@ -12,7 +12,7 @@ Strength, soldiers in a fresh army, movement points a day, the training (days an
 | Pikemen | 4 | 12 | 8 | 4 d, 20 g | 5 |
 | Light Cavalry | 4 | 8 | 18 | 5 d, 28 g | 7 |
 | Heavy Cavalry | 6 | 8 | 16 | 6 d, 36 g | 9 |
-| Dwarven Legion | 5 | 10 | 9 | 4 d, 24 g | 6 |
+| Dwarven Grenadiers | 4 | 6 | 9 | 4 d, 24 g | 4 |
 | Wolf Riders | 5 | 8 | 14 | 5 d, 28 g | 7 |
 | Warriors | 5 | 12 | 8 | 4 d, 24 g | 6 |
 | Catapults | 3 | 2 | 6 | 6 d, 40 g (three capitals) | 10 |
@@ -29,8 +29,7 @@ Strength, soldiers in a fresh army, movement points a day, the training (days an
 | Demons | 8 | 2 | 10 | ruins | 10 |
 | Undead | 5 | 12 | 10 | ruins | 10 |
 | Archons | 8 | 3 | 18 | ruins, temple | 10 |
-| Dwarven Grenadiers | 4 | 6 | 9 | realm, levy, hire | 4 |
-| Journeymen | 2 | 4 | 10 | realm, levy, temple | 3 |
+| Journeymen | 2 | 4 | 10 | realm, levy, temple, hire | 3 |
 | Berserkers | 5 | 10 | 10 | realm, levy, hire | 3 |
 | Hero | 3 + level | 1 | 12 | the start, hire | 0 |
 

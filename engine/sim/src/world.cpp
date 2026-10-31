@@ -151,6 +151,12 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addU64(s.mounted);
     h.addU64(s.bleeds);
     h.addI64(s.moraleShockPct);
+    // Only for those who carry satchels to lay, so battles without them hash as before.
+    if (s.satchels.count > 0) {
+        h.addI64(s.satchels.count);
+        hashExplosive(h, s.satchels.charge);
+        h.addI64(s.satchels.layTicks);
+    }
     // Only for scavengers, so battles without them hash as before.
     if (s.scavenge.sight > Fixed::zero()) {
         h.addI64(s.scavenge.sight.raw);
@@ -216,6 +222,7 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     u.hp = stats.maxHp;
     u.healCharges = stats.healing.charges;
     u.stamina = stats.staminaTicks;
+    u.satchels = stats.satchels.count;
     u.pos = pos;
     if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
@@ -300,11 +307,29 @@ void World::applyCommand(const Command& cmd) {
     Unit* u = mutableUnit(cmd.unit);
     // A broken unit heeds no orders until it rallies.
     if (u == nullptr || !u->alive() || u->owner != cmd.player || u->routed) return;
+    u->layOrdered = false;  // every order replaces the last
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
     switch (cmd.type) {
         case Command::Type::AttackUnit:
         case Command::Type::AttackObject:
+            break;
+        case Command::Type::LaySatchel:
+            // There, and lay one (world_satchels.cpp); at hand, at once.
+            if (u->satchels <= 0) return;
+            u->hasAttackTarget = false;
+            u->attackGate = -1;
+            if ((cmd.target - u->pos).flat().length() <= Fixed::fromRatio(3, 2)) {
+                u->hasMoveTarget = false;
+                laySatchel(*u, cmd.target);
+                break;
+            }
+            u->hasMoveTarget = true;
+            u->moveTarget = cmd.target;
+            u->marchSpeed = Fixed::zero();
+            u->arriveFacing = {};
+            u->layOrdered = true;
+            planPath(*u, cmd.target);
             break;
         case Command::Type::Move:
             u->hasMoveTarget = true;
@@ -715,6 +740,7 @@ void World::updateUnit(Unit& u) {
     if (u.reloadRemaining > 0) --u.reloadRemaining;
     if (u.meleeCooldown > 0) --u.meleeCooldown;
     if (u.healCooldown > 0) --u.healCooldown;
+    if (u.layCooldown > 0) --u.layCooldown;
     u.engaged = false;
     const EntityId lastFoe = u.foe;
     u.foe = kNoEntity;
@@ -771,6 +797,11 @@ void World::updateUnit(Unit& u) {
             u.hasMoveTarget = false;
             u.path.clear();
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
+            // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
+            if (u.layOrdered) {
+                u.layOrdered = false;
+                laySatchel(u, u.pos + u.facing);
+            }
         }
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
@@ -785,10 +816,14 @@ void World::updateUnit(Unit& u) {
     } else if (u.stats.scavenge.sight > Fixed::zero()) {
         // A scavenger left to himself runs his own fight (world_scavenge.cpp).
         scavenge(u);
+    } else if (u.satchels > 0 && layInPath(u)) {
+        // The enemy coming: a satchel in their path, then back from it (world_satchels.cpp).
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr) {
         fight(u, *enemy);
+    } else if (u.stats.ranged.kind == ProjectileKind::Molotov && shootSatchel(u)) {
+        // Fire on a satchel lying among the enemy, before any one man.
     } else if (Unit* target = u.stats.ranged.autoRange > Fixed::zero()
                                   ? nearestEnemy(u, u.stats.ranged.autoRange * 3 / 2)
                                   : nullptr;
@@ -1148,6 +1183,9 @@ bool World::damage(Unit& target, int32_t amount, Unit* attacker, const Blow& blo
     target.engageFoe = kNoEntity;
     deaths_.push_back({target.owner, target.pos});
     if (target.stats.scavenge.sight > Fixed::zero()) dropHeld(target);  // what a scavenger held falls from his hands
+    // The satchels a grenadier still carries: fire or a blast sets them all
+    // off at once; any other death spills them where he falls (world_satchels.cpp).
+    if (target.satchels > 0) packBlast(target, blow.type == DamageType::Explosive || blow.type == DamageType::Fire);
     if (target.stats.type == static_cast<uint8_t>(UnitType::Hero))
         heroDeaths_.push_back({target.id, target.owner, target.pos, attacker != nullptr ? attacker->id : kNoEntity});
     if (attacker != nullptr && attacker->owner != target.owner) creditKill(*attacker);
@@ -1224,7 +1262,7 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
     // would strike it; shot blind (the mark itself hidden), they scatter more.
     Vec3 lob;
     bool lobbed = false;
-    if (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball) {
+    if (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov) {
         // A defender on a wall-walk is shot at direct, over the parapet, or not at all.
         const Vec3 mark = atWalk ? target : target + up(Fixed::one());
         const Fixed shortOf = atWalk ? kClearShortAtWalk : kClearShort;
@@ -1365,11 +1403,14 @@ void World::updateProjectiles() {
             // Hurled by a scavenger, it bursts where it strikes: a man, or the ground.
             if (p.thrown && (debrisHit(prev, p.pos, p.shooter) != nullptr || p.pos.z <= surfaceBelow(p.pos.x, p.pos.y, p.pos.z))) {
                 pendingExplosions_.push_back({p.pos, p.explosive, p.owner, p.kind, p.cause});
+                p.fuse = -1;  // going off: no blast sets it off again
                 removed[i] = 1;
                 continue;
             }
-            if (--p.fuse <= 0) {
+            // Laid, with no fuse burning, it waits for a blast or fire (explode).
+            if (p.fuse > 0 && --p.fuse <= 0) {
                 pendingExplosions_.push_back({p.pos, p.explosive, p.owner, p.kind, p.cause});
+                p.fuse = -1;
                 removed[i] = 1;
             }
             continue;
@@ -1402,7 +1443,7 @@ void World::updateProjectiles() {
                     // A blade cuts, and deeper (it is only ever thrown by a hand, or blown off the ground again).
                     if (p.remain == RemainKind::Blade) {
                         blow.type = DamageType::Slash;
-                        amount = std::clamp<int32_t>((speed * 3 / 4).floorToInt(), 5, 14);
+                        amount = static_cast<int32_t>(std::clamp<int64_t>((speed * 3 / 4).floorToInt(), 5, 14));
                     }
                     // Thrown by a hand: the thrower's blow (his kill, if it kills).
                     Unit* thrower = p.thrown ? mutableUnit(p.shooter) : nullptr;
@@ -1476,7 +1517,7 @@ void World::updateProjectiles() {
         const Fixed obstacleT = obstacleHit(prev, p.pos, hitT, false, &stone);
         if (obstacleT >= Fixed::zero()) {
             const Vec3 at = prev + seg * obstacleT;
-            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+            if (burstsOnImpact(p.kind)) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else if (stone) {
                 // Off stone it glances back and drops to the foot of it.
@@ -1489,7 +1530,7 @@ void World::updateProjectiles() {
             removed[i] = 1;
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
-            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+            if (burstsOnImpact(p.kind)) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else if (shieldBlocks(*hit, p.vel, Fixed::one())) {
                 // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
@@ -1511,7 +1552,7 @@ void World::updateProjectiles() {
             removed[i] = 1;
         } else if (groundT <= Fixed::one()) {
             const Vec3 at = prev + seg * groundT;
-            if (p.kind == ProjectileKind::Fireball || p.kind == ProjectileKind::Stone) {
+            if (burstsOnImpact(p.kind)) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
@@ -1539,9 +1580,11 @@ void World::updateProjectiles() {
 }
 
 void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind, DamageType cause) {
-    // A stone smashes and scatters, without fire.
-    const ImpactEvent::Kind event = kind == ProjectileKind::Stone ? ImpactEvent::Kind::Smash : ImpactEvent::Kind::Explosion;
-    impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius});
+    // A stone smashes and scatters, without fire; a Molotov's oil bursts into flame.
+    const ImpactEvent::Kind event = kind == ProjectileKind::Stone     ? ImpactEvent::Kind::Smash
+                                    : kind == ProjectileKind::Molotov ? ImpactEvent::Kind::Burst
+                                                                      : ImpactEvent::Kind::Explosion;
+    impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
     blastGates(at, ex, kind);
     const auto awayFrom = [&](const Vec3& p) {
         Vec3 d = flatDirection(at, p, {});
@@ -1589,15 +1632,17 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
         clearRemain(i);
     }
 
-    // Other bombs nearby are thrown and their fuses cut short: chain reactions.
+    // Satchels nearby (laid, burning or flying) are thrown and set off a
+    // moment later, or sooner: chain reactions. A Molotov's fire does it too.
     for (Projectile& p : projectiles_) {
-        if (p.kind != ProjectileKind::Bomb || p.fuse <= 0) continue;
+        if (p.kind != ProjectileKind::Bomb || p.fuse < 0) continue;  // (going off already)
         const Fixed d = (p.pos - at).length();
         if (d >= ex.radius) continue;
         const Fixed v = ex.impulse * (Fixed::one() - d / ex.radius);
         p.vel += awayFrom(p.pos) * v + up(v * kLiftFraction);
         p.resting = false;
-        p.fuse = std::min(p.fuse, 4 + static_cast<int32_t>(rng_.nextBelow(8)));
+        const int32_t fuse = 4 + static_cast<int32_t>(rng_.nextBelow(8));
+        p.fuse = p.fuse > 0 ? std::min(p.fuse, fuse) : fuse;
     }
     (void)owner;
 }
@@ -1753,6 +1798,12 @@ uint64_t World::checksum() const {
         if (u.shieldArrows != 0) h.addI64(u.shieldArrows);
         // Only once a scavenger is about, so battles without one hash as before.
         if (u.looted) h.addU64(u.looted);
+        // Only for those who carry satchels, so battles without them hash as before.
+        if (u.stats.satchels.count > 0) {
+            h.addI64(u.satchels);
+            h.addI64(u.layCooldown);
+            h.addU64(u.layOrdered);
+        }
         if (u.stats.scavenge.sight > Fixed::zero()) hashScavenger(h, u.scav);
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);

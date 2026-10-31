@@ -87,6 +87,8 @@ public:
     UnitType type(bool orNone = false) {
         const uint64_t t = u();
         if (t > static_cast<uint64_t>(UnitType::Count) || (t == static_cast<uint64_t>(UnitType::Count) && !orNone)) ok_ = false;
+        // The retired legion's men are grenadiers now (units.h retired()).
+        if (ok_ && t == static_cast<uint64_t>(UnitType::Dwarves)) return UnitType::DwarfGrenadier;
         return ok_ ? static_cast<UnitType>(t) : UnitType::LightInfantry;
     }
     bool ok() const { return ok_; }

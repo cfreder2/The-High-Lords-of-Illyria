@@ -98,7 +98,8 @@
 
     panel.append(el("h4", {}, "Add a squad"));
     const pick = el("select", { onchange: (e) => { state.type = +e.target.value; render(); } });
-    types.forEach((t, i) => pick.append(el("option", i === state.type ? { value: i, selected: "" } : { value: i }, pretty(t))));
+    // A retired type comes with no name: not offered (the numbers stay the sim's).
+    types.forEach((t, i) => { if (t) pick.append(el("option", i === state.type ? { value: i, selected: "" } : { value: i }, pretty(t))); });
     panel.append(pick);
     panel.append(seg(SIDES.map((s, i) => [swatch(i), s[0]]), (i) => i === state.side, (i) => { state.side = i; }));
     panel.append(seg([1, 6, 12, 24].map(String), (i) => [1, 6, 12, 24][i] === state.count, (i) => { state.count = [1, 6, 12, 24][i]; }));

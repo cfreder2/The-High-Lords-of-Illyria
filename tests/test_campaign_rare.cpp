@@ -50,11 +50,15 @@ TEST(cities_train_only_common_troops) {
         if (o.type == UnitType::LightInfantry) CHECK(o.days == 2 && o.cost >= 10);
     // Common: the line troops; rare: heroes, beasts, monsters, allies, specialists.
     for (UnitType t : {UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Archers, UnitType::Pikemen, UnitType::LightCavalry,
-                       UnitType::HeavyCavalry, UnitType::Catapult})
+                       UnitType::HeavyCavalry, UnitType::Catapult, UnitType::DwarfGrenadier})
         CHECK(Campaign::trainable(t));
-    for (UnitType t : {UnitType::Hero, UnitType::Dragons, UnitType::Giants, UnitType::Griffins, UnitType::Unicorns, UnitType::DwarfGrenadier,
-                       UnitType::Journeyman, UnitType::Berserker})
+    for (UnitType t : {UnitType::Hero, UnitType::Dragons, UnitType::Giants, UnitType::Griffins, UnitType::Unicorns, UnitType::Journeyman,
+                       UnitType::Berserker})
         CHECK(Campaign::rare(t));
+    // The legion is retired: the grenadiers are the one dwarf, trained where it was.
+    CHECK(!Campaign::trainable(UnitType::Dwarves));
+    for (const Campaign::CityState& city : c.cities())
+        for (const Campaign::Option& o : city.options) CHECK(o.type != UnitType::Dwarves);
 }
 
 TEST(every_rare_type_can_be_had_somewhere) {

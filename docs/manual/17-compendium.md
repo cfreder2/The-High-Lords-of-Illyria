@@ -69,14 +69,6 @@ Knights in plate on barded horses, with lances: the hammer of the Throne and the
 **On the field.** Give them room to gather speed, flat or downhill, and a target that is not facing them. Uphill their charge is a quarter of itself; into braced pikes it is a disaster. Once in a melee they are strong but not special; pull them out with a force march, wheel, and charge again. Best in the open (+5%).
 :::
 
-::: unit Dwarven Legion | dwarves
-Dwarves in mail with axes and shields, short, broad and hard to move. They are slow on the road and slower in the woods, but nothing in Illyria climbs a hillside or crosses rock as easily.
-
-**Campaign.** 10 dwarves. 9 movement points; a hill costs them only 3. Trained in hill towns and at Deepforge: 4 days, 24 gold, 6 a day. They have the familiar-ground edge in hills.
-
-**On the field.** The best common foot in the land, steady (75% of a man's shocks) and heavy-hitting with cleaving axes. Hold the high ground with them and let the enemy climb. They are at home on rock and in the hills (+4%).
-:::
-
 ::: unit Wolf Riders | wolf_riders
 Goblins on great wolves, quick, vicious and at home among the trees, where horses falter.
 
@@ -198,11 +190,11 @@ A named champion: a lord of the realm, or a sword for hire. A hero leads, explor
 :::
 
 ::: unit Dwarven Grenadiers | dwarf_grenadier
-Dwarven demolitionists with satchel charges on a fuse, which they throw at whatever they dislike. The satchels bounce, roll and burst, and set off other satchels nearby.
+The one dwarf of Illyria: demolitionists with bottles of burning oil to throw and five satchel charges each to lay. (The old dwarven legion is no more; its men carry satchels now.)
 
-**Campaign.** 6 grenadiers. 9 movement points. Rare: the Dwarves' lord has them from the start, Deepforge holds a levy of two more, some plain towns have a levy, and heroes for hire sometimes bring them. Upkeep 4 a day.
+**Campaign.** 6 grenadiers. 9 movement points; a hill costs them only 3. Trained in hill towns and at Deepforge: 4 days, 24 gold, 4 a day.
 
-**On the field.** A short throw (19 m) and a big bang (80, four metres wide), three times as hard on a gate. They can strike the men on a wall. Keep them **Staggered**: a satchel landing among them is a chain reaction. Be careful what you aim at near your own men.
+**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Staggered**, and away from your own line. Hyena-folk steal laid satchels and throw them back, bursting where they strike.
 :::
 
 ::: unit Journeymen | journeyman

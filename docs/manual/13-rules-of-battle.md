@@ -77,7 +77,7 @@ No shot is sure. Every arrow, satchel, fireball and stone is a real thing in fli
 
 ### Blasts {#blasts}
 
-Grenadiers' **satchel charges** are thrown, bounce, roll down slopes and burst on a fuse (2 s), throwing everyone near off his feet; a burst cuts short the fuses of other satchels near it and throws them: chain reactions. **Fireballs** (wizards, dragons) burst where they strike, and burn. A **catapult stone** lands in a plunging arc and smashes everything within 3 m. Blasts do far more to a gate than blows do (chapter [](#gates)).
+Grenadiers throw **Molotovs**, bottles of burning oil that burst where they strike into fire three metres wide, and lay **satchel charges** on the ground. A laid satchel lies still and never goes off by itself: a blast or a Molotov's fire reaching it sets it off a moment later, throwing everyone near off his feet, and its blast sets off the satchels near it: chain reactions. A grenadier killed by fire or a blast goes up with every satchel he still carries. **Fireballs** (wizards, dragons) burst where they strike, and burn. A **catapult stone** lands in a plunging arc and smashes everything within 3 m. Blasts do far more to a gate than blows do (chapter [](#gates)).
 
 ::: sheet Missile troops
 :::

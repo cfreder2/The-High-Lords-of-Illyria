@@ -29,10 +29,11 @@ inline constexpr Fixed kTickDt = Fixed::fromRatio(1, kTicksPerSecond);
 
 enum class ProjectileKind : uint8_t {
     Arrow,     // sticks where it lands, blocked by shields
-    Bomb,      // bounces and rolls until its fuse runs out, then explodes
+    Bomb,      // a satchel charge: laid, it lies still until a blast or fire sets it off (a burning fuse, then it explodes)
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
     Stone,     // a catapult's stone: a high arc, then it smashes whatever it lands on
+    Molotov,   // a grenadier's bottle of burning oil: shatters on any impact into a burst of fire, which sets off satchels
 };
 
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
@@ -113,6 +114,14 @@ struct Scavenging {
     int32_t windupTicks = 0;  // drawing back before the throw
 };
 
+// Satchel charges a unit carries to lay (world_satchels.cpp): each lies
+// where it is put until a blast or fire reaches it.
+struct Satchels {
+    int32_t count = 0;        // carried into battle; zero: none
+    Explosive charge;         // each one's blast
+    int32_t layTicks = 0;     // between one laid and the next
+};
+
 struct UnitStats {
     uint8_t type = 0;  // UnitType, for presentation
     Fixed radius;
@@ -141,6 +150,7 @@ struct UnitStats {
     // man's; 0 never breaks (the mindless dead, heroes).
     int32_t moraleShockPct = 100;
     Scavenging scavenge;
+    Satchels satchels;
 };
 
 // A body part's soldier type unknown (arrows, and parts from before it was kept).
@@ -267,6 +277,11 @@ struct Unit {
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
     bool looted = false;       // dead: a scavenger took his blade
     Scavenger scav;            // scavengers only (UnitStats::scavenge)
+    // Satchel charges still carried (UnitStats::satchels), the ticks before
+    // he may lay the next, and whether he lays one where his move ends (an order).
+    int32_t satchels = 0;
+    int32_t layCooldown = 0;
+    bool layOrdered = false;
 
     bool alive() const { return hp > 0; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
@@ -310,8 +325,9 @@ struct Command {
     // AttackGate: missile troops shoot at the gate nearest `target`.
     // AttackUnit: go after `targetUnit` (of either side: a force attack on a
     // friend only ever when ordered). AttackObject: a gate, wall or piece of
-    // scenery (world_orders.cpp says who can harm what).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject };
+    // scenery (world_orders.cpp says who can harm what). LaySatchel: walk to
+    // `target` and lay a satchel charge there (those who carry them).
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
 
     PlayerId player = 0;
@@ -354,7 +370,8 @@ struct ImpactEvent {
     // Bleed: a flung body part struck or skidded here (radius = size of the mark).
     // Smash: a stone shattered here (radius = its reach). Gate: a blow or blast
     // struck a gate (gate = which; killed = it broke).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate };
+    // Burst: a Molotov shattered here and its fire spread (radius).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -552,9 +569,14 @@ public:
     void launchPart(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source = kNoSource) {
         spawnDebris(kind, owner, pos, vel, source);
     }
-    // A satchel charge (`ex`) laid at rest on the ground at `pos`, its fuse
-    // burning `fuseTicks`: a grenadier's, or in tests. Its id.
-    EntityId placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& ex, int32_t fuseTicks);
+    // A satchel charge (`ex`) laid at rest on the ground at `pos`: unlit
+    // (`fuseTicks` zero), as a grenadier lays it, it waits for a blast or
+    // fire; else its fuse burns that long (in tests). Its id.
+    EntityId placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& ex, int32_t fuseTicks = 0);
+    // What bursts on impact (fireballs, stones, Molotovs) rather than bouncing or sticking.
+    static bool burstsOnImpact(ProjectileKind k) {
+        return k == ProjectileKind::Fireball || k == ProjectileKind::Stone || k == ProjectileKind::Molotov;
+    }
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -661,6 +683,17 @@ private:
     void dropHeld(Unit& u);
     // A blast reaching a man with a satchel in his hands sets it off.
     void setOffHeld(Unit& u);
+    // Satchel charges (world_satchels.cpp).
+    // Lays one where he stands, toward `toward`, and steps back from it.
+    void laySatchel(Unit& u, const Vec3& toward);
+    // Idle with satchels left and the enemy coming: lays one in their path (true).
+    bool layInPath(Unit& u);
+    // A Molotov thrower's shot at a satchel lying among the enemy, if he has
+    // one (true, whether or not he could loose this tick).
+    bool shootSatchel(Unit& u);
+    // He falls with satchels still on him: to fire or a blast (`setOff`)
+    // they all go up at once, one big blast; else they spill where he falls.
+    void packBlast(Unit& u, bool setOff);
     // How a scavenger moves: toward `goal`, round armoured foes, by a route when the way is not clear.
     void scavengeWalk(Unit& u, const Vec3& goal);
     // The armoured foes near him: how close the nearest is inside its

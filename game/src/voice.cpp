@@ -435,13 +435,13 @@ void Voice::observe(const sim::World& world, int outcome) {
     };
     std::vector<Blast> blasts;
     for (const sim::ImpactEvent& e : world.impacts()) {
-        if (e.kind != sim::ImpactEvent::Kind::Explosion) continue;
-        // Whose: the bomb or fireball that was nearest there last tick.
+        if (e.kind != sim::ImpactEvent::Kind::Explosion && e.kind != sim::ImpactEvent::Kind::Burst) continue;
+        // Whose: the bomb, fireball or Molotov that was nearest there last tick.
         const V3 at = toV3(e.pos);
         int owner = -1;
         float best = 9.0f;
         for (const Flight& f : flights_) {
-            if (f.kind != sim::ProjectileKind::Bomb && f.kind != sim::ProjectileKind::Fireball) continue;
+            if (f.kind != sim::ProjectileKind::Bomb && f.kind != sim::ProjectileKind::Fireball && f.kind != sim::ProjectileKind::Molotov) continue;
             const V3 d = f.pos - at;
             if (d.dot(d) < best) {
                 best = d.dot(d);
@@ -508,16 +508,16 @@ void Voice::observe(const sim::World& world, int outcome) {
     // Hurt and still standing.
     for (const sim::ImpactEvent& e : world.impacts())
         if (e.kind == sim::ImpactEvent::Kind::Hit && !e.killed && unitAt(e.hitUnit) && unitAt(e.hitUnit)->alive()) want(S::Pain, e.hitUnit);
-    // A grenadier whose satchel just killed: the bomb nearest the blast was his.
+    // A grenadier whose satchel or Molotov just killed: the missile nearest the blast was his.
     if (!world.deathEvents().empty()) {
         for (const sim::ImpactEvent& e : world.impacts()) {
-            if (e.kind != sim::ImpactEvent::Kind::Explosion) continue;
+            if (e.kind != sim::ImpactEvent::Kind::Explosion && e.kind != sim::ImpactEvent::Kind::Burst) continue;
             const V3 at = toV3(e.pos);
             const Flight* bomb = nullptr;
             float best = 16.0f;
             for (const Flight& f : flights_) {
                 const V3 d = f.pos - at;
-                if (f.kind == sim::ProjectileKind::Bomb && d.dot(d) < best) {
+                if ((f.kind == sim::ProjectileKind::Bomb || f.kind == sim::ProjectileKind::Molotov) && d.dot(d) < best) {
                     best = d.dot(d);
                     bomb = &f;
                 }
@@ -566,11 +566,11 @@ void Voice::observe(const sim::World& world, int outcome) {
         }
     }
 
-    // Satchels lit and stones thrown: new missiles since last tick.
+    // Molotovs lit and stones thrown: new missiles since last tick.
     for (const sim::Projectile& p : world.projectiles()) {
-        if (p.kind != sim::ProjectileKind::Bomb && p.kind != sim::ProjectileKind::Stone) continue;
+        if (p.kind != sim::ProjectileKind::Molotov && p.kind != sim::ProjectileKind::Stone) continue;
         if (flightOf(p.id)) continue;
-        want(p.kind == sim::ProjectileKind::Bomb ? S::Fuse : S::EngineLoose, p.shooter);
+        want(p.kind == sim::ProjectileKind::Molotov ? S::Fuse : S::EngineLoose, p.shooter);
     }
 
     // First contact, each side: re-armed after a long quiet.
