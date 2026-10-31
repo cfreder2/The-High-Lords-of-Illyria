@@ -56,7 +56,8 @@
 
   // Four sides, in the match colours (mode.h teamColour).
   const SIDES = [["Blue", "#4a78e6"], ["Red", "#d9402f"], ["Gold", "#e0b43a"], ["Green", "#4caf50"]];
-  // sprites::Clip, in order (game/render/sprite_layout.h).
+  // sprites::Clip, in order (game/render/sprite_layout.h): offered when no one
+  // is selected; else the selected soldiers' sheets' own (illyria_sandbox_clips).
   const CLIPS = ["idle", "walk", "attack", "flinch", "die_back", "die_front", "die_crumple", "die_burn"];
   const SLOW = [[0.1, "⅒"], [0.25, "¼"], [0.5, "½"], [1, "1×"], [2, "2×"], [4, "4×"]];
   // The numbers the sandbox tunes (SandboxMode::statsJson): key, label, step.
@@ -150,8 +151,9 @@
 
     panel.append(el("h4", {}, "Selected soldiers play"));
     const clips = el("div", { class: "sb-clips" });
-    CLIPS.forEach((c, i) => clips.append(el("button", { onclick: () => call("illyria_sandbox_clip", null, ["number", "number"], [i, state.loop ? 1 : 0]) }, c.replace("die_", "† "))));
-    clips.append(el("button", { onclick: () => call("illyria_sandbox_clip", null, ["number", "number"], [-1, 0]) }, "as before"));
+    const names = clipNames.length ? clipNames : CLIPS;
+    names.forEach((c) => clips.append(el("button", { onclick: () => call("illyria_sandbox_play", null, ["string", "number"], [c, state.loop ? 1 : 0]) }, c.replace("die_", "† ").replace(/_/g, " "))));
+    clips.append(el("button", { onclick: () => call("illyria_sandbox_play", null, ["string", "number"], ["", 0]) }, "as before"));
     panel.append(clips);
     const loop = el("input", { type: "checkbox", onchange: (e) => { state.loop = e.target.checked; } });
     loop.checked = state.loop;
@@ -192,12 +194,14 @@
     if (a && a[what]) a[what]();
   }
 
-  let hud = {};
+  let hud = {}, clipNames = [];
   function poll() {
     if (!active) return;
     try { hud = JSON.parse(call("illyria_mode_hud", "string") || "{}"); } catch (e) { hud = {}; }
     if (hud.mode !== "sandbox") return;
-    const key = JSON.stringify([hud.paused, hud.fights, hud.side]);
+    // The clips the selection's sheets play, by name (their own, for a sheet that lists them).
+    try { clipNames = JSON.parse(call("illyria_sandbox_clips", "string") || "[]"); } catch (e) { clipNames = []; }
+    const key = JSON.stringify([hud.paused, hud.fights, hud.side, clipNames]);
     if (key !== poll.key) { poll.key = key; render(); }
     (hud.sides || []).forEach((n, i) => { const m = document.getElementById(`sbMen${i}`); if (m) m.textContent = String(n); });
   }

@@ -23,8 +23,10 @@ target_include_directories(illyria_game PUBLIC include)
 target_link_libraries(illyria_game PUBLIC illyria_sim)
 
 # The soldiers' articulated figures (no GL): built into the sprite sheets by
-# the renderer, previewed by tools/spritesheet and checked by the tests.
-add_library(illyria_figures render/figures.cpp render/closeup.cpp)
+# the renderer, previewed by tools/spritesheet and checked by the tests; and
+# the renderer's other pure parts (close-up sheets, sheets' own clips, what a
+# soldier is seen doing).
+add_library(illyria_figures render/figures.cpp render/closeup.cpp render/sprite_clips.cpp render/unit_deeds.cpp)
 target_include_directories(illyria_figures PUBLIC render)
 target_link_libraries(illyria_figures PUBLIC illyria_game)
 target_compile_options(illyria_figures PRIVATE -Wno-conversion)

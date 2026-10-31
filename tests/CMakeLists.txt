@@ -62,6 +62,7 @@ add_executable(illyria_tests
     test_capture.cpp
     test_territory.cpp
     test_sprite_layout.cpp
+    test_sprite_clips.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
     test_markers.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp

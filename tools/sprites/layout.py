@@ -5,6 +5,10 @@ holds the same numbers for the renderer (tests/test_sprite_layout.cpp checks
 the two agree through the manifest). Change one, change all three.
 """
 
+import json
+import math
+import re
+
 # Views drawn: 0 front, 1 front-right (45 deg), 2 right side, 3 back-right, 4 back.
 # Views 5-7 are 3, 2, 1 mirrored by the renderer and are never drawn.
 VIEWS = 5
@@ -96,6 +100,7 @@ UNITS = {
     'warrior': (24, 'man', 1.90, 0.72, False, False, _MAN + ('shield',), 'Myth-style warrior, sword and heater shield, plume'),
     'berserker': (25, 'man', 1.90, 0.56, False, False, _MAN, 'bare-chested berserker with a claymore, kilt'),
     'catapult': (26, 'large', 2.50, 1.00, False, True, ('chunk', 'weapon'), 'wooden siege catapult on four wheels, team-coloured pennant'),
+    'hyena': (27, 'man', 1.55, 0.60, False, False, _MAN, 'hunched hyena-folk scout, ragged blue kilt, long scimitar'),
 }
 
 # The attack's telling frame (0-based within the 6): the blow lands (melee) or
@@ -120,8 +125,148 @@ def gib_file(part, variant):
     return 'gibs/%s_%s.png' % (part, 'ab'[variant])
 
 
-def gib_slot(part, variant):
-    return VIEWS * FRAMES_PER_VIEW + GIB_PARTS.index(part) * GIB_VARIANTS + variant
+def gib_slot(part, variant, frames_per_view=FRAMES_PER_VIEW):
+    return VIEWS * frames_per_view + GIB_PARTS.index(part) * GIB_VARIANTS + variant
+
+
+# ---------------------------------------------------------------- a unit's own clips
+#
+# A unit delivered with ART_DIR/<unit>/clips.json lists its own clips, in
+# atlas order, in place of CLIPS (3D renders: more and other clips than the
+# fixed layout's). Its cells are named as ever (<clip>/v<view>_f<NN>.png),
+# laid out view by view in that order, then the gib parts. The sheet JSON
+# lists them as "clips" (listed_clips), and the renderer plays them by name
+# (game/render/sprite_clips.h), a clip a sheet lacks by LISTED_FALLBACK.
+CLIP_NAME_RE = re.compile(r'^[a-z][a-z_]*$')
+LISTED_REQUIRED = ('idle', 'walk', 'attack', 'flinch', 'die_back')
+LISTED_MAX_FRAMES = 100  # two digits in the file names
+LISTED_KEYS = ('name', 'frames', 'seconds', 'loop', 'stride', 'release', 'times')
+LISTED_FALLBACK = {'run': 'walk', 'celebrate': 'idle', 'die_front': 'die_back', 'die_crumple': 'die_back',
+                   'die_burn': 'die_crumple', 'pickup': 'attack', 'throw': 'attack', 'slash': 'attack'}
+# The format by example (the archers' list as rendered): stride, metres of
+# ground one loop of a moving clip covers; release, the second into the clip
+# the arrow (or the thrown thing) leaves; times, when each frame shows, from
+# the clip's start (default: evenly over seconds).
+EXAMPLE_CLIPS = [
+    {'name': 'idle', 'frames': 8, 'seconds': 2.6, 'loop': True},
+    {'name': 'walk', 'frames': 8, 'loop': True, 'stride': 1.40},
+    {'name': 'run', 'frames': 8, 'loop': True, 'stride': 2.74},
+    {'name': 'attack', 'frames': 12, 'seconds': 2.40, 'release': 1.45,
+     'times': [0.0, 0.25, 0.5, 0.75, 1.0, 1.15, 1.3, 1.45, 1.6, 1.8, 2.0, 2.2]},
+    {'name': 'flinch', 'frames': 4, 'seconds': 0.60},
+    {'name': 'die_back', 'frames': 8, 'seconds': 1.50},
+    {'name': 'die_front', 'frames': 8, 'seconds': 1.40},
+    {'name': 'die_crumple', 'frames': 8, 'seconds': 1.50},
+    {'name': 'die_burn', 'frames': 8, 'seconds': 2.20},
+    {'name': 'celebrate', 'frames': 16, 'seconds': 2.70, 'loop': True},
+]
+
+
+def check_clips(clips):
+    """A clip list (clips.json's "clips") checked; raises ValueError saying what is wrong."""
+    if not isinstance(clips, list) or not clips:
+        raise ValueError('"clips" must be a list of clips')
+    seen = set()
+    for k, c in enumerate(clips):
+        if not isinstance(c, dict):
+            raise ValueError('clip %d is not an object' % k)
+        name = c.get('name')
+        what = '%s' % (name if isinstance(name, str) else 'clip %d' % k)
+        if not isinstance(name, str) or not CLIP_NAME_RE.match(name) or name == 'gibs':
+            raise ValueError('%s: a name of lower-case letters and _ (not "gibs")' % what)
+        if name in seen:
+            raise ValueError('%s: listed twice' % what)
+        seen.add(name)
+        extra = sorted(set(c) - set(LISTED_KEYS))
+        if extra:
+            raise ValueError('%s: unknown keys %s' % (what, ', '.join(extra)))
+        n = c.get('frames')
+        if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= LISTED_MAX_FRAMES:
+            raise ValueError('%s: frames must be 1 to %d' % (what, LISTED_MAX_FRAMES))
+
+        def number(key, positive):
+            v = c.get(key)
+            if v is None:
+                return None
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 or (positive and v == 0):
+                raise ValueError('%s: %s must be a number%s' % (what, key, ' above 0' if positive else ' of 0 or more'))
+            return float(v)
+        seconds = number('seconds', True)
+        number('stride', True)
+        release = number('release', False)
+        if 'loop' in c and not isinstance(c['loop'], bool):
+            raise ValueError('%s: loop must be true or false' % what)
+        if release is not None and seconds is not None and release > seconds:
+            raise ValueError('%s: release %.2f s is past its %.2f s' % (what, release, seconds))
+        times = c.get('times')
+        if times is not None:
+            if seconds is None:
+                raise ValueError('%s: times need seconds' % what)
+            if (not isinstance(times, list) or len(times) != n or
+                    any(isinstance(t, bool) or not isinstance(t, (int, float)) or not math.isfinite(t) for t in times)):
+                raise ValueError('%s: times must be %d numbers, one a frame' % (what, n))
+            if times[0] < 0 or any(b < a for a, b in zip(times, times[1:])) or times[-1] >= seconds:
+                raise ValueError('%s: times must rise from 0 and end before %.2f s' % (what, seconds))
+    missing = [r for r in LISTED_REQUIRED if r not in seen]
+    if missing:
+        raise ValueError('missing the clips %s' % ', '.join(missing))
+    return clips
+
+
+def read_clips(path):
+    """A unit's clips.json ({"clips": [...]}), checked (check_clips)."""
+    with open(path) as fh:
+        try:
+            doc = json.load(fh)
+        except ValueError as e:
+            raise ValueError('not JSON: %s' % e)
+    if not isinstance(doc, dict) or 'clips' not in doc:
+        raise ValueError('no "clips"')
+    return check_clips(doc['clips'])
+
+
+def listed_clips(clips):
+    """The clips as a sheet JSON lists them ("clips": each with its first
+    frame within a view, and loop always), and the frames a view."""
+    out, first = [], 0
+    for c in clips:
+        e = {'name': c['name'], 'first': first, 'frames': c['frames']}
+        for k in ('seconds', 'loop', 'stride', 'release', 'times'):
+            if k in c:
+                e[k] = c[k]
+        e['loop'] = bool(c.get('loop', False))
+        out.append(e)
+        first += c['frames']
+    return out, first
+
+
+def clip_line(c):
+    """A listed clip as the renderer takes it: "name first frames seconds loop
+    stride release [times...]" (game/web/sheets.cpp, sprite_clips.h parseClips)."""
+    words = [c['name'], c['first'], c['frames'], c.get('seconds', 0), 1 if c.get('loop') else 0, c.get('stride', 0),
+             c.get('release', -1)] + list(c.get('times', []))
+    return ' '.join(w if isinstance(w, str) else repr(w) if isinstance(w, float) else str(w) for w in words)
+
+
+def unit_cells(unit, listed):
+    """Every picture a unit delivered with its own clips takes (as manifest()'s
+    cells, all of each clip required), with its slot in that sheet."""
+    number, klass, height, attack, flier, ranged, gibs, look = UNITS[unit]
+    c = CLASSES[klass]
+    fpv = sum(k['frames'] for k in listed)
+    cells = []
+    for k in listed:
+        for v in range(VIEWS):
+            for f in range(k['frames']):
+                cells.append({'file': '%s/%s' % (unit, cell_file(k['name'], v, f)), 'unit': unit, 'anim': k['name'], 'view': v, 'frame': f,
+                              'slot': v * fpv + k['first'] + f, 'canvas': c['canvas'], 'ppm': c['ppm'],
+                              'anchor': c['anchor'], 'required': True})
+    for part in gibs:
+        for k in range(GIB_VARIANTS):
+            cells.append({'file': '%s/%s' % (unit, gib_file(part, k)), 'unit': unit, 'anim': 'gib', 'part': part, 'variant': 'ab'[k],
+                          'slot': gib_slot(part, k, fpv), 'canvas': GIB_CANVAS, 'ppm': c['ppm'],
+                          'anchor': [GIB_CANVAS[0] // 2, GIB_CANVAS[1] // 2], 'required': False})
+    return cells
 
 
 def unit_class(unit):
@@ -152,4 +297,6 @@ def manifest():
             'gib_parts': list(GIB_PARTS), 'gib_variants': GIB_VARIANTS, 'classes': CLASSES, 'gib_canvas': GIB_CANVAS,
             'team_key': TEAM_KEY, 'chroma_key': CHROMA_KEY, 'elevation_deg': ELEVATION_DEG,
             'impact_frame_melee': IMPACT_FRAME_MELEE, 'release_frame_ranged': RELEASE_FRAME_RANGED,
+            'clip_list': {'file': '<unit>/clips.json', 'keys': list(LISTED_KEYS), 'required': list(LISTED_REQUIRED),
+                          'fallback': LISTED_FALLBACK, 'example': {'clips': EXAMPLE_CLIPS}},
             'units': units, 'cells': cells}

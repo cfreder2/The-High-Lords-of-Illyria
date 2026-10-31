@@ -4,7 +4,8 @@
 // the same numbers for the art pipeline). A sheet's cell table lists, view by
 // view, every frame of every clip, then the gib parts. Old sheets (26 frames
 // a view: idle, walk, attack, flinch, one death) still load: the clips they
-// lack fall back to ones they have.
+// lack fall back to ones they have. A sheet may instead list its own clips
+// (sprite_clips.h: any clips, any frames a view, the gib parts after them).
 
 #include <cstdint>
 
@@ -50,14 +51,17 @@ constexpr int frameIndex(Clip c, int i, int framesPerView) {
 constexpr int gibSlot(Gib g, int variant) {
     return kViews * kFramesPerView + static_cast<int>(g) * kGibVariants + (variant & 1);
 }
+// Where a gib slot (gibSlot) is in the cell table of a sheet of framesPerView
+// frames a view: the gib parts follow its views' cells.
+constexpr int kGibBase = kViews * kFramesPerView;
+constexpr int gibCell(int slot, int framesPerView) { return slot - kGibBase + kViews * framesPerView; }
 
-// A unit type (sim::UnitType's number) drawn with another type's pre-rendered
-// sheet until its own is made: the site's sprites/index.json has no entry for
-// it, so the page fetches the stand-in's sheet for it instead (game/web/sheets.cpp).
-// The hyena-folk (27) wear the light infantry's (0) for now; once their sheet
-// is in the index and the manifest, this returns 27 for them too.
+// The pre-rendered sheet a unit type (sim::UnitType's number) is drawn with:
+// its own once the site's sprites/index.json lists it (`listed`), else a
+// stand-in's until it is made (game/web/sheets.cpp fetches whichever). The
+// hyena-folk (27) wear the light infantry's (0) until theirs is in the index.
 constexpr int kHyenaType = 27;
-constexpr int sheetStandIn(int type) { return type == kHyenaType ? 0 : type; }
+constexpr int sheetStandIn(int type, bool listed = false) { return !listed && type == kHyenaType ? 0 : type; }
 
 // How a soldier died, as the sim's death matrix records it (sim::DeathKind and
 // sim::DamageType, same order, so a static_cast from those fits).

@@ -39,9 +39,9 @@ def snap_codes(img):
     return out
 
 
-def write(out_dir, name, number, ppm, cells, frames_per_view, extra=None, max_side=4096):
-    """Packs cells (list as in read(); an int entry k means "the same pixels as
-    cell k", None an empty slot) into <out_dir>/<name>.webp and .json. Returns (W, H)."""
+def pack(cells, max_side=4096):
+    """Where write() puts each picture: (W, H, {cell: (x, top)}), the atlas
+    W x H; H may come out over max_side (write refuses it, fits says so)."""
     real = [k for k, c in enumerate(cells) if isinstance(c, dict)]
     area = sum((cells[k]['w'] + 2 * GUTTER) * (cells[k]['h'] + 2 * GUTTER) for k in real)
     W = 256
@@ -58,6 +58,20 @@ def write(out_dir, name, number, ppm, cells, frames_per_view, extra=None, max_si
         x += w
         shelf = max(shelf, h)
     H = (y + shelf + 3) // 4 * 4
+    return W, H, place
+
+
+def fits(cells, max_side=4096):
+    """Whether the cells pack into an atlas no side of which is over max_side."""
+    W, H, _ = pack(cells, max_side)
+    return W <= max_side and H <= max_side
+
+
+def write(out_dir, name, number, ppm, cells, frames_per_view, extra=None, max_side=4096):
+    """Packs cells (list as in read(); an int entry k means "the same pixels as
+    cell k", None an empty slot) into <out_dir>/<name>.webp and .json. Returns (W, H)."""
+    real = [k for k, c in enumerate(cells) if isinstance(c, dict)]
+    W, H, place = pack(cells, max_side)
     if H > max_side:
         raise ValueError('%s: atlas %dx%d is over %d px' % (name, W, H, max_side))
     atlas = np.zeros((H, W, 4), np.uint8)

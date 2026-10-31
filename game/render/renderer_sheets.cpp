@@ -14,6 +14,7 @@
 
 #include "closeup.h"
 #include "renderer.h"
+#include "unit_deeds.h"
 
 namespace illyria::game {
 
@@ -81,12 +82,20 @@ sprites::Clip deathClipOf(const U& u) {
 }  // namespace
 
 bool Renderer::loadSheet(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount, int framesPerView,
-                         bool closeup) {
+                         bool closeup, const sprites::SheetClips& clips) {
     if (type < 0 || type >= sim::kUnitTypeCount || !rgba || !cells || width <= 0 || height <= 0 || width > 4096 || height > 4096) return false;
-    // The old layout (130 cells) or the new (sprite_layout.h: the views' cells, then any gib parts).
-    const bool legacy = framesPerView == sprites::kLegacyFramesPerView && cellCount == sprites::kLegacyCells;
-    if (!legacy && !(framesPerView == sprites::kFramesPerView && (cellCount == sprites::kViews * sprites::kFramesPerView || cellCount == sprites::kCells)))
-        return false;
+    if (!clips.empty()) {
+        // Its own clips (sprite_clips.h): framesPerView frames a view, as they list, then any gib parts.
+        const int views = sprites::kViews * framesPerView;
+        if (framesPerView < 1 || views > 4000 || !clips.valid(framesPerView) ||
+            !(cellCount == views || cellCount == views + sprites::kGibCount * sprites::kGibVariants))
+            return false;
+    } else {
+        // The old layout (130 cells) or the new (sprite_layout.h: the views' cells, then any gib parts).
+        const bool legacy = framesPerView == sprites::kLegacyFramesPerView && cellCount == sprites::kLegacyCells;
+        if (!legacy && !(framesPerView == sprites::kFramesPerView && (cellCount == sprites::kViews * sprites::kFramesPerView || cellCount == sprites::kCells)))
+            return false;
+    }
     const int viewCells = sprites::kViews * framesPerView;
     for (int c = 0; c < cellCount; ++c) {
         const float* r = &cells[c * 8];
@@ -99,6 +108,7 @@ bool Renderer::loadSheet(int type, const uint8_t* rgba, int width, int height, c
     sh.prerendered = true;
     sh.framesPerView = framesPerView;
     sh.cellCount = cellCount;
+    sh.clips = clips;
     // GL keeps the bottom row first.
     std::vector<uint8_t> flipped(static_cast<size_t>(width) * height * 4);
     for (int y = 0; y < height; ++y)
@@ -127,8 +137,9 @@ bool Renderer::loadSheet(int type, const uint8_t* rgba, int width, int height, c
     } else {
         prerenderedTexels_ += static_cast<double>(w) * h;
     }
-    std::printf("sprite sheet %s: %s, %dx%d, %d frames a view, %.0f px/m%s\n", sim::unitTypeName(static_cast<sim::UnitType>(type)),
-                closeup ? "close-up" : "pre-rendered", w, h, framesPerView, sh.ppm, halved ? " (halved to fit)" : "");
+    std::printf("sprite sheet %s: %s, %dx%d, %d frames a view%s, %.0f px/m%s\n", sim::unitTypeName(static_cast<sim::UnitType>(type)),
+                closeup ? "close-up" : "pre-rendered", w, h, framesPerView, clips.empty() ? "" : " in its own clips", sh.ppm,
+                halved ? " (halved to fit)" : "");
     return true;
 }
 
@@ -137,6 +148,7 @@ void Renderer::dropSheet(Sheet& sh, bool closeup) {
     glDeleteTextures(1, &sh.tex);
     glDeleteTextures(1, &sh.cells);
     sh.tex = sh.cells = 0;
+    sh.clips = {};
     if (!closeup) {
         sheetTexels_ -= static_cast<double>(sh.texW) * sh.texH;
         if (sh.prerendered) prerenderedTexels_ -= static_cast<double>(sh.texW) * sh.texH;
@@ -182,9 +194,31 @@ int Renderer::clipFrame(int type, sprites::Clip c, int i) {
     return sprites::frameIndex(c, i, frames);
 }
 
+const sprites::SheetClips* Renderer::clipsFor(int type) const {
+    // The sheet drawn with (sheetFor): the close-up one when held.
+    const Sheet* sh = nullptr;
+    if (const auto c = closeups_.find(type); c != closeups_.end() && c->second.tex) sh = &c->second;
+    else if (const auto n = sheets_.find(type); n != sheets_.end() && n->second.tex) sh = &n->second;
+    return sh && !sh->clips.empty() ? &sh->clips : nullptr;
+}
+
+std::vector<std::string> Renderer::clipNames(int type) const {
+    std::vector<std::string> names;
+    if (const sprites::SheetClips* clips = clipsFor(type)) {
+        for (const sprites::SheetClip& c : clips->clips) names.push_back(c.name);
+    } else {
+        for (const char* n : sprites::kClipNames) names.emplace_back(n);
+    }
+    return names;
+}
+
 void Renderer::playClip(const std::vector<sim::EntityId>& ids, int clip, bool loop) {
+    playClip(ids, clip < 0 || clip >= sprites::kClipCount ? std::string() : std::string(sprites::kClipNames[clip]), loop);
+}
+
+void Renderer::playClip(const std::vector<sim::EntityId>& ids, const std::string& clip, bool loop) {
     for (sim::EntityId id : ids) {
-        if (clip < 0 || clip >= sprites::kClipCount) played_.erase(id);
+        if (clip.empty()) played_.erase(id);
         else played_[id] = {clip, loop, gameSeconds_};
     }
 }
@@ -198,13 +232,55 @@ float downAt(sprites::Clip clip, float t) {
     return clip == sprites::Clip::DieBurn ? t * t : t;
 }
 
+// The fixed layout's clip played for a name (sprite_clips.h fallbackOf: a
+// celebration the idle, a run the walk, a throw the attack), or -1.
+int fixedClip(std::string_view name) {
+    for (int k = 0; k < 8 && !name.empty(); ++k, name = sprites::fallbackOf(name))
+        for (int c = 0; c < sprites::kClipCount; ++c)
+            if (name == sprites::kClipNames[c]) return c;
+    return -1;
+}
+
+// Seconds a fall of a sheet's own clips takes when it does not say: the fixed layout's.
+float fallSeconds(const sprites::SheetClip& c) {
+    return c.length(c.name == "die_burn" ? sprites::kBurnSeconds : sprites::kDieSeconds);
+}
+
 }  // namespace
 
 int Renderer::playedFrame(int type, sim::EntityId id, float gameSeconds, float* down) {
     const auto it = played_.find(id);
     if (it == played_.end()) return -1;
     const Played& p = it->second;
-    const auto clip = static_cast<sprites::Clip>(p.clip);
+    if (const sprites::SheetClips* clips = clipsFor(type)) {
+        // A sheet of its own clips: the one of that name (or what stands in for it), as long as it says.
+        const sprites::SheetClip* c = clips->play(p.clip);
+        if (!c) {
+            played_.erase(it);
+            return -1;
+        }
+        const bool dies = c->name.rfind("die_", 0) == 0;
+        float len = c->length(2.2f);
+        if (dies) len = fallSeconds(*c);
+        else if (c->name == "attack" || c->name == "throw" || c->name == "pickup" || c->name == "slash")
+            len = c->length(figures::attackSeconds(static_cast<sim::UnitType>(type)));
+        else if (c->name == "walk" || c->name == "run") len = c->length(sprites::kMoveLoopSeconds);
+        else if (c->name == "flinch") len = c->length(figures::kFlinchSeconds);
+        const float t = std::max(0.0f, gameSeconds - p.start);
+        const float through = (p.loop ? t - len * std::floor(t / len) : t) / len;
+        if (down) *down = dies ? downAt(c->name == "die_burn" ? sprites::Clip::DieBurn : sprites::Clip::DieBack, through) : 0.0f;
+        if (!p.loop && t >= len && !dies) {
+            played_.erase(it);
+            return -1;
+        }
+        return c->first + c->frameAt(t, len, p.loop);
+    }
+    const int fixed = fixedClip(p.clip);
+    if (fixed < 0) {
+        played_.erase(it);
+        return -1;
+    }
+    const auto clip = static_cast<sprites::Clip>(fixed);
     // As long as the game plays it: an idle breath, a stride, the type's
     // stroke, a flinch, a fall.
     float seconds = 2.2f;
@@ -216,7 +292,7 @@ int Renderer::playedFrame(int type, sim::EntityId id, float gameSeconds, float* 
         case sprites::Clip::DieBurn: seconds = sprites::kBurnSeconds; break;
         default: seconds = sprites::kDieSeconds; break;
     }
-    const int n = sprites::kClipFrames[p.clip];
+    const int n = sprites::kClipFrames[fixed];
     const float t = std::max(0.0f, gameSeconds - p.start) / seconds;
     int i = static_cast<int>(t * static_cast<float>(n));
     const bool dies = clip >= sprites::Clip::DieBack;
@@ -235,12 +311,81 @@ int Renderer::playedFrame(int type, sim::EntityId id, float gameSeconds, float* 
 
 int Renderer::deathFrame(int type, const sim::Unit& u, float secondsDead, float* down) {
     const sprites::Clip clip = deathClipOf(u);
+    if (const sprites::SheetClips* clips = clipsFor(type)) {
+        // A sheet of its own clips: the fall by name (or the one standing in for it), as long as it says.
+        if (const sprites::SheetClip* c = clips->play(sprites::kClipNames[static_cast<int>(clip)])) {
+            const float seconds = fallSeconds(*c);
+            const float t = u.airborne ? seconds / 3 : secondsDead;
+            if (down) *down = u.airborne ? 0.0f : downAt(clip, secondsDead / seconds);
+            return c->first + c->frameAt(t, seconds, false);
+        }
+    }
     const float seconds = clip == sprites::Clip::DieBurn ? sprites::kBurnSeconds : sprites::kDieSeconds;
     const int n = sprites::kClipFrames[static_cast<int>(clip)];
     // Thrown through the air by a blow, he stays mid-fall until he lands.
     const int i = u.airborne ? 2 : static_cast<int>(secondsDead / seconds * static_cast<float>(n));
     if (down) *down = u.airborne ? 0.0f : downAt(clip, secondsDead / seconds);
     return clipFrame(type, clip, i);
+}
+
+int Renderer::listedFrame(const Battle& battle, size_t i, const sprites::SheetClips& clips, float gameSeconds, float moved, float dt,
+                          uint32_t victors) {
+    // How often (ticks) whether a missile soldier will loose is worked out again while he draws.
+    constexpr uint32_t kEngagedTicks = 6;
+    const sim::Unit& u = battle.world().units()[i];
+    const auto type = static_cast<sim::UnitType>(u.stats.type);
+    sprites::ClipMemory& m = clipMemory_[i];
+    const float tps = static_cast<float>(sim::kTicksPerSecond);
+    const uint32_t tick = battle.world().tick();
+    const float alpha = battle.alpha();
+    const uint32_t attackTick = battle.attackTick(i);
+    const auto since = [&](uint32_t t) { return t == UINT32_MAX ? -1.0f : gameSeconds - static_cast<float>(t) / tps; };
+    sprites::Deeds d;
+    d.now = gameSeconds;
+    d.sinceAttack = since(attackTick);
+    d.sinceHit = since(battle.hitTick(i));
+    d.moving = battle.unitMoving(i);
+    d.inAir = u.inAir();
+    d.stepMetres = moved;
+    d.celebrating = u.owner < 32 && ((victors >> u.owner) & 1u) != 0;
+    d.idlePhase = static_cast<float>(u.id % 13) * 0.37f;  // as the fixed layout's idle
+    d.attackSeconds = figures::attackSeconds(type);
+    d.flinchSeconds = figures::kFlinchSeconds;
+    d.stride = figures::stride(type);
+    // His pace over the ground, smoothed, for walking or running.
+    if (dt > 0) m.speed = sprites::easeSpeed(m.speed, moved / dt, dt);
+    if (u.stats.scavenge.sight > sim::Fixed::zero()) {
+        // A scavenger (sim::Unit::scav, read-only): what he took up and threw since the last look.
+        const sim::Scavenger& s = u.scav;
+        const bool striking = s.holding() && s.mind == sim::Scavenger::Mind::Strike && s.timer > 0;
+        sprites::observeScavenger(m, s.holding(), striking, s.mind == sim::Scavenger::Mind::Retreat, s.timer, tick, attackTick, tps);
+        d.sincePickup = m.pickupAt >= 0 ? gameSeconds - m.pickupAt : -1.0f;
+        // Drawn back: it leaves his hand in the tick his wind-up runs out (World::strike).
+        d.toThrow = striking ? sprites::secondsToRelease(s.timer, alpha, tps) : -1.0f;
+        d.sinceThrow = m.throwAt >= 0 ? gameSeconds - m.throwAt : -1.0f;
+        if (attackTick != UINT32_MAX && attackTick == m.claimed) d.attackFrom = m.claimedBy;
+    } else if (const sprites::SheetClip* a = clips.play("attack");
+               a && a->release >= 0 && u.stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
+        // Missile troops: the draw in the last `release` seconds of the reload,
+        // when he will loose as it ends (his shot comes in the tick it reaches 0).
+        const float toRelease = sprites::secondsToRelease(u.reloadRemaining, alpha, tps);
+        if (toRelease >= 0 && toRelease <= a->release) {
+            if (m.engagedTick == UINT32_MAX || tick < m.engagedTick || tick - m.engagedTick >= kEngagedTicks) {
+                m.engaged = deeds::willLoose(battle, i);
+                m.engagedTick = tick;
+            }
+            if (m.engaged) d.toRelease = toRelease;
+        } else {
+            m.engagedTick = UINT32_MAX;  // worked out afresh at his next draw
+        }
+    }
+    return sprites::chooseFrame(clips, d, m).frame;
+}
+
+float Renderer::deathSeconds(int type, const sim::Unit& u) const {
+    if (const sprites::SheetClips* clips = clipsFor(type))
+        if (const sprites::SheetClip* c = clips->play(sprites::kClipNames[static_cast<int>(deathClipOf(u))])) return fallSeconds(*c);
+    return figures::kDieSeconds;
 }
 
 void Renderer::listCloseup(int type, int width, int height, float ppm) {

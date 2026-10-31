@@ -42,7 +42,7 @@ also machine-readable in `docs/sprite_templates/manifest.json` (loop over its
 
 | class | canvas | px a metre | anchor (feet), px from top-left | types |
 |---|---|---|---|---|
-| man | 1024 x 1024 | 192 | 512, 560 | light_infantry, heavy_infantry, archers, dwarves, wizards, undead, hero, dwarf_grenadier, journeyman, warrior, berserker |
+| man | 1024 x 1024 | 192 | 512, 560 | light_infantry, heavy_infantry, archers, dwarves, wizards, undead, hero, dwarf_grenadier, journeyman, warrior, berserker, hyena |
 | large | 1536 x 1024 | 128 | 768, 560 | pikemen, light_cavalry, heavy_cavalry, wolf_riders, minotaurs, spiders, griffins, pegasi, unicorns, archons, catapult |
 | huge | 1536 x 1024 | 80 | 768, 600 | giants, elephants, dragons, devils, demons |
 | gib part | 512 x 512 | the unit's class | 256, 256 (part centred) | all |
@@ -112,6 +112,49 @@ types; `--no-gibs` leaves them empty, and `gibs.py ART --out DIR` writes them
 out for review. Where a type's sheet has no gib cells the game throws its old 3D
 parts.
 
+### A unit's own clips (clips.json)
+
+A unit rendered from a 3D model may bring more and other clips than the
+table above: `<unit>/clips.json` lists them, in atlas order, and replaces the
+fixed layout for that unit. The cells are named as ever
+(`<unit>/<clip>/v<view>_f<NN>.png`, team masks beside them); there is no gibs
+folder needed (they are cut from the idle, as above). Example
+(`docs/sprite_templates/clips_example.json`):
+
+    {"clips": [
+      {"name": "idle",   "frames": 8,  "seconds": 2.6, "loop": true},
+      {"name": "walk",   "frames": 8,  "loop": true, "stride": 1.40},
+      {"name": "run",    "frames": 8,  "loop": true, "stride": 2.74},
+      {"name": "attack", "frames": 12, "seconds": 2.40, "release": 1.45, "times": [0.0, 0.25, ...]},
+      {"name": "flinch", "frames": 4,  "seconds": 0.60},
+      {"name": "die_back", "frames": 8, "seconds": 1.50},
+      ...
+      {"name": "celebrate", "frames": 16, "seconds": 2.70, "loop": true}
+    ]}
+
+- `name`: lower-case letters and `_`. **idle, walk, attack, flinch and
+  die_back are required**; the game also plays run, celebrate, die_front,
+  die_crumple, die_burn and (the hyena-folk) pickup and throw, each falling
+  back when missing: run to walk, celebrate to idle, die_front and
+  die_crumple to die_back, die_burn to die_crumple, pickup and throw to attack.
+- `frames` (1 to 100), `seconds` (once through), `loop`.
+- `stride`: metres of ground one loop of a moving clip covers. The walk and
+  run advance by the distance walked over it, so the feet do not skate; a
+  soldier runs above the geometric mean of the two clips' paces (stride over
+  seconds, or over 1 s when no seconds are given), with 12% either side
+  before he changes back.
+- `release`: the second into the clip the arrow (or the thrown thing)
+  leaves. An archer set to loose shows the frames before it over the last
+  `release` seconds of his reload, so the release frame comes as the arrow
+  leaves; the rest play from there.
+- `times`: when each frame shows, seconds from the clip's start (rising, the
+  last before `seconds`); by default evenly over `seconds`.
+
+Such a delivery must be whole (every cell of every listed clip; nothing is
+taken from the old sheet), and its pictures are taken as rendered (not planted
+to a ground line). The sheets' pixels a metre come down from 48 (96 for the
+close-up) as far as the cells need to fit their atlases.
+
 ### How many pictures
 
 Per unit type: 5 views x 44 frames = **220** (190 required, 30 optional die_burn)
@@ -178,9 +221,14 @@ The importer keys the background, builds the team mask, checks the feet (with
 game's resolution (48 px a metre: the normal sheet) and to twice that (the
 close-up sheet), trims, draws the 1 px outline and packs the atlases in the game's
 format (`game/web/sprites/`, see `tools/blender/sprites/pack.py`), the new
-layout of 44 frames a view plus 20 gib slots (`sprite_layout.h`). Views 5-7 are
-mirrored by the renderer. Missing cells come from today's sheet (kept the first
-time in `tools/sprites/baseline/`). Running it again changes nothing.
+layout of 44 frames a view plus 20 gib slots (`sprite_layout.h`), or a unit's own
+clips one after another plus the 20 (with `"clips"` in both sheets' JSON,
+`game/render/sprite_clips.h`). Views 5-7 are mirrored by the renderer. Missing
+cells come from today's sheet (kept the first time in
+`tools/sprites/baseline/`). Running it again changes nothing. For one unit:
+
+    python3 tools/sprites/import.py ART_DIR --units archers --check
+    python3 tools/sprites/import.py ART_DIR --units archers
 
 In the game the normal sheet is always loaded (halved in battles with many types
 on a phone); a type's close-up sheet is fetched only while the camera is close to

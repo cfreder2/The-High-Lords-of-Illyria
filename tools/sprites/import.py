@@ -25,6 +25,14 @@ from the type's sheet as it was before the first import (kept in --baseline),
 so a partial delivery works; a clip the old sheet lacks borrows another's
 cells (die_front -> die_back, ...).
 
+A unit folder with a clips.json lists the unit's own clips (layout.py
+check_clips; docs/SPRITE_SPEC.md), in atlas order, in place of the fixed
+layout: its cells are laid out view by view in that order, then the gib
+parts (cut from the idle pictures as ever), and both sheets' JSON list the
+clips as "clips". Such a delivery is whole (every cell of every clip; nothing
+from the old sheet), and its pictures are exact renders: placed as they come,
+not planted. Each sheet's pixels a metre come down until its cells fit.
+
 --check validates and reports only, writing nothing; it exits 1 on errors.
 The output depends only on the inputs: running it again changes nothing.
 """
@@ -56,6 +64,7 @@ LIVING = ('idle', 'walk', 'attack', 'flinch')
 PLANT_Y_M = 0.03  # how far a living frame's feet may stray from its view's ground line (plant)
 PLANT_X_M = 0.04  # and an idle or walking frame's head from its view's
 STRIDE_DROP_M = 0.2  # how much lower a stride's near foot may sit, seen from in front or behind
+CLIPS_FILE = 'clips.json'  # a unit's own clips (layout.py), beside its clip folders
 FILE_RE = re.compile(r'^(?:(?P<clip>[a-z_]+)/v(?P<view>\d)_f(?P<frame>\d\d)|gibs/(?P<part>[a-z_]+)_(?P<var>[ab]))(?P<team>_team)?\.png$')
 
 
@@ -286,21 +295,23 @@ def feet(alpha, ppm):
 
 # ---------------------------------------------------------------- a unit
 
-def scan(art, unit, entries, report):
-    """The files delivered for a unit: {slot: (path, team_path)}, checked against the manifest."""
+def scan(art, unit, entries, report, listed=False):
+    """The files delivered for a unit: {slot: (path, team_path)}, checked against the manifest (or its clips.json)."""
     d = os.path.join(art, unit)
     known = {e['file'][len(unit) + 1:]: e for e in entries}
     found = {}
     for base, _, files in sorted(os.walk(d)):
         for f in sorted(files):
             rel = os.path.relpath(os.path.join(base, f), d).replace(os.sep, '/')
+            if rel == CLIPS_FILE:
+                continue
             if not f.lower().endswith('.png'):
                 report.warn('%s/%s: not a PNG, ignored' % (unit, rel))
                 continue
             m = FILE_RE.match(rel)
             key = rel.replace('_team.png', '.png')
             if not m or key not in known:
-                report.error('%s/%s: not a file the manifest names' % (unit, rel))
+                report.error('%s/%s: not a file the %s names' % (unit, rel, CLIPS_FILE if listed else 'manifest'))
                 continue
             e = known[key]
             with Image.open(os.path.join(base, f)) as im:
@@ -387,11 +398,30 @@ def idle_pictures(art, unit, report=None):
 
 def import_unit(art, unit, man, args, report):
     info = man['units'][unit]
-    entries = [e for e in man['cells'] if e['unit'] == unit]
+    listed = None  # its own clips, as the sheet JSON lists them (clips.json), or the fixed layout
+    clips_path = os.path.join(art, unit, CLIPS_FILE)
+    if os.path.exists(clips_path):
+        try:
+            listed, fpv = layout.listed_clips(layout.read_clips(clips_path))
+        except (OSError, ValueError) as e:
+            report.error('%s/%s: %s' % (unit, CLIPS_FILE, e))
+            return
+        entries = layout.unit_cells(unit, listed)
+        report.note('%s: its own %d clips (%s), %d frames a view' % (unit, len(listed), ', '.join(c['name'] for c in listed), fpv))
+    else:
+        fpv = layout.FRAMES_PER_VIEW
+        entries = [e for e in man['cells'] if e['unit'] == unit]
+    ncells = layout.VIEWS * fpv + layout.GIB_CELLS
     by_slot = {e['slot']: e for e in entries}
-    found = scan(art, unit, entries, report)
+    found = scan(art, unit, entries, report, listed is not None)
     if not found:
         return
+    if listed is not None:
+        # Nothing to take from the old sheet: every cell of every clip comes in the delivery.
+        missing = [e['file'] for e in entries if e['required'] and e['slot'] not in found]
+        if missing:
+            report.error('%s: %d cells of its clips not delivered (first: %s)' % (unit, len(missing), missing[0]))
+            return
     src_ppm = float(info['ppm'])
     ax0, ay0 = info['anchor']
     # Read everything once: keyed, team-masked pictures and their feet.
@@ -447,58 +477,71 @@ def import_unit(art, unit, man, args, report):
             continue
         sh = shifts.get((e['anim'], e['view'])) or (shifts.get(('idle', e['view'])) if e['anim'] not in LIVING else None) or (0, 0)
         p['anchor'] = (ax0 + sh[0], ay0 + sh[1])
-    plant(pics, unit, src_ppm, report)
+    if listed is None:
+        plant(pics, unit, src_ppm, report)
+    else:
+        # Exact renders: the feet already where the model stood, frame to frame.
+        report.note('%s: placed as rendered (not planted)' % unit)
 
     old = {sfx: baseline_sheet(unit, args.out, args.baseline, sfx, not args.check) for sfx in ('', '_hd')}
     meta0, cells0 = old['']
     base_ppm = float(meta0['ppm']) if meta0 else layout.GAME_PPM
     written = []
     for sfx, ppm_want, limit in (('', base_ppm, NORMAL_AREA), ('_hd', base_ppm * layout.HD_SCALE, HD_AREA)):
+        max_side = 2048 if sfx == '' else 4096
         ppm = min(ppm_want, src_ppm)
         # Shrink until the cells fit their atlas (estimated from the pictures' trimmed areas).
         area = 0.0
-        for slot in range(layout.CELLS):
+        for slot in range(ncells):
             if slot in pics:
                 al = pics[slot]['alpha'] > 0.02
                 rows, cols = np.where(al.any(axis=1))[0], np.where(al.any(axis=0))[0]
                 if len(rows):
                     area += (rows[-1] - rows[0] + 1) * (cols[-1] - cols[0] + 1) / src_ppm ** 2
-        mo, co = old[sfx] if old[sfx][0] else old['']
+        # A delivery of its own clips takes nothing from the old sheet.
+        mo, co = (None, None) if listed is not None else old[sfx] if old[sfx][0] else old['']
         if mo:
-            for slot in range(layout.CELLS):
+            for slot in range(ncells):
                 k = old_slot(slot, mo['framesPerView'])
                 if slot not in pics and k is not None and k < len(co) and co[k]:
                     area += co[k]['w'] * co[k]['h'] / float(mo['ppm']) ** 2
         while area * ppm * ppm > limit and ppm > 8:
             ppm *= 0.95
-        ppm = round(ppm, 2)
-        cells = [None] * layout.CELLS
-        for slot in range(layout.CELLS):
-            if slot in pics:
-                p = pics[slot]
-                cells[slot] = to_cell(*resample(p['rgb'], p['alpha'], p['team'], p['anchor'][0], p['anchor'][1], src_ppm, ppm), ppm)
-                if cells[slot] is None:
-                    report.warn('%s: %s is empty' % (unit, p['entry']['file']))
-            elif mo:
-                k = old_slot(slot, mo['framesPerView'])
-                if k is not None and k < len(co):
-                    cells[slot] = rescale_cell(co[k], float(mo['ppm']), ppm)
+        # And until they pack (the estimate counts no gutters between them; many small cells need more).
+        while True:
+            ppm = round(ppm, 2)
+            cells = [None] * ncells
+            for slot in range(ncells):
+                if slot in pics:
+                    p = pics[slot]
+                    cells[slot] = to_cell(*resample(p['rgb'], p['alpha'], p['team'], p['anchor'][0], p['anchor'][1], src_ppm, ppm), ppm)
+                    if cells[slot] is None:
+                        report.warn('%s: %s is empty' % (unit, p['entry']['file']))
+                elif mo:
+                    k = old_slot(slot, mo['framesPerView'])
+                    if k is not None and k < len(co):
+                        cells[slot] = rescale_cell(co[k], float(mo['ppm']), ppm)
+            if sheet.fits(cells, max_side) or ppm <= 8:
+                break
+            report.note('%s%s: %d cells do not pack at %.2f px/m' % (unit, sfx, len(pics), ppm))
+            ppm *= 0.95
         # Clips neither delivered nor in the old sheet borrow another's cells.
-        for slot in range(layout.CELLS):
+        for slot in range(ncells if listed is None else 0):
             if cells[slot] is None:
                 a = alias_slot(slot)
                 while a is not None and cells[a] is None:
                     a = alias_slot(a)
                 if a is not None:
                     cells[slot] = a
-        holes = [s for s in range(layout.VIEWS * layout.FRAMES_PER_VIEW) if cells[s] is None]
+        holes = [s for s in range(layout.VIEWS * fpv) if cells[s] is None]
         if holes:
             report.error('%s%s: %d cells neither delivered nor in the old sheet (first: slot %d)' % (unit, sfx, len(holes), holes[0]))
             return
         if args.check:
+            report.note('%s%s: %d cells a sheet, would be at %.2f px/m' % (unit, sfx, ncells, ppm))
             continue
-        W, H = sheet.write(args.out, unit + sfx, info['type'], ppm, cells, layout.FRAMES_PER_VIEW,
-                           {'source': 'import', 'layout': 2}, max_side=2048 if sfx == '' else 4096)
+        extra = {'source': 'import', 'layout': 2} if listed is None else {'source': 'import', 'layout': 3, 'clips': listed}
+        W, H = sheet.write(args.out, unit + sfx, info['type'], ppm, cells, fpv, extra, max_side=max_side)
         written.append((sfx, W, H, ppm))
     if written:
         idx_path = os.path.join(args.out, 'index.json')

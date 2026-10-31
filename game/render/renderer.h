@@ -15,6 +15,7 @@
 
 #include "figures.h"
 #include "meshes.h"
+#include "sprite_clips.h"
 #include "sprite_layout.h"
 
 namespace illyria::game {
@@ -78,6 +79,11 @@ public:
     // what they are doing. A clip played once ends where it began, except a
     // death, which stays on its last frame.
     void playClip(const std::vector<sim::EntityId>& ids, int clip, bool loop);
+    // The same by name: one of the sheet's own clips (sprite_clips.h), or
+    // what stands in for it (fallbackOf); "" hands them back.
+    void playClip(const std::vector<sim::EntityId>& ids, const std::string& clip, bool loop);
+    // The clips a type's sheet plays, by name: its own, or the fixed layout's eight.
+    std::vector<std::string> clipNames(int type) const;
     // The castles' tower banners in each town's holder's colour (by city index).
     void setCityColours(const std::vector<V3>& colours);
     // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
@@ -152,6 +158,7 @@ private:
         std::vector<float> table;  // the cells, as uploaded (for readSheet)
         // The layout (sprite_layout.h): 26 frames a view and no gibs for the old one.
         int framesPerView = figures::kFramesPerView, cellCount = figures::kViews * figures::kFramesPerView;
+        sprites::SheetClips clips;  // its own clips, if it lists them (sprite_clips.h): played by name
         float ppm = figures::kPixelsPerMetre;  // as uploaded (less if halved)
         double fullTexels = 0;                 // before any halving
     };
@@ -204,10 +211,12 @@ public:
     // A fetched sheet: RGBA rows top first (as image files store them), and
     // cellCount cells of 8 floats (x, y from the bottom, w, h in pixels; u0, v0, w,
     // h in metres), framesPerView frames a view (sprite_layout.h: 26 the old
-    // layout, 44 the new, gib cells after the views'). Replaces the type's
-    // baked sheet, or with closeup its close-up sheet. False if malformed.
+    // layout, 44 the new, gib cells after the views'; or as many as `clips`
+    // list, for a sheet of its own clips). Replaces the type's baked sheet,
+    // or with closeup its close-up sheet. False if malformed.
     bool loadSheet(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount = sprites::kLegacyCells,
-                   int framesPerView = sprites::kLegacyFramesPerView, bool closeup = false);
+                   int framesPerView = sprites::kLegacyFramesPerView, bool closeup = false,
+                   const sprites::SheetClips& clips = sprites::SheetClips{});
     // Close-up sheets (closeup.h, renderer_sheets.cpp): the page lists the types
     // that have one (its size), the renderer asks for it with request(type)
     // when the camera comes close to that type and drops it when it pulls back.
@@ -253,17 +262,21 @@ private:
     // Frame i of clip c in the cell table of the type's sheet now (falling back
     // to the clips an old sheet has); the dying soldier's frame by how he died.
     int clipFrame(int type, sprites::Clip c, int i);
+    // The clips of the sheet a type is drawn with now, if it lists its own; else null.
+    const sprites::SheetClips* clipsFor(int type) const;
     // The frame of a clip a soldier is made to play (playClip), or -1 when none is (or it ended).
     // `down`, if given: how far he has fallen, 0 standing .. 1 lying (a death clip).
     int playedFrame(int type, sim::EntityId id, float gameSeconds, float* down = nullptr);
     struct Played {
-        int clip = 0;
+        std::string clip;  // by name: a fixed layout's clip, or one of a sheet's own
         bool loop = false;
         float start = 0;
     };
     std::map<sim::EntityId, Played> played_;
     float gameSeconds_ = 0;  // at the last draw
     int deathFrame(int type, const sim::Unit& u, float secondsDead, float* down = nullptr);
+    // How long his fall takes: figures::kDieSeconds, or his sheet's own clip's.
+    float deathSeconds(int type, const sim::Unit& u) const;
     void bakeMissing(const Battle& battle);
     // Body parts drawn as pieces of their soldier's own picture (the sheet's
     // gib cells, sprite_layout.h; renderer_gibs.cpp), where his sheet has
@@ -294,9 +307,15 @@ private:
     Batch units_;
     std::vector<std::pair<int, std::pair<size_t, size_t>>> unitGroups_;  // type x 2 + side, first instance, count
     void drawUnits(const Camera& camera, double timeSeconds, float gameSeconds, V3 viewDir, V3 right, bool shadow);
-    // Presentation per soldier: metres walked, for the stride.
+    // Presentation per soldier: metres walked, for the stride; and, for a
+    // sheet of its own clips, his pace, gait, stride and deeds as last seen.
     std::vector<float> walked_;
     std::vector<V3> lastSeen_;
+    std::vector<sprites::ClipMemory> clipMemory_;
+    // A living soldier's frame on a sheet of its own clips (sprite_clips.h chooseFrame):
+    // `moved` metres since the last frame, `dt` game seconds; `victors` the sides that have won.
+    int listedFrame(const Battle& battle, size_t i, const sprites::SheetClips& clips, float gameSeconds, float moved, float dt,
+                    uint32_t victors);
     size_t unitsChecked_ = SIZE_MAX;  // the unit count sheets were last checked for
     // A ground-cover mesh drawn on a camera-following grid (see kCoverVs).
     struct CoverLayer {

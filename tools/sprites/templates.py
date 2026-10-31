@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Templates and reference sheets for the artist (docs/SPRITE_SPEC.md).
 
-    python3 tools/sprites/templates.py [--out docs/sprite_templates]
-        manifest.json and files.txt (every picture the pipeline takes), blank
-        canvases per size class (_blank/), and per unit type one labelled
-        reference sheet per clip (<unit>/<clip>.webp: views down, frames
-        across, at a quarter of the delivery scale, from today's sheets).
+    python3 tools/sprites/templates.py [--out docs/sprite_templates] [--manifest-only]
+        manifest.json and files.txt (every picture the pipeline takes) and
+        clips_example.json (a unit's own clips, layout.py), blank canvases
+        per size class (_blank/), and per unit type one labelled reference
+        sheet per clip (<unit>/<clip>.webp: views down, frames across, at a
+        quarter of the delivery scale, from today's sheets); --manifest-only
+        writes the first three.
 
     python3 tools/sprites/templates.py guides UNIT OUT_DIR [--clip walk]
         full-size pose guides, one per cell, named as the delivery files
@@ -197,19 +199,34 @@ def blanks(out):
     im.convert('RGB').save(os.path.join(d, 'gib.png'), optimize=True)
 
 
-def write_all(out):
+def write_manifest(out):
+    """manifest.json, files.txt and clips_example.json (a unit's own clips, by example)."""
     os.makedirs(out, exist_ok=True)
     man = layout.manifest()
     with open(os.path.join(out, 'manifest.json'), 'w') as fh:
         json.dump(man, fh, separators=(',', ':'))
     with open(os.path.join(out, 'files.txt'), 'w') as fh:
-        # Header lines (#clip, #unit) for tests/test_sprite_layout.cpp; then one file a line.
+        # Header lines (#clip, #unit, #listed) for tests/test_sprite_layout.cpp; then one file a line.
         for c in man['clips']:
             fh.write('#clip %s %d %d\n' % (c['name'], c['frames'], c['first']))
         for unit, u in man['units'].items():
             fh.write('#unit %s %d %s\n' % (unit, u['type'], u['class']))
+        # A sheet of its own clips (the example's): frames a view and cells, then
+        # each clip as the sheet JSON lists it, in the renderer's text (layout.clip_line).
+        listed, fpv = layout.listed_clips(layout.EXAMPLE_CLIPS)
+        fh.write('#listed %d %d\n' % (fpv, layout.VIEWS * fpv + layout.GIB_CELLS))
+        for c in listed:
+            fh.write('#listed_clip %s\n' % layout.clip_line(c))
         for e in man['cells']:
             fh.write('%s %s\n' % (e['file'], 'required' if e['required'] else 'optional'))
+    with open(os.path.join(out, 'clips_example.json'), 'w') as fh:
+        json.dump({'clips': layout.EXAMPLE_CLIPS}, fh, indent=1)
+        fh.write('\n')
+    return man
+
+
+def write_all(out):
+    man = write_manifest(out)
     blanks(out)
     for unit in sorted(layout.UNITS, key=lambda u: layout.UNITS[u][0]):
         meta, cells = source_sheet(unit)
@@ -256,8 +273,12 @@ def main(argv=None):
         return 0
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--out', default=os.path.join(ROOT, 'docs', 'sprite_templates'))
+    ap.add_argument('--manifest-only', action='store_true', help='manifest.json, files.txt and clips_example.json only')
     a = ap.parse_args(argv)
-    write_all(a.out)
+    if a.manifest_only:
+        write_manifest(a.out)
+    else:
+        write_all(a.out)
     return 0
 
 

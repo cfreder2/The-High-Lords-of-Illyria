@@ -10,6 +10,7 @@
 #include "closeup.h"
 #include "figures.h"
 #include "illyria/game/camera.h"
+#include "sprite_clips.h"
 #include "sprite_layout.h"
 #include "test.h"
 
@@ -25,6 +26,10 @@ struct Files {
     std::set<std::string> files;
     std::map<int, std::string> units;  // type number -> sheet name
     std::vector<std::tuple<std::string, int, int>> clips;
+    // A sheet of its own clips, by the example (tools/sprites/layout.py EXAMPLE_CLIPS):
+    // frames a view, cells, and its clips as the renderer reads them (sprite_clips.h parseClips).
+    int listedFrames = 0, listedCells = 0;
+    std::string listed;
 };
 
 Files readFiles() {
@@ -42,6 +47,10 @@ Files readFiles() {
         } else if (a == "#unit") {
             l >> b >> n;
             f.units[n] = b;
+        } else if (a == "#listed") {
+            l >> f.listedFrames >> f.listedCells;
+        } else if (a == "#listed_clip") {
+            f.listed += line.substr(a.size() + 1) + "\n";
         } else if (!a.empty()) {
             f.files.insert(a);
         }
@@ -84,6 +93,53 @@ TEST(sprite_layout_matches_the_manifest_and_the_old_sheets) {
     CHECK(covered == sim::kUnitTypeCount);
     CHECK(static_cast<int>(f.units.size()) <= sim::kUnitTypeCount);
     for (int t = 0; t < sim::kUnitTypeCount; ++t) CHECK(f.units.count(sprites::sheetStandIn(t)) > 0);
+    // The hyena-folk wear the light infantry's sheet until the site lists their own.
+    CHECK(f.units.count(sprites::kHyenaType) > 0);
+    CHECK(sprites::sheetStandIn(sprites::kHyenaType) == 0 && sprites::sheetStandIn(sprites::kHyenaType, true) == sprites::kHyenaType);
+    CHECK(sprites::sheetStandIn(2) == 2 && sprites::sheetStandIn(2, true) == 2);
+}
+
+// A sheet of its own clips, as the importer lays one out (tools/sprites/
+// layout.py listed_clips, by its example) and the renderer reads it: its
+// clips one after another, as many frames a view as they hold, then the
+// gib parts; and every clip the renderer asks for plays (or a stand-in does).
+TEST(sprite_layout_of_a_sheet_of_its_own_clips) {
+    const Files f = readFiles();
+    const sprites::SheetClips clips = sprites::parseClips(f.listed);
+    CHECK(clips.clips.size() == 10);
+    CHECK(f.listedFrames == 88 && clips.framesPerView() == f.listedFrames);
+    CHECK(clips.valid(f.listedFrames));
+    CHECK(f.listedCells == sprites::kViews * f.listedFrames + sprites::kGibCount * sprites::kGibVariants);
+    CHECK(sprites::gibCell(sprites::gibSlot(sprites::Gib::Head, 0), f.listedFrames) == sprites::kViews * f.listedFrames);
+    CHECK(sprites::gibCell(sprites::gibSlot(sprites::Gib::Wing, 1), f.listedFrames) == f.listedCells - 1);
+    CHECK(sprites::gibCell(sprites::gibSlot(sprites::Gib::Arm, 1), sprites::kFramesPerView) == sprites::gibSlot(sprites::Gib::Arm, 1));
+    const sprites::SheetClip* attack = clips.find("attack");
+    CHECK(attack && attack->release > 0 && attack->times.size() == static_cast<size_t>(attack->frames));
+    const sprites::SheetClip* walk = clips.find("walk");
+    CHECK(walk && walk->loop && walk->stride > 0 && walk->seconds == 0);
+    // Every clip the renderer asks for, here and on the fixed layout's two
+    // (as clip lists: the 44 frames, and the old sheets' first five).
+    std::vector<std::string> asked = {"idle", "walk", "run", "attack", "flinch", "celebrate", "pickup", "throw", "slash"};
+    for (int c = static_cast<int>(sprites::Clip::DieBack); c < sprites::kClipCount; ++c) asked.push_back(sprites::kClipNames[c]);
+    sprites::SheetClips fixed, old;
+    for (int c = 0; c < sprites::kClipCount; ++c) {
+        sprites::SheetClip k;
+        k.name = sprites::kClipNames[c], k.first = sprites::kClipFirst[c], k.frames = sprites::kClipFrames[c];
+        fixed.clips.push_back(k);
+        if (k.first + k.frames <= sprites::kLegacyFramesPerView) old.clips.push_back(k);
+    }
+    CHECK(fixed.valid(sprites::kFramesPerView) && old.valid(sprites::kLegacyFramesPerView));
+    for (const sprites::SheetClips* sheet : {&clips, static_cast<const sprites::SheetClips*>(&fixed), static_cast<const sprites::SheetClips*>(&old)})
+        for (const std::string& name : asked) {
+            const sprites::SheetClip* c = sheet->play(name);
+            CHECK(c != nullptr);
+            if (c) CHECK(c->first + c->frames <= sheet->framesPerView());
+        }
+    // The falls an old sheet lacks fall back as sprite_layout.h's available() has them.
+    for (int c = 0; c < sprites::kClipCount; ++c) {
+        const sprites::SheetClip* k = old.play(sprites::kClipNames[c]);
+        CHECK(k && k->name == sprites::kClipNames[static_cast<int>(sprites::available(static_cast<sprites::Clip>(c), sprites::kLegacyFramesPerView))]);
+    }
 }
 
 // Every cell the renderer can ask for, for every type, has a file name in the

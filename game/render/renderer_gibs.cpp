@@ -73,9 +73,11 @@ int sourceOf(const Battle& battle, sim::PlayerId owner, const V3& at, float reac
 
 }  // namespace
 
-bool Renderer::hasGibCell(int type, int cell) const {
-    if (cell < 0) return false;
+bool Renderer::hasGibCell(int type, int slot) const {
+    if (slot < sprites::kGibBase) return false;
+    // The slot's cell in each sheet (sprite_layout.h gibCell: after its views', however many frames they hold).
     const auto has = [&](const Sheet& sh) {
+        const int cell = sprites::gibCell(slot, sh.framesPerView);
         return sh.tex && cell < sh.cellCount && sh.table.size() >= static_cast<size_t>(cell + 1) * 4 && sh.table[static_cast<size_t>(cell) * 4 + 2] > 0;
     };
     const auto it = sheets_.find(type);
@@ -186,7 +188,8 @@ Renderer::GibLook Renderer::restingLook(const Battle& battle, const sim::Remain&
 bool Renderer::pushGib(std::map<int, std::vector<float>>& groups, const GibLook& look, const V3& pos) {
     if (look.type < 0 || !hasGibCell(look.type, look.cell)) return false;
     std::vector<float>& g = groups[look.type * 4 + (look.owner & 3)];  // kSides groups a type (renderer.cpp)
-    g.insert(g.end(), {pos.x, pos.y, pos.z, look.angle, -static_cast<float>(look.cell + 1), 0.0f, look.mirror ? 1.0f : 0.0f});
+    // The part's place among the gib cells: kUnitVs finds them after the views' of whichever sheet it draws with.
+    g.insert(g.end(), {pos.x, pos.y, pos.z, look.angle, -static_cast<float>(look.cell - sprites::kGibBase + 1), 0.0f, look.mirror ? 1.0f : 0.0f});
     return true;
 }
 

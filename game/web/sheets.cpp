@@ -36,7 +36,7 @@ EM_JS(void, illyria_js_request_sheet, (int type, int closeup, int standIn), {
         });
     }
     (closeup ? Module.illyriaCloseupIndex : Module.illyriaSheetIndex).then(index => {
-        // A type with no sheet of its own yet wears its stand-in's (sprite_layout.h sheetStandIn).
+        // Its own sheet once the index lists it, else its stand-in's (sprite_layout.h sheetStandIn).
         const entry = index[type] !== undefined ? index[type] : index[standIn];
         const name = closeup ? (entry && entry.name) : entry;
         if (!name) return;
@@ -51,14 +51,22 @@ EM_JS(void, illyria_js_request_sheet, (int type, int closeup, int standIn), {
             g.drawImage(bmp, 0, 0);
             const px = g.getImageData(0, 0, bmp.width, bmp.height).data;
             const cells = new Float32Array(meta.cells.flat());
-            const p = _malloc(px.length), c = _malloc(cells.length * 4);
+            // A sheet of its own clips lists them (tools/sprites/import.py): a clip a line,
+            // "name first frames seconds loop stride release [times...]" (sprite_clips.h parseClips).
+            const num = (v, none) => (typeof v === 'number' && isFinite(v) ? v : none);
+            const clips = (meta.clips || []).map(k => [k.name, k.first, k.frames, num(k.seconds, 0), k.loop ? 1 : 0, num(k.stride, 0),
+                                                      num(k.release, -1)].concat(k.times || []).join(' ')).join('\n');
+            const text = new TextEncoder().encode(clips + '\0');
+            const p = _malloc(px.length), c = _malloc(cells.length * 4), t = _malloc(text.length);
             HEAPU8.set(px, p);
             HEAPF32.set(cells, c >> 2);
-            // Old sheets have 26 frames a view and say nothing; new ones say 44 (sprite_layout.h).
-            if (!_illyria_sheet_loaded2(type, p, bmp.width, bmp.height, c, meta.cells.length, meta.framesPerView || 26, closeup))
+            HEAPU8.set(text, t);
+            // Old sheets have 26 frames a view and say nothing; new ones say 44 (sprite_layout.h), or as their clips list.
+            if (!_illyria_sheet_loaded3(type, p, bmp.width, bmp.height, c, meta.cells.length, meta.framesPerView || 26, closeup, t))
                 console.warn('sprite sheet ' + name + ' rejected');
             _free(p);
             _free(c);
+            _free(t);
         });
     }).catch(e => console.warn('sprite sheet ' + type + ': ' + e));
 });
@@ -98,6 +106,13 @@ EMSCRIPTEN_KEEPALIVE int illyria_sheet_loaded(int type, const uint8_t* rgba, int
 EMSCRIPTEN_KEEPALIVE int illyria_sheet_loaded2(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount,
                                                int framesPerView, int closeup) {
     return target && target->loadSheet(type, rgba, width, height, cells, cellCount, framesPerView, closeup != 0) ? 1 : 0;
+}
+// The same with the sheet's own clips, as text (sprite_clips.h parseClips; "" for a sheet of the fixed layout).
+EMSCRIPTEN_KEEPALIVE int illyria_sheet_loaded3(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount,
+                                               int framesPerView, int closeup, const char* clips) {
+    const illyria::game::sprites::SheetClips listed = illyria::game::sprites::parseClips(clips ? clips : "");
+    if (clips && *clips && listed.empty()) return 0;  // a list, but malformed
+    return target && target->loadSheet(type, rgba, width, height, cells, cellCount, framesPerView, closeup != 0, listed) ? 1 : 0;
 }
 EMSCRIPTEN_KEEPALIVE void illyria_sheet_closeup_listed(int type, int width, int height, float ppm) {
     if (target) target->listCloseup(type, width, height, ppm);

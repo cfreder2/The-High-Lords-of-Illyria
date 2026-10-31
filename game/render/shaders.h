@@ -1287,18 +1287,19 @@ flat out float vSelected;
 flat out float vDot;
 out float vFog;
 flat out float vShade;
-uniform float uFramesPerView;  // 26 in the old layout, 44 in the new (sprite_layout.h)
+uniform float uFramesPerView;  // 26 in the old layout, 44 in the new (sprite_layout.h), or as a sheet's own clips list
 const float kElevation = 0.52;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
-    // A body part (renderer_gibs.cpp): iFrame -(gib cell + 1), the same from
-    // every side, turned by iYaw in the picture's plane, mirrored if iDown is 1.
+    // A body part (renderer_gibs.cpp): iFrame -(its place among the gib
+    // cells, which follow the five views' + 1), the same from every side,
+    // turned by iYaw in the picture's plane, mirrored if iDown is 1.
     bool gib = iFrame < -0.5;
     // Which of the eight views: the viewer's bearing seen from the soldier.
     float d = mod(floor(-(uToViewer - iYaw) / 0.7853982 + 0.5), 8.0);
     bool mirror = gib ? iDown > 0.5 : d > 4.5;
     float view = mirror ? 8.0 - d : d;
-    int cell = gib ? int(-iFrame - 0.5) : int(view * uFramesPerView + iFrame + 0.5);
+    int cell = gib ? int(5.0 * uFramesPerView + 0.5) + int(-iFrame - 0.5) : int(view * uFramesPerView + iFrame + 0.5);
     vec4 place = texelFetch(uCellTable, ivec2(cell, 0), 0);
     vec4 extent = texelFetch(uCellTable, ivec2(cell, 1), 0);
     float dist = distance(uEye, iPos);

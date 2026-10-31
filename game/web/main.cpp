@@ -10,7 +10,9 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "../render/renderer.h"
 #include "illyria/game/battle.h"
@@ -2142,6 +2144,28 @@ EMSCRIPTEN_KEEPALIVE void illyria_sandbox_tune(int type, const char* json) {
 // The selected soldiers play clip `clip` (sprites::Clip; -1: what they are doing), once or looped.
 EMSCRIPTEN_KEEPALIVE void illyria_sandbox_clip(int clip, int loop) {
     if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), clip, loop != 0);
+}
+// The clips the selected soldiers' sheets play, by name, as a JSON array: a
+// sheet's own (sprite_clips.h) or the fixed layout's eight, each name once,
+// in the order the first sheet that has it lists it. Empty: no one selected.
+EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_clips() {
+    static std::string s;
+    std::vector<std::string> names;
+    std::set<int> types;
+    if (sandbox())
+        for (illyria::sim::EntityId id : app->battle->selectedAlive())
+            if (const illyria::sim::Unit* u = app->battle->world().findUnit(id); u && types.insert(u->stats.type).second)
+                for (const std::string& n : app->renderer.clipNames(u->stats.type))
+                    if (std::find(names.begin(), names.end(), n) == names.end()) names.push_back(n);
+    s = "[";
+    for (size_t i = 0; i < names.size(); ++i) s += (i ? ",\"" : "\"") + names[i] + "\"";
+    s += "]";
+    return s.c_str();
+}
+// The selected soldiers play the clip of that name (or what stands in for it
+// on a sheet without it), once or looped; "" hands them back.
+EMSCRIPTEN_KEEPALIVE void illyria_sandbox_play(const char* clip, int loop) {
+    if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), std::string(clip ? clip : ""), loop != 0);
 }
 
 // HUD state as JSON, polled by the page a few times a second.

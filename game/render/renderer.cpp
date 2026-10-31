@@ -8,6 +8,7 @@
 
 #include "illyria/game/factions.h"
 #include "shaders.h"
+#include "unit_deeds.h"
 
 namespace illyria::game {
 
@@ -1396,6 +1397,7 @@ void Renderer::reset(Battle& battle) {
     resetDetail(battle);
     walked_.clear();
     lastSeen_.clear();
+    clipMemory_.clear();
     gatesShown_.clear();
     unitsChecked_ = SIZE_MAX;
 }
@@ -2037,6 +2039,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     trackDebris(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));  // renderer_gibs.cpp
+    const float sinceLastDraw = std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.25f);
     gameSeconds_ = gameSeconds;
     uploadMarks(battle);
     uploadRemains(battle);
@@ -2061,7 +2064,15 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         lastSeen_.resize(units.size());
         for (size_t i = 0; i < units.size(); ++i) lastSeen_[i] = battle.unitPosition(i);
     }
+    if (clipMemory_.size() != units.size()) clipMemory_.resize(units.size());
     const auto ago = [&](uint32_t tick) { return tick == UINT32_MAX ? 1e9f : gameSeconds - tick / static_cast<float>(sim::kTicksPerSecond); };
+    // The sides that have won (unit_deeds.h), for the soldiers whose sheets have a celebration: asked once a frame, if at all.
+    uint32_t victors = 0;
+    bool victorsKnown = false;
+    const auto won = [&]() {
+        if (!victorsKnown) victors = deeds::victors(battle), victorsKnown = true;
+        return victors;
+    };
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         const V3 pos = battle.unitPosition(i);
@@ -2071,7 +2082,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const bool isSelected = battle.isSelected(u.id);
         const auto type = static_cast<UnitType>(u.stats.type);
         const V3 step = pos - lastSeen_[i];
-        walked_[i] += std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
+        const float moved = std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
+        walked_[i] += moved;
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
         int frame;
@@ -2095,7 +2107,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             frame = deathFrame(static_cast<int>(type), u, died, &down);  // the death clip by how he died (renderer_sheets.cpp)
             // The figure falls backward: turned so that its head lands the way the blow went.
             if (u.death.kind != sim::DeathKind::None) yaw = lieYaw(u) + 3.14159265f;
-            pushStuckArrows(arrows, u, pos, u.airborne ? 0.3f : std::clamp(died / figures::kDieSeconds, 0.0f, 1.0f));
+            pushStuckArrows(arrows, u, pos, u.airborne ? 0.3f : std::clamp(died / deathSeconds(static_cast<int>(type), u), 0.0f, 1.0f));
         } else {
             if (u.shieldArrows > 0) pushStuckArrows(arrows, u, pos, 0);
             const float radius = static_cast<float>(u.stats.radius.toDouble());
@@ -2110,25 +2122,20 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             pushHealthBar(bars, u, pos, isSelected);
             if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
             const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
+            // A sheet of its own clips plays them by name (sprite_clips.h); its soldiers are
+            // followed every frame, so what they took up or threw is seen as it happens.
+            const sprites::SheetClips* clips = clipsFor(static_cast<int>(type));
+            const int listed = clips ? listedFrame(battle, i, *clips, gameSeconds, moved, sinceLastDraw, won()) : -1;
             if (const int played = playedFrame(static_cast<int>(type), u.id, gameSeconds, &down); played >= 0) {
                 frame = played;  // the sandbox's choice (playClip)
-            } else if (struck >= 0 && struck < strike) {
-                frame = figures::kFirstFrame[2] + std::min(figures::kFrames[2] - 1, static_cast<int>(struck / strike * figures::kFrames[2]));
-            } else if (hurt >= 0 && hurt < figures::kFlinchSeconds) {
-                frame = figures::kFirstFrame[3] + (hurt < figures::kFlinchSeconds * 0.5f ? 0 : 1);
-            } else if (battle.unitMoving(i) || u.inAir()) {
-                const float cycle = u.inAir() ? gameSeconds * 1.6f : walked_[i] / figures::stride(type);
-                frame = figures::kFirstFrame[1] + static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[1]) % figures::kFrames[1];
-                // A pre-rendered flier's walk holds two cycles: frames 0-3 on foot, 4-7 a wingbeat.
-                const auto sheet = sheets_.find(static_cast<int>(type));
-                if (u.stats.flyAltitude > sim::Fixed::zero() && sheet != sheets_.end() && sheet->second.prerendered) {
-                    const int half = figures::kFrames[1] / 2;
-                    const float c = u.inAir() ? gameSeconds * 1.1f : walked_[i] / figures::stride(type);
-                    frame = figures::kFirstFrame[1] + (u.inAir() ? half : 0) + static_cast<int>((c - std::floor(c)) * half) % half;
-                }
+            } else if (clips) {
+                frame = listed;
             } else {
-                const float cycle = gameSeconds * 0.45f + static_cast<float>(u.id % 13) * 0.37f;
-                frame = static_cast<int>((cycle - std::floor(cycle)) * figures::kFrames[0]) % figures::kFrames[0];
+                // The fixed layout (sprite_layout.h), as ever: striking, hurt, walking, at ease.
+                const auto sheet = sheets_.find(static_cast<int>(type));
+                const bool prerenderedFlier = u.stats.flyAltitude > sim::Fixed::zero() && sheet != sheets_.end() && sheet->second.prerendered;
+                frame = sprites::fixedLayoutFrame(struck, strike, hurt, battle.unitMoving(i), u.inAir(), walked_[i], figures::stride(type),
+                                                  prerenderedFlier, gameSeconds, u.id);
             }
         }
         const int key = static_cast<int>(type) * kSides + (u.owner & 3);
