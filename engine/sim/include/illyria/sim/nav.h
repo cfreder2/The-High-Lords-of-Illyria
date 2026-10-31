@@ -34,11 +34,21 @@ public:
     // Fills `out` with waypoints ending at `to`, the fastest way for this
     // gait. A straight line no slower than any detour gives a single
     // waypoint. Returns false if no route was found (callers then walk
-    // straight and let collisions stop them).
+    // straight and let collisions stop them). Onto or off a raised floor
+    // (Region::Floor) the way is its stair; on it, round its stones.
     bool findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait = Gait::Foot) const;
-    // True if a ground unit can walk the straight segment.
+    // True if a ground unit can walk the straight segment: on a floor, clear
+    // of its stones; onto or off one, only by the foot of its stair.
     bool clearLine(const Vec3& from, const Vec3& to) const;
+    // On the ground, blocked (water, cliff, wall, house, shut gate), or
+    // under a raised floor (which is solid to the ground).
     bool blocked(const Vec3& p) const;
+    // Which raised floor a point is on (its deck or its stair), or -1; with
+    // `byHeight`, a point below its surface (on the ground beside it) is not.
+    int floorAt(const Vec3& p, bool byHeight) const;
+    // A key for routes from or to a point on a floor (its floor and fine
+    // cell, from 0), or -1 off them: routes there are cached per fine cell.
+    int32_t floorCell(const Vec3& p, bool byHeight) const;
     // Time to walk the straight segment at this gait, in metres of level
     // plains (walls and water not checked: see clearLine). `slowest`, if
     // given, gets the slowest ground's speed met on the way.
@@ -51,6 +61,30 @@ public:
     int32_t cells() const { return n_; }
 
 private:
+    // A raised floor walked on its own fine grid (half-metre cells over the
+    // floor's and the stair's decks, less what its stones and a man's
+    // breadth round them take up).
+    struct FloorGrid {
+        Deck floor, stair;
+        Vec3 foot, bottom;  // Region::Floor
+        Fixed x0, y0;       // the grid's south-west corner
+        int32_t nx = 0, ny = 0;
+        std::vector<uint8_t> open;
+        bool covers(Fixed x, Fixed y) const { return floor.contains(x, y) || stair.contains(x, y); }
+        int32_t cellAt(Fixed x, Fixed y) const;  // -1 off the grid
+        Vec3 centreOf(int32_t cell) const;
+    };
+    std::vector<FloorGrid> floors_;
+    void buildFloors(const Region& region);
+    // The fine cell nearest p that is open, or -1.
+    int32_t nearestFloorCell(const FloorGrid& f, const Vec3& p) const;
+    bool floorClear(const FloorGrid& f, const Vec3& a, const Vec3& b) const;
+    // Appends the way across a floor from `from` to `to` (both on it).
+    void floorRoute(const FloorGrid& f, const Vec3& from, const Vec3& to, std::vector<Vec3>& out) const;
+    // findPath on the ground (over bridges by their ends).
+    bool groundRoute(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const;
+    bool groundClear(const Vec3& from, const Vec3& to) const;
+    bool groundBlocked(const Vec3& p) const;
     // findPath once off any bridge deck.
     bool route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const;
     int32_t cellOf(Fixed v) const;

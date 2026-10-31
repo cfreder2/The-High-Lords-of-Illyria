@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <queue>
+#include <tuple>
 
 namespace illyria::sim {
 
@@ -125,10 +126,205 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
     }
     for (const Obstacle& o : region.obstacles()) {
         if (o.kind != Obstacle::Kind::House) continue;
+        // A ruin's stones on its platform: the floor's own grid has them (buildFloors).
+        bool onFloor = false;
+        for (const Floor& f : region.floors()) onFloor = onFloor || region.decks()[f.deck].contains(o.pos.x, o.pos.y);
+        if (onFloor) continue;
         const int32_t x0 = cellOf(o.pos.x - o.halfX), x1 = cellOf(o.pos.x + o.halfX);
         const int32_t y0 = cellOf(o.pos.y - o.halfY), y1 = cellOf(o.pos.y + o.halfY);
         for (int32_t y = y0; y <= y1; ++y)
             for (int32_t x = x0; x <= x1; ++x) open_[static_cast<size_t>(index(x, y))] = 0;
+    }
+    buildFloors(region);
+}
+
+// --- Raised floors (a ruin's platform) ---------------------------------------
+
+namespace {
+constexpr Fixed kFloorStep = Fixed::fromRatio(1, 2);           // the fine cells' size
+constexpr Fixed kFloorClearance = Fixed::fromRatio(2, 5);      // a man's breadth kept from stone
+constexpr Fixed kFloorSample = Fixed::fromRatio(1, 4);         // straight lines are checked this often
+constexpr Fixed kStairReach = Fixed::fromInt(4);               // how far before a stair's foot a man heads straight up it
+}  // namespace
+
+int32_t NavGrid::FloorGrid::cellAt(Fixed x, Fixed y) const {
+    const int64_t cx = ((x - x0) / kFloorStep).floorToInt(), cy = ((y - y0) / kFloorStep).floorToInt();
+    if (cx < 0 || cy < 0 || cx >= nx || cy >= ny) return -1;
+    return static_cast<int32_t>(cy * nx + cx);
+}
+
+Vec3 NavGrid::FloorGrid::centreOf(int32_t cell) const {
+    return {x0 + kFloorStep * (cell % nx) + kFloorStep / 2, y0 + kFloorStep * (cell / nx) + kFloorStep / 2, Fixed::zero()};
+}
+
+void NavGrid::buildFloors(const Region& region) {
+    for (const Floor& fl : region.floors()) {
+        FloorGrid f;
+        f.floor = region.decks()[fl.deck];
+        f.stair = region.decks()[fl.stair];
+        f.foot = {fl.foot.x, fl.foot.y, Fixed::zero()};
+        f.bottom = {fl.bottom.x, fl.bottom.y, Fixed::zero()};
+        // Over both decks' corners.
+        Fixed x0 = Fixed::fromInt(1 << 20), y0 = x0, x1 = -x0, y1 = -x0;
+        for (const Deck* d : {&f.floor, &f.stair}) {
+            const Vec3 across{-d->dir.y, d->dir.x, Fixed::zero()};
+            for (int sa = -1; sa <= 1; sa += 2) {
+                for (int sw = -1; sw <= 1; sw += 2) {
+                    const Vec3 c = d->centre + d->dir * (d->halfSpan * sa) + across * (d->halfWidth * sw);
+                    x0 = min(x0, c.x);
+                    y0 = min(y0, c.y);
+                    x1 = max(x1, c.x);
+                    y1 = max(y1, c.y);
+                }
+            }
+        }
+        f.x0 = x0;
+        f.y0 = y0;
+        f.nx = static_cast<int32_t>(((x1 - x0) / kFloorStep).floorToInt() + 1);
+        f.ny = static_cast<int32_t>(((y1 - y0) / kFloorStep).floorToInt() + 1);
+        // The stones standing on it (and against it), a man's breadth round each.
+        std::vector<const Obstacle*> stones;
+        const Fixed reach = Fixed::fromInt(8);
+        for (const Obstacle& o : region.obstacles())
+            if (o.solid && o.pos.x > x0 - reach && o.pos.x < x1 + reach && o.pos.y > y0 - reach && o.pos.y < y1 + reach) stones.push_back(&o);
+        f.open.assign(static_cast<size_t>(f.nx) * f.ny, 0);
+        for (int32_t k = 0; k < f.nx * f.ny; ++k) {
+            const Vec3 c = f.centreOf(k);
+            if (!f.covers(c.x, c.y)) continue;
+            bool clear = true;
+            for (const Obstacle* o : stones) {
+                if (o->kind == Obstacle::Kind::House) {
+                    clear = clear && !(abs(c.x - o->pos.x) < o->halfX + kFloorClearance && abs(c.y - o->pos.y) < o->halfY + kFloorClearance);
+                } else {
+                    const Fixed rr = o->radius + kFloorClearance;
+                    clear = clear && (c - o->pos).flat().lengthSq() >= rr * rr;
+                }
+            }
+            f.open[static_cast<size_t>(k)] = clear ? 1 : 0;
+        }
+        floors_.push_back(std::move(f));
+    }
+}
+
+int NavGrid::floorAt(const Vec3& p, bool byHeight) const {
+    for (size_t i = 0; i < floors_.size(); ++i) {
+        const FloorGrid& f = floors_[i];
+        if (!f.covers(p.x, p.y)) continue;
+        if (byHeight) {
+            // Below its surface by more than a step: on the ground beside it.
+            const Fixed top = f.floor.contains(p.x, p.y) ? f.floor.centre.z : f.stair.heightAt(p.x, p.y);
+            if (p.z < top - Fixed::one()) continue;
+        }
+        return static_cast<int>(i);
+    }
+    return -1;
+}
+
+int32_t NavGrid::floorCell(const Vec3& p, bool byHeight) const {
+    const int i = floorAt(p, byHeight);
+    if (i < 0) return -1;
+    const int32_t c = floors_[static_cast<size_t>(i)].cellAt(p.x, p.y);
+    return i * 65536 + std::max(0, c);
+}
+
+int32_t NavGrid::nearestFloorCell(const FloorGrid& f, const Vec3& p) const {
+    int32_t best = -1;
+    Fixed bestD;
+    for (int32_t k = 0; k < f.nx * f.ny; ++k) {
+        if (!f.open[static_cast<size_t>(k)]) continue;
+        const Fixed d = (f.centreOf(k) - p).flat().lengthSq();
+        if (best < 0 || d < bestD) {
+            best = k;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+bool NavGrid::floorClear(const FloorGrid& f, const Vec3& a, const Vec3& b) const {
+    const Vec3 d = (b - a).flat();
+    const int64_t steps = (d.length() / kFloorSample).floorToInt() + 1;
+    for (int64_t i = 0; i <= steps; ++i) {
+        const Vec3 p = a + d * Fixed::fromRatio(i, steps);
+        const int32_t c = f.cellAt(p.x, p.y);
+        if (c < 0 || !f.open[static_cast<size_t>(c)]) return false;
+    }
+    return true;
+}
+
+void NavGrid::floorRoute(const FloorGrid& f, const Vec3& from, const Vec3& to, std::vector<Vec3>& out) const {
+    const Vec3 goalPoint{to.x, to.y, Fixed::zero()};
+    if (floorClear(f, from, to)) {
+        out.push_back(goalPoint);
+        return;
+    }
+    int32_t start = f.cellAt(from.x, from.y), goal = f.cellAt(to.x, to.y);
+    if (start < 0 || !f.open[static_cast<size_t>(start)]) start = nearestFloorCell(f, from);
+    if (goal < 0 || !f.open[static_cast<size_t>(goal)]) goal = nearestFloorCell(f, to);
+    if (start < 0 || goal < 0 || start == goal) {
+        out.push_back(goalPoint);
+        return;
+    }
+    // A* over the fine cells (10 a side, 14 a diagonal), no corner cut past stone.
+    const size_t n = f.open.size();
+    std::vector<int32_t> g(n, INT_MAX), parent(n, -1);
+    const int32_t gx = goal % f.nx, gy = goal / f.nx;
+    const auto h = [&](int32_t i) {
+        const int32_t dx = std::abs(i % f.nx - gx), dy = std::abs(i / f.nx - gy);
+        return 10 * std::max(dx, dy) + 4 * std::min(dx, dy);
+    };
+    using Node = std::tuple<int32_t, int32_t, int32_t>;  // f, h, cell: fixed tie-breaking
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
+    g[static_cast<size_t>(start)] = 0;
+    open.push({h(start), h(start), start});
+    bool found = false;
+    while (!open.empty()) {
+        const auto [fs, hs, cur] = open.top();
+        open.pop();
+        if (fs - hs > g[static_cast<size_t>(cur)]) continue;
+        if (cur == goal) {
+            found = true;
+            break;
+        }
+        const int32_t cx = cur % f.nx, cy = cur / f.nx;
+        for (int32_t dy = -1; dy <= 1; ++dy) {
+            for (int32_t dx = -1; dx <= 1; ++dx) {
+                if (dx == 0 && dy == 0) continue;
+                const int32_t nx = cx + dx, ny = cy + dy;
+                if (nx < 0 || ny < 0 || nx >= f.nx || ny >= f.ny) continue;
+                const int32_t ni = ny * f.nx + nx;
+                if (!f.open[static_cast<size_t>(ni)]) continue;
+                if (dx != 0 && dy != 0 && (!f.open[static_cast<size_t>(cy * f.nx + nx)] || !f.open[static_cast<size_t>(ny * f.nx + cx)])) continue;
+                const int32_t ng = g[static_cast<size_t>(cur)] + (dx != 0 && dy != 0 ? 14 : 10);
+                if (ng >= g[static_cast<size_t>(ni)]) continue;
+                g[static_cast<size_t>(ni)] = ng;
+                parent[static_cast<size_t>(ni)] = cur;
+                open.push({ng + h(ni), h(ni), ni});
+            }
+        }
+    }
+    if (!found) {
+        out.push_back(goalPoint);
+        return;
+    }
+    std::vector<Vec3> cells;
+    for (int32_t i = goal; i != -1 && i != start; i = parent[static_cast<size_t>(i)]) cells.push_back(f.centreOf(i));
+    std::reverse(cells.begin(), cells.end());
+    cells.push_back(goalPoint);
+    // String-pull: from each point the farthest waypoint in clear sight.
+    Vec3 at = from;
+    size_t i = 0;
+    while (i < cells.size()) {
+        size_t far = i;
+        for (size_t j = cells.size(); j-- > i + 1;) {
+            if (floorClear(f, at, cells[j])) {
+                far = j;
+                break;
+            }
+        }
+        out.push_back(cells[far]);
+        at = cells[far];
+        i = far + 1;
     }
 }
 
@@ -171,7 +367,73 @@ void NavGrid::openGate(size_t gate) {
     gateCells_[gate].clear();
 }
 
-bool NavGrid::blocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
+bool NavGrid::groundBlocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
+
+bool NavGrid::blocked(const Vec3& p) const { return groundBlocked(p) || floorAt(p, false) >= 0; }
+
+bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
+    if (floors_.empty()) return groundClear(from, to);
+    const int fa = floorAt(from, false), fb = floorAt(to, false);
+    if (fa >= 0 && fa == fb) return floorClear(floors_[static_cast<size_t>(fa)], from, to);
+    if (fa >= 0 && fb >= 0) return false;
+    if (fa < 0 && fb < 0) {
+        // On the ground, and not through a floor's solid side.
+        if (!groundClear(from, to)) return false;
+        const Vec3 d = (to - from).flat();
+        for (const FloorGrid& f : floors_) {
+            const Fixed fx1 = f.x0 + kFloorStep * f.nx, fy1 = f.y0 + kFloorStep * f.ny;
+            if (max(from.x, to.x) < f.x0 || min(from.x, to.x) > fx1 || max(from.y, to.y) < f.y0 || min(from.y, to.y) > fy1) continue;
+            const int64_t steps = (d.length() / kFloorSample).floorToInt() + 1;
+            for (int64_t i = 0; i <= steps; ++i) {
+                const Vec3 p = from + d * Fixed::fromRatio(i, steps);
+                if (f.covers(p.x, p.y)) return false;
+            }
+        }
+        return true;
+    }
+    // Between the ground and a floor: only up or down the stair, from just
+    // before its foot, and clear of stone on the floor.
+    const FloorGrid& f = floors_[static_cast<size_t>(fa >= 0 ? fa : fb)];
+    const Vec3 g = fa >= 0 ? to : from, q = fa >= 0 ? from : to;
+    const Deck& s = f.stair;
+    const Vec3 across{-s.dir.y, s.dir.x, Fixed::zero()};
+    const Fixed ga = (g - s.centre).flat().dot(s.dir), gc = (g - s.centre).flat().dot(across);
+    const Fixed qa = (q - s.centre).flat().dot(s.dir), qc = (q - s.centre).flat().dot(across);
+    if (ga > -s.halfSpan || ga < -s.halfSpan - kStairReach || qa <= ga) return false;
+    const Fixed t = (-s.halfSpan - ga) / (qa - ga);
+    if (abs(gc + (qc - gc) * t) > s.halfWidth - kFloorClearance) return false;
+    const Vec3 entry = g + (q - g).flat() * t + s.dir * kFloorClearance;
+    return floorClear(f, entry, q);
+}
+
+bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const {
+    if (floors_.empty()) return groundRoute(from, to, out, gait);
+    const int fa = floorAt(from, true), fb = floorAt(to, false);
+    if (fa < 0 && fb < 0) return groundRoute(from, to, out, gait);
+    out.clear();
+    if (fa >= 0 && fa == fb) {
+        floorRoute(floors_[static_cast<size_t>(fa)], from, to, out);
+        return true;
+    }
+    // Off a floor by its stair, over the ground, and up another's.
+    Vec3 at = from;
+    if (fa >= 0) {
+        const FloorGrid& f = floors_[static_cast<size_t>(fa)];
+        floorRoute(f, from, f.bottom, out);
+        out.push_back(f.foot);
+        at = f.foot;
+    }
+    const Vec3 goal = fb >= 0 ? floors_[static_cast<size_t>(fb)].foot : to;
+    std::vector<Vec3> mid;
+    if (!groundRoute(at, goal, mid, gait)) mid = {goal};
+    out.insert(out.end(), mid.begin(), mid.end());
+    if (fb >= 0) {
+        const FloorGrid& f = floors_[static_cast<size_t>(fb)];
+        out.push_back(f.bottom);
+        floorRoute(f, f.bottom, to, out);
+    }
+    return true;
+}
 
 Fixed NavGrid::speedAt(const Vec3& p, Gait gait) const {
     const Fixed s = gaitSpeed(gait, fineGround(p.x, p.y));
@@ -184,13 +446,13 @@ Ground NavGrid::fineGround(Fixed x, Fixed y) const {
     return static_cast<Ground>(fine_[static_cast<size_t>(fy * fineCells_ + fx)]);
 }
 
-bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
+bool NavGrid::groundClear(const Vec3& from, const Vec3& to) const {
     const Vec3 d = (to - from).flat();
     const Fixed len = d.length();
     const int64_t steps = (len / 2).floorToInt() + 1;
     for (int64_t i = 0; i <= steps; ++i) {
         const Vec3 p = from + d * Fixed::fromRatio(i, steps);
-        if (blocked(p)) return false;
+        if (groundBlocked(p)) return false;
         if (decks_.empty()) continue;
         // Over deep water only on a deck.
         if (fineGround(p.x, p.y) != Ground::DeepWater) continue;
@@ -323,7 +585,7 @@ int32_t NavGrid::climbCost(int32_t from, int32_t to, int32_t step, bool diagonal
     return static_cast<int32_t>(std::min<int64_t>(step + extra, INT_MAX / 4));
 }
 
-bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const {
+bool NavGrid::groundRoute(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const {
     // On a bridge deck the way on or off is by its ends (its sides drop to the water).
     const auto deckOf = [&](const Vec3& p) -> const Deck* {
         for (const Deck& d : decks_)

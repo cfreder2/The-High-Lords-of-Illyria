@@ -55,8 +55,9 @@ TEST(continent_crossings_are_passable) {
 TEST(continent_window_is_deterministic_and_pinned) {
     const Region again = Region::fromContinent(continent(), continent().crossings().front().pos, 128);
     CHECK(again.checksum() == fordWindow()->checksum());
-    // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0xd0bae2eb1a888504;
+    // Every platform must generate exactly this world. (It holds a ruin: its
+    // stones, floor and stair come from the ruin's model, on levelled ground.)
+    constexpr uint64_t kGolden = 0x777e1f32757e88cd;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);

@@ -221,6 +221,10 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     placeSites();
     // Then the battle-scale relief and the landmarks, clear of all of them.
     dress();
+    // Last, level the ground each ruin stands on (its platform is a building
+    // that sits flat, not a slope; carve).
+    for (const Site& s : sites_)
+        if (s.kind == Site::Kind::Ruin) ruinPads_.push_back(s.pos);
 }
 
 void Continent::bucketRoads() {
@@ -967,6 +971,16 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         if (d >= reach) continue;
         const Fixed w = Fixed::one() - noise::smoothstep(c.radius, reach, d);
         z = z + (c.pos.z - z) * w;
+    }
+    // So do the ruins, on smaller ones (Site::kRuinPad).
+    for (const Vec3& p : ruinPads_) {
+        const Fixed inner = m(Site::kRuinPad), reach = inner + m(Site::kRuinPadBlend);
+        const Fixed dx = abs(x - p.x), dy = abs(y - p.y);
+        if (dx >= reach || dy >= reach) continue;
+        const Fixed d = sqrt(dx * dx + dy * dy);
+        if (d >= reach) continue;
+        const Fixed w = Fixed::one() - noise::smoothstep(inner, reach, d);
+        z = z + (p.z - z) * w;
     }
 
     s.height = z;

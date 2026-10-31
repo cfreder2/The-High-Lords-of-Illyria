@@ -150,11 +150,14 @@ public:
         Kind kind;
         std::string name;
         Vec3 pos;  // z = ground height
-        // How big its building stands (metres; the renderer's model of it,
-        // game/render/meshes.cpp, is a unit across) and the quarter turns it
-        // is set at, from its place in the list: the battle lays its stones
-        // out the same way (Region, siteStones).
-        static constexpr int kRuinSize = 40, kTempleSize = 44, kSageSize = 26;
+        // How big its building stands (metres; the renderer's model of it is
+        // a unit across) and the quarter turns it is set at, from its place in
+        // the list: the battle lays its stones out the same way (Region,
+        // siteStones). A ruin is a temple's platform, 2.6 m high at this size
+        // with its columns 12 m above it (game/web/models/ruin.bin), on a
+        // levelled pad (kRuinPad: its whole footprint; carve).
+        static constexpr int kRuinSize = 24, kTempleSize = 44, kSageSize = 26;
+        static constexpr int kRuinPad = kRuinSize * 3 / 4, kRuinPadBlend = 24;
         static int size(Kind k) { return k == Kind::Ruin ? kRuinSize : k == Kind::Temple ? kTempleSize : kSageSize; }
         static int turns(size_t index) { return static_cast<int>((index * 2654435761u >> 11) & 3u); }
     };
@@ -325,6 +328,9 @@ private:
     std::vector<Label> labels_;
     std::vector<City> cities_;
     std::vector<Site> sites_;
+    // The ruins' levelled ground (x, y, height; carve), laid once the land is
+    // made, so nothing placed or dressed before moves.
+    std::vector<Vec3> ruinPads_;
     std::vector<Landmark> landmarks_;
     bool dressed_ = false;
     size_t naturalLakes_ = 0;
