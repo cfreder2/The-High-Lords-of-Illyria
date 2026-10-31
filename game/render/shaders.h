@@ -1498,6 +1498,55 @@ void main() {
 }
 )";
 
+// ---------------------------------------------------------------- models
+// Instanced textured meshes made by tools/models (renderer_models.cpp): the
+// ruin. Per vertex: position, normal, uv (v down the image). Per instance,
+// as the meshes': position, rotation quaternion, scale, tint. Lit as the
+// meshes are: sun and its shadows, cloud shadows, the river, haze and fog.
+inline const char* kModelVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUv;
+layout(location = 3) in vec3 iPos;
+layout(location = 4) in vec4 iQuat;
+layout(location = 5) in vec3 iScale;
+layout(location = 6) in vec3 iTint;
+out vec3 vNormal;
+out vec3 vWorld;
+out vec2 vUv;
+out vec3 vTint;
+vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+void main() {
+    if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
+    vec3 world = iPos + rotate(iQuat, aPos * iScale);
+    vNormal = rotate(iQuat, aNormal / iScale);
+    vUv = aUv;
+    vTint = iTint;
+    vWorld = world;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kModelFs = R"(
+in vec3 vNormal;
+in vec3 vWorld;
+in vec2 vUv;
+in vec3 vTint;
+out vec4 oColor;
+uniform sampler2D uAlbedo;
+void main() {
+    vec3 n = normalize(vNormal);
+    vec3 albedo = texture(uAlbedo, vUv).rgb * vTint;
+    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(vWorld.xy);
+    float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
+    vec3 c = albedo * light;
+    // Under the battlefield's river (the rest of the continent has no water level).
+    vec2 cell = vWorld.xy / uCellSize;
+    bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
+    if (onField && vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
+    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+}
+)";
+
 // ---------------------------------------------------------------- ground cover
 // Grass tufts, flowers, pebbles, twigs and ferns on a grid that follows the
 // camera (snapped to the ground so nothing swims). No per-frame CPU work:

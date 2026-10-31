@@ -302,6 +302,8 @@ bool Renderer::buildPrograms() {
                  {falls_, shaders::kFallsVs, shaders::kFallsFs},
                  {cover_, shaders::kCoverVs, shaders::kCoverFs},
                  {meshDepth_, shaders::kMeshVs, shaders::kDepthFs},
+                 {model_, shaders::kModelVs, shaders::kModelFs},
+                 {modelDepth_, shaders::kModelVs, shaders::kDepthFs},
                  {terrainDepth_, shaders::kTerrainVs, shaders::kDepthFs},
                  {sky_, shaders::kSkyVs, shaders::kSkyFs},
                  {figure_, shaders::kFigureVs, shaders::kFigureFs},
@@ -377,6 +379,7 @@ bool Renderer::buildPrograms() {
         s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
         s.p.flag = glGetUniformLocation(s.p.id, "uFlag");
+        s.p.albedo = glGetUniformLocation(s.p.id, "uAlbedo");
     }
     return true;
 }
@@ -1222,7 +1225,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     bannerData_ = banners;  // retinted as towns change hands (setCityColours)
     uploadMeshInstances(banners_, banners);
     uploadMeshInstances(cityHouses_, houses);
-    uploadMeshInstances(ruins_, ruins);
+    uploadRuins(ruins);  // the model, if it has come, else the box ruin (renderer_models.cpp)
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
 
@@ -1838,6 +1841,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         glBindVertexArray(b->vao);
         glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
     }
+    drawModel(modelDepth_, ruinModel_, camera, timeSeconds, gameSeconds);
     // Soldiers: their billboards turned side-on to the sun, so the cut-out
     // silhouettes cast real shadows.
     if (sprites_.count > 0) {
@@ -2294,6 +2298,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
     if (camera.distance() < 6000.0f) {
