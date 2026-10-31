@@ -33,6 +33,11 @@ constexpr int kFootmanCount = 10;
 
 Fixed m(int64_t metres) { return Fixed::fromInt(metres); }
 
+// The Melee's roster: every type up to the catapult, as when its checksum was
+// pinned (tests/test_units.cpp). Types added since have benchmarks of their
+// own (the hyena-folk: the Raid), so the Melee keeps its checksum.
+constexpr int kMeleeRoster = static_cast<int>(UnitType::Catapult) + 1;
+
 // The Ford is laid out around this point of a 256 m terrain patch.
 constexpr int64_t kOx = 80, kOy = 128;
 constexpr int64_t kColumnStart = 70;  // metres east of the archers
@@ -89,7 +94,7 @@ void Melee::setup(World& world) {
     for (PlayerId side = 0; side < 2; ++side) {
         const int64_t x = side == 0 ? 98 : 158;
         const Vec3 facing = side == 0 ? east : -east;
-        for (int t = 0; t < kUnitTypeCount; ++t) {
+        for (int t = 0; t < kMeleeRoster; ++t) {
             world.spawnUnit(side, {m(x), m(60 + t * 5), m(0)}, facing, unitStats(static_cast<UnitType>(t)));
         }
         for (int i = 0; i < 4; ++i) {
@@ -148,14 +153,37 @@ Replay Melee::replay(uint64_t seed) {
     r.config.terrain = std::make_shared<const Terrain>(
         Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(16)));
     // Everyone advances to the middle of the valley, then fights on their own.
-    const uint32_t perSide = kUnitTypeCount + 4;
+    const uint32_t perSide = kMeleeRoster + 4;
     for (PlayerId side = 0; side < 2; ++side) {
         for (uint32_t i = 0; i < perSide; ++i) {
             const EntityId id = side * perSide + i + 1;
-            const int64_t y = i < static_cast<uint32_t>(kUnitTypeCount) ? 60 + i * 5 : 100 + (i - kUnitTypeCount) * 6;
+            const int64_t y = i < static_cast<uint32_t>(kMeleeRoster) ? 60 + i * 5 : 100 + (i - kMeleeRoster) * 6;
             r.commands.push_back({0, {side, id, Command::Type::Move, {m(side == 0 ? 120 : 136), m(y), m(0)}}});
         }
     }
+    return r;
+}
+
+void Raid::setup(World& world) {
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    // Ids 1..8: a shield wall of heavy infantry; 9..14 archers behind it,
+    // 15..17 healers, 18..19 wizards, 20..22 grenadiers. 23..34: light
+    // infantry coming at the wall; 35..40 hyena-folk far out on their flank.
+    for (int i = 0; i < 8; ++i) world.spawnUnit(0, {m(110), m(112 + i * 2), m(0)}, east, unitStats(UnitType::HeavyInfantry));
+    for (int i = 0; i < 6; ++i) world.spawnUnit(0, {m(96), m(112 + i * 3), m(0)}, east, unitStats(UnitType::Archers));
+    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(88), m(116 + i * 3), m(0)}, east, unitStats(UnitType::Journeyman));
+    for (int i = 0; i < 2; ++i) world.spawnUnit(0, {m(86), m(110 + i * 16), m(0)}, east, unitStats(UnitType::Wizards));
+    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(102), m(114 + i * 5), m(0)}, east, unitStats(UnitType::DwarfGrenadier));
+    for (int i = 0; i < 12; ++i) world.spawnUnit(1, {m(150 + (i / 6) * 2), m(112 + (i % 6) * 3), m(0)}, -east, unitStats(UnitType::LightInfantry));
+    for (int i = 0; i < 6; ++i) world.spawnUnit(1, {m(140 + (i % 2) * 2), m(40 + (i / 2) * 3), m(0)}, -east, unitStats(UnitType::Hyena));
+}
+
+Replay Raid::replay(uint64_t seed) {
+    Replay r;
+    r.config.seed = seed;
+    r.config.terrain = std::make_shared<const Terrain>(Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(12)));
+    // The infantry charge the wall; the hyena-folk are left to themselves.
+    for (EntityId id = 23; id <= 34; ++id) r.commands.push_back({0, {1, id, Command::Type::Move, {m(112), m(120), m(0)}}});
     return r;
 }
 

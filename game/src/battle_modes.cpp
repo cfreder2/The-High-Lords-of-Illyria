@@ -185,6 +185,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         if (V3{to.x - c.x, to.y - c.y, 0}.length() > 6.0f) aiSteer(squad, to);
     };
     if (role == Role::Siege) return;  // engines throw from where they stand
+    if (role == Role::Scout) return;  // the hyena-folk run their own fight (world_scavenge.cpp)
     if (role == Role::Healer) {
         // A little behind the nearest friendly fighting squad.
         float best = 1e30f;

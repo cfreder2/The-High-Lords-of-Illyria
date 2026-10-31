@@ -42,6 +42,7 @@ Scale: metres and seconds. A man is 1.8 m tall; a steady run is about 2.2 m/s an
 | Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | slash | 1.20 s | 0.6 | 0 | 65% | 85% |  |
 | Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | cleave | 0.93 s | 0.6 | 0 |  | 35% |  |
 | Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 0.8 | 0 |  | 0.00 s | 0.0 | 0 |  | 110% | no blood;  |
+| Hyena-folk | 3 | 35 | 1.55 | 0.40 | 0.9 | 6.0 | 8 | slash | 1.00 s | 0.9 | 0 |  | never |  |
 
 ## Missile troops
 
@@ -71,6 +72,25 @@ arrows can hit them.
 | Dragons | 2.5 m/s | 15 m/s | 10.0 m | 30 m | 50 m | 25 s |
 | Archons | 2.8 m/s | 11 m/s | 6.0 m | 10 m | 50 m | 35 s |
 
+## Scavengers
+
+Left to themselves, scavengers run their own fight (`engine/sim/src/world_scavenge.cpp`; orders override it):
+round the end of the enemy's line toward its rear, taking the best thing in **sight**, darting in to throw it at
+the softest man in reach, falling back and going for the next. Prizes are worth: a satchel charge 100, a blade 60,
+a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less 2 for every metre of the run. Marks, by kind:
+archers, healers and wizards first (x3), other missile troops (x2), then the rest, armoured men last (x1/2);
+nearer is better. They keep out of reach of armoured foes (a shield of 30% or more, or a heavy body: knights,
+warriors, dwarves, cavalry, heroes, beasts), and with nothing to throw cut down the soft ones near them.
+Thrown, a part hurts as any flying part does (2 to 8 by its speed, a trunk half again), a blade cuts (5 to 14),
+a head breaks the man it strikes (his morale to nothing; the dead and heroes never break), and a satchel bursts
+where it strikes. A burning satchel is taken only with the fuse to throw it on.
+
+| Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |
+|---|---|---|---|---|---|---|
+| Hyena-folk | 30 m | 17 m/s | 24 m | 14 m | 5 m | 0.3 s |
+
+Blades are taken from the bodies of: Light Infantry, Heavy Infantry, Pikemen, Light Cavalry, Heavy Cavalry, Dwarven Legion, Wolf Riders, Pegasi, Undead, Archons, Hero, Warriors, Berserkers, Hyena-folk.
+
 ## Ground
 
 Terrain is tactical. A unit moves at its speed times its gait's multiplier for the ground under it
@@ -90,3 +110,4 @@ slows it more than the detour does. Deep water is impassable on foot. Climbing d
 | Giant | 1.15 | 1.00 | 0.65 | 0.60 | 0.65 | 0.60 | 0.90 | 0.90 | 1.00 | 80% | Giants, Minotaurs, Elephants, Devils, Demons |
 | Undead | 1.20 | 1.00 | 0.70 | 1.00 | 0.55 | 0.50 | 0.80 | 0.85 | 1.00 | 100% | Undead |
 | Wheeled | 1.35 | 1.00 | 0.40 | 0.25 | 0.30 | 0.30 | 0.30 | 0.60 | 1.00 | 150% | Catapults |
+| Hyena | 1.15 | 1.00 | 0.90 | 0.65 | 0.50 | 0.80 | 0.75 | 0.90 | 1.00 | 70% | Hyena-folk |

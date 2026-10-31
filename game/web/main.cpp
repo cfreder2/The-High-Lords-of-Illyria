@@ -1970,7 +1970,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_mode_offers() {
     s = "[";
     char buf[160];
     const auto& offers = illyria::sim::squadOffers();
-    static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
+    static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege", "scout"};
     for (size_t i = 0; i < offers.size(); ++i) {
         std::snprintf(buf, sizeof buf, "%s{\"i\":%zu,\"type\":\"%s\",\"role\":\"%s\",\"count\":%d,\"cost\":%d}", i ? "," : "", i,
                       illyria::sim::unitTypeName(offers[i].type), kRoles[static_cast<int>(roleOf(offers[i].type))], offers[i].count,
@@ -2207,7 +2207,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     }
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];
-        static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
+        static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege", "scout"};
         const Standing st = b.standing(q);
         // Whose it is, seen from the local side (Battle::localSide): mine to
         // order, an ally's (my side, another seat), or a foe's.

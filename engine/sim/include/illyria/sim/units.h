@@ -40,6 +40,8 @@ enum class UnitType : uint8_t {
     Berserker,
     // Siege engines
     Catapult,
+    // Scavengers
+    Hyena,  // the hyena-folk: fast, weak, throwing what lies about the field
     Count
 };
 
@@ -54,5 +56,10 @@ int warlordsStrength(UnitType type);
 const char* unitTypeName(UnitType type);
 // How this type gets over the ground (gait.h).
 Gait gaitOf(UnitType type);
+// Whether his body keeps a blade (a sword, axe or spear) a scavenger can take.
+bool bearsBlade(UnitType type);
+// Armoured, or too big and strong for a scavenger to stand up to in melee:
+// he throws at them but keeps out of their reach (world_scavenge.cpp).
+bool armoured(const UnitStats& s);
 
 }  // namespace illyria::sim

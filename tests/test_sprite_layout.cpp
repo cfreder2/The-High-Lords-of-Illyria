@@ -77,7 +77,13 @@ TEST(sprite_layout_matches_the_manifest_and_the_old_sheets) {
         CHECK(sprites::kClipFirst[a] == figures::kFirstFrame[a]);
         CHECK(sprites::kClipFrames[a] == figures::kFrames[a]);
     }
-    CHECK(static_cast<int>(f.units.size()) == sim::kUnitTypeCount);
+    // Every type is in the manifest, or drawn with a stand-in's sheet until it is (sheetStandIn).
+    static_assert(sprites::kHyenaType == static_cast<int>(sim::UnitType::Hyena));
+    int covered = 0;
+    for (int t = 0; t < sim::kUnitTypeCount; ++t) covered += f.units.count(t) > 0 || sprites::sheetStandIn(t) != t;
+    CHECK(covered == sim::kUnitTypeCount);
+    CHECK(static_cast<int>(f.units.size()) <= sim::kUnitTypeCount);
+    for (int t = 0; t < sim::kUnitTypeCount; ++t) CHECK(f.units.count(sprites::sheetStandIn(t)) > 0);
 }
 
 // Every cell the renderer can ask for, for every type, has a file name in the
@@ -98,6 +104,7 @@ TEST(sprite_manifest_covers_every_cell_the_renderer_requests) {
     int missing = 0;
     for (int t = 0; t < sim::kUnitTypeCount; ++t) {
         const auto u = f.units.find(t);
+        if (u == f.units.end() && sprites::sheetStandIn(t) != t) continue;  // drawn with a stand-in's sheet for now
         CHECK(u != f.units.end());
         if (u == f.units.end()) continue;
         for (const auto& [c, i] : asked)

@@ -329,7 +329,15 @@ public:
     // (heroes, beasts, monsters, allies, Myth's specialists) never are: each
     // that falls is gone for good (campaign_rare.cpp, docs/GAME_DESIGN.md §4.2.4).
     static bool trainable(UnitType t);
-    static bool rare(UnitType t) { return !trainable(t); }
+    static bool rare(UnitType t) { return !trainable(t) && !fieldOnly(t); }
+    // Types not in the campaign at all (no city trains them, no realm has
+    // them): the hyena-folk, so far only in the sandbox and the battles laid out with them.
+    static bool fieldOnly(UnitType t) { return t == UnitType::Hyena; }
+    // "No companion" as saves and checksums write it: the number
+    // UnitType::Count had when both were pinned (the hyena-folk have it now).
+    // A companion is only ever a hireable rare type, never a hyena, so the
+    // slot reads it back unambiguously.
+    static constexpr uint64_t kNoCompanionCode = 27;
     // Where a rare type can be had: a bit each.
     enum Source : uint8_t { kFromStart = 1, kFromLevy = 2, kFromRuin = 4, kFromTemple = 8, kFromHire = 16 };
     static uint8_t sources(UnitType t);

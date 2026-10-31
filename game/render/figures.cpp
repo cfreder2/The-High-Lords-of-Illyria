@@ -1333,6 +1333,10 @@ Figure figureOf(UnitType type, const float team[3]) {
         case UnitType::Catapult:
             fg.person = false, fg.engine = true;
             break;
+        case UnitType::Hyena:  // the baked stand-in until its sheet comes: a hunched, tawny, tailed scavenger with a curved blade
+            k.head = Head::Wild, k.weapon = Weapon::Sickle, k.bareChest = true, k.kilt = true, k.tail = true, k.bulk = 0.9f;
+            k.skin = V3{0.62f, 0.5f, 0.3f}, k.hair = V3{0.25f, 0.18f, 0.1f};
+            break;
         case UnitType::Count: break;
     }
     if (twoHanded(k.weapon) && k.strike == Strike::Swing) k.strike = Strike::Overhead;

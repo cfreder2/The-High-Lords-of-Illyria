@@ -310,7 +310,7 @@ std::string Campaign::save() const {
         w.i(o.city);
         w.i(o.price);
         w.str(o.name);
-        w.u(static_cast<uint64_t>(o.companion));
+        w.u(o.companion == UnitType::Count ? kNoCompanionCode : static_cast<uint64_t>(o.companion));
         w.i(o.companions);
     }
     w.u(artifactFound_.size());
@@ -469,6 +469,7 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
         o.price = r.i32();
         o.name = r.str();
         o.companion = r.type(true);
+        if (static_cast<uint64_t>(o.companion) == kNoCompanionCode) o.companion = UnitType::Count;  // none (Campaign::kNoCompanionCode)
         o.companions = r.i32();
     }
     if (r.count() != c->artifactFound_.size()) return fail("damaged (artifacts)");

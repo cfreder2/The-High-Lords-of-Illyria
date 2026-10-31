@@ -121,8 +121,35 @@ Gait gaitOf(UnitType type) {
         case T::Demons: return Gait::Giant;
         case T::Undead: return Gait::Undead;
         case T::Catapult: return Gait::Wheeled;
+        case T::Hyena: return Gait::Hyena;
         default: return Gait::Foot;
     }
+}
+
+bool bearsBlade(UnitType type) {
+    using T = UnitType;
+    switch (type) {
+        case T::LightInfantry:
+        case T::HeavyInfantry:
+        case T::Pikemen:
+        case T::LightCavalry:
+        case T::HeavyCavalry:
+        case T::Dwarves:
+        case T::WolfRiders:
+        case T::Pegasi:
+        case T::Undead:
+        case T::Archons:
+        case T::Hero:
+        case T::Warrior:
+        case T::Berserker:
+        case T::Hyena: return true;
+        default: return false;  // bows, staves, sickles, satchels, beasts' claws, giants' clubs
+    }
+}
+
+bool armoured(const UnitStats& s) {
+    // A real shield, or the weight of a horse, a beast or plate behind the blows.
+    return s.melee.damage > 0 && (s.shield.blockChance >= Fixed::fromRatio(3, 10) || s.mass >= Fixed::fromRatio(13, 10));
 }
 
 // How hard shocks shake each type (percent of a man's; 0 never breaks): the
@@ -158,6 +185,7 @@ int32_t moraleShockPct(UnitType type) {
         case T::Warrior: return 85;
         case T::Berserker: return 35;
         case T::Catapult: return 110;
+        case T::Hyena: return 0;  // he cares nothing for his own life; his falling back is his own cunning
         case T::Count: break;
     }
     return 100;
@@ -343,6 +371,13 @@ UnitStats unitStats(UnitType type) {
             s.mass = m(25);
             s.bleeds = false;
             break;
+        case T::Hyena:  // hunched, 1.55 m: a long scimitar, a quick lope, and whatever lies about
+            s = base(type, r(2, 5), r(31, 20), m(6), 35);
+            melee(s, 8, r(9, 10), sec(1));
+            s.mass = r(9, 10);
+            s.aggroRange = m(8);
+            s.scavenge = {m(30), m(17), m(24), m(5), sec(3, 10)};
+            break;
         case T::Count:
             break;
     }
@@ -383,6 +418,7 @@ const char* unitTypeName(UnitType type) {
         case T::Warrior: return "Warriors";
         case T::Berserker: return "Berserkers";
         case T::Catapult: return "Catapults";
+        case T::Hyena: return "Hyena-folk";
         case T::Count: break;
     }
     return "?";
@@ -418,6 +454,7 @@ int warlordsStrength(UnitType type) {
         case T::Warrior: return 5;
         case T::Berserker: return 5;
         case T::Catapult: return 3;  // weak in the field; +2 against a town (Campaign::battle)
+        case T::Hyena: return 3;
         case T::Count: break;
     }
     return 1;

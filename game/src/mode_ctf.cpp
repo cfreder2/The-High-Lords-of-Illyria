@@ -153,7 +153,7 @@ void CtfMode::setUp(Battle& b) {
                 // third squad of the line back to guard the flag.
                 const Role role = roleOf(o.type);
                 if (defends_.size() <= static_cast<size_t>(q)) defends_.resize(static_cast<size_t>(q) + 1, 0);
-                defends_[static_cast<size_t>(q)] = role != Role::Melee && role != Role::Flier ? 1 : (k % 3 == 2 ? 1 : 0);
+                defends_[static_cast<size_t>(q)] = role != Role::Melee && role != Role::Flier && role != Role::Scout ? 1 : (k % 3 == 2 ? 1 : 0);
                 ++k;
             }
         }

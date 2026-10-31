@@ -70,6 +70,7 @@ add_executable(illyria_tests
     test_ctf.cpp
     test_sandbox.cpp
     test_ruin.cpp
+    test_scavenge.cpp
     test_match_seats.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )

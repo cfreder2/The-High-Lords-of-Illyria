@@ -25,5 +25,6 @@ int main(int argc, char** argv) {
     run<scenarios::Melee>("melee", seed);
     run<scenarios::Crossing>("crossing", seed);
     run<scenarios::Oakhaven>("oakhaven", seed);
+    run<scenarios::Raid>("raid", seed);
     return 0;
 }

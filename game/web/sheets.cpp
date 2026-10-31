@@ -24,7 +24,7 @@ std::vector<float> readCells;
 int readSize[2] = {0, 0};
 
 // clang-format off
-EM_JS(void, illyria_js_request_sheet, (int type, int closeup), {
+EM_JS(void, illyria_js_request_sheet, (int type, int closeup, int standIn), {
     const at = (path) => (Module.locateFile ? Module.locateFile(path) : path);
     if (!Module.illyriaSheetIndex)
         Module.illyriaSheetIndex = fetch(at('sprites/index.json')).then(r => (r.ok ? r.json() : {})).catch(() => ({}));
@@ -36,7 +36,9 @@ EM_JS(void, illyria_js_request_sheet, (int type, int closeup), {
         });
     }
     (closeup ? Module.illyriaCloseupIndex : Module.illyriaSheetIndex).then(index => {
-        const name = closeup ? (index[type] && index[type].name) : index[type];
+        // A type with no sheet of its own yet wears its stand-in's (sprite_layout.h sheetStandIn).
+        const entry = index[type] !== undefined ? index[type] : index[standIn];
+        const name = closeup ? (entry && entry.name) : entry;
         if (!name) return;
         return Promise.all([
             fetch(at('sprites/' + name + '.json')).then(r => r.json()),
@@ -106,8 +108,8 @@ namespace illyria::game {
 
 void fetchPrerenderedSheets(Renderer& renderer) {
     target = &renderer;
-    renderer.setSheetRequest([](int type) { illyria_js_request_sheet(type, 0); });
-    renderer.setCloseupRequest([](int type) { illyria_js_request_sheet(type, 1); });
+    renderer.setSheetRequest([](int type) { illyria_js_request_sheet(type, 0, sprites::sheetStandIn(type)); });
+    renderer.setCloseupRequest([](int type) { illyria_js_request_sheet(type, 1, sprites::sheetStandIn(type)); });
 }
 
 }  // namespace illyria::game

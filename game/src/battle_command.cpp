@@ -152,7 +152,8 @@ Formation defaultFormation(UnitType type) {
         case Role::Bomber: return Formation::Staggered;
         case Role::Caster:
         case Role::Healer:
-        case Role::Flier: return Formation::Loose;
+        case Role::Flier:
+        case Role::Scout: return Formation::Loose;
         case Role::Siege: return Formation::Line;
         case Role::Melee: break;
     }

@@ -236,3 +236,11 @@ A wheeled mangonel with its crew, the only engine of war in Illyria. Slow on the
 
 **On the field.** Throws a stone 30 to 150 m that smashes everything within 3 m, and does five times its damage to a gate (chapter [](#engines)). Keep it well back, guarded; it cannot fight anything that reaches it.
 :::
+
+::: unit Hyena-folk
+Hunched, laughing scavengers of the wastes with long scimitars, who care nothing for their own lives. They run their own fight: round the end of your line and into your rear, snatching up whatever lies on the field and throwing it at whoever it will hurt most.
+
+**Campaign.** Not yet in the campaign: they fight in the sandbox and in the battles laid out with them.
+
+**On the field.** Weak in a stand-up fight (35 hit points, an 8 blow) but fast (6 m/s): only riders catch them, and they never break. Left alone they take the best thing in sight, a satchel charge before a blade, a blade before a head, and dart in to throw it at your archers, healers and wizards first, then fall back for the next. A severed head they throw breaks the man it strikes. They keep clear of armoured men. Guard your rear with heavy infantry or riders, and let your archers shoot them as they come round the flank.
+:::

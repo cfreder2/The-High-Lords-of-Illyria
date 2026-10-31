@@ -51,6 +51,14 @@ constexpr int gibSlot(Gib g, int variant) {
     return kViews * kFramesPerView + static_cast<int>(g) * kGibVariants + (variant & 1);
 }
 
+// A unit type (sim::UnitType's number) drawn with another type's pre-rendered
+// sheet until its own is made: the site's sprites/index.json has no entry for
+// it, so the page fetches the stand-in's sheet for it instead (game/web/sheets.cpp).
+// The hyena-folk (27) wear the light infantry's (0) for now; once their sheet
+// is in the index and the manifest, this returns 27 for them too.
+constexpr int kHyenaType = 27;
+constexpr int sheetStandIn(int type) { return type == kHyenaType ? 0 : type; }
+
 // How a soldier died, as the sim's death matrix records it (sim::DeathKind and
 // sim::DamageType, same order, so a static_cast from those fits).
 enum class DeathKind : uint8_t { None, Fell, Severed, Gibbed, Pierced, Charred };

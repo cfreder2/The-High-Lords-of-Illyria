@@ -17,8 +17,9 @@ constexpr int32_t kSpeedPct[kGaitCount][kGroundCount] = {
     {100, 115, 65, 60, 65, 0, 60, 100, 90, 90},   // Giant
     {100, 120, 70, 100, 55, 0, 50, 100, 80, 85},  // Undead
     {100, 135, 40, 25, 30, 0, 30, 100, 30, 60},   // Wheeled
+    {100, 115, 90, 65, 50, 0, 80, 100, 75, 90},   // Hyena
 };
-constexpr int32_t kClimbPct[kGaitCount] = {100, 120, 90, 50, 100, 80, 100, 150};
+constexpr int32_t kClimbPct[kGaitCount] = {100, 120, 90, 50, 100, 80, 100, 150, 70};
 
 }  // namespace
 
@@ -43,6 +44,7 @@ const char* gaitName(Gait gait) {
         case Gait::Giant: return "Giant";
         case Gait::Undead: return "Undead";
         case Gait::Wheeled: return "Wheeled";
+        case Gait::Hyena: return "Hyena";
         case Gait::Count: break;
     }
     return "?";

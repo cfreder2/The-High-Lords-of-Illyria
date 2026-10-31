@@ -39,9 +39,10 @@ struct Ford {
     static Replay replay(uint64_t seed);
 };
 
-// Every unit type on both sides, plus extra dwarven grenadiers, charging
-// each other across a valley. The determinism benchmark for shields, fliers,
-// healing, knockback, explosions and remains.
+// Every unit type on both sides (up to the catapult: the roster when its
+// checksum was pinned), plus extra dwarven grenadiers, charging each other
+// across a valley. The determinism benchmark for shields, fliers, healing,
+// knockback, explosions and remains.
 struct Melee {
     static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
     static void setup(World& world);
@@ -62,6 +63,16 @@ struct Crossing {
 // The determinism benchmark for continent generation.
 struct Oakhaven {
     static constexpr uint32_t kTicks = 150 * kTicksPerSecond;  // the far bank is muddy and uphill
+    static void setup(World& world);
+    static Replay replay(uint64_t seed);
+};
+
+// Hyena-folk raid an army's rear: light infantry charge a shield wall while
+// the pack goes round its flank for the archers, healers, wizards and
+// grenadiers behind, taking up blades, heads and satchels from the fight and
+// throwing them. The determinism benchmark for scavengers.
+struct Raid {
+    static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
     static void setup(World& world);
     static Replay replay(uint64_t seed);
 };

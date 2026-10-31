@@ -37,8 +37,11 @@ enum class ProjectileKind : uint8_t {
 
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
 // the simulation so every peer sees the same battlefield and explosions can
-// throw them about again.
-enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk };
+// throw them about again. A Blade is a sword, axe or spear a scavenger took
+// from a body and threw (world_scavenge.cpp): it lies where it lands, to be
+// taken up again. (A body's own blade is not a remain: it stays with him
+// until taken, Unit::looted.)
+enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk, Blade };
 
 // What a weapon does to flesh (docs/GAME_DESIGN.md §5.5, the death matrix):
 // how the killing blow decides the body that is left, and the sound it makes.
@@ -99,6 +102,17 @@ struct TerrainBonus {
     int32_t hillsPct = 0;  // slopes
 };
 
+// A scavenger (world_scavenge.cpp): with no orders he runs his own fight,
+// round the enemy's flank to its rear, taking what lies about the field (a
+// satchel, a blade, a head, a limb) and hurling it at the soft targets.
+struct Scavenging {
+    Fixed sight;              // zero: not a scavenger. How far he sees things to take
+    Fixed throwSpeed;         // m/s off his hand
+    Fixed throwRange;         // the farthest he throws from
+    Fixed dispersionAt100m;   // as a bow's, for a recruit
+    int32_t windupTicks = 0;  // drawing back before the throw
+};
+
 struct UnitStats {
     uint8_t type = 0;  // UnitType, for presentation
     Fixed radius;
@@ -126,6 +140,34 @@ struct UnitStats {
     // Morale (world_morale.cpp): how hard shocks shake it, in percent of a
     // man's; 0 never breaks (the mindless dead, heroes).
     int32_t moraleShockPct = 100;
+    Scavenging scavenge;
+};
+
+// A body part's soldier type unknown (arrows, and parts from before it was kept).
+inline constexpr uint8_t kNoSource = 0xFF;
+
+// What a scavenger is about, and what he holds (world_scavenge.cpp).
+struct Scavenger {
+    // Scouting round the enemy (or cutting down a soft target with his
+    // blade), running for a prize, closing to throw it, falling back after.
+    enum class Mind : uint8_t { Scout, Fetch, Strike, Retreat };
+    enum class Prize : uint8_t { None, Remain, Corpse, Satchel };
+    Mind mind = Mind::Scout;
+    Prize prize = Prize::None;
+    uint32_t prizeRef = 0;      // the remain's slot, the body's id or the satchel's id
+    Vec3 goal;                  // where he is running: the prize, or round the flank
+    EntityId mark = kNoEntity;  // whom he means to hit
+    Vec3 markSeen;              // where the mark stood a tick ago (he leads him)
+    int32_t timer = 0;          // the wind-up, or the retreat, left
+    // In his hands, one thing at a time: a body part or a blade (as the
+    // remain it was: kind, whose soldier, of what type), or a satchel charge.
+    RemainKind held = RemainKind::None;
+    uint8_t heldSource = kNoSource;
+    PlayerId heldOwner = 0;
+    bool satchel = false;
+    int32_t fuse = 0;  // the satchel's fuse left, burning down in his hands
+    Explosive blast;   // and its charge
+    bool holding() const { return satchel || held != RemainKind::None; }
 };
 
 // One soldier (or beast). Squads are a campaign-layer grouping of these.
@@ -223,13 +265,12 @@ struct Unit {
     };
     Death death;
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
+    bool looted = false;       // dead: a scavenger took his blade
+    Scavenger scav;            // scavengers only (UnitStats::scavenge)
 
     bool alive() const { return hp > 0; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
 };
-
-// A body part's soldier type unknown (arrows, and parts from before it was kept).
-inline constexpr uint8_t kNoSource = 0xFF;
 
 struct Projectile {
     EntityId id = kNoEntity;
@@ -250,6 +291,9 @@ struct Projectile {
     // A body part: the type of the soldier it came from, so it is drawn as a
     // piece of him (not hashed: it only chooses the picture).
     uint8_t source = kNoSource;
+    // Hurled by a scavenger's hand (shooter is he): a head breaks the man it
+    // strikes, a blade cuts him, a satchel bursts where it strikes.
+    bool thrown = false;
 };
 
 struct Remain {
@@ -508,6 +552,9 @@ public:
     void launchPart(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source = kNoSource) {
         spawnDebris(kind, owner, pos, vel, source);
     }
+    // A satchel charge (`ex`) laid at rest on the ground at `pos`, its fuse
+    // burning `fuseTicks`: a grenadier's, or in tests. Its id.
+    EntityId placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& ex, int32_t fuseTicks);
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -602,6 +649,36 @@ private:
     // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
     bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);
+    // Scavengers (world_scavenge.cpp).
+    // His own fight, with no orders: flank, fetch, throw, fall back.
+    void scavenge(Unit& u);
+    // Ordered at one soldier with something in hand: he throws it at him
+    // (true); empty-handed he goes after him as anyone would (false).
+    bool scavengeOrdered(Unit& u);
+    // A satchel in his hands burns down; at the last it falls from them.
+    void burnHeld(Unit& u);
+    // He falls with something in his hands: it drops where he fell.
+    void dropHeld(Unit& u);
+    // A blast reaching a man with a satchel in his hands sets it off.
+    void setOffHeld(Unit& u);
+    // How a scavenger moves: toward `goal`, round armoured foes, by a route when the way is not clear.
+    void scavengeWalk(Unit& u, const Vec3& goal);
+    // The armoured foes near him: how close the nearest is inside its
+    // danger (positive: too close), and which way is away from them all.
+    Fixed scavengeDanger(const Unit& u, Fixed reach, Vec3* away) const;
+    // Choosing: the best thing to take, the best man to hit, where to go round the enemy.
+    bool choosePrize(Unit& u);
+    Unit* chooseMark(Unit& u);
+    Vec3 flankGoal(const Unit& u) const;
+    // Where his prize is now; false when it is gone (taken, kicked, blown up).
+    bool prizeAt(const Unit& u, Vec3& at) const;
+    void takePrize(Unit& u);
+    // Closes on `mark` with what he holds, draws back and throws it; true once thrown.
+    bool strike(Unit& u, Unit& mark);
+    // Hurls what he holds at `at`.
+    void hurl(Unit& u, const Vec3& at);
+    // Empty-handed with nothing to take: the soft foe near him to cut down, or null.
+    Unit* pounceTarget(Unit& u);
     // Battle mechanics in world_combat.cpp.
     // The enemy to fight: the foe still in reach, or the nearest within aggro range.
     Unit* meleeTarget(Unit& unit, EntityId lastFoe);
@@ -698,7 +775,8 @@ private:
     // Returns true while it is rolling.
     bool rollDownhill(Projectile& p);
     void spawnDebris(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& vel, uint8_t source = kNoSource);
-    Unit* debrisHit(const Vec3& a, const Vec3& b);
+    // The first living man (not `ignore`) a flying thing passes through between two points.
+    Unit* debrisHit(const Vec3& a, const Vec3& b, EntityId ignore = kNoEntity);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source = kNoSource);
     void clearRemain(uint32_t slot);
     void applyZone();

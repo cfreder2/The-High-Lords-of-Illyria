@@ -118,7 +118,9 @@ struct ArmyResult {
 const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
-enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier, Siege };
+// Scouts (the hyena-folk) run their own fight in the simulation
+// (world_scavenge.cpp): the battle AI leaves them to it.
+enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier, Siege, Scout };
 Role roleOf(sim::UnitType type);
 
 // Decals derived only from simulation events, so every peer accumulates the

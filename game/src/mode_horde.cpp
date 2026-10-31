@@ -52,7 +52,7 @@ constexpr UnitType kComputerPrefers[] = {UnitType::Warrior,  UnitType::Archers, 
                                          UnitType::Berserker, UnitType::HeavyCavalry, UnitType::Wizards};
 
 const char* roleName(UnitType t) {
-    static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege"};
+    static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege", "scout"};
     return kRoles[static_cast<int>(roleOf(t))];
 }
 

@@ -68,6 +68,7 @@ Role roleOf(UnitType type) {
         case UnitType::Wizards: return Role::Caster;
         case UnitType::Journeyman: return Role::Healer;
         case UnitType::Catapult: return Role::Siege;
+        case UnitType::Hyena: return Role::Scout;
         case UnitType::Griffins:
         case UnitType::Pegasi:
         case UnitType::Archons:
@@ -316,6 +317,7 @@ void Battle::setUpFord() {
     spawnSquad("Red Hand Menders", kEnemy, UnitType::Journeyman, 3, {ex + 40, cy - 30, 0}, west);
     spawnSquad("Ashen Wyrm", kEnemy, UnitType::Dragons, 1, {ex + 60, cy, 0}, west);
     spawnSquad("Red Hand Mangonel", kEnemy, UnitType::Catapult, 1, {ex + 48, cy - 12, 0}, west);
+    spawnSquad("Laughing Pack of Gnarl", kEnemy, UnitType::Hyena, 6, {ex - 10, cy - 92, 0}, west);
 
 }
 
@@ -940,6 +942,7 @@ void Battle::runEnemyAi() {
         }
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
+        if (role == Role::Scout) continue;  // the hyena-folk run their own fight (world_scavenge.cpp)
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand.
             if (!s.garrison) aimEngines(s);

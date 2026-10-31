@@ -52,7 +52,7 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    constexpr uint64_t kSheet = 0xf8e31de369adcc1c;
+    constexpr uint64_t kSheet = 0xfcb6b251c5b4fe5a;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }

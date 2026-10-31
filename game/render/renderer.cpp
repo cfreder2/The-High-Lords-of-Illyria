@@ -58,6 +58,7 @@ Look lookOf(UnitType t) {
         case UnitType::Warrior: return {0, 1, 1, 2, 0, {0.86f, 0.68f, 0.55f}, 0.75f};
         case UnitType::Berserker: return {0, 10, 0, 0, 64, {0.86f, 0.68f, 0.55f}, 0.8f};
         case UnitType::Catapult: return {9, 0, 0, 0, 0, {0.43f, 0.29f, 0.16f}, 1.6f};
+        case UnitType::Hyena: return {0, 6, 0, 0, 32 | 64, {0.62f, 0.5f, 0.3f}, 0.7f};
         case UnitType::Count: break;
     }
     return {};
@@ -165,6 +166,10 @@ void pushPart(std::vector<float>& capsules, std::vector<float>& spheres, sim::Re
             break;
         case sim::RemainKind::Chunk:
             pushInstance(spheres, pos + V3{0, 0, 0.05f}, q, {0.17f, 0.13f, 0.11f}, V3{0.42f, 0.06f, 0.05f} * (1 - decay) + kBoneColor * decay * 0.8f);
+            break;
+        case sim::RemainKind::Blade:
+            // A sword a scavenger threw: a long, thin, steel-grey bar (its sheet's weapon picture, when it has one).
+            pushInstance(capsules, pos + V3{0, 0, 0.03f}, q, {0.9f, 0.05f, 0.03f}, V3{0.62f, 0.64f, 0.68f});
             break;
         default:
             break;
@@ -2192,6 +2197,39 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 break;
         }
     });
+
+    // What the hyena-folk carry (sim Unit::scav): in the hand, at his side
+    // as he runs; a satchel as the thrown one is drawn, a part or a blade as a
+    // piece of the soldier's picture it came from, else as a model.
+    for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
+        const sim::Unit& u = units[i];
+        if (!u.alive() || !u.scav.holding()) continue;
+        const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
+        const float h = static_cast<float>(u.stats.height.toDouble());
+        const V3 hand = battle.unitPosition(i) + V3{fx * 0.3f - fy * 0.25f, fy * 0.3f + fx * 0.25f, h * 0.55f};
+        if (u.scav.satchel) {
+            const float* team = sideColor(u.owner);
+            sprites.insert(sprites.end(), {hand.x, hand.y, hand.z, team[0], team[1], team[2], kPlanBomb, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0.4f, 1, 0});
+            continue;
+        }
+        GibLook look;
+        look.kind = u.scav.held;
+        look.owner = u.scav.heldOwner;
+        look.type = u.scav.heldSource != sim::kNoSource ? u.scav.heldSource : -1;
+        const sprites::Gib g = u.scav.held == sim::RemainKind::Blade ? sprites::Gib::Weapon
+                               : u.scav.held == sim::RemainKind::Head ? sprites::Gib::Head
+                               : u.scav.held == sim::RemainKind::Torso ? sprites::Gib::Torso
+                               : u.scav.held == sim::RemainKind::Arm ? sprites::Gib::Arm
+                               : u.scav.held == sim::RemainKind::Leg ? sprites::Gib::Leg
+                                                                     : sprites::Gib::Chunk;
+        look.cell = sprites::gibSlot(g, static_cast<int>(u.id & 1));
+        look.angle = std::atan2(fy, fx);
+        if (pushGib(byGroup, look, hand)) continue;
+        const float* team = sideColor(u.scav.heldOwner);
+        float q[4];
+        yprQuat(std::atan2(fy, fx), 0.4f, 0, q);
+        pushPart(capsules, spheres, u.scav.held, hand, q, {team[0], team[1], team[2]}, 0);
+    }
 
     // An order being drawn (Battle::pressBegin): the line from the destination
     // the way they will face, and the formation standing there.

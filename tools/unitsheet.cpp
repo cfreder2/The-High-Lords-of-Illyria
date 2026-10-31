@@ -83,6 +83,33 @@ int main() {
                     d(s.moveSpeed), d(s.flySpeed), d(s.flyAltitude), d(s.takeoffRun), d(s.minFlight), secs(s.staminaTicks));
     }
 
+    std::printf("\n## Scavengers\n\n");
+    std::printf("Left to themselves, scavengers run their own fight (`engine/sim/src/world_scavenge.cpp`; orders override it):\n"
+                "round the end of the enemy's line toward its rear, taking the best thing in **sight**, darting in to throw it at\n"
+                "the softest man in reach, falling back and going for the next. Prizes are worth: a satchel charge 100, a blade 60,\n"
+                "a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less 2 for every metre of the run. Marks, by kind:\n"
+                "archers, healers and wizards first (x3), other missile troops (x2), then the rest, armoured men last (x1/2);\n"
+                "nearer is better. They keep out of reach of armoured foes (a shield of 30%% or more, or a heavy body: knights,\n"
+                "warriors, dwarves, cavalry, heroes, beasts), and with nothing to throw cut down the soft ones near them.\n"
+                "Thrown, a part hurts as any flying part does (2 to 8 by its speed, a trunk half again), a blade cuts (5 to 14),\n"
+                "a head breaks the man it strikes (his morale to nothing; the dead and heroes never break), and a satchel bursts\n"
+                "where it strikes. A burning satchel is taken only with the fuse to throw it on.\n\n");
+    std::printf("| Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |\n|---|---|---|---|---|---|---|\n");
+    for (int t = 0; t < kUnitTypeCount; ++t) {
+        const UnitStats s = unitStats(static_cast<UnitType>(t));
+        if (s.scavenge.sight == Fixed::zero()) continue;
+        std::printf("| %s | %.0f m | %.0f m/s | %.0f m | %.0f m | %.0f m | %.1f s |\n", unitTypeName(static_cast<UnitType>(t)), d(s.scavenge.sight),
+                    d(s.scavenge.throwSpeed), d(s.scavenge.throwRange), d(s.scavenge.throwRange) * 0.6, d(s.scavenge.dispersionAt100m),
+                    secs(s.scavenge.windupTicks));
+    }
+    std::string blades;
+    for (int t = 0; t < kUnitTypeCount; ++t) {
+        if (!bearsBlade(static_cast<UnitType>(t))) continue;
+        if (!blades.empty()) blades += ", ";
+        blades += unitTypeName(static_cast<UnitType>(t));
+    }
+    std::printf("\nBlades are taken from the bodies of: %s.\n", blades.c_str());
+
     std::printf("\n## Ground\n\n");
     std::printf("Terrain is tactical. A unit moves at its speed times its gait's multiplier for the ground under it\n"
                 "(`engine/sim/src/gait.cpp`), and its paths cost travel time with the same table, so each kind takes its\n"

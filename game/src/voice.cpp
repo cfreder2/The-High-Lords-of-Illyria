@@ -133,7 +133,8 @@ VoiceSet voiceSetOf(UnitType type) {
         case UnitType::Pegasi:
         case UnitType::Elephants:
         case UnitType::Unicorns:
-        case UnitType::Dragons: return VoiceSet::Beast;
+        case UnitType::Dragons:
+        case UnitType::Hyena: return VoiceSet::Beast;  // whoops and cackles, no words
         case UnitType::Catapult: return VoiceSet::Engine;
         default: return VoiceSet::Soldier;
     }

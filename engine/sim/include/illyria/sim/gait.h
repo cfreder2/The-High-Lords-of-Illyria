@@ -22,6 +22,7 @@ enum class Gait : uint8_t {
     Giant,     // giants, minotaurs, elephants, demons: long strides through mud and fords
     Undead,    // the dead do not tire in the swamp
     Wheeled,   // engines: roads, or a crawl
+    Hyena,     // the hyena-folk's lope: rough ground, bog and woods slow it little
     Count
 };
 inline constexpr int kGaitCount = static_cast<int>(Gait::Count);

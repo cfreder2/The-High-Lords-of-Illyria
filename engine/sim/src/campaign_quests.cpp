@@ -388,7 +388,7 @@ void Campaign::hashQuests(StateHasher& h) const {
         h.addU64(o.open);
         h.addI64(o.city);
         h.addI64(o.price);
-        h.addU64(static_cast<uint64_t>(o.companion));
+        h.addU64(o.companion == UnitType::Count ? kNoCompanionCode : static_cast<uint64_t>(o.companion));
         h.addI64(o.companions);
     }
     for (uint8_t f : artifactFound_) h.addU64(f);

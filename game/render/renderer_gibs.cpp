@@ -32,6 +32,7 @@ sprites::Gib gibOf(sim::RemainKind k) {
         case sim::RemainKind::Torso: return sprites::Gib::Torso;
         case sim::RemainKind::Arm: return sprites::Gib::Arm;
         case sim::RemainKind::Leg: return sprites::Gib::Leg;
+        case sim::RemainKind::Blade: return sprites::Gib::Weapon;  // a blade a scavenger threw
         default: return sprites::Gib::Chunk;  // gobbets, and the bones of the bloodless
     }
 }
