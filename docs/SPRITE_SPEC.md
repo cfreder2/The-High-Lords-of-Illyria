@@ -104,6 +104,14 @@ in the manifest (`gib_parts`): head, torso (a torn trunk), arm, leg, chunk (a
 bloody gobbet), weapon, shield, mount_head, mount_leg, wing (only those the type
 has). Severed ends bloody; the team colour key works here too.
 
+Parts not drawn are cut from the unit's own idle pictures by the importer
+(`tools/sprites/gibs.py`: the head, trunk, an arm, a leg and gobbets from behind
+and in front, the weapon, and the shield's face and back, by fixed outlines in
+proportion to the figure, the cuts through the body bloodied) for man-shaped
+types; `--no-gibs` leaves them empty, and `gibs.py ART --out DIR` writes them
+out for review. Where a type's sheet has no gib cells the game throws its old 3D
+parts.
+
 ### How many pictures
 
 Per unit type: 5 views x 44 frames = **220** (190 required, 30 optional die_burn)

@@ -2,7 +2,7 @@
 """Import the artist's sprite pictures into the game's sprite sheets.
 
     python3 tools/sprites/import.py ART_DIR [--units a,b] [--out game/web/sprites]
-                                    [--baseline tools/sprites/baseline] [--snap-feet] [--check]
+                                    [--baseline tools/sprites/baseline] [--snap-feet] [--no-gibs] [--check]
 
 ART_DIR holds one folder per unit type, named as in the manifest
 (docs/sprite_templates/manifest.json, docs/SPRITE_SPEC.md):
@@ -15,9 +15,11 @@ For each unit folder: checks every file name and canvas size against the
 manifest, reports what is missing, keys out the background (alpha, or a flat
 colour sampled from the corners), builds the team mask from the key hue (or
 the _team.png), checks the feet stand on the anchor (--snap-feet moves each
-clip's frames together so they do), scales to the game's pixels a metre for
-the normal sheet and to twice that for the close-up sheet, trims, packs and
-writes <unit>.webp/.json and <unit>_hd.webp/.json into --out, with the
+clip's frames together so they do), holds each view's frames to one ground
+line and a walking head level (plant), cuts the gib parts not delivered from
+the unit's idle pictures (gibs.py; --no-gibs leaves them empty), scales to
+the game's pixels a metre for the normal sheet and to twice that for the
+close-up sheet, trims, packs and writes <unit>.webp/.json and <unit>_hd.webp/.json into --out, with the
 sprites/index.json and index_hd.json entries. Any cell not delivered is taken
 from the type's sheet as it was before the first import (kept in --baseline),
 so a partial delivery works; a clip the old sheet lacks borrows another's
@@ -43,6 +45,7 @@ ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'blender'))
 
+import gibs  # noqa: E402
 import layout  # noqa: E402
 import sheet  # noqa: E402
 from sprites import pack  # noqa: E402  (resolve: the cutout, edge darkening and outline, as the bake does)
@@ -179,42 +182,90 @@ def helmet_x(alpha):
     return float(xs.min() + xs.max() + 1) / 2 if len(xs) else None
 
 
+def head(p, ppm):
+    """The top of the head (the first rows of bare, not team-coloured, pixels
+    near the helmet's middle, so under any plume in the team colour) and the
+    middle of the head's top 12 cm: (x, y) in pixels, or None."""
+    solid = p['alpha'] > 0.5
+    hx = helmet_x(p['alpha'])
+    if hx is None:
+        return None
+    w, W = int(0.08 * ppm), int(0.2 * ppm)
+    c0 = max(0, int(hx) - w)
+    bare = solid & (p['team'] < 0.5)
+    rows = np.where(bare[:, c0:int(hx) + w].sum(axis=1) > 0.06 * ppm)[0]
+    if not len(rows):
+        bare = solid
+        rows = np.where(bare[:, c0:int(hx) + w].sum(axis=1) > 0.06 * ppm)[0]
+        if not len(rows):
+            return None
+    y = int(rows[0])
+    c0 = max(0, int(hx) - W)
+    xs = np.nonzero(bare[y:y + int(0.12 * ppm), c0:int(hx) + W])[1]
+    return float(c0 + xs.mean() + 0.5), float(y)
+
+
 def plant(pics, unit, ppm, report):
     """Hold each living frame's feet to its view's ground line, and the head
-    of each idle and walking frame over the same spot: frames drawn one at a
-    time drift, and a man whose feet leave the ground mid-stride seems to
-    float. The line is where the idle frames (feet together) stand. A stride
-    toward or away from the viewer brings the near foot lower in the picture,
-    by up to STRIDE_DROP_M in the front and back views (none side on), so a
-    frame may sit that much lower; never higher. Frames are moved only as far
-    as they stray beyond PLANT_Y_M / PLANT_X_M."""
+    of each walking frame where the idle's is: frames drawn one at a time
+    drift, a man whose feet leave the ground mid-stride seems to float, and
+    one whose head jumps from frame to frame seems to hop.
+
+    The line is where the idle frames (feet together) stand. A stride toward
+    or away from the viewer brings the near foot lower in the picture, by up
+    to STRIDE_DROP_M in the front and back views (none side on), so a frame's
+    lowest foot may sit that much lower; never higher. Idle, attack and
+    flinch frames are moved only as far as their feet stray beyond PLANT_Y_M
+    (and an idle head beyond PLANT_X_M from the view's). A walking frame's
+    head goes exactly over the view's and as high as the idle's (a walk
+    carries the head level), so the stride's drop shows in the feet, as the
+    art draws them; but never so far that the feet leave that band."""
     for v in sorted({p['entry'].get('view') for p in pics.values() if p['entry']['anim'] in LIVING}):
         living = [p for p in pics.values() if p['entry']['anim'] in LIVING and p['entry'].get('view') == v]
-        low, head = {}, {}
+        low, top = {}, {}
         for p in living:
             ft = feet(p['alpha'], ppm)
             if ft:
                 low[id(p)] = ft[0][1] - p['anchor'][1]
                 if p['entry']['anim'] in ('idle', 'walk'):
-                    hx = helmet_x(p['alpha'])
-                    if hx is not None:
-                        head[id(p)] = hx - p['anchor'][0]
+                    h = head(p, ppm)
+                    if h is not None:
+                        top[id(p)] = (h[0] - p['anchor'][0], h[1] - p['anchor'][1])
         stand = [low[id(p)] for p in living if p['entry']['anim'] == 'idle' and id(p) in low]
         if not stand:
             continue
         line = float(np.median(stand))
         drop = STRIDE_DROP_M * abs(math.cos(math.radians(v * 45)))
-        over = float(np.median(list(head.values()))) if head else 0.0
+        lo, hi = line - PLANT_Y_M * ppm, line + (PLANT_Y_M + drop) * ppm
+        over = float(np.median([t[0] for t in top.values()])) if top else 0.0
+        moves = {}
+        # The frames that stand: feet to the line, an idle head near the view's.
+        for p in living:
+            if p['entry']['anim'] == 'walk' or id(p) not in low:
+                continue
+            dx = 0.0
+            dy = low[id(p)] - float(np.clip(low[id(p)], lo, hi))
+            if p['entry']['anim'] == 'idle' and id(p) in top:
+                dx = top[id(p)][0] - float(np.clip(top[id(p)][0], over - PLANT_X_M * ppm, over + PLANT_X_M * ppm))
+            moves[id(p)] = (dx, dy)
+        idle_top = [top[id(p)][1] - moves[id(p)][1] for p in living
+                    if p['entry']['anim'] == 'idle' and id(p) in top and id(p) in moves]
+        level = float(np.median(idle_top)) if idle_top else None
+        # The walk: the head level and over the same spot, the feet in the band.
+        for p in living:
+            if p['entry']['anim'] != 'walk' or id(p) not in low:
+                continue
+            dx = dy = 0.0
+            if id(p) in top and level is not None:
+                dx = top[id(p)][0] - over
+                dy = top[id(p)][1] - level
+            dy = low[id(p)] - float(np.clip(low[id(p)] - dy, lo, hi))
+            moves[id(p)] = (dx, dy)
         moved = []
         for p in living:
-            ax, ay = p['anchor']
-            dy = dx = 0.0
-            if id(p) in low:
-                dy = low[id(p)] - float(np.clip(low[id(p)], line - PLANT_Y_M * ppm, line + (PLANT_Y_M + drop) * ppm))
-            if id(p) in head:
-                dx = head[id(p)] - float(np.clip(head[id(p)], over - PLANT_X_M * ppm, over + PLANT_X_M * ppm))
+            dx, dy = moves.get(id(p), (0.0, 0.0))
             if dx or dy:
-                p['anchor'] = (ax + dx, ay + dy)
+                p['anchor'] = (p['anchor'][0] + dx, p['anchor'][1] + dy)
             if max(abs(dx), abs(dy)) >= 0.01 * ppm:
                 moved.append('%s f%02d %+.0f,%+.0f cm' % (p['entry']['anim'], p['entry']['frame'], dx / ppm * 100, dy / ppm * 100))
         if moved:
@@ -319,6 +370,21 @@ def alias_slot(slot):
     return v * layout.FRAMES_PER_VIEW + layout.FIRST[to] + min(i, layout.FRAMES[to] - 1)
 
 
+def idle_pictures(art, unit, report=None):
+    """view -> (keyed RGBA, team share) of the unit's idle frame 0 in that view, or None (read once)."""
+    held = {}
+
+    def get(view):
+        if view not in held:
+            path = os.path.join(art, unit, layout.cell_file('idle', view, 0))
+            held[view] = None
+            if os.path.exists(path):
+                im = keyed(path, report or Report())
+                held[view] = (im, team_mask(im, None)[1])
+        return held[view]
+    return get
+
+
 def import_unit(art, unit, man, args, report):
     info = man['units'][unit]
     entries = [e for e in man['cells'] if e['unit'] == unit]
@@ -334,6 +400,20 @@ def import_unit(art, unit, man, args, report):
         im = keyed(path, report)
         rgb, team = team_mask(im, team_path)
         pics[slot] = {'rgb': rgb, 'alpha': im[..., 3], 'team': team, 'entry': by_slot[slot]}
+    # Gib parts not drawn are cut from the unit's own idle pictures (gibs.py).
+    if not args.no_gibs:
+        idle = idle_pictures(art, unit, report)
+        cut = []
+        for e in entries:
+            if e['anim'] != 'gib' or e['slot'] in found:
+                continue
+            im = gibs.cut(idle, unit, e['part'], 'ab'.index(e['variant']), src_ppm, e['canvas'], head, feet)
+            if im is not None:
+                rgb, team = team_mask(im, None)
+                pics[e['slot']] = {'rgb': rgb, 'alpha': im[..., 3], 'team': team, 'entry': e}
+                cut.append('%s_%s' % (e['part'], e['variant']))
+        if cut:
+            report.note('%s: gibs cut from the idle pictures: %s' % (unit, ', '.join(cut)))
     # Feet on the anchor: each clip of each view is checked (and with --snap-feet moved) as one.
     shifts = {}
     for (clip, v) in sorted({(p['entry']['anim'], p['entry'].get('view')) for p in pics.values() if p['entry']['anim'] in LIVING}):
@@ -446,6 +526,7 @@ def main(argv=None):
     ap.add_argument('--manifest', default=None, help='default: built from tools/sprites/layout.py')
     ap.add_argument('--snap-feet', action='store_true', help='move each clip so the feet stand on the anchor')
     ap.add_argument('--check', action='store_true', help='validate and report only')
+    ap.add_argument('--no-gibs', action='store_true', help='leave the gib parts not drawn empty (else cut from the idle pictures, gibs.py)')
     args = ap.parse_args(argv)
     man = json.load(open(args.manifest)) if args.manifest else layout.manifest()
     report = Report()
