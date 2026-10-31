@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 
 #include "illyria/game/factions.h"
@@ -2033,6 +2034,11 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Each soldier's frame: dying, striking, hurt, walking or at ease.
     std::map<int, std::vector<float>> byGroup;
+    // And where his picture is drawn, for picking him (Battle::setSpriteBoxes):
+    // the view and cell chosen as kUnitVs chooses them.
+    std::vector<float> boxes(units.size() * 6, std::numeric_limits<float>::quiet_NaN());
+    const float toViewer = std::atan2(-fwd.y, -fwd.x);
+    constexpr float kSpriteElevation = 0.52f;  // kUnitVs kElevation
     if (walked_.size() != units.size()) {
         walked_.assign(units.size(), 0.0f);
         lastSeen_.resize(units.size());
@@ -2110,9 +2116,26 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         }
         const int key = static_cast<int>(type) * kSides + (u.owner & 3);
         if (!sheets_.count(key / kSides) || !sheets_[key / kSides].tex) continue;  // baked before the next frame (bakeMissing)
+        {
+            const Sheet& sh = sheetFor(static_cast<int>(type));
+            float d = std::floor(-(toViewer - yaw) / 0.7853982f + 0.5f);
+            d -= 8.0f * std::floor(d / 8.0f);
+            const bool mirror = d > 4.5f;
+            const int cell = static_cast<int>(mirror ? 8.0f - d : d) * sh.framesPerView + frame;
+            if (cell >= 0 && cell < sh.cellCount && sh.table.size() >= static_cast<size_t>(sh.cellCount) * 8) {
+                const float* e = &sh.table[(static_cast<size_t>(sh.cellCount) + cell) * 4];
+                const float u0 = mirror ? -(e[0] + e[2]) : e[0], u1 = u0 + e[2];
+                const float c = std::cos(kSpriteElevation);
+                const V3 a = pos + camRight * u0, b = pos + camRight * u1;
+                float* out = &boxes[i * 6];
+                out[0] = a.x, out[1] = a.y, out[2] = pos.z + e[1] / c;
+                out[3] = b.x, out[4] = b.y, out[5] = pos.z + (e[1] + e[3]) / c;
+            }
+        }
         std::vector<float>& g = byGroup[key];
         g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
     }
+    battle.setSpriteBoxes(std::move(boxes));
     {
         std::vector<float> all;
         unitGroups_.clear();

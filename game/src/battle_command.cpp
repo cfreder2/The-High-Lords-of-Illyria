@@ -247,8 +247,34 @@ int Battle::groupSelection(int slot) const {
 
 int Battle::unitAt(const Camera& camera, float x, float y, float pixelScale) const {
     int best = -1;
-    float bestD2 = kTapRadiusPx * pixelScale * kTapRadiusPx * pixelScale;
     const auto& units = world_->units();
+    // His picture under the tap, the nearest to the eye of those it is under.
+    if (spriteBoxes_.size() >= units.size() * 6) {
+        const V3 eye = camera.eye();
+        const float margin = 3 * pixelScale;
+        float nearest = 1e30f;
+        for (size_t i = 0; i < units.size(); ++i) {
+            const float* b = &spriteBoxes_[i * 6];
+            if (!units[i].alive() || std::isnan(b[0])) continue;
+            float x0 = 1e30f, x1 = -1e30f, y0 = 1e30f, y1 = -1e30f;
+            bool seen = true;
+            for (int c = 0; c < 4; ++c) {
+                const V3 corner{c & 1 ? b[3] : b[0], c & 1 ? b[4] : b[1], c & 2 ? b[5] : b[2]};
+                float px, py;
+                seen = seen && camera.project(corner, px, py);
+                x0 = std::min(x0, px), x1 = std::max(x1, px), y0 = std::min(y0, py), y1 = std::max(y1, py);
+            }
+            if (!seen || x < x0 - margin || x > x1 + margin || y < y0 - margin || y > y1 + margin) continue;
+            const float d = (unitPosition(i) - eye).length();
+            if (d < nearest) {
+                nearest = d;
+                best = static_cast<int>(i);
+            }
+        }
+        if (best >= 0) return best;
+    }
+    // Else (zoomed far out, a speck) the nearest within reach of the tap.
+    float bestD2 = kTapRadiusPx * pixelScale * kTapRadiusPx * pixelScale;
     for (size_t i = 0; i < units.size(); ++i) {
         if (!units[i].alive()) continue;
         float px, py;

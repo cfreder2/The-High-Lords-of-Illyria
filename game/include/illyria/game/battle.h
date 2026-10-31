@@ -258,6 +258,11 @@ public:
         V3 at;           // where on the ground
     };
     Pick pickAt(const Camera& camera, float x, float y, float pixelScale) const;
+    // Where each soldier's picture was last drawn (the renderer's): per unit,
+    // its bottom-left and top-right corners in the world (6 floats; NaN when
+    // not drawn as a picture). unitAt picks a man by it: one lying down is
+    // drawn across the ground, not above his feet.
+    void setSpriteBoxes(std::vector<float> boxes) { spriteBoxes_ = std::move(boxes); }
     // At a gate, a wall or a house or tree: who can, attacks it (missile
     // troops shoot a gate and the rest go to hack it; only engines,
     // grenadiers and wizards harm anything at a wall, house or tree).
@@ -530,6 +535,7 @@ private:
     std::vector<int> squadOfUnit_;  // indexed by EntityId - 1
     std::vector<sim::Command> pending_;
     std::vector<sim::EntityId> selection_;  // ascending, so orders go out in one order everywhere
+    std::vector<float> spriteBoxes_;  // setSpriteBoxes
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
     Formation selFormation_ = Formation::Line;
     std::array<Group, kGroupSlots> groups_;
