@@ -233,7 +233,32 @@ private:
     float gameSeconds_ = 0;  // at the last draw
     int deathFrame(int type, const sim::Unit& u, float secondsDead, float* down = nullptr);
     void bakeMissing(const Battle& battle);
+    // Body parts drawn as pieces of their soldier's own picture (the sheet's
+    // gib cells, sprite_layout.h; renderer_gibs.cpp), where his sheet has
+    // them; the rest stay 3D (pushPart). Each flying part, by projectile id,
+    // and each landed one, by remain slot, keeps the type it came from, its
+    // cell, mirrored or not, and its turn in the picture's plane.
+    struct GibLook {
+        int type = -1, cell = -1;
+        bool mirror = false, seen = false;
+        float angle = 0, spin = 0;
+        sim::RemainKind kind = sim::RemainKind::None;
+        sim::PlayerId owner = 0;
+        V3 pos;
+    };
+    std::map<sim::EntityId, GibLook> debrisLooks_;
+    std::vector<GibLook> remainLooks_;
+    std::vector<GibLook> landed_;              // parts that stopped flying this frame, for the remains they became
+    std::map<sim::EntityId, int> gibChunks_;  // gobbets given out per blown-apart soldier: the first two are his weapon and shield
+    bool hasGibCell(int type, int cell) const;
+    // Follows the flying parts (before uploadRemains, which hands their looks to the remains they become).
+    void trackDebris(const Battle& battle, float dt);
+    GibLook gibLookFor(const Battle& battle, const sim::Projectile& p);
+    GibLook restingLook(const Battle& battle, const sim::Remain& r, uint32_t slot);
+    // The instance (units_ layout) drawing a part, into its sheet's group; false if it has no cell.
+    bool pushGib(std::map<int, std::vector<float>>& groups, const GibLook& look, const V3& pos);
     // Soldiers to draw this frame, by sheet: feet (3), facing, frame, selected, down.
+    // A body part: its lowest point, its turn, -(gib cell + 1), 0, mirrored (kUnitVs).
     Batch units_;
     std::vector<std::pair<int, std::pair<size_t, size_t>>> unitGroups_;  // type x 2 + side, first instance, count
     void drawUnits(const Camera& camera, double timeSeconds, float gameSeconds, V3 viewDir, V3 right, bool shadow);

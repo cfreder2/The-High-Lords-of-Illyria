@@ -1367,6 +1367,10 @@ void Renderer::reset(Battle& battle) {
     zeroBatch(remainArrows_, Battle::kMaxRemains);
     remainArrows_.count = 0;
     battle.takeDirtyRemains();
+    debrisLooks_.clear();
+    remainLooks_.clear();
+    landed_.clear();
+    gibChunks_.clear();
     // The close-up patch belongs to the old battlefield's coordinates.
     patchLand_.count = 0;
     patchRow_ = -1;
@@ -1730,6 +1734,9 @@ void Renderer::uploadRemains(Battle& battle) {
     for (uint32_t slot : battle.takeDirtyRemains()) {
         if (slot >= remains.size()) continue;
         const sim::Remain& r = remains[slot];
+        // A body part keeps the look it flew with (renderer_gibs.cpp).
+        if (slot >= remainLooks_.size()) remainLooks_.resize(slot + 1);
+        remainLooks_[slot] = restingLook(battle, r, slot);
         float arrow[kArrowFloats] = {0, 0, 0, 0, 0, 0, 0, 3};
         if (r.kind == sim::RemainKind::Arrow) {
             const V3 pos = toV3(r.pos), dir = toV3(r.dir);
@@ -2016,6 +2023,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
+    trackDebris(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));  // renderer_gibs.cpp
     gameSeconds_ = gameSeconds;
     uploadMarks(battle);
     uploadRemains(battle);
@@ -2110,15 +2118,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         std::vector<float>& g = byGroup[key];
         g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
     }
-    {
-        std::vector<float> all;
-        unitGroups_.clear();
-        for (auto& [key, data] : byGroup) {
-            unitGroups_.push_back({key, {all.size() / 7, data.size() / 7}});
-            all.insert(all.end(), data.begin(), data.end());
-        }
-        uploadDynamic(units_, all);
-    }
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
         const float* team = sideColor(p.owner);
@@ -2150,6 +2149,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                     const float spin = static_cast<float>(timeSeconds) * 12.0f + static_cast<float>(p.id);
                     arrows.insert(arrows.end(), {pos.x, pos.y, pos.z, std::cos(spin), std::sin(spin * 0.7f),
                                                  std::sin(spin), 0, 0});
+                } else if (const auto look = debrisLooks_.find(p.id);
+                           showUnits_ && look != debrisLooks_.end() && pushGib(byGroup, look->second, pos)) {
+                    // A piece of his picture, spinning (renderer_gibs.cpp).
                 } else {
                     // Tumbling through the air.
                     const float t = static_cast<float>(timeSeconds) * 9.0f + static_cast<float>(p.id);
@@ -2182,15 +2184,27 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Where the player's soldiers are going, and what they are after.
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
 
-    // Body parts at rest on the ground.
-    for (const sim::Remain& r : world.remains()) {
+    // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.
+    for (size_t slot = 0; slot < world.remains().size(); ++slot) {
+        const sim::Remain& r = world.remains()[slot];
         if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
+        if (showUnits_ && slot < remainLooks_.size() && pushGib(byGroup, remainLooks_[slot], toV3(r.pos))) continue;
         const V3 pos = toV3(r.pos), dir = toV3(r.dir);
         const float* team = sideColor(r.owner);
         const float decay = std::clamp((gameSeconds - r.tick / 30.0f - 3600.0f) / week, 0.0f, 1.0f);
         float q[4];
         yprQuat(std::atan2(dir.y, dir.x), 0, (hash01(r.tick) - 0.5f) * 0.6f, q);
         pushPart(capsules, spheres, r.kind, pos, q, {team[0], team[1], team[2]}, decay);
+    }
+    {
+        // The soldiers and the parts drawn from their sheets, a group a sheet and side.
+        std::vector<float> all;
+        unitGroups_.clear();
+        for (auto& [key, data] : byGroup) {
+            unitGroups_.push_back({key, {all.size() / 7, data.size() / 7}});
+            all.insert(all.end(), data.begin(), data.end());
+        }
+        uploadDynamic(units_, all);
     }
 
     for (const Particle& p : battle.particles()) {

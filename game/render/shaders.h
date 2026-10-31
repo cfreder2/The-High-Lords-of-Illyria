@@ -1291,19 +1291,30 @@ uniform float uFramesPerView;  // 26 in the old layout, 44 in the new (sprite_la
 const float kElevation = 0.52;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    // A body part (renderer_gibs.cpp): iFrame -(gib cell + 1), the same from
+    // every side, turned by iYaw in the picture's plane, mirrored if iDown is 1.
+    bool gib = iFrame < -0.5;
     // Which of the eight views: the viewer's bearing seen from the soldier.
     float d = mod(floor(-(uToViewer - iYaw) / 0.7853982 + 0.5), 8.0);
-    bool mirror = d > 4.5;
+    bool mirror = gib ? iDown > 0.5 : d > 4.5;
     float view = mirror ? 8.0 - d : d;
-    int cell = int(view * uFramesPerView + iFrame + 0.5);
+    int cell = gib ? int(-iFrame - 0.5) : int(view * uFramesPerView + iFrame + 0.5);
     vec4 place = texelFetch(uCellTable, ivec2(cell, 0), 0);
     vec4 extent = texelFetch(uCellTable, ivec2(cell, 1), 0);
     float dist = distance(uEye, iPos);
-    // Zoomed far out, soldiers are coloured specks (as the old sprites were).
+    // Zoomed far out, soldiers are coloured specks (as the old sprites were); parts vanish.
     float px = uPxScale * dist;
-    vDot = extent.w < px * 7.0 ? 1.0 : 0.0;
+    vDot = !gib && extent.w < px * 7.0 ? 1.0 : 0.0;
     vec3 world;
-    if (vDot > 0.5) {
+    if (gib) {
+        if (max(extent.z, extent.w) < px * 1.5) { gl_Position = kCulled; return; }
+        float x0 = mirror ? -(extent.x + extent.z) : extent.x;
+        float u = x0 + corner.x * extent.z, v = extent.y + corner.y * extent.w;
+        float c = cos(iYaw), s = sin(iYaw);
+        // Its lowest corner, turned, on iPos.
+        float low = min(x0 * s, (x0 + extent.z) * s) + min(extent.y * c, (extent.y + extent.w) * c);
+        world = iPos + uCamRight * (u * c - v * s) + vec3(0.0, 0.0, (u * s + v * c - low) / cos(kElevation));
+    } else if (vDot > 0.5) {
         float size = px * 4.5;
         world = iPos + uCamRight * ((corner.x - 0.5) * size) + vec3(0.0, 0.0, corner.y * size + size * 0.25);
     } else {

@@ -2,7 +2,7 @@
 """Import the artist's sprite pictures into the game's sprite sheets.
 
     python3 tools/sprites/import.py ART_DIR [--units a,b] [--out game/web/sprites]
-                                    [--baseline tools/sprites/baseline] [--snap-feet] [--check]
+                                    [--baseline tools/sprites/baseline] [--snap-feet] [--no-gibs] [--check]
 
 ART_DIR holds one folder per unit type, named as in the manifest
 (docs/sprite_templates/manifest.json, docs/SPRITE_SPEC.md):
@@ -16,9 +16,10 @@ manifest, reports what is missing, keys out the background (alpha, or a flat
 colour sampled from the corners), builds the team mask from the key hue (or
 the _team.png), checks the feet stand on the anchor (--snap-feet moves each
 clip's frames together so they do), holds each view's frames to one ground
-line and a walking head level (plant), scales to the game's pixels a metre
-for the normal sheet and to twice that for the close-up sheet, trims, packs
-and writes <unit>.webp/.json and <unit>_hd.webp/.json into --out, with the
+line and a walking head level (plant), cuts the gib parts not delivered from
+the unit's idle pictures (gibs.py; --no-gibs leaves them empty), scales to
+the game's pixels a metre for the normal sheet and to twice that for the
+close-up sheet, trims, packs and writes <unit>.webp/.json and <unit>_hd.webp/.json into --out, with the
 sprites/index.json and index_hd.json entries. Any cell not delivered is taken
 from the type's sheet as it was before the first import (kept in --baseline),
 so a partial delivery works; a clip the old sheet lacks borrows another's
@@ -44,6 +45,7 @@ ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'blender'))
 
+import gibs  # noqa: E402
 import layout  # noqa: E402
 import sheet  # noqa: E402
 from sprites import pack  # noqa: E402  (resolve: the cutout, edge darkening and outline, as the bake does)
@@ -368,6 +370,21 @@ def alias_slot(slot):
     return v * layout.FRAMES_PER_VIEW + layout.FIRST[to] + min(i, layout.FRAMES[to] - 1)
 
 
+def idle_pictures(art, unit, report=None):
+    """view -> (keyed RGBA, team share) of the unit's idle frame 0 in that view, or None (read once)."""
+    held = {}
+
+    def get(view):
+        if view not in held:
+            path = os.path.join(art, unit, layout.cell_file('idle', view, 0))
+            held[view] = None
+            if os.path.exists(path):
+                im = keyed(path, report or Report())
+                held[view] = (im, team_mask(im, None)[1])
+        return held[view]
+    return get
+
+
 def import_unit(art, unit, man, args, report):
     info = man['units'][unit]
     entries = [e for e in man['cells'] if e['unit'] == unit]
@@ -383,6 +400,20 @@ def import_unit(art, unit, man, args, report):
         im = keyed(path, report)
         rgb, team = team_mask(im, team_path)
         pics[slot] = {'rgb': rgb, 'alpha': im[..., 3], 'team': team, 'entry': by_slot[slot]}
+    # Gib parts not drawn are cut from the unit's own idle pictures (gibs.py).
+    if not args.no_gibs:
+        idle = idle_pictures(art, unit, report)
+        cut = []
+        for e in entries:
+            if e['anim'] != 'gib' or e['slot'] in found:
+                continue
+            im = gibs.cut(idle, unit, e['part'], 'ab'.index(e['variant']), src_ppm, e['canvas'], head, feet)
+            if im is not None:
+                rgb, team = team_mask(im, None)
+                pics[e['slot']] = {'rgb': rgb, 'alpha': im[..., 3], 'team': team, 'entry': e}
+                cut.append('%s_%s' % (e['part'], e['variant']))
+        if cut:
+            report.note('%s: gibs cut from the idle pictures: %s' % (unit, ', '.join(cut)))
     # Feet on the anchor: each clip of each view is checked (and with --snap-feet moved) as one.
     shifts = {}
     for (clip, v) in sorted({(p['entry']['anim'], p['entry'].get('view')) for p in pics.values() if p['entry']['anim'] in LIVING}):
@@ -495,6 +526,7 @@ def main(argv=None):
     ap.add_argument('--manifest', default=None, help='default: built from tools/sprites/layout.py')
     ap.add_argument('--snap-feet', action='store_true', help='move each clip so the feet stand on the anchor')
     ap.add_argument('--check', action='store_true', help='validate and report only')
+    ap.add_argument('--no-gibs', action='store_true', help='leave the gib parts not drawn empty (else cut from the idle pictures, gibs.py)')
     args = ap.parse_args(argv)
     man = json.load(open(args.manifest)) if args.manifest else layout.manifest()
     report = Report()
