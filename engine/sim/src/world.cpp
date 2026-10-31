@@ -338,6 +338,12 @@ void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goa
         planPath(u, to);
         return;
     }
+    // Onto or off a ruin's platform each man finds his own way, by its stair.
+    if (!config_.region->floors().empty() && (nav_->floorAt(u.pos, true) >= 0 || nav_->floorAt(to, false) >= 0 ||
+                                              nav_->floorAt(from, false) >= 0 || nav_->floorAt(goal, false) >= 0)) {
+        planPath(u, to);
+        return;
+    }
     u.path.clear();
     u.pathIndex = 0;
     // One route for the squad (planned once a tick for all of them).
@@ -377,10 +383,14 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out,
         out.push_back(to);
         return;
     }
-    // Units of a squad start and end in neighbouring cells; plan once per cell pair.
+    // Units of a squad start and end in neighbouring cells; plan once per cell
+    // pair (on a ruin's platform, per cell of its finer grid: NavGrid::floorCell).
     const int64_t cs = nav_->cellSize();
-    const auto cell = [cs](const Vec3& p) { return (p.x.floorToInt() / cs) * 4096 + p.y.floorToInt() / cs; };
-    const auto key = std::make_tuple(static_cast<int>(gait), cell(from), cell(to));
+    const auto cell = [&](const Vec3& p, bool byHeight) {
+        const int32_t f = nav_->floorCell(p, byHeight);
+        return f >= 0 ? (int64_t{1} << 40) + f : (p.x.floorToInt() / cs) * 4096 + p.y.floorToInt() / cs;
+    };
+    const auto key = std::make_tuple(static_cast<int>(gait), cell(from, true), cell(to, false));
     auto it = pathCache_.find(key);
     if (it == pathCache_.end()) {
         std::vector<Vec3> route;
@@ -890,6 +900,20 @@ void World::separateBodies() {
             const Fixed dist = sqrt(distSq);
             const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{-ab.y, ab.x, Fixed::zero()} / sqrt(len2);
             u.pos += n * (reach - dist);
+        }
+        // A ruin's platform and its stair are solid to the ground: one shoved
+        // in under the edge is put back out by the nearest side.
+        for (const Floor& f : config_.region->floors()) {
+            for (const size_t k : {f.stair, f.deck}) {
+                const Deck& d = config_.region->decks()[k];
+                if (!d.contains(u.pos.x, u.pos.y) || u.pos.z + kMaxStepUp >= d.heightAt(u.pos.x, u.pos.y)) continue;
+                const Vec3 across{-d.dir.y, d.dir.x, Fixed::zero()}, rel = (u.pos - d.centre).flat();
+                const Fixed along = rel.dot(d.dir), side = rel.dot(across);
+                if (d.halfSpan - abs(along) < d.halfWidth - abs(side))
+                    u.pos += d.dir * ((along < Fixed::zero() ? -d.halfSpan - u.stats.radius : d.halfSpan + u.stats.radius) - along);
+                else
+                    u.pos += across * ((side < Fixed::zero() ? -d.halfWidth - u.stats.radius : d.halfWidth + u.stats.radius) - side);
+            }
         }
     }
     for (Unit& u : units_) keepOnWalk(u);  // the thrown too

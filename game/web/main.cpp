@@ -30,6 +30,7 @@ using namespace illyria::game;
 
 namespace illyria::game {
 void fetchPrerenderedSheets(Renderer& renderer);  // sheets.cpp
+void fetchModels(Renderer& renderer);  // models.cpp
 }
 
 namespace {
@@ -2332,6 +2333,7 @@ int main() {
         return 1;
     }
     fetchPrerenderedSheets(app->renderer);
+    fetchModels(app->renderer);
     startIntro();
     EM_ASM({ if (window.illyriaReady) window.illyriaReady(); });
     emscripten_set_main_loop(frame, 0, false);

@@ -4,12 +4,14 @@ set(ILLYRIA_VERSION "0.0.0-dev" CACHE STRING "Version shown in the game")
 add_executable(illyria_web
     main.cpp
     sheets.cpp
+    models.cpp
     ../render/renderer.cpp
     ../render/renderer_detail.cpp
     ../render/renderer_sheets.cpp
     ../render/renderer_orders.cpp
     ../render/renderer_flags.cpp
     ../render/renderer_gibs.cpp
+    ../render/renderer_models.cpp
     ../render/meshes.cpp
 )
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")
@@ -46,6 +48,10 @@ add_custom_command(TARGET illyria_web POST_BUILD
 # Pre-rendered sprite sheets (tools/blender), fetched as battles need them.
 add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
+)
+# 3D models (tools/models): each a mesh and its texture, fetched at start.
+add_custom_target(illyria_web_models ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/models" "${ILLYRIA_SITE_DIR}/models"
 )
 # The voices: the manifest of lines and whatever has been recorded (tools/voice).
 add_custom_target(illyria_web_voice ALL

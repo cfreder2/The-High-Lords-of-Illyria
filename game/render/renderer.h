@@ -97,6 +97,7 @@ private:
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1;
+        GLint albedo = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -163,6 +164,37 @@ private:
     double sheetTexels_ = 0;
     void bakeSheet(Sheet& s, sim::UnitType type, const figures::Plan& plan, float scale);
     int debugSheet_ = -1;  // a sheet drawn over the screen, for looking at it
+public:
+    // 3D models made by tools/models (renderer_models.cpp), fetched by the page
+    // (game/web/models.cpp): the ruin. Until one arrives, or if it fails, its
+    // sites are drawn with the box model built in code (meshes::ruin).
+    enum class ModelKind : int { Ruin = 0 };
+    // A fetched model: its mesh file (tools/models/ruin.py describes it) and
+    // its texture, RGBA rows top first. False if malformed.
+    bool loadModel(ModelKind kind, const uint8_t* mesh, size_t meshBytes, const uint8_t* rgba, int width, int height);
+    bool modelLoaded(ModelKind kind) const { return kind == ModelKind::Ruin && ruinModel_.vao != 0; }
+    // For before/after comparisons: off, the sites are drawn as before the models.
+    void enableModels(bool on) {
+        modelsOn_ = on;
+        uploadRuins(ruinInstances_);
+    }
+private:
+    bool modelsOn_ = true;
+    // An instanced textured mesh: indexed vertices (position, normal, uv)
+    // and a per-instance buffer laid out as a MeshBatch's (kModelVs), filled
+    // each pass with the instances in view (the model is heavy, and drawn
+    // at every site on the continent).
+    struct Model {
+        GLuint vao = 0, vertexVbo = 0, indexVbo = 0, instanceVbo = 0, tex = 0;
+        GLsizei indices = 0;
+        size_t capacity = 0;
+        std::vector<float> instances, visible;  // all of them; those in the pass's view
+    };
+    Program model_, modelDepth_;
+    Model ruinModel_;
+    std::vector<float> ruinInstances_;  // the sites' ruins, for whichever draws them
+    void uploadRuins(const std::vector<float>& instances);
+    void drawModel(const Program& p, Model& m, const Camera& camera, double timeSeconds, float gameSeconds);
 public:
     void showSheet(int type) { debugSheet_ = type; }
     // Pre-rendered sheets (tools/blender, renderer_sheets.cpp): the first time a

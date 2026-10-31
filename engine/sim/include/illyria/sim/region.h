@@ -48,10 +48,19 @@ struct Deck {
     Fixed halfSpan, halfWidth;
     bool foot = false;   // a narrow timber footbridge, not a stone road bridge
     Fixed rise = {};     // ramps climb; bridges and walls are level
-    bool raised = false; // on a castle (walls and ramps), not over water
-    bool ramp = false;   // a castle ramp: solid down to the ground
+    bool raised = false; // on a castle (walls and ramps) or a ruin's platform, not over water
+    bool ramp = false;   // a castle ramp, a ruin's platform or its stair: solid down to the ground
     bool contains(Fixed x, Fixed y) const;
     Fixed heightAt(Fixed x, Fixed y) const;
+};
+
+// A raised floor soldiers walk on, solid down to the ground: a ruin's
+// platform. Its deck and its stair's are in Region::decks(); the only way on
+// or off is the stair, from `foot` on the ground before it to `bottom`, its
+// lowest step. NavGrid routes over it round the stones that stand on it.
+struct Floor {
+    size_t deck = 0, stair = 0;
+    Vec3 foot, bottom;
 };
 
 // A wall that blocks soldiers and missiles: a slab from a to b (z = its
@@ -127,6 +136,7 @@ public:
     const std::vector<Polyline>& rivers() const { return rivers_; }
     const std::vector<Polyline>& berms() const { return berms_; }
     const std::vector<Deck>& decks() const { return decks_; }
+    const std::vector<Floor>& floors() const { return floors_; }
     const std::vector<WallSeg>& walls() const { return walls_; }
     const std::vector<Rampart>& ramparts() const { return ramparts_; }
     const std::vector<Gate>& gates() const { return gates_; }
@@ -181,6 +191,7 @@ private:
     std::vector<Polyline> roads_, rivers_, berms_;
     std::vector<Vec3> ponds_;
     std::vector<Deck> decks_;
+    std::vector<Floor> floors_;
     std::vector<WallSeg> walls_;
     std::vector<Rampart> ramparts_;
     std::vector<Gate> gates_;

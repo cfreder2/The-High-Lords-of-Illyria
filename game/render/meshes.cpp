@@ -584,9 +584,11 @@ Mesh bannerCloth() {
     return b.mesh;
 }
 
-// The sites' platforms: a step a soldier walks over, at a battle's scale (a
-// ruin is Continent::Site::kRuinSize metres across). The battle's stones
-// (engine/sim/src/region.cpp siteStones) follow these models: keep them together.
+// The sites' platforms: a step a soldier walks over, at a battle's scale. The
+// battle's stones (engine/sim/src/region.cpp siteStones) follow the temple's
+// and the sage's tower's models here: keep them together. A ruin is drawn
+// with its 3D model (tools/models, renderer_models.cpp), which its stones are
+// derived from; this box ruin only stands in until that model is fetched.
 constexpr float kSitePlinth = 0.005f;
 
 Mesh ruin() {
