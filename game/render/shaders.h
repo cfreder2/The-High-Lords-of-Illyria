@@ -1389,6 +1389,7 @@ out vec3 vNormal;
 out vec3 vWorld;
 out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
 flat out float vIsCloth;
+flat out vec2 vAxis; // the instance's local x on the ground, either way round (masonry)
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
 // How much individual scenery (trees, undergrowth, rocks) stands here rather
 // than the clumps of crowns: near the camera's focus while the camera is low,
@@ -1431,6 +1432,11 @@ void main() {
     }
     vec3 world = iPos + rotate(iQuat, local);
     vNormal = normalize(rotate(iQuat, nrm / iScale));
+    // Pointing +x-ward (or +y), so pieces laid either way along one line (a
+    // wall's sections, the ramp beside it and its landing) share their courses.
+    vec2 ax = rotate(iQuat, vec3(1.0, 0.0, 0.0)).xy;
+    ax = dot(ax, ax) > 1e-6 ? normalize(ax) : vec2(1.0, 0.0);
+    vAxis = ax.x < -1e-4 || (ax.x <= 1e-4 && ax.y < 0.0) ? -ax : ax;
     vColor = vIsCloth > 0.5 ? iTint : aColor * iTint;
     vWorld = world;
     gl_Position = uViewProj * vec4(world, 1.0);
@@ -1442,6 +1448,7 @@ in vec3 vNormal;
 in vec3 vWorld;
 in vec2 vCloth;
 flat in float vIsCloth;
+flat in vec2 vAxis;
 out vec4 oColor;
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
 // A flag's face: the owner's colour with a hem, and a cross pattee in white
@@ -1486,7 +1493,13 @@ void main() {
     if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.
-        vec2 uv = abs(n.z) > 0.7 ? vWorld.xy : vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
+        // Faces looking up (a walk, a landing, a ramp's slope) are paved in
+        // courses along the piece's own length, set by world position: one
+        // pattern unbroken across every piece laid along a line, and up a
+        // slope as across the flat.
+        bool top = abs(n.z) > 0.7;
+        vec2 uv = top ? vec2(dot(vWorld.xy, vAxis), dot(vWorld.xy, vec2(-vAxis.y, vAxis.x)))
+                      : vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
         vec2 size = vec2(0.95, 0.45);
         float row = floor(uv.y / size.y);
         float x = uv.x / size.x + 0.5 * mod(row, 2.0) + hash12(vec2(row, 3.7)) * 0.3;
@@ -1497,8 +1510,10 @@ void main() {
         float mortar = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.09, f.y) * smoothstep(1.0, 0.91, f.y);
         float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (noise2(uv * 3.1) - 0.5);
         albedo *= mix(1.0, mix(0.6, tone, mortar), fade);
-        albedo *= 0.9 + 0.14 * noise2(vec2(uv.x * 0.8, uv.y * 0.07));  // streaks running down
-        float lichen = smoothstep(0.62, 0.8, noise2(uv * 0.35 + 7.0)) * (abs(n.z) > 0.7 ? 0.3 : 0.55);
+        // Streaks running down the faces; on the paving, wear in patches (not
+        // stripes, which would band a ramp across).
+        albedo *= 0.9 + 0.14 * noise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));
+        float lichen = smoothstep(0.62, 0.8, noise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
         albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
     }
     vec3 c = albedo * light;
