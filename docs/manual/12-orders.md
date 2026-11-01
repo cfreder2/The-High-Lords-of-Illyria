@@ -15,10 +15,10 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | March there as they stand (with initiative) | tap the ground | click the ground |
 | March there and face a way | hold where they should go, drag the way to face | the same |
 | Attack a soldier | tap the enemy | click the enemy (a red sword cursor) |
-| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[G]] then click |
-| Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[G]], then click (a crosshair); or [[Ctrl]] + click the ground |
+| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[Z]] then click |
+| Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[Z]], then click (a crosshair); or [[Ctrl]] + click the ground |
 | Batter a gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
-| Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[G]] then click, or [[Ctrl]] + click |
+| Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |

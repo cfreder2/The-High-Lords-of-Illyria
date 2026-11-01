@@ -17,7 +17,7 @@ The battle runs in real time, thirty steps of the simulation every second, and i
 | Zoom | pinch | the mouse wheel, pinch the trackpad, or hold [[R]] (in) or [[F]] (out) |
 | Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold [[W]] [[A]] [[S]] [[D]] (or the arrows) |
 | Turn the view | twist two fingers | drag with the right button, or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
-| North up | tap the compass | click the compass, or [[Z]] |
+| North up | tap the compass | click the compass, or [[N]] |
 | Move and zoom together | drag two fingers | |
 | To a hero or a group | tap its card twice | tap its card twice, or the group's key twice |
 | To the selection | **Find** | **Find**, or [[C]] |
@@ -56,7 +56,7 @@ The row along the bottom holds only two kinds of card, so it stays short however
 
 You may keep up to ten **groups** of your own choosing, any soldiers you like.
 
-- **Making one:** select the soldiers, then tap **+ New group**, which appears after the heroes whenever the selection is not already a card. The selection becomes a group with its own card: its number, its kind, how many live and a health bar. Tap the card to select the group, and again to bring the camera to it.
+- **Making one:** select the soldiers, then tap **+ New group**, which appears after the heroes whenever the selection is not already a card, or press [[G]]. The selection becomes a group with its own card: its number, its kind, how many live and a health bar. Tap the card to select the group, and again to bring the camera to it.
 - **Changing one:** a long press on a group card puts the current selection into it instead, or forgets the group if it is the selection already.
 - **Ungrouping:** on a desktop, [[U]] forgets every group whose soldiers are all selected; the soldiers stay selected. Recall a group with its number and press [[U]] to be rid of it.
 - **On a desktop:** [[Alt]] (or [[Ctrl]] where the browser allows) and a number **makes** the selection that group; the number alone **recalls** it; the number twice brings the camera to it.

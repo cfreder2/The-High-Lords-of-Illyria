@@ -443,16 +443,17 @@
     `<tr><td>${k("W")}${k("A")}${k("S")}${k("D")}</td><td>Pan while held (or the arrows): faster the higher the camera is.</td></tr>` +
     `<tr><td>${k("Q")} · ${k("E")}</td><td>Turn the view left · right (or ${k("Shift")} + ${k("←")}${k("→")}).</td></tr>` +
     `<tr><td>${k("R")} · ${k("F")}</td><td>Zoom in · out while held (or the wheel, or pinch).</td></tr>` +
-    `<tr><td>${k("Z")}</td><td>North up (or click the compass under the top right buttons).</td></tr>` +
+    `<tr><td>${k("N")}</td><td>North up (or click the compass under the top right buttons).</td></tr>` +
     `<tr><td>${k("C")}</td><td>The camera to the selection.</td></tr></table>` +
     `<h3>Keys in battle</h3>` +
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
     `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Make the selection that group.</td></tr>` +
+    `<tr><td>${k("G")}</td><td>A new group of the selection, on the next free number.</td></tr>` +
     `<tr><td>${k("U")}</td><td>Ungroup: forget every group the selection holds whole (the soldiers stay selected).</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + ${k("A")}</td><td>Select every soldier of yours on the screen.</td></tr>` +
     `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 as they stand.</td></tr>` +
-    `<tr><td>${k("G")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground).</td></tr>` +
+    `<tr><td>${k("Z")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground). Or hold ${k("Ctrl")} as you click.</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +

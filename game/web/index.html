@@ -378,7 +378,7 @@
 <div id="banners"></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
 <div id="landTag" class="panel battle-only hidden"></div>
-<button id="compass" aria-label="North up" title="North up (Z)">
+<button id="compass" aria-label="North up" title="North up (N)">
   <svg viewBox="0 0 32 32" aria-hidden="true"><g id="compassNeedle">
     <text x="16" y="8" text-anchor="middle" font-size="7" font-weight="700" fill="#f3ead8" font-family="Georgia, serif">N</text>
     <path d="M16 9.5 L19.2 17 L12.8 17 Z" fill="#e2563f"/>
@@ -809,7 +809,7 @@
   });
   document.addEventListener("gestureend", (e) => { e.preventDefault(); safariPinch = null; });
 
-  // The compass: its needle points north; a tap turns the view north up (Z).
+  // The compass: its needle points north; a tap turns the view north up (N).
   const needle = $("compassNeedle"), kPoints = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
   let compassDeg = NaN, compassFacing = "";
   $("compass").onclick = () => { if (api) api.northUp(); };
@@ -1060,7 +1060,7 @@
       e.preventDefault();
       return;
     }
-    if (api && (e.code === "KeyZ" || e.code === "KeyN") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e)) {
+    if (api && e.code === "KeyN" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e)) {
       api.northUp();
       e.preventDefault();
       return;
@@ -1091,7 +1091,15 @@
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.code) {
       case "KeyX": api.scatter(); break;
-      case "KeyG": setMode(orderMode === 1 ? 0 : 1); break;
+      case "KeyZ": setMode(orderMode === 1 ? 0 : 1); break;  // under A, where the hand rests
+      case "KeyG": {  // a new group of the selection; U ungroups
+        const st = JSON.parse(api.hud());
+        const had = st.groups.find((g) => g.sel === 2);
+        if (!st.selCount) toast("Select soldiers first");
+        else if (had) toast(`Already group ${had.slot}`);
+        else { const slot = api.group(2, 0); toast(slot >= 0 ? `Group ${slot} made` : "All ten groups are in use"); }
+        break;
+      }
       case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": case "KeyH": api.stop(); break;
@@ -1474,7 +1482,7 @@
         const b = document.createElement("button");
         b.className = "card panel save";
         b.innerHTML = "<span><b>+</b>New group</span>";
-        b.title = "Make the selection a group (or Alt + a number)";
+        b.title = "Make the selection a group (G, or Alt + a number)";
         b.onclick = () => { const slot = api.group(2, 0); if (slot >= 0) toast(`Group ${slot} made`); updateHud(); };
         $("cards").appendChild(b);
       }
