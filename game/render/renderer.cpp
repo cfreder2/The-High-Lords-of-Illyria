@@ -2296,6 +2296,38 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                                            p.size, 0});
     }
 
+    // The gates: a health bar over each one battered, and over the one tapped
+    // (Battle::inspectedGate), which a dotted gold line rings at its foot.
+    {
+        const auto& gs = battle.region().gates();
+        const std::vector<sim::GateState>& state = battle.world().gates();
+        const float gold[3] = {1.0f, 0.82f, 0.32f};
+        for (size_t g = 0; g < gs.size() && g < state.size(); ++g) {
+            const sim::Gate& gate = gs[g];
+            const bool shown = static_cast<int>(g) == battle.inspectedGate();
+            if (state[g].broken() || (!shown && state[g].hp >= gate.maxHp)) continue;
+            const V3 a = toV3(gate.a), b = toV3(gate.b), mid = (a + b) * 0.5f;
+            const float top = static_cast<float>(gate.top.toDouble());
+            const float hp = static_cast<float>(state[g].hp) / static_cast<float>(std::max(1, gate.maxHp));
+            bars.insert(bars.end(), {mid.x, mid.y, top, hp, 0, 0, top - mid.z});
+            if (!shown) continue;
+            const V3 along = V3{b.x - a.x, b.y - a.y, 0}, across = V3{-along.y, along.x, 0}.normalized();
+            const float len = along.length(), half = static_cast<float>(gate.halfThick.toDouble()) + 0.6f;
+            const auto dot = [&](const V3& p) {
+                decals.insert(decals.end(), {p.x, p.y, battle.floorAt(p), 0, 0.2f, 0, kDecalDot, gold[0], gold[1], gold[2], 0});
+            };
+            const V3 dir = along * (1.0f / std::max(len, 0.01f));
+            for (float d = -0.6f; d <= len + 0.6f; d += 0.6f) {
+                dot(a + dir * d + across * half);
+                dot(a + dir * d - across * half);
+            }
+            for (float d = -half; d <= half; d += 0.6f) {
+                dot(a - dir * 0.6f + across * d);
+                dot(b + dir * 0.6f + across * d);
+            }
+        }
+    }
+
     uploadDynamic(dynamicDecals_, decals);
     uploadDynamic(sprites_, sprites);
     uploadDynamic(flyingArrows_, arrows);

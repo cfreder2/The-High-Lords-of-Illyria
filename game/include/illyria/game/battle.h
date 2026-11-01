@@ -448,6 +448,8 @@ public:
     std::vector<sim::EntityId> selectedAlive() const;
     bool isSelected(sim::EntityId id) const { return id > 0 && id <= selectedFlag_.size() && selectedFlag_[id - 1]; }
     Formation selectionFormation() const { return selFormation_; }
+    // The gate last tapped (its health shown over it), or -1; any other tap lets it go.
+    int inspectedGate() const { return inspectedGate_; }
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
     int squadSelection(const Squad& s) const;
     int groupSelection(int slot) const;
@@ -470,6 +472,10 @@ public:
     // castle's wall-walk or stair, a bridge) under it. Where the decals under
     // a soldier (shadow, selection ring) and the order markers lie.
     float floorAt(const V3& p) const;
+    // Where the ray through a pixel first meets what a man could be sent onto:
+    // the ground, a deck (a wall-walk, a ramp, a bridge), or a wall's stone,
+    // which puts the spot on its walk. False when it meets nothing.
+    bool pickFloor(const Camera& camera, float x, float y, V3& hit) const;
     bool inBattlefield(float x, float y) const { return x >= 0 && y >= 0 && x <= kWorldSize && y <= kWorldSize; }
     const FarGrid& farGrid() const { return far_; }
     const FarGrid& nearGrid() const { return near_; }
@@ -602,6 +608,7 @@ private:
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
     Formation selFormation_ = Formation::Line;
     bool selKeep_ = true;  // as they stand (keepShape), not selFormation_
+    int inspectedGate_ = -1;
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
     // he was to face there and the front of the whole, and which order it was.

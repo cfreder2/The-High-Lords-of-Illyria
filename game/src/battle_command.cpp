@@ -832,6 +832,13 @@ void Battle::cycleFormation() {
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
     const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
+    // A gate tapped is shown (its health over it, ringed), whatever else the tap does.
+    inspectedGate_ = pick.kind == Pick::Kind::Gate ? pick.index : -1;
+    if (inspectedGate_ >= 0) {
+        const sim::GateState& g = world_->gates()[static_cast<size_t>(inspectedGate_)];
+        const int maxHp = region_->gates()[static_cast<size_t>(inspectedGate_)].maxHp;
+        say(g.broken() ? std::string("The gate is broken") : "The gate: " + std::to_string(g.hp) + " of " + std::to_string(maxHp));
+    }
     const std::vector<sim::EntityId> mine = selectedAlive();
     // Attack and force-march modes (the phone's button, A or M) last one
     // order; Ctrl and Alt held on the desktop do the same for one click.
@@ -938,7 +945,7 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     if (turnInPlace) {
         drag_.anchor = centreOf(selectedAlive());
         drag_.anchor.z = heightAt(drag_.anchor.x, drag_.anchor.y);
-    } else if (!camera.pickGround(x, y, drag_.anchor)) {
+    } else if (!pickFloor(camera, x, y, drag_.anchor)) {
         return false;
     }
     drag_.mode = Drag::Mode::Facing;
@@ -960,7 +967,7 @@ void Battle::pressMove(const Camera& camera, float x, float y) {
     drag_.y1 = y;
     if (drag_.mode != Drag::Mode::Facing) return;
     V3 hit;
-    if (!camera.pickGround(x, y, hit)) return;
+    if (!pickFloor(camera, x, y, hit)) return;
     drag_.tip = hit;
     const V3 d = flat(hit - drag_.anchor);
     if (d.length() < kAimMetres) return;

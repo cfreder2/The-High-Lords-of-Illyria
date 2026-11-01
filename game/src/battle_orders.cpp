@@ -176,6 +176,67 @@ void Battle::orderAttackObject(const Pick& pick) {
     voice_.order(Situation::Attack, *world_, able);
 }
 
+bool Battle::pickFloor(const Camera& camera, float x, float y, V3& hit) const {
+    V3 o, d;
+    camera.ray(x, y, o, d);
+    // Solid: below the ground, inside a wall's stone (below its top), or just
+    // under a deck's floor (a wall-walk, a ramp, a bridge: not far under a
+    // bridge, where a ray may pass beneath it).
+    constexpr float kDeckSlab = 1.5f;
+    const auto& walls = region_->walls();
+    const auto solid = [&](const V3& p) {
+        if (p.z <= heightAt(p.x, p.y)) return true;
+        if (!inBattlefield(p.x, p.y)) return false;
+        for (const sim::WallSeg& w : walls)
+            if (p.z <= static_cast<float>(w.top.toDouble()) &&
+                segDist(p, toV3(w.a), toV3(w.b)) <= static_cast<float>(w.halfThick.toDouble()))
+                return true;
+        sim::Fixed deck;
+        return region_->deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + kDeckSlab), deck) && static_cast<float>(deck.toDouble()) >= p.z;
+    };
+    const float maxT = camera.distance() * 6.0f + 2000.0f;
+    const float step = std::max(0.25f, camera.distance() * 0.004f);
+    float prevT = 0;
+    for (float t = step; t < maxT; t += step) {
+        if (!solid(o + d * t)) {
+            prevT = t;
+            continue;
+        }
+        float lo = prevT, hi = t;
+        for (int i = 0; i < 16; ++i) {
+            const float mid = (lo + hi) / 2;
+            (solid(o + d * mid) ? hi : lo) = mid;
+        }
+        hit = o + d * hi;
+        // A wall's stone struck (its face, its parapet): onto its walk, at that
+        // point along it.
+        bool onWall = false;
+        for (const sim::WallSeg& w : walls) {
+            const V3 wa = toV3(w.a), wb = toV3(w.b);
+            if (hit.z > static_cast<float>(w.top.toDouble()) + 0.05f || segDist(hit, wa, wb) > static_cast<float>(w.halfThick.toDouble()) + 0.05f)
+                continue;
+            const V3 ab{wb.x - wa.x, wb.y - wa.y, 0};
+            const float len2 = ab.x * ab.x + ab.y * ab.y;
+            const float t = len2 > 0 ? std::clamp(((hit.x - wa.x) * ab.x + (hit.y - wa.y) * ab.y) / len2, 0.0f, 1.0f) : 0.0f;
+            hit.x = wa.x + ab.x * t;
+            hit.y = wa.y + ab.y * t;
+            onWall = true;
+            break;
+        }
+        // On what a man would stand there: the deck over the spot (a wall-walk,
+        // a ramp, a bridge), else the ground.
+        sim::Fixed deck;
+        const float ground = heightAt(hit.x, hit.y);
+        if (inBattlefield(hit.x, hit.y) && region_->deckBelow(toFixed(hit.x), toFixed(hit.y), toFixed(hit.z + 40.0f), deck) &&
+            static_cast<float>(deck.toDouble()) > ground + 0.3f && (onWall || static_cast<float>(deck.toDouble()) >= hit.z - 0.3f))
+            hit.z = static_cast<float>(deck.toDouble());
+        else
+            hit.z = std::max(hit.z, ground);
+        return true;
+    }
+    return false;
+}
+
 Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelScale) const {
     Pick p;
     const auto& units = world_->units();
@@ -210,10 +271,10 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
         if (p.kind != Pick::Kind::None) return p;
     }
     V3 ground;
-    if (!camera.pickGround(x, y, ground)) return p;
+    if (!pickFloor(camera, x, y, ground)) return p;
     p.kind = Pick::Kind::Ground;
     p.at = ground;
-    // The castle walls: the tap lands at the wall's foot, or on its walk.
+    // The castle walls: the tap lands on its walk (struck in the face or on top), or at its foot.
     const auto& rings = region_->ramparts();
     for (size_t r = 0; r < rings.size(); ++r) {
         const auto& cs = rings[r].corners;
