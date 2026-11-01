@@ -390,6 +390,21 @@ Mesh block() {
     return b.mesh;
 }
 
+Mesh gallery(float width) {
+    // One piece of a gallery round a tower at the walk (the sim's
+    // Continent::Castle::Gallery): its floor from inside the tower's face
+    // (y = 0) out to its edge (y = width), its top at z = 0, worn like the
+    // walk, and under it a corbel stepped back to the tower. x runs across
+    // the piece (scaled to its width); the rest is in metres.
+    Builder b;
+    b.box({-1, -0.5f, -0.4f}, {1, width, 0}, kStone * 0.95f);
+    b.quad({-1, -0.5f, 0.002f}, {1, -0.5f, 0.002f}, {1, width, 0.002f}, {-1, width, 0.002f}, kStone * 0.8f);
+    b.box({-0.22f, 0, -0.75f}, {0.22f, width * 0.9f, -0.4f}, kStone * 0.9f);
+    b.box({-0.18f, 0, -1.1f}, {0.18f, width * 0.6f, -0.75f}, kStone * 0.85f);
+    b.box({-0.14f, 0, -1.45f}, {0.14f, width * 0.3f, -1.1f}, kStone * 0.8f);
+    return b.mesh;
+}
+
 namespace {
 const V3 kOak{0.40f, 0.27f, 0.15f}, kIron{0.17f, 0.17f, 0.19f};
 // One door leaf of planks, hinged at `hinge`, running `dir` (unit, flat) for
@@ -516,24 +531,20 @@ Mesh keep() {
 
 Mesh ramp() {
     // A solid wedge of stone; its sides run on below the ground (z < 0) so
-    // the foot meets the ground wherever the ground dips a little. Low
-    // cleats across the slope give a footing.
+    // the foot meets the ground wherever the ground dips a little. The slope
+    // is one plane, exactly the one the sim walks (no cleats: strips laid on
+    // it fought it for depth and banded it across), worn as the wall-walk
+    // is; the sides as the curtain's faces. The landing at the top is a
+    // curtain block, so slope, landing and walk read as one paved way.
     Builder b;
     const float base = -0.15f;
-    const V3 s = kStone, side = kStone * 0.9f;
     const V3 a0{-1, -1, 0}, a1{-1, 1, 0}, b0{1, -1, 1}, b1{1, 1, 1};
     const V3 lo0{-1, -1, base}, lo1{-1, 1, base}, hi0{1, -1, base}, hi1{1, 1, base};
-    b.quad(a0, b0, b1, a1, s);              // the slope
-    b.quad(lo0, hi0, b0, a0, side);         // the sides
-    b.quad(hi1, lo1, a1, b1, side);
-    b.quad(hi0, hi1, b1, b0, s * 0.85f);    // the high end
-    b.quad(lo1, lo0, a0, a1, side);         // the toe, below ground
-    const int cleats = 12;
-    for (int i = 1; i < cleats; ++i) {
-        const float x = -1 + 2.0f * i / cleats, z = (x + 1) / 2;
-        b.quad({x, -0.94f, z}, {x + 0.03f, -0.94f, z + 0.015f}, {x + 0.03f, 0.94f, z + 0.015f}, {x, 0.94f, z}, kStone * 0.8f);
-        b.quad({x + 0.03f, -0.94f, z + 0.015f}, {x + 0.06f, -0.94f, z + 0.03f + 0.012f}, {x + 0.06f, 0.94f, z + 0.03f + 0.012f}, {x + 0.03f, 0.94f, z + 0.015f}, kStone * 0.86f);
-    }
+    b.quad(a0, b0, b1, a1, kStone * 0.8f);    // the slope
+    b.quad(lo0, hi0, b0, a0, kStone);         // the sides
+    b.quad(hi1, lo1, a1, b1, kStone);
+    b.quad(hi0, hi1, b1, b0, kStone * 0.9f);  // the high end, against the landing
+    b.quad(lo1, lo0, a0, a1, kStone * 0.9f);  // the toe, below ground
     return b.mesh;
 }
 

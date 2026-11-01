@@ -82,8 +82,9 @@ TEST(castle_ramps_start_on_the_ground_and_reach_the_walk) {
                 if (abs(ground - city->pos.z) >= Fixed::fromRatio(1, 20))
                     std::printf("  %s: ramp foot (%.1f, %.1f) ground %.2f pad %.2f\n", city->name.c_str(), foot.x.toDouble(), foot.y.toDouble(), ground.toDouble(), city->pos.z.toDouble());
                 CHECK(abs(ground - city->pos.z) < Fixed::fromRatio(1, 20));
+                // (Where the wall is short the foot lies under a tower's gallery.)
                 Fixed deck;
-                CHECK(r->deckAt(foot.x, foot.y, deck));
+                CHECK(r->deckBelow(foot.x, foot.y, ground + Fixed::one(), deck));
                 CHECK(abs(deck - ground) < Fixed::fromRatio(1, 5));
                 CHECK(abs(head.z - rp.corners.front().z) < Fixed::fromRatio(1, 20));
             }
@@ -99,12 +100,13 @@ TEST(walls_are_thick_enough_to_pass_on_the_walk) {
     const Region& r = *townWindow();
     const Vec3 centre = local(r, town().pos);
     const Rampart& rp = outer(r, centre);
-    // The longest edge of the ring, on the walk's middle, 24 m apart.
+    // The longest edge of the ring without the gate (whose towers stand
+    // either side of the middle), on the walk's middle, 24 m apart.
     size_t e = 0;
     Fixed longest;
     for (size_t i = 0; i < rp.corners.size(); ++i) {
         const Fixed len = (rp.corners[(i + 1) % rp.corners.size()] - rp.corners[i]).flat().length();
-        if (len > longest) {
+        if (len > longest && i != town().castle.rings.front().gateEdge) {
             longest = len;
             e = i;
         }
@@ -248,4 +250,103 @@ TEST(a_towns_garrison_fits_inside_its_walls) {
     }
     CHECK(men == 8 * 12);
     CHECK(misplaced == 0);
+}
+
+TEST(every_tower_has_a_gallery_clear_of_the_ramps_and_houses) {
+    // Round the inner side of every corner and gate tower, at the walk. The
+    // way round the walk keeps a man's breadth (and his lane) off every
+    // tower and goes on round, never back; no ramp's landing or house
+    // stands in a gallery.
+    Fixed rampRoom = m(100), houseRoom = m(100), towerRoom = m(100), shortest = m(100);
+    for (const Continent::City& city : continent().cities()) {
+        const Castle& k = city.castle;
+        for (size_t ri = 0; ri < k.rings.size(); ++ri) {
+            const Castle::Ring& ring = k.rings[ri];
+            const std::vector<Castle::Gallery> gs = ring.galleries();
+            CHECK(gs.size() == ring.corners.size() + 2);
+            const Vec3 middle = ring.centre();
+            for (const Castle::Gallery& g : gs) {
+                CHECK((g.pos + g.mid * (g.radius + Castle::kGalleryWidth) - middle).flat().length() < (g.pos - middle).flat().length());
+                const Fixed reach = g.radius + Castle::kGalleryWidth;
+                for (const Castle::Ramp& rp : k.ramps) {
+                    if (rp.ring != ri) continue;
+                    const Vec3 dir = (rp.head - rp.foot).flat() / (rp.head - rp.foot).flat().length(), across{-dir.y, dir.x, Fixed::zero()};
+                    for (int s = 0; s <= 6; ++s)  // over the landing
+                        for (int w = -2; w <= 2; ++w) {
+                            const Vec3 p = rp.head + dir * (Castle::kRampLanding * s / 6) + across * (rp.halfWidth * w / 2);
+                            rampRoom = min(rampRoom, (p - g.pos).flat().length() - reach);
+                        }
+                }
+                for (const Castle::House& h : k.houses) {
+                    if ((h.pos - g.pos).flat().dot(g.mid) <= Fixed::zero()) continue;  // on the tower's far side
+                    const Fixed dx = max(abs(h.pos.x - g.pos.x) - h.halfX, Fixed::zero()), dy = max(abs(h.pos.y - g.pos.y) - h.halfY, Fixed::zero());
+                    houseRoom = min(houseRoom, sqrt(dx * dx + dy * dy) - reach);
+                }
+            }
+            // The way: off every tower by at least a lane and a man's breadth,
+            // along legs that each go on round (the ring's turn, never back).
+            const std::vector<Vec3> way = ring.way();
+            for (size_t i = 0; i < way.size(); ++i) {
+                const Vec3 a = way[i], b = way[(i + 1) % way.size()];
+                shortest = min(shortest, (b - a).flat().length());
+                for (int s = 0; s < 4; ++s) {
+                    const Vec3 p = a + (b - a) * Fixed::fromRatio(s, 4);
+                    for (const Castle::Gallery& g : gs) towerRoom = min(towerRoom, (p - g.pos).flat().length() - g.radius);
+                }
+            }
+        }
+    }
+    std::printf("  room: %.2f m from the way to a tower, %.1f m to a ramp's landing, %.1f m to a house; shortest leg %.2f m\n", towerRoom.toDouble(),
+                rampRoom.toDouble(), houseRoom.toDouble(), shortest.toDouble());
+    CHECK(towerRoom > Fixed::one());
+    CHECK(shortest > Fixed::zero());
+    CHECK(rampRoom > Fixed::zero());
+    CHECK(houseRoom > Fixed::zero());
+}
+
+TEST(men_go_round_the_towers_on_their_galleries) {
+    // Along the walk past a corner tower, and along the gate's wall past both
+    // of the gate's towers: they get there at the walk's height, and never
+    // set foot inside a tower.
+    const Region& r = *townWindow();
+    const Vec3 centre = local(r, town().pos);
+    const Rampart& rp = outer(r, centre);
+    const Castle::Ring& ring = town().castle.rings.front();
+    const size_t n = rp.corners.size(), g = ring.gateEdge;
+    std::vector<Obstacle> towers;
+    for (const Obstacle& o : r.obstacles())
+        if (o.kind == Obstacle::Kind::Tower && (o.pos - centre).flat().length() < town().radius * 2) towers.push_back(o);
+    const auto point = [&](size_t e, Fixed fromEnd, bool atStart) {
+        const Vec3 a = rp.corners[e], b = rp.corners[(e + 1) % n];
+        const Fixed len = (b - a).flat().length();
+        return a + (b - a) * ((atStart ? fromEnd : len - fromEnd) / len);
+    };
+    const std::pair<Vec3, Vec3> trips[2] = {
+        {point((g + 1) % n, m(16), false), point((g + 2) % n, m(16), true)},  // round the corner beyond the gate's edge
+        {point(g, m(18), true), point(g, m(18), false)},                     // along the gate's edge, over the gate
+    };
+    for (const auto& [from, to] : trips) {
+        WorldConfig cfg;
+        cfg.region = townWindow();
+        World w(cfg);
+        const EntityId id = w.spawnUnit(0, from, (to - from).flat() / (to - from).flat().length(), unitStats(UnitType::HeavyInfantry));
+        const Command go{0, id, Command::Type::Move, to};
+        w.step(std::span(&go, 1));
+        Fixed lowest = from.z, closest = m(100);
+        int ticks = 0;
+        for (; ticks < 60 * kTicksPerSecond; ++ticks) {
+            w.step({});
+            const Unit& u = *w.findUnit(id);
+            lowest = min(lowest, u.pos.z);
+            for (const Obstacle& o : towers) closest = min(closest, (u.pos - o.pos).flat().length() - o.radius);
+            if (!u.hasMoveTarget) break;
+        }
+        const Fixed off = (w.findUnit(id)->pos - to).flat().length();
+        std::printf("  %.1f m in %.1f s; %.2f m off at the end, %.2f m clear of the towers, lowest %.2f m below the walk\n",
+                    (to - from).flat().length().toDouble(), static_cast<double>(ticks) / kTicksPerSecond, off.toDouble(), closest.toDouble(),
+                    (from.z - lowest).toDouble());
+        CHECK(off < Fixed::one());
+        CHECK(lowest > from.z - Fixed::fromRatio(1, 2));
+        CHECK(closest > Fixed::zero());
+    }
 }

@@ -1104,7 +1104,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     float side[4];
     yawQuat(1.5707963f, side);
     const V3 stone{1, 1, 1};
-    std::vector<float> drums, keeps, stairs, parapets;
+    std::vector<float> drums, keeps, stairs, parapets, galleries;
     const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
     const auto yawOf = [](V3 d) { return std::atan2(d.y, d.x); };
     for (size_t ci = 0; ci < cont.cities().size(); ++ci) {
@@ -1167,6 +1167,50 @@ void Renderer::uploadSettlements(const Battle& battle) {
                 }
                 stone(from, len, height + sill, height + merlon);
             }
+            // Round the inner side of each tower, the gallery the walk goes
+            // round on, in pieces of a few degrees; its breast-high parapet
+            // only where it stands clear of the wall's inner face, and up to
+            // where it meets the next gallery's, where two run together.
+            const float width = static_cast<float>(Castle::kGalleryWidth.toDouble()), rim = static_cast<float>(Castle::kGalleryParapet.toDouble());
+            const std::vector<Castle::Gallery> gs = ring.galleries();
+            for (size_t gi = 0; gi < gs.size(); ++gi) {
+                const Castle::Gallery& gl = gs[gi];
+                const V3 p = local(gl.pos) + V3{0, 0, height};
+                const float r = static_cast<float>(gl.radius.toDouble());
+                const V3 from = toV3(gl.from), mid = toV3(gl.mid);
+                const float sweep = 2 * std::acos(std::clamp(from.dot(mid), -1.0f, 1.0f));
+                const float turn = from.x * mid.y - from.y * mid.x > 0 ? 1.0f : -1.0f, start = std::atan2(from.y, from.x);
+                // How far round from `from` this parapet meets another gallery's, inside the ring (or -1).
+                const float ours = r + width - rim / 2;
+                const auto meets = [&](const Castle::Gallery& other) {
+                    const V3 c = local(other.pos) + V3{0, 0, height} - p;
+                    const float theirs = static_cast<float>(other.radius.toDouble()) + width - rim / 2, d = std::hypot(c.x, c.y);
+                    if (d >= ours + theirs || d <= std::fabs(ours - theirs)) return -1.0f;
+                    const float along = (ours * ours - theirs * theirs + d * d) / (2 * d), off = std::sqrt(std::max(0.0f, ours * ours - along * along));
+                    const V3 u{c.x / d, c.y / d, 0}, side{-u.y, u.x, 0};
+                    V3 at = u * along + side * off;
+                    if ((u * along - side * off).dot(mid) > at.dot(mid)) at = u * along - side * off;
+                    return std::atan2(turn * (from.x * at.y - from.y * at.x), from.dot(at));
+                };
+                const float before = meets(gs[(gi + gs.size() - 1) % gs.size()]), after = meets(gs[(gi + 1) % gs.size()]);
+                const auto pieces = [&](float t0, float t1, const auto& put) {
+                    const int n = std::max(1, static_cast<int>(std::ceil((t1 - t0) / 0.21f)));
+                    for (int i = 0; i < n; ++i) {
+                        const float step = (t1 - t0) / n, a = start + turn * (t0 + step * (i + 0.5f));
+                        const V3 out{std::cos(a), std::sin(a), 0};
+                        float q[4];
+                        yawQuat(std::atan2(-out.x, out.y), q);
+                        put(out, q, (r + width) * std::tan(step / 2));
+                    }
+                };
+                pieces(0, sweep, [&](V3 out, const float* q, float half) { pushInstance(galleries, p + out * r, q, {half * 1.02f, 1, 1}, {1, 1, 1}); });
+                const float clear = std::asin(std::min(1.0f, thick / 2 / (r + width - rim)));
+                const float t0 = std::max(clear, before), t1 = after >= 0 ? std::min(sweep - clear, after) : sweep - clear;
+                if (t1 > t0)
+                    pieces(t0, t1, [&](V3 out, const float* q, float half) {
+                        pushInstance(parapets, p + out * (r + width - rim / 2), q, {half, rim / 2, 1.1f}, {0.97f, 0.97f, 0.97f});
+                    });
+            }
         }
         for (const sim::Continent::Castle::Tower& t : k.towers) {
             const float r = static_cast<float>(t.radius.toDouble()), h = static_cast<float>(t.height.toDouble());
@@ -1187,7 +1231,10 @@ void Renderer::uploadSettlements(const Battle& battle) {
             bannerCity_.push_back(static_cast<uint32_t>(ci));
         }
         for (const sim::Continent::Castle::Ramp& rp : k.ramps) {
-            // The slope from the ground, then its landing beside the walk (a block down to the ground).
+            // The slope from the ground, then its landing beside the walk (a
+            // block down to the ground, drawn as the curtain is: its top worn
+            // as the walk's). Both turned as the wall they lie along, so the
+            // paving runs on unbroken from the foot to the walk.
             const V3 foot = local(rp.foot), head = local(rp.head);
             V3 run{head.x - foot.x, head.y - foot.y, 0};
             const float len = run.length(), half = static_cast<float>(rp.halfWidth.toDouble());
@@ -1196,7 +1243,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             yawQuat(yawOf(run), q);
             pushInstance(stairs, V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z}, q, {len / 2, half, head.z - foot.z}, {1, 1, 1});
             const V3 dir = run * (1.0f / len);
-            pushInstance(parapets, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {0.97f, 0.97f, 0.97f});
+            pushInstance(walls, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {1, 1, 1});
         }
         for (size_t hi = 0; hi < k.houses.size(); ++hi) {
             const sim::Continent::Castle::House& hs = k.houses[hi];
@@ -1229,6 +1276,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(drums_, drums);
     uploadMeshInstances(keeps_, keeps);
     uploadMeshInstances(stairs_, stairs);
+    uploadMeshInstances(galleries_, galleries);
     bannerData_ = banners;  // retinted as towns change hands (setCityColours)
     uploadMeshInstances(banners_, banners);
     uploadMeshInstances(cityHouses_, houses);
@@ -1331,9 +1379,10 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(drums_, meshes::drum(), 0);
     makeMeshBatch(keeps_, meshes::keep(), 0);
     makeMeshBatch(stairs_, meshes::ramp(), 0);  // the castles' ramps
+    makeMeshBatch(galleries_, meshes::gallery(static_cast<float>(sim::Continent::Castle::kGalleryWidth.toDouble())), 0);
     makeMeshBatch(gates_, meshes::gate(false), 0);
     makeMeshBatch(brokenGates_, meshes::gate(true), 0);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_}) b->masonry = true;
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_}) b->masonry = true;
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
     makeMeshBatch(cityHouses_, meshes::house(), 0);
@@ -1844,7 +1893,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
     for (MeshBatch& b : copses_) casters.push_back(&b);
     if (features_ & kFarDetail)
         for (MeshBatch& b : nearCopses_) casters.push_back(&b);
@@ -2420,7 +2469,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
