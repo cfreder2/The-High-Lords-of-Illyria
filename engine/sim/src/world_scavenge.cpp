@@ -742,11 +742,10 @@ void World::prowl(Unit& u, bool think) {
     Scavenger& s = u.scav;
     ++s.quiet;
     if (think) {
-        // In the reach of missile troops he sees with nothing to take: out of
-        // it, once; and he goes looking round no more this raid.
-        bool covered = false;
-        missileCover(u, u.pos, nullptr, &covered);
-        if (covered && !s.wary) {
+        // Standing in the reach of more missile troops than his pack would
+        // dare, with nothing to take: out of it, once; and he goes looking
+        // round no more this raid. (A lone wizard's reach is no such place.)
+        if (!s.wary && raidOdds(u, 0, missileCover(u, u.pos, nullptr, nullptr)) < kDareOdds) {
             s.wary = true;
             fallBack(u);
             return;
@@ -754,10 +753,9 @@ void World::prowl(Unit& u, bool think) {
         if (s.wary) {
             s.goal = u.pos;
         } else {
-            // Round the foes he sees toward their rear, but not into the missile troops' reach.
+            // Round the foes he sees toward their rear, but not into such a reach.
             const Vec3 g = prowlGoal(u);
-            missileCover(u, g, nullptr, &covered);
-            s.goal = covered ? u.pos : g;
+            s.goal = raidOdds(u, 0, missileCover(u, g, nullptr, nullptr)) < kDareOdds ? u.pos : g;
         }
     }
     if ((s.goal - u.pos).flat().lengthSq() > Fixed::one()) scavengeWalk(u, s.goal);
