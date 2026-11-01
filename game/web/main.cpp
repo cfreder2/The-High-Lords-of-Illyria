@@ -825,6 +825,10 @@ EMSCRIPTEN_KEEPALIVE void illyria_clear_selection() {
 EMSCRIPTEN_KEEPALIVE void illyria_select_heroes() {
     if (app) app->battle->selectHeroes();
 }
+// Everyone of ours in view (Ctrl/⌘ + A).
+EMSCRIPTEN_KEEPALIVE void illyria_select_on_screen() {
+    if (app && !app->camp.on) app->battle->selectInRect(app->camera, 0, 0, app->camera.width(), app->camera.height());
+}
 // A formation for the selection, by Formation value; kKeepShapeId: as they stand.
 EMSCRIPTEN_KEEPALIVE void illyria_set_formation(int f) {
     if (app && f >= 0 && f < kFormationCount) app->battle->setFormation(static_cast<Formation>(f));

@@ -121,11 +121,12 @@ A city costs 1; an attack costs 2.
 |---|---|---|
 | Zoom / pan / turn | pinch / drag / twist | wheel / left drag / right drag |
 | Select a soldier, his kind in view | tap, tap again | click, double-click |
-| Select a squad | its card | its card, or its group's number |
+| Select a hero or a group | its card | its card, or the group's number |
+| Everyone in view | | [[Ctrl]] / [[⌘]] + [[A]] |
 | Box select | hold on your men, drag | the same, or shift-drag |
 | Add or remove one | | shift-click |
 | The heroes | their gold cards | [[`]] |
-| Save / recall a group | + Save group / its card | [[Alt]] + number / the number |
+| Make / recall a group | + New group / its card | [[Alt]] + number / the number |
 | March | tap the ground | click |
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |

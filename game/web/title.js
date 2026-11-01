@@ -393,7 +393,7 @@
     `<h3>Choosing who</h3>` +
     row("tap", "Tap a soldier", "Selects him alone.") +
     row("dtap", "Tap him again, or double-tap", "Every soldier of his kind the camera can see.") +
-    row("card", "Tap a squad card", "Selects that squad; tap it again and the camera goes to it. Heroes (gold) and special troops come first.") +
+    row("card", "Tap a hero's card", "The heroes' gold cards lead the row: selects him; tap it again and the camera goes to him.") +
     row("box", "Hold on your men, then drag", "Draws a box: everyone of yours inside it. With nothing selected, a hold anywhere draws a box.") +
     `<h3>Orders</h3>` +
     row("tap", "Tap the ground", "March there as they stand, each in his place, facing as they do. On the way they fight back if struck, and take on foes who come close.") +
@@ -406,7 +406,7 @@
     row("attack", "Raid", "Shown with hyena-folk selected: they are let loose at once to raid from where they stand, taking what lies about and throwing it at the soft and the stragglers they can see. Any other order ends it.") +
     `<div class="ctl">${pic.card}<b>Hold · Find</b><span>Hold stops them where they stand; Find brings the camera to them.</span></div>` +
     `<h3>Cards and groups</h3>` +
-    row("card", "+ Save group", "Appears when the selection is not already a card: saves it as a group card, with its own number.") +
+    row("card", "+ New group", "Appears when the selection is not already a card: one tap makes it a group, with its own card and number. Only the heroes and the groups you make have cards.") +
     row("longcard", "Hold a group card", "Puts the current selection in that group, or forgets the group when it is the selection.") +
     `<h3>Along the top</h3>` +
     `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting.</td></tr>` +
@@ -448,7 +448,8 @@
     `<h3>Keys in battle</h3>` +
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
-    `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Save the selection as that group.</td></tr>` +
+    `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Make the selection that group.</td></tr>` +
+    `<tr><td>${k("Ctrl")}/${k("⌘")} + ${k("A")}</td><td>Select every soldier of yours on the screen.</td></tr>` +
     `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 as they stand.</td></tr>` +
     `<tr><td>${k("G")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground).</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +

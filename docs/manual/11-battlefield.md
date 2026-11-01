@@ -19,7 +19,7 @@ The battle runs in real time, thirty steps of the simulation every second, and i
 | Turn the view | twist two fingers | drag with the right button, or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
 | North up | tap the compass | click the compass, or [[Z]] |
 | Move and zoom together | drag two fingers | |
-| To a squad | tap its card twice | tap its card twice, or its group's key twice |
+| To a hero or a group | tap its card twice | tap its card twice, or the group's key twice |
 | To the selection | **Find** | **Find**, or [[C]] |
 | To the fiercest fighting | **Fight!** | **Fight!** |
 
@@ -32,16 +32,17 @@ The camera comes down until one soldier fills the screen and goes up until the w
 Everything starts with choosing who is to obey.
 
 - **One soldier:** tap him. A second tap on him (or a double-tap, or a double-click) selects **every soldier of his kind** the camera can see.
-- **A squad:** tap its card.
+- **A hero:** tap his gold card.
+- **Everyone in view:** on a desktop, [[Ctrl]] + [[A]] (on a Mac [[⌘]] + [[A]]) selects every soldier of yours the camera can see.
 - **A box:** press and hold on your own men (or anywhere with nothing selected), and drag: everyone of yours inside the box is selected. On a desktop, shift-drag draws a box at once.
 - **Adding and removing:** on a desktop, shift-click adds a soldier to the selection or takes him out.
 - **The heroes:** [[`]] on a desktop selects your heroes; on a phone their gold cards lead the row.
 - **Letting go:** [[Esc]] lets go of the selection.
 - **Ordering without choosing:** on a desktop a right-click (on a Mac trackpad, a tap with two fingers) gives those selected the order a click would, to march there or go after the enemy clicked, and never changes who is selected. On one of your own men, they march to where he stands.
 
-Selected soldiers wear a **blue ring**. The cards of squads wholly selected light up, dashed when only part of a squad is. Above the action row, a line names the selection and its edges: *12 Heavy Infantry · edges: home land +3% · veterans +6%*.
+Selected soldiers wear a **blue ring**. The cards of heroes and groups wholly selected light up, dashed when only part of a group is. Above the action row, a line names the selection and its edges: *12 Heavy Infantry · edges: home land +3% · veterans +6%*.
 
-![A squad selected: blue rings under its men, its card lit, the action row and the selection line above the cards.](images/shots/battle_selected.jpg)
+![A squad selected: blue rings under its men, the action row and the selection line along the bottom.](images/shots/battle_selected.jpg)
 
 ![A box drawn by holding on your own men and dragging.](images/shots/battle_box.jpg)
 
@@ -49,14 +50,15 @@ Zoomed far out, when the soldiers are only specks, a tap near a squad picks the 
 
 ## The cards {#cards}
 
-Each squad has a **card** along the bottom: an icon for its kind (a crown for a hero, a shield for foot, a bow, a flame for a wizard, a satchel for grenadiers...), its name and how many stand, a health bar, and the strength badge with the hero's level or the rank pips. Heroes and special troops (wizards, grenadiers, healers, engines) have their cards at the front of the row, heroes in gold. Tap a card to select its squad; tap it again to bring the camera to it.
+The row along the bottom holds only two kinds of card, so it stays short however big the army is: your **heroes**, in gold at the front (finding your heroes always matters), and the **groups** you have made yourself. A battle begins with no groups. A hero's card shows a crown, his name, a health bar and his level; tap it to select him, and again to bring the camera to him.
 
 ## Groups {#groups}
 
 You may keep up to ten **groups** of your own choosing, any soldiers you like.
 
-- **On a phone:** whenever the selection is not already one card, a **+ Save group** card appears at the start of the row; tap it, and the selection becomes a group with its own card (its number, its kind, how many live). A long press on a group card puts the current selection into it instead, or forgets the group if it is the selection already.
-- **On a desktop:** [[Alt]] (or [[Ctrl]] where the browser allows) and a number **saves** the selection as that group; the number alone **recalls** it; the number twice brings the camera to it.
+- **Making one:** select the soldiers, then tap **+ New group**, which appears after the heroes whenever the selection is not already a card. The selection becomes a group with its own card: its number, its kind, how many live and a health bar. Tap the card to select the group, and again to bring the camera to it.
+- **Changing one:** a long press on a group card puts the current selection into it instead, or forgets the group if it is the selection already.
+- **On a desktop:** [[Alt]] (or [[Ctrl]] where the browser allows) and a number **makes** the selection that group; the number alone **recalls** it; the number twice brings the camera to it.
 
 ## The health bars {#health-bars}
 

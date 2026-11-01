@@ -370,7 +370,7 @@
 
 <div id="hint" class="panel hidden">
   <b>Pinch</b> to zoom from the gods to the mud · <b>drag</b> to pan · <b>twist</b> or right-drag to turn<br>
-  <b>Tap</b> a soldier to pick him, again for all his kind in view, or a card for a squad · <b>tap</b> ground to march, an enemy to go after him<br>
+  <b>Tap</b> a soldier to pick him, again for all his kind in view; <b>+ New group</b> keeps them as a card · <b>tap</b> ground to march, an enemy to go after him<br>
   <b>⚔ Attack</b>, then tap: any soldier (ours too), a gate, wall, house or tree, or the ground · <b>hold ⚔</b> for a force march<br>
   <b>Hold</b> where they should go and <b>drag</b> the way they should face · <b>hold</b> on your own men and drag to box-select
 </div>
@@ -543,6 +543,7 @@
       group: Module.cwrap("illyria_group", "number", ["number", "number"]),
       clearSelection: Module.cwrap("illyria_clear_selection", null, []),
       selectHeroes: Module.cwrap("illyria_select_heroes", null, []),
+      selectOnScreen: Module.cwrap("illyria_select_on_screen", null, []),
       focusSelection: Module.cwrap("illyria_focus_selection", null, []),
       setShift: Module.cwrap("illyria_set_shift", null, ["number"]),
       setKeys: Module.cwrap("illyria_set_keys", null, ["number", "number"]),
@@ -1068,7 +1069,7 @@
     if (digit) {
       const n = +digit[2];
       if (digit[1] === "Numpad" || e.shiftKey) pickFormation(n);
-      else if (e.altKey || e.ctrlKey || e.metaKey) { api.group(1, n); toast(`Group ${n} saved`); }
+      else if (e.altKey || e.ctrlKey || e.metaKey) { api.group(1, n); toast(`Group ${n} made`); }
       else if (api.group(0, n) >= 0) {
         if (lastGroupKey === n && e.timeStamp - lastGroupMs < 450) api.focusSelection();
         lastGroupKey = n;
@@ -1078,7 +1079,14 @@
       updateHud();
       return;
     }
-    // Browser shortcuts (⌘R, Ctrl+F, ⌘C...) go to the browser.
+    if (e.code === "KeyA" && (e.ctrlKey || e.metaKey) && !e.altKey && !typing(e)) {
+      api.selectOnScreen();
+      hideHint();
+      e.preventDefault();
+      updateHud();
+      return;
+    }
+    // Other browser shortcuts (⌘R, Ctrl+F, ⌘C...) go to the browser.
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.code) {
       case "KeyX": api.scatter(); break;
@@ -1429,22 +1437,39 @@
     if (s.notice && s.notice !== lastNotice) toast(s.notice);
     lastNotice = s.notice;
 
-    // Cards: saving the selection (when it is not already a card), the saved
-    // groups, then heroes, the special troops, and the rest.
-    const roleRank = (q) => (q.type === "Hero" ? 0 : ["caster", "bomber", "healer", "siege"].includes(q.role) ? 1 : 2);
-    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.mine).sort((a, b) => roleRank(a) - roleRank(b) || a.i - b.i);
-    const isCard = s.selected >= 0 || s.groups.some((g) => g.sel === 2);  // already one squad, or one group
+    function squadCard(q) {
+      const b = document.createElement("button");
+      b.className = "card panel" + (q.type === "Hero" ? " hero" : "");
+      b.dataset.index = q.i;
+      b.innerHTML = `${q.type === "Hero" ? icons.hero : icons[q.role] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
+      b.title = `${q.name}: ${q.type}`;
+      b.querySelector(".name").textContent = q.name;
+      b.onclick = () => {
+        if (!api) return;
+        if (JSON.parse(api.hud()).squads[q.i].sel === 2) api.focus(q.i); else api.select(q.i);
+        hideHint();
+        updateHud();
+      };
+      return b;
+    }
+    // Cards: the heroes (finding them always matters), then only the groups
+    // the player has made, and "+ New group" while the selection is not one of
+    // them. No card for every squad: a long row of them is no use.
+    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.mine && q.type === "Hero");
+    const heroSelected = s.selected >= 0 && s.squads[s.selected] && s.squads[s.selected].type === "Hero";
+    const isCard = heroSelected || s.groups.some((g) => g.sel === 2);  // a hero's card, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
     const key = (canSave ? "+|" : "") + s.groups.map((g) => g.slot).join(",") + "|" + mine.map((q) => q.name).join("|");
     if (key !== lastSquadsKey) {
       lastSquadsKey = key;
       $("cards").innerHTML = "";
+      for (const q of mine) $("cards").appendChild(squadCard(q));
       if (canSave) {
         const b = document.createElement("button");
         b.className = "card panel save";
-        b.innerHTML = "<span><b>+</b>Save group</span>";
-        b.title = "Save the selection as a group card";
-        b.onclick = () => { const slot = api.group(2, 0); if (slot >= 0) toast(`Saved as group ${slot}`); updateHud(); };
+        b.innerHTML = "<span><b>+</b>New group</span>";
+        b.title = "Make the selection a group (or Alt + a number)";
+        b.onclick = () => { const slot = api.group(2, 0); if (slot >= 0) toast(`Group ${slot} made`); updateHud(); };
         $("cards").appendChild(b);
       }
       for (const g of s.groups) {
@@ -1466,21 +1491,6 @@
           else { api.group(3, g.slot); toast(`Group ${g.slot} forgotten`); }
           updateHud();
         });
-        $("cards").appendChild(b);
-      }
-      for (const q of mine) {
-        const b = document.createElement("button");
-        b.className = "card panel" + (q.type === "Hero" ? " hero" : "");
-        b.dataset.index = q.i;
-        b.innerHTML = `${q.type === "Hero" ? icons.hero : icons[q.role] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
-        b.title = `${q.name}: ${q.type}`;
-        b.querySelector(".name").textContent = q.name;
-        b.onclick = () => {
-          if (!api) return;
-          if (JSON.parse(api.hud()).squads[q.i].sel === 2) api.focus(q.i); else api.select(q.i);
-          hideHint();
-          updateHud();
-        };
         $("cards").appendChild(b);
       }
     }

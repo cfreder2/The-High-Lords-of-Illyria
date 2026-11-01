@@ -22,13 +22,13 @@ The **settings** (⚙) hold three groups, and the game keeps your choices on the
 
 Choose a battle. You are at **Oakhaven Ford**, where the road from the north crosses the Aldwater. Your host stands on the near bank in blue; across the river the warband of the **Red Hand** is forming in red: footmen, dead men risen from the barrows, wolf riders, giants, minotaurs, spiders, devils and demons, archers, wizards and a dragon at the back. Their number is at the top of the screen, beside their name.
 
-![The field at Oakhaven Ford as the battle opens: your squads in line on the near bank, the ford beyond the trees, the squad cards along the bottom.](images/shots/ford_start.jpg)
+![The field at Oakhaven Ford as the battle opens: your squads in line on the near bank, the ford beyond the trees.](images/shots/ford_start.jpg)
 
 1. **Look around.** Pinch to zoom (or turn the mouse wheel), drag one finger to move over the land (the left mouse button), and twist two fingers to turn the view (the right mouse button). You can come down until one soldier fills the screen, or go up until the whole island is a map.
-2. **Pick a squad.** The cards along the bottom are your squads. Tap the card of the **Grey Watch**, your heavy infantry. Their soldiers wear blue rings.
+2. **Pick a squad.** Tap one soldier of the **Grey Watch**, your heavy infantry in their blue tunics, and tap him again: every heavy infantryman in view is selected. They wear blue rings. (Or hold on them and drag a box round them.)
 3. **March.** Tap the ground near the ford. The Grey Watch march there in line and halt facing the way they marched. Yellow rings on the ground show where each man will stand.
-4. **Face the enemy.** Tap the card again to be sure they are selected; then press and **hold** on the ground where you want them, and when a gold ghost of the formation appears, **drag** toward the river. They will form up across your line, facing along it.
-5. **Shoot.** Tap the card of the **1st Oakhaven Bowmen**, then tap a soldier of the Red Hand. The archers walk until he is in range and loose. Watch the arrows: they fly, and they can miss.
+4. **Face the enemy.** With them still selected, press and **hold** on the ground where you want them, and when a gold ghost of the formation appears, **drag** toward the river. They will form up across your line, facing along it.
+5. **Shoot.** Tap one of the **1st Oakhaven Bowmen** twice to select them, then tap a soldier of the Red Hand. The archers walk until he is in range and loose. Watch the arrows: they fly, and they can miss.
 6. **Charge.** When the enemy are across the ford and in your bowmen's arrows, press **Charge** at the top: every squad goes at the nearest enemy, the archers stopping at a long bowshot.
 7. **Find the fight.** **Fight!** brings the camera to the fiercest fighting on the field. **Pause** stops the battle while you think (and orders can still be given); **1×** cycles the speed.
 
@@ -57,7 +57,7 @@ In the first two weeks every lord is racing for the neutral towns. A town taken 
 - **Top left:** the game's name and version, the frame rate and how long the simulation and the drawing take (useful if a phone is struggling).
 - **Top middle:** the enemy's name and how many of them still stand, out of how many.
 - **Top right:** **Charge** (every squad at the nearest enemy), **Fight!** (the camera to the hottest fighting), **Pause**, the **speed**, and the **☰** menu (restart, the other set battle, the campaign, the settings). In a campaign battle, **Withdraw** leaves the field: the survivors go back to the map as an army thrown back.
-- **Bottom:** the **cards**, one for each squad, with its name, how many are left, a health bar and its strength badge. Heroes and special troops have their cards at the front, heroes in gold. Above the cards, when something is selected, the **action row**: **Formation**, **⚔ Attack**, **Scatter**, **Hold** and **Find**; above that a line naming the selection and its edges.
+- **Bottom:** the **cards**: your heroes in gold, and any groups you make (**+ New group** makes one of the selection), each with its name, how many are left and a health bar. Above the cards, when something is selected, the **action row**: **Formation**, **⚔ Attack**, **Scatter**, **Hold** and **Find**; above that a line naming the selection and its edges.
 - **In a siege:** a bar at the top shows the flag in the courtyard (chapter [](#capture-point)). Under the title a tag says whose land the battle is fought on.
 
 ## The screen in the campaign {#screen-campaign}
