@@ -181,23 +181,21 @@ As in Myth, every soldier is worth commanding on his own (`game/src/battle_comma
 
 The **⚔ Attack** button sits in the selection's action row: one tap lights it red and a line above it says what the next tap does ("Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground"); held, it turns gold for a force march. Either lasts one order; tap the button again (or Esc) to cancel. On the desktop the cursor always shows what a click would do (`Battle::intentAt`): a hand over your own soldiers, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair on the ground in attack mode, a double chevron for a force march.
 
-**Formations** (the Formation button opens a picker of nine, each sketched as it stands, and **As they stand** last, sketched as a face drawn in men; desktop keypad 1-9 or shift + 1-9):
+**Formations** (the Formation button opens a picker of seven, each sketched as it stands, and **As they stand** last, sketched as a face drawn in men; desktop keypad 1-7 or shift + 1-7; a line turned side on is the column, so there is none of its own):
 
 | Key | Formation | Layout | Pace | Use |
 |---|---|---|---|---|
-| 1 | Line | two ranks | 90% | the shield wall; the default for foot |
-| 2 | Short line | three ranks, narrower | 90% | a narrow front: a ford, a gate, a gap in a wall |
-| 3 | Staggered | a checkerboard of two ranks, nobody within 1.8 gaps of another | 95% | missile troops and grenadiers (their default): one stray bomb or fireball takes one man |
-| 4 | Box | a near-square block | 85% | all-round, slowest |
-| 5 | Wedge | one at the point, two behind, three behind them | 90% | horse and wolf riders (their default) |
-| 6 | Column | two abreast | 100% | the column of march |
-| 7 | Loose | a wide, ragged skirmish line | 100% | wizards, healers, fliers, berserkers (their default) |
-| 8 | Encircle | a wide crescent (220 degrees) around the point itself, every man facing outward | 90% | pinning a lone champion, or ringing a hero |
-| 9 | V | a V with its point at the back and its arms reaching forward at 45 degrees (each man 0.8 gaps forward and out of the last, 1.13 gaps apart): the opposite of the Wedge | 90% | drawing a charge onto the point and closing on its flanks; a wide front from few men |
+| 1 | Line | one rank, everyone abreast | 90% | the widest front; turned side on, the column of march |
+| 2 | Double line | two ranks | 90% | the shield wall; the default for foot |
+| 3 | Box | a hollow square: `ceil(n/4)` gaps to a side, a man at each corner, front and flanks filled first, every side facing out (a corner man out across it); under four men, abreast | 85% | all round: nothing takes it in the flank or back; slowest |
+| 4 | Wedge | one at the point, two behind, three behind them | 90% | horse and wolf riders (their default) |
+| 5 | Loose | a wide, ragged skirmish line, nobody within 1.4 gaps of another | 100% | missile troops, grenadiers, wizards, healers, fliers, berserkers (their default): one stray bomb or fireball takes one man |
+| 6 | Encircle | a wide crescent (220 degrees) around the point itself, every man facing outward | 90% | pinning a lone champion, or ringing a hero |
+| 7 | V | a V with its point at the back and its arms reaching forward at 45 degrees (each man 0.8 gaps forward and out of the last, 1.13 gaps apart): the opposite of the Wedge | 90% | drawing a charge onto the point and closing on its flanks; a wide front from few men |
 | 0 | **Scatter** | not a formation: everyone selected runs flat out 7-10 m directly away from the group's centre (the man at the centre picks his own way); they march on scattered so | full speed | the moment a bomb, stone or fireball is in the air |
 | | **As they stand** | not a formation: whatever arrangement they were last sent in, kept as they march (what every selection starts in) | the slowest of their squads' formations | squads placed beside each other, a screen, any shape you have drawn them into |
 
-Spacing is the biggest selected soldier's size (2.6 x his radius, at least 1.8 m); Staggered and Loose open it wider, so the loose formations are also the safe ones against blasts. A squad marches at its slowest member's pace times the formation's pace above: the tight formations a little slower than the loose ones. The computer forms its squads the same way (archers and grenadiers Staggered, foot in Line, horse in a Wedge, wizards and healers Loose).
+Spacing is the biggest selected soldier's size (2.6 x his radius, at least 1.8 m); Loose opens it wider, so it is also the safe one against blasts. A squad marches at its slowest member's pace times the formation's pace above: the box a little slower than the lines, they than the loose. The computer forms its squads the same way (archers, grenadiers, wizards and healers Loose, foot in a Double line, horse in a Wedge).
 
 **Other orders.** **Scatter** (button, X, or keypad 0), **Hold** (B) stops, **Find** (C) brings the camera to the selection, **G** attack mode, **V** force-march mode, **T** lay satchels, **Esc** cancels the mode or lets go of the selection, **Space** pauses. The keys sit about W A S D, where the left hand rests (the right is on the mouse): W A S D pan, Q E turn, R F zoom, Z north; the old M, L, H and N still work. No F-key is bound.
 

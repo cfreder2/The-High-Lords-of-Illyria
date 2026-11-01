@@ -401,7 +401,7 @@
     row("hold", "Hold where they should go, then drag", "A gold ghost of them appears there; drag the way they should face, the whole of it turning, and let go.") +
     row("attack", "⚔ Attack, then tap", "Attack whatever you tap next: any soldier (even one of ours), a gate, a wall, house or tree (only engines, grenadiers and wizards can hurt those), or the ground.") +
     row("march", "Hold ⚔ Attack: » March", "A force march: tap where to go and they ignore the enemy on the way, to pull out of a fight or run past one.") +
-    row("formation", "Formation", "The picker: Line, Short line, Staggered, Box, Wedge, Column, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
+    row("formation", "Formation", "The picker: Line, Double line, Box (hollow, facing out), Wedge, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
     row("scatter", "Scatter", "Everyone selected runs outward, the moment a bomb or fireball is in the air.") +
     `<div class="ctl">${pic.card}<b>Hold · Find</b><span>Hold stops them where they stand; Find brings the camera to them.</span></div>` +
     `<h3>Cards and groups</h3>` +
@@ -448,7 +448,7 @@
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
     `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Save the selection as that group.</td></tr>` +
-    `<tr><td>${k("Shift")} + ${k("1")}…${k("9")}, keypad</td><td>Formation: 1 Line, 2 Short line, 3 Staggered, 4 Box, 5 Wedge, 6 Column, 7 Loose, 8 Encircle, 9 V.</td></tr>` +
+    `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 as they stand.</td></tr>` +
     `<tr><td>${k("G")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground).</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
     `<tr><td>${k("T")}</td><td>Lay satchels: the next click sends the selected grenadiers there to lay one each.</td></tr>` +

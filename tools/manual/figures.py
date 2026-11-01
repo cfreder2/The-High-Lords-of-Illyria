@@ -75,15 +75,35 @@ def layout(kind, count, spacing=1.0):
             slots.append([col * gap, -row * depth, 0.0, 1.0])
 
     if kind == "line":
+        rows(count, spacing, spacing, 0)
+    elif kind == "doubleline":
         rows(max(1, (count + 1) // 2), spacing, spacing, 0)
-    elif kind == "shortline":
-        rows(max(1, (count + 2) // 3), spacing, spacing, 0)
     elif kind == "box":
-        rows(max(1, math.ceil(math.sqrt(count * 1.4))), spacing, spacing, 0)
-    elif kind == "column":
-        rows(2, spacing, spacing, 0)
-    elif kind == "staggered":
-        rows(max(1, (count + 1) // 2), spacing * 2.0, spacing * 1.5, 0.5)
+        if count < 4:
+            rows(count, spacing, spacing, 0)
+        else:
+            # A hollow square, a man at each corner, front and flanks first, every side facing out.
+            side = (count + 3) // 4
+            half = side * spacing / 2
+            out = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+
+            def at(s, k):
+                t = -half + k * spacing
+                x, y = [(t, half), (half, -t), (-t, -half), (-half, t)][s]
+                fx, fy = out[s]
+                if k == 0:
+                    gx, gy = out[(s + 3) % 4]
+                    n = math.hypot(fx + gx, fy + gy)
+                    fx, fy = (fx + gx) / n, (fy + gy) / n
+                return [x, y, fx, fy]
+
+            for s in (0, 1, 3):
+                for k in range(side):
+                    slots.append(at(s, k))
+            back = count - 3 * side
+            for i in range(back):
+                slots.append(at(2, i if back == side else (i * side + side // 2) // back % side))
+            return slots, False  # centred on the square
     elif kind == "loose":
         rows(max(1, (count + 1) // 2), spacing * 2.2, spacing * 2.2, 0)
         for i, s in enumerate(slots):
@@ -119,7 +139,7 @@ def layout(kind, count, spacing=1.0):
     return slots, False
 
 
-FORMATIONS = ["line", "shortline", "staggered", "box", "wedge", "column", "loose", "encircle", "vee"]
+FORMATIONS = ["line", "doubleline", "box", "wedge", "loose", "encircle", "vee"]
 
 
 def formation_svg(kind, count=12):

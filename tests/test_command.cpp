@@ -59,21 +59,9 @@ TEST(every_formation_has_a_place_for_each_and_keeps_its_gaps) {
         }
         CHECK(formationName(f)[0] != '?');
     }
-    // Missile troops' checkerboard: nobody within 1.8 gaps of anyone (one blast, one man).
-    CHECK(minGap(formationLayout(Formation::Staggered, 12, spacing)) >= spacing * 1.79f);
-    {
-        // Each man of the back rank stands in a gap of the front rank.
-        const std::vector<FormationSlot> s = formationLayout(Formation::Staggered, 12, spacing);
-        std::vector<float> front, back;
-        for (const FormationSlot& p : s) (p.pos.y > 0 ? front : back).push_back(p.pos.x);
-        CHECK(front.size() == 6 && back.size() == 6);
-        for (float x : back) {
-            float nearest = 1e9f;
-            for (float fx : front) nearest = std::min(nearest, std::abs(fx - x));
-            CHECK_NEAR(nearest, spacing, 0.01);  // half of the 2-gap interval
-        }
-    }
-    // The short line: three ranks, narrower than the two-rank line.
+    // Missile troops loose: nobody within 1.4 gaps of anyone (one blast, one man), the line's men one apart.
+    CHECK(minGap(formationLayout(Formation::Loose, 12, spacing)) >= spacing * 1.4f);
+    // The line: one rank, twice as wide as the double line's two.
     const auto width = [](const std::vector<FormationSlot>& s) {
         float lo = 1e9f, hi = -1e9f;
         for (const FormationSlot& p : s) lo = std::min(lo, p.pos.x), hi = std::max(hi, p.pos.x);
@@ -85,9 +73,24 @@ TEST(every_formation_has_a_place_for_each_and_keeps_its_gaps) {
             if (std::none_of(ys.begin(), ys.end(), [&](float y) { return std::abs(y - p.pos.y) < 0.01f; })) ys.push_back(p.pos.y);
         return ys.size();
     };
-    CHECK(ranks(formationLayout(Formation::ShortLine, 12, spacing)) == 3);
-    CHECK(ranks(formationLayout(Formation::Line, 12, spacing)) == 2);
-    CHECK(width(formationLayout(Formation::ShortLine, 12, spacing)) < width(formationLayout(Formation::Line, 12, spacing)));
+    CHECK(ranks(formationLayout(Formation::Line, 12, spacing)) == 1);
+    CHECK(ranks(formationLayout(Formation::DoubleLine, 12, spacing)) == 2);
+    CHECK_NEAR(width(formationLayout(Formation::Line, 12, spacing)), 22.0, 0.01);
+    CHECK_NEAR(width(formationLayout(Formation::DoubleLine, 12, spacing)), 10.0, 0.01);
+    // The box: hollow, everyone on its edge (none inside), a man at each corner, all facing out.
+    for (int n : {12, 14, 16}) {
+        const std::vector<FormationSlot> s = formationLayout(Formation::Box, n, spacing);
+        float half = 0;
+        for (const FormationSlot& p : s) half = std::max(half, std::max(std::abs(p.pos.x), std::abs(p.pos.y)));
+        int corners = 0;
+        for (const FormationSlot& p : s) {
+            const bool onX = std::abs(std::abs(p.pos.x) - half) < 0.6f, onY = std::abs(std::abs(p.pos.y) - half) < 0.6f;
+            CHECK(onX || onY);
+            CHECK(p.face.dot(V3{p.pos.x, p.pos.y, 0}) > 0);
+            corners += onX && onY;
+        }
+        CHECK(corners >= 3);
+    }
     // Encirclement: a wide crescent around the point, every man facing out.
     {
         const std::vector<FormationSlot> s = formationLayout(Formation::Encircle, 16, spacing);
@@ -104,7 +107,8 @@ TEST(every_formation_has_a_place_for_each_and_keeps_its_gaps) {
         CHECK(hi - lo < 6.0f);  // but open behind: a crescent, not a ring
     }
     // Everyone else faces the front.
-    for (const FormationSlot& p : formationLayout(Formation::Box, 9, spacing)) CHECK(p.face.y == 1.0f);
+    for (Formation f : {Formation::Line, Formation::DoubleLine, Formation::Wedge, Formation::Loose, Formation::Vee})
+        for (const FormationSlot& p : formationLayout(f, 9, spacing)) CHECK(p.face.y == 1.0f);
 }
 
 TEST(formation_spacing_respects_size_and_tight_formations_march_slower) {
@@ -114,8 +118,8 @@ TEST(formation_spacing_respects_size_and_tight_formations_march_slower) {
     }
     CHECK(formationSpacing(UnitType::Elephants) > formationSpacing(UnitType::LightInfantry));
     CHECK(formationPace(Formation::Box) < formationPace(Formation::Line));
-    CHECK(formationPace(Formation::Line) < formationPace(Formation::Staggered));
-    CHECK(formationPace(Formation::Staggered) < formationPace(Formation::Loose));
+    CHECK(formationPace(Formation::Line) == formationPace(Formation::DoubleLine));
+    CHECK(formationPace(Formation::DoubleLine) < formationPace(Formation::Loose));
 
     // The same squad marching the same way: slower in a box than loose.
     const auto pace = [](Formation f) {
@@ -137,8 +141,8 @@ TEST(the_computer_forms_sensibly) {
     const Battle b(3);
     for (const Squad& s : b.squads()) {
         const Role role = roleOf(s.type);
-        if (role == Role::Ranged || role == Role::Bomber) CHECK(s.formation == Formation::Staggered);
-        if (s.type == UnitType::LightInfantry || s.type == UnitType::Undead || s.type == UnitType::HeavyInfantry) CHECK(s.formation == Formation::Line);
+        if (role == Role::Ranged || role == Role::Bomber) CHECK(s.formation == Formation::Loose);
+        if (s.type == UnitType::LightInfantry || s.type == UnitType::Undead || s.type == UnitType::HeavyInfantry) CHECK(s.formation == Formation::DoubleLine);
         if (s.type == UnitType::WolfRiders || s.type == UnitType::LightCavalry) CHECK(s.formation == Formation::Wedge);
     }
 }
@@ -210,7 +214,7 @@ TEST(groups_are_saved_and_recalled) {
     b.selectSquad(squadNamed(b, "Lord Aldric"));
     CHECK(b.saveGroup() == 1);  // the first key along the keyboard
     b.selectSquad(squadNamed(b, "Ferry Pikes"));
-    b.setFormation(Formation::ShortLine);
+    b.setFormation(Formation::Line);
     b.assignGroup(7);
     CHECK(b.groupSelection(7) == 2);
     b.clearSelection();
@@ -218,7 +222,7 @@ TEST(groups_are_saved_and_recalled) {
     CHECK(b.selectedSquad() == squadNamed(b, "Lord Aldric"));
     CHECK(b.recallGroup(7));
     CHECK(b.selectedSquad() == squadNamed(b, "Ferry Pikes"));
-    CHECK(b.selectionFormation() == Formation::ShortLine);
+    CHECK(b.selectionFormation() == Formation::Line);
     CHECK(!b.recallGroup(4));
     b.clearGroup(7);
     CHECK(!b.recallGroup(7));

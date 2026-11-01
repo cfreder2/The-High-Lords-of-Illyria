@@ -23,20 +23,21 @@ class BattleMode;  // mode.h
 // How a squad arranges itself, as in Myth: each soldier keeps his place as
 // the squad marches, and the whole squad moves at its slowest member's pace
 // (slower still in the tight formations: see formationPace).
-//   Line        two ranks: the shield wall
-//   ShortLine   three ranks, narrower and deeper
-//   Staggered   a loose checkerboard of two ranks: missile troops, out of
-//               reach of one stray blast
-//   Box, Wedge, Column, Loose
+//   Line        one rank, everyone abreast (turned, it is a column)
+//   DoubleLine  two ranks: the shield wall
+//   Box         a hollow square, a man at each corner, every side facing
+//               out: nothing takes it in the flank
+//   Wedge       one at the point, two behind, three behind them
+//   Loose       a wide, ragged skirmish line: missile troops, out of reach
+//               of one stray blast
 //   Encircle    a wide crescent around the point, everyone facing outward
 //   Vee         a V, the point at the back and the arms reaching forward:
 //               whatever comes at the point is taken in both flanks
-enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column, Staggered, ShortLine, Encircle, Vee };
-constexpr int kFormationCount = 9;
-// The picker's order, which is also the desktop keys 1-9 (0 is Scatter).
-constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::ShortLine, Formation::Staggered,
-                                                        Formation::Box,   Formation::Wedge,     Formation::Column,
-                                                        Formation::Loose, Formation::Encircle,  Formation::Vee};
+enum class Formation : uint8_t { Line, DoubleLine, Box, Wedge, Loose, Encircle, Vee };
+constexpr int kFormationCount = 7;
+// The picker's order, which is also the desktop keys 1-7 (0 is Scatter).
+constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::DoubleLine, Formation::Box,  Formation::Wedge,
+                                                        Formation::Loose, Formation::Encircle,   Formation::Vee};
 const char* formationName(Formation f);
 // The picker's tenth entry, after the nine: the selection as it stands
 // (Battle::keepShape), its own arrangement kept as it moves.
@@ -66,7 +67,7 @@ struct Squad {
     sim::PlayerId owner;
     sim::UnitType type;
     std::vector<sim::EntityId> members;
-    Formation formation = Formation::Box;
+    Formation formation = Formation::DoubleLine;
     mutable V3 facing{1, 0, 0};  // the way it last marched (presentation of orders, not sim state)
     // A garrison holds its town: it fights whoever comes within reach of its
     // post, then goes back to it, and never marches out.
