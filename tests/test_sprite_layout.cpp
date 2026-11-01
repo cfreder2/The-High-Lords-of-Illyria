@@ -208,7 +208,7 @@ TEST(sprite_death_clip_by_how_he_died) {
 // and the camera's closest distance keeps the sharpest sheet at 1.5x at most.
 TEST(closeup_sheets_load_near_and_drop_far) {
     using closeup::Need;
-    const auto need = [](int type, float px, bool loaded, double texels = 3.2e6) {
+    const auto need = [](int type, float px, bool loaded, double texels = closeup::kBudget * 0.4) {
         Need n;
         n.type = type, n.pxPerMetre = px, n.sheetPpm = 48, n.available = true, n.loaded = loaded, n.texels = texels;
         return n;
@@ -223,7 +223,7 @@ TEST(closeup_sheets_load_near_and_drop_far) {
     CHECK(closeup::choose({none}).empty());
     const auto three = closeup::choose({need(1, 60, false), need(2, 150, false), need(3, 90, true)});
     CHECK(three.size() == 2 && three[0] == 2 && three[1] == 3);  // two fit the budget: the most magnified
-    CHECK(closeup::choose({need(1, 100, false, 9e6)}).empty());  // too big for the budget at all
+    CHECK(closeup::choose({need(1, 100, false, closeup::kBudget * 1.1)}).empty());  // too big for the budget at all
 
     const float screen = 844 * 2.0f;  // a phone's height in CSS pixels, at two device pixels each
     const float d48 = closeup::minDistance(screen, Camera::kFovY, 48, Camera::kMinDistance);
@@ -233,9 +233,10 @@ TEST(closeup_sheets_load_near_and_drop_far) {
     CHECK(d96 > 10 && d96 < 20);
     CHECK(closeup::minDistance(screen, Camera::kFovY, 2000, Camera::kMinDistance) == Camera::kMinDistance);
     CHECK(closeup::minDistance(screen, Camera::kFovY, 0, Camera::kMinDistance) == Camera::kMinDistance);
-    // A soldier on screen shown at 144 px a metre with a 48 px/m sheet: three times too close.
-    CHECK_NEAR(closeup::minDistanceFor(20, 144, 48), 40, 0.01);
-    CHECK_NEAR(closeup::minDistanceFor(20, 72, 48), 20, 0.01);
+    // A soldier on screen shown at 144 px a metre with a 48 px/m sheet: three times its size, the camera
+    // must stand back to where he is magnified kMaxMagnification times.
+    CHECK_NEAR(closeup::minDistanceFor(20, 144, 48), 20 * 3 / closeup::kMaxMagnification, 0.01);
+    CHECK_NEAR(closeup::minDistanceFor(20, 72, 48), 20 * 1.5 / closeup::kMaxMagnification, 0.01);
 }
 
 // The camera keeps out of that distance when pinched, and eases out to it.

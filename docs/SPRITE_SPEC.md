@@ -232,9 +232,9 @@ cells come from today's sheet (kept the first time in
 
 In the game the normal sheet is always loaded (halved in battles with many types
 on a phone); a type's close-up sheet is fetched only while the camera is close to
-its soldiers (within a texture budget of 8 M texels) and dropped when it pulls
+its soldiers (within a texture budget of 28 M texels) and dropped when it pulls
 back, and the camera may not come so close that any sprite on screen is magnified
-past 1.5 times its sheet's resolution (`game/render/closeup.h`).
+past 2 times its sheet's resolution (`game/render/closeup.h`).
 
 Today's Blender sheets get close-up versions with
 

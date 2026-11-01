@@ -352,7 +352,8 @@ public:
 
     // A press held on the battlefield (Gestures' hold): drawing a selection
     // box, or a move's facing: pressed where they are to go, dragged the way
-    // they are to face, the ghost of them there turning with it. `box` forces a box
+    // they are to face, the ghost of them there turning with it (pressed on
+    // one of the selected: they turn where they stand). `box` forces a box
     // (shift on the desktop); otherwise it is a box when nothing is selected
     // or the press starts on one of ours. False: not taken (the camera pans).
     bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);

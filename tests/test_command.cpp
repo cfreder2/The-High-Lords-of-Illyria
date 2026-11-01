@@ -327,6 +327,37 @@ std::vector<V3> placesFrom(const Battle& b, const std::vector<illyria::sim::Enti
 
 }  // namespace
 
+TEST(pressed_on_the_selected_they_turn_where_they_stand) {
+    // A hold on one of the selected and a drag south: not a box, but the
+    // facing line from their middle; they turn there and stay put.
+    Battle b(42);
+    const int watch = squadNamed(b, "The Grey Watch");
+    b.selectSquad(watch);
+    const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
+    const V3 middle = middleOf(b, men);
+    V3 on = toV3(b.world().units()[men[3] - 1].pos) + V3{0, 0, 0.9f};
+    const Camera c = cameraOn(b, middle, 60);
+    float px, py, qx, qy;
+    CHECK(c.project(on, px, py));
+    V3 south = middle + V3{0, -12, 0};
+    south.z = b.heightAt(south.x, south.y);
+    CHECK(c.project(south, qx, qy));
+    CHECK(b.pressBegin(c, px, py, 1.0f, false));
+    CHECK(b.drag().mode == Battle::Drag::Mode::Facing);
+    CHECK(std::hypot(b.drag().anchor.x - middle.x, b.drag().anchor.y - middle.y) < 0.2f);
+    b.pressMove(c, qx, qy);
+    CHECK(b.drag().aimed && b.drag().facing.dot(V3{0, -1, 0}) > 0.9f);
+    b.pressEnd(c, qx, qy, false);
+    run(b, 30);
+    CHECK(std::hypot(middleOf(b, men).x - middle.x, middleOf(b, men).y - middle.y) < 2.0f);
+    for (illyria::sim::EntityId id : men) CHECK(facingOf(b, id).dot(V3{0, -1, 0}) > 0.95f);
+    // On one of ours not selected: a box, as ever.
+    b.selectSquad(squadNamed(b, "Ferry Pikes"));
+    CHECK(b.pressBegin(c, px, py, 1.0f, false));
+    CHECK(b.drag().mode == Battle::Drag::Mode::Box);
+    b.pressEnd(c, px, py, true);
+}
+
 TEST(a_selection_marches_as_it_stands) {
     // Tapped somewhere else, knights and archers keep their places and their
     // front; given a new front, the whole of it turns, the archers still behind.
@@ -351,6 +382,28 @@ TEST(a_selection_marches_as_it_stands) {
     const V3 turned{-gap.y, gap.x, 0};
     CHECK((bowsFromKnights(b) - turned).length() < 2.5f);
     for (illyria::sim::EntityId id : knights) CHECK(facingOf(b, id).dot(V3{0, 1, 0}) > 0.95f);
+}
+
+TEST(dragged_to_face_a_way_every_one_of_them_faces_it) {
+    // Knights who have been facing every which way (each walked off on his
+    // own, as men turn to whatever is near): pressed and dragged north, they
+    // all end up facing north, not each turned from where he faced.
+    Battle b(42);
+    b.selectSquad(squadNamed(b, "The Grey Watch"));
+    const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
+    const V3 start = middleOf(b, men);
+    for (size_t i = 0; i < men.size(); ++i) {
+        const float a = static_cast<float>(i) * 2.1f;
+        b.testMove(men[i], toV3(b.world().units()[men[i] - 1].pos) + V3{std::cos(a) * 3.0f, std::sin(a) * 3.0f, 0});
+    }
+    run(b, 6);
+    float spread = 0;
+    for (illyria::sim::EntityId id : men) spread = std::max(spread, 1.0f - facingOf(b, id).dot(facingOf(b, men.front())));
+    CHECK(spread > 0.5f);  // they did face different ways
+    b.selectSquad(squadNamed(b, "The Grey Watch"));
+    b.orderMoveFacing(start + V3{-25, 10, 0}, V3{0, 1, 0});
+    run(b, 45);
+    for (illyria::sim::EntityId id : men) CHECK(facingOf(b, id).dot(V3{0, 1, 0}) > 0.95f);
 }
 
 TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {

@@ -12,15 +12,17 @@
 
 namespace illyria::game::closeup {
 
-// Screen pixels a sheet pixel may cover at the closest zoom.
-constexpr float kMaxMagnification = 1.5f;
+// Screen pixels a sheet pixel may cover at the closest zoom (a little soft,
+// but a soldier then stands a fifth of a phone's screen high).
+constexpr float kMaxMagnification = 2.0f;
 // Load a close-up sheet when the normal one is magnified this much...
 constexpr float kLoadAbove = 1.15f;
 // ...and keep it until it would be shrunk below this (no flicker in between).
 constexpr float kKeepAbove = 0.8f;
 // Texels all close-up sheets together may hold (four bytes each, plus mipmaps:
-// about 43 MB), on top of the normal sheets' budget.
-constexpr double kBudget = 8e6;
+// about 150 MB), on top of the normal sheets' budget: three types' at once,
+// a type of many clips (the archers', 88 frames a view) near 12 M alone.
+constexpr double kBudget = 28e6;
 
 struct Need {
     int type = 0;

@@ -518,18 +518,32 @@ Battle::Shape Battle::shapeOf(const std::vector<sim::EntityId>& units) const {
             o.stand += pos(id);
             ++o.n;
         }
+    // Each one's front: his order's, else his squad's (the way it last marched,
+    // or was set out facing), not the way he happens to look; the whole one's
+    // is theirs together.
+    const auto frontOf = [&](sim::EntityId id) {
+        if (const Slot* m = sent(id)) return flat(m->front).normalized();
+        const int squad = squadOfUnit_[id - 1];
+        return squad >= 0 ? flat(squads_[static_cast<size_t>(squad)].facing).normalized()
+                          : flat(toV3(world_->units()[id - 1].facing)).normalized();
+    };
     Shape s;
     V3 middle, front;
+    for (sim::EntityId id : units) front += frontOf(id);
+    s.front = flat(front).normalized();
+    if (s.front.length() == 0) s.front = {1, 0, 0};
     for (sim::EntityId id : units) {
-        V3 place = pos(id), face = flat(toV3(world_->units()[id - 1].facing)).normalized();
+        V3 place = pos(id);
+        // He faces the whole one's front, turned as his own order turned him from his
+        // (outward, in an encirclement); with no order of his, straight to it.
+        V3 face = s.front;
         if (const Slot* m = sent(id)) {
             // Where he was sent beside the others of his order, they standing where they are.
             const Middles& o = orders[m->order];
             place = flat(m->pos) + (o.stand - o.sent) * (1.0f / static_cast<float>(o.n));
-            face = m->face;
-            front += m->front;
-        } else {
-            front += face;
+            const V3 a = frontOf(id), f = flat(m->face).normalized();
+            const float c = a.dot(f), sn = a.x * f.y - a.y * f.x;
+            face = V3{s.front.x * c - s.front.y * sn, s.front.x * sn + s.front.y * c, 0};
         }
         s.ids.push_back(id);
         s.offset.push_back(place);
@@ -538,8 +552,6 @@ Battle::Shape Battle::shapeOf(const std::vector<sim::EntityId>& units) const {
     }
     if (!s.ids.empty()) middle = middle * (1.0f / static_cast<float>(s.ids.size()));
     for (V3& o : s.offset) o = o - middle;
-    s.front = flat(front).normalized();
-    if (s.front.length() == 0) s.front = {1, 0, 0};
     return s;
 }
 
@@ -896,15 +908,25 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     drag_.pixelScale = pixelScale;
     drag_.x0 = drag_.x1 = x;
     drag_.y0 = drag_.y1 = y;
+    // On one of the selected: they turn where they stand (the drag from their
+    // middle). On another of ours, or with no one selected: a box.
+    bool turnInPlace = false;
     if (!box) {
         const int u = unitAt(camera, x, y, pixelScale);
-        box = selectedAlive().empty() || (u >= 0 && world_->units()[static_cast<size_t>(u)].owner == local_);
+        const bool ours = u >= 0 && world_->units()[static_cast<size_t>(u)].owner == local_;
+        turnInPlace = ours && isSelected(world_->units()[static_cast<size_t>(u)].id);
+        box = selectedAlive().empty() || (ours && !turnInPlace);
     }
     if (box) {
         drag_.mode = Drag::Mode::Box;
         return true;
     }
-    if (!camera.pickGround(x, y, drag_.anchor)) return false;
+    if (turnInPlace) {
+        drag_.anchor = centreOf(selectedAlive());
+        drag_.anchor.z = heightAt(drag_.anchor.x, drag_.anchor.y);
+    } else if (!camera.pickGround(x, y, drag_.anchor)) {
+        return false;
+    }
     drag_.mode = Drag::Mode::Facing;
     drag_.tip = drag_.anchor;
     // Until dragged: there, facing as they do now.

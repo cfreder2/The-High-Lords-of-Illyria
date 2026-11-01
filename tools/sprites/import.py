@@ -59,7 +59,7 @@ import sheet  # noqa: E402
 from sprites import pack  # noqa: E402  (resolve: the cutout, edge darkening and outline, as the bake does)
 
 NORMAL_AREA = 2048 * 2048 / 1.35  # texels the normal sheet's cells may cover (render.choose_ppm)
-HD_AREA = 5.5e6                   # the close-up sheet's, so the atlas stays inside closeup::kBudget
+HD_AREA = 11e6                    # the close-up sheet's: a type of many clips still at 96 px a metre, the atlas inside closeup::kBudget
 LIVING = ('idle', 'walk', 'attack', 'flinch')
 PLANT_Y_M = 0.03  # how far a living frame's feet may stray from its view's ground line (plant)
 PLANT_X_M = 0.04  # and an idle or walking frame's head from its view's
