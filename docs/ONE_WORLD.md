@@ -96,6 +96,22 @@ How the size was chosen, moving today's 80 towns closer:
   and the economy: heavy infantry reach the nearest place in about three quarters of a day
   (0.7 today) and make the longest march in about 13 days (13.6 today). So the Warlords tables for gold
   and training stay as they are, in days, and a 120-day campaign is four hours at 1×.
+- **New squads, at 2 minutes a day.** Each town trains one squad at a time, by today's
+  table:
+
+  | Squad | Days | At 1× |
+  |---|---|---|
+  | Light infantry | 2 | 4 min |
+  | Heavy infantry, archers, pikemen, dwarves, warriors | 4 | 8 min |
+  | Light cavalry, wolf riders | 5 | 10 min |
+  | Heavy cavalry, catapult | 6 | 12 min |
+  | A levy of rare troops | 3 | 6 min |
+
+  Gold is the other limit, and the day's length doesn't change it. A town pays about 25
+  gold a day (a capital 30), and a squad costs a quarter of its price a day to keep (heavy
+  infantry 5). So a town training heavy infantry without a break pays for about four
+  squads of its own, which takes it about half an hour. After that, more soldiers need more
+  towns or more land.
 - **Fast-forward is limited by fighting.** Every fight is simulated in full, so at 8× with
   a big battle on, the machine may not keep up. When it can't, the speed drops to the
   highest it can hold, and the speed control says so. This is the speed setting changing,
@@ -106,6 +122,9 @@ How the size was chosen, moving today's 80 towns closer:
 - **An army is a squad,** as in battle: its men, its formation, its facing, its orders. A
   stack becomes the player's group of squads (GAME_DESIGN.md §4.1.2): select them, give
   them a formation, send them.
+- **No caps.** A group is as many squads as you select, and a town holds whatever fits
+  inside its walls. Warlords' 8 to a cell goes. Packing men tight is its own risk: a
+  clump is what a dwarf's grenade is for.
 - **Orders are the battle's orders, at any distance.** Tap a town across the island: the
   route planner finds the fastest way and they set off. Long routes are planned on the
   44 m campaign grid with the gaits' speeds, then refined on the 4 m grid over the next few hundred
@@ -172,7 +191,7 @@ How the size was chosen, moving today's 80 towns closer:
 
 | Built | Becomes |
 |---|---|
-| Campaign stacks, movement points, the 8-to-a-cell rule | Squads on the land, the battle's movement |
+| Campaign stacks, movement points, the 8-to-a-cell rule | Squads on the land, the battle's movement, no caps |
 | "Fight it" / "Resolve", the battle window (`Region::fromContinent`) | Fights in place, everywhere |
 | Close-up land streamed around the camera | Kept, and the simulation samples the same ground |
 | Towns, castles, walls, gates, ramps | Kept, all of them in the simulation at once |
@@ -201,10 +220,9 @@ Each step leaves a playable game.
 
 ## Open questions
 
-- **The day's length.** 2 minutes is proposed, to keep today's proportions. A 5-minute day
-  would make marching quick against the economy (the longest march about 5 days) and a
-  120-day campaign ten hours at 1×.
+- **The day's length.** 2 minutes for now, to be settled in play by how often new squads
+  come. If they come too slowly or too fast, the day is the one number to turn: income,
+  upkeep and training move together. A 5-minute day would make marching quick against the
+  economy (the longest march about 5 days) and a 120-day campaign ten hours at 1×.
 - **What the computer lords see.** Only what their own men see (fair, and more work), or
   everything (as their campaign AI does today)?
-- **Squads to a group, and a town's room.** Warlords' 8 to a cell has no cell left to apply
-  to. Is there a cap on how many squads march together, or a town holds (32 today)?
