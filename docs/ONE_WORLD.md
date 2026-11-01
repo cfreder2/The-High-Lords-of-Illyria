@@ -168,8 +168,20 @@ Each step leaves a playable game.
 
 ## Open questions
 
-- **How much to halve.** Half each way (proposed), or half the area (about 0.7 each way:
-  closest walls 155 m apart, the longest heavy-infantry march about 59 min at 1×).
+- **How much to cut.** Today's 80 towns moved closer as the map shrinks, walls kept at
+  their size (town 73 m in radius, capital 113 m):
+
+  | Each way | Map | Closest walls | Towns within 60 m of another | Longest march, heavy infantry / cavalry | Walls for 30 m between every pair |
+  |---|---|---|---|---|---|
+  | 0.71 (half the area) | 6.0 × 7.6 km | 155 m | 0 | 59 / 16 min | as today |
+  | 1/2 (proposed) | 4.3 × 5.3 km | 54 m | 4 | 42 / 11 min | as today |
+  | 0.45 | 3.8 × 4.8 km | 30 m | 8 | 38 / 10 min | as today |
+  | 0.40 | 3.4 × 4.3 km | 6 m | 41 | 33 / 9 min | 87% |
+  | 1/3 | 2.8 × 3.6 km | 11 towns overlap | 67 | 28 / 8 min | 70% (town 51 m, capital 79 m) |
+
+  A third each way leaves about two 267 m hexes per town, and every garrison within
+  bowshot of the next, so "away from any enemy" would have to mean away from any enemy not
+  at rest behind its own walls.
 - **The day's length.** 5 minutes is proposed.
 - **What you can see of the enemy.** The minimap shows every soldier; is there fog of war?
 - **Squads to a group, and a town's room.** Warlords' 8 to a cell has no cell left to apply
