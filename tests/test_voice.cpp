@@ -202,9 +202,10 @@ TEST(only_what_is_in_earshot_is_heard_but_orders_always_are) {
         h.take(b);
     }
     int positional = 0;
+    // Heard anywhere: the player's orders, the outcome, and the herald's news (his losses, a match's).
     for (const VoiceCue& c : h.cues)
         if (c.situation != Situation::Selected && c.situation != Situation::Charge && c.situation != Situation::Victory &&
-            c.situation != Situation::Defeat && c.situation != Situation::HeroFell)
+            c.situation != Situation::Defeat && c.situation != Situation::HeroFell && c.situation < Situation::Casualties)
             ++positional;
     CHECK(h.has(Situation::Selected));
     CHECK(positional == 0);

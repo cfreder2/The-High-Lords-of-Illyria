@@ -51,6 +51,12 @@ constexpr Fixed kBlindDispersion = Fixed::fromInt(2);
 // him, so the parapet in front of him counts.
 constexpr Fixed kClearShort = Fixed::fromInt(2);
 constexpr Fixed kClearShortAtWalk = Fixed::fromRatio(3, 10);
+// A missile lofted over the highest thing in its way clears it by this; a
+// wall or gate this near the bow is the parapet he shoots through (walkShot's).
+constexpr Fixed kLoftClear = Fixed::fromRatio(3, 10);
+constexpr Fixed kOwnParapet = Fixed::fromInt(2);
+// Trees and bushes this near the mark are the wood he stands in: shot into, not over.
+constexpr Fixed kWoodCover = Fixed::fromInt(6);
 // An arrow glancing off stone keeps this share of its speed, and drops.
 constexpr int64_t kGlanceDivisor = 24;
 // Veterancy. A soldier is promoted at these kill counts (regular, veteran,
@@ -195,6 +201,23 @@ Vec3 normalized(const Vec3& v) {
     const Fixed len = v.length();
     return len == Fixed::zero() ? v : v / len;
 }
+
+// How wide an obstacle stands to a missile: trees catch them in their crowns as well as their trunks.
+Fixed missileRadius(const Obstacle& o) {
+    if (o.kind == Obstacle::Kind::Pine) return Fixed::fromRatio(9, 10);
+    if (o.kind == Obstacle::Kind::Oak) return Fixed::fromRatio(6, 5);
+    if (o.kind == Obstacle::Kind::House) return min(o.halfX, o.halfY) + Fixed::fromRatio(1, 2);
+    return o.radius;
+}
+
+// The tangent of a launch velocity's elevation.
+Fixed elevationTan(const Vec3& v) {
+    const Fixed flat = v.flat().length();
+    return flat > Fixed::zero() ? v.z / flat : Fixed::fromInt(1000);
+}
+
+// 2D cross product of two flat vectors.
+Fixed cross(const Vec3& a, const Vec3& b) { return a.x * b.y - a.y * b.x; }
 
 }  // namespace
 
@@ -1025,11 +1048,7 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
     obstacleGrid_.query(mid.x, mid.y, sqrt(lenSq) / 2 + kMaxObstacleExtent, [&](uint32_t k) {
         const Obstacle& o = obstacles[k];
         if (masonryOnly && o.kind != Obstacle::Kind::House && o.kind != Obstacle::Kind::Tower && o.kind != Obstacle::Kind::Pillar) return;
-        // Trees catch missiles in their crowns as well as their trunks.
-        Fixed radius = o.radius;
-        if (o.kind == Obstacle::Kind::Pine) radius = Fixed::fromRatio(9, 10);
-        if (o.kind == Obstacle::Kind::Oak) radius = Fixed::fromRatio(6, 5);
-        if (o.kind == Obstacle::Kind::House) radius = min(o.halfX, o.halfY) + Fixed::fromRatio(1, 2);
+        const Fixed radius = missileRadius(o);
         Fixed t;
         if (lenSq > Fixed::zero()) t = clamp((o.pos - a).flat().dot(segFlat) / lenSq, Fixed::zero(), Fixed::one());
         if (t >= best) return;
@@ -1249,6 +1268,64 @@ bool World::clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& ta
     return true;
 }
 
+Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const {
+    const Vec3 flat = (mark - origin).flat();
+    const Fixed dist = flat.length();
+    Fixed need = -Fixed::fromInt(1000);
+    const Fixed reach = dist - shortOf;
+    if (reach <= Fixed::one()) return need;
+    const Vec3 dir = flat / dist;
+    const Fixed rise = mark.z - origin.z;
+    // An arc through the mark at elevation e stands x tan(e) (1 - x/d) + rise (x/d)^2
+    // above the bow x along the way: so over `top` there when tan(e) is at least this.
+    const auto over = [&](Fixed x, Fixed top) {
+        if (x <= Fixed::zero() || x >= reach) return;
+        const Fixed f = x / dist;
+        need = max(need, (top + kLoftClear - origin.z - rise * f * f) / (x * (Fixed::one() - f)));
+    };
+    // The ground, about every metre.
+    const int steps = static_cast<int>(clamp(dist, Fixed::fromInt(2), Fixed::fromInt(96)).floorToInt());
+    for (int i = 1; i < steps; ++i) {
+        const Fixed x = dist * Fixed::fromRatio(i, steps);
+        const Vec3 p = origin + dir * x;
+        over(x, groundHeight(p.x, p.y));
+    }
+    if (!config_.region) return need;
+    // Rocks, trees and houses across the way: over their near edge, middle and
+    // far edge; but not the wood around the mark, which shelters him.
+    const auto& obstacles = config_.region->obstacles();
+    const Vec3 mid = origin + flat * Fixed::fromRatio(1, 2);
+    obstacleGrid_.query(mid.x, mid.y, dist / 2 + kMaxObstacleExtent, [&](uint32_t k) {
+        const Obstacle& o = obstacles[k];
+        const bool green = o.kind == Obstacle::Kind::Pine || o.kind == Obstacle::Kind::Oak || o.kind == Obstacle::Kind::Bush;
+        if (green && (o.pos - mark).flat().lengthSq() < kWoodCover * kWoodCover) return;
+        const Fixed radius = missileRadius(o);
+        const Vec3 rel = (o.pos - origin).flat();
+        const Fixed across = abs(cross(rel, dir));
+        if (across >= radius) return;
+        const Fixed along = rel.dot(dir), half = sqrt(radius * radius - across * across), top = o.pos.z + o.height;
+        over(along - half, top);
+        over(along, top);
+        over(along + half, top);
+    });
+    // Walls and standing gates the way crosses (not the parapet he shoots through).
+    const auto crossing = [&](const Vec3& a, const Vec3& b, Fixed halfThick, Fixed top) {
+        const Vec3 ab = (b - a).flat();
+        const Fixed turn = cross(dir, ab);
+        if (abs(turn) < Fixed::fromRatio(1, 100)) return;  // along the way, not across it
+        const Vec3 rel = (a - origin).flat();
+        const Fixed x = cross(rel, ab) / turn, s = cross(rel, dir) / turn;
+        if (s < Fixed::zero() || s > Fixed::one() || x < kOwnParapet) return;
+        over(x - halfThick, top);
+        over(x + halfThick, top);
+    };
+    for (const WallSeg& wl : config_.region->walls()) crossing(wl.a, wl.b, wl.halfThick, wl.top);
+    const auto& gs = config_.region->gates();
+    for (size_t i = 0; i < gs.size() && i < gates_.size(); ++i)
+        if (!gates_[i].broken()) crossing(gs[i].a, gs[i].b, gs[i].halfThick, gs[i].top);
+    return need;
+}
+
 bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
     const RangedWeapon& w = u.stats.ranged;
     Vec3 origin = u.pos + up(u.stats.height * kMuzzleHeightFraction);
@@ -1301,6 +1378,19 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
         if (p.vel.lengthSq() == Fixed::zero()) p.vel = lob;
     } else {
         p.vel = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity).velocity;
+    }
+    // Over the highest thing in the way (a brow, a tree, a house, a wall) at
+    // the lowest elevation that clears it, drawn short of full for the range.
+    // When no arc the bow reaches clears it, as chosen above: into the wood,
+    // or the full lob over masonry; a defender on a wall-walk is shot direct.
+    if (!atWalk && (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov)) {
+        const LaunchSolution flat = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity);
+        const Fixed need = clearingTan(origin, aim, kClearShort);
+        if (flat.inRange && need > elevationTan(flat.velocity)) {
+            const LaunchSolution steep = solveHighArc(origin, aim, w.muzzleSpeed, config_.gravity);
+            if (steep.inRange && need <= elevationTan(steep.velocity))
+                p.vel = solveFixedElevation(origin, aim, need, w.muzzleSpeed, config_.gravity).velocity;
+        }
     }
     p.damage = scaledDamage(w.damage, prowessPct(u));
     p.explosive = w.explosive;

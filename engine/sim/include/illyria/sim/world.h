@@ -531,6 +531,12 @@ public:
     void setGateHolder(size_t gate, PlayerId holder);
     void setGateHp(size_t gate, int32_t hp);
     Fixed groundHeight(Fixed x, Fixed y) const;
+    // The least elevation (its tangent) of an arc from `origin` down onto
+    // `mark` that passes over everything on the way, up to `shortOf` from it:
+    // the ground, rocks, trees, houses, walls and standing gates, but not the
+    // trees and bushes within 6 m of the mark (the wood that shelters him).
+    // Very low when nothing rises into the way.
+    Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
     const Region* region() const { return config_.region.get(); }
     int32_t homeSide() const { return config_.homeSide; }
     // The small edges a soldier fights with (world_edges.cpp, edges.h): his

@@ -279,7 +279,7 @@ TEST(blasted_parts_skid_away_leaving_blood_trails) {
     CHECK(farthest > m(8));
 }
 
-TEST(arrows_stick_in_trees) {
+TEST(arrows_go_over_a_lone_tree_but_stick_in_one_by_the_mark) {
     const Region& r = *illyriaRegion();
     const Obstacle* oak = nullptr;
     for (const Obstacle& o : r.obstacles())
@@ -289,18 +289,25 @@ TEST(arrows_stick_in_trees) {
         }
     CHECK(oak != nullptr);
     if (!oak) return;
-    World w(regionConfig());
-    for (int i = 0; i < 6; ++i)
-        w.spawnUnit(0, {oak->pos.x - m(25), oak->pos.y + Fixed::fromRatio(i - 3, 3), m(0)}, kEast, unitStats(UnitType::Archers));
-    std::vector<Command> fire;
-    // Aim well past the tree so arrows cross it at chest height or above.
-    for (EntityId id = 1; id <= 6; ++id) fire.push_back({0, id, Command::Type::AttackGround, {oak->pos.x + m(30), oak->pos.y, m(0)}});
-    w.step(fire);
-    for (int i = 0; i < 12 * kTicksPerSecond; ++i) w.step({});
-    int inTree = 0;
-    for (const Remain& rm : w.remains())
-        inTree += rm.kind == RemainKind::Arrow && rm.pos.z > w.groundHeight(rm.pos.x, rm.pos.y) + Fixed::fromRatio(1, 2);
-    CHECK(inTree > 0);
+    // Six archers 25 m short of the oak, shooting at a spot `past` beyond it:
+    // the arrows left stuck up in that tree.
+    const auto stuck = [&](Fixed past) {
+        World w(regionConfig());
+        for (int i = 0; i < 6; ++i)
+            w.spawnUnit(0, {oak->pos.x - m(25), oak->pos.y + Fixed::fromRatio(i - 3, 3), m(0)}, kEast, unitStats(UnitType::Archers));
+        std::vector<Command> fire;
+        for (EntityId id = 1; id <= 6; ++id) fire.push_back({0, id, Command::Type::AttackGround, {oak->pos.x + past, oak->pos.y, m(0)}});
+        w.step(fire);
+        for (int i = 0; i < 12 * kTicksPerSecond; ++i) w.step({});
+        int inTree = 0;
+        for (const Remain& rm : w.remains())
+            inTree += rm.kind == RemainKind::Arrow && rm.pos.z > w.groundHeight(rm.pos.x, rm.pos.y) + Fixed::fromRatio(1, 2) &&
+                      (rm.pos - oak->pos).flat().length() < Fixed::fromRatio(3, 2);
+        return inTree;
+    };
+    // A lone tree well short of the mark is shot over; one just in front of it shelters him.
+    CHECK(stuck(m(30)) == 0);
+    CHECK(stuck(m(3)) > 0);
 }
 
 TEST(crossing_scenario_is_deterministic_and_pinned) {
@@ -313,7 +320,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xff0a434d090efb7b;
+    constexpr uint64_t kGolden = 0x65cb708e19eb36e9;
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
