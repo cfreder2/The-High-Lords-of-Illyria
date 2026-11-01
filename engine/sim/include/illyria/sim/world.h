@@ -64,6 +64,7 @@ struct Explosive {
 struct RangedWeapon {
     Fixed muzzleSpeed;        // metres/second; zero means the unit has no ranged attack
     int32_t reloadTicks = 0;  // ticks between shots
+    int32_t drawTicks = 0;    // ticks drawn and aimed at a fresh mark before the first shot (the reload covers later ones)
     int32_t damage = 0;       // direct-hit damage (arrows)
     Fixed dispersionAt100m;   // radius of the dispersion circle at 100 m for a rank-0 unit
     Fixed autoRange;          // idle units shoot at enemies within this range; zero disables
@@ -237,6 +238,10 @@ struct Unit {
     Vec3 attackTarget;
     int32_t attackGate = -1;  // the gate the attack target is on, if any
     int32_t reloadRemaining = 0;
+    // A bowman's draw (RangedWeapon::drawTicks): ticks of it so far, as of the
+    // tick he last held a mark in range; it starts over whenever he leaves it.
+    int32_t drawn = 0;
+    uint32_t drawTick = 0;
     int32_t meleeCooldown = 0;
     int32_t healCooldown = 0;
     int32_t healCharges = 0;
@@ -649,6 +654,9 @@ private:
     // past the walls, gates and trees in the way.
     // `atWalk`: the target is a defender on a wall-walk, shot at direct (never lobbed).
     bool fire(Unit& unit, const Vec3& target, bool atWalk = false);
+    // At a mark in range this tick, called every tick he is: true when his
+    // reload has run out and his bow is drawn (a fresh mark is drawn on first).
+    bool readyToLoose(Unit& unit);
     // Whether a missile launched so flies clear of walls, gates and houses
     // until near its mark (woods catch some arrows; archers shoot into them).
     bool clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& target, Fixed shortOf) const;

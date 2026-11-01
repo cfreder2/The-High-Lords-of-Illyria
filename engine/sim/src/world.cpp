@@ -151,6 +151,8 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     h.addU64(s.mounted);
     h.addU64(s.bleeds);
     h.addI64(s.moraleShockPct);
+    // Only for bowmen who draw, so battles without them hash as before.
+    if (s.ranged.drawTicks > 0) h.addI64(s.ranged.drawTicks);
     // Only for those who carry satchels to lay, so battles without them hash as before.
     if (s.satchels.count > 0) {
         h.addI64(s.satchels.count);
@@ -808,7 +810,7 @@ void World::updateUnit(Unit& u) {
         const Fixed range = (u.attackTarget - u.pos).flat().length();
         if (range > shotRange(u, u.stats.ranged.maxRange, u.attackTarget)) {
             walk(u, u.attackTarget);  // close to range before loosing
-        } else if (u.reloadRemaining == 0 && range >= u.stats.ranged.minRange) {
+        } else if (range >= u.stats.ranged.minRange && readyToLoose(u)) {
             Vec3 aim = u.attackTarget;
             const bool atWalk = u.attackGate < 0 && aimHigh(u, aim, Fixed::fromRatio(9, 5));  // a man up there
             if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
@@ -830,7 +832,7 @@ void World::updateUnit(Unit& u) {
                target != nullptr && (target->pos - u.pos).flat().length() <= shotRange(u, u.stats.ranged.autoRange, target->pos)) {
         // From high ground the bow carries farther (shotRange).
         u.facing = flatDirection(u.pos, target->pos, u.facing);
-        if (u.reloadRemaining == 0 && (target->pos - u.pos).flat().length() >= u.stats.ranged.minRange) {
+        if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
             Vec3 aim = target->pos;
             const bool atWalk = aimHigh(u, aim, target->stats.height);
             if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
@@ -1808,6 +1810,10 @@ uint64_t World::checksum() const {
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);
+        if (u.stats.ranged.drawTicks > 0) {  // only for bowmen who draw, so battles without them hash as before
+            h.addI64(u.drawn);
+            h.addU64(u.drawTick);
+        }
         h.addI64(u.meleeCooldown);
         h.addI64(u.healCooldown);
         h.addI64(u.healCharges);

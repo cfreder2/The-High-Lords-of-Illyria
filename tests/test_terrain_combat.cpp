@@ -81,7 +81,8 @@ TEST(idle_archers_shoot_approaching_enemies) {
     // Outside the footman's aggro range, inside the archers' auto-fire range.
     const EntityId f = w.spawnUnit(1, {m(30), m(0), m(0)}, -kEast, scenarios::footman());
     int shots = 0;
-    for (int i = 0; i < 10 * kTicksPerSecond; ++i) {
+    // Three volleys: drawn on first (1.5 s), then one a reload (4 s), each 0.7 s in the air.
+    for (int i = 0; i < 12 * kTicksPerSecond; ++i) {
         w.step({});
         shots += static_cast<int>(w.impacts().size());
     }

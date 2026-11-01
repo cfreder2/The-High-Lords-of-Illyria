@@ -52,7 +52,7 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    constexpr uint64_t kSheet = 0xe0340f87a4afc338;
+    constexpr uint64_t kSheet = 0x45a37b72c553032f;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }
@@ -260,7 +260,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x068f9e5b3658db04;
+    constexpr uint64_t kGolden = 0x3c628b17690f1a75;
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

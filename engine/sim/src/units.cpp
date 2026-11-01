@@ -212,6 +212,7 @@ UnitStats unitStats(UnitType type) {
         case T::Archers:  // Warlords' Elven Archers
             s = base(type, r(2, 5), r(9, 5), r(12, 5), 45);
             bow(s, m(42), sec(4), 16, m(6), m(55), m(70));
+            s.ranged.drawTicks = sec(22, 15);  // 1.47 s: the draw his sheet plays before the release
             melee(s, 5, r(1, 2), sec(6, 5));
             s.aggroRange = m(6);
             break;

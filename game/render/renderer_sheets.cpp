@@ -366,9 +366,12 @@ int Renderer::listedFrame(const Battle& battle, size_t i, const sprites::SheetCl
         if (attackTick != UINT32_MAX && attackTick == m.claimed) d.attackFrom = m.claimedBy;
     } else if (const sprites::SheetClip* a = clips.play("attack");
                a && a->release >= 0 && u.stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
-        // Missile troops: the draw in the last `release` seconds of the reload,
-        // when he will loose as it ends (his shot comes in the tick it reaches 0).
-        const float toRelease = sprites::secondsToRelease(u.reloadRemaining, alpha, tps);
+        // Missile troops: the draw in the last `release` seconds before his shot,
+        // which comes in the tick both his reload and his draw at this mark are
+        // done (sim::World::readyToLoose); a mark he did not hold last tick is drawn afresh.
+        const int32_t draw = u.stats.ranged.drawTicks;
+        const int32_t drawLeft = draw == 0 ? 0 : u.drawTick + 1 == tick ? draw - u.drawn : draw;
+        const float toRelease = sprites::secondsToRelease(std::max(u.reloadRemaining, drawLeft), alpha, tps);
         if (toRelease >= 0 && toRelease <= a->release) {
             if (m.engagedTick == UINT32_MAX || tick < m.engagedTick || tick - m.engagedTick >= kEngagedTicks) {
                 m.engaged = deeds::willLoose(battle, i);

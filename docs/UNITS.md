@@ -50,15 +50,17 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
 but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;
 against a castle gate they do five times their blast damage (satchels three times, fireballs and Molotovs one and a half).
-A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges.
+A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a
+**draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
+(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
 
-| Unit | Missile | Wounds | Muzzle speed | Reload | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Elven Archers | arrow | pierce | 42 m/s | 4.0 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
-| Wizards | fireball | fire | 24 m/s | 9.0 s | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
-| Dragons | fireball | fire | 30 m/s | 6.0 s | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
-| Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
-| Catapults | stone | blunt | 40 m/s | 14.0 s | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
+| Unit | Missile | Wounds | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Elven Archers | arrow | pierce | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
+| Wizards | fireball | fire | 24 m/s | 9.0 s |  | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
+| Dragons | fireball | fire | 30 m/s | 6.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
+| Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
+| Catapults | stone | blunt | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 
 ## Satchel charges
 

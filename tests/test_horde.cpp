@@ -255,7 +255,8 @@ TEST(horde_four_seats_deterministic) {
         o.difficulty = 0;
         HordeMode& h = HordeMode::start(*b, o);
         if (replay) h.replay(*replay);
-        for (int t = 0; t < 240 * sim::kTicksPerSecond; ++t) {
+        // The first wave falls in about 250 s, then its break and into the second.
+        for (int t = 0; t < 300 * sim::kTicksPerSecond; ++t) {
             if (!replay && t == 4 * sim::kTicksPerSecond) {
                 b->selectSquad(1);
                 b->orderMove(toV3(h.hill().at()) + V3{6, 4, 0});

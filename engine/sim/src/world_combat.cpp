@@ -92,6 +92,17 @@ int32_t World::attackTicks(const Unit& u, int32_t baseTicks) const {
     return std::max(1, ticks * (100 - kVetQuickPct * std::min(kVetMaxSteps, u.blessings)) / 100);
 }
 
+bool World::readyToLoose(Unit& u) {
+    if (const int32_t draw = u.stats.ranged.drawTicks; draw > 0) {
+        // Drawn on if he held this mark last tick, else drawn afresh: after a
+        // march, a melee or a lull his reload may be long done, but not his draw.
+        u.drawn = u.drawTick + 1 == tick_ ? std::min(u.drawn + 1, draw) : 1;
+        u.drawTick = tick_;
+        if (u.drawn < draw) return false;
+    }
+    return u.reloadRemaining == 0;
+}
+
 int32_t World::recoverTicks(const Unit& u) const { return kRecoverTicks * (100 - kVetRecoverPct * veteranSteps(u)) / 100; }
 
 int32_t World::defendedDamage(const Unit& u, int32_t amount) const {

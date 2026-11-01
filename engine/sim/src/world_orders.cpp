@@ -410,7 +410,7 @@ void World::pursue(Unit& u) {
             Vec3 lead = stride * (dist / u.stats.ranged.muzzleSpeed * kLeadPct / 100 * kTicksPerSecond);
             if (lead.length() > kMaxLead) lead = lead / lead.length() * kMaxLead;
             const Vec3 aim = t->pos + lead;
-            if (u.reloadRemaining == 0) {
+            if (readyToLoose(u)) {
                 if (fire(u, aim)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
                 else approach();  // no clear shot from here (a wall, a house): closer
             }

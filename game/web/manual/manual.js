@@ -124,7 +124,7 @@
       row("Hit points", b.HP) + row("Speed", `${b.Speed} m/s`) + row("Height", `${b.Height} m`) + row("Mass", b.Mass) +
       row("Blow", b["Melee dmg"] !== "0" ? `${b["Melee dmg"]} ${b.Blow} every ${b.Every}` : "") + row("Reach", b.Reach !== "0.0" ? `${b.Reach} m` : "") +
       row("Shield", b.Shield) + row("Knockback", b.Knockback) + row("Morale", b.Morale === "never" ? "never breaks" : `${b.Morale} of a man's shocks`);
-    if (m) h += row("Missile", `${m.Missile}: ${m.Damage || m["Blast damage"] + " blast, " + m["Blast radius"]}, every ${m.Reload}`) +
+    if (m) h += row("Missile", `${m.Missile}: ${m.Damage || m["Blast damage"] + " blast, " + m["Blast radius"]}, every ${m.Reload}${m.Draw ? ` (the first at a mark drawn ${m.Draw})` : ""}`) +
       row("Range", `${m["Max range"]} (shoots unbidden at ${m["Auto range"]}${m["Min range"] ? `, not inside ${m["Min range"]}` : ""})`);
     if (f) h += row("Flight", `${f["Air speed"]} at ${f["Cruise height"]}, ${f.Endurance} aloft`);
     if (g) h += row("Gait", `${g.Gait}: road ${g.Road}, forest ${g.Forest}, swamp ${g.Swamp}`);
