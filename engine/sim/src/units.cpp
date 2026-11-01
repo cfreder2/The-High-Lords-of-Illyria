@@ -381,7 +381,7 @@ UnitStats unitStats(UnitType type) {
             melee(s, 8, r(9, 10), sec(1));
             s.mass = r(9, 10);
             s.aggroRange = m(8);
-            s.scavenge = {m(30), m(17), m(24), m(5), sec(3, 10)};
+            s.scavenge = {m(35), m(17), m(24), m(5), sec(3, 10)};
             break;
         case T::Count:
             break;

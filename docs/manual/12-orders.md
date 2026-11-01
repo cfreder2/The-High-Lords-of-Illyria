@@ -24,6 +24,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt | **Hold** | [[B]] |
 | The camera to the selection | **Find** | [[C]] |
+| Raid (hyena-folk) | **Raid** | [[T]] |
 | Lay satchels (grenadiers) | | [[T]], then click where |
 | Cancel a mode, let go | tap the mode's button again | [[Esc]] |
 | Pause | **Pause** | [[Space]] |
@@ -78,6 +79,20 @@ When the man they were sent after falls, each of your attackers decides for hims
 He weighs his **odds** against that foe: his fighting power (hit points, blows a second, his rank and blessings) and half of each friend's near the foe, against every unbroken enemy near it. Going back is worth the odds of his own troop if it is fighting, or a safe 60 in 100 if it is not. Then the **dice**: he sees his odds only roughly, give or take 70 in 100 for a recruit, 55 for a regular, 40 for a veteran and 25 for an elite, and presses on if what he sees beats going back.
 
 So an **elite** always leaves a demon alone (his true odds about 8 in 100) and always finishes a lone wounded archer (94 in 100); a **recruit** goes at the demon about one time in six, and lets the archer go about one time in three. Veterans make the better choice; recruits get themselves killed. A soldier who presses on cries out (the charge). A fighter on the march makes the same choice when his foe falls, with only foes within his leash to choose from, and the march worth 70 in 100.
+
+## Raiding {#raid}
+
+The hyena-folk are soldiers like any others until you let them loose. Sent somewhere, they go there and hold, facing as you told them; they fight whoever comes at them, and keep whatever they hold. Ordered at a man with something in hand, they throw it at him.
+
+**Raid** lets them loose. With hyena-folk selected the **Raid** button appears in the action row; on a desktop, [[T]] (the key for each kind's own special: grenadiers lay satchels with it). It needs no target: they start at once, from where they stand. Those let loose together are a **pack**.
+
+- **They know only what they see,** 35 m about them. Send them up close to what you want raided first; let loose in empty fields, they find nothing.
+- **They pick on the weak.** They take up whatever lies about (a satchel charge first, then a blade, a head, a trunk, a limb) and throw it at archers, healers, wizards and grenadiers, at the wounded, and at the man who has strayed from his friends, never at a shield wall when there is anyone softer. A thrown head breaks the man it strikes.
+- **They count before they go.** A pack weighs itself against the men about its mark and the bowmen covering the ground it would throw from. A lone hyena takes only a lone archer, healer or wizard; a big pack dares more. They keep out of archers' reach while there is other prey, and never stand up to armoured men in a melee.
+- **Hit and run.** After each throw a hyena runs to one spot well clear, toward where the raid began, and comes again from there.
+- **The raid ends** when you give them any other order, when the pack has lost half its men, or when nothing worth taking has been in sight for 15 seconds. Then they hold where they are.
+
+**Against them,** keep your men in hand: a soldier with no orders of his own does not chase the hyena-folk (only riders catch them). He turns to face one who throws at him, and his shield takes the next throw. Guard your archers and healers with heavy infantry facing out, keep stragglers close, and send horse after the pack.
 
 ## Other orders {#other-orders}
 

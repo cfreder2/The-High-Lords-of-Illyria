@@ -194,7 +194,7 @@ The one dwarf of Illyria: demolitionists with bottles of burning oil to throw an
 
 **Campaign.** 6 grenadiers. 9 movement points; a hill costs them only 3. Trained in hill towns and at Deepforge: 4 days, 24 gold, 4 a day.
 
-**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Loose**, and away from your own line. Hyena-folk steal laid satchels and throw them back, bursting where they strike.
+**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Loose**, and away from your own line. Raiding hyena-folk steal laid satchels and throw them back, bursting where they strike.
 :::
 
 ::: unit Journeymen | journeyman
@@ -230,9 +230,9 @@ A wheeled mangonel with its crew, the only engine of war in Illyria. Slow on the
 :::
 
 ::: unit Hyena-folk
-Hunched, laughing scavengers of the wastes with long scimitars, who care nothing for their own lives. They run their own fight: round the end of your line and into your rear, snatching up whatever lies on the field and throwing it at whoever it will hurt most.
+Hunched, laughing scavengers of the wastes with long scimitars, who care nothing for their own lives. Let loose to raid, they prey on whatever is weak: they snatch up what lies on the field and throw it at the stragglers and the soft men behind your line.
 
 **Campaign.** Not yet in the campaign: they fight in the sandbox and in the battles laid out with them.
 
-**On the field.** Weak in a stand-up fight (35 hit points, an 8 blow) but fast (6 m/s): only riders catch them, and they never break. Left alone they take the best thing in sight, a satchel charge before a blade, a blade before a head, and dart in to throw it at your archers, healers and wizards first, then fall back for the next. A severed head they throw breaks the man it strikes. They keep clear of armoured men. Guard your rear with heavy infantry or riders, and let your archers shoot them as they come round the flank.
+**On the field.** Weak in a stand-up fight (35 hit points, an 8 blow) but fast (6 m/s): only riders catch them, and they never break. They hold where they are sent until you order them to **Raid** (chapter [](#raid)); then, knowing only what they see 35 m about them, they take the best thing in sight, a satchel charge before a blade, a blade before a head, and dart in to throw it at archers, healers, wizards, grenadiers, the wounded and the straggler, when the pack is strong enough for the men about him, then fall back for the next. A severed head they throw breaks the man it strikes. They keep clear of armoured men and, while there is other prey, out of archers' reach. Against them keep your men together and facing them (a shield facing a throw catches it), and let your riders hunt them.
 :::

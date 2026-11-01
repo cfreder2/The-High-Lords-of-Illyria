@@ -158,6 +158,49 @@ void Battle::aiHalt(size_t squad) {
     }
 }
 
+void Battle::aiRaid(size_t squad, const V3& goal) {
+    // From the simulation's state only, like the rest of the computer's orders.
+    if (squad >= squads_.size()) return;
+    const Squad& s = squads_[squad];
+    if (aiMemo_.size() < squads_.size()) aiMemo_.resize(squads_.size());
+    AiMemo& memo = aiMemo_[squad];
+    std::vector<sim::EntityId> alive;
+    bool raiding = false;
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (!u.alive() || u.routed) continue;
+        alive.push_back(id);
+        raiding = raiding || u.scav.raiding;
+    }
+    if (alive.empty()) return;
+    // Raiding: theirs to run. Just over: back out of it a way, and a rest before the next.
+    const uint32_t now = world_->tick();
+    if (raiding) {
+        memo.raiding = true;
+        return;
+    }
+    const V3 c = squadCentre(s, false);
+    if (memo.raiding) {
+        memo.raiding = false;
+        memo.restUntil = now + kRaidRestTicks;
+        if (const sim::EntityId foe = nearestFoe(s.owner, c, kRaidCallM); foe != sim::kNoEntity) {
+            const V3 fp = toV3(world_->units()[foe - 1].pos);
+            const V3 away = V3{c.x - fp.x, c.y - fp.y, 0}.normalized();
+            steerSquad(s, c + away * kRaidCallM);
+        }
+        return;
+    }
+    if (now < memo.restUntil) return;
+    // Near enough to see the foe: let loose. Else on toward him.
+    if (nearestFoe(s.owner, c, kRaidCallM) != sim::kNoEntity) {
+        s.hasGoal = false;
+        for (sim::EntityId id : alive) issue(s.owner, id, sim::Command::Type::Raid, {});
+        memo.raiding = true;
+        return;
+    }
+    if (V3{goal.x - c.x, goal.y - c.y, 0}.length() > 6.0f) steerSquad(s, goal);
+}
+
 sim::EntityId Battle::nearestFoe(sim::PlayerId owner, const V3& at, float reach) const {
     sim::EntityId best = sim::kNoEntity;
     float bestD2 = reach * reach;
@@ -185,7 +228,10 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         if (V3{to.x - c.x, to.y - c.y, 0}.length() > 6.0f) aiSteer(squad, to);
     };
     if (role == Role::Siege) return;  // engines throw from where they stand
-    if (role == Role::Scout) return;  // the hyena-folk run their own fight (world_scavenge.cpp)
+    if (role == Role::Scout) {
+        aiRaid(squad, goal);  // the hyena-folk are let loose near the foe (world_scavenge.cpp)
+        return;
+    }
     if (role == Role::Healer) {
         // A little behind the nearest friendly fighting squad.
         float best = 1e30f;

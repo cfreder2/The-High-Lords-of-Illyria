@@ -123,8 +123,9 @@ struct ArmyResult {
 const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
-// Scouts (the hyena-folk) run their own fight in the simulation
-// (world_scavenge.cpp): the battle AI leaves them to it.
+// Scouts (the hyena-folk) are let loose to raid (sim Command::Raid,
+// world_scavenge.cpp): the computer brings its packs near the foe and lets
+// them loose (Battle::aiRaid); the player does with T or the Raid button.
 enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier, Siege, Scout };
 Role roleOf(sim::UnitType type);
 
@@ -270,6 +271,16 @@ public:
     void orderAttackGround(const V3& at);
     // The selected who carry satchels walk there and lay one each, a few metres apart.
     void orderLaySatchels(const V3& at);
+    // The selected scavengers let loose to raid from where they stand (sim
+    // Command::Raid); false (and a notice) when none is selected.
+    bool orderRaid();
+    // The special action (the desktop's T): each selected soldier's own. The
+    // scavengers raid at once; with grenadiers selected, the next tap on the
+    // ground lays their satchels (OrderMode::LaySatchel; again, it is let go).
+    void specialAction();
+    // Whether any selected soldier is a scavenger (the Raid button shows), or carries satchels.
+    bool selectionRaids() const;
+    bool selectionLaysSatchels() const;
     // March there deaf to the enemy (Myth's force march): to break away, or
     // to run past.
     void orderForceMarch(const V3& to, const V3* facing = nullptr);
@@ -424,6 +435,13 @@ public:
     void aiForceMarch(size_t squad, const V3& to);
     void aiAttack(size_t squad, sim::EntityId target);
     void aiHalt(size_t squad);
+    // The computer's scavengers (the hyena-folk): marched toward `goal`
+    // until a foe is within kRaidCallM of them, then let loose to raid
+    // (sim Command::Raid); left to it while any of them raids, and rested a
+    // while when a raid ends before they are sent again.
+    static constexpr float kRaidCallM = 40.0f;
+    static constexpr uint32_t kRaidRestTicks = 15 * sim::kTicksPerSecond;
+    void aiRaid(size_t squad, const V3& goal);
     // The computer's general handling of a squad: the nearest foe within
     // `reach` of `around` is met (missile troops keep a bowshot, horse take
     // it in the flank), else it goes to `goal`; healers keep near their
@@ -664,10 +682,14 @@ private:
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)
     // The computer's memory of each squad it handles (aiFight): where it was
     // at its last look, how many looks it has stood stuck, and how many more
-    // it spends marching round to its goal (a foe across a cliff is no foe).
+    // it spends marching round to its goal (a foe across a cliff is no foe);
+    // a pack of scavengers, whether it was raiding at the last look and the
+    // tick before which it rests (aiRaid).
     struct AiMemo {
         V3 last;
         int still = 0, detour = 0;
+        bool raiding = false;
+        uint32_t restUntil = 0;
     };
     std::vector<AiMemo> aiMemo_;
     // The per-soldier presentation state grown for soldiers raised mid-battle.

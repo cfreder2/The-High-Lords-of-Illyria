@@ -189,6 +189,14 @@ void hashScavenger(StateHasher& h, const Scavenger& c) {
     h.addU64(c.satchel);
     h.addI64(c.fuse);
     hashExplosive(h, c.blast);
+    h.addU64(c.raiding);
+    h.addU64(c.wary);
+    h.addU64(c.pack);
+    h.addI64(c.packMen);
+    hashVec(h, c.home);
+    h.addI64(c.quiet);
+    h.addI64(c.replan);
+    h.addU64(c.shotBy);
 }
 
 // Unit-length horizontal direction from `from` to `to`, or `fallback` if they coincide.
@@ -314,7 +322,13 @@ void World::step(std::span<const Command> commands) {
     std::vector<Command> ordered(commands.begin(), commands.end());
     std::stable_sort(ordered.begin(), ordered.end(),
                      [](const Command& a, const Command& b) { return a.player < b.player; });
-    for (const Command& cmd : ordered) applyCommand(cmd);
+    bool raids = false;
+    for (const Command& cmd : ordered) {
+        applyCommand(cmd);
+        raids = raids || cmd.type == Command::Type::Raid;
+    }
+    // Those let loose together go as packs (world_scavenge.cpp).
+    if (raids) formPacks();
 
     for (Unit& u : units_) {
         const Vec3 before = u.pos;
@@ -333,13 +347,40 @@ void World::applyCommand(const Command& cmd) {
     Unit* u = mutableUnit(cmd.unit);
     // A broken unit heeds no orders until it rallies.
     if (u == nullptr || !u->alive() || u->owner != cmd.player || u->routed) return;
+    // Only a scavenger raids; to anyone else the order means nothing.
+    if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
     u->layOrdered = false;  // every order replaces the last
+    if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
     switch (cmd.type) {
         case Command::Type::AttackUnit:
         case Command::Type::AttackObject:
             break;
+        case Command::Type::Raid: {
+            // Let loose from where he stands, keeping what he holds (world_scavenge.cpp).
+            u->hasMoveTarget = false;
+            u->hasAttackTarget = false;
+            u->attackGate = -1;
+            u->path.clear();
+            u->pathIndex = 0;
+            Scavenger& s = u->scav;
+            s.raiding = true;
+            s.wary = false;
+            s.pack = 0;
+            s.packMen = 0;
+            s.home = u->pos;
+            s.quiet = 0;
+            s.replan = 0;
+            s.shotBy = kNoEntity;
+            s.mind = Scavenger::Mind::Scout;
+            s.prize = Scavenger::Prize::None;
+            s.prizeRef = 0;
+            s.mark = kNoEntity;
+            s.timer = 0;
+            s.goal = u->pos;
+            break;
+        }
         case Command::Type::LaySatchel:
             // There, and lay one (world_satchels.cpp); at hand, at once.
             if (u->satchels <= 0) return;
@@ -953,6 +994,8 @@ bool World::followPath(Unit& u, Fixed pace) {
 void World::updateUnit(Unit& u) {
     // A satchel in a scavenger's hands burns on whatever he is doing.
     if (u.scav.satchel) burnHeld(u);
+    // Not raiding, he throws it before it goes off in his hands.
+    if (u.scav.satchel && !u.scav.raiding && u.targetUnit == kNoEntity && u.alive() && !u.inAir()) shedBurning(u);
     if (u.airborne) {
         updateAirborne(u);
         return;
@@ -1043,14 +1086,16 @@ void World::updateUnit(Unit& u) {
             const bool atWalk = u.attackGate < 0 && aimHigh(u, aim, Fixed::fromRatio(9, 5));  // a man up there
             if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
         }
-    } else if (u.stats.scavenge.sight > Fixed::zero()) {
-        // A scavenger left to himself runs his own fight (world_scavenge.cpp).
-        scavenge(u);
+    } else if (u.scav.raiding) {
+        // A scavenger let loose runs his own fight (world_scavenge.cpp); else
+        // he holds and fights like anyone.
+        raid(u);
     } else if (u.satchels > 0 && layInPath(u)) {
         // The enemy coming: a satchel in their path, then back from it (world_satchels.cpp).
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
-    } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr) {
+    } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr; enemy != nullptr && !outruns(u, *enemy)) {
+        // (Not one he cannot catch: shieldTarget, below.)
         fight(u, *enemy);
     } else if (u.stats.ranged.kind == ProjectileKind::Molotov && shootSatchel(u)) {
         // Fire on a satchel lying among the enemy, before any one man.
@@ -1065,6 +1110,10 @@ void World::updateUnit(Unit& u) {
             const bool atWalk = aimHigh(u, aim, target->stats.height);
             if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
         }
+    } else if (Unit* t = shieldTarget(u, enemy)) {
+        // Struck at by one he cannot reach, or one he cannot catch at hand:
+        // his shield to him, holding his place (world_scavenge.cpp).
+        turnToward(u, flatDirection(u.pos, t->pos, u.facing));
     }
     u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
 }
@@ -1398,6 +1447,8 @@ bool World::tryHeal(Unit& u) {
 bool World::damage(Unit& target, int32_t amount, Unit* attacker, const Blow& blow) {
     if (!target.alive()) return false;
     if (attacker != nullptr) noteAttack(target, *attacker);
+    // A raider shot at knows where from, seen or not (world_scavenge.cpp).
+    if (target.scav.raiding && blow.missile && attacker != nullptr && attacker->owner != target.owner) target.scav.shotBy = attacker->id;
     const int32_t dealt = defendedDamage(target, amount);
     const int32_t overkill = dealt - target.hp;
     target.hp = std::max(target.hp - dealt, 0);
@@ -1728,7 +1779,22 @@ void World::updateProjectiles() {
             // A body part flying fast (thrown by a blast, or by a hand) hurts
             // the first man it strikes, a little, once; a kick never does.
             if (!done && p.remain != RemainKind::Arrow && p.damage == 0 && speedSq >= kDebrisHurtSpeed * kDebrisHurtSpeed) {
-                if (Unit* hit = debrisHit(prev, p.pos, p.thrown ? p.shooter : kNoEntity)) {
+                Unit* hit = debrisHit(prev, p.pos, p.thrown ? p.shooter : kNoEntity);
+                if (hit != nullptr && p.thrown) {
+                    // Thrown by a hand: he remembers who threw it (World::shieldTarget),
+                    // and a shield facing the throw catches it as it would an arrow.
+                    if (const Unit* thrower = findUnit(p.shooter); thrower != nullptr && thrower->owner != hit->owner) {
+                        hit->thrower = thrower->id;
+                        hit->thrownTick = tick_;
+                    }
+                    if (shieldBlocks(*hit, p.vel, Fixed::one())) {
+                        impacts_.push_back({ImpactEvent::Kind::Blocked, p.pos, p.vel, p.id, hit->id, false, {}});
+                        p.damage = 1;  // spent on the shield
+                        p.vel = -p.vel.flat() / Fixed::fromInt(6) + up(Fixed::one());
+                        hit = nullptr;
+                    }
+                }
+                if (hit != nullptr) {
                     const Fixed speed = sqrt(speedSq);
                     int32_t amount = std::clamp<int32_t>((speed / 3).floorToInt(), 2, 8);
                     if (p.remain == RemainKind::Torso) amount = amount * 3 / 2;
@@ -2041,6 +2107,8 @@ uint64_t World::checksum() const {
     h.addU64(nextId_);
     h.addU64(rng_.state());
     h.addU64(rng_.increment());
+    // Only once a pack has been let loose to raid, so battles without one hash as before.
+    if (packs_ > 0) h.addU64(packs_);
     // Only for a match with a field's edge, so battles without one hash as before.
     if (zoneRadius_ > Fixed::zero()) {
         hashVec(h, zoneCentre_);
@@ -2101,6 +2169,11 @@ uint64_t World::checksum() const {
             h.addU64(u.layOrdered);
         }
         if (u.stats.scavenge.sight > Fixed::zero()) hashScavenger(h, u.scav);
+        // Only once a scavenger's throw has struck him, so battles without one hash as before.
+        if (u.thrower != kNoEntity) {
+            h.addU64(u.thrower);
+            h.addU64(u.thrownTick);
+        }
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);

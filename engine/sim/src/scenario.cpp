@@ -173,23 +173,35 @@ Replay Melee::replay(uint64_t seed) {
 void Raid::setup(World& world) {
     const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
     // Ids 1..8: a shield wall of heavy infantry; 9..14 archers behind it,
-    // 15..17 healers, 18..19 wizards, 20..22 grenadiers. 23..34: light
-    // infantry coming at the wall; 35..40 hyena-folk far out on their flank.
+    // 15..17 healers and 18..19 wizards well back with the baggage (beyond
+    // the archers' cover), 20..22 grenadiers. 23..34: light infantry coming
+    // at the wall; 35..40 hyena-folk far out on their flank.
     for (int i = 0; i < 8; ++i) world.spawnUnit(0, {m(110), m(112 + i * 2), m(0)}, east, unitStats(UnitType::HeavyInfantry));
     for (int i = 0; i < 6; ++i) world.spawnUnit(0, {m(96), m(112 + i * 3), m(0)}, east, unitStats(UnitType::Archers));
-    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(88), m(116 + i * 3), m(0)}, east, unitStats(UnitType::Journeyman));
-    for (int i = 0; i < 2; ++i) world.spawnUnit(0, {m(86), m(110 + i * 16), m(0)}, east, unitStats(UnitType::Wizards));
+    for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(62), m(114 + i * 3), m(0)}, east, unitStats(UnitType::Journeyman));
+    for (int i = 0; i < 2; ++i) world.spawnUnit(0, {m(58), m(108 + i * 20), m(0)}, east, unitStats(UnitType::Wizards));
     for (int i = 0; i < 3; ++i) world.spawnUnit(0, {m(102), m(114 + i * 5), m(0)}, east, unitStats(UnitType::DwarfGrenadier));
     for (int i = 0; i < 12; ++i) world.spawnUnit(1, {m(150 + (i / 6) * 2), m(112 + (i % 6) * 3), m(0)}, -east, unitStats(UnitType::LightInfantry));
     for (int i = 0; i < 6; ++i) world.spawnUnit(1, {m(140 + (i % 2) * 2), m(40 + (i / 2) * 3), m(0)}, -east, unitStats(UnitType::Hyena));
+    // What an earlier skirmish left lying on the way to the baggage.
+    const RemainKind left[] = {RemainKind::Head, RemainKind::Arm, RemainKind::Leg, RemainKind::Head, RemainKind::Torso, RemainKind::Arm};
+    for (int i = 0; i < 6; ++i)
+        world.launchPart(left[i], 0, {m(66 + (i % 3) * 4), m(92 + (i / 3) * 3), Fixed::fromRatio(1, 10)}, {},
+                         static_cast<uint8_t>(UnitType::LightInfantry));
 }
 
 Replay Raid::replay(uint64_t seed) {
     Replay r;
     r.config.seed = seed;
     r.config.terrain = std::make_shared<const Terrain>(Terrain::generate(seed, 64, Fixed::fromInt(4), Fixed::fromInt(12)));
-    // The infantry charge the wall; the hyena-folk are left to themselves.
+    // The infantry charge the wall; the hyena-folk go round toward the
+    // army's rear and are let loose there.
     for (EntityId id = 23; id <= 34; ++id) r.commands.push_back({0, {1, id, Command::Type::Move, {m(112), m(120), m(0)}}});
+    for (EntityId id = 35; id <= 40; ++id) {
+        const int64_t i = id - 35;
+        r.commands.push_back({0, {1, id, Command::Type::Move, {m(74 + (i % 2) * 2), m(86 + (i / 2) * 3), m(0)}}});
+    }
+    for (EntityId id = 35; id <= 40; ++id) r.commands.push_back({16 * kTicksPerSecond, {1, id, Command::Type::Raid, {}}});
     return r;
 }
 

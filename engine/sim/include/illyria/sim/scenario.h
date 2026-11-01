@@ -67,10 +67,11 @@ struct Oakhaven {
     static Replay replay(uint64_t seed);
 };
 
-// Hyena-folk raid an army's rear: light infantry charge a shield wall while
-// the pack goes round its flank for the archers, healers, wizards and
-// grenadiers behind, taking up blades, heads and satchels from the fight and
-// throwing them. The determinism benchmark for scavengers.
+// Hyena-folk raid an army's flank: light infantry charge a shield wall while
+// the pack is sent up beside it and let loose (Command::Raid), to take up
+// blades, heads and satchels from the fight and throw them at the archers,
+// healers, wizards and grenadiers they can see behind it. The determinism
+// benchmark for scavengers.
 struct Raid {
     static constexpr uint32_t kTicks = 60 * kTicksPerSecond;
     static void setup(World& world);

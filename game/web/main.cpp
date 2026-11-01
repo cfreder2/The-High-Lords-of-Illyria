@@ -1120,6 +1120,14 @@ EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
 EMSCRIPTEN_KEEPALIVE void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+// The selected hyena-folk let loose to raid from where they stand (the Raid button).
+EMSCRIPTEN_KEEPALIVE void illyria_raid() {
+    if (app) app->battle->orderRaid();
+}
+// The special action (T): the hyena-folk raid at once; grenadiers' next tap lays satchels.
+EMSCRIPTEN_KEEPALIVE void illyria_special() {
+    if (app) app->battle->specialAction();
+}
 // Debugging: draw a unit type's sprite sheet over the screen (-1 hides it).
 EMSCRIPTEN_KEEPALIVE void illyria_show_sheet(int type) {
     if (app) app->renderer.showSheet(type);
@@ -2279,8 +2287,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
         bool batter = false;
         for (illyria::sim::EntityId id : sel) batter = batter || illyria::sim::World::canBatter(units[id - 1].stats);
-        std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
-                      batter ? "true" : "false", fresh ? b.notice().c_str() : "");
+        // Hyena-folk among them: the Raid button shows.
+        std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"raid\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
+                      batter ? "true" : "false", b.selectionRaids() ? "true" : "false", fresh ? b.notice().c_str() : "");
         s += buf;
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
