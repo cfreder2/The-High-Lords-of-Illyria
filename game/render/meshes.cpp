@@ -516,24 +516,20 @@ Mesh keep() {
 
 Mesh ramp() {
     // A solid wedge of stone; its sides run on below the ground (z < 0) so
-    // the foot meets the ground wherever the ground dips a little. Low
-    // cleats across the slope give a footing.
+    // the foot meets the ground wherever the ground dips a little. The slope
+    // is one plane, exactly the one the sim walks (no cleats: strips laid on
+    // it fought it for depth and banded it across), worn as the wall-walk
+    // is; the sides as the curtain's faces. The landing at the top is a
+    // curtain block, so slope, landing and walk read as one paved way.
     Builder b;
     const float base = -0.15f;
-    const V3 s = kStone, side = kStone * 0.9f;
     const V3 a0{-1, -1, 0}, a1{-1, 1, 0}, b0{1, -1, 1}, b1{1, 1, 1};
     const V3 lo0{-1, -1, base}, lo1{-1, 1, base}, hi0{1, -1, base}, hi1{1, 1, base};
-    b.quad(a0, b0, b1, a1, s);              // the slope
-    b.quad(lo0, hi0, b0, a0, side);         // the sides
-    b.quad(hi1, lo1, a1, b1, side);
-    b.quad(hi0, hi1, b1, b0, s * 0.85f);    // the high end
-    b.quad(lo1, lo0, a0, a1, side);         // the toe, below ground
-    const int cleats = 12;
-    for (int i = 1; i < cleats; ++i) {
-        const float x = -1 + 2.0f * i / cleats, z = (x + 1) / 2;
-        b.quad({x, -0.94f, z}, {x + 0.03f, -0.94f, z + 0.015f}, {x + 0.03f, 0.94f, z + 0.015f}, {x, 0.94f, z}, kStone * 0.8f);
-        b.quad({x + 0.03f, -0.94f, z + 0.015f}, {x + 0.06f, -0.94f, z + 0.03f + 0.012f}, {x + 0.06f, 0.94f, z + 0.03f + 0.012f}, {x + 0.03f, 0.94f, z + 0.015f}, kStone * 0.86f);
-    }
+    b.quad(a0, b0, b1, a1, kStone * 0.8f);    // the slope
+    b.quad(lo0, hi0, b0, a0, kStone);         // the sides
+    b.quad(hi1, lo1, a1, b1, kStone);
+    b.quad(hi0, hi1, b1, b0, kStone * 0.9f);  // the high end, against the landing
+    b.quad(lo1, lo0, a0, a1, kStone * 0.9f);  // the toe, below ground
     return b.mesh;
 }
 

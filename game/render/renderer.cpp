@@ -1187,7 +1187,10 @@ void Renderer::uploadSettlements(const Battle& battle) {
             bannerCity_.push_back(static_cast<uint32_t>(ci));
         }
         for (const sim::Continent::Castle::Ramp& rp : k.ramps) {
-            // The slope from the ground, then its landing beside the walk (a block down to the ground).
+            // The slope from the ground, then its landing beside the walk (a
+            // block down to the ground, drawn as the curtain is: its top worn
+            // as the walk's). Both turned as the wall they lie along, so the
+            // paving runs on unbroken from the foot to the walk.
             const V3 foot = local(rp.foot), head = local(rp.head);
             V3 run{head.x - foot.x, head.y - foot.y, 0};
             const float len = run.length(), half = static_cast<float>(rp.halfWidth.toDouble());
@@ -1196,7 +1199,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             yawQuat(yawOf(run), q);
             pushInstance(stairs, V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z}, q, {len / 2, half, head.z - foot.z}, {1, 1, 1});
             const V3 dir = run * (1.0f / len);
-            pushInstance(parapets, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {0.97f, 0.97f, 0.97f});
+            pushInstance(walls, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {1, 1, 1});
         }
         for (size_t hi = 0; hi < k.houses.size(); ++hi) {
             const sim::Continent::Castle::House& hs = k.houses[hi];
