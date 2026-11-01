@@ -392,10 +392,13 @@ TEST(a_heros_death_breaks_nearby_green_troops) {
     CHECK(s.routed() == 0);
     CHECK(s.untilHeroFalls());
     CHECK(s.routed() == 8);
-    // Broken, they heed no orders.
+    // Broken, they still obey an order (and run only when they have none).
     const Command go{0, s.men[0], Command::Type::Move, {m(-80), m(0), m(0)}};
     s.w.step(std::span(&go, 1));
-    CHECK(!s.w.findUnit(s.men[0])->hasMoveTarget);
+    CHECK(s.w.findUnit(s.men[0])->hasMoveTarget && s.w.findUnit(s.men[0])->routed);
+    const illyria::sim::Vec3 from = s.w.findUnit(s.men[0])->pos;
+    for (int t = 0; t < kTicksPerSecond; ++t) s.w.step({});
+    CHECK(s.w.findUnit(s.men[0])->pos.x < from.x);  // toward the spot he was sent to (west)
 }
 
 TEST(undead_never_break) {

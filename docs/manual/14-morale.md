@@ -28,7 +28,7 @@ Each kind of soldier takes shocks differently: the **morale** figure in the comp
 ## Wavering and breaking {#breaking}
 
 - **Below 450** a soldier **wavers**: his blows and reloads come a quarter slower and his aim is half again as wide. His health bar has an amber frame, and you may hear it in his voice.
-- **Below 200** he **breaks**: he drops his orders, ignores new ones and runs from the enemies within 40 m. His bar shows a white flag. You cannot order him; the computer does not try to order a squad whose men have all broken.
+- **Below 200** he **breaks**: he drops the order he had and runs from the enemies within 40 m. His bar shows a white flag. Order him and he obeys: pull him out of danger, or send him back in; when the order is done he runs again, until he rallies. The computer does not try to order a squad whose men have all broken.
 - A broken man **rallies**, standing and ready for orders again, once his morale is back to **550** and no enemy is within **25 m** of him.
 
 A hero's fall in front of green light infantry breaks them all at once. Elite heavy infantry are badly shaken by it, but hold, and rally in about eight seconds once the danger has passed.

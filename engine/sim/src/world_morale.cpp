@@ -120,7 +120,8 @@ void World::updateMorale() {
             }
         }
         if (!u.routed && u.morale < kMoraleBreak) {
-            // Broken: orders are forgotten, the fight given up.
+            // Broken: the order he had is forgotten, the fight given up (a new
+            // order is obeyed: World::applyCommand).
             u.routed = true;
             u.hasMoveTarget = false;
             u.hasAttackTarget = false;

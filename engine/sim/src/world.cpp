@@ -345,8 +345,9 @@ void World::step(std::span<const Command> commands) {
 
 void World::applyCommand(const Command& cmd) {
     Unit* u = mutableUnit(cmd.unit);
-    // A broken unit heeds no orders until it rallies.
-    if (u == nullptr || !u->alive() || u->owner != cmd.player || u->routed) return;
+    // A broken unit too: orders always win (it runs only when it has none; updateUnit).
+    // Not a side that is out of the match (its flag fallen: sideBroken).
+    if (u == nullptr || !u->alive() || u->owner != cmd.player || sideBroken(u->owner)) return;
     // Only a scavenger raids; to anyone else the order means nothing.
     if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
     u->layOrdered = false;  // every order replaces the last
@@ -1017,7 +1018,8 @@ void World::updateUnit(Unit& u) {
     // Resting on the ground restores a flier at half the rate flying spends it.
     if (flier && u.stamina < u.stats.staminaTicks && (tick_ & 1) == 0) ++u.stamina;
 
-    if (u.routed) {
+    // Broken, he runs from the foes near him; but an order given him since is obeyed.
+    if (u.routed && !u.hasMoveTarget && !u.hasAttackTarget && u.targetUnit == kNoEntity && u.attackGate < 0) {
         flee(u);
         u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         return;
