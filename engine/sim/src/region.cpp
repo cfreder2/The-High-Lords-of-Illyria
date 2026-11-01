@@ -112,6 +112,14 @@ Vec3 sitePoint(int64_t x, int64_t y, Fixed size, int turns) {
 bool Deck::contains(Fixed x, Fixed y) const {
     const Fixed dx = x - centre.x, dy = y - centre.y;
     if (abs(dx) > halfSpan + halfWidth || abs(dy) > halfSpan + halfWidth) return false;
+    if (arc) {
+        // Between the tower's face and the gallery's edge, and no further
+        // round from dir than the gallery goes.
+        const Fixed d2 = dx * dx + dy * dy;
+        if (d2 > halfSpan * halfSpan || d2 < inner * inner) return false;
+        const Fixed m = dx * dir.x + dy * dir.y, edge = d2 * cosHalf * cosHalf;
+        return m >= Fixed::zero() ? cosHalf <= Fixed::zero() || m * m >= edge : cosHalf < Fixed::zero() && m * m <= edge;
+    }
     return abs(dx * dir.x + dy * dir.y) <= halfSpan && abs(dx * dir.y - dy * dir.x) <= halfWidth;
 }
 
@@ -164,12 +172,13 @@ bool Gate::inside(const Rampart& ring, const Vec3& p) {
 }
 
 int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
+    // Near the way round (the walk's middle, or round a tower on its gallery).
     for (size_t i = 0; i < ramparts_.size(); ++i) {
         const Rampart& rp = ramparts_[i];
-        const size_t n = rp.corners.size();
+        const size_t n = rp.way.size();
         for (size_t e = 0; e < n; ++e) {
-            const Vec3& a = rp.corners[e];
-            const Vec3& b = rp.corners[(e + 1) % n];
+            const Vec3& a = rp.way[e];
+            const Vec3& b = rp.way[(e + 1) % n];
             if (abs(z - a.z) > Fixed::fromInt(2)) continue;
             Fixed t;
             const Vec3 ab = (b - a).flat();
@@ -668,10 +677,27 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 } else {
                     rg.walls_.push_back({a, b, ring.thick / 2, top, walk, outward, crenels});
                 }
-                // The walk runs the whole edge, over the gate too, into the corner towers.
+                // The walk runs the whole edge, over the gate too, up to the corner towers.
                 Deck d{{(a.x + b.x) / 2, (a.y + b.y) / 2, walk}, along, len / 2 + ring.thick / 2, ring.thick / 2};
                 d.raised = true;
                 rg.decks_.push_back(d);
+            }
+            // Round each tower on its gallery: the towers are shut, and the way
+            // round the ring goes from gallery to gallery along the walk.
+            for (const Castle::Gallery& gl : ring.galleries()) {
+                Vec3 c = toLocal(gl.pos);
+                c.z = walk;
+                Deck d{c, gl.mid, gl.radius + Castle::kGalleryWidth, Fixed::zero()};
+                d.raised = true;
+                d.arc = true;
+                d.inner = gl.radius;
+                d.cosHalf = gl.from.dot(gl.mid);
+                rg.decks_.push_back(d);
+            }
+            for (const Vec3& p : ring.way()) {
+                Vec3 q = toLocal(p);
+                q.z = walk;
+                rp.way.push_back(q);
             }
             rg.ramparts_.push_back(rp);
         }
@@ -682,8 +708,6 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             o.pos.z = city.pos.z;
             o.radius = t.radius;
             o.height = t.height;
-            // Soldiers on the wall-walk pass through the tower (its doors at walk level).
-            o.passAbove = k.rings.front().height - Fixed::fromInt(3);
             rg.obstacles_.push_back(o);
         }
         {

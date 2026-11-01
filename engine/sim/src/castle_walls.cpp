@@ -47,4 +47,76 @@ std::vector<Fixed> Continent::Castle::Ring::crenels(size_t edge) const {
     return out;
 }
 
+namespace {
+// A gallery's arc is split until its pieces turn no more than about 16 degrees.
+constexpr Fixed kArcPieceCos = Fixed::fromRatio(24, 25);
+
+Vec3 unitFlat(const Vec3& v) {
+    const Fixed len = v.flat().length();
+    return len > Fixed::zero() ? v.flat() / len : Vec3{};
+}
+}  // namespace
+
+std::vector<Vec3> Continent::Castle::Gallery::arc(Fixed r) const {
+    // Halve every piece until they are short enough (from -> mid and mid -> to
+    // turn alike, so every piece of a pass does).
+    std::vector<Vec3> dirs{from, mid, to};
+    while (dirs[0].dot(dirs[1]) < kArcPieceCos) {
+        std::vector<Vec3> finer{dirs[0]};
+        for (size_t i = 1; i < dirs.size(); ++i) {
+            finer.push_back(unitFlat(dirs[i - 1] + dirs[i]));
+            finer.push_back(dirs[i]);
+        }
+        dirs = std::move(finer);
+    }
+    std::vector<Vec3> out;
+    for (const Vec3& d : dirs) out.push_back(pos + d * r);
+    return out;
+}
+
+std::vector<Continent::Castle::Gallery> Continent::Castle::Ring::galleries() const {
+    const size_t n = corners.size();
+    if (n < 3) return {};
+    // Which side of each edge is inside: the left for corners running
+    // anticlockwise (measured from the first corner, so the sums stay small).
+    Fixed area;
+    for (size_t i = 0; i < n; ++i) {
+        const Vec3 a = corners[i] - corners[0], b = corners[(i + 1) % n] - corners[0];
+        area += a.x * b.y - b.x * a.y;
+    }
+    const auto inward = [&](const Vec3& along) {
+        return area > Fixed::zero() ? Vec3{-along.y, along.x, Fixed::zero()} : Vec3{along.y, -along.x, Fixed::zero()};
+    };
+    std::vector<Gallery> out;
+    for (size_t e = 0; e < n; ++e) {
+        const Vec3& prev = corners[(e + n - 1) % n];
+        const Vec3& at = corners[e];
+        const Vec3& next = corners[(e + 1) % n];
+        const Vec3 in = unitFlat(at - prev), onward = unitFlat(next - at);
+        // Round the corner tower from the walk coming in to the walk going on,
+        // through the middle of the angle inside (wider than a half turn where
+        // the corner points inward).
+        out.push_back({at, thick * 3 / 2, -in, unitFlat(inward(in) + inward(onward)), onward});
+        if (e == gateEdge) {
+            const Vec3 mid = (at + next) * Fixed::fromRatio(1, 2);
+            for (int s = -1; s <= 1; s += 2) out.push_back({mid + onward * (gateTowerAt() * s), thick * 6 / 5, -onward, inward(onward), onward});
+        }
+    }
+    return out;
+}
+
+std::vector<Vec3> Continent::Castle::Ring::way() const {
+    const std::vector<Gallery> gs = galleries();
+    const size_t n = gs.size();
+    std::vector<Vec3> out;
+    for (size_t i = 0; i < n; ++i) {
+        const Gallery& prev = gs[(i + n - 1) % n];
+        const Gallery& next = gs[(i + 1) % n];
+        const auto within = [](const Gallery& g, const Vec3& p) { return (p - g.pos).flat().length() < g.radius + kGalleryWay; };
+        for (const Vec3& p : gs[i].arc(gs[i].radius + kGalleryWay))
+            if (!within(prev, p) && !within(next, p)) out.push_back(p);
+    }
+    return out;
+}
+
 }  // namespace illyria::sim

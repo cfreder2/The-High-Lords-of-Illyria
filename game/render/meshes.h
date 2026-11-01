@@ -50,6 +50,8 @@ Mesh tower();
 //     z = 1 at x = 1, [-1, 1] across; its sides run on a little below z = 0
 Mesh curtain();
 Mesh block();
+// A piece of a gallery round a tower, `width` metres from the tower's face out.
+Mesh gallery(float width);
 Mesh drum();
 Mesh keep();
 Mesh ramp();

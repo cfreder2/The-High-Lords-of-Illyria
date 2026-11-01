@@ -27,7 +27,6 @@ struct Obstacle {
     static constexpr uint8_t kTownHouse = 200;
     static constexpr uint8_t kSiteStone = 201;  // a ruin's, temple's or sage's tower's stones (drawn with the site)
     bool solid = true;  // bushes are not
-    Fixed passAbove = {};  // towers: soldiers this high above the base walk through (the wall-walk); 0: never
 };
 
 struct Polyline {
@@ -43,6 +42,8 @@ struct Polyline {
 // A walkway above the ground: a bridge deck, a castle's wall-walk or a ramp up to one.
 // It runs from centre - dir * halfSpan to centre + dir * halfSpan, halfWidth
 // either side; its top is centre.z in the middle and rises by `rise` end to end.
+// A tower's gallery (`arc`) is a ring round centre instead, from `inner` out
+// to halfSpan, as far either side of dir as its sweep's cosine `cosHalf`.
 struct Deck {
     Vec3 centre, dir;
     Fixed halfSpan, halfWidth;
@@ -50,6 +51,8 @@ struct Deck {
     Fixed rise = {};     // ramps climb; bridges and walls are level
     bool raised = false; // on a castle (walls and ramps) or a ruin's platform, not over water
     bool ramp = false;   // a castle ramp, a ruin's platform or its stair: solid down to the ground
+    bool arc = false;    // a gallery round a tower, corbelled out: open below
+    Fixed inner = {}, cosHalf = {};
     bool contains(Fixed x, Fixed y) const;
     Fixed heightAt(Fixed x, Fixed y) const;
 };
@@ -95,6 +98,9 @@ struct Gate {
 // A ring of castle walls with a walk along the top, and the ramps up to it.
 struct Rampart {
     std::vector<Vec3> corners;  // z = the walk
+    // The way round it: the walk's middle line, bent round the inner side of
+    // every tower on its gallery (z = the walk).
+    std::vector<Vec3> way;
     Fixed halfThick;
     Vec3 centre;  // inside the ring
     std::vector<std::pair<Vec3, Vec3>> ramps;  // (foot on the ground, head at the walk)

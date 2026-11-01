@@ -390,6 +390,21 @@ Mesh block() {
     return b.mesh;
 }
 
+Mesh gallery(float width) {
+    // One piece of a gallery round a tower at the walk (the sim's
+    // Continent::Castle::Gallery): its floor from inside the tower's face
+    // (y = 0) out to its edge (y = width), its top at z = 0, worn like the
+    // walk, and under it a corbel stepped back to the tower. x runs across
+    // the piece (scaled to its width); the rest is in metres.
+    Builder b;
+    b.box({-1, -0.5f, -0.4f}, {1, width, 0}, kStone * 0.95f);
+    b.quad({-1, -0.5f, 0.002f}, {1, -0.5f, 0.002f}, {1, width, 0.002f}, {-1, width, 0.002f}, kStone * 0.8f);
+    b.box({-0.22f, 0, -0.75f}, {0.22f, width * 0.9f, -0.4f}, kStone * 0.9f);
+    b.box({-0.18f, 0, -1.1f}, {0.18f, width * 0.6f, -0.75f}, kStone * 0.85f);
+    b.box({-0.14f, 0, -1.45f}, {0.14f, width * 0.3f, -1.1f}, kStone * 0.8f);
+    return b.mesh;
+}
+
 namespace {
 const V3 kOak{0.40f, 0.27f, 0.15f}, kIron{0.17f, 0.17f, 0.19f};
 // One door leaf of planks, hinged at `hinge`, running `dir` (unit, flat) for

@@ -70,9 +70,24 @@ public:
     // The plan of a city's defences, in continent coordinates (z = ground).
     // Walls run corner to corner round each ring (outer first; capitals have
     // an inner bailey too), with a gate in one edge. Archers stand on the
-    // wall-walk, reached by ramps against the inner faces; the courtyard
-    // behind the gate is left open for mustering troops and siege engines.
+    // wall-walk, reached by ramps against the inner faces, and go round the
+    // towers on galleries; the courtyard behind the gate is left open for
+    // mustering troops and siege engines.
     struct Castle {
+        // A gallery round a tower's inner side at the height of the walk
+        // (castle_walls.cpp): stone corbelled out from the tower, so men on
+        // the walk go round the tower, never into it. It reaches from the
+        // tower's face kGalleryWidth out, and round from the walk's middle
+        // line on one side (`from`: unit and flat, out of the tower's
+        // middle) through the inside of the ring (`mid`) to the other
+        // (`to`), in the order of the ring's corners.
+        struct Gallery {
+            Vec3 pos;      // the tower's middle (z as the ring's corners)
+            Fixed radius;  // the tower's
+            Vec3 from, mid, to;
+            // Points round it `r` from the tower's middle, `from` to `to`, a few degrees apart.
+            std::vector<Vec3> arc(Fixed r) const;
+        };
         struct Ring {
             std::vector<Vec3> corners;
             Fixed height, thick;  // walls; the walk lies kWalkBelow under the height
@@ -91,6 +106,16 @@ public:
             // The embrasures along edge e (castle_walls.cpp): their middles, in
             // metres from corners[e], kCrenelPitch apart, clear of the towers.
             std::vector<Fixed> crenels(size_t edge) const;
+            // The galleries round its towers (castle_walls.cpp), in the order
+            // the walk passes them: each corner's, then on the gate's edge
+            // the pair flanking the gate.
+            std::vector<Gallery> galleries() const;
+            // The way men go round its walk: along the walk's middle line and
+            // round each tower on its gallery, kGalleryWay out from the tower;
+            // where two galleries run into each other (towers close together
+            // on a short wall), across from one to the other where they meet.
+            // z as the corners.
+            std::vector<Vec3> way() const;
         };
         // The top of a curtain wall (castle_walls.cpp). Along the walk's outer
         // edge a parapet kParapetThick deep rises kParapetSill (a low breastwork
@@ -103,6 +128,13 @@ public:
         static constexpr Fixed kMerlonTop = Fixed::fromInt(2);
         static constexpr Fixed kCrenelWidth = Fixed::fromInt(1);
         static constexpr Fixed kCrenelPitch = Fixed::fromInt(4);
+        // A gallery is as wide as the walk behind its parapet, with a breast-
+        // high parapet kGalleryParapet thick on its open side; men go round
+        // it kGalleryWay out from the tower (the walk's middle line, whose
+        // lanes keep right of it).
+        static constexpr Fixed kGalleryWidth = Fixed::fromRatio(17, 5);
+        static constexpr Fixed kGalleryParapet = Fixed::fromRatio(1, 2);
+        static constexpr Fixed kGalleryWay = Fixed::fromRatio(13, 10);
         struct Tower {
             Vec3 pos;
             Fixed radius, height;
