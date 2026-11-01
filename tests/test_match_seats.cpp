@@ -200,7 +200,11 @@ TEST(horde_fallen_hero_recalled_for_points) {
         CHECK(!h.heroFallen(b, 0) && h.heroFellIn(0) == 0);
         CHECK(h.points(0) == HordeMode::kRoundPoints - HordeMode::kRecallPoints);
         const sim::Unit& u = *b.world().findUnit(h.hero(b, 0));
-        CHECK(u.rank == f.rank && u.hp == u.stats.maxHp * HordeMode::kReturnHpPct / 100);
+        // Back at kReturnHpPct; a healer beside him may already have mended him in that tick.
+        int heal = 0;
+        for (int t = 0; t < sim::kUnitTypeCount; ++t) heal = std::max(heal, sim::unitStats(static_cast<sim::UnitType>(t)).healing.amount);
+        const int back = u.stats.maxHp * HordeMode::kReturnHpPct / 100;
+        CHECK(u.rank == f.rank && u.hp >= back && u.hp <= back + heal);
         // A second recall with him standing does nothing.
         h.act({sim::MatchAction::Kind::Recall, 0});
         run(b, 30);
