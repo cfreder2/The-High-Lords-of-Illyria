@@ -71,6 +71,7 @@ add_executable(illyria_tests
     test_ctf.cpp
     test_sandbox.cpp
     test_ruin.cpp
+    test_site_clearance.cpp
     test_satchels.cpp
     test_scavenge.cpp
     test_match_seats.cpp

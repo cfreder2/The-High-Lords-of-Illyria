@@ -335,11 +335,11 @@ sim::Vec3 firmGround(const sim::Region& r, const sim::Vec3& p, int32_t searchM) 
         }
         for (const sim::Rampart& rp : r.ramparts())
             if ((rp.centre - q).flat().lengthSq() < m(90) * m(90)) return false;  // not in a castle
-        for (const sim::Floor& f : r.floors())  // nor on a ruin's platform or its stair, nor against them
-            for (const size_t k : {f.deck, f.stair}) {
-                const sim::Deck& d = r.decks()[k];
-                if (sim::Deck{d.centre, d.dir, d.halfSpan + m(2), d.halfWidth + m(2)}.contains(x, y)) return false;
-            }
+        for (const sim::Floor& f : r.floors()) {  // nor on a ruin's platform, its base or its stair, nor against them
+            if (x > f.baseLo.x - m(2) && x < f.baseHi.x + m(2) && y > f.baseLo.y - m(2) && y < f.baseHi.y + m(2)) return false;
+            const sim::Deck& d = r.decks()[f.stair];
+            if (sim::Deck{d.centre, d.dir, d.halfSpan + m(2), d.halfWidth + m(2)}.contains(x, y)) return false;
+        }
         return true;
     };
     // Rings outward, each in one order: the first good cell found.

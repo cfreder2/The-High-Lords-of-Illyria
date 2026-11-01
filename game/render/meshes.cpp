@@ -323,7 +323,7 @@ Mesh house() {
 Mesh pillar() {
     Builder b;
     const V3 stone{0.78f, 0.75f, 0.68f};
-    b.frustum(0, 1.3f, 0.06f, 1.3f, 8, stone * 0.9f);
+    b.frustum(0, kPillarFoot, 0.06f, kPillarFoot, 8, stone * 0.9f);
     b.frustum(0.06f, 1.0f, 0.92f, 0.9f, 8, stone);
     b.frustum(0.92f, 1.2f, 1.0f, 1.2f, 8, stone * 1.05f);
     b.frustum(1.0f, 1.2f, 1.0f, 0, 8, stone * 1.05f);

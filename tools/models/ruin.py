@@ -8,7 +8,10 @@ From the repository root, with Blender as a Python module (tools/blender/README.
 It writes
     game/web/models/ruin.bin        the decimated mesh (format below)
     game/web/models/ruin.webp       its colour texture
-    engine/sim/src/site_ruin.inc    the battle's floor, stair and stones (Region::fromContinent)
+    engine/sim/src/site_ruin.inc    the battle's floor, stair, base and stones (Region::fromContinent),
+    engine/sim/src/site_ruin_drawn.inc  and its drawn footprint, for the tests: both by
+                                    tools/models/ruin_stones.py from ruin.bin (numpy only; run
+                                    it alone to derive them again without Blender)
 
 The model: a temple's platform with a stair at the front (-y), a sunken stair
 pit in the middle, columns, broken walls and paving out front. Its ground
@@ -21,13 +24,11 @@ level is the paving's underside (the pit goes below it). The script
   2. centres the footprint on the origin, sets the ground at z = 0 and scales
      the longer side of the footprint to 1 (the game scales it by
      Continent::Site::kRuinSize and turns it by quarter turns);
-  3. samples the decimated mesh on a grid of 1/256 of its size: the height of
-     its top, and whether a man's chest (1 m above where he stands) would be
-     inside stone;
-  4. finds the floor (the commonest raised height, its extent), the stair (the
-     run from the paving up to the floor's front edge), and as solid stones
-     whatever blocks a man on the floor or on the ground about it, and the pit:
-     compact, round pieces as columns, the rest as boxes no more than 6 m long.
+  3. writes it, and derives from what it wrote the floor (the commonest
+     raised height, its extent), the stair (the run from the paving up to the
+     floor's front edge), the stepped base the floor stands on, and as solid
+     stones whatever stands higher than a man's feet where he would stand
+     (ruin_stones.py): what is solid in battle is what the game draws.
 
 ruin.bin, little-endian:
     char[4] "IMDL", uint32 version (1), uint32 vertices, uint32 indices,
@@ -39,21 +40,13 @@ import argparse
 import math
 import os
 import struct
+import subprocess
 import sys
-from collections import deque
 
 import bpy  # first: it makes bmesh and mathutils importable
 import bmesh
 import numpy as np
 from mathutils import Vector
-from mathutils.bvhtree import BVHTree
-
-GRID = 256          # height-field samples across the model
-STEP = 0.8          # metres a man steps over without noticing
-CHEST = 1.0         # metres above his feet at which stone stops him
-FLOOR_TOL = 0.35    # metres either side of the floor's height that count as floor
-EDGE = 0.6          # metres round the floor's edge left to the platform (its sloping base)
-MAX_BOX = 6.0       # metres: the longest side of a block (the sim looks 7 m round a man)
 
 
 def parse():
@@ -185,230 +178,6 @@ def texture(fbx, size, quality, path):
     print('%s: %dx%d from %s, %d bytes' % (path, size, size, os.path.basename(src), os.path.getsize(path)))
 
 
-def sample(bm):
-    """Top height and chest-high solidity on a GRID x GRID raster of [-0.5, 0.5]^2."""
-    bvh = BVHTree.FromBMesh(bm)
-    xs = (np.arange(GRID) + 0.5) / GRID - 0.5
-    top = np.full((GRID, GRID), np.nan)
-    for j, y in enumerate(xs):
-        for i, x in enumerate(xs):
-            hit = bvh.ray_cast(Vector((x, y, 5.0)), Vector((0, 0, -1)))
-            if hit[0] is not None:
-                top[j, i] = hit[0].z
-    return bvh, xs, top
-
-
-def inside(bvh, x, y, z):
-    """Whether the point is inside stone (the nearest surface faces away from it)."""
-    hit = bvh.find_nearest(Vector((x, y, z)))
-    if hit[0] is None:
-        return False
-    d = Vector((x, y, z)) - hit[0]
-    return d.length < 1e-4 or d.dot(hit[1]) < 0
-
-
-def label(mask, diagonal=False):
-    """Connected regions of a boolean grid: (labels, sizes)."""
-    lab = np.zeros(mask.shape, int)
-    sizes = [0]
-    steps = [(1, 0), (-1, 0), (0, 1), (0, -1)] + ([(1, 1), (1, -1), (-1, 1), (-1, -1)] if diagonal else [])
-    for j0, i0 in zip(*np.nonzero(mask)):
-        if lab[j0, i0]:
-            continue
-        n = len(sizes)
-        lab[j0, i0] = n
-        q = deque([(j0, i0)])
-        count = 0
-        while q:
-            j, i = q.popleft()
-            count += 1
-            for dj, di in steps:
-                a, b = j + dj, i + di
-                if 0 <= a < mask.shape[0] and 0 <= b < mask.shape[1] and mask[a, b] and not lab[a, b]:
-                    lab[a, b] = n
-                    q.append((a, b))
-        sizes.append(count)
-    return lab, sizes
-
-
-def largest_rect(cells):
-    """The largest all-true rectangle in a boolean grid: (j0, i0, j1, i1) inclusive, or None."""
-    rows, cols = cells.shape
-    heights = np.zeros(cols, int)
-    best, out = 0, None
-    for j in range(rows):
-        heights = np.where(cells[j], heights + 1, 0)
-        stack = []
-        for i in range(cols + 1):
-            h = heights[i] if i < cols else 0
-            start = i
-            while stack and stack[-1][1] >= h:
-                s, sh = stack.pop()
-                if sh * (i - s) > best:
-                    best, out = sh * (i - s), (j - sh + 1, s, j, i - 1)
-                start = s
-            stack.append((start, h))
-    return out
-
-
-def derive(bm, size):
-    """The floor, the stair and the solid stones, in metres in model space (x, y from the middle)."""
-    cell = size / GRID
-    bvh, xs, top = sample(bm)
-    H = np.nan_to_num(top, nan=0.0) * size  # metres above the ground (the pit's floor below 0)
-    # The floor: the commonest height of the raised ground, refined.
-    raised = H[H > 1.0]
-    counts, edges = np.histogram(raised, bins=np.arange(1.0, raised.max() + 0.1, 0.1))
-    floor = float(edges[np.argmax(counts)] + 0.05)
-    floor = float(np.median(raised[abs(raised - floor) < 0.2]))
-    near = abs(H - floor) <= FLOOR_TOL
-    lab, sizes = label(near)
-    main = lab == int(np.argmax(sizes))
-    # Its extent: rows and columns well filled (not a stray step or ledge).
-    rows, cols = main.sum(1), main.sum(0)
-    rj = np.nonzero(rows >= 0.25 * rows.max())[0]
-    ci = np.nonzero(cols >= 0.25 * cols.max())[0]
-    j0, j1, i0, i1 = rj.min(), rj.max(), ci.min(), ci.max()
-    fx0, fx1, fy0, fy1 = xs[i0] * size - cell / 2, xs[i1] * size + cell / 2, xs[j0] * size - cell / 2, xs[j1] * size + cell / 2
-    # The stair: in front (-y) of the floor, the columns where the ground
-    # climbs from the paving to the floor over a metre or more.
-    runs = []
-    for i in range(i0, i1 + 1):
-        j = j0 - 1
-        while j >= 0 and 0.3 < H[j, i] < floor - 0.15:
-            j -= 1
-        runs.append((j0 - 1 - j) * cell)
-    # The widest stretch of such columns.
-    at, k = None, 0
-    while k < len(runs):
-        e = k
-        while e < len(runs) and runs[e] >= 1.0:
-            e += 1
-        if e > k and (at is None or e - k > at[1] - at[0]):
-            at = (k, e)
-        k = e + 1
-    if at is None:
-        sys.exit('no stair found in front of the floor')
-    s0, s1 = i0 + at[0], i0 + at[1] - 1
-    run = float(np.median(runs[at[0]:at[1]]))
-    sx0, sx1 = xs[s0] * size - cell / 2, xs[s1] * size + cell / 2
-    stair = {'x0': sx0, 'x1': sx1, 'foot': fy0 - run, 'head': fy0}
-    # What stops a man: on the floor, stone at his chest or the pit; about it, stone at his chest.
-    solid = np.zeros_like(main)
-    on_floor = np.zeros_like(main)
-    on_floor[j0:j1 + 1, i0:i1 + 1] = True
-    margin = int(math.ceil(EDGE / cell))
-    edge = np.zeros_like(main)
-    edge[max(0, j0 - margin):j1 + margin + 1, max(0, i0 - margin):i1 + margin + 1] = True
-    edge &= ~on_floor
-    for j in range(GRID):
-        y = xs[j]
-        for i in range(GRID):
-            x = xs[i]
-            if on_floor[j, i]:
-                solid[j, i] = H[j, i] < floor - STEP or (H[j, i] > floor + STEP and inside(bvh, x, y, (floor + CHEST) / size))
-            elif edge[j, i] or (sx0 <= x * size <= sx1 and stair['foot'] <= y * size <= fy0):
-                continue
-            else:
-                solid[j, i] = H[j, i] > STEP and inside(bvh, x, y, CHEST / size)
-    stones = []
-    lab, sizes = label(solid, diagonal=True)
-    for n in range(1, len(sizes)):
-        comp = lab == n
-        area = sizes[n] * cell * cell
-        if area < 0.3:
-            continue  # a stray stone a man steps round
-        jj, ii = np.nonzero(comp)
-        w, h = (ii.max() - ii.min() + 1) * cell, (jj.max() - jj.min() + 1) * cell
-        tops = H[comp]
-        # Round, compact and standing tall: a column.
-        if max(w, h) <= 3.0 and min(w, h) / max(w, h) >= 0.6 and area / (w * h) >= 0.55 and tops.max() > floor + 2.0:
-            stones.append({'x': float(xs[ii].mean() * size), 'y': float(xs[jj].mean() * size), 'r': float(math.sqrt(area / math.pi)),
-                           'top': float(tops.max()), 'round': True})
-            continue
-        # Otherwise blocks: the largest rectangles of it, no side longer than MAX_BOX.
-        left = comp.copy()
-        while left.sum() * cell * cell >= 0.3:
-            r = largest_rect(left)
-            if r is None:
-                break
-            a0, b0, a1, b1 = r
-            if (a1 - a0 + 1) * (b1 - b0 + 1) * cell * cell < 0.25:
-                break
-            left[a0:a1 + 1, b0:b1 + 1] = False
-            ny = int(math.ceil((a1 - a0 + 1) * cell / MAX_BOX))
-            nx = int(math.ceil((b1 - b0 + 1) * cell / MAX_BOX))
-            for p in range(ny):
-                for q in range(nx):
-                    c0 = a0 + (a1 - a0 + 1) * p // ny
-                    c1 = a0 + (a1 - a0 + 1) * (p + 1) // ny - 1
-                    d0 = b0 + (b1 - b0 + 1) * q // nx
-                    d1 = b0 + (b1 - b0 + 1) * (q + 1) // nx - 1
-                    t = float(H[c0:c1 + 1, d0:d1 + 1].max())
-                    stones.append({'x': float((xs[d0] + xs[d1]) / 2 * size), 'y': float((xs[c0] + xs[c1]) / 2 * size),
-                                   'hx': (d1 - d0 + 1) * cell / 2, 'hy': (c1 - c0 + 1) * cell / 2,
-                                   'top': max(t, floor + STEP) if on_floor[c0, d0] else max(t, STEP), 'round': False})
-    return {'floor': floor, 'rect': (fx0, fy0, fx1, fy1), 'stair': stair, 'stones': stones, 'H': H, 'solid': solid,
-            'cell': cell, 'xs': xs}
-
-
-def write_inc(d, size, path, tris):
-    k = lambda v: int(round(v / size * 1000))
-    fx0, fy0, fx1, fy1 = d['rect']
-    st = d['stair']
-    mid = (st['x0'] + st['x1']) / 2
-    lines = [
-        '// Generated by tools/models/ruin.py from the ruin model (game/web/models/ruin.bin,',
-        '// %d triangles): do not edit. The battle\'s ruin (Region::fromContinent): in' % tris,
-        '// thousandths of its size, unturned (the stair faces -y), heights above the ground.',
-        '',
-        '// The size the stones were derived at (metres; Continent::Site::kRuinSize).',
-        'constexpr int kRuinModelSize = %d;' % round(size),
-        '// The platform\'s floor: x0, y0, x1, y1, its height.',
-        'constexpr int64_t kRuinFloor[5] = {%d, %d, %d, %d, %d};' % (k(fx0), k(fy0), k(fx1), k(fy1), k(d['floor'])),
-        '// The stair up to it: its foot on the ground and its head at the floor (x, y), half its width.',
-        'constexpr int64_t kRuinStair[5] = {%d, %d, %d, %d, %d};' % (k(mid), k(st['foot']), k(mid), k(st['head']),
-                                                                    k((st['x1'] - st['x0']) / 2)),
-        '// Its stones: x, y, half sizes (a column\'s radius twice), top; round for a column.',
-        'const std::vector<SiteStone> kRuinStones = {',
-    ]
-    for s in d['stones']:
-        if s['round']:
-            lines.append('    {%d, %d, %d, %d, %d, true},' % (k(s['x']), k(s['y']), k(s['r']), k(s['r']), k(s['top'])))
-        else:
-            lines.append('    {%d, %d, %d, %d, %d, false},' % (k(s['x']), k(s['y']), k(s['hx']), k(s['hy']), k(s['top'])))
-    lines.append('};')
-    with open(path, 'w') as f:
-        f.write('\n'.join(lines) + '\n')
-    cols = sum(1 for s in d['stones'] if s['round'])
-    print('%s: floor %.2f m high, %.1f x %.1f m; stair %.1f m wide, %.1f m run; %d columns, %d blocks' % (
-        path, d['floor'], fx1 - fx0, fy1 - fy0, st['x1'] - st['x0'], st['head'] - st['foot'], cols, len(d['stones']) - cols))
-
-
-def preview_map(d, size, path):
-    from PIL import Image, ImageDraw
-    H, cell = d['H'], d['cell']
-    scale = 4
-    img = np.clip((H + 2) / (H.max() + 2), 0, 1)
-    rgb = np.stack([img * 200 + 30] * 3, -1).astype(np.uint8)
-    rgb[d['solid']] = (rgb[d['solid']] * 0.5 + np.array([120, 30, 30])).astype(np.uint8)
-    im = Image.fromarray(rgb[::-1]).resize((GRID * scale, GRID * scale), Image.NEAREST)
-    g = ImageDraw.Draw(im)
-    px = lambda x, y: ((x / size + 0.5) * GRID * scale, (0.5 - y / size) * GRID * scale)
-    fx0, fy0, fx1, fy1 = d['rect']
-    g.rectangle([px(fx0, fy1), px(fx1, fy0)], outline=(80, 200, 255), width=2)
-    st = d['stair']
-    g.rectangle([px(st['x0'], st['head']), px(st['x1'], st['foot'])], outline=(255, 220, 60), width=2)
-    for s in d['stones']:
-        if s['round']:
-            a, b = px(s['x'] - s['r'], s['y'] + s['r']), px(s['x'] + s['r'], s['y'] - s['r'])
-            g.ellipse([a, b], outline=(60, 255, 90), width=2)
-        else:
-            g.rectangle([px(s['x'] - s['hx'], s['y'] + s['hy']), px(s['x'] + s['hx'], s['y'] - s['hy'])], outline=(255, 90, 200), width=2)
-    im.save(path)
-    print('preview', path)
-
-
 def preview_render(me, tex, path):
     """The decimated model, textured, from above and at an angle (EEVEE)."""
     o = bpy.data.objects.new('ruin', me)
@@ -466,11 +235,15 @@ def main():
     me = export(bm, os.path.join(a.out, 'ruin.bin'))
     tex = os.path.join(a.out, 'ruin.webp')
     texture(a.fbx, a.texture, a.quality, tex)
-    d = derive(bm, a.size)
-    write_inc(d, a.size, a.inc, tris)
+    # The battle's ruin, from the mesh just written (the Python running this has numpy).
+    stones = [sys.executable, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ruin_stones.py'),
+              '--bin', os.path.join(a.out, 'ruin.bin'), '--size', str(a.size), '--inc', a.inc]
+    if a.preview:
+        stones += ['--preview', a.preview]
+    subprocess.run(stones, check=True)
+    print('%d triangles' % tris)
     if a.preview:
         os.makedirs(a.preview, exist_ok=True)
-        preview_map(d, a.size, os.path.join(a.preview, 'ruin_stones.png'))
         preview_render(me, os.path.abspath(tex), os.path.join(a.preview, 'ruin'))
 
 

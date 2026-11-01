@@ -212,7 +212,8 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
         gateCells_.push_back(std::move(cells));
     }
     for (const Obstacle& o : region.obstacles()) {
-        if (o.kind != Obstacle::Kind::House) continue;
+        // A site's standing stone is routed round exactly, not by the cell (below).
+        if (o.kind != Obstacle::Kind::House || o.standingStone()) continue;
         // A ruin's stones on its platform: the floor's own grid has them (buildFloors).
         bool onFloor = false;
         for (const Floor& f : region.floors()) onFloor = onFloor || region.decks()[f.deck].contains(o.pos.x, o.pos.y);
@@ -221,6 +222,42 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
         const int32_t y0 = cellOf(o.pos.y - o.halfY), y1 = cellOf(o.pos.y + o.halfY);
         for (int32_t y = y0; y <= y1; ++y)
             for (int32_t x = x0; x <= x1; ++x) open_[static_cast<size_t>(index(x, y))] = 0;
+    }
+    // The sites' standing stone and the raised floors' bases, exactly (a
+    // cell is far coarser than a column): routes go round them a gait's
+    // clearance off (costs, siteMoves, siteClear).
+    for (size_t fi = 0; fi < region.floors().size(); ++fi) {
+        const Floor& f = region.floors()[fi];
+        siteBoxes_.push_back({f.baseLo.x, f.baseLo.y, f.baseHi.x, f.baseHi.y, static_cast<int32_t>(fi)});
+    }
+    for (const Obstacle& o : region.obstacles()) {
+        if (!o.solid || !o.standingStone()) continue;
+        bool onFloor = false;
+        for (const Floor& f : region.floors()) onFloor = onFloor || region.decks()[f.deck].contains(o.pos.x, o.pos.y);
+        if (onFloor) continue;
+        if (o.kind == Obstacle::Kind::House) siteBoxes_.push_back({o.pos.x - o.halfX, o.pos.y - o.halfY, o.pos.x + o.halfX, o.pos.y + o.halfY});
+        else siteDiscs_.push_back({o.pos, o.radius});
+    }
+    if (!siteBoxes_.empty() || !siteDiscs_.empty()) {
+        // Each cell's site stone within a cell and the widest clearance of it.
+        Fixed widest;
+        for (int g = 0; g < kGaitCount; ++g) widest = max(widest, gaitClearance(static_cast<Gait>(g)));
+        const Fixed reach = Fixed::fromInt(cell_) + widest;
+        std::vector<std::pair<int32_t, uint16_t>> marks;
+        const auto mark = [&](uint16_t id, Fixed x0, Fixed y0, Fixed x1, Fixed y1) {
+            for (int32_t y = cellOf(y0 - reach); y <= cellOf(y1 + reach); ++y)
+                for (int32_t x = cellOf(x0 - reach); x <= cellOf(x1 + reach); ++x) marks.push_back({index(x, y), id});
+        };
+        uint16_t id = 0;
+        for (const SiteBox& b : siteBoxes_) mark(id++, b.x0, b.y0, b.x1, b.y1);
+        for (const auto& [at, r] : siteDiscs_) mark(id++, at.x - r, at.y - r, at.x + r, at.y + r);
+        std::stable_sort(marks.begin(), marks.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        siteAt_.assign(count + 1, 0);
+        for (const auto& [k, s] : marks) ++siteAt_[static_cast<size_t>(k) + 1];
+        for (size_t k = 0; k < count; ++k) siteAt_[k + 1] += siteAt_[k];
+        siteIds_.reserve(marks.size());
+        for (const auto& [k, s] : marks) siteIds_.push_back(s);
+        siteSeen_.assign(id, 0);
     }
     // The castles' stone, exactly, for straight lines (throughStone).
     if (!region.walls().empty()) {
@@ -337,11 +374,162 @@ bool NavGrid::hitsStone(uint32_t id, const Vec3& from, const Vec3& to) const {
     return distSqToSegment(at, from, to) < r * r;
 }
 
+// --- A site's standing stone -------------------------------------------------
+
+namespace {
+// Lines keep this much short of the nearer end's distance from stone, so an
+// end standing closer than the clearance does not count as touching it.
+constexpr Fixed kSiteSlack = Fixed::fromRatio(1, 64);
+// The distance from p to the box, along the farther axis (square corners, as
+// the box is grown by a clearance), zero inside.
+Fixed boxReach(Fixed x0, Fixed y0, Fixed x1, Fixed y1, const Vec3& p) {
+    return max(max(max(x0 - p.x, p.x - x1), max(y0 - p.y, p.y - y1)), Fixed::zero());
+}
+}  // namespace
+
+bool NavGrid::hitsSite(uint32_t id, const Vec3& from, const Vec3& to, Fixed clear) const {
+    if (id < siteBoxes_.size()) {
+        const SiteBox& b = siteBoxes_[id];
+        // Grown by the clearance, or less where an end is nearer than that.
+        Fixed c = min(clear, min(boxReach(b.x0, b.y0, b.x1, b.y1, from), boxReach(b.x0, b.y0, b.x1, b.y1, to)) - kSiteSlack);
+        c = max(c, Fixed::zero());
+        // The segment clipped to the grown box.
+        const Vec3 v = (to - from).flat();
+        const Fixed lo[2] = {b.x0 - c, b.y0 - c}, hi[2] = {b.x1 + c, b.y1 + c};
+        const Fixed p0[2] = {from.x, from.y}, dv[2] = {v.x, v.y};
+        Fixed t0 = Fixed::zero(), t1 = Fixed::one();
+        for (int k = 0; k < 2; ++k) {
+            if (dv[k] == Fixed::zero()) {
+                if (p0[k] <= lo[k] || p0[k] >= hi[k]) return false;
+                continue;
+            }
+            Fixed a = (lo[k] - p0[k]) / dv[k], e = (hi[k] - p0[k]) / dv[k];
+            if (a > e) std::swap(a, e);
+            t0 = max(t0, a);
+            t1 = min(t1, e);
+            if (t0 >= t1) return false;
+        }
+        return true;
+    }
+    const auto& [at, r] = siteDiscs_[id - siteBoxes_.size()];
+    const Fixed dFrom = (from - at).flat().length() - r, dTo = (to - at).flat().length() - r;
+    Fixed c = min(clear, min(dFrom, dTo) - kSiteSlack);
+    c = max(c, Fixed::zero());
+    return distSqToSegment(at, from, to) < (r + c) * (r + c);
+}
+
+bool NavGrid::siteClear(const Vec3& from, const Vec3& to, Fixed clear, int32_t skipFloor) const {
+    if (siteAt_.empty()) return true;
+    if (++siteStamp_ == 0) {
+        std::fill(siteSeen_.begin(), siteSeen_.end(), 0);
+        siteStamp_ = 1;
+    }
+    // The stone listed at the cells the line crosses (each lists all within a
+    // cell and the widest clearance: sampling every half cell sees it all).
+    const Vec3 d = (to - from).flat();
+    const int64_t steps = (d.length() * 2 / cell_).floorToInt() + 1;
+    for (int64_t i = 0; i <= steps; ++i) {
+        const Vec3 p = from + d * Fixed::fromRatio(i, steps);
+        const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
+        for (uint32_t j = siteAt_[k]; j < siteAt_[k + 1]; ++j) {
+            const uint16_t s = siteIds_[j];
+            if (siteSeen_[s] == siteStamp_) continue;
+            siteSeen_[s] = siteStamp_;
+            if (s < siteBoxes_.size() && skipFloor >= 0 && siteBoxes_[s].floor == skipFloor) continue;
+            if (hitsSite(s, from, to, clear)) return false;
+        }
+    }
+    return true;
+}
+
+bool NavGrid::inSite(const Vec3& p, Fixed clear) const {
+    if (siteAt_.empty()) return false;
+    const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
+    for (uint32_t j = siteAt_[k]; j < siteAt_[k + 1]; ++j) {
+        const uint16_t s = siteIds_[j];
+        if (s < siteBoxes_.size()) {
+            const SiteBox& b = siteBoxes_[s];
+            if (p.x > b.x0 - clear && p.x < b.x1 + clear && p.y > b.y0 - clear && p.y < b.y1 + clear) return true;
+        } else {
+            const auto& [at, r] = siteDiscs_[s - siteBoxes_.size()];
+            if ((p - at).flat().lengthSq() < (r + clear) * (r + clear)) return true;
+        }
+    }
+    return false;
+}
+
+bool NavGrid::nearSite(const Vec3& p) const { return nearSite(index(cellOf(p.x), cellOf(p.y))); }
+
+namespace {
+// The bit for the move (dx, dy) out of a cell, each of -1, 0, 1, not both 0.
+int siteMoveBit(int32_t dx, int32_t dy) {
+    const int d = (dy + 1) * 3 + dx + 1;
+    return d < 4 ? d : d - 1;
+}
+}  // namespace
+
+const std::vector<uint8_t>& NavGrid::siteMoves(Gait gait) const {
+    std::vector<uint8_t>& mv = siteMoves_[static_cast<size_t>(gait)];
+    if (!mv.empty() || siteAt_.empty()) return mv;
+    mv.assign(open_.size(), 0);
+    const Fixed clear = gaitClearance(gait);
+    const std::vector<uint16_t>& cost = costs(gait);
+    for (int32_t y = 0; y < n_; ++y) {
+        for (int32_t x = 0; x < n_; ++x) {
+            const int32_t k = index(x, y);
+            if (!cost[static_cast<size_t>(k)]) continue;
+            // Only moves into or out of a cell by a site's stone can cut it.
+            bool near = false;
+            for (int32_t dy = -1; dy <= 1 && !near; ++dy)
+                for (int32_t dx = -1; dx <= 1 && !near; ++dx)
+                    near = x + dx >= 0 && y + dy >= 0 && x + dx < n_ && y + dy < n_ && nearSite(index(x + dx, y + dy));
+            if (!near) continue;
+            const Vec3 a = waypoint(k, gait);
+            for (int32_t dy = -1; dy <= 1; ++dy) {
+                for (int32_t dx = -1; dx <= 1; ++dx) {
+                    if ((dx == 0 && dy == 0) || x + dx < 0 || y + dy < 0 || x + dx >= n_ || y + dy >= n_) continue;
+                    const int32_t nb = index(x + dx, y + dy);
+                    if (!cost[static_cast<size_t>(nb)] || (!nearSite(k) && !nearSite(nb))) continue;
+                    if (!siteClear(a, waypoint(nb, gait), clear)) mv[static_cast<size_t>(k)] = static_cast<uint8_t>(mv[static_cast<size_t>(k)] | (1u << siteMoveBit(dx, dy)));
+                }
+            }
+        }
+    }
+    return mv;
+}
+
+int32_t NavGrid::nearestInSight(const Vec3& p, Gait gait) const {
+    const std::vector<uint16_t>& cost = costs(gait);
+    const Fixed clear = gaitClearance(gait);
+    const int32_t px = cellOf(p.x), py = cellOf(p.y);
+    int32_t best = -1, open = -1;
+    Fixed bestD, openD;
+    for (int32_t y = std::max(0, py - kSnapCells); y <= std::min(n_ - 1, py + kSnapCells); ++y) {
+        for (int32_t x = std::max(0, px - kSnapCells); x <= std::min(n_ - 1, px + kSnapCells); ++x) {
+            const int32_t k = index(x, y);
+            if (!cost[static_cast<size_t>(k)]) continue;
+            const Vec3 w = waypoint(k, gait);
+            const Fixed d = (w - p).flat().lengthSq();
+            if (open < 0 || d < openD) {
+                open = k;
+                openD = d;
+            }
+            if ((best < 0 || d < bestD) && siteClear(p, w, clear)) {
+                best = k;
+                bestD = d;
+            }
+        }
+    }
+    return best >= 0 ? best : open;
+}
+
 // --- Raised floors (a ruin's platform) ---------------------------------------
 
 namespace {
 constexpr Fixed kFloorStep = Fixed::fromRatio(1, 2);           // the fine cells' size
-constexpr Fixed kFloorClearance = Fixed::fromRatio(2, 5);      // a man's breadth kept from stone
+// Kept from stone up on a floor: less than on the ground (the platform is
+// cramped as drawn; a man's standoff, a little more, nudges him past it).
+constexpr Fixed kFloorClearance = Fixed::fromRatio(2, 5);
 constexpr Fixed kFloorSample = Fixed::fromRatio(1, 4);         // straight lines are checked this often
 constexpr Fixed kStairReach = Fixed::fromInt(4);               // how far before a stair's foot a man heads straight up it
 }  // namespace
@@ -543,6 +731,12 @@ uint16_t NavGrid::cellCost(Gait gait, int32_t cell) const {
         if (perGround[g] > 0) best = std::min(best, perGround[g]);
     }
     if (best == INT_MAX) return 0;
+    // A cell all within this gait's clearance of a site's stone is shut to it (siteWays).
+    if (nearSite(cell)) {
+        const auto& ways = siteWays(gait);
+        const auto it = std::lower_bound(ways.begin(), ways.end(), cell, [](const SiteWay& e, int32_t c) { return e.cell < c; });
+        if (it != ways.end() && it->cell == cell && !it->open) return 0;
+    }
     if (steep_[k]) best = best * 5 / 4;
     return static_cast<uint16_t>(best);
 }
@@ -568,16 +762,16 @@ void NavGrid::openGate(size_t gate) {
 
 bool NavGrid::groundBlocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
 
-bool NavGrid::blocked(const Vec3& p) const { return groundBlocked(p) || floorAt(p, false) >= 0; }
+bool NavGrid::blocked(const Vec3& p) const { return groundBlocked(p) || floorAt(p, false) >= 0 || inSite(p, gaitClearance(Gait::Foot)); }
 
-bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
-    if (floors_.empty()) return groundClear(from, to);
+bool NavGrid::clearLine(const Vec3& from, const Vec3& to, Gait gait) const {
+    if (floors_.empty()) return groundClear(from, to, gait);
     const int fa = floorAt(from, false), fb = floorAt(to, false);
     if (fa >= 0 && fa == fb) return floorClear(floors_[static_cast<size_t>(fa)], from, to);
     if (fa >= 0 && fb >= 0) return false;
     if (fa < 0 && fb < 0) {
         // On the ground, and not through a floor's solid side.
-        if (!groundClear(from, to)) return false;
+        if (!groundClear(from, to, gait)) return false;
         const Vec3 d = (to - from).flat();
         for (const FloorGrid& f : floors_) {
             const Fixed fx1 = f.x0 + kFloorStep * f.nx, fy1 = f.y0 + kFloorStep * f.ny;
@@ -602,7 +796,8 @@ bool NavGrid::clearLine(const Vec3& from, const Vec3& to) const {
     const Fixed t = (-s.halfSpan - ga) / (qa - ga);
     if (abs(gc + (qc - gc) * t) > s.halfWidth - kFloorClearance) return false;
     const Vec3 entry = g + (q - g).flat() * t + s.dir * kFloorClearance;
-    return floorClear(f, entry, q);
+    // (On the ground to the stair, clear of the stone before it: its base it climbs into.)
+    return siteClear(g, entry, gaitClearance(gait), fa >= 0 ? fa : fb) && floorClear(f, entry, q);
 }
 
 bool NavGrid::findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const {
@@ -645,7 +840,7 @@ Ground NavGrid::fineGround(Fixed x, Fixed y) const {
     return static_cast<Ground>(fine_[static_cast<size_t>(fy * fineCells_ + fx)]);
 }
 
-bool NavGrid::groundClear(const Vec3& from, const Vec3& to) const {
+bool NavGrid::groundClear(const Vec3& from, const Vec3& to, Gait gait) const {
     const Vec3 d = (to - from).flat();
     const Fixed len = d.length();
     const int64_t steps = (len / 2).floorToInt() + 1;
@@ -654,11 +849,13 @@ bool NavGrid::groundClear(const Vec3& from, const Vec3& to) const {
         std::fill(stoneSeen_.begin(), stoneSeen_.end(), 0);
         stoneStamp_ = 1;
     }
+    bool site = false;  // a site's stone near the line (tested after)
     for (int64_t i = 0; i <= steps; ++i) {
         const Vec3 p = from + d * Fixed::fromRatio(i, steps);
-        if (groundBlocked(p)) return false;
+        const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
+        if (open_[k] == 0) return false;  // groundBlocked
+        site = site || (!siteAt_.empty() && siteAt_[k] != siteAt_[k + 1]);
         if (!stoneAt_.empty()) {
-            const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
             for (uint32_t j = stoneAt_[k]; j < stoneAt_[k + 1]; ++j) {
                 const uint16_t s = stoneIds_[j];
                 if (stoneSeen_[s] == stoneStamp_) continue;
@@ -673,7 +870,7 @@ bool NavGrid::groundClear(const Vec3& from, const Vec3& to) const {
         for (const Deck& k : decks_) onDeck = onDeck || (!k.raised && k.contains(p.x, p.y));
         if (!onDeck) return false;
     }
-    return true;
+    return !site || siteClear(from, to, gaitClearance(gait));
 }
 
 Fixed NavGrid::travelTime(const Vec3& from, const Vec3& to, Gait gait, Fixed* slowest) const {
@@ -740,6 +937,47 @@ Fixed NavGrid::travelTime(const Vec3& from, const std::vector<Vec3>& points, Gai
 }
 
 Vec3 NavGrid::waypoint(int32_t cell, Gait gait) const {
+    // By a site's stone, moved clear of it (siteWays).
+    if (nearSite(cell)) {
+        const auto& ways = siteWays(gait);
+        const auto it = std::lower_bound(ways.begin(), ways.end(), cell, [](const SiteWay& e, int32_t c) { return e.cell < c; });
+        if (it != ways.end() && it->cell == cell) return it->at;
+    }
+    return groundWaypoint(cell, gait);
+}
+
+const std::vector<NavGrid::SiteWay>& NavGrid::siteWays(Gait gait) const {
+    std::vector<SiteWay>& ways = siteWays_[static_cast<size_t>(gait)];
+    if (siteWaysBuilt_[static_cast<size_t>(gait)]) return ways;
+    siteWaysBuilt_[static_cast<size_t>(gait)] = true;
+    const Fixed clear = gaitClearance(gait);
+    for (int32_t k = 0; k < n_ * n_; ++k) {
+        if (!nearSite(k)) continue;
+        const Vec3 p = groundWaypoint(k, gait);
+        if (!inSite(p, clear)) continue;
+        // The point of the cell (on a grid of eighths round its middle)
+        // nearest the ground's waypoint and clear of the stone, on ground he walks.
+        const int32_t cx = k % n_, cy = k / n_;
+        const Fixed step = Fixed::fromInt(cell_) / 8;
+        const Vec3 centre{Fixed::fromInt(cx * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(cy * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
+        SiteWay best{k, p, false};
+        Fixed bestD;
+        for (int32_t j = -3; j <= 3; ++j) {
+            for (int32_t i = -3; i <= 3; ++i) {
+                const Vec3 q{centre.x + step * i, centre.y + step * j, Fixed::zero()};
+                if (inSite(q, clear) || gaitSpeed(gait, fineGround(q.x, q.y)) == Fixed::zero()) continue;
+                const Fixed d = (q - p).flat().lengthSq();
+                if (best.open && d >= bestD) continue;
+                best = {k, q, true};
+                bestD = d;
+            }
+        }
+        ways.push_back(best);
+    }
+    return ways;
+}
+
+Vec3 NavGrid::groundWaypoint(int32_t cell, Gait gait) const {
     if (!through_.empty()) {
         const auto it = std::lower_bound(through_.begin(), through_.end(), cell, [](const auto& e, int32_t c) { return e.first < c; });
         if (it != through_.end() && it->first == cell) return it->second;
@@ -851,7 +1089,7 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
     out.clear();
     // The straight line, if it is open: short moves take it, and so does any
     // line no slower than the best a detour could do.
-    const bool line = clearLine(from, to);
+    const bool line = clearLine(from, to, gait);
     Fixed lineTime;
     const std::vector<uint16_t>& cost = costs(gait);
     int32_t cheapest = INT_MAX;
@@ -876,11 +1114,19 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         out.push_back(to);
         return true;
     };
-    // A start or goal on a deck or against a wall routes from the open cell nearest it.
-    int32_t start = index(cellOf(from.x), cellOf(from.y)), goal = index(cellOf(to.x), cellOf(to.y));
-    if (!cost[static_cast<size_t>(start)]) start = nearestOpen(from);
-    if (!cost[static_cast<size_t>(goal)]) goal = nearestOpen(to);
+    // A start or goal on a deck or against a wall routes from the open cell
+    // nearest it; by a site's stone, from the nearest whose waypoint it can
+    // see (its own cell's may be round the stone from it).
+    const int32_t fromCell = index(cellOf(from.x), cellOf(from.y)), toCell = index(cellOf(to.x), cellOf(to.y));
+    const Fixed clear = gaitClearance(gait);
+    int32_t start = fromCell, goal = toCell;
+    if (nearSite(start) && (!cost[static_cast<size_t>(start)] || !siteClear(from, waypoint(start, gait), clear))) start = nearestInSight(from, gait);
+    else if (!cost[static_cast<size_t>(start)]) start = nearestOpen(from);
+    if (nearSite(goal) && (!cost[static_cast<size_t>(goal)] || !siteClear(waypoint(goal, gait), to, clear))) goal = nearestInSight(to, gait);
+    else if (!cost[static_cast<size_t>(goal)]) goal = nearestOpen(to);
     if (start < 0 || goal < 0) return line ? straight() : false;
+    // Moves that would cut a site's stone (none without one).
+    const std::vector<uint8_t>& siteMove = siteMoves(gait);
     const int32_t gx = goal % n_, gy = goal / n_;
 
     // Octile heuristic at the cheapest ground's cost: admissible.
@@ -930,6 +1176,7 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
                 // No cutting corners past blocked cells.
                 const bool diagonal = dx != 0 && dy != 0;
                 if (diagonal && (cost[static_cast<size_t>(index(cx + dx, cy))] == 0 || cost[static_cast<size_t>(index(cx, cy + dy))] == 0)) continue;
+                if (!siteMove.empty() && (siteMove[static_cast<size_t>(cur.idx)] >> siteMoveBit(dx, dy) & 1u)) continue;
                 const int32_t step = climbCost(cur.idx, ni, static_cast<int32_t>(c * cell_ * (diagonal ? 141 : 100) / 100), diagonal, climbPct);
                 const int32_t ng = g_[static_cast<size_t>(cur.idx)] + step;
                 if (ng < g_[static_cast<size_t>(ni)]) {
@@ -946,9 +1193,13 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
 
     std::vector<Vec3> cells;
     for (int32_t i = goal; i != -1 && i != start; i = parent_[static_cast<size_t>(i)]) cells.push_back(waypoint(i, gait));
-    if (start != index(cellOf(from.x), cellOf(from.y))) cells.push_back(waypoint(start, gait));
+    // By a site's stone, the start cell's waypoint too if the first leg would
+    // cut the stone without it (it is in sight of the start).
+    if (start != fromCell || (nearSite(start) && !cells.empty() && !siteClear(from, cells.back(), clear))) cells.push_back(waypoint(start, gait));
     std::reverse(cells.begin(), cells.end());
-    if (goal != index(cellOf(to.x), cellOf(to.y))) cells.push_back(to);
+    // And the goal cell's, if the last leg would.
+    const bool keepGoal = nearSite(goal) && goal == toCell && cells.size() >= 2 && !siteClear(cells[cells.size() - 2], to, clear);
+    if (goal != toCell || keepGoal) cells.push_back(to);
     if (!cells.empty()) cells.back() = to;
     else cells.push_back(to);
 
@@ -1010,7 +1261,7 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         for (size_t k = i; k < limit; ++k) worst[k - i] = min(k == i ? atSpeed : worst[k - i - 1], speed[k]);
         size_t far = i;
         for (size_t j = limit; j-- > i + 1;) {
-            if (!clearLine(at, cells[j])) continue;
+            if (!clearLine(at, cells[j], gait)) continue;
             Fixed lineSlowest = Fixed::fromInt(100);
             if (travelTime(at, cells[j], gait, &lineSlowest) > along[j + 1] - along[i]) continue;
             if (lineSlowest < worst[j - i]) continue;
@@ -1021,7 +1272,7 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         // round it by an elbow instead.
         if (far == i && !pinned[i] && slowestOn(at, cells[i]) < worst[0]) {
             for (const Vec3& e : {Vec3{at.x, cells[i].y, Fixed::zero()}, Vec3{cells[i].x, at.y, Fixed::zero()}}) {
-                if (!clearLine(at, e) || !clearLine(e, cells[i]) || slowestOn(at, e) < worst[0] || slowestOn(e, cells[i]) < worst[0]) continue;
+                if (!clearLine(at, e, gait) || !clearLine(e, cells[i], gait) || slowestOn(at, e) < worst[0] || slowestOn(e, cells[i]) < worst[0]) continue;
                 out.push_back(e);
                 break;
             }

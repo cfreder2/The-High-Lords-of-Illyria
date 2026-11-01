@@ -543,9 +543,9 @@ void Renderer::uploadScenery(const Battle& battle) {
                 float aligned[4];
                 yawQuat(0, aligned);
                 const float hx = static_cast<float>(o.halfX.toDouble()), hy = static_cast<float>(o.halfY.toDouble());
-                if (o.variant == 3) {
-                    // The temple altar: a low stone block.
-                    pushInstance(pillar, pos, aligned, {hx * 0.9f, hy * 0.9f, h}, {1.0f, 0.98f, 0.95f});
+                if (o.variant == sim::Obstacle::kAltar) {
+                    // The temple altar: a low stone block, its foot within the battle's.
+                    pushInstance(pillar, pos, aligned, {hx / meshes::kPillarFoot, hy / meshes::kPillarFoot, h}, {1.0f, 0.98f, 0.95f});
                 } else {
                     pushInstance(house, pos, aligned, {hx, hy, h / 1.7f}, {tintVar, tintVar * 0.97f, tintVar * 0.92f});
                 }
@@ -554,10 +554,11 @@ void Renderer::uploadScenery(const Battle& battle) {
             }
             case sim::Obstacle::Kind::Pillar: {
                 if (o.variant == sim::Obstacle::kSiteStone) break;  // drawn with its site
+                // Its radius is its foot's, which flares wider than the shaft.
                 const float r = static_cast<float>(o.radius.toDouble());
                 float q[4];
                 yawQuat(hash01(static_cast<uint32_t>(i) * 2654435761u) * 6.283f, q);
-                pushInstance(pillar, pos, q, {r, r, h}, {1, 1, 1});
+                pushInstance(pillar, pos, q, {r / meshes::kPillarFoot, r / meshes::kPillarFoot, h}, {1, 1, 1});
                 shadow = r * 1.5f;
                 break;
             }

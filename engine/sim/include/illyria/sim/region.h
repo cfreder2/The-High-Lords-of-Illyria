@@ -26,7 +26,12 @@ struct Obstacle {
     uint8_t variant = 0;  // houses: kTownHouse for those in a castle (drawn with the castle)
     static constexpr uint8_t kTownHouse = 200;
     static constexpr uint8_t kSiteStone = 201;  // a ruin's, temple's or sage's tower's stones (drawn with the site)
+    static constexpr uint8_t kAltar = 3;        // houses: a shrine's altar, a low block of stone
     bool solid = true;  // bushes are not
+    // Standing stone a soldier keeps his drawn breadth from (stoneStandoff),
+    // not just his radius: a site's stones, pillars (a pillar's radius is its
+    // foot's, as drawn) and a shrine's altar. Routes keep clear of it exactly (NavGrid).
+    bool standingStone() const { return variant == kSiteStone || kind == Kind::Pillar || (kind == Kind::House && variant == kAltar); }
 };
 
 struct Polyline {
@@ -61,9 +66,14 @@ struct Deck {
 // platform. Its deck and its stair's are in Region::decks(); the only way on
 // or off is the stair, from `foot` on the ground before it to `bottom`, its
 // lowest step. NavGrid routes over it round the stones that stand on it.
+// It stands on a stepped base wider than its deck (the model's plinth),
+// solid to the ground but for the stair cut into its front: the box from
+// baseLo to baseHi (z unused), which men on the ground keep their standoff
+// from (stoneStandoff) and routes their gait's clearance.
 struct Floor {
     size_t deck = 0, stair = 0;
     Vec3 foot, bottom;
+    Vec3 baseLo, baseHi;
 };
 
 // A wall that blocks soldiers and missiles: a slab from a to b (z = its

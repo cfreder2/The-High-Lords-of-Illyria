@@ -276,7 +276,7 @@ bool World::marchInitiative(Unit& u) {
             }
             if (foe == nullptr) {
                 // Back to the march: the way to the route may now be round something.
-                if (nav_ && !u.path.empty() && !nav_->clearLine(u.pos, u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)]))
+                if (nav_ && !u.path.empty() && !nav_->clearLine(u.pos, u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)], u.stats.gait))
                     planPath(u, u.moveTarget);
                 return false;
             }
@@ -418,7 +418,7 @@ void World::pursue(Unit& u) {
         }
         return;
     }
-    if (gap <= kCloseIn && (!nav_ || nav_->clearLine(u.pos, t->pos))) {
+    if (gap <= kCloseIn && (!nav_ || nav_->clearLine(u.pos, t->pos, u.stats.gait))) {
         u.path.clear();
         fight(u, *t);
     } else {

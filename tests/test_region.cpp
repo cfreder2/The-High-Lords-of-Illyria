@@ -47,8 +47,8 @@ TEST(region_has_every_kind_of_ground_and_scenery) {
 TEST(region_is_deterministic_and_pinned) {
     CHECK(Region::generateIllyria(20261027).checksum() == illyriaRegion()->checksum());
     CHECK(Region::generateIllyria(1).checksum() != illyriaRegion()->checksum());
-    // Every platform must generate exactly this world.
-    constexpr uint64_t kGolden = 0x9bbbb6cc6cb300ad;
+    // Every platform must generate exactly this world (its temple pillars as wide as their drawn feet).
+    constexpr uint64_t kGolden = 0xdd6cd009aa0f3da1;
     if (illyriaRegion()->checksum() != kGolden) std::printf("  region checksum: 0x%016llx\n", static_cast<unsigned long long>(illyriaRegion()->checksum()));
     CHECK(illyriaRegion()->checksum() == kGolden);
 }

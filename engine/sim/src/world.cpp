@@ -71,7 +71,8 @@ constexpr int32_t kBlessingDamagePct = 10;
 constexpr int32_t kHeroLevelDamagePct = 6;
 constexpr Fixed kRankBlockBonus = Fixed::fromRatio(3, 100);
 
-// Largest obstacle extent, for grid queries.
+// Largest obstacle extent, for grid queries (more where a region has larger:
+// a sage's tower, a church's nave; World::obstacleReach_).
 constexpr Fixed kMaxObstacleExtent = Fixed::fromInt(7);
 // Bodies thrown by explosions and blows.
 constexpr Fixed kLiftFraction = Fixed::fromRatio(7, 10);
@@ -228,6 +229,35 @@ Fixed elevationTan(const Vec3& v) {
 // 2D cross product of two flat vectors.
 Fixed cross(const Vec3& a, const Vec3& b) { return a.x * b.y - a.y * b.x; }
 
+// Puts p `keep` out from a box (middle c, half sizes hx, hy; from inside, by
+// the shallower side) or a disc (middle c, radius r). True if it moved.
+bool outOfBox(Vec3& p, const Vec3& c, Fixed hx, Fixed hy, Fixed keep) {
+    const Fixed cx = clamp(p.x, c.x - hx, c.x + hx);
+    const Fixed cy = clamp(p.y, c.y - hy, c.y + hy);
+    const Vec3 d{p.x - cx, p.y - cy, Fixed::zero()};
+    const Fixed distSq = d.lengthSq();
+    if (distSq >= keep * keep) return false;
+    if (distSq > Fixed::zero()) {
+        const Fixed dist = sqrt(distSq);
+        p += d / dist * (keep - dist);
+    } else {
+        const Fixed px = hx - abs(p.x - c.x), py = hy - abs(p.y - c.y);
+        if (px < py) p.x += (p.x < c.x ? -(px + keep) : px + keep);
+        else p.y += (p.y < c.y ? -(py + keep) : py + keep);
+    }
+    return true;
+}
+bool outOfDisc(Vec3& p, const Vec3& c, Fixed r, Fixed keep) {
+    const Vec3 d = (p - c).flat();
+    const Fixed reach = keep + r;
+    const Fixed distSq = d.lengthSq();
+    if (distSq >= reach * reach) return false;
+    const Fixed dist = sqrt(distSq);
+    const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    p += n * (reach - dist);
+    return true;
+}
+
 }  // namespace
 
 World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) {
@@ -236,8 +266,12 @@ World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) 
         config_.terrain = std::shared_ptr<const Terrain>(config_.region, &config_.region->terrain());
         nav_ = std::make_unique<NavGrid>(*config_.region);
         const auto& obstacles = config_.region->obstacles();
+        obstacleReach_ = kMaxObstacleExtent;
         for (uint32_t i = 0; i < obstacles.size(); ++i) {
-            if (obstacles[i].solid) obstacleGrid_.insert(i, obstacles[i].pos.x, obstacles[i].pos.y);
+            if (!obstacles[i].solid) continue;
+            obstacleGrid_.insert(i, obstacles[i].pos.x, obstacles[i].pos.y);
+            const Obstacle& o = obstacles[i];
+            obstacleReach_ = max(obstacleReach_, o.kind == Obstacle::Kind::House ? max(o.halfX, o.halfY) : o.radius);
         }
         for (const Gate& g : config_.region->gates()) gates_.push_back({g.maxHp});
     }
@@ -399,16 +433,18 @@ void World::applyCommand(const Command& cmd) {
             u->layOrdered = true;
             planPath(*u, cmd.target);
             break;
-        case Command::Type::Move:
+        case Command::Type::Move: {
+            const Vec3 target = clearOfStone(cmd.target, u->stats);
             u->hasMoveTarget = true;
-            u->moveTarget = cmd.target;
+            u->moveTarget = target;
             u->marchSpeed = max(Fixed::zero(), cmd.speed);
             u->arriveFacing = cmd.face.flat() == Vec3{} ? Vec3{} : normalized(cmd.face.flat());
             u->hasAttackTarget = false;
             u->attackGate = -1;
-            if (cmd.march) planMarch(*u, cmd.target, cmd.marchFrom, cmd.marchTo);
-            else planPath(*u, cmd.target);
+            if (cmd.march) planMarch(*u, target, cmd.marchFrom, cmd.marchTo);
+            else planPath(*u, target);
             break;
+        }
         case Command::Type::AttackGate:
         case Command::Type::AttackGround:
             if (u->stats.ranged.muzzleSpeed == Fixed::zero()) return;
@@ -440,6 +476,25 @@ void World::applyCommand(const Command& cmd) {
             u->attackGate = -1;
             break;
     }
+}
+
+Vec3 World::clearOfStone(const Vec3& p, const UnitStats& stats) const {
+    if (!config_.region || !nav_ || !nav_->nearSite(p) || nav_->floorAt(p, false) >= 0) return p;
+    const Fixed keep = stoneStandoff(stats.radius);
+    const auto& obstacles = config_.region->obstacles();
+    // As the push-out has it (separateBodies), a few times over for stones side by side.
+    Vec3 q = p;
+    for (int pass = 0; pass < 3; ++pass) {
+        for (const Floor& f : config_.region->floors())
+            outOfBox(q, (f.baseLo + f.baseHi) * Fixed::fromRatio(1, 2), (f.baseHi.x - f.baseLo.x) / 2, (f.baseHi.y - f.baseLo.y) / 2, keep);
+        obstacleGrid_.query(q.x, q.y, keep + obstacleReach_, [&](uint32_t k) {
+            const Obstacle& o = obstacles[k];
+            if (!o.standingStone()) return;
+            if (o.kind == Obstacle::Kind::House) outOfBox(q, o.pos, o.halfX, o.halfY, keep);
+            else outOfDisc(q, o.pos, o.radius, keep);
+        });
+    }
+    return q;
 }
 
 void World::planPath(Unit& u, const Vec3& to) {
@@ -477,7 +532,15 @@ void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goa
         const Vec3 w = route[k];
         const Vec3 d = flatDirection(k == 0 ? from : route[k - 1], route[k + 1], dir);
         const Vec3 p = w + Vec3{d.y, -d.x, Fixed::zero()} * file;
-        const bool same = groundAt(p.x, p.y) == groundAt(w.x, w.y) && !nav_->blocked(p);
+        bool same = groundAt(p.x, p.y) == groundAt(w.x, w.y) && !nav_->blocked(p);
+        // By a site's stone his file's way must stay as clear of it as the
+        // route's: from his last point and on to the route's next, else he
+        // closes on the route there (a file on the inside of a corner).
+        if (same && (nav_->nearSite(w) || nav_->nearSite(p))) {
+            const Vec3 next = route[k + 1];
+            same = nav_->clearLine(w, p, u.stats.gait) && nav_->clearLine(p, next, u.stats.gait) &&
+                   (u.path.empty() || nav_->clearLine(u.path.back(), p, u.stats.gait));
+        }
         u.path.push_back(same ? p : w);
     }
     // Skip waypoints already behind him, and join the route where he can.
@@ -486,10 +549,16 @@ void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goa
            (u.path[skip + 1] - u.pos).flat().lengthSq() <= (u.path[skip + 1] - u.path[skip]).flat().lengthSq())
         ++skip;
     u.path.erase(u.path.begin(), u.path.begin() + static_cast<long>(skip));
-    if (!nav_->clearLine(u.pos, u.path.front())) {
+    if (!nav_->clearLine(u.pos, u.path.front(), u.stats.gait)) {
         std::vector<Vec3> join;
         groundPath(u.pos, u.path.front(), join, u.stats.gait);
         u.path.insert(u.path.begin(), join.begin(), join.end() - 1);
+    }
+    // His own place at the end may lie round a site's stone from the route's.
+    if ((nav_->nearSite(to) || nav_->nearSite(u.path.back())) && !nav_->clearLine(u.path.back(), to, u.stats.gait)) {
+        const Vec3 last = u.path.back();
+        groundPath(last, to, u.path, u.stats.gait);
+        return;
     }
     u.path.push_back(to);
 }
@@ -517,7 +586,7 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out,
         for (auto j = pathCache_.lower_bound(std::make_tuple(std::get<0>(key), std::get<1>(key), std::numeric_limits<int64_t>::min()));
              j != pathCache_.end() && std::get<0>(j->first) == std::get<0>(key) && std::get<1>(j->first) == std::get<1>(key); ++j) {
             const std::vector<Vec3>& r = j->second;
-            if (r.size() < 2 || (r.back() - to).flat().lengthSq() > kShare * kShare || !nav_->clearLine(r[r.size() - 2], to)) continue;
+            if (r.size() < 2 || (r.back() - to).flat().lengthSq() > kShare * kShare || !nav_->clearLine(r[r.size() - 2], to, gait)) continue;
             out.insert(out.end(), r.begin(), r.end());
             out.back() = to;
             return;
@@ -527,6 +596,21 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out,
         std::vector<Vec3> route;
         if (!nav_->findPath(from, to, route, gait) && !routeToGate(from, to, route, gait)) route = {to};
         it = pathCache_.emplace(key, std::move(route)).first;
+    } else if (nav_->nearSite(from) || nav_->nearSite(to)) {
+        // By a site's stone a route shared across the cell may set off (or end)
+        // round the stone from this man: then his own, shared by the metre.
+        const std::vector<Vec3>& r = it->second;
+        const Vec3 before = r.size() >= 2 ? r[r.size() - 2] : from;
+        if (!nav_->clearLine(from, r.front(), gait) || !nav_->clearLine(before, to, gait)) {
+            const auto fine = [](const Vec3& p) { return (int64_t{1} << 41) + p.x.floorToInt() * 4096 + p.y.floorToInt(); };
+            const auto own = std::make_tuple(static_cast<int>(gait), fine(from), fine(to));
+            it = pathCache_.find(own);
+            if (it == pathCache_.end()) {
+                std::vector<Vec3> route;
+                if (!nav_->findPath(from, to, route, gait) && !routeToGate(from, to, route, gait)) route = {to};
+                it = pathCache_.emplace(own, std::move(route)).first;
+            }
+        }
     }
     out.insert(out.end(), it->second.begin(), it->second.end());
     out.back() = to;
@@ -980,7 +1064,12 @@ bool World::followPath(Unit& u, Fixed pace) {
             Fixed slowest = Fixed::fromInt(100), via = Fixed::fromInt(100);
             nav_->travelTime(u.pos, next, u.stats.gait, &slowest);
             nav_->travelTime(waypoint, next, u.stats.gait, &via);
-            onward = slowest >= via && nav_->clearLine(u.pos, next);
+            onward = slowest >= via && nav_->clearLine(u.pos, next, u.stats.gait);
+            // By a site's stone the next leg may be clear only from the
+            // waypoint itself, which a file's men cannot all stand on: within
+            // a man's breadth of it is there.
+            const Fixed breadth = u.stats.radius * 2;
+            if (!onward && slowest >= via && nav_->nearSite(waypoint) && (waypoint - u.pos).flat().lengthSq() < breadth * breadth) onward = true;
         }
     }
     if (!last && (arrived || onward)) {
@@ -1197,33 +1286,28 @@ void World::separateBodies() {
     const auto& obstacles = config_.region->obstacles();
     for (Unit& u : units_) {
         if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
-        obstacleGrid_.query(u.pos.x, u.pos.y, u.stats.radius + kMaxObstacleExtent, [&](uint32_t k) {
-            const Obstacle& o = obstacles[k];
-            if (o.kind == Obstacle::Kind::House) {
-                // Push out of the footprint along the shallower side.
-                const Fixed cx = clamp(u.pos.x, o.pos.x - o.halfX, o.pos.x + o.halfX);
-                const Fixed cy = clamp(u.pos.y, o.pos.y - o.halfY, o.pos.y + o.halfY);
-                const Vec3 d{u.pos.x - cx, u.pos.y - cy, Fixed::zero()};
-                const Fixed distSq = d.lengthSq();
-                if (distSq >= u.stats.radius * u.stats.radius) return;
-                if (distSq > Fixed::zero()) {
-                    const Fixed dist = sqrt(distSq);
-                    u.pos += d / dist * (u.stats.radius - dist);
-                } else {
-                    const Fixed px = o.halfX - abs(u.pos.x - o.pos.x), py = o.halfY - abs(u.pos.y - o.pos.y);
-                    if (px < py) u.pos.x += (u.pos.x < o.pos.x ? -(px + u.stats.radius) : px + u.stats.radius);
-                    else u.pos.y += (u.pos.y < o.pos.y ? -(py + u.stats.radius) : py + u.stats.radius);
-                }
-                return;
+        // From standing stone he keeps his drawn breadth, from the rest his radius.
+        const Fixed standoff = stoneStandoff(u.stats.radius);
+        bool offStone = false;  // pushed off standing stone (or a ruin's base)
+        const auto offObstacles = [&](bool stoneOnly) {
+            obstacleGrid_.query(u.pos.x, u.pos.y, standoff + obstacleReach_, [&](uint32_t k) {
+                const Obstacle& o = obstacles[k];
+                if (stoneOnly && !o.standingStone()) return;
+                const Fixed keep = o.standingStone() ? standoff : u.stats.radius;
+                const bool moved = o.kind == Obstacle::Kind::House ? outOfBox(u.pos, o.pos, o.halfX, o.halfY, keep) : outOfDisc(u.pos, o.pos, o.radius, keep);
+                offStone = offStone || (moved && o.standingStone());
+            });
+        };
+        // A ruin's platform stands on its stepped base, solid to the ground:
+        // one on the ground keeps his standoff from the base (one on the
+        // stair is climbing into it).
+        const auto offBases = [&] {
+            for (const Floor& f : config_.region->floors()) {
+                if (u.pos.z + kMaxStepUp >= f.baseHi.z || config_.region->decks()[f.stair].contains(u.pos.x, u.pos.y)) continue;
+                offStone = outOfBox(u.pos, (f.baseLo + f.baseHi) * Fixed::fromRatio(1, 2), (f.baseHi.x - f.baseLo.x) / 2, (f.baseHi.y - f.baseLo.y) / 2, standoff) || offStone;
             }
-            const Vec3 d = (u.pos - o.pos).flat();
-            const Fixed reach = u.stats.radius + o.radius;
-            const Fixed distSq = d.lengthSq();
-            if (distSq >= reach * reach) return;
-            const Fixed dist = sqrt(distSq);
-            const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-            u.pos += n * (reach - dist);
-        });
+        };
+        offObstacles(false);
         keepOutOfGates(u);
         // Castle walls: out of the slab, unless walking along its top (or
         // under the stone over a gate passage).
@@ -1245,19 +1329,24 @@ void World::separateBodies() {
             const Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{-ab.y, ab.x, Fixed::zero()} / sqrt(len2);
             u.pos += n * (reach - dist);
         }
-        // A ruin's platform and its stair are solid to the ground: one shoved
-        // in under the edge is put back out by the nearest side.
+        offBases();
+        // A ruin's stair is solid to the ground too: one shoved in under it is
+        // put back out by the nearest side.
         for (const Floor& f : config_.region->floors()) {
-            for (const size_t k : {f.stair, f.deck}) {
-                const Deck& d = config_.region->decks()[k];
-                if (!d.contains(u.pos.x, u.pos.y) || u.pos.z + kMaxStepUp >= d.heightAt(u.pos.x, u.pos.y)) continue;
-                const Vec3 across{-d.dir.y, d.dir.x, Fixed::zero()}, rel = (u.pos - d.centre).flat();
-                const Fixed along = rel.dot(d.dir), side = rel.dot(across);
-                if (d.halfSpan - abs(along) < d.halfWidth - abs(side))
-                    u.pos += d.dir * ((along < Fixed::zero() ? -d.halfSpan - u.stats.radius : d.halfSpan + u.stats.radius) - along);
-                else
-                    u.pos += across * ((side < Fixed::zero() ? -d.halfWidth - u.stats.radius : d.halfWidth + u.stats.radius) - side);
-            }
+            const Deck& d = config_.region->decks()[f.stair];
+            if (!d.contains(u.pos.x, u.pos.y) || u.pos.z + kMaxStepUp >= d.heightAt(u.pos.x, u.pos.y)) continue;
+            const Vec3 across{-d.dir.y, d.dir.x, Fixed::zero()}, rel = (u.pos - d.centre).flat();
+            const Fixed along = rel.dot(d.dir), side = rel.dot(across);
+            if (d.halfSpan - abs(along) < d.halfWidth - abs(side))
+                u.pos += d.dir * ((along < Fixed::zero() ? -d.halfSpan - standoff : d.halfSpan + standoff) - along);
+            else
+                u.pos += across * ((side < Fixed::zero() ? -d.halfWidth - standoff : d.halfWidth + standoff) - side);
+        }
+        // Pushed off one stone into another's way (rubble by the base, a
+        // column by a wall): once more off them all.
+        if (offStone) {
+            offObstacles(true);
+            offBases();
         }
     }
     for (Unit& u : units_) keepOnWalk(u);  // the thrown too
@@ -1300,7 +1389,7 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
     const Vec3 mid = a + seg * Fixed::fromRatio(1, 2);
     Fixed best = limitT;
     bool hit = false;
-    obstacleGrid_.query(mid.x, mid.y, sqrt(lenSq) / 2 + kMaxObstacleExtent, [&](uint32_t k) {
+    obstacleGrid_.query(mid.x, mid.y, sqrt(lenSq) / 2 + obstacleReach_, [&](uint32_t k) {
         const Obstacle& o = obstacles[k];
         if (masonryOnly && o.kind != Obstacle::Kind::House && o.kind != Obstacle::Kind::Tower && o.kind != Obstacle::Kind::Pillar) return;
         const Fixed radius = missileRadius(o);
@@ -1552,7 +1641,7 @@ Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) co
     // far edge; but not the wood around the mark, which shelters him.
     const auto& obstacles = config_.region->obstacles();
     const Vec3 mid = origin + flat * Fixed::fromRatio(1, 2);
-    obstacleGrid_.query(mid.x, mid.y, dist / 2 + kMaxObstacleExtent, [&](uint32_t k) {
+    obstacleGrid_.query(mid.x, mid.y, dist / 2 + obstacleReach_, [&](uint32_t k) {
         const Obstacle& o = obstacles[k];
         const bool green = o.kind == Obstacle::Kind::Pine || o.kind == Obstacle::Kind::Oak || o.kind == Obstacle::Kind::Bush;
         if (green && (o.pos - mark).flat().lengthSq() < kWoodCover * kWoodCover) return;

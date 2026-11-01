@@ -35,6 +35,9 @@ Mesh oak();
 Mesh bush();
 Mesh rock();
 Mesh house();
+// A standing stone: a shaft of radius 1, its foot flaring to kPillarFoot (an
+// obstacle's radius is its foot's, so it is drawn scaled by 1 / kPillarFoot).
+inline constexpr float kPillarFoot = 1.3f;
 Mesh pillar();
 Mesh capsule();
 Mesh sphere();

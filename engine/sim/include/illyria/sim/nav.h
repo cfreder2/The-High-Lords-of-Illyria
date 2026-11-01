@@ -38,11 +38,17 @@ public:
     // (Region::Floor) the way is its stair; on it, round its stones.
     bool findPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait = Gait::Foot) const;
     // True if a ground unit can walk the straight segment: on a floor, clear
-    // of its stones; onto or off one, only by the foot of its stair.
-    bool clearLine(const Vec3& from, const Vec3& to) const;
-    // On the ground, blocked (water, cliff, wall, house, shut gate), or
-    // under a raised floor (which is solid to the ground).
+    // of its stones; onto or off one, only by the foot of its stair. On the
+    // ground it keeps this gait's clearance from a site's stone (or no
+    // nearer than its ends already are: one standing close walks off freely).
+    bool clearLine(const Vec3& from, const Vec3& to, Gait gait = Gait::Foot) const;
+    // On the ground, blocked (water, cliff, wall, house, shut gate), under a
+    // raised floor (which is solid to the ground), or within a man's
+    // clearance of a site's stone.
     bool blocked(const Vec3& p) const;
+    // Within a nav cell of a site's stone (or a raised floor's base): routes
+    // from or to here are not shared across the cell (World::groundPath).
+    bool nearSite(const Vec3& p) const;
     // Which raised floor a point is on (its deck or its stair), or -1; with
     // `byHeight`, a point below its surface (on the ground beside it) is not.
     int floorAt(const Vec3& p, bool byHeight) const;
@@ -83,7 +89,7 @@ private:
     void floorRoute(const FloorGrid& f, const Vec3& from, const Vec3& to, std::vector<Vec3>& out) const;
     // findPath on the ground (over bridges by their ends).
     bool groundRoute(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const;
-    bool groundClear(const Vec3& from, const Vec3& to) const;
+    bool groundClear(const Vec3& from, const Vec3& to, Gait gait) const;
     bool groundBlocked(const Vec3& p) const;
     // findPath once off any bridge deck.
     bool route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait) const;
@@ -92,8 +98,10 @@ private:
     // Per-gait step costs per metre (x100), built on first use; 0: blocked.
     const std::vector<uint16_t>& costs(Gait gait) const;
     uint16_t cellCost(Gait gait, int32_t cell) const;
-    // Where a walker of this gait crosses the cell: the middle of its best ground.
+    // Where a walker of this gait crosses the cell: the middle of its best
+    // ground, or by a site's stone the nearest point of it clear of the stone.
     Vec3 waypoint(int32_t cell, Gait gait) const;
+    Vec3 groundWaypoint(int32_t cell, Gait gait) const;
     // The open cell nearest p, or -1 if none is near.
     int32_t nearestOpen(const Vec3& p) const;
     int32_t climbCost(int32_t from, int32_t to, int32_t step, bool diagonal, int32_t climbPct) const;
@@ -141,6 +149,49 @@ private:
     mutable uint32_t stoneStamp_ = 0;
     // Whether the segment cuts through stone `id`.
     bool hitsStone(uint32_t id, const Vec3& from, const Vec3& to) const;
+    // A site's standing stone (Obstacle::standingStone, off any raised floor:
+    // a ruin's stones, a temple's columns and hall, a sage's tower, a shrine's
+    // pillars and altar) and each raised floor's base, exactly: routes on a
+    // gait keep its clearance (gaitClearance) from them. Sites are turned by
+    // quarter turns, so the boxes are square to the axes.
+    struct SiteBox {
+        Fixed x0, y0, x1, y1;
+        int32_t floor = -1;  // a raised floor's base: its index (the way onto it by its stair passes it)
+    };
+    std::vector<SiteBox> siteBoxes_;
+    std::vector<std::pair<Vec3, Fixed>> siteDiscs_;  // columns, pillars: centre, radius
+    // Per cell, the site stone within a cell and the widest clearance of it
+    // (offsets into siteIds_: boxes, then discs); empty with none.
+    std::vector<uint32_t> siteAt_;
+    std::vector<uint16_t> siteIds_;
+    mutable std::vector<uint32_t> siteSeen_;
+    mutable uint32_t siteStamp_ = 0;
+    // Per gait, built on first use: per cell, the moves to its eight
+    // neighbours whose straight leg (waypoint to waypoint) comes within the
+    // gait's clearance of site stone, a bit each (siteMoveBit).
+    mutable std::array<std::vector<uint8_t>, kGaitCount> siteMoves_;
+    bool nearSite(int32_t cell) const { return !siteAt_.empty() && siteAt_[static_cast<size_t>(cell)] != siteAt_[static_cast<size_t>(cell) + 1]; }
+    const std::vector<uint8_t>& siteMoves(Gait gait) const;
+    // Per gait, built on first use: the cells whose ground waypoint is within
+    // the gait's clearance of site stone, sorted, each with the point of the
+    // cell nearest it that is clear (or none: the cell is shut to the gait).
+    struct SiteWay {
+        int32_t cell;
+        Vec3 at;
+        bool open;
+    };
+    mutable std::array<std::vector<SiteWay>, kGaitCount> siteWays_;
+    mutable std::array<bool, kGaitCount> siteWaysBuilt_{};
+    const std::vector<SiteWay>& siteWays(Gait gait) const;
+    // Whether the segment keeps `clear` from site stone, or no nearer than
+    // its ends are to it (skipping the base of floor `skipFloor`).
+    bool siteClear(const Vec3& from, const Vec3& to, Fixed clear, int32_t skipFloor = -1) const;
+    bool hitsSite(uint32_t id, const Vec3& from, const Vec3& to, Fixed clear) const;
+    // Whether p is within `clear` of site stone.
+    bool inSite(const Vec3& p, Fixed clear) const;
+    // The cell of this gait's routes nearest p whose waypoint is in clear
+    // sight of it (else the nearest open one), or -1 if none is near.
+    int32_t nearestInSight(const Vec3& p, Gait gait) const;
     // Ground per terrain cell.
     std::vector<uint8_t> fine_;
     int32_t fineCells_ = 0;

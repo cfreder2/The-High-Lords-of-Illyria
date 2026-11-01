@@ -28,6 +28,22 @@ enum class Gait : uint8_t {
 inline constexpr int kGaitCount = static_cast<int>(Gait::Count);
 inline constexpr int kGroundCount = 10;
 
+// How far a soldier keeps his middle from standing stone (a site's stones, a
+// ruin's stepped base, pillars) so his picture does not sink into it: his
+// drawn half-width, about a third more than his radius, and a hand more.
+constexpr Fixed stoneStandoff(Fixed radius) { return radius * 4 / 3 + Fixed::fromRatio(1, 10); }
+// How far routes on this gait keep from a site's stone: at least the standoff
+// of the broadest who walk it (an elephant farther than a man), so a route
+// never runs him into stone that would push him off it. In centimetres, in
+// Gait's order: men 0.5 m round stand off 0.77, heavy horse (0.95) 1.37,
+// wolves (0.8) 1.17, spiders (1.1) 1.57, elephants (1.8) 2.5, the catapult
+// (1.6) 2.23; a little over. Fliers on foot go as men.
+inline constexpr int32_t kGaitClearanceCm[kGaitCount] = {80, 140, 120, 80, 160, 250, 80, 230, 80};
+constexpr Fixed gaitClearance(Gait gait) {
+    const int gi = static_cast<int>(gait);
+    return Fixed::fromRatio(gi >= 0 && gi < kGaitCount ? kGaitClearanceCm[gi] : 80, 100);
+}
+
 // Speed multiplier on this ground for this gait (zero: impassable on foot).
 Fixed gaitSpeed(Gait gait, Ground ground);
 // Percent of the usual slowdown when climbing.

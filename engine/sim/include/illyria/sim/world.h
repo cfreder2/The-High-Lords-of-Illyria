@@ -666,6 +666,10 @@ private:
     // Walks toward `to` at the unit's ground speed; returns true on arrival.
     bool walk(Unit& unit, const Vec3& to, Fixed speedScale = Fixed::one());
     void planPath(Unit& unit, const Vec3& to);
+    // A place on the ground sent to inside standing stone or a ruin's base,
+    // or nearer it than his standoff: the nearest place clear of it (else
+    // he would walk into the stone for ever). Places on a ruin's floor stand.
+    Vec3 clearOfStone(const Vec3& p, const UnitStats& stats) const;
     // A soldier's share of its squad's route: the squad's one fastest route
     // from `from` to `goal`, with the soldier's file kept where the ground allows.
     void planMarch(Unit& unit, const Vec3& to, const Vec3& from, const Vec3& goal);
@@ -924,6 +928,7 @@ private:
     };
     std::vector<PendingExplosion> pendingExplosions_;
     SpatialHash obstacleGrid_{8};
+    Fixed obstacleReach_;  // the largest obstacle's reach from its middle (grid queries look this far)
     SpatialHash remainGrid_{4};
     SpatialHash unitGrid_{4};
     // Paths planned this tick, by (gait, start cell, goal cell): squads share routes.

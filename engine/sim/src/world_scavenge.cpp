@@ -231,7 +231,7 @@ void World::scavengeWalk(Unit& u, const Vec3& goal) {
     const Vec3 to = (goal - u.pos).flat();
     const Fixed dist = to.length();
     if (dist == Fixed::zero()) return;
-    if (nav_ && !nav_->clearLine(u.pos, goal)) {
+    if (nav_ && !nav_->clearLine(u.pos, goal, u.stats.gait)) {
         // Round walls, water and houses by a route, planned again as the goal moves on.
         if (u.path.empty() || (u.path.back() - goal).flat().lengthSq() > Fixed::fromInt(9) || (tick_ + u.id) % kTicksPerSecond == 0) {
             u.path.clear();

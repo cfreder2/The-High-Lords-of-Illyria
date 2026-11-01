@@ -71,29 +71,37 @@ Fixed groundSpeed(Ground g) { return gaitSpeed(Gait::Foot, g); }
 // A site's stones as the renderer's model of it has them: each a box (its
 // middle and half sizes) or a column (round: its middle and radius), with
 // its top, in thousandths of the site's size, unturned. Columns are pillars,
-// left out of the paths (as trees are), so a ring of them does not wall in
-// the ground it stands round; the rest are blocks.
+// the rest are blocks; men keep their standoff from both and routes go round
+// them exactly (NavGrid), so a ring of columns does not wall in the ground
+// it stands round.
 struct SiteStone {
     int64_t x, y, hx, hy, top;
     bool round;
 };
 
-// The ruin: derived from its 3D model's own mesh (tools/models/ruin.py, which
-// writes this file and the model the renderer loads, game/web/models/ruin.bin).
+// The ruin: derived from its 3D model's own mesh (tools/models/ruin_stones.py,
+// run by tools/models/ruin.py, which writes the model the renderer loads,
+// game/web/models/ruin.bin): its floor, stair, base and stones.
 #include "site_ruin.inc"
-static_assert(kRuinModelSize == Continent::Site::kRuinSize, "the ruin's stones were derived at another size: rerun tools/models/ruin.py");
+static_assert(kRuinModelSize == Continent::Site::kRuinSize, "the ruin's stones were derived at another size: rerun tools/models/ruin_stones.py");
 
 const std::vector<SiteStone>& siteStones(Continent::Site::Kind k) {
     // The temple and the sage's tower follow the renderer's models of them
     // (game/render/meshes.cpp temple, sageTower; keep them together).
-    // Two rows of six columns either side of the hall.
-    static const std::vector<SiteStone> temple = {
-        {-420, 250, 30, 30, 500, true},  {-252, 250, 30, 30, 500, true},  {-84, 250, 30, 30, 500, true},
-        {84, 250, 30, 30, 500, true},    {252, 250, 30, 30, 500, true},   {420, 250, 30, 30, 500, true},
-        {-420, -250, 30, 30, 500, true}, {-252, -250, 30, 30, 500, true}, {-84, -250, 30, 30, 500, true},
-        {84, -250, 30, 30, 500, true},   {252, -250, 30, 30, 500, true},  {420, -250, 30, 30, 500, true},
-        {0, 0, 300, 180, 450, false}};
-    static const std::vector<SiteStone> sage = {{0, 0, 250, 250, 1150, false}};
+    // Two rows of six square columns either side of the hall, as drawn; the
+    // hall (600 x 360) in fifteen blocks, none wider than a man looks round
+    // him for stone (World::obstacleReach_).
+    static const std::vector<SiteStone> temple = [] {
+        std::vector<SiteStone> t;
+        for (int side = 1; side >= -1; side -= 2)
+            for (int i = 0; i < 6; ++i) t.push_back({-420 + i * 168, side * 250, 30, 30, 500, false});
+        for (int j = -1; j <= 1; ++j)
+            for (int i = -2; i <= 2; ++i) t.push_back({i * 120, j * 120, 60, 60, 450, false});
+        return t;
+    }();
+    // The tower is an eight-sided frustum, 0.3 of the site's size to its
+    // corners at the foot: the circle through them.
+    static const std::vector<SiteStone> sage = {{0, 0, 300, 300, 1150, true}};
     return k == Continent::Site::Kind::Ruin ? kRuinStones : k == Continent::Site::Kind::Temple ? temple : sage;
 }
 
@@ -360,7 +368,7 @@ Region Region::generateIllyria(uint64_t seed) {
         const Fixed angle = kTwoPi * i / 8;
         const Fixed x = temple.x + cos(angle) * 10, y = temple.y + sin(angle) * 10;
         o.pos = {x, y, rg.terrain_.heightAt(x, y)};
-        o.radius = r(3, 5);
+        o.radius = r(39, 50);  // its foot, as drawn: the shaft is 0.6 m round, flaring to 0.78
         // Some pillars still stand; others are broken stumps.
         o.height = i % 3 == 1 ? r(8, 5) : r(11, 2);
         o.variant = static_cast<uint8_t>(i % 3);
@@ -373,7 +381,7 @@ Region Region::generateIllyria(uint64_t seed) {
         altar.halfX = r(3, 2);
         altar.halfY = r(3, 2);
         altar.height = r(6, 5);
-        altar.variant = 3;  // altar
+        altar.variant = Obstacle::kAltar;
         rg.obstacles_.push_back(altar);
     }
     const size_t buildings = rg.obstacles_.size();
@@ -948,8 +956,8 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
     // The sites' stones (Continent::Site; the renderer draws each site as one
     // model, and these follow it): a ruin's columns, walls, rubble and the
     // pit in its floor, a temple's columns and hall, a sage's tower. Solid, so
-    // no one stands inside them. A ruin's platform is a raised floor, solid
-    // to the ground, that men climb to by its stair (Floor).
+    // no one stands inside them. A ruin's platform is a raised floor on a
+    // stepped base, solid to the ground, that men climb to by its stair (Floor).
     std::vector<Vec3> clearings;  // nothing grows on a site (x, y, radius)
     for (size_t si = 0; si < c.sites().size(); ++si) {
         const Continent::Site& st = c.sites()[si];
@@ -970,9 +978,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             o.pos = {at.x + p.x, at.y + p.y, Fixed::zero()};
             if (o.pos.x < hx || o.pos.y < hy || o.pos.x > cell * cells - hx || o.pos.y > cell * cells - hy) continue;
             o.pos.z = rg.terrain_.heightAt(o.pos.x, o.pos.y);
-            // A ruin's columns are round (hx their radius); the temple's square
-            // ones a circle between the square's inner and outer circles.
-            o.radius = st.kind == Continent::Site::Kind::Ruin ? hx : hx * 9 / 8;
+            o.radius = s.round ? hx : Fixed::zero();  // a column's (hx its radius)
             o.halfX = hx;
             o.halfY = hy;
             o.height = r(s.top, 1000) * size;
@@ -1003,6 +1009,10 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         f.foot.z = st.pos.z;
         f.bottom = foot + dir * r(2, 5);
         f.bottom.z = st.pos.z + stair.rise * r(2, 5) / len;
+        // The stepped base it stands on, out to the plinth's foot.
+        const Vec3 ba = at + sitePoint(kRuinBase[0], kRuinBase[1], size, turns), bb = at + sitePoint(kRuinBase[2], kRuinBase[3], size, turns);
+        f.baseLo = {min(ba.x, bb.x), min(ba.y, bb.y), st.pos.z};
+        f.baseHi = {max(ba.x, bb.x), max(ba.y, bb.y), floorZ};
         rg.decks_.push_back(floor);
         rg.decks_.push_back(stair);
         rg.floors_.push_back(f);
@@ -1033,7 +1043,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             const Fixed angle = kTwoPi * i / 8;
             const Fixed x = shrine.x + cos(angle) * 10, y = shrine.y + sin(angle) * 10;
             o.pos = {x, y, rg.terrain_.heightAt(x, y)};
-            o.radius = r(3, 5);
+            o.radius = r(39, 50);  // its foot, as drawn (the shaft is 0.6 m round)
             o.height = i % 3 == 1 ? r(8, 5) : r(11, 2);
             o.variant = static_cast<uint8_t>(i % 3);
             rg.obstacles_.push_back(o);
@@ -1044,7 +1054,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         altar.halfX = r(3, 2);
         altar.halfY = r(3, 2);
         altar.height = r(6, 5);
-        altar.variant = 3;
+        altar.variant = Obstacle::kAltar;
         rg.obstacles_.push_back(altar);
     }
     // The same trees wherever the window is cut (see sceneryPoint).
@@ -1077,7 +1087,7 @@ uint64_t Region::checksum() const {
     for (const Floor& f : floors_) {
         h.addU64(f.deck);
         h.addU64(f.stair);
-        for (Fixed v : {f.foot.x, f.foot.y, f.foot.z, f.bottom.x, f.bottom.y, f.bottom.z}) h.addI64(v.raw);
+        for (Fixed v : {f.foot.x, f.foot.y, f.foot.z, f.bottom.x, f.bottom.y, f.bottom.z, f.baseLo.x, f.baseLo.y, f.baseHi.x, f.baseHi.y}) h.addI64(v.raw);
     }
     for (const WallSeg& w : walls_) {
         for (Fixed v : {w.a.x, w.a.y, w.a.z, w.b.x, w.b.y, w.halfThick, w.top, w.walk, w.out.x, w.out.y}) h.addI64(v.raw);

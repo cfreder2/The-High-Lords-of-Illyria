@@ -56,8 +56,8 @@ bool insideStone(const Region& r, const Vec3& p) {
     return false;
 }
 
-// Places on the floor a squad can be sent to: on its nav grid with a metre
-// clear all round, at least two metres apart.
+// Places on the floor a squad can be sent to: on its nav grid with half a
+// metre clear all round, a pace and a half apart (the floor as drawn is cramped).
 std::vector<Vec3> spotsOn(const Region& r, const Floor& f, const NavGrid& nav, size_t count) {
     const Deck& d = r.decks()[f.deck];
     std::vector<Vec3> out;
@@ -67,9 +67,9 @@ std::vector<Vec3> spotsOn(const Region& r, const Floor& f, const NavGrid& nav, s
             bool clear = nav.floorAt(p, false) >= 0;
             for (int k = 0; k < 8 && clear; ++k) {
                 const Fixed a = kTwoPi * k / 8;
-                clear = nav.clearLine(p, p + Vec3{cos(a), sin(a), Fixed::zero()});
+                clear = nav.clearLine(p, p + Vec3{cos(a) / 2, sin(a) / 2, Fixed::zero()});
             }
-            for (const Vec3& q : out) clear = clear && (q - p).flat().length() >= m(2);
+            for (const Vec3& q : out) clear = clear && (q - p).flat().length() >= Fixed::fromRatio(3, 2);
             if (clear) out.push_back(p);
         }
     return out;
@@ -175,9 +175,12 @@ TEST(men_climb_onto_the_ruin_by_its_stair_and_stand_clear_of_its_stones) {
     for (size_t i = 0; i < men.size(); ++i) {
         const Unit& u = *w.findUnit(men[i]);
         const bool there = (u.pos - spots[i]).flat().length() < m(2) && abs(u.pos.z - floor.centre.z) < Fixed::fromRatio(1, 5);
-        if (!there)
-            std::printf("  man %zu at (%.1f, %.1f, %.1f), sent to (%.1f, %.1f)\n", i, u.pos.x.toDouble(), u.pos.y.toDouble(), u.pos.z.toDouble(),
+        if (!there) {
+            std::printf("  man %zu at (%.1f, %.1f, %.1f), sent to (%.1f, %.1f); path", i, u.pos.x.toDouble(), u.pos.y.toDouble(), u.pos.z.toDouble(),
                         spots[i].x.toDouble(), spots[i].y.toDouble());
+            for (size_t k = 0; k < u.path.size(); ++k) std::printf("%s(%.1f, %.1f)", k == u.pathIndex ? " >" : " ", u.path[k].x.toDouble(), u.path[k].y.toDouble());
+            std::printf("\n");
+        }
         up += there ? 1 : 0;
     }
     std::printf("  %d of %zu men up on the platform\n", up, men.size());
