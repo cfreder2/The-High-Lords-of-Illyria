@@ -13,17 +13,18 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Order | Phone | Desktop |
 |---|---|---|
 | March there as they stand (with initiative) | tap the ground | click the ground |
-| March there on a new front | hold where the front begins, drag to where it ends | the same |
+| March there and face a way | hold where they should go, drag the way to face | the same |
 | Attack a soldier | tap the enemy | click the enemy (a red sword cursor) |
-| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[A]] then click |
-| Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[A]], then click (a crosshair); or [[Ctrl]] + click the ground |
+| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[G]] then click |
+| Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[G]], then click (a crosshair); or [[Ctrl]] + click the ground |
 | Batter a gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
-| Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[A]] then click, or [[Ctrl]] + click |
-| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[M]] then click |
+| Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[G]] then click, or [[Ctrl]] + click |
+| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-9, or shift + 1-9 |
-| Scatter | **Scatter** | [[S]], or the keypad 0 |
-| Halt | **Hold** | [[H]] |
-| The camera to the selection | **Find** | [[F]] |
+| Scatter | **Scatter** | [[X]], or the keypad 0 |
+| Halt | **Hold** | [[B]] |
+| The camera to the selection | **Find** | [[C]] |
+| Lay satchels (grenadiers) | | [[T]], then click where |
 | Cancel a mode, let go | tap the mode's button again | [[Esc]] |
 | Pause | **Pause** | [[Space]] |
 
@@ -35,9 +36,9 @@ The **⚔ Attack** button sits in the action row. One tap lights it red, and a l
 
 What they keep is where each was last *sent*, not where the fighting or the road has left him: a squad caught in a scrum, or strung out in a column of march, forms up again as it was ordered, there where it now stands. A place that falls on a rock, a tree or a house moves just clear of it.
 
-**To draw a new front**, press and hold where the front should begin. After a moment (0.3 s) a **gold ghost** of the selection appears there; drag to where the front should end, and a dotted line follows your finger. The ghost stands across the line, its foremost men on it and the rest behind, facing forward of it: draw from left to right as you look at the screen and they face away from you; draw the other way and they turn to face you. Let go, and they march; they arrive facing that way, whichever way their road took them. Their arrangement turns as a whole, so the archers stay behind the knights.
+**To face a way**, press and hold where they should go. After a moment (0.3 s) a **gold ghost** of the selection appears there; drag the way they should face, and a dotted line follows your finger. The ghost turns with it, the whole arrangement at once, so the archers stay behind the knights. Let go, and they march; they arrive facing that way, whichever way their road took them.
 
-**Formations.** Pick one and the selection re-forms in it where it stands, and marches in it (closing the gaps its dead leave) until you select it afresh, or pick **As they stand**, the picker's last. In a formation the front you draw is also its **width**: draw it long for a single rank, short for a deep block of ranks. Select them again later and they march as the formation left them.
+**Formations.** Pick one and the selection re-forms in it where it stands, and marches in it (closing the gaps its dead leave) until you select it afresh, or pick **As they stand**, the picker's last. Select them again later and they march as the formation left them.
 
 **Groups keep their shape.** A group saved (Alt + its number, or the **+** card) remembers how it stood; recalled, it marches so, whatever its squads have done since.
 
@@ -58,7 +59,7 @@ The computer's squads march the same way, so its columns fight back too.
 
 ## Force march {#force-march}
 
-A **force march** ignores the enemy altogether, as *Myth*'s moves did: the men march to their places and do not turn aside, whatever strikes them. Use it to pull a squad out of a fight, or to run it past one. Hold **⚔ Attack** until it turns gold and reads **» March**, then tap the ground; on a desktop, [[Alt]] + click, or [[M]] then click.
+A **force march** ignores the enemy altogether, as *Myth*'s moves did: the men march to their places and do not turn aside, whatever strikes them. Use it to pull a squad out of a fight, or to run it past one. Hold **⚔ Attack** until it turns gold and reads **» March**, then tap the ground; on a desktop, [[Alt]] + click, or [[V]] then click.
 
 ## Attacking {#attack}
 

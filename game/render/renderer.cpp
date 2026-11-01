@@ -2247,9 +2247,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         pushPart(capsules, spheres, u.scav.held, hand, q, {team[0], team[1], team[2]}, 0);
     }
 
-    // An order being drawn (Battle::pressBegin): the front drawn, with the way
-    // they will face from its middle (before it is drawn, from the press), and
-    // the arrangement standing there.
+    // An order being drawn (Battle::pressBegin): the line from the destination
+    // the way they will face, and the arrangement standing there.
     if (const Battle::Drag& drag = battle.drag(); drag.mode == Battle::Drag::Mode::Facing) {
         const float gold[3] = {1.0f, 0.82f, 0.32f};
         const auto mark = [&](const V3& p, float yaw, float size, float type) {
@@ -2259,14 +2258,11 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             mark(g.pos, 0, 0.8f, kDecalRing);
             mark(g.pos + g.face * 0.75f, std::atan2(g.face.y, g.face.x), 0.4f, kDecalArrow);
         }
+        const V3 tip{drag.tip.x - drag.anchor.x, drag.tip.y - drag.anchor.y, 0};
+        const float len = std::max(4.0f, drag.aimed ? tip.length() : 0.0f);
         const float yaw = std::atan2(drag.facing.y, drag.facing.x);
-        if (drag.aimed) {
-            const V3 front{drag.tip.x - drag.anchor.x, drag.tip.y - drag.anchor.y, 0};
-            const float len = front.length();
-            for (float d = 0; d <= len; d += 0.7f) mark(drag.anchor + front * (d / len), 0, 0.16f, kDecalDot);
-        }
-        for (float d = 0; d < 3.4f; d += 0.7f) mark(drag.centre + drag.facing * d, 0, 0.16f, kDecalDot);
-        mark(drag.centre + drag.facing * 4.0f, yaw, 1.1f, kDecalArrow);
+        for (float d = 0; d < len - 0.6f; d += 0.7f) mark(drag.anchor + drag.facing * d, 0, 0.16f, kDecalDot);
+        mark(drag.anchor + drag.facing * len, yaw, 1.1f, kDecalArrow);
     }
 
     // Where the player's soldiers are going, and what they are after.

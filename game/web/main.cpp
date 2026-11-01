@@ -764,14 +764,15 @@ EMSCRIPTEN_KEEPALIVE void illyria_pinch(float factor, float radians, float x, fl
     app->introStartMs = -1;
     app->gestures->pinch(factor, radians, x * app->pixelRatio, y * app->pixelRatio);
 }
-// The camera keys held (desktop), each -1, 0 or 1: arrows pan right and
-// forward, shift + left and right turn (1: to the left).
-EMSCRIPTEN_KEEPALIVE void illyria_camera_keys(int right, int forward, int turn) {
+// The camera keys held (desktop), each -1, 0 or 1: W A S D (the arrows)
+// pan right and forward, Q E (shift + left and right) turn (1: to the left),
+// R F zoom (1: in).
+EMSCRIPTEN_KEEPALIVE void illyria_camera_keys(int right, int forward, int turn, int zoom) {
     if (!app) return;
-    if (right || forward || turn) app->introStartMs = -1;
-    app->gestures->setKeys(right, forward, turn);
+    if (right || forward || turn || zoom) app->introStartMs = -1;
+    app->gestures->setKeys(right, forward, turn, zoom);
 }
-// N, or the compass: the view turns north up.
+// Z (or N), or the compass: the view turns north up.
 EMSCRIPTEN_KEEPALIVE void illyria_north_up() {
     if (!app) return;
     app->introStartMs = -1;

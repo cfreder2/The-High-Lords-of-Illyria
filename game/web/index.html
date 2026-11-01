@@ -378,7 +378,7 @@
 <div id="banners"></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
 <div id="landTag" class="panel battle-only hidden"></div>
-<button id="compass" aria-label="North up" title="North up (N)">
+<button id="compass" aria-label="North up" title="North up (Z)">
   <svg viewBox="0 0 32 32" aria-hidden="true"><g id="compassNeedle">
     <text x="16" y="8" text-anchor="middle" font-size="7" font-weight="700" fill="#f3ead8" font-family="Georgia, serif">N</text>
     <path d="M16 9.5 L19.2 17 L12.8 17 Z" fill="#e2563f"/>
@@ -524,7 +524,7 @@
       wheel: Module.cwrap("illyria_wheel", null, ["number", "number", "number"]),
       scroll: Module.cwrap("illyria_scroll", null, ["number", "number", "number", "number"]),
       pinch: Module.cwrap("illyria_pinch", null, ["number", "number", "number", "number"]),
-      cameraKeys: Module.cwrap("illyria_camera_keys", null, ["number", "number", "number"]),
+      cameraKeys: Module.cwrap("illyria_camera_keys", null, ["number", "number", "number", "number"]),
       northUp: Module.cwrap("illyria_north_up", null, []),
       heading: Module.cwrap("illyria_heading", "number", []),
       cameraState: Module.cwrap("illyria_camera_state", "string", []),
@@ -804,7 +804,7 @@
   });
   document.addEventListener("gestureend", (e) => { e.preventDefault(); safariPinch = null; });
 
-  // The compass: its needle points north; a tap turns the view north up (N).
+  // The compass: its needle points north; a tap turns the view north up (Z).
   const needle = $("compassNeedle"), kPoints = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
   let compassDeg = NaN, compassFacing = "";
   $("compass").onclick = () => { if (api) api.northUp(); };
@@ -998,22 +998,41 @@
     updateHud();
   }
 
-  // Desktop: Alt (or Ctrl) + number saves the selection as that group, the
-  // number recalls it (twice: the camera goes to it); the keypad's 1-8 (or
-  // shift + number) pick a formation and 0 scatters; S scatters, H holds,
-  // F finds, ` picks the heroes, Esc lets go; shift-drag draws a box, shift-click adds;
-  // - and = slow the battle down and speed it up.
-  // The camera, in a battle and on the campaign map alike: the arrows pan
-  // while held, shift + left and right turn the view, N turns it north up.
-  // (Q, E, G, V, Y and the F-keys are kept free for the soldiers' own orders.)
+  // Desktop, the left hand resting on W A S D and the right on the mouse:
+  // W A S D pan while held, Q and E turn the view, R and F zoom in and out,
+  // Z turns it north up, C brings it to the selection (the camera, in a battle
+  // and on the campaign map alike; the arrows pan too, shift + left and right
+  // turning the view, and N is north as well).
+  // G attack mode, V force march, T lay satchels, X scatter, B halt, ` picks
+  // the heroes, Space pauses, Esc lets go (M, L, H still do as V, T, B).
+  // Alt (or Ctrl) + number saves the selection as that group, the number
+  // recalls it (twice: the camera goes to it); the keypad's 1-9 (or shift +
+  // number) pick a formation and 0 scatters; shift-drag draws a box,
+  // shift-click adds; - and = slow the battle down and speed it up.
+  // (Y and the F-keys are kept free: no F-key is ever bound.)
   let lastGroupKey = -1, lastGroupMs = 0;
   const heldArrows = new Set();
   const typing = (e) => e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  // The camera keys held: across, ahead.
+  const kPanKeys = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1],
+    KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, 1], KeyS: [0, -1] };
+  const kTurnKeys = { KeyQ: 1, KeyE: -1 };  // as shift + left and right
+  const kZoomKeys = { KeyR: 1, KeyF: -1 };  // in, out
+  const cameraKey = (e) => e.code.startsWith("Arrow") ? !e.metaKey
+    : (kPanKeys[e.code] || kTurnKeys[e.code] || kZoomKeys[e.code]) && !e.metaKey && !e.ctrlKey && !e.altKey;
   function sendCameraKeys(shift) {
     if (!api) return;
-    const held = (code) => (heldArrows.has(code) ? 1 : 0);
-    const across = held("ArrowRight") - held("ArrowLeft"), ahead = held("ArrowUp") - held("ArrowDown");
-    api.cameraKeys(shift ? 0 : across, ahead, shift ? -across : 0);
+    let across = 0, ahead = 0, turn = 0, zoom = 0;
+    for (const code of heldArrows) {
+      const pan = kPanKeys[code];
+      if (!pan) { turn += kTurnKeys[code] || 0; zoom += kZoomKeys[code] || 0; continue; }
+      // Shift turns the view with the arrows (W A S D keep panning: shift is the box's).
+      if (shift && code.startsWith("Arrow")) turn -= pan[0];
+      else across += pan[0];
+      ahead += pan[1];
+    }
+    const one = (v) => Math.max(-1, Math.min(1, v));
+    api.cameraKeys(one(across), one(ahead), one(turn), one(zoom));
   }
   const kPaces = [0.25, 0.5, 1, 2, 4];
   function stepPace(by) {
@@ -1026,13 +1045,17 @@
     if (e.key === "Shift" && api) { api.setShift(1); sendCameraKeys(true); }
     if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
     // (Not with ⌘: a Mac sends no keyup for a key let go while ⌘ is down.)
-    if (api && e.code.startsWith("Arrow") && !e.metaKey && !typing(e)) {
+    if (api && cameraKey(e) && !typing(e)) {
       heldArrows.add(e.code);
       sendCameraKeys(e.shiftKey);
       e.preventDefault();
       return;
     }
-    if (api && e.code === "KeyN" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e)) { api.northUp(); return; }
+    if (api && (e.code === "KeyZ" || e.code === "KeyN") && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e)) {
+      api.northUp();
+      e.preventDefault();
+      return;
+    }
     if (!api || campaign || e.repeat) return;
     const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
@@ -1048,13 +1071,15 @@
       updateHud();
       return;
     }
+    // Browser shortcuts (⌘R, Ctrl+F, ⌘C...) go to the browser.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.code) {
-      case "KeyS": api.scatter(); break;
-      case "KeyA": setMode(orderMode === 1 ? 0 : 1); break;
-      case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
-      case "KeyL": setMode(orderMode === 3 ? 0 : 3); break;
-      case "KeyH": api.stop(); break;
-      case "KeyF": api.focusSelection(); break;
+      case "KeyX": api.scatter(); break;
+      case "KeyG": setMode(orderMode === 1 ? 0 : 1); break;
+      case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
+      case "KeyT": case "KeyL": setMode(orderMode === 3 ? 0 : 3); break;
+      case "KeyB": case "KeyH": api.stop(); break;
+      case "KeyC": api.focusSelection(); break;
       case "Backquote": api.selectHeroes(); break;
       case "Escape":
         if (orderMode) setMode(0);

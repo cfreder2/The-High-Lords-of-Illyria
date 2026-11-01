@@ -129,9 +129,9 @@ A city costs 1; an attack costs 2.
 | March | tap the ground | click |
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |
-| Attack mode | ⚔ Attack | [[A]] or [[Ctrl]] + click |
-| Force march | hold ⚔ Attack | [[M]] or [[Alt]] + click |
+| Attack mode | ⚔ Attack | [[G]] or [[Ctrl]] + click |
+| Force march | hold ⚔ Attack | [[V]] or [[Alt]] + click |
 | Formation | Formation | keypad 1-9, shift + 1-9 |
-| Scatter / Hold / Find | the buttons | [[S]] / [[H]] / [[F]] |
+| Scatter / Hold / Find | the buttons | [[X]] / [[B]] / [[C]] |
 | Cancel / let go | | [[Esc]] |
 | Pause | Pause | [[Space]] |

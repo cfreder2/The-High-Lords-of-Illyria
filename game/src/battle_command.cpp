@@ -1,6 +1,6 @@
 // Commanding the battle, as in Myth: selecting soldiers (one man, a squad,
 // everyone of a type in view, a box, saved groups), formations, marching as
-// they stand or in a formation with a front drawn, and scattering. Every order becomes sim::Commands in pending_, so
+// they stand or in a formation, with a facing, and scattering. Every order becomes sim::Commands in pending_, so
 // it reaches the simulation (and every lockstep peer) the same way.
 
 #include <algorithm>
@@ -18,7 +18,7 @@ namespace {
 constexpr float kMinSpacing = 1.8f;
 constexpr float kTapRadiusPx = 30.0f;
 constexpr float kScatterMetres = 7.0f;  // how far they run from the centre
-constexpr float kAimMetres = 1.5f;      // a front drawn shorter is a plain march to the press
+constexpr float kAimMetres = 1.5f;      // drag this far from the destination to set a facing
 constexpr float kBoxSlopPx = 12.0f;     // a smaller box is a tap
 constexpr float kCrescent = 3.84f;      // Encircle: 220 degrees of arc
 constexpr float kVeeStep = 0.8f;        // V: each man this many gaps forward and out (1.13 gaps apart)
@@ -100,13 +100,9 @@ const char* formationName(Formation f) {
     return "?";
 }
 
-std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing, float width) {
+std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing) {
     std::vector<FormationSlot> slots;
     if (count <= 0) return slots;
-    // So many abreast, `gap` apart: their own number, or as many as fill the front drawn.
-    const auto abreast = [&](int own, float gap) {
-        return width > 0 ? std::clamp(static_cast<int>(std::lround(width / gap)) + 1, 1, count) : own;
-    };
     // Ranks of `perRow`, `gap` apart side to side and `depth` front to back;
     // `stagger` shifts every other rank by that share of a gap (a short rank
     // centred is already shifted by half).
@@ -119,20 +115,18 @@ std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing
         }
     };
     switch (f) {
-        case Formation::Line: rows(abreast(std::max(1, (count + 1) / 2), spacing), spacing, spacing, 0); break;  // two ranks
-        case Formation::ShortLine: rows(abreast(std::max(1, (count + 2) / 3), spacing), spacing, spacing, 0); break;  // three
-        case Formation::Box:
-            rows(abreast(std::max(1, static_cast<int>(std::ceil(std::sqrt(count * 1.4f)))), spacing), spacing, spacing, 0);
-            break;
-        case Formation::Column: rows(abreast(2, spacing), spacing, spacing, 0); break;
+        case Formation::Line: rows(std::max(1, (count + 1) / 2), spacing, spacing, 0); break;  // two ranks
+        case Formation::ShortLine: rows(std::max(1, (count + 2) / 3), spacing, spacing, 0); break;  // three
+        case Formation::Box: rows(std::max(1, static_cast<int>(std::ceil(std::sqrt(count * 1.4f)))), spacing, spacing, 0); break;
+        case Formation::Column: rows(2, spacing, spacing, 0); break;
         case Formation::Staggered:
             // Two ranks, each man in the gap of the rank before: no two nearer
             // than 1.8 gaps, so one bomb or fireball takes one man, not three.
-            rows(abreast(std::max(1, (count + 1) / 2), spacing * 2.0f), spacing * 2.0f, spacing * 1.5f, 0.5f);
+            rows(std::max(1, (count + 1) / 2), spacing * 2.0f, spacing * 1.5f, 0.5f);
             break;
         case Formation::Loose:
             // A wide skirmish line, each man a little out of true.
-            rows(abreast(std::max(1, (count + 1) / 2), spacing * 2.2f), spacing * 2.2f, spacing * 2.2f, 0);
+            rows(std::max(1, (count + 1) / 2), spacing * 2.2f, spacing * 2.2f, 0);
             for (size_t i = 0; i < slots.size(); ++i) {
                 const float h = static_cast<float>((i * 2654435761u) % 1000) / 1000.0f;
                 slots[i].pos = slots[i].pos + V3{(h - 0.5f) * spacing * 0.6f, (std::fmod(h * 7.0f, 1.0f) - 0.5f) * spacing * 0.8f, 0};
@@ -439,12 +433,12 @@ V3 Battle::selectionFacing() const {
 }
 
 std::vector<FormationSlot> Battle::placeFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                                  const V3& facing, float width) const {
+                                                  const V3& facing) const {
     // Room for the biggest of them.
     float spacing = kMinSpacing;
     for (sim::EntityId id : units)
         spacing = std::max(spacing, formationSpacing(static_cast<UnitType>(world_->units()[id - 1].stats.type)));
-    std::vector<FormationSlot> slots = formationLayout(formation, static_cast<int>(units.size()), spacing, width);
+    std::vector<FormationSlot> slots = formationLayout(formation, static_cast<int>(units.size()), spacing);
     const V3 right{facing.y, -facing.x, 0};
     for (FormationSlot& s : slots) {
         s.pos = to + right * s.pos.x + facing * s.pos.y;
@@ -473,11 +467,11 @@ void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Fo
 }
 
 std::vector<Battle::MarchOrder> Battle::planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                                     const V3& facing, float width) const {
+                                                     const V3& facing) const {
     std::vector<sim::EntityId> alive = units;
     const V3 from = centreOf(alive);
     const V3 right{facing.y, -facing.x, 0};
-    std::vector<FormationSlot> slots = placeFormation(alive, formation, to, facing, width);
+    std::vector<FormationSlot> slots = placeFormation(alive, formation, to, facing);
     // Who goes where: the soldiers nearest the front take the front ranks, and
     // within a rank keep their left-to-right order, so nobody crosses another.
     const auto pos = [&](sim::EntityId id) { return toV3(world_->units()[id - 1].pos); };
@@ -605,10 +599,8 @@ std::vector<Battle::MarchOrder> Battle::planShape(const Shape& shape, const std:
     return plan;
 }
 
-std::vector<Battle::MarchOrder> Battle::planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing,
-                                                      float width) const {
-    std::vector<MarchOrder> plan = selKeep_ ? planShape(selectionShape(), units, to, facing)
-                                            : planFormation(units, selFormation_, to, facing, width);
+std::vector<Battle::MarchOrder> Battle::planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const {
+    std::vector<MarchOrder> plan = selKeep_ ? planShape(selectionShape(), units, to, facing) : planFormation(units, selFormation_, to, facing);
     keepClear(plan);
     return plan;
 }
@@ -654,10 +646,10 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
     }
 }
 
-void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, float width, bool force) {
+void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force) {
     if (units.empty()) return;
     markOrdered(units);
-    // Facing as they do now, unless a front was drawn.
+    // Facing as they do now, unless given a way to face.
     const V3 front = facing ? flat(*facing).normalized() : selKeep_ ? selectionShape().front : selectionFacing();
     // In a formation, its pace; as they stand, the slowest of their squads' (see formationPace).
     float pace = formationPace(selFormation_);
@@ -668,7 +660,7 @@ void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& t
             pace = std::min(pace, squad >= 0 ? formationPace(squads_[static_cast<size_t>(squad)].formation) : 0.9f);
         }
     }
-    sendMarch(local_, planSelection(units, to, front, width), centreOf(units), to, front, pace, force);
+    sendMarch(local_, planSelection(units, to, front), centreOf(units), to, front, pace, force);
 }
 
 void Battle::sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan, const V3& from, const V3& to, const V3& front,
@@ -744,12 +736,12 @@ void Battle::orderAtGate(int gate) {
 }
 
 void Battle::orderMove(const V3& to) {
-    marchSelection(selectedAlive(), to, nullptr, 0, false);
+    marchSelection(selectedAlive(), to, nullptr, false);
     voice_.order(Situation::Move, *world_, selection_);
 }
 
-void Battle::orderMoveFacing(const V3& to, const V3& facing, float width) {
-    marchSelection(selectedAlive(), to, &facing, width, false);
+void Battle::orderMoveFacing(const V3& to, const V3& facing) {
+    marchSelection(selectedAlive(), to, &facing, false);
     voice_.order(Situation::Move, *world_, selection_);
 }
 
@@ -914,8 +906,8 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     }
     if (!camera.pickGround(x, y, drag_.anchor)) return false;
     drag_.mode = Drag::Mode::Facing;
-    drag_.tip = drag_.centre = drag_.anchor;
-    // Until a front is drawn: there, facing as they do now.
+    drag_.tip = drag_.anchor;
+    // Until dragged: there, facing as they do now.
     drag_.facing = selKeep_ ? selectionShape().front : selectionFacing();
     updateGhost();
     return true;
@@ -923,7 +915,7 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
 
 void Battle::updateGhost() {
     drag_.ghost.clear();
-    for (const MarchOrder& o : planSelection(selectedAlive(), drag_.centre, drag_.facing, drag_.width))
+    for (const MarchOrder& o : planSelection(selectedAlive(), drag_.anchor, drag_.facing))
         drag_.ghost.push_back({{o.target.x, o.target.y, heightAt(o.target.x, o.target.y)}, o.face});
 }
 
@@ -936,16 +928,9 @@ void Battle::pressMove(const Camera& camera, float x, float y) {
     drag_.tip = hit;
     const V3 d = flat(hit - drag_.anchor);
     if (d.length() < kAimMetres) return;
-    // The front, left end to right as they will stand: they face forward of
-    // it, their foremost on it and the rest behind.
+    // The way the line points: the whole arrangement turns to face it.
     drag_.aimed = true;
-    drag_.facing = V3{-d.y, d.x, 0}.normalized();
-    drag_.width = d.length();
-    const V3 middle = drag_.anchor + d * 0.5f;
-    float ahead = -1e30f;
-    for (const MarchOrder& o : planSelection(selectedAlive(), middle, drag_.facing, drag_.width))
-        ahead = std::max(ahead, (o.target - middle).dot(drag_.facing));
-    drag_.centre = middle - drag_.facing * (ahead > -1e29f ? ahead : 0.0f);
+    drag_.facing = d.normalized();
     updateGhost();
 }
 
@@ -961,8 +946,8 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     }
     const bool force = marchKey_ || orderMode_ == OrderMode::ForceMarch;
     orderMode_ = OrderMode::Normal;
-    if (force) orderForceMarch(d.centre, d.aimed ? &d.facing : nullptr, d.width);
-    else if (d.aimed) orderMoveFacing(d.centre, d.facing, d.width);
+    if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
+    else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
     else orderMove(d.anchor);
 }
 

@@ -101,7 +101,7 @@ void Battle::orderAttackGround(const V3& at) {
         else march.push_back(id);
     }
     // The rest march there, fighting whoever they meet on the way.
-    marchSelection(march, at, nullptr, 0, false);
+    marchSelection(march, at, nullptr, false);
     markOrdered(mine);
     voice_.order(Situation::Attack, *world_, mine);
 }
@@ -124,10 +124,10 @@ void Battle::orderLaySatchels(const V3& at) {
     voice_.order(Situation::Attack, *world_, layers);
 }
 
-void Battle::orderForceMarch(const V3& to, const V3* facing, float width) {
+void Battle::orderForceMarch(const V3& to, const V3* facing) {
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
-    marchSelection(mine, to, facing, width, true);
+    marchSelection(mine, to, facing, true);
     voice_.order(Situation::Move, *world_, mine);
 }
 

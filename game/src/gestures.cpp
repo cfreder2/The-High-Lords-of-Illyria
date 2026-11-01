@@ -15,6 +15,7 @@ constexpr float kPi = 3.14159265f;
 // eases to and from that pace in about a tenth of a second.
 constexpr float kKeyPanPerSecond = 0.9f;
 constexpr float kKeyTurnPerSecond = 1.4f;
+constexpr float kKeyZoomPerSecond = 1.2f;  // e-fold of the distance a second: twice as near in 0.6 s
 constexpr double kKeyEaseMs = 90.0;
 // Turning to a heading (turnTo): nearly there in a third of a second.
 constexpr double kTurnEaseMs = 90.0;
@@ -146,10 +147,11 @@ void Gestures::pinch(float factor, float radians, float x, float y) {
     }
 }
 
-void Gestures::setKeys(int right, int forward, int turn) {
+void Gestures::setKeys(int right, int forward, int turn, int zoom) {
     keyRight_ = std::clamp(right, -1, 1);
     keyForward_ = std::clamp(forward, -1, 1);
     keyTurn_ = std::clamp(turn, -1, 1);
+    keyZoom_ = std::clamp(zoom, -1, 1);
     if (keyTurn_ != 0) turning_ = false;
 }
 
@@ -166,9 +168,9 @@ void Gestures::moveByKeys(double timeMs) {
     // Ease toward the keys' pace: a tap of a key nudges, a hold glides, and the
     // view stops within a tenth of a second or so of the key's release.
     const float k = static_cast<float>(1.0 - std::exp(-dtMs / kKeyEaseMs));
-    float* paces[] = {&paceRight_, &paceForward_, &paceTurn_};
-    const int keys[] = {keyRight_, keyForward_, keyTurn_};
-    for (int i = 0; i < 3; ++i) {
+    float* paces[] = {&paceRight_, &paceForward_, &paceTurn_, &paceZoom_};
+    const int keys[] = {keyRight_, keyForward_, keyTurn_, keyZoom_};
+    for (int i = 0; i < 4; ++i) {
         *paces[i] += (static_cast<float>(keys[i]) - *paces[i]) * k;
         if (std::abs(*paces[i]) < 0.01f) *paces[i] = 0;
     }
@@ -177,6 +179,7 @@ void Gestures::moveByKeys(double timeMs) {
         camera_.pan(paceRight_ * metres, paceForward_ * metres);
     }
     if (paceTurn_ != 0) camera_.rotate(paceTurn_ * kKeyTurnPerSecond * dt);
+    if (paceZoom_ != 0) camera_.zoomAt(std::exp(paceZoom_ * kKeyZoomPerSecond * dt), camera_.width() / 2, camera_.height() / 2);
     if (turning_) {
         const float left = std::remainder(turnToYaw_ - camera_.yaw(), 2 * kPi);
         if (std::abs(left) < 0.002f) {

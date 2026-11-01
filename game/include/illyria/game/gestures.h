@@ -20,7 +20,7 @@ enum class PointerEvent { Down, Move, Up, Cancel };
 //   press held still, then drag    hold: a selection box or a facing line (if
 //                                  the hold handler takes it; else it pans)
 //   shift + drag (desktop)         hold at once (a box)
-//   arrow keys held (desktop)      pan; with shift, left and right rotate (setKeys)
+//   W A S D, arrows held (desktop) pan; Q E (shift + left, right) turn; R F zoom (setKeys)
 class Gestures {
 public:
     using TapFn = std::function<void(float x, float y)>;
@@ -53,9 +53,10 @@ public:
     // A trackpad's pinch: zoom by `factor` about (x, y), and turn by `radians` (a twist).
     void pinch(float factor, float radians, float x, float y);
     // Keys held (desktop), each -1, 0 or 1: pan right / forward (up the
-    // screen), and turn (1: the view turns left). The camera eases to the
-    // pace, which grows with the zoom distance.
-    void setKeys(int right, int forward, int turn);
+    // screen), turn (1: the view turns left), and zoom (1: in, about the
+    // middle of the screen). The camera eases to the pace; the pan's grows
+    // with the zoom distance.
+    void setKeys(int right, int forward, int turn, int zoom = 0);
     // Turn the view to `yaw` over a moment (N: north up); any other turning stops it.
     void turnTo(float yaw);
     bool turning() const { return turning_; }
@@ -92,8 +93,8 @@ private:
     bool tapCandidate_ = false;  // the current gesture can still become a tap
     bool secondaryCandidate_ = false;  // ... or a right click
     // Keys: what is held, the eased pace (-1..1 each), and the last update.
-    int keyRight_ = 0, keyForward_ = 0, keyTurn_ = 0;
-    float paceRight_ = 0, paceForward_ = 0, paceTurn_ = 0;
+    int keyRight_ = 0, keyForward_ = 0, keyTurn_ = 0, keyZoom_ = 0;
+    float paceRight_ = 0, paceForward_ = 0, paceTurn_ = 0, paceZoom_ = 0;
     double lastUpdateMs_ = -1;
     bool turning_ = false;
     float turnToYaw_ = 0;

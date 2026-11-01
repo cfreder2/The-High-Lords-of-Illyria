@@ -14,13 +14,13 @@ The battle runs in real time, thirty steps of the simulation every second, and i
 
 | | Phone or tablet | Desktop |
 |---|---|---|
-| Zoom | pinch | the mouse wheel, or pinch the trackpad |
-| Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold the arrow keys |
-| Turn the view | twist two fingers | drag with the right button, or [[Shift]] and [[←]] or [[→]] |
-| North up | tap the compass | click the compass, or [[N]] |
+| Zoom | pinch | the mouse wheel, pinch the trackpad, or hold [[R]] (in) or [[F]] (out) |
+| Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold [[W]] [[A]] [[S]] [[D]] (or the arrows) |
+| Turn the view | twist two fingers | drag with the right button, or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
+| North up | tap the compass | click the compass, or [[Z]] |
 | Move and zoom together | drag two fingers | |
 | To a squad | tap its card twice | tap its card twice, or its group's key twice |
-| To the selection | **Find** | **Find**, or [[F]] |
+| To the selection | **Find** | **Find**, or [[C]] |
 | To the fiercest fighting | **Fight!** | **Fight!** |
 
 The **compass** sits under the buttons at the top right; its needle points north whichever way the view is turned. The arrow keys move the camera faster the higher it is.

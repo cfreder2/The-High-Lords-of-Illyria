@@ -398,7 +398,7 @@
     `<h3>Orders</h3>` +
     row("tap", "Tap the ground", "March there as they stand, each in his place, facing as they do. On the way they fight back if struck, and take on foes who come close.") +
     row("tap", "Tap an enemy, or a gate", "Go after him (archers shoot from range); at a gate, engines and bombers batter it down.") +
-    row("hold", "Hold where the front begins, then drag to its end", "A gold ghost of them stands across the line, the foremost on it, facing forward of it (drawn left to right, away from you); let go and they go. In a formation, the line's length is its width.") +
+    row("hold", "Hold where they should go, then drag", "A gold ghost of them appears there; drag the way they should face, the whole of it turning, and let go.") +
     row("attack", "⚔ Attack, then tap", "Attack whatever you tap next: any soldier (even one of ours), a gate, a wall, house or tree (only engines, grenadiers and wizards can hurt those), or the ground.") +
     row("march", "Hold ⚔ Attack: » March", "A force march: tap where to go and they ignore the enemy on the way, to pull out of a fight or run past one.") +
     row("formation", "Formation", "The picker: Line, Short line, Staggered, Box, Wedge, Column, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
@@ -427,7 +427,7 @@
     row("mouseL", "Click", "Select, march, attack: the cursor shows what a click would do (a hand, a sword, a target, a crosshair, a double chevron).") +
     row("mouseR", "Right-click", "An order for those selected, as a click would give it (march there, go after the enemy clicked), but never a change of who is selected: on one of yours, they march to him.") +
     row("mouseL", "Double-click a soldier", "Every soldier of his kind in view (clicking him again does the same).") +
-    row("hold", "Hold the button where the front begins, then drag", "Move there on that front.") +
+    row("hold", "Hold the button where they should go, then drag", "Move there and face that way.") +
     `<table class="keys">` +
     `<tr><td>${k("Shift")} + click</td><td>Add or take away one man.</td></tr>` +
     `<tr><td>${k("Shift")} + drag</td><td>Box-select at once.</td></tr>` +
@@ -437,21 +437,23 @@
     row("pad", "Swipe two fingers", "Pan across the land.") +
     row("pinch", "Pinch", "Zoom, about the pointer. In Safari a twist turns the view as well.") +
     row("padTap", "Tap with two fingers", "As a right-click: an order for those selected.") +
-    `<h3>The camera keys</h3>` +
+    `<h3>The camera keys (the left hand on W A S D)</h3>` +
     `<table class="keys">` +
-    `<tr><td>${k("↑")}${k("↓")}${k("←")}${k("→")}</td><td>Pan while held: faster the higher the camera is.</td></tr>` +
-    `<tr><td>${k("Shift")} + ${k("←")}${k("→")}</td><td>Turn the view.</td></tr>` +
-    `<tr><td>${k("N")}</td><td>North up (or click the compass under the top right buttons).</td></tr></table>` +
+    `<tr><td>${k("W")}${k("A")}${k("S")}${k("D")}</td><td>Pan while held (or the arrows): faster the higher the camera is.</td></tr>` +
+    `<tr><td>${k("Q")} · ${k("E")}</td><td>Turn the view left · right (or ${k("Shift")} + ${k("←")}${k("→")}).</td></tr>` +
+    `<tr><td>${k("R")} · ${k("F")}</td><td>Zoom in · out while held (or the wheel, or pinch).</td></tr>` +
+    `<tr><td>${k("Z")}</td><td>North up (or click the compass under the top right buttons).</td></tr>` +
+    `<tr><td>${k("C")}</td><td>The camera to the selection.</td></tr></table>` +
     `<h3>Keys in battle</h3>` +
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
     `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Save the selection as that group.</td></tr>` +
     `<tr><td>${k("Shift")} + ${k("1")}…${k("9")}, keypad</td><td>Formation: 1 Line, 2 Short line, 3 Staggered, 4 Box, 5 Wedge, 6 Column, 7 Loose, 8 Encircle, 9 V.</td></tr>` +
-    `<tr><td>${k("S")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
-    `<tr><td>${k("A")}</td><td>Attack mode: the next click attacks.</td></tr>` +
-    `<tr><td>${k("M")}</td><td>Force-march mode.</td></tr>` +
-    `<tr><td>${k("L")}</td><td>Lay satchels: the next click sends the selected grenadiers there to lay one each.</td></tr>` +
-    `<tr><td>${k("H")} · ${k("F")}</td><td>Hold · find (the camera to the selection).</td></tr>` +
+    `<tr><td>${k("G")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground).</td></tr>` +
+    `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
+    `<tr><td>${k("T")}</td><td>Lay satchels: the next click sends the selected grenadiers there to lay one each.</td></tr>` +
+    `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
+    `<tr><td>${k("B")}</td><td>Halt.</td></tr>` +
     `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
     `<tr><td>${k("Space")}</td><td>Pause the battle.</td></tr>` +

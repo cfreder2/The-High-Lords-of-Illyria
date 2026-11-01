@@ -249,46 +249,37 @@ TEST(a_move_with_facing_arrives_facing_that_way_laid_across_the_line) {
     CHECK(alongEast > alongNorth * 2);
 }
 
-TEST(press_and_drag_draws_the_front_with_its_ghost) {
-    // The front drawn from north to south: they face east, forward of it,
-    // the front rank on it; before it is drawn, as they face now.
+TEST(press_and_drag_draws_the_facing_line_with_its_ghost) {
+    // Pressed where they are to go and dragged south: the ghost of them stands
+    // there and turns to face south; before the drag, as they face now.
     Battle b(42);
     const int watch = squadNamed(b, "The Grey Watch");
     b.selectSquad(watch);
-    V3 at = b.squadCentre(b.squads()[static_cast<size_t>(watch)]) + V3{-30, 10, 0};
+    V3 at = b.squadCentre(b.squads()[static_cast<size_t>(watch)]) + V3{-30, 0, 0};
     at.z = b.heightAt(at.x, at.y);
     const Camera c = cameraOn(b, at, 120);
-    float px, py, qx, qy, nx, ny;
+    float px, py, qx, qy;
     CHECK(c.project(at, px, py));
-    V3 tip = at + V3{0, -20, 0}, north = at + V3{0, 20, 0};
+    V3 tip = at + V3{0, -15, 0};
     tip.z = b.heightAt(tip.x, tip.y);
-    north.z = b.heightAt(north.x, north.y);
     CHECK(c.project(tip, qx, qy));
-    CHECK(c.project(north, nx, ny));
     CHECK(b.pressBegin(c, px, py, 1.0f, false));
     CHECK(b.drag().mode == Battle::Drag::Mode::Facing);
     CHECK(b.drag().ghost.size() == b.selectedAlive().size());
     CHECK(b.drag().facing.dot(V3{1, 0, 0}) > 0.99f);
     b.pressMove(c, qx, qy);
     CHECK(b.drag().aimed);
-    CHECK(b.drag().facing.dot(V3{1, 0, 0}) > 0.95f);
-    // The foremost on the line, the rest behind it (west).
-    float foremost = -1e9f;
+    CHECK(b.drag().facing.dot(V3{0, -1, 0}) > 0.95f);
+    V3 middle;
     for (const FormationSlot& s : b.drag().ghost) {
-        CHECK(s.face.dot(V3{1, 0, 0}) > 0.95f);
-        foremost = std::max(foremost, s.pos.x - at.x);
+        CHECK(s.face.dot(V3{0, -1, 0}) > 0.95f);
+        middle += s.pos;
     }
-    CHECK(std::abs(foremost) < 0.3f);
-    CHECK(std::abs(b.drag().centre.y - (at.y - 10)) < 1.5f && b.drag().centre.x < at.x);
-    // Drawn the other way, south to north: they face west.
-    b.pressMove(c, nx, ny);
-    CHECK(b.drag().facing.dot(V3{-1, 0, 0}) > 0.95f);
-    b.pressMove(c, qx, qy);
+    middle = middle * (1.0f / static_cast<float>(b.drag().ghost.size()));
+    CHECK(std::hypot(middle.x - at.x, middle.y - at.y) < 1.5f);
     b.pressEnd(c, qx, qy, false);
     run(b, 45);
-    const V3 centre = b.squadCentre(b.squads()[static_cast<size_t>(watch)], false);
-    CHECK((centre - (at + V3{0, -10, 0})).length() < 3.0f);
-    for (illyria::sim::EntityId id : b.selectedAlive()) CHECK(facingOf(b, id).dot(V3{1, 0, 0}) > 0.95f);
+    for (illyria::sim::EntityId id : b.selectedAlive()) CHECK(facingOf(b, id).dot(V3{0, -1, 0}) > 0.95f);
 }
 
 namespace {
@@ -396,39 +387,6 @@ TEST(a_saved_group_marches_in_its_saved_shape) {
     b.orderMove(to);
     run(b, 50);
     CHECK((bowsFromKnights(b) - gap).length() < 2.0f);
-}
-
-TEST(a_front_drawn_wide_sets_how_many_stand_abreast) {
-    // In a chosen formation the front's length is its width: a line of twelve
-    // drawn 20 m wide stands in one rank, drawn 6 m wide in three or more.
-    const auto extent = [](float width) {
-        Battle b(42);
-        b.selectSquad(squadNamed(b, "The Grey Watch"));
-        b.setFormation(Formation::Line);
-        CHECK(!b.keepingShape());
-        const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
-        const V3 to = middleOf(b, men) + V3{-30, 0, 0};
-        b.orderMoveFacing(to, V3{1, 0, 0}, width);
-        run(b, 45);
-        float across = 0, deep = 0;
-        for (illyria::sim::EntityId id : men) {
-            const V3 p = toV3(b.world().units()[id - 1].pos) - to;
-            across = std::max(across, std::abs(p.y));
-            deep = std::max(deep, std::abs(p.x));
-        }
-        return std::make_pair(across, deep);
-    };
-    const auto [wideAcross, wideDeep] = extent(20);
-    const auto [narrowAcross, narrowDeep] = extent(6);
-    CHECK(wideAcross > 8.0f && wideDeep < 1.5f);
-    CHECK(narrowAcross < 5.0f && narrowDeep > 1.5f);
-    // The formation's own width, undrawn: two ranks of six.
-    const std::vector<FormationSlot> own = formationLayout(Formation::Line, 12, 2.0f);
-    const std::vector<FormationSlot> drawn = formationLayout(Formation::Line, 12, 2.0f, 22.0f);
-    float ownWide = 0, drawnWide = 0;
-    for (const FormationSlot& s : own) ownWide = std::max(ownWide, std::abs(s.pos.x));
-    for (const FormationSlot& s : drawn) drawnWide = std::max(drawnWide, std::abs(s.pos.x));
-    CHECK(std::abs(ownWide - 5.0f) < 0.01f && std::abs(drawnWide - 11.0f) < 0.01f);
 }
 
 TEST(encircled_soldiers_face_outward_from_the_point) {
@@ -649,13 +607,14 @@ TEST(trackpad_swipes_pan_pinches_zoom_and_keys_move_and_turn_the_view) {
     CHECK_NEAR(c.yaw(), kNorth + 0.25f, 1e-4);
     // Arrows: up the screen (north here), at a pace that grows with the distance; they stop when let go.
     c.rotate(kNorth - c.yaw());
-    const auto hold = [&](int right, int forward, int turn, double fromMs, double ms) {
+    const auto hold4 = [&](int right, int forward, int turn, int zoom, double fromMs, double ms) {
         g.update(fromMs);
-        g.setKeys(right, forward, turn);
+        g.setKeys(right, forward, turn, zoom);
         for (double t = fromMs + 16; t <= fromMs + ms; t += 16) g.update(t);
-        g.setKeys(0, 0, 0);
+        g.setKeys(0, 0, 0, 0);
         for (double t = fromMs + ms + 16; t <= fromMs + ms + 400; t += 16) g.update(t);
     };
+    const auto hold = [&](int right, int forward, int turn, double fromMs, double ms) { hold4(right, forward, turn, 0, fromMs, ms); };
     V3 before = c.target();
     hold(0, 1, 0, 0, 1000);
     const float first = c.target().y - before.y;
@@ -668,23 +627,32 @@ TEST(trackpad_swipes_pan_pinches_zoom_and_keys_move_and_turn_the_view) {
     before = c.target();
     hold(1, 0, 0, 4000, 500);
     CHECK(c.target().x > before.x + 50);  // right: east, looking north
-    // Shift + left: the view turns left (anticlockwise).
+    // Shift + left (Q): the view turns left (anticlockwise).
     float yaw = c.yaw();
     hold(0, 0, 1, 6000, 500);
     CHECK(c.yaw() > yaw + 0.5f);
+    // R held: nearer, about the middle of the screen (where it looks stays put); F: back out.
+    const float far = c.distance();
+    const V3 looking = c.target();
+    hold4(0, 0, 0, 1, 7000, 580);
+    CHECK(c.distance() < far * 0.6f && c.distance() > far * 0.35f);
+    CHECK(std::hypot(c.target().x - looking.x, c.target().y - looking.y) < 0.05f * far);
+    const float near = c.distance();
+    hold4(0, 0, 0, -1, 8100, 580);
+    CHECK(c.distance() > near * 1.6f);
     // N: back to north over a moment, the short way round; turning by hand stops it.
     c.rotate(2 * 3.14159265f * 3 + 0.4f);
     g.turnTo(kNorth);
     CHECK(g.turning());
-    for (double t = 8000; t < 8600; t += 16) g.update(t);
+    for (double t = 9200; t < 9800; t += 16) g.update(t);
     CHECK(!g.turning());
     CHECK_NEAR(std::remainder(c.yaw() - kNorth, 2 * 3.14159265f), 0.0, 0.003);
     c.rotate(1.0f);
     g.turnTo(kNorth);
-    g.update(9000);
-    g.update(9016);
-    g.pointer(PointerEvent::Down, 1, 300, 300, 2, 9020);
-    g.pointer(PointerEvent::Move, 1, 340, 300, 2, 9030);
-    g.pointer(PointerEvent::Up, 1, 340, 300, 2, 9040);
+    g.update(10000);
+    g.update(10016);
+    g.pointer(PointerEvent::Down, 1, 300, 300, 2, 10020);
+    g.pointer(PointerEvent::Move, 1, 340, 300, 2, 10030);
+    g.pointer(PointerEvent::Up, 1, 340, 300, 2, 10040);
     CHECK(!g.turning());
 }

@@ -49,10 +49,8 @@ struct FormationSlot {
     V3 face{0, 1, 0};
 };
 // `spacing` is the gap between neighbours, from the biggest soldier's size
-// (formationSpacing); the loose formations open it wider. `width`: the front
-// drawn this many metres wide, for those formed in ranks (Line, Short line,
-// Staggered, Box, Column, Loose): as many abreast as fit it; 0, their own.
-std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing, float width = 0);
+// (formationSpacing); the loose formations open it wider.
+std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing);
 std::vector<V3> formationSlots(Formation f, int count, float spacing);
 // Marching pace in this formation, as a share of the slowest member's: the
 // tight ones (Box, the lines) a little slower than the loose ones.
@@ -257,10 +255,9 @@ public:
     // (keepShape), their own arrangement moved there; in a chosen formation,
     // re-formed there.
     void orderMove(const V3& to);
-    // March there and face that way on arrival (the front drawn: pressEnd),
-    // the arrangement turned to it. `width`: in a chosen formation, its front
-    // that many metres wide (0: its own).
-    void orderMoveFacing(const V3& to, const V3& facing, float width = 0);
+    // March there and face that way on arrival (pressed there and dragged
+    // the way to face: pressEnd), the whole arrangement turned to it.
+    void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
     // Attacks (game/src/battle_orders.cpp). Everyone selected after one
     // soldier, of either side (a force attack on a friend): missile troops
@@ -274,7 +271,7 @@ public:
     void orderLaySatchels(const V3& at);
     // March there deaf to the enemy (Myth's force march): to break away, or
     // to run past.
-    void orderForceMarch(const V3& to, const V3* facing = nullptr, float width = 0);
+    void orderForceMarch(const V3& to, const V3* facing = nullptr);
     // What lies under the finger.
     struct Pick {
         enum class Kind : uint8_t { None, Own, Enemy, Gate, Wall, Obstacle, Ground };
@@ -354,9 +351,8 @@ public:
     Shape selectionShape() const;
 
     // A press held on the battlefield (Gestures' hold): drawing a selection
-    // box, or the front of a move: from its left end to its right as the
-    // soldiers will stand, so they face across it, forward of the line, the
-    // foremost of them on it. `box` forces a box
+    // box, or a move's facing: pressed where they are to go, dragged the way
+    // they are to face, the ghost of them there turning with it. `box` forces a box
     // (shift on the desktop); otherwise it is a box when nothing is selected
     // or the press starts on one of ours. False: not taken (the camera pans).
     bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);
@@ -367,11 +363,9 @@ public:
         Mode mode = Mode::None;
         float x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // the box, in pixels
         float pixelScale = 1;
-        V3 anchor, facing{1, 0, 0};             // where the front begins, and the way they will face
-        bool aimed = false;                     // dragged far enough to draw a front
-        V3 tip;                                 // where the finger is, on the ground: the front's other end
-        V3 centre;                              // where their middle goes: behind the front's (the press, until drawn)
-        float width = 0;                        // the front's length
+        V3 anchor, facing{1, 0, 0};             // where they go, and the way they will face
+        bool aimed = false;                     // dragged far enough to set a facing
+        V3 tip;                                 // where the finger is, on the ground
         std::vector<FormationSlot> ghost;       // the formation there, in battle coordinates
     };
     const Drag& drag() const { return drag_; }
@@ -542,7 +536,7 @@ private:
     // A formation at `to`: the soldiers nearest the front take the front
     // ranks, keeping their order left to right, so no one crosses another.
     std::vector<MarchOrder> planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                          const V3& facing, float width = 0) const;
+                                          const V3& facing) const;
     // An arrangement moved to `to` and turned to face `facing`; within each
     // squad the men take its places by the least walking in all, so none
     // crosses another and no squad takes another's.
@@ -554,15 +548,15 @@ private:
     // Places on a rock, a tree or a house moved just clear of it, where a man can stand.
     void keepClear(std::vector<MarchOrder>& plan) const;
     // The selection's march (or these of it): as they stand or in its formation.
-    std::vector<MarchOrder> planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, float width) const;
-    void marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, float width, bool force);
+    std::vector<MarchOrder> planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const;
+    void marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force);
     // The orders out, everyone arriving together at the slowest one's pace
     // (times `pace`), all on the one route from `from` to `to`; and where each
     // was sent remembered (slots_).
     void sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan, const V3& from, const V3& to, const V3& front, float pace,
                    bool force);
     std::vector<FormationSlot> placeFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                              const V3& facing, float width = 0) const;
+                                              const V3& facing) const;
     V3 centreOf(const std::vector<sim::EntityId>& units) const;
     V3 selectionFacing() const;
     void refreshSelection();
