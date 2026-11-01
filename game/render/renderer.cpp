@@ -2346,7 +2346,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     }
 
     // The gates: a health bar over each one battered, and over the one tapped
-    // (Battle::inspectedGate), which a dotted gold line rings at its foot.
+    // (Battle::inspectedGate), which a dotted gold line rings at its foot and
+    // again on the walk over it (from above, the walk hides the passage).
     {
         const auto& gs = battle.region().gates();
         const std::vector<sim::GateState>& state = battle.world().gates();
@@ -2357,13 +2358,18 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             if (state[g].broken() || (!shown && state[g].hp >= gate.maxHp)) continue;
             const V3 a = toV3(gate.a), b = toV3(gate.b), mid = (a + b) * 0.5f;
             const float top = static_cast<float>(gate.top.toDouble());
+            // Over the stone above the passage, if any, so the walk does not hide it.
+            const float over = std::max(top, battle.floorAt({mid.x, mid.y, top + 40.0f})) + 1.0f;
             const float hp = static_cast<float>(state[g].hp) / static_cast<float>(std::max(1, gate.maxHp));
-            bars.insert(bars.end(), {mid.x, mid.y, top, hp, 0, 0, top - mid.z});
+            bars.insert(bars.end(), {mid.x, mid.y, over, hp, -1, 0, over - mid.z});  // -1: a gate's, wide
             if (!shown) continue;
             const V3 along = V3{b.x - a.x, b.y - a.y, 0}, across = V3{-along.y, along.x, 0}.normalized();
             const float len = along.length(), half = static_cast<float>(gate.halfThick.toDouble()) + 0.6f;
             const auto dot = [&](const V3& p) {
-                decals.insert(decals.end(), {p.x, p.y, battle.floorAt(p), 0, 0.2f, 0, kDecalDot, gold[0], gold[1], gold[2], 0});
+                const float foot = battle.floorAt(p), walk = battle.floorAt({p.x, p.y, top + 40.0f});
+                decals.insert(decals.end(), {p.x, p.y, foot, 0, 0.2f, 0, kDecalDot, gold[0], gold[1], gold[2], 0});
+                if (walk > foot + 2.0f)
+                    decals.insert(decals.end(), {p.x, p.y, walk, 0, 0.2f, 0, kDecalDot, gold[0], gold[1], gold[2], 0});
             };
             const V3 dir = along * (1.0f / std::max(len, 0.01f));
             for (float d = -0.6f; d <= len + 0.6f; d += 0.6f) {

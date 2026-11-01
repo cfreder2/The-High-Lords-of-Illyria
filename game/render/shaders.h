@@ -2033,7 +2033,9 @@ void main() {
     float px = uPxScale * distance(uEye, iPos);
     // Zoomed out, where soldiers are a few pixels tall, there are no bars.
     if (iInfo.w / px < 14.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
-    vec3 world = iPos + vec3(0.0, 0.0, px * 4.0) + uCamRight * ((corner.x - 0.5) * kBarPx.x * px) + vec3(0.0, 0.0, corner.y * kBarPx.y * px);
+    // A gate's bar (no rank: pips -1) three times a soldier's width.
+    float wide = iInfo.y < -0.5 ? 3.0 : 1.0;
+    vec3 world = iPos + vec3(0.0, 0.0, px * 4.0) + uCamRight * ((corner.x - 0.5) * kBarPx.x * wide * px) + vec3(0.0, 0.0, corner.y * kBarPx.y * px);
     vPx = corner * kBarPx;
     vInfo = iInfo;
     gl_Position = uViewProj * vec4(world, 1.0);
