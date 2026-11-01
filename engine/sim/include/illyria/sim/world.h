@@ -652,7 +652,9 @@ private:
     // from `from` to `goal`, with the soldier's file kept where the ground allows.
     void planMarch(Unit& unit, const Vec3& to, const Vec3& from, const Vec3& goal);
     void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
-    // Routes onto, along and off castle wall-walks by their ramps; false if neither end is on one (or the unit cannot climb).
+    // Routes onto, along and off castle wall-walks and their ramps (up and
+    // down the ramps only, and round by the gates on the ground between);
+    // false if neither end is up on a castle's walls (or the unit cannot climb).
     bool planRampartPath(Unit& unit, const Vec3& to);
     void separateBodies();
     void kickRemains(Unit& unit, const Vec3& moveDir);
@@ -672,6 +674,10 @@ private:
     // Queued behind others at a shut gate it is ordered through: where along
     // the doors it can get at them itself.
     bool placeAtGate(const Unit& unit, Vec3& spot) const;
+    // Come up to a shut gate his orders lead through and that he will not
+    // hack at (his own side's, or he has no blow to strike): nobody passes
+    // it, so he stops there (or against his own men stopped before it).
+    bool haltAtGate(const Unit& unit) const;
     void hackGate(Unit& unit, int gate);
     void damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir);
     // Earliest crossing of an intact gate by segment a->b, as a fraction; -1 if none.

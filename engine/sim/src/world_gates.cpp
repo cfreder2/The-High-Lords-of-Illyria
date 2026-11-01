@@ -22,6 +22,11 @@ constexpr int32_t kFireGatePct = 150;
 constexpr Fixed kGateApproach = Fixed::fromInt(4);
 // A little more than a blow's reach: soldiers pressed against the doors.
 constexpr Fixed kHackSlack = Fixed::fromRatio(3, 10);
+// Those who cannot get through a shut gate stop this near its doors, or
+// against their own men stopped before it, this near.
+constexpr Fixed kHaltReach = Fixed::fromInt(6);
+constexpr Fixed kHaltQueue = Fixed::fromInt(16);
+constexpr Fixed kHaltTouch = Fixed::fromRatio(1, 2);
 
 // The point of gate g's line nearest p (flat).
 Vec3 nearestOnGate(const Gate& g, const Vec3& p) {
@@ -29,6 +34,31 @@ Vec3 nearestOnGate(const Gate& g, const Vec3& p) {
     const Fixed len2 = ab.lengthSq();
     const Fixed t = len2 > Fixed::zero() ? clamp((p - g.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
     return g.a + ab * t;
+}
+
+// A place an order sends someone to is within a ring of walls if it lies
+// inside them or up on their walk (whose outer half lies beyond the line of
+// its corners): either way the way there is from inside, by the ramps.
+bool withinRing(const Rampart& ring, const Vec3& p) {
+    if (Gate::inside(ring, p)) return true;
+    const Fixed reach = ring.halfThick + Fixed::fromRatio(1, 2);
+    const size_t n = ring.corners.size();
+    for (size_t e = 0; e < n; ++e) {
+        const Vec3 a = ring.corners[e], ab = (ring.corners[(e + 1) % n] - a).flat();
+        const Fixed len2 = ab.lengthSq();
+        const Fixed t = len2 > Fixed::zero() ? clamp((p - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+        if ((p - (a + ab * t)).flat().lengthSq() <= reach * reach) return true;
+    }
+    return false;
+}
+
+// Whether someone standing at p is on the town's side of gate g: by the
+// doors themselves near the gate (in the passage, behind the doors, he is
+// still outside the line of the walk), by the ring's walls farther off.
+bool townSide(const Gate& g, const Rampart& ring, const Vec3& p) {
+    const Fixed near = (g.b - g.a).flat().length() / 2 + ring.halfThick * 2 + Fixed::fromInt(2);
+    if ((p - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq() <= near * near) return (p - g.a).flat().dot(g.out) < Fixed::zero();
+    return Gate::inside(ring, p);
 }
 
 }  // namespace
@@ -107,13 +137,13 @@ int World::gateToHack(Unit& u) {
         const Fixed reach = u.stats.radius + g.halfThick + u.stats.melee.reach + kHackSlack;
         if ((u.pos - nearestOnGate(g, u.pos)).flat().lengthSq() > reach * reach) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
-        const bool in = Gate::inside(ring, u.pos);
         // Ordered through it, or idle with no foe this side of it.
         if (u.hasMoveTarget) {
-            if (Gate::inside(ring, u.moveTarget) != in) return static_cast<int>(i);
+            if (withinRing(ring, u.moveTarget) != townSide(g, ring, u.pos)) return static_cast<int>(i);
             continue;
         }
         if (u.hasAttackTarget) continue;
+        const bool in = Gate::inside(ring, u.pos);
         const Unit* foe = nearestEnemy(u, u.stats.aggroRange);
         if (foe == nullptr || Gate::inside(ring, foe->pos) != in) return static_cast<int>(i);
     }
@@ -132,7 +162,7 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
         const Vec3 off = (u.pos - at).flat();
         if (off.lengthSq() > kQueue * kQueue) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
-        if (Gate::inside(ring, u.moveTarget) == Gate::inside(ring, u.pos)) continue;
+        if (withinRing(ring, u.moveTarget) == townSide(g, ring, u.pos)) continue;
         // Its own place along the doors, by where it stands, on its side of them.
         const Vec3 along = (g.b - g.a).flat();
         const Fixed len = along.length();
@@ -143,6 +173,38 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
         spot = g.a + dir * t + side * (g.halfThick + u.stats.radius + u.stats.melee.reach / 2);
         spot.z = u.pos.z;
         return true;
+    }
+    return false;
+}
+
+bool World::haltAtGate(const Unit& u) const {
+    // Nobody passes a shut gate: its own side never hacks at it (nor does one
+    // with no blow to strike), so they come as near as they can, to the gate,
+    // and stop. Fliers go over.
+    if (!config_.region || gates_.empty() || !u.hasMoveTarget || u.stats.flyAltitude > Fixed::zero()) return false;
+    const Region& rg = *config_.region;
+    const auto& gs = rg.gates();
+    for (size_t i = 0; i < gs.size(); ++i) {
+        const Gate& g = gs[i];
+        if (gates_[i].broken() || u.pos.z >= g.top) continue;
+        if (gates_[i].holder != u.owner && u.stats.melee.damage > 0) continue;  // he hacks his way through (gateToHack)
+        const Vec3 at = nearestOnGate(g, u.pos);
+        const Fixed distSq = (u.pos - at).flat().lengthSq();
+        if (distSq > kHaltQueue * kHaltQueue) continue;
+        const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+        const bool in = townSide(g, ring, u.pos);
+        if (withinRing(ring, u.moveTarget) == in) continue;
+        if (distSq <= kHaltReach * kHaltReach) return true;
+        // Behind his own men already stopped before it.
+        bool against = false;
+        unitGrid_.query(u.pos.x, u.pos.y, u.stats.radius + Fixed::fromInt(2), [&](uint32_t j) {
+            const Unit& o = units_[j];
+            if (against || o.id == u.id || o.owner != u.owner || !o.alive() || o.hasMoveTarget || o.inAir() || o.flight != Unit::Flight::Grounded) return;
+            const Fixed touch = u.stats.radius + o.stats.radius + kHaltTouch;
+            if ((o.pos - u.pos).flat().lengthSq() > touch * touch || o.pos.z >= g.top || townSide(g, ring, o.pos) != in) return;
+            against = (o.pos - nearestOnGate(g, o.pos)).flat().lengthSq() <= kHaltQueue * kHaltQueue;
+        });
+        if (against) return true;
     }
     return false;
 }
@@ -210,14 +272,14 @@ bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out
     for (size_t i = 0; i < gs.size(); ++i) {
         if (gates_[i].broken()) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(gs[i].ring)];
-        if (Gate::inside(ring, from) == Gate::inside(ring, to)) continue;
+        if (townSide(gs[i], ring, from) == withinRing(ring, to)) continue;
         const Vec3 c = (gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2);
         choices.push_back({(c - from).flat().length() + (to - c).flat().length(), i});
     }
     std::stable_sort(choices.begin(), choices.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     for (const auto& choice : choices) {
         const Gate& g = gs[choice.second];
-        const bool outside = !Gate::inside(rg.ramparts()[static_cast<size_t>(g.ring)], from);
+        const bool outside = !townSide(g, rg.ramparts()[static_cast<size_t>(g.ring)], from);
         const Vec3 c = (g.a + g.b) * Fixed::fromRatio(1, 2);
         const Vec3 front = c + g.out * (outside ? kGateApproach : -kGateApproach);
         std::vector<Vec3> route;

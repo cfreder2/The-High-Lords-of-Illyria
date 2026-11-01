@@ -293,7 +293,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xdba754b3415426f1;
+    constexpr uint64_t kGolden = 0xfda8884c0f8ddd66;
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -347,4 +347,191 @@ TEST(archers_shoot_over_a_wall_not_into_it) {
     std::printf("  arrows over the wall %d, stuck in it %d\n", over, inWall);
     CHECK(over >= 10);
     CHECK(inWall * 5 <= over);
+}
+
+namespace {
+// Up a ramp (its slope or the landing at its head), a little either side.
+bool onRamp(const Rampart& rp, const Vec3& p) {
+    for (const auto& [foot, head] : rp.ramps) {
+        const Vec3 run = (head - foot).flat();
+        const Fixed len = run.length();
+        const Vec3 dir = run / len, d = (p - foot).flat();
+        const Fixed along = d.dot(dir), across = abs(d.x * dir.y - d.y * dir.x);
+        if (along >= -m(1) && along <= len + m(1) && across <= Continent::Castle::kRampHalfWidth + Fixed::fromRatio(1, 2)) return true;
+    }
+    return false;
+}
+// The town's ramp farthest from its gate (on the back wall), and the walk
+// beside its head (the nearest point of the walk's middle).
+struct BackRamp {
+    Vec3 foot, head, walk, out;  // out: from the town's middle through that walk
+};
+BackRamp backRamp() {
+    const Region& r = *siege();
+    const Rampart& rp = r.ramparts().front();
+    const Gate& g = r.gates()[townGate(r)];
+    const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
+    BackRamp b;
+    Fixed far;
+    for (const auto& [foot, head] : rp.ramps) {
+        if ((head - doors).flat().length() <= far) continue;
+        far = (head - doors).flat().length();
+        b.foot = foot;
+        b.head = head;
+    }
+    Fixed best = m(100000);
+    for (size_t e = 0; e < rp.corners.size(); ++e) {
+        const Vec3 a = rp.corners[e], ab = (rp.corners[(e + 1) % rp.corners.size()] - a).flat();
+        const Fixed t = clamp((b.head - a).flat().dot(ab) / ab.lengthSq(), Fixed::zero(), Fixed::one());
+        const Vec3 p = a + ab * t;
+        if ((p - b.head).flat().length() >= best) continue;
+        best = (p - b.head).flat().length();
+        b.walk = p;
+    }
+    const Vec3 c = local(town().pos);
+    b.out = (b.walk - c).flat() / (b.walk - c).flat().length();
+    return b;
+}
+// How a soldier's march went, watched every tick.
+struct Trip {
+    bool arrived = false;   // at the spot, his order done
+    bool leapt = false;     // between the ground and the walk anywhere but up a ramp
+    bool walled = false;    // inside a wall's stone
+    bool byRamp = false;    // half way up a ramp
+    bool byGate = false;    // on the ground at the gate
+    Fixed fromDoors;        // at the end, from the middle of the gate's doors
+    bool townSide = false;  // ... on the town's side of them
+    int seconds = 0;
+};
+Trip march(World& w, EntityId id, const Vec3& to, int seconds) {
+    const Region& r = *siege();
+    const Rampart& rp = r.ramparts().front();
+    const Gate& g = r.gates()[townGate(r)];
+    const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
+    const Fixed walk = rp.corners.front().z;
+    Trip trip;
+    const Command go{w.findUnit(id)->owner, id, Command::Type::Move, to};
+    w.step(std::span(&go, 1));
+    Fixed was = w.findUnit(id)->pos.z;
+    int t = 0;
+    for (; t < seconds * kTicksPerSecond && w.findUnit(id)->hasMoveTarget; ++t) {
+        w.step({});
+        const Unit& u = *w.findUnit(id);
+        const Fixed above = u.pos.z - r.terrain().heightAt(u.pos.x, u.pos.y);
+        const bool ramp = onRamp(rp, u.pos);
+        // Between the ground and the walk only on a ramp, and never a fall.
+        if ((above > m(1) && u.pos.z < walk - Fixed::fromRatio(1, 2) && !ramp) || abs(u.pos.z - was) > Fixed::one()) trip.leapt = true;
+        was = u.pos.z;
+        trip.byRamp = trip.byRamp || (ramp && above > m(2) && u.pos.z < walk - m(2));
+        trip.byGate = trip.byGate || (above < m(1) && (u.pos - doors).flat().length() < m(5));
+        trip.walled = trip.walled || inWall(r, u);
+    }
+    const Unit& u = *w.findUnit(id);
+    trip.arrived = !u.hasMoveTarget && (u.pos - to).flat().length() < Fixed::fromRatio(3, 2);
+    trip.fromDoors = (u.pos - doors).flat().length();
+    trip.townSide = (u.pos - g.a).flat().dot(g.out) < Fixed::zero();
+    trip.seconds = t / kTicksPerSecond;
+    return trip;
+}
+}  // namespace
+
+TEST(from_the_walk_a_soldier_goes_down_a_ramp_and_out_by_the_gate) {
+    // A man on the back wall, beside the head of a ramp, sent to the field
+    // behind the wall: not off the parapet, but along the walk, down the
+    // ramp, across the courtyard, out of the (broken) gate and round. From
+    // the ramp's landing and from half way down it, the same.
+    const BackRamp b = backRamp();
+    const Vec3 field = b.walk + b.out * m(25);
+    const Vec3 starts[3] = {b.walk, b.head, (b.foot + b.head) * Fixed::fromRatio(1, 2)};
+    const char* names[3] = {"walk", "landing", "ramp"};
+    for (int i = 0; i < 3; ++i) {
+        WorldConfig cfg;
+        cfg.region = siege();
+        World w(cfg);
+        w.setGateHolder(townGate(*cfg.region), 1);
+        w.setGateHp(townGate(*cfg.region), 0);
+        const EntityId id = w.spawnUnit(0, starts[i], -b.out, unitStats(UnitType::LightInfantry));
+        const Trip trip = march(w, id, {field.x, field.y, Fixed::zero()}, 300);
+        std::printf("  from the %s: %s in %d s%s%s%s\n", names[i], trip.arrived ? "there" : "not there", trip.seconds, trip.byRamp ? ", down the ramp" : "",
+                    trip.byGate ? ", out by the gate" : "", trip.leapt ? ", OFF THE WALL" : "");
+        CHECK(trip.arrived);
+        CHECK(!trip.leapt);
+        CHECK(!trip.walled);
+        CHECK(trip.byRamp);
+        CHECK(trip.byGate);
+    }
+}
+
+TEST(from_the_field_a_soldier_goes_in_by_the_gate_and_up_a_ramp) {
+    // The other way: from behind the town, in at the (broken) gate, up the
+    // ramp and along the walk; or to the ramp's landing.
+    const BackRamp b = backRamp();
+    const Vec3 field = b.walk + b.out * m(25);
+    const Vec3 ends[2] = {b.walk, b.head};
+    const char* names[2] = {"walk", "landing"};
+    for (int i = 0; i < 2; ++i) {
+        WorldConfig cfg;
+        cfg.region = siege();
+        World w(cfg);
+        w.setGateHolder(townGate(*cfg.region), 1);
+        w.setGateHp(townGate(*cfg.region), 0);
+        const EntityId id = w.spawnUnit(0, field, -b.out, unitStats(UnitType::LightInfantry));
+        const Trip trip = march(w, id, ends[i], 300);
+        std::printf("  to the %s: %s in %d s\n", names[i], trip.arrived ? "there" : "not there", trip.seconds);
+        CHECK(trip.arrived);
+        CHECK(w.findUnit(id)->pos.z > ends[i].z - Fixed::fromRatio(1, 2));
+        CHECK(!trip.leapt);
+        CHECK(!trip.walled);
+        CHECK(trip.byRamp);
+        CHECK(trip.byGate);
+    }
+}
+
+TEST(nobody_passes_a_shut_gate_and_its_own_side_stop_at_it) {
+    // The gate shut. Its defenders sent from the walk to the field go down a
+    // ramp and as near as they can get: to the inside of the gate, where they
+    // stop (and leave the doors alone). An enemy who got up there hacks his
+    // way out instead.
+    const BackRamp b = backRamp();
+    const Vec3 field = b.walk + b.out * m(25);
+    WorldConfig cfg;
+    cfg.region = siege();
+    World w(cfg);
+    const size_t gate = townGate(*cfg.region);
+    w.setGateHolder(gate, 1);
+    const Vec3 along{-b.out.y, b.out.x, Fixed::zero()};
+    std::vector<EntityId> watch;
+    for (int i = 0; i < 6; ++i) watch.push_back(w.spawnUnit(1, b.walk + along * m(i * 2 - 5), -b.out, unitStats(UnitType::Pikemen)));
+    std::vector<Command> go;
+    for (EntityId id : watch) go.push_back({1, id, Command::Type::Move, {field.x, field.y, Fixed::zero()}});
+    w.step(go);
+    for (int t = 0; t < 200 * kTicksPerSecond; ++t) w.step({});
+    const Gate& g = cfg.region->gates()[gate];
+    const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
+    int stopped = 0;
+    for (EntityId id : watch) {
+        const Unit& u = *w.findUnit(id);
+        const bool there = !u.hasMoveTarget && (u.pos - doors).flat().length() < m(14) && (u.pos - g.a).flat().dot(g.out) < Fixed::zero() &&
+                           u.pos.z < town().pos.z + m(1);
+        stopped += there;
+        if (!there)
+            std::printf("  defender at (%.1f, %.1f, +%.1f) %s\n", u.pos.x.toDouble(), u.pos.y.toDouble(), (u.pos.z - town().pos.z).toDouble(),
+                        u.hasMoveTarget ? "marching" : "halted");
+        CHECK(!inWall(*cfg.region, u));
+    }
+    std::printf("  %d of 6 defenders stopped inside their shut gate\n", stopped);
+    CHECK(stopped == 6);
+    CHECK(w.gates()[gate].hp == g.maxHp);
+    // One of the enemy on the walk (the defenders elsewhere), sent the same
+    // way: down the ramp, and at the doors from inside.
+    World w2(cfg);
+    w2.setGateHolder(gate, 1);
+    const EntityId foe = w2.spawnUnit(0, b.walk, -b.out, unitStats(UnitType::Dwarves));
+    const Trip trip = march(w2, foe, {field.x, field.y, Fixed::zero()}, 150);
+    std::printf("  the enemy: %.1f m from the doors, the gate at %d of %d\n", trip.fromDoors.toDouble(), w2.gates()[gate].hp, g.maxHp);
+    CHECK(!trip.leapt);
+    CHECK(trip.byRamp);
+    CHECK(trip.townSide);
+    CHECK(trip.fromDoors < m(4));
+    CHECK(w2.gates()[gate].hp < g.maxHp);
 }
