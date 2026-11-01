@@ -108,6 +108,14 @@ void Camera::dragGround(float fromX, float fromY, float toX, float toY) {
     clampTarget();
 }
 
+void Camera::pan(float right, float forward) {
+    // Looking along yaw, the screen's right is a quarter turn clockwise of it.
+    const float c = std::cos(yaw_), s = std::sin(yaw_);
+    tx_ += c * forward + s * right;
+    ty_ += s * forward - c * right;
+    clampTarget();
+}
+
 void Camera::zoomAt(float factor, float px, float py) {
     const float planeZ = target().z;
     V3 before;

@@ -48,6 +48,8 @@ public:
     void dragGround(float fromX, float fromY, float toX, float toY);
     // Multiplies distance by 1/factor, keeping the ground point under (px, py) fixed.
     void zoomAt(float factor, float px, float py);
+    // Moves the target over the ground by metres along the view's right and its forward (up the screen).
+    void pan(float right, float forward);
     void rotate(float radians) { yaw_ += radians; }
     // The closest pinching may bring the camera (at least kMinDistance): the
     // renderer's limit for the sprites in view (Renderer::closeupMinDistance).

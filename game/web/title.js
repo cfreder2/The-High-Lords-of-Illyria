@@ -378,6 +378,9 @@
     mouseL: g('<rect x="16" y="4" width="20" height="32" rx="10"/><path d="M26 4v12M16 16h20"/><path d="M17 15V11a9 9 0 0 1 8-7v11z" fill="currentColor" stroke="none"/>'),
     mouseR: g('<rect x="16" y="4" width="20" height="32" rx="10"/><path d="M26 4v12M16 16h20"/><path d="M35 15V11a9 9 0 0 0-8-7v11z" fill="currentColor" stroke="none"/>'),
     wheel: g('<rect x="16" y="4" width="20" height="32" rx="10"/><path d="M26 9v7"/>' + arrow(44, 22, 44, 12) + arrow(44, 26, 44, 36)),
+    pad: g('<rect x="4" y="4" width="44" height="32" rx="5"/><circle cx="21" cy="27" r="3" fill="currentColor"/><circle cx="31" cy="27" r="3" fill="currentColor"/>' + arrow(26, 20, 26, 9)),
+    padTap: g('<rect x="4" y="4" width="44" height="32" rx="5"/><circle cx="21" cy="24" r="3" fill="currentColor"/><circle cx="31" cy="24" r="3" fill="currentColor"/><path d="M26 10v4M17 13l2 2M35 13l-2 2"/>'),
+    compass: g('<circle cx="26" cy="20" r="15"/><path d="M26 7l4 13h-8z" fill="currentColor"/><path d="M26 33l4-13h-8z"/>'),
   };
   const row = (p, title, text) => `<div class="ctl">${pic[p]}<b>${title}</b><span>${text}</span></div>`;
   const k = (...keys) => keys.map((x) => `<kbd class="k">${x}</kbd>`).join("");
@@ -386,18 +389,19 @@
     row("drag", "Drag", "Pan across the land.") +
     row("pinch", "Pinch", "Zoom from the gods to the mud: from the whole continent down to a single soldier.") +
     row("twist", "Twist two fingers", "Turn the view. Two fingers dragged together pan as well.") +
+    row("compass", "The compass", "Under the buttons at the top right, its needle points north; tap it and the view turns north up.") +
     `<h3>Choosing who</h3>` +
     row("tap", "Tap a soldier", "Selects him alone.") +
     row("dtap", "Tap him again, or double-tap", "Every soldier of his kind the camera can see.") +
     row("card", "Tap a squad card", "Selects that squad; tap it again and the camera goes to it. Heroes (gold) and special troops come first.") +
     row("box", "Hold on your men, then drag", "Draws a box: everyone of yours inside it. With nothing selected, a hold anywhere draws a box.") +
     `<h3>Orders</h3>` +
-    row("tap", "Tap the ground", "March there in formation. On the way they fight back if struck, and take on foes who come close.") +
+    row("tap", "Tap the ground", "March there as they stand, each in his place, facing as they do. On the way they fight back if struck, and take on foes who come close.") +
     row("tap", "Tap an enemy, or a gate", "Go after him (archers shoot from range); at a gate, engines and bombers batter it down.") +
-    row("hold", "Hold where they should go, then drag", "A gold ghost of the formation appears; drag the way they should face, and let go.") +
+    row("hold", "Hold where the front begins, then drag to its end", "A gold ghost of them stands across the line, the foremost on it, facing forward of it (drawn left to right, away from you); let go and they go. In a formation, the line's length is its width.") +
     row("attack", "⚔ Attack, then tap", "Attack whatever you tap next: any soldier (even one of ours), a gate, a wall, house or tree (only engines, grenadiers and wizards can hurt those), or the ground.") +
     row("march", "Hold ⚔ Attack: » March", "A force march: tap where to go and they ignore the enemy on the way, to pull out of a fight or run past one.") +
-    row("formation", "Formation", "The picker: Line, Short line, Staggered, Box, Wedge, Column, Loose, Encircle and V, each sketched.") +
+    row("formation", "Formation", "The picker: Line, Short line, Staggered, Box, Wedge, Column, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
     row("scatter", "Scatter", "Everyone selected runs outward, the moment a bomb or fireball is in the air.") +
     `<div class="ctl">${pic.card}<b>Hold · Find</b><span>Hold stops them where they stand; Find brings the camera to them.</span></div>` +
     `<h3>Cards and groups</h3>` +
@@ -405,7 +409,7 @@
     row("longcard", "Hold a group card", "Puts the current selection in that group, or forgets the group when it is the selection.") +
     `<h3>Along the top</h3>` +
     `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting.</td></tr>` +
-    `<tr><td>Pause · 1×</td><td>Stop the battle (or the campaign's days); how fast time passes, up to 8×.</td></tr>` +
+    `<tr><td>Pause · 1×</td><td>Stop the battle (or the campaign's days); how fast time passes. Tap for 2× and 4× (the campaign's days up to 8×); hold it in a battle for slow motion, ½×, and hold again for ¼×.</td></tr>` +
     `<tr><td>☰</td><td>Restart, Save, Settings, Controls, the Manual, Main menu.</td></tr></table>` +
     campaignHtml();
   const campaignHtml = () =>
@@ -421,13 +425,23 @@
     row("mouseL", "Left-drag · wheel", "Pan · zoom from the gods to the mud.") +
     row("mouseR", "Right-drag", "Turn the view.") +
     row("mouseL", "Click", "Select, march, attack: the cursor shows what a click would do (a hand, a sword, a target, a crosshair, a double chevron).") +
+    row("mouseR", "Right-click", "An order for those selected, as a click would give it (march there, go after the enemy clicked), but never a change of who is selected: on one of yours, they march to him.") +
     row("mouseL", "Double-click a soldier", "Every soldier of his kind in view (clicking him again does the same).") +
-    row("hold", "Hold the button at the spot, then drag", "Move and face that way.") +
+    row("hold", "Hold the button where the front begins, then drag", "Move there on that front.") +
     `<table class="keys">` +
     `<tr><td>${k("Shift")} + click</td><td>Add or take away one man.</td></tr>` +
     `<tr><td>${k("Shift")} + drag</td><td>Box-select at once.</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + click</td><td>Force attack: a friend, the ground, a wall, house or tree.</td></tr>` +
     `<tr><td>${k("Alt")} + click</td><td>Force march there.</td></tr></table>` +
+    `<h3>A trackpad</h3>` +
+    row("pad", "Swipe two fingers", "Pan across the land.") +
+    row("pinch", "Pinch", "Zoom, about the pointer. In Safari a twist turns the view as well.") +
+    row("padTap", "Tap with two fingers", "As a right-click: an order for those selected.") +
+    `<h3>The camera keys</h3>` +
+    `<table class="keys">` +
+    `<tr><td>${k("↑")}${k("↓")}${k("←")}${k("→")}</td><td>Pan while held: faster the higher the camera is.</td></tr>` +
+    `<tr><td>${k("Shift")} + ${k("←")}${k("→")}</td><td>Turn the view.</td></tr>` +
+    `<tr><td>${k("N")}</td><td>North up (or click the compass under the top right buttons).</td></tr></table>` +
     `<h3>Keys in battle</h3>` +
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
@@ -440,7 +454,8 @@
     `<tr><td>${k("H")} · ${k("F")}</td><td>Hold · find (the camera to the selection).</td></tr>` +
     `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
-    `<tr><td>${k("Space")}</td><td>Pause the battle.</td></tr></table>` +
+    `<tr><td>${k("Space")}</td><td>Pause the battle.</td></tr>` +
+    `<tr><td>${k("-")} · ${k("=")}</td><td>Slower · faster: ¼×, ½×, 1×, 2×, 4×. The speed button too: a click for 2× and 4×, held for slow motion.</td></tr></table>` +
     `<h3>Menus</h3>` +
     `<table class="keys"><tr><td>${k("↑")}${k("↓")}${k("←")}${k("→")}</td><td>Move between buttons.</td></tr>` +
     `<tr><td>${k("Enter")}</td><td>Choose.</td></tr><tr><td>${k("Esc")}</td><td>Back.</td></tr></table>` +

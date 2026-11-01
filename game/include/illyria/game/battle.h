@@ -214,6 +214,10 @@ public:
     // one of ours selects him alone, tapping him again everyone of his type
     // in view; `additive` (shift-click) adds or removes him instead.
     void tap(const Camera& camera, float x, float y, float pixelScale, bool additive = false);
+    // A right click (game/src/battle_orders.cpp): the order a tap there gives
+    // the selection, but never a change of who is selected; on one of ours
+    // they march to where he stands. Nothing selected: nothing happens.
+    void orderTap(const Camera& camera, float x, float y, float pixelScale);
     void selectSquad(int index);
     void select(std::vector<sim::EntityId> units);
     void clearSelection();

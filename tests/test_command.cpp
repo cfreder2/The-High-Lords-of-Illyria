@@ -530,3 +530,161 @@ TEST(gestures_hold_is_offered_and_a_refused_hold_still_taps) {
     CHECK(!g.holding() && ends == 2);
 }
 
+TEST(a_right_click_gives_the_tap_s_order_and_never_selects) {
+    // The gesture: a right click that does not drag, not a right drag (that turns the view).
+    {
+        Camera c;
+        c.setBounds(1024);
+        c.setViewport(800, 600);
+        c.lookAt(512, 512, 200);
+        int taps = 0, orders = 0;
+        Gestures g(c, [&](float, float) { ++taps; });
+        g.setSecondaryTap([&](float, float) { ++orders; });
+        g.pointer(PointerEvent::Down, 1, 300, 300, 2, 0);
+        g.pointer(PointerEvent::Up, 1, 302, 300, 2, 120);
+        CHECK(orders == 1 && taps == 0);
+        const float yaw = c.yaw();
+        g.pointer(PointerEvent::Down, 1, 300, 300, 2, 1000);
+        g.pointer(PointerEvent::Move, 1, 360, 300, 2, 1050);
+        g.pointer(PointerEvent::Up, 1, 360, 300, 2, 1100);
+        CHECK(orders == 1);
+        CHECK(std::abs(c.yaw() - yaw) > 0.3f);
+        g.pointer(PointerEvent::Down, 1, 300, 300, 1, 2000);  // the middle button turns, and never orders
+        g.pointer(PointerEvent::Up, 1, 300, 300, 1, 2050);
+        g.pointer(PointerEvent::Down, 1, 300, 300, 0, 3000);
+        g.pointer(PointerEvent::Up, 1, 300, 300, 0, 3050);
+        CHECK(orders == 1 && taps == 1);
+    }
+    // On the battlefield, wired as the page wires it.
+    Battle b(42);
+    const int watch = squadNamed(b, "The Grey Watch");
+    b.selectSquad(watch);
+    const std::vector<illyria::sim::EntityId> chosen = b.selectedAlive();
+    const V3 home = b.squadCentre(b.squads()[static_cast<size_t>(watch)]);
+    Camera cam = cameraOn(b, home, 120);
+    Gestures g(cam, [&](float x, float y) { b.tap(cam, x, y, 1.0f); });
+    g.setSecondaryTap([&](float x, float y) { b.orderTap(cam, x, y, 1.0f); });
+    double t = 0;
+    const auto rightClick = [&](float x, float y) {
+        g.pointer(PointerEvent::Down, 1, x, y, 2, t += 1000);
+        g.pointer(PointerEvent::Up, 1, x, y, 2, t += 100);
+        b.advance(0.05);
+    };
+    const auto meanTarget = [&] {
+        V3 sum;
+        for (illyria::sim::EntityId id : chosen) {
+            CHECK(b.world().units()[id - 1].hasMoveTarget);
+            sum += toV3(b.world().units()[id - 1].moveTarget);
+        }
+        return sum * (1.0f / static_cast<float>(chosen.size()));
+    };
+    const auto flatGap = [](const V3& a, const V3& c) { return V3{a.x - c.x, a.y - c.y, 0}.length(); };
+    // The ground: they march there.
+    V3 spot = home + V3{-30, 0, 0};
+    spot.z = b.heightAt(spot.x, spot.y);
+    float px, py;
+    CHECK(cam.project(spot, px, py));
+    CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Move);
+    rightClick(px, py);
+    CHECK(b.selectedAlive() == chosen);
+    CHECK(flatGap(meanTarget(), spot) < 3.0f);
+    // One of ours not selected: a left tap would pick him; a right click marches them to him.
+    const int pikes = squadNamed(b, "Ferry Pikes");
+    const illyria::sim::EntityId pikeman = b.squads()[static_cast<size_t>(pikes)].members.front();
+    const V3 pp = b.unitPosition(pikeman - 1);
+    cam.lookAt(pp.x, pp.y, 60);
+    CHECK(cam.project(pp + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.pickAt(cam, px, py, 1.0f).kind == Battle::Pick::Kind::Own);
+    rightClick(px, py);
+    CHECK(b.selectedAlive() == chosen);
+    CHECK(!b.isSelected(pikeman));
+    CHECK(flatGap(meanTarget(), pp) < 4.0f);
+    // An enemy: they go after him, and still nobody else is selected.
+    illyria::sim::EntityId foe = illyria::sim::kNoEntity;
+    float best = 1e9f;
+    for (const illyria::sim::Unit& u : b.world().units()) {
+        if (u.owner != Battle::kEnemy || !u.alive()) continue;
+        const float d = (toV3(u.pos) - home).length();
+        if (d < best) best = d, foe = u.id;
+    }
+    const V3 fp = b.unitPosition(foe - 1);
+    cam.lookAt(fp.x, fp.y, 60);
+    CHECK(cam.project(fp + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
+    rightClick(px, py);
+    CHECK(b.selectedAlive() == chosen);
+    for (illyria::sim::EntityId id : chosen) CHECK(b.world().units()[id - 1].targetUnit == foe);
+    // Nothing selected: a right click on one of ours selects nobody.
+    b.clearSelection();
+    cam.lookAt(pp.x, pp.y, 60);
+    CHECK(cam.project(b.unitPosition(pikeman - 1) + V3{0, 0, 0.9f}, px, py));
+    rightClick(px, py);
+    CHECK(b.selectedAlive().empty());
+}
+
+TEST(trackpad_swipes_pan_pinches_zoom_and_keys_move_and_turn_the_view) {
+    constexpr float kNorth = 1.5707963f;
+    Camera c;
+    c.setBounds(4096);
+    c.setViewport(800, 600);
+    c.lookAt(2048, 2048, 200);
+    c.rotate(kNorth - c.yaw());
+    Gestures g(c, [](float, float) {});
+    // A two-finger swipe up (natural scrolling: dy > 0) carries the land up, as a drag would: the view goes south.
+    const V3 at = c.target();
+    g.scroll(0, 100, 400, 300);
+    CHECK(c.target().y < at.y - 10);
+    CHECK_NEAR(c.target().x, at.x, 0.01);
+    Camera dragged = c;
+    dragged.lookAt(at.x, at.y, 200);
+    dragged.dragGround(400, 300, 400, 200);
+    CHECK_NEAR(c.target().y, dragged.target().y, 0.01);
+    g.scroll(100, 0, 400, 300);  // and to the left: the view goes east
+    CHECK(c.target().x > at.x + 10);
+    // A pinch zooms about the cursor; a twist turns.
+    const float d = c.distance();
+    g.pinch(2.0f, 0, 400, 300);
+    CHECK_NEAR(c.distance(), d / 2, 0.01);
+    g.pinch(1.0f, 0.25f, 400, 300);
+    CHECK_NEAR(c.yaw(), kNorth + 0.25f, 1e-4);
+    // Arrows: up the screen (north here), at a pace that grows with the distance; they stop when let go.
+    c.rotate(kNorth - c.yaw());
+    const auto hold = [&](int right, int forward, int turn, double fromMs, double ms) {
+        g.update(fromMs);
+        g.setKeys(right, forward, turn);
+        for (double t = fromMs + 16; t <= fromMs + ms; t += 16) g.update(t);
+        g.setKeys(0, 0, 0);
+        for (double t = fromMs + ms + 16; t <= fromMs + ms + 400; t += 16) g.update(t);
+    };
+    V3 before = c.target();
+    hold(0, 1, 0, 0, 1000);
+    const float first = c.target().y - before.y;
+    CHECK(first > c.distance() * 0.7f && first < c.distance() * 1.0f);
+    CHECK_NEAR(c.target().x, before.x, 0.01);
+    c.lookAt(c.target().x, c.target().y, c.distance() * 2);
+    before = c.target();
+    hold(0, 1, 0, 2000, 1000);
+    CHECK_NEAR((c.target().y - before.y) / first, 2.0, 0.05);  // twice as far out, twice the pace
+    before = c.target();
+    hold(1, 0, 0, 4000, 500);
+    CHECK(c.target().x > before.x + 50);  // right: east, looking north
+    // Shift + left: the view turns left (anticlockwise).
+    float yaw = c.yaw();
+    hold(0, 0, 1, 6000, 500);
+    CHECK(c.yaw() > yaw + 0.5f);
+    // N: back to north over a moment, the short way round; turning by hand stops it.
+    c.rotate(2 * 3.14159265f * 3 + 0.4f);
+    g.turnTo(kNorth);
+    CHECK(g.turning());
+    for (double t = 8000; t < 8600; t += 16) g.update(t);
+    CHECK(!g.turning());
+    CHECK_NEAR(std::remainder(c.yaw() - kNorth, 2 * 3.14159265f), 0.0, 0.003);
+    c.rotate(1.0f);
+    g.turnTo(kNorth);
+    g.update(9000);
+    g.update(9016);
+    g.pointer(PointerEvent::Down, 1, 300, 300, 2, 9020);
+    g.pointer(PointerEvent::Move, 1, 340, 300, 2, 9030);
+    g.pointer(PointerEvent::Up, 1, 340, 300, 2, 9040);
+    CHECK(!g.turning());
+}
