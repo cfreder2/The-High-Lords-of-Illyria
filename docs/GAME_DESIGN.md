@@ -708,7 +708,7 @@ zero health it went) choose the body:
 | Fire | whole, burned black | smoke rising from it for 25 s (presentation) |
 | Anything else | whole, fallen the way the blow drove him | |
 
-Arrows a shield turns stick in it half the time (up to 5), drawn on the shield. On a castle's wall-walk the body lies along the walk (§4.2.2), the matrix's direction turned to it. The death (kind, cause, direction,
+Every body is drawn as its sheet's picture (`Renderer::deathFrame`): the fall the matrix chose (a burned man the burning death, which ends on his charred body; a man who lost a part the fall the blow drove him in, the part lying beside him as its own piece), resting on its last frame. Arrows a shield turns stick in it half the time (up to 5), drawn on the shield. On a castle's wall-walk the body lies along the walk (§4.2.2), the matrix's direction turned to it. The death (kind, cause, direction,
 overkill, the part cut off, the pinned arrow) is part of each unit's state and the checksum, and each death is
 published as `World::deathEvents()` (unit, side, type, kind, cause, where, the blow's direction, overkill, killer) for
 the sounds and voices.
