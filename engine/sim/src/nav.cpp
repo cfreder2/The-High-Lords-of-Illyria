@@ -17,6 +17,17 @@ constexpr size_t kSmoothWindow = 24;
 constexpr int64_t kShortMoveCells = 2;
 // Snap a start or goal on blocked ground (a deck, a wall's foot) to an open cell this near.
 constexpr int32_t kSnapCells = 4;
+// Straight lines keep this far from a castle's stone (a man's breadth).
+constexpr Fixed kStoneClear = Fixed::fromRatio(2, 5);
+
+// The square of the distance from p to the segment a-b (flat).
+Fixed distSqToSegment(const Vec3& p, const Vec3& a, const Vec3& b) {
+    const Vec3 ab = (b - a).flat();
+    const Fixed len2 = ab.lengthSq();
+    const Fixed t = len2 > Fixed::zero() ? clamp((p - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+    return (p - (a + ab * t)).flat().lengthSq();
+}
+Fixed cross(const Vec3& u, const Vec3& v) { return u.x * v.y - u.y * v.x; }
 
 // Step cost per metre, x100: time over level plains is 100.
 int32_t perMetre(Gait gait, Ground g) {
@@ -85,15 +96,44 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
             open_[static_cast<size_t>(k)] = !water && mask != 0;
         }
     }
-    // Castle walls and towers close the cells they stand in (the centre within reach).
+    // The bare ground, before the castles close any of it: a broken gate's passage is open again.
+    const std::vector<uint8_t> bare = region.gates().empty() ? std::vector<uint8_t>{} : open_;
+    // Castle walls and towers close the cells they stand in (the centre within
+    // reach); not the stone over a gate passage, which men walk under (the gate
+    // closes the passage while it stands).
     std::vector<Obstacle> towers;
     for (const Obstacle& o : region.obstacles())
         if (o.kind == Obstacle::Kind::Tower) towers.push_back(o);
+    std::vector<const WallSeg*> standing;
+    for (const WallSeg& w : region.walls()) {
+        bool lintel = false;
+        for (const Gate& g : region.gates()) {
+            const Fixed reach = (g.b - g.a).flat().length() / 2 + w.halfThick + Fixed::one();
+            lintel = lintel || (w.a.z >= g.top && ((w.a + w.b) * Fixed::fromRatio(1, 2) - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq() < reach * reach);
+        }
+        if (!lintel) standing.push_back(&w);
+    }
+    // Castle ramps and their landings, from where they stand a step above the
+    // ground (the ground under a castle's ramps is level), a man's breadth wider.
+    for (size_t i = 0; i < region.decks().size() && !region.walls().empty(); ++i) {
+        const Deck& d = region.decks()[i];
+        bool floor = false;
+        for (const Floor& f : region.floors()) floor = floor || f.deck == i || f.stair == i;
+        if (!d.ramp || floor || d.halfSpan <= Fixed::zero()) continue;
+        const Vec3 a = d.centre - d.dir * d.halfSpan, b = d.centre + d.dir * d.halfSpan;
+        const Fixed ha = d.heightAt(a.x, a.y) - t.heightAt(a.x, a.y), hb = d.heightAt(b.x, b.y) - t.heightAt(b.x, b.y);
+        if (ha < Fixed::one() && hb < Fixed::one()) continue;
+        StoneBox box{d.centre, d.dir, -d.halfSpan, d.halfSpan, d.halfWidth + kStoneClear, ha <= hb ? -d.halfSpan : d.halfSpan};
+        if (ha < Fixed::one()) box.lo += (Fixed::one() - ha) * d.halfSpan * 2 / (hb - ha);
+        if (hb < Fixed::one()) box.hi -= (Fixed::one() - hb) * d.halfSpan * 2 / (ha - hb);
+        stoneBoxes_.push_back(box);
+    }
     for (int32_t y = 0; y < n_; ++y) {
         for (int32_t x = 0; x < n_; ++x) {
             if (region.walls().empty()) break;
             const Vec3 p{Fixed::fromInt(x * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(y * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
-            for (const WallSeg& w : region.walls()) {
+            for (const WallSeg* wp : standing) {
+                const WallSeg& w = *wp;
                 const Vec3 ab = (w.b - w.a).flat();
                 const Fixed len2 = ab.lengthSq();
                 const Fixed t = len2 > Fixed::zero() ? std::clamp((p - w.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
@@ -109,17 +149,64 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
             if (region.inRamp(p.x, p.y, ground + Fixed::one())) open_[static_cast<size_t>(index(x, y))] = 0;
         }
     }
-    // Gates: every cell the doors cross, sampled every half metre along them.
+    // And every cell a wall's line runs through, so a wall thinner than a
+    // cell (the keep's) leaves no gap between cells to slip through.
+    for (const WallSeg* w : standing) {
+        const Fixed len = (w->b - w->a).flat().length();
+        const int64_t steps = (len * 2).floorToInt() + 1;
+        for (int64_t i = 0; i <= steps; ++i) {
+            const Vec3 p = w->a + (w->b - w->a) * Fixed::fromRatio(i, steps);
+            open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] = 0;
+        }
+    }
+    // A bridge a castle's wall stands across (a creek's, by the walls) is no
+    // way over: routes are not pulled onto its deck.
+    walled_.assign(decks_.size(), 0);
+    for (size_t i = 0; i < decks_.size() && !region.walls().empty(); ++i) {
+        const Deck& d = decks_[i];
+        if (d.raised) continue;
+        const int64_t steps = (d.halfSpan * 2).floorToInt() + 1;
+        for (int64_t s = 0; s <= steps && !walled_[i]; ++s) {
+            const Vec3 p = d.centre + d.dir * (d.halfSpan * (Fixed::fromRatio(2 * s, steps) - Fixed::one()));
+            walled_[i] = open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0;
+        }
+    }
+    // Gates: the passage through the wall (every cell whose middle lies in the
+    // gap between the walls either side, through the wall's thickness), open
+    // again once the gate is broken, and every other cell the doors cross,
+    // sampled every half metre along them.
     for (const Gate& g : region.gates()) {
         std::vector<std::pair<int32_t, uint8_t>> cells;
+        const auto add = [&](int32_t k, uint8_t after) {
+            for (const auto& c : cells)
+                if (c.first == k) return;
+            cells.push_back({k, after});
+        };
         const Fixed len = (g.b - g.a).flat().length();
+        if (len > Fixed::zero() && static_cast<size_t>(g.ring) < region.ramparts().size()) {
+            const Vec3 along = (g.b - g.a).flat() / len;
+            const Fixed half = region.ramparts()[static_cast<size_t>(g.ring)].halfThick;
+            const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2) - g.out * (half - g.halfThick);
+            const Fixed deep = half + Fixed::one();
+            const Fixed reach = len / 2 + deep;
+            for (int32_t y = cellOf(mid.y - reach); y <= cellOf(mid.y + reach); ++y) {
+                for (int32_t x = cellOf(mid.x - reach); x <= cellOf(mid.x + reach); ++x) {
+                    const Vec3 p{Fixed::fromInt(x * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(y * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
+                    const Vec3 d = (p - mid).flat();
+                    if (abs(d.dot(along)) >= len / 2 || abs(d.dot(g.out)) > deep) continue;
+                    add(index(x, y), bare[static_cast<size_t>(index(x, y))]);
+                    // Its way through is down the middle of the passage.
+                    Vec3 way = mid + g.out * d.dot(g.out);
+                    way.z = Fixed::zero();
+                    through_.push_back({index(x, y), way});
+                }
+            }
+        }
         const int64_t steps = (len * 2).floorToInt() + 1;
         for (int64_t i = 0; i <= steps; ++i) {
             const Vec3 p = g.a + (g.b - g.a) * Fixed::fromRatio(i, steps);
             const int32_t k = index(cellOf(p.x), cellOf(p.y));
-            bool seen = false;
-            for (const auto& c : cells) seen = seen || c.first == k;
-            if (!seen) cells.push_back({k, open_[static_cast<size_t>(k)]});
+            add(k, open_[static_cast<size_t>(k)]);
         }
         for (const auto& c : cells) open_[static_cast<size_t>(c.first)] = 0;
         gateCells_.push_back(std::move(cells));
@@ -135,7 +222,119 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
         for (int32_t y = y0; y <= y1; ++y)
             for (int32_t x = x0; x <= x1; ++x) open_[static_cast<size_t>(index(x, y))] = 0;
     }
+    // The castles' stone, exactly, for straight lines (throughStone).
+    if (!region.walls().empty()) {
+        for (const WallSeg* w : standing) stoneWalls_.push_back({w->a.flat(), w->b.flat(), w->halfThick + kStoneClear});
+        for (const Obstacle& o : towers) stoneDiscs_.push_back({o.pos, o.radius + kStoneClear});
+        // Open cells whose middle lies on or beside a ramp (its low end too,
+        // or a route from its foot would turn back up the side of it): a route
+        // crosses them a man's breadth clear of its side.
+        for (int32_t k = 0; k < static_cast<int32_t>(count); ++k) {
+            if (!open_[static_cast<size_t>(k)]) continue;
+            const Fixed half = Fixed::fromInt(cell_) / 2;
+            const Vec3 p{Fixed::fromInt((k % n_) * cell_) + half, Fixed::fromInt((k / n_) * cell_) + half, Fixed::zero()};
+            for (const StoneBox& s : stoneBoxes_) {
+                const Vec3 d = (p - s.centre).flat();
+                const Fixed along = d.dot(s.dir), across = d.x * s.dir.y - d.y * s.dir.x;
+                if (along < min(s.lo, s.foot) || along > max(s.hi + kStoneClear, s.foot) || abs(across) > s.halfWidth) continue;
+                bool seen = false;
+                for (const auto& e : through_) seen = seen || e.first == k;
+                if (seen) break;
+                // To the nearer side, unless that is against the wall the
+                // ramp climbs (or a tower): then the other.
+                const Vec3 side{s.dir.y, -s.dir.x, Fixed::zero()};  // across > 0 that way
+                const auto beside = [&](int sign) {
+                    Vec3 way = p + side * ((s.halfWidth + Fixed::fromRatio(1, 10)) * sign - across);
+                    way.x = clamp(way.x, p.x - half, p.x + half);
+                    way.y = clamp(way.y, p.y - half, p.y + half);
+                    return way;
+                };
+                const auto inStone = [&](const Vec3& q) {
+                    for (const StoneWall& w : stoneWalls_)
+                        if (distSqToSegment(q, w.a, w.b) < w.reach * w.reach) return true;
+                    for (const auto& [at, r] : stoneDiscs_)
+                        if ((q - at).flat().lengthSq() < r * r) return true;
+                    return false;
+                };
+                const int near = across < Fixed::zero() ? -1 : 1;
+                for (const int sign : {near, -near}) {
+                    const Vec3 way = beside(sign);
+                    if (inStone(way)) continue;
+                    through_.push_back({k, way});
+                    break;
+                }
+                break;
+            }
+        }
+        std::stable_sort(through_.begin(), through_.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        // Each cell's stone within a cell of it (boxes, then walls, then
+        // towers): a line need be tested only against the stone near the
+        // cells it crosses.
+        const Fixed c = Fixed::fromInt(cell_);
+        std::vector<uint32_t> per(count + 1, 0);
+        std::vector<std::pair<int32_t, uint16_t>> marks;
+        const auto mark = [&](uint16_t id, Fixed x0, Fixed y0, Fixed x1, Fixed y1) {
+            for (int32_t y = cellOf(y0 - c); y <= cellOf(y1 + c); ++y)
+                for (int32_t x = cellOf(x0 - c); x <= cellOf(x1 + c); ++x) marks.push_back({index(x, y), id});
+        };
+        uint16_t id = 0;
+        for (const StoneBox& s : stoneBoxes_) {
+            const Fixed ex = abs(s.dir.x) * max(-s.lo, s.hi) + abs(s.dir.y) * s.halfWidth;
+            const Fixed ey = abs(s.dir.y) * max(-s.lo, s.hi) + abs(s.dir.x) * s.halfWidth;
+            mark(id++, s.centre.x - ex, s.centre.y - ey, s.centre.x + ex, s.centre.y + ey);
+        }
+        for (const StoneWall& s : stoneWalls_)
+            mark(id++, min(s.a.x, s.b.x) - s.reach, min(s.a.y, s.b.y) - s.reach, max(s.a.x, s.b.x) + s.reach, max(s.a.y, s.b.y) + s.reach);
+        for (const auto& [at, r] : stoneDiscs_) mark(id++, at.x - r, at.y - r, at.x + r, at.y + r);
+        std::stable_sort(marks.begin(), marks.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [k, s] : marks) ++per[static_cast<size_t>(k) + 1];
+        for (size_t k = 0; k < count; ++k) per[k + 1] += per[k];
+        stoneAt_ = std::move(per);
+        stoneIds_.reserve(marks.size());
+        for (const auto& [k, s] : marks) stoneIds_.push_back(s);
+        stoneSeen_.assign(id, 0);
+    }
     buildFloors(region);
+}
+
+bool NavGrid::hitsStone(uint32_t id, const Vec3& from, const Vec3& to) const {
+    const Vec3 v = (to - from).flat();
+    if (id < stoneBoxes_.size()) {
+        // The segment clipped to the box, in its frame.
+        const StoneBox& s = stoneBoxes_[id];
+        const Vec3 across{-s.dir.y, s.dir.x, Fixed::zero()};
+        const Vec3 p = (from - s.centre).flat();
+        const Fixed lo[2] = {s.lo, -s.halfWidth}, hi[2] = {s.hi, s.halfWidth};
+        const Fixed p0[2] = {p.dot(s.dir), p.dot(across)}, dv[2] = {v.dot(s.dir), v.dot(across)};
+        Fixed t0 = Fixed::zero(), t1 = Fixed::one();
+        for (int k = 0; k < 2; ++k) {
+            if (dv[k] == Fixed::zero()) {
+                if (p0[k] < lo[k] || p0[k] > hi[k]) return false;
+                continue;
+            }
+            Fixed a = (lo[k] - p0[k]) / dv[k], b = (hi[k] - p0[k]) / dv[k];
+            if (a > b) std::swap(a, b);
+            t0 = max(t0, a);
+            t1 = min(t1, b);
+            if (t0 > t1) return false;
+        }
+        return true;
+    }
+    id -= static_cast<uint32_t>(stoneBoxes_.size());
+    if (id < stoneWalls_.size()) {
+        // The segment comes nearer the wall's line than its reach (or crosses it).
+        const StoneWall& s = stoneWalls_[id];
+        const Vec3 ab = (s.b - s.a).flat();
+        const Fixed c1 = cross(ab, (from - s.a).flat()), c2 = cross(ab, (to - s.a).flat());
+        const Fixed c3 = cross(v, (s.a - from).flat()), c4 = cross(v, (s.b - from).flat());
+        if (((c1 > Fixed::zero()) != (c2 > Fixed::zero())) && ((c3 > Fixed::zero()) != (c4 > Fixed::zero()))) return true;
+        const Fixed r2 = s.reach * s.reach;
+        return distSqToSegment(from, s.a, s.b) < r2 || distSqToSegment(to, s.a, s.b) < r2 || distSqToSegment(s.a, from, to) < r2 ||
+               distSqToSegment(s.b, from, to) < r2;
+    }
+    // A tower: the point of the segment nearest its middle.
+    const auto& [at, r] = stoneDiscs_[id - stoneWalls_.size()];
+    return distSqToSegment(at, from, to) < r * r;
 }
 
 // --- Raised floors (a ruin's platform) ---------------------------------------
@@ -450,9 +649,23 @@ bool NavGrid::groundClear(const Vec3& from, const Vec3& to) const {
     const Vec3 d = (to - from).flat();
     const Fixed len = d.length();
     const int64_t steps = (len / 2).floorToInt() + 1;
+    // The castle stone near the cells it crosses, each tested once.
+    if (!stoneAt_.empty() && ++stoneStamp_ == 0) {
+        std::fill(stoneSeen_.begin(), stoneSeen_.end(), 0);
+        stoneStamp_ = 1;
+    }
     for (int64_t i = 0; i <= steps; ++i) {
         const Vec3 p = from + d * Fixed::fromRatio(i, steps);
         if (groundBlocked(p)) return false;
+        if (!stoneAt_.empty()) {
+            const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
+            for (uint32_t j = stoneAt_[k]; j < stoneAt_[k + 1]; ++j) {
+                const uint16_t s = stoneIds_[j];
+                if (stoneSeen_[s] == stoneStamp_) continue;
+                stoneSeen_[s] = stoneStamp_;
+                if (hitsStone(s, from, to)) return false;
+            }
+        }
         if (decks_.empty()) continue;
         // Over deep water only on a deck.
         if (fineGround(p.x, p.y) != Ground::DeepWater) continue;
@@ -527,6 +740,10 @@ Fixed NavGrid::travelTime(const Vec3& from, const std::vector<Vec3>& points, Gai
 }
 
 Vec3 NavGrid::waypoint(int32_t cell, Gait gait) const {
+    if (!through_.empty()) {
+        const auto it = std::lower_bound(through_.begin(), through_.end(), cell, [](const auto& e, int32_t c) { return e.first < c; });
+        if (it != through_.end() && it->first == cell) return it->second;
+    }
     const int32_t cx = cell % n_, cy = cell / n_;
     const Fixed half = Fixed::fromInt(cell_) / 2;
     const Vec3 centre{Fixed::fromInt(cx * cell_) + half, Fixed::fromInt(cy * cell_) + half, Fixed::zero()};
@@ -737,8 +954,9 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
 
     // Over a bridge, walk its deck from end to end: those two points must stay.
     std::vector<bool> pinned(cells.size(), false);
-    for (const Deck& d : decks_) {
-        if (d.raised) continue;
+    for (size_t di = 0; di < decks_.size(); ++di) {
+        const Deck& d = decks_[di];
+        if (d.raised || walled_[di]) continue;
         size_t first = cells.size(), last = 0;
         for (size_t k = 0; k + 1 < cells.size(); ++k) {
             if (!Deck{d.centre, d.dir, d.halfSpan + Fixed::fromInt(cell_), d.halfWidth + Fixed::fromInt(cell_)}.contains(cells[k].x, cells[k].y)) continue;

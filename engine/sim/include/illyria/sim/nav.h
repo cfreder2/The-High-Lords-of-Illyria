@@ -110,7 +110,37 @@ private:
     std::vector<Fixed> height_;     // ground at the cell's centre
     // Per gate: the cells it closes, with whether each was open before.
     std::vector<std::vector<std::pair<int32_t, uint8_t>>> gateCells_;
+    // Cells a route crosses elsewhere than at their middle, sorted by cell: a
+    // gate passage's (down the passage's middle line, the cell's middle may be
+    // in the stone either side), and those beside a ramp (a man's breadth off
+    // its side, not scraping up it).
+    std::vector<std::pair<int32_t, Vec3>> through_;
     std::vector<Deck> decks_;    // routes over a bridge go end to end along its deck
+    std::vector<uint8_t> walled_;  // per deck: a castle wall stands across it (no way over)
+    // A castle's stone, which no straight line on the ground may cut through
+    // though the cells are too coarse to see it: its walls (round-ended, as
+    // they push men out), its towers, and its ramps (with their landings)
+    // where they stand higher than a step, each a man's breadth wider. Ramps
+    // are boxes, [lo, hi] along dir from centre (the deck itself starts at foot).
+    struct StoneBox {
+        Vec3 centre, dir;
+        Fixed lo, hi, halfWidth, foot;
+    };
+    struct StoneWall {
+        Vec3 a, b;
+        Fixed reach;
+    };
+    std::vector<StoneBox> stoneBoxes_;
+    std::vector<StoneWall> stoneWalls_;
+    std::vector<std::pair<Vec3, Fixed>> stoneDiscs_;  // towers: centre, radius
+    // Per cell, the stone within a cell of it (offsets into stoneIds_: boxes,
+    // then walls, then towers); empty with no castle.
+    std::vector<uint32_t> stoneAt_;
+    std::vector<uint16_t> stoneIds_;
+    mutable std::vector<uint32_t> stoneSeen_;  // scratch: tested in this line already
+    mutable uint32_t stoneStamp_ = 0;
+    // Whether the segment cuts through stone `id`.
+    bool hitsStone(uint32_t id, const Vec3& from, const Vec3& to) const;
     // Ground per terrain cell.
     std::vector<uint8_t> fine_;
     int32_t fineCells_ = 0;

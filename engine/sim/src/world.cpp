@@ -1,6 +1,7 @@
 #include "illyria/sim/world.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "illyria/sim/ballistics.h"
 #include "illyria/sim/continent.h"
@@ -465,6 +466,21 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out,
     };
     const auto key = std::make_tuple(static_cast<int>(gait), cell(from, true), cell(to, false));
     auto it = pathCache_.find(key);
+    if (it == pathCache_.end() && config_.region && !config_.region->ramparts().empty()) {
+        // Round a castle a squad's men, come down the same ramp, share one
+        // route: one planned this tick from the same cell to a goal a few
+        // metres from this one, its last leg turned to this goal (in plain
+        // sight of the waypoint before it).
+        constexpr Fixed kShare = Fixed::fromInt(8);
+        for (auto j = pathCache_.lower_bound(std::make_tuple(std::get<0>(key), std::get<1>(key), std::numeric_limits<int64_t>::min()));
+             j != pathCache_.end() && std::get<0>(j->first) == std::get<0>(key) && std::get<1>(j->first) == std::get<1>(key); ++j) {
+            const std::vector<Vec3>& r = j->second;
+            if (r.size() < 2 || (r.back() - to).flat().lengthSq() > kShare * kShare || !nav_->clearLine(r[r.size() - 2], to)) continue;
+            out.insert(out.end(), r.begin(), r.end());
+            out.back() = to;
+            return;
+        }
+    }
     if (it == pathCache_.end()) {
         std::vector<Vec3> route;
         if (!nav_->findPath(from, to, route, gait) && !routeToGate(from, to, route, gait)) route = {to};
@@ -594,75 +610,238 @@ std::vector<Vec3> keepRight(const Rampart& rp, const Vec3& from, std::vector<Vec
 bool climbsRamps(const UnitStats& s) {
     return s.gait != Gait::Horse && s.gait != Gait::Wolf && s.gait != Gait::Wheeled && s.radius <= Fixed::fromRatio(6, 5);
 }
+// Where a point is among the castles' walls: up a ring's ramp (its slope or
+// the landing at its head), on a ring's walk, or on the ground.
+struct Perch {
+    int ring = -1;  // -1: on the ground
+    int ramp = -1;  // up that ring's ramp; -1: on its walk
+    Fixed along;    // up a ramp: how far from its foot
+};
+// A soldier is placed by his height (beside the upper slope of a ramp, the
+// walk stands higher than it); where an order sends him, by the map alone.
+Perch perchOf(const Region& rg, const Vec3& p, bool byHeight) {
+    const Fixed landing = Continent::Castle::kRampLanding, halfWidth = Continent::Castle::kRampHalfWidth;
+    for (size_t i = 0; i < rg.ramparts().size(); ++i) {
+        const Rampart& rp = rg.ramparts()[i];
+        for (size_t s = 0; s < rp.ramps.size(); ++s) {
+            // The slope and the landing, one strip from the foot to the
+            // landing's end (the head is half a metre short of it).
+            const auto& [foot, head] = rp.ramps[s];
+            const Vec3 run = (head - foot).flat();
+            const Fixed len = run.length();
+            if (len <= Fixed::zero()) continue;
+            const Vec3 dir = run / len, d = (p - foot).flat();
+            const Fixed along = d.dot(dir), end = len + Fixed::fromRatio(1, 2);
+            if (along < Fixed::zero() || along > end || abs(d.x * dir.y - d.y * dir.x) > halfWidth) continue;
+            if (byHeight) {
+                const Fixed slope = max(Fixed::one(), end - landing);
+                const Fixed surface = foot.z + (head.z - foot.z) * min(along, slope) / slope;
+                if (abs(p.z - surface) > Fixed::fromRatio(1, 2)) continue;
+            }
+            return {static_cast<int>(i), static_cast<int>(s), along};
+        }
+    }
+    if (byHeight) return {rg.rampartAt(p.x, p.y, p.z), -1, {}};
+    for (size_t i = 0; i < rg.ramparts().size(); ++i)
+        if (rg.rampartAt(p.x, p.y, rg.ramparts()[i].corners.front().z) == static_cast<int>(i)) return {static_cast<int>(i), -1, {}};
+    return {};
+}
+// The ground just off a ramp's foot, in line with it: men step on and off a
+// ramp there, by its end, never up or down its sides.
+constexpr Fixed kRampApron = Fixed::fromRatio(3, 2);
+Vec3 apronOf(const Rampart& rp, size_t s) {
+    const auto& [foot, head] = rp.ramps[s];
+    const Vec3 run = (head - foot).flat();
+    const Fixed len = run.length();
+    return len > Fixed::zero() ? foot - run * (kRampApron / len) : foot;
+}
+// Between the apron and a point on the ground beside the ramp (past its
+// foot), the way goes round the foot's corner, not over the ramp's side:
+// that corner, if there is one to go round.
+bool footCorner(const Rampart& rp, size_t s, const Vec3& p, Vec3& corner) {
+    const auto& [foot, head] = rp.ramps[s];
+    const Vec3 run = (head - foot).flat();
+    const Fixed len = run.length();
+    if (len <= Fixed::zero()) return false;
+    const Vec3 dir = run / len, side{dir.y, -dir.x, Fixed::zero()}, d = (p - foot).flat();
+    const Fixed across = d.dot(side), wide = Continent::Castle::kRampHalfWidth + Fixed::fromRatio(1, 2);
+    if (d.dot(dir) <= Fixed::zero() || abs(across) <= Continent::Castle::kRampHalfWidth) return false;
+    corner = foot - dir * kRampApron + side * (across < Fixed::zero() ? -wide : wide);
+    corner.z = foot.z;
+    return true;
+}
+// A way between a perch and the ground: where it meets the ground (the apron
+// of the ramp taken, or the point itself, on the ground), how far it is from
+// there by the walk and the ramp, and the ramp.
+struct RampWay {
+    Vec3 foot;
+    Fixed cost;
+    int ramp = -1;
+};
+std::vector<RampWay> rampWays(const Region& rg, const Perch& p, const Vec3& at) {
+    if (p.ring < 0) return {{at, Fixed::zero(), -1}};
+    const Rampart& rp = rg.ramparts()[static_cast<size_t>(p.ring)];
+    if (p.ramp >= 0) return {{apronOf(rp, static_cast<size_t>(p.ramp)), p.along + kRampApron, p.ramp}};
+    std::vector<RampWay> out;
+    for (size_t s = 0; s < rp.ramps.size(); ++s) {
+        const auto& [foot, head] = rp.ramps[s];
+        const Vec3 side = onWalk(rp, head);
+        Fixed along;
+        ringRoute(rp, at, side, &along);
+        out.push_back({apronOf(rp, s), along + (head - side).flat().length() + (head - foot).flat().length() + kRampApron, static_cast<int>(s)});
+    }
+    return out;
+}
+// Roughly how far it is on foot from x to y: straight, but out or in by the
+// gate of each ring of walls between them (the nearest first).
+Fixed groundEstimate(const Region& rg, Vec3 x, const Vec3& y) {
+    const auto& gs = rg.gates();
+    const size_t n = std::min<size_t>(gs.size(), 64);
+    Fixed total;
+    uint64_t used = 0;
+    for (size_t k = 0; k < n; ++k) {
+        size_t best = n;
+        Fixed bestD;
+        for (size_t i = 0; i < n; ++i) {
+            if ((used >> i & 1) != 0) continue;
+            const Rampart& ring = rg.ramparts()[static_cast<size_t>(gs[i].ring)];
+            if (Gate::inside(ring, x) == Gate::inside(ring, y)) continue;
+            const Fixed d = ((gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2) - x).flat().length();
+            if (best == n || d < bestD) {
+                best = i;
+                bestD = d;
+            }
+        }
+        if (best == n) break;
+        used |= uint64_t{1} << best;
+        // Through it: out beyond the doors, or in past the passage.
+        const Gate& g = gs[best];
+        const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+        const Vec3 c = (g.a + g.b) * Fixed::fromRatio(1, 2);
+        const Fixed through = Gate::inside(ring, x) ? Fixed::one() : -(ring.halfThick * 2 + Fixed::one());
+        total += bestD + abs(through);
+        x = c + g.out * through;
+    }
+    return total + (y - x).flat().length();
+}
 }  // namespace
 
 bool World::planRampartPath(Unit& u, const Vec3& to) {
-    // Up a ramp to a wall-walk, along it, and down again. Horses, wolves,
-    // wheels and the largest beasts do not go up on the walls.
+    // Up the ramps to the wall-walks, along them and down again, and round by
+    // the gates on the ground between: never off a walk but down a ramp.
+    // Horses, wolves, wheels and the largest beasts do not go up on the walls.
     const Region& rg = *config_.region;
     if (!climbsRamps(u.stats)) return false;
-    const int from = rg.rampartAt(u.pos.x, u.pos.y, u.pos.z);
-    int target = -1;
-    for (size_t i = 0; i < rg.ramparts().size() && target < 0; ++i) {
-        const Fixed walk = rg.ramparts()[i].corners.front().z;
-        if (rg.rampartAt(to.x, to.y, walk) == static_cast<int>(i)) target = static_cast<int>(i);
-    }
-    if (from < 0 && target < 0) return false;
-    if (from >= 0 && target == from) {
-        const Rampart& rp = rg.ramparts()[static_cast<size_t>(from)];
-        u.path = keepRight(rp, u.pos, ringRoute(rp, u.pos, to, nullptr));
+    const Vec3 from = u.pos;
+    const Perch a = perchOf(rg, from, true), b = perchOf(rg, to, false);
+    if (a.ring < 0 && b.ring < 0) return false;
+    if (a.ring >= 0 && a.ring == b.ring && a.ramp < 0 && b.ramp < 0) {
+        // Along the walk.
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(a.ring)];
+        u.path = keepRight(rp, from, ringRoute(rp, from, to, nullptr));
         return true;
     }
-    if (from >= 0) {
-        // Down the nearest ramp (along the walk, then to the ground target).
-        const Rampart& rp = rg.ramparts()[static_cast<size_t>(from)];
-        if (rp.ramps.empty()) return false;
-        size_t best = 0;
-        Fixed bestCost = Fixed::fromInt(1000000);
-        for (size_t s = 0; s < rp.ramps.size(); ++s) {
-            Fixed along;
-            ringRoute(rp, u.pos, rp.ramps[s].second, &along);
-            const Fixed cost = along + (rp.ramps[s].first - to).flat().length();
-            if (cost < bestCost) {
-                bestCost = cost;
-                best = s;
+    // Up on the same ring at both ends, a ramp at one or both: by its walk,
+    // unless down one ramp and over the ground to another is shorter.
+    Fixed upper = -Fixed::one();
+    if (a.ring >= 0 && a.ring == b.ring) {
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(a.ring)];
+        if (a.ramp >= 0 && a.ramp == b.ramp) {
+            upper = (to - from).flat().length();
+        } else {
+            Vec3 p = from, q = to;
+            Fixed cost;
+            if (a.ramp >= 0) {
+                const Vec3 head = rp.ramps[static_cast<size_t>(a.ramp)].second;
+                p = onWalk(rp, head);
+                cost += (head - from).flat().length() + (p - head).flat().length();
             }
+            if (b.ramp >= 0) {
+                const Vec3 head = rp.ramps[static_cast<size_t>(b.ramp)].second;
+                q = onWalk(rp, head);
+                cost += (head - q).flat().length() + (to - head).flat().length();
+            }
+            Fixed along;
+            ringRoute(rp, p, q, &along);
+            upper = cost + along;
         }
-        u.path = keepRight(rp, u.pos, ringRoute(rp, u.pos, onWalk(rp, rp.ramps[best].second), nullptr));
-        u.path.push_back(rp.ramps[best].second);
-        u.path.push_back(rp.ramps[best].first);
-        if (target >= 0) {
-            const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
-            if (tr.ramps.empty()) return true;
-            groundPath(rp.ramps[best].first, tr.ramps.front().first, u.path, u.stats.gait);
-            u.path.push_back(tr.ramps.front().second);
-            u.path.push_back(onWalk(tr, tr.ramps.front().second));
-            const std::vector<Vec3> walk = keepRight(tr, onWalk(tr, tr.ramps.front().second), ringRoute(tr, onWalk(tr, tr.ramps.front().second), to, nullptr));
-            u.path.insert(u.path.end(), walk.begin(), walk.end());
+    }
+    // Down to the ground and up again: the ramp to go down by (along the walk
+    // to it, or the one he is on) and the one to go up by, the pair that makes
+    // the whole way shortest, the ground between reckoned through the gates.
+    const std::vector<RampWay> downs = rampWays(rg, a, from), ups = rampWays(rg, b, to);
+    size_t down = 0, up = 0;
+    Fixed lower = -Fixed::one();
+    for (size_t i = 0; i < downs.size(); ++i) {
+        for (size_t j = 0; j < ups.size(); ++j) {
+            const Fixed cost = downs[i].cost + groundEstimate(rg, downs[i].foot, ups[j].foot) + ups[j].cost;
+            if (lower >= Fixed::zero() && cost >= lower) continue;
+            lower = cost;
+            down = i;
+            up = j;
+        }
+    }
+    if (upper < Fixed::zero() && lower < Fixed::zero()) return false;
+    if (upper >= Fixed::zero() && (lower < Fixed::zero() || upper <= lower)) {
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(a.ring)];
+        if (a.ramp >= 0 && a.ramp == b.ramp) {
+            u.path = {to};  // along the ramp
             return true;
         }
-        groundPath(rp.ramps[best].first, to, u.path, u.stats.gait);
+        Vec3 p = from;
+        if (a.ramp >= 0) {
+            // Up the ramp he is on, and onto the walk.
+            const Vec3 head = rp.ramps[static_cast<size_t>(a.ramp)].second;
+            p = onWalk(rp, head);
+            u.path.push_back(head);
+            u.path.push_back(p);
+        }
+        const Vec3 q = b.ramp >= 0 ? onWalk(rp, rp.ramps[static_cast<size_t>(b.ramp)].second) : to;
+        const std::vector<Vec3> walk = keepRight(rp, p, ringRoute(rp, p, q, nullptr));
+        u.path.insert(u.path.end(), walk.begin(), walk.end());
+        if (b.ramp >= 0) {
+            // Off the walk onto the ramp, and down it.
+            u.path.push_back(rp.ramps[static_cast<size_t>(b.ramp)].second);
+            u.path.push_back(to);
+        }
         return true;
     }
-    // From the ground: to the ramp foot that makes the trip shortest, up, along.
-    const Rampart& tr = rg.ramparts()[static_cast<size_t>(target)];
-    if (tr.ramps.empty()) return false;
-    size_t best = 0;
-    Fixed bestCost = Fixed::fromInt(1000000);
-    for (size_t s = 0; s < tr.ramps.size(); ++s) {
-        Fixed along;
-        ringRoute(tr, tr.ramps[s].second, to, &along);
-        const Fixed cost = (tr.ramps[s].first - u.pos).flat().length() + along;
-        if (cost < bestCost) {
-            bestCost = cost;
-            best = s;
+    const RampWay& off = downs[down];
+    const RampWay& on = ups[up];
+    if (a.ring >= 0) {
+        // Along the walk to the head of a ramp, down it, and off its foot.
+        const Rampart& rp = rg.ramparts()[static_cast<size_t>(a.ring)];
+        const auto& [foot, head] = rp.ramps[static_cast<size_t>(off.ramp)];
+        if (a.ramp < 0) {
+            const Vec3 side = onWalk(rp, head);
+            u.path = keepRight(rp, from, ringRoute(rp, from, side, nullptr));
+            u.path.push_back(head);
+        }
+        u.path.push_back(foot);
+        u.path.push_back(off.foot);
+    }
+    // Over the ground, out and in by the gates (and round a ramp's foot).
+    const size_t leg = u.path.size();
+    groundPath(off.foot, on.foot, u.path, u.stats.gait);
+    if (Vec3 corner; a.ring >= 0 && footCorner(rg.ramparts()[static_cast<size_t>(a.ring)], static_cast<size_t>(off.ramp), u.path[leg], corner))
+        u.path.insert(u.path.begin() + static_cast<long>(leg), corner);
+    if (b.ring >= 0) {
+        // Onto the ramp by its foot, up it (and along the walk).
+        const Rampart& tr = rg.ramparts()[static_cast<size_t>(b.ring)];
+        const auto& [foot, head] = tr.ramps[static_cast<size_t>(on.ramp)];
+        const Vec3 before = u.path.size() >= 2 ? u.path[u.path.size() - 2] : from;
+        if (Vec3 corner; footCorner(tr, static_cast<size_t>(on.ramp), before, corner)) u.path.insert(u.path.end() - 1, corner);
+        u.path.push_back(foot);
+        if (b.ramp >= 0) {
+            u.path.push_back(to);
+        } else {
+            const Vec3 side = onWalk(tr, head);
+            u.path.push_back(head);
+            u.path.push_back(side);
+            const std::vector<Vec3> walk = keepRight(tr, side, ringRoute(tr, side, to, nullptr));
+            u.path.insert(u.path.end(), walk.begin(), walk.end());
         }
     }
-    groundPath(u.pos, tr.ramps[best].first, u.path, u.stats.gait);
-    u.path.push_back(tr.ramps[best].second);
-    u.path.push_back(onWalk(tr, tr.ramps[best].second));
-    const std::vector<Vec3> walk = keepRight(tr, onWalk(tr, tr.ramps[best].second), ringRoute(tr, onWalk(tr, tr.ramps[best].second), to, nullptr));
-    u.path.insert(u.path.end(), walk.begin(), walk.end());
     return true;
 }
 
@@ -812,6 +991,15 @@ void World::updateUnit(Unit& u) {
         }
         if (Vec3 spot; placeAtGate(u, spot)) {
             walk(u, spot);  // up to the doors beside the others, to hack at them too
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+            return;
+        }
+        if (haltAtGate(u)) {
+            // As near as he can get: the gate is shut to him.
+            u.hasMoveTarget = false;
+            u.layOrdered = false;
+            u.path.clear();
+            u.pathIndex = 0;
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             return;
         }
