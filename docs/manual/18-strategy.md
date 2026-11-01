@@ -50,7 +50,7 @@ These remarks assume you are playing against Hard computer lords; Easy ones, and
 
 **Pikes against horse.** Halt pikemen facing the riders, and the riders' charge breaks on them. Marching pikes are no defence.
 
-**Spread out against blasts.** Against grenadiers, wizards, dragons and catapults, fight **Staggered** or **Loose**, and **Scatter** when something is in the air.
+**Spread out against blasts.** Against grenadiers, wizards, dragons and catapults, fight **Loose**, and **Scatter** when something is in the air.
 
 **Mind your arrows.** Missed arrows fall on whoever is under them. Shoot at the enemy before the lines meet, and at his reserves after.
 

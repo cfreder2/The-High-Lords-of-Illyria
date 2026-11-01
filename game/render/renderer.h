@@ -400,7 +400,7 @@ private:
     static float pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out);
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, parapets_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
-    MeshBatch drums_, keeps_, stairs_;
+    MeshBatch drums_, keeps_, stairs_, galleries_;
     MeshBatch gates_, brokenGates_;
     std::vector<uint8_t> gatesShown_;  // broken flags last uploaded
     MeshBatch logs_;

@@ -985,7 +985,7 @@
       const b = document.createElement("button");
       b.dataset.id = f.id;
       b.setAttribute("role", "menuitem");
-      // Shift + 1-9 (or the keypad) picks the nine; As they stand, last, has no key.
+      // Shift + 1-9 (or the keypad) picks them in order: the seven, then As they stand.
       b.innerHTML = `<kbd>${i < 9 ? i + 1 : ""}</kbd>${glyph(f.slots)}<span>${f.name}</span>`;
       b.onclick = () => { api.setFormation(f.id); root.classList.add("hidden"); updateHud(); };
       root.appendChild(b);

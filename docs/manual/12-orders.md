@@ -20,7 +20,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Batter a gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[G]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
-| Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-9, or shift + 1-9 |
+| Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt | **Hold** | [[B]] |
 | The camera to the selection | **Find** | [[C]] |
@@ -88,43 +88,37 @@ So an **elite** always leaves a demon alone (his true odds about 8 in 100) and a
 
 ## Formations {#formations}
 
-The **Formation** button opens a picker of nine formations, each sketched as it stands. On a desktop the keypad's 1 to 9 (or shift and 1 to 9) choose one, and 0 scatters. The formation applies to the selection's next march.
+The **Formation** button opens a picker of seven formations, each sketched as it stands, and **As they stand** last. On a desktop the keypad's 1 to 7 (or shift and 1 to 7) choose one, 8 is as they stand, and 0 scatters. A formation re-forms the selection where it stands. A line turned side on is a column: draw its facing along the road.
 
 ::: grid
 ![1 Line](images/formations/line.svg)
 
-![2 Short line](images/formations/shortline.svg)
+![2 Double line](images/formations/doubleline.svg)
 
-![3 Staggered](images/formations/staggered.svg)
+![3 Box](images/formations/box.svg)
 
-![4 Box](images/formations/box.svg)
+![4 Wedge](images/formations/wedge.svg)
 
-![5 Wedge](images/formations/wedge.svg)
+![5 Loose](images/formations/loose.svg)
 
-![6 Column](images/formations/column.svg)
+![6 Encircle](images/formations/encircle.svg)
 
-![7 Loose](images/formations/loose.svg)
-
-![8 Encircle](images/formations/encircle.svg)
-
-![9 V](images/formations/vee.svg)
+![7 V](images/formations/vee.svg)
 :::
 
 *Twelve men in each formation, seen from above, the front up (the gold chevron); the ticks show the way each man faces. In Encircle the red ring is the point ringed.*
 
 | Key | Formation | Layout | Pace | Use |
 |---|---|---|---|---|
-| 1 | **Line** | two ranks | 90% | the shield wall; the default for foot |
-| 2 | **Short line** | three ranks, narrower | 90% | a narrow front: a ford, a gate, a gap in a wall |
-| 3 | **Staggered** | two ranks in a checkerboard, nobody within 1.8 gaps of another | 95% | missile troops and grenadiers (their default): one stray bomb or fireball takes one man |
-| 4 | **Box** | a near-square block | 85% | all round; the slowest |
-| 5 | **Wedge** | one at the point, two behind, three behind them | 90% | horse and wolf riders (their default) |
-| 6 | **Column** | two abreast | 100% | the column of march |
-| 7 | **Loose** | a wide, ragged skirmish line | 100% | wizards, healers, fliers and berserkers (their default) |
-| 8 | **Encircle** | a crescent of 220 degrees round the point itself, every man facing out | 90% | pinning a lone champion, or ringing a hero |
-| 9 | **V** | the point at the back, the arms reaching forward at 45 degrees | 90% | drawing a charge onto the point and closing on its flanks; a wide front from few men |
+| 1 | **Line** | one rank, everyone abreast | 90% | the widest front; turned side on, the column of march |
+| 2 | **Double line** | two ranks | 90% | the shield wall; the default for foot |
+| 3 | **Box** | a hollow square, a man at each corner, every side facing out | 85% | all round: nothing takes it in the flank or the back; the slowest |
+| 4 | **Wedge** | one at the point, two behind, three behind them | 90% | horse and wolf riders (their default) |
+| 5 | **Loose** | a wide, ragged skirmish line, nobody within 1.4 gaps of another | 100% | missile troops, grenadiers, wizards, healers, fliers and berserkers (their default): one stray bomb or fireball takes one man |
+| 6 | **Encircle** | a crescent of 220 degrees round the point itself, every man facing out | 90% | pinning a lone champion, or ringing a hero |
+| 7 | **V** | the point at the back, the arms reaching forward at 45 degrees | 90% | drawing a charge onto the point and closing on its flanks; a wide front from few men |
 | 0 | **Scatter** | not a formation: everyone runs flat out 7-10 m directly away from the group's centre | full speed | the moment a bomb, stone or fireball is in the air |
 
-The gap between men is set by the biggest soldier selected (2.6 times his girth, at least 1.8 m); Staggered and Loose open it wider, so the loose formations are also the safe ones against blasts. A squad marches at its slowest member's pace times the formation's pace: the tight formations a little slower than the loose ones. The computer forms its squads the same way: archers and grenadiers staggered, foot in line, horse in a wedge, wizards and healers loose.
+The gap between men is set by the biggest soldier selected (2.6 times his girth, at least 1.8 m); Loose opens it wider, so it is also the safe one against blasts. A squad marches at its slowest member's pace times the formation's pace: the box a little slower than the lines, and they than the loose. The computer forms its squads the same way: archers, grenadiers, wizards and healers loose, foot in a double line, horse in a wedge.
 
 ![The formation picker: a sketch of each, drawn from the game's own slots.](images/shots/battle_picker.jpg)

@@ -42,7 +42,7 @@ Young men with longbows, unarmoured and light on their feet. In the woods they m
 
 **Campaign.** 12 men. 12 movement points; a forest costs them only 2. Trained in woodland towns, at Sylvaris and Moonhaven: 4 days, 20 gold, 5 a day. They have the familiar-ground edge in forest.
 
-**On the field.** Keep them **Staggered** (their default), on high ground if you can, behind a line, and away from anything that charges: in melee they are almost helpless. Stop shooting into a melee your own men are in, or accept the cost. Give them a ridge and they will outshoot archers on the flat who cannot reach them.
+**On the field.** Keep them **Loose** (their default), on high ground if you can, behind a line, and away from anything that charges: in melee they are almost helpless. Stop shooting into a melee your own men are in, or accept the cost. Give them a ridge and they will outshoot archers on the flat who cannot reach them.
 :::
 
 ::: unit Pikemen | pikemen
@@ -50,7 +50,7 @@ Foot with long pikes, the answer to horse. Their reach (2.2 m, nearly four times
 
 **Campaign.** 12 men. 8 movement points. Trained in hill and plain towns, at Highcrag and Moonhaven: 4 days, 20 gold, 5 a day.
 
-**On the field.** Standing still and facing the charge, pikemen are **braced**: riders who charge their front run onto the points, deal nothing and are thrown back, badly hurt (chapter [](#pikes)). Marching, or taken in the flank, they are just men with long sticks. Halt them facing the horse; put them in a **Short line** across a ford or a gate. They fight best in the open (+3%).
+**On the field.** Standing still and facing the charge, pikemen are **braced**: riders who charge their front run onto the points, deal nothing and are thrown back, badly hurt (chapter [](#pikes)). Marching, or taken in the flank, they are just men with long sticks. Halt them facing the horse; put them in a **Double line** across a ford or a gate. They fight best in the open (+3%).
 :::
 
 ::: unit Light Cavalry | light_cavalry
@@ -194,7 +194,7 @@ The one dwarf of Illyria: demolitionists with bottles of burning oil to throw an
 
 **Campaign.** 6 grenadiers. 9 movement points; a hill costs them only 3. Trained in hill towns and at Deepforge: 4 days, 24 gold, 4 a day.
 
-**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Staggered**, and away from your own line. Hyena-folk steal laid satchels and throw them back, bursting where they strike.
+**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Loose**, and away from your own line. Hyena-folk steal laid satchels and throw them back, bursting where they strike.
 :::
 
 ::: unit Journeymen | journeyman

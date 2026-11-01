@@ -46,10 +46,13 @@ Mesh tower();
 //   block: a stone block [-1, 1] x [-1, 1] x [0, 1]
 //   drum: a round tower radius 1, 1 high, crenellated, no roof
 //   keep: a square keep [-1, 1]^2, 1 high, battlements and corner turrets
-//   ramp: a solid wedge whose top rises along x from z = 0 at x = -1 to
-//     z = 1 at x = 1, [-1, 1] across; its sides run on a little below z = 0
+//   ramp: a solid wedge whose top (one plane) rises along x from z = 0 at
+//     x = -1 to z = 1 at x = 1, [-1, 1] across; its sides run on a little
+//     below z = 0
 Mesh curtain();
 Mesh block();
+// A piece of a gallery round a tower, `width` metres from the tower's face out.
+Mesh gallery(float width);
 Mesh drum();
 Mesh keep();
 Mesh ramp();

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "illyria/game/battle.h"
+#include "illyria/game/camera.h"
 #include "illyria/sim/region.h"
 #include "test.h"
 
@@ -133,6 +134,89 @@ TEST(a_soldier_on_the_wall_walk_has_his_ring_on_the_walk) {
     const V3 out = V3{corner.x - illyria::game::toV3(rp.centre).x, corner.y - illyria::game::toV3(rp.centre).y, 0}.normalized();
     const V3 beyond = corner + out * 25.0f;
     CHECK_NEAR(b.floorAt({beyond.x, beyond.y, corner.z}), b.heightAt(beyond.x, beyond.y), 1e-3);
+}
+
+TEST(a_tap_on_a_wall_walk_its_face_or_a_ramp_lands_there) {
+    // The order's spot (and its marker) is where the tap lands on the castle:
+    // on the walk, on the walk above the face struck, partway up the ramp;
+    // not on the ground beneath or behind.
+    Battle b(1, illyria::game::Scenario::Siege);
+    const Rampart& rp = b.region().ramparts().front();
+    const V3 a = illyria::game::toV3(rp.corners[0]), c1 = illyria::game::toV3(rp.corners[1]);
+    const V3 walk = (a + c1) * 0.5f;
+    const V3 centre = illyria::game::toV3(rp.centre);
+    const V3 out = V3{walk.x - centre.x, walk.y - centre.y, 0}.normalized();
+    // Seen from outside the ring, looking in at the wall.
+    illyria::game::Camera cam;
+    cam.setBounds(Battle::kWorldSize);
+    cam.setViewport(800, 600);
+    cam.setHeightFn([&b](float x, float y) { return b.heightAt(x, y); });
+    cam.lookAt(walk.x, walk.y, 45);
+    float best = -1, bestYaw = 0;
+    for (int k = 0; k < 16; ++k) {
+        cam.rotate(0.3927f);
+        const V3 e = cam.eye();
+        const float d = (e.x - walk.x) * out.x + (e.y - walk.y) * out.y;
+        if (d > best) best = d, bestYaw = cam.yaw();
+    }
+    cam.rotate(bestYaw - cam.yaw());
+    const auto tap = [&](const V3& at, V3& hit) {
+        float px, py;
+        return cam.project(at, px, py) && b.pickFloor(cam, px, py, hit);
+    };
+    V3 hit;
+    CHECK(tap(walk, hit));
+    CHECK(std::hypot(hit.x - walk.x, hit.y - walk.y) < 1.5f);
+    CHECK_NEAR(hit.z, walk.z, 0.3);
+    CHECK(walk.z > b.heightAt(walk.x, walk.y) + 3);  // well above the ground there
+    // The outer face, two metres under the walk: the spot goes up onto the walk above it.
+    const V3 face = walk + out * static_cast<float>(rp.halfThick.toDouble()) + V3{0, 0, -2};
+    CHECK(tap(face, hit));
+    CHECK_NEAR(hit.z, walk.z, 0.3);
+    // Halfway up a ramp (inside the ring, against the wall: seen from inside): on the ramp, at its height there.
+    if (!rp.ramps.empty()) {
+        const V3 foot = illyria::game::toV3(rp.ramps.front().first), head = illyria::game::toV3(rp.ramps.front().second);
+        const V3 mid = (foot + head) * 0.5f;
+        const V3 in = V3{centre.x - mid.x, centre.y - mid.y, 0}.normalized();
+        cam.lookAt(mid.x, mid.y, 30);
+        best = -1e9f;
+        for (int k = 0; k < 16; ++k) {
+            cam.rotate(0.3927f);
+            const V3 e = cam.eye();
+            const float d = (e.x - mid.x) * in.x + (e.y - mid.y) * in.y;
+            if (d > best) best = d, bestYaw = cam.yaw();
+        }
+        cam.rotate(bestYaw - cam.yaw());
+        CHECK(tap(mid, hit));
+        CHECK(std::hypot(hit.x - mid.x, hit.y - mid.y) < 1.5f);
+        CHECK(std::abs(hit.z - mid.z) < 0.6f);
+        CHECK(hit.z > b.heightAt(hit.x, hit.y) + 1);
+    }
+}
+
+TEST(a_tapped_gate_is_shown_with_its_health) {
+    Battle b(1, illyria::game::Scenario::Siege);
+    CHECK(!b.region().gates().empty());
+    const auto& g = b.region().gates().front();
+    const V3 mid = (illyria::game::toV3(g.a) + illyria::game::toV3(g.b)) * 0.5f + V3{0, 0, 2};
+    illyria::game::Camera cam;
+    cam.setBounds(Battle::kWorldSize);
+    cam.setViewport(800, 600);
+    cam.setHeightFn([&b](float x, float y) { return b.heightAt(x, y); });
+    cam.lookAt(mid.x, mid.y, 40);
+    float px, py;
+    CHECK(cam.project(mid, px, py));
+    b.clearSelection();
+    b.tap(cam, px, py, 1.0f);
+    CHECK(b.inspectedGate() == 0);
+    CHECK(b.notice().find("gate") != std::string::npos);
+    CHECK(b.notice().find(std::to_string(g.maxHp)) != std::string::npos);
+    // Anywhere else: let go.
+    float qx, qy;
+    const V3 away = mid + illyria::game::toV3(g.out) * 30.0f;
+    CHECK(cam.project({away.x, away.y, b.heightAt(away.x, away.y)}, qx, qy));
+    b.tap(cam, qx, qy, 1.0f);
+    CHECK(b.inspectedGate() == -1);
 }
 
 TEST(a_flier_sent_onto_the_wall_walk_has_his_marker_on_the_walk) {

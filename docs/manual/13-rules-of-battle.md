@@ -83,7 +83,7 @@ Grenadiers throw **Molotovs**, bottles of burning oil that burst where they stri
 :::
 
 ::: tip
-Against grenadiers, wizards and catapults, fight **Staggered** or **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**.
+Against grenadiers, wizards and catapults, fight **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**.
 :::
 
 ## Fliers {#fliers}

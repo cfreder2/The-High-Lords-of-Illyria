@@ -491,8 +491,8 @@ void World::groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out,
 }
 
 namespace {
-// Where a point lies along a closed ring of walk corners: edge index and
-// distance from that edge's start.
+// Where a point lies along a rampart's way round (Rampart::way): the leg's
+// index and the distance from its start.
 struct RingPos {
     size_t edge = 0;
     Fixed along;
@@ -500,9 +500,9 @@ struct RingPos {
 RingPos ringPos(const Rampart& rp, const Vec3& p) {
     RingPos best;
     Fixed bestD = Fixed::fromInt(1000000);
-    const size_t n = rp.corners.size();
+    const size_t n = rp.way.size();
     for (size_t e = 0; e < n; ++e) {
-        const Vec3 a = rp.corners[e], b = rp.corners[(e + 1) % n];
+        const Vec3 a = rp.way[e], b = rp.way[(e + 1) % n];
         const Vec3 ab = (b - a).flat();
         const Fixed len = ab.length();
         if (len == Fixed::zero()) continue;
@@ -516,21 +516,22 @@ RingPos ringPos(const Rampart& rp, const Vec3& p) {
     }
     return best;
 }
-// The point on the walk's centreline nearest p.
+// The point on the way round nearest p.
 Vec3 onWalk(const Rampart& rp, const Vec3& p) {
     const RingPos rpos = ringPos(rp, p);
-    const Vec3 a = rp.corners[rpos.edge], b = rp.corners[(rpos.edge + 1) % rp.corners.size()];
+    const Vec3 a = rp.way[rpos.edge], b = rp.way[(rpos.edge + 1) % rp.way.size()];
     const Fixed len = (b - a).flat().length();
     return len > Fixed::zero() ? a + (b - a) * (rpos.along / len) : a;
 }
-// The shorter way round the ring from one point to another: the corners passed.
+// The shorter way round the ring from one point to another: the bends passed
+// (the corners, and round each tower on its gallery).
 std::vector<Vec3> ringRoute(const Rampart& rp, const Vec3& from, const Vec3& to, Fixed* length) {
-    const size_t n = rp.corners.size();
+    const size_t n = rp.way.size();
     const RingPos a = ringPos(rp, from), b = ringPos(rp, to);
     std::vector<Fixed> lens(n);
     Fixed total;
     for (size_t e = 0; e < n; ++e) {
-        lens[e] = (rp.corners[(e + 1) % n] - rp.corners[e]).flat().length();
+        lens[e] = (rp.way[(e + 1) % n] - rp.way[e]).flat().length();
         total += lens[e];
     }
     // Forward distance from a to b.
@@ -546,14 +547,14 @@ std::vector<Vec3> ringRoute(const Rampart& rp, const Vec3& from, const Vec3& to,
     if (fwd <= total - fwd) {
         if (!(a.edge == b.edge && b.along >= a.along))
             for (size_t e = (a.edge + 1) % n;; e = (e + 1) % n) {
-                out.push_back(rp.corners[e]);
+                out.push_back(rp.way[e]);
                 if (e == b.edge) break;
             }
         if (length) *length = fwd;
     } else {
         if (!(a.edge == b.edge && b.along <= a.along))
             for (size_t e = a.edge;; e = (e + n - 1) % n) {
-                out.push_back(rp.corners[e]);
+                out.push_back(rp.way[e]);
                 if (e == (b.edge + 1) % n) break;
             }
         if (length) *length = total - fwd;
@@ -641,7 +642,23 @@ Perch perchOf(const Region& rg, const Vec3& p, bool byHeight) {
             return {static_cast<int>(i), static_cast<int>(s), along};
         }
     }
-    if (byHeight) return {rg.rampartAt(p.x, p.y, p.z), -1, {}};
+    if (byHeight) {
+        if (const int ring = rg.rampartAt(p.x, p.y, p.z); ring >= 0) return {ring, -1, {}};
+        // Up at a walk's height beside its way round (on the walk where the
+        // way bends round a tower, or on a gallery's outer part): on that walk.
+        for (size_t i = 0; i < rg.ramparts().size(); ++i) {
+            const Rampart& rp = rg.ramparts()[i];
+            if (rp.way.empty() || abs(p.z - rp.way.front().z) > Fixed::one() || !Gate::inside(rp, p)) continue;
+            const Fixed reach = rp.halfThick + Continent::Castle::kGalleryWidth;
+            for (size_t e = 0; e < rp.way.size(); ++e) {
+                const Vec3 a = rp.way[e], ab = (rp.way[(e + 1) % rp.way.size()] - a).flat();
+                const Fixed len2 = ab.lengthSq();
+                const Fixed t = len2 > Fixed::zero() ? clamp((p - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+                if ((p - (a + ab * t)).flat().lengthSq() <= reach * reach) return {static_cast<int>(i), -1, {}};
+            }
+        }
+        return {};
+    }
     for (size_t i = 0; i < rg.ramparts().size(); ++i)
         if (rg.rampartAt(p.x, p.y, rg.ramparts()[i].corners.front().z) == static_cast<int>(i)) return {static_cast<int>(i), -1, {}};
     return {};
@@ -1148,7 +1165,6 @@ void World::separateBodies() {
                 }
                 return;
             }
-            if (o.passAbove > Fixed::zero() && u.pos.z >= o.pos.z + o.passAbove) return;  // on the wall-walk
             const Vec3 d = (u.pos - o.pos).flat();
             const Fixed reach = u.stats.radius + o.radius;
             const Fixed distSq = d.lengthSq();

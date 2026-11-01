@@ -23,20 +23,21 @@ class BattleMode;  // mode.h
 // How a squad arranges itself, as in Myth: each soldier keeps his place as
 // the squad marches, and the whole squad moves at its slowest member's pace
 // (slower still in the tight formations: see formationPace).
-//   Line        two ranks: the shield wall
-//   ShortLine   three ranks, narrower and deeper
-//   Staggered   a loose checkerboard of two ranks: missile troops, out of
-//               reach of one stray blast
-//   Box, Wedge, Column, Loose
+//   Line        one rank, everyone abreast (turned, it is a column)
+//   DoubleLine  two ranks: the shield wall
+//   Box         a hollow square, a man at each corner, every side facing
+//               out: nothing takes it in the flank
+//   Wedge       one at the point, two behind, three behind them
+//   Loose       a wide, ragged skirmish line: missile troops, out of reach
+//               of one stray blast
 //   Encircle    a wide crescent around the point, everyone facing outward
 //   Vee         a V, the point at the back and the arms reaching forward:
 //               whatever comes at the point is taken in both flanks
-enum class Formation : uint8_t { Line, Box, Wedge, Loose, Column, Staggered, ShortLine, Encircle, Vee };
-constexpr int kFormationCount = 9;
-// The picker's order, which is also the desktop keys 1-9 (0 is Scatter).
-constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::ShortLine, Formation::Staggered,
-                                                        Formation::Box,   Formation::Wedge,     Formation::Column,
-                                                        Formation::Loose, Formation::Encircle,  Formation::Vee};
+enum class Formation : uint8_t { Line, DoubleLine, Box, Wedge, Loose, Encircle, Vee };
+constexpr int kFormationCount = 7;
+// The picker's order, which is also the desktop keys 1-7 (0 is Scatter).
+constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::DoubleLine, Formation::Box,  Formation::Wedge,
+                                                        Formation::Loose, Formation::Encircle,   Formation::Vee};
 const char* formationName(Formation f);
 // The picker's tenth entry, after the nine: the selection as it stands
 // (Battle::keepShape), its own arrangement kept as it moves.
@@ -66,7 +67,7 @@ struct Squad {
     sim::PlayerId owner;
     sim::UnitType type;
     std::vector<sim::EntityId> members;
-    Formation formation = Formation::Box;
+    Formation formation = Formation::DoubleLine;
     mutable V3 facing{1, 0, 0};  // the way it last marched (presentation of orders, not sim state)
     // A garrison holds its town: it fights whoever comes within reach of its
     // post, then goes back to it, and never marches out.
@@ -447,6 +448,8 @@ public:
     std::vector<sim::EntityId> selectedAlive() const;
     bool isSelected(sim::EntityId id) const { return id > 0 && id <= selectedFlag_.size() && selectedFlag_[id - 1]; }
     Formation selectionFormation() const { return selFormation_; }
+    // The gate last tapped (its health shown over it), or -1; any other tap lets it go.
+    int inspectedGate() const { return inspectedGate_; }
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
     int squadSelection(const Squad& s) const;
     int groupSelection(int slot) const;
@@ -469,6 +472,10 @@ public:
     // castle's wall-walk or stair, a bridge) under it. Where the decals under
     // a soldier (shadow, selection ring) and the order markers lie.
     float floorAt(const V3& p) const;
+    // Where the ray through a pixel first meets what a man could be sent onto:
+    // the ground, a deck (a wall-walk, a ramp, a bridge), or a wall's stone,
+    // which puts the spot on its walk. False when it meets nothing.
+    bool pickFloor(const Camera& camera, float x, float y, V3& hit) const;
     bool inBattlefield(float x, float y) const { return x >= 0 && y >= 0 && x <= kWorldSize && y <= kWorldSize; }
     const FarGrid& farGrid() const { return far_; }
     const FarGrid& nearGrid() const { return near_; }
@@ -601,6 +608,7 @@ private:
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
     Formation selFormation_ = Formation::Line;
     bool selKeep_ = true;  // as they stand (keepShape), not selFormation_
+    int inspectedGate_ = -1;
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
     // he was to face there and the front of the whole, and which order it was.

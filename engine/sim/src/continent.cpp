@@ -384,10 +384,16 @@ void Continent::planCastles() {
                 Vec3 in{-along.y, along.x, Fixed::zero()};
                 if (in.dot(ring.centre() - a) < Fixed::zero()) in = -in;
                 const Fixed len = (b - a).flat().length();
-                // Clear of the corner towers at both ends.
-                const Fixed room = len - ring.thick * 3 - Castle::kRampLanding - m(2);
+                // Clear of the corner towers' galleries at both ends, where
+                // there is room; on a short wall the foot goes in under the
+                // first one (high overhead), but the landing stays clear of
+                // the last, and the foot of the tower.
+                const Fixed gallery = ring.thick * 3 / 2 + Castle::kGalleryWidth + r(1, 2);
+                const Fixed room = len - gallery * 2 - Castle::kRampLanding;
                 const Fixed run = min(climb * 5 / 2, max(climb * 2, room));
-                const Vec3 start = a + along * (len / 2 - (run + Castle::kRampLanding) / 2) + in * (ring.thick / 2 + Castle::kRampHalfWidth);
+                const Fixed from = min(len / 2 - (run + Castle::kRampLanding) / 2, len - gallery - run - Castle::kRampLanding);
+                if (from < ring.thick * 3 / 2 + m(1)) continue;
+                const Vec3 start = a + along * from + in * (ring.thick / 2 + Castle::kRampHalfWidth);
                 Castle::Ramp rp{start, start + along * run, Castle::kRampHalfWidth, ri};
                 rp.head.z = c.z + climb;
                 // Not against another ring's walls or towers (room to walk round it).

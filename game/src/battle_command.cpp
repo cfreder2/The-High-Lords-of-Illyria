@@ -88,12 +88,10 @@ std::vector<int> leastCostMatching(const std::vector<float>& cost, int n) {
 const char* formationName(Formation f) {
     switch (f) {
         case Formation::Line: return "Line";
+        case Formation::DoubleLine: return "Double line";
         case Formation::Box: return "Box";
         case Formation::Wedge: return "Wedge";
         case Formation::Loose: return "Loose";
-        case Formation::Column: return "Column";
-        case Formation::Staggered: return "Staggered";
-        case Formation::ShortLine: return "Short line";
         case Formation::Encircle: return "Encircle";
         case Formation::Vee: return "V";
     }
@@ -115,15 +113,33 @@ std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing
         }
     };
     switch (f) {
-        case Formation::Line: rows(std::max(1, (count + 1) / 2), spacing, spacing, 0); break;  // two ranks
-        case Formation::ShortLine: rows(std::max(1, (count + 2) / 3), spacing, spacing, 0); break;  // three
-        case Formation::Box: rows(std::max(1, static_cast<int>(std::ceil(std::sqrt(count * 1.4f)))), spacing, spacing, 0); break;
-        case Formation::Column: rows(2, spacing, spacing, 0); break;
-        case Formation::Staggered:
-            // Two ranks, each man in the gap of the rank before: no two nearer
-            // than 1.8 gaps, so one bomb or fireball takes one man, not three.
-            rows(std::max(1, (count + 1) / 2), spacing * 2.0f, spacing * 1.5f, 0.5f);
-            break;
+        case Formation::Line: rows(count, spacing, spacing, 0); break;                                // one rank
+        case Formation::DoubleLine: rows(std::max(1, (count + 1) / 2), spacing, spacing, 0); break;  // two
+        case Formation::Box: {
+            // A hollow square: `side` gaps to a side, a man at each corner, the
+            // front and flanks filled first so a short square leaves its gaps at
+            // the back; every side faces out, each corner man out across it.
+            // Under four men there is no square: they stand abreast.
+            if (count < 4) {
+                rows(count, spacing, spacing, 0);
+                break;
+            }
+            const int side = (count + 3) / 4;
+            const float half = static_cast<float>(side) * spacing / 2;
+            const V3 out[4] = {{0, 1, 0}, {1, 0, 0}, {0, -1, 0}, {-1, 0, 0}};  // front, right, back, left
+            const auto at = [&](int s, int k) {
+                const float t = -half + static_cast<float>(k) * spacing;  // along the side from its first corner
+                const V3 p = s == 0 ? V3{t, half, 0} : s == 1 ? V3{half, -t, 0} : s == 2 ? V3{-t, -half, 0} : V3{-half, t, 0};
+                const V3 face = k == 0 ? (out[s] + out[(s + 3) % 4]).normalized() : out[s];
+                return FormationSlot{p, face};
+            };
+            for (int s : {0, 1, 3})
+                for (int k = 0; k < side; ++k) slots.push_back(at(s, k));
+            // The back takes the rest, spread along it.
+            const int back = count - 3 * side;
+            for (int i = 0; i < back; ++i) slots.push_back(at(2, back == side ? i : (i * side + side / 2) / back % side));
+            return slots;  // centred on the square, not on the men
+        }
         case Formation::Loose:
             // A wide skirmish line, each man a little out of true.
             rows(std::max(1, (count + 1) / 2), spacing * 2.2f, spacing * 2.2f, 0);
@@ -179,15 +195,13 @@ std::vector<V3> formationSlots(Formation f, int count, float spacing) {
 
 float formationPace(Formation f) {
     switch (f) {
-        case Formation::Box: return 0.85f;  // shoulder to shoulder, every way
+        case Formation::Box: return 0.85f;  // facing every way at once
         case Formation::Line:
-        case Formation::ShortLine:
+        case Formation::DoubleLine:
         case Formation::Wedge:
         case Formation::Vee:
         case Formation::Encircle: return 0.9f;
-        case Formation::Staggered: return 0.95f;
-        case Formation::Loose:
-        case Formation::Column: return 1.0f;  // the column of march
+        case Formation::Loose: return 1.0f;
     }
     return 0.9f;
 }
@@ -199,7 +213,7 @@ float formationSpacing(UnitType type) {
 Formation defaultFormation(UnitType type) {
     switch (roleOf(type)) {
         case Role::Ranged:
-        case Role::Bomber: return Formation::Staggered;
+        case Role::Bomber: return Formation::Loose;
         case Role::Caster:
         case Role::Healer:
         case Role::Flier:
@@ -214,7 +228,7 @@ Formation defaultFormation(UnitType type) {
         case UnitType::Unicorns: return Formation::Wedge;
         case UnitType::Berserker: return Formation::Loose;
         case UnitType::Hero: return Formation::Box;
-        default: return Formation::Line;
+        default: return Formation::DoubleLine;
     }
 }
 
@@ -818,6 +832,13 @@ void Battle::cycleFormation() {
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
     const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
+    // A gate tapped is shown (its health over it, ringed), whatever else the tap does.
+    inspectedGate_ = pick.kind == Pick::Kind::Gate ? pick.index : -1;
+    if (inspectedGate_ >= 0) {
+        const sim::GateState& g = world_->gates()[static_cast<size_t>(inspectedGate_)];
+        const int maxHp = region_->gates()[static_cast<size_t>(inspectedGate_)].maxHp;
+        say(g.broken() ? std::string("The gate is broken") : "The gate: " + std::to_string(g.hp) + " of " + std::to_string(maxHp));
+    }
     const std::vector<sim::EntityId> mine = selectedAlive();
     // Attack and force-march modes (the phone's button, A or M) last one
     // order; Ctrl and Alt held on the desktop do the same for one click.
@@ -924,7 +945,7 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     if (turnInPlace) {
         drag_.anchor = centreOf(selectedAlive());
         drag_.anchor.z = heightAt(drag_.anchor.x, drag_.anchor.y);
-    } else if (!camera.pickGround(x, y, drag_.anchor)) {
+    } else if (!pickFloor(camera, x, y, drag_.anchor)) {
         return false;
     }
     drag_.mode = Drag::Mode::Facing;
@@ -946,7 +967,7 @@ void Battle::pressMove(const Camera& camera, float x, float y) {
     drag_.y1 = y;
     if (drag_.mode != Drag::Mode::Facing) return;
     V3 hit;
-    if (!camera.pickGround(x, y, hit)) return;
+    if (!pickFloor(camera, x, y, hit)) return;
     drag_.tip = hit;
     const V3 d = flat(hit - drag_.anchor);
     if (d.length() < kAimMetres) return;
