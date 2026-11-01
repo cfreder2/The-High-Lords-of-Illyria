@@ -175,6 +175,12 @@
   #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: #3a6ce8; }
   #capture.taken { border-color: #8fd0ff; }
   #landTag { position: fixed; left: calc(8px + var(--safe-l)); top: calc(56px + var(--safe-t)); padding: 3px 8px; font-size: 11px; z-index: 3; }
+  /* The compass, under the top right buttons (left of the sandbox's panel): its needle points north; a tap turns the view north up. */
+  #compass { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); z-index: 2; width: 40px; height: 40px;
+             min-width: 0; min-height: 0; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  #compass svg { width: 32px; height: 32px; }
+  body.sandbox-on #compass { right: calc(268px + var(--safe-r)); }
+  body.at-title #compass, body.mode-setup #compass { display: none; }
   #battlePrompt .edges { font-size: 12px; margin: -6px 0 10px; opacity: 0.9; }
   #battlePrompt .edges b { color: var(--gold); font-weight: 600; }
   #campBar { padding: 6px 12px; font-size: 13px; }
@@ -256,6 +262,8 @@
     .card { width: 138px; padding: 4px 8px; grid-template-columns: 18px 1fr auto; }
     .card svg { width: 18px; height: 18px; }
     .card .name { font-size: 12px; }
+    #compass { top: calc(46px + var(--safe-t)); width: 34px; height: 34px; }
+    #compass svg { width: 28px; height: 28px; }
   }
   /* The ☰ menu: restart, save, settings, the manual, the main menu. */
   #controls { position: relative; }
@@ -370,6 +378,13 @@
 <div id="banners"></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
 <div id="landTag" class="panel battle-only hidden"></div>
+<button id="compass" aria-label="North up" title="North up (N)">
+  <svg viewBox="0 0 32 32" aria-hidden="true"><g id="compassNeedle">
+    <text x="16" y="8" text-anchor="middle" font-size="7" font-weight="700" fill="#f3ead8" font-family="Georgia, serif">N</text>
+    <path d="M16 9.5 L19.2 17 L12.8 17 Z" fill="#e2563f"/>
+    <path d="M16 26 L19.2 17 L12.8 17 Z" fill="#c9bc9f" opacity="0.75"/>
+  </g></svg>
+</button>
 <div id="news" class="panel camp-only hidden popup"><button class="x" aria-label="Close">✕</button><div id="newsList"></div></div>
 <div id="cityPanel" class="panel hidden"></div>
 <div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
@@ -507,6 +522,13 @@
     api = {
       pointer: Module.cwrap("illyria_pointer", null, ["number", "number", "number", "number", "number", "number"]),
       wheel: Module.cwrap("illyria_wheel", null, ["number", "number", "number"]),
+      scroll: Module.cwrap("illyria_scroll", null, ["number", "number", "number", "number"]),
+      pinch: Module.cwrap("illyria_pinch", null, ["number", "number", "number", "number"]),
+      cameraKeys: Module.cwrap("illyria_camera_keys", null, ["number", "number", "number"]),
+      northUp: Module.cwrap("illyria_north_up", null, []),
+      heading: Module.cwrap("illyria_heading", "number", []),
+      cameraState: Module.cwrap("illyria_camera_state", "string", []),
+      setPace: Module.cwrap("illyria_set_pace", null, ["number"]),
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
@@ -636,6 +658,7 @@
   const kIcons = { 2: "\u{1F3DB}\uFE0E", 3: "\u2625", 4: "\u2726" };
   function updateLabels() {
     requestAnimationFrame(updateLabels);
+    updateCompass();
     const box = campaign ? "" : api.dragBox();
     const sb = $("selBox");
     if (box) {
@@ -718,23 +741,103 @@
   }
   canvas.addEventListener("pointerup", (e) => send(2, e));
   canvas.addEventListener("pointercancel", (e) => send(3, e));
+  // Fingers on the canvas (touch pointers), and where the mouse last was.
+  let fingers = 0, mouseX = NaN, mouseY = NaN;
+  canvas.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") fingers++; });
+  for (const t of ["pointerup", "pointercancel"]) canvas.addEventListener(t, (e) => { if (e.pointerType === "touch") fingers = Math.max(0, fingers - 1); });
+  canvas.addEventListener("pointermove", (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+  // The wheel. A mouse's zooms; a trackpad's two-finger swipe pans (like a
+  // drag, in pixels), and its pinch zooms about the cursor. No browser says
+  // which it is, so the usual clues:
+  //  - Chrome, Edge and Safari give a trackpad's events a wheelDeltaY (X) of
+  //    -3 times deltaY (X); a mouse's notch is 120 (or a multiple) against a
+  //    deltaY that is not a third of it (100, 4, 53...).
+  //  - Firefox scrolls a mouse wheel by lines (deltaMode 1) and a trackpad by
+  //    pixels (0). It reports lines only to a page that reads deltaMode before
+  //    the deltas, so deltaMode is read first.
+  //  - Pixels with neither clue: a trackpad.
+  // Chrome, Edge and Firefox send a pinch as a wheel with ctrlKey (Ctrl and a
+  // mouse wheel zooms too, at the wheel's pace); Safari sends gesture events
+  // (below). The verdict is kept for a burst (events under 300 ms apart), so
+  // one gesture, momentum and all, is never split between panning and zooming.
+  let wheelKind = "", wheelLast = -1e9, safariPinch = null;
+  function wheelIsTrackpad(e, mode) {
+    if (mode !== 0) return false;
+    if (/Firefox\//.test(navigator.userAgent)) return true;
+    const wy = e.wheelDeltaY || 0, wx = e.wheelDeltaX || 0;
+    if (wy || wx) return Math.abs(wy + 3 * e.deltaY) <= 3 && Math.abs(wx + 3 * e.deltaX) <= 3;
+    return true;
+  }
   canvas.addEventListener("wheel", (e) => {
     if (!api) return;
     e.preventDefault();
+    const mode = e.deltaMode;  // first (Firefox: above)
+    if (!wheelKind || e.timeStamp - wheelLast > 300) wheelKind = wheelIsTrackpad(e, mode) ? "trackpad" : "mouse";
+    wheelLast = e.timeStamp;
     const r = canvas.getBoundingClientRect();
-    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-    api.wheel(e.deltaY * scale, e.clientX - r.left, e.clientY - r.top);
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const scale = mode === 1 ? 16 : mode === 2 ? 400 : 1;
+    if (wheelKind === "mouse") api.wheel(e.deltaY * scale, x, y);
+    else if (e.ctrlKey) { if (!safariPinch) api.pinch(Math.exp(-e.deltaY * 0.01), 0, x, y); }
+    else api.scroll(e.deltaX * scale, e.deltaY * scale, x, y);
     hideHint();
   }, { passive: false });
-  // iOS Safari pinch-zooms the page itself unless told not to.
-  document.addEventListener("gesturestart", (e) => e.preventDefault());
+  // Safari: a trackpad's pinch and twist on a Mac, as scale and rotation (in
+  // degrees, clockwise) since the gesture began. On an iPhone or iPad the
+  // fingers arrive as pointers too (Gestures' own pinch), so there these only
+  // keep Safari from zooming the page itself.
+  document.addEventListener("gesturestart", (e) => {
+    e.preventDefault();
+    safariPinch = api && !fingers && e.target === canvas ? { scale: 1, rotation: 0 } : null;
+  });
+  document.addEventListener("gesturechange", (e) => {
+    e.preventDefault();
+    if (!safariPinch || fingers) return;
+    const r = canvas.getBoundingClientRect();
+    const cx = Number.isFinite(e.clientX) ? e.clientX : Number.isFinite(mouseX) ? mouseX : r.left + r.width / 2;
+    const cy = Number.isFinite(e.clientY) ? e.clientY : Number.isFinite(mouseY) ? mouseY : r.top + r.height / 2;
+    const scale = e.scale > 0 ? e.scale : 1, rotation = e.rotation || 0;
+    api.pinch(scale / safariPinch.scale, -(rotation - safariPinch.rotation) * Math.PI / 180, cx - r.left, cy - r.top);
+    safariPinch = { scale, rotation };
+    hideHint();
+  });
+  document.addEventListener("gestureend", (e) => { e.preventDefault(); safariPinch = null; });
+
+  // The compass: its needle points north; a tap turns the view north up (N).
+  const needle = $("compassNeedle"), kPoints = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+  let compassDeg = NaN, compassFacing = "";
+  $("compass").onclick = () => { if (api) api.northUp(); };
+  function updateCompass() {
+    const h = api.heading();  // how far anticlockwise of north the view looks: north is that far clockwise of up
+    const deg = Math.round(h * 360 / Math.PI) / 2;
+    if (deg === compassDeg) return;
+    compassDeg = deg;
+    needle.setAttribute("transform", `rotate(${deg} 16 16)`);
+    const facing = kPoints[Math.round(((-deg % 360) + 360) % 360 / 45) % 8];
+    if (facing !== compassFacing) {
+      compassFacing = facing;
+      $("compass").setAttribute("aria-label", `North up (the view faces ${facing})`);
+    }
+  }
 
   $("pause").onclick = () => api && (campaign ? api.campPause() : api.pause());
   $("hot").onclick = () => api && api.hotSpot();
   for (const b of document.querySelectorAll("#controls button, #actions button")) b.addEventListener("click", hideHint);
   $("menuButton").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("menu-open"); };
   for (const b of document.querySelectorAll("#menu button")) b.addEventListener("click", () => document.body.classList.remove("menu-open"));
-  $("speed").onclick = () => api && (campaign ? api.campSpeed() : api.speed());
+  // The speed button: a tap goes 1×, 2×, 4× and round (from slow motion, back
+  // to 1×); held in a battle, slow motion: ½×, held again ¼× (then ½×). The
+  // campaign's days go 1×, 2×, 4×, 8×.
+  let pace = 1;  // the battle's (Battle speed × slow motion), from the HUD
+  const paceLabel = (p) => ({ 0.1: "⅒", 0.25: "¼", 0.5: "½" }[p] || String(p)) + "×";
+  function setPace(p) {
+    if (!api || campaign) return;
+    api.setPace(p);
+    updateHud();
+  }
+  $("speed").onclick = () => { if (!api) return; if (campaign) api.campSpeed(); else { api.speed(); updateHud(); } };
+  onLongPress($("speed"), () => setPace(pace === 0.5 ? 0.25 : 0.5));
   $("restart").onclick = () => { if (!api) return; if (campaign) api.campStart(campLevel); else api.restart(); };
   let campaign = false, campLevel = 1;  // 0: Easy computer lords, 1: Hard
   let mode = "title";  // the mode being played (docs/GAME_DESIGN.md §4.6)
@@ -897,12 +1000,38 @@
   // Desktop: Alt (or Ctrl) + number saves the selection as that group, the
   // number recalls it (twice: the camera goes to it); the keypad's 1-8 (or
   // shift + number) pick a formation and 0 scatters; S scatters, H holds,
-  // F finds, ` picks the heroes, Esc lets go; shift-drag draws a box, shift-click adds.
+  // F finds, ` picks the heroes, Esc lets go; shift-drag draws a box, shift-click adds;
+  // - and = slow the battle down and speed it up.
+  // The camera, in a battle and on the campaign map alike: the arrows pan
+  // while held, shift + left and right turn the view, N turns it north up.
+  // (Q, E, G, V, Y and the F-keys are kept free for the soldiers' own orders.)
   let lastGroupKey = -1, lastGroupMs = 0;
+  const heldArrows = new Set();
+  const typing = (e) => e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  function sendCameraKeys(shift) {
+    if (!api) return;
+    const held = (code) => (heldArrows.has(code) ? 1 : 0);
+    const across = held("ArrowRight") - held("ArrowLeft"), ahead = held("ArrowUp") - held("ArrowDown");
+    api.cameraKeys(shift ? 0 : across, ahead, shift ? -across : 0);
+  }
+  const kPaces = [0.25, 0.5, 1, 2, 4];
+  function stepPace(by) {
+    let at = 0;
+    kPaces.forEach((p, i) => { if (Math.abs(p - pace) < Math.abs(kPaces[at] - pace)) at = i; });
+    setPace(kPaces[Math.max(0, Math.min(kPaces.length - 1, at + by))]);
+  }
   document.addEventListener("keydown", (e) => {
     if (document.body.classList.contains("screen-open") || document.body.classList.contains("at-title")) return;
-    if (e.key === "Shift" && api) api.setShift(1);
+    if (e.key === "Shift" && api) { api.setShift(1); sendCameraKeys(true); }
     if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
+    // (Not with ⌘: a Mac sends no keyup for a key let go while ⌘ is down.)
+    if (api && e.code.startsWith("Arrow") && !e.metaKey && !typing(e)) {
+      heldArrows.add(e.code);
+      sendCameraKeys(e.shiftKey);
+      e.preventDefault();
+      return;
+    }
+    if (api && e.code === "KeyN" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e)) { api.northUp(); return; }
     if (!api || campaign || e.repeat) return;
     const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
@@ -931,6 +1060,8 @@
         else { api.clearSelection(); $("picker").classList.add("hidden"); }
         break;
       case "Space": api.pause(); break;
+      case "Minus": case "NumpadSubtract": stepPace(-1); break;
+      case "Equal": case "NumpadAdd": stepPace(1); break;
       default: return;
     }
     e.preventDefault();
@@ -939,8 +1070,15 @@
   document.addEventListener("keyup", (e) => {
     if (e.key === "Shift" && api) api.setShift(0);
     if (api && (e.key === "Control" || e.key === "Meta" || e.key === "Alt")) { keys(e); lastIntent = -1; }
+    if (e.key === "Meta") heldArrows.clear();
+    if (heldArrows.delete(e.code) || e.key === "Shift" || e.key === "Meta") sendCameraKeys(e.shiftKey);
   });
-  window.addEventListener("blur", () => api && api.setShift(0));
+  window.addEventListener("blur", () => {
+    if (!api) return;
+    api.setShift(0);
+    heldArrows.clear();
+    sendCameraKeys(false);
+  });
 
   // A press held on a card (half a second) for the groups: on a group card
   // it saves the selection there instead (or forgets the group when nothing
@@ -1204,7 +1342,8 @@
     const s = JSON.parse(api.hud());
     selected = s.selected;
     $("pause").textContent = s.paused ? "Resume" : "Pause";
-    $("speed").textContent = `${s.speed}×`;
+    pace = s.slow < 1 ? s.slow : s.speed;
+    $("speed").textContent = paceLabel(pace);
     // The town's heart: whoever has more men in the courtyard raises their flag; the attackers' at the top takes the town.
     const cap = s.capture;
     $("capture").classList.toggle("hidden", !cap.on);

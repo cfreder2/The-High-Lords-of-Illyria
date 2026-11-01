@@ -219,6 +219,7 @@
     state.command = 0;
     if (!panel) { panel = el("div", { id: "sbPanel" }); document.body.append(panel); }
     panel.classList.remove("sb-hidden");
+    document.body.classList.add("sandbox-on");  // the page's compass moves out of the panel's way
     poll.key = "";
     poll();
     render();
@@ -230,6 +231,7 @@
     clearInterval(timer);
     placing(false);
     if (panel) panel.classList.add("sb-hidden");
+    document.body.classList.remove("sandbox-on");
   }
   function leave() {
     if (window.IllyriaGame) IllyriaGame.toMenu();

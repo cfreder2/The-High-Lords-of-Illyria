@@ -177,6 +177,7 @@ As in Myth, every soldier is worth commanding on his own (`game/src/battle_comma
 | Attack a gate | tap the gate (or ⚔ Attack, then tap it) | click it (a target cursor) |
 | Attack a wall, house or tree | ⚔ Attack, then tap it | A, then click; or Ctrl + click (a target cursor, or "not allowed" if nobody selected can) |
 | Force march | hold ⚔ Attack (it turns gold, "» March"), then tap the ground | Alt + click (a gold double chevron), or M then click |
+| Any of these, never selecting | | right-click (a Mac trackpad: a two-finger tap): the order a click there gives the selection, with Ctrl, Alt and the modes as usual; on one of ours they march to him instead of picking him; nothing selected, nothing happens (`Battle::orderTap`) |
 
 The **⚔ Attack** button sits in the selection's action row: one tap lights it red and a line above it says what the next tap does ("Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground"); held, it turns gold for a force march. Either lasts one order; tap the button again (or Esc) to cancel. On the desktop the cursor always shows what a click would do (`Battle::intentAt`): a hand over your own soldiers, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair on the ground in attack mode, a double chevron for a force march.
 
@@ -198,6 +199,10 @@ The **⚔ Attack** button sits in the selection's action row: one tap lights it 
 Spacing is the biggest selected soldier's size (2.6 x his radius, at least 1.8 m); Staggered and Loose open it wider, so the loose formations are also the safe ones against blasts. A squad marches at its slowest member's pace times the formation's pace above: the tight formations a little slower than the loose ones. The computer forms its squads the same way (archers and grenadiers Staggered, foot in Line, horse in a Wedge, wizards and healers Loose).
 
 **Other orders.** **Scatter** (button, S, or keypad 0), **Hold** (H) stops, **Find** (F) brings the camera to the selection, **A** attack mode, **M** force-march mode, **Esc** cancels the mode or lets go of the selection, **Space** pauses.
+
+**Time.** The speed button's tap goes 1×, 2×, 4× and round; held, it slows the battle to ½×, held again ¼× (`Battle::setSlowMotion`; a tap brings it back to 1×), and **-** and **=** step through ¼× to 4× on the desktop. Single-player only: once battles are played over the network (`docs/NETCODE.md`), a change of pace must be agreed by every seat (`illyria_set_pace` marks the place).
+
+**The camera** (`game/src/gestures.cpp`). Besides the drags, pinches and twists (§5.6): the mouse wheel zooms; a trackpad's two-finger swipe pans as a drag would and its pinch zooms about the pointer (in Safari a twist also turns the view); the page tells the two apart by the usual clues (a trackpad's `wheelDeltaY` is -3 × `deltaY` in Chrome, Edge and Safari; Firefox scrolls a mouse by lines, a trackpad by pixels), keeping each verdict for a burst of events so that one gesture is never split. The arrow keys pan while held, at a pace that grows with the camera's distance (about 0.9 of it a second, eased in and out); Shift + ← → turn the view; **N**, or the **compass** under the top right buttons (its needle points north), turns the view north up, easing round the short way (nearly there in a third of a second). Q, E, G, V, Y and the F-keys are left free for the soldiers' own orders to come.
 
 ### 4.2 Unit Identity, Progression & Attrition
 
@@ -442,7 +447,7 @@ The game opens on a **title screen** (`game/web/title.js`, `title.css`): the nam
 
 **Settings** (from the title or the ☰ menu's ⚙ Settings; the old ⚙ panel's controls, on one page with tabs): *Graphics* (Low / Medium / High, each feature, full resolution, dynamic resolution, show the frame rate), *Sound* (master volume, then voices, effects and ambience each on/off with a volume, and reading unrecorded lines aloud; `audio.js` owns the master gain both `voice.js` and `sfx.js` play into), *Gameplay* (the campaign's starting speed, the default difficulty, autosave, confirm before disbanding, show hints), *Controls* (below). Kept in local storage: `illyria.graphics.v1`, `illyria.audio.v1`, `illyria.voice.v1`, `illyria.sfx.v1`, `illyria.settings.v1`.
 
-**Controls** is the reference for every gesture, click and key there is (§4.1.2, §5.6), sketched: phone and tablet (pan, pinch, twist; tap, tap again, cards, hold-and-drag box; tap to march or attack, hold-and-drag to face, ⚔ Attack and its held force march, the formation picker, Scatter, Hold, Find; saving and holding group cards; the top bar; the campaign map) and mouse and keys (clicks with Shift, Ctrl/⌘ and Alt, right-drag, wheel, the number keys, formations, S A M H F ` Esc Space, the menus' keys).
+**Controls** is the reference for every gesture, click and key there is (§4.1.2, §5.6), sketched: phone and tablet (pan, pinch, twist; tap, tap again, cards, hold-and-drag box; tap to march or attack, hold-and-drag to face, ⚔ Attack and its held force march, the formation picker, Scatter, Hold, Find; saving and holding group cards; the top bar; the campaign map) and mouse and keys (clicks with Shift, Ctrl/⌘ and Alt, right-drag and right-click, wheel, the trackpad's swipe, pinch and two-finger tap, the camera keys (arrows, Shift + ← →, N), the number keys, formations, S A M H F ` Esc Space - =, the menus' keys).
 
 In play, the ☰ menu has Restart (a battle), Save (a campaign), Settings, Controls, Manual and **Main menu** (after a confirmation); Victory, Defeat and the war's end offer **Main menu** too.
 
@@ -785,6 +790,8 @@ Tree, rock and bush variety is always on: it costs draw calls, not frame time.
 | **+ Save group** card; long-press a group card | Save the selection as a card; put the selection in that card, or forget it |
 | Formation button; Scatter button | Formation picker; everyone selected runs outward |
 | Edge buttons (thumb reach) | Pause, hot-spot jump, charge, squad cards |
+| Speed button: tap / hold | 1×, 2×, 4× / slow motion, ½× then ¼× (single-player) |
+| Compass (under the top right buttons) | Shows north; a tap turns the view north up |
 
 Pause (single-player) and AI generals (§4.3) carry most of the weight: touch is slower than a mouse, so the design rewards decisions over clicks per minute. All UI text scales and is readable at phone size.
 

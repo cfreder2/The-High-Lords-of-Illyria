@@ -8,19 +8,22 @@
 
 A battle is fought on a window of the real land, about a kilometre square, cut out where the stacks met: its hills, its woods and fields, its streams and fords, the town's walls if it was fought for a town. Every soldier of every army in the two stacks is on it, as a figure of his own. Your soldiers are in blue, the enemy's in red.
 
-The battle runs in real time, thirty steps of the simulation every second, and it is exactly the same on every device and every graphics setting: the look changes, the battle never does. You may **pause** at any moment (the Pause button or [[Space]]) and still give orders, and speed it up with the speed button.
+The battle runs in real time, thirty steps of the simulation every second, and it is exactly the same on every device and every graphics setting: the look changes, the battle never does. You may **pause** at any moment (the Pause button or [[Space]]) and still give orders. The speed button speeds it up: a tap for 2× and 4×, and back to 1×. Held, it slows the battle to ½×, and held again to ¼×, to watch a charge come in or a fireball fall; a tap brings it back to 1×. On a desktop [[-]] and [[=]] step slower and faster.
 
 ## The camera {#camera}
 
 | | Phone or tablet | Desktop |
 |---|---|---|
-| Zoom | pinch | the mouse wheel |
-| Move over the land | drag one finger | drag with the left button |
-| Turn the view | twist two fingers | drag with the right button |
+| Zoom | pinch | the mouse wheel, or pinch the trackpad |
+| Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold the arrow keys |
+| Turn the view | twist two fingers | drag with the right button, or [[Shift]] and [[←]] or [[→]] |
+| North up | tap the compass | click the compass, or [[N]] |
 | Move and zoom together | drag two fingers | |
 | To a squad | tap its card twice | tap its card twice, or its group's key twice |
 | To the selection | **Find** | **Find**, or [[F]] |
 | To the fiercest fighting | **Fight!** | **Fight!** |
+
+The **compass** sits under the buttons at the top right; its needle points north whichever way the view is turned. The arrow keys move the camera faster the higher it is.
 
 The camera comes down until one soldier fills the screen and goes up until the whole island is a map; near the ground the soldiers are drawn from closer pictures, and far out they become coloured specks. A battle's sounds and voices are heard from where the camera looks, so a fight far off is quiet (chapter [](#sound)).
 
@@ -34,6 +37,7 @@ Everything starts with choosing who is to obey.
 - **Adding and removing:** on a desktop, shift-click adds a soldier to the selection or takes him out.
 - **The heroes:** [[`]] on a desktop selects your heroes; on a phone their gold cards lead the row.
 - **Letting go:** [[Esc]] lets go of the selection.
+- **Ordering without choosing:** on a desktop a right-click (on a Mac trackpad, a tap with two fingers) gives those selected the order a click would, to march there or go after the enemy clicked, and never changes who is selected. On one of your own men, they march to where he stands.
 
 Selected soldiers wear a **blue ring**. The cards of squads wholly selected light up, dashed when only part of a squad is. Above the action row, a line names the selection and its edges: *12 Heavy Infantry · edges: home land +3% · veterans +6%*.
 

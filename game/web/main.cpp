@@ -750,6 +750,47 @@ EMSCRIPTEN_KEEPALIVE void illyria_wheel(float deltaY, float x, float y) {
     if (app) app->introStartMs = -1;
     if (app) app->gestures->wheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
 }
+// A trackpad (the page tells it from a mouse wheel): a two-finger swipe of
+// (dx, dy) CSS pixels pans; a pinch zooms by `factor` about (x, y) and a
+// twist turns by `radians`.
+EMSCRIPTEN_KEEPALIVE void illyria_scroll(float dx, float dy, float x, float y) {
+    if (!app) return;
+    const float s = app->pixelRatio;
+    app->introStartMs = -1;
+    app->gestures->scroll(dx * s, dy * s, x * s, y * s);
+}
+EMSCRIPTEN_KEEPALIVE void illyria_pinch(float factor, float radians, float x, float y) {
+    if (!app) return;
+    app->introStartMs = -1;
+    app->gestures->pinch(factor, radians, x * app->pixelRatio, y * app->pixelRatio);
+}
+// The camera keys held (desktop), each -1, 0 or 1: arrows pan right and
+// forward, shift + left and right turn (1: to the left).
+EMSCRIPTEN_KEEPALIVE void illyria_camera_keys(int right, int forward, int turn) {
+    if (!app) return;
+    if (right || forward || turn) app->introStartMs = -1;
+    app->gestures->setKeys(right, forward, turn);
+}
+// N, or the compass: the view turns north up.
+EMSCRIPTEN_KEEPALIVE void illyria_north_up() {
+    if (!app) return;
+    app->introStartMs = -1;
+    app->gestures->turnTo(kNorthUp);
+}
+// The way the view looks, in radians anticlockwise from north (for the
+// compass: north is that much clockwise of straight up the screen).
+EMSCRIPTEN_KEEPALIVE float illyria_heading() {
+    return app ? std::remainder(app->camera.yaw() - kNorthUp, 6.2831853f) : 0.0f;
+}
+// Test hook: where the camera looks, as JSON.
+EMSCRIPTEN_KEEPALIVE const char* illyria_camera_state() {
+    static char buf[160];
+    if (!app) return "{}";
+    const V3 t = app->camera.target();
+    std::snprintf(buf, sizeof buf, "{\"x\":%.3f,\"y\":%.3f,\"distance\":%.3f,\"yaw\":%.5f,\"heading\":%.5f,\"turning\":%s}", t.x, t.y,
+                  app->camera.distance(), app->camera.yaw(), illyria_heading(), app->gestures->turning() ? "true" : "false");
+    return buf;
+}
 
 EMSCRIPTEN_KEEPALIVE void illyria_select_squad(int index) {
     if (app) app->battle->selectSquad(index);
@@ -1088,8 +1129,19 @@ EMSCRIPTEN_KEEPALIVE void illyria_cycle_formation() {
 EMSCRIPTEN_KEEPALIVE void illyria_toggle_pause() {
     if (app) app->battle->togglePause();
 }
+// 1×, 2×, 4×, and from slow motion back to 1×.
 EMSCRIPTEN_KEEPALIVE void illyria_cycle_speed() {
-    if (app) app->battle->cycleSpeed();
+    if (!app) return;
+    if (app->battle->slowMotion() < 1) app->battle->setSlowMotion(1);
+    else app->battle->cycleSpeed();
+}
+// The battle's pace: 0.25 or 0.5 (slow motion), 1, 2 or 4.
+EMSCRIPTEN_KEEPALIVE void illyria_set_pace(float pace) {
+    if (!app) return;
+    // Single player only. Once battles are played over the network
+    // (docs/NETCODE.md), every seat must agree to a change of pace: check here.
+    app->battle->setSlowMotion(std::min(pace, 1.0f));
+    app->battle->setSpeed(static_cast<int>(std::max(pace, 1.0f)));
 }
 // Switch battle: 0 Oakhaven Ford, 1 the siege of a neutral town.
 EMSCRIPTEN_KEEPALIVE void illyria_set_scenario(int scenario) {
@@ -2187,9 +2239,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     std::string& s = app->hud;
     char buf[1024];
     std::snprintf(buf, sizeof buf,
-                  "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"outcome\":%d,\"fps\":%.0f,"
+                  "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"slow\":%.3g,\"outcome\":%d,\"fps\":%.0f,"
                   "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"side\":%d,",
-                  ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.outcome(), app->fps,
+                  ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.slowMotion(), b.outcome(), app->fps,
                   b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str(),
                   b.localSide());
     s = buf;
@@ -2358,6 +2410,10 @@ int main() {
     app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
         if (app->camp.on) campaignTap(x, y);
         else app->battle->tap(app->camera, x, y, app->pixelRatio, app->shift);
+    });
+    // A right click on the battlefield: an order, never a selection.
+    app->gestures->setSecondaryTap([](float x, float y) {
+        if (!app->camp.on) app->battle->orderTap(app->camera, x, y, app->pixelRatio);
     });
     // A press held on the battlefield: a selection box, or a move's facing line.
     app->gestures->setHold(

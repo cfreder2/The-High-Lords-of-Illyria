@@ -290,6 +290,19 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     return Intent::None;
 }
 
+void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale) {
+    if (selectedAlive().empty()) return;
+    // As usual a tap on one of ours picks him: a right click marches there instead.
+    const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
+    if (mode == OrderMode::Normal && pickAt(camera, x, y, pixelScale).kind == Pick::Kind::Own) {
+        if (V3 ground; camera.pickGround(x, y, ground)) orderMove(ground);
+        return;
+    }
+    // Everything else a tap does with soldiers selected is an order (a tap on
+    // nothing does nothing), so it is the tap's own, shift or no shift.
+    tap(camera, x, y, pixelScale, false);
+}
+
 float Battle::floorAt(const V3& p) const {
     // The ground, or a deck (a wall-walk, a stair, a bridge) he stands on or is above.
     const float ground = heightAt(p.x, p.y);
