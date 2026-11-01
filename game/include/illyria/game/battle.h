@@ -38,6 +38,10 @@ constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Format
                                                         Formation::Box,   Formation::Wedge,     Formation::Column,
                                                         Formation::Loose, Formation::Encircle,  Formation::Vee};
 const char* formationName(Formation f);
+// The picker's tenth entry, after the nine: the selection as it stands
+// (Battle::keepShape), its own arrangement kept as it moves.
+constexpr int kKeepShapeId = kFormationCount;
+constexpr const char* kKeepShapeName = "As they stand";
 // A place in a formation, relative to its centre (x to the right, y forward),
 // and the way to face there (forward is {0, 1}).
 struct FormationSlot {
@@ -45,8 +49,10 @@ struct FormationSlot {
     V3 face{0, 1, 0};
 };
 // `spacing` is the gap between neighbours, from the biggest soldier's size
-// (formationSpacing); the loose formations open it wider.
-std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing);
+// (formationSpacing); the loose formations open it wider. `width`: the front
+// drawn this many metres wide, for those formed in ranks (Line, Short line,
+// Staggered, Box, Column, Loose): as many abreast as fit it; 0, their own.
+std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing, float width = 0);
 std::vector<V3> formationSlots(Formation f, int count, float spacing);
 // Marching pace in this formation, as a share of the slowest member's: the
 // tight ones (Box, the lines) a little slower than the loose ones.
@@ -219,9 +225,18 @@ public:
     void selectHeroes();
     // Saved groups, keys 1-9 and 0 (slots 0-9): Alt+number on the desktop,
     // the "+" card on a phone.
+    // A selection's arrangement, kept as it marches (keepShape): each
+    // soldier's place from its middle and the way he faces there, and the way
+    // the whole faced when it was taken.
+    struct Shape {
+        std::vector<sim::EntityId> ids;
+        std::vector<V3> offset, face;
+        V3 front{1, 0, 0};
+    };
     struct Group {
         std::vector<sim::EntityId> units;
         Formation formation = Formation::Line;
+        Shape shape;  // as it stood when saved: recalled, it marches so
     };
     static constexpr int kGroupSlots = 10;
     void assignGroup(int slot);
@@ -234,11 +249,14 @@ public:
     // Orders to the selection (for tests and hooks as well as the input).
     // At a gate, as tapping it.
     void orderAtGate(int gate);
-    // March there, as tapping the ground: the formation faces the way it marched.
+    // March there, as tapping the ground, facing as they do now: as they stand
+    // (keepShape), their own arrangement moved there; in a chosen formation,
+    // re-formed there.
     void orderMove(const V3& to);
-    // March there and face that way on arrival, the formation laid out across
-    // it (Myth's gesture rotation).
-    void orderMoveFacing(const V3& to, const V3& facing);
+    // March there and face that way on arrival (the front drawn: pressEnd),
+    // the arrangement turned to it. `width`: in a chosen formation, its front
+    // that many metres wide (0: its own).
+    void orderMoveFacing(const V3& to, const V3& facing, float width = 0);
     void stopSelected();
     // Attacks (game/src/battle_orders.cpp). Everyone selected after one
     // soldier, of either side (a force attack on a friend): missile troops
@@ -252,7 +270,7 @@ public:
     void orderLaySatchels(const V3& at);
     // March there deaf to the enemy (Myth's force march): to break away, or
     // to run past.
-    void orderForceMarch(const V3& to, const V3* facing = nullptr);
+    void orderForceMarch(const V3& to, const V3* facing = nullptr, float width = 0);
     // What lies under the finger.
     struct Pick {
         enum class Kind : uint8_t { None, Own, Enemy, Gate, Wall, Obstacle, Ground };
@@ -319,12 +337,22 @@ public:
     // Every one of the player's squads at the nearest enemy: the foot charge,
     // missile troops close to a long bowshot.
     void chargeAll();
-    // The selection's formation; it re-forms where it stands.
+    // The selection's formation; it re-forms where it stands, and marches in
+    // it until it is selected afresh or keepShape.
     void setFormation(Formation f);
     void cycleFormation();
+    // As they stand: the selection marches in its own arrangement, each
+    // soldier where he was last sent beside the others (shapeOf), turned as a
+    // whole to a new front. What every selection starts in.
+    void keepShape();
+    bool keepingShape() const { return selKeep_; }
+    // The arrangement the selection would keep (its saved group's, recalled).
+    Shape selectionShape() const;
 
     // A press held on the battlefield (Gestures' hold): drawing a selection
-    // box, or the direction line of a move with facing. `box` forces a box
+    // box, or the front of a move: from its left end to its right as the
+    // soldiers will stand, so they face across it, forward of the line, the
+    // foremost of them on it. `box` forces a box
     // (shift on the desktop); otherwise it is a box when nothing is selected
     // or the press starts on one of ours. False: not taken (the camera pans).
     bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);
@@ -335,9 +363,11 @@ public:
         Mode mode = Mode::None;
         float x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // the box, in pixels
         float pixelScale = 1;
-        V3 anchor, facing{1, 0, 0};             // the line: from the destination, the way to face
-        bool aimed = false;                     // dragged far enough to set a facing
-        V3 tip;                                 // where the finger is, on the ground
+        V3 anchor, facing{1, 0, 0};             // where the front begins, and the way they will face
+        bool aimed = false;                     // dragged far enough to draw a front
+        V3 tip;                                 // where the finger is, on the ground: the front's other end
+        V3 centre;                              // where their middle goes: behind the front's (the press, until drawn)
+        float width = 0;                        // the front's length
         std::vector<FormationSlot> ghost;       // the formation there, in battle coordinates
     };
     const Drag& drag() const { return drag_; }
@@ -500,8 +530,35 @@ private:
     // `force`: a force march, deaf to the enemy on the way.
     void moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> units, Formation formation, const V3& to,
                    const V3* face, const V3& fallbackFacing, bool force = false);
+    // Who goes where, and faces which way.
+    struct MarchOrder {
+        sim::EntityId id;
+        V3 target, face;
+    };
+    // A formation at `to`: the soldiers nearest the front take the front
+    // ranks, keeping their order left to right, so no one crosses another.
+    std::vector<MarchOrder> planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
+                                          const V3& facing, float width = 0) const;
+    // An arrangement moved to `to` and turned to face `facing`; within each
+    // squad the men take its places by the least walking in all, so none
+    // crosses another and no squad takes another's.
+    std::vector<MarchOrder> planShape(const Shape& shape, const std::vector<sim::EntityId>& units, const V3& to,
+                                      const V3& facing) const;
+    // The arrangement of these soldiers: each where he was last sent (the
+    // order's men together, moved to where they now stand), else where he is.
+    Shape shapeOf(const std::vector<sim::EntityId>& units) const;
+    // Places on a rock, a tree or a house moved just clear of it, where a man can stand.
+    void keepClear(std::vector<MarchOrder>& plan) const;
+    // The selection's march (or these of it): as they stand or in its formation.
+    std::vector<MarchOrder> planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, float width) const;
+    void marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, float width, bool force);
+    // The orders out, everyone arriving together at the slowest one's pace
+    // (times `pace`), all on the one route from `from` to `to`; and where each
+    // was sent remembered (slots_).
+    void sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan, const V3& from, const V3& to, const V3& front, float pace,
+                   bool force);
     std::vector<FormationSlot> placeFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                              const V3& facing) const;
+                                              const V3& facing, float width = 0) const;
     V3 centreOf(const std::vector<sim::EntityId>& units) const;
     V3 selectionFacing() const;
     void refreshSelection();
@@ -544,6 +601,16 @@ private:
     std::vector<float> spriteBoxes_;  // setSpriteBoxes
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
     Formation selFormation_ = Formation::Line;
+    bool selKeep_ = true;  // as they stand (keepShape), not selFormation_
+    Shape selShape_;       // a recalled group's arrangement, until the selection changes
+    // Where each soldier was last sent in a march (by EntityId - 1), the way
+    // he was to face there and the front of the whole, and which order it was.
+    struct Slot {
+        V3 pos, face, front;
+        uint32_t order = 0;  // 0: never sent
+    };
+    std::vector<Slot> slots_;
+    uint32_t marches_ = 0;
     std::array<Group, kGroupSlots> groups_;
     Drag drag_;
     OrderMode orderMode_ = OrderMode::Normal;

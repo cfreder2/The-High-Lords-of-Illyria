@@ -12,15 +12,15 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 
 | Order | Phone | Desktop |
 |---|---|---|
-| March there (with initiative) | tap the ground | click the ground |
-| March there and face a way | hold at the spot, drag the way to face | the same |
+| March there as they stand (with initiative) | tap the ground | click the ground |
+| March there on a new front | hold where the front begins, drag to where it ends | the same |
 | Attack a soldier | tap the enemy | click the enemy (a red sword cursor) |
 | Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[A]] then click |
 | Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[A]], then click (a crosshair); or [[Ctrl]] + click the ground |
 | Batter a gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[A]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[M]] then click |
-| Formation | **Formation**, then pick one | the keypad 1-9, or shift + 1-9 |
+| Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-9, or shift + 1-9 |
 | Scatter | **Scatter** | [[S]], or the keypad 0 |
 | Halt | **Hold** | [[H]] |
 | The camera to the selection | **Find** | [[F]] |
@@ -31,13 +31,19 @@ The **⚔ Attack** button sits in the action row. One tap lights it red, and a l
 
 ## Marching and facing {#move}
 
-**Tap the ground** and the selection marches there in its formation, and halts facing the way it marched. Each man's place shows as a **yellow ring** on the ground, with a tick the way he will face: exactly where he will stand. The rings show while he is selected, and for a few seconds after any order, then fade; only his current order shows, and the ring goes when he arrives.
+**Tap the ground** and the selection marches there **as it stands**: every soldier keeps his place beside the others, and the whole keeps facing as it does. Knights with archers behind them arrive with the archers still behind them, facing the same foe. Each man's place shows as a **yellow ring** on the ground, with a tick the way he will face: exactly where he will stand. The rings show while he is selected, and for a few seconds after any order, then fade; only his current order shows, and the ring goes when he arrives.
 
-**To face a way**, press and hold at the destination. After a moment (0.3 s) a **gold ghost** of the formation appears there; drag, and a dotted line follows your finger. The formation turns to face along the line, laid out across it. Let go, and they march; they arrive facing that way, whichever way their road took them.
+What they keep is where each was last *sent*, not where the fighting or the road has left him: a squad caught in a scrum, or strung out in a column of march, forms up again as it was ordered, there where it now stands. A place that falls on a rock, a tree or a house moves just clear of it.
+
+**To draw a new front**, press and hold where the front should begin. After a moment (0.3 s) a **gold ghost** of the selection appears there; drag to where the front should end, and a dotted line follows your finger. The ghost stands across the line, its foremost men on it and the rest behind, facing forward of it: draw from left to right as you look at the screen and they face away from you; draw the other way and they turn to face you. Let go, and they march; they arrive facing that way, whichever way their road took them. Their arrangement turns as a whole, so the archers stay behind the knights.
+
+**Formations.** Pick one and the selection re-forms in it where it stands, and marches in it (closing the gaps its dead leave) until you select it afresh, or pick **As they stand**, the picker's last. In a formation the front you draw is also its **width**: draw it long for a single rank, short for a deep block of ranks. Select them again later and they march as the formation left them.
+
+**Groups keep their shape.** A group saved (Alt + its number, or the **+** card) remembers how it stood; recalled, it marches so, whatever its squads have done since.
 
 ![The Grey Watch ordered across the road: the yellow rings on the ground are their places, each with a tick the way he will face.](images/shots/battle_moved.jpg)
 
-A selection of several squads moves as **one formation**, spaced for its biggest soldier and paced to its slowest, so a line of heavy infantry and light infantry arrives together. Every soldier takes the **fastest** way there for his kind, not the shortest: a squad in the fields marches to the nearby road and along it rather than straight over the plough, and cavalry ride round a wood that foot would cut through. The men of a squad all follow the squad's one route, each keeping his file a little to the side of it, so on a road they go in a column of march and spread into their formation at the end.
+Several squads selected together keep their places beside each other, each squad's men taking that squad's places (the nearest of them, so nobody crosses another, and no squad takes another's), paced to the slowest so they arrive together. In a chosen formation they form as one, spaced for its biggest soldier. Every soldier takes the **fastest** way there for his kind, not the shortest: a squad in the fields marches to the nearby road and along it rather than straight over the plough, and cavalry ride round a wood that foot would cut through. The men of a squad all follow the squad's one route, each keeping his file a little to the side of it, so on a road they go in a column of march and spread into their formation at the end.
 
 ## Marching with initiative {#initiative}
 

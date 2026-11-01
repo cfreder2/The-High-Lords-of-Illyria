@@ -783,9 +783,10 @@ EMSCRIPTEN_KEEPALIVE void illyria_clear_selection() {
 EMSCRIPTEN_KEEPALIVE void illyria_select_heroes() {
     if (app) app->battle->selectHeroes();
 }
-// A formation for the selection, by Formation value.
+// A formation for the selection, by Formation value; kKeepShapeId: as they stand.
 EMSCRIPTEN_KEEPALIVE void illyria_set_formation(int f) {
     if (app && f >= 0 && f < kFormationCount) app->battle->setFormation(static_cast<Formation>(f));
+    else if (app && f == kKeepShapeId) app->battle->keepShape();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_scatter() {
     if (app) app->battle->scatter();
@@ -814,8 +815,8 @@ EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
     app->introStartMs = -1;
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
-// Every formation's shape for the picker's glyphs, in picker order:
-// [{"id","name","slots":[[x,y],...]}].
+// Every formation's shape for the picker's glyphs, in picker order, then as
+// they stand (any shape: a face drawn in men): [{"id","name","slots":[[x,y],...]}].
 EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
     static std::string out;
     out = "[";
@@ -831,7 +832,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
         }
         out += "]}";
     }
-    out += "]";
+    std::snprintf(buf, sizeof buf, ",{\"id\":%d,\"name\":\"%s\",\"slots\":", kKeepShapeId, kKeepShapeName);
+    out += buf;
+    out += "[[-1,1.4],[1,1.4],[0,0.4],[-2,-0.2],[-1.3,-1.1],[-0.45,-1.5],[0.45,-1.5],[1.3,-1.1],[2,-0.2]]}]";
     return out.c_str();
 }
 // The selection box being drawn, in CSS pixels: "x0 y0 x1 y1", or "" when none.
@@ -2226,8 +2229,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
                       batter ? "true" : "false", fresh ? b.notice().c_str() : "");
         s += buf;
+        const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
-                      sel.size(), label(sel), formationName(b.selectionFormation()), static_cast<int>(b.selectionFormation()));
+                      sel.size(), label(sel), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
+                      asTheyStand ? kKeepShapeId : static_cast<int>(b.selectionFormation()));
         s += buf;
         bool first = true;
         for (int k = 1; k <= Battle::kGroupSlots; ++k) {

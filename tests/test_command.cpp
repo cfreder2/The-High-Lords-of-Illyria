@@ -249,27 +249,186 @@ TEST(a_move_with_facing_arrives_facing_that_way_laid_across_the_line) {
     CHECK(alongEast > alongNorth * 2);
 }
 
-TEST(press_and_drag_draws_the_facing_line_with_its_ghost) {
+TEST(press_and_drag_draws_the_front_with_its_ghost) {
+    // The front drawn from north to south: they face east, forward of it,
+    // the front rank on it; before it is drawn, as they face now.
     Battle b(42);
     const int watch = squadNamed(b, "The Grey Watch");
     b.selectSquad(watch);
-    const V3 at = b.squadCentre(b.squads()[static_cast<size_t>(watch)]) + V3{-30, 0, 0};
+    V3 at = b.squadCentre(b.squads()[static_cast<size_t>(watch)]) + V3{-30, 10, 0};
+    at.z = b.heightAt(at.x, at.y);
     const Camera c = cameraOn(b, at, 120);
-    float px, py, qx, qy;
+    float px, py, qx, qy, nx, ny;
     CHECK(c.project(at, px, py));
-    V3 tip = at + V3{0, -15, 0};
+    V3 tip = at + V3{0, -20, 0}, north = at + V3{0, 20, 0};
     tip.z = b.heightAt(tip.x, tip.y);
+    north.z = b.heightAt(north.x, north.y);
     CHECK(c.project(tip, qx, qy));
+    CHECK(c.project(north, nx, ny));
     CHECK(b.pressBegin(c, px, py, 1.0f, false));
     CHECK(b.drag().mode == Battle::Drag::Mode::Facing);
     CHECK(b.drag().ghost.size() == b.selectedAlive().size());
+    CHECK(b.drag().facing.dot(V3{1, 0, 0}) > 0.99f);
     b.pressMove(c, qx, qy);
     CHECK(b.drag().aimed);
-    CHECK(b.drag().facing.dot(V3{0, -1, 0}) > 0.95f);
-    for (const FormationSlot& s : b.drag().ghost) CHECK(s.face.dot(V3{0, -1, 0}) > 0.99f);
+    CHECK(b.drag().facing.dot(V3{1, 0, 0}) > 0.95f);
+    // The foremost on the line, the rest behind it (west).
+    float foremost = -1e9f;
+    for (const FormationSlot& s : b.drag().ghost) {
+        CHECK(s.face.dot(V3{1, 0, 0}) > 0.95f);
+        foremost = std::max(foremost, s.pos.x - at.x);
+    }
+    CHECK(std::abs(foremost) < 0.3f);
+    CHECK(std::abs(b.drag().centre.y - (at.y - 10)) < 1.5f && b.drag().centre.x < at.x);
+    // Drawn the other way, south to north: they face west.
+    b.pressMove(c, nx, ny);
+    CHECK(b.drag().facing.dot(V3{-1, 0, 0}) > 0.95f);
+    b.pressMove(c, qx, qy);
     b.pressEnd(c, qx, qy, false);
     run(b, 45);
-    for (illyria::sim::EntityId id : b.selectedAlive()) CHECK(facingOf(b, id).dot(V3{0, -1, 0}) > 0.98f);
+    const V3 centre = b.squadCentre(b.squads()[static_cast<size_t>(watch)], false);
+    CHECK((centre - (at + V3{0, -10, 0})).length() < 3.0f);
+    for (illyria::sim::EntityId id : b.selectedAlive()) CHECK(facingOf(b, id).dot(V3{1, 0, 0}) > 0.95f);
+}
+
+namespace {
+
+// The Grey Watch (knights) and the Silverwood Archers some way behind them, selected together.
+std::vector<illyria::sim::EntityId> knightsAndBows(const Battle& b) {
+    std::vector<illyria::sim::EntityId> all = b.squads()[static_cast<size_t>(squadNamed(b, "The Grey Watch"))].members;
+    const auto& bows = b.squads()[static_cast<size_t>(squadNamed(b, "Silverwood Archers"))].members;
+    all.insert(all.end(), bows.begin(), bows.end());
+    return all;
+}
+
+V3 middleOf(const Battle& b, const std::vector<illyria::sim::EntityId>& ids) {
+    V3 sum;
+    for (illyria::sim::EntityId id : ids) sum += toV3(b.world().units()[id - 1].pos);
+    return sum * (1.0f / static_cast<float>(ids.size()));
+}
+
+// Where the archers stand from the knights.
+V3 bowsFromKnights(const Battle& b) {
+    const Squad& watch = b.squads()[static_cast<size_t>(squadNamed(b, "The Grey Watch"))];
+    const Squad& bows = b.squads()[static_cast<size_t>(squadNamed(b, "Silverwood Archers"))];
+    const V3 d = b.squadCentre(bows, false) - b.squadCentre(watch, false);
+    return {d.x, d.y, 0};
+}
+
+// Every one of these places has a man within `slack` of it, the arrangement moved to `at`.
+bool standsAs(const Battle& b, const std::vector<illyria::sim::EntityId>& ids, const std::vector<V3>& places, const V3& at, float slack) {
+    for (const V3& p : places) {
+        bool found = false;
+        for (illyria::sim::EntityId id : ids) {
+            const V3 q = toV3(b.world().units()[id - 1].pos) - at;
+            found = found || V3{q.x - p.x, q.y - p.y, 0}.length() < slack;
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+std::vector<V3> placesFrom(const Battle& b, const std::vector<illyria::sim::EntityId>& ids, const V3& middle) {
+    std::vector<V3> out;
+    for (illyria::sim::EntityId id : ids) out.push_back(toV3(b.world().units()[id - 1].pos) - middle);
+    return out;
+}
+
+}  // namespace
+
+TEST(a_selection_marches_as_it_stands) {
+    // Tapped somewhere else, knights and archers keep their places and their
+    // front; given a new front, the whole of it turns, the archers still behind.
+    // (Facing is checked on the knights: archers turn to shoot whoever comes.)
+    Battle b(42);
+    const std::vector<illyria::sim::EntityId> all = knightsAndBows(b);
+    const std::vector<illyria::sim::EntityId>& knights = b.squads()[static_cast<size_t>(squadNamed(b, "The Grey Watch"))].members;
+    b.select(all);
+    CHECK(b.keepingShape());
+    const V3 gap = bowsFromKnights(b);
+    CHECK(gap.x < -10);  // behind them, to the west
+    const V3 to = middleOf(b, all) + V3{-30, 15, 0};
+    b.orderMove(to);
+    run(b, 45);
+    CHECK((middleOf(b, all) - to).length() < 3.0f);
+    CHECK((bowsFromKnights(b) - gap).length() < 2.0f);
+    for (illyria::sim::EntityId id : knights) CHECK(facingOf(b, id).dot(V3{1, 0, 0}) > 0.95f);
+    // Turned to face north: the archers end up south of the knights.
+    const V3 to2 = to + V3{0, -20, 0};
+    b.orderMoveFacing(to2, V3{0, 1, 0});
+    run(b, 45);
+    const V3 turned{-gap.y, gap.x, 0};
+    CHECK((bowsFromKnights(b) - turned).length() < 2.5f);
+    for (illyria::sim::EntityId id : knights) CHECK(facingOf(b, id).dot(V3{0, 1, 0}) > 0.95f);
+}
+
+TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {
+    // Sent off, then sent elsewhere before they got there: they form as they
+    // stood, not strung out as the march had them.
+    Battle b(42);
+    b.selectSquad(squadNamed(b, "The Grey Watch"));
+    const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
+    const V3 start = middleOf(b, men);
+    const std::vector<V3> places = placesFrom(b, men, start);
+    b.orderMove(start + V3{-60, 0, 0});
+    run(b, 4);
+    const V3 to = start + V3{-30, 25, 0};
+    b.orderMove(to);
+    run(b, 45);
+    CHECK(standsAs(b, men, places, to, 1.2f));
+}
+
+TEST(a_saved_group_marches_in_its_saved_shape) {
+    // Saved with the archers behind the knights; the archers sent off on their
+    // own; the group recalled marches as it was saved.
+    Battle b(42);
+    const std::vector<illyria::sim::EntityId> all = knightsAndBows(b);
+    b.select(all);
+    const V3 gap = bowsFromKnights(b);
+    b.assignGroup(3);
+    b.selectSquad(squadNamed(b, "Silverwood Archers"));
+    b.orderMove(b.squadCentre(b.squads()[static_cast<size_t>(squadNamed(b, "Silverwood Archers"))], false) + V3{0, 30, 0});
+    run(b, 30);
+    CHECK((bowsFromKnights(b) - gap).length() > 20.0f);
+    CHECK(b.recallGroup(3));
+    CHECK(b.keepingShape());
+    const V3 to = middleOf(b, all) + V3{-25, 0, 0};
+    b.orderMove(to);
+    run(b, 50);
+    CHECK((bowsFromKnights(b) - gap).length() < 2.0f);
+}
+
+TEST(a_front_drawn_wide_sets_how_many_stand_abreast) {
+    // In a chosen formation the front's length is its width: a line of twelve
+    // drawn 20 m wide stands in one rank, drawn 6 m wide in three or more.
+    const auto extent = [](float width) {
+        Battle b(42);
+        b.selectSquad(squadNamed(b, "The Grey Watch"));
+        b.setFormation(Formation::Line);
+        CHECK(!b.keepingShape());
+        const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
+        const V3 to = middleOf(b, men) + V3{-30, 0, 0};
+        b.orderMoveFacing(to, V3{1, 0, 0}, width);
+        run(b, 45);
+        float across = 0, deep = 0;
+        for (illyria::sim::EntityId id : men) {
+            const V3 p = toV3(b.world().units()[id - 1].pos) - to;
+            across = std::max(across, std::abs(p.y));
+            deep = std::max(deep, std::abs(p.x));
+        }
+        return std::make_pair(across, deep);
+    };
+    const auto [wideAcross, wideDeep] = extent(20);
+    const auto [narrowAcross, narrowDeep] = extent(6);
+    CHECK(wideAcross > 8.0f && wideDeep < 1.5f);
+    CHECK(narrowAcross < 5.0f && narrowDeep > 1.5f);
+    // The formation's own width, undrawn: two ranks of six.
+    const std::vector<FormationSlot> own = formationLayout(Formation::Line, 12, 2.0f);
+    const std::vector<FormationSlot> drawn = formationLayout(Formation::Line, 12, 2.0f, 22.0f);
+    float ownWide = 0, drawnWide = 0;
+    for (const FormationSlot& s : own) ownWide = std::max(ownWide, std::abs(s.pos.x));
+    for (const FormationSlot& s : drawn) drawnWide = std::max(drawnWide, std::abs(s.pos.x));
+    CHECK(std::abs(ownWide - 5.0f) < 0.01f && std::abs(drawnWide - 11.0f) < 0.01f);
 }
 
 TEST(encircled_soldiers_face_outward_from_the_point) {
@@ -370,3 +529,4 @@ TEST(gestures_hold_is_offered_and_a_refused_hold_still_taps) {
     g.pointer(PointerEvent::Down, 2, 400, 300, 0, 2010);  // a second finger cancels it
     CHECK(!g.holding() && ends == 2);
 }
+
