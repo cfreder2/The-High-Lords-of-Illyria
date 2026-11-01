@@ -10,7 +10,7 @@ Nothing in a battle is a roll of the dice. An arrow flies until it strikes somet
 
 ## Ground and gaits {#terrain}
 
-Every soldier walks at his **speed** (in the compendium) times what the ground under him does for his kind: his **gait**. Cavalry are fast on roads and open ground, slow in woods and hopeless in a bog, so they ride round a wood that infantry cut through. Wolf riders and elven archers move well among the trees; dwarves are the least slowed by rock and slopes; giants, minotaurs and elephants stride through mud and fords; the dead do not mind the swamp; engines want roads; fliers on the ground walk like men.
+Every soldier walks at his **speed** (in the compendium) times what the ground under him does for his kind: his **gait**. Cavalry are fast on roads and open ground, slow in woods and hopeless in a bog, so they ride round a wood that infantry cut through. Wolf riders and archers move well among the trees; dwarves are the least slowed by rock and slopes; giants, minotaurs and elephants stride through mud and fords; the dead do not mind the swamp; engines want roads; fliers on the ground walk like men.
 
 ::: sheet Ground
 :::
@@ -30,7 +30,7 @@ The same table sets every soldier's path: each takes the way that is quickest **
 Every soldier faces a way, and it matters.
 
 - A blow lands on his **front** (the 120 degrees he faces, which his shield covers), a **flank**, or his **rear** (the 120 degrees behind). A blow in the flank does **half as much again**; one in the rear **twice** as much. A berserker strikes 25 to the front, 37 to the flank, 50 to the back.
-- Missiles do **+30%** in the flank and **+60%** in the back (an elven arrow: 16, 20, 25).
+- Missiles do **+30%** in the flank and **+60%** in the back (an archer's arrow: 16, 20, 25).
 - **Shields only ever block from the front**, never from behind or the side.
 - **Off guard.** A soldier trading blows keeps to his foe while the foe is within reach; anyone else who comes at him then finds him off guard, and a blow in the flank counts as one in the back. Two men on one is murder.
 - **Turning.** Soldiers turn on the spot at 270 degrees a second; riders, and anything as heavy as a minotaur, at 120. They strike only within 45 degrees of facing their foe. So a man struck from behind loses a blow or two turning round, and a rider caught side-on loses his charge.

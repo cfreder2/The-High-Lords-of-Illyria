@@ -12,7 +12,7 @@ An **army** is a company of soldiers of one kind, raised together, named togethe
 
 | Soldiers | Armies |
 |---|---|
-| 12 | light and heavy infantry, elven archers, pikemen, warriors, undead |
+| 12 | light and heavy infantry, archers, pikemen, warriors, undead |
 | 10 | berserkers |
 | 8 | light and heavy cavalry, wolf riders |
 | 6 | giant spiders, dwarven grenadiers |

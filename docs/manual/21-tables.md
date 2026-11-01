@@ -8,7 +8,7 @@ Strength, soldiers in a fresh army, movement points a day, the training (days an
 |---|---|---|---|---|---|
 | Light Infantry | 3 | 12 | 10 | 2 d, 12 g | 3 |
 | Heavy Infantry | 4 | 12 | 8 | 4 d, 20 g | 5 |
-| Elven Archers | 4 | 12 | 12 | 4 d, 20 g | 5 |
+| Archers | 4 | 12 | 12 | 4 d, 20 g | 5 |
 | Pikemen | 4 | 12 | 8 | 4 d, 20 g | 5 |
 | Light Cavalry | 4 | 8 | 18 | 5 d, 28 g | 7 |
 | Heavy Cavalry | 6 | 8 | 16 | 6 d, 36 g | 9 |
@@ -48,7 +48,7 @@ From the game's unit sheet: strength, hit points, speed on open ground (m/s), th
 |---|---|---|---|---|---|---|---|---|
 | Light foot, heroes, wizards | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
 | Heavy foot, pikes, warriors | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
-| Elven Archers | 1 | 1 | 2 | 2 | 5 | 6 | P | P |
+| Archers | 1 | 1 | 2 | 2 | 5 | 6 | P | P |
 | Dwarves, grenadiers | 1 | 1 | 2 | 6 | 3 | 6 | P | P |
 | Horse, elephants, unicorns | 1 | 1 | 2 | 5 | 6 | 5 | P | P |
 | Wolf riders, spiders | 1 | 1 | 2 | 4 | 6 | 4 | P | P |

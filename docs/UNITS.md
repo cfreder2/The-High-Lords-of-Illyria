@@ -19,7 +19,7 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Light Infantry | 3 | 60 | 1.80 | 0.40 | 1.0 | 2.4 | 11 | slash | 1.30 s | 0.6 | 0 | 25% | 110% |  |
 | Heavy Infantry | 4 | 90 | 1.90 | 0.45 | 1.3 | 1.9 | 15 | slash | 1.50 s | 0.6 | 0 | 55% | 85% |  |
-| Elven Archers | 4 | 45 | 1.80 | 0.40 | 1.0 | 2.4 | 5 | slash | 1.20 s | 0.5 | 0 |  | 110% |  |
+| Archers | 4 | 45 | 1.80 | 0.40 | 1.0 | 2.4 | 5 | slash | 1.20 s | 0.5 | 0 |  | 110% |  |
 | Pikemen | 4 | 65 | 1.80 | 0.40 | 1.0 | 2.0 | 14 | pierce | 1.60 s | 2.2 | 0 |  | 90% | +150% vs mounted; +3% in the open;  |
 | Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | slash | 1.20 s | 0.8 | 3 |  | 100% | mounted; +3% in the open;  |
 | Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | pierce | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +5% in the open;  |
@@ -56,7 +56,7 @@ A Molotov shatters where it strikes into a burst of fire, and its fire sets off 
 
 | Unit | Missile | Wounds | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Elven Archers | arrow | pierce | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
+| Archers | arrow | pierce | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
 | Wizards | fireball | fire | 24 m/s | 9.0 s |  | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
 | Dragons | fireball | fire | 30 m/s | 6.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
 | Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
@@ -123,7 +123,7 @@ slows it more than the detour does. Deep water is impassable on foot. Climbing d
 | Horse | 1.30 | 1.00 | 0.50 | 0.30 | 0.35 | 0.40 | 0.40 | 0.80 | 1.00 | 120% | Light Cavalry, Heavy Cavalry, Unicorns |
 | Wolf | 1.25 | 1.00 | 0.85 | 0.35 | 0.35 | 0.55 | 0.45 | 0.80 | 1.00 | 90% | Wolf Riders |
 | Dwarf | 1.20 | 1.00 | 0.70 | 0.50 | 0.35 | 0.80 | 0.55 | 0.85 | 1.00 | 50% | Dwarven Grenadiers |
-| Woodland | 1.25 | 1.00 | 0.95 | 0.55 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Elven Archers, Giant Spiders |
+| Woodland | 1.25 | 1.00 | 0.95 | 0.55 | 0.40 | 0.50 | 0.55 | 0.85 | 1.00 | 100% | Archers, Giant Spiders |
 | Giant | 1.15 | 1.00 | 0.65 | 0.60 | 0.65 | 0.60 | 0.90 | 0.90 | 1.00 | 80% | Giants, Minotaurs, Elephants, Devils, Demons |
 | Undead | 1.20 | 1.00 | 0.70 | 1.00 | 0.55 | 0.50 | 0.80 | 0.85 | 1.00 | 100% | Undead |
 | Wheeled | 1.35 | 1.00 | 0.40 | 0.25 | 0.30 | 0.30 | 0.30 | 0.60 | 1.00 | 150% | Catapults |

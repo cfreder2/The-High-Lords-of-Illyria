@@ -37,8 +37,8 @@ Men in mail and plate behind big shields, with swords: the line of battle. Their
 **On the field.** The shield wall. Hold them in **Line** facing the enemy and they will take a charge and give it back; turn them, or let them be caught side-on, and the shield is no use at all. Guard their flanks with pikes or horse.
 :::
 
-::: unit Elven Archers | archers
-Longbowmen of the forests, unarmoured and light on their feet. In the woods they move as other men move on a road. Their arrows reach seventy metres, further from a height, and every one is a real arrow that may hit what it was aimed at, or something else.
+::: unit Archers | archers
+Young men with longbows, unarmoured and light on their feet. In the woods they move as other men move on a road. Their arrows reach seventy metres, further from a height, and every one is a real arrow that may hit what it was aimed at, or something else.
 
 **Campaign.** 12 men. 12 movement points; a forest costs them only 2. Trained in woodland towns, at Sylvaris and Moonhaven: 4 days, 20 gold, 5 a day. They have the familiar-ground edge in forest.
 

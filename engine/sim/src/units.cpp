@@ -209,7 +209,7 @@ UnitStats unitStats(UnitType type) {
             shield(s, r(11, 20));
             s.mass = r(13, 10);
             break;
-        case T::Archers:  // Warlords' Elven Archers
+        case T::Archers:  // Warlords' Elven Archers, here young men with longbows
             s = base(type, r(2, 5), r(9, 5), r(12, 5), 45);
             bow(s, m(42), sec(4), 16, m(6), m(55), m(70));
             s.ranged.drawTicks = sec(22, 15);  // 1.47 s: the draw his sheet plays before the release
@@ -398,7 +398,7 @@ const char* unitTypeName(UnitType type) {
     switch (type) {
         case T::LightInfantry: return "Light Infantry";
         case T::HeavyInfantry: return "Heavy Infantry";
-        case T::Archers: return "Elven Archers";
+        case T::Archers: return "Archers";
         case T::Pikemen: return "Pikemen";
         case T::LightCavalry: return "Light Cavalry";
         case T::HeavyCavalry: return "Heavy Cavalry";

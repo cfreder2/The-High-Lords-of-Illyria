@@ -55,7 +55,7 @@ Cities train **common troops** only, and slowly. In *Warlords* light infantry to
 |---|---|---|---|---|
 | Light Infantry | 2 | 12 | 3 | every city |
 | Heavy Infantry | 4 | 20 | 5 | hill and plain towns; the Throne, Giants, Dwarves, Malvoren |
-| Elven Archers | 4 | 20 | 5 | woodland towns; the Elves, the Order |
+| Archers | 4 | 20 | 5 | woodland towns; the Elves, the Order |
 | Pikemen | 4 | 20 | 5 | hill and plain towns; the Giants, the Order |
 | Dwarven Grenadiers | 4 | 24 | 4 | hill towns; the Dwarves |
 | Warriors | 4 | 24 | 6 | woodland towns; the Orcs |
@@ -72,9 +72,9 @@ A town trains light infantry and one or two more kinds, by the land round it: in
 | Highcrag (the Highcrag Giants) | Light Infantry, Heavy Infantry, Pikemen |
 | Deepforge (the Ironhold Dwarves) | Light Infantry, Dwarven Grenadiers, Heavy Infantry, Catapults |
 | Grathmaw (the Orcs of Grath) | Light Infantry, Wolf Riders, Warriors |
-| Sylvaris (the Sylvaran Elves) | Light Infantry, Elven Archers, Light Cavalry |
+| Sylvaris (the Sylvaran Elves) | Light Infantry, Archers, Light Cavalry |
 | Sunreach (the Sunreach Riders) | Light Infantry, Light Cavalry, Heavy Cavalry |
-| Moonhaven (the Moonward Order) | Light Infantry, Elven Archers, Pikemen |
+| Moonhaven (the Moonward Order) | Light Infantry, Archers, Pikemen |
 | Dreadspire (Lord Malvoren) | Light Infantry, Heavy Infantry, Wolf Riders, Catapults |
 
 A city holds at most 32 armies; a full city trains no more until some march out. A city in which an enemy is raising a banner trains nothing at all (chapter [](#banners)).

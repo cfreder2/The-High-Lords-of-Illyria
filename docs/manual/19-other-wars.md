@@ -59,7 +59,7 @@ Six of these eleven are offered at each break, a different six as the waves go b
 | Warriors | 6 | 4 | Dwarven Grenadiers | 3 | 4 |
 | Heavy Infantry | 6 | 4 | Journeymen | 2 | 3 |
 | Pikemen | 6 | 3 | Light Cavalry | 4 | 4 |
-| Elven Archers | 6 | 4 | Heavy Cavalry | 4 | 6 |
+| Archers | 6 | 4 | Heavy Cavalry | 4 | 6 |
 | Berserkers | 5 | 4 | Wizards | 2 | 6 |
 | | | | Griffins | 2 | 6 |
 

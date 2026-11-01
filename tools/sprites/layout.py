@@ -75,7 +75,7 @@ _RIDER = _MAN + ('mount_head', 'mount_leg')
 UNITS = {
     'light_infantry': (0, 'man', 1.80, 0.78, False, False, _MAN + ('shield',), 'lightly armoured spearman, round shield, kettle helm'),
     'heavy_infantry': (1, 'man', 1.90, 0.90, False, False, _MAN + ('shield',), 'mail and plate swordsman, great helm with plume, kite shield with a cross'),
-    'archers': (2, 'man', 1.80, 0.90, False, True, _MAN, 'elven longbowman, hood, quiver'),
+    'archers': (2, 'man', 1.80, 0.90, False, True, _MAN, 'young longbowman, no hood, quiver'),
     'pikemen': (3, 'large', 1.80, 0.90, False, False, _MAN, 'pikeman with a 5 m pike, open helm, tabard'),
     'light_cavalry': (4, 'large', 2.50, 0.72, False, False, _RIDER, 'light horseman with lance on a brown horse'),
     'heavy_cavalry': (5, 'large', 2.70, 0.90, False, False, _RIDER, 'armoured knight with couched lance on a barded horse'),
