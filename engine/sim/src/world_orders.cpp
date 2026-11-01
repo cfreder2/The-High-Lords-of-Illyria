@@ -226,6 +226,7 @@ void World::applyOrder(Unit& u, const Command& cmd) {
         case Command::Type::AttackGround:
         case Command::Type::AttackGate:
         case Command::Type::Stop:
+        case Command::Type::Raid:  // let loose (World::applyCommand)
             break;
     }
 }

@@ -124,6 +124,44 @@ void Battle::orderLaySatchels(const V3& at) {
     voice_.order(Situation::Attack, *world_, layers);
 }
 
+bool Battle::selectionRaids() const {
+    for (sim::EntityId id : selectedAlive())
+        if (world_->units()[id - 1].stats.scavenge.sight > sim::Fixed::zero()) return true;
+    return false;
+}
+
+bool Battle::selectionLaysSatchels() const {
+    for (sim::EntityId id : selectedAlive())
+        if (world_->units()[id - 1].satchels > 0) return true;
+    return false;
+}
+
+bool Battle::orderRaid() {
+    std::vector<sim::EntityId> raiders;
+    for (sim::EntityId id : selectedAlive())
+        if (world_->units()[id - 1].stats.scavenge.sight > sim::Fixed::zero()) raiders.push_back(id);
+    if (raiders.empty()) {
+        say("Only the hyena-folk raid");
+        return false;
+    }
+    // At once, from where they stand: a raid needs no target.
+    for (sim::EntityId id : raiders) issue(local_, id, sim::Command::Type::Raid, {});
+    markOrdered(raiders);
+    voice_.order(Situation::Attack, *world_, raiders);
+    return true;
+}
+
+void Battle::specialAction() {
+    if (orderMode_ == OrderMode::LaySatchel) {
+        orderMode_ = OrderMode::Normal;  // pressed again: let go
+        return;
+    }
+    const bool raid = selectionRaids(), satchels = selectionLaysSatchels();
+    if (raid) orderRaid();
+    if (satchels) orderMode_ = OrderMode::LaySatchel;
+    if (!raid && !satchels) say("Nothing special to do: grenadiers lay satchels, the hyena-folk raid");
+}
+
 void Battle::orderForceMarch(const V3& to, const V3* facing) {
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;

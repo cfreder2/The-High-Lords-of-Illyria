@@ -419,6 +419,7 @@
     <button id="formation" aria-label="Choose a formation" aria-haspopup="menu">Line</button>
     <button id="attack" aria-label="Attack: the next tap attacks what you tap (hold for a force march)">⚔ Attack</button>
     <button id="scatter" aria-label="Scatter: everyone selected runs outward">Scatter</button>
+    <button id="raid" class="hidden" aria-label="Raid: the hyena-folk selected are let loose to raid from where they stand">Raid</button>
     <button id="hold">Hold</button>
     <button id="focus">Find</button>
   </div>
@@ -532,6 +533,8 @@
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
+      raid: Module.cwrap("illyria_raid", null, []),
+      special: Module.cwrap("illyria_special", null, []),
       charge: Module.cwrap("illyria_charge", null, []),
       formation: Module.cwrap("illyria_cycle_formation", null, []),
       setFormation: Module.cwrap("illyria_set_formation", null, ["number"]),
@@ -959,6 +962,8 @@
   $("hold").onclick = () => api && api.stop();
   $("charge").onclick = () => api && api.charge();
   $("scatter").onclick = () => api && api.scatter();
+  // The hyena-folk let loose at once: a raid needs no target.
+  $("raid").onclick = () => { if (!api) return; api.raid(); updateHud(); };
   // Attack mode for the next tap; held, a force march instead. Tap again to cancel.
   let orderMode = 0;
   const setMode = (m) => { if (!api) return; api.setMode(m); orderMode = m; updateHud(); };
@@ -1003,8 +1008,10 @@
   // Z turns it north up, C brings it to the selection (the camera, in a battle
   // and on the campaign map alike; the arrows pan too, shift + left and right
   // turning the view, and N is north as well).
-  // G attack mode, V force march, T lay satchels, X scatter, B halt, ` picks
-  // the heroes, Space pauses, Esc lets go (M, L, H still do as V, T, B).
+  // G attack mode, V force march, T the selection's special action (the
+  // hyena-folk raid at once, grenadiers lay satchels where the next click
+  // is), X scatter, B halt, ` picks the heroes, Space pauses, Esc lets go
+  // (M, L, H still do as V, T, B).
   // Alt (or Ctrl) + number saves the selection as that group, the number
   // recalls it (twice: the camera goes to it); the keypad's 1-9 (or shift +
   // number) pick a formation and 0 scatters; shift-drag draws a box,
@@ -1077,7 +1084,7 @@
       case "KeyX": api.scatter(); break;
       case "KeyG": setMode(orderMode === 1 ? 0 : 1); break;
       case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
-      case "KeyT": case "KeyL": setMode(orderMode === 3 ? 0 : 3); break;
+      case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": case "KeyH": api.stop(); break;
       case "KeyC": api.focusSelection(); break;
       case "Backquote": api.selectHeroes(); break;
@@ -1392,6 +1399,7 @@
     $("enemyCount").textContent = `${enemies.reduce((n, q) => n + q.alive, 0)} / ${enemies.reduce((n, q) => n + q.total, 0)}`;
     selCount = s.selCount;
     $("actions").classList.toggle("hidden", s.selCount === 0);
+    $("raid").classList.toggle("hidden", !s.raid);
     $("selInfo").classList.toggle("hidden", s.selCount === 0);
     if (s.selCount === 0) $("picker").classList.add("hidden");
     // With the selection's small edges (the first soldier's: his land, his ground, his rank, a hero near; the high ground counts blow by blow).

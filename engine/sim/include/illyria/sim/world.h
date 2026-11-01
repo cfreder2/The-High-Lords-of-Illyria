@@ -104,11 +104,12 @@ struct TerrainBonus {
     int32_t hillsPct = 0;  // slopes
 };
 
-// A scavenger (world_scavenge.cpp): with no orders he runs his own fight,
-// round the enemy's flank to its rear, taking what lies about the field (a
-// satchel, a blade, a head, a limb) and hurling it at the soft targets.
+// A scavenger (world_scavenge.cpp): with no orders he holds and fights like
+// anyone; ordered to raid (Command::Raid) he runs his own fight from there,
+// taking what lies about the field (a satchel, a blade, a head, a limb) and
+// hurling it at the soft and the straggling, as far as he can see.
 struct Scavenging {
-    Fixed sight;              // zero: not a scavenger. How far he sees things to take
+    Fixed sight;              // zero: not a scavenger. How far he sees, raiding: things to take, men, threats
     Fixed throwSpeed;         // m/s off his hand
     Fixed throwRange;         // the farthest he throws from
     Fixed dispersionAt100m;   // as a bow's, for a recruit
@@ -159,17 +160,28 @@ inline constexpr uint8_t kNoSource = 0xFF;
 
 // What a scavenger is about, and what he holds (world_scavenge.cpp).
 struct Scavenger {
-    // Scouting round the enemy (or cutting down a soft target with his
-    // blade), running for a prize, closing to throw it, falling back after.
+    // Raiding: looking about (or cutting down a soft man with his blade),
+    // running for a prize, closing to throw it, falling back after.
     enum class Mind : uint8_t { Scout, Fetch, Strike, Retreat };
     enum class Prize : uint8_t { None, Remain, Corpse, Satchel };
     Mind mind = Mind::Scout;
     Prize prize = Prize::None;
     uint32_t prizeRef = 0;      // the remain's slot, the body's id or the satchel's id
-    Vec3 goal;                  // where he is running: the prize, or round the flank
+    Vec3 goal;                  // where he is running: the prize, round the foes he sees, or the one place he falls back to
     EntityId mark = kNoEntity;  // whom he means to hit
     Vec3 markSeen;              // where the mark stood a tick ago (he leads him)
-    int32_t timer = 0;          // the wind-up, or the retreat, left
+    int32_t timer = 0;          // the wind-up left, or how much longer he may spend falling back
+    // A raid (Command::Raid): turned loose from where he was ordered, until
+    // another order, until his pack has lost half its men, or until nothing
+    // worth taking has been in his sight for a while; then he holds.
+    bool raiding = false;
+    bool wary = false;     // driven out of missile troops' reach this raid: he no longer goes looking round
+    uint32_t pack = 0;     // the raiders let loose together about him (World::formPacks), by number
+    int32_t packMen = 0;   // how many the pack was when the raid began
+    Vec3 home;             // where the raid began: he falls back toward it
+    int32_t quiet = 0;     // ticks with nothing worth taking in sight
+    int32_t replan = 0;    // falling back: ticks before he may choose another place to run to
+    EntityId shotBy = kNoEntity;  // raiding, the missile trooper who just struck him, seen or not: he falls back from him
     // In his hands, one thing at a time: a body part or a blade (as the
     // remain it was: kind, whose soldier, of what type), or a satchel charge.
     RemainKind held = RemainKind::None;
@@ -282,6 +294,10 @@ struct Unit {
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
     bool looted = false;       // dead: a scavenger took his blade
     Scavenger scav;            // scavengers only (UnitStats::scavenge)
+    // Struck by something a scavenger threw: by whom, and when. With no
+    // order of his own he turns his shield to him (World::shieldTarget).
+    EntityId thrower = kNoEntity;
+    uint32_t thrownTick = 0;
     // Satchel charges still carried (UnitStats::satchels), the ticks before
     // he may lay the next, and whether he lays one where his move ends (an order).
     int32_t satchels = 0;
@@ -331,8 +347,10 @@ struct Command {
     // AttackUnit: go after `targetUnit` (of either side: a force attack on a
     // friend only ever when ordered). AttackObject: a gate, wall or piece of
     // scenery (world_orders.cpp says who can harm what). LaySatchel: walk to
-    // `target` and lay a satchel charge there (those who carry them).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel };
+    // `target` and lay a satchel charge there (those who carry them). Raid: a
+    // scavenger let loose to raid from where he stands (world_scavenge.cpp);
+    // it needs no target, and anyone else ignores it.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
 
     PlayerId player = 0;
@@ -686,11 +704,50 @@ private:
     bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);
     // Scavengers (world_scavenge.cpp).
-    // His own fight, with no orders: flank, fetch, throw, fall back.
-    void scavenge(Unit& u);
+    // Raiding (Command::Raid): his own fight from where he was let loose,
+    // as far as he can see: fetch, throw, fall back, go again.
+    void raid(Unit& u);
+    // The raid is over: he holds where he is, keeping what he holds.
+    void endRaid(Unit& u);
+    // The raiders let loose this tick, in packs: each with those of his side
+    // let loose within reach of him (by id, the first leading).
+    void formPacks();
+    // How many of his pack still stand; its strength about him (the raiders
+    // near him, by fightingPower).
+    int32_t packLeft(const Unit& u) const;
+    int64_t packStrength(const Unit& u) const;
+    // The foes within reach of `at`, as a threat to him (the armoured, those
+    // who can catch him and braced pikes count more); and the missile troops
+    // he sees whose reach covers `spot`, graded by how deep in it the spot
+    // lies (`mark` himself excused; those beside him are in the crowd).
+    // `covered`: whether any reach covers it. Missile troops seen by any of
+    // his pack are known to him (they cry out).
+    int64_t crowdAt(const Unit& u, const Vec3& at) const;
+    int64_t missileCover(const Unit& u, const Vec3& spot, const Unit* mark, bool* covered) const;
+    // His odds, per mille, with his pack about him against a crowd and the missiles.
+    int32_t raidOdds(const Unit& u, int64_t crowd, int64_t cover) const;
+    // The best foe in sight to throw at (`throwing`) or to cut down, that the
+    // odds allow, out of missile troops' reach if any is; or null.
+    Unit* choosePrey(Unit& u, bool throwing);
+    // Falls back to one place well clear of the foes about him, out of the
+    // missile troops' reach if he can, toward where the raid began; runs to
+    // it (false once there, or out of time).
+    void fallBack(Unit& u);
+    Vec3 retreatSpot(const Unit& u) const;
+    bool fallingBack(Unit& u, bool think);
+    // Nothing worth taking in sight: round the foes he does see, toward their rear.
+    void prowl(Unit& u, bool think);
     // Ordered at one soldier with something in hand: he throws it at him
     // (true); empty-handed he goes after him as anyone would (false).
     bool scavengeOrdered(Unit& u);
+    // Not raiding, with a satchel burning down in his hands: he throws it.
+    void shedBurning(Unit& u);
+    // The heavies' answer: an idle soldier struck by a throw from a foe he
+    // cannot reach, or with one he cannot catch at hand (`near`), turns his
+    // shield to him and holds his place. Whom to face, or null.
+    Unit* shieldTarget(Unit& u, Unit* near);
+    // A scavenger faster than him and beyond his reach: not worth the chase.
+    bool outruns(const Unit& u, const Unit& foe) const;
     // A satchel in his hands burns down; at the last it falls from them.
     void burnHeld(Unit& u);
     // He falls with something in his hands: it drops where he fell.
@@ -713,10 +770,9 @@ private:
     // The armoured foes near him: how close the nearest is inside its
     // danger (positive: too close), and which way is away from them all.
     Fixed scavengeDanger(const Unit& u, Fixed reach, Vec3* away) const;
-    // Choosing: the best thing to take, the best man to hit, where to go round the enemy.
+    // The best thing in sight to take; where to go round the foes he sees.
     bool choosePrize(Unit& u);
-    Unit* chooseMark(Unit& u);
-    Vec3 flankGoal(const Unit& u) const;
+    Vec3 prowlGoal(const Unit& u) const;
     // Where his prize is now; false when it is gone (taken, kicked, blown up).
     bool prizeAt(const Unit& u, Vec3& at) const;
     void takePrize(Unit& u);
@@ -724,8 +780,6 @@ private:
     bool strike(Unit& u, Unit& mark);
     // Hurls what he holds at `at`.
     void hurl(Unit& u, const Vec3& at);
-    // Empty-handed with nothing to take: the soft foe near him to cut down, or null.
-    Unit* pounceTarget(Unit& u);
     // Battle mechanics in world_combat.cpp.
     // The enemy to fight: the foe still in reach, or the nearest within aggro range.
     Unit* meleeTarget(Unit& unit, EntityId lastFoe);
@@ -839,6 +893,7 @@ private:
     Fixed zoneRadius_;
     int32_t zonePct_ = 0;
     EntityId nextId_ = 1;
+    uint32_t packs_ = 0;  // raiding packs formed so far (formPacks)
     std::vector<Unit> units_;
     std::vector<Projectile> projectiles_;
     std::vector<Projectile> spawned_;  // created while projectiles_ is being updated

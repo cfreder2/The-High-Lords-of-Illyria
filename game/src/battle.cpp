@@ -960,7 +960,11 @@ void Battle::runEnemyAi() {
         }
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
-        if (role == Role::Scout) continue;  // the hyena-folk run their own fight (world_scavenge.cpp)
+        if (role == Role::Scout) {
+            // The hyena-folk: up toward the nearest foe, then let loose to raid (world_scavenge.cpp).
+            aiRaid(static_cast<size_t>(&s - squads_.data()), goal);
+            continue;
+        }
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand.
             if (!s.garrison) aimEngines(s);

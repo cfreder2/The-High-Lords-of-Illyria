@@ -91,20 +91,28 @@ arrows can hit them.
 
 ## Scavengers
 
-Left to themselves, scavengers run their own fight (`engine/sim/src/world_scavenge.cpp`; orders override it):
-round the end of the enemy's line toward its rear, taking the best thing in **sight**, darting in to throw it at
-the softest man in reach, falling back and going for the next. Prizes are worth: a satchel charge 100, a blade 60,
-a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less 2 for every metre of the run. Marks, by kind:
-archers, healers and wizards first (x3), other missile troops (x2), then the rest, armoured men last (x1/2);
-nearer is better. They keep out of reach of armoured foes (a shield of 30% or more, or a heavy body: knights,
-warriors, dwarves, cavalry, heroes, beasts), and with nothing to throw cut down the soft ones near them.
-Thrown, a part hurts as any flying part does (2 to 8 by its speed, a trunk half again), a blade cuts (5 to 14),
-a head breaks the man it strikes (his morale to nothing; the dead and heroes never break), and a satchel bursts
-where it strikes. A burning satchel is taken only with the fuse to throw it on.
+Scavengers are soldiers like any other until ordered to raid (`engine/sim/src/world_scavenge.cpp`): they go
+where they are sent, hold there and fight what comes at them. Let loose (the Raid order), each runs his own fight
+from where he stands, knowing only what is within his **sight**: he takes the best thing lying there, darts in to
+throw it at a soft man or a straggler, falls back to one place well clear, and goes again. The raid ends at
+another order, when his pack has lost half its men, or after 15 s with nothing worth taking in sight.
+Prizes are worth: a satchel charge 100, a blade 60, a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less
+2 for every metre of the run. Marks, by kind: archers, healers, wizards and grenadiers first (x3), other missile
+troops (x2), then the rest, armoured men last (x0.3); the wounded up to twice; the straggler far from his
+friends up to x2.5; a shield facing them less its chance to block; nearer is better. He goes only when his pack
+about him (each at half again his fighting power) is a match for the foes within 10 m of the man (the armoured,
+those quick enough to catch him and braced pikes counting double or more) and for the missile troops whose reach
+covers where he would stand (at twice their power, by how deep in it): 55 in 100 to throw, 60 to cut a man down,
+breaking off below 45. Out of missile reach first. He keeps out of reach of armoured foes (a shield of 30% or more,
+or a heavy body: knights, warriors, cavalry, heroes, beasts). Thrown, a part hurts as any flying part does (2 to 8
+by its speed, a trunk half again), a blade cuts (5 to 14), a head breaks the man it strikes (his morale to
+nothing; the dead and heroes never break), and a satchel bursts where it strikes; a shield facing the throw
+catches a part or a blade. A burning satchel is taken only with the fuse to throw it on. A soldier with no order
+does not chase a scavenger quicker than him; struck by a throw, he turns his shield to the thrower.
 
 | Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |
 |---|---|---|---|---|---|---|
-| Hyena-folk | 30 m | 17 m/s | 24 m | 14 m | 5 m | 0.3 s |
+| Hyena-folk | 35 m | 17 m/s | 24 m | 14 m | 5 m | 0.3 s |
 
 Blades are taken from the bodies of: Light Infantry, Heavy Infantry, Pikemen, Light Cavalry, Heavy Cavalry, Wolf Riders, Pegasi, Undead, Archons, Hero, Warriors, Berserkers, Hyena-folk.
 

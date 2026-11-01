@@ -117,16 +117,24 @@ int main() {
     }
 
     std::printf("\n## Scavengers\n\n");
-    std::printf("Left to themselves, scavengers run their own fight (`engine/sim/src/world_scavenge.cpp`; orders override it):\n"
-                "round the end of the enemy's line toward its rear, taking the best thing in **sight**, darting in to throw it at\n"
-                "the softest man in reach, falling back and going for the next. Prizes are worth: a satchel charge 100, a blade 60,\n"
-                "a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less 2 for every metre of the run. Marks, by kind:\n"
-                "archers, healers and wizards first (x3), other missile troops (x2), then the rest, armoured men last (x1/2);\n"
-                "nearer is better. They keep out of reach of armoured foes (a shield of 30%% or more, or a heavy body: knights,\n"
-                "warriors, dwarves, cavalry, heroes, beasts), and with nothing to throw cut down the soft ones near them.\n"
-                "Thrown, a part hurts as any flying part does (2 to 8 by its speed, a trunk half again), a blade cuts (5 to 14),\n"
-                "a head breaks the man it strikes (his morale to nothing; the dead and heroes never break), and a satchel bursts\n"
-                "where it strikes. A burning satchel is taken only with the fuse to throw it on.\n\n");
+    std::printf("Scavengers are soldiers like any other until ordered to raid (`engine/sim/src/world_scavenge.cpp`): they go\n"
+                "where they are sent, hold there and fight what comes at them. Let loose (the Raid order), each runs his own fight\n"
+                "from where he stands, knowing only what is within his **sight**: he takes the best thing lying there, darts in to\n"
+                "throw it at a soft man or a straggler, falls back to one place well clear, and goes again. The raid ends at\n"
+                "another order, when his pack has lost half its men, or after 15 s with nothing worth taking in sight.\n"
+                "Prizes are worth: a satchel charge 100, a blade 60, a head 45, a trunk 25, a limb 18, a bone or gobbet 12, less\n"
+                "2 for every metre of the run. Marks, by kind: archers, healers, wizards and grenadiers first (x3), other missile\n"
+                "troops (x2), then the rest, armoured men last (x0.3); the wounded up to twice; the straggler far from his\n"
+                "friends up to x2.5; a shield facing them less its chance to block; nearer is better. He goes only when his pack\n"
+                "about him (each at half again his fighting power) is a match for the foes within 10 m of the man (the armoured,\n"
+                "those quick enough to catch him and braced pikes counting double or more) and for the missile troops whose reach\n"
+                "covers where he would stand (at twice their power, by how deep in it): 55 in 100 to throw, 60 to cut a man down,\n"
+                "breaking off below 45. Out of missile reach first. He keeps out of reach of armoured foes (a shield of 30%% or more,\n"
+                "or a heavy body: knights, warriors, cavalry, heroes, beasts). Thrown, a part hurts as any flying part does (2 to 8\n"
+                "by its speed, a trunk half again), a blade cuts (5 to 14), a head breaks the man it strikes (his morale to\n"
+                "nothing; the dead and heroes never break), and a satchel bursts where it strikes; a shield facing the throw\n"
+                "catches a part or a blade. A burning satchel is taken only with the fuse to throw it on. A soldier with no order\n"
+                "does not chase a scavenger quicker than him; struck by a throw, he turns his shield to the thrower.\n\n");
     std::printf("| Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |\n|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         if (retired(static_cast<UnitType>(t))) continue;
