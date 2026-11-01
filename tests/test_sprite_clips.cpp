@@ -96,6 +96,14 @@ TEST(sprite_clips_by_name_and_their_stand_ins) {
     CHECK(sprites::fallbackOf("run") == "walk" && sprites::fallbackOf("celebrate") == "idle");
     CHECK(sprites::fallbackOf("die_front") == "die_back" && sprites::fallbackOf("die_crumple") == "die_back");
     CHECK(sprites::fallbackOf("die_burn") == "die_crumple" && sprites::fallbackOf("idle").empty());
+    // Every clip the game plays (the sandbox offers them all) comes down to one of the fixed layout's eight.
+    for (const char* known : sprites::kKnownClips) {
+        std::string_view n = known;
+        for (int k = 0; k < 8 && std::none_of(std::begin(sprites::kClipNames), std::end(sprites::kClipNames), [&](const char* f) { return n == f; }); ++k)
+            n = sprites::fallbackOf(n);
+        CHECK(std::any_of(std::begin(sprites::kClipNames), std::end(sprites::kClipNames), [&](const char* f) { return n == f; }));
+        CHECK(s.play(known) != nullptr);
+    }
     const SheetClips h = sprites::parseClips(kHyena);
     CHECK(h.valid(39));
     CHECK(h.play("run") == h.find("walk") && h.play("celebrate") == h.find("idle"));

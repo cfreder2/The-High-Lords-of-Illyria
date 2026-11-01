@@ -248,6 +248,15 @@ float fallSeconds(const sprites::SheetClip& c) {
 
 }  // namespace
 
+std::string Renderer::clipPlayed(int type, std::string_view name) const {
+    if (const sprites::SheetClips* clips = clipsFor(type)) {
+        const sprites::SheetClip* c = clips->play(name);
+        return c ? c->name : std::string();
+    }
+    const int c = fixedClip(name);
+    return c < 0 ? std::string() : std::string(sprites::kClipNames[c]);
+}
+
 int Renderer::playedFrame(int type, sim::EntityId id, float gameSeconds, float* down) {
     const auto it = played_.find(id);
     if (it == played_.end()) return -1;

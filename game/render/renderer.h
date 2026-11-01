@@ -6,6 +6,7 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "illyria/game/battle.h"
@@ -84,6 +85,8 @@ public:
     void playClip(const std::vector<sim::EntityId>& ids, const std::string& clip, bool loop);
     // The clips a type's sheet plays, by name: its own, or the fixed layout's eight.
     std::vector<std::string> clipNames(int type) const;
+    // The clip a type's sheet plays for `name`: itself, else what stands in for it ("" none).
+    std::string clipPlayed(int type, std::string_view name) const;
     // The castles' tower banners in each town's holder's colour (by city index).
     void setCityColours(const std::vector<V3>& colours);
     // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.

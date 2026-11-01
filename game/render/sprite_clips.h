@@ -53,6 +53,11 @@ public:
     bool valid(int framesPerView) const;
 };
 
+// Every clip the game plays a soldier, by name, in the order the sandbox
+// offers them: a sheet may list others of its own besides.
+constexpr const char* kKnownClips[] = {"idle",   "walk",      "run",      "attack",    "throw",       "pickup",
+                                       "flinch", "celebrate", "die_back", "die_front", "die_crumple", "die_burn"};
+
 // What a sheet without the clip `name` plays instead ("" nothing): run the
 // walk, celebrate the idle, the falls die_back (burning: die_crumple first),
 // a scavenger's pickup and throw (and a slash) the attack.

@@ -28,6 +28,8 @@
   .sb-men { color: #c9bc9f; font-size: 11px; }
   .sb-clips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 3px; }
   .sb-clips button { min-height: 28px; padding: 2px; font-size: 11px; }
+  .sb-clips button.sb-standin { opacity: 0.6; }
+  .sb-clips button small { display: block; font-size: 9px; }
   #sbCatch { position: fixed; inset: 0; z-index: 3; cursor: crosshair; }
   #sbPanel .sb-small { min-height: 24px; padding: 0 8px; font-size: 11px; }
   .sb-tune { display: grid; grid-template-columns: 1fr 64px 40px; gap: 3px 6px; align-items: center; margin-top: 3px; }
@@ -56,9 +58,6 @@
 
   // Four sides, in the match colours (mode.h teamColour).
   const SIDES = [["Blue", "#4a78e6"], ["Red", "#d9402f"], ["Gold", "#e0b43a"], ["Green", "#4caf50"]];
-  // sprites::Clip, in order (game/render/sprite_layout.h): offered when no one
-  // is selected; else the selected soldiers' sheets' own (illyria_sandbox_clips).
-  const CLIPS = ["idle", "walk", "attack", "flinch", "die_back", "die_front", "die_crumple", "die_burn"];
   const SLOW = [[0.1, "⅒"], [0.25, "¼"], [0.5, "½"], [1, "1×"], [2, "2×"], [4, "4×"]];
   // The numbers the sandbox tunes (SandboxMode::statsJson): key, label, step.
   const TUNE = [["hp", "Health", 1], ["melee", "Melee damage", 1], ["swing", "Seconds a swing", 0.05], ["reach", "Reach (m)", 0.1],
@@ -151,8 +150,12 @@
 
     panel.append(el("h4", {}, "Selected soldiers play"));
     const clips = el("div", { class: "sb-clips" });
-    const names = clipNames.length ? clipNames : CLIPS;
-    names.forEach((c) => clips.append(el("button", { onclick: () => call("illyria_sandbox_play", null, ["string", "number"], [c, state.loop ? 1 : 0]) }, c.replace("die_", "† ").replace(/_/g, " "))));
+    // Every clip the game plays (illyria_sandbox_clips); one a selected sheet lacks is dimmed, its stand-in said.
+    const label = (n) => n.replace("die_", "† ").replace(/_/g, " ");
+    clipNames.forEach((c) => clips.append(el("button", {
+      class: c.as ? "sb-standin" : "", title: c.as ? `not on this sheet: plays its ${label(c.as)}` : "",
+      onclick: () => call("illyria_sandbox_play", null, ["string", "number"], [c.name, state.loop ? 1 : 0]) },
+    label(c.name), c.as ? el("small", {}, `= ${label(c.as)}`) : "")));
     clips.append(el("button", { onclick: () => call("illyria_sandbox_play", null, ["string", "number"], ["", 0]) }, "as before"));
     panel.append(clips);
     const loop = el("input", { type: "checkbox", onchange: (e) => { state.loop = e.target.checked; } });

@@ -2145,20 +2145,32 @@ EMSCRIPTEN_KEEPALIVE void illyria_sandbox_tune(int type, const char* json) {
 EMSCRIPTEN_KEEPALIVE void illyria_sandbox_clip(int clip, int loop) {
     if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), clip, loop != 0);
 }
-// The clips the selected soldiers' sheets play, by name, as a JSON array: a
-// sheet's own (sprite_clips.h) or the fixed layout's eight, each name once,
-// in the order the first sheet that has it lists it. Empty: no one selected.
+// Every clip the selected soldiers can be made to play, as a JSON array of
+// {"name", "as"}: each the game plays (sprites::kKnownClips), then any other
+// a selected sheet lists of its own; "as" when a selected sheet has none of
+// that name and plays another in its place (the first such sheet's).
 EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_clips() {
     static std::string s;
-    std::vector<std::string> names;
-    std::set<int> types;
+    std::vector<std::string> names(std::begin(illyria::game::sprites::kKnownClips), std::end(illyria::game::sprites::kKnownClips));
+    std::vector<int> types;
     if (sandbox())
         for (illyria::sim::EntityId id : app->battle->selectedAlive())
-            if (const illyria::sim::Unit* u = app->battle->world().findUnit(id); u && types.insert(u->stats.type).second)
+            if (const illyria::sim::Unit* u = app->battle->world().findUnit(id);
+                u && std::find(types.begin(), types.end(), u->stats.type) == types.end()) {
+                types.push_back(u->stats.type);
                 for (const std::string& n : app->renderer.clipNames(u->stats.type))
                     if (std::find(names.begin(), names.end(), n) == names.end()) names.push_back(n);
+            }
     s = "[";
-    for (size_t i = 0; i < names.size(); ++i) s += (i ? ",\"" : "\"") + names[i] + "\"";
+    for (size_t i = 0; i < names.size(); ++i) {
+        std::string as;
+        for (int t : types)
+            if (const std::string p = app->renderer.clipPlayed(t, names[i]); p != names[i]) {
+                as = p.empty() ? "nothing" : p;
+                break;
+            }
+        s += (i ? ",{\"name\":\"" : "{\"name\":\"") + names[i] + "\"" + (as.empty() ? "" : ",\"as\":\"" + as + "\"") + "}";
+    }
     s += "]";
     return s.c_str();
 }
