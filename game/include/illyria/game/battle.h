@@ -248,6 +248,8 @@ public:
     int saveGroup();
     bool recallGroup(int slot);
     void clearGroup(int slot);
+    // Ungroup: forgets every group whose living men are all selected. How many went.
+    int ungroupSelection();
     const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
 
     // Orders to the selection (for tests and hooks as well as the input).

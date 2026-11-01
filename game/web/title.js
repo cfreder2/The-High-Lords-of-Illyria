@@ -449,6 +449,7 @@
     `<table class="keys">` +
     `<tr><td>${k("1")}…${k("9")} ${k("0")}</td><td>Recall that group; twice quickly, the camera goes to it.</td></tr>` +
     `<tr><td>${k("Alt")}/${k("Ctrl")} + number</td><td>Make the selection that group.</td></tr>` +
+    `<tr><td>${k("U")}</td><td>Ungroup: forget every group the selection holds whole (the soldiers stay selected).</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + ${k("A")}</td><td>Select every soldier of yours on the screen.</td></tr>` +
     `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 as they stand.</td></tr>` +
     `<tr><td>${k("G")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground).</td></tr>` +

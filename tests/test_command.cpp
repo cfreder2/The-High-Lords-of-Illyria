@@ -228,6 +228,15 @@ TEST(groups_are_saved_and_recalled) {
     CHECK(!b.recallGroup(7));
     b.selectHeroes();
     CHECK(b.selectedSquad() == squadNamed(b, "Lord Aldric"));
+    // Ungroup takes only the groups wholly selected: the hero's, not the pikes'.
+    b.selectSquad(squadNamed(b, "Ferry Pikes"));
+    b.assignGroup(7);
+    b.clearSelection();
+    CHECK(b.ungroupSelection() == 0);
+    b.selectHeroes();
+    CHECK(b.ungroupSelection() == 1);
+    CHECK(!b.recallGroup(1));
+    CHECK(b.recallGroup(7));
 }
 
 TEST(a_move_with_facing_arrives_facing_that_way_laid_across_the_line) {

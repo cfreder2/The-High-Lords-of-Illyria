@@ -127,6 +127,7 @@ A city costs 1; an attack costs 2.
 | Add or remove one | | shift-click |
 | The heroes | their gold cards | [[`]] |
 | Make / recall a group | + New group / its card | [[Alt]] + number / the number |
+| Ungroup | hold its card while it is selected | [[U]] |
 | March | tap the ground | click |
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |

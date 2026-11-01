@@ -850,6 +850,10 @@ EMSCRIPTEN_KEEPALIVE int illyria_group(int op, int slot) {
     }
     return -1;
 }
+// Ungroup: forgets every group wholly selected; how many went.
+EMSCRIPTEN_KEEPALIVE int illyria_ungroup() {
+    return app ? app->battle->ungroupSelection() : 0;
+}
 // The camera to the selection.
 EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
     if (!app) return;

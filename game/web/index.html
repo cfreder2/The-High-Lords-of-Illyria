@@ -541,6 +541,7 @@
       formations: Module.cwrap("illyria_formations", "string", []),
       scatter: Module.cwrap("illyria_scatter", null, []),
       group: Module.cwrap("illyria_group", "number", ["number", "number"]),
+      ungroup: Module.cwrap("illyria_ungroup", "number", []),
       clearSelection: Module.cwrap("illyria_clear_selection", null, []),
       selectHeroes: Module.cwrap("illyria_select_heroes", null, []),
       selectOnScreen: Module.cwrap("illyria_select_on_screen", null, []),
@@ -1095,6 +1096,11 @@
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": case "KeyH": api.stop(); break;
       case "KeyC": api.focusSelection(); break;
+      case "KeyU": {
+        const n = api.ungroup();
+        toast(n ? (n === 1 ? "Group forgotten" : `${n} groups forgotten`) : "No group is wholly selected");
+        break;
+      }
       case "Backquote": api.selectHeroes(); break;
       case "Escape":
         if (orderMode) setMode(0);

@@ -425,6 +425,22 @@ void Battle::clearGroup(int slot) {
     if (slot >= 0 && slot < kGroupSlots) groups_[static_cast<size_t>(slot)] = {};
 }
 
+int Battle::ungroupSelection() {
+    int gone = 0;
+    for (int slot = 0; slot < kGroupSlots; ++slot) {
+        int alive = 0, chosen = 0;
+        for (sim::EntityId id : groups_[static_cast<size_t>(slot)].units) {
+            if (!world_->units()[id - 1].alive()) continue;
+            ++alive;
+            chosen += isSelected(id);
+        }
+        if (alive == 0 || chosen < alive) continue;
+        clearGroup(slot);
+        ++gone;
+    }
+    return gone;
+}
+
 // --- Orders -----------------------------------------------------------------
 
 V3 Battle::centreOf(const std::vector<sim::EntityId>& units) const {
