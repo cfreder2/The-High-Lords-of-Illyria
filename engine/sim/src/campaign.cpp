@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <climits>
-#include <queue>
 
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
@@ -92,74 +91,6 @@ int32_t Campaign::squadSize(UnitType t) {
     }
 }
 
-int32_t Campaign::movesPerDay(UnitType t) {
-    switch (t) {
-        case T::LightInfantry: return 10;
-        case T::HeavyInfantry:
-        case T::Pikemen:
-        case T::Warrior: return 8;
-        case T::Archers: return 12;
-        case T::LightCavalry: return 18;
-        case T::HeavyCavalry:
-        case T::Unicorns: return 16;
-        case T::WolfRiders: return 14;
-        case T::Dwarves:
-        case T::DwarfGrenadier: return 9;
-        case T::Griffins:
-        case T::Pegasi: return 16;
-        case T::Dragons:
-        case T::Archons: return 18;
-        case T::Wizards: return 20;
-        case T::Hero: return 12;
-        case T::Elephants:
-        case T::Spiders: return 12;
-        case T::Catapult: return 6;  // dragged on wheels
-        default: return 10;
-    }
-}
-
-int32_t Campaign::moveCost(UnitType t, Lay terrain) {
-    // The Warlords movement table: road, bridge, water, forest, hill, mountain, plain, marsh, city.
-    const int32_t P = kProhibited;
-    static const int32_t kGiants[] = {1, 1, P, 5, 4, P, 2, 5, 1};
-    static const int32_t kDwarves[] = {1, 1, P, 6, 3, P, 2, 6, 1};
-    static const int32_t kHeavy[] = {1, 1, P, 4, 6, P, 2, 5, 1};
-    static const int32_t kLight[] = {1, 1, P, 4, 6, P, 2, 5, 1};
-    static const int32_t kElves[] = {1, 1, P, 2, 5, P, 2, 6, 1};
-    static const int32_t kCavalry[] = {1, 1, P, 5, 6, P, 2, 5, 1};
-    static const int32_t kWolves[] = {1, 1, P, 4, 6, P, 2, 4, 1};
-    static const int32_t kFliers[] = {2, 2, 2, 2, 2, 3, 2, 2, 2};
-    static const int32_t kUndead[] = {1, 1, P, 4, 5, P, 2, 4, 1};
-    static const int32_t kDemons[] = {1, 1, P, 4, 5, P, 2, 5, 1};  // demons and devils; wizards walk like light infantry
-    // Wheels want roads: slow through woods and up hills, never into a marsh.
-    static const int32_t kWheels[] = {1, 1, P, 6, 6, P, 2, P, 1};
-    const int32_t* row = kLight;
-    switch (t) {
-        case T::Giants:
-        case T::Minotaurs: row = kGiants; break;
-        case T::Dwarves:
-        case T::DwarfGrenadier: row = kDwarves; break;
-        case T::HeavyInfantry:
-        case T::Pikemen:
-        case T::Warrior: row = kHeavy; break;
-        case T::Archers: row = kElves; break;
-        case T::LightCavalry:
-        case T::HeavyCavalry:
-        case T::Elephants:
-        case T::Unicorns: row = kCavalry; break;
-        case T::WolfRiders:
-        case T::Spiders: row = kWolves; break;
-        case T::Undead: row = kUndead; break;
-        case T::Demons:
-        case T::Devils: row = kDemons; break;
-        case T::Catapult: row = kWheels; break;
-        default:
-            if (flies(t)) row = kFliers;
-            break;
-    }
-    return row[static_cast<int>(terrain)];
-}
-
 int32_t Campaign::upkeep(UnitType t) {
     // Common troops: a quarter of their training price a day. Rare ones what
     // Warlords asked for them (half their price in its city table).
@@ -195,6 +126,7 @@ Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(conti
 
 void Campaign::initTerrain() {
     terrain_.assign(static_cast<size_t>(nx_) * ny_, Lay::Plain);
+    roadCell_.assign(terrain_.size(), 0);
     riverEast_.assign(terrain_.size(), 0);
     riverNorth_.assign(terrain_.size(), 0);
     std::vector<uint8_t> nearRiver(terrain_.size(), 0);
@@ -235,6 +167,7 @@ void Campaign::initTerrain() {
                 }
             }
             terrain_[static_cast<size_t>(y) * nx_ + x] = t;
+            roadCell_[static_cast<size_t>(y) * nx_ + x] = road[static_cast<size_t>(y) * nx_ + x] && !open;  // kept under a town's cell
             nearRiver[static_cast<size_t>(y) * nx_ + x] = s.riverDist < Fixed::fromInt(58);
             cellHeight_[static_cast<size_t>(y) * nx_ + x] = static_cast<int16_t>(std::clamp<int64_t>(s.height.floorToInt(), -2000, 4000));
         }
@@ -383,29 +316,6 @@ bool Campaign::produce(int32_t city, int32_t option) {
     return true;
 }
 
-int32_t Campaign::stackMoves(const Stack& s) const {
-    int32_t mp = INT32_MAX;
-    int32_t boots = 0;  // the best of the heroes' winged things
-    for (const Army& a : s.armies) {
-        mp = std::min(mp, movesPerDay(a.type));
-        for (uint8_t k : a.artifacts) boots = std::max(boots, artifacts()[k].moves);
-    }
-    return mp == INT32_MAX ? 0 : mp + boots;
-}
-
-int32_t Campaign::stackCost(const Stack& s, int32_t cx, int32_t cy) const {
-    // The dearest member sets the cost; a hero goes where the others can (on a griffin over the mountains).
-    const Lay t = terrainAt(cx, cy);
-    int32_t cost = 0;
-    bool others = false;
-    for (const Army& a : s.armies) others = others || !a.hero();
-    for (const Army& a : s.armies) {
-        if (a.hero() && others) continue;
-        cost = std::max(cost, moveCost(a.type, t));
-    }
-    return cost;
-}
-
 bool Campaign::edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
     const auto river = [&](int32_t x, int32_t y, bool east) {
         return (east ? riverEast_ : riverNorth_)[static_cast<size_t>(y) * nx_ + x] != 0;
@@ -418,78 +328,14 @@ bool Campaign::edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
     return viaX || viaY;
 }
 
-bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const {
-    out.clear();
-    if (tx < 0 || ty < 0 || tx >= nx_ || ty >= ny_) return false;
-    bool flier = !s.armies.empty();
-    for (const Army& a : s.armies) flier = flier && (flies(a.type) || a.hero());
-    bool anyFlier = false;
-    for (const Army& a : s.armies) anyFlier = anyFlier || flies(a.type);
-    flier = flier && anyFlier;
-    const size_t n = static_cast<size_t>(nx_) * ny_;
-    std::vector<int32_t> g(n, INT32_MAX), parent(n, -1);
-    // Who stands where, once: another side's stack blocks the way, and so
-    // does a cell of our own already too full to take this stack (Warlords
-    // 9.2), except where the route ends (an attack, or joining them).
-    std::vector<int16_t> ours(n, 0);
-    std::vector<uint8_t> foe(n, 0);
-    for (const Stack& o : stacks_) {
-        if (o.armies.empty() || &o == &s) continue;
-        const size_t k = static_cast<size_t>(o.cy) * nx_ + o.cx;
-        if (o.owner != s.owner) foe[k] = 1;
-        else ours[k] = static_cast<int16_t>(ours[k] + static_cast<int16_t>(o.armies.size()));
-    }
-    const int32_t mine = static_cast<int32_t>(s.armies.size());
-    using Node = std::pair<int32_t, int32_t>;  // (f, index)
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
-    const auto idx = [&](int32_t x, int32_t y) { return y * nx_ + x; };
-    const int32_t start = idx(s.cx, s.cy), goal = idx(tx, ty);
-    const auto h = [&](int32_t i) { return std::max(std::abs(i % nx_ - tx), std::abs(i / nx_ - ty)); };
-    g[static_cast<size_t>(start)] = 0;
-    open.push({h(start), start});
-    while (!open.empty()) {
-        const auto [f, cur] = open.top();
-        open.pop();
-        if (cur == goal) break;
-        if (f - h(cur) > g[static_cast<size_t>(cur)]) continue;
-        const int32_t cx = cur % nx_, cy = cur / nx_;
-        for (int32_t dy = -1; dy <= 1; ++dy) {
-            for (int32_t dx = -1; dx <= 1; ++dx) {
-                if (dx == 0 && dy == 0) continue;
-                const int32_t x = cx + dx, y = cy + dy;
-                if (x < 0 || y < 0 || x >= nx_ || y >= ny_) continue;
-                if (!flier && !edgeOpen(cx, cy, x, y)) continue;
-                int32_t cost = stackCost(s, x, y);
-                if (cost >= kProhibited) continue;
-                // Another side's stack blocks the way, except where the route ends (an attack).
-                const int32_t ni = idx(x, y);
-                if (ni != goal) {
-                    const size_t k = static_cast<size_t>(ni);
-                    if (foe[k] || ours[k] + mine > cellCapacity(x, y)) continue;
-                }
-                if (dx != 0 && dy != 0) cost = cost * 3 / 2;
-                const int32_t ng = g[static_cast<size_t>(cur)] + cost;
-                if (ng < g[static_cast<size_t>(ni)]) {
-                    g[static_cast<size_t>(ni)] = ng;
-                    parent[static_cast<size_t>(ni)] = cur;
-                    open.push({ng + h(ni), ni});
-                }
-            }
-        }
-    }
-    if (g[static_cast<size_t>(goal)] == INT32_MAX) return false;
-    for (int32_t i = goal; i != start; i = parent[static_cast<size_t>(i)]) out.push_back({i % nx_, i / nx_});
-    std::reverse(out.begin(), out.end());
-    return true;
-}
-
 bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
     for (Stack& s : stacks_) {
         if (s.id != stackId || s.garrison) continue;
         std::vector<std::pair<int32_t, int32_t>> path;
         if (!planRoute(s, cx, cy, path)) return false;  // by land, or by boat where that is quicker
+        // Still bound for the same next cell: the way already made there counts.
+        if (s.path.empty() || path.empty() || s.path.front() != path.front()) s.progress = 0;
         s.path = std::move(path);
-        s.progress = 0;
         return true;
     }
     return false;
@@ -590,19 +436,26 @@ void Campaign::moveStacks() {
         if (stacks_[i].path.empty() || stacks_[i].armies.empty()) continue;
         if (!boardIfSailing(i)) continue;  // stepping from a port onto the water boards a boat
         Stack& s = stacks_[i];
-        s.progress += stepMoves(s);
+        // A tick on the way, at the pace of the slowest army over this ground
+        // (its armies may have changed since it set out: the time is taken now).
+        s.progress += kTimeScale;
         const auto [nx, ny] = s.path.front();
-        // Into enemies or a city not ours: fight for it. An attack costs two
-        // movement points, as in Warlords, whatever the ground.
+        const int32_t cost = stepTime(s, s.cx, s.cy, nx, ny);
+        if (cost == kClosed) {
+            // The way is closed to it now (a walker joined fliers): it halts.
+            s.path.clear();
+            s.progress = 0;
+            continue;
+        }
+        if (s.progress < cost) continue;
+        s.progress -= cost;
+        // Into enemies or a city not ours: fight for it, once marched up to it.
         bool hostile = false;
         for (const Stack& o : stacks_) hostile = hostile || (o.owner != s.owner && o.cx == nx && o.cy == ny && !o.armies.empty());
         const int32_t city = cityAt(nx, ny);
         // (Not into a city where our own banner is going up: that is joining them.)
         const bool attack = hostile || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s.owner &&
                                         cities_[static_cast<size_t>(city)].banner != s.owner);
-        const int32_t cost = (attack ? 2 : stepCost(s, nx, ny)) * kTicksPerDay;
-        if (s.progress < cost) continue;
-        s.progress -= cost;
         if (!attack && s.path.size() > 1 && armiesAt(s.owner, nx, ny) + static_cast<int32_t>(s.armies.size()) > cellCapacity(nx, ny)) {
             // Our own armies fill the way (Warlords 9.2): halt here.
             s.path.clear();
@@ -624,7 +477,10 @@ void Campaign::moveStacks() {
         s.cy = ny;
         s.path.erase(s.path.begin());
         pickUp(s);
-        if (s.path.empty()) arrive(s);
+        if (s.path.empty()) {
+            s.progress = 0;
+            arrive(s);
+        }
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
     syncBoats();

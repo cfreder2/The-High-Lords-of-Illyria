@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "illyria/sim/campaign.h"
 #include "illyria/sim/units.h"
 
 using namespace illyria::sim;
@@ -106,14 +107,17 @@ int main() {
     std::printf("Fliers walk by default. Moves longer than the minimum flight take a ground run, then they cruise at\n"
                 "altitude over the terrain, tire, and must land to recover (rest restores stamina at half the rate\n"
                 "flight spends it). They never attack from the air. Cruise heights are within a giant's reach, and\n"
-                "arrows can hit them.\n\n");
-    std::printf("| Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance |\n|---|---|---|---|---|---|---|\n");
+                "arrows can hit them. On the campaign map a stack of fliers alone moves at the **long-run pace** of\n"
+                "that cycle, whatever is below: the take-off run (at half again its walking pace), a flight as long as\n"
+                "its endurance, then twice as long resting (`Campaign::flightPace`). A stack with a walker in it walks.\n\n");
+    std::printf("| Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance | Long-run pace |\n|---|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         if (retired(static_cast<UnitType>(t))) continue;
         const UnitStats s = unitStats(static_cast<UnitType>(t));
         if (s.flyAltitude == Fixed::zero()) continue;
-        std::printf("| %s | %.1f m/s | %.0f m/s | %.1f m | %.0f m | %.0f m | %.0f s |\n", unitTypeName(static_cast<UnitType>(t)),
-                    d(s.moveSpeed), d(s.flySpeed), d(s.flyAltitude), d(s.takeoffRun), d(s.minFlight), secs(s.staminaTicks));
+        std::printf("| %s | %.1f m/s | %.0f m/s | %.1f m | %.0f m | %.0f m | %.0f s | %.2f m/s |\n", unitTypeName(static_cast<UnitType>(t)),
+                    d(s.moveSpeed), d(s.flySpeed), d(s.flyAltitude), d(s.takeoffRun), d(s.minFlight), secs(s.staminaTicks),
+                    Campaign::flightPace(static_cast<UnitType>(t)) / 1000.0);
     }
 
     std::printf("\n## Scavengers\n\n");
@@ -160,7 +164,9 @@ int main() {
                 "of the fields: Bridge is the ground of every deck, a castle's walls and ramps as well as the bridges\n"
                 "over rivers. Deep water is impassable on foot. Climbing divides speed by 1 + grade x 2.5 x the gait's\n"
                 "climb percentage; going down is up to 15%% quicker; slopes steeper than 35%% slow walkers a further\n"
-                "20%%. Fliers walk like men.\n\n");
+                "20%%. Fliers walk like men. The campaign map marches by the same table and the same climbs, cell by\n"
+                "cell (`engine/sim/src/campaign_march.cpp`): a stack at the pace of its slowest army, a road cell as\n"
+                "road, a hill as plains to be climbed, marsh as swamp, mountains and water closed.\n\n");
     const Ground grounds[] = {Ground::Road, Ground::Plains, Ground::Forest, Ground::Swamp, Ground::Shallows,
                               Ground::Rock, Ground::Mud, Ground::Sand, Ground::Bridge};
     std::printf("| Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |\n");

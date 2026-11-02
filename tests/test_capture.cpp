@@ -71,7 +71,7 @@ bool storm(Campaign& c, uint32_t id, int32_t city) {
 }
 
 // Ticks until the town is ours (or `most`).
-int32_t untilTaken(Campaign& c, int32_t city, int32_t most = 1000) {
+int32_t untilTaken(Campaign& c, int32_t city, int32_t most = Campaign::kTicksPerDay) {
     int32_t t = 0;
     while (t < most && c.cities()[static_cast<size_t>(city)].owner != 0) {
         c.step();

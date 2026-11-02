@@ -80,14 +80,16 @@ again as hard for each one beyond the first; any other death spills them, unlit,
 Fliers walk by default. Moves longer than the minimum flight take a ground run, then they cruise at
 altitude over the terrain, tire, and must land to recover (rest restores stamina at half the rate
 flight spends it). They never attack from the air. Cruise heights are within a giant's reach, and
-arrows can hit them.
+arrows can hit them. On the campaign map a stack of fliers alone moves at the **long-run pace** of
+that cycle, whatever is below: the take-off run (at half again its walking pace), a flight as long as
+its endurance, then twice as long resting (`Campaign::flightPace`). A stack with a walker in it walks.
 
-| Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance |
-|---|---|---|---|---|---|---|
-| Griffins | 3.0 m/s | 12 m/s | 6.5 m | 14 m | 50 m | 30 s |
-| Pegasi | 4.5 m/s | 14 m/s | 7.0 m | 18 m | 50 m | 40 s |
-| Dragons | 2.5 m/s | 15 m/s | 10.0 m | 30 m | 50 m | 25 s |
-| Archons | 2.8 m/s | 11 m/s | 6.0 m | 10 m | 50 m | 35 s |
+| Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance | Long-run pace |
+|---|---|---|---|---|---|---|---|
+| Griffins | 3.0 m/s | 12 m/s | 6.5 m | 14 m | 50 m | 30 s | 4.02 m/s |
+| Pegasi | 4.5 m/s | 14 m/s | 7.0 m | 18 m | 50 m | 40 s | 4.71 m/s |
+| Dragons | 2.5 m/s | 15 m/s | 10.0 m | 30 m | 50 m | 25 s | 4.88 m/s |
+| Archons | 2.8 m/s | 11 m/s | 6.0 m | 10 m | 50 m | 35 s | 3.68 m/s |
 
 ## Scavengers
 
@@ -125,7 +127,9 @@ slows it more than the detour does. A road doubles every gait's pace. A bridge i
 of the fields: Bridge is the ground of every deck, a castle's walls and ramps as well as the bridges
 over rivers. Deep water is impassable on foot. Climbing divides speed by 1 + grade x 2.5 x the gait's
 climb percentage; going down is up to 15% quicker; slopes steeper than 35% slow walkers a further
-20%. Fliers walk like men.
+20%. Fliers walk like men. The campaign map marches by the same table and the same climbs, cell by
+cell (`engine/sim/src/campaign_march.cpp`): a stack at the pace of its slowest army, a road cell as
+road, a hill as plains to be climbed, marsh as swamp, mountains and water closed.
 
 | Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |
 |---|---|---|---|---|---|---|---|---|---|---|---|

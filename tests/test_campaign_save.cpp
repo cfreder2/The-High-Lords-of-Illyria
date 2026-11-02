@@ -114,6 +114,11 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "", &why) == nullptr);
     CHECK(!why.empty());
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
+    CHECK(why == "not a saved campaign");
+    // A save from before the one clock (layout 1: ten ticks a second, movement points) is refused as such.
+    CHECK(text.compare(0, 5, "ILC2.") == 0);
+    CHECK(Campaign::load(continent(), "ILC1." + text.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
     CHECK(Campaign::load(continent(), text.substr(0, text.size() / 2), &why) == nullptr);
     // One gold piece more for a side somewhere in the middle: the checksum catches it.
     std::string bent = text;

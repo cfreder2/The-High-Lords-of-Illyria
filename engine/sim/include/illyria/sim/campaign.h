@@ -4,9 +4,10 @@
 // §4). Eight sides each start with a capital, a hero and some gold; the other
 // 72 cities are neutral, held by small garrisons. Cities pay gold every day
 // and train armies; armies cost upkeep. Stacks of up to eight armies march
-// across the continent on a 44 m grid, paying Warlords' movement costs, and
-// fight Warlords' dice battles where they meet (or the full 3D battle, when the
-// player chooses to). Deterministic: integers and the seeded Rng only.
+// across the continent on a grid of kCell cells at the battle's own speeds,
+// on the battle's 30 Hz clock (docs/ONE_WORLD.md), and fight Warlords' dice
+// battles where they meet (or the full 3D battle, when the player chooses
+// to). Deterministic: integers and the seeded Rng only.
 
 #include <cstdint>
 #include <memory>
@@ -50,31 +51,35 @@ class StateHasher;
 class Campaign {
 public:
     // Metres. The grid is 64 x 80 cells, as it was before the map shrank to two
-    // thirds and then to a third each way, so a day's march covers the same
-    // share of it (Warlords' pacing). 64 x 44 m and 80 x 44 m fall a cell
-    // short of the map's edges, which are open sea.
+    // thirds and then to a third each way. 64 x 44 m and 80 x 44 m fall a
+    // cell short of the map's edges, which are open sea. Nothing may assume
+    // the size: marches are timed from it.
     static constexpr int32_t kCell = 44;
-    static constexpr int32_t kTicksPerDay = 300;          // 30 s a day at 10 ticks a second
-    static constexpr int32_t kTicksPerSecond = 10;
+    // One clock with the battle (docs/ONE_WORLD.md): 30 ticks a second, and a
+    // day of two minutes at normal speed. Days stay the unit of the economy
+    // (gold, upkeep, training, boats), with the Warlords tables' numbers.
+    static constexpr int32_t kTicksPerSecond = illyria::sim::kTicksPerSecond;
+    static constexpr int32_t kTicksPerDay = 120 * kTicksPerSecond;
+    // Travel times (stepTime, Stack::progress) are in hundredths of a tick.
+    static constexpr int32_t kTimeScale = 100;
+    static constexpr int32_t kClosed = INT32_MAX;  // a travel time: no way through
     static constexpr int32_t kMaxStack = 8;
     static constexpr int32_t kMaxInCity = 32;  // a Warlords city is four squares of eight
     static constexpr uint8_t kNeutral = Continent::kNeutral;
-    static constexpr int32_t kProhibited = 1000;
     // Boats (campaign_sea.cpp), after Warlords' navies: built in ports, they
     // carry up to seven armies over the sea, lakes and wide rivers at their
     // own speed, whatever the armies aboard could walk.
     static constexpr int32_t kBoatCapacity = 7;  // armies aboard, as a Warlords navy
-    static constexpr int32_t kSeaMoves = 40;     // a boat's movement points a day
-    static constexpr int32_t kSeaCost = 2;       // per water cell (plain is 2 on foot): 20 cells, 0.9 km, a day
+    static constexpr int32_t kSeaSpeed = 6000;   // mm a second (6 m/s, about 12 knots): quicker than any walker but horse on a road
     static constexpr int32_t kBoatCost = 20, kBoatDays = 4;  // gold and days to build one
     static constexpr int32_t kBoatUpkeep = 2;    // gold a day
     // Raising a banner (campaign_capture.cpp): a city changes hands only when
     // the victors' banner has risen over it, while they stand in it unopposed.
     // Each tick it climbs kBannerBase + one point an army there (eight at
-    // most): a lone army takes 160 ticks (about 13 hours of campaign time), a
-    // full stack 48 (about 4 hours). Enemies in or beside the city stop it,
-    // and pull it down when they outnumber the raisers.
-    static constexpr int32_t kBannerFull = 480;
+    // most): a lone army takes 0.53 of a day (about 13 hours of campaign time,
+    // 64 s at normal speed), a full stack 0.16 (about 4 hours). Enemies in or
+    // beside the city stop it, and pull it down when they outnumber the raisers.
+    static constexpr int32_t kBannerFull = kTicksPerDay * 8 / 5;
     static constexpr int32_t kBannerBase = 2;
     // Territory (campaign_territory.cpp): the map's campaign hexes, 89 m
     // between centres (pointy-top; odd rows shifted half a hex east), each
@@ -83,7 +88,7 @@ public:
     static constexpr int32_t kHexRowX100 = 7708; // rows apart, in centimetres (89 * sqrt(3) / 2)
     static constexpr int32_t kHexCols = 33, kHexRows = 47;
     static constexpr int32_t kClaimFull = 100;
-    static constexpr int32_t kTerritoryTicks = 30;  // the land is reckoned ten times a day
+    static constexpr int32_t kTerritoryTicks = kTicksPerDay / 10;  // the land is reckoned ten times a day
 
     struct Side {
         std::string name;
@@ -104,7 +109,7 @@ public:
         int32_t income = 20;  // gold a day
         std::vector<Option> options;
         int32_t producing = -1;  // index into options, or -1
-        int32_t progress = 0;    // ticks trained so far
+        int32_t progress = 0;    // days trained so far
         int32_t cx = 0, cy = 0;  // its cell
         bool razed = false;
         int32_t vectorTo = -1;   // Warlords' LOC: new armies march to this city instead (two days more)
@@ -141,7 +146,7 @@ public:
         int32_t cx = 0, cy = 0;            // cell
         std::vector<Army> armies;
         std::vector<std::pair<int32_t, int32_t>> path;  // cells still to enter
-        int32_t progress = 0;              // movement points spent towards the next cell, x kTicksPerDay
+        int32_t progress = 0;              // time on the way to the next cell (kTimeScale a tick); there at legTime()
         bool garrison = false;             // a neutral city's own defenders: never moves
         uint32_t boat = 0;                 // the boat it sails in, or 0 on land
     };
@@ -178,10 +183,11 @@ public:
     };
     // Heroes, ruins, temples and sages, after Warlords (campaign_quests.cpp).
     // Battle artifacts add to the hero's strength, command artifacts to every
-    // army fighting beside the hero; some speed the stack or pay gold daily.
+    // army fighting beside the hero; some speed the stack (percent quicker:
+    // the best of its heroes' counts) or pay gold daily.
     struct Artifact {
         const char* name;
-        int32_t battle, command, moves, gold;
+        int32_t battle, command, speed, gold;
     };
     static const std::vector<Artifact>& artifacts();
     struct SiteState {
@@ -252,8 +258,8 @@ public:
     bool search(uint32_t stackId);
     // Take (or turn down) the hero offering their service to this side.
     bool hire(uint8_t side, bool accept);
-    // Advances one tick (a tenth of a second at normal speed). Nothing moves
-    // while a battle is pending.
+    // Advances one tick (a thirtieth of a second at normal speed). Nothing
+    // moves while a battle is pending.
     void step();
     const Pending* pending() const { return pending_.stack ? &pending_ : nullptr; }
     // The armies that will fight the pending battle.
@@ -289,9 +295,30 @@ public:
     static int32_t cellOf(int32_t metres) { return metres / kCell; }
     // Strength on the Warlords scale (1-9) of an army, before any battle modifiers.
     static int32_t strength(const Army& a);
-    // Movement points a day, and the cost of a terrain, for a type.
-    static int32_t movesPerDay(UnitType t);
-    static int32_t moveCost(UnitType t, Lay terrain);
+    // Marching at the battle's speeds (campaign_march.cpp): a stack goes at
+    // the pace of its slowest army, the unit's ground speed times its gait's
+    // multiplier for the ground it is crossing (gait.h), climbs slowing it as
+    // in battle; a stack of fliers alone goes at the long-run pace of their
+    // flight cycle over anything. Speeds in millimetres a second.
+    static int32_t groundSpeed(UnitType t);
+    static int32_t flightPace(UnitType t);  // 0 for walkers
+    static bool airborne(const Stack& s);   // every army in it flies
+    // The battle ground a walker crosses a cell as: a road (and a town a road
+    // runs through) is road, a hill plains to be climbed, marsh swamp;
+    // Ground::DeepWater for the water and mountains closed to walkers.
+    Ground groundAt(int32_t cx, int32_t cy) const;
+    // The level plains (in mm) worth of walking for this gait from one cell
+    // centre to a neighbour's: half the way over each ground, the climb
+    // (rise: metres up, negative down) by the battle's rule. kClosed if closed.
+    static int32_t effort(Gait gait, Ground from, Ground to, int32_t rise, bool diagonal);
+    // How long the stack takes from a cell to a neighbour, in kTimeScale-ths
+    // of a tick (afloat, at the boat's speed); kClosed if it cannot.
+    int32_t stepTime(const Stack& s, int32_t ax, int32_t ay, int32_t bx, int32_t by) const;
+    // The step it is on (0 if it is not marching), and the time to the end of its route.
+    int32_t legTime(const Stack& s) const;
+    int32_t timeLeft(const Stack& s) const;
+    // Whether the stack can stand on the cell at all (on its feet or wings).
+    bool passable(const Stack& s, int32_t cx, int32_t cy) const;
     // Gold a day an army costs to keep: half its training cost, as in Warlords.
     static int32_t upkeep(UnitType t);
     static int32_t armyUpkeep(const Army& a) { return a.ally ? 0 : upkeep(a.type); }  // allies serve for nothing
@@ -410,8 +437,6 @@ private:
     bool boardIfSailing(size_t index);
     void syncBoats();
     void splitOff(size_t index, size_t keep);
-    int32_t stepMoves(const Stack& s) const;
-    int32_t stepCost(const Stack& s, int32_t cx, int32_t cy) const;
     int32_t afloatPenalty(const Stack& s) const { return s.boat ? 1 : 0; }
     void moveStacks();
     void arrive(Stack& s);
@@ -420,12 +445,32 @@ private:
     void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power, int32_t engines = 0,
                int32_t oppX = -1, int32_t oppY = -1) const;
     int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const;
-    // Movement points from every cell to a city, for a walking army (the
+    // How a stack marches (campaign_march.cpp): each gait among its walkers at
+    // the speed of its slowest army of that gait (on each step the slowest of
+    // them sets the time), or its fliers' pace; and its heroes' speed items.
+    struct Pace {
+        bool air = false;
+        int32_t flight = 0;   // mm a second, for a stack in the air
+        int32_t quicker = 0;  // percent
+        int32_t gaits = 0;
+        Gait gait[kGaitCount] = {};
+        int32_t speed[kGaitCount] = {};  // mm a second
+        int32_t best = 1;     // mm a second: the most it could make on any ground (the route search's estimate)
+    };
+    Pace paceOf(const Stack& s) const;
+    // A step from a cell to its neighbour in direction dir (0-7, east first,
+    // round through the north: direction(dx, dy), -1 if not a neighbour), on foot or wing.
+    static int32_t direction(int32_t dx, int32_t dy);
+    int32_t marchTime(const Pace& p, int32_t cell, int32_t dir) const;
+    int32_t seaTime(int32_t dx, int32_t dy) const;  // afloat, so many cells across and up
+    // Per gait, built on first use: the effort() of every step, cell x 8 + direction.
+    const std::vector<int32_t>& efforts(Gait gait) const;
+    mutable std::vector<std::vector<int32_t>> efforts_;
+    std::vector<uint8_t> roadCell_;  // a road runs through the cell (a town's too)
+    // Level plains metres from every cell to a city for a man on foot (the
     // computer lords' sense of distance; derived from the map, so not state).
     const std::vector<uint16_t>& marchField(int32_t city) const;
     mutable std::vector<std::vector<uint16_t>> marchFields_;
-    int32_t stackCost(const Stack& s, int32_t cx, int32_t cy) const;
-    int32_t stackMoves(const Stack& s) const;
     bool edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const;
     bool findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const;
     Army makeArmy(UnitType type, const std::string& name);

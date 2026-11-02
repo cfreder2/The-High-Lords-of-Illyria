@@ -4,7 +4,6 @@
 // §4.2.5 has the table). Integers only.
 #include <algorithm>
 #include <climits>
-#include <queue>
 
 #include "illyria/sim/campaign.h"
 
@@ -394,44 +393,5 @@ int32_t Campaign::armiesAt(uint8_t owner, int32_t cx, int32_t cy) const {
 }
 
 int32_t Campaign::cellCapacity(int32_t cx, int32_t cy) const { return terrainAt(cx, cy) == Lay::City ? kMaxInCity : kMaxStack; }
-
-const std::vector<uint16_t>& Campaign::marchField(int32_t city) const {
-    if (marchFields_.empty()) marchFields_.resize(cities_.size());
-    std::vector<uint16_t>& f = marchFields_[static_cast<size_t>(city)];
-    if (!f.empty()) return f;
-    // Dijkstra outwards from the city over the light-infantry costs: f[cell]
-    // is what marching from that cell to the city costs (the cost of each
-    // cell entered on the way, diagonals half as much again).
-    const size_t n = static_cast<size_t>(nx_) * ny_;
-    f.assign(n, UINT16_MAX);
-    const CityState& c = cities_[static_cast<size_t>(city)];
-    using Node = std::pair<int32_t, int32_t>;
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
-    const int32_t start = c.cy * nx_ + c.cx;
-    f[static_cast<size_t>(start)] = 0;
-    open.push({0, start});
-    while (!open.empty()) {
-        const auto [d, cur] = open.top();
-        open.pop();
-        if (d > f[static_cast<size_t>(cur)]) continue;
-        const int32_t ux = cur % nx_, uy = cur / nx_;
-        const int32_t enter = moveCost(T::LightInfantry, terrainAt(ux, uy));
-        for (int32_t dy = -1; dy <= 1; ++dy) {
-            for (int32_t dx = -1; dx <= 1; ++dx) {
-                if (dx == 0 && dy == 0) continue;
-                const int32_t x = ux + dx, y = uy + dy;
-                if (x < 0 || y < 0 || x >= nx_ || y >= ny_) continue;
-                if (moveCost(T::LightInfantry, terrainAt(x, y)) >= kProhibited || !edgeOpen(x, y, ux, uy)) continue;
-                const int32_t nd = d + (dx != 0 && dy != 0 ? enter * 3 / 2 : enter);
-                const size_t k = static_cast<size_t>(y) * nx_ + x;
-                if (nd < f[k]) {
-                    f[k] = static_cast<uint16_t>(std::min(nd, 65000));
-                    open.push({nd, static_cast<int32_t>(k)});
-                }
-            }
-        }
-    }
-    return f;
-}
 
 }  // namespace illyria::sim

@@ -384,10 +384,10 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
     }
     std::printf("  campaign road cells: %d%% of %d road samples\n", samples ? onRoad * 100 / samples : 0, samples);
     CHECK(samples > 0 && onRoad * 100 >= samples * 97);
-    CHECK(Campaign::moveCost(UnitType::LightInfantry, Lay::Road) < Campaign::moveCost(UnitType::LightInfantry, Lay::Plain));
+    CHECK(Campaign::effort(Gait::Foot, Ground::Road, Ground::Road, 0, false) * 2 <= Campaign::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false) + 1);
 
     // A stack sent from a city to another far along a road keeps to the road,
-    // and its way costs less than straight over the country.
+    // and its way is quicker than straight over the country.
     int tested = 0, roadWins = 0;
     for (const Polyline& r : c.roads()) {
         if (tested >= 6) break;
@@ -409,19 +409,23 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         const Campaign::Stack* st = camp.findStack(id);
         if (!st || st->path.empty()) continue;
         ++tested;
-        int cost = 0, road = 0;
-        // Costed as the campaign does: diagonal steps cost half as much again.
+        int64_t cost = 0;
+        int road = 0;
+        // Timed as the campaign times it, step by step.
         int32_t px = cs.cx, py = cs.cy;
         for (const auto& [x, y] : st->path) {
             const Lay l = camp.terrainAt(x, y);
-            const int step = Campaign::moveCost(UnitType::LightInfantry, l);
-            cost += x != px && y != py ? step * 3 / 2 : step;
+            cost += camp.stepTime(*st, px, py, x, y);
             road += l == Lay::Road || l == Lay::Bridge || l == Lay::City;
             px = x;
             py = y;
         }
+        // (A closed step straight over the country counts as a long way round:
+        // five hundred cells of plain.)
+        const int64_t closed = int64_t{Campaign::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false)} * Campaign::kTicksPerSecond *
+                               Campaign::kTimeScale / Campaign::groundSpeed(UnitType::LightInfantry) * 500;
         // Straight over the country, cell by cell (if no river is in the way).
-        int straight = 0;
+        int64_t straight = 0;
         bool wet = false;
         for (int q = 1; q < 100 && !wet; ++q) {
             const Vec3 p = c.cities()[static_cast<size_t>(from)].pos + (c.cities()[static_cast<size_t>(to)].pos - c.cities()[static_cast<size_t>(from)].pos) * Fixed::fromRatio(q, 100);
@@ -433,13 +437,14 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         py = cs.cy;
         for (int32_t s = 1; s <= n; ++s) {
             const int32_t x = cs.cx + (ct.cx - cs.cx) * s / n, y = cs.cy + (ct.cy - cs.cy) * s / n;
-            const int step = std::min(Campaign::moveCost(UnitType::LightInfantry, camp.terrainAt(x, y)), Campaign::kProhibited);
-            straight += x != px && y != py ? step * 3 / 2 : step;
+            const int32_t step = camp.stepTime(*st, px, py, x, y);
+            straight += step == Campaign::kClosed ? closed : step;
             px = x;
             py = y;
         }
-        std::printf("  %s to %s: %zu cells, %d on the road, cost %d (straight %d)\n", c.cities()[static_cast<size_t>(from)].name.c_str(),
-                    c.cities()[static_cast<size_t>(to)].name.c_str(), st->path.size(), road, cost, straight);
+        const double perMin = 60.0 * Campaign::kTicksPerSecond * Campaign::kTimeScale;
+        std::printf("  %s to %s: %zu cells, %d on the road, %.1f min (straight %.1f)\n", c.cities()[static_cast<size_t>(from)].name.c_str(),
+                    c.cities()[static_cast<size_t>(to)].name.c_str(), st->path.size(), road, static_cast<double>(cost) / perMin, static_cast<double>(straight) / perMin);
         // (no dearer, within the creeks between cells this count does not see)
         if (!wet) CHECK(cost * 10 <= straight * 11);
         // Most of the way on the road (the towns stand a little off it).

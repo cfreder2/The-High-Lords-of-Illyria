@@ -226,6 +226,9 @@
   #levelPrompt .choices button { flex: 1; min-height: 64px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
   #levelPrompt .choices small { font-size: 11px; opacity: 0.8; font-weight: 400; }
   /* Heroes: search a ruin, kneel at a temple, hire a sword. */
+  /* The selected stack on the march: there in so many days (and minutes at this speed). */
+  #campMarch { display: table; margin-bottom: 8px; padding: 4px 10px; font-size: 13px; }
+  body:not(.campaign) #campMarch { display: none; }
   #campActions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; }
   body:not(.campaign) #campActions { display: none; }
   #campActions button { min-height: 44px; padding: 0 14px; font-size: 14px; border-color: var(--gold); }
@@ -411,6 +414,7 @@
 <div id="selBox"></div>
 
 <div id="bottom">
+  <div id="campMarch" class="panel camp-only hidden" role="status"></div>
   <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button></div>
   <div id="selInfo" class="hidden battle-only"></div>
   <div id="picker" class="panel hidden battle-only popup" role="menu" aria-label="Formations"></div>
@@ -1335,6 +1339,18 @@
           };
         });
       }
+    }
+    // On the march: there in so many days, and how long that is at this speed.
+    const march = campState.march, marchBox = $("campMarch");
+    marchBox.classList.toggle("hidden", !march);
+    if (march) {
+      const days = march.ticks / march.perDay, pace = campState.paused ? 1 : campState.speed;
+      const secs = Math.max(1, Math.round(march.ticks / march.perSecond / pace));
+      const clock = secs < 60 ? `${secs} s` : secs < 3600 ? `${Math.floor(secs / 60)} min${secs % 60 && secs < 600 ? ` ${secs % 60} s` : ""}`
+        : `${Math.floor(secs / 3600)} h ${Math.round((secs % 3600) / 60)} min`;
+      const when = days < 0.05 ? "there now" : `there in ${days < 10 ? days.toFixed(1) : Math.round(days)} ${days >= 0.95 && days < 1.05 ? "day" : "days"}`;
+      const text = `On the march · ${when} · ${clock} at ${pace}×`;
+      if (marchBox.textContent !== text) marchBox.textContent = text;
     }
     // On a ruin, temple or sage: the Search / Visit button.
     const site = campState.site;

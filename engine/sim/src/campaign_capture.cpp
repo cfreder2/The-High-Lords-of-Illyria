@@ -98,7 +98,7 @@ void Campaign::fallBack(Stack& s) {
     for (const auto& d : kDirs) {
         const int32_t x = s.cx + d[0], y = s.cy + d[1];
         if (x < 0 || y < 0 || x >= nx_ || y >= ny_ || !edgeOpen(s.cx, s.cy, x, y)) continue;
-        if (stackCost(s, x, y) >= kProhibited || cityAt(x, y) >= 0) continue;
+        if (!passable(s, x, y) || cityAt(x, y) >= 0) continue;
         bool foe = false;
         for (const Stack& o : stacks_) foe = foe || (o.owner != s.owner && o.cx == x && o.cy == y && !o.armies.empty());
         if (foe || armiesAt(s.owner, x, y) + static_cast<int32_t>(s.armies.size()) > cellCapacity(x, y)) continue;

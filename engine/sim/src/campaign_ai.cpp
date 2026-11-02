@@ -113,7 +113,7 @@ public:
                 for (int32_t dx = -1; dx <= 1; ++dx) {
                     const int32_t x = cs.cx + dx, y = cs.cy + dy;
                     if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= c_.nx_ || y >= c_.ny_) continue;
-                    if (c_.stackCost(s, x, y) >= C::kProhibited || !c_.defendersAt(side_, x, y).empty() || c_.cityAt(x, y) >= 0) continue;
+                    if (!c_.passable(s, x, y) || !c_.defendersAt(side_, x, y).empty() || c_.cityAt(x, y) >= 0) continue;
                     const int32_t d = std::max(std::abs(x - s.cx), std::abs(y - s.cy));
                     if (d < best) best = d, bx = x, by = y;
                 }
@@ -155,14 +155,6 @@ private:
             if (a.hero()) return true;
         return false;
     }
-    bool airborne(const C::Stack& s) const {
-        bool all = !s.armies.empty(), any = false;
-        for (const Army& a : s.armies) {
-            all = all && (C::flies(a.type) || a.hero());
-            any = any || C::flies(a.type);
-        }
-        return all && any;
-    }
     // The odds a stack needs before it attacks: better with a hero in it, and
     // better still for each veteran or rare army that could be lost for good.
     int32_t needed(const std::vector<Army>& armies) const {
@@ -174,25 +166,32 @@ private:
         }
         return std::min(t_.mostOdds, (hero ? t_.heroOdds : t_.attackOdds) + t_.care * precious);
     }
-    // Tenths of days for a stack to reach a city.
+    // Tenths of days to march so many millimetres of level plains at so many a second.
+    static int32_t days10(int64_t mm, int64_t speed) {
+        return static_cast<int32_t>(std::min<int64_t>(INT32_MAX - 1, mm * C::kTicksPerSecond * 10 / (std::max<int64_t>(1, speed) * C::kTicksPerDay)));
+    }
+    // Tenths of days for a stack to reach a city: fliers straight there at
+    // their pace, walkers the way a man would go on foot (marchField) at the
+    // pace of their slowest army on the plain.
     int32_t eta(const C::Stack& s, int32_t city) const {
         const C::CityState& t = c_.cities_[static_cast<size_t>(city)];
-        const int32_t moves = std::max(1, c_.stackMoves(s));
-        int32_t mp;
-        if (airborne(s)) {
-            mp = 2 * std::max(std::abs(t.cx - s.cx), std::abs(t.cy - s.cy));
-        } else {
-            const uint16_t f = c_.marchField(city)[static_cast<size_t>(s.cy) * c_.nx_ + s.cx];
-            if (f == UINT16_MAX) return INT32_MAX;
-            mp = f;
+        const C::Pace p = c_.paceOf(s);
+        if (p.air) {
+            const int64_t dx = std::abs(t.cx - s.cx), dy = std::abs(t.cy - s.cy);
+            const int64_t mm = (std::max(dx, dy) * 1000 + std::min(dx, dy) * 414) * C::kCell;
+            return days10(mm, int64_t{p.flight} * (100 + p.quicker) / 100);
         }
-        return mp * 10 / moves;
+        const uint16_t f = c_.marchField(city)[static_cast<size_t>(s.cy) * c_.nx_ + s.cx];
+        if (f == UINT16_MAX || p.gaits == 0) return INT32_MAX;
+        int32_t slowest = INT32_MAX;
+        for (int32_t k = 0; k < p.gaits; ++k) slowest = std::min(slowest, p.speed[k]);
+        return days10(int64_t{f} * 1000, int64_t{slowest} * (100 + p.quicker) / 100);
     }
-    // Tenths of days for a walker (ten points a day) from one city to another.
+    // Tenths of days for light infantry from one city to another.
     int32_t cityDays10(int32_t from, int32_t to) const {
         const C::CityState& f = c_.cities_[static_cast<size_t>(from)];
         const uint16_t d = c_.marchField(to)[static_cast<size_t>(f.cy) * c_.nx_ + f.cx];
-        return d == UINT16_MAX ? INT32_MAX : d;
+        return d == UINT16_MAX ? INT32_MAX : days10(int64_t{d} * 1000, C::groundSpeed(UnitType::LightInfantry));
     }
     int32_t cityHere(const C::Stack& s) const { return c_.cityAt(s.cx, s.cy); }
     bool ownCity(int32_t city) const { return city >= 0 && c_.cities_[static_cast<size_t>(city)].owner == side_; }
@@ -340,8 +339,8 @@ private:
         C::Stack& s = c_.stacks_[k];
         std::vector<std::pair<int32_t, int32_t>> path;
         if (!c_.planRoute(s, cx, cy, path) || path.empty()) return false;  // on foot, or by boat
+        if (s.path.empty() || s.path.front() != path.front()) s.progress = 0;  // the way made to the next cell counts
         s.path = std::move(path);
-        s.progress = 0;
         used_[k] = 1;
         return true;
     }

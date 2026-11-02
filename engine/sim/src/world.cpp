@@ -34,9 +34,6 @@ constexpr Fixed kMarchFile = Fixed::fromInt(2);
 // Bodies walking through loose remains kick them along.
 constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
 constexpr int kMaxKicksPerTick = 2;
-// Climbing costs: speed divides by 1 + grade x this; going down is a little quicker.
-constexpr Fixed kDescentGain = Fixed::fromRatio(1, 2);
-constexpr Fixed kDescentMax = Fixed::fromRatio(3, 20);
 // No one walks up or down a face steeper than 45 degrees: cliffs are walls.
 constexpr Fixed kCliffGrade = Fixed::one();
 // No one steps up a ledge higher than this, or down a drop deeper than this
@@ -1105,7 +1102,7 @@ void World::updateUnit(Unit& u) {
         return;
     }
     // Resting on the ground restores a flier at half the rate flying spends it.
-    if (flier && u.stamina < u.stats.staminaTicks && (tick_ & 1) == 0) ++u.stamina;
+    if (flier && u.stamina < u.stats.staminaTicks && tick_ % kFlierRestTicks == 0) ++u.stamina;
 
     // Broken, he runs from the foes near him; but an order given him since is obeyed.
     if (u.routed && !u.hasMoveTarget && !u.hasAttackTarget && u.targetUnit == kNoEntity && u.attackGate < 0) {
@@ -1221,7 +1218,7 @@ void World::updateFlight(Unit& u) {
         case Unit::Flight::TakingOff: {
             // A ground run, faster than a walk, before the wings can lift.
             const Vec3 before = u.pos;
-            walk(u, u.pos + u.facing * Fixed::fromInt(50), Fixed::fromRatio(3, 2));
+            walk(u, u.pos + u.facing * Fixed::fromInt(50), kTakeoffRunPace);
             u.runway += (u.pos - before).flat().length();
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             if (u.runway >= u.stats.takeoffRun) u.flight = Unit::Flight::Flying;

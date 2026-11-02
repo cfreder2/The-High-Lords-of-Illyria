@@ -26,6 +26,12 @@ using PlayerId = uint8_t;
 inline constexpr EntityId kNoEntity = 0;
 inline constexpr int32_t kTicksPerSecond = 30;
 inline constexpr Fixed kTickDt = Fixed::fromRatio(1, kTicksPerSecond);
+// A flier's flight cycle (World::updateFlight): a ground run at this times
+// its walking pace to take off, a tick of stamina spent for each tick in the
+// air, and one restored for every kFlierRestTicks resting on the ground (half
+// the rate flight spends it). The campaign marches fliers at its long-run pace.
+inline constexpr Fixed kTakeoffRunPace = Fixed::fromRatio(3, 2);
+inline constexpr uint32_t kFlierRestTicks = 2;
 
 enum class ProjectileKind : uint8_t {
     Arrow,     // sticks where it lands, blocked by shields

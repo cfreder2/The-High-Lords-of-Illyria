@@ -232,16 +232,17 @@ float surfaceAt(float x, float y) {
 }
 
 // Where a campaign stack stands now, in battle-local metres: between the cell
-// it holds and the next on its road, by how far it has got (afloat, at the boat's pace).
+// it holds and the next on its road, by how far it has got at its real pace
+// (afloat, at the boat's). Between ticks it glides on by the share of a tick
+// the clock has run (cv.acc), so a flag never steps.
 V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
     using C = illyria::sim::Campaign;
     const V3 o = app->battle->origin();
     float x = static_cast<float>(C::centre(s.cx)), y = static_cast<float>(C::centre(s.cy));
     if (!s.path.empty()) {
-        int32_t cost = 0;
-        for (const illyria::sim::Army& a : s.armies) cost = std::max(cost, C::moveCost(a.type, c.terrainAt(s.path.front().first, s.path.front().second)));
-        if (s.boat) cost = C::kSeaCost;
-        const float t = cost > 0 ? std::clamp(static_cast<float>(s.progress) / (cost * C::kTicksPerDay), 0.0f, 1.0f) : 0;
+        const int32_t leg = c.legTime(s);
+        const double ahead = app->camp.paused || c.pending() ? 0.0 : std::clamp(app->camp.acc, 0.0, 1.0) * C::kTimeScale;
+        const float t = leg > 0 && leg != C::kClosed ? std::clamp(static_cast<float>((s.progress + ahead) / leg), 0.0f, 1.0f) : 0;
         x += (C::centre(s.path.front().first) - x) * t;
         y += (C::centre(s.path.front().second) - y) * t;
     }
@@ -647,7 +648,7 @@ void frame() {
     stepIntro(now);
     app->gestures->update(now);
     if (app->camp.on) {
-        // Ten campaign ticks a second, times the speed.
+        // The battle's thirty ticks a second, times the speed (8x: 240 a second).
         App::CampaignView& cv = app->camp;
         if (!cv.paused && cv.c->winner() == 0) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
@@ -1897,6 +1898,15 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         }
     }
     s += "]";
+    // The selected stack on the march: how long until it is there, in ticks (the page puts it in days and minutes).
+    if (sel && !sel->path.empty()) {
+        const int32_t left = c.timeLeft(*sel);
+        if (left != C::kClosed) {
+            std::snprintf(buf, sizeof buf, ",\"march\":{\"ticks\":%d,\"perDay\":%d,\"perSecond\":%d}", (left + C::kTimeScale - 1) / C::kTimeScale,
+                          C::kTicksPerDay, C::kTicksPerSecond);
+            s += buf;
+        }
+    }
     // The ruin, temple or sage the selected stack stands on, and whether it can search there.
     if (sel && sel->path.empty()) {
         const int32_t site = c.siteAt(sel->cx, sel->cy);
@@ -2350,7 +2360,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
 // the title screen starts each the same way. Ids: "title" (the menu's
 // backdrop: the last battlefield, still), "skirmish" ({"scenario":0} Ford,
 // 1 Siege), "campaign" ({"hard":1} new, {"hard":0} Easy lords, or
-// {"save":"ILC1...."} to carry on a saved one), and the modes built into
+// {"save":"ILC2...."} to carry on a saved one), and the modes built into
 // startOtherMode ("horde", "ctf"). 1 when started, 0 when the mode is not
 // built in or could not start (illyria_mode_error says why).
 EMSCRIPTEN_KEEPALIVE int illyria_start_mode(const char* id, const char* options) {

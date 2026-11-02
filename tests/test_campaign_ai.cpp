@@ -140,8 +140,27 @@ TEST(the_computer_saves_a_threatened_capital) {
     CHECK(road.size() >= 14);
     if (road.size() < 14) return;
     c.disband(probe, c.findStack(probe)->armies.front().id);
-    const auto [fx, fy] = road[4];    // ours: half a day out
-    const auto [ex, ey] = road[12];   // theirs: further along the same road
+    // How long heavy infantry take back along it to the capital, from each cell of it.
+    const uint32_t pace = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
+    std::vector<int64_t> back(road.size(), 0);
+    for (size_t k = 0; k < road.size(); ++k)
+        back[k] = (k ? back[k - 1] : 0) + c.stepTime(*c.findStack(pace), road[k].first, road[k].second, k ? road[k - 1].first : home.cx, k ? road[k - 1].second : home.cy);
+    c.disband(pace, c.findStack(pace)->armies.front().id);
+    // Ours half a day out; theirs two days out along the same road. The
+    // computer first looks at dawn, when they are a day out (inside the Hard
+    // lord's two days): ours have half a day in hand. (A day and a half out
+    // was a dead heat at that first dawn, decided by who reached the cell by
+    // the gate first.)
+    const int64_t day = int64_t{Campaign::kTicksPerDay} * Campaign::kTimeScale;
+    size_t near = 0, far = 0;
+    for (size_t k = 0; k < road.size(); ++k) {
+        if (back[k] * 2 <= day) near = k;
+        if (back[k] <= day * 2) far = k;
+    }
+    std::printf("  ours %zu cells (%.2f days) out, theirs %zu (%.2f days)\n", near + 1, double(back[near]) / double(day), far + 1, double(back[far]) / double(day));
+    CHECK(far > near + 1);
+    const auto [fx, fy] = road[near];
+    const auto [ex, ey] = road[far];
     const uint32_t field = c.raise(0, fx, fy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry});
     std::vector<uint32_t> ours;
     for (const Army& a : c.findStack(field)->armies) ours.push_back(a.id);

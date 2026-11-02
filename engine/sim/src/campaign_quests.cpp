@@ -34,7 +34,7 @@ const char* const kHeroNames[] = {
 };
 
 // How great a treasure is: 1 moderate, 2 considerable, 3 supreme.
-int32_t power(const Campaign::Artifact& a) { return std::max({a.battle, a.command, a.moves > 0 ? 1 : 0, a.gold > 0 ? 1 : 0}); }
+int32_t power(const Campaign::Artifact& a) { return std::max({a.battle, a.command, a.speed > 0 ? 1 : 0, a.gold > 0 ? 1 : 0}); }
 
 std::string plural(int32_t n, const char* type) {
     std::string t = type;
@@ -46,12 +46,14 @@ std::string plural(int32_t n, const char* type) {
 const std::vector<Campaign::Artifact>& Campaign::artifacts() {
     // As in Warlords: battle items for the hero's own arm, command items for
     // everyone who fights beside them; and a few for the road and the purse.
+    // The sandals, once four movement points a day more, now make the hero's
+    // whole stack a third quicker on the march (Campaign::paceOf).
     static const std::vector<Artifact> kArtifacts = {
         {"Firebrand", 1, 0, 0, 0},          {"Frostblade", 1, 0, 0, 0},       {"Spear of Ashkar", 1, 0, 0, 0},
         {"Sunblade", 2, 0, 0, 0},           {"Shadowblade", 2, 0, 0, 0},      {"Bow of the Morning Star", 2, 0, 0, 0},
         {"Staff of Thunders", 3, 0, 0, 0},  {"Crown of Kings", 0, 1, 0, 0},   {"Sceptre of Dawn", 0, 1, 0, 0},
         {"Scarlet Banner", 0, 1, 0, 0},     {"Ring of Dominion", 0, 2, 0, 0}, {"Horn of the North", 0, 2, 0, 0},
-        {"Rod of the High Lords", 0, 3, 0, 0}, {"Winged Sandals", 0, 0, 4, 0}, {"Purse of Plenty", 0, 0, 0, 10},
+        {"Rod of the High Lords", 0, 3, 0, 0}, {"Winged Sandals", 0, 0, 33, 0}, {"Purse of Plenty", 0, 0, 0, 10},
     };
     return kArtifacts;
 }
@@ -311,7 +313,8 @@ void Campaign::questAi(uint8_t side) {
     // The computer's heroes explore when it is safe: search what they stand
     // on, then make for the nearest ruin they can likely beat, a temple that
     // has not yet blessed them, or an unvisited sage, with no enemy near it.
-    // A hero in a city slips out alone and leaves the rest on guard.
+    // A hero in a city slips out alone and leaves the rest on guard, but
+    // never while an enemy marches on it or stands at its gates.
     struct Plan {
         size_t stack;
         std::vector<std::pair<int32_t, int32_t>> path;
@@ -326,6 +329,13 @@ void Campaign::questAi(uint8_t side) {
         if (h < 0) continue;
         const int32_t hs = strength(s.armies[static_cast<size_t>(h)]);
         const bool inCity = cityAt(s.cx, s.cy) >= 0;
+        // Not out of a town an enemy is marching on, or standing three cells from.
+        bool besieged = false;
+        for (const Stack& o : stacks_)
+            besieged = besieged || (inCity && o.owner != side && !o.garrison && !o.armies.empty() &&
+                                    ((!o.path.empty() && o.path.back() == std::make_pair(s.cx, s.cy)) ||
+                                     std::max(std::abs(o.cx - s.cx), std::abs(o.cy - s.cy)) <= 3));
+        if (besieged) continue;
         int32_t best = INT32_MAX, target = -1;
         for (size_t k = 0; k < sites_.size(); ++k) {
             const SiteState& st = sites_[k];

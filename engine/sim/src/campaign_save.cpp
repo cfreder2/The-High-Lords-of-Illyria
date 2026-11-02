@@ -15,8 +15,10 @@ namespace illyria::sim {
 
 namespace {
 
-constexpr const char* kMagic = "ILC1.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 1;
+// 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
+// battle's speeds: a stack's progress is a time, not movement points.
+constexpr const char* kMagic = "ILC2.";  // bump the digit when the layout changes
+constexpr uint32_t kFormat = 2;
 
 class Writer {
 public:
@@ -351,6 +353,8 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     };
     const std::string magic = kMagic;
     std::vector<uint8_t> bytes;
+    // An older layout ("ILC1." before the one clock) is a campaign all the same: say so.
+    if (text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
     if (text.compare(0, magic.size(), magic) != 0 || !fromBase64(text, magic.size(), bytes)) return fail("not a saved campaign");
     if (bytes.size() < 8) return fail("damaged (cut short)");
     uint64_t seal = 0;

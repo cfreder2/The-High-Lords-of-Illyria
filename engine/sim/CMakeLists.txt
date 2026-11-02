@@ -25,6 +25,7 @@ add_library(illyria_sim
     src/campaign.cpp
     src/campaign_rules.cpp
     src/campaign_ai.cpp
+    src/campaign_march.cpp
     src/campaign_quests.cpp
     src/campaign_sea.cpp
     src/campaign_rare.cpp

@@ -24,10 +24,8 @@ namespace {
 
 using T = UnitType;
 
-// Water bodies smaller than this (cells of 44 m) are ponds and narrow reaches: no boats.
+// Water bodies smaller than this (in cells) are ponds and narrow reaches: no boats.
 constexpr int32_t kMinWater = 24;
-// Route times are in 1/kTimeScale day-moves: exact for every army's movement points.
-constexpr int32_t kTimeScale = 10080;
 
 const char* const kBoatNames[] = {"Grey Swan", "Sea Hawk", "Morning Star", "Wavecutter", "Saltwind", "Black Gull",
                                   "Silver Pike", "Storm Petrel", "Kestrel", "Long Serpent", "Tidewalker", "Amberwake",
@@ -140,9 +138,6 @@ uint32_t Campaign::grant(int32_t city, uint8_t side, UnitType type, int32_t armi
     return s.id;
 }
 
-int32_t Campaign::stepMoves(const Stack& s) const { return s.boat ? kSeaMoves : stackMoves(s); }
-int32_t Campaign::stepCost(const Stack& s, int32_t cx, int32_t cy) const { return s.boat ? kSeaCost : stackCost(s, cx, cy); }
-
 void Campaign::splitOff(size_t index, size_t keep) {
     // The weakest (never a hero) stay behind on the quay, in a stack of their own.
     if (stacks_[index].armies.size() <= keep) return;
@@ -168,7 +163,7 @@ bool Campaign::boardIfSailing(size_t index) {
     const Stack& s = stacks_[index];
     if (s.boat) return true;
     const auto [nx, ny] = s.path.front();
-    if (!navigable(nx, ny) || stackCost(s, nx, ny) < kProhibited) return true;  // on foot, or on wings
+    if (!navigable(nx, ny) || passable(s, nx, ny)) return true;  // on foot, or on wings
     // A free boat of ours in this port, putting out to its harbour, or one at anchor alongside.
     Boat* boat = nullptr;
     const int32_t city = cityAt(s.cx, s.cy);
@@ -234,18 +229,23 @@ bool Campaign::land(uint32_t stackId) {
             return true;
         }
     }
-    int32_t best = kProhibited, bx = -1, by = -1;
+    // (A town of ours first, then the quickest ground to walk on from the water's edge.)
+    Stack ashore = *s;
+    ashore.boat = 0;
+    int64_t best = INT64_MAX;
+    int32_t bx = -1, by = -1;
     for (int32_t dy = -1; dy <= 1; ++dy)
         for (int32_t dx = -1; dx <= 1; ++dx) {
             const int32_t x = s->cx + dx, y = s->cy + dy;
-            if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= nx_ || y >= ny_ || navigable(x, y)) continue;
+            if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= nx_ || y >= ny_ || navigable(x, y) || !passable(*s, x, y)) continue;
             bool foe = false;
             for (const Stack& o : stacks_) foe = foe || (o.owner != s->owner && o.cx == x && o.cy == y && !o.armies.empty());
             const int32_t city = cityAt(x, y);
             if (foe || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s->owner)) continue;
-            const int32_t cost = stackCost(*s, x, y) - (city >= 0 ? 10 : 0);
-            if (stackCost(*s, x, y) < kProhibited && cost < best) {
-                best = cost;
+            const int32_t walk = stepTime(ashore, s->cx, s->cy, x, y);
+            const int64_t score = (city >= 0 ? 0 : int64_t{1} << 40) + (walk == kClosed ? int64_t{1} << 36 : walk);
+            if (score < best) {
+                best = score;
                 bx = x;
                 by = y;
             }
@@ -303,9 +303,9 @@ void Campaign::syncBoats() {
 
 void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32_t goal, std::vector<int32_t>& g,
                             std::vector<int32_t>& parent) const {
-    // Dijkstra over (cell, afloat). Times are movement cost over movement
-    // points, so walking and sailing compare fairly. A cell held by another
-    // side can be entered (an attack) but not passed through.
+    // Dijkstra over (cell, afloat). Times are travel times (kTimeScale a
+    // tick), walking or sailing. A cell held by another side can be entered
+    // (an attack) but not passed through.
     const size_t n = static_cast<size_t>(nx_) * ny_;
     g.assign(n * 2, INT32_MAX);
     parent.assign(n * 2, -1);
@@ -328,8 +328,7 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
         cityOf[static_cast<size_t>(cities_[i].cy) * nx_ + cities_[i].cx] = static_cast<int32_t>(i);
         if (cities_[i].port) harbour[static_cast<size_t>(cities_[i].hy) * nx_ + cities_[i].hx] = 1;
     }
-    const int32_t landMoves = std::max(1, stackMoves(s));
-    const int32_t seaStep = kSeaCost * kTimeScale / kSeaMoves;
+    const Pace pace = paceOf(s);
     using Node = std::pair<int32_t, int32_t>;  // (time, state)
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
     const int32_t start = (s.cy * nx_ + s.cx) * 2 + (s.boat ? 1 : 0);
@@ -356,8 +355,8 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
         if (afloat && harbour[static_cast<size_t>(cell)]) {
             // Into port from its harbour, which may lie two cells out.
             for (const CityState& c : cities_)
-                if (c.port && !c.razed && c.hx == cx && c.hy == cy && stackCost(s, c.cx, c.cy) < kProhibited)
-                    relax(cur, c.cy * nx_ + c.cx, 0, c.cx != cx && c.cy != cy ? seaStep * 3 / 2 : seaStep);
+                if (c.port && !c.razed && c.hx == cx && c.hy == cy && passable(s, c.cx, c.cy))
+                    relax(cur, c.cy * nx_ + c.cx, 0, seaTime(c.cx - cx, c.cy - cy));
         }
         for (int32_t dy = -1; dy <= 1; ++dy) {
             for (int32_t dx = -1; dx <= 1; ++dx) {
@@ -365,17 +364,15 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
                 const int32_t x = cx + dx, y = cy + dy;
                 if (x < 0 || y < 0 || x >= nx_ || y >= ny_) continue;
                 const int32_t ni = y * nx_ + x;
-                const bool diagonal = dx != 0 && dy != 0;
-                const int32_t sea = diagonal ? seaStep * 3 / 2 : seaStep;
-                const int32_t walk = stackCost(s, x, y);
+                const int32_t sea = seaTime(dx, dy);
                 if (afloat) {
                     if (navigable(x, y)) relax(cur, ni, 1, sea);
-                    else if (walk < kProhibited) relax(cur, ni, 0, sea);  // landing
+                    else if (passable(s, x, y)) relax(cur, ni, 0, sea);  // landing
                     continue;
                 }
-                if (walk < kProhibited && edgeOpen(cx, cy, x, y)) {
-                    const int32_t cost = diagonal ? walk * 3 / 2 : walk;
-                    relax(cur, ni, 0, cost * kTimeScale / landMoves);
+                const int32_t walk = marchTime(pace, cell, direction(dx, dy));
+                if (walk != kClosed) {
+                    relax(cur, ni, 0, walk);
                 } else if (sail && anchored[static_cast<size_t>(ni)]) {
                     relax(cur, ni, 1, sea);  // aboard our boat at anchor alongside
                 }
@@ -385,7 +382,7 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
         const CityState& c = cities_[static_cast<size_t>(city)];
         if (!c.port) continue;
         const int32_t out = c.hy * nx_ + c.hx;
-        const int32_t sea = c.hx != cx && c.hy != cy ? seaStep * 3 / 2 : seaStep;
+        const int32_t sea = seaTime(c.hx - cx, c.hy - cy);
         if (!afloat && sail && c.owner == s.owner && docked[static_cast<size_t>(city)]) relax(cur, out, 1, sea);  // put out
         if (afloat) relax(cur, out, 1, sea);  // casting off from the quay
     }
@@ -406,32 +403,10 @@ bool Campaign::routeTo(const Stack& s, int32_t cell, const std::vector<int32_t>&
     return !out.empty();
 }
 
-int32_t Campaign::routeTime(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
-    // The same measure as searchRoutes, for a route already planned.
-    const int32_t landMoves = std::max(1, stackMoves(s));
-    const int32_t seaStep = kSeaCost * kTimeScale / kSeaMoves;
-    bool afloat = s.boat != 0;
-    int32_t px = s.cx, py = s.cy, t = 0;
-    for (const auto& [x, y] : path) {
-        const bool diagonal = x != px && y != py;
-        const int32_t walk = stackCost(s, x, y);
-        if (!afloat && navigable(x, y) && walk >= kProhibited) afloat = true;  // boards
-        if (afloat) {
-            t += diagonal ? seaStep * 3 / 2 : seaStep;
-            if (!navigable(x, y)) afloat = false;  // lands
-        } else {
-            t += (diagonal ? walk * 3 / 2 : walk) * kTimeScale / landMoves;
-        }
-        px = x;
-        py = y;
-    }
-    return t;
-}
-
 bool Campaign::boardsBoat(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
     if (s.boat) return true;
     for (const auto& [x, y] : path)
-        if (navigable(x, y) && stackCost(s, x, y) >= kProhibited) return true;
+        if (navigable(x, y) && !passable(s, x, y)) return true;
     return false;
 }
 
@@ -439,14 +414,9 @@ bool Campaign::planRoute(const Stack& s, int32_t tx, int32_t ty, std::vector<std
     out.clear();
     if (tx < 0 || ty < 0 || tx >= nx_ || ty >= ny_) return false;
     // Fliers fly; without a boat of our own anywhere, the road is the only way.
-    bool flier = !s.armies.empty(), anyFlier = false;
-    for (const Army& a : s.armies) {
-        flier = flier && (flies(a.type) || a.hero());
-        anyFlier = anyFlier || flies(a.type);
-    }
     bool boat = s.boat != 0;
     for (const Boat& b : boats_) boat = boat || (b.owner == s.owner && !b.stack);
-    if ((flier && anyFlier) || !boat) return findPath(s, tx, ty, out);
+    if (airborne(s) || !boat) return findPath(s, tx, ty, out);
     std::vector<std::pair<int32_t, int32_t>> walk;
     const bool byLand = !s.boat && findPath(s, tx, ty, walk);
     std::vector<int32_t> g, parent;
