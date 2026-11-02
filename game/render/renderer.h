@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "illyria/game/battle.h"
+#include "illyria/game/campaign_soldiers.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/detail_land.h"
 #include <map>
@@ -20,6 +21,10 @@
 #include "sprite_layout.h"
 
 namespace illyria::game {
+
+// The campaign's soldiers are grouped for drawing past the battle's, by type and
+// by side (a faction 0-7, or 8 for a town's own garrison), in the faction's own colour.
+constexpr int kMapKeyBase = 1 << 20, kMapSides = 9;
 
 // OpenGL ES 3.0 / WebGL 2 renderer for a battle. Everything is drawn with a
 // handful of instanced draw calls so tens of thousands of soldiers, arrows,
@@ -87,6 +92,15 @@ public:
     std::vector<std::string> clipNames(int type) const;
     // The clip a type's sheet plays for `name`: itself, else what stands in for it ("" none).
     std::string clipPlayed(int type, std::string_view name) const;
+    // The campaign's soldiers on the land (campaign_soldiers.h), drawn in place of
+    // the stacks' flags: points in the side's colour, and the battle's sprites,
+    // walking in their formation, for those near the camera. `seconds`: the
+    // campaign's clock, which their strides follow (so a pause holds them).
+    // Empty: none (a battle, the title).
+    void setMapSoldiers(const std::vector<MapSoldier>& soldiers, float seconds);
+    // How many of them were drawn as sprites and as dots in the last frame (tests, the minimap's sibling).
+    size_t mapSprites() const { return mapSprites_.size(); }
+    int mapDots() const { return dots_.count; }
     // The castles' tower banners in each town's holder's colour (by city index).
     void setCityColours(const std::vector<V3>& colours);
     // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
@@ -106,7 +120,7 @@ private:
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1;
-        GLint albedo = -1;
+        GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -151,6 +165,22 @@ private:
     Program figure_, resolve_, unit_, figureDepth_, sheetView_;
     Program bar_;  // health bars with veterans' shield pips
     Batch bars_;
+    // The campaign's soldiers (setMapSoldiers): those too far to be sprites are
+    // drawn as dots (dot_, dots_: position, colour and whether selected), those near
+    // the camera as the battle's sprites (mapSprites_: indices into mapSoldiers_, with
+    // their battle-local places in mapPlaces_).
+    Program dot_;
+    Batch dots_;
+    std::vector<MapSoldier> mapSoldiers_;
+    std::vector<V3> mapPlaces_;
+    std::vector<size_t> mapSprites_;
+    std::vector<char> mapShown_;  // on the screen (or near it): the rest are not drawn
+    float mapSeconds_ = 0;
+    bool mapOn_ = false;
+    void placeMapSoldiers(const Battle& battle, const Camera& camera);
+    void pushMapSprites(const Battle& battle, const Camera& camera, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
+    void drawMapDots(const Camera& camera, double timeSeconds, float gameSeconds);
+    float mapDotPx_ = 4;  // a dot's width, in device pixels
     // The soldiers' sprite sheets, one per unit type and side, baked on the
     // GPU from figures::build when a battle first needs them.
     struct Sheet {
@@ -281,6 +311,7 @@ private:
     // How long his fall takes: figures::kDieSeconds, or his sheet's own clip's.
     float deathSeconds(int type, const sim::Unit& u) const;
     void bakeMissing(const Battle& battle);
+    void bakeTypes(const std::vector<sim::UnitType>& need);
     // Body parts drawn as pieces of their soldier's own picture (the sheet's
     // gib cells, sprite_layout.h; renderer_gibs.cpp), where his sheet has
     // them; the rest stay 3D (pushPart). Each flying part, by projectile id,

@@ -415,7 +415,7 @@
     campaignHtml();
   const campaignHtml = () =>
     `<h3>On the campaign map</h3>` +
-    row("banner", "Tap one of your banners", "Selects that stack; its armies show as cards. Then tap the ground to march, an enemy banner or town to attack it.") +
+    row("banner", "Tap your soldiers, or box them", "Selects that stack (hold and drag, or shift and drag, a box round them); its armies show as cards. Then tap the ground to march, enemy soldiers or a town to attack. The minimap at the top right takes the camera anywhere.") +
     row("city", "Tap one of your towns", "Its panel: what it trains, where new armies go, its walls, its boats.") +
     `<table class="keys"><tr><td>Fight it · Resolve</td><td>A battle: fight it in 3D, or let the dice settle it. Withdraw leaves a 3D battle.</td></tr>` +
     `<tr><td>Search · Visit</td><td>A hero at a ruin or a sage, anyone at a temple.</td></tr>` +

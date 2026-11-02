@@ -2083,4 +2083,38 @@ void main() {
 }
 )";
 
+// The campaign's soldiers from high up (renderer_map.cpp): a round dot in his
+// side's colour, a few pixels wide whatever the distance. Drawn twice, so that
+// a crowd has one dark outline and not one a man: first every dot wider by
+// uRim (dark; pale for the selected stack's), then the colours.
+inline const char* kDotVs = R"(
+layout(location = 0) in vec3 iPos;
+layout(location = 1) in vec4 iColour;  // colour, and 1 if selected
+uniform vec2 uViewport;  // px
+uniform float uDotPx;
+uniform float uRim;  // px of outline all round (0: the colours)
+out vec2 vCorner;
+flat out vec4 vColour;
+void main() {
+    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+    float size = uDotPx * (1.0 + 0.5 * iColour.a) + 2.0 * uRim;
+    // Drawn a little nearer the eye along its own line of sight (where it appears is not
+    // changed): so that bumps of the ground the coarse land does not have do not bury it.
+    gl_Position = uViewProj * vec4(iPos + (uEye - iPos) * 0.02, 1.0);
+    gl_Position.xy += (corner - 0.5) * 2.0 * size / uViewport * gl_Position.w;
+    vCorner = corner * 2.0 - 1.0;
+    vColour = iColour;
+}
+)";
+inline const char* kDotFs = R"(
+in vec2 vCorner;
+flat in vec4 vColour;
+uniform float uRim;
+out vec4 oColor;
+void main() {
+    if (length(vCorner) > 1.0) discard;
+    oColor = vec4(uRim > 0.0 ? (vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.03, 0.03, 0.04)) : vColour.rgb, 1.0);
+}
+)";
+
 }  // namespace illyria::game::shaders

@@ -17,6 +17,7 @@
 #include "../render/renderer.h"
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
+#include "illyria/game/campaign_soldiers.h"
 #include "illyria/game/factions.h"
 #include "illyria/game/gestures.h"
 #include "illyria/game/mode.h"
@@ -48,6 +49,11 @@ EM_JS(void, play_sfx_cue, (const char* id, float gain, float pan, float dist, fl
 });
 EM_JS(void, set_sfx_ambience, (float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain), {
     if (window.IllyriaSfx) window.IllyriaSfx.ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+});
+
+// The minimap's land (RGBA, rows from the north) to the page's canvas (illyria_minimap_land).
+EM_JS(void, minimap_land_page, (const uint8_t* rgba, int w, int h), {
+    if (window.IllyriaMinimap) window.IllyriaMinimap.land(HEAPU8.slice(rgba, rgba + w * h * 4), w, h);
 });
 
 // A match asked for without a place: the page's setup panel (modes.js); and one begun.
@@ -117,6 +123,18 @@ struct App {
         // What the renderer was last given: the towns' holders (tower banners) and the land's reckoning.
         std::vector<uint8_t> owners;
         int64_t territoryTick = -1;
+        // The soldiers on the land (campaign_soldiers.h), as last laid out: for the renderer, for picking, for the minimap.
+        MapFacing facing;
+        std::vector<MapSoldier> soldiers;
+        std::vector<StackShape> shapes;
+        double layoutMs = 0;  // smoothed
+        bool soldiersOff = false;  // test hook: draw the land without them, to see what they cost
+        // A selection box being drawn on the map, in canvas pixels.
+        bool boxing = false;
+        float bx0 = 0, by0 = 0, bx1 = 0, by1 = 0;
+        // The minimap: its land, drawn once (RGBA, one pixel to 22 m), and the text handed to the page.
+        std::vector<uint8_t> miniLand;
+        std::string mini;
     } camp;
     // The title screen: the battlefield, still, the camera slowly circling it
     // (cheaply: low resolution, every other frame) behind the page's menu.
@@ -231,24 +249,53 @@ float surfaceAt(float x, float y) {
     return z;
 }
 
-// Where a campaign stack stands now, in battle-local metres: between the cell
-// it holds and the next on its road, by how far it has got at its real pace
-// (afloat, at the boat's). Between ticks it glides on by the share of a tick
-// the clock has run (cv.acc), so a flag never steps.
+// The share of a tick the clock has run since the last, in the stacks' hundredths
+// of a tick: between ticks everything glides on by it, so nothing steps.
+double mapAhead() {
+    using C = illyria::sim::Campaign;
+    const App::CampaignView& cv = app->camp;
+    return cv.paused || cv.c->pending() ? 0.0 : std::clamp(cv.acc, 0.0, 1.0) * C::kTimeScale;
+}
+
+// Where a campaign stack stands now, in battle-local metres: along its route by
+// how far it has got at its real pace (campaign_soldiers.h), a boat's stack at
+// the boat's.
 V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
     using C = illyria::sim::Campaign;
     const V3 o = app->battle->origin();
+    if (!s.boat) {
+        const StackPlace at = stackPlace(c, s, mapAhead());
+        V3 p{at.x - o.x, at.y - o.y, 0};
+        p.z = app->battle->heightAt(p.x, p.y);
+        return p;
+    }
     float x = static_cast<float>(C::centre(s.cx)), y = static_cast<float>(C::centre(s.cy));
     if (!s.path.empty()) {
         const int32_t leg = c.legTime(s);
-        const double ahead = app->camp.paused || c.pending() ? 0.0 : std::clamp(app->camp.acc, 0.0, 1.0) * C::kTimeScale;
-        const float t = leg > 0 && leg != C::kClosed ? std::clamp(static_cast<float>((s.progress + ahead) / leg), 0.0f, 1.0f) : 0;
+        const float t = leg > 0 && leg != C::kClosed ? std::clamp(static_cast<float>((s.progress + mapAhead()) / leg), 0.0f, 1.0f) : 0;
         x += (C::centre(s.path.front().first) - x) * t;
         y += (C::centre(s.path.front().second) - y) * t;
     }
     V3 p{x - o.x, y - o.y, 0};
-    p.z = s.boat ? surfaceAt(p.x, p.y) : app->battle->heightAt(p.x, p.y);
+    p.z = surfaceAt(p.x, p.y);
     return p;
+}
+
+// The campaign's soldiers for this frame: laid out from the campaign's state, handed
+// to the renderer, and kept for picking and the minimap.
+void placeMapSoldiers(float dt) {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    if (cv.soldiersOff) {
+        cv.soldiers.clear();
+        cv.shapes.clear();
+        app->renderer.setMapSoldiers({}, 0);
+        return;
+    }
+    const double started = emscripten_get_now();
+    layoutMapSoldiers(*cv.c, mapAhead(), dt, cv.selected, cv.facing, cv.soldiers, cv.shapes);
+    cv.layoutMs = cv.layoutMs * 0.9 + (emscripten_get_now() - started) * 0.1;
+    app->renderer.setMapSoldiers(cv.soldiers, static_cast<float>((cv.c->tick() + std::clamp(cv.acc, 0.0, 1.0)) / C::kTicksPerSecond));
 }
 
 // Every port's pier: from the shore below its walls out toward its harbour.
@@ -406,6 +453,51 @@ bool pendingAfloat(const illyria::sim::Campaign& c) {
     return afloat;
 }
 
+// The stack under a tap or click: the one whose box of soldiers the ground point
+// falls in (or comes within a finger's width of), the nearest middle winning where
+// several do; failing that, one afloat by the look of its boat.
+const illyria::sim::Campaign::Stack* pickStack(float px, float py) {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    V3 hit;
+    if (app->camera.pickGround(px, py, hit)) {
+        const V3 o = app->battle->origin();
+        // 22 CSS pixels of ground, at least 3 m.
+        const float margin = std::max(3.0f, 22.0f * app->pixelRatio * 2.0f * std::tan(Camera::kFovY / 2) / app->camera.height() * app->camera.distance());
+        const StackShape* best = nullptr;
+        float bestScore = 1e9f;
+        for (const StackShape& sh : cv.shapes) {
+            const float dx = hit.x + o.x - sh.x, dy = hit.y + o.y - sh.y;
+            const float fx = std::cos(sh.yaw), fy = std::sin(sh.yaw);
+            const float along = dx * fx + dy * fy, across = dx * fy - dy * fx;
+            const float out = std::hypot(std::max(0.0f, std::fabs(across) - sh.halfWidth), std::max(0.0f, std::fabs(along) - sh.halfLength));
+            if (out > margin) continue;
+            const float score = out + std::hypot(dx, dy) * 0.01f;
+            if (score < bestScore) {
+                bestScore = score;
+                best = &sh;
+            }
+        }
+        if (best) return c.findStack(best->id);
+    }
+    const C::Stack* nearest = nullptr;
+    float best = 34.0f * app->pixelRatio;
+    for (const C::Stack& s : c.stacks()) {
+        if (s.armies.empty() || !s.boat) continue;
+        V3 p = stackPosition(c, s);
+        p.z += 30;
+        float sx, sy;
+        if (!app->camera.project(p, sx, sy)) continue;
+        const float d = std::hypot(sx - px, sy - py);
+        if (d < best) {
+            best = d;
+            nearest = &s;
+        }
+    }
+    return nearest;
+}
+
 void campaignTap(float px, float py) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
@@ -428,21 +520,9 @@ void campaignTap(float px, float py) {
         if (to >= 0) cv.c->vectorProduction(from, to);
         return;
     }
-    // A banner near the tap: select one of ours (or fall through to march on theirs).
-    const illyria::sim::Campaign::Stack* nearest = nullptr;
-    float best = 34.0f * app->pixelRatio;
-    for (const C::Stack& s : c.stacks()) {
-        if (s.armies.empty()) continue;
-        V3 p = stackPosition(c, s);
-        p.z += 30;
-        float sx, sy;
-        if (!app->camera.project(p, sx, sy)) continue;
-        const float d = std::hypot(sx - px, sy - py);
-        if (d < best) {
-            best = d;
-            nearest = &s;
-        }
-    }
+    // A stack near the tap: the box its soldiers stand in, widened by a finger so that a dot
+    // far out can be hit (or its boat, afloat); select one of ours (or fall through to march on theirs).
+    const illyria::sim::Campaign::Stack* nearest = pickStack(px, py);
     if (nearest && nearest->owner == 0 && nearest->id != cv.selected) {
         cv.selected = nearest->id;
         cv.city = c.cityAt(nearest->cx, nearest->cy);
@@ -474,6 +554,34 @@ void campaignTap(float px, float py) {
     cv.city = -1;
 }
 
+// A selection box on the map (a press held, or shift and a press): the stack of
+// ours with most soldiers inside it is selected, as a tap on it would.
+void endMapBox(bool cancelled) {
+    using C = illyria::sim::Campaign;
+    App::CampaignView& cv = app->camp;
+    cv.boxing = false;
+    if (cancelled || !cv.on) return;
+    const float x0 = std::min(cv.bx0, cv.bx1), x1 = std::max(cv.bx0, cv.bx1), y0 = std::min(cv.by0, cv.by1), y1 = std::max(cv.by0, cv.by1);
+    if (x1 - x0 < 6 && y1 - y0 < 6) return;
+    const V3 o = app->battle->origin();
+    std::map<uint32_t, int> inside;
+    for (const MapSoldier& m : cv.soldiers) {
+        if (m.owner != 0) continue;
+        float sx, sy;
+        if (app->camera.project({m.x - o.x, m.y - o.y, app->battle->heightAt(m.x - o.x, m.y - o.y) + 1.0f}, sx, sy) && sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1)
+            ++inside[m.stack];
+    }
+    uint32_t pick = 0;
+    int most = 0;
+    for (const auto& [id, n] : inside)
+        if (n > most) pick = id, most = n;
+    const C::Stack* s = pick ? cv.c->findStack(pick) : nullptr;
+    if (!s) return;
+    cv.selected = s->id;
+    cv.city = cv.c->cityAt(s->cx, s->cy);
+    if (cv.city >= 0 && cv.c->cities()[static_cast<size_t>(cv.city)].owner != 0 && cv.c->cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
+}
+
 // A new campaign, or one read back from a save.
 void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     using C = illyria::sim::Campaign;
@@ -483,6 +591,8 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     cv.owners.clear();
     cv.territoryTick = -1;
     cv.vectorFrom = -1;
+    cv.facing.yaw.clear();
+    cv.boxing = false;
     cv.acc = 0;
     app->title = false;
     cv.on = true;
@@ -531,6 +641,7 @@ void stopPlaying() {
         app->renderer.setTerritory({}, 0, 0, 0);
         app->renderer.setBoats({});
         app->renderer.setPiers({});
+        app->renderer.setMapSoldiers({}, 0);
     }
     app->renderer.setShowUnits(true);
     app->battle->voice().take();
@@ -656,6 +767,7 @@ void frame() {
             cv.acc = std::min(cv.acc, 1.0);
         }
         placeBoats();
+        placeMapSoldiers(static_cast<float>(dtMs / 1000.0));
         // No battle sounds over the campaign map.
         if (!app->hushed) {
             set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -803,7 +915,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_select_squad(int index) {
 EMSCRIPTEN_KEEPALIVE void illyria_set_shift(int down) {
     if (!app) return;
     app->shift = down != 0;
-    app->gestures->setShift(app->shift && !app->camp.on);
+    app->gestures->setShift(app->shift);
 }
 // Ctrl (or Cmd) and Alt held: the next click is an attack on whatever is
 // under it (a friend too), or a force march (battle_orders.cpp).
@@ -892,7 +1004,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
 EMSCRIPTEN_KEEPALIVE const char* illyria_drag_box() {
     static char buf[96];
     buf[0] = 0;
-    if (!app || app->camp.on) return buf;
+    if (!app) return buf;
+    if (app->camp.on) {
+        const App::CampaignView& cv = app->camp;
+        if (cv.boxing) std::snprintf(buf, sizeof buf, "%.0f %.0f %.0f %.0f", cv.bx0 / app->pixelRatio, cv.by0 / app->pixelRatio, cv.bx1 / app->pixelRatio, cv.by1 / app->pixelRatio);
+        return buf;
+    }
     const Battle::Drag& d = app->battle->drag();
     if (d.mode != Battle::Drag::Mode::Box) return buf;
     const float s = app->pixelRatio;
@@ -1464,6 +1581,49 @@ EMSCRIPTEN_KEEPALIVE void illyria_overview() {
     app->camera.lookAt(illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, kOverviewDistance);
 }
 
+// --- The minimap (the page draws it over a canvas from what these hand over) ---
+
+// The land from above, north at the top: sea, water, and land shaded by its
+// height and lit from the north-west; roads pale. Drawn once, a pixel to 22 m.
+constexpr int kMiniW = 128, kMiniH = 160;
+void buildMiniLand() {
+    using illyria::sim::Fixed;
+    App::CampaignView& cv = app->camp;
+    const illyria::sim::Continent& land = cv.c->continent();
+    std::vector<float> height(static_cast<size_t>(kMiniW) * kMiniH);
+    std::vector<uint8_t> kind(height.size(), 0);  // 0 land, 1 sea, 2 fresh water, 3 road
+    for (int j = 0; j < kMiniH; ++j)
+        for (int i = 0; i < kMiniW; ++i) {
+            const int64_t x = illyria::sim::Continent::kWidth * (2 * i + 1) / (2 * kMiniW);
+            const int64_t y = illyria::sim::Continent::kHeight - illyria::sim::Continent::kHeight * (2 * j + 1) / (2 * kMiniH);
+            const illyria::sim::Continent::Sample smp = land.sample(Fixed::fromInt(x), Fixed::fromInt(y));
+            const size_t at = static_cast<size_t>(j) * kMiniW + i;
+            height[at] = static_cast<float>(smp.height.toDouble());
+            if (smp.land.toDouble() < 0) kind[at] = 1;
+            else if (smp.inLake || smp.inBasin || smp.riverDist.toDouble() < smp.riverHalfWidth.toDouble() + 6) kind[at] = 2;
+            else if (smp.roadDist.toDouble() < 10) kind[at] = 3;
+        }
+    cv.miniLand.assign(height.size() * 4, 255);
+    for (int j = 0; j < kMiniH; ++j)
+        for (int i = 0; i < kMiniW; ++i) {
+            const size_t at = static_cast<size_t>(j) * kMiniW + i;
+            const auto h = [&](int di, int dj) { return height[static_cast<size_t>(std::clamp(j + dj, 0, kMiniH - 1)) * kMiniW + std::clamp(i + di, 0, kMiniW - 1)]; };
+            // Lit from the north-west: higher to the south-east than to the north-west means facing the sun.
+            const float lit = std::clamp(0.5f + (h(-1, -1) - h(1, 1)) * 0.03f, 0.0f, 1.0f);
+            const float elev = std::clamp(height[at] / 120.0f, 0.0f, 1.0f);
+            V3 c;
+            if (kind[at] == 1) c = {0.10f, 0.22f, 0.34f};
+            else if (kind[at] == 2) c = {0.20f, 0.40f, 0.58f};
+            else {
+                const V3 low{0.30f, 0.43f, 0.24f}, mid{0.48f, 0.44f, 0.28f}, high{0.74f, 0.72f, 0.68f};
+                c = elev < 0.5f ? low + (mid - low) * (elev * 2) : mid + (high - mid) * ((elev - 0.5f) * 2);
+                c = c * (0.62f + 0.7f * lit);
+                if (kind[at] == 3) c = c * 0.55f + V3{0.78f, 0.7f, 0.5f} * 0.45f;
+            }
+            for (int k = 0; k < 3; ++k) cv.miniLand[at * 4 + k] = static_cast<uint8_t>(std::clamp((&c.x)[k], 0.0f, 1.0f) * 255);
+        }
+}
+
 // Map labels for the page to draw: one line per visible label,
 // "kind|colour|x|y|name" in CSS pixels. Kinds: 0 city, 1 capital, 2 ruin,
 // 3 temple, 4 sage, 5 realm, 6 landmark. Which appear depends on the zoom.
@@ -1524,6 +1684,155 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
     return out.c_str();
 }
 
+
+// The minimap's land, to the page (IllyriaMinimap.land): RGBA, rows from the north.
+EMSCRIPTEN_KEEPALIVE void illyria_minimap_land() {
+    if (!app || !app->camp.on) return;
+    if (app->camp.miniLand.empty()) buildMiniLand();
+    minimap_land_page(app->camp.miniLand.data(), kMiniW, kMiniH);
+}
+// The minimap's contents, a line each, continent metres from the south-west corner:
+//   m|width|height          the continent's size
+//   t|x|y|colour|capital    every town, in its holder's colour
+//   s|x|y|kind              every ruin (0), temple (1) and sage (2)
+//   k|colour|x|y|count      a heap of soldiers too close to tell apart: a heat blob
+//   d|colour|x|y            a soldier (or two) standing apart, a point
+// Nothing is hidden yet: fog of war (docs/ONE_WORLD.md step 4) will leave out the
+// soldiers the player's own cannot see.
+EMSCRIPTEN_KEEPALIVE const char* illyria_minimap() {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return "";
+    App::CampaignView& cv = app->camp;
+    const C& c = *cv.c;
+    std::string& out = cv.mini;
+    char buf[160];
+    const auto hex = [](const V3& col) {
+        char h[8];
+        std::snprintf(h, sizeof h, "#%02x%02x%02x", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
+        return std::string(h);
+    };
+    std::snprintf(buf, sizeof buf, "m|%d|%d\n", static_cast<int>(illyria::sim::Continent::kWidth), static_cast<int>(illyria::sim::Continent::kHeight));
+    out = buf;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const auto& town = c.continent().cities()[i];
+        std::snprintf(buf, sizeof buf, "t|%.0f|%.0f|%s|%d\n", town.pos.x.toDouble(), town.pos.y.toDouble(), hex(factionColor(c.cities()[i].owner)).c_str(), town.capital ? 1 : 0);
+        out += buf;
+    }
+    for (size_t k = 0; k < c.sites().size(); ++k) {
+        const auto& site = c.continent().sites()[k];
+        std::snprintf(buf, sizeof buf, "s|%.0f|%.0f|%d\n", site.pos.x.toDouble(), site.pos.y.toDouble(), static_cast<int>(site.kind));
+        out += buf;
+    }
+    // Soldiers binned 40 m square, by side: a bin of more than kApart is a heap (its
+    // middle, by how many), fewer are points where they stand.
+    constexpr float kBin = 40.0f;
+    constexpr int kApart = 2;
+    struct Bin {
+        int n = 0;
+        float x = 0, y = 0;
+        std::vector<std::pair<float, float>> men;
+    };
+    std::map<std::pair<int, int>, Bin> bins;  // by cell, a side at a time below
+    for (int side = 0; side <= illyria::sim::Continent::kFactionCount; ++side) {
+        const uint8_t owner = side < illyria::sim::Continent::kFactionCount ? static_cast<uint8_t>(side) : C::kNeutral;
+        bins.clear();
+        for (const MapSoldier& m : cv.soldiers) {
+            if (m.owner != owner) continue;
+            Bin& b = bins[{static_cast<int>(m.x / kBin), static_cast<int>(m.y / kBin)}];
+            ++b.n;
+            b.x += m.x;
+            b.y += m.y;
+            if (b.n <= kApart) b.men.push_back({m.x, m.y});
+        }
+        const std::string col = hex(factionColor(owner));
+        for (const auto& [cell, b] : bins) {
+            if (b.n > kApart) std::snprintf(buf, sizeof buf, "k|%s|%.0f|%.0f|%d\n", col.c_str(), b.x / b.n, b.y / b.n, b.n), out += buf;
+            else
+                for (const auto& [x, y] : b.men) std::snprintf(buf, sizeof buf, "d|%s|%.0f|%.0f\n", col.c_str(), x, y), out += buf;
+        }
+    }
+    return out.c_str();
+}
+// The ground the camera sees, as four corners in continent metres (top left,
+// top right, bottom right, bottom left of the screen), "x,y x,y x,y x,y"; "" if the sky shows.
+EMSCRIPTEN_KEEPALIVE const char* illyria_minimap_view() {
+    static char buf[160];
+    buf[0] = 0;
+    if (!app || !app->camp.on) return buf;
+    const V3 o = app->battle->origin();
+    const float w = app->camera.width(), h = app->camera.height();
+    const float corners[4][2] = {{0, 0}, {w, 0}, {w, h}, {0, h}};
+    int n = 0;
+    for (const auto& c : corners) {
+        V3 hit;
+        // The corners that look at the sky are brought down to the horizon's ground.
+        float py = c[1];
+        bool ok = app->camera.pickGround(c[0], py, hit);
+        for (int tries = 0; !ok && tries < 24; ++tries) ok = app->camera.pickGround(c[0], py += h * 0.04f, hit);
+        if (!ok) return buf;
+        n += std::snprintf(buf + n, sizeof buf - n, "%s%.0f,%.0f", n ? " " : "", hit.x + o.x, hit.y + o.y);
+    }
+    return buf;
+}
+// A tap on the minimap: the camera over that point, as high as it was.
+EMSCRIPTEN_KEEPALIVE void illyria_minimap_look(float x, float y) {
+    if (!app || !app->camp.on) return;
+    app->introStartMs = -1;
+    const V3 o = app->battle->origin();
+    app->camera.lookAt(x - o.x, y - o.y, app->camera.distance());
+}
+// Test hook: the camera over a point of the continent (metres from its south-west corner).
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_view(float x, float y, float distance, float yaw) {
+    if (!app || !app->camp.on) return;
+    app->introStartMs = -1;
+    const V3 o = app->battle->origin();
+    app->camera.lookAt(x - o.x, y - o.y, distance);
+    app->camera.rotate(yaw - app->camera.yaw());
+}
+// Test hook: every stack on the land as JSON [{id, owner, x, y, soldiers, speed}], continent metres.
+EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_shapes() {
+    static std::string out;
+    out = "[";
+    if (app && app->camp.on) {
+        char buf[160];
+        for (const StackShape& sh : app->camp.shapes) {
+            std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.1f,\"y\":%.1f,\"soldiers\":%d,\"speed\":%.2f}", out.size() > 1 ? "," : "", sh.id,
+                          sh.owner, sh.x, sh.y, sh.soldiers, sh.speed);
+            out += buf;
+        }
+    }
+    out += "]";
+    return out.c_str();
+}
+// Test hook: where a stack's middle is on the screen, "x,y" in CSS pixels ("" if off it).
+EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_screen(unsigned id) {
+    static char buf[48];
+    buf[0] = 0;
+    if (!app || !app->camp.on) return buf;
+    const V3 o = app->battle->origin();
+    for (const StackShape& sh : app->camp.shapes) {
+        if (sh.id != id) continue;
+        float x, y;
+        if (app->camera.project({sh.x - o.x, sh.y - o.y, app->battle->heightAt(sh.x - o.x, sh.y - o.y)}, x, y))
+            std::snprintf(buf, sizeof buf, "%.1f,%.1f", x / app->pixelRatio, y / app->pixelRatio);
+    }
+    return buf;
+}
+// Test hook: 0 draws the campaign map without its soldiers (to see what they cost), 1 with them.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_soldiers(int on) {
+    if (app) app->camp.soldiersOff = on == 0;
+}
+// Test hook: how many soldiers the campaign holds, how many are drawn as sprites and
+// as dots, and what laying them out and drawing a frame cost (milliseconds, smoothed).
+EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
+    static char buf[200];
+    buf[0] = 0;
+    if (!app || !app->camp.on) return buf;
+    std::snprintf(buf, sizeof buf, "{\"soldiers\":%zu,\"stacks\":%zu,\"sprites\":%zu,\"dots\":%d,\"layoutMs\":%.3f,\"drawMs\":%.3f}", app->camp.soldiers.size(),
+                  app->camp.shapes.size(), app->renderer.mapSprites(), app->renderer.mapDots(), app->camp.layoutMs, app->drawMs);
+    return buf;
+}
+
 // The campaign: start it (0: Easy computer lords, 1: Hard), give orders, and read its state.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_start(int hard) {
     if (app) startCampaign(hard != 0);
@@ -1575,6 +1884,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_fight() {
     app->battle = std::make_unique<Battle>(kBattleSeed + cv.c->day(), plan);
     app->renderer.reset(*app->battle);
     app->renderer.setShowUnits(true);
+    app->renderer.setMapSoldiers({}, 0);
     cv.on = false;
     cv.fighting = true;
     const V3 o = app->battle->origin();
@@ -1725,6 +2035,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
     if (!app) return;
     app->camp.on = false;
     app->renderer.setShowUnits(true);
+    app->renderer.setMapSoldiers({}, 0);
     frameCamera();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
@@ -2454,10 +2765,26 @@ int main() {
         if (!app->camp.on) app->battle->orderTap(app->camera, x, y, app->pixelRatio);
     });
     // A press held on the battlefield: a selection box, or a move's facing line.
+    // On the campaign map the hold is a box round soldiers to select (endMapBox).
     app->gestures->setHold(
-        [](float x, float y, bool box) { return !app->camp.on && app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box); },
-        [](float x, float y) { app->battle->pressMove(app->camera, x, y); },
-        [](float x, float y, bool cancelled) { app->battle->pressEnd(app->camera, x, y, cancelled, app->shift); });
+        [](float x, float y, bool box) {
+            if (app->camp.on) {
+                App::CampaignView& cv = app->camp;
+                cv.boxing = true;
+                cv.bx0 = cv.bx1 = x;
+                cv.by0 = cv.by1 = y;
+                return true;
+            }
+            return app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box);
+        },
+        [](float x, float y) {
+            if (app->camp.on) app->camp.bx1 = x, app->camp.by1 = y;
+            else app->battle->pressMove(app->camera, x, y);
+        },
+        [](float x, float y, bool cancelled) {
+            if (app->camp.on) endMapBox(cancelled);
+            else app->battle->pressEnd(app->camera, x, y, cancelled, app->shift);
+        });
     newBattle();
     resizeCanvas();
     if (!app->renderer.init(*app->battle)) {

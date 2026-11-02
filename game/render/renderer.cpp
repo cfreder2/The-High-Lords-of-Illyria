@@ -274,7 +274,8 @@ bool Renderer::buildPrograms() {
                  {detailTerrain_, shaders::kPatchVs, shaders::kPatchFs},
                  {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
                  {farCut_, shaders::kFarVs, shaders::kFarCutFs},
-                 {bar_, shaders::kBarVs, shaders::kBarFs}};
+                 {bar_, shaders::kBarVs, shaders::kBarFs},
+                 {dot_, shaders::kDotVs, shaders::kDotFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -340,6 +341,9 @@ bool Renderer::buildPrograms() {
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
         s.p.flag = glGetUniformLocation(s.p.id, "uFlag");
         s.p.albedo = glGetUniformLocation(s.p.id, "uAlbedo");
+        s.p.viewport = glGetUniformLocation(s.p.id, "uViewport");
+        s.p.dotPx = glGetUniformLocation(s.p.id, "uDotPx");
+        s.p.rim = glGetUniformLocation(s.p.id, "uRim");
     }
     return true;
 }
@@ -1373,6 +1377,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(units_, {3, 1, 1, 1, 1}, 0);
     makeBatch(particles_, {3, 4}, 0);
     makeBatch(bars_, {3, 4}, 0);
+    makeBatch(dots_, {3, 4}, 0);
     reset(battle);
     return true;
 }
@@ -1415,6 +1420,10 @@ void Renderer::bakeMissing(const Battle& battle) {
         const auto t = static_cast<UnitType>(u.stats.type);
         if (!sheets_[static_cast<int>(t)].tex && std::find(need.begin(), need.end(), t) == need.end()) need.push_back(t);
     }
+    bakeTypes(need);
+}
+
+void Renderer::bakeTypes(const std::vector<UnitType>& need) {
     // Ask for the pre-rendered sheets too; the bake stands in until they come.
     for (UnitType t : need)
         if (sheetRequest_ && sheetsRequested_.insert(static_cast<int>(t)).second) sheetRequest_(static_cast<int>(t));
@@ -1641,9 +1650,17 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
     glBindVertexArray(units_.vao);
     glBindBuffer(GL_ARRAY_BUFFER, units_.vbo);
     for (const auto& group : unitGroups_) {
-        const Sheet& sh = sheetFor(group.first / kSides);
+        const bool onMap = group.first >= kMapKeyBase;
+        const int groupType = onMap ? (group.first - kMapKeyBase) / kMapSides : group.first / kSides;
+        const Sheet& sh = sheetFor(groupType);
         const auto range = group.second;
+        float factionTeam[3];
         const float* team = sideColor(group.first % kSides);
+        if (onMap) {
+            const V3 f = factionColor(static_cast<uint8_t>((group.first - kMapKeyBase) % kMapSides));
+            factionTeam[0] = f.x, factionTeam[1] = f.y, factionTeam[2] = f.z;
+            team = factionTeam;
+        }
         const V3 cloth = figures::cloth(team);
         glActiveTexture(GL_TEXTURE7);
         glBindTexture(GL_TEXTURE_2D, sh.tex);
@@ -2036,6 +2053,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         bakeMissing(battle);
         unitsChecked_ = battle.world().units().size();
     }
+    if (mapOn_) placeMapSoldiers(battle, camera);  // the campaign's soldiers near the camera need sheets (renderer_map.cpp)
     updateCloseups(battle, camera);  // close-up sprite sheets near the camera (renderer_sheets.cpp)
     updatePatch(battle, camera);
     updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
@@ -2151,6 +2169,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
     }
     battle.setSpriteBoxes(std::move(boxes));
+    if (mapOn_) pushMapSprites(battle, camera, byGroup, decals);
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
         const float* team = sideColor(p.owner);
@@ -2479,6 +2498,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glBindVertexArray(bars_.vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
     }
+    if (mapOn_) drawMapDots(camera, timeSeconds, gameSeconds);
 
     // Water over everything below it: soldiers wading show through.
     glEnable(GL_BLEND);

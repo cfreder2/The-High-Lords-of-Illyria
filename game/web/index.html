@@ -130,35 +130,9 @@
   #labels .k2, #labels .k3, #labels .k4 { font-size: 11px; font-style: italic; color: #e2d8c4; }
   #labels .k5 { font-size: 22px; letter-spacing: 0.12em; color: rgba(255, 236, 200, 0.85); font-weight: 600; }
   #labels .k6 { font-size: 12px; font-style: italic; color: rgba(230, 240, 255, 0.8); }
-  /* The campaign: banners on the map, the treasury, the stack and city panels. */
+  /* The campaign: banners rising over towns, the treasury, the stack and city panels, the minimap. */
   #banners { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-  /* A stack's banner: a thin pole standing on the stack, a swallow-tailed
-     pennant in the owner's colour at its top with the strength (and how many
-     armies), a gold crown on the finial for a hero. While its banner goes up
-     over a town the pennant climbs the pole. */
-  #banners .flag { position: absolute; left: 0; top: 0; width: 0; height: 0; --pole: 34px; --up: 1; }
-  #banners .flag.raising { --pole: 50px; }
-  #banners .flag .pole {
-    position: absolute; left: -1px; bottom: 0; width: 2px; height: var(--pole); background: #2a2017;
-    box-shadow: 0 0 0 1px rgba(255, 240, 210, 0.35);
-  }
-  #banners .flag .foot { position: absolute; left: -5px; bottom: -3px; width: 10px; height: 5px; border-radius: 50%; background: rgba(0, 0, 0, 0.45); }
-  #banners .flag .cloth {
-    position: absolute; left: 1px; bottom: calc(var(--pole) * var(--up) - 18px); height: 18px; display: flex; align-items: center; gap: 2px;
-    padding: 0 11px 0 5px; background: var(--c); color: #111; font-weight: 700; font-size: 13px; line-height: 1; white-space: nowrap;
-    clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%);
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 3px 0 0 rgba(0, 0, 0, 0.25);
-  }
-  #banners .flag .shadow { position: absolute; inset: 0; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.8)); }
-  #banners .flag .cloth i { font-style: normal; font-size: 10px; font-weight: 600; opacity: 0.8; }
-  #banners .flag .cloth em { font-style: normal; font-size: 9px; font-weight: 700; }
-  #banners .flag .crown {
-    position: absolute; left: -6px; bottom: calc(var(--pole) - 3px); width: 12px; height: 12px; line-height: 12px; text-align: center;
-    font-size: 10px; color: #3a2800; background: #e8c478; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
-  }
-  #banners .flag.sel .cloth { box-shadow: inset 0 0 0 2px #8fd0ff, inset 3px 0 0 rgba(0, 0, 0, 0.25); }
-  #banners .flag.sel .foot { background: #8fd0ff; box-shadow: 0 0 6px #8fd0ff; }
-  #banners .flag.moving .cloth { opacity: 0.9; }
+  /* Armies are not flagged: their soldiers are drawn on the land (campaign_soldiers.h). */
   /* A banner going up over a town: a bar under its name (the raiser's colour), and what holds it up. */
   #banners .raise { position: absolute; left: 0; top: 0; transform: translate(-6px, 10px); font-size: 10px; font-weight: 600;
                     color: var(--ink); text-shadow: 0 1px 2px #000; white-space: nowrap; }
@@ -166,6 +140,12 @@
   #banners .raise .bar b { display: block; height: 100%; background: var(--c); }
   #banners .raise.held { color: #ffd27a; }
   #banners .raise.losing { color: #ff8a7a; }
+  /* The minimap: every town and site, the soldiers as points or heat, where the camera looks; tap to go there. */
+  #minimap { display: none; position: fixed; right: calc(8px + var(--safe-r)); top: calc(104px + var(--safe-t)); z-index: 3; padding: 3px;
+             touch-action: none; user-select: none; -webkit-user-select: none; }
+  body.campaign #minimap { display: block; }
+  #minimap canvas { display: block; width: 150px; height: 187.5px; border-radius: 7px; cursor: crosshair; touch-action: none; }
+  @media (max-width: 600px) { #minimap canvas { width: 108px; height: 135px; } #minimap { top: calc(100px + var(--safe-t)); } }
   #labels .k7 { font-size: 11px; font-style: italic; color: #e2d8c4; }
   #labels .k7 .tw { font-style: normal; font-size: 12px; margin-right: 3px; }
   /* The siege's capture point, at the top of the battle. */
@@ -379,6 +359,7 @@
 </div>
 
 <div id="banners"></div>
+<div id="minimap" class="panel" aria-label="Map of the whole island"><canvas id="miniCanvas"></canvas></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
 <div id="landTag" class="panel battle-only hidden"></div>
 <button id="compass" aria-label="North up" title="North up (N)">
@@ -555,6 +536,11 @@
       setMode: Module.cwrap("illyria_set_order_mode", null, ["number"]),
       hover: Module.cwrap("illyria_hover", "number", ["number", "number"]),
       dragBox: Module.cwrap("illyria_drag_box", "string", []),
+      miniLand: Module.cwrap("illyria_minimap_land", null, []),
+      mini: Module.cwrap("illyria_minimap", "string", []),
+      miniView: Module.cwrap("illyria_minimap_view", "string", []),
+      miniLook: Module.cwrap("illyria_minimap_look", null, ["number", "number"]),
+      mapStats: Module.cwrap("illyria_campaign_map_stats", "string", []),
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
@@ -668,7 +654,7 @@
   function updateLabels() {
     requestAnimationFrame(updateLabels);
     updateCompass();
-    const box = campaign ? "" : api.dragBox();
+    const box = api.dragBox();
     const sb = $("selBox");
     if (box) {
       const [x0, y0, x1, y1] = box.split(" ").map(Number);
@@ -1157,7 +1143,106 @@
     for (let i = 0; i < n; ++i) paths += `<path d="M2 ${4 + i * 4} L8 ${1 + i * 4} L14 ${4 + i * 4}" />`;
     return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   }
-  // The campaign HUD: banners follow the map every frame; panels a few times a second.
+
+  // The minimap (illyria_minimap in main.cpp): the land drawn once by the engine, then every town and
+  // site, the soldiers as points where they stand apart and as heat where they cannot be told apart,
+  // and the ground the camera sees. A tap or a drag on it takes the camera there.
+  const mini = { canvas: $("miniCanvas"), land: null, w: 2844, h: 3556, next: 0, towns: [], sites: [], heaps: [], dots: [] };
+  window.IllyriaMinimap = {
+    land(rgba, w, h) {
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.length), w, h), 0, 0);
+      mini.land = c;
+    },
+  };
+  function drawMinimap(t) {
+    requestAnimationFrame(drawMinimap);
+    if (!api || !campaign) return;
+    const cv = mini.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cssW = cv.clientWidth, cssH = cv.clientHeight;
+    if (!cssW) return;
+    if (cv.width !== Math.round(cssW * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); }
+    if (!mini.land) api.miniLand();
+    if (t >= mini.next) {
+      // Ten times a second is plenty for a map this small.
+      mini.next = t + 100;
+      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = [];
+      for (const line of api.mini().split("\n")) {
+        const f = line.split("|");
+        if (f[0] === "m") { mini.w = +f[1]; mini.h = +f[2]; }
+        else if (f[0] === "t") mini.towns.push({ x: +f[1], y: +f[2], c: f[3], cap: f[4] === "1" });
+        else if (f[0] === "s") mini.sites.push({ x: +f[1], y: +f[2], k: +f[3] });
+        else if (f[0] === "k") mini.heaps.push({ c: f[1], x: +f[2], y: +f[3], n: +f[4] });
+        else if (f[0] === "d") mini.dots.push({ c: f[1], x: +f[2], y: +f[3] });
+      }
+    }
+    const g = cv.getContext("2d");
+    const sx = cv.width / mini.w, sy = cv.height / mini.h, u = cv.width / cssW;  // metres to pixels; a CSS pixel in canvas pixels
+    const X = (x) => x * sx, Y = (y) => cv.height - y * sy;
+    g.imageSmoothingEnabled = true;
+    g.fillStyle = "#1a2a38";
+    g.fillRect(0, 0, cv.width, cv.height);
+    if (mini.land) g.drawImage(mini.land, 0, 0, cv.width, cv.height);
+    // Sites: a small pale mark each (ruin, temple, sage).
+    g.lineWidth = u; g.strokeStyle = "rgba(0,0,0,0.7)"; g.fillStyle = "#f4ead0";
+    for (const s of mini.sites) {
+      const x = X(s.x), y = Y(s.y), r = 2 * u;
+      g.beginPath();
+      if (s.k === 0) g.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6);
+      else if (s.k === 1) { g.moveTo(x, y - r * 1.2); g.lineTo(x + r, y + r * 0.8); g.lineTo(x - r, y + r * 0.8); g.closePath(); }
+      else g.arc(x, y, r, 0, 7);
+      g.stroke(); g.fill();
+    }
+    // Heaps of soldiers: heat in their side's colour, wider and brighter the more of them; a town's
+    // own (grey) garrison fainter, so that the armies of the lords stand out.
+    for (const h of mini.heaps) {
+      const r = Math.min(1.5 + Math.sqrt(h.n) * 0.3, 5) * u;
+      g.globalAlpha = Math.min(0.9, 0.4 + h.n / 100) * (h.c === "#999999" ? 0.55 : 1);
+      g.fillStyle = h.c;
+      g.beginPath(); g.arc(X(h.x), Y(h.y), r, 0, 7); g.fill();
+      g.lineWidth = u * 0.8; g.strokeStyle = "rgba(0,0,0,0.75)"; g.stroke();
+    }
+    g.globalAlpha = 1;
+    // Soldiers standing apart: points.
+    for (const d of mini.dots) {
+      g.fillStyle = "#000"; g.fillRect(X(d.x) - 1.6 * u, Y(d.y) - 1.6 * u, 3.2 * u, 3.2 * u);
+      g.fillStyle = d.c; g.fillRect(X(d.x) - 1.1 * u, Y(d.y) - 1.1 * u, 2.2 * u, 2.2 * u);
+    }
+    // Towns, always: a square in the holder's colour, larger for a capital.
+    for (const tw of mini.towns) {
+      const r = (tw.cap ? 3.4 : 2.4) * u, x = X(tw.x), y = Y(tw.y);
+      g.fillStyle = "#000"; g.fillRect(x - r - u * 0.6, y - r - u * 0.6, 2 * r + u * 1.2, 2 * r + u * 1.2);
+      g.fillStyle = tw.c; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    // Where the camera looks.
+    const view = api.miniView();
+    if (view) {
+      const pts = view.split(" ").map((p) => p.split(",").map(Number));
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))));
+      g.closePath();
+      g.lineWidth = 1.5 * u; g.strokeStyle = "rgba(0,0,0,0.6)"; g.stroke();
+      g.lineWidth = u; g.strokeStyle = "#fff"; g.stroke();
+    }
+  }
+  requestAnimationFrame(drawMinimap);
+  (() => {
+    const cv = mini.canvas;
+    let down = false;
+    const look = (e) => {
+      const r = cv.getBoundingClientRect();
+      const x = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), y = Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1);
+      if (api) api.miniLook(x * mini.w, (1 - y) * mini.h);
+    };
+    cv.addEventListener("pointerdown", (e) => { down = true; cv.setPointerCapture(e.pointerId); look(e); e.preventDefault(); e.stopPropagation(); });
+    cv.addEventListener("pointermove", (e) => { if (down) look(e); });
+    const up = () => { down = false; };
+    cv.addEventListener("pointerup", up);
+    cv.addEventListener("pointercancel", up);
+  })();
+
+  // The campaign HUD: the bars of banners rising follow the map every frame; panels a few times a second.
   let newsShown = "", newsDismissed = false;
   let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "", campRareOpen = false;
   const campRanks = ["Recruit", "Regular", "Veteran", "Elite"];
@@ -1168,33 +1253,7 @@
     campState = JSON.parse(api.campState());
     if (!campState.stacks) return;
     const root = $("banners");
-    const flags = root.getElementsByClassName("flag"), raises = root.getElementsByClassName("raise");
-    while (flags.length < campState.stacks.length) {
-      const d = document.createElement("div");
-      d.className = "flag";
-      d.innerHTML = '<span class="foot"></span><span class="pole"></span><div class="shadow"><span class="cloth"><b></b><i></i><em></em></span></div><span class="crown">♛</span>';
-      root.appendChild(d);
-    }
-    campState.stacks.forEach((s, k) => {
-      const d = flags[k];
-      d.style.display = "";
-      d.style.transform = `translate(${s.x}px, ${s.y + 8}px)`;  // the pennant clears a town's name
-      d.style.setProperty("--c", s.color);
-      // Light text on dark banners.
-      const lum = parseInt(s.color.slice(1, 3), 16) * 0.3 + parseInt(s.color.slice(3, 5), 16) * 0.59 + parseInt(s.color.slice(5, 7), 16) * 0.11;
-      const cloth = d.querySelector(".cloth");
-      cloth.style.color = lum < 90 ? "#f2e6cc" : "#111";
-      d.classList.toggle("sel", s.id === campState.selected);
-      d.classList.toggle("moving", s.moving);
-      // Raising its banner over a town: the pennant climbs the pole.
-      d.classList.toggle("raising", s.raising >= 0);
-      d.style.setProperty("--up", s.raising >= 0 ? (0.7 + 0.3 * s.raising / 100).toFixed(3) : "1");
-      d.querySelector(".crown").style.display = s.hero ? "" : "none";
-      d.querySelector("b").textContent = s.strength;
-      d.querySelector("i").textContent = (s.boat ? "⛵" : "") + (s.count > 1 ? `×${s.count}` : "");
-      d.querySelector("em").textContent = s.vets ? `◆${s.vets > 1 ? s.vets : ""}` : "";  // veterans in the stack
-    });
-    for (let k = campState.stacks.length; k < flags.length; ++k) flags[k].style.display = "none";
+    const raises = root.getElementsByClassName("raise");
     // Banners going up over towns: a bar under the town's name, and what is happening.
     while (raises.length < campState.banners.length) {
       const d = document.createElement("div");

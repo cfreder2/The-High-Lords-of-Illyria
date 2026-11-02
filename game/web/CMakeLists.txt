@@ -10,6 +10,7 @@ add_executable(illyria_web
     ../render/renderer_sheets.cpp
     ../render/renderer_orders.cpp
     ../render/renderer_flags.cpp
+    ../render/renderer_map.cpp
     ../render/renderer_gibs.cpp
     ../render/renderer_models.cpp
     ../render/meshes.cpp
