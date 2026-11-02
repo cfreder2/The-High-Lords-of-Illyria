@@ -447,7 +447,9 @@ TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {
             }
     b.orderMove(to);
     run(b, 60);  // (up the bank, 1 in 6)
-    CHECK(standsAs(b, men, places, to, 1.2f));
+    // Each place has a man within a waypoint's reach of it (1.5 m: the
+    // jostle on arrival can leave one a little off); strung out would be metres.
+    CHECK(standsAs(b, men, places, to, 1.5f));
 }
 
 TEST(a_saved_group_marches_in_its_saved_shape) {

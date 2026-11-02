@@ -156,9 +156,11 @@ int main() {
     std::printf("Terrain is tactical. A unit moves at its speed times its gait's multiplier for the ground under it\n"
                 "(`engine/sim/src/gait.cpp`), and its paths cost travel time with the same table, so each kind takes its\n"
                 "own fastest way: to the road and along it rather than straight over the fields, round a wood that\n"
-                "slows it more than the detour does. Deep water is impassable on foot. Climbing divides speed by\n"
-                "1 + grade x 2.5 x the gait's climb percentage; going down is up to 15%% quicker; slopes steeper than\n"
-                "35%% slow walkers a further 20%%. Fliers walk like men.\n\n");
+                "slows it more than the detour does. A road doubles every gait's pace. A bridge is walked at the pace\n"
+                "of the fields: Bridge is the ground of every deck, a castle's walls and ramps as well as the bridges\n"
+                "over rivers. Deep water is impassable on foot. Climbing divides speed by 1 + grade x 2.5 x the gait's\n"
+                "climb percentage; going down is up to 15%% quicker; slopes steeper than 35%% slow walkers a further\n"
+                "20%%. Fliers walk like men.\n\n");
     const Ground grounds[] = {Ground::Road, Ground::Plains, Ground::Forest, Ground::Swamp, Ground::Shallows,
                               Ground::Rock, Ground::Mud, Ground::Sand, Ground::Bridge};
     std::printf("| Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |\n");

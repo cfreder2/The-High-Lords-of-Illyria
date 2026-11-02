@@ -234,7 +234,12 @@ TEST(a_dwarf_crosses_rock_faster_than_a_man) {
 }
 
 TEST(each_kind_has_its_ground) {
-    CHECK(gaitSpeed(Gait::Horse, Ground::Road) > gaitSpeed(Gait::Foot, Ground::Road));
+    // A road doubles every gait's pace; a deck (a bridge, a castle's walls and
+    // ramps) is walked at the pace of the fields.
+    for (int g = 0; g < kGaitCount; ++g) {
+        CHECK(gaitSpeed(static_cast<Gait>(g), Ground::Road) == gaitSpeed(static_cast<Gait>(g), Ground::Plains) * 2);
+        CHECK(gaitSpeed(static_cast<Gait>(g), Ground::Bridge) == gaitSpeed(static_cast<Gait>(g), Ground::Plains));
+    }
     CHECK(gaitSpeed(Gait::Horse, Ground::Forest) < gaitSpeed(Gait::Foot, Ground::Forest));
     CHECK(gaitSpeed(Gait::Horse, Ground::Swamp) < gaitSpeed(Gait::Foot, Ground::Swamp));
     CHECK(gaitSpeed(Gait::Wolf, Ground::Forest) > gaitSpeed(Gait::Foot, Ground::Forest));
