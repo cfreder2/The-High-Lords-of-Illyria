@@ -187,6 +187,20 @@ How the size was chosen, moving today's 80 towns closer:
   apart; where they can't, a heat map of each side's troops.
 - Fights you can see glow. Tap anywhere on it to take the camera there.
 
+## How hard the computer lords are
+
+What a lord can see through the fog is the difficulty. Today's Easy and Hard (GAME_DESIGN.md
+§4.2.6) keep their habits, and a Medium goes between them:
+
+| | Sees | Plays like |
+|---|---|---|
+| Easy | Only what its own soldiers, towns and heroes see | Warlords' Knight, as Easy does today: wastes a fifth of its gold, forgets a stack now and then, picks targets at random |
+| Medium (new) | Every soldier as a point, as from high up: where armies are, not what they are, except where its own men see | Warlords' Warlord, as Hard does today |
+| Hard | Everything | Warlords' Warlord |
+
+The design promises no secret bonuses, so the difficulty buttons say plainly what each
+lord sees.
+
 ## What becomes of what is built
 
 | Built | Becomes |
@@ -198,7 +212,7 @@ How the size was chosen, moving today's 80 towns closer:
 | Gold, upkeep, training, rare troops, heroes, ruins, temples, sages | Kept, in days of 2 minutes |
 | Banners rising, territory hexes, income from land | Kept |
 | Boats | Later: carrying squads over water in real time |
-| The computer lords' campaign AI | Kept, planning in real time instead of daily |
+| The computer lords' campaign AI | Kept, planning in real time instead of daily, its sight set by the difficulty |
 | The title's set battles (Ford, Siege) and matches (Horde, CTF) | Kept as they are: a piece of the island with nothing else running |
 | Saved games | A new format: the whole world's state |
 
@@ -224,5 +238,3 @@ Each step leaves a playable game.
   come. If they come too slowly or too fast, the day is the one number to turn: income,
   upkeep and training move together. A 5-minute day would make marching quick against the
   economy (the longest march about 5 days) and a 120-day campaign ten hours at 1×.
-- **What the computer lords see.** Only what their own men see (fair, and more work), or
-  everything (as their campaign AI does today)?
