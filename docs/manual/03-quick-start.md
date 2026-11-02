@@ -38,12 +38,12 @@ The battle is won when the last of the Red Hand is dead or fled, and lost when t
 
 Choose the **campaign**. First you are asked how well the seven computer lords should play: **Easy** (Warlords' *Knights*: slow, careless, short of gold) or **Hard** (*Warlords*: every trick, no mercy). Choose Easy for your first war.
 
-![The campaign map at the start, over Kingshold: your banner, the neutral towns around, the roads between.](images/shots/camp_start.jpg)
+![The campaign map at the start, over Kingshold: your lord's soldiers in white, ringed; the neutral towns around, each with its garrison grey in its courtyard; the minimap at the top right.](images/shots/camp_start.jpg)
 
 The camera looks down on **Kingshold**, your capital, with your lord's stack standing in it: your hero, a company of light infantry, and the pegasi of the Throne. The bar at the top says what day it is, how much gold you have, how many cities you hold, and how many hexes of land (⚑).
 
-1. **Train an army.** Tap your lord's banner in Kingshold: the stack is selected and the city's panel opens. It lists what the city can train, with the days, the price and the daily upkeep of each. Tap **Light Infantry**: the price is paid now and the army comes out in two days. Close the panel.
-2. **Choose a target.** Look for the nearest grey square: a neutral town. Tap your lord's banner to select the stack, then tap the town. The stack sets off along the road (roads are quickest) and attacks when it arrives.
+1. **Train an army.** Tap your lord's soldiers in Kingshold's courtyard: the stack is selected (a ring round it) and the city's panel opens. It lists what the city can train, with the days, the price and the daily upkeep of each. Tap **Light Infantry**: the price is paid now and the army comes out in two days. Close the panel.
+2. **Choose a target.** Look for the nearest grey square: a neutral town. Tap your lord's soldiers to select the stack (or hold and drag, shift and drag with a mouse, a box round them), then tap the town. The stack sets off along the road (roads are quickest) and attacks when it arrives.
 3. **Fight or resolve.** The campaign stops: *Battle at Alder Cross: your 3 armies against 2*, say. The prompt shows each side's strength and its small edges. **Resolve** rolls the dice; **Fight it** opens the battle in 3D, at the town's walls. For now, **Resolve**.
 4. **Raise your banner.** You have beaten the garrison, but the town is not yours until your banner flies over it. Stay in the town: a bar under its name shows your banner rising. When it reaches the top the town is yours, with its income and its training.
 5. **Keep going.** The campaign is saved for you at every dawn, and you may keep a war in any of three save slots, to come back to from the title screen. The bar's **Pause** stops the clock; **1×** makes days pass two, four or eight times as fast. A campaign day is thirty seconds at normal speed. The news (top right) reports what your heroes and armies did, and what was done to you.
@@ -63,6 +63,6 @@ In the first two weeks every lord is racing for the neutral towns. A town taken 
 ## The screen in the campaign {#screen-campaign}
 
 - **Top:** *Day 12 · 340 gold · 6 cities · ⚑ 22 · Easy lords*, then Pause, the speed, and the ☰ menu.
-- **The map:** every stack is a banner on a pole in its lord's colour, with a pennant; a veteran stack shows ◆ and how many veterans it has. Cities are castles in their owner's colours; ruins, temples and sages are marked, and searched ruins are greyed. Each hex of land is washed with the colour of whoever holds it.
+- **The map:** every soldier is a point in his lord's colour (grey for a town's own garrison), the points becoming the men themselves as you come close; a stack you have selected is ringed, and its armies are the cards at the bottom. At the top right a **minimap** shows every town and site, the soldiers (as heat where there are too many to tell apart) and the ground you can see: tap or drag it to go there. Cities are castles in their owner's colours; ruins, temples and sages are marked, and searched ruins are greyed. Each hex of land is washed with the colour of whoever holds it.
 - **Bottom:** the armies of the selected stack as cards: name and soldiers, strength, rank pips or the hero's level, blessings (✦) and artifacts (✧). Over a ruin, temple or sage a button offers to **Search**, **Visit** or **Consult**.
 - **Panels:** a city's panel (what it trains, its walls, its port), the battle prompt, a hero's offer of service, the voyage panel for embarking and landing (chapter [](#boats)), and the news.

@@ -8,7 +8,7 @@
 
 ## Attacking {#attacking}
 
-To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy banner or the town with your stack selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
+To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy soldiers or the town with your stack selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
 
 When the stack arrives, the campaign stops and asks:
 

@@ -25,7 +25,7 @@ Losses are real. An army that comes out of a battle with five men left is an arm
 
 ## Strength: the one number {#strength}
 
-Every army shows a single **strength from 1 to 9** on its badge and its banner, as in *Warlords*: light infantry 3, heavy cavalry 6, a dragon 9. It is all you need to read to know what an army is worth in the dice. Every **blessing** adds one, a **hero's level** adds one a level, and a hero's **battle artifacts** add theirs, never past 9. The full list of strengths is in the compendium (chapter [](#compendium)) and the tables at the back.
+Every army shows a single **strength from 1 to 9** on its badge, as in *Warlords*: light infantry 3, heavy cavalry 6, a dragon 9. It is all you need to read to know what an army is worth in the dice. Every **blessing** adds one, a **hero's level** adds one a level, and a hero's **battle artifacts** add theirs, never past 9. The full list of strengths is in the compendium (chapter [](#compendium)) and the tables at the back.
 
 ::: tip
 The dice favour quality over quantity: four heavy infantry of strength 4 will find it hard going against one dragon of strength 9. But the weakest light infantryman can still kill a dragon. Just don't count on it.
@@ -37,13 +37,13 @@ Soldiers who kill come out of their battles better soldiers. A soldier is a **re
 
 An army shows the average rank of its survivors as pips: ◇◇◇ recruit, ◆◇◇ regular, ◆◆◇ veteran, ◆◆◆ elite, with the tally of its kills; a veteran army's pips are gold. On the battlefield each soldier's health bar carries a gold shield for each of his grades. A rank is a small edge, not a whole point of strength: **+3% a rank** to the army's blows and its roll in the dice (regular 3%, veteran 6%, elite 9%), with a little more besides on the battlefield (chapter [](#veterans-in-battle)). Ranks are kept from battle to battle, in the dice and in 3D alike.
 
-Since the rank is the survivors' average, **losses cost rank as well as men**: a veteran army that loses its oldest hands to a volley may come out regular. A banner on the map shows ◆ and the number of veterans in the stack.
+Since the rank is the survivors' average, **losses cost rank as well as men**: a veteran army that loses its oldest hands to a volley may come out regular. The cards of a stack you select show each army's rank.
 
 ## Stacks {#stacks}
 
-Armies move about the map in **stacks**. A stack is shown as a banner on a pole in its lord's colour. At most **eight armies** may stand on one cell of the map, and a stack may not march through a cell where that would make more than eight; inside a city the limit is **32** (a *Warlords* city is four squares of eight). An attack commits the whole stack that makes it, eight armies at most, but a city defends with everything inside it.
+Armies move about the map in **stacks**. A stack is shown as its soldiers, in a column of squads, in its lord's colour (they are points from high up, and the men themselves close in). At most **eight armies** may stand on one cell of the map, and a stack may not march through a cell where that would make more than eight; inside a city the limit is **32** (a *Warlords* city is four squares of eight). An attack commits the whole stack that makes it, eight armies at most, but a city defends with everything inside it.
 
-Tap a banner of yours to select its stack; its armies appear as cards along the bottom. A stack that arrives where another of yours is standing joins it, as many armies as the limit of eight allows. New armies trained in a city join a stack of yours standing idle there.
+Tap the soldiers of a stack of yours to select it (or box them: shift and drag, or hold and drag); its armies appear as cards along the bottom. A stack that arrives where another of yours is standing joins it, as many armies as the limit of eight allows. New armies trained in a city join a stack of yours standing idle there.
 
 ::: note "Not yet built"
 In this edition a stack cannot yet be split by hand. A stack boarding a boat leaves its weakest army on the quay when it has eight (chapter [](#boats)); a hero going to search a ruin takes the stack with him.

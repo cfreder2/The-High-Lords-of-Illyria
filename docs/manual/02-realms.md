@@ -16,7 +16,7 @@ Your object is simple to state: **be the last lord standing**, or hold so many o
 
 ## The realms and their lords {#the-realms}
 
-The land is roughly divided between the eight lords, each with a capital castle, a hero and a war chest. Their colours are those of their banners on the map.
+The land is roughly divided between the eight lords, each with a capital castle, a hero and a war chest. Their colours are those of their soldiers on the map, and of the banners that fly over their towns.
 
 ### The Aurelian Throne <span class="swatch" style="background:#f4f1e8"></span> {#aurelian-throne}
 

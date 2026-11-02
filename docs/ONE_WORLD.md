@@ -1,8 +1,9 @@
 # One World
 
-*A proposal (2026-11-01), not yet built. It replaces the Warlords stack model on the
-campaign map (GAME_DESIGN.md §4.2.4 to §4.2.9) and keeps the promise of §4.1: one
-continent, one clock, the camera from the gods to the mud.*
+*A proposal (2026-11-01), built in steps. Steps 1 and 2 are in the game (see "Building it,
+in steps" below); the rest is not. It replaces the Warlords stack model on the campaign map
+(GAME_DESIGN.md §4.2.4 to §4.2.9) and keeps the promise of §4.1: one continent, one clock,
+the camera from the gods to the mud.*
 
 ## The promise
 
@@ -24,15 +25,15 @@ continent, one clock, the camera from the gods to the mud.*
 
 ## What changes
 
-| | Now | One world |
+| | Now (after steps 1 and 2) | One world |
 |---|---|---|
-| Clock | Campaign: 10 ticks a second, a day is 30 s. Battles: 30 ticks a second, a separate clock | One 30 Hz clock for everything |
-| Armies | A flag on a 133 m cell, hopping cell to cell | Squads of soldiers on the land, in formation |
-| Moving | Warlords movement points and terrain costs | The battle's own route planner, gaits and terrain speeds |
+| Clock | The campaign runs on the battle's 30 ticks a second, a day is 2 minutes. A 3D battle opened from it is still a separate clock | One 30 Hz clock for everything |
+| Armies | A stack of up to eight armies, drawn as its soldiers on the land: points far out, sprites near, in a column of squads (step 2). Fought and given orders as a stack | Squads of soldiers on the land, in formation, fully stepped where they meet |
+| Moving | The battle's gaits and speeds over the 44 m campaign grid (step 1), at the pace of the slowest army | The battle's own route planner, gaits and terrain speeds, refined on the 4 m grid as they go |
 | Fights | "Fight it" opens a battle in a 1 km window; "Resolve" rolls dice | Fought where the armies meet, always physically |
-| Zoomed out | Flags with labels | Points in side colours; no flags |
-| Overview | None | A minimap: every place, every soldier, a heat map where they pile up |
-| Map | 8.5 × 10.7 km | About 2.8 × 3.6 km (a third each way), all 80 towns and 40 sites kept, walls at three quarters |
+| Zoomed out | Every soldier a point in his side's colour; no flags over armies (step 2). Towns' banners and outposts still fly flags | Points in side colours; no flags |
+| Overview | A minimap: every town and site, soldiers as points and heat in side colours, the camera's view; tap to go there (step 2). No fog yet | A minimap: every place, every soldier you can see, a heat map where they pile up |
+| Map | 2.8 × 3.6 km (a third each way), all 80 towns and 40 sites kept, walls at three quarters (step 1) | The same |
 
 ## How long things take
 
@@ -132,6 +133,10 @@ How the size was chosen, moving today's 80 towns closer:
 
 ## Armies on the land
 
+*Built in step 2 (`game/src/campaign_soldiers.cpp`, `game/render/renderer_map.cpp`): a stack is
+drawn as the men it holds, laid out from the campaign's state alone. The stack model itself
+(eight armies, a fight prompt) stays until step 3.*
+
 - **An army is a squad,** as in battle: its men, its formation, its facing, its orders. A
   stack becomes the player's group of squads (GAME_DESIGN.md §4.1.2): select them, give
   them a formation, send them.
@@ -176,6 +181,12 @@ How the size was chosen, moving today's 80 towns closer:
 
 ## What you see
 
+*Built in step 2: the table below is what the campaign map shows now, except the bottom row
+(the single man's shield and wounds are the battle's). The soldiers are points up to a
+kilometre or so out, the battle's sprites within about 380 m of the camera, in a column of
+squads at the point of its route the stack has reached; a town's garrison stands in its
+courtyard. Nothing is hidden by fog yet.*
+
 | Height | What you see |
 |---|---|
 | The whole island | The land, territory, towns; every soldier you can see a point in his side's colour |
@@ -194,6 +205,12 @@ How the size was chosen, moving today's 80 towns closer:
   any lockstep game, reading the browser's memory could lift it.
 
 ## The minimap
+
+*Built in step 2 (the page's `#minimap`, `illyria_minimap*` in `game/web/main.cpp`): every
+town and site, soldiers as points where they stand apart (two or fewer in 40 m) and as a
+heat blob in their side's colour where they do not, the ground the camera sees, and a tap or
+drag to take the camera there. It shows every soldier, since there is no fog of war until
+step 4; fights do not glow yet.*
 
 - Every town and site, always.
 - Every soldier you can see as a point in his side's colour where the points can be told
@@ -233,11 +250,12 @@ lord sees.
 
 Each step leaves a playable game.
 
-1. **The map and the clock.** Cut the continent to a third each way and the towns' walls to
+1. **The map and the clock (built).** Cut the continent to a third each way and the towns' walls to
    three quarters; run the campaign on the 30 Hz clock with 2-minute days; stacks move at the battle's speeds over the grid. Still flags, but you
    can feel the pace.
-2. **Soldiers on the land.** Squads replace flags: points far out, sprites close in, in
-   their formation, marching their routes. The minimap.
+2. **Soldiers on the land (built).** Soldiers replace flags: points far out, sprites close in,
+   in a column of squads, marching their routes. The minimap. A stack is picked by tapping or
+   boxing its soldiers. Still the stack model and the dice-or-3D fight prompt; no fog.
 3. **Fights in place.** Contact turns men into fully stepped soldiers where they stand. The
    whole island's ground, stone and routes in the simulation; no battle window, no prompt,
    no dice; sieges at the real towns.

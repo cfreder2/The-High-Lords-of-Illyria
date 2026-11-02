@@ -6,7 +6,7 @@
 — a saying of the Valdor drovers
 :::
 
-There are no separate battle maps in this game. Illyria is one continuous land, modelled down to the tussock, and the camera goes all the way from a god's view of the island, where armies are banners on poles, to the mud of a single ford, where you can count the arrows in a shield. The campaign is played high up; battles are fought at the bottom; it is the same land all the way down, and a battle fought anywhere is fought on the hills, woods and streams that are really there.
+There are no separate battle maps in this game. Illyria is one continuous land, modelled down to the tussock, and the camera goes all the way from a god's view of the island, where armies are columns of points, to the mud of a single ford, where you can count the arrows in a shield. The campaign is played high up; battles are fought at the bottom; it is the same land all the way down, and a battle fought anywhere is fought on the hills, woods and streams that are really there.
 
 ![The continent of Illyria, north up: the eight capitals as coloured castles, the neutral cities as grey squares, ruins, temples and sages, roads and rivers.](images/continent-map.jpg "tall")
 
@@ -52,8 +52,8 @@ Out in the wild places there are **34 ruins** in the forests and foothills, **4 
 
 | Zoom | What you see |
 |---|---|
-| The whole island | the realms, the hexes washed in their holders' colours, banners and castles |
-| A region | cities, roads, rivers, army banners on their poles, the woods as clumps |
+| The whole island | the realms, the hexes washed in their holders' colours, every soldier a point in his lord's colour, castles; the minimap |
+| A region | cities, roads, rivers, columns and blocks of points marching, the woods as clumps |
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 
