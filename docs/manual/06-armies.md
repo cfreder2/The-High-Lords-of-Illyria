@@ -58,7 +58,7 @@ A **hero** is an army of one: a named champion who fights, leads, and above all 
 - **Leadership.** The best hero in a stack leads every army beside him: strength 4 to 6, **+2%**; 7 or 8, **+4%**; 9, **+6%** (chapter [](#edges)). His command artifacts add whole points to every army in the stack (chapter [](#artifacts)).
 - **In battle** a hero is a mighty fighter, worth a squad on his own, who never breaks and steadies everyone near him; when he falls, those near him may break at once (chapter [](#heroes-in-battle)).
 
-A hero goes where his stack goes; a stack of fliers carries its hero over the mountains. A hero who dies is gone, with everything he carried dropped where he fell.
+A hero goes where his stack goes, on foot: a hero among fliers keeps them on the ground. A hero who dies is gone, with everything he carried dropped where he fell.
 
 ## The army cards {#army-cards}
 

@@ -61,6 +61,6 @@ Wherever the camera comes closer than about 850 m, on the campaign map too, the 
 
 ## The ground and what it does {#ground}
 
-Each cell of the campaign map is one kind of ground: **road**, **bridge**, **plain**, **forest**, **hill**, **mountain**, **marsh**, **water** or **city**. The kind decides how much it costs to march across (chapter [](#moving)) and how some armies fight on it (chapter [](#edges)).
+Each cell of the campaign map is one kind of ground: **road**, **bridge**, **plain**, **forest**, **hill**, **mountain**, **marsh**, **water** or **city**. The kind decides how fast each army marches across it (chapter [](#moving)) and how some armies fight on it (chapter [](#edges)).
 
 On the battlefield the ground is finer: road, plains, forest, swamp, shallows, rock, mud, sand and bridge decks, and every soldier moves at his own pace on each (chapter [](#terrain)). The hills are real hills, the slopes really slow a man climbing them, and a cliff steeper than 45 degrees is a wall. Mountains are impassable except where a pass or a road is cut through, so the passes, fords and bridges are where armies meet.

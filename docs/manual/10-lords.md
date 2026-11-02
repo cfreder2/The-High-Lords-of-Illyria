@@ -66,8 +66,8 @@ Each lord's start shapes its war. The computer lords play their realms this way,
 
 **The Sylvaran Elves (learn to hate).** Archers that walk the woods at road speed (forest costs them 2), light cavalry, unicorns and pegasi. Take the forest towns first; the Aldwater's fords are your front.
 
-**The Sunreach Riders (fast and loose).** Light cavalry cover 18 cells of road a day. Make every town of the Valdor plains yours before anyone else can walk there, then turn on the Dwarves or the Throne. Mind the woods: they slow horse to a crawl.
+**The Sunreach Riders (fast and loose).** Light cavalry ride 1.7 km of road in a day. Make every town of the Valdor plains yours before anyone else can walk there, then turn on the Dwarves or the Throne. Mind the woods: they slow horse to a crawl.
 
 **The Moonward Order (patience).** Wizards (strength 7, a special army: +1 to every army beside them) and journeymen, archers and pikemen; and Moonhaven sits by the Heartmere at the centre of the east. Strong defenders, slow attackers. Let the others bleed each other at the crossings.
 
-**Lord Malvoren (slow and safe).** In the far south-east, with mountains behind and the Cinder Spur beside him, Malvoren is the last to be attacked. Spiders are quick (12 points a day, and the marsh costs them only 4), and Malvoren's armies like the marsh. Build slowly, take the south-east, and choose your enemy.
+**Lord Malvoren (slow and safe).** In the far south-east, with mountains behind and the Cinder Spur beside him, Malvoren is the last to be attacked. Spiders are quick (5 m/s, and nearly as fast in a forest), and Malvoren's armies like the marsh. Build slowly, take the south-east, and choose your enemy.

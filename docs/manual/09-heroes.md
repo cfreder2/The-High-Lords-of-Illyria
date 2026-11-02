@@ -69,7 +69,7 @@ Fifteen artifacts lie hidden in Illyria, each unique. **Battle** artifacts add t
 | Ring of Dominion | command | +2 |
 | Horn of the North | command | +2 |
 | Rod of the High Lords | command | +3 |
-| Winged Sandals | the road | +4 movement points a day for the stack |
+| Winged Sandals | the road | the whole stack a third quicker on the march |
 | Purse of Plenty | the purse | 10 gold a day |
 
 Artifacts show on the hero's card (✧). In the 3D battle a hero's battle artifacts count like blessings, each a little more damage, quicker blows and a little less hurt taken.
@@ -95,7 +95,7 @@ Each temple also has its **guard**, holy troops who follow the **first hero** to
 
 ## Sages {#sages}
 
-Two sages live in Illyria, each in a strange place: the **Seer's Tower** on the Isle of the Seer off the north-west coast, reached only by sea or on wings, and the **Hermit of the Peaks**, high in the Ironveil. The first hero to consult each is given **100 to 150 gold** and told the name of the nearest ruin still unexplored. First come, first served.
+Two sages live in Illyria, each in a strange place: the **Seer's Tower** on the Isle of the Seer off the north-west coast, reached by sea and then on foot from the isle's two towns, and the **Hermit of the Peaks**, high in the Ironveil, reached on foot by its pass. The first hero to consult each is given **100 to 150 gold** and told the name of the nearest ruin still unexplored. First come, first served.
 
 ## Heroes for hire {#hire}
 

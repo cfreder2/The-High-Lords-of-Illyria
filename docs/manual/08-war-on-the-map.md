@@ -8,7 +8,7 @@
 
 ## Attacking {#attacking}
 
-To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy banner or the town with your stack selected. The march ends at the enemy, and the attack costs two movement points whatever the ground. Attacking is also the only way to take a city.
+To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy banner or the town with your stack selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
 
 When the stack arrives, the campaign stops and asks:
 
@@ -105,7 +105,7 @@ In the 3D battle the walls, the towers and the gate are real (chapter [](#sieges
 
 **Beating a town's defenders does not take the town.** When you win the battle for a town (the dice, or a 3D battle won by killing or routing its defenders), or march into a town nobody defends, your army stands in it and **raises its banner**. The town is yours when the banner reaches the top.
 
-- **More troops raise it faster.** A lone army takes about 16 seconds at normal speed (13 hours of the campaign's day), four armies half that, a full stack of eight about 5 seconds.
+- **More troops raise it faster.** A lone army takes about a minute at normal speed (13 hours of the campaign's day), four armies half that, a full stack of eight about 19 seconds.
 - **Enemies near stop it.** Armies of any other lord in the town or on the eight cells around it contest it: while they are as many as yours or fewer, the banner stops; while they are more, it comes down as fast as it would rise for them.
 - **Leaving gives it up.** If your armies march out, or fall, the attempt is abandoned and its progress lost.
 - **At the top** the town is yours: its income, its training (stopped, for you to choose again), the loser's share of its treasury (half to you), its walls one lower, and its own hex and the six round it.

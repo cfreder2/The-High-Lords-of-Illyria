@@ -2,36 +2,36 @@
 
 ## Every army in the campaign {#campaign-table}
 
-Strength, soldiers in a fresh army, movement points a day, the training (days and gold) or where a rare army comes from, and the upkeep a day (allies serve for nothing).
+Strength, soldiers in a fresh army, speed on open ground in metres a second (fliers: flying on their own in the long run, and walking), the training (days and gold) or where a rare army comes from, and the upkeep a day (allies serve for nothing).
 
-| Army | Str | Men | Pts | Training or source | Upkeep |
+| Army | Str | Men | Speed | Training or source | Upkeep |
 |---|---|---|---|---|---|
-| Light Infantry | 3 | 12 | 10 | 2 d, 12 g | 3 |
-| Heavy Infantry | 4 | 12 | 8 | 4 d, 20 g | 5 |
-| Archers | 4 | 12 | 12 | 4 d, 20 g | 5 |
-| Pikemen | 4 | 12 | 8 | 4 d, 20 g | 5 |
-| Light Cavalry | 4 | 8 | 18 | 5 d, 28 g | 7 |
-| Heavy Cavalry | 6 | 8 | 16 | 6 d, 36 g | 9 |
-| Dwarven Grenadiers | 4 | 6 | 9 | 4 d, 24 g | 4 |
-| Wolf Riders | 5 | 8 | 14 | 5 d, 28 g | 7 |
-| Warriors | 5 | 12 | 8 | 4 d, 24 g | 6 |
-| Catapults | 3 | 2 | 6 | 6 d, 40 g (three capitals) | 10 |
-| Giants | 6 | 3 | 10 | realm, levy | 4 |
-| Minotaurs | 6 | 4 | 10 | realm, levy | 4 |
-| Giant Spiders | 5 | 6 | 12 | realm, levy | 3 |
-| Griffins | 6 | 4 | 16 | realm, levy, hire | 8 |
-| Pegasi | 6 | 4 | 16 | realm, levy, temple, hire | 8 |
-| Elephants | 7 | 2 | 12 | realm, levy | 6 |
-| Unicorns | 6 | 4 | 16 | realm, levy, temple, hire | 7 |
-| Wizards | 7 | 3 | 20 | realm, ruins, hire | 10 |
-| Dragons | 9 | 1 | 18 | ruins | 10 |
-| Devils | 8 | 3 | 10 | ruins | 10 |
-| Demons | 8 | 2 | 10 | ruins | 10 |
-| Undead | 5 | 12 | 10 | ruins | 10 |
-| Archons | 8 | 3 | 18 | ruins, temple | 10 |
-| Journeymen | 2 | 4 | 10 | realm, levy, temple, hire | 3 |
-| Berserkers | 5 | 10 | 10 | realm, levy, hire | 3 |
-| Hero | 3 + level | 1 | 12 | the start, hire | 0 |
+| Light Infantry | 3 | 12 | 2.4 | 2 d, 12 g | 3 |
+| Heavy Infantry | 4 | 12 | 1.9 | 4 d, 20 g | 5 |
+| Archers | 4 | 12 | 2.4 | 4 d, 20 g | 5 |
+| Pikemen | 4 | 12 | 2.0 | 4 d, 20 g | 5 |
+| Light Cavalry | 4 | 8 | 7.0 | 5 d, 28 g | 7 |
+| Heavy Cavalry | 6 | 8 | 5.5 | 6 d, 36 g | 9 |
+| Dwarven Grenadiers | 4 | 6 | 1.8 | 4 d, 24 g | 4 |
+| Wolf Riders | 5 | 8 | 7.5 | 5 d, 28 g | 7 |
+| Warriors | 5 | 12 | 2.2 | 4 d, 24 g | 6 |
+| Catapults | 3 | 2 | 0.8 | 6 d, 40 g (three capitals) | 10 |
+| Giants | 6 | 3 | 2.4 | realm, levy | 4 |
+| Minotaurs | 6 | 4 | 3.0 | realm, levy | 4 |
+| Giant Spiders | 5 | 6 | 5.0 | realm, levy | 3 |
+| Griffins | 6 | 4 | 4.0 (3.0) | realm, levy, hire | 8 |
+| Pegasi | 6 | 4 | 4.7 (4.5) | realm, levy, temple, hire | 8 |
+| Elephants | 7 | 2 | 3.2 | realm, levy | 6 |
+| Unicorns | 6 | 4 | 7.0 | realm, levy, temple, hire | 7 |
+| Wizards | 7 | 3 | 2.0 | realm, ruins, hire | 10 |
+| Dragons | 9 | 1 | 4.9 (2.5) | ruins | 10 |
+| Devils | 8 | 3 | 3.2 | ruins | 10 |
+| Demons | 8 | 2 | 3.4 | ruins | 10 |
+| Undead | 5 | 12 | 1.6 | ruins | 10 |
+| Archons | 8 | 3 | 3.7 (2.8) | ruins, temple | 10 |
+| Journeymen | 2 | 4 | 2.3 | realm, levy, temple, hire | 3 |
+| Berserkers | 5 | 10 | 3.6 | realm, levy, hire | 3 |
+| Hero | 3 + level | 1 | 2.8 | the start, hire | 0 |
 
 A levy takes 3 days and 5 gold a point of strength to muster, once.
 
@@ -42,24 +42,22 @@ From the game's unit sheet: strength, hit points, speed on open ground (m/s), th
 ::: roster
 :::
 
-## Movement costs {#movement-table}
+## The ground {#movement-table}
 
-| Army | Road | Bridge | Plain | Forest | Hill | Marsh | Mountain | Water |
-|---|---|---|---|---|---|---|---|---|
-| Light foot, heroes, wizards | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
-| Heavy foot, pikes, warriors | 1 | 1 | 2 | 4 | 6 | 5 | P | P |
-| Archers | 1 | 1 | 2 | 2 | 5 | 6 | P | P |
-| Dwarves, grenadiers | 1 | 1 | 2 | 6 | 3 | 6 | P | P |
-| Horse, elephants, unicorns | 1 | 1 | 2 | 5 | 6 | 5 | P | P |
-| Wolf riders, spiders | 1 | 1 | 2 | 4 | 6 | 4 | P | P |
-| Giants, minotaurs | 1 | 1 | 2 | 5 | 4 | 5 | P | P |
-| Undead | 1 | 1 | 2 | 4 | 5 | 4 | P | P |
-| Devils, demons | 1 | 1 | 2 | 4 | 5 | 5 | P | P |
-| Catapults | 1 | 1 | 2 | 6 | 6 | P | P | P |
-| Fliers | 2 | 2 | 2 | 2 | 2 | 2 | 3 | 2 |
-| Boats (afloat) | | | | | | | | 2 (40 points a day) |
+Each gait's pace on the campaign map's ground, as a share of the army's speed on open ground (the battlefield's own table, chapter [](#speed)); climbing slows it by the share shown. Mountains and water are closed to everyone on foot; a city is plain, or road where a road runs through it.
 
-A city costs 1; an attack costs 2.
+| Gait | Road | Plain | Forest | Marsh | Climb | Armies |
+|---|---|---|---|---|---|---|
+| Foot | 2 | 1 | 0.70 | 0.50 | 100% | infantry, pikes, warriors, berserkers, wizards, journeymen, heroes; fliers on foot |
+| Horse | 2 | 1 | 0.50 | 0.30 | 120% | light and heavy cavalry, unicorns |
+| Wolf | 2 | 1 | 0.85 | 0.35 | 90% | wolf riders |
+| Dwarf | 2 | 1 | 0.70 | 0.50 | 50% | grenadiers |
+| Woodland | 2 | 1 | 0.95 | 0.55 | 100% | archers, giant spiders |
+| Giant | 2 | 1 | 0.65 | 0.60 | 80% | giants, minotaurs, elephants, devils, demons |
+| Undead | 2 | 1 | 0.70 | 1.00 | 100% | undead |
+| Wheeled | 2 | 1 | 0.40 | 0.25 | 150% | catapults |
+
+A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 
 ## Ranks and levels {#ranks-table}
 

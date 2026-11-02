@@ -36,22 +36,32 @@ continent, one clock, the camera from the gods to the mud.*
 
 ## How long things take
 
-Measured on today's map with the battle's speeds and terrain (heavy infantry 1.9 m/s on
-open ground, roads ×1.25, forest ×0.7, marsh ×0.5, hills slower, mountains closed to
-walkers), routed over the 133 m grid. The last two columns are on the map cut to a third,
-with roads at ×2.
+Measured in the game on the map at a third (2.8 × 3.6 km, 44 m cells), with the campaign's
+own march (`engine/sim/src/campaign_march.cpp`): the battle's speeds and gait table, roads
+×2, hills climbed at their grade, mountains and water closed to walkers, and fliers alone
+at the long-run pace of their flight. Nearest: from each town, the nearest other town or
+site, averaged over the 80. Longest: the longest of all the town-to-town marches. In
+minutes at 1× and in 2-minute days; the full table, every kind, is in GAME_DESIGN.md
+§4.2.4.
 
-| Unit | Nearest town or site, today | Longest town-to-town march, today | Nearest, a third | Longest, a third (at 4×) |
-|---|---|---|---|---|
-| Heavy infantry | 4.7 min | 84 min | 1.5 min | 26 min (6 min) |
-| Light cavalry | 1.3 min | 23 min | 0.4 min | 7 min (2 min) |
-| Pegasi | 1.9 min | 39 min | 0.6 min | 13 min (3 min) |
-| Griffins | 2.9 min | 59 min | 1.0 min | 20 min (5 min) |
-| Dragons | 3.5 min | 71 min | 1.2 min | 24 min (6 min) |
+| Unit | Pace | Nearest town or site | Longest town-to-town march (at 4×) |
+|---|---|---|---|
+| Heavy infantry | 1.9 m/s | 1.5 min (0.74 days) | 26 min, 12.9 days (6.5 min) |
+| Light infantry | 2.4 m/s | 1.2 min (0.59 days) | 20 min, 10.2 days (5 min) |
+| Light cavalry | 7.0 m/s | 0.4 min (0.21 days) | 7 min, 3.6 days (1.8 min) |
+| Wolf riders | 7.5 m/s | 0.4 min (0.18 days) | 6 min, 3.2 days (1.6 min) |
+| Pegasi | 4.71 m/s flying | 0.6 min (0.29 days) | 13 min, 6.6 days (3.3 min) |
+| Griffins | 4.02 m/s flying | 0.7 min (0.34 days) | 15 min, 7.7 days (3.9 min) |
+| Dragons | 4.88 m/s flying | 0.6 min (0.28 days) | 13 min, 6.3 days (3.2 min) |
+| Hero | 2.8 m/s | 1.0 min (0.50 days) | 18 min, 8.8 days (4.4 min) |
+| Catapults | 0.8 m/s | 3.7 min (1.84 days) | 64 min, 31.8 days (16 min) |
 
-Fliers in the air go straight over mountains and water at their own speed, which nothing
-changes; only cavalry is quicker. Boats come later: they will shorten the marches over
-water and reach the one islet town walkers can't.
+A stack of fliers alone goes straight over mountains and water at the long-run pace of its
+flight (a take-off run, a flight as long as its endurance, then twice as long resting),
+which nothing below changes: quicker than any foot, slower than horse. A stack with any
+walker in it walks, and a hero walks with his stack. Every site can be reached on foot from
+some town, the Seer's Tower from the two towns on its isle; only boats (6 m/s for now)
+reach those two.
 
 ## The map
 
@@ -68,13 +78,15 @@ water and reach the one islet town walkers can't.
 - **The grids shrink with the map,** as they did when the continent last shrank: 64 × 80
   cells of 44 m, hexes of 89 m. There are as many hexes as today, so territory and income
   from land work as they do now.
-- **Roads double a walker's speed,** every gait alike, horse and wheel included, and a
-  road's bridges count as road (today a road is ×1.15 to ×1.35 by gait). With one set of
-  rules this is the battle's gait table changing (UNITS.md), so set battles feel it too.
-  Fliers in the air ignore it.
-- **Roads should reach every town.** Today they cover 8% of the land and pass within two
-  cells of only 35 of the 80 towns, so doubling them shortens the longest march by just 8%
-  (84 to 77 min on today's map). For the road to be the fast way, the continent has to
+- **Roads double a walker's speed,** every gait alike, horse and wheel included (it was
+  ×1.15 to ×1.35 by gait). With one set of rules this is the battle's gait table changing
+  (UNITS.md), so set battles feel it too. Fliers in the air ignore it. Bridges stay at the
+  pace of the fields: in battle a castle's walks and ramps are Bridge ground too, and men
+  must not run along the walls, so a road bridge's deck is crossed at field pace. (On the
+  campaign grid a road that crosses a river is road all the way.)
+- **Roads should reach every town.** On the map before it shrank they covered 8% of the
+  land and passed within two cells of only 35 of the 80 towns, so doubling them shortened
+  the longest march by just 8% (84 to 77 min there). For the road to be the fast way, the continent has to
   join every town to it.
 
 How the size was chosen, moving today's 80 towns closer:
@@ -94,7 +106,8 @@ How the size was chosen, moving today's 80 towns closer:
 - **Days stay as the unit of the economy**: income, upkeep, training, boats. **A day is
   2 minutes at 1×.** On the smaller map that keeps today's proportions between marching
   and the economy: heavy infantry reach the nearest place in about three quarters of a day
-  (0.7 today) and make the longest march in about 13 days (13.6 today). So the Warlords tables for gold
+  and make the longest march in about 13 days (measured: 0.74 and 12.9; under movement
+  points on the old map, 0.7 and 13.6). So the Warlords tables for gold
   and training stay as they are, in days, and a 120-day campaign is four hours at 1×.
 - **New squads, at 2 minutes a day.** Each town trains one squad at a time, by today's
   table:
