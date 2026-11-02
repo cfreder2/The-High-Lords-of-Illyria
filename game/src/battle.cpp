@@ -47,6 +47,39 @@ const sim::Rampart* townRampart(const sim::Region& rg, V3 centre) {
     return best;
 }
 
+// Where a man may stand when a battle starts: on dry, open ground the routes
+// cross (World::standable), and inside no town's walls.
+bool openFor(const sim::Region& rg, const sim::World& w, V3 p) {
+    const sim::Vec3 q = toSim(p);
+    if (rg.underWater(q.x, q.y) || !w.standable(q)) return false;
+    for (const sim::Rampart& rp : rg.ramparts())
+        if (sim::Gate::inside(rp, q)) return false;
+    return true;
+}
+
+// Open ground before a town's gate for the besiegers to form up on: on the
+// way out from the gate, about `want` metres off, a stretch 30 m round clear
+// of every town's walls (the towns stand close together since the map shrank
+// to a third), on the battlefield. The gate's way out at `want` if none is.
+V3 campBefore(const sim::Region& rg, const sim::World& w, V3 gate, V3 out, float want) {
+    const V3 side{out.y, -out.x, 0};
+    const float edge = Battle::kWorldSize - 60.0f;
+    for (int ring = 0; ring <= 10; ++ring)
+        for (int across = 0; across <= 6; ++across) {
+            const float along = want + static_cast<float>((ring + 1) / 2 * (ring % 2 ? 10 : -10));
+            const float off = static_cast<float>((across + 1) / 2 * (across % 2 ? 15 : -15));
+            if (along < want * 0.5f) continue;
+            const V3 c = gate + out * along + side * off;
+            if (c.x < 60 || c.y < 60 || c.x > edge || c.y > edge) continue;
+            bool open = true;
+            for (int dy = -30; dy <= 30 && open; dy += 10)
+                for (int dx = -30; dx <= 30 && open; dx += 10)
+                    if (dx * dx + dy * dy <= 900) open = openFor(rg, w, c + V3{static_cast<float>(dx), static_cast<float>(dy), 0});
+            if (open) return c;
+        }
+    return gate + out * want;
+}
+
 // `want` of the walls' embrasures (one archer each), spread evenly round them.
 std::vector<sim::Rampart::Embrasure> spreadEmbrasures(const sim::Rampart& rp, int want) {
     std::vector<sim::Rampart::Embrasure> out;
@@ -107,7 +140,7 @@ void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide, float f
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
-    // The continent around the battlefield: all of it every 32 m (a match:
+    // The continent around the battlefield: all of it every 16 m (a match:
     // only within farReachM of the field), and a ring a kilometre wide around
     // the battlefield every 16 m.
     {
@@ -175,6 +208,61 @@ void Battle::setUpCampaign(const BattlePlan& plan) {
         const V3 posts[3] = {gate - out * 12.0f, local(k.courtyard), local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8)};
         int next = 0;
         const sim::Rampart* walls = townRampart(*region_, centre);
+        // A garrison squad inside the walls: where most of its formation finds
+        // open ground (its post, else round about: the smaller towns hold
+        // their garrisons closer), and any man whose place there is closed
+        // or outside on the nearest open ground inside, clear of the others.
+        std::vector<V3> taken;
+        const auto fits = [&](V3 p) {
+            if (!walls || !sim::Gate::inside(*walls, toSim(p)) || !world_->standable(toSim(p))) return false;
+            for (const V3& q : taken)
+                if ((p - q).length() < 1.5f) return false;
+            return true;
+        };
+        const auto garrison = [&](const BattleArmy& a, V3 want) {
+            if (a.soldiers <= 0) return;
+            const std::vector<V3> slots = formationSlots(defaultFormation(a.type), a.soldiers, formationSpacing(a.type));
+            const V3 right{out.y, -out.x, 0};
+            V3 at = want;
+            size_t most = 0;
+            for (int ring = 0; ring <= 12 && most < slots.size(); ++ring)
+                for (int k2 = 0; k2 < std::max(1, 8 * ring) && most < slots.size(); ++k2) {
+                    const float a2 = 6.2831853f * static_cast<float>(k2) / static_cast<float>(std::max(1, 8 * ring));
+                    const V3 c = want + V3{std::cos(a2), std::sin(a2), 0} * (3.0f * static_cast<float>(ring));
+                    size_t n = 0;
+                    for (const V3& sl : slots) n += fits(c + right * sl.x + out * sl.y);
+                    if (n > most) {
+                        most = n;
+                        at = c;
+                    }
+                }
+            Squad s{a.name.empty() ? sim::unitTypeName(a.type) : a.name, kEnemy, a.type, {}};
+            s.formation = defaultFormation(a.type);
+            s.facing = out;
+            s.armyId = a.id;
+            s.garrison = true;
+            s.post = at;
+            const sim::UnitStats stats = sim::unitStats(a.type);
+            for (const V3& sl : slots) {
+                V3 p = at + right * sl.x + out * sl.y;
+                for (int ring = 1; ring <= 40 && !fits(p); ++ring)
+                    for (int k2 = 0; k2 < 6 * ring; ++k2) {
+                        const float a2 = 6.2831853f * static_cast<float>(k2) / static_cast<float>(6 * ring);
+                        const V3 q = at + right * sl.x + out * sl.y + V3{std::cos(a2), std::sin(a2), 0} * (1.0f * static_cast<float>(ring));
+                        if (fits(q)) {
+                            p = q;
+                            break;
+                        }
+                    }
+                taken.push_back(p);
+                const sim::EntityId id = world_->spawnUnit(kEnemy, toSim(p), toSim(out), stats);
+                world_->setVeterancy(id, a.rank, a.blessings);
+                s.members.push_back(id);
+                if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+                squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
+            }
+            squads_.push_back(std::move(s));
+        };
         int archers = 0, manned = 0;
         for (const BattleArmy& a : plan.foe) archers += a.type == UnitType::Archers ? a.soldiers : 0;
         const std::vector<sim::Rampart::Embrasure> spots = walls ? spreadEmbrasures(*walls, archers) : std::vector<sim::Rampart::Embrasure>{};
@@ -204,11 +292,12 @@ void Battle::setUpCampaign(const BattlePlan& plan) {
                 squads_.push_back(std::move(s));
                 continue;
             }
-            raise(a, kEnemy, posts[next % 3] + side * static_cast<float>((next / 3) * 14), out, true);
+            garrison(a, posts[next % 3] + side * static_cast<float>((next / 3) * 14));
             ++next;
         }
-        // The attackers form up on the road before the gate.
-        const V3 camp = gate + out * 100.0f;
+        // The attackers form up on the road before the gate (or the nearest
+        // open ground out from it, clear of the neighbouring towns).
+        const V3 camp = campBefore(*region_, *world_, gate, out, 100.0f);
         int k2 = 0;
         for (const BattleArmy& a : plan.player) {
             const float across = static_cast<float>((k2 % 4) * 2 - 3) * 14.0f;
@@ -373,8 +462,9 @@ void Battle::setUpSiege() {
     hold("Town Militia", UnitType::LightInfantry, 12, local(k.courtyard), out);
     hold("Castellan's Guard", UnitType::HeavyInfantry, 6, local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8), out);
 
-    // The besiegers form up on the road before the gate.
-    const V3 camp = gate + out * 110.0f, in = out * -1.0f;
+    // The besiegers form up on the road before the gate (or the nearest open
+    // ground out from it, clear of the neighbouring towns).
+    const V3 camp = campBefore(*region_, *world_, gate, out, 110.0f), in = out * -1.0f;
     const V3 side{out.y, -out.x, 0};
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, camp + side * 14.0f, in);

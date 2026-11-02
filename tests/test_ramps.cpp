@@ -34,11 +34,12 @@ std::shared_ptr<const Region> townWindow() {
     static const auto r = window(town());
     return r;
 }
-// The rampart round this point (the town's outer ring is the one whose centre is nearest).
+// The rampart round this point (the town's outer ring is the one whose centre
+// is nearest; its rings share the centre, and the outer one comes first).
 const Rampart& outer(const Region& r, const Vec3& centre) {
     const Rampart* best = &r.ramparts().front();
     for (const Rampart& rp : r.ramparts())
-        if ((rp.centre - centre).flat().length() < (best->centre - centre).flat().length() && rp.corners.size() >= best->corners.size()) best = &rp;
+        if ((rp.centre - centre).flat().length() < (best->centre - centre).flat().length()) best = &rp;
     return *best;
 }
 Vec3 local(const Region& r, const Vec3& p) { return {p.x - r.origin().x, p.y - r.origin().y, p.z}; }
@@ -83,8 +84,10 @@ TEST(castle_ramps_start_on_the_ground_and_reach_the_walk) {
                     std::printf("  %s: ramp foot (%.1f, %.1f) ground %.2f pad %.2f\n", city->name.c_str(), foot.x.toDouble(), foot.y.toDouble(), ground.toDouble(), city->pos.z.toDouble());
                 CHECK(abs(ground - city->pos.z) < Fixed::fromRatio(1, 20));
                 // (Where the wall is short the foot lies under a tower's gallery.)
+                // Five centimetres up it: the foot is the deck's very end.
                 Fixed deck;
-                CHECK(r->deckBelow(foot.x, foot.y, ground + Fixed::one(), deck));
+                const Vec3 up = foot + (head - foot).flat() / (head - foot).flat().length() * Fixed::fromRatio(1, 20);
+                CHECK(r->deckBelow(up.x, up.y, ground + Fixed::one(), deck));
                 CHECK(abs(deck - ground) < Fixed::fromRatio(1, 5));
                 CHECK(abs(head.z - rp.corners.front().z) < Fixed::fromRatio(1, 20));
             }
@@ -143,9 +146,10 @@ TEST(men_climb_the_ramps_to_any_embrasure_and_horses_stay_below) {
         cfg.region = r;
         World w(cfg);
         const Vec3 yard = local(*r, city->castle.courtyard);
-        // The embrasure farthest round the walls from the gate, on every ring.
+        // The embrasure farthest round the walls from the gate, on every ring
+        // of its own (its neighbours' stand in the window too).
         for (const Rampart& rp : r->ramparts()) {
-            if (rp.embrasures.empty() || rp.ramps.empty() || (rp.centre - yard).flat().length() > city->radius * 2) continue;
+            if (rp.embrasures.empty() || rp.ramps.empty() || (rp.centre - local(*r, city->pos)).flat().length() > Fixed::one()) continue;
             Vec3 post = rp.embrasures.front().pos;
             for (const Rampart::Embrasure& e : rp.embrasures)
                 if ((e.pos - yard).flat().length() > (post - yard).flat().length()) post = e.pos;
@@ -156,7 +160,10 @@ TEST(men_climb_the_ramps_to_any_embrasure_and_horses_stay_below) {
             for (UnitType type : {UnitType::LightInfantry, UnitType::Archers, UnitType::Dwarves}) {
                 const EntityId id = w.spawnUnit(0, from, {Fixed::one(), Fixed::zero(), Fixed::zero()}, unitStats(type));
                 const bool there = reach(w, id, post, 240);
-                if (!there) std::printf("  %s: %s did not reach the embrasure\n", city->name.c_str(), unitTypeName(type));
+                if (!there)
+                    std::printf("  %s: %s did not reach the embrasure (%.1f, %.1f) of its %s, from (%.1f, %.1f), stopping at (%.1f, %.1f, %.1f)\n", city->name.c_str(),
+                                unitTypeName(type), post.x.toDouble(), post.y.toDouble(), inner ? "inner bailey" : "outer walls", from.x.toDouble(),
+                                from.y.toDouble(), w.findUnit(id)->pos.x.toDouble(), w.findUnit(id)->pos.y.toDouble(), (w.findUnit(id)->pos.z - city->pos.z).toDouble());
                 CHECK(there);
                 CHECK(w.findUnit(id)->pos.z > post.z - Fixed::fromRatio(1, 2));
             }

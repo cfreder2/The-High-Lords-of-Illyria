@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "continent_shapes.h"
+#include "illyria/sim/campaign.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 
@@ -42,10 +43,27 @@ Fixed ellipse(const Continent::Area& a, Fixed x, Fixed y) {
 }
 
 constexpr Fixed kValleyReach = scaled(450);
+// How far a sample looks for the nearest river (its riverDist goes no
+// further): far enough for everything placed by it (towns keep their walls
+// clear of the water, the relief and the landmarks keep off its banks).
+constexpr Fixed kRiverReach = Fixed::fromInt(300);
 constexpr Fixed kValleySlope = Fixed::fromRatio(6, 100);
 constexpr Fixed kSurfaceBelowLand = Fixed::fromRatio(3, 2);
-// Cities' walls (castles two thirds the size they were first drawn).
-constexpr Fixed kCapitalRadius = Fixed::fromInt(113), kTownRadius = Fixed::fromInt(73);
+// Cities' walls: half the size they were first drawn (three quarters of what
+// they were before the map shrank to a third), the walls themselves, their
+// towers, gates and ramps as thick and as wide as ever.
+constexpr Fixed kCapitalRadius = Fixed::fromInt(85), kTownRadius = Fixed::fromInt(55);
+// A mountain-scale height (Continent::peakHeight).
+constexpr Fixed peakM(int64_t v) { return Continent::peakHeight(v); }
+// Metres between two towns' walls (their radii): beyond kMaxWallGap the placer
+// prefers the better site to the wider gap; it never goes below kMinWallGap.
+constexpr int64_t kMaxWallGap = 180, kMinWallGap = 30;
+// A town goes astride a road (its walls across it) only where that leaves a
+// gap this much wider than anywhere beside one (metres).
+constexpr int64_t kAstride = 40;
+// No town this near Oakhaven Ford: the set battle there is fought on open
+// ground (Battle::setUpFord: the two armies 230 m apart either side of it).
+constexpr Fixed kFordClear = Fixed::fromInt(350);
 
 }  // namespace
 
@@ -75,25 +93,25 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     rivers_.push_back({"Coldbrook", {N(725, 880), N(650, 855), N(590, 840)}, m(7), m(2)});
 
     // Mountain chains. The gaps between them, and the passes, are the chokepoints.
-    ridges_.push_back({"Thornspine Mountains", {{N(200, 930), N(260, 905), N(330, 885), N(400, 905), N(470, 880), N(530, 900)}, scaled(700)}, m(430)});
-    ridges_.push_back({"Graycrown Mountains", {{N(180, 610), N(240, 595), N(300, 615)}, scaled(650)}, m(380)});
-    ridges_.push_back({"Graycrown Mountains", {{N(375, 620), N(430, 600), N(505, 615)}, scaled(650)}, m(400)});
-    ridges_.push_back({"Ashen Hills", {{N(250, 360), N(310, 345), N(360, 365)}, scaled(450)}, m(170)});
+    ridges_.push_back({"Thornspine Mountains", {{N(200, 930), N(260, 905), N(330, 885), N(400, 905), N(470, 880), N(530, 900)}, scaled(700)}, peakM(430)});
+    ridges_.push_back({"Graycrown Mountains", {{N(180, 610), N(240, 595), N(300, 615)}, scaled(650)}, peakM(380)});
+    ridges_.push_back({"Graycrown Mountains", {{N(375, 620), N(430, 600), N(505, 615)}, scaled(650)}, peakM(400)});
+    ridges_.push_back({"Ashen Hills", {{N(250, 360), N(310, 345), N(360, 365)}, scaled(450)}, peakM(170)});
     ridges_.push_back({"Ironveil Range",
                        {{N(950, 1020), N(915, 880), N(935, 760), N(900, 640), N(940, 520), N(905, 400), N(935, 270), N(900, 140), N(930, -20)}, scaled(900)},
-                       m(460)});
-    ridges_.push_back({"Frostfang Spur", {{N(910, 720), N(840, 705), N(770, 715)}, scaled(450)}, m(240)});
-    ridges_.push_back({"Cinder Spur", {{N(905, 300), N(830, 280), N(760, 290)}, scaled(450)}, m(260)});
-    ridges_.push_back({"Dragonback Mountains", {{N(60, 90), N(140, 60), N(220, 85), N(290, 55), N(340, 90)}, scaled(650)}, m(390)});
-    ridges_.push_back({"Northmoor Hills", {{N(700, 940), N(790, 960)}, scaled(600)}, m(140)});
-    ridges_.push_back({"Southdown Hills", {{N(690, 90), N(790, 70)}, scaled(400)}, m(120)});
+                       peakM(460)});
+    ridges_.push_back({"Frostfang Spur", {{N(910, 720), N(840, 705), N(770, 715)}, scaled(450)}, peakM(240)});
+    ridges_.push_back({"Cinder Spur", {{N(905, 300), N(830, 280), N(760, 290)}, scaled(450)}, peakM(260)});
+    ridges_.push_back({"Dragonback Mountains", {{N(60, 90), N(140, 60), N(220, 85), N(290, 55), N(340, 90)}, scaled(650)}, peakM(390)});
+    ridges_.push_back({"Northmoor Hills", {{N(700, 940), N(790, 960)}, scaled(600)}, peakM(140)});
+    ridges_.push_back({"Southdown Hills", {{N(690, 90), N(790, 70)}, scaled(400)}, peakM(120)});
     // The east is broken mountain country, not open plain.
-    ridges_.push_back({"Beren Heights", {{N(640, 775), N(700, 760), N(760, 785)}, scaled(420)}, m(190)});
-    ridges_.push_back({"Ungoeth Mountains", {{N(790, 925), N(835, 885), N(870, 850)}, scaled(480)}, m(330)});
-    ridges_.push_back({"Kestrel Fells", {{N(735, 575), N(790, 570), N(845, 545)}, scaled(360)}, m(170)});
-    ridges_.push_back({"Grimtor Hills", {{N(660, 300), N(700, 330)}, scaled(360)}, m(140)});
-    ridges_.push_back({"Barrow Downs", {{N(120, 380), N(170, 360)}, scaled(320)}, m(90)});
-    ridges_.push_back({"Witchmoor Hills", {{N(330, 120), N(380, 160)}, scaled(300)}, m(100)});
+    ridges_.push_back({"Beren Heights", {{N(640, 775), N(700, 760), N(760, 785)}, scaled(420)}, peakM(190)});
+    ridges_.push_back({"Ungoeth Mountains", {{N(790, 925), N(835, 885), N(870, 850)}, scaled(480)}, peakM(330)});
+    ridges_.push_back({"Kestrel Fells", {{N(735, 575), N(790, 570), N(845, 545)}, scaled(360)}, peakM(170)});
+    ridges_.push_back({"Grimtor Hills", {{N(660, 300), N(700, 330)}, scaled(360)}, peakM(140)});
+    ridges_.push_back({"Barrow Downs", {{N(120, 380), N(170, 360)}, scaled(320)}, peakM(90)});
+    ridges_.push_back({"Witchmoor Hills", {{N(330, 120), N(380, 160)}, scaled(300)}, peakM(100)});
     // Passes: notches through the ranges (z = radius).
     passes_.push_back({N(905, 640).x, N(905, 640).y, scaled(550)});
     passes_.push_back({N(330, 885).x, N(330, 885).y, scaled(450)});
@@ -186,7 +204,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
             std::reverse(rv.points.begin(), rv.points.end());
             if (!rv.points.empty() && !land(rv.points.front()) && rv.points.size() > 1) {
                 const Vec3 d = (rv.points[1] - rv.points[0]).flat();
-                rv.points.front() = rv.points.front() + d / d.length() * m(120);
+                rv.points.front() = rv.points.front() + d / d.length() * scaled(180);
             }
             ashore(rv.points, true);
         }
@@ -216,6 +234,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     // The Heartmere lies at the level of the rivers that meet in it.
     lakeSurfaces_.back() = rivers_.front().points.back().z;
     placeBridges();
+    planSetPieces();
     placeCities();
     planCastles();
     placeSites();
@@ -288,8 +307,9 @@ void Continent::planCastles() {
                 }
                 break;
             }
-            case 2: {  // polygon of 5 to 8 sides, its corners pushed in and out
-                const int n = city.capital ? 8 : 5 + static_cast<int>((roll(2) * 4).floorToInt());
+            case 2: {  // polygon, its corners pushed in and out: 8 sides for a capital,
+                       // 5 or 6 for a town (any more and its walls are too short for a ramp)
+                const int n = city.capital ? 8 : 5 + static_cast<int>((roll(2) * 2).floorToInt());
                 for (int i = 0; i < n; ++i) {
                     // Rotate so an edge, not a corner, faces the gate.
                     const Fixed a = Fixed::fromRatio(2 * i + 1, 2 * n) * 6283 / 1000 + Fixed::fromRatio(1571, 1000);
@@ -324,13 +344,14 @@ void Continent::planCastles() {
         }
         k.rings.push_back(outer);
         if (city.capital) {
-            // An inner bailey: higher walls round the keep.
+            // An inner bailey: higher walls round the keep, square, so each
+            // wall is long enough to take a ramp up to its walk.
             Castle::Ring inner;
             inner.height = wallH * 6 / 5;
             inner.thick = thick;
             inner.gateWidth = m(6);
-            for (int i = 0; i < 6; ++i) {
-                const Fixed a = Fixed::fromRatio(2 * i + 1, 12) * 6283 / 1000 + Fixed::fromRatio(1571, 1000);
+            for (int i = 0; i < 4; ++i) {
+                const Fixed a = Fixed::fromRatio(2 * i + 1, 8) * 6283 / 1000 + Fixed::fromRatio(1571, 1000);
                 inner.corners.push_back(world({cos(a) * R / 2, sin(a) * R / 2 - R * r(1, 5), Fixed::zero()}));
             }
             inner.gateEdge = 0;
@@ -361,7 +382,8 @@ void Continent::planCastles() {
         k.keepAxis = toward;
         k.keepHalf = city.capital ? m(10) : m(5) + roll(4) * 2;
         k.keepHeight = city.capital ? m(28) : m(15) + roll(5) * 6;
-        k.keep = world({(roll(6) - r(1, 2)) * R * r(2, 5), -R * (city.capital ? r(1, 5) : r(2, 5)), Fixed::zero()});
+        // (A capital's in the middle of its inner bailey.)
+        k.keep = city.capital ? world({Fixed::zero(), -R * r(1, 5), Fixed::zero()}) : world({(roll(6) - r(1, 2)) * R * r(2, 5), -R * r(2, 5), Fixed::zero()});
         k.courtyard = world({Fixed::zero(), R * r(3, 10), Fixed::zero()});
         k.courtyardRadius = R * r(7, 20);
         // Ramps up the inner faces: three on the outer ring (either side of
@@ -387,8 +409,9 @@ void Continent::planCastles() {
                 // Clear of the corner towers' galleries at both ends, where
                 // there is room; on a short wall the foot goes in under the
                 // first one (high overhead), but the landing stays clear of
-                // the last, and the foot of the tower.
-                const Fixed gallery = ring.thick * 3 / 2 + Castle::kGalleryWidth + r(1, 2);
+                // the last by a stretch of the walk to step onto, and of the
+                // foot of the tower.
+                const Fixed gallery = ring.thick * 3 / 2 + Castle::kGalleryWidth + r(5, 2);
                 const Fixed room = len - gallery * 2 - Castle::kRampLanding;
                 const Fixed run = min(climb * 5 / 2, max(climb * 2, room));
                 const Fixed from = min(len / 2 - (run + Castle::kRampLanding) / 2, len - gallery - run - Castle::kRampLanding);
@@ -415,13 +438,15 @@ void Continent::planCastles() {
                 ++placed;
             }
         }
-        // Houses in rows, clear of the walls, keep, courtyard and the street to the gate.
-        const int rows = city.capital ? 13 : 9;
+        // Houses in rows about 11 m apart (none nearer another than 8 m, the
+        // longest a house is), clear of the walls and their ramps, the keep,
+        // the courtyard and the street to the gate.
+        const int rows = city.capital ? 12 : 8;
         const Fixed step = R * 2 / rows;
         for (int iy = 0; iy < rows; ++iy) {
             for (int ix = 0; ix < rows; ++ix) {
-                const Fixed lx = -R + step * ix + step / 2 + (roll(1000 + iy * 32 + ix) - r(1, 2)) * step / 3;
-                const Fixed ly = -R + step * iy + step / 2 + (roll(2000 + iy * 32 + ix) - r(1, 2)) * step / 3;
+                const Fixed lx = -R + step * ix + step / 2 + (roll(1000 + iy * 32 + ix) - r(1, 2)) * step / 4;
+                const Fixed ly = -R + step * iy + step / 2 + (roll(2000 + iy * 32 + ix) - r(1, 2)) * step / 4;
                 if (abs(lx) < m(6)) continue;  // the high street
                 const Vec3 p = world({lx, ly, Fixed::zero()});
                 if ((p - k.courtyard).flat().length() < k.courtyardRadius + m(4)) continue;
@@ -434,7 +459,7 @@ void Continent::planCastles() {
                     const Vec3 e = unitFlat(b - a);
                     Vec3 in{-e.y, e.x, Fixed::zero()};
                     if (in.dot(c - a) < Fixed::zero()) in = -in;
-                    inside = (p - a).flat().dot(in) > ring.thick + m(7);
+                    inside = (p - a).flat().dot(in) > ring.thick + m(6);
                 }
                 if (!inside) continue;
                 if (k.rings.size() > 1) {
@@ -447,7 +472,15 @@ void Continent::planCastles() {
                 }
                 const bool turned = roll(3000 + iy * 32 + ix) < r(1, 2);
                 const Fixed hx = m(2) + roll(4000 + iy * 32 + ix) * 2, hy = Fixed::fromRatio(17, 10) + roll(5000 + iy * 32 + ix) * Fixed::fromRatio(13, 10);
-                k.houses.push_back({p, turned ? hy : hx, turned ? hx : hy, m(3) + roll(6000 + iy * 32 + ix) * 3});
+                const Fixed halfX = turned ? hy : hx, halfY = turned ? hx : hy;
+                // Clear of the galleries round the towers (the walk goes round them).
+                bool clear = true;
+                for (const Castle::Tower& t : k.towers) {
+                    const Fixed dx = max(abs(p.x - t.pos.x) - halfX, Fixed::zero()), dy = max(abs(p.y - t.pos.y) - halfY, Fixed::zero());
+                    clear = clear && dx * dx + dy * dy > (t.radius + Castle::kGalleryWidth + r(1, 2)) * (t.radius + Castle::kGalleryWidth + r(1, 2));
+                }
+                if (!clear) continue;
+                k.houses.push_back({p, halfX, halfY, m(3) + roll(6000 + iy * 32 + ix) * 3});
             }
         }
     }
@@ -666,8 +699,8 @@ void Continent::shapeRoads() {
     // side of its middle.
     std::vector<Vec3> anchors;  // (x, y), z = radius held straight
     for (const Polyline& rd : roads_)
-        for (const Vec3& p : rd.points) anchors.push_back({p.x, p.y, m(140)});
-    for (const Crossing& c : crossings_) anchors.push_back({c.pos.x, c.pos.y, m(160)});
+        for (const Vec3& p : rd.points) anchors.push_back({p.x, p.y, scaled(210)});
+    for (const Crossing& c : crossings_) anchors.push_back({c.pos.x, c.pos.y, scaled(240)});
     for (size_t ri = 0; ri < roads_.size(); ++ri) {
         Polyline& rd = roads_[ri];
         const std::vector<Vec3> ctrl = rd.points;
@@ -737,7 +770,7 @@ void Continent::meanderRivers() {
         // Swing sideways along the arc: wavelength and amplitude follow the river's size.
         const uint64_t sm = noise::nextSeed(seed_ ^ (0xBE4D + ri * 977));
         // Two scales: broad wandering over kilometres, and tighter meanders.
-        const Fixed amp = rv.halfWidth * 5 + m(6), bigAmp = rv.halfWidth * 12 + scaled(40);
+        const Fixed amp = rv.halfWidth * 5 + m(6), bigAmp = (rv.halfWidth * 12 + m(40)) * 2 / 9;
         const int64_t wave = (rv.halfWidth * 28).floorToInt() + 160, bigWave = scaledI(2600);
         std::vector<Vec3> out(curve.size());
         rv.widths.assign(curve.size(), rv.halfWidth);
@@ -848,6 +881,9 @@ Continent::Sample Continent::landform(Fixed x, Fixed y) const {
 
 void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     Fixed z = s.height;
+    // The lowest bed of water here (river, lake or creek): the towns' pads
+    // blend over the land around them, never into the water.
+    Fixed bed = m(100000);
 
     // Distance to the nearest road, as if every road were 3 m from its middle
     // to its edge: wider stretches count as nearer, narrow ones farther.
@@ -869,11 +905,11 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     }
 
     // Rivers: a broad valley, then the channel itself.
-    s.riverDist = kValleyReach + m(1000);
+    s.riverDist = max(kValleyReach, kRiverReach) + m(1000);
     for (const River& rv : rivers_) {
         size_t seg = 0;
         Fixed t;
-        const Fixed d = riverDist(rv, x, y, kValleyReach + rv.halfWidth * 2, seg, t);
+        const Fixed d = riverDist(rv, x, y, max(kValleyReach, kRiverReach) + rv.halfWidth * 2, seg, t);
         if (d < s.riverDist) {
             s.riverDist = d;
             s.riverHalfWidth = rv.widths[seg] + (rv.widths[seg + 1] - rv.widths[seg]) * t;
@@ -897,6 +933,7 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         if (s.riverDist < hw) {
             const Fixed t = s.riverDist / hw;
             z = min(z, s.riverSurface - depth * (Fixed::one() - t * t));
+            bed = min(bed, z);
         } else {
             // The valley floor near the river, its walls blending back into
             // the land's own slopes (no crease where a limit cuts in).
@@ -918,6 +955,7 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         z = max(z, min(surface + r(1, 2) + isle.rise * hump * hump, shore));
         if (z >= surface) s.inLake = false;
     }
+    if (s.inLake) bed = min(bed, z);
 
     // The battle-scale relief: knolls, ridges and the landmarks, then the
     // landmarks' own ponds in the ground they shaped (continent_relief.cpp).
@@ -953,6 +991,7 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         if (s.streamDist < hw) {
             const Fixed t = s.streamDist / hw;
             z = min(z, s.streamSurface - (r(2, 5) + hw / 5) * (Fixed::one() - t * t));
+            bed = min(bed, z);
         } else if (s.streamDist < hw + kGully) {
             const Fixed floor = s.streamSurface + r(1, 5) + (s.streamDist - hw) * r(3, 10);
             if (z > floor) z = floor + (z - floor) * noise::smoothstep(kGully * r(1, 5), kGully, s.streamDist - hw);
@@ -969,14 +1008,27 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         }
     }
 
-    // Cities stand on levelled pads that blend into the land around them.
+    // Cities stand on levelled pads that blend into the land around them. A
+    // town's own pad is level out to its radius, whatever its neighbours'
+    // blends do (towns stand closer together than their blends reach).
+    const City* on = nullptr;
     for (const City& c : cities_) {
         const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y), reach = c.radius * 2;
         if (dx >= reach || dy >= reach) continue;
         const Fixed d = sqrt(dx * dx + dy * dy);
         if (d >= reach) continue;
+        if (d <= c.radius) on = &c;
         const Fixed w = Fixed::one() - noise::smoothstep(c.radius, reach, d);
         z = z + (c.pos.z - z) * w;
+    }
+    if (on) {
+        // Level and dry: no pool or creek of the bake's floods a town's pad
+        // (the rain fell on the towns where the design had them).
+        z = on->pos.z;
+        s.inBasin = false;
+        s.streamDist = m(1000);
+    } else {
+        z = min(z, bed);
     }
     // So do the ruins, on smaller ones (Site::kRuinPad).
     for (const Vec3& p : ruinPads_) {
@@ -998,11 +1050,11 @@ void Continent::applyLake(size_t i, Fixed& z, Sample& s, Fixed x, Fixed y) const
     if (q > m(3)) return;
     // Shores wander: bays, points and coves, not a drawn ellipse.
     const uint64_t sl = noise::nextSeed(seed_ ^ (0x1A4E + i * 131));
-    q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(120, (lake.rx / 3).floorToInt())) * r(2, 5));
+    q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(scaledI(180), (lake.rx / 3).floorToInt())) * r(2, 5));
     const Fixed surface = lakeSurfaces_[i];
     // A shelving shore, about 1 in 6, that runs on into the basin rim:
     // no step at the waterline, so no band of rock along it.
-    const Fixed scale = max(lake.rx / 6, m(40));
+    const Fixed scale = max(lake.rx / 6, scaled(60));
     // A road along the shore keeps to a low causeway above the water.
     const Fixed causeway = Fixed::one() - noise::smoothstep(m(6), m(16), s.roadDist);
     if (causeway > Fixed::zero()) q = max(q, Fixed::one() + causeway * r(3, 5) / scale);
@@ -1062,7 +1114,7 @@ Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fix
         const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y);
         if (dx < c.radius && dy < c.radius && dx * dx + dy * dy < c.radius * c.radius) return Ground::Plains;
     }
-    if ((mountain > m(70) && height > m(70)) || height > m(180)) return Ground::Rock;
+    if ((mountain > peakM(70) && height > peakM(70)) || height > peakM(180)) return Ground::Rock;
     // Beaches: low ground along the sea is sand, wider where the shore is flat.
     if (height < m(5)) {
         const uint64_t sb = noise::nextSeed(seed_ ^ 0xBEAC);
@@ -1078,8 +1130,10 @@ Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fix
     for (const Area& a : forests_) {
         if (ellipse(a, x, y) + (n - r(1, 2)) < Fixed::one()) return Ground::Forest;
     }
-    // Scattered woods elsewhere, thinning with height.
-    if (n > r(67, 100) && height < m(150)) return Ground::Forest;
+    // Scattered woods elsewhere, thinning with height: groves a battlefield
+    // holds a few of, as large as they ever were (the forests' edges above
+    // wander on the map's own scale).
+    if (noise::fbm(sf, x, y, 400) > r(67, 100) && height < peakM(150)) return Ground::Forest;
     return Ground::Plains;
 }
 
@@ -1135,10 +1189,12 @@ bool Continent::buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sam
     Fixed surface;
     if (centre.land < m(40) || centre.height < m(2) || centre.mountain > maxMountain) return false;
     if (waterSurfaceOf(centre, surface)) return false;
-    if (centre.riverDist < centre.riverHalfWidth + radius + m(25)) return false;
+    if (centre.riverDist < centre.riverHalfWidth + radius + m(15)) return false;
     if (centre.streamDist < centre.streamHalfWidth + radius / 2 || centre.inBasin) return false;
+    // Clear of the lakes' wandering shores, however small the lake.
     for (const Area& lake : lakes_)
-        if (ellipse(lake, x, y) < r(9, 5)) return false;
+        if (ellipse(lake, x, y) < r(9, 5) || ellipse({lake.name, lake.centre, lake.rx * r(6, 5) + radius + m(10), lake.ry * r(6, 5) + radius + m(10)}, x, y) < Fixed::one())
+            return false;
     if (landGround(x, y, centre.height, centre.mountain, centre.roadDist) == Ground::Swamp) return false;
     Fixed worst;
     const Fixed dirs[4][2] = {{Fixed::one(), Fixed::zero()}, {-Fixed::one(), Fixed::zero()}, {Fixed::zero(), Fixed::one()}, {Fixed::zero(), -Fixed::one()}};
@@ -1152,6 +1208,16 @@ bool Continent::buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sam
 }
 
 void Continent::placeCities() {
+    // Beside the roads rather than astride them (every road's edge outside
+    // the walls) where there is room.
+    const auto offRoads = [&](Fixed x, Fixed y, Fixed radius) {
+        for (const Polyline& rd : roads_) {
+            size_t seg = 0;
+            Fixed t;
+            if (polylineDist(rd.points, x, y, radius + m(5), seg, t) < radius + rd.widthAt(seg, t)) return false;
+        }
+        return true;
+    };
     // Capitals: one castle in each faction's homeland, on the flattest spot nearby.
     const Vec3 homes[kFactionCount] = {N(470, 545), N(260, 860), N(250, 150), N(810, 770),
                                        N(700, 830), N(200, 360), N(700, 470), N(800, 160)};
@@ -1164,8 +1230,8 @@ void Continent::placeCities() {
                 const Fixed x = homes[f].x + m(dx), y = homes[f].y + m(dy);
                 Sample c;
                 Fixed slope;
-                if (!buildable(x, y, kCapitalRadius, m(60), c, slope)) continue;
-                const Fixed score = slope * scaledI(4000) + sqrt(m(dx * dx + dy * dy));
+                if (onSetPiece({x, y, Fixed::zero()}, kCapitalRadius + m(20)) || !buildable(x, y, kCapitalRadius, peakM(60), c, slope)) continue;
+                const Fixed score = slope * scaledI(4000) + sqrt(m(dx * dx + dy * dy)) + (offRoads(x, y, kCapitalRadius) ? Fixed::zero() : m(200));
                 if (score < bestScore) {
                     bestScore = score;
                     best.pos = {x, y, c.height};
@@ -1181,48 +1247,135 @@ void Continent::placeCities() {
         Vec3 pos;
         Fixed score;
         int64_t order;
+        bool astride = false;  // a road runs through where its walls would be
     };
     std::vector<Candidate> candidates;
     const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
     const Vec3 ford = crossings_.front().pos;
     int64_t order = 0;
-    const int64_t grid = scaledI(200);
+    const int64_t grid = scaledI(100);
     for (int64_t j = 0; j * grid < kHeight; ++j) {
         for (int64_t i = 0; i * grid < kWidth; ++i, ++order) {
-            const Fixed x = m(i * grid + grid / 2) + (noise::lattice(sj, i, j) - r(1, 2)) * scaledI(120);
-            const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(120);
-            if ((Vec3{x, y, Fixed::zero()} - ford).flat().lengthSq() < scaled(750) * scaled(750)) continue;
+            const Fixed x = m(i * grid + grid / 2) + (noise::lattice(sj, i, j) - r(1, 2)) * scaledI(60);
+            const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(60);
+            if ((Vec3{x, y, Fixed::zero()} - ford).flat().lengthSq() < kFordClear * kFordClear) continue;
+            if (onSetPiece({x, y, Fixed::zero()}, kTownRadius + m(20))) continue;
             Sample c;
             Fixed slope;
-            if (!buildable(x, y, kTownRadius, m(40), c, slope)) continue;
-            if (slope > r(1, 8)) continue;
+            // Up into the foothills and on slopes to 1 in 5 (the pad levels
+            // it): the land is crowded since the map shrank to a third.
+            if (!buildable(x, y, kTownRadius, peakM(80), c, slope)) continue;
+            if (slope > r(1, 5)) continue;
             Fixed score = noise::lattice(sj ^ 0x5C0, i, j) - slope * 3;
             if (c.roadDist < scaled(250)) score += r(3, 5);
             if (c.riverDist < scaled(600)) score += r(2, 5);
-            candidates.push_back({{x, y, c.height}, score, order});
+            candidates.push_back({{x, y, c.height}, score, order, !offRoads(x, y, kTownRadius)});
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
         return a.score != b.score ? a.score > b.score : a.order < b.order;
     });
+    // Spaced by their walls, not their centres (a capital is wider than a
+    // town), and spread as evenly as the land allows: each in turn goes
+    // where the gap to the nearest walls is widest (the best scored first,
+    // while there is room for kMaxWallGap anywhere), never nearer than
+    // kMinWallGap; astride a road only where the gap is kAstride wider.
     constexpr size_t kTotal = 80;
-    std::vector<City> chosen;
-    for (int64_t spacing = scaledI(1300); spacing >= scaledI(600); spacing -= scaledI(50)) {
-        chosen = cities;
-        for (const Candidate& c : candidates) {
-            if (chosen.size() >= kTotal) break;
-            bool clear = true;
-            for (const City& o : chosen) clear = clear && (c.pos - o.pos).flat().lengthSq() >= m(spacing) * m(spacing);
-            if (clear) chosen.push_back({"", c.pos, kTownRadius, kNeutral, false});
+    std::vector<City> chosen = cities;
+    std::vector<Fixed> gapTo(candidates.size(), m(100000));
+    const auto keepClear = [&](const City& o) {
+        for (size_t i = 0; i < candidates.size(); ++i)
+            gapTo[i] = min(gapTo[i], (candidates[i].pos - o.pos).flat().length() - kTownRadius - o.radius);
+    };
+    for (const City& o : chosen) keepClear(o);
+    while (chosen.size() < kTotal) {
+        size_t best = candidates.size();
+        Fixed widest = -m(kAstride);
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            if (gapTo[i] < m(kMinWallGap)) continue;
+            const Fixed gap = min(gapTo[i], m(kMaxWallGap)) - (candidates[i].astride ? m(kAstride) : Fixed::zero());
+            if (gap >= widest && (gap > widest || best == candidates.size())) {
+                widest = gap;
+                best = i;
+            }
         }
-        if (chosen.size() >= kTotal) break;
+        if (best == candidates.size()) break;
+        chosen.push_back({"", candidates[best].pos, kTownRadius, kNeutral, false});
+        keepClear(chosen.back());
     }
     for (size_t i = kFactionCount; i < chosen.size(); ++i) chosen[i].name = kCityNames[(i - kFactionCount) % kCityNameCount];
     cities_ = std::move(chosen);
 }
 
+std::vector<Continent::Area> Continent::isles() const {
+    std::vector<Area> out;
+    for (const Isle& isle : isles_) out.push_back(isle.area);
+    return out;
+}
+
+std::vector<Vec3> Continent::isleWalk() const {
+    std::vector<Vec3> out;
+    for (const Isle& isle : isles_) {
+        const Area& a = isle.area;
+        const bool alongX = a.rx >= a.ry;
+        const int64_t half = (alongX ? a.rx : a.ry).floorToInt();
+        for (int64_t t = -half; t <= half; t += 4) {
+            const Vec3 p = a.centre + Vec3{alongX ? m(t) : Fixed::zero(), alongX ? Fixed::zero() : m(t), Fixed::zero()};
+            Fixed surface;
+            if (!waterSurface(p.x, p.y, surface)) out.push_back({p.x, p.y, Fixed::zero()});
+        }
+    }
+    return out;
+}
+
+std::vector<uint8_t> Continent::walkableCells() const {
+    // As Campaign::initTerrain has them: water (but a bridge, or land along
+    // an isle's middle) and mountain are closed to walkers. Rivers are left
+    // open between cells: they are crossed at the fords and bridges.
+    constexpr int64_t cell = Campaign::kCell;
+    const int32_t nx = static_cast<int32_t>(kWidth / cell), ny = static_cast<int32_t>(kHeight / cell);
+    std::vector<uint8_t> open(static_cast<size_t>(nx) * ny, 0), reached(open.size(), 0);
+    for (int32_t y = 0; y < ny; ++y)
+        for (int32_t x = 0; x < nx; ++x) {
+            const Fixed px = m(x * cell + cell / 2), py = m(y * cell + cell / 2);
+            const Sample s = sample(px, py);
+            Fixed surface, deck;
+            const bool wet = waterSurfaceOf(s, surface) && !onBridge(px, py, deck);
+            const bool mountain = landGround(px, py, s.height, s.mountain, s.roadDist) == Ground::Rock && s.mountain > peakM(90);
+            open[static_cast<size_t>(y) * nx + x] = !wet && !mountain;
+        }
+    for (const Vec3& p : isleWalk()) open[static_cast<size_t>(p.y.floorToInt() / cell) * nx + p.x.floorToInt() / cell] = 1;
+    std::vector<int32_t> queue;
+    for (const City& c : cities_) {
+        const int32_t k = static_cast<int32_t>(c.pos.y.floorToInt() / cell) * nx + static_cast<int32_t>(c.pos.x.floorToInt() / cell);
+        if (!reached[static_cast<size_t>(k)]) queue.push_back(k);
+        reached[static_cast<size_t>(k)] = 1;
+    }
+    for (size_t head = 0; head < queue.size(); ++head) {
+        const int32_t cx = queue[head] % nx, cy = queue[head] / nx;
+        for (int32_t dy = -1; dy <= 1; ++dy)
+            for (int32_t dx = -1; dx <= 1; ++dx) {
+                const int32_t x = cx + dx, y = cy + dy;
+                if (x < 0 || y < 0 || x >= nx || y >= ny) continue;
+                const size_t k = static_cast<size_t>(y) * nx + x;
+                if (reached[k] || !open[k]) continue;
+                reached[k] = 1;
+                queue.push_back(static_cast<int32_t>(k));
+            }
+    }
+    return reached;
+}
+
 void Continent::placeSites() {
     const uint64_t sj = noise::nextSeed(seed_ ^ 0x5173);
+    // Every site is reached on foot (a hero walks with his stack): on a
+    // campaign cell joined to the towns by open ground, the mountains' by
+    // their passes.
+    const std::vector<uint8_t> walkable = walkableCells();
+    const auto onFoot = [&](Fixed x, Fixed y) {
+        const int64_t cx = x.floorToInt() / Campaign::kCell, cy = y.floorToInt() / Campaign::kCell, nx = kWidth / Campaign::kCell;
+        return cx >= 0 && cy >= 0 && cx < nx && cy < kHeight / Campaign::kCell && walkable[static_cast<size_t>(cy * nx + cx)] != 0;
+    };
     const auto farFrom = [&](const Vec3& p, Fixed fromCities, Fixed fromSites) {
         for (const City& c : cities_)
             if ((p - c.pos).flat().lengthSq() < fromCities * fromCities) return false;
@@ -1230,19 +1383,25 @@ void Continent::placeSites() {
             if ((p - s.pos).flat().lengthSq() < fromSites * fromSites) return false;
         return true;
     };
-    // The best spot within `reach` of a point.
+    // The best spot within `reach` of a point (twice and three times as far
+    // if there is none: in the high mountains, the nearest reached on foot).
     const auto near = [&](const Vec3& at, int64_t reach, Fixed maxMountain, Vec3& out) {
         Fixed bestScore = m(1000000);
-        for (int64_t dy = -reach; dy <= reach; dy += 25) {
-            for (int64_t dx = -reach; dx <= reach; dx += 25) {
-                Sample c;
-                Fixed slope;
-                const Fixed x = at.x + m(dx), y = at.y + m(dy);
-                if (!buildable(x, y, m(25), maxMountain, c, slope) || !farFrom({x, y, Fixed::zero()}, scaled(500), scaled(500))) continue;
-                const Fixed score = slope * scaledI(400) + sqrt(m(dx * dx + dy * dy));
-                if (score < bestScore) {
-                    bestScore = score;
-                    out = {x, y, c.height};
+        for (int64_t wider = 1; wider <= 3 && bestScore == m(1000000); ++wider) {
+            const int64_t far = reach * wider;
+            for (int64_t dy = -far; dy <= far; dy += 10) {
+                for (int64_t dx = -far; dx <= far; dx += 10) {
+                    Sample c;
+                    Fixed slope;
+                    const Fixed x = at.x + m(dx), y = at.y + m(dy);
+                    if (!onFoot(x, y) || !buildable(x, y, m(25), maxMountain, c, slope) || !farFrom({x, y, Fixed::zero()}, scaled(500), scaled(500)) ||
+                        onSetPiece({x, y, Fixed::zero()}, m(70)))
+                        continue;
+                    const Fixed score = slope * scaledI(400) + sqrt(m(dx * dx + dy * dy));
+                    if (score < bestScore) {
+                        bestScore = score;
+                        out = {x, y, c.height};
+                    }
                 }
             }
         }
@@ -1250,12 +1409,12 @@ void Continent::placeSites() {
     };
     // The two sages: one on the Isle of the Seer, one high in the Ironveil.
     Vec3 p;
-    if (near(N(66, 893), scaledI(300), m(400), p)) sites_.push_back({Site::Kind::Sage, "The Seer's Tower", p});
-    if (near(N(880, 560), scaledI(500), m(400), p)) sites_.push_back({Site::Kind::Sage, "The Hermit of the Peaks", p});
+    if (near(N(66, 893), scaledI(300), peakM(400), p)) sites_.push_back({Site::Kind::Sage, "The Seer's Tower", p});
+    if (near(N(880, 560), scaledI(500), peakM(400), p)) sites_.push_back({Site::Kind::Sage, "The Hermit of the Peaks", p});
     // Four temples, one in each quarter of the land.
     const Vec3 temples[4] = {N(400, 800), N(650, 900), N(380, 300), N(650, 330)};
     for (int i = 0; i < 4; ++i)
-        if (near(temples[i], scaledI(800), m(80), p)) sites_.push_back({Site::Kind::Temple, kTempleNames[i], p});
+        if (near(temples[i], scaledI(800), peakM(80), p)) sites_.push_back({Site::Kind::Temple, kTempleNames[i], p});
 
     // Ruins: in the wild places, away from cities and from each other.
     struct Candidate {
@@ -1272,10 +1431,10 @@ void Continent::placeSites() {
             const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(100);
             Sample c;
             Fixed slope;
-            if (!buildable(x, y, m(25), m(150), c, slope) || slope > r(1, 3)) continue;
+            if (!onFoot(x, y) || !buildable(x, y, m(25), peakM(150), c, slope) || slope > r(1, 3)) continue;
             Fixed score = noise::lattice(sj ^ 0x2A1, i, j);
             if (landGround(x, y, c.height, c.mountain, c.roadDist) == Ground::Forest) score += r(1, 2);
-            if (c.mountain > m(15)) score += r(2, 5);
+            if (c.mountain > peakM(15)) score += r(2, 5);
             if (c.roadDist > scaled(300)) score += r(3, 10);
             candidates.push_back({{x, y, c.height}, score, order});
         }
@@ -1288,14 +1447,21 @@ void Continent::placeSites() {
         const Vec3 at = isles_.front().area.centre;
         sites_.push_back({Site::Kind::Ruin, "The Drowned Abbey", {at.x, at.y, sample(at.x, at.y).height}});
     }
+    // As far from the towns and each other as still leaves room for all of
+    // them: the land is crowded since the map shrank to a third.
     constexpr size_t kRuins = 33;
-    size_t ruins = 0;
-    for (const Candidate& c : candidates) {
+    const size_t before = sites_.size();
+    for (int64_t pull = 0; pull <= 8; ++pull) {
+        sites_.resize(before);
+        size_t ruins = 0;
+        for (const Candidate& c : candidates) {
+            if (ruins >= kRuins) break;
+            if (!farFrom(c.pos, scaled(650 - pull * 40), scaled(950 - pull * 60)) || onSetPiece(c.pos, m(70))) continue;
+            std::string name = std::string(kRuinAdjectives[ruins % 12]) + " " + kRuinNouns[(ruins * 7) % 11];
+            sites_.push_back({Site::Kind::Ruin, std::move(name), c.pos});
+            ++ruins;
+        }
         if (ruins >= kRuins) break;
-        if (!farFrom(c.pos, scaled(650), scaled(950))) continue;
-        std::string name = std::string(kRuinAdjectives[ruins % 12]) + " " + kRuinNouns[(ruins * 7) % 11];
-        sites_.push_back({Site::Kind::Ruin, std::move(name), c.pos});
-        ++ruins;
     }
 }
 

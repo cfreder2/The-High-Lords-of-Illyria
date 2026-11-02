@@ -35,18 +35,18 @@ struct RoadSite {
 const RoadSite& roadSite() {
     static const RoadSite site = [] {
         const Continent& c = continent();
-        std::vector<Vec3> centres;  // along every road, every 400 m
+        std::vector<Vec3> centres;  // along every road, every 133 m
         for (const Polyline& road : c.roads()) {
             for (size_t k = 0; k + 1 < road.points.size(); ++k) {
                 const Vec3 a = road.points[k], d = road.points[k + 1] - a;
-                const int64_t steps = (d.flat().length() / 400).floorToInt() + 1;
+                const int64_t steps = (d.flat().length() / 133).floorToInt() + 1;
                 for (int64_t s = 0; s < steps; ++s) centres.push_back(a + d * Fixed::fromRatio(s, steps));
             }
         }
         {
             for (const Vec3& centre : centres) {
                 bool clear = true;
-                for (const Continent::City& city : c.cities()) clear = clear && (city.pos - centre).flat().length() > m(450);
+                for (const Continent::City& city : c.cities()) clear = clear && (city.pos - centre).flat().length() > m(150);
                 if (!clear) continue;
                 auto region = std::make_shared<const Region>(Region::fromContinent(c, centre, 256));
                 const Region& rg = *region;
@@ -288,9 +288,11 @@ TEST(a_soldier_on_a_bridge_deck_finds_his_way_off_it) {
     const Continent& c = continent();
     WorldConfig cfg;
     cfg.region = std::make_shared<const Region>(Region::fromContinent(c, c.crossings().front().pos, 256));
+    // The bridge nearest the ford (the window holds others, and towns).
     const Deck* deck = nullptr;
+    const Vec3 middle{m(512), m(512), m(0)};
     for (const Deck& k : cfg.region->decks())
-        if (!k.raised) deck = &k;
+        if (!k.raised && (!deck || (k.centre - middle).flat().length() < (deck->centre - middle).flat().length())) deck = &k;
     CHECK(deck != nullptr);
     if (!deck) return;
     // From the middle of the deck to the bank, a way along it from the bridge's end.
@@ -300,7 +302,9 @@ TEST(a_soldier_on_a_bridge_deck_finds_his_way_off_it) {
     for (int sgn = -1; sgn <= 1; sgn += 2) {
         const Vec3 g = bank + side * m(60 * sgn);
         const Ground gr = cfg.region->groundAt(g.x, g.y);
-        if (gr != Ground::DeepWater && gr != Ground::Shallows) goal = g;
+        bool open = gr == Ground::Plains || gr == Ground::Road || gr == Ground::Mud;
+        for (const Rampart& rp : cfg.region->ramparts()) open = open && !Gate::inside(rp, g);
+        if (open) goal = g;
     }
     World w(cfg);
     const EntityId id = w.spawnUnit(0, {deck->centre.x, deck->centre.y, m(0)}, deck->dir, unitStats(UnitType::LightInfantry));
@@ -386,7 +390,7 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         std::vector<int32_t> towns;
         for (const Vec3& p : r.points) {
             for (size_t i = 0; i < c.cities().size(); ++i)
-                if ((c.cities()[i].pos - p).flat().length() < m(600) && (towns.empty() || towns.back() != static_cast<int32_t>(i)))
+                if ((c.cities()[i].pos - p).flat().length() < m(200) && (towns.empty() || towns.back() != static_cast<int32_t>(i)))
                     towns.push_back(static_cast<int32_t>(i));
         }
         if (towns.size() < 2) continue;
@@ -394,7 +398,7 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         if (from == to) continue;
         const Campaign::CityState& cs = camp.cities()[static_cast<size_t>(from)];
         const Campaign::CityState& ct = camp.cities()[static_cast<size_t>(to)];
-        if (std::max(std::abs(cs.cx - ct.cx), std::abs(cs.cy - ct.cy)) < 12) continue;  // 1.6 km or more
+        if (std::max(std::abs(cs.cx - ct.cx), std::abs(cs.cy - ct.cy)) < 12) continue;  // half a kilometre or more
         const uint32_t id = camp.grant(from, 0, UnitType::LightInfantry, 1);
         if (!camp.move(id, ct.cx, ct.cy)) continue;
         const Campaign::Stack* st = camp.findStack(id);

@@ -202,6 +202,7 @@ TEST(horde_reinforcements_between_rounds) {
     for (size_t i = 0; i < hpBefore.size(); ++i) {
         const sim::Unit& u = b->world().units()[i];
         if (u.owner != HordeMode::kHolders || !u.alive() || u.stats.type == static_cast<uint8_t>(UnitType::Hero)) continue;
+        if (u.hp < hpBefore[i]) continue;  // struck in the wave's last moment, after the mending
         const int32_t want = hpBefore[i] + (u.stats.maxHp - hpBefore[i]) * HordeMode::kHealPct / 100;
         CHECK(u.hp >= want);
         mended += hpBefore[i] < u.stats.maxHp;

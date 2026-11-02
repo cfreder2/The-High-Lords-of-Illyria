@@ -67,7 +67,29 @@ const SiteView& siteView(Continent::Site::Kind kind) {
         if (k == kind) return v;
     const Continent& c = continent();
     SiteView v;
-    for (size_t i = 0; i < c.sites().size(); ++i) {
+    // Of its kind, the one with the clearest ground round it in its window
+    // (men walk round it 30 m out: past no other stone, tree or water, and
+    // not into a wood, a lake or a town), the first with none.
+    size_t pick = c.sites().size();
+    int fewest = 1 << 30;
+    for (size_t i = 0; i < c.sites().size() && fewest > 0; ++i) {
+        if (c.sites()[i].kind != kind) continue;
+        const Region r = Region::fromContinent(c, c.sites()[i].pos, 256);
+        const Vec3 at{c.sites()[i].pos.x - r.origin().x, c.sites()[i].pos.y - r.origin().y, Fixed::zero()};
+        int in = 0;
+        for (const Obstacle& o : r.obstacles())
+            in += o.solid && o.variant != Obstacle::kSiteStone && (o.pos - at).flat().length() < m(40);
+        for (int64_t dy = -40; dy <= 40; dy += 4)
+            for (int64_t dx = -40; dx <= 40; dx += 4) {
+                const Ground g = r.groundAt(at.x + m(dx), at.y + m(dy));
+                in += g != Ground::Plains && g != Ground::Road && g != Ground::Mud && g != Ground::Sand;
+            }
+        if (in < fewest) {
+            fewest = in;
+            pick = i;
+        }
+    }
+    for (size_t i = pick; i < c.sites().size(); ++i) {
         if (c.sites()[i].kind != kind) continue;
         v.site = &c.sites()[i];
         v.region = std::make_shared<const Region>(Region::fromContinent(c, v.site->pos, 256));

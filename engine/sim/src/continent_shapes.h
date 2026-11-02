@@ -12,13 +12,14 @@ namespace illyria::sim::continent_shapes {
 
 constexpr Fixed m(int64_t v) { return Fixed::fromInt(v); }
 constexpr Fixed r(int64_t num, int64_t den) { return Fixed::fromRatio(num, den); }
-// The map is laid out at two thirds of the size it was first designed at
-// (docs/MAP.md): every distance on the map's own scale (coasts, ranges,
-// lakes, forests, the spacing of cities, noise wavelengths) goes through
-// these, so the land keeps its shape. What a battle sees up close keeps its
-// size: river and road widths, bridges, gates, walls, peaks' heights.
-constexpr int64_t scaledI(int64_t v) { return v * 2 / 3; }
-constexpr Fixed scaled(int64_t v) { return Fixed::fromRatio(v * 2, 3); }
+// The map is laid out at two ninths of the size it was first designed at, a
+// third each way of the 8.5 x 10.7 km it was before One World (docs/MAP.md):
+// every distance on the map's own scale (coasts, ranges, lakes, forests, the
+// spacing of cities, noise wavelengths) goes through these, so the land keeps
+// its shape. What a battle sees up close keeps its size: river and road
+// widths, bridges, gates, ramps, houses, the ruins, the knolls and gorges.
+constexpr int64_t scaledI(int64_t v) { return v * 2 / 9; }
+constexpr Fixed scaled(int64_t v) { return Fixed::fromRatio(v * 2, 9); }
 
 // A point given in per-mille of the continent's width and height.
 inline Vec3 N(int64_t u, int64_t v) {

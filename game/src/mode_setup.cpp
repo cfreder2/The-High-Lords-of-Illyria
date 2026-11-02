@@ -57,11 +57,11 @@ sim::SeatControl controlOf(const std::string& s) {
 }
 
 // A field anywhere on the map (the sandbox's, picked on its setup map): the
-// dry ground nearest (x, y) in metres, a whole battlefield inside the map's
-// edge (a click in a lake or the sea moves out to the shore), named for the
-// place it is near if one is close.
+// dry ground nearest (x, y) in metres, a field's width inside the map's edge
+// (a click in a lake or the sea moves out to the shore), named for the place
+// it is near if one is close.
 Place openGround(const sim::Continent& c, int x, int y, const std::vector<Place>& places) {
-    constexpr int kEdge = 600;
+    constexpr int kEdge = 300;
     const auto inside = [](int v, int64_t size) { return static_cast<int>(std::clamp<int64_t>(v, kEdge, size - kEdge)); };
     const auto dry = [&](int px, int py) {
         sim::Fixed surface;
@@ -83,7 +83,7 @@ Place openGround(const sim::Continent& c, int x, int y, const std::vector<Place>
     Place p;
     p.name = "Open ground";
     p.pos = {sim::Fixed::fromInt(bx), sim::Fixed::fromInt(by), c.heightAt(sim::Fixed::fromInt(bx), sim::Fixed::fromInt(by))};
-    double best = 1500.0 * 1500.0;
+    double best = 500.0 * 500.0;
     for (const Place& q : places) {
         if (q.name.empty()) continue;
         const double dx = q.pos.x.toDouble() - bx, dy = q.pos.y.toDouble() - by;

@@ -584,12 +584,21 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         }
     }
 
-    // Roads settle into smoothed, slightly sunken beds (not under water).
+    // Roads settle into smoothed, slightly sunken beds (not under water, nor
+    // on a town's level pad, which a road may cross).
     std::vector<Fixed> shaped = h;
+    std::vector<const Continent::City*> towns;
+    for (const Continent::City& city : c.cities()) {
+        const Vec3 at = toLocal(city.pos);
+        if (at.x > -city.radius && at.y > -city.radius && at.x < size + city.radius && at.y < size + city.radius) towns.push_back(&city);
+    }
     for (int32_t iy = 0; iy < n; ++iy) {
         for (int32_t ix = 0; ix < n; ++ix) {
             const size_t i = static_cast<size_t>(iy) * n + ix;
             if (roadDist[i] >= m(7) || rg.water_[i].raw != kDryRaw) continue;
+            bool padded = false;
+            for (const Continent::City* city : towns) padded = padded || flatDist(OX + cell * ix, OY + cell * iy, city->pos) <= city->radius;
+            if (padded) continue;
             Fixed sum;
             for (int32_t dy = -2; dy <= 2; ++dy)
                 for (int32_t dx = -2; dx <= 2; ++dx)
@@ -797,7 +806,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 for (int32_t j = cj - reach; j <= cj + reach && ok; ++j) {
                     for (int32_t i = ci - reach; i <= ci + reach && ok; ++i) {
                         const size_t k = static_cast<size_t>(j) * n + i;
-                        ok = rg.water_[k].raw == kDryRaw && roadDist[k] > m(12) && mountain[k] < m(30);
+                        ok = rg.water_[k].raw == kDryRaw && roadDist[k] > m(12) && mountain[k] < Continent::peakHeight(30);
                         const Fixed d = flatDist(cell * i, cell * j, {px, py, Fixed::zero()});
                         if (d >= radius && d < radius + cell) rim = min(rim, shaped[k]);
                         if (d < radius) top = max(top, shaped[k]);

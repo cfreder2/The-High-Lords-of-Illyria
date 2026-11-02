@@ -28,12 +28,32 @@ namespace {
 constexpr int64_t kKnollCell = 95, kHillockCell = 240, kTorCell = 150;
 // Ridge country: at most one patch in each cell this wide.
 constexpr int64_t kRidgeCell = 1250;
-// Gorges found by search: this many at most, this far apart (beyond their own size).
+// Gorges found by search: this many at most, this far apart (beyond their
+// own size: a map-scale distance, as the spacing of towns).
 constexpr size_t kMaxGorges = 12;
-constexpr int64_t kGorgeSpacing = 500;
+constexpr int64_t kGorgeSpacing = scaledI(750);
+// Landmarks keep this far inside the map's edge (map scale: the coast runs
+// this far in and more).
+constexpr int64_t kLandmarkMargin = scaledI(1050);
 // The church hill's road: its grade, and its half width.
 constexpr Fixed kHillRoadGrade = Fixed::fromRatio(3, 40);
 constexpr Fixed kHillRoadHalf = Fixed::fromRatio(5, 2);
+
+// The set pieces made by hand: where they were drawn (per mille of the map's
+// width and height), the ground each needs (metres from its middle), and
+// whether it lies along a road. Each goes to the nearest place with room for
+// it, found before the towns (planSetPieces).
+struct SetPiece {
+    int64_t u, v, room;
+    bool onRoad;
+};
+constexpr SetPiece kChurchHill{511, 503, 190, false};   // above the Heartmere, below Kingshold
+constexpr SetPiece kNarrows{188, 226, 180, true};       // the south road through the downs (its ends taper by 180 m)
+constexpr SetPiece kTerraces{532, 385, 125, false};     // the fields above the Westrun
+constexpr SetPiece kSetPieces[] = {kChurchHill, kNarrows, kTerraces};
+// How far from where it was drawn a set piece may go to find room (along its
+// road, for one that lies on a road); where it was drawn if there is none.
+constexpr int64_t kSetPieceSearch = 600, kSetPieceRoadSearch = 900;
 
 Vec3 rotate(const Vec3& v, Fixed c, Fixed s) { return {v.x * c - v.y * s, v.x * s + v.y * c, Fixed::zero()}; }
 
@@ -58,12 +78,69 @@ Fixed wanderingRadius(uint64_t s, const Vec3& centre, Fixed dx, Fixed dy, Fixed 
 
 }  // namespace
 
+void Continent::planSetPieces() {
+    // Before the towns and sites: the nearest place to where each was drawn
+    // with room round it (as a gorge needs, roads allowed), rings outward
+    // every 20 m; along its road, both ways, for one that lies on a road.
+    for (const SetPiece& sp : kSetPieces) {
+        const Vec3 want = N(sp.u, sp.v);
+        const Fixed room = m(sp.room);
+        Vec3 at = want;
+        bool found = false;
+        if (sp.onRoad) {
+            size_t ri = 0, seg = 0;
+            Fixed best = m(100000);
+            for (size_t i = 0; i < roads_.size(); ++i) {
+                size_t s = 0;
+                Fixed t;
+                const Fixed d = polylineDist(roads_[i].points, want.x, want.y, m(kSetPieceSearch), s, t);
+                if (d < best) {
+                    best = d;
+                    ri = i;
+                    seg = s;
+                }
+            }
+            const std::vector<Vec3>& pts = roads_[ri].points;
+            for (size_t k = 0; k < pts.size() && !found; ++k) {
+                for (int side = 0; side < 2 && !found; ++side) {
+                    const size_t i = side ? seg + 1 + k : seg - std::min(seg, k);
+                    if (i >= pts.size() || (side == 0 && k > seg) || (pts[i] - want).flat().length() > m(kSetPieceRoadSearch)) continue;
+                    if (roomForLandmark(pts[i], room, true, false)) {
+                        at = pts[i];
+                        found = true;
+                    }
+                }
+            }
+        } else {
+            for (int64_t ring = 0; ring <= kSetPieceSearch && !found; ring += 20) {
+                const int64_t n = std::max<int64_t>(1, ring * 6283 / 20000);
+                for (int64_t k = 0; k < n && !found; ++k) {
+                    const Fixed a = kTwoPi * k / n;
+                    const Vec3 p{want.x + cos(a) * ring, want.y + sin(a) * ring, Fixed::zero()};
+                    if (roomForLandmark(p, room, true, false)) {
+                        at = p;
+                        found = true;
+                    }
+                }
+            }
+        }
+        setPieces_.push_back({at.x, at.y, room});
+    }
+}
+
+bool Continent::onSetPiece(const Vec3& p, Fixed gap) const {
+    for (const Vec3& sp : setPieces_)
+        if ((p - Vec3{sp.x, sp.y, Fixed::zero()}).flat().length() < sp.z + gap) return true;
+    return false;
+}
+
 void Continent::dress() {
     naturalLakes_ = lakes_.size();
-    // The set pieces, placed by hand on open ground with room round them.
-    addChurchHill("Church Hill", N(511, 503));         // above the Heartmere, below Kingshold
-    addGorgeOnRoad("The Narrows", N(188, 226), m(200));  // the south road through the downs by Wardenhold
-    addTerraces("The Terraces", N(532, 385));          // the fields above Hallowmere
+    // The set pieces, made by hand, where planSetPieces found them room.
+    const auto spot = [&](size_t i) { return Vec3{setPieces_[i].x, setPieces_[i].y, Fixed::zero()}; };
+    addChurchHill("Church Hill", spot(0));
+    addGorgeOnRoad("The Narrows", spot(1), m(200));
+    addTerraces("The Terraces", spot(2));
     findGorges();
     bucketRoads();  // the church hill's road joins the others
     landmarkBuckets_.assign(static_cast<size_t>(bucketNx_) * bucketNy_, {});
@@ -111,17 +188,26 @@ void Continent::addChurchHill(const std::string& name, Vec3 at) {
     const Fixed foot = m(170);
     const auto hillAt = [&](const Vec3& p) { return sample(p.x, p.y).height + landmarkRise(lm, p.x, p.y); };
 
-    // Where the road leaves the highway: the nearest point of any road.
+    // Where the road leaves the highway: the nearest point of any road from
+    // which the lane runs straight to the hill's foot clear of every town's
+    // walls (the towns stand close together).
     Vec3 junction = at;
     {
         Fixed best = m(100000);
         for (const Polyline& rd : roads_) {
-            size_t seg = 0;
-            Fixed t;
-            const Fixed d = polylineDist(rd.points, at.x, at.y, m(1500), seg, t);
-            if (d >= best || d >= m(1500)) continue;
-            best = d;
-            junction = rd.points[seg] + (rd.points[seg + 1] - rd.points[seg]) * t;
+            for (const Vec3& q : rd.points) {
+                const Fixed d = (q - at).flat().length();
+                if (d >= best || d >= m(1500)) continue;
+                const Vec3 footAt = at + unitFlat(q - at) * foot;
+                bool clear = true;
+                for (const City& c : cities_) {
+                    Fixed t;
+                    clear = clear && sqrt(segDistSq(c.pos.x, c.pos.y, q, footAt, t)) > c.radius + kHillRoadHalf + m(5);
+                }
+                if (!clear) continue;
+                best = d;
+                junction = q;
+            }
         }
     }
     Vec3 dir = unitFlat(junction - at);
@@ -261,10 +347,10 @@ void Continent::addGorgeOnRoad(const std::string& name, Vec3 at, Fixed halfLengt
     lm.rise = m(28);
     lm.floor = m(15);
     lm.radius = halfLength + m(40);
-    // The road's points within reach, in order.
+    // The road's points within reach, in order (z: the ground there).
     const Fixed reach = halfLength * r(7, 5);
     for (const Vec3& p : pts)
-        if ((p - mid).flat().length() < reach) lm.line.push_back({p.x, p.y, Fixed::zero()});
+        if ((p - mid).flat().length() < reach) lm.line.push_back({p.x, p.y, sample(p.x, p.y).height});
     if (lm.line.size() < 2) return;
     lm.axis = unitFlat(lm.line.back() - lm.line.front());
     landmarks_.push_back(std::move(lm));
@@ -287,16 +373,19 @@ void Continent::addTerraces(const std::string& name, Vec3 at) {
 
 // --- Gorges found by search -------------------------------------------------
 
-bool Continent::roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed) const {
-    // Clear of the towns' pads, the sites, the crossings and the lakes.
-    if (at.x < m(700) || at.y < m(700) || at.x > m(kWidth - 700) || at.y > m(kHeight - 700)) return false;
+bool Continent::roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed, bool valleys) const {
+    // Clear of the towns' pads, the sites, the crossings, the lakes and the
+    // set pieces already given room.
+    if (at.x < m(kLandmarkMargin) || at.y < m(kLandmarkMargin) || at.x > m(kWidth - kLandmarkMargin) || at.y > m(kHeight - kLandmarkMargin)) return false;
     const auto near = [&](const Vec3& p, Fixed gap) { return (p - at).flat().lengthSq() < gap * gap; };
+    for (const Vec3& sp : setPieces_)
+        if (near({sp.x, sp.y, Fixed::zero()}, sp.z + radius + m(30))) return false;
     for (const City& c : cities_)
         if (near(c.pos, c.radius * r(11, 5) + radius + m(30))) return false;
     for (const Site& s : sites_)
         if (near(s.pos, radius + m(70))) return false;
     for (const Crossing& c : crossings_)
-        if (near(c.pos, radius + m(120))) return false;
+        if (near(c.pos, radius + m(40))) return false;
     for (const Area& lake : lakes_)
         if (ellipseQ(lake, at.x, at.y) < r(8, 5)) return false;
     // The ground itself: dry, clear of rivers, creeks, pools and roads, not
@@ -312,8 +401,10 @@ bool Continent::roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed) const 
             lowest = min(lowest, s.height);
             highest = max(highest, s.height);
             if (highest - lowest > m(45)) return false;
-            if (s.land < m(150) || waterSurfaceOf(s, surface) || s.inBasin || s.mountain > m(110)) return false;
-            if (s.riverDist < s.riverHalfWidth + m(220) || s.streamDist < s.streamHalfWidth + m(30)) return false;
+            if (s.land < scaled(225) || waterSurfaceOf(s, surface) || s.inBasin || s.mountain > peakHeight(110)) return false;
+            // Out of the rivers' valleys (their floors are cut level with the
+            // water), or at least off their banks and the creeks'.
+            if (s.riverDist < s.riverHalfWidth + (valleys ? scaled(450) : m(30)) || s.streamDist < s.streamHalfWidth + (valleys ? m(30) : m(10))) return false;
             if (!roadsAllowed && s.roadDist < m(60)) return false;
             if (landGround(x, y, s.height, s.mountain, s.roadDist) == Ground::Swamp) return false;
         }
@@ -333,8 +424,8 @@ void Continent::findGorges() {
     };
     std::vector<Spot> spots;
     constexpr int64_t kStep = 100;
-    for (int64_t j = 7; j * kStep < kHeight - 700; ++j)
-        for (int64_t i = 7; i * kStep < kWidth - 700; ++i) spots.push_back({i, j, noise::lattice(sg, i, j)});
+    for (int64_t j = kLandmarkMargin / kStep; j * kStep < kHeight - kLandmarkMargin; ++j)
+        for (int64_t i = kLandmarkMargin / kStep; i * kStep < kWidth - kLandmarkMargin; ++i) spots.push_back({i, j, noise::lattice(sg, i, j)});
     std::stable_sort(spots.begin(), spots.end(), [](const Spot& a, const Spot& b) { return a.lot < b.lot; });
     size_t found = 0;
     for (const Spot& sp : spots) {
@@ -365,9 +456,9 @@ void Continent::findGorges() {
         for (int64_t a = -half; a <= half; a += 10) {
             const Fixed wander = (noise::value(sg ^ 0x11, m(a), m((i + j * 1000) * 977), 140) - r(1, 2)) * lm.halfWidth * r(3, 5);
             const Vec3 p = lm.centre + lm.axis * m(a) + side * wander;
-            lm.line.push_back({p.x, p.y, Fixed::zero()});
             // Its floor must be walkable: the old ground along it no steeper than 1 in 6.
             const Fixed h = sample(p.x, p.y).height;
+            lm.line.push_back({p.x, p.y, h});
             if (a > -half && abs(h - last) > r(10, 6)) gentle = false;
             last = h;
         }
@@ -456,7 +547,7 @@ Fixed Continent::reliefAt(Fixed x, Fixed y, const Sample& s) const {
     Fixed mask = (top + (bottom - top) * ty) / 255;
     if (mask <= Fixed::zero()) return Fixed::zero();
     // On land, off the mountains (which have crags enough), out of the river valleys.
-    mask = mask * noise::smoothstep(m(30), m(200), s.land) * (Fixed::one() - noise::smoothstep(m(40), m(110), s.mountain)) *
+    mask = mask * noise::smoothstep(m(30), m(200), s.land) * (Fixed::one() - noise::smoothstep(peakHeight(40), peakHeight(110), s.mountain)) *
            noise::smoothstep(s.riverHalfWidth + m(40), s.riverHalfWidth + m(180), s.riverDist);
     if (mask <= Fixed::zero()) return Fixed::zero();
 
@@ -583,6 +674,20 @@ void Continent::shapeLandmarks(Fixed& z, Fixed x, Fixed y) const {
     for (const uint32_t li : landmarkBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
         const Landmark& lm = landmarks_[li];
         const Fixed rise = landmarkRise(lm, x, y);
+        if (lm.kind == Landmark::Kind::Gorge) {
+            // A tableland stands its height over the floor beside it, where
+            // the land beneath falls away from the cleft (filled as fully as
+            // the tableland rises there, so its edges stay its own slopes).
+            if (rise > Fixed::zero()) {
+                size_t seg = 0;
+                Fixed t;
+                polylineDist(lm.line, x, y, lm.halfWidth * 2, seg, t);
+                const Fixed floor = lm.line[seg].z + (lm.line[seg + 1].z - lm.line[seg].z) * t - m(2);
+                const Fixed weight = min(Fixed::one(), rise / (lm.rise * r(13, 20)));
+                z = z + rise + max(Fixed::zero(), floor - z) * weight;
+            }
+            continue;
+        }
         if (lm.kind != Landmark::Kind::ChurchHill) {
             z += rise;
             continue;

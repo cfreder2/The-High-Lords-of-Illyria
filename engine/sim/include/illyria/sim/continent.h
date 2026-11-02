@@ -20,9 +20,16 @@ namespace illyria::sim {
 // whole continent. Fine 4 m detail is added per chunk on top (ContinentChunk).
 class Continent {
 public:
-    // Two thirds of the 12.8 x 16 km it was first laid out at (docs/MAP.md).
-    static constexpr int64_t kWidth = 8533;    // metres, west to east
-    static constexpr int64_t kHeight = 10667;  // metres, south to north
+    // Two ninths of the 12.8 x 16 km it was first laid out at (docs/MAP.md).
+    static constexpr int64_t kWidth = 2844;   // metres, west to east
+    static constexpr int64_t kHeight = 3556;  // metres, south to north
+    // Heights on the mountains' own scale, given as they were first laid out:
+    // the ranges' peaks, and what is judged by them (bare rock, the campaign's
+    // hills and mountains, how high a town may stand). A third of that, as
+    // the map is a third of the size it was before One World, so the ranges
+    // are as steep as they were and their passes as easy (docs/MAP.md).
+    static constexpr int64_t kPeakNum = 1, kPeakDen = 3;
+    static constexpr Fixed peakHeight(int64_t metres) { return Fixed::fromRatio(metres * kPeakNum, kPeakDen); }
 
     struct River {
         std::string name;
@@ -220,7 +227,7 @@ public:
         // `floor` metres either side of `line`.
         Vec3 axis;
         Fixed halfLength, halfWidth, floor;
-        // Gorges: the floor's middle (z unused). Church hill: its road's bench, z = the surface.
+        // Gorges: the floor's middle, z = the ground there. Church hill: its road's bench, z = the surface.
         std::vector<Vec3> line;
         std::vector<Obstacle> buildings;  // pos.z = the ground they stand on
     };
@@ -248,6 +255,13 @@ public:
     const std::vector<Area>& swamps() const { return swamps_; }
     const std::vector<Area>& forests() const { return forests_; }
     const std::vector<Area>& lakes() const { return lakes_; }
+    // Land in the lakes: Abbey Isle and the Spit that reaches it.
+    std::vector<Area> isles() const;
+    // Points along each isle's middle line (its longer axis), every 4 m,
+    // where its ground stands out of the water: the campaign's grid counts
+    // every cell they fall in as land, so a walker crosses the Spit, too
+    // narrow for its cells' middles to fall on.
+    std::vector<Vec3> isleWalk() const;
     const std::vector<Label>& labels() const { return labels_; }
     static const std::vector<Faction>& factions();
     const std::vector<City>& cities() const { return cities_; }
@@ -301,6 +315,9 @@ private:
     void computeRiverSurfaces();
     void placeCities();
     void placeSites();
+    // The campaign's cells (Campaign::kCell) a walker can reach from a town:
+    // neither water nor mountain (Campaign::initTerrain), joined to a town's.
+    std::vector<uint8_t> walkableCells() const;
     // Whether a footprint of this radius is dry, gentle land clear of rivers; returns the slope.
     bool buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const;
     Fixed landDistance(Fixed x, Fixed y) const;
@@ -318,13 +335,21 @@ private:
 
     // The battle-scale relief (continent_relief.cpp). dress() lays it on
     // once everything else is placed (which it keeps clear of), so towns,
-    // sites and bridges stand where the design put them.
+    // sites and bridges stand where the design put them. The set pieces are
+    // found room first (planSetPieces, before the towns, which keep off them:
+    // they keep their size on a map a third the size it was).
+    void planSetPieces();
+    // Whether a town of this radius, or a site, at p would stand on a set piece's ground.
+    bool onSetPiece(const Vec3& p, Fixed gap) const;
     void dress();
     void addChurchHill(const std::string& name, Vec3 at);
     void addGorgeOnRoad(const std::string& name, Vec3 at, Fixed halfLength);
     void addTerraces(const std::string& name, Vec3 at);
     void findGorges();
-    bool roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed) const;
+    // Room for a landmark of this radius: clear of towns, sites, crossings,
+    // lakes and set pieces, on dry ground out of the rivers' valleys (with
+    // valleys false, only off their banks: a set piece must go somewhere).
+    bool roomForLandmark(Vec3 at, Fixed radius, bool roadsAllowed, bool valleys = true) const;
     void buildClearGrid();
     // Knolls and ridges, scaled by how clear the ground is (metres to add).
     Fixed reliefAt(Fixed x, Fixed y, const Sample& s) const;
@@ -364,6 +389,8 @@ private:
     // made, so nothing placed or dressed before moves.
     std::vector<Vec3> ruinPads_;
     std::vector<Landmark> landmarks_;
+    // Where the set pieces go (planSetPieces): x, y, z = the radius of ground they need.
+    std::vector<Vec3> setPieces_;
     bool dressed_ = false;
     size_t naturalLakes_ = 0;
     // How freely battle-scale relief may rise (0..255) every kClearCell

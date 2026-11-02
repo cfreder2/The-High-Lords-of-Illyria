@@ -21,12 +21,15 @@ using namespace illyria::sim;
 
 namespace {
 
-constexpr int kCell = 32;  // metres between samples
-// Cells draining into a point before a stream rises there (half what it was
-// before the map shrank to two thirds, so it keeps most of its streams).
-const int kStreamArea = static_cast<int>(std::getenv("BAKE_AREA") ? std::atoi(std::getenv("BAKE_AREA")) : 200);
+// Metres between samples: as fine as a battle samples the land's broad shape
+// (Region::fromContinent, every 16 m), since the map shrank to a third.
+constexpr int kCell = 16;
+// Cells draining into a point before a stream rises there: about as much
+// land as before the map shrank to a third, so a battlefield has as many
+// creeks as it had (a creek keeps its size, as the rivers do).
+const int kStreamArea = static_cast<int>(std::getenv("BAKE_AREA") ? std::atoi(std::getenv("BAKE_AREA")) : 400);
 constexpr float kBasinDepth = 1.2f;  // metres of water before a hollow counts as a pool
-constexpr int kBasinCells = 4;
+constexpr int kBasinCells = 16;      // and the cells it must cover (about 4000 m2)
 
 struct Grid {
     int nx = 0, ny = 0;
@@ -237,9 +240,10 @@ int main(int argc, char** argv) {
             Continent::Sample s = design.landform(x, y);
             // Mountains are cut deepest; the farmland plains mostly keep their shape.
             const float mountain = static_cast<float>(s.mountain.toDouble());
-            soft[c] = param("BAKE_PLAIN", 0.2f) + (1 - param("BAKE_PLAIN", 0.2f)) * std::clamp(mountain / 120.0f, 0.0f, 1.0f);
+            const float hardRock = static_cast<float>(Continent::peakHeight(120).toDouble());
+            soft[c] = param("BAKE_PLAIN", 0.2f) + (1 - param("BAKE_PLAIN", 0.2f)) * std::clamp(mountain / hardRock, 0.0f, 1.0f);
             // Near the sea the land is left as designed (beaches, not terraces).
-            shore[c] = std::clamp((static_cast<float>(s.land.toDouble()) - 60.0f) / 300.0f, 0.0f, 1.0f);
+            shore[c] = std::clamp((static_cast<float>(s.land.toDouble()) - 20.0f) / 100.0f, 0.0f, 1.0f);
             design.carve(s, x, y);
             carved[c] = static_cast<float>(s.height.toDouble());
             Fixed surface;
@@ -415,7 +419,7 @@ int main(int argc, char** argv) {
                 const size_t c = static_cast<size_t>(j) * nx + i;
                 const float gx = (g.at(i + 1, j) - g.at(i - 1, j)) / (2 * kCell), gy = (g.at(i, j + 1) - g.at(i, j - 1)) / (2 * kCell);
                 const float shade = std::clamp(0.6f + (gx - gy) * 1.5f, 0.0f, 1.0f);
-                const float e = std::clamp(g.h[c] / 500.0f, 0.0f, 1.0f);
+                const float e = std::clamp(g.h[c] / static_cast<float>(Continent::peakHeight(500).toDouble()), 0.0f, 1.0f);
                 float r = (0.35f + 0.5f * e) * shade, gr = (0.55f - 0.1f * e) * shade, b = (0.3f + 0.4f * e) * shade;
                 if (water[c]) r = 0.1f, gr = 0.25f, b = 0.5f;
                 else if (basin[c] != INT16_MIN) r = 0.2f, gr = 0.6f, b = 0.8f;

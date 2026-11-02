@@ -30,11 +30,11 @@ TEST(continent_rivers_run_downhill_to_the_sea) {
         for (size_t i = 0; i + 1 < r.points.size(); ++i) CHECK(r.points[i + 1].z <= r.points[i].z);
     }
     // The western sea, the eastern mountains.
-    CHECK(continent().heightAt(Fixed::fromInt(133), Fixed::fromInt(5333)) < Fixed::zero());
+    CHECK(continent().heightAt(Fixed::fromInt(44), Fixed::fromInt(1778)) < Fixed::zero());
     Fixed highest = Fixed::zero();
-    for (int y = 667; y < Continent::kHeight; y += 333)
-        highest = std::max(highest, continent().heightAt(Fixed::fromInt(Continent::kWidth - 400), Fixed::fromInt(y)));
-    CHECK(highest > Fixed::fromInt(150));
+    for (int y = 222; y < Continent::kHeight; y += 111)
+        highest = std::max(highest, continent().heightAt(Fixed::fromInt(Continent::kWidth - 133), Fixed::fromInt(y)));
+    CHECK(highest > Continent::peakHeight(150));
 }
 
 TEST(continent_crossings_are_passable) {
@@ -57,7 +57,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world. (It holds a ruin: its
     // stones, floor, stair and stepped base come from the ruin's model, on levelled ground.)
-    constexpr uint64_t kGolden = 0x03533d34bfbb0c6e;
+    constexpr uint64_t kGolden = 0x39dd9c7350e9e73c;
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -76,7 +76,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x87a39b4f9a1ae914;
+    constexpr uint64_t kGolden = 0xe7112dc9ea7fa009;
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -88,12 +88,12 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
     for (const Continent::City& city : c.cities()) {
         if (city.capital) ++capitals[city.owner];
         else CHECK(city.owner == Continent::kNeutral);
-        // On dry land, and never inside another city's walls.
+        // On dry land, and at least 30 m from another city's walls.
         Fixed surface;
         CHECK(!c.waterSurface(city.pos.x, city.pos.y, surface));
         CHECK(c.heightAt(city.pos.x, city.pos.y) == city.pos.z);  // the levelled pad
         for (const Continent::City& other : c.cities())
-            if (&other != &city) CHECK((other.pos - city.pos).flat().length() > Fixed::fromInt(333));
+            if (&other != &city) CHECK((other.pos - city.pos).flat().length() - other.radius - city.radius >= Fixed::fromInt(30));
     }
     for (int f = 0; f < Continent::kFactionCount; ++f) CHECK(capitals[f] == 1);
     int kinds[3] = {};
@@ -103,7 +103,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0xff3e70551bc6a219;
+    constexpr uint64_t kGolden = 0x898fe2f7beec6015;
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
@@ -111,8 +111,10 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
 TEST(battlefield_is_varied_not_open_grass) {
     // The full 1 km battlefield: ponds, fallen logs, groves and rock outcrops, not empty grass.
     static const Region r = Region::fromContinent(continent(), continent().crossings().front().pos, 256);
-    // (where the drainage leaves the ground dry and gentle enough to hold one)
-    CHECK(r.ponds().size() >= 3);
+    // (where the drainage leaves the ground dry and gentle enough to hold one,
+    // and clear of the towns, which on a map a third the size stand all
+    // round the ford's open ground)
+    CHECK(r.ponds().size() >= 1);
     int logs = 0, trees = 0, boulders = 0;
     for (const Obstacle& o : r.obstacles()) {
         logs += o.kind == Obstacle::Kind::Log;
@@ -120,8 +122,10 @@ TEST(battlefield_is_varied_not_open_grass) {
         boulders += o.kind == Obstacle::Kind::Boulder;
         CHECK(o.kind != Obstacle::Kind::Log || !o.solid);  // stepped over
     }
-    CHECK(logs > 200);
-    CHECK(trees > 2000);
+    std::printf("  %zu ponds, %d logs, %d trees, %d boulders\n", r.ponds().size(), logs, trees, boulders);
+    // (A dozen towns' walls and pads stand in it too, on a map a third the size.)
+    CHECK(logs > 100);
+    CHECK(trees > 1500);
     CHECK(boulders > 200);
     // Every pond holds water.
     for (const Vec3& p : r.ponds()) {
@@ -142,7 +146,9 @@ TEST(landmarks_are_shaped_and_can_be_walked) {
         gorges += lm.kind == Continent::Landmark::Kind::Gorge;
     }
     CHECK(church && narrows && terraces);
-    CHECK(gorges >= 3);
+    // (Gorges found by search need room the 80 towns leave none of on this
+    // map, a third the size it was: the Narrows may be the only one.)
+    CHECK(gorges >= 1);
     if (!church || !narrows || !terraces) return;
     const auto local = [](const Region& rg, const Vec3& p) { return Vec3{p.x - rg.origin().x, p.y - rg.origin().y, Fixed::zero()}; };
     std::vector<Vec3> path;

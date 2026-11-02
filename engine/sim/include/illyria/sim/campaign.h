@@ -4,7 +4,7 @@
 // §4). Eight sides each start with a capital, a hero and some gold; the other
 // 72 cities are neutral, held by small garrisons. Cities pay gold every day
 // and train armies; armies cost upkeep. Stacks of up to eight armies march
-// across the continent on a 133 m grid, paying Warlords' movement costs, and
+// across the continent on a 44 m grid, paying Warlords' movement costs, and
 // fight Warlords' dice battles where they meet (or the full 3D battle, when the
 // player chooses to). Deterministic: integers and the seeded Rng only.
 
@@ -50,8 +50,10 @@ class StateHasher;
 class Campaign {
 public:
     // Metres. The grid is 64 x 80 cells, as it was before the map shrank to two
-    // thirds, so a day's march covers the same share of it (Warlords' pacing).
-    static constexpr int32_t kCell = 133;
+    // thirds and then to a third each way, so a day's march covers the same
+    // share of it (Warlords' pacing). 64 x 44 m and 80 x 44 m fall a cell
+    // short of the map's edges, which are open sea.
+    static constexpr int32_t kCell = 44;
     static constexpr int32_t kTicksPerDay = 300;          // 30 s a day at 10 ticks a second
     static constexpr int32_t kTicksPerSecond = 10;
     static constexpr int32_t kMaxStack = 8;
@@ -63,7 +65,7 @@ public:
     // own speed, whatever the armies aboard could walk.
     static constexpr int32_t kBoatCapacity = 7;  // armies aboard, as a Warlords navy
     static constexpr int32_t kSeaMoves = 40;     // a boat's movement points a day
-    static constexpr int32_t kSeaCost = 2;       // per water cell (plain is 2 on foot): 20 cells, 2.7 km, a day
+    static constexpr int32_t kSeaCost = 2;       // per water cell (plain is 2 on foot): 20 cells, 0.9 km, a day
     static constexpr int32_t kBoatCost = 20, kBoatDays = 4;  // gold and days to build one
     static constexpr int32_t kBoatUpkeep = 2;    // gold a day
     // Raising a banner (campaign_capture.cpp): a city changes hands only when
@@ -74,11 +76,11 @@ public:
     // and pull it down when they outnumber the raisers.
     static constexpr int32_t kBannerFull = 480;
     static constexpr int32_t kBannerBase = 2;
-    // Territory (campaign_territory.cpp): the map's campaign hexes, 267 m
+    // Territory (campaign_territory.cpp): the map's campaign hexes, 89 m
     // between centres (pointy-top; odd rows shifted half a hex east), each
     // claimed by the side whose armies stand in it uncontested.
-    static constexpr int32_t kHexSpacing = 267;   // metres between neighbouring centres
-    static constexpr int32_t kHexRowX100 = 23123; // rows apart, in centimetres (267 * sqrt(3) / 2)
+    static constexpr int32_t kHexSpacing = 89;   // metres between neighbouring centres
+    static constexpr int32_t kHexRowX100 = 7708; // rows apart, in centimetres (89 * sqrt(3) / 2)
     static constexpr int32_t kHexCols = 33, kHexRows = 47;
     static constexpr int32_t kClaimFull = 100;
     static constexpr int32_t kTerritoryTicks = 30;  // the land is reckoned ten times a day

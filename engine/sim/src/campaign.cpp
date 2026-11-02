@@ -199,14 +199,14 @@ void Campaign::initTerrain() {
     riverNorth_.assign(terrain_.size(), 0);
     std::vector<uint8_t> nearRiver(terrain_.size(), 0);
     cellHeight_.assign(terrain_.size(), 0);
-    // Road cells: every cell a road passes through, walked every 10 m (the
+    // Road cells: every cell a road passes through, walked every 4 m (the
     // samples' road distance only reaches 60 m, short of a cell's corners;
     // and a road may clip a cell's corner for a few metres).
     std::vector<uint8_t> road(terrain_.size(), 0);
     for (const Polyline& r : continent_.roads()) {
         for (size_t k = 0; k + 1 < r.points.size(); ++k) {
             const Vec3 a = r.points[k], d = r.points[k + 1] - r.points[k];
-            const int32_t steps = std::max(1, static_cast<int32_t>((d.flat().length() / 10).floorToInt()));
+            const int32_t steps = std::max(1, static_cast<int32_t>((d.flat().length() / 4).floorToInt()));
             for (int32_t i = 0; i <= steps; ++i) {
                 const Vec3 p = a + d * Fixed::fromRatio(i, steps);
                 const int32_t x = cellOf(static_cast<int32_t>(p.x.floorToInt())), y = cellOf(static_cast<int32_t>(p.y.floorToInt()));
@@ -230,14 +230,21 @@ void Campaign::initTerrain() {
                 switch (continent_.landGround(px, py, s.height, s.mountain, s.roadDist)) {
                     case Ground::Forest: t = Lay::Forest; break;
                     case Ground::Swamp: t = Lay::Marsh; break;
-                    case Ground::Rock: t = s.mountain > Fixed::fromInt(90) ? Lay::Mountain : Lay::Hill; break;
-                    default: t = s.mountain > Fixed::fromInt(25) ? Lay::Hill : Lay::Plain; break;
+                    case Ground::Rock: t = s.mountain > Continent::peakHeight(90) ? Lay::Mountain : Lay::Hill; break;
+                    default: t = s.mountain > Continent::peakHeight(25) ? Lay::Hill : Lay::Plain; break;
                 }
             }
             terrain_[static_cast<size_t>(y) * nx_ + x] = t;
-            nearRiver[static_cast<size_t>(y) * nx_ + x] = s.riverDist < Fixed::fromInt(173);
+            nearRiver[static_cast<size_t>(y) * nx_ + x] = s.riverDist < Fixed::fromInt(58);
             cellHeight_[static_cast<size_t>(y) * nx_ + x] = static_cast<int16_t>(std::clamp<int64_t>(s.height.floorToInt(), -2000, 4000));
         }
+    }
+    // Land in the lakes too narrow for its cells' middles to fall on (the
+    // Spit out to Abbey Isle, the only way there on foot): every cell its
+    // middle line crosses dry is land.
+    for (const Vec3& p : continent_.isleWalk()) {
+        const int32_t x = cellOf(static_cast<int32_t>(p.x.floorToInt())), y = cellOf(static_cast<int32_t>(p.y.floorToInt()));
+        if (x >= 0 && y >= 0 && x < nx_ && y < ny_ && terrain_[static_cast<size_t>(y) * nx_ + x] == Lay::Water) terrain_[static_cast<size_t>(y) * nx_ + x] = Lay::Plain;
     }
     // Rivers run between cells: walking from one cell centre to the next must
     // not wade deep water, except over a bridge or through a ford.
@@ -289,14 +296,14 @@ void Campaign::initCities() {
             // one or two more after the ground (hills, woods, plains).
             st.options.push_back(trained(T::LightInfantry));
             const Continent::Sample s = continent_.sample(c.pos.x, c.pos.y);
-            const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(200), c.pos.y, s.height, s.mountain, s.roadDist);
+            const Ground g = continent_.landGround(c.pos.x + Fixed::fromInt(67), c.pos.y, s.height, s.mountain, s.roadDist);
             const UnitType hills[] = {T::DwarfGrenadier, T::HeavyInfantry, T::Pikemen}, woods[] = {T::Archers, T::WolfRiders, T::Warrior},
                            plains[] = {T::HeavyInfantry, T::LightCavalry, T::Pikemen, T::HeavyCavalry};
             const int32_t extra = 1 + (roll(3) < Fixed::fromRatio(1, 2));
             for (int32_t k = 0; k < extra; ++k) {
                 const Fixed r = roll(10 + k);
                 UnitType t;
-                if (s.mountain > Fixed::fromInt(15)) t = hills[(r * 3).floorToInt()];
+                if (s.mountain > Continent::peakHeight(15)) t = hills[(r * 3).floorToInt()];
                 else if (g == Ground::Forest) t = woods[(r * 3).floorToInt()];
                 else t = plains[(r * 4).floorToInt()];
                 bool dup = false;

@@ -70,6 +70,29 @@ TEST(sites_cover_the_continent) {
     CHECK(sages == 2);
 }
 
+TEST(every_site_is_reached_on_foot) {
+    // A hero walks with his stack: every site's cell is open to walkers
+    // (neither water nor mountain) and a stack on foot can march there from
+    // some town (the mountains' sites by their passes, the Drowned Abbey by
+    // the Spit, the Seer's Tower from the towns on its isle).
+    Campaign c(continent(), 1);
+    std::vector<uint32_t> walkers;
+    for (const Campaign::CityState& t : c.cities()) walkers.push_back(c.raise(0, t.cx, t.cy, {UnitType::LightInfantry}));
+    int reached = 0;
+    for (size_t i = 0; i < c.sites().size(); ++i) {
+        const Campaign::SiteState& s = c.sites()[i];
+        const Lay lay = c.terrainAt(s.cx, s.cy);
+        bool there = false;
+        for (size_t k = 0; k < walkers.size() && !there; ++k) there = c.move(walkers[k], s.cx, s.cy);
+        if (lay == Lay::Water || lay == Lay::Mountain || !there)
+            std::printf("  %s (cell %d, %d): %s\n", continent().sites()[i].name.c_str(), s.cx, s.cy, there ? "on a closed cell" : "no way there on foot");
+        CHECK(lay != Lay::Water && lay != Lay::Mountain);
+        CHECK(there);
+        reached += there;
+    }
+    CHECK(reached == 40);
+}
+
 TEST(artifacts_change_strength) {
     Army hero;
     hero.type = UnitType::Hero;

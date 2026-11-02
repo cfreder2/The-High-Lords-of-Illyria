@@ -153,10 +153,11 @@ struct Particle {
 };
 
 // A grid of continent samples in battle-local coordinates, for drawing beyond
-// the battlefield and for the camera: the whole continent every 64 m, and a
-// finer ring every 16 m around the battlefield.
+// the battlefield and for the camera: the whole continent every 16 m (as fine
+// as its baked relief, since the map shrank to a third), and a ring every 16 m
+// around the battlefield.
 struct FarGrid {
-    static constexpr float kCell = 32.0f;
+    static constexpr float kCell = 16.0f;
     float cell = kCell;
     int nx = 0, ny = 0;
     V3 min;                       // local coordinates of sample (0, 0)

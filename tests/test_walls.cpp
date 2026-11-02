@@ -21,17 +21,33 @@ const Continent& continent() {
     static const Continent c(20261027);
     return c;
 }
-// The first neutral town with no other town's walls in its battle window.
+// The neutral town (not a capital) with the most open fields round its
+// walls, out to where engines stand (the towns stand close together: its
+// battle window holds some of theirs too), and the window on it.
 const Continent::City& town() {
     static const Continent::City* chosen = [] {
         const auto& cs = continent().cities();
+        const Continent::City* best = &cs[Continent::kFactionCount];
+        int most = -1;
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
-            bool alone = true;
-            for (size_t k = 0; k < cs.size(); ++k)
-                alone = alone && (k == i || (cs[k].pos - cs[i].pos).flat().length() > Fixed::fromInt(1100));
-            if (alone) return &cs[i];
+            int open = 0;
+            for (int a = 0; a < 24; ++a) {
+                const Fixed angle = kTwoPi * a / 24;
+                for (int64_t d = 40; d <= 130; d += 30) {
+                    const Vec3 p = cs[i].pos + Vec3{cos(angle), sin(angle), Fixed::zero()} * (cs[i].radius + Fixed::fromInt(d));
+                    bool clear = true;
+                    for (size_t k = 0; k < cs.size(); ++k)
+                        clear = clear && (k == i || (cs[k].pos - p).flat().length() > cs[k].radius + Fixed::fromInt(15));
+                    const Ground g = continent().groundAt(p.x, p.y);
+                    open += clear && (g == Ground::Plains || g == Ground::Road || g == Ground::Mud || g == Ground::Sand);
+                }
+            }
+            if (open > most) {
+                most = open;
+                best = &cs[i];
+            }
         }
-        return &cs[Continent::kFactionCount];
+        return best;
     }();
     return *chosen;
 }
@@ -55,16 +71,27 @@ struct Wall {
     // Inside the walk, short of the parapet, for a body of this radius.
     Fixed inner(Fixed radius) const { return seg->halfThick - Castle::kParapetThick - radius; }
 };
+// The town's own (its neighbours' stand in the window too), and of those with
+// open fields 120 m out, where engines stand, the longest.
 Wall longestWall() {
+    const Region& rg = *siege();
+    const Vec3 middle{town().pos.x - rg.origin().x, town().pos.y - rg.origin().y, Fixed::zero()};
     Wall best;
-    for (const WallSeg& w : siege()->walls()) {
+    bool bestOpen = false;
+    for (const WallSeg& w : rg.walls()) {
         if (w.walk <= Fixed::zero() || w.crenels.size() < 3) continue;
+        if (((w.a + w.b) * r(1, 2) - middle).flat().length() > town().radius) continue;
         const Fixed len = (w.b - w.a).flat().length();
-        if (best.seg && len <= best.len) continue;
+        const Vec3 front = (w.a + w.b) * r(1, 2) + w.out * m(120);
+        const Ground g = rg.groundAt(front.x, front.y);
+        bool open = g == Ground::Plains || g == Ground::Road || g == Ground::Mud;
+        for (const Rampart& rp : rg.ramparts()) open = open && !Gate::inside(rp, front);
+        if (best.seg && ((bestOpen && !open) || (open == bestOpen && len <= best.len))) continue;
         best.seg = &w;
         best.len = len;
         best.dir = (w.b - w.a).flat() / len;
         best.out = w.out;
+        bestOpen = open;
     }
     return best;
 }
@@ -137,7 +164,11 @@ TEST(a_wall_walk_holds_one_archer_to_each_embrasure) {
         const std::vector<Fixed> c = ring.crenels(e);
         for (size_t k = 1; k < c.size(); ++k) CHECK(c[k] - c[k - 1] >= Castle::kCrenelPitch - r(1, 100));
     }
-    const size_t places = rg.ramparts().front().embrasures.size();
+    const Vec3 middle{town().pos.x - rg.origin().x, town().pos.y - rg.origin().y, Fixed::zero()};
+    const Rampart* own = &rg.ramparts().front();  // the town's own walls, among its neighbours'
+    for (const Rampart& rp : rg.ramparts())
+        if ((rp.centre - middle).flat().length() < (own->centre - middle).flat().length()) own = &rp;
+    const size_t places = own->embrasures.size();
     std::printf("  %zu embrasures round %.0f m of wall\n", places, perimeter.toDouble());
     // A modest number: no more than one every pitch, but not a bare wall either.
     CHECK(Fixed::fromInt(static_cast<int64_t>(places)) * Castle::kCrenelPitch <= perimeter);

@@ -19,18 +19,33 @@ const Continent& continent() {
     static const Continent c(20261027);
     return c;
 }
-// The first neutral town (not a capital) with no other town's walls in its
-// 1 km battle window (corners included), and the window on it.
+// The neutral town (not a capital) with the most open fields round its
+// walls, out to where engines stand (the towns stand close together: its
+// battle window holds some of theirs too), and the window on it.
 const Continent::City& town() {
     static const Continent::City* chosen = [] {
         const auto& cs = continent().cities();
+        const Continent::City* best = &cs[Continent::kFactionCount];
+        int most = -1;
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
-            bool alone = true;
-            for (size_t k = 0; k < cs.size(); ++k)
-                alone = alone && (k == i || (cs[k].pos - cs[i].pos).flat().length() > Fixed::fromInt(1100));
-            if (alone) return &cs[i];
+            int open = 0;
+            for (int a = 0; a < 24; ++a) {
+                const Fixed angle = kTwoPi * a / 24;
+                for (int64_t d = 40; d <= 130; d += 30) {
+                    const Vec3 p = cs[i].pos + Vec3{cos(angle), sin(angle), Fixed::zero()} * (cs[i].radius + Fixed::fromInt(d));
+                    bool clear = true;
+                    for (size_t k = 0; k < cs.size(); ++k)
+                        clear = clear && (k == i || (cs[k].pos - p).flat().length() > cs[k].radius + Fixed::fromInt(15));
+                    const Ground g = continent().groundAt(p.x, p.y);
+                    open += clear && (g == Ground::Plains || g == Ground::Road || g == Ground::Mud || g == Ground::Sand);
+                }
+            }
+            if (open > most) {
+                most = open;
+                best = &cs[i];
+            }
         }
-        return &cs[Continent::kFactionCount];
+        return best;
     }();
     return *chosen;
 }
@@ -39,6 +54,13 @@ std::shared_ptr<const Region> siege() {
     return r;
 }
 Vec3 local(const Vec3& p) { return {p.x - siege()->origin().x, p.y - siege()->origin().y, p.z}; }
+// The town's own walls, among its neighbours' in the window.
+const Rampart& ownWalls(const Region& r) {
+    const Rampart* best = &r.ramparts().front();
+    for (const Rampart& rp : r.ramparts())
+        if ((rp.centre - local(town().pos)).flat().length() < (best->centre - local(town().pos)).flat().length()) best = &rp;
+    return *best;
+}
 
 // Inside any wall slab (below its walk, above a gate passage's head)?
 bool inWall(const Region& r, const Unit& u) {
@@ -70,8 +92,10 @@ size_t townGate(const Region& r) {
 TEST(a_town_has_walls_a_gate_ramps_and_a_walk) {
     const Region& r = *siege();
     CHECK(!r.walls().empty());
-    CHECK(r.ramparts().size() == 1);
-    CHECK(r.ramparts().front().ramps.size() == 3);
+    size_t own = 0;
+    for (const Rampart& rp : r.ramparts()) own += (rp.centre - local(town().pos)).flat().length() < Fixed::one();
+    CHECK(own == 1);
+    CHECK(ownWalls(r).ramps.size() == 3);
     int towers = 0, houses = 0;
     for (const Obstacle& o : r.obstacles()) {
         towers += o.kind == Obstacle::Kind::Tower;
@@ -205,7 +229,7 @@ TEST(soldiers_hack_a_shut_gate_down_and_march_in) {
         w.step({});
         for (const ImpactEvent& e : w.impacts()) blows += e.kind == ImpactEvent::Kind::Gate;
         // Nobody gets through while it stands.
-        for (EntityId id : legion) kept = kept && (w.findUnit(id)->pos - yard).flat().length() > m(20);
+        for (EntityId id : legion) kept = kept && !Gate::inside(ownWalls(*w.region()), w.findUnit(id)->pos);
     }
     const uint32_t brokeAt = w.tick();
     std::printf("  %d blows broke the gate in %u s\n", blows, brokeAt / kTicksPerSecond);
@@ -255,9 +279,23 @@ TEST(catapult_stones_kill_defenders_on_the_walls) {
     cfg.seed = 11;
     World w(cfg);
     const Continent::Castle::Ring& ring = town().castle.rings.front();
-    const size_t e = (ring.gateEdge + 1) % ring.corners.size();
+    const Vec3 centre = local(town().pos);
+    // The first wall round from the gate with open fields 120 m out, where
+    // the engine stands (towns stand close together, and some by the sea).
+    size_t e = (ring.gateEdge + 1) % ring.corners.size();
+    for (size_t k = 1; k < ring.corners.size(); ++k) {
+        const size_t c = (ring.gateEdge + k) % ring.corners.size();
+        const Vec3 m0 = (local(ring.corners[c]) + local(ring.corners[(c + 1) % ring.corners.size()])) * Fixed::fromRatio(1, 2);
+        const Vec3 at = m0 + (m0 - centre).flat() / (m0 - centre).flat().length() * m(120);
+        bool open = siege()->groundAt(at.x, at.y) == Ground::Plains || siege()->groundAt(at.x, at.y) == Ground::Road;
+        for (const Rampart& rp : siege()->ramparts()) open = open && !Gate::inside(rp, at);
+        if (open) {
+            e = c;
+            break;
+        }
+    }
     const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
-    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2), centre = local(town().pos);
+    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2);
     const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
     const Vec3 along = (b - a).flat() / (b - a).flat().length();
     std::vector<EntityId> watch;
@@ -293,7 +331,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xfda8884c0f8ddd66;
+    constexpr uint64_t kGolden = 0x1fddebc5e04c2cad;
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -341,7 +379,7 @@ TEST(archers_shoot_over_a_wall_not_into_it) {
     int inWall = 0, over = 0;
     for (const Remain& rm : w.remains()) {
         if (rm.kind != RemainKind::Arrow) continue;
-        if (Gate::inside(r.ramparts().front(), rm.pos)) ++over;
+        if (Gate::inside(ownWalls(r), rm.pos)) ++over;
         else if (rm.pos.z > w.groundHeight(rm.pos.x, rm.pos.y) + m(1)) ++inWall;
     }
     std::printf("  arrows over the wall %d, stuck in it %d\n", over, inWall);
@@ -365,10 +403,11 @@ bool onRamp(const Rampart& rp, const Vec3& p) {
 // beside its head (the nearest point of the walk's middle).
 struct BackRamp {
     Vec3 foot, head, walk, out;  // out: from the town's middle through that walk
+    Vec3 along;                  // the wall's own way there
 };
 BackRamp backRamp() {
     const Region& r = *siege();
-    const Rampart& rp = r.ramparts().front();
+    const Rampart& rp = ownWalls(r);
     const Gate& g = r.gates()[townGate(r)];
     const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
     BackRamp b;
@@ -387,6 +426,7 @@ BackRamp backRamp() {
         if ((p - b.head).flat().length() >= best) continue;
         best = (p - b.head).flat().length();
         b.walk = p;
+        b.along = ab / ab.length();
     }
     const Vec3 c = local(town().pos);
     b.out = (b.walk - c).flat() / (b.walk - c).flat().length();
@@ -405,7 +445,7 @@ struct Trip {
 };
 Trip march(World& w, EntityId id, const Vec3& to, int seconds) {
     const Region& r = *siege();
-    const Rampart& rp = r.ramparts().front();
+    const Rampart& rp = ownWalls(r);
     const Gate& g = r.gates()[townGate(r)];
     const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
     const Fixed walk = rp.corners.front().z;
@@ -499,9 +539,8 @@ TEST(nobody_passes_a_shut_gate_and_its_own_side_stop_at_it) {
     World w(cfg);
     const size_t gate = townGate(*cfg.region);
     w.setGateHolder(gate, 1);
-    const Vec3 along{-b.out.y, b.out.x, Fixed::zero()};
     std::vector<EntityId> watch;
-    for (int i = 0; i < 6; ++i) watch.push_back(w.spawnUnit(1, b.walk + along * m(i * 2 - 5), -b.out, unitStats(UnitType::Pikemen)));
+    for (int i = 0; i < 6; ++i) watch.push_back(w.spawnUnit(1, b.walk + b.along * m(i * 2 - 5), -b.out, unitStats(UnitType::Pikemen)));
     std::vector<Command> go;
     for (EntityId id : watch) go.push_back({1, id, Command::Type::Move, {field.x, field.y, Fixed::zero()}});
     w.step(go);

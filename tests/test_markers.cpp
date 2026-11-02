@@ -36,6 +36,21 @@ std::vector<Battle::OrderMark> slots(const Battle& b) {
 }
 // The shader's test (kDecalVs): flat on a deck when this far above the ground.
 constexpr float kDeckLift = 0.12f;
+// The besieged town's own walls, among its neighbours' in the window.
+const Rampart& siegeWalls(const Battle& b) {
+    const V3 o = b.origin(), town = illyria::game::toV3(illyria::game::siegeTown(b.continent()).pos) - V3{o.x, o.y, 0};
+    const Rampart* best = &b.region().ramparts().front();
+    float bestD = 1e30f;
+    for (const Rampart& rp : b.region().ramparts()) {
+        const V3 c = illyria::game::toV3(rp.centre);
+        const float d = (c.x - town.x) * (c.x - town.x) + (c.y - town.y) * (c.y - town.y);
+        if (d < bestD) {  // the outer ring comes first, and keeps ties
+            bestD = d;
+            best = &rp;
+        }
+    }
+    return *best;
+}
 }  // namespace
 
 TEST(order_markers_lie_on_the_ground_the_terrain_draws) {
@@ -96,8 +111,8 @@ TEST(markers_show_only_for_those_selected_and_their_current_orders) {
     now = slots(b);
     CHECK(now.size() == 1);
     CHECK(!now.empty() && std::hypot(now.front().pos.x - again.x, now.front().pos.y - again.y) < 3.0f);
-    // There: none.
-    run(b, 30);
+    // There (up the bank, 1 in 6): none.
+    run(b, 45);
     CHECK(slots(b).empty());
     // Nothing selected and nothing just ordered: no markers at all.
     b.clearSelection();
@@ -129,7 +144,7 @@ TEST(a_soldier_on_the_wall_walk_has_his_ring_on_the_walk) {
     }
     CHECK(onWalk >= 8);
     // Just beside the wall, at the walk's height in the air: the ground.
-    const Rampart& rp = b.region().ramparts().front();
+    const Rampart& rp = siegeWalls(b);
     const V3 corner = illyria::game::toV3(rp.corners.front());
     const V3 out = V3{corner.x - illyria::game::toV3(rp.centre).x, corner.y - illyria::game::toV3(rp.centre).y, 0}.normalized();
     const V3 beyond = corner + out * 25.0f;
@@ -141,7 +156,7 @@ TEST(a_tap_on_a_wall_walk_its_face_or_a_ramp_lands_there) {
     // on the walk, on the walk above the face struck, partway up the ramp;
     // not on the ground beneath or behind.
     Battle b(1, illyria::game::Scenario::Siege);
-    const Rampart& rp = b.region().ramparts().front();
+    const Rampart& rp = siegeWalls(b);
     const V3 a = illyria::game::toV3(rp.corners[0]), c1 = illyria::game::toV3(rp.corners[1]);
     const V3 walk = (a + c1) * 0.5f;
     const V3 centre = illyria::game::toV3(rp.centre);
@@ -176,7 +191,12 @@ TEST(a_tap_on_a_wall_walk_its_face_or_a_ramp_lands_there) {
     // Halfway up a ramp (inside the ring, against the wall: seen from inside): on the ramp, at its height there.
     if (!rp.ramps.empty()) {
         const V3 foot = illyria::game::toV3(rp.ramps.front().first), head = illyria::game::toV3(rp.ramps.front().second);
-        const V3 mid = (foot + head) * 0.5f;
+        V3 mid = (foot + head) * 0.5f;
+        // On its surface there (the head is the landing's end, so a steep
+        // ramp's slope stands above the halfway height).
+        Fixed surface;
+        if (b.region().deckBelow(illyria::game::toFixed(mid.x), illyria::game::toFixed(mid.y), illyria::game::toFixed(mid.z + 2), surface))
+            mid.z = static_cast<float>(surface.toDouble());
         const V3 in = V3{centre.x - mid.x, centre.y - mid.y, 0}.normalized();
         cam.lookAt(mid.x, mid.y, 30);
         best = -1e9f;
@@ -225,7 +245,7 @@ TEST(a_flier_sent_onto_the_wall_walk_has_his_marker_on_the_walk) {
     CHECK(griffins >= 0);
     b.select({b.squads()[static_cast<size_t>(griffins)].members.front()});  // one: his slot is the spot itself
     // A spot on the walk (behind an embrasure), from far enough off to fly there.
-    const Rampart::Embrasure& e = b.region().ramparts().front().embrasures.front();
+    const Rampart::Embrasure& e = siegeWalls(b).embrasures.front();
     const V3 out = illyria::game::toV3(e.out);
     const V3 spot = illyria::game::toV3(e.pos) - out * 0.6f;
     V3 away = spot + out * 120.0f;

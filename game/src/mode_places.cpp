@@ -36,7 +36,11 @@ bool fieldable(const sim::Continent& c, Fixed x, Fixed y, sim::Continent::Sample
     return g != sim::Ground::Rock && g != sim::Ground::Swamp;
 }
 
-// Clear of the towns (their walls make another kind of battle).
+// Clear of the towns (their walls make another kind of battle). The towns
+// stand close together since the map shrank to a third, so a field may have
+// some at its edge; the place keeps kTownGap from their walls, as far out as
+// the Horde's waves form up (HordeMode::kSpawnM) and CTF's flags stand.
+constexpr int64_t kTownGap = 150;
 bool clearOfTowns(const sim::Continent& c, const Vec3& p, int64_t gap) {
     for (const sim::Continent::City& city : c.cities())
         if ((city.pos - p).flat().length() < city.radius + m(gap)) return false;
@@ -50,9 +54,10 @@ const sim::Continent::City* nearestCity(const sim::Continent& c, const Vec3& p) 
     return best;
 }
 
-// Inside the continent with a battlefield's width to spare.
+// Inside the continent with room for a field round it (a match's field
+// reaches about 270 m from its middle; beyond the coast is sea).
 bool roomFor(const Vec3& p) {
-    const int64_t kMargin = 700;
+    const int64_t kMargin = 300;
     return p.x > m(kMargin) && p.y > m(kMargin) && p.x < m(sim::Continent::kWidth - kMargin) &&
            p.y < m(sim::Continent::kHeight - kMargin);
 }
@@ -85,14 +90,16 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
             Fixed prom;
         };
         std::vector<Rise> rises;
-        const int64_t kStep = 320;
-        for (int64_t y = 800; y < sim::Continent::kHeight - 700; y += kStep)
-            for (int64_t x = 800; x < sim::Continent::kWidth - 700; x += kStep) {
+        const int64_t kStep = 107;
+        for (int64_t y = 300; y < sim::Continent::kHeight - 300; y += kStep)
+            for (int64_t x = 300; x < sim::Continent::kWidth - 300; x += kStep) {
                 // Not a mountain: a hill a horde can climb. (The landmarks come by name, below.)
-                if (!fieldable(c, m(x), m(y), s) || s.height < m(15) || s.height > m(165) || s.mountain > m(55)) continue;
+                if (!fieldable(c, m(x), m(y), s) || s.height < sim::Continent::peakHeight(15) || s.height > sim::Continent::peakHeight(165) ||
+                    s.mountain > sim::Continent::peakHeight(55))
+                    continue;
                 if (c.landmarkAt(m(x), m(y))) continue;
                 const Vec3 p{m(x), m(y), s.height};
-                if (!clearOfTowns(c, p, 300)) continue;
+                if (!clearOfTowns(c, p, kTownGap)) continue;
                 const Fixed prom = prominence(c, m(x), m(y), s.height - s.relief, 260);
                 if (prom >= m(4) && prom <= m(60)) rises.push_back({p, prom});
             }
@@ -100,7 +107,7 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
         std::vector<Vec3> taken;
         for (const Rise& r : rises) {
             bool apart = true;
-            for (const Vec3& t : taken) apart = apart && (t - r.pos).flat().length() > m(1200);
+            for (const Vec3& t : taken) apart = apart && (t - r.pos).flat().length() > m(400);
             if (!apart) continue;
             taken.push_back(r.pos);
             const sim::Continent::City* city = nearestCity(c, r.pos);
@@ -115,7 +122,7 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
     }
     // The river crossings: fords to hold, bridges to keep.
     for (const sim::Continent::Crossing& x : c.crossings()) {
-        if (!roomFor(x.pos) || !clearOfTowns(c, x.pos, 300)) continue;
+        if (!roomFor(x.pos) || !clearOfTowns(c, x.pos, kTownGap)) continue;
         Place pl;
         pl.kind = x.kind == sim::Continent::Crossing::Kind::Ford ? Place::Kind::Ford : Place::Kind::Bridge;
         pl.name = x.name;
@@ -151,12 +158,16 @@ std::vector<Place> battlePlaces(const sim::Continent& c) {
         const sim::Continent::City* city = nearestCity(c, lm.centre);
         pl.name = !lm.name.empty() ? lm.name : city ? "Gorge by " + city->name : "The Gorge";
         pl.pos = {lm.centre.x, lm.centre.y, hill ? lm.top : lm.centre.z};
-        pl.score = lm.name.empty() ? 50 : 66;
+        // A hill made by hand that a horde can climb from every side (the
+        // Terraces' stepped fields) ranks as a hill found by search does, by
+        // its height; Church Hill's crags strand men, so it ranks below.
+        const bool climbable = lm.kind == sim::Continent::Landmark::Kind::Terraces;
+        pl.score = climbable ? 100 + static_cast<int32_t>(lm.rise.floorToInt()) : lm.name.empty() ? 50 : 66;
         out.push_back(pl);
     }
     // Ruins and temples, the higher the better.
     for (const sim::Continent::Site& site : c.sites()) {
-        if (site.kind == sim::Continent::Site::Kind::Sage || !roomFor(site.pos) || !clearOfTowns(c, site.pos, 300)) continue;
+        if (site.kind == sim::Continent::Site::Kind::Sage || !roomFor(site.pos) || !clearOfTowns(c, site.pos, kTownGap)) continue;
         if (!fieldable(c, site.pos.x, site.pos.y, s)) continue;
         Place pl;
         pl.kind = site.kind == sim::Continent::Site::Kind::Ruin ? Place::Kind::Ruin : Place::Kind::Temple;

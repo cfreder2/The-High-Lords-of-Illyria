@@ -251,7 +251,7 @@ TEST(a_move_with_facing_arrives_facing_that_way_laid_across_the_line) {
     run(b, 45);
     float alongNorth = 0, alongEast = 0;
     const V3 c = b.squadCentre(b.squads()[static_cast<size_t>(watch)], false);
-    CHECK((c - to).length() < 4.0f);
+    CHECK(std::hypot(c.x - to.x, c.y - to.y) < 4.0f);  // (the ground there rises a few metres)
     for (illyria::sim::EntityId id : b.selectedAlive()) {
         CHECK(facingOf(b, id).dot(north) > 0.98f);
         const V3 p = toV3(b.world().units()[id - 1].pos) - c;
@@ -385,7 +385,7 @@ TEST(a_selection_marches_as_it_stands) {
     const V3 to = middleOf(b, all) + V3{-30, 15, 0};
     b.orderMove(to);
     run(b, 45);
-    CHECK((middleOf(b, all) - to).length() < 3.0f);
+    CHECK(std::hypot(middleOf(b, all).x - to.x, middleOf(b, all).y - to.y) < 3.0f);  // (on rising ground)
     CHECK((bowsFromKnights(b) - gap).length() < 2.0f);
     for (illyria::sim::EntityId id : knights) CHECK(facingOf(b, id).dot(V3{1, 0, 0}) > 0.95f);
     // Turned to face north: the archers end up south of the knights.
@@ -429,9 +429,24 @@ TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {
     const std::vector<V3> places = placesFrom(b, men, start);
     b.orderMove(start + V3{-60, 0, 0});
     run(b, 4);
-    const V3 to = start + V3{-30, 25, 0};
+    // Somewhere about 40 m off with no tree, bush or rock in the way of the
+    // shape (any would push a file out of its place).
+    V3 to = start + V3{-30, 25, 0};
+    bool found = false;
+    for (int dx = -30; dx >= -50 && !found; dx -= 10)
+        for (int dy = 25; dy <= 45 && !found; dy += 5)
+            for (int sgn = 1; sgn >= -1 && !found; sgn -= 2) {
+                const V3 at = start + V3{static_cast<float>(dx), static_cast<float>(dy * sgn), 0};
+                bool clear = true;
+                for (const illyria::sim::Obstacle& o : b.region().obstacles())
+                    clear = clear && std::hypot(static_cast<float>(o.pos.x.toDouble()) - at.x, static_cast<float>(o.pos.y.toDouble()) - at.y) > 7.0f;
+                if (clear) {
+                    to = at;
+                    found = true;
+                }
+            }
     b.orderMove(to);
-    run(b, 45);
+    run(b, 60);  // (up the bank, 1 in 6)
     CHECK(standsAs(b, men, places, to, 1.2f));
 }
 
