@@ -13,7 +13,7 @@ There are no separate battle maps in this game. Illyria is one continuous land, 
 ## The lie of the land {#lie-of-the-land}
 
 ::: note "The measure of the land"
-The island is **8.5 km** from west to east and **10.7 km** from south to north. The campaign map divides it into cells **133 m** across, 64 by 80 of them; ownership is reckoned in hexes **267 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,112 of them with land). A battle is fought on a window **1 km** square cut out of the land where the armies met. The towns stand at least 330 m apart. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
+The island is **2.8 km** from west to east and **3.6 km** from south to north. The campaign map divides it into cells **44 m** across, 64 by 80 of them; ownership is reckoned in hexes **89 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,120 of them with land). A battle is fought on a window **1 km** square cut out of the land where the armies met, so it holds a good piece of the island, and often a town or two at its edges. The towns' walls stand at least 30 m apart, typically about 70 m from their nearest neighbour's. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
 :::
 
 - **The sea.** The Sunderwave Sea runs the length of the west coast and round the north; the Isle of the Seer lies off the north-west, with the first of the two sages on it. The coast is a wandering shore of bays and headlands, with sand beaches and surf.
@@ -44,9 +44,9 @@ Every crossing has an **outpost tower** beside it, and whoever holds the land th
 
 ## Cities and places {#places}
 
-There are **eighty** walled cities. Eight are the capitals of the lords, castles with heavier walls, a tall keep and more towers; seventy-two start neutral. Every castle is different: square, long, many-sided or shield-shaped walls, drum towers at the corners and beside the gate, a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops. Nine cities stand near enough to the sea to be **ports**, with a pier below the walls (chapter [](#boats)).
+There are **eighty** walled cities. Eight are the capitals of the lords, castles with heavier walls, a tall keep and more towers; seventy-two start neutral. Every castle is different: square, long, many-sided or shield-shaped walls, drum towers at the corners and beside the gate, a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops. Seventeen cities stand near enough to the sea or the Heartmere to be **ports**, with a pier below the walls (chapter [](#boats)).
 
-Out in the wild places there are **34 ruins** in the forests and foothills, **4 temples**, one in each quarter of the land (the Temples of the Dawn, the Tides, the Stars and the Oak), and **2 sages**: the Seer's Tower on its island and the Hermit of the Peaks, high in the Ironveil. What they hold is in chapter [](#heroes).
+Out in the wild places there are **34 ruins** in the forests and foothills, **4 temples**, one in each quarter of the land (the Temples of the Dawn, the Tides, the Stars and the Oak), and **2 sages**: the Seer's Tower on its island and the Hermit of the Peaks, high in the Ironveil. Every one of them can be reached on foot: those in the mountains by the passes, the Drowned Abbey by the Spit. What they hold is in chapter [](#heroes).
 
 ## From the gods to the mud {#zoom}
 

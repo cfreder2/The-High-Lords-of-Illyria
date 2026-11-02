@@ -69,7 +69,7 @@ Like the fittings on a good sword, each worth a few percent, the edges add up, a
 | **Familiar ground** | the army's kind likes the ground (elves in forest; dwarves and griffins in hills; pegasi in forest; the dead in marsh), +4%; and its lord's liking, +2% a point | at most +6% |
 | **Veterans** | regular +3%, veteran +6%, elite +9% (soldiers; a hero's levels are his strength) | at most +9% |
 | **A hero leads** | the best hero in the stack: strength 4-6 +2%, 7-8 +4%, 9 +6% | at most +6% |
-| **High ground** | fighting from 10 m or more above the other side's cell | +4% |
+| **High ground** | fighting from 3 m or more above the other side's cell | +4% |
 | **Holding** | a defender holding a temple, a ruin's stones or an outpost tower | +4% |
 | **All together** | | **at most +15%** |
 

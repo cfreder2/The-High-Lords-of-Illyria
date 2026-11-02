@@ -6,7 +6,7 @@
 using namespace illyria::sim;
 int main(int argc, char** argv) {
     if (argc < 3) { fprintf(stderr, "usage: illyria_continentmap out.ppm out.json\n"); return 2; }
-    const int W = 640, H = 800;  // the whole continent, about 13.3 m per pixel
+    const int W = 640, H = 800;  // the whole continent, about 4.4 m per pixel
     const double mpp = static_cast<double>(Continent::kWidth) / W;
     auto t0 = std::chrono::steady_clock::now();
     // A third argument "design" skips the baked erosion (for trying out the design quickly).
@@ -20,12 +20,13 @@ int main(int argc, char** argv) {
     fprintf(stderr, "generated in %.1f s\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     FILE* f = fopen(argv[1], "wb");
     fprintf(f, "P6\n%d %d\n255\n", W, H);
-    float maxh = 0;
-    for (int i = 0; i < W * H; ++i) if (h[i] > maxh) maxh = h[i];
+    // Snow, bare rock and high pasture by the mountains' own scale of height.
+    const float snowLine = static_cast<float>(Continent::peakHeight(230).toDouble()), pasture = static_cast<float>(Continent::peakHeight(120).toDouble());
     for (int py = 0; py < H; ++py) for (int px = 0; px < W; ++px) {
         int i = py * W + px; float z = h[i];
         float zl = px > 0 ? h[i - 1] : z, zu = py > 0 ? h[i - W] : z;
-        float shade = 1.0f + ((z - zl) - (z - zu)) * 0.075f; shade = shade < 0.45f ? 0.45f : shade > 1.5f ? 1.5f : shade;
+        // Shaded by slope (rise over a pixel's run), so it reads the same at any scale.
+        float shade = 1.0f + ((z - zl) - (z - zu)) / static_cast<float>(mpp); shade = shade < 0.45f ? 0.45f : shade > 1.5f ? 1.5f : shade;
         float c3[3] = {0, 0, 0};
         switch (g[i]) {
             case 0: c3[0]=120;c3[1]=158;c3[2]=72; break;   // plains
@@ -37,9 +38,9 @@ int main(int argc, char** argv) {
             case 6: c3[0]=135;c3[1]=125;c3[2]=110; break;  // rock
             case 7: c3[0]=120;c3[1]=80;c3[2]=40; break;    // bridge
         }
-        if (g[i] != 4 && g[i] != 5 && z > 230) { c3[0]=c3[1]=c3[2]=238; }
-        else if (g[i] == 6) { float t = z / 230.0f; c3[0]=110+60*t; c3[1]=100+60*t; c3[2]=90+60*t; }
-        else if (g[i] == 0 && z > 120) { c3[0]=150;c3[1]=145;c3[2]=95; }
+        if (g[i] != 4 && g[i] != 5 && z > snowLine) { c3[0]=c3[1]=c3[2]=238; }
+        else if (g[i] == 6) { float t = z / snowLine; c3[0]=110+60*t; c3[1]=100+60*t; c3[2]=90+60*t; }
+        else if (g[i] == 0 && z > pasture) { c3[0]=150;c3[1]=145;c3[2]=95; }
         bool water = g[i] == 4 || g[i] == 5;
         unsigned char out[3];
         for (int k = 0; k < 3; ++k) { float v = c3[k] * (water ? 1.0f : shade); out[k] = (unsigned char)(v > 255 ? 255 : v); }

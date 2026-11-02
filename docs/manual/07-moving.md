@@ -14,7 +14,7 @@ Time on the campaign map runs on its own: a **campaign day** is thirty seconds a
 
 ## Movement points {#movement-points}
 
-Every kind of army has its **movement points**, the distance it can cover in a day, and every kind of ground a **cost** for entering a cell of it. A stack that spends its day's points has gone as far as it can go that day: light infantry (10 points) cover ten cells of road in a day (1.3 km), or five of plain (670 m), or two and a half of forest.
+Every kind of army has its **movement points**, the distance it can cover in a day, and every kind of ground a **cost** for entering a cell of it. A stack that spends its day's points has gone as far as it can go that day: light infantry (10 points) cover ten cells of road in a day (440 m), or five of plain (220 m), or two and a half of forest.
 
 | Army | Points a day |
 |---|---|
@@ -81,7 +81,7 @@ The sea is the fastest road of all. As the *Warlords* navy did, a boat "can carr
 - **Ports.** Nine of the eighty cities stand within two cells of the open sea and are ports, with a pier below their walls. Only the sea is navigable (the Sunderwave Sea along the west coast and round the north): the lakes and rivers are too narrow to sail.
 - **Building a boat.** A port's panel has **Build a boat**: 20 gold, ready in 4 days, 2 gold a day upkeep. It is built beside the city's training, not instead of it. Boats have names: the *Grey Swan*, the *Sea Hawk*.
 - **Embarking.** A stack in a port with a free boat of yours boards it with **Embark** (in the voyage panel), taking any idle friends in the port aboard too, up to seven armies. A stack of eight leaves its weakest army (never a hero) on the quay. A stack also boards simply by being ordered out onto the water.
-- **Sailing.** Afloat, a stack moves 40 points a day at 2 a sea cell: twenty cells, 2.7 km, a day, whatever it carries. Light infantry on foot manage five cells of plain.
+- **Sailing.** Afloat, a stack moves 40 points a day at 2 a sea cell: twenty cells, 0.9 km, a day, whatever it carries. Light infantry on foot manage five cells of plain.
 - **Landing.** **Land** puts the stack ashore on any coast it can walk, or order it inland; a boat sails straight into a friendly port. A boat that landed elsewhere rides at anchor off that coast, where a stack of yours next to it may board again.
 - **Planning.** A march order considers the sea whenever you have a free boat, and takes it when that is quicker: from Thistledown in the north to Whitecliff in the far south is 4 days by sea and 11 on foot.
 - **Losses.** A boat whose armies all fall goes down with them. Armies fighting from a deck fight **a point weaker**, both sides, and a battle at sea is always settled with the dice (there is no ground to fight a 3D battle on). An empty boat in a port that falls changes hands; one at anchor is burnt by an enemy boat that reaches it.
