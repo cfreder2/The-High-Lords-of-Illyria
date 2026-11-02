@@ -145,18 +145,18 @@ float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noi
 // holder's colour with alpha for how firmly; drawn on the campaign map only.
 uniform sampler2D uTerritory;
 uniform vec4 uTerritoryInfo;  // xy: the battlefield's origin on the continent (m); z: tint strength, 0 off
-// The campaign hex (column, row) nearest p in continent metres: 267 m apart,
-// rows 231.23 m apart, odd rows half a hex east (as Campaign::hexOfMetres).
+// The campaign hex (column, row) nearest p in continent metres: 89 m apart,
+// rows 77.08 m apart, odd rows half a hex east (as Campaign::hexOfMetres).
 ivec2 campaignHex(vec2 p) {
-    const float rowH = 231.23;
+    const float rowH = 77.08;
     float r0 = floor(p.y / rowH);
     vec2 best = vec2(0.0);
     float bd = 1e20;
     for (int k = 0; k < 2; ++k) {
         float r = r0 + float(k);
-        float shift = mod(r, 2.0) * 133.5;
-        float col = floor((p.x - shift + 133.5) / 267.0);
-        vec2 d = p - vec2(col * 267.0 + shift, r * rowH);
+        float shift = mod(r, 2.0) * 44.5;
+        float col = floor((p.x - shift + 44.5) / 89.0);
+        vec2 d = p - vec2(col * 89.0 + shift, r * rowH);
         float dd = dot(d, d);
         if (dd < bd) { bd = dd; best = vec2(col, r); }
     }
@@ -164,27 +164,28 @@ ivec2 campaignHex(vec2 p) {
 }
 // The grids over all land alike, world-aligned so they run on unbroken across
 // the battlefield's edge: the tactical hex grid fades in as the camera rises,
-// then hands over to the campaign's (laid on the continent's own hexes).
+// then hands over to the campaign's (laid on the continent's own hexes, which
+// are under twice as wide since the map shrank to a third).
 vec3 landGrids(vec3 c, vec2 xy) {
     vec2 land = xy + uTerritoryInfo.xy;
-    if (uTerritoryInfo.z > 0.0 && uCamDist > 500.0) {
+    if (uTerritoryInfo.z > 0.0 && uCamDist > 170.0) {
         // Whose land: a faint wash of the holder's colour, stronger along each hex's rim.
         ivec2 size = textureSize(uTerritory, 0);
         vec4 t = texelFetch(uTerritory, clamp(campaignHex(land), ivec2(0), size - 1), 0);
-        float e = hexEdge(land, 267.0);
+        float e = hexEdge(land, 89.0);
         float rim = 1.0 - smoothstep(0.0, max(0.035, fwidth(e) * 2.5), e);
-        float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(500.0, 900.0, uCamDist);
+        float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(170.0, 300.0, uCamDist);
         c = mix(c, t.rgb, k);
     }
-    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(900.0, 1800.0, uCamDist)) * 0.35;
+    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(450.0, 600.0, uCamDist)) * 0.35;
     if (gridFade > 0.0) {
         float e = hexEdge(xy, 48.0);
         float w = fwidth(e) * 1.5;
         c = mix(c, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
     }
-    float bigFade = smoothstep(1800.0, 4000.0, uCamDist) * 0.3;
+    float bigFade = smoothstep(600.0, 1350.0, uCamDist) * 0.3;
     if (bigFade > 0.0) {
-        float e = hexEdge(land, 267.0);
+        float e = hexEdge(land, 89.0);
         float w = fwidth(e) * 1.5;
         c = mix(c, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
     }
@@ -227,7 +228,8 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
     // Bare rock on the steeps and the heights; alpine turf holds on the
     // gentler mountain ground and climbs the ravines, so the cover follows the land.
-    float high = smoothstep(190.0, 320.0, world.z + (fbm3(p / 80.0) - 0.5) * 70.0);
+    // (Heights here are the mountains' own: a third of the first design's, Continent::peakHeight.)
+    float high = smoothstep(63.0, 107.0, world.z + (fbm3(p / 80.0) - 0.5) * 23.0);
     float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
     float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
     vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * noise2(p / 7.0));
@@ -236,7 +238,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
     n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
     // Snow lies on the heights, but not on cliffs.
-    float snow = smoothstep(300.0, 360.0, world.z + (fbm3(p / 60.0) - 0.5) * 60.0) * smoothstep(0.55, 0.3, slope) * land;
+    float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
     albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
     albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
     return albedo;
@@ -307,7 +309,7 @@ vec3 farGroundColor(int id, float z) {
     vec3 c = id == 1 ? vec3(0.48, 0.40, 0.27) : id == 2 ? vec3(0.18, 0.25, 0.11) : id == 3 ? vec3(0.24, 0.29, 0.17)
            : id == 4 ? vec3(0.30, 0.50, 0.55) : id == 5 ? vec3(0.10, 0.26, 0.42) : id == 6 ? vec3(0.48, 0.46, 0.43)
            : id == 7 ? vec3(0.45, 0.36, 0.26) : id == 8 ? vec3(0.33, 0.27, 0.18) : id == 9 ? vec3(0.80, 0.73, 0.55) : vec3(0.40, 0.49, 0.21);
-    if (id != 5) c = mix(c, vec3(0.93, 0.94, 0.96), clamp((z - 320.0) / 40.0, 0.0, 1.0));
+    if (id != 5) c = mix(c, vec3(0.93, 0.94, 0.96), clamp((z - 107.0) / 13.0, 0.0, 1.0));
     return c;
 }
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
@@ -420,7 +422,7 @@ void main() {
         albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
     }
     // Snow on the high peaks.
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(310.0, 350.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     // From high up, the coarse land's look, so the battlefield and the land
     // around it read as one (the coarse land beyond knows nothing finer).
     float farBlend = feature(kFeatFarDetail) ? smoothstep(450.0, 1100.0, uCamDist) : 0.0;

@@ -735,7 +735,7 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             default: c = {0.40f, 0.49f, 0.21f}; break;
         }
         if (ground != sim::Ground::DeepWater) {
-            const float snow = std::clamp((h - 320.0f) / 40.0f, 0.0f, 1.0f);
+            const float snow = std::clamp((h - 107.0f) / 13.0f, 0.0f, 1.0f);  // the mountains' scale of height
             c = c + (V3{0.93f, 0.94f, 0.96f} - c) * snow;
         }
         return c;
@@ -868,7 +868,7 @@ void Renderer::updatePatch(const Battle& battle, const Camera& camera) {
 }
 
 void Renderer::uploadContinent(const Battle& battle) {
-    // The whole continent every 64 m, and a finer ring every 16 m around the
+    // The whole continent every 16 m, and a ring every 16 m around the
     // battlefield (drawn with kFarDetail; the coarse land sinks beneath it).
     buildLand(battle, battle.farGrid(), farLand_, false);
     buildLand(battle, battle.nearGrid(), nearLand_, true);

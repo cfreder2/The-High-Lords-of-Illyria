@@ -70,10 +70,10 @@ void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
 constexpr uint64_t kBattleSeed = 20261027;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
-// The whole continent in view (8.5 x 10.7 km), and a campaign stack with the
+// The whole continent in view (2.8 x 3.6 km), and a campaign stack with the
 // towns round it.
-constexpr float kOverviewDistance = 12700.0f;
-constexpr float kStackView = 1750.0f;
+constexpr float kOverviewDistance = 4233.0f;
+constexpr float kStackView = 583.0f;
 
 struct App {
     std::unique_ptr<Battle> battle;
@@ -359,7 +359,7 @@ void placeFlags() {
             app->renderer.setTerritory(rgba, C::kHexCols, C::kHexRows, 1.0f);
         }
         // Larger than life from high up, so they read on a phone.
-        const float s = std::clamp(app->camera.distance() / 2600.0f, 0.4f, 3.0f);
+        const float s = std::clamp(app->camera.distance() / 867.0f, 0.4f, 3.0f);
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const C::CityState& cs = c.cities()[i];
             if (cs.banner == C::kNeutral) continue;
@@ -498,7 +498,7 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
         cv.selected = s.id;
         const V3 p = stackPosition(*cv.c, s);
         app->introStartMs = -1;
-        app->camera.lookAt(p.x, p.y - 270, kStackView);
+        app->camera.lookAt(p.x, p.y - 90, kStackView);
         app->camera.rotate(kNorthUp - app->camera.yaw());
         break;
     }
@@ -1093,7 +1093,12 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad_from_town(int squad, float dis
     for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members) {
         if (!app->battle->world().units()[id - 1].alive()) continue;
         const V3 p = app->battle->unitPosition(id - 1);
-        const V3 c = toV3(app->battle->region().ramparts().front().centre);
+        // The walls of the town he is in (towns stand close together).
+        V3 c = toV3(app->battle->region().ramparts().front().centre);
+        for (const illyria::sim::Rampart& rp : app->battle->region().ramparts()) {
+            const V3 q = toV3(rp.centre);
+            if ((q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) < (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y)) c = q;
+        }
         const float yaw = std::atan2(p.y - c.y, p.x - c.x) + turn;
         app->introStartMs = -1;
         app->camera.lookAt(p.x + std::cos(yaw) * distance * 0.1f, p.y + std::sin(yaw) * distance * 0.1f, distance);
@@ -1467,7 +1472,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
     out.clear();
     const Camera& cam = app->camera;
     const float d = cam.distance();
-    if (d < 700) return out.c_str();
+    if (d < 400) return out.c_str();
     const illyria::sim::Continent& c = app->battle->continent();
     const V3 o = app->battle->origin();
     char buf[160];
@@ -1487,13 +1492,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         const auto& city = c.cities()[ci];
         // In the campaign, cities fly the colours of whoever holds them now.
         const uint8_t owner = app->camp.on ? app->camp.c->cities()[ci].owner : city.owner;
-        if (!city.capital && d > 6000) {
+        if (!city.capital && d > 2000) {
             add(0, factionColor(owner), city.pos, "");  // a marker only
             continue;
         }
         add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name);
     }
-    if (d < 6000) {
+    if (d < 2000) {
         for (size_t k = 0; k < c.sites().size(); ++k) {
             const auto& site = c.sites()[k];
             // In the campaign, a ruin whose guardian is slain lies empty.
@@ -1502,18 +1507,18 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         }
     }
     // The campaign's outpost towers (kind 7), in the colours of whoever holds their land.
-    if (app->camp.on && d < 6000) {
+    if (app->camp.on && d < 2000) {
         const illyria::sim::Campaign& cc = *app->camp.c;
         for (const illyria::sim::Campaign::Outpost& op : cc.outposts()) {
             const uint8_t w = cc.hexes()[static_cast<size_t>(op.hex)].owner;
             const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cx)),
                                         illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cy)), {}};
-            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 3000 && !op.name.empty() ? op.name + " tower" : "");
+            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 1000 && !op.name.empty() ? op.name + " tower" : "");
         }
     }
     for (const auto& l : c.labels()) {
-        if (l.kind == 0 && d > 2000) add(5, {1, 1, 1}, l.pos, l.name);
-        else if (l.kind != 0 && l.kind != 4 && d > 1350 && d < 8000) add(6, {1, 1, 1}, l.pos, l.name);
+        if (l.kind == 0 && d > 667) add(5, {1, 1, 1}, l.pos, l.name);
+        else if (l.kind != 0 && l.kind != 4 && d > 450 && d < 2667) add(6, {1, 1, 1}, l.pos, l.name);
     }
     return out.c_str();
 }
@@ -1680,7 +1685,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_banner(int ticks, int foes) {
     cv.city = target;
     const V3 o = app->battle->origin();
     const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
-    app->camera.lookAt(at.x, at.y - 100, 1000);
+    app->camera.lookAt(at.x, at.y - 33, 333);
     return target;
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
@@ -1777,7 +1782,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_port() {
     cv.city = port;
     const C::CityState& cs = cv.c->cities()[static_cast<size_t>(port)];
     const V3 o = app->battle->origin();
-    app->camera.lookAt(C::centre(cs.cx) - o.x - 100, C::centre(cs.cy) - o.y, 870);
+    app->camera.lookAt(C::centre(cs.cx) - o.x - 33, C::centre(cs.cy) - o.y, 290);
     return port;
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
@@ -2118,7 +2123,7 @@ EMSCRIPTEN_KEEPALIVE const uint8_t* illyria_continent_map(int w, int j0, int j1)
                 const int k = std::min(9, static_cast<int>(c.landGround(x, y, s.height, s.mountain, s.roadDist)));
                 const float lit = std::clamp(1.0f + 0.9f * ((z - (i ? west : z)) + (z - (j ? north[static_cast<size_t>(i)] : z))) / static_cast<float>(step),
                                              0.55f, 1.35f);
-                const float pale = std::clamp((z - 150.0f) / 700.0f, 0.0f, 0.6f);
+                const float pale = std::clamp((z - 50.0f) / 233.0f, 0.0f, 0.6f);  // the mountains' scale of height
                 for (int q = 0; q < 3; ++q) col[q] = (kinds[k][q] * (1 - pale) + 0.86f * pale) * lit;
             }
             uint8_t* p = &px[(static_cast<size_t>(j) * w + i) * 4];
