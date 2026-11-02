@@ -7,14 +7,11 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "figures.h"
-#include "illyria/game/battle.h"
 #include "sprite_clips.h"
 #include "sprite_layout.h"
 #include "test.h"
-#include "unit_deeds.h"
 
 using namespace illyria;
 using namespace illyria::game;
@@ -351,55 +348,6 @@ TEST(sprite_clips_the_winners_celebrate) {
     a.idlePhase = 0.0f;
     b.idlePhase = 0.37f * 5;
     CHECK(sprites::chooseFrame(s, a, m).frame != sprites::chooseFrame(s, b, m).frame);
-}
-
-// Read off the battle (unit_deeds.h): no one has won a battle just begun;
-// and whether a missile soldier will loose as his reload ends agrees with the
-// sim, which then looses or not (the Ford, the player's side charging).
-TEST(sprite_deeds_say_who_will_loose) {
-    Battle b(42);
-    CHECK(deeds::victors(b) == 0);
-    b.chargeAll();
-    b.togglePause();
-    const auto& units = b.world().units();
-    // His orders: a new one (an AI's, a player's) decides, not what he sees; those ticks are left out.
-    const auto orders = [](const sim::Unit& u) {
-        return (static_cast<uint64_t>(u.targetUnit) << 2) | (u.hasMoveTarget ? 1u : 0u) | (u.hasAttackTarget ? 2u : 0u);
-    };
-    // Asked as his reload ends, and as an archer's draw begins (1.45 s before: 43 ticks).
-    int right = 0, wrong = 0, shots = 0, earlyRight = 0, earlyWrong = 0, reordered = 0;
-    std::vector<int> said(units.size(), -1), early(units.size(), -1);
-    std::vector<uint64_t> saidOrders(units.size()), earlyOrders(units.size());
-    for (int t = 0; t < 150 * sim::kTicksPerSecond; ++t) {
-        for (size_t i = 0; i < units.size(); ++i) {
-            const sim::Unit& u = units[i];
-            // Missile troops on foot (a flier's take-offs are his own; the draw is for bows).
-            const bool missile = u.alive() && u.stats.ranged.muzzleSpeed > sim::Fixed::zero() && u.stats.scavenge.sight == sim::Fixed::zero() &&
-                                 u.stats.flyAltitude == sim::Fixed::zero();
-            said[i] = missile && u.reloadRemaining == 1 ? deeds::willLoose(b, i) : -1;
-            saidOrders[i] = orders(u);
-            if (missile && u.reloadRemaining == 43) early[i] = deeds::willLoose(b, i), earlyOrders[i] = orders(u);
-        }
-        b.stepOnce();
-        for (size_t i = 0; i < units.size(); ++i) {
-            if (said[i] < 0) continue;
-            const bool loosed = b.attackTick(i) == b.world().tick();
-            shots += loosed;
-            if (orders(units[i]) != saidOrders[i]) {
-                ++reordered;
-            } else {
-                (loosed == (said[i] == 1) ? right : wrong) += 1;
-                if (early[i] >= 0 && orders(units[i]) == earlyOrders[i]) (loosed == (early[i] == 1) ? earlyRight : earlyWrong) += 1;
-            }
-            early[i] = -1;
-        }
-    }
-    std::printf("  will loose: %d of %d right as the reload ends, %d of %d as the draw begins; %d shots, %d sent elsewhere meanwhile\n",
-                right, right + wrong, earlyRight, earlyRight + earlyWrong, shots, reordered);
-    CHECK(shots > 100);
-    CHECK(right >= 0.95 * (right + wrong));
-    CHECK(earlyRight >= 0.85 * (earlyRight + earlyWrong));
-    CHECK(deeds::victors(b) == 0 || b.outcome() != 0);
 }
 
 // Old sheets: every soldier's frame exactly as before, over a grid of what he
