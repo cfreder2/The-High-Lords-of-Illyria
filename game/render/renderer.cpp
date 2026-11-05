@@ -245,23 +245,6 @@ constexpr int kSides = 4;  // unit groups by type and side
 
 }  // namespace
 
-// The campaign's men near enough to be sprites carry what the battle's do: a health bar when hurt (or a veteran,
-// shaken, or looked at), the arrow that killed one toppling with him, the arrows his shield caught.
-void Renderer::pushMapWounds(std::vector<float>& bars, std::vector<float>& arrows) {
-    for (size_t i : mapSprites_) {
-        const MapSoldier& m = mapSoldiers_[i];
-        if (!m.unit) continue;
-        const V3& p = mapPlaces_[i];
-        if (m.alive) {
-            if (m.unit->shieldArrows > 0) pushStuckArrows(arrows, *m.unit, p, 0);
-            pushHealthBar(bars, *m.unit, p, m.selected);
-        } else {
-            const float seconds = m.hurtTick > 0 ? mapSeconds_ - static_cast<float>(m.hurtTick) / static_cast<float>(sim::kTicksPerSecond) : 1e9f;
-            pushStuckArrows(arrows, *m.unit, p, m.unit->airborne ? 0.3f : std::clamp(seconds / deathSeconds(m.type, *m.unit), 0.0f, 1.0f));
-        }
-    }
-}
-
 bool Renderer::buildPrograms() {
     struct Spec {
         Program& p;
@@ -1039,7 +1022,7 @@ void Renderer::uploadGates(const Battle& battle) {
         yawQuat(std::atan2(-out_.x, out_.y), q);
         pushInstance(out, (a + b) * 0.5f, q, {half, half, top - a.z}, {1, 1, 1});
     };
-    const auto& gates = battle.region().gates();
+    const auto& gates = battle.worldRegion().gates();
     for (size_t i = 0; i < gates.size(); ++i) {
         const sim::Gate& g = gates[i];
         put(broken[i] ? open : shut, toV3(g.a), toV3(g.b), toV3(g.out), static_cast<float>(g.top.toDouble()));
@@ -2066,11 +2049,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
     territoryInfo_[0] = battle.origin().x;
     territoryInfo_[1] = battle.origin().y;
-    if (showUnits_ && unitsChecked_ != battle.world().units().size()) {
+    if (showUnits_ && !battle.borrowing() && unitsChecked_ != battle.world().units().size()) {
         bakeMissing(battle);
         unitsChecked_ = battle.world().units().size();
     }
-    if (mapOn_) placeMapSoldiers(battle, camera);  // the campaign's soldiers near the camera need sheets (renderer_map.cpp)
     updateCloseups(battle, camera);  // close-up sprite sheets near the camera (renderer_sheets.cpp)
     updatePatch(battle, camera);
     updateDetail(battle, camera, 2.5);  // ms a frame: a little at a time, so a phone never hitches
@@ -2111,6 +2093,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         if (!victorsKnown) victors = deeds::victors(battle), victorsKnown = true;
         return victors;
     };
+    const bool borrowed = battle.borrowing();
+    men_.dt = sinceLastDraw;
+    beginMen(battle, camera, gameSeconds);
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         const V3 pos = battle.unitPosition(i);
@@ -2122,6 +2107,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         walked_[i] += moved;
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
+        if (borrowed) {
+            // The campaign's men: near the camera the battle's sprite (with a dot under it fading out as he comes in),
+            // from far off a dot, pulsing if he is in a fight; whoever is dead and far off is not drawn.
+            const bool sprite = manIsSprite(pos, static_cast<int>(type));
+            if (u.alive()) {
+                const bool fighting = std::min(ago(battle.attackTick(i)), ago(battle.hitTick(i))) < 1.0f;
+                manDot(pos, u.owner, isSelected, battle.isInspected(u.id), fighting ? manPulse(u.id, gameSeconds) : 0.0f, sprite);
+            }
+            if (!sprite) continue;
+        }
         int frame;
         float down = 0;  // 0 standing .. 1 lying: the picture follows the slope under him (kUnitVs)
         float yaw = std::atan2(fy, fx);
@@ -2147,6 +2142,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             decals.insert(decals.end(), {pos.x, pos.y, floor, std::atan2(fy, fx), radius * (1.3f + stretch * 0.35f), 0, kDecalShadow, stretch, 1, 0, 0});
             pushHealthBar(bars, u, pos, isSelected);
             if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+            else if (battle.isInspected(u.id)) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.62f, 0.62f, 0.62f, 0});
             const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
             // A sheet of its own clips plays them by name (sprite_clips.h); its soldiers are
             // followed every frame, so what they took up or threw is seen as it happens.
@@ -2164,8 +2160,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                                                   prerenderedFlier, gameSeconds, u.id);
             }
         }
-        const int key = static_cast<int>(type) * kSides + (u.owner & 3);
-        if (!sheets_.count(key / kSides) || !sheets_[key / kSides].tex) continue;  // baked before the next frame (bakeMissing)
+        // (the campaign's eight lords and the neutral garrisons have groups of their own, in their faction's colour)
+        const int key = borrowed ? kMapKeyBase + static_cast<int>(type) * kMapSides + manSide(u.owner) : static_cast<int>(type) * kSides + (u.owner & 3);
+        if (!sheets_.count(static_cast<int>(type)) || !sheets_[static_cast<int>(type)].tex) continue;  // baked before the next frame (bakeMissing)
         {
             const Sheet& sh = sheetFor(static_cast<int>(type));
             float d = std::floor(-(toViewer - yaw) / 0.7853982f + 0.5f);
@@ -2183,14 +2180,11 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             }
         }
         std::vector<float>& g = byGroup[key];
-        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
+        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected || battle.isInspected(u.id) ? 1.0f : 0.0f, down});
     }
     battle.setSpriteBoxes(std::move(boxes));
-    if (mapOn_) {
-        pushMapSprites(battle, camera, byGroup, decals);
-        pushMapWounds(bars, arrows);
-        arrows.insert(arrows.end(), mapArrows_.begin(), mapArrows_.end());
-    }
+    pushSleepers(battle, byGroup, decals);
+    endMen(battle, camera, decals);
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
         const float* team = sideColor(p.owner);
@@ -2331,7 +2325,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // (Battle::inspectedGate), which a dotted gold line rings at its foot and
     // again on the walk over it (from above, the walk hides the passage).
     {
-        const auto& gs = battle.region().gates();
+        const auto& gs = battle.worldRegion().gates();
         const std::vector<sim::GateState>& state = battle.world().gates();
         const float gold[3] = {1.0f, 0.82f, 0.32f};
         for (size_t g = 0; g < gs.size() && g < state.size(); ++g) {
@@ -2519,7 +2513,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glBindVertexArray(bars_.vao);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
     }
-    if (mapOn_) drawMapDots(camera, timeSeconds, gameSeconds);
+    drawDots(camera, timeSeconds, gameSeconds);
 
     // Water over everything below it: soldiers wading show through.
     glEnable(GL_BLEND);

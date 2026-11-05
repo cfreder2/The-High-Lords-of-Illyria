@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "illyria/game/battle.h"
-#include "illyria/game/campaign_soldiers.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/detail_land.h"
 #include <map>
@@ -25,6 +24,8 @@ namespace illyria::game {
 // The campaign's soldiers are grouped for drawing past the battle's, by type and
 // by side (a faction 0-7, or 8 for a town's own garrison), in the faction's own colour.
 constexpr int kMapKeyBase = 1 << 20, kMapSides = 9;
+float manPulse(uint32_t id, float seconds);  // how hard a man in a fight flashes as a dot (renderer_map.cpp)
+int manSide(uint8_t owner);
 
 // OpenGL ES 3.0 / WebGL 2 renderer for a battle. Everything is drawn with a
 // handful of instanced draw calls so tens of thousands of soldiers, arrows,
@@ -92,16 +93,8 @@ public:
     std::vector<std::string> clipNames(int type) const;
     // The clip a type's sheet plays for `name`: itself, else what stands in for it ("" none).
     std::string clipPlayed(int type, std::string_view name) const;
-    // The campaign's soldiers on the land (campaign_soldiers.h), drawn in place of
-    // the stacks' flags: points in the side's colour, and the battle's sprites,
-    // walking in their formation, for those near the camera. `seconds`: the
-    // campaign's clock, which their strides follow (so a pause holds them).
-    // Empty: none (a battle, the title).
-    void setMapSoldiers(const std::vector<MapSoldier>& soldiers, float seconds, float dt = 0.016f);
-    // The arrows in flight over a fight on the land, as the draw wants them: position, velocity, two zeros (battle-local metres).
-    void setMapArrows(const std::vector<float>& arrows) { mapArrows_ = arrows; }
-    // How many of them were drawn as sprites and as dots in the last frame (tests, the minimap's sibling).
-    size_t mapSprites() const { return mapSprites_.size(); }
+    // How many of the men were drawn as sprites and as dots in the last frame (tests).
+    size_t mapSprites() const { return men_.sprites; }
     int mapDots() const { return dots_.count; }
     // The castles' tower banners in each town's holder's colour (by city index).
     void setCityColours(const std::vector<V3>& colours);
@@ -167,24 +160,30 @@ private:
     Program figure_, resolve_, unit_, figureDepth_, sheetView_;
     Program bar_;  // health bars with veterans' shield pips
     Batch bars_;
-    // The campaign's soldiers (setMapSoldiers): those too far to be sprites are
-    // drawn as dots (dot_, dots_: position, colour and whether selected), those near
-    // the camera as the battle's sprites (mapSprites_: indices into mapSoldiers_, with
-    // their battle-local places in mapPlaces_).
+    // Men at every distance (renderer_map.cpp): those too far to be sprites are drawn as dots (dot_, dots_:
+    // position, colour, whether selected and how hard they flash in a fight), those near the camera as the
+    // battle's sprites; the frame's level of detail is worked out once (beginMen) for the whole pass.
     Program dot_;
     Batch dots_;
-    std::vector<MapSoldier> mapSoldiers_;
-    std::vector<V3> mapPlaces_;
-    std::vector<size_t> mapSprites_;
-    std::vector<float> mapArrows_;
-    std::vector<char> mapShown_;  // on the screen (or near it): the rest are not drawn
-    float mapSeconds_ = 0, mapDt_ = 0.016f;
-    std::map<uint32_t, sprites::ClipMemory> mapMemory_;  // the sprite men's clips, kept while they stay in sight
-    bool mapOn_ = false;
-    void placeMapSoldiers(const Battle& battle, const Camera& camera);
-    void pushMapSprites(const Battle& battle, const Camera& camera, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
-    void pushMapWounds(std::vector<float>& bars, std::vector<float>& arrows);  // health bars and arrows in the campaign's men (renderer.cpp)
-    void drawMapDots(const Camera& camera, double timeSeconds, float gameSeconds);
+    struct MenLod {
+        bool borrowed = false, near = false, looked = false;
+        V3 at;
+        float reach = 0, spriteDot = 1, lift = 1, seconds = 0, dt = 0.016f;
+        M4 vp;
+        std::vector<float> dots;
+        std::vector<sim::UnitType> need;
+        std::vector<V3> selected;
+        std::vector<std::pair<int, V3>> seen;  // the sprites' types and places, for sizing the close-up sheets next frame
+        size_t sprites = 0;
+    } men_;
+    std::map<uint32_t, sprites::ClipMemory> mapMemory_;  // the sleepers' clips, kept while they stay in sight
+    void beginMen(const Battle& battle, const Camera& camera, float seconds);
+    bool manOnScreen(const V3& p) const;
+    bool manIsSprite(const V3& p, int type);
+    void manDot(const V3& p, uint8_t owner, bool selected, bool inspected, float pulse, bool alsoSprite);
+    void pushSleepers(const Battle& battle, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
+    void endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals);
+    void drawDots(const Camera& camera, double timeSeconds, float gameSeconds);
     float mapDotPx_ = 4;  // a dot's width, in device pixels
     // The soldiers' sprite sheets, one per unit type and side, baked on the
     // GPU from figures::build when a battle first needs them.

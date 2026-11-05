@@ -184,7 +184,45 @@ public:
     // Runs as many fixed ticks as `seconds` of wall time covers (times the game speed).
     void advance(double seconds);
     // Fraction of the way from the previous tick to the current one, for interpolation.
-    float alpha() const { return static_cast<float>(accumulator_ * sim::kTicksPerSecond); }
+    float alpha() const { return alphaSet_ ? alphaOver_ : static_cast<float>(accumulator_ * sim::kTicksPerSecond); }
+
+    // Presenting a world that is not this battle's own (the campaign's fights): the battle shows it exactly as it
+    // shows its own, from the same places. The world must be on a region with this battle's origin (the field is
+    // made at the island's: Campaign::islandOrigin), so that the world's places are the battle's. Whoever steps the
+    // world calls beforeWorldStep() and afterWorldStep() round each step, and says how far between ticks it is.
+    void borrow(sim::World* world);  // nullptr: back to its own
+    bool borrowing() const { return borrowed_; }
+    void beforeWorldStep();
+    void afterWorldStep();
+    void setAlpha(float a) { alphaSet_ = true, alphaOver_ = a; }
+    // The fight in the borrowed world was cleared away (its men are gone, new ones are not those): forget them.
+    void forgetMen();
+
+    // Men who are not units of the world presented: the campaign's soldiers asleep in their squads on the march
+    // (their bodies are stepped as a whole, not as men). Each is the same picture as a unit's, in the same pass of
+    // the renderer (a dot from far off, the battle's sprite near); x, y are continent metres.
+    struct Sleeper {
+        float x = 0, y = 0, yaw = 0, speed = 0;
+        uint8_t owner = 0, type = 0;
+        bool aloft = false, selected = false, inspected = false;
+        uint32_t id = 0, stack = 0;
+    };
+    void setSleepers(std::vector<Sleeper>&& men) { sleepers_ = std::move(men); }
+    const std::vector<Sleeper>& sleepers() const { return sleepers_; }
+    // Who is shown selected (ours, for commanding) and who looked at (not ours: view-only, grey), among the world's men.
+    void setPresented(const std::vector<sim::EntityId>& selected, const std::vector<sim::EntityId>& inspected);
+    // The man nearest the finger on the screen within `tapPx` pixels, at any height and any distance (a dot is as
+    // much a man as a sprite): one of the world's (unit: his id) or a sleeper (index into sleepers()).
+    struct ManPick {
+        enum class Kind : uint8_t { None, Unit, Sleeper } kind = Kind::None;
+        uint32_t id = 0;
+        size_t index = 0;
+    };
+    ManPick manAt(const Camera& camera, float x, float y, float tapPx) const;
+    // The standing gate under the finger, or -1.
+    int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
+    bool isInspected(sim::EntityId id) const { return id > 0 && id <= inspectedFlag_.size() && inspectedFlag_[id - 1]; }
+
 
     // Input. Selection is as in Myth (game/src/battle_command.cpp): tapping
     // one of ours selects him alone, tapping him again everyone of his type
@@ -448,7 +486,6 @@ public:
     int inspectedGate() const { return inspectedGate_; }
     // The campaign's fights on this field (the campaign's world is not this battle's): show what its blows and
     // wounds did (blood, dust, sparks, splinters), move the sparks and smoke on, and ring a gate to look at.
-    void showImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source);
     void stepEffects(float seconds);
     void inspectGate(int gate);
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
@@ -485,6 +522,12 @@ public:
     std::shared_ptr<const sim::Continent> continentShared() const { return continent_; }
     // Continent coordinates of this battlefield's (0, 0).
     V3 origin() const { return toV3(region_->origin()); }
+    // The ground of the world presented (its gates, walls, decks): the field's own region, or the borrowed world's.
+    const sim::Region& worldRegion() const { return *world_->region(); }
+    bool inWorld(float x, float y) const {
+        const float size = static_cast<float>(worldRegion().terrain().cells()) * kCellSize;
+        return x >= 0 && y >= 0 && x < size && y < size;
+    }
     const std::vector<float>& heights() const { return heights_; }
 
     // Interpolated presentation positions.
@@ -586,8 +629,6 @@ private:
     sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.
     void holdGates(sim::PlayerId holder);
-    // The standing gate under the finger, or -1.
-    int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
     // The squad's orders at a gate: engines and bombers shoot at it, the rest go through it.
     void attackGate(const Squad& squad, int gate);
     void attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId>& units, Formation formation, int gate);
@@ -599,7 +640,8 @@ private:
     std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;
     FarGrid far_, near_;
-    std::unique_ptr<sim::World> world_;
+    std::unique_ptr<sim::World> ownWorld_;  // the battle's own world, if it has one
+    sim::World* world_ = nullptr;           // the world it presents: its own, or one it borrows (borrow)
     std::vector<float> heights_;
     std::vector<Squad> squads_;
     std::vector<int> squadOfUnit_;  // indexed by EntityId - 1
@@ -638,6 +680,10 @@ private:
     std::vector<V3> prevUnitPos_;
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<uint32_t> attackTick_, hitTick_;
+    std::vector<Sleeper> sleepers_;
+    std::vector<uint8_t> inspectedFlag_;
+    bool borrowed_ = false, alphaSet_ = false;
+    float alphaOver_ = 0;
     std::vector<std::pair<int32_t, int32_t>> readied_;  // melee cooldown and reload before the tick
     std::vector<std::pair<sim::EntityId, V3>> prevProjectilePos_;  // sorted by id
     std::vector<GroundMark> marks_;

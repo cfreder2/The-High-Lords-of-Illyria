@@ -340,7 +340,7 @@ void Campaign::ensureWorld() {
     // And the wounds a saved game had given them.
     for (size_t k = 0; k + 1 < gateHp_.size(); k += 2) world_->setGateHp(static_cast<size_t>(gateHp_[k]), gateHp_[k + 1]);
     gateHp_.clear();
-    world_->clearFight(seed_);
+    endFight(seed_);
 }
 
 void Campaign::gateHps(std::vector<int32_t>& out) const {
@@ -366,7 +366,7 @@ void Campaign::holdGates(int32_t city) {
 
 void Campaign::wake(Stack& s) {
     ensureWorld();
-    if (awakeStacks_ == 0) world_->clearFight(seed_ ^ tick_);  // every fight starts the same way on every machine
+    if (awakeStacks_ == 0) endFight(seed_ ^ tick_);  // every fight starts the same way on every machine
     const Vec3 origin = region_->origin();
     // Where it stands: its body, set beside others in the cell as the drawing sets it.
     int32_t bx, by;
@@ -539,7 +539,7 @@ void Campaign::sleep(Stack& s) {
     if (awakeStacks_ == 0 && world_) {
         // The fight is over for good: its dead, its arrows and its dice are gone, and the world is as it was before any, but for the gates.
         corpses_.clear();
-        world_->clearFight(seed_ ^ tick_);
+        endFight(seed_ ^ tick_);
     }
 }
 
@@ -834,9 +834,18 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
     }
 }
 
-void Campaign::takeImpacts(std::vector<ImpactEvent>& out) {
-    out.clear();
-    out.swap(impactLog_);
+uint32_t Campaign::stackOfUnit(uint32_t unit) const {
+    for (const Stack& s : stacks_)
+        if (s.awake)
+            for (const Army& a : s.armies)
+                for (const Man& m : a.men)
+                    if (m.unit == unit) return s.id;
+    return 0;
+}
+
+void Campaign::endFight(uint64_t seed) {
+    world_->clearFight(seed);
+    if (clearedHook_) clearedHook_();
 }
 
 void Campaign::stepWorld() {
@@ -856,9 +865,9 @@ void Campaign::stepWorld() {
         // computer lords' men and the player's alike meet whoever comes near their post (fightAi).
         if (think && s.path.empty()) fightAi(s, commands_);
     }
+    if (beforeHook_) beforeHook_();
     world_->step(commands_);
-    if (stepHook_) stepHook_(*world_);
-    if (impactLog_.size() < 4000) impactLog_.insert(impactLog_.end(), world_->impacts().begin(), world_->impacts().end());
+    if (stepHook_) stepHook_();
     for (Stack& s : stacks_)
         if (s.awake) {
             syncMen(s);
@@ -893,7 +902,7 @@ void Campaign::stepWorld() {
     if (awakeStacks_ == 0) {
         // The last of them fell: the fight is over (as in sleep, for the world's sake).
         corpses_.clear();
-        world_->clearFight(seed_ ^ tick_);
+        endFight(seed_ ^ tick_);
     }
 }
 

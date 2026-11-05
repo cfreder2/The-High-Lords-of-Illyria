@@ -154,7 +154,8 @@ void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide, float f
     heights_.reserve(region_->terrain().samples().size());
     for (sim::Fixed h : region_->terrain().samples()) heights_.push_back(static_cast<float>(h.toDouble()));
     cfg.region = region_;
-    world_ = std::make_unique<sim::World>(cfg);
+    ownWorld_ = std::make_unique<sim::World>(cfg);
+    world_ = ownWorld_.get();
     dirtyFlag_.assign(kMaxRemains, 0);
 }
 
@@ -330,7 +331,7 @@ void Battle::holdGates(sim::PlayerId holder) {
 int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) const {
     int best = -1;
     float bestD2 = kSquadTapRadiusPx * pixelScale * kSquadTapRadiusPx * pixelScale;
-    const auto& gates = region_->gates();
+    const auto& gates = worldRegion().gates();
     for (size_t i = 0; i < gates.size(); ++i) {
         if (world_->gates()[i].broken()) continue;
         V3 c = toV3(gates[i].a + gates[i].b) * 0.5f;
@@ -352,10 +353,10 @@ void Battle::aimEngines(const Squad& s) {
     const V3 c = squadCentre(s, false);
     int best = -1;
     float bestD = 1e30f;
-    for (size_t i = 0; i < region_->gates().size(); ++i) {
+    for (size_t i = 0; i < worldRegion().gates().size(); ++i) {
         const sim::GateState& gs = world_->gates()[i];
         if (gs.broken() || gs.holder != kPlayer) continue;
-        const V3 g = toV3(region_->gates()[i].a + region_->gates()[i].b) * 0.5f;
+        const V3 g = toV3(worldRegion().gates()[i].a + worldRegion().gates()[i].b) * 0.5f;
         const float d = V3{g.x - c.x, g.y - c.y, 0}.length();
         if (d < bestD) {
             bestD = d;
@@ -456,7 +457,11 @@ float FarGrid::heightAt(float x, float y) const {
 }
 
 float Battle::heightAt(float x, float y) const {
-    if (!inBattlefield(x, y)) return near_.contains(x, y) ? near_.heightAt(x, y) : far_.heightAt(x, y);
+    if (!inBattlefield(x, y)) {
+        // Off the field's own ground, over the borrowed world's, the same ground the world's men stand on.
+        if (borrowed_ && inWorld(x, y)) return static_cast<float>(worldRegion().terrain().heightAt(toFixed(x), toFixed(y)).toDouble());
+        return near_.contains(x, y) ? near_.heightAt(x, y) : far_.heightAt(x, y);
+    }
     const int n = kTerrainCells;
     const float fx = std::clamp(x / kCellSize, 0.0f, static_cast<float>(n));
     const float fy = std::clamp(y / kCellSize, 0.0f, static_cast<float>(n));
@@ -484,31 +489,83 @@ void Battle::advance(double seconds) {
     updateParticles(static_cast<float>(scaled));
 }
 
-void Battle::step() {
+void Battle::beforeWorldStep() {
+    growUnits();
     const auto& units = world_->units();
     for (size_t i = 0; i < units.size(); ++i) prevUnitPos_[i] = toV3(units[i].pos);
     prevProjectilePos_.clear();
     for (const sim::Projectile& p : world_->projectiles()) prevProjectilePos_.push_back({p.id, toV3(p.pos)});
-
-    // A match gathers every seat's orders and plays the computer's (mode.h).
-    if (mode_) mode_->beforeStep(*this, pending_);
-    else if (world_->tick() % kAiIntervalTicks == 0) runEnemyAi();
-
     // Who strikes or looses this tick, for the attack animation.
     readied_.resize(units.size());
     for (size_t i = 0; i < units.size(); ++i) readied_[i] = {units[i].meleeCooldown, units[i].reloadRemaining};
-    const auto start = std::chrono::steady_clock::now();
-    world_->step(pending_);
+}
+
+void Battle::afterWorldStep() {
+    const auto& units = world_->units();
+    growUnits();
     for (size_t i = 0; i < units.size() && i < readied_.size(); ++i)
         if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
+    collectEvents();
+    voice_.observe(*world_, outcome());
+    presentDeaths();
+}
+
+void Battle::borrow(sim::World* world) {
+    if (world == nullptr) {
+        world_ = ownWorld_.get();
+        borrowed_ = false;
+        alphaSet_ = false;
+    } else {
+        world_ = world;
+        borrowed_ = true;
+    }
+    squads_.clear();
+    squadOfUnit_.clear();
+    selection_.clear();
+    forgetMen();
+}
+
+void Battle::setPresented(const std::vector<sim::EntityId>& selected, const std::vector<sim::EntityId>& inspected) {
+    const size_t n = world_->units().size();
+    selectedFlag_.assign(n, 0);
+    inspectedFlag_.assign(n, 0);
+    for (sim::EntityId id : selected)
+        if (id > 0 && id <= n) selectedFlag_[id - 1] = 1;
+    for (sim::EntityId id : inspected)
+        if (id > 0 && id <= n) inspectedFlag_[id - 1] = 1;
+}
+
+void Battle::forgetMen() {
+    const size_t n = world_->units().size();
+    deathTick_.assign(n, UINT32_MAX);
+    attackTick_.assign(n, UINT32_MAX);
+    hitTick_.assign(n, UINT32_MAX);
+    selectedFlag_.assign(n, 0);
+    inspectedFlag_.assign(n, 0);
+    prevUnitPos_.assign(n, V3{});
+    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+    readied_.clear();
+    smouldering_.clear();
+    recent_.clear();
+}
+
+void Battle::step() {
+    beforeWorldStep();
+    // A match gathers every seat's orders and plays the computer's (mode.h).
+    if (mode_) mode_->beforeStep(*this, pending_);
+    else if (world_->tick() % kAiIntervalTicks == 0) runEnemyAi();
+    // (the orders may have raised men: their places and ticks are kept too)
+    growUnits();
+    readied_.resize(world_->units().size());
+    for (size_t i = 0; i < world_->units().size(); ++i) readied_[i] = {world_->units()[i].meleeCooldown, world_->units()[i].reloadRemaining};
+    const auto start = std::chrono::steady_clock::now();
+    world_->step(pending_);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     stepMs_ = stepMs_ * 0.95 + ms * 0.05;
     pending_.clear();
     capture_.step(*world_);  // battle_capture.cpp
     if (mode_) mode_->afterStep(*this);  // its rules: the hill, the flags, the waves
-    collectEvents();
-    voice_.observe(*world_, outcome());
-    presentDeaths();
+    afterWorldStep();
 }
 
 std::vector<uint32_t> Battle::takeDirtyRemains() {
@@ -520,7 +577,7 @@ std::vector<uint32_t> Battle::takeDirtyRemains() {
 
 void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed) {
     // Water carries blood and scorch marks away.
-    const sim::Ground g = region_->groundAt(toFixed(pos.x), toFixed(pos.y));
+    const sim::Ground g = worldRegion().groundAt(toFixed(pos.x), toFixed(pos.y));
     if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater) return;
     // On the ground, or on the deck it happened above (a wall-walk, a bridge).
     pos.z = floorAt(pos);
@@ -537,12 +594,6 @@ void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint3
 void Battle::emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size) {
     if (particles_.size() >= kMaxParticles) return;
     particles_.push_back({kind, pos, vel, 0.0f, life, size});
-}
-
-void Battle::showImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source) {
-    const sim::Vec3 ro = source.region()->origin();
-    const V3 o = origin();
-    applyImpacts(events, source, V3{static_cast<float>(ro.x.toDouble()) - o.x, static_cast<float>(ro.y.toDouble()) - o.y, 0}, false);
 }
 
 void Battle::stepEffects(float seconds) {

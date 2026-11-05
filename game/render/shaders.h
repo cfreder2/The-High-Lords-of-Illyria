@@ -2127,7 +2127,7 @@ flat out vec2 vFight;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
     // A man in a fight swells and shrinks with his flash.
-    float size = uDotPx * (1.0 + 0.5 * iColour.a) * (1.0 + 0.7 * iFight.x) + 2.0 * uRim;
+    float size = uDotPx * (1.0 + 0.5 * min(iColour.a, 1.0)) * (1.0 + 0.7 * iFight.x) + 2.0 * uRim;
     // Drawn a little nearer the eye along its own line of sight (where it appears is not
     // changed): so that bumps of the ground the coarse land does not have do not bury it.
     gl_Position = uViewProj * vec4(iPos + (uEye - iPos) * 0.02, 1.0);
@@ -2157,7 +2157,7 @@ void main() {
     // light ring inside it (against forest and shadow), and the colour within.
     bool outer = uRim > uDotPx * 0.3;
     vec3 rim = outer ? mix(vec3(0.02, 0.02, 0.03), vec3(0.55, 0.12, 0.04), vFight.x)
-                     : (vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.97, 0.96, 0.9));
+                     : (vColour.a > 1.5 ? vec3(0.62, 0.62, 0.62) : vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.97, 0.96, 0.9));
     oColor = vec4(uRim > 0.0 ? rim : flare, alpha);
 }
 )";

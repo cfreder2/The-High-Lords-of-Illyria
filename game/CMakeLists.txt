@@ -18,7 +18,6 @@ add_library(illyria_game
     src/sfx.cpp
     src/battle_deaths.cpp
     src/detail_land.cpp
-    src/campaign_soldiers.cpp
 )
 target_include_directories(illyria_game PUBLIC include)
 target_link_libraries(illyria_game PUBLIC illyria_sim)

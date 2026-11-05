@@ -1,5 +1,4 @@
-// The campaign's soldiers on the land (game/src/campaign_soldiers.cpp,
-// engine/sim/src/campaign_world.cpp, docs/ONE_WORLD.md): a man for every soldier of
+// The campaign's soldiers on the land (engine/sim/src/campaign_world.cpp, docs/ONE_WORLD.md): a man for every soldier of
 // every stack, placed from the campaign's state alone, along the stack's route and in
 // its town's courtyard, and none of it written back into the simulation.
 #include <cmath>
@@ -7,10 +6,9 @@
 #include <map>
 #include <set>
 
-#include "illyria/game/campaign_soldiers.h"
+#include "illyria/sim/campaign.h"
 #include "test.h"
 
-using namespace illyria::game;
 using namespace illyria::sim;
 
 namespace {
@@ -30,15 +28,15 @@ Campaign started(uint64_t seed, int days) {
 
 TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_is) {
     Campaign c = started(7, 3);
-    std::vector<MapSoldier> men;
-    collectMapSoldiers(c, 0, 0, men);
+    std::vector<Campaign::Soldier> men;
+    c.soldiers(static_cast<int32_t>(0), men);
     size_t want = 0;
     for (const Campaign::Stack& s : c.stacks())
         if (!s.boat)
             for (const Army& a : s.armies) want += static_cast<size_t>(a.soldiers);
     size_t alive = 0;
     std::set<uint32_t> ids;
-    for (const MapSoldier& m : men) {
+    for (const Campaign::Soldier& m : men) {
         alive += m.alive;
         CHECK(ids.insert(m.id).second);  // each man once
     }
@@ -47,10 +45,10 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
     // Each stands near his stack's middle (a column of squads is a hundred metres at most).
     std::map<uint32_t, std::pair<double, double>> middle;
     std::map<uint32_t, int> count;
-    for (const MapSoldier& m : men) {
+    for (const Campaign::Soldier& m : men) {
         middle[m.stack].first += m.x, middle[m.stack].second += m.y, ++count[m.stack];
     }
-    for (const MapSoldier& m : men) {
+    for (const Campaign::Soldier& m : men) {
         const Campaign::Stack* st = c.findStack(m.stack);
         CHECK(st != nullptr);
         if (!st) continue;
@@ -63,13 +61,13 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
 TEST(laying_out_the_soldiers_changes_nothing_in_the_campaign) {
     Campaign c = started(11, 2);
     const uint64_t before = c.checksum();
-    std::vector<MapSoldier> men;
-    for (int k = 0; k < 5; ++k) collectMapSoldiers(c, 50.0 * k, 1, men);
+    std::vector<Campaign::Soldier> men;
+    for (int k = 0; k < 5; ++k) c.soldiers(static_cast<int32_t>(50.0 * k), men);
     CHECK(c.checksum() == before);
     // Nor does it depend on anything but the campaign: a man's place is the same on every call.
-    std::vector<MapSoldier> again;
-    collectMapSoldiers(c, 25.0, 1, men);
-    collectMapSoldiers(c, 25.0, 1, again);
+    std::vector<Campaign::Soldier> again;
+    c.soldiers(static_cast<int32_t>(25.0), men);
+    c.soldiers(static_cast<int32_t>(25.0), again);
     CHECK(men.size() == again.size());
     for (size_t i = 0; i < men.size() && i < again.size(); ++i) CHECK(men[i].x == again[i].x && men[i].y == again[i].y && men[i].id == again[i].id);
 }
@@ -77,13 +75,13 @@ TEST(laying_out_the_soldiers_changes_nothing_in_the_campaign) {
 TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_ends) {
     Campaign c = started(13, 3);
     int garrisons = 0, marching = 0;
-    std::vector<MapSoldier> men;
-    collectMapSoldiers(c, 0, 0, men);
+    std::vector<Campaign::Soldier> men;
+    c.soldiers(static_cast<int32_t>(0), men);
     for (const Campaign::Stack& s : c.stacks()) {
         if (s.armies.empty() || s.boat || s.awake) continue;
         double sx = 0, sy = 0;
         int n = 0;
-        for (const MapSoldier& m : men)
+        for (const Campaign::Soldier& m : men)
             if (m.stack == s.id) sx += m.x, sy += m.y, ++n;
         if (n == 0) continue;
         sx /= n, sy /= n;
@@ -92,7 +90,7 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
             const Continent::Castle& k = c.continent().cities()[static_cast<size_t>(town)].castle;
             // (a block of squads round the courtyard's middle; several stacks stand side by side)
             CHECK(std::hypot(sx - k.courtyard.x.toDouble(), sy - k.courtyard.y.toDouble()) < 40.0);
-            for (const MapSoldier& m : men)
+            for (const Campaign::Soldier& m : men)
                 if (m.stack == s.id) CHECK(m.speed == 0);
             ++garrisons;
         }
@@ -110,7 +108,7 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
             const double there = std::hypot(double(px - ax), double(py - ay)) / 1000.0 + std::hypot(double(bx - px), double(by - py)) / 1000.0;
             CHECK_NEAR(there, whole, 0.01);
             float speed = 0;
-            for (const MapSoldier& m : men)
+            for (const Campaign::Soldier& m : men)
                 if (m.stack == s.id) speed = m.speed;
             CHECK(speed > 0.3f && speed < 20.0f);  // a catapult's 0.8 m/s on plains to a wolf rider's 15 on a road
             ++marching;
@@ -126,11 +124,11 @@ TEST(stacks_standing_in_one_town_stand_side_by_side_not_on_each_other) {
     const Campaign::CityState& home = c.cities()[0];
     const uint32_t a = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
     const uint32_t b = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
-    std::vector<MapSoldier> men;
-    collectMapSoldiers(c, 0, 0, men);
+    std::vector<Campaign::Soldier> men;
+    c.soldiers(static_cast<int32_t>(0), men);
     double ax = 0, ay = 0, bx = 0, by = 0;
     int na = 0, nb = 0;
-    for (const MapSoldier& m : men) {
+    for (const Campaign::Soldier& m : men) {
         if (m.stack == a) ax += m.x, ay += m.y, ++na;
         if (m.stack == b) bx += m.x, by += m.y, ++nb;
     }
@@ -159,8 +157,8 @@ TEST(a_mans_drawn_place_is_continuous_across_a_march_a_wake_and_a_sleep) {
     c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
         if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
-    std::map<uint32_t, MapSoldier> last;
-    std::vector<MapSoldier> now;
+    std::map<uint32_t, Campaign::Soldier> last;
+    std::vector<Campaign::Soldier> now;
     double worst = 0, worstMetres = 0;
     uint32_t worstTick = 0, worstId = 0;
     int jumps = 0, wakeJumps = 0, sleepJumps = 0, awakeJumps = 0, marchJumps = 0;
@@ -168,8 +166,8 @@ TEST(a_mans_drawn_place_is_continuous_across_a_march_a_wake_and_a_sleep) {
     const double dt = 1.0 / 60.0;
     for (int k = 0; k < 24000; ++k) {
         for (const int32_t ahead : {0, static_cast<int32_t>(Campaign::kTimeScale / 2)}) {
-            collectMapSoldiers(c, ahead, 0, now);
-            for (const MapSoldier& m : now) {
+            c.soldiers(static_cast<int32_t>(ahead), now);
+            for (const Campaign::Soldier& m : now) {
                 if (!m.alive) continue;
                 const auto it = last.find(m.id);
                 if (it != last.end()) {

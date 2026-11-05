@@ -174,7 +174,7 @@ void Battle::orderAttackObject(const Pick& pick) {
     if (mine.empty()) return;
     if (pick.kind == Pick::Kind::Gate) {
         // Missile troops shoot the doors; the rest go through, hacking at them.
-        const sim::Gate& g = region_->gates()[static_cast<size_t>(pick.index)];
+        const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(pick.index)];
         std::vector<sim::EntityId> through;
         for (sim::EntityId id : mine) {
             if (world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
@@ -221,16 +221,16 @@ bool Battle::pickFloor(const Camera& camera, float x, float y, V3& hit) const {
     // under a deck's floor (a wall-walk, a ramp, a bridge: not far under a
     // bridge, where a ray may pass beneath it).
     constexpr float kDeckSlab = 1.5f;
-    const auto& walls = region_->walls();
+    const auto& walls = worldRegion().walls();
     const auto solid = [&](const V3& p) {
         if (p.z <= heightAt(p.x, p.y)) return true;
-        if (!inBattlefield(p.x, p.y)) return false;
+        if (!inWorld(p.x, p.y)) return false;
         for (const sim::WallSeg& w : walls)
             if (p.z <= static_cast<float>(w.top.toDouble()) &&
                 segDist(p, toV3(w.a), toV3(w.b)) <= static_cast<float>(w.halfThick.toDouble()))
                 return true;
         sim::Fixed deck;
-        return region_->deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + kDeckSlab), deck) && static_cast<float>(deck.toDouble()) >= p.z;
+        return worldRegion().deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + kDeckSlab), deck) && static_cast<float>(deck.toDouble()) >= p.z;
     };
     const float maxT = camera.distance() * 6.0f + 2000.0f;
     const float step = std::max(0.25f, camera.distance() * 0.004f);
@@ -265,7 +265,7 @@ bool Battle::pickFloor(const Camera& camera, float x, float y, V3& hit) const {
         // a ramp, a bridge), else the ground.
         sim::Fixed deck;
         const float ground = heightAt(hit.x, hit.y);
-        if (inBattlefield(hit.x, hit.y) && region_->deckBelow(toFixed(hit.x), toFixed(hit.y), toFixed(hit.z + 40.0f), deck) &&
+        if (inWorld(hit.x, hit.y) && worldRegion().deckBelow(toFixed(hit.x), toFixed(hit.y), toFixed(hit.z + 40.0f), deck) &&
             static_cast<float>(deck.toDouble()) > ground + 0.3f && (onWall || static_cast<float>(deck.toDouble()) >= hit.z - 0.3f))
             hit.z = static_cast<float>(deck.toDouble());
         else
@@ -288,7 +288,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
     if (const int g = gateAt(camera, x, y, pixelScale); g >= 0) {
         p.kind = Pick::Kind::Gate;
         p.index = g;
-        p.at = toV3(region_->gates()[static_cast<size_t>(g)].a + region_->gates()[static_cast<size_t>(g)].b) * 0.5f;
+        p.at = toV3(worldRegion().gates()[static_cast<size_t>(g)].a + worldRegion().gates()[static_cast<size_t>(g)].b) * 0.5f;
         return p;
     }
     // Zoomed far out, soldiers are specks: the nearest squad centre.
@@ -313,7 +313,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
     p.kind = Pick::Kind::Ground;
     p.at = ground;
     // The castle walls: the tap lands on its walk (struck in the face or on top), or at its foot.
-    const auto& rings = region_->ramparts();
+    const auto& rings = worldRegion().ramparts();
     for (size_t r = 0; r < rings.size(); ++r) {
         const auto& cs = rings[r].corners;
         const float reach = static_cast<float>(rings[r].halfThick.toDouble()) + kWallPickMetres;
@@ -326,7 +326,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
         }
     }
     // Houses and trees: the ground at them, or the middle of them on the screen.
-    const auto& obs = region_->obstacles();
+    const auto& obs = worldRegion().obstacles();
     float bestPx = kObstaclePickPx * pixelScale * kObstaclePickPx * pixelScale;
     for (size_t i = 0; i < obs.size(); ++i) {
         const sim::Obstacle& o = obs[i];
@@ -406,8 +406,8 @@ float Battle::floorAt(const V3& p) const {
     // The ground, or a deck (a wall-walk, a stair, a bridge) he stands on or is above.
     const float ground = heightAt(p.x, p.y);
     sim::Fixed deck;
-    if (p.z > ground + kOnDeck && inBattlefield(p.x, p.y) &&
-        region_->deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + 0.5f), deck))
+    if (p.z > ground + kOnDeck && inWorld(p.x, p.y) &&
+        worldRegion().deckBelow(toFixed(p.x), toFixed(p.y), toFixed(p.z + 0.5f), deck))
         return std::max(ground, static_cast<float>(deck.toDouble()));
     return ground;
 }

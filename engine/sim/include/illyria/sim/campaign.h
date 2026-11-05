@@ -336,12 +336,14 @@ public:
     // Every soldier, as he stands `ahead` hundredths of a tick after the last
     // step (the presentation glides on between ticks; nothing steps).
     void soldiers(int32_t ahead, std::vector<Soldier>& out) const;
-    // What the awake men's blows and wounds did since last asked, as the world
-    // reported them (the presentation's; never saved nor hashed): blood, dust,
-    // sparks, splinters off the gates. The world drops them each tick.
-    void takeImpacts(std::vector<ImpactEvent>& out);
-    // Called after every step of the fight's world (not part of the game's state): the page listens for its sounds.
-    void onWorldStep(std::function<void(const World&)> hook) { stepHook_ = std::move(hook); }
+    // The fight's world, for presentation: the page's field shows it as it shows any battle (Battle::borrow), and is
+    // told round each step of it (before and after), and when a fight is cleared away. Not part of the game's state.
+    World* presentedWorld() { return world_.get(); }
+    // The stack whose man is this unit of the fight's world (0: none).
+    uint32_t stackOfUnit(uint32_t unit) const;
+    void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {
+        beforeHook_ = std::move(before), stepHook_ = std::move(after), clearedHook_ = std::move(cleared);
+    }
     int32_t awakeStacks() const;  // how many stacks have men in the world
     int32_t awakeMen() const;     // and how many men
     // Makes the island's ground now rather than at the first fight (a few seconds, once a process).
@@ -619,9 +621,9 @@ private:
     std::unique_ptr<World> world_;
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
     Setup setup_;
-    std::function<void(const World&)> stepHook_;
+    std::function<void()> beforeHook_, stepHook_, clearedHook_;
+    void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)
     int32_t awakeStacks_ = 0;
-    std::vector<ImpactEvent> impactLog_;  // presentation only (takeImpacts)
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them
     void gateHps(std::vector<int32_t>& out) const;
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while

@@ -658,7 +658,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
     }
     constexpr float kReach = 10.0f;  // more than any obstacle and man together
     std::vector<const sim::Obstacle*> near;
-    for (const sim::Obstacle& o : region_->obstacles()) {
+    for (const sim::Obstacle& o : worldRegion().obstacles()) {
         const V3 p = toV3(o.pos);
         if (p.x > x0 - kReach && p.x < x1 + kReach && p.y > y0 - kReach && p.y < y1 + kReach) near.push_back(&o);
     }
@@ -754,7 +754,7 @@ void Battle::attackGate(const Squad& squad, int gate) {
 }
 
 void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId>& units, Formation formation, int gate) {
-    const sim::Gate& g = region_->gates()[static_cast<size_t>(gate)];
+    const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(gate)];
     const V3 centre = toV3(g.a + g.b) * 0.5f;
     // Engines and bombers shoot at it; the rest go through it, to the far
     // side: they hack at it until it gives.
@@ -772,7 +772,7 @@ void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId
 }
 
 void Battle::orderAtGate(int gate) {
-    if (gate < 0 || gate >= static_cast<int>(region_->gates().size())) return;
+    if (gate < 0 || gate >= static_cast<int>(worldRegion().gates().size())) return;
     attackGateWith(local_, selectedAlive(), selFormation_, gate);
     voice_.order(Situation::Attack, *world_, selection_);
 }
@@ -852,7 +852,7 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
     inspectedGate_ = pick.kind == Pick::Kind::Gate ? pick.index : -1;
     if (inspectedGate_ >= 0) {
         const sim::GateState& g = world_->gates()[static_cast<size_t>(inspectedGate_)];
-        const int maxHp = region_->gates()[static_cast<size_t>(inspectedGate_)].maxHp;
+        const int maxHp = worldRegion().gates()[static_cast<size_t>(inspectedGate_)].maxHp;
         say(g.broken() ? std::string("The gate is broken") : "The gate: " + std::to_string(g.hp) + " of " + std::to_string(maxHp));
     }
     const std::vector<sim::EntityId> mine = selectedAlive();
@@ -1008,6 +1008,30 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
     else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
     else orderMove(d.anchor);
+}
+
+}  // namespace illyria::game
+
+namespace illyria::game {
+
+Battle::ManPick Battle::manAt(const Camera& camera, float x, float y, float tapPx) const {
+    ManPick best;
+    float bestD = tapPx;
+    const auto consider = [&](const V3& at, ManPick::Kind kind, uint32_t id, size_t index) {
+        float sx, sy;
+        if (!camera.project({at.x, at.y, at.z + 1.0f}, sx, sy)) return;
+        const float d = std::hypot(sx - x, sy - y);
+        if (d < bestD) bestD = d, best = {kind, id, index};
+    };
+    const auto& units = world_->units();
+    for (size_t i = 0; i < units.size(); ++i)
+        if (units[i].alive()) consider(unitPosition(i), ManPick::Kind::Unit, units[i].id, i);
+    const V3 o = origin();
+    for (size_t i = 0; i < sleepers_.size(); ++i) {
+        const V3 at{sleepers_[i].x - o.x, sleepers_[i].y - o.y, 0};
+        consider({at.x, at.y, heightAt(at.x, at.y)}, ManPick::Kind::Sleeper, sleepers_[i].id, i);
+    }
+    return best;
 }
 
 }  // namespace illyria::game

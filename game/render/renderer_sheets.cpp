@@ -406,7 +406,7 @@ void Renderer::listCloseup(int type, int width, int height, float ppm) {
 }
 
 void Renderer::updateCloseups(const Battle& battle, const Camera& camera) {
-    if (!showUnits_ && !mapOn_) return;
+    if (!showUnits_) return;
     if (!closeupsOn_) {
         for (auto& [type, sh] : closeups_) dropSheet(sh, true);
         closeupsRequested_.clear();
@@ -416,13 +416,11 @@ void Renderer::updateCloseups(const Battle& battle, const Camera& camera) {
     const float screen = closeupScreen_ > 0 ? closeupScreen_ : camera.height();
     const V3 eye = camera.eye();
     // The soldiers to size the sheets for: a battle's, or the campaign's near the camera (renderer_map.cpp).
-    std::vector<std::pair<int, V3>> seen;
-    if (showUnits_) {
+    std::vector<std::pair<int, V3>> seen = men_.seen;  // (the sleepers who were sprites last frame, with the men of the world's)
+    {
         const auto& units = battle.world().units();
         for (size_t i = 0; i < units.size(); ++i)
             if (units[i].alive() || !units[i].gibbed) seen.push_back({units[i].stats.type, battle.unitPosition(i)});
-    } else {
-        for (size_t i : mapSprites_) seen.push_back({mapSoldiers_[i].type, mapPlaces_[i]});
     }
     // Each type's soldier nearest the camera; and, for the zoom limit, how far
     // the camera must stay so no soldier on screen is drawn past

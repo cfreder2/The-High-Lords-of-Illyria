@@ -38,6 +38,7 @@ void Battle::growUnits() {
     attackTick_.resize(n, UINT32_MAX);
     hitTick_.resize(n, UINT32_MAX);
     selectedFlag_.resize(n, 0);
+    inspectedFlag_.resize(n, 0);
     prevUnitPos_.resize(n);
     for (size_t i = old; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
     if (!foreign_.empty()) foreign_.resize(n, 0);

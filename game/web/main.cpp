@@ -17,7 +17,6 @@
 #include "../render/renderer.h"
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
-#include "illyria/game/campaign_soldiers.h"
 #include "illyria/game/factions.h"
 #include "illyria/game/gestures.h"
 #include "illyria/game/mode.h"
@@ -125,8 +124,7 @@ struct App {
         // What the renderer was last given: the towns' holders (tower banners) and the land's reckoning.
         std::vector<uint8_t> owners;
         int64_t territoryTick = -1;
-        // The soldiers on the land (campaign_soldiers.h), as last gathered: for the renderer, for picking, for the minimap.
-        std::vector<MapSoldier> soldiers;
+        std::vector<illyria::sim::Campaign::Soldier> men;  // every man of the campaign, as it says he stands (for picking, the minimap and the tests)
         double layoutMs = 0;  // smoothed
         bool soldiersOff = false;  // test hook: draw the land without them, to see what they cost
         // A selection box being drawn on the map, in canvas pixels.
@@ -269,53 +267,43 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
     return p;
 }
 
-// The fights' effects on the field, as the 3D battle shows them: the blows and wounds the campaign's world reported
-// (blood, dust, sparks, splinters) go to the field's marks and particles, which move on; and the gates' wounds the
-// world holds (a gate hacked at, or broken) to the field's own, which draws the doors, their health bars and the ring.
-void mirrorFeedback(float dt) {
+// The fights are the field's own (Battle::borrow): the battle's effects, sounds, voices and gates all come from its
+// own presentation of the campaign's world; here it is only told how far between ticks the clock is, and moves on.
+void presentFight(float dt) {
     App::CampaignView& cv = app->camp;
-    const illyria::sim::World* w = cv.c->world();
-    if (!w) return;
-    cv.c->takeImpacts(cv.impacts);
-    if (!cv.impacts.empty()) app->battle->showImpacts(cv.impacts, *w);
+    if (!cv.c->presentedWorld() || !app->battle->borrowing()) return;
+    app->battle->setAlpha(static_cast<float>(std::clamp(cv.acc, 0.0, 1.0)));
     app->battle->stepEffects(dt);
-    illyria::sim::World& field = app->battle->mutableWorld();
-    if (field.gates().size() == w->gates().size()) {
-        for (size_t g = 0; g < w->gates().size(); ++g)
-            if (field.gates()[g].hp != w->gates()[g].hp) field.setGateHp(g, w->gates()[g].hp);
-    }
     app->battle->inspectGate(cv.inspectGate);
 }
 
-// The campaign's soldiers for this frame: gathered from the campaign's state, handed
-// to the renderer, and kept for picking and the minimap; and the arrows in flight.
-void placeMapSoldiers(float dt) {
+// The campaign's men for this frame: as the campaign says they stand (cv.men, for picking, the minimap and the
+// tests); the awake are the field's own, and the sleepers, with who is selected or looked at, go to the field to be
+// drawn in the one pass with them (Battle::setSleepers).
+void placeMen(float dt) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
-    if (cv.soldiersOff) {
-        cv.soldiers.clear();
-        app->renderer.setMapSoldiers({}, 0);
-        app->renderer.setMapArrows({});
-        return;
-    }
     const double started = emscripten_get_now();
-    collectMapSoldiers(*cv.c, mapAhead(), cv.selected ? cv.selected : cv.inspectStack, cv.soldiers);
-    cv.layoutMs = cv.layoutMs * 0.9 + (emscripten_get_now() - started) * 0.1;
-    app->renderer.setMapSoldiers(cv.soldiers, static_cast<float>((cv.c->tick() + std::clamp(cv.acc, 0.0, 1.0)) / C::kTicksPerSecond), dt);
-    // The arrows in flight over a siege or a field, in battle-local metres.
-    std::vector<float> arrows;
-    if (const illyria::sim::World* w = cv.c->world(); w && cv.c->awakeStacks() > 0) {
-        const V3 o = app->battle->origin();
-        const illyria::sim::Vec3 ro = w->region()->origin();
-        const V3 shift{static_cast<float>(ro.x.toDouble()) - o.x, static_cast<float>(ro.y.toDouble()) - o.y, 0};
-        for (const illyria::sim::Projectile& p : w->projectiles()) {
-            if (p.kind != illyria::sim::ProjectileKind::Arrow) continue;
-            const V3 at = toV3(p.pos) + shift, v = toV3(p.vel);
-            arrows.insert(arrows.end(), {at.x, at.y, at.z, v.x, v.y, v.z, 0.0f, 0.0f});
+    cv.c->soldiers(static_cast<int32_t>(mapAhead()), cv.men);
+    std::vector<Battle::Sleeper> sleepers;
+    std::vector<illyria::sim::EntityId> selected, inspected;
+    for (const C::Soldier& m : cv.men) {
+        const bool mine = cv.selected != 0 && m.stack == cv.selected, looked = cv.selected == 0 && cv.inspectStack != 0 && m.stack == cv.inspectStack;
+        if (m.awake) {
+            if (m.unitId && mine) selected.push_back(m.unitId);
+            if (m.unitId && looked) inspected.push_back(m.unitId);
+            continue;
         }
+        if (!m.alive || cv.soldiersOff) continue;
+        Battle::Sleeper d;
+        d.x = m.x, d.y = m.y, d.yaw = m.yaw, d.speed = m.speed, d.owner = m.owner, d.type = static_cast<uint8_t>(m.type), d.aloft = m.aloft;
+        d.selected = mine, d.inspected = looked, d.id = m.id, d.stack = m.stack;
+        sleepers.push_back(d);
     }
-    app->renderer.setMapArrows(arrows);
-    mirrorFeedback(dt);
+    app->battle->setSleepers(std::move(sleepers));
+    app->battle->setPresented(selected, inspected);
+    cv.layoutMs = cv.layoutMs * 0.9 + (emscripten_get_now() - started) * 0.1;
+    presentFight(dt);
 }
 
 void placePiers() {
@@ -464,27 +452,6 @@ void placeFlags() {
 
 uint32_t lastPickedMan = 0;  // the man pickStack found nearest the tap
 
-// The gate (of the campaign's island) whose doors a ground point is by, within a few metres; -1: none.
-int gateNear(const V3& battleLocal) {
-    const illyria::sim::World* w = app->camp.c->world();
-    if (!w || !w->region()) return -1;
-    const V3 o = app->battle->origin();
-    const illyria::sim::Vec3 ro = w->region()->origin();
-    const float x = battleLocal.x + o.x - static_cast<float>(ro.x.toDouble()), y = battleLocal.y + o.y - static_cast<float>(ro.y.toDouble());
-    int best = -1;
-    float bestD = std::max(5.0f, app->camera.distance() * 0.03f);
-    const auto& gs = w->region()->gates();
-    for (size_t g = 0; g < gs.size(); ++g) {
-        const float ax = static_cast<float>(gs[g].a.x.toDouble()), ay = static_cast<float>(gs[g].a.y.toDouble());
-        const float bx = static_cast<float>(gs[g].b.x.toDouble()), by = static_cast<float>(gs[g].b.y.toDouble());
-        const float dx = bx - ax, dy = by - ay, len2 = std::max(dx * dx + dy * dy, 1e-3f);
-        const float t = std::clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0.0f, 1.0f);
-        const float d = std::hypot(x - (ax + dx * t), y - (ay + dy * t));
-        if (d < bestD) bestD = d, best = static_cast<int>(g);
-    }
-    return best;
-}
-
 // The stack under a tap or click: that of the soldier nearest the tap on the
 // screen, within a finger's width (22 CSS pixels); failing that, one afloat by
 // the look of its boat. The man himself is what is touched, at any height.
@@ -495,19 +462,16 @@ const illyria::sim::Campaign::Stack* pickStack(float px, float py) {
     const V3 o = app->battle->origin();
     uint32_t pick = 0;
     lastPickedMan = 0;
-    float best = 22.0f * app->pixelRatio;
-    for (const MapSoldier& m : cv.soldiers) {
-        if (!m.alive) continue;
-        float sx, sy;
-        const float x = m.x - o.x, y = m.y - o.y;
-        if (!app->camera.project({x, y, app->battle->heightAt(x, y) + 1.0f}, sx, sy)) continue;
-        const float d = std::hypot(sx - px, sy - py);
-        if (d < best) {
-            best = d;
-            pick = m.stack;
-            lastPickedMan = m.id;
-        }
+    const Battle::ManPick man = app->battle->manAt(app->camera, px, py, 22.0f * app->pixelRatio);
+    if (man.kind == Battle::ManPick::Kind::Sleeper) {
+        pick = app->battle->sleepers()[man.index].stack;
+        lastPickedMan = app->battle->sleepers()[man.index].id;
+    } else if (man.kind == Battle::ManPick::Kind::Unit) {
+        pick = c.stackOfUnit(man.id);
+        for (const illyria::sim::Campaign::Soldier& m : cv.men)
+            if (m.unitId == man.id) lastPickedMan = m.id;
     }
+    float best = 34.0f * app->pixelRatio;
     if (pick) return c.findStack(pick);
     const C::Stack* nearest = nullptr;
     best = 34.0f * app->pixelRatio;
@@ -561,18 +525,15 @@ void campaignTap(float px, float py) {
         cv.inspectGate = -1;
         return;
     }
-    if (!nearest) {
-        V3 spot;
-        if (app->camera.distance() < 600.0f && app->camera.pickGround(px, py, spot)) {
-            const int g = gateNear(spot);
-            if (g >= 0) {
-                cv.selected = 0;
-                cv.city = -1;
-                cv.inspectStack = 0;
-                cv.inspectMan = 0;
-                cv.inspectGate = g;
-                return;
-            }
+    if (!nearest && app->camera.distance() < 600.0f) {
+        const int g = app->battle->gateAt(app->camera, px, py, app->pixelRatio);
+        if (g >= 0) {
+            cv.selected = 0;
+            cv.city = -1;
+            cv.inspectStack = 0;
+            cv.inspectMan = 0;
+            cv.inspectGate = g;
+            return;
         }
     }
     cv.inspectStack = 0;
@@ -620,7 +581,7 @@ void endMapBox(bool cancelled) {
     if (x1 - x0 < 6 && y1 - y0 < 6) return;
     const V3 o = app->battle->origin();
     std::map<uint32_t, int> inside;
-    for (const MapSoldier& m : cv.soldiers) {
+    for (const illyria::sim::Campaign::Soldier& m : cv.men) {
         if (m.owner != 0 || !m.alive) continue;
         float sx, sy;
         if (app->camera.project({m.x - o.x, m.y - o.y, app->battle->heightAt(m.x - o.x, m.y - o.y) + 1.0f}, sx, sy) && sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1)
@@ -643,11 +604,20 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     App::CampaignView& cv = app->camp;
     cv.c = std::move(campaign);
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = cv.c->factionOf(side);
-    // The fights are heard as the battle's are: the world's blows and deaths, step by step, into the field's sounds.
-    cv.c->onWorldStep([](const illyria::sim::World& w) {
-        if (app && app->battle && app->camp.on) app->battle->sfx().observe(w, 0, app->battle->continent(), toV3(w.region()->origin()), false);
-    });
     cv.c->prepareWorld();  // the island's ground for the fights, a few seconds, once (the page has said so)
+    // The field is made on the island's own origin and presents the campaign's world as it presents any battle's.
+    {
+        illyria::sim::World* world = cv.c->presentedWorld();
+        const illyria::sim::Vec3 ro = world->region()->origin();
+        const illyria::sim::Vec3 centre{ro.x + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), ro.y + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), illyria::sim::Fixed::zero()};
+        app->battle = std::make_unique<Battle>(kBattleSeed, centre, cv.continent);
+        const V3 o = app->battle->origin();
+        app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
+        app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
+        app->renderer.reset(*app->battle);
+        app->battle->borrow(world);
+        cv.c->onWorldStep([] { app->battle->beforeWorldStep(); }, [] { app->battle->afterWorldStep(); }, [] { app->battle->forgetMen(); });
+    }
     cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
     cv.owners.clear();
     cv.territoryTick = -1;
@@ -660,7 +630,7 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     cv.speed = 1;
     cv.selected = 0;
     cv.city = -1;
-    app->renderer.setShowUnits(false);
+    app->renderer.setShowUnits(true);
     cv.heading.clear();
     placePiers();
     // Over your capital, high enough to see the neighbouring towns.
@@ -691,6 +661,12 @@ void stopPlaying() {
     app->camera.setCircle(0, 0, 0, 0);  // a match's field no longer holds the camera
     App::CampaignView& cv = app->camp;
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = side;
+    if (cv.on && cv.c) cv.c->onWorldStep({}, {}, {});
+    if (app->battle->borrowing()) {
+        app->battle->borrow(nullptr);
+        newBattle();
+        app->renderer.reset(*app->battle);
+    }
     if (cv.on) {
         cv.on = false;
         cv.city = -1;
@@ -698,7 +674,6 @@ void stopPlaying() {
         app->renderer.setTerritory({}, 0, 0, 0);
         app->renderer.setBoats({});
         app->renderer.setPiers({});
-        app->renderer.setMapSoldiers({}, 0);
     }
     app->renderer.setShowUnits(true);
     app->battle->voice().take();
@@ -825,7 +800,7 @@ void frame() {
             cv.acc = std::min(cv.acc, 1.0);
         }
         placeBoats();
-        placeMapSoldiers(static_cast<float>(dtMs / 1000.0));
+        placeMen(static_cast<float>(dtMs / 1000.0));
         // What is heard: the campaign world's own places, the listener at the camera's middle.
         if (const illyria::sim::World* w = cv.c->world()) {
             const V3 eye = app->camera.eye(), at = app->camera.target();
@@ -1319,7 +1294,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
         const float tps = static_cast<float>(illyria::sim::Campaign::kTicksPerSecond);
         const float now = static_cast<float>(cv.c->tick());
         std::map<std::pair<int, int>, std::pair<int, V3>> heat;  // by 100 m square: men fighting, and the sum of where
-        for (const MapSoldier& m : cv.soldiers) {
+        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
             if (!m.awake || !m.alive || now - static_cast<float>(m.fightTick) > tps * 2) continue;
             auto& h = heat[{static_cast<int>(m.x / 100), static_cast<int>(m.y / 100)}];
             ++h.first;
@@ -1829,7 +1804,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_minimap() {
     for (int side = 0; side <= illyria::sim::Continent::kFactionCount; ++side) {
         const uint8_t owner = side < illyria::sim::Continent::kFactionCount ? static_cast<uint8_t>(side) : C::kNeutral;
         bins.clear();
-        for (const MapSoldier& m : cv.soldiers) {
+        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
             if (m.owner != owner || !m.alive) continue;
             Bin& b = bins[{static_cast<int>(m.x / kBin), static_cast<int>(m.y / kBin)}];
             ++b.n;
@@ -1848,7 +1823,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_minimap() {
     {
         std::map<std::pair<int, int>, std::tuple<int, float, float>> fights;
         const uint32_t now = c.tick();
-        for (const MapSoldier& m : cv.soldiers) {
+        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
             if (!m.awake || !m.alive || now - m.fightTick > 2 * C::kTicksPerSecond) continue;
             auto& f = fights[{static_cast<int>(m.x / 80), static_cast<int>(m.y / 80)}];
             ++std::get<0>(f);
@@ -1912,7 +1887,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_shapes() {
         };
         std::map<uint32_t, Sum> by;
         const uint32_t now = app->camp.c->tick();
-        for (const MapSoldier& m : app->camp.soldiers) {
+        for (const illyria::sim::Campaign::Soldier& m : app->camp.men) {
             Sum& b = by[m.stack];
             b.x += m.x, b.y += m.y, ++b.n, b.owner = m.owner, b.awake = m.awake;
             if (m.awake && m.alive && now - m.fightTick < 2 * illyria::sim::Campaign::kTicksPerSecond) ++b.fighting, b.fx += m.x, b.fy += m.y;
@@ -1936,7 +1911,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_screen(unsigned id) {
     const V3 o = app->battle->origin();
     double sx = 0, sy = 0;
     int n = 0;
-    for (const MapSoldier& m : app->camp.soldiers)
+    for (const illyria::sim::Campaign::Soldier& m : app->camp.men)
         if (m.stack == id) sx += m.x, sy += m.y, ++n;
     if (n == 0) return buf;
     const float x = static_cast<float>(sx / n) - o.x, y = static_cast<float>(sy / n) - o.y;
@@ -1955,7 +1930,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
     buf[0] = 0;
     if (!app || !app->camp.on) return buf;
     std::snprintf(buf, sizeof buf, "{\"soldiers\":%zu,\"awake\":%d,\"awakeMen\":%d,\"sprites\":%zu,\"dots\":%d,\"layoutMs\":%.3f,\"drawMs\":%.3f}",
-                  app->camp.soldiers.size(), app->camp.c->awakeStacks(), app->camp.c->awakeMen(), app->renderer.mapSprites(), app->renderer.mapDots(),
+                  app->camp.men.size(), app->camp.c->awakeStacks(), app->camp.c->awakeMen(), app->renderer.mapSprites(), app->renderer.mapDots(),
                   app->camp.layoutMs, app->drawMs);
     return buf;
 }
@@ -2109,7 +2084,6 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
     if (!app) return;
     app->camp.on = false;
     app->renderer.setShowUnits(true);
-    app->renderer.setMapSoldiers({}, 0);
     frameCamera();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
@@ -2316,11 +2290,11 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         } else if (cv.inspectStack) {
             const C::Stack* st = c.findStack(cv.inspectStack);
             const illyria::sim::Unit* u = nullptr;
-            for (const MapSoldier& m : cv.soldiers)
+            for (const illyria::sim::Campaign::Soldier& m : cv.men)
                 if (m.id == cv.inspectMan && m.alive) u = w ? w->findUnit(m.unitId) : nullptr;
             const char* type = "";
             int hp = -1, max = -1, grade = 0, morale = 0, owner = st ? st->owner : 255;
-            for (const MapSoldier& m : cv.soldiers)
+            for (const illyria::sim::Campaign::Soldier& m : cv.men)
                 if (m.id == cv.inspectMan) type = illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(m.type));
             if (u) {
                 hp = u->hp, max = u->stats.maxHp, grade = illyria::sim::veteranGrade(*u);
