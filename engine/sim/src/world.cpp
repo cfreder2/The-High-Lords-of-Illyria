@@ -1,6 +1,7 @@
 #include "illyria/sim/world.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 
 #include "illyria/sim/ballistics.h"
@@ -278,9 +279,15 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
                           const UnitStats& stats) {
     // A soldier's id is his place in units_ plus one (the game indexes by it),
     // even when he joins once missiles are flying (they take ids from the
-    // same counter, but are never looked up among the soldiers).
+    // same counter, but are never looked up among the soldiers). A place a man
+    // was taken out of (removeUnit) is given to the next man, the lowest first.
     Unit u;
-    u.id = nextUnitId_++;
+    if (!freeSlots_.empty()) {
+        u.id = freeSlots_.back();  // (descending: the lowest is the last, taken in O(1))
+        freeSlots_.pop_back();
+    } else {
+        u.id = nextUnitId_++;
+    }
     nextId_ = std::max(nextId_, u.id + 1);
     u.owner = owner;
     u.stats = stats;
@@ -291,23 +298,65 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     u.pos = pos;
     if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
-    units_.push_back(u);
+    if (u.id <= units_.size()) {
+        units_[u.id - 1] = u;
+        ++spawns_[u.id - 1];
+    } else {
+        units_.push_back(u);
+        spawns_.push_back(1);
+    }
     broadValid_ = false;
     return u.id;
 }
 
 void World::removeUnit(EntityId id) {
-    // (The campaign puts a squad's men in the world to fight and takes them out
-    // when it is over; ids are not reused, and the rest stay in id order.)
-    const auto it = std::lower_bound(units_.begin(), units_.end(), id, [](const Unit& u, EntityId i) { return u.id < i; });
-    if (it == units_.end() || it->id != id) return;
-    units_.erase(it);
+    // (The campaign puts a squad's men in the world to fight and takes them out when it is over. His place stays, empty:
+    // erasing it would move every unit after him, and everything that presents the world indexes by id.)
+    Unit* u = mutableUnit(id);
+    if (!u || u->removed) return;
+    u->removed = true;
+    u->hp = 0;
+    u->hasMoveTarget = false;
+    u->hasAttackTarget = false;
+    u->targetUnit = kNoEntity;
+    u->foe = kNoEntity;
+    u->engaged = false;
+    u->airborne = false;  // (nothing of his is stepped any more)
+    u->flight = Unit::Flight::Grounded;
+    u->vel = Vec3{};
+    u->routed = false;
+    // Nobody keeps him as a foe, a mark, a rally point or a shooter: the next man in his place is not he (and the places of
+    // the dead go on being reused, so a stale id would be taken for the newcomer).
+    const auto forget = [id](EntityId& ref) {
+        if (ref == id) ref = kNoEntity;
+    };
+    for (Unit& o : units_) {
+        forget(o.targetUnit);
+        forget(o.rally);
+        forget(o.engageFoe);
+        forget(o.lastAttacker);
+        forget(o.thrower);
+        forget(o.foe);
+        forget(o.scav.mark);
+        forget(o.scav.shotBy);
+    }
+    for (Projectile& p : projectiles_) forget(p.shooter);
+    for (Projectile& p : spawned_) forget(p.shooter);
+    freeSlots_.insert(std::lower_bound(freeSlots_.begin(), freeSlots_.end(), id, std::greater<EntityId>()), id);
     broadValid_ = false;
     pathCache_.clear();
 }
 
 void World::clearFight(uint64_t seed) {
+    // The empty places (freeSlots_) and the generations (spawns_) go with the men: a fight starts with neither. They are not
+    // saved, and a save restores the same checksum all the same: Campaign::save settles every stack asleep first
+    // (settleAll), which ends the fight and clears the world here, as it does in the game that goes on from the save; and
+    // Campaign::checksum hashes the world only while a fight is on. freeSlots_ is state (it says whose id the next man has)
+    // and is in World::checksum; spawns_ is not, for no step reads it: it is only what presentations (Battle, the renderer,
+    // Voice) key what they keep by place on, and a loaded game presents from nothing.
     units_.clear();
+    freeSlots_.clear();
+    spawns_.clear();
     projectiles_.clear();
     spawned_.clear();
     impacts_.clear();
@@ -344,10 +393,11 @@ void World::restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale) 
 }
 
 const Unit* World::findUnit(EntityId id) const {
-    // Units are only ever appended, so the vector is sorted by id.
+    // Units are only ever appended, so the vector is sorted by id (and a unit's place is his id less one). One taken
+    // out of the world (removeUnit) is no longer found.
     auto it = std::lower_bound(units_.begin(), units_.end(), id,
                                [](const Unit& u, EntityId i) { return u.id < i; });
-    return it != units_.end() && it->id == id ? &*it : nullptr;
+    return it != units_.end() && it->id == id && !it->removed ? &*it : nullptr;
 }
 
 Unit* World::mutableUnit(EntityId id) {
@@ -411,6 +461,7 @@ void World::step(std::span<const Command> commands) {
     buildBroad();
 
     for (Unit& u : units_) {
+        if (!u.present()) continue;
         const Vec3 before = u.pos;
         updateUnit(u);
         trackMomentum(u, before);
@@ -1335,7 +1386,7 @@ void World::separateBodies() {
     const auto& obstacles = config_.region->obstacles();
     std::vector<uint32_t> nearWalls;
     for (Unit& u : units_) {
-        if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
+        if (!u.present() || u.inAir() || u.flight != Unit::Flight::Grounded) continue;
         // From standing stone he keeps his drawn breadth, from the rest his radius.
         const Fixed standoff = stoneStandoff(u.stats.radius);
         bool offStone = false;  // pushed off standing stone (or a ruin's base)
@@ -1401,9 +1452,11 @@ void World::separateBodies() {
             offBases();
         }
     }
-    for (Unit& u : units_) keepOnWalk(u);  // the thrown too
     for (Unit& u : units_) {
-        if (!u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        if (u.present()) keepOnWalk(u);  // the thrown too
+    }
+    for (Unit& u : units_) {
+        if (u.present() && !u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     }
 }
 
@@ -2130,6 +2183,7 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
 
     // Soldiers, living and dead: hurt, thrown, and torn apart.
     for (Unit& u : units_) {
+        if (!u.present()) continue;
         const Vec3 centre = u.pos + up(u.stats.height / 2);
         const Fixed d = (centre - at).length();
         if (d >= ex.radius) continue;
@@ -2288,8 +2342,12 @@ uint64_t World::checksum() const {
         h.addI64(zoneRadius_.raw);
         h.addI64(zonePct_);
     }
-    h.addU64(units_.size());
+    // (The men taken out of the world are not in it: they are no part of its state, but the places they left are, once
+    // there are any, for they say whose id the next man has. spawns_ is not hashed: see clearFight.)
+    for (EntityId free : freeSlots_) h.addU64(free);  // (in the order kept: descending)
+    h.addU64(std::count_if(units_.begin(), units_.end(), [](const Unit& u) { return u.present(); }));
     for (const Unit& u : units_) {
+        if (!u.present()) continue;
         h.addU64(u.id);
         h.addU64(u.owner);
         hashStats(h, u.stats);

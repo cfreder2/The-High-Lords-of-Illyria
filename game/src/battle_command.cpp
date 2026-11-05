@@ -429,10 +429,12 @@ void Battle::selectHeroes() {
 
 void Battle::assignGroup(int slot) {
     if (slot < 0 || slot >= kGroupSlots) return;
+    if (conquest_) return say("Groups are of men in a fight: in a conquest they come and go from it");
     groups_[static_cast<size_t>(slot)] = {selectedAlive(), selFormation_, selectionShape()};
 }
 
 int Battle::saveGroup() {
+    if (conquest_) return say("Groups are of men in a fight: in a conquest they come and go from it"), -1;
     if (selectedAlive().empty()) return -1;
     // Keys 1-9, then 0, as along the keyboard.
     for (int k = 1; k <= kGroupSlots; ++k) {

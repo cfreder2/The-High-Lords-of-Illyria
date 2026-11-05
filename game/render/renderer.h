@@ -377,6 +377,7 @@ private:
     std::vector<float> walked_;
     std::vector<V3> lastSeen_;
     std::vector<sprites::ClipMemory> clipMemory_;
+    std::vector<uint32_t> seenGen_;  // World::generation of each place, as last drawn
     // A living soldier's frame on a sheet of its own clips (sprite_clips.h chooseFrame):
     // `moved` metres since the last frame, `dt` game seconds; `victors` the sides that have won.
     int listedFrame(const Battle& battle, size_t i, const sprites::SheetClips& clips, float gameSeconds, float moved, float dt,

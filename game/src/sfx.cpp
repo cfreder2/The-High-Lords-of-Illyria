@@ -425,6 +425,7 @@ void Sfx::updateAmbience(const sim::World& world, const sim::Continent& continen
     V3 nearestFoe;
     float foeD2 = 1e12f, contactD2 = 1e12f;
     for (const sim::Unit& u : world.units()) {
+        if (!u.present()) continue;  // (taken out of the world: not a body)
         const V3 p = toV3(u.pos);
         if (!u.alive()) {
             if (!u.stats.bleeds || tick_ - u.death.tick < kFliesAfter) continue;

@@ -333,7 +333,11 @@ bool Voice::gate(const sim::World& world, const Candidate& c) {
         ++emitted_;
         return true;
     }
-    if (lastSpoke_.size() < world.units().size() + 1) lastSpoke_.resize(world.units().size() + 1, 0);
+    if (lastSpoke_.size() < world.units().size() + 1) lastSpoke_.resize(world.units().size() + 1, 0), spokeGen_.resize(lastSpoke_.size(), 0);
+    if (spokeGen_[c.speaker] != world.generation(c.speaker)) {  // another man in his place: he has not just spoken
+        spokeGen_[c.speaker] = world.generation(c.speaker);
+        lastSpoke_[c.speaker] = 0;
+    }
     const bool grave = cue.priority >= 4;
     if (!grave && !isOrder && lastSpoke_[c.speaker] != 0 && tick_ - lastSpoke_[c.speaker] < kSpeakerGap) return false;
     while (!window_.empty() && tick_ - window_.front() >= kWindow) window_.pop_front();
@@ -371,7 +375,7 @@ void Voice::observe(const sim::World& world, int outcome) {
     if (!primed_) {
         track(world);
         primed_ = true;
-        for (const sim::Unit& u : units) strength_ += u.owner == player_;
+        for (const sim::Unit& u : units) strength_ += u.present() && u.owner == player_;
         return;
     }
     if (seen_.size() < units.size()) seen_.resize(units.size());
@@ -401,7 +405,7 @@ void Voice::observe(const sim::World& world, int outcome) {
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
         const Seen& was = seen_[i];
-        if (!u.alive() || !was.alive) continue;
+        if (!u.alive() || !was.alive || was.gen != world.generation(u.id)) continue;  // (a man new to the place has no past)
         if (u.routed && !was.routed) want(S::Breaking, u.id);
         if (!u.routed && was.routed) want(S::Rallied, u.id);
         if (u.wavering() && !was.wavering && !u.routed) want(S::Wavering, u.id);
@@ -537,7 +541,7 @@ void Voice::observe(const sim::World& world, int outcome) {
         int lost = 0;
         sim::EntityId any = sim::kNoEntity;
         for (const sim::Unit& u : units) {
-            if (u.owner != player_) continue;
+            if (!u.present() || u.owner != player_) continue;
             if (any == sim::kNoEntity) any = u.id;
             lost += !u.alive();
         }
@@ -610,7 +614,7 @@ void Voice::observe(const sim::World& world, int outcome) {
         sim::EntityId last = nearestVoice(world, loser, at, 1e6f, S::Defeat);
         if (last == sim::kNoEntity)
             for (const sim::Unit& u : units)
-                if (u.owner == loser && voices(voiceSetOf(static_cast<UnitType>(u.stats.type)), S::Defeat)) last = u.id;
+                if (u.present() && u.owner == loser && voices(voiceSetOf(static_cast<UnitType>(u.stats.type)), S::Defeat)) last = u.id;
         want(S::Defeat, last, loser != player_);
     }
     lastOutcome_ = outcome;
@@ -635,6 +639,7 @@ void Voice::track(const sim::World& world) {
         const sim::Unit& u = units[i];
         Seen& s = seen_[i];
         s.alive = u.alive();
+        s.gen = world.generation(u.id);
         s.routed = u.routed;
         s.wavering = u.wavering();
         s.wounded = u.hp * 100 < u.stats.maxHp * 35;
@@ -650,7 +655,7 @@ void Voice::track(const sim::World& world) {
 void Voice::announce(const sim::World& world, Situation s) {
     // The herald has no soldier of his own: he speaks for the player's side.
     for (const sim::Unit& u : world.units())
-        if (u.owner == player_) {
+        if (u.present() && u.owner == player_) {
             want(s, u.id, false, VoiceSet::Herald);
             return;
         }

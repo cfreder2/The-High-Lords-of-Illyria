@@ -541,6 +541,9 @@ void Campaign::sleep(Stack& s) {
                 m.hp = 0;
             }
             m.unit = 0;
+            // Asleep, he is not fighting: what the world has not told of his last blows is not state (it is not saved, so
+            // a game saved here and the game that goes on from here must agree on it, or they wake differently).
+            m.struckTick = m.hurtTick = m.fightTick = 0;
         }
         a.soldiers = alive;
     }
@@ -872,8 +875,15 @@ void Campaign::stepWorld() {
     awakeStacks_ = 0;  // (counted afresh: stacks come and go in many places)
     for (const Stack& s : stacks_) awakeStacks_ += s.awake && !s.armies.empty();
     while (!corpses_.empty() && corpses_.front().first <= tick_ && awakeStacks_ > 0) {
-        if (world_) world_->removeUnit(corpses_.front().second);
+        const uint32_t gone = corpses_.front().second;
+        if (world_) world_->removeUnit(gone);
         corpses_.erase(corpses_.begin());
+        // His place in the world is empty and goes to the next man to wake or come: he must not keep it as his (the soldier
+        // list, a stack of a unit's id and a sleep would all take the new man for him).
+        for (Stack& s : stacks_)
+            for (Army& a : s.armies)
+                for (Man& m : a.men)
+                    if (m.unit == gone) m.unit = 0;
     }
     if (awakeStacks_ == 0) {
         playerCommands_.clear();  // (to men no longer in the world)

@@ -344,7 +344,7 @@ bool World::prizeAt(const Unit& u, Vec3& at) const {
         }
         case Scavenger::Prize::Corpse: {
             const Unit* o = findUnit(s.prizeRef);
-            if (o == nullptr || o->alive() || o->gibbed || o->looted || o->inAir()) return false;
+            if (o == nullptr || !o->present() || o->alive() || o->gibbed || o->looted || o->inAir()) return false;
             at = o->pos;
             return true;
         }
@@ -414,7 +414,7 @@ bool World::choosePrize(Unit& u) {
     }
     // The blades the dead still hold.
     for (const Unit& o : units_) {
-        if (o.alive() || o.gibbed || o.looted || o.inAir() || !bearsBlade(static_cast<UnitType>(o.stats.type))) continue;
+        if (!o.present() || o.alive() || o.gibbed || o.looted || o.inAir() || !bearsBlade(static_cast<UnitType>(o.stats.type))) continue;
         consider(Scavenger::Prize::Corpse, o.id, o.pos, kBladeValue);
     }
     // Body parts and thrown blades lying about.

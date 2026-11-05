@@ -171,6 +171,7 @@ private:
     struct Seen {
         bool alive = false, routed = false, wavering = false, wounded = false, galloping = false;
         int32_t rank = 0, kills = 0;
+        uint32_t gen = 0;  // which man of the place this is (World::generation)
     };
     std::vector<Seen> seen_;
     bool primed_ = false;
@@ -198,6 +199,7 @@ private:
     uint32_t lastSituation_[2][kSituationCount] = {};
     bool heardSituation_[2][kSituationCount] = {};
     std::vector<uint32_t> lastSpoke_;
+    std::vector<uint32_t> spokeGen_;  // the generation of each speaker's place when he last spoke
     uint32_t lastAmbient_ = 0;
     bool anyAmbient_ = false;
     std::deque<uint32_t> window_;

@@ -759,6 +759,7 @@ private:
     OrderMode orderMode_ = OrderMode::Normal;
     bool forceKey_ = false, marchKey_ = false;
     std::vector<uint32_t> orderTick_;  // by EntityId - 1: when the player last ordered him
+    std::vector<uint32_t> seenGen_;    // by EntityId - 1: which man of the place the world has given (World::generation) this holds
     std::string notice_;
     uint32_t noticeTick_ = 0;
     bool paused_ = false;

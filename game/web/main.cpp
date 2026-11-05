@@ -1278,7 +1278,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_view_walk(int dead, float distance, float 
     if (!app) return 0;
     const illyria::sim::Region& rg = app->battle->region();
     for (const illyria::sim::Unit& u : app->battle->world().units()) {
-        if (u.owner == illyria::game::Battle::kPlayer || u.alive() == (dead != 0) || u.airborne) continue;
+        if (!u.present() || u.owner == illyria::game::Battle::kPlayer || u.alive() == (dead != 0) || u.airborne) continue;
         if (u.pos.z < rg.terrain().heightAt(u.pos.x, u.pos.y) + illyria::sim::Fixed::fromInt(3)) continue;
         const V3 p = toV3(u.pos);
         V3 c{};
@@ -1308,7 +1308,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_walk() {
     V3 from{};
     int n = 0;
     for (const illyria::sim::Unit& u : units) {
-        if (u.owner != illyria::game::Battle::kPlayer || u.stats.type != static_cast<uint8_t>(illyria::sim::UnitType::Archers)) continue;
+        if (!u.present() || u.owner != illyria::game::Battle::kPlayer || u.stats.type != static_cast<uint8_t>(illyria::sim::UnitType::Archers)) continue;
         from = from + toV3(u.pos);
         ++n;
     }
@@ -1471,7 +1471,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
 EMSCRIPTEN_KEEPALIVE int illyria_view_death(int kind, int nth, float distance) {
     if (!app || !app->battle) return 0;
     for (const illyria::sim::Unit& u : app->battle->world().units()) {
-        if (u.alive() || static_cast<int>(u.death.kind) != kind || nth-- > 0) continue;
+        if (!u.present() || u.alive() || static_cast<int>(u.death.kind) != kind || nth-- > 0) continue;
         const V3 p = toV3(u.pos);
         illyria_set_camera(p.x, p.y, distance, app->camera.yaw());
         return 1;
@@ -1682,39 +1682,6 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_start(int hard) {
 // Test hook: the 3D siege's capture point stormed (the title's set battle).
 EMSCRIPTEN_KEEPALIVE void illyria_test_storm() {
     if (app && !app->camp.on) app->battle->testStorm();
-}
-// Test hook: a fight on the land. A strong stack of ours (heavy foot and archers) is raised beside the neutral town
-// nearest the selected stack and ordered on it; the conquest runs `ticks` ticks (paused after), its men selected, and the
-// camera looks at the walls from `distance` metres. Returns the town (-1 if there is none).
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_fight(int ticks, float distance) {
-    using C = illyria::sim::Campaign;
-    if (!app || !app->camp.on) return -1;
-    App::CampaignView& cv = app->camp;
-    const C::Stack* s = cv.c->findStack(app->battle->selectedStack());
-    if (!s) return -1;
-    int best = 1 << 30, target = -1;
-    for (size_t i = 0; i < cv.c->cities().size(); ++i) {
-        const C::CityState& city = cv.c->cities()[i];
-        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
-        if (city.owner == C::kNeutral && city.banner == C::kNeutral && city.defense <= 4 && d < best) {
-            best = d;
-            target = static_cast<int>(i);
-        }
-    }
-    if (target < 0) return -1;
-    const C::CityState& t = cv.c->cities()[static_cast<size_t>(target)];
-    const illyria::sim::UnitType h = illyria::sim::UnitType::HeavyInfantry, a = illyria::sim::UnitType::Archers;
-    const uint32_t raised = cv.c->raise(cv.c->localSide(), t.cx - 3, t.cy, {h, h, h, h, h, h, a, a});
-    submitOrder(C::Order::Kind::Move, raised, t.cx, t.cy);
-    for (int k = 0; k < ticks; ++k) cv.c->step();
-    cv.paused = true;
-    cv.city = -1;
-    presentConquest(0);
-    app->battle->selectStack(raised);
-    const V3 o = app->battle->origin();
-    const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
-    app->camera.lookAt(at.x, at.y - 33, distance);
-    return target;
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.

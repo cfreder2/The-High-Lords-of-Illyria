@@ -420,7 +420,7 @@ void Renderer::updateCloseups(const Battle& battle, const Camera& camera) {
     {
         const auto& units = battle.world().units();
         for (size_t i = 0; i < units.size(); ++i)
-            if (units[i].alive() || !units[i].gibbed) seen.push_back({units[i].stats.type, battle.unitPosition(i)});
+            if (units[i].present() && (units[i].alive() || !units[i].gibbed)) seen.push_back({units[i].stats.type, battle.unitPosition(i)});
     }
     // Each type's soldier nearest the camera; and, for the zoom limit, how far
     // the camera must stay so no soldier on screen is drawn past

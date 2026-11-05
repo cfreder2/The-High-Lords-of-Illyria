@@ -253,6 +253,9 @@ struct Unit {
     Fixed marchSpeed;       // pace of the current move order (0 = own speed)
     Vec3 arriveFacing;      // the way to turn on arrival (zero: as he walked)
     bool gibbed = false;    // blown apart: no corpse, only its parts
+    // Taken out of the world (World::removeUnit): nobody, hit points none, drawn and counted by no one. His place in the
+    // list stays, so that a unit's id less one is always his place in it (what everything presenting the world relies on).
+    bool removed = false;
     bool hasAttackTarget = false;
     Vec3 attackTarget;
     int32_t attackGate = -1;  // the gate the attack target is on, if any
@@ -312,6 +315,9 @@ struct Unit {
     bool layOrdered = false;
 
     bool alive() const { return hp > 0; }
+    // In the world at all: a man taken out of it (removed) has no hit points either, but is no corpse; every loop over the
+    // men that treats the fallen (corpses, gibs, deaths, remains) asks this first.
+    bool present() const { return !removed; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
 };
 
@@ -520,7 +526,12 @@ public:
     // (campaign_world.cpp): a soldier's wounds, kills and morale as he last
     // stood, and taking him out again (the bodies of the fallen stay until then).
     void restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale);
+    // Taking a man out of the world leaves his place in the list, empty (Unit::removed), and the next man to come takes the
+    // lowest empty place (so that a world with fights always going on does not grow for ever): a unit's place is his id less
+    // one, `units()[id - 1]`, as in any battle. A place is given to a man afresh each time (generation): whatever a
+    // presentation keeps by place is kept for the man who was there, and is forgotten when another comes.
     void removeUnit(EntityId id);
+    uint32_t generation(EntityId id) const { return id >= 1 && id <= spawns_.size() ? spawns_[id - 1] : 0; }
     // Everything of a fight but the gates (their wounds, and the broken ones
     // open for good): no soldiers, missiles or remains, the dice and the clock
     // as they start. What a campaign's world is between fights, so that it is
@@ -934,9 +945,11 @@ private:
     Fixed zoneRadius_;
     int32_t zonePct_ = 0;
     EntityId nextId_ = 1;
-    EntityId nextUnitId_ = 1;  // soldiers' ids: never reused, so units_ stays sorted by them
+    EntityId nextUnitId_ = 1;  // the id of the next new place in units_ (a place's id is its index plus one, so units_ stays sorted by id)
     uint32_t packs_ = 0;  // raiding packs formed so far (formPacks)
     std::vector<Unit> units_;
+    std::vector<EntityId> freeSlots_;  // the places men were taken out of, descending: the next man takes the last (the lowest), so a spawn costs O(1) and a removal O(places empty)
+    std::vector<uint32_t> spawns_;     // how many men have come to each place (generation)
     std::vector<Projectile> projectiles_;
     std::vector<Projectile> spawned_;  // created while projectiles_ is being updated
     std::vector<ImpactEvent> impacts_;

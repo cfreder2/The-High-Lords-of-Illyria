@@ -1523,6 +1523,7 @@ void Renderer::reset(Battle& battle) {
     walked_.clear();
     lastSeen_.clear();
     clipMemory_.clear();
+    seenGen_.clear();
     gatesShown_.clear();
     unitsChecked_ = SIZE_MAX;
 }
@@ -1534,6 +1535,7 @@ void Renderer::bakeMissing(const Battle& battle) {
     // The types this battle needs that have no sheet yet, in order.
     std::vector<UnitType> need;
     for (const sim::Unit& u : battle.world().units()) {
+        if (!u.present()) continue;
         const auto t = static_cast<UnitType>(u.stats.type);
         if (!sheets_[static_cast<int>(t)].tex && std::find(need.begin(), need.end(), t) == need.end()) need.push_back(t);
     }
@@ -2199,6 +2201,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         for (size_t i = 0; i < units.size(); ++i) lastSeen_[i] = battle.unitPosition(i);
     }
     if (clipMemory_.size() != units.size()) clipMemory_.resize(units.size());
+    if (seenGen_.size() != units.size()) {
+        seenGen_.resize(units.size());
+        for (size_t i = 0; i < units.size(); ++i) seenGen_[i] = world.generation(units[i].id);
+    }
     const auto ago = [&](uint32_t tick) { return tick == UINT32_MAX ? 1e9f : gameSeconds - tick / static_cast<float>(sim::kTicksPerSecond); };
     // The sides that have won (unit_deeds.h), for the soldiers whose sheets have a celebration: asked once a frame, if at all.
     uint32_t victors = 0;
@@ -2212,6 +2218,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won, {}};
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
+        // A place a man was taken out of and another came to: what is kept of the man who stood there is not his.
+        if (const uint32_t g = world.generation(u.id); seenGen_[i] != g) {
+            seenGen_[i] = g;
+            walked_[i] = 0.0f;
+            lastSeen_[i] = battle.unitPosition(i);
+            clipMemory_[i] = {};
+        }
         ManView v;
         v.unit = &u;
         v.index = i;
@@ -2233,7 +2246,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         v.struck = ago(battle.attackTick(i));
         v.hurt = ago(battle.hitTick(i));
         v.died = ago(battle.deathTick(i));
-        if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
+        if (!u.present() || (!u.alive() && u.gibbed)) continue;  // taken out of the world, or blown apart: only the parts remain
         drawMan(v, pass);
     }
     pushSleepers(pass);

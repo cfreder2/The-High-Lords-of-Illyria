@@ -166,7 +166,8 @@ void Battle::finish() {
     hitTick_.assign(n, UINT32_MAX);
     selectedFlag_.assign(n, 0);
     prevUnitPos_.resize(n);
-    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+    seenGen_.assign(n, 0);
+    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
 }
 
 Standing Battle::standing(const Squad& s) const {
@@ -497,6 +498,19 @@ void Battle::advance(double seconds) {
 void Battle::beforeWorldStep() {
     growUnits();
     const auto& units = world_->units();
+    // A place in the world that a man was taken out of and another came to (Conquest's fights): all that is kept by place
+    // is forgotten, so that the new man is not the one who stood there (his blows and wounds, his orders, his selection).
+    for (size_t i = 0; i < units.size(); ++i) {
+        const uint32_t g = world_->generation(units[i].id);
+        if (seenGen_[i] == g) continue;
+        seenGen_[i] = g;
+        deathTick_[i] = attackTick_[i] = hitTick_[i] = UINT32_MAX;
+        selectedFlag_[i] = 0;
+        if (i < orderTick_.size()) orderTick_[i] = UINT32_MAX;
+        if (i < slots_.size()) slots_[i] = {};
+        if (i < foreign_.size()) foreign_[i] = 0;
+        std::erase_if(smouldering_, [&](const Smoulder& s) { return s.unit == units[i].id; });
+    }
     for (size_t i = 0; i < units.size(); ++i) prevUnitPos_[i] = toV3(units[i].pos);
     prevProjectilePos_.clear();
     for (const sim::Projectile& p : world_->projectiles()) prevProjectilePos_.push_back({p.id, toV3(p.pos)});
@@ -522,7 +536,8 @@ void Battle::forgetMen() {
     hitTick_.assign(n, UINT32_MAX);
     selectedFlag_.assign(n, 0);
     prevUnitPos_.assign(n, V3{});
-    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
+    seenGen_.assign(n, 0);
+    for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
     readied_.clear();
     smouldering_.clear();
     recent_.clear();

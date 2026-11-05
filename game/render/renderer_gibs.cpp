@@ -61,7 +61,7 @@ int sourceOf(const Battle& battle, sim::PlayerId owner, const V3& at, float reac
     int found = -1;
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
-        if (u.alive() || u.owner != owner || !(u.gibbed || u.death.kind == sim::DeathKind::Severed)) continue;
+        if (!u.present() || u.alive() || u.owner != owner || !(u.gibbed || u.death.kind == sim::DeathKind::Severed)) continue;
         const uint32_t died = battle.deathTick(i);
         if (within > 0 && (died == UINT32_MAX || now - died > within)) continue;
         const V3 p = toV3(u.pos);
