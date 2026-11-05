@@ -316,7 +316,9 @@ struct Unit {
 
     bool alive() const { return hp > 0; }
     // In the world at all: a man taken out of it (removed) has no hit points either, but is no corpse; every loop over the
-    // men that treats the fallen (corpses, gibs, deaths, remains) asks this first.
+    // men that treats the fallen (corpses, gibs, deaths, remains) asks this first. A loop that only takes the living
+    // (`alive()`: morale, orders, gates, satchels, matches, targets, sight) needs not: a removed man is hp 0 and is no one
+    // of them, and deaths are only ever told of men who died in the world.
     bool present() const { return !removed; }
     bool inAir() const { return airborne || flight == Flight::Flying || flight == Flight::Landing; }
 };

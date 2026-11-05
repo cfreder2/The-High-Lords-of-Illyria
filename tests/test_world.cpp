@@ -147,7 +147,7 @@ uint64_t menOf(const World& w, EntityId upTo) {
     for (EntityId id = 1; id <= upTo; ++id) {
         const Unit* u = w.findUnit(id);
         if (!u) continue;
-        add(u->pos.x.raw), add(u->pos.y.raw), add(u->hp), add(u->morale), add(u->kills), add(u->routed), add(u->hasMoveTarget);
+        add(u->pos.x.raw), add(u->pos.y.raw), add(u->hp), add(u->morale), add(u->kills), add(u->routed), add(u->hasMoveTarget), add(u->steady), add(u->calmTicks), add(u->callCooldown);  // (the morale census among them)
     }
     return h;
 }
