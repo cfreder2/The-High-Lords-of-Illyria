@@ -6,7 +6,7 @@ Vocabulary: **Conquest** is the whole island with many computer lords (once call
 
 ## 0. Skirmish is the baseline
 
-- Skirmish is the game world on a small ground, about an 80 m perimeter, with a small battle. Conquest is the same world on the island with more in it. The rules and the way the world works are identical; only the size of the ground and the amount in it differ, so a skirmish takes less time to play.
+- Skirmish is the game world on a small ground, about an 80 m perimeter, with a small battle. Conquest is the same world with the fence taken away: the whole island is the battlefield, and there is no further information on Conquest. The rules and the way the world works are identical; only the size of the ground and the amount in it differ, so a skirmish takes less time to play.
 - Whatever can happen in Conquest can also happen in a skirmish: put a ruin on the ground and a hero can enter it; put a castle in the middle and the player can enter it and produce a unit. Such features belong to the world, not to the Conquest layer. A feature written only for Conquest is a bug in the design.
 - Everything else builds on the skirmish world. Nothing in Conquest may replace a skirmish rule (movement, pathfinding, walls, ramps, gates, formations, orders) with a second implementation, and no man is ever stepped by anything but the world's step.
 
