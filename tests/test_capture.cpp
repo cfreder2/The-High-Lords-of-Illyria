@@ -6,6 +6,7 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -52,12 +53,12 @@ uint32_t besiege(Campaign& c, int32_t city, const std::vector<UnitType>& types, 
             if ((dx == 0 && dy == 0) || c.terrainAt(x, y) == Lay::Water || c.terrainAt(x, y) == Lay::Mountain || c.cityAt(x, y) >= 0) continue;
             if (pass == 0 && c.terrainAt(x, y) != Lay::Plain && c.terrainAt(x, y) != Lay::Road) continue;
             const uint32_t id = c.raise(0, x, y, types);
-            if (c.move(id, t.cx, t.cy) && c.findStack(id)->path.size() == 1) {
+            if (CampaignOrders::move(c, id, t.cx, t.cy) && c.findStack(id)->path.size() == 1) {
                 if (fromX) *fromX = x;
                 if (fromY) *fromY = y;
                 return id;
             }
-            for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) c.disband(id, a.id);
+            for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) CampaignOrders::disband(c, id, a.id);
         }
     return 0;
 }
@@ -70,7 +71,7 @@ int32_t emptyCapital(Campaign& c) {
         if (c.cities()[i].owner == 1) cap = static_cast<int32_t>(i);
     for (const Campaign::Stack& s : std::vector<Campaign::Stack>(c.stacks()))
         if (s.owner == 1)
-            for (const Army& a : s.armies) c.disband(s.id, a.id);
+            for (const Army& a : s.armies) CampaignOrders::disband(c, s.id, a.id);
     // Heroes cannot be disbanded: send the hero's stack off a little way.
     for (const Campaign::Stack& s : std::vector<Campaign::Stack>(c.stacks()))
         if (s.owner == 1 && !s.armies.empty()) {
@@ -80,7 +81,7 @@ int32_t emptyCapital(Campaign& c) {
                 for (const auto& d : {std::make_pair(r, 0), std::make_pair(-r, 0), std::make_pair(0, r), std::make_pair(0, -r)}) {
                     const int32_t x = t.cx + d.first, y = t.cy + d.second;
                     if (x < 0 || y < 0 || x >= c.width() || y >= c.height() || c.cityAt(x, y) >= 0) continue;
-                    if (c.move(s.id, x, y)) {
+                    if (CampaignOrders::move(c, s.id, x, y)) {
                         sent = true;
                         break;
                     }
@@ -102,12 +103,12 @@ uint32_t raiseNear(Campaign& c, int32_t city, const std::vector<UnitType>& types
                 if (x < 0 || y < 0 || x >= c.width() || y >= c.height() || c.cityAt(x, y) >= 0) continue;
                 if (c.terrainAt(x, y) != Lay::Plain && c.terrainAt(x, y) != Lay::Road) continue;
                 const uint32_t id = c.raise(0, x, y, types);
-                if (c.move(id, t.cx, t.cy)) {
+                if (CampaignOrders::move(c, id, t.cx, t.cy)) {
                     if (fromX) *fromX = x;
                     if (fromY) *fromY = y;
                     return id;
                 }
-                for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) c.disband(id, a.id);
+                for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) CampaignOrders::disband(c, id, a.id);
             }
     return 0;
 }
@@ -115,7 +116,7 @@ uint32_t raiseNear(Campaign& c, int32_t city, const std::vector<UnitType>& types
 // Marches the stack into the town (nobody in the way: it never wakes), until it stands in it.
 bool marchIn(Campaign& c, uint32_t id, int32_t city) {
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(city)];
-    if (!c.move(id, t.cx, t.cy)) return false;
+    if (!CampaignOrders::move(c, id, t.cx, t.cy)) return false;
     for (int k = 0; k < Campaign::kTicksPerDay; ++k) {
         const Campaign::Stack* s = c.findStack(id);
         if (s && s->cx == t.cx && s->cy == t.cy && s->path.empty()) return true;
@@ -138,7 +139,7 @@ int32_t untilTaken(Campaign& c, int32_t city, int32_t most = Campaign::kTicksPer
 // has marched in) to the town's fall; -1 if either does not happen in two days.
 int32_t bannerTime(Campaign& c, uint32_t id, int32_t city) {
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(city)];
-    if (!id || !c.move(id, t.cx, t.cy)) return -1;
+    if (!id || !CampaignOrders::move(c, id, t.cx, t.cy)) return -1;
     int32_t first = -1, taken = -1;
     for (int32_t k = 0; k < 2 * Campaign::kTicksPerDay; ++k) {
         if (first < 0 && t.banner != Campaign::kNeutral) first = k;
@@ -224,7 +225,7 @@ TEST(leaving_the_town_abandons_the_banner) {
     CHECK(marchIn(c, id, town));
     for (int k = 0; k < 40; ++k) c.step();
     CHECK(t.bannerProgress > 0);
-    CHECK(c.move(id, fx, fy));
+    CHECK(CampaignOrders::move(c, id, fx, fy));
     for (int k = 0; k < Campaign::kTicksPerDay && (c.findStack(id)->cx != fx || c.findStack(id)->cy != fy); ++k) c.step();
     for (int k = 0; k < 2 * Campaign::kContactTicks; ++k) c.step();
     CHECK(t.banner == Campaign::kNeutral);
@@ -241,7 +242,7 @@ TEST(a_town_being_taken_trains_nothing) {
     // Side 1's capital, emptied, with side 0 raising its banner in it.
     Campaign c = still(4);
     const int32_t cap = emptyCapital(c);
-    c.produce(cap, 0);
+    CampaignOrders::produce(c, cap, 0);
     const UnitType hc = UnitType::HeavyCavalry;
     const uint32_t id = raiseNear(c, cap, {hc, hc, hc, hc, hc, hc, hc, hc});
     CHECK(marchIn(c, id, cap));

@@ -8,6 +8,7 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -211,8 +212,8 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     const uint32_t mine = w.c.raise(0, x, y, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     const uint32_t theirs = w.c.raise(1, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     // (neither side's lord moves them: the first marches out to meet the other)
-    w.c.move(mine, x + 3, y);
-    w.c.move(theirs, x + 1, y);
+    CampaignOrders::move(w.c, mine, x + 3, y);
+    CampaignOrders::move(w.c, theirs, x + 1, y);
     int guard = 0;
     while (w.c.awakeStacks() == 0 && guard++ < 3000) w.tick(1, 10);
     CHECK(w.c.awakeStacks() > 0);
@@ -284,8 +285,8 @@ TEST(a_fights_commands_are_orders_and_two_games_given_the_same_ones_are_one_game
         const int32_t x = std::min(home->cx + 8, w.c.width() - 12), y = home->cy;
         const uint32_t mine = w.c.raise(0, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
         const uint32_t theirs = w.c.raise(1, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
-        w.c.move(mine, x + 3, y);
-        w.c.move(theirs, x + 1, y);
+        CampaignOrders::move(w.c, mine, x + 3, y);
+        CampaignOrders::move(w.c, theirs, x + 1, y);
         int guard = 0;
         while (w.c.awakeStacks() == 0 && guard++ < 3000) w.c.step();
         w.frame();

@@ -8,6 +8,7 @@
 
 #include "illyria/sim/campaign.h"
 #include "illyria/sim/nav.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -40,8 +41,8 @@ bool levelPlain(Campaign& c, int32_t& x, int32_t& y) {
             // Not a pocket walled in by water, peaks and rivers.
             const uint32_t id = c.raise(0, x, y, {UnitType::LightInfantry});
             bool out = false;
-            for (const Campaign::CityState& t : c.cities()) out = out || c.move(id, t.cx, t.cy);
-            c.disband(id, c.findStack(id)->armies.front().id);
+            for (const Campaign::CityState& t : c.cities()) out = out || CampaignOrders::move(c, id, t.cx, t.cy);
+            CampaignOrders::disband(c, id, c.findStack(id)->armies.front().id);
             if (out) return true;
         }
     return false;
@@ -98,7 +99,7 @@ TEST(a_step_takes_its_distance_over_the_speed_and_a_road_halves_it) {
     const uint32_t id = c.raise(0, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
     const int64_t want = ticksFor(int64_t{Campaign::kCell} * 1000, 1900);
     CHECK(c.stepTime(*c.findStack(id), x, y, x + 1, y) == want);
-    CHECK(c.move(id, x + 1, y));
+    CHECK(CampaignOrders::move(c, id, x + 1, y));
     CHECK(c.timeLeft(*c.findStack(id)) == want);
     const int32_t ticks = ticksTo(c, id, x + 1, y, Campaign::kTicksPerDay);
     std::printf("  heavy infantry over %d m of level plain: %d ticks (%.1f s)\n", Campaign::kCell, ticks, ticks / double(Campaign::kTicksPerSecond));
@@ -157,9 +158,9 @@ TEST(the_slowest_army_sets_the_pace) {
     int32_t tx = -1, ty = -1;
     for (int32_t r = 1; r < c.width() && tx < 0; ++r)
         for (const Campaign::CityState& t : c.cities())
-            if (tx < 0 && std::max(std::abs(t.cx - x), std::abs(t.cy - y)) == r && c.move(foot, t.cx, t.cy)) tx = t.cx, ty = t.cy;
+            if (tx < 0 && std::max(std::abs(t.cx - x), std::abs(t.cy - y)) == r && CampaignOrders::move(c, foot, t.cx, t.cy)) tx = t.cx, ty = t.cy;
     CHECK(tx >= 0);
-    CHECK(c.move(both, tx, ty) && c.move(horse, tx, ty));
+    CHECK(CampaignOrders::move(c, both, tx, ty) && CampaignOrders::move(c, horse, tx, ty));
     CHECK(c.findStack(both)->path == c.findStack(foot)->path);
     CHECK(c.timeLeft(*c.findStack(both)) == c.timeLeft(*c.findStack(foot)));
     CHECK(c.timeLeft(*c.findStack(horse)) * 2 < c.timeLeft(*c.findStack(foot)));
@@ -204,7 +205,7 @@ TEST(fliers_alone_go_at_their_flight_cycles_pace_over_anything) {
     CHECK(sx >= 10);
     const uint32_t far = c.raise(0, sx, sy, {UnitType::Griffins});
     const int32_t out = 12;  // a kilometre and a half or so on today's map
-    CHECK(c.move(far, sx - out, sy));
+    CHECK(CampaignOrders::move(c, far, sx - out, sy));
     CHECK(static_cast<int32_t>(c.findStack(far)->path.size()) == out);
     CHECK(c.timeLeft(*c.findStack(far)) == straight * out);
     const int32_t ticks = ticksTo(c, far, sx - out, sy, 10 * Campaign::kTicksPerDay);

@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -43,7 +44,7 @@ TEST(cities_pay_gold_and_train_armies_that_cost_upkeep) {
         return -1;
     }();
     const int32_t before = c.sides()[0].gold;
-    CHECK(c.produce(capital, 0));  // light infantry: two days, 12 gold
+    CHECK(CampaignOrders::produce(c, capital, 0));  // light infantry: two days, 12 gold
     for (int t = 0; t < Campaign::kTicksPerDay * 3; ++t) c.step();
     int armies = 0;
     for (const Campaign::Stack& st : c.stacks())
@@ -99,7 +100,7 @@ TEST(a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there) {
     c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers, UnitType::Archers});
     const int32_t before = menOf(c, Campaign::kNeutral);
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) CHECK(c.move(st.id, town.cx, town.cy));
+        if (st.owner == 0 && !st.garrison) CHECK(CampaignOrders::move(c, st.id, town.cx, town.cy));
     bool fought = false;
     for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) {
         c.step();
@@ -127,7 +128,7 @@ TEST(men_who_fought_come_out_of_it_with_their_wounds_kills_and_ranks) {
     const Campaign::Stack* home = c.findStack(s.stack);
     c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
     int32_t kills = 0;
     for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) c.step();
     for (uint32_t t = 0; t < 3 * Campaign::kCalmTicks; ++t) c.step();  // and the fighting is over
@@ -157,7 +158,7 @@ TEST(a_fight_is_the_same_on_every_run_and_leaves_the_world_as_its_gates) {
         const Campaign::Stack* home = c.findStack(s.stack);
         c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
         for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-            if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+            if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
         int32_t awake = 0;
         for (int32_t t = 0; t < ticks; ++t) {
             c.step();
@@ -177,9 +178,9 @@ TEST(campaign_is_deterministic) {
     const auto run = [](uint64_t seed) {
         Campaign c(continent(), seed);
         for (size_t i = 0; i < c.cities().size(); ++i)
-            if (c.cities()[i].owner != Campaign::kNeutral) c.produce(static_cast<int32_t>(i), 0);
+            if (c.cities()[i].owner != Campaign::kNeutral) CampaignOrders::produce(c, static_cast<int32_t>(i), 0);
         for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-            if (!st.garrison) c.move(st.id, std::min(c.width() - 1, st.cx + 10), st.cy);
+            if (!st.garrison) CampaignOrders::move(c, st.id, std::min(c.width() - 1, st.cx + 10), st.cy);
         for (int t = 0; t < Campaign::kTicksPerDay * 10; ++t) c.step();
         return c.checksum();
     };

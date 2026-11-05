@@ -301,19 +301,6 @@ public:
     // Queues an Order for its tick (the next, if it names none). Nothing is applied until a step runs, paused or not.
     void submit(Order order);
 
-    // What an Order does: a march to a cell (false if no route); LOC; a banner's army sent home; boats: lay one down in a
-    // port (kBoatCost gold, ready in kBoatDays), board the stack (and friends in the port, up to kBoatCapacity) onto a
-    // free boat there and put out to the harbour, or step ashore from the sea; a hero searching the ruin or sage the
-    // stack stands on, or the whole stack blessed at a temple; taking (or turning down) the hero offering their service.
-    bool move(uint32_t stackId, int32_t cx, int32_t cy);
-    bool produce(int32_t city, int32_t option);  // -1 stops
-    bool vectorProduction(int32_t city, int32_t to);
-    bool disband(uint32_t stackId, uint32_t armyId);
-    bool buildBoat(int32_t city);
-    bool embark(uint32_t stackId);
-    bool land(uint32_t stackId);
-    bool search(uint32_t stackId);
-    bool hire(uint8_t side, bool accept);
     void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
     void setDifficulty(uint8_t side, Difficulty d) { sides_[side].difficulty = d; }
     // Every computer side at once (what the player picks at the start).
@@ -526,7 +513,24 @@ public:
     uint64_t seed() const { return seed_; }
 
 private:
+    // What an Order does (applyPending, and nothing else, calls them; the computer lords' own choices, CampaignAi, are
+    // theirs). A march to a cell (false if no route); LOC; a banner's army sent home; boats: lay one down in a port
+    // (kBoatCost gold, ready in kBoatDays), board the stack (and friends in the port, up to kBoatCapacity) onto a free
+    // boat there and put out to the harbour, or step ashore from the sea; a hero searching the ruin or sage the stack
+    // stands on, or the whole stack blessed at a temple; taking (or turning down) the hero offering their service.
     friend class CampaignAi;
+    friend struct CampaignOrders;  // the tests' way to ask one of them for its answer (tests/campaign_orders.h)
+    bool move(uint32_t stackId, int32_t cx, int32_t cy);
+    bool produce(int32_t city, int32_t option);  // -1 stops
+    // Warlords' LOC: send what a city trains to another city of ours (-1 stops); at most four cities may send to one.
+    bool vectorProduction(int32_t city, int32_t to);
+    // Warlords' DISBAND: send an army home to stop paying for it (never a hero).
+    bool disband(uint32_t stackId, uint32_t armyId);
+    bool buildBoat(int32_t city);
+    bool embark(uint32_t stackId);
+    bool land(uint32_t stackId);
+    bool search(uint32_t stackId);
+    bool hire(uint8_t side, bool accept);
     // Move and Halt for chosen squads: they are split off into a stack of their own first (an awake stack's men stay
     // units of the world, so a stack split in a fight is still in it), and the whole stack otherwise. A halt is at
     // the next cell on the way. The march is the stack's; whoever is ordered is, like his men, the player's: a stack

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -34,7 +35,7 @@ TEST(a_saved_campaign_restores_and_carries_on_identically) {
     // The player takes over side 0 and gives a few orders before saving.
     c.setHuman(0, true);
     const int32_t capital = capitalOf(c, 0);
-    if (capital >= 0) c.produce(capital, 0);
+    if (capital >= 0) CampaignOrders::produce(c, capital, 0);
     days(c, 2);
     const std::string text = c.save();
     CHECK(text.size() > 100);
@@ -54,7 +55,7 @@ TEST(a_saved_campaign_restores_and_carries_on_identically) {
     for (const Campaign::Stack& s : c.stacks())
         if (s.owner == 0 && !s.armies.empty()) {
             const int32_t tx = std::min(s.cx + 6, c.width() - 1);
-            CHECK(c.move(s.id, tx, s.cy) == r->move(s.id, tx, s.cy));
+            CHECK(CampaignOrders::move(c, s.id, tx, s.cy) == CampaignOrders::move(*r, s.id, tx, s.cy));
             break;
         }
     bool same = true;
@@ -89,7 +90,7 @@ TEST(a_campaign_saved_in_a_fight_keeps_its_men_where_they_stood) {
     CHECK(target >= 0);
     c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) c.move(st.id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy);
+        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy);
     for (int t = 0; t < Campaign::kTicksPerDay * 20 && c.awakeStacks() == 0; ++t) c.step();
     CHECK(c.awakeStacks() > 0);
     for (int t = 0; t < 10 * Campaign::kTicksPerSecond; ++t) c.step();  // a few seconds of it
@@ -304,4 +305,43 @@ TEST(an_order_submitted_while_paused_waits_for_the_step) {
     b->submit(later);
     for (int t = 0; t < 10; ++t) a->step(), b->step();
     CHECK(a->checksum() == b->checksum());  // an Order for a chosen tick is the same wherever it was submitted from
+}
+
+// What the player asks of the game reaches the simulation only as an Order, applied inside the step: a production, a
+// march, an army sent home (the mutators themselves are private to the Campaign and its tests).
+TEST(the_players_orders_reach_the_simulation_only_through_submit) {
+    Campaign c(continent(), 5);
+    c.setHuman(0, true);
+    const int32_t capital = capitalOf(c, 0);
+    CHECK(capital >= 0);
+    const Campaign::Stack* home = nullptr;
+    for (const Campaign::Stack& s : c.stacks())
+        if (s.owner == 0 && !s.garrison) home = &s;
+    CHECK(home != nullptr);
+    if (capital < 0 || !home) return;
+    const uint32_t stack = home->id;
+    const size_t armies = home->armies.size();
+    CHECK(armies >= 2);
+    Campaign::Order produce;
+    produce.kind = Campaign::Order::Kind::Produce;
+    produce.a = capital;
+    produce.b = 1;
+    c.submit(produce);
+    Campaign::Order disband;
+    disband.kind = Campaign::Order::Kind::Disband;
+    disband.stack = stack;
+    disband.a = static_cast<int32_t>(home->armies.back().id);
+    c.submit(disband);
+    Campaign::Order move;
+    move.kind = Campaign::Order::Kind::Move;
+    move.stack = stack;
+    move.a = std::min(home->cx + 4, c.width() - 1);
+    move.b = home->cy;
+    c.submit(move);
+    CHECK(c.cities()[static_cast<size_t>(capital)].producing != 1);  // nothing is applied until the step
+    CHECK(c.findStack(stack)->path.empty());
+    c.step();
+    CHECK(c.cities()[static_cast<size_t>(capital)].producing == 1);
+    CHECK(c.findStack(stack) != nullptr && c.findStack(stack)->armies.size() == armies - 1);
+    CHECK(c.findStack(stack) != nullptr && !c.findStack(stack)->path.empty());
 }

@@ -4,6 +4,7 @@
 #include <set>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -32,7 +33,7 @@ void runDays(Campaign& c, int days) {
 
 // A boat for side 0 in this port, built the honest way.
 const Campaign::Boat* buildOne(Campaign& c, int32_t port) {
-    if (!c.buildBoat(port)) return nullptr;
+    if (!CampaignOrders::buildBoat(c, port)) return nullptr;
     runDays(c, Campaign::kBoatDays + 1);
     return c.boatInPort(port);
 }
@@ -72,12 +73,12 @@ TEST(a_boat_carries_at_most_its_capacity) {
     CHECK(port >= 0);
     if (port < 0) return;
     const uint32_t id = c.grant(port, 0, UnitType::HeavyInfantry, 8);
-    CHECK(!c.buildBoat(-1));
+    CHECK(!CampaignOrders::buildBoat(c, -1));
     const Campaign::Boat* boat = buildOne(c, port);
     CHECK(boat != nullptr);
     if (!boat) return;
     const uint32_t boatId = boat->id;
-    CHECK(c.embark(id));
+    CHECK(CampaignOrders::embark(c, id));
     const Campaign::Stack* aboard = c.findStack(id);
     CHECK(aboard && aboard->boat == boatId);
     if (!aboard) return;
@@ -94,7 +95,7 @@ TEST(a_boat_carries_at_most_its_capacity) {
     aboard = c.findStack(id);
     CHECK(aboard && aboard->cx == city.hx && aboard->cy == city.hy);
     CHECK(c.findBoat(boatId) && c.findBoat(boatId)->stack == id);
-    CHECK(c.land(id));
+    CHECK(CampaignOrders::land(c, id));
     runDays(c, 1);
     aboard = c.findStack(id);
     CHECK(aboard && !aboard->boat);
@@ -119,7 +120,7 @@ TEST(a_stack_sails_to_a_far_coast_faster_than_it_walks) {
         if (boat) CHECK(buildOne(c, from) != nullptr);
         const Campaign::CityState& dest = c.cities()[static_cast<size_t>(to)];
         const uint32_t start = c.day();
-        if (!c.move(id, dest.cx, dest.cy)) return -1;
+        if (!CampaignOrders::move(c, id, dest.cx, dest.cy)) return -1;
         sailed = false;
         for (int t = 0; t < 120 * Campaign::kTicksPerDay; ++t) {
             c.step();
@@ -127,7 +128,7 @@ TEST(a_stack_sails_to_a_far_coast_faster_than_it_walks) {
             if (!s) return 3000;
             sailed = sailed || s->boat;
             if (s->cx == dest.cx && s->cy == dest.cy) return static_cast<int>(c.day() - start);
-            if (s->path.empty() && !c.move(id, dest.cx, dest.cy)) return 1000;
+            if (s->path.empty() && !CampaignOrders::move(c, id, dest.cx, dest.cy)) return 1000;
         }
         return 2000;
     };
@@ -167,9 +168,9 @@ TEST(boats_are_deterministic) {
         const int32_t port = farPorts(c).first;
         const uint32_t id = c.grant(port, 0, UnitType::HeavyCavalry, 6);
         buildOne(c, port);
-        c.embark(id);
+        CampaignOrders::embark(c, id);
         const Campaign::CityState& to = c.cities()[static_cast<size_t>(farPorts(c).second)];
-        c.move(id, to.cx, to.cy);
+        CampaignOrders::move(c, id, to.cx, to.cy);
         runDays(c, 12);
         return c.checksum();
     };

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -44,7 +45,7 @@ int32_t nearestSite(Campaign& c, const Campaign::Stack& s, Kind kind) {
 
 // Marches a stack to a cell and waits until it is there (or the days run out).
 bool march(Campaign& c, uint32_t id, int32_t cx, int32_t cy) {
-    if (!c.move(id, cx, cy)) return false;
+    if (!CampaignOrders::move(c, id, cx, cy)) return false;
     for (int t = 0; t < Campaign::kTicksPerDay * 40; ++t) {
         const Campaign::Stack* s = c.findStack(id);
         if (!s) return false;
@@ -83,7 +84,7 @@ TEST(every_site_is_reached_on_foot) {
         const Campaign::SiteState& s = c.sites()[i];
         const Lay lay = c.terrainAt(s.cx, s.cy);
         bool there = false;
-        for (size_t k = 0; k < walkers.size() && !there; ++k) there = c.move(walkers[k], s.cx, s.cy);
+        for (size_t k = 0; k < walkers.size() && !there; ++k) there = CampaignOrders::move(c, walkers[k], s.cx, s.cy);
         if (lay == Lay::Water || lay == Lay::Mountain || !there)
             std::printf("  %s (cell %d, %d): %s\n", continent().sites()[i].name.c_str(), s.cx, s.cy, there ? "on a closed cell" : "no way there on foot");
         CHECK(lay != Lay::Water && lay != Lay::Mountain);
@@ -138,7 +139,7 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         CHECK(c.canSearch(id));
         const Campaign::Stack before = *c.findStack(id);
         const int32_t goldBefore = c.sides()[0].gold;
-        CHECK(c.search(id));
+        CHECK(CampaignOrders::search(c, id));
         const Campaign::Stack* after = c.findStack(id);
         const Army* hero = nullptr;
         for (const Army& a : after->armies)
@@ -169,7 +170,7 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         // Once: the ruin is empty now.
         const int32_t g = c.sides()[0].gold;
         CHECK(!c.canSearch(id));
-        CHECK(!c.search(id));
+        CHECK(!CampaignOrders::search(c, id));
         CHECK(c.sides()[0].gold == g);
         CHECK(!c.deeds().empty());
     }
@@ -209,7 +210,7 @@ TEST(a_temple_blesses_each_army_once) {
     std::vector<int32_t> before;
     for (const Army& a : c.findStack(id)->armies) before.push_back(Campaign::strength(a));
     CHECK(c.canSearch(id));
-    CHECK(c.search(id));
+    CHECK(CampaignOrders::search(c, id));
     const Campaign::Stack* after = c.findStack(id);
     CHECK(after->armies.size() == before.size());
     for (size_t k = 0; k < after->armies.size() && k < before.size(); ++k) {
@@ -218,7 +219,7 @@ TEST(a_temple_blesses_each_army_once) {
     }
     // Only once per temple.
     CHECK(!c.canSearch(id));
-    CHECK(!c.search(id));
+    CHECK(!CampaignOrders::search(c, id));
     for (const Army& a : c.findStack(id)->armies) CHECK(a.blessings == 1);
 }
 
@@ -281,16 +282,16 @@ TEST(the_player_is_offered_a_hero_for_gold) {
     const int32_t gold = c.sides()[0].gold;
     const int n = heroes();
     if (gold < o.price) {
-        CHECK(!c.hire(0, true));  // cannot afford it
-        CHECK(c.hire(0, false));
+        CHECK(!CampaignOrders::hire(c, 0, true));  // cannot afford it
+        CHECK(CampaignOrders::hire(c, 0, false));
         CHECK(!c.offer(0).open);
         return;
     }
-    CHECK(c.hire(0, true));
+    CHECK(CampaignOrders::hire(c, 0, true));
     CHECK(heroes() == n + 1);
     CHECK(c.sides()[0].gold == gold - o.price);
     CHECK(!c.offer(0).open);
-    CHECK(!c.hire(0, true));
+    CHECK(!CampaignOrders::hire(c, 0, true));
 }
 
 TEST(quests_are_deterministic) {

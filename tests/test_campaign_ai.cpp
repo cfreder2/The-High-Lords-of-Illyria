@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -128,24 +129,24 @@ TEST(the_computer_saves_a_threatened_capital) {
     for (const Campaign::Stack& s : std::vector<Campaign::Stack>(c.stacks()))
         if (s.owner == 0)
             for (const Army& a : s.armies)
-                if (Campaign::rare(a.type) && !a.hero()) c.disband(s.id, a.id);
+                if (Campaign::rare(a.type) && !a.hero()) CampaignOrders::disband(c, s.id, a.id);
     // A road out of the capital: the way to the furthest city within reach.
     const uint32_t probe = c.raise(0, home.cx, home.cy, {UnitType::LightInfantry});
     std::vector<std::pair<int32_t, int32_t>> road;
     for (size_t i = 0; i < c.cities().size() && road.size() < 14; ++i) {
         if (c.cities()[i].owner != Campaign::kNeutral) continue;
-        if (!c.move(probe, c.cities()[i].cx, c.cities()[i].cy)) continue;
+        if (!CampaignOrders::move(c, probe, c.cities()[i].cx, c.cities()[i].cy)) continue;
         if (c.findStack(probe)->path.size() >= 14) road = c.findStack(probe)->path;
     }
     CHECK(road.size() >= 14);
     if (road.size() < 14) return;
-    c.disband(probe, c.findStack(probe)->armies.front().id);
+    CampaignOrders::disband(c, probe, c.findStack(probe)->armies.front().id);
     // How long heavy infantry take back along it to the capital, from each cell of it.
     const uint32_t pace = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
     std::vector<int64_t> back(road.size(), 0);
     for (size_t k = 0; k < road.size(); ++k)
         back[k] = (k ? back[k - 1] : 0) + c.stepTime(*c.findStack(pace), road[k].first, road[k].second, k ? road[k - 1].first : home.cx, k ? road[k - 1].second : home.cy);
-    c.disband(pace, c.findStack(pace)->armies.front().id);
+    CampaignOrders::disband(c, pace, c.findStack(pace)->armies.front().id);
     // Ours half a day out; theirs two days out along the same road. The
     // computer first looks at dawn, when they are a day out (inside the Hard
     // lord's two days): ours have half a day in hand. (A day and a half out
@@ -165,7 +166,7 @@ TEST(the_computer_saves_a_threatened_capital) {
     std::vector<uint32_t> ours;
     for (const Army& a : c.findStack(field)->armies) ours.push_back(a.id);
     const uint32_t foe = c.raise(1, ex, ey, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Giants, UnitType::Giants});
-    CHECK(c.move(foe, home.cx, home.cy));
+    CHECK(CampaignOrders::move(c, foe, home.cx, home.cy));
     // Before they march: the capital alone would likely fall.
     std::vector<const Army*> attackers;
     for (const Army& a : c.findStack(foe)->armies) attackers.push_back(&a);

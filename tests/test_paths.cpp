@@ -12,6 +12,7 @@
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -405,7 +406,7 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         const Campaign::CityState& ct = camp.cities()[static_cast<size_t>(to)];
         if (std::max(std::abs(cs.cx - ct.cx), std::abs(cs.cy - ct.cy)) < 12) continue;  // half a kilometre or more
         const uint32_t id = camp.grant(from, 0, UnitType::LightInfantry, 1);
-        if (!camp.move(id, ct.cx, ct.cy)) continue;
+        if (!CampaignOrders::move(camp, id, ct.cx, ct.cy)) continue;
         const Campaign::Stack* st = camp.findStack(id);
         if (!st || st->path.empty()) continue;
         ++tested;

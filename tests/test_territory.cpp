@@ -7,6 +7,7 @@
 #include "illyria/sim/edges.h"
 #include "illyria/sim/rng.h"
 #include "illyria/sim/world.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -92,7 +93,7 @@ TEST(armies_claim_the_land_they_stand_on_and_it_fades_when_they_go) {
     CHECK(h.claim == Campaign::kClaimFull);
     CHECK(c.landOwner(cx, cy) == 0);
     // Gone: it fades a point at each reckoning, ten a day.
-    for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) c.disband(id, a.id);
+    for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) CampaignOrders::disband(c, id, a.id);
     reckon(c, 10);
     CHECK(h.owner == 0 && h.claim == Campaign::kClaimFull - 10);
     reckon(c, Campaign::kClaimFull - 10);
@@ -121,7 +122,7 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
     reckon(c, 5);
     CHECK(h.owner == 0 && h.claim == held);
     // Ours gone: theirs wear ours down (25 a reckoning), then claim it.
-    for (const Army& a : std::vector<Army>(c.findStack(ours)->armies)) c.disband(ours, a.id);
+    for (const Army& a : std::vector<Army>(c.findStack(ours)->armies)) CampaignOrders::disband(c, ours, a.id);
     reckon(c, 4);
     CHECK(h.owner == 3);
     (void)theirs;

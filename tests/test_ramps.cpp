@@ -12,6 +12,7 @@
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -247,7 +248,7 @@ TEST(a_towns_garrison_wakes_inside_its_walls) {
             if (std::max(std::abs(dx), std::abs(dy)) < 2 || x < 0 || y < 0 || x >= c.width() || y >= c.height() || c.cityAt(x, y) >= 0) continue;
             if (c.terrainAt(x, y) != Lay::Plain && c.terrainAt(x, y) != Lay::Road) continue;
             const uint32_t made = c.raise(0, x, y, {UnitType::LightInfantry});
-            if (c.move(made, cs.cx, cs.cy)) id = made;
+            if (CampaignOrders::move(c, made, cs.cx, cs.cy)) id = made;
         }
     CHECK(id != 0);
     const Continent::City& t = continent().cities()[static_cast<size_t>(town)];

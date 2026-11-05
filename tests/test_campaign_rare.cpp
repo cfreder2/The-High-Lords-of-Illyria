@@ -6,6 +6,7 @@
 #include <string>
 
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -104,7 +105,7 @@ TEST(a_levy_is_mustered_once) {
     const Campaign::Option levy = options[static_cast<size_t>(option)];
     const int32_t before = countType(c, 1, levy.type);
     const size_t n = options.size();
-    CHECK(c.produce(capital, option));
+    CHECK(CampaignOrders::produce(c, capital, option));
     for (int t = 0; t < Campaign::kTicksPerDay * (levy.days * levy.left + 2); ++t) c.step();
     std::printf("  %d %s mustered at %s\n", levy.left, unitTypeName(levy.type), c.continent().cities()[static_cast<size_t>(capital)].name.c_str());
     CHECK(countType(c, 1, levy.type) == before + levy.left);
@@ -129,14 +130,14 @@ TEST(a_temples_guard_follows_the_first_hero) {
         }
         c.grant(city, 0, UnitType::LightInfantry, 1);
         id = c.raise(0, c.cities()[static_cast<size_t>(city)].cx, c.cities()[static_cast<size_t>(city)].cy, {UnitType::Hero, UnitType::LightInfantry});
-        if (!c.move(id, st.cx, st.cy)) continue;
+        if (!CampaignOrders::move(c, id, st.cx, st.cy)) continue;
         for (int t = 0; t < Campaign::kTicksPerDay * 30 && !c.findStack(id)->path.empty(); ++t) c.step();
         if (c.findStack(id)->cx == st.cx && c.findStack(id)->cy == st.cy) temple = static_cast<int32_t>(k);
     }
     CHECK(temple >= 0);
     if (temple < 0) return;
     const size_t before = c.findStack(id)->armies.size();
-    CHECK(c.search(id));
+    CHECK(CampaignOrders::search(c, id));
     const Campaign::Stack* s = c.findStack(id);
     int32_t count = 0;
     const UnitType guard = Campaign::templeGuard(c.sites()[static_cast<size_t>(temple)].bit, count);

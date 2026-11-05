@@ -8,6 +8,7 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/sim/campaign.h"
+#include "campaign_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -157,7 +158,7 @@ TEST(a_mans_drawn_place_is_continuous_across_a_march_a_wake_and_a_sleep) {
     const auto& town = c.cities()[static_cast<size_t>(target)];
     c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
     std::map<uint32_t, Campaign::Soldier> last;
     std::vector<Campaign::Soldier> now;
     double worst = 0, worstMetres = 0;
@@ -235,7 +236,7 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     const auto& town = c.cities()[static_cast<size_t>(target)];
     c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
     size_t cues = 0, said = 0;
     for (int k = 0; k < 9000; ++k) {
         c.step();
