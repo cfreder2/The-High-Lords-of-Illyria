@@ -176,7 +176,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0xd4d3fa3893ab1d09;  // (was 0x8488874355037510 before the fallen lay for the whole fight rather than twenty seconds; was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
+    constexpr uint64_t kGolden = 0x9791755a04d4431f;  // (was 0x69b0b6771dbca7b2 before a man taken out of the world was forgotten by whoever had him as a foe, a mark or a shooter (World::removeUnit: his place goes to another man, so an id kept would name a stranger); was 0x63b64bd41f82815d before a man put to sleep had his last blows forgotten (Campaign::sleep clears fightTick, struckTick and hurtTick: not saved, so a game saved there and the one that goes on from there must wake the stack alike); was 0xd4d3fa3893ab1d09 before a man taken out of the world left his place for the next man to take (a unit's id is his place; the same cause as test_campaign's); was 0x8488874355037510 before the fallen lay for the whole fight rather than twenty seconds; was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

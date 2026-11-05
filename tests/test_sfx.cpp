@@ -333,3 +333,77 @@ TEST(the_herald_reports_casualties_and_the_dying_cry_out) {
     if (!reports.empty()) CHECK(reports.back() == Situation::TotalCasualties);
     CHECK(deaths > 0 && pains > 0);
 }
+
+// A man taken out of the world (the conquest's fights put men in it and take them out) is no casualty, no body for the
+// flies, and no voice; and the next man to take his place has none of his past (what he was last tick, when he last spoke).
+TEST(a_man_taken_out_of_the_world_is_no_casualty_no_fly_and_no_voice_and_his_place_has_no_past) {
+    sim::World w(sim::WorldConfig{});
+    std::vector<sim::EntityId> mine;
+    for (int i = 0; i < 10; ++i) mine.push_back(w.spawnUnit(0, {m(0), m(i * 2), m(0)}, kEast, sim::unitStats(UnitType::LightInfantry)));
+    for (int i = 0; i < 4; ++i) w.spawnUnit(1, {m(300), m(i * 2), m(0)}, kWest, sim::unitStats(UnitType::LightInfantry));
+    Voice v(0);
+    v.setListener({0, 10, 0}, {1, 0, 0}, 30);
+    const auto hear = [&](int ticks) {
+        std::vector<VoiceCue> out;
+        for (int i = 0; i < ticks; ++i) {
+            w.step({});
+            v.observe(w, 0);
+            for (const VoiceCue& c : v.take()) out.push_back(c);
+        }
+        return out;
+    };
+    hear(2);
+    // Eight of the ten are taken out of the world (not killed): the herald has no casualties to report.
+    for (int i = 0; i < 8; ++i) w.removeUnit(mine[static_cast<size_t>(i)]);
+    for (const VoiceCue& c : hear(10 * sim::kTicksPerSecond)) {
+        CHECK(c.situation != Situation::Casualties && c.situation != Situation::SevereCasualties && c.situation != Situation::TotalCasualties);
+        CHECK(c.speaker == sim::kNoEntity || w.findUnit(c.speaker) != nullptr);  // (nobody speaks who is not in the world)
+    }
+
+    // The flies: bodies near the view draw them; the same bodies taken out of the world do not.
+    const auto flies = [](bool removeThem) {
+        sim::World f(sim::WorldConfig{});
+        std::vector<sim::EntityId> ids;
+        for (int i = 0; i < 14; ++i) {
+            sim::UnitStats frail = sim::unitStats(UnitType::LightInfantry);
+            frail.maxHp = 1;
+            frail.aggroRange = sim::Fixed::zero();
+            ids.push_back(f.spawnUnit(1, {m(4), m(i), m(0)}, kWest, frail));
+        }
+        for (int i = 0; i < 14; ++i) f.launchPart(sim::RemainKind::Head, 0, {m(-1), m(i), sim::Fixed::fromRatio(6, 5)}, {m(14), m(0), sim::Fixed::one()});
+        for (int i = 0; i < 3 * sim::kTicksPerSecond; ++i) f.step({});
+        int fallen = 0;
+        for (sim::EntityId id : ids) fallen += !f.findUnit(id)->alive();
+        CHECK(fallen > 6);
+        if (removeThem)
+            for (sim::EntityId id : ids) f.removeUnit(id);
+        Sfx s;
+        listen(f, {4, 7, 0}, 30, 20, 0, &s);
+        return s.ambience().flies;
+    };
+    CHECK(flies(false) > 0);
+    CHECK(flies(true) == 0);
+
+    // The place he left, given to another the same tick: that man was not seen to be wounded, to have won a kill, or to
+    // have spoken. A cue for him is a cue for a man who is there (kills and wounds count from the day he comes).
+    sim::World r(sim::WorldConfig{});
+    const sim::EntityId old = r.spawnUnit(0, {m(0), m(0), m(0)}, kEast, sim::unitStats(UnitType::LightInfantry));
+    r.spawnUnit(1, {m(300), m(0), m(0)}, kWest, sim::unitStats(UnitType::LightInfantry));
+    Voice rv(0);
+    rv.setListener({0, 0, 0}, {1, 0, 0}, 30);
+    const auto hearR = [&](int ticks) {
+        std::vector<VoiceCue> out;
+        for (int i = 0; i < ticks; ++i) {
+            r.step({});
+            rv.observe(r, 0);
+            for (const VoiceCue& c : rv.take()) out.push_back(c);
+        }
+        return out;
+    };
+    hearR(2);
+    r.removeUnit(old);
+    const sim::EntityId next = r.spawnUnit(0, {m(0), m(0), m(0)}, kEast, sim::unitStats(UnitType::LightInfantry));
+    CHECK(next == old);
+    r.restoreUnit(next, 5, 9, sim::kMoraleFull);  // five hit points of his thirty-odd and nine kills: he comes wounded and proven
+    for (const VoiceCue& c : hearR(3 * sim::kTicksPerSecond)) CHECK(c.speaker != next || (c.situation != Situation::Wounded && c.situation != Situation::Kill && c.situation != Situation::VetKill));
+}

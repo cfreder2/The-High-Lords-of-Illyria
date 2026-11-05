@@ -32,8 +32,8 @@ struct Island {
     illyria::game::Camera cam;
     std::vector<Campaign::Soldier> men;
 
-    Island() : c(continent(), 3) {
-        for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
+    explicit Island(bool human = true) : c(continent(), 3) {
+        for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, human);
         c.prepareWorld();
         const Vec3 ro = c.presentedWorld()->region()->origin();
         b = std::make_unique<Battle>(1, Vec3{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()},
@@ -414,4 +414,60 @@ TEST(the_cost_of_asking_the_seam_of_sight) {
     std::printf("  canSee through the stub: %.1f ns a call\n", ns);
     CHECK(shut < 10.0 + open * 4);  // a frame's worth of men through the seam is a small share of a frame, not a new cost
     CHECK(ns < 1000.0);
+}
+
+// The lords at war for twenty days (the computer lords alone): fights go on all over the island, men are put in the world
+// and taken out of it by the thousand, and a man's place in the world is his id less one all the while (a Battle, the
+// renderer and Voice keep what they keep by it). The world holds as many places as the most men it ever held at once, not
+// as many as men have come; a place given to another man comes to the Battle with nothing of the one who stood there; and
+// nothing indexes out of the list (run under ASan and the library's hardening: tools/ or the build notes say how).
+TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no_past) {
+    Island isl(false);
+    const World& w = *isl.c.presentedWorld();
+    size_t peakPresent = 0, reused = 0, shown = 0;
+    std::vector<uint32_t> gen;
+    for (int t = 0; t < 20 * Campaign::kTicksPerDay; ++t) {
+        isl.c.step();
+        if (t % 60 == 0) isl.frame();
+        const auto& units = w.units();
+        size_t present = 0;
+        for (const Unit& u : units) present += u.present();
+        peakPresent = std::max(peakPresent, present);
+        if (gen.size() < units.size()) gen.resize(units.size(), 0);
+        for (size_t i = 0; i < units.size(); ++i) {
+            const uint32_t g = w.generation(units[i].id);
+            if (g == gen[i]) continue;
+            gen[i] = g;
+            if (g < 2 || !units[i].alive()) continue;  // (a place given to another man, and he is a man yet)
+            ++reused;
+            // What the Battle keeps by place is as for a man new to it: nothing before this tick (he may strike, or be struck,
+            // the tick he comes, if he wakes beside a foe), and nobody has him selected.
+            const auto fresh = [&](uint32_t tick) { return tick == UINT32_MAX || tick + 1 >= w.tick(); };
+            CHECK(fresh(isl.b->deathTick(i)) && fresh(isl.b->attackTick(i)) && fresh(isl.b->hitTick(i)));
+            CHECK(!isl.b->isSelected(units[i].id));
+        }
+        shown += isl.b->squads().size() > 0;
+    }
+    std::printf("  twenty days: %zu places for at most %zu men at once; %zu places given to another man\n", w.units().size(), peakPresent, reused);
+    CHECK(peakPresent > 0 && reused > 0 && shown > 0);  // there were fights, and places were reused
+    CHECK(w.units().size() == peakPresent);              // (a place is made only when none is empty)
+    CHECK(w.units().size() < 4000);
+}
+
+// A group is a list of unit ids, and in the conquest a unit id is a place that men come to and leave as fights begin and
+// end: a group of them would name whoever stands there. The conquest's squads (an army's men, found afresh each frame)
+// and its selection (by man) take that place, and a group is refused.
+TEST(a_group_is_refused_in_the_conquest_where_unit_ids_are_reused) {
+    Island w;
+    const int foot = w.squadOf(UnitType::LightInfantry);
+    CHECK(foot >= 0);
+    if (foot < 0) return;
+    w.b->selectSquad(foot);
+    CHECK(w.b->selectionSize() > 0);
+    CHECK(w.b->saveGroup() == -1);
+    CHECK(!w.b->notice().empty());
+    for (int slot = 0; slot < Battle::kGroupSlots; ++slot) {
+        w.b->assignGroup(slot);
+        CHECK(w.b->group(slot).units.empty());
+    }
 }

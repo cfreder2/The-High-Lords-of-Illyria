@@ -186,7 +186,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x7311045c84f04c9d;  // (was 0x16f2688b885e8f30 before the fallen lay for the whole fight, as in the battle, not twenty seconds: the dead stay in the world and get in the way a while longer; was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
+    constexpr uint64_t kGolden = 0xdc2856c0768135f5;  // (was 0x70647b06ab5e941e before a man taken out of the world was forgotten by whoever had him as a foe, a mark or a shooter (World::removeUnit: his place goes to another man, so an id kept would name a stranger); was 0x125692acb6951ecb before a man put to sleep had his last blows forgotten (Campaign::sleep clears fightTick, struckTick and hurtTick: they are not saved, so a game saved there and the one that goes on from there must wake the stack alike); was 0x7311045c84f04c9d before a man taken out of the world left his place for the next man to take, instead of the list being closed up over it (a unit's id is his place, as everything that presents the world indexes by it); was 0x16f2688b885e8f30 before the fallen lay for the whole fight, as in the battle, not twenty seconds: the dead stay in the world and get in the way a while longer; was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
