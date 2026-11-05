@@ -103,7 +103,6 @@ bool nonVerbal(VoiceSet set) {
     return set == VoiceSet::Brute || set == VoiceSet::Undead || set == VoiceSet::Fiend || set == VoiceSet::Beast;
 }
 
-V3 flat(V3 v) { return {v.x, v.y, 0}; }
 
 }  // namespace
 

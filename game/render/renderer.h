@@ -166,7 +166,7 @@ private:
     Program dot_;
     Batch dots_;
     struct MenLod {
-        bool borrowed = false, near = false, looked = false;
+        bool near = false, looked = false;
         V3 at;
         float reach = 0, spriteDot = 1, lift = 1, seconds = 0, dt = 0.016f;
         M4 vp;

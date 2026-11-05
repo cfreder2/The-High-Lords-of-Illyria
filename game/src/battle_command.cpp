@@ -32,7 +32,6 @@ uint32_t hash32(uint32_t x) {
     return x;
 }
 
-V3 flat(const V3& v) { return {v.x, v.y, 0}; }
 
 // The least-cost matching of n rows to n columns (Kuhn-Munkres, n^3), `cost`
 // row-major: for each row, its column.
@@ -248,47 +247,63 @@ void Battle::refreshSelection() {
     for (sim::EntityId id : selection_) selectedFlag_[id - 1] = 1;
 }
 
-void Battle::select(std::vector<sim::EntityId> units) {
+void Battle::select(std::vector<sim::EntityId> units) { selectMen(std::move(units), {}); }
+
+void Battle::applySelection(std::vector<sim::EntityId> units) {
     std::erase_if(units, [&](sim::EntityId id) {
         const sim::Unit* u = world_->findUnit(id);
         return u == nullptr || !u->alive() || !controllable(*u);
     });
     selection_ = std::move(units);
     refreshSelection();
+    keepSelectedMen();
     // Every selection starts as it stands (keepShape).
     selKeep_ = true;
     selShape_ = {};
-    if (selection_.empty()) return;
-    voice_.order(Situation::Selected, *world_, selection_);
+    if (selection_.empty() && selSleeping_.empty()) return;
+    if (!selection_.empty()) voice_.order(Situation::Selected, *world_, selection_);
     // Their own squad's formation if they are of one squad, else what suits their kind.
-    const int squad = squadOfUnit_[selection_.front() - 1];
-    bool oneSquad = squad >= 0, oneType = true;
-    const UnitType type = static_cast<UnitType>(world_->units()[selection_.front() - 1].stats.type);
-    for (sim::EntityId id : selection_) {
-        oneSquad = oneSquad && squadOfUnit_[id - 1] == squad;
-        oneType = oneType && static_cast<UnitType>(world_->units()[id - 1].stats.type) == type;
-    }
-    selFormation_ = oneSquad ? squads_[static_cast<size_t>(squad)].formation : oneType ? defaultFormation(type) : Formation::Line;
+    int squad = -2;  // none yet
+    bool oneSquad = true, oneType = true;
+    int type = -1;
+    const auto note = [&](int s, int t) {
+        if (squad == -2) squad = s, type = t;
+        oneSquad = oneSquad && s >= 0 && squad == s;
+        oneType = oneType && type == t;
+    };
+    for (sim::EntityId id : selection_) note(squadOfUnit_[id - 1], static_cast<int>(world_->units()[id - 1].stats.type));
+    for (uint32_t man : selSleeping_)
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(squadOfArmy(sleepers_[i].army), sleepers_[i].type);
+    selFormation_ = oneSquad && squad >= 0 ? squads_[static_cast<size_t>(squad)].formation
+                    : oneType              ? defaultFormation(static_cast<UnitType>(type))
+                                           : Formation::Line;
 }
 
 void Battle::clearSelection() {
     selection_.clear();
+    selSleeping_.clear();
+    selMen_.clear();
     refreshSelection();
 }
 
 void Battle::selectSquad(int index) {
     if (index < 0 || index >= static_cast<int>(squads_.size()) || squads_[static_cast<size_t>(index)].owner != local_) return;
-    select(squads_[static_cast<size_t>(index)].members);
+    selectMen(squads_[static_cast<size_t>(index)].members, squads_[static_cast<size_t>(index)].sleeping);
 }
 
 int Battle::selectedSquad() const {
     const std::vector<sim::EntityId> alive = selectedAlive();
-    if (alive.empty()) return -1;
-    const int squad = squadOfUnit_[alive.front() - 1];
+    // The squad of the first selected man (a unit, else a sleeper), and every selected man of it.
+    int squad = -1;
+    if (!alive.empty()) squad = squadOfUnit_[alive.front() - 1];
+    else if (!selSleeping_.empty())
+        if (const size_t i = sleeperIndex(selSleeping_.front()); i != kNoSleeper) squad = squadOfArmy(sleepers_[i].army);
     if (squad < 0) return -1;
     for (sim::EntityId id : alive)
         if (squadOfUnit_[id - 1] != squad) return -1;
-    return static_cast<int>(alive.size()) == aliveCount(squads_[static_cast<size_t>(squad)]) ? squad : -1;
+    for (uint32_t man : selSleeping_)
+        if (const size_t i = sleeperIndex(man); i == kNoSleeper || squadOfArmy(sleepers_[i].army) != squad) return -1;
+    return static_cast<int>(alive.size() + selSleeping_.size()) == aliveCount(squads_[static_cast<size_t>(squad)]) ? squad : -1;
 }
 
 int Battle::squadSelection(const Squad& s) const {
@@ -297,6 +312,10 @@ int Battle::squadSelection(const Squad& s) const {
         if (!world_->units()[id - 1].alive()) continue;
         ++alive;
         chosen += isSelected(id);
+    }
+    for (uint32_t man : s.sleeping) {
+        ++alive;
+        chosen += std::binary_search(selSleeping_.begin(), selSleeping_.end(), man);
     }
     return chosen == 0 ? 0 : chosen == alive ? 2 : 1;
 }
@@ -359,37 +378,53 @@ int Battle::unitAt(const Camera& camera, float x, float y, float pixelScale) con
 
 void Battle::selectVisibleOfType(const Camera& camera, UnitType type) {
     std::vector<sim::EntityId> out;
+    std::vector<uint32_t> asleep;
     const auto& units = world_->units();
+    const auto inView = [&](const V3& at) {
+        float px, py;
+        return camera.project(at, px, py) && px >= 0 && py >= 0 && px <= camera.width() && py <= camera.height();
+    };
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
         if (!u.alive() || u.owner != local_ || static_cast<UnitType>(u.stats.type) != type) continue;
-        float px, py;
-        if (!camera.project(unitPosition(i), px, py)) continue;
-        if (px >= 0 && py >= 0 && px <= camera.width() && py <= camera.height()) out.push_back(u.id);
+        if (inView(unitPosition(i))) out.push_back(u.id);
     }
-    select(std::move(out));
+    for (const Sleeper& m : sleepers_)
+        if (m.owner == local_ && static_cast<UnitType>(m.type) == type && inView(sleeperPosition(m))) asleep.push_back(m.id);
+    selectMen(std::move(out), std::move(asleep));
 }
 
 void Battle::selectInRect(const Camera& camera, float x0, float y0, float x1, float y1, bool additive) {
     if (x0 > x1) std::swap(x0, x1);
     if (y0 > y1) std::swap(y0, y1);
     std::vector<sim::EntityId> out = additive ? selection_ : std::vector<sim::EntityId>{};
+    std::vector<uint32_t> asleep = additive ? selSleeping_ : std::vector<uint32_t>{};
     const auto& units = world_->units();
+    const auto inside = [&](const V3& p) {
+        float px, py;
+        return camera.project(p, px, py) && px >= x0 && px <= x1 && py >= y0 && py <= y1;
+    };
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
         if (!u.alive() || u.owner != local_) continue;
-        float px, py;
-        const V3 p = unitPosition(i) + V3{0, 0, static_cast<float>(u.stats.height.toDouble()) * 0.5f};
-        if (camera.project(p, px, py) && px >= x0 && px <= x1 && py >= y0 && py <= y1) out.push_back(u.id);
+        if (inside(unitPosition(i) + V3{0, 0, static_cast<float>(u.stats.height.toDouble()) * 0.5f})) out.push_back(u.id);
     }
-    select(std::move(out));
+    for (const Sleeper& m : sleepers_) {
+        if (m.owner != local_) continue;
+        const V3 at = sleeperPosition(m);
+        if (inside({at.x, at.y, at.z + 1.0f})) asleep.push_back(m.id);
+    }
+    selectMen(std::move(out), std::move(asleep));
 }
 
 void Battle::selectHeroes() {
     std::vector<sim::EntityId> out;
+    std::vector<uint32_t> asleep;
     for (const sim::Unit& u : world_->units())
         if (u.alive() && u.owner == local_ && static_cast<UnitType>(u.stats.type) == UnitType::Hero) out.push_back(u.id);
-    select(std::move(out));
+    for (const Sleeper& m : sleepers_)
+        if (m.owner == local_ && static_cast<UnitType>(m.type) == UnitType::Hero) asleep.push_back(m.id);
+    selectMen(std::move(out), std::move(asleep));
 }
 
 void Battle::assignGroup(int slot) {
@@ -480,6 +515,13 @@ std::vector<FormationSlot> Battle::placeFormation(const std::vector<sim::EntityI
 void Battle::moveSquad(const Squad& squad, const V3& to) {
     squad.goal = to;
     squad.hasGoal = true;
+    // A squad with men asleep, or out of reach of its men in the world, is marched whole (marchOrder's rule).
+    if (conquest_ && (!squad.sleeping.empty() || squad.members.empty() || flat(squadCentre(squad, false) - to).length() > kLocalReachM)) {
+        const V3 o = origin();
+        submitMarch({squad.army}, false, std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1),
+                    std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1));
+        return;
+    }
     std::vector<sim::EntityId> alive;
     for (sim::EntityId id : squad.members)
         if (world_->units()[id - 1].alive()) alive.push_back(id);
@@ -773,21 +815,26 @@ void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId
 
 void Battle::orderAtGate(int gate) {
     if (gate < 0 || gate >= static_cast<int>(worldRegion().gates().size())) return;
+    const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(gate)];
+    if (marchOrder(toV3(g.a + g.b) * 0.5f)) return voice_.order(Situation::Attack, *world_, selection_);
     attackGateWith(local_, selectedAlive(), selFormation_, gate);
     voice_.order(Situation::Attack, *world_, selection_);
 }
 
 void Battle::orderMove(const V3& to) {
+    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
     marchSelection(selectedAlive(), to, nullptr, false);
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::orderMoveFacing(const V3& to, const V3& facing) {
+    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
     marchSelection(selectedAlive(), to, &facing, false);
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::stopSelected() {
+    haltOrder();
     for (sim::EntityId id : selectedAlive()) issue(local_, id, sim::Command::Type::Stop, {});
     voice_.order(Situation::Move, *world_, selection_);
 }
@@ -820,7 +867,7 @@ void Battle::scatter() {
 
 void Battle::setFormation(Formation f) {
     const std::vector<sim::EntityId> alive = selectedAlive();
-    if (alive.empty()) return;
+    if (alive.empty() && selSleeping_.empty()) return;
     const V3 facing = selKeep_ ? selectionShape().front : selectionFacing();
     selFormation_ = f;
     selKeep_ = false;
@@ -829,8 +876,8 @@ void Battle::setFormation(Formation f) {
         if (s.owner == local_ && squadSelection(s) == 2) s.formation = f;
     for (int k = 0; k < kGroupSlots; ++k)
         if (groupSelection(k) == 2) groups_[static_cast<size_t>(k)].formation = f;
-    // Re-form where they stand, keeping their front.
-    moveGroup(local_, alive, f, centreOf(alive), &facing, facing);
+    // Re-form where they stand, keeping their front (men asleep keep it to march in once they are on their feet).
+    if (!alive.empty()) moveGroup(local_, alive, f, centreOf(alive), &facing, facing);
 }
 
 void Battle::keepShape() {
@@ -848,19 +895,28 @@ void Battle::cycleFormation() {
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
     const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
-    // A gate tapped is shown (its health over it, ringed), whatever else the tap does.
-    inspectedGate_ = pick.kind == Pick::Kind::Gate ? pick.index : -1;
-    if (inspectedGate_ >= 0) {
-        const sim::GateState& g = world_->gates()[static_cast<size_t>(inspectedGate_)];
-        const int maxHp = worldRegion().gates()[static_cast<size_t>(inspectedGate_)].maxHp;
-        say(g.broken() ? std::string("The gate is broken") : "The gate: " + std::to_string(g.hp) + " of " + std::to_string(maxHp));
-    }
     const std::vector<sim::EntityId> mine = selectedAlive();
+    const bool selecting = selectionSize() > 0;
+    using K = Pick::Kind;
+    // What is tapped and is not ours is looked at (view-only), when nothing of ours is selected to be ordered at it: a
+    // gate (its health over it, ringed) always; a man, his card.
+    if (pick.kind == K::Gate) {
+        inspect({Inspected::Kind::Gate, static_cast<uint32_t>(pick.index)});
+        const sim::GateState& g = world_->gates()[static_cast<size_t>(pick.index)];
+        const int maxHp = worldRegion().gates()[static_cast<size_t>(pick.index)].maxHp;
+        say(g.broken() ? std::string("The gate is broken") : "The gate: " + std::to_string(g.hp) + " of " + std::to_string(maxHp));
+    } else if (pick.kind == K::Enemy && !selecting) {
+        if (pick.sleeper >= 0) inspect({Inspected::Kind::Man, sleepers_[static_cast<size_t>(pick.sleeper)].id});
+        else if (pick.index >= 0 && conquest_) inspect({Inspected::Kind::Man, manOfUnit_[static_cast<size_t>(pick.index)]});
+        else if (pick.index >= 0) inspect({Inspected::Kind::Unit, units[static_cast<size_t>(pick.index)].id});
+        else inspect({});
+    } else {
+        inspect({});
+    }
     // Attack and force-march modes (the phone's button, A or M) last one
     // order; Ctrl and Alt held on the desktop do the same for one click.
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
-    using K = Pick::Kind;
-    if (!mine.empty() && mode != OrderMode::Normal && pick.kind != K::None) {
+    if (selecting && mode != OrderMode::Normal && pick.kind != K::None) {
         orderMode_ = OrderMode::Normal;
         if (mode == OrderMode::ForceMarch) {
             V3 ground;
@@ -876,7 +932,8 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
             case K::Own:
             case K::Enemy:
                 // Whoever was tapped, of either side: a force attack on a friend.
-                if (pick.index >= 0) orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
+                if (pick.sleeper >= 0) orderAttackSleeper(static_cast<size_t>(pick.sleeper));
+                else if (pick.index >= 0) orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
                 else orderAttackUnit(nearestOf(squads_[static_cast<size_t>(pick.squad)].members, centreOf(mine)));
                 return;
             case K::Gate:
@@ -888,43 +945,58 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
     }
 
     // One of ours: him alone; him again, everyone of his kind in view.
-    if (pick.kind == K::Own && pick.index >= 0) {
-        const sim::EntityId id = units[static_cast<size_t>(pick.index)].id;
+    if (pick.kind == K::Own && (pick.index >= 0 || pick.sleeper >= 0)) {
+        const bool sleeper = pick.sleeper >= 0;
+        const uint32_t man = sleeper ? sleepers_[static_cast<size_t>(pick.sleeper)].id : 0;
+        const sim::EntityId id = sleeper ? 0 : units[static_cast<size_t>(pick.index)].id;
+        const UnitType type = sleeper ? static_cast<UnitType>(sleepers_[static_cast<size_t>(pick.sleeper)].type)
+                                      : static_cast<UnitType>(units[static_cast<size_t>(pick.index)].stats.type);
+        const bool chosen = sleeper ? std::binary_search(selSleeping_.begin(), selSleeping_.end(), man) : isSelected(id);
         if (additive) {
             std::vector<sim::EntityId> next = selection_;
-            if (isSelected(id)) std::erase(next, id);
-            else next.push_back(id);
+            std::vector<uint32_t> nextAsleep = selSleeping_;
+            if (sleeper) {
+                if (chosen) std::erase(nextAsleep, man);
+                else nextAsleep.push_back(man);
+            } else {
+                if (chosen) std::erase(next, id);
+                else next.push_back(id);
+            }
             const Formation keep = selFormation_;
-            const bool had = !mine.empty(), asTheyStand = selKeep_;
-            select(std::move(next));
+            const bool had = selecting, asTheyStand = selKeep_;
+            selectMen(std::move(next), std::move(nextAsleep));
             if (had) {
                 selFormation_ = keep;
                 selKeep_ = asTheyStand;
             }
             return;
         }
-        if (mine.size() == 1 && mine.front() == id) selectVisibleOfType(camera, static_cast<UnitType>(units[static_cast<size_t>(pick.index)].stats.type));
-        else select({id});
+        if (selectionSize() == 1 && chosen) selectVisibleOfType(camera, type);
+        else selectMen(sleeper ? std::vector<sim::EntityId>{} : std::vector<sim::EntityId>{id}, sleeper ? std::vector<uint32_t>{man} : std::vector<uint32_t>{});
         return;
     }
     if (pick.kind == K::Own) {
         selectSquad(pick.squad);
         return;
     }
-    if (mine.empty()) return;
+    if (!selecting) return;
     switch (pick.kind) {
         case K::Enemy:
             // Tapped an enemy: everyone selected goes after him (missile troops
             // shoot him); zoomed far out, each after the nearest of that squad.
-            if (pick.index >= 0) {
+            if (pick.sleeper >= 0) {
+                orderAttackSleeper(static_cast<size_t>(pick.sleeper));
+            } else if (pick.index >= 0) {
                 orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
             } else {
                 const std::vector<sim::EntityId> all = selection_;
                 const std::vector<sim::EntityId>& foes = squads_[static_cast<size_t>(pick.squad)].members;
-                for (sim::EntityId id : mine) {
-                    selection_ = {id};
-                    orderAttackUnit(nearestOf(foes, toV3(units[id - 1].pos)));
-                }
+                if (foes.empty()) orderAttackGround(pick.at);  // (every one of that squad asleep: a march to where it stands)
+                else
+                    for (sim::EntityId id : mine) {
+                        selection_ = {id};
+                        orderAttackUnit(nearestOf(foes, toV3(units[id - 1].pos)));
+                    }
                 selection_ = all;
             }
             return;
@@ -949,15 +1021,19 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
     // middle). On another of ours, or with no one selected: a box.
     bool turnInPlace = false;
     if (!box) {
-        const int u = unitAt(camera, x, y, pixelScale);
-        const bool ours = u >= 0 && world_->units()[static_cast<size_t>(u)].owner == local_;
-        turnInPlace = ours && isSelected(world_->units()[static_cast<size_t>(u)].id);
-        box = selectedAlive().empty() || (ours && !turnInPlace);
+        const ManPick m = manPick(camera, x, y, pixelScale);
+        const bool ours = m.kind == ManPick::Kind::Unit   ? world_->units()[m.index].owner == local_
+                          : m.kind == ManPick::Kind::Sleeper ? sleepers_[m.index].owner == local_
+                                                             : false;
+        turnInPlace = ours && (m.kind == ManPick::Kind::Unit ? isSelected(world_->units()[m.index].id)
+                                                             : std::binary_search(selSleeping_.begin(), selSleeping_.end(), sleepers_[m.index].id));
+        box = selectionSize() == 0 || (ours && !turnInPlace);
     }
     if (box) {
         drag_.mode = Drag::Mode::Box;
         return true;
     }
+    if (turnInPlace && selectedAlive().empty()) return false;  // (men asleep have no formation to turn)
     if (turnInPlace) {
         drag_.anchor = centreOf(selectedAlive());
         drag_.anchor.z = heightAt(drag_.anchor.x, drag_.anchor.y);

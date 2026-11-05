@@ -8,9 +8,9 @@
 
 ## Giving the order {#march-order}
 
-Select a stack by tapping its soldiers, then tap where it should go: a cell of open ground, a city of yours, a friendly stack to join, or an enemy to attack. The stack works out its own way there, the quickest it can find for the armies in it, and sets off at once. It keeps to the roads where the roads are quicker, crosses rivers only at the fords and bridges, goes round mountains, lakes and enemy stacks, and takes a boat where that is quicker still (if a boat is free; see below). Tap somewhere else to change its orders on the march.
+Select soldiers (chapter [](#war-orders)), then tap where they should go: a cell of open ground, a city of yours, a friendly stack to join, or an enemy to attack. Their squads work out their own way there, the quickest it can find for the armies in them, and set off at once. It keeps to the roads where the roads are quicker, crosses rivers only at the fords and bridges, goes round mountains, lakes and enemy stacks, and takes a boat where that is quicker still (if a boat is free; see below). Tap somewhere else to change its orders on the march.
 
-Time on the campaign map runs on the battle's clock: a **campaign day** is two minutes at normal speed, and the speed button makes it two, four or eight times as fast. **Pause** stops it. Stacks march at their real pace every moment, not in jumps, so a stack ordered far away is on the road for days and can be met on the way. While a selected stack marches, the bar above its cards says when it will be there: in days, and in minutes at the present speed.
+Time on the campaign map runs on the battle's clock: a **campaign day** is two minutes at normal speed, and the speed button makes it two, four or eight times as fast. **Pause** stops it. Stacks march at their real pace every moment, not in jumps, so a stack ordered far away is on the road for days and can be met on the way. While a selected stack marches, the bar above the action row says when it will be there: in days, and in minutes at the present speed.
 
 ## Speed {#speed}
 

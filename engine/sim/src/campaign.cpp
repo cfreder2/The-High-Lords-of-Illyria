@@ -355,6 +355,56 @@ void Campaign::submit(Order order) {
     pending_.push_back(order);
 }
 
+Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
+    for (size_t i = 0; i < stacks_.size(); ++i) {
+        if (stacks_[i].id != o.stack) continue;
+        Stack& s = stacks_[i];
+        if (s.owner != o.side || s.garrison || s.armies.empty()) return nullptr;
+        if (!splitting || o.armies.empty() || s.boat) return &s;  // (a boat's company sails as one)
+        // The squads named go on in a stack of their own, in the state of the one they leave (awake, still in the fight).
+        Stack part = s;
+        part.id = nextId_++;
+        part.armies.clear();
+        for (size_t k = s.armies.size(); k-- > 0;)
+            if (std::find(o.armies.begin(), o.armies.end(), s.armies[k].id) != o.armies.end()) {
+                part.armies.insert(part.armies.begin(), s.armies[k]);
+                s.armies.erase(s.armies.begin() + static_cast<long>(k));
+            }
+        if (part.armies.empty()) return &s;
+        if (s.armies.empty()) {  // all of them: the stack as it was
+            s.armies = std::move(part.armies);
+            return &s;
+        }
+        if (part.awake) ++awakeStacks_;
+        stacks_.push_back(std::move(part));
+        return &stacks_.back();
+    }
+    return nullptr;
+}
+
+void Campaign::halt(Stack& s) {
+    // At the next cell it reaches (it does not turn back to where it set out from).
+    if (s.path.size() > 1) s.path.resize(1);
+    s.commanded = false;
+}
+
+void Campaign::commandMen(const Order& o) {
+    if (o.command.player != o.side) return;
+    for (Stack& s : stacks_) {
+        if (!s.awake || s.owner != o.side) continue;
+        for (const Army& a : s.armies)
+            for (const Man& m : a.men)
+                if (m.unit == o.command.unit && m.alive()) {
+                    // The men are the player's now: no route of the stack's is walked, no habit of its own taken.
+                    s.commanded = true;
+                    s.path.clear();
+                    s.orderCell = -1;
+                    playerCommands_.push_back(o.command);
+                    return;
+                }
+    }
+}
+
 void Campaign::applyPending() {
     // (applying an Order may not submit another: those due are taken before any is run)
     std::vector<Order> due;
@@ -363,17 +413,48 @@ void Campaign::applyPending() {
         due.push_back(o);
         return true;
     });
+    // What a side orders is its own: its stacks, its cities.
     for (const Order& o : due) {
+        const auto ownStack = [&] {
+            const Stack* s = findStack(o.stack);
+            return s && s->owner == o.side;
+        };
+        const auto ownCity = [&](int32_t city) {
+            return city >= 0 && city < static_cast<int32_t>(cities_.size()) && cities_[static_cast<size_t>(city)].owner == o.side;
+        };
         switch (o.kind) {
-            case Order::Kind::Move: move(o.stack, o.a, o.b); break;
-            case Order::Kind::Produce: produce(o.a, o.b); break;
-            case Order::Kind::VectorProduction: vectorProduction(o.a, o.b); break;
-            case Order::Kind::Disband: disband(o.stack, static_cast<uint32_t>(o.a)); break;
-            case Order::Kind::Embark: embark(o.stack); break;
-            case Order::Kind::Land: land(o.stack); break;
-            case Order::Kind::Search: search(o.stack); break;
+            case Order::Kind::Move:
+                if (Stack* s = stackFor(o, true)) {
+                    s->commanded = false;  // (marched again: its men follow the route)
+                    move(s->id, o.a, o.b);
+                }
+                break;
+            case Order::Kind::Halt:
+                if (Stack* s = stackFor(o, true)) halt(*s);
+                break;
+            case Order::Kind::Command: commandMen(o); break;
+            case Order::Kind::Produce:
+                if (ownCity(o.a)) produce(o.a, o.b);
+                break;
+            case Order::Kind::VectorProduction:
+                if (ownCity(o.a)) vectorProduction(o.a, o.b);
+                break;
+            case Order::Kind::Disband:
+                if (ownStack()) disband(o.stack, static_cast<uint32_t>(o.a));
+                break;
+            case Order::Kind::Embark:
+                if (ownStack()) embark(o.stack);
+                break;
+            case Order::Kind::Land:
+                if (ownStack()) land(o.stack);
+                break;
+            case Order::Kind::Search:
+                if (ownStack()) search(o.stack);
+                break;
             case Order::Kind::Hire: hire(o.side, o.a != 0); break;
-            case Order::Kind::BuildBoat: buildBoat(o.a); break;
+            case Order::Kind::BuildBoat:
+                if (ownCity(o.a)) buildBoat(o.a);
+                break;
         }
     }
 }
@@ -607,6 +688,7 @@ uint64_t Campaign::checksum() const {
         if (s.awake) {
             h.addI64(s.px);
             h.addI64(s.py);
+            if (s.commanded) h.addU64(0xC0DE);  // (the player's orders stand for its men: only then is there anything to add)
         }
         for (const Army& a : s.armies) {
             h.addU64(a.id);

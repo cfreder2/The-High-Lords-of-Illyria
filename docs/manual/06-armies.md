@@ -8,7 +8,7 @@
 
 ## What an army is {#army}
 
-An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Iron Hill Sappers*, the *Garrison of Ashcombe*. On the campaign map it is one card in a stack; on the battlefield it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
+An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Iron Hill Sappers*, the *Garrison of Ashcombe*. On the campaign map it is one of the squads in a stack; on the battlefield too it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
 
 | Soldiers | Armies |
 |---|---|
@@ -37,13 +37,13 @@ Soldiers who kill come out of their battles better soldiers. A soldier is a **re
 
 An army shows the average rank of its survivors as pips: ◇◇◇ recruit, ◆◇◇ regular, ◆◆◇ veteran, ◆◆◆ elite, with the tally of its kills; a veteran army's pips are gold. On the battlefield each soldier's health bar carries a gold shield for each of his grades. A rank is a small edge, not a whole point of strength: **+3% a rank** to the army's blows and its roll in the dice (regular 3%, veteran 6%, elite 9%), with a little more besides on the battlefield (chapter [](#veterans-in-battle)). Ranks are kept from battle to battle, in the dice and in 3D alike.
 
-Since the rank is the survivors' average, **losses cost rank as well as men**: a veteran army that loses its oldest hands to a volley may come out regular. The cards of a stack you select show each army's rank.
+Since the rank is the survivors' average, **losses cost rank as well as men**: a veteran army that loses its oldest hands to a volley may come out regular. The soldiers you select show each army's rank in the cards and the grey card of a man you look at.
 
 ## Stacks {#stacks}
 
 Armies move about the map in **stacks**. A stack is shown as its soldiers, in a column of squads, in its lord's colour (they are points from high up, and the men themselves close in). A stack is a **group** of up to **eight armies** that march together; any number of stacks may stand in one place, and a town holds whatever fits inside its walls (the old limits of eight to a cell and 32 to a city are gone). A fight is between the men there are, wherever they stand.
 
-Tap the soldiers of a stack of yours to select it (or box them: shift and drag, or hold and drag); its armies appear as cards along the bottom. A stack that arrives where another of yours is standing joins it, up to a group of eight armies. New armies trained in a city join a stack of yours standing idle there.
+Tap a soldier of yours to select him (again, for all of his kind in view; or box them: shift and drag, or hold and drag); the squads that march are those his army's, whole. A stack that arrives where another of yours is standing joins it, up to a group of eight armies. New armies trained in a city join a stack of yours standing idle there.
 
 ::: note "Not yet built"
 In this edition a stack cannot yet be split by hand. A stack boarding a boat leaves its weakest army on the quay when it has eight (chapter [](#boats)); a hero going to search a ruin takes the stack with him.
@@ -60,11 +60,11 @@ A **hero** is an army of one: a named champion who fights, leads, and above all 
 
 A hero goes where his stack goes, on foot: a hero among fliers keeps them on the ground. A hero who dies is gone, with everything he carried dropped where he fell.
 
-## The army cards {#army-cards}
+## The cards {#army-cards}
 
-![A stack's armies as cards: the hero (gold, with his level), strength badges, rank pips, the rare troops' violet border.](images/shots/camp_cards.jpg)
+![The campaign's cards and action row: your hero (gold, with his level), the selection, and the battle's orders.](images/shots/camp_cards.jpg)
 
-Each card shows:
+The cards are the battle's (chapter [](#orders)): your heroes in gold, and the groups you make. A card shows:
 
 - the army's **name** and how many **soldiers** it has, and a bar of its full number;
 - its **strength** badge, and under it the **rank** (◆◇◇) or the hero's **level** (Lv 3);
@@ -72,4 +72,4 @@ Each card shows:
 - the tally of the army's **kills**;
 - a **violet border** for rare troops, which no city can train or replace.
 
-Tap a hero's card to hear what he carries. Tap any other card twice to **disband** that army: it goes home and costs no more upkeep. The game warns you when the army is rare or seasoned, since nothing will replace it.
+Hold a hero's card (or look at it in its tooltip) to see what he carries. Select whole armies (box their soldiers) and tap **Disband** twice: they go home and cost no more upkeep. The game warns you when an army is rare or seasoned, since nothing will replace it.

@@ -260,18 +260,18 @@ A short note on how it works, and what it costs.
 There is one game. A fight on the campaign is the Battle's fight, shown by the Battle's own presentation, drawn by
 the one renderer pass over the men. Nothing the battle has is copied for the campaign: it is the same code.
 
-- **The field borrows the world.** `Battle::borrow(World*)` makes a Battle present a world it does not own. The
-  campaign's field (`app->battle`) is a Battle made on the island's own origin (the field's 1 km window sits at
-  the island's south-west corner), so the world's places are the battle's places and nothing is translated. The
-  campaign tells it round every step of its world (`Campaign::onWorldStep`: `beforeWorldStep`,
-  `afterWorldStep`) and when a fight is cleared away (`forgetMen`); `Battle::step` is the same two calls round
-  its own world's step. Everything after that is the battle's: `collectEvents` (blood, dust, sparks, splinters off
-  gates, craters, fire), `presentDeaths` and the sounds (`Sfx::observe`), the shouts (`Voice::observe`), the
-  per-man ticks that drive flinches, blows and death frames, the remains and gibs, the stuck arrows, the health
-  bars, the gates drawn broken or battered (from the presented world's own region, `Battle::worldRegion`), and the
-  tap on a gate that shows its hit points (`Battle::gateAt`). `tests/test_campaign_soldiers.cpp`
-  (`the_battle_presents_the_campaigns_fight_as_its_own`) runs a campaign fight with no code of the campaign's in
-  the way and finds the battle's blood, deaths, sounds and shouts in it.
+- **The field presents the conquest.** `Battle::borrow(Campaign*)` makes a Battle present the conquest's world as
+  it presents its own. The conquest's field (`app->battle`) is a Battle made on the island's own origin (the
+  field's 1 km window sits at the island's south-west corner), so the world's places are the battle's places and
+  nothing is translated. The conquest tells it round every step of its world (`Campaign::onWorldStep`:
+  `beforeWorldStep`, `afterWorldStep`) and when a fight is cleared away (`forgetMen`); `Battle::step` is the same
+  two calls round its own world's step. Everything after that is the battle's: `collectEvents` (blood, dust,
+  sparks, splinters off gates, craters, fire), `presentDeaths` and the sounds (`Sfx::observe`), the shouts
+  (`Voice::observe`), the per-man ticks that drive flinches, blows and death frames, the remains and gibs, the
+  stuck arrows, the health bars, the gates drawn broken or battered (from the presented world's own region,
+  `Battle::worldRegion`), and the tap on a gate that shows its hit points (`Battle::gateAt`).
+  `tests/test_campaign_soldiers.cpp` (`the_battle_presents_the_campaigns_fight_as_its_own`) runs a conquest fight
+  with no code of the conquest's in the way and finds the battle's blood, deaths, sounds and shouts in it.
 - **The men are drawn once.** `Renderer::drawMan` draws every man of every battle at every distance: a dot in his
   side's colour from far off (pulsing, rapidly and at random, while he fights; a town's own garrison hollow), the
   battle's sprite near, the two cross-fading between 380 m and 170 m; his shadow, ring, frame, picking box and
@@ -281,10 +281,26 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   One side-colour scheme serves every battle (`factions.h` `sideFactions`: a skirmish's seats are the Moonward blue,
   the Ironhold red, gold and green; a conquest's seats play their lords).
 - **Looking.** `Battle::manAt` picks the man under a finger, a world's or a sleeper's, at any distance;
-  `Battle::gateAt` the gate; `Battle::setPresented` says who is shown selected (ours) and who only looked at (grey).
+  `Battle::gateAt` the gate; `Battle::inspect` says who is looked at (a man not the player's, awake or asleep, or a
+  gate: grey, view only, one card for a skirmish's foe and a conquest's alike, `Battle::glance`).
+- **Commanding: one selection, one command bar, one order path.** (`game/src/battle_conquest.cpp`; tests in
+  `tests/test_campaign_battle.cpp`.) Each frame `Battle::presentConquest` makes the Battle's squads from the armies
+  of the stacks (a squad is an army: its men awake in the world are its members, those asleep are its `sleeping`
+  men, and the card's numbers are the army's own) and its sleepers from the men asleep. The selection is of men,
+  by their ids, so that it holds through a man's waking and sleeping, and is made again each frame into the
+  world's units and the sleepers. A tap, a box, a press with its facing line, the cards, Charge, Hold, Find, a
+  formation, As they stand and Scatter are the battle's own functions (`Battle::tap`, `pressEnd`,
+  `selectSquad`, `chargeAll`...), for men awake and asleep. Only where an order *goes* differs, and it is decided in
+  one place (`Battle::marchOrder`): an order for men awake and within `Battle::kLocalReachM` (200 m) is the
+  world's (commands to units, which `Battle::flushOrders` submits as `Order::Command`: the conquest applies them
+  at the start of the step it falls in and the stack's men stand to them: `Stack::commanded`, which stops
+  `steer` and `fightAi`), and an order for men asleep or further off is a march of their squads
+  (`Order::Move`, naming the squads when they are only some of a stack; `Order::Halt` for Hold). Neither selecting nor ordering men asleep wakes them (what wakes a stack is
+  what always did, an enemy come near and a march); what a sleeping man cannot do (a formation, Scatter) is kept as
+  the squad's choice for when he is on his feet.
 - **Sight.** There is one seam, `Campaign::canSee(viewer, owner, x, y)` (everything is seen until fog is built in
   step 4). The men drawn, picked and looked at, the stacks listed, the minimap's men and the Fight! target all go
-  through it (`visibleSoldiers`, `Battle::setSight`). Always visible by decision, until step 4 chooses: towns'
+  through it (`visibleSoldiers`, `Battle::sees`, which asks the conquest it presents). Always visible by decision, until step 4 chooses: towns'
   holders, banners and the land's colour (map knowledge), and a side's own news lines.
 - **Player intent.** The page submits `Campaign::Order`s (stamped, ordered, serializable); they are applied inside
   `step()`. `tests/test_campaign_save.cpp` replays the same Orders over the same save for the same checksum.
@@ -292,121 +308,11 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   `pushMapWounds`, `drawMapDots`, `setMapArrows`, the campaign's own mirroring of gates and its effects, its own
   picking by dots and by gates, and the separate sleeper drawing loop.
 
-**Not yet one thing.** Selecting and commanding men in a conquest is still the campaign's own tap (`campaignTap`: a
-stack is selected and sent across the map) and not the battle's command bar (As they stand, Attack, Scatter, Hold,
-Find, Charge, formations, squad and hero cards, drag-to-face). That needs the Battle's squads made from the
-stacks' armies, the Battle's orders for awake men applied to the campaign's world (the campaign already steps it:
-`Campaign::onWorldStep`), and a sleeping squad's order landing in the campaign as an `Order::Move`; it is the next
-step, and until it is done a fight in a conquest cannot be commanded with the battle's commands.
-
-## What you see
-
-*Built in steps 2 and 3: the table below is what the campaign map shows now. The soldiers are
-points up to a kilometre or so out and the battle's sprites within about 380 m of the camera;
-there is no point at which units are not drawn. The two are one level of detail: the dots fade
-out as the camera comes in (full at 380 m, gone by 170 m), so a dot becomes the man in
-place. A man in a fight pulses as a dot, rapidly and at random in strength and size,
-his own phase from his number and the game's time (never the camera's), and swings, shoots and
-flinches as a sprite with the animations the battle gives him. Arrows in flight are drawn.
-Nothing is hidden by fog yet.*
-
-| Height | What you see |
-|---|---|
-| The whole island | The land, territory, towns; every soldier you can see a point in his side's colour |
-| A kilometre or two | Columns and blocks of points: the ants on the march |
-| A field | Soldiers as sprites, in formation |
-| The ground | One man: his shield, his wounds, the arrows in him |
-
-- **No flags over armies.** Zoomed far out, the points can't be told apart: an archer is
-  the same dot as a knight. That is the price of the height. Zoom in to see who they are.
-- **More is drawn when zoomed out,** but as points in 2D, which is cheap; sprites and
-  close-up land are drawn only near the camera.
-- **Fog of war, in single-player and multiplayer.** The land, every town and every site are
-  always on show; enemy soldiers only where your soldiers, towns or heroes can see them.
-  From high up, that means points only where you have eyes. In lockstep every machine holds
-  the whole world, so the fog is in what is drawn and told, not in the simulation; as in
-  any lockstep game, reading the browser's memory could lift it.
-
-## The minimap
-
-*Built in steps 2 and 3 (the page's `#minimap`, `illyria_minimap*` in `game/web/main.cpp`):
-every town and site, soldiers as points where they stand apart (two or fewer in 40 m) and as a
-heat blob in their side's colour where they do not, the ground the camera sees, a pulsing glow
-where men are fighting, and a tap or drag to take the camera there. It shows every soldier,
-since there is no fog of war until step 4. The Fight! button takes the camera to the
-fiercest fight on the island.*
-
-- Every town and site, always.
-- Every soldier you can see as a point in his side's colour where the points can be told
-  apart; where they can't, a heat map of each side's troops.
-- Fights glow (built). Tap anywhere on it to take the camera there.
-
-## How hard the computer lords are
-
-What a lord can see through the fog is the difficulty. Today's Easy and Hard (GAME_DESIGN.md
-§4.2.6) keep their habits, and a Medium goes between them:
-
-| | Sees | Plays like |
-|---|---|---|
-| Easy | Only what its own soldiers, towns and heroes see | Warlords' Knight, as Easy does today: wastes a fifth of its gold, forgets a stack now and then, picks targets at random |
-| Medium (new) | Every soldier as a point, as from high up: where armies are, not what they are, except where its own men see | Warlords' Warlord, as Hard does today |
-| Hard | Everything | Warlords' Warlord |
-
-The design promises no secret bonuses, so the difficulty buttons say plainly what each
-lord sees.
-
-## What becomes of what is built
-
-| Built | Becomes |
-|---|---|
-| Campaign stacks, movement points, the 8-to-a-cell rule | Squads on the land, the battle's movement, no caps |
-| "Fight it" / "Resolve", the battle window (`Region::fromContinent`) | Fights in place, everywhere (built, step 3: the window, the prompt, the dice and `BattlePlan` are gone) |
-| Close-up land streamed around the camera | Kept, and the simulation samples the same ground |
-| Towns, castles, walls, gates, ramps | Kept, all of them in the simulation at once |
-| Gold, upkeep, training, rare troops, heroes, ruins, temples, sages | Kept, in days of 2 minutes |
-| Banners rising, territory hexes, income from land | Kept |
-| Boats | Later: carrying squads over water in real time |
-| The computer lords' campaign AI | Kept, planning in real time instead of daily, its sight set by the difficulty |
-| The title's set battles (Ford, Siege) and matches (Horde, CTF) | Kept as they are: a piece of the island with nothing else running |
-| Saved games | A new format (`ILC3.`: every man, where he stands); the rest of a fight in progress is not kept (step 4) |
-
-## Building it, in steps
-
-Each step leaves a playable game.
-
-1. **The map and the clock (built).** Cut the continent to a third each way and the towns' walls to
-   three quarters; run the campaign on the 30 Hz clock with 2-minute days; stacks move at the battle's speeds over the grid. Still flags, but you
-   can feel the pace.
-2. **Soldiers on the land (built).** Soldiers replace flags: points far out, sprites close in,
-   in a column of squads, marching their routes. The minimap. A stack is picked by tapping or
-   boxing its soldiers. Still the stack model and the dice-or-3D fight prompt; no fog.
-3. **Fights in place (built).** Contact turns men into fully stepped soldiers where they stand.
-   The whole island's ground, stone and routes in the simulation; no battle window, no prompt,
-   no dice; sieges at the real towns' walls and gates; a pulsing dot for every man in a fight,
-   the battle's animations close up; the minimap glows where men fight.
-4. **The rest.** What step 3 leaves for later:
-   - **Fog of war** (and the difficulty it sets), in single-player and multiplayer.
-   - **The computer lords in real time**, planning as the world changes instead of at dawn
-     (today they still plan daily, and settle their stacks at dawn so as to rearrange them);
-     and splitting a stack into squads for the player's orders. Their idea of a fight
-     is still Warlords' odds; and a hero sent to a town alone besieges it alone.
-   - **The fast-forward limit**: at 4× and 8× with a big fight on, the machine may not keep up;
-     the speed should drop to what it can hold and say so. Today the page runs up to 40 ticks a
-     frame and no more.
-   - **Saved games** that keep the fight in progress (arrows, cooldowns, morale), and
-     the starting of the world's ground inside the page's load rather than at the first fight.
-   - **Multiplayer** (lockstep over the same world).
-   - **Ruin guardians** fought in the ruin itself (today a hero's search is still a roll of the
-     dice; it is the one dice fight left), and **boats**, which do not fight yet (a stack aboard
-     is never woken).
-   - **Walls**: the real walls and gates are the whole defence; the old Warlords numbers and
-     the temple, ruin and tower *holding* edges and the home-land edge are not applied in fights
-     on the campaign ground.
-5. **Boats.**
-
-## Open questions
-
-- **The day's length.** 2 minutes for now, to be settled in play by how often new squads
-  come. If they come too slowly or too fast, the day is the one number to turn: income,
-  upkeep and training move together. A 5-minute day would make marching quick against the
-  economy (the longest march about 5 days) and a 120-day campaign ten hours at 1×.
+**What still differs, and why.** The conquest's clock and its speeds (1, 2, 4 and 8) are the conquest's own, not the
+battle's (1, 2, 4 and slow motion): the page keeps both (`illyria_campaign_pause`, `illyria_toggle_pause`). A squad
+of men asleep cannot be ordered a formation or to scatter (it has no bodies to), nor a facing on arrival; the
+squad's march is the stack's grid march. Saved groups (keys 1 to 9) are of the world's units, and so of men awake.
+The renderer's one fork on whether the world is the conquest's is that a skirmish's field bakes sprite sheets for
+the kinds of soldier it has at once, and a conquest's only for those near the camera (`Renderer::draw`). The town
+screens (what a town trains, its boats, where its new armies go) are the conquest's own, and so is the tap that
+opens them (`townTap` in the page): everything else is the battle's.

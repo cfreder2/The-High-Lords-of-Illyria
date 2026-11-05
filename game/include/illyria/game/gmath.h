@@ -25,6 +25,8 @@ struct V3 {
     }
 };
 
+// The same place on the ground plane (height dropped).
+inline V3 flat(const V3& v) { return {v.x, v.y, 0}; }
 inline V3 lerp(const V3& a, const V3& b, float t) { return a + (b - a) * t; }
 
 inline V3 toV3(const sim::Vec3& v) {

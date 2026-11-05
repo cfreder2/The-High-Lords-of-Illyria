@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@
 #include "illyria/game/gmath.h"
 #include "illyria/game/sfx.h"
 #include "illyria/game/voice.h"
+#include "illyria/sim/campaign.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
@@ -63,6 +65,17 @@ float formationSpacing(sim::UnitType type);
 // lines for foot, a checkerboard for missile troops, a wedge for horse.
 Formation defaultFormation(sim::UnitType type);
 
+// What a squad's banner shows, as in Warlords: one strength from 1 to 9,
+// the soldiers' rank (chevrons), a hero's level and the blessings carried.
+struct Standing {
+    int strength = 1;
+    int rank = 0;       // soldiers: 0 recruit .. 3 elite (the survivors' average)
+    int level = 0;      // heroes: 1..9; 0 for other squads
+    int blessings = 0;
+    int kills = 0;
+    int broken = 0;     // soldiers routed (fleeing, deaf to orders)
+};
+
 struct Squad {
     std::string name;
     sim::PlayerId owner;
@@ -77,17 +90,17 @@ struct Squad {
     // Where it was last sent (the computer re-plans a chase only when that moves enough).
     mutable V3 goal{};
     mutable bool hasGoal = false;
-};
-
-// What a squad's banner shows, as in Warlords: one strength from 1 to 9,
-// the soldiers' rank (chevrons), a hero's level and the blessings carried.
-struct Standing {
-    int strength = 1;
-    int rank = 0;       // soldiers: 0 recruit .. 3 elite (the survivors' average)
-    int level = 0;      // heroes: 1..9; 0 for other squads
-    int blessings = 0;
-    int kills = 0;
-    int broken = 0;     // soldiers routed (fleeing, deaf to orders)
+    // In Conquest (battle_conquest.cpp) a squad is an army of a stack: its men awake in the world are `members`, those
+    // asleep in their stack on the march or in a town are `sleeping` (their ids as Campaign::Man has them), and what its
+    // card shows that no unit holds is told by the army (`told`, `arms`, `rare`, `command`, `hired`).
+    std::vector<uint32_t> sleeping{};
+    uint32_t army = 0, stack = 0;
+    int total = 0;  // the squad's full size (0: its members)
+    bool told = false;
+    Standing standing{};
+    std::string arms{};  // a hero's artifacts
+    bool rare = false, hired = false;
+    int command = 0;
 };
 
 // Which battle to fight.
@@ -166,6 +179,9 @@ public:
     static constexpr float kWorldSize = kTerrainCells * kCellSize;
     static constexpr uint32_t kMaxRemains = 30000;
     static constexpr size_t kMaxGroundMarks = 30000;
+    // Conquest: beyond this from the men (metres) an order is not the world's (no fight is there to be ordered), it is a
+    // march of their squads (battle_conquest.cpp).
+    static constexpr float kLocalReachM = 200.0f;
     static constexpr size_t kMaxParticles = 4000;
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
@@ -187,17 +203,34 @@ public:
     // Fraction of the way from the previous tick to the current one, for interpolation.
     float alpha() const { return alphaSet_ ? alphaOver_ : static_cast<float>(accumulator_ * sim::kTicksPerSecond); }
 
-    // Presenting a world that is not this battle's own (the campaign's fights): the battle shows it exactly as it
-    // shows its own, from the same places. The world must be on a region with this battle's origin (the field is
-    // made at the island's: Campaign::islandOrigin), so that the world's places are the battle's. Whoever steps the
-    // world calls beforeWorldStep() and afterWorldStep() round each step, and says how far between ticks it is.
-    void borrow(sim::World* world);  // nullptr: back to its own
-    bool borrowing() const { return borrowed_; }
+    // Conquest (game/src/battle_conquest.cpp): the whole island's war is a battle too, presented by this one Battle:
+    // it shows the conquest's world exactly as it shows its own, from the same places. The world must be on a region
+    // with this battle's origin (the field is made at the island's: Campaign::islandOrigin), so that the world's
+    // places are the battle's. Whoever steps the conquest calls beforeWorldStep() and afterWorldStep() round each
+    // step of its world (Campaign::onWorldStep), says how far between ticks it is, and calls presentConquest() once a
+    // frame, after the steps, and flushOrders() once before them.
+    void borrow(sim::Campaign* conquest);  // nullptr: back to its own world
+    bool borrowing() const { return conquest_ != nullptr; }
+    sim::Campaign* conquest() const { return conquest_; }
     void beforeWorldStep();
     void afterWorldStep();
     void setAlpha(float a) { alphaSet_ = true, alphaOver_ = a; }
     // The fight in the borrowed world was cleared away (its men are gone, new ones are not those): forget them.
     void forgetMen();
+    // Every man as the conquest says he stands this frame (Campaign::visibleSoldiers): the squads of the armies he is
+    // of (their men awake in the world are its units, those asleep are sleepers, one picture each in the renderer's
+    // one pass), who is selected or looked at, and the selection kept through a man's waking and sleeping (it is of
+    // men, not of the world's units, which come and go).
+    void presentConquest(const std::vector<sim::Campaign::Soldier>& men);
+    // The player's orders for the conquest, out as Orders (Campaign::submit): the commands to men in the world, as a
+    // skirmish's step would take them; the marches are submitted as they are given (marchOrder).
+    void flushOrders();
+    // Every man of a stack of the player's, asleep or awake, selected (the page's, at the start: over the capital).
+    void selectStack(uint32_t stack);
+    // The stack the selection is of (all its men in one), or 0: the stack panel's, the voyage's, the search's.
+    uint32_t selectedStack() const { return selStack_; }
+    // The army (squad) the selection is exactly (every man of it and no other), or 0.
+    uint32_t selectedArmy() const;
 
     // Men who are not units of the world presented: the campaign's soldiers asleep in their squads on the march
     // (their bodies are stepped as a whole, not as men). Each is the same picture as a unit's, in the same pass of
@@ -206,27 +239,41 @@ public:
         float x = 0, y = 0, yaw = 0, speed = 0;
         uint8_t owner = 0, type = 0;
         bool aloft = false, selected = false, inspected = false;
-        uint32_t id = 0, stack = 0;
+        uint32_t id = 0, stack = 0, army = 0;
     };
-    // What the viewer may see of the others (Campaign::canSee): a man of `owner` at battle-local x, y that it refuses
-    // is not drawn, picked or looked at. Empty: everything is seen (a skirmish's field).
-    void setSight(std::function<bool(uint8_t owner, float x, float y)> sight) { sight_ = std::move(sight); }
-    bool sees(uint8_t owner, float x, float y) const { return !sight_ || sight_(owner, x, y); }
-    void setSleepers(std::vector<Sleeper>&& men) { sleepers_ = std::move(men); }
+    // What the viewer may see of the others (Campaign::canSee, through the conquest this field presents): a man of
+    // `owner` at battle-local x, y that it refuses is not drawn, picked or looked at. A skirmish's field sees all.
+    bool sees(uint8_t owner, float x, float y) const;
     const std::vector<Sleeper>& sleepers() const { return sleepers_; }
-    // Who is shown selected (ours, for commanding) and who looked at (not ours: view-only, grey), among the world's men.
-    void setPresented(const std::vector<sim::EntityId>& selected, const std::vector<sim::EntityId>& inspected);
+    // A man asleep (by his id) where he stands, battle-local on the ground (the origin if he is not asleep).
+    V3 sleeperPositionOf(uint32_t man) const;
     // The man nearest the finger on the screen within `tapPx` pixels, at any height and any distance (a dot is as
     // much a man as a sprite): one of the world's (unit: his id) or a sleeper (index into sleepers()).
     struct ManPick {
         enum class Kind : uint8_t { None, Unit, Sleeper } kind = Kind::None;
         uint32_t id = 0;
         size_t index = 0;
+        float px = 1e30f;  // how far off the finger he is, in pixels
     };
     ManPick manAt(const Camera& camera, float x, float y, float tapPx) const;
     // The standing gate under the finger, or -1.
     int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
-    bool isInspected(sim::EntityId id) const { return id > 0 && id <= inspectedFlag_.size() && inspectedFlag_[id - 1]; }
+    // What the player looks at and cannot order: view-only, grey. One man not his (a unit of the world, or a sleeper by
+    // his man id) or a gate; a tap on any of them with nothing selected looks at it, and any other tap lets it go.
+    struct Inspected {
+        enum class Kind : uint8_t { None, Unit, Man, Gate } kind = Kind::None;  // Man: in Conquest, by his id (Campaign::Man)
+        uint32_t id = 0;
+    };
+    const Inspected& inspected() const { return inspected_; }
+    bool isInspected(sim::EntityId id) const { return inspectedUnit_ == id && id != 0; }
+    // What the card of the one looked at shows (the page prints it).
+    struct Glance {
+        bool any = false, gate = false, awake = false, broken = false;
+        const char* type = "";
+        uint8_t owner = 0;
+        int hp = -1, max = -1, rank = 0, morale = 0, hpGate = 0, stack = 0;
+    };
+    Glance glance() const;
 
 
     // Input. Selection is as in Myth (game/src/battle_command.cpp): tapping
@@ -287,6 +334,8 @@ public:
     // keep to a bowshot and shoot him, the rest run him down. When he falls
     // each decides for himself: another foe, or back to his squad.
     void orderAttackUnit(sim::EntityId target);
+    // Conquest: at a man asleep (his stack on the march, or in a town); the squads march to where he stands.
+    void orderAttackSleeper(size_t sleeper);
     // Missile troops shoot at the spot; the rest march there, fighting
     // whoever they meet.
     void orderAttackGround(const V3& at);
@@ -311,6 +360,7 @@ public:
         Kind kind = Kind::None;
         int index = -1;  // the unit (index), gate, wall ring or obstacle
         int squad = -1;  // zoomed far out: the squad nearest the finger (index -1)
+        int sleeper = -1;  // Conquest: a man asleep (index into sleepers()), who is no unit (index -1)
         V3 at;           // where on the ground
     };
     Pick pickAt(const Camera& camera, float x, float y, float pixelScale) const;
@@ -445,6 +495,9 @@ public:
     bool controllable(const sim::Unit& u) const {
         return u.owner == local_ && !(u.id <= foreign_.size() && foreign_[u.id - 1]);
     }
+    bool controllable(const Squad& s) const { return s.owner == local_ && (s.members.empty() || controllable(world_->units()[s.members.front() - 1])); }
+    // How many a squad's card counts: its men that are alive (awake or asleep), and the squad's full size.
+    int totalCount(const Squad& s) const { return s.total > 0 ? s.total : static_cast<int>(s.members.size()); }
     // A fallen soldier back in his squad (Horde's hero returning): a fresh
     // soldier with the fallen one's stats, rank, kills and blessings, at
     // `hpPct` of his health, takes his place in the squad. Its id.
@@ -488,11 +541,16 @@ public:
     bool isSelected(sim::EntityId id) const { return id > 0 && id <= selectedFlag_.size() && selectedFlag_[id - 1]; }
     Formation selectionFormation() const { return selFormation_; }
     // The gate last tapped (its health shown over it), or -1; any other tap lets it go.
-    int inspectedGate() const { return inspectedGate_; }
-    // The campaign's fights on this field (the campaign's world is not this battle's): show what its blows and
-    // wounds did (blood, dust, sparks, splinters), move the sparks and smoke on, and ring a gate to look at.
+    int inspectedGate() const { return inspected_.kind == Inspected::Kind::Gate ? static_cast<int>(inspected_.id) : -1; }
+    // Conquest's fights on this field (its world is not this battle's): show what its blows and wounds did (blood,
+    // dust, sparks, splinters), and move the sparks and smoke on.
     void stepEffects(float seconds);
-    void inspectGate(int gate);
+    // Selected men asleep (their ids as Campaign::Man has them) and every man selected, awake or asleep.
+    const std::vector<uint32_t>& selectedSleepers() const { return selSleeping_; }
+    size_t selectionSize() const { return selectedAlive().size() + selSleeping_.size(); }
+    // The types of those selected, one name for them all ("Mixed" when they are not).
+    const char* selectionLabel() const;
+    bool selectionBatters() const;
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
     int squadSelection(const Squad& s) const;
     int groupSelection(int slot) const;
@@ -656,7 +714,35 @@ private:
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1
     Formation selFormation_ = Formation::Line;
     bool selKeep_ = true;  // as they stand (keepShape), not selFormation_
-    int inspectedGate_ = -1;
+    Inspected inspected_;
+    sim::EntityId inspectedUnit_ = 0;  // the unit of the world he is, awake (Conquest), or the unit looked at
+    // Conquest (battle_conquest.cpp). The selection there is of men (their ids), so that it holds through a man's
+    // waking and sleeping; selection_ and selSleeping_ are what it is of the world's units and of the sleepers now.
+    sim::Campaign* conquest_ = nullptr;
+    std::vector<uint32_t> selMen_, selSleeping_;
+    std::vector<uint32_t> manOfUnit_;      // by EntityId - 1: the man a unit is (0: none)
+    uint32_t selStack_ = 0;
+    // Who an order is for, and where it goes as a march of squads (marchOrder): the one place an order of the
+    // selection becomes the conquest's rather than the world's.
+    bool marchOrder(const V3& to, bool wholly = false);
+    void haltOrder();
+    void submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t cx, int32_t cy);
+    ManPick manPick(const Camera& camera, float x, float y, float pixelScale) const;
+    void selectMen(std::vector<sim::EntityId> units, std::vector<uint32_t> sleepers);
+    void applySelection(std::vector<sim::EntityId> units);
+    void keepSelectedMen();
+    static constexpr size_t kNoSleeper = static_cast<size_t>(-1);
+    size_t sleeperIndex(uint32_t man) const;  // into sleepers_, or kNoSleeper
+    V3 sleeperPosition(const Sleeper& m) const;  // battle-local, on the ground
+    int squadOfArmy(uint32_t army) const;
+    void inspect(Inspected what);
+    struct Memo {  // what a squad keeps between frames, by army: the squads are made afresh from the conquest each frame
+        Formation formation = Formation::DoubleLine;
+        V3 facing{1, 0, 0};
+    };
+    std::map<uint32_t, Memo> armyMemo_;
+    std::vector<std::pair<uint32_t, size_t>> sleeperIx_;  // (man, index into sleepers_), by man
+    std::map<uint32_t, int> squadOfArmy_;
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
     // he was to face there and the front of the whole, and which order it was.
@@ -686,9 +772,7 @@ private:
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<uint32_t> attackTick_, hitTick_;
     std::vector<Sleeper> sleepers_;
-    std::function<bool(uint8_t, float, float)> sight_;
-    std::vector<uint8_t> inspectedFlag_;
-    bool borrowed_ = false, alphaSet_ = false;
+    bool alphaSet_ = false;
     float alphaOver_ = 0;
     std::vector<std::pair<int32_t, int32_t>> readied_;  // melee cooldown and reload before the tick
     std::vector<std::pair<sim::EntityId, V3>> prevProjectilePos_;  // sorted by id

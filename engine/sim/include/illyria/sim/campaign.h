@@ -198,6 +198,9 @@ public:
         // last got anywhere, and how long it goes deaf to the enemy to pull itself free.
         int32_t lx = 0, ly = 0;
         uint32_t lt = 0, forceUntil = 0;
+        // Awake, and its men were given orders in the world (an Order::Command): they stand to those, as a skirmish's do,
+        // and the stack's own steering and habits (steer, fightAi) leave them alone until it is marched again or sleeps.
+        bool commanded = false;
     };
     // A city that changed hands, for the reports.
     struct Fight {
@@ -283,41 +286,40 @@ public:
     // tick, in the order they were submitted, so the same Orders over the same saved game give the same game on
     // every machine (the test in tests/test_campaign_save.cpp). The calls below are what an Order does.
     struct Order {
-        enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat };
+        enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat, Halt, Command };
         Kind kind = Kind::Move;
         uint8_t side = 0;
         uint32_t tick = 0;     // the tick it takes effect at; 0: the next
         uint32_t stack = 0;    // the stack, if it concerns one
         int32_t a = 0, b = 0;  // Move: the cell; Produce: city, option; VectorProduction: city, to; Disband: the army; BuildBoat: city; Hire: accept
+        // Move, Halt: only these squads of the stack (empty: all of it); the rest stay, a stack of their own.
+        std::vector<uint32_t> armies;
+        // Command: an order to a man of the world (his unit), as a skirmish's orders are: the stack he is of is the player's
+        // to command, his men leave their march and stand to the orders they are given (Stack::commanded).
+        sim::Command command;
     };
     // Queues an Order for its tick (the next, if it names none). Nothing is applied until a step runs, paused or not.
     void submit(Order order);
 
-    // Orders.
-    bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
-    bool produce(int32_t city, int32_t option);           // -1 stops
-    // Warlords' LOC: send what a city trains to another city of ours (-1
-    // stops); at most four cities may send to one.
+    // What an Order does: a march to a cell (false if no route); LOC; a banner's army sent home; boats: lay one down in a
+    // port (kBoatCost gold, ready in kBoatDays), board the stack (and friends in the port, up to kBoatCapacity) onto a
+    // free boat there and put out to the harbour, or step ashore from the sea; a hero searching the ruin or sage the
+    // stack stands on, or the whole stack blessed at a temple; taking (or turning down) the hero offering their service.
+    bool move(uint32_t stackId, int32_t cx, int32_t cy);
+    bool produce(int32_t city, int32_t option);  // -1 stops
     bool vectorProduction(int32_t city, int32_t to);
-    // Warlords' DISBAND: send an army home to stop paying for it (never a hero).
     bool disband(uint32_t stackId, uint32_t armyId);
+    bool buildBoat(int32_t city);
+    bool embark(uint32_t stackId);
+    bool land(uint32_t stackId);
+    bool search(uint32_t stackId);
+    bool hire(uint8_t side, bool accept);
     void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
     void setDifficulty(uint8_t side, Difficulty d) { sides_[side].difficulty = d; }
     // Every computer side at once (what the player picks at the start).
     void setComputerDifficulty(Difficulty d);
     // Scenario and test setup: a new stack of fresh armies. Returns its id.
     uint32_t raise(uint8_t owner, int32_t cx, int32_t cy, const std::vector<UnitType>& types);
-    // Boats: lay one down in a port (kBoatCost gold, ready in kBoatDays);
-    // board the stack (and friends in the port, up to kBoatCapacity) onto a
-    // free boat there and put out to the harbour; or step ashore from the sea.
-    bool buildBoat(int32_t city);
-    bool embark(uint32_t stackId);
-    bool land(uint32_t stackId);
-    // A hero searches the ruin or sage the stack stands on, or the whole stack
-    // is blessed at a temple. False if there is nothing to search.
-    bool search(uint32_t stackId);
-    // Take (or turn down) the hero offering their service to this side.
-    bool hire(uint8_t side, bool accept);
     // Advances one tick (a thirtieth of a second at normal speed).
     void step();
 
@@ -524,13 +526,22 @@ public:
     uint64_t seed() const { return seed_; }
 
 private:
+    friend class CampaignAi;
+    // Move and Halt for chosen squads: they are split off into a stack of their own first (an awake stack's men stay
+    // units of the world, so a stack split in a fight is still in it), and the whole stack otherwise. A halt is at
+    // the next cell on the way. The march is the stack's; whoever is ordered is, like his men, the player's: a stack
+    // of another side is never moved.
+    Stack* stackFor(const Order& o, bool splitting);
+    void halt(Stack& s);
+    // A Command: whose unit it is (his stack, awake, of the side that gives it), else it is refused.
+    void commandMen(const Order& o);
+    bool underOrders(const Stack& s) const;  // awake: a man of it has somewhere to go or someone to fight on orders
     void initTerrain();
     void initCities();
     void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies
     void newDay();
     void runAi(uint8_t side);  // campaign_ai.cpp
     void bannerAlarm(int32_t city);  // campaign_ai.cpp: a Hard lord answers an enemy banner over his town at once
-    friend class CampaignAi;
     void deliverTransits();
     int32_t armiesAt(uint8_t owner, int32_t cx, int32_t cy) const;
     // Ports and boats (campaign_sea.cpp).
@@ -660,7 +671,7 @@ private:
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them
     void gateHps(std::vector<int32_t>& out) const;
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while
-    std::vector<Command> commands_;
+    std::vector<Command> commands_, playerCommands_;  // (the player's go into the world's step after the stacks' own)
     // campaign_territory.cpp
     void initTerritory();
     void territoryStep();

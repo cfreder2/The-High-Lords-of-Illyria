@@ -170,6 +170,11 @@ void Battle::finish() {
 }
 
 Standing Battle::standing(const Squad& s) const {
+    if (s.told) {  // (Conquest: the army says, and counts what no unit holds)
+        Standing st = s.standing;
+        for (sim::EntityId id : s.members) st.broken += world_->units()[id - 1].routed;
+        return st;
+    }
     Standing st;
     int alive = 0, ranks = 0, bless = 0, best = 0;
     for (sim::EntityId id : s.members) {
@@ -459,7 +464,7 @@ float FarGrid::heightAt(float x, float y) const {
 float Battle::heightAt(float x, float y) const {
     if (!inBattlefield(x, y)) {
         // Off the field's own ground, over the borrowed world's, the same ground the world's men stand on.
-        if (borrowed_ && inWorld(x, y)) return static_cast<float>(worldRegion().terrain().heightAt(toFixed(x), toFixed(y)).toDouble());
+        if (conquest_ && inWorld(x, y)) return static_cast<float>(worldRegion().terrain().heightAt(toFixed(x), toFixed(y)).toDouble());
         return near_.contains(x, y) ? near_.heightAt(x, y) : far_.heightAt(x, y);
     }
     const int n = kTerrainCells;
@@ -510,38 +515,12 @@ void Battle::afterWorldStep() {
     presentDeaths();
 }
 
-void Battle::borrow(sim::World* world) {
-    if (world == nullptr) {
-        world_ = ownWorld_.get();
-        borrowed_ = false;
-        alphaSet_ = false;
-    } else {
-        world_ = world;
-        borrowed_ = true;
-    }
-    squads_.clear();
-    squadOfUnit_.clear();
-    selection_.clear();
-    forgetMen();
-}
-
-void Battle::setPresented(const std::vector<sim::EntityId>& selected, const std::vector<sim::EntityId>& inspected) {
-    const size_t n = world_->units().size();
-    selectedFlag_.assign(n, 0);
-    inspectedFlag_.assign(n, 0);
-    for (sim::EntityId id : selected)
-        if (id > 0 && id <= n) selectedFlag_[id - 1] = 1;
-    for (sim::EntityId id : inspected)
-        if (id > 0 && id <= n) inspectedFlag_[id - 1] = 1;
-}
-
 void Battle::forgetMen() {
     const size_t n = world_->units().size();
     deathTick_.assign(n, UINT32_MAX);
     attackTick_.assign(n, UINT32_MAX);
     hitTick_.assign(n, UINT32_MAX);
     selectedFlag_.assign(n, 0);
-    inspectedFlag_.assign(n, 0);
     prevUnitPos_.assign(n, V3{});
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos);
     readied_.clear();
@@ -600,10 +579,6 @@ void Battle::stepEffects(float seconds) {
     updateParticles(seconds);
 }
 
-void Battle::inspectGate(int gate) {
-    inspectedGate_ = gate;
-}
-
 void Battle::collectEvents() {
     for (uint32_t slot : world_->changedRemains()) {
         if (!dirtyFlag_[slot]) {
@@ -642,7 +617,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
     std::erase_if(recent_, [&](const Recent& r) { return tick - r.tick > 4 * sim::kTicksPerSecond; });
     for (const sim::ImpactEvent& e : events) {
         const V3 pos = toV3(e.pos) + shift;
-        if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600) {
+        // The fight the camera is taken to (hotSpot) is one the viewer may see: of whose man was struck, or the viewer's own.
+        const sim::PlayerId whose = e.hitUnit != sim::kNoEntity && e.hitUnit <= source.units().size() ? source.units()[e.hitUnit - 1].owner : local_;
+        if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600 && sees(whose, pos.x, pos.y)) {
             const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst;
             recent_.push_back({pos, tick, blast ? 8.0f : (e.killed ? 3.0f : 1.0f)});
         }
@@ -798,7 +775,7 @@ void Battle::issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type 
 }
 
 int Battle::aliveCount(const Squad& s) const {
-    int n = 0;
+    int n = static_cast<int>(s.sleeping.size());  // (a man asleep is alive)
     for (sim::EntityId id : s.members) n += world_->units()[id - 1].alive();
     return n;
 }
@@ -812,7 +789,12 @@ V3 Battle::squadCentre(const Squad& s, bool interpolated) const {
         sum += pos(id - 1);
         ++n;
     }
-    if (n == 0) return pos(s.members.front() - 1);
+    for (uint32_t man : s.sleeping)
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper) {
+            sum += sleeperPosition(sleepers_[i]);
+            ++n;
+        }
+    if (n == 0) return s.members.empty() ? V3{} : pos(s.members.front() - 1);
     return sum * (1.0f / static_cast<float>(n));
 }
 
@@ -1003,6 +985,7 @@ void Battle::runEnemyAi() {
 }
 
 int Battle::outcome() const {
+    if (conquest_) return 0;  // (a fight in the conquest is not the end of anything: its own end is Campaign::winner)
     if (mode_) return mode_->outcome();
     bool playerAlive = false, enemyAlive = false;
     for (const sim::Unit& u : world_->units()) {
@@ -1026,7 +1009,7 @@ bool Battle::unitMoving(size_t index) const {
 
 void Battle::chargeAll() {
     for (Squad& mine : squads_) {
-        if (!controllable(world_->units()[mine.members.front() - 1]) || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
+        if (!controllable(mine) || aliveCount(mine) == 0 || roleOf(mine.type) == Role::Siege) continue;
         const V3 from = squadCentre(mine, false);
         const Squad* target = nullptr;
         float best = 1e18f;

@@ -5,6 +5,7 @@ add_library(illyria_game
     src/gestures.cpp
     src/battle.cpp
     src/battle_command.cpp
+    src/battle_conquest.cpp
     src/battle_orders.cpp
     src/battle_capture.cpp
     src/battle_modes.cpp

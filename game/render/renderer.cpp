@@ -2159,6 +2159,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
     territoryInfo_[0] = battle.origin().x;
     territoryInfo_[1] = battle.origin().y;
+    // A skirmish's field has its few kinds of soldier all in view: their sheets are baked at once, when it has a new kind.
+    // The conquest's world has men of every kind come and go with each fight on the island, most far off the screen: a
+    // sheet is baked there when a man of that kind is near the camera (MenLod::need, the same as in a skirmish), and not
+    // before (docs/ARCHITECTURE_RULES.md §1: the one reasoned fork of the renderer on whether the world is the conquest's).
     if (showUnits_ && !battle.borrowing() && unitsChecked_ != battle.world().units().size()) {
         bakeMissing(battle);
         unitsChecked_ = battle.world().units().size();

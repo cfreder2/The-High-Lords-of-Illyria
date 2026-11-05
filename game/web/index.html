@@ -90,9 +90,9 @@
   #modeBar { font-size: 13px; padding: 6px 10px; margin-bottom: 6px; pointer-events: auto; max-width: 420px; color: #fff; }
   #modeBar.attack { border-color: #ff8a70; background: rgba(110, 20, 14, 0.82); }
   #modeBar.march { border-color: #ffd36e; background: rgba(90, 66, 10, 0.82); }
-  /* A man or gate looked at in the campaign: view-only, grey. */
+  /* A man or gate looked at (not ours to order): view-only, grey. */
   #inspect { position: fixed; left: 12px; bottom: 12px; z-index: 5; padding: 8px 12px; font-size: 13px; line-height: 1.35; color: var(--ink); background: rgba(24, 24, 28, 0.82); border: 1px solid #9a9a9a; border-radius: 8px; pointer-events: none; min-width: 150px; }
-  #inspect.hidden, body:not(.campaign) #inspect { display: none; }
+  #inspect.hidden { display: none; }
   #inspect .bar { height: 6px; margin-top: 4px; background: #333; border-radius: 3px; overflow: hidden; }
   #inspect .bar b { display: block; height: 100%; background: #9a9a9a; }
   #inspect small { opacity: 0.7; }
@@ -184,11 +184,8 @@
   #cityPanel details div { display: flex; justify-content: space-between; gap: 6px; padding: 1px 0; }
   #cityPanel details div span:last-child { opacity: 0.8; text-align: right; }
   #cityPanel details p { margin: 2px 0 4px; opacity: 0.8; }
-  /* Campaign army cards: rank pips (recruit to elite) and kills; rare troops in violet. */
-  body.campaign .card .vet { grid-column: 1 / -1; font-size: 10px; letter-spacing: 0.02em; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  body.campaign .card .vet.seasoned { color: var(--gold); opacity: 1; }
-  body.campaign .card.rare { border-color: rgba(201, 166, 255, 0.7); }
-  body.campaign .card.rare .vet::after { content: " · rare"; color: #c9a6ff; }
+  /* Rare troops (no city trains them, none replaces them) in violet. */
+  .card.rare { border-color: rgba(201, 166, 255, 0.7); }
   #voyage { position: fixed; left: calc(8px + var(--safe-l)); bottom: calc(80px + var(--safe-b)); display: flex; align-items: center; gap: 10px;
             padding: 6px 8px 6px 12px; font-size: 13px; z-index: 4; }
   #voyage.hidden { display: none; }
@@ -220,8 +217,6 @@
   #hirePrompt button:disabled { opacity: 0.5; }
   #toast { position: fixed; left: 50%; bottom: calc(150px + var(--safe-b)); transform: translateX(-50%); width: max-content; max-width: min(90vw, 420px);
            padding: 8px 14px; font-size: 14px; text-align: center; z-index: 5; pointer-events: none; color: #fff3d6; }
-  .card .arts { grid-column: 1 / -1; font-size: 11px; color: #ffe27a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card.has-arts { width: 200px; }
   .camp-only { display: none; }
   body.campaign .camp-only { display: block; }
   body.campaign .battle-only { display: none !important; }
@@ -278,7 +273,7 @@
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
   <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
   <div id="controls">
-    <button id="charge" class="battle-only" aria-label="Send every squad at the nearest enemy">Charge</button>
+    <button id="charge" aria-label="Send every squad at the nearest enemy">Charge</button>
     <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
@@ -388,11 +383,11 @@
 
 <div id="bottom">
   <div id="campMarch" class="panel camp-only hidden" role="status"></div>
-  <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button></div>
-  <div id="selInfo" class="hidden battle-only"></div>
-  <div id="picker" class="panel hidden battle-only popup" role="menu" aria-label="Formations"></div>
-  <div id="modeBar" class="panel hidden battle-only" role="status"></div>
-  <div id="actions" class="hidden battle-only">
+  <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button><button id="campDisband">Disband</button></div>
+  <div id="selInfo" class="hidden"></div>
+  <div id="picker" class="panel hidden popup" role="menu" aria-label="Formations"></div>
+  <div id="modeBar" class="panel hidden" role="status"></div>
+  <div id="actions" class="hidden">
     <button id="formation" aria-label="Choose a formation" aria-haspopup="menu">Line</button>
     <button id="attack" aria-label="Attack: the next tap attacks what you tap (hold for a force march)">⚔ Attack</button>
     <button id="scatter" aria-label="Scatter: everyone selected runs outward">Scatter</button>
@@ -717,7 +712,7 @@
     hoverQueued = true;
     requestAnimationFrame(() => {
       hoverQueued = false;
-      if (!api || campaign) return;
+      if (!api) return;
       const intent = api.hover(hoverX, hoverY);
       if (intent !== lastIntent) { lastIntent = intent; canvas.style.cursor = kCursors[intent] || ""; }
     });
@@ -834,7 +829,6 @@
     $("banners").innerHTML = "";
     $("cards").innerHTML = "";
     lastSquadsKey = "";
-    campArmiesKey = "";
     campCityKey = "";
     newsShown = "";
     newsDismissed = false;
@@ -905,7 +899,19 @@
     if (!api || !api.campSearch()) return;
     const st = JSON.parse(api.campState());
     if (st.news && st.news.length) toast(st.news[0].replace(/^Day \d+: /, ""));
-    campArmiesKey = "";
+  };
+  // Tap twice to disband: the armies go home and cost no more upkeep.
+  $("campDisband").onclick = () => {
+    const list = campState && campState.armies;
+    if (!api || !list || !list.length) return;
+    const confirmFirst = !window.IllyriaTitle || IllyriaTitle.pref("confirmDisband");
+    const ids = list.map((a) => a.id).join();
+    const name = list.length === 1 ? list[0].name : `${list.length} armies`;
+    if (campDisbanding === ids || !confirmFirst) { for (const a of list) api.campDisband(a.id); toast(`${name} disbanded and went home`); campDisbanding = ""; return; }
+    campDisbanding = ids;
+    const precious = list.filter((a) => a.rare || a.rank >= 2);
+    toast(`Tap again to disband ${name} (no more upkeep)` + (precious.length ? `: ${precious.some((a) => a.rare) ? "rare troops" : "veterans"} can never be replaced` : ""));
+    setTimeout(() => { campDisbanding = ""; }, 2500);
   };
   $("hireYes").onclick = () => { if (api && api.campHire(1)) toast(`${campState.offer.name} rides to your banner`); };
   $("hireNo").onclick = () => api && api.campHire(0);
@@ -1017,7 +1023,7 @@
       e.preventDefault();
       return;
     }
-    if (!api || campaign || e.repeat) return;
+    if (!api || e.repeat) return;
     const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
       const n = +digit[2];
@@ -1066,7 +1072,7 @@
         if (orderMode) setMode(0);
         else { api.clearSelection(); $("picker").classList.add("hidden"); }
         break;
-      case "Space": api.pause(); break;
+      case "Space": $("pause").onclick(); break;
       case "Minus": case "NumpadSubtract": stepPace(-1); break;
       case "Equal": case "NumpadAdd": stepPace(1); break;
       default: return;
@@ -1217,7 +1223,7 @@
 
   // The campaign HUD: the bars of banners rising follow the map every frame; panels a few times a second.
   let newsShown = "", newsDismissed = false;
-  let campState = null, campTick = 0, campCityKey = "", campArmiesKey = "", campRareOpen = false;
+  let campState = null, campTick = 0, campCityKey = "", campRareOpen = false, campDisbanding = "";
   const campRanks = ["Recruit", "Regular", "Veteran", "Elite"];
   const campFrom = { start: "realm", levy: "levy", ruins: "ruins", temples: "temples", heroes: "heroes" };
   function updateCampaign(t) {
@@ -1225,21 +1231,6 @@
     if (!api || !campaign) return;
     campState = JSON.parse(api.campState());
     if (!campState.stacks) return;
-    {
-      const box = $("inspect"), ins = campState.inspect;
-      if (!ins) box.classList.add("hidden");
-      else {
-        const pct = ins.max > 0 ? Math.max(0, Math.min(100, (100 * ins.hp) / ins.max)) : 0;
-        const bar = ins.hp >= 0 && ins.max > 0 ? `<div class="bar"><b style="width:${pct}%"></b></div>` : "";
-        const rank = ["", "seasoned", "veteran", "elite"][ins.rank || 0] || "";
-        const mood = ["", "wavering", "routed"][ins.morale || 0] || "";
-        const html = ins.kind === "gate"
-          ? `<b>${ins.broken ? "Gate (broken)" : "Gate"}</b><br>${ins.hp} of ${ins.max} hit points${bar}<small>View only</small>`
-          : `<b>${ins.type}</b><br>${ins.hp >= 0 ? `${ins.hp} of ${ins.max} life${bar}` : "not in a fight"}<small>${[rank, mood].filter(Boolean).join(" · ")}${rank || mood ? " · " : ""}${ins.stack} in the stack · view only</small>`;
-        if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
-        box.classList.remove("hidden");
-      }
-    }
     const root = $("banners");
     const raises = root.getElementsByClassName("raise");
     // Banners going up over towns: a bar under the town's name, and what is happening.
@@ -1277,52 +1268,13 @@
     const newsKey = campState.news.join("|");
     if (newsKey !== newsShown) { newsShown = newsKey; newsDismissed = false; $("newsList").innerHTML = campState.news.map((n) => `<div>${n}</div>`).join(""); }
     news.classList.toggle("hidden", campState.news.length === 0 || newsDismissed);
-    // The selected stack's armies, as cards.
-    const armiesKey = campState.selected + "|" + campState.armies.map((a) => `${a.name}${a.strength}${a.rank}${a.level}${a.soldiers}${a.blessings}${a.artifacts}${a.kills}`).join("|");
-    if (armiesKey !== campArmiesKey) {
-      campArmiesKey = armiesKey;
-      $("cards").innerHTML = "";
-      for (const a of campState.armies) {
-        const b = document.createElement("button");
-        b.className = "card panel";
-        b.innerHTML = `${a.level ? icons.melee : icons[roleOfType(a.type)] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
-        b.querySelector(".name").textContent = `${a.name || a.type} · ${a.soldiers}`;
-        b.querySelector("i").style.width = `${(100 * a.soldiers) / a.full}%`;
-        b.querySelector(".badge").innerHTML = `<b>${a.strength}</b>` + (a.level ? `<small>Lv ${a.level}</small>` : chevrons(a.rank)) +
-          (a.blessings ? `<span class="bless">${"✦".repeat(a.blessings)}</span>` : "");
-        b.title = `${a.name || a.type}: ${a.type}, strength ${a.strength}, ${a.kills} slain` + (a.ally ? ", an ally (no upkeep)" : "") +
-          (a.command ? `, +${a.command} command to the stack` : "") + (a.rare ? ". Rare: no city trains them, and none will replace them" : "");
-        // Rank pips: veterans carry over from battle to battle, and are worth keeping alive.
-        const vet = document.createElement("span");
-        vet.className = "vet" + (a.level || a.rank >= 2 ? " seasoned" : "");
-        vet.textContent = a.level ? `Hero, level ${a.level}` + (a.kills ? ` · ${a.kills} slain` : "")
-          : `${"◆".repeat(a.rank)}${"◇".repeat(3 - a.rank)} ${campRanks[a.rank]}` + (a.kills ? ` · ${a.kills} slain` : "");
-        b.appendChild(vet);
-        b.classList.toggle("rare", !!a.rare);
-        if (a.artifacts) {
-          // The hero's artifacts, under the name (tap the card for the full list).
-          b.classList.add("has-arts");
-          const arts = document.createElement("span");
-          arts.className = "arts";
-          arts.textContent = "✧ " + a.artifacts;
-          b.appendChild(arts);
-          b.title += `. Carries: ${a.artifacts}`;
-          b.onclick = () => toast(`${a.name} carries the ${a.artifacts.split(", ").join(", the ").replace(/, the ([^,]*)$/, " and the $1")}` + (a.command ? ` (+${a.command} to every army beside them)` : ""));
-        }
-        if (!a.level && !a.artifacts) {
-          // Tap twice to disband: the army goes home and costs no more upkeep.
-          b.onclick = () => {
-            const confirmFirst = !window.IllyriaTitle || IllyriaTitle.pref("confirmDisband");
-            if (b.dataset.armed || !confirmFirst) { api.campDisband(a.id); toast(`${a.name || a.type} disbanded and went home`); return; }
-            b.dataset.armed = "1";
-            toast(`Tap ${a.name || a.type} again to disband it (no more upkeep)` +
-              (a.rare || a.rank >= 2 ? `: ${a.rare ? "rare troops" : `${campRanks[a.rank].toLowerCase()}s`} can never be replaced` : ""));
-            setTimeout(() => delete b.dataset.armed, 2500);
-          };
-        }
-        $("cards").appendChild(b);
-      }
-    }
+    // The squads wholly selected that can go home: the Disband button (twice, to be sure: it costs no more upkeep, and
+    // veterans and rare troops can never be replaced).
+    const armies = campState.armies;
+    const dname = armies.length === 1 ? armies[0].name : `${armies.length} armies`;
+    $("campDisband").style.display = armies.length ? "" : "none";
+    if (armies.length) $("campDisband").textContent = campDisbanding === armies.map((a) => a.id).join() ? `Disband ${dname}? Tap again` : `Disband ${dname}`;
+    else campDisbanding = "";
     // Afloat, or in a port with a boat: aboard which, and the way on or off.
     const voyage = $("voyage"), ab = campState.aboard, em = campState.embark;
     voyage.classList.toggle("hidden", !ab && !em);
@@ -1399,7 +1351,7 @@
     }
     // On a ruin, temple or sage: the Search / Visit button.
     const site = campState.site;
-    $("campActions").classList.toggle("hidden", !site);
+    $("campSearch").style.display = site ? "" : "none";
     if (site) {
       const btn = $("campSearch");
       if (site.kind === "temple") btn.textContent = site.can ? `Visit ${site.name}` : "Blessed here already";
@@ -1408,6 +1360,7 @@
       else btn.textContent = site.kind === "ruin" ? `Search ${site.name}` : `Consult ${site.name}`;
       btn.disabled = !site.can;
     }
+    $("campActions").classList.toggle("hidden", !site && !armies.length);
     const of = campState.offer;
     $("hirePrompt").classList.toggle("hidden", !of);
     if (of) {
@@ -1427,22 +1380,32 @@
                                                               : "Another lord has won Illyria, and the rest bow to him.";
     }
   }
-  function roleOfType(type) {
-    if (/Archer/.test(type)) return "ranged";
-    if (/Griffin|Pegas|Dragon|Archon/.test(type)) return "flier";
-    if (/Journeyman/.test(type)) return "healer";
-    if (/Grenadier/.test(type)) return "bomber";
-    if (/Wizard/.test(type)) return "caster";
-    return "melee";
+  // What is looked at and cannot be ordered, a man not ours or a gate (Battle::inspect): a grey card, view-only.
+  function showInspect(ins) {
+    const box = $("inspect");
+    if (!ins) { box.classList.add("hidden"); return; }
+    const pct = ins.max > 0 ? Math.max(0, Math.min(100, (100 * ins.hp) / ins.max)) : 0;
+    const bar = ins.hp >= 0 && ins.max > 0 ? `<div class="bar"><b style="width:${pct}%"></b></div>` : "";
+    const rank = ["", "seasoned", "veteran", "elite"][ins.rank || 0] || "";
+    const mood = ["", "wavering", "routed"][ins.morale || 0] || "";
+    const html = ins.kind === "gate"
+      ? `<b>${ins.broken ? "Gate (broken)" : "Gate"}</b><br>${ins.hp} of ${ins.max} hit points${bar}<small>View only</small>`
+      : `<b>${ins.type}</b><br>${ins.hp >= 0 ? `${ins.hp} of ${ins.max} life${bar}` : "not in a fight"}<small>${[rank, mood].filter(Boolean).join(" · ")}${rank || mood ? " · " : ""}${ins.stack ? `${ins.stack} in the stack · ` : ""}view only</small>`;
+    if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+    box.classList.remove("hidden");
   }
   function updateHud() {
     if (api) $("perf").textContent = api.perf();
-    if (!api || campaign) return;
+    if (!api) return;
     const s = JSON.parse(api.hud());
     selected = s.selected;
-    $("pause").textContent = s.paused ? "Resume" : "Pause";
-    pace = s.slow < 1 ? s.slow : s.speed;
-    $("speed").textContent = paceLabel(pace);
+    showInspect(s.inspect);
+    // (The clock of a conquest is its own: updateCampaign.)
+    if (!campaign) {
+      $("pause").textContent = s.paused ? "Resume" : "Pause";
+      pace = s.slow < 1 ? s.slow : s.speed;
+      $("speed").textContent = paceLabel(pace);
+    }
     // The town's heart: whoever has more men in the courtyard raises their flag; the attackers' at the top takes the town.
     const cap = s.capture;
     $("capture").classList.toggle("hidden", !cap.on);
@@ -1455,14 +1418,14 @@
     }
     $("landTag").classList.toggle("hidden", s.land < 0);
     $("landTag").textContent = s.land === 0 ? "⚑ Your land: home edge +3%" : s.land === 1 ? "⚑ Their land: their home edge +3%" : "";
-    const enemies = s.squads.filter((q) => q.foe);  // anyone not of the local side (a match may seat the player on any)
+    // (anyone not of the local side is the foe: a match may seat the player on any)
     // The cards' strength bars in the local side's colour (mode.cpp teamColour: blue, red, gold, green).
     const sideColour = ["#4a78e6", "#db2e24", "#eab829", "#38a34c"][s.side & 3];
     if (sideColour !== lastSideColour) document.documentElement.style.setProperty("--blue", (lastSideColour = sideColour));
     scenario = s.scenario;
     $("scenario").textContent = s.scenario === 1 ? "Ford" : "Siege";
     $("foe").textContent = s.foe;
-    $("enemyCount").textContent = `${enemies.reduce((n, q) => n + q.alive, 0)} / ${enemies.reduce((n, q) => n + q.total, 0)}`;
+    $("enemyCount").textContent = `${s.foeAlive} / ${s.foeTotal}`;
     selCount = s.selCount;
     $("actions").classList.toggle("hidden", s.selCount === 0);
     $("raid").classList.toggle("hidden", !s.raid);
@@ -1498,13 +1461,15 @@
     function squadCard(q) {
       const b = document.createElement("button");
       b.className = "card panel" + (q.type === "Hero" ? " hero" : "");
-      b.dataset.index = q.i;
+      b.dataset.key = q.key;  // (the squad's own: a conquest makes its squads afresh each frame, and their indices move)
       b.innerHTML = `${q.type === "Hero" ? icons.hero : icons[q.role] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
       b.title = `${q.name}: ${q.type}`;
       b.querySelector(".name").textContent = q.name;
       b.onclick = () => {
         if (!api) return;
-        if (JSON.parse(api.hud()).squads[q.i].sel === 2) api.focus(q.i); else api.select(q.i);
+        const now = JSON.parse(api.hud()).squads.find((x) => x.key === q.key);
+        if (!now) return;
+        if (now.sel === 2) api.focus(now.i); else api.select(now.i);
         hideHint();
         updateHud();
       };
@@ -1513,11 +1478,11 @@
     // Cards: the heroes (finding them always matters), then only the groups
     // the player has made, and "+ New group" while the selection is not one of
     // them. No card for every squad: a long row of them is no use.
-    const mine = s.squads.map((q, i) => ({ ...q, i })).filter((q) => q.mine && q.type === "Hero");
-    const heroSelected = s.selected >= 0 && s.squads[s.selected] && s.squads[s.selected].type === "Hero";
+    const mine = s.squads.filter((q) => q.mine && q.type === "Hero");
+    const heroSelected = s.selected >= 0 && (s.squads.find((q) => q.i === s.selected) || {}).type === "Hero";  // (s.selected: an index, now)
     const isCard = heroSelected || s.groups.some((g) => g.sel === 2);  // a hero's card, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
-    const key = (canSave ? "+|" : "") + s.groups.map((g) => g.slot).join(",") + "|" + mine.map((q) => q.name).join("|");
+    const key = (canSave ? "+|" : "") + s.groups.map((g) => g.slot).join(",") + "|" + mine.map((q) => q.key).join("|");
     if (key !== lastSquadsKey) {
       lastSquadsKey = key;
       $("cards").innerHTML = "";
@@ -1563,8 +1528,9 @@
         b.querySelector(".name").textContent = `${g.label} · ${g.alive}`;
         continue;
       }
-      if (b.dataset.index === undefined) continue;
-      const q = s.squads[+b.dataset.index];
+      if (b.dataset.key === undefined) continue;
+      const q = s.squads.find((x) => x.key === b.dataset.key);
+      if (!q) continue;
       b.classList.toggle("selected", q.sel === 2);
       b.classList.toggle("partial", q.sel === 1);
       b.classList.toggle("dead", q.alive === 0);
@@ -1578,7 +1544,10 @@
           (q.blessings ? `<span class="bless">${"✦".repeat(q.blessings)}</span>` : "");
         const ranks = ["Recruits", "Regulars", "Veterans", "Elite"];
         b.title = `${q.name}: ${q.type}, strength ${q.strength}` + (q.level ? `, level ${q.level}` : `, ${ranks[q.rank]}`) +
-          (q.blessings ? `, blessed ${q.blessings}×` : "") + `, ${q.kills} slain`;
+          (q.blessings ? `, blessed ${q.blessings}×` : "") + `, ${q.kills} slain` + (q.hired ? ", an ally (no upkeep)" : "") +
+          (q.command ? `, +${q.command} command to the stack` : "") + (q.rare ? ". Rare: no city trains them, and none will replace them" : "") +
+          (q.arms ? `. Carries: ${q.arms}` : "");
+        b.classList.toggle("rare", q.rare);
       }
     }
 

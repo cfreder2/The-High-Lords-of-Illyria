@@ -83,7 +83,7 @@ A city holds at most 32 armies; a full city trains no more until some march out.
 
 The beasts and monsters of Illyria, the allies of the old powers and the specialists of the old wars are **rare troops**, and no city in the land can train them. Each one lost is gone for good.
 
-The rare troops are the **heroes**; the beasts and monsters (**giants, minotaurs, giant spiders, griffins, pegasi, elephants, unicorns**); the allies (**wizards, dragons, devils, demons, the undead, archons**); and the specialists (**dwarven grenadiers, journeymen, berserkers**). Their army cards have a violet border and say so, and disbanding one warns you that it cannot be replaced. A city's panel folds out the full list of rare kinds and where each can be had. They come from:
+The rare troops are the **heroes**; the beasts and monsters (**giants, minotaurs, giant spiders, griffins, pegasi, elephants, unicorns**); the allies (**wizards, dragons, devils, demons, the undead, archons**); and the specialists (**dwarven grenadiers, journeymen, berserkers**). The grey card of one you look at says so, and disbanding one warns you that it cannot be replaced. A city's panel folds out the full list of rare kinds and where each can be had. They come from:
 
 - **The realms' own.** Each lord's hero marches with rare troops of the realm from the first day: the Throne a flight of pegasi; the Giants two giants; the Dwarves griffins and grenadiers; the Orcs a minotaur and berserkers; the Elves unicorns and pegasi; the Riders elephants; the Order wizards and journeymen; Malvoren giant spiders and a minotaur.
 - **Levies.** Every capital holds a **one-off levy** of its realm's rare troops, and so do a few towns (about one in twelve: giants, griffins or minotaurs in the hills, spiders, unicorns or berserkers in the woods, elephants, pegasi or grenadiers on the plains). A levy is shown in violet in the city's panel with how many are left. It takes **3 days** and **5 gold for every point of strength** to muster each army of it (giants, strength 6: 30 gold), once; whoever holds the city may muster it. A town's levy is two armies, or one of the mightiest (strength 7 or more).
@@ -121,7 +121,7 @@ Every army costs gold every day it lives. A common army costs a **quarter of its
 
 ## Lack of money {#lack-of-money}
 
-Each dawn your income comes in and your upkeep goes out. If the treasury falls below nothing, armies **desert**, one by one, until it does not: the newest first, and green common troops before veterans and rare troops. Allies and heroes never desert. A lord who has outgrown its purse should not wait for this. Tap an army's card twice to **disband** it: it goes home and costs no more (heroes and armies carrying artifacts cannot be disbanded).
+Each dawn your income comes in and your upkeep goes out. If the treasury falls below nothing, armies **desert**, one by one, until it does not: the newest first, and green common troops before veterans and rare troops. Allies and heroes never desert. A lord who has outgrown its purse should not wait for this. Select an army (box its soldiers) and tap **Disband** twice: it goes home and costs no more (heroes cannot be disbanded).
 
 ::: tip
 Upkeep is a quarter of the price *every day*: a heavy cavalry army costs its own price again in four days. A large army needs a large realm behind it. Garrison your interior lightly, and keep your strength where it is needed.

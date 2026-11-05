@@ -80,7 +80,6 @@ constexpr Spec kSpecs[kSoundCount] = {
     {"snd_state_alarm", 5, 150, false},
 };
 
-V3 flat(V3 v) { return {v.x, v.y, 0}; }
 
 // Mail and plate ring; the rest is flesh (or bone, or timber).
 bool armoured(UnitType t) {

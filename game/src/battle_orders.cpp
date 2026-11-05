@@ -73,6 +73,8 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     if (t == nullptr || !t->alive()) return;
     std::vector<sim::EntityId> mine = selectedAlive();
     std::erase(mine, target);
+    // Out of the men's reach, or for men asleep: they march against his place, and the fight is where they meet.
+    if (marchOrder(toV3(t->pos))) return voice_.order(Situation::Attack, *world_, selection_);
     if (mine.empty()) return;
     for (sim::EntityId id : mine) {
         const sim::Unit& u = world_->units()[id - 1];
@@ -92,7 +94,16 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     if (t->owner == local_) say("Attacking our own!");
 }
 
+void Battle::orderAttackSleeper(size_t index) {
+    // A man not in the world (his stack on the march, or in a town): the squads go to where he is, and fight whoever
+    // they meet there, in the world, when they get there.
+    if (index >= sleepers_.size()) return;
+    marchOrder(sleeperPosition(sleepers_[index]), true);
+    voice_.order(Situation::Attack, *world_, selection_);
+}
+
 void Battle::orderAttackGround(const V3& at) {
+    if (marchOrder(at)) return voice_.order(Situation::Attack, *world_, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     std::vector<sim::EntityId> march;
@@ -163,6 +174,7 @@ void Battle::specialAction() {
 }
 
 void Battle::orderForceMarch(const V3& to, const V3* facing) {
+    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     marchSelection(mine, to, facing, true);
@@ -170,6 +182,7 @@ void Battle::orderForceMarch(const V3& to, const V3* facing) {
 }
 
 void Battle::orderAttackObject(const Pick& pick) {
+    if (marchOrder(pick.at)) return voice_.order(Situation::Attack, *world_, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     if (pick.kind == Pick::Kind::Gate) {
@@ -278,11 +291,21 @@ bool Battle::pickFloor(const Camera& camera, float x, float y, V3& hit) const {
 Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelScale) const {
     Pick p;
     const auto& units = world_->units();
-    if (const int u = unitAt(camera, x, y, pixelScale); u >= 0) {
-        p.kind = units[static_cast<size_t>(u)].owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
-        p.index = u;
-        p.squad = squadOfUnit_[static_cast<size_t>(u)];
-        p.at = unitPosition(static_cast<size_t>(u));
+    const ManPick man = manPick(camera, x, y, pixelScale);
+    if (man.kind == ManPick::Kind::Unit) {
+        const size_t u = man.index;
+        p.kind = units[u].owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
+        p.index = static_cast<int>(u);
+        p.squad = squadOfUnit_[u];
+        p.at = unitPosition(u);
+        return p;
+    }
+    if (man.kind == ManPick::Kind::Sleeper) {
+        const Sleeper& m = sleepers_[man.index];
+        p.kind = m.owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
+        p.sleeper = static_cast<int>(man.index);
+        p.squad = squadOfArmy(m.army);
+        p.at = sleeperPosition(m);
         return p;
     }
     if (const int g = gateAt(camera, x, y, pixelScale); g >= 0) {
@@ -358,7 +381,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
 Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pixelScale) const {
     const Pick p = pickAt(camera, x, y, pixelScale);
     const std::vector<sim::EntityId> mine = selectedAlive();
-    if (mine.empty()) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
+    if (selectionSize() == 0) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
     using K = Pick::Kind;
     if (mode == OrderMode::ForceMarch) return p.kind == K::None ? Intent::None : Intent::ForceMarch;
@@ -390,7 +413,7 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
 }
 
 void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale) {
-    if (selectedAlive().empty()) return;
+    if (selectionSize() == 0) return;
     // As usual a tap on one of ours picks him: a right click marches there instead.
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
     if (mode == OrderMode::Normal && pickAt(camera, x, y, pixelScale).kind == Pick::Kind::Own) {

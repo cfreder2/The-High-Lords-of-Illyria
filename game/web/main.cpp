@@ -108,13 +108,9 @@ struct App {
         std::shared_ptr<const illyria::sim::Continent> continent;  // outlives restarts of the battle
         bool on = false, paused = false;
         int speed = 1;
-        uint32_t selected = 0;
-        // Looked at, not his to command (a foe's or a neutral's man, or a town's gate): view-only, grey, no orders.
-        uint32_t inspectStack = 0, inspectMan = 0;
-        int inspectGate = -1;
-        std::vector<illyria::sim::ImpactEvent> impacts;  // the fights' blows, taken from the campaign each frame
         illyria::sim::Campaign::Setup setup{0, 0xFF};  // who plays, as the last campaign was started (a restart keeps it)
         int city = -1;  // the city whose panel is open
+        uint32_t panelStack = 0;  // the stack the panel was last opened for (the selection's: Battle::selectedStack)
         double acc = 0;
         std::string json;
         bool hard = true;  // how the computer lords play (the player picks at the start)
@@ -128,10 +124,6 @@ struct App {
         int64_t territoryTick = -1;
         std::vector<illyria::sim::Campaign::Soldier> men;  // every man of the campaign, as it says he stands (for picking, the minimap and the tests)
         double layoutMs = 0;  // smoothed
-        bool soldiersOff = false;  // test hook: draw the land without them, to see what they cost
-        // A selection box being drawn on the map, in canvas pixels.
-        bool boxing = false;
-        float bx0 = 0, by0 = 0, bx1 = 0, by1 = 0;
         // The minimap: its land, drawn once (RGBA, one pixel to 22 m), and the text handed to the page.
         std::vector<uint8_t> miniLand;
         std::string mini;
@@ -269,43 +261,18 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
     return p;
 }
 
-// The fights are the field's own (Battle::borrow): the battle's effects, sounds, voices and gates all come from its
-// own presentation of the campaign's world; here it is only told how far between ticks the clock is, and moves on.
-void presentFight(float dt) {
-    App::CampaignView& cv = app->camp;
-    if (!cv.c->presentedWorld() || !app->battle->borrowing()) return;
-    app->battle->setAlpha(static_cast<float>(std::clamp(cv.acc, 0.0, 1.0)));
-    app->battle->stepEffects(dt);
-    app->battle->inspectGate(cv.inspectGate);
-}
-
-// The campaign's men for this frame: as the campaign says they stand (cv.men, for picking, the minimap and the
-// tests); the awake are the field's own, and the sleepers, with who is selected or looked at, go to the field to be
-// drawn in the one pass with them (Battle::setSleepers).
-void placeMen(float dt) {
-    using C = illyria::sim::Campaign;
+// The conquest's men for this frame: as the conquest says they stand (cv.men, for the minimap and the hot spot) and
+// as the field presents them: its squads, its sleepers drawn in the one pass with the awake, its selection (Battle::
+// presentConquest). The field's effects, sounds, voices and gates are its own presentation of the conquest's world; here
+// it is only told how far between ticks the clock is, and moves on.
+void presentConquest(float dt) {
     App::CampaignView& cv = app->camp;
     const double started = emscripten_get_now();
     cv.c->visibleSoldiers(cv.c->localSide(), static_cast<int32_t>(mapAhead()), cv.men);
-    std::vector<Battle::Sleeper> sleepers;
-    std::vector<illyria::sim::EntityId> selected, inspected;
-    for (const C::Soldier& m : cv.men) {
-        const bool mine = cv.selected != 0 && m.stack == cv.selected, looked = cv.selected == 0 && cv.inspectStack != 0 && m.stack == cv.inspectStack;
-        if (m.awake) {
-            if (m.unitId && mine) selected.push_back(m.unitId);
-            if (m.unitId && looked) inspected.push_back(m.unitId);
-            continue;
-        }
-        if (!m.alive || cv.soldiersOff) continue;
-        Battle::Sleeper d;
-        d.x = m.x, d.y = m.y, d.yaw = m.yaw, d.speed = m.speed, d.owner = m.owner, d.type = static_cast<uint8_t>(m.type), d.aloft = m.aloft;
-        d.selected = mine, d.inspected = looked, d.id = m.id, d.stack = m.stack;
-        sleepers.push_back(d);
-    }
-    app->battle->setSleepers(std::move(sleepers));
-    app->battle->setPresented(selected, inspected);
+    app->battle->presentConquest(cv.men);
     cv.layoutMs = cv.layoutMs * 0.9 + (emscripten_get_now() - started) * 0.1;
-    presentFight(dt);
+    app->battle->setAlpha(static_cast<float>(std::clamp(cv.acc, 0.0, 1.0)));
+    app->battle->stepEffects(dt);
 }
 
 void placePiers() {
@@ -452,47 +419,6 @@ void placeFlags() {
     app->renderer.setFlags(flags);
 }
 
-uint32_t lastPickedMan = 0;  // the man pickStack found nearest the tap
-
-// The stack under a tap or click: that of the soldier nearest the tap on the
-// screen, within a finger's width (22 CSS pixels); failing that, one afloat by
-// the look of its boat. The man himself is what is touched, at any height.
-const illyria::sim::Campaign::Stack* pickStack(float px, float py) {
-    using C = illyria::sim::Campaign;
-    App::CampaignView& cv = app->camp;
-    const C& c = *cv.c;
-    const V3 o = app->battle->origin();
-    uint32_t pick = 0;
-    lastPickedMan = 0;
-    const Battle::ManPick man = app->battle->manAt(app->camera, px, py, 22.0f * app->pixelRatio);
-    if (man.kind == Battle::ManPick::Kind::Sleeper) {
-        pick = app->battle->sleepers()[man.index].stack;
-        lastPickedMan = app->battle->sleepers()[man.index].id;
-    } else if (man.kind == Battle::ManPick::Kind::Unit) {
-        pick = c.stackOfUnit(man.id);
-        for (const illyria::sim::Campaign::Soldier& m : cv.men)
-            if (m.unitId == man.id) lastPickedMan = m.id;
-    }
-    float best = 34.0f * app->pixelRatio;
-    if (pick) return c.findStack(pick);
-    const C::Stack* nearest = nullptr;
-    best = 34.0f * app->pixelRatio;
-    for (const C::Stack& s : c.stacks()) {
-        if (s.armies.empty() || !s.boat) continue;
-        V3 p = stackPosition(c, s);
-        if (!c.canSee(app->camp.c->localSide(), s.owner, p.x + app->battle->origin().x, p.y + app->battle->origin().y)) continue;
-        p.z += 30;
-        float sx, sy;
-        if (!app->camera.project(p, sx, sy)) continue;
-        const float d = std::hypot(sx - px, sy - py);
-        if (d < best) {
-            best = d;
-            nearest = &s;
-        }
-    }
-    return nearest;
-}
-
 // What the player asks of the conquest is an Order, stamped and applied inside the next step (Campaign::submit); the
 // page never calls the campaign's own mutators. It takes effect with the next step (a paused clock holds it).
 void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, int32_t a = 0, int32_t b = 0) {
@@ -505,112 +431,56 @@ void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, i
     app->camp.c->submit(o);
 }
 
-void campaignTap(float px, float py) {
+// The town screens are the conquest's own (what a town trains, its boats, where its new armies go), and a tap that
+// belongs to them is theirs: the tap that says which town new armies go to, and a tap on one of the player's towns
+// with nothing selected, which opens its panel. Every other tap is the battle's (Battle::tap).
+bool townTap(float px, float py) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
     const C& c = *cv.c;
+    const uint8_t me = c.localSide();
+    if (cv.vectorFrom < 0 && app->battle->selectionSize() > 0) return false;
+    V3 hit;
+    if (!app->camera.pickGround(px, py, hit)) return cv.vectorFrom >= 0 && (cv.vectorFrom = -1, true);
+    const V3 o = app->battle->origin();
+    const int32_t tx = std::clamp(C::cellOf(static_cast<int32_t>(hit.x + o.x)), 0, c.width() - 1);
+    const int32_t ty = std::clamp(C::cellOf(static_cast<int32_t>(hit.y + o.y)), 0, c.height() - 1);
+    // A town of the player's near the tap (a cell about it).
+    int32_t town = -1;
+    for (int dy = -1; dy <= 1 && town < 0; ++dy)
+        for (int dx = -1; dx <= 1 && town < 0; ++dx) {
+            const int32_t k = c.cityAt(std::clamp(tx + dx, 0, c.width() - 1), std::clamp(ty + dy, 0, c.height() - 1));
+            if (k >= 0 && c.cities()[static_cast<size_t>(k)].owner == me) town = k;
+        }
     if (cv.vectorFrom >= 0) {
         // Sending a city's new armies: the tapped city of ours receives them.
-        V3 hit;
         const int from = cv.vectorFrom;
         cv.vectorFrom = -1;
-        if (!app->camera.pickGround(px, py, hit)) return;
-        const V3 o = app->battle->origin();
-        const int32_t tx = std::clamp(C::cellOf(static_cast<int32_t>(hit.x + o.x)), 0, c.width() - 1);
-        const int32_t ty = std::clamp(C::cellOf(static_cast<int32_t>(hit.y + o.y)), 0, c.height() - 1);
-        int32_t to = -1;
-        for (int dy = -1; dy <= 1 && to < 0; ++dy)
-            for (int dx = -1; dx <= 1 && to < 0; ++dx) {
-                const int32_t k = c.cityAt(std::clamp(tx + dx, 0, c.width() - 1), std::clamp(ty + dy, 0, c.height() - 1));
-                if (k >= 0 && c.cities()[static_cast<size_t>(k)].owner == 0) to = k;
-            }
-        if (to >= 0) submitOrder(illyria::sim::Campaign::Order::Kind::VectorProduction, 0, from, to);
-        return;
+        if (town >= 0) submitOrder(illyria::sim::Campaign::Order::Kind::VectorProduction, 0, from, town);
+        return true;
     }
-    // A stack near the tap: the box its soldiers stand in, widened by a finger so that a dot
-    // far out can be hit (or its boat, afloat); select one of ours (or fall through to march on theirs).
-    const illyria::sim::Campaign::Stack* nearest = pickStack(px, py);
-    // Close enough to see the men, a tap on one who is not ours looks at him (and nothing is ordered); so does a tap
-    // on a gate. Far out, a tap on a foe still sends the stack against him.
-    if (nearest && nearest->owner != 0 && (cv.selected == 0 || app->camera.distance() < 380.0f)) {
-        cv.selected = 0;
-        cv.city = -1;
-        cv.inspectStack = nearest->id;
-        cv.inspectMan = lastPickedMan;
-        cv.inspectGate = -1;
-        return;
-    }
-    if (!nearest && app->camera.distance() < 600.0f) {
-        const int g = app->battle->gateAt(app->camera, px, py, app->pixelRatio);
-        if (g >= 0) {
-            cv.selected = 0;
-            cv.city = -1;
-            cv.inspectStack = 0;
-            cv.inspectMan = 0;
-            cv.inspectGate = g;
-            return;
-        }
-    }
-    cv.inspectStack = 0;
-    cv.inspectMan = 0;
-    cv.inspectGate = -1;
-    if (nearest && nearest->owner == 0 && nearest->id != cv.selected) {
-        cv.selected = nearest->id;
-        cv.city = c.cityAt(nearest->cx, nearest->cy);
-        // A town of ours, or one our banner is going up over (its panel shows how far).
-        if (cv.city >= 0 && c.cities()[static_cast<size_t>(cv.city)].owner != 0 && c.cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
-        return;
-    }
-    V3 hit;
-    if (!app->camera.pickGround(px, py, hit)) return;
-    const V3 o = app->battle->origin();
-    const int32_t cx = std::clamp(C::cellOf(static_cast<int32_t>(hit.x + o.x)), 0, c.width() - 1);
-    const int32_t cy = std::clamp(C::cellOf(static_cast<int32_t>(hit.y + o.y)), 0, c.height() - 1);
-    if (nearest && nearest->owner != 0) {
-        // On an enemy banner: attack it.
-        if (cv.selected) submitOrder(illyria::sim::Campaign::Order::Kind::Move, cv.selected, nearest->cx, nearest->cy);
-        return;
-    }
-    const int32_t city = c.cityAt(cx, cy);
-    const C::Stack* sel = c.findStack(cv.selected);
-    if (sel && !(sel->cx == cx && sel->cy == cy)) {
-        submitOrder(illyria::sim::Campaign::Order::Kind::Move, cv.selected, cx, cy);
-        return;
-    }
-    if (city >= 0 && c.cities()[static_cast<size_t>(city)].owner == 0) {
-        cv.city = city;
-        return;
-    }
-    cv.selected = 0;
-    cv.city = -1;
+    // Nothing of ours under the tap, but a town: its panel. (A man or a gate under it is the battle's to select or look at.)
+    const Battle::Pick pick = app->battle->pickAt(app->camera, px, py, app->pixelRatio);
+    if (town < 0 || (pick.kind != Battle::Pick::Kind::Ground && pick.kind != Battle::Pick::Kind::Wall && pick.kind != Battle::Pick::Kind::Obstacle)) return false;
+    cv.city = town;
+    return true;
 }
 
-// A selection box on the map (a press held, or shift and a press): the stack of
-// ours with most soldiers inside it is selected, as a tap on it would.
-void endMapBox(bool cancelled) {
+// The stack panel's town: the one the selected stack stands in (a town of the player's, or one the player's banner is
+// going up over, its panel shows how far), opened when the selection comes to be of a stack and shut when it is lost.
+void syncTownPanel() {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
-    cv.boxing = false;
-    if (cancelled || !cv.on) return;
-    const float x0 = std::min(cv.bx0, cv.bx1), x1 = std::max(cv.bx0, cv.bx1), y0 = std::min(cv.by0, cv.by1), y1 = std::max(cv.by0, cv.by1);
-    if (x1 - x0 < 6 && y1 - y0 < 6) return;
-    const V3 o = app->battle->origin();
-    std::map<uint32_t, int> inside;
-    for (const illyria::sim::Campaign::Soldier& m : cv.men) {
-        if (m.owner != 0 || !m.alive) continue;
-        float sx, sy;
-        if (app->camera.project({m.x - o.x, m.y - o.y, app->battle->heightAt(m.x - o.x, m.y - o.y) + 1.0f}, sx, sy) && sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1)
-            ++inside[m.stack];
+    const uint32_t stack = app->battle->selectedStack();
+    if (stack == cv.panelStack) return;
+    cv.panelStack = stack;
+    const C::Stack* s = cv.c->findStack(stack);
+    if (!s) {
+        cv.city = -1;
+        return;
     }
-    uint32_t pick = 0;
-    int most = 0;
-    for (const auto& [id, n] : inside)
-        if (n > most) pick = id, most = n;
-    const C::Stack* s = pick ? cv.c->findStack(pick) : nullptr;
-    if (!s) return;
-    cv.selected = s->id;
     cv.city = cv.c->cityAt(s->cx, s->cy);
-    if (cv.city >= 0 && cv.c->cities()[static_cast<size_t>(cv.city)].owner != 0 && cv.c->cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
+    if (cv.city >= 0 && cv.c->cities()[static_cast<size_t>(cv.city)].owner != cv.c->localSide() && cv.c->cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
 }
 
 // A new campaign, or one read back from a save.
@@ -622,39 +492,35 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     cv.c->prepareWorld();  // the island's ground for the fights, a few seconds, once (the page has said so)
     // The field is made on the island's own origin and presents the campaign's world as it presents any battle's.
     {
-        illyria::sim::World* world = cv.c->presentedWorld();
-        const illyria::sim::Vec3 ro = world->region()->origin();
+        const illyria::sim::Vec3 ro = cv.c->presentedWorld()->region()->origin();
         const illyria::sim::Vec3 centre{ro.x + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), ro.y + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), illyria::sim::Fixed::zero()};
         app->battle = std::make_unique<Battle>(kBattleSeed, centre, cv.continent);
         const V3 o = app->battle->origin();
         app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
         app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
         app->renderer.reset(*app->battle);
-        app->battle->borrow(world);
-        app->battle->setSight([](uint8_t owner, float x, float y) {
-            return app->camp.c->canSee(app->camp.c->localSide(), owner, x + app->battle->origin().x, y + app->battle->origin().y);
-        });
+        app->battle->borrow(cv.c.get());
         cv.c->onWorldStep([] { app->battle->beforeWorldStep(); }, [] { app->battle->afterWorldStep(); }, [] { app->battle->forgetMen(); });
     }
     cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
     cv.owners.clear();
     cv.territoryTick = -1;
     cv.vectorFrom = -1;
-    cv.boxing = false;
     cv.acc = 0;
     app->title = false;
     cv.on = true;
     cv.paused = false;
     cv.speed = 1;
-    cv.selected = 0;
     cv.city = -1;
+    cv.panelStack = 0;
     app->renderer.setShowUnits(true);
     cv.heading.clear();
     placePiers();
-    // Over your capital, high enough to see the neighbouring towns.
+    presentConquest(0);
+    // Over your capital, high enough to see the neighbouring towns, its army selected.
     for (const C::Stack& s : cv.c->stacks()) {
-        if (s.owner != 0) continue;
-        cv.selected = s.id;
+        if (s.owner != cv.c->localSide()) continue;
+        app->battle->selectStack(s.id);
         const V3 p = stackPosition(*cv.c, s);
         app->introStartMs = -1;
         app->camera.lookAt(p.x, p.y - 90, kStackView);
@@ -688,7 +554,7 @@ void stopPlaying() {
     if (cv.on) {
         cv.on = false;
         cv.city = -1;
-        cv.selected = 0;
+        cv.panelStack = 0;
         app->renderer.setTerritory({}, 0, 0, 0);
         app->renderer.setBoats({});
         app->renderer.setPiers({});
@@ -827,6 +693,7 @@ void frame() {
         // The battle's thirty ticks a second, times the speed (8x: 240 a second).
         App::CampaignView& cv = app->camp;
         listenFromCamera();
+        app->battle->flushOrders();  // (what was ordered since the last frame: the clock, paused or not, applies it with its next step)
         if (!cv.paused && cv.c->winner() == 0) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
@@ -836,7 +703,8 @@ void frame() {
             cv.acc = std::min(cv.acc, 1.0);
         }
         placeBoats();
-        placeMen(static_cast<float>(dtMs / 1000.0));
+        presentConquest(static_cast<float>(dtMs / 1000.0));
+        syncTownPanel();
         playCues();
         // No battle sounds over the campaign map.
         if (!app->hushed) {
@@ -991,7 +859,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_order_mode(int mode) {
 }
 // What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
 EMSCRIPTEN_KEEPALIVE int illyria_hover(float x, float y) {
-    if (!app || app->camp.on) return 0;
+    if (!app) return 0;
     const float s = app->pixelRatio;
     return static_cast<int>(app->battle->intentAt(app->camera, x * s, y * s, s));
 }
@@ -1003,7 +871,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_select_heroes() {
 }
 // Everyone of ours in view (Ctrl/⌘ + A).
 EMSCRIPTEN_KEEPALIVE void illyria_select_on_screen() {
-    if (app && !app->camp.on) app->battle->selectInRect(app->camera, 0, 0, app->camera.width(), app->camera.height());
+    if (app) app->battle->selectInRect(app->camera, 0, 0, app->camera.width(), app->camera.height());
 }
 // A formation for the selection, by Formation value; kKeepShapeId: as they stand.
 EMSCRIPTEN_KEEPALIVE void illyria_set_formation(int f) {
@@ -1034,10 +902,12 @@ EMSCRIPTEN_KEEPALIVE int illyria_ungroup() {
 EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
     if (!app) return;
     const std::vector<illyria::sim::EntityId> alive = app->battle->selectedAlive();
-    if (alive.empty()) return;
+    const std::vector<uint32_t>& asleep = app->battle->selectedSleepers();
+    if (alive.empty() && asleep.empty()) return;
     V3 c;
     for (illyria::sim::EntityId id : alive) c += app->battle->unitPosition(id - 1);
-    c = c * (1.0f / static_cast<float>(alive.size()));
+    for (uint32_t man : asleep) c += app->battle->sleeperPositionOf(man);
+    c = c * (1.0f / static_cast<float>(alive.size() + asleep.size()));
     app->introStartMs = -1;
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
@@ -1068,11 +938,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_drag_box() {
     static char buf[96];
     buf[0] = 0;
     if (!app) return buf;
-    if (app->camp.on) {
-        const App::CampaignView& cv = app->camp;
-        if (cv.boxing) std::snprintf(buf, sizeof buf, "%.0f %.0f %.0f %.0f", cv.bx0 / app->pixelRatio, cv.by0 / app->pixelRatio, cv.bx1 / app->pixelRatio, cv.by1 / app->pixelRatio);
-        return buf;
-    }
     const Battle::Drag& d = app->battle->drag();
     if (d.mode != Battle::Drag::Mode::Box) return buf;
     const float s = app->pixelRatio;
@@ -1307,29 +1172,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_test_battle_sheets() {
 
 EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
     if (!app) return;
-    if (app->camp.on) {
-        // The campaign: over the fiercest fighting on the island, where the most men are in a fight, from the height it was.
-        const App::CampaignView& cv = app->camp;
-        const float tps = static_cast<float>(illyria::sim::Campaign::kTicksPerSecond);
-        const float now = static_cast<float>(cv.c->tick());
-        std::map<std::pair<int, int>, std::pair<int, V3>> heat;  // by 100 m square: men fighting, and the sum of where
-        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
-            if (!m.awake || !m.alive || now - static_cast<float>(m.fightTick) > tps * 2) continue;
-            auto& h = heat[{static_cast<int>(m.x / 100), static_cast<int>(m.y / 100)}];
-            ++h.first;
-            h.second = h.second + V3{m.x, m.y, 0};
-        }
-        int most = 0;
-        V3 at{0, 0, 0};
-        for (const auto& [cell, h] : heat)
-            if (h.first > most) most = h.first, at = h.second * (1.0f / static_cast<float>(h.first));
-        if (most > 0) {
-            const V3 o = app->battle->origin();
-            app->introStartMs = -1;
-            app->camera.lookAt(at.x - o.x, at.y - o.y, std::min(app->camera.distance(), 220.0f));
-        }
-        return;
-    }
     V3 at;
     if (app->battle->hotSpot(at)) app->camera.lookAt(at.x, at.y, std::clamp(app->camera.distance(), 30.0f, 70.0f));
 }
@@ -1885,63 +1727,6 @@ EMSCRIPTEN_KEEPALIVE void illyria_minimap_look(float x, float y) {
     const V3 o = app->battle->origin();
     app->camera.lookAt(x - o.x, y - o.y, app->camera.distance());
 }
-// Test hook: the camera over a point of the continent (metres from its south-west corner).
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_view(float x, float y, float distance, float yaw) {
-    if (!app || !app->camp.on) return;
-    app->introStartMs = -1;
-    const V3 o = app->battle->origin();
-    app->camera.lookAt(x - o.x, y - o.y, distance);
-    app->camera.rotate(yaw - app->camera.yaw());
-}
-// Test hook: every stack on the land as JSON [{id, owner, x, y, soldiers, awake}], continent
-// metres, its middle being the middle of its men as drawn.
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_shapes() {
-    static std::string out;
-    out = "[";
-    if (app && app->camp.on) {
-        struct Sum {
-            double x = 0, y = 0;
-            int n = 0, owner = 0, awake = 0, fighting = 0;
-            double fx = 0, fy = 0;
-        };
-        std::map<uint32_t, Sum> by;
-        const uint32_t now = app->camp.c->tick();
-        for (const illyria::sim::Campaign::Soldier& m : app->camp.men) {
-            Sum& b = by[m.stack];
-            b.x += m.x, b.y += m.y, ++b.n, b.owner = m.owner, b.awake = m.awake;
-            if (m.awake && m.alive && now - m.fightTick < 2 * illyria::sim::Campaign::kTicksPerSecond) ++b.fighting, b.fx += m.x, b.fy += m.y;
-        }
-        char buf[260];
-        for (const auto& [id, b] : by) {
-            std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.1f,\"y\":%.1f,\"soldiers\":%d,\"awake\":%d,\"fighting\":%d,\"fx\":%.1f,\"fy\":%.1f}",
-                          out.size() > 1 ? "," : "", id, b.owner, b.x / b.n, b.y / b.n, b.n, b.awake, b.fighting, b.fighting ? b.fx / b.fighting : 0.0,
-                          b.fighting ? b.fy / b.fighting : 0.0);
-            out += buf;
-        }
-    }
-    out += "]";
-    return out.c_str();
-}
-// Test hook: where a stack's middle is on the screen, "x,y" in CSS pixels ("" if off it).
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_screen(unsigned id) {
-    static char buf[48];
-    buf[0] = 0;
-    if (!app || !app->camp.on) return buf;
-    const V3 o = app->battle->origin();
-    double sx = 0, sy = 0;
-    int n = 0;
-    for (const illyria::sim::Campaign::Soldier& m : app->camp.men)
-        if (m.stack == id) sx += m.x, sy += m.y, ++n;
-    if (n == 0) return buf;
-    const float x = static_cast<float>(sx / n) - o.x, y = static_cast<float>(sy / n) - o.y;
-    float px, py;
-    if (app->camera.project({x, y, app->battle->heightAt(x, y)}, px, py)) std::snprintf(buf, sizeof buf, "%.1f,%.1f", px / app->pixelRatio, py / app->pixelRatio);
-    return buf;
-}
-// Test hook: 0 draws the campaign map without its soldiers (to see what they cost), 1 with them.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_soldiers(int on) {
-    if (app) app->camp.soldiersOff = on == 0;
-}
 // Test hook: how many soldiers the campaign holds, how many are drawn as sprites and
 // as dots, and what laying them out and drawing a frame cost (milliseconds, smoothed).
 EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
@@ -1959,37 +1744,18 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_start(int hard) {
     if (app) startCampaign(hard != 0, app->camp.setup);
     if (app) app->title = false;
 }
-// Test hook: march the selected stack on the nearest neutral town.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_attack() {
-    using C = illyria::sim::Campaign;
-    if (!app || !app->camp.on) return;
-    const C::Stack* s = app->camp.c->findStack(app->camp.selected);
-    if (!s) return;
-    int best = 1 << 30, target = -1;
-    for (size_t i = 0; i < app->camp.c->cities().size(); ++i) {
-        const C::CityState& city = app->camp.c->cities()[i];
-        if (city.owner != C::kNeutral) continue;
-        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
-        if (d < best) {
-            best = d;
-            target = static_cast<int>(i);
-        }
-    }
-    if (target >= 0) app->camp.c->move(s->id, app->camp.c->cities()[static_cast<size_t>(target)].cx, app->camp.c->cities()[static_cast<size_t>(target)].cy);
-}
 // Test hook: the 3D siege's capture point stormed (the title's set battle).
 EMSCRIPTEN_KEEPALIVE void illyria_test_storm() {
     if (app && !app->camp.on) app->battle->testStorm();
 }
-// Test hook: a fight on the land. A strong stack of ours (heavy foot and archers)
-// is raised beside the neutral town nearest the selected stack and marched on it;
-// the campaign runs `ticks` ticks (paused after) and the camera looks at the
-// walls from `distance` metres. Returns the town (-1 if there is none).
+// Test hook: a fight on the land. A strong stack of ours (heavy foot and archers) is raised beside the neutral town
+// nearest the selected stack and ordered on it; the conquest runs `ticks` ticks (paused after), its men selected, and the
+// camera looks at the walls from `distance` metres. Returns the town (-1 if there is none).
 EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_fight(int ticks, float distance) {
     using C = illyria::sim::Campaign;
     if (!app || !app->camp.on) return -1;
     App::CampaignView& cv = app->camp;
-    const C::Stack* s = cv.c->findStack(cv.selected);
+    const C::Stack* s = cv.c->findStack(app->battle->selectedStack());
     if (!s) return -1;
     int best = 1 << 30, target = -1;
     for (size_t i = 0; i < cv.c->cities().size(); ++i) {
@@ -2003,170 +1769,32 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_fight(int ticks, float distance) 
     if (target < 0) return -1;
     const C::CityState& t = cv.c->cities()[static_cast<size_t>(target)];
     const illyria::sim::UnitType h = illyria::sim::UnitType::HeavyInfantry, a = illyria::sim::UnitType::Archers;
-    cv.selected = cv.c->raise(0, t.cx - 3, t.cy, {h, h, h, h, h, h, a, a});
-    cv.c->move(cv.selected, t.cx, t.cy);
+    const uint32_t raised = cv.c->raise(cv.c->localSide(), t.cx - 3, t.cy, {h, h, h, h, h, h, a, a});
+    submitOrder(C::Order::Kind::Move, raised, t.cx, t.cy);
     for (int k = 0; k < ticks; ++k) cv.c->step();
     cv.paused = true;
     cv.city = -1;
+    presentConquest(0);
+    app->battle->selectStack(raised);
     const V3 o = app->battle->origin();
     const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
     app->camera.lookAt(at.x, at.y - 33, distance);
     return target;
 }
-// Test hook: a siege with a hero at a real gate, and the camera looking at him from `side` (0: from inside the walls,
-// the town at the camera's back; 1: from outside, the gate behind him). Raises a stack with a hero near the nearest
-// small neutral town and runs the clock until the hero stands within 2.5 m of a shut gate; returns 1 if he did.
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_hero_gate(int side, float distance) {
-    using C = illyria::sim::Campaign;
-    if (!app || !app->camp.on) return 0;
-    App::CampaignView& cv = app->camp;
-    const C::Stack* s = cv.c->findStack(cv.selected);
-    if (!s) return 0;
-    int best = 1 << 30, target = -1;
-    for (size_t k = 0; k < cv.c->cities().size(); ++k) {
-        const C::CityState& city = cv.c->cities()[k];
-        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
-        if (city.owner == C::kNeutral && city.banner == C::kNeutral && city.defense <= 4 && d < best) best = d, target = static_cast<int>(k);
-    }
-    if (target < 0) return 0;
-    const C::CityState& t = cv.c->cities()[static_cast<size_t>(target)];
-    using UT = illyria::sim::UnitType;
-    const int32_t homeX = s->cx, homeY = s->cy;
-    cv.selected = cv.c->raise(0, homeX, homeY, {UT::Hero, UT::HeavyInfantry, UT::HeavyInfantry, UT::HeavyInfantry, UT::Archers});
-    cv.c->move(cv.selected, t.cx, t.cy);
-    cv.paused = true;
-    cv.city = -1;
-    for (int k = 0; k < 12000; ++k) {
-        cv.c->step();
-        const illyria::sim::World* w = cv.c->world();
-        if (!w || k % 15) continue;
-        const auto& gates = w->region()->gates();
-        for (const illyria::sim::Unit& u : w->units()) {
-            if (!u.alive() || u.stats.type != static_cast<uint8_t>(UT::Hero) || u.owner != 0) continue;
-            for (size_t g = 0; g < gates.size(); ++g) {
-                if (w->gates()[g].broken()) continue;
-                const illyria::sim::Gate& gt = gates[g];
-                const illyria::sim::Vec3 ab = (gt.b - gt.a).flat(), rel = (u.pos - gt.a).flat();
-                const double along = rel.dot(ab).toDouble(), len2 = ab.lengthSq().toDouble();
-                const double across = rel.dot(gt.out).toDouble();
-                if (along < 0 || along > len2 || std::fabs(across) > 2.5 || u.pos.z >= gt.top) continue;
-                // He is outside if across > 0. The view wanted, along the horizontal from the camera to him: from
-                // inside (side 0) it is out through the gate; from outside it is back in.
-                const V3 hero = toV3(u.pos), out = toV3(gt.out);
-                const float sign = (side == 0 ? 1.0f : -1.0f) * (across > 0 ? 1.0f : -1.0f);
-                const V3 want{out.x * sign, out.y * sign, 0};
-                app->camera.lookAt(hero.x, hero.y, distance);
-                float bestDot = -2, bestTurn = 0;
-                for (int q = 0; q < 32; ++q) {
-                    const V3 eye = app->camera.eye(), at = app->camera.target();
-                    const V3 view = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
-                    const float dot = view.x * want.x + view.y * want.y;
-                    if (dot > bestDot) bestDot = dot, bestTurn = static_cast<float>(q) * 0.19634954f;
-                    app->camera.rotate(0.19634954f);
-                }
-                app->camera.rotate(bestTurn);
-                std::printf("hero at gate %zu: %.2f m %s of its middle (view alignment %.2f)\n", g, std::fabs(across), across > 0 ? "outside" : "inside", bestDot);
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-// Test hook: the player's sight refuses the men of this side (-1: sees everyone again), through the one seam.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_hide_side(int side) {
-    if (!app || !app->camp.on) return;
-    if (side < 0) app->camp.c->setSight({});
-    else app->camp.c->setSight([side](uint8_t viewer, uint8_t owner, float, float) { return owner == viewer || owner != side; });
-}
-// Test hook: what several fights at once cost. `fights` pairs of stacks of `armies` armies a side
-// (twelve men an army) are raised on open ground and march at each other; the campaign runs
-// `ticks` ticks with nothing else moving. Returns JSON: the first contact's cost (the island's
-// ground is made then), and mean, 99th percentile and worst tick in milliseconds after it.
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_test_brawl(int fights, int armies, int ticks) {
-    using C = illyria::sim::Campaign;
-    static std::string out;
-    out = "{}";
-    if (!app || !app->camp.on) return out.c_str();
-    C& c = *app->camp.c;
-    for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) c.setHuman(side, true);
-    std::vector<std::pair<int, int>> spots;
-    for (int y = 6; y < c.height() - 6 && static_cast<int>(spots.size()) < fights; y += 5)
-        for (int x = 8; x < c.width() - 14 && static_cast<int>(spots.size()) < fights; x += 7) {
-            bool ok = true;
-            for (int dx = -2; dx <= 2 && ok; ++dx) {
-                if (c.terrainAt(x + dx, y) != illyria::sim::Lay::Plain && c.terrainAt(x + dx, y) != illyria::sim::Lay::Road) ok = false;
-                for (int ddy = -1; ddy <= 1 && ok; ++ddy)
-                    for (int ddx = -1; ddx <= 1; ++ddx)
-                        if (c.cityAt(x + dx + ddx, y + ddy) >= 0) ok = false;
-            }
-            for (const auto& sp : spots)
-                if (std::abs(sp.first - x) < 10 && std::abs(sp.second - y) < 10) ok = false;
-            if (ok) spots.push_back({x, y});
-        }
-    for (const auto& [x, y] : spots)
-        for (int side = 0; side < 2; ++side)
-            for (int g = 0; g * 8 < armies; ++g) {
-                std::vector<illyria::sim::UnitType> t;
-                for (int k = 0; k < 8 && g * 8 + k < armies; ++k) t.push_back(k % 3 == 2 ? illyria::sim::UnitType::Archers : illyria::sim::UnitType::HeavyInfantry);
-                const uint32_t id = c.raise(static_cast<uint8_t>(side), x + (side ? 2 : -2), y, t);
-                c.move(id, x + (side ? -2 : 2), y);
-            }
-    std::vector<double> v;
-    double first = 0;
-    int most = 0;
-    for (int k = 0; k < ticks; ++k) {
-        const double t0 = emscripten_get_now();
-        c.step();
-        const double dt = emscripten_get_now() - t0;
-        if (!first && dt > 500) first = dt;
-        else v.push_back(dt);
-        most = std::max(most, c.awakeMen());
-    }
-    std::sort(v.begin(), v.end());
-    double sum = 0;
-    for (double t : v) sum += t;
-    char buf[300];
-    std::snprintf(buf, sizeof buf, "{\"fights\":%zu,\"firstMs\":%.0f,\"meanMs\":%.3f,\"medianMs\":%.3f,\"p99Ms\":%.3f,\"worstMs\":%.3f,\"mostMen\":%d}", spots.size(), first,
-                  v.empty() ? 0.0 : sum / static_cast<double>(v.size()), v.empty() ? 0.0 : v[v.size() / 2], v.empty() ? 0.0 : v[v.size() * 99 / 100],
-                  v.empty() ? 0.0 : v.back(), most);
-    out = buf;
-    return out.c_str();
-}
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.
 EMSCRIPTEN_KEEPALIVE int illyria_campaign_search() {
     if (!app || !app->camp.on) return 0;
-    if (!app->camp.c->canSearch(app->camp.selected)) return 0;
-    submitOrder(illyria::sim::Campaign::Order::Kind::Search, app->camp.selected);
+    const uint32_t stack = app->battle->selectedStack();
+    if (!app->camp.c->canSearch(stack)) return 0;
+    submitOrder(illyria::sim::Campaign::Order::Kind::Search, stack);
     return 1;
 }
 EMSCRIPTEN_KEEPALIVE int illyria_campaign_hire(int accept) {
     if (!app || !app->camp.on) return 0;
-    if (!app->camp.c->offer(0).open) return 0;
+    if (!app->camp.c->offer(app->camp.c->localSide()).open) return 0;
     submitOrder(illyria::sim::Campaign::Order::Kind::Hire, 0, accept != 0);
     return 1;
-}
-// Test hook: march the selected stack on the nearest unsearched ruin (kind 0), temple (1) or sage (2).
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_site(int kind) {
-    using C = illyria::sim::Campaign;
-    if (!app || !app->camp.on) return;
-    const C::Stack* s = app->camp.c->findStack(app->camp.selected);
-    if (!s) return;
-    int best = 1 << 30, target = -1;
-    for (size_t i = 0; i < app->camp.c->sites().size(); ++i) {
-        const C::SiteState& st = app->camp.c->sites()[i];
-        const int d = std::max(std::abs(st.cx - s->cx), std::abs(st.cy - s->cy));
-        if (static_cast<int>(st.kind) == kind && !st.searched && d < best) {
-            best = d;
-            target = static_cast<int>(i);
-        }
-    }
-    if (target >= 0) app->camp.c->move(s->id, app->camp.c->sites()[static_cast<size_t>(target)].cx, app->camp.c->sites()[static_cast<size_t>(target)].cy);
-}
-// Test hook: run the campaign forward a number of days at once.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_fast_forward(int days) {
-    if (!app || !app->camp.on) return;
-    for (int t = 0; t < days * illyria::sim::Campaign::kTicksPerDay; ++t) app->camp.c->step();
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
     if (!app) return;
@@ -2186,50 +1814,19 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_vector(int city, int choose) {
 }
 // Sends an army of the selected stack home for good (no more upkeep).
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_disband(int army) {
-    if (app && app->camp.on && app->camp.selected) submitOrder(illyria::sim::Campaign::Order::Kind::Disband, app->camp.selected, army);
+    if (!app || !app->camp.on) return;
+    for (const Squad& q : app->battle->squads())
+        if (q.army == static_cast<uint32_t>(army) && app->battle->controllable(q)) submitOrder(illyria::sim::Campaign::Order::Kind::Disband, q.stack, army);
 }
 // Boats: lay one down in the open city's port; board or leave one with the selected stack.
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_build_boat(int city) {
     if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::BuildBoat, 0, city);
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_embark() {
-    if (app && app->camp.on && app->camp.selected) submitOrder(illyria::sim::Campaign::Order::Kind::Embark, app->camp.selected);
+    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Embark, app->battle->selectedStack());
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_land() {
-    if (app && app->camp.on && app->camp.selected) submitOrder(illyria::sim::Campaign::Order::Kind::Land, app->camp.selected);
-}
-// Test hook: order the selected stack to a cell (by land or by sea).
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_move(int cx, int cy) {
-    if (!app || !app->camp.on || !app->camp.selected) return 0;
-    submitOrder(illyria::sim::Campaign::Order::Kind::Move, app->camp.selected, cx, cy);
-    return 1;
-}
-// Test hook: look at the selected stack from this distance.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_test_look(float distance) {
-    if (!app || !app->camp.on) return;
-    if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(app->camp.selected)) {
-        const V3 p = stackPosition(*app->camp.c, *s);
-        app->camera.lookAt(p.x, p.y, distance);
-    }
-}
-// Test hook: hand the player the northernmost port, a stack there and a boat
-// built for it, and look at it with the city panel open.
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_port() {
-    using C = illyria::sim::Campaign;
-    if (!app || !app->camp.on) return -1;
-    App::CampaignView& cv = app->camp;
-    int32_t port = -1;
-    for (size_t i = 0; i < cv.c->cities().size(); ++i)
-        if (cv.c->cities()[i].port && (port < 0 || cv.c->cities()[i].cy > cv.c->cities()[static_cast<size_t>(port)].cy)) port = static_cast<int32_t>(i);
-    if (port < 0) return -1;
-    cv.selected = cv.c->grant(port, 0, illyria::sim::UnitType::HeavyInfantry, 5);
-    cv.c->buildBoat(port);
-    for (int t = 0; t < (C::kBoatDays + 1) * C::kTicksPerDay; ++t) cv.c->step();
-    cv.city = port;
-    const C::CityState& cs = cv.c->cities()[static_cast<size_t>(port)];
-    const V3 o = app->battle->origin();
-    app->camera.lookAt(C::centre(cs.cx) - o.x - 33, C::centre(cs.cy) - o.y, 290);
-    return port;
+    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Land, app->battle->selectedStack());
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
     if (app) app->camp.city = -1;
@@ -2242,7 +1839,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_speed() {
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_select(unsigned id) {
     if (!app || !app->camp.on) return;
-    app->camp.selected = id;
+    app->battle->selectStack(id);
     if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(id)) {
         const V3 p = stackPosition(*app->camp.c, *s);
         app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), kStackView));
@@ -2257,10 +1854,11 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     const C& c = *cv.c;
     std::string& s = cv.json;
     char buf[1024];
-    const C::Stack* sel = c.findStack(cv.selected);
-    if (!sel) cv.selected = 0;
+    const uint8_t me = c.localSide();
+    // The stack the selection is of (Battle::selectedStack): its march, its boat, the site it stands on.
+    const C::Stack* sel = c.findStack(app->battle->selectedStack());
     std::snprintf(buf, sizeof buf, "{\"day\":%u,\"gold\":%d,\"cities\":%d,\"speed\":%d,\"paused\":%s,\"winner\":%d,\"selected\":%u,\"hard\":%s,\"stacks\":[",
-                  c.day() + 1, c.sides()[0].gold, c.citiesOwned(0), cv.speed, cv.paused ? "true" : "false", c.winner(), cv.selected,
+                  c.day() + 1, c.sides()[me].gold, c.citiesOwned(me), cv.speed, cv.paused ? "true" : "false", c.winner(), sel ? sel->id : 0,
                   cv.hard ? "true" : "false");
     s = buf;
     bool first = true;
@@ -2326,21 +1924,18 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             any = true;
         }
     }
-    std::snprintf(buf, sizeof buf, "],\"land\":%d,\"landGold\":%d", c.hexesHeld(0), c.hexesHeld(0) / C::kHexesPerGold);
+    std::snprintf(buf, sizeof buf, "],\"land\":%d,\"landGold\":%d", c.hexesHeld(me), c.hexesHeld(me) / C::kHexesPerGold);
     s += buf;
+    // The squads wholly selected that can be sent home (a hero cannot): the Disband button's.
     s += ",\"armies\":[";
-    if (sel) {
-        for (size_t k = 0; k < sel->armies.size(); ++k) {
-            const illyria::sim::Army& a = sel->armies[k];
-            std::string arts;
-            for (uint8_t i : a.artifacts) arts += (arts.empty() ? "" : ", ") + std::string(C::artifacts()[i].name);
-            std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"name\":\"%s\",\"type\":\"%s\",\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"soldiers\":%d,\"full\":%d,\"kills\":%d,"
-                          "\"ally\":%s,\"rare\":%s,\"command\":%d,\"artifacts\":\"",
-                          k ? "," : "", a.id, a.name.c_str(), illyria::sim::unitTypeName(a.type), C::strength(a), a.hero() ? 0 : a.rank,
-                          a.hero() ? a.rank + 1 : 0, a.blessings, a.soldiers, a.fullStrength, a.kills, a.ally ? "true" : "false",
-                          C::rare(a.type) && !a.hero() ? "true" : "false", C::command(a));
+    {
+        bool any = false;
+        for (const Squad& q : app->battle->squads()) {
+            if (q.owner != me || q.type == illyria::sim::UnitType::Hero || !app->battle->controllable(q) || app->battle->squadSelection(q) != 2) continue;
+            std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"name\":\"%s\",\"rare\":%s,\"rank\":%d}", any ? "," : "", q.army, q.name.c_str(),
+                          q.rare ? "true" : "false", q.standing.rank);
             s += buf;
-            s += arts + "\"}";
+            any = true;
         }
     }
     s += "]";
@@ -2367,42 +1962,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             s += buf;
         }
     }
-    // What is being looked at, not ours to command: a man (his life and what the battle's cards show of him) or a
-    // gate (its hit points). View-only: the page shows no orders for it.
-    if (cv.inspectStack || cv.inspectGate >= 0) {
-        const illyria::sim::World* w = c.world();
-        if (cv.inspectGate >= 0 && w && static_cast<size_t>(cv.inspectGate) < w->gates().size()) {
-            const illyria::sim::GateState& g = w->gates()[static_cast<size_t>(cv.inspectGate)];
-            const int maxHp = w->region()->gates()[static_cast<size_t>(cv.inspectGate)].maxHp;
-            std::snprintf(buf, sizeof buf, ",\"inspect\":{\"kind\":\"gate\",\"hp\":%d,\"max\":%d,\"broken\":%s}", std::max(0, g.hp), maxHp,
-                          g.broken() ? "true" : "false");
-            s += buf;
-        } else if (cv.inspectStack) {
-            const C::Stack* st = c.findStack(cv.inspectStack);
-            const illyria::sim::Unit* u = nullptr;
-            for (const illyria::sim::Campaign::Soldier& m : cv.men)
-                if (m.id == cv.inspectMan && m.alive) u = w ? w->findUnit(m.unitId) : nullptr;
-            const char* type = "";
-            int hp = -1, max = -1, grade = 0, morale = 0, owner = st ? st->owner : 255;
-            for (const illyria::sim::Campaign::Soldier& m : cv.men)
-                if (m.id == cv.inspectMan) type = illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(m.type));
-            if (u) {
-                hp = u->hp, max = u->stats.maxHp, grade = illyria::sim::veteranGrade(*u);
-                morale = u->routed ? 2 : u->wavering() ? 1 : 0;
-            }
-            if (st) {
-                std::snprintf(buf, sizeof buf,
-                              ",\"inspect\":{\"kind\":\"man\",\"type\":\"%s\",\"owner\":%d,\"hp\":%d,\"max\":%d,\"rank\":%d,\"morale\":%d,\"awake\":%s,\"stack\":%zu}",
-                              type, owner, hp, max, grade, morale, u ? "true" : "false", st->armies.size());
-                s += buf;
-            } else {
-                cv.inspectStack = 0;
-            }
-        }
-    }
     // A hero offering their sword.
-    if (c.offer(0).open) {
-        const C::Offer& o = c.offer(0);
+    if (c.offer(me).open) {
+        const C::Offer& o = c.offer(me);
         std::snprintf(buf, sizeof buf, ",\"offer\":{\"name\":\"%s\",\"price\":%d,\"city\":\"%s\",\"companion\":\"%s\"}", o.name.c_str(), o.price,
                       c.continent().cities()[static_cast<size_t>(o.city)].name.c_str(), o.companions ? illyria::sim::unitTypeName(o.companion) : "");
         s += buf;
@@ -2765,15 +2327,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         const std::vector<illyria::sim::EntityId> sel = b.selectedAlive();
         // The order mode, and a refused order's reason while fresh (3 s).
         const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
-        bool batter = false;
-        for (illyria::sim::EntityId id : sel) batter = batter || illyria::sim::World::canBatter(units[id - 1].stats);
         // Hyena-folk among them: the Raid button shows.
         std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"raid\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
-                      batter ? "true" : "false", b.selectionRaids() ? "true" : "false", fresh ? b.notice().c_str() : "");
+                      b.selectionBatters() ? "true" : "false", b.selectionRaids() ? "true" : "false", fresh ? b.notice().c_str() : "");
         s += buf;
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
-                      sel.size(), label(sel), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
+                      b.selectionSize(), b.selectionLabel(), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
                       asTheyStand ? kKeepShapeId : static_cast<int>(b.selectionFormation()));
         s += buf;
         bool first = true;
@@ -2788,28 +2348,48 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
             s += buf;
             first = false;
         }
+        (void)sel;
         s += "],\"squads\":[";
     }
+    // The squads that are the local side's (its own to command, or an ally's), as cards; the others, in all, as the foe.
+    int foeAlive = 0, foeTotal = 0;
+    bool firstSquad = true;
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& q = b.squads()[i];
         static const char* kRoles[] = {"melee", "ranged", "bomber", "caster", "healer", "flier", "siege", "scout"};
-        const Standing st = b.standing(q);
-        // Whose it is, seen from the local side (Battle::localSide): mine to
-        // order, an ally's (my side, another seat), or a foe's.
-        const bool mine = b.controllable(b.world().units()[q.members.front() - 1]);
         const bool friendly = q.owner == b.localSide();
+        if (!friendly) {
+            foeAlive += b.aliveCount(q);
+            foeTotal += b.totalCount(q);
+            continue;
+        }
+        const Standing st = b.standing(q);
+        // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
+        const bool mine = b.controllable(q);
         std::snprintf(buf, sizeof buf,
-                      "%s{\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%zu,"
+                      "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"foe\":%s}",
-                      i ? "," : "", q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
-                      kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation),
-                      b.aliveCount(q), q.members.size(), st.strength, st.rank, st.level, st.blessings, st.kills, st.broken,
-                      mine ? b.squadSelection(q) : 0, mine ? "true" : "false", friendly && !mine ? "true" : "false",
-                      friendly ? "false" : "true");
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\"}",
+                      firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
+                      kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
+                      st.level, st.blessings, st.kills, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
+                      q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str());
+        s += buf;
+        firstSquad = false;
+    }
+    std::snprintf(buf, sizeof buf, "],\"foeAlive\":%d,\"foeTotal\":%d", foeAlive, foeTotal);
+    s += buf;
+    // What is looked at and cannot be ordered (a man not ours, or a gate): view-only.
+    if (const Battle::Glance g = b.glance(); g.any) {
+        if (g.gate)
+            std::snprintf(buf, sizeof buf, ",\"inspect\":{\"kind\":\"gate\",\"hp\":%d,\"max\":%d,\"broken\":%s}", g.hp, g.max, g.broken ? "true" : "false");
+        else
+            std::snprintf(buf, sizeof buf,
+                          ",\"inspect\":{\"kind\":\"man\",\"type\":\"%s\",\"owner\":%d,\"hp\":%d,\"max\":%d,\"rank\":%d,\"morale\":%d,\"awake\":%s,\"stack\":%d}",
+                          g.type, g.owner, g.hp, g.max, g.rank, g.morale, g.awake ? "true" : "false", g.stack);
         s += buf;
     }
-    s += "]}";
+    s += "}";
     return s.c_str();
 }
 
@@ -2907,34 +2487,16 @@ int main() {
 
     app = new App();
     app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
-        if (app->camp.on) campaignTap(x, y);
-        else app->battle->tap(app->camera, x, y, app->pixelRatio, app->shift);
+        if (app->camp.on && townTap(x, y)) return;
+        app->battle->tap(app->camera, x, y, app->pixelRatio, app->shift);
     });
     // A right click on the battlefield: an order, never a selection.
-    app->gestures->setSecondaryTap([](float x, float y) {
-        if (!app->camp.on) app->battle->orderTap(app->camera, x, y, app->pixelRatio);
-    });
+    app->gestures->setSecondaryTap([](float x, float y) { app->battle->orderTap(app->camera, x, y, app->pixelRatio); });
     // A press held on the battlefield: a selection box, or a move's facing line.
-    // On the campaign map the hold is a box round soldiers to select (endMapBox).
     app->gestures->setHold(
-        [](float x, float y, bool box) {
-            if (app->camp.on) {
-                App::CampaignView& cv = app->camp;
-                cv.boxing = true;
-                cv.bx0 = cv.bx1 = x;
-                cv.by0 = cv.by1 = y;
-                return true;
-            }
-            return app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box);
-        },
-        [](float x, float y) {
-            if (app->camp.on) app->camp.bx1 = x, app->camp.by1 = y;
-            else app->battle->pressMove(app->camera, x, y);
-        },
-        [](float x, float y, bool cancelled) {
-            if (app->camp.on) endMapBox(cancelled);
-            else app->battle->pressEnd(app->camera, x, y, cancelled, app->shift);
-        });
+        [](float x, float y, bool box) { return app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box); },
+        [](float x, float y) { app->battle->pressMove(app->camera, x, y); },
+        [](float x, float y, bool cancelled) { app->battle->pressEnd(app->camera, x, y, cancelled, app->shift); });
     newBattle();
     resizeCanvas();
     if (!app->renderer.init(*app->battle)) {

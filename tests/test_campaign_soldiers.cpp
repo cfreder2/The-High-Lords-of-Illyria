@@ -219,7 +219,7 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     illyria::game::Battle field(1, centre, std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
     CHECK(field.origin().x == static_cast<float>(ro.x.toDouble()));  // the world's places are the battle's
     CHECK(field.origin().y == static_cast<float>(ro.y.toDouble()));
-    field.borrow(world);
+    field.borrow(&c);
     CHECK(field.borrowing());
     c.onWorldStep([&] { field.beforeWorldStep(); }, [&] { field.afterWorldStep(); }, [&] { field.forgetMen(); });
     const Campaign::Stack* home = nullptr;
@@ -277,11 +277,12 @@ TEST(a_side_hidden_by_sight_is_in_no_list_of_men_and_cannot_be_picked) {
     CHECK(!c.canSee(0, 2, 100.0f, 100.0f));
     CHECK(c.canSee(2, 2, 100.0f, 100.0f));
     CHECK(c.canSee(0, 1, 100.0f, 100.0f));
-    // The field the page draws and picks from asks the same: a man of side 2 on its sleeper list is not picked.
-    const Vec3 ro = Vec3{Fixed::fromInt(-378), Fixed::fromInt(-22), Fixed::zero()};
+    // The field the page draws and picks from asks the same (it presents the conquest): a man of side 2 is not picked.
+    c.prepareWorld();
+    const Vec3 ro = c.presentedWorld()->region()->origin();
     illyria::game::Battle field(1, Vec3{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()},
                                 std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
-    field.setSight([&](uint8_t owner, float x, float y) { return c.canSee(0, owner, x + field.origin().x, y + field.origin().y); });
+    field.borrow(&c);
     CHECK(field.sees(0, 10, 10));
     CHECK(!field.sees(2, 10, 10));
 }

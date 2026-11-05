@@ -6,9 +6,17 @@
 — Brannoc the Bold
 :::
 
+## Ordering men {#war-orders}
+
+The war is a battle seen from as high or as low as you like, so your men are ordered as in any battle (chapter [](#orders)): tap a soldier to select him, tap him again for all of his kind in view, hold and drag to box them, tap a card to find a hero; then the same row: **As they stand**, a **formation**, **⚔ Attack**, **Scatter**, **Hold**, **Find**, and **Charge** at the top. It makes no difference whether a man is asleep in his stack on the march or awake in a fight.
+
+- **In a fight** (and near it, within about 200 m of the men), an order is the battle's own: they march to the place in their formation, go after the foe you tap, hold, scatter. Once ordered, a stack's men stand to your orders as in a skirmish until you march them again, or until the fight is over.
+- **Further off, or for men asleep,** a tap on the ground, on a town, on a gate or on an enemy is a **march**: the **squads** of the men selected (a squad is an army: its soldiers all go) set off for it along the quickest road, apart from the rest of their stack if you chose only some of its squads, at their pace, and meet whatever is in their way. **Hold** halts them at the next cell. Formations and **Scatter** are for men on their feet and in a fight: asleep, they keep the formation chosen for when they are.
+- Men who are not yours, and gates, are looked at when you tap them with nothing selected: a grey card with his life (or the gate's hit points), view only, and no order for them.
+
 ## Attacking {#attacking}
 
-To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy soldiers or the town with your stack selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
+To attack, order your men into an enemy stack, an enemy city or a neutral town: tap the enemy soldiers or the town with your men selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
 
 There is no prompt. When two stacks of different lords come within a long bowshot of each other (about 150 m between their edges), and either is on the move or already fighting, **their men are in a fight**: from then on every man in them is stepped in full by the battle's rules (chapter [](#battlefield)), where he stands. The soldiers on the map are those men. Zoom out and you see them as points in their lords' colours, and a man who is fighting flashes, rapidly and at random in strength; zoom in and the points become the battle's own soldiers, striking, shooting and flinching, standing exactly where the points were. A stack marching past a town's garrison at rest behind its walls does not wake it; one that comes up to the walls does.
 

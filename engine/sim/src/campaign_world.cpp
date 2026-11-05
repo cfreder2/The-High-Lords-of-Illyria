@@ -469,6 +469,7 @@ void Campaign::wake(Stack& s) {
         }
     }
     s.awake = true;
+    s.commanded = false;
     s.calm = 0;
     s.orderCell = -1;
     s.lx = bx;
@@ -492,6 +493,7 @@ void Campaign::sleep(Stack& s) {
     }
     s.progress = 0;
     s.awake = false;
+    s.commanded = false;
     s.orderCell = -1;
     --awakeStacks_;
     // Where it was bound: the way on from where it stands now.
@@ -589,6 +591,15 @@ void Campaign::syncMen(Stack& s) {
 
 // ---------------------------------------------------------------- contact
 
+bool Campaign::underOrders(const Stack& s) const {
+    for (const Army& a : s.armies)
+        for (const Man& m : a.men) {
+            const Unit* u = m.alive() && m.unit && world_ ? world_->findUnit(m.unit) : nullptr;
+            if (u && u->alive() && (u->hasMoveTarget || u->hasAttackTarget || u->targetUnit != kNoEntity)) return true;
+        }
+    return false;
+}
+
 void Campaign::contactStep() {
     struct Body {
         size_t index;
@@ -663,7 +674,9 @@ void Campaign::contactStep() {
             s.calm = 0;
             if (!s.awake) wake(s);
         } else if (s.awake) {
-            s.calm += kContactTicks;
+            // Men still carrying out the player's orders (walking to a place, going at a foe) are not at rest.
+            if (s.commanded && underOrders(s)) s.calm = 0;
+            else s.calm += kContactTicks;
             if (s.calm >= kCalmTicks) sleep(s);
         }
     }
@@ -688,6 +701,7 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
             }
         }
     }
+    if (s.commanded) return;  // (its men stand to the player's orders)
     if (s.path.empty()) {
         if (s.orderCell >= 0) {
             s.orderCell = -1;
@@ -855,7 +869,10 @@ void Campaign::stepWorld() {
         if (world_) world_->removeUnit(corpses_.front().second);
         corpses_.erase(corpses_.begin());
     }
-    if (awakeStacks_ == 0) return;
+    if (awakeStacks_ == 0) {
+        playerCommands_.clear();  // (to men no longer in the world)
+        return;
+    }
     const bool think = tick_ % kContactTicks == 0;
     commands_.clear();
     for (Stack& s : stacks_) {
@@ -863,8 +880,11 @@ void Campaign::stepWorld() {
         steer(s, commands_, think);
         // Marching, men fight with the battle's initiative (whoever strikes them or crosses their path); standing, the
         // computer lords' men and the player's alike meet whoever comes near their post (fightAi).
-        if (think && s.path.empty()) fightAi(s, commands_);
+        if (think && s.path.empty() && !s.commanded) fightAi(s, commands_);
     }
+    // The player's orders to men of the world go in after the stacks' own, whose men they are given to (commandMen).
+    commands_.insert(commands_.end(), playerCommands_.begin(), playerCommands_.end());
+    playerCommands_.clear();
     if (beforeHook_) beforeHook_();
     world_->step(commands_);
     if (stepHook_) stepHook_();
