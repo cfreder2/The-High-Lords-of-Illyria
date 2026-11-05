@@ -3,7 +3,7 @@
 // in their stacks, are the Battle's squads and selection; the same taps, boxes, presses and command bar drive them as
 // in a skirmish. Only two things are the conquest's own, and both are here:
 //
-// - A man asleep has no unit (his stack is stepped as one body), so he is a Sleeper: one picture in the renderer's one
+// - A man asleep has no unit (his stack is stepped as one body), so he is a sleeper, a Campaign::Soldier: one picture in the renderer's one
 //   pass, selectable and inspectable like a unit. The selection is of men (their ids), kept through a man's waking and
 //   sleeping, and made again each frame into the world's units and the sleepers (presentConquest).
 // - An order of the selection is the world's (commands to units, which Orders carry into the conquest's step) unless
@@ -54,7 +54,7 @@ size_t Battle::sleeperIndex(uint32_t man) const {
     return it != sleeperIx_.end() && it->first == man ? it->second : kNoSleeper;
 }
 
-V3 Battle::sleeperPosition(const Sleeper& m) const {
+V3 Battle::sleeperPosition(const sim::Campaign::Soldier& m) const {
     const V3 o = origin();
     return {m.x - o.x, m.y - o.y, heightAt(m.x - o.x, m.y - o.y)};
 }
@@ -137,13 +137,8 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
             if (inspected_.kind == Inspected::Kind::Man && inspected_.id == m.id) inspectedUnit_ = m.unitId;
         } else if (!m.awake) {
             q.sleeping.push_back(m.id);
-            Sleeper d;
-            d.x = m.x, d.y = m.y, d.yaw = m.yaw, d.speed = m.speed, d.owner = m.owner, d.type = static_cast<uint8_t>(m.type), d.aloft = m.aloft;
-            d.id = m.id, d.stack = m.stack, d.army = m.army;
-            d.selected = mine;
-            d.inspected = inspected_.kind == Inspected::Kind::Man && inspected_.id == m.id;
             sleeperIx_.push_back({m.id, sleepers_.size()});
-            sleepers_.push_back(d);
+            sleepers_.push_back(m);
             if (mine) asleep.push_back(m.id);
         } else {
             continue;
@@ -307,7 +302,6 @@ void Battle::inspect(Inspected what) {
     if (what.kind == Inspected::Kind::Man)
         for (size_t i = 0; i < manOfUnit_.size(); ++i)
             if (manOfUnit_[i] == what.id) inspectedUnit_ = static_cast<sim::EntityId>(i + 1);
-    for (Sleeper& m : sleepers_) m.inspected = what.kind == Inspected::Kind::Man && m.id == what.id;
 }
 
 Battle::Glance Battle::glance() const {
@@ -335,7 +329,7 @@ Battle::Glance Battle::glance() const {
         g.morale = u->routed ? 2 : u->wavering() ? 1 : 0;
     } else if (const size_t i = sleeperIndex(inspected_.id); i != kNoSleeper) {
         g.any = true;
-        g.type = sim::unitTypeName(static_cast<sim::UnitType>(sleepers_[i].type));
+        g.type = sim::unitTypeName(sleepers_[i].type);
         g.owner = sleepers_[i].owner;
         if (const sim::Campaign::Stack* s = conquest_ ? conquest_->findStack(sleepers_[i].stack) : nullptr) g.stack = static_cast<int>(s->armies.size());
     }
@@ -353,7 +347,7 @@ const char* Battle::selectionLabel() const {
     };
     for (sim::EntityId id : selectedAlive()) note(static_cast<int>(world_->units()[id - 1].stats.type));
     for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(sleepers_[i].type);
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(static_cast<int>(sleepers_[i].type));
     if (type < 0) return "";
     return mixed ? "Mixed" : sim::unitTypeName(static_cast<sim::UnitType>(type));
 }
@@ -362,7 +356,7 @@ bool Battle::selectionBatters() const {
     for (sim::EntityId id : selectedAlive())
         if (sim::World::canBatter(world_->units()[id - 1].stats)) return true;
     for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper && sim::World::canBatter(sim::unitStats(static_cast<sim::UnitType>(sleepers_[i].type)))) return true;
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper && sim::World::canBatter(sim::unitStats(sleepers_[i].type))) return true;
     return false;
 }
 

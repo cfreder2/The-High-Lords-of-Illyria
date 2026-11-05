@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -232,19 +233,18 @@ public:
     // The army (squad) the selection is exactly (every man of it and no other), or 0.
     uint32_t selectedArmy() const;
 
-    // Men who are not units of the world presented: the campaign's soldiers asleep in their squads on the march
-    // (their bodies are stepped as a whole, not as men). Each is the same picture as a unit's, in the same pass of
-    // the renderer (a dot from far off, the battle's sprite near); x, y are continent metres.
-    struct Sleeper {
-        float x = 0, y = 0, yaw = 0, speed = 0;
-        uint8_t owner = 0, type = 0;
-        bool aloft = false, selected = false, inspected = false;
-        uint32_t id = 0, stack = 0, army = 0;
-    };
+    // Men who are not units of the world presented: the conquest's soldiers asleep in their squads on the march or in a
+    // town (their bodies are stepped as a whole, not as men). A man has one record for presentation, Campaign::Soldier,
+    // which says where he stands whether he is awake (and then his unit is to hand) or asleep; the sleepers are those of
+    // them with no unit, each the same picture as a unit's, in the same pass of the renderer (a dot from far off, the
+    // battle's sprite near). x, y are continent metres.
     // What the viewer may see of the others (Campaign::canSee, through the conquest this field presents): a man of
     // `owner` at battle-local x, y that it refuses is not drawn, picked or looked at. A skirmish's field sees all.
     bool sees(uint8_t owner, float x, float y) const;
-    const std::vector<Sleeper>& sleepers() const { return sleepers_; }
+    const std::vector<sim::Campaign::Soldier>& sleepers() const { return sleepers_; }
+    // Whether a man asleep (by his id) is selected, or looked at.
+    bool isSelectedMan(uint32_t man) const { return std::binary_search(selSleeping_.begin(), selSleeping_.end(), man); }
+    bool isInspectedMan(uint32_t man) const { return inspected_.kind == Inspected::Kind::Man && inspected_.id == man; }
     // A man asleep (by his id) where he stands, battle-local on the ground (the origin if he is not asleep).
     V3 sleeperPositionOf(uint32_t man) const;
     // The man nearest the finger on the screen within `tapPx` pixels, at any height and any distance (a dot is as
@@ -733,7 +733,7 @@ private:
     void keepSelectedMen();
     static constexpr size_t kNoSleeper = static_cast<size_t>(-1);
     size_t sleeperIndex(uint32_t man) const;  // into sleepers_, or kNoSleeper
-    V3 sleeperPosition(const Sleeper& m) const;  // battle-local, on the ground
+    V3 sleeperPosition(const sim::Campaign::Soldier& m) const;  // battle-local, on the ground
     int squadOfArmy(uint32_t army) const;
     void inspect(Inspected what);
     struct Memo {  // what a squad keeps between frames, by army: the squads are made afresh from the conquest each frame
@@ -771,7 +771,7 @@ private:
     std::vector<V3> prevUnitPos_;
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<uint32_t> attackTick_, hitTick_;
-    std::vector<Sleeper> sleepers_;
+    std::vector<sim::Campaign::Soldier> sleepers_;
     bool alphaSet_ = false;
     float alphaOver_ = 0;
     std::vector<std::pair<int32_t, int32_t>> readied_;  // melee cooldown and reload before the tick

@@ -276,8 +276,8 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   side's colour from far off (pulsing, rapidly and at random, while he fights; a town's own garrison hollow), the
   battle's sprite near, the two cross-fading between 380 m and 170 m; his shadow, ring, frame, picking box and
   place in the sheet's group are the same code. The world's units and the sleepers (the conquest's soldiers asleep
-  in their squads on the march, who are not units of any world: `Battle::Sleeper`, a view made from the slot the
-  campaign says they stand in) go through that one function; they differ only in whether a sim unit is to hand.
+  in their squads on the march, who are not units of any world: a `Campaign::Soldier` with no unit, made from the slot
+  the campaign says they stand in) go through that one function; they differ only in whether a sim unit is to hand.
   One side-colour scheme serves every battle (`factions.h` `sideFactions`: a skirmish's seats are the Moonward blue,
   the Ironhold red, gold and green; a conquest's seats play their lords).
 - **Looking.** `Battle::manAt` picks the man under a finger, a world's or a sleeper's, at any distance;

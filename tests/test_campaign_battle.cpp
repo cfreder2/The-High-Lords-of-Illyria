@@ -94,7 +94,7 @@ TEST(men_asleep_in_their_stack_are_the_battles_squads_with_cards_and_a_hero_leve
     CHECK(w.squadOf(UnitType::LightInfantry) >= 0);
     // The sleepers are drawn in the one pass, one picture each.
     size_t mine = 0;
-    for (const Battle::Sleeper& m : w.b->sleepers()) mine += m.owner == 0;
+    for (const Campaign::Soldier& m : w.b->sleepers()) mine += m.owner == 0;
     CHECK(mine > 0);
 }
 
@@ -262,7 +262,7 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     // A man tapped who is not ours, with nothing selected, is looked at: view-only, grey, no order.
     w.b->clearSelection();
     w.tick(1);
-    for (const Battle::Sleeper& m : w.b->sleepers())
+    for (const Campaign::Soldier& m : w.b->sleepers())
         if (m.owner != 0) {
             const V3 p = w.b->sleeperPositionOf(m.id);
             w.cam.lookAt(p.x, p.y, 50.0f);
@@ -348,7 +348,7 @@ TEST(a_side_hidden_from_the_viewer_is_on_no_surface_the_viewer_reads) {
     for (const Campaign::Soldier& m : w.men) CHECK(m.owner != 1 && m.owner != 2);
     w.c.setSight({});
     w.frame();
-    for (const Battle::Sleeper& m : w.b->sleepers()) {
+    for (const Campaign::Soldier& m : w.b->sleepers()) {
         if (m.owner != 1) continue;
         const V3 p = w.b->sleeperPositionOf(m.id);
         w.cam.lookAt(p.x, p.y, 40.0f);

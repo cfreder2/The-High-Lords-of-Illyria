@@ -341,18 +341,18 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
 void Renderer::pushSleepers(ManPass& p) {
     const Battle& battle = p.battle;
     const V3 o = battle.origin();
-    for (const Battle::Sleeper& m : battle.sleepers()) {
+    for (const sim::Campaign::Soldier& m : battle.sleepers()) {
         ManView v;
         v.pos = V3{m.x - o.x, m.y - o.y, 0};
         v.pos.z = battle.heightAt(v.pos.x, v.pos.y);
-        if (m.aloft) v.pos.z += static_cast<float>(sim::unitStats(static_cast<UnitType>(m.type)).flyAltitude.toDouble());
+        if (m.aloft) v.pos.z += static_cast<float>(sim::unitStats(m.type).flyAltitude.toDouble());
         v.id = m.id;
         v.yaw = m.yaw;
         v.speed = m.speed;
-        v.type = m.type;
+        v.type = static_cast<uint8_t>(m.type);
         v.owner = m.owner;
-        v.selected = m.selected;
-        v.inspected = m.inspected;
+        v.selected = battle.isSelectedMan(m.id);
+        v.inspected = battle.isInspectedMan(m.id);
         v.aloft = m.aloft;
         v.moving = m.speed > 0.05f;
         // Metres walked, from the campaign's clock and his pace, so that his stride keeps to the ground; each man begins at

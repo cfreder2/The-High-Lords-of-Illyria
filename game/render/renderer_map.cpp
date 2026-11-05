@@ -5,7 +5,7 @@
 // which depends on the camera, but only the drawing does.
 //
 // The men are the presented world's own units (Battle::borrow: the campaign's fights), and the sleepers: the
-// campaign's soldiers asleep in their squads on the march, who are not units of any world (Battle::Sleeper).
+// campaign's soldiers asleep in their squads on the march, who are not units of any world (Battle::sleepers: Campaign::Soldier).
 #include <algorithm>
 #include <cmath>
 

@@ -273,7 +273,7 @@ void Battle::applySelection(std::vector<sim::EntityId> units) {
     };
     for (sim::EntityId id : selection_) note(squadOfUnit_[id - 1], static_cast<int>(world_->units()[id - 1].stats.type));
     for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(squadOfArmy(sleepers_[i].army), sleepers_[i].type);
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(squadOfArmy(sleepers_[i].army), static_cast<int>(sleepers_[i].type));
     selFormation_ = oneSquad && squad >= 0 ? squads_[static_cast<size_t>(squad)].formation
                     : oneType              ? defaultFormation(static_cast<UnitType>(type))
                                            : Formation::Line;
@@ -389,8 +389,8 @@ void Battle::selectVisibleOfType(const Camera& camera, UnitType type) {
         if (!u.alive() || u.owner != local_ || static_cast<UnitType>(u.stats.type) != type) continue;
         if (inView(unitPosition(i))) out.push_back(u.id);
     }
-    for (const Sleeper& m : sleepers_)
-        if (m.owner == local_ && static_cast<UnitType>(m.type) == type && inView(sleeperPosition(m))) asleep.push_back(m.id);
+    for (const sim::Campaign::Soldier& m : sleepers_)
+        if (m.owner == local_ && m.type == type && inView(sleeperPosition(m))) asleep.push_back(m.id);
     selectMen(std::move(out), std::move(asleep));
 }
 
@@ -409,7 +409,7 @@ void Battle::selectInRect(const Camera& camera, float x0, float y0, float x1, fl
         if (!u.alive() || u.owner != local_) continue;
         if (inside(unitPosition(i) + V3{0, 0, static_cast<float>(u.stats.height.toDouble()) * 0.5f})) out.push_back(u.id);
     }
-    for (const Sleeper& m : sleepers_) {
+    for (const sim::Campaign::Soldier& m : sleepers_) {
         if (m.owner != local_) continue;
         const V3 at = sleeperPosition(m);
         if (inside({at.x, at.y, at.z + 1.0f})) asleep.push_back(m.id);
@@ -422,8 +422,8 @@ void Battle::selectHeroes() {
     std::vector<uint32_t> asleep;
     for (const sim::Unit& u : world_->units())
         if (u.alive() && u.owner == local_ && static_cast<UnitType>(u.stats.type) == UnitType::Hero) out.push_back(u.id);
-    for (const Sleeper& m : sleepers_)
-        if (m.owner == local_ && static_cast<UnitType>(m.type) == UnitType::Hero) asleep.push_back(m.id);
+    for (const sim::Campaign::Soldier& m : sleepers_)
+        if (m.owner == local_ && m.type == UnitType::Hero) asleep.push_back(m.id);
     selectMen(std::move(out), std::move(asleep));
 }
 
@@ -949,7 +949,7 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         const bool sleeper = pick.sleeper >= 0;
         const uint32_t man = sleeper ? sleepers_[static_cast<size_t>(pick.sleeper)].id : 0;
         const sim::EntityId id = sleeper ? 0 : units[static_cast<size_t>(pick.index)].id;
-        const UnitType type = sleeper ? static_cast<UnitType>(sleepers_[static_cast<size_t>(pick.sleeper)].type)
+        const UnitType type = sleeper ? sleepers_[static_cast<size_t>(pick.sleeper)].type
                                       : static_cast<UnitType>(units[static_cast<size_t>(pick.index)].stats.type);
         const bool chosen = sleeper ? std::binary_search(selSleeping_.begin(), selSleeping_.end(), man) : isSelected(id);
         if (additive) {

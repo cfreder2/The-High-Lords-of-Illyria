@@ -301,7 +301,7 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
         return p;
     }
     if (man.kind == ManPick::Kind::Sleeper) {
-        const Sleeper& m = sleepers_[man.index];
+        const sim::Campaign::Soldier& m = sleepers_[man.index];
         p.kind = m.owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
         p.sleeper = static_cast<int>(man.index);
         p.squad = squadOfArmy(m.army);
