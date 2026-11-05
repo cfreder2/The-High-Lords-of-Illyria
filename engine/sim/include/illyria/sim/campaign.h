@@ -341,6 +341,15 @@ public:
     World* presentedWorld() { return world_.get(); }
     // The stack whose man is this unit of the fight's world (0: none).
     uint32_t stackOfUnit(uint32_t unit) const;
+
+    // The one seam of sight (fog of war, step 4 of docs/ONE_WORLD.md): may this side see a man of `owner` standing
+    // at x, y (continent metres)? Everything a side is shown that is not its own goes through it: the men drawn,
+    // picked and looked at, the minimap, the stacks listed, the fight the camera is taken to. Until step 4 builds
+    // sight everything is seen; `setSight` replaces the answer (tests, and then the fog).
+    bool canSee(uint8_t viewer, uint8_t owner, float x, float y) const { return owner == viewer || !sight_ || sight_(viewer, owner, x, y); }
+    void setSight(std::function<bool(uint8_t viewer, uint8_t owner, float x, float y)> sight) { sight_ = std::move(sight); }
+    // Every man the viewer may see (soldiers() less the rest).
+    void visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const;
     void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {
         beforeHook_ = std::move(before), stepHook_ = std::move(after), clearedHook_ = std::move(cleared);
     }
@@ -622,6 +631,7 @@ private:
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
     Setup setup_;
     std::function<void()> beforeHook_, stepHook_, clearedHook_;
+    std::function<bool(uint8_t, uint8_t, float, float)> sight_;
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)
     int32_t awakeStacks_ = 0;
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them

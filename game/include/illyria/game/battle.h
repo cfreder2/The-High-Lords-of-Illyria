@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -207,6 +208,10 @@ public:
         bool aloft = false, selected = false, inspected = false;
         uint32_t id = 0, stack = 0;
     };
+    // What the viewer may see of the others (Campaign::canSee): a man of `owner` at battle-local x, y that it refuses
+    // is not drawn, picked or looked at. Empty: everything is seen (a skirmish's field).
+    void setSight(std::function<bool(uint8_t owner, float x, float y)> sight) { sight_ = std::move(sight); }
+    bool sees(uint8_t owner, float x, float y) const { return !sight_ || sight_(owner, x, y); }
     void setSleepers(std::vector<Sleeper>&& men) { sleepers_ = std::move(men); }
     const std::vector<Sleeper>& sleepers() const { return sleepers_; }
     // Who is shown selected (ours, for commanding) and who looked at (not ours: view-only, grey), among the world's men.
@@ -681,6 +686,7 @@ private:
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<uint32_t> attackTick_, hitTick_;
     std::vector<Sleeper> sleepers_;
+    std::function<bool(uint8_t, float, float)> sight_;
     std::vector<uint8_t> inspectedFlag_;
     bool borrowed_ = false, alphaSet_ = false;
     float alphaOver_ = 0;

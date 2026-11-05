@@ -1010,10 +1010,6 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     else orderMove(d.anchor);
 }
 
-}  // namespace illyria::game
-
-namespace illyria::game {
-
 Battle::ManPick Battle::manAt(const Camera& camera, float x, float y, float tapPx) const {
     ManPick best;
     float bestD = tapPx;
@@ -1025,10 +1021,11 @@ Battle::ManPick Battle::manAt(const Camera& camera, float x, float y, float tapP
     };
     const auto& units = world_->units();
     for (size_t i = 0; i < units.size(); ++i)
-        if (units[i].alive()) consider(unitPosition(i), ManPick::Kind::Unit, units[i].id, i);
+        if (units[i].alive() && sees(units[i].owner, unitPosition(i).x, unitPosition(i).y)) consider(unitPosition(i), ManPick::Kind::Unit, units[i].id, i);
     const V3 o = origin();
     for (size_t i = 0; i < sleepers_.size(); ++i) {
         const V3 at{sleepers_[i].x - o.x, sleepers_[i].y - o.y, 0};
+        if (!sees(sleepers_[i].owner, at.x, at.y)) continue;
         consider({at.x, at.y, heightAt(at.x, at.y)}, ManPick::Kind::Sleeper, sleepers_[i].id, i);
     }
     return best;

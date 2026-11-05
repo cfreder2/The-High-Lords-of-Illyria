@@ -2107,6 +2107,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         walked_[i] += moved;
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
+        if (!battle.sees(u.owner, pos.x, pos.y)) continue;  // what the viewer may not see is not drawn
         {
             // Near the camera the battle's sprite (with a dot under it fading out as he comes in), from far off a dot,
             // pulsing if he is in a fight; whoever is dead and far off is not drawn. The same for every battle's men.

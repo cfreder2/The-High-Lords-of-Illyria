@@ -22,6 +22,7 @@
 #include <map>
 
 #include "illyria/sim/campaign.h"
+#include "illyria/sim/isqrt.h"
 
 namespace illyria::sim {
 
@@ -35,13 +36,6 @@ constexpr int32_t kAbreast = 4;
 constexpr int32_t kSideBySideMm = 11000;
 constexpr int64_t kTownReachMm = 95000;  // how near a town's walls an enemy must come to wake those resting in it
 
-int64_t isqrt(int64_t n) {
-    if (n <= 0) return 0;
-    int64_t x = static_cast<int64_t>(std::sqrt(static_cast<double>(n)));
-    while (x * x > n) --x;
-    while ((x + 1) * (x + 1) <= n) ++x;
-    return x;
-}
 int32_t toMm(Fixed metres) { return static_cast<int32_t>((metres.raw * 1000 + Fixed::kOneRaw / 2) >> Fixed::kFracBits); }
 Fixed fromMm(int64_t mm) { return Fixed::fromRatio(mm, 1000); }
 // Thousandths of a unit vector, for a direction given in any units.
@@ -194,6 +188,7 @@ void slotToWorld(const std::pair<int32_t, int32_t>& slot, int32_t hx, int32_t hy
 }
 }  // namespace
 
+// Presentation only (Campaign::soldiers): never read by a step.
 constexpr float kGlideMetresPerSecond = 3.0f;
 constexpr float kFormMetresPerSecond = 5.0f;
 
@@ -300,6 +295,11 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
                 out.push_back(d);
             }
     }
+}
+
+void Campaign::visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const {
+    soldiers(ahead, out);
+    std::erase_if(out, [&](const Soldier& m) { return !canSee(viewer, m.owner, m.x, m.y); });
 }
 
 int32_t Campaign::awakeStacks() const { return awakeStacks_; }
@@ -875,10 +875,10 @@ void Campaign::stepWorld() {
             for (Army& a : s.armies)
                 for (Man& m : a.men) {
                     if (m.gx == 0 && m.gy == 0) continue;
-                    const double len = std::hypot(static_cast<double>(m.gx), static_cast<double>(m.gy));
-                    const double step = kGlideMetresPerSecond * 1000.0 / kTicksPerSecond;
-                    if (len <= step) m.gx = m.gy = 0;
-                    else m.gx -= static_cast<int32_t>(m.gx * step / len), m.gy -= static_cast<int32_t>(m.gy * step / len);
+                    const int64_t len = isqrt(int64_t{m.gx} * m.gx + int64_t{m.gy} * m.gy);
+                    constexpr int64_t kStepMm = 100;  // 3 m/s at 30 ticks a second
+                    if (len <= kStepMm) m.gx = m.gy = 0;
+                    else m.gx -= static_cast<int32_t>(m.gx * kStepMm / len), m.gy -= static_cast<int32_t>(m.gy * kStepMm / len);
                 }
         }
     // The armies that have fallen to the last man are gone, and heroes drop what they carried.

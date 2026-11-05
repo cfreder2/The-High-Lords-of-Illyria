@@ -1,4 +1,5 @@
 #include "illyria/sim/campaign.h"
+#include "illyria/sim/isqrt.h"
 
 #include <algorithm>
 #include <climits>
@@ -362,7 +363,7 @@ void Campaign::step() {
             s.dhx += (s.hx - s.dhx) / 40;
             s.dhy += (s.hy - s.dhy) / 40;
             if (std::abs(s.hx - s.dhx) < 12 && std::abs(s.hy - s.dhy) < 12) s.dhx = s.hx, s.dhy = s.hy;
-            const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.dhx} * s.dhx + int64_t{s.dhy} * s.dhy)));
+            const int64_t len = isqrt(int64_t{s.dhx} * s.dhx + int64_t{s.dhy} * s.dhy);
             if (len > 0 && (s.dhx != s.hx || s.dhy != s.hy)) s.dhx = static_cast<int32_t>(int64_t{s.dhx} * 1000 / len), s.dhy = static_cast<int32_t>(int64_t{s.dhy} * 1000 / len);
         }
         const int32_t target = !s.path.empty() && !s.boat ? 1000 : 0;
@@ -372,7 +373,7 @@ void Campaign::step() {
         layout(s, column, true);
         int64_t far = 1;
         for (size_t i = 0; i < block.size(); ++i)
-            far = std::max<int64_t>(far, static_cast<int64_t>(std::hypot(static_cast<double>(column[i].first - block[i].first), static_cast<double>(column[i].second - block[i].second))));
+            far = std::max<int64_t>(far, isqrt(int64_t{column[i].first - block[i].first} * (column[i].first - block[i].first) + int64_t{column[i].second - block[i].second} * (column[i].second - block[i].second)));
         const int32_t rate = static_cast<int32_t>(std::clamp<int64_t>(1000LL * 5000 / (far * kTicksPerSecond), 1, 1000));  // 5 m/s
         s.form += std::clamp(target - s.form, -rate, rate);
     }
@@ -484,7 +485,7 @@ void Campaign::moveStacks() {
             if (wx && wy) wx = wx * 707 / 1000, wy = wy * 707 / 1000;
             s.hx += (wx - s.hx) / 12;  // (slowly: a column swings about its head, and its tail must not be flung round)
             s.hy += (wy - s.hy) / 12;
-            const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.hx} * s.hx + int64_t{s.hy} * s.hy)));
+            const int64_t len = isqrt(int64_t{s.hx} * s.hx + int64_t{s.hy} * s.hy);
             if (len > 0) s.hx = static_cast<int32_t>(int64_t{s.hx} * 1000 / len), s.hy = static_cast<int32_t>(int64_t{s.hy} * 1000 / len);
         }
         if (s.progress < cost) continue;

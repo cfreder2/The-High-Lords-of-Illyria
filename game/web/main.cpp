@@ -62,6 +62,23 @@ EM_JS(void, mode_started_page, (const char* id), {
 });
 
 // The battle's sounds since the last frame, and the ambience when it changed.
+// The soldiers are heard from the view centre, the camera's right to the right: before the world steps (the sounds
+// are made in the steps), for a skirmish and a conquest alike.
+void listenFromCamera() {
+    const V3 eye = app->camera.eye(), at = app->camera.target();
+    const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
+    app->battle->voice().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+    app->battle->sfx().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+}
+
+// What the battle made during the steps: its shouts and its sounds, to the page.
+void playCues() {
+    for (const VoiceCue& c : app->battle->voice().take())
+        play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority, static_cast<int>(c.speaker), static_cast<int>(c.tick));
+    for (const SfxCue& c : app->battle->sfx().take())
+        play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
+}
+
 void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
     for (const SfxCue& c : sfx.take())
         play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
@@ -284,7 +301,7 @@ void placeMen(float dt) {
     using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
     const double started = emscripten_get_now();
-    cv.c->soldiers(static_cast<int32_t>(mapAhead()), cv.men);
+    cv.c->visibleSoldiers(0, static_cast<int32_t>(mapAhead()), cv.men);
     std::vector<Battle::Sleeper> sleepers;
     std::vector<illyria::sim::EntityId> selected, inspected;
     for (const C::Soldier& m : cv.men) {
@@ -478,6 +495,7 @@ const illyria::sim::Campaign::Stack* pickStack(float px, float py) {
     for (const C::Stack& s : c.stacks()) {
         if (s.armies.empty() || !s.boat) continue;
         V3 p = stackPosition(c, s);
+        if (!c.canSee(0, s.owner, p.x + app->battle->origin().x, p.y + app->battle->origin().y)) continue;
         p.z += 30;
         float sx, sy;
         if (!app->camera.project(p, sx, sy)) continue;
@@ -616,6 +634,9 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
         app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
         app->renderer.reset(*app->battle);
         app->battle->borrow(world);
+        app->battle->setSight([](uint8_t owner, float x, float y) {
+            return app->camp.c->canSee(0, owner, x + app->battle->origin().x, y + app->battle->origin().y);
+        });
         cv.c->onWorldStep([] { app->battle->beforeWorldStep(); }, [] { app->battle->afterWorldStep(); }, [] { app->battle->forgetMen(); });
     }
     cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
@@ -791,13 +812,7 @@ void frame() {
     if (app->camp.on) {
         // The battle's thirty ticks a second, times the speed (8x: 240 a second).
         App::CampaignView& cv = app->camp;
-        {
-            // The listener is the camera's middle, as in a battle, before the world steps (the sounds are made in the steps).
-            const V3 eye = app->camera.eye(), at = app->camera.target();
-            const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
-            app->battle->voice().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
-            app->battle->sfx().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
-        }
+        listenFromCamera();
         if (!cv.paused && cv.c->winner() == 0) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
@@ -808,12 +823,7 @@ void frame() {
         }
         placeBoats();
         placeMen(static_cast<float>(dtMs / 1000.0));
-        // What is heard and said: the battle's own cues for the fight it presents, from the camera's middle.
-        for (const VoiceCue& c : app->battle->voice().take())
-            play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority, static_cast<int>(c.speaker),
-                           static_cast<int>(c.tick));
-        for (const SfxCue& c : app->battle->sfx().take())
-            play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
+        playCues();
         // No battle sounds over the campaign map.
         if (!app->hushed) {
             set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -821,17 +831,10 @@ void frame() {
             app->ambienceSeen = ~0u;
         }
     } else if (!app->title) {
-        // The soldiers are heard from the view centre, the camera's right to the right.
-        const V3 eye = app->camera.eye(), at = app->camera.target();
-        const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
-        Voice& voice = app->battle->voice();
-        voice.setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
-        app->battle->sfx().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+        listenFromCamera();
         app->battle->sfx().setRain(app->rain);
         app->battle->advance(dtMs / 1000.0);
-        for (const VoiceCue& c : voice.take())
-            play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority,
-                           static_cast<int>(c.speaker), static_cast<int>(c.tick));
+        playCues();
         app->hushed = false;
         playSounds(app->battle->sfx(), app->ambienceSeen);
     }
@@ -2239,6 +2242,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     for (const C::Stack& st : c.stacks()) {
         if (st.armies.empty()) continue;
         V3 p = stackPosition(c, st);
+        if (!c.canSee(0, st.owner, p.x + app->battle->origin().x, p.y + app->battle->origin().y)) continue;
         p.z += 30;
         float px, py;
         if (!app->camera.project(p, px, py)) continue;

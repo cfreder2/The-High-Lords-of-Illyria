@@ -120,6 +120,7 @@ void Renderer::pushSleepers(const Battle& battle, std::map<int, std::vector<floa
     for (const Battle::Sleeper& m : battle.sleepers()) {
         V3 p{m.x - o.x, m.y - o.y, 0};
         p.z = battle.heightAt(p.x, p.y);
+        if (!battle.sees(m.owner, p.x, p.y)) continue;
         const auto type = static_cast<sim::UnitType>(m.type);
         if (m.aloft) p.z += static_cast<float>(sim::unitStats(type).flyAltitude.toDouble());
         const bool sprite = manIsSprite(p, m.type);

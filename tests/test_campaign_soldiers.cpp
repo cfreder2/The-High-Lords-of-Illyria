@@ -253,3 +253,35 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     CHECK(field.groundMarks().size() > 0);  // blood on the ground
     CHECK(cues > 0);                        // the battle's sounds
 }
+
+// Sight has one seam (Campaign::canSee): what a side is shown that is not its own goes through it. With a stub that
+// hides side 2, no list of men, no picking and no drawing reports a man of side 2; the side's own men still show.
+TEST(a_side_hidden_by_sight_is_in_no_list_of_men_and_cannot_be_picked) {
+    Campaign c(continent(), 3);
+    for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
+    std::vector<Campaign::Soldier> all, seen;
+    c.soldiers(0, all);
+    c.visibleSoldiers(0, 0, seen);
+    CHECK(seen.size() == all.size());  // until sight is built, everyone is seen
+    c.setSight([](uint8_t viewer, uint8_t owner, float, float) { return owner == viewer || owner != 2; });
+    c.visibleSoldiers(0, 0, seen);
+    size_t two = 0, mine = 0, hidden = 0;
+    for (const Campaign::Soldier& m : all) two += m.owner == 2;
+    for (const Campaign::Soldier& m : seen) {
+        hidden += m.owner == 2;
+        mine += m.owner == 0;
+    }
+    CHECK(two > 0);
+    CHECK(hidden == 0);
+    CHECK(mine > 0);
+    CHECK(!c.canSee(0, 2, 100.0f, 100.0f));
+    CHECK(c.canSee(2, 2, 100.0f, 100.0f));
+    CHECK(c.canSee(0, 1, 100.0f, 100.0f));
+    // The field the page draws and picks from asks the same: a man of side 2 on its sleeper list is not picked.
+    const Vec3 ro = Vec3{Fixed::fromInt(-378), Fixed::fromInt(-22), Fixed::zero()};
+    illyria::game::Battle field(1, Vec3{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()},
+                                std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
+    field.setSight([&](uint8_t owner, float x, float y) { return c.canSee(0, owner, x + field.origin().x, y + field.origin().y); });
+    CHECK(field.sees(0, 10, 10));
+    CHECK(!field.sees(2, 10, 10));
+}
