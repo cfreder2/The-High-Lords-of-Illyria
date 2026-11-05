@@ -29,16 +29,22 @@ struct MapSoldier {
     bool alive = true;   // false: a body lying where it fell, in a fight still going on
     bool awake = false;  // in a fight (stepped in the campaign's world)
     bool selected = false;
+    bool inspected = false;  // looked at but not his to command (a foe's, or a neutral's): drawn grey, view-only
     uint32_t stack = 0;
     uint32_t id = 0;     // his own for ever, unlike his place in the list
     // Awake: when (campaign ticks) he last struck, was hurt, or fought at all.
     uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;
+    // Awake: his man in the campaign's world, for drawing his wounds. Valid only
+    // in the frame it was gathered (the world steps between frames); the page
+    // finds him again by unitId.
+    const sim::Unit* unit = nullptr;
+    uint32_t unitId = 0;
 };
 
 // Every soldier of every stack on the land (stacks afloat are aboard their boats,
 // which are drawn on their own), in the stacks' order. `ahead`: the share of a
 // tick the clock has run since the last step (hundredths of a tick, like
 // Stack::progress), so a soldier never steps. `selected`: the stack to mark.
-void collectMapSoldiers(const sim::Campaign& c, double ahead, uint32_t selected, std::vector<MapSoldier>& out);
+void collectMapSoldiers(const sim::Campaign& c, double ahead, uint32_t selected, std::vector<MapSoldier>& out, uint8_t viewer = 0);
 
 }  // namespace illyria::game

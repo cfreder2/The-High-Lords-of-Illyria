@@ -245,6 +245,23 @@ constexpr int kSides = 4;  // unit groups by type and side
 
 }  // namespace
 
+// The campaign's men near enough to be sprites carry what the battle's do: a health bar when hurt (or a veteran,
+// shaken, or looked at), the arrow that killed one toppling with him, the arrows his shield caught.
+void Renderer::pushMapWounds(std::vector<float>& bars, std::vector<float>& arrows) {
+    for (size_t i : mapSprites_) {
+        const MapSoldier& m = mapSoldiers_[i];
+        if (!m.unit) continue;
+        const V3& p = mapPlaces_[i];
+        if (m.alive) {
+            if (m.unit->shieldArrows > 0) pushStuckArrows(arrows, *m.unit, p, 0);
+            pushHealthBar(bars, *m.unit, p, m.selected);
+        } else {
+            const float seconds = m.hurtTick > 0 ? mapSeconds_ - static_cast<float>(m.hurtTick) / static_cast<float>(sim::kTicksPerSecond) : 1e9f;
+            pushStuckArrows(arrows, *m.unit, p, m.unit->airborne ? 0.3f : std::clamp(seconds / deathSeconds(m.type, *m.unit), 0.0f, 1.0f));
+        }
+    }
+}
+
 bool Renderer::buildPrograms() {
     struct Spec {
         Program& p;
@@ -261,7 +278,7 @@ bool Renderer::buildPrograms() {
                  {ribbon_, shaders::kRibbonVs, shaders::kRibbonFs},
                  {falls_, shaders::kFallsVs, shaders::kFallsFs},
                  {cover_, shaders::kCoverVs, shaders::kCoverFs},
-                 {meshDepth_, shaders::kMeshVs, shaders::kDepthFs},
+                 {meshDepth_, shaders::kMeshVs, shaders::kMeshDepthFs},
                  {model_, shaders::kModelVs, shaders::kModelFs},
                  {modelDepth_, shaders::kModelVs, shaders::kDepthFs},
                  {terrainDepth_, shaders::kTerrainVs, shaders::kDepthFs},
@@ -2171,6 +2188,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     battle.setSpriteBoxes(std::move(boxes));
     if (mapOn_) {
         pushMapSprites(battle, camera, byGroup, decals);
+        pushMapWounds(bars, arrows);
         arrows.insert(arrows.end(), mapArrows_.begin(), mapArrows_.end());
     }
 

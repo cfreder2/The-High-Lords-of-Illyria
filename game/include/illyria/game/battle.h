@@ -446,6 +446,11 @@ public:
     Formation selectionFormation() const { return selFormation_; }
     // The gate last tapped (its health shown over it), or -1; any other tap lets it go.
     int inspectedGate() const { return inspectedGate_; }
+    // The campaign's fights on this field (the campaign's world is not this battle's): show what its blows and
+    // wounds did (blood, dust, sparks, splinters), move the sparks and smoke on, and ring a gate to look at.
+    void showImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source);
+    void stepEffects(float seconds);
+    void inspectGate(int gate);
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
     int squadSelection(const Squad& s) const;
     int groupSelection(int slot) const;
@@ -520,6 +525,7 @@ private:
     void step();
     void runEnemyAi();
     void collectEvents();
+    void applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source, V3 shift, bool own);
     // Each tick's deaths, seen and heard (battle_deaths.cpp): blood rain, smoke, sound effects.
     void presentDeaths();
     void addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed);

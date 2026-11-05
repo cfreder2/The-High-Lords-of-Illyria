@@ -1340,9 +1340,13 @@ void main() {
     // Drawn as if a little nearer the viewer, so the part of the picture
     // below the feet (the ground in front of them) is not lost in the earth;
     // moving along the line of sight leaves the picture where it is.
+    // Only the feet and legs are drawn nearer: higher up the whole picture
+    // pulled a metre toward the eye put a man who stands just beyond a gate
+    // or wall in front of it.
     vec3 toEye = uEye - world;
     float len = length(toEye);
-    world += toEye * (min(uLift, len * 0.5) / max(len, 1e-3));
+    float lifted = gib || vDot > 0.5 ? 1.0 : 1.0 - smoothstep(0.0, 1.0, (world.z - iPos.z) * cos(kElevation));
+    world += toEye * (min(uLift * lifted, len * 0.5) / max(len, 1e-3));
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -1390,6 +1394,7 @@ out vec3 vColor;
 out vec3 vNormal;
 out vec3 vWorld;
 out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
+flat out float vLod;   // how much of this piece shows (the dither in kMeshFs and kDepthFs), not how big it is
 flat out float vIsCloth;
 flat out vec2 vAxis; // the instance's local x on the ground, either way round (masonry)
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
@@ -1406,6 +1411,7 @@ void main() {
     if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
     float lod = uLod > 0.5 ? sceneryNear(iPos.xy) : uLod < -0.5 ? 1.0 - sceneryNear(iPos.xy) : 1.0;
     if (lod < 0.02) { gl_Position = kCulled; return; }
+    vLod = lod;  // (a tree fades in by dissolving, never by growing out of the ground)
     vec3 pos = aPos, nrm = aNormal;
     vIsCloth = 0.0;
     vCloth = vec2(0.0);
@@ -1426,11 +1432,11 @@ void main() {
         vIsCloth = 1.0;
         vCloth = vec2(u, v);
     }
-    vec3 local = pos * iScale * lod;
+    vec3 local = pos * iScale;
     if (uSway > 0.0) {
         // Crowns sway in the wind; trunks stay put.
         float h = aPos.z * aPos.z;
-        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z * lod;
+        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z;
     }
     vec3 world = iPos + rotate(iQuat, local);
     vNormal = normalize(rotate(iQuat, nrm / iScale));
@@ -1451,7 +1457,16 @@ in vec3 vWorld;
 in vec2 vCloth;
 flat in float vIsCloth;
 flat in vec2 vAxis;
+flat in float vLod;
+uniform float uLod;
 out vec4 oColor;
+// The cross-fade between individual scenery and the clumps that stand in for it: each shows in the pixels
+// the other leaves (complementary screen dither), so nothing is scaled and no tree grows or shrinks.
+bool dissolved() {
+    if (vLod >= 0.999) return false;
+    float h = hash12(gl_FragCoord.xy);
+    return uLod < -0.5 ? (1.0 - h) >= vLod : h >= vLod;
+}
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
 // A flag's face: the owner's colour with a hem, and a cross pattee in white
 // (or deep red on a pale field), smoothed over a pixel and blended into the
@@ -1478,6 +1493,7 @@ vec3 flagCloth(vec3 field, vec2 uv) {
     return c;
 }
 void main() {
+    if (dissolved()) discard;
     vec3 n = normalize(vNormal);
     vec3 albedo = vColor;
     if (vIsCloth > 0.5) {
@@ -1696,6 +1712,17 @@ void main() {
 // Depth only, for the sun's shadow map.
 inline const char* kDepthFs = R"(
 void main() {}
+)";
+// The same for the scenery's meshes, which dissolve in and out (kMeshFs).
+inline const char* kMeshDepthFs = R"(
+flat in float vLod;
+uniform float uLod;
+void main() {
+    if (vLod < 0.999) {
+        float h = hash12(gl_FragCoord.xy);
+        if (uLod < -0.5 ? (1.0 - h) >= vLod : h >= vLod) discard;
+    }
+}
 )";
 
 // ---------------------------------------------------------------- water
@@ -2115,13 +2142,23 @@ in vec2 vCorner;
 flat in vec4 vColour;
 flat in vec2 vFight;
 uniform float uRim;
+uniform float uDotPx;
 out vec4 oColor;
 void main() {
-    if (length(vCorner) > 1.0) discard;
+    float r = length(vCorner);
+    if (r > 1.0) discard;
+    // A town's own garrison (no lord's): hollow, a ring, so that it is not mistaken for a lord's men.
+    bool hollow = vFight.y < 0.0;
+    float alpha = abs(vFight.y);
+    if (hollow && uRim <= 0.0 && r < 0.45) discard;
     // In a fight the colour flares toward white-hot with the flash, and its rim goes hot too.
     vec3 flare = mix(vColour.rgb, vec3(1.0, 0.95, 0.75), 0.85 * vFight.x);
-    vec3 rim = vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : mix(vec3(0.03, 0.03, 0.04), vec3(0.55, 0.12, 0.04), vFight.x);
-    oColor = vec4(uRim > 0.0 ? rim : flare, vFight.y);
+    // Two rims, so that a dot stands out on any ground: a dark outer edge (against snow and pale stone), a
+    // light ring inside it (against forest and shadow), and the colour within.
+    bool outer = uRim > uDotPx * 0.3;
+    vec3 rim = outer ? mix(vec3(0.02, 0.02, 0.03), vec3(0.55, 0.12, 0.04), vFight.x)
+                     : (vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.97, 0.96, 0.9));
+    oColor = vec4(uRim > 0.0 ? rim : flare, alpha);
 }
 )";
 

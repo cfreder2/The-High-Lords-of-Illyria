@@ -90,6 +90,12 @@
   #modeBar { font-size: 13px; padding: 6px 10px; margin-bottom: 6px; pointer-events: auto; max-width: 420px; color: #fff; }
   #modeBar.attack { border-color: #ff8a70; background: rgba(110, 20, 14, 0.82); }
   #modeBar.march { border-color: #ffd36e; background: rgba(90, 66, 10, 0.82); }
+  /* A man or gate looked at in the campaign: view-only, grey. */
+  #inspect { position: fixed; left: 12px; bottom: 12px; z-index: 5; padding: 8px 12px; font-size: 13px; line-height: 1.35; color: var(--ink); background: rgba(24, 24, 28, 0.82); border: 1px solid #9a9a9a; border-radius: 8px; pointer-events: none; min-width: 150px; }
+  #inspect.hidden, body:not(.campaign) #inspect { display: none; }
+  #inspect .bar { height: 6px; margin-top: 4px; background: #333; border-radius: 3px; overflow: hidden; }
+  #inspect .bar b { display: block; height: 100%; background: #9a9a9a; }
+  #inspect small { opacity: 0.7; }
   #selInfo { font-size: 12px; color: var(--ink-dim); margin: 0 0 4px 2px; text-shadow: 0 1px 2px #000; pointer-events: none; }
   /* The formation picker: one tap for any formation, a sketch of each. */
   #picker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 6px; margin-bottom: 8px; pointer-events: auto; max-width: 420px; }
@@ -349,6 +355,7 @@
 </div>
 
 <div id="banners"></div>
+<div id="inspect" class="panel hidden" aria-live="polite"></div>
 <div id="minimap" class="panel" aria-label="Map of the whole island"><canvas id="miniCanvas"></canvas></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
 <div id="landTag" class="panel battle-only hidden"></div>
@@ -1117,7 +1124,7 @@
     const cv = mini.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = cv.clientWidth, cssH = cv.clientHeight;
     if (!cssW) return;
-    if (cv.width !== Math.round(cssW * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); }
+    if (cv.width !== Math.round(cssW * dpr) || cv.height !== Math.round(cssH * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); }
     if (!mini.land) api.miniLand();
     if (t >= mini.next) {
       // Ten times a second is plenty for a map this small.
@@ -1218,6 +1225,21 @@
     if (!api || !campaign) return;
     campState = JSON.parse(api.campState());
     if (!campState.stacks) return;
+    {
+      const box = $("inspect"), ins = campState.inspect;
+      if (!ins) box.classList.add("hidden");
+      else {
+        const pct = ins.max > 0 ? Math.max(0, Math.min(100, (100 * ins.hp) / ins.max)) : 0;
+        const bar = ins.hp >= 0 && ins.max > 0 ? `<div class="bar"><b style="width:${pct}%"></b></div>` : "";
+        const rank = ["", "seasoned", "veteran", "elite"][ins.rank || 0] || "";
+        const mood = ["", "wavering", "routed"][ins.morale || 0] || "";
+        const html = ins.kind === "gate"
+          ? `<b>${ins.broken ? "Gate (broken)" : "Gate"}</b><br>${ins.hp} of ${ins.max} hit points${bar}<small>View only</small>`
+          : `<b>${ins.type}</b><br>${ins.hp >= 0 ? `${ins.hp} of ${ins.max} life${bar}` : "not in a fight"}<small>${[rank, mood].filter(Boolean).join(" · ")}${rank || mood ? " · " : ""}${ins.stack} in the stack · view only</small>`;
+        if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+        box.classList.remove("hidden");
+      }
+    }
     const root = $("banners");
     const raises = root.getElementsByClassName("raise");
     // Banners going up over towns: a bar under the town's name, and what is happening.

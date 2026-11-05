@@ -183,6 +183,7 @@ private:
     bool mapOn_ = false;
     void placeMapSoldiers(const Battle& battle, const Camera& camera);
     void pushMapSprites(const Battle& battle, const Camera& camera, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
+    void pushMapWounds(std::vector<float>& bars, std::vector<float>& arrows);  // health bars and arrows in the campaign's men (renderer.cpp)
     void drawMapDots(const Camera& camera, double timeSeconds, float gameSeconds);
     float mapDotPx_ = 4;  // a dot's width, in device pixels
     // The soldiers' sprite sheets, one per unit type and side, baked on the

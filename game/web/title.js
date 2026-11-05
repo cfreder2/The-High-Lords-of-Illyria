@@ -77,12 +77,12 @@
     if (savedDay < 0) savedDay = st.day;
     if (st.day > savedDay && !st.winner) autosave(false);
   }
-  function startCampaign(k, hard) {
+  function startCampaign(k, hard, player, enemies) {
     // The island's ground (every wall, gate and tree, for the fights) is made now, once, a few seconds:
     // let the page draw the notice first.
     busy("Laying out the island", "Every wall, gate and tree, for the fights");
     setTimeout(() => {
-      const ok = game().startMode("campaign", { hard: hard ? 1 : 0, speed: prefs.speed });
+      const ok = game().startMode("campaign", { hard: hard ? 1 : 0, player, enemies, speed: prefs.speed });
       unbusy();
       if (!ok) return failed("campaign");
       slot = k;
@@ -296,18 +296,56 @@
       };
     });
   };
-  // A new campaign: how well the other seven lords play.
+  // The eight lords, in the continent's order (engine/sim/src/continent.cpp), and what each brings.
+  const lords = [
+    { name: "The Aurelian Throne", hero: "Kingshold", note: "knights and engines" },
+    { name: "The Highcrag Giants", hero: "Highcrag", note: "heavy foot and pikes" },
+    { name: "The Ironhold Dwarves", hero: "Deepforge", note: "rich, with grenadiers and engines" },
+    { name: "The Orcs of Grath", hero: "Grathmaw", note: "wolf riders and warriors" },
+    { name: "The Sylvaran Elves", hero: "Sylvaris", note: "archers and light horse" },
+    { name: "The Sunreach Riders", hero: "Sunreach", note: "cavalry" },
+    { name: "The Moonward Order", hero: "Moonhaven", note: "archers and pikes" },
+    { name: "Lord Malvoren", hero: "Dreadspire", note: "foot, wolves and engines" },
+  ];
+  // A new campaign: who you are, which of the other lords are in the war (any, from none to all; every lord left
+  // out is not in the game, its towns plain neutral places), and how well those that are play.
   function chooseLords(body, k) {
     let hard = prefs.difficulty ? 1 : 0;
-    body.innerHTML = `<p class="lead">Slot ${k}: how well should the seven other lords of Illyria play?</p>` +
+    let player = 0;
+    let enemies = 0xff & ~1;  // all the others
+    const html = () =>
+      `<p class="lead">Slot ${k}: who will you be?</p>` +
+      `<div class="choice wrap" data-players>` + lords.map((l, i) => `<button data-player="${i}"><b>${l.name}</b><small>${l.hero} · ${l.note}</small></button>`).join("") + `</div>` +
+      `<p class="lead" style="margin-top:14px">Which lords will you face? <small data-count></small></p>` +
+      `<div class="choice wrap" data-foes>` + lords.map((l, i) => `<button data-foe="${i}"><b>${l.name}</b><small data-foesub="${i}"></small></button>`).join("") + `</div>` +
+      `<div class="choice"><button data-all="1">All</button><button data-all="0">None</button></div>` +
+      `<p class="note">A lord you do not face is not in the war: their towns are neutral places like any other.</p>` +
+      `<p class="lead" style="margin-top:14px">How well should the lords you face play?</p>` +
       `<div class="choice"><button data-hard="0"><b>Easy</b><small>Knights: slow, careless, short of gold</small></button>` +
       `<button data-hard="1"><b>Hard</b><small>Warlords: every trick, no mercy</small></button></div>` +
       `<p class="note">The computer plays by the same rules as you on either. The default is in Settings, Gameplay.</p>` +
       `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small>Day 1</small></button>`;
-    const sync = () => body.querySelectorAll("[data-hard]").forEach((b) => b.classList.toggle("on", +b.dataset.hard === hard));
+    body.innerHTML = html();
+    const sync = () => {
+      enemies &= ~(1 << player);
+      body.querySelectorAll("[data-hard]").forEach((b) => b.classList.toggle("on", +b.dataset.hard === hard));
+      body.querySelectorAll("[data-player]").forEach((b) => b.classList.toggle("on", +b.dataset.player === player));
+      let n = 0;
+      body.querySelectorAll("[data-foe]").forEach((b) => {
+        const i = +b.dataset.foe, you = i === player, on = !you && (enemies >> i & 1) === 1;
+        n += on;
+        b.classList.toggle("on", on);
+        b.disabled = you;
+        b.querySelector("small").textContent = you ? "You" : on ? "At war with you" : "Not in the war";
+      });
+      body.querySelector("[data-count]").textContent = n === 0 ? "(nobody: a free game with no end)" : `(${n} of 7)`;
+    };
     body.querySelectorAll("[data-hard]").forEach((b) => { b.onclick = () => { hard = +b.dataset.hard; sync(); }; });
+    body.querySelectorAll("[data-player]").forEach((b) => { b.onclick = () => { player = +b.dataset.player; sync(); }; });
+    body.querySelectorAll("[data-foe]").forEach((b) => { b.onclick = () => { enemies ^= 1 << +b.dataset.foe; sync(); }; });
+    body.querySelectorAll("[data-all]").forEach((b) => { b.onclick = () => { enemies = +b.dataset.all ? 0xff : 0; sync(); }; });
     sync();
-    body.querySelector("[data-start]").onclick = () => startCampaign(k, hard);
+    body.querySelector("[data-start]").onclick = () => startCampaign(k, hard, player, enemies & ~(1 << player));
     focusFirst(body.parentElement);
   }
   render.skirmish = (el) => {

@@ -255,6 +255,30 @@ A short note on how it works, and what it costs.
   walls* purchase is gone, since it would have changed nothing a man can see.
 - **Heroes at ruins** fight the guardian in the ruin itself.
 
+## One battle presentation (the state of the work)
+
+The user's rule is that there is one game: whatever the 3D battle shows, a fight on the campaign shows.
+What is shared now, with no copy of the code:
+
+- **Effects.** The battle's `Battle::applyImpacts` turns the world's blows into blood and dust on the ground,
+  sparks, splinters off gates, craters and flames. The battle feeds it its own world's impacts; the campaign
+  feeds it the campaign world's (`Campaign::takeImpacts`, drained each frame, `Battle::showImpacts`).
+- **Men.** The awake man is drawn from his own `sim::Unit` (`MapSoldier::unit`) with the battle's own functions:
+  `deathFrame` for the fall he took, `pushStuckArrows`, `pushHealthBar`, the sheets' clips for flinches and blows.
+  The dead lie where they fell as long as the fight lasts (ten minutes at most).
+- **Gates.** The field's gate state follows the campaign world's (broken doors are drawn broken, battered ones
+  carry the battle's health bar), and a gate can be looked at.
+- **Sound.** The campaign world's steps feed the battle's `Sfx::observe` (blows, deaths, arrows), heard from the
+  camera's middle.
+- **Looking.** A tap on a man who is not ours, or on a gate, looks at him: life, rank, mood, or a gate's hit
+  points, in grey and view-only (no orders, no command panel). The battle's own tap does the same for gates.
+
+What is not yet one thing: the campaign's World is still a second `sim::World` beside the backdrop `Battle`'s, and
+the sprites and dots of the campaign's men go through `Renderer::pushMapSprites` and `drawMapDots`, which call the
+battle's drawing helpers but are a second loop over the men. Making the campaign's World the world the Battle
+presents (one unit loop, one dot level of detail, the sleeping stacks feeding it a record per man) is the next
+step; it needs the Battle to take a world it does not own and a region that is the island's, and it is large.
+
 ## What you see
 
 *Built in steps 2 and 3: the table below is what the campaign map shows now. The soldiers are

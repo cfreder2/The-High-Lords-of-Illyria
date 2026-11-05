@@ -539,6 +539,20 @@ void Battle::emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size) {
     particles_.push_back({kind, pos, vel, 0.0f, life, size});
 }
 
+void Battle::showImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source) {
+    const sim::Vec3 ro = source.region()->origin();
+    const V3 o = origin();
+    applyImpacts(events, source, V3{static_cast<float>(ro.x.toDouble()) - o.x, static_cast<float>(ro.y.toDouble()) - o.y, 0}, false);
+}
+
+void Battle::stepEffects(float seconds) {
+    updateParticles(seconds);
+}
+
+void Battle::inspectGate(int gate) {
+    inspectedGate_ = gate;
+}
+
 void Battle::collectEvents() {
     for (uint32_t slot : world_->changedRemains()) {
         if (!dirtyFlag_[slot]) {
@@ -547,13 +561,36 @@ void Battle::collectEvents() {
         }
     }
 
+    applyImpacts(world_->impacts(), *world_, V3{0, 0, 0}, true);
+
+    // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
+    // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
+    const uint32_t tick = world_->tick();
+    const auto rnd = [&] { return unit01(fxSeed_ = mix(fxSeed_, tick)); };
+    const auto srnd = [&] { return rnd() * 2.0f - 1.0f; };
+    for (const sim::Projectile& p : world_->projectiles()) {
+        if (p.kind == sim::ProjectileKind::Fireball) {
+            emit(Particle::Kind::Fire, toV3(p.pos), V3{srnd(), srnd(), srnd()} * 0.6f, 0.35f, 0.45f);
+        } else if (p.kind == sim::ProjectileKind::Molotov) {
+            emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
+        } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
+            emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
+        }
+    }
+}
+
+// What blows and wounds do to the look of the field: blood and dust on the ground, sparks, splinters
+// off a gate, craters and flames. `source` is the world that reported them (the battle's own, or the
+// campaign's, whose men fight on the same ground), `shift` its places in this battle's coordinates;
+// `own`: they are this battle's men, whose hits and deaths are kept for the pictures (hitTick_, deathTick_).
+void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source, V3 shift, bool own) {
     const uint32_t tick = world_->tick();
     const auto rnd = [&] { return unit01(fxSeed_ = mix(fxSeed_, tick)); };
     const auto srnd = [&] { return rnd() * 2.0f - 1.0f; };
 
     std::erase_if(recent_, [&](const Recent& r) { return tick - r.tick > 4 * sim::kTicksPerSecond; });
-    for (const sim::ImpactEvent& e : world_->impacts()) {
-        const V3 pos = toV3(e.pos);
+    for (const sim::ImpactEvent& e : events) {
+        const V3 pos = toV3(e.pos) + shift;
         if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600) {
             const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst;
             recent_.push_back({pos, tick, blast ? 8.0f : (e.killed ? 3.0f : 1.0f)});
@@ -627,11 +664,15 @@ void Battle::collectEvents() {
             }
             case K::Hit: {
                 if (e.hitUnit == sim::kNoEntity) break;
-                const size_t index = e.hitUnit - 1;
-                const sim::Unit& victim = world_->units()[index];
-                if (e.killed) deathTick_[index] = tick;
-                else hitTick_[index] = tick;
-                const V3 body = toV3(victim.pos);
+                const sim::Unit* found = source.findUnit(e.hitUnit);
+                if (found == nullptr) break;
+                const sim::Unit& victim = *found;
+                if (own) {
+                    const size_t index = e.hitUnit - 1;
+                    if (e.killed) deathTick_[index] = tick;
+                    else hitTick_[index] = tick;
+                }
+                const V3 body = toV3(victim.pos) + shift;
                 const float scale = static_cast<float>(victim.stats.height.toDouble()) / 1.8f;
                 const int splats = e.killed ? 3 : 1;
                 for (int i = 0; i < splats; ++i) {
@@ -645,18 +686,6 @@ void Battle::collectEvents() {
                 }
                 break;
             }
-        }
-    }
-
-    // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
-    // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
-    for (const sim::Projectile& p : world_->projectiles()) {
-        if (p.kind == sim::ProjectileKind::Fireball) {
-            emit(Particle::Kind::Fire, toV3(p.pos), V3{srnd(), srnd(), srnd()} * 0.6f, 0.35f, 0.45f);
-        } else if (p.kind == sim::ProjectileKind::Molotov) {
-            emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
-        } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
-            emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
         }
     }
 }

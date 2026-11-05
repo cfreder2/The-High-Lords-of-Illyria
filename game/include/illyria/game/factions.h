@@ -8,7 +8,14 @@
 namespace illyria::game {
 
 // Banner colours of the eight sides, in sim::Continent::factions() order.
+// Which faction each side plays (a campaign may start as any: Campaign::Setup, factionOf); a side keeps the
+// colours of the faction it plays. The identity until a campaign sets it.
+inline uint8_t* sideFactions() {
+    static uint8_t table[sim::Continent::kFactionCount] = {0, 1, 2, 3, 4, 5, 6, 7};
+    return table;
+}
 inline V3 factionColor(uint8_t owner) {
+    if (owner < sim::Continent::kFactionCount) owner = sideFactions()[owner];
     static const V3 kColors[sim::Continent::kFactionCount] = {
         {0.95f, 0.95f, 0.92f},  // the Aurelian Throne: white
         {0.92f, 0.75f, 0.15f},  // the Highcrag Giants: gold

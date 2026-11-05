@@ -24,7 +24,7 @@ constexpr float kSpriteBelow = 380.0f, kSpriteReach = 1.9f, kDotsGone = 170.0f;
 // Sprite sheets baked in one frame: baking is the slow part of a first look.
 constexpr size_t kBakesPerFrame = 1;
 // A dot is about this wide on the ground, between these sizes in CSS pixels.
-constexpr float kDotMetres = 1.1f, kDotMinPx = 2.6f, kDotMaxPx = 7.0f;
+constexpr float kDotMetres = 1.1f, kDotMinPx = 4.4f, kDotMaxPx = 9.0f;
 // A fight shows for this long after the last blow, struck or given.
 constexpr float kFightSeconds = 1.0f;
 
@@ -89,7 +89,9 @@ void Renderer::placeMapSoldiers(const Battle& battle, const Camera& camera) {
         mapPlaces_[i] = p;
         if (!onScreen({p.x, p.y, p.z + 1.0f})) continue;
         mapShown_[i] = 1;
-        if (!near || !m.alive || std::hypot(p.x - at.x, p.y - at.y) > reach) continue;
+        // A man who has fallen in a fight still going on lies where he fell, as in the battle (unless blown apart).
+        const bool lying = !m.alive && m.unit && !m.unit->gibbed;
+        if (!near || (!m.alive && !lying) || std::hypot(p.x - at.x, p.y - at.y) > reach) continue;
         const auto sheet = sheets_.find(m.type);
         if (sheet == sheets_.end() || !sheet->second.tex) {
             // Baked (and asked for from the page) a few a frame; a dot until it is there.
@@ -137,7 +139,7 @@ void Renderer::pushMapSprites(const Battle& battle, const Camera& camera, std::m
         const bool fighting = m.awake && mapSeconds_ - static_cast<float>(m.fightTick) / tps < kFightSeconds;
         const float pulse = fighting ? pulseOf(m.id, mapSeconds_) : 0.0f;
         const V3 colour = factionColor(m.owner);
-        dots.insert(dots.end(), {p.x, p.y, p.z + lift, colour.x, colour.y, colour.z, m.selected ? 1.0f : 0.0f, pulse, alpha});
+        dots.insert(dots.end(), {p.x, p.y, p.z + lift, colour.x, colour.y, colour.z, m.selected ? 1.0f : 0.0f, pulse, m.owner >= sim::Campaign::kNeutral ? -alpha : alpha});
     }
     uploadDynamic(dots_, dots);
 
@@ -154,7 +156,15 @@ void Renderer::pushMapSprites(const Battle& battle, const Camera& camera, std::m
         const auto since = [&](uint32_t tick) { return m.awake && tick > 0 ? mapSeconds_ - static_cast<float>(tick) / tps : -1.0f; };
         const float struck = since(m.struckTick), hurt = since(m.hurtTick);
         int frame = 0;
-        if (const sprites::SheetClips* clips = clipsFor(m.type)) {
+        float down = 0, yaw = m.yaw;
+        if (!m.alive) {
+            // The sheet's fall the way the death matrix chose, resting on its last frame; head toward the blow.
+            const sim::Unit& u = *m.unit;
+            const float died = since(m.hurtTick) < 0 ? 1e9f : since(m.hurtTick);
+            frame = deathFrame(static_cast<int>(m.type), u, died, &down);
+            if (u.death.kind != sim::DeathKind::None)
+                yaw = std::atan2(static_cast<float>(u.death.dir.y.toDouble()), static_cast<float>(u.death.dir.x.toDouble())) + 3.14159265f;
+        } else if (const sprites::SheetClips* clips = clipsFor(m.type)) {
             sprites::ClipMemory mem;
             if (const auto known = mapMemory_.find(m.id); known != mapMemory_.end()) mem = known->second;
             sprites::Deeds d;
@@ -179,7 +189,14 @@ void Renderer::pushMapSprites(const Battle& battle, const Camera& camera, std::m
                                               figures::stride(type), prerenderedFlier, mapSeconds_, m.id);
         }
         std::vector<float>& g = groups[kMapKeyBase + m.type * kMapSides + sideOf(m.owner)];
-        g.insert(g.end(), {p.x, p.y, p.z, m.yaw, static_cast<float>(frame), m.selected ? 1.0f : 0.0f, 0.0f});
+        g.insert(g.end(), {p.x, p.y, p.z, yaw, static_cast<float>(frame), m.selected ? 1.0f : 0.0f, down});
+        if (!m.alive) continue;
+        // The man looked at (not his to command): a plain grey ring about his feet; one of ours, the battle's.
+        if (m.selected) {
+            const float r = static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.8f;
+            if (m.inspected) decals.insert(decals.end(), {p.x, p.y, p.z, 0, r, 0, kDecalRing, 0.62f, 0.62f, 0.62f, 0});
+            else decals.insert(decals.end(), {p.x, p.y, p.z, 0, r, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+        }
         // His contact shadow, so that he stands on the ground.
         decals.insert(decals.end(), {p.x, p.y, p.z, m.yaw, static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.3f, 0, kDecalShadow, 0, 1, 0, 0});
     }
@@ -193,7 +210,11 @@ void Renderer::pushMapSprites(const Battle& battle, const Camera& camera, std::m
         for (size_t i = 0; i < mapSoldiers_.size(); ++i)
             if (mapSoldiers_[i].selected && mapSoldiers_[i].alive) radius = std::max(radius, std::hypot(mapPlaces_[i].x - centre.x, mapPlaces_[i].y - centre.y));
         const float size = std::max(std::min(radius + 3.0f, 45.0f), dist * 0.012f);  // (a spread-out stack is ringed about its middle, not all over the field)
-        decals.insert(decals.end(), {centre.x, centre.y, battle.floorAt(centre), 0, size, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+        bool looked = false;
+        for (size_t i = 0; i < mapSoldiers_.size(); ++i) looked = looked || (mapSoldiers_[i].selected && mapSoldiers_[i].inspected);
+        const float grey = 0.62f;
+        if (looked) decals.insert(decals.end(), {centre.x, centre.y, battle.floorAt(centre), 0, size, 0, kDecalRing, grey, grey, grey, 0});
+        else decals.insert(decals.end(), {centre.x, centre.y, battle.floorAt(centre), 0, size, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
     }
 }
 
@@ -209,7 +230,8 @@ void Renderer::drawMapDots(const Camera& camera, double timeSeconds, float gameS
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBindVertexArray(dots_.vao);
-    for (const float rim : {mapDotPx_ * 0.22f, 0.0f}) {
+    glUniform1f(dot_.dotPx, mapDotPx_);
+    for (const float rim : {mapDotPx_ * 0.40f, mapDotPx_ * 0.20f, 0.0f}) {
         glUniform1f(dot_.rim, rim);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, dots_.count);
     }
