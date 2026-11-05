@@ -386,7 +386,11 @@ void Campaign::wake(Stack& s) {
     s.px = bx;
     s.py = by;
     std::vector<std::pair<int32_t, int32_t>> slots;
-    formation(s, slots);
+    // The world's places come from the state alone (the block or the column, the stack's real heading), never from
+    // how the men happen to be drawn; where they were drawn, they walk on from (Man::gx).
+    layout(s, slots, !s.path.empty() && !s.boat);
+    std::vector<std::pair<int32_t, int32_t>> drawn;
+    formation(s, drawn);
     int32_t command = 0;
     for (const Army& a : s.armies) command += Campaign::command(a);
     size_t k = 0;
@@ -440,7 +444,7 @@ void Campaign::wake(Stack& s) {
                 dx = m.ox;
                 dy = m.oy;
             } else {
-                slotToWorld(slots[k], s.dhx, s.dhy, dx, dy);
+                slotToWorld(slots[k], s.hx, s.hy, dx, dy);
             }
             ++k;
             Vec3 at{fromMm(int64_t{bx} + dx) - origin.x, fromMm(int64_t{by} + dy) - origin.y, Fixed::zero()};
@@ -452,8 +456,13 @@ void Campaign::wake(Stack& s) {
             world_->restoreUnit(m.unit, m.hp < 0 ? INT32_MAX : m.hp, m.kills, m.morale);
             m.ax = m.bx = toMm(at.x + origin.x);
             m.ay = m.by = toMm(at.y + origin.y);
-            m.gx = static_cast<int32_t>(int64_t{bx} + dx - m.ax);  // (the squad's slot, if it did not fit, he walks from)
-            m.gy = static_cast<int32_t>(int64_t{by} + dy - m.ay);
+            {
+                // Where he was drawn (a placed man where he stood; the rest in the formation as drawn), against where he is set.
+                int32_t px = dx, py = dy;
+                if (!m.placed) slotToWorld(drawn[k - 1], s.dhx, s.dhy, px, py);
+                m.gx = static_cast<int32_t>(int64_t{bx} + px - m.ax);
+                m.gy = static_cast<int32_t>(int64_t{by} + py - m.ay);
+            }
             m.fx = s.hx;
             m.fy = s.hy;
             m.lastCool = m.lastReload = 0;

@@ -185,7 +185,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x16f2688b885e8f30;  // (was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
+    constexpr uint64_t kGolden = 0x7311045c84f04c9d;  // (was 0x16f2688b885e8f30 before the fallen lay for the whole fight, as in the battle, not twenty seconds: the dead stay in the world and get in the way a while longer; was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
