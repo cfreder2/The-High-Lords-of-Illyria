@@ -137,9 +137,99 @@ Fixed Deck::heightAt(Fixed x, Fixed y) const {
     return centre.z + rise * along / (halfSpan * 2);
 }
 
+namespace {
+constexpr int64_t kGridCell = 16;
+int32_t gridCell(Fixed v, int32_t n) {
+    const int64_t f = v.floorToInt();
+    return static_cast<int32_t>(std::clamp<int64_t>((f >= 0 ? f : f - kGridCell + 1) / kGridCell, 0, n - 1));
+}
+}  // namespace
+
+void Region::buildGrids() const {
+    if (deckGrid_.built) return;
+    const int32_t n = std::max<int32_t>(1, static_cast<int32_t>((terrain_.size().floorToInt() + kGridCell - 1) / kGridCell));
+    struct Box {
+        Fixed x0, y0, x1, y1;
+    };
+    const auto build = [&](BoxGrid& g, const std::vector<Box>& boxes) {
+        g.n = n;
+        g.start.assign(static_cast<size_t>(n) * n + 1, 0);
+        for (int pass = 0; pass < 2; ++pass) {
+            std::vector<uint32_t> fill(g.start.begin(), g.start.end() - 1);
+            for (size_t k = 0; k < boxes.size(); ++k)
+                for (int32_t y = gridCell(boxes[k].y0, n); y <= gridCell(boxes[k].y1, n); ++y)
+                    for (int32_t x = gridCell(boxes[k].x0, n); x <= gridCell(boxes[k].x1, n); ++x) {
+                        const size_t c = static_cast<size_t>(y) * n + x;
+                        if (pass == 0) ++g.start[c + 1];
+                        else g.items[fill[c]++] = static_cast<uint32_t>(k);
+                    }
+            if (pass == 0) {
+                for (size_t c = 0; c < static_cast<size_t>(n) * n; ++c) g.start[c + 1] += g.start[c];
+                g.items.assign(g.start.back(), 0);
+            }
+        }
+        g.built = true;
+    };
+    std::vector<Box> boxes;
+    for (const Deck& d : decks_) {
+        const Fixed reach = d.halfSpan + d.halfWidth;
+        boxes.push_back({d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach});
+    }
+    build(deckGrid_, boxes);
+    boxes.clear();
+    for (const WallSeg& w : walls_) {
+        const Fixed pad = w.halfThick + Fixed::one();
+        boxes.push_back({min(w.a.x, w.b.x) - pad, min(w.a.y, w.b.y) - pad, max(w.a.x, w.b.x) + pad, max(w.a.y, w.b.y) + pad});
+    }
+    build(wallGrid_, boxes);
+    boxes.clear();
+    for (const Rampart& rp : ramparts_) {
+        const Fixed big = Fixed::fromInt(1 << 20);
+        Box b{big, big, -big, -big};
+        const Fixed pad = rp.halfThick + Fixed::fromInt(2);
+        for (const std::vector<Vec3>* pts : {&rp.way, &rp.corners})
+            for (const Vec3& q : *pts) b = {min(b.x0, q.x - pad), min(b.y0, q.y - pad), max(b.x1, q.x + pad), max(b.y1, q.y + pad)};
+        if (b.x0 > b.x1) b = {Fixed::zero(), Fixed::zero(), Fixed::zero(), Fixed::zero()};
+        boxes.push_back(b);
+    }
+    build(rampGrid_, boxes);
+}
+
+void Region::cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) {
+    out.clear();
+    const int32_t cx0 = gridCell(x0, g.n), cx1 = gridCell(x1, g.n), cy0 = gridCell(y0, g.n), cy1 = gridCell(y1, g.n);
+    for (int32_t y = cy0; y <= cy1; ++y)
+        for (int32_t x = cx0; x <= cx1; ++x) {
+            const size_t c = static_cast<size_t>(y) * g.n + x;
+            out.insert(out.end(), g.items.begin() + g.start[c], g.items.begin() + g.start[c + 1]);
+        }
+    if (cx0 != cx1 || cy0 != cy1) {
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
+    }
+}
+
+void Region::decksAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+    buildGrids();
+    cellsOf(deckGrid_, x, y, x, y, out);
+}
+
+void Region::wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const {
+    buildGrids();
+    cellsOf(wallGrid_, x0, y0, x1, y1, out);
+}
+
+void Region::rampartsAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+    buildGrids();
+    cellsOf(rampGrid_, x, y, x, y, out);
+}
+
 bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
     bool found = false;
-    for (const Deck& d : decks_) {
+    thread_local std::vector<uint32_t> near;
+    decksAt(x, y, near);
+    for (const uint32_t k : near) {
+        const Deck& d = decks_[k];
         if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (!found || h > height) height = h;
@@ -150,7 +240,10 @@ bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
 
 bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
     bool found = false;
-    for (const Deck& d : decks_) {
+    thread_local std::vector<uint32_t> near;
+    decksAt(x, y, near);
+    for (const uint32_t k : near) {
+        const Deck& d = decks_[k];
         if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (h > ceiling || (found && h <= height)) continue;
@@ -161,8 +254,12 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
 }
 
 bool Region::inRamp(Fixed x, Fixed y, Fixed z) const {
-    for (const Deck& d : decks_)
+    thread_local std::vector<uint32_t> near;
+    decksAt(x, y, near);
+    for (const uint32_t k : near) {
+        const Deck& d = decks_[k];
         if (d.ramp && d.contains(x, y) && d.heightAt(x, y) > z) return true;
+    }
     return false;
 }
 
@@ -181,7 +278,9 @@ bool Gate::inside(const Rampart& ring, const Vec3& p) {
 
 int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
     // Near the way round (the walk's middle, or round a tower on its gallery).
-    for (size_t i = 0; i < ramparts_.size(); ++i) {
+    thread_local std::vector<uint32_t> near;
+    rampartsAt(x, y, near);
+    for (const uint32_t i : near) {
         const Rampart& rp = ramparts_[i];
         const size_t n = rp.way.size();
         for (size_t e = 0; e < n; ++e) {
@@ -490,6 +589,9 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
     const int64_t extent = terrain_.size().floorToInt();
     const int64_t ox = origin_.x.floorToInt(), oy = origin_.y.floorToInt();
     const auto first = [](int64_t v) { return (v >= 0 ? v / kSceneryStep : -((-v + kSceneryStep - 1) / kSceneryStep)) - 1; };
+    std::vector<Fixed> castleReach(ramparts_.size());  // how far each castle's corners stand from its middle
+    for (size_t k = 0; k < ramparts_.size(); ++k)
+        for (const Vec3& q : ramparts_[k].corners) castleReach[k] = max(castleReach[k], flatDist(q.x, q.y, ramparts_[k].centre));
     for (int64_t gy = first(oy); gy * kSceneryStep < oy + extent; ++gy) {
         for (int64_t gx = first(ox); gx * kSceneryStep < ox + extent; ++gx) {
             const SceneryPoint pt = sceneryPoint(seed, gx, gy);
@@ -502,19 +604,30 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             bool cleared = false;
             for (const Vec3& c : clearings) cleared = cleared || flatDist(x, y, {c.x, c.y, Fixed::zero()}) < c.z;
             if (cleared) continue;
+            // (Each test first rules out the far ones by a box round them, which
+            // changes nothing but the time: a window of the whole continent has
+            // eighty castles, a thousand decks and thousands of houses to test.)
             bool inCastle = false;  // nothing grows inside the walls or right against them
-            for (const Rampart& rp : ramparts_) {
-                Fixed reach;
-                for (const Vec3& q : rp.corners) reach = max(reach, flatDist(q.x, q.y, rp.centre));
-                inCastle = inCastle || flatDist(x, y, rp.centre) < reach + m(12);
+            for (size_t k = 0; k < ramparts_.size() && !inCastle; ++k) {
+                const Rampart& rp = ramparts_[k];
+                const Fixed range = castleReach[k] + m(12);
+                if (abs(x - rp.centre.x) >= range || abs(y - rp.centre.y) >= range) continue;
+                inCastle = flatDist(x, y, rp.centre) < range;
             }
             if (inCastle) continue;
             bool nearDeck = false;  // keep bridge approaches open
-            for (const Deck& d : decks_) nearDeck = nearDeck || Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth + m(3)}.contains(x, y);
+            for (size_t k = 0; k < decks_.size() && !nearDeck; ++k) {
+                const Deck& d = decks_[k];
+                const Fixed range = d.halfSpan + d.halfWidth + m(11);
+                if (abs(x - d.centre.x) > range || abs(y - d.centre.y) > range) continue;
+                nearDeck = Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth + m(3)}.contains(x, y);
+            }
             if (nearDeck) continue;
             bool nearBuilding = false;
-            for (size_t b = 0; b < buildings; ++b) {
-                nearBuilding = nearBuilding || flatDist(x, y, obstacles_[b].pos) < m(8);
+            for (size_t b = 0; b < buildings && !nearBuilding; ++b) {
+                const Vec3& at = obstacles_[b].pos;
+                if (abs(x - at.x) >= m(8) || abs(y - at.y) >= m(8)) continue;
+                nearBuilding = flatDist(x, y, at) < m(8);
             }
             if (nearBuilding) continue;
             bool byWater = false;
@@ -870,6 +983,8 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             bool decked = false;
             Fixed deck;
             for (const Deck& dk : rg.decks_) {
+                const Fixed range = dk.halfSpan + dk.halfWidth + cell;  // (a box round it first: the whole continent has over a thousand)
+                if (abs(x - OX - dk.centre.x) > range || abs(y - OY - dk.centre.y) > range) continue;
                 if (Deck{dk.centre, dk.dir, dk.halfSpan, dk.halfWidth + cell * 3 / 4}.contains(x - OX, y - OY)) {
                     decked = true;
                     deck = dk.centre.z;

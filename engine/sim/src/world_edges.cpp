@@ -42,11 +42,12 @@ Edges World::edgesOf(const Unit& u, Fixed dist, Fixed dz) const {
     const bool hero = u.stats.type == static_cast<uint8_t>(UnitType::Hero);
     if (!hero) e.seniority = kEdgeRankPct * std::clamp(u.rank, 0, 3);
     int32_t best = 0;
-    for (const Unit& h : units_) {
-        if (h.owner != u.owner || !h.alive() || h.stats.type != static_cast<uint8_t>(UnitType::Hero) || h.id == u.id) continue;
-        if ((h.pos - u.pos).flat().lengthSq() > kLeadReach * kLeadReach) continue;
+    nearby(u.pos.x, u.pos.y, kLeadReach, [&](uint32_t i) {
+        const Unit& h = units_[i];
+        if (h.owner != u.owner || !h.alive() || h.stats.type != static_cast<uint8_t>(UnitType::Hero) || h.id == u.id) return;
+        if ((h.pos - u.pos).flat().lengthSq() > kLeadReach * kLeadReach) return;
         best = std::max(best, std::min(9, 4 + h.rank));  // the hero's strength: level + 3
-    }
+    });
     e.hero = heroLeadPct(best);
     if (dist > Fixed::zero() && dz < Fixed::zero())
         e.height = std::clamp(static_cast<int32_t>((-dz / dist * kHeightPctPerGrade).floorToInt()), 0, kEdgeHeightPct);

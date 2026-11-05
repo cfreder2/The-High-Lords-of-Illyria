@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <map>
@@ -515,6 +516,16 @@ public:
     // A unit raised by the campaign: its rank (a hero's level less one) and
     // blessings, with a hero's extra hit points for the levels gained.
     void setVeterancy(EntityId id, int32_t rank, int32_t blessings);
+    // The campaign's squads come into the world to fight and leave it after
+    // (campaign_world.cpp): a soldier's wounds, kills and morale as he last
+    // stood, and taking him out again (the bodies of the fallen stay until then).
+    void restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale);
+    void removeUnit(EntityId id);
+    // Everything of a fight but the gates (their wounds, and the broken ones
+    // open for good): no soldiers, missiles or remains, the dice and the clock
+    // as they start. What a campaign's world is between fights, so that it is
+    // the same on every machine whether or not it has seen one (campaign_world.cpp).
+    void clearFight(uint64_t seed);
 
     // Advances the simulation by exactly one tick. Every peer must call this
     // with the same commands for the same tick.
@@ -648,6 +659,20 @@ private:
     };
 
     Unit* mutableUnit(EntityId id);
+    // The soldiers by place, for the scans that look at those near one (the
+    // nearest enemy, the census, who is in his way): a flat grid of 8 m cells
+    // built at the start of each step, as sorted (row, column, index) keys.
+    // Soldiers move less than kBroadMargin between builds, so a query looks that
+    // much further than it asked and the caller tests the exact distance, which
+    // finds exactly what a loop over every soldier would. (On a campaign's
+    // ground of thousands of soldiers that loop is the whole cost of a tick.)
+    static constexpr int64_t kBroadCell = 8;
+    static constexpr int64_t kBroadMargin = 4;
+    std::vector<uint64_t> broad_;
+    bool broadValid_ = false;
+    void buildBroad();
+    template <typename Fn>
+    void nearby(Fixed x, Fixed y, Fixed radius, Fn&& fn) const;
     void applyCommand(const Command& cmd);
     // Orders (world_orders.cpp).
     void applyOrder(Unit& u, const Command& cmd);
@@ -909,6 +934,7 @@ private:
     Fixed zoneRadius_;
     int32_t zonePct_ = 0;
     EntityId nextId_ = 1;
+    EntityId nextUnitId_ = 1;  // soldiers' ids: never reused, so units_ stays sorted by them
     uint32_t packs_ = 0;  // raiding packs formed so far (formPacks)
     std::vector<Unit> units_;
     std::vector<Projectile> projectiles_;
@@ -940,5 +966,25 @@ private:
     // Paths planned this tick, by (gait, start cell, goal cell): squads share routes.
     std::map<std::tuple<int, int64_t, int64_t>, std::vector<Vec3>> pathCache_;
 };
+
+template <typename Fn>
+void World::nearby(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+    if (!broadValid_) {
+        for (uint32_t i = 0; i < units_.size(); ++i) fn(i);
+        return;
+    }
+    const int64_t reach = radius.floorToInt() + 1 + kBroadMargin;
+    const auto cell = [](int64_t metres) {
+        return std::max<int64_t>(0, (metres >= 0 ? metres / kBroadCell : (metres - kBroadCell + 1) / kBroadCell) + 1024);
+    };
+    const int64_t px = x.floorToInt(), py = y.floorToInt();
+    const int64_t cx0 = cell(px - reach), cx1 = cell(px + reach), cy0 = cell(py - reach), cy1 = cell(py + reach);
+    for (int64_t cy = cy0; cy <= cy1; ++cy) {
+        const uint64_t lo = (static_cast<uint64_t>(cy) << 48) | (static_cast<uint64_t>(cx0) << 32);
+        const uint64_t hi = (static_cast<uint64_t>(cy) << 48) | (static_cast<uint64_t>(cx1 + 1) << 32);
+        for (auto it = std::lower_bound(broad_.begin(), broad_.end(), lo); it != broad_.end() && *it < hi; ++it)
+            fn(static_cast<uint32_t>(*it & 0xFFFFFFFFu));
+    }
+}
 
 }  // namespace illyria::sim

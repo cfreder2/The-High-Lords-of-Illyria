@@ -241,16 +241,19 @@ Unit* World::crosser(Unit& u, Fixed reach) {
     const Fixed reachUp = u.stats.height + u.stats.melee.reach;
     Unit* best = nullptr;
     Fixed bestGap;
-    // Ascending id order, strict comparison: ties go to the lowest id.
-    for (Unit& o : units_) {
-        if (!o.alive() || o.owner == u.owner || o.routed || o.inAir()) continue;
-        if (groundBound && o.pos.z - u.pos.z > reachUp) continue;
+    // The nearest, and of those as near the lowest id (the soldiers come in any order).
+    uint32_t bestIndex = 0;
+    nearby(u.pos.x, u.pos.y, reach + Fixed::fromInt(8), [&](uint32_t i) {
+        Unit& o = units_[i];
+        if (!o.alive() || o.owner == u.owner || o.routed || o.inAir()) return;
+        if (groundBound && o.pos.z - u.pos.z > reachUp) return;
         const Fixed gap = gapBetween(u, o);
-        if (gap > reach || (best != nullptr && gap >= bestGap)) continue;
-        if (offRoute(u, o.pos) > kLeash) continue;
+        if (gap > reach || (best != nullptr && (gap > bestGap || (gap == bestGap && i > bestIndex)))) return;
+        if (offRoute(u, o.pos) > kLeash) return;
         best = &o;
         bestGap = gap;
-    }
+        bestIndex = i;
+    });
     return best;
 }
 

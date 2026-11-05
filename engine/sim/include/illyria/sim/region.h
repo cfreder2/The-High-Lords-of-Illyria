@@ -175,6 +175,18 @@ public:
     // Hash of everything generated, for cross-platform checks.
     uint64_t checksum() const;
 
+    // The decks, walls and ramparts near a point or a box, in index order, found
+    // through a grid built the first time it is asked (the ground of a whole
+    // continent has over a thousand decks and nine hundred walls, and a soldier
+    // only meets the few near him). What comes back is every one that a loop
+    // over them all could find at the point or in the box: a deck whose box
+    // holds the point, a wall whose box (padded by its half thickness and a
+    // metre) meets the box, a rampart whose way (padded by its walk and two
+    // metres) passes by the point.
+    void decksAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const;
+    void wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const;
+    void rampartsAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const;
+
     // The scenery grid: a point every 5 m of the continent (at continent
     // metres 5 gx, 5 gy, jittered), each drawn from its own hash, so every
     // window cut from the continent grows the same trees in the same places
@@ -211,6 +223,16 @@ private:
     std::vector<WallSeg> walls_;
     std::vector<Rampart> ramparts_;
     std::vector<Gate> gates_;
+    // The grids of decks, walls and ramparts (decksAt and the rest), built on
+    // first use: 16 m cells over the ground, each with the indices whose boxes meet it.
+    struct BoxGrid {
+        bool built = false;
+        int32_t n = 0;
+        std::vector<uint32_t> start, items;
+    };
+    mutable BoxGrid deckGrid_, wallGrid_, rampGrid_;
+    void buildGrids() const;
+    static void cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out);
     Vec3 ford_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample

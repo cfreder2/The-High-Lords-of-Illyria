@@ -280,7 +280,7 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     // even when he joins once missiles are flying (they take ids from the
     // same counter, but are never looked up among the soldiers).
     Unit u;
-    u.id = static_cast<EntityId>(units_.size() + 1);
+    u.id = nextUnitId_++;
     nextId_ = std::max(nextId_, u.id + 1);
     u.owner = owner;
     u.stats = stats;
@@ -292,7 +292,53 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
     units_.push_back(u);
+    broadValid_ = false;
     return u.id;
+}
+
+void World::removeUnit(EntityId id) {
+    // (The campaign puts a squad's men in the world to fight and takes them out
+    // when it is over; ids are not reused, and the rest stay in id order.)
+    const auto it = std::lower_bound(units_.begin(), units_.end(), id, [](const Unit& u, EntityId i) { return u.id < i; });
+    if (it == units_.end() || it->id != id) return;
+    units_.erase(it);
+    broadValid_ = false;
+    pathCache_.clear();
+}
+
+void World::clearFight(uint64_t seed) {
+    units_.clear();
+    projectiles_.clear();
+    spawned_.clear();
+    impacts_.clear();
+    heroDeaths_.clear();
+    rallyCalls_.clear();
+    decisions_.clear();
+    deathEvents_.clear();
+    deaths_.clear();
+    remains_.clear();
+    changedRemains_.clear();
+    pendingExplosions_.clear();
+    brokenSides_.clear();
+    remainGrid_.clear();
+    unitGrid_.clear();
+    broad_.clear();
+    broadValid_ = false;
+    pathCache_.clear();
+    remainsAdded_ = 0;
+    packs_ = 0;
+    tick_ = 0;
+    nextId_ = 1;
+    nextUnitId_ = 1;
+    rng_ = Rng(seed, 0);
+}
+
+void World::restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale) {
+    Unit* u = mutableUnit(id);
+    if (!u) return;
+    u->hp = std::clamp(hp, 1, u->stats.maxHp);
+    u->kills = kills;
+    u->morale = std::clamp(morale, 0, kMoraleFull);
 }
 
 const Unit* World::findUnit(EntityId id) const {
@@ -360,6 +406,7 @@ void World::step(std::span<const Command> commands) {
     }
     // Those let loose together go as packs (world_scavenge.cpp).
     if (raids) formPacks();
+    buildBroad();
 
     for (Unit& u : units_) {
         const Vec3 before = u.pos;
@@ -1016,7 +1063,10 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         // Off the end of a bridge deck onto the bank is a step down, never a ledge.
         const auto offDeckEnd = [&] {
             if (!config_.region || dh < -kMaxStepDown * 2) return false;
-            for (const Deck& k : config_.region->decks()) {
+            thread_local std::vector<uint32_t> nearDecks;
+            config_.region->decksAt(u.pos.x, u.pos.y, nearDecks);
+            for (const uint32_t ki : nearDecks) {
+                const Deck& k = config_.region->decks()[ki];
                 if (k.raised || !k.contains(u.pos.x, u.pos.y)) continue;
                 const Fixed dx = x - k.centre.x, dy = y - k.centre.y;
                 if (abs(dx * k.dir.x + dy * k.dir.y) > k.halfSpan && abs(dx * k.dir.y - dy * k.dir.x) <= k.halfWidth) return true;
@@ -1281,6 +1331,7 @@ void World::separateBodies() {
     }
     if (!config_.region) return;
     const auto& obstacles = config_.region->obstacles();
+    std::vector<uint32_t> nearWalls;
     for (Unit& u : units_) {
         if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
         // From standing stone he keeps his drawn breadth, from the rest his radius.
@@ -1308,7 +1359,9 @@ void World::separateBodies() {
         keepOutOfGates(u);
         // Castle walls: out of the slab, unless walking along its top (or
         // under the stone over a gate passage).
-        for (const WallSeg& wl : config_.region->walls()) {
+        config_.region->wallsNear(u.pos.x - Fixed::fromInt(4), u.pos.y - Fixed::fromInt(4), u.pos.x + Fixed::fromInt(4), u.pos.y + Fixed::fromInt(4), nearWalls);
+        for (const uint32_t wi : nearWalls) {
+            const WallSeg& wl = config_.region->walls()[wi];
             if (wl.walk > Fixed::zero() ? u.pos.z >= wl.walk - Fixed::fromRatio(1, 2) : u.pos.z > wl.top - kWallClear) continue;
             if (u.pos.z + u.stats.height <= wl.a.z) continue;
             const Fixed reach = wl.halfThick + u.stats.radius;
@@ -1458,6 +1511,18 @@ void World::updateAirborne(Unit& u) {
     }
 }
 
+void World::buildBroad() {
+    broad_.clear();
+    const auto cell = [](Fixed v) {
+        const int64_t m = v.floorToInt();
+        return static_cast<uint64_t>(std::max<int64_t>(0, (m >= 0 ? m / kBroadCell : (m - kBroadCell + 1) / kBroadCell) + 1024));
+    };
+    for (uint32_t i = 0; i < units_.size(); ++i)
+        if (units_[i].alive()) broad_.push_back((cell(units_[i].pos.y) << 48) | (cell(units_[i].pos.x) << 32) | i);
+    std::sort(broad_.begin(), broad_.end());
+    broadValid_ = true;
+}
+
 Unit* World::nearestEnemy(const Unit& u, Fixed range) {
     if (range <= Fixed::zero()) return nullptr;
     // Melee-only units ignore enemies flying above their reach (giants can swat low fliers).
@@ -1465,20 +1530,23 @@ Unit* World::nearestEnemy(const Unit& u, Fixed range) {
     const Fixed reachUp = u.stats.height + u.stats.melee.reach;
     Unit* best = nullptr;
     Fixed bestDistSq = range * range;
-    // Ascending id order, strict comparison: ties go to the lowest id.
-    for (Unit& other : units_) {
-        if (!other.alive() || other.owner == u.owner) continue;
+    uint32_t bestIndex = 0;
+    // The nearest, and of those as near the lowest id (the soldiers come in any order).
+    nearby(u.pos.x, u.pos.y, range, [&](uint32_t i) {
+        Unit& other = units_[i];
+        if (!other.alive() || other.owner == u.owner) return;
         // (Above the land itself, or above the soldier: a foe up a hillside is fair game.)
         if (groundBound) {
             const Fixed land = config_.terrain ? config_.terrain->heightAt(other.pos.x, other.pos.y) : Fixed::zero();
-            if (other.pos.z - max(u.pos.z, land) > reachUp) continue;
+            if (other.pos.z - max(u.pos.z, land) > reachUp) return;
         }
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
-        if (d <= bestDistSq && (best == nullptr || d < bestDistSq)) {
+        if (d <= bestDistSq && (best == nullptr || d < bestDistSq || i < bestIndex)) {
             best = &other;
             bestDistSq = d;
+            bestIndex = i;
         }
-    }
+    });
     return best;
 }
 
@@ -1506,15 +1574,18 @@ bool World::tryHeal(Unit& u) {
     if (h.amount == 0 || u.healCharges == 0) return false;
     Unit* best = nullptr;
     Fixed bestDistSq = kHealSeekRange * kHealSeekRange;
-    for (Unit& other : units_) {
-        if (!other.alive() || other.owner != u.owner || other.id == u.id || other.inAir()) continue;
-        if (other.hp > other.stats.maxHp - h.amount / 2) continue;
+    uint32_t bestIndex = 0;
+    nearby(u.pos.x, u.pos.y, kHealSeekRange, [&](uint32_t i) {
+        Unit& other = units_[i];
+        if (!other.alive() || other.owner != u.owner || other.id == u.id || other.inAir()) return;
+        if (other.hp > other.stats.maxHp - h.amount / 2) return;
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
-        if (d < bestDistSq) {
+        if (d < bestDistSq || (best != nullptr && d == bestDistSq && i < bestIndex)) {
             best = &other;
             bestDistSq = d;
+            bestIndex = i;
         }
-    }
+    });
     if (best == nullptr) return false;
     const Vec3 delta = (best->pos - u.pos).flat();
     const Fixed dist = delta.length();
@@ -1662,7 +1733,13 @@ Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) co
         over(x - halfThick, top);
         over(x + halfThick, top);
     };
-    for (const WallSeg& wl : config_.region->walls()) crossing(wl.a, wl.b, wl.halfThick, wl.top);
+    thread_local std::vector<uint32_t> nearWalls;
+    config_.region->wallsNear(min(origin.x, mark.x) - Fixed::one(), min(origin.y, mark.y) - Fixed::one(), max(origin.x, mark.x) + Fixed::one(),
+                              max(origin.y, mark.y) + Fixed::one(), nearWalls);
+    for (const uint32_t wi : nearWalls) {
+        const WallSeg& wl = config_.region->walls()[wi];
+        crossing(wl.a, wl.b, wl.halfThick, wl.top);
+    }
     const auto& gs = config_.region->gates();
     for (size_t i = 0; i < gs.size() && i < gates_.size(); ++i)
         if (!gates_[i].broken()) crossing(gs[i].a, gs[i].b, gs[i].halfThick, gs[i].top);
@@ -1946,21 +2023,24 @@ void World::updateProjectiles() {
         Fixed hitT = groundT;
         const Vec3 segFlat = seg.flat();
         const Fixed segFlatLenSq = segFlat.lengthSq();
-        for (Unit& u : units_) {
-            if (!u.alive() || u.id == p.shooter) continue;
+        uint32_t hitIndex = 0;
+        nearby(prev.x + seg.x / 2, prev.y + seg.y / 2, sqrt(segFlatLenSq) / 2 + Fixed::fromInt(6), [&](uint32_t k) {
+            Unit& u = units_[k];
+            if (!u.alive() || u.id == p.shooter) return;
             Fixed t = Fixed::zero();
             if (segFlatLenSq != Fixed::zero()) {
-                t = clamp((u.pos - prev).flat().dot(segFlat) / segFlatLenSq, Fixed::zero(),
-                          Fixed::one());
+                t = clamp((u.pos - prev).flat().dot(segFlat) / segFlatLenSq, Fixed::zero(), Fixed::one());
             }
-            if (t >= hitT) continue;
+            if (t > hitT || (t == hitT && (hit == nullptr || k > hitIndex))) return;  // (the earliest, and of those the lowest id)
+            if (t == hitT && hit == nullptr) return;
             const Vec3 closest = prev + seg * t;
             const Fixed r = u.stats.radius;
-            if ((closest - u.pos).flat().lengthSq() > r * r) continue;
-            if (closest.z < u.pos.z || closest.z > u.pos.z + u.stats.height) continue;
+            if ((closest - u.pos).flat().lengthSq() > r * r) return;
+            if (closest.z < u.pos.z || closest.z > u.pos.z + u.stats.height) return;
             hit = &u;
             hitT = t;
-        }
+            hitIndex = k;
+        });
 
         // Trees, rocks and walls in the way stop it first.
         bool stone = false;
@@ -2134,16 +2214,19 @@ Unit* World::debrisHit(const Vec3& a, const Vec3& b, EntityId ignore) {
     const Fixed lenSq = segFlat.lengthSq();
     Unit* hit = nullptr;
     Fixed hitT = Fixed::fromInt(2);
-    for (Unit& u : units_) {
-        if (!u.alive() || u.inAir() || (ignore != kNoEntity && u.id == ignore)) continue;
+    uint32_t hitIndex = 0;
+    nearby(a.x + seg.x / 2, a.y + seg.y / 2, sqrt(lenSq) / 2 + Fixed::fromInt(6), [&](uint32_t k) {
+        Unit& u = units_[k];
+        if (!u.alive() || u.inAir() || (ignore != kNoEntity && u.id == ignore)) return;
         const Fixed t = lenSq != Fixed::zero() ? clamp((u.pos - a).flat().dot(segFlat) / lenSq, Fixed::zero(), Fixed::one()) : Fixed::zero();
-        if (t >= hitT) continue;
+        if (t > hitT || (t == hitT && (hit == nullptr || k > hitIndex))) return;
         const Vec3 closest = a + seg * t;
-        if ((closest - u.pos).flat().lengthSq() > u.stats.radius * u.stats.radius) continue;
-        if (closest.z < u.pos.z || closest.z > u.pos.z + u.stats.height) continue;
+        if ((closest - u.pos).flat().lengthSq() > u.stats.radius * u.stats.radius) return;
+        if (closest.z < u.pos.z || closest.z > u.pos.z + u.stats.height) return;
         hit = &u;
         hitT = t;
-    }
+        hitIndex = k;
+    });
     return hit;
 }
 

@@ -97,8 +97,9 @@ void World::updateMorale() {
             int32_t steady = 0;
             bool hero = false;
             const int32_t grade = veteranGrade(u);
-            for (const Unit& o : units_) {
-                if (!o.alive() || o.id == u.id) continue;
+            nearby(u.pos.x, u.pos.y, kLeadReach, [&](uint32_t i) {
+                const Unit& o = units_[i];
+                if (!o.alive() || o.id == u.id) return;
                 const Fixed d2 = (o.pos - u.pos).flat().lengthSq();
                 if (o.owner == u.owner && isHero(o) && d2 < kLeadReach * kLeadReach) {
                     if (!hero) steady += kSteadyHero;
@@ -107,9 +108,9 @@ void World::updateMorale() {
                     const int32_t og = veteranGrade(o);
                     if (og >= 2 && og > grade) steady += og >= 3 ? kSteadyElite : kSteadyVeteran;
                 }
-                if (d2 >= kCensusReach * kCensusReach) continue;
+                if (d2 >= kCensusReach * kCensusReach) return;
                 (o.owner == u.owner ? friends : foes) += 1;
-            }
+            });
             u.steady = std::min(steady, kSteadyMax);
             if (foes > friends) {
                 shakeMorale(u, (foes - friends) * kOutnumberedShock);
@@ -147,21 +148,24 @@ void World::callRallies() {
         const int32_t grade = veteranGrade(c);
         if (!hero && grade < 2) continue;
         int32_t seen = 0;
-        for (const Unit& o : units_)
+        nearby(c.pos.x, c.pos.y, kCallReach, [&](uint32_t i) {
+            const Unit& o = units_[i];
             if (o.owner == c.owner && o.id != c.id && shaken(o) && (o.pos - c.pos).flat().lengthSq() < kCallReach * kCallReach) ++seen;
+        });
         if (seen < (hero ? 1 : kCallShaken)) continue;
         const int32_t lift = hero ? kLiftHero : grade >= 3 ? kLiftElite : kLiftVeteran;
         RallyCall call{c.id, c.owner, c.pos, hero ? RallyCall::Kind::Hero : RallyCall::Kind::Veteran, 0, 0};
-        for (Unit& o : units_) {
-            if (o.owner != c.owner || o.id == c.id || !o.alive() || o.stats.moraleShockPct == 0 || o.morale >= kMoraleFull) continue;
-            if ((o.pos - c.pos).flat().lengthSq() >= kCallReach * kCallReach) continue;
+        nearby(c.pos.x, c.pos.y, kCallReach, [&](uint32_t i) {
+            Unit& o = units_[i];
+            if (o.owner != c.owner || o.id == c.id || !o.alive() || o.stats.moraleShockPct == 0 || o.morale >= kMoraleFull) return;
+            if ((o.pos - c.pos).flat().lengthSq() >= kCallReach * kCallReach) return;
             o.morale = std::min(kMoraleFull, o.morale + lift);
             ++call.heard;
             if (o.routed && o.morale >= std::min(kMoraleWaver, rallyMorale(o)) && !sideBroken(o.owner)) {
                 o.routed = false;  // turns back to the fight, ready for orders
                 ++call.rallied;
             }
-        }
+        });
         c.callCooldown = hero ? kHeroCallCooldown : kCallCooldown;
         rallyCalls_.push_back(call);
     }
@@ -170,13 +174,14 @@ void World::callRallies() {
 void World::flee(Unit& u) {
     // Away from the foes near it, weighted toward the nearest.
     Vec3 away;
-    for (const Unit& o : units_) {
-        if (!o.alive() || o.owner == u.owner) continue;
+    nearby(u.pos.x, u.pos.y, kFleeReach, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (!o.alive() || o.owner == u.owner) return;
         const Vec3 d = (u.pos - o.pos).flat();
         const Fixed len = d.length();
-        if (len >= kFleeReach || len == Fixed::zero()) continue;
+        if (len >= kFleeReach || len == Fixed::zero()) return;
         away += d * ((kFleeReach - len) / (len * kFleeReach));
-    }
+    });
     const Fixed len = away.length();
     if (len == Fixed::zero()) return;  // nobody near: catch its breath
     walk(u, u.pos + away / len * Fixed::fromInt(10));

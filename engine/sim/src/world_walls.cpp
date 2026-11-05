@@ -60,7 +60,11 @@ Fixed World::wallHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
     Fixed best = limitT;
     bool hit = false;
     const Vec3 seg = b - a;
-    for (const WallSeg& wl : config_.region->walls()) {
+    thread_local std::vector<uint32_t> near;
+    config_.region->wallsNear(min(a.x, b.x) - Fixed::fromInt(2), min(a.y, b.y) - Fixed::fromInt(2), max(a.x, b.x) + Fixed::fromInt(2),
+                              max(a.y, b.y) + Fixed::fromInt(2), near);
+    for (const uint32_t wi : near) {
+        const WallSeg& wl = config_.region->walls()[wi];
         const Fixed pad = wl.halfThick + Fixed::fromInt(2);
         if (max(a.x, b.x) < min(wl.a.x, wl.b.x) - pad || min(a.x, b.x) > max(wl.a.x, wl.b.x) + pad ||
             max(a.y, b.y) < min(wl.a.y, wl.b.y) - pad || min(a.y, b.y) > max(wl.a.y, wl.b.y) + pad)
@@ -121,7 +125,10 @@ Fixed World::surfaceBelow(Fixed x, Fixed y, Fixed z) const {
 
 bool World::walkSpot(const Vec3& p, WalkSpot& spot) const {
     if (!config_.region) return false;
-    for (const WallSeg& wl : config_.region->walls()) {
+    thread_local std::vector<uint32_t> near;
+    config_.region->wallsNear(p.x, p.y, p.x, p.y, near);
+    for (const uint32_t wi : near) {
+        const WallSeg& wl = config_.region->walls()[wi];
         if (wl.walk <= Fixed::zero() || wl.out == Vec3{}) continue;
         if (p.z < wl.walk - kFallReach || p.z > wl.top) continue;
         const Fixed pad = wl.halfThick;

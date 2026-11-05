@@ -28,6 +28,10 @@ constexpr Fixed kHaltReach = Fixed::fromInt(6);
 constexpr Fixed kHaltQueue = Fixed::fromInt(16);
 constexpr Fixed kHaltTouch = Fixed::fromRatio(1, 2);
 
+// A gate far off, by a box round one end of its doors (a continent's ground has
+// eighty-eight; a soldier is only ever near one): the quick way to pass it by.
+bool farFrom(const Gate& g, const Vec3& p) { return abs(p.x - g.a.x) > Fixed::fromInt(60) || abs(p.y - g.a.y) > Fixed::fromInt(60); }
+
 // The point of gate g's line nearest p (flat).
 Vec3 nearestOnGate(const Gate& g, const Vec3& p) {
     const Vec3 ab = (g.b - g.a).flat();
@@ -115,7 +119,7 @@ void World::keepOutOfGates(Unit& u) {
     const auto& gs = config_.region->gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || u.pos.z >= g.top) continue;
+        if (gates_[i].broken() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Fixed reach = g.halfThick + u.stats.radius;
         const Vec3 p = nearestOnGate(g, u.pos);
         const Vec3 d = (u.pos - p).flat();
@@ -133,7 +137,7 @@ int World::gateToHack(Unit& u) {
     const auto& gs = rg.gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top) continue;
+        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Fixed reach = u.stats.radius + g.halfThick + u.stats.melee.reach + kHackSlack;
         if ((u.pos - nearestOnGate(g, u.pos)).flat().lengthSq() > reach * reach) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
@@ -157,7 +161,7 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
     constexpr Fixed kQueue = Fixed::fromInt(10);
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top) continue;
+        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Vec3 at = nearestOnGate(g, u.pos);
         const Vec3 off = (u.pos - at).flat();
         if (off.lengthSq() > kQueue * kQueue) continue;
@@ -186,7 +190,7 @@ bool World::haltAtGate(const Unit& u) const {
     const auto& gs = rg.gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || u.pos.z >= g.top) continue;
+        if (gates_[i].broken() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         if (gates_[i].holder != u.owner && u.stats.melee.damage > 0) continue;  // he hacks his way through (gateToHack)
         const Vec3 at = nearestOnGate(g, u.pos);
         const Fixed distSq = (u.pos - at).flat().lengthSq();

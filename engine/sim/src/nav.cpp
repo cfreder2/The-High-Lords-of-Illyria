@@ -128,26 +128,42 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
         if (hb < Fixed::one()) box.hi -= (Fixed::one() - hb) * d.halfSpan * 2 / (ha - hb);
         stoneBoxes_.push_back(box);
     }
-    for (int32_t y = 0; y < n_; ++y) {
-        for (int32_t x = 0; x < n_; ++x) {
-            if (region.walls().empty()) break;
-            const Vec3 p{Fixed::fromInt(x * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(y * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
-            for (const WallSeg* wp : standing) {
-                const WallSeg& w = *wp;
-                const Vec3 ab = (w.b - w.a).flat();
-                const Fixed len2 = ab.lengthSq();
-                const Fixed t = len2 > Fixed::zero() ? std::clamp((p - w.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
-                const Fixed reach = w.halfThick + Fixed::fromRatio(1, 2);
-                if ((p - (w.a + ab * t)).flat().lengthSq() < reach * reach) open_[static_cast<size_t>(index(x, y))] = 0;
-            }
-            for (const Obstacle& o : towers) {
-                const Fixed reach = o.radius + Fixed::fromRatio(1, 2);
-                if ((p - o.pos).flat().lengthSq() < reach * reach) open_[static_cast<size_t>(index(x, y))] = 0;
-            }
-            // So does a ramp where it stands higher than a step: the way up is its foot.
-            const Fixed ground = t.heightAt(p.x, p.y);
-            if (region.inRamp(p.x, p.y, ground + Fixed::one())) open_[static_cast<size_t>(index(x, y))] = 0;
-        }
+    // (Walls, towers and ramps each close the cells near them: found from the
+    // thing outwards, not by testing every cell against every wall, which on
+    // the whole continent's ground is eighty castles' worth of walls.)
+    const auto cellMiddle = [&](int32_t x, int32_t y) {
+        return Vec3{Fixed::fromInt(x * cell_) + Fixed::fromInt(cell_) / 2, Fixed::fromInt(y * cell_) + Fixed::fromInt(cell_) / 2, Fixed::zero()};
+    };
+    const auto cellsNear = [&](Fixed x0, Fixed y0, Fixed x1, Fixed y1, auto&& fn) {
+        const int32_t cx0 = std::max(0, cellOf(x0) - 1), cx1 = std::min(n_ - 1, cellOf(x1) + 1);
+        const int32_t cy0 = std::max(0, cellOf(y0) - 1), cy1 = std::min(n_ - 1, cellOf(y1) + 1);
+        for (int32_t y = cy0; y <= cy1; ++y)
+            for (int32_t x = cx0; x <= cx1; ++x) fn(x, y, cellMiddle(x, y));
+    };
+    for (const WallSeg* wp : standing) {
+        const WallSeg& w = *wp;
+        const Fixed reach = w.halfThick + Fixed::fromRatio(1, 2);
+        const Vec3 ab = (w.b - w.a).flat();
+        const Fixed len2 = ab.lengthSq();
+        cellsNear(min(w.a.x, w.b.x) - reach, min(w.a.y, w.b.y) - reach, max(w.a.x, w.b.x) + reach, max(w.a.y, w.b.y) + reach,
+                  [&](int32_t x, int32_t y, const Vec3& p) {
+                      const Fixed t = len2 > Fixed::zero() ? std::clamp((p - w.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+                      if ((p - (w.a + ab * t)).flat().lengthSq() < reach * reach) open_[static_cast<size_t>(index(x, y))] = 0;
+                  });
+    }
+    for (const Obstacle& o : towers) {
+        const Fixed reach = o.radius + Fixed::fromRatio(1, 2);
+        cellsNear(o.pos.x - reach, o.pos.y - reach, o.pos.x + reach, o.pos.y + reach, [&](int32_t x, int32_t y, const Vec3& p) {
+            if ((p - o.pos).flat().lengthSq() < reach * reach) open_[static_cast<size_t>(index(x, y))] = 0;
+        });
+    }
+    // So does a ramp where it stands higher than a step: the way up is its foot.
+    for (const Deck& d : region.decks()) {
+        if (!d.ramp || region.walls().empty()) continue;
+        const Fixed reach = d.halfSpan + d.halfWidth;
+        cellsNear(d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach, [&](int32_t x, int32_t y, const Vec3& p) {
+            if (d.contains(p.x, p.y) && d.heightAt(p.x, p.y) > t.heightAt(p.x, p.y) + Fixed::one()) open_[static_cast<size_t>(index(x, y))] = 0;
+        });
     }
     // And every cell a wall's line runs through, so a wall thinner than a
     // cell (the keep's) leaves no gap between cells to slip through.
