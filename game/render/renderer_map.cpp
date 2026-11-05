@@ -23,9 +23,10 @@ constexpr float kDecalRing = 2;  // as renderer.cpp
 constexpr float kSpriteBelow = 380.0f, kSpriteReach = 1.9f, kDotsGone = 170.0f;
 // Sprite sheets baked in one frame: baking is the slow part of a first look.
 constexpr size_t kBakesPerFrame = 1;
-// A dot is about this wide on the ground, between these sizes in CSS pixels: large enough to read on any
-// ground at the full island view (a dark outer edge and a light ring round the colour do the rest).
-constexpr float kDotMetres = 1.1f, kDotMinPx = 4.4f, kDotMaxPx = 9.0f;
+// A dot is about this wide on the ground, between these sizes in CSS pixels. From the whole island (kDotFarFrom and
+// beyond, to the greatest height) it is never smaller than kDotFarPx: a man is a dot to read at a glance, in his side's colour,
+// whatever the ground (a ring round the colour and an edge round the ring do the rest, rims 40% of the width either side).
+constexpr float kDotMetres = 1.1f, kDotMinPx = 4.4f, kDotMaxPx = 9.0f, kDotFarPx = 8.0f, kDotFarFrom = 700.0f, kDotFarTo = 3000.0f;
 
 float hash01(uint32_t v) {
     v *= 2654435761u;
@@ -68,7 +69,9 @@ void Renderer::beginMen(const Battle& battle, const Camera& camera, float second
     const float screen = closeupScreen_ > 0 ? closeupScreen_ : camera.height();
     const float devicePerCss = camera.height() / std::max(screen, 1.0f);
     const float pxPerMetre = 1.0f / (2.0f * std::tan(Camera::kFovY / 2) / camera.height() * std::max(dist, 1.0f));
-    mapDotPx_ = std::clamp(kDotMetres * pxPerMetre / devicePerCss, kDotMinPx, kDotMaxPx) * devicePerCss;
+    const float far = std::clamp((dist - kDotFarFrom) / (kDotFarTo - kDotFarFrom), 0.0f, 1.0f);
+    const float minPx = kDotMinPx + (kDotFarPx - kDotMinPx) * far * far * (3.0f - 2.0f * far);
+    mapDotPx_ = std::clamp(kDotMetres * pxPerMetre / devicePerCss, minPx, kDotMaxPx) * devicePerCss;
     // The dot of a man who is also a sprite fades out as the camera comes in.
     m.spriteDot = std::clamp((dist - kDotsGone) / (kSpriteBelow - kDotsGone), 0.0f, 1.0f);
     m.lift = 0.9f + dist * 0.0015f;

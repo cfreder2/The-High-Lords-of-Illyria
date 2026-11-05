@@ -57,6 +57,9 @@ public:
     // Builds all of the close-up land around the camera now (test hook; it is
     // otherwise built a little each frame).
     void finishDetail(const Battle& battle, const Camera& camera) { updateDetail(battle, camera, 1e9, true); }
+    // How far over a man's dot (and its rims) reaches from his place, in device pixels: what a town's marker on the page stays
+    // clear of, so that the men standing in the town are not hidden under it.
+    float dotReachPx() const { return mapDotPx_ * 0.9f; }
     void setShowUnits(bool show) {
         showUnits_ = show;
         unitsChecked_ = SIZE_MAX;
