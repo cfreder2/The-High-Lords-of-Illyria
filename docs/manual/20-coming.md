@@ -20,7 +20,8 @@ The battle was made from the first day to be played between people. Every order 
 
 ## Planned for the campaign {#planned-campaign}
 
-- **Ruins fought in 3D:** the hero (and perhaps a companion) against the guardian, in the ruin's own interior, instead of the dice.
+- **Ruins fought in the ruin:** the hero (and perhaps a companion) against the guardian, in the ruin's own interior, instead of one roll of the dice: the last dice left in the campaign.
+- **The rest of One World:** fog of war (and what the computer lords may see), the lords planning in real time instead of at dawn, splitting a stack into squads to give each its own order, the speed dropping to what a big fight allows, saved games that keep a fight in progress, multiplayer, and boats that carry soldiers and fight.
 - **Temple quests**, with an artifact for reward.
 - **Razing** a city, and a new capital chosen when the old one falls.
 - **Hatreds:** computer lords with attitudes to each of the others.

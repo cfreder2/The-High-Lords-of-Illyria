@@ -41,9 +41,9 @@ Since the rank is the survivors' average, **losses cost rank as well as men**: a
 
 ## Stacks {#stacks}
 
-Armies move about the map in **stacks**. A stack is shown as its soldiers, in a column of squads, in its lord's colour (they are points from high up, and the men themselves close in). At most **eight armies** may stand on one cell of the map, and a stack may not march through a cell where that would make more than eight; inside a city the limit is **32** (a *Warlords* city is four squares of eight). An attack commits the whole stack that makes it, eight armies at most, but a city defends with everything inside it.
+Armies move about the map in **stacks**. A stack is shown as its soldiers, in a column of squads, in its lord's colour (they are points from high up, and the men themselves close in). A stack is a **group** of up to **eight armies** that march together; any number of stacks may stand in one place, and a town holds whatever fits inside its walls (the old limits of eight to a cell and 32 to a city are gone). A fight is between the men there are, wherever they stand.
 
-Tap the soldiers of a stack of yours to select it (or box them: shift and drag, or hold and drag); its armies appear as cards along the bottom. A stack that arrives where another of yours is standing joins it, as many armies as the limit of eight allows. New armies trained in a city join a stack of yours standing idle there.
+Tap the soldiers of a stack of yours to select it (or box them: shift and drag, or hold and drag); its armies appear as cards along the bottom. A stack that arrives where another of yours is standing joins it, up to a group of eight armies. New armies trained in a city join a stack of yours standing idle there.
 
 ::: note "Not yet built"
 In this edition a stack cannot yet be split by hand. A stack boarding a boat leaves its weakest army on the quay when it has eight (chapter [](#boats)); a hero going to search a ruin takes the stack with him.

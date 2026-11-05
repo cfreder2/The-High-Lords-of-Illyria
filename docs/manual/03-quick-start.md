@@ -30,7 +30,7 @@ Choose a battle. You are at **Oakhaven Ford**, where the road from the north cro
 4. **Face the enemy.** With them still selected, press and **hold** on the ground where you want them, and when a gold ghost of the formation appears, **drag** toward the river. They will form up across your line, facing along it.
 5. **Shoot.** Tap one of the **1st Oakhaven Bowmen** twice to select them, then tap a soldier of the Red Hand. The archers walk until he is in range and loose. Watch the arrows: they fly, and they can miss.
 6. **Charge.** When the enemy are across the ford and in your bowmen's arrows, press **Charge** at the top: every squad goes at the nearest enemy, the archers stopping at a long bowshot.
-7. **Find the fight.** **Fight!** brings the camera to the fiercest fighting on the field. **Pause** stops the battle while you think (and orders can still be given); **1×** cycles the speed.
+7. **Find the fight.** **Fight!** brings the camera to the fiercest fighting, on the field or on the campaign map. **Pause** stops the battle while you think (and orders can still be given); **1×** cycles the speed.
 
 The battle is won when the last of the Red Hand is dead or fled, and lost when the last of yours is. Then you may fight it again. To learn the walls and gates instead, switch to the **Siege**: the same host before the gates of the neutral town beyond the ford, with two catapults and grenadiers, against a garrison on its walls (chapter [](#sieges)).
 
@@ -44,9 +44,9 @@ The camera looks down on **Kingshold**, your capital, with your lord's stack sta
 
 1. **Train an army.** Tap your lord's soldiers in Kingshold's courtyard: the stack is selected (a ring round it) and the city's panel opens. It lists what the city can train, with the days, the price and the daily upkeep of each. Tap **Light Infantry**: the price is paid now and the army comes out in two days. Close the panel.
 2. **Choose a target.** Look for the nearest grey square: a neutral town. Tap your lord's soldiers to select the stack (or hold and drag, shift and drag with a mouse, a box round them), then tap the town. The stack sets off along the road (roads are quickest) and attacks when it arrives.
-3. **Fight or resolve.** The campaign stops: *Battle at Alder Cross: your 3 armies against 2*, say. The prompt shows each side's strength and its small edges. **Resolve** rolls the dice; **Fight it** opens the battle in 3D, at the town's walls. For now, **Resolve**.
-4. **Raise your banner.** You have beaten the garrison, but the town is not yours until your banner flies over it. Stay in the town: a bar under its name shows your banner rising. When it reaches the top the town is yours, with its income and its training.
-5. **Keep going.** The campaign is saved for you at every dawn, and you may keep a war in any of three save slots, to come back to from the title screen. The bar's **Pause** stops the clock; **1×** makes days pass two, four or eight times as fast. A campaign day is thirty seconds at normal speed. The news (top right) reports what your heroes and armies did, and what was done to you.
+3. **Fight.** When your men come within a long bowshot of the garrison they are all in it: nothing stops and there is nothing to choose. Zoom in on the town to watch: your men march up to the gate and hack at it, the garrison shoots from the walls, and anyone who is hit stays hit. **Fight!** (top right) takes the camera to the fiercest fighting on the island, and the minimap glows where men are fighting.
+4. **Raise your banner.** You have killed or driven out the garrison, but the town is not yours until your banner flies over it. Stay in the town's courtyard: a bar under its name shows your banner rising. When it reaches the top the town is yours, with its income and its training.
+5. **Keep going.** The campaign is saved for you at every dawn, and you may keep a war in any of three save slots, to come back to from the title screen. The bar's **Pause** stops the clock; **1×** makes days pass two, four or eight times as fast. A campaign day is two minutes at normal speed. The news (top right) reports what your heroes and armies did, and what was done to you.
 
 ::: tip "The race"
 In the first two weeks every lord is racing for the neutral towns. A town taken on day three pays you gold every day from then on and trains armies of its own: a town taken on day twenty has already paid someone else.
@@ -56,7 +56,7 @@ In the first two weeks every lord is racing for the neutral towns. A town taken 
 
 - **Top left:** the game's name and version, the frame rate and how long the simulation and the drawing take (useful if a phone is struggling).
 - **Top middle:** the enemy's name and how many of them still stand, out of how many.
-- **Top right:** **Charge** (every squad at the nearest enemy), **Fight!** (the camera to the hottest fighting), **Pause**, the **speed**, and the **☰** menu (restart, the other set battle, the campaign, the settings). In a campaign battle, **Withdraw** leaves the field: the survivors go back to the map as an army thrown back.
+- **Top right:** **Charge** (every squad at the nearest enemy), **Fight!** (the camera to the hottest fighting), **Pause**, the **speed**, and the **☰** menu (restart, the other set battle, the campaign, the settings). 
 - **Bottom:** the **cards**: your heroes in gold, and any groups you make (**+ New group** makes one of the selection), each with its name, how many are left and a health bar. Above the cards, when something is selected, the **action row**: **Formation**, **⚔ Attack**, **Scatter**, **Hold** and **Find**; above that a line naming the selection and its edges.
 - **In a siege:** a bar at the top shows the flag in the courtyard (chapter [](#capture-point)). Under the title a tag says whose land the battle is fought on.
 

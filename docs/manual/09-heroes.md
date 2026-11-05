@@ -13,7 +13,7 @@ Heroes are what make the war more than a contest of production. A hero leads a s
 Every lord begins with one hero, its lord, named for its capital (*Lord of Kingshold*), with an escort of light infantry and the realm's own rare troops. More heroes come by **hire** (below). A hero:
 
 - is an army of one, strength **3 + his level**;
-- rises a level with kills, in the dice and in 3D: 3 kills for level 2, then 7, 12, 18, 25, 33, 42 and 52 for level 9;
+- rises a level with kills, in any fight: 3 kills for level 2, then 7, 12, 18, 25, 33, 42 and 52 for level 9;
 - **leads** his stack: the best hero in a stack gives every army in it the *hero leads* edge (+2% at strength 4 to 6, +4% at 7 or 8, +6% at 9), and on the battlefield the same to every soldier of his side within 30 m of him;
 - carries any number of **artifacts**, which go where he goes and fall where he falls;
 - draws no upkeep;

@@ -51,7 +51,7 @@ A siege is won by taking the heart of the town, not by killing every last man. E
 
 A bar at the top of the screen says how it goes: *Take the courtyard: your flag 45% · 12 of yours there, 3 of theirs (rising)*. On the pole, the defenders' flag comes down as yours goes up.
 
-Back on the campaign map, a town taken at its courtyard is yours at once: the banner rose in the battle. The defenders still standing fall back to an open cell next to the town, or (a neutral garrison, or with nowhere to go) lay down their arms. A town won by killing or routing every defender instead is held, and its banner raised on the map, as after the dice (chapter [](#banners)).
+On the campaign map a siege is this same siege, at the town's own walls and gate: there is no separate battle to open. The town falls when your men hold its courtyard alone and your banner has risen over it (chapter [](#banners)); the set battle's courtyard flag is a different rule, for the set battle only.
 
 ::: tip "Taking a town"
 Batter the gate with stones, and with satchels laid at it and set off with fire, while your archers keep heads down on the walk near it; send fliers over the wall at the courtyard; then put more men round the flagpole than they have. Six men to their two take the courtyard in under seventeen seconds.
@@ -61,4 +61,4 @@ Batter the gate with stones, and with satchels laid at it and set off with fire,
 
 ## Defending {#defending}
 
-In this edition you fight in 3D only the battles you start, so you meet the walls from outside: the computer lords' attacks on your towns are settled with the dice, where your walls give every defender their bonus. If an enemy is raising its banner in a town of yours, attacking it there means storming your own walls: they hold them now. The battle captain is ready for the other way round: besieging a town of yours, the enemy turns his catapults on your gate. Keep the archers in the embrasures and their reserve at the foot of the ramps, and a solid block in the courtyard, since numbers there are all that matter.
+On the campaign map you see the walls from either side: the computer lords' attacks on your towns are fought at your gate, by your garrison, with your archers on the walk, as any siege is. Your gate is yours: your own men never hack at it, and everyone else does. If an enemy is raising its banner in a town of yours, attacking it there means storming your own walls: they hold them now. The battle captain is ready for the other way round: besieging a town of yours, the enemy turns his catapults on your gate. Keep the archers in the embrasures and their reserve at the foot of the ramps, and a solid block in the courtyard, since numbers there are all that matter.

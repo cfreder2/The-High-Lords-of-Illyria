@@ -69,5 +69,4 @@ Over a soldier who is hurt, ranked, shaken or selected, close enough to read, fl
 
 - The battle is **won** when the last enemy soldier on the field is dead or has fled, or, in a siege, when your flag reaches the top of the courtyard's pole (chapter [](#capture-point)).
 - It is **lost** when the last of yours is, or, when the enemy is besieging a town of yours, when his flag reaches the top.
-- In a campaign battle, **Withdraw** leaves the field: your survivors go back to the map with their kills, as an army thrown back.
 - The herald reports your losses as they mount: *"Casualties"* at a quarter of your soldiers lost, *"Severe casualties"* at a half, *"Total casualties"* at four fifths.

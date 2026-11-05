@@ -131,9 +131,9 @@ Upkeep is a quarter of the price *every day*: a heavy cavalry army costs its own
 
 A city far behind the front can send what it trains to another of your cities. In its panel tap **Send new armies to…**, then tap the city that should receive them. From then on each new army appears there **two days** after it is trained, without marching. At most **four** cities may send to any one city. **Keep new armies here** stops it. If the city they were sent to has fallen or is full when they arrive, they go back home; if both are lost, they are lost on the road.
 
-## Raising the walls {#walls}
+## Walls {#walls}
 
-A city's **walls** (1 to 9) help its defenders in the dice (chapter [](#dice)): walls of 2 to 6 add a point to every defender's strength, 7 or 8 two points, 9 three. In the panel, **Raise the walls** costs **25 gold × (the walls + 1)**: from 3 to 4 costs 100, from 8 to 9 costs 225. Every time a city is taken its walls fall by one (never below 1).
+A city's **walls** are real: the stone, the towers, the gate and the walk along the top that you see on the map are the ones its garrison fights on and its attackers must breach (chapter [](#sieges)). The number the panel shows beside *Walls* (1 to 9) is the old *Warlords* rating, which the computer lords still use to reckon whether an attack is worth making; it falls by one each time the city is taken. It cannot be bought up any more: walls that change nothing a soldier can see were not worth the gold.
 
 ::: note "Not yet built"
 *Warlords* let a lord **raze** a city to the ground, and chose a new capital when the old one fell. Neither is in the game yet; nothing depends on your capital after the first day.

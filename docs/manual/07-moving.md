@@ -73,7 +73,6 @@ The **Winged Sandals**, if a hero in the stack carries them, make the whole stac
 - Onto mountains or water, unless every army in the stack flies.
 - Across a river except at a ford or a bridge (unless the whole stack flies).
 - **Through** a cell held by another lord's stack, or a neutral or enemy city: those must be fought for, and a stack ordered into one attacks it.
-- Onto or through a cell of your own that would then hold more than eight armies (32 in a city). A stack that finds the way filled by its own side halts where it is.
 - Off the island, except by boat.
 
 ## Roads, rivers and crossings {#roads}
@@ -94,6 +93,6 @@ The sea is a fast road for anyone but horse. As the *Warlords* navy did, a boat 
 - **Sailing.** Afloat, a stack sails at 6 m/s, 720 m a day, whatever it carries: quicker than anything on foot, and than horse off the road.
 - **Landing.** **Land** puts the stack ashore on any coast it can walk, or order it inland; a boat sails straight into a friendly port. A boat that landed elsewhere rides at anchor off that coast, where a stack of yours next to it may board again.
 - **Planning.** A march order considers the sea whenever you have a free boat, and takes it when that is quicker: from Copperhill, the northernmost port, on the Isle of the Seer that no one leaves on foot, to Quarrystone in the far south is 7 days by sea.
-- **Losses.** A boat whose armies all fall goes down with them. Armies fighting from a deck fight **a point weaker**, both sides, and a battle at sea is always settled with the dice (there is no ground to fight a 3D battle on). An empty boat in a port that falls changes hands; one at anchor is burnt by an enemy boat that reaches it.
+- **Losses.** A boat whose armies all fall goes down with them. Boats do not fight yet: a stack aboard is never drawn into a fight, so armies at sea can neither attack nor be attacked; a stack that lands fights where it lands. An empty boat in a port that falls changes hands; one at anchor is burnt by an enemy boat that reaches it.
 
 ![A port on the Sunderwave Sea: the town's panel with its boat in harbour and Build a boat, and the voyage panel's Embark at the bottom.](images/shots/camp_port.jpg)

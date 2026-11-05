@@ -1,9 +1,10 @@
 # One World
 
-*A proposal (2026-11-01), built in steps. Steps 1 and 2 are in the game (see "Building it,
+*A proposal (2026-11-01), built in steps. Steps 1 to 3 are in the game (see "Building it,
 in steps" below); the rest is not. It replaces the Warlords stack model on the campaign map
 (GAME_DESIGN.md §4.2.4 to §4.2.9) and keeps the promise of §4.1: one continent, one clock,
-the camera from the gods to the mud.*
+the camera from the gods to the mud. The campaign is not two modes, a map and a battle: it is
+always the tactical game, seen from as high or as low as you like.*
 
 ## The promise
 
@@ -25,14 +26,14 @@ the camera from the gods to the mud.*
 
 ## What changes
 
-| | Now (after steps 1 and 2) | One world |
+| | Now (after steps 1 to 3) | One world |
 |---|---|---|
-| Clock | The campaign runs on the battle's 30 ticks a second, a day is 2 minutes. A 3D battle opened from it is still a separate clock | One 30 Hz clock for everything |
-| Armies | A stack of up to eight armies, drawn as its soldiers on the land: points far out, sprites near, in a column of squads (step 2). Fought and given orders as a stack | Squads of soldiers on the land, in formation, fully stepped where they meet |
+| Clock | The campaign runs on the battle's 30 ticks a second, a day is 2 minutes, and fights are stepped on that same clock | One 30 Hz clock for everything |
+| Armies | Squads of real men on the land. A stack is a group of squads that march together (up to eight); any number may stand in a place. Drawn as points far out, sprites near (step 2), and stepped fully where they meet (step 3) | Squads of soldiers on the land, in formation, fully stepped where they meet, with orders to the squads themselves |
 | Moving | The battle's gaits and speeds over the 44 m campaign grid (step 1), at the pace of the slowest army | The battle's own route planner, gaits and terrain speeds, refined on the 4 m grid as they go |
-| Fights | "Fight it" opens a battle in a 1 km window; "Resolve" rolls dice | Fought where the armies meet, always physically |
-| Zoomed out | Every soldier a point in his side's colour; no flags over armies (step 2). Towns' banners and outposts still fly flags | Points in side colours; no flags |
-| Overview | A minimap: every town and site, soldiers as points and heat in side colours, the camera's view; tap to go there (step 2). No fog yet | A minimap: every place, every soldier you can see, a heat map where they pile up |
+| Fights | Fought where the armies meet, always physically (step 3): the battle's own rules, on the whole island's ground. No prompt, no window, no dice | The same, with the computer lords in real time |
+| Zoomed out | Every soldier a point in his side's colour, flashing while he fights; no flags over armies. Towns' banners and outposts still fly flags | Points in side colours; no flags |
+| Overview | A minimap: every town and site, soldiers as points and heat in side colours, fights glowing, the camera's view; tap to go there. No fog yet | A minimap: every place, every soldier you can see, a heat map where they pile up |
 | Map | 2.8 × 3.6 km (a third each way), all 80 towns and 40 sites kept, walls at three quarters (step 1) | The same |
 
 ## How long things take
@@ -133,16 +134,19 @@ How the size was chosen, moving today's 80 towns closer:
 
 ## Armies on the land
 
-*Built in step 2 (`game/src/campaign_soldiers.cpp`, `game/render/renderer_map.cpp`): a stack is
-drawn as the men it holds, laid out from the campaign's state alone. The stack model itself
-(eight armies, a fight prompt) stays until step 3.*
+*Built in steps 2 and 3 (`engine/sim/src/campaign_world.cpp`, `game/src/campaign_soldiers.cpp`,
+`game/render/renderer_map.cpp`): every squad is its real men, each with a place on the ground
+(`Man`, in `Army::men`). The campaign's stacks stay as the groups that march together, and as
+the unit the computer lords plan with; they are no longer a place where armies are fought.*
 
 - **An army is a squad,** as in battle: its men, its formation, its facing, its orders. A
   stack becomes the player's group of squads (GAME_DESIGN.md §4.1.2): select them, give
   them a formation, send them.
-- **No caps.** A group is as many squads as you select, and a town holds whatever fits
-  inside its walls. Warlords' 8 to a cell goes. Packing men tight is its own risk: a
-  clump is what a dwarf's grenade is for.
+- **No caps on a place.** Any number of stacks may stand in a cell and a town holds whatever
+  fits inside its walls (the 8 to a cell and 32 to a city are gone, step 3). A stack is still
+  a *group* of up to eight squads that march together, the unit the computer lords plan with
+  and the player selects; splitting one into squads to give each its own order is step 4.
+  Packing men tight is its own risk: a clump is what a dwarf's grenade is for.
 - **Orders are the battle's orders, at any distance.** Tap a town across the island: the
   route planner finds the fastest way and they set off. Long routes are planned on the
   44 m campaign grid with the gaits' speeds, then refined on the 4 m grid over the next few hundred
@@ -150,21 +154,91 @@ drawn as the men it holds, laid out from the campaign's state alone. The stack m
   slow: a 100-man order across one battlefield already costs about 20 ms.)
 - **Formations hold on the march.** A squad narrows into a column where its road narrows
   (bridges, gates, passes) and opens out again after.
-- **Two ways to step a squad, one look.** Away from any enemy (beyond a long bowshot,
+- **Two ways to step a squad, one look (built).** Away from any enemy (beyond a long bowshot,
   about 150 m) a squad on the march, or a garrison at rest, is stepped as one body: its
   route, its pace, its formation, and every man placed in his slot on the ground. Towns stand closer
   than that to one another, so an enemy at rest behind its own walls doesn't count. When an
-  enemy comes within that distance, or a man is hurt, every man is stepped on his own,
-  exactly as in a battle today. Which way a squad is stepped depends only on the world,
-  never on the camera, so every machine and every zoom sees the same thing. Drawn, the two
-  are the same: every man in his place, walking.
+  enemy comes within that distance, every man is stepped on his own, exactly as in a battle
+  today, until nothing hostile has been near for ten seconds. (The doc's first idea, "or a man is
+  hurt", is not what was built: a wounded man in a squad at peace needs no stepping.) Which way a
+  squad is stepped depends only on the world, never on the camera, so every machine and every zoom
+  sees the same thing. Drawn, the two are the same: every man in his place, walking.
 - **Why it has to be:** an all-computer campaign under today's rules holds about 1,800
   soldiers at the start (1,650 of them in neutral town garrisons), 3,800 by day 40 and
   6,800 by day 120. A 450-soldier fight costs about 0.8 ms a tick natively (§5.2), slower
   in the browser. Stepping all 6,800 men in full would take about 12 ms every tick, over a
   third of a core at 1×, and impossible at 4×.
 
+## How the campaign holds the world (step 3)
+
+A short note on how it works, and what it costs.
+
+- **One ground.** The campaign owns one `sim::World` on the ground of the whole island:
+  `Region::fromContinent` cut 900 cells (3.6 km) wide, with all 80 castles' walls, gates,
+  ramps and walks, every tree and house (about 65,000 obstacles), and the navigation grid
+  over it. It is made once per process, when a campaign starts (the page says so, a few
+  seconds), so that no fight waits for it.
+- **Men are in the world only while they fight.** The world holds the men who are *awake*,
+  not all 6,000: the scans that make a battle cost what it does (the nearest enemy, the morale
+  census, who is in a man's way) are looked up through a grid by place, and a world of
+  thousands would otherwise cost thousands squared (`World::nearby`, which finds exactly what
+  the old loops found). Everyone else is *asleep*: a stack is one body, marching its route on
+  the 44 m campaign grid at its pace (`moveStacks`, a handful of integer operations), and every
+  man stands in his slot of its formation (a column on the march, a block standing), or is
+  walking back to it from where a fight left him. Every man has a real place at all times;
+  `Campaign::soldiers` says where.
+- **When a stack wakes.** Every half second (`kContactTicks`) the campaign looks at the stacks'
+  bodies. Two stacks of different sides within 150 m of each other (their edges, a long
+  bowshot) wake both, if either is on the move or fighting (an awake stack that has not struck or been struck
+  for five seconds is neither). An enemy *at rest behind
+  his own walls* does not count (towns stand closer than that to one another): only one that
+  comes up to the walls does. Which stacks wake depends only on where everyone stands, never
+  on the camera.
+- **When it sleeps.** After `kCalmTicks` (10 s) with nothing hostile within reach, each man
+  where the fight left him, with his wounds, kills, rank and morale (`Man`), eased back to his
+  slot at walking pace. The dead lie 20 s and are taken away; the world is cleared of arrows and
+  remains when the last stack sleeps, so that it is a function of the gates' wounds alone
+  between fights (and the same on every machine, whether or not it has seen one).
+- **Orders in a fight.** Awake stacks, the player's and the computer lords' alike, march their
+  route with the battle's initiative (they fight whoever strikes them or crosses their path) and
+  go on when it is done; standing, they meet whoever comes within 45 m of their post: foot go at
+  the nearest foe, missile troops close to a good bowshot and shoot on their own
+  (`Campaign::fightAi`, a small version of the battle AI's habits). A town's garrison holds its
+  post. A stack held up for ten seconds with nothing struck goes deaf to the enemy for ten
+  seconds (a force march) and, held up again, gives up the cell of its route the ground does not
+  allow. Gates are held by their town's owner (`World::setGateHolder`): everyone else hacks at them.
+- **Towns fall by banner.** The banner (§4.2.8) rises while the men of one other side stand in the
+  courtyard and none of the town's own or any third side's do: men are what is counted
+  (`Campaign::armiesInTown`), in the courtyard whether asleep there or awake fighting.
+- **What it costs** (measured, Apple M4 Pro; the page in headless Chrome):
+  - *Making the ground:* the island's `Region` takes 6.3 s natively (it took 124 s before the
+    castle, deck and house loops were boxed) and its navigation grid 0.4 s (11 s before); the page
+    makes it when a campaign starts and says so ("Laying out the island"), about 15 s in the browser,
+    once. The 1 km windows of the set battles are as quick as they were.
+  - *Asleep:* the ordinary tick is about 3 microseconds natively (0.1 us, and a 43 us look for
+    contact every 15th tick) and 0.006 ms in the browser, against 0.005 ms before. The dawn planning
+    spike, the computer lords' daily plan, is unchanged (28 to 33 ms natively on day 1).
+  - *Awake:* a man costs about 2 to 4 microseconds a tick natively (5 in the browser), so
+    cost follows the men in fights, not the soldiers on the island. Four fights at once of 360 men
+    each (1,440 to 1,536 awake): native mean 5.9 ms a tick, median 4.9, 99th percentile 13, worst 38;
+    browser mean 8.0 ms, median 5.8, 99th percentile 31. A tick is 33 ms at 1x, so that fits at 1x
+    and does not at 4x or 8x: the page runs as many ticks a frame as the clock owes within 14 ms of
+    it and lets the game fall behind the clock after that. The speed control does not say so yet
+    (step 4). The world is not capped: a cap would have to leave men in a fight asleep, passing
+    through each other.
+  - *An all-computer campaign* holds about 1,800 soldiers at the start and keeps small stacks
+    besieging walls they cannot take for days; the computer lords no longer send a force a third the
+    size of the men it would meet (`attackOdds`), a stack held up ten seconds goes deaf to what it
+    cannot reach and gives up a cell of the route the ground does not allow.
+- **What is not kept.** A save writes every man where he stands and the gates' wounds, and
+  nothing of a fight in the middle (arrows in the air, cooldowns, morale in the moment): saving
+  settles the fight, and the game carries on from there (a save is exact between fights).
+  Fights the computer lords plan are still reckoned with Warlords' odds (`Campaign::winChance`,
+  `attackOdds`): that is an *estimate* of whether to attack, never what happens.
+
 ## Fights
+
+*Built in step 3, as described above.*
 
 - **They start where squads meet.** The rules are today's battle rules: orders, morale,
   initiative, the drag to face, formations, walls and gates.
@@ -176,16 +250,21 @@ drawn as the men it holds, laid out from the campaign's state alone. The stack m
   already do), the minimap shows the fight they're in, and **Fight!** takes the camera
   there.
 - **No dice.** `Campaign::winChance` stays only as the computer lords' estimate when they
-  plan.
+  plan. The numbers on a town's walls are that estimate's too (Warlords' defence), not what
+  the real walls do: the gate's hit points are the region's own, and the old *Raise the
+  walls* purchase is gone, since it would have changed nothing a man can see.
 - **Heroes at ruins** fight the guardian in the ruin itself.
 
 ## What you see
 
-*Built in step 2: the table below is what the campaign map shows now, except the bottom row
-(the single man's shield and wounds are the battle's). The soldiers are points up to a
-kilometre or so out, the battle's sprites within about 380 m of the camera, in a column of
-squads at the point of its route the stack has reached; a town's garrison stands in its
-courtyard. Nothing is hidden by fog yet.*
+*Built in steps 2 and 3: the table below is what the campaign map shows now. The soldiers are
+points up to a kilometre or so out and the battle's sprites within about 380 m of the camera;
+there is no point at which units are not drawn. The two are one level of detail: the dots fade
+out as the camera comes in (full at 380 m, gone by 170 m), so a dot becomes the man in
+place. A man in a fight pulses as a dot, rapidly and at random in strength and size,
+his own phase from his number and the game's time (never the camera's), and swings, shoots and
+flinches as a sprite with the animations the battle gives him. Arrows in flight are drawn.
+Nothing is hidden by fog yet.*
 
 | Height | What you see |
 |---|---|
@@ -206,16 +285,17 @@ courtyard. Nothing is hidden by fog yet.*
 
 ## The minimap
 
-*Built in step 2 (the page's `#minimap`, `illyria_minimap*` in `game/web/main.cpp`): every
-town and site, soldiers as points where they stand apart (two or fewer in 40 m) and as a
-heat blob in their side's colour where they do not, the ground the camera sees, and a tap or
-drag to take the camera there. It shows every soldier, since there is no fog of war until
-step 4; fights do not glow yet.*
+*Built in steps 2 and 3 (the page's `#minimap`, `illyria_minimap*` in `game/web/main.cpp`):
+every town and site, soldiers as points where they stand apart (two or fewer in 40 m) and as a
+heat blob in their side's colour where they do not, the ground the camera sees, a pulsing glow
+where men are fighting, and a tap or drag to take the camera there. It shows every soldier,
+since there is no fog of war until step 4. The Fight! button takes the camera to the
+fiercest fight on the island.*
 
 - Every town and site, always.
 - Every soldier you can see as a point in his side's colour where the points can be told
   apart; where they can't, a heat map of each side's troops.
-- Fights you can see glow. Tap anywhere on it to take the camera there.
+- Fights glow (built). Tap anywhere on it to take the camera there.
 
 ## How hard the computer lords are
 
@@ -236,7 +316,7 @@ lord sees.
 | Built | Becomes |
 |---|---|
 | Campaign stacks, movement points, the 8-to-a-cell rule | Squads on the land, the battle's movement, no caps |
-| "Fight it" / "Resolve", the battle window (`Region::fromContinent`) | Fights in place, everywhere |
+| "Fight it" / "Resolve", the battle window (`Region::fromContinent`) | Fights in place, everywhere (built, step 3: the window, the prompt, the dice and `BattlePlan` are gone) |
 | Close-up land streamed around the camera | Kept, and the simulation samples the same ground |
 | Towns, castles, walls, gates, ramps | Kept, all of them in the simulation at once |
 | Gold, upkeep, training, rare troops, heroes, ruins, temples, sages | Kept, in days of 2 minutes |
@@ -244,7 +324,7 @@ lord sees.
 | Boats | Later: carrying squads over water in real time |
 | The computer lords' campaign AI | Kept, planning in real time instead of daily, its sight set by the difficulty |
 | The title's set battles (Ford, Siege) and matches (Horde, CTF) | Kept as they are: a piece of the island with nothing else running |
-| Saved games | A new format: the whole world's state |
+| Saved games | A new format (`ILC3.`: every man, where he stands); the rest of a fight in progress is not kept (step 4) |
 
 ## Building it, in steps
 
@@ -256,11 +336,28 @@ Each step leaves a playable game.
 2. **Soldiers on the land (built).** Soldiers replace flags: points far out, sprites close in,
    in a column of squads, marching their routes. The minimap. A stack is picked by tapping or
    boxing its soldiers. Still the stack model and the dice-or-3D fight prompt; no fog.
-3. **Fights in place.** Contact turns men into fully stepped soldiers where they stand. The
-   whole island's ground, stone and routes in the simulation; no battle window, no prompt,
-   no dice; sieges at the real towns.
-4. **The rest.** The computer lords in real time, saved games, the fast-forward limit,
-   multiplayer, fog of war.
+3. **Fights in place (built).** Contact turns men into fully stepped soldiers where they stand.
+   The whole island's ground, stone and routes in the simulation; no battle window, no prompt,
+   no dice; sieges at the real towns' walls and gates; a pulsing dot for every man in a fight,
+   the battle's animations close up; the minimap glows where men fight.
+4. **The rest.** What step 3 leaves for later:
+   - **Fog of war** (and the difficulty it sets), in single-player and multiplayer.
+   - **The computer lords in real time**, planning as the world changes instead of at dawn
+     (today they still plan daily, and settle their stacks at dawn so as to rearrange them);
+     and splitting a stack into squads for the player's orders. Their idea of a fight
+     is still Warlords' odds; and a hero sent to a town alone besieges it alone.
+   - **The fast-forward limit**: at 4× and 8× with a big fight on, the machine may not keep up;
+     the speed should drop to what it can hold and say so. Today the page runs up to 40 ticks a
+     frame and no more.
+   - **Saved games** that keep the fight in progress (arrows, cooldowns, morale), and
+     the starting of the world's ground inside the page's load rather than at the first fight.
+   - **Multiplayer** (lockstep over the same world).
+   - **Ruin guardians** fought in the ruin itself (today a hero's search is still a roll of the
+     dice; it is the one dice fight left), and **boats**, which do not fight yet (a stack aboard
+     is never woken).
+   - **Walls**: the real walls and gates are the whole defence; the old Warlords numbers and
+     the temple, ruin and tower *holding* edges and the home-land edge are not applied in fights
+     on the campaign ground.
 5. **Boats.**
 
 ## Open questions

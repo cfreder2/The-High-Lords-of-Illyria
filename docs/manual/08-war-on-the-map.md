@@ -1,7 +1,7 @@
 # War on the Map {#war}
 
 ::: lore
-*"The dice are honest. It is the men who roll them who are not."*
+*"There is no map and no battle. There is only the ground, and who is standing on it."*
 
 — Brannoc the Bold
 :::
@@ -10,42 +10,32 @@
 
 To attack, order a stack into an enemy stack, an enemy city or a neutral town: tap the enemy soldiers or the town with your stack selected. The march ends at the enemy: the attack is its last step, at the stack's pace. Attacking is also the only way to take a city.
 
-When the stack arrives, the campaign stops and asks:
+There is no prompt. When two stacks of different lords come within a long bowshot of each other (about 150 m between their edges), and either is on the move or already fighting, **their men are in a fight**: from then on every man in them is stepped in full by the battle's rules (chapter [](#battlefield)), where he stands. The soldiers on the map are those men. Zoom out and you see them as points in their lords' colours, and a man who is fighting flashes, rapidly and at random in strength; zoom in and the points become the battle's own soldiers, striking, shooting and flinching, standing exactly where the points were. A stack marching past a town's garrison at rest behind its walls does not wake it; one that comes up to the walls does.
 
-> **Battle at Alder Cross.** Your 3 armies (strength 13) against 2 (strength 7). On your land. Win, then hold the town while your banner rises (in 3D: take its courtyard).
->
-> **Your edges:** home land +3% · hero leads +2%. **Theirs:** none.
->
-> **Fight it** · **Resolve**
+When nobody hostile has been near for ten seconds, the fight is over: each man stays where it left him, with his wounds, his kills, his rank and his morale, and walks back to his place in his squad. The dead lie about for twenty seconds, then are taken away. Nothing was rolled: the men who are left are the men who survived.
 
-**Resolve** settles it at once with the dice, the way *Warlords* did. **Fight it** takes you down to the ground where the stacks met, and the battle is fought in full (chapter [](#battlefield)): every army in the two stacks is there with its numbers, its ranks and its heroes, on that exact ground. A town is held from its walls. When the battle is won, lost or withdrawn from, the survivors go back on the map with their kills and new ranks; withdrawing counts as being thrown back.
+Every stack, yours and the computer lords', marches its route with the battle's initiative, fighting whoever strikes it or crosses its path; standing, its men meet whoever comes within about 45 m of where they stand (missile troops close to a good bowshot and shoot), and a garrison holds its post. **Fight!** brings the camera to the fiercest fight on the island, and the minimap glows where men are fighting.
 
-The computer lords' battles with each other, and their attacks on you, are always settled by the dice. Battles at sea, from or against a boat, have no ground under them and are always resolved.
+## How the computer lords reckon a fight {#dice}
 
-![The battle prompt: the two sides' armies and strengths, whose land it is, and each side's edges.](images/shots/camp_prompt.jpg)
+Before it attacks, a computer lord reckons its chances. It does so with the old *Warlords* dice rules, which survive only for this: an estimate, worked out exactly, of whether an attack would succeed. It decides whether to go, never what happens when it gets there.
 
-## How the dice work {#dice}
-
-The dice battle follows the *Warlords* appendix rule for rule:
+The estimate follows the *Warlords* appendix:
 
 1. Each side's armies are **lined up**: the weakest first, the strongest last, and heroes, the most valuable, last of all.
-2. The first army of each side fights the first of the other, **one on one**.
-3. Each round, both roll a ten-sided die. A roll no higher than the **other** army's strength is *low*; higher is *high*.
+2. The first army of each side is set against the first of the other, **one on one**.
+3. Each round, both are given a ten-sided die. A roll no higher than the **other** army's strength is *low*; higher is *high*.
 4. If both roll low, or both high, nothing happens. If one rolls low and the other high, **the low roller takes a hit**.
-5. **Two hits destroy an army.** The survivor fights on against the next in the other line, with whatever hits it has taken.
-6. The battle ends when one side has no armies left.
+5. **Two hits destroy an army.** The survivor goes on against the next in the other line.
+6. It ends when one side has no armies left.
 
-So an army is hit more often the stronger its foe is, and hits more often the stronger it is itself. A strength-9 army rolling against a strength-3 one rolls low nine times in ten; the strength-3 army rolls low only three times in ten.
+So the lord thinks an army is hit more often the stronger its foe is, and hits more often the stronger it is itself. The strengths are not whole numbers, because of the small edges (below): an army's reckoned strength is
 
-The strengths are not whole numbers any more, because of the small edges (below). Each army's fighting strength is
-
-> (its strength + the force modifier) × (1 + its edges), never above 9 nor below 1,
-
-and the die has a thousand faces against strengths in hundredths: the same odds as a ten-sided die against whole strengths, but a 3% edge counts for 3%.
+> (its strength + the force modifier) × (1 + its edges), never above 9 nor below 1.
 
 ## The force modifier {#force-modifier}
 
-As in *Warlords*, whole points are added to the strength of every army in a side's line for:
+As in *Warlords*, the lord adds whole points to the strength of every army in a side's line for:
 
 | Modifier | Worth |
 |---|---|
@@ -55,13 +45,12 @@ As in *Warlords*, whole points are added to the strength of every army in a side
 | Defending a city: walls 2 to 6 / 7 or 8 / 9 | +1 / +2 / +3 (walls 0-1: nothing) |
 | Each catapult in the attacking stack, against a city's walls | takes one point off the walls' bonus |
 | A catapult attacking a city | fights 2 points stronger itself |
-| Armies on a boat's deck, both sides | −1 |
 
-A hero's leadership, which *Warlords* counted in whole points, is an edge now (below).
+In a real fight none of this is a number: a flier flies over the wall, a catapult's stone breaks the real gate, a hero's artifacts count as the blessings they always were, and the walls are the walls.
 
 ## The small edges {#edges}
 
-Like the fittings on a good sword, each worth a few percent, the edges add up, and none decides a fight alone. A weaker army with every edge is still the weaker army. The same edges, with the same numbers, count in the dice and on the battlefield.
+Like the fittings on a good sword, each worth a few percent, the edges add up, and none decides a fight alone. A weaker army with every edge is still the weaker army. The lords reckon with them; and in a set battle the same edges, with the same numbers, count in every blow.
 
 | Edge | When | Worth |
 |---|---|---|
@@ -77,7 +66,7 @@ The lords' likings are the *Warlords* empires' (by archetype): the Giants like h
 
 What they are worth: four strength-4 armies against four are a coin toss; home land alone makes it 53 in 100; veterans 56; every edge together (+15%) about 69. Three and a half against four with every edge still loses.
 
-## A battle, round by round {#dice-example}
+## A lord's reckoning, round by round {#dice-example}
 
 Day two. Your lord, **Lord of Kingshold**, a hero of level 1 (strength 4), marches out with his escort of light infantry (3) and the pegasi of the Throne (6) against a neutral town with walls 4, held by a garrison of light infantry (3) and archers (4).
 
@@ -87,31 +76,27 @@ Day two. Your lord, **Lord of Kingshold**, a hero of level 1 (strength 4), march
 
 Your light infantry and theirs are evenly matched: each round, either may take the hit. Say yours fall after wounding theirs once. The pegasi step up at 7.14 against a wounded 4: they take a hit only one round in five that anything happens, and finish them. Against the archers (5) the pegasi still have the better of it, nearly three to one. Your hero, last in line, may never draw his sword.
 
-Worked out exactly, as the computer lords do it, this attack succeeds **91 times in a hundred**. Without the pegasi, the hero and his light infantry alone would win only **3 times in 10**: the flier's point is worth more than any army in the stack.
+Worked out exactly, as the computer lords do it, this attack looks like succeeding **91 times in a hundred**. Without the pegasi, the hero and his light infantry alone would win only **3 times in 10**: the flier's point is worth more than any army in the stack.
 
 ::: tip
 The A-team of *Warlords* still works: a hero with artifacts, a flier, a special army, and strong armies behind them. One griffin adds a point to every army in the stack.
 :::
 
-Kills in the dice count exactly as kills in 3D: every army destroyed is its soldiers killed, credited to the army that struck the second blow, and ranks and levels rise. The fallen are gone; the survivors' wounds heal before the next fight.
-
 ## Sieges and walls {#siege-map}
 
-A town defends with everything in it, up to 32 armies, though only eight can attack it at once; a big garrison is ground down by wave after wave. Its walls add to every defender's strength, and they fall a point each time the town is taken. Catapults (trained at Kingshold, Deepforge and Dreadspire) break a point of the walls' bonus each, and fight two points stronger against a town themselves, though they are weak in the field (strength 3) and slow on the road (6 points, no marshes).
-
-In the 3D battle the walls, the towers and the gate are real (chapter [](#sieges)).
+A town defends with every man inside it, however many, and is attacked by every man who marches on it. Its walls, towers and gate are real, and so is everything that happens to them (chapter [](#sieges)): your men march up to the gate and hack at it, their archers shoot from the walk, your catapults throw stones, and what is hit stays hit. Catapults (trained at Kingshold, Deepforge and Dreadspire) are weak in the field and slow on the road (6 points, no marshes), but a stone is what breaks a gate.
 
 ## Raising a banner {#banners}
 
-**Beating a town's defenders does not take the town.** When you win the battle for a town (the dice, or a 3D battle won by killing or routing its defenders), or march into a town nobody defends, your army stands in it and **raises its banner**. The town is yours when the banner reaches the top.
+**Beating a town's defenders does not take the town.** When its men are dead or gone, or you march into a town nobody defends, your army stands in its courtyard and **raises its banner**. The town is yours when the banner reaches the top. What is counted is men: the banner rises only while the men of one lord stand in the courtyard, and none of the town's own or of any third lord's.
 
 - **More troops raise it faster.** A lone army takes about a minute at normal speed (13 hours of the campaign's day), four armies half that, a full stack of eight about 19 seconds.
-- **Enemies near stop it.** Armies of any other lord in the town or on the eight cells around it contest it: while they are as many as yours or fewer, the banner stops; while they are more, it comes down as fast as it would rise for them.
+- **Enemies in the town stop it.** Armies of any other lord with men in the town contest it: while they are as many as yours or fewer, the banner stops; while they are more, it comes down as fast as it would rise for them.
 - **Leaving gives it up.** If your armies march out, or fall, the attempt is abandoned and its progress lost.
 - **At the top** the town is yours: its income, its training (stopped, for you to choose again), the loser's share of its treasury (half to you), its walls one lower, and its own hex and the six round it.
 - **A town being taken trains nothing** and takes in no new armies until the raisers are gone.
 
-The bar under the town's name says *Your banner rising · 45%*, *held up* (amber) or *coming down* (red); over the keep a tall pole carries the old colours down and the new ones up. A 3D siege won by taking the courtyard raises the banner then and there (chapter [](#capture-point)).
+The bar under the town's name says *Your banner rising · 45%*, *held up* (amber) or *coming down* (red); over the keep a tall pole carries the old colours down and the new ones up. The courtyard's flagpole of the set siege battle is a different rule (chapter [](#capture-point)).
 
 ![A banner going up over a newly won town, with its progress bar.](images/shots/camp_banner.jpg)
 
@@ -128,4 +113,4 @@ The land itself is held, hex by hex. The hexes are drawn faintly on the map, eac
 - **Outposts.** A tower stands at each of the 24 river crossings. An outpost's hex is claimed twice as fast, and once held (half a claim or more) it claims the six hexes round it as one army would. On the map each shows as ♜ with its name, in its holder's colour.
 ![Hexes washed in their holders' colours: here Kingshold's land, gone orange after the town fell while its lord was away.](images/shots/camp_land.jpg)
 
-- **Worth.** Land gives the **home land** edge (+3%) in every battle fought on it, in the dice and in 3D. A defender standing in an outpost's hex has the **holding** edge (+4%). And land pays: one gold a day for every five hexes.
+- **Worth.** Land gives the **home land** edge (+3%) in the lords' reckoning (and in a set battle fought on it). A defender standing in an outpost's hex has the **holding** edge (+4%). And land pays: one gold a day for every five hexes.

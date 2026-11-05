@@ -62,6 +62,6 @@ A neutral garrison is weak, and in the first weeks of the war the race for the n
 
 *The High Lords of Illyria* is played on the campaign map, a continent seen from the sky with its roads, rivers, forests and mountains, its cities, its ruins and its temples. Time passes in campaign days; armies march, cities train, gold comes in and goes out.
 
-When your stack marches into an enemy, the campaign stops and asks how the battle is to be fought. **Resolve** settles it as *Warlords* did, with the dice, in a moment. **Fight it** opens the real battle on that exact ground: the camera comes down out of the sky to the field where the stacks met, and every army in them is there, soldier by soldier, with its numbers, its veterans and its heroes. Win, lose or withdraw, the survivors go back onto the map with their kills and their new ranks.
+When your stack marches into an enemy, nothing stops and nothing asks. The armies fight where they meet, on the map, with every man in them stepped by the battle's own rules, and the camera need not move: zoom in to see the men, out to see each of them as a dot that flashes while he fights. There are no dice and no battle screen; the survivors are simply who is left standing, with their kills and their new ranks.
 
 The battle can also be played on its own: the game keeps two set battles, the ford at Oakhaven and the siege of the town beyond it, to learn the field on (chapter [](#quick-start)).
