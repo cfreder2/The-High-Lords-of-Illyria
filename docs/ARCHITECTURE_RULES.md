@@ -4,6 +4,12 @@
 
 Vocabulary: **Conquest** is the whole island with many computer lords (once called the campaign). **Skirmish** is a single battle, a small taste of Conquest. They are one game.
 
+## 0. Skirmish is the baseline
+
+- Skirmish is the game world on a small ground, about an 80 m perimeter, with a small battle. Conquest is the same world on the island with more in it. The rules and the way the world works are identical; only the size of the ground and the amount in it differ, so a skirmish takes less time to play.
+- Whatever can happen in Conquest can also happen in a skirmish: put a ruin on the ground and a hero can enter it; put a castle in the middle and the player can enter it and produce a unit. Such features belong to the world, not to the Conquest layer. A feature written only for Conquest is a bug in the design.
+- Everything else builds on the skirmish world. Nothing in Conquest may replace a skirmish rule (movement, pathfinding, walls, ramps, gates, formations, orders) with a second implementation, and no man is ever stepped by anything but the world's step.
+
 ## 1. One game, one code
 
 - One battle system: one `sim::World`, one `Battle` presenting it, one renderer pass over the men, one selection and inspection, one order and command UI, one effects, sound and voice path, one level of detail (dots when far, sprites near, dots pulse in a fight).
