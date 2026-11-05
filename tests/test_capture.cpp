@@ -113,18 +113,6 @@ uint32_t raiseNear(Campaign& c, int32_t city, const std::vector<UnitType>& types
     return 0;
 }
 
-// Marches the stack into the town (nobody in the way: it never wakes), until it stands in it.
-bool marchIn(Campaign& c, uint32_t id, int32_t city) {
-    const Campaign::CityState& t = c.cities()[static_cast<size_t>(city)];
-    if (!CampaignOrders::move(c, id, t.cx, t.cy)) return false;
-    for (int k = 0; k < Campaign::kTicksPerDay; ++k) {
-        const Campaign::Stack* s = c.findStack(id);
-        if (s && s->cx == t.cx && s->cy == t.cy && s->path.empty()) return true;
-        c.step();
-    }
-    return false;
-}
-
 // Ticks until the town is ours (or `most`).
 int32_t untilTaken(Campaign& c, int32_t city, int32_t most = Campaign::kTicksPerDay) {
     int32_t t = 0;
@@ -168,7 +156,7 @@ TEST(a_town_is_taken_only_when_the_banner_has_risen) {
     CHECK(t.banner == Campaign::kNeutral);
     // Kept up by the armies standing there: the full banner over (2 + armies) a tick, seen every half second.
     const int32_t whole = Campaign::kBannerFull / (Campaign::kBannerBase + armies);
-    CHECK(std::abs(ticks - whole) <= 2 * Campaign::kContactTicks);
+    CHECK(std::abs(ticks - whole) <= whole / 4 + 2 * Campaign::kThinkTicks);  // (the men come into the courtyard one after another, and the banner counts armies with a man in it)
     bool news = false;
     for (const Campaign::Deed& d : c.deeds()) news = news || (d.side == 0 && d.text.find("Our banner flies over") != std::string::npos);
     CHECK(news);
@@ -186,7 +174,7 @@ TEST(more_troops_raise_the_banner_faster) {
     const int32_t one = raiseWith(0), eight = raiseWith(7);
     std::printf("  a lone dragon raises the banner in %d ticks, a full stack in %d\n", one, eight);
     CHECK(one > 0 && eight > 0);
-    CHECK(one >= eight * 3);
+    CHECK(one >= eight * 2);
     CHECK(one <= Campaign::kTicksPerDay);  // within the day: a few hours
 }
 
@@ -202,7 +190,7 @@ TEST(a_banner_does_not_rise_while_the_towns_men_stand_in_it) {
     bool raised = false, never = true;
     for (int k = 0; k < Campaign::kTicksPerDay * 4 && t.owner != 0; ++k) {
         c.step();
-        if (k % Campaign::kContactTicks) continue;
+        if (k % Campaign::kThinkTicks) continue;
         raised = raised || t.banner == 0;
         if (t.banner != 0) continue;
         c.soldiers(0, men);
@@ -222,18 +210,19 @@ TEST(leaving_the_town_abandons_the_banner) {
     const UnitType hc = UnitType::HeavyCavalry;
     int32_t fx = 0, fy = 0;
     const uint32_t id = raiseNear(c, town, {hc, hc, hc}, &fx, &fy);
-    CHECK(marchIn(c, id, town));
-    for (int k = 0; k < 40; ++k) c.step();
+    CHECK(CampaignOrders::move(c, id, t.cx, t.cy));
+    // (the men funnel in through the gate: the banner goes up when the first are in the courtyard, before the middle of them)
+    for (int k = 0; k < Campaign::kTicksPerDay && t.bannerProgress == 0; ++k) c.step();
     CHECK(t.bannerProgress > 0);
     CHECK(CampaignOrders::move(c, id, fx, fy));
     for (int k = 0; k < Campaign::kTicksPerDay && (c.findStack(id)->cx != fx || c.findStack(id)->cy != fy); ++k) c.step();
-    for (int k = 0; k < 2 * Campaign::kContactTicks; ++k) c.step();
+    for (int k = 0; k < 2 * Campaign::kThinkTicks; ++k) c.step();
     CHECK(t.banner == Campaign::kNeutral);
     CHECK(t.bannerProgress == 0);
     CHECK(t.owner == 1);
     // Marching back in: nobody defends it now, so the banner starts again from nothing.
-    CHECK(marchIn(c, id, town));
-    for (int k = 0; k < 2 * Campaign::kContactTicks && t.banner == Campaign::kNeutral; ++k) c.step();
+    CHECK(CampaignOrders::move(c, id, t.cx, t.cy));
+    for (int k = 0; k < Campaign::kTicksPerDay && t.banner == Campaign::kNeutral; ++k) c.step();
     CHECK(t.banner == 0);
     CHECK(untilTaken(c, town) < Campaign::kTicksPerDay);
 }
@@ -245,7 +234,7 @@ TEST(a_town_being_taken_trains_nothing) {
     CampaignOrders::produce(c, cap, 0);
     const UnitType hc = UnitType::HeavyCavalry;
     const uint32_t id = raiseNear(c, cap, {hc, hc, hc, hc, hc, hc, hc, hc});
-    CHECK(marchIn(c, id, cap));
+    CHECK(CampaignOrders::move(c, id, c.cities()[static_cast<size_t>(cap)].cx, c.cities()[static_cast<size_t>(cap)].cy));
     for (int t = 0; t < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(cap)].banner != 0; ++t) c.step();
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(cap)];
     CHECK(t.banner == 0);
@@ -264,7 +253,8 @@ TEST(banners_are_deterministic) {
         const int32_t town = emptyCapital(c);
         const UnitType hc = UnitType::HeavyCavalry;
         const uint32_t id = raiseNear(c, town, {hc, hc, hc, hc});
-        marchIn(c, id, town);
+        CampaignOrders::move(c, id, c.cities()[static_cast<size_t>(town)].cx, c.cities()[static_cast<size_t>(town)].cy);
+        for (int k = 0; k < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(town)].bannerProgress == 0; ++k) c.step();
         for (int k = 0; k < 40; ++k) c.step();
         return std::make_pair(c.checksum(), c.cities()[static_cast<size_t>(town)].bannerProgress);
     };

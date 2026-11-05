@@ -377,8 +377,13 @@ void World::clearFight(uint64_t seed) {
     remainsAdded_ = 0;
     packs_ = 0;
     tick_ = 0;
-    for (GateState& g : gates_)
-        if (g.broken()) g.brokenTick = 0;  // (when it broke is no one's business once the clock is back at nothing)
+    for (size_t i = 0; i < gates_.size(); ++i) {
+        GateState& g = gates_[i];
+        if (g.opened && nav_) nav_->shutGate(i);  // (a gate swung open is shut again: it is no one's business who was going through it)
+        g.opened = false;
+        g.openUntil = 0;
+        if (g.broken()) g.brokenTick = 0;
+    }  // (when it broke is no one's business once the clock is back at nothing)
     nextId_ = 1;
     nextUnitId_ = 1;
     rng_ = Rng(seed, 0);
@@ -459,6 +464,7 @@ void World::step(std::span<const Command> commands) {
     // Those let loose together go as packs (world_scavenge.cpp).
     if (raids) formPacks();
     buildBroad();
+    updateGates();
 
     for (Unit& u : units_) {
         if (!u.present()) continue;
@@ -2444,6 +2450,7 @@ uint64_t World::checksum() const {
         h.addI64(g.hp);
         h.addU64(g.holder);
         h.addU64(g.brokenTick);
+        if (g.opened) h.addU64(0x09E7 + g.openUntil);  // (only while one is swung open: a battle without any hashes as before)
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

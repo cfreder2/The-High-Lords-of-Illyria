@@ -91,10 +91,8 @@ struct Squad {
     // Where it was last sent (the computer re-plans a chase only when that moves enough).
     mutable V3 goal{};
     mutable bool hasGoal = false;
-    // In Conquest (battle_conquest.cpp) a squad is an army of a stack: its men awake in the world are `members`, those
-    // asleep in their stack on the march or in a town are `sleeping` (their ids as Campaign::Man has them), and what its
-    // card shows that no unit holds is told by the army (`told`, `arms`, `rare`, `command`, `hired`).
-    std::vector<uint32_t> sleeping{};
+    // In Conquest (battle_conquest.cpp) a squad is an army of a stack: its men are `members`, and what its card shows
+    // that no unit holds is told by the army (`told`, `arms`, `rare`, `command`, `hired`).
     uint32_t army = 0, stack = 0;
     int total = 0;  // the squad's full size (0: its members)
     bool told = false;
@@ -219,38 +217,26 @@ public:
     // The fight in the borrowed world was cleared away (its men are gone, new ones are not those): forget them.
     void forgetMen();
     // Every man as the conquest says he stands this frame (Campaign::visibleSoldiers): the squads of the armies he is
-    // of (their men awake in the world are its units, those asleep are sleepers, one picture each in the renderer's
-    // one pass), who is selected or looked at, and the selection kept through a man's waking and sleeping (it is of
-    // men, not of the world's units, which come and go).
+    // of (every man is a unit of the world), who is selected or looked at, and the selection kept through a man's
+    // boarding a boat and landing (it is of men, not of the world's units, which come and go).
     void presentConquest(const std::vector<sim::Campaign::Soldier>& men);
     // The player's orders for the conquest, out as Orders (Campaign::submit): the commands to men in the world, as a
     // skirmish's step would take them; the marches are submitted as they are given (marchOrder).
     void flushOrders();
-    // Every man of a stack of the player's, asleep or awake, selected (the page's, at the start: over the capital).
+    // Every man of a stack of the player's selected (the page's, at the start: over the capital).
     void selectStack(uint32_t stack);
     // The stack the selection is of (all its men in one), or 0: the stack panel's, the voyage's, the search's.
     uint32_t selectedStack() const { return selStack_; }
     // The army (squad) the selection is exactly (every man of it and no other), or 0.
     uint32_t selectedArmy() const;
 
-    // Men who are not units of the world presented: the conquest's soldiers asleep in their squads on the march or in a
-    // town (their bodies are stepped as a whole, not as men). A man has one record for presentation, Campaign::Soldier,
-    // which says where he stands whether he is awake (and then his unit is to hand) or asleep; the sleepers are those of
-    // them with no unit, each the same picture as a unit's, in the same pass of the renderer (a dot from far off, the
-    // battle's sprite near). x, y are continent metres.
     // What the viewer may see of the others (Campaign::canSee, through the conquest this field presents): a man of
     // `owner` at battle-local x, y that it refuses is not drawn, picked or looked at. A skirmish's field sees all.
     bool sees(uint8_t owner, float x, float y) const;
-    const std::vector<sim::Campaign::Soldier>& sleepers() const { return sleepers_; }
-    // Whether a man asleep (by his id) is selected, or looked at.
-    bool isSelectedMan(uint32_t man) const { return std::binary_search(selSleeping_.begin(), selSleeping_.end(), man); }
-    bool isInspectedMan(uint32_t man) const { return inspected_.kind == Inspected::Kind::Man && inspected_.id == man; }
-    // A man asleep (by his id) where he stands, battle-local on the ground (the origin if he is not asleep).
-    V3 sleeperPositionOf(uint32_t man) const;
     // The man nearest the finger on the screen within `tapPx` pixels, at any height and any distance (a dot is as
-    // much a man as a sprite): one of the world's (unit: his id) or a sleeper (index into sleepers()).
+    // much a man as a sprite): a unit of the world (his id).
     struct ManPick {
-        enum class Kind : uint8_t { None, Unit, Sleeper } kind = Kind::None;
+        enum class Kind : uint8_t { None, Unit } kind = Kind::None;
         uint32_t id = 0;
         size_t index = 0;
         float px = 1e30f;  // how far off the finger he is, in pixels
@@ -258,8 +244,7 @@ public:
     ManPick manAt(const Camera& camera, float x, float y, float tapPx) const;
     // The standing gate under the finger, or -1.
     int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
-    // What the player looks at and cannot order: view-only, grey. One man not his (a unit of the world, or a sleeper by
-    // his man id) or a gate; a tap on any of them with nothing selected looks at it, and any other tap lets it go.
+    // What the player looks at and cannot order: view-only, grey. One man not his (a unit of the world) or a gate; a tap on any of them with nothing selected looks at it, and any other tap lets it go.
     struct Inspected {
         enum class Kind : uint8_t { None, Unit, Man, Gate } kind = Kind::None;  // Man: in Conquest, by his id (Campaign::Man)
         uint32_t id = 0;
@@ -304,7 +289,7 @@ public:
         V3 front{1, 0, 0};
     };
     // A group is a list of men: in a skirmish their unit ids; in a conquest their man ids (a unit id there is a place in the
-    // world that men come to and leave as fights begin and end), found again each time among the men awake and asleep.
+    // world that men leave and come to as they board a boat and land), found again each time among the men.
     struct Group {
         std::vector<sim::EntityId> units;  // skirmish
         std::vector<uint32_t> men;         // conquest
@@ -320,11 +305,10 @@ public:
     // Ungroup: forgets every group whose living men are all selected. How many went.
     int ungroupSelection();
     const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
-    // A group's living men now: awake (unit ids) and asleep (man ids), as the selection has them.
+    // A group's living men now (unit ids), as the selection has them.
     struct GroupMen {
         std::vector<sim::EntityId> units;
-        std::vector<uint32_t> sleepers;
-        int alive() const { return static_cast<int>(units.size() + sleepers.size()); }
+        int alive() const { return static_cast<int>(units.size()); }
     };
     GroupMen groupMen(int slot) const;
     size_t groupSize(int slot) const;           // men ever put in it, the fallen too (0: the slot is free)
@@ -346,8 +330,6 @@ public:
     // keep to a bowshot and shoot him, the rest run him down. When he falls
     // each decides for himself: another foe, or back to his squad.
     void orderAttackUnit(sim::EntityId target);
-    // Conquest: at a man asleep (his stack on the march, or in a town); the squads march to where he stands.
-    void orderAttackSleeper(size_t sleeper);
     // Missile troops shoot at the spot; the rest march there, fighting
     // whoever they meet.
     void orderAttackGround(const V3& at);
@@ -372,7 +354,6 @@ public:
         Kind kind = Kind::None;
         int index = -1;  // the unit (index), gate, wall ring or obstacle
         int squad = -1;  // zoomed far out: the squad nearest the finger (index -1)
-        int sleeper = -1;  // Conquest: a man asleep (index into sleepers()), who is no unit (index -1)
         V3 at;           // where on the ground
     };
     Pick pickAt(const Camera& camera, float x, float y, float pixelScale) const;
@@ -508,7 +489,7 @@ public:
         return u.owner == local_ && !(u.id <= foreign_.size() && foreign_[u.id - 1]);
     }
     bool controllable(const Squad& s) const { return s.owner == local_ && (s.members.empty() || controllable(world_->units()[s.members.front() - 1])); }
-    // How many a squad's card counts: its men that are alive (awake or asleep), and the squad's full size.
+    // How many a squad's card counts: its men that are alive, and the squad's full size.
     int totalCount(const Squad& s) const { return s.total > 0 ? s.total : static_cast<int>(s.members.size()); }
     // A fallen soldier back in his squad (Horde's hero returning): a fresh
     // soldier with the fallen one's stats, rank, kills and blessings, at
@@ -557,9 +538,7 @@ public:
     // Conquest's fights on this field (its world is not this battle's): show what its blows and wounds did (blood,
     // dust, sparks, splinters), and move the sparks and smoke on.
     void stepEffects(float seconds);
-    // Selected men asleep (their ids as Campaign::Man has them) and every man selected, awake or asleep.
-    const std::vector<uint32_t>& selectedSleepers() const { return selSleeping_; }
-    size_t selectionSize() const { return selectedAlive().size() + selSleeping_.size(); }
+    size_t selectionSize() const { return selectedAlive().size(); }
     // The types of those selected, one name for them all ("Mixed" when they are not).
     const char* selectionLabel() const;
     bool selectionBatters() const;
@@ -729,25 +708,20 @@ private:
     Inspected inspected_;
     sim::EntityId inspectedUnit_ = 0;  // the unit of the world he is, awake (Conquest), or the unit looked at
     // Conquest (battle_conquest.cpp). The selection there is of men (their ids), so that it holds through a man's
-    // waking and sleeping; selection_ and selSleeping_ are what it is of the world's units and of the sleepers now.
+    // boarding and landing; selection_ is what it is of the world's units now.
     sim::Campaign* conquest_ = nullptr;
-    std::vector<uint32_t> selMen_, selSleeping_;
+    std::vector<uint32_t> selMen_;
     std::vector<uint32_t> manOfUnit_;      // by EntityId - 1: the man a unit is (0: none)
     uint32_t selStack_ = 0;
     // Who an order is for, and where it goes as a march of squads (marchOrder): the one place an order of the
     // selection becomes the conquest's rather than the world's.
     bool marchOrder(const V3& to, bool wholly = false);
-    void haltOrder();
     static bool beyondReach(const V3& from, const V3& to);  // more than kLocalReachM off
     void marchArmies(std::vector<uint32_t> armies, const V3& to);  // the one place a march of squads is made
-    void submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t cx, int32_t cy);
+    void submitMarch(const std::vector<uint32_t>& armies, int32_t cx, int32_t cy);
     ManPick manPick(const Camera& camera, float x, float y, float pixelScale) const;
-    void selectMen(std::vector<sim::EntityId> units, std::vector<uint32_t> sleepers);
     void applySelection(std::vector<sim::EntityId> units);
     void keepSelectedMen();
-    static constexpr size_t kNoSleeper = static_cast<size_t>(-1);
-    size_t sleeperIndex(uint32_t man) const;  // into sleepers_, or kNoSleeper
-    V3 sleeperPosition(const sim::Campaign::Soldier& m) const;  // battle-local, on the ground
     int squadOfArmy(uint32_t army) const;
     void inspect(Inspected what);
     struct Memo {  // what a squad keeps between frames, by army: the squads are made afresh from the conquest each frame
@@ -755,7 +729,6 @@ private:
         V3 facing{1, 0, 0};
     };
     std::map<uint32_t, Memo> armyMemo_;
-    std::vector<std::pair<uint32_t, size_t>> sleeperIx_;  // (man, index into sleepers_), by man
     std::map<uint32_t, int> squadOfArmy_;
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
@@ -786,7 +759,6 @@ private:
     std::vector<V3> prevUnitPos_;
     std::vector<uint32_t> deathTick_;  // UINT32_MAX while alive
     std::vector<uint32_t> attackTick_, hitTick_;
-    std::vector<sim::Campaign::Soldier> sleepers_;
     bool alphaSet_ = false;
     float alphaOver_ = 0;
     std::vector<std::pair<int32_t, int32_t>> readied_;  // melee cooldown and reload before the tick

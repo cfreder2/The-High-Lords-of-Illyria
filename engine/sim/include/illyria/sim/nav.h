@@ -67,7 +67,9 @@ public:
     Fixed travelTime(const Vec3& from, const std::vector<Vec3>& points, Gait gait) const;
     // Castle gates start shut, closing the cells they stand in; a broken gate
     // opens them again for good.
-    void openGate(size_t gate);
+    // `forGood` false: a gate its holder's men swing open for a while (World::updateGates); shutGate closes it again.
+    void openGate(size_t gate, bool forGood = true);
+    void shutGate(size_t gate);
     int32_t cells() const { return n_; }
 
 private:
@@ -122,6 +124,7 @@ private:
     std::vector<Fixed> height_;     // ground at the cell's centre
     // Per gate: the cells it closes, with whether each was open before.
     std::vector<std::vector<std::pair<int32_t, uint8_t>>> gateCells_;
+    std::vector<std::vector<std::pair<int32_t, uint8_t>>> gateShut_;  // a gate swung open: its cells, to shut it again
     // Cells a route crosses elsewhere than at their middle, sorted by cell: a
     // gate passage's (down the passage's middle line, the cell's middle may be
     // in the stone either side), and those beside a ramp (a man's breadth off

@@ -72,7 +72,7 @@ std::string minimapText(const sim::Campaign& c, uint8_t viewer) {
         std::map<std::pair<int, int>, std::tuple<int, float, float>> fights;
         const uint32_t now = c.tick();
         for (const C::Soldier& m : men) {
-            if (!m.awake || !m.alive || now - m.fightTick > 2 * C::kTicksPerSecond) continue;
+            if (!m.alive || now - m.fightTick > 2 * C::kTicksPerSecond) continue;
             auto& f = fights[{static_cast<int>(m.x / 80), static_cast<int>(m.y / 80)}];
             ++std::get<0>(f);
             std::get<1>(f) += m.x;

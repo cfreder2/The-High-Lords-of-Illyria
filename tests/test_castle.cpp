@@ -560,11 +560,10 @@ TEST(from_the_field_a_soldier_goes_in_by_the_gate_and_up_a_ramp) {
     }
 }
 
-TEST(nobody_passes_a_shut_gate_and_its_own_side_stop_at_it) {
-    // The gate shut. Its defenders sent from the walk to the field go down a
-    // ramp and as near as they can get: to the inside of the gate, where they
-    // stop (and leave the doors alone). An enemy who got up there hacks his
-    // way out instead.
+TEST(a_gate_opens_to_its_holders_men_and_to_nobody_else) {
+    // The gate shut. Its defenders sent from the walk to the field go down a ramp and out through the gate, which
+    // swings open for them (and leaves the doors whole), and shuts behind them. An enemy who got up there hacks his way
+    // out instead.
     const BackRamp b = backRamp();
     const Vec3 field = b.walk + b.out * m(25);
     WorldConfig cfg;
@@ -577,23 +576,23 @@ TEST(nobody_passes_a_shut_gate_and_its_own_side_stop_at_it) {
     std::vector<Command> go;
     for (EntityId id : watch) go.push_back({1, id, Command::Type::Move, {field.x, field.y, Fixed::zero()}});
     w.step(go);
-    for (int t = 0; t < 200 * kTicksPerSecond; ++t) w.step({});
+    bool opened = false;
+    for (int t = 0; t < 200 * kTicksPerSecond; ++t) {
+        w.step({});
+        opened = opened || w.gates()[gate].opened;
+    }
     const Gate& g = cfg.region->gates()[gate];
-    const Vec3 doors = (g.a + g.b) * Fixed::fromRatio(1, 2);
-    int stopped = 0;
+    int out = 0;
     for (EntityId id : watch) {
         const Unit& u = *w.findUnit(id);
-        const bool there = !u.hasMoveTarget && (u.pos - doors).flat().length() < m(14) && (u.pos - g.a).flat().dot(g.out) < Fixed::zero() &&
-                           u.pos.z < town().pos.z + m(1);
-        stopped += there;
-        if (!there)
-            std::printf("  defender at (%.1f, %.1f, +%.1f) %s\n", u.pos.x.toDouble(), u.pos.y.toDouble(), (u.pos.z - town().pos.z).toDouble(),
-                        u.hasMoveTarget ? "marching" : "halted");
+        out += (u.pos - field).flat().length() < m(40);  // out of the gate and round the wall to the field (the last stretch of it is rough ground)
         CHECK(!inWall(*cfg.region, u));
     }
-    std::printf("  %d of 6 defenders stopped inside their shut gate\n", stopped);
-    CHECK(stopped == 6);
-    CHECK(w.gates()[gate].hp == g.maxHp);
+    std::printf("  %d of 6 defenders went out through their gate\n", out);
+    CHECK(out == 6);
+    CHECK(opened);                        // it swung open for them
+    CHECK(!w.gates()[gate].opened);       // and shut behind them
+    CHECK(w.gates()[gate].hp == g.maxHp);  // and they did not touch the doors
     // One of the enemy on the walk (the defenders elsewhere), sent the same
     // way: down the ramp, and at the doors from inside.
     World w2(cfg);

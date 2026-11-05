@@ -259,7 +259,7 @@ TEST(a_towns_garrison_wakes_inside_its_walls) {
         return n;
     };
     for (int k = 0; k < 6000 && woken() < most; ++k) c.step();
-    CHECK(c.awakeStacks() > 0);
+    CHECK(c.menInWorld() > 0);
     const World* w = c.world();
     CHECK(w != nullptr);
     if (!w) return;

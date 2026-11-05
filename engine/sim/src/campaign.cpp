@@ -361,7 +361,7 @@ Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
         Stack& s = stacks_[i];
         if (s.owner != o.side || s.garrison || s.armies.empty()) return nullptr;
         if (!splitting || o.armies.empty() || s.boat) return &s;  // (a boat's company sails as one)
-        // The squads named go on in a stack of their own, in the state of the one they leave (awake, still in the fight).
+        // The squads named go on in a stack of their own, in the state of the one they leave.
         Stack part = s;
         part.id = nextId_++;
         part.armies.clear();
@@ -375,23 +375,16 @@ Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
             s.armies = std::move(part.armies);
             return &s;
         }
-        if (part.awake) ++awakeStacks_;
         stacks_.push_back(std::move(part));
         return &stacks_.back();
     }
     return nullptr;
 }
 
-void Campaign::halt(Stack& s) {
-    // At the next cell it reaches (it does not turn back to where it set out from).
-    if (s.path.size() > 1) s.path.resize(1);
-    s.commanded = false;
-}
-
 void Campaign::commandMen(const Order& o) {
     if (o.command.player != o.side) return;
     for (Stack& s : stacks_) {
-        if (!s.awake || s.owner != o.side) continue;
+        if (s.owner != o.side) continue;
         for (const Army& a : s.armies)
             for (const Man& m : a.men)
                 if (m.unit == o.command.unit && m.alive()) {
@@ -429,9 +422,6 @@ void Campaign::applyPending() {
                     move(s->id, o.a, o.b);
                 }
                 break;
-            case Order::Kind::Halt:
-                if (Stack* s = stackFor(o, true)) halt(*s);
-                break;
             case Order::Kind::Command: commandMen(o); break;
             case Order::Kind::Produce:
                 if (ownCity(o.a)) produce(o.a, o.b);
@@ -463,32 +453,9 @@ void Campaign::step() {
     ++tick_;
     applyPending();
     if (tick_ % kTicksPerDay == 0) newDay();
-    if (tick_ % kContactTicks == 0) contactStep();  // campaign_world.cpp: who is near an enemy wakes, who is not goes to sleep
     moveStacks();
-    // The men of a stack setting out draw out into a column over a few seconds, and close up into a block as it halts
-    // (so none jumps: Campaign::formation); the longer the column, the longer it takes, at a walking pace.
-    for (Stack& s : stacks_) {
-        if (s.awake || s.armies.empty()) continue;
-        if (s.dhx != s.hx || s.dhy != s.hy) {
-            s.dhx += (s.hx - s.dhx) / 40;
-            s.dhy += (s.hy - s.dhy) / 40;
-            if (std::abs(s.hx - s.dhx) < 12 && std::abs(s.hy - s.dhy) < 12) s.dhx = s.hx, s.dhy = s.hy;
-            const int64_t len = isqrt(int64_t{s.dhx} * s.dhx + int64_t{s.dhy} * s.dhy);
-            if (len > 0 && (s.dhx != s.hx || s.dhy != s.hy)) s.dhx = static_cast<int32_t>(int64_t{s.dhx} * 1000 / len), s.dhy = static_cast<int32_t>(int64_t{s.dhy} * 1000 / len);
-        }
-        const int32_t target = !s.path.empty() && !s.boat ? 1000 : 0;
-        if (s.form == target) continue;
-        std::vector<std::pair<int32_t, int32_t>> block, column;
-        layout(s, block, false);
-        layout(s, column, true);
-        int64_t far = 1;
-        for (size_t i = 0; i < block.size(); ++i)
-            far = std::max<int64_t>(far, isqrt(int64_t{column[i].first - block[i].first} * (column[i].first - block[i].first) + int64_t{column[i].second - block[i].second} * (column[i].second - block[i].second)));
-        const int32_t rate = static_cast<int32_t>(std::clamp<int64_t>(1000LL * 5000 / (far * kTicksPerSecond), 1, 1000));  // 5 m/s
-        s.form += std::clamp(target - s.form, -rate, rate);
-    }
-    stepWorld();  // the men who are awake, as in any battle
-    if (tick_ % kContactTicks == 0) bannerStep();  // campaign_capture.cpp
+    stepWorld();  // every man on the land, as in any battle
+    if (tick_ % kThinkTicks == 0) bannerStep();  // campaign_capture.cpp
     if (tick_ % kTerritoryTicks == 0) territoryStep();  // campaign_territory.cpp
 }
 
@@ -520,7 +487,7 @@ void Campaign::newDay() {
                 break;
             }
             side.gold += upkeep(newest->armies[which].type);  // deserters take no pay
-            settle(*newest);
+            release(newest->armies[which]);
             newest->armies.erase(newest->armies.begin() + static_cast<long>(which));
             ++side.deserted;
         }
@@ -560,7 +527,6 @@ void Campaign::newDay() {
         for (Stack& st : stacks_)
             if (st.owner == c.owner && st.cx == c.cx && st.cy == c.cy && st.armies.size() < kMaxStack && st.path.empty()) home = &st;
         if (!home) home = &newStack(c.owner, c.cx, c.cy);
-        settle(*home);
         home->armies.push_back(army);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
@@ -575,7 +541,7 @@ void Campaign::newDay() {
 
 void Campaign::moveStacks() {
     for (size_t i = 0; i < stacks_.size(); ++i) {
-        if (stacks_[i].path.empty() || stacks_[i].armies.empty() || stacks_[i].awake) continue;  // (the awake march with their men: stepWorld)
+        if (stacks_[i].path.empty() || stacks_[i].armies.empty() || !stacks_[i].boat) continue;  // (on land the men march themselves, in the world: stepWorld)
         if (!boardIfSailing(i)) continue;  // stepping from a port onto the water boards a boat
         Stack& s = stacks_[i];
         // A tick on the way, at the pace of the slowest army over this ground
@@ -619,7 +585,7 @@ void Campaign::arrive(Stack& s) {
     // Join a friendly stack already standing here, as a group of eight at most
     // (a group is what marches together; any number may stand in a place).
     for (Stack& o : stacks_) {
-        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty() || o.boat || s.boat || o.awake) continue;
+        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty() || o.boat || s.boat) continue;
         while (!s.armies.empty() && o.armies.size() < kMaxStack) {
             o.armies.push_back(s.armies.back());
             s.armies.pop_back();
@@ -682,14 +648,11 @@ uint64_t Campaign::checksum() const {
         h.addI64(s.cy);
         h.addI64(s.progress);
         h.addU64(s.boat);
-        h.addU64(s.awake);
         h.addI64(s.hx);
         h.addI64(s.hy);
-        if (s.awake) {
-            h.addI64(s.px);
-            h.addI64(s.py);
-            if (s.commanded) h.addU64(0xC0DE);  // (the player's orders stand for its men: only then is there anything to add)
-        }
+        h.addI64(s.px);
+        h.addI64(s.py);
+        if (s.commanded) h.addU64(0xC0DE);
         for (const Army& a : s.armies) {
             h.addU64(a.id);
             h.addU64(static_cast<uint64_t>(a.type));
@@ -705,10 +668,8 @@ uint64_t Campaign::checksum() const {
                 h.addI64(m.kills);
                 h.addI64(m.rank);
                 h.addU64(m.placed);
-                if (m.placed) {
-                    h.addI64(m.ox);
-                    h.addI64(m.oy);
-                }
+                h.addI64(m.ax);
+                h.addI64(m.ay);
             }
         }
     }
@@ -727,7 +688,7 @@ uint64_t Campaign::checksum() const {
         std::vector<int32_t> gates;
         gateHps(gates);
         for (int32_t g : gates) h.addI64(g);
-        if (awakeStacks_ > 0 && world_) h.addU64(world_->checksum());  // (between fights the world is only its gates)
+        if (world_) h.addU64(world_->checksum());
     }
     for (Lay t : terrain_) h.addU64(static_cast<uint64_t>(t));
     for (uint8_t w : navigable_) h.addU64(w);

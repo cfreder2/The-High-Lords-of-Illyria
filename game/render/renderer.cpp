@@ -253,13 +253,11 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
                sprite);
     }
     if (!sprite) return;
-    const sim::Fixed radiusFx = u ? u->stats.radius : sim::unitStats(type).radius;
-    const float radius = static_cast<float>(radiusFx.toDouble());
+    const float radius = static_cast<float>(u->stats.radius.toDouble());
     int frame = 0;
     float down = 0;  // 0 standing .. 1 lying: the picture follows the slope under him (kUnitVs)
     float yaw = v.yaw;
     if (!v.alive) {
-        if (u == nullptr) return;
         // Every dead soldier is a picture: his sheet's fall the way the death matrix chose (sim world_death.cpp: burned,
         // cut, struck from behind or in front), resting on its last frame; a part cut off lies beside him as its own piece.
         frame = deathFrame(v.type, *u, v.died, &down);  // the death clip by how he died (renderer_sheets.cpp)
@@ -267,21 +265,21 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
         if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f;
         pushStuckArrows(p.arrows, *u, pos, u->airborne ? 0.3f : std::clamp(v.died / deathSeconds(v.type, *u), 0.0f, 1.0f));
     } else {
-        if (u && u->shieldArrows > 0) pushStuckArrows(p.arrows, *u, pos, 0);
+        if (u->shieldArrows > 0) pushStuckArrows(p.arrows, *u, pos, 0);
         // On what he stands on (a wall-walk, a bridge), or under him when aloft.
-        const float floor = u ? battle.floorAt(pos) : pos.z;
+        const float floor = battle.floorAt(pos);
         // His contact shadow: a dark core at his feet, so that he stands on the ground even in the shade of a wall
         // (where his sun shadow is lost); long along a horse's or beast's body (extra.x).
         const float plan = lookOf(type).plan;
         const float stretch = plan > 0.5f && std::fabs(plan - 6.0f) > 0.5f ? 0.8f : 0.0f;
         p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, v.yaw, radius * (1.3f + stretch * 0.35f), 0, kDecalShadow, stretch, 1, 0, 0});
-        if (u) pushHealthBar(p.bars, *u, pos, v.selected);
+        pushHealthBar(p.bars, *u, pos, v.selected);
         if (v.selected) p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
         else if (v.inspected) p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.62f, 0.62f, 0.62f, 0});
         const float strike = figures::attackSeconds(type);
         const sprites::SheetClips* clips = clipsFor(v.type);
         const auto sheet = sheets_.find(v.type);
-        const bool flier = u ? u->stats.flyAltitude > sim::Fixed::zero() : v.aloft;
+        const bool flier = u->stats.flyAltitude > sim::Fixed::zero();
         const bool prerenderedFlier = flier && sheet != sheets_.end() && sheet->second.prerendered;
         if (u != nullptr) {
             // A sheet of its own clips plays them by name (sprite_clips.h); its soldiers are followed every frame, so what
@@ -292,31 +290,10 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
             else
                 frame = sprites::fixedLayoutFrame(v.struck, strike, v.hurt, v.moving, u->inAir(), v.walked, figures::stride(type), prerenderedFlier,
                                                   p.gameSeconds, v.id);
-        } else if (clips) {
-            // A man asleep walks or stands: his clip, with the memory of the last (kept while he stays in sight).
-            sprites::ClipMemory mem;
-            if (const auto known = mapMemory_.find(v.id); known != mapMemory_.end()) mem = known->second;
-            sprites::Deeds d;
-            d.now = p.gameSeconds;
-            d.sinceAttack = -1;
-            d.sinceHit = -1;
-            d.moving = v.moving;
-            d.inAir = v.aloft;
-            d.idlePhase = static_cast<float>(v.id % 13) * 0.37f;
-            d.attackSeconds = strike;
-            d.flinchSeconds = figures::kFlinchSeconds;
-            d.stride = figures::stride(type);
-            const float dt = std::max(men_.dt, 1e-3f);
-            d.stepMetres = v.speed * dt;
-            mem.speed = sprites::easeSpeed(mem.speed, v.speed, dt);
-            frame = sprites::chooseFrame(*clips, d, mem).frame;
-            p.sleeperMemory[v.id] = mem;
-        } else {
-            frame = sprites::fixedLayoutFrame(1e9f, strike, 1e9f, v.moving, v.aloft, v.walked, figures::stride(type), prerenderedFlier, p.gameSeconds, v.id);
         }
     }
     if (!sheets_.count(v.type) || !sheets_[v.type].tex) return;  // baked before the next frame
-    if (u != nullptr) {
+    {
         // Where his picture is drawn, for picking him (Battle::setSpriteBoxes): the view and cell chosen as kUnitVs chooses them.
         const Sheet& sh = sheetFor(v.type);
         float d = std::floor(-(p.toViewer - yaw) / 0.7853982f + 0.5f);
@@ -335,31 +312,6 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
     }
     std::vector<float>& g = p.groups[kMapKeyBase + v.type * kMapSides + manSide(v.owner)];
     g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), v.selected || v.inspected ? 1.0f : 0.0f, down});
-}
-
-// The sleepers: men asleep in their squads on the march, whose view is made from the slot the campaign says they stand in.
-void Renderer::pushSleepers(ManPass& p) {
-    const Battle& battle = p.battle;
-    const V3 o = battle.origin();
-    for (const sim::Campaign::Soldier& m : battle.sleepers()) {
-        ManView v;
-        v.pos = V3{m.x - o.x, m.y - o.y, 0};
-        v.pos.z = battle.heightAt(v.pos.x, v.pos.y);
-        if (m.aloft) v.pos.z += static_cast<float>(sim::unitStats(m.type).flyAltitude.toDouble());
-        v.id = m.id;
-        v.yaw = m.yaw;
-        v.speed = m.speed;
-        v.type = static_cast<uint8_t>(m.type);
-        v.owner = m.owner;
-        v.selected = battle.isSelectedMan(m.id);
-        v.inspected = battle.isInspectedMan(m.id);
-        v.aloft = m.aloft;
-        v.moving = m.speed > 0.05f;
-        // Metres walked, from the campaign's clock and his pace, so that his stride keeps to the ground; each man begins at
-        // his own point of it.
-        v.walked = m.speed * p.gameSeconds + static_cast<float>((m.id * 2654435761u >> 16) & 0xFFFF) / 65535.0f * 10.0f;
-        drawMan(v, p);
-    }
 }
 
 bool Renderer::buildPrograms() {
@@ -2215,7 +2167,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     };
     men_.dt = sinceLastDraw;
     beginMen(battle, camera, gameSeconds);
-    ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won, {}};
+    ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won};
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
         // A place a man was taken out of and another came to: what is kept of the man who stood there is not his.
@@ -2249,8 +2201,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         if (!u.present() || (!u.alive() && u.gibbed)) continue;  // taken out of the world, or blown apart: only the parts remain
         drawMan(v, pass);
     }
-    pushSleepers(pass);
-    mapMemory_ = std::move(pass.sleeperMemory);
     battle.setSpriteBoxes(std::move(boxes));
     endMen(battle, camera, decals);
 

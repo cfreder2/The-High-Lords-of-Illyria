@@ -118,7 +118,7 @@ int32_t bestHero(const Campaign::Stack& s) {
 
 bool Campaign::canSearch(uint32_t stackId) const {
     const Stack* s = findStack(stackId);
-    if (!s || s->garrison || s->armies.empty() || !s->path.empty() || s->awake) return false;
+    if (!s || s->garrison || s->armies.empty() || !s->path.empty()) return false;
     const int32_t site = siteAt(s->cx, s->cy);
     if (site < 0) return false;
     const SiteState& st = sites_[static_cast<size_t>(site)];
@@ -303,7 +303,6 @@ bool Campaign::hire(uint8_t side, bool accept) {
     for (Stack& st : stacks_)
         if (st.owner == side && st.cx == c.cx && st.cy == c.cy && st.path.empty() && st.armies.size() < kMaxStack) home = &st;
     if (!home) home = &newStack(side, c.cx, c.cy);
-    settle(*home);
     home->armies.push_back(makeArmy(T::Hero, o.name));
     hireCompanions(home, side, o, o.city);
     deed(side, o.name + " took service at " + continent_.cities()[static_cast<size_t>(o.city)].name + " for " + std::to_string(o.price) + " gold");
@@ -324,7 +323,7 @@ void Campaign::questAi(uint8_t side) {
     std::vector<Plan> plans;
     for (size_t i = 0; i < stacks_.size(); ++i) {
         Stack& s = stacks_[i];
-        if (s.owner != side || s.garrison || !s.path.empty() || s.armies.empty() || s.awake) continue;  // (not while it is in a fight)
+        if (s.owner != side || s.garrison || !s.path.empty() || s.armies.empty()) continue;
         if (canSearch(s.id)) search(s.id);
         const int32_t h = bestHero(s);
         if (h < 0) continue;

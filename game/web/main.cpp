@@ -250,9 +250,8 @@ double mapAhead() {
     return cv.paused ? 0.0 : std::clamp(cv.acc, 0.0, 1.0) * C::kTimeScale;
 }
 
-// Where a campaign stack stands now, in battle-local metres: its body, which
-// asleep is along its route by how far it has got at its real pace and awake is
-// the middle of its men (Campaign::bodyOf).
+// Where a campaign stack stands now, in battle-local metres: the middle of its men (Campaign::bodyOf), or, afloat, its
+// boat along its route.
 V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
     const V3 o = app->battle->origin();
     int32_t bx, by;
@@ -263,7 +262,7 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
 }
 
 // The conquest's men for this frame: as the conquest says they stand (cv.men, for the minimap and the hot spot) and
-// as the field presents them: its squads, its sleepers drawn in the one pass with the awake, its selection (Battle::
+// as the field presents them: its squads, its selection (Battle::
 // presentConquest). The field's effects, sounds, voices and gates are its own presentation of the conquest's world; here
 // it is only told how far between ticks the clock is, and moves on.
 void presentConquest(float dt) {
@@ -903,12 +902,10 @@ EMSCRIPTEN_KEEPALIVE int illyria_ungroup() {
 EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
     if (!app) return;
     const std::vector<illyria::sim::EntityId> alive = app->battle->selectedAlive();
-    const std::vector<uint32_t>& asleep = app->battle->selectedSleepers();
-    if (alive.empty() && asleep.empty()) return;
+    if (alive.empty()) return;
     V3 c;
     for (illyria::sim::EntityId id : alive) c += app->battle->unitPosition(id - 1);
-    for (uint32_t man : asleep) c += app->battle->sleeperPositionOf(man);
-    c = c * (1.0f / static_cast<float>(alive.size() + asleep.size()));
+    c = c * (1.0f / static_cast<float>(alive.size()));
     app->introStartMs = -1;
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
@@ -1668,8 +1665,8 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
     static char buf[200];
     buf[0] = 0;
     if (!app || !app->camp.on) return buf;
-    std::snprintf(buf, sizeof buf, "{\"soldiers\":%zu,\"awake\":%d,\"awakeMen\":%d,\"sprites\":%zu,\"dots\":%d,\"layoutMs\":%.3f,\"drawMs\":%.3f}",
-                  app->camp.men.size(), app->camp.c->awakeStacks(), app->camp.c->awakeMen(), app->renderer.mapSprites(), app->renderer.mapDots(),
+    std::snprintf(buf, sizeof buf, "{\"soldiers\":%zu,\"menInWorld\":%d,\"sprites\":%zu,\"dots\":%d,\"layoutMs\":%.3f,\"drawMs\":%.3f}",
+                  app->camp.men.size(), app->camp.c->menInWorld(), app->renderer.mapSprites(), app->renderer.mapDots(),
                   app->camp.layoutMs, app->drawMs);
     return buf;
 }
@@ -1924,9 +1921,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
                       cs.banner < C::kNeutral ? c.bannerContest(cv.city, cs.banner) : 0);
         s += buf;
     }
-    // The fights on the island now: the men in the world, and the stacks they are of.
-    std::snprintf(buf, sizeof buf, ",\"fighting\":%d,\"fightingMen\":%d", c.awakeStacks(), c.awakeMen());
-    s += buf;
     // The latest fights and the player's heroes' deeds, newest first: a town changing hands is news of the viewer's only
     // if it can see the town (a hero's deed is its own side's, seen by it always).
     s += ",\"news\":[";

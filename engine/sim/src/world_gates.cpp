@@ -67,6 +67,37 @@ bool townSide(const Gate& g, const Rampart& ring, const Vec3& p) {
 
 }  // namespace
 
+void World::updateGates() {
+    if (!config_.region || !nav_) return;
+    const auto& gs = config_.region->gates();
+    for (size_t i = 0; i < gs.size() && i < gates_.size(); ++i) {
+        GateState& st = gates_[i];
+        if (st.broken() || st.holder == GateState::kNoHolder) continue;
+        const Gate& g = gs[i];
+        const Rampart& ring = config_.region->ramparts()[static_cast<size_t>(g.ring)];
+        const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
+        const Fixed reach = (g.b - g.a).flat().length() / 2 + kHaltQueue;
+        bool bound = false, inPassage = false;
+        unitGrid_.query(mid.x, mid.y, reach, [&](uint32_t j) {
+            const Unit& u = units_[j];
+            if (!u.alive() || u.inAir() || u.flight != Unit::Flight::Grounded || u.pos.z >= g.top) return;
+            if ((u.pos - nearestOnGate(g, u.pos)).flat().lengthSq() <= (g.halfThick + u.stats.radius + Fixed::fromInt(2)) * (g.halfThick + u.stats.radius + Fixed::fromInt(2))) inPassage = true;
+            if (u.owner != st.holder || !u.hasMoveTarget) return;
+            if (withinRing(ring, u.moveTarget) != townSide(g, ring, u.pos)) bound = true;
+        });
+        if (bound) {
+            st.openUntil = tick_ + 3 * kTicksPerSecond;
+            if (!st.opened) {
+                st.opened = true;
+                nav_->openGate(i, false);
+            }
+        } else if (st.opened && tick_ >= st.openUntil && !inPassage) {
+            st.opened = false;
+            nav_->shutGate(i);
+        }
+    }
+}
+
 void World::setGateHolder(size_t gate, PlayerId holder) {
     if (gate < gates_.size()) gates_[gate].holder = holder;
 }
@@ -95,7 +126,7 @@ Fixed World::gateHit(const Vec3& a, const Vec3& b, Fixed limitT) const {
     bool hit = false;
     const auto& gs = config_.region->gates();
     for (size_t i = 0; i < gs.size(); ++i) {
-        if (gates_[i].broken()) continue;
+        if (gates_[i].passable()) continue;
         const Gate& g = gs[i];
         // Signed distances of the ends from the doors' middle plane.
         const Fixed sa = (a - g.a).flat().dot(g.out), sb = (b - g.a).flat().dot(g.out);
@@ -119,7 +150,7 @@ void World::keepOutOfGates(Unit& u) {
     const auto& gs = config_.region->gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
+        if (gates_[i].passable() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Fixed reach = g.halfThick + u.stats.radius;
         const Vec3 p = nearestOnGate(g, u.pos);
         const Vec3 d = (u.pos - p).flat();
@@ -137,7 +168,7 @@ int World::gateToHack(Unit& u) {
     const auto& gs = rg.gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
+        if (gates_[i].passable() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Fixed reach = u.stats.radius + g.halfThick + u.stats.melee.reach + kHackSlack;
         if ((u.pos - nearestOnGate(g, u.pos)).flat().lengthSq() > reach * reach) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
@@ -161,7 +192,7 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
     constexpr Fixed kQueue = Fixed::fromInt(10);
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
+        if (gates_[i].passable() || gates_[i].holder == u.owner || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         const Vec3 at = nearestOnGate(g, u.pos);
         const Vec3 off = (u.pos - at).flat();
         if (off.lengthSq() > kQueue * kQueue) continue;
@@ -190,7 +221,7 @@ bool World::haltAtGate(const Unit& u) const {
     const auto& gs = rg.gates();
     for (size_t i = 0; i < gs.size(); ++i) {
         const Gate& g = gs[i];
-        if (gates_[i].broken() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
+        if (gates_[i].passable() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
         if (gates_[i].holder != u.owner && u.stats.melee.damage > 0) continue;  // he hacks his way through (gateToHack)
         const Vec3 at = nearestOnGate(g, u.pos);
         const Fixed distSq = (u.pos - at).flat().lengthSq();
@@ -274,7 +305,7 @@ bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out
     const auto& gs = rg.gates();
     std::vector<std::pair<Fixed, size_t>> choices;
     for (size_t i = 0; i < gs.size(); ++i) {
-        if (gates_[i].broken()) continue;
+        if (gates_[i].passable()) continue;
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(gs[i].ring)];
         if (townSide(gs[i], ring, from) == withinRing(ring, to)) continue;
         const Vec3 c = (gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2);

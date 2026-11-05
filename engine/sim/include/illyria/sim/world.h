@@ -497,7 +497,11 @@ struct GateState {
     int32_t hp = 0;
     PlayerId holder = kNoHolder;  // whose town it is: they do not hack at it (kNoHolder: nobody's)
     uint32_t brokenTick = 0;      // when it broke (hp 0)
+    // Swung open by its holder's men going through (World::updateGates), until a few seconds after the last has passed.
+    bool opened = false;
+    uint32_t openUntil = 0;
     bool broken() const { return hp <= 0; }
+    bool passable() const { return broken() || opened; }
 };
 
 struct WorldConfig {
@@ -744,6 +748,7 @@ private:
     // hack at (his own side's, or he has no blow to strike): nobody passes
     // it, so he stops there (or against his own men stopped before it).
     bool haltAtGate(const Unit& unit) const;
+    void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void hackGate(Unit& unit, int gate);
     void damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir);
     // Earliest crossing of an intact gate by segment a->b, as a fraction; -1 if none.

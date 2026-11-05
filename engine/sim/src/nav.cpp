@@ -766,14 +766,28 @@ const std::vector<uint16_t>& NavGrid::costs(Gait gait) const {
     return c;
 }
 
-void NavGrid::openGate(size_t gate) {
+void NavGrid::openGate(size_t gate, bool forGood) {
     if (gate >= gateCells_.size()) return;
+    if (gateShut_.size() < gateCells_.size()) gateShut_.resize(gateCells_.size());
     for (const auto& c : gateCells_[gate]) {
         open_[static_cast<size_t>(c.first)] = c.second;
         for (int gi = 0; gi < kGaitCount; ++gi)
             if (!cost_[static_cast<size_t>(gi)].empty()) cost_[static_cast<size_t>(gi)][static_cast<size_t>(c.first)] = cellCost(static_cast<Gait>(gi), c.first);
     }
+    if (forGood) gateShut_[gate].clear();
+    else gateShut_[gate] = gateCells_[gate];
     gateCells_[gate].clear();
+}
+
+void NavGrid::shutGate(size_t gate) {
+    if (gate >= gateShut_.size() || gateShut_[gate].empty()) return;
+    for (const auto& c : gateShut_[gate]) {
+        open_[static_cast<size_t>(c.first)] = 0;
+        for (int gi = 0; gi < kGaitCount; ++gi)
+            if (!cost_[static_cast<size_t>(gi)].empty()) cost_[static_cast<size_t>(gi)][static_cast<size_t>(c.first)] = cellCost(static_cast<Gait>(gi), c.first);
+    }
+    gateCells_[gate] = std::move(gateShut_[gate]);
+    gateShut_[gate].clear();
 }
 
 bool NavGrid::groundBlocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
