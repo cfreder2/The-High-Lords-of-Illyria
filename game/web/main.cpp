@@ -467,21 +467,14 @@ bool townTap(float px, float py) {
     return true;
 }
 
-// The stack panel's town: the one the selected stack stands in (a town of the player's, or one the player's banner is
-// going up over, its panel shows how far), opened when the selection comes to be of a stack and shut when it is lost.
+// The town's panel opens only when the player taps the town (townTap above, or its marker on the map: illyria_campaign_open_city),
+// never by itself, and shuts when the selection comes to be of another stack.
 void syncTownPanel() {
-    using C = illyria::sim::Campaign;
     App::CampaignView& cv = app->camp;
     const uint32_t stack = app->battle->selectedStack();
     if (stack == cv.panelStack) return;
     cv.panelStack = stack;
-    const C::Stack* s = cv.c->findStack(stack);
-    if (!s) {
-        cv.city = -1;
-        return;
-    }
-    cv.city = cv.c->cityAt(s->cx, s->cy);
-    if (cv.city >= 0 && cv.c->cities()[static_cast<size_t>(cv.city)].owner != cv.c->localSide() && cv.c->cities()[static_cast<size_t>(cv.city)].banner != 0) cv.city = -1;
+    cv.city = -1;
 }
 
 // A new campaign, or one read back from a save.
@@ -523,9 +516,15 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
         if (s.owner != cv.c->localSide()) continue;
         app->battle->selectStack(s.id);
         const V3 p = stackPosition(*cv.c, s);
+        // Looking from the courtyard to the keep (the men in front of it, not hidden behind it) when it stands in a town, else north.
+        float yaw = kNorthUp;
+        if (const int town = cv.c->cityAt(s.cx, s.cy); town >= 0) {
+            const V3 keep = toV3(cv.c->continent().cities()[static_cast<size_t>(town)].castle.keep) - V3{app->battle->origin().x, app->battle->origin().y, 0};
+            yaw = std::atan2(keep.y - p.y, keep.x - p.x);
+        }
         app->introStartMs = -1;
-        app->camera.lookAt(p.x, p.y - 90, kStackView);
-        app->camera.rotate(kNorthUp - app->camera.yaw());
+        app->camera.lookAt(p.x - std::cos(yaw) * 90, p.y - std::sin(yaw) * 90, kStackView);
+        app->camera.rotate(yaw - app->camera.yaw());
         break;
     }
 }
@@ -1554,8 +1553,8 @@ void buildMiniLand() {
 }
 
 // Map labels for the page to draw: one line per visible label,
-// "kind|colour|x|y|name" in CSS pixels. Kinds: 0 city, 1 capital, 2 ruin,
-// 3 temple, 4 sage, 5 realm, 6 landmark. Which appear depends on the zoom.
+// "kind|colour|x|y|town|name" in CSS pixels (town: the city's number, for a tap on its marker, else -1). Kinds: 0 city,
+// 1 capital, 2 ruin, 3 temple, 4 sage, 5 realm, 6 landmark. Which appear depends on the zoom.
 EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
     if (!app) return "";
     std::string& out = app->labels;
@@ -1566,16 +1565,18 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
     const illyria::sim::Continent& c = app->battle->continent();
     const V3 o = app->battle->origin();
     char buf[160];
-    const auto add = [&](int kind, const V3& colour, const illyria::sim::Vec3& at, const std::string& name) {
+    const auto add = [&](int kind, const V3& colour, const illyria::sim::Vec3& at, const std::string& name, int town = -1) {
         V3 p = toV3(at) - V3{o.x, o.y, 0};
         p.z = app->battle->heightAt(p.x, p.y) + 10;
         float px, py;
         if (!cam.project(p, px, py)) return;
         px /= app->pixelRatio;
         py /= app->pixelRatio;
+        // A town's marker stands above its men's dots, never over them (a dot reaches dotReachPx from his place; the marker is 12 px).
+        if (kind <= 1) py -= app->renderer.dotReachPx() / app->pixelRatio + 8.0f;
         if (px < -80 || py < -40 || px > cam.width() / app->pixelRatio + 80 || py > cam.height() / app->pixelRatio + 40) return;
-        std::snprintf(buf, sizeof buf, "%d|#%02x%02x%02x|%.0f|%.0f|%s\n", kind, static_cast<int>(colour.x * 255),
-                      static_cast<int>(colour.y * 255), static_cast<int>(colour.z * 255), px, py, name.c_str());
+        std::snprintf(buf, sizeof buf, "%d|#%02x%02x%02x|%.0f|%.0f|%d|%s\n", kind, static_cast<int>(colour.x * 255),
+                      static_cast<int>(colour.y * 255), static_cast<int>(colour.z * 255), px, py, town, name.c_str());
         out += buf;
     };
     for (size_t ci = 0; ci < c.cities().size(); ++ci) {
@@ -1583,10 +1584,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
         // In the campaign, cities fly the colours of whoever holds them now, as far as the viewer knows.
         const uint8_t owner = app->camp.on ? app->camp.c->knownOwner(app->camp.c->localSide(), static_cast<int32_t>(ci)) : city.owner;
         if (!city.capital && d > 2000) {
-            add(0, factionColor(owner), city.pos, "");  // a marker only
+            add(0, factionColor(owner), city.pos, "", static_cast<int>(ci));  // a marker only
             continue;
         }
-        add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name);
+        add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name, static_cast<int>(ci));
     }
     if (d < 2000) {
         for (size_t k = 0; k < c.sites().size(); ++k) {
@@ -1729,6 +1730,11 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_embark() {
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_land() {
     if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Land, app->battle->selectedStack());
+}
+// A tap on a town's marker: the panel of the player's town, whatever is selected.
+EMSCRIPTEN_KEEPALIVE void illyria_campaign_open_city(int city) {
+    if (!app || !app->camp.on || city < 0 || city >= static_cast<int>(app->camp.c->cities().size())) return;
+    if (app->camp.c->cities()[static_cast<size_t>(city)].owner == app->camp.c->localSide()) app->camp.city = city;
 }
 EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
     if (app) app->camp.city = -1;
@@ -2207,11 +2213,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     // The town's capture point, whose land this is, and the selection's small edges.
     {
         const CapturePoint& cap = b.capturePoint();
-        std::string edges;
-        for (illyria::sim::EntityId id : b.selectedAlive()) {
-            edges = b.world().edgesOf(*b.world().findUnit(id)).describe();
-            break;
-        }
+        const std::string edges = b.selectionEdges();
         const int home = b.world().homeSide();
         std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"land\":%d,\"edges\":\"%s\",",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),

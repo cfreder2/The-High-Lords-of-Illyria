@@ -131,6 +131,8 @@
     text-shadow: 0 1px 2px #000, 0 0 3px #000; font-size: 12px; color: var(--ink);
   }
   #labels .mk { display: inline-block; width: 9px; height: 9px; border: 1px solid #111; margin-right: 4px; vertical-align: -1px; }
+  /* A town's marker is a tap on the town: its panel (the squares are lifted clear of the men's dots, which they must not hide). */
+  #labels .mk { pointer-events: auto; cursor: pointer; }
   #labels .k1 { font-size: 14px; font-weight: 600; color: #fff3d6; }
   #labels .k1 .mk { width: 13px; height: 13px; border-width: 2px; }
   #labels .k2, #labels .k3, #labels .k4 { font-size: 11px; font-style: italic; color: #e2d8c4; }
@@ -169,13 +171,17 @@
   body.at-title #compass, body.mode-setup #compass { display: none; }
   #campBar { padding: 6px 12px; font-size: 13px; }
   #campBar b { color: var(--gold); }
-  #cityPanel { position: fixed; right: calc(8px + var(--safe-r)); bottom: calc(80px + var(--safe-b)); width: 250px; padding: 10px 12px; z-index: 4; }
+  /* The town's panel stands under the minimap and above the command bar, never over either (a phone's bar is wider than the
+     panel's left edge, so it clears the bar's buttons too); what does not fit scrolls. */
+  :root { --mini-bottom: 312px; --panel-bottom: 80px; }
+  @media (max-width: 700px) { :root { --mini-bottom: 256px; --panel-bottom: 140px; } }
+  #cityPanel { position: fixed; right: calc(8px + var(--safe-r)); bottom: calc(var(--panel-bottom) + var(--safe-b)); width: 250px; padding: 10px 12px; z-index: 4; }
   #cityPanel h3 { margin: 0 0 4px; font-size: 15px; color: var(--gold); }
   #cityPanel .meta { font-size: 12px; opacity: 0.85; margin-bottom: 8px; }
   #cityPanel button { display: flex; justify-content: space-between; width: 100%; margin: 4px 0; padding: 6px 8px; font-size: 13px; }
   #cityPanel button.on { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
   #cityPanel .port { font-size: 12px; margin: 8px 0 2px; color: #bcd8f0; }
-  #cityPanel { max-height: calc(100vh - 150px - var(--safe-b)); overflow-y: auto; }
+  #cityPanel { max-height: calc(100vh - var(--mini-bottom) - var(--panel-bottom) - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
   /* Rare troops (never trained, never replaced) are marked in violet: a levy, the list of where they come from. */
   #cityPanel button.levy { border-color: rgba(201, 166, 255, 0.6); }
   #cityPanel .lv { color: #c9a6ff; }
@@ -204,10 +210,13 @@
   #levelPrompt .choices small { font-size: 11px; opacity: 0.8; font-weight: 400; }
   /* Heroes: search a ruin, kneel at a temple, hire a sword. */
   /* The selected stack on the march: there in so many days (and minutes at this speed). */
-  #campMarch { display: table; margin-bottom: 8px; padding: 4px 10px; font-size: 13px; }
-  body:not(.campaign) #campMarch { display: none; }
-  #campActions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; }
-  body:not(.campaign) #campActions { display: none; }
+  /* The conquest's own actions for the stack selected (search a ruin, send armies home) and where it is bound, under the
+     status bar at the top: the command bar below is the same in a skirmish. */
+  #campStrip { position: fixed; top: calc(52px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 3; display: flex;
+               flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+  body:not(.campaign) #campStrip { display: none; }
+  #campMarch { padding: 4px 10px; font-size: 13px; pointer-events: auto; }
+  #campActions { display: flex; gap: 6px; pointer-events: auto; }
   #campActions button { min-height: 44px; padding: 0 14px; font-size: 14px; border-color: var(--gold); }
   #campActions button:disabled { opacity: 0.55; border-color: var(--panel-edge); }
   #hirePrompt { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); width: min(320px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
@@ -335,7 +344,7 @@
       <label class="set"><span>Other lords<small>How well the computer plays, for a new campaign</small></span>
         <select id="optDifficulty"><option value="0">Easy (Knights)</option><option value="1">Hard (Warlords)</option></select></label>
       <label class="set"><span>Autosave every day<small>Into the campaign's slot, each dawn</small></span><input type="checkbox" id="optAutosave"></label>
-      <label class="set"><span>Confirm before disbanding<small>Tap an army's card twice to send it home</small></span><input type="checkbox" id="optConfirmDisband"></label>
+      <label class="set"><span>Confirm before disbanding<small>Tap Disband twice to send the armies you have selected home</small></span><input type="checkbox" id="optConfirmDisband"></label>
       <label class="set"><span>Show hints<small>The reminder of the controls when a battle starts</small></span><input type="checkbox" id="optHints"></label>
     </section>
     <section data-pane="controls"></section>
@@ -362,6 +371,10 @@
   </g></svg>
 </button>
 <div id="news" class="panel camp-only hidden popup"><button class="x" aria-label="Close">✕</button><div id="newsList"></div></div>
+<div id="campStrip" class="camp-only">
+  <div id="campMarch" class="panel hidden" role="status"></div>
+  <div id="campActions" class="hidden"><button id="campSearch">Search</button><button id="campDisband">Disband</button></div>
+</div>
 <div id="cityPanel" class="panel hidden"></div>
 <div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
 <div id="levelPrompt" class="panel hidden" role="dialog" aria-labelledby="levelTitle">
@@ -382,8 +395,6 @@
 <div id="selBox"></div>
 
 <div id="bottom">
-  <div id="campMarch" class="panel camp-only hidden" role="status"></div>
-  <div id="campActions" class="camp-only hidden"><button id="campSearch">Search</button><button id="campDisband">Disband</button></div>
   <div id="selInfo" class="hidden"></div>
   <div id="picker" class="panel hidden popup" role="menu" aria-label="Formations"></div>
   <div id="modeBar" class="panel hidden" role="status"></div>
@@ -539,6 +550,7 @@
       campState: Module.cwrap("illyria_campaign_state", "string", []),
       perf: Module.cwrap("illyria_perf", "string", []),
       campProduce: Module.cwrap("illyria_campaign_produce", null, ["number", "number"]),
+      campOpenCity: Module.cwrap("illyria_campaign_open_city", null, ["number"]),
       campCloseCity: Module.cwrap("illyria_campaign_close_city", null, []),
       campPause: Module.cwrap("illyria_campaign_pause", null, []),
       campSpeed: Module.cwrap("illyria_campaign_speed", null, []),
@@ -651,18 +663,20 @@
     let n = 0;
     for (const line of lines) {
       if (!line) continue;
-      const [kind, colour, x, y, ...rest] = line.split("|");
+      const [kind, colour, x, y, town, ...rest] = line.split("|");
       const name = rest.join("|");
       let el = labelPool[n];
       if (!el) { el = document.createElement("div"); root.appendChild(el); labelPool.push(el); }
       el.style.display = "";
-      const key = kind + colour + name;
+      const key = kind + colour + town + name;
       if (el.dataset.key !== key) {
         el.dataset.key = key;
+        el.dataset.town = town;
         el.className = "k" + kind;
         if (kind === "0" || kind === "1") {
           el.innerHTML = '<span class="mk"></span>';
           el.firstChild.style.background = colour;
+          el.firstChild.onclick = () => api && api.campOpenCity(+el.dataset.town);
           el.appendChild(document.createTextNode(name));
         } else if (kind === "7") {
           // An outpost tower, in the colours of whoever holds its land.

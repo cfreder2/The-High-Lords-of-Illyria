@@ -2153,15 +2153,20 @@ void main() {
     // A town's own garrison (no lord's): hollow, a ring, so that it is not mistaken for a lord's men.
     bool hollow = vFight.y < 0.0;
     float alpha = abs(vFight.y);
-    if (hollow && uRim <= 0.0 && r < 0.45) discard;
+    if (hollow && uRim <= 0.0 && r < 0.5) discard;
     // In a fight the colour flares toward white-hot with the flash, and its rim goes hot too.
     vec3 flare = mix(vColour.rgb, vec3(1.0, 0.95, 0.75), 0.85 * vFight.x);
-    // Two rims, so that a dot stands out on any ground: a dark outer edge (against snow and pale stone), a
-    // light ring inside it (against forest and shadow), and the colour within.
+    // Two rims, so that a dot stands out on any ground and any colour reads against its own ring: the ring next to the
+    // colour is the dark or the light one, whichever the colour is not (a black side's is light, a white side's dark);
+    // the outer edge is the other of the two (dark against snow and pale stone, light against forest and shadow).
+    float luma = dot(flare, vec3(0.2126, 0.7152, 0.0722));
+    const vec3 kDark = vec3(0.02, 0.02, 0.03), kLight = vec3(0.97, 0.96, 0.9);
     bool outer = uRim > uDotPx * 0.3;
-    vec3 rim = outer ? mix(vec3(0.02, 0.02, 0.03), vec3(0.55, 0.12, 0.04), vFight.x)
-                     : (vColour.a > 1.5 ? vec3(0.62, 0.62, 0.62) : vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.97, 0.96, 0.9));
-    oColor = vec4(uRim > 0.0 ? rim : flare, alpha);
+    bool darkInner = luma > 0.45 && vColour.a < 0.5;
+    vec3 inner = vColour.a > 1.5 ? vec3(0.62, 0.62, 0.62) : vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : darkInner ? kDark : kLight;
+    bool innerLight = !darkInner;
+    vec3 outerRim = innerLight ? mix(kDark, vec3(0.55, 0.12, 0.04), vFight.x) : kLight;
+    oColor = vec4(uRim > 0.0 ? (outer ? outerRim : inner) : flare, alpha);
 }
 )";
 

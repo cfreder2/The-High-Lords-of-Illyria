@@ -562,6 +562,9 @@ public:
     size_t selectionSize() const { return selectedAlive().size() + selSleeping_.size(); }
     // The types of those selected, one name for them all ("Mixed" when they are not).
     const char* selectionLabel() const;
+    // The small edges of the first of those selected (an awake man's, as the world has him; a sleeper's, as his army has them
+    // on the map: sim/edges.h), "hero leads +2%", or "" with none.
+    std::string selectionEdges() const;
     bool selectionBatters() const;
     // 0 none of the squad selected, 1 some, 2 all its living soldiers.
     int squadSelection(const Squad& s) const;

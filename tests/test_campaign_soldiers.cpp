@@ -120,6 +120,75 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
     CHECK(marching > 0);
 }
 
+namespace {
+// Whether a point (metres on the continent) is on a building of a town's defences: its keep, a tower, a wall or a house.
+bool onBuilding(const Continent::Castle& k, double x, double y) {
+    const auto d = [](const Vec3& a) { return std::pair<double, double>{a.x.toDouble(), a.y.toDouble()}; };
+    {
+        const auto [kx, ky] = d(k.keep);
+        const auto [ax, ay] = d(k.keepAxis);
+        const double len = std::max(1e-9, std::hypot(ax, ay)), u = ((x - kx) * ax + (y - ky) * ay) / len, v = (-(x - kx) * ay + (y - ky) * ax) / len;
+        const double h = k.keepHalf.toDouble() + 0.5;
+        if (std::fabs(u) < h && std::fabs(v) < h) return true;
+    }
+    for (const Continent::Castle::Tower& t : k.towers) {
+        const auto [tx, ty] = d(t.pos);
+        if (std::hypot(x - tx, y - ty) < t.radius.toDouble() + 0.3) return true;
+    }
+    for (const Continent::Castle::House& h : k.houses) {
+        const auto [hx, hy] = d(h.pos);
+        if (std::fabs(x - hx) < h.halfX.toDouble() + 0.3 && std::fabs(y - hy) < h.halfY.toDouble() + 0.3) return true;
+    }
+    for (const Continent::Castle::Ring& r : k.rings)
+        for (size_t i = 0; i < r.corners.size(); ++i) {
+            const auto [ax, ay] = d(r.corners[i]);
+            const auto [bx, by] = d(r.corners[(i + 1) % r.corners.size()]);
+            const double ex = bx - ax, ey = by - ay, t = std::clamp(((x - ax) * ex + (y - ay) * ey) / std::max(1e-9, ex * ex + ey * ey), 0.0, 1.0);
+            if (std::hypot(x - (ax + ex * t), y - (ay + ey * t)) < r.thick.toDouble() / 2 + 0.3) return true;
+        }
+    return false;
+}
+// Whether a point is within the corners of the outer wall.
+bool insideOuter(const Continent::Castle& k, double x, double y) {
+    const auto& c = k.rings.front().corners;
+    bool in = false;
+    for (size_t i = 0, j = c.size() - 1; i < c.size(); j = i++) {
+        const double xi = c[i].x.toDouble(), yi = c[i].y.toDouble(), xj = c[j].x.toDouble(), yj = c[j].y.toDouble();
+        if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in = !in;
+    }
+    return in;
+}
+}  // namespace
+
+// A man asleep in a town stands in the open, inside the walls, never in a keep, a tower, a wall or a house: the
+// start of every faction, at every town of the island (a capital's inner bailey once ran along its courtyard's edge).
+TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
+    int men = 0, towns = 0, bad = 0;
+    for (uint8_t player = 0; player < 8; ++player) {
+        Campaign c(continent(), 5, Campaign::Setup{player, 0xFF});
+        c.setHuman(0, true);
+        std::vector<Campaign::Soldier> all;
+        c.soldiers(0, all);
+        for (const Campaign::Soldier& m : all) {
+            const Campaign::Stack* s = c.findStack(m.stack);
+            const int32_t town = s ? c.cityAt(s->cx, s->cy) : -1;
+            if (!s || s->awake || !s->path.empty() || town < 0) continue;
+            const Continent::City& city = c.continent().cities()[static_cast<size_t>(town)];
+            ++men;
+            const bool wrong = onBuilding(city.castle, m.x, m.y) || !insideOuter(city.castle, m.x, m.y);
+            if (wrong) ++bad;
+            int here = 0;
+            for (const Campaign::Stack& o : c.stacks()) here += !o.awake && o.path.empty() && o.cx == s->cx && o.cy == s->cy;
+            if (wrong && bad <= 6) std::printf("  %s (faction %d, %d stacks there): a man at %.1f, %.1f (courtyard %.1f, %.1f r %.1f) is in a building (%d) or outside the walls\n", city.name.c_str(), player, here, m.x, m.y, city.castle.courtyard.x.toDouble(), city.castle.courtyard.y.toDouble(), city.castle.courtyardRadius.toDouble(), onBuilding(city.castle, m.x, m.y));
+        }
+        towns += static_cast<int>(c.cities().size());
+    }
+    std::printf("  %d men in %d towns, %d out of the open\n", men, towns, bad);
+    CHECK(towns == 8 * 80);
+    CHECK(men > 8 * 80 * 12);
+    CHECK(bad == 0);
+}
+
 TEST(stacks_standing_in_one_town_stand_side_by_side_not_on_each_other) {
     Campaign c(continent(), 3);
     c.setHuman(0, true);

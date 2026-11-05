@@ -98,6 +98,20 @@ TEST(men_asleep_in_their_stack_are_the_battles_squads_with_cards_and_a_hero_leve
     CHECK(mine > 0);
 }
 
+// The line under the bar ("17 of mixed kinds, edges: hero leads +2%") is the battle's, for men asleep as for men awake.
+TEST(the_edges_of_a_selection_asleep_are_told_as_those_of_one_awake) {
+    Island w;
+    const int foot = w.squadOf(UnitType::LightInfantry);
+    CHECK(foot >= 0);
+    if (foot < 0) return;
+    CHECK(w.b->selectionEdges().empty());  // (nothing selected)
+    w.b->selectSquad(foot);
+    CHECK(w.b->selectedAlive().empty());
+    const std::string edges = w.b->selectionEdges();
+    std::printf("  the light infantry at rest in their capital: \"%s\"\n", edges.c_str());
+    CHECK(edges.find("hero leads") != std::string::npos);  // (the stack's hero is beside them)
+}
+
 TEST(a_tap_selects_a_man_asleep_like_one_awake_and_the_card_selects_his_squad) {
     Island w;
     const int hero = w.squadOf(UnitType::Hero);

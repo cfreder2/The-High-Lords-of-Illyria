@@ -461,10 +461,10 @@
   const campaignHtml = () =>
     `<h3>On the campaign map</h3>` +
     row("banner", "Tap your soldiers, or box them", "Selects that stack (hold and drag, or shift and drag, a box round them); its armies show as cards. Then tap the ground to march, enemy soldiers or a town to attack. The minimap at the top right takes the camera anywhere.") +
-    row("city", "Tap one of your towns", "Its panel: what it trains, where new armies go, its walls, its boats.") +
+    row("city", "Tap one of your towns' squares", "Its panel: what it trains, where new armies go, its walls, its boats. It stays until you select something else.") +
     `<table class="keys"><tr><td>Fight!</td><td>Armies that meet fight where they stand, on the map, with the same rules as any battle: there is nothing to choose and no dice. This takes the camera to the fiercest fighting; zoom in on it to see the men, and out to see every man as a dot that flashes while he fights.</td></tr>` +
     `<tr><td>Search · Visit</td><td>A hero at a ruin or a sage, anyone at a temple.</td></tr>` +
-    `<tr><td>An army's card, twice</td><td>Disbands it: no more upkeep (one tap, if Settings say so).</td></tr>` +
+    `<tr><td>Disband, twice</td><td>Sends the armies you have selected home: no more upkeep (one tap, if Settings say so). It is under the bar at the top.</td></tr>` +
     `<tr><td>Embark · Land</td><td>Board a boat in a port; step ashore from the sea.</td></tr></table>`;
   const desktopHtml = () =>
     `<h3>The mouse</h3>` +
