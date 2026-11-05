@@ -175,7 +175,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0x8488874355037510;  // (was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
+    constexpr uint64_t kGolden = 0xd4d3fa3893ab1d09;  // (was 0x8488874355037510 before the fallen lay for the whole fight rather than twenty seconds; was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
