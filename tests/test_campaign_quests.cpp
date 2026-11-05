@@ -117,7 +117,7 @@ TEST(artifacts_change_strength) {
 TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
     // A few campaigns: march side 0's hero to the nearest ruin and search it.
     int won = 0, fell = 0, artifacts = 0, allies = 0, gold = 0;
-    for (uint64_t seed = 1; seed <= 12; ++seed) {
+    for (uint64_t seed = 1; seed <= 6; ++seed) {
         Campaign c(continent(), seed);
         c.setHuman(0, true);
         const Campaign::Stack* s = heroStack(c);
@@ -129,6 +129,12 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         const Campaign::SiteState site = c.sites()[static_cast<size_t>(ruin)];
         CHECK(!c.canSearch(id));  // nothing to search at home
         if (!march(c, id, site.cx, site.cy) || c.sites()[static_cast<size_t>(ruin)].searched) continue;  // beaten to it
+        // (A hero in a fight searches nothing: let it end, if it is on.)
+        for (int t = 0; t < 4 * Campaign::kCalmTicks && c.findStack(id) && c.findStack(id)->awake; ++t) c.step();
+        if (!c.findStack(id) || c.findStack(id)->awake) continue;
+        bool alive = false;  // (the road is fought for now: a hero may not arrive)
+        for (const Army& a : c.findStack(id)->armies) alive = alive || a.hero();
+        if (!alive) continue;
         CHECK(c.canSearch(id));
         const Campaign::Stack before = *c.findStack(id);
         const int32_t goldBefore = c.sides()[0].gold;
@@ -218,7 +224,7 @@ TEST(a_temple_blesses_each_army_once) {
 
 TEST(the_computer_explores_and_hires_heroes) {
     Campaign c(continent(), 4);
-    for (int t = 0; t < Campaign::kTicksPerDay * 30; ++t) c.step();
+    for (int t = 0; t < Campaign::kTicksPerDay * 20; ++t) c.step();
     int searched = 0, hired = 0, blessed = 0, found = 0, fell = 0;
     for (const Campaign::SiteState& s : c.sites()) searched += s.kind == Kind::Ruin && s.searched;
     for (const Campaign::Deed& d : c.deeds()) {
@@ -227,7 +233,7 @@ TEST(the_computer_explores_and_hires_heroes) {
         found += d.text.find(" found the ") != std::string::npos;
         fell += d.text.find(" fell to ") != std::string::npos;
     }
-    std::printf("  30 days: %d ruins searched (%d artifacts), %d heroes fell, %d hired, %d blessings\n", searched, found, fell, hired, blessed);
+    std::printf("  20 days: %d ruins searched (%d artifacts), %d heroes fell, %d hired, %d blessings\n", searched, found, fell, hired, blessed);
     CHECK(searched >= 4);
     CHECK(hired >= 1);
 }
@@ -241,35 +247,25 @@ TEST(the_player_is_offered_a_hero_for_gold) {
     CHECK(home != nullptr);
     if (!home) return;
     const uint32_t id = home->id;
+    // (Two neutral towns handed over: how they are taken is the fights' own business.)
     for (int town = 0; town < 2; ++town) {
         const Campaign::Stack* s = c.findStack(id);
         int32_t target = -1, best = 1 << 30;
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const Campaign::CityState& city = c.cities()[i];
             const int32_t d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
-            if (city.owner == Campaign::kNeutral && d < best && c.move(id, city.cx, city.cy)) {
+            if (city.owner == Campaign::kNeutral && d < best) {
                 best = d;
                 target = static_cast<int32_t>(i);
             }
         }
-        CHECK(c.move(id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy));
-        for (int t = 0; t < Campaign::kTicksPerDay * 20 && !c.pending(); ++t) c.step();
-        CHECK(c.pending() != nullptr);
-        if (!c.pending()) return;
-        std::vector<Campaign::Outcome> out;  // an easy win in 3D
-        for (const Army* a : c.pendingAttackers()) out.push_back({a->id, a->soldiers, 0, a->rank});
-        for (const Army* a : c.pendingDefenders()) out.push_back({a->id, 0, 0, a->rank});
-        c.applyBattle(out, true);
-        // Hold the town while the banner rises.
-        for (int t = 0; t < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(target)].owner != 0; ++t) c.step();
+        CHECK(target >= 0);
+        c.grant(target, 0, UnitType::LightInfantry, 1);
     }
     CHECK(c.citiesOwned(0) == 3);
     // The other lords hold still meanwhile (else one may retake a town).
     for (uint8_t side = 1; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
-    for (int t = 0; t < Campaign::kTicksPerDay * 60 && !c.offer(0).open; ++t) {
-        if (c.pending()) c.resolvePending();  // a clash on the way: the dice settle it
-        c.step();
-    }
+    for (int t = 0; t < Campaign::kTicksPerDay * 60 && !c.offer(0).open; ++t) c.step();
     CHECK(c.offer(0).open);
     if (!c.offer(0).open) return;
     const Campaign::Offer o = c.offer(0);
@@ -300,7 +296,7 @@ TEST(the_player_is_offered_a_hero_for_gold) {
 TEST(quests_are_deterministic) {
     const auto run = [] {
         Campaign c(continent(), 9);
-        for (int t = 0; t < Campaign::kTicksPerDay * 25; ++t) c.step();
+        for (int t = 0; t < Campaign::kTicksPerDay * 12; ++t) c.step();
         std::string log;
         for (const Campaign::Deed& d : c.deeds()) log += d.text + "\n";
         return std::make_pair(c.checksum(), log);

@@ -195,14 +195,14 @@ bool Campaign::embark(uint32_t stackId) {
     size_t index = stacks_.size();
     for (size_t i = 0; i < stacks_.size(); ++i)
         if (stacks_[i].id == stackId) index = i;
-    if (index == stacks_.size() || stacks_[index].garrison || stacks_[index].boat || pending_.stack) return false;
+    if (index == stacks_.size() || stacks_[index].garrison || stacks_[index].boat || stacks_[index].awake) return false;
     const int32_t city = cityAt(stacks_[index].cx, stacks_[index].cy);
     const Boat* boat = boatInPort(city);
     if (!boat || cities_[static_cast<size_t>(city)].owner != stacks_[index].owner) return false;
     // Friends idle in the port come aboard too, as many as the boat carries.
     for (Stack& o : stacks_) {
         Stack& s = stacks_[index];
-        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || o.boat || o.garrison || !o.path.empty()) continue;
+        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || o.boat || o.garrison || !o.path.empty() || o.awake) continue;
         while (!o.armies.empty() && static_cast<int32_t>(s.armies.size()) < kBoatCapacity) {
             s.armies.push_back(o.armies.front());
             o.armies.erase(o.armies.begin());

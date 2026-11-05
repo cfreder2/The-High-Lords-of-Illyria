@@ -30,6 +30,7 @@ add_library(illyria_sim
     src/campaign_sea.cpp
     src/campaign_rare.cpp
     src/campaign_capture.cpp
+    src/campaign_world.cpp
     src/campaign_territory.cpp
     src/campaign_save.cpp
     src/edges.cpp

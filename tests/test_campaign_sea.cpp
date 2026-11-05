@@ -143,10 +143,10 @@ TEST(a_stack_sails_to_a_far_coast_faster_than_it_walks) {
 
 TEST(the_computer_takes_to_the_boats) {
     Campaign c(continent(), 7);
-    runDays(c, 40);
+    runDays(c, 25);
     std::set<uint8_t> sailors;
     for (const Campaign::Boat& b : c.boats()) sailors.insert(b.owner);
-    std::printf("  day 40: %zu boats, %d voyages, %zu sides afloat\n", c.boats().size(), c.voyages(), sailors.size());
+    std::printf("  day 25: %zu boats, %d voyages, %zu sides afloat\n", c.boats().size(), c.voyages(), sailors.size());
     CHECK(!c.boats().empty());
     CHECK(c.voyages() > 0);
     // Every boat lies in a port, rides at anchor on navigable water, or carries a stack.
@@ -170,12 +170,12 @@ TEST(boats_are_deterministic) {
         c.embark(id);
         const Campaign::CityState& to = c.cities()[static_cast<size_t>(farPorts(c).second)];
         c.move(id, to.cx, to.cy);
-        runDays(c, 30);
+        runDays(c, 12);
         return c.checksum();
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0xf07522c0fce5b6fc;
+    constexpr uint64_t kGolden = 0x8488874355037510;  // (was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

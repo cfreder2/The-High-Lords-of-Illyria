@@ -2090,30 +2090,38 @@ void main() {
 inline const char* kDotVs = R"(
 layout(location = 0) in vec3 iPos;
 layout(location = 1) in vec4 iColour;  // colour, and 1 if selected
+layout(location = 2) in vec2 iFight;   // how hard he is flashing in a fight (0: not), and how solid he is
 uniform vec2 uViewport;  // px
 uniform float uDotPx;
 uniform float uRim;  // px of outline all round (0: the colours)
 out vec2 vCorner;
 flat out vec4 vColour;
+flat out vec2 vFight;
 void main() {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
-    float size = uDotPx * (1.0 + 0.5 * iColour.a) + 2.0 * uRim;
+    // A man in a fight swells and shrinks with his flash.
+    float size = uDotPx * (1.0 + 0.5 * iColour.a) * (1.0 + 0.7 * iFight.x) + 2.0 * uRim;
     // Drawn a little nearer the eye along its own line of sight (where it appears is not
     // changed): so that bumps of the ground the coarse land does not have do not bury it.
     gl_Position = uViewProj * vec4(iPos + (uEye - iPos) * 0.02, 1.0);
     gl_Position.xy += (corner - 0.5) * 2.0 * size / uViewport * gl_Position.w;
     vCorner = corner * 2.0 - 1.0;
     vColour = iColour;
+    vFight = iFight;
 }
 )";
 inline const char* kDotFs = R"(
 in vec2 vCorner;
 flat in vec4 vColour;
+flat in vec2 vFight;
 uniform float uRim;
 out vec4 oColor;
 void main() {
     if (length(vCorner) > 1.0) discard;
-    oColor = vec4(uRim > 0.0 ? (vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : vec3(0.03, 0.03, 0.04)) : vColour.rgb, 1.0);
+    // In a fight the colour flares toward white-hot with the flash, and its rim goes hot too.
+    vec3 flare = mix(vColour.rgb, vec3(1.0, 0.95, 0.75), 0.85 * vFight.x);
+    vec3 rim = vColour.a > 0.5 ? vec3(0.75, 0.92, 1.0) : mix(vec3(0.03, 0.03, 0.04), vec3(0.55, 0.12, 0.04), vFight.x);
+    oColor = vec4(uRim > 0.0 ? rim : flare, vFight.y);
 }
 )";
 

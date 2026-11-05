@@ -256,23 +256,13 @@ int32_t Campaign::attackOdds(const std::vector<const Army*>& armies, uint8_t own
     uint8_t defOwner = city >= 0 ? cities_[static_cast<size_t>(city)].owner : kNeutral;
     for (const Stack& o : stacks_)
         if (o.owner != owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defOwner = o.owner;
+    // The dice reckon armies of one or two points a side; the fight is of men. A force a third the size of the
+    // men it would meet does not go (a lone hero at a garrison's gate hacks at it for ever, and dies).
+    int64_t mine = 0, theirs = 0;
+    for (const Army* a : armies) mine += a->soldiers;
+    for (const Army* a : def) theirs += a->soldiers;
+    if (mine * 3 < theirs) return 0;
     return winChance(lineup(armies, owner, cx, cy, false), lineup(def, defOwner, cx, cy, true, engines(armies)));
-}
-
-int32_t Campaign::fortifyCost(int32_t city) const {
-    if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return 0;
-    return 25 * (cities_[static_cast<size_t>(city)].defense + 1);
-}
-
-bool Campaign::fortify(int32_t city) {
-    if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
-    CityState& c = cities_[static_cast<size_t>(city)];
-    if (c.owner == kNeutral || c.razed || c.defense >= 9) return false;
-    const int32_t cost = fortifyCost(city);
-    if (sides_[c.owner].gold < cost) return false;
-    sides_[c.owner].gold -= cost;
-    ++c.defense;
-    return true;
 }
 
 bool Campaign::disband(uint32_t stackId, uint32_t armyId) {
@@ -281,8 +271,9 @@ bool Campaign::disband(uint32_t stackId, uint32_t armyId) {
         if (s.id != stackId || s.garrison) continue;
         for (size_t i = 0; i < s.armies.size(); ++i) {
             if (s.armies[i].id != armyId || s.armies[i].hero()) continue;
+            settle(s);
             s.armies.erase(s.armies.begin() + static_cast<long>(i));
-            if (s.armies.empty() && pending_.stack != s.id) stacks_.erase(stacks_.begin() + static_cast<long>(k));
+            if (s.armies.empty()) stacks_.erase(stacks_.begin() + static_cast<long>(k));
             return true;
         }
     }
@@ -316,7 +307,7 @@ void Campaign::deliverTransits() {
         int32_t where = -1;
         for (const int32_t c : {t.to, t.from}) {
             const CityState& cs = cities_[static_cast<size_t>(c)];
-            if (where < 0 && cs.owner == t.owner && !cs.razed && cs.banner == kNeutral && armiesAt(t.owner, cs.cx, cs.cy) < kMaxInCity) where = c;
+            if (where < 0 && cs.owner == t.owner && !cs.razed && cs.banner == kNeutral) where = c;
         }
         if (where < 0) continue;
         const CityState& cs = cities_[static_cast<size_t>(where)];
@@ -324,6 +315,7 @@ void Campaign::deliverTransits() {
         for (Stack& st : stacks_)
             if (st.owner == t.owner && st.cx == cs.cx && st.cy == cs.cy && st.armies.size() < kMaxStack && st.path.empty()) home = &st;
         if (!home) home = &newStack(t.owner, cs.cx, cs.cy);
+        settle(*home);
         home->armies.push_back(t.army);
     }
     transits_ = std::move(still);
@@ -391,7 +383,5 @@ int32_t Campaign::armiesAt(uint8_t owner, int32_t cx, int32_t cy) const {
         if (s.owner == owner && s.cx == cx && s.cy == cy) n += static_cast<int32_t>(s.armies.size());
     return n;
 }
-
-int32_t Campaign::cellCapacity(int32_t cx, int32_t cy) const { return terrainAt(cx, cy) == Lay::City ? kMaxInCity : kMaxStack; }
 
 }  // namespace illyria::sim

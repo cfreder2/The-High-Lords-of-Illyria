@@ -97,7 +97,9 @@ public:
     // walking in their formation, for those near the camera. `seconds`: the
     // campaign's clock, which their strides follow (so a pause holds them).
     // Empty: none (a battle, the title).
-    void setMapSoldiers(const std::vector<MapSoldier>& soldiers, float seconds);
+    void setMapSoldiers(const std::vector<MapSoldier>& soldiers, float seconds, float dt = 0.016f);
+    // The arrows in flight over a fight on the land, as the draw wants them: position, velocity, two zeros (battle-local metres).
+    void setMapArrows(const std::vector<float>& arrows) { mapArrows_ = arrows; }
     // How many of them were drawn as sprites and as dots in the last frame (tests, the minimap's sibling).
     size_t mapSprites() const { return mapSprites_.size(); }
     int mapDots() const { return dots_.count; }
@@ -174,8 +176,10 @@ private:
     std::vector<MapSoldier> mapSoldiers_;
     std::vector<V3> mapPlaces_;
     std::vector<size_t> mapSprites_;
+    std::vector<float> mapArrows_;
     std::vector<char> mapShown_;  // on the screen (or near it): the rest are not drawn
-    float mapSeconds_ = 0;
+    float mapSeconds_ = 0, mapDt_ = 0.016f;
+    std::map<uint32_t, sprites::ClipMemory> mapMemory_;  // the sprite men's clips, kept while they stay in sight
     bool mapOn_ = false;
     void placeMapSoldiers(const Battle& battle, const Camera& camera);
     void pushMapSprites(const Battle& battle, const Camera& camera, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);

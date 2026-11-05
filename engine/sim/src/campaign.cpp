@@ -246,6 +246,8 @@ void Campaign::initCities() {
         }
         cities_.push_back(st);
     }
+    cityCell_.assign(static_cast<size_t>(nx_) * ny_, -1);  // which city a cell holds, for cityAt
+    for (size_t i = 0; i < cities_.size(); ++i) cityCell_[static_cast<size_t>(cities_[i].cy) * nx_ + cities_[i].cx] = static_cast<int16_t>(i);
     // Every side: its capital, a hero and a war chest. Neutral towns: a small
     // garrison, a little stronger where the walls are.
     for (size_t i = 0; i < cities_.size(); ++i) {
@@ -276,6 +278,8 @@ Army Campaign::makeArmy(UnitType type, const std::string& name) {
     a.name = name;
     a.soldiers = a.fullStrength = squadSize(type);
     a.bornDay = day();
+    a.men.resize(static_cast<size_t>(a.soldiers));
+    for (Man& m : a.men) m.id = nextId_++;
     return a;
 }
 
@@ -296,9 +300,9 @@ const Campaign::Stack* Campaign::findStack(uint32_t id) const {
 }
 
 int32_t Campaign::cityAt(int32_t cx, int32_t cy) const {
-    for (size_t i = 0; i < cities_.size(); ++i)
-        if (cities_[i].cx == cx && cities_[i].cy == cy && !cities_[i].razed) return static_cast<int32_t>(i);
-    return -1;
+    if (cx < 0 || cy < 0 || cx >= nx_ || cy >= ny_) return -1;
+    const int32_t i = cityCell_[static_cast<size_t>(cy) * nx_ + cx];
+    return i >= 0 && !cities_[static_cast<size_t>(i)].razed ? i : -1;
 }
 
 int32_t Campaign::citiesOwned(uint8_t side) const {
@@ -342,11 +346,12 @@ bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
 }
 
 void Campaign::step() {
-    if (pending_.stack) return;
     ++tick_;
     if (tick_ % kTicksPerDay == 0) newDay();
+    if (tick_ % kContactTicks == 0) contactStep();  // campaign_world.cpp: who is near an enemy wakes, who is not goes to sleep
     moveStacks();
-    bannerStep();  // campaign_capture.cpp
+    stepWorld();  // the men who are awake, as in any battle
+    if (tick_ % kContactTicks == 0) bannerStep();  // campaign_capture.cpp
     if (tick_ % kTerritoryTicks == 0) territoryStep();  // campaign_territory.cpp
 }
 
@@ -378,6 +383,7 @@ void Campaign::newDay() {
                 break;
             }
             side.gold += upkeep(newest->armies[which].type);  // deserters take no pay
+            settle(*newest);
             newest->armies.erase(newest->armies.begin() + static_cast<long>(which));
             ++side.deserted;
         }
@@ -391,8 +397,6 @@ void Campaign::newDay() {
         if (c.producing < 0 || c.owner == kNeutral || c.razed || c.banner != kNeutral) continue;
         const Option& o = c.options[static_cast<size_t>(c.producing)];
         const bool sent = c.vectorTo >= 0;
-        // A full city (32 armies) trains no more until some march out.
-        if (c.progress == 0 && !sent && armiesAt(c.owner, c.cx, c.cy) >= kMaxInCity) continue;
         if (c.progress == 0) {
             if (sides_[c.owner].gold < o.cost) continue;  // waits for the money
             sides_[c.owner].gold -= o.cost;
@@ -419,6 +423,7 @@ void Campaign::newDay() {
         for (Stack& st : stacks_)
             if (st.owner == c.owner && st.cx == c.cx && st.cy == c.cy && st.armies.size() < kMaxStack && st.path.empty()) home = &st;
         if (!home) home = &newStack(c.owner, c.cx, c.cy);
+        settle(*home);
         home->armies.push_back(army);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
@@ -433,7 +438,7 @@ void Campaign::newDay() {
 
 void Campaign::moveStacks() {
     for (size_t i = 0; i < stacks_.size(); ++i) {
-        if (stacks_[i].path.empty() || stacks_[i].armies.empty()) continue;
+        if (stacks_[i].path.empty() || stacks_[i].armies.empty() || stacks_[i].awake) continue;  // (the awake march with their men: stepWorld)
         if (!boardIfSailing(i)) continue;  // stepping from a port onto the water boards a boat
         Stack& s = stacks_[i];
         // A tick on the way, at the pace of the slowest army over this ground
@@ -447,32 +452,19 @@ void Campaign::moveStacks() {
             s.progress = 0;
             continue;
         }
+        // It faces the way it goes, turning gradually.
+        {
+            int32_t wx = (nx - s.cx) * 1000, wy = (ny - s.cy) * 1000;
+            if (wx && wy) wx = wx * 707 / 1000, wy = wy * 707 / 1000;
+            s.hx += (wx - s.hx) / 12;
+            s.hy += (wy - s.hy) / 12;
+            const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.hx} * s.hx + int64_t{s.hy} * s.hy)));
+            if (len > 0) s.hx = static_cast<int32_t>(int64_t{s.hx} * 1000 / len), s.hy = static_cast<int32_t>(int64_t{s.hy} * 1000 / len);
+        }
         if (s.progress < cost) continue;
         s.progress -= cost;
-        // Into enemies or a city not ours: fight for it, once marched up to it.
-        bool hostile = false;
-        for (const Stack& o : stacks_) hostile = hostile || (o.owner != s.owner && o.cx == nx && o.cy == ny && !o.armies.empty());
-        const int32_t city = cityAt(nx, ny);
-        // (Not into a city where our own banner is going up: that is joining them.)
-        const bool attack = hostile || (city >= 0 && cities_[static_cast<size_t>(city)].owner != s.owner &&
-                                        cities_[static_cast<size_t>(city)].banner != s.owner);
-        if (!attack && s.path.size() > 1 && armiesAt(s.owner, nx, ny) + static_cast<int32_t>(s.armies.size()) > cellCapacity(nx, ny)) {
-            // Our own armies fill the way (Warlords 9.2): halt here.
-            s.path.clear();
-            s.progress = 0;
-            continue;
-        }
-        if (attack) {
-            s.path.clear();
-            s.progress = 0;
-            if (sides_[s.owner].human) {
-                // The player decides how this one is fought.
-                pending_ = {s.id, nx, ny};
-                return;
-            }
-            battle(stacks_[i], nx, ny);
-            continue;
-        }
+        // (A hostile stack or town in the next cell is not met here: the men
+        // meet whoever is near in the world, long before they are in it.)
         s.cx = nx;
         s.cy = ny;
         s.path.erase(s.path.begin());
@@ -487,9 +479,10 @@ void Campaign::moveStacks() {
 }
 
 void Campaign::arrive(Stack& s) {
-    // Join a friendly stack already here, as far as the limit of eight allows.
+    // Join a friendly stack already standing here, as a group of eight at most
+    // (a group is what marches together; any number may stand in a place).
     for (Stack& o : stacks_) {
-        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty() || o.boat || s.boat) continue;
+        if (&o == &s || o.owner != s.owner || o.cx != s.cx || o.cy != s.cy || !o.path.empty() || o.boat || s.boat || o.awake) continue;
         while (!s.armies.empty() && o.armies.size() < kMaxStack) {
             o.armies.push_back(s.armies.back());
             s.armies.pop_back();
@@ -509,170 +502,10 @@ void Campaign::promote(Army& a) {
     while (a.rank < 3 && a.kills >= kRanks[a.rank] * a.fullStrength) ++a.rank;
 }
 
-void Campaign::battle(Stack& attacker, int32_t cx, int32_t cy) {
-    // Warlords' combat: each side's armies line up weakest first and fight
-    // one on one; each round both roll a ten-sided die, and a roll no higher
-    // than the opponent's strength is "low". If one rolls low and the other
-    // high, the low roller takes a hit; two hits destroy an army.
-    std::vector<Stack*> defenders;
-    for (Stack& o : stacks_)
-        if (o.owner != attacker.owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defenders.push_back(&o);
-    const int32_t city = cityAt(cx, cy);
-    Fight fight;
-    fight.attacker = attacker.owner;
-    // Whoever stands there (a town's lord, or the enemy raising a banner in it).
-    fight.defender = !defenders.empty() ? defenders.front()->owner : city >= 0 ? cities_[static_cast<size_t>(city)].owner : kNeutral;
-    fight.city = city;
-    fight.day = day();
-
-    // Every modifier of the manual's appendix (AFCM, DFCM, the empire's and
-    // the army type's liking for the ground), and the order they fight in.
-    std::vector<Army*> att, def;
-    for (Army& a : attacker.armies) att.push_back(&a);
-    for (Stack* d : defenders)
-        for (Army& a : d->armies) def.push_back(&a);
-    std::vector<int32_t> asOf, dsOf;
-    order(att, attacker.owner, cx, cy, false, asOf, 0, attacker.cx, attacker.cy);
-    order(def, fight.defender, cx, cy, true, dsOf, engines(std::vector<const Army*>(att.begin(), att.end())), attacker.cx, attacker.cy);
-    // Armies fighting from a boat's deck fight at a penalty (campaign_sea.cpp).
-    int32_t defAfloat = 0;
-    for (const Stack* d : defenders) defAfloat = std::max(defAfloat, afloatPenalty(*d));
-    for (int32_t& p : asOf) p = std::clamp(p - 100 * afloatPenalty(attacker), 100, 900);
-    for (int32_t& p : dsOf) p = std::clamp(p - 100 * defAfloat, 100, 900);
-    for (Army* a : att) a->hits = 0;
-    for (Army* a : def) a->hits = 0;
-    size_t ai = 0, di = 0;
-    while (ai < att.size() && di < def.size()) {
-        Army& a = *att[ai];
-        Army& d = *def[di];
-        const int32_t as = asOf[ai], ds = dsOf[di];
-        // Strengths are in hundredths (the small edges make them fractional), so
-        // the die has a thousand faces: a roll of 1-1000 against 100-900.
-        const bool aLow = static_cast<int32_t>(rng_.nextBelow(1000)) + 1 <= ds;
-        const bool dLow = static_cast<int32_t>(rng_.nextBelow(1000)) + 1 <= as;
-        if (aLow == dLow) continue;
-        Army& hurt = aLow ? a : d;
-        Army& striker = aLow ? d : a;
-        if (++hurt.hits < 2) continue;
-        striker.kills += hurt.soldiers;
-        promote(striker);
-        hurt.soldiers = 0;
-        if (aLow) {
-            ++ai;
-            ++fight.attackerLost;
-        } else {
-            ++di;
-            ++fight.defenderLost;
-        }
-    }
-    fight.attackerWon = di >= def.size();
-    // The fallen are gone; the wounded heal before the next fight.
-    bury(attacker, cx, cy);
-    for (Stack* d : defenders) bury(*d, cx, cy);
-    for (Stack* d : defenders) pickUp(*d);  // the spoils of the fallen, to a hero holding the field
-    // The city is taken, and its treasure: the loser loses a share of the war
-    // chest in proportion to its cities, and the victor gets half.
-    if (fight.attackerWon && !attacker.armies.empty()) capture(attacker, cx, cy, fight);
-    fights_.push_back(fight);
-}
-
 Campaign::Stack* Campaign::stackById(uint32_t id) {
     for (Stack& s : stacks_)
         if (s.id == id) return &s;
     return nullptr;
-}
-
-std::vector<const Army*> Campaign::pendingAttackers() const {
-    std::vector<const Army*> out;
-    if (const Stack* s = findStack(pending_.stack))
-        for (const Army& a : s->armies) out.push_back(&a);
-    return out;
-}
-
-std::vector<const Army*> Campaign::pendingDefenders() const {
-    std::vector<const Army*> out;
-    const Stack* att = findStack(pending_.stack);
-    if (!att) return out;
-    for (const Stack& o : stacks_)
-        if (o.owner != att->owner && o.cx == pending_.cx && o.cy == pending_.cy)
-            for (const Army& a : o.armies) out.push_back(&a);
-    return out;
-}
-
-void Campaign::resolvePending() {
-    Stack* s = stackById(pending_.stack);
-    const Pending p = pending_;
-    pending_ = {};
-    if (s) battle(*s, p.cx, p.cy);
-    stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
-    syncBoats();
-}
-
-void Campaign::capture(Stack& attacker, int32_t cx, int32_t cy, Fight& fight) {
-    // The field is won: the victors march in. A city is not yet theirs: their
-    // banner must rise over it first (campaign_capture.cpp).
-    (void)fight;
-    attacker.cx = cx;
-    attacker.cy = cy;
-    pickUp(attacker);
-    const int32_t city = cityAt(cx, cy);
-    if (city < 0) return;
-    CityState& c = cities_[static_cast<size_t>(city)];
-    if (c.owner == attacker.owner || c.banner == attacker.owner) return;
-    c.banner = attacker.owner;
-    c.bannerProgress = 0;
-    const std::string& name = continent_.cities()[static_cast<size_t>(city)].name;
-    deed(attacker.owner, "Our banner goes up over " + name);
-    if (c.owner != kNeutral) deed(c.owner, sides_[attacker.owner].name + " raise their banner over " + name + "!");
-    bannerAlarm(city);  // its lord may send help at once (campaign_ai.cpp)
-}
-
-void Campaign::applyBattle(const std::vector<Outcome>& outcomes, bool attackerWon, bool bannerRaised) {
-    // The 3D battle has been fought: every army that took part comes out with
-    // its survivors, its new kills and its rank.
-    Stack* att = stackById(pending_.stack);
-    const Pending p = pending_;
-    pending_ = {};
-    if (!att) return;
-    Fight fight;
-    fight.attacker = att->owner;
-    fight.city = cityAt(p.cx, p.cy);
-    fight.day = day();
-    for (Stack& st : stacks_) {
-        if (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner) fight.defender = st.owner;
-        const bool inBattle = &st == att || (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner);
-        if (!inBattle) continue;
-        for (Army& a : st.armies) {
-            for (const Outcome& o : outcomes) {
-                if (o.army != a.id) continue;
-                const bool lost = o.soldiers <= 0;
-                (&st == att ? fight.attackerLost : fight.defenderLost) += lost;
-                a.soldiers = o.soldiers;
-                a.kills += o.kills;
-                a.rank = std::max(0, o.rank);
-            }
-        }
-        bury(st, p.cx, p.cy);
-    }
-    if (fight.city >= 0 && fight.defender == 0 && cities_[static_cast<size_t>(fight.city)].owner != att->owner)
-        fight.defender = cities_[static_cast<size_t>(fight.city)].owner;
-    // Taken by the capture point in 3D: the banner rose in the battle, so the
-    // defenders still standing fall back out of the town.
-    if (attackerWon && bannerRaised && fight.city >= 0 && !att->armies.empty())
-        for (Stack& st : stacks_)
-            if (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner && !st.armies.empty()) fallBack(st);
-    bool defendersLeft = false;
-    for (const Stack& st : stacks_)
-        defendersLeft = defendersLeft || (st.cx == p.cx && st.cy == p.cy && st.owner != att->owner && !st.armies.empty());
-    fight.attackerWon = attackerWon && !defendersLeft && !att->armies.empty();
-    if (fight.attackerWon) capture(*att, p.cx, p.cy, fight);
-    if (fight.attackerWon && bannerRaised && fight.city >= 0 && cities_[static_cast<size_t>(fight.city)].owner != att->owner) {
-        transfer(fight.city, att->owner);
-        fight.captured = true;
-    }
-    fights_.push_back(fight);
-    stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& st) { return st.armies.empty(); }), stacks_.end());
-    syncBoats();
 }
 
 uint64_t Campaign::checksum() const {
@@ -712,6 +545,13 @@ uint64_t Campaign::checksum() const {
         h.addI64(s.cy);
         h.addI64(s.progress);
         h.addU64(s.boat);
+        h.addU64(s.awake);
+        h.addI64(s.hx);
+        h.addI64(s.hy);
+        if (s.awake) {
+            h.addI64(s.px);
+            h.addI64(s.py);
+        }
         for (const Army& a : s.armies) {
             h.addU64(a.id);
             h.addU64(static_cast<uint64_t>(a.type));
@@ -721,6 +561,17 @@ uint64_t Campaign::checksum() const {
             h.addI64(a.blessings);
             h.addU64(a.temples | (a.ally ? 0x100u : 0u));
             for (uint8_t k : a.artifacts) h.addU64(k);
+            for (const Man& m : a.men) {
+                h.addU64(m.id);
+                h.addI64(m.hp);
+                h.addI64(m.kills);
+                h.addI64(m.rank);
+                h.addU64(m.placed);
+                if (m.placed) {
+                    h.addI64(m.ox);
+                    h.addI64(m.oy);
+                }
+            }
         }
     }
     hashQuests(h);
@@ -734,6 +585,12 @@ uint64_t Campaign::checksum() const {
         h.addU64(b.stack);
     }
     h.addI64(voyages_);
+    {
+        std::vector<int32_t> gates;
+        gateHps(gates);
+        for (int32_t g : gates) h.addI64(g);
+        if (awakeStacks_ > 0 && world_) h.addU64(world_->checksum());  // (between fights the world is only its gates)
+    }
     for (Lay t : terrain_) h.addU64(static_cast<uint64_t>(t));
     for (uint8_t w : navigable_) h.addU64(w);
     return h.value();

@@ -17,7 +17,7 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC2.";  // bump the digit when the layout changes
+constexpr const char* kMagic = "ILC3.";  // bump the digit when the layout changes
 constexpr uint32_t kFormat = 2;
 
 class Writer {
@@ -150,12 +150,22 @@ void writeArmy(Writer& w, const Army& a) {
     w.i(a.kills);
     w.i(a.rank);
     w.i(a.blessings);
-    w.i(a.hits);
     w.u(a.bornDay);
     w.b(a.ally);
     w.u(a.temples);
     w.u(a.artifacts.size());
     for (uint8_t k : a.artifacts) w.u(k);
+    w.u(a.men.size());
+    for (const Man& m : a.men) {
+        w.u(m.id);
+        w.i(m.hp);
+        w.i(m.kills);
+        w.i(m.morale);
+        w.i(m.rank);
+        w.b(m.placed);
+        w.i(m.ox);
+        w.i(m.oy);
+    }
 }
 
 Army readArmy(Reader& r) {
@@ -168,12 +178,22 @@ Army readArmy(Reader& r) {
     a.kills = r.i32();
     a.rank = r.i32();
     a.blessings = r.i32();
-    a.hits = r.i32();
     a.bornDay = r.u32();
     a.ally = r.b();
     a.temples = r.u8();
     a.artifacts.resize(r.count());
     for (uint8_t& k : a.artifacts) k = r.u8();
+    a.men.resize(r.count());
+    for (Man& m : a.men) {
+        m.id = r.u32();
+        m.hp = r.i32();
+        m.kills = r.i32();
+        m.morale = r.i32();
+        m.rank = r.i32();
+        m.placed = r.b();
+        m.ox = r.i32();
+        m.oy = r.i32();
+    }
     return a;
 }
 
@@ -203,7 +223,8 @@ uint64_t mapPrint(const Campaign& c) {
 
 }  // namespace
 
-std::string Campaign::save() const {
+std::string Campaign::save() {
+    settleAll();  // a fight is not kept: its men are saved where they stand
     Writer w;
     w.u(kFormat);
     w.u(seed_);
@@ -264,23 +285,18 @@ std::string Campaign::save() const {
         w.i(s.progress);
         w.b(s.garrison);
         w.u(s.boat);
+        w.i(s.hx);
+        w.i(s.hy);
     }
     w.u(fights_.size());
     for (const Fight& f : fights_) {
         w.u(f.attacker);
         w.u(f.defender);
         w.i(f.city);
-        w.b(f.attackerWon);
-        w.b(f.captured);
-        w.i(f.attackerLost);
-        w.i(f.defenderLost);
         w.u(f.day);
     }
     w.u(armiesRaised_.size());
     for (int32_t n : armiesRaised_) w.i(n);
-    w.u(pending_.stack);
-    w.i(pending_.cx);
-    w.i(pending_.cy);
     w.u(transits_.size());
     for (const Transit& t : transits_) {
         w.u(t.owner);
@@ -333,6 +349,12 @@ std::string Campaign::save() const {
     w.u(boatsBuilt_.size());
     for (int32_t n : boatsBuilt_) w.i(n);
     w.i(voyages_);
+    {
+        std::vector<int32_t> gates;
+        gateHps(gates);
+        w.u(gates.size());
+        for (int32_t g : gates) w.i(g);  // (pairs: gate, hit points left)
+    }
     w.u(hexes_.size());
     for (const Hex& h : hexes_) {
         w.u(h.owner);
@@ -353,7 +375,7 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     };
     const std::string magic = kMagic;
     std::vector<uint8_t> bytes;
-    // An older layout ("ILC1." before the one clock) is a campaign all the same: say so.
+    // An older layout ("ILC2." before the men were on the land) is a campaign all the same: say so.
     if (text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
     if (text.compare(0, magic.size(), magic) != 0 || !fromBase64(text, magic.size(), bytes)) return fail("not a saved campaign");
     if (bytes.size() < 8) return fail("damaged (cut short)");
@@ -424,23 +446,18 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
         s.progress = r.i32();
         s.garrison = r.b();
         s.boat = r.u32();
+        s.hx = r.i32();
+        s.hy = r.i32();
     }
     c->fights_.resize(r.count());
     for (Fight& f : c->fights_) {
         f.attacker = r.u8();
         f.defender = r.u8();
         f.city = r.i32();
-        f.attackerWon = r.b();
-        f.captured = r.b();
-        f.attackerLost = r.i32();
-        f.defenderLost = r.i32();
         f.day = r.u32();
     }
     c->armiesRaised_.resize(r.count());
     for (int32_t& n : c->armiesRaised_) n = r.i32();
-    c->pending_.stack = r.u32();
-    c->pending_.cx = r.i32();
-    c->pending_.cy = r.i32();
     c->transits_.resize(r.count());
     for (Transit& t : c->transits_) {
         t.owner = r.u8();
@@ -494,6 +511,8 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     c->boatsBuilt_.resize(r.count());
     for (int32_t& n : c->boatsBuilt_) n = r.i32();
     c->voyages_ = r.i32();
+    c->gateHp_.resize(r.count());
+    for (int32_t& g : c->gateHp_) g = r.i32();
     if (r.count() != c->hexes_.size()) return fail("damaged (land)");
     for (Hex& h : c->hexes_) {
         h.owner = r.u8();

@@ -75,15 +75,22 @@
     lastState = st;
     if (!st || typeof st.day !== "number") return;
     if (savedDay < 0) savedDay = st.day;
-    if (st.day > savedDay && !st.pending && !st.winner) autosave(false);
+    if (st.day > savedDay && !st.winner) autosave(false);
   }
   function startCampaign(k, hard) {
-    if (!game().startMode("campaign", { hard: hard ? 1 : 0, speed: prefs.speed })) return failed("campaign");
-    slot = k;
-    savedDay = -1;
-    lastState = null;
-    if (k) saveTo(k, true);
-    closeAll();
+    // The island's ground (every wall, gate and tree, for the fights) is made now, once, a few seconds:
+    // let the page draw the notice first.
+    busy("Laying out the island", "Every wall, gate and tree, for the fights");
+    setTimeout(() => {
+      const ok = game().startMode("campaign", { hard: hard ? 1 : 0, speed: prefs.speed });
+      unbusy();
+      if (!ok) return failed("campaign");
+      slot = k;
+      savedDay = -1;
+      lastState = null;
+      if (k) saveTo(k, true);
+      closeAll();
+    }, 60);
   }
   function loadSlot(k) {
     const d = readSlot(k);
@@ -409,7 +416,7 @@
     row("card", "+ New group", "Appears when the selection is not already a card: one tap makes it a group, with its own card and number. Only the heroes and the groups you make have cards.") +
     row("longcard", "Hold a group card", "Puts the current selection in that group, or forgets the group when it is the selection.") +
     `<h3>Along the top</h3>` +
-    `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting.</td></tr>` +
+    `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting (on the campaign map too).</td></tr>` +
     `<tr><td>Pause · 1×</td><td>Stop the battle (or the campaign's days); how fast time passes. Tap for 2× and 4× (the campaign's days up to 8×); hold it in a battle for slow motion, ½×, and hold again for ¼×.</td></tr>` +
     `<tr><td>☰</td><td>Restart, Save, Settings, Controls, the Manual, Main menu.</td></tr></table>` +
     campaignHtml();
@@ -417,7 +424,7 @@
     `<h3>On the campaign map</h3>` +
     row("banner", "Tap your soldiers, or box them", "Selects that stack (hold and drag, or shift and drag, a box round them); its armies show as cards. Then tap the ground to march, enemy soldiers or a town to attack. The minimap at the top right takes the camera anywhere.") +
     row("city", "Tap one of your towns", "Its panel: what it trains, where new armies go, its walls, its boats.") +
-    `<table class="keys"><tr><td>Fight it · Resolve</td><td>A battle: fight it in 3D, or let the dice settle it. Withdraw leaves a 3D battle.</td></tr>` +
+    `<table class="keys"><tr><td>Fight!</td><td>Armies that meet fight where they stand, on the map, with the same rules as any battle: there is nothing to choose and no dice. This takes the camera to the fiercest fighting; zoom in on it to see the men, and out to see every man as a dot that flashes while he fights.</td></tr>` +
     `<tr><td>Search · Visit</td><td>A hero at a ruin or a sage, anyone at a temple.</td></tr>` +
     `<tr><td>An army's card, twice</td><td>Disbands it: no more upkeep (one tap, if Settings say so).</td></tr>` +
     `<tr><td>Embark · Land</td><td>Board a boat in a port; step ashore from the sea.</td></tr></table>`;

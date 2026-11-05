@@ -161,8 +161,6 @@
   #compass svg { width: 32px; height: 32px; }
   body.sandbox-on #compass { right: calc(268px + var(--safe-r)); }
   body.at-title #compass, body.mode-setup #compass { display: none; }
-  #battlePrompt .edges { font-size: 12px; margin: -6px 0 10px; opacity: 0.9; }
-  #battlePrompt .edges b { color: var(--gold); font-weight: 600; }
   #campBar { padding: 6px 12px; font-size: 13px; }
   #campBar b { color: var(--gold); }
   #cityPanel { position: fixed; right: calc(8px + var(--safe-r)); bottom: calc(80px + var(--safe-b)); width: 250px; padding: 10px 12px; z-index: 4; }
@@ -195,10 +193,6 @@
   /* Every pop-up closes with its ✕, a tap on the map, or Esc. */
   .popup > .x { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; min-height: 0; padding: 0; font-size: 14px; line-height: 1;
                 border-radius: 8px; z-index: 1; }
-  #battlePrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 6; text-align: center; }
-  #battlePrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
-  #battlePrompt p { margin: 0 0 12px; font-size: 13px; }
-  #battlePrompt button { margin: 0 4px; padding: 8px 14px; }
   #levelPrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 7; text-align: center; }
   #levelPrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
   #levelPrompt p { margin: 0 0 12px; font-size: 13px; }
@@ -222,9 +216,6 @@
            padding: 8px 14px; font-size: 14px; text-align: center; z-index: 5; pointer-events: none; color: #fff3d6; }
   .card .arts { grid-column: 1 / -1; font-size: 11px; color: #ffe27a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card.has-arts { width: 200px; }
-  #withdraw { display: none; }
-  body.campfight #withdraw { display: inline-block; }
-  body.campfight .nofight { display: none !important; }
   .camp-only { display: none; }
   body.campaign .camp-only { display: block; }
   body.campaign .battle-only { display: none !important; }
@@ -282,10 +273,9 @@
   <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
   <div id="controls">
     <button id="charge" class="battle-only" aria-label="Send every squad at the nearest enemy">Charge</button>
-    <button id="hot" class="battle-only" aria-label="Jump to the fiercest fighting">Fight!</button>
+    <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
     <button id="pause" aria-label="Pause">Pause</button>
     <button id="speed" aria-label="Game speed">1×</button>
-    <button id="withdraw" aria-label="Withdraw to the campaign">Withdraw</button>
     <button id="menuButton" aria-label="More">☰</button>
     <div id="menu" role="menu">
       <button id="restart" class="nofight battle-only" aria-label="Restart battle">↻ Restart</button>
@@ -379,11 +369,6 @@
     <button id="levelEasy"><b>Easy</b><small>Knights: slow, careless, short of gold</small></button>
     <button id="levelHard"><b>Hard</b><small>Warlords: every trick, no mercy</small></button>
   </div>
-</div>
-<div id="battlePrompt" class="panel hidden">
-  <h3 id="promptTitle">Battle</h3>
-  <p id="promptText"></p>
-  <button id="promptFight">Fight it</button><button id="promptResolve">Resolve</button>
 </div>
 
 <div id="hirePrompt" class="panel camp-only hidden">
@@ -546,7 +531,6 @@
       restart: Module.cwrap("illyria_restart", null, []),
       setScenario: Module.cwrap("illyria_set_scenario", null, ["number"]),
       campStart: Module.cwrap("illyria_campaign_start", null, ["number"]),
-      campFortify: Module.cwrap("illyria_campaign_fortify", null, ["number"]),
       campVector: Module.cwrap("illyria_campaign_vector", null, ["number", "number"]),
       campDisband: Module.cwrap("illyria_campaign_disband", null, ["number"]),
       campLeave: Module.cwrap("illyria_campaign_leave", null, []),
@@ -557,9 +541,6 @@
       campPause: Module.cwrap("illyria_campaign_pause", null, []),
       campSpeed: Module.cwrap("illyria_campaign_speed", null, []),
       campSelect: Module.cwrap("illyria_campaign_select", null, ["number"]),
-      campResolve: Module.cwrap("illyria_campaign_resolve", null, []),
-      campFight: Module.cwrap("illyria_campaign_fight", null, []),
-      campReturn: Module.cwrap("illyria_campaign_return", null, []),
       campSearch: Module.cwrap("illyria_campaign_search", "number", []),
       campHire: Module.cwrap("illyria_campaign_hire", "number", ["number"]),
       campBuildBoat: Module.cwrap("illyria_campaign_build_boat", null, ["number"]),
@@ -839,9 +820,9 @@
   // The page's side of a mode starting: the HUD cleared and set for it.
   function resetHud() {
     campaign = false;
-    campFight = false;
-    document.body.classList.remove("campaign", "campfight", "at-title", "menu-open");
-    for (const id of ["overlay", "cityPanel", "battlePrompt", "hirePrompt", "levelPrompt", "voyage", "news", "picker", "toast"]) $(id).classList.add("hidden");
+    document.body.classList.remove("campaign", "at-title", "menu-open");
+    $("hot").style.display = "";  // (the campaign hides it while nothing is being fought)
+    for (const id of ["overlay", "cityPanel", "hirePrompt", "levelPrompt", "voyage", "news", "picker", "toast"]) $(id).classList.add("hidden");
     $("overlayMenu").classList.add("hidden");
     $("banners").innerHTML = "";
     $("cards").innerHTML = "";
@@ -877,7 +858,7 @@
   }
   // Back to the title screen; from a campaign, saving it first (when asked and it has a slot).
   function toMenu(save) {
-    if (save && window.IllyriaTitle && (campaign || campFight)) IllyriaTitle.autosave(true);
+    if (save && window.IllyriaTitle && campaign) IllyriaTitle.autosave(true);
     const m = window.IllyriaModes && window.IllyriaModes[mode];
     if (m && m.stopped) m.stopped();
     startMode("title");
@@ -905,32 +886,6 @@
   const chooseLevel = (level) => { $("levelPrompt").classList.add("hidden"); setCampaign(true, level); };
   $("levelEasy").onclick = () => api && chooseLevel(0);
   $("levelHard").onclick = () => api && chooseLevel(1);
-  // A campaign battle: fought in 3D, then back to the map with the survivors.
-  let campFight = false;
-  $("promptResolve").onclick = () => { api.campResolve(); $("battlePrompt").classList.add("hidden"); };
-  $("promptFight").onclick = () => {
-    $("battlePrompt").classList.add("hidden");
-    api.campFight();
-    campaign = false;
-    campFight = true;
-    document.body.classList.remove("campaign");
-    document.body.classList.add("campfight");
-    $("banners").innerHTML = "";
-    $("cityPanel").classList.add("hidden");
-    $("cards").innerHTML = "";
-    lastSquadsKey = "";
-  };
-  function returnToCampaign() {
-    api.campReturn();
-    campFight = false;
-    campaign = true;
-    document.body.classList.remove("campfight");
-    document.body.classList.add("campaign");
-    $("overlay").classList.add("hidden");
-    $("cards").innerHTML = "";
-    campArmiesKey = "";
-  }
-  $("withdraw").onclick = () => api && returnToCampaign();
   // Heroes: what a search found shows for a few seconds, and stays in the news.
   let toastTimer = 0;
   function toast(text) {
@@ -949,7 +904,7 @@
   $("hireNo").onclick = () => api && api.campHire(0);
   let scenario = 0;
   $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
-  $("overlayButton").onclick = () => { if (!api) return; if (campFight) returnToCampaign(); else api.restart(); };
+  $("overlayButton").onclick = () => { if (api) api.restart(); };
   $("overlayMenu").onclick = () => api && toMenu(true);
   $("hold").onclick = () => api && api.stop();
   $("charge").onclick = () => api && api.charge();
@@ -1147,7 +1102,7 @@
   // The minimap (illyria_minimap in main.cpp): the land drawn once by the engine, then every town and
   // site, the soldiers as points where they stand apart and as heat where they cannot be told apart,
   // and the ground the camera sees. A tap or a drag on it takes the camera there.
-  const mini = { canvas: $("miniCanvas"), land: null, w: 2844, h: 3556, next: 0, towns: [], sites: [], heaps: [], dots: [] };
+  const mini = { canvas: $("miniCanvas"), land: null, w: 2844, h: 3556, next: 0, towns: [], sites: [], heaps: [], dots: [], fights: [] };
   window.IllyriaMinimap = {
     land(rgba, w, h) {
       const c = document.createElement("canvas");
@@ -1167,7 +1122,7 @@
     if (t >= mini.next) {
       // Ten times a second is plenty for a map this small.
       mini.next = t + 100;
-      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = [];
+      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = []; mini.fights = [];
       for (const line of api.mini().split("\n")) {
         const f = line.split("|");
         if (f[0] === "m") { mini.w = +f[1]; mini.h = +f[2]; }
@@ -1175,6 +1130,7 @@
         else if (f[0] === "s") mini.sites.push({ x: +f[1], y: +f[2], k: +f[3] });
         else if (f[0] === "k") mini.heaps.push({ c: f[1], x: +f[2], y: +f[3], n: +f[4] });
         else if (f[0] === "d") mini.dots.push({ c: f[1], x: +f[2], y: +f[3] });
+        else if (f[0] === "f") mini.fights.push({ x: +f[1], y: +f[2], n: +f[3] });
       }
     }
     const g = cv.getContext("2d");
@@ -1208,6 +1164,16 @@
     for (const d of mini.dots) {
       g.fillStyle = "#000"; g.fillRect(X(d.x) - 1.6 * u, Y(d.y) - 1.6 * u, 3.2 * u, 3.2 * u);
       g.fillStyle = d.c; g.fillRect(X(d.x) - 1.1 * u, Y(d.y) - 1.1 * u, 2.2 * u, 2.2 * u);
+    }
+    // Fights glow where they are, pulsing, the bigger the more men are in them.
+    for (const f of mini.fights) {
+      const r = Math.min(4 + Math.sqrt(f.n) * 1.1, 14) * u, pulse = 0.55 + 0.45 * Math.sin(t / 90 + f.x);
+      const grad = g.createRadialGradient(X(f.x), Y(f.y), 0, X(f.x), Y(f.y), r);
+      grad.addColorStop(0, `rgba(255,236,170,${0.95 * pulse})`);
+      grad.addColorStop(0.45, `rgba(255,110,40,${0.6 * pulse})`);
+      grad.addColorStop(1, "rgba(255,60,20,0)");
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(X(f.x), Y(f.y), r, 0, 7); g.fill();
     }
     // Towns, always: a square in the holder's colour, larger for a capital.
     for (const tw of mini.towns) {
@@ -1379,7 +1345,6 @@
           (c.choosing ? `<div class="port">Tap one of your cities to send new armies there</div>` :
             `<button data-vector="1"><span>${c.vectorTo ? `New armies march to ${c.vectorTo}` : "Send new armies to…"}</span><span>${c.vectorTo ? "change" : ""}</span></button>`) +
           (c.vectorTo && !c.choosing ? `<button data-home="1"><span>Keep new armies here</span></button>` : "") +
-          (c.wallsCost ? `<button data-walls="1" ${campState.gold < c.wallsCost ? "disabled" : ""}><span>Raise the walls <small>(to ${c.defense + 1})</small></span><span>${c.wallsCost}g</span></button>` : "") +
           (c.port ? `<div class="port">⚓ Port · ${c.boats ? `${c.boats} ${c.boats === 1 ? "boat" : "boats"} in harbour` : "no boats in harbour"}` +
             (c.boatDays ? ` · a boat on the slips, ${c.boatDays} ${c.boatDays === 1 ? "day" : "days"} to go` : "") + `</div>` +
             (c.boatDays ? "" : `<button data-boat="1" ${campState.gold < c.boatCost ? "disabled" : ""}><span>Build a boat ⛵ <small>(7 armies)</small></span>` +
@@ -1390,7 +1355,6 @@
           b.onclick = () => {
             if (b.dataset.close) api.campCloseCity();
             else if (b.dataset.boat) api.campBuildBoat(c.index);
-            else if (b.dataset.walls) api.campFortify(c.index);
             else if (b.dataset.vector) api.campVector(c.index, 1);
             else if (b.dataset.home) api.campVector(c.index, 0);
             else api.campProduce(c.index, +b.dataset.i);
@@ -1423,7 +1387,7 @@
       btn.disabled = !site.can;
     }
     const of = campState.offer;
-    $("hirePrompt").classList.toggle("hidden", !of || !!campState.pending);
+    $("hirePrompt").classList.toggle("hidden", !of);
     if (of) {
       $("hireTitle").textContent = `${of.name} offers their sword`;
       $("hireText").textContent = `${of.name} waits at ${of.city} and will serve you for ${of.price} gold, paid now.` +
@@ -1431,25 +1395,8 @@
       $("hireYes").textContent = `Hire for ${of.price} gold`;
       $("hireYes").disabled = campState.gold < of.price;
     }
-    const pr = campState.pending;
-    $("battlePrompt").classList.toggle("hidden", !pr);
-    if (pr) {
-      $("promptTitle").textContent = `Battle at ${pr.where}`;
-      $("promptText").textContent = `Your ${pr.mine} ${pr.mine === 1 ? "army" : "armies"} (strength ${pr.myStrength}) against ${pr.theirs} (strength ${pr.theirStrength}).` +
-        (pr.land ? ` On ${pr.land === "yours" ? "your" : `${pr.land}'s`} land.` : "") +
-        (pr.afloat ? " Fought from the boats (armies on a deck fight a point weaker): the dice decide." : "") +
-        (pr.town && !pr.afloat ? " Win, then hold the town while your banner rises (in 3D: take its courtyard)." : "");
-      // The small edges each side brings: a few percent each, never the whole battle.
-      let ed = $("promptEdges");
-      if (!ed) {
-        ed = document.createElement("div");
-        ed.id = "promptEdges";
-        ed.className = "edges";
-        $("promptText").after(ed);
-      }
-      ed.innerHTML = `<b>Your edges:</b> ${pr.myEdges || "none"}<br><b>Theirs:</b> ${pr.theirEdges || "none"}`;
-      $("promptFight").style.display = pr.afloat ? "none" : "";
-    }
+    // Fights on the island: the Fight! button takes the camera to the fiercest, and is there only while there is one.
+    $("hot").style.display = campState.fighting ? "" : "none";
     if (campState.winner) {
       $("overlay").classList.remove("hidden");
       $("overlayMenu").classList.remove("hidden");
@@ -1620,13 +1567,7 @@
       $("overlayText").textContent = s.outcome === 1
         ? (s.scenario === 1 ? `The town is yours. Its dead lie where they fell; the land will remember.` : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
         : (s.scenario === 1 ? `The walls held. ${s.foe} keeps its town.` : "Oakhaven has fallen. The Red Hand marches west.");
-      if (campFight) {
-        $("overlayText").textContent = s.outcome === 1 ? `${s.foe} are beaten. The survivors carry their scars, and their ranks, back to the campaign.`
-                                                        : `Your armies are broken at the hands of ${s.foe}.`;
-        $("overlayButton").textContent = "Return to the campaign";
-      } else {
-        $("overlayButton").textContent = "Fight again";
-      }
+      $("overlayButton").textContent = "Fight again";
       $("overlayButton").classList.remove("hidden");
       $("overlayMenu").classList.remove("hidden");
     } else if ($("overlayButton").offsetParent !== null) {
@@ -1640,8 +1581,7 @@
     toast,
     mode: () => mode,
     api: () => api,
-    inCampaign: () => campaign || campFight,
-    fighting: () => campFight,
+    inCampaign: () => campaign,
     campState: () => (api && campaign ? JSON.parse(api.campState()) : null),
     closePopups,
   };

@@ -1,5 +1,6 @@
 // The campaign, after Warlords: a capital and a hero to start, neutral towns
 // with small garrisons, gold from cities, armies that cost upkeep.
+#include <algorithm>
 #include <cstdio>
 
 #include "illyria/sim/campaign.h"
@@ -51,94 +52,125 @@ TEST(cities_pay_gold_and_train_armies_that_cost_upkeep) {
     CHECK(c.sides()[0].gold > before);  // the capital's 30 a day outpaces a few recruits
 }
 
-TEST(a_heros_stack_marches_and_takes_a_neutral_town) {
-    Campaign c(continent(), 3);
-    // The player's stack (side 0) and the nearest neutral town to its capital.
+namespace {
+// The player's stack and the nearest neutral town to it (of at most the given defence).
+struct Siege {
+    uint32_t stack = 0;
+    int32_t town = -1;
+};
+Siege nearestNeutralTown(const Campaign& c, int32_t defence) {
+    Siege out;
     const Campaign::Stack* home = nullptr;
     for (const Campaign::Stack& st : c.stacks())
         if (st.owner == 0) home = &st;
-    CHECK(home != nullptr);
-    if (!home) return;
-    const uint32_t id = home->id;
-    int32_t target = -1, best = 1 << 30;
+    if (!home) return out;
+    out.stack = home->id;
+    int32_t best = 1 << 30;
     for (size_t i = 0; i < c.cities().size(); ++i) {
         const Campaign::CityState& city = c.cities()[i];
-        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+        if (city.owner != Campaign::kNeutral || city.defense > defence) continue;
         const int32_t d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
         if (d < best) {
             best = d;
-            target = static_cast<int32_t>(i);
+            out.town = static_cast<int32_t>(i);
         }
     }
-    CHECK(target >= 0);
-    // Reinforce the stack so the attack is fair, then march.
-    for (int k = 0; k < 4; ++k) c.produce(static_cast<int32_t>(0), 0);
-    CHECK(c.move(id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy));
-    for (int t = 0; t < Campaign::kTicksPerDay * 20 && c.fights().empty(); ++t) c.step();
+    return out;
+}
+int32_t menOf(const Campaign& c, uint8_t owner) {
+    int32_t n = 0;
+    for (const Campaign::Stack& s : c.stacks())
+        if (s.owner == owner)
+            for (const Army& a : s.armies) n += a.soldiers;
+    return n;
+}
+}  // namespace
+
+TEST(a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there) {
+    Campaign c(continent(), 3);
+    c.setHuman(0, true);
+    for (uint8_t side = 1; side < Continent::kFactionCount; ++side) c.setHuman(side, true);  // (nobody else moves)
+    const Siege s = nearestNeutralTown(c, 4);
+    CHECK(s.stack != 0 && s.town >= 0);
+    if (!s.stack || s.town < 0) return;
+    const Campaign::CityState& town = c.cities()[static_cast<size_t>(s.town)];
+    // A strong force to take it: heavy foot and archers beside the hero, raised where the hero stands.
+    const Campaign::Stack* home = c.findStack(s.stack);
+    c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers, UnitType::Archers});
+    const int32_t before = menOf(c, Campaign::kNeutral);
+    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+        if (st.owner == 0 && !st.garrison) CHECK(c.move(st.id, town.cx, town.cy));
+    bool fought = false;
+    for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) {
+        c.step();
+        fought = fought || c.awakeStacks() > 0;
+    }
+    // Their men are in the world while they fight, and the town is ours when its defenders are dead and our banner is up.
+    CHECK(fought);
+    CHECK(c.cities()[static_cast<size_t>(s.town)].owner == 0);
     CHECK(!c.fights().empty());
     if (c.fights().empty()) return;
     const Campaign::Fight& f = c.fights().front();
-    std::printf("  day %u: attacked %s, %s (lost %d armies, killed %d)\n", f.day, continent().cities()[static_cast<size_t>(f.city)].name.c_str(),
-                f.captured ? "captured" : "repulsed", f.attackerLost, f.defenderLost);
-    CHECK(f.city == target);
+    std::printf("  day %u: %s fell; the neutral garrisons lost %d men\n", f.day, continent().cities()[static_cast<size_t>(f.city)].name.c_str(),
+                before - menOf(c, Campaign::kNeutral));
+    CHECK(f.city == s.town);
+    CHECK(menOf(c, Campaign::kNeutral) < before);  // men died: nothing was settled by a roll
 }
 
-TEST(a_players_battle_waits_for_them_and_survivors_keep_their_ranks) {
+TEST(men_who_fought_come_out_of_it_with_their_wounds_kills_and_ranks) {
     Campaign c(continent(), 3);
     c.setHuman(0, true);
-    const Campaign::Stack* home = nullptr;
+    for (uint8_t side = 1; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
+    const Siege s = nearestNeutralTown(c, 4);
+    if (!s.stack || s.town < 0) return;
+    const Campaign::CityState& town = c.cities()[static_cast<size_t>(s.town)];
+    const Campaign::Stack* home = c.findStack(s.stack);
+    c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry});
+    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+    int32_t kills = 0;
+    for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) c.step();
+    for (uint32_t t = 0; t < 3 * Campaign::kCalmTicks; ++t) c.step();  // and the fighting is over
+    CHECK(c.awakeStacks() == 0);                                                                   // all asleep, in their formations again
+    int32_t wounded = 0, men = 0;
     for (const Campaign::Stack& st : c.stacks())
-        if (st.owner == 0) home = &st;
-    CHECK(home != nullptr);
-    if (!home) return;
-    const uint32_t id = home->id;
-    int32_t target = -1, best = 1 << 30;
-    for (size_t i = 0; i < c.cities().size(); ++i) {
-        const Campaign::CityState& city = c.cities()[i];
-        if (city.owner != Campaign::kNeutral) continue;
-        const int32_t d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
-        if (d < best) {
-            best = d;
-            target = static_cast<int32_t>(i);
+        for (const Army& a : st.armies) {
+            if (st.owner != 0) continue;
+            kills += a.kills;
+            for (const Man& m : a.men) {
+                men += m.alive();
+                wounded += m.alive() && m.hp > 0;  // hurt, not whole (-1)
+            }
+            CHECK(a.soldiers == static_cast<int32_t>(std::count_if(a.men.begin(), a.men.end(), [](const Man& m) { return m.alive(); })));
         }
-    }
-    CHECK(c.move(id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy));
-    for (int t = 0; t < Campaign::kTicksPerDay * 20 && !c.pending(); ++t) c.step();
-    CHECK(c.pending() != nullptr);
-    if (!c.pending()) return;
-    // The campaign holds still while the player fights.
-    const uint32_t tick = c.tick();
-    c.step();
-    CHECK(c.tick() == tick);
-    CHECK(c.fights().empty());
-    const std::vector<const Army*> attackers = c.pendingAttackers(), defenders = c.pendingDefenders();
-    CHECK(!attackers.empty() && !defenders.empty());
-    // The 3D battle: every defender falls; the first attacker loses a man and rises a rank.
-    std::vector<Campaign::Outcome> out;
-    for (const Army* a : attackers) out.push_back({a->id, a->soldiers, 3, a->rank});
-    out.front().soldiers = std::max(1, out.front().soldiers - 1);
-    out.front().rank += 1;
-    const Campaign::Outcome first = out.front();
-    for (const Army* a : defenders) out.push_back({a->id, 0, 0, a->rank});
-    c.applyBattle(out, true);
-    CHECK(!c.pending());
-    // Not yet ours: the banner has to rise first, while we stand in the town.
-    CHECK(c.cities()[static_cast<size_t>(target)].owner == Campaign::kNeutral);
-    CHECK(c.cities()[static_cast<size_t>(target)].banner == 0);
-    for (int t = 0; t < Campaign::kTicksPerDay && c.cities()[static_cast<size_t>(target)].owner != 0; ++t) c.step();
-    CHECK(c.cities()[static_cast<size_t>(target)].owner == 0);
-    const Campaign::Stack* after = c.findStack(id);
-    CHECK(after != nullptr);
-    if (!after) return;
-    bool found = false;
-    for (const Army& a : after->armies)
-        if (a.id == first.army) {
-            found = true;
-            CHECK(a.soldiers == first.soldiers);
-            CHECK(a.rank == first.rank);
-            CHECK(a.kills >= 3);
+    std::printf("  %d men stand, %d wounded, %d kills between them\n", men, wounded, kills);
+    CHECK(kills > 0);
+    CHECK(men > 0);
+}
+
+TEST(a_fight_is_the_same_on_every_run_and_leaves_the_world_as_its_gates) {
+    const auto run = [](int32_t ticks) {
+        Campaign c(continent(), 3);
+        for (uint8_t side = 0; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
+        const Siege s = nearestNeutralTown(c, 4);
+        const Campaign::CityState& town = c.cities()[static_cast<size_t>(s.town)];
+        const Campaign::Stack* home = c.findStack(s.stack);
+        c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
+        for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+            if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+        int32_t awake = 0;
+        for (int32_t t = 0; t < ticks; ++t) {
+            c.step();
+            awake = std::max(awake, c.awakeMen());
         }
-    CHECK(found);
+        return std::make_pair(c.checksum(), awake);
+    };
+    // In the middle of a fight, and well after it.
+    const auto a = run(2400), b = run(2400);
+    CHECK(a == b);
+    CHECK(a.second > 0);  // there was a fight, and its men were in the world
+    const auto late = run(Campaign::kTicksPerDay * 3), again = run(Campaign::kTicksPerDay * 3);
+    CHECK(late == again);
 }
 
 TEST(campaign_is_deterministic) {
@@ -153,7 +185,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0xce6b9eeee5d8e11a;
+    constexpr uint64_t kGolden = 0x16f2688b885e8f30;  // (was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

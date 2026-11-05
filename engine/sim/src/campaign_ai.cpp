@@ -41,7 +41,6 @@ struct Temper {
     int32_t whim;         // percent chance a city trains whatever takes the lord's fancy
     bool gather;          // merges small stacks into big ones for a purpose
     bool vector;          // sends what rear cities train to the front (LOC)
-    bool fortify;         // raises the walls of frontier towns
     bool gangUp;          // turns on the leader late in the war
     bool thrifty;         // trains what fights best for the days (else the quickest)
     int32_t care;         // thousandths more needed to attack for each precious army risked
@@ -54,12 +53,12 @@ struct Temper {
 // walls, which would keep every army home), and every strategy. (40% since
 // the small edges made the odds finer and a town must be held while the
 // banner rises: at 35% it threw armies away at the walls.)
-constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, true, 60, 850};
+constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, 60, 850};
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
 // trains whatever takes its fancy (the quickest with an enemy at the gates),
-// never gathers or fortifies, and wastes a fifth of its income (Campaign::income).
-constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, false, 0, 1000};
+// never gathers, and wastes a fifth of its income (Campaign::income).
+constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000};
 
 }  // namespace
 
@@ -69,6 +68,9 @@ public:
         : c_(c), side_(side), t_(c.sides_[side].difficulty == Difficulty::Hard ? kHard : kEasy) {}
 
     void run() {
+        // The lord rearranges his armies at dawn: whoever of his is in a fight falls in where they stand, and wakes again.
+        for (C::Stack& s : c_.stacks_)
+            if (s.owner == side_) c_.settle(s);
         survey();
         reorganize();
         survey();  // the stacks have changed
@@ -76,7 +78,7 @@ public:
         attack();
         economy();
         c_.stacks_.erase(std::remove_if(c_.stacks_.begin(), c_.stacks_.end(), [&](const Campaign::Stack& s) {
-                             return s.armies.empty() && s.id != c_.pending_.stack;
+                             return s.armies.empty();
                          }),
                          c_.stacks_.end());
     }
@@ -319,7 +321,7 @@ private:
             for (size_t k = stacks.size(); k < list.size(); ++k) c_.stacks_[list[k]].armies.clear();
         }
         c_.stacks_.erase(std::remove_if(c_.stacks_.begin(), c_.stacks_.end(), [&](const C::Stack& s) {
-                             return s.armies.empty() && s.id != c_.pending_.stack;
+                             return s.armies.empty();
                          }),
                          c_.stacks_.end());
     }
@@ -683,7 +685,6 @@ private:
             engines += cs.producing >= 0 && cs.options[static_cast<size_t>(cs.producing)].type == UnitType::Catapult;
         }
         bool wantEngines = t_.thrifty && engines * 8 < static_cast<int32_t>(mine_.size()) && c_.day() >= 40;
-        int32_t fortified = 0;
         for (const CityView& v : mine_) {
             C::CityState& cs = c_.cities_[static_cast<size_t>(v.index)];
             const bool danger = threatened(v);
@@ -729,11 +730,6 @@ private:
             int32_t to = -1;
             if (t_.vector && !v.frontier && !danger && staging_ >= 0 && staging_ != v.index && home >= 1 && cityDays10(v.index, staging_) > 20) to = staging_;
             if (to != cs.vectorTo && !c_.vectorProduction(v.index, to)) c_.vectorProduction(v.index, -1);
-            // BUILD: the gold left over raises the walls of threatened and frontier towns.
-            if (t_.fortify && fortified < 2 && (danger || v.frontier) && cs.defense < 8) {
-                const int32_t cost = c_.fortifyCost(v.index);
-                if (side.gold >= cost + 400 && c_.fortify(v.index)) ++fortified;  // only from a full chest: troops come first
-            }
         }
     }
 };

@@ -1377,7 +1377,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(units_, {3, 1, 1, 1, 1}, 0);
     makeBatch(particles_, {3, 4}, 0);
     makeBatch(bars_, {3, 4}, 0);
-    makeBatch(dots_, {3, 4}, 0);
+    makeBatch(dots_, {3, 4, 2}, 0);
     reset(battle);
     return true;
 }
@@ -2169,7 +2169,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected ? 1.0f : 0.0f, down});
     }
     battle.setSpriteBoxes(std::move(boxes));
-    if (mapOn_) pushMapSprites(battle, camera, byGroup, decals);
+    if (mapOn_) {
+        pushMapSprites(battle, camera, byGroup, decals);
+        arrows.insert(arrows.end(), mapArrows_.begin(), mapArrows_.end());
+    }
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
         const float* team = sideColor(p.owner);

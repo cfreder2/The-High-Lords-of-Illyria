@@ -328,6 +328,8 @@ void World::clearFight(uint64_t seed) {
     remainsAdded_ = 0;
     packs_ = 0;
     tick_ = 0;
+    for (GateState& g : gates_)
+        if (g.broken()) g.brokenTick = 0;  // (when it broke is no one's business once the clock is back at nothing)
     nextId_ = 1;
     nextUnitId_ = 1;
     rng_ = Rng(seed, 0);

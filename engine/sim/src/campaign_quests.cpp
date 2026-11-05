@@ -118,7 +118,7 @@ int32_t bestHero(const Campaign::Stack& s) {
 
 bool Campaign::canSearch(uint32_t stackId) const {
     const Stack* s = findStack(stackId);
-    if (!s || s->garrison || s->armies.empty() || !s->path.empty()) return false;
+    if (!s || s->garrison || s->armies.empty() || !s->path.empty() || s->awake) return false;
     const int32_t site = siteAt(s->cx, s->cy);
     if (site < 0) return false;
     const SiteState& st = sites_[static_cast<size_t>(site)];
@@ -131,7 +131,7 @@ bool Campaign::canSearch(uint32_t stackId) const {
 }
 
 bool Campaign::search(uint32_t stackId) {
-    if (pending_.stack || !canSearch(stackId)) return false;
+    if (!canSearch(stackId)) return false;
     Stack& s = *stackById(stackId);
     const size_t site = static_cast<size_t>(siteAt(s.cx, s.cy));
     SiteState& st = sites_[site];
@@ -182,6 +182,7 @@ bool Campaign::search(uint32_t stackId) {
     if (heroHits >= 2) {
         // The hero is gone; what they carried lies in the ruin for the next one.
         hero.soldiers = 0;
+        for (Man& m : hero.men) m.hp = 0;
         deed(s.owner, who + " fell to " + guardianName(g) + " in " + where);
         bury(s, s.cx, s.cy);
         return true;
@@ -236,7 +237,6 @@ void Campaign::bury(Stack& s, int32_t cx, int32_t cy) {
         if (a.soldiers <= 0)
             for (uint8_t k : a.artifacts) loot_.push_back({cx, cy, k});
     s.armies.erase(std::remove_if(s.armies.begin(), s.armies.end(), [](const Army& a) { return a.soldiers <= 0; }), s.armies.end());
-    for (Army& a : s.armies) a.hits = 0;
 }
 
 void Campaign::pickUp(Stack& s) {
@@ -303,6 +303,7 @@ bool Campaign::hire(uint8_t side, bool accept) {
     for (Stack& st : stacks_)
         if (st.owner == side && st.cx == c.cx && st.cy == c.cy && st.path.empty() && st.armies.size() < kMaxStack) home = &st;
     if (!home) home = &newStack(side, c.cx, c.cy);
+    settle(*home);
     home->armies.push_back(makeArmy(T::Hero, o.name));
     hireCompanions(home, side, o, o.city);
     deed(side, o.name + " took service at " + continent_.cities()[static_cast<size_t>(o.city)].name + " for " + std::to_string(o.price) + " gold");
@@ -323,7 +324,7 @@ void Campaign::questAi(uint8_t side) {
     std::vector<Plan> plans;
     for (size_t i = 0; i < stacks_.size(); ++i) {
         Stack& s = stacks_[i];
-        if (s.owner != side || s.garrison || !s.path.empty() || s.armies.empty()) continue;
+        if (s.owner != side || s.garrison || !s.path.empty() || s.armies.empty() || s.awake) continue;  // (not while it is in a fight)
         if (canSearch(s.id)) search(s.id);
         const int32_t h = bestHero(s);
         if (h < 0) continue;

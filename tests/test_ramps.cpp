@@ -1,12 +1,12 @@
 // Castle ramps and the wide wall-walk (docs/GAME_DESIGN.md, castles): ramps
 // start on the ground inside the walls and reach the walk, men on foot climb
 // them to any embrasure and horses do not, two men pass each other on the
-// walk, and a town's garrison fits inside its smaller ring.
+// walk, and a town's garrison wakes inside its walls.
 #include <cstdio>
 #include <memory>
 #include <span>
 
-#include "illyria/game/battle.h"
+#include "illyria/sim/campaign.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
@@ -223,39 +223,62 @@ TEST(nobody_walks_through_a_ramp) {
     CHECK(w.findUnit(id)->pos.z < town().pos.z + Fixed::one());
 }
 
-TEST(a_towns_garrison_fits_inside_its_walls) {
-    // Eight armies holding a town: every man starts on open ground inside the
-    // walls (not in a house, a wall, a tower or a ramp) or on the walk.
-    illyria::game::BattlePlan plan;
-    const size_t city = Continent::kFactionCount;
-    plan.city = static_cast<int>(city);
-    plan.centre = continent().cities()[city].pos;
-    plan.foeName = "Garrison";
-    const UnitType types[8] = {UnitType::Archers, UnitType::Pikemen, UnitType::LightInfantry, UnitType::HeavyInfantry,
-                               UnitType::Archers, UnitType::Dwarves, UnitType::HeavyCavalry, UnitType::Warrior};
-    for (uint32_t i = 0; i < 8; ++i) plan.foe.push_back({100 + i, types[i], "", 12});
-    plan.player.push_back({1, UnitType::LightInfantry, "", 12});
-    illyria::game::Battle b(5, plan);
-    const Region& r = *b.world().region();
+TEST(a_towns_garrison_wakes_inside_its_walls) {
+    // The men holding a town, woken by an enemy coming up to its walls, stand on open
+    // ground inside the walls (not in a house, a wall, a tower or a ramp) or on the walk.
+    Campaign c(continent(), 5);
+    for (uint8_t side = 0; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
+    // The town nearest to a neutral one's walls with a big garrison.
+    int32_t town = -1, most = 0;
+    for (size_t i = Continent::kFactionCount; i < c.cities().size(); ++i)
+        for (const Campaign::Stack& st : c.stacks())
+            if (st.garrison && st.cx == c.cities()[i].cx && st.cy == c.cities()[i].cy) {
+                int32_t men = 0;
+                for (const Army& a : st.armies) men += a.soldiers;
+                if (men > most) most = men, town = static_cast<int32_t>(i);
+            }
+    CHECK(town >= 0);
+    if (town < 0) return;
+    const Campaign::CityState& cs = c.cities()[static_cast<size_t>(town)];
+    uint32_t id = 0;
+    for (int32_t dx = -3; dx <= 3 && !id; ++dx)
+        for (int32_t dy = -3; dy <= 3 && !id; ++dy) {
+            const int32_t x = cs.cx + dx, y = cs.cy + dy;
+            if (std::max(std::abs(dx), std::abs(dy)) < 2 || x < 0 || y < 0 || x >= c.width() || y >= c.height() || c.cityAt(x, y) >= 0) continue;
+            if (c.terrainAt(x, y) != Lay::Plain && c.terrainAt(x, y) != Lay::Road) continue;
+            const uint32_t made = c.raise(0, x, y, {UnitType::LightInfantry});
+            if (c.move(made, cs.cx, cs.cy)) id = made;
+        }
+    CHECK(id != 0);
+    const Continent::City& t = continent().cities()[static_cast<size_t>(town)];
+    const auto woken = [&] {
+        int n = 0;
+        if (const World* w = c.world())
+            for (const Unit& u : w->units()) n += u.owner == Campaign::kNeutral && (u.pos - local(*w->region(), t.pos)).flat().length() <= m(70);
+        return n;
+    };
+    for (int k = 0; k < 6000 && woken() < most; ++k) c.step();
+    CHECK(c.awakeStacks() > 0);
+    const World* w = c.world();
+    CHECK(w != nullptr);
+    if (!w) return;
+    const Region& r = *w->region();
     const NavGrid nav(r);
-    const Continent::City& t = b.continent().cities()[city];
     const Vec3 centre = local(r, t.pos);
     const Rampart& rp = outer(r, centre);
     int men = 0, misplaced = 0;
-    for (const illyria::game::Squad& s : b.squads()) {
-        if (s.owner == 0) continue;
-        for (EntityId id : s.members) {
-            const Unit& u = *b.world().findUnit(id);
-            ++men;
-            const bool onWalk = u.pos.z > t.pos.z + m(3);
-            const bool inside = onWalk || Gate::inside(rp, u.pos);
-            if (!inside || (!onWalk && nav.blocked(u.pos))) {
-                ++misplaced;
-                std::printf("  %s at (%.1f, %.1f) %s\n", s.name.c_str(), u.pos.x.toDouble(), u.pos.y.toDouble(), inside ? "on closed ground" : "outside");
-            }
+    for (const Unit& u : w->units()) {
+        if (u.owner != Campaign::kNeutral || (u.pos - centre).flat().length() > m(70)) continue;  // (the neighbouring towns' own are woken too)
+        ++men;
+        const bool onWalk = u.pos.z > t.pos.z + m(3);
+        const bool inside = onWalk || Gate::inside(rp, u.pos);
+        if (!inside || (!onWalk && nav.blocked(u.pos))) {
+            ++misplaced;
+            std::printf("  at (%.1f, %.1f) %s\n", u.pos.x.toDouble(), u.pos.y.toDouble(), inside ? "on closed ground" : "outside");
         }
     }
-    CHECK(men == 8 * 12);
+    std::printf("  %d men woke in %s, %d misplaced\n", men, t.name.c_str(), misplaced);
+    CHECK(men >= most);
     CHECK(misplaced == 0);
 }
 

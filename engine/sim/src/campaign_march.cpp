@@ -254,18 +254,13 @@ bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std:
     const Pace p = paceOf(s);
     const size_t n = static_cast<size_t>(nx_) * ny_;
     std::vector<int32_t> g(n, INT32_MAX), parent(n, -1);
-    // Who stands where, once: another side's stack blocks the way, and so
-    // does a cell of our own already too full to take this stack (Warlords
-    // 9.2), except where the route ends (an attack, or joining them).
-    std::vector<int16_t> ours(n, 0);
+    // Who stands where, once: another side's stack blocks the way, except
+    // where the route ends (an attack).
     std::vector<uint8_t> foe(n, 0);
     for (const Stack& o : stacks_) {
         if (o.armies.empty() || &o == &s) continue;
-        const size_t k = static_cast<size_t>(o.cy) * nx_ + o.cx;
-        if (o.owner != s.owner) foe[k] = 1;
-        else ours[k] = static_cast<int16_t>(ours[k] + static_cast<int16_t>(o.armies.size()));
+        if (o.owner != s.owner) foe[static_cast<size_t>(o.cy) * nx_ + o.cx] = 1;
     }
-    const int32_t mine = static_cast<int32_t>(s.armies.size());
     using Node = std::pair<int64_t, int32_t>;  // (f, index)
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open;
     const int32_t start = s.cy * nx_ + s.cx, goal = ty * nx_ + tx;
@@ -289,10 +284,7 @@ bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std:
             if (t == kClosed) continue;
             // Another side's stack blocks the way, except where the route ends (an attack).
             const int32_t ni = y * nx_ + x;
-            if (ni != goal) {
-                const size_t k = static_cast<size_t>(ni);
-                if (foe[k] || ours[k] + mine > cellCapacity(x, y)) continue;
-            }
+            if (ni != goal && foe[static_cast<size_t>(ni)]) continue;
             const int64_t ng = int64_t{g[static_cast<size_t>(cur)]} + t;
             if (ng < g[static_cast<size_t>(ni)]) {
                 g[static_cast<size_t>(ni)] = static_cast<int32_t>(std::min<int64_t>(ng, INT32_MAX - 1));

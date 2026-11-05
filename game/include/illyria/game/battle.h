@@ -73,7 +73,6 @@ struct Squad {
     // post, then goes back to it, and never marches out.
     bool garrison = false;
     V3 post{};
-    uint32_t armyId = 0;  // the campaign army it is, when fought from the campaign
     // Where it was last sent (the computer re-plans a chase only when that moves enough).
     mutable V3 goal{};
     mutable bool hasGoal = false;
@@ -94,32 +93,10 @@ struct Standing {
 enum class Scenario {
     Ford,      // Oakhaven Ford: the Red Hand comes over the river
     Siege,     // a neutral town near Oakhaven, held by its own small garrison
-    Campaign,  // where two campaign stacks met (see BattlePlan)
     Mode,      // a match: Horde or capture the flag (mode.h), on a field it fills itself
 };
 
 // A battle fought from the campaign: the armies of each side, as they stand.
-struct BattleArmy {
-    uint32_t id = 0;
-    sim::UnitType type = sim::UnitType::LightInfantry;
-    std::string name;
-    int soldiers = 1;
-    int rank = 0;  // heroes: level - 1
-    int blessings = 0;
-};
-struct BattlePlan {
-    sim::Vec3 centre;      // continent coordinates: the town, or the field
-    int city = -1;         // the town fought over (continent index), or -1
-    int homeSide = -1;     // whose land it is: 0 the player's, 1 the foe's, -1 nobody's (the home-land edge)
-    std::vector<BattleArmy> player, foe;
-    std::string foeName;
-};
-// How each campaign army came out of the battle.
-struct ArmyResult {
-    uint32_t id = 0;
-    int soldiers = 0, kills = 0, rank = 0;
-};
-// The town besieged in Scenario::Siege: the neutral town nearest Oakhaven Ford.
 const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
@@ -191,7 +168,6 @@ public:
     static constexpr size_t kMaxParticles = 4000;
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
-    Battle(uint64_t seed, const BattlePlan& plan);
     // An empty field for a match (Scenario::Mode): the mode raises the armies.
     // `continent` may be one already built (it is the same for every battle).
     // With `farReachM`, only the continent within that many metres of the
@@ -201,7 +177,6 @@ public:
            float farReachM = 0);
     ~Battle();
     // For a campaign battle: what became of every army.
-    std::vector<ArmyResult> results() const;
     Scenario scenario() const { return scenario_; }
     // Who the player is fighting, for the HUD.
     const std::string& foeName() const { return foeName_; }
@@ -538,7 +513,6 @@ private:
     std::string foeName_ = "Red Hand";
     void setUpFord();
     void setUpSiege();
-    void setUpCampaign(const BattlePlan& plan);
     void build(uint64_t seed, const sim::Vec3& centre, int homeSide = -1, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
