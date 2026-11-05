@@ -181,7 +181,34 @@ private:
     bool manOnScreen(const V3& p) const;
     bool manIsSprite(const V3& p, int type);
     void manDot(const V3& p, const V3& colour, bool owned, bool selected, bool inspected, float pulse, bool alsoSprite);
-    void pushSleepers(const Battle& battle, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
+    // One man, drawn by one function whoever he is: a unit of the world presented (his sim state to hand) or a sleeper
+    // (a man asleep in his squad, whose view is made from his slot). A dot or the battle's sprite by the level of detail,
+    // his shadow, his ring, his frame, his place in the sheet's group.
+    struct ManView {
+        const sim::Unit* unit = nullptr;  // the world's man, or null for a sleeper
+        size_t index = 0;                 // his place among the world's units (for the boxes picking uses)
+        uint32_t id = 0;
+        V3 pos;
+        float yaw = 0, speed = 0, walked = 0, moved = 0;
+        float struck = 1e9f, hurt = 1e9f, died = 1e9f;  // seconds since he struck, was hurt, died
+        int type = 0;
+        uint8_t owner = 0;
+        bool alive = true, selected = false, inspected = false, aloft = false, moving = false;
+    };
+    struct ManPass {
+        const Battle& battle;
+        std::map<int, std::vector<float>>& groups;
+        std::vector<float>& decals;
+        std::vector<float>& arrows;
+        std::vector<float>& bars;
+        std::vector<float>& boxes;
+        V3 camRight;
+        float toViewer = 0, gameSeconds = 0, sinceLastDraw = 0;
+        std::function<uint32_t()> won;
+        std::map<uint32_t, sprites::ClipMemory> sleeperMemory;
+    };
+    void drawMan(const ManView& v, ManPass& pass);
+    void pushSleepers(ManPass& pass);
     void endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals);
     void drawDots(const Camera& camera, double timeSeconds, float gameSeconds);
     float mapDotPx_ = 4;  // a dot's width, in device pixels

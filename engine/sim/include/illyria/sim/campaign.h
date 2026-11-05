@@ -278,6 +278,24 @@ public:
     // Whether a faction is in the game (the player's, or a chosen computer lord's).
     bool inGame(uint8_t faction) const { return faction == setup_.player || (faction < 8 && (setup_.enemies >> faction & 1)); }
 
+    // What a side asks of the game is an Order: a plain, ordered record stamped with the tick it takes effect at. The
+    // page (and any other player) only ever submits Orders; they are applied inside step(), before the tick they are
+    // stamped with is run, in the order they were submitted, so the same Orders over the same saved game give the
+    // same game on every machine (tests/test_campaign_orders.cpp). The calls below are what an Order does.
+    struct Order {
+        enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat };
+        Kind kind = Kind::Move;
+        uint8_t side = 0;
+        uint32_t tick = 0;   // set by submit()
+        uint32_t stack = 0;  // the stack, if it concerns one
+        int32_t a = 0, b = 0;  // Move: the cell; Produce: city, option; VectorProduction: city, to; Disband: the army; BuildBoat: city; Hire: accept
+    };
+    void submit(Order order);
+    // Applies at once the Orders stamped with this tick (what step() does first): for a paused clock, so that a
+    // player's order shows at once. Idempotent; the same Orders in the same order whether the clock runs or not.
+    void applyPending();
+    const std::vector<Order>& orderLog() const { return orderLog_; }  // every Order applied, in order (replays, tests)
+
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
     bool produce(int32_t city, int32_t option);           // -1 stops
@@ -348,6 +366,12 @@ public:
     // sight everything is seen; `setSight` replaces the answer (tests, and then the fog).
     bool canSee(uint8_t viewer, uint8_t owner, float x, float y) const { return owner == viewer || !sight_ || sight_(viewer, owner, x, y); }
     void setSight(std::function<bool(uint8_t viewer, uint8_t owner, float x, float y)> sight) { sight_ = std::move(sight); }
+    // Whose eyes the page looks through: the first side a person plays.
+    uint8_t localSide() const {
+        for (size_t i = 0; i < sides_.size(); ++i)
+            if (sides_[i].human) return static_cast<uint8_t>(i);
+        return 0;
+    }
     // Every man the viewer may see (soldiers() less the rest).
     void visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const;
     void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {
@@ -630,6 +654,7 @@ private:
     std::unique_ptr<World> world_;
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
     Setup setup_;
+    std::vector<Order> pending_, orderLog_;
     std::function<void()> beforeHook_, stepHook_, clearedHook_;
     std::function<bool(uint8_t, uint8_t, float, float)> sight_;
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)

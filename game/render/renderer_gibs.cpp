@@ -187,7 +187,7 @@ Renderer::GibLook Renderer::restingLook(const Battle& battle, const sim::Remain&
 
 bool Renderer::pushGib(std::map<int, std::vector<float>>& groups, const GibLook& look, const V3& pos) {
     if (look.type < 0 || !hasGibCell(look.type, look.cell)) return false;
-    std::vector<float>& g = groups[look.type * 4 + (look.owner & 3)];  // kSides groups a type (renderer.cpp)
+    std::vector<float>& g = groups[kMapKeyBase + look.type * kMapSides + manSide(look.owner)];  // a group a sheet and side (renderer.cpp)
     // The part's place among the gib cells: kUnitVs finds them after the views' of whichever sheet it draws with.
     g.insert(g.end(), {pos.x, pos.y, pos.z, look.angle, -static_cast<float>(look.cell - sprites::kGibBase + 1), 0.0f, look.mirror ? 1.0f : 0.0f});
     return true;

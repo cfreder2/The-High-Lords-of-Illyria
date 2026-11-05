@@ -215,3 +215,60 @@ TEST(who_plays_is_saved_with_the_game_and_old_saves_are_refused) {
     CHECK(Campaign::load(continent(), old, &why) == nullptr);
     CHECK(why == "saved by another version of the game");
 }
+
+// Player intent is an ordered, stamped Order applied inside step(): the same Orders replayed over the same saved game
+// give the same game, whether the game was carried on from memory or read back from the save.
+TEST(the_same_orders_over_the_same_save_give_the_same_game) {
+    Campaign c(continent(), 21);
+    c.setHuman(0, true);
+    days(c, 2);
+    const std::string text = c.save();
+    const auto play = [&](Campaign& g) {
+        int32_t capital = -1;
+        for (size_t i = 0; i < g.cities().size(); ++i)
+            if (g.cities()[i].owner == 0) capital = static_cast<int32_t>(i);
+        uint32_t stack = 0;
+        for (const Campaign::Stack& s : g.stacks())
+            if (s.owner == 0 && !s.garrison) stack = s.id;
+        const Campaign::Stack* st0 = g.findStack(stack);
+        const int32_t sx = st0 ? st0->cx : 0, sy = st0 ? st0->cy : 0;
+        Campaign::Order produce;
+        produce.kind = Campaign::Order::Kind::Produce;
+        produce.a = capital;
+        produce.b = 0;
+        g.submit(produce);
+        for (int t = 0; t < 900; ++t) {
+            if (t == 300 && st0) {
+                Campaign::Order move;
+                move.kind = Campaign::Order::Kind::Move;
+                move.stack = stack;
+                move.a = std::min(sx + 6, g.width() - 1);
+                move.b = sy;
+                g.submit(move);
+            }
+            g.step();
+        }
+    };
+    Campaign a(continent(), 21);
+    a.setHuman(0, true);
+    days(a, 2);
+    (void)a.save();  // (saving settles the stacks, so the one that carries on is saved at the same moment)
+    std::unique_ptr<Campaign> b = Campaign::load(continent(), text, nullptr), d = Campaign::load(continent(), text, nullptr);
+    CHECK(b != nullptr && d != nullptr);
+    if (!b || !d) return;
+    play(a);
+    play(*b);
+    play(*d);
+    CHECK(a.checksum() == b->checksum());
+    CHECK(b->checksum() == d->checksum());
+    CHECK(a.orderLog().size() == 2);
+    CHECK(b->orderLog().size() == 2);
+    CHECK(a.orderLog()[1].tick == b->orderLog()[1].tick);  // stamped with the tick they were given at
+    // And the Orders matter: without them the game is another.
+    Campaign none(continent(), 21);
+    none.setHuman(0, true);
+    days(none, 2);
+    (void)none.save();
+    for (int t = 0; t < 900; ++t) none.step();
+    CHECK(none.checksum() != a.checksum());
+}

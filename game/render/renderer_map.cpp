@@ -15,7 +15,7 @@
 namespace illyria::game {
 
 namespace {
-constexpr float kDecalShadow = 1, kDecalRing = 2;  // as renderer.cpp
+constexpr float kDecalRing = 2;  // as renderer.cpp
 // Within this distance of the camera (and this far of the view's centre, in
 // multiples of it) soldiers are sprites; beyond, dots. A man is a few pixels
 // tall at this height. The dots fade out over the way in to kDotsGone, so that
@@ -111,62 +111,6 @@ void Renderer::manDot(const V3& p, const V3& colour, bool owned, bool selected, 
     if (alpha <= 0.0f || !manOnScreen(p)) return;
     m.dots.insert(m.dots.end(), {p.x, p.y, p.z + m.lift, colour.x, colour.y, colour.z, inspected ? 2.0f : selected ? 1.0f : 0.0f, pulse,
                                  owned ? alpha : -alpha});
-}
-
-// The sleepers into this frame's drawing: sprites joining the battle's groups, the rest dots.
-void Renderer::pushSleepers(const Battle& battle, std::map<int, std::vector<float>>& groups, std::vector<float>& decals) {
-    const V3 o = battle.origin();
-    std::map<uint32_t, sprites::ClipMemory> memory;  // the sprite men's, kept while they stay in sight
-    for (const Battle::Sleeper& m : battle.sleepers()) {
-        V3 p{m.x - o.x, m.y - o.y, 0};
-        p.z = battle.heightAt(p.x, p.y);
-        if (!battle.sees(m.owner, p.x, p.y)) continue;
-        const auto type = static_cast<sim::UnitType>(m.type);
-        if (m.aloft) p.z += static_cast<float>(sim::unitStats(type).flyAltitude.toDouble());
-        const bool sprite = manIsSprite(p, m.type);
-        manDot(p, factionColor(m.owner), m.owner < sim::Continent::kFactionCount, m.selected, m.inspected, 0.0f, sprite);
-        if (!sprite) continue;
-        const bool moving = m.speed > 0.05f;
-        // Metres walked, from the campaign's clock and his pace, so that his stride
-        // keeps to the ground; each man begins at his own point of it.
-        const float walked = m.speed * men_.seconds + hash01(m.id) * 10.0f;
-        int frame = 0;
-        if (const sprites::SheetClips* clips = clipsFor(m.type)) {
-            sprites::ClipMemory mem;
-            if (const auto known = mapMemory_.find(m.id); known != mapMemory_.end()) mem = known->second;
-            sprites::Deeds d;
-            d.now = men_.seconds;
-            d.sinceAttack = -1;
-            d.sinceHit = -1;
-            d.moving = moving;
-            d.inAir = m.aloft;
-            d.idlePhase = static_cast<float>(m.id % 13) * 0.37f;
-            d.attackSeconds = figures::attackSeconds(type);
-            d.flinchSeconds = figures::kFlinchSeconds;
-            d.stride = figures::stride(type);
-            const float dt = std::max(men_.dt, 1e-3f);
-            d.stepMetres = m.speed * dt;
-            mem.speed = sprites::easeSpeed(mem.speed, m.speed, dt);
-            frame = sprites::chooseFrame(*clips, d, mem).frame;
-            memory[m.id] = mem;
-        } else {
-            const auto sheet = sheets_.find(m.type);
-            const bool prerenderedFlier = m.aloft && sheet != sheets_.end() && sheet->second.prerendered;
-            frame = sprites::fixedLayoutFrame(1e9f, figures::attackSeconds(type), 1e9f, moving, m.aloft, walked, figures::stride(type), prerenderedFlier,
-                                              men_.seconds, m.id);
-        }
-        std::vector<float>& g = groups[kMapKeyBase + m.type * kMapSides + manSide(m.owner)];
-        g.insert(g.end(), {p.x, p.y, p.z, m.yaw, static_cast<float>(frame), m.selected || m.inspected ? 1.0f : 0.0f, 0.0f});
-        if (m.selected || m.inspected) {
-            const float r = static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.8f;
-            const float grey = 0.62f;
-            if (m.inspected) decals.insert(decals.end(), {p.x, p.y, p.z, 0, r, 0, kDecalRing, grey, grey, grey, 0});
-            else decals.insert(decals.end(), {p.x, p.y, p.z, 0, r, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
-        }
-        // His contact shadow, so that he stands on the ground.
-        decals.insert(decals.end(), {p.x, p.y, p.z, m.yaw, static_cast<float>(sim::unitStats(type).radius.toDouble()) * 1.3f, 0, kDecalShadow, 0, 1, 0, 0});
-    }
-    mapMemory_ = std::move(memory);
 }
 
 // The frame's men done with: the selected ringed, the dots uploaded, the sheets asked for baked.

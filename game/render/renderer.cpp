@@ -226,24 +226,141 @@ void pushHealthBar(std::vector<float>& bars, const sim::Unit& u, const V3& pos, 
     bars.insert(bars.end(), {pos.x, pos.y, pos.z + height, hp, static_cast<float>(pips), morale, height});
 }
 
-const float kPlayerColor[3] = {0.22f, 0.42f, 0.92f};
-const float kEnemyColor[3] = {0.86f, 0.18f, 0.14f};
-// A match's third and fourth teams (mode.h teamColour): gold and green.
-const float kGoldColor[3] = {0.92f, 0.72f, 0.16f};
-const float kGreenColor[3] = {0.22f, 0.64f, 0.30f};
-// Each side's colour: the player's blue and the enemy's red, and in a match of
-// more teams gold and green (sides 2 and 3).
+// Each side's colour, for every battle: the colour of the faction the side plays (factions.h sideFactions: a
+// skirmish's seats are the Moonward blue and the Ironhold red, then gold and green, a conquest's the lords').
 const float* sideColor(int owner) {
-    switch (owner & 3) {
-        case 0: return kPlayerColor;
-        case 1: return kEnemyColor;
-        case 2: return kGoldColor;
-        default: return kGreenColor;
-    }
+    static float colours[kMapSides][3];
+    const int k = owner >= 0 && owner < kMapSides - 1 ? owner : kMapSides - 1;
+    const V3 f = factionColor(static_cast<uint8_t>(owner >= 0 && owner < 255 ? owner : 255));
+    colours[k][0] = f.x, colours[k][1] = f.y, colours[k][2] = f.z;
+    return colours[k];
 }
-constexpr int kSides = 4;  // unit groups by type and side
 
 }  // namespace
+
+void Renderer::drawMan(const ManView& v, ManPass& p) {
+    const Battle& battle = p.battle;
+    if (!battle.sees(v.owner, v.pos.x, v.pos.y)) return;  // what the viewer may not see is not drawn
+    const auto type = static_cast<UnitType>(v.type);
+    const sim::Unit* u = v.unit;
+    const V3& pos = v.pos;
+    // Near the camera the battle's sprite (with a dot under it fading out as he comes in), from far off a dot, pulsing
+    // if he is in a fight; whoever is dead and far off is not drawn.
+    const bool sprite = manIsSprite(pos, v.type);
+    if (v.alive) {
+        const bool fighting = std::min(v.struck, v.hurt) < 1.0f;
+        manDot(pos, factionColor(v.owner), v.owner < sim::Continent::kFactionCount, v.selected, v.inspected, fighting ? manPulse(v.id, p.gameSeconds) : 0.0f,
+               sprite);
+    }
+    if (!sprite) return;
+    const sim::Fixed radiusFx = u ? u->stats.radius : sim::unitStats(type).radius;
+    const float radius = static_cast<float>(radiusFx.toDouble());
+    int frame = 0;
+    float down = 0;  // 0 standing .. 1 lying: the picture follows the slope under him (kUnitVs)
+    float yaw = v.yaw;
+    if (!v.alive) {
+        if (u == nullptr) return;
+        // Every dead soldier is a picture: his sheet's fall the way the death matrix chose (sim world_death.cpp: burned,
+        // cut, struck from behind or in front), resting on its last frame; a part cut off lies beside him as its own piece.
+        frame = deathFrame(v.type, *u, v.died, &down);  // the death clip by how he died (renderer_sheets.cpp)
+        // The figure falls backward: turned so that its head lands the way the blow went.
+        if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f;
+        pushStuckArrows(p.arrows, *u, pos, u->airborne ? 0.3f : std::clamp(v.died / deathSeconds(v.type, *u), 0.0f, 1.0f));
+    } else {
+        if (u && u->shieldArrows > 0) pushStuckArrows(p.arrows, *u, pos, 0);
+        // On what he stands on (a wall-walk, a bridge), or under him when aloft.
+        const float floor = u ? battle.floorAt(pos) : pos.z;
+        // His contact shadow: a dark core at his feet, so that he stands on the ground even in the shade of a wall
+        // (where his sun shadow is lost); long along a horse's or beast's body (extra.x).
+        const float plan = lookOf(type).plan;
+        const float stretch = plan > 0.5f && std::fabs(plan - 6.0f) > 0.5f ? 0.8f : 0.0f;
+        p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, v.yaw, radius * (1.3f + stretch * 0.35f), 0, kDecalShadow, stretch, 1, 0, 0});
+        if (u) pushHealthBar(p.bars, *u, pos, v.selected);
+        if (v.selected) p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
+        else if (v.inspected) p.decals.insert(p.decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.62f, 0.62f, 0.62f, 0});
+        const float strike = figures::attackSeconds(type);
+        const sprites::SheetClips* clips = clipsFor(v.type);
+        const auto sheet = sheets_.find(v.type);
+        const bool flier = u ? u->stats.flyAltitude > sim::Fixed::zero() : v.aloft;
+        const bool prerenderedFlier = flier && sheet != sheets_.end() && sheet->second.prerendered;
+        if (u != nullptr) {
+            // A sheet of its own clips plays them by name (sprite_clips.h); its soldiers are followed every frame, so what
+            // they took up or threw is seen as it happens.
+            const int listed = clips ? listedFrame(battle, v.index, *clips, p.gameSeconds, v.moved, p.sinceLastDraw, p.won()) : -1;
+            if (const int played = playedFrame(v.type, u->id, p.gameSeconds, &down); played >= 0) frame = played;  // the sandbox's choice (playClip)
+            else if (clips) frame = listed;
+            else
+                frame = sprites::fixedLayoutFrame(v.struck, strike, v.hurt, v.moving, u->inAir(), v.walked, figures::stride(type), prerenderedFlier,
+                                                  p.gameSeconds, v.id);
+        } else if (clips) {
+            // A man asleep walks or stands: his clip, with the memory of the last (kept while he stays in sight).
+            sprites::ClipMemory mem;
+            if (const auto known = mapMemory_.find(v.id); known != mapMemory_.end()) mem = known->second;
+            sprites::Deeds d;
+            d.now = p.gameSeconds;
+            d.sinceAttack = -1;
+            d.sinceHit = -1;
+            d.moving = v.moving;
+            d.inAir = v.aloft;
+            d.idlePhase = static_cast<float>(v.id % 13) * 0.37f;
+            d.attackSeconds = strike;
+            d.flinchSeconds = figures::kFlinchSeconds;
+            d.stride = figures::stride(type);
+            const float dt = std::max(men_.dt, 1e-3f);
+            d.stepMetres = v.speed * dt;
+            mem.speed = sprites::easeSpeed(mem.speed, v.speed, dt);
+            frame = sprites::chooseFrame(*clips, d, mem).frame;
+            p.sleeperMemory[v.id] = mem;
+        } else {
+            frame = sprites::fixedLayoutFrame(1e9f, strike, 1e9f, v.moving, v.aloft, v.walked, figures::stride(type), prerenderedFlier, p.gameSeconds, v.id);
+        }
+    }
+    if (!sheets_.count(v.type) || !sheets_[v.type].tex) return;  // baked before the next frame
+    if (u != nullptr) {
+        // Where his picture is drawn, for picking him (Battle::setSpriteBoxes): the view and cell chosen as kUnitVs chooses them.
+        const Sheet& sh = sheetFor(v.type);
+        float d = std::floor(-(p.toViewer - yaw) / 0.7853982f + 0.5f);
+        d -= 8.0f * std::floor(d / 8.0f);
+        const bool mirror = d > 4.5f;
+        const int cell = static_cast<int>(mirror ? 8.0f - d : d) * sh.framesPerView + frame;
+        if (cell >= 0 && cell < sh.cellCount && sh.table.size() >= static_cast<size_t>(sh.cellCount) * 8) {
+            const float* e = &sh.table[(static_cast<size_t>(sh.cellCount) + cell) * 4];
+            const float u0 = mirror ? -(e[0] + e[2]) : e[0], u1 = u0 + e[2];
+            const float c = std::cos(0.52f);  // kUnitVs kElevation
+            const V3 a = pos + p.camRight * u0, b = pos + p.camRight * u1;
+            float* out = &p.boxes[v.index * 6];
+            out[0] = a.x, out[1] = a.y, out[2] = pos.z + e[1] / c;
+            out[3] = b.x, out[4] = b.y, out[5] = pos.z + (e[1] + e[3]) / c;
+        }
+    }
+    std::vector<float>& g = p.groups[kMapKeyBase + v.type * kMapSides + manSide(v.owner)];
+    g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), v.selected || v.inspected ? 1.0f : 0.0f, down});
+}
+
+// The sleepers: men asleep in their squads on the march, whose view is made from the slot the campaign says they stand in.
+void Renderer::pushSleepers(ManPass& p) {
+    const Battle& battle = p.battle;
+    const V3 o = battle.origin();
+    for (const Battle::Sleeper& m : battle.sleepers()) {
+        ManView v;
+        v.pos = V3{m.x - o.x, m.y - o.y, 0};
+        v.pos.z = battle.heightAt(v.pos.x, v.pos.y);
+        if (m.aloft) v.pos.z += static_cast<float>(sim::unitStats(static_cast<UnitType>(m.type)).flyAltitude.toDouble());
+        v.id = m.id;
+        v.yaw = m.yaw;
+        v.speed = m.speed;
+        v.type = m.type;
+        v.owner = m.owner;
+        v.selected = m.selected;
+        v.inspected = m.inspected;
+        v.aloft = m.aloft;
+        v.moving = m.speed > 0.05f;
+        // Metres walked, from the campaign's clock and his pace, so that his stride keeps to the ground; each man begins at
+        // his own point of it.
+        v.walked = m.speed * p.gameSeconds + static_cast<float>((m.id * 2654435761u >> 16) & 0xFFFF) / 65535.0f * 10.0f;
+        drawMan(v, p);
+    }
+}
 
 bool Renderer::buildPrograms() {
     struct Spec {
@@ -1650,17 +1767,10 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
     glBindVertexArray(units_.vao);
     glBindBuffer(GL_ARRAY_BUFFER, units_.vbo);
     for (const auto& group : unitGroups_) {
-        const bool onMap = group.first >= kMapKeyBase;
-        const int groupType = onMap ? (group.first - kMapKeyBase) / kMapSides : group.first / kSides;
+        const int groupType = (group.first - kMapKeyBase) / kMapSides;
         const Sheet& sh = sheetFor(groupType);
         const auto range = group.second;
-        float factionTeam[3];
-        const float* team = sideColor(group.first % kSides);
-        if (onMap) {
-            const V3 f = factionColor(static_cast<uint8_t>((group.first - kMapKeyBase) % kMapSides));
-            factionTeam[0] = f.x, factionTeam[1] = f.y, factionTeam[2] = f.z;
-            team = factionTeam;
-        }
+        const float* team = sideColor((group.first - kMapKeyBase) % kMapSides);
         const V3 cloth = figures::cloth(team);
         glActiveTexture(GL_TEXTURE7);
         glBindTexture(GL_TEXTURE_2D, sh.tex);
@@ -2093,101 +2203,38 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         if (!victorsKnown) victors = deeds::victors(battle), victorsKnown = true;
         return victors;
     };
-    const bool borrowed = battle.borrowing();
     men_.dt = sinceLastDraw;
     beginMen(battle, camera, gameSeconds);
+    ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won, {}};
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
-        const V3 pos = battle.unitPosition(i);
-        const float fx = static_cast<float>(u.facing.x.toDouble()), fy = static_cast<float>(u.facing.y.toDouble());
-        const bool isSelected = battle.isSelected(u.id);
-        const auto type = static_cast<UnitType>(u.stats.type);
-        const V3 step = pos - lastSeen_[i];
-        const float moved = std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
-        walked_[i] += moved;
-        lastSeen_[i] = pos;
+        ManView v;
+        v.unit = &u;
+        v.index = i;
+        v.id = u.id;
+        v.pos = battle.unitPosition(i);
+        v.yaw = std::atan2(static_cast<float>(u.facing.y.toDouble()), static_cast<float>(u.facing.x.toDouble()));
+        v.type = static_cast<int>(u.stats.type);
+        v.owner = u.owner;
+        v.alive = u.alive();
+        v.selected = battle.isSelected(u.id);
+        v.inspected = battle.isInspected(u.id);
+        v.aloft = u.inAir();
+        v.moving = battle.unitMoving(i);
+        const V3 step = v.pos - lastSeen_[i];
+        v.moved = std::min(5.0f, std::sqrt(step.x * step.x + step.y * step.y));
+        walked_[i] += v.moved;
+        lastSeen_[i] = v.pos;
+        v.walked = walked_[i];
+        v.struck = ago(battle.attackTick(i));
+        v.hurt = ago(battle.hitTick(i));
+        v.died = ago(battle.deathTick(i));
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
-        if (!battle.sees(u.owner, pos.x, pos.y)) continue;  // what the viewer may not see is not drawn
-        {
-            // Near the camera the battle's sprite (with a dot under it fading out as he comes in), from far off a dot,
-            // pulsing if he is in a fight; whoever is dead and far off is not drawn. The same for every battle's men.
-            const bool sprite = manIsSprite(pos, static_cast<int>(type));
-            if (u.alive()) {
-                const bool fighting = std::min(ago(battle.attackTick(i)), ago(battle.hitTick(i))) < 1.0f;
-                const float* team = sideColor(u.owner);
-                const V3 colour = borrowed ? factionColor(u.owner) : V3{team[0], team[1], team[2]};
-                manDot(pos, colour, !borrowed || u.owner < sim::Continent::kFactionCount, isSelected, battle.isInspected(u.id),
-                       fighting ? manPulse(u.id, gameSeconds) : 0.0f, sprite);
-            }
-            if (!sprite) continue;
-        }
-        int frame;
-        float down = 0;  // 0 standing .. 1 lying: the picture follows the slope under him (kUnitVs)
-        float yaw = std::atan2(fy, fx);
-        if (!u.alive()) {
-            const float died = ago(battle.deathTick(i));
-            // Every dead soldier is a picture: his sheet's fall the way the death matrix
-            // chose (sim world_death.cpp: burned, cut, struck from behind or in front),
-            // resting on its last frame; a part cut off lies beside him as its own piece.
-            frame = deathFrame(static_cast<int>(type), u, died, &down);  // the death clip by how he died (renderer_sheets.cpp)
-            // The figure falls backward: turned so that its head lands the way the blow went.
-            if (u.death.kind != sim::DeathKind::None) yaw = lieYaw(u) + 3.14159265f;
-            pushStuckArrows(arrows, u, pos, u.airborne ? 0.3f : std::clamp(died / deathSeconds(static_cast<int>(type), u), 0.0f, 1.0f));
-        } else {
-            if (u.shieldArrows > 0) pushStuckArrows(arrows, u, pos, 0);
-            const float radius = static_cast<float>(u.stats.radius.toDouble());
-            // On what he stands on (a wall-walk, a bridge), or under him when aloft.
-            const float floor = battle.floorAt(pos);
-            // His contact shadow: a dark core at his feet, so that he stands on
-            // the ground even in the shade of a wall (where his sun shadow is
-            // lost); long along a horse's or beast's body (extra.x).
-            const float plan = lookOf(type).plan;
-            const float stretch = plan > 0.5f && std::fabs(plan - 6.0f) > 0.5f ? 0.8f : 0.0f;
-            decals.insert(decals.end(), {pos.x, pos.y, floor, std::atan2(fy, fx), radius * (1.3f + stretch * 0.35f), 0, kDecalShadow, stretch, 1, 0, 0});
-            pushHealthBar(bars, u, pos, isSelected);
-            if (isSelected) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.4f, 0.9f, 1.0f, 0});
-            else if (battle.isInspected(u.id)) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, radius * 1.8f, 0, kDecalRing, 0.62f, 0.62f, 0.62f, 0});
-            const float struck = ago(battle.attackTick(i)), hurt = ago(battle.hitTick(i)), strike = figures::attackSeconds(type);
-            // A sheet of its own clips plays them by name (sprite_clips.h); its soldiers are
-            // followed every frame, so what they took up or threw is seen as it happens.
-            const sprites::SheetClips* clips = clipsFor(static_cast<int>(type));
-            const int listed = clips ? listedFrame(battle, i, *clips, gameSeconds, moved, sinceLastDraw, won()) : -1;
-            if (const int played = playedFrame(static_cast<int>(type), u.id, gameSeconds, &down); played >= 0) {
-                frame = played;  // the sandbox's choice (playClip)
-            } else if (clips) {
-                frame = listed;
-            } else {
-                // The fixed layout (sprite_layout.h), as ever: striking, hurt, walking, at ease.
-                const auto sheet = sheets_.find(static_cast<int>(type));
-                const bool prerenderedFlier = u.stats.flyAltitude > sim::Fixed::zero() && sheet != sheets_.end() && sheet->second.prerendered;
-                frame = sprites::fixedLayoutFrame(struck, strike, hurt, battle.unitMoving(i), u.inAir(), walked_[i], figures::stride(type),
-                                                  prerenderedFlier, gameSeconds, u.id);
-            }
-        }
-        // (the campaign's eight lords and the neutral garrisons have groups of their own, in their faction's colour)
-        const int key = borrowed ? kMapKeyBase + static_cast<int>(type) * kMapSides + manSide(u.owner) : static_cast<int>(type) * kSides + (u.owner & 3);
-        if (!sheets_.count(static_cast<int>(type)) || !sheets_[static_cast<int>(type)].tex) continue;  // baked before the next frame (bakeMissing)
-        {
-            const Sheet& sh = sheetFor(static_cast<int>(type));
-            float d = std::floor(-(toViewer - yaw) / 0.7853982f + 0.5f);
-            d -= 8.0f * std::floor(d / 8.0f);
-            const bool mirror = d > 4.5f;
-            const int cell = static_cast<int>(mirror ? 8.0f - d : d) * sh.framesPerView + frame;
-            if (cell >= 0 && cell < sh.cellCount && sh.table.size() >= static_cast<size_t>(sh.cellCount) * 8) {
-                const float* e = &sh.table[(static_cast<size_t>(sh.cellCount) + cell) * 4];
-                const float u0 = mirror ? -(e[0] + e[2]) : e[0], u1 = u0 + e[2];
-                const float c = std::cos(kSpriteElevation);
-                const V3 a = pos + camRight * u0, b = pos + camRight * u1;
-                float* out = &boxes[i * 6];
-                out[0] = a.x, out[1] = a.y, out[2] = pos.z + e[1] / c;
-                out[3] = b.x, out[4] = b.y, out[5] = pos.z + (e[1] + e[3]) / c;
-            }
-        }
-        std::vector<float>& g = byGroup[key];
-        g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), isSelected || battle.isInspected(u.id) ? 1.0f : 0.0f, down});
+        drawMan(v, pass);
     }
+    pushSleepers(pass);
+    mapMemory_ = std::move(pass.sleeperMemory);
     battle.setSpriteBoxes(std::move(boxes));
-    pushSleepers(battle, byGroup, decals);
     endMen(battle, camera, decals);
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
@@ -2558,7 +2605,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sh.tex);
         glUniform1i(sheetView_.sheet, 0);
-        const V3 cloth = figures::cloth(kPlayerColor);
+        const V3 cloth = figures::cloth(sideColor(0));
         glUniform3f(sheetView_.cloth, cloth.x, cloth.y, cloth.z);
         glUniform4f(sheetView_.sheetView, 0, 1 - vp[3] / (k * sh.texH), vp[2] / (k * sh.texW), 1);
         glBindVertexArray(emptyVao_);

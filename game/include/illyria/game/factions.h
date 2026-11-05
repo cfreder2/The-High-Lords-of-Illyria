@@ -11,7 +11,8 @@ namespace illyria::game {
 // Which faction each side plays (a campaign may start as any: Campaign::Setup, factionOf); a side keeps the
 // colours of the faction it plays. The identity until a campaign sets it.
 inline uint8_t* sideFactions() {
-    static uint8_t table[sim::Continent::kFactionCount] = {0, 1, 2, 3, 4, 5, 6, 7};
+    // (a skirmish's seats: the player the Moonward blue, the enemy the Ironhold red, then gold and green)
+    static uint8_t table[sim::Continent::kFactionCount] = {6, 2, 1, 4, 5, 3, 0, 7};
     return table;
 }
 inline V3 factionColor(uint8_t owner) {
