@@ -72,4 +72,4 @@ The cards are the battle's (chapter [](#orders)): your heroes in gold, and the g
 - the tally of the army's **kills**;
 - a **violet border** for rare troops, which no city can train or replace.
 
-Hold a hero's card (or look at it in its tooltip) to see what he carries. Select whole armies (box their soldiers) and tap **Disband** twice: they go home and cost no more upkeep. The game warns you when an army is rare or seasoned, since nothing will replace it.
+Rest the pointer on a hero's card to see what he carries. Select whole armies (box their soldiers) and tap **Disband** twice: they go home and cost no more upkeep. The game warns you when an army is rare or seasoned, since nothing will replace it.
