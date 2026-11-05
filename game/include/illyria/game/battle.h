@@ -303,8 +303,11 @@ public:
         std::vector<V3> offset, face;
         V3 front{1, 0, 0};
     };
+    // A group is a list of men: in a skirmish their unit ids; in a conquest their man ids (a unit id there is a place in the
+    // world that men come to and leave as fights begin and end), found again each time among the men awake and asleep.
     struct Group {
-        std::vector<sim::EntityId> units;
+        std::vector<sim::EntityId> units;  // skirmish
+        std::vector<uint32_t> men;         // conquest
         Formation formation = Formation::Line;
         Shape shape;  // as it stood when saved: recalled, it marches so
     };
@@ -317,6 +320,15 @@ public:
     // Ungroup: forgets every group whose living men are all selected. How many went.
     int ungroupSelection();
     const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
+    // A group's living men now: awake (unit ids) and asleep (man ids), as the selection has them.
+    struct GroupMen {
+        std::vector<sim::EntityId> units;
+        std::vector<uint32_t> sleepers;
+        int alive() const { return static_cast<int>(units.size() + sleepers.size()); }
+    };
+    GroupMen groupMen(int slot) const;
+    size_t groupSize(int slot) const;           // men ever put in it, the fallen too (0: the slot is free)
+    const char* groupLabel(int slot) const;     // what kind they are: a type's name, or "Mixed"
 
     // Orders to the selection (for tests and hooks as well as the input).
     // At a gate, as tapping it.

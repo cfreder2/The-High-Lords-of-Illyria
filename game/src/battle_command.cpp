@@ -320,16 +320,56 @@ int Battle::squadSelection(const Squad& s) const {
     return chosen == 0 ? 0 : chosen == alive ? 2 : 1;
 }
 
-int Battle::groupSelection(int slot) const {
-    const std::vector<sim::EntityId>& g = groups_[static_cast<size_t>(slot)].units;
-    int alive = 0, chosen = 0;
-    for (sim::EntityId id : g) {
-        if (!world_->units()[id - 1].alive()) continue;
-        ++alive;
-        chosen += isSelected(id);
+Battle::GroupMen Battle::groupMen(int slot) const {
+    GroupMen out;
+    const Group& g = groups_[static_cast<size_t>(slot)];
+    if (!conquest_) {
+        for (sim::EntityId id : g.units)
+            if (world_->units()[id - 1].alive()) out.units.push_back(id);
+        return out;
     }
+    // The men awake are the units that are some man (presentConquest); the rest of the living are asleep.
+    std::map<uint32_t, sim::EntityId> unitOf;
+    for (size_t i = 0; i < manOfUnit_.size(); ++i)
+        if (manOfUnit_[i]) unitOf[manOfUnit_[i]] = static_cast<sim::EntityId>(i + 1);
+    for (uint32_t man : g.men) {
+        if (const auto it = unitOf.find(man); it != unitOf.end()) out.units.push_back(it->second);
+        else if (sleeperIndex(man) != kNoSleeper) out.sleepers.push_back(man);
+    }
+    return out;
+}
+
+size_t Battle::groupSize(int slot) const {
+    const Group& g = groups_[static_cast<size_t>(slot)];
+    return conquest_ ? g.men.size() : g.units.size();
+}
+
+const char* Battle::groupLabel(int slot) const {
+    int type = -1;
+    bool mixed = false;
+    const auto note = [&](int t) {
+        if (type < 0) type = t;
+        else if (type != t) mixed = true;
+    };
+    const Group& g = groups_[static_cast<size_t>(slot)];
+    if (!conquest_) {
+        for (sim::EntityId id : g.units) note(static_cast<int>(world_->units()[id - 1].stats.type));
+    } else {
+        const GroupMen m = groupMen(slot);
+        for (sim::EntityId id : m.units) note(static_cast<int>(world_->units()[id - 1].stats.type));
+        for (uint32_t man : m.sleepers) note(static_cast<int>(sleepers_[sleeperIndex(man)].type));
+    }
+    if (type < 0) return "";
+    return mixed ? "Mixed" : sim::unitTypeName(static_cast<sim::UnitType>(type));
+}
+
+int Battle::groupSelection(int slot) const {
+    const GroupMen m = groupMen(slot);
+    int chosen = 0;
+    for (sim::EntityId id : m.units) chosen += isSelected(id);
+    for (uint32_t man : m.sleepers) chosen += isSelectedMan(man);
     if (chosen == 0) return 0;
-    return chosen == alive && alive == static_cast<int>(selectedAlive().size()) ? 2 : 1;
+    return chosen == m.alive() && m.alive() == static_cast<int>(selectedAlive().size() + selSleeping_.size()) ? 2 : 1;
 }
 
 int Battle::unitAt(const Camera& camera, float x, float y, float pixelScale) const {
@@ -429,19 +469,17 @@ void Battle::selectHeroes() {
 
 void Battle::assignGroup(int slot) {
     if (slot < 0 || slot >= kGroupSlots) return;
-    if (conquest_) return say("Groups are of men in a fight: in a conquest they come and go from it");
-    groups_[static_cast<size_t>(slot)] = {selectedAlive(), selFormation_, selectionShape()};
+    // (A conquest's group is of men, not of the units they are in the world as: see Group. Its shape is not kept: it names units.)
+    if (conquest_) groups_[static_cast<size_t>(slot)] = {{}, selMen_, selFormation_, {}};
+    else groups_[static_cast<size_t>(slot)] = {selectedAlive(), {}, selFormation_, selectionShape()};
 }
 
 int Battle::saveGroup() {
-    if (conquest_) return say("Groups are of men in a fight: in a conquest they come and go from it"), -1;
-    if (selectedAlive().empty()) return -1;
+    if (selectedAlive().empty() && selSleeping_.empty()) return -1;
     // Keys 1-9, then 0, as along the keyboard.
     for (int k = 1; k <= kGroupSlots; ++k) {
         const int slot = k % kGroupSlots;
-        bool used = false;
-        for (sim::EntityId id : groups_[static_cast<size_t>(slot)].units) used = used || world_->units()[id - 1].alive();
-        if (used) continue;
+        if (groupMen(slot).alive() > 0) continue;
         assignGroup(slot);
         return slot;
     }
@@ -451,8 +489,13 @@ int Battle::saveGroup() {
 bool Battle::recallGroup(int slot) {
     if (slot < 0 || slot >= kGroupSlots) return false;
     const Group& g = groups_[static_cast<size_t>(slot)];
-    select(g.units);
-    if (selection_.empty()) return false;
+    if (conquest_) {
+        GroupMen m = groupMen(slot);
+        selectMen(std::move(m.units), std::move(m.sleepers));
+    } else {
+        select(g.units);
+    }
+    if (selection_.empty() && selSleeping_.empty()) return false;
     selFormation_ = g.formation;
     selShape_ = g.shape;  // it marches as it stood when saved
     return true;
@@ -465,13 +508,11 @@ void Battle::clearGroup(int slot) {
 int Battle::ungroupSelection() {
     int gone = 0;
     for (int slot = 0; slot < kGroupSlots; ++slot) {
-        int alive = 0, chosen = 0;
-        for (sim::EntityId id : groups_[static_cast<size_t>(slot)].units) {
-            if (!world_->units()[id - 1].alive()) continue;
-            ++alive;
-            chosen += isSelected(id);
-        }
-        if (alive == 0 || chosen < alive) continue;
+        const GroupMen m = groupMen(slot);
+        int chosen = 0;
+        for (sim::EntityId id : m.units) chosen += isSelected(id);
+        for (uint32_t man : m.sleepers) chosen += isSelectedMan(man);
+        if (m.alive() == 0 || chosen < m.alive()) continue;
         clearGroup(slot);
         ++gone;
     }

@@ -322,7 +322,7 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
 **What still differs, and why.** The conquest's clock and its speeds (1, 2, 4 and 8) are the conquest's own, not the
 battle's (1, 2, 4 and slow motion): the page keeps both (`illyria_campaign_pause`, `illyria_toggle_pause`). A squad
 of men asleep cannot be ordered a formation or to scatter (it has no bodies to), nor a facing on arrival; the
-squad's march is the stack's grid march. Saved groups (keys 1 to 9) are of the world's units, which are taken out of it and given to other men as stacks wake and sleep, so there are none in a conquest.
+squad's march is the stack's grid march. Saved groups (keys 1 to 9) are of men: in a skirmish their unit ids, in a conquest their man ids (a unit is a place in the world that men come to and leave as stacks wake and sleep), found again among the men awake and asleep each time.
 The renderer's one fork on whether the world is the conquest's is that a skirmish's field bakes sprite sheets for
 the kinds of soldier it has at once, and a conquest's only for those near the camera (`Renderer::draw`). The town
 screens (what a town trains, its boats, where its new armies go) are the conquest's own, and so is the tap that

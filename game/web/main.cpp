@@ -2220,15 +2220,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
     }
     // The selection (how many, in what formation, of what kind) and the saved groups.
     {
-        const auto& units = b.world().units();
-        const auto typeName = [&](illyria::sim::EntityId id) {
-            return illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(units[id - 1].stats.type));
-        };
-        const auto label = [&](const std::vector<illyria::sim::EntityId>& ids) {
-            bool one = true;
-            for (illyria::sim::EntityId id : ids) one = one && units[id - 1].stats.type == units[ids.front() - 1].stats.type;
-            return ids.empty() ? "" : one ? typeName(ids.front()) : "Mixed";
-        };
         // The order mode, and a refused order's reason while fresh (3 s).
         const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
         // Hyena-folk among them: the Raid button shows.
@@ -2243,12 +2234,9 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
         bool first = true;
         for (int k = 1; k <= Battle::kGroupSlots; ++k) {
             const int slot = k % Battle::kGroupSlots;
-            const Battle::Group& g = b.group(slot);
-            if (g.units.empty()) continue;
-            int alive = 0;
-            for (illyria::sim::EntityId id : g.units) alive += units[id - 1].alive();
+            if (b.groupSize(slot) == 0) continue;
             std::snprintf(buf, sizeof buf, "%s{\"slot\":%d,\"alive\":%d,\"total\":%zu,\"label\":\"%s\",\"sel\":%d}", first ? "" : ",", slot,
-                          alive, g.units.size(), label(g.units), b.groupSelection(slot));
+                          b.groupMen(slot).alive(), b.groupSize(slot), b.groupLabel(slot), b.groupSelection(slot));
             s += buf;
             first = false;
         }

@@ -230,6 +230,9 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     const size_t picked = w.b->selectionSize();
     CHECK(picked > 0);
     CHECK(w.b->selectedAlive().size() == picked);
+    // Saved as a group while awake (keys 1-9), it is of men: recalled after the fight, it is the men who are left, asleep.
+    const int slot = w.b->saveGroup();
+    CHECK(slot >= 0 && w.b->groupMen(slot).units.size() == picked);
     // The command bar's orders, as the world's commands (Hold, Scatter, a formation, As they stand).
     w.b->stopSelected();
     w.b->scatter();
@@ -259,6 +262,9 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
                 w.b->selectedSleepers().size(), w.b->selectionSize());
     CHECK(w.b->selectedAlive().empty());
     CHECK(w.b->selectedSleepers().size() == left);  // every man who is left is still selected
+    w.b->clearSelection();
+    CHECK(w.b->recallGroup(slot) == (left > 0));
+    CHECK(w.b->selectedSleepers().size() == left && w.b->selectedAlive().empty());
     // A man tapped who is not ours, with nothing selected, is looked at: view-only, grey, no order.
     w.b->clearSelection();
     w.tick(1);
@@ -454,20 +460,30 @@ TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no
     CHECK(w.units().size() < 4000);
 }
 
-// A group is a list of unit ids, and in the conquest a unit id is a place that men come to and leave as fights begin and
-// end: a group of them would name whoever stands there. The conquest's squads (an army's men, found afresh each frame)
-// and its selection (by man) take that place, and a group is refused.
-TEST(a_group_is_refused_in_the_conquest_where_unit_ids_are_reused) {
+// A group is a list of men, and in the conquest a unit id is a place in the world that men come to and leave as fights begin
+// and end: a group of unit ids would name whoever stands there. A conquest's group is of man ids, found again among the men
+// awake and asleep, so the keys serve a conquest as a skirmish.
+TEST(a_group_in_the_conquest_is_of_men_and_is_recalled_asleep_or_awake) {
     Island w;
     const int foot = w.squadOf(UnitType::LightInfantry);
     CHECK(foot >= 0);
     if (foot < 0) return;
     w.b->selectSquad(foot);
-    CHECK(w.b->selectionSize() > 0);
-    CHECK(w.b->saveGroup() == -1);
-    CHECK(!w.b->notice().empty());
-    for (int slot = 0; slot < Battle::kGroupSlots; ++slot) {
-        w.b->assignGroup(slot);
-        CHECK(w.b->group(slot).units.empty());
-    }
+    const size_t n = w.b->selectionSize();
+    CHECK(n > 0);
+    const int slot = w.b->saveGroup();
+    CHECK(slot >= 0);
+    CHECK(w.b->group(slot).units.empty() && w.b->group(slot).men.size() == n);
+    CHECK(w.b->groupSelection(slot) == 2);
+    w.b->clearSelection();
+    CHECK(w.b->groupSelection(slot) == 0);
+    w.frame();
+    CHECK(w.b->recallGroup(slot));
+    CHECK(w.b->selectionSize() == n);
+    CHECK(w.b->groupSelection(slot) == 2);
+    CHECK(std::string(w.b->groupLabel(slot)) == unitTypeName(UnitType::LightInfantry));
+    CHECK(w.b->groupMen(slot).alive() == static_cast<int>(n));
+    // Forgotten when they are all selected and the keys say so.
+    CHECK(w.b->ungroupSelection() == 1);
+    CHECK(w.b->groupSize(slot) == 0);
 }
