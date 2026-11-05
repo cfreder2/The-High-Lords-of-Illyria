@@ -202,11 +202,22 @@ A short note on how it works, and what it costs.
     castle, deck and house loops were boxed) and its navigation grid 0.4 s (11 s before); the page
     makes it when a campaign starts and says so ("Laying out the island"), about 15 s in the browser,
     once. The 1 km windows of the set battles are as quick as they were.
-  - *Every man a unit (this step):* 1,819 men in the World at the start of an all-computer campaign cost 2.2 ms
-    a tick natively, 1.2 microseconds a man (`the_whole_population_in_one_world_costs_what_a_skirmish_man_costs`;
-    other agents were using the machine, so it is an upper figure). By that rate the island's 6,800 men of day 120
-    cost about 8 ms a tick natively: inside the 33 ms of 1x, and about the budget at 4x. The browser figures are
-    in the report of this step. Nothing here is capped or skipped: a man costs the same wherever he is.
+  - *Every man a unit (step 3e, measured by `the_whole_population_in_one_world_costs_what_a_skirmish_man_costs`, the
+    machine shared with other work, towns' garrisons packed 8 armies to a town for the larger two):*
+
+    | men in the world | native, ms a tick | wasm (node), ms a tick |
+    |---|---|---|
+    | 1,819 (the start) | 1.5 (0.85 us a man) | 3.1 |
+    | 3,355 (about day 40) | 6.0 | 13.4 |
+    | 7,070 (about day 120) | 19.0 (2.7 us a man) | 41.4 |
+
+    A tick is 33 ms at 1x. Native fits to the full population at 1x and not at 2x beyond day 40; the browser fits to
+    about 5,000 men at 1x and not at 7,000, and the budget of "an ordinary tick about 0.005 ms" no longer holds in any
+    case (it was 3 microseconds with the men asleep). The cost per man rises with the crowd (separation between men
+    in one place), not only with their number. These are the World's own steps, unchanged: nothing was made cheaper
+    or skipped for Conquest, and nothing here is a second way of moving men. If it is too slow at 2x and beyond, or in
+    the browser late in a game, that is a decision for the game (fewer, larger squads; a smaller island; a speed cap
+    that follows the population), not a reason to put the men to sleep again.
   - *An all-computer campaign* holds about 1,800 soldiers at the start and keeps small stacks
     besieging walls they cannot take for days; the computer lords no longer send a force a third the
     size of the men it would meet (`attackOdds`), a stack held up ten seconds goes deaf to what it

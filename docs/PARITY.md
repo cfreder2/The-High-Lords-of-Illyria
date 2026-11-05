@@ -45,6 +45,13 @@ Known weaknesses that remain (honest list, not exceptions):
   marches in the test needed more than 400 s). The World finds the way each leg, so it is correct but not clever.
   The fix is to plan long legs with the World's nav near towns, or to order the final destination straight
   (a 4 m grid search over 3 km is the cost the document warned about).
+- A gate is a bottleneck: a stack of 24 men leaving a castle by its one gate takes minutes (the same as a skirmish's
+  six defenders took 40 s to pass); the old body march had none of that. It is the World's rule, now also Conquest's.
+- The coarse planner's flier estimate is optimistic by about 2.2 times against the World's flight cycles
+  (`fliers_alone_go_at_their_flight_cycles_pace_over_anything` measures it); the lords plan with it.
+- The cost of the whole population in one World (section 4 of docs/ONE_WORLD.md, "What it costs"): 19 ms a tick native
+  and 41 ms in the browser at 7,000 men, against 33 ms at 1x. Campaign tests that play days (20 or more of them) take
+  minutes each now (`hard_lords_outplay_easy_ones` is about 25 minutes native): they want shorter plays or fewer men.
 - A stack's march sends each man to `anchor + slot` of `Campaign::layout`. Slots in a tree or a wall's foot are moved to
   the nearest open ground; a column through a sharp turn has no tail-speed control (the tail follows its own path
   at the squad's pace; the old "tail moves fast" fault is not reproduced, but not tested either).

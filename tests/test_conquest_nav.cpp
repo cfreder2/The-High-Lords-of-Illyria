@@ -166,16 +166,26 @@ TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
 }
 
 // Not a rule but a measurement, printed for the record (docs/ONE_WORLD.md, "What it costs"): every man on the island is a
-// unit of the world, stepped every tick as in a skirmish. Native, an all-computer campaign from the start.
+// unit of the world, stepped every tick as in a skirmish. An all-computer campaign from the start, then the same with
+// stacks added in every town until the island holds about 3,000 and 6,800 men (the population of day 40 and day 120).
 TEST(the_whole_population_in_one_world_costs_what_a_skirmish_man_costs) {
     Campaign c(continent(), 7);
     c.prepareWorld();
     c.step();
-    const int32_t men = c.menInWorld();
-    const auto t0 = std::chrono::steady_clock::now();
-    constexpr int kTicks = 300;
-    for (int k = 0; k < kTicks; ++k) c.step();
-    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / kTicks;
-    std::printf("  %d men in the world: %.3f ms a tick, %.2f us a man\n", men, ms, ms * 1000.0 / std::max(1, men));
-    CHECK(men > 1000);
+    size_t town = 0;
+    for (const int32_t want : {0, 3000, 6800}) {
+        while (c.menInWorld() < want) {
+            const Campaign::CityState& cs = c.cities()[town++ % c.cities().size()];
+            c.raise(cs.owner == Campaign::kNeutral ? 0 : cs.owner, cs.cx, cs.cy, std::vector<UnitType>(8, UnitType::LightInfantry));
+            if (town % 8 == 0) c.step();  // (seated as they come)
+        }
+        c.step();
+        const int32_t men = c.menInWorld();
+        const auto t0 = std::chrono::steady_clock::now();
+        constexpr int kTicks = 200;
+        for (int k = 0; k < kTicks; ++k) c.step();
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / kTicks;
+        std::printf("  %d men in the world: %.3f ms a tick, %.2f us a man\n", men, ms, ms * 1000.0 / std::max(1, men));
+        CHECK(men >= std::max(1000, want));
+    }
 }
