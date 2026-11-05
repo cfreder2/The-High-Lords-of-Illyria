@@ -384,8 +384,10 @@ void Continent::planCastles() {
         k.keepHeight = city.capital ? m(28) : m(15) + roll(5) * 6;
         // (A capital's in the middle of its inner bailey.)
         k.keep = city.capital ? world({Fixed::zero(), -R * r(1, 5), Fixed::zero()}) : world({(roll(6) - r(1, 2)) * R * r(2, 5), -R * r(2, 5), Fixed::zero()});
-        k.courtyard = world({Fixed::zero(), R * r(3, 10), Fixed::zero()});
-        k.courtyardRadius = R * r(7, 20);
+        // (A capital's inner bailey reaches to 0.19 R from the middle, so its courtyard, where the men muster and the
+        // militia stand, lies beyond it: between the bailey's wall and the outer wall, which is at 0.78 R or more.)
+        k.courtyard = world({Fixed::zero(), R * (city.capital ? r(9, 20) : r(3, 10)), Fixed::zero()});
+        k.courtyardRadius = R * (city.capital ? r(1, 4) : r(7, 20));
         // Ramps up the inner faces: three on the outer ring (either side of
         // the gate and the back wall, or the next ones round where the inner
         // bailey is in the way) and one inside the inner bailey. Each starts on
