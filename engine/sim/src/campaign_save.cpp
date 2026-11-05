@@ -17,8 +17,8 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC3.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 2;
+constexpr const char* kMagic = "ILC4.";  // bump the digit when the layout changes
+constexpr uint32_t kFormat = 3;  // 3: who plays (Campaign::Setup)
 
 class Writer {
 public:
@@ -228,6 +228,8 @@ std::string Campaign::save() {
     Writer w;
     w.u(kFormat);
     w.u(seed_);
+    w.u(setup_.player);
+    w.u(setup_.enemies);
     w.u(mapPrint(*this));
     w.u(tick_);
     w.u(nextId_);
@@ -386,7 +388,11 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     Reader r(std::move(bytes));
     if (r.u() != kFormat) return fail("saved by another version of the game");
     const uint64_t seed = r.u();
-    auto c = std::make_unique<Campaign>(continent, seed);
+    Campaign::Setup setup;
+    setup.player = static_cast<uint8_t>(r.u());
+    setup.enemies = static_cast<uint8_t>(r.u());
+    if (setup.player >= 8) return fail("damaged (players)");
+    auto c = std::make_unique<Campaign>(continent, seed, setup);
     if (r.u() != mapPrint(*c)) return fail("saved on another map of Illyria (an older version of the game)");
     c->tick_ = r.u32();
     c->nextId_ = r.u32();

@@ -372,6 +372,8 @@ int32_t Campaign::winner() const {
             second = std::max(second, n);
         }
     }
+    // With no rival chosen there is nobody to beat: a game of towns and neutrals to take, with no end.
+    if ((setup_.enemies & ~(1u << setup_.player) & 0xFFu) == 0) return 0;
     if (alive == 1) return last + 1;
     if (best >= 0 && bestCities * 2 > static_cast<int32_t>(cities_.size()) && bestCities - second > 15) return best + 1;
     return 0;

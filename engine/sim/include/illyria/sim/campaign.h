@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,9 @@ struct Man {
     // continent), the way he faces (thousandths of a unit vector), and when he
     // last struck, was hurt, or fought at all.
     int32_t ax = 0, ay = 0, bx = 0, by = 0, fx = 0, fy = -1000;
+    // Waking: how far (millimetres) the place he was drawn at, in his squad's formation, is from the place the
+    // world set him; drawn from there and walked off at a pace, never jumped (presentation only).
+    int32_t gx = 0, gy = 0;
     int32_t lastCool = 0, lastReload = 0;
     uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;
     bool alive() const { return hp != 0; }
@@ -182,6 +186,9 @@ public:
         bool awake = false;
         int32_t px = 0, py = 0;
         int32_t hx = 0, hy = -1000;
+        // How far its men have drawn out from a block into a column on the march (0..1000), eased as it sets out
+        // and halts, so that none jumps (presentation only; not saved).
+        int32_t form = 0;
         uint32_t calm = 0;       // awake: ticks since an enemy was within reach
         int32_t orderCell = -1;  // awake: the cell its men were last sent marching to (-1: none)
         // Awake, bound somewhere and held up (a foe it cannot get at, behind a wall): where it was and when it
@@ -250,7 +257,23 @@ public:
     // Command bonus an army brings its side in battle (heroes' command artifacts).
     static int32_t command(const Army& a);
 
-    Campaign(const Continent& continent, uint64_t seed);
+    // Who plays: the faction the player starts as (the one whose hero and capital are seat 0, as ever: the
+    // player is always side 0 and blue), and which of the other factions are computer lords (a bit a faction,
+    // by the continent's order). A faction in neither is not in the game at all: its capital and towns are
+    // plain neutral places with neutral garrisons, and no lord, army or AI. The default is as it always was:
+    // the first faction against all the others. Part of the saved game.
+    struct Setup {
+        uint8_t player = 0;
+        uint8_t enemies = 0xFF;
+        bool operator==(const Setup& o) const { return player == o.player && (enemies & ~(1u << player)) == (o.enemies & ~(1u << o.player)); }
+    };
+    Campaign(const Continent& continent, uint64_t seed) : Campaign(continent, seed, Setup{0, 0xFF}) {}
+    Campaign(const Continent& continent, uint64_t seed, Setup setup);
+    const Setup& setup() const { return setup_; }
+    // The faction (the continent's order, for names and what it trains) a side plays: sides 0 and `player` swap places.
+    uint8_t factionOf(uint8_t side) const { return side == 0 ? setup_.player : side == setup_.player ? 0 : side; }
+    // Whether a faction is in the game (the player's, or a chosen computer lord's).
+    bool inGame(uint8_t faction) const { return faction == setup_.player || (faction < 8 && (setup_.enemies >> faction & 1)); }
 
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
@@ -304,10 +327,18 @@ public:
         UnitType type = UnitType::LightInfantry;
         bool awake = false, alive = true, aloft = false;
         uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // awake: when he last struck, was hurt, or fought at all
+        const Unit* unit = nullptr;  // awake: his man in the world (to draw him hurt, fallen, or with arrows in him), until the next step
+        uint32_t unitId = 0;
     };
     // Every soldier, as he stands `ahead` hundredths of a tick after the last
     // step (the presentation glides on between ticks; nothing steps).
     void soldiers(int32_t ahead, std::vector<Soldier>& out) const;
+    // What the awake men's blows and wounds did since last asked, as the world
+    // reported them (the presentation's; never saved nor hashed): blood, dust,
+    // sparks, splinters off the gates. The world drops them each tick.
+    void takeImpacts(std::vector<ImpactEvent>& out);
+    // Called after every step of the fight's world (not part of the game's state): the page listens for its sounds.
+    void onWorldStep(std::function<void(const World&)> hook) { stepHook_ = std::move(hook); }
     int32_t awakeStacks() const;  // how many stacks have men in the world
     int32_t awakeMen() const;     // and how many men
     // Makes the island's ground now rather than at the first fight (a few seconds, once a process).
@@ -574,7 +605,9 @@ private:
     void syncMen(Stack& s);
     // The slots of a stack's living men in its formation, in millimetres to
     // the right of its body and ahead of it, in army order.
-    void layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots) const;
+    void layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots, bool column) const;
+    // The slots as drawn now: the block and the column blended by the stack's `form`.
+    void formation(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots) const;
     void easeMen(Stack& s);
     void anchorOf(int32_t cx, int32_t cy, int32_t& x, int32_t& y) const;
     void holdGates(int32_t city);
@@ -582,7 +615,10 @@ private:
     std::shared_ptr<const Region> region_;
     std::unique_ptr<World> world_;
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
+    Setup setup_;
+    std::function<void(const World&)> stepHook_;
     int32_t awakeStacks_ = 0;
+    std::vector<ImpactEvent> impactLog_;  // presentation only (takeImpacts)
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them
     void gateHps(std::vector<int32_t>& out) const;
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while

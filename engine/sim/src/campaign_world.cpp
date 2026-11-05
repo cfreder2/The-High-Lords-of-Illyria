@@ -28,7 +28,7 @@ namespace illyria::sim {
 namespace {
 
 constexpr int32_t kIslandCells = 900;  // the island's ground, 3.6 km of 4 m cells (the map is 2.8 x 3.6 km)
-constexpr uint32_t kCorpseTicks = 20 * kTicksPerSecond;
+constexpr uint32_t kCorpseTicks = 600 * kTicksPerSecond;  // the dead lie as long as the fight lasts, as in the battle (ten minutes at most)
 constexpr int64_t kArriveMm = 12000;  // marching, a cell is reached within this of its anchor
 constexpr int64_t kHoldMm = 45000;  // men standing meet whoever gets this near their post
 constexpr int32_t kAbreast = 4;
@@ -118,7 +118,7 @@ void Campaign::bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) con
     y += static_cast<int32_t>((int64_t{ty} - y) * t / leg);
 }
 
-void Campaign::layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots) const {
+void Campaign::layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots, bool column) const {
     slots.clear();
     struct Block {
         int32_t n = 0, cols = 1, rows = 0, spacing = 1400, depth = 0, width = 0;
@@ -139,7 +139,6 @@ void Campaign::layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& 
     int32_t live = 0;
     for (const Block& b : blocks) live += b.n > 0;
     // Marching, a column of squads, the first in front; standing, a block of them.
-    const bool column = !s.path.empty() && !s.boat;
     const int32_t perRow = column ? 1 : std::max<int32_t>(1, static_cast<int32_t>(isqrt(live - 1)) + 1);
     std::vector<int32_t> rowDepth, colWidth(static_cast<size_t>(perRow), 0);
     {
@@ -195,6 +194,25 @@ void slotToWorld(const std::pair<int32_t, int32_t>& slot, int32_t hx, int32_t hy
 }
 }  // namespace
 
+constexpr float kGlideMetresPerSecond = 3.0f;
+constexpr float kFormMetresPerSecond = 5.0f;
+
+void Campaign::formation(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots) const {
+    const bool marching = !s.path.empty() && !s.boat;
+    if (s.form <= 0 || s.form >= 1000) {
+        layout(s, slots, s.form >= 1000 || (s.form > 0 && marching));
+        return;
+    }
+    std::vector<std::pair<int32_t, int32_t>> block, column;
+    layout(s, block, false);
+    layout(s, column, true);
+    slots.resize(block.size());
+    for (size_t i = 0; i < block.size(); ++i) {
+        slots[i].first = static_cast<int32_t>(block[i].first + int64_t{column[i].first - block[i].first} * s.form / 1000);
+        slots[i].second = static_cast<int32_t>(block[i].second + int64_t{column[i].second - block[i].second} * s.form / 1000);
+    }
+}
+
 void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
     out.clear();
     std::map<int32_t, int32_t> standing;  // stationary stacks to a cell, to set them side by side
@@ -215,13 +233,16 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
                     d.awake = true;
                     d.alive = m.hp != 0;
                     if (!d.alive && (!world_ || !world_->findUnit(m.unit))) continue;
-                    d.x = (static_cast<float>(m.bx) + static_cast<float>(m.ax - m.bx) * alpha) / 1000.0f;
-                    d.y = (static_cast<float>(m.by) + static_cast<float>(m.ay - m.by) * alpha) / 1000.0f;
+                    d.x = (static_cast<float>(m.bx) + static_cast<float>(m.ax - m.bx) * alpha + static_cast<float>(m.gx)) / 1000.0f;
+                    d.y = (static_cast<float>(m.by) + static_cast<float>(m.ay - m.by) * alpha + static_cast<float>(m.gy)) / 1000.0f;
                     d.yaw = std::atan2(static_cast<float>(m.fy), static_cast<float>(m.fx));
                     d.speed = d.alive && (m.ax != m.bx || m.ay != m.by)
                                   ? std::hypot(static_cast<float>(m.ax - m.bx), static_cast<float>(m.ay - m.by)) / 1000.0f * kTicksPerSecond
                                   : 0.0f;
+                    if (m.gx != 0 || m.gy != 0) d.speed = std::max(d.speed, kGlideMetresPerSecond);  // (he is walking to his place)
                     d.aloft = d.alive && flies(a.type) && world_ && world_->findUnit(m.unit) && world_->findUnit(m.unit)->flight == Unit::Flight::Flying;
+                    d.unit = world_ ? world_->findUnit(m.unit) : nullptr;
+                    d.unitId = m.unit;
                     d.struckTick = m.struckTick;
                     d.hurtTick = m.hurtTick;
                     d.fightTick = m.fightTick;
@@ -239,7 +260,7 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
                 by -= static_cast<int32_t>(int64_t{s.hx} * side / 1000);
             }
         }
-        layout(s, slots);
+        formation(s, slots);
         float speed = 0;
         if (!s.path.empty() && !s.boat) {
             const int32_t leg = legTime(s);
@@ -274,7 +295,7 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
                 d.x = static_cast<float>(bx + dx) / 1000.0f;
                 d.y = static_cast<float>(by + dy) / 1000.0f;
                 d.yaw = yaw;
-                d.speed = speed;
+                d.speed = s.form > 0 && s.form < 1000 ? std::max(speed, kFormMetresPerSecond) : speed;  // (drawing out, or closing up)
                 d.aloft = aloft;
                 out.push_back(d);
             }
@@ -365,7 +386,7 @@ void Campaign::wake(Stack& s) {
     s.px = bx;
     s.py = by;
     std::vector<std::pair<int32_t, int32_t>> slots;
-    layout(s, slots);
+    formation(s, slots);
     int32_t command = 0;
     for (const Army& a : s.armies) command += Campaign::command(a);
     size_t k = 0;
@@ -431,6 +452,8 @@ void Campaign::wake(Stack& s) {
             world_->restoreUnit(m.unit, m.hp < 0 ? INT32_MAX : m.hp, m.kills, m.morale);
             m.ax = m.bx = toMm(at.x + origin.x);
             m.ay = m.by = toMm(at.y + origin.y);
+            m.gx = static_cast<int32_t>(int64_t{bx} + dx - m.ax);  // (the squad's slot, if it did not fit, he walks from)
+            m.gy = static_cast<int32_t>(int64_t{by} + dy - m.ay);
             m.fx = s.hx;
             m.fy = s.hy;
             m.lastCool = m.lastReload = 0;
@@ -720,7 +743,7 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
     Fixed pace = Fixed::fromInt(100);
     for (const Army& a : s.armies) pace = min(pace, unitStats(a.type).moveSpeed);
     std::vector<std::pair<int32_t, int32_t>> slots;
-    layout(s, slots);
+    layout(s, slots, !s.path.empty() && !s.boat);
     const Vec3 origin = region_->origin();
     const Vec3 from{fromMm(s.px) - origin.x, fromMm(s.py) - origin.y, Fixed::zero()}, to{fromMm(tx) - origin.x, fromMm(ty) - origin.y, Fixed::zero()};
     const Vec3 face{fromMm(ux), fromMm(uy), Fixed::zero()};
@@ -802,6 +825,11 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
     }
 }
 
+void Campaign::takeImpacts(std::vector<ImpactEvent>& out) {
+    out.clear();
+    out.swap(impactLog_);
+}
+
 void Campaign::stepWorld() {
     awakeStacks_ = 0;  // (counted afresh: stacks come and go in many places)
     for (const Stack& s : stacks_) awakeStacks_ += s.awake && !s.armies.empty();
@@ -820,8 +848,21 @@ void Campaign::stepWorld() {
         if (think && s.path.empty()) fightAi(s, commands_);
     }
     world_->step(commands_);
+    if (stepHook_) stepHook_(*world_);
+    if (impactLog_.size() < 4000) impactLog_.insert(impactLog_.end(), world_->impacts().begin(), world_->impacts().end());
     for (Stack& s : stacks_)
-        if (s.awake) syncMen(s);
+        if (s.awake) {
+            syncMen(s);
+            // Men who woke off their slots walk the last of the way to their places.
+            for (Army& a : s.armies)
+                for (Man& m : a.men) {
+                    if (m.gx == 0 && m.gy == 0) continue;
+                    const double len = std::hypot(static_cast<double>(m.gx), static_cast<double>(m.gy));
+                    const double step = kGlideMetresPerSecond * 1000.0 / kTicksPerSecond;
+                    if (len <= step) m.gx = m.gy = 0;
+                    else m.gx -= static_cast<int32_t>(m.gx * step / len), m.gy -= static_cast<int32_t>(m.gy * step / len);
+                }
+        }
     // The armies that have fallen to the last man are gone, and heroes drop what they carried.
     bool gone = false;
     for (Stack& s : stacks_) {

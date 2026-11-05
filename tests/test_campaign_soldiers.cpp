@@ -138,3 +138,71 @@ TEST(stacks_standing_in_one_town_stand_side_by_side_not_on_each_other) {
     CHECK(na == 12 && nb == 12);
     if (na && nb) CHECK(std::hypot(ax / na - bx / nb, ay / na - by / nb) > 6.0);
 }
+
+// What is drawn is continuous: sampled twice a tick (a frame at 60 a second against the clock's 30), no man jumps
+// further than his pace can carry him, across a march, a wake (the stack meets a town's garrison), the fight, and
+// the sleep after it. `worst` is the biggest jump of any man beyond what his speed explains.
+TEST(a_mans_drawn_place_is_continuous_across_a_march_a_wake_and_a_sleep) {
+    Campaign c(continent(), 3);
+    for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);  // the lords stay home: only the scripted march moves
+    const Campaign::Stack* home = nullptr;
+    for (const Campaign::Stack& st : c.stacks())
+        if (st.owner == 0) home = &st;
+    int target = -1, best = 1 << 30;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const auto& city = c.cities()[i];
+        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+        const int d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
+        if (d < best) best = d, target = static_cast<int>(i);
+    }
+    const auto& town = c.cities()[static_cast<size_t>(target)];
+    c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
+    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+    std::map<uint32_t, MapSoldier> last;
+    std::vector<MapSoldier> now;
+    double worst = 0, worstMetres = 0;
+    uint32_t worstTick = 0, worstId = 0;
+    int jumps = 0, wakeJumps = 0, sleepJumps = 0, awakeJumps = 0, marchJumps = 0;
+    bool woke = false, slept = false, wasAwake = false;
+    const double dt = 1.0 / 60.0;
+    for (int k = 0; k < 24000; ++k) {
+        for (const int32_t ahead : {0, static_cast<int32_t>(Campaign::kTimeScale / 2)}) {
+            collectMapSoldiers(c, ahead, 0, now);
+            for (const MapSoldier& m : now) {
+                if (!m.alive) continue;
+                const auto it = last.find(m.id);
+                if (it != last.end()) {
+                    const double jump = std::hypot(m.x - it->second.x, m.y - it->second.y);
+                    const double allowed = std::max<double>(m.speed, it->second.speed) * dt * 2.0 + 0.25;
+                    if (jump > allowed) {
+                        ++jumps;
+                        if (!it->second.awake && m.awake) ++wakeJumps;
+                        else if (it->second.awake && !m.awake) ++sleepJumps;
+                        else if (m.awake) ++awakeJumps;
+                        else {
+                            ++marchJumps;
+                            if (marchJumps <= 6 || jump > 6.0) {
+                                const Campaign::Stack* st = c.findStack(m.stack);
+                                std::printf("    asleep jump %.2f m (allowed %.2f) man %u stack %u tick %u path %zu owner %d cell %d,%d\n", jump, allowed, m.id, m.stack, c.tick(),
+                                            st ? st->path.size() : 0, m.owner, st ? st->cx : -1, st ? st->cy : -1);
+                            }
+                        }
+                    }
+                    if (jump - allowed > worst) worst = jump - allowed, worstMetres = jump, worstTick = c.tick(), worstId = m.id;
+                }
+                last[m.id] = m;
+            }
+        }
+        const bool awake = c.awakeStacks() > 0;
+        woke = woke || awake;
+        slept = slept || (wasAwake && !awake);
+        wasAwake = awake;
+        c.step();
+    }
+    std::printf("  worst jump beyond pace: %.2f m (a jump of %.2f m, man %u, tick %u); woke %d, slept again %d\n", worst, worstMetres, worstId, worstTick,
+                woke, slept);
+    std::printf("  %d jumps: %d at a wake, %d at a sleep, %d awake, %d asleep\n", jumps, wakeJumps, sleepJumps, awakeJumps, marchJumps);
+    CHECK(woke);
+    CHECK(worst <= 0.1);  // (a tenth of a metre of rounding: the sim's millimetres and the clock's halves of a tick)
+}

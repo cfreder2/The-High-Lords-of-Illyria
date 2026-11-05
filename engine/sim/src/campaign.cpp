@@ -111,11 +111,15 @@ int32_t Campaign::upkeep(UnitType t) {
     }
 }
 
-Campaign::Campaign(const Continent& continent, uint64_t seed) : continent_(continent), seed_(seed), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
+Campaign::Campaign(const Continent& continent, uint64_t seed, Setup setup) : continent_(continent), seed_(seed), setup_(setup), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
     nx_ = static_cast<int32_t>(Continent::kWidth / kCell);
     ny_ = static_cast<int32_t>(Continent::kHeight / kCell);
     initTerrain();
-    for (const Continent::Faction& f : Continent::factions()) sides_.push_back({f.name, 0, true});
+    // Side s plays faction factionOf(s); one that is not in the game is out of it (dead, with nothing to its name).
+    for (size_t side = 0; side < Continent::factions().size(); ++side) {
+        const uint8_t faction = factionOf(static_cast<uint8_t>(side));
+        sides_.push_back({Continent::factions()[faction].name, 0, inGame(faction)});
+    }
     armiesRaised_.assign(sides_.size(), 0);
     initCities();
     initRare();
@@ -212,7 +216,7 @@ void Campaign::initCities() {
     for (size_t i = 0; i < continent_.cities().size(); ++i) {
         const Continent::City& c = continent_.cities()[i];
         CityState st;
-        st.owner = c.owner;
+        st.owner = c.owner == kNeutral || !inGame(c.owner) ? kNeutral : factionOf(c.owner);  // (the faction's side)
         st.cx = cellOf(static_cast<int32_t>(c.pos.x.floorToInt()));
         st.cy = cellOf(static_cast<int32_t>(c.pos.y.floorToInt()));
         terrain_[static_cast<size_t>(st.cy) * nx_ + st.cx] = Lay::City;
@@ -221,7 +225,7 @@ void Campaign::initCities() {
             st.defense = 6;
             st.income = 30;
             st.options.push_back(trained(T::LightInfantry));
-            for (UnitType t : realm(c.owner).specialties) st.options.push_back(trained(t));
+            for (UnitType t : realm(factionOf(st.owner == kNeutral ? 0 : st.owner)).specialties) st.options.push_back(trained(t));
         } else {
             st.defense = 3 + static_cast<int32_t>((roll(1) * 3).floorToInt());
             st.income = 15 + st.defense * 2 + static_cast<int32_t>((roll(2) * 6).floorToInt());
@@ -254,7 +258,7 @@ void Campaign::initCities() {
         const CityState& st = cities_[i];
         const Continent::City& c = continent_.cities()[i];
         if (st.owner != kNeutral) {
-            sides_[st.owner].gold = realm(st.owner).gold;
+            sides_[st.owner].gold = realm(factionOf(st.owner)).gold;
             Stack& s = newStack(st.owner, st.cx, st.cy);
             Army hero = makeArmy(T::Hero, "Lord of " + c.name);
             s.armies.push_back(hero);
@@ -350,6 +354,21 @@ void Campaign::step() {
     if (tick_ % kTicksPerDay == 0) newDay();
     if (tick_ % kContactTicks == 0) contactStep();  // campaign_world.cpp: who is near an enemy wakes, who is not goes to sleep
     moveStacks();
+    // The men of a stack setting out draw out into a column over a few seconds, and close up into a block as it halts
+    // (so none jumps: Campaign::formation); the longer the column, the longer it takes, at a walking pace.
+    for (Stack& s : stacks_) {
+        if (s.awake || s.armies.empty()) continue;
+        const int32_t target = !s.path.empty() && !s.boat ? 1000 : 0;
+        if (s.form == target) continue;
+        std::vector<std::pair<int32_t, int32_t>> block, column;
+        layout(s, block, false);
+        layout(s, column, true);
+        int64_t far = 1;
+        for (size_t i = 0; i < block.size(); ++i)
+            far = std::max<int64_t>(far, static_cast<int64_t>(std::hypot(static_cast<double>(column[i].first - block[i].first), static_cast<double>(column[i].second - block[i].second))));
+        const int32_t rate = static_cast<int32_t>(std::clamp<int64_t>(1000LL * 5000 / (far * kTicksPerSecond), 1, 1000));  // 5 m/s
+        s.form += std::clamp(target - s.form, -rate, rate);
+    }
     stepWorld();  // the men who are awake, as in any battle
     if (tick_ % kContactTicks == 0) bannerStep();  // campaign_capture.cpp
     if (tick_ % kTerritoryTicks == 0) territoryStep();  // campaign_territory.cpp
@@ -456,8 +475,8 @@ void Campaign::moveStacks() {
         {
             int32_t wx = (nx - s.cx) * 1000, wy = (ny - s.cy) * 1000;
             if (wx && wy) wx = wx * 707 / 1000, wy = wy * 707 / 1000;
-            s.hx += (wx - s.hx) / 12;
-            s.hy += (wy - s.hy) / 12;
+            s.hx += (wx - s.hx) / 40;  // (slowly: a column swings about its head, and its tail must not be flung round)
+            s.hy += (wy - s.hy) / 40;
             const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.hx} * s.hx + int64_t{s.hy} * s.hy)));
             if (len > 0) s.hx = static_cast<int32_t>(int64_t{s.hx} * 1000 / len), s.hy = static_cast<int32_t>(int64_t{s.hy} * 1000 / len);
         }

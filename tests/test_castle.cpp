@@ -242,6 +242,39 @@ TEST(soldiers_hack_a_shut_gate_down_and_march_in) {
     CHECK(inside >= 6);
 }
 
+TEST(giants_hack_a_shut_gate_down_and_walk_through_the_gap) {
+    // The biggest walkers (a giant is 5.5 m tall and 2.4 m across) against the
+    // town's gate: they can reach it to strike, they break it, and they pass.
+    GateField f = gateField(7);
+    World& w = *f.w;
+    const Gate& g = w.region()->gates()[f.gate];
+    const UnitStats giant = unitStats(UnitType::Giants);
+    std::printf("  gate %.1f m wide, %.1f m high, %.2f m thick; giant %.1f m high, %.1f m across, reach %.1f m\n", (g.b - g.a).flat().length().toDouble(),
+                (g.top - g.a.z).toDouble(), g.halfThick.toDouble() * 2, giant.height.toDouble(), giant.radius.toDouble() * 2, giant.melee.reach.toDouble());
+    const Vec3 yard = local(town().castle.courtyard);
+    std::vector<EntityId> pack;
+    for (int i = 0; i < 3; ++i) pack.push_back(w.spawnUnit(0, f.centre + f.out * m(14) + Vec3{m(i * 4 - 4), m(0), m(0)}, -f.out, giant));
+    std::vector<Command> go;
+    for (EntityId id : pack) go.push_back({0, id, Command::Type::Move, yard});
+    w.step(go);
+    int blows = 0;
+    Fixed nearest = m(100);
+    for (int t = 0; t < 400 * kTicksPerSecond && !w.gates()[f.gate].broken(); ++t) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts()) blows += e.kind == ImpactEvent::Kind::Gate;
+        for (EntityId id : pack) nearest = min(nearest, (w.findUnit(id)->pos - f.centre).flat().dot(f.out));
+    }
+    std::printf("  giants broke the gate with %d blows in %u s, the nearest standing %.2f m from its middle\n", blows, w.tick() / kTicksPerSecond, nearest.toDouble());
+    CHECK(w.gates()[f.gate].broken());
+    CHECK(blows > 0);
+    CHECK(nearest > Fixed::zero());  // never through it while it stood
+    for (int t = 0; t < 120 * kTicksPerSecond; ++t) w.step({});
+    int inside = 0;
+    for (EntityId id : pack) inside += (w.findUnit(id)->pos - yard).flat().length() < m(20);
+    std::printf("  %d of 3 giants in the courtyard 120 s after\n", inside);
+    CHECK(inside >= 2);
+}
+
 TEST(catapult_stones_break_a_gate_and_the_way_is_open) {
     GateField f = gateField(5);
     World& w = *f.w;

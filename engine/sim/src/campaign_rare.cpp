@@ -114,7 +114,7 @@ void Campaign::initRare() {
         const Continent::City& c = continent_.cities()[i];
         if (c.capital) {
             if (st.owner == kNeutral) continue;
-            const RealmRare& r = realmRare(st.owner);
+            const RealmRare& r = realmRare(factionOf(st.owner));
             for (Stack& s : stacks_) {
                 if (s.owner != st.owner || s.cx != st.cx || s.cy != st.cy) continue;
                 for (UnitType t : r.start) s.armies.push_back(makeArmy(t, std::string(unitTypeName(t)) + " of " + c.name));
