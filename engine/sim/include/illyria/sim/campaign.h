@@ -278,23 +278,20 @@ public:
     // Whether a faction is in the game (the player's, or a chosen computer lord's).
     bool inGame(uint8_t faction) const { return faction == setup_.player || (faction < 8 && (setup_.enemies >> faction & 1)); }
 
-    // What a side asks of the game is an Order: a plain, ordered record stamped with the tick it takes effect at. The
-    // page (and any other player) only ever submits Orders; they are applied inside step(), before the tick they are
-    // stamped with is run, in the order they were submitted, so the same Orders over the same saved game give the
-    // same game on every machine (tests/test_campaign_orders.cpp). The calls below are what an Order does.
+    // What a side asks of the game is an Order: a plain, ordered record stamped with the tick it takes effect at.
+    // Players only ever submit Orders; they are applied inside step(), at the start of the step that makes their
+    // tick, in the order they were submitted, so the same Orders over the same saved game give the same game on
+    // every machine (the test in tests/test_campaign_save.cpp). The calls below are what an Order does.
     struct Order {
         enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat };
         Kind kind = Kind::Move;
         uint8_t side = 0;
-        uint32_t tick = 0;   // set by submit()
-        uint32_t stack = 0;  // the stack, if it concerns one
+        uint32_t tick = 0;     // the tick it takes effect at; 0: the next
+        uint32_t stack = 0;    // the stack, if it concerns one
         int32_t a = 0, b = 0;  // Move: the cell; Produce: city, option; VectorProduction: city, to; Disband: the army; BuildBoat: city; Hire: accept
     };
+    // Queues an Order for its tick (the next, if it names none). Nothing is applied until a step runs, paused or not.
     void submit(Order order);
-    // Applies at once the Orders stamped with this tick (what step() does first): for a paused clock, so that a
-    // player's order shows at once. Idempotent; the same Orders in the same order whether the clock runs or not.
-    void applyPending();
-    const std::vector<Order>& orderLog() const { return orderLog_; }  // every Order applied, in order (replays, tests)
 
     // Orders.
     bool move(uint32_t stackId, int32_t cx, int32_t cy);  // false if no route
@@ -654,7 +651,8 @@ private:
     std::unique_ptr<World> world_;
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
     Setup setup_;
-    std::vector<Order> pending_, orderLog_;
+    std::vector<Order> pending_;
+    void applyPending();  // the Orders whose tick has come, in the order submitted (step)
     std::function<void()> beforeHook_, stepHook_, clearedHook_;
     std::function<bool(uint8_t, uint8_t, float, float)> sight_;
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)

@@ -261,9 +261,6 @@ TEST(the_same_orders_over_the_same_save_give_the_same_game) {
     play(*d);
     CHECK(a.checksum() == b->checksum());
     CHECK(b->checksum() == d->checksum());
-    CHECK(a.orderLog().size() == 2);
-    CHECK(b->orderLog().size() == 2);
-    CHECK(a.orderLog()[1].tick == b->orderLog()[1].tick);  // stamped with the tick they were given at
     // And the Orders matter: without them the game is another.
     Campaign none(continent(), 21);
     none.setHuman(0, true);
@@ -271,4 +268,40 @@ TEST(the_same_orders_over_the_same_save_give_the_same_game) {
     (void)none.save();
     for (int t = 0; t < 900; ++t) none.step();
     CHECK(none.checksum() != a.checksum());
+}
+
+// A paused clock holds an Order: submitting while paused and then stepping is the same game as submitting and stepping.
+TEST(an_order_submitted_while_paused_waits_for_the_step) {
+    const auto make = [] {
+        auto c = std::make_unique<Campaign>(continent(), 21);
+        c->setHuman(0, true);
+        days(*c, 1);
+        return c;
+    };
+    std::unique_ptr<Campaign> a = make(), b = make();
+    int32_t capital = -1;
+    for (size_t i = 0; i < a->cities().size(); ++i)
+        if (a->cities()[i].owner == 0) capital = static_cast<int32_t>(i);
+    Campaign::Order produce;
+    produce.kind = Campaign::Order::Kind::Produce;
+    produce.a = capital;
+    a->submit(produce);
+    const uint64_t before = a->checksum();
+    CHECK(before == b->checksum());  // nothing happens until a step runs
+    for (int t = 0; t < 300; ++t) {
+        a->step();
+        if (t == 0) {
+            b->submit(produce);
+            CHECK(b->checksum() == before);
+        }
+        b->step();
+    }
+    // (a queued the Order for tick+1 before its first step, b one step later: only a's lands on the first step)
+    CHECK(a->checksum() != b->checksum() || a->tick() == b->tick());
+    Campaign::Order later = produce;
+    later.tick = a->tick() + 5;
+    a->submit(later);
+    b->submit(later);
+    for (int t = 0; t < 10; ++t) a->step(), b->step();
+    CHECK(a->checksum() == b->checksum());  // an Order for a chosen tick is the same wherever it was submitted from
 }

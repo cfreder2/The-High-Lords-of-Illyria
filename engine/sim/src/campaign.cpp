@@ -351,15 +351,19 @@ bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
 }
 
 void Campaign::submit(Order order) {
-    order.tick = tick_;
+    if (order.tick == 0) order.tick = tick_ + 1;
     pending_.push_back(order);
 }
 
 void Campaign::applyPending() {
-    // (applying an Order may not submit another: they are taken before any is run)
-    std::vector<Order> now;
-    now.swap(pending_);
-    for (const Order& o : now) {
+    // (applying an Order may not submit another: those due are taken before any is run)
+    std::vector<Order> due;
+    std::erase_if(pending_, [&](const Order& o) {
+        if (o.tick > tick_) return false;
+        due.push_back(o);
+        return true;
+    });
+    for (const Order& o : due) {
         switch (o.kind) {
             case Order::Kind::Move: move(o.stack, o.a, o.b); break;
             case Order::Kind::Produce: produce(o.a, o.b); break;
@@ -371,13 +375,12 @@ void Campaign::applyPending() {
             case Order::Kind::Hire: hire(o.side, o.a != 0); break;
             case Order::Kind::BuildBoat: buildBoat(o.a); break;
         }
-        if (orderLog_.size() < 100000) orderLog_.push_back(o);
     }
 }
 
 void Campaign::step() {
-    applyPending();
     ++tick_;
+    applyPending();
     if (tick_ % kTicksPerDay == 0) newDay();
     if (tick_ % kContactTicks == 0) contactStep();  // campaign_world.cpp: who is near an enemy wakes, who is not goes to sleep
     moveStacks();

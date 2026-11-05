@@ -494,7 +494,7 @@ const illyria::sim::Campaign::Stack* pickStack(float px, float py) {
 }
 
 // What the player asks of the conquest is an Order, stamped and applied inside the next step (Campaign::submit); the
-// page never calls the campaign's own mutators. The clock may be paused: the order then shows at once.
+// page never calls the campaign's own mutators. It takes effect with the next step (a paused clock holds it).
 void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, int32_t a = 0, int32_t b = 0) {
     illyria::sim::Campaign::Order o;
     o.kind = kind;
@@ -503,7 +503,6 @@ void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, i
     o.a = a;
     o.b = b;
     app->camp.c->submit(o);
-    if (app->camp.paused) app->camp.c->applyPending();
 }
 
 void campaignTap(float px, float py) {
