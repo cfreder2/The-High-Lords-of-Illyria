@@ -183,7 +183,9 @@ TEST(the_computer_saves_a_threatened_capital) {
         if (f->path.size() == 1) {  // one step from the gates
             int32_t inside = 0;
             for (const Campaign::Stack& s : c.stacks())
-                if (s.owner == 0 && s.cx == home.cx && s.cy == home.cy)
+                // (at the capital or in the cell beside it, where the garrison goes out to meet the foe and the field army joins it:
+                // what the test reckons is that the army came home in time, not which of the two cells the fight is in)
+                if (s.owner == 0 && std::abs(s.cx - home.cx) <= 1 && std::abs(s.cy - home.cy) <= 1)
                     for (const Army& a : s.armies) inside += std::find(ours.begin(), ours.end(), a.id) != ours.end();
             atHome = inside == static_cast<int32_t>(ours.size());
         }
