@@ -180,7 +180,7 @@ private:
     void beginMen(const Battle& battle, const Camera& camera, float seconds);
     bool manOnScreen(const V3& p) const;
     bool manIsSprite(const V3& p, int type);
-    void manDot(const V3& p, uint8_t owner, bool selected, bool inspected, float pulse, bool alsoSprite);
+    void manDot(const V3& p, const V3& colour, bool owned, bool selected, bool inspected, float pulse, bool alsoSprite);
     void pushSleepers(const Battle& battle, std::map<int, std::vector<float>>& groups, std::vector<float>& decals);
     void endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals);
     void drawDots(const Camera& camera, double timeSeconds, float gameSeconds);

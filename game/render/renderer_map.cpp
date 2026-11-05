@@ -60,10 +60,6 @@ void Renderer::beginMen(const Battle& battle, const Camera& camera, float second
     m.looked = false;
     m.seen.clear();
     m.sprites = 0;
-    if (!m.borrowed && battle.sleepers().empty()) {
-        dots_.count = 0;
-        return;
-    }
     const float dist = camera.distance();
     m.vp = camera.viewProjection();
     m.near = dist < kSpriteBelow;
@@ -105,7 +101,7 @@ bool Renderer::manIsSprite(const V3& p, int type) {
 
 // A man's dot: in his side's colour (a town's own garrison hollow), pulsing if he is in a fight, fading if he is
 // also a sprite; ringed pale cyan when he is selected, grey when he is only looked at.
-void Renderer::manDot(const V3& p, uint8_t owner, bool selected, bool inspected, float pulse, bool alsoSprite) {
+void Renderer::manDot(const V3& p, const V3& colour, bool owned, bool selected, bool inspected, float pulse, bool alsoSprite) {
     MenLod& m = men_;
     if (selected || inspected) {
         m.selected.push_back(p);
@@ -113,9 +109,8 @@ void Renderer::manDot(const V3& p, uint8_t owner, bool selected, bool inspected,
     }
     const float alpha = alsoSprite ? m.spriteDot : 1.0f;
     if (alpha <= 0.0f || !manOnScreen(p)) return;
-    const V3 colour = factionColor(owner);
     m.dots.insert(m.dots.end(), {p.x, p.y, p.z + m.lift, colour.x, colour.y, colour.z, inspected ? 2.0f : selected ? 1.0f : 0.0f, pulse,
-                                 owner >= sim::Continent::kFactionCount ? -alpha : alpha});
+                                 owned ? alpha : -alpha});
 }
 
 // The sleepers into this frame's drawing: sprites joining the battle's groups, the rest dots.
@@ -128,7 +123,7 @@ void Renderer::pushSleepers(const Battle& battle, std::map<int, std::vector<floa
         const auto type = static_cast<sim::UnitType>(m.type);
         if (m.aloft) p.z += static_cast<float>(sim::unitStats(type).flyAltitude.toDouble());
         const bool sprite = manIsSprite(p, m.type);
-        manDot(p, m.owner, m.selected, m.inspected, 0.0f, sprite);
+        manDot(p, factionColor(m.owner), m.owner < sim::Continent::kFactionCount, m.selected, m.inspected, 0.0f, sprite);
         if (!sprite) continue;
         const bool moving = m.speed > 0.05f;
         // Metres walked, from the campaign's clock and his pace, so that his stride
@@ -176,7 +171,6 @@ void Renderer::pushSleepers(const Battle& battle, std::map<int, std::vector<floa
 // The frame's men done with: the selected ringed, the dots uploaded, the sheets asked for baked.
 void Renderer::endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals) {
     MenLod& m = men_;
-    if (!m.borrowed && battle.sleepers().empty()) return;
     // The selected, ringed: wide enough to see from the height of the dots (close in, each of the sprites is
     // marked itself, and a ring across the field would only hide it).
     if (!m.selected.empty() && camera.distance() > 120.0f) {

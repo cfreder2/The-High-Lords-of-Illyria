@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 
+#include "illyria/game/battle.h"
 #include "illyria/sim/campaign.h"
 #include "test.h"
 
@@ -203,4 +204,52 @@ TEST(a_mans_drawn_place_is_continuous_across_a_march_a_wake_and_a_sleep) {
     std::printf("  %d jumps: %d at a wake, %d at a sleep, %d awake, %d asleep\n", jumps, wakeJumps, sleepJumps, awakeJumps, marchJumps);
     CHECK(woke);
     CHECK(worst <= 0.1);  // (a tenth of a metre of rounding: the sim's millimetres and the clock's halves of a tick)
+}
+
+// There is one battle system: the Battle presents the campaign's fight as it presents its own, so everything the battle
+// has (blood on the ground, the deaths of its men, its sounds and shouts) appears in the campaign's fights with no
+// copy of any of it. The field is made on the island's origin; the campaign tells it round every step of the world.
+TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
+    Campaign c(continent(), 3);
+    for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
+    c.prepareWorld();
+    World* world = c.presentedWorld();
+    const Vec3 ro = world->region()->origin();
+    const Vec3 centre{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()};
+    illyria::game::Battle field(1, centre, std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
+    CHECK(field.origin().x == static_cast<float>(ro.x.toDouble()));  // the world's places are the battle's
+    CHECK(field.origin().y == static_cast<float>(ro.y.toDouble()));
+    field.borrow(world);
+    CHECK(field.borrowing());
+    c.onWorldStep([&] { field.beforeWorldStep(); }, [&] { field.afterWorldStep(); }, [&] { field.forgetMen(); });
+    const Campaign::Stack* home = nullptr;
+    for (const Campaign::Stack& st : c.stacks())
+        if (st.owner == 0) home = &st;
+    int target = -1, best = 1 << 30;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const auto& city = c.cities()[i];
+        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+        const int d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
+        if (d < best) best = d, target = static_cast<int>(i);
+    }
+    const auto& town = c.cities()[static_cast<size_t>(target)];
+    c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
+    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
+        if (st.owner == 0 && !st.garrison) c.move(st.id, town.cx, town.cy);
+    size_t cues = 0, said = 0;
+    for (int k = 0; k < 9000; ++k) {
+        c.step();
+        cues += field.sfx().take().size();
+        said += field.voice().take().size();
+    }
+    size_t dead = 0, struck = 0;
+    for (size_t i = 0; i < world->units().size(); ++i) {
+        dead += field.deathTick(i) != UINT32_MAX;
+        struck += field.hitTick(i) != UINT32_MAX || field.attackTick(i) != UINT32_MAX;
+    }
+    std::printf("  the battle shows the campaign's fight: %zu men struck or striking, %zu dead, %zu ground marks, %zu sounds, %zu shouts\n", struck, dead,
+                field.groundMarks().size(), cues, said);
+    CHECK(struck > 0);
+    CHECK(field.groundMarks().size() > 0);  // blood on the ground
+    CHECK(cues > 0);                        // the battle's sounds
 }

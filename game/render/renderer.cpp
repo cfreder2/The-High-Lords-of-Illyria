@@ -2107,13 +2107,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         walked_[i] += moved;
         lastSeen_[i] = pos;
         if (!u.alive() && u.gibbed) continue;  // blown apart: only the parts remain
-        if (borrowed) {
-            // The campaign's men: near the camera the battle's sprite (with a dot under it fading out as he comes in),
-            // from far off a dot, pulsing if he is in a fight; whoever is dead and far off is not drawn.
+        {
+            // Near the camera the battle's sprite (with a dot under it fading out as he comes in), from far off a dot,
+            // pulsing if he is in a fight; whoever is dead and far off is not drawn. The same for every battle's men.
             const bool sprite = manIsSprite(pos, static_cast<int>(type));
             if (u.alive()) {
                 const bool fighting = std::min(ago(battle.attackTick(i)), ago(battle.hitTick(i))) < 1.0f;
-                manDot(pos, u.owner, isSelected, battle.isInspected(u.id), fighting ? manPulse(u.id, gameSeconds) : 0.0f, sprite);
+                const float* team = sideColor(u.owner);
+                const V3 colour = borrowed ? factionColor(u.owner) : V3{team[0], team[1], team[2]};
+                manDot(pos, colour, !borrowed || u.owner < sim::Continent::kFactionCount, isSelected, battle.isInspected(u.id),
+                       fighting ? manPulse(u.id, gameSeconds) : 0.0f, sprite);
             }
             if (!sprite) continue;
         }

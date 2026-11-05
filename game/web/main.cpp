@@ -791,6 +791,13 @@ void frame() {
     if (app->camp.on) {
         // The battle's thirty ticks a second, times the speed (8x: 240 a second).
         App::CampaignView& cv = app->camp;
+        {
+            // The listener is the camera's middle, as in a battle, before the world steps (the sounds are made in the steps).
+            const V3 eye = app->camera.eye(), at = app->camera.target();
+            const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
+            app->battle->voice().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+            app->battle->sfx().setListener(at, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
+        }
         if (!cv.paused && cv.c->winner() == 0) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
@@ -801,17 +808,12 @@ void frame() {
         }
         placeBoats();
         placeMen(static_cast<float>(dtMs / 1000.0));
-        // What is heard: the campaign world's own places, the listener at the camera's middle.
-        if (const illyria::sim::World* w = cv.c->world()) {
-            const V3 eye = app->camera.eye(), at = app->camera.target();
-            const V3 fwd = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
-            const V3 o = app->battle->origin();
-            const illyria::sim::Vec3 ro = w->region()->origin();
-            const V3 local = at + V3{o.x - static_cast<float>(ro.x.toDouble()), o.y - static_cast<float>(ro.y.toDouble()), 0};
-            app->battle->sfx().setListener(local, V3{fwd.y, -fwd.x, 0}, app->camera.distance());
-            for (const SfxCue& c : app->battle->sfx().take())
-                play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
-        }
+        // What is heard and said: the battle's own cues for the fight it presents, from the camera's middle.
+        for (const VoiceCue& c : app->battle->voice().take())
+            play_voice_cue(voiceSetName(c.set), situationName(c.situation), c.enemy, c.pan, c.gain, c.priority, static_cast<int>(c.speaker),
+                           static_cast<int>(c.tick));
+        for (const SfxCue& c : app->battle->sfx().take())
+            play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
         // No battle sounds over the campaign map.
         if (!app->hushed) {
             set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -1993,6 +1995,65 @@ EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_fight(int ticks, float distance) 
     const V3 at = toV3(cv.c->continent().cities()[static_cast<size_t>(target)].pos) - V3{o.x, o.y, 0};
     app->camera.lookAt(at.x, at.y - 33, distance);
     return target;
+}
+// Test hook: a siege with a hero at a real gate, and the camera looking at him from `side` (0: from inside the walls,
+// the town at the camera's back; 1: from outside, the gate behind him). Raises a stack with a hero near the nearest
+// small neutral town and runs the clock until the hero stands within 2.5 m of a shut gate; returns 1 if he did.
+EMSCRIPTEN_KEEPALIVE int illyria_campaign_test_hero_gate(int side, float distance) {
+    using C = illyria::sim::Campaign;
+    if (!app || !app->camp.on) return 0;
+    App::CampaignView& cv = app->camp;
+    const C::Stack* s = cv.c->findStack(cv.selected);
+    if (!s) return 0;
+    int best = 1 << 30, target = -1;
+    for (size_t k = 0; k < cv.c->cities().size(); ++k) {
+        const C::CityState& city = cv.c->cities()[k];
+        const int d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
+        if (city.owner == C::kNeutral && city.banner == C::kNeutral && city.defense <= 4 && d < best) best = d, target = static_cast<int>(k);
+    }
+    if (target < 0) return 0;
+    const C::CityState& t = cv.c->cities()[static_cast<size_t>(target)];
+    using UT = illyria::sim::UnitType;
+    const int32_t homeX = s->cx, homeY = s->cy;
+    cv.selected = cv.c->raise(0, homeX, homeY, {UT::Hero, UT::HeavyInfantry, UT::HeavyInfantry, UT::HeavyInfantry, UT::Archers});
+    cv.c->move(cv.selected, t.cx, t.cy);
+    cv.paused = true;
+    cv.city = -1;
+    for (int k = 0; k < 12000; ++k) {
+        cv.c->step();
+        const illyria::sim::World* w = cv.c->world();
+        if (!w || k % 15) continue;
+        const auto& gates = w->region()->gates();
+        for (const illyria::sim::Unit& u : w->units()) {
+            if (!u.alive() || u.stats.type != static_cast<uint8_t>(UT::Hero) || u.owner != 0) continue;
+            for (size_t g = 0; g < gates.size(); ++g) {
+                if (w->gates()[g].broken()) continue;
+                const illyria::sim::Gate& gt = gates[g];
+                const illyria::sim::Vec3 ab = (gt.b - gt.a).flat(), rel = (u.pos - gt.a).flat();
+                const double along = rel.dot(ab).toDouble(), len2 = ab.lengthSq().toDouble();
+                const double across = rel.dot(gt.out).toDouble();
+                if (along < 0 || along > len2 || std::fabs(across) > 2.5 || u.pos.z >= gt.top) continue;
+                // He is outside if across > 0. The view wanted, along the horizontal from the camera to him: from
+                // inside (side 0) it is out through the gate; from outside it is back in.
+                const V3 hero = toV3(u.pos), out = toV3(gt.out);
+                const float sign = (side == 0 ? 1.0f : -1.0f) * (across > 0 ? 1.0f : -1.0f);
+                const V3 want{out.x * sign, out.y * sign, 0};
+                app->camera.lookAt(hero.x, hero.y, distance);
+                float bestDot = -2, bestTurn = 0;
+                for (int q = 0; q < 32; ++q) {
+                    const V3 eye = app->camera.eye(), at = app->camera.target();
+                    const V3 view = V3{at.x - eye.x, at.y - eye.y, 0}.normalized();
+                    const float dot = view.x * want.x + view.y * want.y;
+                    if (dot > bestDot) bestDot = dot, bestTurn = static_cast<float>(q) * 0.19634954f;
+                    app->camera.rotate(0.19634954f);
+                }
+                app->camera.rotate(bestTurn);
+                std::printf("hero at gate %zu: %.2f m %s of its middle (view alignment %.2f)\n", g, std::fabs(across), across > 0 ? "outside" : "inside", bestDot);
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 // Test hook: what several fights at once cost. `fights` pairs of stacks of `armies` armies a side
 // (twelve men an army) are raised on open ground and march at each other; the campaign runs

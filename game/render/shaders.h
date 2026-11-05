@@ -1346,6 +1346,9 @@ void main() {
     vec3 toEye = uEye - world;
     float len = length(toEye);
     float lifted = gib || vDot > 0.5 ? 1.0 : 1.0 - smoothstep(0.0, 1.0, (world.z - iPos.z) * cos(kElevation));
+    // Looking along the ground there is none of it to sink into, and a man a little beyond a gate or wall would be
+    // pulled through it: the pull is for the view from above.
+    lifted *= smoothstep(0.12, 0.5, (uEye.z - iPos.z) / max(len, 1e-3));
     world += toEye * (min(uLift * lifted, len * 0.5) / max(len, 1e-3));
     gl_Position = uViewProj * vec4(world, 1.0);
 }
