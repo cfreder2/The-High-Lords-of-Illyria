@@ -10,7 +10,7 @@ Cities are everything. They pay you, they train your armies, they hold your real
 
 ## What a city gives {#city-gives}
 
-Tap one of your cities (or a stack of yours standing in one) and its **panel** opens: its name, its **walls**, the **gold** it pays you each day, and what it is training. Below that, every kind of army it can train, each with its strength, the days it takes, its price and its daily upkeep.
+Tap one of your cities (its square on the map, or the ground in it with nothing selected) and its **panel** opens (it stays under the minimap and over the bottom bar, and shuts when you select something else): its name, its **walls**, the **gold** it pays you each day, and what it is training. Below that, every kind of army it can train, each with its strength, the days it takes, its price and its daily upkeep.
 
 ![A city's panel: walls and income, the armies it can train (a levy in violet), sending new armies elsewhere, raising the walls, and the rare troops folded away below.](images/shots/city_panel.jpg "tall")
 
