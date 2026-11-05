@@ -617,8 +617,20 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
     std::erase_if(recent_, [&](const Recent& r) { return tick - r.tick > 4 * sim::kTicksPerSecond; });
     for (const sim::ImpactEvent& e : events) {
         const V3 pos = toV3(e.pos) + shift;
-        // The fight the camera is taken to (hotSpot) is one the viewer may see: of whose man was struck, or the viewer's own.
-        const sim::PlayerId whose = e.hitUnit != sim::kNoEntity && e.hitUnit <= source.units().size() ? source.units()[e.hitUnit - 1].owner : local_;
+        // The fight the camera is taken to (hotSpot) is one the viewer may see: of whose man was struck, whose gate was
+        // battered, or else whose man stands nearest the blast (nobody's, if none does).
+        sim::PlayerId whose = sim::GateState::kNoHolder;
+        if (e.hitUnit != sim::kNoEntity && e.hitUnit <= source.units().size()) {
+            whose = source.units()[e.hitUnit - 1].owner;
+        } else if (e.gate >= 0 && static_cast<size_t>(e.gate) < source.gates().size()) {
+            whose = source.gates()[static_cast<size_t>(e.gate)].holder;
+        } else {
+            sim::Fixed best = sim::Fixed::fromInt(12 * 12);
+            for (const sim::Unit& u : source.units()) {
+                const sim::Fixed d = (u.pos - e.pos).flat().lengthSq();
+                if (u.alive() && d < best) best = d, whose = u.owner;
+            }
+        }
         if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600 && sees(whose, pos.x, pos.y)) {
             const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst;
             recent_.push_back({pos, tick, blast ? 8.0f : (e.killed ? 3.0f : 1.0f)});

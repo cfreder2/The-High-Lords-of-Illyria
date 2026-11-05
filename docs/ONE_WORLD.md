@@ -299,9 +299,20 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   what always did, an enemy come near and a march); what a sleeping man cannot do (a formation, Scatter) is kept as
   the squad's choice for when he is on his feet.
 - **Sight.** There is one seam, `Campaign::canSee(viewer, owner, x, y)` (everything is seen until fog is built in
-  step 4). The men drawn, picked and looked at, the stacks listed, the minimap's men and the Fight! target all go
-  through it (`visibleSoldiers`, `Battle::sees`, which asks the conquest it presents). Always visible by decision, until step 4 chooses: towns'
-  holders, banners and the land's colour (map knowledge), and a side's own news lines.
+  step 4); the viewer is a parameter (`Campaign::localSide()`), never a literal. Everything shown of another side goes
+  through it: the men drawn, picked and looked at (`visibleSoldiers`, `Battle::sees`, which asks the conquest the
+  Battle presents), the stacks listed, the minimap (`game/src/minimap.cpp`: its towns, men, heaps and fights), the
+  towns' holders as the map and the minimap colour them, the banner going up over a town and the news of a town
+  changing hands (`Campaign::seesCity`, `knownOwner`), and the fight the Fight! button takes the camera to
+  (`Battle::hotSpot`, from the blows the viewer may see). Always visible by decision, until step 4 chooses: the
+  land's colour and the outposts (the hexes' holders are map knowledge, as the map's roads and towns are), and a
+  side's own news lines (a hero's deed is its own side's). `tests/test_campaign_battle.cpp` hides sides through the
+  seam and finds none of them on the minimap, under a finger, in the hot spot or as a town's holder, and measures what
+  the seam costs (about 15 ns a man in `visibleSoldiers` with a stub, 1.5 ns a call to `canSee`).
+- **One record for a man.** A man is a `sim::Unit` in the world while he is awake, and is presented as a
+  `Campaign::Soldier` always (his place, his stride, his side and kind; the unit to hand when there is one): the
+  renderer, the picking and the minimap read that, and the sleepers are the Soldiers with no unit. There is no
+  third record (the renderer's `ManView` is the arguments of one draw call, made from either).
 - **Player intent.** The page submits `Campaign::Order`s (stamped, ordered, serializable); they are applied inside
   `step()`. `tests/test_campaign_save.cpp` replays the same Orders over the same save for the same checksum.
 - **Gone.** `MapSoldier`, `collectMapSoldiers`, `Renderer::setMapSoldiers`, `placeMapSoldiers`, `pushMapSprites`,

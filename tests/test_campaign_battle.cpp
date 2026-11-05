@@ -2,11 +2,14 @@
 // awake in the world and asleep in their stacks, are its squads and its selection, driven by its taps, its command bar
 // and its orders as in a skirmish. A march across the island is an Order of the conquest; a fight's orders are the
 // world's commands carried in Orders and applied inside the step.
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <memory>
 
 #include "illyria/game/battle.h"
+#include "illyria/game/factions.h"
+#include "illyria/game/minimap.h"
 #include "illyria/sim/campaign.h"
 #include "campaign_orders.h"
 #include "test.h"
@@ -302,4 +305,113 @@ TEST(a_fights_commands_are_orders_and_two_games_given_the_same_ones_are_one_game
     CHECK(play(a) == play(b));
     CHECK(a == b);
     CHECK(a != 0);
+}
+
+// Everything shown of another side goes through the one seam of sight (Campaign::canSee), with the viewer a parameter.
+// Hide sides 1 and 2 and look at the surfaces that tell: the minimap's text, the man under a finger, the fight the
+// camera is taken to, the towns' holders.
+namespace {
+bool hides12(uint8_t viewer, uint8_t owner, float, float) { return owner == viewer || (owner != 1 && owner != 2); }
+bool seesOnlyItsOwn(uint8_t viewer, uint8_t owner, float, float) { return owner == viewer; }
+
+size_t linesWith(const std::string& text, const std::string& what) {
+    size_t n = 0, at = 0;
+    while ((at = text.find(what, at)) != std::string::npos) ++n, at += what.size();
+    return n;
+}
+}  // namespace
+
+TEST(a_side_hidden_from_the_viewer_is_on_no_surface_the_viewer_reads) {
+    Island w;
+    const std::string colour1 = [] {  // the colours the minimap writes for sides 1 and 2
+        char b[8];
+        const V3 c1 = illyria::game::factionColor(1);
+        std::snprintf(b, sizeof b, "#%02x%02x%02x", static_cast<int>(c1.x * 255), static_cast<int>(c1.y * 255), static_cast<int>(c1.z * 255));
+        return std::string(b);
+    }();
+    const std::string seen = illyria::game::minimapText(w.c, 0);
+    const size_t before = linesWith(seen, "|" + colour1 + "|");
+    CHECK(before > 0);  // (its capital, its men)
+    w.c.setSight(hides12);
+    const std::string hidden = illyria::game::minimapText(w.c, 0);
+    CHECK(linesWith(hidden, "|" + colour1 + "|") == 0);
+    // The towns held by sides 1 and 2 are nobody's to the viewer; its own are its own.
+    for (size_t i = 0; i < w.c.cities().size(); ++i) {
+        const uint8_t owner = w.c.cities()[i].owner;
+        if (owner == 1 || owner == 2) CHECK(w.c.knownOwner(0, static_cast<int32_t>(i)) == Campaign::kNeutral);
+        if (owner == 0) CHECK(w.c.knownOwner(0, static_cast<int32_t>(i)) == 0);
+        if (owner == 1) CHECK(w.c.knownOwner(1, static_cast<int32_t>(i)) == 1);  // (a side sees its own)
+    }
+    // Nobody of side 1 or 2 is picked under a finger (the Battle presents the conquest and asks it).
+    w.frame();
+    bool tried = false;
+    for (const Campaign::Soldier& m : w.men) CHECK(m.owner != 1 && m.owner != 2);
+    w.c.setSight({});
+    w.frame();
+    for (const Battle::Sleeper& m : w.b->sleepers()) {
+        if (m.owner != 1) continue;
+        const V3 p = w.b->sleeperPositionOf(m.id);
+        w.cam.lookAt(p.x, p.y, 40.0f);
+        float px, py;
+        if (!w.cam.project(p + V3{0, 0, 1.0f}, px, py)) continue;
+        CHECK(w.b->manAt(w.cam, px, py, 20.0f).kind == Battle::ManPick::Kind::Sleeper);
+        w.c.setSight(hides12);
+        w.frame();
+        CHECK(w.b->manAt(w.cam, px, py, 20.0f).kind == Battle::ManPick::Kind::None);
+        tried = true;
+        break;
+    }
+    CHECK(tried);
+}
+
+TEST(the_fight_the_camera_is_taken_to_is_one_the_viewer_may_see) {
+    // Two lords' stacks fight far from the player; the hot spot finds it while it can be seen and not when it cannot.
+    const auto fight = [](bool hidden) {
+        Island w;
+        if (hidden) w.c.setSight(seesOnlyItsOwn);  // (a town's garrison is a side's too: it would show the fight)
+        const Campaign::Stack* home = nullptr;
+        for (const Campaign::Stack& st : w.c.stacks())
+            if (st.owner == 1 && !st.garrison) home = &st;
+        const int32_t x = std::min(home->cx + 6, w.c.width() - 14), y = home->cy;
+        const uint32_t a = w.c.raise(1, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
+        const uint32_t b = w.c.raise(2, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
+        CampaignOrders::move(w.c, a, x + 3, y);
+        CampaignOrders::move(w.c, b, x + 1, y);
+        for (int k = 0; k < 2400; ++k) w.c.step();
+        V3 at;
+        return std::make_pair(w.c.awakeStacks() > 0 || w.b->hotSpot(at), w.b->hotSpot(at));
+    };
+    const auto open = fight(false);
+    const auto shut = fight(true);
+    CHECK(open.second);   // blows were struck, and seen
+    CHECK(!shut.second);  // the same blows, unseen (by one who sees only its own): the camera is taken nowhere
+}
+
+// What the seam costs. The sight is a plain function of (viewer, owner, x, y) until fog is built; these are the costs of
+// asking it of every man a frame (visibleSoldiers) and of one man (canSee), without and with a stub answering.
+TEST(the_cost_of_asking_the_seam_of_sight) {
+    Island w;
+    std::vector<Campaign::Soldier> men;
+    const auto time = [&](const char* what, int reps) {
+        const auto start = std::chrono::steady_clock::now();
+        size_t kept = 0;
+        for (int k = 0; k < reps; ++k) {
+            w.c.visibleSoldiers(0, 0, men);
+            kept += men.size();
+        }
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / reps;
+        std::printf("  visibleSoldiers %s: %.3f ms for %zu men (%.0f ns a man)\n", what, ms, kept / static_cast<size_t>(reps), ms * 1e6 / static_cast<double>(std::max<size_t>(1, kept / static_cast<size_t>(reps))));
+        return ms;
+    };
+    const double open = time("with everything seen", 20);
+    w.c.setSight(hides12);
+    const double shut = time("through a stub hiding two sides", 20);
+    volatile int sink = 0;
+    const auto start = std::chrono::steady_clock::now();
+    constexpr int kCalls = 2000000;
+    for (int k = 0; k < kCalls; ++k) sink = sink + w.c.canSee(0, static_cast<uint8_t>(k & 7), static_cast<float>(k), 0.0f);
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / kCalls;
+    std::printf("  canSee through the stub: %.1f ns a call\n", ns);
+    CHECK(shut < 10.0 + open * 4);  // a frame's worth of men through the seam is a small share of a frame, not a new cost
+    CHECK(ns < 1000.0);
 }

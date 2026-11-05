@@ -18,6 +18,7 @@ add_library(illyria_game
     src/voice.cpp
     src/sfx.cpp
     src/battle_deaths.cpp
+    src/minimap.cpp
     src/detail_land.cpp
 )
 target_include_directories(illyria_game PUBLIC include)

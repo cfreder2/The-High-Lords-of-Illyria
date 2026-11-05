@@ -358,6 +358,12 @@ public:
             if (sides_[i].human) return static_cast<uint8_t>(i);
         return 0;
     }
+    // Whether the viewer can see a town (as it can see a man of the town's holder standing in it), and so who it knows
+    // holds it: its holder, or nobody it knows of. The colour of a town on the map and the minimap, the banner going up
+    // over it and the news of its changing hands go through these (the land's colour and the outposts' are map knowledge,
+    // seen always by decision until fog is built: ONE_WORLD.md step 4).
+    bool seesCity(uint8_t viewer, int32_t city) const;
+    uint8_t knownOwner(uint8_t viewer, int32_t city) const { return seesCity(viewer, city) ? cities_[static_cast<size_t>(city)].owner : kNeutral; }
     // Every man the viewer may see (soldiers() less the rest).
     void visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const;
     void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {

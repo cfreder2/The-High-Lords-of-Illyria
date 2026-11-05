@@ -18,6 +18,7 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/factions.h"
+#include "illyria/game/minimap.h"
 #include "illyria/game/gestures.h"
 #include "illyria/game/mode.h"
 #include "illyria/game/mode_horde.h"
@@ -359,8 +360,8 @@ void placeFlags() {
     if (app->camp.on) {
         App::CampaignView& cv = app->camp;
         const C& c = *cv.c;
-        std::vector<uint8_t> owners;
-        for (const C::CityState& cs : c.cities()) owners.push_back(cs.owner);
+        std::vector<uint8_t> owners;  // (as the viewer knows them)
+        for (size_t i = 0; i < c.cities().size(); ++i) owners.push_back(c.knownOwner(c.localSide(), static_cast<int32_t>(i)));
         if (owners != cv.owners) {
             cv.owners = owners;
             std::vector<V3> colours;
@@ -386,12 +387,12 @@ void placeFlags() {
         const float s = std::clamp(app->camera.distance() / 867.0f, 0.4f, 3.0f);
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const C::CityState& cs = c.cities()[i];
-            if (cs.banner == C::kNeutral) continue;
+            if (cs.banner == C::kNeutral || !c.seesCity(c.localSide(), static_cast<int32_t>(i))) continue;  // (a banner going up over a town the viewer cannot see)
             const illyria::sim::Continent::Castle& k = c.continent().cities()[i].castle;
             V3 base = toV3(k.keep) - V3{o.x, o.y, 0};
             base.z = app->battle->heightAt(base.x, base.y) + static_cast<float>(k.keepHeight.toDouble());
             const float p = static_cast<float>(cs.bannerProgress) / C::kBannerFull;
-            flags.push_back({base, 70 * s, 1 - p, 26 * s, bannerColor(cs.owner)});
+            flags.push_back({base, 70 * s, 1 - p, 26 * s, bannerColor(c.knownOwner(c.localSide(), static_cast<int32_t>(i)))});
             flags.push_back({base, 70 * s, p, 26 * s, bannerColor(cs.banner)});
         }
         for (const C::Outpost& op : c.outposts()) {
@@ -1579,8 +1580,8 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
     };
     for (size_t ci = 0; ci < c.cities().size(); ++ci) {
         const auto& city = c.cities()[ci];
-        // In the campaign, cities fly the colours of whoever holds them now.
-        const uint8_t owner = app->camp.on ? app->camp.c->cities()[ci].owner : city.owner;
+        // In the campaign, cities fly the colours of whoever holds them now, as far as the viewer knows.
+        const uint8_t owner = app->camp.on ? app->camp.c->knownOwner(app->camp.c->localSide(), static_cast<int32_t>(ci)) : city.owner;
         if (!city.capital && d > 2000) {
             add(0, factionColor(owner), city.pos, "");  // a marker only
             continue;
@@ -1629,75 +1630,9 @@ EMSCRIPTEN_KEEPALIVE void illyria_minimap_land() {
 // Nothing is hidden yet: fog of war (docs/ONE_WORLD.md step 4) will leave out the
 // soldiers the player's own cannot see.
 EMSCRIPTEN_KEEPALIVE const char* illyria_minimap() {
-    using C = illyria::sim::Campaign;
     if (!app || !app->camp.on) return "";
-    App::CampaignView& cv = app->camp;
-    const C& c = *cv.c;
-    std::string& out = cv.mini;
-    char buf[160];
-    const auto hex = [](const V3& col) {
-        char h[8];
-        std::snprintf(h, sizeof h, "#%02x%02x%02x", static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
-        return std::string(h);
-    };
-    std::snprintf(buf, sizeof buf, "m|%d|%d\n", static_cast<int>(illyria::sim::Continent::kWidth), static_cast<int>(illyria::sim::Continent::kHeight));
-    out = buf;
-    for (size_t i = 0; i < c.cities().size(); ++i) {
-        const auto& town = c.continent().cities()[i];
-        std::snprintf(buf, sizeof buf, "t|%.0f|%.0f|%s|%d\n", town.pos.x.toDouble(), town.pos.y.toDouble(), hex(factionColor(c.cities()[i].owner)).c_str(), town.capital ? 1 : 0);
-        out += buf;
-    }
-    for (size_t k = 0; k < c.sites().size(); ++k) {
-        const auto& site = c.continent().sites()[k];
-        std::snprintf(buf, sizeof buf, "s|%.0f|%.0f|%d\n", site.pos.x.toDouble(), site.pos.y.toDouble(), static_cast<int>(site.kind));
-        out += buf;
-    }
-    // Soldiers binned 40 m square, by side: a bin of more than kApart is a heap (its
-    // middle, by how many), fewer are points where they stand.
-    constexpr float kBin = 40.0f;
-    constexpr int kApart = 2;
-    struct Bin {
-        int n = 0;
-        float x = 0, y = 0;
-        std::vector<std::pair<float, float>> men;
-    };
-    std::map<std::pair<int, int>, Bin> bins;  // by cell, a side at a time below
-    for (int side = 0; side <= illyria::sim::Continent::kFactionCount; ++side) {
-        const uint8_t owner = side < illyria::sim::Continent::kFactionCount ? static_cast<uint8_t>(side) : C::kNeutral;
-        bins.clear();
-        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
-            if (m.owner != owner || !m.alive) continue;
-            Bin& b = bins[{static_cast<int>(m.x / kBin), static_cast<int>(m.y / kBin)}];
-            ++b.n;
-            b.x += m.x;
-            b.y += m.y;
-            if (b.n <= kApart) b.men.push_back({m.x, m.y});
-        }
-        const std::string col = hex(factionColor(owner));
-        for (const auto& [cell, b] : bins) {
-            if (b.n > kApart) std::snprintf(buf, sizeof buf, "k|%s|%.0f|%.0f|%d\n", col.c_str(), b.x / b.n, b.y / b.n, b.n), out += buf;
-            else
-                for (const auto& [x, y] : b.men) std::snprintf(buf, sizeof buf, "d|%s|%.0f|%.0f\n", col.c_str(), x, y), out += buf;
-        }
-    }
-    // Fights: where men are fighting now, binned 80 m square, a glow each in the page (f|x|y|men).
-    {
-        std::map<std::pair<int, int>, std::tuple<int, float, float>> fights;
-        const uint32_t now = c.tick();
-        for (const illyria::sim::Campaign::Soldier& m : cv.men) {
-            if (!m.awake || !m.alive || now - m.fightTick > 2 * C::kTicksPerSecond) continue;
-            auto& f = fights[{static_cast<int>(m.x / 80), static_cast<int>(m.y / 80)}];
-            ++std::get<0>(f);
-            std::get<1>(f) += m.x;
-            std::get<2>(f) += m.y;
-        }
-        for (const auto& [cell, f] : fights) {
-            const int n = std::get<0>(f);
-            std::snprintf(buf, sizeof buf, "f|%.0f|%.0f|%d\n", std::get<1>(f) / static_cast<float>(n), std::get<2>(f) / static_cast<float>(n), n);
-            out += buf;
-        }
-    }
-    return out.c_str();
+    app->camp.mini = minimapText(*app->camp.c, app->camp.c->localSide());
+    return app->camp.mini.c_str();
 }
 // The ground the camera sees, as four corners in continent metres (top left,
 // top right, bottom right, bottom left of the screen), "x,y x,y x,y x,y"; "" if the sky shows.
@@ -1903,7 +1838,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         };
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const C::CityState& cs = c.cities()[i];
-            if (cs.banner == C::kNeutral) continue;
+            if (cs.banner == C::kNeutral || !c.seesCity(me, static_cast<int32_t>(i))) continue;
             const illyria::sim::Continent::City& town = c.continent().cities()[i];
             V3 at = toV3(town.pos) - V3{o.x, o.y, 0};
             at.z = app->battle->heightAt(at.x, at.y) + 10;
@@ -1917,8 +1852,8 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
             std::snprintf(buf, sizeof buf,
                           "%s{\"city\":%zu,\"name\":\"%s\",\"x\":%.0f,\"y\":%.0f,\"p\":%d,\"by\":%d,\"owner\":%d,\"byColor\":\"%s\",\"ownerColor\":\"%s\","
                           "\"foes\":%d,\"raisers\":%d,\"byName\":\"%s\"}",
-                          any ? "," : "", i, town.name.c_str(), px, py, 100 * cs.bannerProgress / C::kBannerFull, cs.banner, cs.owner,
-                          hex(factionColor(cs.banner)).c_str(), hex(factionColor(cs.owner)).c_str(), c.bannerContest(static_cast<int32_t>(i), cs.banner),
+                          any ? "," : "", i, town.name.c_str(), px, py, 100 * cs.bannerProgress / C::kBannerFull, cs.banner, c.knownOwner(me, static_cast<int32_t>(i)),
+                          hex(factionColor(cs.banner)).c_str(), hex(factionColor(c.knownOwner(me, static_cast<int32_t>(i)))).c_str(), c.bannerContest(static_cast<int32_t>(i), cs.banner),
                           raisers, c.sides()[cs.banner].name.c_str());
             s += buf;
             any = true;
@@ -2016,7 +1951,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
         }
         s += "]";
         const uint8_t land = c.landOwner(cs.cx, cs.cy);
-        std::snprintf(buf, sizeof buf, ",\"mine\":%s,\"landOwner\":\"%s\",\"banner\":%d,\"bannerP\":%d,\"bannerBy\":\"%s\",\"bannerFoes\":%d}", cs.owner == 0 ? "true" : "false",
+        std::snprintf(buf, sizeof buf, ",\"mine\":%s,\"landOwner\":\"%s\",\"banner\":%d,\"bannerP\":%d,\"bannerBy\":\"%s\",\"bannerFoes\":%d}", cs.owner == me ? "true" : "false",
                       land < C::kNeutral ? c.sides()[land].name.c_str() : "", cs.banner == C::kNeutral ? -1 : cs.banner,
                       100 * cs.bannerProgress / C::kBannerFull, cs.banner < C::kNeutral ? c.sides()[cs.banner].name.c_str() : "",
                       cs.banner < C::kNeutral ? c.bannerContest(cv.city, cs.banner) : 0);
@@ -2025,23 +1960,26 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
     // The fights on the island now: the men in the world, and the stacks they are of.
     std::snprintf(buf, sizeof buf, ",\"fighting\":%d,\"fightingMen\":%d", c.awakeStacks(), c.awakeMen());
     s += buf;
-    // The latest fights and the player's heroes' deeds, newest first.
+    // The latest fights and the player's heroes' deeds, newest first: a town changing hands is news of the viewer's only
+    // if it can see the town (a hero's deed is its own side's, seen by it always).
     s += ",\"news\":[";
     std::vector<const C::Deed*> deeds;
     for (size_t k = c.deeds().size(); k-- > 0 && deeds.size() < 4;)
-        if (c.deeds()[k].side == c.localSide()) deeds.push_back(&c.deeds()[k]);
+        if (c.deeds()[k].side == me) deeds.push_back(&c.deeds()[k]);
+    std::vector<const C::Fight*> fights;
+    for (size_t k = c.fights().size(); k-- > 0 && fights.size() < 4;)
+        if (c.fights()[k].city < 0 || c.seesCity(me, c.fights()[k].city)) fights.push_back(&c.fights()[k]);
     size_t fk = 0, dk = 0;
-    const size_t nf = c.fights().size();
     for (size_t k = 0; k < 5; ++k) {
-        const bool fightLeft = fk < std::min<size_t>(nf, 4), deedLeft = dk < deeds.size();
+        const bool fightLeft = fk < fights.size(), deedLeft = dk < deeds.size();
         if (!fightLeft && !deedLeft) break;
-        if (deedLeft && (!fightLeft || deeds[dk]->day >= c.fights()[nf - 1 - fk].day)) {
+        if (deedLeft && (!fightLeft || deeds[dk]->day >= fights[fk]->day)) {
             std::snprintf(buf, sizeof buf, "%s\"Day %u: %s\"", k ? "," : "", deeds[dk]->day + 1, deeds[dk]->text.c_str());
             s += buf;
             ++dk;
             continue;
         }
-        const C::Fight& f = c.fights()[nf - 1 - fk++];
+        const C::Fight& f = *fights[fk++];
         const std::string where = f.city >= 0 ? c.continent().cities()[static_cast<size_t>(f.city)].name : std::string("the field");
         const auto sideName = [&](uint8_t side) { return side == C::kNeutral ? std::string("the garrison") : c.sides()[side].name; };
         std::snprintf(buf, sizeof buf, "%s\"Day %u: %s took %s from %s\"", k ? "," : "", f.day + 1, sideName(f.attacker).c_str(), where.c_str(), sideName(f.defender).c_str());

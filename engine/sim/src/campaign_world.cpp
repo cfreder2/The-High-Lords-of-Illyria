@@ -302,6 +302,12 @@ void Campaign::visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldie
     std::erase_if(out, [&](const Soldier& m) { return !canSee(viewer, m.owner, m.x, m.y); });
 }
 
+bool Campaign::seesCity(uint8_t viewer, int32_t city) const {
+    if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
+    const Vec3& at = continent_.cities()[static_cast<size_t>(city)].pos;
+    return canSee(viewer, cities_[static_cast<size_t>(city)].owner, static_cast<float>(at.x.toDouble()), static_cast<float>(at.y.toDouble()));
+}
+
 int32_t Campaign::awakeStacks() const { return awakeStacks_; }
 
 int32_t Campaign::awakeMen() const {
