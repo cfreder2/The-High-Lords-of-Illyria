@@ -272,19 +272,32 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   tap on a gate that shows its hit points (`Battle::gateAt`). `tests/test_campaign_soldiers.cpp`
   (`the_battle_presents_the_campaigns_fight_as_its_own`) runs a campaign fight with no code of the campaign's in
   the way and finds the battle's blood, deaths, sounds and shouts in it.
-- **The men are drawn once.** The renderer's pass over the men (`Renderer::draw`, `renderer_map.cpp`) draws every
-  battle's soldiers at every distance: a dot in his side's colour from far off (pulsing, rapidly and at random,
-  while he fights; a town's own garrison hollow), the battle's sprite near, the two cross-fading between 380 m
-  and 170 m. The old 3D battle uses the same pass and the same dots. The campaign's soldiers asleep in their
-  squads on the march are not units of any world (their bodies are stepped as a whole): they are `Battle::Sleeper`
-  records, drawn in the same pass with the same dots, sprite frames and rings.
-- **Looking and selecting.** `Battle::manAt` picks the man under a finger, a world's or a sleeper's, at any
-  distance; `Battle::setPresented` says which are selected (ours) and which only looked at (grey, view-only).
+- **The men are drawn once.** `Renderer::drawMan` draws every man of every battle at every distance: a dot in his
+  side's colour from far off (pulsing, rapidly and at random, while he fights; a town's own garrison hollow), the
+  battle's sprite near, the two cross-fading between 380 m and 170 m; his shadow, ring, frame, picking box and
+  place in the sheet's group are the same code. The world's units and the sleepers (the conquest's soldiers asleep
+  in their squads on the march, who are not units of any world: `Battle::Sleeper`, a view made from the slot the
+  campaign says they stand in) go through that one function; they differ only in whether a sim unit is to hand.
+  One side-colour scheme serves every battle (`factions.h` `sideFactions`: a skirmish's seats are the Moonward blue,
+  the Ironhold red, gold and green; a conquest's seats play their lords).
+- **Looking.** `Battle::manAt` picks the man under a finger, a world's or a sleeper's, at any distance;
+  `Battle::gateAt` the gate; `Battle::setPresented` says who is shown selected (ours) and who only looked at (grey).
+- **Sight.** There is one seam, `Campaign::canSee(viewer, owner, x, y)` (everything is seen until fog is built in
+  step 4). The men drawn, picked and looked at, the stacks listed, the minimap's men and the Fight! target all go
+  through it (`visibleSoldiers`, `Battle::setSight`). Always visible by decision, until step 4 chooses: towns'
+  holders, banners and the land's colour (map knowledge), and a side's own news lines.
+- **Player intent.** The page submits `Campaign::Order`s (stamped, ordered, serializable); they are applied inside
+  `step()`. `tests/test_campaign_save.cpp` replays the same Orders over the same save for the same checksum.
 - **Gone.** `MapSoldier`, `collectMapSoldiers`, `Renderer::setMapSoldiers`, `placeMapSoldiers`, `pushMapSprites`,
-  `pushMapWounds`, `drawMapDots`, `setMapArrows`, the campaign's own mirroring of gates and its effects, and its
-  own picking by dots and by gates.
-- **Still the campaign's own:** the page's panel for a looked-at man (`inspect` in the campaign state), the
-  stacks-as-bodies march (the sim), the minimap and the boats and piers: none of them a second way to draw a man.
+  `pushMapWounds`, `drawMapDots`, `setMapArrows`, the campaign's own mirroring of gates and its effects, its own
+  picking by dots and by gates, and the separate sleeper drawing loop.
+
+**Not yet one thing.** Selecting and commanding men in a conquest is still the campaign's own tap (`campaignTap`: a
+stack is selected and sent across the map) and not the battle's command bar (As they stand, Attack, Scatter, Hold,
+Find, Charge, formations, squad and hero cards, drag-to-face). That needs the Battle's squads made from the
+stacks' armies, the Battle's orders for awake men applied to the campaign's world (the campaign already steps it:
+`Campaign::onWorldStep`), and a sleeping squad's order landing in the campaign as an `Order::Move`; it is the next
+step, and until it is done a fight in a conquest cannot be commanded with the battle's commands.
 
 ## What you see
 
