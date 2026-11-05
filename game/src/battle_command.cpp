@@ -516,10 +516,8 @@ void Battle::moveSquad(const Squad& squad, const V3& to) {
     squad.goal = to;
     squad.hasGoal = true;
     // A squad with men asleep, or out of reach of its men in the world, is marched whole (marchOrder's rule).
-    if (conquest_ && (!squad.sleeping.empty() || squad.members.empty() || flat(squadCentre(squad, false) - to).length() > kLocalReachM)) {
-        const V3 o = origin();
-        submitMarch({squad.army}, false, std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1),
-                    std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1));
+    if (conquest_ && (!squad.sleeping.empty() || squad.members.empty() || beyondReach(squadCentre(squad, false), to))) {
+        marchArmies({squad.army}, to);
         return;
     }
     std::vector<sim::EntityId> alive;

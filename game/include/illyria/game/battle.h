@@ -726,6 +726,8 @@ private:
     // selection becomes the conquest's rather than the world's.
     bool marchOrder(const V3& to, bool wholly = false);
     void haltOrder();
+    static bool beyondReach(const V3& from, const V3& to);  // more than kLocalReachM off
+    void marchArmies(std::vector<uint32_t> armies, const V3& to);  // the one place a march of squads is made
     void submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t cx, int32_t cy);
     ManPick manPick(const Camera& camera, float x, float y, float pixelScale) const;
     void selectMen(std::vector<sim::EntityId> units, std::vector<uint32_t> sleepers);

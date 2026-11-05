@@ -641,7 +641,7 @@ bool startOtherMode(const std::string& id, const std::string& options) {
     // Over the local player's army.
     V3 c{Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0};
     for (const Squad& q : app->battle->squads())
-        if (app->battle->controllable(app->battle->world().units()[q.members.front() - 1])) {
+        if (app->battle->controllable(q)) {
             c = app->battle->squadCentre(q);
             break;
         }
@@ -2262,7 +2262,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
             for (illyria::sim::EntityId id : ids) one = one && units[id - 1].stats.type == units[ids.front() - 1].stats.type;
             return ids.empty() ? "" : one ? typeName(ids.front()) : "Mixed";
         };
-        const std::vector<illyria::sim::EntityId> sel = b.selectedAlive();
         // The order mode, and a refused order's reason while fresh (3 s).
         const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
         // Hyena-folk among them: the Raid button shows.
@@ -2286,7 +2285,6 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
             s += buf;
             first = false;
         }
-        (void)sel;
         s += "],\"squads\":[";
     }
     // The squads that are the local side's (its own to command, or an ally's), as cards; the others, in all, as the foe.

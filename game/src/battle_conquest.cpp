@@ -232,24 +232,13 @@ void Battle::submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t
     }
 }
 
-bool Battle::marchOrder(const V3& to, bool wholly) {
-    if (!conquest_) return false;
-    const std::vector<sim::EntityId> awake = selectedAlive();
-    // Out of reach of the men in the world (or none in it): the whole order is a march, of every squad ordered.
-    bool far = wholly || awake.empty();
-    if (!far) {
-        const V3 d = flat(centreOf(awake) - to);
-        far = d.length() > kLocalReachM;
-    }
-    std::vector<uint32_t> armies;
-    for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) armies.push_back(sleepers_[i].army);
-    if (far)
-        for (sim::EntityId id : awake)
-            if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
+bool Battle::beyondReach(const V3& from, const V3& to) { return flat(from - to).length() > kLocalReachM; }
+
+// The squads (armies) marched to a place: the conquest's grid cell it is in, the Order, and where each was sent.
+void Battle::marchArmies(std::vector<uint32_t> armies, const V3& to) {
     std::sort(armies.begin(), armies.end());
     armies.erase(std::unique(armies.begin(), armies.end()), armies.end());
-    if (armies.empty()) return false;
+    if (armies.empty()) return;
     const V3 o = origin();
     const int32_t cx = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1);
     const int32_t cy = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1);
@@ -259,6 +248,21 @@ bool Battle::marchOrder(const V3& to, bool wholly) {
             squads_[static_cast<size_t>(s)].goal = to;
             squads_[static_cast<size_t>(s)].hasGoal = true;
         }
+}
+
+bool Battle::marchOrder(const V3& to, bool wholly) {
+    if (!conquest_) return false;
+    const std::vector<sim::EntityId> awake = selectedAlive();
+    // Out of reach of the men in the world (or none in it): the whole order is a march, of every squad ordered.
+    const bool far = wholly || awake.empty() || beyondReach(centreOf(awake), to);
+    std::vector<uint32_t> armies;
+    for (uint32_t man : selSleeping_)
+        if (const size_t i = sleeperIndex(man); i != kNoSleeper) armies.push_back(sleepers_[i].army);
+    if (far)
+        for (sim::EntityId id : awake)
+            if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
+    if (armies.empty()) return false;
+    marchArmies(std::move(armies), to);
     return far;
 }
 
