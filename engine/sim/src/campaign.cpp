@@ -358,6 +358,13 @@ void Campaign::step() {
     // (so none jumps: Campaign::formation); the longer the column, the longer it takes, at a walking pace.
     for (Stack& s : stacks_) {
         if (s.awake || s.armies.empty()) continue;
+        if (s.dhx != s.hx || s.dhy != s.hy) {
+            s.dhx += (s.hx - s.dhx) / 40;
+            s.dhy += (s.hy - s.dhy) / 40;
+            if (std::abs(s.hx - s.dhx) < 12 && std::abs(s.hy - s.dhy) < 12) s.dhx = s.hx, s.dhy = s.hy;
+            const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.dhx} * s.dhx + int64_t{s.dhy} * s.dhy)));
+            if (len > 0 && (s.dhx != s.hx || s.dhy != s.hy)) s.dhx = static_cast<int32_t>(int64_t{s.dhx} * 1000 / len), s.dhy = static_cast<int32_t>(int64_t{s.dhy} * 1000 / len);
+        }
         const int32_t target = !s.path.empty() && !s.boat ? 1000 : 0;
         if (s.form == target) continue;
         std::vector<std::pair<int32_t, int32_t>> block, column;
@@ -475,8 +482,8 @@ void Campaign::moveStacks() {
         {
             int32_t wx = (nx - s.cx) * 1000, wy = (ny - s.cy) * 1000;
             if (wx && wy) wx = wx * 707 / 1000, wy = wy * 707 / 1000;
-            s.hx += (wx - s.hx) / 40;  // (slowly: a column swings about its head, and its tail must not be flung round)
-            s.hy += (wy - s.hy) / 40;
+            s.hx += (wx - s.hx) / 12;  // (slowly: a column swings about its head, and its tail must not be flung round)
+            s.hy += (wy - s.hy) / 12;
             const int64_t len = static_cast<int64_t>(std::sqrt(static_cast<double>(int64_t{s.hx} * s.hx + int64_t{s.hy} * s.hy)));
             if (len > 0) s.hx = static_cast<int32_t>(int64_t{s.hx} * 1000 / len), s.hy = static_cast<int32_t>(int64_t{s.hy} * 1000 / len);
         }

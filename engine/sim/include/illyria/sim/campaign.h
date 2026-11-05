@@ -189,6 +189,9 @@ public:
         // How far its men have drawn out from a block into a column on the march (0..1000), eased as it sets out
         // and halts, so that none jumps (presentation only; not saved).
         int32_t form = 0;
+        // The way its men are drawn facing: hx, hy followed slowly, so that a long column is not swung round in a
+        // moment (presentation only; not saved).
+        int32_t dhx = 0, dhy = -1000;
         uint32_t calm = 0;       // awake: ticks since an enemy was within reach
         int32_t orderCell = -1;  // awake: the cell its men were last sent marching to (-1: none)
         // Awake, bound somewhere and held up (a foe it cannot get at, behind a wall): where it was and when it

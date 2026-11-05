@@ -273,7 +273,7 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
             }
         }
         const bool aloft = speed > 0 && airborne(s);
-        const float yaw = std::atan2(static_cast<float>(s.hy), static_cast<float>(s.hx));
+        const float yaw = std::atan2(static_cast<float>(s.dhy), static_cast<float>(s.dhx));
         size_t k = 0;
         for (const Army& a : s.armies)
             for (const Man& m : a.men) {
@@ -283,7 +283,7 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
                     dx = m.ox;
                     dy = m.oy;
                 } else {
-                    slotToWorld(slots[k], s.hx, s.hy, dx, dy);
+                    slotToWorld(slots[k], s.dhx, s.dhy, dx, dy);
                 }
                 ++k;
                 Soldier d;
@@ -440,7 +440,7 @@ void Campaign::wake(Stack& s) {
                 dx = m.ox;
                 dy = m.oy;
             } else {
-                slotToWorld(slots[k], s.hx, s.hy, dx, dy);
+                slotToWorld(slots[k], s.dhx, s.dhy, dx, dy);
             }
             ++k;
             Vec3 at{fromMm(int64_t{bx} + dx) - origin.x, fromMm(int64_t{by} + dy) - origin.y, Fixed::zero()};
