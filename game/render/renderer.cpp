@@ -1378,6 +1378,18 @@ void Renderer::setPiers(const std::vector<Prop>& piers) {
 bool Renderer::init(Battle& battle) {
     if (!buildPrograms()) return false;
     ensureShadowMap();
+    // Textures the programs sample before the land that fills them exists (a skirmish has no territory; the title no
+    // close-up land): one clear texel, so no unit is ever bound to nothing (Metal warns of an unloadable texture).
+    const uint8_t clear[4] = {};
+    for (GLuint* tex : {&detailMask_, &territoryTex_}) {
+        glGenTextures(1, tex);
+        glBindTexture(GL_TEXTURE_2D, *tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, clear);
+    }
     makeCoverLayer(cover_layers_[0], meshes::grassTuft(), 0, 0.37f);
     makeCoverLayer(cover_layers_[1], meshes::flowers(), 1, 1.71f);
     makeCoverLayer(cover_layers_[2], meshes::pebbles(), 2, 2.93f);
@@ -2146,7 +2158,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // the view and cell chosen as kUnitVs chooses them.
     std::vector<float> boxes(units.size() * 6, std::numeric_limits<float>::quiet_NaN());
     const float toViewer = std::atan2(-fwd.y, -fwd.x);
-    constexpr float kSpriteElevation = 0.52f;  // kUnitVs kElevation
     if (walked_.size() != units.size()) {
         walked_.assign(units.size(), 0.0f);
         lastSeen_.resize(units.size());

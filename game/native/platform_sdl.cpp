@@ -33,6 +33,8 @@ SDL_GLContext context = nullptr;
 
 struct Options {
     std::string assets, mode, options, shot;
+    float camera[4] = {0, 0, 0, 0};  // --camera: x, y, distance, yaw
+    bool hasCamera = false;
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
     bool fullscreen = false, sound = true, stats = false, vsync = true;
@@ -57,6 +59,7 @@ void usage() {
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --quit-after N        quit after N frames\n"
+        "  --camera X,Y,DIST,YAW put the camera there (battle metres, metres up, radians) once the game runs\n"
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
 }
 
@@ -298,6 +301,10 @@ int runApp(int argc, char** argv) {
         }
         native::pumpAssets();
         hud.tick();
+        if (opt.hasCamera && hudTick() > 0) {
+            illyria_set_camera(opt.camera[0], opt.camera[1], opt.camera[2], opt.camera[3]);
+            opt.hasCamera = false;
+        }
         const double cpuStart = platform::nowMs();
         const int slot = frame % kRing;
         glBeginQuery(GL_TIME_ELAPSED, queries[slot]);
