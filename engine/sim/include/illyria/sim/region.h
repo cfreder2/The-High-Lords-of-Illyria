@@ -240,6 +240,13 @@ private:
         std::vector<uint32_t> start, items;
     };
     mutable BoxGrid deckGrid_, wallGrid_, rampGrid_, gateGrid_, floorBaseGrid_, floorStairGrid_;
+    // Each deck's middle and how far its box reaches, in the decks' order: the cheap first test of Deck::contains,
+    // read from a few compact numbers instead of the deck (decksAt's lists are tested on every step of every man).
+    struct DeckReach {
+        Fixed x, y, reach;
+    };
+    mutable std::vector<DeckReach> deckReach_;
+    bool deckHolds(uint32_t k, Fixed x, Fixed y) const;
     void buildGrids() const;
     static std::span<const uint32_t> cellOf(const BoxGrid& g, Fixed x, Fixed y);
     static void cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out);

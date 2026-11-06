@@ -173,6 +173,7 @@ void Region::buildGrids() const {
     std::vector<Box> boxes;
     for (const Deck& d : decks_) {
         const Fixed reach = d.halfSpan + d.halfWidth;
+        deckReach_.push_back({d.centre.x, d.centre.y, reach});
         boxes.push_back({d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach});
     }
     build(deckGrid_, boxes);
@@ -265,11 +266,16 @@ std::span<const uint32_t> Region::rampartsAt(Fixed x, Fixed y) const {
     return cellOf(rampGrid_, x, y);
 }
 
+bool Region::deckHolds(uint32_t k, Fixed x, Fixed y) const {
+    const DeckReach& r = deckReach_[k];
+    return abs(x - r.x) <= r.reach && abs(y - r.y) <= r.reach && decks_[k].contains(x, y);
+}
+
 bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
     bool found = false;
     for (const uint32_t k : decksAt(x, y)) {
+        if (!deckHolds(k, x, y)) continue;
         const Deck& d = decks_[k];
-        if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (!found || h > height) height = h;
         found = true;
@@ -280,8 +286,8 @@ bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
 bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
     bool found = false;
     for (const uint32_t k : decksAt(x, y)) {
+        if (!deckHolds(k, x, y)) continue;
         const Deck& d = decks_[k];
-        if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (h > ceiling || (found && h <= height)) continue;
         height = h;
@@ -293,7 +299,7 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
 bool Region::inRamp(Fixed x, Fixed y, Fixed z) const {
     for (const uint32_t k : decksAt(x, y)) {
         const Deck& d = decks_[k];
-        if (d.ramp && d.contains(x, y) && d.heightAt(x, y) > z) return true;
+        if (d.ramp && deckHolds(k, x, y) && d.heightAt(x, y) > z) return true;
     }
     return false;
 }
