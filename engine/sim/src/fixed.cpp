@@ -76,6 +76,14 @@ Fixed sqrt(Fixed f) {
     return Fixed::fromRaw(static_cast<int64_t>(isqrt(static_cast<u128>(f.raw) << Fixed::kFracBits)));
 }
 
+bool sqrtExceeds(Fixed f, Fixed limit) {
+    if (f.raw <= 0) return Fixed::zero() > limit;
+    if (limit.raw < 0) return true;
+    // The root's raw value is floor(sqrt(f.raw * 2^16)); it is above limit.raw when f.raw * 2^16 reaches (limit.raw + 1)^2.
+    const u128 above = static_cast<u128>(limit.raw) + 1;
+    return (static_cast<u128>(f.raw) << Fixed::kFracBits) >= above * above;
+}
+
 Fixed sin(Fixed x) {
     // Reduce to [-pi, pi).
     x.raw %= kTwoPi.raw;

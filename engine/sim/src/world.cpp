@@ -461,12 +461,21 @@ bool World::isWater(Fixed x, Fixed y) const {
     return g == Ground::Shallows || g == Ground::DeepWater;
 }
 
-Fixed World::slopeAt(Fixed x, Fixed y) const {
-    if (!config_.terrain) return Fixed::zero();
+Fixed World::slopeSquared(Fixed x, Fixed y) const {
     const Fixed d = Fixed::one();
     const Fixed gx = (groundHeight(x + d, y) - groundHeight(x - d, y)) / 2;
     const Fixed gy = (groundHeight(x, y + d) - groundHeight(x, y - d)) / 2;
-    return sqrt(gx * gx + gy * gy);
+    return gx * gx + gy * gy;
+}
+
+Fixed World::slopeAt(Fixed x, Fixed y) const {
+    if (!config_.terrain) return Fixed::zero();
+    return sqrt(slopeSquared(x, y));
+}
+
+bool World::steeperThan(Fixed x, Fixed y, Fixed limit) const {
+    if (!config_.terrain) return Fixed::zero() > limit;
+    return sqrtExceeds(slopeSquared(x, y), limit);
 }
 
 void World::step(std::span<const Command> commands) {
@@ -1124,13 +1133,13 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Fixed dist = delta.length();
     Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, groundAt(u.pos.x, u.pos.y));
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
-    if (slopeAt(u.pos.x, u.pos.y) > kSteepSlope) speed *= kSteepSpeed;
+    if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
+    const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     {
         const Fixed probe = Fixed::one();
-        const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         const Fixed grade = standingHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe, u.pos.z) - here;
         if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost * gaitClimbPct(u.stats.gait) / 100);
         else speed = speed * (Fixed::one() + min(kDescentMax, -grade * kDescentGain));
@@ -1138,14 +1147,12 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Fixed stepLen = speed * kTickDt;
     Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
     // Deep water and cliffs stop walkers: slide along if one axis is clear.
-    const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     const auto barred = [&](Fixed x, Fixed y) {
         const Ground g = groundAt(x, y);
         if (g == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
         // Over the water beside a narrow deck: off the edge is the river.
         Fixed deck;
         if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
-        const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
         const Fixed dh = standingHeight(x, y, u.pos.z) - here;
         // Off the end of a bridge deck onto the bank is a step down, never a ledge.
         const auto offDeckEnd = [&] {
@@ -1164,7 +1171,8 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         if (config_.region && config_.region->inRamp(x, y, u.pos.z + kMaxStepUp)) return true;  // into a ramp's side, below its slope
         // Onto or along a deck is never a cliff, whatever lies below its edges.
         if (g == Ground::Bridge || (config_.region && config_.region->deckBelow(x, y, u.pos.z + kMaxStepUp, deck))) return false;
-        return run > Fixed::zero() && abs(dh) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
+        const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
+        return run > Fixed::zero() && abs(dh) > run * kCliffGrade && steeperThan(x, y, kCliffGrade);
     };
     if (barred(next.x, next.y)) {
         if (!barred(next.x, u.pos.y)) next.y = u.pos.y;

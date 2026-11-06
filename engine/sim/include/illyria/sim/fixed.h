@@ -79,6 +79,8 @@ constexpr Fixed clamp(Fixed v, Fixed lo, Fixed hi) { return min(max(v, lo), hi);
 
 // Square root, truncated. Negative input returns zero.
 Fixed sqrt(Fixed f);
+// sqrt(f) > limit, without taking the root: the same answer, by comparing f with the square just above the limit.
+bool sqrtExceeds(Fixed f, Fixed limit);
 
 // Pi to 16 fractional bits: 205887 / 65536 = 3.14159...
 inline constexpr Fixed kPi = Fixed::fromRaw(205887);

@@ -1126,6 +1126,8 @@ private:
     void clearRemain(uint32_t slot);
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
+    bool steeperThan(Fixed x, Fixed y, Fixed limit) const;  // slopeAt(x, y) > limit, without the root
+    Fixed slopeSquared(Fixed x, Fixed y) const;
     Ground groundAt(Fixed x, Fixed y) const;
     bool isWater(Fixed x, Fixed y) const;
 

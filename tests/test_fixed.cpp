@@ -54,6 +54,24 @@ TEST(fixed_sqrt_is_the_exact_floor_root) {
     }
 }
 
+// sqrtExceeds(f, limit) is sqrt(f) > limit, at the limit and one raw step either side of it, for limits of every size.
+TEST(fixed_sqrt_exceeds_agrees_with_the_root) {
+    uint64_t s = 1234567890123456789ULL;
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 100000; ++i) {
+        const Fixed limit = Fixed::fromRaw(static_cast<int64_t>(next() >> (20 + next() % 40)));
+        const Fixed root = limit * limit;  // squared, then asked about on both sides of the root
+        for (int64_t d = -2; d <= 2; ++d) {
+            const Fixed f = Fixed::fromRaw(std::max<int64_t>(0, root.raw + d));
+            CHECK(sqrtExceeds(f, limit) == (sqrt(f) > limit));
+        }
+        const Fixed any = Fixed::fromRaw(static_cast<int64_t>(next() >> (1 + next() % 62)));
+        CHECK(sqrtExceeds(any, limit) == (sqrt(any) > limit));
+    }
+    for (const Fixed f : {Fixed::zero(), Fixed::fromRaw(-5), Fixed::fromRaw(1)})
+        for (const Fixed limit : {Fixed::fromRaw(-1), Fixed::zero(), Fixed::fromRaw(1), Fixed::one()}) CHECK(sqrtExceeds(f, limit) == (sqrt(f) > limit));
+}
+
 // The product is the 128-bit one, shifted down (floor), on both sides of WebAssembly's 64-bit shortcut (|raw| < 2^31).
 TEST(fixed_product_is_the_128_bit_product) {
     uint64_t s = 99887766554433221ULL;
