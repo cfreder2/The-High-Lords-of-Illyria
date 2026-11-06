@@ -17,7 +17,7 @@ Terrain Terrain::generate(uint64_t seed, int32_t cells, Fixed cellSize, Fixed ma
 
     Terrain t;
     t.cells_ = cells;
-    t.cellSize_ = cellSize;
+    t.setCellSize(cellSize);
     t.samples_.reserve(static_cast<size_t>(cells + 1) * (cells + 1));
     for (int32_t iy = 0; iy <= cells; ++iy) {
         for (int32_t ix = 0; ix <= cells; ++ix) {
@@ -38,16 +38,26 @@ Terrain Terrain::generate(uint64_t seed, int32_t cells, Fixed cellSize, Fixed ma
 Terrain Terrain::fromSamples(int32_t cells, Fixed cellSize, std::vector<Fixed> samples) {
     Terrain t;
     t.cells_ = cells;
-    t.cellSize_ = cellSize;
+    t.setCellSize(cellSize);
     t.samples_ = std::move(samples);
     return t;
+}
+
+void Terrain::setCellSize(Fixed cellSize) {
+    cellSize_ = cellSize;
+    cellLog_ = cellSize.raw > 0 && (cellSize.raw & (cellSize.raw - 1)) == 0 ? __builtin_ctzll(static_cast<uint64_t>(cellSize.raw)) : -1;
 }
 
 Fixed Terrain::heightAt(Fixed x, Fixed y) const {
     const Fixed maxCoord = size();
     x = clamp(x, Fixed::zero(), maxCoord);
     y = clamp(y, Fixed::zero(), maxCoord);
-    const Fixed fx = x / cellSize_, fy = y / cellSize_;
+    // (x / cellSize_ for x >= 0: raw * 2^16 / 2^cellLog_, truncated, is a shift.)
+    const auto cells = [&](Fixed v) {
+        if (cellLog_ < 0) return v / cellSize_;
+        return Fixed::fromRaw(cellLog_ >= Fixed::kFracBits ? v.raw >> (cellLog_ - Fixed::kFracBits) : v.raw << (Fixed::kFracBits - cellLog_));
+    };
+    const Fixed fx = cells(x), fy = cells(y);
     int32_t ix = static_cast<int32_t>(fx.floorToInt());
     int32_t iy = static_cast<int32_t>(fy.floorToInt());
     if (ix >= cells_) ix = cells_ - 1;
