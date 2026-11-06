@@ -32,3 +32,11 @@ target_compile_options(illyria_terrainbake PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang
 add_executable(illyria_spritesheet spritesheet/preview.cpp)
 target_link_libraries(illyria_spritesheet PRIVATE illyria_figures)
 target_compile_options(illyria_spritesheet PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wno-conversion -Wno-sign-conversion -Wno-double-promotion>)
+
+# Times the Conquest tick at 1.8k, 3.4k and 7k men in one World (prints ms a tick and the checksum):
+#   illyria_tickbench [ticks] [men ...]
+add_executable(illyria_tickbench tickbench.cpp)
+target_link_libraries(illyria_tickbench PRIVATE illyria_sim)
+if(EMSCRIPTEN)
+    target_link_options(illyria_tickbench PRIVATE -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1)
+endif()
