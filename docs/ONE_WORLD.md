@@ -231,6 +231,34 @@ A short note on how it works, and what it costs.
     steps over the same men, asked of fewer of them. If it is too slow at 4x and beyond, or in the browser on a slow
     machine late in a game, that is a decision for the game (fewer, larger squads; a smaller island; a speed cap that
     follows the population), not a reason to put the men to sleep again.
+  - *The second round* (same checksums, same goldens; the first round's code and the new, interleaved on a quiet
+    machine; each cell is the mean over 200 ticks, and the quickest 20-tick batch by CPU time after the slash, because
+    the mean includes the ticks just after 4,000 men were raised, when many plan routes):
+
+    | men in the world | native, ms a tick (was) | native, now | wasm (node) (was) | wasm, now |
+    |---|---|---|---|---|
+    | 1,819 | 0.43 / 0.42 | 0.43 / 0.42 | 0.81 / 0.65 | 0.78 / 0.65 |
+    | 3,355 | 1.91 / 1.49 | 1.54 / 1.18 | 3.17 / 2.25 | 2.44 / 1.96 |
+    | 7,070 | 6.28 / 4.86 (0.89 us a man) | 4.79 / 3.90 (0.68 us a man; 0.55 best) | 11.4 / 7.9 | 7.5 / 6.2 |
+
+    What was left to take out, by profile: the pair loop of `separateBodies` guessed which of 32 neighbours
+    a man touches with a coin-toss branch and read each from a scattered array (now one run of numbers in the grid's
+    order, one test; the visit order is unchanged, which is what keeps every push the same); every route filled two
+    810,000-cell arrays before it began (`NavGrid::route` puts back the cells it touched); the square root
+    (`flee` and `targetDown` take one per foe near) took six divisions and now takes one and a squaring from a table;
+    `Terrain::heightAt` divided by the cell size, which is a shift. `walk` asks the height under a man once, not
+    twice, and compares slopes without the root. A bucket of four cells to a lookup in the soldiers' grid; a compact
+    box per deck for the first test of `Deck::contains`. In the page: the first-contact check of the voices tested
+    every man of one side against every man of the other (12 million tests in a frame with 3,500 a side apart; now the
+    cells round each man, `point_grid.h`, shared with the war drums), and `presentConquest` looks an army up when
+    it changes, not for every man. Tried and not kept: `-flto` (2-3% in wasm, nothing native), `-O2` (the same as
+    `-O3`), `-Os` (30% slower), `-msimd128` (no change; the step is integer scalar code).
+    What is still hot (native, 7k men): the unit loop is about half of the tick, mostly `walk` (a step asks for the
+    height, deck and slope at five or six places), `flee`'s root per foe and `nearestEnemy`; the pair loop is 14%
+    and its neighbour lookups are most of that; the obstacle, gate and wall tests of `separateBodies` are 12%.
+    The goal of 0.5 us a man at 7,000 men is not met (0.55 in the quickest batch, 0.68 on average); the next step
+    is caching what a standing man's `walk` asks (his height and slope under him do not change while he stands), which
+    is exact only with a stamp that every writer of a position bumps.
   - *An all-computer campaign* holds about 1,800 soldiers at the start and keeps small stacks
     besieging walls they cannot take for days; the computer lords no longer send a force a third the
     size of the men it would meet (`attackOdds`), a stack held up ten seconds goes deaf to what it
