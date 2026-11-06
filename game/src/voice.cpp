@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
+
+#include "illyria/game/point_grid.h"
 
 namespace illyria::game {
 
@@ -582,17 +585,27 @@ void Voice::observe(const sim::World& world, int outcome) {
             const sim::PlayerId side = s == 0 ? player_ : static_cast<sim::PlayerId>(1 - player_);
             sim::EntityId spotter = sim::kNoEntity;
             bool near = false;
+            // The other side's men in cells a little wider than twice the sighting distance, so that each of ours looks
+            // only at the foes in the cells round it, not at every one.
+            std::vector<const sim::Unit*> foes;
+            std::vector<V3> where;
+            for (const sim::Unit& b : units)
+                if (b.alive() && b.owner != side) {
+                    foes.push_back(&b);
+                    where.push_back(toV3(b.pos));
+                }
+            const PointGrid grid(where, 2.1f * kSighted);
             for (const sim::Unit& a : units) {
                 if (!a.alive() || a.owner != side) continue;
-                for (const sim::Unit& b : units) {
-                    if (!b.alive() || b.owner == side) continue;
-                    const V3 d = flat(toV3(a.pos - b.pos));
+                const V3 at = toV3(a.pos);
+                grid.near(at.x, at.y, 2.0f * kSighted + 1.0f, [&](uint32_t k) {
+                    const V3 d = flat(toV3(a.pos - foes[k]->pos));
                     const float d2 = d.dot(d);
                     if (d2 < 4 * kSighted * kSighted) near = true;
                     if (d2 < kSighted * kSighted && spotter == sim::kNoEntity &&
                         voices(voiceSetOf(static_cast<UnitType>(a.stats.type)), S::EnemySighted))
                         spotter = a.id;
-                }
+                });
                 if (spotter != sim::kNoEntity) break;
             }
             if (near) lastContact_[s] = tick_;

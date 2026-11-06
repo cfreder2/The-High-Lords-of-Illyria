@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "illyria/game/point_grid.h"
 #include "illyria/sim/units.h"
 
 namespace illyria::game {
@@ -453,40 +454,22 @@ void Sfx::updateAmbience(const sim::World& world, const sim::Continent& continen
     {
         constexpr float kCell = 32.0f, kFar = 301.0f;
         std::vector<const sim::Unit*> ours;
-        float minX = 1e12f, minY = 1e12f, maxX = -1e12f, maxY = -1e12f;
+        std::vector<V3> where;
         for (const sim::Unit& o : world.units()) {
             if (!o.alive() || o.owner != player_) continue;
             ours.push_back(&o);
-            const V3 p = toV3(o.pos);
-            minX = std::min(minX, p.x);
-            maxX = std::max(maxX, p.x);
-            minY = std::min(minY, p.y);
-            maxY = std::max(maxY, p.y);
+            where.push_back(toV3(o.pos));
         }
         if (!ours.empty()) {
-            const int w = static_cast<int>((maxX - minX) / kCell) + 1, h = static_cast<int>((maxY - minY) / kCell) + 1;
-            const auto cellX = [&](float x) { return static_cast<int>(std::floor((x - minX) / kCell)); };
-            const auto cellY = [&](float y) { return static_cast<int>(std::floor((y - minY) / kCell)); };
-            std::vector<uint32_t> start(static_cast<size_t>(w) * h + 1, 0), items(ours.size());
-            for (const sim::Unit* o : ours) ++start[static_cast<size_t>(cellY(toV3(o->pos).y)) * w + cellX(toV3(o->pos).x) + 1];
-            for (size_t c = 0; c + 1 < start.size(); ++c) start[c + 1] += start[c];
-            std::vector<uint32_t> fill(start.begin(), start.end() - 1);
-            for (uint32_t k = 0; k < ours.size(); ++k) items[fill[static_cast<size_t>(cellY(toV3(ours[k]->pos).y)) * w + cellX(toV3(ours[k]->pos).x)]++] = k;
+            const PointGrid grid(where, kCell);
             contactD2 = kFar * kFar;
             for (const sim::Unit& u : world.units()) {
                 if (!u.alive() || u.owner == player_) continue;
                 const V3 pu = toV3(u.pos);
-                const float reach = std::sqrt(contactD2) + 1.0f;
-                const int x0 = std::max(cellX(pu.x - reach), 0), x1 = std::min(cellX(pu.x + reach), w - 1);
-                const int y0 = std::max(cellY(pu.y - reach), 0), y1 = std::min(cellY(pu.y + reach), h - 1);
-                for (int cy = y0; cy <= y1; ++cy)
-                    for (int cx = x0; cx <= x1; ++cx) {
-                        const size_t c = static_cast<size_t>(cy) * w + cx;
-                        for (uint32_t m = start[c]; m < start[c + 1]; ++m) {
-                            const V3 d = flat(toV3(u.pos - ours[items[m]]->pos));
-                            contactD2 = std::min(contactD2, d.dot(d));
-                        }
-                    }
+                grid.near(pu.x, pu.y, std::sqrt(contactD2) + 1.0f, [&](uint32_t k) {
+                    const V3 d = flat(toV3(u.pos - ours[k]->pos));
+                    contactD2 = std::min(contactD2, d.dot(d));
+                });
             }
         }
     }
