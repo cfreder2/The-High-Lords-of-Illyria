@@ -13,8 +13,8 @@ namespace illyria::game {
 // Every tree of the whole continent, by the one rule that grows trees anywhere: sim::Region::sceneryAt on the
 // continent's 5 m scenery grid (a battle's trees, the close-up land's and these are the same trees where they
 // stand), for what the camera sees from afar, where the close-up land is not built. The ground under each is the
-// continent's own (Continent::landGround at the tree's own point), so what grows where is what the cover rules of
-// the simulation call forest. Presentation only: nothing here feeds the simulation.
+// continent's own (Continent::landGround, as the coarse land samples it every 16 m), so what grows where is what
+// the cover rules of the simulation call forest. Presentation only: nothing here feeds the simulation.
 //
 // The trees' crowns are summed into a density map (kDensityCell metres a texel) that the far land shades from: the
 // forest read from so high up that a tree is a speck.

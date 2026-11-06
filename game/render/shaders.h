@@ -1458,8 +1458,9 @@ bool outOfView(vec3 centre, float radius) {
     return c.w < -radius || abs(c.x) > c.w + pad.x || abs(c.y) > c.w + pad.y;
 }
 )"
-// The cross-fade between individual scenery and the clumps that stand in for it: each shows in the pixels
-// the other leaves (complementary screen dither), so nothing is scaled and no tree grows or shrinks.
+// The cross-fade between the battlefield's and the close-up land's trees and the continent's that stand where they
+// do not: each shows in the pixels the other leaves (complementary screen dither), so nothing is scaled and no tree
+// grows or shrinks.
 #define ILLYRIA_SCENERY_FS R"(
 flat in float vLod;
 uniform float uLod;
