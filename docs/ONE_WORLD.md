@@ -211,13 +211,27 @@ A short note on how it works, and what it costs.
     | 3,355 (about day 40) | 6.0 | 13.4 |
     | 7,070 (about day 120) | 19.0 (2.7 us a man) | 41.4 |
 
-    A tick is 33 ms at 1x. Native fits to the full population at 1x and not at 2x beyond day 40; the browser fits to
-    about 5,000 men at 1x and not at 7,000, and the budget of "an ordinary tick about 0.005 ms" no longer holds in any
-    case (it was 3 microseconds with the men asleep). The cost per man rises with the crowd (separation between men
-    in one place), not only with their number. These are the World's own steps, unchanged: nothing was made cheaper
-    or skipped for Conquest, and nothing here is a second way of moving men. If it is too slow at 2x and beyond, or in
-    the browser late in a game, that is a decision for the game (fewer, larger squads; a smaller island; a speed cap
-    that follows the population), not a reason to put the men to sleep again.
+    A tick is 33 ms at 1x. The budget of "an ordinary tick about 0.005 ms" no longer holds in any case (it was 3
+    microseconds with the men asleep). The cost per man rose with the crowd because the tick looked at far more than
+    was near a man: every man's gates, ruin floors and foes were looked for among all of them, the nearest-foe search
+    of every standing stack was men x foes, and the soldiers' grids were hash tables of lists.
+
+  - *After the tick was made to ask only what is near* (`illyria_tickbench`, which prints the same numbers and the
+    world's checksum; the same ticks give the same checksum before and after, and every golden is unchanged). Native on a
+    quiet machine, and the browser's build (node) as the ratio of an interleaved run on a loaded machine applied to the
+    figures above:
+
+    | men in the world | native, ms a tick (before) | native, after | wasm (node), after |
+    |---|---|---|---|
+    | 1,819 | 1.5-2.4 | 0.65 (0.36 us a man) | about 1.1 |
+    | 3,355 | 6.0-9.2 | 2.9 | about 4 |
+    | 7,070 | 19-29 | 9.5 (1.35 us a man) | about 12 |
+
+    So native fits the full population at 1x with room to spare and at 2x to the end, and the browser fits 7,000 men
+    at 1x. Nothing was made cheaper or skipped for Conquest, and nothing here is a second way of moving men: the same
+    steps over the same men, asked of fewer of them. If it is too slow at 4x and beyond, or in the browser on a slow
+    machine late in a game, that is a decision for the game (fewer, larger squads; a smaller island; a speed cap that
+    follows the population), not a reason to put the men to sleep again.
   - *An all-computer campaign* holds about 1,800 soldiers at the start and keeps small stacks
     besieging walls they cannot take for days; the computer lords no longer send a force a third the
     size of the men it would meet (`attackOdds`), a stack held up ten seconds goes deaf to what it
