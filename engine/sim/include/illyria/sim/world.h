@@ -719,53 +719,58 @@ private:
 
     // The grounded soldiers by place, rebuilt every step (separateBodies) and asked many times: 4 m cells, each
     // cell's soldiers in one run of a flat list, in the order of their index. insert() collects, build() sorts them
-    // into cells; the table of cells is only looked up by key, never walked in its own order.
+    // into cells; the table is only looked up by key, never walked in its own order. The table holds four cells of a
+    // row to a bucket, their soldiers one after the other in the list, so that the cells of a row that a query
+    // covers are one run (two at most when it crosses a bucket) and cost one lookup.
     class UnitGrid {
     public:
         void clear() {
             pending_.clear();
-            cells_.clear();
+            buckets_.clear();
             items_.clear();
         }
-        void insert(uint32_t index, Fixed x, Fixed y) { pending_.push_back({key(cellOf(x), cellOf(y)), index}); }
+        void insert(uint32_t index, Fixed x, Fixed y) { pending_.push_back({key(cellOf(x) >> 2, cellOf(y)), static_cast<unsigned>(cellOf(x) & 3), index}); }
         void build() {
             size_t size = 64;
-            while (size < pending_.size() * 2) size *= 2;
-            cells_.assign(size, Cell{});
+            while (size < pending_.size() * 3 / 2) size *= 2;
+            buckets_.assign(size, Bucket{});
             where_.resize(pending_.size());
             for (size_t k = 0; k < pending_.size(); ++k) {
-                Cell& c = cell(pending_[k].key);
-                c.key = pending_[k].key;
-                ++c.count;
-                where_[k] = static_cast<uint32_t>(&c - cells_.data());
+                Bucket& b = bucket(pending_[k].key);
+                b.key = pending_[k].key;
+                ++b.off[pending_[k].cell];
+                where_[k] = static_cast<uint32_t>(&b - buckets_.data());
             }
             uint32_t at = 0;
-            for (Cell& c : cells_) {
-                c.start = at;
-                at += c.count;
-                c.count = 0;
+            for (Bucket& b : buckets_) {
+                uint16_t sum = 0;  // the cells' ends for now, their starts once filled
+                for (unsigned c = 0; c < 4; ++c) b.off[c] = sum += b.off[c];
+                b.off[4] = sum;
+                b.start = at;
+                at += sum;
             }
             items_.resize(pending_.size());
-            for (size_t k = 0; k < pending_.size(); ++k) {
-                Cell& c = cells_[where_[k]];
-                items_[c.start + c.count++] = pending_[k].index;
+            for (size_t k = pending_.size(); k-- > 0;) {  // (backwards, so that each cell's run ends up in index order)
+                Bucket& b = buckets_[where_[k]];
+                items_[b.start + --b.off[pending_[k].cell]] = pending_[k].index;
             }
         }
-        // Calls run(first, last) for each cell that overlaps the square of `radius` round (x, y), row by row, as a
-        // range of positions in items() (the soldiers of one cell, in the order of their index).
+        // Calls run(first, last) for the soldiers of the cells that overlap the square of `radius` round (x, y), as
+        // ranges of positions in items(): row by row, cell by cell, each cell's in the order of their index.
         template <typename Run>
         void queryRuns(Fixed x, Fixed y, Fixed radius, Run&& run) const {
-            if (cells_.empty()) return;
+            if (buckets_.empty()) return;
             const int64_t x0 = cellOf(x - radius), x1 = cellOf(x + radius);
             const int64_t y0 = cellOf(y - radius), y1 = cellOf(y + radius);
             for (int64_t cy = y0; cy <= y1; ++cy)
-                for (int64_t cx = x0; cx <= x1; ++cx) {
-                    const int64_t k = key(cx, cy);
-                    for (size_t i = home(k);; i = (i + 1) & (cells_.size() - 1)) {
-                        const Cell& c = cells_[i];
-                        if (c.key == kNone) break;
-                        if (c.key != k) continue;
-                        run(c.start, c.start + c.count);
+                for (int64_t bx = x0 >> 2; bx <= x1 >> 2; ++bx) {
+                    const int64_t k = key(bx, cy);
+                    for (size_t i = home(k);; i = (i + 1) & (buckets_.size() - 1)) {
+                        const Bucket& b = buckets_[i];
+                        if (b.key == kNone) break;
+                        if (b.key != k) continue;
+                        const unsigned lo = bx == x0 >> 2 ? static_cast<unsigned>(x0 & 3) : 0, hi = bx == x1 >> 2 ? static_cast<unsigned>(x1 & 3) : 3;
+                        if (b.off[lo] != b.off[hi + 1]) run(b.start + b.off[lo], b.start + b.off[hi + 1]);
                         break;
                     }
                 }
@@ -781,25 +786,27 @@ private:
 
     private:
         static constexpr int64_t kCell = 4, kNone = INT64_MIN;
-        struct Cell {
+        struct Bucket {
             int64_t key = kNone;
-            uint32_t start = 0, count = 0;
+            uint32_t start = 0;
+            uint16_t off[5] = {};  // where each of the four cells' soldiers start from `start`, and the end of the last
         };
         struct Pending {
             int64_t key;
+            unsigned cell;  // which of the bucket's four
             uint32_t index;
         };
         static int64_t cellOf(Fixed v) { return v.floorToInt() >= 0 ? v.floorToInt() / kCell : (v.floorToInt() - kCell + 1) / kCell; }
-        static int64_t key(int64_t cx, int64_t cy) { return (cx << 32) ^ (cy & 0xFFFFFFFF); }
-        size_t home(int64_t k) const { return static_cast<size_t>((static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull) >> 20) & (cells_.size() - 1); }
-        Cell& cell(int64_t k) {
+        static int64_t key(int64_t bx, int64_t cy) { return (bx << 32) ^ (cy & 0xFFFFFFFF); }
+        size_t home(int64_t k) const { return static_cast<size_t>((static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull) >> 20) & (buckets_.size() - 1); }
+        Bucket& bucket(int64_t k) {
             size_t i = home(k);
-            while (cells_[i].key != kNone && cells_[i].key != k) i = (i + 1) & (cells_.size() - 1);
-            return cells_[i];
+            while (buckets_[i].key != kNone && buckets_[i].key != k) i = (i + 1) & (buckets_.size() - 1);
+            return buckets_[i];
         }
         std::vector<Pending> pending_;
         std::vector<uint32_t> where_, items_;
-        std::vector<Cell> cells_;
+        std::vector<Bucket> buckets_;
     };
 
     // The solid obstacles by place (they never move): 8 m cells over the box they stand in, as one run of records
