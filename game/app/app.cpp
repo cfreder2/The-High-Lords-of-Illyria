@@ -744,6 +744,10 @@ ILLYRIA_API const char* illyria_draw_counts() {
     }
     return out.c_str();
 }
+// How trees are drawn (Renderer::TreeStyle): 0 the meshes, then one card, two crossed, three, four.
+ILLYRIA_API void illyria_set_tree_style(int style) {
+    if (app && style >= 0 && style < static_cast<int>(Renderer::TreeStyle::Count)) app->renderer.setTreeStyle(static_cast<Renderer::TreeStyle>(style));
+}
 // Leaves out the drawing of the kinds in the mask (a bit for each Renderer::Part), to time what each costs.
 ILLYRIA_API void illyria_hide_parts(unsigned mask) {
     if (app) app->renderer.hideParts(mask);

@@ -62,6 +62,14 @@ public:
     const PartCount& partCount(Part p) const { return counts_[static_cast<int>(p)]; }
     void hideParts(unsigned mask) { hidden_ = mask; }
 
+    // How trees are drawn. Mesh: the models (meshes.cpp). The rest are cards standing on each tree, upright, with a
+    // picture of the tree baked from its mesh (renderer_trees.cpp): one that always faces the camera, two crossed,
+    // three in a star, four in a grid (two crossed pairs). The same trees in the same places either way.
+    enum class TreeStyle : int { Mesh, Face1, Cross2, Star3, Grid4, Count };
+    static constexpr TreeStyle kDefaultTreeStyle = TreeStyle::Mesh;
+    void setTreeStyle(TreeStyle style);
+    TreeStyle treeStyle() const { return treeStyle_; }
+
     bool init(Battle& battle);
     // Forget uploaded remains and marks (call after the battle is replaced).
     void reset(Battle& battle);
@@ -129,6 +137,7 @@ private:
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1;
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
+        GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -143,6 +152,11 @@ private:
         float lod = 0;
         bool cloth = false;  // a banner's waving cloth (uFlag): the castles' and the flags'
         Part part = Part::Buildings;
+        // A tree's card picture (renderer_trees.cpp): its VAO over the same instances, its place in the atlas
+        // (-1: none), and the extent of the mesh it was taken from (half width, top).
+        GLuint boardVao = 0;
+        int cell = -1;
+        float boardHalf = 1, boardTop = 1;
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {
@@ -471,6 +485,18 @@ private:
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
     MeshBatch stumps_;
     std::vector<MeshBatch*> scenery(bool includeSmall);
+    std::vector<MeshBatch*> trees();
+    // The trees' cards (renderer_trees.cpp). The atlas is baked once from the meshes, the cards laid out by style.
+    Program board_, boardDepth_, boardBake_;
+    GLuint boardAtlas_ = 0, boardNormals_ = 0, boardVbo_ = 0;
+    GLsizei boardVertices_ = 0;
+    TreeStyle treeStyle_ = kDefaultTreeStyle;
+    void bakeTreeBoards();
+    void layOutBoards();
+    void makeBoardVao(MeshBatch& b);
+    void drawBoards(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
+    // Draws the trees the way the style says (in the sun's view, the cards' own shadows).
+    void drawTrees(const Camera& camera, double timeSeconds, float gameSeconds);
     // Trees, undergrowth, rocks and logs as instances, by mesh variant.
     struct SceneryLists {
         std::vector<std::vector<float>> pine, oak, bush, rock;

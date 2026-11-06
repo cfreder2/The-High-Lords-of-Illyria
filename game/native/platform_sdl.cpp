@@ -31,6 +31,8 @@ unsigned hudTick() {
 SDL_Window* window = nullptr;
 SDL_GLContext context = nullptr;
 
+constexpr int kAllTreeStyles = 99;
+
 struct Options {
     std::string assets, mode, options, shot;
     float camera[4] = {0, 0, 0, 0};  // --camera: x, y, distance, yaw
@@ -38,6 +40,7 @@ struct Options {
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
     bool fullscreen = false, sound = true, stats = false, vsync = true;
+    int trees = -1;  // --trees N: how trees are drawn (0 meshes, 1 one card, 2 two crossed, 3 three, 4 four); 99: --shot takes one picture of each
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
@@ -58,6 +61,8 @@ void usage() {
         "  --size WxH, --fullscreen, --no-sound\n"
         "  --stats               print the frame rate and its split every two seconds\n"
         "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
+        "  --trees N|all         draw trees as 0 meshes, 1 one card, 2 two crossed cards, 3 three, 4 four (default: the game's);\n"
+        "                        all: --shot FILE.tga writes FILE-0.tga to FILE-4.tga, one a style\n"
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --quit-after N        quit after N frames\n"
@@ -82,6 +87,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--no-sound") o.sound = false;
         else if (a == "--stats") o.stats = true;
         else if (a == "--novsync") o.vsync = false;
+        else if (a == "--trees") o.trees = std::strcmp(next(), "all") == 0 ? kAllTreeStyles : std::atoi(argv[i]);
         else if (a == "--profile") o.profile = std::atoi(next()), o.stats = true;
         else if (a == "--msaa") o.msaa = std::atoi(next());
         else if (a == "--shot") {
@@ -329,6 +335,7 @@ int runApp(int argc, char** argv) {
         std::fprintf(stderr, "HUD initialisation failed\n");
         return 1;
     }
+    if (opt.trees >= 0 && opt.trees != kAllTreeStyles) illyria_set_tree_style(opt.trees);
     native::Hud hud;
     {
         char* pref = SDL_GetPrefPath("cfreder2", "Illyria");
@@ -404,7 +411,15 @@ int runApp(int argc, char** argv) {
             hud.draw(overlay, static_cast<float>(cv.cssW), static_cast<float>(cv.cssH));
             overlay.end();
             cpuMs = cpuMs * 0.9 + (platform::nowMs() - cpuStart) * 0.1;
-            if (!opt.shot.empty() && frame == opt.shotFrame) {
+            if (!opt.shot.empty() && opt.trees == kAllTreeStyles) {
+                // A picture of each style: set it, give the renderer a few frames, take it.
+                const int k = (frame - opt.shotFrame) / 4, step = (frame - opt.shotFrame) % 4;
+                if (frame >= opt.shotFrame && step == 0) illyria_set_tree_style(k);
+                if (frame >= opt.shotFrame && step == 3) {
+                    writeShot(opt.shot.substr(0, opt.shot.rfind('.')) + "-" + std::to_string(k) + ".tga", pw, ph);
+                    running = k < 4;
+                }
+            } else if (!opt.shot.empty() && frame == opt.shotFrame) {
                 writeShot(opt.shot, pw, ph);
                 running = false;
             }
@@ -445,7 +460,7 @@ int runApp(int argc, char** argv) {
         if (opt.quitFrame && frame >= opt.quitFrame) running = false;
         if (opt.stats && platform::nowMs() - statsAt > 2000) {
             statsAt = platform::nowMs();
-            std::printf("frame %d: %s\n         %s\n", frame, hudPerf.c_str(), drawSummary().c_str());
+            std::printf("frame %d: %s\n         %s\n         camera %s\n", frame, hudPerf.c_str(), drawSummary().c_str(), illyria_camera_state());
             std::fflush(stdout);
         }
     }

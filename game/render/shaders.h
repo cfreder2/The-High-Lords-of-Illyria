@@ -1412,25 +1412,17 @@ void main() {
 // ---------------------------------------------------------------- meshes
 // Instanced lit meshes: scenery and bodies. Per vertex: pos, normal, colour.
 // Per instance: position, rotation quaternion, scale, tint.
-inline const char* kMeshVs = R"(
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aNormal;
-layout(location = 2) in vec3 aColor;
+// What the scenery's vertex shaders share (meshes and tree boards): which scenery stands where, and the instance's
+// record. uLod: 1 individual scenery; -1 the woods' clumps standing in for it; 0 always drawn.
+#define ILLYRIA_SCENERY_VS R"(
 layout(location = 3) in vec3 iPos;
 layout(location = 4) in vec4 iQuat;
 layout(location = 5) in vec3 iScale;
 layout(location = 6) in vec3 iTint;
 uniform float uSway;
-uniform float uLod;  // 1: individual scenery; -1: the woods' clumps standing in for it; 0: always drawn
+uniform float uLod;
 uniform vec4 uHole;  // the battlefield
-uniform float uFlag; // 1: banners, whose cloth (colour.b = 2, colour.rg its place on it) waves
-out vec3 vColor;
-out vec3 vNormal;
-out vec3 vWorld;
-out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
-flat out float vLod;   // how much of this piece shows (the dither in kMeshFs and kDepthFs), not how big it is
-flat out float vIsCloth;
-flat out vec2 vAxis; // the instance's local x on the ground, either way round (masonry)
+flat out float vLod;   // how much of this piece shows (the dither in dissolved()), not how big it is
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
 // How much individual scenery (trees, undergrowth, rocks) stands here rather
 // than the clumps of crowns: near the camera's focus while the camera is low,
@@ -1441,9 +1433,49 @@ float sceneryNear(vec2 p) {
     float there = all(greaterThanEqual(p, uHole.xy)) && all(lessThan(p, uHole.zw)) ? 1.0 : detailMask(p);
     return there * (1.0 - smoothstep(600.0, 850.0, uCamDist)) * (1.0 - smoothstep(180.0, 270.0, distance(p, uFocus)));
 }
+// How much of the instance at p shows; below a hair, none.
+float sceneryShown(vec2 p) { return uLod > 0.5 ? sceneryNear(p) : uLod < -0.5 ? 1.0 - sceneryNear(p) : 1.0; }
+// The wind in the crowns: where a vertex at relative height `up` (0 trunk, 1 top) of an instance at iPos moves to.
+vec2 crownSway(float up) {
+    return vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * up * up * uSway * iScale.z;
+}
+)"
+// The cross-fade between individual scenery and the clumps that stand in for it: each shows in the pixels
+// the other leaves (complementary screen dither), so nothing is scaled and no tree grows or shrinks.
+#define ILLYRIA_SCENERY_FS R"(
+flat in float vLod;
+uniform float uLod;
+bool dissolved() {
+    if (vLod >= 0.999) return false;
+    float h = hash12(gl_FragCoord.xy);
+    return uLod < -0.5 ? (1.0 - h) >= vLod : h >= vLod;
+}
+// The scenery's light: the sun and its shadows and the clouds', a little from the sky, the river over it, the haze.
+vec4 sceneryColor(vec3 albedo, vec3 n, vec3 world) {
+    float sun = max(dot(n, kSun), 0.0) * shadowAt(world, n) * cloudShade(world.xy);
+    float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
+    vec3 c = albedo * light;
+    // Under the battlefield's river (the rest of the continent has no water level).
+    vec2 cell = world.xy / uCellSize;
+    bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
+    if (onField && world.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - world.z) * 0.6, 0.0, 0.8));
+    return vec4(mix(c, hazeColor(world), fogFactor(distance(uEye, world))), 1.0);
+}
+)"
+inline const char* kMeshVs = ILLYRIA_SCENERY_VS R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+uniform float uFlag; // 1: banners, whose cloth (colour.b = 2, colour.rg its place on it) waves
+out vec3 vColor;
+out vec3 vNormal;
+out vec3 vWorld;
+out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
+flat out float vIsCloth;
+flat out vec2 vAxis; // the instance's local x on the ground, either way round (masonry)
 void main() {
     if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
-    float lod = uLod > 0.5 ? sceneryNear(iPos.xy) : uLod < -0.5 ? 1.0 - sceneryNear(iPos.xy) : 1.0;
+    float lod = sceneryShown(iPos.xy);
     if (lod < 0.02) { gl_Position = kCulled; return; }
     vLod = lod;  // (a tree fades in by dissolving, never by growing out of the ground)
     vec3 pos = aPos, nrm = aNormal;
@@ -1469,8 +1501,7 @@ void main() {
     vec3 local = pos * iScale;
     if (uSway > 0.0) {
         // Crowns sway in the wind; trunks stay put.
-        float h = aPos.z * aPos.z;
-        local.xy += vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * h * uSway * iScale.z;
+        local.xy += crownSway(aPos.z);
     }
     vec3 world = iPos + rotate(iQuat, local);
     vNormal = normalize(rotate(iQuat, nrm / iScale));
@@ -1484,23 +1515,14 @@ void main() {
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
-inline const char* kMeshFs = R"(
+inline const char* kMeshFs = ILLYRIA_SCENERY_FS R"(
 in vec3 vColor;
 in vec3 vNormal;
 in vec3 vWorld;
 in vec2 vCloth;
 flat in float vIsCloth;
 flat in vec2 vAxis;
-flat in float vLod;
-uniform float uLod;
 out vec4 oColor;
-// The cross-fade between individual scenery and the clumps that stand in for it: each shows in the pixels
-// the other leaves (complementary screen dither), so nothing is scaled and no tree grows or shrinks.
-bool dissolved() {
-    if (vLod >= 0.999) return false;
-    float h = hash12(gl_FragCoord.xy);
-    return uLod < -0.5 ? (1.0 - h) >= vLod : h >= vLod;
-}
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
 // A flag's face: the owner's colour with a hem, and a cross pattee in white
 // (or deep red on a pale field), smoothed over a pixel and blended into the
@@ -1540,8 +1562,6 @@ void main() {
         oColor = vec4(mix(cc, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
         return;
     }
-    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(vWorld.xy);
-    float light = 0.36 + 0.8 * sun + 0.12 * max(-dot(n, kSun), 0.0);
     if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.
@@ -1568,12 +1588,7 @@ void main() {
         float lichen = smoothstep(0.62, 0.8, valueNoise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
         albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
     }
-    vec3 c = albedo * light;
-    // Under the battlefield's river (the rest of the continent has no water level).
-    vec2 cell = vWorld.xy / uCellSize;
-    bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
-    if (onField && vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
-    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+    oColor = sceneryColor(albedo, n, vWorld);
 }
 )";
 
@@ -1748,16 +1763,96 @@ inline const char* kDepthFs = R"(
 void main() {}
 )";
 // The same for the scenery's meshes, which dissolve in and out (kMeshFs).
-inline const char* kMeshDepthFs = R"(
-flat in float vLod;
-uniform float uLod;
+inline const char* kMeshDepthFs = ILLYRIA_SCENERY_FS R"(
 void main() {
-    if (vLod < 0.999) {
-        float h = hash12(gl_FragCoord.xy);
-        if (uLod < -0.5 ? (1.0 - h) >= vLod : h >= vLod) discard;
-    }
+    if (dissolved()) discard;
 }
 )";
+
+// ---------------------------------------------------------------- tree boards
+// Trees as a few upright cards (renderer_trees.cpp), their picture baked from the tree's own mesh. A card is
+// [-1, 1] across and 0 to 1 up in the mesh's unit space, widened to the mesh's extent (uBoard: half width, top);
+// per vertex: across, up, the card's turn about the tree (radians, below zero: always facing the camera), and
+// how far it stands off the tree's axis (in half widths). Per instance, as a mesh's.
+inline const char* kBoardVs = ILLYRIA_SCENERY_VS R"(
+layout(location = 0) in vec4 aCard;
+uniform vec2 uBoard;
+uniform vec4 uCell;  // the picture's place in the atlas: u0, v0, u1, v1
+out vec2 vUv;
+out vec3 vWorld;
+out vec3 vRight;
+out vec3 vToward;
+out vec3 vTint;
+void main() {
+    float lod = sceneryShown(iPos.xy);
+    if (iScale.x <= 0.0 || lod < 0.02) { gl_Position = kCulled; return; }
+    vLod = lod;
+    vec3 right = aCard.z < 0.0 ? normalize(vec3(uCamRight.xy, 0.0)) : rotate(iQuat, vec3(cos(aCard.z), sin(aCard.z), 0.0));
+    vec3 toward = vec3(right.y, -right.x, 0.0);  // the side the picture was taken from
+    vec3 world = iPos + right * (aCard.x * uBoard.x * iScale.x) + toward * (aCard.w * uBoard.x * iScale.x) + vec3(0.0, 0.0, aCard.y * uBoard.y * iScale.z);
+    world.xy += crownSway(aCard.y);
+    vUv = mix(uCell.xy, uCell.zw, vec2(aCard.x * 0.5 + 0.5, aCard.y));
+    vWorld = world;
+    vRight = right;
+    vToward = toward;
+    vTint = iTint;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kBoardFs = ILLYRIA_SCENERY_FS R"(
+in vec2 vUv;
+in vec3 vWorld;
+in vec3 vRight;
+in vec3 vToward;
+in vec3 vTint;
+uniform sampler2D uAlbedo;  // the pictures: colour, and 1 in alpha where the tree is
+uniform sampler2D uBoardNormal;  // across, toward the viewer and up, as 0..1
+out vec4 oColor;
+void main() {
+    if (dissolved()) discard;
+    vec4 t = texture(uAlbedo, vUv);
+    if (t.a < 0.5) discard;
+    vec3 nb = texture(uBoardNormal, vUv).xyz * 2.0 - 1.0;
+    float side = gl_FrontFacing ? 1.0 : -1.0;  // a card seen from behind is lit as the far side of the tree
+    vec3 n = normalize(vRight * nb.x * side + vToward * nb.y * side + vec3(0.0, 0.0, nb.z));
+    oColor = sceneryColor(t.rgb * vTint, n, vWorld);
+}
+)";
+// The same for the sun's shadow map.
+inline const char* kBoardDepthFs = ILLYRIA_SCENERY_FS R"(
+in vec2 vUv;
+uniform sampler2D uAlbedo;
+void main() {
+    if (dissolved() || texture(uAlbedo, vUv).a < 0.5) discard;
+}
+)";
+// The picture of a tree mesh seen side-on (uBakeBox: half width, top, half depth), colour and normal; the
+// unlit colour, since the cards are lit as the meshes are.
+inline const char* kBoardBakeVs = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec3 aColor;
+uniform vec3 uBakeBox;
+out vec3 vColor;
+out vec3 vNormal;
+void main() {
+    vColor = aColor;
+    vNormal = aNormal;
+    gl_Position = vec4(aPos.x / uBakeBox.x, aPos.z / uBakeBox.y * 2.0 - 1.0, aPos.y / uBakeBox.z, 1.0);
+}
+)";
+inline const char* kBoardBakeFs = R"(
+in vec3 vColor;
+in vec3 vNormal;
+layout(location = 0) out vec4 oColor;
+layout(location = 1) out vec4 oNormal;
+void main() {
+    oColor = vec4(vColor, 1.0);
+    oNormal = vec4(vec3(vNormal.x, -vNormal.y, vNormal.z) * 0.5 + 0.5, 1.0);
+}
+)";
+#undef ILLYRIA_SCENERY_VS
+#undef ILLYRIA_SCENERY_FS
 
 // ---------------------------------------------------------------- water
 // The water surface per terrain sample (rivers slope downhill); a mesh of

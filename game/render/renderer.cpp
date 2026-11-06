@@ -344,7 +344,10 @@ bool Renderer::buildPrograms() {
                  {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
                  {farCut_, shaders::kFarVs, shaders::kFarCutFs},
                  {bar_, shaders::kBarVs, shaders::kBarFs},
-                 {dot_, shaders::kDotVs, shaders::kDotFs}};
+                 {dot_, shaders::kDotVs, shaders::kDotFs},
+                 {board_, shaders::kBoardVs, shaders::kBoardFs},
+                 {boardDepth_, shaders::kBoardVs, shaders::kBoardDepthFs},
+                 {boardBake_, shaders::kBoardBakeVs, shaders::kBoardBakeFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -413,6 +416,10 @@ bool Renderer::buildPrograms() {
         s.p.viewport = glGetUniformLocation(s.p.id, "uViewport");
         s.p.dotPx = glGetUniformLocation(s.p.id, "uDotPx");
         s.p.rim = glGetUniformLocation(s.p.id, "uRim");
+        s.p.board = glGetUniformLocation(s.p.id, "uBoard");
+        s.p.cell = glGetUniformLocation(s.p.id, "uCell");
+        s.p.boardNormal = glGetUniformLocation(s.p.id, "uBoardNormal");
+        s.p.bakeBox = glGetUniformLocation(s.p.id, "uBakeBox");
     }
     return true;
 }
@@ -503,7 +510,6 @@ void Renderer::uploadMeshInstances(MeshBatch& b, const std::vector<float>& data)
 
 std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
     std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_};
-    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_}) for (MeshBatch& b : *list) out.push_back(&b);
     if (includeSmall) {
         for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_}) for (MeshBatch& b : *list) out.push_back(&b);
         for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) out.push_back(b);
@@ -536,6 +542,13 @@ void Renderer::drawElements(GLenum mode, GLsizei count, GLenum type, GLsizei ins
     ++c.draws;
     c.triangles += trianglesOf(mode, count) * instances;
     glDrawElementsInstanced(mode, count, type, nullptr, instances);
+}
+
+std::vector<Renderer::MeshBatch*> Renderer::trees() {
+    std::vector<MeshBatch*> out;
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
+        for (MeshBatch& b : *list) out.push_back(&b);
+    return out;
 }
 
 void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds,
@@ -1493,6 +1506,8 @@ bool Renderer::init(Battle& battle) {
     makeBatch(particles_, {3, 4}, 0);
     makeBatch(bars_, {3, 4}, 0);
     makeBatch(dots_, {3, 4, 2}, 0);
+    bakeTreeBoards();
+    layOutBoards();
     reset(battle);
     return true;
 }
@@ -1979,6 +1994,8 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     for (MeshBatch& b : copses_) casters.push_back(&b);
     if (features_ & kFarDetail)
         for (MeshBatch& b : nearCopses_) casters.push_back(&b);
+    if (treeStyle_ == TreeStyle::Mesh)
+        for (MeshBatch* b : trees()) casters.push_back(b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
@@ -1987,6 +2004,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         glBindVertexArray(b->vao);
         drawArrays(GL_TRIANGLES, 0, b->vertices, b->count);
     }
+    drawTrees(camera, timeSeconds, gameSeconds);
     drawModel(modelDepth_, ruinModel_, camera, timeSeconds, gameSeconds);
     // Soldiers: their billboards turned side-on to the sun, so the cut-out
     // silhouettes cast real shadows.
@@ -2533,11 +2551,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             for (MeshBatch& b : nearCopses_) woods.push_back(&b);
         drawMeshes(woods, camera, timeSeconds, gameSeconds);
     }
-    if (camera.distance() > 450.0f) {
-        drawMeshes(scenery(false), camera, timeSeconds, gameSeconds);
-    } else {
-        drawMeshes(scenery(true), camera, timeSeconds, gameSeconds);
-    }
+    drawMeshes(scenery(camera.distance() <= 450.0f), camera, timeSeconds, gameSeconds);
+    drawTrees(camera, timeSeconds, gameSeconds);
 
     part_ = Part::Effects;
     // Decals: blended, no depth writes. Ground marks first, then body parts,
