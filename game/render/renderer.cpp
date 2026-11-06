@@ -512,7 +512,7 @@ std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
 }
 
 const char* Renderer::partName(Part p) {
-    static const char* const names[] = {"shadows", "sky", "land", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
+    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
     return names[static_cast<int>(p)];
 }
 
@@ -2485,7 +2485,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     };
     const bool farSunk = farDetail && (covers(ring_) || (patchShown && covers(patch_)));
     farProgram(detailOn_ && !farSunk ? farCut_ : far_, farDetail ? 6.0f : 0.0f, patchShown ? 6.0f : 0.0f);
-    part_ = Part::Land;
+    part_ = Part::Far;
     glBindVertexArray(farLand_.vao);
     drawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT);
     if (ocean_.count > 0) {
@@ -2596,7 +2596,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glDepthMask(GL_FALSE);
     setCommon(water_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(waterVao_);
-    part_ = Part::Land;
+    part_ = Part::Water;
     drawArrays(GL_TRIANGLES, 0, waterVertices_);
     drawDetailWater(camera, timeSeconds, gameSeconds);
     glDepthMask(GL_TRUE);

@@ -152,18 +152,19 @@ std::string drawSummary() {
     return "draws " + std::to_string(draws) + " tris " + std::to_string(triangles / 1000) + "k:" + out;
 }
 
-// --profile: what each kind of drawing costs, found by hiding it in turn for a while and seeing what the GPU saves.
+// --profile: what each kind of drawing costs, found by hiding it in turn for a while and seeing what the GPU saves
+// against the undimmed frames on either side (the GPU's clock drifts, so one baseline would not do).
 class Profile {
 public:
     Profile(int start, int parts) : start_(start), parts_(parts) {}
     // Called each frame with the GPU time of a frame lately finished (0 if none); false once the table is printed.
     bool step(int frame, double rawGpuMs) {
         if (frame < start_) return true;
-        const int at = (frame - start_) / (kWarm + kSample), within = (frame - start_) % (kWarm + kSample);
-        if (within == 0 && at > 0) finish(at - 1);
-        if (at > parts_) return false;
+        const int phase = (frame - start_) / (kWarm + kSample), within = (frame - start_) % (kWarm + kSample);
+        if (within == 0 && phase > 0) finish(phase - 1);
+        if (phase > 2 * parts_) return false;
         if (within == 0) {
-            illyria_hide_parts(at == 0 ? 0u : 1u << (at - 1));
+            illyria_hide_parts(phase % 2 ? 1u << (phase / 2) : 0u);
             sum_ = 0;
             n_ = 0;
         }
@@ -175,21 +176,25 @@ public:
     }
 
 private:
-    static constexpr int kWarm = 20, kSample = 60;
-    void finish(int step) {
+    static constexpr int kWarm = 20, kSample = 90;
+    void finish(int phase) {
         const double ms = n_ ? sum_ / n_ : 0;
-        if (step == 0) {
-            base_ = ms;
-            counts_ = drawCounts();
-            std::printf("profile: gpu %.2f ms, %s\n%-10s %6s %9s %8s\n", ms, drawSummary().c_str(), "part", "draws", "triangles", "gpu ms");
+        if (phase % 2 == 0) {
+            if (phase == 0) {
+                counts_ = drawCounts();
+                std::printf("profile: %s\n%-10s %6s %9s %8s\n", drawSummary().c_str(), "part", "draws", "triangles", "gpu ms");
+            } else {
+                const DrawCount& c = counts_[static_cast<size_t>(phase / 2 - 1)];
+                std::printf("%-10s %6d %9ld %8.2f\n", c.name.c_str(), c.draws, c.triangles, (before_ + ms) / 2 - hidden_);
+                std::fflush(stdout);
+            }
+            before_ = ms;
         } else {
-            const DrawCount& c = counts_[static_cast<size_t>(step - 1)];
-            std::printf("%-10s %6d %9ld %8.2f\n", c.name.c_str(), c.draws, c.triangles, base_ - ms);
+            hidden_ = ms;
         }
-        std::fflush(stdout);
     }
     int start_, parts_, n_ = 0;
-    double sum_ = 0, base_ = 0;
+    double sum_ = 0, before_ = 0, hidden_ = 0;
     std::vector<DrawCount> counts_;
 };
 

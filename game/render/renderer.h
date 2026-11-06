@@ -53,7 +53,7 @@ public:
 
     // Where a frame's drawing goes, counted as it is issued (the desktop's --stats table), and each kind switchable
     // off to time what it costs. Cosmetic like everything here.
-    enum class Part : int { Shadows, Sky, Land, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Count };
+    enum class Part : int { Shadows, Sky, Land, Far, Water, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Count };
     struct PartCount {
         int draws = 0;
         long triangles = 0;

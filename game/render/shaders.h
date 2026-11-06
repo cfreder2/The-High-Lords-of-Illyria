@@ -221,35 +221,43 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
     albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
+    // Each kind's look is worked out only where the kind is (the noise is most of this function's cost, and
+    // most land is meadow): the same picture as working all of them out and weighing them by nothing.
     // Forest canopy: crowns and gaps, lit as a rough surface.
-    float crowns = fbm3(p / 9.0);
-    vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
-    canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
-    albedo = mix(albedo, canopy, forest * land);
-    n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+    if (forest > 0.0) {
+        float crowns = fbm3(p / 9.0);
+        vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
+        canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
+        albedo = mix(albedo, canopy, forest * land);
+        n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+    }
     // Rock: strata, crags and scree.
-    // Broken bands, warped hard so they read as rock, not contour lines.
-    float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + valueNoise2(p / 9.0) * 3.0);
-    float tone = fbm3(p / 18.0) * 0.6 + 0.2;
-    vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * valueNoise2(p / 5.0));
-    // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
-    stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
-    stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, valueNoise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
-    // Bare rock on the steeps and the heights; alpine turf holds on the
-    // gentler mountain ground and climbs the ravines, so the cover follows the land.
-    // (Heights here are the mountains' own: a third of the first design's, Continent::peakHeight.)
-    float high = smoothstep(63.0, 107.0, world.z + (fbm3(p / 80.0) - 0.5) * 23.0);
-    float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
-    float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
-    vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * valueNoise2(p / 7.0));
-    albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
-    albedo = mix(albedo, stone, rocky);
-    vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
-    n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
+    if (rock > 0.0 || slope > 0.3) {
+        // Broken bands, warped hard so they read as rock, not contour lines.
+        float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + valueNoise2(p / 9.0) * 3.0);
+        float tone = fbm3(p / 18.0) * 0.6 + 0.2;
+        vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * valueNoise2(p / 5.0));
+        // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
+        stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
+        stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, valueNoise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
+        // Bare rock on the steeps and the heights; alpine turf holds on the
+        // gentler mountain ground and climbs the ravines, so the cover follows the land.
+        // (Heights here are the mountains' own: a third of the first design's, Continent::peakHeight.)
+        float high = smoothstep(63.0, 107.0, world.z + (fbm3(p / 80.0) - 0.5) * 23.0);
+        float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
+        float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
+        vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * valueNoise2(p / 7.0));
+        albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
+        albedo = mix(albedo, stone, rocky);
+        vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
+        n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
+    }
     // Snow lies on the heights, but not on cliffs.
-    float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
-    albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
+    if (world.z > 90.0) {
+        float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
+        albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
+    }
+    if (swamp > 0.0) albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
     return albedo;
 }
 )"
@@ -364,14 +372,16 @@ void main() {
         albedo = mix(albedo, soil, soilMask * kind.x * 0.85 * (1.0 - canopy));
         // Grass: clumps, then blades (streaky noise), fading before they alias.
         float clump = valueNoise(p * 0.75 + 13.0);
-        float blades = valueNoise(p * vec2(6.3, 2.2) + 1.7) * 0.5 + valueNoise(p * vec2(2.1, 6.9) + 9.3) * 0.5;
         float grass = kind.x * (1.0 - soilMask);
         albedo *= mix(1.0, 0.8 + 0.4 * clump, grass * detailFade(1.3, px));
-        albedo *= mix(1.0, 0.78 + 0.44 * blades, grass * detailFade(0.25, px));
+        if (grass * detailFade(0.25, px) > 0.0) {  // (the noise only where it shows: the same picture, a third of the cost from afar)
+            float blades = valueNoise(p * vec2(6.3, 2.2) + 1.7) * 0.5 + valueNoise(p * vec2(2.1, 6.9) + 9.3) * 0.5;
+            albedo *= mix(1.0, 0.78 + 0.44 * blades, grass * detailFade(0.25, px));
+        }
         // Wildflowers: sparse dots of white, yellow, violet and red.
         vec2 fc = floor(p / 0.45);
         float fh = hash12(fc + 0.37);
-        if (fh > 0.955 && grass > 0.5) {
+        if (fh > 0.955 && grass > 0.5 && detailFade(0.1, px) > 0.0) {
             vec2 centre = (fc + 0.25 + 0.5 * vec2(hash12(fc + 3.1), hash12(fc + 7.7))) * 0.45;
             float d = length(p - centre);
             float k = hash12(fc + 11.0);
@@ -380,36 +390,48 @@ void main() {
             albedo = mix(albedo, petal, spot * smoothstep(0.4, 0.8, lush));
         }
         // Forest floor: leaf litter, needles and moss.
-        vec3 litter = mix(vec3(0.30, 0.22, 0.12), vec3(0.42, 0.30, 0.16), valueNoise(p * 2.7));
-        litter = mix(litter, vec3(0.22, 0.30, 0.12), smoothstep(0.55, 0.8, valueNoise(p * 0.6 + 2.0)));
-        // From high up the trees are too small to see: show the canopy's green, not the floor.
-        // Same crowns-and-gaps pattern as the distant canopy, so the two meet seamlessly.
-        float crowns = valueNoise2(p / 9.0) * 0.55 + valueNoise2(p / 9.0 * 2.1 + 3.7) * 0.3 + valueNoise2(p / 9.0 * 4.3 + 9.1) * 0.15;
-        litter = mix(litter, mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns), smoothstep(150.0, 600.0, dist));
-        albedo = mix(albedo, litter, clamp(kind.y * 0.8 + canopy * 0.7, 0.0, 1.0));
+        float floorShown = clamp(kind.y * 0.8 + canopy * 0.7, 0.0, 1.0);
+        if (floorShown > 0.0) {
+            vec3 litter = mix(vec3(0.30, 0.22, 0.12), vec3(0.42, 0.30, 0.16), valueNoise(p * 2.7));
+            litter = mix(litter, vec3(0.22, 0.30, 0.12), smoothstep(0.55, 0.8, valueNoise(p * 0.6 + 2.0)));
+            // From high up the trees are too small to see: show the canopy's green, not the floor.
+            // Same crowns-and-gaps pattern as the distant canopy, so the two meet seamlessly.
+            if (dist > 150.0) {
+                float crowns = valueNoise2(p / 9.0) * 0.55 + valueNoise2(p / 9.0 * 2.1 + 3.7) * 0.3 + valueNoise2(p / 9.0 * 4.3 + 9.1) * 0.15;
+                litter = mix(litter, mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns), smoothstep(150.0, 600.0, dist));
+            }
+            albedo = mix(albedo, litter, floorShown);
+        }
         // Rock: strata and lichen.
-        float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
-        vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * valueNoise(p * 3.1));
-        stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(p * 1.9 + 4.0)) * 0.6);
-        albedo = mix(albedo, stone, max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8);
+        float stoneShown = max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8;
+        if (stoneShown > 0.0) {
+            float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
+            vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * valueNoise(p * 3.1));
+            stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(p * 1.9 + 4.0)) * 0.6);
+            albedo = mix(albedo, stone, stoneShown);
+        }
         // Swamp: dark wet mud and standing puddles.
-        float puddles = smoothstep(0.6, 0.7, valueNoise(p * 0.5 + 20.0));
-        albedo = mix(albedo, mix(vec3(0.20, 0.22, 0.14), vec3(0.18, 0.24, 0.26), puddles), kind.w * 0.7);
+        if (kind.w > 0.0) {
+            float puddles = smoothstep(0.6, 0.7, valueNoise(p * 0.5 + 20.0));
+            albedo = mix(albedo, mix(vec3(0.20, 0.22, 0.14), vec3(0.18, 0.24, 0.26), puddles), kind.w * 0.7);
+        }
         // Stones lying in the grass and soil.
         vec2 sc = floor(p / 0.8);
-        if (hash12(sc + 5.5) > 0.93) {
+        if (hash12(sc + 5.5) > 0.93 && detailFade(0.15, px) > 0.0) {
             vec2 centre = (sc + 0.3 + 0.4 * vec2(hash12(sc + 1.3), hash12(sc + 2.9))) * 0.8;
             float d = length((p - centre) * vec2(1.0, 1.4));
             albedo = mix(albedo, vec3(0.55, 0.53, 0.5) * (0.8 + 0.4 * hash12(sc)), (1.0 - smoothstep(0.06, 0.11, d)) * detailFade(0.15, px));
         }
         // Bumps that catch the light: tussocks, clods and roots.
-        float e = 0.15;
-        float h0 = valueNoise(p * 1.6) + 0.5 * valueNoise(p * 4.3 + 2.0);
-        float hx = valueNoise((p + vec2(e, 0.0)) * 1.6) + 0.5 * valueNoise((p + vec2(e, 0.0)) * 4.3 + 2.0);
-        float hy = valueNoise((p + vec2(0.0, e)) * 1.6) + 0.5 * valueNoise((p + vec2(0.0, e)) * 4.3 + 2.0);
         float bump = 0.06 * near * detailFade(0.4, px);
-        n = normalize(n + vec3(-(hx - h0) / e, -(hy - h0) / e, 0.0) * bump);
-        slope = 1.0 - n.z;
+        if (bump > 0.0) {
+            float e = 0.15;
+            float h0 = valueNoise(p * 1.6) + 0.5 * valueNoise(p * 4.3 + 2.0);
+            float hx = valueNoise((p + vec2(e, 0.0)) * 1.6) + 0.5 * valueNoise((p + vec2(e, 0.0)) * 4.3 + 2.0);
+            float hy = valueNoise((p + vec2(0.0, e)) * 1.6) + 0.5 * valueNoise((p + vec2(0.0, e)) * 4.3 + 2.0);
+            n = normalize(n + vec3(-(hx - h0) / e, -(hy - h0) / e, 0.0) * bump);
+            slope = 1.0 - n.z;
+        }
     }
     // Bare earth and scree on steep slopes.
     albedo = mix(albedo, vec3(0.45, 0.40, 0.33) * (0.85 + 0.3 * fine), smoothstep(0.18, 0.3, slope) * 0.6);
