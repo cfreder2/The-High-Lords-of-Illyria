@@ -21,6 +21,7 @@
 namespace {
 
 SDL_Window* window = nullptr;
+SDL_GLContext context = nullptr;
 
 struct Options {
     std::string assets, mode, options, shot;
@@ -127,7 +128,8 @@ void requestModel(int kind) { native::requestModel(kind); }
 
 }  // namespace illyria::platform
 
-int main(int argc, char** argv) {
+namespace {
+int runApp(int argc, char** argv) {
     using namespace illyria;
     Options opt;
     if (!parse(argc, argv, opt)) return 2;
@@ -151,7 +153,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "No window: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_GLContext context = SDL_GL_CreateContext(window);
+    context = SDL_GL_CreateContext(window);
     if (!context) {
         std::fprintf(stderr, "OpenGL 4.1 is not available: %s\n", SDL_GetError());
         return 1;
@@ -254,10 +256,18 @@ int main(int argc, char** argv) {
         }
     }
     hud.saveConquest();
-    native::stopAssets();
-    native::audio::close();
-    SDL_GL_DestroyContext(context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
     return 0;
+}
+}  // namespace
+
+// Whatever the way out, the threads are stopped before the process starts to exit (a joinable std::thread
+// destroyed by exit() is std::terminate), then the sound, the GL context and window, SDL, in that order.
+int main(int argc, char** argv) {
+    const int code = runApp(argc, argv);
+    illyria::native::stopAssets();
+    illyria::native::audio::close();
+    if (context) SDL_GL_DestroyContext(context);
+    if (window) SDL_DestroyWindow(window);
+    SDL_Quit();
+    return code;
 }
