@@ -1396,31 +1396,39 @@ void World::separateBodies() {
         if (u.alive() && !u.inAir() && u.flight == Unit::Flight::Grounded) unitGrid_.insert(i, u.pos.x, u.pos.y);
     }
     unitGrid_.build();
-    // The pairs: where each stands and how wide, in step with the soldiers (a push moves both), so that the many
-    // that are near but not touching are told apart from a few compact numbers, not from the soldiers themselves.
+    // The pairs: where each stands and how wide, in the grid's order and in step with the soldiers (a push moves both),
+    // so that the many that are near but not touching are told apart by reading one run of numbers, not the soldiers.
     const Fixed maxRadius = Fixed::fromInt(3);
-    bodyPos_.resize(units_.size());
-    for (size_t i = 0; i < units_.size(); ++i) bodyPos_[i] = {units_[i].pos.x, units_[i].pos.y, units_[i].stats.radius};
+    const std::vector<uint32_t>& items = unitGrid_.items();
+    bodies_.resize(items.size());
+    bodyOf_.resize(units_.size());
+    for (uint32_t m = 0; m < items.size(); ++m) {
+        const Unit& u = units_[items[m]];
+        bodies_[m] = {u.pos.x, u.pos.y, u.stats.radius, items[m]};
+        bodyOf_[items[m]] = m;
+    }
     for (uint32_t i = 0; i < units_.size(); ++i) {
         Unit& a = units_[i];
         if (!a.alive() || a.inAir()) continue;
-        unitGrid_.query(bodyPos_[i].x, bodyPos_[i].y, bodyPos_[i].radius + maxRadius, [&](uint32_t j) {
-            if (j <= i) return;  // each pair once
-            const Vec3 d{bodyPos_[j].x - bodyPos_[i].x, bodyPos_[j].y - bodyPos_[i].y, Fixed::zero()};
-            const Fixed reach = bodyPos_[i].radius + bodyPos_[j].radius;
-            const Fixed distSq = d.lengthSq();
-            if (distSq >= reach * reach) return;
-            Unit& b = units_[j];
-            Fixed dist = sqrt(distSq);
-            Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-            const Fixed overlap = reach - dist;
-            const Fixed total = a.stats.mass + b.stats.mass;
-            a.pos -= n * (overlap * b.stats.mass / total);
-            b.pos += n * (overlap * a.stats.mass / total);
-            bodyPos_[i].x = a.pos.x;
-            bodyPos_[i].y = a.pos.y;
-            bodyPos_[j].x = b.pos.x;
-            bodyPos_[j].y = b.pos.y;
+        const Fixed radius = a.stats.radius;
+        unitGrid_.queryRuns(a.pos.x, a.pos.y, radius + maxRadius, [&](uint32_t first, uint32_t last) {
+            for (uint32_t m = first; m < last; ++m) {
+                const Body& body = bodies_[m];
+                const uint32_t j = body.index;
+                const Vec3 d{body.x - a.pos.x, body.y - a.pos.y, Fixed::zero()};
+                const Fixed reach = radius + body.radius;
+                const Fixed distSq = d.lengthSq();
+                if (j <= i || distSq >= reach * reach) continue;  // each pair once, and only the touching
+                Unit& b = units_[j];
+                Fixed dist = sqrt(distSq);
+                Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+                const Fixed overlap = reach - dist;
+                const Fixed total = a.stats.mass + b.stats.mass;
+                a.pos -= n * (overlap * b.stats.mass / total);
+                b.pos += n * (overlap * a.stats.mass / total);
+                bodies_[m].x = b.pos.x;
+                bodies_[m].y = b.pos.y;
+            }
         });
     }
     if (!config_.region) return;

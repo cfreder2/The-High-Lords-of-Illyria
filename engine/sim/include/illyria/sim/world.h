@@ -751,9 +751,10 @@ private:
                 items_[c.start + c.count++] = pending_[k].index;
             }
         }
-        // Calls fn(index) for soldiers whose cell overlaps the square of `radius` round (x, y): cell by cell, row by row.
-        template <typename Fn>
-        void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+        // Calls run(first, last) for each cell that overlaps the square of `radius` round (x, y), row by row, as a
+        // range of positions in items() (the soldiers of one cell, in the order of their index).
+        template <typename Run>
+        void queryRuns(Fixed x, Fixed y, Fixed radius, Run&& run) const {
             if (cells_.empty()) return;
             const int64_t x0 = cellOf(x - radius), x1 = cellOf(x + radius);
             const int64_t y0 = cellOf(y - radius), y1 = cellOf(y + radius);
@@ -764,11 +765,19 @@ private:
                         const Cell& c = cells_[i];
                         if (c.key == kNone) break;
                         if (c.key != k) continue;
-                        for (uint32_t m = c.start; m < c.start + c.count; ++m) fn(items_[m]);
+                        run(c.start, c.start + c.count);
                         break;
                     }
                 }
         }
+        // Calls fn(index) for each of those soldiers.
+        template <typename Fn>
+        void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+            queryRuns(x, y, radius, [&](uint32_t first, uint32_t last) {
+                for (uint32_t m = first; m < last; ++m) fn(items_[m]);
+            });
+        }
+        const std::vector<uint32_t>& items() const { return items_; }
 
     private:
         static constexpr int64_t kCell = 4, kNone = INT64_MIN;
@@ -1152,10 +1161,14 @@ private:
     Fixed obstacleReach_;  // the largest obstacle's reach from its middle (grid queries look this far)
     SpatialHash remainGrid_{4};
     UnitGrid unitGrid_;
+    // separateBodies' scratch: where each soldier of unitGrid_ stands and how wide, in the grid's own order (a push
+    // moves both, and the copy is kept in step), and where in that order each soldier is.
     struct Body {
         Fixed x, y, radius;
+        uint32_t index;
     };
-    std::vector<Body> bodyPos_;  // separateBodies' scratch
+    std::vector<Body> bodies_;
+    std::vector<uint32_t> bodyOf_;
     // Paths planned this tick, by (gait, start cell, goal cell): squads share routes.
     std::map<std::tuple<int, int64_t, int64_t>, std::vector<Vec3>> pathCache_;
 };
