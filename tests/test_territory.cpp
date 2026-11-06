@@ -107,11 +107,13 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
     CHECK(hex >= 0);
     if (hex < 0) return;
     const Campaign::Hex& h = c.hexes()[static_cast<size_t>(hex)];
-    const uint32_t ours = c.raise(0, cx, cy, {UnitType::LightInfantry});
+    const uint32_t ours = c.raise(0, cx, cy, {UnitType::LightInfantry, UnitType::LightInfantry, UnitType::LightInfantry});
     reckon(c, 8);
     const int32_t held = h.claim;
     CHECK(h.owner == 0 && held >= 100);
-    // A rival stack in another cell of the same hex: contested, nothing changes.
+    // A rival stack in another cell of the same hex. A hex is two cells across, so the two meet and fight where
+    // they stand (docs/ONE_WORLD.md: no dice, no battle windows): the hex is contested for as long as both stand
+    // in it, and the claim does not move; when one side is gone, the other wears it away and takes it.
     int32_t ox = -1, oy = -1;
     for (int32_t y = cy - 1; y <= cy + 1 && ox < 0; ++y)
         for (int32_t x = cx - 1; x <= cx + 1 && ox < 0; ++x)
@@ -119,13 +121,25 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
     CHECK(ox >= 0);
     if (ox < 0) return;
     const uint32_t theirs = c.raise(3, ox, oy, {UnitType::LightInfantry, UnitType::LightInfantry, UnitType::LightInfantry});
-    reckon(c, 5);
-    CHECK(h.owner == 0 && h.claim == held);
-    // Ours gone: theirs wear ours down (25 a reckoning), then claim it.
-    for (const Army& a : std::vector<Army>(c.findStack(ours)->armies)) CampaignOrders::disband(c, ours, a.id);
-    reckon(c, 4);
-    CHECK(h.owner == 3);
-    (void)theirs;
+    const auto standing = [&](uint32_t id) {
+        const Campaign::Stack* s = c.findStack(id);
+        return s != nullptr && !s->armies.empty() && c.hexAt(s->cx, s->cy) == hex;
+    };
+    int32_t contested = 0;
+    while (standing(ours) && standing(theirs) && contested < 40) {
+        reckon(c, 1);
+        ++contested;
+        if (standing(ours) && standing(theirs)) CHECK(h.owner == 0 && h.claim == held);
+    }
+    CHECK(contested > 0 && contested < 40);
+    CHECK(standing(ours) != standing(theirs));
+    const uint8_t winner = standing(ours) ? 0 : 3;
+    int32_t worn = 0;
+    while (h.owner != winner && worn < 20) {
+        reckon(c, 1);
+        ++worn;
+    }
+    CHECK(h.owner == winner && worn < 20);
 }
 
 TEST(outposts_are_claimed_twice_as_fast_and_reach_round_them) {
