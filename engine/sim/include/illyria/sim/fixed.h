@@ -44,6 +44,13 @@ struct Fixed {
     constexpr Fixed operator-(Fixed o) const { return Fixed{raw - o.raw}; }
     // Product is truncated toward negative infinity (arithmetic shift).
     constexpr Fixed operator*(Fixed o) const {
+#ifdef __wasm__
+        // (WebAssembly has no 128-bit multiply: both under 2^31 raw, 32,768 units, which is nearly every product in a
+        // battle, the product fits 64 bits and the same shift gives the same result. Natively the 128-bit multiply is
+        // two instructions and the test would cost more than it saves.)
+        constexpr int64_t kSmall = int64_t{1} << 31;
+        if (raw > -kSmall && raw < kSmall && o.raw > -kSmall && o.raw < kSmall) return Fixed{(raw * o.raw) >> kFracBits};
+#endif
         return Fixed{static_cast<int64_t>((static_cast<i128>(raw) * o.raw) >> kFracBits)};
     }
     // Quotient is truncated toward zero. Division by zero is a logic error.
