@@ -217,18 +217,17 @@ A short note on how it works, and what it costs.
     of every standing stack was men x foes, and the soldiers' grids were hash tables of lists.
 
   - *After the tick was made to ask only what is near* (`illyria_tickbench`, which prints the same numbers and the
-    world's checksum; the same ticks give the same checksum before and after, and every golden is unchanged). Native on a
-    quiet machine, and the browser's build (node) as the ratio of an interleaved run on a loaded machine applied to the
-    figures above:
+    world's checksum; the same ticks give the same checksum before and after, native and wasm, and every golden is
+    unchanged). Measured on a quiet machine, original and new interleaved:
 
-    | men in the world | native, ms a tick (before) | native, after | wasm (node), after |
-    |---|---|---|---|
-    | 1,819 | 1.5-2.4 | 0.65 (0.36 us a man) | about 1.1 |
-    | 3,355 | 6.0-9.2 | 2.9 | about 4 |
-    | 7,070 | 19-29 | 9.5 (1.35 us a man) | about 12 |
+    | men in the world | native, ms a tick (was) | native, now | wasm (node), ms a tick (was) | wasm, now |
+    |---|---|---|---|---|
+    | 1,819 | 1.5 | 0.45 (0.25 us a man) | 3.0 | 0.95 |
+    | 3,355 | 5.8 | 2.0 | 13.2 | 3.2 |
+    | 7,070 | 18.3 | 6.5 (0.92 us a man) | 43.9 | 11.8 |
 
-    So native fits the full population at 1x with room to spare and at 2x to the end, and the browser fits 7,000 men
-    at 1x. Nothing was made cheaper or skipped for Conquest, and nothing here is a second way of moving men: the same
+    So native fits the full population at 1x with room to spare and at 4x to the end, and the browser fits 7,000 men
+    at 1x (and 2x on a fast machine). Nothing was made cheaper or skipped for Conquest, and nothing here is a second way of moving men: the same
     steps over the same men, asked of fewer of them. If it is too slow at 4x and beyond, or in the browser on a slow
     machine late in a game, that is a decision for the game (fewer, larger squads; a smaller island; a speed cap that
     follows the population), not a reason to put the men to sleep again.
