@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ILLYRIA_BUILD_TESTS "Build unit tests" ON)
+option(ILLYRIA_BUILD_APP "Build the desktop game (illyria_app; fetches SDL and libwebp, which are C)" OFF)
+if(ILLYRIA_BUILD_APP AND NOT EMSCRIPTEN)
+    enable_language(C)
+endif()
 
 if(MSVC AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     message(FATAL_ERROR "The simulation core needs __int128; build Windows with clang-cl or MinGW.")

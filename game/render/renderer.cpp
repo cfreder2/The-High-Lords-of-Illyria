@@ -66,9 +66,9 @@ Look lookOf(UnitType t) {
 }
 
 GLuint compile(GLenum type, const char* body) {
-    const char* sources[] = {shaders::kCommon, body};
+    const char* sources[] = {shaders::kVersion, shaders::kCommon, body};
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 2, sources, nullptr);
+    glShaderSource(s, 3, sources, nullptr);
     glCompileShader(s);
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);

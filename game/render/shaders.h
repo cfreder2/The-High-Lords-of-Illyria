@@ -1,12 +1,21 @@
 #pragma once
 
 // GLSL ES 3.00 (WebGL 2) shader sources for the battle renderer. Every program
-// is prefixed with kCommon.
+// is prefixed with kVersion and kCommon. A desktop (OpenGL 4.1 core) takes the
+// same source under its own version line: it accepts the precision statements
+// and everything else used here.
 
 namespace illyria::game::shaders {
 
-inline const char* kCommon = R"(#version 300 es
-precision highp float;
+inline const char* kVersionES = "#version 300 es\n";
+inline const char* kVersionGL = "#version 410 core\n";
+#ifdef __EMSCRIPTEN__
+inline const char* kVersion = kVersionES;
+#else
+inline const char* kVersion = kVersionGL;
+#endif
+
+inline const char* kCommon = R"(precision highp float;
 precision highp int;
 precision highp sampler2D;
 precision highp sampler2DShadow;
@@ -105,7 +114,7 @@ float shadowAt(vec3 world, vec3 n) {
     s += texture(uShadowMap, vec3(c.xy + vec2(-t, -t), z)) * 0.15;
     return mix(s, 1.0, smoothstep(uShadowInfo.y, uShadowInfo.z, fromFocus));
 }
-float noise2(vec2 p) {
+float valueNoise2(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
@@ -114,7 +123,7 @@ float noise2(vec2 p) {
 float cloudShade(vec2 xy) {
     if (!feature(kFeatAtmosphere)) return 1.0;
     vec2 p = xy / 1400.0 + vec2(uTime * 0.004, uTime * 0.0025);
-    float c = noise2(p) * 0.6 + noise2(p * 2.3 + 7.1) * 0.3 + noise2(p * 5.1 + 3.7) * 0.1;
+    float c = valueNoise2(p) * 0.6 + valueNoise2(p * 2.3 + 7.1) * 0.3 + valueNoise2(p * 5.1 + 3.7) * 0.1;
     return 1.0 - 0.38 * smoothstep(0.5, 0.72, c);
 }
 // Aerial perspective: distant land fades toward the horizon, warmer toward the sun.
@@ -140,7 +149,7 @@ float hexEdge(vec2 p, float s) {
     g = abs(g);
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
-float fbm3(vec2 p) { return noise2(p) * 0.55 + noise2(p * 2.1 + 3.7) * 0.3 + noise2(p * 4.3 + 9.1) * 0.15; }
+float fbm3(vec2 p) { return valueNoise2(p) * 0.55 + valueNoise2(p * 2.1 + 3.7) * 0.3 + valueNoise2(p * 4.3 + 9.1) * 0.15; }
 // Territory (sim campaign_territory.cpp): one texel per campaign hex, the
 // holder's colour with alpha for how firmly; drawn on the campaign map only.
 uniform sampler2D uTerritory;
@@ -196,43 +205,43 @@ vec3 landGrids(vec3 c, vec2 xy) {
 // battlefield's and the close-up land's as the camera rises, so they all look
 // alike from high up.
 // The far land's waterline (kinds.w = 1) wanders a little between samples.
-float farShoreWobble(vec2 p) { return (noise2(p / 23.0) - 0.5) * 0.03 + (noise2(p / 7.0) - 0.5) * 0.012; }
+float farShoreWobble(vec2 p) { return (valueNoise2(p / 23.0) - 0.5) * 0.03 + (valueNoise2(p / 7.0) - 0.5) * 0.012; }
 vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     vec3 albedo = base;
     vec2 p = world.xy;
     // Ground kinds meet along ragged, natural edges instead of the grid.
-    float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (noise2(p / 28.0) - 0.5) * 0.35;
+    float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (valueNoise2(p / 28.0) - 0.5) * 0.35;
     float forest = smoothstep(0.4, 0.6, kinds.x + edge);
     float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
     float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
     float water = step(1.0, kinds.w + farShoreWobble(p));
     float slope = 1.0 - n.z;
     // Meadows: lush and dry patches, as on the battlefield.
-    float lush = noise2(p * 0.045 + 3.1) * 0.65 + noise2(p * 0.13 + 8.7) * 0.35;
-    vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * noise2(p * 0.4));
+    float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
+    vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
     albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
     // Forest canopy: crowns and gaps, lit as a rough surface.
     float crowns = fbm3(p / 9.0);
     vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
-    canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, noise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
+    canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
     albedo = mix(albedo, canopy, forest * land);
-    n = normalize(n + vec3(noise2(p / 6.0) - 0.5, noise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+    n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
     // Rock: strata, crags and scree.
     // Broken bands, warped hard so they read as rock, not contour lines.
-    float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + noise2(p / 9.0) * 3.0);
+    float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + valueNoise2(p / 9.0) * 3.0);
     float tone = fbm3(p / 18.0) * 0.6 + 0.2;
-    vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * noise2(p / 5.0));
+    vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * valueNoise2(p / 5.0));
     // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
     stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
-    stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, noise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
+    stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, valueNoise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
     // Bare rock on the steeps and the heights; alpine turf holds on the
     // gentler mountain ground and climbs the ravines, so the cover follows the land.
     // (Heights here are the mountains' own: a third of the first design's, Continent::peakHeight.)
     float high = smoothstep(63.0, 107.0, world.z + (fbm3(p / 80.0) - 0.5) * 23.0);
     float bare = smoothstep(0.12, 0.32, slope + high * 0.3 + (fbm3(p / 45.0) - 0.5) * 0.18);
     float rocky = max(rock * bare, smoothstep(0.3, 0.55, slope)) * land;
-    vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * noise2(p / 7.0));
+    vec3 turf = mix(vec3(0.36, 0.40, 0.20), vec3(0.47, 0.45, 0.27), fbm3(p / 30.0)) * (0.92 + 0.16 * valueNoise2(p / 7.0));
     albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
     albedo = mix(albedo, stone, rocky);
     vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
@@ -240,7 +249,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // Snow lies on the heights, but not on cliffs.
     float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
     albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
-    albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, noise2(p / 30.0))), swamp * land);
+    albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
     return albedo;
 }
 )"
@@ -375,7 +384,7 @@ void main() {
         litter = mix(litter, vec3(0.22, 0.30, 0.12), smoothstep(0.55, 0.8, valueNoise(p * 0.6 + 2.0)));
         // From high up the trees are too small to see: show the canopy's green, not the floor.
         // Same crowns-and-gaps pattern as the distant canopy, so the two meet seamlessly.
-        float crowns = noise2(p / 9.0) * 0.55 + noise2(p / 9.0 * 2.1 + 3.7) * 0.3 + noise2(p / 9.0 * 4.3 + 9.1) * 0.15;
+        float crowns = valueNoise2(p / 9.0) * 0.55 + valueNoise2(p / 9.0 * 2.1 + 3.7) * 0.3 + valueNoise2(p / 9.0 * 4.3 + 9.1) * 0.15;
         litter = mix(litter, mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns), smoothstep(150.0, 600.0, dist));
         albedo = mix(albedo, litter, clamp(kind.y * 0.8 + canopy * 0.7, 0.0, 1.0));
         // Rock: strata and lichen.
@@ -1529,12 +1538,12 @@ void main() {
         float px = max(fwidth(uv.x), fwidth(uv.y));
         float fade = 1.0 - smoothstep(0.03, 0.12, px);
         float mortar = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.09, f.y) * smoothstep(1.0, 0.91, f.y);
-        float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (noise2(uv * 3.1) - 0.5);
+        float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (valueNoise2(uv * 3.1) - 0.5);
         albedo *= mix(1.0, mix(0.6, tone, mortar), fade);
         // Streaks running down the faces; on the paving, wear in patches (not
         // stripes, which would band a ramp across).
-        albedo *= 0.9 + 0.14 * noise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));
-        float lichen = smoothstep(0.62, 0.8, noise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
+        albedo *= 0.9 + 0.14 * valueNoise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));
+        float lichen = smoothstep(0.62, 0.8, valueNoise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
         albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
     }
     vec3 c = albedo * light;
@@ -1635,8 +1644,8 @@ void main() {
     vec2 road = texture(uRoad, xy / size).rg;
     float onRoad = road.g > 0.3 && abs((road.r - 0.5) * 16.0) < 3.0 ? 1.0 : 0.0;
     // Same patches the ground shader paints, so tufts avoid the bare soil.
-    float soil = smoothstep(0.7, 0.84, noise2(xy * 0.085 + 41.0) * 0.6 + noise2(xy * 0.5 + 5.0) * 0.4);
-    float lush = noise2(xy * 0.045 + 3.1) * 0.65 + noise2(xy * 0.13 + 8.7) * 0.35;
+    float soil = smoothstep(0.7, 0.84, valueNoise2(xy * 0.085 + 41.0) * 0.6 + valueNoise2(xy * 0.5 + 5.0) * 0.4);
+    float lush = valueNoise2(xy * 0.045 + 3.1) * 0.65 + valueNoise2(xy * 0.13 + 8.7) * 0.35;
     bool plains = g == 0, forest = g == 2, swamp = g == 3, rock = g == 6, wet = g == 4 || g == 5;
     float density = 0.0;
     if (kind < 0.5) density = plains ? 0.95 * (1.0 - soil) * (1.0 - canopy * 0.75) : forest ? 0.2 : swamp ? 0.8 : rock ? 0.12 : 0.0;
@@ -1706,7 +1715,7 @@ void main() {
     c += vec3(1.0, 0.86, 0.6) * (pow(sun, 8.0) * 0.25 + pow(sun, 400.0) * 1.5);
     // Faint high cloud.
     vec2 q = d.xy / max(d.z, 0.08) * 1.6 + vec2(uTime * 0.003, 0.0);
-    float cl = smoothstep(0.55, 0.85, noise2(q) * 0.6 + noise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
+    float cl = smoothstep(0.55, 0.85, valueNoise2(q) * 0.6 + valueNoise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
     c = mix(c, vec3(0.97, 0.97, 0.98), cl * 0.55);
     oColor = vec4(c, 1.0);
 }
@@ -1759,8 +1768,8 @@ uniform sampler2D uFlow;  // RG8: downstream direction per terrain sample (0.5 =
 out vec4 oColor;
 // Ripples drawn along the current: stretched noise drifting downstream.
 float current(vec2 along, float t) {
-    return noise2(along * vec2(0.35, 1.6) - vec2(t, 0.0)) * 0.55 + noise2(along * vec2(0.9, 3.1) - vec2(t * 1.7, 0.0) + 7.3) * 0.3 +
-           noise2(along * vec2(2.3, 6.5) - vec2(t * 2.6, 0.0) + 3.1) * 0.15;
+    return valueNoise2(along * vec2(0.35, 1.6) - vec2(t, 0.0)) * 0.55 + valueNoise2(along * vec2(0.9, 3.1) - vec2(t * 1.7, 0.0) + 7.3) * 0.3 +
+           valueNoise2(along * vec2(2.3, 6.5) - vec2(t * 2.6, 0.0) + 3.1) * 0.15;
 }
 void main() {
     vec2 p = vWorld.xy;
@@ -1781,7 +1790,7 @@ void main() {
     float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
     vec3 n = normalize(vec3(-gw * 0.06 * calm, 1.0));
     // Colour: the bed shows through the shallows; silt-green to deep blue.
-    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), noise2(p * 0.7));
+    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7));
     vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
     vec3 c = mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
     // Sky in the surface, more at grazing angles.
@@ -1851,7 +1860,7 @@ void main() {
         // Rivers, lakes and pools: the battlefield's water (kWaterFs) over its
         // bed, seen from high up: silt-green shallows to deep blue, calm.
         float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
-        vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), noise2(p * 0.7)) * 0.8;
+        vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
         vec3 wc = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, dm));
         wc = mix(bed, wc, 1.0 - exp(-dm * 1.6));
         inland = mix(bed, wc, clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
@@ -1863,14 +1872,14 @@ void main() {
         albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
         vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.09 - t * 1.1) * 0.10;
         g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
-        g += (vec2(noise2(p / 6.0 + t * 0.35), noise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
+        g += (vec2(valueNoise2(p / 6.0 + t * 0.35), valueNoise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
         n = normalize(vec3(-g, 1.0));
         {
             // The sea: lines of foam roll in over the shallows and break on the sand.
             float shore = 1.0 - smoothstep(0.0, 0.3, depth);
-            float roll = sin(depth * 55.0 + t * 1.7 + noise2(p / 45.0) * 7.0);
-            float foam = smoothstep(0.55, 0.95, roll) * shore * (0.55 + 0.45 * noise2(p / 3.0 + t * 0.4));
-            foam = max(foam, (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * noise2(p / 2.0 + t * 0.8)));
+            float roll = sin(depth * 55.0 + t * 1.7 + valueNoise2(p / 45.0) * 7.0);
+            float foam = smoothstep(0.55, 0.95, roll) * shore * (0.55 + 0.45 * valueNoise2(p / 3.0 + t * 0.4));
+            foam = max(foam, (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * valueNoise2(p / 2.0 + t * 0.8)));
             albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
             glint = 1.0 - foam;
         }
@@ -1982,13 +1991,13 @@ void main() {
     vec3 c;
     if (vKind < 0.5) {
         // Streaks pour down the sheet; it thins to spray at the edges.
-        float streak = noise2(vec2(vUv.x * 9.0, vUv.y * 0.6 - uTime * 2.6)) * 0.6 + noise2(vec2(vUv.x * 23.0, vUv.y * 1.7 - uTime * 4.1)) * 0.4;
+        float streak = valueNoise2(vec2(vUv.x * 9.0, vUv.y * 0.6 - uTime * 2.6)) * 0.6 + valueNoise2(vec2(vUv.x * 23.0, vUv.y * 1.7 - uTime * 4.1)) * 0.4;
         c = mix(vec3(0.55, 0.68, 0.74), vec3(0.95, 0.97, 0.98), smoothstep(0.35, 0.75, streak));
         a = edge * (0.55 + 0.4 * streak);
     } else {
         vec2 q = vUv * 2.0 - 1.0;
         float r = length(q);
-        float churn = noise2(q * 5.0 + uTime * 0.9) * 0.6 + noise2(q * 11.0 - uTime * 1.4) * 0.4;
+        float churn = valueNoise2(q * 5.0 + uTime * 0.9) * 0.6 + valueNoise2(q * 11.0 - uTime * 1.4) * 0.4;
         c = vec3(0.92, 0.95, 0.96);
         a = (1.0 - smoothstep(0.4, 1.0, r)) * smoothstep(0.3, 0.7, churn) * 0.8;
     }

@@ -1,8 +1,6 @@
-// Browser entry point: WebGL 2 context, main loop, and the C functions the
-// page's JavaScript calls for input and HUD state.
-
-#include <emscripten/emscripten.h>
-#include <emscripten/html5.h>
+// The game: its loop and the C functions the page's JavaScript (or the native
+// shell) calls for input and HUD state. The machine it runs on is behind
+// platform.h.
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +13,7 @@
 #include <vector>
 
 #include "../render/renderer.h"
+#include "platform.h"
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/factions.h"
@@ -30,6 +29,7 @@
 #endif
 
 using namespace illyria::game;
+namespace platform = illyria::platform;
 
 namespace illyria::game {
 void fetchPrerenderedSheets(Renderer& renderer);  // sheets.cpp
@@ -38,29 +38,15 @@ void fetchModels(Renderer& renderer);  // models.cpp
 
 namespace {
 
-// Hands a voice cue to the page (game/web/voice.js), which plays it.
-EM_JS(void, play_voice_cue, (const char* set, const char* situation, int enemy, float pan, float gain, int priority, int speaker, int tick), {
-    if (window.IllyriaVoice) window.IllyriaVoice.cue(UTF8ToString(set), UTF8ToString(situation), !!enemy, pan, gain, priority, speaker, tick);
-});
-
-// Hands a sound effect cue, and the ambience, to the page (game/web/sfx.js).
-EM_JS(void, play_sfx_cue, (const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick), {
-    if (window.IllyriaSfx) window.IllyriaSfx.cue(UTF8ToString(id), gain, pan, dist, delay, doppler, priority, count, tick);
-});
-EM_JS(void, set_sfx_ambience, (float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain), {
-    if (window.IllyriaSfx) window.IllyriaSfx.ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
-});
-
-// The minimap's land (RGBA, rows from the north) to the page's canvas (illyria_minimap_land).
-EM_JS(void, minimap_land_page, (const uint8_t* rgba, int w, int h), {
-    if (window.IllyriaMinimap) window.IllyriaMinimap.land(HEAPU8.slice(rgba, rgba + w * h * 4), w, h);
-});
-
-// A match asked for without a place: the page's setup panel (modes.js); and one begun.
-// A match begun (startOtherMode): its HUD on the page (modes.js).
-EM_JS(void, mode_started_page, (const char* id), {
-    if (window.IllyriaMatch) window.IllyriaMatch.started(UTF8ToString(id));
-});
+void play_voice_cue(const char* set, const char* situation, int enemy, float pan, float gain, int priority, int speaker, int tick) {
+    platform::voiceCue(set, situation, enemy != 0, pan, gain, priority, speaker, tick);
+}
+void play_sfx_cue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick) {
+    platform::sfxCue(id, gain, pan, dist, delay, doppler, priority, count, tick);
+}
+void set_sfx_ambience(float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain) {
+    platform::sfxAmbience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+}
 
 // The battle's sounds since the last frame, and the ambience when it changed.
 void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
@@ -206,7 +192,7 @@ void adaptResolution(double now) {
     } else if (app->fps > 50) {
         app->slowSince = -1;
         if (app->fastSince < 0) app->fastSince = now;
-        if (now - app->fastSince > 4000 && app->ratio < std::min(app->maxPixelRatio, emscripten_get_device_pixel_ratio())) {
+        if (now - app->fastSince > 4000 && app->ratio < std::min(app->maxPixelRatio, platform::canvas().pixelRatio)) {
             app->ratio = std::min(app->maxPixelRatio, app->ratio + 0.25);
             app->fastSince = now;
         }
@@ -216,19 +202,20 @@ void adaptResolution(double now) {
 }
 
 void resizeCanvas() {
-    double cssW = 0, cssH = 0;
-    emscripten_get_element_css_size("#canvas", &cssW, &cssH);
-    app->pixelRatio = static_cast<float>(std::min({emscripten_get_device_pixel_ratio(), app->maxPixelRatio, std::max(app->ratio, app->minPixelRatio)}));
+    const platform::Canvas cv = platform::canvas();
+    app->pixelRatio = static_cast<float>(std::min({cv.pixelRatio, app->maxPixelRatio, std::max(app->ratio, app->minPixelRatio)}));
     if (app->title) app->pixelRatio = std::min(app->pixelRatio, 1.0f);  // behind the menu: cheap
-    const int w = std::max(1, static_cast<int>(cssW * app->pixelRatio));
-    const int h = std::max(1, static_cast<int>(cssH * app->pixelRatio));
-    int curW = 0, curH = 0;
-    emscripten_get_canvas_element_size("#canvas", &curW, &curH);
-    if (curW != w || curH != h) emscripten_set_canvas_element_size("#canvas", w, h);
+    int w = std::max(1, static_cast<int>(cv.cssW * app->pixelRatio));
+    int h = std::max(1, static_cast<int>(cv.cssH * app->pixelRatio));
+    if (!platform::resizeCanvas(w, h)) {  // a window's own drawable: drawn at its own ratio
+        app->pixelRatio = static_cast<float>(cv.pixelRatio);
+        w = std::max(1, static_cast<int>(cv.cssW * cv.pixelRatio));
+        h = std::max(1, static_cast<int>(cv.cssH * cv.pixelRatio));
+    }
     app->camera.setViewport(static_cast<float>(w), static_cast<float>(h));
     app->gestures->setPixelScale(app->pixelRatio);
     // Sprite sheets should look sharp at up to two device pixels a CSS pixel (closeup.h).
-    app->renderer.setCloseupScreen(static_cast<float>(cssH * std::min(emscripten_get_device_pixel_ratio(), 2.0)));
+    app->renderer.setCloseupScreen(static_cast<float>(cv.cssH * std::min(cv.pixelRatio, 2.0)));
 }
 
 // The ground, or the water over it, at a battle-local point.
@@ -267,10 +254,10 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
 // it is only told how far between ticks the clock is, and moves on.
 void presentConquest(float dt) {
     App::CampaignView& cv = app->camp;
-    const double started = emscripten_get_now();
+    const double started = platform::nowMs();
     cv.c->visibleSoldiers(cv.c->localSide(), static_cast<int32_t>(mapAhead()), cv.men);
     app->battle->presentConquest(cv.men);
-    cv.layoutMs = cv.layoutMs * 0.9 + (emscripten_get_now() - started) * 0.1;
+    cv.layoutMs = cv.layoutMs * 0.9 + (platform::nowMs() - started) * 0.1;
     app->battle->setAlpha(static_cast<float>(std::clamp(cv.acc, 0.0, 1.0)));
     app->battle->stepEffects(dt);
 }
@@ -645,7 +632,7 @@ bool startOtherMode(const std::string& id, const std::string& options) {
             break;
         }
     app->camera.lookAt(c.x, c.y, id == "sandbox" ? 60 : 120);  // the sandbox: near enough to watch them move
-    mode_started_page(id.c_str());
+    platform::modeStarted(id.c_str());
     return true;
 }
 
@@ -674,8 +661,9 @@ void playCues() {
         play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
 }
 
-void frame() {
-    const double now = emscripten_get_now();
+// False when this frame drew nothing (the title screen draws every other).
+bool frame() {
+    const double now = platform::nowMs();
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
@@ -684,7 +672,7 @@ void frame() {
     if (app->title) {
         // Behind the menu: half the frames, and no sharper than a pixel a point.
         stepTitle(dtMs);
-        if (app->frameCount % 2) return;
+        if (app->frameCount % 2) return false;
     }
     resizeCanvas();
     stepIntro(now);
@@ -698,8 +686,8 @@ void frame() {
             cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
             // then the game runs slower than the clock (docs/ONE_WORLD.md, the fast-forward limit, step 4).
-            const double began = emscripten_get_now();
-            for (int k = 0; k < 40 && cv.acc >= 1 && emscripten_get_now() - began < 14.0; ++k, cv.acc -= 1) cv.c->step();
+            const double began = platform::nowMs();
+            for (int k = 0; k < 40 && cv.acc >= 1 && platform::nowMs() - began < 14.0; ++k, cv.acc -= 1) cv.c->step();
             cv.acc = std::min(cv.acc, 1.0);
         }
         placeBoats();
@@ -721,20 +709,21 @@ void frame() {
         playSounds(app->battle->sfx(), app->ambienceSeen);
     }
     placeFlags();
-    const double drawStart = emscripten_get_now();
+    const double drawStart = platform::nowMs();
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
     app->camera.setMinDistance(app->renderer.closeupMinDistance());  // sprites never magnified past 1.5x
-    app->drawMs = app->drawMs * 0.9 + (emscripten_get_now() - drawStart) * 0.1;
+    app->drawMs = app->drawMs * 0.9 + (platform::nowMs() - drawStart) * 0.1;
+    return true;
 }
 
 }  // namespace
 
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE const char* illyria_version() { return ILLYRIA_VERSION; }
+ILLYRIA_API const char* illyria_version() { return ILLYRIA_VERSION; }
 
 // The frame rate and where a frame's time goes, for the title panel (battle and campaign alike).
-EMSCRIPTEN_KEEPALIVE const char* illyria_perf() {
+ILLYRIA_API const char* illyria_perf() {
     static char buf[96];
     if (!app) return "";
     std::snprintf(buf, sizeof buf, "%.0f fps \u00b7 sim %.1f \u00b7 draw %.1f ms \u00b7 %.2gx", app->fps, app->battle ? app->battle->stepMs() : 0.0,
@@ -744,7 +733,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_perf() {
 
 // Test hook: the last `n` voice cues the battle made (JSON), with how many
 // were made and held back in all.
-EMSCRIPTEN_KEEPALIVE const char* illyria_voice_log(int n) {
+ILLYRIA_API const char* illyria_voice_log(int n) {
     static std::string out;
     if (!app || !app->battle) return "{}";
     const Voice& v = app->battle->voice();
@@ -756,7 +745,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_voice_log(int n) {
 
 // Test hook: the last `n` sound effect cues (JSON), with how many were made
 // and held back, how many of each sound, and the ambience now.
-EMSCRIPTEN_KEEPALIVE const char* illyria_sfx_log(int n) {
+ILLYRIA_API const char* illyria_sfx_log(int n) {
     static std::string out;
     if (!app || !app->battle) return "{}";
     const Sfx& s = app->battle->sfx();
@@ -778,32 +767,32 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_sfx_log(int n) {
     return out.c_str();
 }
 // Weather hook (none is simulated yet): rain from 0 to 1, thunder above a half.
-EMSCRIPTEN_KEEPALIVE void illyria_set_rain(float rain) {
+ILLYRIA_API void illyria_set_rain(float rain) {
     if (app) app->rain = std::clamp(rain, 0.0f, 1.0f);
 }
 
 // type: 0 down, 1 move, 2 up, 3 cancel. Coordinates in CSS pixels.
-EMSCRIPTEN_KEEPALIVE void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
+ILLYRIA_API void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
     if (!app) return;
     const float s = app->pixelRatio;
     if (type == 0) app->introStartMs = -1;  // any touch takes the camera
     app->gestures->pointer(static_cast<PointerEvent>(type), id, x * s, y * s, button, timeMs);
 }
 
-EMSCRIPTEN_KEEPALIVE void illyria_wheel(float deltaY, float x, float y) {
+ILLYRIA_API void illyria_wheel(float deltaY, float x, float y) {
     if (app) app->introStartMs = -1;
     if (app) app->gestures->wheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
 }
 // A trackpad (the page tells it from a mouse wheel): a two-finger swipe of
 // (dx, dy) CSS pixels pans; a pinch zooms by `factor` about (x, y) and a
 // twist turns by `radians`.
-EMSCRIPTEN_KEEPALIVE void illyria_scroll(float dx, float dy, float x, float y) {
+ILLYRIA_API void illyria_scroll(float dx, float dy, float x, float y) {
     if (!app) return;
     const float s = app->pixelRatio;
     app->introStartMs = -1;
     app->gestures->scroll(dx * s, dy * s, x * s, y * s);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_pinch(float factor, float radians, float x, float y) {
+ILLYRIA_API void illyria_pinch(float factor, float radians, float x, float y) {
     if (!app) return;
     app->introStartMs = -1;
     app->gestures->pinch(factor, radians, x * app->pixelRatio, y * app->pixelRatio);
@@ -811,24 +800,24 @@ EMSCRIPTEN_KEEPALIVE void illyria_pinch(float factor, float radians, float x, fl
 // The camera keys held (desktop), each -1, 0 or 1: W A S D (the arrows)
 // pan right and forward, Q E (shift + left and right) turn (1: to the left),
 // R F zoom (1: in).
-EMSCRIPTEN_KEEPALIVE void illyria_camera_keys(int right, int forward, int turn, int zoom) {
+ILLYRIA_API void illyria_camera_keys(int right, int forward, int turn, int zoom) {
     if (!app) return;
     if (right || forward || turn || zoom) app->introStartMs = -1;
     app->gestures->setKeys(right, forward, turn, zoom);
 }
 // Z (or N), or the compass: the view turns north up.
-EMSCRIPTEN_KEEPALIVE void illyria_north_up() {
+ILLYRIA_API void illyria_north_up() {
     if (!app) return;
     app->introStartMs = -1;
     app->gestures->turnTo(kNorthUp);
 }
 // The way the view looks, in radians anticlockwise from north (for the
 // compass: north is that much clockwise of straight up the screen).
-EMSCRIPTEN_KEEPALIVE float illyria_heading() {
+ILLYRIA_API float illyria_heading() {
     return app ? std::remainder(app->camera.yaw() - kNorthUp, 6.2831853f) : 0.0f;
 }
 // Test hook: where the camera looks, as JSON.
-EMSCRIPTEN_KEEPALIVE const char* illyria_camera_state() {
+ILLYRIA_API const char* illyria_camera_state() {
     static char buf[160];
     if (!app) return "{}";
     const V3 t = app->camera.target();
@@ -837,53 +826,53 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_camera_state() {
     return buf;
 }
 
-EMSCRIPTEN_KEEPALIVE void illyria_select_squad(int index) {
+ILLYRIA_API void illyria_select_squad(int index) {
     if (app) app->battle->selectSquad(index);
 }
 
 // Commanding (game/src/battle_command.cpp). Shift held: a press starts a
 // selection box at once, and a tap adds to the selection.
-EMSCRIPTEN_KEEPALIVE void illyria_set_shift(int down) {
+ILLYRIA_API void illyria_set_shift(int down) {
     if (!app) return;
     app->shift = down != 0;
     app->gestures->setShift(app->shift);
 }
 // Ctrl (or Cmd) and Alt held: the next click is an attack on whatever is
 // under it (a friend too), or a force march (battle_orders.cpp).
-EMSCRIPTEN_KEEPALIVE void illyria_set_keys(int force, int march) {
+ILLYRIA_API void illyria_set_keys(int force, int march) {
     if (app) app->battle->setKeys(force != 0, march != 0);
 }
 // 0 as usual, 1 attack, 2 force march, 3 lay satchels: for one order (the phone's attack button, A, M, L).
-EMSCRIPTEN_KEEPALIVE void illyria_set_order_mode(int mode) {
+ILLYRIA_API void illyria_set_order_mode(int mode) {
     if (app && mode >= 0 && mode <= 3) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
 }
 // What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
-EMSCRIPTEN_KEEPALIVE int illyria_hover(float x, float y) {
+ILLYRIA_API int illyria_hover(float x, float y) {
     if (!app) return 0;
     const float s = app->pixelRatio;
     return static_cast<int>(app->battle->intentAt(app->camera, x * s, y * s, s));
 }
-EMSCRIPTEN_KEEPALIVE void illyria_clear_selection() {
+ILLYRIA_API void illyria_clear_selection() {
     if (app) app->battle->clearSelection();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_select_heroes() {
+ILLYRIA_API void illyria_select_heroes() {
     if (app) app->battle->selectHeroes();
 }
 // Everyone of ours in view (Ctrl/⌘ + A).
-EMSCRIPTEN_KEEPALIVE void illyria_select_on_screen() {
+ILLYRIA_API void illyria_select_on_screen() {
     if (app) app->battle->selectInRect(app->camera, 0, 0, app->camera.width(), app->camera.height());
 }
 // A formation for the selection, by Formation value; kKeepShapeId: as they stand.
-EMSCRIPTEN_KEEPALIVE void illyria_set_formation(int f) {
+ILLYRIA_API void illyria_set_formation(int f) {
     if (app && f >= 0 && f < kFormationCount) app->battle->setFormation(static_cast<Formation>(f));
     else if (app && f == kKeepShapeId) app->battle->keepShape();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_scatter() {
+ILLYRIA_API void illyria_scatter() {
     if (app) app->battle->scatter();
 }
 // Groups, by slot (the key 0-9): 0 recall, 1 assign the selection, 2 save
 // the selection in the first free slot (returns it), 3 forget.
-EMSCRIPTEN_KEEPALIVE int illyria_group(int op, int slot) {
+ILLYRIA_API int illyria_group(int op, int slot) {
     if (!app) return -1;
     Battle& b = *app->battle;
     switch (op) {
@@ -895,11 +884,11 @@ EMSCRIPTEN_KEEPALIVE int illyria_group(int op, int slot) {
     return -1;
 }
 // Ungroup: forgets every group wholly selected; how many went.
-EMSCRIPTEN_KEEPALIVE int illyria_ungroup() {
+ILLYRIA_API int illyria_ungroup() {
     return app ? app->battle->ungroupSelection() : 0;
 }
 // The camera to the selection.
-EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
+ILLYRIA_API void illyria_focus_selection() {
     if (!app) return;
     const std::vector<illyria::sim::EntityId> alive = app->battle->selectedAlive();
     if (alive.empty()) return;
@@ -911,7 +900,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_focus_selection() {
 }
 // Every formation's shape for the picker's glyphs, in picker order, then as
 // they stand (any shape: a face drawn in men): [{"id","name","slots":[[x,y],...]}].
-EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
+ILLYRIA_API const char* illyria_formations() {
     static std::string out;
     out = "[";
     char buf[96];
@@ -932,7 +921,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_formations() {
     return out.c_str();
 }
 // The selection box being drawn, in CSS pixels: "x0 y0 x1 y1", or "" when none.
-EMSCRIPTEN_KEEPALIVE const char* illyria_drag_box() {
+ILLYRIA_API const char* illyria_drag_box() {
     static char buf[96];
     buf[0] = 0;
     if (!app) return buf;
@@ -945,7 +934,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_drag_box() {
 // Test hooks for screenshots: a press held and dragged but not let go. From
 // the squad's centre (dx, dy) metres to the destination, then (fx, fy) metres
 // on for the facing line; or a selection box in CSS pixels.
-EMSCRIPTEN_KEEPALIVE void illyria_test_press_facing(int squad, float dx, float dy, float fx, float fy, float distance) {
+ILLYRIA_API void illyria_test_press_facing(int squad, float dx, float dy, float fx, float fy, float distance) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
     Battle& b = *app->battle;
     b.selectSquad(squad);
@@ -960,20 +949,20 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_press_facing(int squad, float dx, float d
     b.pressBegin(app->camera, px, py, app->pixelRatio, false);
     b.pressMove(app->camera, qx, qy);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_test_press_box(float x0, float y0, float x1, float y1) {
+ILLYRIA_API void illyria_test_press_box(float x0, float y0, float x1, float y1) {
     if (!app) return;
     const float s = app->pixelRatio;
     app->battle->pressBegin(app->camera, x0 * s, y0 * s, s, true);
     app->battle->pressMove(app->camera, x1 * s, y1 * s);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_test_press_end() {
+ILLYRIA_API void illyria_test_press_end() {
     if (app) app->battle->pressEnd(app->camera, app->battle->drag().x1, app->battle->drag().y1, false);
 }
 
 // Test hooks for screenshots of orders: a squad sent (dx, dy) metres from
 // where it stands, or after the soldier of squad `foe` nearest it, the
 // camera looking on from `distance`.
-EMSCRIPTEN_KEEPALIVE void illyria_test_move(int squad, float dx, float dy, float distance) {
+ILLYRIA_API void illyria_test_move(int squad, float dx, float dy, float distance) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
     Battle& b = *app->battle;
     b.selectSquad(squad);
@@ -984,7 +973,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_move(int squad, float dx, float dy, float
     app->introStartMs = -1;
     app->camera.lookAt((c.x + at.x) / 2, (c.y + at.y) / 2, distance);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_test_attack(int squad, int foe, float distance) {
+ILLYRIA_API void illyria_test_attack(int squad, int foe, float distance) {
     const int n = app ? static_cast<int>(app->battle->squads().size()) : 0;
     if (!app || squad < 0 || squad >= n || foe < 0 || foe >= n) return;
     Battle& b = *app->battle;
@@ -1008,19 +997,19 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_attack(int squad, int foe, float distance
     app->camera.lookAt(c.x + (t.x - c.x) * 0.4f, c.y + (t.y - c.y) * 0.4f, distance);
 }
 
-EMSCRIPTEN_KEEPALIVE void illyria_focus_squad(int index) {
+ILLYRIA_API void illyria_focus_squad(int index) {
     if (!app || index < 0 || index >= static_cast<int>(app->battle->squads().size())) return;
     const V3 c = app->battle->squadCentre(app->battle->squads()[index]);
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
 }
 
 // Test hook: a squad's soldiers promoted to a rank (0..3), to see their shield pips.
-EMSCRIPTEN_KEEPALIVE void illyria_test_promote(int squad, int rank) {
+ILLYRIA_API void illyria_test_promote(int squad, int rank) {
     if (app && squad >= 0) app->battle->promoteSquad(static_cast<size_t>(squad), rank);
 }
 
 // Test hook: the camera close on the first squad of a unit type (0 if none in the battle).
-EMSCRIPTEN_KEEPALIVE int illyria_test_focus_type(int type, float distance, float yaw) {
+ILLYRIA_API int illyria_test_focus_type(int type, float distance, float yaw) {
     if (!app) return 0;
     for (const Squad& s : app->battle->squads())
         if (static_cast<int>(s.type) == type) {
@@ -1037,7 +1026,7 @@ int nearestGate();
 // Test hook: the first squad of ours of a unit type sent `inside` metres in
 // through the nearest gate, or (onWall) to the wall-walk beside it (2: its
 // first soldier alone); the squad's index, or -1.
-EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int onWall) {
+ILLYRIA_API int illyria_test_send_type_in(int type, float inside, int onWall) {
     const int g = nearestGate();
     if (!app || g < 0) return -1;
     Battle& b = *app->battle;
@@ -1073,7 +1062,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_send_type_in(int type, float inside, int o
 }
 // Test hook: for each living soldier of a squad, how high he stands above the
 // ground and what Battle::floorAt gives there ("z-ground/floor-ground;...").
-EMSCRIPTEN_KEEPALIVE const char* illyria_test_heights(int squad) {
+ILLYRIA_API const char* illyria_test_heights(int squad) {
     static std::string out;
     out.clear();
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return out.c_str();
@@ -1090,7 +1079,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_test_heights(int squad) {
 }
 // Test hook: for each living soldier of a squad, where he stands, the way he
 // faces, and where he is bound if anywhere ("x,y fx,fy -> tx,ty;").
-EMSCRIPTEN_KEEPALIVE const char* illyria_test_facing(int squad) {
+ILLYRIA_API const char* illyria_test_facing(int squad) {
     static std::string out;
     out.clear();
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return out.c_str();
@@ -1112,13 +1101,13 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_test_facing(int squad) {
     return out.c_str();
 }
 // Test hook: one soldier picked out of a squad (its first living one).
-EMSCRIPTEN_KEEPALIVE void illyria_test_select_one(int squad) {
+ILLYRIA_API void illyria_test_select_one(int squad) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
     for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members)
         if (app->battle->world().units()[id - 1].alive()) return app->battle->select({id});
 }
 // Test hook: the camera close on a squad's first living soldier.
-EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad(int squad, float distance, float yaw) {
+ILLYRIA_API void illyria_test_view_squad(int squad, float distance, float yaw) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return;
     for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members) {
         if (!app->battle->world().units()[id - 1].alive()) continue;
@@ -1132,7 +1121,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad(int squad, float distance, flo
 
 // Test hook: the camera on a squad's first living soldier from inside the
 // town, looking out over him (turned by `turn`), as illyria_test_view_walk.
-EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad_from_town(int squad, float distance, float turn) {
+ILLYRIA_API void illyria_test_view_squad_from_town(int squad, float distance, float turn) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size()) || app->battle->region().ramparts().empty()) return;
     for (illyria::sim::EntityId id : app->battle->squads()[static_cast<size_t>(squad)].members) {
         if (!app->battle->world().units()[id - 1].alive()) continue;
@@ -1153,7 +1142,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_squad_from_town(int squad, float dis
 
 // Test hook: every unit type in this battle and where its sprite sheet came
 // from ("Name=pre", "Name=baked" or "Name=none"), comma separated.
-EMSCRIPTEN_KEEPALIVE const char* illyria_test_battle_sheets() {
+ILLYRIA_API const char* illyria_test_battle_sheets() {
     static std::string out;
     out.clear();
     if (!app) return out.c_str();
@@ -1168,44 +1157,44 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_test_battle_sheets() {
     return out.c_str();
 }
 
-EMSCRIPTEN_KEEPALIVE void illyria_hot_spot() {
+ILLYRIA_API void illyria_hot_spot() {
     if (!app) return;
     V3 at;
     if (app->battle->hotSpot(at)) app->camera.lookAt(at.x, at.y, std::clamp(app->camera.distance(), 30.0f, 70.0f));
 }
 
-EMSCRIPTEN_KEEPALIVE void illyria_stop() {
+ILLYRIA_API void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
 // The selected hyena-folk let loose to raid from where they stand (the Raid button).
-EMSCRIPTEN_KEEPALIVE void illyria_raid() {
+ILLYRIA_API void illyria_raid() {
     if (app) app->battle->orderRaid();
 }
 // The special action (T): the hyena-folk raid at once; grenadiers' next tap lays satchels.
-EMSCRIPTEN_KEEPALIVE void illyria_special() {
+ILLYRIA_API void illyria_special() {
     if (app) app->battle->specialAction();
 }
 // Debugging: draw a unit type's sprite sheet over the screen (-1 hides it).
-EMSCRIPTEN_KEEPALIVE void illyria_show_sheet(int type) {
+ILLYRIA_API void illyria_show_sheet(int type) {
     if (app) app->renderer.showSheet(type);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_charge() {
+ILLYRIA_API void illyria_charge() {
     if (app) app->battle->chargeAll();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_cycle_formation() {
+ILLYRIA_API void illyria_cycle_formation() {
     if (app) app->battle->cycleFormation();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_toggle_pause() {
+ILLYRIA_API void illyria_toggle_pause() {
     if (app) app->battle->togglePause();
 }
 // 1×, 2×, 4×, and from slow motion back to 1×.
-EMSCRIPTEN_KEEPALIVE void illyria_cycle_speed() {
+ILLYRIA_API void illyria_cycle_speed() {
     if (!app) return;
     if (app->battle->slowMotion() < 1) app->battle->setSlowMotion(1);
     else app->battle->cycleSpeed();
 }
 // The battle's pace: 0.25 or 0.5 (slow motion), 1, 2 or 4.
-EMSCRIPTEN_KEEPALIVE void illyria_set_pace(float pace) {
+ILLYRIA_API void illyria_set_pace(float pace) {
     if (!app) return;
     // Single player only. Once battles are played over the network
     // (docs/NETCODE.md), every seat must agree to a change of pace: check here.
@@ -1213,7 +1202,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_pace(float pace) {
     app->battle->setSpeed(static_cast<int>(std::max(pace, 1.0f)));
 }
 // Switch battle: 0 Oakhaven Ford, 1 the siege of a neutral town.
-EMSCRIPTEN_KEEPALIVE void illyria_set_scenario(int scenario) {
+ILLYRIA_API void illyria_set_scenario(int scenario) {
     gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
     if (!app) return;
     app->title = false;
@@ -1221,7 +1210,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_scenario(int scenario) {
     app->renderer.reset(*app->battle);
     frameCamera();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_restart() {
+ILLYRIA_API void illyria_restart() {
     if (!app) return;
     app->title = false;
     newBattle();
@@ -1229,7 +1218,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_restart() {
     frameCamera();
 }
 // Test hook: run the simulation forward instantly.
-EMSCRIPTEN_KEEPALIVE void illyria_fast_forward(double seconds) {
+ILLYRIA_API void illyria_fast_forward(double seconds) {
     if (!app) return;
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
     app->battle->voice().take();  // what was said while skipping ahead goes unheard
@@ -1253,25 +1242,25 @@ int nearestGate() {
     return best;
 }
 // The squad's orders at that gate, as if the player tapped the squad, then the gate.
-EMSCRIPTEN_KEEPALIVE void illyria_test_order_gate(int squad) {
+ILLYRIA_API void illyria_test_order_gate(int squad) {
     if (!app) return;
     app->battle->selectSquad(squad);
     app->battle->orderAtGate(nearestGate());
 }
 // Hit points left in that gate (-1: none).
-EMSCRIPTEN_KEEPALIVE int illyria_test_gate_hp() {
+ILLYRIA_API int illyria_test_gate_hp() {
     const int g = nearestGate();
     return g < 0 ? -1 : app->battle->world().gates()[static_cast<size_t>(g)].hp;
 }
 // That gate battered down at once.
-EMSCRIPTEN_KEEPALIVE void illyria_test_break_gate() {
+ILLYRIA_API void illyria_test_break_gate() {
     const int g = nearestGate();
     if (g >= 0) app->battle->breakGate(g);
 }
 // Camera on a defender up on the walls, living (dead = 0) or dead (1): the
 // first such, seen from inside the town looking out over him (turned by
 // `turn` radians); returns 1 when there is one.
-EMSCRIPTEN_KEEPALIVE int illyria_test_view_walk(int dead, float distance, float turn) {
+ILLYRIA_API int illyria_test_view_walk(int dead, float distance, float turn) {
     if (!app) return 0;
     const illyria::sim::Region& rg = app->battle->region();
     for (const illyria::sim::Unit& u : app->battle->world().units()) {
@@ -1298,7 +1287,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_view_walk(int dead, float distance, float 
     return 0;
 }
 // The player's archers loose at the defender up on the walls nearest them.
-EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_walk() {
+ILLYRIA_API void illyria_test_shoot_walk() {
     if (!app) return;
     const illyria::sim::Region& rg = app->battle->region();
     const auto& units = app->battle->world().units();
@@ -1326,7 +1315,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_walk() {
     if (best) app->battle->testShootAt(toV3(best->pos));
 }
 // The player's archers loose at a spot this far inside the town, through its gate.
-EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_through_gate(float inside) {
+ILLYRIA_API void illyria_test_shoot_through_gate(float inside) {
     const int g = nearestGate();
     if (!app || g < 0) return;
     const illyria::sim::Gate& gate = app->battle->region().gates()[static_cast<size_t>(g)];
@@ -1334,7 +1323,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_shoot_through_gate(float inside) {
     app->battle->testShootAt(at);
 }
 // Camera on that gate, from outside the town.
-EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
+ILLYRIA_API void illyria_test_view_gate(float distance, float yaw) {
     const int g = nearestGate();
     if (g < 0) return;
     const illyria::sim::Gate& gate = app->battle->region().gates()[static_cast<size_t>(g)];
@@ -1347,7 +1336,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_test_view_gate(float distance, float yaw) {
 // ramp nearest its courtyard onto the walk, half to each side, and the two
 // archers on the walk nearest its head sent the other way past them; the
 // camera on the ramp from inside the town. Returns 1 when there is a ramp.
-EMSCRIPTEN_KEEPALIVE int illyria_test_ramp(float distance, float yaw) {
+ILLYRIA_API int illyria_test_ramp(float distance, float yaw) {
     if (!app) return 0;
     const illyria::sim::Region& rg = app->battle->region();
     // The town the militia holds (the outer ring nearest them).
@@ -1406,7 +1395,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_ramp(float distance, float yaw) {
 // Test hook: march a squad to a spot on a road 200-320 m off whose straight
 // way lies mostly over the fields (it should make for the road), and look on
 // from above the middle of the way.
-EMSCRIPTEN_KEEPALIVE int illyria_test_march_road(int squad, float distance) {
+ILLYRIA_API int illyria_test_march_road(int squad, float distance) {
     if (!app || squad < 0 || squad >= static_cast<int>(app->battle->squads().size())) return 0;
     const illyria::game::Squad& sq = app->battle->squads()[static_cast<size_t>(squad)];
     V3 c{};
@@ -1456,7 +1445,7 @@ EMSCRIPTEN_KEEPALIVE int illyria_test_march_road(int squad, float distance) {
     }
     return 0;
 }
-EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, float yaw) {
+ILLYRIA_API void illyria_set_camera(float x, float y, float distance, float yaw) {
     if (!app) return;
     app->introStartMs = -1;
     app->camera.lookAt(x, y, distance);
@@ -1465,7 +1454,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_camera(float x, float y, float distance, f
 
 // Test hook: the camera close on the `nth` body that died this way (sim::DeathKind:
 // 1 fell, 2 severed, 3 gibbed, 4 pierced, 5 charred); 0 if there is none.
-EMSCRIPTEN_KEEPALIVE int illyria_view_death(int kind, int nth, float distance) {
+ILLYRIA_API int illyria_view_death(int kind, int nth, float distance) {
     if (!app || !app->battle) return 0;
     for (const illyria::sim::Unit& u : app->battle->world().units()) {
         if (!u.present() || u.alive() || static_cast<int>(u.death.kind) != kind || nth-- > 0) continue;
@@ -1477,13 +1466,13 @@ EMSCRIPTEN_KEEPALIVE int illyria_view_death(int kind, int nth, float distance) {
 }
 
 // Test hook: build the close-up land around the camera at once (screenshots).
-EMSCRIPTEN_KEEPALIVE void illyria_finish_detail() {
+ILLYRIA_API void illyria_finish_detail() {
     if (app) app->renderer.finishDetail(*app->battle, app->camera);
 }
 
 // Graphics settings from the page: Renderer::Feature bits and a resolution cap.
 // Purely cosmetic: the simulation never sees them.
-EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRatio) {
+ILLYRIA_API void illyria_set_graphics(int features, double maxPixelRatio) {
     if (!app) return;
     app->renderer.setFeatures(features);
     // "Full resolution" pins the device's own; otherwise the frame rate decides, up to 2.
@@ -1491,15 +1480,15 @@ EMSCRIPTEN_KEEPALIVE void illyria_set_graphics(int features, double maxPixelRati
     app->minPixelRatio = maxPixelRatio >= kMaxPixelRatio || !app->dynamicResolution ? app->maxPixelRatio : 1.0;
 }
 // Dynamic resolution on or off (Settings, Graphics); takes effect with the next illyria_set_graphics.
-EMSCRIPTEN_KEEPALIVE void illyria_set_dynamic_resolution(int on) {
+ILLYRIA_API void illyria_set_dynamic_resolution(int on) {
     if (app) app->dynamicResolution = on != 0;
 }
-EMSCRIPTEN_KEEPALIVE int illyria_graphics_preset(int level) {
+ILLYRIA_API int illyria_graphics_preset(int level) {
     return level <= 0 ? Renderer::kLow : level == 1 ? Renderer::kMedium : Renderer::kHigh;
 }
 
 // Test hook: look down on the whole continent.
-EMSCRIPTEN_KEEPALIVE void illyria_overview() {
+ILLYRIA_API void illyria_overview() {
     if (!app) return;
     app->introStartMs = -1;
     app->camera.rotate(kNorthUp - app->camera.yaw());
@@ -1553,7 +1542,7 @@ void buildMiniLand() {
 // Map labels for the page to draw: one line per visible label,
 // "kind|colour|x|y|name" in CSS pixels. Kinds: 0 city, 1 capital, 2 ruin,
 // 3 temple, 4 sage, 5 realm, 6 landmark. Which appear depends on the zoom.
-EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
+ILLYRIA_API const char* illyria_labels() {
     if (!app) return "";
     std::string& out = app->labels;
     out.clear();
@@ -1612,10 +1601,10 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_labels() {
 
 
 // The minimap's land, to the page (IllyriaMinimap.land): RGBA, rows from the north.
-EMSCRIPTEN_KEEPALIVE void illyria_minimap_land() {
+ILLYRIA_API void illyria_minimap_land() {
     if (!app || !app->camp.on) return;
     if (app->camp.miniLand.empty()) buildMiniLand();
-    minimap_land_page(app->camp.miniLand.data(), kMiniW, kMiniH);
+    platform::minimapLand(app->camp.miniLand.data(), kMiniW, kMiniH);
 }
 // The minimap's contents, a line each, continent metres from the south-west corner:
 //   m|width|height          the continent's size
@@ -1626,14 +1615,14 @@ EMSCRIPTEN_KEEPALIVE void illyria_minimap_land() {
 //   f|x|y|men               men fighting there now (the page glows it)
 // Nothing is hidden yet: fog of war (docs/ONE_WORLD.md step 4) will leave out the
 // soldiers the player's own cannot see.
-EMSCRIPTEN_KEEPALIVE const char* illyria_minimap() {
+ILLYRIA_API const char* illyria_minimap() {
     if (!app || !app->camp.on) return "";
     app->camp.mini = minimapText(*app->camp.c, app->camp.c->localSide());
     return app->camp.mini.c_str();
 }
 // The ground the camera sees, as four corners in continent metres (top left,
 // top right, bottom right, bottom left of the screen), "x,y x,y x,y x,y"; "" if the sky shows.
-EMSCRIPTEN_KEEPALIVE const char* illyria_minimap_view() {
+ILLYRIA_API const char* illyria_minimap_view() {
     static char buf[160];
     buf[0] = 0;
     if (!app || !app->camp.on) return buf;
@@ -1653,7 +1642,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_minimap_view() {
     return buf;
 }
 // A tap on the minimap: the camera over that point, as high as it was.
-EMSCRIPTEN_KEEPALIVE void illyria_minimap_look(float x, float y) {
+ILLYRIA_API void illyria_minimap_look(float x, float y) {
     if (!app || !app->camp.on) return;
     app->introStartMs = -1;
     const V3 o = app->battle->origin();
@@ -1661,7 +1650,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_minimap_look(float x, float y) {
 }
 // Test hook: how many soldiers the campaign holds, how many are drawn as sprites and
 // as dots, and what laying them out and drawing a frame cost (milliseconds, smoothed).
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
+ILLYRIA_API const char* illyria_campaign_map_stats() {
     static char buf[200];
     buf[0] = 0;
     if (!app || !app->camp.on) return buf;
@@ -1672,71 +1661,71 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_map_stats() {
 }
 
 // The campaign: start it (0: Easy computer lords, 1: Hard), give orders, and read its state.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_start(int hard) {
+ILLYRIA_API void illyria_campaign_start(int hard) {
     if (app) startCampaign(hard != 0, app->camp.setup);
     if (app) app->title = false;
 }
 // Test hook: the 3D siege's capture point stormed (the title's set battle).
-EMSCRIPTEN_KEEPALIVE void illyria_test_storm() {
+ILLYRIA_API void illyria_test_storm() {
     if (app && !app->camp.on) app->battle->testStorm();
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_search() {
+ILLYRIA_API int illyria_campaign_search() {
     if (!app || !app->camp.on) return 0;
     const uint32_t stack = app->battle->selectedStack();
     if (!app->camp.c->canSearch(stack)) return 0;
     submitOrder(illyria::sim::Campaign::Order::Kind::Search, stack);
     return 1;
 }
-EMSCRIPTEN_KEEPALIVE int illyria_campaign_hire(int accept) {
+ILLYRIA_API int illyria_campaign_hire(int accept) {
     if (!app || !app->camp.on) return 0;
     if (!app->camp.c->offer(app->camp.c->localSide()).open) return 0;
     submitOrder(illyria::sim::Campaign::Order::Kind::Hire, 0, accept != 0);
     return 1;
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_leave() {
+ILLYRIA_API void illyria_campaign_leave() {
     if (!app) return;
     app->camp.on = false;
     app->renderer.setShowUnits(true);
     frameCamera();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_produce(int city, int option) {
+ILLYRIA_API void illyria_campaign_produce(int city, int option) {
     if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::Produce, 0, city, option);
 }
 // Warlords' BUILD: raise the open city's walls by one, for gold.
 // Where a city sends its new armies: start choosing (the next city tapped), or -1 to keep them home.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_vector(int city, int choose) {
+ILLYRIA_API void illyria_campaign_vector(int city, int choose) {
     if (!app || !app->camp.on) return;
     if (choose) app->camp.vectorFrom = city;
     else submitOrder(illyria::sim::Campaign::Order::Kind::VectorProduction, 0, city, -1), app->camp.vectorFrom = -1;
 }
 // Sends an army of the selected stack home for good (no more upkeep).
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_disband(int army) {
+ILLYRIA_API void illyria_campaign_disband(int army) {
     if (!app || !app->camp.on) return;
     for (const Squad& q : app->battle->squads())
         if (q.army == static_cast<uint32_t>(army) && app->battle->controllable(q)) submitOrder(illyria::sim::Campaign::Order::Kind::Disband, q.stack, army);
 }
 // Boats: lay one down in the open city's port; board or leave one with the selected stack.
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_build_boat(int city) {
+ILLYRIA_API void illyria_campaign_build_boat(int city) {
     if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::BuildBoat, 0, city);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_embark() {
+ILLYRIA_API void illyria_campaign_embark() {
     if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Embark, app->battle->selectedStack());
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_land() {
+ILLYRIA_API void illyria_campaign_land() {
     if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Land, app->battle->selectedStack());
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_close_city() {
+ILLYRIA_API void illyria_campaign_close_city() {
     if (app) app->camp.city = -1;
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_pause() {
+ILLYRIA_API void illyria_campaign_pause() {
     if (app) app->camp.paused = !app->camp.paused;
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_speed() {
+ILLYRIA_API void illyria_campaign_speed() {
     if (app) app->camp.speed = app->camp.speed >= 8 ? 1 : app->camp.speed * 2;
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_select(unsigned id) {
+ILLYRIA_API void illyria_campaign_select(unsigned id) {
     if (!app || !app->camp.on) return;
     app->battle->selectStack(id);
     if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(id)) {
@@ -1746,7 +1735,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_campaign_select(unsigned id) {
 }
 // Everything the campaign HUD shows, as JSON: the day and the treasury, every
 // banner on screen, the selected stack's armies and the open city's panel.
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
+ILLYRIA_API const char* illyria_campaign_state() {
     using C = illyria::sim::Campaign;
     if (!app || !app->camp.on) return "{}";
     App::CampaignView& cv = app->camp;
@@ -1953,26 +1942,26 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_state() {
 // --- Matches: Horde and capture the flag (mode.h), started by startOtherMode ---
 
 // The match's HUD as JSON ("{}" when none).
-EMSCRIPTEN_KEEPALIVE const char* illyria_mode_hud() {
+ILLYRIA_API const char* illyria_mode_hud() {
     static std::string s;
     s = app && app->battle->mode() ? app->battle->mode()->hudJson(*app->battle) : "{}";
     return s.c_str();
 }
 // The local player's action: 0 recruit offer `option`, 1 ready, 2 recall the fallen hero.
-EMSCRIPTEN_KEEPALIVE void illyria_mode_act(int kind, int option) {
+ILLYRIA_API void illyria_mode_act(int kind, int option) {
     if (!app || !app->battle->mode()) return;
     using K = illyria::sim::MatchAction::Kind;
     app->battle->mode()->act({kind == 1 ? K::Ready : kind == 2 ? K::Recall : K::Recruit,
                               static_cast<uint8_t>(std::clamp(option, 0, 255))});
 }
 // The places to fight over, for the setup panel.
-EMSCRIPTEN_KEEPALIVE const char* illyria_mode_places() {
+ILLYRIA_API const char* illyria_mode_places() {
     static std::string s;
     s = placesJson(modePlaces());
     return s.c_str();
 }
 // The squads on offer (Horde's reinforcements, capture the flag's armies).
-EMSCRIPTEN_KEEPALIVE const char* illyria_mode_offers() {
+ILLYRIA_API const char* illyria_mode_offers() {
     static std::string s;
     s = "[";
     char buf[160];
@@ -1999,16 +1988,16 @@ static void previewAt(float x, float y) {
     const V3 o = app->battle->origin();
     app->camera.lookAt(x - o.x, y - o.y, 2200);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_mode_preview(int place) {
+ILLYRIA_API void illyria_mode_preview(int place) {
     if (!app || place < 0 || place >= static_cast<int>(modePlaces().size())) return;
     const V3 p = toV3(modePlaces()[static_cast<size_t>(place)].pos);
     previewAt(p.x, p.y);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_mode_preview_at(int x, int y) {
+ILLYRIA_API void illyria_mode_preview_at(int x, int y) {
     if (app) previewAt(static_cast<float>(x), static_cast<float>(y));
 }
 // The continent's size in metres ("width,height"), for the setup map.
-EMSCRIPTEN_KEEPALIVE const char* illyria_continent_extent() {
+ILLYRIA_API const char* illyria_continent_extent() {
     static std::string s;
     s = std::to_string(illyria::sim::Continent::kWidth) + "," + std::to_string(illyria::sim::Continent::kHeight);
     return s.c_str();
@@ -2018,7 +2007,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_continent_extent() {
 // ground by kind, shaded by its slope (lit from the north-west) and paling
 // toward the peaks. Rows j0 to j1 are drawn now (the page asks for a band at
 // a time, top first, so it is not held up); the whole picture is returned.
-EMSCRIPTEN_KEEPALIVE const uint8_t* illyria_continent_map(int w, int j0, int j1) {
+ILLYRIA_API const uint8_t* illyria_continent_map(int w, int j0, int j1) {
     using illyria::sim::Continent;
     using illyria::sim::Fixed;
     static std::vector<uint8_t> px;
@@ -2063,13 +2052,13 @@ EMSCRIPTEN_KEEPALIVE const uint8_t* illyria_continent_map(int w, int j0, int j1)
     return px.data();
 }
 // Test hook: Horde's muster or break ends now.
-EMSCRIPTEN_KEEPALIVE void illyria_mode_test_skip() {
+ILLYRIA_API void illyria_mode_test_skip() {
     if (!app) return;
     if (auto* h = dynamic_cast<HordeMode*>(app->battle->mode())) h->skipBreak();
 }
 // Test hook (the manual's pictures of a fallen hero): the local seat's first
 // squad after its hero turns on him, an order like any other.
-EMSCRIPTEN_KEEPALIVE void illyria_mode_test_strike_hero() {
+ILLYRIA_API void illyria_mode_test_strike_hero() {
     if (!app) return;
     auto* h = dynamic_cast<HordeMode*>(app->battle->mode());
     if (!h || h->heroSquad(h->localSeat()) < 0) return;
@@ -2078,7 +2067,7 @@ EMSCRIPTEN_KEEPALIVE void illyria_mode_test_strike_hero() {
     app->battle->clearSelection();
 }
 // Test hook: the camera over a flag of the match (capture the flag's, or the hill's).
-EMSCRIPTEN_KEEPALIVE void illyria_mode_test_view_flag(int index, float distance, float yaw) {
+ILLYRIA_API void illyria_mode_test_view_flag(int index, float distance, float yaw) {
     if (!app || !app->battle->mode()) return;
     const std::vector<ModeFlag> f = app->battle->mode()->flags(*app->battle);
     if (f.empty()) return;
@@ -2093,7 +2082,7 @@ static SandboxMode* sandbox() {
     return static_cast<SandboxMode*>(app->battle->mode());
 }
 // Every unit type's name, by type number, for the page's picker.
-EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_types() {
+ILLYRIA_API const char* illyria_sandbox_types() {
     static std::string s;
     s = "[";
     for (int i = 0; i < illyria::sim::kUnitTypeCount; ++i) {
@@ -2105,7 +2094,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_types() {
 }
 // A squad of `count` of `type` for `side` where the page was clicked (CSS
 // pixels); 1 when it was set down (on the field, inside its edge).
-EMSCRIPTEN_KEEPALIVE int illyria_sandbox_spawn(int type, int side, int count, float x, float y) {
+ILLYRIA_API int illyria_sandbox_spawn(int type, int side, int count, float x, float y) {
     SandboxMode* m = sandbox();
     if (!m || type < 0 || type >= illyria::sim::kUnitTypeCount) return 0;
     V3 at;
@@ -2117,44 +2106,44 @@ EMSCRIPTEN_KEEPALIVE int illyria_sandbox_spawn(int type, int side, int count, fl
     return 1;
 }
 // The side commanded from this screen.
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_side(int side) {
+ILLYRIA_API void illyria_sandbox_side(int side) {
     if (sandbox()) app->battle->setLocalSide(static_cast<illyria::sim::PlayerId>(side & 3));
 }
 // Whether `side` fights on its own.
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_fight(int side, int on) {
+ILLYRIA_API void illyria_sandbox_fight(int side, int on) {
     if (SandboxMode* m = sandbox()) m->setFights(static_cast<illyria::sim::PlayerId>(side & 3), on != 0);
 }
 // Time: `share` of its pace (1 as usual), and, paused, one tick on.
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_slow(float share) {
+ILLYRIA_API void illyria_sandbox_slow(float share) {
     if (sandbox()) app->battle->setSlowMotion(share);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_speed(int speed) {
+ILLYRIA_API void illyria_sandbox_speed(int speed) {
     if (sandbox()) app->battle->setSpeed(speed);
 }
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_step() {
+ILLYRIA_API void illyria_sandbox_step() {
     if (sandbox()) app->battle->stepOnce();
 }
 // A unit type's fighting numbers (SandboxMode::statsJson), and tuning them (tune; "{}": the unit sheet's).
-EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_stats(int type) {
+ILLYRIA_API const char* illyria_sandbox_stats(int type) {
     static std::string s;
     SandboxMode* m = sandbox();
     s = m && type >= 0 && type < illyria::sim::kUnitTypeCount ? m->statsJson(static_cast<illyria::sim::UnitType>(type)) : "{}";
     return s.c_str();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_tune(int type, const char* json) {
+ILLYRIA_API void illyria_sandbox_tune(int type, const char* json) {
     SandboxMode* m = sandbox();
     if (m && type >= 0 && type < illyria::sim::kUnitTypeCount)
         m->tune(*app->battle, static_cast<illyria::sim::UnitType>(type), json ? json : "{}");
 }
 // The selected soldiers play clip `clip` (sprites::Clip; -1: what they are doing), once or looped.
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_clip(int clip, int loop) {
+ILLYRIA_API void illyria_sandbox_clip(int clip, int loop) {
     if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), clip, loop != 0);
 }
 // Every clip the selected soldiers can be made to play, as a JSON array of
 // {"name", "as"}: each the game plays (sprites::kKnownClips), then any other
 // a selected sheet lists of its own; "as" when a selected sheet has none of
 // that name and plays another in its place (the first such sheet's).
-EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_clips() {
+ILLYRIA_API const char* illyria_sandbox_clips() {
     static std::string s;
     std::vector<std::string> names(std::begin(illyria::game::sprites::kKnownClips), std::end(illyria::game::sprites::kKnownClips));
     std::vector<int> types;
@@ -2181,12 +2170,12 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_sandbox_clips() {
 }
 // The selected soldiers play the clip of that name (or what stands in for it
 // on a sheet without it), once or looped; "" hands them back.
-EMSCRIPTEN_KEEPALIVE void illyria_sandbox_play(const char* clip, int loop) {
+ILLYRIA_API void illyria_sandbox_play(const char* clip, int loop) {
     if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), std::string(clip ? clip : ""), loop != 0);
 }
 
 // HUD state as JSON, polled by the page a few times a second.
-EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
+ILLYRIA_API const char* illyria_hud() {
     if (!app) return "{}";
     const Battle& b = *app->battle;
     std::string& s = app->hud;
@@ -2286,7 +2275,7 @@ EMSCRIPTEN_KEEPALIVE const char* illyria_hud() {
 // {"save":"ILC2...."} to carry on a saved one), and the modes built into
 // startOtherMode ("horde", "ctf"). 1 when started, 0 when the mode is not
 // built in or could not start (illyria_mode_error says why).
-EMSCRIPTEN_KEEPALIVE int illyria_start_mode(const char* id, const char* options) {
+ILLYRIA_API int illyria_start_mode(const char* id, const char* options) {
     if (!app) return 0;
     const std::string mode = id ? id : "", opts = options ? options : "{}";
     app->error.clear();
@@ -2336,62 +2325,49 @@ EMSCRIPTEN_KEEPALIVE int illyria_start_mode(const char* id, const char* options)
     if (app->error.empty()) app->error = "Not built yet.";
     return 0;
 }
-EMSCRIPTEN_KEEPALIVE const char* illyria_mode_error() { return app ? app->error.c_str() : ""; }
+ILLYRIA_API const char* illyria_mode_error() { return app ? app->error.c_str() : ""; }
 // Whether a mode is built into this version (the title screen asks, to mark the rest "coming soon").
-EMSCRIPTEN_KEEPALIVE int illyria_mode_available(const char* id) {
+ILLYRIA_API int illyria_mode_available(const char* id) {
     const std::string mode = id ? id : "";
     return mode == "title" || mode == "skirmish" || mode == "campaign" || otherModeAvailable(mode) ? 1 : 0;
 }
 
 // The campaign as text, to keep in a save slot ("" when none is being played).
-EMSCRIPTEN_KEEPALIVE const char* illyria_campaign_save() {
+ILLYRIA_API const char* illyria_campaign_save() {
     if (!app || !app->camp.c || !app->camp.on) return "";
     app->saved = app->camp.c->save();
     return app->saved.c_str();
 }
-EMSCRIPTEN_KEEPALIVE void illyria_campaign_set_speed(int speed) {
+ILLYRIA_API void illyria_campaign_set_speed(int speed) {
     if (app) app->camp.speed = std::clamp(speed, 1, 8);
 }
 
 }  // extern "C"
 
-int main() {
-    EmscriptenWebGLContextAttributes attrs;
-    emscripten_webgl_init_context_attributes(&attrs);
-    attrs.majorVersion = 2;
-    attrs.minorVersion = 0;
-    attrs.alpha = false;
-    attrs.antialias = true;
-    attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
-    const EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context("#canvas", &attrs);
-    if (ctx <= 0) {
-        EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("WebGL 2 is not available on this device."); });
-        return 1;
-    }
-    emscripten_webgl_make_context_current(ctx);
+namespace illyria::run {
 
-    app = new App();
-    app->gestures = std::make_unique<Gestures>(app->camera, [](float x, float y) {
-        if (app->camp.on && townTap(x, y)) return;
-        app->battle->tap(app->camera, x, y, app->pixelRatio, app->shift);
+bool start() {
+    ::app = new App();
+    ::app->gestures = std::make_unique<Gestures>(::app->camera, [](float x, float y) {
+        if (::app->camp.on && townTap(x, y)) return;
+        ::app->battle->tap(::app->camera, x, y, ::app->pixelRatio, ::app->shift);
     });
     // A right click on the battlefield: an order, never a selection.
-    app->gestures->setSecondaryTap([](float x, float y) { app->battle->orderTap(app->camera, x, y, app->pixelRatio); });
+    ::app->gestures->setSecondaryTap([](float x, float y) { ::app->battle->orderTap(::app->camera, x, y, ::app->pixelRatio); });
     // A press held on the battlefield: a selection box, or a move's facing line.
-    app->gestures->setHold(
-        [](float x, float y, bool box) { return app->battle->pressBegin(app->camera, x, y, app->pixelRatio, box); },
-        [](float x, float y) { app->battle->pressMove(app->camera, x, y); },
-        [](float x, float y, bool cancelled) { app->battle->pressEnd(app->camera, x, y, cancelled, app->shift); });
+    ::app->gestures->setHold(
+        [](float x, float y, bool box) { return ::app->battle->pressBegin(::app->camera, x, y, ::app->pixelRatio, box); },
+        [](float x, float y) { ::app->battle->pressMove(::app->camera, x, y); },
+        [](float x, float y, bool cancelled) { ::app->battle->pressEnd(::app->camera, x, y, cancelled, ::app->shift); });
     newBattle();
     resizeCanvas();
-    if (!app->renderer.init(*app->battle)) {
-        EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("Graphics initialisation failed."); });
-        return 1;
-    }
-    fetchPrerenderedSheets(app->renderer);
-    fetchModels(app->renderer);
+    if (!::app->renderer.init(*::app->battle)) return false;
+    fetchPrerenderedSheets(::app->renderer);
+    fetchModels(::app->renderer);
     startIntro();
-    EM_ASM({ if (window.illyriaReady) window.illyriaReady(); });
-    emscripten_set_main_loop(frame, 0, false);
-    return 0;
+    return true;
 }
+
+bool frame() { return ::frame(); }
+
+}  // namespace illyria::run
