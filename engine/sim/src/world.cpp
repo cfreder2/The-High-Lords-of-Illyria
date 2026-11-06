@@ -295,12 +295,10 @@ void World::ObstacleGrid::build(const std::vector<Obstacle>& obstacles) {
     for (size_t c = 0; c + 1 < start_.size(); ++c) start_[c + 1] += start_[c];
     recs_.resize(start_.back());
     std::vector<uint32_t> fill(start_.begin(), start_.end() - 1);
-    maxExtent_ = Fixed::zero();
     for (uint32_t i = 0; i < obstacles.size(); ++i) {
         const Obstacle& o = obstacles[i];
         if (!o.solid) continue;
         const Fixed extent = o.kind == Obstacle::Kind::House ? max(o.halfX, o.halfY) : o.radius;
-        maxExtent_ = max(maxExtent_, extent);
         recs_[fill[slot(o)]++] = {o.pos.x, o.pos.y, extent, i};
     }
 }
@@ -1434,7 +1432,7 @@ void World::separateBodies() {
         const Fixed standoff = stoneStandoff(u.stats.radius);
         bool offStone = false;  // pushed off standing stone (or a ruin's base)
         const auto offObstacles = [&](bool stoneOnly) {
-            obstacleGrid_.queryNear(u.pos.x, u.pos.y, max(standoff, u.stats.radius), [&](uint32_t k) {
+            obstacleGrid_.queryNear(u.pos, standoff + obstacleReach_, max(standoff, u.stats.radius), [&](uint32_t k) {
                 const Obstacle& o = obstacles[k];
                 if (stoneOnly && !o.standingStone()) return;
                 const Fixed keep = o.standingStone() ? standoff : u.stats.radius;

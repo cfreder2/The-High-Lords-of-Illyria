@@ -722,7 +722,11 @@ private:
     // into cells; the table of cells is only looked up by key, never walked in its own order.
     class UnitGrid {
     public:
-        void clear() { pending_.clear(); }
+        void clear() {
+            pending_.clear();
+            cells_.clear();
+            items_.clear();
+        }
         void insert(uint32_t index, Fixed x, Fixed y) { pending_.push_back({key(cellOf(x), cellOf(y)), index}); }
         void build() {
             size_t size = 64;
@@ -800,13 +804,14 @@ private:
         void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
             visit(x, y, radius, [&](const Rec& r) { fn(r.index); });
         }
-        // As query with radius keep + the largest reach, less the obstacles that cannot come within `keep` of (x, y)
-        // (those whose box, grown by `keep`, does not hold the point).
+        // As query, less the obstacles that cannot come within `keep` of `at` (those whose box, grown by `keep`, does not
+        // hold it). `at` is read afresh for each, for fn may move what it points to: the cells are those of `radius`
+        // round where it was at the start, and the rest is tested where it is now, as a loop over all of them would.
         template <typename Fn>
-        void queryNear(Fixed x, Fixed y, Fixed keep, Fn&& fn) const {
-            visit(x, y, keep + maxExtent_, [&](const Rec& r) {
+        void queryNear(const Vec3& at, Fixed radius, Fixed keep, Fn&& fn) const {
+            visit(at.x, at.y, radius, [&](const Rec& r) {
                 const Fixed reach = keep + r.extent;
-                if (abs(x - r.x) < reach && abs(y - r.y) < reach) fn(r.index);
+                if (abs(at.x - r.x) < reach && abs(at.y - r.y) < reach) fn(r.index);
             });
         }
 
@@ -825,7 +830,6 @@ private:
                 for (uint32_t k = start_[static_cast<size_t>(cy * w_ + x0)], end = start_[static_cast<size_t>(cy * w_ + x1 + 1)]; k < end; ++k) fn(recs_[k]);
         }
         int64_t x0_ = 0, y0_ = 0, w_ = 0, h_ = 0;  // the box, in cells
-        Fixed maxExtent_;
         std::vector<uint32_t> start_;
         std::vector<Rec> recs_;
     };
