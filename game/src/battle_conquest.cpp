@@ -76,12 +76,21 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
     uint32_t stack = 0;
     bool oneStack = true;
     inspectedUnit_ = 0;
+    // (The men come army by army: the army and its squad are looked up when it changes.)
+    uint32_t armyNow = 0;
+    const Of* of = nullptr;
+    int* squadNow = nullptr;
     for (const Soldier& m : men) {
-        const auto of = armies.find(m.army);
-        if (of == armies.end()) continue;
-        int& squad = squadOfArmy_.try_emplace(m.army, -1).first->second;
+        if (armyNow != m.army || squadNow == nullptr) {
+            armyNow = m.army;
+            const auto found = armies.find(m.army);
+            of = found == armies.end() ? nullptr : &found->second;
+            squadNow = of == nullptr ? nullptr : &squadOfArmy_.try_emplace(m.army, -1).first->second;
+        }
+        if (of == nullptr) continue;
+        int& squad = *squadNow;
         if (squad < 0) {
-            const sim::Army& a = *of->second.army;
+            const sim::Army& a = *of->army;
             Squad q;
             q.name = a.name.empty() ? sim::unitTypeName(a.type) : a.name;
             q.owner = m.owner;
@@ -90,7 +99,7 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
             q.formation = memo != armyMemo_.end() ? memo->second.formation : defaultFormation(a.type);
             q.facing = memo != armyMemo_.end() ? memo->second.facing : V3{1, 0, 0};
             q.army = a.id;
-            q.stack = of->second.stack;
+            q.stack = of->stack;
             q.total = a.fullStrength;
             q.told = true;
             q.standing.strength = sim::Campaign::strength(a);
