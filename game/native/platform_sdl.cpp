@@ -38,6 +38,7 @@ struct Options {
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
     bool fullscreen = false, sound = true, stats = false, vsync = true;
+    int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
     bool hard = true;
@@ -56,6 +57,7 @@ void usage() {
         "  --assets DIR          the folder holding sprites/, models/, sfx/\n"
         "  --size WxH, --fullscreen, --no-sound\n"
         "  --stats               print the frame rate and its split every two seconds\n"
+        "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --quit-after N        quit after N frames\n"
@@ -80,6 +82,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--no-sound") o.sound = false;
         else if (a == "--stats") o.stats = true;
         else if (a == "--novsync") o.vsync = false;
+        else if (a == "--profile") o.profile = std::atoi(next()), o.stats = true;
         else if (a == "--msaa") o.msaa = std::atoi(next());
         else if (a == "--shot") {
             o.shot = next();
@@ -89,6 +92,8 @@ bool parse(int argc, char** argv, Options& o) {
                 o.shotFrame = std::atoi(o.shot.c_str() + colon + 1);
                 o.shot.resize(colon);
             }
+        } else if (a == "--camera") {
+            o.hasCamera = std::sscanf(next(), "%f,%f,%f,%f", &o.camera[0], &o.camera[1], &o.camera[2], &o.camera[3]) == 4;
         } else if (a == "--quit-after") o.quitFrame = std::atoi(next());
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -113,6 +118,80 @@ void writeShot(const std::string& path, int w, int h) {
     std::fwrite(px.data(), 1, px.size(), f);
     std::fclose(f);
 }
+
+// The last frame's drawing, as "name draws/triangles" for each kind that drew, and the totals.
+struct DrawCount {
+    std::string name;
+    int draws = 0;
+    long triangles = 0;
+};
+std::vector<DrawCount> drawCounts() {
+    std::vector<DrawCount> out;
+    const char* text = illyria_draw_counts();
+    while (*text) {
+        char name[32];
+        int draws = 0, used = 0;
+        long triangles = 0;
+        if (std::sscanf(text, "%31s %d %ld%n", name, &draws, &triangles, &used) < 3) break;
+        out.push_back({name, draws, triangles});
+        text += used;
+        while (*text == '\n') ++text;
+    }
+    return out;
+}
+
+std::string drawSummary() {
+    std::string out;
+    int draws = 0;
+    long triangles = 0;
+    for (const DrawCount& c : drawCounts()) {
+        draws += c.draws;
+        triangles += c.triangles;
+        if (c.draws) out += " " + c.name + " " + std::to_string(c.draws) + "/" + std::to_string(c.triangles / 1000) + "k";
+    }
+    return "draws " + std::to_string(draws) + " tris " + std::to_string(triangles / 1000) + "k:" + out;
+}
+
+// --profile: what each kind of drawing costs, found by hiding it in turn for a while and seeing what the GPU saves.
+class Profile {
+public:
+    Profile(int start, int parts) : start_(start), parts_(parts) {}
+    // Called each frame with the GPU time of a frame lately finished (0 if none); false once the table is printed.
+    bool step(int frame, double rawGpuMs) {
+        if (frame < start_) return true;
+        const int at = (frame - start_) / (kWarm + kSample), within = (frame - start_) % (kWarm + kSample);
+        if (within == 0 && at > 0) finish(at - 1);
+        if (at > parts_) return false;
+        if (within == 0) {
+            illyria_hide_parts(at == 0 ? 0u : 1u << (at - 1));
+            sum_ = 0;
+            n_ = 0;
+        }
+        if (within >= kWarm && rawGpuMs > 0) {
+            sum_ += rawGpuMs;
+            ++n_;
+        }
+        return true;
+    }
+
+private:
+    static constexpr int kWarm = 20, kSample = 60;
+    void finish(int step) {
+        const double ms = n_ ? sum_ / n_ : 0;
+        if (step == 0) {
+            base_ = ms;
+            counts_ = drawCounts();
+            std::printf("profile: gpu %.2f ms, %s\n%-10s %6s %9s %8s\n", ms, drawSummary().c_str(), "part", "draws", "triangles", "gpu ms");
+        } else {
+            const DrawCount& c = counts_[static_cast<size_t>(step - 1)];
+            std::printf("%-10s %6d %9ld %8.2f\n", c.name.c_str(), c.draws, c.triangles, base_ - ms);
+        }
+        std::fflush(stdout);
+    }
+    int start_, parts_, n_ = 0;
+    double sum_ = 0, base_ = 0;
+    std::vector<DrawCount> counts_;
+};
 
 }  // namespace
 
@@ -276,6 +355,8 @@ int runApp(int argc, char** argv) {
     glGenQueries(kRing, queries);
     bool queried[kRing] = {};
     std::string hudPerf;
+    Profile profile(opt.profile, static_cast<int>(drawCounts().size()));
+    double rawGpuMs = 0;
     bool running = true;
     while (running) {
         SDL_Event e;
@@ -327,13 +408,17 @@ int runApp(int argc, char** argv) {
         glEndQuery(GL_TIME_ELAPSED);
         queried[slot] = true;
         const int oldest = (slot + 1) % kRing;
+        rawGpuMs = 0;
         if (queried[oldest]) {
             GLuint ready = 0;
             glGetQueryObjectuiv(queries[oldest], GL_QUERY_RESULT_AVAILABLE, &ready);
             if (ready) {
                 GLuint64 ns = 0;
                 glGetQueryObjectui64v(queries[oldest], GL_QUERY_RESULT, &ns);
-                if (ns > 100000) gpuMs = gpuMs * 0.9 + static_cast<double>(ns) / 1e6 * 0.1;
+                if (ns > 100000) {
+                    rawGpuMs = static_cast<double>(ns) / 1e6;
+                    gpuMs = gpuMs * 0.9 + rawGpuMs * 0.1;
+                }
                 queried[oldest] = false;
             }
         }
@@ -350,11 +435,12 @@ int runApp(int argc, char** argv) {
             hud.setPerf(line);
         }
         if (const GLenum err = glGetError(); err != GL_NO_ERROR && frame < 600) std::fprintf(stderr, "GL error 0x%x at frame %d\n", err, frame);
+        if (opt.profile > 0 && !profile.step(frame, rawGpuMs)) running = false;
         ++frame;
         if (opt.quitFrame && frame >= opt.quitFrame) running = false;
         if (opt.stats && platform::nowMs() - statsAt > 2000) {
             statsAt = platform::nowMs();
-            std::printf("frame %d: %s\n", frame, hudPerf.c_str());
+            std::printf("frame %d: %s\n         %s\n", frame, hudPerf.c_str(), drawSummary().c_str());
             std::fflush(stdout);
         }
     }

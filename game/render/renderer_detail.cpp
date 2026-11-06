@@ -293,7 +293,7 @@ void Renderer::drawDetailTerrain(const Program& p, const Camera& camera, double 
     setCommon(p, camera, timeSeconds, gameSeconds);
     bindDetail(p);
     glBindVertexArray(detailVao_);
-    glDrawElementsInstanced(GL_TRIANGLES, detailIndices_, GL_UNSIGNED_INT, nullptr, detailChunks_);
+    drawElements(GL_TRIANGLES, detailIndices_, GL_UNSIGNED_INT, detailChunks_);
 }
 
 void Renderer::drawDetailWater(const Camera& camera, double timeSeconds, float gameSeconds) {
@@ -301,7 +301,7 @@ void Renderer::drawDetailWater(const Camera& camera, double timeSeconds, float g
     setCommon(water_, camera, timeSeconds, gameSeconds);
     bindDetail(water_);
     glBindVertexArray(detailWaterVao_);
-    glDrawElementsInstanced(GL_TRIANGLES, detailWaterIndices_, GL_UNSIGNED_INT, nullptr, detailWetChunks_);
+    drawElements(GL_TRIANGLES, detailWaterIndices_, GL_UNSIGNED_INT, detailWetChunks_);
 }
 
 }  // namespace illyria::game

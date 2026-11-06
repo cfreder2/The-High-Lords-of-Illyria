@@ -147,7 +147,7 @@ void Renderer::drawModel(const Program& p, Model& m, const Camera& camera, doubl
         glActiveTexture(GL_TEXTURE0);
     }
     glBindVertexArray(m.vao);
-    glDrawElementsInstanced(GL_TRIANGLES, m.indices, GL_UNSIGNED_SHORT, nullptr, static_cast<GLsizei>(count));
+    drawElements(GL_TRIANGLES, m.indices, GL_UNSIGNED_SHORT, static_cast<GLsizei>(count));
     glBindVertexArray(0);
 }
 

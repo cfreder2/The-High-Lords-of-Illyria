@@ -732,6 +732,23 @@ ILLYRIA_API const char* illyria_perf() {
     return buf;
 }
 
+// The last frame's drawing, counted per kind ("name draws triangles" lines; Renderer::Part), for the desktop's --stats.
+ILLYRIA_API const char* illyria_draw_counts() {
+    static std::string out;
+    out.clear();
+    if (!app) return "";
+    for (int i = 0; i < static_cast<int>(Renderer::Part::Count); ++i) {
+        const auto part = static_cast<Renderer::Part>(i);
+        out += std::string(Renderer::partName(part)) + " " + std::to_string(app->renderer.partCount(part).draws) + " " +
+               std::to_string(app->renderer.partCount(part).triangles) + "\n";
+    }
+    return out.c_str();
+}
+// Leaves out the drawing of the kinds in the mask (a bit for each Renderer::Part), to time what each costs.
+ILLYRIA_API void illyria_hide_parts(unsigned mask) {
+    if (app) app->renderer.hideParts(mask);
+}
+
 // Test hook: the last `n` voice cues the battle made (JSON), with how many
 // were made and held back in all.
 ILLYRIA_API const char* illyria_voice_log(int n) {

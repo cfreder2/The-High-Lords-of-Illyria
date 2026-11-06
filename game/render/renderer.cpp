@@ -511,6 +511,33 @@ std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
     return out;
 }
 
+const char* Renderer::partName(Part p) {
+    static const char* const names[] = {"shadows", "sky", "land", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
+    return names[static_cast<int>(p)];
+}
+
+namespace {
+long trianglesOf(GLenum mode, GLsizei vertices) {
+    return mode == GL_TRIANGLES ? vertices / 3 : mode == GL_TRIANGLE_STRIP && vertices > 2 ? vertices - 2 : 0;
+}
+}  // namespace
+
+void Renderer::drawArrays(GLenum mode, GLint first, GLsizei count, GLsizei instances) {
+    if (hidden_ >> static_cast<int>(part_) & 1) return;
+    PartCount& c = counts_[static_cast<int>(part_)];
+    ++c.draws;
+    c.triangles += trianglesOf(mode, count) * instances;
+    glDrawArraysInstanced(mode, first, count, instances);
+}
+
+void Renderer::drawElements(GLenum mode, GLsizei count, GLenum type, GLsizei instances) {
+    if (hidden_ >> static_cast<int>(part_) & 1) return;
+    PartCount& c = counts_[static_cast<int>(part_)];
+    ++c.draws;
+    c.triangles += trianglesOf(mode, count) * instances;
+    glDrawElementsInstanced(mode, count, type, nullptr, instances);
+}
+
 void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds,
                           float gameSeconds) {
     setCommon(mesh_, camera, timeSeconds, gameSeconds);
@@ -521,7 +548,8 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.lod, b->lod);
         glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
+        part_ = b->part;
+        drawArrays(GL_TRIANGLES, 0, b->vertices, b->count);
     }
 }
 
@@ -1450,6 +1478,12 @@ bool Renderer::init(Battle& battle) {
     for (auto* list : {&pines_, &oaks_, &bushes_, &rocks_, &detailPines_, &detailOaks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.lod = 1;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 1;
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_, &copses_, &nearCopses_})
+        for (MeshBatch& b : *list) b.part = Part::Trees;
+    for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
+        for (MeshBatch& b : *list) b.part = Part::Clutter;
+    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
+    for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
     for (auto* list : {&copses_, &nearCopses_})
         for (MeshBatch& b : *list) b.lod = -1;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
@@ -1755,7 +1789,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
         glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, at(4));
         glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, at(5));
         glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, at(6));
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
     }
     glActiveTexture(GL_TEXTURE0);
 }
@@ -1896,7 +1930,7 @@ void Renderer::drawCover(const Camera& camera, double timeSeconds, float gameSec
             const CoverLayer& l = cover_layers_[i];
             glUniform4f(cover_.cover, spacing[i], static_cast<float>(grid[i]), l.seed, l.kind);
             glBindVertexArray(l.vao);
-            glDrawArraysInstanced(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
+            drawArrays(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
         }
     }
 }
@@ -1934,9 +1968,10 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     viewProjOverride_ = &lightViewProj_;
     const int features = features_;
     features_ &= ~kShadows;  // casters do not sample the map they are drawn into
+    part_ = Part::Shadows;
     setCommon(terrainDepth_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
-    glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    drawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT);
     drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
@@ -1950,7 +1985,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         glUniform1f(meshDepth_.lod, b->lod);
         glUniform1f(meshDepth_.flag, b->cloth ? 1.0f : 0.0f);  // the waving cloth's shadow
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
+        drawArrays(GL_TRIANGLES, 0, b->vertices, b->count);
     }
     drawModel(modelDepth_, ruinModel_, camera, timeSeconds, gameSeconds);
     // Soldiers: their billboards turned side-on to the sun, so the cut-out
@@ -1960,7 +1995,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         const V3 right = V3{sun.y, -sun.x, 0}.normalized();
         glUniform3f(sprite_.camRight, right.x, right.y, right.z);
         glBindVertexArray(sprites_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
     }
     {
         const V3 toward = V3{-sun.x, -sun.y, 0}.normalized();
@@ -2122,6 +2157,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 }
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
+    for (PartCount& c : counts_) c = PartCount{};
     // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
     territoryInfo_[0] = battle.origin().x;
     territoryInfo_[1] = battle.origin().y;
@@ -2420,13 +2456,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glUniform2f(sky_.proj, std::tan(Camera::kFovY / 2), camera.width() / camera.height());
         if (!skyVao_) glGenVertexArrays(1, &skyVao_);
         glBindVertexArray(skyVao_);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        part_ = Part::Sky;
+        drawArrays(GL_TRIANGLES, 0, 3);
         glDepthMask(GL_TRUE);
     }
     setCommon(terrain_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
-    glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    part_ = Part::Land;
+    drawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT);
     drawDetailTerrain(detailTerrain_, camera, timeSeconds, gameSeconds);
+    part_ = Part::Cover;
     drawCover(camera, timeSeconds, gameSeconds);
 
     // The rest of the continent, coarse, with its rivers and roads on top. The
@@ -2446,27 +2485,28 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     };
     const bool farSunk = farDetail && (covers(ring_) || (patchShown && covers(patch_)));
     farProgram(detailOn_ && !farSunk ? farCut_ : far_, farDetail ? 6.0f : 0.0f, patchShown ? 6.0f : 0.0f);
+    part_ = Part::Land;
     glBindVertexArray(farLand_.vao);
-    glDrawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT, nullptr);
+    drawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT);
     if (ocean_.count > 0) {
         glBindVertexArray(ocean_.vao);
-        glDrawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT);
     }
     const Program& nearProgram = detailOn_ ? farCut_ : far_;
     if (farDetail) {
         farProgram(nearProgram, 0.0f, patchShown ? 6.0f : 0.0f);
         glBindVertexArray(nearLand_.vao);
-        glDrawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT);
     }
     if (patchShown) {
         farProgram(nearProgram, 0.0f, 0.0f);
         glBindVertexArray(patchLand_.vao);
-        glDrawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT);
     }
     if (ribbons_.count > 0) {
         setCommon(ribbon_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(ribbons_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
     }
     if (waterfalls_.count > 0 && farDetail) {
         setCommon(falls_, camera, timeSeconds, gameSeconds);
@@ -2474,7 +2514,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
         glBindVertexArray(waterfalls_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
     }
@@ -2482,6 +2522,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
     // Distant woods: sub-pixel and covered by the terrain colour from very high up.
@@ -2498,6 +2539,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         drawMeshes(scenery(true), camera, timeSeconds, gameSeconds);
     }
 
+    part_ = Part::Effects;
     // Decals: blended, no depth writes. Ground marks first, then body parts,
     // then per-frame. After the castles and bridges, so that those on a
     // wall-walk or a deck are not painted over; pulled a little toward the
@@ -2516,7 +2558,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const int grid = b == &dynamicDecals_ ? 4 : b == &marks_ ? 2 : 1;
         glUniform1f(decal_.decalGrid, static_cast<float>(grid));
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6 * grid * grid, b->count);
+        drawArrays(GL_TRIANGLES, 0, 6 * grid * grid, b->count);
     }
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDepthMask(GL_TRUE);
@@ -2526,13 +2568,14 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (Batch* b : {&remainArrows_, &flyingArrows_}) {
         if (b->count == 0) continue;
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, b->count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, b->count);
     }
 
+    part_ = Part::Men;
     if (sprites_.count > 0) {
         setCommon(sprite_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(sprites_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
     }
     {
         const V3 toward = V3{fwd.x, fwd.y, 0}.normalized();
@@ -2541,8 +2584,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     if (bars_.count > 0) {
         setCommon(bar_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(bars_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
+        part_ = Part::Ui;
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
     }
+    part_ = Part::Dots;
     drawDots(camera, timeSeconds, gameSeconds);
 
     // Water over everything below it: soldiers wading show through.
@@ -2551,7 +2596,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glDepthMask(GL_FALSE);
     setCommon(water_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(waterVao_);
-    glDrawArrays(GL_TRIANGLES, 0, waterVertices_);
+    part_ = Part::Land;
+    drawArrays(GL_TRIANGLES, 0, waterVertices_);
     drawDetailWater(camera, timeSeconds, gameSeconds);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -2563,7 +2609,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glDepthMask(GL_FALSE);
         setCommon(particle_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(particles_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, particles_.count);
+        part_ = Part::Effects;
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, particles_.count);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
     }

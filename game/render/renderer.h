@@ -51,6 +51,17 @@ public:
     void setScreenFramebuffer(GLuint fbo) { screenFbo_ = fbo; }
     int features() const { return features_; }
 
+    // Where a frame's drawing goes, counted as it is issued (the desktop's --stats table), and each kind switchable
+    // off to time what it costs. Cosmetic like everything here.
+    enum class Part : int { Shadows, Sky, Land, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Count };
+    struct PartCount {
+        int draws = 0;
+        long triangles = 0;
+    };
+    static const char* partName(Part p);
+    const PartCount& partCount(Part p) const { return counts_[static_cast<int>(p)]; }
+    void hideParts(unsigned mask) { hidden_ = mask; }
+
     bool init(Battle& battle);
     // Forget uploaded remains and marks (call after the battle is replaced).
     void reset(Battle& battle);
@@ -131,6 +142,7 @@ private:
         // that stand in for it beyond (see sceneryNear in kMeshVs); 0: always.
         float lod = 0;
         bool cloth = false;  // a banner's waving cloth (uFlag): the castles' and the flags'
+        Part part = Part::Buildings;
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {
@@ -139,6 +151,13 @@ private:
         size_t capacity = 0;
         int floats = 0;
     };
+
+    // Every draw goes through these: they count it under the current part and skip it if that part is hidden.
+    Part part_ = Part::Land;
+    PartCount counts_[static_cast<int>(Part::Count)];
+    unsigned hidden_ = 0;
+    void drawArrays(GLenum mode, GLint first, GLsizei count, GLsizei instances = 1);
+    void drawElements(GLenum mode, GLsizei count, GLenum type, GLsizei instances = 1);
 
     bool buildPrograms();
     void ensureShadowMap();
