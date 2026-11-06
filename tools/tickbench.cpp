@@ -8,6 +8,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <vector>
 
 #include "illyria/sim/campaign.h"
@@ -35,19 +36,22 @@ int main(int argc, char** argv) {
         c.step();
         const int32_t men = c.menInWorld();
         // In batches of 20 ticks: the mean, and the quickest batch (a machine shared with other work is noisy).
-        double total = 0, best = 1e30;
+        // (and the quickest batch by the process's CPU time, which a machine busy with other work disturbs less)
+        double total = 0, best = 1e30, bestCpu = 1e30;
         int done = 0;
         while (done < ticks) {
             const int n = std::min(20, ticks - done);
             const auto t0 = std::chrono::steady_clock::now();
+            const std::clock_t c0 = std::clock();
             for (int k = 0; k < n; ++k) c.step();
             const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            bestCpu = std::min(bestCpu, 1000.0 * static_cast<double>(std::clock() - c0) / CLOCKS_PER_SEC / n);
             total += ms;
             best = std::min(best, ms / n);
             done += n;
         }
         const double ms = total / ticks;
-        std::printf("%d men: %.3f ms a tick (best batch %.3f), %.2f us a man, checksum %016" PRIx64 "\n", men, ms, best,
+        std::printf("%d men: %.3f ms a tick (best batch %.3f, cpu %.3f), %.2f us a man, checksum %016" PRIx64 "\n", men, ms, best, bestCpu,
                     ms * 1000.0 / std::max(1, men), c.checksum());
         std::fflush(stdout);
     }
