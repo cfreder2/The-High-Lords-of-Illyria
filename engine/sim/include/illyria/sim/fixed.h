@@ -48,6 +48,9 @@ struct Fixed {
     }
     // Quotient is truncated toward zero. Division by zero is a logic error.
     constexpr Fixed operator/(Fixed o) const {
+        // (Under 2^47 raw, which is any distance a battle has, the shifted dividend fits 64 bits: the same quotient
+        // by a hardware divide instead of the 128-bit routine.)
+        if (raw > -(int64_t{1} << 47) && raw < (int64_t{1} << 47)) return Fixed{(raw * kOneRaw) / o.raw};
         return Fixed{static_cast<int64_t>((static_cast<i128>(raw) << kFracBits) / o.raw)};
     }
     constexpr Fixed operator*(int64_t i) const { return Fixed{raw * i}; }

@@ -54,6 +54,23 @@ TEST(fixed_sqrt_is_the_exact_floor_root) {
     }
 }
 
+// The quotient is the 128-bit one, truncated toward zero, on both sides of the 64-bit shortcut (|raw| < 2^47).
+TEST(fixed_division_is_the_128_bit_quotient) {
+    uint64_t s = 1234567890123456789ULL;
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 200000; ++i) {
+        const int64_t a = static_cast<int64_t>(next()) >> (1 + next() % 62), b = static_cast<int64_t>(next()) >> (1 + next() % 62);
+        if (b == 0) continue;
+        CHECK((Fixed::fromRaw(a) / Fixed::fromRaw(b)).raw == static_cast<int64_t>((static_cast<i128>(a) << Fixed::kFracBits) / b));
+    }
+    const int64_t edge = int64_t{1} << 47;
+    for (int64_t a : {edge - 1, edge, edge + 1, -edge + 1, -edge, -edge - 1, int64_t{0}, int64_t{-1}}) {
+        for (int64_t b : {int64_t{1}, int64_t{-1}, int64_t{3}, int64_t{-65536}, edge}) {
+            CHECK((Fixed::fromRaw(a) / Fixed::fromRaw(b)).raw == static_cast<int64_t>((static_cast<i128>(a) << Fixed::kFracBits) / b));
+        }
+    }
+}
+
 TEST(fixed_trig_matches_libm) {
     // libm is only the reference here; the simulation never calls it.
     for (int i = -2000; i <= 2000; i += 7) {
