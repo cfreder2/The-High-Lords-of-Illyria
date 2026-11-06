@@ -34,11 +34,21 @@ int main(int argc, char** argv) {
         }
         c.step();
         const int32_t men = c.menInWorld();
-        const auto t0 = std::chrono::steady_clock::now();
-        for (int k = 0; k < ticks; ++k) c.step();
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / ticks;
-        std::printf("%d men: %.3f ms a tick, %.2f us a man, checksum %016" PRIx64 "\n", men, ms, ms * 1000.0 / std::max(1, men),
-                    c.checksum());
+        // In batches of 20 ticks: the mean, and the quickest batch (a machine shared with other work is noisy).
+        double total = 0, best = 1e30;
+        int done = 0;
+        while (done < ticks) {
+            const int n = std::min(20, ticks - done);
+            const auto t0 = std::chrono::steady_clock::now();
+            for (int k = 0; k < n; ++k) c.step();
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            total += ms;
+            best = std::min(best, ms / n);
+            done += n;
+        }
+        const double ms = total / ticks;
+        std::printf("%d men: %.3f ms a tick (best batch %.3f), %.2f us a man, checksum %016" PRIx64 "\n", men, ms, best,
+                    ms * 1000.0 / std::max(1, men), c.checksum());
         std::fflush(stdout);
     }
     return 0;

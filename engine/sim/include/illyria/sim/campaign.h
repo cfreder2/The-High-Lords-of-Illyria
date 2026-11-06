@@ -635,6 +635,10 @@ private:
     void stepWorld();
     void steer(Stack& s, std::vector<Command>& commands, bool think);
     void fightAi(Stack& s, std::vector<Command>& commands);
+    // fightAi's grid of the units a man may fight, built at the first use in a think (scratch, not state).
+    bool foeGridBuilt_ = false;
+    int32_t foeCells_ = 0;
+    std::vector<uint32_t> foeStart_, foeItems_;
     void syncMen(Stack& s);
     // The slots of a stack's living men in its formation, in millimetres to
     // the right of its body and ahead of it, in army order.

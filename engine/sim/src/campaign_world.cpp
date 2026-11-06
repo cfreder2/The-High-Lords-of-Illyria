@@ -641,11 +641,24 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
     const Vec3 origin = region_->origin();
     int32_t ax, ay;
     anchorOf(s.cx, s.cy, ax, ay);
-    // The foes, once: awake units of other sides, standing and on their feet.
-    std::vector<const Unit*> foes;
-    for (const Unit& u : w.units())
-        if (u.alive() && u.owner != s.owner && !u.routed && !u.inAir()) foes.push_back(&u);
-    if (foes.empty()) return;
+    // The foes are the awake units of other sides, standing and on their feet: a grid of 16 m cells of every such unit,
+    // built once a think. The nearest to a man is found in the few cells round him, never by walking them all.
+    constexpr int32_t kCellM = 16;
+    const auto cellOf = [&](Fixed v) { return std::clamp<int32_t>(static_cast<int32_t>(v.floorToInt() / kCellM), 0, foeCells_ - 1); };
+    if (!foeGridBuilt_) {
+        foeGridBuilt_ = true;
+        foeCells_ = static_cast<int32_t>(region_->terrain().size().floorToInt() / kCellM) + 2;
+        const auto slot = [&](const Unit& u) { return static_cast<size_t>(cellOf(u.pos.y)) * foeCells_ + cellOf(u.pos.x); };
+        const auto isFoe = [](const Unit& u) { return u.alive() && !u.routed && !u.inAir(); };
+        foeStart_.assign(static_cast<size_t>(foeCells_) * foeCells_ + 1, 0);
+        for (const Unit& u : w.units())
+            if (isFoe(u)) ++foeStart_[slot(u) + 1];
+        for (size_t c = 0; c + 1 < foeStart_.size(); ++c) foeStart_[c + 1] += foeStart_[c];
+        foeItems_.assign(foeStart_.back(), 0);
+        std::vector<uint32_t> fill(foeStart_.begin(), foeStart_.end() - 1);
+        for (uint32_t i = 0; i < w.units().size(); ++i)
+            if (isFoe(w.units()[i])) foeItems_[fill[slot(w.units()[i])]++] = i;
+    }
     for (const Army& a : s.armies) {
         const UnitStats stats = unitStats(a.type);
         if (stats.healing.amount > 0) continue;  // healers tend, and follow
@@ -654,14 +667,33 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
             if (!m.alive() || !m.unit) continue;
             const Unit* u = w.findUnit(m.unit);
             if (!u || !u->alive() || u->routed || u->targetUnit != kNoEntity || u->foe != kNoEntity) continue;
+            // The nearest foe (of those as near, the first in the world's order). Only one within hold of the post
+            // matters, and the man is not far from it: ring after ring of cells to a little past that is enough (a
+            // nearest beyond them is beyond the hold, and he does nothing either way).
+            const int64_t offMm = std::abs(int64_t{toMm(u->pos.x + origin.x)} - ax) + std::abs(int64_t{toMm(u->pos.y + origin.y)} - ay);
+            const int32_t rings = static_cast<int32_t>((kHoldMm + offMm + 4000) / (kCellM * 1000)) + 2;
             const Unit* best = nullptr;
             int64_t bestRaw = INT64_MAX;
-            for (const Unit* f : foes) {
-                const int64_t d = (f->pos - u->pos).flat().lengthSq().raw;
-                if (d < bestRaw) {
-                    bestRaw = d;
-                    best = f;
-                }
+            uint32_t bestIndex = 0;
+            const int32_t cx = cellOf(u->pos.x), cy = cellOf(u->pos.y);
+            for (int32_t r = 0; r <= rings; ++r) {
+                for (int32_t y = std::max(0, cy - r); y <= std::min(foeCells_ - 1, cy + r); ++y)
+                    for (int32_t x = std::max(0, cx - r); x <= std::min(foeCells_ - 1, cx + r); ++x) {
+                        if (std::max(std::abs(x - cx), std::abs(y - cy)) != r) continue;  // (this ring only)
+                        const size_t c = static_cast<size_t>(y) * foeCells_ + x;
+                        for (uint32_t k = foeStart_[c]; k < foeStart_[c + 1]; ++k) {
+                            const Unit& f = w.units()[foeItems_[k]];
+                            if (f.owner == s.owner) continue;
+                            const int64_t d = (f.pos - u->pos).flat().lengthSq().raw;
+                            if (d < bestRaw || (d == bestRaw && foeItems_[k] < bestIndex)) {
+                                bestRaw = d;
+                                best = &f;
+                                bestIndex = foeItems_[k];
+                            }
+                        }
+                    }
+                // Nothing in a ring beyond this one is nearer than its inner edge.
+                if (best && bestRaw + 4 < int64_t{r} * r * kCellM * kCellM * Fixed::kOneRaw) break;
             }
             if (!best) continue;
             const int64_t dist = toMm(sqrt(Fixed::fromRaw(bestRaw)));
@@ -716,6 +748,7 @@ void Campaign::stepWorld() {
                     if (m.unit == gone) m.unit = 0;
     }
     const bool think = tick_ % kThinkTicks == 0;
+    foeGridBuilt_ = false;
     commands_.clear();
     boarding_.clear();
     for (Stack& s : stacks_) {

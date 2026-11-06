@@ -651,45 +651,210 @@ private:
     // unordered map cannot make results depend on hashing order.
     class SpatialHash {
     public:
-        explicit SpatialHash(int64_t cellMetres = 4) : cell_(cellMetres) {}
-        void clear() { buckets_.clear(); }
-        void insert(uint32_t index, Fixed x, Fixed y) { buckets_[key(cellOf(x), cellOf(y))].push_back(index); }
+        explicit SpatialHash(int64_t cellMetres = 4) : cell_(cellMetres), slots_(64) {}
+        // Empties every cell, keeping the room the lists grew to (the grid is rebuilt every step).
+        void clear() {
+            for (const uint32_t s : used_) {
+                slots_[s].items.clear();
+                slots_[s].used = false;
+            }
+            used_.clear();
+        }
+        void insert(uint32_t index, Fixed x, Fixed y) { slot(key(cellOf(x), cellOf(y))).items.push_back(index); }
         void remove(uint32_t index, Fixed x, Fixed y);
-        // Calls fn(index) for items whose cell overlaps the square of `radius` around (x, y).
+        // Calls fn(index) for items whose cell overlaps the square of `radius` around (x, y): cell by cell, row by row,
+        // each cell's items in the order they were inserted.
         template <typename Fn>
         void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
             const int64_t x0 = cellOf(x - radius), x1 = cellOf(x + radius);
             const int64_t y0 = cellOf(y - radius), y1 = cellOf(y + radius);
             for (int64_t cy = y0; cy <= y1; ++cy)
                 for (int64_t cx = x0; cx <= x1; ++cx) {
-                    auto it = buckets_.find(key(cx, cy));
-                    if (it == buckets_.end()) continue;
-                    for (uint32_t i : it->second) fn(i);
+                    const Slot* s = find(key(cx, cy));
+                    if (s == nullptr) continue;
+                    for (uint32_t i : s->items) fn(i);
                 }
         }
 
     private:
+        // An open-addressing table of cells (looked up by key, never walked, so its order is not the game's).
+        struct Slot {
+            int64_t key = 0;
+            bool used = false;
+            std::vector<uint32_t> items;
+        };
         int64_t cellOf(Fixed v) const { return v.floorToInt() >= 0 ? v.floorToInt() / cell_ : (v.floorToInt() - cell_ + 1) / cell_; }
         static int64_t key(int64_t cx, int64_t cy) { return (cx << 32) ^ (cy & 0xFFFFFFFF); }
+        size_t home(int64_t k) const { return static_cast<size_t>((static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull) >> 20) & (slots_.size() - 1); }
+        const Slot* find(int64_t k) const {
+            for (size_t i = home(k);; i = (i + 1) & (slots_.size() - 1)) {
+                if (!slots_[i].used) return nullptr;
+                if (slots_[i].key == k) return &slots_[i];
+            }
+        }
+        Slot* find(int64_t k) { return const_cast<Slot*>(std::as_const(*this).find(k)); }
+        Slot& slot(int64_t k) {
+            if ((used_.size() + 1) * 2 > slots_.size()) grow();
+            for (size_t i = home(k);; i = (i + 1) & (slots_.size() - 1)) {
+                if (!slots_[i].used) {
+                    slots_[i].used = true;
+                    slots_[i].key = k;
+                    used_.push_back(static_cast<uint32_t>(i));
+                    return slots_[i];
+                }
+                if (slots_[i].key == k) return slots_[i];
+            }
+        }
+        void grow() {
+            std::vector<Slot> old(slots_.size() * 2);
+            old.swap(slots_);
+            used_.clear();
+            for (Slot& s : old)
+                if (s.used) slot(s.key).items = std::move(s.items);
+        }
         int64_t cell_;
-        std::unordered_map<int64_t, std::vector<uint32_t>> buckets_;
+        std::vector<Slot> slots_;
+        std::vector<uint32_t> used_;  // the slots in use
+    };
+
+    // The grounded soldiers by place, rebuilt every step (separateBodies) and asked many times: 4 m cells, each
+    // cell's soldiers in one run of a flat list, in the order of their index. insert() collects, build() sorts them
+    // into cells; the table of cells is only looked up by key, never walked in its own order.
+    class UnitGrid {
+    public:
+        void clear() { pending_.clear(); }
+        void insert(uint32_t index, Fixed x, Fixed y) { pending_.push_back({key(cellOf(x), cellOf(y)), index}); }
+        void build() {
+            size_t size = 64;
+            while (size < pending_.size() * 2) size *= 2;
+            cells_.assign(size, Cell{});
+            where_.resize(pending_.size());
+            for (size_t k = 0; k < pending_.size(); ++k) {
+                Cell& c = cell(pending_[k].key);
+                c.key = pending_[k].key;
+                ++c.count;
+                where_[k] = static_cast<uint32_t>(&c - cells_.data());
+            }
+            uint32_t at = 0;
+            for (Cell& c : cells_) {
+                c.start = at;
+                at += c.count;
+                c.count = 0;
+            }
+            items_.resize(pending_.size());
+            for (size_t k = 0; k < pending_.size(); ++k) {
+                Cell& c = cells_[where_[k]];
+                items_[c.start + c.count++] = pending_[k].index;
+            }
+        }
+        // Calls fn(index) for soldiers whose cell overlaps the square of `radius` round (x, y): cell by cell, row by row.
+        template <typename Fn>
+        void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+            if (cells_.empty()) return;
+            const int64_t x0 = cellOf(x - radius), x1 = cellOf(x + radius);
+            const int64_t y0 = cellOf(y - radius), y1 = cellOf(y + radius);
+            for (int64_t cy = y0; cy <= y1; ++cy)
+                for (int64_t cx = x0; cx <= x1; ++cx) {
+                    const int64_t k = key(cx, cy);
+                    for (size_t i = home(k);; i = (i + 1) & (cells_.size() - 1)) {
+                        const Cell& c = cells_[i];
+                        if (c.key == kNone) break;
+                        if (c.key != k) continue;
+                        for (uint32_t m = c.start; m < c.start + c.count; ++m) fn(items_[m]);
+                        break;
+                    }
+                }
+        }
+
+    private:
+        static constexpr int64_t kCell = 4, kNone = INT64_MIN;
+        struct Cell {
+            int64_t key = kNone;
+            uint32_t start = 0, count = 0;
+        };
+        struct Pending {
+            int64_t key;
+            uint32_t index;
+        };
+        static int64_t cellOf(Fixed v) { return v.floorToInt() >= 0 ? v.floorToInt() / kCell : (v.floorToInt() - kCell + 1) / kCell; }
+        static int64_t key(int64_t cx, int64_t cy) { return (cx << 32) ^ (cy & 0xFFFFFFFF); }
+        size_t home(int64_t k) const { return static_cast<size_t>((static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull) >> 20) & (cells_.size() - 1); }
+        Cell& cell(int64_t k) {
+            size_t i = home(k);
+            while (cells_[i].key != kNone && cells_[i].key != k) i = (i + 1) & (cells_.size() - 1);
+            return cells_[i];
+        }
+        std::vector<Pending> pending_;
+        std::vector<uint32_t> where_, items_;
+        std::vector<Cell> cells_;
+    };
+
+    // The solid obstacles by place (they never move): 8 m cells over the box they stand in, as one run of records
+    // per row of cells, each cell's in the order of their index. A record holds what is needed to tell an obstacle
+    // too far to matter, so a query reads little of the obstacles themselves.
+    class ObstacleGrid {
+    public:
+        void build(const std::vector<Obstacle>& obstacles);
+        // Calls fn(index) for obstacles whose cell overlaps the square of `radius` round (x, y), cell by cell.
+        template <typename Fn>
+        void query(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+            visit(x, y, radius, [&](const Rec& r) { fn(r.index); });
+        }
+        // As query with radius keep + the largest reach, less the obstacles that cannot come within `keep` of (x, y)
+        // (those whose box, grown by `keep`, does not hold the point).
+        template <typename Fn>
+        void queryNear(Fixed x, Fixed y, Fixed keep, Fn&& fn) const {
+            visit(x, y, keep + maxExtent_, [&](const Rec& r) {
+                const Fixed reach = keep + r.extent;
+                if (abs(x - r.x) < reach && abs(y - r.y) < reach) fn(r.index);
+            });
+        }
+
+    private:
+        static constexpr int64_t kCell = 8;
+        struct Rec {
+            Fixed x, y, extent;
+            uint32_t index;
+        };
+        static int64_t cellOf(Fixed v) { return v.floorToInt() >= 0 ? v.floorToInt() / kCell : (v.floorToInt() - kCell + 1) / kCell; }
+        template <typename Fn>
+        void visit(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+            const int64_t x0 = std::max(cellOf(x - radius) - x0_, int64_t{0}), x1 = std::min(cellOf(x + radius) - x0_, w_ - 1);
+            const int64_t y0 = std::max(cellOf(y - radius) - y0_, int64_t{0}), y1 = std::min(cellOf(y + radius) - y0_, h_ - 1);
+            for (int64_t cy = y0; cy <= y1 && x0 <= x1; ++cy)
+                for (uint32_t k = start_[static_cast<size_t>(cy * w_ + x0)], end = start_[static_cast<size_t>(cy * w_ + x1 + 1)]; k < end; ++k) fn(recs_[k]);
+        }
+        int64_t x0_ = 0, y0_ = 0, w_ = 0, h_ = 0;  // the box, in cells
+        Fixed maxExtent_;
+        std::vector<uint32_t> start_;
+        std::vector<Rec> recs_;
     };
 
     Unit* mutableUnit(EntityId id);
     // The soldiers by place, for the scans that look at those near one (the
     // nearest enemy, the census, who is in his way): a flat grid of 8 m cells
-    // built at the start of each step, as sorted (row, column, index) keys.
+    // built at the start of each step by counting sort: the cells row by row over the box the soldiers stand in,
+    // each cell's soldiers in the order of their index.
     // Soldiers move less than kBroadMargin between builds, so a query looks that
     // much further than it asked and the caller tests the exact distance, which
     // finds exactly what a loop over every soldier would. (On a campaign's
     // ground of thousands of soldiers that loop is the whole cost of a tick.)
     static constexpr int64_t kBroadCell = 8;
     static constexpr int64_t kBroadMargin = 4;
-    std::vector<uint64_t> broad_;
+    static constexpr int64_t kBroadCells = 2048;  // (a row of cells is 16 km; farther out is the last cell)
+    static int64_t broadCell(int64_t metres) {
+        return std::clamp<int64_t>((metres >= 0 ? metres / kBroadCell : (metres - kBroadCell + 1) / kBroadCell) + 1024, 0, kBroadCells - 1);
+    }
+    std::vector<uint32_t> broadStart_, broadItems_, broadFill_;
+    std::vector<PlayerId> broadSide_;  // the side of each item (a soldier never changes his)  // per cell of the box: where its soldiers start in the items
+    int64_t broadX0_ = 0, broadY0_ = 0, broadW_ = 0, broadH_ = 0;  // the box, in cells
     bool broadValid_ = false;
     void buildBroad();
     template <typename Fn>
     void nearby(Fixed x, Fixed y, Fixed radius, Fn&& fn) const;
+    // As nearby, without the soldiers of one side (told from a flat list of the sides, not by looking at each).
+    template <typename Fn>
+    void nearbyNotOf(PlayerId side, Fixed x, Fixed y, Fixed radius, Fn&& fn) const;
     void applyCommand(const Command& cmd);
     // Orders (world_orders.cpp).
     void applyOrder(Unit& u, const Command& cmd);
@@ -979,10 +1144,14 @@ private:
         DamageType cause;
     };
     std::vector<PendingExplosion> pendingExplosions_;
-    SpatialHash obstacleGrid_{8};
+    ObstacleGrid obstacleGrid_;
     Fixed obstacleReach_;  // the largest obstacle's reach from its middle (grid queries look this far)
     SpatialHash remainGrid_{4};
-    SpatialHash unitGrid_{4};
+    UnitGrid unitGrid_;
+    struct Body {
+        Fixed x, y, radius;
+    };
+    std::vector<Body> bodyPos_;  // separateBodies' scratch
     // Paths planned this tick, by (gait, start cell, goal cell): squads share routes.
     std::map<std::tuple<int, int64_t, int64_t>, std::vector<Vec3>> pathCache_;
 };
@@ -994,17 +1163,28 @@ void World::nearby(Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
         return;
     }
     const int64_t reach = radius.floorToInt() + 1 + kBroadMargin;
-    const auto cell = [](int64_t metres) {
-        return std::max<int64_t>(0, (metres >= 0 ? metres / kBroadCell : (metres - kBroadCell + 1) / kBroadCell) + 1024);
-    };
     const int64_t px = x.floorToInt(), py = y.floorToInt();
-    const int64_t cx0 = cell(px - reach), cx1 = cell(px + reach), cy0 = cell(py - reach), cy1 = cell(py + reach);
-    for (int64_t cy = cy0; cy <= cy1; ++cy) {
-        const uint64_t lo = (static_cast<uint64_t>(cy) << 48) | (static_cast<uint64_t>(cx0) << 32);
-        const uint64_t hi = (static_cast<uint64_t>(cy) << 48) | (static_cast<uint64_t>(cx1 + 1) << 32);
-        for (auto it = std::lower_bound(broad_.begin(), broad_.end(), lo); it != broad_.end() && *it < hi; ++it)
-            fn(static_cast<uint32_t>(*it & 0xFFFFFFFFu));
+    // The cells asked for that lie in the box; a row of them is one stretch of the items.
+    const int64_t cx0 = std::max(broadCell(px - reach) - broadX0_, int64_t{0}), cx1 = std::min(broadCell(px + reach) - broadX0_, broadW_ - 1);
+    const int64_t cy0 = std::max(broadCell(py - reach) - broadY0_, int64_t{0}), cy1 = std::min(broadCell(py + reach) - broadY0_, broadH_ - 1);
+    for (int64_t cy = cy0; cy <= cy1 && cx0 <= cx1; ++cy)
+        for (uint32_t k = broadStart_[static_cast<size_t>(cy * broadW_ + cx0)], end = broadStart_[static_cast<size_t>(cy * broadW_ + cx1 + 1)]; k < end; ++k)
+            fn(broadItems_[k]);
+}
+
+template <typename Fn>
+void World::nearbyNotOf(PlayerId side, Fixed x, Fixed y, Fixed radius, Fn&& fn) const {
+    if (!broadValid_) {
+        for (uint32_t i = 0; i < units_.size(); ++i) fn(i);
+        return;
     }
+    const int64_t reach = radius.floorToInt() + 1 + kBroadMargin;
+    const int64_t px = x.floorToInt(), py = y.floorToInt();
+    const int64_t cx0 = std::max(broadCell(px - reach) - broadX0_, int64_t{0}), cx1 = std::min(broadCell(px + reach) - broadX0_, broadW_ - 1);
+    const int64_t cy0 = std::max(broadCell(py - reach) - broadY0_, int64_t{0}), cy1 = std::min(broadCell(py + reach) - broadY0_, broadH_ - 1);
+    for (int64_t cy = cy0; cy <= cy1 && cx0 <= cx1; ++cy)
+        for (uint32_t k = broadStart_[static_cast<size_t>(cy * broadW_ + cx0)], end = broadStart_[static_cast<size_t>(cy * broadW_ + cx1 + 1)]; k < end; ++k)
+            if (broadSide_[k] != side) fn(broadItems_[k]);
 }
 
 }  // namespace illyria::sim

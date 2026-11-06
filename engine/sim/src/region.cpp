@@ -193,6 +193,19 @@ void Region::buildGrids() const {
         boxes.push_back(b);
     }
     build(rampGrid_, boxes);
+    boxes.clear();
+    for (const Gate& g : gates_) boxes.push_back({g.a.x - kGateReach, g.a.y - kGateReach, g.a.x + kGateReach, g.a.y + kGateReach});
+    build(gateGrid_, boxes);
+    boxes.clear();
+    for (const Floor& f : floors_) boxes.push_back({f.baseLo.x, f.baseLo.y, f.baseHi.x, f.baseHi.y});
+    build(floorBaseGrid_, boxes);
+    boxes.clear();
+    for (const Floor& f : floors_) {
+        const Deck& d = decks_[f.stair];
+        const Fixed reach = d.halfSpan + d.halfWidth;
+        boxes.push_back({d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach});
+    }
+    build(floorStairGrid_, boxes);
 }
 
 void Region::cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) {
@@ -209,9 +222,14 @@ void Region::cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, s
     }
 }
 
-void Region::decksAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+std::span<const uint32_t> Region::cellOf(const BoxGrid& g, Fixed x, Fixed y) {
+    const size_t c = static_cast<size_t>(gridCell(y, g.n)) * g.n + gridCell(x, g.n);
+    return {g.items.data() + g.start[c], g.items.data() + g.start[c + 1]};
+}
+
+std::span<const uint32_t> Region::decksAt(Fixed x, Fixed y) const {
     buildGrids();
-    cellsOf(deckGrid_, x, y, x, y, out);
+    return cellOf(deckGrid_, x, y);
 }
 
 void Region::wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const {
@@ -219,16 +237,29 @@ void Region::wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint3
     cellsOf(wallGrid_, x0, y0, x1, y1, out);
 }
 
-void Region::rampartsAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+std::span<const uint32_t> Region::gatesNear(Fixed x, Fixed y) const {
     buildGrids();
-    cellsOf(rampGrid_, x, y, x, y, out);
+    return cellOf(gateGrid_, x, y);
+}
+
+void Region::floorBasesNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const {
+    buildGrids();
+    cellsOf(floorBaseGrid_, x0, y0, x1, y1, out);
+}
+
+std::span<const uint32_t> Region::floorStairsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(floorStairGrid_, x, y);
+}
+
+std::span<const uint32_t> Region::rampartsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(rampGrid_, x, y);
 }
 
 bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
     bool found = false;
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
         const Deck& d = decks_[k];
         if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
@@ -240,9 +271,7 @@ bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
 
 bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
     bool found = false;
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
         const Deck& d = decks_[k];
         if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
@@ -254,9 +283,7 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
 }
 
 bool Region::inRamp(Fixed x, Fixed y, Fixed z) const {
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
         const Deck& d = decks_[k];
         if (d.ramp && d.contains(x, y) && d.heightAt(x, y) > z) return true;
     }
@@ -278,9 +305,7 @@ bool Gate::inside(const Rampart& ring, const Vec3& p) {
 
 int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
     // Near the way round (the walk's middle, or round a tower on its gallery).
-    thread_local std::vector<uint32_t> near;
-    rampartsAt(x, y, near);
-    for (const uint32_t i : near) {
+    for (const uint32_t i : rampartsAt(x, y)) {
         const Rampart& rp = ramparts_[i];
         const size_t n = rp.way.size();
         for (size_t e = 0; e < n; ++e) {
