@@ -46,9 +46,32 @@ Json read(const char* text) {
 
 }  // namespace
 
+// Whether the game being played is stopped (a battle's clock, or the conquest's).
+static bool gamePaused() {
+    Json camp = read(illyria_campaign_state());
+    if (camp.find("day")) return camp.flag("paused");
+    return read(illyria_hud()).flag("paused");
+}
+static void togglePause() {
+    if (read(illyria_campaign_state()).find("day")) illyria_campaign_pause();
+    else illyria_toggle_pause();
+}
+
+// A game in play is held while its menu is up, and let go when it closes: nothing steps behind a menu.
 void Hud::openMenu() {
+    if (menu_) return;
     menu_ = true;
     help_ = false;
+    if (playing_ && !gamePaused()) {
+        togglePause();
+        heldByMenu_ = true;
+    }
+}
+
+void Hud::closeMenu() {
+    menu_ = false;
+    if (heldByMenu_ && gamePaused()) togglePause();
+    heldByMenu_ = false;
 }
 
 bool Hud::loadSave(std::string& text) const {
@@ -71,6 +94,7 @@ bool Hud::start(const std::string& mode, const std::string& options) {
     notice_ = mode == "campaign" ? "Laying out the island - every wall, gate and tree, for the fights" : "Setting out the battle";
     error_.clear();
     menu_ = false;
+    heldByMenu_ = false;  // (a new game starts afresh)
     return true;
 }
 
@@ -121,7 +145,7 @@ void Hud::menuKey(Key k) {
         case Key::Left: lord_ = (lord_ + 7) % 8; foes_ &= ~(1 << lord_); break;
         case Key::Right: lord_ = (lord_ + 1) % 8; foes_ &= ~(1 << lord_); break;
         case Key::Enter: activate(row_); break;
-        case Key::Back: menu_ = !playing_; break;  // (back to the game, if there is one)
+        case Key::Back: if (playing_) closeMenu(); break;  // (back to the game, if there is one)
     }
 }
 
@@ -155,42 +179,98 @@ bool Hud::click(float x, float y) {
     return false;
 }
 
+namespace {
+
+// `text` broken at spaces into lines no wider than `maxW` points at `size`.
+std::vector<std::string> wrap(const Overlay& o, const std::string& text, float size, float maxW) {
+    std::vector<std::string> lines;
+    std::string line;
+    std::istringstream words(text);
+    for (std::string word; words >> word;) {
+        const std::string tried = line.empty() ? word : line + " " + word;
+        if (!line.empty() && o.width(tried, size) > maxW) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = tried;
+        }
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+// The largest size up to `size` at which `text` fits in `maxW`.
+float fit(const Overlay& o, const std::string& text, float size, float maxW) {
+    while (size > 8 && o.width(text, size) > maxW) size -= 1;
+    return size;
+}
+
+}  // namespace
+
+// The panel is sized from the text it holds (measured, wrapped or shrunk to the window), so nothing passes its edge.
 void Hud::drawMenu(Overlay& o, float w, float h) {
-    const float pw = 560, ph = 470, px = (w - pw) / 2, py = std::max(20.0f, (h - ph) / 2);
+    constexpr float kPad = 24, kRow = 34, kLordRow = 22;
+    const float pw = std::min(580.0f, w - 20), inner = pw - 2 * kPad;
+    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: the Ford", "Skirmish: the siege", "Continue the conquest", "Quit"};
+
+    const std::string title = "THE HIGH LORDS OF ILLYRIA";
+    const float titleSize = fit(o, title, 28, inner);
+    const std::string sub = std::string("v") + illyria_version() + " - desktop";
+    const std::string leadLabel = "You lead (left / right, or click a square):";
+    const float leadSize = fit(o, leadLabel, 13, inner);
+    const std::string difficulty = std::string("Computer lords: keys 1-8 toggle them (red are in the war). They play ") + (hard_ ? "Hard" : "Easy") + " (D).";
+    std::vector<std::string> hints = wrap(o, difficulty, 12, inner);
+    const size_t difficultyLines = hints.size();
+    for (const std::string& l : wrap(o, "Up / down, Enter, or click. In a battle, / shows the keys.", 12, inner)) hints.push_back(l);
+    const std::vector<std::string> errors = wrap(o, error_, 13, inner);
+
+    const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 +
+                     static_cast<float>(hints.size()) * 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
+    const float px = (w - pw) / 2, py = std::max(10.0f, (h - ph) / 2);
     o.rect(px, py, pw, ph, kPanel);
     o.frame(px, py, pw, ph, 2, kGold);
-    o.text(px + 24, py + 20, "THE HIGH LORDS OF ILLYRIA", kGold, 28);
-    o.text(px + 24, py + 56, std::string("v") + illyria_version() + "  -  desktop", kDim, 12);
-    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: the Ford", "Skirmish: the siege", "Continue the conquest", "Quit"};
+
+    float y = py + kPad;
+    o.text(px + kPad, y, title, kGold, titleSize);
+    y += titleSize + 8;
+    o.text(px + kPad, y, sub, kDim, 12);
+    y += 12 + 18;
     std::string save;
-    for (int r = 0; r < kRows; ++r) {
-        const float y = py + 90 + static_cast<float>(r) * 34;
+    for (int r = 0; r < kRows; ++r, y += kRow) {
         const bool off = r == kContinue && !loadSave(save);
-        if (r == row_) o.rect(px + 16, y - 4, pw - 32, 28, rgba(0x6A5320, 160));
-        o.text(px + 28, y, (r == row_ ? "> " : "  ") + std::string(kLabel[r]), off ? rgba(0x70695C) : kInk, 18);
-        hits_.push_back({px + 16, y - 4, pw - 32, 28, r});
+        const std::string label = (r == row_ ? "> " : "  ") + std::string(kLabel[r]);
+        if (r == row_) o.rect(px + 12, y - 5, pw - 24, 28, rgba(0x6A5320, 160));
+        o.text(px + kPad, y, label, off ? rgba(0x70695C) : kInk, fit(o, label, 18, inner));
+        hits_.push_back({px + 12, y - 5, pw - 24, 28, r});
     }
     // The conquest's choices: who you are and who else is in the war.
-    float y = py + 270;
-    o.text(px + 28, y, "You lead (left / right, or click a square):", kDim, 13);
-    y += 22;
+    y += 12 - 5;
+    o.text(px + kPad, y, leadLabel, kDim, leadSize);
+    y += leadSize + 9;
+    const float col = inner / 2;
     for (int i = 0; i < 8; ++i) {
-        const float x = px + 28 + static_cast<float>(i % 2) * 260, yy = y + static_cast<float>(i / 2) * 22;
+        const float x = px + kPad + static_cast<float>(i % 2) * col, yy = y + static_cast<float>(i / 2) * kLordRow;
         const bool me = i == lord_, foe = !me && (foes_ >> i & 1);
+        const std::string name = kLords[i].name;
         o.rect(x, yy + 2, 10, 10, me ? kGold : foe ? kRed : rgba(0x50483A));
-        o.text(x + 18, yy, std::string(kLords[i].name), me ? kGold : foe ? kInk : kDim, 13);
+        o.text(x + 18, yy, name, me ? kGold : foe ? kInk : kDim, fit(o, name, 13, col - 24));
         hits_.push_back({x, yy - 2, 16, 18, 100 + i});  // the square: lead as them
-        hits_.push_back({x + 16, yy - 2, 234, 18, 200 + i});  // the name: in the war, or not
+        hits_.push_back({x + 16, yy - 2, col - 20, 18, 200 + i});  // the name: in the war, or not
     }
-    y += 4 * 22 + 12;
-    o.text(px + 28, y, std::string("Computer lords: keys 1-8 (red are in the war).  The lords play ") + (hard_ ? "Hard" : "Easy") + "  (D)", kDim, 12);
-    hits_.push_back({px + 28, y - 4, pw - 56, 22, 300});
-    o.text(px + 28, y + 24, "Up / down, Enter; or click.  In a battle: / shows the keys.", kDim, 12);
-    if (!error_.empty()) o.text(px + 28, y + 48, error_, kRed, 13);
+    y += 4 * kLordRow + 8;
+    for (size_t i = 0; i < hints.size(); ++i, y += 16) {
+        o.text(px + kPad, y, hints[i], kDim, 12);
+        if (i < difficultyLines) hits_.push_back({px + kPad, y - 3, inner, 18, 300});
+    }
+    if (!errors.empty()) {
+        y += 6;
+        for (const std::string& l : errors) o.text(px + kPad, y, l, kRed, 13), y += 17;
+    }
 }
 
 void Hud::draw(Overlay& o, float w, float h) {
     hits_.clear();
+    if (!notice_.empty() || menu_) o.text(6, 4, perf_, kGold, 10);  // (in play, the status bar carries it)
     if (!notice_.empty()) {
         o.rect(0, 0, w, h, rgba(0x000000, 190));
         const float tw = o.width(notice_, 20);
@@ -207,24 +287,25 @@ void Hud::draw(Overlay& o, float w, float h) {
     char buf[256];
 
     // The status line.
-    o.rect(0, 0, w, 26, rgba(0x000000, 150));
+    o.rect(0, 0, w, 34, rgba(0x000000, 150));
+    o.text(6, 4, perf_, kGold, 10);
     if (conquest) {
         const int day = static_cast<int>(camp.num("day"));
-        std::snprintf(buf, sizeof buf, "Conquest  Day %d   Gold %d   Towns %d   Land %d   %dx%s   %s", day, static_cast<int>(camp.num("gold")),
+        std::snprintf(buf, sizeof buf, "Conquest  Day %d   Gold %d   Towns %d   Land %d   %dx%s", day, static_cast<int>(camp.num("gold")),
                       static_cast<int>(camp.num("cities")), static_cast<int>(camp.num("land")), static_cast<int>(camp.num("speed")),
-                      camp.flag("paused") ? " PAUSED" : "", illyria_perf());
+                      camp.flag("paused") ? " PAUSED" : "");
         if (day != savedDay_) {
             savedDay_ = day;
             saveConquest();
         }
         lastDay_ = day;
     } else {
-        std::snprintf(buf, sizeof buf, "%s   %s%s   %s", hud.num("scenario") == 1 ? "Siege" : "Skirmish", hud.flag("paused") ? "PAUSED   " : "",
-                      hud.str("foe").empty() ? "" : ("v " + hud.str("foe")).c_str(), illyria_perf());
+        std::snprintf(buf, sizeof buf, "%s   %s%s%s", hud.num("scenario") == 1 ? "Siege" : "Skirmish", hud.flag("paused") ? "PAUSED   " : "",
+                      hud.str("foe").empty() ? "" : ("v " + hud.str("foe")).c_str(), "");
     }
-    o.text(10, 6, buf, kInk, 14);
+    o.text(6, 18, buf, kInk, 13);
     const std::string hint = "Enter: menu    /: keys";
-    o.text(w - o.width(hint, 12) - 10, 7, hint, kDim, 12);
+    o.text(w - o.width(hint, 12) - 10, 18, hint, kDim, 12);
 
     const int outcome = static_cast<int>(hud.num("outcome"));
     if (!conquest && outcome != 0) {
@@ -254,6 +335,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             if (f.size() < 4) continue;
             const std::string name = line.substr(from);
             const float x = static_cast<float>(std::atof(f[2].c_str())), y = static_cast<float>(std::atof(f[3].c_str()));
+            if (y < 38) continue;  // (under the status bar)
             const Colour c = hex(f[1]);
             if (f[0] == "0" || f[0] == "1" || f[0] == "7") o.rect(x - 4, y + 4, 8, 8, c);
             o.text(x + 8, y + 2, name, kInk, 11);

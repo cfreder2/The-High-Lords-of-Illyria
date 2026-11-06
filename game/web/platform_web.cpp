@@ -135,6 +135,9 @@ bool resizeCanvas(int w, int h) {
     return true;
 }
 
+unsigned screenFramebuffer() { return 0; }
+void present() {}
+
 void voiceCue(const char* set, const char* situation, bool enemy, float pan, float gain, int priority, int speaker, int tick) {
     js_voice_cue(set, situation, enemy, pan, gain, priority, speaker, tick);
 }

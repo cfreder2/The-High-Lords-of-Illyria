@@ -16,9 +16,17 @@
 #include "audio.h"
 #include "hud.h"
 #include "input.h"
+#include "json.h"
 #include "overlay.h"
 
 namespace {
+
+// The simulation's tick count (illyria_hud): 0 until a mode is begun, and held there while the menu is the title's.
+unsigned hudTick() {
+    illyria::native::Json hud;
+    illyria::native::Json::parse(illyria_hud(), hud);
+    return static_cast<unsigned>(hud.num("tick"));
+}
 
 SDL_Window* window = nullptr;
 SDL_GLContext context = nullptr;
@@ -27,7 +35,8 @@ struct Options {
     std::string assets, mode, options, shot;
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
-    bool fullscreen = false, sound = true, stats = false, fresh = false;
+    bool fullscreen = false, sound = true, stats = false, vsync = true;
+    int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
     bool hard = true;
 };
@@ -44,7 +53,8 @@ void usage() {
         "  --skirmish            a skirmish at the Ford at once;  --siege  the siege\n"
         "  --assets DIR          the folder holding sprites/, models/, sfx/\n"
         "  --size WxH, --fullscreen, --no-sound\n"
-        "  --stats               print the frame rate every two seconds\n"
+        "  --stats               print the frame rate and its split every two seconds\n"
+        "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --quit-after N        quit after N frames\n"
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
@@ -66,6 +76,8 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--fullscreen") o.fullscreen = true;
         else if (a == "--no-sound") o.sound = false;
         else if (a == "--stats") o.stats = true;
+        else if (a == "--novsync") o.vsync = false;
+        else if (a == "--msaa") o.msaa = std::atoi(next());
         else if (a == "--shot") {
             o.shot = next();
             o.shotFrame = 300;
@@ -111,8 +123,54 @@ Canvas canvas() {
     return {static_cast<double>(w), static_cast<double>(h), static_cast<double>(SDL_GetWindowPixelDensity(window))};
 }
 
-// The window's drawable is the system's to size.
-bool resizeCanvas(int, int) { return false; }
+// The frame is drawn at the size asked for: straight into the window's drawable when that is as big, else into a
+// framebuffer of its own that present() scales up (dynamic resolution, as the page does by sizing its canvas).
+namespace {
+struct Offscreen {
+    GLuint fbo = 0, color = 0, depth = 0;
+    int w = 0, h = 0;
+} off;
+bool useOffscreen = false;
+}  // namespace
+
+bool resizeCanvas(int w, int h) {
+    int dw = 0, dh = 0;
+    SDL_GetWindowSizeInPixels(window, &dw, &dh);
+    useOffscreen = w < dw || h < dh;
+    if (!useOffscreen) return true;
+    if (!off.fbo) {
+        glGenFramebuffers(1, &off.fbo);
+        glGenTextures(1, &off.color);
+        glGenRenderbuffers(1, &off.depth);
+    }
+    if (off.w != w || off.h != h) {
+        off.w = w;
+        off.h = h;
+        glBindTexture(GL_TEXTURE_2D, off.color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindRenderbuffer(GL_RENDERBUFFER, off.depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+        glBindFramebuffer(GL_FRAMEBUFFER, off.fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, off.color, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, off.depth);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    return true;
+}
+
+unsigned screenFramebuffer() { return useOffscreen ? off.fbo : 0; }
+
+void present() {
+    if (!useOffscreen) return;
+    int dw = 0, dh = 0;
+    SDL_GetWindowSizeInPixels(window, &dw, &dh);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, off.fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, off.w, off.h, 0, 0, dw, dh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 
 void voiceCue(const char*, const char*, bool, float, float, int, int, int) {}  // (the desktop has no voices yet)
 void sfxCue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int, int) {
@@ -145,8 +203,8 @@ int runApp(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);  // (required by macOS)
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);  // (the page asks for antialiasing too)
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, opt.msaa > 0 ? 1 : 0);  // (the page asks for antialiasing too)
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, opt.msaa);
     window = SDL_CreateWindow("The High Lords of Illyria", opt.width, opt.height,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (opt.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (!window) {
@@ -158,7 +216,7 @@ int runApp(int argc, char** argv) {
         std::fprintf(stderr, "OpenGL 4.1 is not available: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetSwapInterval(opt.vsync ? 1 : 0);
     if (!gladLoadGL(reinterpret_cast<GLADloadfunc>(SDL_GL_GetProcAddress))) {
         std::fprintf(stderr, "OpenGL functions could not be loaded\n");
         return 1;
@@ -206,7 +264,15 @@ int runApp(int argc, char** argv) {
     }
 
     int frame = 0;
-    double statsAt = platform::nowMs();
+    double statsAt = platform::nowMs(), lastLoop = statsAt;
+    // Where a frame goes: the whole loop (with the wait for the display), the CPU's share up to the swap, and the
+    // GPU's own time for the frame's commands (a timer query, read a frame late).
+    double loopMs = 16.7, cpuMs = 0, gpuMs = 0;
+    constexpr int kRing = 6;  // (the GPU runs a few frames behind: read the oldest)
+    GLuint queries[kRing] = {};
+    glGenQueries(kRing, queries);
+    bool queried[kRing] = {};
+    std::string hudPerf;
     bool running = true;
     while (running) {
         SDL_Event e;
@@ -232,7 +298,11 @@ int runApp(int argc, char** argv) {
         }
         native::pumpAssets();
         hud.tick();
+        const double cpuStart = platform::nowMs();
+        const int slot = frame % kRing;
+        glBeginQuery(GL_TIME_ELAPSED, queries[slot]);
         const bool drew = run::frame();
+        if (drew) platform::present();
         const platform::Canvas cv = platform::canvas();
         if (drew) {
             int pw = 0, ph = 0;
@@ -240,18 +310,44 @@ int runApp(int argc, char** argv) {
             overlay.begin(pw, ph, static_cast<float>(cv.pixelRatio));
             hud.draw(overlay, static_cast<float>(cv.cssW), static_cast<float>(cv.cssH));
             overlay.end();
+            cpuMs = cpuMs * 0.9 + (platform::nowMs() - cpuStart) * 0.1;
             if (!opt.shot.empty() && frame == opt.shotFrame) {
                 writeShot(opt.shot, pw, ph);
                 running = false;
             }
             SDL_GL_SwapWindow(window);
         }
+        glEndQuery(GL_TIME_ELAPSED);
+        queried[slot] = true;
+        const int oldest = (slot + 1) % kRing;
+        if (queried[oldest]) {
+            GLuint ready = 0;
+            glGetQueryObjectuiv(queries[oldest], GL_QUERY_RESULT_AVAILABLE, &ready);
+            if (ready) {
+                GLuint64 ns = 0;
+                glGetQueryObjectui64v(queries[oldest], GL_QUERY_RESULT, &ns);
+                if (ns > 100000) gpuMs = gpuMs * 0.9 + static_cast<double>(ns) / 1e6 * 0.1;
+                queried[oldest] = false;
+            }
+        }
+        {
+            const double t = platform::nowMs();
+            loopMs = loopMs * 0.95 + (t - lastLoop) * 0.05;
+            lastLoop = t;
+            const char* perf = illyria_perf();  // "N fps . sim S . draw D ms . Rx"
+            const char* sim = std::strstr(perf, "sim ");
+            char line[160];
+            std::snprintf(line, sizeof line, "%.0f fps  frame %.1f ms  cpu %.1f  gpu %.1f  sim %.2f/tick  tick %u", 1000.0 / std::max(loopMs, 0.1), loopMs, cpuMs,
+                          gpuMs, sim ? std::atof(sim + 4) : 0.0, hudTick());
+            hudPerf = line;
+            hud.setPerf(line);
+        }
         if (const GLenum err = glGetError(); err != GL_NO_ERROR && frame < 600) std::fprintf(stderr, "GL error 0x%x at frame %d\n", err, frame);
         ++frame;
         if (opt.quitFrame && frame >= opt.quitFrame) running = false;
         if (opt.stats && platform::nowMs() - statsAt > 2000) {
             statsAt = platform::nowMs();
-            std::printf("frame %d: %s\n", frame, illyria_perf());
+            std::printf("frame %d: %s\n", frame, hudPerf.c_str());
             std::fflush(stdout);
         }
     }

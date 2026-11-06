@@ -710,6 +710,7 @@ bool frame() {
     }
     placeFlags();
     const double drawStart = platform::nowMs();
+    app->renderer.setScreenFramebuffer(platform::screenFramebuffer());
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
     app->camera.setMinDistance(app->renderer.closeupMinDistance());  // sprites never magnified past 1.5x
     app->drawMs = app->drawMs * 0.9 + (platform::nowMs() - drawStart) * 0.1;

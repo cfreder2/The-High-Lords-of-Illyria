@@ -33,6 +33,11 @@ Canvas canvas();
 // the game draws at the pixel ratio the surface has.
 bool resizeCanvas(int w, int h);
 
+// The framebuffer the frame is drawn into: 0, the surface itself, or the platform's own when it draws smaller than the
+// surface and scales up in present() (the desktop's dynamic resolution; the browser's canvas is sized instead).
+unsigned screenFramebuffer();
+void present();
+
 // What the battle sounds like: a voice cue, a sound effect, and the ambience layers.
 void voiceCue(const char* set, const char* situation, bool enemy, float pan, float gain, int priority, int speaker, int tick);
 void sfxCue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick);

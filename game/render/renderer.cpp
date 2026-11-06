@@ -1701,7 +1701,7 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type, const figures::Plan& plan, fl
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCells, 2, 0, GL_RGBA, GL_FLOAT, table.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     glEnable(GL_DEPTH_TEST);
     glBindVertexArray(0);
@@ -1957,7 +1957,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     features_ = features;
     viewProjOverride_ = nullptr;
     glDisable(GL_POLYGON_OFFSET_FILL);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
 }
 
 void Renderer::setFeatures(int features) {
@@ -1996,7 +1996,7 @@ void Renderer::ensureShadowMap() {
     const GLenum none = GL_NONE;
     glDrawBuffers(1, &none);
     glReadBuffer(GL_NONE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
 }
 
 void Renderer::uploadCanopy(const Battle& battle) {
@@ -2388,6 +2388,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     renderShadowMap(camera, timeSeconds, gameSeconds);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
     glViewport(0, 0, static_cast<GLsizei>(camera.width()), static_cast<GLsizei>(camera.height()));
     glClearColor(0.64f, 0.74f, 0.84f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

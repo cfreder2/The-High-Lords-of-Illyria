@@ -19,12 +19,15 @@ public:
     // Where the conquest is kept between runs (empty: not saved).
     void setSaveFile(std::string path) { savePath_ = std::move(path); }
     void openMenu();
+    void closeMenu();
     bool start(const std::string& mode, const std::string& options);  // illyria_start_mode, with the busy notice
     void startSaved() { activate(3); }  // carry on the saved conquest
     bool menuOpen() const { return menu_; }
     bool helpOpen() const { return help_; }
     void toggleHelp() { help_ = !help_; }
 
+    // The frame rate and where the frame went, a line, shown top left at all times.
+    void setPerf(std::string line) { perf_ = std::move(line); }
     void draw(Overlay& o, float w, float h);
     // A click at (x, y) points: true if the HUD took it (a card, a banner, a menu row).
     bool click(float x, float y);
@@ -43,8 +46,8 @@ private:
     void activate(int row);
     bool loadSave(std::string& text) const;
 
-    std::string savePath_;
-    bool menu_ = false, help_ = false, playing_ = false;
+    std::string savePath_, perf_;
+    bool menu_ = false, help_ = false, playing_ = false, heldByMenu_ = false;
     int row_ = 0;
     int lord_ = 6;      // the Moonward Order, the skirmish's blue
     int foes_ = 0xFF & ~(1 << 6);

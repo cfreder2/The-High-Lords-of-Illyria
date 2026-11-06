@@ -47,6 +47,8 @@ public:
     static constexpr int kMedium = kGroundDetail | kGroundCover | kShadows | kFarDetail | kAtmosphere;
     static constexpr int kLow = 0;
     void setFeatures(int features);
+    // Where the frame is drawn: the window's own framebuffer (0), or one the platform shows scaled (a lower resolution).
+    void setScreenFramebuffer(GLuint fbo) { screenFbo_ = fbo; }
     int features() const { return features_; }
 
     bool init(Battle& battle);
@@ -419,6 +421,7 @@ private:
     GLsizei detailIndices_ = 0, detailWaterIndices_ = 0, detailChunks_ = 0, detailWetChunks_ = 0;
     uint32_t detailGen_ = UINT32_MAX;
     float detailRect_[4] = {1e9f, 1e9f, -1e9f, -1e9f};
+    GLuint screenFbo_ = 0;
     float detailFade_ = 0;   // by the camera's height (see detailWeight in kCommon)
     std::vector<float> chunkFade_;  // per slot: fading in once finished
     double detailClock_ = -1;
