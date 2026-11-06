@@ -34,6 +34,26 @@ TEST(fixed_sqrt) {
     CHECK_NEAR(sqrt(Fixed::fromInt(1000000000)).toDouble(), std::sqrt(1e9), 2e-5);
 }
 
+// sqrt is the floor of the exact root of raw * 2^16, whichever way it is computed (the quick 64-bit path or the long one).
+TEST(fixed_sqrt_is_the_exact_floor_root) {
+    uint64_t s = 88172645463325252ULL;  // xorshift, a fixed stream
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 200000; ++i) {
+        const int64_t raw = static_cast<int64_t>(next() >> (1 + next() % 62));
+        if (raw <= 0) continue;
+        const u128 n = static_cast<u128>(raw) << Fixed::kFracBits;
+        const u128 r = static_cast<u128>(sqrt(Fixed::fromRaw(raw)).raw);
+        CHECK(r * r <= n);
+        CHECK((r + 1) * (r + 1) > n);
+    }
+    for (int64_t raw : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4}, (int64_t{1} << 48) - 1, int64_t{1} << 48, (int64_t{1} << 48) + 1, INT64_MAX}) {
+        const u128 n = static_cast<u128>(raw) << Fixed::kFracBits;
+        const u128 r = static_cast<u128>(sqrt(Fixed::fromRaw(raw)).raw);
+        CHECK(r * r <= n);
+        CHECK((r + 1) * (r + 1) > n);
+    }
+}
+
 TEST(fixed_trig_matches_libm) {
     // libm is only the reference here; the simulation never calls it.
     for (int i = -2000; i <= 2000; i += 7) {

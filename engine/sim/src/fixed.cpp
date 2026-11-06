@@ -4,8 +4,21 @@ namespace illyria::sim {
 
 namespace {
 
-// Bit-by-bit integer square root: floor(sqrt(n)).
+// Integer square root: floor(sqrt(n)), exact (so any method gives the same bits). Squared distances are almost always
+// under 2^64: Newton's method from a power of two above the root, in 64-bit arithmetic, settles in a few divisions.
+uint64_t isqrt64(uint64_t n) {
+    if (n < 2) return n;
+    uint64_t x = uint64_t{1} << ((64 - static_cast<unsigned>(__builtin_clzll(n)) + 1) / 2);  // >= sqrt(n)
+    for (;;) {
+        const uint64_t y = (x + n / x) / 2;
+        if (y >= x) return x;
+        x = y;
+    }
+}
+
+// The rest (n up to 2^79): the bit-by-bit method.
 uint64_t isqrt(u128 n) {
+    if ((n >> 64) == 0) return isqrt64(static_cast<uint64_t>(n));
     u128 result = 0;
     u128 bit = u128{1} << 126;
     while (bit > n) bit >>= 2;
