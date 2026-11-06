@@ -416,8 +416,10 @@ bool Renderer::buildPrograms() {
         s.p.viewport = glGetUniformLocation(s.p.id, "uViewport");
         s.p.dotPx = glGetUniformLocation(s.p.id, "uDotPx");
         s.p.rim = glGetUniformLocation(s.p.id, "uRim");
-        s.p.board = glGetUniformLocation(s.p.id, "uBoard");
-        s.p.cell = glGetUniformLocation(s.p.id, "uCell");
+        s.p.board = glGetUniformLocation(s.p.id, "uExtents");
+        s.p.forestMap = glGetUniformLocation(s.p.id, "uForestMap");
+        s.p.forestRect = glGetUniformLocation(s.p.id, "uForestRect");
+        s.p.cell = glGetUniformLocation(s.p.id, "uPictures");
         s.p.boardNormal = glGetUniformLocation(s.p.id, "uBoardNormal");
         s.p.bakeBox = glGetUniformLocation(s.p.id, "uBakeBox");
     }
@@ -548,6 +550,7 @@ std::vector<Renderer::MeshBatch*> Renderer::trees() {
     std::vector<MeshBatch*> out;
     for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) out.push_back(&b);
+    out.push_back(&farTrees_);
     return out;
 }
 
@@ -568,6 +571,7 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
 
 
 namespace {
+constexpr size_t kPineKinds = 4;  // the pines' pictures (the pick weights in pushTree)
 // A stable pick from weights (they need not sum to one).
 size_t pick(float u, std::initializer_list<float> weights) {
     float total = 0;
@@ -590,6 +594,27 @@ uint32_t Renderer::sceneryId(const Battle& battle, const sim::Obstacle& o) {
     return static_cast<uint32_t>(std::lround(at.x * 8.0f)) * 73856093u ^ static_cast<uint32_t>(std::lround(at.y * 8.0f)) * 19349663u;
 }
 
+// A tree: which of the pictures it is (the pines', then the oaks', as the atlas holds them), and its instance there.
+// Returns the radius of its blob shadow.
+float Renderer::pushTree(const sim::Obstacle& o, uint32_t id, std::vector<std::vector<float>>& trees) {
+    const V3 pos = toV3(o.pos);
+    const float h = static_cast<float>(o.height.toDouble());
+    const float yaw = hash01(id * 2654435761u) * 6.283f;
+    const float tintVar = 0.85f + 0.3f * hash01(id * 40503u + 7);
+    float q[4];
+    yawQuat(yaw, q);
+    if (o.kind == sim::Obstacle::Kind::Pine) {
+        // Spruce, tall fir, young pine, dead snag.
+        const size_t v = pick(hash01(id * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
+        pushInstance(trees[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
+        return h * 0.3f;
+    }
+    // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
+    const size_t v = pick(hash01(id * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
+    pushInstance(trees[kPineKinds + v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
+    return h * 0.45f;
+}
+
 float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out) {
     const V3 pos = toV3(o.pos);
     const float r = static_cast<float>(o.radius.toDouble()), h = static_cast<float>(o.height.toDouble());
@@ -598,18 +623,8 @@ float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& o
     float q[4];
     yawQuat(yaw, q);
     switch (o.kind) {
-        case sim::Obstacle::Kind::Pine: {
-            // Spruce, tall fir, young pine, dead snag.
-            const size_t v = pick(hash01(id * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
-            pushInstance(out.pine[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
-            return h * 0.3f;
-        }
-        case sim::Obstacle::Kind::Oak: {
-            // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
-            const size_t v = pick(hash01(id * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
-            pushInstance(out.oak[v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
-            return h * 0.45f;
-        }
+        case sim::Obstacle::Kind::Pine:
+        case sim::Obstacle::Kind::Oak: return pushTree(o, id, out.trees);
         case sim::Obstacle::Kind::Bush: {
             // Reeds (the simulation's variant 3) or round, berry and thorn bushes.
             const size_t v = o.variant == 3 ? 3 : pick(hash01(id * 2246822519u + 3), {0.5f, 0.2f, 0.3f});
@@ -640,8 +655,7 @@ void Renderer::uploadScenery(const Battle& battle) {
     const sim::Region& region = battle.region();
     std::vector<float> house, pillar, shadows;
     SceneryLists natural;
-    natural.pine.resize(pines_.size());
-    natural.oak.resize(oaks_.size());
+    natural.trees.resize(pines_.size() + oaks_.size());
     natural.bush.resize(bushes_.size());
     natural.rock.resize(rocks_.size());
     for (size_t i = 0; i < region.obstacles().size(); ++i) {
@@ -681,8 +695,8 @@ void Renderer::uploadScenery(const Battle& battle) {
         // Draped over the ground (a town house's base may stand above it).
         shadows.insert(shadows.end(), {pos.x, pos.y, battle.heightAt(pos.x, pos.y), 0, shadow, 0, 1, 0, 0, 0, 0});
     }
-    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.pine[v]);
-    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.oak[v]);
+    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.trees[v]);
+    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.trees[pines_.size() + v]);
     for (size_t v = 0; v < bushes_.size(); ++v) uploadMeshInstances(bushes_[v], natural.bush[v]);
     for (size_t v = 0; v < rocks_.size(); ++v) uploadMeshInstances(rocks_[v], natural.rock[v]);
     uploadMeshInstances(stumps_, natural.stumps);
@@ -1352,46 +1366,37 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
 
-    // Woods across the continent as clumps of crowns, so the land beyond the
-    // battlefield is not bare from mid zoom (the battlefield has real trees).
-    // Broadleaf, pine and autumn clumps; denser in the fine ring around the
-    // battlefield when the detailed land is on.
-    const auto plant = [&](const FarGrid& g, std::vector<std::vector<float>>& out, int stride, float forestChance, bool skipRing,
-                           uint32_t salt) {
-        for (int j = 0; j < g.ny; j += stride) {
-            for (int i = 0; i < g.nx; i += stride) {
-                const uint32_t h = static_cast<uint32_t>(j * 7919 + i * 104729) ^ salt;
-                const auto ground = static_cast<sim::Ground>(g.ground[static_cast<size_t>(j) * g.nx + i]);
-                const float chance = ground == sim::Ground::Forest ? forestChance : ground == sim::Ground::Plains ? 0.04f
-                                     : ground == sim::Ground::Swamp ? 0.08f : 0;
-                if (hash01(h) >= chance) continue;
-                const float step = g.cell * static_cast<float>(stride);
-                const float x = g.min.x + static_cast<float>(i) * g.cell + (hash01(h + 1) - 0.5f) * step;
-                const float y = g.min.y + static_cast<float>(j) * g.cell + (hash01(h + 2) - 0.5f) * step;
-                bool inTown = false;  // no woods inside the walls
-                for (const sim::Continent::City& city : battle.continent().cities()) {
-                    const float cx = static_cast<float>(city.pos.x.toDouble()) - battle.origin().x, cy = static_cast<float>(city.pos.y.toDouble()) - battle.origin().y;
-                    const float rr = static_cast<float>(city.radius.toDouble()) * 1.25f;
-                    inTown = inTown || (x - cx) * (x - cx) + (y - cy) * (y - cy) < rr * rr;
-                }
-                if (inTown) continue;
-                if (skipRing && x > ring_[0] && y > ring_[1] && x < ring_[2] && y < ring_[3]) continue;
-                float q[4];
-                yawQuat(hash01(h + 3) * 6.283f, q);
-                const float w = step * (0.45f + hash01(h + 4) * 0.35f), tall = 14.0f + hash01(h + 5) * 12.0f;
-                const float t = 0.85f + 0.3f * hash01(h + 6);
-                // Higher ground grows pines; a few stands have turned.
-                const float z = battle.heightAt(x, y);
-                const size_t v = z > 120.0f || hash01(h + 7) < 0.3f ? 1 : hash01(h + 8) < 0.12f ? 2 : 0;
-                pushInstance(out[v], {x, y, z - 1.0f}, q, {w, w, tall}, {t, t, t});
-            }
+    uploadFarForest(battle);
+}
+
+// The continent's own trees, as cards, and the cover they make for the land to be shaded from.
+void Renderer::uploadFarForest(const Battle& battle) {
+    farForest_.grow(battle.continent(), battle.farGrid(), battle.origin());
+    std::vector<std::vector<float>> byKind(pines_.size() + oaks_.size());
+    for (const sim::Obstacle& o : farForest_.trees()) pushTree(o, sceneryId(battle, o), byKind);
+    std::vector<float> data;
+    for (size_t k = 0; k < byKind.size(); ++k) {
+        for (size_t i = 0; i < byKind[k].size(); i += 13) {
+            data.insert(data.end(), byKind[k].begin() + static_cast<long>(i), byKind[k].begin() + static_cast<long>(i) + 13);
+            data.push_back(static_cast<float>(k));
         }
-    };
-    std::vector<std::vector<float>> farCopses(copses_.size()), nearCopses(nearCopses_.size());
-    plant(battle.farGrid(), farCopses, 1, 0.55f, false, 0);
-    plant(battle.nearGrid(), nearCopses, 2, 0.7f, false, 0x9E3779B9u);
-    for (size_t v = 0; v < copses_.size(); ++v) uploadMeshInstances(copses_[v], farCopses[v]);
-    for (size_t v = 0; v < nearCopses_.size(); ++v) uploadMeshInstances(nearCopses_[v], nearCopses[v]);
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, farTrees_.instanceVbo);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(std::max<size_t>(data.size(), 14) * 4), data.data(), GL_STATIC_DRAW);
+    farTrees_.count = static_cast<GLsizei>(data.size() / 14);
+
+    if (!forestMap_) glGenTextures(1, &forestMap_);
+    glBindTexture(GL_TEXTURE_2D, forestMap_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, farForest_.densityX(), farForest_.densityY(), 0, GL_RED, GL_UNSIGNED_BYTE, farForest_.density().data());
+    forestRect_[0] = farForest_.min().x;
+    forestRect_[1] = farForest_.min().y;
+    forestRect_[2] = 1.0f / (FarForest::kDensityCell * static_cast<float>(farForest_.densityX()));
+    forestRect_[3] = 1.0f / (FarForest::kDensityCell * static_cast<float>(farForest_.densityY()));
 }
 
 void Renderer::setBoats(const std::vector<Prop>& boats) {
@@ -1478,27 +1483,25 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(poles_, meshes::bannerPole(), 0);
     makeMeshBatch(cloths_, meshes::bannerCloth(), 0);
     banners_.cloth = cloths_.cloth = true;
-    makeAll(copses_, meshes::copseVariants(), 0.01f);
-    makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
     makeAll(detailPines_, meshes::pineVariants(), 0.03f);
     makeAll(detailOaks_, meshes::oakVariants(), 0.02f);
     makeAll(detailBushes_, meshes::bushVariants(), 0.04f);
     makeAll(detailRocks_, meshes::rockVariants(), 0);
     makeMeshBatch(detailLogs_, meshes::log(), 0);
     makeMeshBatch(detailStumps_, meshes::stump(), 0);
-    // Individual scenery near the camera, the woods' clumps beyond, on the
-    // battlefield and off it alike.
-    for (auto* list : {&pines_, &oaks_, &bushes_, &rocks_, &detailPines_, &detailOaks_, &detailBushes_, &detailRocks_})
+    // The battlefield's trees and the close-up land's, the continent's beyond them; undergrowth, rocks and logs
+    // only near the camera (see ILLYRIA_SCENERY_VS).
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) b.lod = 1;
-    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 1;
-    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_, &copses_, &nearCopses_})
+    for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
+        for (MeshBatch& b : *list) b.lod = 2;
+    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 2;
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) b.part = Part::Trees;
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.part = Part::Clutter;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
     for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
-    for (auto* list : {&copses_, &nearCopses_})
-        for (MeshBatch& b : *list) b.lod = -1;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
@@ -1508,6 +1511,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(dots_, {3, 4, 2}, 0);
     bakeTreeBoards();
     layOutBoards();
+    makeFarTrees();
     reset(battle);
     return true;
 }
@@ -1991,11 +1995,6 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
-    for (MeshBatch& b : copses_) casters.push_back(&b);
-    if (features_ & kFarDetail)
-        for (MeshBatch& b : nearCopses_) casters.push_back(&b);
-    if (treeStyle_ == TreeStyle::Mesh)
-        for (MeshBatch* b : trees()) casters.push_back(b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
@@ -2150,6 +2149,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     }
     if (p.lightViewProj >= 0) glUniformMatrix4fv(p.lightViewProj, 1, GL_FALSE, lightViewProj_.m);
     if (p.shadowInfo >= 0) glUniform4fv(p.shadowInfo, 1, shadowInfo_);
+    if (p.forestMap >= 0) {
+        glActiveTexture(GL_TEXTURE14);
+        glBindTexture(GL_TEXTURE_2D, forestMap_);
+        glUniform1i(p.forestMap, 14);
+        glUniform4fv(p.forestRect, 1, forestRect_);
+        glActiveTexture(GL_TEXTURE0);
+    }
     if (p.focus >= 0) glUniform2f(p.focus, camera.target().x, camera.target().y);
     if (p.flow >= 0) {
         glActiveTexture(GL_TEXTURE6);
@@ -2543,14 +2549,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
-    // Distant woods: sub-pixel and covered by the terrain colour from very high up.
-    if (camera.distance() < 6000.0f) {
-        std::vector<MeshBatch*> woods;
-        for (MeshBatch& b : copses_) woods.push_back(&b);
-        if (features_ & kFarDetail)
-            for (MeshBatch& b : nearCopses_) woods.push_back(&b);
-        drawMeshes(woods, camera, timeSeconds, gameSeconds);
-    }
     drawMeshes(scenery(camera.distance() <= 450.0f), camera, timeSeconds, gameSeconds);
     drawTrees(camera, timeSeconds, gameSeconds);
 

@@ -744,7 +744,7 @@ ILLYRIA_API const char* illyria_draw_counts() {
     }
     return out.c_str();
 }
-// How trees are drawn (Renderer::TreeStyle): 0 the meshes, then one card, two crossed, three, four.
+// How trees are drawn (Renderer::TreeStyle): 0 one card, 1 two crossed, 2 three, 3 four.
 ILLYRIA_API void illyria_set_tree_style(int style) {
     if (app && style >= 0 && style < static_cast<int>(Renderer::TreeStyle::Count)) app->renderer.setTreeStyle(static_cast<Renderer::TreeStyle>(style));
 }
@@ -1521,7 +1521,8 @@ ILLYRIA_API void illyria_overview() {
 // --- The minimap (the page draws it over a canvas from what these hand over) ---
 
 // The land from above, north at the top: sea, water, and land shaded by its
-// height and lit from the north-west; roads pale. Drawn once, a pixel to 22 m.
+// height and lit from the north-west, dark under the woods (the cover of the trees the battlefield is drawn with,
+// Renderer::farForest, so the map and the view show the same forest); roads pale. Drawn once, a pixel to 22 m.
 constexpr int kMiniW = 128, kMiniH = 160;
 void buildMiniLand() {
     using illyria::sim::Fixed;
@@ -1555,6 +1556,13 @@ void buildMiniLand() {
                 const V3 low{0.30f, 0.43f, 0.24f}, mid{0.48f, 0.44f, 0.28f}, high{0.74f, 0.72f, 0.68f};
                 c = elev < 0.5f ? low + (mid - low) * (elev * 2) : mid + (high - mid) * ((elev - 0.5f) * 2);
                 c = c * (0.62f + 0.7f * lit);
+                // The cover over the pixel's 22 m: nine samples of the 8 m cover map.
+                float cover = 0;
+                const illyria::game::V3 origin = app->battle->origin();
+                for (int k = 0; k < 9; ++k)
+                    cover += app->renderer.farForest().densityAt(static_cast<float>(illyria::sim::Continent::kWidth * (2 * i + 1) / (2 * kMiniW)) - origin.x + static_cast<float>(k % 3 - 1) * 7.0f,
+                                                                 static_cast<float>(illyria::sim::Continent::kHeight - illyria::sim::Continent::kHeight * (2 * j + 1) / (2 * kMiniH)) - origin.y + static_cast<float>(k / 3 - 1) * 7.0f);
+                c = c + (V3{0.10f, 0.22f, 0.09f} * (0.62f + 0.5f * lit) - c) * std::clamp(cover / 9.0f * 2.0f, 0.0f, 0.85f);
                 if (kind[at] == 3) c = c * 0.55f + V3{0.78f, 0.7f, 0.5f} * 0.45f;
             }
             for (int k = 0; k < 3; ++k) cv.miniLand[at * 4 + k] = static_cast<uint8_t>(std::clamp((&c.x)[k], 0.0f, 1.0f) * 255);

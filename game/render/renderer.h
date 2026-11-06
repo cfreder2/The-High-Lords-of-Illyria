@@ -12,6 +12,7 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/detail_land.h"
+#include "illyria/game/far_forest.h"
 #include <map>
 
 #include "figures.h"
@@ -62,13 +63,15 @@ public:
     const PartCount& partCount(Part p) const { return counts_[static_cast<int>(p)]; }
     void hideParts(unsigned mask) { hidden_ = mask; }
 
-    // How trees are drawn. Mesh: the models (meshes.cpp). The rest are cards standing on each tree, upright, with a
-    // picture of the tree baked from its mesh (renderer_trees.cpp): one that always faces the camera, two crossed,
-    // three in a star, four in a grid (two crossed pairs). The same trees in the same places either way.
-    enum class TreeStyle : int { Mesh, Face1, Cross2, Star3, Grid4, Count };
-    static constexpr TreeStyle kDefaultTreeStyle = TreeStyle::Mesh;
+    // How trees are drawn, at every distance: as cards standing on each tree, upright, with a picture of the tree
+    // baked from its mesh (renderer_trees.cpp): one that always faces the camera, two crossed, three in a star, four
+    // in a grid (two crossed pairs). The same trees in the same places either way.
+    enum class TreeStyle : int { Face1, Cross2, Star3, Grid4, Count };
+    static constexpr TreeStyle kDefaultTreeStyle = TreeStyle::Star3;
     void setTreeStyle(TreeStyle style);
     TreeStyle treeStyle() const { return treeStyle_; }
+    // The trees of the continent (what the land is shaded from afar, and the minimap).
+    const FarForest& farForest() const { return farForest_; }
 
     bool init(Battle& battle);
     // Forget uploaded remains and marks (call after the battle is replaced).
@@ -137,7 +140,7 @@ private:
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1;
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
-        GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1;
+        GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -147,16 +150,15 @@ private:
         size_t capacity = 0;
         float sway = 0;
         bool masonry = false;
-        // 1: individual scenery, drawn near the camera; -1: the woods' clumps
-        // that stand in for it beyond (see sceneryNear in kMeshVs); 0: always.
+        // 1: the trees of the battlefield and the close-up land; -1: the continent's trees beyond them (they stand
+        // where those do not); 2: undergrowth, rocks and logs near the camera; 0: always (see ILLYRIA_SCENERY_VS).
         float lod = 0;
         bool cloth = false;  // a banner's waving cloth (uFlag): the castles' and the flags'
         Part part = Part::Buildings;
-        // A tree's card picture (renderer_trees.cpp): its VAO over the same instances, its place in the atlas
-        // (-1: none), and the extent of the mesh it was taken from (half width, top).
+        // A tree's card picture (renderer_trees.cpp): its VAO over the same instances, and its place in the atlas
+        // (-1: none, or each instance names its own).
         GLuint boardVao = 0;
         int cell = -1;
-        float boardHalf = 1, boardTop = 1;
     };
     // An instanced batch: a VAO with its per-instance buffer bound.
     struct Batch {
@@ -463,9 +465,8 @@ private:
     std::vector<MeshBatch> detailPines_, detailOaks_, detailBushes_, detailRocks_;
     MeshBatch detailLogs_, detailStumps_;
     uint32_t detailSceneryGen_ = UINT32_MAX;
-    V3 detailSceneryAt_{1e9f, 1e9f, 0};
     double detailSceneryClock_ = 0;
-    void updateDetailScenery(const Battle& battle, const Camera& camera, double now, bool instant);
+    void updateDetailScenery(const Battle& battle, double now, bool instant);
     void resetDetail(const Battle& battle);
     void updateDetail(const Battle& battle, const Camera& camera, double budgetMs, bool instant = false);
     void bindDetail(const Program& p);
@@ -490,19 +491,21 @@ private:
     Program board_, boardDepth_, boardBake_;
     GLuint boardAtlas_ = 0, boardNormals_ = 0, boardVbo_ = 0;
     GLsizei boardVertices_ = 0;
+    std::vector<float> boardCells_, boardSizes_;  // per picture: its place in the atlas (u0 v0 u1 v1); the mesh's half width, top and sway
     TreeStyle treeStyle_ = kDefaultTreeStyle;
     void bakeTreeBoards();
     void layOutBoards();
     void makeBoardVao(MeshBatch& b);
     void drawBoards(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
-    // Draws the trees the way the style says (in the sun's view, the cards' own shadows).
+    // Draws the trees (in the sun's view, their shadows).
     void drawTrees(const Camera& camera, double timeSeconds, float gameSeconds);
     // Trees, undergrowth, rocks and logs as instances, by mesh variant.
     struct SceneryLists {
-        std::vector<std::vector<float>> pine, oak, bush, rock;
+        std::vector<std::vector<float>> trees, bush, rock;  // (trees: the pines' pictures, then the oaks')
         std::vector<float> logs, stumps;
     };
     static uint32_t sceneryId(const Battle& battle, const sim::Obstacle& o);
+    static float pushTree(const sim::Obstacle& o, uint32_t id, std::vector<std::vector<float>>& trees);
     // Adds one; returns the radius of its blob shadow.
     static float pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out);
     // Cities, castles and the places heroes explore, across the whole continent.
@@ -520,7 +523,14 @@ private:
     float territoryInfo_[4] = {0, 0, 0, 0};
     MeshBatch ships_, sails_, piers_;  // the campaign's boats and ports
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
-    std::vector<MeshBatch> copses_, nearCopses_;  // woods beyond the battlefield, by variant
+    // Every tree of the continent beyond the battlefield and the close-up land (far_forest.h), as cards: one
+    // instance buffer, each naming its picture; and the cover they make, which the land is shaded from.
+    FarForest farForest_;
+    MeshBatch farTrees_;
+    GLuint forestMap_ = 0;
+    float forestRect_[4] = {0, 0, 1, 1};
+    void uploadFarForest(const Battle& battle);
+    void makeFarTrees();
     uint64_t marksUploaded_ = 0;
 
     int features_ = kHigh;

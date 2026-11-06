@@ -206,12 +206,20 @@ vec3 landGrids(vec3 c, vec2 xy) {
 // alike from high up.
 // The far land's waterline (kinds.w = 1) wanders a little between samples.
 float farShoreWobble(vec2 p) { return (valueNoise2(p / 23.0) - 0.5) * 0.03 + (valueNoise2(p / 7.0) - 0.5) * 0.012; }
+// How much crown covers the ground at p: the trees of the whole continent summed (game::FarForest), the same trees
+// the cards are drawn for, so the canopy the land shows from afar is under exactly the trees that stand there.
+uniform sampler2D uForestMap;  // R8, linear: crown cover, 8 m texels
+uniform vec4 uForestRect;      // the map's corner (metres), and 1 / its size
+float forestCover(vec2 p) { return texture(uForestMap, (p - uForestRect.xy) * uForestRect.zw).r; }
 vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     vec3 albedo = base;
     vec2 p = world.xy;
     // Ground kinds meet along ragged, natural edges instead of the grid.
     float edge = (fbm3(p / 140.0) - 0.5) * 0.9 + (valueNoise2(p / 28.0) - 0.5) * 0.35;
-    float forest = smoothstep(0.4, 0.6, kinds.x + edge);
+    // Forest is where the trees are (not a ground kind painted in blotches): their cover, from the cards' own
+    // positions, grows to a solid canopy as the cards shrink to specks.
+    float canopyWeight = mix(0.55, 1.0, smoothstep(250.0, 2500.0, uCamDist));
+    float forest = smoothstep(0.1, 0.4, forestCover(p) * canopyWeight * 1.6 + edge * 0.1);
     float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
     float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
     float water = step(1.0, kinds.w + farShoreWobble(p));
@@ -226,7 +234,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // Forest canopy: crowns and gaps, lit as a rough surface.
     if (forest > 0.0) {
         float crowns = fbm3(p / 9.0);
-        vec3 canopy = mix(vec3(0.10, 0.17, 0.07), vec3(0.24, 0.34, 0.13), crowns);
+        vec3 canopy = mix(vec3(0.07, 0.13, 0.05), vec3(0.19, 0.28, 0.10), crowns);
         canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
         albedo = mix(albedo, canopy, forest * land);
         n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
@@ -1413,7 +1421,8 @@ void main() {
 // Instanced lit meshes: scenery and bodies. Per vertex: pos, normal, colour.
 // Per instance: position, rotation quaternion, scale, tint.
 // What the scenery's vertex shaders share (meshes and tree boards): which scenery stands where, and the instance's
-// record. uLod: 1 individual scenery; -1 the woods' clumps standing in for it; 0 always drawn.
+// record. uLod: 1 trees of the battlefield and the close-up land; -1 the trees of the rest of the continent, which
+// stand where those do not; 2 undergrowth, rocks and logs, near the camera only; 0 always drawn.
 #define ILLYRIA_SCENERY_VS R"(
 layout(location = 3) in vec3 iPos;
 layout(location = 4) in vec4 iQuat;
@@ -1424,20 +1433,29 @@ uniform float uLod;
 uniform vec4 uHole;  // the battlefield
 flat out float vLod;   // how much of this piece shows (the dither in dissolved()), not how big it is
 vec3 rotate(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
-// How much individual scenery (trees, undergrowth, rocks) stands here rather
-// than the clumps of crowns: near the camera's focus while the camera is low,
-// wherever it exists (the battlefield, or the close-up land's built chunks).
-// The same on the battlefield and off it, so no edge shows at any zoom; the
-// one shrinks away as the other grows.
+// Undergrowth, rocks and logs stand near the camera's focus while the camera is low, wherever they exist (the
+// battlefield, or the close-up land's built chunks); too small to see from anywhere else.
 float sceneryNear(vec2 p) {
     float there = all(greaterThanEqual(p, uHole.xy)) && all(lessThan(p, uHole.zw)) ? 1.0 : detailMask(p);
     return there * (1.0 - smoothstep(600.0, 850.0, uCamDist)) * (1.0 - smoothstep(180.0, 270.0, distance(p, uFocus)));
 }
-// How much of the instance at p shows; below a hair, none.
-float sceneryShown(vec2 p) { return uLod > 0.5 ? sceneryNear(p) : uLod < -0.5 ? 1.0 - sceneryNear(p) : 1.0; }
+// How much of the battlefield's and the close-up land's own trees stand at p, in place of the continent's: the
+// battlefield's always, the close-up land's while the camera is near enough to have built it. The two sets are the
+// same trees where both grow (one rule, one hash), so the cross-fade between them is of identical trees.
+float treesHere(vec2 p) {
+    bool field = all(greaterThanEqual(p, uHole.xy)) && all(lessThan(p, uHole.zw));
+    return field ? 1.0 : detailMask(p) * (1.0 - smoothstep(600.0, 850.0, uCamDist));
+}
+float sceneryShown(vec2 p) { return uLod > 1.5 ? sceneryNear(p) : uLod > 0.5 ? treesHere(p) : uLod < -0.5 ? 1.0 - treesHere(p) : 1.0; }
 // The wind in the crowns: where a vertex at relative height `up` (0 trunk, 1 top) of an instance at iPos moves to.
-vec2 crownSway(float up) {
-    return vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * up * up * uSway * iScale.z;
+vec2 crownSway(float up, float sway) {
+    return vec2(sin(uTime * 1.3 + iPos.x * 0.31), cos(uTime * 1.1 + iPos.y * 0.27)) * up * up * sway * iScale.z;
+}
+// Whether a thing about `radius` metres round the point is wholly outside the view.
+bool outOfView(vec3 centre, float radius) {
+    vec4 c = uViewProj * vec4(centre, 1.0);
+    vec3 pad = radius * vec3(length(vec3(uViewProj[0][0], uViewProj[1][0], uViewProj[2][0])), length(vec3(uViewProj[0][1], uViewProj[1][1], uViewProj[2][1])), 0.0);
+    return c.w < -radius || abs(c.x) > c.w + pad.x || abs(c.y) > c.w + pad.y;
 }
 )"
 // The cross-fade between individual scenery and the clumps that stand in for it: each shows in the pixels
@@ -1501,7 +1519,7 @@ void main() {
     vec3 local = pos * iScale;
     if (uSway > 0.0) {
         // Crowns sway in the wind; trunks stay put.
-        local.xy += crownSway(aPos.z);
+        local.xy += crownSway(aPos.z, uSway);
     }
     vec3 world = iPos + rotate(iQuat, local);
     vNormal = normalize(rotate(iQuat, nrm / iScale));
@@ -1770,28 +1788,37 @@ void main() {
 )";
 
 // ---------------------------------------------------------------- tree boards
-// Trees as a few upright cards (renderer_trees.cpp), their picture baked from the tree's own mesh. A card is
-// [-1, 1] across and 0 to 1 up in the mesh's unit space, widened to the mesh's extent (uBoard: half width, top);
+// Trees as a few upright cards (renderer_trees.cpp), their picture baked from the tree's own mesh: the one look of a
+// tree at every distance. A card is [-1, 1] across and 0 to 1 up in the mesh's unit space, widened to the mesh's extent;
 // per vertex: across, up, the card's turn about the tree (radians, below zero: always facing the camera), and
-// how far it stands off the tree's axis (in half widths). Per instance, as a mesh's.
+// how far it stands off the tree's axis (in half widths). Per instance, as a mesh's, and iKind: which tree's picture
+// (an index into uPictures and uExtents: the picture's place in the atlas, u0 v0 u1 v1; the mesh's half width, top and
+// the crowns' sway). Cards too small to see dissolve away (the land's canopy, shaded from the same trees, stands in).
 inline const char* kBoardVs = ILLYRIA_SCENERY_VS R"(
 layout(location = 0) in vec4 aCard;
-uniform vec2 uBoard;
-uniform vec4 uCell;  // the picture's place in the atlas: u0, v0, u1, v1
+layout(location = 7) in float iKind;
+uniform vec4 uPictures[16];
+uniform vec3 uExtents[16];
 out vec2 vUv;
 out vec3 vWorld;
 out vec3 vRight;
 out vec3 vToward;
 out vec3 vTint;
 void main() {
+    int k = int(iKind + 0.5);
+    vec4 cell = uPictures[k];
+    vec3 board = uExtents[k];
     float lod = sceneryShown(iPos.xy);
-    if (iScale.x <= 0.0 || lod < 0.02) { gl_Position = kCulled; return; }
+    // Seen from the camera, how many pixels tall the tree stands.
+    float px = iScale.z / (distance(uEye, iPos) * uPxScale);
+    lod *= smoothstep(1.5, 4.0, px);
+    if (iScale.x <= 0.0 || lod < 0.02 || outOfView(iPos + vec3(0.0, 0.0, iScale.z * 0.5), max(board.x * iScale.x, iScale.z * 0.5) * 1.2)) { gl_Position = kCulled; return; }
     vLod = lod;
     vec3 right = aCard.z < 0.0 ? normalize(vec3(uCamRight.xy, 0.0)) : rotate(iQuat, vec3(cos(aCard.z), sin(aCard.z), 0.0));
     vec3 toward = vec3(right.y, -right.x, 0.0);  // the side the picture was taken from
-    vec3 world = iPos + right * (aCard.x * uBoard.x * iScale.x) + toward * (aCard.w * uBoard.x * iScale.x) + vec3(0.0, 0.0, aCard.y * uBoard.y * iScale.z);
-    world.xy += crownSway(aCard.y);
-    vUv = mix(uCell.xy, uCell.zw, vec2(aCard.x * 0.5 + 0.5, aCard.y));
+    vec3 world = iPos + right * (aCard.x * board.x * iScale.x) + toward * (aCard.w * board.x * iScale.x) + vec3(0.0, 0.0, aCard.y * board.y * iScale.z);
+    world.xy += crownSway(aCard.y, board.z);
+    vUv = mix(cell.xy, cell.zw, vec2(aCard.x * 0.5 + 0.5, aCard.y));
     vWorld = world;
     vRight = right;
     vToward = toward;

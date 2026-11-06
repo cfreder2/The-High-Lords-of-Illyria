@@ -735,46 +735,6 @@ Mesh log() {
     return b.mesh;
 }
 
-Mesh copse() {
-    Builder b;
-    const V3 leaves{0.2f, 0.32f, 0.13f};
-    b.blob({0, 0, 0.5f}, {0.5f, 0.45f, 0.45f}, leaves, 0.2f, 21);
-    b.blob({0.35f, 0.2f, 0.4f}, {0.35f, 0.35f, 0.35f}, leaves * 1.12f, 0.2f, 22);
-    b.blob({-0.3f, 0.25f, 0.35f}, {0.32f, 0.3f, 0.3f}, leaves * 0.88f, 0.2f, 23);
-    return b.mesh;
-}
-
-std::vector<Mesh> copseVariants() {
-    std::vector<Mesh> out;
-    out.push_back(copse());
-    {   // Pines: a cluster of dark cones.
-        Builder b;
-        const V3 needles{0.12f, 0.26f, 0.15f};
-        const float spots[5][3] = {{0, 0, 1.0f}, {0.3f, 0.15f, 0.8f}, {-0.28f, 0.2f, 0.85f}, {0.1f, -0.32f, 0.75f}, {-0.2f, -0.25f, 0.9f}};
-        for (int i = 0; i < 5; ++i) {
-            const V3 c{spots[i][0], spots[i][1], 0};
-            const float h = spots[i][2];
-            for (const auto& tier : {std::pair<float, float>{0.15f, 0.2f}, {0.45f, 0.15f}}) {
-                const float z0 = h * tier.first;
-                for (int k = 0; k < 6; ++k) {
-                    const float a0 = 2 * kPi * k / 6, a1 = 2 * kPi * (k + 1) / 6;
-                    b.tri(c + V3{std::cos(a0) * tier.second, std::sin(a0) * tier.second, z0},
-                          c + V3{std::cos(a1) * tier.second, std::sin(a1) * tier.second, z0}, c + V3{0, 0, h}, needles * (0.9f + 0.1f * i));
-                }
-            }
-        }
-        out.push_back(b.mesh);
-    }
-    {   // Autumn: gold and rust crowns.
-        Builder b;
-        b.blob({0, 0, 0.5f}, {0.5f, 0.45f, 0.45f}, {0.62f, 0.42f, 0.12f}, 0.2f, 24);
-        b.blob({0.35f, 0.2f, 0.4f}, {0.35f, 0.35f, 0.35f}, {0.58f, 0.25f, 0.08f}, 0.2f, 25);
-        b.blob({-0.3f, 0.25f, 0.35f}, {0.32f, 0.3f, 0.3f}, {0.5f, 0.45f, 0.15f}, 0.2f, 26);
-        out.push_back(b.mesh);
-    }
-    return out;
-}
-
 namespace {
 // A flat-lit triangle (normal up), for ground cover.
 void flatTri(Mesh& m, V3 a, V3 b, V3 c, V3 ca, V3 cb, V3 cc) {

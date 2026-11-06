@@ -3,6 +3,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,15 +34,15 @@ SDL_Window* window = nullptr;
 SDL_GLContext context = nullptr;
 
 constexpr int kAllTreeStyles = 99;
+constexpr int kTourFrames = 120;  // frames a --camera tour holds each camera
 
 struct Options {
     std::string assets, mode, options, shot;
-    float camera[4] = {0, 0, 0, 0};  // --camera: x, y, distance, yaw
-    bool hasCamera = false;
+    std::vector<std::array<float, 4>> cameras;  // --camera: x, y, distance, yaw (given again: a tour, one picture of each)
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
     bool fullscreen = false, sound = true, stats = false, vsync = true;
-    int trees = -1;  // --trees N: how trees are drawn (0 meshes, 1 one card, 2 two crossed, 3 three, 4 four); 99: --shot takes one picture of each
+    int trees = -1;  // --trees N: how trees are drawn (0 one card, 1 two crossed, 2 three, 3 four); 99: --shot takes one picture of each
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
@@ -61,12 +63,13 @@ void usage() {
         "  --size WxH, --fullscreen, --no-sound\n"
         "  --stats               print the frame rate and its split every two seconds\n"
         "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
-        "  --trees N|all         draw trees as 0 meshes, 1 one card, 2 two crossed cards, 3 three, 4 four (default: the game's);\n"
-        "                        all: --shot FILE.tga writes FILE-0.tga to FILE-4.tga, one a style\n"
+        "  --trees N|all         draw trees as 0 one card, 1 two crossed cards, 2 three, 3 four (default: the game's);\n"
+        "                        all: --shot FILE.tga writes FILE-0.tga to FILE-3.tga, one a style\n"
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --quit-after N        quit after N frames\n"
-        "  --camera X,Y,DIST,YAW put the camera there (battle metres, metres up, radians) once the game runs\n"
+        "  --camera X,Y,DIST,YAW put the camera there (battle metres, metres up, radians) once the game runs;\n"
+        "                        given again with --shot FILE.tga: FILE-0.tga, FILE-1.tga... one a camera, the land built first\n"
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
 }
 
@@ -99,7 +102,8 @@ bool parse(int argc, char** argv, Options& o) {
                 o.shot.resize(colon);
             }
         } else if (a == "--camera") {
-            o.hasCamera = std::sscanf(next(), "%f,%f,%f,%f", &o.camera[0], &o.camera[1], &o.camera[2], &o.camera[3]) == 4;
+            std::array<float, 4> c{};
+            if (std::sscanf(next(), "%f,%f,%f,%f", &c[0], &c[1], &c[2], &c[3]) == 4) o.cameras.push_back(c);
         } else if (a == "--quit-after") o.quitFrame = std::atoi(next());
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -358,6 +362,7 @@ int runApp(int argc, char** argv) {
     }
 
     int frame = 0;
+    bool cameraSet = false;
     double statsAt = platform::nowMs(), lastLoop = statsAt;
     // Where a frame goes: the whole loop (with the wait for the display), the CPU's share up to the swap, and the
     // GPU's own time for the frame's commands (a timer query, read a frame late).
@@ -394,9 +399,13 @@ int runApp(int argc, char** argv) {
         }
         native::pumpAssets();
         hud.tick();
-        if (opt.hasCamera && hudTick() > 0) {
-            illyria_set_camera(opt.camera[0], opt.camera[1], opt.camera[2], opt.camera[3]);
-            opt.hasCamera = false;
+        // One camera is set once the game runs; several are a tour, each held kTourFrames with the close-up land built.
+        const int tourStep = opt.cameras.size() > 1 && frame >= opt.shotFrame ? (frame - opt.shotFrame) / kTourFrames : 0;
+        if (!opt.cameras.empty() && hudTick() > 0 && (opt.cameras.size() == 1 ? !cameraSet : frame >= opt.shotFrame && (frame - opt.shotFrame) % kTourFrames == 0)) {
+            const std::array<float, 4>& c = opt.cameras[static_cast<size_t>(std::min<int>(tourStep, static_cast<int>(opt.cameras.size()) - 1))];
+            illyria_set_camera(c[0], c[1], c[2], c[3]);
+            if (opt.cameras.size() > 1) illyria_finish_detail();
+            cameraSet = true;
         }
         const double cpuStart = platform::nowMs();
         const int slot = frame % kRing;
@@ -417,7 +426,13 @@ int runApp(int argc, char** argv) {
                 if (frame >= opt.shotFrame && step == 0) illyria_set_tree_style(k);
                 if (frame >= opt.shotFrame && step == 3) {
                     writeShot(opt.shot.substr(0, opt.shot.rfind('.')) + "-" + std::to_string(k) + ".tga", pw, ph);
-                    running = k < 4;
+                    running = k < 3;
+                }
+            } else if (!opt.shot.empty() && opt.cameras.size() > 1) {
+                if (frame >= opt.shotFrame && (frame - opt.shotFrame) % kTourFrames == kTourFrames - 1) {
+                    writeShot(opt.shot.substr(0, opt.shot.rfind('.')) + "-" + std::to_string(tourStep) + ".tga", pw, ph);
+                    std::printf("camera %d: %s\n         %s\n", tourStep, hudPerf.c_str(), drawSummary().c_str());
+                    running = tourStep + 1 < static_cast<int>(opt.cameras.size());
                 }
             } else if (!opt.shot.empty() && frame == opt.shotFrame) {
                 writeShot(opt.shot, pw, ph);

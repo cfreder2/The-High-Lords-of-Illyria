@@ -1,8 +1,9 @@
 // Trees as cards: a few upright quads standing on each tree, wearing a picture of it. The pictures are baked once,
 // on the GPU, from the same meshes the trees are drawn with (meshes.cpp), side-on, colour and normal, into one
 // atlas for every kind (pines, then oaks); the cards are lit as the meshes are (kBoardFs), so a card is the tree's
-// own silhouette and shading. The cards ride on the trees' own instance buffers, so which trees stand where, and
-// how they fade between near and far (sceneryNear), is the same for cards and for meshes.
+// own silhouette and shading. A tree is these cards at every distance: the battlefield's and the close-up land's
+// trees and the continent's beyond them (FarForest) all ride on instance buffers of the one kind, so a tree is the
+// same tree at 12 m and at 4 km and there is nothing to swap or grow as the camera moves.
 #include <algorithm>
 #include <cmath>
 
@@ -64,7 +65,30 @@ void Renderer::makeBoardVao(MeshBatch& b) {
         glVertexAttribDivisor(3 + i, 1);
         offset += sizes[i];
     }
+    glDisableVertexAttribArray(7);  // (its picture is the batch's: drawBoards sets it)
     glBindVertexArray(0);
+}
+
+// The continent's trees: one buffer of every tree, each naming its own picture (the 14th float).
+void Renderer::makeFarTrees() {
+    glGenVertexArrays(1, &farTrees_.boardVao);
+    glGenBuffers(1, &farTrees_.instanceVbo);
+    glBindVertexArray(farTrees_.boardVao);
+    glBindBuffer(GL_ARRAY_BUFFER, boardVbo_);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 16, nullptr);
+    glBindBuffer(GL_ARRAY_BUFFER, farTrees_.instanceVbo);
+    const int sizes[] = {3, 4, 3, 3, 1};
+    int offset = 0;
+    for (int i = 0; i < 5; ++i) {
+        glEnableVertexAttribArray(i < 4 ? 3 + i : 7);
+        glVertexAttribPointer(i < 4 ? 3 + i : 7, sizes[i], GL_FLOAT, GL_FALSE, 14 * 4, reinterpret_cast<void*>(static_cast<intptr_t>(offset * 4)));
+        glVertexAttribDivisor(i < 4 ? 3 + i : 7, 1);
+        offset += sizes[i];
+    }
+    glBindVertexArray(0);
+    farTrees_.lod = -1;
+    farTrees_.part = Part::Trees;
 }
 
 void Renderer::bakeTreeBoards() {
@@ -73,7 +97,9 @@ void Renderer::bakeTreeBoards() {
     std::vector<const Mesh*> kinds;
     for (const Mesh& m : pines) kinds.push_back(&m);
     for (const Mesh& m : oaks) kinds.push_back(&m);
-    const int rows = (static_cast<int>(kinds.size()) + kCols - 1) / kCols, width = kCols * kCell, height = rows * kCell;
+    const int rowCount = (static_cast<int>(kinds.size()) + kCols - 1) / kCols, width = kCols * kCell, height = rowCount * kCell;
+    boardCells_.assign(16 * 4, 0.0f);
+    boardSizes_.assign(16 * 3, 0.0f);
 
     GLuint fbo = 0, depth = 0;
     for (GLuint* tex : {&boardAtlas_, &boardNormals_}) {
@@ -109,6 +135,7 @@ void Renderer::bakeTreeBoards() {
     for (MeshBatch& b : oaks_) batches[0].push_back(&b);
     for (MeshBatch& b : detailPines_) batches[1].push_back(&b);
     for (MeshBatch& b : detailOaks_) batches[1].push_back(&b);
+    const float rows = static_cast<float>(rowCount);
     for (size_t k = 0; k < kinds.size(); ++k) {
         float half = 0.01f, top = 0.01f;
         for (size_t i = 0; i + 9 <= kinds[k]->data.size(); i += 9) {
@@ -122,11 +149,11 @@ void Renderer::bakeTreeBoards() {
         glUniform3f(boardBake_.bakeBox, half, top, half);
         glBindVertexArray(batches[0][k]->vao);
         glDrawArrays(GL_TRIANGLES, 0, kinds[k]->vertexCount());
-        for (MeshBatch* b : {batches[0][k], batches[1][k]}) {
-            b->cell = static_cast<int>(k);
-            b->boardHalf = half;
-            b->boardTop = top;
-        }
+        for (MeshBatch* b : {batches[0][k], batches[1][k]}) b->cell = static_cast<int>(k);
+        const float cu = static_cast<float>(col), cv = static_cast<float>(row);
+        const float rect[4] = {cu / kCols, cv / rows, (cu + 1) / kCols, (cv + 1) / rows}, size[3] = {half, top, batches[0][k]->sway};
+        std::copy(rect, rect + 4, boardCells_.begin() + static_cast<long>(k) * 4);
+        std::copy(size, size + 3, boardSizes_.begin() + static_cast<long>(k) * 3);
     }
     glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
@@ -159,14 +186,12 @@ void Renderer::drawBoards(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1i(p.boardNormal, 13);
     }
     glActiveTexture(GL_TEXTURE0);
-    const int rows = (static_cast<int>(pines_.size() + oaks_.size()) + kCols - 1) / kCols;
+    glUniform4fv(p.cell, 16, boardCells_.data());
+    glUniform3fv(p.board, 16, boardSizes_.data());
     for (MeshBatch* b : batches) {
-        if (b->count == 0 || b->cell < 0) continue;
-        const float col = static_cast<float>(b->cell % kCols), row = static_cast<float>(b->cell / kCols);
-        glUniform1f(p.sway, b->sway);
+        if (b->count == 0) continue;
         glUniform1f(p.lod, b->lod);
-        glUniform2f(p.board, b->boardHalf, b->boardTop);
-        glUniform4f(p.cell, col / kCols, row / static_cast<float>(rows), (col + 1) / kCols, (row + 1) / static_cast<float>(rows));
+        glVertexAttrib1f(7, static_cast<float>(b->cell));  // (the continent's trees name theirs per tree)
         glBindVertexArray(b->boardVao);
         if (!viewProjOverride_) part_ = b->part;  // (the sun's pass counts as shadows)
         drawArrays(GL_TRIANGLES, 0, boardVertices_, b->count);
@@ -174,8 +199,7 @@ void Renderer::drawBoards(const std::vector<MeshBatch*>& batches, const Camera& 
 }
 
 void Renderer::drawTrees(const Camera& camera, double timeSeconds, float gameSeconds) {
-    if (treeStyle_ != TreeStyle::Mesh) drawBoards(trees(), camera, timeSeconds, gameSeconds);
-    else if (!viewProjOverride_) drawMeshes(trees(), camera, timeSeconds, gameSeconds);  // (the sun's pass draws them with the casters)
+    drawBoards(trees(), camera, timeSeconds, gameSeconds);
 }
 
 }  // namespace illyria::game
