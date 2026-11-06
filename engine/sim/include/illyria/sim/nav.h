@@ -204,8 +204,9 @@ private:
     int32_t fineCells_ = 0;
     Fixed fineSize_;
     mutable std::array<std::vector<uint16_t>, kGaitCount> cost_;
-    // A* scratch, kept between searches to spare the allocations.
-    mutable std::vector<int32_t> g_, parent_;
+    // route's A* scratch, kept between searches to spare the allocations: g_ is INT_MAX and parent_ -1 everywhere
+    // between searches (a search puts back the cells it touched, touched_, rather than fill the whole grid again).
+    mutable std::vector<int32_t> g_, parent_, touched_;
 };
 
 }  // namespace illyria::sim
