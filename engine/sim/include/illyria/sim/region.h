@@ -186,6 +186,7 @@ public:
     // metres) passes by the point.
     std::span<const uint32_t> decksAt(Fixed x, Fixed y) const;  // (a view into the grid, no copy)
     void wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const;
+    std::span<const uint32_t> wallsAt(Fixed x, Fixed y) const;  // (a view into the grid, no copy)
     std::span<const uint32_t> rampartsAt(Fixed x, Fixed y) const;
     // The gates within kGateReach of a point (a box round one end of the doors: all a loop over every gate that
     // passes the same box test could find), floors whose base box meets the box, and floors whose stair's box holds

@@ -211,12 +211,15 @@ void Region::buildGrids() const {
 void Region::cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) {
     out.clear();
     const int32_t cx0 = gridCell(x0, g.n), cx1 = gridCell(x1, g.n), cy0 = gridCell(y0, g.n), cy1 = gridCell(y1, g.n);
+    int32_t filled = 0;  // the cells that gave something
     for (int32_t y = cy0; y <= cy1; ++y)
         for (int32_t x = cx0; x <= cx1; ++x) {
             const size_t c = static_cast<size_t>(y) * g.n + x;
+            if (g.start[c] == g.start[c + 1]) continue;
             out.insert(out.end(), g.items.begin() + g.start[c], g.items.begin() + g.start[c + 1]);
+            ++filled;
         }
-    if (cx0 != cx1 || cy0 != cy1) {
+    if (filled > 1) {  // (one cell's list is already in order, and has none twice)
         std::sort(out.begin(), out.end());
         out.erase(std::unique(out.begin(), out.end()), out.end());
     }
@@ -250,6 +253,11 @@ void Region::floorBasesNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<
 std::span<const uint32_t> Region::floorStairsAt(Fixed x, Fixed y) const {
     buildGrids();
     return cellOf(floorStairGrid_, x, y);
+}
+
+std::span<const uint32_t> Region::wallsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(wallGrid_, x, y);
 }
 
 std::span<const uint32_t> Region::rampartsAt(Fixed x, Fixed y) const {

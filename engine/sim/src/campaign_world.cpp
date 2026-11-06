@@ -677,9 +677,11 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
             uint32_t bestIndex = 0;
             const int32_t cx = cellOf(u->pos.x), cy = cellOf(u->pos.y);
             for (int32_t r = 0; r <= rings; ++r) {
-                for (int32_t y = std::max(0, cy - r); y <= std::min(foeCells_ - 1, cy + r); ++y)
-                    for (int32_t x = std::max(0, cx - r); x <= std::min(foeCells_ - 1, cx + r); ++x) {
-                        if (std::max(std::abs(x - cx), std::abs(y - cy)) != r) continue;  // (this ring only)
+                for (int32_t y = std::max(0, cy - r); y <= std::min(foeCells_ - 1, cy + r); ++y) {
+                    // This ring only: the whole of its first and last rows, the two ends of the rest.
+                    const int32_t step = (y == cy - r || y == cy + r) ? 1 : 2 * r;
+                    for (int32_t x = cx - r; x <= cx + r; x += step) {
+                        if (x < 0 || x >= foeCells_) continue;
                         const size_t c = static_cast<size_t>(y) * foeCells_ + x;
                         for (uint32_t k = foeStart_[c]; k < foeStart_[c + 1]; ++k) {
                             const Unit& f = w.units()[foeItems_[k]];
@@ -692,6 +694,7 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
                             }
                         }
                     }
+                }
                 // Nothing in a ring beyond this one is nearer than its inner edge.
                 if (best && bestRaw + 4 < int64_t{r} * r * kCellM * kCellM * Fixed::kOneRaw) break;
             }

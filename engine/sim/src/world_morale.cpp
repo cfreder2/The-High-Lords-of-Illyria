@@ -178,8 +178,10 @@ void World::flee(Unit& u) {
         const Unit& o = units_[i];
         if (!o.alive() || o.owner == u.owner) return;
         const Vec3 d = (u.pos - o.pos).flat();
-        const Fixed len = d.length();
-        if (len >= kFleeReach || len == Fixed::zero()) return;
+        const Fixed distSq = d.lengthSq();
+        if (distSq >= kFleeReach * kFleeReach) return;  // (too far: no root to take)
+        const Fixed len = sqrt(distSq);
+        if (len == Fixed::zero()) return;
         away += d * ((kFleeReach - len) / (len * kFleeReach));
     });
     const Fixed len = away.length();

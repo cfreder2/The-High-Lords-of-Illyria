@@ -125,9 +125,7 @@ Fixed World::surfaceBelow(Fixed x, Fixed y, Fixed z) const {
 
 bool World::walkSpot(const Vec3& p, WalkSpot& spot) const {
     if (!config_.region) return false;
-    thread_local std::vector<uint32_t> near;
-    config_.region->wallsNear(p.x, p.y, p.x, p.y, near);
-    for (const uint32_t wi : near) {
+    for (const uint32_t wi : config_.region->wallsAt(p.x, p.y)) {
         const WallSeg& wl = config_.region->walls()[wi];
         if (wl.walk <= Fixed::zero() || wl.out == Vec3{}) continue;
         if (p.z < wl.walk - kFallReach || p.z > wl.top) continue;
