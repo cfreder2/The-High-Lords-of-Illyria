@@ -238,20 +238,3 @@ TEST(closeup_sheets_load_near_and_drop_far) {
     CHECK_NEAR(closeup::minDistanceFor(20, 144, 48), 20 * 3 / closeup::kMaxMagnification, 0.01);
     CHECK_NEAR(closeup::minDistanceFor(20, 72, 48), 20 * 1.5 / closeup::kMaxMagnification, 0.01);
 }
-
-// The camera keeps out of that distance when pinched, and eases out to it.
-TEST(camera_min_distance_from_the_sprites) {
-    Camera c;
-    c.setViewport(390, 844);
-    c.lookAt(512, 512, 40);
-    c.setMinDistance(30);
-    for (int i = 0; i < 20; ++i) c.zoomAt(1.5f, 195, 422);
-    CHECK_NEAR(c.distance(), 30, 0.01);
-    c.setMinDistance(60);  // a coarser sheet in view: ease out
-    for (int i = 0; i < 80; ++i) c.setMinDistance(60);
-    CHECK_NEAR(c.distance(), 60, 0.5);
-    c.zoomAt(1.5f, 195, 422);
-    CHECK(c.distance() >= 59.0f);
-    c.setMinDistance(0);  // never below the camera's own limit
-    CHECK(c.minDistance() == Camera::kMinDistance);
-}

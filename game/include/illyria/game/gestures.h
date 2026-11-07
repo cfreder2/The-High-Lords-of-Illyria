@@ -47,7 +47,12 @@ public:
 
     // `button`: 0 primary (touch or left mouse), 1 middle, 2 right. `timeMs` is monotonic.
     void pointer(PointerEvent type, int id, float x, float y, int button, double timeMs);
+    // A mouse wheel's zoom, in CSS pixels of scroll (a notch is about 100; positive: out):
+    // e^0.15 of the distance a notch, at any distance.
     void wheel(float deltaY, float x, float y);
+    // A browser's trackpad pinch, sent as a wheel with ctrlKey (pixels; positive: out).
+    // It is the same zoom as pinch(): a pinch's scale is e^(-deltaY / 100).
+    void pinchWheel(float deltaY, float x, float y);
     // A trackpad's two-finger swipe: pans as a drag of (-dx, -dy) pixels from (x, y) would.
     void scroll(float dx, float dy, float x, float y);
     // A trackpad's pinch: zoom by `factor` about (x, y), and turn by `radians` (a twist).

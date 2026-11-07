@@ -685,6 +685,7 @@ TEST(trackpad_swipes_pan_pinches_zoom_and_keys_move_and_turn_the_view) {
     // A pinch zooms about the cursor; a twist turns.
     const float d = c.distance();
     g.pinch(2.0f, 0, 400, 300);
+    for (int i = 0; i < 120; ++i) c.advance(0.016f);
     CHECK_NEAR(c.distance(), d / 2, 0.01);
     g.pinch(1.0f, 0.25f, 400, 300);
     CHECK_NEAR(c.yaw(), kNorth + 0.25f, 1e-4);

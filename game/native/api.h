@@ -16,6 +16,7 @@ void illyria_set_tree_style(int style);
 
 void illyria_pointer(int type, int id, float x, float y, int button, double timeMs);
 void illyria_wheel(float deltaY, float x, float y);
+void illyria_pinch_wheel(float deltaY, float x, float y);
 void illyria_scroll(float dx, float dy, float x, float y);
 void illyria_pinch(float factor, float radians, float x, float y);
 void illyria_camera_keys(int right, int forward, int turn, int zoom);

@@ -712,7 +712,6 @@ bool frame() {
     const double drawStart = platform::nowMs();
     app->renderer.setScreenFramebuffer(platform::screenFramebuffer());
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
-    app->camera.setMinDistance(app->renderer.closeupMinDistance());  // sprites never magnified past 1.5x
     app->drawMs = app->drawMs * 0.9 + (platform::nowMs() - drawStart) * 0.1;
     return true;
 }
@@ -804,6 +803,10 @@ ILLYRIA_API void illyria_pointer(int type, int id, float x, float y, int button,
 ILLYRIA_API void illyria_wheel(float deltaY, float x, float y) {
     if (app) app->introStartMs = -1;
     if (app) app->gestures->wheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
+}
+ILLYRIA_API void illyria_pinch_wheel(float deltaY, float x, float y) {
+    if (app) app->introStartMs = -1;
+    if (app) app->gestures->pinchWheel(deltaY, x * app->pixelRatio, y * app->pixelRatio);
 }
 // A trackpad (the page tells it from a mouse wheel): a two-finger swipe of
 // (dx, dy) CSS pixels pans; a pinch zooms by `factor` about (x, y) and a
