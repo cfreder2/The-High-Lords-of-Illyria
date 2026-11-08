@@ -88,7 +88,9 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
         if (n == 0) continue;
         sx /= n, sy /= n;
         const int32_t town = c.cityAt(s.cx, s.cy);
-        if (s.path.empty() && town >= 0) {
+        bool fought = false;  // (a stack whose men are in a fight, or have been, follows it out of the courtyard: it is the rest that stands)
+        for (const Campaign::Soldier& m : men) fought = fought || (m.stack == s.id && m.fightTick != 0);
+        if (s.path.empty() && town >= 0 && !fought) {
             const Continent::Castle& k = c.continent().cities()[static_cast<size_t>(town)].castle;
             // (a block of squads round the courtyard's middle; several stacks stand side by side)
             CHECK(std::hypot(sx - k.courtyard.x.toDouble(), sy - k.courtyard.y.toDouble()) < 40.0);

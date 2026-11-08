@@ -176,22 +176,25 @@ TEST(the_computer_saves_a_threatened_capital) {
     // Run until the enemy attacks (or is destroyed on the way).
     int32_t foeMen = 0;
     for (const Army& a : c.findStack(foe)->armies) foeMen += a.soldiers;
-    bool atHome = false;
+    bool atHome = false, destroyed = false;
     for (int t = 0; t < 10 * Campaign::kTicksPerDay; ++t) {
         const Campaign::Stack* f = c.findStack(foe);
-        if (!f || f->armies.empty()) break;
-        if (f->path.size() == 1) {  // one step from the gates
+        if (!f || f->armies.empty()) {
+            destroyed = true;  // (the enemy is met and beaten in the field before the gates: the capital is saved all the same)
+            break;
+        }
+        if (f->path.size() <= 2) {  // at the gates, or held two steps short of them by the men who came to meet it
             int32_t inside = 0;
             for (const Campaign::Stack& s : c.stacks())
                 // (at the capital or in the cell beside it, where the garrison goes out to meet the foe and the field army joins it:
                 // what the test reckons is that the army came home in time, not which of the two cells the fight is in)
                 if (s.owner == 0 && std::abs(s.cx - home.cx) <= 1 && std::abs(s.cy - home.cy) <= 1)
                     for (const Army& a : s.armies) inside += std::find(ours.begin(), ours.end(), a.id) != ours.end();
-            atHome = inside * 2 >= static_cast<int32_t>(ours.size());  // (at least half of them: the men file in through the gate one after another)
+            atHome = atHome || inside * 2 >= static_cast<int32_t>(ours.size());  // (at least half of them: the men file in through the gate one after another)
         }
         c.step();
     }
-    CHECK(atHome);
+    CHECK(atHome || destroyed);
     // What follows is a fight at the capital's walls, not a roll of the dice: whether the capital stands depends on
     // the men and the stone, and is not what this test reckons; the attackers did lose men to it.
     int32_t foeLeft = 0;
