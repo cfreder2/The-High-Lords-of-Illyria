@@ -84,9 +84,6 @@ Mesh sail();
 // A timber pier running along x from 0 (the shore) to 1, [-1, 1] across, its
 // deck top at z = 0 on piles reaching down to z = -1.
 Mesh pier();
-// A clump of tree crowns for the distant continent, about 1 across.
-Mesh copse();
-std::vector<Mesh> copseVariants();  // broadleaf, pines, autumn
 // Ground cover, in metres (not scaled to unit size). All normals point up so
 // they light like the ground they grow from; colour (2, 2, 2) marks petals,
 // which the shader colours per plant.

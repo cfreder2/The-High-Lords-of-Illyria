@@ -7,6 +7,9 @@ namespace illyria::game {
 
 namespace {
 constexpr float kPitchNear = 0.33f;  // ~19 degrees above the horizon at ground level
+constexpr float kPitchNearDistance = 6.0f;  // at and below this the pitch stays at kPitchNear
+constexpr float kZoomSmoothSeconds = 0.12f;  // the glide's time constant
+constexpr float kEyeAboveGround = 0.4f;
 constexpr float kPitchFar = 1.31f;   // ~75 degrees, near top-down at god view
 }  // namespace
 
@@ -14,6 +17,9 @@ void Camera::lookAt(float x, float y, float distance) {
     tx_ = x;
     ty_ = y;
     distance_ = std::clamp(distance, kMinDistance, maxDistance_);
+    goalLog_ = std::log(distance_);
+    speedLog_ = 0;
+    anchored_ = false;
     clampTarget();
 }
 
@@ -21,7 +27,7 @@ float Camera::pitch() const {
     // Interpolate on a log scale so each pinch step feels the same; above
     // kTopDownDistance the view stays near top-down like the campaign map.
     constexpr float kTopDownDistance = 3000.0f;
-    const float t = std::clamp(std::log(distance_ / kMinDistance) / std::log(kTopDownDistance / kMinDistance), 0.0f, 1.0f);
+    const float t = std::clamp(std::log(distance_ / kPitchNearDistance) / std::log(kTopDownDistance / kPitchNearDistance), 0.0f, 1.0f);
     const float s = t * t * (3 - 2 * t);
     return kPitchNear + (kPitchFar - kPitchNear) * s;
 }
@@ -32,14 +38,14 @@ V3 Camera::eye() const {
     V3 e{t.x - std::cos(yaw_) * std::cos(p) * distance_, t.y - std::sin(yaw_) * std::cos(p) * distance_,
          t.z + std::sin(p) * distance_};
     // Never dip below the hills between the camera and its target.
-    e.z = std::max(e.z, groundAt(e.x, e.y) + 2.0f);
+    e.z = std::max(e.z, groundAt(e.x, e.y) + kEyeAboveGround);
     return e;
 }
 
 M4 Camera::view() const { return M4::lookAt(eye(), target(), {0, 0, 1}); }
 
 M4 Camera::projection() const {
-    const float zNear = std::max(0.2f, distance_ * 0.02f);
+    const float zNear = std::max(0.1f, distance_ * 0.02f);
     const float zFar = distance_ * 6.0f + 2000.0f;
     return M4::perspective(kFovY, width_ / height_, zNear, zFar);
 }
@@ -100,6 +106,7 @@ bool Camera::project(const V3& p, float& px, float& py) const {
 }
 
 void Camera::dragGround(float fromX, float fromY, float toX, float toY) {
+    anchored_ = false;
     const float planeZ = target().z;
     V3 a, b;
     if (!pickPlane(fromX, fromY, planeZ, a) || !pickPlane(toX, toY, planeZ, b)) return;
@@ -109,6 +116,7 @@ void Camera::dragGround(float fromX, float fromY, float toX, float toY) {
 }
 
 void Camera::pan(float right, float forward) {
+    anchored_ = false;
     // Looking along yaw, the screen's right is a quarter turn clockwise of it.
     const float c = std::cos(yaw_), s = std::sin(yaw_);
     tx_ += c * forward + s * right;
@@ -117,17 +125,43 @@ void Camera::pan(float right, float forward) {
 }
 
 void Camera::zoomAt(float factor, float px, float py) {
-    const float planeZ = target().z;
-    V3 before;
-    const bool anchored = pickPlane(px, py, planeZ, before);
-    // Never closer than the sprites allow (setMinDistance), nor nearer than now if already inside that.
-    distance_ = std::clamp(distance_ / factor, std::min(minDistance_, distance_), maxDistance_);
-    V3 after;
-    if (anchored && pickPlane(px, py, planeZ, after)) {
-        tx_ += before.x - after.x;
-        ty_ += before.y - after.y;
+    if (!(factor > 0)) return;
+    goalLog_ = std::clamp(goalLog_ - std::log(factor), std::log(kMinDistance), std::log(maxDistance_));
+    // One anchor for a run of zooms about the same pixel, so the hills under the
+    // eye as it moves never shift the plane the point is held on.
+    if (anchored_ && std::abs(px - anchorPx_) < 2 && std::abs(py - anchorPy_) < 2) return;
+    anchorPx_ = px;
+    anchorPy_ = py;
+    anchored_ = pickGround(px, py, anchor_) || pickPlane(px, py, target().z, anchor_);
+}
+
+void Camera::advance(float dtSeconds) {
+    const float x = std::log(distance_);
+    if (std::abs(goalLog_ - x) < 1e-4f && std::abs(speedLog_) < 1e-4f) {
+        distance_ = std::exp(goalLog_);
+        speedLog_ = 0;
+        anchored_ = false;
+        return;
     }
-    clampTarget();
+    // Critically damped spring (Unity's SmoothDamp): stable for any step.
+    const float omega = 2.0f / kZoomSmoothSeconds, h = omega * dtSeconds;
+    const float decay = 1.0f / (1.0f + h + 0.48f * h * h + 0.235f * h * h * h);
+    const float change = x - goalLog_;
+    const float temp = (speedLog_ + omega * change) * dtSeconds;
+    speedLog_ = (speedLog_ - omega * temp) * decay;
+    distance_ = std::clamp(std::exp(goalLog_ + (change + temp) * decay), kMinDistance, maxDistance_);
+    holdAnchor();
+}
+
+void Camera::holdAnchor() {
+    if (!anchored_) return;
+    for (int i = 0; i < 2; ++i) {  // twice: the target's height moves the eye as it slides
+        V3 now;
+        if (!pickPlane(anchorPx_, anchorPy_, anchor_.z, now)) return;
+        tx_ += anchor_.x - now.x;
+        ty_ += anchor_.y - now.y;
+        clampTarget();
+    }
 }
 
 void Camera::clampTarget() {

@@ -506,7 +506,7 @@ bool Renderer::readSheet(int type, std::vector<uint8_t>& rgba, int& width, int& 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sh.tex, 0);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
     glDeleteFramebuffers(1, &fbo);
     table = sh.table;
     return true;

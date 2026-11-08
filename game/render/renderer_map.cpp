@@ -148,7 +148,7 @@ void Renderer::drawDots(const Camera& camera, double timeSeconds, float gameSeco
     glBindVertexArray(dots_.vao);
     for (const float rim : {mapDotPx_ * 0.40f, mapDotPx_ * 0.20f, 0.0f}) {
         glUniform1f(dot_.rim, rim);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, dots_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, dots_.count);
     }
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);

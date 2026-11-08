@@ -1,4 +1,4 @@
-// Writes every GLSL program of the renderer (kCommon prefix included) to
+// Writes every GLSL program of the renderer (kVersionES and kCommon prefix included) to
 // <dir>/<name>.vert and .frag so glslangValidator can check them offline:
 //   illyria_shaderdump out/ && glslangValidator out/*.vert out/*.frag
 #include <cstdio>
@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
             const std::string path = std::string(argv[1]) + "/" + p.name + (stage ? ".frag" : ".vert");
             FILE* f = std::fopen(path.c_str(), "w");
             if (!f) return 1;
+            std::fputs(kVersionES, f);
             std::fputs(kCommon, f);
             std::fputs(stage ? p.fs : p.vs, f);
             std::fclose(f);

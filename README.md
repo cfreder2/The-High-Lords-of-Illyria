@@ -56,6 +56,17 @@ node build-wasm/tools/illyria_simcheck.js
 python3 -m http.server -d build-wasm/site 8000
 ```
 
+Desktop (SDL 3, OpenGL 4.1 core; macOS first, built to compile on Linux and Windows). SDL 3.4.20 and libwebp 1.6.0 are fetched at configure time (pinned tags) unless installed:
+
+```sh
+cmake -S . -B build-app -DCMAKE_BUILD_TYPE=Release -DILLYRIA_BUILD_APP=ON
+cmake --build build-app --target illyria_app
+open build-app/game/native/Illyria.app            # macOS bundle, files in Contents/Resources
+build-app/game/native/Illyria.app/Contents/MacOS/Illyria --conquest   # or from a shell, with options
+```
+
+With no option the program opens its start menu (lord, computer lords, Easy/Hard, skirmish at the Ford or the siege, continue). `--conquest [--lord N --foes MASK --easy]`, `--continue`, `--skirmish`, `--siege`, `--stats`, `--size WxH`, `--no-sound`, `--shot FILE.tga:N`, `--help`. On Linux and Windows the build puts an `assets/` folder beside the program. The game loop, renderer and asset files are the web build's; `game/app/platform.h` is the one seam (`game/web/platform_web.cpp`, `game/native/`). In a battle, `/` lists the keys (the page's own). Not there yet: voices, the town and settings screens, the minimap, touch.
+
 Deploys: every push to `master` runs `.github/workflows/deploy.yml`, which builds the site and publishes it to GitHub Pages as version `VERSION.<run number>`.
 
 ## Determinism rules for `engine/sim`

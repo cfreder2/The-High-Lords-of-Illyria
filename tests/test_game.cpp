@@ -75,6 +75,7 @@ TEST(gestures_tap_and_pinch) {
     g.pointer(PointerEvent::Move, 2, 600, 300, 0, 1050);  // fingers spread 200 -> 300 px
     g.pointer(PointerEvent::Up, 2, 600, 300, 0, 1100);
     g.pointer(PointerEvent::Up, 1, 300, 300, 0, 1100);
+    for (int i = 0; i < 120; ++i) c.advance(0.016f);  // the zoom glides
     CHECK_NEAR(c.distance(), d0 / 1.5f, 0.5);
     CHECK(taps == 1);  // ending a pinch is not a tap
 }
@@ -117,4 +118,94 @@ TEST(battle_runs_and_player_can_command_a_squad) {
     CHECK(remains > 0);
     CHECK(b.groundMarksAdded() > 0);
     CHECK(!b.takeDirtyRemains().empty() || remains > 0);
+}
+
+namespace {
+void settle(Camera& c) {
+    for (int i = 0; i < 300; ++i) c.advance(0.016f);
+}
+}  // namespace
+
+TEST(camera_zoom_reaches_both_limits_and_banks_nothing_beyond_them) {
+    Camera c = flatCamera();
+    CHECK(Camera::kMinDistance <= 2.0f);
+    for (int i = 0; i < 200; ++i) c.zoomAt(1.5f, 400, 300);
+    settle(c);
+    CHECK_NEAR(c.distance(), Camera::kMinDistance, 0.001);
+    // 200 notches past the limit are not owed: one step out moves it at once.
+    c.zoomAt(1.0f / 1.5f, 400, 300);
+    settle(c);
+    CHECK_NEAR(c.distance(), Camera::kMinDistance * 1.5f, 0.01);
+    for (int i = 0; i < 200; ++i) c.zoomAt(1.0f / 1.5f, 400, 300);
+    settle(c);
+    CHECK_NEAR(c.distance(), c.maxDistance(), 0.5);
+    c.zoomAt(1.5f, 400, 300);
+    settle(c);
+    CHECK_NEAR(c.distance(), c.maxDistance() / 1.5f, 0.5);
+}
+
+TEST(camera_wheel_steps_are_equal_in_log_distance_at_every_distance_and_input) {
+    for (const float start : {10.0f, 100.0f, 1000.0f}) {
+        Camera c = flatCamera();
+        c.setBounds(-1e5f, -1e5f, 1e5f, 1e5f);
+        c.lookAt(512, 512, start);
+        Gestures g(c, [](float, float) {});
+        g.wheel(-100, 400, 300);  // a mouse notch in
+        settle(c);
+        CHECK_NEAR(std::log(start / c.distance()), 0.15, 1e-3);
+        // Many small trackpad-sized deltas that add up to a notch are the same step.
+        c.lookAt(512, 512, start);
+        for (int i = 0; i < 25; ++i) g.wheel(-4, 400, 300);
+        settle(c);
+        CHECK_NEAR(std::log(start / c.distance()), 0.15, 1e-3);
+        // A browser pinch (ctrl-wheel) and a pinch's scale are one zoom.
+        c.lookAt(512, 512, start);
+        g.pinchWheel(-10, 400, 300);
+        settle(c);
+        const float viaWheel = c.distance();
+        c.lookAt(512, 512, start);
+        g.pinch(std::exp(0.1f), 0, 400, 300);
+        settle(c);
+        CHECK_NEAR(c.distance(), viaWheel, 1e-3 * start);
+    }
+}
+
+TEST(camera_zoom_holds_the_point_under_the_cursor) {
+    Camera c = flatCamera();
+    c.setBounds(-1e5f, -1e5f, 1e5f, 1e5f);
+    for (const float start : {400.0f, 40.0f, 8.0f}) {
+        c.lookAt(512, 512, start);
+        c.rotate(0.7f);
+        V3 before, after;
+        CHECK(c.pickGround(650, 420, before));
+        for (int i = 0; i < 6; ++i) c.zoomAt(1.2f, 650, 420);  // wheel notches in a row
+        for (int i = 0; i < 30; ++i) c.advance(0.016f);
+        CHECK(c.distance() < start);
+        CHECK(c.pickGround(650, 420, after));
+        CHECK_NEAR(after.x, before.x, 0.02 * start / 40 + 0.02);
+        CHECK_NEAR(after.y, before.y, 0.02 * start / 40 + 0.02);
+        for (int i = 0; i < 6; ++i) c.zoomAt(1.0f / 1.2f, 650, 420);
+        settle(c);
+        CHECK(c.pickGround(650, 420, after));
+        CHECK_NEAR(after.x, before.x, 0.02 * start / 40 + 0.02);
+        CHECK_NEAR(after.y, before.y, 0.02 * start / 40 + 0.02);
+    }
+}
+
+TEST(camera_never_goes_below_the_terrain_at_the_closest_zoom) {
+    Camera c = flatCamera();
+    const auto hills = [](float x, float y) { return 3.0f + 2.0f * std::sin(x * 0.4f) + 2.0f * std::cos(y * 0.5f); };
+    c.setHeightFn(hills);
+    for (float yaw = 0; yaw < 6.3f; yaw += 0.9f) {
+        c.lookAt(512, 512, 200);
+        c.rotate(yaw - c.yaw());
+        for (int i = 0; i < 100; ++i) c.zoomAt(1.5f, 400, 300);
+        settle(c);
+        CHECK_NEAR(c.distance(), Camera::kMinDistance, 0.001);
+        for (float step = 0; step < 20; step += 0.7f) {
+            c.pan(0.7f, 0.7f);
+            const V3 e = c.eye();
+            CHECK(e.z >= hills(e.x, e.y) + 0.3f);
+        }
+    }
 }

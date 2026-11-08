@@ -66,9 +66,9 @@ Look lookOf(UnitType t) {
 }
 
 GLuint compile(GLenum type, const char* body) {
-    const char* sources[] = {shaders::kCommon, body};
+    const char* sources[] = {shaders::kVersion, shaders::kCommon, body};
     GLuint s = glCreateShader(type);
-    glShaderSource(s, 2, sources, nullptr);
+    glShaderSource(s, 3, sources, nullptr);
     glCompileShader(s);
     GLint ok = 0;
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
@@ -344,7 +344,10 @@ bool Renderer::buildPrograms() {
                  {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
                  {farCut_, shaders::kFarVs, shaders::kFarCutFs},
                  {bar_, shaders::kBarVs, shaders::kBarFs},
-                 {dot_, shaders::kDotVs, shaders::kDotFs}};
+                 {dot_, shaders::kDotVs, shaders::kDotFs},
+                 {board_, shaders::kBoardVs, shaders::kBoardFs},
+                 {boardDepth_, shaders::kBoardVs, shaders::kBoardDepthFs},
+                 {boardBake_, shaders::kBoardBakeVs, shaders::kBoardBakeFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -413,6 +416,12 @@ bool Renderer::buildPrograms() {
         s.p.viewport = glGetUniformLocation(s.p.id, "uViewport");
         s.p.dotPx = glGetUniformLocation(s.p.id, "uDotPx");
         s.p.rim = glGetUniformLocation(s.p.id, "uRim");
+        s.p.board = glGetUniformLocation(s.p.id, "uExtents");
+        s.p.forestMap = glGetUniformLocation(s.p.id, "uForestMap");
+        s.p.forestRect = glGetUniformLocation(s.p.id, "uForestRect");
+        s.p.cell = glGetUniformLocation(s.p.id, "uPictures");
+        s.p.boardNormal = glGetUniformLocation(s.p.id, "uBoardNormal");
+        s.p.bakeBox = glGetUniformLocation(s.p.id, "uBakeBox");
     }
     return true;
 }
@@ -503,11 +512,45 @@ void Renderer::uploadMeshInstances(MeshBatch& b, const std::vector<float>& data)
 
 std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
     std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_};
-    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_}) for (MeshBatch& b : *list) out.push_back(&b);
     if (includeSmall) {
         for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_}) for (MeshBatch& b : *list) out.push_back(&b);
         for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) out.push_back(b);
     }
+    return out;
+}
+
+const char* Renderer::partName(Part p) {
+    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
+    return names[static_cast<int>(p)];
+}
+
+namespace {
+long trianglesOf(GLenum mode, GLsizei vertices) {
+    return mode == GL_TRIANGLES ? vertices / 3 : mode == GL_TRIANGLE_STRIP && vertices > 2 ? vertices - 2 : 0;
+}
+}  // namespace
+
+void Renderer::drawArrays(GLenum mode, GLint first, GLsizei count, GLsizei instances) {
+    if (hidden_ >> static_cast<int>(part_) & 1) return;
+    PartCount& c = counts_[static_cast<int>(part_)];
+    ++c.draws;
+    c.triangles += trianglesOf(mode, count) * instances;
+    glDrawArraysInstanced(mode, first, count, instances);
+}
+
+void Renderer::drawElements(GLenum mode, GLsizei count, GLenum type, GLsizei instances) {
+    if (hidden_ >> static_cast<int>(part_) & 1) return;
+    PartCount& c = counts_[static_cast<int>(part_)];
+    ++c.draws;
+    c.triangles += trianglesOf(mode, count) * instances;
+    glDrawElementsInstanced(mode, count, type, nullptr, instances);
+}
+
+std::vector<Renderer::MeshBatch*> Renderer::trees() {
+    std::vector<MeshBatch*> out;
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
+        for (MeshBatch& b : *list) out.push_back(&b);
+    out.push_back(&farTrees_);
     return out;
 }
 
@@ -521,12 +564,14 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.lod, b->lod);
         glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
+        part_ = b->part;
+        drawArrays(GL_TRIANGLES, 0, b->vertices, b->count);
     }
 }
 
 
 namespace {
+constexpr size_t kPineKinds = 4;  // the pines' pictures (the pick weights in pushTree)
 // A stable pick from weights (they need not sum to one).
 size_t pick(float u, std::initializer_list<float> weights) {
     float total = 0;
@@ -549,6 +594,27 @@ uint32_t Renderer::sceneryId(const Battle& battle, const sim::Obstacle& o) {
     return static_cast<uint32_t>(std::lround(at.x * 8.0f)) * 73856093u ^ static_cast<uint32_t>(std::lround(at.y * 8.0f)) * 19349663u;
 }
 
+// A tree: which of the pictures it is (the pines', then the oaks', as the atlas holds them), and its instance there.
+// Returns the radius of its blob shadow.
+float Renderer::pushTree(const sim::Obstacle& o, uint32_t id, std::vector<std::vector<float>>& trees) {
+    const V3 pos = toV3(o.pos);
+    const float h = static_cast<float>(o.height.toDouble());
+    const float yaw = hash01(id * 2654435761u) * 6.283f;
+    const float tintVar = 0.85f + 0.3f * hash01(id * 40503u + 7);
+    float q[4];
+    yawQuat(yaw, q);
+    if (o.kind == sim::Obstacle::Kind::Pine) {
+        // Spruce, tall fir, young pine, dead snag.
+        const size_t v = pick(hash01(id * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
+        pushInstance(trees[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
+        return h * 0.3f;
+    }
+    // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
+    const size_t v = pick(hash01(id * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
+    pushInstance(trees[kPineKinds + v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
+    return h * 0.45f;
+}
+
 float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& out) {
     const V3 pos = toV3(o.pos);
     const float r = static_cast<float>(o.radius.toDouble()), h = static_cast<float>(o.height.toDouble());
@@ -557,18 +623,8 @@ float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& o
     float q[4];
     yawQuat(yaw, q);
     switch (o.kind) {
-        case sim::Obstacle::Kind::Pine: {
-            // Spruce, tall fir, young pine, dead snag.
-            const size_t v = pick(hash01(id * 2246822519u + 1), {0.42f, 0.28f, 0.22f, 0.08f});
-            pushInstance(out.pine[v], pos, q, {h * 0.32f, h * 0.32f, h}, {tintVar, tintVar, tintVar});
-            return h * 0.3f;
-        }
-        case sim::Obstacle::Kind::Oak: {
-            // Oak, broad oak, elm, autumn oak, birch, autumn birch, dead oak.
-            const size_t v = pick(hash01(id * 2246822519u + 2), {0.26f, 0.17f, 0.14f, 0.1f, 0.17f, 0.08f, 0.08f});
-            pushInstance(out.oak[v], pos, q, {h * 0.55f, h * 0.55f, h}, {tintVar, tintVar * 1.05f, tintVar * 0.9f});
-            return h * 0.45f;
-        }
+        case sim::Obstacle::Kind::Pine:
+        case sim::Obstacle::Kind::Oak: return pushTree(o, id, out.trees);
         case sim::Obstacle::Kind::Bush: {
             // Reeds (the simulation's variant 3) or round, berry and thorn bushes.
             const size_t v = o.variant == 3 ? 3 : pick(hash01(id * 2246822519u + 3), {0.5f, 0.2f, 0.3f});
@@ -599,8 +655,7 @@ void Renderer::uploadScenery(const Battle& battle) {
     const sim::Region& region = battle.region();
     std::vector<float> house, pillar, shadows;
     SceneryLists natural;
-    natural.pine.resize(pines_.size());
-    natural.oak.resize(oaks_.size());
+    natural.trees.resize(pines_.size() + oaks_.size());
     natural.bush.resize(bushes_.size());
     natural.rock.resize(rocks_.size());
     for (size_t i = 0; i < region.obstacles().size(); ++i) {
@@ -640,8 +695,8 @@ void Renderer::uploadScenery(const Battle& battle) {
         // Draped over the ground (a town house's base may stand above it).
         shadows.insert(shadows.end(), {pos.x, pos.y, battle.heightAt(pos.x, pos.y), 0, shadow, 0, 1, 0, 0, 0, 0});
     }
-    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.pine[v]);
-    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.oak[v]);
+    for (size_t v = 0; v < pines_.size(); ++v) uploadMeshInstances(pines_[v], natural.trees[v]);
+    for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.trees[pines_.size() + v]);
     for (size_t v = 0; v < bushes_.size(); ++v) uploadMeshInstances(bushes_[v], natural.bush[v]);
     for (size_t v = 0; v < rocks_.size(); ++v) uploadMeshInstances(rocks_[v], natural.rock[v]);
     uploadMeshInstances(stumps_, natural.stumps);
@@ -1311,46 +1366,37 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
 
-    // Woods across the continent as clumps of crowns, so the land beyond the
-    // battlefield is not bare from mid zoom (the battlefield has real trees).
-    // Broadleaf, pine and autumn clumps; denser in the fine ring around the
-    // battlefield when the detailed land is on.
-    const auto plant = [&](const FarGrid& g, std::vector<std::vector<float>>& out, int stride, float forestChance, bool skipRing,
-                           uint32_t salt) {
-        for (int j = 0; j < g.ny; j += stride) {
-            for (int i = 0; i < g.nx; i += stride) {
-                const uint32_t h = static_cast<uint32_t>(j * 7919 + i * 104729) ^ salt;
-                const auto ground = static_cast<sim::Ground>(g.ground[static_cast<size_t>(j) * g.nx + i]);
-                const float chance = ground == sim::Ground::Forest ? forestChance : ground == sim::Ground::Plains ? 0.04f
-                                     : ground == sim::Ground::Swamp ? 0.08f : 0;
-                if (hash01(h) >= chance) continue;
-                const float step = g.cell * static_cast<float>(stride);
-                const float x = g.min.x + static_cast<float>(i) * g.cell + (hash01(h + 1) - 0.5f) * step;
-                const float y = g.min.y + static_cast<float>(j) * g.cell + (hash01(h + 2) - 0.5f) * step;
-                bool inTown = false;  // no woods inside the walls
-                for (const sim::Continent::City& city : battle.continent().cities()) {
-                    const float cx = static_cast<float>(city.pos.x.toDouble()) - battle.origin().x, cy = static_cast<float>(city.pos.y.toDouble()) - battle.origin().y;
-                    const float rr = static_cast<float>(city.radius.toDouble()) * 1.25f;
-                    inTown = inTown || (x - cx) * (x - cx) + (y - cy) * (y - cy) < rr * rr;
-                }
-                if (inTown) continue;
-                if (skipRing && x > ring_[0] && y > ring_[1] && x < ring_[2] && y < ring_[3]) continue;
-                float q[4];
-                yawQuat(hash01(h + 3) * 6.283f, q);
-                const float w = step * (0.45f + hash01(h + 4) * 0.35f), tall = 14.0f + hash01(h + 5) * 12.0f;
-                const float t = 0.85f + 0.3f * hash01(h + 6);
-                // Higher ground grows pines; a few stands have turned.
-                const float z = battle.heightAt(x, y);
-                const size_t v = z > 120.0f || hash01(h + 7) < 0.3f ? 1 : hash01(h + 8) < 0.12f ? 2 : 0;
-                pushInstance(out[v], {x, y, z - 1.0f}, q, {w, w, tall}, {t, t, t});
-            }
+    uploadFarForest(battle);
+}
+
+// The continent's own trees, as cards, and the cover they make for the land to be shaded from.
+void Renderer::uploadFarForest(const Battle& battle) {
+    farForest_.grow(battle.continent(), battle.farGrid(), battle.origin());
+    std::vector<std::vector<float>> byKind(pines_.size() + oaks_.size());
+    for (const sim::Obstacle& o : farForest_.trees()) pushTree(o, sceneryId(battle, o), byKind);
+    std::vector<float> data;
+    for (size_t k = 0; k < byKind.size(); ++k) {
+        for (size_t i = 0; i < byKind[k].size(); i += 13) {
+            data.insert(data.end(), byKind[k].begin() + static_cast<long>(i), byKind[k].begin() + static_cast<long>(i) + 13);
+            data.push_back(static_cast<float>(k));
         }
-    };
-    std::vector<std::vector<float>> farCopses(copses_.size()), nearCopses(nearCopses_.size());
-    plant(battle.farGrid(), farCopses, 1, 0.55f, false, 0);
-    plant(battle.nearGrid(), nearCopses, 2, 0.7f, false, 0x9E3779B9u);
-    for (size_t v = 0; v < copses_.size(); ++v) uploadMeshInstances(copses_[v], farCopses[v]);
-    for (size_t v = 0; v < nearCopses_.size(); ++v) uploadMeshInstances(nearCopses_[v], nearCopses[v]);
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, farTrees_.instanceVbo);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(std::max<size_t>(data.size(), 14) * 4), data.data(), GL_STATIC_DRAW);
+    farTrees_.count = static_cast<GLsizei>(data.size() / 14);
+
+    if (!forestMap_) glGenTextures(1, &forestMap_);
+    glBindTexture(GL_TEXTURE_2D, forestMap_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, farForest_.densityX(), farForest_.densityY(), 0, GL_RED, GL_UNSIGNED_BYTE, farForest_.density().data());
+    forestRect_[0] = farForest_.min().x;
+    forestRect_[1] = farForest_.min().y;
+    forestRect_[2] = 1.0f / (FarForest::kDensityCell * static_cast<float>(farForest_.densityX()));
+    forestRect_[3] = 1.0f / (FarForest::kDensityCell * static_cast<float>(farForest_.densityY()));
 }
 
 void Renderer::setBoats(const std::vector<Prop>& boats) {
@@ -1378,6 +1424,18 @@ void Renderer::setPiers(const std::vector<Prop>& piers) {
 bool Renderer::init(Battle& battle) {
     if (!buildPrograms()) return false;
     ensureShadowMap();
+    // Textures the programs sample before the land that fills them exists (a skirmish has no territory; the title no
+    // close-up land): one clear texel, so no unit is ever bound to nothing (Metal warns of an unloadable texture).
+    const uint8_t clear[4] = {};
+    for (GLuint* tex : {&detailMask_, &territoryTex_}) {
+        glGenTextures(1, tex);
+        glBindTexture(GL_TEXTURE_2D, *tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, clear);
+    }
     makeCoverLayer(cover_layers_[0], meshes::grassTuft(), 0, 0.37f);
     makeCoverLayer(cover_layers_[1], meshes::flowers(), 1, 1.71f);
     makeCoverLayer(cover_layers_[2], meshes::pebbles(), 2, 2.93f);
@@ -1425,21 +1483,25 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(poles_, meshes::bannerPole(), 0);
     makeMeshBatch(cloths_, meshes::bannerCloth(), 0);
     banners_.cloth = cloths_.cloth = true;
-    makeAll(copses_, meshes::copseVariants(), 0.01f);
-    makeAll(nearCopses_, meshes::copseVariants(), 0.01f);
     makeAll(detailPines_, meshes::pineVariants(), 0.03f);
     makeAll(detailOaks_, meshes::oakVariants(), 0.02f);
     makeAll(detailBushes_, meshes::bushVariants(), 0.04f);
     makeAll(detailRocks_, meshes::rockVariants(), 0);
     makeMeshBatch(detailLogs_, meshes::log(), 0);
     makeMeshBatch(detailStumps_, meshes::stump(), 0);
-    // Individual scenery near the camera, the woods' clumps beyond, on the
-    // battlefield and off it alike.
-    for (auto* list : {&pines_, &oaks_, &bushes_, &rocks_, &detailPines_, &detailOaks_, &detailBushes_, &detailRocks_})
+    // The battlefield's trees and the close-up land's, the continent's beyond them; undergrowth, rocks and logs
+    // only near the camera (see ILLYRIA_SCENERY_VS).
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) b.lod = 1;
-    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 1;
-    for (auto* list : {&copses_, &nearCopses_})
-        for (MeshBatch& b : *list) b.lod = -1;
+    for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
+        for (MeshBatch& b : *list) b.lod = 2;
+    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 2;
+    for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
+        for (MeshBatch& b : *list) b.part = Part::Trees;
+    for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
+        for (MeshBatch& b : *list) b.part = Part::Clutter;
+    for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
+    for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
@@ -1447,6 +1509,9 @@ bool Renderer::init(Battle& battle) {
     makeBatch(particles_, {3, 4}, 0);
     makeBatch(bars_, {3, 4}, 0);
     makeBatch(dots_, {3, 4, 2}, 0);
+    bakeTreeBoards();
+    layOutBoards();
+    makeFarTrees();
     reset(battle);
     return true;
 }
@@ -1701,7 +1766,7 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type, const figures::Plan& plan, fl
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCells, 2, 0, GL_RGBA, GL_FLOAT, table.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     glEnable(GL_DEPTH_TEST);
     glBindVertexArray(0);
@@ -1743,7 +1808,7 @@ void Renderer::drawUnits(const Camera& camera, double timeSeconds, float gameSec
         glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, at(4));
         glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, at(5));
         glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, at(6));
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, static_cast<GLsizei>(range.second));
     }
     glActiveTexture(GL_TEXTURE0);
 }
@@ -1884,7 +1949,7 @@ void Renderer::drawCover(const Camera& camera, double timeSeconds, float gameSec
             const CoverLayer& l = cover_layers_[i];
             glUniform4f(cover_.cover, spacing[i], static_cast<float>(grid[i]), l.seed, l.kind);
             glBindVertexArray(l.vao);
-            glDrawArraysInstanced(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
+            drawArrays(GL_TRIANGLES, 0, l.vertices, grid[i] * grid[i]);
         }
     }
 }
@@ -1922,24 +1987,23 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     viewProjOverride_ = &lightViewProj_;
     const int features = features_;
     features_ &= ~kShadows;  // casters do not sample the map they are drawn into
+    part_ = Part::Shadows;
     setCommon(terrainDepth_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
-    glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    drawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT);
     drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
-    for (MeshBatch& b : copses_) casters.push_back(&b);
-    if (features_ & kFarDetail)
-        for (MeshBatch& b : nearCopses_) casters.push_back(&b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
         glUniform1f(meshDepth_.lod, b->lod);
         glUniform1f(meshDepth_.flag, b->cloth ? 1.0f : 0.0f);  // the waving cloth's shadow
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, b->vertices, b->count);
+        drawArrays(GL_TRIANGLES, 0, b->vertices, b->count);
     }
+    drawTrees(camera, timeSeconds, gameSeconds);
     drawModel(modelDepth_, ruinModel_, camera, timeSeconds, gameSeconds);
     // Soldiers: their billboards turned side-on to the sun, so the cut-out
     // silhouettes cast real shadows.
@@ -1948,7 +2012,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
         const V3 right = V3{sun.y, -sun.x, 0}.normalized();
         glUniform3f(sprite_.camRight, right.x, right.y, right.z);
         glBindVertexArray(sprites_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
     }
     {
         const V3 toward = V3{-sun.x, -sun.y, 0}.normalized();
@@ -1957,7 +2021,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     features_ = features;
     viewProjOverride_ = nullptr;
     glDisable(GL_POLYGON_OFFSET_FILL);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
 }
 
 void Renderer::setFeatures(int features) {
@@ -1996,7 +2060,7 @@ void Renderer::ensureShadowMap() {
     const GLenum none = GL_NONE;
     glDrawBuffers(1, &none);
     glReadBuffer(GL_NONE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
 }
 
 void Renderer::uploadCanopy(const Battle& battle) {
@@ -2085,6 +2149,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     }
     if (p.lightViewProj >= 0) glUniformMatrix4fv(p.lightViewProj, 1, GL_FALSE, lightViewProj_.m);
     if (p.shadowInfo >= 0) glUniform4fv(p.shadowInfo, 1, shadowInfo_);
+    if (p.forestMap >= 0) {
+        glActiveTexture(GL_TEXTURE14);
+        glBindTexture(GL_TEXTURE_2D, forestMap_);
+        glUniform1i(p.forestMap, 14);
+        glUniform4fv(p.forestRect, 1, forestRect_);
+        glActiveTexture(GL_TEXTURE0);
+    }
     if (p.focus >= 0) glUniform2f(p.focus, camera.target().x, camera.target().y);
     if (p.flow >= 0) {
         glActiveTexture(GL_TEXTURE6);
@@ -2110,6 +2181,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 }
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
+    for (PartCount& c : counts_) c = PartCount{};
     // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
     territoryInfo_[0] = battle.origin().x;
     territoryInfo_[1] = battle.origin().y;
@@ -2146,7 +2218,6 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // the view and cell chosen as kUnitVs chooses them.
     std::vector<float> boxes(units.size() * 6, std::numeric_limits<float>::quiet_NaN());
     const float toViewer = std::atan2(-fwd.y, -fwd.x);
-    constexpr float kSpriteElevation = 0.52f;  // kUnitVs kElevation
     if (walked_.size() != units.size()) {
         walked_.assign(units.size(), 0.0f);
         lastSeen_.resize(units.size());
@@ -2388,6 +2459,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     renderShadowMap(camera, timeSeconds, gameSeconds);
+    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
     glViewport(0, 0, static_cast<GLsizei>(camera.width()), static_cast<GLsizei>(camera.height()));
     glClearColor(0.64f, 0.74f, 0.84f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -2408,13 +2480,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glUniform2f(sky_.proj, std::tan(Camera::kFovY / 2), camera.width() / camera.height());
         if (!skyVao_) glGenVertexArrays(1, &skyVao_);
         glBindVertexArray(skyVao_);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        part_ = Part::Sky;
+        drawArrays(GL_TRIANGLES, 0, 3);
         glDepthMask(GL_TRUE);
     }
     setCommon(terrain_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
-    glDrawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT, nullptr);
+    part_ = Part::Land;
+    drawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT);
     drawDetailTerrain(detailTerrain_, camera, timeSeconds, gameSeconds);
+    part_ = Part::Cover;
     drawCover(camera, timeSeconds, gameSeconds);
 
     // The rest of the continent, coarse, with its rivers and roads on top. The
@@ -2434,27 +2509,28 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     };
     const bool farSunk = farDetail && (covers(ring_) || (patchShown && covers(patch_)));
     farProgram(detailOn_ && !farSunk ? farCut_ : far_, farDetail ? 6.0f : 0.0f, patchShown ? 6.0f : 0.0f);
+    part_ = Part::Far;
     glBindVertexArray(farLand_.vao);
-    glDrawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT, nullptr);
+    drawElements(GL_TRIANGLES, farLand_.count, GL_UNSIGNED_INT);
     if (ocean_.count > 0) {
         glBindVertexArray(ocean_.vao);
-        glDrawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, ocean_.count, GL_UNSIGNED_INT);
     }
     const Program& nearProgram = detailOn_ ? farCut_ : far_;
     if (farDetail) {
         farProgram(nearProgram, 0.0f, patchShown ? 6.0f : 0.0f);
         glBindVertexArray(nearLand_.vao);
-        glDrawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, nearLand_.count, GL_UNSIGNED_INT);
     }
     if (patchShown) {
         farProgram(nearProgram, 0.0f, 0.0f);
         glBindVertexArray(patchLand_.vao);
-        glDrawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT, nullptr);
+        drawElements(GL_TRIANGLES, patchLand_.count, GL_UNSIGNED_INT);
     }
     if (ribbons_.count > 0) {
         setCommon(ribbon_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(ribbons_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
     }
     if (waterfalls_.count > 0 && farDetail) {
         setCommon(falls_, camera, timeSeconds, gameSeconds);
@@ -2462,7 +2538,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
         glBindVertexArray(waterfalls_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
     }
@@ -2470,22 +2546,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);
-    // Distant woods: sub-pixel and covered by the terrain colour from very high up.
-    if (camera.distance() < 6000.0f) {
-        std::vector<MeshBatch*> woods;
-        for (MeshBatch& b : copses_) woods.push_back(&b);
-        if (features_ & kFarDetail)
-            for (MeshBatch& b : nearCopses_) woods.push_back(&b);
-        drawMeshes(woods, camera, timeSeconds, gameSeconds);
-    }
-    if (camera.distance() > 450.0f) {
-        drawMeshes(scenery(false), camera, timeSeconds, gameSeconds);
-    } else {
-        drawMeshes(scenery(true), camera, timeSeconds, gameSeconds);
-    }
+    drawMeshes(scenery(camera.distance() <= 450.0f), camera, timeSeconds, gameSeconds);
+    drawTrees(camera, timeSeconds, gameSeconds);
 
+    part_ = Part::Effects;
     // Decals: blended, no depth writes. Ground marks first, then body parts,
     // then per-frame. After the castles and bridges, so that those on a
     // wall-walk or a deck are not painted over; pulled a little toward the
@@ -2504,7 +2571,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         const int grid = b == &dynamicDecals_ ? 4 : b == &marks_ ? 2 : 1;
         glUniform1f(decal_.decalGrid, static_cast<float>(grid));
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6 * grid * grid, b->count);
+        drawArrays(GL_TRIANGLES, 0, 6 * grid * grid, b->count);
     }
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDepthMask(GL_TRUE);
@@ -2514,13 +2581,14 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (Batch* b : {&remainArrows_, &flyingArrows_}) {
         if (b->count == 0) continue;
         glBindVertexArray(b->vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, b->count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, b->count);
     }
 
+    part_ = Part::Men;
     if (sprites_.count > 0) {
         setCommon(sprite_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(sprites_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, sprites_.count);
     }
     {
         const V3 toward = V3{fwd.x, fwd.y, 0}.normalized();
@@ -2529,8 +2597,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     if (bars_.count > 0) {
         setCommon(bar_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(bars_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
+        part_ = Part::Ui;
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, bars_.count);
     }
+    part_ = Part::Dots;
     drawDots(camera, timeSeconds, gameSeconds);
 
     // Water over everything below it: soldiers wading show through.
@@ -2539,7 +2609,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glDepthMask(GL_FALSE);
     setCommon(water_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(waterVao_);
-    glDrawArrays(GL_TRIANGLES, 0, waterVertices_);
+    part_ = Part::Water;
+    drawArrays(GL_TRIANGLES, 0, waterVertices_);
     drawDetailWater(camera, timeSeconds, gameSeconds);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -2551,7 +2622,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glDepthMask(GL_FALSE);
         setCommon(particle_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(particles_.vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, particles_.count);
+        part_ = Part::Effects;
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, particles_.count);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
     }

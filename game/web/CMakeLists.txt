@@ -1,23 +1,7 @@
 # The browser build: produces illyria.js + illyria.wasm next to index.html.
-set(ILLYRIA_VERSION "0.0.0-dev" CACHE STRING "Version shown in the game")
-
-add_executable(illyria_web
-    main.cpp
-    sheets.cpp
-    models.cpp
-    ../render/renderer.cpp
-    ../render/renderer_detail.cpp
-    ../render/renderer_sheets.cpp
-    ../render/renderer_orders.cpp
-    ../render/renderer_flags.cpp
-    ../render/renderer_map.cpp
-    ../render/renderer_gibs.cpp
-    ../render/renderer_models.cpp
-    ../render/meshes.cpp
-)
+add_executable(illyria_web platform_web.cpp)
 set_target_properties(illyria_web PROPERTIES OUTPUT_NAME illyria SUFFIX ".js")
-target_link_libraries(illyria_web PRIVATE illyria_game illyria_figures)
-target_compile_definitions(illyria_web PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}")
+target_link_libraries(illyria_web PRIVATE illyria_runtime)
 target_compile_options(illyria_web PRIVATE -Wno-conversion)
 target_link_options(illyria_web PRIVATE
     -sMIN_WEBGL_VERSION=2

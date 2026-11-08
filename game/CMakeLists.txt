@@ -20,6 +20,7 @@ add_library(illyria_game
     src/battle_deaths.cpp
     src/minimap.cpp
     src/detail_land.cpp
+    src/far_forest.cpp
 )
 target_include_directories(illyria_game PUBLIC include)
 target_link_libraries(illyria_game PUBLIC illyria_sim)
@@ -33,8 +34,33 @@ target_include_directories(illyria_figures PUBLIC render)
 target_link_libraries(illyria_figures PUBLIC illyria_game)
 target_compile_options(illyria_figures PRIVATE -Wno-conversion)
 
+# The game loop, renderer and asset loaders every platform runs. app/platform.h is the one seam to the
+# machine: the browser's side is web/, the desktop's native/.
+set(ILLYRIA_VERSION "0.0.0-dev" CACHE STRING "Version shown in the game")
+if(EMSCRIPTEN OR ILLYRIA_BUILD_APP)
+    add_library(illyria_runtime OBJECT
+        app/app.cpp
+        app/sheets.cpp
+        app/models.cpp
+        render/renderer.cpp
+        render/renderer_detail.cpp
+        render/renderer_sheets.cpp
+        render/renderer_orders.cpp
+        render/renderer_flags.cpp
+        render/renderer_map.cpp
+        render/renderer_gibs.cpp
+        render/renderer_models.cpp
+        render/renderer_trees.cpp
+        render/meshes.cpp
+    )
+    target_link_libraries(illyria_runtime PUBLIC illyria_game illyria_figures)
+    target_compile_definitions(illyria_runtime PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}")
+    target_compile_options(illyria_runtime PRIVATE -Wno-conversion)
+endif()
 if(EMSCRIPTEN)
     add_subdirectory(web)
+elseif(ILLYRIA_BUILD_APP)
+    add_subdirectory(native)
 endif()
 
 # Presentation code mixes ints and floats freely; -Wconversion stays on for

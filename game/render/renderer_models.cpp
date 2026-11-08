@@ -17,6 +17,17 @@ namespace {
 constexpr size_t kHeader = 4 + 3 * 4 + 6 * 4, kVertexBytes = 20;
 constexpr GLenum kMaxAnisotropy = 0x84FE;  // EXT_texture_filter_anisotropic
 
+// Whether the context lists an extension. (glGetString(GL_EXTENSIONS) is an error in a core profile: the names are read one at a time.)
+bool hasExtension(const char* name) {
+    GLint count = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+    for (GLint i = 0; i < count; ++i) {
+        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(i)));
+        if (ext && std::strstr(ext, name)) return true;
+    }
+    return false;
+}
+
 uint32_t readU32(const uint8_t* p) {
     uint32_t v;
     std::memcpy(&v, p, 4);
@@ -82,8 +93,7 @@ bool Renderer::loadModel(ModelKind kind, const uint8_t* mesh, size_t meshBytes, 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    const char* ext = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-    if (ext && std::strstr(ext, "texture_filter_anisotropic")) glTexParameterf(GL_TEXTURE_2D, kMaxAnisotropy, 4.0f);
+    if (hasExtension("texture_filter_anisotropic")) glTexParameterf(GL_TEXTURE_2D, kMaxAnisotropy, 4.0f);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     uploadRuins(ruinInstances_);  // the sites already laid out now get the model
@@ -137,7 +147,7 @@ void Renderer::drawModel(const Program& p, Model& m, const Camera& camera, doubl
         glActiveTexture(GL_TEXTURE0);
     }
     glBindVertexArray(m.vao);
-    glDrawElementsInstanced(GL_TRIANGLES, m.indices, GL_UNSIGNED_SHORT, nullptr, static_cast<GLsizei>(count));
+    drawElements(GL_TRIANGLES, m.indices, GL_UNSIGNED_SHORT, static_cast<GLsizei>(count));
     glBindVertexArray(0);
 }
 

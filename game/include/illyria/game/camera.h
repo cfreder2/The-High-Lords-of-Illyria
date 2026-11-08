@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 
 #include "illyria/game/gmath.h"
@@ -14,7 +15,7 @@ class Camera {
 public:
     using HeightFn = std::function<float(float x, float y)>;
 
-    static constexpr float kMinDistance = 6.0f;
+    static constexpr float kMinDistance = 2.0f;  // right down to a single man: he fills most of the screen
     static constexpr float kMaxDistance = 4900.0f;  // a little beyond the whole continent
     static constexpr float kFovY = 0.785398f;  // 45 degrees
 
@@ -34,6 +35,7 @@ public:
         radius_ = radius;
         maxDistance_ = radius > 0 ? std::clamp(maxDistance, kMinDistance, kMaxDistance) : kMaxDistance;
         distance_ = std::min(distance_, maxDistance_);
+        goalLog_ = std::min(goalLog_, std::log(maxDistance_));
         clampTarget();
     }
     float maxDistance() const { return maxDistance_; }
@@ -46,20 +48,16 @@ public:
     void lookAt(float x, float y, float distance);
     // Moves the target so the ground point under `fromPx` ends up under `toPx`.
     void dragGround(float fromX, float fromY, float toX, float toY);
-    // Multiplies distance by 1/factor, keeping the ground point under (px, py) fixed.
+    // Asks for the distance divided by `factor`, the ground point under (px, py)
+    // staying under it as the view glides there (advance). The ask is clamped to
+    // [kMinDistance, maxDistance], so scrolling past a limit stores nothing.
+    // Every input (wheel, trackpad, pinch, keys) comes through here.
     void zoomAt(float factor, float px, float py);
+    // Glides the distance toward the ask, critically damped on its logarithm.
+    void advance(float dtSeconds);
     // Moves the target over the ground by metres along the view's right and its forward (up the screen).
     void pan(float right, float forward);
     void rotate(float radians) { yaw_ += radians; }
-    // The closest pinching may bring the camera (at least kMinDistance): the
-    // renderer's limit for the sprites in view (Renderer::closeupMinDistance).
-    // Called every frame; if the camera is already closer it eases out to it.
-    void setMinDistance(float d) {
-        minDistance_ = std::clamp(d, kMinDistance, kMaxDistance);
-        if (distance_ < minDistance_) distance_ += (minDistance_ - distance_) * 0.12f;
-    }
-    float minDistance() const { return minDistance_; }
-
     V3 eye() const;
     V3 target() const { return {tx_, ty_, groundAt(tx_, ty_)}; }
     float distance() const { return distance_; }
@@ -84,13 +82,20 @@ private:
     // Intersects a pixel ray with the horizontal plane z = planeZ.
     bool pickPlane(float px, float py, float planeZ, V3& hit) const;
     void clampTarget();
+    // Moves the target so the anchored ground point is back under its pixel.
+    void holdAnchor();
 
     HeightFn heightFn_;
     float minX_ = 0, minY_ = 0, maxX_ = 1024.0f, maxY_ = 1024.0f;
     float width_ = 1, height_ = 1;
     float tx_ = 0, ty_ = 0;
     float distance_ = 300.0f;
-    float minDistance_ = kMinDistance;
+    // The asked-for log distance, the rate the glide is moving at, and the
+    // ground point (and the pixel) a zoom holds still while it glides.
+    float goalLog_ = std::log(300.0f), speedLog_ = 0;
+    bool anchored_ = false;
+    V3 anchor_{};
+    float anchorPx_ = 0, anchorPy_ = 0;
     float maxDistance_ = kMaxDistance;
     float cx_ = 0, cy_ = 0, radius_ = 0;
     float yaw_ = 0.0f;

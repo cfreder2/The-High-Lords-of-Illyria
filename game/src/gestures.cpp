@@ -16,6 +16,8 @@ constexpr float kPi = 3.14159265f;
 constexpr float kKeyPanPerSecond = 0.9f;
 constexpr float kKeyTurnPerSecond = 1.4f;
 constexpr float kKeyZoomPerSecond = 1.2f;  // e-fold of the distance a second: twice as near in 0.6 s
+constexpr float kZoomPerWheelPixel = 0.0015f;  // a mouse notch (100 px) is e^0.15
+constexpr float kZoomPerPinchPixel = 0.01f;
 constexpr double kKeyEaseMs = 90.0;
 // Turning to a heading (turnTo): nearly there in a third of a second.
 constexpr double kTurnEaseMs = 90.0;
@@ -131,7 +133,11 @@ void Gestures::endHold(float x, float y, bool cancelled) {
 }
 
 void Gestures::wheel(float deltaY, float x, float y) {
-    camera_.zoomAt(std::exp(-deltaY * 0.0015f), x, y);
+    camera_.zoomAt(std::exp(-deltaY * kZoomPerWheelPixel), x, y);
+}
+
+void Gestures::pinchWheel(float deltaY, float x, float y) {
+    pinch(std::exp(-deltaY * kZoomPerPinchPixel), 0, x, y);
 }
 
 void Gestures::scroll(float dx, float dy, float x, float y) {
@@ -180,6 +186,7 @@ void Gestures::moveByKeys(double timeMs) {
     }
     if (paceTurn_ != 0) camera_.rotate(paceTurn_ * kKeyTurnPerSecond * dt);
     if (paceZoom_ != 0) camera_.zoomAt(std::exp(paceZoom_ * kKeyZoomPerSecond * dt), camera_.width() / 2, camera_.height() / 2);
+    camera_.advance(dt);  // glide to whatever zoom the wheel, pinch or keys asked for
     if (turning_) {
         const float left = std::remainder(turnToYaw_ - camera_.yaw(), 2 * kPi);
         if (std::abs(left) < 0.002f) {

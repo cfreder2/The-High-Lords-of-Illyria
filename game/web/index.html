@@ -506,6 +506,7 @@
     api = {
       pointer: Module.cwrap("illyria_pointer", null, ["number", "number", "number", "number", "number", "number"]),
       wheel: Module.cwrap("illyria_wheel", null, ["number", "number", "number"]),
+      pinchWheel: Module.cwrap("illyria_pinch_wheel", null, ["number", "number", "number"]),
       scroll: Module.cwrap("illyria_scroll", null, ["number", "number", "number", "number"]),
       pinch: Module.cwrap("illyria_pinch", null, ["number", "number", "number", "number"]),
       cameraKeys: Module.cwrap("illyria_camera_keys", null, ["number", "number", "number", "number"]),
@@ -771,7 +772,7 @@
     const x = e.clientX - r.left, y = e.clientY - r.top;
     const scale = mode === 1 ? 16 : mode === 2 ? 400 : 1;
     if (wheelKind === "mouse") api.wheel(e.deltaY * scale, x, y);
-    else if (e.ctrlKey) { if (!safariPinch) api.pinch(Math.exp(-e.deltaY * 0.01), 0, x, y); }
+    else if (e.ctrlKey) { if (!safariPinch) api.pinchWheel(e.deltaY * scale, x, y); }
     else api.scroll(e.deltaX * scale, e.deltaY * scale, x, y);
     hideHint();
   }, { passive: false });

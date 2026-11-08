@@ -51,14 +51,6 @@ void Renderer::setCityColours(const std::vector<V3>& colours) {
 void Renderer::setTerritory(const std::vector<uint8_t>& rgba, int cols, int rows, float strength) {
     territoryInfo_[2] = strength;
     if (rgba.size() < static_cast<size_t>(cols) * rows * 4 || cols <= 0 || rows <= 0) return;
-    if (!territoryTex_) {
-        glGenTextures(1, &territoryTex_);
-        glBindTexture(GL_TEXTURE_2D, territoryTex_);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    }
     glBindTexture(GL_TEXTURE_2D, territoryTex_);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());

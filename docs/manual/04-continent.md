@@ -53,7 +53,7 @@ Out in the wild places there are **34 ruins** in the forests and foothills, **4 
 | Zoom | What you see |
 |---|---|
 | The whole island | the realms, the hexes washed in their holders' colours, every soldier a point in his lord's colour, castles; the minimap |
-| A region | cities, roads, rivers, columns and blocks of points marching, the woods as clumps |
+| A region | cities, roads, rivers, columns and blocks of points marching, every tree of the woods, dark where the forest is thick |
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 
