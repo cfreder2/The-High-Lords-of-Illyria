@@ -114,7 +114,7 @@ TEST(the_edges_of_a_selection_in_the_world_are_told_as_in_a_skirmish) {
     if (foot < 0) return;
     CHECK(w.b->selectionEdges().empty());  // (nothing selected)
     w.b->selectSquad(foot);
-    CHECK(w.b->selectedAlive().empty());
+    CHECK(!w.b->selectedAlive().empty());
     const std::string edges = w.b->selectionEdges();
     std::printf("  the light infantry at rest in their capital: \"%s\"\n", edges.c_str());
     CHECK(edges.find("hero leads") != std::string::npos);  // (the stack's hero is beside them)

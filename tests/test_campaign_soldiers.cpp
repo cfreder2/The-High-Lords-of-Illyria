@@ -156,18 +156,19 @@ TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
     for (uint8_t player = 0; player < 8; ++player) {
         Campaign c(continent(), 5, Campaign::Setup{player, 0xFF});
         c.setHuman(0, true);
+        c.prepareWorld();
         std::vector<Campaign::Soldier> all;
         c.soldiers(0, all);
         for (const Campaign::Soldier& m : all) {
             const Campaign::Stack* s = c.findStack(m.stack);
             const int32_t town = s ? c.cityAt(s->cx, s->cy) : -1;
-            if (!s || s->awake || !s->path.empty() || town < 0) continue;
+            if (!s || !s->path.empty() || town < 0) continue;
             const Continent::City& city = c.continent().cities()[static_cast<size_t>(town)];
             ++men;
             const bool wrong = onBuilding(city.castle, m.x, m.y) || !insideOuter(city.castle, m.x, m.y);
             if (wrong) ++bad;
             int here = 0;
-            for (const Campaign::Stack& o : c.stacks()) here += !o.awake && o.path.empty() && o.cx == s->cx && o.cy == s->cy;
+            for (const Campaign::Stack& o : c.stacks()) here += o.path.empty() && o.cx == s->cx && o.cy == s->cy;
             if (wrong && bad <= 6) std::printf("  %s (faction %d, %d stacks there): a man at %.1f, %.1f (courtyard %.1f, %.1f r %.1f) is in a building (%d) or outside the walls\n", city.name.c_str(), player, here, m.x, m.y, city.castle.courtyard.x.toDouble(), city.castle.courtyard.y.toDouble(), city.castle.courtyardRadius.toDouble(), onBuilding(city.castle, m.x, m.y));
         }
         towns += static_cast<int>(c.cities().size());

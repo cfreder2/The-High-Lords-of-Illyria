@@ -293,15 +293,6 @@ const char* Battle::selectionLabel() const {
 
 std::string Battle::selectionEdges() const {
     for (sim::EntityId id : selectedAlive()) return world_->edgesOf(world_->units()[id - 1]).describe();
-    for (uint32_t man : selSleeping_) {
-        const size_t i = sleeperIndex(man);
-        const sim::Campaign::Stack* s = i == kNoSleeper || !conquest_ ? nullptr : conquest_->findStack(sleepers_[i].stack);
-        if (!s) continue;
-        std::vector<const sim::Army*> side;
-        for (const sim::Army& a : s->armies) side.push_back(&a);
-        for (const sim::Army* a : side)
-            if (a->id == sleepers_[i].army) return conquest_->armyEdges(*a, side, s->owner, s->cx, s->cy, true).describe();
-    }
     return "";
 }
 
