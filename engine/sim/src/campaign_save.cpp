@@ -18,7 +18,7 @@ namespace {
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
 constexpr const char* kMagic = "ILC4.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 3;  // 3: who plays (Campaign::Setup)
+constexpr uint32_t kFormat = 4;  // 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
 
 class Writer {
 public:
@@ -162,9 +162,11 @@ void writeArmy(Writer& w, const Army& a) {
         w.i(m.kills);
         w.i(m.morale);
         w.i(m.rank);
-        w.b(m.placed);
-        w.i(m.ox);
-        w.i(m.oy);
+        w.b(m.placed || m.unit != 0);  // (he has a place: where he stands, or stood when he went aboard)
+        w.i(m.ax);
+        w.i(m.ay);
+        w.i(m.fx);
+        w.i(m.fy);
     }
 }
 
@@ -191,8 +193,10 @@ Army readArmy(Reader& r) {
         m.morale = r.i32();
         m.rank = r.i32();
         m.placed = r.b();
-        m.ox = r.i32();
-        m.oy = r.i32();
+        m.ax = m.bx = r.i32();
+        m.ay = m.by = r.i32();
+        m.fx = r.i32();
+        m.fy = r.i32();
     }
     return a;
 }
@@ -224,7 +228,7 @@ uint64_t mapPrint(const Campaign& c) {
 }  // namespace
 
 std::string Campaign::save() {
-    settleAll();  // a fight is not kept: its men are saved where they stand
+    reseatAll();  // nothing of a moment is kept (arrows in the air, cooldowns): the men are saved where they stand
     Writer w;
     w.u(kFormat);
     w.u(seed_);
@@ -526,6 +530,7 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     }
     const uint64_t sum = r.u();
     if (!r.ok() || !r.done()) return fail("damaged (cut short)");
+    c->freshWorld();  // as the game that saved it left its world (Campaign::reseatAll)
     if (sum != c->checksum()) return fail("damaged (its checksum does not match)");
     return c;
 }

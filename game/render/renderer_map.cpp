@@ -4,8 +4,7 @@
 // in a fight pulses as a dot, rapidly and at random in strength, and swings and flinches as a sprite. Which is
 // which depends on the camera, but only the drawing does.
 //
-// The men are the presented world's own units (Battle::borrow: the campaign's fights), and the sleepers: the
-// campaign's soldiers asleep in their squads on the march, who are not units of any world (Battle::sleepers: Campaign::Soldier).
+// The men are the presented world's own units (Battle::borrow: the campaign's world).
 #include <algorithm>
 #include <cmath>
 

@@ -29,8 +29,10 @@ public:
     Fixed sample(int32_t ix, int32_t iy) const { return samples_[iy * (cells_ + 1) + ix]; }
 
 private:
+    void setCellSize(Fixed cellSize);
     int32_t cells_ = 0;
     Fixed cellSize_;
+    int cellLog_ = -1;  // log2 of cellSize_'s raw value, when that is a power of two (the divide by it is then a shift)
     std::vector<Fixed> samples_;
 };
 

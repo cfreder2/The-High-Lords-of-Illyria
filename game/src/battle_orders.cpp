@@ -73,7 +73,7 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     if (t == nullptr || !t->alive()) return;
     std::vector<sim::EntityId> mine = selectedAlive();
     std::erase(mine, target);
-    // Out of the men's reach, or for men asleep: they march against his place, and the fight is where they meet.
+    // Out of the men's reach: they march against his place, and the fight is where they meet.
     if (marchOrder(toV3(t->pos))) return voice_.order(Situation::Attack, *world_, selection_);
     if (mine.empty()) return;
     for (sim::EntityId id : mine) {
@@ -92,14 +92,6 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     markOrdered(mine);
     voice_.order(Situation::Attack, *world_, mine);
     if (t->owner == local_) say("Attacking our own!");
-}
-
-void Battle::orderAttackSleeper(size_t index) {
-    // A man not in the world (his stack on the march, or in a town): the squads go to where he is, and fight whoever
-    // they meet there, in the world, when they get there.
-    if (index >= sleepers_.size()) return;
-    marchOrder(sleeperPosition(sleepers_[index]), true);
-    voice_.order(Situation::Attack, *world_, selection_);
 }
 
 void Battle::orderAttackGround(const V3& at) {
@@ -298,14 +290,6 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
         p.index = static_cast<int>(u);
         p.squad = squadOfUnit_[u];
         p.at = unitPosition(u);
-        return p;
-    }
-    if (man.kind == ManPick::Kind::Sleeper) {
-        const sim::Campaign::Soldier& m = sleepers_[man.index];
-        p.kind = m.owner == local_ ? Pick::Kind::Own : Pick::Kind::Enemy;
-        p.sleeper = static_cast<int>(man.index);
-        p.squad = squadOfArmy(m.army);
-        p.at = sleeperPosition(m);
         return p;
     }
     if (const int g = gateAt(camera, x, y, pixelScale); g >= 0) {

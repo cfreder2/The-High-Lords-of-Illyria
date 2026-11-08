@@ -1,15 +1,14 @@
 // Conquest in the one battle system (docs/ONE_WORLD.md, docs/ARCHITECTURE_RULES.md §1): the war for the whole island is
-// a battle like any other, and this Battle presents it. The player's men there, awake in the conquest's world and asleep
-// in their stacks, are the Battle's squads and selection; the same taps, boxes, presses and command bar drive them as
-// in a skirmish. Only two things are the conquest's own, and both are here:
+// a battle like any other, and this Battle presents it. The player's men there are units of the conquest's world, the
+// Battle's squads and selection; the same taps, boxes, presses and command bar drive them as in a skirmish. Only two
+// things are the conquest's own, and both are here:
 //
-// - A man asleep has no unit (his stack is stepped as one body), so he is a sleeper, a Campaign::Soldier: one picture in the renderer's one
-//   pass, selectable and inspectable like a unit. The selection is of men (their ids), kept through a man's waking and
-//   sleeping, and made again each frame into the world's units and the sleepers (presentConquest).
-// - An order of the selection is the world's (commands to units, which Orders carry into the conquest's step) unless
-//   it is out of the men's reach or for men asleep: then it is a march of their squads, whole armies on the conquest's
-//   grid (marchOrder, the one place an order becomes the conquest's), which the stack does in its own time and wakes
-//   to a fight on the way.
+// - The selection is of men (their ids), kept through a man's boarding a boat and landing, and made again each frame
+//   into the world's units (presentConquest).
+// - An order of the selection is the world's (commands to units, which Orders carry into the conquest's step) unless it
+//   is out of the men's reach: then it is a march of their squads along a route planned on the conquest's coarse grid
+//   (marchOrder, the one place an order becomes the conquest's), whose cells are only waypoints: the world's own
+//   navigation, steering, ramps and gates do every step of it.
 
 #include <algorithm>
 #include <cmath>
@@ -36,9 +35,6 @@ void Battle::borrow(sim::Campaign* conquest) {
     squadOfUnit_.clear();
     selection_.clear();
     selMen_.clear();
-    selSleeping_.clear();
-    sleepers_.clear();
-    sleeperIx_.clear();
     manOfUnit_.clear();
     armyMemo_.clear();
     squadOfArmy_.clear();
@@ -47,21 +43,6 @@ void Battle::borrow(sim::Campaign* conquest) {
     selStack_ = 0;
     pending_.clear();
     forgetMen();
-}
-
-size_t Battle::sleeperIndex(uint32_t man) const {
-    const auto it = std::lower_bound(sleeperIx_.begin(), sleeperIx_.end(), std::make_pair(man, size_t{0}));
-    return it != sleeperIx_.end() && it->first == man ? it->second : kNoSleeper;
-}
-
-V3 Battle::sleeperPosition(const sim::Campaign::Soldier& m) const {
-    const V3 o = origin();
-    return {m.x - o.x, m.y - o.y, heightAt(m.x - o.x, m.y - o.y)};
-}
-
-V3 Battle::sleeperPositionOf(uint32_t man) const {
-    const size_t i = sleeperIndex(man);
-    return i == kNoSleeper ? V3{} : sleeperPosition(sleepers_[i]);
 }
 
 int Battle::squadOfArmy(uint32_t army) const {
@@ -84,8 +65,6 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
         for (const sim::Army& a : s.armies) armies[a.id] = {&a, s.id};
 
     for (const Squad& q : squads_) armyMemo_[q.army] = {q.formation, q.facing};  // (the squads are made afresh)
-    sleepers_.clear();
-    sleeperIx_.clear();
     squads_.clear();
     squadOfArmy_.clear();
     squadOfUnit_.assign(n, -1);
@@ -93,16 +72,25 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
     // The selection and the one looked at, as men, found again among the men now.
     const auto chosen = [&](uint32_t id) { return std::binary_search(selMen_.begin(), selMen_.end(), id); };
     std::vector<sim::EntityId> units;
-    std::vector<uint32_t> asleep, kept;
+    std::vector<uint32_t> kept;
     uint32_t stack = 0;
     bool oneStack = true;
     inspectedUnit_ = 0;
+    // (The men come army by army: the army and its squad are looked up when it changes.)
+    uint32_t armyNow = 0;
+    const Of* of = nullptr;
+    int* squadNow = nullptr;
     for (const Soldier& m : men) {
-        const auto of = armies.find(m.army);
-        if (of == armies.end()) continue;
-        int& squad = squadOfArmy_.try_emplace(m.army, -1).first->second;
+        if (armyNow != m.army || squadNow == nullptr) {
+            armyNow = m.army;
+            const auto found = armies.find(m.army);
+            of = found == armies.end() ? nullptr : &found->second;
+            squadNow = of == nullptr ? nullptr : &squadOfArmy_.try_emplace(m.army, -1).first->second;
+        }
+        if (of == nullptr) continue;
+        int& squad = *squadNow;
         if (squad < 0) {
-            const sim::Army& a = *of->second.army;
+            const sim::Army& a = *of->army;
             Squad q;
             q.name = a.name.empty() ? sim::unitTypeName(a.type) : a.name;
             q.owner = m.owner;
@@ -111,7 +99,7 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
             q.formation = memo != armyMemo_.end() ? memo->second.formation : defaultFormation(a.type);
             q.facing = memo != armyMemo_.end() ? memo->second.facing : V3{1, 0, 0};
             q.army = a.id;
-            q.stack = of->second.stack;
+            q.stack = of->stack;
             q.total = a.fullStrength;
             q.told = true;
             q.standing.strength = sim::Campaign::strength(a);
@@ -129,17 +117,12 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
         if (!m.alive) continue;
         Squad& q = squads_[static_cast<size_t>(squad)];
         const bool mine = chosen(m.id) && m.owner == local_;
-        if (m.awake && m.unitId && m.unitId <= n) {
+        if (m.unitId && m.unitId <= n) {
             q.members.push_back(m.unitId);
             squadOfUnit_[m.unitId - 1] = squad;
             manOfUnit_[m.unitId - 1] = m.id;
             if (mine) units.push_back(m.unitId);
             if (inspected_.kind == Inspected::Kind::Man && inspected_.id == m.id) inspectedUnit_ = m.unitId;
-        } else if (!m.awake) {
-            q.sleeping.push_back(m.id);
-            sleeperIx_.push_back({m.id, sleepers_.size()});
-            sleepers_.push_back(m);
-            if (mine) asleep.push_back(m.id);
         } else {
             continue;
         }
@@ -149,13 +132,10 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
             oneStack = oneStack && stack == m.stack;
         }
     }
-    std::sort(sleeperIx_.begin(), sleeperIx_.end());
     std::sort(kept.begin(), kept.end());
     selMen_ = std::move(kept);
     selStack_ = oneStack ? stack : 0;
-    std::sort(asleep.begin(), asleep.end());
     selection_ = std::move(units);
-    selSleeping_ = std::move(asleep);
     refreshSelection();
     if (inspected_.kind == Inspected::Kind::Gate && (inspected_.id >= world_->gates().size())) inspected_ = {};
 }
@@ -174,13 +154,9 @@ void Battle::flushOrders() {
 
 void Battle::selectStack(uint32_t stack) {
     std::vector<sim::EntityId> units;
-    std::vector<uint32_t> asleep;
     for (const Squad& q : squads_)
-        if (q.stack == stack && q.owner == local_) {
-            units.insert(units.end(), q.members.begin(), q.members.end());
-            asleep.insert(asleep.end(), q.sleeping.begin(), q.sleeping.end());
-        }
-    selectMen(std::move(units), std::move(asleep));
+        if (q.stack == stack && q.owner == local_) units.insert(units.end(), q.members.begin(), q.members.end());
+    select(std::move(units));
 }
 
 uint32_t Battle::selectedArmy() const {
@@ -193,25 +169,13 @@ void Battle::keepSelectedMen() {
     selMen_.clear();
     for (sim::EntityId id : selection_)
         if (id <= manOfUnit_.size() && manOfUnit_[id - 1]) selMen_.push_back(manOfUnit_[id - 1]);
-    selMen_.insert(selMen_.end(), selSleeping_.begin(), selSleeping_.end());
     std::sort(selMen_.begin(), selMen_.end());
     selMen_.erase(std::unique(selMen_.begin(), selMen_.end()), selMen_.end());
 }
 
-void Battle::selectMen(std::vector<sim::EntityId> units, std::vector<uint32_t> sleepers) {
-    std::erase_if(sleepers, [&](uint32_t man) {
-        const size_t i = sleeperIndex(man);
-        return i == kNoSleeper || sleepers_[i].owner != local_;
-    });
-    std::sort(sleepers.begin(), sleepers.end());
-    sleepers.erase(std::unique(sleepers.begin(), sleepers.end()), sleepers.end());
-    selSleeping_ = std::move(sleepers);
-    applySelection(std::move(units));
-}
-
 // --- The one translation: a selection's order becomes the conquest's ---------
 
-void Battle::submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t cx, int32_t cy) {
+void Battle::submitMarch(const std::vector<uint32_t>& armies, int32_t cx, int32_t cy) {
     // By stack: the squads of a stack that are ordered; all of them, the stack's own march.
     std::map<uint32_t, std::vector<uint32_t>> byStack;
     for (uint32_t army : armies) {
@@ -222,7 +186,7 @@ void Battle::submitMarch(const std::vector<uint32_t>& armies, bool halt, int32_t
         const sim::Campaign::Stack* st = conquest_->findStack(stack);
         if (!st) continue;
         sim::Campaign::Order o;
-        o.kind = halt ? sim::Campaign::Order::Kind::Halt : sim::Campaign::Order::Kind::Move;
+        o.kind = sim::Campaign::Order::Kind::Move;
         o.side = local_;
         o.stack = stack;
         o.a = cx;
@@ -242,7 +206,7 @@ void Battle::marchArmies(std::vector<uint32_t> armies, const V3& to) {
     const V3 o = origin();
     const int32_t cx = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1);
     const int32_t cy = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1);
-    submitMarch(armies, false, cx, cy);
+    submitMarch(armies, cx, cy);
     for (uint32_t army : armies)
         if (const int s = squadOfArmy(army); s >= 0) {
             squads_[static_cast<size_t>(s)].goal = to;
@@ -253,49 +217,27 @@ void Battle::marchArmies(std::vector<uint32_t> armies, const V3& to) {
 bool Battle::marchOrder(const V3& to, bool wholly) {
     if (!conquest_) return false;
     const std::vector<sim::EntityId> awake = selectedAlive();
-    // Out of reach of the men in the world (or none in it): the whole order is a march, of every squad ordered.
-    const bool far = wholly || awake.empty() || beyondReach(centreOf(awake), to);
+    // Out of reach of the men (a long way): the whole order is a march, of every squad ordered.
+    const bool far = wholly || (!awake.empty() && beyondReach(centreOf(awake), to));
+    if (!far) return false;
     std::vector<uint32_t> armies;
-    for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) armies.push_back(sleepers_[i].army);
-    if (far)
-        for (sim::EntityId id : awake)
-            if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
+    for (sim::EntityId id : awake)
+        if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
     if (armies.empty()) return false;
     marchArmies(std::move(armies), to);
-    return far;
-}
-
-void Battle::haltOrder() {
-    if (!conquest_ || selSleeping_.empty()) return;
-    std::vector<uint32_t> armies;
-    for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) armies.push_back(sleepers_[i].army);
-    std::sort(armies.begin(), armies.end());
-    armies.erase(std::unique(armies.begin(), armies.end()), armies.end());
-    submitMarch(armies, true, 0, 0);
+    return true;
 }
 
 // --- Picking and looking ------------------------------------------------------
 
 Battle::ManPick Battle::manPick(const Camera& camera, float x, float y, float pixelScale) const {
     ManPick best;
-    // A unit: his picture, else the nearest within a finger.
+    // His picture, else the nearest within a finger.
     if (const int u = unitAt(camera, x, y, pixelScale); u >= 0) {
         best = {ManPick::Kind::Unit, world_->units()[static_cast<size_t>(u)].id, static_cast<size_t>(u), 0.0f};
         float px, py;
         const V3 p = unitPosition(static_cast<size_t>(u));
         if (camera.project({p.x, p.y, p.z + 1.0f}, px, py)) best.px = std::hypot(px - x, py - y);
-    }
-    // A sleeper: the nearest within a finger, of those the viewer may see.
-    float bestD = 30.0f * pixelScale;
-    for (size_t i = 0; i < sleepers_.size(); ++i) {
-        const V3 at = sleeperPosition(sleepers_[i]);
-        if (!sees(sleepers_[i].owner, at.x, at.y)) continue;
-        float px, py;
-        if (!camera.project({at.x, at.y, at.z + 1.0f}, px, py)) continue;
-        const float d = std::hypot(px - x, py - y);
-        if (d < bestD && d < best.px) bestD = d, best = {ManPick::Kind::Sleeper, sleepers_[i].id, i, d};
     }
     return best;
 }
@@ -331,11 +273,6 @@ Battle::Glance Battle::glance() const {
         g.owner = u->owner;
         g.hp = u->hp, g.max = u->stats.maxHp, g.rank = sim::veteranGrade(*u);
         g.morale = u->routed ? 2 : u->wavering() ? 1 : 0;
-    } else if (const size_t i = sleeperIndex(inspected_.id); i != kNoSleeper) {
-        g.any = true;
-        g.type = sim::unitTypeName(sleepers_[i].type);
-        g.owner = sleepers_[i].owner;
-        if (const sim::Campaign::Stack* s = conquest_ ? conquest_->findStack(sleepers_[i].stack) : nullptr) g.stack = static_cast<int>(s->armies.size());
     }
     if (u && conquest_)
         if (const sim::Campaign::Stack* s = conquest_->findStack(conquest_->stackOfUnit(u->id))) g.stack = static_cast<int>(s->armies.size());
@@ -350,8 +287,6 @@ const char* Battle::selectionLabel() const {
         else if (type != t) mixed = true;
     };
     for (sim::EntityId id : selectedAlive()) note(static_cast<int>(world_->units()[id - 1].stats.type));
-    for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) note(static_cast<int>(sleepers_[i].type));
     if (type < 0) return "";
     return mixed ? "Mixed" : sim::unitTypeName(static_cast<sim::UnitType>(type));
 }
@@ -373,8 +308,6 @@ std::string Battle::selectionEdges() const {
 bool Battle::selectionBatters() const {
     for (sim::EntityId id : selectedAlive())
         if (sim::World::canBatter(world_->units()[id - 1].stats)) return true;
-    for (uint32_t man : selSleeping_)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper && sim::World::canBatter(sim::unitStats(sleepers_[i].type))) return true;
     return false;
 }
 

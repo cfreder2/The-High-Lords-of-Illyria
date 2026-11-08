@@ -271,7 +271,7 @@ bool Campaign::disband(uint32_t stackId, uint32_t armyId) {
         if (s.id != stackId || s.garrison) continue;
         for (size_t i = 0; i < s.armies.size(); ++i) {
             if (s.armies[i].id != armyId || s.armies[i].hero()) continue;
-            settle(s);
+            release(s.armies[i]);
             s.armies.erase(s.armies.begin() + static_cast<long>(i));
             if (s.armies.empty()) stacks_.erase(stacks_.begin() + static_cast<long>(k));
             return true;
@@ -315,7 +315,6 @@ void Campaign::deliverTransits() {
         for (Stack& st : stacks_)
             if (st.owner == t.owner && st.cx == cs.cx && st.cy == cs.cy && st.armies.size() < kMaxStack && st.path.empty()) home = &st;
         if (!home) home = &newStack(t.owner, cs.cx, cs.cy);
-        settle(*home);
         home->armies.push_back(t.army);
     }
     transits_ = std::move(still);

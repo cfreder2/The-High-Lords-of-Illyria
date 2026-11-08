@@ -766,14 +766,28 @@ const std::vector<uint16_t>& NavGrid::costs(Gait gait) const {
     return c;
 }
 
-void NavGrid::openGate(size_t gate) {
+void NavGrid::openGate(size_t gate, bool forGood) {
     if (gate >= gateCells_.size()) return;
+    if (gateShut_.size() < gateCells_.size()) gateShut_.resize(gateCells_.size());
     for (const auto& c : gateCells_[gate]) {
         open_[static_cast<size_t>(c.first)] = c.second;
         for (int gi = 0; gi < kGaitCount; ++gi)
             if (!cost_[static_cast<size_t>(gi)].empty()) cost_[static_cast<size_t>(gi)][static_cast<size_t>(c.first)] = cellCost(static_cast<Gait>(gi), c.first);
     }
+    if (forGood) gateShut_[gate].clear();
+    else gateShut_[gate] = gateCells_[gate];
     gateCells_[gate].clear();
+}
+
+void NavGrid::shutGate(size_t gate) {
+    if (gate >= gateShut_.size() || gateShut_[gate].empty()) return;
+    for (const auto& c : gateShut_[gate]) {
+        open_[static_cast<size_t>(c.first)] = 0;
+        for (int gi = 0; gi < kGaitCount; ++gi)
+            if (!cost_[static_cast<size_t>(gi)].empty()) cost_[static_cast<size_t>(gi)][static_cast<size_t>(c.first)] = cellCost(static_cast<Gait>(gi), c.first);
+    }
+    gateCells_[gate] = std::move(gateShut_[gate]);
+    gateShut_[gate].clear();
 }
 
 bool NavGrid::groundBlocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
@@ -1162,12 +1176,15 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         }
     };
     const int32_t climbPct = gaitClimbPct(gait);
-    g_.assign(cost.size(), INT_MAX);
-    parent_.assign(cost.size(), -1);
+    if (g_.size() != cost.size()) {
+        g_.assign(cost.size(), INT_MAX);
+        parent_.assign(cost.size(), -1);
+    }
     std::vector<Node> heap;
     heap.reserve(1024);
     std::priority_queue<Node, std::vector<Node>, std::greater<Node>> open(std::greater<Node>(), std::move(heap));
     g_[static_cast<size_t>(start)] = 0;
+    touched_.push_back(start);
     open.push({heuristic(start), heuristic(start), start});
     int32_t expansions = 0;
     bool found = false;
@@ -1198,6 +1215,7 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
                 if (ng < g_[static_cast<size_t>(ni)]) {
                     const int32_t h = heuristic(ni);
                     if (static_cast<int64_t>(ng) + h > bound) continue;
+                    if (g_[static_cast<size_t>(ni)] == INT_MAX) touched_.push_back(ni);
                     g_[static_cast<size_t>(ni)] = ng;
                     parent_[static_cast<size_t>(ni)] = cur.idx;
                     open.push({ng + h, h, ni});
@@ -1205,10 +1223,15 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
             }
         }
     }
-    if (!found) return line ? straight() : false;
-
     std::vector<Vec3> cells;
-    for (int32_t i = goal; i != -1 && i != start; i = parent_[static_cast<size_t>(i)]) cells.push_back(waypoint(i, gait));
+    if (found)
+        for (int32_t i = goal; i != -1 && i != start; i = parent_[static_cast<size_t>(i)]) cells.push_back(waypoint(i, gait));
+    for (const int32_t i : touched_) {
+        g_[static_cast<size_t>(i)] = INT_MAX;
+        parent_[static_cast<size_t>(i)] = -1;
+    }
+    touched_.clear();
+    if (!found) return line ? straight() : false;
     // By a site's stone, the start cell's waypoint too if the first leg would
     // cut the stone without it (it is in sight of the start).
     if (start != fromCell || (nearSite(start) && !cells.empty() && !siteClear(from, cells.back(), clear))) cells.push_back(waypoint(start, gait));

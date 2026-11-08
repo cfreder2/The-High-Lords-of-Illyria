@@ -267,11 +267,39 @@ World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) 
         obstacleReach_ = kMaxObstacleExtent;
         for (uint32_t i = 0; i < obstacles.size(); ++i) {
             if (!obstacles[i].solid) continue;
-            obstacleGrid_.insert(i, obstacles[i].pos.x, obstacles[i].pos.y);
             const Obstacle& o = obstacles[i];
             obstacleReach_ = max(obstacleReach_, o.kind == Obstacle::Kind::House ? max(o.halfX, o.halfY) : o.radius);
         }
+        obstacleGrid_.build(obstacles);
         for (const Gate& g : config_.region->gates()) gates_.push_back({g.maxHp});
+    }
+}
+
+void World::ObstacleGrid::build(const std::vector<Obstacle>& obstacles) {
+    int64_t cx0 = INT64_MAX, cx1 = INT64_MIN, cy0 = INT64_MAX, cy1 = INT64_MIN;
+    for (const Obstacle& o : obstacles) {
+        if (!o.solid) continue;
+        cx0 = std::min(cx0, cellOf(o.pos.x));
+        cx1 = std::max(cx1, cellOf(o.pos.x));
+        cy0 = std::min(cy0, cellOf(o.pos.y));
+        cy1 = std::max(cy1, cellOf(o.pos.y));
+    }
+    x0_ = cx0 > cx1 ? 0 : cx0;
+    y0_ = cy0 > cy1 ? 0 : cy0;
+    w_ = cx0 > cx1 ? 0 : cx1 - cx0 + 1;
+    h_ = cy0 > cy1 ? 0 : cy1 - cy0 + 1;
+    const auto slot = [&](const Obstacle& o) { return static_cast<size_t>((cellOf(o.pos.y) - y0_) * w_ + cellOf(o.pos.x) - x0_); };
+    start_.assign(static_cast<size_t>(w_ * h_) + 1, 0);
+    for (const Obstacle& o : obstacles)
+        if (o.solid) ++start_[slot(o) + 1];
+    for (size_t c = 0; c + 1 < start_.size(); ++c) start_[c + 1] += start_[c];
+    recs_.resize(start_.back());
+    std::vector<uint32_t> fill(start_.begin(), start_.end() - 1);
+    for (uint32_t i = 0; i < obstacles.size(); ++i) {
+        const Obstacle& o = obstacles[i];
+        if (!o.solid) continue;
+        const Fixed extent = o.kind == Obstacle::Kind::House ? max(o.halfX, o.halfY) : o.radius;
+        recs_[fill[slot(o)]++] = {o.pos.x, o.pos.y, extent, i};
     }
 }
 
@@ -371,14 +399,18 @@ void World::clearFight(uint64_t seed) {
     brokenSides_.clear();
     remainGrid_.clear();
     unitGrid_.clear();
-    broad_.clear();
     broadValid_ = false;
     pathCache_.clear();
     remainsAdded_ = 0;
     packs_ = 0;
     tick_ = 0;
-    for (GateState& g : gates_)
-        if (g.broken()) g.brokenTick = 0;  // (when it broke is no one's business once the clock is back at nothing)
+    for (size_t i = 0; i < gates_.size(); ++i) {
+        GateState& g = gates_[i];
+        if (g.opened && nav_) nav_->shutGate(i);  // (a gate swung open is shut again: it is no one's business who was going through it)
+        g.opened = false;
+        g.openUntil = 0;
+        if (g.broken()) g.brokenTick = 0;
+    }  // (when it broke is no one's business once the clock is back at nothing)
     nextId_ = 1;
     nextUnitId_ = 1;
     rng_ = Rng(seed, 0);
@@ -395,6 +427,7 @@ void World::restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale) 
 const Unit* World::findUnit(EntityId id) const {
     // Units are only ever appended, so the vector is sorted by id (and a unit's place is his id less one). One taken
     // out of the world (removeUnit) is no longer found.
+    if (id >= 1 && id <= units_.size() && units_[id - 1].id == id) return units_[id - 1].removed ? nullptr : &units_[id - 1];
     auto it = std::lower_bound(units_.begin(), units_.end(), id,
                                [](const Unit& u, EntityId i) { return u.id < i; });
     return it != units_.end() && it->id == id && !it->removed ? &*it : nullptr;
@@ -428,12 +461,21 @@ bool World::isWater(Fixed x, Fixed y) const {
     return g == Ground::Shallows || g == Ground::DeepWater;
 }
 
-Fixed World::slopeAt(Fixed x, Fixed y) const {
-    if (!config_.terrain) return Fixed::zero();
+Fixed World::slopeSquared(Fixed x, Fixed y) const {
     const Fixed d = Fixed::one();
     const Fixed gx = (groundHeight(x + d, y) - groundHeight(x - d, y)) / 2;
     const Fixed gy = (groundHeight(x, y + d) - groundHeight(x, y - d)) / 2;
-    return sqrt(gx * gx + gy * gy);
+    return gx * gx + gy * gy;
+}
+
+Fixed World::slopeAt(Fixed x, Fixed y) const {
+    if (!config_.terrain) return Fixed::zero();
+    return sqrt(slopeSquared(x, y));
+}
+
+bool World::steeperThan(Fixed x, Fixed y, Fixed limit) const {
+    if (!config_.terrain) return Fixed::zero() > limit;
+    return sqrtExceeds(slopeSquared(x, y), limit);
 }
 
 void World::step(std::span<const Command> commands) {
@@ -459,6 +501,7 @@ void World::step(std::span<const Command> commands) {
     // Those let loose together go as packs (world_scavenge.cpp).
     if (raids) formPacks();
     buildBroad();
+    updateGates();
 
     for (Unit& u : units_) {
         if (!u.present()) continue;
@@ -1090,13 +1133,13 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Fixed dist = delta.length();
     Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, groundAt(u.pos.x, u.pos.y));
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
-    if (slopeAt(u.pos.x, u.pos.y) > kSteepSlope) speed *= kSteepSpeed;
+    if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
+    const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     {
         const Fixed probe = Fixed::one();
-        const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         const Fixed grade = standingHeight(u.pos.x + u.facing.x * probe, u.pos.y + u.facing.y * probe, u.pos.z) - here;
         if (grade > Fixed::zero()) speed = speed / (Fixed::one() + grade * kClimbCost * gaitClimbPct(u.stats.gait) / 100);
         else speed = speed * (Fixed::one() + min(kDescentMax, -grade * kDescentGain));
@@ -1104,21 +1147,17 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Fixed stepLen = speed * kTickDt;
     Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
     // Deep water and cliffs stop walkers: slide along if one axis is clear.
-    const Fixed here = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     const auto barred = [&](Fixed x, Fixed y) {
         const Ground g = groundAt(x, y);
         if (g == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
         // Over the water beside a narrow deck: off the edge is the river.
         Fixed deck;
         if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
-        const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
         const Fixed dh = standingHeight(x, y, u.pos.z) - here;
         // Off the end of a bridge deck onto the bank is a step down, never a ledge.
         const auto offDeckEnd = [&] {
             if (!config_.region || dh < -kMaxStepDown * 2) return false;
-            thread_local std::vector<uint32_t> nearDecks;
-            config_.region->decksAt(u.pos.x, u.pos.y, nearDecks);
-            for (const uint32_t ki : nearDecks) {
+            for (const uint32_t ki : config_.region->decksAt(u.pos.x, u.pos.y)) {
                 const Deck& k = config_.region->decks()[ki];
                 if (k.raised || !k.contains(u.pos.x, u.pos.y)) continue;
                 const Fixed dx = x - k.centre.x, dy = y - k.centre.y;
@@ -1132,7 +1171,8 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         if (config_.region && config_.region->inRamp(x, y, u.pos.z + kMaxStepUp)) return true;  // into a ramp's side, below its slope
         // Onto or along a deck is never a cliff, whatever lies below its edges.
         if (g == Ground::Bridge || (config_.region && config_.region->deckBelow(x, y, u.pos.z + kMaxStepUp, deck))) return false;
-        return run > Fixed::zero() && abs(dh) > run * kCliffGrade && slopeAt(x, y) > kCliffGrade;
+        const Fixed run = (Vec3{x, y, Fixed::zero()} - u.pos).flat().length();
+        return run > Fixed::zero() && abs(dh) > run * kCliffGrade && steeperThan(x, y, kCliffGrade);
     };
     if (barred(next.x, next.y)) {
         if (!barred(next.x, u.pos.y)) next.y = u.pos.y;
@@ -1363,35 +1403,52 @@ void World::separateBodies() {
         const Unit& u = units_[i];
         if (u.alive() && !u.inAir() && u.flight == Unit::Flight::Grounded) unitGrid_.insert(i, u.pos.x, u.pos.y);
     }
+    unitGrid_.build();
+    // The pairs: where each stands and how wide, in the grid's order and in step with the soldiers (a push moves both),
+    // so that the many that are near but not touching are told apart by reading one run of numbers, not the soldiers.
     const Fixed maxRadius = Fixed::fromInt(3);
+    const std::vector<uint32_t>& items = unitGrid_.items();
+    bodies_.resize(items.size());
+    bodyOf_.resize(units_.size());
+    for (uint32_t m = 0; m < items.size(); ++m) {
+        const Unit& u = units_[items[m]];
+        bodies_[m] = {u.pos.x, u.pos.y, u.stats.radius, items[m]};
+        bodyOf_[items[m]] = m;
+    }
     for (uint32_t i = 0; i < units_.size(); ++i) {
         Unit& a = units_[i];
         if (!a.alive() || a.inAir()) continue;
-        unitGrid_.query(a.pos.x, a.pos.y, a.stats.radius + maxRadius, [&](uint32_t j) {
-            if (j <= i) return;  // each pair once
-            Unit& b = units_[j];
-            const Vec3 d = (b.pos - a.pos).flat();
-            const Fixed reach = a.stats.radius + b.stats.radius;
-            const Fixed distSq = d.lengthSq();
-            if (distSq >= reach * reach) return;
-            Fixed dist = sqrt(distSq);
-            Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-            const Fixed overlap = reach - dist;
-            const Fixed total = a.stats.mass + b.stats.mass;
-            a.pos -= n * (overlap * b.stats.mass / total);
-            b.pos += n * (overlap * a.stats.mass / total);
+        const Fixed radius = a.stats.radius;
+        unitGrid_.queryRuns(a.pos.x, a.pos.y, radius + maxRadius, [&](uint32_t first, uint32_t last) {
+            for (uint32_t m = first; m < last; ++m) {
+                const Body& body = bodies_[m];
+                const uint32_t j = body.index;
+                const Vec3 d{body.x - a.pos.x, body.y - a.pos.y, Fixed::zero()};
+                const Fixed reach = radius + body.radius;
+                const Fixed distSq = d.lengthSq();
+                if (j <= i || distSq >= reach * reach) continue;  // each pair once, and only the touching
+                Unit& b = units_[j];
+                Fixed dist = sqrt(distSq);
+                Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+                const Fixed overlap = reach - dist;
+                const Fixed total = a.stats.mass + b.stats.mass;
+                a.pos -= n * (overlap * b.stats.mass / total);
+                b.pos += n * (overlap * a.stats.mass / total);
+                bodies_[m].x = b.pos.x;
+                bodies_[m].y = b.pos.y;
+            }
         });
     }
     if (!config_.region) return;
     const auto& obstacles = config_.region->obstacles();
-    std::vector<uint32_t> nearWalls;
+    std::vector<uint32_t> nearWalls, nearFloors;
     for (Unit& u : units_) {
         if (!u.present() || u.inAir() || u.flight != Unit::Flight::Grounded) continue;
         // From standing stone he keeps his drawn breadth, from the rest his radius.
         const Fixed standoff = stoneStandoff(u.stats.radius);
         bool offStone = false;  // pushed off standing stone (or a ruin's base)
         const auto offObstacles = [&](bool stoneOnly) {
-            obstacleGrid_.query(u.pos.x, u.pos.y, standoff + obstacleReach_, [&](uint32_t k) {
+            obstacleGrid_.queryNear(u.pos, standoff + obstacleReach_, max(standoff, u.stats.radius), [&](uint32_t k) {
                 const Obstacle& o = obstacles[k];
                 if (stoneOnly && !o.standingStone()) return;
                 const Fixed keep = o.standingStone() ? standoff : u.stats.radius;
@@ -1403,6 +1460,9 @@ void World::separateBodies() {
         // one on the ground keeps his standoff from the base (one on the
         // stair is climbing into it).
         const auto offBases = [&] {
+            // (None within reach of him: nothing to do; else every one in turn, for a push can bring him within reach of the next.)
+            config_.region->floorBasesNear(u.pos.x - standoff, u.pos.y - standoff, u.pos.x + standoff, u.pos.y + standoff, nearFloors);
+            if (nearFloors.empty()) return;
             for (const Floor& f : config_.region->floors()) {
                 if (u.pos.z + kMaxStepUp >= f.baseHi.z || config_.region->decks()[f.stair].contains(u.pos.x, u.pos.y)) continue;
                 offStone = outOfBox(u.pos, (f.baseLo + f.baseHi) * Fixed::fromRatio(1, 2), (f.baseHi.x - f.baseLo.x) / 2, (f.baseHi.y - f.baseLo.y) / 2, standoff) || offStone;
@@ -1435,7 +1495,9 @@ void World::separateBodies() {
         offBases();
         // A ruin's stair is solid to the ground too: one shoved in under it is
         // put back out by the nearest side.
+        const bool stairHere = !config_.region->floorStairsAt(u.pos.x, u.pos.y).empty();
         for (const Floor& f : config_.region->floors()) {
+            if (!stairHere) break;  // (none holds him: and if one does, all are asked in turn, a push can bring another to hold him)
             const Deck& d = config_.region->decks()[f.stair];
             if (!d.contains(u.pos.x, u.pos.y) || u.pos.z + kMaxStepUp >= d.heightAt(u.pos.x, u.pos.y)) continue;
             const Vec3 across{-d.dir.y, d.dir.x, Fixed::zero()}, rel = (u.pos - d.centre).flat();
@@ -1532,9 +1594,9 @@ void World::clearRemain(uint32_t slot) {
 }
 
 void World::SpatialHash::remove(uint32_t index, Fixed x, Fixed y) {
-    auto it = buckets_.find(key(cellOf(x), cellOf(y)));
-    if (it == buckets_.end()) return;
-    auto& v = it->second;
+    Slot* found = find(key(cellOf(x), cellOf(y)));
+    if (found == nullptr) return;
+    auto& v = found->items;
     auto pos = std::find(v.begin(), v.end(), index);
     if (pos != v.end()) v.erase(pos);
 }
@@ -1567,14 +1629,39 @@ void World::updateAirborne(Unit& u) {
 }
 
 void World::buildBroad() {
-    broad_.clear();
-    const auto cell = [](Fixed v) {
-        const int64_t m = v.floorToInt();
-        return static_cast<uint64_t>(std::max<int64_t>(0, (m >= 0 ? m / kBroadCell : (m - kBroadCell + 1) / kBroadCell) + 1024));
+    int64_t x0 = kBroadCells, x1 = -1, y0 = kBroadCells, y1 = -1;
+    for (const Unit& u : units_) {
+        if (!u.alive()) continue;
+        const int64_t cx = broadCell(u.pos.x.floorToInt()), cy = broadCell(u.pos.y.floorToInt());
+        x0 = std::min(x0, cx);
+        x1 = std::max(x1, cx);
+        y0 = std::min(y0, cy);
+        y1 = std::max(y1, cy);
+    }
+    broadX0_ = x0 > x1 ? 0 : x0;
+    broadY0_ = y0 > y1 ? 0 : y0;
+    broadW_ = x0 > x1 ? 0 : x1 - x0 + 1;
+    broadH_ = y0 > y1 ? 0 : y1 - y0 + 1;
+    const auto slot = [&](const Unit& u) {
+        return static_cast<size_t>((broadCell(u.pos.y.floorToInt()) - broadY0_) * broadW_ + broadCell(u.pos.x.floorToInt()) - broadX0_);
     };
+    broadStart_.assign(static_cast<size_t>(broadW_ * broadH_) + 1, 0);
+    uint32_t count = 0;
+    for (const Unit& u : units_)
+        if (u.alive()) {
+            ++broadStart_[slot(u) + 1];
+            ++count;
+        }
+    for (size_t c = 0; c + 1 < broadStart_.size(); ++c) broadStart_[c + 1] += broadStart_[c];
+    broadItems_.resize(count);
+    broadSide_.resize(count);
+    broadFill_.assign(broadStart_.begin(), broadStart_.end() - 1);
     for (uint32_t i = 0; i < units_.size(); ++i)
-        if (units_[i].alive()) broad_.push_back((cell(units_[i].pos.y) << 48) | (cell(units_[i].pos.x) << 32) | i);
-    std::sort(broad_.begin(), broad_.end());
+        if (units_[i].alive()) {
+            const uint32_t k = broadFill_[slot(units_[i])]++;
+            broadItems_[k] = i;
+            broadSide_[k] = units_[i].owner;
+        }
     broadValid_ = true;
 }
 
@@ -1587,16 +1674,17 @@ Unit* World::nearestEnemy(const Unit& u, Fixed range) {
     Fixed bestDistSq = range * range;
     uint32_t bestIndex = 0;
     // The nearest, and of those as near the lowest id (the soldiers come in any order).
-    nearby(u.pos.x, u.pos.y, range, [&](uint32_t i) {
+    nearbyNotOf(u.owner, u.pos.x, u.pos.y, range, [&](uint32_t i) {
         Unit& other = units_[i];
         if (!other.alive() || other.owner == u.owner) return;
+        const Fixed d = (other.pos - u.pos).flat().lengthSq();
+        if (d > bestDistSq) return;  // (too far: no need to look at the height)
         // (Above the land itself, or above the soldier: a foe up a hillside is fair game.)
         if (groundBound) {
             const Fixed land = config_.terrain ? config_.terrain->heightAt(other.pos.x, other.pos.y) : Fixed::zero();
             if (other.pos.z - max(u.pos.z, land) > reachUp) return;
         }
-        const Fixed d = (other.pos - u.pos).flat().lengthSq();
-        if (d <= bestDistSq && (best == nullptr || d < bestDistSq || i < bestIndex)) {
+        if (best == nullptr || d < bestDistSq || i < bestIndex) {
             best = &other;
             bestDistSq = d;
             bestIndex = i;
@@ -2444,6 +2532,7 @@ uint64_t World::checksum() const {
         h.addI64(g.hp);
         h.addU64(g.holder);
         h.addU64(g.brokenTick);
+        if (g.opened) h.addU64(0x09E7 + g.openUntil);  // (only while one is swung open: a battle without any hashes as before)
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

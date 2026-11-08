@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "illyria/game/point_grid.h"
 #include "illyria/sim/units.h"
 
 namespace illyria::game {
@@ -448,12 +449,28 @@ void Sfx::updateAmbience(const sim::World& world, const sim::Continent& continen
     a.fliesPan = bodies > 0 ? std::clamp(side / bodies / 30.0f, -0.8f, 0.8f) : 0.0f;
 
     // War drums: the enemy coming on (beyond bowshot of us, not yet at grips), or his land.
-    for (const sim::Unit& u : world.units()) {
-        if (!u.alive() || u.owner == player_) continue;
+    // (How near any of his comes to any of ours. Beyond 300 m the drums are silent, so no nearer is looked for than
+    // that; ours are put in 32 m cells so that a foe looks only at those within the nearest found so far.)
+    {
+        constexpr float kCell = 32.0f, kFar = 301.0f;
+        std::vector<const sim::Unit*> ours;
+        std::vector<V3> where;
         for (const sim::Unit& o : world.units()) {
             if (!o.alive() || o.owner != player_) continue;
-            const V3 d = flat(toV3(u.pos - o.pos));
-            contactD2 = std::min(contactD2, d.dot(d));
+            ours.push_back(&o);
+            where.push_back(toV3(o.pos));
+        }
+        if (!ours.empty()) {
+            const PointGrid grid(where, kCell);
+            contactD2 = kFar * kFar;
+            for (const sim::Unit& u : world.units()) {
+                if (!u.alive() || u.owner == player_) continue;
+                const V3 pu = toV3(u.pos);
+                grid.near(pu.x, pu.y, std::sqrt(contactD2) + 1.0f, [&](uint32_t k) {
+                    const V3 d = flat(toV3(u.pos - ours[k]->pos));
+                    contactD2 = std::min(contactD2, d.dot(d));
+                });
+            }
         }
     }
     if (foeD2 < 1e11f) {

@@ -68,9 +68,6 @@ public:
         : c_(c), side_(side), t_(c.sides_[side].difficulty == Difficulty::Hard ? kHard : kEasy) {}
 
     void run() {
-        // The lord rearranges his armies at dawn: whoever of his is in a fight falls in where they stand, and wakes again.
-        for (C::Stack& s : c_.stacks_)
-            if (s.owner == side_) c_.settle(s);
         survey();
         reorganize();
         survey();  // the stacks have changed

@@ -802,7 +802,7 @@ void Battle::issue(sim::PlayerId player, sim::EntityId unit, sim::Command::Type 
 }
 
 int Battle::aliveCount(const Squad& s) const {
-    int n = static_cast<int>(s.sleeping.size());  // (a man asleep is alive)
+    int n = 0;
     for (sim::EntityId id : s.members) n += world_->units()[id - 1].alive();
     return n;
 }
@@ -816,11 +816,6 @@ V3 Battle::squadCentre(const Squad& s, bool interpolated) const {
         sum += pos(id - 1);
         ++n;
     }
-    for (uint32_t man : s.sleeping)
-        if (const size_t i = sleeperIndex(man); i != kNoSleeper) {
-            sum += sleeperPosition(sleepers_[i]);
-            ++n;
-        }
     if (n == 0) return s.members.empty() ? V3{} : pos(s.members.front() - 1);
     return sum * (1.0f / static_cast<float>(n));
 }

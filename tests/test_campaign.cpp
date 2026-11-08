@@ -104,7 +104,7 @@ TEST(a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there) {
     bool fought = false;
     for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) {
         c.step();
-        fought = fought || c.awakeStacks() > 0;
+        fought = fought || menOf(c, Campaign::kNeutral) < before;
     }
     // Their men are in the world while they fight, and the town is ours when its defenders are dead and our banner is up.
     CHECK(fought);
@@ -131,8 +131,7 @@ TEST(men_who_fought_come_out_of_it_with_their_wounds_kills_and_ranks) {
         if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
     int32_t kills = 0;
     for (int t = 0; t < Campaign::kTicksPerDay * 15 && c.cities()[static_cast<size_t>(s.town)].owner != 0; ++t) c.step();
-    for (uint32_t t = 0; t < 3 * Campaign::kCalmTicks; ++t) c.step();  // and the fighting is over
-    CHECK(c.awakeStacks() == 0);                                                                   // all asleep, in their formations again
+    for (uint32_t t = 0; t < 3 * 10 * Campaign::kTicksPerSecond; ++t) c.step();  // and the fighting is over
     int32_t wounded = 0, men = 0;
     for (const Campaign::Stack& st : c.stacks())
         for (const Army& a : st.armies) {
@@ -149,7 +148,7 @@ TEST(men_who_fought_come_out_of_it_with_their_wounds_kills_and_ranks) {
     CHECK(men > 0);
 }
 
-TEST(a_fight_is_the_same_on_every_run_and_leaves_the_world_as_its_gates) {
+TEST(a_fight_is_the_same_on_every_run) {
     const auto run = [](int32_t ticks) {
         Campaign c(continent(), 3);
         for (uint8_t side = 0; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
@@ -159,17 +158,13 @@ TEST(a_fight_is_the_same_on_every_run_and_leaves_the_world_as_its_gates) {
         c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
         for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
             if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
-        int32_t awake = 0;
-        for (int32_t t = 0; t < ticks; ++t) {
-            c.step();
-            awake = std::max(awake, c.awakeMen());
-        }
-        return std::make_pair(c.checksum(), awake);
+        for (int32_t t = 0; t < ticks; ++t) c.step();
+        return std::make_pair(c.checksum(), c.menInWorld());
     };
     // In the middle of a fight, and well after it.
     const auto a = run(2400), b = run(2400);
     CHECK(a == b);
-    CHECK(a.second > 0);  // there was a fight, and its men were in the world
+    CHECK(a.second > 0);  // and its men are in the world
     const auto late = run(Campaign::kTicksPerDay * 3), again = run(Campaign::kTicksPerDay * 3);
     CHECK(late == again);
 }
@@ -186,7 +181,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x88ef5a01bb379d0a;  // (was 0xdc2856c0768135f5 before the capitals courtyards moved beyond their inner baileys, where garrisons and musters stand (continent.cpp: every Conquest starts differently); was 0x70647b06ab5e941e before a man taken out of the world was forgotten by whoever had him as a foe, a mark or a shooter (World::removeUnit: his place goes to another man, so an id kept would name a stranger); was 0x125692acb6951ecb before a man put to sleep had his last blows forgotten (Campaign::sleep clears fightTick, struckTick and hurtTick: they are not saved, so a game saved there and the one that goes on from there must wake the stack alike); was 0x7311045c84f04c9d before a man taken out of the world left his place for the next man to take, instead of the list being closed up over it (a unit's id is his place, as everything that presents the world indexes by it); was 0x16f2688b885e8f30 before the fallen lay for the whole fight, as in the battle, not twenty seconds: the dead stay in the world and get in the way a while longer; was 0xce6b9eeee5d8e11a before fights became physical: the state now holds every man, and the armies that march east fight where they meet)
+    constexpr uint64_t kGolden = 0xcb1630541ad9f9db;  // (was 0xdc2856c0768135f5 before every man became a unit of the world at all times: no sleeping, no waking, the march the world's own steps)
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

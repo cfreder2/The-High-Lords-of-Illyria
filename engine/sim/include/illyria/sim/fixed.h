@@ -44,10 +44,21 @@ struct Fixed {
     constexpr Fixed operator-(Fixed o) const { return Fixed{raw - o.raw}; }
     // Product is truncated toward negative infinity (arithmetic shift).
     constexpr Fixed operator*(Fixed o) const {
+#ifdef __wasm__
+        // (WebAssembly has no 128-bit multiply: both under 2^31 raw, 32,768 units, which is nearly every product in a
+        // battle, the product fits 64 bits and the same shift gives the same result. Natively the 128-bit multiply is
+        // two instructions and the test would cost more than it saves.)
+        constexpr int64_t kSmall = int64_t{1} << 31;
+        if (raw > -kSmall && raw < kSmall && o.raw > -kSmall && o.raw < kSmall) return Fixed{(raw * o.raw) >> kFracBits};
+#endif
         return Fixed{static_cast<int64_t>((static_cast<i128>(raw) * o.raw) >> kFracBits)};
     }
     // Quotient is truncated toward zero. Division by zero is a logic error.
     constexpr Fixed operator/(Fixed o) const {
+        // (Under 2^47 raw, which is any distance a battle has, the shifted dividend fits 64 bits: the same quotient
+        // by a hardware divide instead of the 128-bit routine. A zero divisor, a logic error, takes the old routine
+        // still: what it gives is in the golden checksums.)
+        if (o.raw != 0 && raw > -(int64_t{1} << 47) && raw < (int64_t{1} << 47)) return Fixed{(raw * kOneRaw) / o.raw};
         return Fixed{static_cast<int64_t>((static_cast<i128>(raw) << kFracBits) / o.raw)};
     }
     constexpr Fixed operator*(int64_t i) const { return Fixed{raw * i}; }
@@ -68,6 +79,8 @@ constexpr Fixed clamp(Fixed v, Fixed lo, Fixed hi) { return min(max(v, lo), hi);
 
 // Square root, truncated. Negative input returns zero.
 Fixed sqrt(Fixed f);
+// sqrt(f) > limit, without taking the root: the same answer, by comparing f with the square just above the limit.
+bool sqrtExceeds(Fixed f, Fixed limit);
 
 // Pi to 16 fractional bits: 205887 / 65536 = 3.14159...
 inline constexpr Fixed kPi = Fixed::fromRaw(205887);

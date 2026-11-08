@@ -77,29 +77,37 @@ struct Island {
     }
 };
 
+// Whether any man of the island has been struck: the fight has begun.
+bool blows(const Campaign& c) {
+    for (const Campaign::Stack& s : c.stacks())
+        for (const Army& a : s.armies)
+            for (const Man& m : a.men)
+                if (m.hp != -1) return true;
+    return false;
+}
+
 }  // namespace
 
-TEST(men_asleep_in_their_stack_are_the_battles_squads_with_cards_and_a_hero_level) {
+TEST(the_men_of_a_stack_are_the_battles_squads_with_cards_and_a_hero_level) {
     Island w;
     const int hero = w.squadOf(UnitType::Hero);
     CHECK(hero >= 0);
     if (hero < 0) return;
     const illyria::game::Squad& q = w.b->squads()[static_cast<size_t>(hero)];
-    CHECK(!q.sleeping.empty());  // (the stack rests in its capital: no man of it is a unit of the world)
-    CHECK(q.members.empty());
+    CHECK(!q.members.empty());  // (the stack rests in its capital: its man is a unit of the world all the same)
     CHECK(w.b->standing(q).level >= 1);
     CHECK(w.b->standing(q).strength >= 1);
     CHECK(w.b->controllable(q));
     // The card's other men: the stack's other army is a squad too.
     CHECK(w.squadOf(UnitType::LightInfantry) >= 0);
-    // The sleepers are drawn in the one pass, one picture each.
+    // Every man is drawn in the one pass, one picture each.
     size_t mine = 0;
-    for (const Campaign::Soldier& m : w.b->sleepers()) mine += m.owner == 0;
+    for (const Campaign::Soldier& m : w.men) mine += m.owner == 0 && m.unit != nullptr;
     CHECK(mine > 0);
 }
 
-// The line under the bar ("17 of mixed kinds, edges: hero leads +2%") is the battle's, for men asleep as for men awake.
-TEST(the_edges_of_a_selection_asleep_are_told_as_those_of_one_awake) {
+// The line under the bar ("17 of mixed kinds, edges: hero leads +2%") is the battle's.
+TEST(the_edges_of_a_selection_in_the_world_are_told_as_in_a_skirmish) {
     Island w;
     const int foot = w.squadOf(UnitType::LightInfantry);
     CHECK(foot >= 0);
@@ -112,18 +120,17 @@ TEST(the_edges_of_a_selection_asleep_are_told_as_those_of_one_awake) {
     CHECK(edges.find("hero leads") != std::string::npos);  // (the stack's hero is beside them)
 }
 
-TEST(a_tap_selects_a_man_asleep_like_one_awake_and_the_card_selects_his_squad) {
+TEST(a_tap_selects_a_man_and_the_card_selects_his_squad) {
     Island w;
     const int hero = w.squadOf(UnitType::Hero);
     CHECK(hero >= 0);
     if (hero < 0) return;
     const V3 at = w.look(hero, 60.0f);
     float px = 0, py = 0;
-    CHECK(w.cam.project(w.b->sleeperPositionOf(w.b->squads()[static_cast<size_t>(hero)].sleeping.front()) + V3{0, 0, 1.0f}, px, py));
+    CHECK(w.cam.project(w.b->unitPosition(w.b->squads()[static_cast<size_t>(hero)].members.front() - 1) + V3{0, 0, 1.0f}, px, py));
     w.b->tap(w.cam, px, py, 1.0f);
     CHECK(w.b->selectionSize() == 1);
-    CHECK(w.b->selectedSleepers().size() == 1);
-    CHECK(w.b->selectedAlive().empty());
+    CHECK(w.b->selectedAlive().size() == 1);
     CHECK(std::string(w.b->selectionLabel()) == unitTypeName(UnitType::Hero));
     CHECK(w.b->selectedStack() == 0);  // (until the next frame says whose stack it is)
     w.frame();
@@ -137,14 +144,16 @@ TEST(a_tap_selects_a_man_asleep_like_one_awake_and_the_card_selects_his_squad) {
     CHECK(w.b->selectionSize() == static_cast<size_t>(w.b->aliveCount(w.b->squads()[static_cast<size_t>(foot)])));
     CHECK(w.b->selectedSquad() == foot);
     CHECK(w.b->selectedArmy() == w.b->squads()[static_cast<size_t>(foot)].army);
-    // A box round them (the same press and box as a skirmish's) selects the sleepers inside it.
+    // A box round them (the same press and box as a skirmish's) selects the men inside it.
     w.look(foot, 40.0f);
     w.b->clearSelection();
     w.b->selectInRect(w.cam, 0, 0, 1000, 700);
     CHECK(w.b->selectionSize() > 0);
-    // Nothing ordered by selecting: no Order is queued, nothing in the world moved.
+    // Nothing ordered by selecting: no Order is queued, no man of the world has somewhere to go.
     w.tick(2);
-    CHECK(w.c.awakeStacks() == 0);
+    int bound = 0;
+    for (const Unit& u : w.c.world()->units()) bound += u.alive() && u.hasMoveTarget;
+    CHECK(bound == 0);
 }
 
 TEST(a_march_across_the_island_is_an_order_of_the_selected_squads_alone) {
@@ -232,8 +241,8 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     CampaignOrders::move(w.c, mine, x + 3, y);
     CampaignOrders::move(w.c, theirs, x + 1, y);
     int guard = 0;
-    while (w.c.awakeStacks() == 0 && guard++ < 3000) w.tick(1, 10);
-    CHECK(w.c.awakeStacks() > 0);
+    while (!blows(w.c) && guard++ < 6000) w.tick(1, 10);
+    CHECK(blows(w.c));
     w.frame();
     const int heavy = w.squadOf(UnitType::HeavyInfantry);
     CHECK(heavy >= 0);
@@ -244,7 +253,7 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     const size_t picked = w.b->selectionSize();
     CHECK(picked > 0);
     CHECK(w.b->selectedAlive().size() == picked);
-    // Saved as a group while awake (keys 1-9), it is of men: recalled after the fight, it is the men who are left, asleep.
+    // Saved as a group (keys 1-9), it is of men: recalled later, it is the men who are left.
     const int slot = w.b->saveGroup();
     CHECK(slot >= 0 && w.b->groupMen(slot).units.size() == picked);
     // The command bar's orders, as the world's commands (Hold, Scatter, a formation, As they stand).
@@ -265,26 +274,22 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
         after += u && (u->hasMoveTarget || u->targetUnit != kNoEntity);
     }
     CHECK(after > 0);  // (the foot are marched at the foe, to fight whoever they meet)
-    // The fight goes on, and ends; the selection of men holds through their going back to sleep.
-    guard = 0;
-    while ((w.c.awakeStacks() > 0 || guard < 30 * 60) && guard++ < 30 * 60 * 20) w.tick(30, 30);
-    CHECK(w.c.awakeStacks() == 0);
+    // The fight goes on; the selection of men holds through it.
+    for (int k = 0; k < 90; ++k) w.tick(30, 30);
     size_t left = 0;
     for (const illyria::game::Squad& q : w.b->squads())
         if (q.army == army) left = static_cast<size_t>(w.b->aliveCount(q));
-    std::printf("  %zu of the squad's %zu men are left, asleep again, %zu of them still selected (%zu in all)\n", left, picked,
-                w.b->selectedSleepers().size(), w.b->selectionSize());
-    CHECK(w.b->selectedAlive().empty());
-    CHECK(w.b->selectedSleepers().size() == left);  // every man who is left is still selected
+    std::printf("  %zu of the squad's %zu men are left, %zu of them still selected\n", left, picked, w.b->selectionSize());
+    CHECK(w.b->selectedAlive().size() == left);  // every man who is left is still selected
     w.b->clearSelection();
     CHECK(w.b->recallGroup(slot) == (left > 0));
-    CHECK(w.b->selectedSleepers().size() == left && w.b->selectedAlive().empty());
+    CHECK(w.b->selectedAlive().size() == left);
     // A man tapped who is not ours, with nothing selected, is looked at: view-only, grey, no order.
     w.b->clearSelection();
     w.tick(1);
-    for (const Campaign::Soldier& m : w.b->sleepers())
-        if (m.owner != 0) {
-            const V3 p = w.b->sleeperPositionOf(m.id);
+    for (const Campaign::Soldier& m : w.men)
+        if (m.owner != 0 && m.unitId) {
+            const V3 p = w.b->unitPosition(m.unitId - 1);
             w.cam.lookAt(p.x, p.y, 50.0f);
             float px, py;
             if (!w.cam.project(p + V3{0, 0, 1.0f}, px, py)) continue;
@@ -311,7 +316,7 @@ TEST(a_fights_commands_are_orders_and_two_games_given_the_same_ones_are_one_game
         CampaignOrders::move(w.c, mine, x + 3, y);
         CampaignOrders::move(w.c, theirs, x + 1, y);
         int guard = 0;
-        while (w.c.awakeStacks() == 0 && guard++ < 3000) w.c.step();
+        while (!blows(w.c) && guard++ < 6000) w.c.step();
         w.frame();
         const int heavy = w.squadOf(UnitType::HeavyInfantry);
         w.b->selectSquad(heavy);
@@ -368,13 +373,13 @@ TEST(a_side_hidden_from_the_viewer_is_on_no_surface_the_viewer_reads) {
     for (const Campaign::Soldier& m : w.men) CHECK(m.owner != 1 && m.owner != 2);
     w.c.setSight({});
     w.frame();
-    for (const Campaign::Soldier& m : w.b->sleepers()) {
-        if (m.owner != 1) continue;
-        const V3 p = w.b->sleeperPositionOf(m.id);
+    for (const Campaign::Soldier& m : w.men) {
+        if (m.owner != 1 || !m.unitId) continue;
+        const V3 p = w.b->unitPosition(m.unitId - 1);
         w.cam.lookAt(p.x, p.y, 40.0f);
         float px, py;
         if (!w.cam.project(p + V3{0, 0, 1.0f}, px, py)) continue;
-        CHECK(w.b->manAt(w.cam, px, py, 20.0f).kind == Battle::ManPick::Kind::Sleeper);
+        CHECK(w.b->manAt(w.cam, px, py, 20.0f).kind == Battle::ManPick::Kind::Unit);
         w.c.setSight(hides12);
         w.frame();
         CHECK(w.b->manAt(w.cam, px, py, 20.0f).kind == Battle::ManPick::Kind::None);
@@ -399,7 +404,7 @@ TEST(the_fight_the_camera_is_taken_to_is_one_the_viewer_may_see) {
         CampaignOrders::move(w.c, b, x + 1, y);
         for (int k = 0; k < 2400; ++k) w.c.step();
         V3 at;
-        return std::make_pair(w.c.awakeStacks() > 0 || w.b->hotSpot(at), w.b->hotSpot(at));
+        return std::make_pair(blows(w.c) || w.b->hotSpot(at), w.b->hotSpot(at));
     };
     const auto open = fight(false);
     const auto shut = fight(true);

@@ -173,6 +173,7 @@ void Region::buildGrids() const {
     std::vector<Box> boxes;
     for (const Deck& d : decks_) {
         const Fixed reach = d.halfSpan + d.halfWidth;
+        deckReach_.push_back({d.centre.x, d.centre.y, reach});
         boxes.push_back({d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach});
     }
     build(deckGrid_, boxes);
@@ -193,25 +194,46 @@ void Region::buildGrids() const {
         boxes.push_back(b);
     }
     build(rampGrid_, boxes);
+    boxes.clear();
+    for (const Gate& g : gates_) boxes.push_back({g.a.x - kGateReach, g.a.y - kGateReach, g.a.x + kGateReach, g.a.y + kGateReach});
+    build(gateGrid_, boxes);
+    boxes.clear();
+    for (const Floor& f : floors_) boxes.push_back({f.baseLo.x, f.baseLo.y, f.baseHi.x, f.baseHi.y});
+    build(floorBaseGrid_, boxes);
+    boxes.clear();
+    for (const Floor& f : floors_) {
+        const Deck& d = decks_[f.stair];
+        const Fixed reach = d.halfSpan + d.halfWidth;
+        boxes.push_back({d.centre.x - reach, d.centre.y - reach, d.centre.x + reach, d.centre.y + reach});
+    }
+    build(floorStairGrid_, boxes);
 }
 
 void Region::cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) {
     out.clear();
     const int32_t cx0 = gridCell(x0, g.n), cx1 = gridCell(x1, g.n), cy0 = gridCell(y0, g.n), cy1 = gridCell(y1, g.n);
+    int32_t filled = 0;  // the cells that gave something
     for (int32_t y = cy0; y <= cy1; ++y)
         for (int32_t x = cx0; x <= cx1; ++x) {
             const size_t c = static_cast<size_t>(y) * g.n + x;
+            if (g.start[c] == g.start[c + 1]) continue;
             out.insert(out.end(), g.items.begin() + g.start[c], g.items.begin() + g.start[c + 1]);
+            ++filled;
         }
-    if (cx0 != cx1 || cy0 != cy1) {
+    if (filled > 1) {  // (one cell's list is already in order, and has none twice)
         std::sort(out.begin(), out.end());
         out.erase(std::unique(out.begin(), out.end()), out.end());
     }
 }
 
-void Region::decksAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+std::span<const uint32_t> Region::cellOf(const BoxGrid& g, Fixed x, Fixed y) {
+    const size_t c = static_cast<size_t>(gridCell(y, g.n)) * g.n + gridCell(x, g.n);
+    return {g.items.data() + g.start[c], g.items.data() + g.start[c + 1]};
+}
+
+std::span<const uint32_t> Region::decksAt(Fixed x, Fixed y) const {
     buildGrids();
-    cellsOf(deckGrid_, x, y, x, y, out);
+    return cellOf(deckGrid_, x, y);
 }
 
 void Region::wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const {
@@ -219,18 +241,41 @@ void Region::wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint3
     cellsOf(wallGrid_, x0, y0, x1, y1, out);
 }
 
-void Region::rampartsAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const {
+std::span<const uint32_t> Region::gatesNear(Fixed x, Fixed y) const {
     buildGrids();
-    cellsOf(rampGrid_, x, y, x, y, out);
+    return cellOf(gateGrid_, x, y);
+}
+
+void Region::floorBasesNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const {
+    buildGrids();
+    cellsOf(floorBaseGrid_, x0, y0, x1, y1, out);
+}
+
+std::span<const uint32_t> Region::floorStairsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(floorStairGrid_, x, y);
+}
+
+std::span<const uint32_t> Region::wallsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(wallGrid_, x, y);
+}
+
+std::span<const uint32_t> Region::rampartsAt(Fixed x, Fixed y) const {
+    buildGrids();
+    return cellOf(rampGrid_, x, y);
+}
+
+bool Region::deckHolds(uint32_t k, Fixed x, Fixed y) const {
+    const DeckReach& r = deckReach_[k];
+    return abs(x - r.x) <= r.reach && abs(y - r.y) <= r.reach && decks_[k].contains(x, y);
 }
 
 bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
     bool found = false;
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
+        if (!deckHolds(k, x, y)) continue;
         const Deck& d = decks_[k];
-        if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (!found || h > height) height = h;
         found = true;
@@ -240,11 +285,9 @@ bool Region::deckAt(Fixed x, Fixed y, Fixed& height) const {
 
 bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
     bool found = false;
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
+        if (!deckHolds(k, x, y)) continue;
         const Deck& d = decks_[k];
-        if (!d.contains(x, y)) continue;
         const Fixed h = d.heightAt(x, y);
         if (h > ceiling || (found && h <= height)) continue;
         height = h;
@@ -254,11 +297,9 @@ bool Region::deckBelow(Fixed x, Fixed y, Fixed ceiling, Fixed& height) const {
 }
 
 bool Region::inRamp(Fixed x, Fixed y, Fixed z) const {
-    thread_local std::vector<uint32_t> near;
-    decksAt(x, y, near);
-    for (const uint32_t k : near) {
+    for (const uint32_t k : decksAt(x, y)) {
         const Deck& d = decks_[k];
-        if (d.ramp && d.contains(x, y) && d.heightAt(x, y) > z) return true;
+        if (d.ramp && deckHolds(k, x, y) && d.heightAt(x, y) > z) return true;
     }
     return false;
 }
@@ -278,9 +319,7 @@ bool Gate::inside(const Rampart& ring, const Vec3& p) {
 
 int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
     // Near the way round (the walk's middle, or round a tower on its gallery).
-    thread_local std::vector<uint32_t> near;
-    rampartsAt(x, y, near);
-    for (const uint32_t i : near) {
+    for (const uint32_t i : rampartsAt(x, y)) {
         const Rampart& rp = ramparts_[i];
         const size_t n = rp.way.size();
         for (size_t e = 0; e < n; ++e) {

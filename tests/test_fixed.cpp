@@ -34,6 +34,77 @@ TEST(fixed_sqrt) {
     CHECK_NEAR(sqrt(Fixed::fromInt(1000000000)).toDouble(), std::sqrt(1e9), 2e-5);
 }
 
+// sqrt is the floor of the exact root of raw * 2^16, whichever way it is computed (the quick 64-bit path or the long one).
+TEST(fixed_sqrt_is_the_exact_floor_root) {
+    uint64_t s = 88172645463325252ULL;  // xorshift, a fixed stream
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 200000; ++i) {
+        const int64_t raw = static_cast<int64_t>(next() >> (1 + next() % 62));
+        if (raw <= 0) continue;
+        const u128 n = static_cast<u128>(raw) << Fixed::kFracBits;
+        const u128 r = static_cast<u128>(sqrt(Fixed::fromRaw(raw)).raw);
+        CHECK(r * r <= n);
+        CHECK((r + 1) * (r + 1) > n);
+    }
+    for (int64_t raw : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4}, (int64_t{1} << 48) - 1, int64_t{1} << 48, (int64_t{1} << 48) + 1, INT64_MAX}) {
+        const u128 n = static_cast<u128>(raw) << Fixed::kFracBits;
+        const u128 r = static_cast<u128>(sqrt(Fixed::fromRaw(raw)).raw);
+        CHECK(r * r <= n);
+        CHECK((r + 1) * (r + 1) > n);
+    }
+}
+
+// sqrtExceeds(f, limit) is sqrt(f) > limit, at the limit and one raw step either side of it, for limits of every size.
+TEST(fixed_sqrt_exceeds_agrees_with_the_root) {
+    uint64_t s = 1234567890123456789ULL;
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 100000; ++i) {
+        const Fixed limit = Fixed::fromRaw(static_cast<int64_t>(next() >> (20 + next() % 40)));
+        const Fixed root = limit * limit;  // squared, then asked about on both sides of the root
+        for (int64_t d = -2; d <= 2; ++d) {
+            const Fixed f = Fixed::fromRaw(std::max<int64_t>(0, root.raw + d));
+            CHECK(sqrtExceeds(f, limit) == (sqrt(f) > limit));
+        }
+        const Fixed any = Fixed::fromRaw(static_cast<int64_t>(next() >> (1 + next() % 62)));
+        CHECK(sqrtExceeds(any, limit) == (sqrt(any) > limit));
+    }
+    for (const Fixed f : {Fixed::zero(), Fixed::fromRaw(-5), Fixed::fromRaw(1)})
+        for (const Fixed limit : {Fixed::fromRaw(-1), Fixed::zero(), Fixed::fromRaw(1), Fixed::one()}) CHECK(sqrtExceeds(f, limit) == (sqrt(f) > limit));
+}
+
+// The product is the 128-bit one, shifted down (floor), on both sides of WebAssembly's 64-bit shortcut (|raw| < 2^31).
+TEST(fixed_product_is_the_128_bit_product) {
+    uint64_t s = 99887766554433221ULL;
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    const auto want = [](int64_t a, int64_t b) { return static_cast<int64_t>((static_cast<i128>(a) * b) >> Fixed::kFracBits); };
+    for (int i = 0; i < 200000; ++i) {
+        const int64_t a = static_cast<int64_t>(next()) >> (1 + next() % 62), b = static_cast<int64_t>(next()) >> (1 + next() % 62);
+        if (a > (int64_t{1} << 47) || a < -(int64_t{1} << 47) || b > (int64_t{1} << 47) || b < -(int64_t{1} << 47)) continue;  // (result fits)
+        CHECK((Fixed::fromRaw(a) * Fixed::fromRaw(b)).raw == want(a, b));
+    }
+    const int64_t edge = int64_t{1} << 31;
+    for (int64_t a : {edge - 1, edge, edge + 1, -edge + 1, -edge, -edge - 1, int64_t{0}, int64_t{-1}})
+        for (int64_t b : {edge - 1, edge, -edge, int64_t{3}, int64_t{-65536}, int64_t{1} << 20})
+            CHECK((Fixed::fromRaw(a) * Fixed::fromRaw(b)).raw == want(a, b));
+}
+
+// The quotient is the 128-bit one, truncated toward zero, on both sides of the 64-bit shortcut (|raw| < 2^47).
+TEST(fixed_division_is_the_128_bit_quotient) {
+    uint64_t s = 1234567890123456789ULL;
+    auto next = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+    for (int i = 0; i < 200000; ++i) {
+        const int64_t a = static_cast<int64_t>(next()) >> (1 + next() % 62), b = static_cast<int64_t>(next()) >> (1 + next() % 62);
+        if (b == 0) continue;
+        CHECK((Fixed::fromRaw(a) / Fixed::fromRaw(b)).raw == static_cast<int64_t>((static_cast<i128>(a) << Fixed::kFracBits) / b));
+    }
+    const int64_t edge = int64_t{1} << 47;
+    for (int64_t a : {edge - 1, edge, edge + 1, -edge + 1, -edge, -edge - 1, int64_t{0}, int64_t{-1}}) {
+        for (int64_t b : {int64_t{1}, int64_t{-1}, int64_t{3}, int64_t{-65536}, edge}) {
+            CHECK((Fixed::fromRaw(a) / Fixed::fromRaw(b)).raw == static_cast<int64_t>((static_cast<i128>(a) << Fixed::kFracBits) / b));
+        }
+    }
+}
+
 TEST(fixed_trig_matches_libm) {
     // libm is only the reference here; the simulation never calls it.
     for (int i = -2000; i <= 2000; i += 7) {

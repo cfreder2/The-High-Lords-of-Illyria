@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 #include "illyria/sim/terrain.h"
@@ -183,9 +184,17 @@ public:
     // holds the point, a wall whose box (padded by its half thickness and a
     // metre) meets the box, a rampart whose way (padded by its walk and two
     // metres) passes by the point.
-    void decksAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const;
+    std::span<const uint32_t> decksAt(Fixed x, Fixed y) const;  // (a view into the grid, no copy)
     void wallsNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const;
-    void rampartsAt(Fixed x, Fixed y, std::vector<uint32_t>& out) const;
+    std::span<const uint32_t> wallsAt(Fixed x, Fixed y) const;  // (a view into the grid, no copy)
+    std::span<const uint32_t> rampartsAt(Fixed x, Fixed y) const;
+    // The gates within kGateReach of a point (a box round one end of the doors: all a loop over every gate that
+    // passes the same box test could find), floors whose base box meets the box, and floors whose stair's box holds
+    // the point: indices ascending.
+    static constexpr Fixed kGateReach = Fixed::fromInt(60);
+    std::span<const uint32_t> gatesNear(Fixed x, Fixed y) const;
+    void floorBasesNear(Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out) const;
+    std::span<const uint32_t> floorStairsAt(Fixed x, Fixed y) const;
 
     // The scenery grid: a point every 5 m of the continent (at continent
     // metres 5 gx, 5 gy, jittered), each drawn from its own hash, so every
@@ -230,8 +239,16 @@ private:
         int32_t n = 0;
         std::vector<uint32_t> start, items;
     };
-    mutable BoxGrid deckGrid_, wallGrid_, rampGrid_;
+    mutable BoxGrid deckGrid_, wallGrid_, rampGrid_, gateGrid_, floorBaseGrid_, floorStairGrid_;
+    // Each deck's middle and how far its box reaches, in the decks' order: the cheap first test of Deck::contains,
+    // read from a few compact numbers instead of the deck (decksAt's lists are tested on every step of every man).
+    struct DeckReach {
+        Fixed x, y, reach;
+    };
+    mutable std::vector<DeckReach> deckReach_;
+    bool deckHolds(uint32_t k, Fixed x, Fixed y) const;
     void buildGrids() const;
+    static std::span<const uint32_t> cellOf(const BoxGrid& g, Fixed x, Fixed y);
     static void cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out);
     Vec3 ford_;
     Vec3 origin_;

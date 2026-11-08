@@ -176,7 +176,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0x3519e21329a6483a;  // (was 0x82c2a1bb6dc30f79 before the capitals courtyards moved beyond their inner baileys (continent.cpp); was 0x9791755a04d4431f before the empty places of the world were kept descending, the lowest last, so that a spawn costs O(1) (World::freeSlots_ is in the hash, in that order); was 0x69b0b6771dbca7b2 before a man taken out of the world was forgotten by whoever had him as a foe, a mark or a shooter (World::removeUnit: his place goes to another man, so an id kept would name a stranger); was 0x63b64bd41f82815d before a man put to sleep had his last blows forgotten (Campaign::sleep clears fightTick, struckTick and hurtTick: not saved, so a game saved there and the one that goes on from there must wake the stack alike); was 0xd4d3fa3893ab1d09 before a man taken out of the world left his place for the next man to take (a unit's id is his place; the same cause as test_campaign's); was 0x8488874355037510 before the fallen lay for the whole fight rather than twenty seconds; was 0xf07522c0fce5b6fc, after 30 days: twelve now, and the state holds every man)
+    constexpr uint64_t kGolden = 0xf890e20e88726753;  // (was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

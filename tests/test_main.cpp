@@ -22,7 +22,11 @@ int run(const char* filter) {
 
 #ifdef __EMSCRIPTEN__
 // This Emscripten's runtime never calls a main that takes arguments.
+#ifdef ILLYRIA_TEST_FILTER
+int main() { return run(ILLYRIA_TEST_FILTER); }  // (a build for one test, or a few: -DILLYRIA_TEST_FILTER=\"name\")
+#else
 int main() { return run(nullptr); }
+#endif
 #else
 // An argument runs only the tests whose names contain it.
 int main(int argc, char** argv) { return run(argc > 1 ? argv[1] : nullptr); }

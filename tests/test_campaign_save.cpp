@@ -91,15 +91,21 @@ TEST(a_campaign_saved_in_a_fight_keeps_its_men_where_they_stood) {
     c.raise(0, home->cx, home->cy, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
         if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, c.cities()[static_cast<size_t>(target)].cx, c.cities()[static_cast<size_t>(target)].cy);
-    for (int t = 0; t < Campaign::kTicksPerDay * 20 && c.awakeStacks() == 0; ++t) c.step();
-    CHECK(c.awakeStacks() > 0);
+    const auto hurt = [&] {
+        for (const Campaign::Stack& st : c.stacks())
+            for (const Army& a : st.armies)
+                for (const Man& m : a.men)
+                    if (m.hp > 0) return true;
+        return false;
+    };
+    for (int t = 0; t < Campaign::kTicksPerDay * 20 && !hurt(); ++t) c.step();
+    CHECK(hurt());
     for (int t = 0; t < 10 * Campaign::kTicksPerSecond; ++t) c.step();  // a few seconds of it
     int32_t before = 0;
     for (const Campaign::Stack& st : c.stacks())
         for (const Army& a : st.armies) before += a.soldiers;
-    // A save settles the fight where it stands: the men are saved as they are.
+    // A save keeps the men where they stand, wounded as they are (and clears the air of arrows); the game saved carries on as the one loaded.
     const std::string text = c.save();
-    CHECK(c.awakeStacks() == 0);
     std::unique_ptr<Campaign> r = Campaign::load(continent(), text);
     CHECK(r != nullptr);
     if (!r) return;

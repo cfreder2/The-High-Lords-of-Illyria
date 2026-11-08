@@ -168,7 +168,6 @@ void Campaign::hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_
     const CityState& c = cities_[static_cast<size_t>(city)];
     for (int32_t k = 0; k < o.companions; ++k) {
         if (home->armies.size() >= static_cast<size_t>(kMaxStack)) home = &newStack(side, c.cx, c.cy);
-        settle(*home);
         Army a = makeArmy(o.companion, std::string(unitTypeName(o.companion)) + " of " + o.name);
         a.ally = true;  // they follow the hero, not the purse
         home->armies.push_back(a);

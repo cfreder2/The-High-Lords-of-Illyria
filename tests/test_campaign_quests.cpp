@@ -131,9 +131,7 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         const Campaign::SiteState site = c.sites()[static_cast<size_t>(ruin)];
         CHECK(!c.canSearch(id));  // nothing to search at home
         if (!march(c, id, site.cx, site.cy) || c.sites()[static_cast<size_t>(ruin)].searched) continue;  // beaten to it
-        // (A hero in a fight searches nothing: let it end, if it is on.)
-        for (int t = 0; t < 4 * Campaign::kCalmTicks && c.findStack(id) && c.findStack(id)->awake; ++t) c.step();
-        if (!c.findStack(id) || c.findStack(id)->awake) continue;
+        if (!c.findStack(id)) continue;
         bool alive = false;  // (the road is fought for now: a hero may not arrive)
         for (const Army& a : c.findStack(id)->armies) alive = alive || a.hero();
         if (!alive) continue;

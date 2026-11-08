@@ -25,29 +25,23 @@
 
 namespace illyria::sim {
 
-// One soldier of a squad (campaign_world.cpp). Asleep he has no body of his
-// own in the simulation: he stands where his squad's body puts him, in his
-// slot of its formation, or walking back to it from where a fight left him.
-// In a fight he is a unit of the campaign's world, stepped as in any battle.
+// One soldier of a squad (campaign_world.cpp). Every man on the land is a unit of the campaign's one sim::World,
+// stepped with the battle's own rules whether he marches, rests or fights: there is no other way he moves. Only a man
+// aboard a boat is out of it (the ship carries him); he is put ashore as a unit where it lands.
 struct Man {
     uint32_t id = 0;       // for ever his own
     int32_t hp = -1;       // -1: whole; 0: fallen
     int32_t kills = 0;
     int32_t morale = 1000;
     int32_t rank = 0;
-    bool placed = false;   // off his slot: ox, oy are where he stands (millimetres from the squad's body, east and north)
-    int32_t ox = 0, oy = 0;
-    uint32_t unit = 0;     // his unit in the world while the squad is awake, else 0
-    // What the drawing needs while he is awake (not state: derived and not
-    // saved): where he stood a tick ago and now (millimetres on the
-    // continent), the way he faces (thousandths of a unit vector), and when he
-    // last struck, was hurt, or fought at all.
+    uint32_t unit = 0;     // his unit in the world, or 0 (aboard a boat, or not yet put in the world)
+    // Where he stands, in millimetres on the continent, and the way he faces (thousandths of a unit vector): what a
+    // save keeps of him, and what the drawing glides from (bx, by: where he stood a tick ago). `placed`: ax, ay say
+    // where to put him when he is next put in the world (loaded, or put ashore), else he takes his slot at his stack.
+    bool placed = false;
     int32_t ax = 0, ay = 0, bx = 0, by = 0, fx = 0, fy = -1000;
-    // Waking: how far (millimetres) the place he was drawn at, in his squad's formation, is from the place the
-    // world set him; drawn from there and walked off at a pace, never jumped (presentation only).
-    int32_t gx = 0, gy = 0;
     int32_t lastCool = 0, lastReload = 0;
-    uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;
+    uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // when he last struck, was hurt, or fought at all (presentation)
     bool alive() const { return hp != 0; }
 };
 
@@ -61,6 +55,7 @@ struct Army {
     int32_t rank = 0;                        // 0-3; heroes: level - 1 (0-8)
     int32_t blessings = 0;
     std::vector<Man> men;                    // every soldier it was raised with, the fallen among them
+    bool seated = false;                     // its men are in the world (false: new, or aboard a boat)
     uint32_t bornDay = 0;
     bool ally = false;               // joined a hero from a ruin: fights for no pay
     uint8_t temples = 0;             // the temples that have blessed it, a bit each
@@ -178,28 +173,17 @@ public:
         int32_t progress = 0;              // time on the way to the next cell (kTimeScale a tick); there at legTime()
         bool garrison = false;             // a neutral city's own defenders: never moves
         uint32_t boat = 0;                 // the boat it sails in, or 0 on land
-        // Awake (campaign_world.cpp): its men are in a fight, units of the
-        // campaign's world, and its body is the middle of them (px, py: millimetres
-        // on the continent). Asleep it is where its cell and progress put it
-        // (Campaign::bodyOf). hx, hy: the way it faces (a unit vector in
-        // thousandths; south until it first moves).
-        bool awake = false;
+        // Where the middle of its men is, in millimetres on the continent (campaign_world.cpp), and the way it faces
+        // (a unit vector in thousandths; south until it first moves). Afloat, the boat carries it: its cell says where.
         int32_t px = 0, py = 0;
         int32_t hx = 0, hy = -1000;
-        // How far its men have drawn out from a block into a column on the march (0..1000), eased as it sets out
-        // and halts, so that none jumps (presentation only; not saved).
-        int32_t form = 0;
-        // The way its men are drawn facing: hx, hy followed slowly, so that a long column is not swung round in a
-        // moment (presentation only; not saved).
-        int32_t dhx = 0, dhy = -1000;
-        uint32_t calm = 0;       // awake: ticks since an enemy was within reach
-        int32_t orderCell = -1;  // awake: the cell its men were last sent marching to (-1: none)
-        // Awake, bound somewhere and held up (a foe it cannot get at, behind a wall): where it was and when it
-        // last got anywhere, and how long it goes deaf to the enemy to pull itself free.
+        int32_t orderCell = -1;  // the cell its men were last sent marching to (-1: none)
+        // Bound somewhere and held up (a foe it cannot get at, behind a wall): where it was and when it last got
+        // anywhere, and how long it goes deaf to the enemy to pull itself free.
         int32_t lx = 0, ly = 0;
         uint32_t lt = 0, forceUntil = 0;
-        // Awake, and its men were given orders in the world (an Order::Command): they stand to those, as a skirmish's do,
-        // and the stack's own steering and habits (steer, fightAi) leave them alone until it is marched again or sleeps.
+        // Its men were given orders in the world (an Order::Command): they stand to those, as a skirmish's do, and the
+        // stack's own steering and habits (steer, fightAi) leave them alone until it is marched again.
         bool commanded = false;
     };
     // A city that changed hands, for the reports.
@@ -286,13 +270,13 @@ public:
     // tick, in the order they were submitted, so the same Orders over the same saved game give the same game on
     // every machine (the test in tests/test_campaign_save.cpp). The calls below are what an Order does.
     struct Order {
-        enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat, Halt, Command };
+        enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat, Command };
         Kind kind = Kind::Move;
         uint8_t side = 0;
         uint32_t tick = 0;     // the tick it takes effect at; 0: the next
         uint32_t stack = 0;    // the stack, if it concerns one
         int32_t a = 0, b = 0;  // Move: the cell; Produce: city, option; VectorProduction: city, to; Disband: the army; BuildBoat: city; Hire: accept
-        // Move, Halt: only these squads of the stack (empty: all of it); the rest stay, a stack of their own.
+        // Move: only these squads of the stack (empty: all of it); the rest stay, a stack of their own.
         std::vector<uint32_t> armies;
         // Command: an order to a man of the world (his unit), as a skirmish's orders are: the stack he is of is the player's
         // to command, his men leave their march and stand to the orders they are given (Stack::commanded).
@@ -310,18 +294,12 @@ public:
     // Advances one tick (a thirtieth of a second at normal speed).
     void step();
 
-    // The men on the land (campaign_world.cpp). Armies that come within
-    // kContactRange of an enemy wake: their men go into the campaign's world
-    // and are stepped there with the battle's own rules, wherever they stand,
-    // until nothing hostile has been near for kCalmTicks, when they fall in
-    // again as a body. Which men are stepped depends only on where everyone
-    // is, never on a camera.
-    static constexpr int32_t kContactRange = 150;       // metres, between the edges of two hostile stacks
-    static constexpr int32_t kContactTicks = 15;        // how often the world looks for contact
-    static constexpr uint32_t kCalmTicks = 10 * kTicksPerSecond;
-    // Where a stack's body is, in millimetres on the continent: awake, the
-    // middle of its men; asleep, its cell's anchor (a town's courtyard) and
-    // how far along its leg it has got, `ahead` hundredths of a tick on.
+    // The men on the land (campaign_world.cpp): every man of every stack that is not aboard a boat is a unit of the
+    // campaign's one world, and the world steps them all, every tick, as it steps a skirmish. The stacks only think
+    // (look where their men are, send them on to the next cell of a route, meet whoever comes near) every kThinkTicks.
+    static constexpr int32_t kThinkTicks = 15;
+    // Where a stack's body is, in millimetres on the continent: the middle of its men; afloat, its cell's centre and
+    // how far along its leg the boat has got, `ahead` hundredths of a tick on.
     void bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) const;
     // A soldier for drawing, picking and the minimap, where he stands (metres
     // on the continent). `alive` false: a body lying where it fell, in a fight
@@ -332,9 +310,9 @@ public:
         float speed = 0;  // metres a second, as he walks
         uint8_t owner = 0;
         UnitType type = UnitType::LightInfantry;
-        bool awake = false, alive = true, aloft = false;
-        uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // awake: when he last struck, was hurt, or fought at all
-        const Unit* unit = nullptr;  // awake: his man in the world (to draw him hurt, fallen, or with arrows in him), until the next step
+        bool alive = true, aloft = false;
+        uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // when he last struck, was hurt, or fought at all
+        const Unit* unit = nullptr;  // his man in the world (to draw him hurt, fallen, or with arrows in him), until the next step
         uint32_t unitId = 0;
     };
     // Every soldier, as he stands `ahead` hundredths of a tick after the last
@@ -369,14 +347,14 @@ public:
     void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {
         beforeHook_ = std::move(before), stepHook_ = std::move(after), clearedHook_ = std::move(cleared);
     }
-    int32_t awakeStacks() const;  // how many stacks have men in the world
-    int32_t awakeMen() const;     // and how many men
+    int32_t menInWorld() const;  // how many men are units of the world
     // Makes the island's ground now rather than at the first fight (a few seconds, once a process).
-    void prepareWorld() { ensureWorld(); }
+    void prepareWorld();  // (and puts the men in it)
     const World* world() const { return world_.get(); }  // null until the first fight or prepareWorld
-    // Everyone gets up from a fight where they stand and falls in as a body
-    // (what a save writes; the world's other state is not kept).
-    void settleAll();
+    // Everyone is taken out of the world and put back where he stands, with his wounds, kills and morale, and the
+    // world cleared of what is in the air (what a save writes: nothing else of a moment is kept, so a game saved and
+    // the game loaded from the save carry on as one).
+    void reseatAll();
 
     // Queries.
     const Continent& continent() const { return continent_; }
@@ -537,15 +515,13 @@ private:
     bool land(uint32_t stackId);
     bool search(uint32_t stackId);
     bool hire(uint8_t side, bool accept);
-    // Move and Halt for chosen squads: they are split off into a stack of their own first (an awake stack's men stay
-    // units of the world, so a stack split in a fight is still in it), and the whole stack otherwise. A halt is at
-    // the next cell on the way. The march is the stack's; whoever is ordered is, like his men, the player's: a stack
-    // of another side is never moved.
+    // Move for chosen squads: they are split off into a stack of their own first (their men stay units of the world,
+    // so a stack split in a fight is still in it), and the whole stack otherwise. The march is the stack's; whoever is
+    // ordered is, like his men, the player's: a stack of another side is never moved.
     Stack* stackFor(const Order& o, bool splitting);
-    void halt(Stack& s);
-    // A Command: whose unit it is (his stack, awake, of the side that gives it), else it is refused.
+    // A Command: whose unit it is (his stack, of the side that gives it), else it is refused.
     void commandMen(const Order& o);
-    bool underOrders(const Stack& s) const;  // awake: a man of it has somewhere to go or someone to fight on orders
+    bool underOrders(const Stack& s) const;  // a man of it has somewhere to go or someone to fight on orders
     void initTerrain();
     void initCities();
     void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies
@@ -652,22 +628,23 @@ private:
     void transfer(int32_t city, uint8_t side);
     // campaign_world.cpp: the men on the land.
     void ensureWorld();
-    void wake(Stack& s);
-    void sleep(Stack& s);
-    void contactStep();
+    void seat(Stack& s);                 // puts the men of the stack that are not in the world into it
+    void release(Army& a);               // takes an army's men out of the world (boarding, disbanded), keeping what they are
+    void freshWorld();                   // the world cleared of what is in the air and the men not in it put in (a save, a load)
+    void seatNew();                      // seat() for each stack with an army not seated
     void stepWorld();
     void steer(Stack& s, std::vector<Command>& commands, bool think);
     void fightAi(Stack& s, std::vector<Command>& commands);
+    // fightAi's grid of the units a man may fight, built at the first use in a think (scratch, not state).
+    bool foeGridBuilt_ = false;
+    int32_t foeCells_ = 0;
+    std::vector<uint32_t> foeStart_, foeItems_;
     void syncMen(Stack& s);
     // The slots of a stack's living men in its formation, in millimetres to
     // the right of its body and ahead of it, in army order.
     void layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots, bool column) const;
-    // The slots as drawn now: the block and the column blended by the stack's `form`.
-    void formation(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots) const;
-    void easeMen(Stack& s);
     void anchorOf(int32_t cx, int32_t cy, int32_t& x, int32_t& y) const;
     void holdGates(int32_t city);
-    void settle(Stack& s) { if (s.awake) sleep(s); }
     std::shared_ptr<const Region> region_;
     std::unique_ptr<World> world_;
     std::vector<int32_t> gateCity_;  // per gate of the world's region: the city it belongs to
@@ -677,9 +654,9 @@ private:
     std::function<void()> beforeHook_, stepHook_, clearedHook_;
     std::function<bool(uint8_t, uint8_t, float, float)> sight_;
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)
-    int32_t awakeStacks_ = 0;
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them
     void gateHps(std::vector<int32_t>& out) const;
+    std::vector<uint32_t> boarding_;  // (transient, within a step) the stacks that reached a quay with the sea next on their route
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while
     std::vector<Command> commands_, playerCommands_;  // (the player's go into the world's step after the stacks' own)
     // campaign_territory.cpp

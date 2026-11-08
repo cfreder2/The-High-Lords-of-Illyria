@@ -40,14 +40,10 @@ int32_t Campaign::armiesInTown(int32_t city, int32_t (&in)[9]) const {
         for (const Army& a : s.armies) {
             if (a.soldiers <= 0) continue;
             int32_t nIn = 0;
-            if (!s.awake) {
-                nIn = d0 * d0 + d1 * d1 <= kInTownMm * kInTownMm;
-            } else {
-                for (const Man& m : a.men) {
-                    if (!m.alive() || !m.unit) continue;
-                    const int64_t e0 = int64_t{m.ax} - cx, e1 = int64_t{m.ay} - cy;
-                    nIn = nIn || e0 * e0 + e1 * e1 <= kInTownMm * kInTownMm;
-                }
+            for (const Man& m : a.men) {
+                if (!m.alive() || !m.unit) continue;
+                const int64_t e0 = int64_t{m.ax} - cx, e1 = int64_t{m.ay} - cy;
+                nIn = nIn || e0 * e0 + e1 * e1 <= kInTownMm * kInTownMm;
             }
             in[s.owner < 8 ? s.owner : 8] += nIn;
             total += nIn;
@@ -107,9 +103,9 @@ void Campaign::bannerStep() {
         for (size_t o = 0; o < 9; ++o)
             if (o != raiserSide) foes += in[o];
         if (foes == 0) {
-            c.bannerProgress += kContactTicks * (kBannerBase + std::min(raisers, kMaxStack));
+            c.bannerProgress += kThinkTicks * (kBannerBase + std::min(raisers, kMaxStack));
         } else if (foes > raisers) {
-            c.bannerProgress = std::max(0, c.bannerProgress - kContactTicks * (kBannerBase + std::min(foes, kMaxStack)));
+            c.bannerProgress = std::max(0, c.bannerProgress - kThinkTicks * (kBannerBase + std::min(foes, kMaxStack)));
         }
         if (c.bannerProgress < kBannerFull) continue;
         transfer(static_cast<int32_t>(i), c.banner);
