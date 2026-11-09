@@ -309,17 +309,12 @@ std::string CtfMode::hudJson(const Battle& b) const {
 }
 
 std::vector<ModeFlag> CtfMode::flags(const Battle& b) const {
-    // Each team's flag on its pole; a fallen one low, the taker's colours above it.
+    // Each team's flag on its pole; a fallen one is the taker's (the poles lower the old and raise the new).
     std::vector<ModeFlag> out;
     for (const sim::FlagRule::Flag& f : flags_.flags()) {
         V3 base = toV3(f.at);
         base.z = b.heightAt(base.x, base.y);
-        if (f.standing) {
-            out.push_back({base, 1, teamColour(f.team), 11, 2.8f});
-        } else {
-            out.push_back({base, 0.08f, teamColour(f.team), 11, 2.8f});
-            out.push_back({base, 1, teamColour(f.takenBy), 11, 2.8f});
-        }
+        out.push_back({base, 1, teamColour(f.standing ? f.team : f.takenBy), 11, 2.8f});
     }
     return out;
 }

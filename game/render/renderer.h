@@ -124,7 +124,8 @@ public:
     size_t mapSprites() const { return men_.sprites; }
     int mapDots() const { return dots_.count; }
     // The castles' tower banners in each town's holder's colour (by city index).
-    void setCityColours(const std::vector<V3>& colours);
+    // keepsBare (per town, optional): the keep's small banner is not drawn (a tall pole stands there, setFlags).
+    void setCityColours(const std::vector<V3>& colours, const std::vector<uint8_t>& keepsBare = {});
     // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
     void setTerritory(const std::vector<uint8_t>& rgba, int cols, int rows, float strength);
 
@@ -524,6 +525,7 @@ private:
     MeshBatch poles_, cloths_;
     std::vector<float> bannerData_;
     std::vector<uint32_t> bannerCity_;
+    std::vector<uint8_t> bannerIsKeep_;  // (per banner instance)
     GLuint territoryTex_ = 0;
     float territoryInfo_[4] = {0, 0, 0, 0};
     MeshBatch ships_, sails_, piers_;  // the campaign's boats and ports
