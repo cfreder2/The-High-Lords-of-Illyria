@@ -354,7 +354,9 @@ Mesh sphere() {
 }
 
 namespace {
-const V3 kStone{0.66f, 0.63f, 0.57f}, kSlate{0.30f, 0.32f, 0.38f};
+// A cone's colour is a marker, not a colour: the mesh shader (uOwned) paints it in its town holder's colour, times
+// colour.r (its shade).
+const V3 kStone{0.66f, 0.63f, 0.57f}, kCone{1.0f, 1.0f, 3.0f};
 }  // namespace
 
 Mesh wall() {
@@ -372,7 +374,7 @@ Mesh tower() {
     Builder b;
     b.frustum(0, 1.0f, 1.0f, 0.92f, 10, kStone);
     b.frustum(1.0f, 1.08f, 1.06f, 1.08f, 10, kStone * 0.9f);
-    b.frustum(1.06f, 1.12f, 1.75f, 0, 10, kSlate);
+    b.frustum(1.06f, 1.12f, 1.75f, 0, 10, kCone);
     return b.mesh;
 }
 
@@ -520,7 +522,7 @@ Mesh keep() {
         const float x = k & 1 ? 0.92f : -0.92f, y = k & 2 ? 0.92f : -0.92f;
         Builder t;
         t.frustum(0.6f, 0.2f, 1.18f, 0.2f, 8, kStone * 0.95f);
-        t.frustum(1.18f, 0.24f, 1.42f, 0.0f, 8, kSlate);
+        t.frustum(1.18f, 0.24f, 1.42f, 0.0f, 8, kCone);
         for (size_t v = 0; v < t.mesh.data.size(); v += 9) {
             t.mesh.data[v] += x;
             t.mesh.data[v + 1] += y;

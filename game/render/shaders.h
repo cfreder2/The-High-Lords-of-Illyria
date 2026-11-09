@@ -1519,6 +1519,8 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
 uniform float uFlag; // 1: banners, whose cloth (colour.b = 2, colour.rg its place on it) waves
+uniform float uOwned; // 1: a town's meshes: the tint is the holder's colour, worn by the roofs only (owner_look.h)
+uniform float uHouse; // 1: the house mesh (houseSurface)
 out vec3 vColor;
 out vec3 vNormal;
 out vec3 vWorld;
@@ -1565,6 +1567,19 @@ void main() {
     ax = dot(ax, ax) > 1e-6 ? normalize(ax) : vec2(1.0, 0.0);
     vAxis = ax.x < -1e-4 || (ax.x <= 1e-4 && ax.y < 0.0) ? -ax : ax;
     vColor = vIsCloth > 0.5 ? iTint : aColor * iTint;
+    if (uOwned > 0.5 && vIsCloth < 0.5) {
+        if (uHouse > 0.5) {
+            // The tiles take the holder's colour (the mesh's red gives their shading); everything else the house's own,
+            // each house a little lighter or darker than the next.
+            float br = 0.85 + 0.3 * hash12(iPos.xy * 0.173);
+            vColor = aNormal.z > 0.25 ? iTint * (aColor.r / 0.55) * br : aColor * vec3(1.0, 0.97, 0.92) * br;
+        } else if (aColor.b > 2.5) {
+            vColor = iTint * aColor.r;  // a cone (meshes.cpp kCone): colour.b marks it, colour.r is its shade
+            vCloth = vec2(-1.0, 0.0);   // (unused but by cloth: here it tells the fragment shader this is a slate roof, to be coursed whatever its colour)
+        } else {
+            vColor = aColor;  // stone and timber: their own
+        }
+    }
     vWorld = world;
     vObj = aPos;
     vScale = iScale;
@@ -1786,7 +1801,7 @@ void main() {
     }
     if (uHouse > 0.5) houseSurface(albedo, n);
     if (uRock > 0.5) rockSurface(albedo, n);
-    if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
+    if (uMasonry > 0.5 && (vCloth.x < -0.5 || abs(vColor.r - vColor.b) < 0.14)) {  // stone (a cone's slates too, whatever their colour), not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.
         // Faces looking up (a walk, a landing, a ramp's slope) are paved in

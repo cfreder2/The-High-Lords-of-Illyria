@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "illyria/game/battle.h"
+#include "illyria/game/owner_look.h"
 #include "illyria/sim/campaign.h"
 #include "campaign_orders.h"
 #include "test.h"
@@ -337,4 +338,67 @@ TEST(a_siege_has_a_capture_point_in_the_courtyard) {
     CHECK(cap.defendersIn() > 0 && cap.attackersIn() == 0);
     illyria::game::Battle ford(5, illyria::game::Scenario::Ford);
     CHECK(!ford.capturePoint().active());
+}
+
+// A town's roofs, flags and cones in its holder's colours (game/include/illyria/game/owner_look.h): one table.
+namespace {
+float apart(const illyria::game::V3& a, const illyria::game::V3& b) {
+    return std::fabs(a.x - b.x) + std::fabs(a.y - b.y) + std::fabs(a.z - b.z);
+}
+bool same(const illyria::game::OwnerLook& a, const illyria::game::OwnerLook& b) { return apart(a.roof, b.roof) + apart(a.flag, b.flag) + apart(a.cone, b.cone) == 0; }
+}  // namespace
+
+TEST(each_lord_and_nobody_has_their_own_roof_flag_and_cone_colours) {
+    using illyria::game::ownerLook;
+    for (uint8_t a = 0; a <= Continent::kFactionCount; ++a)
+        for (uint8_t b = a + 1; b <= Continent::kFactionCount; ++b) {
+            // (the ninth is nobody's: kNeutral, or any side that does not exist)
+            const uint8_t x = a, y = b == Continent::kFactionCount ? Continent::kNeutral : b;
+            if (x == Continent::kFactionCount) continue;
+            const auto la = ownerLook(x), lb = ownerLook(y);
+            if (!(apart(la.roof, lb.roof) > 0.2f)) std::printf("  roofs %d and %d: %.3f\n", x, y, apart(la.roof, lb.roof));
+            CHECK(apart(la.roof, lb.roof) > 0.2f);
+            CHECK(apart(la.flag, lb.flag) > 0.25f);
+            CHECK(apart(la.cone, lb.cone) > 0.1f);
+        }
+    for (uint8_t s = 0; s < Continent::kFactionCount; ++s) {
+        // A lord's flag is his banner's colour and his roof is a shade of it, never lost against grass or sun.
+        CHECK(apart(ownerLook(s).flag, illyria::game::factionColor(s)) == 0);
+        const auto l = ownerLook(s);
+        for (float v : {l.roof.x, l.roof.y, l.roof.z}) CHECK(v >= 0.17f && v <= 0.74f);
+        for (float v : {l.cone.x, l.cone.y, l.cone.z}) CHECK(v >= 0.1f);
+        CHECK(l.cone.x <= l.roof.x && l.cone.y <= l.roof.y && l.cone.z <= l.roof.z);
+    }
+    CHECK(same(ownerLook(Continent::kNeutral), ownerLook(200)));
+}
+
+TEST(a_towns_colours_follow_its_holder_as_far_as_the_viewer_knows) {
+    using namespace illyria::game;
+    Campaign c = still(3);
+    const int32_t town = emptyCapital(c);
+    CHECK(c.cities()[static_cast<size_t>(town)].owner == 1);
+    // The holder sees his own town in his own colours; a side that cannot see it has it as nobody's.
+    CHECK(c.seesCity(1, town));
+    CHECK(same(townLooks(knownOwners(c, 1))[static_cast<size_t>(town)], ownerLook(1)));
+    // Through the seam of sight (Campaign::setSight), with side 2 hidden from side 0: its town is nobody's to side 0.
+    Campaign war(continent(), 3);
+    war.setSight([](uint8_t viewer, uint8_t owner, float, float) { return owner == viewer || owner != 2; });
+    int32_t hidden = -1;
+    for (size_t i = 0; i < war.cities().size(); ++i)
+        if (war.cities()[i].owner == 2) hidden = static_cast<int32_t>(i);
+    CHECK(hidden >= 0);
+    CHECK(!war.seesCity(0, hidden));
+    CHECK(same(townLooks(knownOwners(war, 0))[static_cast<size_t>(hidden)], ownerLook(Continent::kNeutral)));
+    CHECK(same(townLooks(knownOwners(war, 2))[static_cast<size_t>(hidden)], ownerLook(2)));
+    // Taken by side 0: the town changes from side 1's colours to side 0's, and no other town changes for the viewer
+    // that sees both.
+    const UnitType hc = UnitType::HeavyCavalry;
+    const uint32_t id = raiseNear(c, town, {hc, hc, hc, hc, hc, hc});
+    CHECK(bannerTime(c, id, town) > 0);
+    CHECK(c.cities()[static_cast<size_t>(town)].owner == 0);
+    CHECK(c.seesCity(0, town));
+    const std::vector<OwnerLook> after = townLooks(knownOwners(c, 0));
+    CHECK(same(after[static_cast<size_t>(town)], ownerLook(0)));
+    CHECK(!same(after[static_cast<size_t>(town)], ownerLook(1)));
+    CHECK(same(townLooks(knownOwners(c, 1))[static_cast<size_t>(town)], ownerLook(0)) || !c.seesCity(1, town));
 }

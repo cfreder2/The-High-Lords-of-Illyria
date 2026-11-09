@@ -340,6 +340,32 @@ void placeBoats() {
     app->renderer.setBoats(out);
 }
 
+#ifdef ILLYRIA_DEV_HOOKS
+// Test hook, for pictures of towns in colours the war has not given them yet (presentation only: the sim is
+// untouched). ILLYRIA_LIST_CITIES=1 prints every town (number, name, holder, place in battle metres);
+// ILLYRIA_DEMO_OWNERS="town:side,town:side" shows those towns held by those sides (255: nobody); with
+// ILLYRIA_DEMO_FROM_TICK=N it starts at tick N, so a picture before and after a capture can be had in one run.
+void devOwners(std::vector<uint8_t>& owners, const illyria::sim::Campaign& c) {
+    static bool listed = false;
+    if (!listed && std::getenv("ILLYRIA_LIST_CITIES")) {
+        listed = true;
+        const V3 o = app->battle->origin();
+        for (size_t i = 0; i < owners.size(); ++i)
+            std::fprintf(stderr, "CITY %zu %s holder=%d at %.1f,%.1f\n", i, c.continent().cities()[i].name.c_str(), static_cast<int>(owners[i]),
+                         c.continent().cities()[i].pos.x.toDouble() - o.x, c.continent().cities()[i].pos.y.toDouble() - o.y);
+    }
+    const char* from = std::getenv("ILLYRIA_DEMO_FROM_TICK");
+    if (from && c.tick() < std::atoll(from)) return;
+    const char* spec = std::getenv("ILLYRIA_DEMO_OWNERS");
+    int town, side, used = 0;
+    while (spec && std::sscanf(spec, "%d:%d%n", &town, &side, &used) == 2) {
+        if (town >= 0 && static_cast<size_t>(town) < owners.size()) owners[static_cast<size_t>(town)] = static_cast<uint8_t>(side);
+        spec += used;
+        if (*spec == ',') ++spec;
+    }
+}
+#endif
+
 // The flags on poles, every frame: on the campaign map the banners rising
 // over towns being taken (the old colours coming down as the new go up) and
 // the outposts' flags, with the towns' tower banners and the land in their
@@ -360,8 +386,10 @@ void placeFlags(float dt) {
     if (app->camp.on) {
         App::CampaignView& cv = app->camp;
         const C& c = *cv.c;
-        std::vector<uint8_t> owners;  // (as the viewer knows them)
-        for (size_t i = 0; i < c.cities().size(); ++i) owners.push_back(c.knownOwner(c.localSide(), static_cast<int32_t>(i)));
+        std::vector<uint8_t> owners = knownOwners(c, c.localSide());  // (as the viewer knows them)
+#ifdef ILLYRIA_DEV_HOOKS
+        devOwners(owners, c);
+#endif
         // A town whose banner is going up has its tall pole on the keep: the keep's own small banner stands
         // aside meanwhile, so the pole carries one flag (the moment it is done, the keep's flies the new colours).
         std::vector<uint8_t> flying(c.cities().size(), 0);
@@ -370,9 +398,7 @@ void placeFlags(float dt) {
         if (owners != cv.owners || flying != cv.keepsBare) {
             cv.owners = owners;
             cv.keepsBare = flying;
-            std::vector<V3> colours;
-            for (uint8_t w : owners) colours.push_back(factionColor(w));
-            app->renderer.setCityColours(colours, flying);
+            app->renderer.setCityColours(townLooks(owners), flying);
         }
         const int64_t reckoned = c.tick() / C::kTerritoryTicks;
         if (reckoned != cv.territoryTick) {

@@ -102,7 +102,7 @@ A town defends with every man inside it, however many, and is attacked by every 
 - **At the top** the town is yours: its income, its training (stopped, for you to choose again), the loser's share of its treasury (half to you), its walls one lower, and its own hex and the six round it.
 - **A town being taken trains nothing** and takes in no new armies until the raisers are gone.
 
-The bar under the town's name says *Your banner rising · 45%*, *held up* (amber) or *coming down* (red); over the keep a tall pole carries the old colours down and the new ones up. The courtyard's flagpole of the set siege battle is a different rule (chapter [](#capture-point)).
+The bar under the town's name says *Your banner rising · 45%*, *held up* (amber) or *coming down* (red); over the keep a tall pole carries the old colours down and the new ones up. A town wears its holder's colour all over: the banners on its towers and keep, the tiles of its houses and the cones of its tower roofs. They change when the town changes hands, not before: while a banner is still rising the town is its old holder's (or nobody's, plain clay roofs and linen flags), and only the pole shows the raiser. The courtyard's flagpole of the set siege battle is a different rule (chapter [](#capture-point)).
 
 ![A banner going up over a newly won town, with its progress bar.](images/shots/camp_banner.jpg)
 

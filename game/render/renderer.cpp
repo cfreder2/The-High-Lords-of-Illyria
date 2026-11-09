@@ -379,6 +379,7 @@ bool Renderer::buildPrograms() {
         s.p.patchSink = glGetUniformLocation(s.p.id, "uPatchSink");
         s.p.masonry = glGetUniformLocation(s.p.id, "uMasonry");
         s.p.house = glGetUniformLocation(s.p.id, "uHouse");
+        s.p.owned = glGetUniformLocation(s.p.id, "uOwned");
         s.p.rock = glGetUniformLocation(s.p.id, "uRock");
         s.p.camFwd = glGetUniformLocation(s.p.id, "uCamFwd");
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
@@ -564,6 +565,7 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
         glUniform1f(mesh_.house, b->house ? 1.0f : 0.0f);
+        glUniform1f(mesh_.owned, b->owned ? 1.0f : 0.0f);
         glUniform1f(mesh_.rock, b->rock ? 1.0f : 0.0f);
         glUniform1f(mesh_.lod, b->lod);
         glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
@@ -1213,14 +1215,16 @@ void Renderer::uploadSettlements(const Battle& battle) {
     yawQuat(1.5707963f, side);
     const V3 stone{1, 1, 1};
     std::vector<float> drums, keeps, stairs, parapets, galleries;
+    std::vector<uint32_t> houseCity, towerCity, keepCity;
     const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
     const auto yawOf = [](V3 d) { return std::atan2(d.y, d.x); };
     for (size_t ci = 0; ci < cont.cities().size(); ++ci) {
         const sim::Continent::City& c = cont.cities()[ci];
         const sim::Continent::Castle& k = c.castle;
         const V3 centre = local(c.pos);
-        // The banners: the owner's colour; a neutral town's are undyed linen.
-        const V3 colour = bannerColor(c.owner);
+        // The town as its holder dresses it (owner_look.h); setCityColours changes it as the town changes hands.
+        const OwnerLook look = ownerLook(c.owner);
+        const V3 colour = look.flag;
         // Curtain walls, corner to corner, in sections up to the walk; the gate
         // edge leaves an opening under a lintel. The parapet faces outward:
         // the sill, and the merlons between the embrasures, where the sim has them.
@@ -1323,8 +1327,12 @@ void Renderer::uploadSettlements(const Battle& battle) {
         for (const sim::Continent::Castle::Tower& t : k.towers) {
             const float r = static_cast<float>(t.radius.toDouble()), h = static_cast<float>(t.height.toDouble());
             const V3 p = local(t.pos);
-            if (t.roofed) pushInstance(towers, p, flat, {r, r, h}, stone);
-            else pushInstance(drums, p, flat, {r, r, h}, stone);
+            if (t.roofed) {
+                pushInstance(towers, p, flat, {r, r, h}, look.cone);
+                towerCity.push_back(static_cast<uint32_t>(ci));
+            } else {
+                pushInstance(drums, p, flat, {r, r, h}, stone);
+            }
             pushInstance(banners, p + V3{0, 0, h + (t.roofed ? h * 0.75f : 0.4f)}, flat, {4.5f, 4.5f, 4.5f}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
             bannerIsKeep_.push_back(0);
@@ -1334,7 +1342,8 @@ void Renderer::uploadSettlements(const Battle& battle) {
             yawQuat(yawOf(toV3(k.keepAxis)), q);
             const float half = static_cast<float>(k.keepHalf.toDouble()), h = static_cast<float>(k.keepHeight.toDouble());
             const V3 p = local(k.keep);
-            pushInstance(keeps, p, q, {half, half, h}, {0.97f, 0.97f, 0.97f});
+            pushInstance(keeps, p, q, {half, half, h}, look.cone);  // (the stone ignores the tint; the turrets' caps wear it)
+            keepCity.push_back(static_cast<uint32_t>(ci));
             const float s = c.capital ? 14.0f : 9.0f;
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
@@ -1357,14 +1366,14 @@ void Renderer::uploadSettlements(const Battle& battle) {
         }
         for (size_t hi = 0; hi < k.houses.size(); ++hi) {
             const sim::Continent::Castle::House& hs = k.houses[hi];
-            const uint32_t hh = static_cast<uint32_t>(ci * 131 + hi * 17);
-            const float t = 0.85f + 0.3f * hash01(hh + 3);
             const float hx = static_cast<float>(hs.halfX.toDouble()), hy = static_cast<float>(hs.halfY.toDouble());
             // The house mesh's ridge runs along y; turn it to run along the longer side.
             float q[4];
             yawQuat(hx > hy ? 1.5707963f : 0, q);
+            // (the roof wears the holder's colour; the shader varies each house's brightness itself)
             pushInstance(houses, local(hs.pos), q, hx > hy ? V3{hy, hx, static_cast<float>(hs.height.toDouble())} : V3{hx, hy, static_cast<float>(hs.height.toDouble())},
-                         {t, t * 0.97f, t * 0.92f});
+                         look.roof);
+            houseCity.push_back(static_cast<uint32_t>(ci));
         }
     }
     for (size_t si = 0; si < cont.sites().size(); ++si) {
@@ -1382,6 +1391,9 @@ void Renderer::uploadSettlements(const Battle& battle) {
     }
     uploadMeshInstances(walls_, walls);
     uploadMeshInstances(parapets_, parapets);
+    ownedHouses_ = {&cityHouses_, houses, houseCity, &OwnerLook::roof};
+    ownedTowers_ = {&towers_, towers, towerCity, &OwnerLook::cone};
+    ownedKeeps_ = {&keeps_, keeps, keepCity, &OwnerLook::cone};
     uploadMeshInstances(towers_, towers);
     uploadMeshInstances(drums_, drums);
     uploadMeshInstances(keeps_, keeps);
@@ -1502,6 +1514,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
     makeMeshBatch(cityHouses_, meshes::house(), 0);
     houses_.house = cityHouses_.house = true;
+    cityHouses_.owned = towers_.owned = keeps_.owned = true;
     makeMeshBatch(ruins_, meshes::ruin(), 0);
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
