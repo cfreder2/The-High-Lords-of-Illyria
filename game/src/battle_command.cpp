@@ -1062,6 +1062,24 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
     }
 }
 
+void Battle::selectTap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
+    const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
+    const Pick pick = pickAt(camera, x, y, pixelScale);
+    using K = Pick::Kind;
+    if (mode != OrderMode::Normal || pick.kind == K::Own || pick.kind == K::Gate) {
+        tap(camera, x, y, pixelScale, additive);
+        return;
+    }
+    // Looked at, not ordered at: a man's card, nothing for the ground.
+    if (pick.kind == K::Enemy && pick.index >= 0) {
+        if (conquest_) inspect({Inspected::Kind::Man, manOfUnit_[static_cast<size_t>(pick.index)]});
+        else inspect({Inspected::Kind::Unit, world_->units()[static_cast<size_t>(pick.index)].id});
+    } else {
+        inspect({});
+    }
+    if (!additive) clearSelection();
+}
+
 bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box) {
     drag_ = {};
     drag_.pixelScale = pixelScale;
@@ -1121,7 +1139,10 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     if (cancelled || d.mode == Drag::Mode::None) return;
     if (d.mode == Drag::Mode::Box) {
         // Too small a box to mean anything: a long tap.
-        if (std::abs(x - d.x0) < kBoxSlopPx * d.pixelScale && std::abs(y - d.y0) < kBoxSlopPx * d.pixelScale) tap(camera, d.x0, d.y0, d.pixelScale, additive);
+        if (std::abs(x - d.x0) < kBoxSlopPx * d.pixelScale && std::abs(y - d.y0) < kBoxSlopPx * d.pixelScale) {
+            if (mouseScheme_) selectTap(camera, d.x0, d.y0, d.pixelScale, additive);
+            else tap(camera, d.x0, d.y0, d.pixelScale, additive);
+        }
         else selectInRect(camera, d.x0, d.y0, x, y, additive);
         return;
     }

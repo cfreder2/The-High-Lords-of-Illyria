@@ -91,6 +91,9 @@ struct App {
     double drawMs = 0;  // CPU time preparing and issuing a frame's drawing (smoothed)
     std::string hud, labels;
     bool shift = false;  // held on the desktop
+    bool mouse = false;  // the pointer is a mouse: left selects, right orders (Gestures)
+    bool boxPress = false;  // the press in hand began as a selection box
+    float pressX = 0, pressY = 0;
     // The campaign, when playing it: the war on the continent map.
     struct CampaignView {
         std::unique_ptr<illyria::sim::Campaign> c;
@@ -472,6 +475,13 @@ bool townTap(float px, float py) {
     if (town < 0 || (pick.kind != Battle::Pick::Kind::Ground && pick.kind != Battle::Pick::Kind::Wall && pick.kind != Battle::Pick::Kind::Obstacle)) return false;
     cv.city = town;
     return true;
+}
+
+// A click or tap on the battlefield: the town's, or a battle tap. A mouse's left click only selects (right clicks order).
+void clickAt(float x, float y) {
+    if (::app->camp.on && townTap(x, y)) return;
+    if (::app->mouse) ::app->battle->selectTap(::app->camera, x, y, ::app->pixelRatio, ::app->shift);
+    else ::app->battle->tap(::app->camera, x, y, ::app->pixelRatio, ::app->shift);
 }
 
 // The town's panel opens only when the player taps the town (townTap above, or its marker on the map: illyria_campaign_open_city),
@@ -877,6 +887,13 @@ ILLYRIA_API void illyria_select_squad(int index) {
 
 // Commanding (game/src/battle_command.cpp). Shift held: a press starts a
 // selection box at once, and a tap adds to the selection.
+// The pointers that go down from now on are a mouse's (1) or a finger's or pen's (0).
+ILLYRIA_API void illyria_set_mouse(int mouse) {
+    if (!app) return;
+    app->mouse = mouse != 0;
+    app->gestures->setMouse(app->mouse);
+    app->battle->setMouseScheme(app->mouse);
+}
 ILLYRIA_API void illyria_set_shift(int down) {
     if (!app) return;
     app->shift = down != 0;
@@ -2445,17 +2462,31 @@ namespace illyria::run {
 
 bool start() {
     ::app = new App();
-    ::app->gestures = std::make_unique<Gestures>(::app->camera, [](float x, float y) {
-        if (::app->camp.on && townTap(x, y)) return;
-        ::app->battle->tap(::app->camera, x, y, ::app->pixelRatio, ::app->shift);
-    });
+    ::app->gestures = std::make_unique<Gestures>(::app->camera, [](float x, float y) { clickAt(x, y); });
     // A right click on the battlefield: an order, never a selection.
     ::app->gestures->setSecondaryTap([](float x, float y) { ::app->battle->orderTap(::app->camera, x, y, ::app->pixelRatio); });
     // A press held on the battlefield: a selection box, or a move's facing line.
     ::app->gestures->setHold(
-        [](float x, float y, bool box) { return ::app->battle->pressBegin(::app->camera, x, y, ::app->pixelRatio, box); },
+        [](float x, float y, bool box) {
+            // A mouse's right button held: a facing line, and only with men to order.
+            if (::app->mouse && !box && ::app->battle->selectionSize() == 0) return false;
+            ::app->pressX = x, ::app->pressY = y;
+            ::app->boxPress = box;
+            return ::app->battle->pressBegin(::app->camera, x, y, ::app->pixelRatio, box);
+        },
         [](float x, float y) { ::app->battle->pressMove(::app->camera, x, y); },
-        [](float x, float y, bool cancelled) { ::app->battle->pressEnd(::app->camera, x, y, cancelled, ::app->shift); });
+        [](float x, float y, bool cancelled) {
+            // A mouse's click is a press that never became a box: the town's, or a selection's.
+            const bool click = ::app->mouse && ::app->boxPress && !cancelled &&
+                               std::abs(x - ::app->pressX) < 12.0f * ::app->pixelRatio && std::abs(y - ::app->pressY) < 12.0f * ::app->pixelRatio;
+            ::app->boxPress = false;
+            if (click) {
+                ::app->battle->pressEnd(::app->camera, x, y, true, ::app->shift);
+                clickAt(::app->pressX, ::app->pressY);
+                return;
+            }
+            ::app->battle->pressEnd(::app->camera, x, y, cancelled, ::app->shift);
+        });
     newBattle();
     resizeCanvas();
     if (!::app->renderer.init(*::app->battle)) return false;

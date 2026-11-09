@@ -272,6 +272,13 @@ public:
     // the selection, but never a change of who is selected; on one of ours
     // they march to where he stands. Nothing selected: nothing happens.
     void orderTap(const Camera& camera, float x, float y, float pixelScale);
+    // A mouse's left click (game/src/battle_command.cpp): selection only. One of
+    // ours is picked as a tap picks him; anything else is looked at, and the
+    // ground (shift not held) lets everyone go. Orders are the right click's.
+    // With an order mode set (Ctrl, Alt, Z, V, the attack button) it is the tap.
+    void selectTap(const Camera& camera, float x, float y, float pixelScale, bool additive = false);
+    // The mouse scheme: a box that ends where it began is a selectTap, not a tap.
+    void setMouseScheme(bool on) { mouseScheme_ = on; }
     void selectSquad(int index);
     void select(std::vector<sim::EntityId> units);
     void clearSelection();
@@ -760,6 +767,7 @@ private:
     uint32_t marches_ = 0;
     std::array<Group, kGroupSlots> groups_;
     Drag drag_;
+    bool mouseScheme_ = false;
     OrderMode orderMode_ = OrderMode::Normal;
     bool forceKey_ = false, marchKey_ = false;
     std::vector<uint32_t> orderTick_;  // by EntityId - 1: when the player last ordered him

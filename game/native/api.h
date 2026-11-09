@@ -28,6 +28,7 @@ void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
 #endif
 void illyria_finish_detail();
 void illyria_set_shift(int down);
+void illyria_set_mouse(int mouse);
 void illyria_set_keys(int force, int march);
 void illyria_set_order_mode(int mode);
 int illyria_hover(float x, float y);

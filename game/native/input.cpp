@@ -36,6 +36,64 @@ int digitOf(SDL_Scancode c) {
 
 bool keypad(SDL_Scancode c) { return c >= SDL_SCANCODE_KP_1 && c <= SDL_SCANCODE_KP_0; }
 
+// The desktop cursor says what a click would do, as the page's kCursors do (Battle::Intent order):
+// None, Select, Attack, AttackObject, AttackGround, Cannot, Move, ForceMarch, GateSwing.
+struct Shape {
+    enum Kind { Line, Ring } kind;
+    float a, b, c, d;  // Line: x0 y0 x1 y1. Ring: cx cy radius (d unused)
+};
+
+// Draws shapes each as a black stroke 4 wide under a colour stroke 2 wide, into a 32 x 32 cursor.
+SDL_Cursor* drawnCursor(const std::vector<Shape>& shapes, Uint8 r, Uint8 g, Uint8 b) {
+    SDL_Surface* s = SDL_CreateSurface(32, 32, SDL_PIXELFORMAT_RGBA32);
+    if (s == nullptr) return nullptr;
+    auto* px = static_cast<Uint8*>(s->pixels);
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            float best = 1e9f;
+            for (const Shape& sh : shapes) {
+                float d;
+                if (sh.kind == Shape::Ring) {
+                    d = std::abs(std::hypot(x + 0.5f - sh.a, y + 0.5f - sh.b) - sh.c);
+                } else {
+                    const float vx = sh.c - sh.a, vy = sh.d - sh.b;
+                    const float len2 = vx * vx + vy * vy;
+                    const float t = len2 > 0 ? std::clamp(((x + 0.5f - sh.a) * vx + (y + 0.5f - sh.b) * vy) / len2, 0.0f, 1.0f) : 0.0f;
+                    d = std::hypot(x + 0.5f - (sh.a + t * vx), y + 0.5f - (sh.b + t * vy));
+                }
+                best = std::min(best, d);
+            }
+            Uint8* p = px + y * s->pitch + x * 4;
+            if (best <= 1.0f) p[0] = r, p[1] = g, p[2] = b, p[3] = 255;
+            else if (best <= 2.0f) p[0] = p[1] = p[2] = 0, p[3] = 255;
+            else p[0] = p[1] = p[2] = p[3] = 0;
+        }
+    SDL_Cursor* c = SDL_CreateColorCursor(s, 16, 16);
+    SDL_DestroySurface(s);
+    return c;
+}
+
+SDL_Cursor* cursorFor(int intent) {
+    static SDL_Cursor* cache[9] = {};
+    static bool made[9] = {};
+    if (intent < 0 || intent > 8) intent = 0;
+    if (!made[intent]) {
+        made[intent] = true;
+        using S = Shape;
+        switch (intent) {
+            case 1: cache[1] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER); break;
+            case 2: cache[2] = drawnCursor({{S::Line, 6, 6, 22, 22}, {S::Line, 18, 26, 26, 18}, {S::Line, 24, 24, 28, 28}}, 255, 74, 58); break;
+            case 3: cache[3] = drawnCursor({{S::Ring, 16, 16, 10, 0}, {S::Ring, 16, 16, 4, 0}}, 255, 74, 58); break;
+            case 4: cache[4] = drawnCursor({{S::Line, 16, 3, 16, 12}, {S::Line, 16, 20, 16, 29}, {S::Line, 3, 16, 12, 16}, {S::Line, 20, 16, 29, 16}, {S::Line, 16, 16, 16, 16}}, 255, 74, 58); break;
+            case 5: cache[5] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_NOT_ALLOWED); break;
+            case 7: cache[7] = drawnCursor({{S::Line, 8, 6, 18, 16}, {S::Line, 18, 16, 8, 26}, {S::Line, 16, 6, 26, 16}, {S::Line, 26, 16, 16, 26}}, 255, 211, 110); break;
+            case 8: cache[8] = drawnCursor({{S::Line, 6, 26, 6, 8}, {S::Line, 6, 8, 16, 4}, {S::Line, 16, 4, 26, 8}, {S::Line, 26, 8, 26, 26}, {S::Line, 16, 4, 16, 26}}, 255, 211, 110); break;
+            default: break;  // None and Move: the arrow
+        }
+    }
+    return cache[intent] != nullptr ? cache[intent] : SDL_GetDefaultCursor();
+}
+
 }  // namespace
 
 // Ctrl (or Cmd) with a click: attack whatever is under it; Alt: force march.
@@ -43,6 +101,7 @@ void Input::modifiers(SDL_Keymod mod) { illyria_set_keys((mod & (SDL_KMOD_CTRL |
 
 void Input::pointer(int type, const SDL_Event& e, float x, float y, int button) {
     (void)e;
+    illyria_set_mouse(1);  // left selects, right orders, middle pans (Gestures)
     illyria_pointer(type, 1, x, y, button, static_cast<double>(SDL_GetTicks()));
 }
 
@@ -220,7 +279,8 @@ void Input::handle(const SDL_Event& e) {
         case SDL_EVENT_MOUSE_MOTION: {
             if (captured_ || hud_.menuOpen()) break;
             pointer(1, e, e.motion.x, e.motion.y, 0);
-            if (!e.motion.state) illyria_hover(e.motion.x, e.motion.y);
+            if (!e.motion.state) SDL_SetCursor(cursorFor(illyria_hover(e.motion.x, e.motion.y)));
+            else if (e.motion.state & SDL_BUTTON_RMASK) SDL_SetCursor(SDL_GetDefaultCursor());
             break;
         }
         case SDL_EVENT_MOUSE_WHEEL: {

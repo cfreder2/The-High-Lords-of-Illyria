@@ -10,9 +10,15 @@ namespace illyria::game {
 enum class PointerEvent { Down, Move, Up, Cancel };
 
 // Turns raw input (touch, mouse, pen, trackpad, keys) into camera motion and taps.
-//   one finger / left mouse drag   pan
+//   one finger drag                pan
 //   two fingers                    pinch to zoom, drag to pan, twist to rotate
-//   right or middle mouse drag     rotate
+// A mouse (setMouse) is the desktop's scheme, as in other real-time strategy games:
+//   left click                     tap (select; orders are the right button's)
+//   left drag                      a selection box at once (shift adds)
+//   right click                    secondary tap (an order, never a selection)
+//   right press held still, then drag   a facing line for the order
+//   right drag                     rotate
+//   middle drag                    pan
 //   wheel                          zoom
 //   trackpad: two-finger swipe     pan (scroll); pinch and twist: zoom and rotate (pinch)
 //   short press without moving     tap (select / command)
@@ -44,6 +50,8 @@ public:
     void setPixelScale(float s) { pixelScale_ = s; }
     // Shift held (desktop): a press with the primary button starts a hold at once.
     void setShift(bool down) { shift_ = down; }
+    // The pointers that go down from now on are a mouse's (desktop scheme above), or not (touch, pen).
+    void setMouse(bool mouse) { mouse_ = mouse; }
 
     // `button`: 0 primary (touch or left mouse), 1 middle, 2 right. `timeMs` is monotonic.
     void pointer(PointerEvent type, int id, float x, float y, int button, double timeMs);
@@ -76,6 +84,7 @@ private:
         float startX, startY;
         int button;
         double startMs;
+        bool mouse;
     };
 
     Pointer* find(int id);
@@ -91,6 +100,7 @@ private:
     HoldMoveFn onHoldMove_;
     HoldEndFn onHoldEnd_;
     bool shift_ = false;
+    bool mouse_ = false;
     bool holding_ = false;
     bool holdTried_ = false;  // this press was offered as a hold already
     float pixelScale_ = 1.0f;

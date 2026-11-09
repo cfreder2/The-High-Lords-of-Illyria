@@ -12,12 +12,12 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 
 | Order | Phone | Desktop |
 |---|---|---|
-| March there as they stand (with initiative) | tap the ground | click the ground |
-| March there and face a way | hold where they should go, drag the way to face | the same |
-| Attack a soldier | tap the enemy | click the enemy (a red sword cursor) |
-| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[Z]] then click |
+| March there as they stand (with initiative) | tap the ground | right-click the ground |
+| March there and face a way | hold where they should go, drag the way to face | hold the right button where they should go, drag the way to face |
+| Attack a soldier | tap the enemy | right-click the enemy (a red sword cursor) |
+| Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[Z]] then click (or right-click) |
 | Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[Z]], then click (a crosshair); or [[Ctrl]] + click the ground |
-| Batter an enemy gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
+| Batter an enemy gate | tap the gate (or **⚔ Attack**, then the gate) | right-click it (a target cursor) |
 | Open or shut a gate of yours | tap it (men selected or not), or **Open gate** / **Close gate** on its card | click it (a gate cursor), or [[O]] |
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
@@ -31,7 +31,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Cancel a mode, let go | tap the mode's button again | [[Esc]] |
 | Pause | **Pause** | [[Space]] |
 
-The **⚔ Attack** button sits in the action row. One tap lights it red, and a line above it says what the next tap does: *Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground*. Held, it turns gold for a force march. Either lasts one order. On a desktop the cursor always shows what a click would do: a hand over your own men, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair over the ground in attack mode, a double chevron for a force march, and "not allowed" when nobody selected can strike what is under it.
+The **⚔ Attack** button sits in the action row. One tap lights it red, and a line above it says what the next tap does: *Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground*. Held, it turns gold for a force march. Either lasts one order. On a desktop the left button only selects: click one of your men to pick him (again, for all his kind in view), drag a box, shift-click to add or drop one, click the ground to let everyone go. The right button gives the orders (a click, or held and dragged for a facing line), the right button dragged turns the view, and the middle button dragged pans it. The cursor shows what a right click would do: a hand over your own men, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair over the ground in attack mode, a double chevron for a force march, and "not allowed" when nobody selected can strike what is under it.
 
 ## Marching and facing {#move}
 

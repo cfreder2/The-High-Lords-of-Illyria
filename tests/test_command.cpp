@@ -740,3 +740,54 @@ TEST(trackpad_swipes_pan_pinches_zoom_and_keys_move_and_turn_the_view) {
     g.pointer(PointerEvent::Up, 1, 340, 300, 2, 10040);
     CHECK(!g.turning());
 }
+
+// A mouse's left button only selects; its right button orders (Gestures::setMouse, Battle::selectTap).
+TEST(a_mouse_selects_with_the_left_button_and_orders_with_the_right) {
+    Battle b(42);
+    b.setMouseScheme(true);
+    const int watch = squadNamed(b, "The Grey Watch");
+    b.selectSquad(watch);
+    const std::vector<illyria::sim::EntityId> chosen = b.selectedAlive();
+    const V3 home = b.squadCentre(b.squads()[static_cast<size_t>(watch)]);
+    Camera cam = cameraOn(b, home, 120);
+    Gestures g(cam, [&](float x, float y) { b.selectTap(cam, x, y, 1.0f); });
+    g.setSecondaryTap([&](float x, float y) { b.orderTap(cam, x, y, 1.0f); });
+    g.setHold(
+        [&](float x, float y, bool box) { return b.pressBegin(cam, x, y, 1.0f, box); },
+        [&](float x, float y) { b.pressMove(cam, x, y); },
+        [&](float x, float y, bool cancelled) { b.pressEnd(cam, x, y, cancelled, false); });
+    g.setMouse(true);
+    double t = 0;
+    V3 spot = home + V3{-30, 0, 0};
+    spot.z = b.heightAt(spot.x, spot.y);
+    float px, py;
+    CHECK(cam.project(spot, px, py));
+    const auto before = b.world().units()[chosen.front() - 1].moveTarget;
+    const bool hadTarget = b.world().units()[chosen.front() - 1].hasMoveTarget;
+    // A left click on empty ground: no order, and everyone is let go.
+    g.pointer(PointerEvent::Down, 1, px, py, 0, t += 1000);
+    g.pointer(PointerEvent::Up, 1, px, py, 0, t += 80);
+    b.advance(0.05);
+    CHECK(b.selectedAlive().empty());
+    CHECK(b.world().units()[chosen.front() - 1].hasMoveTarget == hadTarget);
+    CHECK(b.world().units()[chosen.front() - 1].moveTarget.x == before.x);
+    // A left drag is a box at once, with no wait: it picks them up again.
+    float x0, y0, x1, y1;
+    CHECK(cam.project(home + V3{-25, -25, 0}, x0, y0));
+    CHECK(cam.project(home + V3{25, 25, 0}, x1, y1));
+    g.pointer(PointerEvent::Down, 1, std::min(x0, x1), std::min(y0, y1), 0, t += 1000);
+    CHECK(g.holding());
+    g.pointer(PointerEvent::Move, 1, std::max(x0, x1), std::max(y0, y1), 0, t += 30);
+    g.pointer(PointerEvent::Up, 1, std::max(x0, x1), std::max(y0, y1), 0, t += 30);
+    CHECK(!b.selectedAlive().empty());
+    // A right click orders; a right drag turns the view and never orders.
+    const float yaw = cam.yaw();
+    g.pointer(PointerEvent::Down, 1, px, py, 2, t += 1000);
+    g.pointer(PointerEvent::Move, 1, px + 60, py, 2, t += 30);
+    g.pointer(PointerEvent::Up, 1, px + 60, py, 2, t += 30);
+    CHECK(std::abs(cam.yaw() - yaw) > 0.1f);
+    g.pointer(PointerEvent::Down, 1, px, py, 2, t += 1000);
+    g.pointer(PointerEvent::Up, 1, px, py, 2, t += 80);
+    b.advance(0.05);
+    CHECK(b.world().units()[b.selectedAlive().front() - 1].hasMoveTarget);
+}

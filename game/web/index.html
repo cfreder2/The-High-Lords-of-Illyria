@@ -535,6 +535,7 @@
       selectOnScreen: Module.cwrap("illyria_select_on_screen", null, []),
       focusSelection: Module.cwrap("illyria_focus_selection", null, []),
       setShift: Module.cwrap("illyria_set_shift", null, ["number"]),
+      setMouse: Module.cwrap("illyria_set_mouse", null, ["number"]),
       setKeys: Module.cwrap("illyria_set_keys", null, ["number", "number"]),
       setMode: Module.cwrap("illyria_set_order_mode", null, ["number"]),
       hover: Module.cwrap("illyria_hover", "number", ["number", "number"]),
@@ -703,6 +704,7 @@
   function send(type, e) {
     if (!api) return;
     const r = canvas.getBoundingClientRect();
+    api.setMouse(e.pointerType === "mouse" ? 1 : 0);  // a mouse: left selects, right orders, middle pans
     api.pointer(type, e.pointerId, e.clientX - r.left, e.clientY - r.top, e.button < 0 ? 0 : e.button, e.timeStamp);
   }
   // Ctrl (Cmd) and Alt with a click: attack whatever is under it, or force march.
