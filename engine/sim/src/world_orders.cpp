@@ -231,6 +231,31 @@ void World::applyOrder(Unit& u, const Command& cmd) {
     }
 }
 
+World::Stance World::stanceOf(const Unit& u) {
+    if (!u.alive() || u.routed) return Stance::Idle;
+    if (u.targetUnit != kNoEntity) return Stance::Hunt;
+    if (!u.hasMoveTarget) return Stance::Idle;
+    return u.forceMarch ? Stance::Move : Stance::Patrol;
+}
+
+void World::routeOf(const Unit& u, std::vector<Vec3>& out) const {
+    out.clear();
+    switch (stanceOf(u)) {
+        case Stance::Idle: return;
+        case Stance::Hunt: {
+            const Unit* q = findUnit(u.targetUnit);
+            if (q != nullptr && q->alive()) out.push_back(q->pos);
+            return;
+        }
+        case Stance::Patrol:
+        case Stance::Move:
+            for (size_t i = std::min<size_t>(u.pathIndex, u.path.size()); i < u.path.size(); ++i) out.push_back(u.path[i]);
+            // (The path ends where he can get to; a shut gate may stop it short of the place he was sent.)
+            if (out.empty()) out.push_back(u.moveTarget);
+            return;
+    }
+}
+
 Fixed World::offRoute(const Unit& u, const Vec3& p) const {
     const Vec3 to = u.path.empty() ? u.moveTarget : u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
     return toSegment(p, u.routeFrom, to);

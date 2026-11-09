@@ -550,5 +550,7 @@ private:
 
 // Order markers (renderer_orders.cpp): destinations, targets, attack lines.
 void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals);
+// Paths of the soldiers going somewhere (Battle::pathLines); how many decals.
+size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, std::vector<float>& decals);
 
 }  // namespace illyria::game

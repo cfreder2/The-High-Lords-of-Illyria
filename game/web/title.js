@@ -446,6 +446,7 @@
     row("hold", "Hold where they should go, then drag", "A gold ghost of them appears there; drag the way they should face, the whole of it turning, and let go.") +
     row("attack", "⚔ Attack, then tap", "Attack whatever you tap next: any soldier (even one of ours), a gate, a wall, house or tree (only engines, grenadiers and wizards can hurt those), or the ground.") +
     row("march", "Hold ⚔ Attack: » March", "A force march: tap where to go and they ignore the enemy on the way, to pull out of a fight or run past one.") +
+    row("tap", "The lines on the ground", "Selected men show the way they will walk, one line for the men who go together. Dashes with chevrons and a ring: they fight what they meet. A solid line with arrowheads and a cross-hair: a hunt, after one foe and deaf to the rest. Dots and a filled spot: a force march.") +
     row("formation", "Formation", "The picker: Line, Double line, Box (hollow, facing out), Wedge, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
     row("scatter", "Scatter", "Everyone selected runs outward, the moment a bomb or fireball is in the air.") +
     row("attack", "Raid", "Shown with hyena-folk selected: they are let loose at once to raid from where they stand, taking what lies about and throwing it at the soft and the stragglers they can see. Any other order ends it.") +

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 #include "illyria/game/battle.h"
 
@@ -475,6 +476,75 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
         }
     }
     return out;
+}
+
+std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
+    using Stance = sim::World::Stance;
+    constexpr float kMergeMetres = 8.0f;  // routes ending this close (and a fiftieth of their length more) are one line
+    constexpr float kFaint = 0.3f;
+    const auto& units = world_->units();
+    std::vector<RouteIn> routes;
+    std::vector<sim::Vec3> waypoints;
+    // A stack marching on the conquest's grid is one line from the middle of it through its cells (the men's own routes
+    // are only the leg to the next cell); its men need no line of their own.
+    std::map<uint32_t, float> stacks;  // the stacks to draw, by id, and how strongly
+    const auto marching = [&](uint32_t id) -> const sim::Campaign::Stack* {
+        const sim::Campaign::Stack* s = conquest_ ? conquest_->findStack(id) : nullptr;
+        return s != nullptr && !s->path.empty() && !s->commanded && s->owner == local_ ? s : nullptr;
+    };
+    for (size_t i = 0; i < units.size(); ++i) {
+        const sim::Unit& u = units[i];
+        if (u.owner != local_ || !(u.hasMoveTarget || u.targetUnit != sim::kNoEntity)) continue;
+        const Stance stance = sim::World::stanceOf(u);
+        if (stance == Stance::Idle) continue;
+        const float opacity = markOpacity(i);
+        if (opacity <= 0.0f) continue;
+        if (stance != Stance::Hunt && i < squadOfUnit_.size() && squadOfUnit_[i] >= 0)
+            if (const uint32_t stack = squads_[static_cast<size_t>(squadOfUnit_[i])].stack; marching(stack) != nullptr) {
+                float& o = stacks[stack];
+                o = std::max(o, opacity);
+                continue;
+            }
+        RouteIn r;
+        r.unit = u.id;
+        r.stance = stance;
+        r.opacity = opacity;
+        if (stance == Stance::Hunt) {
+            // Only what the player can see of the quarry: a route to a foe in the fog would tell where he is.
+            const sim::Unit& q = units[u.targetUnit - 1];
+            if (!q.alive() || (q.owner != local_ && !sees(q.owner, static_cast<float>(q.pos.x.toDouble()), static_cast<float>(q.pos.y.toDouble())))) continue;
+            r.quarry = q.id;
+            const V3 at = unitPosition(u.targetUnit - 1);
+            r.points = {unitPosition(i), {at.x, at.y, floorAt(at)}};
+        } else {
+            world_->routeOf(u, waypoints);
+            r.points.push_back(unitPosition(i));
+            for (const sim::Vec3& w : waypoints) {
+                const V3 p = toV3(w);
+                r.points.push_back({p.x, p.y, floorAt(p)});
+            }
+            // As good as there: no line.
+            if (r.points.size() < 2 || (r.points.back() - r.points.front()).length() < kArrivedMetres) continue;
+        }
+        routes.push_back(std::move(r));
+    }
+    std::vector<RouteLine> lines = mergeRoutes(routes, perMan ? -1.0f : kMergeMetres);
+    if (conquest_ && faintMarches)
+        for (const sim::Campaign::Stack& s : conquest_->stacks())
+            if (marching(s.id) != nullptr) stacks.try_emplace(s.id, kFaint);
+    const V3 o = origin();
+    for (const auto& [id, opacity] : stacks) {
+        const sim::Campaign::Stack& s = *conquest_->findStack(id);
+        RouteLine line;
+        line.stance = s.forceUntil > conquest_->tick() ? Stance::Move : Stance::Patrol;
+        line.opacity = opacity;
+        const auto add = [&](float x, float y) { line.points.push_back({x, y, floorAt({x, y, 0})}); };
+        add(static_cast<float>(s.px) * 0.001f - o.x, static_cast<float>(s.py) * 0.001f - o.y);
+        for (const auto& [cx, cy] : s.path)
+            add(static_cast<float>(sim::Campaign::centre(cx)) - o.x, static_cast<float>(sim::Campaign::centre(cy)) - o.y);
+        lines.push_back(std::move(line));
+    }
+    return lines;
 }
 
 }  // namespace illyria::game

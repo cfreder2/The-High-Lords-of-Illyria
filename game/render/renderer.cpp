@@ -108,7 +108,7 @@ bool link(const char* vs, const char* fs, GLuint& out) {
 constexpr int kDecalFloats = 11;  // centre 3, params 4, extra 4
 constexpr int kArrowFloats = 8;   // pos 3, dir 3, info 2
 
-constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5, kDecalDot = 7, kDecalArrow = 8;
+constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5, kDecalDot = 7, kDecalArrow = 8;  // (9 a stretch of path, 10 a cross-hair: renderer_orders.cpp)
 constexpr float kPlanBomb = 9, kPlanOrb = 10;
 
 // Instance record for a mesh: position, quaternion, scale, tint.
@@ -2391,6 +2391,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Where the player's soldiers are going, and what they are after.
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
+    pushPathLines(battle, camera, static_cast<float>(timeSeconds), decals);
 
     // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.
     for (size_t slot = 0; slot < world.remains().size(); ++slot) {

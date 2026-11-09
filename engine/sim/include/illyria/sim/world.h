@@ -577,6 +577,15 @@ public:
     // Remain slots that changed during the last step.
     const std::vector<uint32_t>& changedRemains() const { return changedRemains_; }
     const Unit* findUnit(EntityId id) const;
+    // How a soldier is going where he is going, for the paths drawn on the map (read-only: nothing here is in the
+    // checksum or changes the step). Idle: nowhere. Hunt: after one quarry, deaf to the rest (an AttackUnit order).
+    // Move: a force march, deaf to the enemy on the way. Patrol: marching with initiative, fighting whoever strikes
+    // him or crosses his path (the ordinary Move).
+    enum class Stance : uint8_t { Idle, Patrol, Move, Hunt };
+    static Stance stanceOf(const Unit& u);
+    // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
+    // quarry's place now). Empty for Idle. Does not include where he stands.
+    void routeOf(const Unit& u, std::vector<Vec3>& out) const;
     // Castle gates, in the order of the region's gates.
     const std::vector<GateState>& gates() const { return gates_; }
     // Battle setup: whose town each gate belongs to, and a gate already battered.
