@@ -378,6 +378,8 @@ bool Renderer::buildPrograms() {
         s.p.patch = glGetUniformLocation(s.p.id, "uPatch");
         s.p.patchSink = glGetUniformLocation(s.p.id, "uPatchSink");
         s.p.masonry = glGetUniformLocation(s.p.id, "uMasonry");
+        s.p.house = glGetUniformLocation(s.p.id, "uHouse");
+        s.p.rock = glGetUniformLocation(s.p.id, "uRock");
         s.p.camFwd = glGetUniformLocation(s.p.id, "uCamFwd");
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
         s.p.proj = glGetUniformLocation(s.p.id, "uProj");
@@ -561,6 +563,8 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         if (b->count == 0) continue;
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
+        glUniform1f(mesh_.house, b->house ? 1.0f : 0.0f);
+        glUniform1f(mesh_.rock, b->rock ? 1.0f : 0.0f);
         glUniform1f(mesh_.lod, b->lod);
         glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
@@ -1471,6 +1475,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
     makeMeshBatch(cityHouses_, meshes::house(), 0);
+    houses_.house = cityHouses_.house = true;
     makeMeshBatch(ruins_, meshes::ruin(), 0);
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
@@ -1496,6 +1501,8 @@ bool Renderer::init(Battle& battle) {
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.lod = 2;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 2;
+    for (auto* list : {&rocks_, &detailRocks_})
+        for (MeshBatch& b : *list) b.rock = true;
     for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) b.part = Part::Trees;
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
