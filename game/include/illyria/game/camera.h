@@ -39,7 +39,10 @@ public:
         clampTarget();
     }
     float maxDistance() const { return maxDistance_; }
-    void setHeightFn(HeightFn fn) { heightFn_ = std::move(fn); }
+    void setHeightFn(HeightFn fn) {
+        heightFn_ = std::move(fn);
+        focusZ_ = groundAt(tx_, ty_);
+    }
     void setViewport(float width, float height) {
         width_ = width;
         height_ = height;
@@ -59,7 +62,10 @@ public:
     void pan(float right, float forward);
     void rotate(float radians) { yaw_ += radians; }
     V3 eye() const;
-    V3 target() const { return {tx_, ty_, groundAt(tx_, ty_)}; }
+    // The point the view is centred on. Close to the ground its height is the ground's; from high above it follows
+    // the ground slowly (a low-pass), so crossing mountains does not bob the view. The eye alone is lifted at once
+    // where it would meet the ground (eye()).
+    V3 target() const { return {tx_, ty_, focusZ_}; }
     float distance() const { return distance_; }
     float yaw() const { return yaw_; }
     float pitch() const;
@@ -99,6 +105,8 @@ private:
     float maxDistance_ = kMaxDistance;
     float cx_ = 0, cy_ = 0, radius_ = 0;
     float yaw_ = 0.0f;
+    float focusZ_ = 0;  // the height the view is centred on (target().z)
+    void followGround(float dtSeconds);
 };
 
 }  // namespace illyria::game

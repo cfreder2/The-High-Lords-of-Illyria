@@ -10,6 +10,9 @@ constexpr float kPitchNear = 0.33f;  // ~19 degrees above the horizon at ground 
 constexpr float kPitchNearDistance = 6.0f;  // at and below this the pitch stays at kPitchNear
 constexpr float kZoomSmoothSeconds = 0.12f;  // the glide's time constant
 constexpr float kEyeAboveGround = 0.4f;
+// The view's centre height follows the ground exactly up to kFocusNear metres of distance, and from kFocusFar on
+// with a time constant of kFocusSlowSeconds (in between, in proportion).
+constexpr float kFocusNear = 80.0f, kFocusFar = 400.0f, kFocusSlowSeconds = 0.5f;
 constexpr float kPitchFar = 1.31f;   // ~75 degrees, near top-down at god view
 }  // namespace
 
@@ -21,6 +24,14 @@ void Camera::lookAt(float x, float y, float distance) {
     speedLog_ = 0;
     anchored_ = false;
     clampTarget();
+    focusZ_ = groundAt(tx_, ty_);  // a jump to a place: centred on its ground at once
+}
+
+void Camera::followGround(float dtSeconds) {
+    const float ground = groundAt(tx_, ty_);
+    const float t = std::clamp((distance_ - kFocusNear) / (kFocusFar - kFocusNear), 0.0f, 1.0f);
+    const float tau = t * kFocusSlowSeconds;
+    focusZ_ = tau < 1e-3f ? ground : focusZ_ + (ground - focusZ_) * (1.0f - std::exp(-dtSeconds / tau));
 }
 
 float Camera::pitch() const {
@@ -136,6 +147,7 @@ void Camera::zoomAt(float factor, float px, float py) {
 }
 
 void Camera::advance(float dtSeconds) {
+    followGround(dtSeconds);
     const float x = std::log(distance_);
     if (std::abs(goalLog_ - x) < 1e-4f && std::abs(speedLog_) < 1e-4f) {
         distance_ = std::exp(goalLog_);
@@ -174,6 +186,8 @@ void Camera::clampTarget() {
             ty_ = cy_ + dy * radius_ / d;
         }
     }
+    // Close in, the view is centred on the ground exactly, whatever moved it (a pan, a held drag).
+    if (distance_ <= kFocusNear) focusZ_ = groundAt(tx_, ty_);
 }
 
 }  // namespace illyria::game

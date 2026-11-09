@@ -252,6 +252,7 @@ in at a broken gate, giants through the gap). Two causes, neither in the new lan
    wall by up to 3 m. 7 of 240 remain (a ramp so close to a wall and a tower that the grid has no cell between); no castle is left
    without a way (`a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle`). `town()` in test_castle is the most open town again
    (the lakes branch took the fourth), and every castle test but the giants' passes on each of the twelve most open towns.
-2. A gate is 31/50 of the wall's height, and a town's walls are 7 to 10 m: a quarter of the towns have a gate 4.4 m high, which a
-   giant (5.5 m) cannot pass under. That is a design fact, not a navigation fault; the giants' test needs a town whose gate stands
-   taller than a giant, and `town()` says so.
+2. A gate used to be 31/50 of the wall's height, and walls were 7 to 10 m: a quarter of the towns had a gate 4.4 m high, which a
+   giant (5.5 m) could not pass under. Fixed by design: the stone over the doors starts at 31/50 of the wall or 5.8 m, whichever
+   is higher (`Region`, where the gates are made), and neutral walls are 8 to 11 m (they were 7 to 10), so the lintel always keeps
+   0.7 m under the wall-walk. Every gate now passes a giant, and `town()` no longer has to pick one.

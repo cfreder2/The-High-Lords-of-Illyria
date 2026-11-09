@@ -192,6 +192,39 @@ TEST(camera_zoom_holds_the_point_under_the_cursor) {
     }
 }
 
+// From high above, crossing mountains does not bob the view: the eye is lifted only where it would meet the ground.
+TEST(a_camera_high_above_mountains_does_not_shake_and_one_near_the_ground_still_follows_it) {
+    const auto peaks = [](float x, float y) { return 250.0f + 150.0f * std::sin(x * 0.006f) * std::cos(y * 0.008f) + 6.0f * std::sin(x * 0.2f + y * 0.15f); };
+    Camera c = flatCamera();
+    c.setHeightFn(peaks);
+    c.lookAt(300, 300, 1500);
+    settle(c);
+    float prev = c.eye().z, prevStep = 0, worstJerk = 0, lowest = 1e9f;
+    for (int i = 0; i < 240; ++i) {  // 4 s at 60 fps, panning over the peaks at the key pace
+        c.pan(0.0f, 1500.0f * 0.9f / 60.0f);
+        c.advance(1.0f / 60.0f);
+        const V3 e = c.eye();
+        const float step = e.z - prev;
+        if (i > 0) worstJerk = std::max(worstJerk, std::abs(step - prevStep));  // how abruptly its rise changes
+        prevStep = step;
+        prev = e.z;
+        lowest = std::min(lowest, e.z - peaks(e.x, e.y));
+        CHECK(e.z >= peaks(e.x, e.y) + 0.3f);
+    }
+    // The ground has ridges and 6 m bumps; the eye's rise does not jerk with them.
+    std::printf("  worst eye jerk %.3f m a frame a frame\n", worstJerk);
+    CHECK(worstJerk < 2.0f);  // (15 m without the slow follow, 0.8 with it)
+    CHECK(lowest > 0.3f);
+    // Close in it is the ground's own height, exactly.
+    c.lookAt(300, 300, 40);
+    settle(c);
+    for (int i = 0; i < 60; ++i) {
+        c.pan(0.3f, 0.3f);
+        c.advance(1.0f / 60.0f);
+        CHECK_NEAR(c.target().z, peaks(c.target().x, c.target().y), 0.01);
+    }
+}
+
 TEST(camera_never_goes_below_the_terrain_at_the_closest_zoom) {
     Camera c = flatCamera();
     const auto hills = [](float x, float y) { return 3.0f + 2.0f * std::sin(x * 0.4f) + 2.0f * std::cos(y * 0.5f); };

@@ -542,7 +542,7 @@ void Continent::planCastles() {
         }
         const auto world = [&](const Vec3& l) { return Vec3{c.x + side.x * l.x + toward.x * l.y, c.y + side.y * l.x + toward.y * l.y, c.z}; };
         // Thick enough that two men pass on the walk behind the parapet.
-        const Fixed wallH = city.capital ? m(11) : m(7) + roll(3) * 3, thick = city.capital ? r(9, 2) : m(4);
+        const Fixed wallH = city.capital ? m(11) : m(8) + roll(3) * 3, thick = city.capital ? r(9, 2) : m(4);
         Castle::Ring outer;
         outer.height = wallH;
         outer.thick = thick;

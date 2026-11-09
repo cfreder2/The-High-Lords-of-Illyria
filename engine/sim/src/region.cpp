@@ -901,7 +901,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                     g.a = mid - along * (ring.gateWidth / 2) + face;
                     g.b = mid + along * (ring.gateWidth / 2) + face;
                     g.a.z = g.b.z = city.pos.z;
-                    g.top = city.pos.z + ring.height * 31 / 50;  // up to the lintel
+                    // Up to the lintel: 31/50 of the wall, and never lower than a giant (5.5 m) walks under with a
+                    // hand's clearance (walls are 8 m and up, so the stone over the doors keeps 0.7 m under the walk).
+                    g.top = city.pos.z + std::max(ring.height * 31 / 50, Fixed::fromRatio(58, 10));
                     g.maxHp = static_cast<int32_t>((ring.gateWidth * kGateHpPerMetre).floorToInt());
                     g.ring = static_cast<int32_t>(rg.ramparts_.size());
                     rg.gates_.push_back(g);
