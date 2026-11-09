@@ -225,6 +225,31 @@ TEST(a_camera_high_above_mountains_does_not_shake_and_one_near_the_ground_still_
     }
 }
 
+// A shore: the bed under water is metres below the land beside it. Crossing it near the ground must not bump the view.
+TEST(a_camera_crossing_a_shore_near_the_ground_eases_over_the_step_and_does_not_bump) {
+    // Land at 3 m for x > 520, the bed at -12 m for x < 518, a steep bank between.
+    const auto shore = [](float x, float) { return x > 520.0f ? 3.0f : x < 518.0f ? -12.0f : -12.0f + (x - 518.0f) * 7.5f; };
+    Camera c = flatCamera();
+    c.setHeightFn(shore);
+    c.lookAt(540, 300, 60);
+    settle(c);
+    float prev = c.eye().z, worstStep = 0, lowest = 1e9f, highest = -1e9f;
+    for (int i = 0; i < 240; ++i) {  // 4 s: from the land, over the bank, out over the bed and back
+        const float dir = i < 120 ? -1.0f : 1.0f;
+        c.pan(0.0f, dir * 0.6f);  // 36 m/s across the bank (the view looks along +x)
+        c.advance(1.0f / 60.0f);
+        const V3 e = c.eye();
+        worstStep = std::max(worstStep, std::abs(e.z - prev));
+        prev = e.z;
+        lowest = std::min(lowest, c.target().x);
+        highest = std::max(highest, c.target().x);
+        CHECK(e.z >= shore(e.x, e.y) + 0.3f);
+    }
+    CHECK(lowest < 515.0f && highest > 524.0f);  // it did cross the bank
+    std::printf("  worst eye step over the shore %.3f m a frame\n", worstStep);
+    CHECK(worstStep < 1.0f);  // the 15 m step is eased over about a second (it was a 15 m jump in one frame)
+}
+
 TEST(camera_never_goes_below_the_terrain_at_the_closest_zoom) {
     Camera c = flatCamera();
     const auto hills = [](float x, float y) { return 3.0f + 2.0f * std::sin(x * 0.4f) + 2.0f * std::cos(y * 0.5f); };

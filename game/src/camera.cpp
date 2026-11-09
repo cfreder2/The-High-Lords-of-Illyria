@@ -10,9 +10,12 @@ constexpr float kPitchNear = 0.33f;  // ~19 degrees above the horizon at ground 
 constexpr float kPitchNearDistance = 6.0f;  // at and below this the pitch stays at kPitchNear
 constexpr float kZoomSmoothSeconds = 0.12f;  // the glide's time constant
 constexpr float kEyeAboveGround = 0.4f;
-// The view's centre height follows the ground exactly up to kFocusNear metres of distance, and from kFocusFar on
-// with a time constant of kFocusSlowSeconds (in between, in proportion).
-constexpr float kFocusNear = 80.0f, kFocusFar = 400.0f, kFocusSlowSeconds = 0.5f;
+// The view's centre height follows the ground: from kFocusFar metres of distance on with a time constant of
+// kFocusSlowSeconds, close in with kFocusQuickSeconds (in between, in proportion), and exactly where the ground
+// changes by less than kFocusStep (a pan over gentle land must not lag). A step (a shore, a cliff, a bank: the
+// bed under water is metres below the shore) is always eased, so crossing it does not bump the view.
+constexpr float kFocusNear = 80.0f, kFocusFar = 400.0f, kFocusSlowSeconds = 0.5f, kFocusQuickSeconds = 0.3f;
+constexpr float kFocusStep = 0.5f;
 constexpr float kPitchFar = 1.31f;   // ~75 degrees, near top-down at god view
 }  // namespace
 
@@ -30,8 +33,9 @@ void Camera::lookAt(float x, float y, float distance) {
 void Camera::followGround(float dtSeconds) {
     const float ground = groundAt(tx_, ty_);
     const float t = std::clamp((distance_ - kFocusNear) / (kFocusFar - kFocusNear), 0.0f, 1.0f);
-    const float tau = t * kFocusSlowSeconds;
-    focusZ_ = tau < 1e-3f ? ground : focusZ_ + (ground - focusZ_) * (1.0f - std::exp(-dtSeconds / tau));
+    const float tau = kFocusQuickSeconds + t * (kFocusSlowSeconds - kFocusQuickSeconds);
+    if (distance_ <= kFocusNear && std::abs(ground - focusZ_) < kFocusStep) focusZ_ = ground;
+    else focusZ_ += (ground - focusZ_) * (1.0f - std::exp(-dtSeconds / tau));
 }
 
 float Camera::pitch() const {
@@ -187,7 +191,10 @@ void Camera::clampTarget() {
         }
     }
     // Close in, the view is centred on the ground exactly, whatever moved it (a pan, a held drag).
-    if (distance_ <= kFocusNear) focusZ_ = groundAt(tx_, ty_);
+    if (distance_ <= kFocusNear) {
+        const float g = groundAt(tx_, ty_);
+        if (std::abs(g - focusZ_) < kFocusStep) focusZ_ = g;
+    }
 }
 
 }  // namespace illyria::game
