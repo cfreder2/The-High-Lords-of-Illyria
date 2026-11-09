@@ -333,13 +333,13 @@ void Hud::draw(Overlay& o, float w, float h) {
         while (std::getline(lines, line)) {
             std::vector<std::string> f;
             size_t from = 0;
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < 5; ++i) {  // kind|colour|x|y|town|name
                 const size_t bar = line.find('|', from);
                 if (bar == std::string::npos) break;
                 f.push_back(line.substr(from, bar - from));
                 from = bar + 1;
             }
-            if (f.size() < 4) continue;
+            if (f.size() < 5) continue;
             const std::string name = line.substr(from);
             const float x = static_cast<float>(std::atof(f[2].c_str())), y = static_cast<float>(std::atof(f[3].c_str()));
             if (y < 38) continue;  // (under the status bar)
