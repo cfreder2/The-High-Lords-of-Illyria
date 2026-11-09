@@ -17,6 +17,10 @@ namespace {
 constexpr uint32_t kKeepThink = 10;
 // The garrison is those of the holder inside the walls this near the gate's middle.
 constexpr Fixed kKeepRadius = Fixed::fromInt(60);
+// The holder's idle men just outside the walls this near the gate (fled and rallied, or driven out) fall back inside when a
+// foe is near, to their stations; foot meet a foe within this of the gate (inside the walls, or when the doors stand open).
+constexpr Fixed kRecallRange = Fixed::fromInt(45);
+constexpr Fixed kMeetRange = Fixed::fromInt(45);
 // A foe this near the gate (or nearer) sends the garrison to its stations.
 constexpr Fixed kAlertRange = Fixed::fromInt(70);
 // Foes this near outside the doors may be drawn in, and counted inside this near.
@@ -29,6 +33,8 @@ constexpr int32_t kLureHpPct = 80;
 constexpr int32_t kLureOddsPerMan = 2;
 // The foot are formed when this share of them (percent) stand at their places.
 constexpr int32_t kFormedPct = 70;
+// ... and this share (percent) of the archers stand at their embrasures.
+constexpr int32_t kMannedPct = 50;
 // The horseshoe: its middle rank stands this deep behind the doors' middle, the wings bent toward the doors by the arc of
 // this radius, in ranks of at most kRankWidth, a man's breadth and a little apart; a man stands at his place within this.
 constexpr Fixed kHoldDepth = Fixed::fromInt(10);
@@ -61,7 +67,8 @@ bool World::gateKeeper(const Unit& u) const {
         const GateState& st = gates_[i];
         if (!st.garrisoned || st.holder != u.owner) continue;
         const Gate& g = rg.gates()[i];
-        if ((u.pos - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq() <= kKeepRadius * kKeepRadius && withinRing(rg.ramparts()[static_cast<size_t>(g.ring)], u.pos)) return true;
+        const Fixed d2 = (u.pos - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq();
+        if (d2 <= kRecallRange * kRecallRange || (d2 <= kKeepRadius * kKeepRadius && withinRing(rg.ramparts()[static_cast<size_t>(g.ring)], u.pos))) return true;
     }
     return false;
 }
@@ -81,7 +88,7 @@ void World::keepGates() {
         unitGrid_.query(mid.x, mid.y, kAlertRange, [&](uint32_t j) { near.push_back(j); });
         std::sort(near.begin(), near.end());
         std::vector<Unit*> archers, foot;
-        int32_t outside = 0, inside = 0;
+        int32_t outside = 0, coming = 0, inside = 0;  // foes at the doors outside, all foes outside within the alert range, and inside
         bool alert = false;
         for (const uint32_t j : near) {
             Unit& u = units_[j];
@@ -91,16 +98,17 @@ void World::keepGates() {
                 alert = true;
                 if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
                 if (townSide(g, ring, u.pos)) inside += d2 <= kInsideRange * kInsideRange;
-                else outside += d2 <= kLureRange * kLureRange;
+                else ++coming, outside += d2 <= kLureRange * kLureRange;
                 continue;
             }
-            if (d2 > kKeepRadius * kKeepRadius || !withinRing(ring, u.pos)) continue;
+            if (d2 > kKeepRadius * kKeepRadius || (d2 > kRecallRange * kRecallRange && !withinRing(ring, u.pos))) continue;
             const Post post = postOf(u);
             if (post == Post::Archer) archers.push_back(&u);
             else if (post == Post::Foot) foot.push_back(&u);
         }
         if (!alert) continue;
 
+        int32_t manned = 0;
         // The archers up on the walls: an embrasure each, the nearest the doors first.
         if (!archers.empty()) {
             std::vector<size_t> order;
@@ -121,6 +129,7 @@ void World::keepGates() {
                         break;
                     }
                 }
+                manned += placed;
                 if (!placed && idle(*u)) loose.push_back(u);
             }
             for (Unit* u : loose) {
@@ -194,12 +203,32 @@ void World::keepGates() {
             }
         }
 
+        // A foe who is in reach, inside the walls or through the open doors, is met by the foot who stand idle (then back to the
+        // places); the foe outside a shut gate is not walked at.
+        const bool through = st.passable();
+        for (Unit* u : foot) {
+            if (!idle(*u)) continue;
+            Unit* best = nullptr;
+            Fixed bestD2;
+            for (const uint32_t j : near) {
+                Unit& f = units_[j];
+                if (f.owner == st.holder || !f.alive() || f.routed || f.inAir() || f.flight != Unit::Flight::Grounded) continue;
+                if ((f.pos - mid).flat().lengthSq() > kMeetRange * kMeetRange || !(through || townSide(g, ring, f.pos))) continue;
+                const Fixed d2 = (f.pos - u->pos).flat().lengthSq();
+                if (best == nullptr || d2 < bestD2) best = &f, bestD2 = d2;
+            }
+            if (best == nullptr) continue;
+            Command c{u->owner, u->id, Command::Type::AttackUnit, {}};
+            c.targetUnit = best->id;
+            applyCommand(c);
+        }
+
         // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed
         // to take them, the room inside is not yet full of them, and the doors are failing or the foes few.
         if (st.broken() || foot.empty() || outside == 0 || inside >= static_cast<int32_t>(foot.size())) continue;
-        const bool formedUp = formed * 100 >= static_cast<int32_t>(foot.size()) * kFormedPct;
+        const bool formedUp = formed * 100 >= static_cast<int32_t>(foot.size()) * kFormedPct && manned * 100 >= static_cast<int32_t>(archers.size()) * kMannedPct;
         const bool failing = static_cast<int64_t>(st.hp) * 100 < static_cast<int64_t>(g.maxHp) * kLureHpPct;
-        if (formedUp && (failing || outside <= static_cast<int32_t>(foot.size()) * kLureOddsPerMan))
+        if (formedUp && (failing || coming <= static_cast<int32_t>(foot.size()) * kLureOddsPerMan))
             st.openUntil = std::max(st.openUntil, tick_ + static_cast<uint32_t>(kLureOpenSeconds * kTicksPerSecond));
     }
 }

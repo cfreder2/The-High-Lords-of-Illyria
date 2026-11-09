@@ -23,7 +23,6 @@ constexpr int32_t kIslandCells = 900;  // the island's ground, 3.6 km of 4 m cel
 constexpr uint32_t kCorpseTicks = 600 * kTicksPerSecond;  // the dead lie as long as the fight lasts, as in the battle (ten minutes at most)
 constexpr int64_t kAboutMm = 25000;  // ... or most of the men are this near it
 constexpr int64_t kArriveMm = 12000;  // marching, a cell is reached within this of its anchor
-constexpr int64_t kStrayMm = 30000;  // a garrison's man this far from the town's heart (fled, rallied and idle) goes back to it
 constexpr int64_t kHoldMm = 45000;  // men standing meet whoever gets this near their post
 constexpr int32_t kAbreast = 4;
 constexpr int32_t kSideBySideMm = 11000;
@@ -699,16 +698,6 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
             // matters, and the man is not far from it: ring after ring of cells to a little past that is enough (a
             // nearest beyond them is beyond the hold, and he does nothing either way).
             const int64_t offMm = std::abs(int64_t{toMm(u->pos.x + origin.x)} - ax) + std::abs(int64_t{toMm(u->pos.y + origin.y)} - ay);
-            if (s.garrison && offMm > kStrayMm) {
-                Command c;
-                c.player = s.owner;
-                c.unit = m.unit;
-                c.type = Command::Type::Move;
-                c.target = nearestFit(Vec3{fromMm(ax) - origin.x, fromMm(ay) - origin.y, Fixed::zero()}, [&](const Vec3& q) { return world_->standable(q); });
-                c.speed = Fixed::zero();
-                commands.push_back(c);
-                continue;
-            }
             const int32_t rings = static_cast<int32_t>((kHoldMm + offMm + 4000) / (kCellM * 1000)) + 2;
             const Unit* best = nullptr;
             int64_t bestRaw = INT64_MAX;

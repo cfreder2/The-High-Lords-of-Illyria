@@ -76,7 +76,10 @@ void World::updateGates() {
         const bool want = st.pin == Command::GatePin::Open || (st.pin == Command::GatePin::Auto && tick_ < st.openUntil);
         // A swing turned back goes back from where it is: dated as if it had begun from the other end.
         const auto reverse = [&](Mode to) {
-            st.since = tick_ - (kGateSwingTicks - std::min(kGateSwingTicks, tick_ - st.since));
+            // Dated as if it had begun from the other end: `done` ticks of this swing are behind it, so `left` of the other
+            // are ahead (clamped at the clock's start, where the date would be before tick 0).
+            const uint32_t done = std::min(kGateSwingTicks, tick_ - st.since), left = kGateSwingTicks - done;
+            st.since = tick_ >= left ? tick_ - left : 0;
             st.mode = to;
         };
         switch (st.mode) {

@@ -130,8 +130,8 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved campaign");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC4.") == 0);
-    CHECK(Campaign::load(continent(), "ILC2." + text.substr(5), &why) == nullptr);
+    CHECK(text.compare(0, 5, "ILC5.") == 0);
+    CHECK(Campaign::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     CHECK(Campaign::load(continent(), text.substr(0, text.size() / 2), &why) == nullptr);
     // One gold piece more for a side somewhere in the middle: the checksum catches it.

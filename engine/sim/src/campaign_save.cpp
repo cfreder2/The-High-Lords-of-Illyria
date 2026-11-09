@@ -17,7 +17,7 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC4.";  // bump the digit when the layout changes
+constexpr const char* kMagic = "ILC5.";  // bump the digit when the layout changes
 constexpr uint32_t kFormat = 5;  // 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
 
 class Writer {

@@ -2547,13 +2547,10 @@ uint64_t World::checksum() const {
         h.addI64(g.hp);
         h.addU64(g.holder);
         h.addU64(g.brokenTick);
-        // (only a gate that has been kept, pinned or swung: a battle without any hashes as before)
-        if (g.mode != GateState::Mode::Shut || g.pin != Command::GatePin::Auto || g.garrisoned) {
-            h.addU64(0x09E7 + static_cast<uint64_t>(g.mode));
-            h.addU64(g.since);
-            h.addU64(g.openUntil);
-            h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u));
-        }
+        h.addU64(static_cast<uint64_t>(g.mode));
+        h.addU64(g.since);
+        h.addU64(g.openUntil);
+        h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u));
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {
