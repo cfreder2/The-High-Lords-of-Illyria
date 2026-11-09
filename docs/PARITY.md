@@ -26,6 +26,7 @@ aboard a boat (the ship carries him).
 | Waypoints, attack-move, Charge, Hold, Find, Scatter | Battle | same Battle commands on units; far orders become a stack march | by construction; `the_players_men_in_a_fight_are_ordered_as_in_a_skirmish...` runs Hold, Scatter, Box, As they stand, Charge in a Conquest fight |
 | Hero abilities and edges | World | same | by construction (no Conquest hero-ability test) |
 | Stamina, flying | World; the fliers' take-off and rest | same World; the coarse planner times fliers by `flightPace` | by construction |
+| Fliers never stuck: on and off a wall-walk, over curtain walls, after a quarry, in a queue, at a shut gate, in a garrison | `World::updateFlight`, `takesWing`, `insideParapet`, `heldAtGate` | same (the men are units) | **test** `a_table_of_every_flier_in_every_walled_scenario` (every flier type, seven scenarios, a Conquest capital and a skirmish on its ground: 52 runs, 25 stuck before the fix, none after; the longest stand with an order in hand was 140 s before and under 9 s after), `three_griffins_on_the_curtain_wall_come_down_when_told_and_do_not_stand_running_at_the_merlons` (the complaint's own picture) |
 | Arrows, ballistics, engines | World | same | by construction |
 | Morale, rout, rally | World | same | by construction (`test_morale_rally.cpp` is World-only) |
 | Scavenging, raids, satchels | World | same | by construction |

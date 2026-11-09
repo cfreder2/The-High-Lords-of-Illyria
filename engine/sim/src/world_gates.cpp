@@ -248,8 +248,8 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
 World::GateHold World::heldAtGate(const Unit& u) const {
     // Nobody passes a shut gate: its own side never hacks at it (nor does one
     // with no blow to strike), so they come as near as they can, to the gate,
-    // and stop. Fliers go over.
-    if (!config_.region || gates_.empty() || !u.hasMoveTarget || u.stats.flyAltitude > Fixed::zero()) return GateHold::Free;
+    // and stop. (A flier on the ground is a man: he goes over the wall only by taking wing, World::takesWing.)
+    if (!config_.region || gates_.empty() || !u.hasMoveTarget) return GateHold::Free;
     const Region& rg = *config_.region;
     const auto& gs = rg.gates();
     for (const size_t i : rg.gatesNear(u.pos.x, u.pos.y)) {

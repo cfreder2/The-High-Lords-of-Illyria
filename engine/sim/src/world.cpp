@@ -23,6 +23,8 @@ constexpr Fixed kMinDispersionFactor = Fixed::fromRatio(2, 5);
 constexpr Fixed kClimbRate = Fixed::fromInt(3);
 constexpr Fixed kDescentRate = Fixed::fromRatio(5, 2);
 constexpr int64_t kLandingGlide = 3;
+// A flier who lands this near his goal walks the rest of the way straight.
+constexpr Fixed kLandedReach = Fixed::fromInt(6);
 // Waypoints count as reached within this distance.
 constexpr Fixed kWaypointReach = Fixed::fromRatio(3, 2);
 // Near a waypoint, one already closer to the next with the way clear moves on
@@ -619,7 +621,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             planPath(*u, cmd.target);
             break;
         case Command::Type::Move: {
-            const Vec3 target = clearOfStone(cmd.target, u->stats);
+            const Vec3 target = insideParapet(clearOfStone(cmd.target, u->stats), u->stats.radius);
             beginMove(*u, target, cmd.speed, cmd.face);
             if (cmd.march) planMarch(*u, target, cmd.marchFrom, cmd.marchTo);
             else planPath(*u, target);
@@ -1246,7 +1248,9 @@ bool World::followPath(Unit& u, Fixed pace) {
         }
     }
     if (deckEnd && !arrived && (waypoint - u.pos).flat().lengthSq() < Fixed::one()) onward = true;
-    if (raised && !last && !arrived && (waypoint - u.pos).flat().lengthSq() < kRaisedReach * kRaisedReach) onward = true;
+    // (A body wider than the walk's lane is held off the parapet and cannot centre on it: his own breadth is near enough.)
+    const Fixed raisedReach = max(kRaisedReach, u.stats.radius);
+    if (raised && !last && !arrived && (waypoint - u.pos).flat().lengthSq() < raisedReach * raisedReach) onward = true;
     if (!last && !arrived && !raised && !deckEnd && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
         const Vec3& next = u.path[u.pathIndex + 1];
         onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
@@ -1311,7 +1315,14 @@ void World::updateUnit(Unit& u) {
         hackGate(u, gate);
     } else if (u.targetUnit != kNoEntity) {
         // Ordered at one soldier: after him, wherever he goes (a scavenger
-        // with something in hand throws it at him instead).
+        // with something in hand throws it at him instead). A flier goes over the walls and the miles as for a move.
+        const Unit* quarry = findUnit(u.targetUnit);
+        if (flier && quarry != nullptr && quarry->alive() && !quarry->inAir() && takesWing(u, quarry->pos)) {
+            u.flight = Unit::Flight::TakingOff;
+            u.runway = Fixed::zero();
+            updateFlight(u);
+            return;
+        }
         if (!scavengeOrdered(u)) pursue(u);
     } else if (u.hasMoveTarget) {
         // Marching with initiative: he answers whoever strikes him or
@@ -1320,13 +1331,7 @@ void World::updateUnit(Unit& u) {
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             return;
         }
-        const Fixed remaining = (u.moveTarget - u.pos).flat().length();
-        // Fliers take wing for long moves, and for a hop up onto a wall-walk
-        // from below (they do not use the ramps).
-        const bool hopUp = flier && config_.region && !config_.region->ramparts().empty() &&
-                           config_.region->rampartAt(u.moveTarget.x, u.moveTarget.y, groundHeight(u.moveTarget.x, u.moveTarget.y)) >= 0 &&
-                           config_.region->rampartAt(u.pos.x, u.pos.y, u.pos.z) < 0;
-        if (flier && (remaining >= u.stats.minFlight || hopUp) && u.stamina * 2 >= u.stats.staminaTicks) {
+        if (flier && takesWing(u, u.moveTarget)) {
             u.flight = Unit::Flight::TakingOff;
             u.runway = Fixed::zero();
             updateFlight(u);
@@ -1406,8 +1411,36 @@ void World::updateUnit(Unit& u) {
     u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
 }
 
+bool World::takesWing(const Unit& u, const Vec3& goal) const {
+    if (u.stamina * 2 < u.stats.staminaTicks) return false;
+    if ((goal - u.pos).flat().length() >= u.stats.minFlight) return true;  // a long way
+    if (!config_.region || config_.region->ramparts().empty()) return false;
+    const Region& rg = *config_.region;
+    const bool goalOnWalk = rg.rampartAt(goal.x, goal.y, groundHeight(goal.x, goal.y)) >= 0;
+    const bool onWalk = rg.rampartAt(u.pos.x, u.pos.y, u.pos.z) >= 0;
+    // Up onto a wall-walk from below, and down off it (they do not use the ramps: a wall is a hop, not a mile of stairs).
+    if (goalOnWalk != onWalk) return true;
+    // Over a curtain wall, in or out (a flier does not queue at a gate, or stop at one that is shut to him).
+    for (const Vec3& end : {u.pos, goal})
+        for (const uint32_t gi : rg.gatesNear(end.x, end.y)) {
+            const Rampart& ring = rg.ramparts()[static_cast<size_t>(rg.gates()[gi].ring)];
+            if (Gate::inside(ring, u.pos) != Gate::inside(ring, goal)) return true;
+        }
+    return false;
+}
+
 void World::updateFlight(Unit& u) {
-    const Vec3 goal = u.hasMoveTarget ? u.moveTarget : u.pos;
+    // His goal: the place he was sent to, or the man he is after (stopping a few metres short of him).
+    const Unit* quarry = u.hasMoveTarget || u.targetUnit == kNoEntity ? nullptr : findUnit(u.targetUnit);
+    if (quarry != nullptr && !quarry->alive()) quarry = nullptr;
+    const bool hasGoal = u.hasMoveTarget || quarry != nullptr;
+    Vec3 goal = u.hasMoveTarget ? u.moveTarget : u.pos;
+    if (quarry != nullptr) {
+        const Vec3 to = (quarry->pos - u.pos).flat();
+        const Fixed len = to.length();
+        const Fixed standoff = min(len, u.stats.melee.reach + u.stats.radius + quarry->stats.radius);
+        goal = len > Fixed::zero() ? quarry->pos - to * (standoff / len) : quarry->pos;
+    }
     const Vec3 delta = (goal - u.pos).flat();
     const Fixed dist = delta.length();
     if (dist > Fixed::zero()) u.facing = delta / dist;
@@ -1419,9 +1452,14 @@ void World::updateFlight(Unit& u) {
             // A ground run, faster than a walk, before the wings can lift.
             const Vec3 before = u.pos;
             walk(u, u.pos + u.facing * Fixed::fromInt(50), kTakeoffRunPace);
-            u.runway += (u.pos - before).flat().length();
+            const Fixed ran = (u.pos - before).flat().length();
+            u.runway += ran;
+            // Up on a wall-walk (or any deck) he needs no runway: he steps off the parapet and the air takes him. And a run
+            // that is blocked outright (a wall at his beak, a crowd) lifts him where he stands, rather than leaving him
+            // running at it for ever (the flier "stuck" on the walk, running at the merlons).
+            const bool onDeck = u.pos.z > (config_.terrain ? config_.terrain->heightAt(u.pos.x, u.pos.y) : Fixed::zero()) + kKickReach * 4;
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
-            if (u.runway >= u.stats.takeoffRun) u.flight = Unit::Flight::Flying;
+            if (u.runway >= u.stats.takeoffRun || onDeck || ran == Fixed::zero()) u.flight = Unit::Flight::Flying;
             break;
         }
         case Unit::Flight::Flying: {
@@ -1430,7 +1468,7 @@ void World::updateFlight(Unit& u) {
             u.pos.z = min(u.pos.z + kClimbRate * kTickDt, below + u.stats.flyAltitude);
             u.pos.z = max(u.pos.z, below);
             --u.stamina;
-            if (u.stamina <= 0 || dist < u.stats.flyAltitude * kLandingGlide || !u.hasMoveTarget) {
+            if (u.stamina <= 0 || dist < u.stats.flyAltitude * kLandingGlide || !hasGoal) {
                 u.flight = Unit::Flight::Landing;
             }
             break;
@@ -1440,10 +1478,24 @@ void World::updateFlight(Unit& u) {
             const Fixed below = groundHeight(u.pos.x, u.pos.y);
             u.pos.z = max(u.pos.z - kDescentRate * kTickDt, below);
             if (u.stamina > 0) --u.stamina;
-            if (u.pos.z <= below) {
+            // Come down over a wall or a tower on the way (a deck, not the ground), he skims it and goes on: he lands on his goal,
+            // not on the first battlement he crosses (from which he would only rise again for the ground beyond).
+            const auto onDeck = [&](const Vec3& p, Fixed height) {
+                return height > (config_.terrain ? config_.terrain->heightAt(p.x, p.y) : Fixed::zero()) + kLandedReach / 6;
+            };
+            const bool skimming = onDeck(u.pos, below) && !onDeck(goal, groundHeight(goal.x, goal.y));
+            if (u.pos.z <= below && !skimming) {
                 u.flight = Unit::Flight::Grounded;
                 // Walk the rest of the way (a tired flier may have come down early).
-                if (u.hasMoveTarget) planPath(u, u.moveTarget);
+                // Come down on his goal, he steps the last few metres straight (no ramps and gates for a man who has just
+                // dropped onto a wall-walk, where the walker's route would lead him round by the stairs).
+                if (u.hasMoveTarget) {
+                    if ((u.moveTarget - u.pos).flat().length() <= kLandedReach) u.path = {u.moveTarget}, u.pathIndex = 0;
+                    else planPath(u, u.moveTarget);
+                } else {
+                    u.path.clear();  // (after a man, pursue plans afresh)
+                    u.pathIndex = 0;
+                }
             }
             break;
         }

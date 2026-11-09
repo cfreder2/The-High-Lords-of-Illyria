@@ -44,19 +44,25 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
     }
     CHECK(alive == want);
     CHECK(want > 1000);  // every town's garrison, and the lords' armies
-    // Each stands near his stack's middle (a column of squads is a hundred metres at most).
+    // Each of the living stands near his stack's middle (a column of squads is a hundred metres at most; the dead lie where
+    // they fell, and in a stack that has fought a survivor may be a few hundred metres behind, catching up).
     std::map<uint32_t, std::pair<double, double>> middle;
     std::map<uint32_t, int> count;
+    std::set<uint32_t> bloodied;  // stacks that have lost a man: a survivor may be catching up on the march
+    for (const Campaign::Soldier& m : men)
+        if (!m.alive) bloodied.insert(m.stack);
     for (const Campaign::Soldier& m : men) {
+        if (!m.alive) continue;
         middle[m.stack].first += m.x, middle[m.stack].second += m.y, ++count[m.stack];
     }
     for (const Campaign::Soldier& m : men) {
+        if (!m.alive) continue;
         const Campaign::Stack* st = c.findStack(m.stack);
         CHECK(st != nullptr);
         if (!st) continue;
         CHECK(m.owner == st->owner);
         const double dx = m.x - middle[m.stack].first / count[m.stack], dy = m.y - middle[m.stack].second / count[m.stack];
-        CHECK(std::hypot(dx, dy) < 150.0);
+        CHECK(std::hypot(dx, dy) < (bloodied.count(m.stack) ? 400.0 : 150.0));
     }
 }
 

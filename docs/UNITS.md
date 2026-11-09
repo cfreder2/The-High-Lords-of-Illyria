@@ -84,6 +84,15 @@ arrows can hit them. On the campaign map a stack of fliers alone moves at the **
 that cycle, whatever is below: the take-off run (at half again its walking pace), a flight as long as
 its endurance, then twice as long resting (`Campaign::flightPace`). A stack with a walker in it walks.
 
+A flier takes wing (`World::takesWing`) for a goal, or a man he is ordered at, that is 50 m or more off; up onto a
+wall-walk from below and down off one (a wall is a hop, not a mile of stairs); and over any curtain wall between him and
+his goal (he does not queue at a gate, or stop at one that is shut to him). A tired flier (under half his endurance) walks,
+and then a gate is a gate to him as to any man. From a wall-walk he needs no ground run: he steps off the parapet. A run
+that is blocked outright (a wall at his beak) lifts him where he stands. He lands on his goal, skimming over any wall or
+tower on the way down rather than touching down on the first battlement he crosses. An order's place on a wall-walk is
+drawn in from the parapet to where a body of his size can stand (a Dragon is wider than the walk's lane), so that the
+order is done and he is free to fight; a lane's waypoint counts as reached within his own radius.
+
 | Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance | Long-run pace |
 |---|---|---|---|---|---|---|---|
 | Griffins | 3.0 m/s | 12 m/s | 6.5 m | 14 m | 50 m | 30 s | 4.02 m/s |
