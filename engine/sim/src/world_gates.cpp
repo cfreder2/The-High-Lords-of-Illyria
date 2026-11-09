@@ -276,6 +276,19 @@ World::GateHold World::heldAtGate(const Unit& u) const {
     return GateHold::Free;
 }
 
+bool World::shutGateBetween(const Unit& u, const Vec3& to) const {
+    if (!config_.region || gates_.empty()) return false;
+    const Region& rg = *config_.region;
+    const auto& gs = rg.gates();
+    for (const size_t i : rg.gatesNear(u.pos.x, u.pos.y)) {
+        const Gate& g = gs[i];
+        if (gates_[i].passable() || u.pos.z >= g.top || farFrom(g, u.pos)) continue;
+        const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+        if (Gate::inside(ring, u.pos) != Gate::inside(ring, to)) return true;
+    }
+    return false;
+}
+
 void World::hackGate(Unit& u, int gate) {
     const Gate& g = config_.region->gates()[static_cast<size_t>(gate)];
     const Vec3 at = nearestOnGate(g, u.pos);

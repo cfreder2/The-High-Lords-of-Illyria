@@ -23,6 +23,7 @@ constexpr int32_t kIslandCells = 900;  // the island's ground, 3.6 km of 4 m cel
 constexpr uint32_t kCorpseTicks = 600 * kTicksPerSecond;  // the dead lie as long as the fight lasts, as in the battle (ten minutes at most)
 constexpr int64_t kAboutMm = 25000;  // ... or most of the men are this near it
 constexpr int64_t kArriveMm = 12000;  // marching, a cell is reached within this of its anchor
+constexpr int64_t kStrayMm = 30000;  // a garrison's man this far from the town's heart (fled, rallied and idle) goes back to it
 constexpr int64_t kHoldMm = 45000;  // men standing meet whoever gets this near their post
 constexpr int32_t kAbreast = 4;
 constexpr int32_t kSideBySideMm = 11000;
@@ -264,6 +265,8 @@ void Campaign::ensureWorld() {
     // And the wounds a saved game had given them.
     for (size_t k = 0; k + 1 < gateHp_.size(); k += 2) world_->setGateHp(static_cast<size_t>(gateHp_[k]), gateHp_[k + 1]);
     gateHp_.clear();
+    for (size_t k = 0; k + 1 < gatePin_.size(); k += 2) world_->setGatePin(static_cast<size_t>(gatePin_[k]), static_cast<Command::GatePin>(gatePin_[k + 1]));
+    gatePin_.clear();
     endFight(seed_);
 }
 
@@ -287,10 +290,34 @@ void Campaign::gateHps(std::vector<int32_t>& out) const {
         }
 }
 
+void Campaign::setHuman(uint8_t side, bool human) {
+    sides_[side].human = human;
+    if (world_)
+        for (size_t i = 0; i < cities_.size(); ++i) holdGates(static_cast<int32_t>(i));
+}
+
+void Campaign::gatePinList(std::vector<int32_t>& out) const {
+    out.clear();
+    if (!world_) {
+        out = gatePin_;
+        return;
+    }
+    for (size_t g = 0; g < world_->gates().size(); ++g)
+        if (world_->gates()[g].pin != Command::GatePin::Auto) {
+            out.push_back(static_cast<int32_t>(g));
+            out.push_back(static_cast<int32_t>(world_->gates()[g].pin));
+        }
+}
+
 void Campaign::holdGates(int32_t city) {
     if (!world_) return;
     for (size_t g = 0; g < gateCity_.size(); ++g)
-        if (gateCity_[g] == city) world_->setGateHolder(g, cities_[static_cast<size_t>(city)].owner);
+        if (gateCity_[g] == city) {
+            const uint8_t owner = cities_[static_cast<size_t>(city)].owner;
+            world_->setGateHolder(g, owner);
+            // A neutral town's gate and a computer lord's are kept by their garrison (World::keepGates); the player's by his hand.
+            world_->setGateGarrisoned(g, owner == kNeutral || !sides_[owner].human);
+        }
 }
 
 void Campaign::seat(Stack& s) {
@@ -667,10 +694,21 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
             if (!m.alive() || !m.unit) continue;
             const Unit* u = w.findUnit(m.unit);
             if (!u || !u->alive() || u->routed || u->targetUnit != kNoEntity || u->foe != kNoEntity) continue;
+            if (w.gateKeeper(*u)) continue;  // a garrison keeps its gate: its stations are the World's (keepGates), not a chase outside the walls
             // The nearest foe (of those as near, the first in the world's order). Only one within hold of the post
             // matters, and the man is not far from it: ring after ring of cells to a little past that is enough (a
             // nearest beyond them is beyond the hold, and he does nothing either way).
             const int64_t offMm = std::abs(int64_t{toMm(u->pos.x + origin.x)} - ax) + std::abs(int64_t{toMm(u->pos.y + origin.y)} - ay);
+            if (s.garrison && offMm > kStrayMm) {
+                Command c;
+                c.player = s.owner;
+                c.unit = m.unit;
+                c.type = Command::Type::Move;
+                c.target = nearestFit(Vec3{fromMm(ax) - origin.x, fromMm(ay) - origin.y, Fixed::zero()}, [&](const Vec3& q) { return world_->standable(q); });
+                c.speed = Fixed::zero();
+                commands.push_back(c);
+                continue;
+            }
             const int32_t rings = static_cast<int32_t>((kHoldMm + offMm + 4000) / (kCellM * 1000)) + 2;
             const Unit* best = nullptr;
             int64_t bestRaw = INT64_MAX;

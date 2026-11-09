@@ -31,11 +31,11 @@ constexpr int32_t kLureOddsPerMan = 2;
 constexpr int32_t kFormedPct = 70;
 // The horseshoe: its middle rank stands this deep behind the doors' middle, the wings bent toward the doors by the arc of
 // this radius, in ranks of at most kRankWidth, a man's breadth and a little apart; a man stands at his place within this.
-constexpr Fixed kHoldDepth = Fixed::fromInt(8);
+constexpr Fixed kHoldDepth = Fixed::fromInt(10);
 constexpr Fixed kBowlRadius = Fixed::fromInt(10);
 constexpr int32_t kRankWidth = 9;
 constexpr Fixed kSlotGap = Fixed::fromRatio(17, 10);
-constexpr Fixed kSlotTolerance = Fixed::fromRatio(3, 2);
+constexpr Fixed kSlotTolerance = Fixed::fromInt(2);
 // An archer at an embrasure: this near it (flat) and this near its height.
 constexpr Fixed kEmbrasureTolerance = Fixed::fromRatio(6, 5);
 constexpr Fixed kEmbrasureHeight = Fixed::fromRatio(3, 2);
@@ -153,16 +153,32 @@ void World::keepGates() {
                 for (int tries = 0; tries < 4; ++tries) {
                     const Fixed depth = kHoldDepth + gap * rank - lateral * lateral / (kBowlRadius * 2);
                     p = mid + inward * depth + along * lateral;
-                    p.z = groundHeight(p.x, p.y);
-                    if (standable(p) && Gate::inside(ring, p)) break;
+                    p.z = rg.terrain().heightAt(p.x, p.y);
+                    // On the courtyard's own ground: not the foot of a ramp or a stair, nor under the wall-walk's gallery (an order
+                    // there is an order up onto the walk).
+                    if (standable(p) && Gate::inside(ring, p) && abs(groundHeight(p.x, p.y) - p.z) < Fixed::fromRatio(1, 4) &&
+                        rg.rampartAt(p.x, p.y, ring.corners.front().z) < 0)
+                        break;
                     lateral = lateral * 3 / 4;
                     p = {};
                 }
                 if (p == Vec3{}) continue;
                 slots.push_back(p);
             }
+            // Those already at a place keep it; the rest (idle) go to the nearest places left.
             std::vector<uint8_t> taken(slots.size(), 0);
+            std::vector<Unit*> loose;
             for (Unit* u : foot) {
+                size_t at = slots.size();
+                Fixed atD2;
+                for (size_t s = 0; s < slots.size(); ++s) {
+                    const Fixed d2 = (slots[s] - u->pos).flat().lengthSq();
+                    if (!taken[s] && d2 <= kSlotTolerance * kSlotTolerance && (at == slots.size() || d2 < atD2)) at = s, atD2 = d2;
+                }
+                if (at < slots.size()) taken[at] = 1, ++formed;
+                else loose.push_back(u);
+            }
+            for (Unit* u : loose) {
                 size_t best = slots.size();
                 Fixed bestD2;
                 for (size_t s = 0; s < slots.size(); ++s) {
@@ -171,13 +187,10 @@ void World::keepGates() {
                 }
                 if (best == slots.size()) continue;
                 taken[best] = 1;
-                if (bestD2 <= kSlotTolerance * kSlotTolerance) {
-                    ++formed;
-                } else if (idle(*u)) {
-                    u->routeFrom = u->pos;
-                    beginMove(*u, slots[best], Fixed::zero(), mid - slots[best]);
-                    planPath(*u, slots[best]);
-                }
+                if (!idle(*u)) continue;
+                u->routeFrom = u->pos;
+                beginMove(*u, slots[best], Fixed::zero(), mid - slots[best]);
+                planPath(*u, slots[best]);
             }
         }
 

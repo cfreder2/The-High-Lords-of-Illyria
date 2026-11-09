@@ -958,6 +958,9 @@ private:
     // Wait: his own gate, which is swinging open for him: he stands, his order kept.
     enum class GateHold : uint8_t { Free, Wait, Halt };
     GateHold heldAtGate(const Unit& unit) const;
+    // Whether a shut gate lies between a man on the ground and a place on the other side of the walls it opens (a foe there
+    // is not to be walked at: the way is round, or through the doors).
+    bool shutGateBetween(const Unit& unit, const Vec3& to) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
     void applyGateOrder(const Command& cmd);
