@@ -120,8 +120,8 @@ public:
             // metres from corners[e], kCrenelPitch apart, clear of the towers.
             std::vector<Fixed> crenels(size_t edge) const;
             // The galleries round its towers (castle_walls.cpp), in the order
-            // the walk passes them: each corner's, then on the gate's edge
-            // the pair flanking the gate.
+            // the walk passes them: each corner's (radius 0 at a bare corner: the walk
+            // just turns there), then on the gate's edge the pair flanking the gate.
             std::vector<Gallery> galleries() const;
             // The way men go round its walk: along the walk's middle line and
             // round each tower on its gallery, kGalleryWay out from the tower;

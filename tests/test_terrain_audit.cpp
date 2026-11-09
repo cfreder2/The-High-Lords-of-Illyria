@@ -153,3 +153,56 @@ TEST(towers_stand_where_the_wall_turns_and_not_at_every_corner) {
     }
     CHECK(most <= 11);
 }
+
+TEST(the_walk_round_a_bare_corner_stays_on_the_wall_top) {
+    // Where a corner has no tower the walk's way cuts across it: every point of that way (every metre) must lie on the
+    // wall-top slab (within half the wall's thickness of an edge) or on a tower's gallery, never over empty air.
+    int bare = 0, off = 0;
+    for (const Continent::City& city : continent().cities()) {
+        for (const Continent::Castle::Ring& ring : city.castle.rings) {
+            const std::vector<Vec3> way = ring.way();
+            const size_t n = ring.corners.size();
+            for (size_t i = 0; i < n; ++i) bare += !ring.towerAt(i);
+            const std::vector<Continent::Castle::Gallery> galleries = ring.galleries();
+            for (size_t i = 0; i < way.size(); ++i) {
+                const audit::P a = audit::pt(way[i]), b = audit::pt(way[(i + 1) % way.size()]);
+                const int steps = std::max(1, static_cast<int>(audit::len(b - a)));
+                for (int k = 0; k <= steps; ++k) {
+                    const audit::P p = a + (b - a) * (static_cast<double>(k) / steps);
+                    double best = 1e9;
+                    for (size_t e = 0; e < n; ++e) best = std::min(best, audit::segDist(p, audit::pt(ring.corners[e]), audit::pt(ring.corners[(e + 1) % n])));
+                    bool onGallery = false;
+                    for (const auto& g : galleries)
+                        onGallery = onGallery || audit::len(p - audit::pt(g.pos)) < (g.radius + Continent::Castle::kGalleryWidth).toDouble();
+                    // (Only near a bare corner: the galleries' own lanes lie a little outside the wall's middle line.)
+                    size_t near = 0;
+                    for (size_t e = 1; e < n; ++e)
+                        if (audit::len(p - audit::pt(ring.corners[e])) < audit::len(p - audit::pt(ring.corners[near]))) near = e;
+                    if (!ring.towerAt(near) && best > ring.thick.toDouble() / 2 && !onGallery) {
+                        ++off;
+                        std::printf("  %s: %.1f m off the wall near bare corner %zu, turn dot %.2f\n", city.name.c_str(), best, near, audit::dot(audit::unit(audit::pt(ring.corners[near]) - audit::pt(ring.corners[(near + n - 1) % n])), audit::unit(audit::pt(ring.corners[(near + 1) % n]) - audit::pt(ring.corners[near]))));
+                        k = steps;
+                        i = way.size();
+                    }
+                }
+            }
+        }
+    }
+    CHECK(bare > 0);  // the rule leaves corners bare, so this tests something
+    CHECK(off == 0);
+}
+
+TEST(a_gate_still_has_archer_stations_beside_it_when_corners_are_bare) {
+    // The garrison's archers take the embrasures nearest the doors within 60 m: there are always some (Rampart::embrasures).
+    for (size_t ci = 0; ci < continent().cities().size(); ci += 5) {
+        const Continent::City& city = continent().cities()[ci];
+        const Region rg = Region::fromContinent(continent(), city.pos, 128);
+        const audit::Gate g = audit::gateOf(city.castle.rings.front());
+        const Vec3 o = rg.origin();
+        const audit::P mid = g.mid - audit::P{o.x.toDouble(), o.y.toDouble()};
+        int stations = 0;
+        for (const Rampart& rp : rg.ramparts())
+            for (const Rampart::Embrasure& e : rp.embrasures) stations += audit::len(audit::pt(e.pos) - mid) <= 60.0;
+        CHECK(stations >= 4);
+    }
+}

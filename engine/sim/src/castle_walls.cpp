@@ -96,7 +96,8 @@ std::vector<Continent::Castle::Gallery> Continent::Castle::Ring::galleries() con
         // Round the corner tower from the walk coming in to the walk going on,
         // through the middle of the angle inside (wider than a half turn where
         // the corner points inward).
-        if (towerAt(e)) out.push_back({at, thick * 3 / 2, -in, unitFlat(inward(in) + inward(onward)), onward});
+        // (A bare corner is a gallery round no tower: the walk keeps to the wall's middle line and turns at the corner.)
+        out.push_back({at, towerAt(e) ? thick * 3 / 2 : Fixed::zero(), -in, unitFlat(inward(in) + inward(onward)), onward});
         if (e == gateEdge) {
             const Vec3 mid = (at + next) * Fixed::fromRatio(1, 2);
             for (int s = -1; s <= 1; s += 2) out.push_back({mid + onward * (gateTowerAt() * s), thick * 6 / 5, -onward, inward(onward), onward});
