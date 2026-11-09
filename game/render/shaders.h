@@ -1492,6 +1492,8 @@ out vec3 vWorld;
 out vec2 vCloth;     // where on a flag's cloth (u from the pole, v up)
 flat out float vIsCloth;
 flat out vec2 vAxis; // the instance's local x on the ground, either way round (masonry)
+out vec3 vObj;       // the vertex in the mesh's own unit space, and the instance's scale (buildings)
+flat out vec3 vScale;
 void main() {
     if (iScale.x <= 0.0) { gl_Position = kCulled; return; }
     float lod = sceneryShown(iPos.xy);
@@ -1531,6 +1533,8 @@ void main() {
     vAxis = ax.x < -1e-4 || (ax.x <= 1e-4 && ax.y < 0.0) ? -ax : ax;
     vColor = vIsCloth > 0.5 ? iTint : aColor * iTint;
     vWorld = world;
+    vObj = aPos;
+    vScale = iScale;
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -1541,8 +1545,140 @@ in vec3 vWorld;
 in vec2 vCloth;
 flat in float vIsCloth;
 flat in vec2 vAxis;
+in vec3 vObj;
+flat in vec3 vScale;
 out vec4 oColor;
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
+uniform float uHouse;    // 1: the house mesh: shingles, framed plaster, a plank door (houseSurface)
+// Courses of dressed blocks, staggered row by row, each its own tone, with
+// mortar lines that fade out (px: metres a pixel spans) before they shimmer.
+vec3 coursedStone(vec3 albedo, vec2 uv, vec2 size, float px) {
+    float row = floor(uv.y / size.y);
+    float x = uv.x / size.x + 0.5 * mod(row, 2.0) + hash12(vec2(row, 3.7)) * 0.3;
+    vec2 cell = vec2(floor(x), row);
+    vec2 f = vec2(fract(x), fract(uv.y / size.y));
+    float fade = 1.0 - smoothstep(0.067 * size.y, 0.267 * size.y, px);
+    float mortar = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.09, f.y) * smoothstep(1.0, 0.91, f.y);
+    float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (valueNoise2(uv * 3.1 * (0.45 / size.y)) - 0.5);
+    return albedo * mix(1.0, mix(0.6, tone, mortar), fade);
+}
+// Grain of wood running along `along` (metres), fading to its mean with distance.
+float woodGrain(float along, float across, float fade) {
+    return mix(0.9, 0.74 + 0.36 * valueNoise2(vec2(along * 1.7, across * 48.0)), fade);
+}
+// The house mesh (meshes::house): clay shingles in staggered rows with
+// rounded tips that shade the row below; plaster framed in timber (posts a
+// bay apart, sill, plate, braces) on a stone footing; a plank door in a
+// frame with two iron straps and a ring. Everything is laid out in metres on
+// the mesh's own axes (vObj, vScale), so it sits the same on every house, and
+// each pattern fades to its mean colour before a pixel spans it. The pattern
+// also tilts the normal a little, for the light.
+void houseSurface(inout vec3 albedo, inout vec3 n) {
+    vec3 m = vObj * vScale;
+    float px = length(fwidth(m));
+    vec3 base = albedo;
+    float tint = clamp(base.g / 0.76, 0.6, 1.4);  // the instance's tint (the wall's own green is 0.76)
+    if (n.z > 0.25) {
+        // Roof: v up the slope from the eave (the eaves are at x = +-1.15, z = 0.9; the ridge x = 0, z = 1.7).
+        vec3 R = normalize(vec3(-n.y, n.x, 0.0) + vec3(1e-4, 0.0, 0.0));
+        vec3 S = cross(R, n);
+        if (S.z < 0.0) S = -S;
+        const float rowH = 0.3, tileW = 0.26;
+        vec2 uv = vec2(m.y, length(vec2((1.15 - abs(vObj.x)) * vScale.x, (vObj.z - 0.9) * vScale.z)));
+        float fade = 1.0 - smoothstep(0.08 * rowH, 0.3 * rowH, px);
+        float r = uv.y / rowH, row = floor(r);
+        vec2 f = vec2(fract(uv.x / tileW + 0.5 * mod(row, 2.0)), fract(r));
+        float tip = 0.1 * pow(abs(2.0 * f.x - 1.0), 2.0);  // rounded tips reach lowest in the middle
+        bool under = f.y < tip;                              // below the tip: the row beneath, in its shade
+        float rr = under ? row - 1.0 : row;
+        float cx = floor(uv.x / tileW + 0.5 * mod(rr, 2.0));
+        float h = hash12(vec2(cx, rr));
+        float tone = 0.78 + 0.4 * h;
+        vec3 tile = base * tone;
+        tile = mix(tile, tile * vec3(0.7, 0.85, 0.6), smoothstep(0.88, 0.97, hash12(vec2(cx + 7.0, rr + 3.0))) * 0.7);  // a mossy one
+        if (under) tile *= 0.55;
+        else tile *= 1.0 + 0.2 * (1.0 - smoothstep(0.0, 0.08, f.y - tip));  // the lit edge of the tip
+        tile *= 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.06, min(f.x, 1.0 - f.x))) * (under ? 0.0 : 1.0);  // the joint between tiles
+        tile *= 0.94 + 0.1 * valueNoise2(uv * 4.0 + 3.0);
+        albedo = mix(base * 0.9, tile, fade);
+        vec3 tilt = S * (0.5 - f.y) * 0.4 + R * (f.x - 0.5) * 0.3;
+        n = normalize(n + tilt * fade);
+        albedo *= 0.92 + 0.12 * valueNoise2(uv * 0.6 + 11.0);  // weathering in broad patches
+        return;
+    }
+    bool onX = abs(vObj.x) > 0.999;
+    float u = onX ? m.y : m.x, v = m.z;
+    float W = onX ? vScale.y : vScale.x, H = vScale.z;
+    float fade = 1.0 - smoothstep(0.04, 0.25, px);
+    if (abs(vObj.x) > 1.001) {
+        if (vObj.z >= 0.8) {  // the beam under the eaves
+            albedo *= woodGrain(u, v, fade);
+            return;
+        }
+        // The door: planks 14 cm wide, a frame, straps from the hinge side, a ring.
+        float halfW = 0.2 * vScale.y, doorH = 0.6 * vScale.z;
+        float inset = min(halfW - abs(u), doorH - v);
+        float pu = (u + halfW) / 0.14;
+        float seam = min(fract(pu), 1.0 - fract(pu)) * 0.14;
+        float plank = floor(pu);
+        vec3 wood = base * (0.7 + 0.5 * hash12(vec2(plank, 1.3)));
+        wood *= 0.78 + 0.34 * valueNoise2(vec2(u * 26.0 + plank * 7.0, v * 2.5));
+        wood *= 1.0 - 0.75 * (1.0 - smoothstep(0.006, 0.006 + max(px, 0.008), seam)) * fade;
+        const float frameW = 0.09;
+        vec3 framed = base * 1.18 * woodGrain(v, u, fade);
+        wood = mix(framed, wood * (0.8 + 0.2 * smoothstep(frameW, frameW + 0.06, inset)), smoothstep(frameW + max(px, 0.004), frameW, inset));
+        // Iron: straps at a quarter and three quarters of the height, running two thirds across from the hinges.
+        vec3 iron = vec3(0.1, 0.1, 0.11) * (0.8 + 0.4 * valueNoise2(vec2(u * 30.0, v * 30.0)));
+        float across = (u + halfW) / (2.0 * halfW);
+        float strap = 0.0, rivet = 0.0;
+        for (int i = 0; i < 2; ++i) {
+            float mid = doorH * (i == 0 ? 0.24 : 0.74);
+            float body = 1.0 - smoothstep(0.035 - px, 0.035 + px, abs(v - mid) - 0.0);
+            float len = 1.0 - smoothstep(0.7 - px, 0.7 + px, across);
+            strap = max(strap, body * len);
+            rivet = max(rivet, 1.0 - smoothstep(0.012, 0.012 + px, length(vec2(fract(u / 0.3 + 0.5) - 0.5, (v - mid) / 0.3) * 0.3)));
+        }
+        vec2 rp = vec2(u - halfW * 0.55, v - doorH * 0.48);
+        float ring = 1.0 - smoothstep(0.012, 0.012 + px, abs(length(rp) - 0.05));
+        float metal = max(strap * step(frameW, inset), ring);
+        albedo = mix(wood, iron, metal * fade);
+        albedo = mix(albedo, iron * 2.2, rivet * strap * fade * 0.8);
+        albedo = mix(base * 0.85, albedo, fade);
+        return;
+    }
+    // Walls: stone footing, then framed plaster.
+    const float foot = 0.45;
+    vec3 plaster = base;
+    vec3 timber = vec3(0.27, 0.18, 0.11) * tint;
+    vec3 wall;
+    if (v < foot) {
+        wall = coursedStone(vec3(0.62, 0.6, 0.55) * tint, vec2(u, v), vec2(0.5, 0.22), px);
+    } else {
+        float nb = max(1.0, floor(W / 0.8 + 0.5));            // bays across (2W / 1.6 m)
+        float bayW = 2.0 * W / nb;
+        float bay = (u + W) / bayW;
+        float bi = floor(bay);
+        float fb = bay - bi;
+        float postD = abs(bay - floor(bay + 0.5)) * bayW;
+        float topPlate = H - 0.1;
+        float hh = max(topPlate - foot - 0.14, 0.5);
+        float fv = clamp((v - foot - 0.14) / hh, 0.0, 1.0);
+        float diag = abs(fb - (mod(bi, 2.0) < 0.5 ? fv : 1.0 - fv)) * bayW * hh / length(vec2(bayW, hh));
+        float braced = step(0.55, hash12(vec2(bi, 5.1))) * step(v, topPlate) * step(1.2, bayW);
+        float sd = min(min(postD - 0.06, abs(v - (foot + 0.07)) - 0.07), min(abs(v - topPlate) - 0.1, braced > 0.5 ? diag - 0.045 : 1.0));
+        float tim = 1.0 - smoothstep(-px, px, sd);
+        float ao = 0.8 + 0.2 * smoothstep(0.0, 0.1, sd);
+        float spot = valueNoise2(vec2(u, v) * 7.0);
+        vec3 pl = plaster * ao * (0.92 + 0.14 * spot) * (0.9 + 0.1 * valueNoise2(vec2(u * 1.3, v * 0.3) + 5.0));
+        pl *= mix(0.82, 1.0, smoothstep(foot, foot + 0.9, v));                     // splashed at the foot
+        pl *= mix(0.9, 1.0, smoothstep(topPlate - 0.7, topPlate, v) * -1.0 + 1.0);  // sooty under the eaves
+        bool vertical = postD - 0.06 < min(abs(v - (foot + 0.07)) - 0.07, abs(v - topPlate) - 0.1);
+        vec3 tm = timber * (vertical ? woodGrain(v, u, fade) : woodGrain(u, v, fade));
+        wall = mix(pl, tm, tim);
+        wall = mix(mix(plaster, timber, 0.16) * 0.88, wall, fade);
+    }
+    albedo = wall;
+}
 // A flag's face: the owner's colour with a hem, and a cross pattee in white
 // (or deep red on a pale field), smoothed over a pixel and blended into the
 // field when it shrinks to a few pixels.
@@ -1581,6 +1717,7 @@ void main() {
         oColor = vec4(mix(cc, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
         return;
     }
+    if (uHouse > 0.5) houseSurface(albedo, n);
     if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.
@@ -1591,16 +1728,7 @@ void main() {
         bool top = abs(n.z) > 0.7;
         vec2 uv = top ? vec2(dot(vWorld.xy, vAxis), dot(vWorld.xy, vec2(-vAxis.y, vAxis.x)))
                       : vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
-        vec2 size = vec2(0.95, 0.45);
-        float row = floor(uv.y / size.y);
-        float x = uv.x / size.x + 0.5 * mod(row, 2.0) + hash12(vec2(row, 3.7)) * 0.3;
-        vec2 cell = vec2(floor(x), row);
-        vec2 f = vec2(fract(x), fract(uv.y / size.y));
-        float px = max(fwidth(uv.x), fwidth(uv.y));
-        float fade = 1.0 - smoothstep(0.03, 0.12, px);
-        float mortar = smoothstep(0.0, 0.05, f.x) * smoothstep(1.0, 0.95, f.x) * smoothstep(0.0, 0.09, f.y) * smoothstep(1.0, 0.91, f.y);
-        float tone = 0.84 + 0.26 * hash12(cell + 0.5) + 0.08 * (valueNoise2(uv * 3.1) - 0.5);
-        albedo *= mix(1.0, mix(0.6, tone, mortar), fade);
+        albedo = coursedStone(albedo, uv, vec2(0.95, 0.45), max(fwidth(uv.x), fwidth(uv.y)));
         // Streaks running down the faces; on the paving, wear in patches (not
         // stripes, which would band a ramp across).
         albedo *= 0.9 + 0.14 * valueNoise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));

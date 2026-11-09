@@ -136,7 +136,7 @@ private:
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
         GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
-        GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
+        GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, house = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
@@ -153,6 +153,7 @@ private:
         size_t capacity = 0;
         float sway = 0;
         bool masonry = false;
+        bool house = false;  // the house mesh: shingles, framed plaster, plank door (see houseSurface)
         // 1: the trees of the battlefield and the close-up land; -1: the continent's trees beyond them (they stand
         // where those do not); 2: undergrowth, rocks and logs near the camera; 0: always (see ILLYRIA_SCENERY_VS).
         float lod = 0;
