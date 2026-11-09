@@ -264,20 +264,33 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     field.borrow(&c);
     CHECK(field.borrowing());
     c.onWorldStep([&] { field.beforeWorldStep(); }, [&] { field.afterWorldStep(); }, [&] { field.forgetMen(); });
+    // The lord whose nearest weak neutral town is the nearest to the battlefield's middle (the borrowed field is the
+    // world's middle kilometre: a fight elsewhere is not one it can show).
     const Campaign::Stack* home = nullptr;
-    for (const Campaign::Stack& st : c.stacks())
-        if (st.owner == 0) home = &st;
-    int target = -1, best = 1 << 30;
-    for (size_t i = 0; i < c.cities().size(); ++i) {
-        const auto& city = c.cities()[i];
-        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
-        const int d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
-        if (d < best) best = d, target = static_cast<int>(i);
+    int target = -1;
+    uint8_t owner = 0;
+    double nearest = 1e18;
+    for (uint8_t lord = 0; lord < 8; ++lord) {
+        const Campaign::Stack* h = nullptr;
+        for (const Campaign::Stack& st : c.stacks())
+            if (st.owner == lord) h = &st;
+        if (!h) continue;
+        int t = -1, best = 1 << 30;
+        for (size_t i = 0; i < c.cities().size(); ++i) {
+            const auto& city = c.cities()[i];
+            if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+            const int d = std::abs(city.cx - h->cx) + std::abs(city.cy - h->cy);
+            if (d < best) best = d, t = static_cast<int>(i);
+        }
+        if (t < 0) continue;
+        const Vec3 at = continent().cities()[static_cast<size_t>(t)].pos;
+        const double away = std::hypot((at.x - centre.x).toDouble(), (at.y - centre.y).toDouble());
+        if (away < nearest) nearest = away, home = h, target = t, owner = lord;
     }
     const auto& town = c.cities()[static_cast<size_t>(target)];
-    c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
+    c.raise(owner, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
+        if (st.owner == owner && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
     size_t cues = 0, said = 0;
     for (int k = 0; k < 9000; ++k) {
         c.step();

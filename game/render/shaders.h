@@ -119,6 +119,14 @@ float valueNoise2(vec2 p) {
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
 }
+// The colour of inland water, one for rivers, lakes and pools, from how deep it is in metres: the bed shows through
+// the shallows, silt-green gives way to deep blue by three metres. The battlefield's water, the far land's and the
+// far river ribbons all use it, so a river runs into a lake (or a lake into a river) without a change of colour.
+vec3 inlandWater(float depth, vec2 p) {
+    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7));
+    vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
+    return mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
+}
 // Drifting cloud shadows over the land: 1 in sun, ~0.62 under a cloud.
 float cloudShade(vec2 xy) {
     if (!feature(kFeatAtmosphere)) return 1.0;
@@ -205,7 +213,7 @@ vec3 landGrids(vec3 c, vec2 xy) {
 // battlefield's and the close-up land's as the camera rises, so they all look
 // alike from high up.
 // The far land's waterline (kinds.w = 1) wanders a little between samples.
-float farShoreWobble(vec2 p) { return (valueNoise2(p / 23.0) - 0.5) * 0.03 + (valueNoise2(p / 7.0) - 0.5) * 0.012; }
+float farShoreWobble(vec2 p) { return (valueNoise2(p / 23.0) - 0.5) * 0.08 + (valueNoise2(p / 7.0) - 0.5) * 0.03; }
 // How much crown covers the ground at p: the trees of the whole continent summed (game::FarForest), the same trees
 // the cards are drawn for, so the canopy the land shows from afar is under exactly the trees that stand there.
 uniform sampler2D uForestMap;  // R8, linear: crown cover, 8 m texels
@@ -502,25 +510,30 @@ void main() {
     // a dark wet band above it (the nearest water surface, not one level).
     {
         ivec2 cc = ivec2(floor(p / uCellSize));
-        float surf = -1e9, nearest = 1e9;  // and how far off the nearest wet sample is
-        for (int k = 0; k < 8; ++k) {
-            if (k >= 4 && !feature(kFeatGroundDetail)) break;
-            int j = k - 4;
-            ivec2 o = k < 4 ? ivec2(k & 1, k >> 1) : ivec2(j == 0 ? 2 : j == 1 ? -1 : 0, j == 2 ? 2 : j == 3 ? -1 : 0);
+        float surf = -1e9, nearby = 0.0;  // and how much wet sample is about (each fades out with its distance)
+        // The 4x4 samples about p (the 2x2 when the ground detail is off): every wet one within a cell counts, fading to
+        // nothing at a cell's distance, so the band follows the waterline and not the grid's cells.
+        bool wide = feature(kFeatGroundDetail);
+        for (int k = 0; k < (wide ? 16 : 4); ++k) {
+            ivec2 o = wide ? ivec2(k & 3, k >> 2) - ivec2(1) : ivec2(k & 1, k >> 1);
             float w = texelFetch(uWaterTex, texCell(vec2(cc + o), uCells), 0).r;
-            if (w > -1000.0) nearest = min(nearest, distance(p, vec2(cc + o) * uCellSize));
-            surf = max(surf, w);
+            if (w > -1000.0) {
+                float here = 1.0 - smoothstep(0.25 * uCellSize, uCellSize, distance(p, vec2(cc + o) * uCellSize));
+                nearby += here;
+                if (here > 0.0) surf = max(surf, w);
+            }
         }
         if (surf > -1000.0) {
             float above = vWorld.z - surf;
-            // The wet band thins out with the distance to the water, not at a cell's edge.
-            float reach = 1.0 - smoothstep(5.0, 9.5, nearest);
-            float wet = (1.0 - smoothstep(0.05, 0.8 + fine * 0.5, above)) * step(-0.05, above) * reach;
+            float reach = clamp(nearby, 0.0, 1.0);
+            float wet = (1.0 - smoothstep(0.05, 0.8 + fine * 0.5, above)) * smoothstep(-0.25, -0.02, above) * reach;
             albedo = mix(albedo, albedo * vec3(0.6, 0.56, 0.5) + vec3(0.03, 0.02, 0.0), wet);
             float line = (1.0 - smoothstep(0.0, 0.22 + fine * 0.1, abs(above - 0.04))) * reach;
             vec3 gravel = mix(vec3(0.50, 0.46, 0.39), vec3(0.36, 0.30, 0.22), valueNoise(p * 3.3));
             albedo = mix(albedo, gravel, line * 0.75);
-            if (above < 0.0) albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75);
+            // Under the water: the bed, fading in over the last few centimetres.
+            float under = 1.0 - smoothstep(-0.12, 0.0, above);
+            albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75 * under * reach);
         }
     }
 
@@ -2202,9 +2215,7 @@ void main() {
     float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
     vec3 n = normalize(vec3(-gw * 0.06 * calm, 1.0));
     // Colour: the bed shows through the shallows; silt-green to deep blue.
-    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7));
-    vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
-    vec3 c = mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
+    vec3 c = inlandWater(depth, p);
     // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);
     vec3 refl = reflect(-v, n);
@@ -2273,9 +2284,7 @@ void main() {
         // bed, seen from high up: silt-green shallows to deep blue, calm.
         float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
         vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
-        vec3 wc = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, dm));
-        wc = mix(bed, wc, 1.0 - exp(-dm * 1.6));
-        inland = mix(bed, wc, clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
+        inland = mix(bed, inlandWater(dm, p), clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
         n = vec3(0.0, 0.0, 1.0);
         glint = 0.25;
     } else if (feature(kFeatFarDetail) && wetHere) {
@@ -2352,7 +2361,7 @@ void main() {
     if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land draws its own roads and water
     // Water as the battlefield's river looks from high up; roads as its
     // worn dirt does, lit like the land.
-    vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.09, 0.21, 0.27) : vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
+    vec3 c = abs(vKind - 1.0) > 0.5 ? inlandWater(vKind > 1.5 ? 0.9 : 3.5, vXy) * (0.8 + 0.2 * cloudShade(vXy)) : vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
 )";

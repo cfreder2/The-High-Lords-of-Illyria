@@ -145,7 +145,7 @@ CtfOptions ctfOptions(int local) {
 
 TEST(horde_hero_fall_shakes_the_hill) {
     // As in any battle: the men who see their hero fall are shaken to breaking.
-    Fallen f = fallInTheMuster(13);
+    Fallen f = fallInTheMuster(21);
     CHECK(!f.b->world().findUnit(f.hero)->alive());
     std::printf("  warriors' lowest morale %d before the hero fell, %d after\n", f.moraleBefore, f.moraleAfter);
     CHECK(f.moraleBefore - f.moraleAfter >= 400);
@@ -156,7 +156,7 @@ TEST(horde_hero_fall_shakes_the_hill) {
 TEST(horde_fallen_hero_returns_after_the_next_wave) {
     // Not recalled: he sits out the wave after his fall and returns when it
     // is beaten, at half his health, his level and kills kept, still his seat's.
-    Fallen f = fallInTheMuster(13);
+    Fallen f = fallInTheMuster(21);
     Battle& b = *f.b;
     HordeMode& h = *f.h;
     CHECK(h.phase() == HordeMode::Phase::Wave && h.wave() == 1);

@@ -1122,15 +1122,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 if (g != Ground::Plains && g != Ground::Road) continue;
                 const Fixed x = cell * ix + cell / 2, y = cell * iy + cell / 2;
                 const Fixed z = shaped[static_cast<size_t>(iy) * n + ix];
-                bool margin = false;
-                for (int32_t dy = -2; dy <= 2 && !margin; ++dy)
-                    for (int32_t dx = -2; dx <= 2 && !margin; ++dx) {
-                        const Fixed w = rg.water_[static_cast<size_t>(iy + dy) * n + ix + dx];
-                        margin = w.raw != kDryRaw && z - w < r(9, 10);
-                    }
-                const Fixed patch = noise::fbm(sm, x, y, 24);
+                const bool margin = muddyShore(sm, x, y, z, [&](int dx, int dy) { return rg.water_[static_cast<size_t>(iy + dy) * n + ix + dx]; });
                 const bool ford = g == Ground::Road && flatDist(x, y, rg.ford_) < m(40);
-                if ((margin && patch > r(2, 5)) || ford) muddy[k] = Ground::Mud;
+                if (margin || ford) muddy[k] = Ground::Mud;
             }
         }
         rg.ground_.swap(muddy);

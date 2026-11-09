@@ -42,13 +42,44 @@ Fixed ellipse(const Continent::Area& a, Fixed x, Fixed y) {
     return sqrt(dx * dx + dy * dy);
 }
 
+// How far in from its shore a lake or an isle is (as `ellipse`, < 1 inside), the outline wandering: the ellipse
+// domain-warped at two scales (lobes and headlands over the whole shape, bays and points a sixth of it), so it is
+// not a drawn oval. The middle stays put (the warp fades in from it), so what stands at an isle's middle still
+// does. The warp keeps the shore within about 1.4 of the ellipse's reach.
+Fixed shoreDistance(uint64_t seed, const Continent::Area& a, Fixed x, Fixed y) {
+    const Fixed dx = (x - a.centre.x) / a.rx, dy = (y - a.centre.y) / a.ry;
+    const Fixed q0 = sqrt(dx * dx + dy * dy);
+    if (q0 > Fixed::fromInt(3)) return q0;
+    const int64_t reach = std::min(a.rx.floorToInt(), a.ry.floorToInt());
+    const int64_t lobes = std::max<int64_t>(20, reach * 2), bays = std::max<int64_t>(10, reach * 2 / 3);
+    const Fixed fade = noise::smoothstep(Fixed::zero(), r(3, 5), q0);
+    const auto warp = [&](uint64_t sd) {
+        return ((noise::fbm(sd, x, y, lobes) - r(1, 2)) * r(2, 1) + (noise::fbm(sd ^ 0x9E37, x, y, bays) - r(1, 2)) * r(7, 10)) * fade;
+    };
+    const Fixed u = dx + warp(seed), v = dy + warp(noise::nextSeed(seed));
+    return sqrt(u * u + v * v);
+}
+
 constexpr Fixed kValleyReach = scaled(450);
 // How far a sample looks for the nearest river (its riverDist goes no
 // further): far enough for everything placed by it (towns keep their walls
 // clear of the water, the relief and the landmarks keep off its banks).
 constexpr Fixed kRiverReach = Fixed::fromInt(300);
 constexpr Fixed kValleySlope = Fixed::fromRatio(6, 100);
-constexpr Fixed kSurfaceBelowLand = Fixed::fromRatio(3, 2);
+// A river's surface keeps this far below its lower bank, the bank being sampled out to this many metres past the
+// water's own half width; and falls no faster than this (1 in 10) along its course.
+constexpr Fixed kRiverMargin = Fixed::fromRatio(7, 20);
+// The channel lies this far below the ground along its middle, and cuts a gorge no deeper than this below that.
+constexpr Fixed kChannelBelowLand = Fixed::fromRatio(3, 2), kMaxGorge = Fixed::fromInt(3);
+constexpr int64_t kRimReach = 6;
+// A river that ends in the sea widens up to this many more times its width over its last 140 m (flare).
+constexpr Fixed kMouthFlare = Fixed::fromRatio(9, 5);
+constexpr Fixed kMouthFlareLength = Fixed::fromInt(140);
+constexpr int64_t kPadFade = 24;
+constexpr int64_t kLeveeTaper = 160;  // the most a levee takes to taper off into the land (1 in 4: it can stand 40 m)
+// A river does not rise nearer the sea than this.
+constexpr Fixed kSourceInland = Fixed::fromInt(150);
+constexpr Fixed kMaxRiverFall = Fixed::fromRatio(1, 10);
 // Cities' walls: half the size they were first drawn (three quarters of what
 // they were before the map shrank to a third), the walls themselves, their
 // towers, gates and ramps as thick and as wide as ever.
@@ -61,6 +92,180 @@ constexpr int64_t kMaxWallGap = 180, kMinWallGap = 30;
 // No town this near Oakhaven Ford: the set battle there is fought on open
 // ground (Battle::setUpFord: the two armies 230 m apart either side of it).
 constexpr Fixed kFordClear = Fixed::fromInt(350);
+
+// Bounding boxes of runs of a river's segments (River::boxes), so a sample skips the far ones.
+void boxRiver(Continent::River& rv) {
+    rv.boxes.clear();
+    for (size_t b = 0; b * Continent::River::kSpan + 1 < rv.points.size(); ++b) {
+        Continent::River::Box box{m(1000000), m(1000000), -m(1000000), -m(1000000)};
+        const size_t end = std::min(rv.points.size() - 1, (b + 1) * Continent::River::kSpan);
+        for (size_t i = b * Continent::River::kSpan; i <= end; ++i) {
+            box.minX = min(box.minX, rv.points[i].x);
+            box.minY = min(box.minY, rv.points[i].y);
+            box.maxX = max(box.maxX, rv.points[i].x);
+            box.maxY = max(box.maxY, rv.points[i].y);
+        }
+        rv.boxes.push_back(box);
+    }
+}
+
+// A castle whose houses wall men in. A battle's navigation grid closes every 4 m cell a house touches, a wall or a
+// tower passes through, or a ramp stands over (NavGrid), so a row of houses with gaps of a few metres is a wall to
+// it, and with the keep and the ramps can cut a ramp's foot (or the whole back of the yard) off from the courtyard
+// and the gate: men who walked down a ramp stood at its foot for good, and a squad sent in at a broken gate could
+// not reach the ramps. This is that closure on the same grid, from the castle's own geometry; while a ramp's foot
+// (the open cell nearest it, as a route starts from) is not reached from the courtyard, the house nearest the way
+// between them is taken down, as many as it takes.
+void unsealCastle(Continent::Castle& k) {
+    using Castle = Continent::Castle;
+    if (k.rings.empty() || k.houses.empty() || k.ramps.empty()) return;
+    constexpr int64_t kCell = 4;
+    const auto cellOf = [&](Fixed v) { return (v / m(kCell)).floorToInt(); };
+    Fixed lo[2] = {m(1000000), m(1000000)}, hi[2] = {-m(1000000), -m(1000000)};
+    for (const Vec3& q : k.rings.front().corners) {
+        lo[0] = min(lo[0], q.x), hi[0] = max(hi[0], q.x);
+        lo[1] = min(lo[1], q.y), hi[1] = max(hi[1], q.y);
+    }
+    const int64_t x0 = cellOf(lo[0]) - 3, y0 = cellOf(lo[1]) - 3;
+    const int64_t nx = cellOf(hi[0]) + 3 - x0 + 1, ny = cellOf(hi[1]) + 3 - y0 + 1;
+    const auto at = [&](int64_t cx, int64_t cy) { return static_cast<size_t>((cy - y0) * nx + (cx - x0)); };
+    const auto inGrid = [&](int64_t cx, int64_t cy) { return cx >= x0 && cy >= y0 && cx < x0 + nx && cy < y0 + ny; };
+    const auto middle = [&](int64_t cx, int64_t cy) { return Vec3{m(cx * kCell) + m(kCell) / 2, m(cy * kCell) + m(kCell) / 2, Fixed::zero()}; };
+    // A wall's cells: those whose middle is within its half thickness and a half metre of it, and every one its line runs through.
+    const auto closeWall = [&](std::vector<uint8_t>& closed, const Vec3& a, const Vec3& b, Fixed halfThick) {
+        const Fixed reach = halfThick + r(1, 1);
+        const Vec3 ab = (b - a).flat();
+        const Fixed len2 = ab.lengthSq();
+        for (int64_t cy = cellOf(min(a.y, b.y) - reach) - 1; cy <= cellOf(max(a.y, b.y) + reach) + 1; ++cy)
+            for (int64_t cx = cellOf(min(a.x, b.x) - reach) - 1; cx <= cellOf(max(a.x, b.x) + reach) + 1; ++cx) {
+                if (!inGrid(cx, cy)) continue;
+                const Vec3 p = middle(cx, cy);
+                const Fixed t = len2 > Fixed::zero() ? clamp((p - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
+                if ((p - (a + ab * t)).flat().lengthSq() < reach * reach) closed[at(cx, cy)] = 1;
+            }
+        const int64_t steps = (ab.length() * 2).floorToInt() + 1;
+        for (int64_t i = 0; i <= steps; ++i) {
+            const Vec3 p = a + ab * Fixed::fromRatio(i, steps);
+            if (inGrid(cellOf(p.x), cellOf(p.y))) closed[at(cellOf(p.x), cellOf(p.y))] = 1;
+        }
+    };
+    std::vector<int> tried(k.ramps.size(), 0);
+    std::vector<uint8_t> gaveUp(k.ramps.size(), 0);
+    std::vector<Castle::Ramp> original(k.ramps.size());
+    for (int pass = 0; pass < 96; ++pass) {
+        std::vector<uint8_t> closed(static_cast<size_t>(nx * ny), 0);
+        for (const Castle::Ring& ring : k.rings)
+            for (size_t i = 0; i < ring.corners.size(); ++i)
+                if (i != ring.gateEdge) closeWall(closed, ring.corners[i], ring.corners[(i + 1) % ring.corners.size()], ring.thick / 2);
+        {
+            const Vec3 ax = k.keepAxis, ay{-ax.y, ax.x, Fixed::zero()};
+            const Vec3 corner[4] = {k.keep + (ax + ay) * k.keepHalf, k.keep + (ax - ay) * k.keepHalf, k.keep - (ax + ay) * k.keepHalf, k.keep - (ax - ay) * k.keepHalf};
+            for (int i = 0; i < 4; ++i) closeWall(closed, corner[i], corner[(i + 1) % 4], Fixed::one());
+        }
+        for (const Castle::Tower& t : k.towers) {
+            const Fixed reach = t.radius + r(1, 2);
+            for (int64_t cy = cellOf(t.pos.y - reach) - 1; cy <= cellOf(t.pos.y + reach) + 1; ++cy)
+                for (int64_t cx = cellOf(t.pos.x - reach) - 1; cx <= cellOf(t.pos.x + reach) + 1; ++cx)
+                    if (inGrid(cx, cy) && (middle(cx, cy) - t.pos).flat().lengthSq() < reach * reach) closed[at(cx, cy)] = 1;
+        }
+        // A ramp where it stands more than a metre over the ground, and its landing.
+        for (const Castle::Ramp& rp : k.ramps) {
+            const Vec3 d = (rp.head - rp.foot).flat();
+            const Fixed len = d.length(), rise = rp.head.z - rp.foot.z;
+            if (len == Fixed::zero()) continue;
+            const Vec3 dir = d / len;
+            const Fixed from = rise > Fixed::one() ? len / rise : Fixed::zero(), to = len + Castle::kRampLanding;
+            for (int64_t cy = cellOf(min(rp.foot.y, rp.head.y) - to) - 1; cy <= cellOf(max(rp.foot.y, rp.head.y) + to) + 1; ++cy)
+                for (int64_t cx = cellOf(min(rp.foot.x, rp.head.x) - to) - 1; cx <= cellOf(max(rp.foot.x, rp.head.x) + to) + 1; ++cx) {
+                    if (!inGrid(cx, cy)) continue;
+                    const Vec3 rel = (middle(cx, cy) - rp.foot).flat();
+                    const Fixed along = rel.dot(dir), across = abs(rel.x * dir.y - rel.y * dir.x);
+                    if (along >= from - r(1, 2) && along <= to + r(1, 2) && across <= rp.halfWidth + r(1, 2)) closed[at(cx, cy)] = 1;
+                }
+        }
+        for (const Castle::House& h : k.houses)
+            for (int64_t cy = cellOf(h.pos.y - h.halfY); cy <= cellOf(h.pos.y + h.halfY); ++cy)
+                for (int64_t cx = cellOf(h.pos.x - h.halfX); cx <= cellOf(h.pos.x + h.halfX); ++cx)
+                    if (inGrid(cx, cy)) closed[at(cx, cy)] = 1;
+        // The open cell nearest p within four cells (a route starts from it when its own cell is shut).
+        const auto nearestOpen = [&](const Vec3& p, int64_t& ox, int64_t& oy) {
+            bool found = false;
+            Fixed best;
+            for (int64_t cy = cellOf(p.y) - 4; cy <= cellOf(p.y) + 4; ++cy)
+                for (int64_t cx = cellOf(p.x) - 4; cx <= cellOf(p.x) + 4; ++cx) {
+                    if (!inGrid(cx, cy) || closed[at(cx, cy)]) continue;
+                    const Fixed dd = (middle(cx, cy) - p).flat().lengthSq();
+                    if (!found || dd < best) found = true, best = dd, ox = cx, oy = cy;
+                }
+            return found;
+        };
+        int64_t sx = 0, sy = 0;
+        if (!nearestOpen(k.courtyard, sx, sy)) return;
+        std::vector<uint8_t> reached(closed.size(), 0);
+        std::vector<std::pair<int64_t, int64_t>> stack{{sx, sy}};
+        reached[at(sx, sy)] = 1;
+        while (!stack.empty()) {
+            const auto [cx, cy] = stack.back();
+            stack.pop_back();
+            for (int64_t dy = -1; dy <= 1; ++dy)
+                for (int64_t dx = -1; dx <= 1; ++dx) {
+                    const int64_t X = cx + dx, Y = cy + dy;
+                    if ((dx == 0 && dy == 0) || !inGrid(X, Y) || closed[at(X, Y)] || reached[at(X, Y)]) continue;
+                    if (dx != 0 && dy != 0 && (closed[at(cx + dx, cy)] || closed[at(cx, cy + dy)])) continue;
+                    reached[at(X, Y)] = 1;
+                    stack.push_back({X, Y});
+                }
+        }
+        // A ramp's foot not reached: the nearest reached cell to it, and the house nearest the way between.
+        bool cut = false;
+        size_t cutRamp = 0;
+        Vec3 between;
+        for (size_t ri = 0; ri < k.ramps.size(); ++ri) {
+            const Castle::Ramp& rp = k.ramps[ri];
+            if (gaveUp[ri]) continue;
+            int64_t fx = 0, fy = 0;
+            if (nearestOpen(rp.foot, fx, fy) && reached[at(fx, fy)]) continue;
+            bool have = false;
+            Fixed best;
+            Vec3 target = k.courtyard;
+            for (int64_t cy = y0; cy < y0 + ny; ++cy)
+                for (int64_t cx = x0; cx < x0 + nx; ++cx) {
+                    if (!reached[at(cx, cy)]) continue;
+                    const Fixed dd = (middle(cx, cy) - rp.foot).flat().lengthSq();
+                    if (!have || dd < best) have = true, best = dd, target = middle(cx, cy);
+                }
+            between = (rp.foot + target) * r(1, 2);
+            cut = true;
+            cutRamp = ri;
+            break;
+        }
+        if (!cut) return;
+        size_t nearest = 0;
+        Fixed nearestD = m(1000000);
+        for (size_t i = 0; i < k.houses.size(); ++i) {
+            const Fixed dd = (k.houses[i].pos - between).flat().lengthSq();
+            if (dd < nearestD) nearestD = dd, nearest = i;
+        }
+        if (nearestD < m(40) * m(40)) {
+            k.houses.erase(k.houses.begin() + static_cast<std::ptrdiff_t>(nearest));
+            continue;
+        }
+        // No house is in the way: the ramp stands where the grid's cells close round its foot (against the wall and a tower).
+        // It moves along its wall a metre or so either way until its foot is open to the yard; if none does, it stays.
+        static constexpr int kShift[6] = {1, -1, 2, -2, 3, -3};
+        Castle::Ramp& rp = k.ramps[cutRamp];
+        if (tried[cutRamp] == 0) original[cutRamp] = rp;
+        if (tried[cutRamp] >= 6) {
+            rp = original[cutRamp];
+            gaveUp[cutRamp] = 1;
+            continue;
+        }
+        const Vec3 dir = unitFlat(original[cutRamp].head - original[cutRamp].foot);
+        rp.foot = original[cutRamp].foot + dir * m(kShift[tried[cutRamp]]);
+        rp.head = original[cutRamp].head + dir * m(kShift[tried[cutRamp]]);
+        ++tried[cutRamp];
+    }
+}
 
 }  // namespace
 
@@ -87,7 +292,8 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
                        {N(575, 760), N(500, 748), N(420, 735), N(330, 722), N(270, 712), N(210, 705), N(150, 715), N(90, 712), N(0, 710)},
                        m(11), r(11, 4)});
     rivers_.push_back({"Wending", {N(300, 290), N(230, 282), N(170, 268), N(110, 262), N(0, 255)}, m(8), m(2)});
-    rivers_.push_back({"Coldbrook", {N(725, 880), N(650, 855), N(590, 840)}, m(7), m(2)});
+    // (The Coldbrook, a creek that ran from the northern shore up into the Aldwater, is gone: the land falls
+    // from the Aldwater's head to the sea over less room than a river may fall in, and water does not run uphill.)
 
     // Mountain chains. The gaps between them, and the passes, are the chokepoints.
     ridges_.push_back({"Thornspine Mountains", {{N(200, 930), N(260, 905), N(330, 885), N(400, 905), N(470, 880), N(530, 900)}, scaled(700)}, peakM(430)});
@@ -132,7 +338,11 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     // rivers', see below).
     lakes_.push_back({"Heartmere", N(578, 449), scaled(900), scaled(720)});
     isles_.push_back({{"Abbey Isle", N(598, 444), scaled(190), scaled(150)}, lakes_.size() - 1, m(7)});
-    isles_.push_back({{"the Spit", N(633, 446), scaled(330), m(16)}, lakes_.size() - 1, r(6, 5)});
+    isles_.push_back({{"the Spit", N(633, 446), scaled(330), m(16)}, lakes_.size() - 1, r(6, 5), m(38)});
+    // A few rocks and shoals about the isle: a ledge or two above the water, not walked.
+    isles_.push_back({{"Abbey Rock", N(590, 436), m(9), m(6)}, lakes_.size() - 1, r(5, 2), {}, false});
+    isles_.push_back({{"Gull Rock", N(607, 453), m(7), m(11)}, lakes_.size() - 1, r(2, 1), {}, false});
+    isles_.push_back({{"Drowned Ledge", N(582, 449), m(12), m(5)}, lakes_.size() - 1, r(3, 2), {}, false});
 
     crossings_.push_back({Crossing::Kind::Ford, "Oakhaven Ford", N(582, 680)});
     crossings_.push_back({Crossing::Kind::Ford, "Westrun Ford", N(300, 440)});
@@ -157,7 +367,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     roads_.push_back({{N(330, 1000), N(330, 885), N(330, 800), N(250, 760), N(210, 705), N(230, 620), N(300, 560), N(330, 540), N(300, 440),
                        N(320, 330), N(265, 300), N(160, 180), N(220, 85), N(230, 0)}, roadHalf});
     roads_.push_back({{N(680, 515), N(660, 420), N(730, 372), N(700, 250), N(566, 140), N(450, 120), N(330, 90)}, roadHalf});
-    roads_.push_back({{N(450, 240), N(560, 220), N(680, 230)}, roadHalf});
+    roads_.push_back({{N(450, 240), N(560, 220), N(685, 231)}, roadHalf});
     roads_.push_back({{N(300, 440), N(230, 455), N(160, 462), N(100, 470)}, roadHalf});
 
     labels_ = {{"WESTMARCH", N(250, 790), 0}, {"VALDOR", N(260, 200), 0}, {"EASTREACH", N(790, 530), 0},
@@ -513,6 +723,7 @@ void Continent::planCastles() {
                 k.houses.push_back({p, halfX, halfY, m(3) + roll(6000 + iy * 32 + ix) * 3});
             }
         }
+        unsealCastle(k);
     }
 }
 
@@ -637,7 +848,15 @@ Fixed Continent::landDistance(Fixed x, Fixed y) const {
     Fixed sea = m(100000), island = -m(100000);
     for (const SeaShape& s : sea_) {
         Fixed t;
-        const Fixed d = sqrt(segDistSq(x, y, s.a, s.b, t)) - s.radius;
+        Fixed px = x, py = y;
+        if (s.land) {
+            // An isle is no capsule: its outline is warped at two scales, into lobes, bays and a point or two.
+            const int64_t lobes = std::max<int64_t>(20, s.radius.floorToInt() * 2), bays = std::max<int64_t>(10, s.radius.floorToInt() * 2 / 3);
+            const uint64_t sw = noise::nextSeed(seed_ ^ 0x15E4);
+            px = x + ((noise::fbm(sw, x, y, lobes) - r(1, 2)) * r(8, 5) + (noise::fbm(sw ^ 0x9E37, x, y, bays) - r(1, 2)) * r(3, 5)) * s.radius * r(8, 5);
+            py = y + ((noise::fbm(noise::nextSeed(sw), x, y, lobes) - r(1, 2)) * r(8, 5) + (noise::fbm(noise::nextSeed(sw) ^ 0x9E37, x, y, bays) - r(1, 2)) * r(3, 5)) * s.radius * r(8, 5);
+        }
+        const Fixed d = sqrt(segDistSq(px, py, s.a, s.b, t)) - s.radius;
         if (s.land) island = max(island, -d);
         else sea = min(sea, d);
     }
@@ -858,19 +1077,18 @@ void Continent::meanderRivers() {
             // Wider in the slow reaches, narrower where it runs fast.
             rv.widths[i] = rv.halfWidth * (r(11, 20) + noise::fbm(sm ^ 0x5157, arc, m(static_cast<int64_t>(ri) * 5000), wave / 2) * r(11, 10));
         }
-        rv.points = std::move(out);
-        rv.boxes.clear();
-        for (size_t b = 0; b * River::kSpan + 1 < rv.points.size(); ++b) {
-            River::Box box{m(1000000), m(1000000), -m(1000000), -m(1000000)};
-            const size_t end = std::min(rv.points.size() - 1, (b + 1) * River::kSpan);
-            for (size_t i = b * River::kSpan; i <= end; ++i) {
-                box.minX = min(box.minX, rv.points[i].x);
-                box.minY = min(box.minY, rv.points[i].y);
-                box.maxX = max(box.maxX, rv.points[i].x);
-                box.maxY = max(box.maxY, rv.points[i].y);
+        // A river that reaches the sea (or flows into a lake) opens out into it: an estuary, not a pipe's end.
+        if (landDistance(out.back().x, out.back().y) < m(120) || ri == 0) {
+            const Fixed total = arc;
+            Fixed along;
+            for (size_t i = 0; i < out.size(); ++i) {
+                if (i > 0) along += (out[i] - out[i - 1]).flat().length();
+                const Fixed toMouth = total - along;
+                rv.widths[i] = rv.widths[i] * (Fixed::one() + kMouthFlare * (Fixed::one() - noise::smoothstep(Fixed::zero(), kMouthFlareLength, toMouth)));
             }
-            rv.boxes.push_back(box);
         }
+        rv.points = std::move(out);
+        boxRiver(rv);
     }
 }
 
@@ -878,7 +1096,8 @@ void Continent::computeRiverSurfaces() {
     // Water surfaces fall monotonically downstream, a little below the land;
     // branches start at their parent's surface; rivers reaching the sea end at 0.
     meanderRivers();
-    for (River& rv : rivers_) {
+    for (size_t ri = 0; ri < rivers_.size(); ++ri) {
+        River& rv = rivers_[ri];
         Fixed start;
         bool joined = false;
         for (const River& parent : rivers_) {
@@ -897,28 +1116,76 @@ void Continent::computeRiverSurfaces() {
                 }
             }
         }
-        Fixed surface = m(100000);
-        for (size_t i = 0; i < rv.points.size(); ++i) {
-            Fixed mountain;
-            const Fixed land = landDistance(rv.points[i].x, rv.points[i].y);
-            Fixed ground = reliefHeight(rv.points[i].x, rv.points[i].y, mountain);
-            if (land < Fixed::zero()) ground = Fixed::zero();
-            surface = min(surface, ground - kSurfaceBelowLand);
-            if (i == 0 && joined) surface = start;
-            surface = max(surface, Fixed::fromRatio(1, 10));
-            rv.points[i].z = surface;
-        }
-    }
-    // Tributaries end on another river: lower that river's surface below the junction, never raise it.
-    for (River& rv : rivers_) {
-        const Vec3 mouth = rv.points.back();
-        for (River& other : rivers_) {
-            if (&other == &rv) continue;
-            for (Vec3& p : other.points) {
-                if ((p - mouth).flat().lengthSq() < m(2500)) rv.points.back().z = max(rv.points.back().z, p.z);
+        // The surface may not stand above the ground at either bank: the water ends at the cutoff (a river's
+        // half width and a little more) wherever the ground is lower than it, a cliff of water. So it is the
+        // lowest bank of the section, less a margin, the lowest of the course so far (it never climbs
+        // downstream), no steeper in its fall than kMaxRiverFall (it is lowered upstream of a drop: a gorge, not a
+        // curtain), and at the sea it is the sea's level.
+        // Where it ends: on another river (their level at the meeting), in the sea (zero), or free.
+        Fixed outlet = m(100000);
+        bool onRiver = false;
+        for (size_t oi = 0; oi < ri; ++oi)
+            for (const Vec3& p : rivers_[oi].points)
+                if ((p - rv.points.back()).flat().lengthSq() < m(2500)) {
+                    outlet = onRiver ? max(outlet, p.z) : p.z;
+                    onRiver = true;
+                }
+        if (!onRiver && landDistance(rv.points.back().x, rv.points.back().y) < m(120)) outlet = Fixed::zero();
+        // The level the surface may have at vertex i: the course's own ground less a channel's depth, but no lower
+        // than the lowest bank (less a margin) unless that would cut a gorge deeper than kMaxGorge: where the land
+        // falls away more than that across the course the low bank is built up instead (`carve`, the levee).
+        const auto bankAt = [&](size_t i) {
+            const size_t count = rv.points.size();
+            const Vec3 prev = rv.points[i == 0 ? 0 : i - 1], next = rv.points[std::min(i + 1, count - 1)];
+            const Vec3 dir = (next - prev).flat();
+            const Fixed len = dir.length();
+            Fixed lowest = m(100000);
+            Fixed shoal;  // a ford spreads the river
+            for (const Crossing& c : crossings_)
+                if (c.kind == Crossing::Kind::Ford && (c.pos - rv.points[i]).flat().lengthSq() < m(90) * m(90)) shoal = Fixed::fromInt(6);
+            const Fixed reach = rv.widths[i] + shoal + m(kRimReach);
+            for (int64_t side = -1; side <= 1; side += 2)
+                for (int64_t k = 0; k <= 4; ++k) {
+                    Vec3 at = rv.points[i];
+                    if (len > Fixed::zero()) {
+                        const Fixed o = (rv.widths[i] + (reach - rv.widths[i]) * Fixed::fromRatio(k, 4)) * side;
+                        at = {at.x - dir.y / len * o, at.y + dir.x / len * o, Fixed::zero()};
+                    }
+                    lowest = min(lowest, landform(at.x, at.y).height);
+                }
+            Fixed centre = landform(rv.points[i].x, rv.points[i].y).height;
+            if (landDistance(rv.points[i].x, rv.points[i].y) < Fixed::zero()) lowest = centre = Fixed::zero();
+            const Fixed channel = centre - kChannelBelowLand;
+            return min(channel, max(lowest - kRiverMargin, channel - kMaxGorge));
+        };
+        // A river rises where the land stands above where it ends and clear of the shore: a source on the beach
+        // (the Aldwater's) is where the sea dips the banks, and water cannot run uphill out of it.
+        // The head of the course below that is dropped.
+        if (!joined && rv.points.size() > 8) {
+            size_t first = 0;
+            for (size_t i = 0; i < rv.points.size() / 3; ++i)
+                if (landDistance(rv.points[i].x, rv.points[i].y) < kSourceInland || (outlet < m(100000) && landform(rv.points[i].x, rv.points[i].y).height - kChannelBelowLand < outlet)) first = i + 1;
+            if (first > 0) {
+                rv.points.erase(rv.points.begin(), rv.points.begin() + static_cast<std::ptrdiff_t>(first));
+                rv.widths.erase(rv.widths.begin(), rv.widths.begin() + static_cast<std::ptrdiff_t>(first));
+                boxRiver(rv);
             }
         }
-        for (size_t i = rv.points.size() - 1; i-- > 0;) rv.points[i].z = max(rv.points[i].z, rv.points[i + 1].z);
+        const size_t n = rv.points.size();
+        Fixed running = joined ? start : m(100000);
+        std::vector<Fixed> surf(n);
+        for (size_t i = 0; i < n; ++i) {
+            running = min(running, bankAt(i));
+            surf[i] = max(running, Fixed::fromRatio(1, 10));
+        }
+        if (joined) surf[0] = start;
+        surf[n - 1] = outlet < m(100000) ? outlet : surf[n - 1];
+        for (size_t i = n - 1; i-- > 0;) {
+            const Fixed step = (rv.points[i + 1] - rv.points[i]).flat().length() * kMaxRiverFall;
+            surf[i] = max(min(surf[i], surf[i + 1] + step), surf[i + 1]);
+        }
+        if (joined) surf[0] = max(surf[0], start);
+        for (size_t i = 0; i < n; ++i) rv.points[i].z = surf[i];
     }
 }
 
@@ -1008,13 +1275,14 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     // Lakes sit in basins with a flat surface.
     for (size_t i = 0; i < naturalLakes(); ++i) applyLake(i, z, s, x, y);
     // Isles rise out of their lake: a rounded hump, its shore a little above the water.
-    for (const Isle& isle : isles_) {
-        const Fixed q = ellipse(isle.area, x, y);
+    for (size_t ii = 0; ii < isles_.size(); ++ii) {
+        const Isle& isle = isles_[ii];
+        const Fixed q = isleDistance(ii, x, y);
         if (q >= r(3, 2)) continue;
         const Fixed surface = lakeSurfaces_[isle.lake];
         const Fixed hump = max(Fixed::zero(), Fixed::one() - q * q);
-        // Its shore shelves into the lake as gently as the lake's own.
-        const Fixed shore = surface + r(1, 2) + (Fixed::one() - q) * max(isle.area.ry / 6, m(4));
+        // Its shore shelves into the lake as the lake's own does.
+        const Fixed shore = surface + r(1, 2) + (Fixed::one() - q) * max(isle.area.ry / 2, m(8));
         z = max(z, min(surface + r(1, 2) + isle.rise * hump * hump, shore));
         if (z >= surface) s.inLake = false;
     }
@@ -1030,11 +1298,13 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         s.relief = z - before;
     }
 
+    const Fixed riverGround = z;  // the river's own ground, before the creeks and the towns' pads
     // Streams from the drainage bake: a creek in a small gully of its own.
     if (!streams_.empty()) {
         const int64_t bx = clamp(x / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNx_ - 1)).floorToInt();
         const int64_t by = clamp(y / kStreamBucket, Fixed::zero(), Fixed::fromInt(bucketNy_ - 1)).floorToInt();
         constexpr Fixed kGully = Fixed::fromInt(40);
+        constexpr Fixed kStreamAbove = Fixed::fromRatio(3, 10);
         for (const auto& [si, bi] : streamBuckets_[static_cast<size_t>(by * bucketNx_ + bx)]) {
             const River& st = streams_[si];
             const River::Box& box = st.boxes[bi];
@@ -1050,6 +1320,9 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
                 s.streamSurface = st.points[i].z + (st.points[i + 1].z - st.points[i].z) * t;
             }
         }
+        // (A creek runs in the land, not above it: on a seed the bake was not made for, or where the rivers and lakes have
+        // lowered the ground since, its surface would stand metres over the bank as a pool.)
+        if (s.streamDist < kGully + s.streamHalfWidth * 2) s.streamSurface = min(s.streamSurface, z + kStreamAbove);
         const Fixed hw = s.streamHalfWidth;
         if (s.streamDist < hw) {
             const Fixed t = s.streamDist / hw;
@@ -1093,6 +1366,11 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     } else {
         z = min(z, bed);
     }
+    // A creek's gully and a town's pad give way to the river's own ground near the water: the pad is levelled to the
+    // town, the river to its course, and a gully or pad lower than the bank would stand the water on the bank as a
+    // wall. They fade back in over kPadFade metres from the water's edge. (A ruin's smaller pad, below, does not.)
+    if (s.riverDist < s.riverHalfWidth + m(kRimReach + 6 + kPadFade))
+        z = riverGround + (z - riverGround) * noise::smoothstep(s.riverHalfWidth + m(kRimReach + 6), s.riverHalfWidth + m(kRimReach + 6 + kPadFade), s.riverDist);
     // So do the ruins, on smaller ones (Site::kRuinPad).
     for (const Vec3& p : ruinPads_) {
         const Fixed inner = m(Site::kRuinPad), reach = inner + m(Site::kRuinPadBlend);
@@ -1104,16 +1382,21 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         z = z + (p.z - z) * w;
     }
 
+    // A bank lower than the water beside it is built up to it (a levee, tapering off into the land at 1 in 4): the water stands in
+    // its channel, not on a bank. (Not in a lake or the sea: they have their own shores.)
+    if (!s.inLake && s.land > Fixed::zero() && s.riverDist >= s.riverHalfWidth && s.riverDist < s.riverHalfWidth + m(kRimReach + 6 + kLeveeTaper)) {
+        const Fixed beyond = max(Fixed::zero(), s.riverDist - s.riverHalfWidth - m(kRimReach + 6));
+        const Fixed edge = noise::smoothstep(Fixed::zero(), m(2), s.riverDist - s.riverHalfWidth);
+        z = max(z, s.riverSurface + kRiverMargin * edge - beyond / 4);
+    }
     s.height = z;
 }
 
 void Continent::applyLake(size_t i, Fixed& z, Sample& s, Fixed x, Fixed y) const {
     const Area& lake = lakes_[i];
-    Fixed q = ellipse(lake, x, y);
-    if (q > m(3)) return;
+    if (ellipse(lake, x, y) > m(3)) return;
     // Shores wander: bays, points and coves, not a drawn ellipse.
-    const uint64_t sl = noise::nextSeed(seed_ ^ (0x1A4E + i * 131));
-    q = q * (r(4, 5) + noise::fbm(sl, x, y, std::max<int64_t>(scaledI(180), (lake.rx / 3).floorToInt())) * r(2, 5));
+    Fixed q = shoreDistance(noise::nextSeed(seed_ ^ (0x1A4E + i * 131)), lake, x, y);
     const Fixed surface = lakeSurfaces_[i];
     // A shelving shore, about 1 in 6, that runs on into the basin rim:
     // no step at the waterline, so no band of rock along it.
@@ -1125,7 +1408,9 @@ void Continent::applyLake(size_t i, Fixed& z, Sample& s, Fixed x, Fixed y) const
     if (q < Fixed::one()) {
         s.inLake = true;
         s.lakeSurface = surface;
-        z = min(z, max(surface - Fixed::one() - (Fixed::one() - q) * 3, surface + shelf));
+        // Shelving from the waterline (no step at it) to a deep middle, as deep as a river: about 5 m and a
+        // thirtieth of the lake's reach.
+        z = min(z, max(surface - min(m(5) + lake.rx / 30, m(14)), surface + shelf * 2));
     } else {
         // The basin rim rises fast so nearby hills keep their shape.
         const Fixed beyond = max(Fixed::zero(), q - r(3, 2));
@@ -1372,6 +1657,28 @@ void Continent::placeCities() {
     cities_ = std::move(chosen);
 }
 
+Fixed Continent::isleDistance(size_t i, Fixed x, Fixed y) const {
+    const Isle& isle = isles_[i];
+    const uint64_t seed = noise::nextSeed(seed_ ^ (0x151E + i * 211));
+    if (isle.wander == Fixed::zero()) return shoreDistance(seed, isle.area, x, y);
+    // A spit: along its axis t in [-1, 1]; its middle line swings sideways, its width swells and thins, and it
+    // fans out at both roots, where it meets the isle and the shore.
+    const Area& a = isle.area;
+    const bool alongX = a.rx >= a.ry;
+    const Fixed half = alongX ? a.rx : a.ry, thin = alongX ? a.ry : a.rx;
+    const Fixed along = (alongX ? x - a.centre.x : y - a.centre.y), across = (alongX ? y - a.centre.y : x - a.centre.x);
+    const Fixed t = along / half;
+    if (abs(t) > r(3, 2)) return abs(t);
+    const int64_t bend = std::max<int64_t>(30, half.floorToInt() * 2 / 3), swell = std::max<int64_t>(12, half.floorToInt() / 3);
+    const Fixed sway = (noise::fbm(seed, along, Fixed::zero(), bend) - r(1, 2)) * 2 * isle.wander;
+    const Fixed width = thin * clamp(r(3, 5) + (noise::fbm(seed ^ 0x5A1, along, Fixed::zero(), swell) - r(1, 2)) * r(16, 5), r(7, 20), r(6, 5));
+    const Fixed root = Fixed::one() + (noise::smoothstep(r(1, 2), Fixed::one(), abs(t))) * r(3, 2);
+    const Fixed lateral = (across - sway) / max(width * root, m(2));
+    // Ragged edges: the same fine warp as a shore.
+    const Fixed ragged = (noise::fbm(seed ^ 0x77, x, y, std::max<int64_t>(6, thin.floorToInt())) - r(1, 2)) * r(2, 5);
+    return sqrt(t * t + lateral * lateral) + ragged;
+}
+
 std::vector<Continent::Area> Continent::isles() const {
     std::vector<Area> out;
     for (const Isle& isle : isles_) out.push_back(isle.area);
@@ -1380,15 +1687,20 @@ std::vector<Continent::Area> Continent::isles() const {
 
 std::vector<Vec3> Continent::isleWalk() const {
     std::vector<Vec3> out;
-    for (const Isle& isle : isles_) {
+    for (size_t i = 0; i < isles_.size(); ++i) {
+        const Isle& isle = isles_[i];
+        if (!isle.walked) continue;
         const Area& a = isle.area;
         const bool alongX = a.rx >= a.ry;
         const int64_t half = (alongX ? a.rx : a.ry).floorToInt();
-        for (int64_t t = -half; t <= half; t += 4) {
-            const Vec3 p = a.centre + Vec3{alongX ? m(t) : Fixed::zero(), alongX ? Fixed::zero() : m(t), Fixed::zero()};
-            Fixed surface;
-            if (!waterSurface(p.x, p.y, surface)) out.push_back({p.x, p.y, Fixed::zero()});
-        }
+        // Every dry point of the isle on a 4 m grid about its middle line (a spit wanders off it).
+        const int64_t side = isle.wander == Fixed::zero() ? 0 : isle.wander.floorToInt() + (alongX ? a.ry : a.rx).floorToInt();
+        for (int64_t t = -half; t <= half; t += 4)
+            for (int64_t o = -side; o <= side; o += 4) {
+                const Vec3 p = a.centre + Vec3{alongX ? m(t) : m(o), alongX ? m(o) : m(t), Fixed::zero()};
+                Fixed surface;
+                if (isleDistance(i, p.x, p.y) < Fixed::one() && !waterSurface(p.x, p.y, surface)) out.push_back({p.x, p.y, Fixed::zero()});
+            }
     }
     return out;
 }

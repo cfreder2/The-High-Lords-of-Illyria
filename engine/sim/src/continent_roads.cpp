@@ -623,6 +623,25 @@ void Continent::layApproaches() {
                 kept.push_back(cr);
                 continue;
             }
+            // The creek or pool a road bridge was made for may be gone: a town's pad, laid since, levels the ground it ran in,
+            // and the lakes and rivers have shifted. Spanned again on the ground as it is; if there is no water under its length
+            // it is no bridge (a deck over dry land, its ramps down to nothing).
+            if (cr.name.empty()) {
+                // (From the water nearest along its axis, within 60 m; none, and it is no bridge.)
+                bool wet = false;
+                for (Fixed along = Fixed::zero(); along <= m(60) && !wet; along += Fixed::one())
+                    for (int side = 0; side < 2 && !wet; ++side) {
+                        const Vec3 p = cr.pos + cr.dir * (side ? -along : along);
+                        Fixed surface;
+                        if (!waterSurfaceOf(sample(p.x, p.y), surface)) continue;
+                        wet = true;
+                        cr.pos = {p.x, p.y, Fixed::zero()};
+                    }
+                if (!wet) continue;
+                cr.rampA = cr.rampB = cr.endA = cr.endB = Fixed::zero();
+                spanCrossing(cr);
+                if (!cr.bridged()) continue;  // (water too wide for a bridge, and no road wades it here: not a crossing at all)
+            }
             size_t ri = 0, sg = 0;
             Fixed t;
             if (!roadNear(cr.pos, m(6), ri, sg, t)) {
@@ -647,6 +666,7 @@ void Continent::layApproaches() {
                 cr.dir = dir;
                 cr.rampA = cr.rampB = cr.endA = cr.endB = Fixed::zero();
                 spanCrossing(cr);
+                if (!cr.bridged()) continue;  // (too wide to span, and no road wades it: not a crossing)
             }
             kept.push_back(cr);
         }
@@ -961,7 +981,7 @@ void Continent::shapeRoads(const std::vector<size_t>& gateRoad) {
     };
     std::vector<Attach> attached;
     for (size_t ri = 0; ri < roadCount; ++ri) {
-        if (roads_[ri].points.size() < 8) continue;
+        if (roads_[ri].points.size() < 2) continue;  // (a short road, a gate's last stretch to a road beside it, joins as any other)
         bool atGate = false;  // (a gate road's first point stays at its gate)
         for (size_t gr : gateRoad) atGate = atGate || gr == ri;
         for (int side = 0; side < 2; ++side) {
@@ -1020,9 +1040,10 @@ void Continent::shapeRoads(const std::vector<size_t>& gateRoad) {
         const std::vector<Vec3>& on = roads_[a.onto].points;
         const Vec3 target = on[sg] + (on[sg + 1] - on[sg]) * u;
         const Vec3 delta = target - end;
-        for (size_t k = 0; k < 7; ++k) {
+        const size_t follow = std::min<size_t>(7, n - 1);  // (never the road's other end)
+        for (size_t k = 0; k < follow; ++k) {
             Vec3& q = a.side ? road.points[n - 1 - k] : road.points[k];
-            q = q + delta * Fixed::fromRatio(static_cast<int64_t>(7 - k), 7);
+            q = q + delta * Fixed::fromRatio(static_cast<int64_t>(follow - k), static_cast<int64_t>(follow));
         }
     }
     // The bridges carry the road's width.
