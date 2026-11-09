@@ -132,3 +132,126 @@ one width for all. What replaced them (`engine/sim/src/continent_roads.cpp`, `ga
   footbridge's end (up to three of ten crossings): the game's continent is clean.
   The outpost's pole stands at `Crossing::bridgehead()`, dry ground beside the road at a bridge's head, or on the nearest dry ground to a ford
   (the campaign's own position of the outpost is unchanged).
+
+## Water: rivers below their banks, lakes and islands that are not ovals
+
+`illyria_terrainaudit` also prints a section for every river and for every lake and island (`tools/water_audit.h`,
+`tools/shape_audit.h`; the tests in `tests/test_terrain_audit.cpp` hold the numbers on three seeds).
+
+### Rivers: walls and curtains of water (before)
+
+A river's surface was the ground at its centreline less 1.5 m, held to the lowest of the course so far; the banks were
+whatever the land did beside it. Where the land fell away across the course the water stood above the bank and ended at
+the cutoff (half width + 6 m) in a cliff of water: the "wall of water" with a vertically streaked side. Where the land
+fell along the course the surface fell with it, 12 m between two vertices 20 m apart: the "curtain" beside the bridge.
+Two more things cut a bank below the water: a town's pad (levelled to the town, not to the river) and the drainage
+bake's creeks running along a river. The Coldbrook ran from the northern shore *up* into the Aldwater, 21 m uphill.
+
+| rivers, game seed (a section every vertex, 1 m steps across) | before | after |
+|---|---|---|
+| sections ending in a cliff of water (water over 0.75 m deep at its edge) | 48 of 292 | 6 of 265 |
+| tallest such wall | 69.5 m | 3.1 m |
+| course steps falling faster than 1 in 9 | 12 | 0 |
+| steepest fall / largest step between two vertices | 1 in 1.5 / 12.3 m | 1 in 10 / 2.6 m |
+| the four sea mouths: largest step in the last 100 m | 12.1, 16.7, 13.1, 17.9 m (1 in 1.3 to 1 in 2.6) | 0.1, 1.0, 1.4, 2.6 m (1 in 10 to 1 in 125) |
+| surface at the mouth / half width at the mouth over the middle of the river | 0.1 m / about 1x | 0 (the sea's) / 1.7x to 3.9x |
+
+What was done (`Continent::computeRiverSurfaces`, `carve`):
+
+- **The surface follows the course's ground**: the ground along the middle less 1.5 m (as before), but no lower than the
+  lowest bank of the section (less 0.35 m) unless that cuts a gorge deeper than 3 m below the middle; the lowest of the
+  course so far (it never climbs downstream); no steeper in its fall than 1 in 10 (the surface upstream of a drop is
+  lowered: a gorge, which the valley already blends into the land, not a curtain); the level of the river it flows into at
+  a junction; zero (the sea's level) at a mouth, which opens out over its last 140 m (`kMouthFlare`).
+- **A bank lower than the water is built up** (the levee, the end of `carve`): to the surface plus 0.35 m at the water's
+  edge, tapering off into the land at 1 in 4 however far that takes, so there is no cliff where it ends (a first version
+  that ended after 24 m left a wall of ground a metre or two high, and soldiers stood below it).
+- **A river rises where the land is above where it ends, clear of the shore**: the head of a course below that is dropped
+  (the Aldwater rose on the beach). The Coldbrook is gone (it could not run down to the sea in the room it had).
+- **Nothing else cuts a bank below the water**: a creek's gully and a town's pad fade out over 24 m from a river's edge
+  (`riverGround` in `carve`), so that the river's own ground stands there.
+- **The same sim feeds both paths**: the battle's Region (`Region::fromContinent`) and the Conquest's close-up land
+  (`DetailLand`) both take water from `waterSurfaceOf` on `sample`, so they cannot disagree about the surface; the
+  far map's ribbons are drawn at the same vertices.
+
+### Lakes and islands: circles and straight causeways (before)
+
+Lakes were ellipses with a gentle fbm on the radius (0.8 to 1.2), islands and the Spit plain ellipses (the Spit 330 x 16,
+straight), the Isle of the Seer a capsule. The measure (`shape_audit.h`): rasterise the body from the sim's own samples,
+compare it with the ellipse of the same area, centre and second moments (deviation = the area where they differ over
+the body's area: an oval scores 0), plus solidity (area over convex hull) and the spread of the radius.
+
+| body | deviation before | after | solidity before | after |
+|---|---|---|---|---|
+| Mirrormere | 0.064 | 0.253 | 1.000 | 0.872 |
+| Silverlake | 0.047 | 0.201 | 0.994 | 0.888 |
+| Longmere | 0.060 | 0.352 | 0.964 | 0.713 |
+| Heartmere | 0.201 | 0.231 | 0.873 | 0.845 |
+| Abbey Isle | 0.105 | 0.200 | 0.974 | 0.881 |
+| the Spit | 0.118 | 0.993 | 0.933 | 0.460 |
+| Isle of the Seer | 0.040 | 0.209 | 1.000 | 0.866 |
+
+- `shoreDistance`: the ellipse domain-warped at two scales (lobes and headlands over the whole shape, bays and points a
+  third of it), faded in from the middle so what stands at an isle's middle (the abbey) still does. Lakes, isles, the
+  Heartmere's rocks and the Seer's isle (its capsule is warped in `landDistance`) all use it.
+- The Spit (`Isle::wander`): its middle line swings up to 38 m sideways, its width swells and thins between 6 and 16 m
+  either side of the line, and it fans out where it meets the isle and the shore; `isleWalk` marks every dry cell of it
+  for the campaign's grid. Three rocks and shoals stand about Abbey Isle (`Isle::walked` false: no way on foot).
+- Lakes shelve from the waterline (no step) to a deep middle as deep as a river (5 m and a thirtieth of the reach, up to
+  14 m), so the one water-colour function, `inlandWater(depth)` in `kCommon`, gives a lake and a river the same blue:
+  the battlefield's water, the far land and the far river ribbons all use it.
+- The mud at the water's margin (`muddyShore`, shared by Region and DetailLand) follows the shore with a ragged reach,
+  not a 5 x 5 box of cells: no staircase of brown blocks along a bank.
+
+Kept true: every castle's gate has its road (80 of 80), the castles are joined to the road network (80 of 80 linked; the
+test's own count: all but the Isle of the Seer's one), no gate in water, no road through walls; the Drowned Abbey is
+reached on foot by the Spit (test). The towns moved (their placement reads the terrain beside the water: 17 of 80 are
+elsewhere, and the order of them, and so their names and castle shapes, changed), which is why six goldens moved and a
+few scenario tests that pick a town or a place by a rule (`town()` in test_castle, the horde's hill, the campaign fight
+the battle shows) were re-seated: see the commit message. Design road 4 now ends on road 3 (it ended 14 m short, and a
+town's approach road used to bridge the gap).
+
+### Left (water)
+
+- The coarse land (16 m) and the close-up land's water mesh still draw a shore at the grid's resolution; the far shore is
+  roughened (`farShoreWobble`) so that it is ragged, not a stair, but a very gentle shelf shows its cells.
+- The drainage bake's streams and pools were baked against the old lake shapes: a stream may end a few metres short of
+  or inside a lake's shore. Re-baking (`tools/terrainbake`) would settle them.
+- Roads 0, 2, 3 and 5 still wade (as above): road 0 now 34 points (it was 30) near (1306, 1880), by the Heartmere's shore.
+
+## Roads and lakes together
+
+The road look (classes, junctions, bridges that meet the ground) and the water (levelled rivers, natural lakes, one water
+colour) were made apart, and met on the same land. What the merge needed (both branches' audits hold on the result: 80 of 80
+gates with their road, 80 castles linked bar the Isle of the Seer's, no cliff of water, every bridge and ford passable on the
+game's continent and on seeds 1, 6 and 7, the Spit reaches the Drowned Abbey):
+
+- **A creek's water stood above the ground** (`Continent::carve`): the drainage bake's stream surfaces were made against the old
+  ground, and on a seed the bake was not made for, or where the rivers have since lowered the land, a creek stood metres over its
+  bank as a pool, and the bridge over it was made a "ford" over deep water that nothing could cross. A creek's surface is now at
+  most 0.3 m above the ground it runs in.
+- **A bridge over water that is gone** (`layApproaches`): a town's pad, laid after the first bridges, levels the creek it was
+  made for. Each unnamed road bridge is re-spanned from the water nearest along its axis within 60 m; with none, or water too wide
+  to bridge, it is no crossing.
+- **A short road beside another did not stay joined** (`shapeRoads`): the junction ends put back on the road they joined were
+  only those of roads of eight points or more; a town whose gate is a few metres from a road (its road is four points) lost its link
+  when a boulder's bend moved the road beside it. Every junction end is put back.
+- **The walk of a ford stopped at a gate** (tools/bridge_audit.h): a gate road ends at the (shut) doors, and a ford within 30 m of
+  one was "walked" into them. The walk stops short of the town's pad.
+
+### Men stuck in a courtyard
+
+After the towns moved, scenarios on some other towns left men standing in a courtyard (a man who came down a ramp, a squad sent
+in at a broken gate, giants through the gap). Two causes, neither in the new land:
+
+1. The navigation grid closes every 4 m cell a house touches. Houses on a jittered 11 m grid, 4 to 7 m across, leave gaps a cell
+   cannot hold; with the keep, the ramps along the walls and the towers, a row of them sealed a ramp's foot, or the whole back of the
+   yard, off from the courtyard and the gate (30 of 240 ramp feet in the 80 castles; a route from there found nothing and the man
+   stopped at the foot). `unsealCastle` (continent.cpp) closes the same cells from the castle's geometry and takes down the house
+   nearest the way between a cut-off foot and the yard until it is open, and, where no house is to blame, moves the ramp along its
+   wall by up to 3 m. 7 of 240 remain (a ramp so close to a wall and a tower that the grid has no cell between); no castle is left
+   without a way (`a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle`). `town()` in test_castle is the most open town again
+   (the lakes branch took the fourth), and every castle test but the giants' passes on each of the twelve most open towns.
+2. A gate is 31/50 of the wall's height, and a town's walls are 7 to 10 m: a quarter of the towns have a gate 4.4 m high, which a
+   giant (5.5 m) cannot pass under. That is a design fact, not a navigation fault; the giants' test needs a town whose gate stands
+   taller than a giant, and `town()` says so.

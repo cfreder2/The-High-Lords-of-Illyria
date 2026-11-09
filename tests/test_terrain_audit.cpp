@@ -9,7 +9,9 @@
 
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
+#include "shape_audit.h"
 #include "terrain_audit.h"
+#include "water_audit.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -367,4 +369,117 @@ TEST(every_bridge_meets_the_ground_and_can_be_walked_across_and_so_can_every_for
     std::printf("  %d bridges and %d fords walked across by a man, a rider and an engine, each way\n", bridges, fords);
     CHECK(bridges >= 20);
     CHECK(fords >= 20);
+}
+
+// ---- Water: rivers below their banks, lakes and islands that are not ovals (docs/TERRAIN_AUDIT.md) ----
+
+namespace {
+// The seeds the water and the shapes are checked on: the game's own (its baked relief) and two designs.
+const Continent& continentOf(uint64_t seed) {
+    static const Continent a(20261027), b(7), c(424242);
+    return seed == 20261027 ? a : seed == 7 ? b : c;
+}
+const uint64_t kSeeds[] = {20261027, 7, 424242};
+}  // namespace
+
+TEST(no_river_stands_as_a_wall_of_water_above_its_banks) {
+    // Before: 48 of 292 sections of the game's rivers ended in a cliff of water (up to 69 m: the surface was the
+    // centreline's ground less 1.5 m, the banks fell away from it, a town's pad or a creek's gully cut them lower).
+    for (const uint64_t seed : kSeeds) {
+        int sections = 0, walls = 0;
+        double tallest = 0;
+        for (const wateraudit::RiverReport& r : wateraudit::rivers(continentOf(seed))) {
+            sections += r.sections;
+            walls += r.walls;
+            tallest = std::max(tallest, r.tallestWall);
+        }
+        std::printf("  seed %llu: %d of %d sections walled, tallest %.2f m\n", static_cast<unsigned long long>(seed), walls, sections, tallest);
+        CHECK(sections > 150);
+        CHECK(walls <= 8);
+        CHECK(tallest < 7.0);  // (a bank the levee could not reach: a creek or a pad beside the river)
+    }
+}
+
+TEST(a_rivers_surface_falls_gently_along_its_course) {
+    // Before: falls of 1 in 1.7 (12 m between two vertices 20 m apart), a curtain of water down the bank.
+    for (const uint64_t seed : kSeeds) {
+        const Continent& c = continentOf(seed);
+        for (const Continent::River& rv : c.rivers()) {
+            for (size_t i = 0; i + 1 < rv.points.size(); ++i) {
+                const double run = (rv.points[i + 1] - rv.points[i]).flat().length().toDouble();
+                const double fall = rv.points[i].z.toDouble() - rv.points[i + 1].z.toDouble();
+                if (run < 1e-6) continue;
+                CHECK(fall > -0.001);                           // never uphill
+                CHECK(fall / run <= wateraudit::kMaxFall);      // never steep
+            }
+        }
+    }
+}
+
+TEST(a_river_reaches_the_sea_at_the_seas_level_and_opens_out) {
+    const Continent& c = continent();
+    int mouths = 0;
+    for (const Continent::River& rv : c.rivers()) {
+        const Vec3 end = rv.points.back();
+        if (c.landform(end.x, end.y).land >= Fixed::zero()) continue;  // on another river or a lake
+        ++mouths;
+        CHECK(end.z == Fixed::zero());
+        // Wider at the mouth than upstream (the estuary), and no drop in the last 100 m: the fall is gentle to the end.
+        CHECK(rv.widths.back() > rv.widths[rv.widths.size() / 2]);
+        for (size_t i = rv.points.size() - 1; i > 0 && (end - rv.points[i]).flat().length() < Fixed::fromInt(100); --i)
+            CHECK((rv.points[i - 1].z - rv.points[i].z).toDouble() < 3.0);  // 1 in 10 over a vertex about 20 m on
+    }
+    CHECK(mouths >= 3);
+}
+
+TEST(no_lake_or_island_is_a_drawn_oval) {
+    // Before: Mirrormere, Silverlake and Longmere deviated 0.06, 0.05 and 0.06 from the ellipse of their own moments
+    // (solidity 1.00, 0.99, 0.96); Abbey Isle 0.105 (0.97); the Isle of the Seer 0.04 (1.00): ovals.
+    for (const uint64_t seed : kSeeds) {
+        for (const shapeaudit::Shape& sh : shapeaudit::bodies(continentOf(seed), 3.0)) {
+            if (sh.area < 1000) continue;  // a pond or a rock
+            std::printf("  seed %llu %-18s deviation %.3f solidity %.3f\n", static_cast<unsigned long long>(seed), sh.name.c_str(), sh.deviation, sh.solidity);
+            if (sh.name == "the Spit") {
+                CHECK(sh.solidity < 0.8);  // it wanders: nowhere near convex
+                continue;
+            }
+            CHECK(sh.deviation >= (sh.name.find("Isle") == std::string::npos ? 0.12 : 0.06));  // a small isle is measured coarsely
+            CHECK(sh.solidity <= 0.97);
+        }
+    }
+}
+
+TEST(abbey_isle_is_reached_on_foot_by_a_spit_that_wanders) {
+    const Continent& c = continent();
+    const Continent::Area heart = c.lakes()[3];  // the Heartmere
+    const Vec3 abbey = c.isles().front().centre;
+    // Flood the dry ground from the isle's middle (2 m cells): it reaches the shore beyond the lake, by land alone.
+    const int n = 220;
+    const double x0 = heart.centre.x.toDouble() - 1.3 * heart.rx.toDouble(), y0 = heart.centre.y.toDouble() - 1.3 * heart.ry.toDouble(), cell = 2.5 * 1.3 * heart.rx.toDouble() / n;
+    const int ny = static_cast<int>(2.6 * heart.ry.toDouble() / cell);
+    std::vector<char> seen(static_cast<size_t>(n) * ny, 0);
+    const auto dry = [&](int i, int j) {
+        Fixed w;
+        const Continent::Sample s = c.sample(Fixed::fromRatio(static_cast<int64_t>((x0 + i * cell) * 100), 100), Fixed::fromRatio(static_cast<int64_t>((y0 + j * cell) * 100), 100));
+        return !c.waterSurfaceOf(s, w);
+    };
+    std::vector<std::pair<int, int>> stack{{static_cast<int>((abbey.x.toDouble() - x0) / cell), static_cast<int>((abbey.y.toDouble() - y0) / cell)}};
+    bool ashore = false;
+    int land = 0;
+    while (!stack.empty()) {
+        const auto [i, j] = stack.back();
+        stack.pop_back();
+        if (i < 0 || j < 0 || i >= n || j >= ny || seen[static_cast<size_t>(j) * n + i] || !dry(i, j)) continue;
+        seen[static_cast<size_t>(j) * n + i] = 1;
+        ++land;
+        const double dx = (x0 + i * cell - heart.centre.x.toDouble()) / heart.rx.toDouble(), dy = (y0 + j * cell - heart.centre.y.toDouble()) / heart.ry.toDouble();
+        if (dx * dx + dy * dy > 1.5 * 1.5) ashore = true;
+        for (const auto& d : {std::pair{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) stack.push_back({i + d.first, j + d.second});
+    }
+    CHECK(ashore);
+    CHECK(land > 400);
+    // The ruin stands on dry ground, and a walker's grid has the spit's cells as land.
+    Fixed w;
+    CHECK(!c.waterSurface(abbey.x, abbey.y, w));
+    CHECK(c.isleWalk().size() > 40);
 }

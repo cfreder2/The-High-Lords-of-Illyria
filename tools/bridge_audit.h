@@ -188,12 +188,19 @@ inline FordReport auditFord(const Continent& c, size_t crossing, int cells = 96,
     if (best >= 30) return out;
     out.onRoad = true;
     const std::vector<Vec3>& pts = c.roads()[bi].points;
+    // (Not into a town: a gate road ends at the doors, which are shut; the walk stops short of the town's pad, as a player's order does.)
+    const auto inTown = [&](const Vec3& p) {
+        for (const Continent::City& city : c.cities())
+            if ((p - city.pos).flat().length() < city.radius + Fixed::fromInt(16)) return true;
+        return false;
+    };
     const auto along = [&](int sign) {  // the point 30 m along the road from bk, in direction sign
         double left = 30;
         size_t k = bk;
         Vec3 at = pts[bk];
         while (left > 0 && (sign > 0 ? k + 1 < pts.size() : k > 0)) {
             const Vec3 nx = sign > 0 ? pts[k + 1] : pts[k - 1];
+            if (inTown(nx)) break;
             const double step = (nx - at).flat().length().toDouble();
             if (step >= left) return at + (nx - at) * Fixed::fromRatio(static_cast<int64_t>(left * 1000), static_cast<int64_t>(std::max(step, 0.001) * 1000));
             left -= step;
@@ -203,6 +210,10 @@ inline FordReport auditFord(const Continent& c, size_t crossing, int cells = 96,
         return at;
     };
     const Vec3 ends[2] = {along(-1), along(1)};
+    if ((ends[1] - ends[0]).flat().length() < Fixed::fromInt(4)) {  // (the road is all in a town's pad here: no walk)
+        out.onRoad = false;
+        return out;
+    }
     const auto region = std::make_shared<const Region>(Region::fromContinent(c, cr.pos, cells));
     const Vec3 o = region->origin();
     static const UnitType types[3] = {UnitType::LightInfantry, UnitType::LightCavalry, UnitType::Catapult};
