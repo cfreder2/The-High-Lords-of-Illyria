@@ -6,6 +6,7 @@ add_library(illyria_sim
     src/ballistics.cpp
     src/world.cpp
     src/world_gates.cpp
+    src/world_keep.cpp
     src/world_walls.cpp
     src/castle_walls.cpp
     src/world_combat.cpp

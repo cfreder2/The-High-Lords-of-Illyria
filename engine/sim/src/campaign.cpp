@@ -383,6 +383,10 @@ Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
 
 void Campaign::commandMen(const Order& o) {
     if (o.command.player != o.side) return;
+    if (o.command.type == Command::Type::SetGate) {  // a hand on a gate, no man: the World asks whose gate it is
+        playerCommands_.push_back(o.command);
+        return;
+    }
     for (Stack& s : stacks_) {
         if (s.owner != o.side) continue;
         for (const Army& a : s.armies)

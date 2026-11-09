@@ -182,9 +182,11 @@ A short note on how it works, and what it costs.
 - **Saving.** A save writes every man where he stands (`Man::ax, ay, fx, fy`) with his wounds. Nothing of a moment
   is kept (arrows in the air, cooldowns): `Campaign::save` first takes every man out of the World and puts him
   back (`reseatAll`), clearing the air, so that the game saved and the game loaded from the save carry on as one.
-- **Gates open to their holder's men.** A shut gate opens for the men of the side that holds it when they are bound
-  through it (`World::updateGates`), and shuts behind them; everyone else hacks at it (`GateState::opened`). This is a
-  rule of the World, so a skirmish has it too (`tests/test_castle.cpp`).
+- **Gates open to their holder's men.** A shut gate swings open (three seconds) for the men of the side that holds it
+  when they are bound through it (`World::updateGates`), and shuts behind them; everyone else hacks at it
+  (`GateState::mode`). The holder's hand can hold it open or shut (`Command::SetGate`), and a garrisoned gate is kept
+  by its garrison (`World::keepGates`: archers on the walls, foot in a horseshoe behind the doors). These are rules of
+  the World, so a skirmish has them too (`tests/test_castle.cpp`, `tests/test_conquest_nav.cpp`).
 - **Orders in a fight.** Stacks, the player's and the computer lords' alike, march their
   route with the battle's initiative (they fight whoever strikes them or crosses their path) and
   go on when it is done; standing, they meet whoever comes within 45 m of their post: foot go at

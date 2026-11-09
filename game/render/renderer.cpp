@@ -1135,15 +1135,22 @@ void Renderer::uploadContinent(const Battle& battle) {
 
 void Renderer::uploadGates(const Battle& battle) {
     // Every town's gate: those of the battlefield as the battle has left them
-    // (shut, or broken in), the rest of the continent's shut. Uploaded again
-    // only when one breaks.
+    // (shut, swung part or all the way open, or broken in), the rest of the
+    // continent's shut. Uploaded again only when one breaks or swings further.
     const std::vector<sim::GateState>& state = battle.world().gates();
-    std::vector<uint8_t> broken(state.size());
-    for (size_t i = 0; i < state.size(); ++i) broken[i] = state[i].broken();
-    if (!gatesShown_.empty() && broken == gatesShown_) return;
-    gatesShown_ = broken;
-    gatesShown_.push_back(1);  // never empty once uploaded
-    std::vector<float> shut, open;
+    std::vector<int16_t> look(state.size());
+    // (How a gate stands, open or swinging, is told only of a castle the viewer can see: Battle::sees, the one seam of sight.)
+    const auto& shapes = battle.worldRegion().gates();
+    for (size_t i = 0; i < state.size(); ++i) {
+        const V3 mid = toV3(shapes[i].a + shapes[i].b) * 0.5f;
+        const bool seen = state[i].holder == sim::GateState::kNoHolder || battle.sees(state[i].holder, mid.x, mid.y);
+        look[i] = state[i].broken() ? -1 : seen ? static_cast<int16_t>(state[i].swing(battle.world().tick()) / 50) : 0;
+    }
+    std::vector<int16_t> shown = look;
+    shown.push_back(-2);  // never empty once uploaded
+    if (shown == gatesShown_) return;
+    gatesShown_ = shown;
+    std::vector<float> shut, open, lefts, rights;
     const auto put = [](std::vector<float>& out, V3 a, V3 b, V3 out_, float top) {
         const float half = (b - a).length() / 2;
         float q[4];
@@ -1153,7 +1160,19 @@ void Renderer::uploadGates(const Battle& battle) {
     const auto& gates = battle.worldRegion().gates();
     for (size_t i = 0; i < gates.size(); ++i) {
         const sim::Gate& g = gates[i];
-        put(broken[i] ? open : shut, toV3(g.a), toV3(g.b), toV3(g.out), static_cast<float>(g.top.toDouble()));
+        if (look[i] > 0) {
+            // Swinging: each leaf turned inward about its hinge, the right as the left's mirror (the open way, 1.6 rad, lies against the passage).
+            const V3 out = toV3(g.out);
+            const float angle = static_cast<float>(look[i]) / 20.0f * 1.6f, yaw = std::atan2(-out.x, out.y);
+            const float half = (toV3(g.b) - toV3(g.a)).length() / 2, high = static_cast<float>((g.top - g.a.z).toDouble());
+            float q[4];
+            yawQuat(yaw - angle, q);
+            pushInstance(lefts, toV3(g.a), q, {half, half, high}, {1, 1, 1});
+            yawQuat(yaw + angle, q);
+            pushInstance(rights, toV3(g.b), q, {half, half, high}, {1, 1, 1});
+            continue;
+        }
+        put(look[i] < 0 ? open : shut, toV3(g.a), toV3(g.b), toV3(g.out), static_cast<float>(g.top.toDouble()));
     }
     const sim::Continent& cont = battle.continent();
     const V3 o = battle.origin();
@@ -1178,6 +1197,8 @@ void Renderer::uploadGates(const Battle& battle) {
     }
     uploadMeshInstances(gates_, shut);
     uploadMeshInstances(brokenGates_, open);
+    uploadMeshInstances(leavesLeft_, lefts);
+    uploadMeshInstances(leavesRight_, rights);
 }
 
 void Renderer::uploadSettlements(const Battle& battle) {
@@ -1474,6 +1495,8 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(galleries_, meshes::gallery(static_cast<float>(sim::Continent::Castle::kGalleryWidth.toDouble())), 0);
     makeMeshBatch(gates_, meshes::gate(false), 0);
     makeMeshBatch(brokenGates_, meshes::gate(true), 0);
+    makeMeshBatch(leavesLeft_, meshes::gateLeaf(false), 0);
+    makeMeshBatch(leavesRight_, meshes::gateLeaf(true), 0);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_}) b->masonry = true;
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
@@ -2004,7 +2027,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     drawDetailTerrain(detailDepth_, camera, timeSeconds, gameSeconds);
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}) casters.push_back(b);
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_}) casters.push_back(b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
@@ -2555,7 +2578,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
     part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);

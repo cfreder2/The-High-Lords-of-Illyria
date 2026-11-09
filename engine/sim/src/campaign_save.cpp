@@ -17,8 +17,8 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC4.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 4;  // 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
+constexpr const char* kMagic = "ILC5.";  // bump the digit when the layout changes
+constexpr uint32_t kFormat = 5;  // 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
 
 class Writer {
 public:
@@ -360,6 +360,9 @@ std::string Campaign::save() {
         gateHps(gates);
         w.u(gates.size());
         for (int32_t g : gates) w.i(g);  // (pairs: gate, hit points left)
+        gatePinList(gates);
+        w.u(gates.size());
+        for (int32_t g : gates) w.i(g);  // (pairs: gate, how it is held)
     }
     w.u(hexes_.size());
     for (const Hex& h : hexes_) {
@@ -523,6 +526,8 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     c->voyages_ = r.i32();
     c->gateHp_.resize(r.count());
     for (int32_t& g : c->gateHp_) g = r.i32();
+    c->gatePin_.resize(r.count());
+    for (int32_t& g : c->gatePin_) g = r.i32();
     if (r.count() != c->hexes_.size()) return fail("damaged (land)");
     for (Hex& h : c->hexes_) {
         h.owner = r.u8();

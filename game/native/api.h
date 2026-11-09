@@ -41,6 +41,7 @@ int illyria_group(int op, int slot);
 int illyria_ungroup();
 const char* illyria_formations();
 void illyria_stop();
+void illyria_gate(int release);
 void illyria_special();
 void illyria_toggle_pause();
 void illyria_cycle_speed();

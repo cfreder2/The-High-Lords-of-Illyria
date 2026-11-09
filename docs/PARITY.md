@@ -19,7 +19,9 @@ aboard a boat (the ship carries him).
 | Pathfinding round walls, houses, trees, water | World nav | same World nav | **test** `a_march_across_a_walled_town_goes_round_its_walls` (0 samples of a man in a house or wall, over two marches out of the capital; before the change 14,544) |
 | Ramps and wall-walks (archers climb to an embrasure) | World nav, ramps | same | **test** `archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish` (same order, same ground: 2,706 ticks in Conquest with the squad in the way of each other, 2,467 in a skirmish) |
 | Gates: hack and break (attackers) | `World::gateToHack` | same | by construction (`test_castle.cpp` runs it in a skirmish world; Conquest siege tests `a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there` use it) |
-| Gates: the holder's men pass | **new** `World::updateGates`: the gate opens to its holder's men and shuts behind them | same (the rule is the World's) | **test** `a_gate_opens_to_its_holders_men_and_to_nobody_else` (skirmish world) and the capital marches (Conquest). Neither mode has a player command to open or shut a gate by hand; see section 3 |
+| Gates: the holder's men pass | `World::updateGates`: the gate swings open (three seconds, blocking all the while) to its holder's men bound through it and shuts behind them; an enemy never opens it | same (the rule is the World's) | **test** `a_gate_opens_to_its_holders_men_and_to_nobody_else`, `a_squad_ordered_through_a_closed_gate_opens_it_passes_and_it_closes_behind`, `an_enemy_squad_cannot_pass_a_closed_gate_and_does_not_open_it` (skirmish world) and the capital marches (Conquest) |
+| Gates: the hand on the gate (open, shut, let go) | `Command::SetGate` through the one command list; tap a gate of one's own, `O`, the card's buttons | same command, carried by an `Order` | **test** `the_holder_pins_his_gate_open_or_shut_and_nobody_else_can`, `a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle` (one scenario, both modes, the same ticks), `a_gate_the_player_holds_open_or_shut_is_saved_with_the_game` |
+| Gates: a garrison keeps its gate (archers on the walls, foot in a horseshoe behind the doors, the lure) | `World::keepGates` for every `GateState::garrisoned` gate (Siege battle's, a neutral town's, a computer lord's) | same function | **test** `a_neutral_garrison_puts_its_archers_on_the_wall_and_its_foot_behind_the_gate` (skirmish world); Conquest towns by `a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there` |
 | Formations (shapes, narrowing, facing drag) | Battle's `moveGroup`/`Shape` over unit Commands | the same Battle functions, since a Conquest man is a unit. A *march* on the coarse route uses `Campaign::layout` (block/column), a second layout code | by construction for orders within 200 m; **gap** for the march (see section 3, item 1) |
 | Waypoints, attack-move, Charge, Hold, Find, Scatter | Battle | same Battle commands on units; far orders become a stack march | by construction; `the_players_men_in_a_fight_are_ordered_as_in_a_skirmish...` runs Hold, Scatter, Box, As they stand, Charge in a Conquest fight |
 | Hero abilities and edges | World | same | by construction (no Conquest hero-ability test) |
@@ -47,6 +49,18 @@ Known weaknesses that remain (honest list, not exceptions):
   (a 4 m grid search over 3 km is the cost the document warned about).
 - A gate is a bottleneck: a stack of 24 men leaving a castle by its one gate takes minutes (the same as a skirmish's
   six defenders took 40 s to pass); the old body march had none of that. It is the World's rule, now also Conquest's.
+  Measured (towns held by the computer lords at day 25, all-computer campaign, seeds 7 / 11 / 21): 35 / 36 / 36 at d6c56db;
+  22 / 25 / 26 with garrisoned gates at the first cut, 29 / 23 / 25 after the recall reached 70 m; 37 / 37 with the gate keeping
+  switched off; with only the neutral towns kept 33 / 20 / 23. So a neutral garrison holding its gate (archers up on the walls,
+  foot behind the doors, no sortie to die in the open) is what slows the lords: about 28% fewer towns at day 25. Counting the
+  gate in the dice (+1, +2, +3 strength points for a defending garrisoned town) did not speed them: they simply attacked less.
+  What would is more means of taking a held gate (catapults beyond the three capitals, or bigger strike stacks), not a weaker garrison.
+  The horseshoe's geometry (`keepGates`, `Fixed`) could serve the player's formation picker (`Formation::Encircle` is in floats
+  in the game layer); it is not shared yet.
+  Still weak with gates: the doors now take three seconds to swing, so a long column waits at each swing; a march
+  through two rings (a capital's outer and inner gate) is routed to one gate and the straight line after it
+  (`World::routeToGate` plans one gate), not through both; an enemy that follows a lured stream can hold the gate open
+  (nobody may be swept by the doors).
 - The coarse planner's flier estimate is optimistic by about 2.2 times against the World's flight cycles
   (`fliers_alone_go_at_their_flight_cycles_pace_over_anything` measures it); the lords plan with it.
 - The cost of the whole population in one World (section 4 of docs/ONE_WORLD.md, "What it costs"): 19 ms a tick native
@@ -109,7 +123,6 @@ entering a ruin, a castle producing a unit) in a skirmish.
 
 1. **Aboard a boat a man is out of the World** (until step 5). He is not drawn on the deck and cannot be ordered
    until he lands.
-2. **Neither mode lets the player open or shut a gate by hand.** A holder's men open it by walking through; nobody
-   can hold it shut against his own men. A hold-the-gate command is a World addition for later.
+2. ~~Neither mode lets the player open or shut a gate by hand.~~ Done (gates swing; `Command::SetGate`; see the table).
 3. **The conquest's speeds (1, 2, 4, 8) differ from the skirmish's**; at 8x with the island's full population the
    frame may not hold the clock (see docs/ONE_WORLD.md, "What it costs").
