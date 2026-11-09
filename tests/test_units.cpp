@@ -260,7 +260,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x2b832f5e35b1bb99;
+    constexpr uint64_t kGolden = 0x79395485b8e4f1a2;  // (was 0x2b832f5e35b1bb99 before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
