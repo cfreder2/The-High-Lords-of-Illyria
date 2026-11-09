@@ -237,6 +237,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
         case SDL_SCANCODE_U: illyria_ungroup(); break;
         case SDL_SCANCODE_GRAVE: illyria_select_heroes(); break;
+        case SDL_SCANCODE_TAB: illyria_cycle_group(shift ? -1 : 1); break;  // the next group of units (Shift: the previous)
         case SDL_SCANCODE_ESCAPE:
             // Cancels an order mode in hand; else pauses the game and brings up the menu (Esc again: back).
             if (orderMode_) setMode(0);

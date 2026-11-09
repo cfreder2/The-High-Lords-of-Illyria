@@ -505,6 +505,7 @@
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
     `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
+    `<tr><td>${k("Tab")}, ${k("Shift")} + ${k("Tab")}</td><td>Select the next, or the previous, group of units: the saved groups in number order, then the squads in no group. Wraps round; the camera follows if they are off screen.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
     `<tr><td>${k("P")}</td><td>Pause the battle.</td></tr>` +
     `<tr><td>${k("-")} · ${k("=")}</td><td>Slower · faster: ¼×, ½×, 1×, 2×, 4×. The speed button too: a click for 2× and 4×, held for slow motion.</td></tr></table>` +

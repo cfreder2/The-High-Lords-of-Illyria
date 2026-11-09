@@ -43,6 +43,7 @@ void illyria_set_formation(int f);
 void illyria_scatter();
 int illyria_group(int op, int slot);
 int illyria_ungroup();
+int illyria_cycle_group(int dir);
 const char* illyria_formations();
 void illyria_stop();
 void illyria_gate(int release);

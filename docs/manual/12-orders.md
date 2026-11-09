@@ -26,6 +26,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt (stop the march) | **Hold** | [[Space]] or [[B]] |
 | The camera to the selection | **Find** | [[C]] |
+| The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |
 | Raid (hyena-folk) | **Raid** | [[T]] |
 | Lay satchels (grenadiers) | | [[T]], then click where |
 | Cancel a mode | tap the mode's button again | [[Esc]] |
@@ -114,6 +115,7 @@ The hyena-folk are soldiers like any others until you let them loose. Sent somew
 
 - **Hold** halts the selection where it stands.
 - **Find** brings the camera to the selection.
+- **Tab** selects the next group of units, [[Shift]] + [[Tab]] the previous: first your saved groups in number order (1 to 9, then 0), then the squads that are in no saved group, in a fixed order. It wraps round at both ends, and the camera goes to them if they are off the screen.
 - **Scatter** (below) sends everyone selected running outward.
 - **Charge** (at the top of the screen) sends every one of your squads at the nearest enemy, the archers stopping at a long bowshot.
 

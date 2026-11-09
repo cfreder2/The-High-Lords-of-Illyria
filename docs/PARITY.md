@@ -31,6 +31,7 @@ aboard a boat (the ship carries him).
 | Scavenging, raids, satchels | World | same | by construction |
 | Captures (flag, banner) | CTF mode flag; Conquest banner is `Campaign::bannerStep` | **differs**: two rules (see section 2) | n/a |
 | Group hotkeys 1-9 | unit ids | man ids (units leave the World only aboard a boat) | `a_group_in_the_conquest_is_of_men...` |
+| Tab / Shift+Tab cycle the groups (saved groups, then squads in none) | `Battle::cycleGroup` over groups and squads | same (a Conquest squad is an army's men, a saved group is of men) | **test** `tab_cycles_the_saved_groups_then_the_squads_in_none_and_shift_tab_goes_back` (a skirmish); Conquest by construction (same function, `groupMen`/`squads_`) |
 | Camera, selection, command bar, minimap | Battle | Battle (`Battle::borrow`) | `test_campaign_battle.cpp` |
 | Sounds, voices, effects | Battle `collectEvents` | same | `the_battle_presents_the_campaigns_fight_as_its_own` |
 | A sleeping man selectable and orderable | n/a | now every man; no sleepers | `a_tap_selects_a_man_and_the_card_selects_his_squad` |

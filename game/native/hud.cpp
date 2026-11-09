@@ -438,6 +438,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},
               {"`, Ctrl + A", "heroes, all on screen"},
+              {"Tab, Shift + Tab", "next, previous group of units"},
               {"Esc", "pause and bring up the menu (or cancel a mode)"},
               {"P, - =", "pause, slower and faster"},
               {"Enter, /", "menu, this help"}}}};

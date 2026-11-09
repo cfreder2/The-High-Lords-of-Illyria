@@ -3,6 +3,7 @@
 // they stand or in a formation, with a facing, and scattering. Every order becomes sim::Commands in pending_, so
 // it reaches the simulation (and every lockstep peer) the same way.
 
+#include <set>
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -490,6 +491,50 @@ int Battle::ungroupSelection() {
         ++gone;
     }
     return gone;
+}
+
+bool Battle::cycleGroup(int dir) {
+    struct Stop {
+        std::vector<sim::EntityId> units;
+        int slot;  // the saved group's slot, or -1 for a squad
+    };
+    std::vector<Stop> stops;
+    std::set<sim::EntityId> grouped;
+    for (int k = 1; k <= kGroupSlots; ++k) {  // as along the keyboard: 1-9, then 0
+        const int slot = k % kGroupSlots;
+        GroupMen m = groupMen(slot);
+        if (m.alive() == 0) continue;
+        grouped.insert(m.units.begin(), m.units.end());
+        stops.push_back({std::move(m.units), slot});
+    }
+    for (const Squad& s : squads_) {
+        if (s.owner != local_ || !controllable(s)) continue;
+        Stop stop{{}, -1};
+        bool inGroup = false;
+        for (sim::EntityId id : s.members) {
+            if (!world_->units()[id - 1].alive()) continue;
+            stop.units.push_back(id);
+            inGroup |= grouped.count(id) > 0;
+        }
+        if (!stop.units.empty() && !inGroup) stops.push_back(std::move(stop));
+    }
+    if (stops.empty()) return false;
+    const std::vector<sim::EntityId> now = selectedAlive();
+    const auto same = [&](const Stop& st) {
+        std::vector<sim::EntityId> a = st.units, b = now;
+        std::sort(a.begin(), a.end());
+        std::sort(b.begin(), b.end());
+        return a == b;
+    };
+    const int n = static_cast<int>(stops.size());
+    int at = -1;
+    for (int i = 0; i < n && at < 0; ++i)
+        if (!now.empty() && same(stops[static_cast<size_t>(i)])) at = i;
+    const int to = at < 0 ? (dir >= 0 ? 0 : n - 1) : ((at + (dir >= 0 ? 1 : n - 1)) % n);
+    const Stop& stop = stops[static_cast<size_t>(to)];
+    if (stop.slot >= 0) return recallGroup(stop.slot);
+    select(stop.units);
+    return true;
 }
 
 // --- Orders -----------------------------------------------------------------

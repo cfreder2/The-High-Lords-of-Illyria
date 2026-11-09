@@ -314,6 +314,10 @@ public:
     void clearGroup(int slot);
     // Ungroup: forgets every group whose living men are all selected. How many went.
     int ungroupSelection();
+    // Tab (dir +1) and Shift+Tab (-1): select the next or previous group of units. The cycle runs over the saved groups first, in
+    // key order (1-9, then 0), then over the squads that are in no saved group, in squad order; it wraps at both ends. From a
+    // selection that is none of them, forward goes to the first, back to the last. False when there is nothing to cycle to.
+    bool cycleGroup(int dir);
     const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
     // A group's living men now (unit ids), as the selection has them.
     struct GroupMen {

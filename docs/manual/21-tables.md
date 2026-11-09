@@ -126,6 +126,7 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | The heroes | their gold cards | [[`]] |
 | Make / recall a group | + New group / its card | [[G]] or [[Alt]] + number / the number |
 | Ungroup | hold its card while it is selected | [[U]] |
+| Next / previous group | | [[Tab]] / [[Shift]] + [[Tab]] |
 | March | tap the ground | click |
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |

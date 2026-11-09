@@ -949,16 +949,30 @@ ILLYRIA_API int illyria_group(int op, int slot) {
 ILLYRIA_API int illyria_ungroup() {
     return app ? app->battle->ungroupSelection() : 0;
 }
-// The camera to the selection.
-ILLYRIA_API void illyria_focus_selection() {
+// The camera to the selection (only when `onlyIfOffScreen`: when its middle is out of view).
+static void focusSelection(bool onlyIfOffScreen) {
     if (!app) return;
     const std::vector<illyria::sim::EntityId> alive = app->battle->selectedAlive();
     if (alive.empty()) return;
     V3 c;
     for (illyria::sim::EntityId id : alive) c += app->battle->unitPosition(id - 1);
     c = c * (1.0f / static_cast<float>(alive.size()));
+    if (onlyIfOffScreen) {
+        float px, py;
+        if (app->camera.project(c, px, py) && px >= 0 && py >= 0 && px <= app->camera.width() && py <= app->camera.height()) return;
+    }
     app->introStartMs = -1;
     app->camera.lookAt(c.x, c.y, std::min(app->camera.distance(), 160.0f));
+}
+ILLYRIA_API void illyria_focus_selection() {
+    focusSelection(false);
+}
+// Tab (dir 1) and Shift+Tab (-1): the next or previous group of units (Battle::cycleGroup), and the camera to it if it is off
+// screen. 1 when the selection moved.
+ILLYRIA_API int illyria_cycle_group(int dir) {
+    if (!app || !app->battle->cycleGroup(dir)) return 0;
+    focusSelection(true);
+    return 1;
 }
 // Every formation's shape for the picker's glyphs, in picker order, then as
 // they stand (any shape: a face drawn in men): [{"id","name","slots":[[x,y],...]}].
