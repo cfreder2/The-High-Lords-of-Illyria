@@ -16,6 +16,8 @@ constexpr Fixed m(int64_t v) { return Fixed::fromInt(v); }
 constexpr Fixed r(int64_t num, int64_t den) { return Fixed::fromRatio(num, den); }
 constexpr int32_t kCells = 256;
 constexpr int64_t kCellSize = 4;
+// The glade round a ruin where nothing grows (metres): past the 40 m its marches reach out to, with a hand to spare.
+constexpr int64_t kRuinGlade = 46;
 constexpr Fixed kWater = m(8);
 // A gate holds 250 hit points a metre of its width: an 8 m town gate takes
 // about a minute of hacking by a squad, or three or four good catapult stones.
@@ -1128,7 +1130,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         const Fixed size = m(Continent::Site::size(st.kind));
         if (at.x < -size || at.y < -size || at.x > cell * cells + size || at.y > cell * cells + size) continue;
         // Out to the corners of its footprint (a ruin's paving reaches them).
-        clearings.push_back({at.x, at.y, size * 3 / 4});
+        // (A ruin stands in a glade: nothing grows within the ring armies march round it, and out to the places
+        // they are sent from; Region::kRuinGlade.)
+        clearings.push_back({at.x, at.y, st.kind == Continent::Site::Kind::Ruin ? m(kRuinGlade) : size * 3 / 4});
         const int turns = Continent::Site::turns(si);
         for (const SiteStone& s : siteStones(st.kind)) {
             // Its middle and half sizes in the model (thousandths), turned and scaled.

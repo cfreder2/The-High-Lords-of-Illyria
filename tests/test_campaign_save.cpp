@@ -4,7 +4,10 @@
 #include <cstdlib>
 #include <string>
 
+#include <memory>
+
 #include "illyria/sim/campaign.h"
+#include "illyria/sim/world.h"
 #include "campaign_orders.h"
 #include "test.h"
 
@@ -130,8 +133,11 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved campaign");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC5.") == 0);
+    CHECK(text.compare(0, 5, "ILC6.") == 0);
     CHECK(Campaign::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
+    // ... as is the layout before a stack afloat kept where its men were (ILC5).
+    CHECK(Campaign::load(continent(), "ILC5." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     CHECK(Campaign::load(continent(), text.substr(0, text.size() / 2), &why) == nullptr);
     // One gold piece more for a side somewhere in the middle: the checksum catches it.
@@ -381,4 +387,39 @@ TEST(a_gate_the_player_holds_open_or_shut_is_saved_with_the_game) {
     CHECK(r->checksum() == c.checksum());
     for (int t = 0; t < 600; ++t) c.step(), r->step();
     CHECK(r->checksum() == c.checksum());
+}
+
+// A save keeps everything the checksum hashes: at several days on several seeds (stacks afloat and gates swinging among
+// them) the loaded campaign has the checksum of the one saved, and both go on the same for 200 ticks and for a day.
+TEST(a_save_round_trips_everything_the_checksum_hashes_on_many_seeds_and_days) {
+    int afloat = 0, swinging = 0, saves = 0;
+    for (const uint64_t seed : {2, 5, 7, 11, 77, 123}) {
+        Campaign c(continent(), seed);
+        for (int day = 0; day < 16; ++day) {
+            days(c, 1);
+            if (day != 3 && day != 8 && day != 13 && day != 15) continue;
+            if (day == 8) c.setHuman(0, true);
+            for (const Campaign::Stack& s : c.stacks()) afloat += s.boat != 0;
+            if (c.world())
+                for (const GateState& g : c.world()->gates()) swinging += g.mode != GateState::Mode::Shut || g.openUntil > 0;
+            const std::string text = c.save();
+            std::string why;
+            std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+            if (!r) std::printf("  seed %llu day %d: refused: %s\n", static_cast<unsigned long long>(seed), day + 1, why.c_str());
+            CHECK(r != nullptr);
+            if (!r) continue;
+            ++saves;
+            CHECK(r->checksum() == c.checksum());
+            for (int t = 0; t < 200; ++t) c.step(), r->step();
+            CHECK(r->checksum() == c.checksum());
+            days(c, 1);
+            days(*r, 1);
+            CHECK(r->checksum() == c.checksum());
+            ++day;  // (the day just played)
+        }
+    }
+    std::printf("  %d saves round-tripped (stacks afloat seen: %d, gates not shut or asked open: %d)\n", saves, afloat, swinging);
+    CHECK(saves >= 20);
+    CHECK(afloat > 0);
+    CHECK(swinging > 0);
 }
