@@ -843,48 +843,56 @@ Mesh fern() {
 
 namespace meshes {
 
-void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, bool foot,
+void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, float rampBehind, float rampAhead, float endBehind, float endAhead, bool foot,
             const std::function<float(float, float)>& ground) {
     Builder b;
     const V3 u = V3{dir.x, dir.y, 0}.normalized(), v{-u.y, u.x, 0};
     // Local frame: s along the span, t across it, z up.
     const auto at = [&](float s, float t, float z) { return V3{centre.x + u.x * s + v.x * t, centre.y + u.y * s + v.y * t, z}; };
     const auto bed = [&](float s, float t) { const V3 p = at(s, t, 0); return ground(p.x, p.y); };
-    // An oriented box in the local frame.
-    const auto block = [&](float s0, float s1, float t0, float t1, float z0, float z1, V3 col) {
-        const V3 c[8] = {at(s0, t0, z0), at(s1, t0, z0), at(s1, t1, z0), at(s0, t1, z0),
-                         at(s0, t0, z1), at(s1, t0, z1), at(s1, t1, z1), at(s0, t1, z1)};
-        b.quad(c[0], c[1], c[5], c[4], col * 0.92f);
-        b.quad(c[1], c[2], c[6], c[5], col * 0.85f);
-        b.quad(c[2], c[3], c[7], c[6], col * 0.92f);
-        b.quad(c[3], c[0], c[4], c[7], col * 0.85f);
-        b.quad(c[4], c[5], c[6], c[7], col * 1.05f);
+    // The deck's top at s: level over the water, a ramp down to the ground at each end (Continent::Crossing::pieces).
+    const auto deckAt = [&](float s) {
+        if (rampBehind > 0 && s < -halfSpan) return deck + (endBehind - deck) * std::min(1.0f, (-halfSpan - s) / rampBehind);
+        if (rampAhead > 0 && s > halfSpan) return deck + (endAhead - deck) * std::min(1.0f, (s - halfSpan) / rampAhead);
+        return deck;
     };
+    const float s0 = -halfSpan - rampBehind, s1 = halfSpan + rampAhead;
+    // An oriented box in the local frame; a sloping one has its bottom and top at each end.
+    const auto slope = [&](float a, float c, float t0, float t1, float lo0, float lo1, float hi0, float hi1, V3 col) {
+        const V3 p[8] = {at(a, t0, lo0), at(c, t0, lo1), at(c, t1, lo1), at(a, t1, lo0), at(a, t0, hi0), at(c, t0, hi1), at(c, t1, hi1), at(a, t1, hi0)};
+        b.quad(p[0], p[1], p[5], p[4], col * 0.92f);
+        b.quad(p[1], p[2], p[6], p[5], col * 0.85f);
+        b.quad(p[2], p[3], p[7], p[6], col * 0.92f);
+        b.quad(p[3], p[0], p[4], p[7], col * 0.85f);
+        b.quad(p[4], p[5], p[6], p[7], col * 1.05f);
+    };
+    const auto block = [&](float a, float c, float t0, float t1, float z0, float z1, V3 col) { slope(a, c, t0, t1, z0, z0, z1, z1, col); };
     if (foot) {
         const V3 plank{0.46f, 0.34f, 0.22f}, post{0.36f, 0.26f, 0.17f};
         const float W = halfWidth;
         // Planks laid across, a little uneven.
         int k = 0;
-        for (float s = -halfSpan; s < halfSpan; s += 0.35f, ++k)
-            block(s, s + 0.32f, -W, W, deck - 0.12f, deck - (k % 3 == 1 ? 0.02f : 0.0f), plank * (k % 4 == 0 ? 0.88f : 1.0f));
+        for (float s = s0; s < s1; s += 0.35f, ++k) {
+            const float top = deckAt(s + 0.16f);
+            block(s, s + 0.32f, -W, W, top - 0.12f, top - (k % 3 == 1 ? 0.02f : 0.0f), plank * (k % 4 == 0 ? 0.88f : 1.0f));
+        }
         // Stringers under the planks, piles down to the bed, and hand rails.
-        block(-halfSpan, halfSpan, -W, -W + 0.18f, deck - 0.4f, deck - 0.12f, post);
-        block(-halfSpan, halfSpan, W - 0.18f, W, deck - 0.4f, deck - 0.12f, post);
-        for (float s = -halfSpan; s <= halfSpan + 0.01f; s += 4.0f) {
+        for (float t : {-W, W - 0.18f}) slope(s0, s1, t, t + 0.18f, deckAt(s0) - 0.4f, deckAt(s1) - 0.4f, deckAt(s0) - 0.12f, deckAt(s1) - 0.12f, post);
+        for (float s = s0; s <= s1 + 0.01f; s += 4.0f) {
             for (float t : {-W, W - 0.16f}) {
-                const float floor = std::min(bed(s, t), deck - 0.4f) - 0.5f;
-                block(s - 0.08f, s + 0.08f, t, t + 0.16f, floor, deck + 1.0f, post);
+                const float floor = std::min(bed(s, t), deckAt(s) - 0.4f) - 0.5f;
+                block(s - 0.08f, s + 0.08f, t, t + 0.16f, floor, deckAt(s) + 1.0f, post);
             }
         }
         for (float t : {-W, W - 0.1f}) {
-            block(-halfSpan, halfSpan, t, t + 0.1f, deck + 0.9f, deck + 1.0f, post * 1.1f);
-            block(-halfSpan, halfSpan, t, t + 0.06f, deck + 0.45f, deck + 0.5f, post);
+            slope(s0, s1, t, t + 0.1f, deckAt(s0) + 0.9f, deckAt(s1) + 0.9f, deckAt(s0) + 1.0f, deckAt(s1) + 1.0f, post * 1.1f);
+            slope(s0, s1, t, t + 0.06f, deckAt(s0) + 0.45f, deckAt(s1) + 0.45f, deckAt(s0) + 0.5f, deckAt(s1) + 0.5f, post);
         }
         out.data.insert(out.data.end(), b.mesh.data.begin(), b.mesh.data.end());
         return;
     }
-    // Stone: arches between piers, spandrel walls up to the parapets.
-    const V3 stone{0.58f, 0.55f, 0.50f}, dark{0.46f, 0.44f, 0.40f}, coping{0.66f, 0.63f, 0.58f};
+    // Stone: arches between piers, spandrel walls up to the parapets; a ramp's retaining walls and parapets at each end.
+    const V3 stone{0.58f, 0.55f, 0.50f}, dark{0.46f, 0.44f, 0.40f}, coping{0.66f, 0.63f, 0.58f}, road{0.50f, 0.45f, 0.36f};
     const float W = halfWidth, thick = 0.9f, parapet = 1.05f;
     const int bays = std::max(1, static_cast<int>(std::round(halfSpan * 2 / 11.0f)));
     const float pier = 1.8f, bay = (halfSpan * 2 - pier * (bays - 1)) / bays;
@@ -907,23 +915,49 @@ void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float
     };
     const float step = 0.6f;
     for (float s = -halfSpan; s < halfSpan - 1e-3f; s += step) {
-        const float s1 = std::min(halfSpan, s + step);
-        const float z0 = soffit(s), z1 = soffit(s1);
+        const float c = std::min(halfSpan, s + step);
+        const float z0 = soffit(s), z1 = soffit(c);
         // Faces either side, from the soffit to the parapet top.
-        b.quad(at(s, -W, z0), at(s1, -W, z1), at(s1, -W, deck + parapet), at(s, -W, deck + parapet), stone * 0.9f);
-        b.quad(at(s1, W, z1), at(s, W, z0), at(s, W, deck + parapet), at(s1, W, deck + parapet), stone * 0.9f);
+        b.quad(at(s, -W, z0), at(c, -W, z1), at(c, -W, deck + parapet), at(s, -W, deck + parapet), stone * 0.9f);
+        b.quad(at(c, W, z1), at(s, W, z0), at(s, W, deck + parapet), at(c, W, deck + parapet), stone * 0.9f);
         // The underside of the arch.
-        b.quad(at(s1, -W, z1), at(s, -W, z0), at(s, W, z0), at(s1, W, z1), dark);
+        b.quad(at(c, -W, z1), at(s, -W, z0), at(s, W, z0), at(c, W, z1), dark);
     }
-    // Deck, parapets (inner faces and coping) and abutment ends into the banks.
-    block(-halfSpan - 3, halfSpan + 3, -W + 0.45f, W - 0.45f, deck - 0.2f, deck, V3{0.50f, 0.45f, 0.36f});
+    // The level span's deck, parapets (inner faces and coping), and each end: a ramp down to the ground (the road is carried
+    // on a causeway between retaining walls that taper to the parapets), or 3 m of deck into the bank if it needs none.
+    block(-halfSpan, halfSpan, -W + 0.45f, W - 0.45f, deck - 0.2f, deck, road);
     for (float t : {-W, W - 0.45f}) {
-        block(-halfSpan - 3, halfSpan + 3, t, t + 0.45f, deck - 0.2f, deck + parapet, stone);
-        block(-halfSpan - 3.1f, halfSpan + 3.1f, t - 0.05f, t + 0.5f, deck + parapet, deck + parapet + 0.14f, coping);
+        block(-halfSpan, halfSpan, t, t + 0.45f, deck - 0.2f, deck + parapet, stone);
+        block(-halfSpan - 0.1f, halfSpan + 0.1f, t - 0.05f, t + 0.5f, deck + parapet, deck + parapet + 0.14f, coping);
     }
     for (float sgn : {-1.0f, 1.0f}) {
-        const float s0 = sgn < 0 ? -halfSpan - 3 : halfSpan, s1 = sgn < 0 ? -halfSpan : halfSpan + 3;
-        block(s0, s1, -W, W, std::min(bed(s0, 0), bed(s1, 0)) - 1.0f, deck - 0.2f, stone * 0.95f);
+        const float ramp = sgn < 0 ? rampBehind : rampAhead;
+        if (ramp <= 0) {
+            const float a = sgn < 0 ? -halfSpan - 3 : halfSpan, c = sgn < 0 ? -halfSpan : halfSpan + 3;
+            block(a, c, -W + 0.45f, W - 0.45f, deck - 0.2f, deck, road);
+            for (float t : {-W, W - 0.45f}) {
+                block(a, c, t, t + 0.45f, deck - 0.2f, deck + parapet, stone);
+                block(a, c, t - 0.05f, t + 0.5f, deck + parapet, deck + parapet + 0.14f, coping);
+            }
+            block(a, c, -W, W, std::min(bed(a, 0), bed(c, 0)) - 1.0f, deck - 0.2f, stone * 0.95f);
+            continue;
+        }
+        for (float s = 0; s < ramp - 1e-3f; s += 1.0f) {
+            const float e = std::min(ramp, s + 1.0f);
+            const float a = sgn * (halfSpan + s), c = sgn * (halfSpan + e);
+            const float za = deckAt(a), zc = deckAt(c);
+            // Fill under the roadway to the ground, and the walls either side of it.
+            slope(std::min(a, c), std::max(a, c), -W + 0.45f, W - 0.45f, std::min(bed(a, 0), bed(c, 0)) - 1.0f, std::min(bed(a, 0), bed(c, 0)) - 1.0f,
+                  sgn < 0 ? zc - 0.2f : za - 0.2f, sgn < 0 ? za - 0.2f : zc - 0.2f, stone * 0.95f);
+            const float lo = std::min(a, c), hi = std::max(a, c);
+            const float zlo = sgn < 0 ? zc : za, zhi = sgn < 0 ? za : zc;
+            slope(lo, hi, -W + 0.45f, W - 0.45f, zlo - 0.2f, zhi - 0.2f, zlo, zhi, road);
+            for (float t : {-W, W - 0.45f}) {
+                const float floor = std::min(bed(lo, t), bed(hi, t)) - 0.8f;
+                slope(lo, hi, t, t + 0.45f, floor, floor, zlo + parapet, zhi + parapet, stone);
+                slope(lo, hi, t - 0.05f, t + 0.5f, zlo + parapet, zhi + parapet, zlo + parapet + 0.14f, zhi + parapet + 0.14f, coping);
+            }
+        }
     }
     // Cutwaters on the piers, pointing upstream and down.
     float x = -halfSpan + bay;

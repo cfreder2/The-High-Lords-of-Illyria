@@ -66,3 +66,69 @@ at each gate; a capital's 8-gon outer wall and square bailey gave 16.
   terrain bake's (`tools/terrainbake`), not a mechanical change.
 - **The archers' view of the gate** is not fixed here: two to four embrasures see the ground in front of a gate, none
   from over it. The reshape is proposed in docs/CASTLE_GATEHOUSE.md.
+
+
+## Road look (classes, surface, puddles, rocks, bridges)
+
+The roads were the generator's and the shader's: twin ruts and a thin outline down every road, little loops and spurs at junctions,
+one width for all. What replaced them (`engine/sim/src/continent_roads.cpp`, `game/render/shaders.h`, `game/road_field.h`):
+
+- **Junctions are clean.** A road laid from a gate is cut where it first touches a road of another network (within 4.5 m), or
+  where it comes nearest one (within 64 m), and its end moved onto that road (`cutAtJoin`); before, it was snapped from its
+  last point, so the path's wandering and the spline's overshoot left a spur or a loop beside the junction. A link between two
+  networks is laid only if its ends are in different ones (roads that meet are one network). A design road's free end that runs on past a junction for
+  under 100 m stops at the junction; points where a road turns right back on itself (more than 100 degrees) are dropped.
+  `tools/terrain_audit.h roadFlaws` finds stubs (a free end with under 100 m of road to a junction) and loops (a cycle under 150 m);
+  `a_junction_leaves_no_dead_end_stub_and_no_little_loop` holds them at zero on the game's continent. Before: 3 stubs (14, 25 and
+  61 m) and loops of 63 m (the triangle in the screenshot), 11 m and 16 m. After: 0 and 0. (Other seeds: a few short loops where two
+  paths part and meet again, kept to a handful by the test.)
+- **Road classes from traffic** (`Continent::shapeRoads`). Every pair of castles takes the cheapest way between their gates over the
+  road network (a graph of the roads' points every 6 m, joined where two roads' points are within 7 m); each stretch of road counts
+  the journeys over it (a capital counts four, a town one; `Continent::roadTraffic`). Lanes are the logarithm of that between 800
+  journeys (one lane) and 5000 (four), and a lane is 4.4, 6.6, 10 and 14 m across at 1, 2, 3 and 4 lanes (half widths 2.2, 3.3, 5, 7 m, a
+  trunk road being 3 to 4 lanes). The width is continuous: the lanes are smoothed along the road (24 passes of a 1-2-1 filter on 6 m
+  points), a slow seeded wobble of 20 to 50 cm each side is added (`noise::fbm` of the arc length, wavelength 70 m), it is never under 2 m
+  a side, never over 2.2 m a side beside a town's walls (it narrows to the gate, one metre of half width to each 8 of road), and it
+  changes no faster than 0.1 m a side to each metre (the audit's steepest is 0.125). On the game's continent: 16.6 km single lane (69%),
+  2.6 km main (11%), 4.8 km trunk (20%); 6 of the 89 roads have a trunk stretch; the busiest point carries 4914 journeys.
+- **One width.** `Polyline::widths` is the only width: `Continent::Sample::roadDist` (and so `landGround`'s Road, and the roads'
+  doubling of a walker's pace), `Region::fromContinent`'s ground and road beds (`roadDistance`, the same formula), the close-up
+  land's and the battlefield's road field (`road_field.h`: the distance from the middle line and the half width, so the drawn road is as wide
+  as the ground that is Road) and the far map's ribbons all read it. A battle window's Road ground now spans the real width, not 6 m.
+  The campaign's grid still has a road cell wherever a road crosses it.
+- **Surface** (`ILLYRIA_TERRAIN_FS`): packed dirt and gravel in two tones with pale specks, a shade darker down the middle (no ruts, no centre
+  line: on a 14 m road it did not read), and a ragged edge where the grass creeps in (the edge is displaced by two octaves of noise and
+  blended into the grass colour), at every zoom; from afar the ribbons are never thinner than a lane. The thin outline of the old picture was the road field's
+  edge: its linear filtering between the field's last texel and its empty one drew a hump and a rut there; the field now fades to "no
+  road" (distance 255) instead.
+- **Puddles** (visual only; nothing blocks movement): one chance in each 13 m cell, an ellipse 0.7 to 2.2 m long, only where the cell's middle is on
+  the road, likelier low down, in swampy ground and on wide roads (8% + 30% low + 25% wet + 3% a metre of half width), never on a
+  slope; a darker, wet earth round it, the sky's colour in it (Fresnel) and the sun's glint.
+- **Rocks and boulders** (`Region::roadClears`, `Region::worthDodging`, one rule for `Region::scatterScenery`, `DetailLand::growScenery`
+  and the road generator): a boulder or rock on a road's line is gone; one beside it stays; trees and bushes keep clear of the road's
+  width and 2.5 m (4.5 m at least). The road bends round the stones worth the trouble (a boulder, or a rock 0.9 m across or more, found by
+  `sceneryAt` on the ground without the road) by a smooth bump of up to the stone's size and its 0.6 m margin over 28 m or more, not near a junction,
+  bridge or town and never into water. Test `no_rock_stands_on_a_road_and_roads_go_round_the_big_ones`: over three seeds no rock stands on a road's
+  middle line in the windows tested, and 18 stones on the game's continent have a road's edge within a metre. (A stone the road cannot go
+  round is just cleared from it.)
+- **Bridges** (`Continent::placeBridges`, `spanCrossing`, `Crossing`, `Deck`): a bridge spans the water measured along its axis to dry banks (five dry
+  metres in a row, ground a hand's breadth above the water counted as water, then ten metres more so the ramp starts well inland of the shore the battle's
+  finer land draws), never more than 100 m a side. It is centred on that span, level over the water and clear of it, with a ramp at each end grading
+  down to the ground at 16% (`rampA`, `rampB`, `endA`, `endB`; the mesh draws a causeway between retaining walls), and as wide as the road there.
+  Roads are fitted to it (`shapeRoads`): the road that crosses is drawn onto the axis over the deck and 32 m beyond each end, the pull fading
+  out over 32 m more, so the way on is a straight line along the deck's width and not a turn at its foot (a junction on the pulled road is kept on
+  it, and a road laid from a gate stays at its gate). A bridge the road no longer reaches is moved onto the road where it is in water (the design's were
+  set before the roads were drawn); one with no road 25 m beyond an end, or a castle's wall over it, is a ford.
+  Water too wide for a bridge (no bank within 100 m: the Westrun's mouth, the estuary of the Sorrow) is a **ford** the road wades: Old Bridge is one
+  now, the broad water Southbridge crossed (which no road reaches, and lies in a lake) is gone, and the bridge at the Westrun's mouth by (344, 3240) is a
+  ford. `NavGrid` pins a point every 10 m along a deck on a route (a long deck is not left to the cells' middles), and `World::followPath` reaches a deck's
+  end instead of cutting the corner to the next point (a footbridge is 1.8 m wide).
+  `tools/bridge_audit.h` (`illyria_terrainaudit --bridges`) walks a man, a rider and an engine across each bridge, and across each ford a road
+  runs through, in a World with the real Region, NavGrid and walking rules, each way: three orders as a player would give them (to the deck's
+  near end, along it, on 40 m beyond; 16 m out on its axis, further if that is water or marsh). Before (sandbox, the same audit): 9 of 18 bridges
+  (decks up to 8.4 m above the ground at their ends) and 5 of 5 fords. After: 9 of 9 bridges, ends within 1.5 m of the ground, and 7 of 7 fords on a
+  road. `every_bridge_meets_the_ground_and_can_be_walked_across_and_so_can_every_ford` asserts all of them on three continents (the game's, 1 and 6): 25
+  bridges and 30 fords. Seeds 7, 99 and others still have a crossing or two that fails, a design ford in deep water or a road that turns hard at a
+  footbridge's end (up to three of ten crossings): the game's continent is clean.
+  The outpost's pole stands at `Crossing::bridgehead()`, dry ground beside the road at a bridge's head, or on the nearest dry ground to a ford
+  (the campaign's own position of the outpost is unchanged).

@@ -95,10 +95,11 @@ Mesh pebbles();
 Mesh twigs();
 Mesh fern();
 // A whole bridge in world coordinates (drawn with an identity instance): a
-// stone road bridge on arches and piers, or a timber footbridge on piles.
+// stone road bridge on arches and piers, or a timber footbridge on piles; level over the water, a ramp of the given
+// length down to the height `end` at each end (Continent::Crossing).
 // The deck runs from centre - dir * halfSpan to centre + dir * halfSpan, its
 // top at deck; ground(x, y) gives the bed and banks below.
-void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, bool foot,
+void bridge(Mesh& out, V3 centre, V3 dir, float halfSpan, float halfWidth, float deck, float rampBehind, float rampAhead, float endBehind, float endAhead, bool foot,
             const std::function<float(float, float)>& ground);
 }  // namespace meshes
 

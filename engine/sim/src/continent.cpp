@@ -572,33 +572,64 @@ void Continent::placeBridges(size_t firstRoad, size_t firstCrossing) {
                 cr.dir = {-along.y, along.x, Fixed::zero()};
             }
         }
-        cr.pos.z = Fixed::zero();
-        if (cr.halfWidth == Fixed::zero()) cr.halfWidth = foot ? r(9, 10) : m(4);
-        // Span the water to dry banks on both sides.
-        Fixed surface = -m(1000), reach[2] = {m(6), m(6)}, bank = -m(1000);
-        {
-            Fixed s0;
-            if (waterSurfaceOf(sample(cr.pos.x, cr.pos.y), s0)) surface = s0;
-        }
-        for (int side = 0; side < 2; ++side) {
-            const Vec3 d = side ? -cr.dir : cr.dir;
-            for (int64_t k = 2; k <= 90; k += 2) {
-                const Vec3 p = cr.pos + d * m(k);
-                const Sample s = sample(p.x, p.y);
-                Fixed sf;
-                if (waterSurfaceOf(s, sf)) {
-                    surface = max(surface, sf);
-                    continue;
-                }
-                if (s.height < surface + r(1, 2)) continue;
-                reach[side] = m(k + 4);
-                bank = max(bank, s.height);
-                break;
+        spanCrossing(cr);
+    }
+}
+
+void Continent::spanCrossing(Crossing& cr) {
+    const bool foot = cr.kind == Crossing::Kind::Footbridge;
+    cr.pos.z = Fixed::zero();
+    if (cr.halfWidth == Fixed::zero()) cr.halfWidth = foot ? r(9, 10) : m(4);
+    // Span the water to dry banks on both sides: along the axis, metre by metre, to the last wet sample before five dry
+    // ones in a row, and 4 m on to land. The deck is centred on that span, wherever the road met the water.
+    Fixed surface = -m(1000);
+    Fixed reach[2] = {m(6), m(6)};
+    bool tooWide = false;
+    constexpr int64_t kMaxReach = 100;  // (a bridge reaches 100 m a side at most)
+    for (int side = 0; side < 2; ++side) {
+        const Vec3 d = side ? -cr.dir : cr.dir;
+        int64_t dry = 0, lastWet = 0;
+        for (int64_t k = 0; k <= kMaxReach && dry < 5; ++k) {
+            const Vec3 p = cr.pos + d * m(k);
+            Fixed sf;
+            const Sample smp = sample(p.x, p.y);
+            // Water, or ground a hand's breadth above it (the battle's finer land puts the shore a metre either way): not yet a bank.
+            const bool low = surface > -m(999) && smp.height < surface + r(3, 5);
+            if (waterSurfaceOf(smp, sf) || low) {
+                if (waterSurfaceOf(smp, sf)) surface = max(surface, sf);
+                lastWet = k;
+                dry = 0;
+            } else {
+                ++dry;
             }
         }
-        cr.halfSpan = max(cr.halfSpan, max(reach[0], reach[1]));
-        cr.deck = max(bank, surface + (foot ? r(3, 2) : m(3)));
-        if (surface < -m(999)) cr.deck = max(bank, heightAt(cr.pos.x, cr.pos.y) + Fixed::one());
+        reach[side] = m(std::max<int64_t>(6, lastWet + 10));  // (10 m on to land: the ramp starts well inland of any shore)
+        if (dry < 5) tooWide = true;  // (still water at kMaxReach: no bank to stand a bridge on)
+    }
+    if (tooWide) {
+        // Water that wide (an estuary, a lake the road crosses on its causeway) is waded where the road runs, not bridged: a ford.
+        cr.kind = Crossing::Kind::Ford;
+        cr.halfSpan = cr.halfWidth = cr.deck = cr.rampA = cr.rampB = cr.endA = cr.endB = Fixed::zero();
+        return;
+    }
+    cr.pos = cr.pos + cr.dir * ((reach[0] - reach[1]) / 2);  // (reach[0] is the way ahead: dir)
+    cr.pos.z = Fixed::zero();
+    cr.halfSpan = (reach[0] + reach[1]) / 2;
+    // Level over the water, clear of it, and never below either bank; a ramp each end down to the ground it stands on.
+    const Fixed gA = heightAt(cr.pos.x - cr.dir.x * cr.halfSpan, cr.pos.y - cr.dir.y * cr.halfSpan);
+    const Fixed gB = heightAt(cr.pos.x + cr.dir.x * cr.halfSpan, cr.pos.y + cr.dir.y * cr.halfSpan);
+    cr.deck = surface < -m(999) ? max(max(gA, gB), heightAt(cr.pos.x, cr.pos.y) + Fixed::one()) : max(surface + (foot ? r(3, 2) : m(3)), max(gA, gB));
+    for (int side = 0; side < 2; ++side) {
+        const Vec3 d = side ? cr.dir : -cr.dir;  // side 0 is behind (-dir), 1 ahead
+        Fixed length;
+        for (int it = 0; it < 5; ++it) {
+            const Vec3 outer = cr.pos + d * (cr.halfSpan + length);
+            const Fixed need = cr.deck - heightAt(outer.x, outer.y);
+            length = need > r(1, 4) ? min(m(70), need * 100 / Crossing::kRampGradePct) : Fixed::zero();
+        }
+        const Vec3 outer = cr.pos + d * (cr.halfSpan + length);
+        (side ? cr.rampB : cr.rampA) = length;
+        (side ? cr.endB : cr.endA) = min(cr.deck, heightAt(outer.x, outer.y));
     }
 }
 
@@ -1130,12 +1161,13 @@ bool Continent::onBridge(Fixed x, Fixed y, Fixed& deck) const {
     for (const Crossing& c : crossings_) {
         if (!c.bridged()) continue;
         const Fixed dx = x - c.pos.x, dy = y - c.pos.y;
-        if (abs(dx) > c.halfSpan + c.halfWidth || abs(dy) > c.halfSpan + c.halfWidth) continue;
+        const Fixed reach = max(c.reachBehind(), c.reachAhead()) + c.halfWidth;
+        if (abs(dx) > reach || abs(dy) > reach) continue;
         const Fixed along = dx * c.dir.x + dy * c.dir.y, across = dx * c.dir.y - dy * c.dir.x;
-        if (abs(along) <= c.halfSpan && abs(across) <= c.halfWidth) {
-            deck = c.deck;
-            return true;
-        }
+        if (abs(across) > c.halfWidth) continue;
+        if (along < -c.reachBehind() || along > c.reachAhead()) continue;
+        deck = c.deckAtAlong(along);
+        return true;
     }
     return false;
 }
@@ -1516,7 +1548,7 @@ uint64_t Continent::checksum() const {
         for (const Vec3& p : rv.points) h.addI64(p.z.raw);
     for (const Crossing& cr : crossings_) {
         h.addU64(static_cast<uint64_t>(cr.kind));
-        for (Fixed v : {cr.pos.x, cr.pos.y, cr.dir.x, cr.dir.y, cr.halfSpan, cr.halfWidth, cr.deck}) h.addI64(v.raw);
+        for (Fixed v : {cr.pos.x, cr.pos.y, cr.dir.x, cr.dir.y, cr.halfSpan, cr.halfWidth, cr.deck, cr.rampA, cr.rampB, cr.endA, cr.endB}) h.addI64(v.raw);
     }
     h.addU64(streams_.size());
     for (const River& st : streams_)

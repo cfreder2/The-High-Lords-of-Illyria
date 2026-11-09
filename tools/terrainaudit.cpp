@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "illyria/sim/continent.h"
+#include "bridge_audit.h"
 #include "terrain_audit.h"
 
 using namespace illyria::sim;
@@ -19,12 +20,61 @@ int main(int argc, char** argv) {
     uint64_t seed = 20261027;
     bool verbose = false;
     const char* map = nullptr;
+    bool bridges = false;  // --bridges [first count]: walk every bridge (slow)
+    size_t firstBridge = 0, countBridges = SIZE_MAX;
+    double nearX = -1, nearY = -1, nearR = 0;  // --roads-near X,Y,R: every road's points within R metres of (X, Y)
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "-v")) verbose = true;
         else if (!std::strcmp(argv[i], "--map") && i + 1 < argc) map = argv[++i];
+        else if (!std::strcmp(argv[i], "--bridges")) bridges = true;
+        else if (!std::strcmp(argv[i], "--bridge-range") && i + 2 < argc) firstBridge = std::strtoull(argv[i + 1], nullptr, 10), countBridges = std::strtoull(argv[i + 2], nullptr, 10), i += 2;
+        else if (!std::strcmp(argv[i], "--roads-near") && i + 1 < argc) std::sscanf(argv[++i], "%lf,%lf,%lf", &nearX, &nearY, &nearR);
         else seed = std::strtoull(argv[i], nullptr, 10);
     }
     const Continent c(seed);
+    if (bridges) {
+        int total = 0, ok = 0;
+        for (size_t i = firstBridge; i < c.crossings().size() && i < firstBridge + countBridges; ++i) {
+            if (!c.crossings()[i].bridged()) continue;
+            const audit::BridgeReport b = audit::auditBridge(c, i, 128, countBridges == 1);
+            ++total;
+            ok += b.passable();
+            std::printf("bridge %3zu (%6.0f,%6.0f) %s len %5.1f half width %.1f  deck above ground at ends %5.2f / %5.2f  road off axis %4.1f / %4.1f  foot %d%d rider %d%d engine %d%d castle %5.0f m  %s\n", i, b.pos.x.toDouble(),
+                        b.pos.y.toDouble(), b.foot ? "footbridge" : "bridge    ", b.length, b.halfWidth, b.rise[0], b.rise[1], b.roadOff[0], b.roadOff[1], b.walks[0][0], b.walks[0][1],
+                        b.walks[1][0], b.walks[1][1], b.walks[2][0], b.walks[2][1], b.nearCastle, b.passable() ? "ok" : "BLOCKED");
+            std::fflush(stdout);
+        }
+        std::printf("passable %d of %d bridges\n", ok, total);
+        int fords = 0, fordOk = 0, noRoad = 0;
+        for (size_t i = firstBridge; i < c.crossings().size() && i < firstBridge + countBridges; ++i) {
+            if (c.crossings()[i].bridged()) continue;
+            const audit::FordReport f = audit::auditFord(c, i, 96, countBridges == 1);
+            if (!f.onRoad) {
+                ++noRoad;
+                std::printf("ford  %3zu (%6.0f,%6.0f) '%s': no road crosses it\n", i, f.pos.x.toDouble(), f.pos.y.toDouble(), c.crossings()[i].name.c_str());
+                continue;
+            }
+            ++fords;
+            fordOk += f.passable();
+            std::printf("ford  %3zu (%6.0f,%6.0f) '%s': foot %d%d rider %d%d engine %d%d  %s\n", i, f.pos.x.toDouble(), f.pos.y.toDouble(), c.crossings()[i].name.c_str(), f.walks[0][0], f.walks[0][1], f.walks[1][0], f.walks[1][1],
+                        f.walks[2][0], f.walks[2][1], f.passable() ? "ok" : "BLOCKED");
+            std::fflush(stdout);
+        }
+        std::printf("passable %d of %d fords on a road (%d more have no road)\n", fordOk, fords, noRoad);
+        return 0;
+    }
+    if (nearR > 0) {
+        for (size_t ri = 0; ri < c.roads().size(); ++ri) {
+            const Polyline& rd = c.roads()[ri];
+            std::printf("road %zu (%zu points): ", ri, rd.points.size());
+            for (size_t i = 0; i < rd.points.size(); ++i) {
+                const audit::P p = audit::pt(rd.points[i]);
+                if (audit::len(p - audit::P{nearX, nearY}) < nearR) std::printf("[%zu](%.1f,%.1f w%.1f) ", i, p.x, p.y, rd.widths[i].toDouble());
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
     if (map) {  // the whole continent, roads and castles marked (a PPM; one pixel is about 4.4 m, so a wall is a pixel wide)
         const int W = 1280, H = 1600;
         std::vector<unsigned char> img(static_cast<size_t>(W) * H * 3);
@@ -80,6 +130,24 @@ int main(int argc, char** argv) {
                 noRoad, noLink, wet, inWall, noView, crowd);
     std::printf("\nroads through water that is no bridge or ford (more than half a metre deep):\n");
     for (const audit::WetRun& w : audit::wetRoads(c)) std::printf("  road %zu%s: %d points from (%.0f, %.0f)\n", w.road, w.road >= 7 ? " (a spur)" : "", w.points, w.first.x, w.first.y);
+    {
+        const audit::RoadFlaws f = audit::roadFlaws(c);
+        std::printf("\nroad dead-end stubs under 100 m: %zu, loops under 150 m: %zu\n", f.stubs.size(), f.loops.size());
+        for (const audit::RoadFlaw& s : f.stubs) std::printf("  stub %.0f m at (%.0f, %.0f)\n", s.length, s.at.x, s.at.y);
+        for (const audit::RoadFlaw& l : f.loops) std::printf("  loop %.0f m at (%.0f, %.0f)\n", l.length, l.at.x, l.at.y);
+    }
+    {
+        const audit::RoadClasses k = audit::roadClasses(c);
+        std::printf("\nroad classes: single lane %.0f m (%.0f%%), main %.0f m (%.0f%%), trunk %.0f m (%.0f%%); %zu of %zu roads have a trunk stretch;\n"
+                    "  half width %.2f to %.2f m, changes at most %.3f m a metre\n",
+                    k.metres[0], 100 * k.metres[0] / k.total, k.metres[1], 100 * k.metres[1] / k.total, k.metres[2], 100 * k.metres[2] / k.total, k.trunkRoads, k.roads, k.narrowest, k.widest, k.steepest);
+    }
+    {
+        int64_t most = 0;
+        for (const auto& t : c.roadTraffic())
+            for (int64_t f : t) most = std::max(most, f);
+        std::printf("  the busiest road point carries %lld journeys\n", static_cast<long long>(most));
+    }
     std::printf("\ntowers per castle:\n");
     for (size_t n = 0; n < towerHist.size(); ++n)
         if (towerHist[n]) std::printf("  %2zu towers: %d castles\n", n, towerHist[n]);

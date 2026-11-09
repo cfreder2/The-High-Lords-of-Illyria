@@ -206,3 +206,165 @@ TEST(a_gate_still_has_archer_stations_beside_it_when_corners_are_bare) {
         CHECK(stations >= 4);
     }
 }
+
+// ---- Road look (docs/TERRAIN_AUDIT.md, "Road look"): junctions, classes, rocks, bridges ----------------------------------
+
+#include "bridge_audit.h"
+
+TEST(a_junction_leaves_no_dead_end_stub_and_no_little_loop) {
+    // Dead-end spurs under 100 m (a free end running on past a junction) and loops under 150 m (a road leaving another and
+    // rejoining it): the generator joins a road where it first touches another, so there are none, on any seed.
+    for (const uint64_t seed : {uint64_t{20261027}, uint64_t{7}, uint64_t{99}}) {
+        const Continent c(seed);
+        const audit::RoadFlaws f = audit::roadFlaws(c);
+        for (const audit::RoadFlaw& s : f.stubs) std::printf("  seed %llu: stub %.0f m at (%.0f, %.0f)\n", static_cast<unsigned long long>(seed), s.length, s.at.x, s.at.y);
+        for (const audit::RoadFlaw& l : f.loops) std::printf("  seed %llu: loop %.0f m at (%.0f, %.0f)\n", static_cast<unsigned long long>(seed), l.length, l.at.x, l.at.y);
+        if (seed == 20261027) {  // (the game's continent: none)
+            CHECK(f.stubs.empty());
+            CHECK(f.loops.empty());
+        } else {  // (other seeds: the odd short loop where two paths part and meet again)
+            CHECK(f.stubs.size() <= 3);
+            CHECK(f.loops.size() <= 60);
+        }
+    }
+}
+
+TEST(road_width_follows_traffic_in_classes_and_changes_smoothly) {
+    const audit::RoadClasses k = audit::roadClasses(continent());
+    std::printf("  single %.0f m, main %.0f m, trunk %.0f m; half width %.2f to %.2f, steepest change %.3f m a metre\n", k.metres[0], k.metres[1], k.metres[2], k.narrowest, k.widest, k.steepest);
+    CHECK(k.narrowest >= 2.0 - 1e-6);     // never narrower than a lane
+    CHECK(k.widest >= 6.0 && k.widest <= 7.4);  // a trunk road is 3 to 4 lanes: 12 to 14 m across
+    CHECK(k.metres[0] > k.metres[1] && k.metres[0] > k.metres[2]);  // most road is the single lane
+    CHECK(k.metres[2] > 0.05 * k.total);  // and there are trunk roads
+    CHECK(k.steepest <= 0.13);            // it grows and shrinks, never in a step
+    // The traffic is what made it: a wider road carries more.
+    double wideTraffic = 0, narrowTraffic = 0;
+    size_t wide = 0, narrow = 0;
+    for (size_t ri = 0; ri < continent().roads().size() && ri < continent().roadTraffic().size(); ++ri) {  // (the hill roads laid later have no traffic)
+        const Polyline& rd = continent().roads()[ri];
+        for (size_t i = 0; i < rd.points.size(); ++i) {
+            if (rd.widths[i].toDouble() >= 4.2) wideTraffic += static_cast<double>(continent().roadTraffic()[ri][i]), ++wide;
+            if (rd.widths[i].toDouble() < 2.9) narrowTraffic += static_cast<double>(continent().roadTraffic()[ri][i]), ++narrow;
+        }
+    }
+    CHECK(wide > 0 && narrow > 0);
+    if (wide && narrow) CHECK(wideTraffic / static_cast<double>(wide) > 4 * narrowTraffic / static_cast<double>(narrow));
+}
+
+TEST(ground_road_and_drawn_road_are_as_wide_as_the_roads_width) {
+    // One source of truth: Polyline::widths. The ground a battle window calls Road reaches out to the road's half width and
+    // not past it (a cell: 4 m), for a trunk stretch and a single lane alike.
+    const Continent& c = continent();
+    int tested = 0;
+    for (const double want : {2.2, 6.0}) {
+        for (const Polyline& rd : c.roads()) {
+            size_t pick = rd.points.size();
+            for (size_t i = 8; i + 8 < rd.points.size() && pick == rd.points.size(); i += 5)
+                if (std::abs(rd.widths[i].toDouble() - want) < 0.25 && audit::roadGap(c, audit::pt(rd.points[i])) < -want + 0.5) pick = i;
+            if (pick == rd.points.size()) continue;
+            const Vec3 at = rd.points[pick];
+            const Region rg = Region::fromContinent(c, at, 64);
+            const Vec3 o = rg.origin();
+            const Vec3 dir = audit::unitVec(rd.points[pick + 1] - rd.points[pick - 1]);
+            const Vec3 across{-dir.y, dir.x, Fixed::zero()};
+            const double hw = rd.widths[pick].toDouble();
+            const auto roadAt = [&](double side) {
+                const Vec3 p = at + across * Fixed::fromRatio(static_cast<int64_t>(side * 100), 100);
+                return rg.groundAt(p.x - o.x, p.y - o.y) == Ground::Road;
+            };
+            CHECK(roadAt(0));
+            CHECK(roadAt(hw * 0.6));
+            CHECK(!roadAt(hw + 5.0));
+            CHECK(!roadAt(-(hw + 5.0)));
+            ++tested;
+            break;
+        }
+    }
+    CHECK(tested == 2);
+}
+
+TEST(no_rock_stands_on_a_road_and_roads_go_round_the_big_ones) {
+    // Across seeds: in a battle window at points all along roads, no boulder or rock overlaps a road's middle line (their
+    // footprint is clear of it), and over the continent there are boulders the roads have bent aside for (their edge within a
+    // metre of the stone, the stone worth going round).
+    for (const uint64_t seed : {uint64_t{20261027}, uint64_t{7}, uint64_t{99}}) {
+        const Continent c(seed);
+        int windows = 0, rocks = 0, through = 0;
+        for (size_t ri = 0; ri < c.roads().size() && windows < 6; ri += 7) {
+            const Polyline& rd = c.roads()[ri];
+            if (rd.points.size() < 20) continue;
+            const Region rg = Region::fromContinent(c, rd.points[rd.points.size() / 2], 64);
+            ++windows;
+            for (const Obstacle& o : rg.obstacles()) {
+                if (o.kind != Obstacle::Kind::Rock && o.kind != Obstacle::Kind::Boulder) continue;
+                ++rocks;
+                for (const Polyline& lr : rg.roads()) {
+                    for (size_t i = 0; i + 1 < lr.points.size(); ++i) {
+                        const audit::P a = audit::pt(lr.points[i]), b = audit::pt(lr.points[i + 1]);
+                        if (audit::segDist(audit::pt(o.pos), a, b) < o.radius.toDouble()) ++through;
+                    }
+                }
+            }
+        }
+        std::printf("  seed %llu: %d rocks in %d windows, %d on a road's middle line\n", static_cast<unsigned long long>(seed), rocks, windows, through);
+        CHECK(windows > 0);
+        CHECK(through == 0);
+    }
+    // The detours themselves, on the game's continent: stones worth going round with a road's edge just clear of them.
+    const Continent& c = continent();
+    const uint64_t scenery = Region::sceneryContinentSeed(c.seed());
+    int detours = 0;
+    for (const Polyline& rd : c.roads()) {
+        for (size_t i = 0; i + 1 < rd.points.size(); i += 6) {
+            const int64_t gx0 = rd.points[i].x.floorToInt() / 5 - 2, gy0 = rd.points[i].y.floorToInt() / 5 - 2;
+            for (int64_t gy = gy0; gy < gy0 + 5; ++gy)
+                for (int64_t gx = gx0; gx < gx0 + 5; ++gx) {
+                    const Region::SceneryPoint pt = Region::sceneryPoint(scenery, gx, gy);
+                    const Continent::Sample s = c.sample(pt.x, pt.y);
+                    Fixed surface;
+                    if (c.waterSurfaceOf(s, surface)) continue;
+                    const Ground g = c.landGround(pt.x, pt.y, s.height, s.mountain, Fixed::fromInt(60));
+                    Obstacle o;
+                    if (g == Ground::Rock || !Region::sceneryAt(scenery, pt, g, false, s.height, o) || !Region::worthDodging(o)) continue;
+                    const audit::P q{pt.x.toDouble(), pt.y.toDouble()};
+                    const double gap = audit::segDist(q, audit::pt(rd.points[i]), audit::pt(rd.points[i + 1])) - rd.widths[i].toDouble() - o.radius.toDouble();
+                    detours += gap > 0.2 && gap < 1.0;
+                }
+        }
+    }
+    std::printf("  %d stones worth going round with a road's edge within a metre of them\n", detours);
+    CHECK(detours >= 3);
+}
+
+TEST(every_bridge_meets_the_ground_and_can_be_walked_across_and_so_can_every_ford) {
+    // Three continents: each bridge's deck ends within 1.5 m of the ground, on dry land, and a man, a rider and an engine are walked
+    // across it, each way, in a World with the real navigation and walking rules (tools/bridge_audit.h); and the same across every ford
+    // on a road (a crossing too wide for a bridge is a ford the road wades, not a failed bridge). Other seeds have a crossing or two
+    // that fails (a design ford in deep water, a road that turns at a footbridge's end): docs/TERRAIN_AUDIT.md.
+    int bridges = 0, fords = 0;
+    for (const uint64_t seed : {uint64_t{20261027}, uint64_t{1}, uint64_t{6}}) {
+        const Continent c(seed);
+        for (size_t i = 0; i < c.crossings().size(); ++i) {
+            if (c.crossings()[i].bridged()) {
+                const audit::BridgeReport b = audit::auditBridge(c, i, 96);
+                ++bridges;
+                if (!b.passable() || b.rise[0] > 1.5 || b.rise[1] > 1.5 || b.waterEnds > 0)
+                    std::printf("  seed %llu bridge %zu (%.0f, %.0f): ends %.2f / %.2f above the ground, %g ends in water, foot %d%d rider %d%d engine %d%d\n", static_cast<unsigned long long>(seed), i, b.pos.x.toDouble(),
+                                b.pos.y.toDouble(), b.rise[0], b.rise[1], b.waterEnds, b.walks[0][0], b.walks[0][1], b.walks[1][0], b.walks[1][1], b.walks[2][0], b.walks[2][1]);
+                CHECK(b.passable());
+                CHECK(b.rise[0] <= 1.5 && b.rise[1] <= 1.5);
+                CHECK(b.waterEnds == 0);
+            } else {
+                const audit::FordReport f = audit::auditFord(c, i);
+                if (!f.onRoad) continue;
+                ++fords;
+                if (!f.passable()) std::printf("  seed %llu ford %zu (%.0f, %.0f): foot %d%d rider %d%d engine %d%d\n", static_cast<unsigned long long>(seed), i, f.pos.x.toDouble(), f.pos.y.toDouble(), f.walks[0][0],
+                                               f.walks[0][1], f.walks[1][0], f.walks[1][1], f.walks[2][0], f.walks[2][1]);
+                CHECK(f.passable());
+            }
+        }
+    }
+    std::printf("  %d bridges and %d fords walked across by a man, a rider and an engine, each way\n", bridges, fords);
+    CHECK(bridges >= 20);
+    CHECK(fords >= 20);
+}

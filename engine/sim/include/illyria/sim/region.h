@@ -59,6 +59,9 @@ struct Deck {
     bool ramp = false;   // a castle ramp, a ruin's platform or its stair: solid down to the ground
     bool arc = false;    // a gallery round a tower, corbelled out: open below
     Fixed inner = {}, cosHalf = {};
+    // A bridge's deck is level over the water and grades down to the ground at each end: ramp lengths (at the -dir and +dir
+    // ends; 0: none) and the heights it meets the ground at (centre.z is the level part's).
+    Fixed rampLo = {}, rampHi = {}, endLo = {}, endHi = {};
     bool contains(Fixed x, Fixed y) const;
     Fixed heightAt(Fixed x, Fixed y) const;
 };
@@ -216,6 +219,15 @@ public:
     // water within 4 m) at height z; false if nothing. Sets the obstacle's
     // kind, radius, height, variant and solidity (not its position).
     static bool sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWater, Fixed z, Obstacle& o);
+
+    // How scenery and roads share the land (docs/TERRAIN_AUDIT.md, "Road look"): a boulder or a rock that stands on a road's
+    // line is gone, one beside it stays (the roads bend round the ones worth the trouble, Continent::shapeRoads), and nothing
+    // else grows within a road's width and a couple of metres. `centreDist` is the metres from a road's middle line,
+    // `halfWidth` the road's there.
+    static bool roadClears(const Obstacle& o, Fixed centreDist, Fixed halfWidth);
+    // A rock worth going round (a boulder, or a rock 0.9 m across or more); the rest are only cleared from the road.
+    static bool worthDodging(const Obstacle& o);
+    static constexpr int64_t kDodgeMarginTenths = 6;  // how far a road's edge keeps from a rock it goes round
 
 private:
     // Trees, undergrowth and rocks on a jittered grid, clear of roads, water,

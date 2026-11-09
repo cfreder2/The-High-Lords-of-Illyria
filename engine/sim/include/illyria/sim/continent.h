@@ -60,7 +60,31 @@ public:
         // halfWidth either side, its top at height deck.
         Vec3 dir = {};
         Fixed halfSpan = {}, halfWidth = {}, deck = {};
+        // The deck is level over the water, from pos - dir * halfSpan to pos + dir * halfSpan, at height `deck`; at each end
+        // a ramp (rampA behind, rampB ahead, metres; 0: none) grades down to the ground it stands on, endA and endB the
+        // ground's height at their far ends, so a man steps on at the level of the bank. The grade is kRampGrade at most.
+        Fixed rampA = {}, rampB = {}, endA = {}, endB = {};
+        static constexpr int64_t kRampGradePct = 16;
         bool bridged() const { return kind != Kind::Ford; }
+        // The deck's top at `s` metres along dir from pos (the whole deck: ramps and span).
+        Fixed deckAtAlong(Fixed s) const {
+            const auto clamp01 = [](Fixed v) { return v < Fixed::zero() ? Fixed::zero() : v > Fixed::one() ? Fixed::one() : v; };
+            if (rampA > Fixed::zero() && s < -halfSpan) return endA + (deck - endA) * clamp01((s + halfSpan + rampA) / rampA);
+            if (rampB > Fixed::zero() && s > halfSpan) return endB + (deck - endB) * clamp01((halfSpan + rampB - s) / rampB);
+            return deck;
+        }
+        // How far the deck, ramps included, reaches either side of pos.
+        Fixed reachBehind() const { return halfSpan + rampA; }
+        Fixed reachAhead() const { return halfSpan + rampB; }
+        // Dry ground at the dir end of the deck, beside the road (4 m on from the ramp's foot, 3 m clear of the deck's edge): where
+        // an outpost's flag stands, presentation only.
+        Vec3 bridgehead() const {
+            const Vec3 across{-dir.y, dir.x, Fixed::zero()};
+            return pos + dir * (reachAhead() + Fixed::fromInt(4)) + across * (halfWidth + Fixed::fromInt(3));
+        }
+        // The middle of the whole deck, along dir from pos, and half its length.
+        Fixed spanMiddle() const { return (reachAhead() - reachBehind()) / 2; }
+        Fixed spanHalf() const { return (reachAhead() + reachBehind()) / 2; }
     };
     struct Area {  // swamps, forests and lakes: soft-edged ellipses
         std::string name;
@@ -284,6 +308,8 @@ public:
     // Everything placed on the map: cities, sites and the river surfaces.
     uint64_t checksum() const;
     uint64_t seed() const { return seed_; }
+    // The traffic over each point of each road (castle-to-castle journeys: a capital counts four), which makes its width.
+    const std::vector<std::vector<int64_t>>& roadTraffic() const { return roadTraffic_; }
 
     // Pieces of the height function, exposed for chunk generation.
     struct Sample {
@@ -338,6 +364,8 @@ private:
     void loadBakedRelief();
     // Bridges over the creeks the roads from road `firstRoad` on cross (and the shapes of all the bridged crossings from `firstCrossing`).
     void placeBridges(size_t firstRoad = 0, size_t firstCrossing = 0);
+    // A bridge's span from its place and direction: dry banks both ends along the axis, the deck's level, the ramps (placeBridges, fitBridgesToRoads).
+    void spanCrossing(Crossing& cr);
     void planCastles();
     // The roads to the towns' gates (continent_roads.cpp): each town's path to
     // the road network is found before its castle is planned (which way the
@@ -345,6 +373,9 @@ private:
     void keepRoadsDry();
     void routeApproaches();
     void layApproaches();
+    // The finished roads (continent_roads.cpp): spikes and stubs out, then each road's class from its traffic, the width that
+    // follows, and the bends round the boulders on its line. `gateRoad` is the road laid from each town's gate (SIZE_MAX: none).
+    void shapeRoads(const std::vector<size_t>& gateRoad);
     void bucketRoads();
     void applyLake(size_t lake, Fixed& z, Sample& s, Fixed x, Fixed y) const;
     // The lakes of the design; the landmarks' ponds follow them in lakes_.
@@ -405,6 +436,8 @@ private:
     std::vector<std::vector<Vec3>> approach_;
     std::vector<size_t> approachOrder_;
     std::vector<std::vector<Vec3>> links_;  // and the paths joining the road networks to each other
+    // The traffic (journeys between castles' gates) over each point of each road, from which its width came (shapeRoads).
+    std::vector<std::vector<int64_t>> roadTraffic_;
     std::vector<Site> sites_;
     // The ruins' levelled ground (x, y, height; carve), laid once the land is
     // made, so nothing placed or dressed before moves.

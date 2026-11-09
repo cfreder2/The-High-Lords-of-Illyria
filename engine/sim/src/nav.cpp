@@ -1261,10 +1261,15 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         std::vector<bool> restPinned(pinned.begin() + static_cast<long>(last) + 1, pinned.end());
         cells.resize(first);
         pinned.resize(first);
-        cells.push_back({aFirst ? a.x : b.x, aFirst ? a.y : b.y, Fixed::zero()});
-        cells.push_back({aFirst ? b.x : a.x, aFirst ? b.y : a.y, Fixed::zero()});
-        pinned.push_back(true);
-        pinned.push_back(true);
+        // Along the deck's axis, a pinned point every 10 m at most (a long deck is not left to the cells' middles, which wander
+        // from it by more than a narrow deck is wide).
+        const Vec3 from0 = aFirst ? a : b, to0 = aFirst ? b : a;
+        const int64_t legs = std::max<int64_t>(1, ((to0 - from0).flat().length() / 10).floorToInt() + 1);
+        for (int64_t i = 0; i <= legs; ++i) {
+            const Vec3 q = from0 + (to0 - from0) * Fixed::fromRatio(i, legs);
+            cells.push_back({q.x, q.y, Fixed::zero()});
+            pinned.push_back(true);
+        }
         cells.insert(cells.end(), rest.begin(), rest.end());
         pinned.insert(pinned.end(), restPinned.begin(), restPinned.end());
     }

@@ -25,7 +25,7 @@ The island is **2.8 km** from west to east and **3.6 km** from south to north. T
 
 ## Crossings {#crossings}
 
-The rivers are the walls of the realms and the crossings are their gates. There are five fords, which can be waded but slow an army to a crawl (the trodden margins are mud, and the water is to the knee), and four road bridges, quick but narrow. A few timber footbridges away from the roads let infantry over in single file.
+The rivers are the walls of the realms and the crossings are their gates. There are six fords, which can be waded but slow an army to a crawl (the trodden margins are mud, and the water is to the knee), and two road bridges, quick but narrow (Old Bridge crossed water too wide for a bridge to stand on and is a ford now; Southbridge, over a lake no road reaches, is gone). A few timber footbridges away from the roads let infantry over in single file.
 
 | Crossing | Kind | Where |
 |---|---|---|
@@ -35,8 +35,7 @@ The rivers are the walls of the realms and the crossings are their gates. There 
 | Emberflow Ford | ford | the Emberflow, below Silverlake |
 | Greymere Ford | ford | the Greymere, into the north-west |
 | Kingsbridge | bridge | the Aldwater, at the fork |
-| Old Bridge | bridge | the Westrun |
-| Southbridge | bridge | the Sorrow, far south |
+| Old Bridge | ford | the Westrun, where the road wades its broad mouth |
 | Greymere Bridge | bridge | the Greymere |
 | Heron Footbridge, Millrace Footbridge, Hangman's Span | footbridges | for men on foot only |
 
@@ -57,7 +56,7 @@ Out in the wild places there are **34 ruins** in the forests and foothills, **4 
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 
-Wherever the camera comes closer than about 850 m, on the campaign map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads with ruts, forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
+Wherever the camera comes closer than about 850 m, on the campaign map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads of worn dirt (a track one lane wide to a trunk road of three or four lanes, with the odd puddle), forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
 
 ## The ground and what it does {#ground}
 
