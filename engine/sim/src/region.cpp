@@ -685,6 +685,10 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
     }
 }
 
+Fixed Region::siteClearing(bool ruin, Fixed size) {
+    return ruin ? m(kRuinGlade) : size * 3 / 4;
+}
+
 Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cells) {
     Region rg;
     const Fixed cell = m(kCellSize);
@@ -1130,9 +1134,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         const Fixed size = m(Continent::Site::size(st.kind));
         if (at.x < -size || at.y < -size || at.x > cell * cells + size || at.y > cell * cells + size) continue;
         // Out to the corners of its footprint (a ruin's paving reaches them).
-        // (A ruin stands in a glade: nothing grows within the ring armies march round it, and out to the places
-        // they are sent from; Region::kRuinGlade.)
-        clearings.push_back({at.x, at.y, st.kind == Continent::Site::Kind::Ruin ? m(kRuinGlade) : size * 3 / 4});
+        clearings.push_back({at.x, at.y, siteClearing(st.kind == Continent::Site::Kind::Ruin, size)});
         const int turns = Continent::Site::turns(si);
         for (const SiteStone& s : siteStones(st.kind)) {
             // Its middle and half sizes in the model (thousandths), turned and scaled.

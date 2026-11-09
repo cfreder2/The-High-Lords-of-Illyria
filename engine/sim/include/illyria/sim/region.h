@@ -135,6 +135,9 @@ public:
     // `centre` (continent coordinates). Region coordinates are local: the
     // window's south-west corner is (0, 0); origin() maps back to the continent.
     static Region fromContinent(const Continent& continent, const Vec3& centre, int32_t cells);
+    // How far from a site's middle nothing grows (metres): a ruin stands in a glade past the ring armies march round it, the
+    // others out to the corners of their footprint (the detail land of the battle's far country keeps the same).
+    static Fixed siteClearing(bool ruin, Fixed size);
     // A bare test ground: `cells` x 4 m, heights per sample ((cells + 1)^2, or
     // empty for level), ground per cell, no water, roads or scenery.
     static Region fromGround(int32_t cells, const std::vector<Ground>& ground, std::vector<Fixed> heights = {});

@@ -213,6 +213,13 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
             keeps.push_back({cx, cy, reach});
         }
     }
+    // And the sites': a glade round a ruin, the footprint of the rest (Region::siteClearing).
+    for (const sim::Continent::Site& site : c.sites()) {
+        const float cx = static_cast<float>(site.pos.x.toDouble()) - ox_f, cy = static_cast<float>(site.pos.y.toDouble()) - oy_f;
+        const float reach = static_cast<float>(sim::Region::siteClearing(site.kind == sim::Continent::Site::Kind::Ruin, Fixed::fromInt(sim::Continent::Site::size(site.kind))).toDouble());
+        if (cx + reach < lx0 || cy + reach < ly0 || cx - reach > lx0 + kChunkSize || cy - reach > ly0 + kChunkSize) continue;
+        keeps.push_back({cx, cy, reach});
+    }
     const auto groundOf = [&](float x, float y) {
         const int ix = static_cast<int>(std::floor(x / kCell)), iy = static_cast<int>(std::floor(y / kCell));
         return static_cast<sim::Ground>(ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] / 16);

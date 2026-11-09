@@ -57,7 +57,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world. (It holds a ruin: its
     // stones, floor, stair and stepped base come from the ruin's model, on levelled ground.)
-    constexpr uint64_t kGolden = 0x3343cdcad97e5671;  // (was 0x39dd9c7350e9e73c before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
+    constexpr uint64_t kGolden = 0xc99f5d588c1bbf5b;  // (was 0x3343cdcad97e5671 before the glade round ruins (nothing grows within 46 m); was 0x39dd9c7350e9e73c before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
