@@ -36,11 +36,25 @@ void Renderer::setFlags(const std::vector<Flag>& flags) {
     uploadMeshInstances(cloths_, cloths);
 }
 
-void Renderer::setCityColours(const std::vector<V3>& colours, const std::vector<uint8_t>& keepsBare) {
+void Renderer::retint(Owned& o, const std::vector<OwnerLook>& looks) {
+    for (size_t k = 0; k < o.city.size() && (k + 1) * 13 <= o.data.size(); ++k) {
+        if (o.city[k] >= looks.size()) continue;
+        const V3& c = looks[o.city[k]].*o.tint;
+        o.data[k * 13 + 10] = c.x;
+        o.data[k * 13 + 11] = c.y;
+        o.data[k * 13 + 12] = c.z;
+    }
+    if (o.batch) uploadMeshInstances(*o.batch, o.data);
+}
+
+void Renderer::setCityColours(const std::vector<OwnerLook>& looks, const std::vector<uint8_t>& keepsBare) {
+    retint(ownedHouses_, looks);
+    retint(ownedTowers_, looks);
+    retint(ownedKeeps_, looks);
     // Each banner instance is 13 floats, its tint the last three.
     for (size_t k = 0; k < bannerCity_.size() && (k + 1) * 13 <= bannerData_.size(); ++k) {
-        if (bannerCity_[k] >= colours.size()) continue;
-        const V3& c = colours[bannerCity_[k]];
+        if (bannerCity_[k] >= looks.size()) continue;
+        const V3& c = looks[bannerCity_[k]].flag;
         bannerData_[k * 13 + 10] = c.x;
         bannerData_[k * 13 + 11] = c.y;
         bannerData_[k * 13 + 12] = c.z;
