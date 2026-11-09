@@ -21,6 +21,7 @@ void illyria_scroll(float dx, float dy, float x, float y);
 void illyria_pinch(float factor, float radians, float x, float y);
 void illyria_camera_keys(int right, int forward, int turn, int zoom);
 const char* illyria_camera_state();
+const char* illyria_underwater_state();
 void illyria_north_up();
 void illyria_set_camera(float x, float y, float distance, float yaw);
 void illyria_set_camera_world(float x, float y, float distance, float yaw);

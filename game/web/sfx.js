@@ -268,6 +268,56 @@
   }
   function stopAmbience() { for (const id of layers.keys()) setLayer(id, 0, 0); }
 
+  // Under water (game/app/platform.h sfxUnderwater): the filter and wobble on the page's whole output (audio.js), and the sounds
+  // made for it, synthesised by the game (game/src/underwater_audio.cpp: the one recipe the desktop plays too) and handed over
+  // as stereo float arrays: a loop (the water's own, not filtered), and a cue for the plunge and one for the surfacing.
+  const synthPending = new Map(), synthBuffers = new Map();
+  let uwNode = null, uwSrc = null, uwLevel = 0;
+  function synth(id, stereo, rate, loop) {
+    synthPending.set(id, { stereo, rate, loop });
+    makeSynth();
+  }
+  function makeSynth() {
+    if (!ctx) return;
+    for (const [id, s] of synthPending) {
+      const n = s.stereo.length / 2, b = ctx.createBuffer(2, n, s.rate);
+      const l = b.getChannelData(0), r = b.getChannelData(1);
+      for (let i = 0; i < n; i++) { l[i] = s.stereo[i * 2]; r[i] = s.stereo[i * 2 + 1]; }
+      synthBuffers.set(id, b);
+    }
+    synthPending.clear();
+  }
+  function underwater(cutoff, gain, wobble, ambience) {
+    if (!ctx) return;
+    makeSynth();
+    if (window.IllyriaAudio) window.IllyriaAudio.setUnderwater(cutoff, gain, wobble);
+    const on = settings.on && settings.ambience;
+    const level = on ? ambience : 0;
+    const buf = synthBuffers.get("underwater_loop");
+    if (level > 0.002 && buf && !uwSrc) {
+      uwNode = uwNode || ctx.createGain();
+      uwNode.gain.value = 0;
+      uwNode.connect(ctx.destination);
+      uwSrc = ctx.createBufferSource();
+      uwSrc.buffer = buf; uwSrc.loop = true;
+      uwSrc.connect(uwNode);
+      uwSrc.start();
+    }
+    if (uwNode) uwNode.gain.setTargetAtTime(level * 0.55 * settings.volume * (window.IllyriaAudio ? window.IllyriaAudio.settings.master : 1), ctx.currentTime, 0.12);
+    if (level <= 0.002 && uwSrc && uwLevel <= 0.002) { try { uwSrc.stop(); } catch (e) {} uwSrc = null; }
+    uwLevel = level;
+  }
+  function underwaterCue(entering) {
+    if (!ctx || !settings.on) return;
+    const b = synthBuffers.get(entering ? "underwater_in" : "underwater_out");
+    if (!b) return;
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = b;
+    g.gain.value = 0.5 * settings.volume * (window.IllyriaAudio ? window.IllyriaAudio.settings.master : 1);
+    src.connect(g); g.connect(ctx.destination);  // (after the filter: the crossing itself)
+    src.start();
+  }
+
   // The page's own sounds: taps and panels.
   function ui(id) {
     if (!settings.on || !ctx || !manifest) return;
@@ -324,6 +374,9 @@
   window.IllyriaSfx = {
     cue,
     ambience,
+    synth,
+    underwater,
+    underwaterCue,
     ui,
     settings,
     log,

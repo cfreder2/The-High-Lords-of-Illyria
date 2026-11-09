@@ -51,6 +51,11 @@ public:
     void setFeatures(int features);
     // Where the frame is drawn: the window's own framebuffer (0), or one the platform shows scaled (a lower resolution).
     void setScreenFramebuffer(GLuint fbo) { screenFbo_ = fbo; }
+    // The eye below the water (game/underwater.h): the look 0..1, the eye's depth (m), the murk 0..1, the surface's height.
+    // All zero while the eye is above water: the shaders then do nothing more than one comparison.
+    void setUnderwater(float look, float eyeDepth, float murk, float surface) {
+        underwater_[0] = look, underwater_[1] = eyeDepth, underwater_[2] = murk, underwater_[3] = surface;
+    }
     int features() const { return features_; }
 
     // Where a frame's drawing goes, counted as it is issued (the desktop's --stats table), and each kind switchable
@@ -144,7 +149,7 @@ private:
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
-        GLint territory = -1, territoryInfo = -1;
+        GLint territory = -1, territoryInfo = -1, uw = -1;
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
         GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1;
     };
@@ -202,7 +207,7 @@ private:
     void uploadGates(const Battle& battle);
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
-    Program sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
+    Program motes_, sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
     Program figure_, resolve_, unit_, figureDepth_, sheetView_;
     Program bar_;  // health bars with veterans' shield pips
     Batch bars_;
@@ -485,6 +490,7 @@ private:
     float ring_[4] = {0, 0, 0, 0};  // the fine ring's extent (min x, min y, max x, max y)
     void buildLand(const Battle& battle, const FarGrid& grid, LandMesh& out, bool skirt);
     float waterLevel_ = 0;
+    float underwater_[4] = {0, 0, 0, 0};
     GLsizei terrainIndexCount_ = 0;
     int cells_ = 0;
     float cellSize_ = 1;

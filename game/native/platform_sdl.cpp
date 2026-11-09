@@ -295,6 +295,8 @@ void sfxCue(const char* id, float gain, float pan, float dist, float delay, floa
 void sfxAmbience(float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain) {
     native::audio::ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
 }
+void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience) { native::audio::underwater(cutoffHz, gain, wobble, ambience); }
+void sfxUnderwaterCue(bool entering) { native::audio::underwaterCue(entering); }
 void minimapLand(const uint8_t*, int, int) {}  // (no minimap yet)
 void modeStarted(const char*) {}
 void requestSheet(int type, bool closeup, int standIn) { native::requestSheet(type, closeup, standIn); }
@@ -458,7 +460,7 @@ int runApp(int argc, char** argv) {
             } else if (!opt.shot.empty() && opt.cameras.size() > 1) {
                 if (frame >= opt.shotFrame && (frame - opt.shotFrame) % kTourFrames == kTourFrames - 1) {
                     writeShot(opt.shot.substr(0, opt.shot.rfind('.')) + "-" + std::to_string(tourStep) + ".tga", pw, ph);
-                    std::printf("camera %d: %s\n         %s\n", tourStep, hudPerf.c_str(), drawSummary().c_str());
+                    std::printf("camera %d: %s\n         %s\n         underwater %s\n", tourStep, hudPerf.c_str(), drawSummary().c_str(), illyria_underwater_state());
                     running = tourStep + 1 < static_cast<int>(opt.cameras.size());
                 }
             } else if (!opt.shot.empty() && frame == opt.shotFrame) {

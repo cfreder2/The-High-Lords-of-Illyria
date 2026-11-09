@@ -232,6 +232,75 @@ vec3 farInland(vec2 p, float depthM) {
     vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
     return mix(bed, inlandWater(depthM, p), clamp(0.55 + depthM * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
 }
+
+// ---------------------------------------------------------------- under water
+// When the eye is below the water (game/underwater.h): the whole scene is tinted and fogged by exponential absorption (reds die
+// first), lit by drifting caustics, the surface seen from below is a bright window with total internal reflection round it. All
+// of it is gated by uUw.x, 0 while the eye is above the surface (the one comparison is all the surface costs), and fades in over
+// +-0.3 m of the eye about the surface. Nothing here is the simulation's.
+uniform vec4 uUw;  // x: the look, 0 above .. 1 under; y: metres the eye is below the surface; z: murk, 0 sea .. 1 river; w: the surface's height
+// Visibility (the distance at which a thing is 1/e of itself, in green; underwater.cpp waterVisibility has the same numbers).
+const float kUwVisShallow = 30.0, kUwVisDeep = 8.0, kUwVisMurk = 0.7;
+const vec3 kUwAbsorb = vec3(3.0, 1.0, 0.7);    // red is lost three times as fast as green, blue a little slower
+const vec3 kUwLight = vec3(0.10, 0.035, 0.02); // and the sun's light fades with depth, per metre
+float uwVisibility(float depth) { return mix(kUwVisShallow, kUwVisDeep, smoothstep(0.0, 20.0, depth)) * (1.0 - kUwVisMurk * uUw.z); }
+// The water's own colour at a depth, lit from above: the sea's (farSea) clear teal to deep blue, a lake's (inlandWater), a river's silt-green.
+vec3 uwWaterColour(float depth) {
+    vec3 sea = mix(vec3(0.20, 0.52, 0.52), vec3(0.05, 0.22, 0.38), smoothstep(0.0, 18.0, depth));
+    vec3 lake = mix(vec3(0.18, 0.42, 0.38), vec3(0.05, 0.20, 0.30), smoothstep(0.0, 12.0, depth));
+    vec3 river = mix(vec3(0.26, 0.36, 0.22), vec3(0.12, 0.20, 0.16), smoothstep(0.0, 6.0, depth));
+    vec3 base = mix(mix(sea, lake, min(uUw.z * 2.0, 1.0)), river, clamp(uUw.z * 2.0 - 1.0, 0.0, 1.0));
+    return base * exp(-kUwLight * depth * 0.5) * (0.95 + 0.05 * sin(uTime * 0.8));  // (the light's slow bob)
+}
+// Light through the waves: thin bright lines where two drifting noise fields cross, in two sizes.
+float uwCaustic(vec2 p, float t) {
+    float a = 1.0 - abs(valueNoise2(p * 0.8 + vec2(t * 0.35, t * 0.2)) - valueNoise2(p * 1.3 + vec2(-t * 0.25, 3.1 + t * 0.3))) * 2.6;
+    float b = 1.0 - abs(valueNoise2(p * 2.1 + vec2(-t * 0.5, 9.0)) - valueNoise2(p * 3.4 + vec2(t * 0.4, 5.0 - t * 0.3))) * 3.2;
+    return pow(clamp(a, 0.0, 1.0), 5.0) * 1.0 + pow(clamp(b, 0.0, 1.0), 5.0) * 0.5;
+}
+float uwFogFactor(float haze, float d) { return uUw.x <= 0.0 ? haze : mix(haze, 1.0 - exp(-d / uwVisibility(uUw.y)), uUw.x); }
+float uwFull(float scaled, float full) { return mix(scaled, full, uUw.x); }
+vec3 uwSky() { return uUw.x <= 0.0 ? kSky : mix(kSky, uwWaterColour(uUw.y), uUw.x); }
+// Scene colour `c` of a thing at `world`, seen through the water: lit less (red first), the caustics on what is below the surface,
+// lost to the water's colour with distance (red first), the shafts of light in it.
+vec3 underwaterApply(vec3 c, vec3 world) {
+    if (uUw.x <= 0.0) return c;
+    float d = distance(uEye, world);
+    float fragDepth = max(uUw.w - world.z, 0.0);
+    float avg = 0.5 * (uUw.y + fragDepth);
+    vec3 T = exp(-kUwAbsorb * d / uwVisibility(avg));
+    float wet = smoothstep(0.0, 0.3, fragDepth);
+    float caust = wet > 0.0 && fragDepth < 14.0 ? uwCaustic(world.xy + world.z * 0.35, uTime) * wet * exp(-fragDepth * 0.22) : 0.0;  // (fades with depth: not worked out where it cannot show)
+    vec3 lit = c * exp(-kUwLight * fragDepth) * (1.0 + 1.6 * caust);
+    vec3 fog = uwWaterColour(avg);
+    vec3 v = (world - uEye) / max(d, 1e-3);
+    float shaft = valueNoise2(v.xy / (abs(v.z) + 0.45) * 0.8 + vec2(uTime * 0.05, 0.0));
+    fog *= 1.0 + 0.7 * (shaft - 0.45) * clamp(v.z + 0.5, 0.0, 1.0) * exp(-uUw.y * 0.08);
+    return mix(c, lit * T + fog * (1.0 - T), uUw.x);
+}
+// The bed (the terrain's own colour, `under` how far under the water it is): silt, a green slime, ripples in the sand.
+vec3 uwBed(vec3 albedo, vec2 p, float under) {
+    if (uUw.x <= 0.0 || under <= 0.0) return albedo;
+    float silt = valueNoise2(p * 0.6 + 4.0), ripple = valueNoise2(p * vec2(2.3, 6.1) + 1.3) * 0.6 + valueNoise2(p * vec2(5.1, 2.0) + 8.0) * 0.4;
+    vec3 bed = mix(vec3(0.27, 0.32, 0.20), vec3(0.46, 0.41, 0.29), silt) * (0.72 + 0.5 * ripple);
+    bed = mix(bed, vec3(0.10, 0.20, 0.12), smoothstep(0.55, 0.85, valueNoise2(p * 0.22 + 20.0)) * 0.5);  // algae
+    return mix(albedo, bed, 0.65 * under * uUw.x) * mix(1.0, 0.85, uUw.x);
+}
+// How far the surface's underside has taken over from its top as the eye goes down through it (0 at the surface, 1 at 0.3 m): no pop.
+float uwUnder() { return smoothstep(0.0, 0.3, uUw.y); }
+// The surface seen from below: inside the window (48.6 degrees of the vertical) the sky, bright and shimmering through the waves; round
+// it the water's total internal reflection of its own bed, dark.
+vec3 uwUnderside(vec3 world) {
+    vec3 v = normalize(world - uEye);
+    vec2 g = vec2(valueNoise2(world.xy * 0.4 + uTime * vec2(0.3, 0.2)), valueNoise2(world.xy * 0.4 + 7.0 - uTime * vec2(0.2, 0.3))) - 0.5;
+    vec3 n = normalize(vec3(g * 0.6, 1.0));
+    float cosI = clamp(dot(v, n), 0.0, 1.0);
+    float window = smoothstep(0.58, 0.72, cosI);
+    float shimmer = uwCaustic(world.xy * 0.7, uTime * 1.3);
+    vec3 sky = vec3(0.62, 0.82, 0.92) * (0.85 + 0.55 * shimmer);
+    vec3 mirror = uwWaterColour(uUw.y + 1.5) * (0.5 + 0.35 * valueNoise2(world.xy * 0.9 + uTime * 0.2));
+    return mix(mirror, sky, window);
+}
 )";
 
 // ---------------------------------------------------------------- terrain
@@ -442,6 +511,12 @@ uniform sampler2D uFlow;      // RG8: downstream direction per terrain sample (0
 
 // Fades a pattern of feature size `size` metres out before it shimmers.
 float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, size * 1.2, px); }
+// Where the rock's fine noise is sampled: turned off the world's axes and warped, so that its cells (0.3 m) do not read as a grid of
+// square pixels on a cliff or an isle's top seen from 15 to 40 m (the bare value noise is aligned to the axes, its corners at random).
+vec2 rockCoord(vec2 p) {
+    vec2 w = vec2(valueNoise(p * 0.9), valueNoise(p * 0.9 + 5.0)) - 0.5;
+    return mat2(0.8, -0.6, 0.6, 0.8) * p + w * 0.9;
+}
 
 void main() {
 #ifdef DETAIL_FADE
@@ -514,8 +589,9 @@ void main() {
         float stoneShown = max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8;
         if (stoneShown > 0.0) {
             float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
-            vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * valueNoise(p * 3.1));
-            stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(p * 1.9 + 4.0)) * 0.6);
+            vec2 rc = rockCoord(p);
+            vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * mix(valueNoise(rc * 3.1), 0.5, smoothstep(0.1, 0.5, px)));
+            stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(rc * 1.9 + 4.0)) * 0.6);
             albedo = mix(albedo, stone, stoneShown);
         }
         // Swamp: dark wet mud and standing puddles.
@@ -626,6 +702,7 @@ void main() {
             // Under the water: the bed, fading in over the last few centimetres.
             float under = 1.0 - smoothstep(-0.12, 0.0, above);
             albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75 * under * reach);
+            albedo = uwBed(albedo, p, under * reach);  // (under water: silt, algae, ripples)
             // Waves running up the beach (shoreSwash): a bright foam edge, the water's sheet, the sand it leaves dark.
             if (above > -0.3 && above < 3.5 && reach > 0.5) {
                 float flowSpeed = length(texelFetch(uFlow, texCell(vec2(ivec2(floor(p / uCellSize + 0.5))), uCells), 0).rg * 2.0 - 1.0);
@@ -656,7 +733,7 @@ void main() {
 
     // The grids, as on all the land; haze as on the coarse land.
     color = landGrids(color, vWorld.xy);
-    oColor = vec4(mix(color, hazeColor(vWorld), fogFactor(dist) * 0.6), 1.0);
+    oColor = vec4(underwaterApply(mix(color, hazeColor(vWorld), fogFactor(dist) * 0.6), vWorld), 1.0);
 }
 )"
 inline const char* kTerrainFs = ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
@@ -701,7 +778,7 @@ void main() {
     vUv = corner;
     vParams = iParams;
     vExtra = iExtra;
-    vFog = fogFactor(distance(uEye, world));
+    vFog = uwFogFactor(fogFactor(distance(uEye, world)), distance(uEye, world));
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -846,7 +923,7 @@ void main() {
         color = vec4(c, a);
     }
     if (color.a < 0.01) discard;
-    oColor = vec4(mix(color.rgb, kSky, vFog), color.a);
+    oColor = vec4(mix(color.rgb, uwSky(), vFog), color.a);
 }
 )";
 
@@ -900,7 +977,7 @@ void main() {
     vAlong = t;
     vStuck = state;
     vAge = max(uGameSeconds - iInfo.x, 0.0);
-    vFog = fogFactor(dist);
+    vFog = uwFogFactor(fogFactor(dist), dist);
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -917,7 +994,7 @@ void main() {
     if (vAlong > 0.92) c = vec3(0.35);
     // Weathering: shafts grey and darken over days.
     if (vStuck > 0.5) c = mix(c, vec3(0.30, 0.28, 0.25), smoothstep(3600.0, 86400.0 * 3.0, vAge));
-    oColor = vec4(mix(c, kSky, vFog), 1.0);
+    oColor = vec4(mix(c, uwSky(), vFog), 1.0);
 }
 )";
 
@@ -964,7 +1041,7 @@ void main() {
     vBody = iBody;
     vAspect = aspect;
     vSelected = iSelected;
-    vFog = fogFactor(dist);
+    vFog = uwFogFactor(fogFactor(dist), dist);
     vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, height * 0.6), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
     gl_Position = uViewProj * vec4(world, 1.0);
 }
@@ -1147,7 +1224,7 @@ void main() {
     if (vDot > 0.5) {
         float r = length(vUv - 0.5);
         if (r > 0.5) discard;
-        oColor = vec4(mix(team * (r > 0.38 ? 0.45 : 1.0), kSky, vFog * 0.5), 1.0);
+        oColor = vec4(mix(team * (r > 0.38 ? 0.45 : 1.0), uwSky(), uwFull(vFog * 0.5, vFog)), 1.0);
         return;
     }
     float plan = vInfo.x;
@@ -1261,7 +1338,7 @@ void main() {
         }
     }
     if (gA < 0.5) discard;
-    oColor = vec4(mix(gCol * vShade, kSky, vFog), 1.0);
+    oColor = vec4(mix(gCol * vShade, uwSky(), vFog), 1.0);
 }
 )";
 
@@ -1556,7 +1633,7 @@ void main() {
     vec2 inCell = vec2(mirror ? 1.0 - corner.x : corner.x, corner.y) * place.zw;
     vUv = (place.xy + inCell) / uSheetSize;
     vSelected = iSelected;
-    vFog = fogFactor(dist);
+    vFog = uwFogFactor(fogFactor(dist), dist);
     vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
     // Drawn as if a little nearer the viewer, so the part of the picture
     // below the feet (the ground in front of them) is not lost in the earth;
@@ -1587,7 +1664,7 @@ out vec4 oColor;
 void main() {
     vec3 team = uTeam * (vSelected > 0.5 ? 1.35 : 1.0);
     if (vDot > 0.5) {
-        oColor = vec4(mix(team, kSky, vFog * 0.5), 1.0);
+        oColor = vec4(mix(team, uwSky(), uwFull(vFog * 0.5, vFog)), 1.0);
         return;
     }
     vec4 t = texture(uSheet, vUv);
@@ -1595,7 +1672,7 @@ void main() {
     vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
     c *= vShade;
     if (vSelected > 0.5) c = c * 1.15 + team * 0.12;
-    oColor = vec4(mix(c, kSky, vFog), 1.0);
+    oColor = vec4(mix(c, uwSky(), vFog), 1.0);
 }
 )";
 
@@ -1660,7 +1737,7 @@ vec4 sceneryColor(vec3 albedo, vec3 n, vec3 world) {
     vec2 cell = world.xy / uCellSize;
     bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
     if (onField && world.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - world.z) * 0.6, 0.0, 0.8));
-    return vec4(mix(c, hazeColor(world), fogFactor(distance(uEye, world))), 1.0);
+    return vec4(underwaterApply(mix(c, hazeColor(world), fogFactor(distance(uEye, world))), world), 1.0);
 }
 )"
 inline const char* kMeshVs = ILLYRIA_SCENERY_VS R"(
@@ -1945,7 +2022,7 @@ void main() {
         albedo = flagCloth(albedo, vCloth);
         float sunC = (0.35 + 0.65 * dot(n, kSun)) * mix(1.0, shadowAt(vWorld, n), 0.6) * cloudShade(vWorld.xy);
         vec3 cc = albedo * (0.42 + 0.75 * sunC);
-        oColor = vec4(mix(cc, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+        oColor = vec4(underwaterApply(mix(cc, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), vWorld), 1.0);
         return;
     }
     if (uHouse > 0.5) houseSurface(albedo, n);
@@ -2016,7 +2093,7 @@ void main() {
     vec2 cell = vWorld.xy / uCellSize;
     bool onField = all(greaterThanEqual(cell, vec2(0.0))) && all(lessThanEqual(cell, vec2(uCells)));
     if (onField && vWorld.z < uWater) c = mix(c, vec3(0.1, 0.25, 0.32), clamp((uWater - vWorld.z) * 0.6, 0.0, 0.8));
-    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), vWorld), 1.0);
 }
 )";
 
@@ -2101,7 +2178,7 @@ out vec4 oColor;
 void main() {
     float sun = max(kSun.z, 0.0) * shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(vWorld.xy);
     vec3 c = vColor * (0.32 + 0.95 * sun);
-    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), 1.0);
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld))), vWorld), 1.0);
 }
 )";
 
@@ -2133,6 +2210,7 @@ void main() {
     vec2 q = d.xy / max(d.z, 0.08) * 1.6 + vec2(uTime * 0.003, 0.0);
     float cl = smoothstep(0.55, 0.85, valueNoise2(q) * 0.6 + valueNoise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
     c = mix(c, vec3(0.97, 0.97, 0.98), cl * 0.55);
+    if (uUw.x > 0.0) c = mix(c, uwWaterColour(uUw.y), uUw.x);  // under water the sky is not seen: the water's colour, the surface drawn over it
     oColor = vec4(c, 1.0);
 }
 )";
@@ -2349,7 +2427,11 @@ void main() {
         c = mix(c, vec3(0.94, 0.96, 0.96), foam * 0.9);
         alpha = max(alpha, foam * 0.85);
     }
-    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(dist)), alpha);
+    if (uUw.x > 0.0 && uEye.z < vWorld.z) {  // seen from below: the surface's underside (uwUnderside), opaque
+        c = mix(c, uwUnderside(vWorld), uwUnder());
+        alpha = mix(alpha, 1.0, uwUnder());
+    }
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(dist)), vWorld), alpha);
 }
 )";
 
@@ -2424,7 +2506,8 @@ void main() {
         c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
     }
     if (!wetHere) c = landGrids(c, vWorld.xy);  // the grid is the land's; the sea goes unmarked
-    oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), 1.0);
+    if (wetHere && uUw.x > 0.0 && uEye.z < vWorld.z) c = mix(c, uwUnderside(vWorld), uwUnder());  // (under water: the surface from below)
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), vWorld), 1.0);
 }
 )"
 inline const char* kFarFs = ILLYRIA_LAND_FS ILLYRIA_FAR_FS;
@@ -2463,7 +2546,7 @@ void main() {
     vec3 world = mix(iA, iB, t) + side * s;
     world.z += max(1.5, dist * 0.003);  // ride above the coarse mesh
     vKind = iInfo.y;
-    vFog = fogFactor(dist);
+    vFog = uwFogFactor(fogFactor(dist), dist);
     vXy = world.xy;
     vAcross = s;
     vMouth = mix(iMouth.x, iMouth.y, t);
@@ -2496,7 +2579,7 @@ void main() {
     } else {
         c = vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
     }
-    oColor = vec4(mix(c, kSky, vFog * 0.6), alpha);
+    oColor = vec4(mix(c, uwSky(), uwFull(vFog * 0.6, vFog)), alpha);
 }
 )";
 
@@ -2536,7 +2619,7 @@ void main() {
         vUv = vec2(s * 0.5 + 0.5, t);
     }
     vKind = iInfo.y;
-    vFog = fogFactor(dist);
+    vFog = uwFogFactor(fogFactor(dist), dist);
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -2573,7 +2656,7 @@ void main() {
         a = (1.0 - smoothstep(0.4, 1.0, r)) * smoothstep(0.3, 0.7, churn) * 0.8;
     }
     float light = 0.55 + 0.45 * max(kSun.z, 0.0);
-    oColor = vec4(mix(c * light, kSky, vFog * 0.6) * a, a);
+    oColor = vec4(mix(c * light, uwSky(), uwFull(vFog * 0.6, vFog)) * a, a);
 }
 )";
 
@@ -2626,6 +2709,42 @@ void main() {
         float a = soft * (1.0 - age);
         oColor = vec4(vec3(1.0, 0.95, 0.75) * a * 2.0, 0.0);
     }
+}
+)";
+
+// ---------------------------------------------------------------- motes (under water)
+// The specks floating in the water: instances hashed from their index, held in a box about the eye (world-anchored, wrapping
+// as it moves, so they hang still as the camera passes through them), drifting slowly. Drawn only while the eye is under
+// the surface (renderer.cpp, uUw.x > 0): no cost above.
+inline const char* kMoteVs = R"(
+out vec2 vUv;
+out float vA;
+void main() {
+    const float kBox = 22.0;
+    int id = gl_InstanceID;
+    vec3 h = vec3(hash12(vec2(float(id), 1.7)), hash12(vec2(float(id), 5.3)), hash12(vec2(float(id), 9.1)));
+    vec3 drift = vec3(sin(uTime * 0.2 + h.x * 6.28), cos(uTime * 0.17 + h.y * 6.28), 0.4 * sin(uTime * 0.3 + h.z * 6.28)) * 0.9;
+    vec3 p = uEye + (fract((h * kBox + drift - uEye) / kBox) - 0.5) * kBox;
+    float dist = distance(uEye, p);
+    float vis = uwVisibility(uUw.y);
+    vA = uUw.x * (1.0 - smoothstep(0.0, 0.7 * vis, dist)) * exp(-uUw.y * 0.06) * (p.z < uUw.w - 0.15 ? 1.0 : 0.0);
+    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
+    float size = max(0.018 + 0.03 * h.x, uPxScale * dist * 1.1);
+    vec3 up = normalize(cross(uCamRight, p - uEye));
+    vec3 world = p + (uCamRight * corner.x + up * corner.y) * size;
+    vUv = corner;
+    gl_Position = vA <= 0.001 ? kCulled : uViewProj * vec4(world, 1.0);
+}
+)";
+inline const char* kMoteFs = R"(
+in vec2 vUv;
+in float vA;
+out vec4 oColor;
+void main() {
+    float r = length(vUv);
+    if (r > 1.0) discard;
+    float a = (1.0 - smoothstep(0.2, 1.0, r)) * vA * 0.55;
+    oColor = vec4(uwWaterColour(uUw.y) * 2.6 * a + vec3(0.25, 0.3, 0.3) * a, 0.0);  // (adds light: premultiplied, zero alpha)
 }
 )";
 

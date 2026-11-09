@@ -23,6 +23,7 @@
 #include "illyria/game/mode.h"
 #include "illyria/game/mode_horde.h"
 #include "illyria/game/mode_sandbox.h"
+#include "illyria/game/underwater.h"
 #include "illyria/sim/campaign.h"
 
 #ifndef ILLYRIA_VERSION
@@ -45,8 +46,20 @@ void play_voice_cue(const char* set, const char* situation, int enemy, float pan
 void play_sfx_cue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick) {
     platform::sfxCue(id, gain, pan, dist, delay, doppler, priority, count, tick);
 }
+// What the game last asked of the surface soundscape, and how much of it is let through now: under water the wind, the birds
+// and the clamour of the surface are muffled further (underwater.h surfaceScale), sent again as that changes.
+float ambienceAsked[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+float ambienceScale = 1, ambienceScaleSent = 1;
+void sendAmbience() {
+    const float* a = ambienceAsked;
+    const float k = ambienceScale;  // (levels only: the pans, a[3], a[5], a[7], stay)
+    platform::sfxAmbience(a[0] * k, a[1] * k, a[2] * k, a[3], a[4] * k, a[5], a[6] * k, a[7], a[8] * k);
+    ambienceScaleSent = k;
+}
 void set_sfx_ambience(float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain) {
-    platform::sfxAmbience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+    const float v[9] = {wm, wv, sw, swp, fl, flp, dr, drp, rain};
+    std::copy(v, v + 9, ambienceAsked);
+    sendAmbience();
 }
 
 // The battle's sounds since the last frame, and the ambience when it changed.
@@ -88,6 +101,10 @@ struct App {
     float rain = 0;              // weather hook (illyria_set_rain)
     uint32_t ambienceSeen = ~0u;  // the ambience last sent to the page
     bool hushed = false;          // ambience silenced on the campaign map
+    // Under water (underwater.h): what the eye is in, the sound's latched state and its glided values.
+    Underwater under;
+    SoundLatch underLatch;
+    UnderwaterSound underSound;
     double drawMs = 0;  // CPU time preparing and issuing a frame's drawing (smoothed)
     std::string hud, labels;
     bool shift = false;  // held on the desktop
@@ -751,6 +768,26 @@ void playCues() {
         play_sfx_cue(soundName(c.sound), c.gain, c.pan, c.distance, c.delay, c.doppler, c.priority, c.count, static_cast<int>(c.tick));
 }
 
+// The eye in the water, once a frame, for the picture and the sound alike (underwater.h). The camera is not the simulation's:
+// nothing here is read by it.
+void updateUnderwater(float dt) {
+    Underwater u;
+    if (app->battle && !app->title) {
+        const V3 o = app->battle->origin();
+        const illyria::sim::Continent& c = app->battle->continent();
+        u = underwaterAt(app->camera.eye(), [&](float x, float y) { return continentWater(c, o.x, o.y, x, y); });
+    }
+    app->under = u;
+    app->renderer.setUnderwater(u.blend, u.depth, u.murk, u.surface);
+    const bool was = app->underLatch.in(), now = app->underLatch.update(u.below);
+    app->underSound = glideUnderwaterSound(app->underSound, now, u.depth, dt);
+    const UnderwaterSound e = effectiveUnderwaterSound(app->underSound);
+    platform::sfxUnderwater(e.cutoffHz, e.gain, e.wobble, e.ambience);
+    if (now != was) platform::sfxUnderwaterCue(now);
+    ambienceScale = e.surfaceScale;
+    if (std::abs(ambienceScale - ambienceScaleSent) > 0.02f || (ambienceScale == 1 && ambienceScaleSent != 1)) sendAmbience();
+}
+
 // False when this frame drew nothing (the title screen draws every other).
 bool frame() {
     const double now = platform::nowMs();
@@ -799,6 +836,7 @@ bool frame() {
         playSounds(app->battle->sfx(), app->ambienceSeen);
     }
     placeFlags(static_cast<float>(dtMs / 1000.0));
+    updateUnderwater(static_cast<float>(dtMs / 1000.0));
     const double drawStart = platform::nowMs();
     app->renderer.setScreenFramebuffer(platform::screenFramebuffer());
 #ifdef ILLYRIA_DEV_HOOKS
@@ -936,6 +974,15 @@ ILLYRIA_API float illyria_heading() {
     return app ? std::remainder(app->camera.yaw() - kNorthUp, 6.2831853f) : 0.0f;
 }
 // Test hook: where the camera looks, as JSON.
+// Test hook: the eye's place in the water, as JSON (metres below the surface; negative above or on dry land), and the sound's amount.
+ILLYRIA_API const char* illyria_underwater_state() {
+    static char buf[160];
+    if (!app) return "{}";
+    const V3 e = app->camera.eye();
+    std::snprintf(buf, sizeof buf, "{\"eyeZ\":%.2f,\"below\":%.2f,\"blend\":%.2f,\"murk\":%.2f,\"sound\":%.2f}", e.z, app->under.below > -1e8f ? app->under.below : -999.0f,
+                  app->under.blend, app->under.murk, app->underSound.amount);
+    return buf;
+}
 ILLYRIA_API const char* illyria_camera_state() {
     static char buf[160];
     if (!app) return "{}";
