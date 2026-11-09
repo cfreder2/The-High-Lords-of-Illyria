@@ -318,7 +318,7 @@ A short note on how it works, and what it costs.
 
 ### Planning is the client's
 
-Planning mode (key I) is not in the sim and not in the command stream: `Battle` holds the orders a gesture gives, per man
+Planning mode (key `) is not in the sim and not in the command stream: `Battle` holds the orders a gesture gives, per man
 (`Battle::plan_`), and sends them at the release as ordinary Commands, in the order given, in one tick. It is
 therefore the same in Skirmish and Conquest, invisible to other peers, and cannot desynchronise anything: before the
 release there is nothing to send. A conquest's held orders name the *man* (his unit id is made anew when the men are put

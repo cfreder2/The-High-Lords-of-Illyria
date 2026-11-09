@@ -1313,7 +1313,7 @@ ILLYRIA_API void illyria_hot_spot() {
 ILLYRIA_API void illyria_gate(int release) {
     if (app) app->battle->swingGateByKey(release != 0);
 }
-// The planning mode (I): 0 toggles it (off releases what is held), 1 releases, 2 discards (Backspace). The count held after.
+// The planning mode (`): 0 toggles it (off releases what is held), 1 releases, 2 discards (Backspace). The count held after.
 ILLYRIA_API int illyria_plan(int op) {
     if (!app) return 0;
     Battle& b = *app->battle;

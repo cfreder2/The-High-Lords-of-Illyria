@@ -232,12 +232,12 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_G: illyria_group(2, 0); break;
         case SDL_SCANCODE_V: case SDL_SCANCODE_M: setMode(orderMode_ == 2 ? 0 : 2); break;
         case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
-        case SDL_SCANCODE_B: case SDL_SCANCODE_H: illyria_stop(); break;
+        case SDL_SCANCODE_B: illyria_stop(); break;
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
         case SDL_SCANCODE_U: illyria_ungroup(); break;
-        case SDL_SCANCODE_GRAVE: illyria_select_heroes(); break;
-        case SDL_SCANCODE_I: illyria_plan(0); break;          // planning on; again releases what is held
+        case SDL_SCANCODE_H: illyria_select_heroes(); break;
+        case SDL_SCANCODE_GRAVE: illyria_plan(0); break;      // ` : planning on; again releases what is held
         case SDL_SCANCODE_BACKSPACE: illyria_plan(2); break;  // drops what is held and leaves planning
         case SDL_SCANCODE_TAB: illyria_cycle_group(shift ? -1 : 1); break;  // the next group of units (Shift: the previous)
         case SDL_SCANCODE_ESCAPE:

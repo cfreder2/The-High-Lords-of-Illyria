@@ -959,7 +959,7 @@
   $("formation").onclick = () => $("picker").classList.toggle("hidden");
   let selected = -1, selCount = 0, lastNotice = "", lastSideColour = "";
   $("focus").onclick = () => api && api.focusSelection();
-  // Planning: orders are held (drawn in violet, numbered) and sent together when it is switched off; the key is I.
+  // Planning: orders are held (drawn in violet, numbered) and sent together when it is switched off; the key is `.
   $("plan").onclick = () => { if (!api) return; api.plan(0); updateHud(); };
 
   // Formations: a sketch of each from the game's own slots (9 men, seen from above, front up).
@@ -1089,7 +1089,7 @@
       }
       case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyT": case "KeyL": api.special(); break;
-      case "KeyB": case "KeyH": api.stop(); break;
+      case "KeyB": api.stop(); break;
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
@@ -1097,8 +1097,8 @@
         toast(n ? (n === 1 ? "Group forgotten" : `${n} groups forgotten`) : "No group is wholly selected");
         break;
       }
-      case "Backquote": api.selectHeroes(); break;
-      case "KeyI": api.plan(0); break;  // planning on; again sends what is held
+      case "KeyH": api.selectHeroes(); break;
+      case "Backquote": api.plan(0); break;  // planning on; again sends what is held
       case "Backspace":  // drops what is held and leaves planning (nothing else: the page's own Back is left alone)
         if (typing(e) || !planning) return;
         api.plan(2);
@@ -1509,7 +1509,7 @@
     $("plan").setAttribute("aria-pressed", planning ? "true" : "false");
     $("plan").textContent = planning ? (s.planned ? `Send ${s.planned}` : "Planning") : "Plan";
     const modeText = planning
-      ? `PLANNING: ${s.planned} order${s.planned === 1 ? "" : "s"} held. Orders you give are held, not sent. ${"ontouchstart" in window ? "Tap Send" : "I sends them, Backspace drops them"}`
+      ? `PLANNING: ${s.planned} order${s.planned === 1 ? "" : "s"} held. Orders you give are held, not sent. ${"ontouchstart" in window ? "Tap Send" : "` sends them, Backspace drops them"}`
       : orderMode === 1
       ? `⚔ Attack: tap a soldier (ours too), a gate${s.batter ? ", a wall, house or tree" : ""}, or the ground`
       : orderMode === 2 ? "» Force march: tap where to go; they ignore the enemy on the way"

@@ -23,7 +23,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Queue an order (after the one in hand) | **Plan** (below) | [[Shift]] + right-click (or right-hold and drag, for a facing) |
-| Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[I]] to start, [[I]] to send, [[Backspace]] to drop them |
+| Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[`]] to start, [[`]] to send, [[Backspace]] to drop them |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
@@ -81,7 +81,7 @@ Hold [[Shift]] as you right-click and the order is **added to the end** of each 
 
 ## Planning {#planning}
 
-Press [[I]] (on a phone, the **Plan** button) and the game says **PLANNING**. The battle keeps running, but the orders you give (a march, a facing drag, an attack, a formation, scatter, raid) are not sent: they are **held**, and drawn as dashed violet paths, each leg ending in its number, for every man who has any, selected or not. Press [[I]] again (**Send**) and every held order goes at once, in the one tick and in the order you gave it, exactly as if you had just given it then: a plain order replaces what the man is doing and a [[Shift]] one is added behind it. [[Backspace]] drops them all and leaves planning.
+Press [[`]] (the backtick; on a phone, the **Plan** button) and the game says **PLANNING**. The battle keeps running, but the orders you give (a march, a facing drag, an attack, a formation, scatter, raid) are not sent: they are **held**, and drawn as dashed violet paths, each leg ending in its number, for every man who has any, selected or not. Press [[`]] again (**Send**) and every held order goes at once, in the one tick and in the order you gave it, exactly as if you had just given it then: a plain order replaces what the man is doing and a [[Shift]] one is added behind it. [[Backspace]] drops them all and leaves planning.
 
 - A plain order held for a man replaces the orders held for him before it, as it would on arrival.
 - [[Space]] (Hold) is never held: it halts at once, and drops whatever was held for those men.

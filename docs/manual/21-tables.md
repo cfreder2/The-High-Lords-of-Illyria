@@ -123,7 +123,7 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | Everyone in view | | [[Ctrl]] / [[⌘]] + [[A]] |
 | Box select | hold on your men, drag | the same, or shift-drag |
 | Add or remove one | | shift-click |
-| The heroes | their gold cards | [[`]] |
+| The heroes | their gold cards | [[H]] |
 | Make / recall a group | + New group / its card | [[G]] or [[Alt]] + number / the number |
 | Ungroup | hold its card while it is selected | [[U]] |
 | Next / previous group | | [[Tab]] / [[Shift]] + [[Tab]] |
@@ -131,7 +131,7 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |
 | Queue an order | | [[Shift]] + right-click |
-| Plan (hold orders, send them together) | Plan / Send | [[I]] / [[I]]; [[Backspace]] drops them |
+| Plan (hold orders, send them together) | Plan / Send | [[`]] / [[`]]; [[Backspace]] drops them |
 | Attack mode | ⚔ Attack | [[Z]] or [[Ctrl]] + click |
 | Force march | hold ⚔ Attack | [[V]] or [[Alt]] + click |
 | Formation | Formation | keypad 1-7, shift + 1-7 |
