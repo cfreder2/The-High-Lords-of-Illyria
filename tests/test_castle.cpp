@@ -364,7 +364,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0x1fddebc5e04c2cad;
+    constexpr uint64_t kGolden = 0x1aa5a57fd79f59bd;  // (was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -730,4 +730,73 @@ TEST(the_gates_state_is_in_the_checksum_and_a_replay_agrees) {
     CHECK(run(false) == run(false));
     CHECK(run(true) == run(true));
     CHECK(run(true) != run(false));
+}
+
+namespace {
+struct Keep {
+    GateField f;
+    std::vector<EntityId> archers, foot, foes;
+};
+// A garrison of bowmen and pikemen in the courtyard of a garrisoned gate, and foes coming up to it from `range` metres off.
+Keep keepField(uint64_t seed, int64_t range) {
+    Keep k{gateField(seed), {}, {}, {}};
+    World& w = *k.f.w;
+    w.setGateGarrisoned(k.f.gate, true);
+    const Vec3 yard = local(town().castle.courtyard);
+    const Vec3 across{k.f.out.y, -k.f.out.x, Fixed::zero()};
+    for (int i = 0; i < 6; ++i) {
+        const Vec3 at = yard + across * m(i - 3);
+        k.archers.push_back(w.spawnUnit(1, {at.x, at.y, w.groundHeight(at.x, at.y)}, k.f.out, unitStats(UnitType::Archers)));
+    }
+    for (int i = 0; i < 10; ++i) {
+        const Vec3 at = yard - k.f.out * m(4) + across * m(i - 5);
+        k.foot.push_back(w.spawnUnit(1, {at.x, at.y, w.groundHeight(at.x, at.y)}, k.f.out, unitStats(UnitType::Pikemen)));
+    }
+    for (int i = 0; i < 6; ++i) {
+        const Vec3 at = k.f.centre + k.f.out * m(range) + across * m(i * 2 - 5);
+        k.foes.push_back(w.spawnUnit(0, {at.x, at.y, w.groundHeight(at.x, at.y)}, -k.f.out, unitStats(UnitType::Pikemen)));
+    }
+    return k;
+}
+}  // namespace
+
+TEST(a_neutral_garrison_puts_its_archers_on_the_wall_and_its_foot_behind_the_gate) {
+    Keep k = keepField(9, 60);
+    World& w = *k.f.w;
+    const Rampart& walls = ownWalls(*w.region());
+    const Fixed walk = walls.corners.front().z;
+    // Nobody has come near: the garrison stands where it was put.
+    for (int t = 0; t < 3 * kTicksPerSecond; ++t) w.step({});
+    for (EntityId id : k.archers) CHECK(w.findUnit(id)->pos.z < walk - m(2));
+    // Foes up to the gate: the stations are taken.
+    std::vector<Command> march;
+    for (EntityId id : k.foes) march.push_back({0, id, Command::Type::Move, k.f.centre + k.f.out * m(10)});
+    w.step(march);
+    const auto count = [&] {
+        struct Posted {
+            int up = 0, formed = 0;
+        } n;
+        for (EntityId id : k.archers) {
+            const Unit& u = *w.findUnit(id);
+            n.up += u.alive() && u.pos.z > walk - m(1) && (u.pos - k.f.centre).flat().length() < m(40);
+        }
+        for (EntityId id : k.foot) {
+            const Unit& u = *w.findUnit(id);
+            const Fixed d = (u.pos - k.f.centre).flat().length();
+            n.formed += u.alive() && d > m(4) && d < m(18) && (u.pos - k.f.centre).flat().dot(k.f.out) < -m(3) && u.pos.z < walk - m(2);
+        }
+        return n;
+    };
+    bool swung = false;
+    int up = 0, formed = 0;
+    for (int t = 0; t < 150 * kTicksPerSecond; ++t) {
+        w.step({});
+        swung = swung || gateOf(k.f).mode != GateState::Mode::Shut;
+        if (t == 60 * kTicksPerSecond) up = count().up, formed = count().formed;  // before the fight is joined, if the doors open
+    }
+    int foesLeft = 0;
+    for (EntityId id : k.foes) foesLeft += w.findUnit(id)->alive();
+    std::printf("  at a minute: %d of 6 archers on the wall, %d of 10 foot in the horseshoe; the doors swung: %d; %d of 6 foes left\n", up, formed, swung, foesLeft);
+    CHECK(up >= 5);
+    CHECK(formed >= 8);
 }

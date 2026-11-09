@@ -181,7 +181,7 @@ TEST(campaign_is_deterministic) {
     };
     const uint64_t a = run(5);
     CHECK(a == run(5));
-    constexpr uint64_t kGolden = 0x45f28a2ecb24c218;  // (was 0xcb1630541ad9f9db before the capitals courtyards moved beyond their inner baileys (step 3d) on top of one mode (step 3e); was 0xdc2856c0768135f5 before every man became a unit of the world at all times: no sleeping, no waking, the march the world's own steps)
+    constexpr uint64_t kGolden = 0xfa8f2c062fbfab2f;  // (was 0x45f28a2ecb24c218 before gates swung (three seconds, blocking) and garrisons kept them; was 0xcb1630541ad9f9db before the capitals courtyards moved beyond their inner baileys (step 3d) on top of one mode (step 3e); was 0xdc2856c0768135f5 before every man became a unit of the world at all times: no sleeping, no waking, the march the world's own steps)
     if (a != kGolden) std::printf("  campaign checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

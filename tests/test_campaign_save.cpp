@@ -351,3 +351,34 @@ TEST(the_players_orders_reach_the_simulation_only_through_submit) {
     CHECK(c.findStack(stack) != nullptr && c.findStack(stack)->armies.size() == armies - 1);
     CHECK(c.findStack(stack) != nullptr && !c.findStack(stack)->path.empty());
 }
+
+TEST(a_gate_the_player_holds_open_or_shut_is_saved_with_the_game) {
+    // His hand on a gate is his choice, not a moment of the fight: a save carries it, and the loaded game is the saved one.
+    Campaign c(continent(), 9);
+    c.setHuman(0, true);
+    c.prepareWorld();
+    const World& w = *c.world();
+    size_t gate = w.gates().size();
+    for (size_t i = 0; i < w.gates().size(); ++i)
+        if (w.gates()[i].holder == 0) gate = i;
+    CHECK(gate < w.gates().size());
+    if (gate >= w.gates().size()) return;
+    Campaign::Order o;
+    o.kind = Campaign::Order::Kind::Command;
+    o.side = 0;
+    o.command = Command{0, kNoEntity, Command::Type::SetGate, {}};
+    o.command.objectIndex = static_cast<int32_t>(gate);
+    o.command.gatePin = Command::GatePin::Shut;
+    c.submit(o);
+    c.step();
+    CHECK(w.gates()[gate].pin == Command::GatePin::Shut);
+    std::string why;
+    const std::string text = c.save();
+    std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+    CHECK(r != nullptr);
+    if (!r) return;
+    CHECK(r->world()->gates()[gate].pin == Command::GatePin::Shut);
+    CHECK(r->checksum() == c.checksum());
+    for (int t = 0; t < 600; ++t) c.step(), r->step();
+    CHECK(r->checksum() == c.checksum());
+}
