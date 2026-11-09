@@ -679,7 +679,7 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
         foeGridBuilt_ = true;
         foeCells_ = static_cast<int32_t>(region_->terrain().size().floorToInt() / kCellM) + 2;
         const auto slot = [&](const Unit& u) { return static_cast<size_t>(cellOf(u.pos.y)) * foeCells_ + cellOf(u.pos.x); };
-        const auto isFoe = [](const Unit& u) { return u.alive() && !u.routed && !u.inAir(); };
+        const auto isFoe = [](const Unit& u) { return u.alive() && !u.fleeing() && !u.inAir(); };
         foeStart_.assign(static_cast<size_t>(foeCells_) * foeCells_ + 1, 0);
         for (const Unit& u : w.units())
             if (isFoe(u)) ++foeStart_[slot(u) + 1];

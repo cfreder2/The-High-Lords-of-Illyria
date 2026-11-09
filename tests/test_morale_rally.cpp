@@ -3,6 +3,9 @@
 #include <cstdio>
 #include <vector>
 
+#include <memory>
+
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "test.h"
 
@@ -156,4 +159,20 @@ TEST(recruits_never_call_and_the_rally_is_deterministic) {
     std::printf("  rally checksum 0x%016llx, %d calls (all-recruit battle: %d, the hero's)\n",
                 static_cast<unsigned long long>(a), calls, green);
     CHECK(calls > green);
+}
+
+TEST(a_broken_man_who_is_not_running_is_no_longer_passed_over) {
+    // A broken soldier runs from the foes within 40 m; with none near, or nowhere to go, he stands (Unit::cornered), and
+    // is a foe like any other to those hunting the field (the campaign's garrisons' last men, who else stand for ever).
+    const auto fleeingAfter = [](int foeAt) {
+        World w{WorldConfig{}};
+        const EntityId broken = w.spawnUnit(1, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::LightInfantry));
+        w.spawnUnit(0, {m(foeAt), m(0), m(0)}, kWest, unitStats(UnitType::HeavyInfantry));
+        shake(w, broken, 2000);
+        for (int t = 0; t < 5; ++t) w.step({});
+        const Unit* u = w.findUnit(broken);
+        return u->routed && u->fleeing();
+    };
+    CHECK(fleeingAfter(25));   // a foe near: he runs
+    CHECK(!fleeingAfter(60));  // none near: he stands, broken, and may be struck
 }

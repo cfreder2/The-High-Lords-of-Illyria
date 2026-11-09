@@ -232,6 +232,11 @@ struct Unit {
     // breaks below kMoraleBreak, fleeing and ignoring orders until it rallies.
     int32_t morale = 1000;
     bool routed = false;
+    // Broken and standing: his flight made no ground last tick (a wall or a crowd has him, or no foe is near to run from
+    // and he has stopped to breathe), so he is no longer running and his foes may strike him (World::flee). A beaten
+    // garrison's men who have nowhere to go would else stand there unhunted for ever.
+    bool cornered = false;
+    bool fleeing() const { return routed && !cornered; }
     int32_t calmTicks = 0;  // since the last shock, for recovering
     // Steadiness lent by the veterans and heroes near him (percent off a
     // shock), counted at each morale census; and the ticks before he may

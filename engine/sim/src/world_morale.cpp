@@ -124,6 +124,7 @@ void World::updateMorale() {
             // Broken: the order he had is forgotten, the fight given up (a new
             // order is obeyed: World::applyCommand).
             u.routed = true;
+            u.cornered = false;
             u.hasMoveTarget = false;
             u.hasAttackTarget = false;
             u.attackGate = -1;
@@ -185,8 +186,13 @@ void World::flee(Unit& u) {
         away += d * ((kFleeReach - len) / (len * kFleeReach));
     });
     const Fixed len = away.length();
-    if (len == Fixed::zero()) return;  // nobody near: catch its breath
+    if (len == Fixed::zero()) {  // nobody near: catch its breath
+        u.cornered = true;
+        return;
+    }
+    const Vec3 from = u.pos;
     walk(u, u.pos + away / len * Fixed::fromInt(10));
+    u.cornered = (u.pos - from).flat().lengthSq() == Fixed::zero();
 }
 
 }  // namespace illyria::sim

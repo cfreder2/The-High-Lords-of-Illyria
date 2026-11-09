@@ -2469,6 +2469,7 @@ uint64_t World::checksum() const {
         h.addI64(u.chargeGrade.raw);
         h.addI64(u.morale);
         h.addU64(u.routed);
+        if (u.cornered) h.addU64(0xC0A7);  // (only once one stands broken, so battles without any hash as before)
         h.addI64(u.calmTicks);
         // Only once some veteran steadies him, so battles without any hash as before.
         if (u.steady != 0 || u.callCooldown != 0) {
