@@ -379,7 +379,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // positions, grows to a solid canopy as the cards shrink to specks.
     float canopyWeight = mix(0.55, 1.0, smoothstep(250.0, 2500.0, uCamDist));
     float forest = smoothstep(0.1, 0.4, forestCover(p) * canopyWeight * 1.6 + edge * 0.1);
-    float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
+    float rock = smoothstep(0.4, 0.6, kinds.y + edge * 0.55);
     float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
     float water = step(1.0, kinds.w + farShoreWobble(p));
     float slope = 1.0 - n.z;
@@ -423,6 +423,16 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
         canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
         albedo = mix(albedo, canopy, forest * land);
         n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
+    }
+    // Relief finer than the mesh's 16 m cells: ridged noise tilts the normal on slopes (spurs and gullies a few metres to a dozen
+    // across), the more the steeper the ground, and fades before it shimmers (feature size against pixel size).
+    float rough = smoothstep(0.05, 0.26, slope) * (1.0 - smoothstep(2.5, 6.0, pxm)) * land;
+    if (rough > 0.0) {
+        vec3 ra = noised2(p / 14.0 + 21.0), rb = noised2(mat2(0.8, -0.6, 0.6, 0.8) * p / 5.5 + 3.0);
+        vec2 ga = ra.yz * (ra.x > 0.5 ? 1.0 : -1.0) * (3.0 / 14.0) * 2.0;
+        vec2 gb = (rb.yz * (rb.x > 0.5 ? 1.0 : -1.0)) * mat2(0.8, -0.6, 0.6, 0.8) * (1.1 / 5.5) * 2.0;
+        n = normalize(n + vec3(ga + gb, 0.0) * rough * 0.55);
+        slope = 1.0 - n.z;
     }
     // Rock: strata, crags and scree.
     if (rock > 0.0 || slope > 0.3) {
@@ -2510,7 +2520,14 @@ void main() {
         vec3 albedo = vColor;
         vec4 kinds = vKinds;
         if (fielded) kinds = vec4(vKinds.x, max(ff.a, 0.0), max(-ff.a, 0.0), 0.0);
-        if (detail) albedo = farAlbedo(vColor, kinds, fielded ? vec3(vWorld.xy, ff.g) : vWorld, n);  // (heights from the smooth field)
+        if (fielded) {
+            // The vertex colours step in 16 m squares (a ground is one kind to a cell): the kinds that matter here (forest, rock, swamp,
+            // snow) are worked out per pixel from the smooth field and the trees' cover, so the base is the plain's own green except
+            // where the ground is trodden, sandy or muddy (red over green: the town's yards, beaches, mud), which keep their colour.
+            float trodden = smoothstep(0.02, 0.05, vColor.r - vColor.g);
+            albedo = mix(vec3(0.40, 0.49, 0.21), vColor, trodden);
+        }
+        if (detail) albedo = farAlbedo(albedo, kinds, fielded ? vec3(vWorld.xy, ff.g) : vWorld, n);  // (heights from the smooth field)
         else if (vKinds.w >= 1.0) albedo = mix(vec3(0.30, 0.50, 0.55), vec3(0.10, 0.26, 0.42), clamp(vKinds.w - 1.0, 0.0, 1.0));
         // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
         float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(p);
