@@ -117,9 +117,9 @@ TEST(artifacts_change_strength) {
 
 TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
     // Some campaigns: march side 0's hero to the nearest ruin and search it. (The road is fought for, and a hero often does
-    // not arrive: about one campaign in eight sends one to a ruin alive, so campaigns are taken until three have.)
+    // not arrive, and with roads to every town the computer lords' heroes reach the nearest ruin first more often: over 60 seeds 6 won before the roads (the hero dead on the road in 54, the walk 12 days), 3 after (46 beaten to it, 10 dead, 9 days), so campaigns are taken, up to 120, until three have.)
     int won = 0, fell = 0, artifacts = 0, allies = 0, gold = 0;
-    for (uint64_t seed = 1; seed <= 24 && won < 3; ++seed) {
+    for (uint64_t seed = 1; seed <= 120 && won < 3; ++seed) {
         Campaign c(continent(), seed);
         c.setHuman(0, true);
         const Campaign::Stack* s = heroStack(c);

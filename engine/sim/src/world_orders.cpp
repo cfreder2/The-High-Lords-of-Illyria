@@ -321,7 +321,7 @@ Unit* World::crosser(Unit& u, Fixed reach) {
     uint32_t bestIndex = 0;
     nearby(u.pos.x, u.pos.y, reach + Fixed::fromInt(8), [&](uint32_t i) {
         Unit& o = units_[i];
-        if (!o.alive() || o.owner == u.owner || o.routed || o.inAir()) return;
+        if (!o.alive() || o.owner == u.owner || o.fleeing() || o.inAir()) return;
         if (groundBound && o.pos.z - u.pos.z > reachUp) return;
         const Fixed gap = gapBetween(u, o);
         if (gap > reach || (best != nullptr && (gap > bestGap || (gap == bestGap && i > bestIndex)))) return;
@@ -344,7 +344,7 @@ bool World::marchInitiative(Unit& u) {
         // Mission first: never beyond the leash, never after a foe that runs.
         const Fixed gap = gapBetween(u, *foe);
         bool keep = foe->alive() && !foe->inAir() && gap <= kRetaliateReach && offRoute(u, u.pos) <= kLeash;
-        if (keep && foe->routed && gap > u.stats.melee.reach + kFleeChase) keep = false;
+        if (keep && foe->fleeing() && gap > u.stats.melee.reach + kFleeChase) keep = false;
         if (!keep) {
             const bool fell = !foe->alive();
             u.engageFoe = kNoEntity;
@@ -384,7 +384,7 @@ void World::targetDown(Unit& u, bool marching) {
     Unit* cand = nullptr;
     Fixed bestGap;
     for (Unit& o : units_) {
-        if (!o.alive() || o.owner == u.owner || o.routed || o.inAir()) continue;
+        if (!o.alive() || o.owner == u.owner || o.fleeing() || o.inAir()) continue;
         const Fixed gap = gapBetween(u, o);
         if (gap > reach || (cand != nullptr && gap >= bestGap)) continue;
         if (marching && offRoute(u, o.pos) > kLeash) continue;
@@ -462,7 +462,7 @@ void World::pursue(Unit& u) {
     const Fixed dist = delta.length();
     const Fixed gap = dist - u.stats.radius - t->stats.radius;
     // One he chose himself he lets go once it breaks and runs.
-    if (u.targetChosen && t->routed && gap > u.stats.melee.reach + kFleeChase) {
+    if (u.targetChosen && t->fleeing() && gap > u.stats.melee.reach + kFleeChase) {
         u.targetUnit = kNoEntity;
         u.targetChosen = false;
         return;

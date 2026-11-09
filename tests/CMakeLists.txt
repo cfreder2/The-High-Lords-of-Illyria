@@ -77,6 +77,7 @@ add_executable(illyria_tests
     test_flag_poles.cpp
     test_sandbox.cpp
     test_ruin.cpp
+    test_terrain_audit.cpp
     test_site_clearance.cpp
     test_satchels.cpp
     test_scavenge.cpp
@@ -84,6 +85,8 @@ add_executable(illyria_tests
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
+# (The castle and road measuring the tests share with tools/terrainaudit.)
+target_include_directories(illyria_tests PRIVATE ${CMAKE_SOURCE_DIR}/tools)
 
 if(EMSCRIPTEN)
     # Propagate main()'s return value as the node process exit code.

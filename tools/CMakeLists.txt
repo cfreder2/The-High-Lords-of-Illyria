@@ -40,3 +40,9 @@ target_link_libraries(illyria_tickbench PRIVATE illyria_sim)
 if(EMSCRIPTEN)
     target_link_options(illyria_tickbench PRIVATE -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1)
 endif()
+
+# Audits the generated castles and the roads to them (see tools/terrain_audit.h):
+#   illyria_terrainaudit [seed] [-v]
+add_executable(illyria_terrainaudit terrainaudit.cpp)
+target_link_libraries(illyria_terrainaudit PRIVATE illyria_sim)
+target_include_directories(illyria_terrainaudit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

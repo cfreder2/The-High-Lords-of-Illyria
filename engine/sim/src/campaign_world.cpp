@@ -367,7 +367,11 @@ void Campaign::seat(Stack& s) {
             if ((p - q).flat().lengthSq() < Fixed::fromRatio(9, 4)) return false;
         return true;
     };
-    const auto place = [&](Vec3 p) { return nearestFit(p, fits); };
+    // (Then on the millimetre the campaign keeps him at, so that a save, which keeps no finer, stands him exactly where he is.)
+    const auto place = [&](Vec3 p) {
+        const Vec3 q = nearestFit(p, fits);
+        return Vec3{fromMm(toMm(q.x + origin.x)) - origin.x, fromMm(toMm(q.y + origin.y)) - origin.y, q.z};
+    };
     for (Army& a : s.armies) {
         int32_t arms = 0;
         for (uint8_t art : a.artifacts) arms += artifacts()[art].battle;
@@ -675,7 +679,7 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
         foeGridBuilt_ = true;
         foeCells_ = static_cast<int32_t>(region_->terrain().size().floorToInt() / kCellM) + 2;
         const auto slot = [&](const Unit& u) { return static_cast<size_t>(cellOf(u.pos.y)) * foeCells_ + cellOf(u.pos.x); };
-        const auto isFoe = [](const Unit& u) { return u.alive() && !u.routed && !u.inAir(); };
+        const auto isFoe = [](const Unit& u) { return u.alive() && !u.fleeing() && !u.inAir(); };
         foeStart_.assign(static_cast<size_t>(foeCells_) * foeCells_ + 1, 0);
         for (const Unit& u : w.units())
             if (isFoe(u)) ++foeStart_[slot(u) + 1];

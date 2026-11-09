@@ -4,7 +4,10 @@
 #include <cstdlib>
 #include <string>
 
+#include <memory>
+
 #include "illyria/sim/campaign.h"
+#include "illyria/sim/world.h"
 #include "campaign_orders.h"
 #include "test.h"
 
@@ -130,8 +133,11 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved campaign");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC5.") == 0);
+    CHECK(text.compare(0, 5, "ILC6.") == 0);
     CHECK(Campaign::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
+    // ... as is the layout before a stack afloat kept where its men were (ILC5).
+    CHECK(Campaign::load(continent(), "ILC5." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     CHECK(Campaign::load(continent(), text.substr(0, text.size() / 2), &why) == nullptr);
     // One gold piece more for a side somewhere in the middle: the checksum catches it.
@@ -381,4 +387,76 @@ TEST(a_gate_the_player_holds_open_or_shut_is_saved_with_the_game) {
     CHECK(r->checksum() == c.checksum());
     for (int t = 0; t < 600; ++t) c.step(), r->step();
     CHECK(r->checksum() == c.checksum());
+}
+
+// A save keeps everything the checksum hashes: at several days on several seeds (stacks afloat and gates swinging among
+// them) the loaded campaign has the checksum of the one saved, and both go on the same for 200 ticks and for a day.
+TEST(a_save_round_trips_everything_the_checksum_hashes_on_many_seeds_and_days) {
+    int afloat = 0, swinging = 0, saves = 0;
+    for (const uint64_t seed : {2, 5, 7, 11, 77, 123}) {
+        Campaign c(continent(), seed);
+        for (int day = 0; day < 16; ++day) {
+            days(c, 1);
+            if (day != 3 && day != 8 && day != 13 && day != 15) continue;
+            if (day == 8) c.setHuman(0, true);
+            for (const Campaign::Stack& s : c.stacks()) afloat += s.boat != 0;
+            if (c.world())
+                for (const GateState& g : c.world()->gates()) swinging += g.mode != GateState::Mode::Shut || g.openUntil > 0;
+            const std::string text = c.save();
+            std::string why;
+            std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+            if (!r) std::printf("  seed %llu day %d: refused: %s\n", static_cast<unsigned long long>(seed), day + 1, why.c_str());
+            CHECK(r != nullptr);
+            if (!r) continue;
+            ++saves;
+            CHECK(r->checksum() == c.checksum());
+            for (int t = 0; t < 200; ++t) c.step(), r->step();
+            CHECK(r->checksum() == c.checksum());
+            days(c, 1);
+            days(*r, 1);
+            CHECK(r->checksum() == c.checksum());
+            ++day;  // (the day just played)
+        }
+    }
+    std::printf("  %d saves round-tripped (stacks afloat seen: %d, gates not shut or asked open: %d)\n", saves, afloat, swinging);
+    CHECK(saves >= 20);
+    CHECK(swinging > 0);
+}
+
+// A stack afloat on a long voyage, saved on the way: its men are the boat's, and what the checksum hashes of them
+// (where they were last on land, px and py) comes back.
+TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
+    Campaign c(continent(), 3);
+    for (size_t side = 0; side < c.sides().size(); ++side) c.setHuman(static_cast<uint8_t>(side), true);
+    int32_t from = -1, to = -1;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const Campaign::CityState& s = c.cities()[i];
+        if (!s.port) continue;
+        if (from < 0 || s.cy > c.cities()[static_cast<size_t>(from)].cy) from = static_cast<int32_t>(i);
+        if (to < 0 || s.cy < c.cities()[static_cast<size_t>(to)].cy) to = static_cast<int32_t>(i);
+    }
+    CHECK(from >= 0 && to >= 0 && from != to);
+    if (from < 0 || to < 0) return;
+    const uint32_t id = c.grant(from, 0, UnitType::LightInfantry, 4);
+    CHECK(CampaignOrders::buildBoat(c, from));
+    days(c, Campaign::kBoatDays + 1);
+    CHECK(CampaignOrders::embark(c, id));
+    CHECK(CampaignOrders::move(c, id, c.cities()[static_cast<size_t>(to)].cx, c.cities()[static_cast<size_t>(to)].cy));
+    int saves = 0;
+    for (int hours = 0; hours < 6; ++hours) {
+        for (int t = 0; t < Campaign::kTicksPerDay / 2; ++t) c.step();
+        const Campaign::Stack* s = c.findStack(id);
+        if (!s || !s->boat) continue;
+        const std::string text = c.save();
+        std::string why;
+        std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+        if (!r) std::printf("  voyage save refused: %s\n", why.c_str());
+        CHECK(r != nullptr);
+        if (!r) continue;
+        ++saves;
+        CHECK(r->checksum() == c.checksum());
+        for (int t = 0; t < 200; ++t) c.step(), r->step();
+        CHECK(r->checksum() == c.checksum());
+    }
+    CHECK(saves >= 2);
 }

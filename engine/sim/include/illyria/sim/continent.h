@@ -100,6 +100,12 @@ public:
             Fixed height, thick;  // walls; the walk lies kWalkBelow under the height
             size_t gateEdge = 0;  // edge corners[i] -> corners[i + 1] holding the gate
             Fixed gateWidth;
+            // Which corners have a tower (planCastles: where the wall turns
+            // sharply, and about one to every kTowerSpacing of wall); the walk
+            // goes round a tower on its gallery and past a bare corner. Empty:
+            // every corner has one. (The gate's flanking pair is always there.)
+            std::vector<uint8_t> towered = {};
+            bool towerAt(size_t corner) const { return towered.empty() || towered[corner] != 0; }
             // The wall-walk's height above the ground.
             Fixed walk() const { return height - kWalkBelow; }
             // The middle of the gate-flanking towers, from the gate's middle
@@ -114,8 +120,8 @@ public:
             // metres from corners[e], kCrenelPitch apart, clear of the towers.
             std::vector<Fixed> crenels(size_t edge) const;
             // The galleries round its towers (castle_walls.cpp), in the order
-            // the walk passes them: each corner's, then on the gate's edge
-            // the pair flanking the gate.
+            // the walk passes them: each corner's (radius 0 at a bare corner: the walk
+            // just turns there), then on the gate's edge the pair flanking the gate.
             std::vector<Gallery> galleries() const;
             // The way men go round its walk: along the walk's middle line and
             // round each tower on its gallery, kGalleryWay out from the tower;
@@ -156,6 +162,10 @@ public:
             Fixed halfWidth;
             size_t ring = 0;  // the ring whose walk it climbs to
         };
+        // Metres of wall to a corner tower, where the wall turns less than
+        // kSharpCorner (the cosine of the turn) there.
+        static constexpr int64_t kTowerSpacing = 80;
+        static constexpr Fixed kSharpCorner = Fixed::fromRatio(423, 1000);  // cos 65 degrees
         static constexpr Fixed kRampHalfWidth = Fixed::fromRatio(3, 2);
         static constexpr Fixed kRampLanding = Fixed::fromInt(3);
         struct House {
@@ -326,8 +336,15 @@ private:
     Fixed reliefHeight(Fixed x, Fixed y, Fixed& mountain) const;
     Fixed massifMask(Fixed x, Fixed y, Fixed& peak) const;
     void loadBakedRelief();
-    void placeBridges();
+    // Bridges over the creeks the roads from road `firstRoad` on cross (and the shapes of all the bridged crossings from `firstCrossing`).
+    void placeBridges(size_t firstRoad = 0, size_t firstCrossing = 0);
     void planCastles();
+    // The roads to the towns' gates (continent_roads.cpp): each town's path to
+    // the road network is found before its castle is planned (which way the
+    // gate faces), and laid from the gate once it stands.
+    void keepRoadsDry();
+    void routeApproaches();
+    void layApproaches();
     void bucketRoads();
     void applyLake(size_t lake, Fixed& z, Sample& s, Fixed x, Fixed y) const;
     // The lakes of the design; the landmarks' ponds follow them in lakes_.
@@ -384,6 +401,10 @@ private:
     std::vector<Fixed> lakeSurfaces_;
     std::vector<Label> labels_;
     std::vector<City> cities_;
+    // Between routeApproaches and layApproaches: each town's path from its middle to the road network, and the order they were found in.
+    std::vector<std::vector<Vec3>> approach_;
+    std::vector<size_t> approachOrder_;
+    std::vector<std::vector<Vec3>> links_;  // and the paths joining the road networks to each other
     std::vector<Site> sites_;
     // The ruins' levelled ground (x, y, height; carve), laid once the land is
     // made, so nothing placed or dressed before moves.
