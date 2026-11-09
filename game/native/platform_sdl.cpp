@@ -41,6 +41,7 @@ struct Options {
     std::vector<std::array<float, 4>> cameras;  // --camera: x, y, distance, yaw (given again: a tour, one picture of each)
     std::vector<std::string> clicks;
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
+    double timeStep = 0;  // --time-step: seconds the renderer's clock moves on at each camera of a tour
     bool fullscreen = false, sound = true, stats = false, vsync = true;
     int trees = -1;  // --trees N: how trees are drawn (0 one card, 1 two crossed, 2 three, 3 four); 99: --shot takes one picture of each
 #ifdef ILLYRIA_DEV_HOOKS
@@ -80,6 +81,7 @@ void usage() {
         "  --paths-demo FRAME    at that frame send three squads three ways, all selected: a hunt, a patrol and a force\n"
         "                        march, to see the path lines (a build with -DILLYRIA_DEV_HOOKS=ON only)\n"
         "  --queue-demo FRAME    at that frame queue orders for one squad, hold some for another (planning), to see them\n"
+        "  --time-step S         with a --camera tour: the water's clock moves on S seconds at each camera (pictures of its waves apart)\n"
 #endif
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
 }
@@ -120,6 +122,7 @@ bool parse(int argc, char** argv, Options& o) {
 #ifdef ILLYRIA_DEV_HOOKS
         else if (a == "--paths-demo") o.pathsDemo = std::atoi(next());
         else if (a == "--queue-demo") o.queueDemo = std::atoi(next());
+        else if (a == "--time-step") o.timeStep = std::atof(next());
 #endif
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -426,6 +429,9 @@ int runApp(int argc, char** argv) {
             if (opt.worldCamera) illyria_set_camera_world(c[0], c[1], c[2], c[3]);
             else illyria_set_camera(c[0], c[1], c[2], c[3]);
             if (opt.cameras.size() > 1) illyria_finish_detail();
+#ifdef ILLYRIA_DEV_HOOKS
+            illyria_set_shader_time(opt.timeStep * tourStep);
+#endif
             cameraSet = true;
         }
         const double cpuStart = platform::nowMs();

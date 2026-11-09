@@ -256,3 +256,55 @@ in at a broken gate, giants through the gap). Two causes, neither in the new lan
    giant (5.5 m) could not pass under. Fixed by design: the stone over the doors starts at 31/50 of the wall or 5.8 m, whichever
    is higher (`Region`, where the gates are made), and neutral walls are 8 to 11 m (they were 7 to 10), so the lintel always keeps
    0.7 m under the wall-walk. Every gate now passes a giant, and `town()` no longer has to pick one.
+2. A gate is 31/50 of the wall's height, and a town's walls are 7 to 10 m: a quarter of the towns have a gate 4.4 m high, which a
+   giant (5.5 m) cannot pass under. That is a design fact, not a navigation fault; the giants' test needs a town whose gate stands
+   taller than a giant, and `town()` says so.
+
+## Rocks in the water and waves on the shore
+
+Water had no scenery and a flat edge. Two additions, one in the sim and one in the shaders.
+
+### Rocks and boulders in the water
+
+`Region::waterRockAt` is the water's half of the scenery rule: the same 5 m position-seeded grid as the land's trees and rocks
+(`Region::sceneryPoint`), taken at points whose ground is Shallows or DeepWater. Region (`scatterScenery`) and the close-up land
+(`DetailLand::growScenery`) both apply it, with their own ground and water lookups, so they stand in the same places (a test cuts
+the Ford's window both ways: 31 of 31 match). Inputs are the water's depth (to a tenth of a metre, so the two beds' differences of
+a millimetre do not change a rock) and the shore band (`shoreBandOf`: dry land within 10 m, within 26 m, or open water, from eight
+probes of each ring). The rate falls with the band (12%, 5%, 1.2% of grid points before clusters), clusters where a patch noise
+runs high (x3) and thins where it runs low (x1/5), so there are singles and small groups, mostly near shores, isles and bends, a
+few further out where it is shoal. A seventh of them are boulders (1.1 to 2.3 m across), the rest rocks (0.35 to 0.85 m);
+about two in five lie just under the surface (0.15 to 0.55 m below it, a dark shape through the water: `Obstacle::kSunkenRock`,
+not solid), the rest break it (`kWaterRock`, solid, up to 2.2 m of water for a boulder and 0.8 m for a rock). `Obstacle::halfX` of a water
+rock is the depth over its foot, so the renderer finds the surface without asking the sim again.
+
+What a rock that breaks the surface keeps clear of (all tested on three seeds, `test_water_rocks.cpp`):
+
+- every road's line by its half width, its own radius and three metres (`Region::roadClears`, which fords and bridges ride on: a
+  ford's whole width is a clear way), and the deck of every bridge and 8 m past its ends (the scatter's existing deck rule);
+- a river's mouth (170 m) and the water about a town (100 m, its pier and harbour), and every fourth point of the strand of an isle
+  that is walked to (the Spit to the Drowned Abbey, 14 m): `Continent::waterKeepouts`, built when the land is dressed;
+- the middle of a campaign cell (10 m; Campaign::centre, 44 m cells), where a boat sits.
+
+The campaign sails from cell to cell, never between metres, so no route is blocked by a rock: a boat is only kept off one at the cell
+middle, at a pier and at a river's mouth. The Ford scenario's own hand-made river has none (it is a set piece). The Region
+checksum, hence the goldens, moved with the rocks.
+
+Drawn as rock meshes with the land's rocks (before the water, which is blended over them: the sunk ones show through it), and a
+ring of foam and a dark wet patch on the water round each that breaks the surface (the waterfalls' batch, kind 2). Beyond the
+close-up land's reach no water rock is drawn (the far land has no scenery but its trees).
+
+### Waves on the shore
+
+One function, `shoreSwash` in `kCommon` (shaders.h), takes the height of the ground over the water at a point, its steepness, an
+energy and the pixel size, and returns the foam, the wet sand and the water lying over the beach. The water's own program
+(`kWaterFs`, over the shallows), the battlefield's and close-up land's terrain program (over the beach) and the far land all call
+it, so the line of foam crosses from water to sand unbroken. A wave is born offshore, runs in as a bright thin line, runs up the
+beach to a run-up height, and slides back with a lace of foam behind its front, leaving the sand dark, which dries over several
+seconds. Phase varies with position (value noise), so the waves do not pulse in step; the size of each wave comes from noise at its
+own wave number, and a slow swell (a minute or two) modulates the set; on a sea shore a second, smaller wave sometimes trails the
+first. Pure time-and-position shader: nothing in the sim.
+
+`shoreEnergy(surface, flowSpeed)` is the water body kind: the sea's level (under 0.5 to 1.1 m: the far land's inland/sea split) is
+1.0 (run-up 0.1 to 0.3 m of height, so 1 to 3 m along a gentle beach, wave 7.5 to 14 s apart), a lake's 0.13 (a few cm of height, slow),
+and the current kills it: a river, which runs, has none, and a river's mouth fades out up the estuary as the flow takes over.

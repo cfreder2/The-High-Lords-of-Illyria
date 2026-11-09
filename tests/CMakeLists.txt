@@ -78,6 +78,7 @@ add_executable(illyria_tests
     test_sandbox.cpp
     test_ruin.cpp
     test_terrain_audit.cpp
+    test_water_rocks.cpp
     test_site_clearance.cpp
     test_satchels.cpp
     test_scavenge.cpp

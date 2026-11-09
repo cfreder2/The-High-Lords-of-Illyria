@@ -289,6 +289,8 @@ public:
     const std::vector<Area>& swamps() const { return swamps_; }
     const std::vector<Area>& forests() const { return forests_; }
     const std::vector<Area>& lakes() const { return lakes_; }
+    // Where a rock in the water that breaks the surface may not stand (x, y, z = radius): see Region::waterRockAt.
+    const std::vector<Vec3>& waterKeepouts() const { return waterKeepouts_; }
     // Land in the lakes: Abbey Isle, the Spit that reaches it and the rocks about it (each as the ellipse it was
     // drawn from; the shore itself wanders: shoreDistance).
     std::vector<Area> isles() const;
@@ -424,6 +426,7 @@ private:
     std::vector<Crossing> crossings_;
     std::vector<Polyline> roads_;
     std::vector<Area> swamps_, forests_, lakes_;
+    std::vector<Vec3> waterKeepouts_;
     // Land in a lake: the isle in the Heartmere and the spit that reaches it.
     struct Isle {
         Area area;
