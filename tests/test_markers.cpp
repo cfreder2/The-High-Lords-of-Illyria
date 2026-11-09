@@ -274,3 +274,51 @@ TEST(a_flier_sent_onto_the_wall_walk_has_his_marker_on_the_walk) {
     CHECK(p.z > b.heightAt(p.x, p.y) + 3);
     CHECK_NEAR(b.floorAt(p), p.z, 0.02);
 }
+
+TEST(a_gate_of_ours_is_swung_by_a_tap_the_key_and_let_go) {
+    Battle b(1, illyria::game::Scenario::Siege);
+    const auto& g = b.region().gates().front();
+    const V3 mid = (illyria::game::toV3(g.a) + illyria::game::toV3(g.b)) * 0.5f + V3{0, 0, 2};
+    illyria::game::Camera cam;
+    cam.setBounds(Battle::kWorldSize);
+    cam.setViewport(800, 600);
+    cam.setHeightFn([&b](float x, float y) { return b.heightAt(x, y); });
+    cam.lookAt(mid.x, mid.y, 40);
+    float px, py;
+    CHECK(cam.project(mid, px, py));
+    b.clearSelection();
+    // Not ours: looked at, and nothing of how it stands is told.
+    b.tap(cam, px, py, 1.0f);
+    CHECK(b.inspectedGate() == 0);
+    CHECK(!b.glance().ours);
+    CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::AttackObject || b.intentAt(cam, px, py, 1.0f) == Battle::Intent::None);
+    const size_t before = b.world().gates().size();
+    CHECK(before > 0);
+    // Ours: a tap holds it open, another holds it shut, the key lets go; the cursor says so.
+    b.giveGates(Battle::kPlayer);
+    CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::GateSwing);
+    b.tap(cam, px, py, 1.0f);
+    run(b, 1.0);
+    CHECK(b.world().gates()[0].pin == illyria::sim::Command::GatePin::Open);
+    CHECK(b.world().gates()[0].mode == illyria::sim::GateState::Mode::Opening);
+    CHECK(b.glance().ours && b.glance().opens && b.glance().pin == 1);
+    run(b, 4.0);
+    CHECK(b.world().gates()[0].mode == illyria::sim::GateState::Mode::Open);
+    CHECK(b.glance().swing == 1000);
+    b.tap(cam, px, py, 1.0f);
+    run(b, 5.0);
+    CHECK(b.world().gates()[0].pin == illyria::sim::Command::GatePin::Shut);
+    CHECK(b.world().gates()[0].mode == illyria::sim::GateState::Mode::Shut);
+    b.swingGateByKey(true);
+    run(b, 0.2);
+    CHECK(b.world().gates()[0].pin == illyria::sim::Command::GatePin::Auto);
+    // The key with nothing looked at: a gate of ours, the one nearest the men.
+    b.clearSelection();
+    b.tap(cam, px + 300, py, 1.0f);
+    CHECK(b.inspectedGate() == -1);
+    b.swingGateByKey(false);
+    run(b, 0.2);
+    int held = 0;
+    for (const auto& gate : b.world().gates()) held += gate.pin == illyria::sim::Command::GatePin::Open;
+    CHECK(held == 1);
+}

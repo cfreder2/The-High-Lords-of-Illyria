@@ -176,6 +176,7 @@ void World::fight(Unit& u, Unit& enemy) {
     const MeleeWeapon& m = u.stats.melee;
     const Fixed gap = dist - u.stats.radius - enemy.stats.radius;
     if (gap > m.reach) {
+        if (shutGateBetween(u, enemy.pos)) return;  // not at a foe the other side of a shut gate (he holds his place)
         // A little inside reach: closing on the exact edge of it never quite arrives.
         walk(u, u.pos + dir * min(gap - m.reach + kCloseIn, u.stats.moveSpeed));
         return;

@@ -174,6 +174,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_V: case SDL_SCANCODE_M: setMode(orderMode_ == 2 ? 0 : 2); break;
         case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
         case SDL_SCANCODE_B: case SDL_SCANCODE_H: illyria_stop(); break;
+        case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
         case SDL_SCANCODE_U: illyria_ungroup(); break;
         case SDL_SCANCODE_GRAVE: illyria_select_heroes(); break;

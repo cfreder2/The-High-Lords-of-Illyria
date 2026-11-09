@@ -365,8 +365,10 @@ struct Command {
     // `target` and lay a satchel charge there (those who carry them). Raid: a
     // scavenger let loose to raid from where he stands (world_scavenge.cpp);
     // it needs no target, and anyone else ignores it.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid };
+    // SetGate: the holder's hand on his gate (`objectIndex`; no soldier named): how it is to be kept (`gatePin`).
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
+    enum class GatePin : uint8_t { Auto, Open, Shut };
 
     PlayerId player = 0;
     EntityId unit = kNoEntity;
@@ -389,6 +391,8 @@ struct Command {
     // wall ring's index in the region, or an obstacle's.
     Object object = Object::Gate;
     int32_t objectIndex = -1;
+    // SetGate: Auto lets it open to his men bound through and shut behind them; Open and Shut hold it so.
+    GatePin gatePin = GatePin::Auto;
 };
 
 // A soldier whose target went down chose what to do next (world_orders.cpp):
@@ -491,17 +495,30 @@ inline constexpr int32_t kMoraleWaver = 450;
 inline constexpr int32_t kMoraleBreak = 200;
 inline bool Unit::wavering() const { return !routed && morale < kMoraleWaver; }
 
+// The doors take this long to swing open or shut, blocking all the while.
+inline constexpr uint32_t kGateSwingTicks = 3 * kTicksPerSecond;
+
 // A castle gate's state in battle; its shape is the Region's Gate.
 struct GateState {
     static constexpr PlayerId kNoHolder = 255;
+    // A gate swings: Shut and Open stand still; Opening and Closing take kGateSwingTicks, and block like Shut.
+    enum class Mode : uint8_t { Shut, Opening, Open, Closing };
     int32_t hp = 0;
     PlayerId holder = kNoHolder;  // whose town it is: they do not hack at it (kNoHolder: nobody's)
     uint32_t brokenTick = 0;      // when it broke (hp 0)
-    // Swung open by its holder's men going through (World::updateGates), until a few seconds after the last has passed.
-    bool opened = false;
+    Mode mode = Mode::Shut;
+    uint32_t since = 0;           // the tick the swing began (a reversed swing is dated as if it had begun from the other end)
+    // The holder's men bound through it, or the garrison luring a foe in, ask it open until this tick (World::updateGates).
     uint32_t openUntil = 0;
+    // The holder's hand on it (Command::SetGate): held open or shut against the asking above.
+    Command::GatePin pin = Command::GatePin::Auto;
+    // A garrison keeps it (World::keepGates): its men take their stations by role when a foe comes near.
+    bool garrisoned = false;
     bool broken() const { return hp <= 0; }
-    bool passable() const { return broken() || opened; }
+    bool opened() const { return mode == Mode::Open; }
+    bool passable() const { return broken() || mode == Mode::Open; }
+    // How far open the leaves are, per mille (0 shut, 1000 open), at tick `now`.
+    int32_t swing(uint32_t now) const;
 };
 
 struct WorldConfig {
@@ -591,6 +608,12 @@ public:
     // Battle setup: whose town each gate belongs to, and a gate already battered.
     void setGateHolder(size_t gate, PlayerId holder);
     void setGateHp(size_t gate, int32_t hp);
+    // A garrison keeps the gate (keepGates, world_keep.cpp); the pin is the holder's hand on it (Command::SetGate).
+    void setGateGarrisoned(size_t gate, bool on);
+    void setGatePin(size_t gate, Command::GatePin pin);
+    // Whether this man is one of a garrisoned gate's keepers (inside its walls, near it, on its side): the gate's strategy
+    // gives him his station, so no other thinking (the computer lords' campaign AI) orders him about.
+    bool gateKeeper(const Unit& u) const;
     Fixed groundHeight(Fixed x, Fixed y) const;
     // The least elevation (its tangent) of an arc from `origin` down onto
     // `mark` that passes over everything on the way, up to `shortOf` from it:
@@ -941,8 +964,17 @@ private:
     // Come up to a shut gate his orders lead through and that he will not
     // hack at (his own side's, or he has no blow to strike): nobody passes
     // it, so he stops there (or against his own men stopped before it).
-    bool haltAtGate(const Unit& unit) const;
+    // Wait: his own gate, which is swinging open for him: he stands, his order kept.
+    enum class GateHold : uint8_t { Free, Wait, Halt };
+    GateHold heldAtGate(const Unit& unit) const;
+    // Whether a shut gate lies between a man on the ground and a place on the other side of the walls it opens (a foe there
+    // is not to be walked at: the way is round, or through the doors).
+    bool shutGateBetween(const Unit& unit, const Vec3& to) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
+    void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
+    void applyGateOrder(const Command& cmd);
+    // What a Move order sets on a man (the route is planned after it): the goal, the pace, the way to face there.
+    void beginMove(Unit& unit, const Vec3& target, Fixed speed, const Vec3& face);
     void hackGate(Unit& unit, int gate);
     void damageGate(int gate, int32_t amount, const Vec3& at, const Vec3& dir);
     // Earliest crossing of an intact gate by segment a->b, as a fraction; -1 if none.

@@ -62,6 +62,8 @@ Mesh ramp();
 //   gate: two timber doors banded with iron across x in [-1, 1] (+y outward),
 //     z from 0 to 1; broken: battered in, hanging and strewn in the passage
 Mesh gate(bool broken);
+// One leaf of the doors, hinged at the origin (the swinging gate: Renderer::uploadGates).
+Mesh gateLeaf(bool right);
 Mesh banner();
 // The banner in two, for a flag that can rise and fall (a capture point, a
 // match's flags, the banners rising over the campaign's towns): its pole (as

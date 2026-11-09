@@ -835,6 +835,51 @@ void Battle::orderAtGate(int gate) {
     voice_.order(Situation::Attack, *world_, selection_);
 }
 
+bool Battle::gateIsOurs(int gate) const {
+    return gate >= 0 && gate < static_cast<int>(world_->gates().size()) && world_->gates()[static_cast<size_t>(gate)].holder == local_ && !world_->gates()[static_cast<size_t>(gate)].broken();
+}
+
+void Battle::pinGate(int gate, sim::Command::GatePin pin) {
+    if (!gateIsOurs(gate)) return;
+    sim::Command c{local_, sim::kNoEntity, sim::Command::Type::SetGate, {}};
+    c.object = sim::Command::Object::Gate;
+    c.objectIndex = gate;
+    c.gatePin = pin;
+    pending_.push_back(c);
+    say(pin == sim::Command::GatePin::Open ? "The gate is held open" : pin == sim::Command::GatePin::Shut ? "The gate is held shut" : "The gate opens to your men, and shuts behind them");
+}
+
+void Battle::swingGate(int gate) {
+    if (!gateIsOurs(gate)) return;
+    const sim::GateState::Mode mode = world_->gates()[static_cast<size_t>(gate)].mode;
+    const bool standsOpen = mode == sim::GateState::Mode::Open || mode == sim::GateState::Mode::Opening;
+    pinGate(gate, standsOpen ? sim::Command::GatePin::Shut : sim::Command::GatePin::Open);
+}
+
+void Battle::swingGateByKey(bool release) {
+    int gate = inspected_.kind == Inspected::Kind::Gate ? static_cast<int>(inspected_.id) : -1;
+    if (!gateIsOurs(gate)) {
+        // The gate of ours nearest the selection, or if none is selected, nearest the middle of our men.
+        std::vector<sim::EntityId> from = selectedAlive();
+        if (from.empty())
+            for (const sim::Unit& u : world_->units())
+                if (u.alive() && u.owner == local_) from.push_back(u.id);
+        if (from.empty()) return;
+        const V3 at = centreOf(from);
+        float best = 1e30f;
+        gate = -1;
+        for (size_t i = 0; i < world_->gates().size(); ++i) {
+            const sim::Gate& g = worldRegion().gates()[i];
+            const float d = (toV3(g.a + g.b) * 0.5f - at).length();
+            if (gateIsOurs(static_cast<int>(i)) && d < best) best = d, gate = static_cast<int>(i);
+        }
+    }
+    if (gate < 0) return say("No gate of yours to swing");
+    inspect({Inspected::Kind::Gate, static_cast<uint32_t>(gate)});
+    if (release) pinGate(gate, sim::Command::GatePin::Auto);
+    else swingGate(gate);
+}
+
 void Battle::orderMove(const V3& to) {
     if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
     marchSelection(selectedAlive(), to, nullptr, false);
@@ -928,6 +973,11 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
     // Attack and force-march modes (the phone's button, A or M) last one
     // order; Ctrl and Alt held on the desktop do the same for one click.
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
+    // One of our own gates: a tap opens it or shuts it (and holds it so), with men selected or not.
+    if (pick.kind == K::Gate && gateIsOurs(pick.index) && mode == OrderMode::Normal) {
+        swingGate(pick.index);
+        return;
+    }
     if (selecting && mode != OrderMode::Normal && pick.kind != K::None) {
         orderMode_ = OrderMode::Normal;
         if (mode == OrderMode::ForceMarch) {
