@@ -423,6 +423,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"Drag", "a box (Shift adds)"},
               {"Right click", "march there / attack what is there"},
               {"Right hold, drag", "march there, facing the drag"},
+              {"Shift + right click", "queue it after the order in hand"},
               {"Ctrl or Cmd + click", "attack, even a friend"},
               {"Alt + click", "force march"},
               {"Right drag", "turn the view"},

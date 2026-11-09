@@ -2478,7 +2478,7 @@ bool start() {
     ::app = new App();
     ::app->gestures = std::make_unique<Gestures>(::app->camera, [](float x, float y) { clickAt(x, y); });
     // A right click on the battlefield: an order, never a selection.
-    ::app->gestures->setSecondaryTap([](float x, float y) { ::app->battle->orderTap(::app->camera, x, y, ::app->pixelRatio); });
+    ::app->gestures->setSecondaryTap([](float x, float y) { ::app->battle->orderTap(::app->camera, x, y, ::app->pixelRatio, ::app->shift); });
     // A press held on the battlefield: a selection box, or a move's facing line.
     ::app->gestures->setHold(
         [](float x, float y, bool box) {

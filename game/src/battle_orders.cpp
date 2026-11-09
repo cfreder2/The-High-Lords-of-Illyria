@@ -42,6 +42,25 @@ float segDist(const V3& p, const V3& a, const V3& b) {
 
 }  // namespace
 
+void Battle::settleOrders(size_t first) {
+    if (!appending_) return;
+    for (size_t i = first; i < pending_.size(); ++i) {
+        sim::Command& c = pending_[i];
+        if (c.player != local_) continue;
+        switch (c.type) {
+            case sim::Command::Type::Move:
+            case sim::Command::Type::AttackUnit:
+            case sim::Command::Type::AttackGround:
+            case sim::Command::Type::AttackGate:
+            case sim::Command::Type::AttackObject:
+            case sim::Command::Type::LaySatchel: c.queue = true; break;
+            case sim::Command::Type::Stop:
+            case sim::Command::Type::Raid:
+            case sim::Command::Type::SetGate: break;
+        }
+    }
+}
+
 void Battle::markOrdered(const std::vector<sim::EntityId>& units) {
     if (orderTick_.size() < world_->units().size()) orderTick_.resize(world_->units().size(), UINT32_MAX);
     for (sim::EntityId id : units)
@@ -398,8 +417,9 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     return Intent::None;
 }
 
-void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale) {
+void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale, bool append) {
     if (selectionSize() == 0) return;
+    OrderScope scope(*this, append);
     // As usual a tap on one of ours picks him: a right click marches there instead.
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
     if (mode == OrderMode::Normal && pickAt(camera, x, y, pixelScale).kind == Pick::Kind::Own) {
@@ -479,6 +499,48 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
     return out;
 }
 
+// The legs of the queues behind the orders in hand, one per queued order, each in the look of its own stance (sim::World::stanceOfOrder)
+// and numbered from 1. They start where the order before ends (the end of his route now, or where he stands), and run straight:
+// the way round something is found only when the order begins. The player's own men only; a leg after a quarry the player cannot see
+// is not drawn (nor any after it), as the line to a hunted foe is not.
+void Battle::queuedRoutes(std::vector<RouteIn>& routes) const {
+    const auto& units = world_->units();
+    for (size_t i = 0; i < units.size(); ++i) {
+        const sim::Unit& u = units[i];
+        if (u.owner != local_ || !u.alive() || u.queue.empty()) continue;
+        const float opacity = markOpacity(i);
+        if (opacity <= 0.0f) continue;
+        V3 from = unitPosition(i);
+        for (const RouteIn& r : routes)
+            if (r.unit == u.id && r.number == 0 && !r.points.empty()) from = r.points.back();
+        if (u.hasAttackTarget && !u.hasMoveTarget && u.targetUnit == sim::kNoEntity) from = toV3(u.attackTarget);
+        int number = 0;
+        for (const sim::Command& c : u.queue) {
+            V3 to;
+            RouteIn r;
+            r.unit = u.id;
+            r.stance = sim::World::stanceOfOrder(c);
+            r.opacity = opacity;
+            r.squad = i < squadOfUnit_.size() ? squadOfUnit_[i] : -1;
+            r.number = ++number;
+            if (c.type == sim::Command::Type::AttackUnit) {
+                const sim::Unit* q = world_->findUnit(c.targetUnit);
+                if (q == nullptr || !q->alive() || (q->owner != local_ && !sees(q->owner, static_cast<float>(q->pos.x.toDouble()), static_cast<float>(q->pos.y.toDouble())))) break;
+                r.quarry = q->id;
+                to = unitPosition(q->id - 1);
+            } else if (r.stance == sim::World::Stance::Idle) {
+                continue;
+            } else {
+                to = toV3(c.target);
+            }
+            to.z = floorAt(to);
+            r.points = {from, to};
+            from = to;
+            routes.push_back(std::move(r));
+        }
+    }
+}
+
 std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
     using Stance = sim::World::Stance;
     constexpr float kMergeMetres = 8.0f;  // routes ending this close (and a fiftieth of their length more) are one line
@@ -548,6 +610,7 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
         }
         routes.push_back(std::move(r));
     }
+    queuedRoutes(routes);
     std::vector<RouteLine> lines = mergeRoutes(routes, perMan ? -1.0f : kMergeMetres);
     if (conquest_ && faintMarches)
         for (const sim::Campaign::Stack& s : conquest_->stacks())

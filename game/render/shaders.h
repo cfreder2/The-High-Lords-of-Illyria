@@ -518,7 +518,7 @@ inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_LAND_FS ILLYRIA_
 
 // ---------------------------------------------------------------- decals
 // Per instance: centre (xyz), params (yaw, size, spawn seconds, type), extra (rgb, seed).
-// Types: 0 blood, 1 shadow, 2 selection ring, 3 corpse, 4 crater, 5 dust, 6 body part, 7 dot, 8 arrowhead, 9 bar, 10 cross-hair.
+// Types: 0 blood, 1 shadow, 2 selection ring, 3 corpse, 4 crater, 5 dust, 6 body part, 7 dot, 8 arrowhead, 9 bar, 10 cross-hair, 11 a numbered badge (the digit in the spawn-seconds slot).
 // Drawn as triangles, uDecalGrid x uDecalGrid cells per decal, each vertex
 // on the ground there: a big marker follows the land's folds (the terrain
 // mesh is 4 m cells, so a single quad's chord cut into ridges and banks).
@@ -652,6 +652,28 @@ void main() {
         float cross = max((1.0 - smoothstep(0.07, 0.12, abs(vUv.x))) * step(abs(vUv.y), 0.98),
                           (1.0 - smoothstep(0.07, 0.12, abs(vUv.y))) * step(abs(vUv.x), 0.98)) * step(0.3, r);
         color = vec4(vExtra.rgb, 0.95 * max(ring, cross) * (1.0 - vExtra.w));
+    } else if (type > 10.5 && type < 11.5) {
+        // A numbered badge (a queued order's place in the queue): a dark disc with a ring and the digit (vParams.z, 1-9) in
+        // seven segments, all in the colour of the line.
+        float digit = floor(vParams.z + 0.5);
+        float disc = 1.0 - smoothstep(0.9, 0.98, r);
+        float ring = smoothstep(0.7, 0.78, r) * (1.0 - smoothstep(0.88, 0.96, r));
+        int mask = 0x3F;
+        if (digit < 1.5) mask = 0x06; else if (digit < 2.5) mask = 0x5B; else if (digit < 3.5) mask = 0x4F;
+        else if (digit < 4.5) mask = 0x66; else if (digit < 5.5) mask = 0x6D; else if (digit < 6.5) mask = 0x7D;
+        else if (digit < 7.5) mask = 0x07; else if (digit < 8.5) mask = 0x7F; else if (digit < 9.5) mask = 0x6F;
+        float lit = 0.0;
+        vec2 p = vec2(vUv.x, -vUv.y);
+        const float w = 0.075;
+        if ((mask & 1) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.26, -0.5), vec2(0.26, -0.5))));
+        if ((mask & 2) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(0.28, -0.48), vec2(0.28, -0.02))));
+        if ((mask & 4) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(0.28, 0.02), vec2(0.28, 0.48))));
+        if ((mask & 8) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.26, 0.5), vec2(0.26, 0.5))));
+        if ((mask & 16) != 0) lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.28, 0.02), vec2(-0.28, 0.48))));
+        if ((mask & 32) != 0) lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.28, -0.48), vec2(-0.28, -0.02))));
+        if ((mask & 64) != 0) lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.26, 0.0), vec2(0.26, 0.0))));
+        float ink = max(ring, lit);
+        color = vec4(mix(vec3(0.03, 0.03, 0.04), vExtra.rgb, ink), max(disc * 0.78, ink) * (1.0 - vExtra.w));
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;

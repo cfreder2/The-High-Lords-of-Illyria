@@ -130,6 +130,7 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | March | tap the ground | click |
 | March and face | hold, drag | hold, drag |
 | Attack | tap an enemy | click an enemy |
+| Queue an order | | [[Shift]] + right-click |
 | Attack mode | ⚔ Attack | [[Z]] or [[Ctrl]] + click |
 | Force march | hold ⚔ Attack | [[V]] or [[Alt]] + click |
 | Formation | Formation | keypad 1-7, shift + 1-7 |

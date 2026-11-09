@@ -271,7 +271,9 @@ public:
     // A right click (game/src/battle_orders.cpp): the order a tap there gives
     // the selection, but never a change of who is selected; on one of ours
     // they march to where he stands. Nothing selected: nothing happens.
-    void orderTap(const Camera& camera, float x, float y, float pixelScale);
+    // `append` (Shift on the desktop): the order is added to the end of each man's queue (sim::Command::queue) instead of
+    // replacing the one in hand. A march beyond the men's reach in a conquest is a stack's, and cannot be queued: it replaces.
+    void orderTap(const Camera& camera, float x, float y, float pixelScale, bool append = false);
     // A mouse's left click (game/src/battle_command.cpp): selection only. One of
     // ours is picked as a tap picks him; anything else is looked at, and the
     // ground (shift not held) lets everyone go. Orders are the right click's.
@@ -436,6 +438,8 @@ public:
     void breakGate(int gate);
     void giveGates(sim::PlayerId holder) { holdGates(holder); }
     void testShootAt(const V3& at);
+    // Test hook: an order put in a soldier's queue (any side's), as the sim keeps it.
+    void testQueueFor(sim::EntityId unit, const sim::Command& c) { world_->testQueue(unit, c); }
     // Test hook: one soldier (of either side) ordered to walk to a spot.
     void testMove(sim::EntityId unit, const V3& to);
     // Run! Everyone selected scatters a few metres outward from their centre.
@@ -463,6 +467,7 @@ public:
     // or the press starts on one of ours. False: not taken (the camera pans).
     bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);
     void pressMove(const Camera& camera, float x, float y);
+    // `additive`: for a box, adds to the selection; for a facing line, appends the march to the queues (as orderTap's `append`).
     void pressEnd(const Camera& camera, float x, float y, bool cancelled, bool additive = false);
     struct Drag {
         enum class Mode : uint8_t { None, Box, Facing };
@@ -730,6 +735,32 @@ private:
     std::vector<Squad> squads_;
     std::vector<int> squadOfUnit_;  // indexed by EntityId - 1
     std::vector<sim::Command> pending_;
+    // The orders a gesture gives are gathered by an OrderScope: the outermost one, when it ends, settles what came into
+    // pending_ since it began (battle_orders.cpp): flagged to append to the queues if the gesture was Shift's.
+    // `append`: the gesture's orders are added to the queues (Shift).
+    class OrderScope {
+    public:
+        OrderScope(Battle& b, bool append) : b_(b), first_(b.pending_.size()), outer_(b.scopeDepth_++ == 0) {
+            if (outer_) b.appending_ = append;
+        }
+        ~OrderScope() {
+            --b_.scopeDepth_;
+            if (!outer_) return;
+            b_.settleOrders(first_);
+            b_.appending_ = false;
+        }
+        OrderScope(const OrderScope&) = delete;
+        OrderScope& operator=(const OrderScope&) = delete;
+
+    private:
+        Battle& b_;
+        size_t first_;
+        bool outer_;
+    };
+    int scopeDepth_ = 0;
+    bool appending_ = false;
+    void settleOrders(size_t first);
+    void queuedRoutes(std::vector<RouteIn>& routes) const;  // pathLines: the legs of the queues
     std::vector<sim::EntityId> selection_;  // ascending, so orders go out in one order everywhere
     std::vector<float> spriteBoxes_;  // setSpriteBoxes
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1

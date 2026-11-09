@@ -1193,6 +1193,7 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     }
     const bool force = marchKey_ || orderMode_ == OrderMode::ForceMarch;
     orderMode_ = OrderMode::Normal;
+    OrderScope scope(*this, additive);
     if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
     else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
     else orderMove(d.anchor);

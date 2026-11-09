@@ -402,6 +402,8 @@ void Campaign::seat(Stack& s) {
             m.fy = fy;
             m.placed = false;
             m.lastCool = m.lastReload = 0;
+            // (Kept on the man as well: it is what a save writes, and release brings it up to date from the unit.)
+            if (!m.queue.empty()) world_->restoreQueue(m.unit, m.queue);
         }
         a.seated = true;
     }
@@ -432,6 +434,9 @@ void Campaign::release(Army& a) {
             m.fx = toMm(u->facing.x);
             m.fy = toMm(u->facing.y);
             m.placed = true;
+            m.queue.clear();
+            for (const Command& c : u->queue)
+                if (c.type != Command::Type::AttackUnit) m.queue.push_back(c);
         } else if (m.alive()) {
             m.hp = 0;
         }

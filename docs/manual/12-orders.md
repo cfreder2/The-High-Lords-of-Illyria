@@ -22,9 +22,10 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
+| Queue an order (after the one in hand) | | [[Shift]] + right-click (or right-hold and drag, for a facing) |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
-| Halt (stop the march) | **Hold** | [[Space]] or [[B]] |
+| Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |
 | Raid (hyena-folk) | **Raid** | [[T]] |
@@ -62,7 +63,20 @@ How they will go is told by the **shape** of the line, not only its colour:
 | Solid line with arrowheads | red-orange | cross-hair on the quarry | **Hunt**: after one soldier, ignoring all others. The line runs to him wherever he goes. |
 | Dots | white | filled spot | **Force march**: deaf to the enemy on the way. |
 
+Orders queued behind the one in hand (see *Queued orders*) are drawn after it, each leg in the look of its own stance, ending in a numbered disc.
+
 Men who go together are one line, however many, so an army is a handful of lines and not a thicket; a man whose way bends round something the others cross straight has his own. Lines keep the same width on the screen at any zoom. Close in on a few men (twelve or fewer) and each shows his own, fainter. In Conquest the route of a marching stack, cell by cell across the island, is drawn the same way; with the camera far out, your marching stacks show faintly even when not selected.
+
+## Queued orders {#queue}
+
+Hold [[Shift]] as you right-click and the order is **added to the end** of each selected man's queue, rather than replacing the one he is on. March here, then there, then attack that: right-click, [[Shift]] + right-click, [[Shift]] + right-click. Each begins when the one before is over: he has arrived, the gate would not let him through, the man he was hunting is dead, or the order could not be done at all (that one is passed over, and the next begins). A plain right-click replaces what he is doing and **clears the queue**; so does [[Space]] or [[B]] (Hold).
+
+- **A hunt that ends** (the man dies) does not turn into a fight with someone else when there are orders waiting: the next order is what he does.
+- **Shooting at the ground, a wall, a house or a tree** never ends of itself, so with orders behind it it lasts ten seconds, or until the gate it shoots at is broken.
+- **At most eight** orders wait behind a man's own; the ninth is dropped. (He carries them, the game checks them every tick, and they are in a save.)
+- **A save keeps the queue** (but not the march he was on, nor an attack on a soldier, who is a different man in a loaded game), so after loading a man goes on to the first of his queue.
+- **In the campaign** it is the same, within about 200 m of the men. A march beyond that is a stack's across the map, which has no queue: with [[Shift]] it still goes, replacing, and the game says so.
+- **Seen** only for your own men: the queue is drawn behind the line of the order in hand, each leg in the look of its own stance (below) and ending in a small **numbered disc** (1, 2, 3...) for its place in the queue. A leg after a foe you cannot see is not drawn. The legs run straight; the way round a wall or a river is found when the order begins.
 
 ## Marching with initiative {#initiative}
 

@@ -408,3 +408,118 @@ TEST(orders_replay_identically) {
     CHECK(play(11) == play(11));
     CHECK(play(11) != play(12));
 }
+
+// --- The order queue (Command::queue, Unit::queue, world_orders.cpp advanceQueue) ----------------------------------
+
+namespace {
+Command queued(Command c) {
+    c.queue = true;
+    return c;
+}
+Fixed apart(const World& w, EntityId id, const Vec3& p) { return (w.findUnit(id)->pos - p).flat().length(); }
+}  // namespace
+
+TEST(a_man_given_a_then_b_arrives_at_a_then_goes_on_to_b) {
+    World w(WorldConfig{});
+    const EntityId id = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+    const Vec3 a = at(40, 0), b = at(40, 40);
+    w.step(std::vector<Command>{move(0, id, a), queued(move(0, id, b))});
+    CHECK(w.findUnit(id)->queue.size() == 1);  // B waits behind A
+    bool reachedA = false;
+    int whenA = -1, whenB = -1;
+    for (int t = 0; t < 40 * kTicksPerSecond && whenB < 0; ++t) {
+        w.step({});
+        if (!reachedA && apart(w, id, a) < m(2)) reachedA = true, whenA = t;
+        if (reachedA && apart(w, id, b) < m(2)) whenB = t;
+        if (!reachedA) CHECK(w.findUnit(id)->moveTarget.x == a.x && w.findUnit(id)->moveTarget.y == a.y);  // still bound for A
+    }
+    std::printf("  at A after %.1f s, at B after %.1f s\n", whenA / 30.0, whenB / 30.0);
+    CHECK(reachedA);
+    CHECK(whenB > whenA);
+    CHECK(w.findUnit(id)->queue.empty());
+    CHECK(apart(w, id, b) < m(2));
+}
+
+TEST(a_plain_order_replaces_the_orders_in_hand_and_the_queue) {
+    World w(WorldConfig{});
+    const EntityId id = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+    w.step(std::vector<Command>{move(0, id, at(60, 0)), queued(move(0, id, at(60, 60))), queued(move(0, id, at(0, 60)))});
+    CHECK(w.findUnit(id)->queue.size() == 2);
+    const Vec3 d = at(-40, 0);
+    order(w, move(0, id, d));  // not queued: replaces A and clears B and C
+    CHECK(w.findUnit(id)->queue.empty());
+    steps(w, 40 * kTicksPerSecond);
+    CHECK(apart(w, id, d) < m(2));
+    CHECK(!w.findUnit(id)->hasMoveTarget);  // and has not gone on to B or C
+}
+
+TEST(halt_clears_the_queue_too) {
+    World w(WorldConfig{});
+    const EntityId id = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+    w.step(std::vector<Command>{move(0, id, at(80, 0)), queued(move(0, id, at(80, 80)))});
+    steps(w, 60);
+    CHECK(w.findUnit(id)->queue.size() == 1);
+    order(w, Command{0, id, Command::Type::Stop, {}});
+    CHECK(w.findUnit(id)->queue.empty());
+    const Vec3 stopped = w.findUnit(id)->pos;
+    steps(w, 10 * kTicksPerSecond);
+    CHECK(apart(w, id, stopped) < Fixed::fromRatio(1, 10));
+}
+
+TEST(a_hunt_that_ends_with_its_quarry_goes_on_to_the_next_order_and_not_to_another_foe) {
+    World w(WorldConfig{});
+    const EntityId hunter = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::Berserker));
+    const EntityId prey = w.spawnUnit(1, at(14, 0), kEast, harmless(UnitType::LightInfantry, 30));
+    const EntityId other = w.spawnUnit(1, at(18, 6), kEast, harmless(UnitType::LightInfantry, 400));  // a foe he would choose
+    const Vec3 home = at(-50, 0);
+    w.step(std::vector<Command>{attack(0, hunter, prey), queued(move(0, hunter, home))});
+    int t = 0;
+    while (w.findUnit(prey)->alive() && t++ < 30 * kTicksPerSecond) w.step({});
+    CHECK(!w.findUnit(prey)->alive());
+    steps(w, 30 * kTicksPerSecond);
+    CHECK(w.findUnit(other)->hp == w.findUnit(other)->stats.maxHp);  // not touched: he did not choose him
+    CHECK(apart(w, hunter, home) < m(3));
+}
+
+TEST(the_queue_is_bounded_and_an_order_that_cannot_be_done_is_passed_over) {
+    World w(WorldConfig{});
+    const EntityId id = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+    const EntityId dead = w.spawnUnit(1, at(5, 5), kEast, harmless(UnitType::LightInfantry, 1));
+    std::vector<Command> cs{move(0, id, at(30, 0))};
+    for (int k = 0; k < 12; ++k) cs.push_back(queued(move(0, id, at(30, 5 + k))));
+    w.step(cs);
+    CHECK(w.findUnit(id)->queue.size() == World::kMaxQueuedOrders);
+    // A queued attack on a man who is dead by then is passed over within the tick: the next begins.
+    World v(WorldConfig{});
+    const EntityId a = v.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+    const EntityId gone = v.spawnUnit(1, at(5, 5), kEast, harmless(UnitType::LightInfantry, 1));
+    v.step(std::vector<Command>{move(0, a, at(10, 0)), queued(attack(0, a, gone)), queued(move(0, a, at(10, 30)))});
+    steps(v, 1);
+    v.step({});
+    (void)dead;
+    steps(v, 40 * kTicksPerSecond);
+    CHECK(v.findUnit(a)->queue.empty());
+}
+
+TEST(a_battle_with_a_queue_is_deterministic_and_hashes_the_queue_only_while_there_is_one) {
+    const auto play = [](bool withQueue) {
+        World w(WorldConfig{});
+        const EntityId id = w.spawnUnit(0, at(0, 0), kEast, unitStats(UnitType::LightInfantry));
+        const EntityId two = w.spawnUnit(0, at(0, 4), kEast, unitStats(UnitType::Archers));
+        w.spawnUnit(1, at(90, 20), kEast, unitStats(UnitType::HeavyInfantry));
+        std::vector<Command> cs{move(0, id, at(40, 0)), move(0, two, at(40, 4))};
+        if (withQueue) {
+            cs.push_back(queued(move(0, id, at(40, 40))));
+            cs.push_back(queued(move(0, id, at(80, 40), true)));
+            cs.push_back(queued(Command{0, two, Command::Type::AttackGround, at(70, 20)}));
+        }
+        w.step(cs);
+        steps(w, 5 * kTicksPerSecond);
+        return w.checksum();
+    };
+    CHECK(play(true) == play(true));
+    CHECK(play(false) == play(false));
+    CHECK(play(true) != play(false));
+    constexpr uint64_t kGolden = 0xa13807e3b5d2af5c;  // (the first with a queue; no other golden moved with it)
+    CHECK(play(true) == kGolden);
+}

@@ -220,6 +220,7 @@ bool Battle::marchOrder(const V3& to, bool wholly) {
     // Out of reach of the men (a long way): the whole order is a march, of every squad ordered.
     const bool far = wholly || (!awake.empty() && beyondReach(centreOf(awake), to));
     if (!far) return false;
+    if (appending_) say("Too far to queue: they march there now");  // (a stack's march is the campaign's, and has no queue)
     std::vector<uint32_t> armies;
     for (sim::EntityId id : awake)
         if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);

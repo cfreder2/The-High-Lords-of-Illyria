@@ -479,7 +479,8 @@
     `<tr><td>${k("Shift")} + click</td><td>Add or take away one man.</td></tr>` +
     `<tr><td>${k("Shift")} + drag</td><td>Box-select at once.</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + click</td><td>Force attack: a friend, the ground, a wall, house or tree.</td></tr>` +
-    `<tr><td>${k("Alt")} + click</td><td>Force march there.</td></tr></table>` +
+    `<tr><td>${k("Alt")} + click</td><td>Force march there.</td></tr>` +
+    `<tr><td>${k("Shift")} + right-click</td><td>Queue the order: it begins when the one before is over. A plain order replaces the queue; ${k("Space")} clears it. At most eight.</td></tr></table>` +
     `<h3>A trackpad</h3>` +
     row("pad", "Swipe two fingers", "Pan across the land.") +
     row("pinch", "Pinch", "Zoom, about the pointer. In Safari a twist turns the view as well.") +

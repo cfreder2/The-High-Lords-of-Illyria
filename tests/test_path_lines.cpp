@@ -456,3 +456,101 @@ TEST(an_enemy_stack_never_has_a_faint_marching_line_and_a_big_selection_is_cappe
     CHECK(big.size() <= illyria::game::kMaxRouteLines);
     // (Each line draws at most 600 marks and the frame at most 3000 decals, two to a mark: renderer_orders.cpp.)
 }
+
+// --- The order queue, as the player gives and sees it ----------------------------------------------------------------
+
+namespace {
+struct Field {
+    Battle b{42};
+    illyria::game::Camera cam;
+    int watch;
+    std::vector<EntityId> chosen;
+    V3 home;
+    Field() {
+        watch = squadNamed(b, "The Grey Watch");
+        b.selectSquad(watch);
+        chosen = b.selectedAlive();
+        home = b.squadCentre(b.squads()[static_cast<size_t>(watch)]);
+        cam.setBounds(Battle::kWorldSize);
+        cam.setViewport(800, 600);
+        cam.setHeightFn([this](float x, float y) { return b.heightAt(x, y); });
+        cam.lookAt(home.x, home.y, 120);
+    }
+    // A right click at a spot `dx`, `dy` metres from the squad's starting place.
+    void click(float dx, float dy, bool shift) {
+        V3 spot = home + V3{dx, dy, 0};
+        spot.z = b.heightAt(spot.x, spot.y);
+        float px, py;
+        CHECK(cam.project(spot, px, py));
+        b.orderTap(cam, px, py, 1.0f, shift);
+        b.advance(0.05);
+    }
+};
+}  // namespace
+
+TEST(shift_right_click_queues_and_a_plain_one_replaces_and_stop_clears) {
+    Field g;
+    const EntityId first = g.chosen.front();
+    g.click(-30, 0, false);
+    g.click(-30, 25, true);
+    g.click(0, 25, true);
+    // Every man holds the first march and has two behind it; the Watch is a squad, so all of them.
+    for (EntityId id : g.chosen) CHECK(g.b.world().units()[id - 1].queue.size() == 2);
+    CHECK(g.b.world().units()[first - 1].hasMoveTarget);
+    // Drawn: the march in hand, then a numbered leg for each order behind it, 1 and 2.
+    const std::vector<RouteLine> lines = g.b.pathLines(false, false);
+    int one = 0, two = 0, hand = 0;
+    for (const RouteLine& l : lines) {
+        one += l.number == 1;
+        two += l.number == 2;
+        hand += l.number == 0;
+        CHECK(!l.pending);
+    }
+    CHECK(hand >= 1 && one >= 1 && two >= 1);
+    // A plain right click replaces the march and the queue.
+    g.click(30, 0, false);
+    for (EntityId id : g.chosen) CHECK(g.b.world().units()[id - 1].queue.empty());
+    for (const RouteLine& l : g.b.pathLines(false, false)) CHECK(l.number == 0);
+    // Queue again, and Space halts: the queue goes too, and they stand.
+    g.click(30, 25, true);
+    g.click(0, 25, true);
+    for (EntityId id : g.chosen) CHECK(!g.b.world().units()[id - 1].queue.empty());
+    g.b.stopSelected();
+    g.b.advance(0.2);
+    for (EntityId id : g.chosen) {
+        CHECK(g.b.world().units()[id - 1].queue.empty());
+        CHECK(!g.b.world().units()[id - 1].hasMoveTarget);
+    }
+}
+
+TEST(a_queue_is_drawn_for_the_players_own_men_only_and_a_queued_hunt_of_a_foe_in_the_fog_not_at_all) {
+    Field g;
+    g.click(-30, 0, false);
+    g.click(-30, 25, true);
+    // The foe's men may hold queues (the computer's, or another seat's): none is told to the player.
+    const size_t before = g.b.pathLines(false, false).size();
+    for (const illyria::game::Squad& s : g.b.squads())
+        if (s.owner != Battle::kPlayer)
+            for (EntityId id : s.members) {
+                Command c{s.owner, id, Command::Type::Move, {}};
+                c.target = Vec3{m(10), m(10), Fixed::zero()};
+                g.b.testQueueFor(id, c);
+            }
+    CHECK(g.b.pathLines(false, false).size() == before);
+}
+
+TEST(a_squad_ordered_a_then_b_walks_a_then_b_in_a_battle) {
+    Field g;
+    g.click(-25, 0, false);
+    g.click(-25, 25, true);
+    const EntityId id = g.chosen.front();
+    const auto flat = [&](const V3& a) { return V3{a.x - g.b.unitPosition(id - 1).x, a.y - g.b.unitPosition(id - 1).y, 0}.length(); };
+    V3 a = g.home + V3{-25, 0, 0}, bb = g.home + V3{-25, 25, 0};
+    bool atA = false;
+    for (int t = 0; t < 600 && !(atA && flat(bb) < 8.0f); ++t) {
+        g.b.advance(0.1);
+        if (flat(a) < 8.0f) atA = true;
+    }
+    CHECK(atA);
+    CHECK(flat(bb) < 8.0f);
+}
