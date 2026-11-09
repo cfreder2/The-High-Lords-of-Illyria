@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "illyria/game/flag_poles.h"
 #include "illyria/game/battle.h"
 
 namespace illyria::game {
@@ -392,16 +393,14 @@ std::string HordeMode::hudJson(const Battle& b) const {
 }
 
 std::vector<ModeFlag> HordeMode::flags(const Battle& b) const {
-    // The holders' banner on the hilltop, coming down while the horde holds
-    // it alone, their red going up in its place.
+    // The holders' banner on the hilltop, coming down as the horde holds it
+    // alone, then their red going up in its place: one flag (flag_poles.h).
     V3 base = toV3(hill_.at());
     base.z = b.heightAt(base.x, base.y);
     const float lost = hill_.lost() ? 1.0f
                                     : std::min(1.0f, static_cast<float>(hill_.contestedTicks()) / sim::HillRule::kLoseTicks);
-    std::vector<ModeFlag> out;
-    out.push_back({base, 1 - lost, teamColour(kHolders), 14, 3.4f});
-    if (lost > 0) out.push_back({base, lost, teamColour(kHorde), 14, 3.4f});
-    return out;
+    const PoleTarget t = contestedPole(teamColour(kHolders), teamColour(kHorde), lost);
+    return {{base, t.level, t.colour, 14, 3.4f}};
 }
 
 }  // namespace illyria::game

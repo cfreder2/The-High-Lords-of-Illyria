@@ -17,6 +17,7 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/factions.h"
+#include "illyria/game/flag_poles.h"
 #include "illyria/game/minimap.h"
 #include "illyria/game/gestures.h"
 #include "illyria/game/mode.h"
@@ -74,6 +75,7 @@ struct App {
     Camera camera;
     std::unique_ptr<Gestures> gestures;
     Renderer renderer;
+    PoleSet poles;  // the flag poles' changeovers (flag_poles.h)
     double lastMs = 0;
     float pixelRatio = 1;
     double maxPixelRatio = kMaxPixelRatio;  // lowered by the graphics settings
@@ -107,7 +109,7 @@ struct App {
         std::vector<float> pierYaw;
         std::map<uint32_t, float> heading;  // each boat's last course, so it turns smoothly
         // What the renderer was last given: the towns' holders (tower banners) and the land's reckoning.
-        std::vector<uint8_t> owners;
+        std::vector<uint8_t> owners, keepsBare;
         int64_t territoryTick = -1;
         std::vector<illyria::sim::Campaign::Soldier> men;  // every man of the campaign, as it says he stands (for picking, the minimap and the tests)
         double layoutMs = 0;  // smoothed
@@ -339,20 +341,35 @@ void placeBoats() {
 // over towns being taken (the old colours coming down as the new go up) and
 // the outposts' flags, with the towns' tower banners and the land in their
 // holders' colours; in a siege, the capture point's pole.
-void placeFlags() {
+void placeFlags(float dt) {
     using C = illyria::sim::Campaign;
     std::vector<Renderer::Flag> flags;
+    // One flag to a pole: the old holder's comes down, then the new one's goes up (flag_poles.h). Presentation
+    // only, on the frame's real time; the sim's state is untouched.
+    enum : uint64_t { kModePole = 1ull << 32, kCityPole = 2ull << 32, kOutpostPole = 3ull << 32, kSiegePole = 4ull << 32 };
+    const auto put = [&](uint64_t key, Renderer::Flag f) {
+        const PoleShown s = app->poles.advance(key, dt, {f.colour, f.raised});
+        f.colour = s.colour;
+        f.raised = s.raised;
+        if (s.visible()) flags.push_back(f);
+    };
     const V3 o = app->battle->origin();
     if (app->camp.on) {
         App::CampaignView& cv = app->camp;
         const C& c = *cv.c;
         std::vector<uint8_t> owners;  // (as the viewer knows them)
         for (size_t i = 0; i < c.cities().size(); ++i) owners.push_back(c.knownOwner(c.localSide(), static_cast<int32_t>(i)));
-        if (owners != cv.owners) {
+        // A town whose banner is going up has its tall pole on the keep: the keep's own small banner stands
+        // aside meanwhile, so the pole carries one flag (the moment it is done, the keep's flies the new colours).
+        std::vector<uint8_t> flying(c.cities().size(), 0);
+        for (size_t i = 0; i < flying.size(); ++i)
+            flying[i] = c.cities()[i].banner != C::kNeutral && c.seesCity(c.localSide(), static_cast<int32_t>(i));
+        if (owners != cv.owners || flying != cv.keepsBare) {
             cv.owners = owners;
+            cv.keepsBare = flying;
             std::vector<V3> colours;
             for (uint8_t w : owners) colours.push_back(factionColor(w));
-            app->renderer.setCityColours(colours);
+            app->renderer.setCityColours(colours, flying);
         }
         const int64_t reckoned = c.tick() / C::kTerritoryTicks;
         if (reckoned != cv.territoryTick) {
@@ -373,25 +390,27 @@ void placeFlags() {
         const float s = std::clamp(app->camera.distance() / 867.0f, 0.4f, 3.0f);
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const C::CityState& cs = c.cities()[i];
-            if (cs.banner == C::kNeutral || !c.seesCity(c.localSide(), static_cast<int32_t>(i))) continue;  // (a banner going up over a town the viewer cannot see)
+            if (!flying[i]) continue;  // (no banner going up, or over a town the viewer cannot see)
             const illyria::sim::Continent::Castle& k = c.continent().cities()[i].castle;
             V3 base = toV3(k.keep) - V3{o.x, o.y, 0};
             base.z = app->battle->heightAt(base.x, base.y) + static_cast<float>(k.keepHeight.toDouble());
             const float p = static_cast<float>(cs.bannerProgress) / C::kBannerFull;
-            flags.push_back({base, 70 * s, 1 - p, 26 * s, bannerColor(c.knownOwner(c.localSide(), static_cast<int32_t>(i)))});
-            flags.push_back({base, 70 * s, p, 26 * s, bannerColor(cs.banner)});
+            const PoleTarget t = contestedPole(bannerColor(c.knownOwner(c.localSide(), static_cast<int32_t>(i))), bannerColor(cs.banner), p);
+            put(kCityPole + i, {base, 70 * s, t.level, 26 * s, t.colour});
         }
         for (const C::Outpost& op : c.outposts()) {
             V3 base{C::centre(op.cx) - o.x, C::centre(op.cy) - o.y, 0};
             base.z = app->battle->heightAt(base.x, base.y);
             const C::Hex& h = c.hexes()[static_cast<size_t>(op.hex)];
-            flags.push_back({base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, bannerColor(h.owner)});
+            put(kOutpostPole + static_cast<uint64_t>(&op - c.outposts().data()), {base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, bannerColor(h.owner)});
         }
     } else {
         app->renderer.setTerritory({}, 0, 0, 0);
         // A match's flags: Horde's hill, capture the flag's (mode.h).
-        if (const BattleMode* mode = app->battle->mode())
-            for (const ModeFlag& f : mode->flags(*app->battle)) flags.push_back({f.base, f.height, f.raised, f.size, f.colour});
+        if (const BattleMode* mode = app->battle->mode()) {
+            const std::vector<ModeFlag> poles = mode->flags(*app->battle);
+            for (size_t k = 0; k < poles.size(); ++k) put(kModePole + k, {poles[k].base, poles[k].height, poles[k].raised, poles[k].size, poles[k].colour});
+        }
         // ... and the stakes round its field's edge.
         for (const ModeFlag& f : zoneStakes(*app->battle)) flags.push_back({f.base, f.height, f.raised, f.size, f.colour});
         const CapturePoint& cap = app->battle->capturePoint();
@@ -399,10 +418,12 @@ void placeFlags() {
             V3 base = toV3(cap.at());
             base.z = app->battle->heightAt(base.x, base.y);
             const float p = static_cast<float>(cap.progress()) / CapturePoint::kFull;
-            flags.push_back({base, 14, 1 - p, 3.4f, {0.86f, 0.18f, 0.14f}});  // the battle's colours: the defenders red
-            flags.push_back({base, 14, p, 3.4f, {0.22f, 0.42f, 0.92f}});  // ... the player blue
+            // the battle's colours: the defenders red, the player blue
+            const PoleTarget t = contestedPole({0.86f, 0.18f, 0.14f}, {0.22f, 0.42f, 0.92f}, p);
+            put(kSiegePole, {base, 14, t.level, 3.4f, t.colour});
         }
     }
+    app->poles.endFrame();
     app->renderer.setFlags(flags);
 }
 
@@ -707,7 +728,7 @@ bool frame() {
         app->hushed = false;
         playSounds(app->battle->sfx(), app->ambienceSeen);
     }
-    placeFlags();
+    placeFlags(static_cast<float>(dtMs / 1000.0));
     const double drawStart = platform::nowMs();
     app->renderer.setScreenFramebuffer(platform::screenFramebuffer());
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);

@@ -71,7 +71,8 @@ sim::Vec3 insideField(const sim::Vec3& p, int32_t size, int32_t margin);
 V3 teamColour(sim::PlayerId team);
 const char* teamName(sim::PlayerId team);
 
-// A flag on a pole, for the renderer (Renderer::Flag).
+// A flag on a pole, for the renderer (Renderer::Flag): one to a pole, who holds
+// it and how high it should stand (flag_poles.h shows the changeovers).
 struct ModeFlag {
     V3 base;
     float raised = 1;  // 0..1 up the pole

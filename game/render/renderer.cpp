@@ -1178,6 +1178,7 @@ void Renderer::uploadGates(const Battle& battle) {
 
 void Renderer::uploadSettlements(const Battle& battle) {
     bannerCity_.clear();
+    bannerIsKeep_.clear();
     const sim::Continent& cont = battle.continent();
     const V3 o = battle.origin();
     std::vector<float> walls, towers, banners, houses, ruins, temples, sages;
@@ -1301,6 +1302,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             else pushInstance(drums, p, flat, {r, r, h}, stone);
             pushInstance(banners, p + V3{0, 0, h + (t.roofed ? h * 0.75f : 0.4f)}, flat, {4.5f, 4.5f, 4.5f}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
+            bannerIsKeep_.push_back(0);
         }
         {
             float q[4];
@@ -1311,6 +1313,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             const float s = c.capital ? 14.0f : 9.0f;
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
+            bannerIsKeep_.push_back(1);
         }
         for (const sim::Continent::Castle::Ramp& rp : k.ramps) {
             // The slope from the ground, then its landing beside the walk (a

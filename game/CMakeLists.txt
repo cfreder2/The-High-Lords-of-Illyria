@@ -9,6 +9,7 @@ add_library(illyria_game
     src/battle_orders.cpp
     src/battle_capture.cpp
     src/battle_modes.cpp
+    src/flag_poles.cpp
     src/mode.cpp
     src/mode_places.cpp
     src/mode_horde.cpp
