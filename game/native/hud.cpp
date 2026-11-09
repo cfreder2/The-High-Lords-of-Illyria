@@ -413,18 +413,61 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
 
     if (help_) {
-        static const char* const kHelp[] = {
-            "Left click: select / tap   Drag: box   Shift: add",
-            "Right click: move / attack   Ctrl or Cmd + right click: attack ground",
-            "Wheel / trackpad: zoom and pan   WASD, arrows: pan   Q E: turn   R F: zoom   N or Z: north",
-            "G: attack mode   V: force march   T: special   X: scatter   B: halt   C: view selection   O: open or shut a gate of yours",
-            "1-9: groups (Alt + number saves one)   Shift + 1-9: formation   0: scatter",
-            "` heroes   Ctrl+A: all on screen   Esc: let go   Space: pause   - =: slower, faster",
-            "Enter: menu    /: this help"};
-        const float hh = 26 + static_cast<float>(sizeof kHelp / sizeof *kHelp) * 20;
-        o.rect(w / 2 - 330, 60, 660, hh, kPanel);
-        o.frame(w / 2 - 330, 60, 660, hh, 2, kGold);
-        for (size_t i = 0; i < sizeof kHelp / sizeof *kHelp; ++i) o.text(w / 2 - 316, 72 + static_cast<float>(i) * 20, kHelp[i], kInk, 12);
+        // Two columns, each a title and rows of "keys  what they do", sized to the words.
+        struct Row { const char* keys; const char* what; };
+        struct Section { const char* title; std::vector<Row> rows; };
+        static const Section kHelp[] = {
+            {"Mouse",
+             {{"Click", "select (again: all of his kind in view)"},
+              {"Shift + click", "add or drop one"},
+              {"Drag", "a box (Shift adds)"},
+              {"Right click", "march there / attack what is there"},
+              {"Right hold, drag", "march there, facing the drag"},
+              {"Ctrl or Cmd + click", "attack, even a friend"},
+              {"Alt + click", "force march"},
+              {"Right drag", "turn the view"},
+              {"Middle drag", "pan"},
+              {"Wheel", "zoom (trackpad: swipe pans, pinch zooms)"}}},
+            {"Keys",
+             {{"W A S D, arrows", "pan"},
+              {"Q E, R F, N", "turn, zoom, north"},
+              {"Z, V", "attack mode, force march (one order)"},
+              {"T, X, B, C", "special, scatter, halt, find selection"},
+              {"O, Shift + O", "open or shut a gate of yours, let it go"},
+              {"1-9, Alt + 1-9", "pick a group, save one"},
+              {"Shift + 1-9, 0", "formation, scatter"},
+              {"`, Ctrl + A, Esc", "heroes, all on screen, let go"},
+              {"Space, - =", "pause, slower and faster"},
+              {"Enter, /", "menu, this help"}}}};
+        constexpr float kSize = 12, kLine = 18, kPad = 14, kGap = 14, kColGap = 28;
+        float colW[2] = {};
+        float keyW[2] = {};
+        size_t rowsMax = 0;
+        for (int c = 0; c < 2; ++c) {
+            float actW = 0;
+            for (const Row& r : kHelp[c].rows) {
+                keyW[c] = std::max(keyW[c], o.width(r.keys, kSize));
+                actW = std::max(actW, o.width(r.what, kSize));
+            }
+            colW[c] = keyW[c] + kGap + actW;
+            rowsMax = std::max(rowsMax, kHelp[c].rows.size());
+        }
+        const float pw = std::min(w - 20, colW[0] + kColGap + colW[1] + 2 * kPad);
+        const float ph = 2 * kPad + (static_cast<float>(rowsMax) + 1) * kLine + 4;
+        const float x0 = w / 2 - pw / 2, y0 = 60;
+        o.rect(x0, y0, pw, ph, kPanel);
+        o.frame(x0, y0, pw, ph, 2, kGold);
+        float x = x0 + kPad;
+        for (int c = 0; c < 2; ++c) {
+            o.text(x, y0 + kPad, kHelp[c].title, kGold, kSize);
+            float y = y0 + kPad + kLine + 4;
+            for (const Row& r : kHelp[c].rows) {
+                o.text(x, y, r.keys, kGold, kSize);
+                o.text(x + keyW[c] + kGap, y, r.what, kInk, kSize);
+                y += kLine;
+            }
+            x += colW[c] + kColGap;
+        }
     }
 }
 
