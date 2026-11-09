@@ -308,3 +308,34 @@ first. Pure time-and-position shader: nothing in the sim.
 `shoreEnergy(surface, flowSpeed)` is the water body kind: the sea's level (under 0.5 to 1.1 m: the far land's inland/sea split) is
 1.0 (run-up 0.1 to 0.3 m of height, so 1 to 3 m along a gentle beach, wave 7.5 to 14 s apart), a lake's 0.13 (a few cm of height, slow),
 and the current kills it: a river, which runs, has none, and a river's mouth fades out up the estuary as the flow takes over.
+
+## River mouths and the far sea (the strategic view)
+
+The whole-continent view showed rivers as flat navy bands ending in hard wedges past the coast, a flat rectangle of sea (the
+battlefield's own water) and a straight seam across the waves along the map's edge. All three were the far/strategic view's
+alone; the close view was right. Presentation only: nothing here changes the sim (`Continent::landDistance` is now public, a read of
+the design) and no golden moved.
+
+What was wrong, and what was done:
+
+- **Ribbons over the sea.** The sim carries a river's last point 80 m past the coast (so the estuary can be carved there) and the
+  far ribbons drew every segment. `game::riverRibbons` (`river_ribbons.h`) cuts each ribbon at the coastline (bisected on
+  `landDistance`) and gives every vertex its distance to that shore along the river. `kRibbonVs/Fs` discard anything past it
+  and fade over the last 140 m (the flare, `kMouthFlareLength`); also by surface level (below), so the ribbon and the water
+  beside it fade together.
+- **One water family.** `kCommon` has `farSea` (the far sea's colour, swell, glints and foam), `farInland` (rivers, lakes and pools:
+  `inlandWater` with the lake's bed and cloud shading) and `seaWeight(surface)` (0 at 2 m above the sea, 1 at its level). The far
+  land, the ribbons and the battlefield's water (`kWaterFs`, which gives way to `farSea` above 40 to 200 m) all use them; the
+  ribbons take depth across their width (deepest in the middle, shoal at the banks, wandering along the reach) instead of a
+  flat 3.5 m. A river's surface falls to the sea's level over the flare, so by level alone the estuary runs from the river's colour
+  into the sea's, in the ribbon, the far mesh and the battlefield alike (the far land's hard inland/sea switch at 0.8 m is
+  now a blend, `seaWeight`).
+- **The seam and the rectangle.** Both were depth. The sea bed at the map's edge is only 5 to 13 m down (probed: -5.7 to -13 m), so the
+  far land's sea there was "shallow" (depth/12 < 1) where the sea beyond the map is "deep" (1): the foam band, which widens with the
+  pixel from high up, covered the whole shelf and washed out the glints, and the colour stepped, in a straight line along the edge.
+  `farSea` keeps foam to the first 1 to 3 m of water. The rectangle was `kWaterFs` drawing open sea as a flat deep blue; it now
+  blends to `farSea` as the camera rises.
+
+Checks: `tests/test_river_ribbons.cpp` (the ribbons' last vertex is the shore and no vertex is at sea, for every sea mouth over five
+seeds, 20 mouths; the flare; distances count down). Pictures before and after at far, mid and close zoom at the four sea mouths and
+over the whole continent are not kept in the repo.

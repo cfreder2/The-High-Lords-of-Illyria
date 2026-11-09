@@ -23,6 +23,7 @@ add_library(illyria_game
     src/minimap.cpp
     src/detail_land.cpp
     src/far_forest.cpp
+    src/river_ribbons.cpp
 )
 target_include_directories(illyria_game PUBLIC include)
 target_link_libraries(illyria_game PUBLIC illyria_sim)

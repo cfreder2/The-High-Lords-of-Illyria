@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "illyria/game/factions.h"
+#include "illyria/game/river_ribbons.h"
 #include "shaders.h"
 #include "unit_deeds.h"
 
@@ -1055,20 +1056,16 @@ void Renderer::uploadContinent(const Battle& battle) {
     const sim::Continent& cont = battle.continent();
     const V3 o = battle.origin();
     std::vector<float> ribbons;
-    for (const sim::Continent::River& r : cont.rivers()) {
-        for (size_t i = 0; i + 1 < r.points.size(); ++i) {
-            const float hw = static_cast<float>(r.widths[i].toDouble());
-            const V3 a = toV3(r.points[i]) - V3{o.x, o.y, 0}, b = toV3(r.points[i + 1]) - V3{o.x, o.y, 0};
-            ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 0});
-        }
-    }
+    // (Each instance: a, b, half width, kind, and how far a and b are from the shore along the river: RibbonSegment.)
+    for (const RibbonSegment& r : riverRibbons(cont, o))
+        ribbons.insert(ribbons.end(), {r.a.x, r.a.y, r.a.z, r.b.x, r.b.y, r.b.z, r.halfWidth, 0, r.toMouthA, r.toMouthB});
     // Creeks: thinner, every other point (they are finely sampled).
     for (const sim::Continent::River& st : cont.streams()) {
         for (size_t i = 0; i + 1 < st.points.size(); i += 2) {
             const size_t j = std::min(i + 2, st.points.size() - 1);
             const float hw = static_cast<float>(st.widths[i].toDouble());
             const V3 a = toV3(st.points[i]) - V3{o.x, o.y, 0}, b = toV3(st.points[j]) - V3{o.x, o.y, 0};
-            ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 2});
+            ribbons.insert(ribbons.end(), {a.x, a.y, a.z, b.x, b.y, b.z, hw, 2, RibbonSegment::kNoMouth, RibbonSegment::kNoMouth});
         }
     }
     for (const sim::Polyline& road : cont.roads()) {
@@ -1080,7 +1077,7 @@ void Renderer::uploadContinent(const Battle& battle) {
                 V3 p = a + (b - a) * (static_cast<float>(s) / steps), q = a + (b - a) * (static_cast<float>(s + 1) / steps);
                 p.z = std::max(battle.heightAt(p.x, p.y), battle.farGrid().heightAt(p.x, p.y));
                 q.z = std::max(battle.heightAt(q.x, q.y), battle.farGrid().heightAt(q.x, q.y));
-                ribbons.insert(ribbons.end(), {p.x, p.y, p.z, q.x, q.y, q.z, static_cast<float>(road.widthAt(i, toFixed(static_cast<float>(s) / steps)).toDouble()), 1});
+                ribbons.insert(ribbons.end(), {p.x, p.y, p.z, q.x, q.y, q.z, static_cast<float>(road.widthAt(i, toFixed(static_cast<float>(s) / steps)).toDouble()), 1, RibbonSegment::kNoMouth, RibbonSegment::kNoMouth});
             }
         }
     }
@@ -1489,7 +1486,7 @@ bool Renderer::init(Battle& battle) {
     makeCoverLayer(cover_layers_[3], meshes::twigs(), 3, 4.19f);
     makeCoverLayer(cover_layers_[4], meshes::fern(), 4, 5.57f);
     makeBatch(marks_, {3, 4, 4}, Battle::kMaxGroundMarks);
-    makeBatch(ribbons_, {3, 3, 2}, 0);
+    makeBatch(ribbons_, {3, 3, 2, 2}, 0);
     makeBatch(waterfalls_, {3, 3, 4}, 0);
     makeBatch(rockRings_, {3, 3, 4}, 0);
     makeBatch(detailRockRings_, {3, 3, 4}, 0);
@@ -2586,7 +2583,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     if (ribbons_.count > 0) {
         setCommon(ribbon_, camera, timeSeconds, gameSeconds);
         glBindVertexArray(ribbons_.vao);
+        glEnable(GL_BLEND);  // a river's mouth fades into the sea over its flare
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         drawArrays(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
+        glDisable(GL_BLEND);
     }
     if ((waterfalls_.count > 0 || rockRings_.count > 0 || detailRockRings_.count > 0) && farDetail) {
         setCommon(falls_, camera, timeSeconds, gameSeconds);

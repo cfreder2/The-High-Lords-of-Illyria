@@ -278,6 +278,8 @@ public:
     Ground groundAt(Fixed x, Fixed y) const;
     // Water surface at a point covered by river, lake or sea (else -inf sentinel: returns false).
     bool waterSurface(Fixed x, Fixed y, Fixed& surface) const;
+    // Metres inside the coastline (negative at sea): the shore the rivers' ribbons are cut at, a read of the design, nothing more.
+    Fixed landDistance(Fixed x, Fixed y) const;
 
     const std::vector<River>& rivers() const { return rivers_; }
     // Streams found by the drainage bake: they rise where enough water
@@ -361,7 +363,6 @@ private:
     std::vector<uint8_t> walkableCells() const;
     // Whether a footprint of this radius is dry, gentle land clear of rivers; returns the slope.
     bool buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const;
-    Fixed landDistance(Fixed x, Fixed y) const;
     Fixed baseHeight(Fixed x, Fixed y, Fixed& mountain) const;  // the procedural design, before rivers
     // The land before rivers: baked relief (plus fine detail) or the design.
     Fixed reliefHeight(Fixed x, Fixed y, Fixed& mountain) const;

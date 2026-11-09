@@ -201,6 +201,37 @@ vec3 hazeColor(vec3 world) {
     float sun = pow(max(dot(v, kSun), 0.0), 6.0);
     return mix(kSky * 1.02, vec3(0.92, 0.84, 0.72), sun * 0.35);
 }
+// The sea seen from afar, one function for every sea the player can see: the far land's, the sea beyond the map and the
+// battlefield's own water where it is open sea (kWaterFs gives way to this as the camera rises), so that no edge of the
+// map or of the battlefield shows as a change of colour or of waves. `depthM`: metres of water over the bed. Returns
+// the lit colour: shallows teal to deep blue, a swell, chop and glints, and the foam of a shore, which is kept to the
+// shallows (the foam band widens with the pixel so that it reads from high up, and must not run out over the shelf, where the
+// sea bed is only 5 to 13 m down all the way to the edge of the map).
+vec3 farSea(vec2 p, vec3 world, float depthM) {
+    float depth = clamp(depthM / 12.0, 0.0, 1.0);
+    float t = uTime;
+    vec3 albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
+    vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.09 - t * 1.1) * 0.10;
+    g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
+    g += (vec2(valueNoise2(p / 6.0 + t * 0.35), valueNoise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
+    vec3 n = normalize(vec3(-g, 1.0));
+    // The sea: lines of foam roll in over the shallows and break on the sand.
+    float foam = shoreSwash(p, -depth * 12.0, 0.1, 1.0, uPxScale * distance(uEye, world)).x * (1.0 - smoothstep(1.0, 3.0, depthM));
+    albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
+    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(p);
+    vec3 h = normalize(kSun + normalize(uEye - world));
+    return albedo * light + vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * (1.0 - foam);
+}
+// How much of the sea a water surface is, by its level above the sea's: a river's surface falls to nothing over the flare of its
+// mouth (Continent::computeRiverSurfaces), so by level alone the estuary runs from the river's look into the sea's, in the far
+// land, the ribbons and the battlefield's water alike. A lake stands higher and is none of it.
+float seaWeight(float surface) { return 1.0 - smoothstep(0.1, 2.0, surface); }
+// Inland water from afar (rivers' ribbons, lakes, pools): the one colour, from depth in metres: the bed shows through the
+// shallows and the silt-green gives way to deep blue, as on the battlefield (inlandWater), with the lake's lighter, shaded look.
+vec3 farInland(vec2 p, float depthM) {
+    vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
+    return mix(bed, inlandWater(depthM, p), clamp(0.55 + depthM * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
+}
 )";
 
 // ---------------------------------------------------------------- terrain
@@ -2304,6 +2335,11 @@ void main() {
     c = mix(c, vec3(0.88, 0.91, 0.92), clamp(riffle * 0.7 + edge * 0.35, 0.0, 0.8));
     // Soft edges: no hard cut where the water meets the bank.
     float alpha = mix(0.0, 1.0, smoothstep(-0.02, 0.12, depth)) * clamp(0.55 + depth * 0.3, 0.55, 0.95);
+    // Open sea seen from higher up is the far sea's own (farSea), not a flat deep blue in a square: the battlefield's edge
+    // must not show against the sea around it.
+    float seaHere = seaWeight(vWorld.z) * smoothstep(40.0, 200.0, dist);
+    c = mix(c, farSea(p, vWorld, depth), seaHere);
+    alpha = mix(alpha, smoothstep(-0.02, 0.12, depth), seaHere);
     // The waves of the shore over the shallows (shoreSwash, as on the land beside them).
     float energy = shoreEnergy(vWorld.z, speed);
     if (energy > 0.01 && depth < 1.4) {
@@ -2361,31 +2397,24 @@ void main() {
     float glint = 0.0;
     vec3 inland = vec3(-1.0);
     bool wetHere = vKinds.w + farShoreWobble(p) >= 1.0;
-    if (feature(kFeatFarDetail) && wetHere && vWorld.z >= 0.8) {
-        // Rivers, lakes and pools: the battlefield's water (kWaterFs) over its
-        // bed, seen from high up: silt-green shallows to deep blue, calm.
+    if (feature(kFeatFarDetail) && wetHere) {
+        // Rivers, lakes and pools (the battlefield's water, seen from high up) and the sea are one family, and they run into each
+        // other: a river's surface falls to the sea's level over the flare of its mouth, and its colour goes with it, from the
+        // inland water's (silt-green shallows to deep blue, calm) to the sea's (a swell, glints and the foam of a shore).
         float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
-        vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
-        inland = mix(bed, inlandWater(dm, p), clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
-        // A lake's gentle lap (a river's mouth is the ribbon's, and rivers have no waves: shoreEnergy's current is not known here, so
-        // only the still water at a shore: the lakes' own, which the coarse land marks by their depth rising from nothing).
-        inland = mix(inland, vec3(0.9, 0.93, 0.94), shoreSwash(p, -dm, 0.1, 0.13 * smoothstep(0.0, 0.08, vKinds.w - 1.0 + 0.04), uPxScale * distance(uEye, vWorld)).x * 0.7);
-        n = vec3(0.0, 0.0, 1.0);
-        glint = 0.25;
-    } else if (feature(kFeatFarDetail) && wetHere) {
-        float depth = clamp(vKinds.w - 1.0, 0.0, 1.0);  // 1 = 12 m or more
-        float t = uTime;
-        albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
-        vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.09 - t * 1.1) * 0.10;
-        g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
-        g += (vec2(valueNoise2(p / 6.0 + t * 0.35), valueNoise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
-        n = normalize(vec3(-g, 1.0));
-        {
-            // The sea: lines of foam roll in over the shallows and break on the sand.
-            float foam = shoreSwash(p, -depth * 12.0, 0.1, 1.0, uPxScale * distance(uEye, vWorld)).x;
-            albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
-            glint = 1.0 - foam;
+        float lake = 1.0 - seaWeight(vWorld.z);
+        vec3 sea = lake < 0.999 ? farSea(p, vWorld, dm) : vec3(0.0);
+        if (lake > 0.001) {
+            // A lake's gentle lap (a river's mouth is the ribbon's, and rivers have no waves: shoreEnergy's current is not known here, so
+            // only the still water at a shore: the lakes' own, which the coarse land marks by their depth rising from nothing).
+            vec3 lakeColour = farInland(p, dm);
+            lakeColour = mix(lakeColour, vec3(0.9, 0.93, 0.94), shoreSwash(p, -dm, 0.1, 0.13 * smoothstep(0.0, 0.08, vKinds.w - 1.0 + 0.04), uPxScale * distance(uEye, vWorld)).x * 0.7);
+            inland = mix(sea, lakeColour, lake);
+        } else {
+            inland = sea;
         }
+        n = vec3(0.0, 0.0, 1.0);
+        glint = 0.25 * lake;
     }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
     float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
@@ -2406,15 +2435,20 @@ inline const char* kFarCutFs = "#define DETAIL_CUT 1\n" ILLYRIA_LAND_FS ILLYRIA_
 #undef ILLYRIA_LAND_FS
 
 // Rivers and roads drawn as ribbons on the far map, never thinner than a few pixels.
-// Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road 2 creek).
+// Per instance: a, b (segment ends), info (half width, kind: 0 river 1 road 2 creek), mouth (metres from a and from b to the
+// shore along a river that ends in the sea, game::RibbonSegment; a very large number otherwise).
 inline const char* kRibbonVs = R"(
 layout(location = 0) in vec3 iA;
 layout(location = 1) in vec3 iB;
 layout(location = 2) in vec2 iInfo;
+layout(location = 3) in vec2 iMouth;
 uniform vec4 uHole;  // battlefield (min x, min y, max x, max y): drawn in full detail there
 flat out float vKind;
 out float vFog;
 out vec2 vXy;
+out float vAcross;  // -1 one bank, +1 the other
+out float vMouth;   // metres to the shore
+out float vLevel;   // the water's surface
 void main() {
     vec3 mid = (iA + iB) * 0.5;
     if (mid.x > uHole.x && mid.y > uHole.y && mid.x < uHole.z && mid.y < uHole.w) { gl_Position = kCulled; return; }
@@ -2431,6 +2465,9 @@ void main() {
     vKind = iInfo.y;
     vFog = fogFactor(dist);
     vXy = world.xy;
+    vAcross = s;
+    vMouth = mix(iMouth.x, iMouth.y, t);
+    vLevel = mix(iA.z, iB.z, t);
     gl_Position = uViewProj * vec4(world, 1.0);
 }
 )";
@@ -2438,13 +2475,28 @@ inline const char* kRibbonFs = R"(
 flat in float vKind;
 in float vFog;
 in vec2 vXy;
+in float vAcross;
+in float vMouth;
+in float vLevel;
 out vec4 oColor;
 void main() {
     if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land draws its own roads and water
-    // Water as the battlefield's river looks from high up; roads as its
-    // worn dirt does, lit like the land.
-    vec3 c = abs(vKind - 1.0) > 0.5 ? inlandWater(vKind > 1.5 ? 0.9 : 3.5, vXy) * (0.8 + 0.2 * cloudShade(vXy)) : vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
-    oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
+    if (vMouth < 0.0) discard;  // never over open sea
+    float alpha = 1.0;
+    // Water as the far land draws a lake (farInland: the one colour of inland water), deepest along the middle and shoaling to
+    // the banks, with the depth wandering along the reach, so a river is no flat band; roads as the worn dirt does, lit like the land.
+    vec3 c;
+    if (abs(vKind - 1.0) > 0.5) {
+        float across = 1.0 - vAcross * vAcross;
+        float reach = 0.75 + 0.5 * valueNoise2(vXy / 140.0);
+        float depth = vKind > 1.5 ? 0.3 + 0.6 * across : (0.35 + 3.0 * across) * reach;
+        c = farInland(vXy, depth);
+        // At the sea the river flares into the estuary over its last stretch and gives way to the water the land draws there.
+        alpha = min(1.0 - seaWeight(vLevel), smoothstep(0.0, 140.0, vMouth));
+    } else {
+        c = vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
+    }
+    oColor = vec4(mix(c, kSky, vFog * 0.6), alpha);
 }
 )";
 
