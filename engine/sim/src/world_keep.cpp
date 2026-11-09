@@ -17,9 +17,9 @@ namespace {
 constexpr uint32_t kKeepThink = 10;
 // The garrison is those of the holder inside the walls this near the gate's middle.
 constexpr Fixed kKeepRadius = Fixed::fromInt(60);
-// The holder's idle men just outside the walls this near the gate (fled and rallied, or driven out) fall back inside when a
+// The holder's idle men just outside the walls, this near the gate (fled and rallied, or driven out) fall back inside when a
 // foe is near, to their stations; foot meet a foe within this of the gate (inside the walls, or when the doors stand open).
-constexpr Fixed kRecallRange = Fixed::fromInt(45);
+constexpr Fixed kRecallRange = Fixed::fromInt(70);
 constexpr Fixed kMeetRange = Fixed::fromInt(45);
 // A foe this near the gate (or nearer) sends the garrison to its stations.
 constexpr Fixed kAlertRange = Fixed::fromInt(70);

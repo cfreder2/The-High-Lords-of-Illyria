@@ -176,7 +176,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0x0ab45466173fa4a6;  // (was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
+    constexpr uint64_t kGolden = 0x61b877ad55c6bf95;  // (was 0x0ab45466173fa4a6 before every gate's fields were hashed always and the keepers met and recalled men; was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

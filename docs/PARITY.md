@@ -49,6 +49,14 @@ Known weaknesses that remain (honest list, not exceptions):
   (a 4 m grid search over 3 km is the cost the document warned about).
 - A gate is a bottleneck: a stack of 24 men leaving a castle by its one gate takes minutes (the same as a skirmish's
   six defenders took 40 s to pass); the old body march had none of that. It is the World's rule, now also Conquest's.
+  Measured (towns held by the computer lords at day 25, all-computer campaign, seeds 7 / 11 / 21): 35 / 36 / 36 at d6c56db;
+  22 / 25 / 26 with garrisoned gates at the first cut, 29 / 23 / 25 after the recall reached 70 m; 37 / 37 with the gate keeping
+  switched off; with only the neutral towns kept 33 / 20 / 23. So a neutral garrison holding its gate (archers up on the walls,
+  foot behind the doors, no sortie to die in the open) is what slows the lords: about 28% fewer towns at day 25. Counting the
+  gate in the dice (+1, +2, +3 strength points for a defending garrisoned town) did not speed them: they simply attacked less.
+  What would is more means of taking a held gate (catapults beyond the three capitals, or bigger strike stacks), not a weaker garrison.
+  The horseshoe's geometry (`keepGates`, `Fixed`) could serve the player's formation picker (`Formation::Encircle` is in floats
+  in the game layer); it is not shared yet.
   Still weak with gates: the doors now take three seconds to swing, so a long column waits at each swing; a march
   through two rings (a capital's outer and inner gate) is routed to one gate and the straight line after it
   (`World::routeToGate` plans one gate), not through both; an enemy that follows a lured stream can hold the gate open

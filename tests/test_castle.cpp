@@ -364,7 +364,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0x1aa5a57fd79f59bd;  // (was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0xb4bb26218dc4d8bd;  // (was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -871,22 +871,33 @@ TEST(a_garrison_without_foot_never_opens_its_doors) {
 }
 
 TEST(a_garrisons_foot_meet_a_foe_who_gets_in_and_a_man_driven_out_falls_back) {
-    // The one rule for a skirmish and a conquest: the foot meet whoever comes in, and a man of the holder's idle just outside
-    // the walls goes back in to his station when a foe is near.
-    Keep k = keepField(9, 60, 8, 0);
-    World& w = *k.f.w;
-    w.setGateHp(k.f.gate, 0);  // broken: the way in is clear
-    const Vec3 across{k.f.out.y, -k.f.out.x, Fixed::zero()};
-    const Vec3 at = k.f.centre + k.f.out * m(22);
-    const EntityId stray = w.spawnUnit(1, {at.x, at.y, w.groundHeight(at.x, at.y)}, k.f.out, unitStats(UnitType::Pikemen));
-    const Vec3 fat = k.f.centre + k.f.out * m(40) + across * m(3);
-    const EntityId foe = w.spawnUnit(0, {fat.x, fat.y, w.groundHeight(fat.x, fat.y)}, -k.f.out, unitStats(UnitType::Dwarves));
-    for (int t = 0; t < 60 * kTicksPerSecond; ++t) w.step({});
-    const Unit& s = *w.findUnit(stray);
-    std::printf("  the stray is %.1f m from the doors, %s\n", (s.pos - k.f.centre).flat().length().toDouble(), s.alive() ? "alive" : "dead");
-    // Either he fell back inside, or the garrison met the foe at the doors; the foe does not stand untouched at the gate.
-    CHECK(!w.findUnit(foe)->alive() || (s.alive() && (s.pos - k.f.centre).flat().dot(k.f.out) < Fixed::zero()));
-    int met = 0;
-    for (EntityId id : k.foot) met += w.findUnit(id)->alive();
-    CHECK(met >= 6);
+    // The one rule for a skirmish and a conquest: the foot meet whoever comes in, and a man of the holder's idle outside the
+    // walls goes back in to his station when a foe is near.
+    {
+        Keep k = keepField(9, 60, 8, 0);
+        World& w = *k.f.w;
+        const Vec3 across{k.f.out.y, -k.f.out.x, Fixed::zero()};
+        const Vec3 yard = local(town().castle.courtyard) + across * m(6);
+        const EntityId foe = w.spawnUnit(0, {yard.x, yard.y, w.groundHeight(yard.x, yard.y)}, k.f.out, unitStats(UnitType::Dwarves));
+        for (int t = 0; t < 90 * kTicksPerSecond; ++t) w.step({});
+        int alive = 0;
+        for (EntityId id : k.foot) alive += w.findUnit(id)->alive();
+        std::printf("  a foe in the courtyard: %s, %d of 8 foot left\n", w.findUnit(foe)->alive() ? "alive" : "dead", alive);
+        CHECK(!w.findUnit(foe)->alive());
+        CHECK(alive >= 6);
+    }
+    {
+        Keep k = keepField(9, 60, 4, 0);
+        World& w = *k.f.w;
+        w.setGateHp(k.f.gate, 0);  // broken: the way back in is clear
+        const Vec3 at = k.f.centre + k.f.out * m(50);
+        const EntityId stray = w.spawnUnit(1, {at.x, at.y, w.groundHeight(at.x, at.y)}, k.f.out, unitStats(UnitType::Pikemen));
+        const Vec3 fat = k.f.centre + k.f.out * m(68);
+        w.spawnUnit(0, {fat.x, fat.y, w.groundHeight(fat.x, fat.y)}, -k.f.out, unitStats(UnitType::Archers));  // (a foe about, too far to fight)
+        for (int t = 0; t < 40 * kTicksPerSecond; ++t) w.step({});
+        const Unit& s = *w.findUnit(stray);
+        std::printf("  the stray, 50 m out, is now %.1f m from the doors on the %s side\n", (s.pos - k.f.centre).flat().length().toDouble(),
+                    (s.pos - k.f.centre).flat().dot(k.f.out) < Fixed::zero() ? "town" : "field");
+        CHECK(s.alive() && (s.pos - k.f.centre).flat().dot(k.f.out) < Fixed::zero());
+    }
 }
