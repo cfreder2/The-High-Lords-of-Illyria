@@ -45,6 +45,22 @@ int main(int argc, char** argv) {
             std::fflush(stdout);
         }
         std::printf("passable %d of %d bridges\n", ok, total);
+        int fords = 0, fordOk = 0, noRoad = 0;
+        for (size_t i = firstBridge; i < c.crossings().size() && i < firstBridge + countBridges; ++i) {
+            if (c.crossings()[i].bridged()) continue;
+            const audit::FordReport f = audit::auditFord(c, i, 96, countBridges == 1);
+            if (!f.onRoad) {
+                ++noRoad;
+                std::printf("ford  %3zu (%6.0f,%6.0f) '%s': no road crosses it\n", i, f.pos.x.toDouble(), f.pos.y.toDouble(), c.crossings()[i].name.c_str());
+                continue;
+            }
+            ++fords;
+            fordOk += f.passable();
+            std::printf("ford  %3zu (%6.0f,%6.0f) '%s': foot %d%d rider %d%d engine %d%d  %s\n", i, f.pos.x.toDouble(), f.pos.y.toDouble(), c.crossings()[i].name.c_str(), f.walks[0][0], f.walks[0][1], f.walks[1][0], f.walks[1][1],
+                        f.walks[2][0], f.walks[2][1], f.passable() ? "ok" : "BLOCKED");
+            std::fflush(stdout);
+        }
+        std::printf("passable %d of %d fords on a road (%d more have no road)\n", fordOk, fords, noRoad);
         return 0;
     }
     if (nearR > 0) {

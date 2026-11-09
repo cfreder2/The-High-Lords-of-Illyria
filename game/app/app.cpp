@@ -416,6 +416,23 @@ void placeFlags(float dt) {
                 const illyria::sim::Vec3 head = span->bridgehead();
                 base.x = static_cast<float>(head.x.toDouble()) - o.x;
                 base.y = static_cast<float>(head.y.toDouble()) - o.y;
+            } else if (span) {
+                // A ford: the nearest dry ground on a ring round it (not mid-stream).
+                const illyria::sim::Continent& cont = app->battle->continent();
+                bool placed = false;
+                for (int radius = 6; radius <= 90 && !placed; radius += 6) {
+                    for (int k = 0; k < 16 && !placed; ++k) {
+                        const float a = 6.2831853f * static_cast<float>(k) / 16.0f;
+                        const illyria::sim::Vec3 q = span->pos + illyria::sim::Vec3{illyria::sim::Fixed::fromRatio(static_cast<int64_t>(std::cos(a) * radius * 100), 100),
+                                                                                       illyria::sim::Fixed::fromRatio(static_cast<int64_t>(std::sin(a) * radius * 100), 100), illyria::sim::Fixed::zero()};
+                        const illyria::sim::Ground g = cont.groundAt(q.x, q.y);
+                        if (g == illyria::sim::Ground::Plains || g == illyria::sim::Ground::Road || g == illyria::sim::Ground::Forest || g == illyria::sim::Ground::Sand) {
+                            base.x = static_cast<float>(q.x.toDouble()) - o.x;
+                            base.y = static_cast<float>(q.y.toDouble()) - o.y;
+                            placed = true;
+                        }
+                    }
+                }
             }
             base.z = app->battle->heightAt(base.x, base.y);
             const C::Hex& h = c.hexes()[static_cast<size_t>(op.hex)];

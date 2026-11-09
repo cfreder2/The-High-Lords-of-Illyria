@@ -364,6 +364,8 @@ private:
     void loadBakedRelief();
     // Bridges over the creeks the roads from road `firstRoad` on cross (and the shapes of all the bridged crossings from `firstCrossing`).
     void placeBridges(size_t firstRoad = 0, size_t firstCrossing = 0);
+    // A bridge's span from its place and direction: dry banks both ends along the axis, the deck's level, the ramps (placeBridges, fitBridgesToRoads).
+    void spanCrossing(Crossing& cr);
     void planCastles();
     // The roads to the towns' gates (continent_roads.cpp): each town's path to
     // the road network is found before its castle is planned (which way the

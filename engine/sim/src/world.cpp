@@ -1234,8 +1234,20 @@ bool World::followPath(Unit& u, Fixed pace) {
     // A ramp's foot and the walk's lanes (their heights given) are reached,
     // not cut: beside a ramp is not on it.
     const bool raised = waypoint.z != Fixed::zero();
+    // The end of a bridge's deck is reached, not cut: a deck may be no wider than a man and a corner cut to the next waypoint
+    // from beside it leaves the deck's width (the water beside it is a drop).
+    bool deckEnd = false;
+    if (!raised && !last && config_.region && !config_.region->decks().empty()) {
+        for (const uint32_t ki : config_.region->decksAt(waypoint.x, waypoint.y)) {
+            const Deck& k = config_.region->decks()[ki];
+            if (k.raised || !k.contains(waypoint.x, waypoint.y) || k.contains(u.pos.x, u.pos.y)) continue;  // (not for a man already on that deck)
+            const Vec3 d = (waypoint - k.centre).flat();
+            deckEnd = deckEnd || abs(d.x * k.dir.x + d.y * k.dir.y) > k.halfSpan - Fixed::fromRatio(3, 5);
+        }
+    }
+    if (deckEnd && !arrived && (waypoint - u.pos).flat().lengthSq() < Fixed::one()) onward = true;
     if (raised && !last && !arrived && (waypoint - u.pos).flat().lengthSq() < kRaisedReach * kRaisedReach) onward = true;
-    if (!last && !arrived && !raised && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
+    if (!last && !arrived && !raised && !deckEnd && (waypoint - u.pos).flat().lengthSq() < kWaypointNear * kWaypointNear) {
         const Vec3& next = u.path[u.pathIndex + 1];
         onward = (waypoint - u.pos).flat().lengthSq() < kWaypointReach * kWaypointReach ||
                  (next - u.pos).flat().lengthSq() < (next - waypoint).flat().lengthSq();

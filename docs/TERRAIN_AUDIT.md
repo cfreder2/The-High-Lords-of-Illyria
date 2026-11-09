@@ -111,16 +111,24 @@ one width for all. What replaced them (`engine/sim/src/continent_roads.cpp`, `ga
   bridge or town and never into water. Test `no_rock_stands_on_a_road_and_roads_go_round_the_big_ones`: over three seeds no rock stands on a road's
   middle line in the windows tested, and 18 stones on the game's continent have a road's edge within a metre. (A stone the road cannot go
   round is just cleared from it.)
-- **Bridges** (`Continent::placeBridges`, `Crossing`, `Deck`): the deck is centred on the span of water measured along its axis to dry banks
-  (five dry metres in a row, a bridge never longer than 90 m a side), level over the water and clear of it, with a ramp at each end grading
-  down to the ground at 16% (`rampA`, `rampB`, `endA`, `endB`), the road drawn onto its axis, and as wide as the road there; a bridge a castle's wall stands over is
-  no bridge (3 bridges that were inside walls are fords). The mesh draws the ramps as causeways between retaining walls.
-  `tools/bridge_audit.h` (`illyria_terrainaudit --bridges`) walks a man, a rider and an engine across each bridge, each way, in a World with the
-  real Region and NavGrid (14 m of road before one end to 40 m past the other; across when past the far end). Before: 11 of 18 walked across,
-  decks 1 to 8 m above the ground at their ends (up to 8.4 m, a sheer wall); after: 10 of 15, all ends within 1.5 m of the ground.
-  The outpost's pole stands at `Crossing::bridgehead()`, dry ground beside the road at a bridge's head (the campaign's own position of the
-  outpost is unchanged).
-
-Left: five bridges that the audit cannot walk across (`illyria_terrainaudit --bridges` lists them): two where the road turns hard at the end
-(the unit's straight line from the road's point to the deck leaves the deck's width), the long design bridge over a flood plain, one
-footbridge, and one where the pool beside the end is wet in the Region's own water. The navigation, not the bridge, is at fault in most.
+- **Bridges** (`Continent::placeBridges`, `spanCrossing`, `Crossing`, `Deck`): a bridge spans the water measured along its axis to dry banks (five dry
+  metres in a row, ground a hand's breadth above the water counted as water, then ten metres more so the ramp starts well inland of the shore the battle's
+  finer land draws), never more than 100 m a side. It is centred on that span, level over the water and clear of it, with a ramp at each end grading
+  down to the ground at 16% (`rampA`, `rampB`, `endA`, `endB`; the mesh draws a causeway between retaining walls), and as wide as the road there.
+  Roads are fitted to it (`shapeRoads`): the road that crosses is drawn onto the axis over the deck and 32 m beyond each end, the pull fading
+  out over 32 m more, so the way on is a straight line along the deck's width and not a turn at its foot (a junction on the pulled road is kept on
+  it, and a road laid from a gate stays at its gate). A bridge the road no longer reaches is moved onto the road where it is in water (the design's were
+  set before the roads were drawn); one with no road 25 m beyond an end, or a castle's wall over it, is a ford.
+  Water too wide for a bridge (no bank within 100 m: the Westrun's mouth, the estuary of the Sorrow) is a **ford** the road wades: Old Bridge is one
+  now, the broad water Southbridge crossed (which no road reaches, and lies in a lake) is gone, and the bridge at the Westrun's mouth by (344, 3240) is a
+  ford. `NavGrid` pins a point every 10 m along a deck on a route (a long deck is not left to the cells' middles), and `World::followPath` reaches a deck's
+  end instead of cutting the corner to the next point (a footbridge is 1.8 m wide).
+  `tools/bridge_audit.h` (`illyria_terrainaudit --bridges`) walks a man, a rider and an engine across each bridge, and across each ford a road
+  runs through, in a World with the real Region, NavGrid and walking rules, each way: three orders as a player would give them (to the deck's
+  near end, along it, on 40 m beyond; 16 m out on its axis, further if that is water or marsh). Before (sandbox, the same audit): 9 of 18 bridges
+  (decks up to 8.4 m above the ground at their ends) and 5 of 5 fords. After: 9 of 9 bridges, ends within 1.5 m of the ground, and 7 of 7 fords on a
+  road. `every_bridge_meets_the_ground_and_can_be_walked_across_and_so_can_every_ford` asserts all of them on three continents (the game's, 1 and 6): 25
+  bridges and 30 fords. Seeds 7, 99 and others still have a crossing or two that fails, a design ford in deep water or a road that turns hard at a
+  footbridge's end (up to three of ten crossings): the game's continent is clean.
+  The outpost's pole stands at `Crossing::bridgehead()`, dry ground beside the road at a bridge's head, or on the nearest dry ground to a ford
+  (the campaign's own position of the outpost is unchanged).

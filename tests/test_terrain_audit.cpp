@@ -336,27 +336,35 @@ TEST(no_rock_stands_on_a_road_and_roads_go_round_the_big_ones) {
     CHECK(detours >= 3);
 }
 
-TEST(every_bridge_meets_the_ground_at_both_ends_and_most_can_be_walked_across) {
-    // Across seeds: the deck's end is within a step of the ground (a man steps on and off), the bridge reaches dry banks, and
-    // a man, a rider and an engine are walked across it, each way, in a World with the real navigation and walking rules.
-    int total = 0, passable = 0, stepUp = 0, wet = 0;  // (stepUp: ends more than 1.5 m above the ground; the NavGrid's own bank may differ from the macro land by a little)
-    for (const uint64_t seed : {uint64_t{20261027}, uint64_t{7}}) {
+TEST(every_bridge_meets_the_ground_and_can_be_walked_across_and_so_can_every_ford) {
+    // Three continents: each bridge's deck ends within 1.5 m of the ground, on dry land, and a man, a rider and an engine are walked
+    // across it, each way, in a World with the real navigation and walking rules (tools/bridge_audit.h); and the same across every ford
+    // on a road (a crossing too wide for a bridge is a ford the road wades, not a failed bridge). Other seeds have a crossing or two
+    // that fails (a design ford in deep water, a road that turns at a footbridge's end): docs/TERRAIN_AUDIT.md.
+    int bridges = 0, fords = 0;
+    for (const uint64_t seed : {uint64_t{20261027}, uint64_t{1}, uint64_t{6}}) {
         const Continent c(seed);
         for (size_t i = 0; i < c.crossings().size(); ++i) {
-            if (!c.crossings()[i].bridged()) continue;
-            const audit::BridgeReport b = audit::auditBridge(c, i, 96);
-            ++total;
-            passable += b.passable();
-            for (const double r : b.rise) stepUp += r > 1.5;
-            wet += b.waterEnds > 0;
-            if (!b.passable() || b.rise[0] > 1.5 || b.rise[1] > 1.5)
-                std::printf("  seed %llu bridge %zu (%.0f, %.0f): ends %.2f / %.2f above the ground, foot %d%d rider %d%d engine %d%d\n", static_cast<unsigned long long>(seed), i, b.pos.x.toDouble(),
-                            b.pos.y.toDouble(), b.rise[0], b.rise[1], b.walks[0][0], b.walks[0][1], b.walks[1][0], b.walks[1][1], b.walks[2][0], b.walks[2][1]);
+            if (c.crossings()[i].bridged()) {
+                const audit::BridgeReport b = audit::auditBridge(c, i, 96);
+                ++bridges;
+                if (!b.passable() || b.rise[0] > 1.5 || b.rise[1] > 1.5 || b.waterEnds > 0)
+                    std::printf("  seed %llu bridge %zu (%.0f, %.0f): ends %.2f / %.2f above the ground, %g ends in water, foot %d%d rider %d%d engine %d%d\n", static_cast<unsigned long long>(seed), i, b.pos.x.toDouble(),
+                                b.pos.y.toDouble(), b.rise[0], b.rise[1], b.waterEnds, b.walks[0][0], b.walks[0][1], b.walks[1][0], b.walks[1][1], b.walks[2][0], b.walks[2][1]);
+                CHECK(b.passable());
+                CHECK(b.rise[0] <= 1.5 && b.rise[1] <= 1.5);
+                CHECK(b.waterEnds == 0);
+            } else {
+                const audit::FordReport f = audit::auditFord(c, i);
+                if (!f.onRoad) continue;
+                ++fords;
+                if (!f.passable()) std::printf("  seed %llu ford %zu (%.0f, %.0f): foot %d%d rider %d%d engine %d%d\n", static_cast<unsigned long long>(seed), i, f.pos.x.toDouble(), f.pos.y.toDouble(), f.walks[0][0],
+                                               f.walks[0][1], f.walks[1][0], f.walks[1][1], f.walks[2][0], f.walks[2][1]);
+                CHECK(f.passable());
+            }
         }
     }
-    std::printf("  %d of %d bridges walked across; %d deck ends more than a step above the ground; %d ends in water\n", passable, total, stepUp, wet);
-    CHECK(total >= 20);
-    CHECK(stepUp == 0);
-    CHECK(wet <= 6);
-    CHECK(passable * 100 >= total * 65);  // (see docs/TERRAIN_AUDIT.md for what keeps the rest from being walked)
+    std::printf("  %d bridges and %d fords walked across by a man, a rider and an engine, each way\n", bridges, fords);
+    CHECK(bridges >= 20);
+    CHECK(fords >= 20);
 }

@@ -144,10 +144,10 @@ TEST(a_stack_sails_to_a_far_coast_faster_than_it_walks) {
 
 TEST(the_computer_takes_to_the_boats) {
     Campaign c(continent(), 7);
-    runDays(c, 40);  // (day 25 before gates swung and garrisons kept them: the computer's war went another way, and its first voyage came on day 35)
+    runDays(c, 46);  // (day 25 before gates swung and garrisons kept them: the computer's war went another way, and its first voyage came on day 35; day 41 since the roads were widened by their traffic and the bridges laid to the ground)
     std::set<uint8_t> sailors;
     for (const Campaign::Boat& b : c.boats()) sailors.insert(b.owner);
-    std::printf("  day 40: %zu boats, %d voyages, %zu sides afloat\n", c.boats().size(), c.voyages(), sailors.size());
+    std::printf("  day 46: %zu boats, %d voyages, %zu sides afloat\n", c.boats().size(), c.voyages(), sailors.size());
     CHECK(!c.boats().empty());
     CHECK(c.voyages() > 0);
     // Every boat lies in a port, rides at anchor on navigable water, or carries a stack.
@@ -176,7 +176,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0x30dec7e036aeba30;  // (was 0x1cf280b530b703f8 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x97cca409dfa1645e before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes; 0x2b2dae8e767173ae before the men snapped to the millimetre where a blocked slot moved them, and the glade round ruins; was 0x61b877ad55c6bf95 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x0ab45466173fa4a6 before every gate's fields were hashed always and the keepers met and recalled men; was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
+    constexpr uint64_t kGolden = 0xd02820a3fdabafa0;  // (was 0x1cf280b530b703f8 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x97cca409dfa1645e before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes; 0x2b2dae8e767173ae before the men snapped to the millimetre where a blocked slot moved them, and the glade round ruins; was 0x61b877ad55c6bf95 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x0ab45466173fa4a6 before every gate's fields were hashed always and the keepers met and recalled men; was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

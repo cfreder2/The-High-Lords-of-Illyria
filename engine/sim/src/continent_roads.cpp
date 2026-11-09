@@ -597,6 +597,79 @@ void Continent::layApproaches() {
                                         return false;
                                     }),
                      crossings_.end());
+    // Every road bridge carries a road: one the road no longer passes (the design's, set before the roads were drawn from the
+    // towns and meandered) moves to where the nearest road is in the water, and is spanned afresh; one with no road beyond
+    // both its ends (a stub trimmed, a road that fords the creek) is no bridge.
+    {
+        const auto roadNear = [&](const Vec3& p, Fixed reach, size_t& road, size_t& seg, Fixed& t) {
+            Fixed best = reach;
+            bool found = false;
+            for (size_t ri = 0; ri < roads_.size(); ++ri) {
+                size_t sg = 0;
+                Fixed u;
+                const Fixed d = polylineDist(roads_[ri].points, p.x, p.y, reach, sg, u);
+                if (d < best) best = d, road = ri, seg = sg, t = u, found = true;
+            }
+            return found;
+        };
+        std::vector<Crossing> kept;
+        for (Crossing cr : crossings_) {
+            if (cr.kind == Crossing::Kind::Ford) {  // (one in deep water that no road crosses: a bridge that was too wide to span, over a lake)
+                size_t r0 = 0, s0 = 0;
+                Fixed t0;
+                if (groundAt(cr.pos.x, cr.pos.y) == Ground::DeepWater && !roadNear(cr.pos, m(30), r0, s0, t0)) continue;
+            }
+            if (cr.kind != Crossing::Kind::Bridge) {
+                kept.push_back(cr);
+                continue;
+            }
+            size_t ri = 0, sg = 0;
+            Fixed t;
+            if (!roadNear(cr.pos, m(6), ri, sg, t)) {
+                // The nearest road point in water within 220 m.
+                bool found = false;
+                Fixed best = m(220);
+                Vec3 at, dir;
+                for (const Polyline& rd : roads_)
+                    for (size_t i = 0; i + 1 < rd.points.size(); ++i) {
+                        const Vec3 p = (rd.points[i] + rd.points[i + 1]) * r(1, 2);
+                        const Fixed d = (p - cr.pos).flat().length();
+                        Fixed surface;
+                        if (d < best && waterSurfaceOf(sample(p.x, p.y), surface)) {
+                            best = d;
+                            at = p;
+                            dir = unitFlat(rd.points[i + 1] - rd.points[i]);
+                            found = true;
+                        }
+                    }
+                if (!found) continue;  // (water no road crosses: a bridge over it would carry nothing, and stand in a lake)
+                cr.pos = {at.x, at.y, Fixed::zero()};
+                cr.dir = dir;
+                cr.rampA = cr.rampB = cr.endA = cr.endB = Fixed::zero();
+                spanCrossing(cr);
+            }
+            kept.push_back(cr);
+        }
+        crossings_ = std::move(kept);
+    }
+    // A bridge with no road beyond one of its ends (a stub trimmed, a road that fords the creek) is no bridge (the road is within 30 m of
+    // the point 25 m past the end: the pull onto the axis brings it on); the design's named ones stay.
+    crossings_.erase(std::remove_if(crossings_.begin(), crossings_.end(),
+                                    [&](const Crossing& cr) {
+                                        if (cr.kind != Crossing::Kind::Bridge || !cr.name.empty()) return false;
+                                        for (int side = 0; side < 2; ++side) {
+                                            const Vec3 beyond = cr.pos + cr.dir * (side ? -cr.reachBehind() - m(25) : cr.reachAhead() + m(25));
+                                            bool road = false;
+                                            for (const Polyline& rd : roads_) {
+                                                size_t sg = 0;
+                                                Fixed u;
+                                                road = road || polylineDist(rd.points, beyond.x, beyond.y, m(12), sg, u) < m(12);
+                                            }
+                                            if (!road) return true;
+                                        }
+                                        return false;
+                                    }),
+                     crossings_.end());
     shapeRoads(gateRoad);
     bucketRoads();
 }
@@ -810,7 +883,7 @@ void Continent::shapeRoads(const std::vector<size_t>& gateRoad) {
         for (size_t i = 0; i < n; ++i) {
             pinned[i] = junction[base[ri] + i] || arcs[i] < m(30) || arcs[n - 1] - arcs[i] < m(30);
             for (const Crossing& c : crossings_)
-                if ((road.points[i] - c.pos).flat().length() < c.halfSpan + m(14)) pinned[i] = 1;
+                if ((road.points[i] - c.pos).flat().length() < max(c.reachBehind(), c.reachAhead()) + m(80)) pinned[i] = 1;
             for (const City& city : cities_)
                 if ((road.points[i] - city.pos).flat().length() < city.radius + m(24)) pinned[i] = 1;
         }
@@ -875,19 +948,82 @@ void Continent::shapeRoads(const std::vector<size_t>& gateRoad) {
             if (shift != Fixed::zero()) road.points[k] = road.points[k] + normal[k] * shift;
         }
     }
-    // The road runs onto each bridge along its axis, centred on the deck and the ramps: its points over them are drawn onto the
-    // axis, the pull fading out over 20 m beyond the ramps' ends.
+    // The road runs onto each bridge along its axis, centred on the deck and the ramps, and straight on it for kApproach metres
+    // before each end (so the way on is a straight line along the deck's width, not a turn at its foot): the road's points over
+    // the span and that far out are drawn onto the axis, the pull fading out over as far again. Only the road that crosses it
+    // (one with a point within 6 m of the axis over the span); a point the pull would put in water is left where it was.
+    constexpr int64_t kApproach = 32;
+    // The road ends that lie on another road (a junction), to put back on it once the pull has moved either.
+    struct Attach {
+        size_t road;
+        int side;  // 0 the first point, 1 the last
+        size_t onto;
+    };
+    std::vector<Attach> attached;
+    for (size_t ri = 0; ri < roadCount; ++ri) {
+        if (roads_[ri].points.size() < 8) continue;
+        bool atGate = false;  // (a gate road's first point stays at its gate)
+        for (size_t gr : gateRoad) atGate = atGate || gr == ri;
+        for (int side = 0; side < 2; ++side) {
+            if (side == 0 && atGate) continue;
+            const Vec3 end = side ? roads_[ri].points.back() : roads_[ri].points.front();
+            for (size_t oi = 0; oi < roadCount; ++oi) {
+                size_t sg = 0;
+                Fixed u;
+                if (oi != ri && polylineDist(roads_[oi].points, end.x, end.y, m(4), sg, u) < m(4)) {
+                    attached.push_back({ri, side, oi});
+                    break;
+                }
+            }
+        }
+    }
     for (const Crossing& c : crossings_) {
         if (c.kind != Crossing::Kind::Bridge) continue;
         const Vec3 across{-c.dir.y, c.dir.x, Fixed::zero()};
-        for (Polyline& road : roads_)
-            for (Vec3& p : road.points) {
+        for (Polyline& road : roads_) {
+            bool over = false;
+            for (const Vec3& p : road.points) {
                 const Fixed along = (p - c.pos).flat().dot(c.dir), side = (p - c.pos).flat().dot(across);
-                if (abs(side) > m(30) || along < -c.reachBehind() - m(20) || along > c.reachAhead() + m(20)) continue;
-                const Fixed outside = max(max(-c.reachBehind() - along, along - c.reachAhead()), Fixed::zero());
-                const Fixed pull = Fixed::one() - noise::smoothstep(Fixed::zero(), m(20), outside);
-                p = p - across * (side * pull);
+                over = over || (along > -c.reachBehind() && along < c.reachAhead() && abs(side) < m(6));
             }
+            if (!over) continue;
+            std::vector<std::pair<Vec3, Vec3>> moves;  // where a point was, and where it went
+            // A road laid from a town's gate stays at the gate: the pull fades in over its first 40 m.
+            bool fromGate = false;
+            for (size_t gr : gateRoad) fromGate = fromGate || (gr != SIZE_MAX && &roads_[gr] == &road);
+            Fixed arcFromStart;
+            Vec3 previous = road.points.front();
+            for (Vec3& p : road.points) {
+                arcFromStart += (p - previous).flat().length();
+                previous = p;
+                const Fixed along = (p - c.pos).flat().dot(c.dir), side = (p - c.pos).flat().dot(across);
+                if (abs(side) > m(60) || along < -c.reachBehind() - m(2 * kApproach) || along > c.reachAhead() + m(2 * kApproach)) continue;
+                const Fixed outside = max(max(-c.reachBehind() - along, along - c.reachAhead()) - m(kApproach), Fixed::zero());
+                Fixed pull = Fixed::one() - noise::smoothstep(Fixed::zero(), m(kApproach), outside);
+                if (fromGate) pull = pull * noise::smoothstep(Fixed::zero(), m(40), arcFromStart);
+                const Vec3 moved = p - across * (side * pull);
+                Fixed surface, deck;
+                if (waterSurfaceOf(sample(moved.x, moved.y), surface) && !onBridge(moved.x, moved.y, deck)) continue;
+                moves.push_back({p, moved});
+                p = moved;
+            }
+        }
+    }
+    // Each junction end back on the road it joined, the road's last 6 points following by less and less.
+    for (const Attach& a : attached) {
+        Polyline& road = roads_[a.road];
+        const size_t n = road.points.size();
+        Vec3& end = a.side ? road.points.back() : road.points.front();
+        size_t sg = 0;
+        Fixed u;
+        if (polylineDist(roads_[a.onto].points, end.x, end.y, m(60), sg, u) >= m(60)) continue;
+        const std::vector<Vec3>& on = roads_[a.onto].points;
+        const Vec3 target = on[sg] + (on[sg + 1] - on[sg]) * u;
+        const Vec3 delta = target - end;
+        for (size_t k = 0; k < 7; ++k) {
+            Vec3& q = a.side ? road.points[n - 1 - k] : road.points[k];
+            q = q + delta * Fixed::fromRatio(static_cast<int64_t>(7 - k), 7);
+        }
     }
     // The bridges carry the road's width.
     for (Crossing& c : crossings_) {
