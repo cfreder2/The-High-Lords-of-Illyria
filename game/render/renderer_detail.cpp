@@ -239,6 +239,7 @@ void Renderer::updateDetailScenery(const Battle& battle, double now, bool instan
     for (size_t v = 0; v < detailOaks_.size(); ++v) uploadMeshInstances(detailOaks_[v], lists.trees[detailPines_.size() + v]);
     for (size_t v = 0; v < detailBushes_.size(); ++v) uploadMeshInstances(detailBushes_[v], lists.bush[v]);
     for (size_t v = 0; v < detailRocks_.size(); ++v) uploadMeshInstances(detailRocks_[v], lists.rock[v]);
+    uploadDynamic(detailRockRings_, lists.rings);
     uploadMeshInstances(detailLogs_, lists.logs);
     uploadMeshInstances(detailStumps_, lists.stumps);
 }

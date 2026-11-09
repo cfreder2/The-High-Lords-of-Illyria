@@ -76,6 +76,8 @@ public:
 
     // The ground height at battle-local (x, y), if its chunk is finished.
     bool heightAt(float x, float y, float& z, bool unchecked = false) const;
+    // The water's surface over a point (sim::Region::kDryRaw where dry): as Region::waterSurfaceAt.
+    sim::Fixed waterSurfaceAt(float x, float y) const;
     // A slot's trees, undergrowth, rocks and logs (battle-local), once finished.
     const std::vector<sim::Obstacle>& scenery(int s) const { return scenery_[static_cast<size_t>(s)]; }
     // Road and tree-shade texels written beyond a chunk's own.

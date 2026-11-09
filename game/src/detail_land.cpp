@@ -222,6 +222,15 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
         if (cx + reach < lx0 || cy + reach < ly0 || cx - reach > lx0 + kChunkSize || cy - reach > ly0 + kChunkSize) continue;
         keeps.push_back({cx, cy, reach});
     }
+    // Where no rock that breaks the surface stands (Continent::waterKeepouts), in the land's coordinates, for those near the chunk.
+    std::vector<sim::Vec3> keepouts;
+    for (const sim::Vec3& k : c.waterKeepouts()) {
+        const sim::Vec3 at{k.x - ox_, k.y - oy_, k.z};
+        const float reach = static_cast<float>(k.z.toDouble());
+        const float kx = static_cast<float>(at.x.toDouble()), ky = static_cast<float>(at.y.toDouble());
+        if (kx + reach < lx0 || ky + reach < ly0 || kx - reach > lx0 + kChunkSize || ky - reach > ly0 + kChunkSize) continue;
+        keepouts.push_back(at);
+    }
     const auto groundOf = [&](float x, float y) {
         const int ix = static_cast<int>(std::floor(x / kCell)), iy = static_cast<int>(std::floor(y / kCell));
         return static_cast<sim::Ground>(ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] / 16);
@@ -233,21 +242,36 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
             const Fixed lx = pt.x - ox_, ly = pt.y - oy_;
             const float x = static_cast<float>(lx.toDouble()), y = static_cast<float>(ly.toDouble());
             sim::Ground g = groundOf(x, y);
-            if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater || g == sim::Ground::Bridge) continue;
+            if (g == sim::Ground::Bridge) continue;
+            const bool wet = g == sim::Ground::Shallows || g == sim::Ground::DeepWater;
+            sim::Obstacle o;
+            float z = 0;
+            heightAt(x, y, z, true);
+            const Fixed zf = Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw)));
+            if (wet) {
+                // A rock in the water (Region::waterRockAt), by the same rule as Region::scatterScenery.
+                const Fixed surface = waterSurfaceAt(x, y);
+                if (surface.raw == sim::Region::kDryRaw) continue;
+                const auto wetAt = [&](int dx, int dy) {
+                    const sim::Ground w = groundOf(x + static_cast<float>(dx), y + static_cast<float>(dy));
+                    return w == sim::Ground::Shallows || w == sim::Ground::DeepWater || w == sim::Ground::Bridge;
+                };
+                if (!sim::Region::waterRockAt(scenerySeed_, pt, surface - zf, sim::Region::shoreBandOf(wetAt), o)) continue;
+                if (o.breaksSurface() && sim::Region::keepsRockOut(keepouts, lx, ly)) continue;
+            }
             if (g == sim::Ground::Road) g = sim::Ground::Plains;  // (the cell's middle is on a road, this point may not be: the road's rule decides, below)
             bool clear = true;
             for (const Keep& k : keeps) clear = clear && std::hypot(x - k.x, y - k.y) >= k.reach;
             for (const sim::Deck& d : decks_) clear = clear && !sim::Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth}.contains(lx, ly);
             if (!clear) continue;
-            bool byWater = false;
-            for (int k = 0; k < 4 && !byWater; ++k) {
-                const sim::Ground w = groundOf(x + (k == 0 ? 4.0f : k == 1 ? -4.0f : 0.0f), y + (k == 2 ? 4.0f : k == 3 ? -4.0f : 0.0f));
-                byWater = w == sim::Ground::Shallows || w == sim::Ground::DeepWater;
+            if (!wet) {
+                bool byWater = false;
+                for (int k = 0; k < 4 && !byWater; ++k) {
+                    const sim::Ground w = groundOf(x + (k == 0 ? 4.0f : k == 1 ? -4.0f : 0.0f), y + (k == 2 ? 4.0f : k == 3 ? -4.0f : 0.0f));
+                    byWater = w == sim::Ground::Shallows || w == sim::Ground::DeepWater;
+                }
+                if (!sim::Region::sceneryAt(scenerySeed_, pt, g, byWater, zf, o)) continue;
             }
-            float z = 0;
-            heightAt(x, y, z, true);
-            sim::Obstacle o;
-            if (!sim::Region::sceneryAt(scenerySeed_, pt, g, byWater, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw))), o)) continue;
             bool onRoad = false;  // Region::roadClears, along every road segment near
             for (const Seg& sg : roads) {
                 const float abx = sg.bx - sg.ax, aby = sg.by - sg.ay, len2 = abx * abx + aby * aby;
@@ -259,7 +283,7 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
                     onRoad = true;
             }
             if (onRoad) continue;
-            o.pos = {lx, ly, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw)))};
+            o.pos = {lx, ly, zf};
             out.push_back(o);
         }
     }
@@ -492,6 +516,17 @@ void DetailLand::finishAll() {
         const std::vector<int> d = work(1e9);
         if (d.empty()) return;
     }
+}
+
+Fixed DetailLand::waterSurfaceAt(float x, float y) const {
+    // As Region::waterSurfaceAt: the highest water of the four samples about the point.
+    const int ix = static_cast<int>(std::floor(x / kCell)), iy = static_cast<int>(std::floor(y / kCell));
+    Fixed surface = Fixed::fromRaw(sim::Region::kDryRaw);
+    for (int k = 0; k < 4; ++k) {
+        const Fixed w = raw(ix + (k & 1), iy + (k >> 1)).water;
+        if (w.raw != sim::Region::kDryRaw && (surface.raw == sim::Region::kDryRaw || w > surface)) surface = w;
+    }
+    return surface;
 }
 
 bool DetailLand::heightAt(float x, float y, float& z, bool unchecked) const {

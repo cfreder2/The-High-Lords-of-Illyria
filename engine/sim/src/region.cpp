@@ -652,8 +652,66 @@ bool Region::sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWa
     }
 }
 
+bool Region::waterRockAt(uint64_t seed, const SceneryPoint& p, Fixed depth, int shore, Obstacle& o) {
+    // Few in the open, more along shores and about isles and bends (the shore band), in clusters where a patch noise runs high.
+    const auto frac = [](Fixed v) { return Fixed::fromRaw(v.raw & (Fixed::kOneRaw - 1)); };
+    const Fixed d = Fixed::fromRatio((depth * 10).floorToInt(), 10);  // (a tenth of a metre: the two paths' beds differ by less)
+    if (d < r(1, 10) || d > r(11, 5)) return false;
+    Fixed rate = shore == kShoreNear ? r(12, 100) : shore == kShoreMid ? r(5, 100) : r(3, 250);
+    const Fixed field = noise::value(seed ^ 0x5EA5, p.x, p.y, 36);
+    rate = field > r(5, 8) ? rate * 3 : field > r(9, 20) ? rate : rate / 5;
+    if (p.roll >= rate) return false;
+    const Fixed w = p.roll / rate;  // (uniform again, the rest of the choices)
+    const bool boulder = w < r(14, 100);
+    const Fixed size = p.size, size2 = frac(p.size * 97);
+    const bool sunk = frac(p.size * 31) < r(2, 5);
+    Fixed height;
+    if (!sunk) {
+        // Breaks the surface: a rock by the shallows, a boulder to two metres of water.
+        if (!boulder && d > r(4, 5)) return false;
+        const Fixed fresh = boulder ? r(7, 20) + size2 * r(11, 10) : r(1, 8) + size2 / 2;
+        height = (d + fresh) / r(17, 20);
+        // Not under a boat: the campaign's boats sit on the 44 m cells' middles (Campaign::centre).
+        const Fixed cx = Fixed::fromInt((p.x.floorToInt() / 44) * 44 + 22) - p.x, cy = Fixed::fromInt((p.y.floorToInt() / 44) * 44 + 22) - p.y;
+        if (cx * cx + cy * cy < m(100)) return false;
+    } else {
+        // Just under it: its top a few decimetres down, seen through the water as a dark shape.
+        if (d < r(2, 5) || d > r(8, 5)) return false;
+        const Fixed top = d - (r(1, 10) + size2 * r(9, 20));
+        if (top < r(3, 20)) return false;
+        height = top / r(17, 20);
+    }
+    o.kind = boulder ? Obstacle::Kind::Boulder : Obstacle::Kind::Rock;
+    o.radius = max(boulder ? r(11, 10) + size * r(6, 5) : r(7, 20) + size / 2, height / 2);
+    o.height = height;
+    o.halfX = d;
+    o.variant = sunk ? Obstacle::kSunkenRock : Obstacle::kWaterRock;
+    o.solid = !sunk;
+    return true;
+}
+
+bool Region::keepsRockOut(const std::vector<Vec3>& keepouts, Fixed x, Fixed y) {
+    for (const Vec3& k : keepouts) {
+        if (abs(x - k.x) >= k.z || abs(y - k.y) >= k.z) continue;
+        if ((x - k.x) * (x - k.x) + (y - k.y) * (y - k.y) < k.z * k.z) return true;
+    }
+    return false;
+}
+
+Fixed Region::waterSurfaceAt(Fixed x, Fixed y) const {
+    const int32_t n = terrain_.cells() + 1;
+    const Fixed cs = terrain_.cellSize();
+    const int64_t ix = std::clamp<int64_t>((x / cs).floorToInt(), 0, n - 2), iy = std::clamp<int64_t>((y / cs).floorToInt(), 0, n - 2);
+    Fixed surface = Fixed::fromRaw(kDryRaw);
+    for (int64_t k = 0; k < 4; ++k) {
+        const Fixed w = water_[static_cast<size_t>((iy + k / 2) * n + ix + k % 2)];
+        if (w.raw != kDryRaw && (surface.raw == kDryRaw || w > surface)) surface = w;
+    }
+    return surface;
+}
+
 void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius,
-                            const std::vector<Vec3>& clearings) {
+                            const std::vector<Vec3>& clearings, const std::vector<Vec3>* waterKeepouts) {
     // Trees, undergrowth and rocks on the continent's jittered 5 m grid.
     const int64_t extent = terrain_.size().floorToInt();
     const int64_t ox = origin_.x.floorToInt(), oy = origin_.y.floorToInt();
@@ -667,7 +725,22 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             const Fixed x = pt.x - origin_.x, y = pt.y - origin_.y;
             if (x < Fixed::zero() || y < Fixed::zero() || x >= m(extent) || y >= m(extent)) continue;
             Ground g = groundAt(x, y);
-            if (g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
+            if (g == Ground::Bridge) continue;
+            const bool wet = g == Ground::Shallows || g == Ground::DeepWater;
+            Obstacle o;
+            const Fixed z = terrain_.heightAt(x, y);
+            if (wet) {
+                if (!waterKeepouts) continue;  // (the Ford's own river: a set piece, left clear)
+                // A rock in the water (waterRockAt): the shore band from the ground about it, wet where it is water or a deck.
+                const Fixed surface = waterSurfaceAt(x, y);
+                if (surface.raw == kDryRaw) continue;
+                const auto wetAt = [&](int dx, int dy) {
+                    const Ground w = groundAt(x + m(dx), y + m(dy));
+                    return w == Ground::Shallows || w == Ground::DeepWater || w == Ground::Bridge;
+                };
+                if (!waterRockAt(seed, pt, surface - z, shoreBandOf(wetAt), o)) continue;
+                if (o.breaksSurface() && keepsRockOut(*waterKeepouts, x, y)) continue;
+            }
             if (g == Ground::Road) g = Ground::Plains;  // (the cell's middle is on a road; this point may not be: roadClears decides)
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
             bool cleared = false;
@@ -699,14 +772,14 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
                 nearBuilding = flatDist(x, y, at) < m(8);
             }
             if (nearBuilding) continue;
-            bool byWater = false;
-            for (int k = 0; k < 4 && !byWater; ++k) {
-                const Ground w = groundAt(x + m(k == 0 ? 4 : k == 1 ? -4 : 0), y + m(k == 2 ? 4 : k == 3 ? -4 : 0));
-                byWater = w == Ground::Shallows || w == Ground::DeepWater;
+            if (!wet) {
+                bool byWater = false;
+                for (int k = 0; k < 4 && !byWater; ++k) {
+                    const Ground w = groundAt(x + m(k == 0 ? 4 : k == 1 ? -4 : 0), y + m(k == 2 ? 4 : k == 3 ? -4 : 0));
+                    byWater = w == Ground::Shallows || w == Ground::DeepWater;
+                }
+                if (!sceneryAt(seed, pt, g, byWater, z, o)) continue;
             }
-            Obstacle o;
-            const Fixed z = terrain_.heightAt(x, y);
-            if (!sceneryAt(seed, pt, g, byWater, z, o)) continue;
             bool onRoad = false;
             for (const Polyline& rd : roads_) {
                 for (size_t i = 0; i + 1 < rd.points.size() && !onRoad; ++i) {
@@ -730,7 +803,8 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
 }
 
 bool Region::roadClears(const Obstacle& o, Fixed centreDist, Fixed halfWidth) {
-    if (o.kind == Obstacle::Kind::Rock || o.kind == Obstacle::Kind::Boulder) return centreDist < halfWidth + o.radius + r(1, 5);
+    // (A rock in the water keeps three metres more off a road: where it wades, a ford's whole width is a clear way.)
+    if (o.kind == Obstacle::Kind::Rock || o.kind == Obstacle::Kind::Boulder) return centreDist < halfWidth + o.radius + (o.inWater() ? m(3) : r(1, 5));
     return centreDist < max(r(9, 2), halfWidth + r(5, 2));
 }
 
@@ -1282,7 +1356,12 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         rg.obstacles_.push_back(altar);
     }
     // The same trees wherever the window is cut (see sceneryPoint).
-    rg.scatterScenery(sceneryContinentSeed(c.seed()), rg.obstacles_.size(), shrine, m(15), clearings);
+    std::vector<Vec3> keepouts;  // where no rock that breaks the surface stands (in the window's coordinates)
+    for (const Vec3& k : c.waterKeepouts()) {
+        const Vec3 at = toLocal(k);
+        if (at.x > -k.z && at.y > -k.z && at.x < cell * cells + k.z && at.y < cell * cells + k.z) keepouts.push_back({at.x, at.y, k.z});
+    }
+    rg.scatterScenery(sceneryContinentSeed(c.seed()), rg.obstacles_.size(), shrine, m(15), clearings, &keepouts);
     return rg;
 }
 

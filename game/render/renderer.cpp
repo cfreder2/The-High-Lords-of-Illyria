@@ -643,6 +643,11 @@ float Renderer::pushScenery(const sim::Obstacle& o, uint32_t id, SceneryLists& o
         case sim::Obstacle::Kind::Boulder: {
             const size_t v = pick(hash01(id * 2246822519u + 4), {0.4f, 0.2f, 0.2f, 0.2f});
             pushInstance(out.rock[v], pos - V3{0, 0, h * 0.15f}, q, {r, r * 0.9f, h}, {tintVar, tintVar, tintVar * 0.95f});
+            if (o.breaksSurface()) {
+                // A ring of foam on the water round it: where the surface is, a metre along x (a quad's direction), size r.
+                const V3 at = pos + V3{0, 0, static_cast<float>(o.halfX.toDouble())};
+                out.rings.insert(out.rings.end(), {at.x, at.y, at.z, at.x + 1, at.y, at.z, r * 1.15f, 2, 0, 1});
+            }
             return r * 1.1f;
         }
         case sim::Obstacle::Kind::Log:
@@ -706,6 +711,7 @@ void Renderer::uploadScenery(const Battle& battle) {
     for (size_t v = 0; v < oaks_.size(); ++v) uploadMeshInstances(oaks_[v], natural.trees[pines_.size() + v]);
     for (size_t v = 0; v < bushes_.size(); ++v) uploadMeshInstances(bushes_[v], natural.bush[v]);
     for (size_t v = 0; v < rocks_.size(); ++v) uploadMeshInstances(rocks_[v], natural.rock[v]);
+    uploadDynamic(rockRings_, natural.rings);
     uploadMeshInstances(stumps_, natural.stumps);
     uploadMeshInstances(houses_, house);
     uploadMeshInstances(pillars_, pillar);
@@ -1485,6 +1491,8 @@ bool Renderer::init(Battle& battle) {
     makeBatch(marks_, {3, 4, 4}, Battle::kMaxGroundMarks);
     makeBatch(ribbons_, {3, 3, 2}, 0);
     makeBatch(waterfalls_, {3, 3, 4}, 0);
+    makeBatch(rockRings_, {3, 3, 4}, 0);
+    makeBatch(detailRockRings_, {3, 3, 4}, 0);
     makeBatch(remainArrows_, {3, 3, 2}, Battle::kMaxRemains);
     makeBatch(sceneryShadows_, {3, 4, 4}, 0);
     const auto makeAll = [&](std::vector<MeshBatch>& out, const std::vector<Mesh>& meshes, float sway) {
@@ -2580,13 +2588,16 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glBindVertexArray(ribbons_.vao);
         drawArrays(GL_TRIANGLE_STRIP, 0, 4, ribbons_.count);
     }
-    if (waterfalls_.count > 0 && farDetail) {
+    if ((waterfalls_.count > 0 || rockRings_.count > 0 || detailRockRings_.count > 0) && farDetail) {
         setCommon(falls_, camera, timeSeconds, gameSeconds);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
-        glBindVertexArray(waterfalls_.vao);
-        drawArrays(GL_TRIANGLE_STRIP, 0, 4, waterfalls_.count);
+        for (const Batch* b : {&waterfalls_, &rockRings_, &detailRockRings_}) {
+            if (b->count == 0) continue;
+            glBindVertexArray(b->vao);
+            drawArrays(GL_TRIANGLE_STRIP, 0, 4, b->count);
+        }
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
     }

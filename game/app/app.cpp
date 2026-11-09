@@ -133,6 +133,9 @@ struct App {
 };
 
 App* app = nullptr;
+#ifdef ILLYRIA_DEV_HOOKS
+double shaderTimeSkew = 0;  // illyria_set_shader_time
+#endif
 
 void frameCamera() {
     const Battle& b = *app->battle;
@@ -798,7 +801,11 @@ bool frame() {
     placeFlags(static_cast<float>(dtMs / 1000.0));
     const double drawStart = platform::nowMs();
     app->renderer.setScreenFramebuffer(platform::screenFramebuffer());
+#ifdef ILLYRIA_DEV_HOOKS
+    app->renderer.draw(*app->battle, app->camera, now / 1000.0 + shaderTimeSkew);
+#else
     app->renderer.draw(*app->battle, app->camera, now / 1000.0);
+#endif
     app->drawMs = app->drawMs * 0.9 + (platform::nowMs() - drawStart) * 0.1;
     return true;
 }
@@ -1689,6 +1696,11 @@ ILLYRIA_API int illyria_view_death(int kind, int nth, float distance) {
     }
     return 0;
 }
+
+#ifdef ILLYRIA_DEV_HOOKS
+// Test hook: moves the renderer's clock (the water's animation) on, to take pictures of it some seconds apart.
+ILLYRIA_API void illyria_set_shader_time(double seconds) { shaderTimeSkew = seconds; }
+#endif
 
 // Test hook: build the close-up land around the camera at once (screenshots).
 ILLYRIA_API void illyria_finish_detail() {

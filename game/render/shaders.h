@@ -127,6 +127,66 @@ vec3 inlandWater(float depth, vec2 p) {
     vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
     return mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
 }
+// The energy of the waves on a shore, 0..1, from the surface level of the water (the sea is at 0 and rivers reach it at their
+// mouths; a lake stands higher) and how fast it flows (rivers run, lakes and the sea do not). The sea: the full swell; a lake: a
+// gentle lap; a river: none, and a river's mouth dies away up the estuary as the current takes over. The one rule the battlefield's
+// land and water, the close-up land and the far land all use (the same classification as the far land's inland/sea split, 0.8 m).
+float shoreEnergy(float surface, float flowSpeed) {
+    float sea = 1.0 - smoothstep(0.5, 1.1, surface);
+    return mix(0.13, 1.0, sea) * (1.0 - smoothstep(0.04, 0.3, flowSpeed));
+}
+// One wave of the lapping at a shore (shoreSwash adds a second behind it). `u`: the height of the ground over the water (below it
+// when negative), `grad`: how steep the ground is (rise over run), `tt`: the wave's time in periods (its whole part is which wave,
+// so each wave has its own size), `scale`: its share of the full size. Returns (foam, wet, sheet).
+vec3 swashWave(vec2 p, float u, float grad, float e, float px, float tt, float scale, float set) {
+    float k = floor(tt), tau = fract(tt);
+    float rise = 0.3;
+    float reach = mix(0.1, 1.0, e);  // how far out (metres of water over the bed) the wave is first seen
+    // This wave's run-up (metres of height up the beach: a sea wave 1 to 3 m along a gentle beach, a lake's a few cm to 30 cm),
+    // its own size, and the last wave's.
+    float a0 = mix(0.03, 0.2, e);
+    float amp = a0 * scale * (0.4 + 0.9 * valueNoise2(p / 60.0 + vec2(k * 7.31, k * 3.17))) * (0.55 + 0.9 * set);
+    float ampPrev = a0 * scale * (0.4 + 0.9 * valueNoise2(p / 60.0 + vec2((k - 1.0) * 7.31, (k - 1.0) * 3.17))) * (0.55 + 0.9 * set);
+    float front = tau < rise ? -reach + (amp + reach) * sin(tau / rise * 1.5708) : amp * cos((tau - rise) / (1.0 - rise) * 1.5708);
+    float fade = smoothstep(0.0, 0.1, tau) * (1.0 - smoothstep(0.88, 1.0, tau));
+    // The foam: a thin bright line at the front, lacy foam behind it that thins as the water runs back.
+    float wm = mix(0.1, 0.4, e) + px * 1.5;  // metres across
+    float wv = wm * clamp(grad, 0.03, 1.0);
+    float d = front - u;
+    float trail = tau < rise ? 1.0 : 1.0 - clamp((tau - rise) / 0.55, 0.0, 1.0);
+    float lace = 0.55 + 0.45 * valueNoise2(p * 2.6 + vec2(k * 3.7, -uTime * 0.3));
+    float edge = smoothstep(0.0, wv * 0.25, d) * (1.0 - smoothstep(wv * 0.25, wv * 1.1, d));
+    float behind = smoothstep(0.0, wv * 0.5, d) * (1.0 - smoothstep(wv * 0.5, wv * (2.0 + 6.0 * e), d)) * lace * trail * 0.6;
+    float foam = (edge + behind) * fade * mix(0.55, 1.0, e);
+    // The water lying on the beach behind the front, and the sand it leaves dark, drying over some seconds.
+    float over = u > 0.0 ? smoothstep(0.0, wv * 0.4, d) * fade : 0.0;
+    float wet = over;
+    if (u > 0.0) {
+        float dry = mix(3.0, 8.0, e);
+        float y = u < amp ? acos(clamp(u / max(amp, 1e-4), 0.0, 1.0)) * 0.63662 : 2.0;
+        float pass = rise + (1.0 - rise) * y;
+        if (tau > rise && tau > pass && y <= 1.0) wet = max(wet, exp(-(tau - pass) * mix(12.0, 7.0, e) / dry * 1.0) );
+        float yp = u < ampPrev ? acos(clamp(u / max(ampPrev, 1e-4), 0.0, 1.0)) * 0.63662 : 2.0;
+        if (yp <= 1.0) wet = max(wet, exp(-(tau + 1.0 - (rise + (1.0 - rise) * yp)) * mix(12.0, 7.0, e) / dry));
+    }
+    return vec3(foam, wet, over);
+}
+// The waves lapping a shore, from the ground height `u` over the water: the water's own, the land's, the close-up land's and the far
+// land's one function. Waves are staggered along the shore by position (they do not pulse in step), their sets swell and ebb over
+// minutes, and a sea shore sometimes has a second wave on the heels of the first. Returns (foam, wet sand, water over the beach).
+vec3 shoreSwash(vec2 p, float u, float grad, float energy, float px) {
+    if (energy < 0.01) return vec3(0.0);
+    float period = mix(14.0, 7.5, energy) * (0.85 + 0.3 * valueNoise2(p / 90.0 + 3.1));
+    float phase = valueNoise2(p / 45.0 + 11.0) * 9.0 + valueNoise2(p / 11.0) * 1.5;
+    float set = 0.5 + 0.5 * sin(uTime * 0.05 + valueNoise2(p / 140.0 + 5.0) * 9.0);
+    float tt = uTime / period + phase;
+    vec3 w = swashWave(p, u, grad, energy, px, tt, 1.0, set);
+    if (energy > 0.55 && hash12(vec2(floor(tt), floor(p.x / 70.0 + p.y / 90.0))) > 0.45) {
+        vec3 w2 = swashWave(p, u, grad, energy, px, tt - 0.3, 0.6, set);
+        w = max(w, w2);
+    }
+    return w;
+}
 // Drifting cloud shadows over the land: 1 in sun, ~0.62 under a cloud.
 float cloudShade(vec2 xy) {
     if (!feature(kFeatAtmosphere)) return 1.0;
@@ -347,6 +407,7 @@ vec3 farGroundColor(int id, float z) {
 }
 uniform sampler2D uCanopy;  // R8: tree crown cover over the battlefield, 2 m texels
 uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
+uniform sampler2D uFlow;      // RG8: downstream direction per terrain sample (0.5 = still)
 
 // Fades a pattern of feature size `size` metres out before it shimmers.
 float detailFade(float size, float px) { return 1.0 - smoothstep(size * 0.35, size * 1.2, px); }
@@ -534,6 +595,18 @@ void main() {
             // Under the water: the bed, fading in over the last few centimetres.
             float under = 1.0 - smoothstep(-0.12, 0.0, above);
             albedo = mix(albedo, mix(vec3(0.40, 0.36, 0.27), vec3(0.30, 0.30, 0.22), valueNoise(p * 0.8)), 0.75 * under * reach);
+            // Waves running up the beach (shoreSwash): a bright foam edge, the water's sheet, the sand it leaves dark.
+            if (above > -0.3 && above < 3.5 && reach > 0.5) {
+                float flowSpeed = length(texelFetch(uFlow, texCell(vec2(ivec2(floor(p / uCellSize + 0.5))), uCells), 0).rg * 2.0 - 1.0);
+                float energy = shoreEnergy(surf, flowSpeed);
+                if (energy > 0.01) {
+                    float grad = sqrt(max(1.0 - n.z * n.z, 0.0)) / max(n.z, 0.2);
+                    vec3 sw = shoreSwash(p, above, grad, energy, px);
+                    albedo = mix(albedo, albedo * vec3(0.56, 0.52, 0.48), sw.y * 0.75);
+                    albedo = mix(albedo, albedo * 0.8 + vec3(0.02, 0.05, 0.06), sw.z * 0.5);
+                    albedo = mix(albedo, vec3(0.94, 0.96, 0.96), sw.x * 0.95);
+                }
+            }
         }
     }
 
@@ -2231,6 +2304,15 @@ void main() {
     c = mix(c, vec3(0.88, 0.91, 0.92), clamp(riffle * 0.7 + edge * 0.35, 0.0, 0.8));
     // Soft edges: no hard cut where the water meets the bank.
     float alpha = mix(0.0, 1.0, smoothstep(-0.02, 0.12, depth)) * clamp(0.55 + depth * 0.3, 0.55, 0.95);
+    // The waves of the shore over the shallows (shoreSwash, as on the land beside them).
+    float energy = shoreEnergy(vWorld.z, speed);
+    if (energy > 0.01 && depth < 1.4) {
+        float gx = groundZ(p + vec2(1.0, 0.0)) - groundZ(p - vec2(1.0, 0.0)), gy = groundZ(p + vec2(0.0, 1.0)) - groundZ(p - vec2(0.0, 1.0));
+        float px = max(fwidth(p.x), fwidth(p.y));
+        float foam = shoreSwash(p, -depth, length(vec2(gx, gy)) * 0.5, energy, px).x;
+        c = mix(c, vec3(0.94, 0.96, 0.96), foam * 0.9);
+        alpha = max(alpha, foam * 0.85);
+    }
     oColor = vec4(mix(c, hazeColor(vWorld), fogFactor(dist)), alpha);
 }
 )";
@@ -2285,6 +2367,9 @@ void main() {
         float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
         vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
         inland = mix(bed, inlandWater(dm, p), clamp(0.55 + dm * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
+        // A lake's gentle lap (a river's mouth is the ribbon's, and rivers have no waves: shoreEnergy's current is not known here, so
+        // only the still water at a shore: the lakes' own, which the coarse land marks by their depth rising from nothing).
+        inland = mix(inland, vec3(0.9, 0.93, 0.94), shoreSwash(p, -dm, 0.1, 0.13 * smoothstep(0.0, 0.08, vKinds.w - 1.0 + 0.04), uPxScale * distance(uEye, vWorld)).x * 0.7);
         n = vec3(0.0, 0.0, 1.0);
         glint = 0.25;
     } else if (feature(kFeatFarDetail) && wetHere) {
@@ -2297,10 +2382,7 @@ void main() {
         n = normalize(vec3(-g, 1.0));
         {
             // The sea: lines of foam roll in over the shallows and break on the sand.
-            float shore = 1.0 - smoothstep(0.0, 0.3, depth);
-            float roll = sin(depth * 55.0 + t * 1.7 + valueNoise2(p / 45.0) * 7.0);
-            float foam = smoothstep(0.55, 0.95, roll) * shore * (0.55 + 0.45 * valueNoise2(p / 3.0 + t * 0.4));
-            foam = max(foam, (1.0 - smoothstep(0.0, 0.05, depth)) * (0.55 + 0.45 * valueNoise2(p / 2.0 + t * 0.8)));
+            float foam = shoreSwash(p, -depth * 12.0, 0.1, 1.0, uPxScale * distance(uEye, vWorld)).x;
             albedo = mix(albedo, vec3(0.93, 0.95, 0.96), foam);
             glint = 1.0 - foam;
         }
@@ -2385,7 +2467,12 @@ void main() {
     vec3 d = iB - iA;
     vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0));
     vec3 world;
-    if (iInfo.y < 0.5) {
+    if (iInfo.y > 1.5) {
+        // A rock's foam: a flat quad on the water round it.
+        world = iA + (side * s + vec3(1.0, 0.0, 0.0) * (t * 2.0 - 1.0)) * iInfo.x * 2.0;
+        world.z += 0.03;
+        vUv = vec2(s * 0.5 + 0.5, t);
+    } else if (iInfo.y < 0.5) {
         world = mix(iA, iB, t) + side * s * iInfo.x * (1.0 + 0.25 * t);
         world.z += 0.35;
         vUv = vec2(s * 0.5 + 0.5, iInfo.z + t * iInfo.w);
@@ -2410,7 +2497,18 @@ void main() {
     float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
     float a;
     vec3 c;
-    if (vKind < 0.5) {
+    if (vKind > 1.5) {
+        // The foam about a rock that breaks the water: a dark wet ring against the stone, white foam out of it, slowly breathing.
+        vec2 q = vUv * 2.0 - 1.0;
+        float r = length(q);
+        float breathe = 0.5 + 0.5 * sin(uTime * 1.3 + vUv.x * 40.0 + vUv.y * 17.0);
+        float churn = valueNoise2(q * 7.0 + uTime * 0.35) * 0.6 + valueNoise2(q * 15.0 - uTime * 0.5) * 0.4;
+        float ring = smoothstep(0.38, 0.5, r) * (1.0 - smoothstep(0.62 + 0.12 * breathe, 1.0, r));
+        float foam = ring * smoothstep(0.25, 0.65, churn + 0.25 * breathe);
+        float dark = (1.0 - smoothstep(0.3, 0.62, r)) * 0.35;
+        c = mix(vec3(0.03, 0.09, 0.11), vec3(0.94, 0.96, 0.96), foam / max(foam + dark, 1e-3));
+        a = max(foam * 0.85, dark);
+    } else if (vKind < 0.5) {
         // Streaks pour down the sheet; it thins to spray at the edges.
         float streak = valueNoise2(vec2(vUv.x * 9.0, vUv.y * 0.6 - uTime * 2.6)) * 0.6 + valueNoise2(vec2(vUv.x * 23.0, vUv.y * 1.7 - uTime * 4.1)) * 0.4;
         c = mix(vec3(0.55, 0.68, 0.74), vec3(0.95, 0.97, 0.98), smoothstep(0.35, 0.75, streak));

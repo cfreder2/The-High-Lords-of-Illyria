@@ -489,7 +489,7 @@ private:
     int cells_ = 0;
     float cellSize_ = 1;
 
-    Batch ribbons_, waterfalls_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
+    Batch ribbons_, waterfalls_, rockRings_, detailRockRings_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
     MeshBatch houses_, pillars_, capsules_, spheres_;
     // Several shapes per kind of scenery (meshes::pineVariants() and so on).
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
@@ -512,6 +512,7 @@ private:
     struct SceneryLists {
         std::vector<std::vector<float>> trees, bush, rock;  // (trees: the pines' pictures, then the oaks')
         std::vector<float> logs, stumps;
+        std::vector<float> rings;  // the foam ringing each rock that breaks the water (the waterfalls' batch, kind 2)
     };
     static uint32_t sceneryId(const Battle& battle, const sim::Obstacle& o);
     static float pushTree(const sim::Obstacle& o, uint32_t id, std::vector<std::vector<float>>& trees);

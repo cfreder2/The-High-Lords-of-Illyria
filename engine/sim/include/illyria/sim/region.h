@@ -29,6 +29,12 @@ struct Obstacle {
     static constexpr uint8_t kTownHouse = 200;
     static constexpr uint8_t kSiteStone = 201;  // a ruin's, temple's or sage's tower's stones (drawn with the site)
     static constexpr uint8_t kAltar = 3;        // houses: a shrine's altar, a low block of stone
+    // Rocks and boulders in the water (Region::waterRockAt): one that breaks the surface (solid; foam rings it) or one just under it
+    // (a dark shape through the water; nothing to bump into). `halfX` is the metres of water over its foot, so the surface is pos.z + halfX.
+    static constexpr uint8_t kWaterRock = 8;
+    static constexpr uint8_t kSunkenRock = 9;
+    bool inWater() const { return (kind == Kind::Rock || kind == Kind::Boulder) && (variant == kWaterRock || variant == kSunkenRock); }
+    bool breaksSurface() const { return inWater() && variant == kWaterRock; }
     bool solid = true;  // bushes are not
     // Standing stone a soldier keeps his drawn breadth from (stoneStandoff),
     // not just his radius: a site's stones, pillars (a pillar's radius is its
@@ -221,6 +227,30 @@ public:
     // kind, radius, height, variant and solidity (not its position).
     static bool sceneryAt(uint64_t seed, const SceneryPoint& p, Ground g, bool byWater, Fixed z, Obstacle& o);
 
+    // Rocks and boulders in lakes, rivers and the sea (docs/TERRAIN_AUDIT.md, "Rocks in the water"): the same grid, a point whose
+    // ground is Shallows or DeepWater. `depth` is the metres of water over the bed there; `shore` how near dry land is (kShoreNear:
+    // within 10 m, kShoreMid: within 26 m, else kShoreOpen; see shoreBandOf). False if nothing stands there; else sets the rock's
+    // kind, radius, height (so that it breaks the surface or lies just under it), variant, solidity and `halfX` (the depth), not
+    // its position. A rock that breaks the surface is dropped on a boat's cell centre (Campaign::centre, 44 m cells) and where
+    // `keepsRockOut` says so.
+    enum Shore : int { kShoreNear = 0, kShoreMid = 1, kShoreOpen = 2 };
+    static bool waterRockAt(uint64_t seed, const SceneryPoint& p, Fixed depth, int shore, Obstacle& o);
+    // The shore band of a wet point from `wet(dx, dy)` (metres from it, true where there is water): the callers' own ground lookups.
+    template <typename Wet>
+    static int shoreBandOf(Wet&& wet) {
+        static constexpr int kNear[8][2] = {{10, 0}, {-10, 0}, {0, 10}, {0, -10}, {7, 7}, {-7, 7}, {7, -7}, {-7, -7}};
+        static constexpr int kMid[8][2] = {{26, 0}, {-26, 0}, {0, 26}, {0, -26}, {18, 18}, {-18, 18}, {18, -18}, {-18, -18}};
+        for (const auto& d : kNear)
+            if (!wet(d[0], d[1])) return kShoreNear;
+        for (const auto& d : kMid)
+            if (!wet(d[0], d[1])) return kShoreMid;
+        return kShoreOpen;
+    }
+    // Whether a rock that breaks the surface at (x, y) is kept out by `keepouts` (centre x, y; z = radius; Continent::waterKeepouts).
+    static bool keepsRockOut(const std::vector<Vec3>& keepouts, Fixed x, Fixed y);
+    // The water's surface over (x, y), from the four samples about it (kDryRaw where all are dry).
+    Fixed waterSurfaceAt(Fixed x, Fixed y) const;
+
     // How scenery and roads share the land (docs/TERRAIN_AUDIT.md, "Road look"): a boulder or a rock that stands on a road's
     // line is gone, one beside it stays (the roads bend round the ones worth the trouble, Continent::shapeRoads), and nothing
     // else grows within a road's width and a couple of metres. `centreDist` is the metres from a road's middle line,
@@ -233,9 +263,10 @@ public:
 private:
     // Trees, undergrowth and rocks on a jittered grid, clear of roads, water,
     // the first `buildings` obstacles, a circle around `clearCentre`, and the
-    // `clearings` (centre, radius in x: the sites standing in the window).
+    // `clearings` (centre, radius in x: the sites standing in the window); rocks in the water only with `waterKeepouts` (where
+    // those that break the surface may not stand: x, y, radius; Continent::waterKeepouts, in the window's coordinates).
     void scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCentre, Fixed clearRadius,
-                        const std::vector<Vec3>& clearings = {});
+                        const std::vector<Vec3>& clearings = {}, const std::vector<Vec3>* waterKeepouts = nullptr);
 
     Terrain terrain_;
     Fixed waterLevel_;

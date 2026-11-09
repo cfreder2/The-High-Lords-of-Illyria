@@ -155,6 +155,15 @@ void Continent::dress() {
     }
     buildClearGrid();
     dressed_ = true;
+    // Where a rock that breaks the surface may not stand (Region::waterRockAt; docs/TERRAIN_AUDIT.md, "Rocks in the water"): the
+    // mouths of the rivers and their flare (a boat's and a man's way in), the water about a town (its pier and its harbour), and
+    // the strand of every isle that is walked to (the Spit to the Drowned Abbey).
+    waterKeepouts_.clear();
+    for (const River& rv : rivers_)
+        if (!rv.points.empty()) waterKeepouts_.push_back({rv.points.back().x, rv.points.back().y, m(170)});
+    for (const City& city : cities_) waterKeepouts_.push_back({city.pos.x, city.pos.y, m(100)});
+    const std::vector<Vec3> walk = isleWalk();
+    for (size_t i = 0; i < walk.size(); i += 4) waterKeepouts_.push_back({walk[i].x, walk[i].y, m(14)});
 }
 
 const Continent::Landmark* Continent::landmarkAt(Fixed x, Fixed y) const {
