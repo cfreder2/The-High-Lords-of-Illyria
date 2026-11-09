@@ -210,6 +210,10 @@ inline FordReport auditFord(const Continent& c, size_t crossing, int cells = 96,
         return at;
     };
     const Vec3 ends[2] = {along(-1), along(1)};
+    if ((ends[1] - ends[0]).flat().length() < Fixed::fromInt(4)) {  // (the road is all in a town's pad here: no walk)
+        out.onRoad = false;
+        return out;
+    }
     const auto region = std::make_shared<const Region>(Region::fromContinent(c, cr.pos, cells));
     const Vec3 o = region->origin();
     static const UnitType types[3] = {UnitType::LightInfantry, UnitType::LightCavalry, UnitType::Catapult};
