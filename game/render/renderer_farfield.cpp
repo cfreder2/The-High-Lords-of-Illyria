@@ -5,7 +5,8 @@
 // built from the FarGrid the sim's continent fills at load, nothing here feeds back.
 //   R  the water, as Renderer::buildLand's vertices carry it: 1 + depth / 12 where wet, 1 less the bank's height over the water
 //      next door / 12 on dry land beside it (the waterline is 1)
-//   G  how far from dry land the water is, in cells (0 on land, 1 in a river's middle, 2 and more in open water)
+//   G  the ground's height in metres (the bed where wet): the cubic filter's smooth height, for the snow line and the
+//      rock's strata, which the mesh's triangles faceted
 //   B  the ground's convexity: its height over the average of its neighbours two cells away, / 12 m, -1 to 1 (ridges
 //      positive, ravines negative), for the hillshade's relief
 //   A  rock less swamp (the mesh's kinds, which the cubic filter smooths: a ground is one or the other)
@@ -27,18 +28,6 @@ void Renderer::uploadFarField(const Battle& battle) {
         return gr == sim::Ground::DeepWater || gr == sim::Ground::Shallows;
     };
     const auto groundAt = [&](int i, int j) { return g.height[at(i, j)] - (wetAt(i, j) ? g.depth[at(i, j)] : 0.0f); };
-    // Distance in cells to dry land: a two-pass chamfer (1 straight, 1.4 diagonal).
-    std::vector<float> dist(static_cast<size_t>(nx) * ny, 0.0f);
-    for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i) dist[at(i, j)] = wetAt(i, j) ? 1e3f : 0.0f;
-    const auto relax = [&](int i, int j, int di, int dj, float w) {
-        if (i + di < 0 || j + dj < 0 || i + di >= nx || j + dj >= ny) return;
-        dist[at(i, j)] = std::min(dist[at(i, j)], dist[at(i + di, j + dj)] + w);
-    };
-    for (int j = 0; j < ny; ++j)
-        for (int i = 0; i < nx; ++i) relax(i, j, -1, 0, 1.0f), relax(i, j, 0, -1, 1.0f), relax(i, j, -1, -1, 1.4f), relax(i, j, 1, -1, 1.4f);
-    for (int j = ny - 1; j >= 0; --j)
-        for (int i = nx - 1; i >= 0; --i) relax(i, j, 1, 0, 1.0f), relax(i, j, 0, 1, 1.0f), relax(i, j, 1, 1, 1.4f), relax(i, j, -1, 1, 1.4f);
     std::vector<float> px(static_cast<size_t>(nx) * ny * 4, 0.0f);
     for (int j = 0; j < ny; ++j)
         for (int i = 0; i < nx; ++i) {
@@ -58,7 +47,7 @@ void Renderer::uploadFarField(const Battle& battle) {
             const float around = (groundAt(i - 2, j) + groundAt(i + 2, j) + groundAt(i, j - 2) + groundAt(i, j + 2)) * 0.25f;
             float* o = &px[at(i, j) * 4];
             o[0] = w;
-            o[1] = std::min(dist[at(i, j)], 8.0f);
+            o[1] = h;
             o[2] = std::clamp((h - around) / 12.0f, -1.0f, 1.0f);
             const auto gr = static_cast<sim::Ground>(g.ground[at(i, j)]);
             o[3] = gr == sim::Ground::Rock ? 1.0f : gr == sim::Ground::Swamp ? -1.0f : 0.0f;
