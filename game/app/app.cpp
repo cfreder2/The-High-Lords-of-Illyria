@@ -1042,6 +1042,40 @@ ILLYRIA_API void illyria_test_attack(int squad, int foe, float distance) {
     app->camera.lookAt(c.x + (t.x - c.x) * 0.4f, c.y + (t.y - c.y) * 0.4f, distance);
 }
 
+// Test hook (--paths-demo on the desktop): the player's first three squads sent three ways at once and all
+// selected, to see the three path styles side by side: the first goes after the nearest foe (a hunt), the
+// second marches (a patrol), the third force marches. Does not move the camera.
+ILLYRIA_API void illyria_paths_demo() {
+    if (!app) return;
+    Battle& b = *app->battle;
+    std::vector<size_t> mine;
+    size_t foe = SIZE_MAX;
+    for (size_t i = 0; i < b.squads().size(); ++i) {
+        if (b.squads()[i].owner == Battle::kPlayer && mine.size() < 3) mine.push_back(i);
+        else if (b.squads()[i].owner != Battle::kPlayer && foe == SIZE_MAX && b.aliveCount(b.squads()[i]) > 0) foe = i;
+    }
+    if (mine.size() < 3 || foe == SIZE_MAX) return;
+    std::vector<illyria::sim::EntityId> all;
+    const auto centre = [&](size_t s) { return b.squadCentre(b.squads()[s], false); };
+    const auto at = [&](V3 p) { p.z = b.heightAt(p.x, p.y); return p; };
+    b.selectSquad(static_cast<int>(mine[0]));
+    illyria::sim::EntityId nearest = 0;
+    float bestD = 1e30f;
+    for (illyria::sim::EntityId id : b.squads()[foe].members) {
+        const float d = (b.unitPosition(id - 1) - centre(mine[0])).length();
+        if (b.world().units()[id - 1].alive() && d < bestD) bestD = d, nearest = id;
+    }
+    if (nearest != 0) b.orderAttackUnit(nearest);
+    b.selectSquad(static_cast<int>(mine[1]));
+    b.orderMove(at(centre(mine[1]) + V3{40, -14, 0}));
+    b.selectSquad(static_cast<int>(mine[2]));
+    b.orderForceMarch(at(centre(mine[2]) + V3{38, 30, 0}));
+    for (size_t s : mine)
+        for (illyria::sim::EntityId id : b.squads()[s].members) all.push_back(id);
+    b.select(all);
+    app->introStartMs = -1;
+}
+
 ILLYRIA_API void illyria_focus_squad(int index) {
     if (!app || index < 0 || index >= static_cast<int>(app->battle->squads().size())) return;
     const V3 c = app->battle->squadCentre(app->battle->squads()[index]);

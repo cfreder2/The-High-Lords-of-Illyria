@@ -46,7 +46,7 @@ std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tol
         for (Group& g : groups) {
             if (g.rep->stance != r.stance || g.rep->quarry != r.quarry) continue;
             const float d = flatDist(g.end, end);
-            if (tol >= 0 && d <= tol && flatDist(g.mid, mid) <= 2 * tol && d < nearest) {
+            if (tol >= 0 && d <= tol && flatDist(g.mid, mid) <= (r.squad >= 0 && g.rep->squad == r.squad ? 4 : 2) * tol && d < nearest) {
                 home = &g;
                 nearest = d;
             }

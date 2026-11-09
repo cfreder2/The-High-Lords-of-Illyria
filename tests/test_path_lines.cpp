@@ -91,6 +91,18 @@ TEST(a_route_round_a_wall_is_not_merged_with_one_straight) {
     CHECK(illyria::game::mergeRoutes({straight, straight}, 8.0f).size() == 1);
 }
 
+TEST(men_of_one_squad_bending_a_few_metres_apart_are_one_line) {
+    // A bend of 20 m at the middle: two lines for strangers, one for a squad's men.
+    RouteIn a = route(1, Stance::Patrol, {{0, 0, 0}, {100, 0, 0}, {200, 0, 0}});
+    RouteIn b = route(2, Stance::Patrol, {{0, 0, 0}, {100, 28, 0}, {200, 0, 0}});
+    CHECK(illyria::game::mergeRoutes({a, b}, 8.0f).size() == 2);
+    a.squad = b.squad = 3;
+    CHECK(illyria::game::mergeRoutes({a, b}, 8.0f).size() == 1);
+    // A wall's width or more apart: two lines whoever they are.
+    b.points[1] = {100, 70, 0};
+    CHECK(illyria::game::mergeRoutes({a, b}, 8.0f).size() == 2);
+}
+
 TEST(a_whole_army_is_at_most_a_few_dozen_lines) {
     std::vector<RouteIn> in;
     for (EntityId i = 1; i <= 3000; ++i) in.push_back(route(i, Stance::Patrol, {{0, 0, 0}, {static_cast<float>(i) * 3.0f, 10, 0}}));
@@ -124,7 +136,7 @@ TEST(each_order_has_its_stance) {
     CHECK(World::stanceOf(*w.findUnit(a)) == Stance::Hunt);
     std::vector<Vec3> out;
     w.routeOf(*w.findUnit(a), out);
-    CHECK(out.size() == 1 && out[0].x == w.findUnit(foe)->pos.x);  // (after the quarry, wherever he is)
+    CHECK(!out.empty() && out.back().x == w.findUnit(foe)->pos.x);  // (after the quarry, wherever he is)
     Command stop = mv;
     stop.type = Command::Type::Stop;
     w.step(std::vector<Command>{stop});
@@ -168,6 +180,28 @@ TEST(a_route_across_a_castle_goes_round_its_walls_and_asking_changes_nothing) {
     int straight = 0;
     for (const WallSeg& s : rg.walls()) straight += crosses(illyria::game::toV3(from), illyria::game::toV3(to), s.a, s.b);
     CHECK(straight > 0);
+    // A hunter after a man on the far side goes by that same way: the planned path, then the quarry.
+    const EntityId hunter = w.spawnUnit(0, from, {m(1), m(0), m(0)}, unitStats(UnitType::LightInfantry));
+    const EntityId quarry = w.spawnUnit(1, to, {m(1), m(0), m(0)}, unitStats(UnitType::LightInfantry));
+    Command hunt;
+    hunt.player = 0;
+    hunt.unit = hunter;
+    hunt.type = Command::Type::AttackUnit;
+    hunt.targetUnit = quarry;
+    w.step(std::vector<Command>{hunt});
+    w.step(std::vector<Command>{});
+    std::vector<Vec3> hway;
+    w.routeOf(*w.findUnit(hunter), hway);
+    CHECK(World::stanceOf(*w.findUnit(hunter)) == Stance::Hunt);
+    CHECK(hway.size() >= 2);  // (round the walls, not one straight stretch)
+    CHECK(hway.back().x == w.findUnit(quarry)->pos.x);
+    std::vector<V3> hline{illyria::game::toV3(w.findUnit(hunter)->pos)};
+    for (const Vec3& p : hway) hline.push_back(illyria::game::toV3(p));
+    int hcross = 0;
+    for (size_t i = 1; i < hline.size(); ++i)
+        for (const WallSeg& s : rg.walls()) hcross += crosses(hline[i - 1], hline[i], s.a, s.b);
+    std::printf("  hunt: %zu waypoints, %d wall crossings\n", hway.size(), hcross);
+    CHECK(hcross == 0);
 }
 
 TEST(drawing_the_paths_changes_nothing_in_the_battle) {

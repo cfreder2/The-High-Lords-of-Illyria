@@ -584,7 +584,7 @@ public:
     enum class Stance : uint8_t { Idle, Patrol, Move, Hunt };
     static Stance stanceOf(const Unit& u);
     // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
-    // quarry's place now). Empty for Idle. Does not include where he stands.
+    // path planned to his quarry, then the quarry's place now). Empty for Idle. Does not include where he stands.
     void routeOf(const Unit& u, std::vector<Vec3>& out) const;
     // Castle gates, in the order of the region's gates.
     const std::vector<GateState>& gates() const { return gates_; }

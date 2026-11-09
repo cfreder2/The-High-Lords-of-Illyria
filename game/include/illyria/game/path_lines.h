@@ -17,6 +17,7 @@ struct RouteIn {
     sim::EntityId quarry = sim::kNoEntity;  // Hunt: who he is after (men after one quarry go as one)
     std::vector<V3> points;
     float opacity = 1;
+    int squad = -1;  // the squad he stands in (-1: none): its men bending a few metres apart are still one line
 };
 
 // A line to draw: the men of one group, as the middle of them going to the middle of where they end, by the route of
@@ -32,7 +33,7 @@ struct RouteLine {
 constexpr size_t kMaxRouteLines = 48;
 
 // Men of one stance and quarry whose routes end within `tolerance` of one another (and that are halfway along within
-// twice that: one that goes round a wall is not one that goes straight) are one line. A tolerance below zero merges
+// twice that, four times for men of one squad: one that goes round a wall is not one that goes straight) are one line. A tolerance below zero merges
 // none. At most kMaxRouteLines come out; the rest join the line whose end is nearest. In input order.
 std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tolerance);
 

@@ -79,7 +79,9 @@ constexpr float kPatrol[3] = {0.35f, 0.95f, 0.72f};
 constexpr float kHunt[3] = {1.0f, 0.3f, 0.1f};
 constexpr float kMove[3] = {0.92f, 0.92f, 0.92f};
 constexpr int kStepsPerLine = 600;     // however long, however near the eye
-constexpr size_t kMaxPathDecals = 1500;  // a frame's whole share
+constexpr size_t kMaxPathDecals = 3000;  // a frame's whole share (each mark has a dark one beneath it)
+constexpr float kDark[3] = {0.03f, 0.03f, 0.04f};
+constexpr float kOutlinePx = 2.0f;      // how much wider the dark mark under each is, all round
 
 const float* colourOf(sim::World::Stance s) {
     return s == sim::World::Stance::Hunt ? kHunt : s == sim::World::Stance::Move ? kMove : kPatrol;
@@ -94,17 +96,21 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
     const float perPixel = 2.0f * std::tan(Camera::kFovY * 0.5f) / std::max(1.0f, camera.height());
     const float w = camera.width(), h = camera.height();
     size_t pushed = 0;
+    std::vector<float> bright;  // the coloured marks, laid after every dark one so that no outline cuts across a line
     for (const RouteLine& line : lines) {
         if (line.points.size() < 2) continue;
         const float* rgb = colourOf(line.stance);
         const float fade = 1.0f - line.opacity * (close ? 0.75f : 1.0f);
         const auto mpp = [&](const V3& p) { return std::max(1e-4f, (p - eye).length() * perPixel); };
         const auto put = [&](const V3& at, float yaw, float sizePx, float type) {
-            if (pushed >= kMaxPathDecals) return;
+            if (pushed + 2 > kMaxPathDecals) return;
             V3 p = at;
             p.z = battle.floorAt(p);
-            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, sizePx * mpp(at), 0, type, rgb[0], rgb[1], rgb[2], fade});
-            ++pushed;
+            const float m = mpp(at);
+            // A dark mark a little larger beneath, so the line reads on pale ground and snow.
+            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, (sizePx + kOutlinePx) * m, 0, type, kDark[0], kDark[1], kDark[2], fade});
+            bright.insert(bright.end(), {p.x, p.y, p.z, yaw, sizePx * m, 0, type, rgb[0], rgb[1], rgb[2], fade});
+            pushed += 2;
         };
         const auto visible = [&](const V3& p) {
             float px, py;
@@ -159,6 +165,7 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
             else put(end, 0, 6.0f, kDecalDot);
         }
     }
+    decals.insert(decals.end(), bright.begin(), bright.end());
     return pushed;
 }
 

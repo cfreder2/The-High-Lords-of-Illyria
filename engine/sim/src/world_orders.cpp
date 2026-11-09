@@ -243,6 +243,9 @@ void World::routeOf(const Unit& u, std::vector<Vec3>& out) const {
     switch (stanceOf(u)) {
         case Stance::Idle: return;
         case Stance::Hunt: {
+            // The path he is on to the quarry (pursue plans it with the march's own planPath, and again as the quarry
+            // moves off it; its last point is where the quarry stood then), then the quarry where he stands now.
+            for (size_t i = std::min<size_t>(u.pathIndex, u.path.size()); i + 1 < u.path.size(); ++i) out.push_back(u.path[i]);
             const Unit* q = findUnit(u.targetUnit);
             if (q != nullptr && q->alive()) out.push_back(q->pos);
             return;

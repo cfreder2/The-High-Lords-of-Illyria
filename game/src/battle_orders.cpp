@@ -492,6 +492,13 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
         const sim::Campaign::Stack* s = conquest_ ? conquest_->findStack(id) : nullptr;
         return s != nullptr && !s->path.empty() && !s->commanded && s->owner == local_ ? s : nullptr;
     };
+    // A stack in a fight has no march to show: its men are at their own business.
+    const auto fighting = [&](const sim::Campaign::Stack& s) {
+        for (const sim::Army& a : s.armies)
+            for (const sim::Man& m : a.men)
+                if (m.alive() && m.unit && conquest_->tick() - m.fightTick < 5 * sim::Campaign::kTicksPerSecond) return true;
+        return false;
+    };
     for (size_t i = 0; i < units.size(); ++i) {
         const sim::Unit& u = units[i];
         if (u.owner != local_ || !(u.hasMoveTarget || u.targetUnit != sim::kNoEntity)) continue;
@@ -509,13 +516,21 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
         r.unit = u.id;
         r.stance = stance;
         r.opacity = opacity;
+        r.squad = i < squadOfUnit_.size() ? squadOfUnit_[i] : -1;
         if (stance == Stance::Hunt) {
             // Only what the player can see of the quarry: a route to a foe in the fog would tell where he is.
             const sim::Unit& q = units[u.targetUnit - 1];
             if (!q.alive() || (q.owner != local_ && !sees(q.owner, static_cast<float>(q.pos.x.toDouble()), static_cast<float>(q.pos.y.toDouble())))) continue;
             r.quarry = q.id;
+            // The way he is going (the path planned to the quarry), ending on the quarry as he is drawn now.
+            world_->routeOf(u, waypoints);
+            r.points.push_back(unitPosition(i));
+            for (size_t k = 0; k + 1 < waypoints.size(); ++k) {  // (the last is the quarry, drawn from his own place below)
+                const V3 p = toV3(waypoints[k]);
+                r.points.push_back({p.x, p.y, floorAt(p)});
+            }
             const V3 at = unitPosition(u.targetUnit - 1);
-            r.points = {unitPosition(i), {at.x, at.y, floorAt(at)}};
+            r.points.push_back({at.x, at.y, floorAt(at)});
         } else {
             world_->routeOf(u, waypoints);
             r.points.push_back(unitPosition(i));
@@ -531,7 +546,7 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
     std::vector<RouteLine> lines = mergeRoutes(routes, perMan ? -1.0f : kMergeMetres);
     if (conquest_ && faintMarches)
         for (const sim::Campaign::Stack& s : conquest_->stacks())
-            if (marching(s.id) != nullptr) stacks.try_emplace(s.id, kFaint);
+            if (marching(s.id) != nullptr && !fighting(s)) stacks.try_emplace(s.id, kFaint);
     const V3 o = origin();
     for (const auto& [id, opacity] : stacks) {
         const sim::Campaign::Stack& s = *conquest_->findStack(id);
