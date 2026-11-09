@@ -261,6 +261,13 @@ Battle::Glance Battle::glance() const {
             g.hp = std::max(0, gate.hp);
             g.max = worldRegion().gates()[inspected_.id].maxHp;
             g.broken = gate.broken();
+            // The state of a gate is told of our own only (an enemy castle's, unseen, is not ours to know).
+            if (gateIsOurs(static_cast<int>(inspected_.id))) {
+                g.ours = true;
+                g.swing = gate.swing(world_->tick());
+                g.pin = static_cast<int>(gate.pin);
+                g.opens = gate.mode == sim::GateState::Mode::Open || gate.mode == sim::GateState::Mode::Opening;
+            }
             return g;
         }
         case Inspected::Kind::Unit:

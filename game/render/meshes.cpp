@@ -463,6 +463,17 @@ Mesh gate(bool broken) {
     return b.mesh;
 }
 
+Mesh gateLeaf(bool right) {
+    // One leaf alone, to swing on its hinge at the origin: it reaches along +x (or -x for the right-hand leaf) the half of the
+    // passage, +y its outer face, z in [0, 1]; the renderer turns it about the hinge as the doors open and shut.
+    Builder b;
+    const float thick = 0.03f, dir = right ? -1.0f : 1.0f;
+    const float full[6] = {1, 1, 1, 1, 1, 1};
+    leaf(b, {0, 0, 0}, {dir, 0, 0}, {0, 1, 0}, 0.995f, full, 6, thick);
+    b.limb({dir * 0.88f, thick * 2.2f, 0.43f}, {dir * 0.88f, thick * 2.2f, 0.37f}, 0.03f, 0.03f, 5, kIron * 1.3f);  // the ring pull
+    return b.mesh;
+}
+
 Mesh drum() {
     Builder b;
     b.frustum(0, 1.08f, 0.15f, 1.0f, 14, kStone * 0.92f);  // battered base

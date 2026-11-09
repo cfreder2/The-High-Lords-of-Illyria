@@ -84,10 +84,9 @@ struct Squad {
     std::vector<sim::EntityId> members;
     Formation formation = Formation::DoubleLine;
     mutable V3 facing{1, 0, 0};  // the way it last marched (presentation of orders, not sim state)
-    // A garrison holds its town: it fights whoever comes within reach of its
-    // post, then goes back to it, and never marches out.
+    // A garrison holds its town and never marches out: its gate's keepers (World::keepGates) give it its stations
+    // (archers on the walls, foot behind the doors), and it meets whoever comes in.
     bool garrison = false;
-    V3 post{};
     // Where it was last sent (the computer re-plans a chase only when that moves enough).
     mutable V3 goal{};
     mutable bool hasGoal = false;
@@ -254,6 +253,9 @@ public:
     // What the card of the one looked at shows (the page prints it).
     struct Glance {
         bool any = false, gate = false, awake = false, broken = false;
+        // A gate of ours: how open it is (0 shut .. 1000 open) and how it is held (0 let go, 1 open, 2 shut).
+        bool ours = false, opens = false;  // opens: standing open or swinging open (a tap shuts it)
+        int swing = 0, pin = 0;
         const char* type = "";
         uint8_t owner = 0;
         int hp = -1, max = -1, rank = 0, morale = 0, hpGate = 0, stack = 0;
@@ -317,6 +319,14 @@ public:
     // Orders to the selection (for tests and hooks as well as the input).
     // At a gate, as tapping it.
     void orderAtGate(int gate);
+    // The player's hand on a gate of his (sim::Command::SetGate, through the one command list): held open or shut, or let go
+    // to open to his men bound through it. `swingGate` is a tap on it: open if it stood shut, shut if it stood open.
+    bool gateIsOurs(int gate) const;
+    void pinGate(int gate, sim::Command::GatePin pin);
+    void swingGate(int gate);
+    // The O key and the card's buttons: the gate looked at, else the one of ours nearest the selection (or the men).
+    // `release` lets it go (Shift+O) instead.
+    void swingGateByKey(bool release);
     // March there, as tapping the ground, facing as they do now: as they stand
     // (keepShape), their own arrangement moved there; in a chosen formation,
     // re-formed there.
@@ -381,7 +391,8 @@ public:
         marchKey_ = march;
     }
     // What a tap there would do, for the desktop cursor and the tests.
-    enum class Intent : uint8_t { None, Select, Attack, AttackObject, AttackGround, Cannot, Move, ForceMarch };
+    // GateSwing: one of our own gates, which a tap opens or shuts.
+    enum class Intent : uint8_t { None, Select, Attack, AttackObject, AttackGround, Cannot, Move, ForceMarch, GateSwing };
     Intent intentAt(const Camera& camera, float x, float y, float pixelScale) const;
     // The last order refused or explained ("Only engines ... can harm walls"), and when (tick).
     const std::string& notice() const { return notice_; }
@@ -691,8 +702,6 @@ private:
     void attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId>& units, Formation formation, int gate);
     // Enemy catapults: the player's gate when they besiege, else the nearest foe in reach.
     void aimEngines(const Squad& s);
-    // A garrison's archers: those not at an embrasure go up to an empty one.
-    void manTheWalls(const Squad& s);
 
     std::shared_ptr<const sim::Continent> continent_;
     std::shared_ptr<const sim::Region> region_;

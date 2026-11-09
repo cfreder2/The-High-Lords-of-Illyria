@@ -514,8 +514,8 @@ private:
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, parapets_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch drums_, keeps_, stairs_, galleries_;
-    MeshBatch gates_, brokenGates_;
-    std::vector<uint8_t> gatesShown_;  // broken flags last uploaded
+    MeshBatch gates_, brokenGates_, leavesLeft_, leavesRight_;  // shut, broken, and the leaves of those swinging
+    std::vector<int16_t> gatesShown_;  // how each gate was last uploaded: -1 broken, else how far open (in twentieths)
     MeshBatch logs_;
     // Flags (renderer_flags.cpp): poles and their cloth, drawn in both views;
     // the castles' tower banners, retinted with whoever holds each town; territory.

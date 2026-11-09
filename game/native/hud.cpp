@@ -396,8 +396,15 @@ void Hud::draw(Overlay& o, float w, float h) {
 
     // Looking at a man or gate that is not ours.
     if (const Json* in = hud.find("inspect")) {
-        if (in->str("kind") == "gate")
-            std::snprintf(buf, sizeof buf, "Gate  %d / %d%s", static_cast<int>(in->num("hp")), static_cast<int>(in->num("max")), in->flag("broken") ? "  broken" : "");
+        if (in->str("kind") == "gate") {
+            const int swing = static_cast<int>(in->num("swing")), pin = static_cast<int>(in->num("pin"));
+            const char* state = swing == 0 ? "shut" : swing == 1000 ? "open" : "swinging";
+            if (in->flag("ours"))
+                std::snprintf(buf, sizeof buf, "Your gate  %d / %d  %s%s  (O: open or shut, Shift+O: let go)", static_cast<int>(in->num("hp")), static_cast<int>(in->num("max")), state,
+                              pin == 1 ? ", held open" : pin == 2 ? ", held shut" : "");
+            else
+                std::snprintf(buf, sizeof buf, "Gate  %d / %d%s", static_cast<int>(in->num("hp")), static_cast<int>(in->num("max")), in->flag("broken") ? "  broken" : "");
+        }
         else
             std::snprintf(buf, sizeof buf, "%s  hp %d / %d  morale %d", in->str("type").c_str(), static_cast<int>(in->num("hp")), static_cast<int>(in->num("max")),
                           static_cast<int>(in->num("morale")));
@@ -410,7 +417,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             "Left click: select / tap   Drag: box   Shift: add",
             "Right click: move / attack   Ctrl or Cmd + right click: attack ground",
             "Wheel / trackpad: zoom and pan   WASD, arrows: pan   Q E: turn   R F: zoom   N or Z: north",
-            "G: attack mode   V: force march   T: special   X: scatter   B: halt   C: view selection",
+            "G: attack mode   V: force march   T: special   X: scatter   B: halt   C: view selection   O: open or shut a gate of yours",
             "1-9: groups (Alt + number saves one)   Shift + 1-9: formation   0: scatter",
             "` heroes   Ctrl+A: all on screen   Esc: let go   Space: pause   - =: slower, faster",
             "Enter: menu    /: this help"};

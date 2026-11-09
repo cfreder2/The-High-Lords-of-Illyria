@@ -365,8 +365,9 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
 Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pixelScale) const {
     const Pick p = pickAt(camera, x, y, pixelScale);
     const std::vector<sim::EntityId> mine = selectedAlive();
-    if (selectionSize() == 0) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
+    if (p.kind == Pick::Kind::Gate && mode == OrderMode::Normal && gateIsOurs(p.index)) return Intent::GateSwing;
+    if (selectionSize() == 0) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
     using K = Pick::Kind;
     if (mode == OrderMode::ForceMarch) return p.kind == K::None ? Intent::None : Intent::ForceMarch;
     if (mode == OrderMode::LaySatchel) return p.kind == K::None ? Intent::None : Intent::AttackGround;

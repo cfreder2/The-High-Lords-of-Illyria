@@ -89,9 +89,6 @@ std::vector<sim::Rampart::Embrasure> spreadEmbrasures(const sim::Rampart& rp, in
     return out;
 }
 
-// Archers within this of an embrasure hold it.
-constexpr float kEmbrasureHeld = 1.2f;
-
 }  // namespace
 
 Role roleOf(UnitType type) {
@@ -287,13 +284,11 @@ void Battle::setUpSiege() {
             if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
             squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
         }
-        s.post = centre;
         squads_.push_back(std::move(s));
     }
     const auto hold = [&](const std::string& name, UnitType type, int count, V3 at, V3 facing) {
         spawnSquad(name, kEnemy, type, count, at, facing);
         squads_.back().garrison = true;
-        squads_.back().post = at;
     };
     hold("Gate Wardens", UnitType::Pikemen, 8, gate - out * 12.0f, out);
     hold("Town Militia", UnitType::LightInfantry, 12, local(k.courtyard), out);
@@ -331,7 +326,11 @@ void Battle::testMove(sim::EntityId unit, const V3& to) {
 }
 
 void Battle::holdGates(sim::PlayerId holder) {
-    for (size_t i = 0; i < world_->gates().size(); ++i) world_->setGateHolder(i, holder);
+    // The garrison keeps them (World::keepGates): the archers go up on the walls, the foot form behind the doors.
+    for (size_t i = 0; i < world_->gates().size(); ++i) {
+        world_->setGateHolder(i, holder);
+        world_->setGateGarrisoned(i, true);
+    }
 }
 
 int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) const {
@@ -879,45 +878,6 @@ bool Battle::flankPoint(const Squad& riders, V3& out) const {
     return true;
 }
 
-void Battle::manTheWalls(const Squad& s) {
-    // Archers below or behind a merlon step up to the embrasures left empty
-    // (by the dead, or never manned): one archer to each.
-    const sim::Rampart* walls = townRampart(*region_, s.post);
-    if (!walls || walls->embrasures.empty()) return;
-    const auto& units = world_->units();
-    std::vector<uint8_t> held(walls->embrasures.size(), 0);
-    for (const sim::Unit& u : units) {
-        if (!u.alive() || u.owner != s.owner) continue;
-        const V3 p = toV3(u.hasMoveTarget ? u.moveTarget : u.pos);
-        for (size_t k = 0; k < held.size(); ++k) {
-            const V3 e = toV3(walls->embrasures[k].pos);
-            if ((p.x - e.x) * (p.x - e.x) + (p.y - e.y) * (p.y - e.y) < kEmbrasureHeld * kEmbrasureHeld && std::fabs(p.z - e.z) < 1.5f) held[k] = 1;
-        }
-    }
-    for (sim::EntityId id : s.members) {
-        const sim::Unit* u = world_->findUnit(id);
-        if (!u || !u->alive() || u->hasMoveTarget || u->routed) continue;
-        const V3 p = toV3(u->pos);
-        size_t best = held.size();
-        float bestD = 1e30f;
-        for (size_t k = 0; k < held.size(); ++k) {
-            const V3 e = toV3(walls->embrasures[k].pos);
-            const float d = (p.x - e.x) * (p.x - e.x) + (p.y - e.y) * (p.y - e.y);
-            if (d < kEmbrasureHeld * kEmbrasureHeld && std::fabs(p.z - e.z) < 1.5f) {
-                best = held.size();  // at one already
-                break;
-            }
-            if (!held[k] && d < bestD) {
-                bestD = d;
-                best = k;
-            }
-        }
-        if (best == held.size()) continue;
-        held[best] = 1;
-        issue(s.owner, id, sim::Command::Type::Move, toV3(walls->embrasures[best].pos));
-    }
-}
-
 void Battle::runEnemyAi() {
     // Depends only on simulation state (never on interpolated positions), so in
     // multiplayer the relay or every peer can run it and issue identical
@@ -974,20 +934,7 @@ void Battle::runEnemyAi() {
             if (!s.garrison) aimEngines(s);
             continue;
         }
-        if (s.garrison) {
-            // Hold the town: archers keep their places on the walk (they shoot
-            // on their own); the rest meet whoever gets near their post, and
-            // otherwise return to it.
-            if (role == Role::Ranged) {
-                manTheWalls(s);
-                continue;
-            }
-            float near;
-            const V3 threat = nearest(s.post, kPlayer, near);
-            if (near < 45.0f) steerSquad(s, threat);
-            else if ((c - s.post).length() > 6.0f) steerSquad(s, s.post);
-            continue;
-        }
+        if (s.garrison) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
         const sim::UnitStats stats = sim::unitStats(s.type);
         const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
         V3 flank;

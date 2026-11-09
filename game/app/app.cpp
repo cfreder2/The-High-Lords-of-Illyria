@@ -1187,6 +1187,10 @@ ILLYRIA_API void illyria_hot_spot() {
     if (app->battle->hotSpot(at)) app->camera.lookAt(at.x, at.y, std::clamp(app->camera.distance(), 30.0f, 70.0f));
 }
 
+// The O key: open or shut the gate looked at (else our nearest) and hold it so; with `release`, let it go.
+ILLYRIA_API void illyria_gate(int release) {
+    if (app) app->battle->swingGateByKey(release != 0);
+}
 ILLYRIA_API void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
@@ -2291,7 +2295,8 @@ ILLYRIA_API const char* illyria_hud() {
     // What is looked at and cannot be ordered (a man not ours, or a gate): view-only.
     if (const Battle::Glance g = b.glance(); g.any) {
         if (g.gate)
-            std::snprintf(buf, sizeof buf, ",\"inspect\":{\"kind\":\"gate\",\"hp\":%d,\"max\":%d,\"broken\":%s}", g.hp, g.max, g.broken ? "true" : "false");
+            std::snprintf(buf, sizeof buf, ",\"inspect\":{\"kind\":\"gate\",\"hp\":%d,\"max\":%d,\"broken\":%s,\"ours\":%s,\"opens\":%s,\"swing\":%d,\"pin\":%d}", g.hp, g.max,
+                          g.broken ? "true" : "false", g.ours ? "true" : "false", g.opens ? "true" : "false", g.swing, g.pin);
         else
             std::snprintf(buf, sizeof buf,
                           ",\"inspect\":{\"kind\":\"man\",\"type\":\"%s\",\"owner\":%d,\"hp\":%d,\"max\":%d,\"rank\":%d,\"morale\":%d,\"awake\":%s,\"stack\":%d}",
