@@ -406,8 +406,9 @@ void World::clearFight(uint64_t seed) {
     tick_ = 0;
     for (size_t i = 0; i < gates_.size(); ++i) {
         GateState& g = gates_[i];
-        if (g.opened && nav_) nav_->shutGate(i);  // (a gate swung open is shut again: it is no one's business who was going through it)
-        g.opened = false;
+        if (g.mode != GateState::Mode::Shut && nav_) nav_->shutGate(i);  // (a gate swung open is shut again: it is no one's business who was going through it)
+        g.mode = GateState::Mode::Shut;  // (the pins and the garrisons are the holders' business and stay)
+        g.since = 0;
         g.openUntil = 0;
         if (g.broken()) g.brokenTick = 0;
     }  // (when it broke is no one's business once the clock is back at nothing)
@@ -502,6 +503,7 @@ void World::step(std::span<const Command> commands) {
     if (raids) formPacks();
     buildBroad();
     updateGates();
+    keepGates();
 
     for (Unit& u : units_) {
         if (!u.present()) continue;
@@ -517,7 +519,20 @@ void World::step(std::span<const Command> commands) {
     ++tick_;
 }
 
+void World::beginMove(Unit& u, const Vec3& target, Fixed speed, const Vec3& face) {
+    u.hasMoveTarget = true;
+    u.moveTarget = target;
+    u.marchSpeed = max(Fixed::zero(), speed);
+    u.arriveFacing = face.flat() == Vec3{} ? Vec3{} : normalized(face.flat());
+    u.hasAttackTarget = false;
+    u.attackGate = -1;
+}
+
 void World::applyCommand(const Command& cmd) {
+    if (cmd.type == Command::Type::SetGate) {
+        applyGateOrder(cmd);
+        return;
+    }
     Unit* u = mutableUnit(cmd.unit);
     // A broken unit too: orders always win (it runs only when it has none; updateUnit).
     // Not a side that is out of the match (its flag fallen: sideBroken).
@@ -575,12 +590,7 @@ void World::applyCommand(const Command& cmd) {
             break;
         case Command::Type::Move: {
             const Vec3 target = clearOfStone(cmd.target, u->stats);
-            u->hasMoveTarget = true;
-            u->moveTarget = target;
-            u->marchSpeed = max(Fixed::zero(), cmd.speed);
-            u->arriveFacing = cmd.face.flat() == Vec3{} ? Vec3{} : normalized(cmd.face.flat());
-            u->hasAttackTarget = false;
-            u->attackGate = -1;
+            beginMove(*u, target, cmd.speed, cmd.face);
             if (cmd.march) planMarch(*u, target, cmd.marchFrom, cmd.marchTo);
             else planPath(*u, target);
             break;
@@ -1285,7 +1295,12 @@ void World::updateUnit(Unit& u) {
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             return;
         }
-        if (haltAtGate(u)) {
+        const GateHold held = heldAtGate(u);
+        if (held == GateHold::Wait) {
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);  // (the doors are swinging open for him)
+            return;
+        }
+        if (held == GateHold::Halt) {
             // As near as he can get: the gate is shut to him.
             u.hasMoveTarget = false;
             u.layOrdered = false;
@@ -2532,7 +2547,13 @@ uint64_t World::checksum() const {
         h.addI64(g.hp);
         h.addU64(g.holder);
         h.addU64(g.brokenTick);
-        if (g.opened) h.addU64(0x09E7 + g.openUntil);  // (only while one is swung open: a battle without any hashes as before)
+        // (only a gate that has been kept, pinned or swung: a battle without any hashes as before)
+        if (g.mode != GateState::Mode::Shut || g.pin != Command::GatePin::Auto || g.garrisoned) {
+            h.addU64(0x09E7 + static_cast<uint64_t>(g.mode));
+            h.addU64(g.since);
+            h.addU64(g.openUntil);
+            h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u));
+        }
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

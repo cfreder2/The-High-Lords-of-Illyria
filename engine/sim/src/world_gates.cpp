@@ -3,6 +3,7 @@
 // open for good (docs/GAME_DESIGN.md, castles).
 #include <algorithm>
 
+#include "gate_geometry.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
 
@@ -32,48 +33,33 @@ constexpr Fixed kHaltTouch = Fixed::fromRatio(1, 2);
 // eighty-eight; a soldier is only ever near one): the quick way to pass it by.
 bool farFrom(const Gate& g, const Vec3& p) { return abs(p.x - g.a.x) > Region::kGateReach || abs(p.y - g.a.y) > Region::kGateReach; }
 
-// The point of gate g's line nearest p (flat).
-Vec3 nearestOnGate(const Gate& g, const Vec3& p) {
-    const Vec3 ab = (g.b - g.a).flat();
-    const Fixed len2 = ab.lengthSq();
-    const Fixed t = len2 > Fixed::zero() ? clamp((p - g.a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
-    return g.a + ab * t;
-}
-
-// A place an order sends someone to is within a ring of walls if it lies
-// inside them or up on their walk (whose outer half lies beyond the line of
-// its corners): either way the way there is from inside, by the ramps.
-bool withinRing(const Rampart& ring, const Vec3& p) {
-    if (Gate::inside(ring, p)) return true;
-    const Fixed reach = ring.halfThick + Fixed::fromRatio(1, 2);
-    const size_t n = ring.corners.size();
-    for (size_t e = 0; e < n; ++e) {
-        const Vec3 a = ring.corners[e], ab = (ring.corners[(e + 1) % n] - a).flat();
-        const Fixed len2 = ab.lengthSq();
-        const Fixed t = len2 > Fixed::zero() ? clamp((p - a).flat().dot(ab) / len2, Fixed::zero(), Fixed::one()) : Fixed::zero();
-        if ((p - (a + ab * t)).flat().lengthSq() <= reach * reach) return true;
-    }
-    return false;
-}
-
-// Whether someone standing at p is on the town's side of gate g: by the
-// doors themselves near the gate (in the passage, behind the doors, he is
-// still outside the line of the walk), by the ring's walls farther off.
-bool townSide(const Gate& g, const Rampart& ring, const Vec3& p) {
-    const Fixed near = (g.b - g.a).flat().length() / 2 + ring.halfThick * 2 + Fixed::fromInt(2);
-    if ((p - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq() <= near * near) return (p - g.a).flat().dot(g.out) < Fixed::zero();
-    return Gate::inside(ring, p);
-}
-
 }  // namespace
+
+int32_t GateState::swing(uint32_t now) const {
+    const auto along = [&] { return static_cast<int32_t>(std::min<uint32_t>(kGateSwingTicks, now - since) * 1000 / kGateSwingTicks); };
+    switch (mode) {
+        case Mode::Shut: return 0;
+        case Mode::Open: return 1000;
+        case Mode::Opening: return along();
+        case Mode::Closing: return 1000 - along();
+    }
+    return 0;
+}
 
 void World::updateGates() {
     if (!config_.region || !nav_) return;
+    using Mode = GateState::Mode;
     const auto& gs = config_.region->gates();
     for (size_t i = 0; i < gs.size() && i < gates_.size(); ++i) {
         GateState& st = gates_[i];
         if (st.broken() || st.holder == GateState::kNoHolder) continue;
         const Gate& g = gs[i];
+        // Swinging: the doors block until they have swung right back (shut) or right open (and the way is cleared then).
+        if ((st.mode == Mode::Opening || st.mode == Mode::Closing) && tick_ - st.since >= kGateSwingTicks) {
+            if (st.mode == Mode::Opening) nav_->openGate(i, false);
+            st.mode = st.mode == Mode::Opening ? Mode::Open : Mode::Shut;
+            st.since = tick_;
+        }
         const Rampart& ring = config_.region->ramparts()[static_cast<size_t>(g.ring)];
         const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
         const Fixed reach = (g.b - g.a).flat().length() / 2 + kHaltQueue;
@@ -85,21 +71,56 @@ void World::updateGates() {
             if (u.owner != st.holder || !u.hasMoveTarget) return;
             if (withinRing(ring, u.moveTarget) != townSide(g, ring, u.pos)) bound = true;
         });
-        if (bound) {
-            st.openUntil = tick_ + 3 * kTicksPerSecond;
-            if (!st.opened) {
-                st.opened = true;
-                nav_->openGate(i, false);
-            }
-        } else if (st.opened && tick_ >= st.openUntil && !inPassage) {
-            st.opened = false;
-            nav_->shutGate(i);
+        // Only the holder's men bound through it ask it open (a foe never does); his hand, when laid on it, overrules.
+        if (bound) st.openUntil = tick_ + 3 * kTicksPerSecond;
+        const bool want = st.pin == Command::GatePin::Open || (st.pin == Command::GatePin::Auto && tick_ < st.openUntil);
+        // A swing turned back goes back from where it is: dated as if it had begun from the other end.
+        const auto reverse = [&](Mode to) {
+            st.since = tick_ - (kGateSwingTicks - std::min(kGateSwingTicks, tick_ - st.since));
+            st.mode = to;
+        };
+        switch (st.mode) {
+            case Mode::Shut:
+                if (want) st.mode = Mode::Opening, st.since = tick_;
+                break;
+            case Mode::Opening:
+                if (!want) reverse(Mode::Closing);
+                break;
+            case Mode::Open:
+                // Closed on the way only when nobody stands in the passage (the doors would sweep him).
+                if (!want && !inPassage) {
+                    st.mode = Mode::Closing;
+                    st.since = tick_;
+                    nav_->shutGate(i);
+                }
+                break;
+            case Mode::Closing:
+                if (want) reverse(Mode::Opening);
+                break;
         }
     }
 }
 
+void World::applyGateOrder(const Command& cmd) {
+    if (cmd.objectIndex < 0 || static_cast<size_t>(cmd.objectIndex) >= gates_.size()) return;
+    GateState& st = gates_[static_cast<size_t>(cmd.objectIndex)];
+    // Only the holder's hand, and only on a gate that stands (a side that is out of the match has none).
+    if (st.broken() || st.holder != cmd.player || sideBroken(cmd.player)) return;
+    st.pin = cmd.gatePin;
+}
+
+void World::setGateGarrisoned(size_t gate, bool on) {
+    if (gate < gates_.size()) gates_[gate].garrisoned = on;
+}
+
+void World::setGatePin(size_t gate, Command::GatePin pin) {
+    if (gate < gates_.size()) gates_[gate].pin = pin;
+}
+
 void World::setGateHolder(size_t gate, PlayerId holder) {
-    if (gate < gates_.size()) gates_[gate].holder = holder;
+    if (gate >= gates_.size() || gates_[gate].holder == holder) return;
+    gates_[gate].holder = holder;
+    gates_[gate].pin = Command::GatePin::Auto;  // a new lord's gate is his to pin
 }
 
 void World::setGateHp(size_t gate, int32_t hp) {
@@ -221,11 +242,11 @@ bool World::placeAtGate(const Unit& u, Vec3& spot) const {
     return false;
 }
 
-bool World::haltAtGate(const Unit& u) const {
+World::GateHold World::heldAtGate(const Unit& u) const {
     // Nobody passes a shut gate: its own side never hacks at it (nor does one
     // with no blow to strike), so they come as near as they can, to the gate,
     // and stop. Fliers go over.
-    if (!config_.region || gates_.empty() || !u.hasMoveTarget || u.stats.flyAltitude > Fixed::zero()) return false;
+    if (!config_.region || gates_.empty() || !u.hasMoveTarget || u.stats.flyAltitude > Fixed::zero()) return GateHold::Free;
     const Region& rg = *config_.region;
     const auto& gs = rg.gates();
     for (const size_t i : rg.gatesNear(u.pos.x, u.pos.y)) {
@@ -238,7 +259,9 @@ bool World::haltAtGate(const Unit& u) const {
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
         const bool in = townSide(g, ring, u.pos);
         if (withinRing(ring, u.moveTarget) == in) continue;
-        if (distSq <= kHaltReach * kHaltReach) return true;
+        // His own gate swings open for him (unless held shut): he waits for it, order and all; else he stops for good.
+        const GateHold stop = gates_[i].holder == u.owner && gates_[i].pin != Command::GatePin::Shut ? GateHold::Wait : GateHold::Halt;
+        if (distSq <= kHaltReach * kHaltReach) return stop;
         // Behind his own men already stopped before it.
         bool against = false;
         unitGrid_.query(u.pos.x, u.pos.y, u.stats.radius + Fixed::fromInt(2), [&](uint32_t j) {
@@ -248,9 +271,9 @@ bool World::haltAtGate(const Unit& u) const {
             if ((o.pos - u.pos).flat().lengthSq() > touch * touch || o.pos.z >= g.top || townSide(g, ring, o.pos) != in) return;
             against = (o.pos - nearestOnGate(g, o.pos)).flat().lengthSq() <= kHaltQueue * kHaltQueue;
         });
-        if (against) return true;
+        if (against) return stop;
     }
-    return false;
+    return GateHold::Free;
 }
 
 void World::hackGate(Unit& u, int gate) {
