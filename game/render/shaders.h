@@ -1550,6 +1550,7 @@ flat in vec3 vScale;
 out vec4 oColor;
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
 uniform float uHouse;    // 1: the house mesh: shingles, framed plaster, a plank door (houseSurface)
+uniform float uRock;     // 1: boulders: bedding planes, cracks, grain, lichen (rockSurface)
 // Courses of dressed blocks, staggered row by row, each its own tone, with
 // mortar lines that fade out (px: metres a pixel spans) before they shimmer.
 vec3 coursedStone(vec3 albedo, vec2 uv, vec2 size, float px) {
@@ -1565,6 +1566,33 @@ vec3 coursedStone(vec3 albedo, vec2 uv, vec2 size, float px) {
 // Grain of wood running along `along` (metres), fading to its mean with distance.
 float woodGrain(float along, float across, float fade) {
     return mix(0.9, 0.74 + 0.36 * valueNoise2(vec2(along * 1.7, across * 48.0)), fade);
+}
+// A boulder: sedimentary bedding planes (wavy bands, each its own tone, a dark
+// seam between), cracks that follow nothing, a grain of crystals, lichen
+// patches on whatever faces up, and the weather darkening the lower face. Laid
+// out in world metres (faces turned to the sky by x and y, the rest by the
+// horizontal along the face and z), so it is one rock face across a rock's
+// triangles; fades to its mean tone as a pixel covers the grain.
+void rockSurface(inout vec3 albedo, inout vec3 n) {
+    bool top = abs(n.z) > 0.7;
+    vec2 uv = top ? vWorld.xy : vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
+    float px = max(fwidth(uv.x), fwidth(uv.y));
+    float fade = 1.0 - smoothstep(0.015, 0.1, px);
+    float warp = valueNoise2(uv * 1.7 + 4.0) * 1.6;
+    float band = (top ? uv.x * 0.8 : uv.y * 6.0) + warp;
+    float layer = floor(band);
+    float tone = 0.8 + 0.34 * hash12(vec2(layer, 7.3));
+    float seamLine = smoothstep(0.0, 0.07, fract(band)) * smoothstep(1.0, 0.93, fract(band));
+    // Cracks: thin ridges of a second noise, branching where two cross.
+    float c1 = abs(valueNoise2(uv * 3.1 + 11.0) - 0.5), c2 = abs(valueNoise2(uv * 6.3 + 29.0) - 0.5);
+    float crack = (1.0 - smoothstep(0.0, 0.018 + px * 0.5, c1)) + 0.7 * (1.0 - smoothstep(0.0, 0.015 + px * 0.5, c2));
+    float grain = 0.88 + 0.24 * hash12(floor(uv * 70.0)) + 0.1 * (valueNoise2(uv * 17.0) - 0.5);
+    vec3 detail = albedo * tone * (top ? 0.92 + 0.08 * seamLine : 0.78 + 0.22 * seamLine) * (1.0 - 0.4 * clamp(crack, 0.0, 1.0)) * grain;
+    float lichen = smoothstep(0.58, 0.74, valueNoise2(uv * 2.3 + 3.0)) * (top ? 0.8 : 0.35 * smoothstep(0.0, 0.6, n.z + 0.2));
+    detail = mix(detail, detail * vec3(0.85, 0.95, 0.5) + vec3(0.04, 0.05, 0.0), lichen);
+    vec3 mean = albedo * 0.92 * mix(vec3(1.0), vec3(0.9, 0.97, 0.75), 0.3 * lichen);
+    albedo = mix(mean, detail, fade);
+    n = normalize(n + (vec3(valueNoise2(uv * 9.0 + 1.0), valueNoise2(uv * 9.0 + 5.0), valueNoise2(uv * 9.0 + 9.0)) - 0.5) * 0.45 * fade);
 }
 // The house mesh (meshes::house): clay shingles in staggered rows with
 // rounded tips that shade the row below; plaster framed in timber (posts a
@@ -1623,10 +1651,11 @@ void houseSurface(inout vec3 albedo, inout vec3 n) {
         float plank = floor(pu);
         vec3 wood = base * (0.7 + 0.5 * hash12(vec2(plank, 1.3)));
         wood *= 0.78 + 0.34 * valueNoise2(vec2(u * 26.0 + plank * 7.0, v * 2.5));
-        wood *= 1.0 - 0.75 * (1.0 - smoothstep(0.006, 0.006 + max(px, 0.008), seam)) * fade;
+        wood *= 1.0 - 0.6 * (1.0 - smoothstep(0.005, 0.005 + max(px, 0.008), seam)) * fade;
+        wood *= 1.0 + 0.2 * (1.0 - smoothstep(0.012, 0.02, abs(seam - 0.03))) * fade;  // each plank's edge catching the light
         const float frameW = 0.09;
         vec3 framed = base * 1.18 * woodGrain(v, u, fade);
-        wood = mix(framed, wood * (0.8 + 0.2 * smoothstep(frameW, frameW + 0.06, inset)), smoothstep(frameW + max(px, 0.004), frameW, inset));
+        wood = mix(framed, wood * (0.8 + 0.2 * smoothstep(frameW, frameW + 0.06, inset)), smoothstep(frameW, frameW + max(px, 0.004), inset));
         // Iron: straps at a quarter and three quarters of the height, running two thirds across from the hinges.
         vec3 iron = vec3(0.1, 0.1, 0.11) * (0.8 + 0.4 * valueNoise2(vec2(u * 30.0, v * 30.0)));
         float across = (u + halfW) / (2.0 * halfW);
@@ -1669,7 +1698,12 @@ void houseSurface(inout vec3 albedo, inout vec3 n) {
         float tim = 1.0 - smoothstep(-px, px, sd);
         float ao = 0.8 + 0.2 * smoothstep(0.0, 0.1, sd);
         float spot = valueNoise2(vec2(u, v) * 7.0);
-        vec3 pl = plaster * ao * (0.92 + 0.14 * spot) * (0.9 + 0.1 * valueNoise2(vec2(u * 1.3, v * 0.3) + 5.0));
+        // Lime-wash: each bay its own tone, patches where it has worn through to the lath, rain streaks, and a fine speckle.
+        float bayTone = 0.88 + 0.2 * hash12(vec2(bi, floor(v / 1.1) + 9.0));
+        float worn = smoothstep(0.58, 0.72, valueNoise2(vec2(u, v) * 1.7 + 21.0)) * 0.3;
+        float speck = 0.95 + 0.1 * hash12(floor(vec2(u, v) * 90.0)) * fade;
+        vec3 pl = plaster * ao * bayTone * speck * (0.86 + 0.2 * spot) * (0.84 + 0.2 * valueNoise2(vec2(u * 1.3, v * 0.3) + 5.0));
+        pl = mix(pl, pl * vec3(0.72, 0.66, 0.56), worn);
         pl *= mix(0.82, 1.0, smoothstep(foot, foot + 0.9, v));                     // splashed at the foot
         pl *= mix(0.9, 1.0, smoothstep(topPlate - 0.7, topPlate, v) * -1.0 + 1.0);  // sooty under the eaves
         bool vertical = postD - 0.06 < min(abs(v - (foot + 0.07)) - 0.07, abs(v - topPlate) - 0.1);
@@ -1718,6 +1752,7 @@ void main() {
         return;
     }
     if (uHouse > 0.5) houseSurface(albedo, n);
+    if (uRock > 0.5) rockSurface(albedo, n);
     if (uMasonry > 0.5 && abs(vColor.r - vColor.b) < 0.14) {  // stone, not timber
         // Courses of dressed blocks, staggered row by row, each its own tone;
         // mortar lines fade out before they shimmer; rain streaks and lichen.
@@ -1991,20 +2026,44 @@ layout(location = 2) in vec3 aColor;
 uniform vec3 uBakeBox;
 out vec3 vColor;
 out vec3 vNormal;
+out vec3 vPos;
 void main() {
     vColor = aColor;
     vNormal = aNormal;
+    vPos = aPos;
     gl_Position = vec4(aPos.x / uBakeBox.x, aPos.z / uBakeBox.y * 2.0 - 1.0, aPos.y / uBakeBox.z, 1.0);
 }
 )";
+// The bake is where the texture of a tree is laid: bark furrowed along the trunk and boughs, leaves and needles as
+// clumps and a speckle, with the clumps' relief in the normal (the picture is a quarter of a metre a texel at
+// most, so the finest grain is a few texels and the mipmaps carry it down to a tree's average with distance).
 inline const char* kBoardBakeFs = R"(
 in vec3 vColor;
 in vec3 vNormal;
+in vec3 vPos;
 layout(location = 0) out vec4 oColor;
 layout(location = 1) out vec4 oNormal;
 void main() {
-    oColor = vec4(vColor, 1.0);
-    oNormal = vec4(vec3(vNormal.x, -vNormal.y, vNormal.z) * 0.5 + 0.5, 1.0);
+    vec3 col = vColor, n = normalize(vNormal);
+    vec2 p = vec2(vPos.x + vPos.y * 0.37, vPos.z);  // the picture's own plane, turned a little so no two sides line up
+    if (vColor.r > 1.28 * vColor.g) {
+        // Bark: furrows running up, broken into plates now and then, ridges lighter than the crevices.
+        float f = valueNoise2(vec2(p.x * 120.0, p.y * 9.0)), g = valueNoise2(vec2(p.x * 230.0 + 3.0, p.y * 22.0));
+        float ridge = smoothstep(0.25, 0.75, f);
+        col *= 0.62 + 0.55 * ridge + 0.18 * (g - 0.5);
+        col = mix(col, col * vec3(0.9, 1.0, 0.8), smoothstep(0.7, 0.9, valueNoise2(p * 40.0 + 9.0)) * 0.5);  // moss in patches
+        n = normalize(n + vec3((f - 0.5) * 0.7, 0.0, 0.0));
+    } else {
+        // Leaves: clumps of a few texels, each its own tone and a little off-hue, and a finer speckle of single leaves.
+        float clump = valueNoise2(p * 46.0), big = valueNoise2(p * 13.0 + 5.0);
+        float leaf = hash12(floor(p * 140.0));
+        col *= 0.7 + 0.5 * clump + 0.2 * (big - 0.5);
+        col *= 0.9 + 0.2 * leaf;
+        col = mix(col, col * vec3(1.18, 1.08, 0.7), smoothstep(0.62, 0.82, valueNoise2(p * 29.0 + 17.0)) * 0.7);  // sunlit and yellowing
+        n = normalize(n + vec3(valueNoise2(p * 46.0 + 7.0) - 0.5, valueNoise2(p * 46.0 + 13.0) - 0.5, clump - 0.5) * 0.7);
+    }
+    oColor = vec4(col, 1.0);
+    oNormal = vec4(vec3(n.x, -n.y, n.z) * 0.5 + 0.5, 1.0);
 }
 )";
 #undef ILLYRIA_SCENERY_VS

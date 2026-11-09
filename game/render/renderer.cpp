@@ -379,6 +379,7 @@ bool Renderer::buildPrograms() {
         s.p.patchSink = glGetUniformLocation(s.p.id, "uPatchSink");
         s.p.masonry = glGetUniformLocation(s.p.id, "uMasonry");
         s.p.house = glGetUniformLocation(s.p.id, "uHouse");
+        s.p.rock = glGetUniformLocation(s.p.id, "uRock");
         s.p.camFwd = glGetUniformLocation(s.p.id, "uCamFwd");
         s.p.camUp = glGetUniformLocation(s.p.id, "uCamUp");
         s.p.proj = glGetUniformLocation(s.p.id, "uProj");
@@ -563,6 +564,7 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
         glUniform1f(mesh_.sway, b->sway);
         glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
         glUniform1f(mesh_.house, b->house ? 1.0f : 0.0f);
+        glUniform1f(mesh_.rock, b->rock ? 1.0f : 0.0f);
         glUniform1f(mesh_.lod, b->lod);
         glUniform1f(mesh_.flag, b->cloth ? 1.0f : 0.0f);
         glBindVertexArray(b->vao);
@@ -1499,6 +1501,8 @@ bool Renderer::init(Battle& battle) {
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.lod = 2;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->lod = 2;
+    for (auto* list : {&rocks_, &detailRocks_})
+        for (MeshBatch& b : *list) b.rock = true;
     for (auto* list : {&pines_, &oaks_, &detailPines_, &detailOaks_})
         for (MeshBatch& b : *list) b.part = Part::Trees;
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
