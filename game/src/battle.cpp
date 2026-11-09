@@ -326,10 +326,11 @@ void Battle::testMove(sim::EntityId unit, const V3& to) {
 }
 
 void Battle::holdGates(sim::PlayerId holder) {
-    // The garrison keeps them (World::keepGates): the archers go up on the walls, the foot form behind the doors.
+    // The computer's garrison keeps them (World::keepGates): the archers go up on the walls, the foot form behind the doors;
+    // the player's are his to open and shut.
     for (size_t i = 0; i < world_->gates().size(); ++i) {
         world_->setGateHolder(i, holder);
-        world_->setGateGarrisoned(i, true);
+        world_->setGateGarrisoned(i, holder != kPlayer);
     }
 }
 

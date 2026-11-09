@@ -1135,7 +1135,13 @@ void Renderer::uploadGates(const Battle& battle) {
     // continent's shut. Uploaded again only when one breaks or swings further.
     const std::vector<sim::GateState>& state = battle.world().gates();
     std::vector<int16_t> look(state.size());
-    for (size_t i = 0; i < state.size(); ++i) look[i] = state[i].broken() ? -1 : static_cast<int16_t>(state[i].swing(battle.world().tick()) / 50);
+    // (How a gate stands, open or swinging, is told only of a castle the viewer can see: Battle::sees, the one seam of sight.)
+    const auto& shapes = battle.worldRegion().gates();
+    for (size_t i = 0; i < state.size(); ++i) {
+        const V3 mid = toV3(shapes[i].a + shapes[i].b) * 0.5f;
+        const bool seen = state[i].holder == sim::GateState::kNoHolder || battle.sees(state[i].holder, mid.x, mid.y);
+        look[i] = state[i].broken() ? -1 : seen ? static_cast<int16_t>(state[i].swing(battle.world().tick()) / 50) : 0;
+    }
     std::vector<int16_t> shown = look;
     shown.push_back(-2);  // never empty once uploaded
     if (shown == gatesShown_) return;

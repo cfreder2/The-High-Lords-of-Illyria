@@ -414,9 +414,10 @@ public:
     std::vector<OrderMark> orderMarks() const;
     // How strongly a soldier's order markers show (0: not at all).
     float markOpacity(size_t index) const;
-    // Tests and hooks: a gate battered down at once; every archer of ours
+    // Tests and hooks: the town's gates given to a side (and its garrison to keep them), a gate battered down at once; every archer of ours
     // looses at a spot on the ground.
     void breakGate(int gate);
+    void giveGates(sim::PlayerId holder) { holdGates(holder); }
     void testShootAt(const V3& at);
     // Test hook: one soldier (of either side) ordered to walk to a spot.
     void testMove(sim::EntityId unit, const V3& to);
