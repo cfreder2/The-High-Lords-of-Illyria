@@ -2529,6 +2529,10 @@ void main() {
         }
         if (detail) albedo = farAlbedo(albedo, kinds, fielded ? vec3(vWorld.xy, ff.g) : vWorld, n);  // (heights from the smooth field)
         else if (vKinds.w >= 1.0) albedo = mix(vec3(0.30, 0.50, 0.55), vec3(0.10, 0.26, 0.42), clamp(vKinds.w - 1.0, 0.0, 1.0));
+        if (fielded && D > -2.4 && seaWeight(vWorld.z + D) > 0.5) {  // a sea shore's beach: sand to a couple of metres over the water, a ragged edge
+            float beach = (1.0 - smoothstep(0.4 + 0.5 * valueNoise2(p / 9.0), 2.4, -D)) * (1.0 - 0.7 * smoothstep(0.3, 0.7, kinds.y));
+            albedo = mix(albedo, mix(vec3(0.80, 0.72, 0.54), vec3(0.68, 0.60, 0.44), valueNoise2(p / 3.0)), beach * 0.9);
+        }
         // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
         float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(p);
         if (fielded) light *= clamp(1.0 + ff.b * 0.45, 0.78, 1.25);  // relief: ridges catch light, ravines hold shade
