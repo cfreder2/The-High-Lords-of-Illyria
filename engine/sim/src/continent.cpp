@@ -58,9 +58,6 @@ constexpr Fixed peakM(int64_t v) { return Continent::peakHeight(v); }
 // Metres between two towns' walls (their radii): beyond kMaxWallGap the placer
 // prefers the better site to the wider gap; it never goes below kMinWallGap.
 constexpr int64_t kMaxWallGap = 180, kMinWallGap = 30;
-// A town goes astride a road (its walls across it) only where that leaves a
-// gap this much wider than anywhere beside one (metres).
-constexpr int64_t kAstride = 40;
 // No town this near Oakhaven Ford: the set battle there is fought on open
 // ground (Battle::setUpFord: the two armies 230 m apart either side of it).
 constexpr Fixed kFordClear = Fixed::fromInt(350);
@@ -233,10 +230,13 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     }
     // The Heartmere lies at the level of the rivers that meet in it.
     lakeSurfaces_.back() = rivers_.front().points.back().z;
+    keepRoadsDry();
     placeBridges();
     planSetPieces();
     placeCities();
+    routeApproaches();
     planCastles();
+    layApproaches();
     placeSites();
     // Then the battle-scale relief and the landmarks, clear of all of them.
     dress();
@@ -275,7 +275,13 @@ void Continent::planCastles() {
         const Vec3 c = city.pos;
         // The gate faces the nearest road.
         Vec3 toward{Fixed::zero(), -Fixed::one(), Fixed::zero()};
-        {
+        // (The way its road goes, once it has left the walls; else the nearest road's.)
+        const std::vector<Vec3>& way = approach_[ci];
+        size_t leaves = 0;
+        while (leaves < way.size() && (way[leaves] - c).flat().length() < city.radius + m(8)) ++leaves;
+        if (leaves < way.size()) {
+            toward = unitFlat(way[leaves] - c);
+        } else {
             Fixed best = m(100000);
             for (const Polyline& road : roads_) {
                 size_t seg = 0;
@@ -366,17 +372,39 @@ void Continent::planCastles() {
             }
             k.rings.push_back(inner);
         }
-        // Towers on every corner, and a pair flanking each gate.
-        for (const Castle::Ring& ring : k.rings) {
+        // A pair of towers flanking each gate, and towers at the corners where
+        // the wall turns sharply and at about every kTowerSpacing metres of wall
+        // between (no more than that: a tower to every corner of a ring of
+        // short walls crowds it; and none standing against a gate tower).
+        for (Castle::Ring& ring : k.rings) {
             const size_t n = ring.corners.size();
-            for (size_t i = 0; i < n; ++i) {
-                k.towers.push_back({ring.corners[i], ring.thick * 3 / 2, ring.height * 4 / 3, roll(40 + static_cast<int64_t>(i)) < r(2, 5)});
-            }
             const Vec3 a = ring.corners[ring.gateEdge], b = ring.corners[(ring.gateEdge + 1) % n];
             const Vec3 mid = (a + b) * r(1, 2), along = unitFlat(b - a);
-            for (int s = -1; s <= 1; s += 2) {
-                k.towers.push_back({mid + along * (ring.gateTowerAt() * s), ring.thick * 6 / 5, ring.height * 5 / 4, false});
+            Vec3 gateTower[2];
+            for (int s = -1; s <= 1; s += 2) gateTower[(s + 1) / 2] = mid + along * (ring.gateTowerAt() * s);
+            // Walking round from the gate's far side: the wall since the last tower.
+            ring.towered.assign(n, 0);
+            Fixed run = (ring.corners[(ring.gateEdge + 1) % n] - gateTower[1]).flat().length();
+            for (size_t step = 1; step <= n; ++step) {
+                const size_t i = (ring.gateEdge + step) % n;
+                const Vec3 prev = ring.corners[(i + n - 1) % n], next = ring.corners[(i + 1) % n];
+                const bool sharp = unitFlat(ring.corners[i] - prev).dot(unitFlat(next - ring.corners[i])) < Castle::kSharpCorner;
+                bool clear = true, apart = true;
+                for (const Vec3& g : gateTower) {
+                    const Fixed d = (ring.corners[i] - g).flat().length();
+                    clear = clear && d > ring.thick * 3 + m(8);
+                    apart = apart && d > ring.thick * 27 / 10 + m(3);
+                }
+                const Fixed onward = (next - ring.corners[i]).flat().length();
+                if (apart && (sharp || (clear && run >= m(Castle::kTowerSpacing)))) {
+                    ring.towered[i] = 1;
+                    run = Fixed::zero();
+                }
+                run += onward;
             }
+            for (size_t i = 0; i < n; ++i)
+                if (ring.towered[i]) k.towers.push_back({ring.corners[i], ring.thick * 3 / 2, ring.height * 4 / 3, roll(40 + static_cast<int64_t>(i)) < r(2, 5)});
+            for (const Vec3& g : gateTower) k.towers.push_back({g, ring.thick * 6 / 5, ring.height * 5 / 4, false});
         }
         // The keep stands back from the gate; the courtyard lies between.
         k.keepAxis = toward;
@@ -488,9 +516,10 @@ void Continent::planCastles() {
     }
 }
 
-void Continent::placeBridges() {
+void Continent::placeBridges(size_t firstRoad, size_t firstCrossing) {
     // Where roads cross creeks: small stone bridges, one per crossing.
-    for (const Polyline& road : roads_) {
+    for (size_t roadIndex = firstRoad; roadIndex < roads_.size(); ++roadIndex) {
+        const Polyline& road = roads_[roadIndex];
         for (size_t i = 0; i + 1 < road.points.size(); ++i) {
             const Vec3 a = road.points[i], b = road.points[i + 1];
             const Fixed minX = min(a.x, b.x), maxX = max(a.x, b.x), minY = min(a.y, b.y), maxY = max(a.y, b.y);
@@ -517,7 +546,8 @@ void Continent::placeBridges() {
             }
         }
     }
-    for (Crossing& cr : crossings_) {
+    for (size_t crossingIndex = firstCrossing; crossingIndex < crossings_.size(); ++crossingIndex) {
+        Crossing& cr = crossings_[crossingIndex];
         if (!cr.bridged()) continue;
         const bool foot = cr.kind == Crossing::Kind::Footbridge;
         // Along the road it carries, or straight across the river it spans.
@@ -1249,7 +1279,6 @@ void Continent::placeCities() {
         Vec3 pos;
         Fixed score;
         int64_t order;
-        bool astride = false;  // a road runs through where its walls would be
     };
     std::vector<Candidate> candidates;
     const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
@@ -1271,7 +1300,9 @@ void Continent::placeCities() {
             Fixed score = noise::lattice(sj ^ 0x5C0, i, j) - slope * 3;
             if (c.roadDist < scaled(250)) score += r(3, 5);
             if (c.riverDist < scaled(600)) score += r(2, 5);
-            candidates.push_back({{x, y, c.height}, score, order, !offRoads(x, y, kTownRadius)});
+            // (Never astride a road: its walls would run across it, and a road has one gate to lead to.)
+            if (!offRoads(x, y, kTownRadius)) continue;
+            candidates.push_back({{x, y, c.height}, score, order});
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
@@ -1281,7 +1312,7 @@ void Continent::placeCities() {
     // town), and spread as evenly as the land allows: each in turn goes
     // where the gap to the nearest walls is widest (the best scored first,
     // while there is room for kMaxWallGap anywhere), never nearer than
-    // kMinWallGap; astride a road only where the gap is kAstride wider.
+    // kMinWallGap.
     constexpr size_t kTotal = 80;
     std::vector<City> chosen = cities;
     std::vector<Fixed> gapTo(candidates.size(), m(100000));
@@ -1292,10 +1323,10 @@ void Continent::placeCities() {
     for (const City& o : chosen) keepClear(o);
     while (chosen.size() < kTotal) {
         size_t best = candidates.size();
-        Fixed widest = -m(kAstride);
+        Fixed widest = -m(kMaxWallGap);
         for (size_t i = 0; i < candidates.size(); ++i) {
             if (gapTo[i] < m(kMinWallGap)) continue;
-            const Fixed gap = min(gapTo[i], m(kMaxWallGap)) - (candidates[i].astride ? m(kAstride) : Fixed::zero());
+            const Fixed gap = min(gapTo[i], m(kMaxWallGap));
             if (gap >= widest && (gap > widest || best == candidates.size())) {
                 widest = gap;
                 best = i;
