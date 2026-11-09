@@ -329,13 +329,7 @@ bool DetailLand::finishStep(int s) {
             // Mud: the trodden margins of the water, in patches.
             if (g == sim::Ground::Plains || g == sim::Ground::Road) {
                 const Fixed zc = a;
-                bool margin = false;
-                for (int dy = -2; dy <= 2 && !margin; ++dy)
-                    for (int dx = -2; dx <= 2 && !margin; ++dx) {
-                        const Fixed w = raw(ix + dx, iy + dy).water;
-                        margin = w.raw != sim::Region::kDryRaw && zc - w < r(9, 10);
-                    }
-                if (margin && sim::noise::fbm(mudSeed_, lx, ly, 24) > r(2, 5)) g = sim::Ground::Mud;
+                if (sim::muddyShore(mudSeed_, lx, ly, zc, [&](int dx, int dy) { return raw(ix + dx, iy + dy).water; })) g = sim::Ground::Mud;
             }
             ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] = static_cast<uint8_t>(static_cast<int>(g) * 16);
         }

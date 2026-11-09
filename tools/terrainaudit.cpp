@@ -12,6 +12,8 @@
 
 #include "illyria/sim/continent.h"
 #include "terrain_audit.h"
+#include "shape_audit.h"
+#include "water_audit.h"
 
 using namespace illyria::sim;
 
@@ -80,6 +82,13 @@ int main(int argc, char** argv) {
                 noRoad, noLink, wet, inWall, noView, crowd);
     std::printf("\nroads through water that is no bridge or ford (more than half a metre deep):\n");
     for (const audit::WetRun& w : audit::wetRoads(c)) std::printf("  road %zu%s: %d points from (%.0f, %.0f)\n", w.road, w.road >= 7 ? " (a spur)" : "", w.points, w.first.x, w.first.y);
+    std::printf("\nrivers (sections 1 m apart across, a section every river vertex): walls = outermost water deeper than %.2f m; steep = falls faster than 1 in %.0f\n", wateraudit::kWallDepth, 1 / wateraudit::kMaxFall);
+    for (const wateraudit::RiverReport& r : wateraudit::rivers(c))
+        std::printf("  %-14s sections %5d  walls %4d (tallest %5.2f m)  steep %4d (steepest 1 in %5.1f, biggest step %5.2f m)  uphill %d\n", c.rivers()[r.river].name.c_str(), r.sections, r.walls, r.tallestWall,
+                    r.steep, r.steepest > 0 ? 1 / r.steepest : 0.0, r.biggestStep, r.uphill);
+    std::printf("\nlakes and islands (deviation from the ellipse of the same moments, 0 = a drawn oval; solidity = area / convex hull; lobes = radius spread):\n");
+    for (const shapeaudit::Shape& sh : shapeaudit::bodies(c))
+        std::printf("  %-18s %-4s area %9.0f m2  deviation %5.3f  solidity %5.3f  lobes %5.3f\n", sh.name.c_str(), sh.lake ? "lake" : "land", sh.area, sh.deviation, sh.solidity, sh.lobes);
     std::printf("\ntowers per castle:\n");
     for (size_t n = 0; n < towerHist.size(); ++n)
         if (towerHist[n]) std::printf("  %2zu towers: %d castles\n", n, towerHist[n]);

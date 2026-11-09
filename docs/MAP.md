@@ -11,7 +11,7 @@ An **original** map with the strategic structure of the 1990 *Warlords* map: a w
   - The Sunderwave Sea runs along the whole west coast, with the Isle of the Seer offshore.
   - The great river Aldwater flows south from the northern coast.
   - The Greymere leaves it in the north and runs west to the sea, cutting off the north-west country (Darkwood, the Thornspine). Only Greymere Bridge and Greymere Ford lead in.
-  - Below Kingsbridge the Aldwater forks: the Westrun runs west to the sea and the Sorrow runs on south. The Emberflow drains Silverlake into it from the east, and the Wending and Coldbrook are tributaries.
+  - Below Kingsbridge the Aldwater forks: the Westrun runs west to the sea and the Sorrow runs on south. The Emberflow drains Silverlake into it from the east, and the Wending is a smaller stream.
   - Longmere, a long lake, lies inside the Longwood.
   - Every river slopes steadily downhill to the sea.
 - **Mountains:**

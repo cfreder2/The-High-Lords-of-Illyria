@@ -181,7 +181,7 @@ March march(const SiteView& v, double fx, double fy, double tx, double ty, UnitT
     std::vector<std::vector<Vec3>> trail(ids.size());
     std::vector<bool> stuck(ids.size(), false);
     const double straight = (to - from).flat().length().toDouble() / (st.moveSpeed * 9 / 10).toDouble();
-    const int limit = static_cast<int>((straight * 2 + 20) * kTicksPerSecond);
+    const int limit = static_cast<int>((straight * 3 + 30) * kTicksPerSecond);  // (a slow way round the pillars is not a stall)
     int t = 0;
     for (; t < limit; ++t) {
         w.step({});

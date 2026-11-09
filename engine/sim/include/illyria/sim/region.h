@@ -4,6 +4,7 @@
 #include <span>
 #include <vector>
 
+#include "illyria/sim/noise.h"
 #include "illyria/sim/terrain.h"
 #include "illyria/sim/vec3.h"
 
@@ -260,5 +261,22 @@ private:
 
 // Movement speed multiplier for a ground type (zero: impassable on foot).
 Fixed groundSpeed(Ground g);
+
+// Whether the cell at (x, y), z high, is a trodden margin of the water (Ground::Mud): barely above a wet cell within about two
+// cells, in patches. `waterAt(dx, dy)` is the water surface raw of the cell dx, dy away (Region::kDryRaw if dry). One rule for
+// the battle's Region and the close-up land of the Conquest, so they agree. The reach is ragged (each cell's own, 1 to 2
+// cells), not a box of cells: the margin follows the shore, not a staircase of the grid.
+template <class WaterAt>
+inline bool muddyShore(uint64_t seed, Fixed x, Fixed y, Fixed z, WaterAt&& waterAt) {
+    if (noise::fbm(seed, x, y, 24) <= Fixed::fromRatio(2, 5)) return false;
+    const int64_t reach2 = 1 + (noise::fbm(seed ^ 0xA11, x, y, 5) * 10).floorToInt() / 3;  // 1 to 4 (cells squared)
+    for (int dy = -2; dy <= 2; ++dy)
+        for (int dx = -2; dx <= 2; ++dx) {
+            if (dx * dx + dy * dy > reach2) continue;
+            const Fixed w = waterAt(dx, dy);
+            if (w.raw != Region::kDryRaw && z - w < Fixed::fromRatio(9, 10)) return true;
+        }
+    return false;
+}
 
 }  // namespace illyria::sim

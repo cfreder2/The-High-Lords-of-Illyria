@@ -265,13 +265,16 @@ public:
     const std::vector<Area>& swamps() const { return swamps_; }
     const std::vector<Area>& forests() const { return forests_; }
     const std::vector<Area>& lakes() const { return lakes_; }
-    // Land in the lakes: Abbey Isle and the Spit that reaches it.
+    // Land in the lakes: Abbey Isle, the Spit that reaches it and the rocks about it (each as the ellipse it was
+    // drawn from; the shore itself wanders: shoreDistance).
     std::vector<Area> isles() const;
     // Points along each isle's middle line (its longer axis), every 4 m,
     // where its ground stands out of the water: the campaign's grid counts
     // every cell they fall in as land, so a walker crosses the Spit, too
     // narrow for its cells' middles to fall on.
     std::vector<Vec3> isleWalk() const;
+    // How far in from its shore isle `i` is (< 1 inside; the shore itself wanders).
+    Fixed isleDistance(size_t i, Fixed x, Fixed y) const;
     const std::vector<Label>& labels() const { return labels_; }
     static const std::vector<Faction>& factions();
     const std::vector<City>& cities() const { return cities_; }
@@ -395,6 +398,10 @@ private:
         Area area;
         size_t lake;
         Fixed rise;  // metres above the water at its middle
+        // A spit: a long strand that wanders along its axis by up to `wander` metres, narrowing and widening, and
+        // fans out where it meets the shore and the isle it joins.
+        Fixed wander = {};
+        bool walked = true;  // a way on foot (isleWalk): the spit and the isle it reaches, not the rocks around
     };
     std::vector<Isle> isles_;
     std::vector<std::vector<std::pair<uint32_t, uint32_t>>> roadBuckets_;  // road and segment near each bucket

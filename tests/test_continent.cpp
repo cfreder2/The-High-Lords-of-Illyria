@@ -57,7 +57,7 @@ TEST(continent_window_is_deterministic_and_pinned) {
     CHECK(again.checksum() == fordWindow()->checksum());
     // Every platform must generate exactly this world. (It holds a ruin: its
     // stones, floor, stair and stepped base come from the ruin's model, on levelled ground.)
-    constexpr uint64_t kGolden = 0xc99f5d588c1bbf5b;  // (was 0x3343cdcad97e5671 before the glade round ruins (nothing grows within 46 m); was 0x39dd9c7350e9e73c before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
+    constexpr uint64_t kGolden = 0x75695b97b5dd13c6;  // (was 0xc99f5d588c1bbf5b before rivers held below their banks, lakes and isles with natural shores (the Coldbrook gone, a road's end moved); was 0x3343cdcad97e5671 before the glade round ruins (nothing grows within 46 m); was 0x39dd9c7350e9e73c before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
     if (fordWindow()->checksum() != kGolden)
         std::printf("  continent window checksum: 0x%016llx\n", static_cast<unsigned long long>(fordWindow()->checksum()));
     CHECK(fordWindow()->checksum() == kGolden);
@@ -76,7 +76,7 @@ TEST(oakhaven_battle_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0xedd577b00cdc845c;  // (was 0x63757b655730c08f before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x9aa2d45873d4c28f before every gate's fields were hashed always)
+    constexpr uint64_t kGolden = 0x35d32b030408284b;  // (was 0xedd577b00cdc845c before rivers held below their banks, lakes and isles with natural shores (the Coldbrook gone, a road's end moved); was 0x63757b655730c08f before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x9aa2d45873d4c28f before every gate's fields were hashed always)
     if (a != kGolden) std::printf("  Oakhaven checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -103,7 +103,7 @@ TEST(continent_has_cities_castles_and_places_to_explore) {
         CHECK(!c.waterSurface(s.pos.x, s.pos.y, surface));
     }
     CHECK(kinds[0] == 34 && kinds[1] == 4 && kinds[2] == 2);  // ruins, temples, sages
-    constexpr uint64_t kGolden = 0x84c2eca1f008d047;  // (was 0x898fe2f7beec6015 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
+    constexpr uint64_t kGolden = 0x7366b0c83747651d;  // (was 0x84c2eca1f008d047 before rivers held below their banks, lakes and isles with natural shores (the Coldbrook gone, a road's end moved); was 0x898fe2f7beec6015 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers)
     if (c.checksum() != kGolden) std::printf("  continent checksum: 0x%016llx\n", static_cast<unsigned long long>(c.checksum()));
     CHECK(c.checksum() == kGolden);
 }
