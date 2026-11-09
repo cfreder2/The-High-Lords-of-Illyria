@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <cmath>
 
+#include "illyria/game/road_field.h"
 #include "illyria/sim/noise.h"
 #include "illyria/sim/region.h"
 
@@ -70,6 +71,7 @@ void DetailLand::reset(std::shared_ptr<const sim::Continent> continent, V3 origi
     ground_.assign(height_.size(), 0);
     flow_.assign(height_.size() * 2, 128);
     road_.assign(static_cast<size_t>(kFine) * kFine * 2, 0);
+    for (size_t i = 0; i < road_.size(); i += 2) noRoadTexel(&road_[i]);
     canopy_.assign(static_cast<size_t>(kFine) * kFine, 0);
     shaped_.assign(static_cast<size_t>(kShapedSide) * kShapedSide, Fixed{});
     finishing_ = -1;
@@ -230,15 +232,10 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
             if (pt.x < m(x0) || pt.y < m(y0) || pt.x >= m(x1) || pt.y >= m(y1)) continue;
             const Fixed lx = pt.x - ox_, ly = pt.y - oy_;
             const float x = static_cast<float>(lx.toDouble()), y = static_cast<float>(ly.toDouble());
-            const sim::Ground g = groundOf(x, y);
-            if (g == sim::Ground::Road || g == sim::Ground::Shallows || g == sim::Ground::DeepWater || g == sim::Ground::Bridge) continue;
+            sim::Ground g = groundOf(x, y);
+            if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater || g == sim::Ground::Bridge) continue;
+            if (g == sim::Ground::Road) g = sim::Ground::Plains;  // (the cell's middle is on a road, this point may not be: the road's rule decides, below)
             bool clear = true;
-            for (const Seg& sg : roads) {
-                const float abx = sg.bx - sg.ax, aby = sg.by - sg.ay, len2 = abx * abx + aby * aby;
-                const float t = len2 > 0 ? std::clamp(((x - sg.ax) * abx + (y - sg.ay) * aby) / len2, 0.0f, 1.0f) : 0.0f;
-                const float ex = sg.ax + abx * t - x, ey = sg.ay + aby * t - y;
-                if (ex * ex + ey * ey < 4.5f * 4.5f) clear = false;
-            }
             for (const Keep& k : keeps) clear = clear && std::hypot(x - k.x, y - k.y) >= k.reach;
             for (const sim::Deck& d : decks_) clear = clear && !sim::Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth}.contains(lx, ly);
             if (!clear) continue;
@@ -251,6 +248,17 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
             heightAt(x, y, z, true);
             sim::Obstacle o;
             if (!sim::Region::sceneryAt(scenerySeed_, pt, g, byWater, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw))), o)) continue;
+            bool onRoad = false;  // Region::roadClears, along every road segment near
+            for (const Seg& sg : roads) {
+                const float abx = sg.bx - sg.ax, aby = sg.by - sg.ay, len2 = abx * abx + aby * aby;
+                const float t = len2 > 0 ? std::clamp(((x - sg.ax) * abx + (y - sg.ay) * aby) / len2, 0.0f, 1.0f) : 0.0f;
+                const float ex = sg.ax + abx * t - x, ey = sg.ay + aby * t - y;
+                const float centre = std::sqrt(ex * ex + ey * ey);
+                if (centre < 14.0f && sim::Region::roadClears(o, Fixed::fromRaw(static_cast<int64_t>(std::llround(centre * static_cast<float>(Fixed::kOneRaw)))),
+                                                              Fixed::fromRaw(static_cast<int64_t>(std::llround((sg.wa + (sg.wb - sg.wa) * t) * static_cast<float>(Fixed::kOneRaw))))))
+                    onRoad = true;
+            }
+            if (onRoad) continue;
             o.pos = {lx, ly, Fixed::fromRaw(static_cast<int64_t>(std::llround(static_cast<double>(z) * Fixed::kOneRaw)))};
             out.push_back(o);
         }
@@ -280,9 +288,14 @@ bool DetailLand::finishStep(int s) {
         for (const sim::Continent::Crossing& cr : c.crossings()) {
             if (!cr.bridged()) continue;
             const float px = static_cast<float>(cr.pos.x.toDouble()) - ox, py = static_cast<float>(cr.pos.y.toDouble()) - oy;
-            const float reach = static_cast<float>((cr.halfSpan + cr.halfWidth).toDouble()) + 8;
+            const float reach = static_cast<float>((sim::max(cr.reachBehind(), cr.reachAhead()) + cr.halfWidth).toDouble()) + 8;
             if (px < bx * kCell - reach || py < by * kCell - reach || px > (bx + kChunk) * kCell + reach || py > (by + kChunk) * kCell + reach) continue;
-            decks_.push_back({{cr.pos.x - ox_, cr.pos.y - oy_, cr.deck}, cr.dir, cr.halfSpan, cr.halfWidth + m(3)});
+            sim::Deck d{{cr.pos.x - ox_ + cr.dir.x * cr.spanMiddle(), cr.pos.y - oy_ + cr.dir.y * cr.spanMiddle(), cr.deck}, cr.dir, cr.spanHalf(), cr.halfWidth + m(3)};
+            d.rampLo = cr.rampA;  // (as Region::fromContinent lays it)
+            d.rampHi = cr.rampB;
+            d.endLo = cr.endA;
+            d.endHi = cr.endB;
+            decks_.push_back(d);
         }
         ++sl.step;
         return false;
@@ -312,8 +325,9 @@ bool DetailLand::finishStep(int s) {
             Fixed deck;
             for (const sim::Deck& dk : decks_) {
                 if (dk.contains(lx, ly)) {
+                    const Fixed top = dk.heightAt(lx, ly);
+                    if (!decked || top > deck) deck = top;
                     decked = true;
-                    deck = dk.centre.z;
                 }
             }
             sim::Ground g;
@@ -388,7 +402,7 @@ bool DetailLand::finishStep(int s) {
     }
 
     const auto pts = [](const sim::Polyline& p) -> const std::vector<sim::Vec3>& { return p.points; };
-    const std::vector<Seg> roads = segmentsNear(c.roads(), pts, ox, oy, x0, y0, x1, y1, 16);
+    const std::vector<Seg> roads = segmentsNear(c.roads(), pts, ox, oy, x0, y0, x1, y1, 24);
     growScenery(s, roads);
 
     // Road field at 2 m (signed distance across the nearest road, for ruts) and
@@ -407,24 +421,23 @@ bool DetailLand::finishStep(int s) {
         for (int tx = fx0; tx < fx0 + fn; ++tx) {
             const size_t k = static_cast<size_t>(wrap(ty, kFine)) * kFine + wrap(tx, kFine);
             const float px = (tx + 0.5f) * 2.0f, py = (ty + 0.5f) * 2.0f;
-            float best = 8.0f;
-            uint8_t lateral = 0, weight = 0;
+            float best = kRoadFieldReach;  // (compared by the road's edge, so the widest road there is the one drawn)
+            float edgeBest = 1e9f;
+            uint8_t texel[2];
+            noRoadTexel(texel);
             for (const Seg& sg : roads) {
                 const float abx = sg.bx - sg.ax, aby = sg.by - sg.ay, len2 = abx * abx + aby * aby;
                 if (len2 <= 0) continue;
                 const float t = std::clamp(((px - sg.ax) * abx + (py - sg.ay) * aby) / len2, 0.0f, 1.0f);
                 const float ex = sg.ax + abx * t - px, ey = sg.ay + aby * t - py;
                 const float dist = std::sqrt(ex * ex + ey * ey);
-                if (dist >= best) continue;
-                best = dist;
-                const float side = (abx * (py - sg.ay) - aby * (px - sg.ax)) >= 0 ? 1.0f : -1.0f;
-                // Across the road in units of a 3 m half width, so wider stretches paint wider.
-                const float across = dist * 3.0f / (sg.wa + (sg.wb - sg.wa) * t);
-                lateral = static_cast<uint8_t>(std::clamp(128.0f + side * across * 16.0f, 0.0f, 255.0f));
-                weight = 255;
+                const float hw = sg.wa + (sg.wb - sg.wa) * t;
+                if (dist >= best || dist - hw >= edgeBest) continue;
+                edgeBest = dist - hw;
+                roadTexel(dist, hw, texel);
             }
-            road_[k * 2] = lateral;
-            road_[k * 2 + 1] = weight;
+            road_[k * 2] = texel[0];
+            road_[k * 2 + 1] = texel[1];
             // Groves shade the ground beneath them, as on a battlefield.
             float shade = 0;
             for (const sim::Obstacle* o : crowns) {

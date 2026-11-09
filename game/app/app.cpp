@@ -403,6 +403,20 @@ void placeFlags(float dt) {
         }
         for (const C::Outpost& op : c.outposts()) {
             V3 base{C::centre(op.cx) - o.x, C::centre(op.cy) - o.y, 0};
+            // The flag stands on the dry bank at the bridge's head, beside the road, not mid-river on the cell's middle (the
+            // campaign's own position of the outpost is the cell's).
+            const illyria::sim::Continent::Crossing* span = nullptr;
+            float nearest = 1e9f;
+            for (const illyria::sim::Continent::Crossing& k : app->battle->continent().crossings()) {
+                if (k.name != op.name) continue;
+                const float d = std::hypot(static_cast<float>(k.pos.x.toDouble()) - (base.x + o.x), static_cast<float>(k.pos.y.toDouble()) - (base.y + o.y));
+                if (d < nearest) nearest = d, span = &k;
+            }
+            if (span && span->bridged()) {
+                const illyria::sim::Vec3 head = span->bridgehead();
+                base.x = static_cast<float>(head.x.toDouble()) - o.x;
+                base.y = static_cast<float>(head.y.toDouble()) - o.y;
+            }
             base.z = app->battle->heightAt(base.x, base.y);
             const C::Hex& h = c.hexes()[static_cast<size_t>(op.hex)];
             put(kOutpostPole + static_cast<uint64_t>(&op - c.outposts().data()), {base, 40 * s, h.owner < C::kNeutral ? 1.0f : 0.15f, 16 * s, bannerColor(h.owner)});
@@ -1611,6 +1625,13 @@ ILLYRIA_API void illyria_set_camera(float x, float y, float distance, float yaw)
     app->introStartMs = -1;
     app->camera.lookAt(x, y, distance);
     app->camera.rotate(yaw - app->camera.yaw());
+}
+
+// Test hook (screenshots): the camera at continent metres, not the battle window's.
+ILLYRIA_API void illyria_set_camera_world(float x, float y, float distance, float yaw) {
+    if (!app || !app->battle) return;
+    const V3 o = app->battle->origin();
+    illyria_set_camera(x - o.x, y - o.y, distance, yaw);
 }
 
 // Test hook: the camera close on the `nth` body that died this way (sim::DeathKind:

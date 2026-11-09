@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <map>
 #include <vector>
 
 #include "illyria/sim/continent.h"
@@ -22,6 +24,10 @@ inline double dot(P a, P b) { return a.x * b.x + a.y * b.y; }
 inline double len(P a) { return std::sqrt(dot(a, a)); }
 inline P unit(P a) { const double l = len(a); return l > 0 ? a * (1 / l) : P{}; }
 
+inline Vec3 unitVec(const Vec3& v) {
+    const Fixed l = v.flat().length();
+    return l > Fixed::zero() ? v.flat() / l : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+}
 inline double segDist(P p, P a, P b) {
     const P ab = b - a;
     const double l2 = dot(ab, ab);
@@ -109,6 +115,207 @@ inline std::vector<WetRun> wetRoads(const Continent& c) {
             }
         }
         if (run.points) out.push_back(run);
+    }
+    return out;
+}
+
+
+// The road network as a graph: road points within kMerge of another road's (or a road's own, apart along the road)
+// are one node, and each run of road between two nodes is an edge. Used to find the dead-end stubs and the little
+// loops a junction can leave: a stub is a free end (not a gate, not the coast or the map's edge) with less than
+// kStub metres of road behind it, a loop a cycle shorter than kLoop metres.
+struct RoadGraph {
+    struct Edge {
+        size_t a, b;
+        double length;
+    };
+    std::vector<P> at;        // a node's first point
+    std::vector<int> gate;    // 1 where a castle's gate is
+    std::vector<int> free;    // 1 where a road ends here on open land (no coast, no map edge)
+    std::vector<Edge> edges;
+    std::vector<size_t> roadOfEdge;
+};
+struct RoadFlaw {
+    P at;
+    double length = 0;
+};
+struct RoadFlaws {
+    std::vector<RoadFlaw> stubs, loops;
+};
+inline RoadFlaws roadFlaws(const Continent& c, double merge = 5.0, double kStub = 100.0, double kLoop = 150.0) {
+    struct Pt {
+        P p;
+        size_t road, index;
+    };
+    std::vector<Pt> pts;
+    std::vector<std::vector<size_t>> ofRoad(c.roads().size());
+    for (size_t ri = 0; ri < c.roads().size(); ++ri) {
+        const Polyline& rd = c.roads()[ri];
+        for (size_t i = 0; i + 1 < rd.points.size(); ++i) {
+            const P a = pt(rd.points[i]), b = pt(rd.points[i + 1]);
+            const int steps = std::max(1, static_cast<int>(std::ceil(len(b - a) / 3.0)));
+            for (int k = 0; k < steps; ++k) {
+                ofRoad[ri].push_back(pts.size());
+                pts.push_back({a + (b - a) * (static_cast<double>(k) / steps), ri, ofRoad[ri].size() - 1});
+            }
+        }
+        if (!rd.points.empty()) {
+            ofRoad[ri].push_back(pts.size());
+            pts.push_back({pt(rd.points.back()), ri, ofRoad[ri].size() - 1});
+        }
+    }
+    // Cluster: points of different roads within `merge`, or of one road within `merge` but far along it (a loop back on itself
+    // is a loop, not one place), are one node.
+    std::vector<size_t> node(pts.size());
+    for (size_t i = 0; i < node.size(); ++i) node[i] = i;
+    const auto find = [&](size_t i) {
+        while (node[i] != i) i = node[i] = node[node[i]];
+        return i;
+    };
+    std::vector<std::vector<size_t>> grid;
+    const double cell = merge;
+    const int gw = static_cast<int>(Continent::kWidth / cell) + 2, gh = static_cast<int>(Continent::kHeight / cell) + 2;
+    grid.assign(static_cast<size_t>(gw) * gh, {});
+    const auto cellOf = [&](P p) { return std::pair<int, int>{std::clamp(static_cast<int>(p.x / cell), 0, gw - 1), std::clamp(static_cast<int>(p.y / cell), 0, gh - 1)}; };
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const auto [cx, cy] = cellOf(pts[i].p);
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                const int X = cx + dx, Y = cy + dy;
+                if (X < 0 || Y < 0 || X >= gw || Y >= gh) continue;
+                for (size_t j : grid[static_cast<size_t>(Y) * gw + X]) {
+                    if (len(pts[i].p - pts[j].p) > merge) continue;
+                    const bool same = pts[i].road == pts[j].road;
+                    if (same && std::abs(static_cast<long>(pts[i].index) - static_cast<long>(pts[j].index)) < 14) continue;  // (a bend's two legs are near each other: 40 m along is another stretch)
+                    node[find(i)] = find(j);
+                }
+            }
+        grid[static_cast<size_t>(cellOf(pts[i].p).second) * gw + cellOf(pts[i].p).first].push_back(i);
+    }
+    std::vector<P> gates;
+    for (const Continent::City& city : c.cities()) gates.push_back(gateOf(city.castle.rings.front()).mid);
+    // Nodes and edges.
+    std::map<size_t, size_t> id;
+    RoadGraph g;
+    const auto nodeId = [&](size_t i) {
+        const size_t r = find(i);
+        const auto it = id.find(r);
+        if (it != id.end()) return it->second;
+        id[r] = g.at.size();
+        g.at.push_back(pts[i].p);
+        g.gate.push_back(0);
+        g.free.push_back(0);
+        return g.at.size() - 1;
+    };
+    for (size_t ri = 0; ri < ofRoad.size(); ++ri) {
+        if (ofRoad[ri].empty()) continue;
+        size_t prev = nodeId(ofRoad[ri].front());
+        double run = 0;
+        for (size_t k = 1; k < ofRoad[ri].size(); ++k) {
+            run += len(pts[ofRoad[ri][k]].p - pts[ofRoad[ri][k - 1]].p);
+            const size_t cur = nodeId(ofRoad[ri][k]);
+            if (cur == prev && k + 1 < ofRoad[ri].size()) continue;
+            if (cur != prev) {
+                g.edges.push_back({prev, cur, run});
+                g.roadOfEdge.push_back(ri);
+            }
+            run = 0;
+            prev = cur;
+        }
+    }
+    for (size_t i = 0; i < pts.size(); ++i)
+        for (const P& gp : gates)
+            if (len(pts[i].p - gp) < 3.0) g.gate[nodeId(i)] = 1;
+    // A road's two ends: free unless at a gate, near the coast or the map's edge.
+    for (const std::vector<size_t>& pr : ofRoad) {
+        if (pr.empty()) continue;
+        for (size_t end : {pr.front(), pr.back()}) {
+            const P p = pts[end].p;
+            const Continent::Sample s = c.sample(fx(p.x), fx(p.y));
+            const bool edge = p.x < 40 || p.y < 40 || p.x > Continent::kWidth - 40 || p.y > Continent::kHeight - 40;
+            if (!edge && s.land > Fixed::fromInt(40)) g.free[nodeId(end)] = 1;
+        }
+    }
+    RoadFlaws out;
+    std::vector<int> degree(g.at.size(), 0);
+    std::vector<std::vector<size_t>> adj(g.at.size());
+    for (size_t e = 0; e < g.edges.size(); ++e) {
+        ++degree[g.edges[e].a];
+        ++degree[g.edges[e].b];
+        adj[g.edges[e].a].push_back(e);
+        adj[g.edges[e].b].push_back(e);
+    }
+    for (size_t n = 0; n < g.at.size(); ++n)
+        if (degree[n] == 1 && g.free[n] && !g.gate[n]) {
+            // The run of road behind the free end, up to the first junction or gate.
+            double total = 0;
+            size_t cur = n, from = SIZE_MAX;
+            while (true) {
+                size_t next = SIZE_MAX, via = 0;
+                for (size_t e : adj[cur]) {
+                    if (e == from) continue;
+                    next = g.edges[e].a == cur ? g.edges[e].b : g.edges[e].a;
+                    via = e;
+                }
+                if (next == SIZE_MAX) break;
+                total += g.edges[via].length;
+                from = via;
+                cur = next;
+                if (degree[cur] != 2 || g.gate[cur]) break;
+            }
+            // (A whole road from a gate to nowhere, a town on an isle, is no spur off anything.)
+            if (total < kStub && degree[cur] > 1) out.stubs.push_back({g.at[n], total});
+        }
+    // Loops: the shortest way back round each edge.
+    for (size_t e = 0; e < g.edges.size(); ++e) {
+        const size_t s = g.edges[e].a, t = g.edges[e].b;
+        std::vector<double> dist(g.at.size(), 1e18);
+        std::vector<std::pair<double, size_t>> heap{{0.0, s}};
+        dist[s] = 0;
+        while (!heap.empty()) {
+            std::pop_heap(heap.begin(), heap.end(), std::greater<>());
+            const auto [d, u] = heap.back();
+            heap.pop_back();
+            if (d > dist[u] || d >= kLoop) continue;
+            for (size_t f : adj[u]) {
+                if (f == e) continue;
+                const size_t v = g.edges[f].a == u ? g.edges[f].b : g.edges[f].a;
+                if (d + g.edges[f].length < dist[v]) {
+                    dist[v] = d + g.edges[f].length;
+                    heap.push_back({dist[v], v});
+                    std::push_heap(heap.begin(), heap.end(), std::greater<>());
+                }
+            }
+        }
+        const double around = dist[t] + g.edges[e].length;
+        if (dist[t] < 1e17 && around < kLoop) out.loops.push_back({g.at[s], around});
+    }
+    return out;
+}
+
+// Road classes by width (docs/TERRAIN_AUDIT.md): the metres of road that are a single lane (half width under 2.9 m), a main
+// road (2.9 to 4.2) and a trunk road (3 or 4 lanes: 4.2 and over), the widest and narrowest, and the steepest change of
+// half width along a road (metres per metre).
+struct RoadClasses {
+    double metres[3] = {0, 0, 0};
+    double widest = 0, narrowest = 1e9, steepest = 0, total = 0;
+    size_t trunkRoads = 0, roads = 0;
+};
+inline RoadClasses roadClasses(const Continent& c) {
+    RoadClasses out;
+    for (const Polyline& rd : c.roads()) {
+        bool trunk = false;
+        ++out.roads;
+        for (size_t i = 0; i + 1 < rd.points.size(); ++i) {
+            const double l = len(pt(rd.points[i + 1]) - pt(rd.points[i])), w = rd.widths[i].toDouble(), w2 = rd.widths[i + 1].toDouble();
+            out.metres[w >= 4.2 ? 2 : w >= 2.9 ? 1 : 0] += l;
+            trunk = trunk || w >= 4.2;
+            out.total += l;
+            out.widest = std::max(out.widest, w);
+            out.narrowest = std::min(out.narrowest, w);
+            if (l > 0.5) out.steepest = std::max(out.steepest, std::abs(w2 - w) / l);
+        }
+        out.trunkRoads += trunk;
     }
     return out;
 }

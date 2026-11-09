@@ -47,6 +47,7 @@ struct Options {
     int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
 #endif
+    bool worldCamera = false;  // --world: --camera's x, y are continent metres
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
@@ -71,6 +72,7 @@ void usage() {
         "                        all: --shot FILE.tga writes FILE-0.tga to FILE-3.tga, one a style\n"
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
+        "  --world               --camera's x, y are continent metres (not the battle window's)\n"
         "  --quit-after N        quit after N frames\n"
         "  --camera X,Y,DIST,YAW put the camera there (battle metres, metres up, radians) once the game runs;\n"
         "                        given again with --shot FILE.tga: FILE-0.tga, FILE-1.tga... one a camera, the land built first\n"
@@ -113,7 +115,8 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (a == "--camera") {
             std::array<float, 4> c{};
             if (std::sscanf(next(), "%f,%f,%f,%f", &c[0], &c[1], &c[2], &c[3]) == 4) o.cameras.push_back(c);
-        } else if (a == "--quit-after") o.quitFrame = std::atoi(next());
+        } else if (a == "--world") o.worldCamera = true;
+        else if (a == "--quit-after") o.quitFrame = std::atoi(next());
 #ifdef ILLYRIA_DEV_HOOKS
         else if (a == "--paths-demo") o.pathsDemo = std::atoi(next());
         else if (a == "--queue-demo") o.queueDemo = std::atoi(next());
@@ -420,7 +423,8 @@ int runApp(int argc, char** argv) {
         const int tourStep = opt.cameras.size() > 1 && frame >= opt.shotFrame ? (frame - opt.shotFrame) / kTourFrames : 0;
         if (!opt.cameras.empty() && hudTick() > 0 && (opt.cameras.size() == 1 ? !cameraSet : frame >= opt.shotFrame && (frame - opt.shotFrame) % kTourFrames == 0)) {
             const std::array<float, 4>& c = opt.cameras[static_cast<size_t>(std::min<int>(tourStep, static_cast<int>(opt.cameras.size()) - 1))];
-            illyria_set_camera(c[0], c[1], c[2], c[3]);
+            if (opt.worldCamera) illyria_set_camera_world(c[0], c[1], c[2], c[3]);
+            else illyria_set_camera(c[0], c[1], c[2], c[3]);
             if (opt.cameras.size() > 1) illyria_finish_detail();
             cameraSet = true;
         }

@@ -53,6 +53,27 @@ Fixed distanceTo(const std::vector<Polyline>& lines, Fixed px, Fixed py, Fixed l
     return best >= limit * limit ? limit : sqrt(best);
 }
 
+// As Continent::Sample::roadDist: the metres from the nearest road's middle, less that road's half width there plus 3
+// (a road's ground is where this is under 3), or `limit` if all are that far.
+Fixed roadDistance(const std::vector<Polyline>& lines, Fixed px, Fixed py, Fixed limit) {
+    Fixed best = limit;
+    for (const Polyline& l : lines) {
+        for (size_t i = 0; i + 1 < l.points.size(); ++i) {
+            const Vec3& a = l.points[i];
+            const Vec3& b = l.points[i + 1];
+            const Fixed reach = limit + m(8);  // (a road is up to 7 m a side: its edge is nearer than its middle)
+            if (px < min(a.x, b.x) - reach || px > max(a.x, b.x) + reach || py < min(a.y, b.y) - reach || py > max(a.y, b.y) + reach) continue;
+            const Fixed dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+            Fixed t;
+            if (len2 > Fixed::zero()) t = clamp(((px - a.x) * dx + (py - a.y) * dy) / len2, Fixed::zero(), Fixed::one());
+            const Fixed cx = a.x + dx * t - px, cy = a.y + dy * t - py;
+            const Fixed d = sqrt(cx * cx + cy * cy) - (l.widthAt(i, t) - m(3));
+            best = min(best, max(Fixed::zero(), d));
+        }
+    }
+    return best;
+}
+
 // Smooth bump: 1 at t = 0, 0 at |t| >= 1.
 Fixed bump(Fixed t) {
     const Fixed a = abs(t);
@@ -134,6 +155,13 @@ bool Deck::contains(Fixed x, Fixed y) const {
 }
 
 Fixed Deck::heightAt(Fixed x, Fixed y) const {
+    if (rampLo > Fixed::zero() || rampHi > Fixed::zero()) {
+        const Fixed along = (x - centre.x) * dir.x + (y - centre.y) * dir.y;
+        const auto clamp01 = [](Fixed v) { return v < Fixed::zero() ? Fixed::zero() : v > Fixed::one() ? Fixed::one() : v; };
+        if (rampLo > Fixed::zero() && along < rampLo - halfSpan) return endLo + (centre.z - endLo) * clamp01((along + halfSpan) / rampLo);
+        if (rampHi > Fixed::zero() && along > halfSpan - rampHi) return endHi + (centre.z - endHi) * clamp01((halfSpan - along) / rampHi);
+        return centre.z;
+    }
     if (rise == Fixed::zero() || halfSpan == Fixed::zero()) return centre.z;
     const Fixed along = (x - centre.x) * dir.x + (y - centre.y) * dir.y;
     return centre.z + rise * along / (halfSpan * 2);
@@ -437,7 +465,7 @@ Region Region::generateIllyria(uint64_t seed) {
         for (int32_t ix = 0; ix < n; ++ix) {
             const Fixed x = cell * ix, y = cell * iy;
             Fixed& z = shaped[static_cast<size_t>(iy) * n + ix];
-            const Fixed dRoad = distanceTo(rg.roads_, x, y, m(7));
+            const Fixed dRoad = roadDistance(rg.roads_, x, y, m(7));
             if (dRoad < m(7) && z >= kWater) {
                 Fixed sum;
                 int32_t count = 0;
@@ -473,7 +501,7 @@ Region Region::generateIllyria(uint64_t seed) {
             Ground g = Ground::Plains;
             if (z < kWater) {
                 g = kWater - z < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
-            } else if (distanceTo(rg.roads_, x, y, m(4)) < m(3)) {
+            } else if (roadDistance(rg.roads_, x, y, m(4)) < m(3)) {
                 g = Ground::Road;
             } else if (slope > r(3, 5) || z > m(70)) {
                 g = Ground::Rock;
@@ -638,9 +666,9 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             const SceneryPoint pt = sceneryPoint(seed, gx, gy);
             const Fixed x = pt.x - origin_.x, y = pt.y - origin_.y;
             if (x < Fixed::zero() || y < Fixed::zero() || x >= m(extent) || y >= m(extent)) continue;
-            const Ground g = groundAt(x, y);
-            if (g == Ground::Road || g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
-            if (distanceTo(roads_, x, y, m(5)) < r(9, 2)) continue;
+            Ground g = groundAt(x, y);
+            if (g == Ground::Shallows || g == Ground::DeepWater || g == Ground::Bridge) continue;
+            if (g == Ground::Road) g = Ground::Plains;  // (the cell's middle is on a road; this point may not be: roadClears decides)
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
             bool cleared = false;
             for (const Vec3& c : clearings) cleared = cleared || flatDist(x, y, {c.x, c.y, Fixed::zero()}) < c.z;
@@ -679,10 +707,35 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             Obstacle o;
             const Fixed z = terrain_.heightAt(x, y);
             if (!sceneryAt(seed, pt, g, byWater, z, o)) continue;
+            bool onRoad = false;
+            for (const Polyline& rd : roads_) {
+                for (size_t i = 0; i + 1 < rd.points.size() && !onRoad; ++i) {
+                    const Vec3& a = rd.points[i];
+                    const Vec3& b = rd.points[i + 1];
+                    const Fixed reach = m(12);
+                    if (x < min(a.x, b.x) - reach || x > max(a.x, b.x) + reach || y < min(a.y, b.y) - reach || y > max(a.y, b.y) + reach) continue;
+                    const Fixed dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
+                    Fixed t;
+                    if (len2 > Fixed::zero()) t = clamp(((x - a.x) * dx + (y - a.y) * dy) / len2, Fixed::zero(), Fixed::one());
+                    const Fixed cx = a.x + dx * t - x, cy = a.y + dy * t - y;
+                    onRoad = roadClears(o, sqrt(cx * cx + cy * cy), rd.widthAt(i, t));
+                }
+                if (onRoad) break;
+            }
+            if (onRoad) continue;
             o.pos = {x, y, z};
             obstacles_.push_back(o);
         }
     }
+}
+
+bool Region::roadClears(const Obstacle& o, Fixed centreDist, Fixed halfWidth) {
+    if (o.kind == Obstacle::Kind::Rock || o.kind == Obstacle::Kind::Boulder) return centreDist < halfWidth + o.radius + r(1, 5);
+    return centreDist < max(r(9, 2), halfWidth + r(5, 2));
+}
+
+bool Region::worthDodging(const Obstacle& o) {
+    return o.kind == Obstacle::Kind::Boulder || (o.kind == Obstacle::Kind::Rock && o.radius >= r(9, 10));
 }
 
 Fixed Region::siteClearing(bool ruin, Fixed size) {
@@ -781,10 +834,17 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
     for (const Continent::Crossing& cr : c.crossings()) {
         if (!cr.bridged()) continue;
         const Vec3 local = toLocal(cr.pos);
-        const Fixed reach = cr.halfSpan + cr.halfWidth;
+        const Fixed reach = max(cr.reachBehind(), cr.reachAhead()) + cr.halfWidth;
         const Fixed size = cell * cells;
         if (local.x < -reach || local.y < -reach || local.x > size + reach || local.y > size + reach) continue;
-        rg.decks_.push_back({{local.x, local.y, cr.deck}, cr.dir, cr.halfSpan, cr.halfWidth, cr.kind == Continent::Crossing::Kind::Footbridge});
+        // One deck for the whole bridge: level over the water, a ramp down to the ground at each end.
+        Deck d{{local.x + cr.dir.x * cr.spanMiddle(), local.y + cr.dir.y * cr.spanMiddle(), cr.deck}, cr.dir, cr.spanHalf(), cr.halfWidth,
+               cr.kind == Continent::Crossing::Kind::Footbridge};
+        d.rampLo = cr.rampA;
+        d.rampHi = cr.rampB;
+        d.endLo = cr.endA;
+        d.endHi = cr.endB;
+        rg.decks_.push_back(d);
     }
     // Castles: walls and towers that block, a walk along the top, ramps up to it.
     for (const Continent::City& city : c.cities()) {
@@ -1031,8 +1091,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 const Fixed range = dk.halfSpan + dk.halfWidth + cell;  // (a box round it first: the whole continent has over a thousand)
                 if (abs(x - OX - dk.centre.x) > range || abs(y - OY - dk.centre.y) > range) continue;
                 if (Deck{dk.centre, dk.dir, dk.halfSpan, dk.halfWidth + cell * 3 / 4}.contains(x - OX, y - OY)) {
+                    const Fixed top = dk.heightAt(x - OX, y - OY);
+                    if (!decked || top > deck) deck = top;
                     decked = true;
-                    deck = dk.centre.z;
                 }
             }
             if (decked && deck > z + r(1, 2)) {
@@ -1252,7 +1313,7 @@ uint64_t Region::checksum() const {
         h.addU64(o.solid);
     }
     for (const Deck& d : decks_)
-        for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth, d.rise}) h.addI64(v.raw);
+        for (Fixed v : {d.centre.x, d.centre.y, d.centre.z, d.dir.x, d.dir.y, d.halfSpan, d.halfWidth, d.rise, d.rampLo, d.rampHi, d.endLo, d.endHi}) h.addI64(v.raw);
     for (const Floor& f : floors_) {
         h.addU64(f.deck);
         h.addU64(f.stair);

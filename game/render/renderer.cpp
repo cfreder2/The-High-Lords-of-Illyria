@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "illyria/game/road_field.h"
 
 #include <algorithm>
 #include <chrono>
@@ -723,34 +724,33 @@ void Renderer::uploadScenery(const Battle& battle) {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, n, n, 0, GL_RED, GL_UNSIGNED_BYTE, ground.data());
 
-    // Road field at 2 m: signed distance across the nearest road, for ruts.
+    // Road field at 2 m (game/road_field.h): the metres from the nearest road's middle, and its half width there.
     const int rn = 512;
     const float texel = Battle::kWorldSize / rn;
     std::vector<uint8_t> road(static_cast<size_t>(rn) * rn * 2, 0);
-    std::vector<float> best(static_cast<size_t>(rn) * rn, 1e9f);
+    for (size_t i = 0; i < road.size(); i += 2) noRoadTexel(&road[i]);
+    std::vector<float> best(static_cast<size_t>(rn) * rn, 1e9f);  // each texel's nearest road's edge
     for (const sim::Polyline& line : region.roads()) {
         for (size_t i = 0; i + 1 < line.points.size(); ++i) {
             const V3 a = toV3(line.points[i]), b = toV3(line.points[i + 1]);
             const V3 ab = V3{b.x - a.x, b.y - a.y, 0};
             const float len2 = ab.x * ab.x + ab.y * ab.y;
-            const int x0 = std::max(0, static_cast<int>((std::min(a.x, b.x) - 8) / texel));
-            const int x1 = std::min(rn - 1, static_cast<int>((std::max(a.x, b.x) + 8) / texel));
-            const int y0 = std::max(0, static_cast<int>((std::min(a.y, b.y) - 8) / texel));
-            const int y1 = std::min(rn - 1, static_cast<int>((std::max(a.y, b.y) + 8) / texel));
+            const float reach = kRoadFieldReach;
+            const int x0 = std::max(0, static_cast<int>((std::min(a.x, b.x) - reach) / texel));
+            const int x1 = std::min(rn - 1, static_cast<int>((std::max(a.x, b.x) + reach) / texel));
+            const int y0 = std::max(0, static_cast<int>((std::min(a.y, b.y) - reach) / texel));
+            const int y1 = std::min(rn - 1, static_cast<int>((std::max(a.y, b.y) + reach) / texel));
             for (int y = y0; y <= y1; ++y) {
                 for (int x = x0; x <= x1; ++x) {
                     const float px = (x + 0.5f) * texel, py = (y + 0.5f) * texel;
-                    const float t = std::clamp(((px - a.x) * ab.x + (py - a.y) * ab.y) / len2, 0.0f, 1.0f);
+                    const float t = len2 > 0 ? std::clamp(((px - a.x) * ab.x + (py - a.y) * ab.y) / len2, 0.0f, 1.0f) : 0.0f;
                     const float cx = a.x + ab.x * t - px, cy = a.y + ab.y * t - py;
                     const float dist = std::sqrt(cx * cx + cy * cy);
+                    const float hw = static_cast<float>(line.widthAt(i, toFixed(t)).toDouble());
                     const size_t idx = static_cast<size_t>(y) * rn + x;
-                    if (dist >= best[idx] || dist > 8) continue;
-                    best[idx] = dist;
-                    const float side = (ab.x * (py - a.y) - ab.y * (px - a.x)) >= 0 ? 1.0f : -1.0f;
-                    // Across the road in units of a 3 m half width, so wider stretches paint wider.
-                    const float w = static_cast<float>(line.widthAt(i, toFixed(t)).toDouble());
-                    road[idx * 2] = static_cast<uint8_t>(std::clamp(128.0f + side * dist * 3.0f / w * 16.0f, 0.0f, 255.0f));
-                    road[idx * 2 + 1] = 255;
+                    if (dist >= reach || dist - hw >= best[idx]) continue;
+                    best[idx] = dist - hw;
+                    roadTexel(dist, hw, &road[idx * 2]);
                 }
             }
         }
@@ -1122,7 +1122,8 @@ void Renderer::uploadContinent(const Battle& battle) {
         if (!cr.bridged()) continue;
         const V3 c = toV3(cr.pos) - V3{o.x, o.y, 0};
         meshes::bridge(bridges, c, toV3(cr.dir), static_cast<float>(cr.halfSpan.toDouble()), static_cast<float>(cr.halfWidth.toDouble()),
-                       static_cast<float>(cr.deck.toDouble()), cr.kind == sim::Continent::Crossing::Kind::Footbridge,
+                       static_cast<float>(cr.deck.toDouble()), static_cast<float>(cr.rampA.toDouble()), static_cast<float>(cr.rampB.toDouble()),
+                       static_cast<float>(cr.endA.toDouble()), static_cast<float>(cr.endB.toDouble()), cr.kind == sim::Continent::Crossing::Kind::Footbridge,
                        [&](float x, float y) { return battle.heightAt(x, y); });
     }
     makeMeshBatch(bridges_, bridges, 0);

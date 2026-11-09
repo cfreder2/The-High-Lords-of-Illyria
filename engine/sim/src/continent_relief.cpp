@@ -497,7 +497,10 @@ void Continent::buildClearGrid() {
     };
     for (const City& c : cities_) ring(c.pos, c.radius * 2, c.radius * 2 + m(70));
     for (const Site& s : sites_) ring(s.pos, m(30), m(100));
-    for (const Crossing& c : crossings_) ring(c.pos, m(50), m(150));
+    for (const Crossing& c : crossings_) {  // (the whole deck, its ramps too, and the ground they grade down to)
+        const Fixed inner = max(m(50), max(c.reachBehind(), c.reachAhead()) + c.halfWidth + m(10));
+        ring(c.pos, inner, inner + m(100));
+    }
     for (const Landmark& lm : landmarks_) ring(lm.centre, lm.radius, lm.radius + m(70));
     // The pools the bake found, and the creeks: their banks stay as they were.
     if (baked_ && !reliefBasin_.empty()) {

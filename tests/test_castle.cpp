@@ -364,7 +364,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xe5356b18ea785712;  // (was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0xfa3902fc254acd29;  // (was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

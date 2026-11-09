@@ -57,7 +57,7 @@ Out in the wild places there are **34 ruins** in the forests and foothills, **4 
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 
-Wherever the camera comes closer than about 850 m, on the campaign map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads with ruts, forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
+Wherever the camera comes closer than about 850 m, on the campaign map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads of worn dirt (a track one lane wide to a trunk road of three or four lanes, with the odd puddle), forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
 
 ## The ground and what it does {#ground}
 

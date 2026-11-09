@@ -310,7 +310,7 @@ float valueNoise(vec2 p) {
                mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
 }
 uniform sampler2D uGround;  // R8: ground type / 16, one texel per terrain cell
-uniform sampler2D uRoad;    // RG8, linear: R = 0.5 + lateral offset / 16 m, G = road weight
+uniform sampler2D uRoad;    // RG8, linear: R = metres from the road's middle / 16, G = its half width / 8 (road_field.h)
 
 // Plains, Road, Forest, Swamp, Shallows, DeepWater, Rock, Bridge, Mud.
 vec3 groundColor(int id, float broad, float fine) {
@@ -444,21 +444,47 @@ void main() {
     // Bare earth and scree on steep slopes.
     albedo = mix(albedo, vec3(0.45, 0.40, 0.33) * (0.85 + 0.3 * fine), smoothstep(0.18, 0.3, slope) * 0.6);
     albedo = mix(albedo, vec3(0.47, 0.45, 0.42) * (0.8 + 0.4 * fine), smoothstep(0.3, 0.45, slope));
-    // Wagon-worn roads: packed dirt, two ruts, a grassy hump, puddles in the ruts.
+    // Roads: packed dirt and gravel, worn a little darker down the middle (no ruts), with soft, ragged edges where the grass
+    // creeps in, and the odd puddle. The field (game/road_field.h): R the metres from the road's middle line (of 16), G its
+    // half width here (of 8), so a road is as wide as the sim says (Ground::Road, how fast men walk on it).
     vec2 road = texture(uRoad, vWorld.xy / (uCells * uCellSize)).rg;
-    if (road.g > 0.02) {
-        float lateral = (road.r - 0.5) * 16.0;
-        float d = abs(lateral);
-        float w = fwidth(lateral) + 0.02;
-        vec3 dirt = vec3(0.50, 0.41, 0.28) * (0.88 + 0.24 * fine);
-        float rut = 1.0 - smoothstep(0.12, 0.12 + w * 2.0, abs(d - 0.85));
-        float hump = 1.0 - smoothstep(0.25, 0.45, d);
-        dirt = mix(dirt, vec3(0.33, 0.26, 0.17), rut * 0.8);
-        dirt = mix(dirt, vec3(0.38, 0.44, 0.22), hump * 0.5);
-        float puddle = rut * step(0.78, valueNoise(vWorld.xy * vec2(0.6, 0.6) + 17.0));
-        dirt = mix(dirt, vec3(0.35, 0.42, 0.48), puddle * 0.8);
-        float edge = 1.0 - smoothstep(2.4, 3.6 + fine * 0.6, d);
-        albedo = mix(albedo, dirt, edge * clamp(road.g * 1.5, 0.0, 1.0));
+    float puddle = 0.0;
+    if (road.g > 0.01) {
+        float rd = road.r * 16.0;
+        float hw = road.g * 8.0;
+        float wander = (valueNoise(p * 0.33 + 7.0) - 0.5) * 1.2 + (valueNoise(p * 1.4 + 2.0) - 0.5) * 0.5;
+        float e = rd + wander * (0.45 + 0.06 * hw);
+        float cover = 1.0 - smoothstep(hw - 0.65 - 0.12 * hw, hw + 0.6, e);
+        vec3 dirt = mix(vec3(0.46, 0.38, 0.26), vec3(0.54, 0.46, 0.33), valueNoise(p * 0.8)) * (0.9 + 0.2 * fine);
+        float speck = smoothstep(0.78, 0.9, valueNoise(p * 6.0 + 3.0)) * detailFade(0.2, px);
+        dirt = mix(dirt, vec3(0.62, 0.57, 0.48), speck * 0.4);
+        dirt *= 1.0 - 0.07 * (1.0 - smoothstep(0.05 * hw, 0.5 * hw, rd));  // worn a shade darker down the middle
+        float fringe = smoothstep(0.45 * hw, hw + 0.3, e);
+        dirt = mix(dirt, mix(dirt, albedo, 0.7), fringe);  // grass blends in at the edge
+        albedo = mix(albedo, dirt, cover * clamp(road.g * 8.0, 0.0, 1.0));
+        // Puddles: one chance in each 13 m cell, an ellipse a metre or two across, only where the cell's middle is on the road;
+        // likelier low down, in wet ground and on wide roads, never on a slope.
+        vec2 pc = floor(p / 13.0);
+        vec2 centre = (pc + 0.25 + 0.5 * vec2(hash12(pc + 3.3), hash12(pc + 9.1))) * 13.0;
+        vec2 rc = texture(uRoad, centre / (uCells * uCellSize)).rg;
+        float hwc = rc.g * 8.0;
+        if (hwc > 0.5 && rc.r * 16.0 < hwc * 0.6 && slope < 0.07) {
+            float lowness = 1.0 - smoothstep(8.0, 70.0, vWorld.z);
+            float wetness = valueNoise(centre * 0.011 + 31.0) * 0.5 + kind.w * 0.5;
+            float chance = 0.08 + 0.3 * lowness + 0.25 * wetness + 0.03 * hwc;
+            if (hash12(pc + 61.7) < chance) {
+                float a = hash12(pc + 17.9) * 3.14159;
+                vec2 d = p - centre;
+                vec2 l = vec2(cos(a) * d.x + sin(a) * d.y, -sin(a) * d.x + cos(a) * d.y);
+                float rx = 0.7 + 1.5 * hash12(pc + 23.1);
+                float ry = rx * (0.4 + 0.3 * hash12(pc + 29.7));
+                float q = (l.x * l.x) / (rx * rx) + (l.y * l.y) / (ry * ry);
+                q *= 0.8 + 0.4 * valueNoise(p * 2.1 + 5.0);
+                puddle = (1.0 - smoothstep(0.7, 1.0, q)) * cover;
+                albedo = mix(albedo, albedo * vec3(0.66, 0.62, 0.58), (1.0 - smoothstep(1.0, 2.4, q)) * cover * 0.6);  // wet earth round it
+                albedo = mix(albedo, vec3(0.22, 0.24, 0.24), puddle * 0.85);
+            }
+        }
     }
     // Snow on the high peaks.
     albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
@@ -504,6 +530,12 @@ void main() {
     float ambient = 0.30 * (1.0 - grove * 0.45);
     if (!feature(kFeatShadows)) sun *= 1.0 - grove * 0.55;  // no shadow map: fake the groves' shade
     vec3 color = albedo * (ambient + 0.95 * sun);
+    if (puddle > 0.0) {  // standing water: the sky in it, and the sun's glint
+        vec3 view = normalize(uEye - vWorld);
+        float fresnel = 0.3 + 0.6 * pow(1.0 - max(view.z, 0.0), 3.0);
+        color = mix(color, kSky * 0.85, puddle * fresnel);
+        color += vec3(1.0, 0.95, 0.85) * pow(max(dot(vec3(0.0, 0.0, 1.0), normalize(kSun + view)), 0.0), 160.0) * puddle * 0.6 * sun;
+    }
 
     // The grids, as on all the land; haze as on the coarse land.
     color = landGrids(color, vWorld.xy);
@@ -1894,7 +1926,7 @@ void main() {
     int g = coverGround(xy);
     float canopy = texture(uCanopy, xy / size).r;
     vec2 road = texture(uRoad, xy / size).rg;
-    float onRoad = road.g > 0.3 && abs((road.r - 0.5) * 16.0) < 3.0 ? 1.0 : 0.0;
+    float onRoad = road.g > 0.3 && road.r * 16.0 < road.g * 8.0 + 0.5 ? 1.0 : 0.0;
     // Same patches the ground shader paints, so tufts avoid the bare soil.
     float soil = smoothstep(0.7, 0.84, valueNoise2(xy * 0.085 + 41.0) * 0.6 + valueNoise2(xy * 0.5 + 5.0) * 0.4);
     float lush = valueNoise2(xy * 0.045 + 3.1) * 0.65 + valueNoise2(xy * 0.13 + 8.7) * 0.35;
@@ -2283,7 +2315,7 @@ void main() {
     float dist = distance(uEye, mid);
     float px = uPxScale * dist;
     float hw = max(iInfo.x, px * (iInfo.y > 1.5 ? 0.6 : iInfo.y > 0.5 ? 0.9 : 1.6));
-    if (abs(iInfo.y - 1.0) < 0.5) hw = max(hw, 3.4);  // a road: its ruts and verges, as on the battlefield
+    if (abs(iInfo.y - 1.0) < 0.5) hw = max(hw, 2.2);  // a road: never thinner than a lane, as on the battlefield
     vec3 d = iB - iA;
     vec3 side = normalize(vec3(-d.y, d.x, 0.0) + vec3(1e-5, 0.0, 0.0)) * hw;
     float t = float(gl_VertexID & 1);
@@ -2304,7 +2336,7 @@ out vec4 oColor;
 void main() {
     if (detailWeight(vXy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land draws its own roads and water
     // Water as the battlefield's river looks from high up; roads as its
-    // wagon-worn dirt (ruts, grassy hump, verges) does, lit like the land.
+    // worn dirt does, lit like the land.
     vec3 c = abs(vKind - 1.0) > 0.5 ? vec3(0.09, 0.21, 0.27) : vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
     oColor = vec4(mix(c, kSky, vFog * 0.6), 1.0);
 }
