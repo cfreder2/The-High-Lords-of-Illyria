@@ -146,6 +146,14 @@ bool World::walkSpot(const Vec3& p, WalkSpot& spot) const {
     return false;
 }
 
+Vec3 World::insideParapet(const Vec3& p, Fixed radius) const {
+    WalkSpot w;
+    if (!config_.region || config_.region->ramparts().empty() || !walkSpot(p, w)) return p;
+    const WallSeg& wl = *w.seg;
+    const Fixed limit = wl.halfThick - Castle::kParapetThick - radius - Fixed::fromRatio(1, 100);
+    return w.across > limit ? p - wl.out * (w.across - limit) : p;
+}
+
 void World::keepOnWalk(Unit& u) {
     if (!config_.region || config_.region->ramparts().empty() || u.flight != Unit::Flight::Grounded) return;
     WalkSpot w;

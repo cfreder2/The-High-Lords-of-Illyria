@@ -960,6 +960,8 @@ private:
     void noteAttack(Unit& target, const Unit& by);
     void updateUnit(Unit& unit);
     void updateFlight(Unit& unit);
+    // Whether a flier bound for this place (or this man) takes wing: a long way, or up onto a wall-walk or down off one.
+    bool takesWing(const Unit& unit, const Vec3& goal) const;
     void updateAirborne(Unit& unit);
     // Walks toward `to` at the unit's ground speed; returns true on arrival.
     bool walk(Unit& unit, const Vec3& to, Fixed speedScale = Fixed::one());
@@ -1180,6 +1182,10 @@ private:
     // Keeps a soldier on a wall-walk inside the parapet, the living and the
     // dead (who lie along the walk); stops a body thrown against the parapet.
     void keepOnWalk(Unit& u);
+    // An order's place on a wall-walk, drawn in from the parapet to where a body of this radius can stand (keepOnWalk holds
+    // him off the stone: an embrasure's spot is for a bowman, and a bigger man sent to it would press at the merlons with
+    // his order never done).
+    Vec3 insideParapet(const Vec3& p, Fixed radius) const;
     // A soldier on the walk shooting out over the wall leans into his
     // embrasure (origin moves out to it); false when he stands behind a merlon.
     bool walkShot(const Unit& shooter, const Vec3& target, Vec3& origin) const;

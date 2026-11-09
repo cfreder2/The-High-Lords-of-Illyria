@@ -57,6 +57,7 @@ add_executable(illyria_tests
     test_campaign_save.cpp
     test_campaign_soldiers.cpp
     test_conquest_nav.cpp
+    test_fliers.cpp
     test_campaign_battle.cpp
     test_paths.cpp
     test_command.cpp
