@@ -23,6 +23,9 @@ void illyria_camera_keys(int right, int forward, int turn, int zoom);
 const char* illyria_camera_state();
 void illyria_north_up();
 void illyria_set_camera(float x, float y, float distance, float yaw);
+#ifdef ILLYRIA_DEV_HOOKS
+void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
+#endif
 void illyria_finish_detail();
 void illyria_set_shift(int down);
 void illyria_set_keys(int force, int march);

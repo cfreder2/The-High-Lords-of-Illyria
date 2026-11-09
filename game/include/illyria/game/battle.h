@@ -12,6 +12,7 @@
 #include "illyria/game/battle_capture.h"
 #include "illyria/game/camera.h"
 #include "illyria/game/gmath.h"
+#include "illyria/game/path_lines.h"
 #include "illyria/game/sfx.h"
 #include "illyria/game/voice.h"
 #include "illyria/sim/campaign.h"
@@ -412,6 +413,11 @@ public:
         float opacity = 1;  // 1 while selected; fading after an order
     };
     std::vector<OrderMark> orderMarks() const;
+    // The paths the player's soldiers will walk (path_lines.h), shown as the order markers are: for each soldier
+    // selected, and fading for a moment after an order; the player's own men only, so no foe's route is ever told.
+    // Men going one way are one line. `perMan`: a line for each man, and `faintMarches` (Conquest): the player's
+    // marching stacks too, faint. The line's heights are the floor (floorAt).
+    std::vector<RouteLine> pathLines(bool perMan, bool faintMarches) const;
     // How strongly a soldier's order markers show (0: not at all).
     float markOpacity(size_t index) const;
     // Tests and hooks: the town's gates given to a side (and its garrison to keep them), a gate battered down at once; every archer of ours

@@ -49,6 +49,20 @@ What they keep is where each was last *sent*, not where the fighting or the road
 
 Several squads selected together keep their places beside each other, each squad's men taking that squad's places (the nearest of them, so nobody crosses another, and no squad takes another's), paced to the slowest so they arrive together. In a chosen formation they form as one, spaced for its biggest soldier. Every soldier takes the **fastest** way there for his kind, not the shortest: a squad in the fields marches to the nearby road and along it rather than straight over the plough, and cavalry ride round a wood that foot would cut through. The men of a squad all follow the squad's one route, each keeping his file a little to the side of it, so on a road they go in a column of march and spread into their formation at the end.
 
+## Paths on the ground {#paths}
+
+Where selected men will walk is drawn on the ground, so you can see how they mean to get round walls, water and rocks. The line starts at the middle of the men and ends where they are going; it is the route the soldiers themselves will take, and it shortens as they walk. It shows while they are selected, and for a few seconds after an order, fading. Lines are shown for your own men only: a foe's route is never drawn, and a gate of a castle you cannot see is drawn as shut, so a line never tells what you cannot see.
+
+How they will go is told by the **shape** of the line, not only its colour:
+
+| Line | Colour | End | Meaning |
+|---|---|---|---|
+| Dashes with small chevrons | green-cyan | open ring | **Patrol**: the ordinary march. They fight whoever strikes them or crosses their path, then go on. |
+| Solid line with arrowheads | red-orange | cross-hair on the quarry | **Hunt**: after one soldier, ignoring all others. The line runs to him wherever he goes. |
+| Dots | white | filled spot | **Force march**: deaf to the enemy on the way. |
+
+Men who go together are one line, however many, so an army is a handful of lines and not a thicket; a man whose way bends round something the others cross straight has his own. Lines keep the same width on the screen at any zoom. Close in on a few men (twelve or fewer) and each shows his own, fainter. In Conquest the route of a marching stack, cell by cell across the island, is drawn the same way; with the camera far out, your marching stacks show faintly even when not selected.
+
 ## Marching with initiative {#initiative}
 
 A marching soldier is not deaf to the enemy.

@@ -7,6 +7,7 @@ add_library(illyria_game
     src/battle_command.cpp
     src/battle_conquest.cpp
     src/battle_orders.cpp
+    src/path_lines.cpp
     src/battle_capture.cpp
     src/battle_modes.cpp
     src/flag_poles.cpp
@@ -57,6 +58,9 @@ if(EMSCRIPTEN OR ILLYRIA_BUILD_APP)
     target_link_libraries(illyria_runtime PUBLIC illyria_game illyria_figures)
     target_compile_definitions(illyria_runtime PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}")
     target_compile_options(illyria_runtime PRIVATE -Wno-conversion)
+    if(ILLYRIA_DEV_HOOKS)
+        target_compile_definitions(illyria_runtime PRIVATE ILLYRIA_DEV_HOOKS)
+    endif()
 endif()
 if(EMSCRIPTEN)
     add_subdirectory(web)
