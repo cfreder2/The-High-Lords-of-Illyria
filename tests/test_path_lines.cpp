@@ -136,7 +136,7 @@ TEST(each_order_has_its_stance) {
     CHECK(World::stanceOf(*w.findUnit(a)) == Stance::Hunt);
     std::vector<Vec3> out;
     w.routeOf(*w.findUnit(a), out);
-    CHECK(!out.empty() && out.back().x == w.findUnit(foe)->pos.x);  // (after the quarry, wherever he is)
+    CHECK(!out.empty());  // (after the quarry, wherever he is, or as far as a shut gate lets him)
     Command stop = mv;
     stop.type = Command::Type::Stop;
     w.step(std::vector<Command>{stop});
@@ -294,4 +294,61 @@ TEST(a_hunt_follows_its_quarry_and_is_not_drawn_to_a_foe_in_the_fog) {
     for (const RouteLine& l : lines) CHECK(l.stance != Stance::Hunt);
     // (And the march of a foe is never asked for: only local men have lines at all.)
     for (const RouteLine& l : b.pathLines(true, true)) CHECK(l.stance != Stance::Hunt);
+}
+
+// A gate that is shut, opening or closing stops a route at its face; one that stands open lets the line through.
+TEST(a_route_stops_at_a_shut_or_swinging_gate_and_goes_through_an_open_one) {
+    WorldConfig cfg;
+    const Continent::City& town = continent().cities()[Continent::kFactionCount];
+    cfg.region = std::make_shared<const Region>(Region::fromContinent(continent(), town.pos, 256));
+    World w(cfg);
+    const Region& rg = *cfg.region;
+    if (rg.gates().empty()) return;
+    const size_t gi = 0;
+    w.setGateHolder(gi, 1);
+    const Gate& g = rg.gates()[gi];
+    const Vec3 centre = (g.a + g.b) * Fixed::fromRatio(1, 2);
+    const Vec3 from = centre + g.out * m(14), to = centre - g.out * m(14);
+    const auto way = [&] {
+        // (A man newly come to the gate each time: the last one has walked on.)
+        const EntityId a = w.spawnUnit(0, from, -g.out, unitStats(UnitType::LightInfantry));
+        Command mv;
+        mv.player = 0;
+        mv.unit = a;
+        mv.type = Command::Type::Move;
+        mv.target = to;
+        w.step(std::vector<Command>{mv});
+        std::vector<Vec3> out;
+        w.routeOf(*w.findUnit(a), out);
+        return out;
+    };
+    const auto stoppedAtFace = [&](const std::vector<Vec3>& out) {
+        if (out.empty()) return false;
+        const Vec3 last = out.back();
+        const Vec3 ab = (g.b - g.a).flat();
+        const Fixed t = clamp((last - g.a).flat().dot(ab) / ab.lengthSq(), Fixed::zero(), Fixed::one());
+        return ((last - (g.a + ab * t)).flat().length() < Fixed::fromRatio(3, 2)) && (last - to).flat().length() > m(5);
+    };
+    CHECK(w.gates()[gi].mode == GateState::Mode::Shut);
+    CHECK(stoppedAtFace(way()));
+    // Swinging open it still blocks (as it does the men), so the line still stops.
+    Command pin{1, kNoEntity, Command::Type::SetGate};
+    pin.objectIndex = static_cast<int32_t>(gi);
+    pin.gatePin = Command::GatePin::Open;
+    w.step(std::vector<Command>{pin});
+    for (int t = 0; t < 4 && w.gates()[gi].mode != GateState::Mode::Opening; ++t) w.step({});
+    CHECK(w.gates()[gi].mode == GateState::Mode::Opening);
+    CHECK(stoppedAtFace(way()));
+    // Open: through, to the place he was sent.
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.gates()[gi].mode == GateState::Mode::Open);
+    const std::vector<Vec3> through = way();
+    CHECK(!through.empty() && (through.back() - to).flat().length() < m(2));
+    // And broken, likewise: the gate is no obstacle.
+    w.setGatePin(gi, Command::GatePin::Shut);
+    for (int t = 0; t < 10 * kTicksPerSecond; ++t) w.step({});
+    CHECK(stoppedAtFace(way()));
+    w.setGateHp(gi, 0);
+    const std::vector<Vec3> broken = way();
+    CHECK(!broken.empty() && (broken.back() - to).flat().length() < m(2));
 }

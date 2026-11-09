@@ -602,6 +602,8 @@ public:
     static Stance stanceOf(const Unit& u);
     // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
     // path planned to his quarry, then the quarry's place now). Empty for Idle. Does not include where he stands.
+    // It stops at a gate that is shut, opening or closing across it (a swinging gate blocks like a shut one), and goes
+    // through one that stands open or is broken.
     void routeOf(const Unit& u, std::vector<Vec3>& out) const;
     // Castle gates, in the order of the region's gates.
     const std::vector<GateState>& gates() const { return gates_; }
@@ -970,6 +972,8 @@ private:
     // Whether a shut gate lies between a man on the ground and a place on the other side of the walls it opens (a foe there
     // is not to be walked at: the way is round, or through the doors).
     bool shutGateBetween(const Unit& unit, const Vec3& to) const;
+    // routeOf's cut: the way up to the first door that is not passable.
+    void stopAtShutGate(const Unit& u, std::vector<Vec3>& way) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
     void applyGateOrder(const Command& cmd);

@@ -523,15 +523,19 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
             const sim::Unit& q = units[u.targetUnit - 1];
             if (!q.alive() || (q.owner != local_ && !sees(q.owner, static_cast<float>(q.pos.x.toDouble()), static_cast<float>(q.pos.y.toDouble())))) continue;
             r.quarry = q.id;
-            // The way he is going (the path planned to the quarry), ending on the quarry as he is drawn now.
+            // The way he is going (the path planned to the quarry), ending on the quarry as he is drawn now, or at the
+            // shut gate that stops him short of it.
             world_->routeOf(u, waypoints);
             r.points.push_back(unitPosition(i));
-            for (size_t k = 0; k + 1 < waypoints.size(); ++k) {  // (the last is the quarry, drawn from his own place below)
+            const bool reaches = !waypoints.empty() && waypoints.back().x == q.pos.x && waypoints.back().y == q.pos.y;
+            for (size_t k = 0; k + (reaches ? 1 : 0) < waypoints.size(); ++k) {  // (the quarry's own place is drawn from him below)
                 const V3 p = toV3(waypoints[k]);
                 r.points.push_back({p.x, p.y, floorAt(p)});
             }
-            const V3 at = unitPosition(u.targetUnit - 1);
-            r.points.push_back({at.x, at.y, floorAt(at)});
+            if (reaches) {
+                const V3 at = unitPosition(u.targetUnit - 1);
+                r.points.push_back({at.x, at.y, floorAt(at)});
+            }
         } else {
             world_->routeOf(u, waypoints);
             r.points.push_back(unitPosition(i));
