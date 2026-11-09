@@ -17,7 +17,9 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Attack a soldier | tap the enemy | click the enemy (a red sword cursor) |
 | Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[Z]] then click |
 | Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[Z]], then click (a crosshair); or [[Ctrl]] + click the ground |
-| Batter a gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
+| Batter an enemy gate | tap the gate (or **⚔ Attack**, then the gate) | click it (a target cursor) |
+| Open or shut a gate of yours | tap it (men selected or not), or **Open gate** / **Close gate** on its card | click it (a gate cursor), or [[O]] |
+| Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
@@ -66,7 +68,7 @@ A **force march** ignores the enemy altogether, as *Myth*'s moves did: the men m
 
 - **A soldier.** Tap an enemy with soldiers selected and all of them go after him. Missile troops close to 90% of their reach and shoot, leading a walking man by his pace times the arrow's flight; if no arc gets there (a wall, a house in the way) they move closer. The rest run him down, re-routing every half second as he moves. Zoomed far out, a tap on an enemy squad sends each attacker after the nearest man of it. To break two riders off to hit the archers, select just the two and tap an archer.
 - **The ground.** With **⚔ Attack**, tap the ground: missile troops shoot at the spot; everyone else marches there with initiative, fighting what they meet (an attack-move).
-- **A gate.** Tap the gate: missile troops shoot the doors, engines and grenadiers batter them, and the rest go up to the gate and hack at it (gates are the only thing on the field that breaks).
+- **An enemy gate.** Tap the gate: missile troops shoot the doors, engines and grenadiers batter them, and the rest go up to the gate and hack at it (gates are the only thing on the field that breaks).
 - **A wall, a house or a tree.** Only what flies and bursts does any harm there: catapults, grenadiers and wizards bombard the wall-walk or the ground beside the house or tree, hitting whoever stands or shelters there. The stone and timber stand. Order anyone else at a wall and the game tells you: *Only engines, grenadiers and wizards can strike at a wall.*
 - **A friend** (force attack): only when you mean it, with **⚔ Attack** or Ctrl-click on him. He does not strike back, and the kill earns no rank. Otherwise friends never fight each other (arrows that miss are another matter).
 

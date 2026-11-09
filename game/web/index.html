@@ -96,6 +96,9 @@
   #inspect .bar { height: 6px; margin-top: 4px; background: #333; border-radius: 3px; overflow: hidden; }
   #inspect .bar b { display: block; height: 100%; background: #9a9a9a; }
   #inspect small { opacity: 0.7; }
+  #inspect.ours { pointer-events: auto; }
+  #inspect .gateActs { display: flex; gap: 6px; margin-top: 6px; }
+  #inspect .gateActs button { font-size: 12px; padding: 3px 8px; }
   #selInfo { font-size: 12px; color: var(--ink-dim); margin: 0 0 4px 2px; text-shadow: 0 1px 2px #000; pointer-events: none; }
   /* The formation picker: one tap for any formation, a sketch of each. */
   #picker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 6px; margin-bottom: 8px; pointer-events: auto; max-width: 420px; }
@@ -517,6 +520,7 @@
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
+      gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
       charge: Module.cwrap("illyria_charge", null, []),
@@ -707,7 +711,7 @@
   canvas.addEventListener("pointermove", (e) => { send(1, e); if (e.pointerType === "mouse" && !e.buttons) hoverAt(e); });
   // The desktop's cursor says what a click would do (Battle::Intent): select,
   // attack (a sword), attack a gate, wall or tree (a target), attack the
-  // ground (a crosshair), cannot, move, force march (double chevron).
+  // ground (a crosshair), cannot, move, force march (double chevron), swing one of our gates (a gate).
   const cursorSvg = (body) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>${body}</svg>`)}") 16 16`;
   const kCursors = [
     "", "pointer",
@@ -716,6 +720,7 @@
     cursorSvg("<g stroke='#000' stroke-width='4'><path d='M16 3 V12 M16 20 V29 M3 16 H12 M20 16 H29'/></g><g stroke='#ff4a3a' stroke-width='2'><path d='M16 3 V12 M16 20 V29 M3 16 H12 M20 16 H29'/></g><circle cx='16' cy='16' r='2' fill='#ff4a3a'/>") + ", crosshair",
     "not-allowed", "",
     cursorSvg("<g fill='none' stroke='#000' stroke-width='4' stroke-linejoin='round'><path d='M8 6 L18 16 L8 26'/><path d='M16 6 L26 16 L16 26'/></g><g fill='none' stroke='#ffd36e' stroke-width='2' stroke-linejoin='round'><path d='M8 6 L18 16 L8 26'/><path d='M16 6 L26 16 L16 26'/></g>") + ", e-resize",
+    cursorSvg("<g fill='none' stroke='#000' stroke-width='4' stroke-linejoin='round'><path d='M6 26 V8 L16 4 L26 8 V26'/><path d='M16 4 V26'/></g><g fill='none' stroke='#ffd36e' stroke-width='2' stroke-linejoin='round'><path d='M6 26 V8 L16 4 L26 8 V26'/><path d='M16 4 V26'/></g>") + ", pointer",
   ];
   let hoverQueued = false, hoverX = 0, hoverY = 0, lastIntent = -1;
   function hoverAt(e) {
@@ -1076,6 +1081,7 @@
       case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": case "KeyH": api.stop(); break;
+      case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
         const n = api.ungroup();
@@ -1403,10 +1409,23 @@
     const bar = ins.hp >= 0 && ins.max > 0 ? `<div class="bar"><b style="width:${pct}%"></b></div>` : "";
     const rank = ["", "seasoned", "veteran", "elite"][ins.rank || 0] || "";
     const mood = ["", "wavering", "routed"][ins.morale || 0] || "";
-    const html = ins.kind === "gate"
+    // Our own gate: how it stands and how it is held, with the buttons (the O key does the same).
+    const standing = ins.swing === 0 ? "shut" : ins.swing === 1000 ? "open" : ins.opens ? "opening" : "closing";
+    const held = ["", ", held open", ", held shut"][ins.pin || 0];
+    const ours = ins.kind === "gate" && ins.ours && !ins.broken;
+    const html = ours
+      ? `<b>Your gate</b><br>${standing}${held} · ${ins.hp} of ${ins.max} hit points${bar}<div class="gateActs"><button id="gateSwing">${ins.opens ? "Close gate" : "Open gate"}</button>${ins.pin ? `<button id="gateFree">Let go</button>` : ""}</div>`
+      : ins.kind === "gate"
       ? `<b>${ins.broken ? "Gate (broken)" : "Gate"}</b><br>${ins.hp} of ${ins.max} hit points${bar}<small>View only</small>`
       : `<b>${ins.type}</b><br>${ins.hp >= 0 ? `${ins.hp} of ${ins.max} life${bar}` : "not in a fight"}<small>${[rank, mood].filter(Boolean).join(" · ")}${rank || mood ? " · " : ""}${ins.stack ? `${ins.stack} in the stack · ` : ""}view only</small>`;
-    if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+    if (box.dataset.html !== html) {
+      box.dataset.html = html;
+      box.innerHTML = html;
+      const swing = $("gateSwing"), free = $("gateFree");
+      if (swing) swing.onclick = () => { api.gate(0); updateHud(); };
+      if (free) free.onclick = () => { api.gate(1); updateHud(); };
+    }
+    box.classList.toggle("ours", !!ours);
     box.classList.remove("hidden");
   }
   function updateHud() {

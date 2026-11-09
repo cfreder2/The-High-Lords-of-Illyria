@@ -285,7 +285,7 @@ public:
     // Queues an Order for its tick (the next, if it names none). Nothing is applied until a step runs, paused or not.
     void submit(Order order);
 
-    void setHuman(uint8_t side, bool human) { sides_[side].human = human; }
+    void setHuman(uint8_t side, bool human);  // (the gates of its towns are kept by a garrison, or by his hand)
     void setDifficulty(uint8_t side, Difficulty d) { sides_[side].difficulty = d; }
     // Every computer side at once (what the player picks at the start).
     void setComputerDifficulty(Difficulty d);
@@ -656,6 +656,8 @@ private:
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them
     void gateHps(std::vector<int32_t>& out) const;
+    std::vector<int32_t> gatePin_;  // the gates the player holds open or shut, as saved (pairs: gate, GatePin), likewise
+    void gatePinList(std::vector<int32_t>& out) const;
     std::vector<uint32_t> boarding_;  // (transient, within a step) the stacks that reached a quay with the sea next on their route
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while
     std::vector<Command> commands_, playerCommands_;  // (the player's go into the world's step after the stacks' own)

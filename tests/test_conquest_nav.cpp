@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <span>
 
 #include "illyria/sim/campaign.h"
@@ -163,6 +164,122 @@ TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
     CHECK(skirmishTicks >= 0);
     std::printf("  to the embrasure: conquest %d ticks, skirmish %d\n", conquestTicks, skirmishTicks);
     CHECK(conquestTicks <= skirmishTicks * 2 + 120);
+}
+
+namespace {
+// What one castle scenario did, the same in a Conquest and in a skirmish (a gate held by the player's side).
+struct GateRun {
+    int openTicks = -1;    // pinned open: ticks until the doors stand open
+    int shutTicks = -1;    // let go: ticks until they stand shut again
+    int outTicks = -1;     // a man ordered in through the shut gate: ticks until he is there
+    bool swungForHim = false;
+    bool shutBehind = false;
+};
+// The gate nearest a place (a capital's inner bailey has one of its own, between the courtyard and the keep).
+size_t gateNear(const Region& r, const Vec3& at) {
+    size_t best = 0;
+    Fixed bestD = Fixed::fromInt(1000000);
+    for (size_t i = 0; i < r.gates().size(); ++i) {
+        const Fixed d = ((r.gates()[i].a + r.gates()[i].b) * Fixed::fromRatio(1, 2) - at).flat().length();
+        if (d < bestD) bestD = d, best = i;
+    }
+    return best;
+}
+// `step` advances the one world a tick (a campaign's, or a skirmish's) with the commands given; `world` is that world.
+template <class Step, class WorldOf>
+GateRun runGate(Step step, WorldOf world, size_t gate, EntityId man, const Vec3& to) {
+    GateRun run;
+    Command pin{0, kNoEntity, Command::Type::SetGate, {}};
+    pin.objectIndex = static_cast<int32_t>(gate);
+    pin.gatePin = Command::GatePin::Open;
+    step(pin);
+    for (int t = 0; t < 10 * kTicksPerSecond && run.openTicks < 0; ++t) {
+        step(std::nullopt);
+        if (world().gates()[gate].opened()) run.openTicks = t + 1;
+    }
+    pin.gatePin = Command::GatePin::Auto;
+    step(pin);
+    for (int t = 0; t < 20 * kTicksPerSecond && run.shutTicks < 0; ++t) {
+        step(std::nullopt);
+        if (world().gates()[gate].mode == GateState::Mode::Shut) run.shutTicks = t + 1;
+    }
+    // A man of ours, in the courtyard, ordered in through the shut gate to the bailey: it swings open for him and shuts behind him.
+    step(Command{0, man, Command::Type::Move, to});
+    for (int t = 0; t < 120 * kTicksPerSecond; ++t) {
+        step(std::nullopt);
+        const GateState& g = world().gates()[gate];
+        run.swungForHim = run.swungForHim || g.mode == GateState::Mode::Opening;
+        const Unit* u = world().findUnit(man);
+        if (run.outTicks < 0 && (u->pos - to).flat().length() < Fixed::fromInt(4)) run.outTicks = t;
+        if (run.outTicks >= 0 && g.mode == GateState::Mode::Shut) {
+            run.shutBehind = true;
+            break;
+        }
+    }
+    return run;
+}
+}  // namespace
+
+TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
+    Island is(5);
+    Campaign& c = is.c;
+    const Campaign::CityState& cap = c.cities().front();
+    const Continent::City& town = continent().cities().front();
+    // The Conquest: the capital's own gate (the player's side holds it, by his hand and not a garrison's), a man of his
+    // raised in the courtyard, the commands carried by Orders.
+    const Region& r = *c.world()->region();
+    const size_t gate = gateNear(r, is.local(town.pos));
+    CHECK(c.world()->gates()[gate].holder == 0);
+    CHECK(!c.world()->gates()[gate].garrisoned);
+    const uint32_t id = c.raise(0, cap.cx, cap.cy, {UnitType::Pikemen});
+    c.step();
+    EntityId man = 0;
+    for (const Army& a : c.findStack(id)->armies)
+        for (const Man& m : a.men)
+            if (m.unit) man = m.unit;
+    CHECK(man != 0);
+    if (man == 0) return;
+    const Gate& g = r.gates()[gate];
+    const Vec3 inner = (g.a + g.b) * Fixed::fromRatio(1, 2) - g.out * Fixed::fromInt(8);
+    const GateRun conquest = runGate(
+        [&](std::optional<Command> cmd) {
+            if (cmd) {
+                Campaign::Order o;
+                o.kind = Campaign::Order::Kind::Command;
+                o.side = 0;
+                o.command = *cmd;
+                c.submit(o);
+            }
+            c.step();
+        },
+        [&]() -> const World& { return *c.world(); }, gate, man, inner);
+    // The skirmish: the same gate in the town's own window, held by side 0, the same man in the same courtyard.
+    const auto window = std::make_shared<const Region>(Region::fromContinent(continent(), town.pos, 256));
+    WorldConfig cfg;
+    cfg.region = window;
+    World w(cfg);
+    const size_t wgate = gateNear(*window, {town.pos.x - window->origin().x, town.pos.y - window->origin().y, town.pos.z});
+    w.setGateHolder(wgate, 0);
+    const Vec3 yard = {town.castle.courtyard.x - window->origin().x, town.castle.courtyard.y - window->origin().y, town.castle.courtyard.z};
+    const EntityId a = w.spawnUnit(0, yard, {Fixed::one(), Fixed::zero(), Fixed::zero()}, unitStats(UnitType::Pikemen));
+    const Gate& wg = window->gates()[wgate];
+    const Vec3 winner = (wg.a + wg.b) * Fixed::fromRatio(1, 2) - wg.out * Fixed::fromInt(8);
+    const GateRun skirmish = runGate(
+        [&](std::optional<Command> cmd) {
+            if (cmd) w.step(std::span(&*cmd, 1));
+            else w.step({});
+        },
+        [&]() -> const World& { return w; }, wgate, a, winner);
+    std::printf("  open after %d / %d ticks, shut again after %d / %d, in through the gate at %d / %d (conquest / skirmish)\n", conquest.openTicks, skirmish.openTicks,
+                conquest.shutTicks, skirmish.shutTicks, conquest.outTicks, skirmish.outTicks);
+    // The swing is the World's: the same to the tick in both.
+    CHECK(conquest.openTicks == static_cast<int>(kGateSwingTicks));
+    CHECK(conquest.openTicks == skirmish.openTicks);
+    CHECK(conquest.shutTicks >= static_cast<int>(kGateSwingTicks) && conquest.shutTicks == skirmish.shutTicks);
+    CHECK(conquest.swungForHim && skirmish.swungForHim);
+    CHECK(conquest.shutBehind && skirmish.shutBehind);
+    CHECK(conquest.outTicks >= 0 && skirmish.outTicks >= 0);
+    CHECK(conquest.outTicks <= skirmish.outTicks * 2 + 120);
 }
 
 // Not a rule but a measurement, printed for the record (docs/ONE_WORLD.md, "What it costs"): every man on the island is a
