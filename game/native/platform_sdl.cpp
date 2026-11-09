@@ -43,6 +43,7 @@ struct Options {
     int width = 1440, height = 900, shotFrame = 0, quitFrame = 0;
     bool fullscreen = false, sound = true, stats = false, vsync = true;
     int trees = -1;  // --trees N: how trees are drawn (0 one card, 1 two crossed, 2 three, 3 four); 99: --shot takes one picture of each
+    int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
@@ -70,6 +71,8 @@ void usage() {
         "  --quit-after N        quit after N frames\n"
         "  --camera X,Y,DIST,YAW put the camera there (battle metres, metres up, radians) once the game runs;\n"
         "                        given again with --shot FILE.tga: FILE-0.tga, FILE-1.tga... one a camera, the land built first\n"
+        "  --paths-demo FRAME    at that frame send three squads three ways, all selected: a hunt, a patrol and a force\n"
+        "                        march, to see the path lines (off by default; for screenshots)\n"
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
 }
 
@@ -105,6 +108,7 @@ bool parse(int argc, char** argv, Options& o) {
             std::array<float, 4> c{};
             if (std::sscanf(next(), "%f,%f,%f,%f", &c[0], &c[1], &c[2], &c[3]) == 4) o.cameras.push_back(c);
         } else if (a == "--quit-after") o.quitFrame = std::atoi(next());
+        else if (a == "--paths-demo") o.pathsDemo = std::atoi(next());
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
         else if (a.rfind("-psn_", 0) == 0) continue;  // (macOS passes this when a bundle is opened from the Finder)
@@ -397,6 +401,7 @@ int runApp(int argc, char** argv) {
             click.button.down = false;
             input.handle(click);
         }
+        if (opt.pathsDemo > 0 && frame == opt.pathsDemo) illyria_paths_demo();
         native::pumpAssets();
         hud.tick();
         // One camera is set once the game runs; several are a tour, each held kTourFrames with the close-up land built.

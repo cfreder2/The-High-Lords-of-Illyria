@@ -518,7 +518,7 @@ inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_LAND_FS ILLYRIA_
 
 // ---------------------------------------------------------------- decals
 // Per instance: centre (xyz), params (yaw, size, spawn seconds, type), extra (rgb, seed).
-// Types: 0 blood, 1 shadow, 2 selection ring, 3 corpse, 4 crater, 5 dust, 6 body part.
+// Types: 0 blood, 1 shadow, 2 selection ring, 3 corpse, 4 crater, 5 dust, 6 body part, 7 dot, 8 arrowhead, 9 bar, 10 cross-hair.
 // Drawn as triangles, uDecalGrid x uDecalGrid cells per decal, each vertex
 // on the ground there: a big marker follows the land's folds (the terrain
 // mesh is 4 m cells, so a single quad's chord cut into ridges and banks).
@@ -636,11 +636,22 @@ void main() {
     } else if (type > 6.5 && type < 7.5) {
         // Order marker: a soft dot (the facing line).
         color = vec4(vExtra.rgb, 0.9 * (1.0 - smoothstep(0.55, 0.95, r)) * (1.0 - vExtra.w));
-    } else if (type > 7.5) {
+    } else if (type > 7.5 && type < 8.5) {
         // Order marker: an arrowhead pointing along +x (the way to face).
         float halfW = (0.9 - vUv.x) * 0.45;
         float inside = step(-0.5, vUv.x) * step(vUv.x, 0.9) * (1.0 - smoothstep(halfW - 0.06, halfW, abs(vUv.y)));
         color = vec4(vExtra.rgb, 0.9 * inside * (1.0 - vExtra.w));
+    } else if (type > 8.5 && type < 9.5) {
+        // A stretch of a path (renderer_orders.cpp): a bar along +x, the whole width of the square and a third of its
+        // height, so the size is half its length.
+        float bar = (1.0 - smoothstep(0.27, 0.35, abs(vUv.y))) * (1.0 - smoothstep(0.94, 1.0, abs(vUv.x)));
+        color = vec4(vExtra.rgb, 0.95 * bar * (1.0 - vExtra.w));
+    } else if (type > 9.5 && type < 10.5) {
+        // The quarry of a hunt: a ring with a cross through it that reaches beyond.
+        float ring = smoothstep(0.5, 0.58, r) * (1.0 - smoothstep(0.66, 0.74, r));
+        float cross = max((1.0 - smoothstep(0.07, 0.12, abs(vUv.x))) * step(abs(vUv.y), 0.98),
+                          (1.0 - smoothstep(0.07, 0.12, abs(vUv.y))) * step(abs(vUv.x), 0.98)) * step(0.3, r);
+        color = vec4(vExtra.rgb, 0.95 * max(ring, cross) * (1.0 - vExtra.w));
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;

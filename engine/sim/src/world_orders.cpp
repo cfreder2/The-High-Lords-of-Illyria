@@ -75,6 +75,18 @@ Fixed toSegment(const Vec3& p, const Vec3& a, const Vec3& b) {
     return (p - (a + ab * t)).flat().length();
 }
 
+Fixed cross2(const Vec3& a, const Vec3& b) { return a.x * b.y - a.y * b.x; }
+
+// Where the flat stretch p-q meets the stretch a-b, if it does (t: how far along p-q).
+bool meets(const Vec3& p, const Vec3& q, const Vec3& a, const Vec3& b, Fixed& t) {
+    const Vec3 d1 = q - p, d2 = b - a, pa = a - p;
+    const Fixed denom = cross2(d1, d2);
+    if (denom == Fixed::zero()) return false;
+    t = cross2(pa, d2) / denom;
+    const Fixed u = cross2(pa, d1) / denom;
+    return t >= Fixed::zero() && t <= Fixed::one() && u >= Fixed::zero() && u <= Fixed::one();
+}
+
 }  // namespace
 
 bool World::canBatter(const UnitStats& s) {
@@ -228,6 +240,56 @@ void World::applyOrder(Unit& u, const Command& cmd) {
         case Command::Type::Stop:
         case Command::Type::Raid:  // let loose (World::applyCommand)
             break;
+    }
+}
+
+World::Stance World::stanceOf(const Unit& u) {
+    if (!u.alive() || u.routed) return Stance::Idle;
+    if (u.targetUnit != kNoEntity) return Stance::Hunt;
+    if (!u.hasMoveTarget) return Stance::Idle;
+    return u.forceMarch ? Stance::Move : Stance::Patrol;
+}
+
+void World::routeOf(const Unit& u, std::vector<Vec3>& out) const {
+    out.clear();
+    switch (stanceOf(u)) {
+        case Stance::Idle: return;
+        case Stance::Hunt: {
+            // The path he is on to the quarry (pursue plans it with the march's own planPath, and again as the quarry
+            // moves off it; its last point is where the quarry stood then), then the quarry where he stands now.
+            for (size_t i = std::min<size_t>(u.pathIndex, u.path.size()); i + 1 < u.path.size(); ++i) out.push_back(u.path[i]);
+            const Unit* q = findUnit(u.targetUnit);
+            if (q != nullptr && q->alive()) out.push_back(q->pos);
+            break;
+        }
+        case Stance::Patrol:
+        case Stance::Move:
+            for (size_t i = std::min<size_t>(u.pathIndex, u.path.size()); i < u.path.size(); ++i) out.push_back(u.path[i]);
+            // (The path ends where he can get to; a shut gate may stop it short of the place he was sent.)
+            if (out.empty()) out.push_back(u.moveTarget);
+            break;
+    }
+    stopAtShutGate(u, out);
+}
+
+void World::stopAtShutGate(const Unit& u, std::vector<Vec3>& way) const {
+    if (!config_.region) return;
+    const auto& doors = config_.region->gates();
+    Vec3 from = u.pos;
+    for (size_t i = 0; i < way.size(); ++i) {
+        // The nearest shut door across this stretch (a gate that is open, or broken, lets the line through).
+        Fixed best = Fixed::fromInt(2);
+        for (size_t g = 0; g < doors.size() && g < gates_.size(); ++g) {
+            Fixed t;
+            if (!gates_[g].passable() && meets(from, way[i], doors[g].a, doors[g].b, t) && t < best) best = t;
+        }
+        if (best <= Fixed::one()) {
+            const Vec3 at = from + (way[i] - from) * best;
+            way.resize(i);
+            way.push_back(at);
+            return;
+        }
+        from = way[i];
     }
 }
 
