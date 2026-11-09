@@ -17,15 +17,24 @@ float routeLength(const std::vector<V3>& points) {
     return len;
 }
 
-V3 along(const std::vector<V3>& points, float fraction) {
+V3 alongMetres(const std::vector<V3>& points, float metres, float* yaw) {
     if (points.empty()) return {};
-    float left = routeLength(points) * std::clamp(fraction, 0.0f, 1.0f);
-    for (size_t i = 1; i < points.size(); ++i) {
+    float left = std::max(metres, 0.0f);
+    size_t i = 1;
+    for (; i + 1 < points.size(); ++i) {
         const float seg = flatDist(points[i - 1], points[i]);
-        if (left <= seg && seg > 0) return lerp(points[i - 1], points[i], left / seg);
+        if (left <= seg) break;
         left -= seg;
     }
-    return points.back();
+    if (points.size() < 2) return points.front();
+    const V3 &a = points[i - 1], &b = points[i];
+    const float seg = flatDist(a, b);
+    if (yaw != nullptr) *yaw = std::atan2(b.y - a.y, b.x - a.x);
+    return seg > 0 ? lerp(a, b, std::min(left / seg, 1.0f)) : b;
+}
+
+V3 along(const std::vector<V3>& points, float fraction) {
+    return alongMetres(points, routeLength(points) * std::clamp(fraction, 0.0f, 1.0f));
 }
 
 std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tolerance) {

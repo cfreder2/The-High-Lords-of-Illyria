@@ -250,7 +250,7 @@ World::Stance World::stanceOf(const Unit& u) {
     return u.forceMarch ? Stance::Move : Stance::Patrol;
 }
 
-void World::routeOf(const Unit& u, std::vector<Vec3>& out) const {
+void World::routeOf(const Unit& u, std::vector<Vec3>& out, const std::vector<uint8_t>* hidden) const {
     out.clear();
     switch (stanceOf(u)) {
         case Stance::Idle: return;
@@ -269,19 +269,33 @@ void World::routeOf(const Unit& u, std::vector<Vec3>& out) const {
             if (out.empty()) out.push_back(u.moveTarget);
             break;
     }
-    stopAtShutGate(u, out);
+    stopAtShutGate(u, out, hidden);
 }
 
-void World::stopAtShutGate(const Unit& u, std::vector<Vec3>& way) const {
-    if (!config_.region) return;
-    const auto& doors = config_.region->gates();
+void World::stopAtShutGate(const Unit& u, std::vector<Vec3>& way, const std::vector<uint8_t>* hidden) const {
+    if (!config_.region || gates_.empty()) return;
+    const Region& rg = *config_.region;
+    const auto& doors = rg.gates();
+    constexpr int64_t kSampleMetres = 40;  // (a gate is found from within Region::kGateReach, 60 m, of a point)
     Vec3 from = u.pos;
+    std::vector<uint32_t> near;
     for (size_t i = 0; i < way.size(); ++i) {
-        // The nearest shut door across this stretch (a gate that is open, or broken, lets the line through).
+        // Only the doors near the stretch: sampled along it, rather than every gate of the island tried.
+        near.clear();
+        const Fixed len = (way[i] - from).flat().length();
+        const int64_t n = std::min<int64_t>(64, len.floorToInt() / kSampleMetres + 1);
+        for (int64_t k = 0; k <= n; ++k) {
+            const Vec3 p = from + (way[i] - from) * Fixed::fromRatio(k, n);
+            for (uint32_t g : rg.gatesNear(p.x, p.y))
+                if (std::find(near.begin(), near.end(), g) == near.end()) near.push_back(g);
+        }
+        // The nearest door across this stretch that is shut to him (open or broken, it lets the line through).
         Fixed best = Fixed::fromInt(2);
-        for (size_t g = 0; g < doors.size() && g < gates_.size(); ++g) {
+        for (uint32_t g : near) {
+            if (g >= gates_.size()) continue;
+            const bool shut = !gates_[g].passable() || (hidden != nullptr && g < hidden->size() && (*hidden)[g] != 0);
             Fixed t;
-            if (!gates_[g].passable() && meets(from, way[i], doors[g].a, doors[g].b, t) && t < best) best = t;
+            if (shut && meets(from, way[i], doors[g].a, doors[g].b, t) && t < best) best = t;
         }
         if (best <= Fixed::one()) {
             const Vec3 at = from + (way[i] - from) * best;

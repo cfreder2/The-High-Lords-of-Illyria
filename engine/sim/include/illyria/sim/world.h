@@ -604,7 +604,9 @@ public:
     // path planned to his quarry, then the quarry's place now). Empty for Idle. Does not include where he stands.
     // It stops at a gate that is shut, opening or closing across it (a swinging gate blocks like a shut one), and goes
     // through one that stands open or is broken.
-    void routeOf(const Unit& u, std::vector<Vec3>& out) const;
+    // `hidden` (by gate, if given): gates the one asking cannot see, which count as shut whatever they are doing, so
+    // that the line's shape never tells their state.
+    void routeOf(const Unit& u, std::vector<Vec3>& out, const std::vector<uint8_t>* hidden = nullptr) const;
     // Castle gates, in the order of the region's gates.
     const std::vector<GateState>& gates() const { return gates_; }
     // Battle setup: whose town each gate belongs to, and a gate already battered.
@@ -973,7 +975,7 @@ private:
     // is not to be walked at: the way is round, or through the doors).
     bool shutGateBetween(const Unit& unit, const Vec3& to) const;
     // routeOf's cut: the way up to the first door that is not passable.
-    void stopAtShutGate(const Unit& u, std::vector<Vec3>& way) const;
+    void stopAtShutGate(const Unit& u, std::vector<Vec3>& way, const std::vector<uint8_t>* hidden) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
     void applyGateOrder(const Command& cmd);

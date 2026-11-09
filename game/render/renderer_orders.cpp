@@ -125,22 +125,12 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
         // The chevrons and arrowheads, every so many marks.
         const int every = patrol ? 3 : hunt ? 9 : 0;
         const float headPx = patrol ? 8.0f : 10.0f;
-        size_t seg = 1;
-        float segStart = 0;  // metres along the line where the segment begins
-        float segLen = std::hypot(line.points[1].x - line.points[0].x, line.points[1].y - line.points[0].y);
+        const float total = routeLength(line.points);
         float s = std::fmod(seconds * 14.0f, period) * mpp(line.points[0]);  // the marks creep the way he goes
         int mark = 0;
-        for (int step = 0; step < kStepsPerLine; ++step) {
-            while (s - segStart > segLen && seg + 1 < line.points.size()) {
-                segStart += segLen;
-                ++seg;
-                segLen = std::hypot(line.points[seg].x - line.points[seg - 1].x, line.points[seg].y - line.points[seg - 1].y);
-            }
-            if (s - segStart > segLen) break;
-            const V3 a = line.points[seg - 1], b = line.points[seg];
-            const float t = segLen > 0 ? (s - segStart) / segLen : 0.0f;
-            const V3 p = lerp(a, b, t);
-            const float yaw = std::atan2(b.y - a.y, b.x - a.x);
+        for (int step = 0; step < kStepsPerLine && s <= total; ++step) {
+            float yaw = 0;
+            const V3 p = alongMetres(line.points, s, &yaw);
             const float step_m = period * mpp(p);
             if (!visible(p)) {
                 s += step_m * 4.0f;  // (not drawn: out of the picture; cross it quickly)

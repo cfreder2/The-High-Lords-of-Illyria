@@ -1042,6 +1042,7 @@ ILLYRIA_API void illyria_test_attack(int squad, int foe, float distance) {
     app->camera.lookAt(c.x + (t.x - c.x) * 0.4f, c.y + (t.y - c.y) * 0.4f, distance);
 }
 
+#ifdef ILLYRIA_DEV_HOOKS
 // Test hook (--paths-demo on the desktop): the player's first three squads sent three ways at once and all
 // selected, to see the three path styles side by side: the first goes after the nearest foe (a hunt), the
 // second marches (a patrol), the third force marches. Does not move the camera.
@@ -1075,6 +1076,7 @@ ILLYRIA_API void illyria_paths_demo() {
     b.select(all);
     app->introStartMs = -1;
 }
+#endif
 
 ILLYRIA_API void illyria_focus_squad(int index) {
     if (!app || index < 0 || index >= static_cast<int>(app->battle->squads().size())) return;

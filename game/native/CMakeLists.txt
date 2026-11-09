@@ -77,6 +77,9 @@ endif()
 set_target_properties(illyria_app PROPERTIES OUTPUT_NAME "Illyria")
 target_link_libraries(illyria_app PRIVATE illyria_runtime SDL3::SDL3 ${ILLYRIA_WEBP})
 target_compile_options(illyria_app PRIVATE -Wno-conversion)
+if(ILLYRIA_DEV_HOOKS)
+    target_compile_definitions(illyria_app PRIVATE ILLYRIA_DEV_HOOKS)
+endif()
 # Run from the source tree without copying: the folders the browser build serves.
 target_compile_definitions(illyria_app PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}" ILLYRIA_SOURCE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/../web")
 

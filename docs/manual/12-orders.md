@@ -51,7 +51,7 @@ Several squads selected together keep their places beside each other, each squad
 
 ## Paths on the ground {#paths}
 
-Where selected men will walk is drawn on the ground, so you can see how they mean to get round walls, water and rocks. The line starts at the middle of the men and ends where they are going; it is the route the soldiers themselves will take, and it shortens as they walk. It shows while they are selected, and for a few seconds after an order, fading. Only your own men's paths are ever drawn.
+Where selected men will walk is drawn on the ground, so you can see how they mean to get round walls, water and rocks. The line starts at the middle of the men and ends where they are going; it is the route the soldiers themselves will take, and it shortens as they walk. It shows while they are selected, and for a few seconds after an order, fading. Lines are shown for your own men only: a foe's route is never drawn, and a gate of a castle you cannot see is drawn as shut, so a line never tells what you cannot see.
 
 How they will go is told by the **shape** of the line, not only its colour:
 

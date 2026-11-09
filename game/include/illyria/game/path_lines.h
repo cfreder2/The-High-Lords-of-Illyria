@@ -39,6 +39,8 @@ std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tol
 
 // The point `fraction` (0..1) of the way along a polyline's length.
 V3 along(const std::vector<V3>& points, float fraction);
+// The point `metres` along it (clamped to its ends), and the way it runs there (a yaw, radians) if asked.
+V3 alongMetres(const std::vector<V3>& points, float metres, float* yaw = nullptr);
 float routeLength(const std::vector<V3>& points);
 
 }  // namespace illyria::game

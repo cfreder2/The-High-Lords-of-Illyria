@@ -2,6 +2,7 @@
 // stance (World::routeOf, World::stanceOf), men going one way merged into one line, and only the player's own paths
 // ever told.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -344,6 +345,23 @@ TEST(a_route_stops_at_a_shut_or_swinging_gate_and_goes_through_an_open_one) {
     CHECK(w.gates()[gi].mode == GateState::Mode::Open);
     const std::vector<Vec3> through = way();
     CHECK(!through.empty() && (through.back() - to).flat().length() < m(2));
+    // Standing open but unseen by the one asking: the line stops at it as at a shut one (its state is not told).
+    {
+        const EntityId b = w.spawnUnit(0, from, -g.out, unitStats(UnitType::LightInfantry));
+        Command mv;
+        mv.player = 0;
+        mv.unit = b;
+        mv.type = Command::Type::Move;
+        mv.target = to;
+        w.step(std::vector<Command>{mv});
+        std::vector<uint8_t> hidden(rg.gates().size(), 0);
+        std::vector<Vec3> seen, unseen;
+        w.routeOf(*w.findUnit(b), seen, &hidden);
+        hidden[gi] = 1;
+        w.routeOf(*w.findUnit(b), unseen, &hidden);
+        CHECK(!seen.empty() && (seen.back() - to).flat().length() < m(2));
+        CHECK(stoppedAtFace(unseen));
+    }
     // And broken, likewise: the gate is no obstacle.
     w.setGatePin(gi, Command::GatePin::Shut);
     for (int t = 0; t < 10 * kTicksPerSecond; ++t) w.step({});
@@ -351,4 +369,90 @@ TEST(a_route_stops_at_a_shut_or_swinging_gate_and_goes_through_an_open_one) {
     w.setGateHp(gi, 0);
     const std::vector<Vec3> broken = way();
     CHECK(!broken.empty() && (broken.back() - to).flat().length() < m(2));
+}
+
+// What drawing the paths costs a frame with the whole side selected and marching (the castle's gates among the route's
+// stretches): pathLines is what the renderer calls each frame.
+TEST(the_paths_of_a_whole_army_cost_little_a_frame) {
+    Battle b(42);
+    std::vector<EntityId> all;
+    for (const Unit& u : b.world().units())
+        if (u.alive() && u.owner == Battle::kPlayer) all.push_back(u.id);
+    b.select(all);
+    b.orderMove(b.squadCentre(b.squads().front(), false) + V3{70, -40, 0});
+    b.advance(0.05);
+    const int reps = 200;
+    const auto t0 = std::chrono::steady_clock::now();
+    size_t lines = 0;
+    for (int k = 0; k < reps; ++k) lines += b.pathLines(false, false).size();
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / reps;
+    std::printf("  %zu men selected: pathLines %.3f ms a frame (%zu lines)\n", all.size(), ms, lines / reps);
+    CHECK(ms < 1.0);
+}
+
+// The cost of asking for 200 men's routes in the conquest's world (the whole island: every town's gates).
+TEST(two_hundred_routes_across_the_island_are_cheap) {
+    Campaign c(continent(), 3);
+    for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
+    c.prepareWorld();
+    World& w = *c.presentedWorld();
+    std::vector<Command> go;
+    for (const Unit& u : w.units()) {
+        if (!u.alive() || go.size() >= 200) continue;
+        Command mv;
+        mv.player = u.owner;
+        mv.unit = u.id;
+        mv.type = Command::Type::Move;
+        mv.target = u.pos + Vec3{Fixed::fromInt(400), Fixed::fromInt(300), Fixed::zero()};
+        go.push_back(mv);
+    }
+    w.step(go);
+    std::vector<Vec3> way;
+    size_t points = 0;
+    const int reps = 50;
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int k = 0; k < reps; ++k)
+        for (const Command& g : go) {
+            w.routeOf(*w.findUnit(g.unit), way);
+            points += way.size();
+        }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / reps;
+    std::printf("  %zu men, %zu waypoints each on average, %zu gates in the world: routeOf %.3f ms for all\n", go.size(),
+                points / (reps * std::max<size_t>(1, go.size())), w.gates().size(), ms);
+    CHECK(!go.empty());
+    CHECK(ms < 1.0);
+}
+
+// A foe's marching stack is never drawn, faint or not; a 500-man selection is still a few dozen lines.
+TEST(an_enemy_stack_never_has_a_faint_marching_line_and_a_big_selection_is_capped) {
+    Campaign c(continent(), 7);
+    c.setHuman(0, true);
+    for (int t = 0; t < 3 * Campaign::kTicksPerDay; ++t) c.step();
+    c.prepareWorld();
+    const Vec3 ro = c.presentedWorld()->region()->origin();
+    Battle b(1, Vec3{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()},
+             std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
+    b.borrow(&c);
+    c.onWorldStep([&] { b.beforeWorldStep(); }, [&] { b.afterWorldStep(); }, [&] { b.forgetMen(); });
+    std::vector<Campaign::Soldier> men;
+    c.visibleSoldiers(c.localSide(), 0, men);
+    b.presentConquest(men);
+    int foes = 0;
+    const V3 o = b.origin();
+    const std::vector<RouteLine> lines = b.pathLines(false, true);
+    for (const Campaign::Stack& s : c.stacks()) {
+        if (s.owner == c.localSide() || s.path.empty()) continue;
+        ++foes;
+        for (const RouteLine& l : lines)
+            CHECK(std::hypot(l.points.front().x - (static_cast<float>(s.px) * 0.001f - o.x),
+                             l.points.front().y - (static_cast<float>(s.py) * 0.001f - o.y)) > 1.0f);
+    }
+    std::printf("  %d foes marching, %zu lines drawn\n", foes, lines.size());
+    CHECK(foes > 0);
+    // Five hundred men, each going somewhere of his own: lines are capped, so are the marks they make.
+    std::vector<RouteIn> in;
+    for (EntityId i = 1; i <= 500; ++i) in.push_back(route(i, i % 3 == 0 ? Stance::Hunt : Stance::Patrol, {{0, 0, 0}, {static_cast<float>(i) * 7.0f, 20, 0}}, i % 3 == 0 ? i : kNoEntity));
+    const std::vector<RouteLine> big = illyria::game::mergeRoutes(in, 8.0f);
+    CHECK(big.size() <= illyria::game::kMaxRouteLines);
+    // (Each line draws at most 600 marks and the frame at most 3000 decals, two to a mark: renderer_orders.cpp.)
 }
