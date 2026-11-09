@@ -796,7 +796,7 @@ Lure besiege(Keep& k, int seconds) {
         }
         lure.hpPct = gateOf(k.f).hp * 100 / w.region()->gates()[k.f.gate].maxHp;
     }
-    for (EntityId id : k.foes) lure.foesLeft += w.findUnit(id)->alive();
+    for (EntityId id : k.foes) lure.foesLeft += w.findUnit(id)->alive() && (w.findUnit(id)->pos - k.f.centre).flat().length() < m(30);  // (one that broke and ran is not at the doors)
     for (EntityId id : k.foot) lure.footLeft += w.findUnit(id)->alive();
     return lure;
 }
@@ -833,7 +833,7 @@ TEST(a_neutral_garrison_puts_its_archers_on_the_wall_and_its_foot_behind_the_gat
 TEST(the_doors_are_swung_open_to_draw_a_few_foes_in_when_the_foot_are_formed) {
     Keep k = keepField(9, 60);
     const Lure l = besiege(k, 300);
-    std::printf("  swung at %d%% formed, %d%% of the archers up, %d foes at the doors, doors at %d%%; %d of 6 foes left, %d of 10 foot\n", l.formedPct, l.mannedPct, l.outside, l.hpPct, l.foesLeft, l.footLeft);
+    std::printf("  swung at %d%% formed, %d%% of the archers up, %d foes at the doors, doors at %d%%; %d of 6 foes still at the doors, %d of 10 foot\n", l.formedPct, l.mannedPct, l.outside, l.hpPct, l.foesLeft, l.footLeft);
     CHECK(l.swung);
     CHECK(l.formedPct >= 70);       // only when the foot are formed
     CHECK(l.mannedPct >= 50);       // and the archers are up
