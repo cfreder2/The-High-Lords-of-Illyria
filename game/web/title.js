@@ -503,10 +503,10 @@
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
-    `<tr><td>${k("B")}</td><td>Halt.</td></tr>` +
+    `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
     `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
-    `<tr><td>${k("Space")}</td><td>Pause the battle.</td></tr>` +
+    `<tr><td>${k("P")}</td><td>Pause the battle.</td></tr>` +
     `<tr><td>${k("-")} · ${k("=")}</td><td>Slower · faster: ¼×, ½×, 1×, 2×, 4×. The speed button too: a click for 2× and 4×, held for slow motion.</td></tr></table>` +
     `<h3>Menus</h3>` +
     `<table class="keys"><tr><td>${k("↑")}${k("↓")}${k("←")}${k("→")}</td><td>Move between buttons.</td></tr>` +

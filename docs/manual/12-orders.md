@@ -24,12 +24,12 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
-| Halt | **Hold** | [[B]] |
+| Halt (stop the march) | **Hold** | [[Space]] or [[B]] |
 | The camera to the selection | **Find** | [[C]] |
 | Raid (hyena-folk) | **Raid** | [[T]] |
 | Lay satchels (grenadiers) | | [[T]], then click where |
-| Cancel a mode, let go | tap the mode's button again | [[Esc]] |
-| Pause | **Pause** | [[Space]] |
+| Cancel a mode | tap the mode's button again | [[Esc]] |
+| Pause | **Pause** | [[P]] (the desktop app: [[Esc]] pauses and opens the menu) |
 
 The **⚔ Attack** button sits in the action row. One tap lights it red, and a line above it says what the next tap does: *Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground*. Held, it turns gold for a force march. Either lasts one order. On a desktop the left button only selects: click one of your men to pick him (again, for all his kind in view), drag a box, shift-click to add or drop one, click the ground to let everyone go. The right button gives the orders (a click, or held and dragged for a facing line), the right button dragged turns the view, and the middle button dragged pans it. The cursor shows what a right click would do: a hand over your own men, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair over the ground in attack mode, a double chevron for a force march, and "not allowed" when nobody selected can strike what is under it.
 

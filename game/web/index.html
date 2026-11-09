@@ -1095,7 +1095,8 @@
         if (orderMode) setMode(0);
         else { api.clearSelection(); $("picker").classList.add("hidden"); }
         break;
-      case "Space": $("pause").onclick(); break;
+      case "Space": api.stop(); break;  // the march stops
+      case "KeyP": $("pause").onclick(); break;
       case "Minus": case "NumpadSubtract": stepPace(-1); break;
       case "Equal": case "NumpadAdd": stepPace(1); break;
       default: return;

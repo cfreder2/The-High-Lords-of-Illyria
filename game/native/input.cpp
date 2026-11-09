@@ -238,10 +238,12 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_U: illyria_ungroup(); break;
         case SDL_SCANCODE_GRAVE: illyria_select_heroes(); break;
         case SDL_SCANCODE_ESCAPE:
+            // Cancels an order mode in hand; else pauses the game and brings up the menu (Esc again: back).
             if (orderMode_) setMode(0);
-            else illyria_clear_selection();
+            else hud_.openMenu();
             break;
-        case SDL_SCANCODE_SPACE: {
+        case SDL_SCANCODE_SPACE: illyria_stop(); break;  // the march stops: the selection halts
+        case SDL_SCANCODE_P: {
             Json camp;
             Json::parse(illyria_campaign_state(), camp);
             if (camp.find("day")) illyria_campaign_pause();

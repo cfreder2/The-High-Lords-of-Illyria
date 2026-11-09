@@ -132,6 +132,6 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | Attack mode | ⚔ Attack | [[Z]] or [[Ctrl]] + click |
 | Force march | hold ⚔ Attack | [[V]] or [[Alt]] + click |
 | Formation | Formation | keypad 1-7, shift + 1-7 |
-| Scatter / Hold / Find | the buttons | [[X]] / [[B]] / [[C]] |
-| Cancel / let go | | [[Esc]] |
-| Pause | Pause | [[Space]] |
+| Scatter / Hold / Find | the buttons | [[X]] / [[Space]] or [[B]] / [[C]] |
+| Cancel a mode | | [[Esc]] |
+| Pause | Pause | [[P]] |

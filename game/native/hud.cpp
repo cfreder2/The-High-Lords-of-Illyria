@@ -432,12 +432,14 @@ void Hud::draw(Overlay& o, float w, float h) {
              {{"W A S D, arrows", "pan"},
               {"Q E, R F, N", "turn, zoom, north"},
               {"Z, V", "attack mode, force march (one order)"},
-              {"T, X, B, C", "special, scatter, halt, find selection"},
+              {"Space, B", "stop the march (halt)"},
+              {"T, X, C", "special, scatter, find selection"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},
-              {"`, Ctrl + A, Esc", "heroes, all on screen, let go"},
-              {"Space, - =", "pause, slower and faster"},
+              {"`, Ctrl + A", "heroes, all on screen"},
+              {"Esc", "pause and bring up the menu (or cancel a mode)"},
+              {"P, - =", "pause, slower and faster"},
               {"Enter, /", "menu, this help"}}}};
         constexpr float kSize = 12, kLine = 18, kPad = 14, kGap = 14, kColGap = 28;
         float colW[2] = {};
