@@ -349,6 +349,18 @@ public:
     // the way to face: pressEnd), the whole arrangement turned to it.
     void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
+    // Planning (client side only; the sim and the other peers know nothing of it until the release). While on, the orders a
+    // gesture gives (a right click, a facing drag, an attack, a formation, scatter, raid) are not sent but held, per man, and
+    // drawn as pending paths for every man that has any. Releasing sends them all in the one tick in the order given, exactly as if
+    // given then: a plain order replaces and a queued one appends. A plain order held replaces the man's held ones (as it would
+    // replace them on arrival). Halt is not held: it halts at once and drops that man's held orders. The plan is dropped when the
+    // battle or its world changes, and a man dead at the release is skipped.
+    bool planning() const { return planning_; }
+    void setPlanning(bool on);  // off: releases
+    void togglePlanning() { setPlanning(!planning_); }
+    void releasePlan();         // sends what is held, and leaves planning
+    void discardPlan();         // drops what is held, and leaves planning
+    size_t plannedCount() const { return plan_.size(); }
     // Attacks (game/src/battle_orders.cpp). Everyone selected after one
     // soldier, of either side (a force attack on a friend): missile troops
     // keep to a bowshot and shoot him, the rest run him down. When he falls
@@ -438,6 +450,8 @@ public:
     void breakGate(int gate);
     void giveGates(sim::PlayerId holder) { holdGates(holder); }
     void testShootAt(const V3& at);
+    // Test hook: a soldier taken out of the world (as dead, to the orders).
+    void testRemove(sim::EntityId unit) { world_->removeUnit(unit); }
     // Test hook: an order put in a soldier's queue (any side's), as the sim keeps it.
     void testQueueFor(sim::EntityId unit, const sim::Command& c) { world_->testQueue(unit, c); }
     // Test hook: one soldier (of either side) ordered to walk to a spot.
@@ -759,6 +773,20 @@ private:
     };
     int scopeDepth_ = 0;
     bool appending_ = false;
+    // Held orders (setPlanning): a man's command, or a conquest's far march of squads; in the order given.
+    struct Planned {
+        sim::Command cmd;
+        uint32_t man = 0;  // conquest: the man (a unit's id there is made anew when the men are put back)
+        uint32_t seq = 0;
+        bool far = false;
+        std::vector<uint32_t> armies;  // far: the squads marched
+        V3 to;
+    };
+    bool planning_ = false;
+    std::vector<Planned> plan_;
+    uint32_t planSeq_ = 0;
+    sim::EntityId unitOfPlanned(const Planned& p) const;
+    void plannedRoutes(std::vector<RouteIn>& routes) const;  // pathLines: the legs held
     void settleOrders(size_t first);
     void queuedRoutes(std::vector<RouteIn>& routes) const;  // pathLines: the legs of the queues
     std::vector<sim::EntityId> selection_;  // ascending, so orders go out in one order everywhere

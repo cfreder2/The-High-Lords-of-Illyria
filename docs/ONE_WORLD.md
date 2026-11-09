@@ -316,6 +316,14 @@ A short note on how it works, and what it costs.
 - **Fog-safe.** The queue is drawn (`Battle::queuedRoutes`) for the player's own men only, and a leg after a quarry the
   player cannot see is not drawn; nothing about another side's queue leaves the sim.
 
+### Planning is the client's
+
+Planning mode (key I) is not in the sim and not in the command stream: `Battle` holds the orders a gesture gives, per man
+(`Battle::plan_`), and sends them at the release as ordinary Commands, in the order given, in one tick. It is
+therefore the same in Skirmish and Conquest, invisible to other peers, and cannot desynchronise anything: before the
+release there is nothing to send. A conquest's held orders name the *man* (his unit id is made anew when the men are put
+back), found again at the release; the plan is dropped when the battle borrows a different world (`borrow`, `forgetMen`).
+
 ## One battle system, one renderer
 
 There is one game. A fight on the campaign is the Battle's fight, shown by the Battle's own presentation, drawn by

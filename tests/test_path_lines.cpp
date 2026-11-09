@@ -554,3 +554,76 @@ TEST(a_squad_ordered_a_then_b_walks_a_then_b_in_a_battle) {
     CHECK(atA);
     CHECK(flat(bb) < 8.0f);
 }
+
+// --- Planning: orders held on the client until the release ----------------------------------------------------------
+
+TEST(planning_holds_orders_off_the_sim_and_the_release_sends_them_in_one_tick_as_if_given_then) {
+    Field g;
+    g.b.setPlanning(true);
+    CHECK(g.b.planning());
+    g.click(-30, 0, false);
+    g.click(-30, 25, true);
+    g.click(0, 25, true);
+    g.b.advance(1.0);
+    // Nothing reached the sim: nobody is marching, nothing queued; the orders are held.
+    for (EntityId id : g.chosen) {
+        CHECK(!g.b.world().units()[id - 1].hasMoveTarget);
+        CHECK(g.b.world().units()[id - 1].queue.empty());
+    }
+    CHECK(g.b.plannedCount() == 3 * g.chosen.size());
+    // Drawn, for every man that has any, in the held look, numbered 1 to 3.
+    int pending = 0, three = 0;
+    for (const RouteLine& l : g.b.pathLines(false, false)) {
+        pending += l.pending;
+        three += l.pending && l.number == 3;
+        CHECK(l.pending);  // (nothing else is under way)
+    }
+    CHECK(pending >= 3 && three >= 1);
+    // Even with the men deselected.
+    g.b.clearSelection();
+    CHECK(!g.b.pathLines(false, false).empty());
+    // The release: all at once, as if just given in that order.
+    g.b.setPlanning(false);
+    CHECK(!g.b.planning());
+    CHECK(g.b.plannedCount() == 0);
+    g.b.advance(0.05);
+    for (EntityId id : g.chosen) {
+        CHECK(g.b.world().units()[id - 1].hasMoveTarget);
+        CHECK(g.b.world().units()[id - 1].queue.size() == 2);
+    }
+}
+
+TEST(a_plain_order_held_replaces_the_held_ones_and_backspace_drops_them_all) {
+    Field g;
+    g.b.setPlanning(true);
+    g.click(-30, 0, false);
+    g.click(-30, 25, true);
+    g.click(30, 0, false);  // replaces both
+    CHECK(g.b.plannedCount() == g.chosen.size());
+    g.b.discardPlan();
+    CHECK(!g.b.planning());
+    CHECK(g.b.plannedCount() == 0);
+    g.b.advance(0.5);
+    for (EntityId id : g.chosen) CHECK(!g.b.world().units()[id - 1].hasMoveTarget);
+}
+
+TEST(halt_while_planning_halts_at_once_and_drops_that_mens_held_orders_and_the_dead_are_skipped) {
+    Field g;
+    g.click(-30, 0, false);  // really marching
+    g.b.setPlanning(true);
+    g.click(-30, 25, true);
+    CHECK(g.b.plannedCount() == g.chosen.size());
+    g.b.stopSelected();
+    CHECK(g.b.plannedCount() == 0);
+    g.b.advance(0.2);
+    for (EntityId id : g.chosen) CHECK(!g.b.world().units()[id - 1].hasMoveTarget);  // halted for real, at once
+    // Held again; one man dead before the release is skipped, the rest go.
+    g.click(0, 25, false);
+    const EntityId doomed = g.chosen.front();
+    g.b.testRemove(doomed);
+    g.b.setPlanning(false);
+    g.b.advance(0.05);
+    int marching = 0;
+    for (EntityId id : g.chosen) marching += g.b.world().units()[id - 1].hasMoveTarget;
+    CHECK(marching == static_cast<int>(g.chosen.size()) - 1);
+}

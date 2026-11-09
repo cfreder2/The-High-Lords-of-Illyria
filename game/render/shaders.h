@@ -663,7 +663,7 @@ void main() {
         else if (digit < 4.5) mask = 0x66; else if (digit < 5.5) mask = 0x6D; else if (digit < 6.5) mask = 0x7D;
         else if (digit < 7.5) mask = 0x07; else if (digit < 8.5) mask = 0x7F; else if (digit < 9.5) mask = 0x6F;
         float lit = 0.0;
-        vec2 p = vec2(vUv.x, -vUv.y);
+        vec2 p = vec2(-vUv.x, vUv.y);
         const float w = 0.075;
         if ((mask & 1) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.26, -0.5), vec2(0.26, -0.5))));
         if ((mask & 2) != 0)  lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(0.28, -0.48), vec2(0.28, -0.02))));

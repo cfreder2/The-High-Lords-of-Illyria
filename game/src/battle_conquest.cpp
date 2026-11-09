@@ -42,6 +42,8 @@ void Battle::borrow(sim::Campaign* conquest) {
     inspectedUnit_ = 0;
     selStack_ = 0;
     pending_.clear();
+    plan_.clear();
+    planning_ = false;
     forgetMen();
 }
 
@@ -225,6 +227,16 @@ bool Battle::marchOrder(const V3& to, bool wholly) {
     for (sim::EntityId id : awake)
         if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
     if (armies.empty()) return false;
+    if (planning_) {
+        // Held like the rest (a plain march replaces what was held for these squads' stacks).
+        Planned p;
+        p.far = true;
+        p.armies = std::move(armies);
+        p.to = to;
+        p.seq = ++planSeq_;
+        plan_.push_back(std::move(p));
+        return true;
+    }
     marchArmies(std::move(armies), to);
     return true;
 }

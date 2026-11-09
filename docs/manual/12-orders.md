@@ -22,7 +22,8 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
-| Queue an order (after the one in hand) | | [[Shift]] + right-click (or right-hold and drag, for a facing) |
+| Queue an order (after the one in hand) | **Plan** (below) | [[Shift]] + right-click (or right-hold and drag, for a facing) |
+| Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[I]] to start, [[I]] to send, [[Backspace]] to drop them |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
@@ -77,6 +78,16 @@ Hold [[Shift]] as you right-click and the order is **added to the end** of each 
 - **A save keeps the queue** (but not the march he was on, nor an attack on a soldier, who is a different man in a loaded game), so after loading a man goes on to the first of his queue.
 - **In the campaign** it is the same, within about 200 m of the men. A march beyond that is a stack's across the map, which has no queue: with [[Shift]] it still goes, replacing, and the game says so.
 - **Seen** only for your own men: the queue is drawn behind the line of the order in hand, each leg in the look of its own stance (below) and ending in a small **numbered disc** (1, 2, 3...) for its place in the queue. A leg after a foe you cannot see is not drawn. The legs run straight; the way round a wall or a river is found when the order begins.
+
+## Planning {#planning}
+
+Press [[I]] (on a phone, the **Plan** button) and the game says **PLANNING**. The battle keeps running, but the orders you give (a march, a facing drag, an attack, a formation, scatter, raid) are not sent: they are **held**, and drawn as dashed violet paths, each leg ending in its number, for every man who has any, selected or not. Press [[I]] again (**Send**) and every held order goes at once, in the one tick and in the order you gave it, exactly as if you had just given it then: a plain order replaces what the man is doing and a [[Shift]] one is added behind it. [[Backspace]] drops them all and leaves planning.
+
+- A plain order held for a man replaces the orders held for him before it, as it would on arrival.
+- [[Space]] (Hold) is never held: it halts at once, and drops whatever was held for those men.
+- [[Esc]] still opens the menu.
+- Held orders are forgotten if the battle or its world changes, and a man dead before the send is skipped.
+- Nothing is sent, and nobody else can see anything, until the send: planning is on your own screen only. In the campaign a march beyond the men's reach (a stack's) is held too, and drawn as one violet line from its squad.
 
 ## Marching with initiative {#initiative}
 

@@ -1107,6 +1107,40 @@ ILLYRIA_API void illyria_paths_demo() {
     b.select(all);
     app->introStartMs = -1;
 }
+
+// Test hook (--queue-demo on the desktop): the first squad given a march and two queued after it (Shift + right-click), the
+// second given the same while planning (held: dashed, violet, numbered), the third a plain march; none selected, the camera
+// above them. Right clicks are made through the camera, as the player's are.
+ILLYRIA_API void illyria_queue_demo() {
+    if (!app) return;
+    Battle& b = *app->battle;
+    std::vector<size_t> mine;
+    for (size_t i = 0; i < b.squads().size(); ++i)
+        if (b.squads()[i].owner == Battle::kPlayer && mine.size() < 3) mine.push_back(i);
+    if (mine.size() < 3) return;
+    const V3 c0 = b.squadCentre(b.squads()[mine[0]], false);
+    app->introStartMs = -1;
+    app->camera.lookAt(c0.x + 10, c0.y, 110.0f);
+    const auto rightClick = [&](size_t squad, float dx, float dy, bool shift) {
+        const V3 c = b.squadCentre(b.squads()[squad], false);
+        V3 at{c.x + dx, c.y + dy, 0};
+        at.z = b.heightAt(at.x, at.y);
+        float px = 0, py = 0;
+        if (app->camera.project(at, px, py)) b.orderTap(app->camera, px, py, 1.0f, shift);
+    };
+    b.selectSquad(static_cast<int>(mine[0]));
+    rightClick(mine[0], 30, -10, false);
+    rightClick(mine[0], 30, 25, true);
+    rightClick(mine[0], 70, 25, true);
+    b.selectSquad(static_cast<int>(mine[2]));
+    rightClick(mine[2], 40, 8, false);
+    b.selectSquad(static_cast<int>(mine[1]));
+    b.setPlanning(true);
+    rightClick(mine[1], 25, 12, false);
+    rightClick(mine[1], 25, 40, true);
+    rightClick(mine[1], 60, 45, true);
+    b.clearSelection();
+}
 #endif
 
 ILLYRIA_API void illyria_focus_squad(int index) {
@@ -1278,6 +1312,17 @@ ILLYRIA_API void illyria_hot_spot() {
 // The O key: open or shut the gate looked at (else our nearest) and hold it so; with `release`, let it go.
 ILLYRIA_API void illyria_gate(int release) {
     if (app) app->battle->swingGateByKey(release != 0);
+}
+// The planning mode (I): 0 toggles it (off releases what is held), 1 releases, 2 discards (Backspace). The count held after.
+ILLYRIA_API int illyria_plan(int op) {
+    if (!app) return 0;
+    Battle& b = *app->battle;
+    switch (op) {
+        case 0: b.togglePlanning(); break;
+        case 1: b.releasePlan(); break;
+        case 2: b.discardPlan(); break;
+    }
+    return static_cast<int>(b.plannedCount());
 }
 ILLYRIA_API void illyria_stop() {
     if (app) app->battle->stopSelected();
@@ -2333,8 +2378,9 @@ ILLYRIA_API const char* illyria_hud() {
         // The order mode, and a refused order's reason while fresh (3 s).
         const bool fresh = !b.notice().empty() && b.world().tick() - b.noticeTick() < 3 * illyria::sim::kTicksPerSecond;
         // Hyena-folk among them: the Raid button shows.
-        std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"raid\":%s,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
-                      b.selectionBatters() ? "true" : "false", b.selectionRaids() ? "true" : "false", fresh ? b.notice().c_str() : "");
+        std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"raid\":%s,\"planning\":%s,\"planned\":%zu,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
+                      b.selectionBatters() ? "true" : "false", b.selectionRaids() ? "true" : "false", b.planning() ? "true" : "false", b.plannedCount(),
+                      fresh ? b.notice().c_str() : "");
         s += buf;
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",

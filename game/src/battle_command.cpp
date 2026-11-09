@@ -938,11 +938,16 @@ void Battle::orderMoveFacing(const V3& to, const V3& facing) {
 }
 
 void Battle::stopSelected() {
-    for (sim::EntityId id : selectedAlive()) issue(local_, id, sim::Command::Type::Stop, {});
+    // Halt is never held: it halts at once, and with it goes whatever was held for those men.
+    for (sim::EntityId id : selectedAlive()) {
+        issue(local_, id, sim::Command::Type::Stop, {});
+        std::erase_if(plan_, [&](const Planned& p) { return !p.far && p.cmd.unit == id; });
+    }
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::scatter() {
+    OrderScope scope(*this, false);
     const std::vector<sim::EntityId> alive = selectedAlive();
     const V3 centre = centreOf(alive);
     const V3 front = selectionShape().front;
@@ -971,6 +976,7 @@ void Battle::scatter() {
 void Battle::setFormation(Formation f) {
     const std::vector<sim::EntityId> alive = selectedAlive();
     if (alive.empty()) return;
+    OrderScope scope(*this, false);
     const V3 facing = selKeep_ ? selectionShape().front : selectionFacing();
     selFormation_ = f;
     selKeep_ = false;
@@ -996,6 +1002,7 @@ void Battle::cycleFormation() {
 // --- Taps and presses -------------------------------------------------------
 
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
+    OrderScope scope(*this, false);  // (the orders a tap gives are held while planning)
     const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
     const std::vector<sim::EntityId> mine = selectedAlive();
