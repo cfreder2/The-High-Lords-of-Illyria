@@ -304,6 +304,13 @@ void Hud::draw(Overlay& o, float w, float h) {
                       hud.str("foe").empty() ? "" : ("v " + hud.str("foe")).c_str(), "");
     }
     o.text(6, 18, buf, kInk, 13);
+    if (hud.flag("planning")) {
+        char plan[160];
+        std::snprintf(plan, sizeof plan, "PLANNING  %d held   `: send   Backspace: drop", static_cast<int>(hud.num("planned")));
+        const float pw = o.width(plan, 14);
+        o.rect((w - pw) / 2 - 10, 64, pw + 20, 24, rgba(0x000000, 170));
+        o.text((w - pw) / 2, 68, plan, rgba(0xD680FF, 255), 14);
+    }
     const std::string hint = "Enter: menu    /: keys";
     o.text(w - o.width(hint, 12) - 10, 18, hint, kDim, 12);
 
@@ -423,6 +430,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"Drag", "a box (Shift adds)"},
               {"Right click", "march there / attack what is there"},
               {"Right hold, drag", "march there, facing the drag"},
+              {"Shift + right click", "queue it after the order in hand"},
               {"Ctrl or Cmd + click", "attack, even a friend"},
               {"Alt + click", "force march"},
               {"Right drag", "turn the view"},
@@ -437,7 +445,9 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},
-              {"`, Ctrl + A", "heroes, all on screen"},
+              {"H, Ctrl + A", "heroes, all on screen"},
+              {"Tab, Shift + Tab", "next, previous group of units"},
+              {"`, Backspace", "plan: hold orders, send them / drop them"},
               {"Esc", "pause and bring up the menu (or cancel a mode)"},
               {"P, - =", "pause, slower and faster"},
               {"Enter, /", "menu, this help"}}}};

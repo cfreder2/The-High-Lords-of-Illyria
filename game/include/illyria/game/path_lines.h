@@ -18,6 +18,10 @@ struct RouteIn {
     std::vector<V3> points;
     float opacity = 1;
     int squad = -1;  // the squad he stands in (-1: none): its men bending a few metres apart are still one line
+    // A leg of the queue behind his current order (Command::queue): its number in the queue, from 1 (0: the order in hand),
+    // and whether it is only planned (held in the planning mode, not yet given): drawn in a look of its own.
+    int number = 0;
+    bool pending = false;
 };
 
 // A line to draw: the men of one group, as the middle of them going to the middle of where they end, by the route of
@@ -28,6 +32,8 @@ struct RouteLine {
     std::vector<V3> points;
     float opacity = 1;  // the strongest of the group
     int men = 1;
+    int number = 0;  // as RouteIn::number: a queued leg is marked with its number where it ends
+    bool pending = false;
 };
 
 constexpr size_t kMaxRouteLines = 48;

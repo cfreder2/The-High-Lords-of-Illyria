@@ -243,6 +243,49 @@ void World::applyOrder(Unit& u, const Command& cmd) {
     }
 }
 
+bool World::hasOrder(const Unit& u) {
+    return u.hasMoveTarget || u.hasAttackTarget || u.targetUnit != kNoEntity || u.scav.raiding;
+}
+
+World::Stance World::stanceOfOrder(const Command& c) {
+    switch (c.type) {
+        case Command::Type::Move: return c.force ? Stance::Move : Stance::Patrol;
+        case Command::Type::LaySatchel: return Stance::Patrol;
+        case Command::Type::AttackUnit:
+        case Command::Type::AttackGround:
+        case Command::Type::AttackGate:
+        case Command::Type::AttackObject: return Stance::Hunt;
+        case Command::Type::Stop:
+        case Command::Type::Raid:
+        case Command::Type::SetGate: break;
+    }
+    return Stance::Idle;
+}
+
+// The orders queued behind the one in hand (Command::queue). When the order in hand is over, whether he did it, found it
+// could not be done (no way through a shut gate, a quarry dead, a target that cannot be struck), or it is a standing
+// attack that never ends of itself, the next begins. An order that turns out impossible when it begins is passed over
+// within the same tick, so a queue never stalls on one.
+void World::advanceQueue(Unit& u) {
+    if (!u.alive()) {
+        u.queue.clear();
+        return;
+    }
+    if (u.hasAttackTarget && !u.hasMoveTarget && u.targetUnit == kNoEntity) {
+        const bool gateDown = u.attackGate >= 0 && static_cast<size_t>(u.attackGate) < gates_.size() && gates_[static_cast<size_t>(u.attackGate)].broken();
+        if (gateDown || tick_ - u.orderTick >= kStandingAttackTicks) {
+            u.hasAttackTarget = false;
+            u.attackGate = -1;
+        }
+    }
+    while (!u.queue.empty() && !hasOrder(u)) {
+        const Command next = u.queue.front();
+        u.queue.erase(u.queue.begin());
+        if (sideBroken(u.owner)) continue;
+        startOrder(u, next);
+    }
+}
+
 World::Stance World::stanceOf(const Unit& u) {
     if (!u.alive() || u.routed) return Stance::Idle;
     if (u.targetUnit != kNoEntity) return Stance::Hunt;
@@ -450,6 +493,13 @@ void World::targetDown(Unit& u, bool marching) {
 void World::pursue(Unit& u) {
     Unit* t = mutableUnit(u.targetUnit);
     if (t == nullptr || !t->alive()) {
+        // With orders waiting, the hunt is over with the quarry: no choosing another foe, the next order begins (advanceQueue).
+        if (!u.queue.empty()) {
+            u.targetUnit = kNoEntity;
+            u.targetChosen = false;
+            u.rally = kNoEntity;
+            return;
+        }
         targetDown(u, false);
         if (u.targetUnit == kNoEntity) return;
         t = mutableUnit(u.targetUnit);

@@ -42,6 +42,80 @@ float segDist(const V3& p, const V3& a, const V3& b) {
 
 }  // namespace
 
+void Battle::settleOrders(size_t first) {
+    if (appending_) {
+        for (size_t i = first; i < pending_.size(); ++i) {
+            sim::Command& c = pending_[i];
+            if (c.player != local_) continue;
+            switch (c.type) {
+                case sim::Command::Type::Move:
+                case sim::Command::Type::AttackUnit:
+                case sim::Command::Type::AttackGround:
+                case sim::Command::Type::AttackGate:
+                case sim::Command::Type::AttackObject:
+                case sim::Command::Type::LaySatchel: c.queue = true; break;
+                case sim::Command::Type::Stop:
+                case sim::Command::Type::Raid:
+                case sim::Command::Type::SetGate: break;
+            }
+        }
+    }
+    if (!planning_) return;
+    // Held, not sent: every order of a man of ours (a gate's pin is not a man's order and goes at once).
+    std::vector<sim::Command> kept(pending_.begin() + static_cast<std::ptrdiff_t>(first), pending_.end());
+    pending_.resize(first);
+    for (const sim::Command& c : kept) {
+        if (c.player != local_ || c.type == sim::Command::Type::SetGate || c.type == sim::Command::Type::Stop) {
+            pending_.push_back(c);
+            continue;
+        }
+        if (!c.queue) {
+            // As it would replace them when sent.
+            std::erase_if(plan_, [&](const Planned& p) { return !p.far && p.cmd.unit == c.unit; });
+        }
+        Planned p;
+        p.cmd = c;
+        p.man = conquest_ && c.unit != sim::kNoEntity && c.unit <= manOfUnit_.size() ? manOfUnit_[c.unit - 1] : 0;
+        p.seq = ++planSeq_;
+        plan_.push_back(std::move(p));
+    }
+}
+
+void Battle::setPlanning(bool on) {
+    if (on == planning_) return;
+    if (!on) return releasePlan();
+    planning_ = true;
+}
+
+sim::EntityId Battle::unitOfPlanned(const Planned& p) const {
+    if (!conquest_) return p.cmd.unit;
+    for (size_t i = 0; i < manOfUnit_.size(); ++i)
+        if (manOfUnit_[i] == p.man && p.man != 0) return static_cast<sim::EntityId>(i + 1);
+    return sim::kNoEntity;
+}
+
+void Battle::releasePlan() {
+    planning_ = false;
+    std::vector<Planned> held;
+    held.swap(plan_);
+    std::stable_sort(held.begin(), held.end(), [](const Planned& a, const Planned& b) { return a.seq < b.seq; });
+    for (Planned& p : held) {
+        if (p.far) {
+            marchArmies(p.armies, p.to);
+            continue;
+        }
+        const sim::EntityId id = unitOfPlanned(p);
+        if (id == sim::kNoEntity || id > world_->units().size() || !world_->units()[id - 1].alive()) continue;  // dead before the release
+        p.cmd.unit = id;
+        pending_.push_back(p.cmd);
+    }
+}
+
+void Battle::discardPlan() {
+    plan_.clear();
+    planning_ = false;
+}
+
 void Battle::markOrdered(const std::vector<sim::EntityId>& units) {
     if (orderTick_.size() < world_->units().size()) orderTick_.resize(world_->units().size(), UINT32_MAX);
     for (sim::EntityId id : units)
@@ -141,6 +215,7 @@ bool Battle::selectionLaysSatchels() const {
 }
 
 bool Battle::orderRaid() {
+    OrderScope scope(*this, false);
     std::vector<sim::EntityId> raiders;
     for (sim::EntityId id : selectedAlive())
         if (world_->units()[id - 1].stats.scavenge.sight > sim::Fixed::zero()) raiders.push_back(id);
@@ -398,8 +473,9 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     return Intent::None;
 }
 
-void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale) {
+void Battle::orderTap(const Camera& camera, float x, float y, float pixelScale, bool append) {
     if (selectionSize() == 0) return;
+    OrderScope scope(*this, append);
     // As usual a tap on one of ours picks him: a right click marches there instead.
     const OrderMode mode = forceKey_ ? OrderMode::Attack : marchKey_ ? OrderMode::ForceMarch : orderMode_;
     if (mode == OrderMode::Normal && pickAt(camera, x, y, pixelScale).kind == Pick::Kind::Own) {
@@ -479,6 +555,110 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
     return out;
 }
 
+// The legs of the queues behind the orders in hand, one per queued order, each in the look of its own stance (sim::World::stanceOfOrder)
+// and numbered from 1. They start where the order before ends (the end of his route now, or where he stands), and run straight:
+// the way round something is found only when the order begins. The player's own men only; a leg after a quarry the player cannot see
+// is not drawn (nor any after it), as the line to a hunted foe is not.
+void Battle::queuedRoutes(std::vector<RouteIn>& routes) const {
+    const auto& units = world_->units();
+    for (size_t i = 0; i < units.size(); ++i) {
+        const sim::Unit& u = units[i];
+        if (u.owner != local_ || !u.alive() || u.queue.empty()) continue;
+        const float opacity = markOpacity(i);
+        if (opacity <= 0.0f) continue;
+        V3 from = unitPosition(i);
+        for (const RouteIn& r : routes)
+            if (r.unit == u.id && r.number == 0 && !r.points.empty()) from = r.points.back();
+        if (u.hasAttackTarget && !u.hasMoveTarget && u.targetUnit == sim::kNoEntity) from = toV3(u.attackTarget);
+        int number = 0;
+        for (const sim::Command& c : u.queue) {
+            V3 to;
+            RouteIn r;
+            r.unit = u.id;
+            r.stance = sim::World::stanceOfOrder(c);
+            r.opacity = opacity;
+            r.squad = i < squadOfUnit_.size() ? squadOfUnit_[i] : -1;
+            r.number = ++number;
+            if (c.type == sim::Command::Type::AttackUnit) {
+                const sim::Unit* q = world_->findUnit(c.targetUnit);
+                if (q == nullptr || !q->alive() || (q->owner != local_ && !sees(q->owner, static_cast<float>(q->pos.x.toDouble()), static_cast<float>(q->pos.y.toDouble())))) break;
+                r.quarry = q->id;
+                to = unitPosition(q->id - 1);
+            } else if (r.stance == sim::World::Stance::Idle) {
+                continue;
+            } else {
+                to = toV3(c.target);
+            }
+            to.z = floorAt(to);
+            r.points = {from, to};
+            from = to;
+            routes.push_back(std::move(r));
+        }
+    }
+}
+
+// Orders held in the planning mode, for every man that has any (not only the selected): the same straight legs as the queue's,
+// from where the man's route in hand and his queue end (or where he stands, if the first held order replaces them), numbered
+// from 1 (after the queue's own, for an order that will be added). A conquest's held far march is one line from its squads.
+void Battle::plannedRoutes(std::vector<RouteIn>& routes) const {
+    std::map<sim::EntityId, V3> end;
+    std::map<sim::EntityId, int> number;
+    std::map<sim::EntityId, bool> seen;
+    for (const Planned& p : plan_) {
+        RouteIn r;
+        r.pending = true;
+        r.opacity = 1.0f;
+        V3 to;
+        if (p.far) {
+            if (p.armies.empty()) continue;
+            const int sq = squadOfArmy(p.armies.front());
+            if (sq < 0) continue;
+            r.unit = sim::kNoEntity;
+            r.stance = sim::World::Stance::Patrol;
+            to = p.to;
+            to.z = floorAt(to);
+            r.number = 1;
+            r.points = {squadCentre(squads_[static_cast<size_t>(sq)], false), to};
+            routes.push_back(std::move(r));
+            continue;
+        }
+        const sim::EntityId id = unitOfPlanned(p);
+        if (id == sim::kNoEntity || id > world_->units().size()) continue;
+        const sim::Unit& u = world_->units()[id - 1];
+        if (!u.alive() || u.owner != local_) continue;
+        const size_t i = id - 1;
+        if (!seen[id]) {
+            seen[id] = true;
+            end[id] = unitPosition(i);
+            number[id] = 0;
+            // After the order in hand and the queue, if the first held one is added to them.
+            if (p.cmd.queue) {
+                for (const RouteIn& q : routes)
+                    if (q.unit == id && !q.pending && !q.points.empty()) end[id] = q.points.back(), number[id] = std::max(number[id], q.number);
+                if (u.hasAttackTarget && !u.hasMoveTarget && u.targetUnit == sim::kNoEntity && number[id] == 0) end[id] = toV3(u.attackTarget);
+            }
+        }
+        r.unit = id;
+        r.stance = sim::World::stanceOfOrder(p.cmd);
+        r.squad = i < squadOfUnit_.size() ? squadOfUnit_[i] : -1;
+        r.number = ++number[id];
+        if (p.cmd.type == sim::Command::Type::AttackUnit) {
+            const sim::Unit* q = world_->findUnit(p.cmd.targetUnit);
+            if (q == nullptr || !q->alive() || (q->owner != local_ && !sees(q->owner, static_cast<float>(q->pos.x.toDouble()), static_cast<float>(q->pos.y.toDouble())))) continue;
+            r.quarry = q->id;
+            to = unitPosition(q->id - 1);
+        } else if (r.stance == sim::World::Stance::Idle) {
+            continue;  // (a raid: nowhere to draw)
+        } else {
+            to = toV3(p.cmd.target);
+        }
+        to.z = floorAt(to);
+        r.points = {end[id], to};
+        end[id] = to;
+        routes.push_back(std::move(r));
+    }
+}
+
 std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
     using Stance = sim::World::Stance;
     constexpr float kMergeMetres = 8.0f;  // routes ending this close (and a fiftieth of their length more) are one line
@@ -548,6 +728,8 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
         }
         routes.push_back(std::move(r));
     }
+    queuedRoutes(routes);
+    plannedRoutes(routes);
     std::vector<RouteLine> lines = mergeRoutes(routes, perMan ? -1.0f : kMergeMetres);
     if (conquest_ && faintMarches)
         for (const sim::Campaign::Stack& s : conquest_->stacks())

@@ -425,6 +425,18 @@ void World::restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale) 
     u->morale = std::clamp(morale, 0, kMoraleFull);
 }
 
+void World::restoreQueue(EntityId id, std::vector<Command> queue) {
+    Unit* u = mutableUnit(id);
+    if (!u) return;
+    if (queue.size() > kMaxQueuedOrders) queue.resize(kMaxQueuedOrders);
+    for (Command& c : queue) {
+        c.unit = id;
+        c.queue = false;
+    }
+    u->queue = std::move(queue);
+    u->orderTick = tick_;
+}
+
 const Unit* World::findUnit(EntityId id) const {
     // Units are only ever appended, so the vector is sorted by id (and a unit's place is his id less one). One taken
     // out of the world (removeUnit) is no longer found.
@@ -507,6 +519,7 @@ void World::step(std::span<const Command> commands) {
 
     for (Unit& u : units_) {
         if (!u.present()) continue;
+        if (!u.queue.empty()) advanceQueue(u);
         const Vec3 before = u.pos;
         updateUnit(u);
         trackMomentum(u, before);
@@ -539,6 +552,23 @@ void World::applyCommand(const Command& cmd) {
     if (u == nullptr || !u->alive() || u->owner != cmd.player || sideBroken(u->owner)) return;
     // Only a scavenger raids; to anyone else the order means nothing.
     if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
+    // Shift: after the order in hand (or the ones already waiting). A soldier with nothing in hand and nothing waiting begins it now.
+    if (cmd.queue && cmd.type != Command::Type::Stop && cmd.type != Command::Type::Raid) {
+        if (hasOrder(*u) || !u->queue.empty()) {
+            if (u->queue.size() < kMaxQueuedOrders) {
+                u->queue.push_back(cmd);
+                u->queue.back().queue = false;
+            }
+            return;
+        }
+    }
+    u->queue.clear();  // an order that is not added replaces the last, and the ones to come
+    startOrder(*u, cmd);
+}
+
+void World::startOrder(Unit& unit, const Command& cmd) {
+    Unit* u = &unit;
+    u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
@@ -2542,6 +2572,25 @@ uint64_t World::checksum() const {
         }
         // Where his leg of the route began, for the leash.
         if (u.hasMoveTarget) hashVec(h, u.routeFrom);
+        // The orders waiting (Command::queue): only while there are any, so battles without a queue hash as before.
+        if (!u.queue.empty()) {
+            h.addU64(u.queue.size());
+            h.addU64(u.orderTick);
+            for (const Command& c : u.queue) {
+                h.addU64(static_cast<uint64_t>(c.type));
+                hashVec(h, c.target);
+                h.addI64(c.speed.raw);
+                h.addU64(c.march);
+                hashVec(h, c.marchFrom);
+                hashVec(h, c.marchTo);
+                hashVec(h, c.face);
+                h.addU64(c.force);
+                h.addU64(c.targetUnit);
+                h.addU64(c.rally);
+                h.addU64(static_cast<uint64_t>(c.object));
+                h.addI64(c.objectIndex);
+            }
+        }
     }
     h.addU64(gates_.size());
     for (const GateState& g : gates_) {

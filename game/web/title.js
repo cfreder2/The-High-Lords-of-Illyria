@@ -479,7 +479,8 @@
     `<tr><td>${k("Shift")} + click</td><td>Add or take away one man.</td></tr>` +
     `<tr><td>${k("Shift")} + drag</td><td>Box-select at once.</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + click</td><td>Force attack: a friend, the ground, a wall, house or tree.</td></tr>` +
-    `<tr><td>${k("Alt")} + click</td><td>Force march there.</td></tr></table>` +
+    `<tr><td>${k("Alt")} + click</td><td>Force march there.</td></tr>` +
+    `<tr><td>${k("Shift")} + right-click</td><td>Queue the order: it begins when the one before is over. A plain order replaces the queue; ${k("Space")} clears it. At most eight.</td></tr></table>` +
     `<h3>A trackpad</h3>` +
     row("pad", "Swipe two fingers", "Pan across the land.") +
     row("pinch", "Pinch", "Zoom, about the pointer. In Safari a twist turns the view as well.") +
@@ -504,7 +505,9 @@
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
-    `<tr><td>${k("`")}</td><td>Select the heroes.</td></tr>` +
+    `<tr><td>${k("H")}</td><td>Select the heroes.</td></tr>` +
+    `<tr><td>${k("Tab")}, ${k("Shift")} + ${k("Tab")}</td><td>Select the next, or the previous, group of units: the saved groups in number order, then the squads in no group. Wraps round; the camera follows if they are off screen.</td></tr>` +
+    `<tr><td>${k("`")}</td><td>Planning: orders you give are held (drawn dashed in violet, numbered, for every man that has any) until you press ${k("`")} again, which sends them all at once, in the order given. ${k("Backspace")} drops them. ${k("Space")} still halts at once. On a phone, the Plan button.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
     `<tr><td>${k("P")}</td><td>Pause the battle.</td></tr>` +
     `<tr><td>${k("-")} · ${k("=")}</td><td>Slower · faster: ¼×, ½×, 1×, 2×, 4×. The speed button too: a click for 2× and 4×, held for slow motion.</td></tr></table>` +

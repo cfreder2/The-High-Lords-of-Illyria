@@ -271,7 +271,9 @@ public:
     // A right click (game/src/battle_orders.cpp): the order a tap there gives
     // the selection, but never a change of who is selected; on one of ours
     // they march to where he stands. Nothing selected: nothing happens.
-    void orderTap(const Camera& camera, float x, float y, float pixelScale);
+    // `append` (Shift on the desktop): the order is added to the end of each man's queue (sim::Command::queue) instead of
+    // replacing the one in hand. A march beyond the men's reach in a conquest is a stack's, and cannot be queued: it replaces.
+    void orderTap(const Camera& camera, float x, float y, float pixelScale, bool append = false);
     // A mouse's left click (game/src/battle_command.cpp): selection only. One of
     // ours is picked as a tap picks him; anything else is looked at, and the
     // ground (shift not held) lets everyone go. Orders are the right click's.
@@ -314,6 +316,10 @@ public:
     void clearGroup(int slot);
     // Ungroup: forgets every group whose living men are all selected. How many went.
     int ungroupSelection();
+    // Tab (dir +1) and Shift+Tab (-1): select the next or previous group of units. The cycle runs over the saved groups first, in
+    // key order (1-9, then 0), then over the squads that are in no saved group, in squad order; it wraps at both ends. From a
+    // selection that is none of them, forward goes to the first, back to the last. False when there is nothing to cycle to.
+    bool cycleGroup(int dir);
     const Group& group(int slot) const { return groups_[static_cast<size_t>(slot)]; }
     // A group's living men now (unit ids), as the selection has them.
     struct GroupMen {
@@ -343,6 +349,18 @@ public:
     // the way to face: pressEnd), the whole arrangement turned to it.
     void orderMoveFacing(const V3& to, const V3& facing);
     void stopSelected();
+    // Planning (client side only; the sim and the other peers know nothing of it until the release). While on, the orders a
+    // gesture gives (a right click, a facing drag, an attack, a formation, scatter, raid) are not sent but held, per man, and
+    // drawn as pending paths for every man that has any. Releasing sends them all in the one tick in the order given, exactly as if
+    // given then: a plain order replaces and a queued one appends. A plain order held replaces the man's held ones (as it would
+    // replace them on arrival). Halt is not held: it halts at once and drops that man's held orders. The plan is dropped when the
+    // battle or its world changes, and a man dead at the release is skipped.
+    bool planning() const { return planning_; }
+    void setPlanning(bool on);  // off: releases
+    void togglePlanning() { setPlanning(!planning_); }
+    void releasePlan();         // sends what is held, and leaves planning
+    void discardPlan();         // drops what is held, and leaves planning
+    size_t plannedCount() const { return plan_.size(); }
     // Attacks (game/src/battle_orders.cpp). Everyone selected after one
     // soldier, of either side (a force attack on a friend): missile troops
     // keep to a bowshot and shoot him, the rest run him down. When he falls
@@ -432,6 +450,10 @@ public:
     void breakGate(int gate);
     void giveGates(sim::PlayerId holder) { holdGates(holder); }
     void testShootAt(const V3& at);
+    // Test hook: a soldier taken out of the world (as dead, to the orders).
+    void testRemove(sim::EntityId unit) { world_->removeUnit(unit); }
+    // Test hook: an order put in a soldier's queue (any side's), as the sim keeps it.
+    void testQueueFor(sim::EntityId unit, const sim::Command& c) { world_->testQueue(unit, c); }
     // Test hook: one soldier (of either side) ordered to walk to a spot.
     void testMove(sim::EntityId unit, const V3& to);
     // Run! Everyone selected scatters a few metres outward from their centre.
@@ -459,6 +481,7 @@ public:
     // or the press starts on one of ours. False: not taken (the camera pans).
     bool pressBegin(const Camera& camera, float x, float y, float pixelScale, bool box);
     void pressMove(const Camera& camera, float x, float y);
+    // `additive`: for a box, adds to the selection; for a facing line, appends the march to the queues (as orderTap's `append`).
     void pressEnd(const Camera& camera, float x, float y, bool cancelled, bool additive = false);
     struct Drag {
         enum class Mode : uint8_t { None, Box, Facing };
@@ -726,6 +749,46 @@ private:
     std::vector<Squad> squads_;
     std::vector<int> squadOfUnit_;  // indexed by EntityId - 1
     std::vector<sim::Command> pending_;
+    // The orders a gesture gives are gathered by an OrderScope: the outermost one, when it ends, settles what came into
+    // pending_ since it began (battle_orders.cpp): flagged to append to the queues if the gesture was Shift's.
+    // `append`: the gesture's orders are added to the queues (Shift).
+    class OrderScope {
+    public:
+        OrderScope(Battle& b, bool append) : b_(b), first_(b.pending_.size()), outer_(b.scopeDepth_++ == 0) {
+            if (outer_) b.appending_ = append;
+        }
+        ~OrderScope() {
+            --b_.scopeDepth_;
+            if (!outer_) return;
+            b_.settleOrders(first_);
+            b_.appending_ = false;
+        }
+        OrderScope(const OrderScope&) = delete;
+        OrderScope& operator=(const OrderScope&) = delete;
+
+    private:
+        Battle& b_;
+        size_t first_;
+        bool outer_;
+    };
+    int scopeDepth_ = 0;
+    bool appending_ = false;
+    // Held orders (setPlanning): a man's command, or a conquest's far march of squads; in the order given.
+    struct Planned {
+        sim::Command cmd;
+        uint32_t man = 0;  // conquest: the man (a unit's id there is made anew when the men are put back)
+        uint32_t seq = 0;
+        bool far = false;
+        std::vector<uint32_t> armies;  // far: the squads marched
+        V3 to;
+    };
+    bool planning_ = false;
+    std::vector<Planned> plan_;
+    uint32_t planSeq_ = 0;
+    sim::EntityId unitOfPlanned(const Planned& p) const;
+    void plannedRoutes(std::vector<RouteIn>& routes) const;  // pathLines: the legs held
+    void settleOrders(size_t first);
+    void queuedRoutes(std::vector<RouteIn>& routes) const;  // pathLines: the legs of the queues
     std::vector<sim::EntityId> selection_;  // ascending, so orders go out in one order everywhere
     std::vector<float> spriteBoxes_;  // setSpriteBoxes
     std::vector<uint8_t> selectedFlag_;     // by EntityId - 1

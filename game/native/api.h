@@ -24,6 +24,7 @@ const char* illyria_camera_state();
 void illyria_north_up();
 void illyria_set_camera(float x, float y, float distance, float yaw);
 #ifdef ILLYRIA_DEV_HOOKS
+void illyria_queue_demo();  // --queue-demo: see game/app/app.cpp
 void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
 #endif
 void illyria_finish_detail();
@@ -43,6 +44,8 @@ void illyria_set_formation(int f);
 void illyria_scatter();
 int illyria_group(int op, int slot);
 int illyria_ungroup();
+int illyria_cycle_group(int dir);
+int illyria_plan(int op);
 const char* illyria_formations();
 void illyria_stop();
 void illyria_gate(int release);

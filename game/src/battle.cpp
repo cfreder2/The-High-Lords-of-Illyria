@@ -530,6 +530,7 @@ void Battle::afterWorldStep() {
 }
 
 void Battle::forgetMen() {
+    plan_.clear();  // held orders name men of the world that was
     const size_t n = world_->units().size();
     deathTick_.assign(n, UINT32_MAX);
     attackTick_.assign(n, UINT32_MAX);

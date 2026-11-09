@@ -44,6 +44,7 @@ struct Options {
     bool fullscreen = false, sound = true, stats = false, vsync = true;
     int trees = -1;  // --trees N: how trees are drawn (0 one card, 1 two crossed, 2 three, 3 four); 99: --shot takes one picture of each
 #ifdef ILLYRIA_DEV_HOOKS
+    int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
 #endif
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
@@ -76,6 +77,7 @@ void usage() {
 #ifdef ILLYRIA_DEV_HOOKS
         "  --paths-demo FRAME    at that frame send three squads three ways, all selected: a hunt, a patrol and a force\n"
         "                        march, to see the path lines (a build with -DILLYRIA_DEV_HOOKS=ON only)\n"
+        "  --queue-demo FRAME    at that frame queue orders for one squad, hold some for another (planning), to see them\n"
 #endif
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
 }
@@ -114,6 +116,7 @@ bool parse(int argc, char** argv, Options& o) {
         } else if (a == "--quit-after") o.quitFrame = std::atoi(next());
 #ifdef ILLYRIA_DEV_HOOKS
         else if (a == "--paths-demo") o.pathsDemo = std::atoi(next());
+        else if (a == "--queue-demo") o.queueDemo = std::atoi(next());
 #endif
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -409,6 +412,7 @@ int runApp(int argc, char** argv) {
         }
 #ifdef ILLYRIA_DEV_HOOKS
         if (opt.pathsDemo > 0 && frame == opt.pathsDemo) illyria_paths_demo();
+        if (opt.queueDemo > 0 && frame == opt.queueDemo) illyria_queue_demo();
 #endif
         native::pumpAssets();
         hud.tick();

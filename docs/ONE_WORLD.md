@@ -290,6 +290,40 @@ A short note on how it works, and what it costs.
   walls* purchase is gone, since it would have changed nothing a man can see.
 - **Heroes at ruins** fight the guardian in the ruin itself.
 
+## Queued orders
+
+*Built after the one world, for the one world: a man holds a queue of orders (`Unit::queue`), Skirmish and Conquest alike.*
+
+- **A man's own state, in the sim.** `sim::Command::queue` ("add after the order in hand") is carried by the one command
+  stream, so a queue is lockstep like any order. In `World::applyCommand`: a queued command is appended when the man
+  has an order in hand or a queue already; a man with neither begins it at once. Any other command (a plain
+  right-click, a Stop, the computer's) clears the queue before it runs.
+- **When the next begins.** `World::advanceQueue`, once a tick before the man is stepped: when his order is over
+  (arrived; shut out by a gate; a quarry dead or let go; a raid ended), the next begins within that tick, and one that
+  turns out impossible (a quarry already dead, a target he cannot strike) is passed over in the same tick, so a queue
+  never stalls on one. A hunt whose quarry falls, with orders waiting, does not choose another foe (`targetDown` is
+  skipped): the next order is what he does. A standing attack (missile troops on the ground, a wall, a house or a tree)
+  never ends of itself, so with a queue behind it it ends after ten seconds, or when its gate is broken.
+- **Bounded.** At most `World::kMaxQueuedOrders` (8) wait behind a man's own: every man carries, hashes and saves
+  his queue, and a long script is a long line of numbers on the screen. The ninth is dropped.
+- **Hashed only when non-empty**, so no battle without a queue changed its checksum (no golden moved).
+- **Saved.** Campaign saves are `ILC7.`: after each man, the orders waiting behind his own. The order he was walking is
+  a moment and, like arrows in the air, is not kept (`reseatAll` puts every man back standing, in the live game too),
+  so the first of his queue is what he does next. An attack on a soldier names a unit of the world, whose ids are made
+  anew when the men are put back, so it is not kept. A man aboard a boat keeps his queue on the `Man`.
+- **Not in Conquest: a march beyond the men's reach.** That is a *stack's* march on the coarse grid, the campaign's own
+  order and not a man's; it has no queue. With Shift it replaces, and says so.
+- **Fog-safe.** The queue is drawn (`Battle::queuedRoutes`) for the player's own men only, and a leg after a quarry the
+  player cannot see is not drawn; nothing about another side's queue leaves the sim.
+
+### Planning is the client's
+
+Planning mode (key `) is not in the sim and not in the command stream: `Battle` holds the orders a gesture gives, per man
+(`Battle::plan_`), and sends them at the release as ordinary Commands, in the order given, in one tick. It is
+therefore the same in Skirmish and Conquest, invisible to other peers, and cannot desynchronise anything: before the
+release there is nothing to send. A conquest's held orders name the *man* (his unit id is made anew when the men are put
+back), found again at the release; the plan is dropped when the battle borrows a different world (`borrow`, `forgetMen`).
+
 ## One battle system, one renderer
 
 There is one game. A fight on the campaign is the Battle's fight, shown by the Battle's own presentation, drawn by

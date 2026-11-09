@@ -133,10 +133,13 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved campaign");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC6.") == 0);
+    CHECK(text.compare(0, 5, "ILC7.") == 0);
     CHECK(Campaign::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
-    // ... as is the layout before a stack afloat kept where its men were (ILC5).
+    // ... as is the layout before the orders waiting behind a man's own were kept (ILC6).
+    CHECK(Campaign::load(continent(), "ILC6." + text.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
+    // ... and the layout before a stack afloat kept where its men were (ILC5).
     CHECK(Campaign::load(continent(), "ILC5." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     CHECK(Campaign::load(continent(), text.substr(0, text.size() / 2), &why) == nullptr);
@@ -459,4 +462,75 @@ TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
         CHECK(r->checksum() == c.checksum());
     }
     CHECK(saves >= 2);
+}
+
+// A man's queue of orders is kept in a save (ILC7): the orders behind his own come back on the man put back in the world,
+// and the loaded game carries on as the saved one does. The order he was walking is a moment and is not kept (a save puts
+// every man back standing), so the first of his queue begins; an attack on a soldier names a unit of the world's, which
+// are made anew, so it is not kept either.
+TEST(the_orders_queued_behind_a_mans_own_are_saved_with_the_game) {
+    Campaign c(continent(), 9);
+    c.setHuman(0, true);
+    c.prepareWorld();
+    const World& w = *c.world();
+    uint32_t unit = 0, manId = 0;
+    for (const Campaign::Stack& s : c.stacks())
+        if (s.owner == 0 && unit == 0)
+            for (const Army& a : s.armies)
+                for (const Man& m : a.men)
+                    if (unit == 0 && m.alive() && m.unit) unit = m.unit, manId = m.id;
+    CHECK(unit != 0);
+    if (unit == 0) return;
+    const Vec3 here = w.findUnit(unit)->pos;
+    const auto give = [&](Command cmd, bool queue) {
+        cmd.queue = queue;
+        Campaign::Order o;
+        o.kind = Campaign::Order::Kind::Command;
+        o.side = 0;
+        o.command = cmd;
+        c.submit(o);
+    };
+    const Vec3 a = here + Vec3{Fixed::fromInt(30), Fixed::zero(), Fixed::zero()};
+    const Vec3 b = here + Vec3{Fixed::fromInt(30), Fixed::fromInt(30), Fixed::zero()};
+    const Vec3 d = here + Vec3{Fixed::zero(), Fixed::fromInt(30), Fixed::zero()};
+    give(Command{0, unit, Command::Type::Move, a}, false);
+    give(Command{0, unit, Command::Type::Move, b}, true);
+    give(Command{0, unit, Command::Type::Move, d}, true);
+    c.step();
+    CHECK(w.findUnit(unit)->queue.size() == 2);
+    const std::string text = c.save();
+    CHECK(text.compare(0, 5, "ILC7.") == 0);
+    std::string why;
+    std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+    if (!r) std::printf("  load refused: %s\n", why.c_str());
+    CHECK(r != nullptr);
+    if (!r) return;
+    // His unit may be numbered anew; find him by his man's id.
+    uint32_t newUnit = 0;
+    for (const Campaign::Stack& s : r->stacks())
+        for (const Army& ar : s.armies)
+            for (const Man& m : ar.men)
+                if (m.id == manId) newUnit = m.unit;
+    CHECK(newUnit != 0);
+    if (newUnit == 0) return;
+    // In the saved game itself and in the loaded one: what was behind his order is still behind it, in order.
+    for (const Campaign* g : {static_cast<const Campaign*>(&c), static_cast<const Campaign*>(r.get())}) {
+        uint32_t u = 0;
+        for (const Campaign::Stack& s : g->stacks())
+            for (const Army& ar : s.armies)
+                for (const Man& m : ar.men)
+                    if (m.id == manId) u = m.unit;
+        const Unit* mu = g->world()->findUnit(u);
+        CHECK(mu != nullptr);
+        if (!mu) continue;
+        CHECK(mu->queue.size() == 2);
+        if (mu->queue.size() == 2) {
+            CHECK(mu->queue[0].target.x == b.x && mu->queue[0].target.y == b.y);
+            CHECK(mu->queue[1].target.x == d.x && mu->queue[1].target.y == d.y);
+        }
+    }
+    CHECK(r->checksum() == c.checksum());
+    CHECK(r->save() == text);
+    for (int t = 0; t < 900; ++t) c.step(), r->step();
+    CHECK(r->checksum() == c.checksum());
 }

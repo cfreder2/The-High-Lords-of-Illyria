@@ -17,8 +17,8 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC6.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 6;  // 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
+constexpr const char* kMagic = "ILC7.";  // bump the digit when the layout changes
+constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
 
 class Writer {
 public:
@@ -94,6 +94,7 @@ public:
         return ok_ ? static_cast<UnitType>(t) : UnitType::LightInfantry;
     }
     bool ok() const { return ok_; }
+    void refuse() { ok_ = false; }
     bool done() const { return at_ == bytes_.size(); }
 
 private:
@@ -141,6 +142,57 @@ bool fromBase64(const std::string& in, size_t from, std::vector<uint8_t>& out) {
     return true;
 }
 
+void writeVec(Writer& w, const Vec3& v) {
+    w.i(v.x.raw);
+    w.i(v.y.raw);
+    w.i(v.z.raw);
+}
+
+Vec3 readVec(Reader& r) {
+    Vec3 v;
+    v.x.raw = r.i();
+    v.y.raw = r.i();
+    v.z.raw = r.i();
+    return v;
+}
+
+// A queued order (Unit::queue). Never an attack on a soldier: those are not kept (Man::queue).
+void writeCommand(Writer& w, const Command& c) {
+    w.u(static_cast<uint64_t>(c.type));
+    writeVec(w, c.target);
+    w.i(c.speed.raw);
+    w.b(c.march);
+    writeVec(w, c.marchFrom);
+    writeVec(w, c.marchTo);
+    writeVec(w, c.face);
+    w.b(c.force);
+    w.u(static_cast<uint64_t>(c.object));
+    w.i(c.objectIndex);
+    w.u(static_cast<uint64_t>(c.gatePin));
+}
+
+Command readCommand(Reader& r) {
+    Command c;
+    const uint64_t type = r.u();
+    if (type > static_cast<uint64_t>(Command::Type::SetGate) || type == static_cast<uint64_t>(Command::Type::AttackUnit)) r.refuse();
+    c.type = static_cast<Command::Type>(type);
+    c.target = readVec(r);
+    c.speed.raw = r.i();
+    c.march = r.b();
+    c.marchFrom = readVec(r);
+    c.marchTo = readVec(r);
+    c.face = readVec(r);
+    c.force = r.b();
+    const uint64_t object = r.u();
+    if (object > static_cast<uint64_t>(Command::Object::Obstacle)) r.refuse();
+    c.object = static_cast<Command::Object>(object);
+    c.objectIndex = r.i32();
+    const uint64_t pin = r.u();
+    if (pin > static_cast<uint64_t>(Command::GatePin::Shut)) r.refuse();
+    c.gatePin = static_cast<Command::GatePin>(pin);
+    return c;
+}
+
 void writeArmy(Writer& w, const Army& a) {
     w.u(a.id);
     w.u(static_cast<uint64_t>(a.type));
@@ -167,6 +219,8 @@ void writeArmy(Writer& w, const Army& a) {
         w.i(m.ay);
         w.i(m.fx);
         w.i(m.fy);
+        w.u(m.queue.size());
+        for (const Command& c : m.queue) writeCommand(w, c);
     }
 }
 
@@ -197,6 +251,9 @@ Army readArmy(Reader& r) {
         m.ay = m.by = r.i32();
         m.fx = r.i32();
         m.fy = r.i32();
+        const size_t waiting = r.count();
+        if (waiting > World::kMaxQueuedOrders) r.refuse();
+        for (size_t k = 0; k < waiting && r.ok() && waiting <= World::kMaxQueuedOrders; ++k) m.queue.push_back(readCommand(r));
     }
     return a;
 }

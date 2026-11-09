@@ -74,16 +74,19 @@ void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& dec
 // ending in a solid dot. Their widths and spacing are in screen pixels, so they read at 2 m and at 4900 m.
 
 namespace {
-constexpr float kDecalDash = 9, kDecalCross = 10;
+constexpr float kDecalDash = 9, kDecalCross = 10, kDecalBadge = 11;
 constexpr float kPatrol[3] = {0.35f, 0.95f, 0.72f};
 constexpr float kHunt[3] = {1.0f, 0.3f, 0.1f};
 constexpr float kMove[3] = {0.92f, 0.92f, 0.92f};
+constexpr float kPlan[3] = {0.84f, 0.5f, 1.0f};  // orders held in the planning mode, not yet given: violet, whatever they are
 constexpr int kStepsPerLine = 600;     // however long, however near the eye
 constexpr size_t kMaxPathDecals = 3000;  // a frame's whole share (each mark has a dark one beneath it)
 constexpr float kDark[3] = {0.03f, 0.03f, 0.04f};
 constexpr float kOutlinePx = 2.0f;      // how much wider the dark mark under each is, all round
 
-const float* colourOf(sim::World::Stance s) {
+const float* colourOf(const RouteLine& line) {
+    if (line.pending) return kPlan;
+    const sim::World::Stance s = line.stance;
     return s == sim::World::Stance::Hunt ? kHunt : s == sim::World::Stance::Move ? kMove : kPatrol;
 }
 }  // namespace
@@ -99,17 +102,17 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
     std::vector<float> bright;  // the coloured marks, laid after every dark one so that no outline cuts across a line
     for (const RouteLine& line : lines) {
         if (line.points.size() < 2) continue;
-        const float* rgb = colourOf(line.stance);
+        const float* rgb = colourOf(line);
         const float fade = 1.0f - line.opacity * (close ? 0.75f : 1.0f);
         const auto mpp = [&](const V3& p) { return std::max(1e-4f, (p - eye).length() * perPixel); };
-        const auto put = [&](const V3& at, float yaw, float sizePx, float type) {
+        const auto put = [&](const V3& at, float yaw, float sizePx, float type, float digit = 0) {
             if (pushed + 2 > kMaxPathDecals) return;
             V3 p = at;
             p.z = battle.floorAt(p);
             const float m = mpp(at);
             // A dark mark a little larger beneath, so the line reads on pale ground and snow.
-            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, (sizePx + kOutlinePx) * m, 0, type, kDark[0], kDark[1], kDark[2], fade});
-            bright.insert(bright.end(), {p.x, p.y, p.z, yaw, sizePx * m, 0, type, rgb[0], rgb[1], rgb[2], fade});
+            decals.insert(decals.end(), {p.x, p.y, p.z, yaw, (sizePx + kOutlinePx) * m, digit, type, kDark[0], kDark[1], kDark[2], fade});
+            bright.insert(bright.end(), {p.x, p.y, p.z, yaw, sizePx * m, digit, type, rgb[0], rgb[1], rgb[2], fade});
             pushed += 2;
         };
         const auto visible = [&](const V3& p) {
@@ -117,11 +120,13 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
             return camera.project(p, px, py) && px > -60 && py > -60 && px < w + 60 && py < h + 60;
         };
         const Stance stance = line.stance;
-        const bool hunt = stance == Stance::Hunt, patrol = stance == Stance::Patrol;
+        // Orders only held (planning) are drawn in a look of their own: long dashes of the one violet, ending in their number.
+        const bool plan = line.pending;
+        const bool hunt = !plan && stance == Stance::Hunt, patrol = !plan && stance == Stance::Patrol;
         // Pixels from one mark to the next, and the size (half the length of a dash, the radius of a dot).
-        const float period = patrol ? 30.0f : hunt ? 12.0f : 10.0f;
-        const float markPx = patrol ? 8.0f : hunt ? 7.0f : 3.0f;
-        const float markType = patrol || hunt ? kDecalDash : kDecalDot;
+        const float period = plan ? 24.0f : patrol ? 30.0f : hunt ? 12.0f : 10.0f;
+        const float markPx = plan ? 9.0f : patrol ? 8.0f : hunt ? 7.0f : 3.0f;
+        const float markType = plan || patrol || hunt ? kDecalDash : kDecalDot;
         // The chevrons and arrowheads, every so many marks.
         const int every = patrol ? 3 : hunt ? 9 : 0;
         const float headPx = patrol ? 8.0f : 10.0f;
@@ -150,9 +155,18 @@ size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, 
         // The end.
         const V3 end = line.points.back();
         if (visible(end)) {
-            if (hunt) put(end, 0, 14.0f, kDecalCross);
-            else if (patrol) put(end, 0, 11.0f, kDecalRing);
+            if (plan) put(end, 0, 8.0f, kDecalRing);
+            else if (stance == Stance::Hunt) put(end, 0, 14.0f, kDecalCross);
+            else if (stance == Stance::Patrol) put(end, 0, 11.0f, kDecalRing);
             else put(end, 0, 6.0f, kDecalDot);
+            // A queued leg (or a held one) is numbered, a little beyond its end, upright on the screen.
+            if (line.number > 0) {
+                const V3 a = line.points[line.points.size() - 2];
+                V3 dir{end.x - a.x, end.y - a.y, 0};
+                const float len = dir.length();
+                dir = len > 1e-4f ? dir * (1.0f / len) : V3{std::cos(camera.yaw()), std::sin(camera.yaw()), 0};
+                put(end + dir * (17.0f * mpp(end)), camera.yaw() - 1.5707963f, 11.0f, kDecalBadge, static_cast<float>(std::min(line.number, 9)));
+            }
         }
     }
     decals.insert(decals.end(), bright.begin(), bright.end());

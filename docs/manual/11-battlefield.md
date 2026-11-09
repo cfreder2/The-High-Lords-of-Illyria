@@ -36,7 +36,7 @@ Everything starts with choosing who is to obey.
 - **Everyone in view:** on a desktop, [[Ctrl]] + [[A]] (on a Mac [[⌘]] + [[A]]) selects every soldier of yours the camera can see.
 - **A box:** press and hold on your own men (or anywhere with nothing selected), and drag: everyone of yours inside the box is selected. On a desktop, shift-drag draws a box at once.
 - **Adding and removing:** on a desktop, shift-click adds a soldier to the selection or takes him out.
-- **The heroes:** [[`]] on a desktop selects your heroes; on a phone their gold cards lead the row.
+- **The heroes:** [[H]] on a desktop selects your heroes; on a phone their gold cards lead the row.
 - **Letting go:** on a desktop, click the empty ground. [[Space]] halts the selection where it stands.
 - **Ordering without choosing:** on a desktop a right-click (on a Mac trackpad, a tap with two fingers) gives those selected the order a click would, to march there or go after the enemy clicked, and never changes who is selected. On one of your own men, they march to where he stands.
 

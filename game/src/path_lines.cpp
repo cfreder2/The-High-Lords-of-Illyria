@@ -53,7 +53,7 @@ std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tol
         Group* home = nullptr;
         float nearest = 1e30f;
         for (Group& g : groups) {
-            if (g.rep->stance != r.stance || g.rep->quarry != r.quarry) continue;
+            if (g.rep->stance != r.stance || g.rep->quarry != r.quarry || g.rep->number != r.number || g.rep->pending != r.pending) continue;
             const float d = flatDist(g.end, end);
             if (tol >= 0 && d <= tol && flatDist(g.mid, mid) <= (r.squad >= 0 && g.rep->squad == r.squad ? 4 : 2) * tol && d < nearest) {
                 home = &g;
@@ -63,7 +63,7 @@ std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tol
         if (home == nullptr && groups.size() >= kMaxRouteLines) {
             for (Group& g : groups) {
                 const float d = flatDist(g.end, end);
-                if (g.rep->stance == r.stance && d < nearest) home = &g, nearest = d;
+                if (g.rep->stance == r.stance && g.rep->number == r.number && g.rep->pending == r.pending && d < nearest) home = &g, nearest = d;
             }
             if (home == nullptr) continue;
         }
@@ -71,6 +71,8 @@ std::vector<RouteLine> mergeRoutes(const std::vector<RouteIn>& routes, float tol
             Group g{&r, r.points.front(), end, mid, end, tol, {}};
             g.line.stance = r.stance;
             g.line.quarry = r.quarry;
+            g.line.number = r.number;
+            g.line.pending = r.pending;
             g.line.opacity = r.opacity;
             g.line.men = 1;
             groups.push_back(std::move(g));

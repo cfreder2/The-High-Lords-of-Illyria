@@ -200,6 +200,48 @@ struct Scavenger {
     bool holding() const { return satchel || held != RemainKind::None; }
 };
 
+// Player input, the only thing exchanged between lockstep peers.
+struct Command {
+    // AttackGate: missile troops shoot at the gate nearest `target`.
+    // AttackUnit: go after `targetUnit` (of either side: a force attack on a
+    // friend only ever when ordered). AttackObject: a gate, wall or piece of
+    // scenery (world_orders.cpp says who can harm what). LaySatchel: walk to
+    // `target` and lay a satchel charge there (those who carry them). Raid: a
+    // scavenger let loose to raid from where he stands (world_scavenge.cpp);
+    // it needs no target, and anyone else ignores it.
+    // SetGate: the holder's hand on his gate (`objectIndex`; no soldier named): how it is to be kept (`gatePin`).
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate };
+    enum class Object : uint8_t { Gate, Wall, Obstacle };
+    enum class GatePin : uint8_t { Auto, Open, Shut };
+
+    PlayerId player = 0;
+    EntityId unit = kNoEntity;
+    Type type = Type::Stop;
+    Vec3 target;
+    Fixed speed = {};  // Move: marching pace (m/s) so a squad keeps formation; 0 = the unit's own
+    // Move: one of a squad marching from its centre `marchFrom` to `marchTo`
+    // (target is this soldier's place there): all follow the squad's route.
+    bool march = false;
+    Vec3 marchFrom = {}, marchTo = {};
+    // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
+    // the way he walked.
+    Vec3 face = {};
+    // Move: a force march, deaf to the enemy on the way.
+    bool force = false;
+    // AttackUnit: the target, and a friend to rejoin once it is down.
+    EntityId targetUnit = kNoEntity;
+    EntityId rally = kNoEntity;
+    // AttackObject: what (`target` is the spot tapped on it): a gate's or a
+    // wall ring's index in the region, or an obstacle's.
+    Object object = Object::Gate;
+    int32_t objectIndex = -1;
+    // SetGate: Auto lets it open to his men bound through and shut behind them; Open and Shut hold it so.
+    GatePin gatePin = GatePin::Auto;
+    // Shift: add this order to the end of the soldier's queue (an order that replaces his current one and clears the
+    // queue when false). A soldier with no order of his own begins it at once. Meaningless for Stop, Raid and SetGate.
+    bool queue = false;
+};
+
 // One soldier (or beast). Squads are a campaign-layer grouping of these.
 struct Unit {
     EntityId id = kNoEntity;
@@ -318,6 +360,10 @@ struct Unit {
     int32_t satchels = 0;
     int32_t layCooldown = 0;
     bool layOrdered = false;
+    // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
+    // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
+    std::vector<Command> queue;
+    uint32_t orderTick = 0;  // when his current order began (hashed only while a queue waits)
 
     bool alive() const { return hp > 0; }
     // In the world at all: a man taken out of it (removed) has no hit points either, but is no corpse; every loop over the
@@ -361,44 +407,6 @@ struct Remain {
     uint8_t source = kNoSource;  // as Projectile::source
 };
 
-// Player input, the only thing exchanged between lockstep peers.
-struct Command {
-    // AttackGate: missile troops shoot at the gate nearest `target`.
-    // AttackUnit: go after `targetUnit` (of either side: a force attack on a
-    // friend only ever when ordered). AttackObject: a gate, wall or piece of
-    // scenery (world_orders.cpp says who can harm what). LaySatchel: walk to
-    // `target` and lay a satchel charge there (those who carry them). Raid: a
-    // scavenger let loose to raid from where he stands (world_scavenge.cpp);
-    // it needs no target, and anyone else ignores it.
-    // SetGate: the holder's hand on his gate (`objectIndex`; no soldier named): how it is to be kept (`gatePin`).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate };
-    enum class Object : uint8_t { Gate, Wall, Obstacle };
-    enum class GatePin : uint8_t { Auto, Open, Shut };
-
-    PlayerId player = 0;
-    EntityId unit = kNoEntity;
-    Type type = Type::Stop;
-    Vec3 target;
-    Fixed speed = {};  // Move: marching pace (m/s) so a squad keeps formation; 0 = the unit's own
-    // Move: one of a squad marching from its centre `marchFrom` to `marchTo`
-    // (target is this soldier's place there): all follow the squad's route.
-    bool march = false;
-    Vec3 marchFrom = {}, marchTo = {};
-    // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
-    // the way he walked.
-    Vec3 face = {};
-    // Move: a force march, deaf to the enemy on the way.
-    bool force = false;
-    // AttackUnit: the target, and a friend to rejoin once it is down.
-    EntityId targetUnit = kNoEntity;
-    EntityId rally = kNoEntity;
-    // AttackObject: what (`target` is the spot tapped on it): a gate's or a
-    // wall ring's index in the region, or an obstacle's.
-    Object object = Object::Gate;
-    int32_t objectIndex = -1;
-    // SetGate: Auto lets it open to his men bound through and shut behind them; Open and Shut hold it so.
-    GatePin gatePin = GatePin::Auto;
-};
 
 // A soldier whose target went down chose what to do next (world_orders.cpp):
 // press on against another foe, or go back to his friends (or his march).
@@ -554,6 +562,9 @@ public:
     // (campaign_world.cpp): a soldier's wounds, kills and morale as he last
     // stood, and taking him out again (the bodies of the fallen stay until then).
     void restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale);
+    // The orders waiting behind his own (Unit::queue), as a save keeps them: put back, at most kMaxQueuedOrders.
+    void restoreQueue(EntityId id, std::vector<Command> queue);
+    void testQueue(EntityId id, const Command& c) { if (Unit* u = mutableUnit(id)) u->queue.push_back(c); }  // (tests)
     // Taking a man out of the world leaves his place in the list, empty (Unit::removed), and the next man to come takes the
     // lowest empty place (so that a world with fights always going on does not grow for ever): a unit's place is his id less
     // one, `units()[id - 1]`, as in any battle. A place is given to a man afresh each time (generation): whatever a
@@ -605,6 +616,15 @@ public:
     // him or crosses his path (the ordinary Move).
     enum class Stance : uint8_t { Idle, Patrol, Move, Hunt };
     static Stance stanceOf(const Unit& u);
+    // How a queued order will be walked (the same words: Move for a force march, Hunt for an attack, else Patrol), for drawing the queue.
+    static Stance stanceOfOrder(const Command& c);
+    // Whether a soldier has an order in hand: a march, an attack, a pursuit or a raid. (Idle soldiers fight on their own.)
+    static bool hasOrder(const Unit& u);
+    // At most this many orders wait in a soldier's queue; one more is dropped. Eight legs is a patrol round a town or a
+    // plan of attack; more would make every man carry, hash and save a long script, and a line of numbers on the screen.
+    static constexpr size_t kMaxQueuedOrders = 8;
+    // A standing attack on the ground, a wall, a house or a tree never ends of itself: with orders waiting it is over after this long.
+    static constexpr uint32_t kStandingAttackTicks = 10 * kTicksPerSecond;
     // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
     // path planned to his quarry, then the quarry's place now). Empty for Idle. Does not include where he stands.
     // It stops at a gate that is shut, opening or closing across it (a swinging gate blocks like a shut one), and goes
@@ -917,6 +937,10 @@ private:
     template <typename Fn>
     void nearbyNotOf(PlayerId side, Fixed x, Fixed y, Fixed radius, Fn&& fn) const;
     void applyCommand(const Command& cmd);
+    // Begins an order (everything applyCommand does once the soldier is found and may be ordered). Not the queue's business.
+    void startOrder(Unit& u, const Command& cmd);
+    // The queue: whether a soldier has an order in hand, whether his current order is over, and the next one's beginning.
+    void advanceQueue(Unit& u);
     // Orders (world_orders.cpp).
     void applyOrder(Unit& u, const Command& cmd);
     // Goes after his AttackUnit target: closes and fights it, or keeps to a

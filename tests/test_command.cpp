@@ -791,3 +791,52 @@ TEST(a_mouse_selects_with_the_left_button_and_orders_with_the_right) {
     b.advance(0.05);
     CHECK(b.world().units()[b.selectedAlive().front() - 1].hasMoveTarget);
 }
+
+TEST(tab_cycles_the_saved_groups_then_the_squads_in_none_and_shift_tab_goes_back) {
+    Battle b(42);
+    const int aldric = squadNamed(b, "Lord Aldric"), pikes = squadNamed(b, "Ferry Pikes");
+    b.selectSquad(pikes);
+    b.assignGroup(4);
+    b.selectSquad(aldric);
+    b.assignGroup(1);
+    // The order: group 1, group 4, then the player's other squads by index (never the enemy's).
+    std::vector<int> order{aldric, pikes};
+    for (size_t i = 0; i < b.squads().size(); ++i)
+        if (b.squads()[i].owner == b.localSide() && static_cast<int>(i) != aldric && static_cast<int>(i) != pikes) order.push_back(static_cast<int>(i));
+    CHECK(order.size() >= 4);
+    b.clearSelection();
+    // From nothing, Tab goes to the first; each Tab to the next; at the end it wraps.
+    for (size_t k = 0; k <= order.size(); ++k) {
+        CHECK(b.cycleGroup(1));
+        CHECK(b.selectedSquad() == order[k % order.size()]);
+    }
+    // Shift+Tab back: from the first (after the wrap) to the last, and on down.
+    b.selectSquad(order.front());
+    for (size_t k = 1; k <= order.size() + 1; ++k) {
+        CHECK(b.cycleGroup(-1));
+        CHECK(b.selectedSquad() == order[(order.size() * 2 - k) % order.size()]);
+    }
+    // From nothing, Shift+Tab goes to the last.
+    b.clearSelection();
+    CHECK(b.cycleGroup(-1));
+    CHECK(b.selectedSquad() == order.back());
+    // A saved group is a group even when it is two squads: it is one stop, and those squads are not stops of their own.
+    b.selectSquad(order[2]);
+    b.select([&] {
+        std::vector<illyria::sim::EntityId> v = b.squads()[static_cast<size_t>(order[2])].members;
+        const auto& w = b.squads()[static_cast<size_t>(order[3])].members;
+        v.insert(v.end(), w.begin(), w.end());
+        return v;
+    }());
+    b.assignGroup(9);
+    b.clearSelection();
+    // Stops now: groups 1, 4 and 9, then the squads in none (the others), so two fewer than before.
+    const size_t want = order.size() - 1;
+    b.cycleGroup(1);
+    CHECK(b.selectedSquad() == aldric);
+    size_t steps = 1;
+    while (steps < 40 && !(b.cycleGroup(1) && b.selectedSquad() == aldric)) ++steps;
+    CHECK(steps == want);
+    CHECK(b.cycleGroup(-1));  // back from Aldric: the last stop, which is not a group-9 squad
+    CHECK(b.groupSelection(9) < 2);
+}

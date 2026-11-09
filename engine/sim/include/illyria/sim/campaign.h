@@ -42,6 +42,9 @@ struct Man {
     int32_t ax = 0, ay = 0, bx = 0, by = 0, fx = 0, fy = -1000;
     int32_t lastCool = 0, lastReload = 0;
     uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // when he last struck, was hurt, or fought at all (presentation)
+    // The orders waiting behind his own (Unit::queue), kept while he is out of the world (aboard a boat, or in a save). An order
+    // against a particular soldier is not kept: the world's ids are made anew when the men are put back.
+    std::vector<Command> queue;
     bool alive() const { return hp != 0; }
 };
 

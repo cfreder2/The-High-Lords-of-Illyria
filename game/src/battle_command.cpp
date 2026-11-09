@@ -3,6 +3,7 @@
 // they stand or in a formation, with a facing, and scattering. Every order becomes sim::Commands in pending_, so
 // it reaches the simulation (and every lockstep peer) the same way.
 
+#include <set>
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -492,6 +493,50 @@ int Battle::ungroupSelection() {
     return gone;
 }
 
+bool Battle::cycleGroup(int dir) {
+    struct Stop {
+        std::vector<sim::EntityId> units;
+        int slot;  // the saved group's slot, or -1 for a squad
+    };
+    std::vector<Stop> stops;
+    std::set<sim::EntityId> grouped;
+    for (int k = 1; k <= kGroupSlots; ++k) {  // as along the keyboard: 1-9, then 0
+        const int slot = k % kGroupSlots;
+        GroupMen m = groupMen(slot);
+        if (m.alive() == 0) continue;
+        grouped.insert(m.units.begin(), m.units.end());
+        stops.push_back({std::move(m.units), slot});
+    }
+    for (const Squad& s : squads_) {
+        if (s.owner != local_ || !controllable(s)) continue;
+        Stop stop{{}, -1};
+        bool inGroup = false;
+        for (sim::EntityId id : s.members) {
+            if (!world_->units()[id - 1].alive()) continue;
+            stop.units.push_back(id);
+            inGroup |= grouped.count(id) > 0;
+        }
+        if (!stop.units.empty() && !inGroup) stops.push_back(std::move(stop));
+    }
+    if (stops.empty()) return false;
+    const std::vector<sim::EntityId> now = selectedAlive();
+    const auto same = [&](const Stop& st) {
+        std::vector<sim::EntityId> a = st.units, b = now;
+        std::sort(a.begin(), a.end());
+        std::sort(b.begin(), b.end());
+        return a == b;
+    };
+    const int n = static_cast<int>(stops.size());
+    int at = -1;
+    for (int i = 0; i < n && at < 0; ++i)
+        if (!now.empty() && same(stops[static_cast<size_t>(i)])) at = i;
+    const int to = at < 0 ? (dir >= 0 ? 0 : n - 1) : ((at + (dir >= 0 ? 1 : n - 1)) % n);
+    const Stop& stop = stops[static_cast<size_t>(to)];
+    if (stop.slot >= 0) return recallGroup(stop.slot);
+    select(stop.units);
+    return true;
+}
+
 // --- Orders -----------------------------------------------------------------
 
 V3 Battle::centreOf(const std::vector<sim::EntityId>& units) const {
@@ -893,11 +938,16 @@ void Battle::orderMoveFacing(const V3& to, const V3& facing) {
 }
 
 void Battle::stopSelected() {
-    for (sim::EntityId id : selectedAlive()) issue(local_, id, sim::Command::Type::Stop, {});
+    // Halt is never held: it halts at once, and with it goes whatever was held for those men.
+    for (sim::EntityId id : selectedAlive()) {
+        issue(local_, id, sim::Command::Type::Stop, {});
+        std::erase_if(plan_, [&](const Planned& p) { return !p.far && p.cmd.unit == id; });
+    }
     voice_.order(Situation::Move, *world_, selection_);
 }
 
 void Battle::scatter() {
+    OrderScope scope(*this, false);
     const std::vector<sim::EntityId> alive = selectedAlive();
     const V3 centre = centreOf(alive);
     const V3 front = selectionShape().front;
@@ -926,6 +976,7 @@ void Battle::scatter() {
 void Battle::setFormation(Formation f) {
     const std::vector<sim::EntityId> alive = selectedAlive();
     if (alive.empty()) return;
+    OrderScope scope(*this, false);
     const V3 facing = selKeep_ ? selectionShape().front : selectionFacing();
     selFormation_ = f;
     selKeep_ = false;
@@ -951,6 +1002,7 @@ void Battle::cycleFormation() {
 // --- Taps and presses -------------------------------------------------------
 
 void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool additive) {
+    OrderScope scope(*this, false);  // (the orders a tap gives are held while planning)
     const Pick pick = pickAt(camera, x, y, pixelScale);
     const auto& units = world_->units();
     const std::vector<sim::EntityId> mine = selectedAlive();
@@ -1148,6 +1200,7 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     }
     const bool force = marchKey_ || orderMode_ == OrderMode::ForceMarch;
     orderMode_ = OrderMode::Normal;
+    OrderScope scope(*this, additive);
     if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
     else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
     else orderMove(d.anchor);
