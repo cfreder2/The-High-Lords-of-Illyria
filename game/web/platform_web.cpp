@@ -5,7 +5,10 @@
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 
+#include <vector>
+
 #include "../app/platform.h"
+#include "illyria/game/underwater_audio.h"
 
 namespace {
 
@@ -20,6 +23,19 @@ EM_JS(void, js_sfx_cue, (const char* id, float gain, float pan, float dist, floa
 });
 EM_JS(void, js_sfx_ambience, (float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain), {
     if (window.IllyriaSfx) window.IllyriaSfx.ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
+});
+
+// The world heard from under water, and its two cues (game/web/sfx.js, audio.js). The sounds themselves are synthesised here
+// (game/underwater_audio.h, the one recipe the desktop plays too) and handed over as stereo float buffers.
+EM_JS(void, js_sfx_underwater, (float cutoff, float gain, float wobble, float ambience), {
+    if (window.IllyriaSfx && window.IllyriaSfx.underwater) window.IllyriaSfx.underwater(cutoff, gain, wobble, ambience);
+});
+EM_JS(void, js_sfx_synth, (const char* id, const float* stereo, int frames, int rate, int loop), {
+    if (window.IllyriaSfx && window.IllyriaSfx.synth)
+        window.IllyriaSfx.synth(UTF8ToString(id), HEAPF32.slice(stereo >> 2, (stereo >> 2) + frames * 2), rate, !!loop);
+});
+EM_JS(void, js_sfx_underwater_cue, (int entering), {
+    if (window.IllyriaSfx && window.IllyriaSfx.underwaterCue) window.IllyriaSfx.underwaterCue(!!entering);
 });
 
 // The minimap's land (RGBA, rows from the north) to the page's canvas.
@@ -147,6 +163,19 @@ void sfxCue(const char* id, float gain, float pan, float dist, float delay, floa
 void sfxAmbience(float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain) {
     js_sfx_ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
 }
+void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience) {
+    // The page makes its sounds from the one recipe, the first time the water is entered.
+    static bool sent = false;
+    if (!sent && ambience > 0.01f) {
+        sent = true;
+        const std::vector<float> loop = illyria::game::synthUnderwaterAmbience(44100), plunge = illyria::game::synthPlunge(44100), surfacing = illyria::game::synthSurfacing(44100);
+        js_sfx_synth("underwater_loop", loop.data(), static_cast<int>(loop.size() / 2), 44100, 1);
+        js_sfx_synth("underwater_in", plunge.data(), static_cast<int>(plunge.size() / 2), 44100, 0);
+        js_sfx_synth("underwater_out", surfacing.data(), static_cast<int>(surfacing.size() / 2), 44100, 0);
+    }
+    js_sfx_underwater(cutoffHz, gain, wobble, ambience);
+}
+void sfxUnderwaterCue(bool entering) { js_sfx_underwater_cue(entering ? 1 : 0); }
 void minimapLand(const uint8_t* rgba, int w, int h) { js_minimap_land(rgba, w, h); }
 void modeStarted(const char* id) { js_mode_started(id); }
 void requestSheet(int type, bool closeup, int standIn) { js_request_sheet(type, closeup ? 1 : 0, standIn); }

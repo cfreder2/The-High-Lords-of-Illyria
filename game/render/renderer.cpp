@@ -326,6 +326,7 @@ bool Renderer::buildPrograms() {
                  {arrow_, shaders::kArrowVs, shaders::kArrowFs},
                  {sprite_, shaders::kSpriteVs, shaders::kSpriteFs},
                  {particle_, shaders::kParticleVs, shaders::kParticleFs},
+                 {motes_, shaders::kMoteVs, shaders::kMoteFs},
                  {mesh_, shaders::kMeshVs, shaders::kMeshFs},
                  {water_, shaders::kWaterVs, shaders::kWaterFs},
                  {far_, shaders::kFarVs, shaders::kFarFs},
@@ -413,6 +414,7 @@ bool Renderer::buildPrograms() {
         s.p.detailRect = glGetUniformLocation(s.p.id, "uDetailRect");
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
         s.p.lod = glGetUniformLocation(s.p.id, "uLod");
+        s.p.uw = glGetUniformLocation(s.p.id, "uUw");
         s.p.territory = glGetUniformLocation(s.p.id, "uTerritory");
         s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
@@ -2178,6 +2180,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     const V3 right = f.cross({0, 0, 1}).normalized();
     glUniform3f(p.camRight, right.x, right.y, right.z);
     glUniform1f(p.water, waterLevel_);
+    if (p.uw >= 0) glUniform4fv(p.uw, 1, underwater_);
     if (p.waterTex >= 0) {
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, waterTex_);
@@ -2673,6 +2676,20 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     drawDetailWater(camera, timeSeconds, gameSeconds);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
+
+    // Under water: the specks floating in it (a few hundred, hashed in the shader: no buffer), added as light.
+    if (underwater_[0] > 0.0f) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        setCommon(motes_, camera, timeSeconds, gameSeconds);
+        if (!emptyVao_) glGenVertexArrays(1, &emptyVao_);
+        glBindVertexArray(emptyVao_);
+        part_ = Part::Effects;
+        drawArrays(GL_TRIANGLE_STRIP, 0, 4, 260);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
 
     // Particles last: premultiplied alpha, depth-tested but not written.
     if (particles_.count > 0) {

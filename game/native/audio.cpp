@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "assets.h"
+#include "illyria/game/underwater_audio.h"
 #include "json.h"
 
 #pragma clang diagnostic push
@@ -77,6 +78,16 @@ float master = 1;
 std::mt19937 rng{20261027};
 std::thread loader;
 bool closing = false;
+
+// Under water: the filter over the whole mix, and the sounds that are made for it, played after the filter (synthesised).
+illyria::game::UnderwaterBus bus(kRate);
+std::vector<float> uwLoop, uwPlunge, uwSurfacing;  // stereo interleaved at kRate
+float uwAmbience = 0, uwAmbienceNow = 0;           // the loop's asked and its smoothed level
+double uwLoopPos = 0;
+struct Cue {
+    const std::vector<float>* pcm = nullptr;
+    size_t pos = 0;
+} cues[2];
 
 float dB(float x) { return std::pow(10.0f, x / 20.0f); }
 float uniform() { return std::uniform_real_distribution<float>(0, 1)(rng); }
@@ -204,6 +215,28 @@ void mix(float* out, int frames) {
             s.pos += s.step;
         }
     }
+    bus.process(out, frames);
+    // The underwater loop and the cues over it, not filtered again (the loop is the water's own, the cues are the crossing of it).
+    uwAmbienceNow += (uwAmbience - uwAmbienceNow) * (1.0f - std::exp(-static_cast<float>(frames) / kRate / 0.25f));
+    if (uwAmbienceNow > 0.002f && !uwLoop.empty()) {
+        const size_t n = uwLoop.size() / 2;
+        const float g = uwAmbienceNow * 0.55f * master;
+        for (int i = 0; i < frames; ++i) {
+            const size_t p = static_cast<size_t>(uwLoopPos) % n;
+            out[i * 2] += uwLoop[p * 2] * g;
+            out[i * 2 + 1] += uwLoop[p * 2 + 1] * g;
+            uwLoopPos += 1;
+        }
+    }
+    for (Cue& c : cues) {
+        if (!c.pcm) continue;
+        const size_t n = c.pcm->size() / 2;
+        for (int i = 0; i < frames && c.pos < n; ++i, ++c.pos) {
+            out[i * 2] += (*c.pcm)[c.pos * 2] * 0.5f * master;
+            out[i * 2 + 1] += (*c.pcm)[c.pos * 2 + 1] * 0.5f * master;
+        }
+        if (c.pos >= n) c.pcm = nullptr;
+    }
     for (int i = 0; i < frames * 2; ++i) out[i] = std::tanh(out[i]);  // the limiter: nothing past full scale
 }
 
@@ -238,6 +271,9 @@ bool open(const char* assetRoot) {
         std::fprintf(stderr, "audio: %s\n", SDL_GetError());
         return false;
     }
+    uwLoop = illyria::game::synthUnderwaterAmbience(kRate);
+    uwPlunge = illyria::game::synthPlunge(kRate);
+    uwSurfacing = illyria::game::synthSurfacing(kRate);
     loader = std::thread(load, std::string(assetRoot));
     SDL_ResumeAudioStreamDevice(stream);
     return true;
@@ -328,5 +364,24 @@ void setMasterVolume(float volume) {
 }
 
 float masterVolume() { return master; }
+
+void underwater(float cutoffHz, float gain, float wobble, float ambience) {
+    if (!stream) return;
+    illyria::game::UnderwaterSound s;
+    s.cutoffHz = cutoffHz;
+    s.gain = gain;
+    s.wobble = wobble;
+    std::lock_guard<std::mutex> l(lock);
+    bus.set(s);
+    uwAmbience = ambience;
+}
+
+void underwaterCue(bool entering) {
+    if (!stream) return;
+    std::lock_guard<std::mutex> l(lock);
+    Cue& c = cues[entering ? 0 : 1];
+    c.pcm = entering ? &uwPlunge : &uwSurfacing;
+    c.pos = 0;
+}
 
 }  // namespace illyria::native::audio

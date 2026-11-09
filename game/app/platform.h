@@ -44,6 +44,13 @@ void sfxCue(const char* id, float gain, float pan, float dist, float delay, floa
 void sfxAmbience(float windMountain, float windValley, float swamp, float swampPan, float flies, float fliesPan, float drums, float drumsPan,
                  float rain);
 
+// The world heard from under water (game/underwater.h, underwater_audio.h): everything the mix plays goes through a low-pass at
+// `cutoffHz`, quieter by `gain` (linear) and with a slow wobble of pitch (0..1), all already scaled by how far under it is (0:
+// the air's own, 20 kHz and unity: nothing changes); `ambience` is the level of the underwater loop. Called every frame.
+void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience);
+// The plunge in (entering) and the surfacing out, once each, as the eye crosses the surface.
+void sfxUnderwaterCue(bool entering);
+
 // The campaign minimap's land (RGBA, rows from the north) for the page's canvas; a match begun, for the page's HUD.
 void minimapLand(const uint8_t* rgba, int w, int h);
 void modeStarted(const char* id);

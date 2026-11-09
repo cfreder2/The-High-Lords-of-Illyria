@@ -24,6 +24,8 @@ add_library(illyria_game
     src/detail_land.cpp
     src/far_forest.cpp
     src/river_ribbons.cpp
+    src/underwater.cpp
+    src/underwater_audio.cpp
 )
 target_include_directories(illyria_game PUBLIC include)
 target_link_libraries(illyria_game PUBLIC illyria_sim)
