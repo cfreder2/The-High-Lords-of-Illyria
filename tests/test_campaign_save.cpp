@@ -420,6 +420,43 @@ TEST(a_save_round_trips_everything_the_checksum_hashes_on_many_seeds_and_days) {
     }
     std::printf("  %d saves round-tripped (stacks afloat seen: %d, gates not shut or asked open: %d)\n", saves, afloat, swinging);
     CHECK(saves >= 20);
-    CHECK(afloat > 0);
     CHECK(swinging > 0);
+}
+
+// A stack afloat on a long voyage, saved on the way: its men are the boat's, and what the checksum hashes of them
+// (where they were last on land, px and py) comes back.
+TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
+    Campaign c(continent(), 3);
+    for (size_t side = 0; side < c.sides().size(); ++side) c.setHuman(static_cast<uint8_t>(side), true);
+    int32_t from = -1, to = -1;
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const Campaign::CityState& s = c.cities()[i];
+        if (!s.port) continue;
+        if (from < 0 || s.cy > c.cities()[static_cast<size_t>(from)].cy) from = static_cast<int32_t>(i);
+        if (to < 0 || s.cy < c.cities()[static_cast<size_t>(to)].cy) to = static_cast<int32_t>(i);
+    }
+    CHECK(from >= 0 && to >= 0 && from != to);
+    if (from < 0 || to < 0) return;
+    const uint32_t id = c.grant(from, 0, UnitType::LightInfantry, 4);
+    CHECK(CampaignOrders::buildBoat(c, from));
+    days(c, Campaign::kBoatDays + 1);
+    CHECK(CampaignOrders::embark(c, id));
+    CHECK(CampaignOrders::move(c, id, c.cities()[static_cast<size_t>(to)].cx, c.cities()[static_cast<size_t>(to)].cy));
+    int saves = 0;
+    for (int hours = 0; hours < 6; ++hours) {
+        for (int t = 0; t < Campaign::kTicksPerDay / 2; ++t) c.step();
+        const Campaign::Stack* s = c.findStack(id);
+        if (!s || !s->boat) continue;
+        const std::string text = c.save();
+        std::string why;
+        std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
+        if (!r) std::printf("  voyage save refused: %s\n", why.c_str());
+        CHECK(r != nullptr);
+        if (!r) continue;
+        ++saves;
+        CHECK(r->checksum() == c.checksum());
+        for (int t = 0; t < 200; ++t) c.step(), r->step();
+        CHECK(r->checksum() == c.checksum());
+    }
+    CHECK(saves >= 2);
 }
