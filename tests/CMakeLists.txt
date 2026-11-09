@@ -73,6 +73,7 @@ add_executable(illyria_tests
     test_sfx.cpp
     test_horde.cpp
     test_ctf.cpp
+    test_flag_poles.cpp
     test_sandbox.cpp
     test_ruin.cpp
     test_site_clearance.cpp

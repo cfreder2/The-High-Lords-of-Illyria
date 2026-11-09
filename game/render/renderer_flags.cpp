@@ -36,7 +36,7 @@ void Renderer::setFlags(const std::vector<Flag>& flags) {
     uploadMeshInstances(cloths_, cloths);
 }
 
-void Renderer::setCityColours(const std::vector<V3>& colours) {
+void Renderer::setCityColours(const std::vector<V3>& colours, const std::vector<uint8_t>& keepsBare) {
     // Each banner instance is 13 floats, its tint the last three.
     for (size_t k = 0; k < bannerCity_.size() && (k + 1) * 13 <= bannerData_.size(); ++k) {
         if (bannerCity_[k] >= colours.size()) continue;
@@ -45,7 +45,10 @@ void Renderer::setCityColours(const std::vector<V3>& colours) {
         bannerData_[k * 13 + 11] = c.y;
         bannerData_[k * 13 + 12] = c.z;
     }
-    uploadMeshInstances(banners_, bannerData_);
+    std::vector<float> shown = bannerData_;
+    for (size_t k = 0; k < bannerCity_.size() && k < bannerIsKeep_.size() && (k + 1) * 13 <= shown.size(); ++k)
+        if (bannerIsKeep_[k] && bannerCity_[k] < keepsBare.size() && keepsBare[bannerCity_[k]]) shown[k * 13 + 7] = shown[k * 13 + 8] = shown[k * 13 + 9] = 0;
+    uploadMeshInstances(banners_, shown);
 }
 
 void Renderer::setTerritory(const std::vector<uint8_t>& rgba, int cols, int rows, float strength) {
