@@ -1,7 +1,7 @@
 ::: cover
 <div class="t0">The</div>
 <div class="t1">High Lords<br>of Illyria</div>
-<div class="t2">The Manual</div>
+<div class="t2">Player's Manual</div>
 
 ![](images/shots/cover.jpg)
 
