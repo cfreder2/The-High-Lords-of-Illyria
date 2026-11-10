@@ -77,6 +77,17 @@ body:not(.at-title) #titleScreen, .screen.hidden { display: none; }
 .choice.wrap button { flex: 1 1 calc(50% - 8px); min-height: 56px; }
 .choice button:disabled { opacity: 0.55; }
 .choice button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.18); box-shadow: 0 0 0 2px rgba(214, 180, 110, 0.35) inset; }
+/* Choosing a lord: each choice in his realm's colours (--realm), beside a map of the land with his seat on it. */
+.lords { display: flex; gap: 14px; align-items: flex-start; }
+.lords .choice { flex: 1 1 auto; }
+.seatmap { flex: 0 0 auto; width: clamp(150px, 30%, 230px); margin: 0; }
+.seatmap canvas { display: block; width: 100%; aspect-ratio: 2844 / 3556; border-radius: 8px; border: 1px solid rgba(214, 180, 110, 0.4); background: #1d2a33; touch-action: manipulation; }
+.seatmap figcaption { margin-top: 6px; font-size: 12px; text-align: center; color: var(--ink-dim); min-height: 1.3em; }
+.choice button[style*="--realm"] { border-left: 6px solid var(--realm); text-align: left; align-items: flex-start; padding-left: 12px; }
+.choice button[style*="--realm"] .chip { display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.45em; border-radius: 2px; vertical-align: -0.05em; background: var(--realm); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 255, 255, 0.18); }
+.choice button[style*="--realm"].on { border-color: var(--realm); background: linear-gradient(90deg, color-mix(in srgb, var(--realm) 34%, transparent), color-mix(in srgb, var(--realm) 10%, transparent)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--realm) 55%, transparent) inset; }
+.choice button[style*="--realm"]:disabled { opacity: 0.8; }
+@media (max-width: 620px) { .lords { flex-direction: column-reverse; align-items: stretch; } .seatmap { width: min(46vw, 190px); margin: 0 auto; } }
 
 /* Settings: tabs, then rows of switches and sliders. */
 .tabs { display: flex; gap: 6px; margin: 0 auto 10px; max-width: 720px; width: 100%; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }

@@ -313,11 +313,29 @@
     let hard = prefs.difficulty ? 1 : 0;
     let player = 0;
     let enemies = 0xff & ~1;  // all the others
+    // The land and the lords' seats on it (illyria_setup_map): each lord's choice wears his realm's colours, and
+    // the map shows where he sits, his seat ringed, the lords he faces in their colours and the rest left grey.
+    const map = { w: 2844, h: 3556, seats: [], places: [] };
+    const engine = game().api && game().api();
+    if (engine && engine.setupMap) {
+      for (const line of engine.setupMap().split("\n")) {
+        const f = line.split("|");
+        if (f[0] === "m") { map.w = +f[1]; map.h = +f[2]; }
+        else if (f[0] === "c") map.seats[+f[1]] = { x: +f[2], y: +f[3], c: f[4], name: f[5] };
+        else if (f[0] === "p") map.places.push({ x: +f[1], y: +f[2], village: f[3] === "2" });
+      }
+    }
+    const colourOf = (i) => (map.seats[i] ? map.seats[i].c : "#999999");
+    // (A colour to read by on the dark page: Lord Malvoren's black is shown as iron.)
+    const shown = (i) => (colourOf(i) === "#191919" ? "#6b6f78" : colourOf(i));
     const html = () =>
       `<p class="lead">Slot ${k}: who will you be?</p>` +
-      `<div class="choice wrap" data-players>` + lords.map((l, i) => `<button data-player="${i}"><b>${l.name}</b><small>${l.hero} · ${l.note}</small></button>`).join("") + `</div>` +
+      `<div class="lords">` +
+      `<div class="choice wrap" data-players>` + lords.map((l, i) => `<button data-player="${i}" style="--realm:${shown(i)}"><b><i class="chip"></i>${l.name}</b><small>${l.hero} · ${l.note}</small></button>`).join("") + `</div>` +
+      `<figure class="seatmap"><canvas data-map></canvas><figcaption data-where></figcaption></figure>` +
+      `</div>` +
       `<p class="lead" style="margin-top:14px">Which lords will you face? <small data-count></small></p>` +
-      `<div class="choice wrap" data-foes>` + lords.map((l, i) => `<button data-foe="${i}"><b>${l.name}</b><small data-foesub="${i}"></small></button>`).join("") + `</div>` +
+      `<div class="choice wrap" data-foes>` + lords.map((l, i) => `<button data-foe="${i}" style="--realm:${shown(i)}"><b><i class="chip"></i>${l.name}</b><small data-foesub="${i}"></small></button>`).join("") + `</div>` +
       `<div class="choice"><button data-all="1">All</button><button data-all="0">None</button></div>` +
       `<p class="note">A lord you do not face is not in the war: their towns are neutral places like any other.</p>` +
       `<p class="lead" style="margin-top:14px">How well should the lords you face play?</p>` +
@@ -326,8 +344,63 @@
       `<p class="note">The computer plays by the same rules as you on either. The default is in Settings, Gameplay.</p>` +
       `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small>Day 1</small></button>`;
     body.innerHTML = html();
+    const canvas = body.querySelector("[data-map]");
+    let hover = -1;
+    // The map: the land, every place a speck, each seat a square in its realm's colour (hollow and grey if its lord
+    // is not in the war), yours ringed and named.
+    const draw = () => {
+      if (!canvas.isConnected) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), cssW = canvas.clientWidth || 200, cssH = cssW * map.h / map.w;
+      if (canvas.width !== Math.round(cssW * dpr)) { canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr); }
+      const g = canvas.getContext("2d"), u = canvas.width / cssW, X = (x) => x / map.w * canvas.width, Y = (y) => (1 - y / map.h) * canvas.height;
+      g.clearRect(0, 0, canvas.width, canvas.height);
+      const land = window.IllyriaMinimap && IllyriaMinimap.image && IllyriaMinimap.image();
+      if (land) g.drawImage(land, 0, 0, canvas.width, canvas.height);
+      else { g.fillStyle = "#1d2a33"; g.fillRect(0, 0, canvas.width, canvas.height); }
+      g.fillStyle = "rgba(0,0,0,0.28)"; g.fillRect(0, 0, canvas.width, canvas.height);  // (the land held back, so the seats stand out)
+      for (const p of map.places) {
+        g.fillStyle = "rgba(235,225,200,0.55)";
+        const r = (p.village ? 1.1 : 1.9) * u;
+        g.fillRect(X(p.x) - r, Y(p.y) - r, 2 * r, 2 * r);
+      }
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 380);
+      map.seats.forEach((s, i) => {
+        if (!s) return;
+        const you = i === player, inWar = you || (enemies >> i & 1) === 1, x = X(s.x), y = Y(s.y), r = (you ? 6.5 : 5) * u;
+        g.lineWidth = 1.5 * u;
+        if (inWar) {
+          g.fillStyle = s.c; g.strokeStyle = s.c === "#191919" ? "#c9c9c9" : "#14110d";
+          g.fillRect(x - r, y - r, 2 * r, 2 * r); g.strokeRect(x - r, y - r, 2 * r, 2 * r);
+        } else {
+          g.strokeStyle = "rgba(210,205,195,0.7)"; g.strokeRect(x - r, y - r, 2 * r, 2 * r);
+        }
+        if (you || i === hover) {
+          g.strokeStyle = you ? `rgba(255,236,170,${0.55 + 0.45 * pulse})` : "rgba(255,255,255,0.8)";
+          g.lineWidth = (you ? 2.2 : 1.4) * u;
+          g.beginPath(); g.arc(x, y, r + (you ? 6 + 3 * pulse : 5) * u, 0, 6.2832); g.stroke();
+          g.font = `600 ${Math.round(12 * u)}px Georgia, serif`; g.textBaseline = "middle";
+          const left = x > canvas.width * 0.62;
+          g.textAlign = left ? "right" : "left";
+          const tx = x + (left ? -1 : 1) * (r + 12 * u);
+          g.lineWidth = 3 * u; g.strokeStyle = "rgba(10,8,6,0.85)"; g.strokeText(s.name, tx, y);
+          g.fillStyle = "#fff3d6"; g.fillText(s.name, tx, y);
+        }
+      });
+      requestAnimationFrame(draw);
+    };
+    // A seat on the map can be chosen there too.
+    const seatAt = (e) => {
+      const b = canvas.getBoundingClientRect(), x = (e.clientX - b.left) / b.width * map.w, y = (1 - (e.clientY - b.top) / b.height) * map.h;
+      let best = -1, near = 240 * 240;
+      map.seats.forEach((s, i) => { if (!s) return; const d = (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y); if (d < near) { near = d; best = i; } });
+      return best;
+    };
+    canvas.onpointermove = (e) => { hover = seatAt(e); canvas.style.cursor = hover >= 0 ? "pointer" : "default"; };
+    canvas.onpointerleave = () => { hover = -1; };
+    canvas.onclick = (e) => { const i = seatAt(e); if (i >= 0) become(i); };
     const sync = () => {
       enemies &= ~(1 << player);
+      body.querySelector("[data-where]").textContent = map.seats[player] ? `${lords[player].name}: ${map.seats[player].name}` : "";
       body.querySelectorAll("[data-hard]").forEach((b) => b.classList.toggle("on", +b.dataset.hard === hard));
       body.querySelectorAll("[data-player]").forEach((b) => b.classList.toggle("on", +b.dataset.player === player));
       let n = 0;
@@ -341,10 +414,18 @@
       body.querySelector("[data-count]").textContent = n === 0 ? "(nobody: a free game with no end)" : `(${n} of 7)`;
     };
     body.querySelectorAll("[data-hard]").forEach((b) => { b.onclick = () => { hard = +b.dataset.hard; sync(); }; });
-    body.querySelectorAll("[data-player]").forEach((b) => { b.onclick = () => { player = +b.dataset.player; sync(); }; });
+    // (The lord you were is a rival again when you choose another.)
+    const become = (i) => { if (i !== player) enemies |= 1 << player; player = i; sync(); };
+    body.querySelectorAll("[data-player]").forEach((b) => { b.onclick = () => become(+b.dataset.player); });
     body.querySelectorAll("[data-foe]").forEach((b) => { b.onclick = () => { enemies ^= 1 << +b.dataset.foe; sync(); }; });
     body.querySelectorAll("[data-all]").forEach((b) => { b.onclick = () => { enemies = +b.dataset.all ? 0xff : 0; sync(); }; });
+    body.querySelectorAll("[data-player], [data-foe]").forEach((b) => {
+      const i = +(b.dataset.player !== undefined ? b.dataset.player : b.dataset.foe);
+      b.onpointerenter = () => { hover = i; };
+      b.onpointerleave = () => { hover = -1; };
+    });
     sync();
+    requestAnimationFrame(draw);
     body.querySelector("[data-start]").onclick = () => startCampaign(k, hard, player, enemies & ~(1 << player));
     focusFirst(body.parentElement);
   }

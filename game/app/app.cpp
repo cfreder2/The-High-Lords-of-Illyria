@@ -1742,7 +1742,8 @@ constexpr int kMiniW = 128, kMiniH = 160;
 void buildMiniLand() {
     using illyria::sim::Fixed;
     App::CampaignView& cv = app->camp;
-    const illyria::sim::Continent& land = cv.c->continent();
+    // (The one continent: the campaign's, or before any campaign the field's own.)
+    const illyria::sim::Continent& land = cv.c ? cv.c->continent() : app->battle->continent();
     std::vector<float> height(static_cast<size_t>(kMiniW) * kMiniH);
     std::vector<uint8_t> kind(height.size(), 0);  // 0 land, 1 sea, 2 fresh water, 3 road
     for (int j = 0; j < kMiniH; ++j)
@@ -1852,6 +1853,33 @@ ILLYRIA_API void illyria_minimap_land() {
     if (!app || !app->camp.on) return;
     if (app->camp.miniLand.empty()) buildMiniLand();
     platform::minimapLand(app->camp.miniLand.data(), kMiniW, kMiniH);
+}
+// The map a new campaign is chosen on (the title screen's "who will you be?"): the land goes to the page as the
+// minimap's does, and the places come back a line each, continent metres from the south-west corner:
+//   m|width|height                  the continent's size
+//   c|faction|x|y|colour|capital    each lord's seat, in his realm's own colour
+//   p|x|y|kind                      every other place: a walled town (0) or a village (2)
+ILLYRIA_API const char* illyria_setup_map() {
+    static std::string out;
+    out.clear();
+    if (!app || !app->battle) return out.c_str();
+    if (app->camp.miniLand.empty()) buildMiniLand();
+    platform::minimapLand(app->camp.miniLand.data(), kMiniW, kMiniH);
+    const illyria::sim::Continent& land = app->camp.c ? app->camp.c->continent() : app->battle->continent();
+    char buf[160];
+    std::snprintf(buf, sizeof buf, "m|%d|%d\n", static_cast<int>(illyria::sim::Continent::kWidth), static_cast<int>(illyria::sim::Continent::kHeight));
+    out = buf;
+    for (const illyria::sim::Continent::City& city : land.cities()) {
+        if (city.capital) {
+            const V3 col = illyria::game::realmColor(city.owner);
+            std::snprintf(buf, sizeof buf, "c|%d|%.0f|%.0f|#%02x%02x%02x|%s\n", city.owner, city.pos.x.toDouble(), city.pos.y.toDouble(),
+                          static_cast<int>(col.x * 255), static_cast<int>(col.y * 255), static_cast<int>(col.z * 255), city.name.c_str());
+        } else {
+            std::snprintf(buf, sizeof buf, "p|%.0f|%.0f|%d\n", city.pos.x.toDouble(), city.pos.y.toDouble(), city.walled ? 0 : 2);
+        }
+        out += buf;
+    }
+    return out.c_str();
 }
 // The minimap's contents, a line each, continent metres from the south-west corner:
 //   m|width|height          the continent's size

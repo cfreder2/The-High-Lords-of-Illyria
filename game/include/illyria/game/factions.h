@@ -15,8 +15,8 @@ inline uint8_t* sideFactions() {
     static uint8_t table[sim::Continent::kFactionCount] = {6, 2, 1, 4, 5, 3, 0, 7};
     return table;
 }
-inline V3 factionColor(uint8_t owner) {
-    if (owner < sim::Continent::kFactionCount) owner = sideFactions()[owner];
+// A realm's own colour, by the continent's order of factions (whoever plays it, on whatever seat).
+inline V3 realmColor(uint8_t faction) {
     static const V3 kColors[sim::Continent::kFactionCount] = {
         {0.95f, 0.95f, 0.92f},  // the Aurelian Throne: white
         {0.92f, 0.75f, 0.15f},  // the Highcrag Giants: gold
@@ -27,8 +27,10 @@ inline V3 factionColor(uint8_t owner) {
         {0.20f, 0.36f, 0.82f},  // the Moonward Order: blue
         {0.10f, 0.10f, 0.10f},  // Lord Malvoren: black
     };
-    return owner < sim::Continent::kFactionCount ? kColors[owner] : V3{0.6f, 0.6f, 0.6f};
+    return faction < sim::Continent::kFactionCount ? kColors[faction] : V3{0.6f, 0.6f, 0.6f};
 }
+// A side's colour: its realm's (sideFactions), or grey for nobody's.
+inline V3 factionColor(uint8_t owner) { return realmColor(owner < sim::Continent::kFactionCount ? sideFactions()[owner] : owner); }
 
 // A banner's cloth: the lord's colour, or for nobody's (a neutral town, an
 // outpost unclaimed) undyed linen, which the flag shader marks with a red cross.

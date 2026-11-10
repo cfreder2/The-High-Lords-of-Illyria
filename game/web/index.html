@@ -528,6 +528,7 @@
       dragBox: Module.cwrap("illyria_drag_box", "string", []),
       miniLand: Module.cwrap("illyria_minimap_land", null, []),
       mini: Module.cwrap("illyria_minimap", "string", []),
+      setupMap: Module.cwrap("illyria_setup_map", "string", []),
       miniView: Module.cwrap("illyria_minimap_view", "string", []),
       miniLook: Module.cwrap("illyria_minimap_look", null, ["number", "number"]),
       mapStats: Module.cwrap("illyria_campaign_map_stats", "string", []),
@@ -1134,6 +1135,8 @@
       c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.length), w, h), 0, 0);
       mini.land = c;
     },
+    // The land's picture (a canvas), once the engine has drawn it: the title screen's map of the lords' seats uses it too.
+    image: () => mini.land,
   };
   function drawMinimap(t) {
     requestAnimationFrame(drawMinimap);

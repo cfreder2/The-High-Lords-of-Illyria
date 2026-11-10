@@ -10,7 +10,7 @@
 
 A new campaign (**Campaign**, a slot, **New game**) asks three things before day 1.
 
-- **Who will you be?** Any of the eight lords. You take that realm's capital, its hero, its treasury, the kinds it trains and its rare troops (chapter [](#realm-hints)).
+- **Who will you be?** Any of the eight lords. You take that realm's capital, its hero, its treasury, the kinds it trains and its rare troops (chapter [](#realm-hints)). Each lord's choice wears his realm's colour, and a map of the land beside the list shows every seat in its colour: yours is ringed and named, and a tap on a seat chooses its lord. The seats of lords you will not face are drawn hollow.
 - **Which lords will you face?** Any of the other seven, from all of them to none; **All** and **None** set the lot. A lord you do not face is *not in the war*: no hero, no army, nobody playing him. His capital stands as a neutral walled place with a garrison of five armies, and the places of his country are neutral like any others.
 - **How well should they play?** **Easy** or **Hard**, for all of them alike. The one offered first is the one set in Settings, Gameplay (Hard, until you change it).
 
