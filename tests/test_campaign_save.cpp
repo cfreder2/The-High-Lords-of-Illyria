@@ -435,7 +435,8 @@ TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
     for (size_t i = 0; i < c.cities().size(); ++i) {
         const Campaign::CityState& s = c.cities()[i];
         if (!s.port) continue;
-        if (from < 0 || s.cy > c.cities()[static_cast<size_t>(from)].cy) from = static_cast<int32_t>(i);
+        // (From the north-west-most port, the Isle of the Seer's, which can only be left by sea, to the south-most.)
+        if (from < 0 || s.cy - s.cx > c.cities()[static_cast<size_t>(from)].cy - c.cities()[static_cast<size_t>(from)].cx) from = static_cast<int32_t>(i);
         if (to < 0 || s.cy < c.cities()[static_cast<size_t>(to)].cy) to = static_cast<int32_t>(i);
     }
     CHECK(from >= 0 && to >= 0 && from != to);

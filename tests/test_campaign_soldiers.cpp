@@ -106,8 +106,9 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
         }
         if (!s.path.empty() && c.legTime(s) != Campaign::kClosed) {
             float speed = 0;
+            // (A man struck in the last few seconds may be flying from the blow: that is no march.)
             for (const Campaign::Soldier& m : men)
-                if (m.stack == s.id) speed = std::max(speed, m.speed);
+                if (m.stack == s.id && (m.hurtTick == 0 || c.tick() - m.hurtTick > 90)) speed = std::max(speed, m.speed);
             if (c.tick() > 60) CHECK(speed < 24.0f);  // a wolf rider's 15 on a road is the quickest, and a little more downhill and in his realm's own country
             ++marching;
         }

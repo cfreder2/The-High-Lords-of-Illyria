@@ -277,7 +277,7 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 ### 4.2.2 Cities & Castles
 
 Following Warlords: **80 cities**, and whoever holds two thirds of them (or all of them) wins.
-- **Three kinds of place** (`Continent::City::walled`, `Continent::placeCities`, docs/MAP.md): eight **capitals**, about twenty **walled towns** set first at the river crossings and the feet of the passes, and some fifty open **villages** (houses round a green and a tower house, no wall). All count alike toward victory. The country between the walls is open: walled places keep 170 m between their walls, and a village stands out of bowshot of every wall, so armies meet in the field and a siege is a decision, not the only kind of fight there is.
+- **Three kinds of place** (`Continent::City::walled`, `Continent::placeCities`, docs/MAP.md): eight **capitals**, about twenty **walled towns** set first at the river crossings and the feet of the passes, and some fifty open **villages** (houses round a green and a tower house, no wall). All count alike toward victory, and every realm has the same share: three walled towns and six villages drafted from its own country (docs/MAP.md). The country between the walls is open: walled places keep 170 m between their walls, and a village stands out of bowshot of every wall, so armies meet in the field and a siege is a decision, not the only kind of fight there is.
 
   | | Capital | Walled town | Village |
   |---|---|---|---|
