@@ -167,6 +167,7 @@ void Campaign::transfer(int32_t city, uint8_t side) {
         hex.owner = side;
         hex.claim = std::max(hex.claim, kClaimFull / 2);
     }
+    syncLand();
 }
 
 }  // namespace illyria::sim

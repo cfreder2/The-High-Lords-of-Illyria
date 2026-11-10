@@ -104,20 +104,11 @@ public:
             if (c_.attackOdds(view(c_.stacks_[k]), side_, cs.cx, cs.cy) < needed(c_.stacks_[k].armies)) continue;
             if (march(k, cs.cx, cs.cy)) return;
         }
-        // None can win: the nearest one stands at the gates, which stops the banner.
-        for (const auto& [when, k] : near) {
-            const C::Stack& s = c_.stacks_[k];
-            int32_t bx = -1, by = -1, best = INT32_MAX;
-            for (int32_t dy = -1; dy <= 1; ++dy)
-                for (int32_t dx = -1; dx <= 1; ++dx) {
-                    const int32_t x = cs.cx + dx, y = cs.cy + dy;
-                    if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= c_.nx_ || y >= c_.ny_) continue;
-                    if (!c_.passable(s, x, y) || !c_.defendersAt(side_, x, y).empty() || c_.cityAt(x, y) >= 0) continue;
-                    const int32_t d = std::max(std::abs(x - s.cx), std::abs(y - s.cy));
-                    if (d < best) best = d, bx = x, by = y;
-                }
-            if (bx >= 0 && march(k, bx, by)) return;
-        }
+        // None can win: the nearest goes in all the same. A banner counts only the men inside the wall (or on a
+        // village's green), so it is by standing in the town, for as long as they last, that they hold it up; at
+        // the gates they would hold up nothing.
+        for (const auto& [when, k] : near)
+            if (march(k, cs.cx, cs.cy)) return;
     }
 
 private:

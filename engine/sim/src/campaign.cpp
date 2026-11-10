@@ -227,7 +227,8 @@ void Campaign::initCities() {
             st.defense = 6;
             st.income = 50;
             st.options.push_back(trained(T::LightInfantry));
-            for (UnitType t : realm(factionOf(st.owner == kNeutral ? 0 : st.owner)).specialties) st.options.push_back(trained(t));
+            // (Its own realm's kinds, whether its lord is in the war or it stands neutral.)
+            for (UnitType t : realm(c.owner).specialties) st.options.push_back(trained(t));
         } else if (!c.walled) {
             // A village: a little gold, and a levy of light infantry. No walls, so Warlords' lowest defence.
             st.defense = 1;

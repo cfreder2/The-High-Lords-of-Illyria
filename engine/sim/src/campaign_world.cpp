@@ -247,6 +247,7 @@ void Campaign::ensureWorld() {
     cfg.seed = seed_ ^ 0x5A17E;
     cfg.region = region_;
     world_ = std::make_unique<World>(cfg);
+    syncLand();
     // Each gate is some town's: its holder does not hack at it, and a stronger wall holds longer.
     const Vec3 origin = region_->origin();
     gateCity_.assign(region_->gates().size(), -1);
@@ -640,6 +641,8 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
     unitOf(int64_t{tx} - s.px, int64_t{ty} - s.py, ux, uy);
     Fixed pace = Fixed::fromInt(100);
     for (const Army& a : s.armies) pace = min(pace, unitStats(a.type).moveSpeed);
+    // (A hero's Winged Sandals: the whole stack quicker, as its march is reckoned: paceOf.)
+    if (const int32_t quicker = paceOf(s).quicker; quicker > 0) pace = pace * (100 + quicker) / 100;
     std::vector<std::pair<int32_t, int32_t>> slots;
     layout(s, slots, s.path.size() > 1);  // (a column on the way, a block at the end of it)
     const Vec3 origin = region_->origin();

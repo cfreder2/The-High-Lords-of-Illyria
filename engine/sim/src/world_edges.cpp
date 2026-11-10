@@ -29,6 +29,21 @@ constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 constexpr int32_t kHeightPctPerGrade = 20;
 }  // namespace
 
+void World::setLandHolders(std::vector<uint8_t> holders, int32_t nx, Fixed cell, const Vec3& origin) {
+    landHolders_ = std::move(holders);
+    landNx_ = nx;
+    landCell_ = cell;
+    landOrigin_ = origin;
+}
+
+int32_t World::landHolderAt(Fixed x, Fixed y) const {
+    if (landHolders_.empty() || landNx_ <= 0) return config_.homeSide;
+    const int64_t cx = ((x - landOrigin_.x) / landCell_).floorToInt(), cy = ((y - landOrigin_.y) / landCell_).floorToInt();
+    if (cx < 0 || cy < 0 || cx >= landNx_) return -1;
+    const size_t k = static_cast<size_t>(cy) * static_cast<size_t>(landNx_) + static_cast<size_t>(cx);
+    return k < landHolders_.size() && landHolders_[k] != 255 ? landHolders_[k] : -1;
+}
+
 bool World::onOwnLand(const Unit& u) const { return sideLand(u.owner) && onOwnLand(u, groundAt(u.pos.x, u.pos.y)); }
 
 bool World::onOwnLand(const Unit& u, Ground g) const {
@@ -42,7 +57,7 @@ bool World::onOwnLand(const Unit& u, Ground g) const {
 Edges World::edgesOf(const Unit& u, Fixed dist, Fixed dz) const {
     Edges e;
     if (onOwnLand(u)) e.realm = kEdgeRealmPct;
-    if (config_.homeSide >= 0 && u.owner == static_cast<PlayerId>(config_.homeSide)) e.home = kEdgeHomePct;
+    if (const int32_t holder = landHolderAt(u.pos.x, u.pos.y); holder >= 0 && u.owner == static_cast<PlayerId>(holder)) e.home = kEdgeHomePct;
     int32_t ground = familiarGround(u.stats.gait, groundAt(u.pos.x, u.pos.y)) ? kEdgeGroundPct : 0;
     if (u.stats.terrain.openPct > 0 || u.stats.terrain.hillsPct > 0) {
         const Fixed slope = slopeAt(u.pos.x, u.pos.y);

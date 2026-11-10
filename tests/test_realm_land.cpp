@@ -175,3 +175,57 @@ TEST(no_two_lords_start_side_by_side_and_none_starts_poor) {
     CHECK(*std::min_element(places, places + 8) >= 5);
     CHECK(*std::max_element(gold, gold + 8) <= *std::min_element(gold, gold + 8) * 3);
 }
+
+TEST(a_man_on_his_own_sides_land_has_the_home_edge_wherever_the_land_is_held) {
+    // The campaign tells the world whose land each part of the field is (World::setLandHolders): the west half
+    // side 0's here, the east half side 1's, and a strip nobody's.
+    WorldConfig cfg;
+    World w(cfg);
+    std::vector<uint8_t> holders(4 * 4, 255);
+    for (int y = 0; y < 4; ++y) holders[static_cast<size_t>(y) * 4 + 0] = 0, holders[static_cast<size_t>(y) * 4 + 1] = 0, holders[static_cast<size_t>(y) * 4 + 3] = 1;
+    w.setLandHolders(holders, 4, m(50), {Fixed::zero(), Fixed::zero(), Fixed::zero()});
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    const auto home = [&](PlayerId side, int64_t x) {
+        const EntityId id = w.spawnUnit(side, {m(x), m(60), Fixed::zero()}, east, unitStats(UnitType::LightInfantry));
+        return w.edgesOf(*w.findUnit(id)).home;
+    };
+    CHECK(home(0, 30) == kEdgeHomePct);   // on his own
+    CHECK(home(1, 30) == 0);              // on the other's
+    CHECK(home(0, 120) == 0);             // on nobody's
+    CHECK(home(1, 170) == kEdgeHomePct);
+    CHECK(home(0, 170) == 0);
+    CHECK(w.landHolderAt(m(500), m(60)) == -1);  // off the land that was told
+}
+
+TEST(a_march_given_quicker_than_a_mans_own_pace_carries_him_with_it) {
+    // A hero's Winged Sandals: the campaign gives the stack's march a third quicker than its slowest man walks.
+    const auto walkedAt = [](int64_t pct) {
+        WorldConfig cfg;
+        World w(cfg);
+        const UnitStats stats = unitStats(UnitType::HeavyInfantry);
+        const EntityId id = w.spawnUnit(0, {m(100), m(100), Fixed::zero()}, {Fixed::one(), Fixed::zero(), Fixed::zero()}, stats);
+        Command go{0, id, Command::Type::Move, {m(400), m(100), Fixed::zero()}};
+        go.speed = stats.moveSpeed * pct / 100;
+        w.step(std::span(&go, 1));
+        for (int t = 0; t < 10 * kTicksPerSecond; ++t) w.step({});
+        return w.findUnit(id)->pos.x - m(100);
+    };
+    const Fixed own = walkedAt(100), sandals = walkedAt(133), absurd = walkedAt(400);
+    std::printf("  ten seconds: %.1f m at his own pace, %.1f m with the sandals, %.1f m at most\n", own.toDouble(), sandals.toDouble(), absurd.toDouble());
+    CHECK(abs(sandals * 100 - own * 133) < m(30));
+    CHECK(abs(absurd * 2 - own * 3) < m(1));  // half as fast again at most
+}
+
+TEST(a_capital_whose_lord_is_not_in_the_war_trains_its_own_realms_kinds) {
+    // The player is the Aurelian Throne; the Ironhold Dwarves (faction 2) are left out: Deepforge stands neutral, and
+    // what it would train is the dwarves' (grenadiers), not the player's.
+    Campaign c(continent(), 5, Campaign::Setup{0, static_cast<uint8_t>(0xFF & ~(1u << 2))});
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        const Continent::City& city = continent().cities()[i];
+        if (!city.capital || city.owner != 2) continue;
+        CHECK(c.cities()[i].owner == Campaign::kNeutral);
+        bool grenadiers = false, knights = false;
+        for (const Campaign::Option& o : c.cities()[i].options) grenadiers = grenadiers || o.type == UnitType::DwarfGrenadier, knights = knights || o.type == UnitType::HeavyCavalry;
+        CHECK(grenadiers && !knights);
+    }
+}

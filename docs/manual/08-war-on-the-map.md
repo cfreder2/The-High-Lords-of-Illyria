@@ -97,7 +97,7 @@ Like the fittings on a good sword, each worth a few percent, the edges add up, a
 | Edge | Worth | In the lords' reckoning | In the fight itself |
 |---|---|---|---|
 | **The realm's own country** | +8% | the fight would be on the realm's kind of land (a town's own cell is nobody's) | each man while he stands on his realm's kind of ground (not while he flies) |
-| **Home land** | +3% | the fight would be in a hex of the side's land (chapter [](#territory)) | not counted |
+| **Home land** | +3% | the fight would be in a hex of the side's land (chapter [](#territory)) | +3% to each man standing on land his side holds |
 | **Familiar ground** | +4% in the reckoning; to +6% in the fight | the army's kind likes the ground: archers and pegasi in forest, dwarven grenadiers and griffins in hills, the dead in marsh | the ground under his feet suits his gait or his kind (see [](#battle-edges)) |
 | **Veterans** | regular +3%, veteran +6%, elite +9% | by the army's rank (soldiers; a hero's levels are his strength) | by the man's rank |
 | **A hero leads** | strength 4-6 +2%, 7-8 +4%, 9 +6% | the best hero in the stack | the best living hero of his side within 30 m of him |
@@ -178,7 +178,7 @@ The bar under the town's name says *Your banner rising · 45%*, *held up* (amber
 ![A banner going up over a newly won town, with its progress bar.](images/shots/camp_banner.jpg)
 
 ::: tip "Hold the gates"
-A computer lord on Hard answers a banner going up over one of its towns at once, not at the next dawn: the nearest of its stacks that could be there before the banner is up, and that it reckons can beat the raisers, marches on them; failing that, the nearest marches up beside the town. Bring enough armies to raise the banner quickly, and something to guard the road. To hold up a banner yourself, remember that only men inside the wall count.
+A computer lord on Hard answers a banner going up over one of its towns at once, not at the next dawn: the nearest of its stacks that could be there before the banner is up, and that it reckons can beat the raisers, marches on them; failing that, the nearest goes in all the same, to hold the banner up for as long as its men last inside. Bring enough armies to raise the banner quickly, and something to guard the road. To hold up a banner yourself, remember that only men inside the wall count.
 :::
 
 ## Boats in war {#boats-war}
@@ -198,4 +198,4 @@ The land itself is held, hex by hex (the hexes are 89 m across). They are drawn 
 - **Outposts.** A tower stands at the river crossings, the fords and the bridges, one to a hex. An outpost's hex is claimed twice as fast, and once held (half a claim or more) it claims the six hexes round it as one army would. On the map each shows as ♜ with its name, in its holder's colour.
 ![Hexes washed in their holders' colours: here Kingshold's land, gone orange after the town fell while its lord was away.](images/shots/camp_land.jpg)
 
-- **Worth.** Land pays: one gold a day for every five hexes you hold. And the computer lords count it in their sums: **home land** (+3%) for whoever would fight on his own hexes, and **holding** (+4%) for a defender standing in an outpost's hex. Neither edge is felt in the fight itself (see [](#edges)); what land gives you there is only the gold, and a lord who thinks twice.
+- **Worth.** Land pays: one gold a day for every five hexes you hold. And it fights for you: every soldier standing on land his side holds strikes 3% harder (**home land**, one of the small edges, chapter [](#battle-edges)), and the computer lords count it in their sums. They count **holding** too (+4%, for a defender standing in an outpost's hex), which no soldier feels in the fight itself.

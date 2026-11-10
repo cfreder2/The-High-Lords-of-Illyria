@@ -66,6 +66,7 @@ constexpr int32_t kHeroLevels[] = {3, 7, 12, 18, 25, 33, 42, 52};
 // blessing to the chance his shield turns a blow; a hero level adds damage
 // and hit points. (A rank's damage is a small edge: world_edges.cpp.)
 constexpr int32_t kBlessingDamagePct = 10;
+constexpr Fixed kMarchQuickest = Fixed::fromRatio(3, 2);
 constexpr int32_t kHeroLevelDamagePct = 6;
 constexpr Fixed kRankBlockBonus = Fixed::fromRatio(3, 100);
 
@@ -1354,8 +1355,9 @@ void World::updateUnit(Unit& u) {
             return;
         }
         if (u.path.empty()) u.path.push_back(u.moveTarget);
-        // A squad marches at its slowest member's pace, keeping its formation.
-        const Fixed pace = u.marchSpeed > Fixed::zero() && u.marchSpeed < u.stats.moveSpeed ? u.marchSpeed / u.stats.moveSpeed : Fixed::one();
+        // A squad marches at its slowest member's pace, keeping its formation; and a march that is given quicker
+        // than a man's own pace (a hero's Winged Sandals carry his whole stack) takes him with it, half as fast again at most.
+        const Fixed pace = u.marchSpeed > Fixed::zero() ? min(u.marchSpeed / u.stats.moveSpeed, kMarchQuickest) : Fixed::one();
         if (followPath(u, pace)) {
             u.hasMoveTarget = false;
             u.path.clear();

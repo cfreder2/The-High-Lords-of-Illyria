@@ -71,14 +71,10 @@ Strength is the figure on a card and the figure the computer lords reckon with (
 | Ring of Dominion | command | +2 |
 | Horn of the North | command | +2 |
 | Rod of the High Lords | command | +3 |
-| Winged Sandals | the road | the hero's stack is reckoned a third quicker on the march (see below) |
+| Winged Sandals | the road | the hero's whole stack marches a third quicker |
 | Purse of Plenty | the purse | 10 gold a day |
 
 A hero's card names what he carries and the command points he gives his stack (hold the pointer over it).
-
-::: note "The Winged Sandals in this edition"
-The Sandals shorten the march as it is planned: the times you are shown, the route chosen, the computer lords' sums. The men themselves, who since the one world walk every metre of the way on their own feet, do not yet walk any faster for them.
-:::
 
 ::: tip
 A command artifact is worth more than a battle one: the Crown of Kings blesses every man in the stack, the Sunblade one hero twice. A hero with the Rod of the High Lords and seven armies of light infantry beside him leads eighty-four men with three blessings each: 30% more damage, blows a fifth quicker and nearly a fifth less hurt.

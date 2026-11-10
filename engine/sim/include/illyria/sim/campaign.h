@@ -525,6 +525,8 @@ private:
     // A Command: whose unit it is (his stack, of the side that gives it), else it is refused.
     void commandMen(const Order& o);
     bool underOrders(const Stack& s) const;  // a man of it has somewhere to go or someone to fight on orders
+    // Tells the world whose land each cell is (World::setLandHolders): when the world is made, and whenever the land is reckoned.
+    void syncLand();
     void initTerrain();
     void initCities();
     void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies

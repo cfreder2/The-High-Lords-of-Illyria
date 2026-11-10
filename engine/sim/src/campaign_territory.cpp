@@ -153,6 +153,18 @@ void Campaign::territoryStep() {
             h.claim -= gain;
         }
     }
+    syncLand();
+}
+
+void Campaign::syncLand() {
+    if (!world_ || !region_) return;
+    // A side for each campaign cell: the holder of the hex it lies in (the world's places are the continent's, less the
+    // region's origin).
+    std::vector<uint8_t> holders(static_cast<size_t>(nx_) * ny_, 255);
+    for (int32_t y = 0; y < ny_; ++y)
+        for (int32_t x = 0; x < nx_; ++x) holders[static_cast<size_t>(y) * nx_ + x] = landOwner(x, y);
+    const Vec3 origin = region_->origin();
+    world_->setLandHolders(std::move(holders), nx_, Fixed::fromInt(kCell), Vec3{-origin.x, -origin.y, Fixed::zero()});
 }
 
 void Campaign::hashTerritory(StateHasher& h) const {
