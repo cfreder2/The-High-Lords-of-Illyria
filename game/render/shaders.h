@@ -229,7 +229,7 @@ float fbm3(vec2 p) { return valueNoise2(p) * 0.55 + valueNoise2(p * 2.1 + 3.7) *
 // The land is shaded as a painter shades a map of it: every slope turned further to or from the low sun than it
 // lies, so a knoll a few metres high throws a lit face and a dark one and the lie of the land reads at a glance,
 // from any height (the true normal still places the shadows and wets the banks).
-vec3 reliefNormal(vec3 n) { return normalize(vec3(n.xy * 2.6, n.z)); }
+vec3 reliefNormal(vec3 n) { return normalize(vec3(n.xy * 2.2, n.z)); }
 // Open country is not lawn: over the meadows lie broad reaches of moor (heather, bracken and dead grass, brown and
 // dun), a few hundred metres across with ragged edges, the same on every kind of land shader.
 vec3 moorland(vec3 meadow, vec2 p) {
@@ -351,7 +351,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // Snow lies on the heights, but not on cliffs.
     if (world.z > 90.0) {
         float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
-        albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
+        albedo = mix(albedo, vec3(0.78, 0.81, 0.86), snow);  // (old snow under a heavy sky: not so white that it glares)
     }
     if (swamp > 0.0) albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
     return albedo;
@@ -585,7 +585,7 @@ void main() {
         }
     }
     // Snow on the high peaks.
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    albedo = mix(albedo, vec3(0.78, 0.81, 0.86), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     // From high up, the coarse land's look, so the battlefield and the land
     // around it read as one (the coarse land beyond knows nothing finer).
     float farBlend = feature(kFeatFarDetail) ? smoothstep(450.0, 1100.0, uCamDist) : 0.0;
@@ -640,7 +640,7 @@ void main() {
     }
 
     // Low sun so the hills read clearly from above (reliefNormal); groves shade the ground.
-    float sun = max(dot(reliefNormal(n), kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
+    float sun = min(max(dot(reliefNormal(n), kSun), 0.0), 0.66) * shadowAt(vWorld, n) * cloudShade(p);
     float grove = canopy * (1.0 - farBlend);  // from high up the coarse land's canopy carries the woods
     float ambient = 0.30 * (1.0 - grove * 0.45);
     if (feature(kFeatGroundDetail)) {
@@ -2518,7 +2518,9 @@ void main() {
         }
     }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
-    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(wetHere ? n : reliefNormal(n), kSun), 0.0) * cloudShade(vWorld.xy);
+    // (A face turned full to the sun is lit no more than the level ground was before the relief was drawn up: pale
+    // rock would burn out.)
+    float light = 0.18 + 0.14 * n.z + 0.95 * min(max(dot(wetHere ? n : reliefNormal(n), kSun), 0.0), 0.66) * cloudShade(vWorld.xy);
     vec3 c = inland.r >= 0.0 ? inland : albedo * light;
     if (glint > 0.0) {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));
