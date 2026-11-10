@@ -1,6 +1,6 @@
 # About This Book {#about}
 
-This is the manual of *The High Lords of Illyria*, a war for a continent fought on two layers at once. Above, a campaign after the old *Warlords*: eight lords, eighty walled cities, stacks of armies marching on roads and fording rivers, heroes searching ruins, gold that never stretches far enough. Below, wherever two armies meet, a battle after *Myth*: every soldier a figure on the real ground, every arrow a falling thing that can miss and hit a friend, every blow landing on a shield, a flank or a back.
+This is the manual of *The High Lords of Illyria*, a war for a continent fought on two layers at once. Above, a campaign after the old *Warlords*: eight lords, eighty castles, walled towns and villages, stacks of armies marching on roads and fording rivers, heroes searching ruins, gold that never stretches far enough. Below, wherever two armies meet, a battle after *Myth*: every soldier a figure on the real ground, every arrow a falling thing that can miss and hit a friend, every blow landing on a shield, a flank or a back.
 
 You do not need to read the whole book to play. Chapter Two gets you onto the field in five minutes and into the campaign in ten. Come back to the rest when you want to know why your knights lost their charge in the wood, why the archers on the walls outshoot yours, or what the Hermit of the Peaks will tell a hero who climbs to him.
 

@@ -8,7 +8,7 @@
 
 A battle is fought on a window of the real land, about a kilometre square, cut out where the stacks met: its hills, its woods and fields, its streams and fords, the town's walls if it was fought for a town. Every soldier of every army in the two stacks is on it, as a figure of his own. Your soldiers are in blue, the enemy's in red.
 
-The battle runs in real time, thirty steps of the simulation every second, and it is exactly the same on every device and every graphics setting: the look changes, the battle never does. You may **pause** at any moment (the Pause button or [[P]]; in the desktop app [[Esc]] pauses and opens the menu) and still give orders. The speed button speeds it up: a tap for 2× and 4×, and back to 1×. Held, it slows the battle to ½×, and held again to ¼×, to watch a charge come in or a fireball fall; a tap brings it back to 1×. On a desktop [[-]] and [[=]] step slower and faster.
+The battle runs in real time, thirty steps of the simulation every second, and it is exactly the same on every device and every graphics setting: the look changes, the battle never does. You may **pause** at any moment (the Pause button or [[P]]; in the desktop app [[Esc]] with no order mode in hand pauses and opens the menu) and still give orders. The speed button speeds it up: a tap for 2× and 4×, and back to 1×. Held, it slows the battle to ½×, and held again to ¼×, to watch a charge come in or a fireball fall; a tap brings it back to 1×. On a desktop [[-]] and [[=]] step slower and faster.
 
 ## The camera {#camera}
 
@@ -37,10 +37,10 @@ Everything starts with choosing who is to obey.
 - **A box:** press and hold on your own men (or anywhere with nothing selected), and drag: everyone of yours inside the box is selected. On a desktop, shift-drag draws a box at once.
 - **Adding and removing:** on a desktop, shift-click adds a soldier to the selection or takes him out.
 - **The heroes:** [[H]] on a desktop selects your heroes; on a phone their gold cards lead the row.
-- **Letting go:** on a desktop, click the empty ground. [[Space]] halts the selection where it stands.
+- **Letting go:** on a desktop, click the empty ground, or press [[Esc]] (in the browser; it first cancels an order mode in hand). [[Space]] halts the selection where it stands.
 - **Ordering without choosing:** on a desktop a right-click (on a Mac trackpad, a tap with two fingers) gives those selected the order a click would, to march there or go after the enemy clicked, and never changes who is selected. On one of your own men, they march to where he stands.
 
-Selected soldiers wear a **blue ring**. The cards of heroes and groups wholly selected light up, dashed when only part of a group is. Above the action row, a line names the selection and its edges: *12 Heavy Infantry · edges: home land +3% · veterans +6%*.
+Selected soldiers wear a **blue ring**. The cards of heroes and groups wholly selected light up, dashed when only part of a group is. Above the action row, a line names the selection and the small edges of the first man in it (chapter [](#battle-edges)): *12 Heavy Infantry · edges: home land +3% · veterans +6%*.
 
 ![A squad selected: blue rings under its men, the action row and the selection line along the bottom.](images/shots/battle_selected.jpg)
 
@@ -63,7 +63,7 @@ You may keep up to ten **groups** of your own choosing, any soldiers you like.
 
 ## The health bars {#health-bars}
 
-Over a soldier who is hurt, ranked, shaken or selected, close enough to read, floats his **health bar**. It carries a **gold shield** for each of his veteran grades; an **amber** frame means he is wavering, a **white flag** that he has broken (chapter [](#morale)).
+Over a soldier who is hurt, ranked, shaken or selected, close enough to read, floats his **health bar**. It carries a **gold shield** for each of his ranks (regular, veteran, elite: chapter [](#rank-table); a hero shows one at levels 2 to 4, two at 5 to 7, three at 8 and 9); an **amber** frame means he is wavering, a **white flag** that he has broken (chapter [](#morale)).
 
 ## Speed, pause and the end {#battle-end}
 

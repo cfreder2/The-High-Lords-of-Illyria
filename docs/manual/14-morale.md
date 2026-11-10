@@ -20,35 +20,40 @@ Every soldier has **morale**, from 1000 (fresh and willing) down to nothing. Sho
 | ...within 60 m | 425 |
 | A friend killed within 12 m | 70 |
 | A blow in the flank / in the rear | 25 / 50 (missiles half) |
-| Being charged | 150, more in the flank or rear |
+| Being charged by riders | 150 in the front, 225 in the flank, 300 in the rear |
 | Outnumbered: every third of a second, for each foe within 15 m beyond the friends there (counting himself) | 10 |
+| Struck by a head the hyena-folk have thrown | all of it: he breaks |
 
-Each kind of soldier takes shocks differently: the **morale** figure in the compendium scales them, against a man's 100% (light infantry 110%, heavy infantry 85%, berserkers 35%, devils 20%, elephants 120%). **Undead and heroes never break.** Each step of veterancy takes 3% off every shock.
+A blow or an arrow in the front shakes nobody; a blast shakes only by the friends it kills.
+
+Each kind of soldier takes shocks differently: the **morale** figure in the compendium scales them, against a man's 100% (light infantry and archers 110%, pikemen 90%, heavy infantry 85%, heavy cavalry 80%, giants 60%, berserkers 35%, dragons 25%, devils 20%, elephants and journeymen 120%). **The undead, the hyena-folk and heroes never break**: no shock touches them. Each rank, and each blessing, takes 3% off every shock (at most five such steps, 15%), and steady men near him take off more (below).
+
+A green light infantryman who sees a friend fall loses 70 × 110% = 77; an elite heavy infantryman 70 × 85% × 91% = 54.
 
 ## Wavering and breaking {#breaking}
 
 - **Below 450** a soldier **wavers**: his blows and reloads come a quarter slower and his aim is half again as wide. His health bar has an amber frame, and you may hear it in his voice.
-- **Below 200** he **breaks**: he drops the order he had and runs from the enemies within 40 m. His bar shows a white flag. Order him and he obeys: pull him out of danger, or send him back in; when the order is done he runs again, until he rallies. The computer does not try to order a squad whose men have all broken.
+- **Below 200** he **breaks**: he drops the order he had and runs from the enemies within 40 m (with none so near, he stops and gets his breath). His bar shows a white flag. Order him and he obeys: pull him out of danger, or send him back in; when the order is done he runs again, until he rallies. The computer does not try to order a squad whose men have all broken.
 - A broken man **rallies**, standing and ready for orders again, once his morale is back to **550** and no enemy is within **25 m** of him.
 
 A hero's fall in front of green light infantry breaks them all at once. Elite heavy infantry are badly shaken by it, but hold, and rally in about eight seconds once the danger has passed.
 
 ## Recovering {#recovering}
 
-After two seconds without a shock, and not outnumbered, a soldier's morale comes back at **45 a second**, **+45** more near a living hero of his side (within 30 m), and **+6** for each friend near him (up to six).
+After two seconds without a shock, and not outnumbered (no more foes than friends within 15 m, himself among the friends), a soldier's morale comes back at **45 a second**, **+45** more near a living hero of his side (within 30 m), and **+6** for each friend within 15 m (up to six).
 
-**Veterans come back first.** Each step of veterancy adds a quarter to his recovery, lowers his rally bar by 50 and the foe-free distance he needs by 3 m:
+**Veterans come back first.** Each rank (and each blessing; five steps at most) adds a quarter to his recovery, lowers his rally bar by 50 and the foe-free distance he needs by 3 m:
 
 | Rank | Rallies at | Needs no foe within | Alone and safe, rallies in about |
 |---|---|---|---|
 | Recruit | 550 | 25 m | 14 s |
-| Regular | 500 | 22 m | |
+| Regular | 500 | 22 m | 11 s |
 | Veteran | 450 | 19 m | 8.7 s |
 | Elite | 400 | 16 m | 7 s |
 
 ## Steadied by veterans {#steadied}
 
-A soldier counts the veterans and heroes near him who are not shaken themselves. Each veteran of a higher grade than his within **12 m** takes **4%** off his shocks (an elite **6%**); a hero of his side within 30 m **15%**; together at most **25%**. Half as much again goes into his recovery. Recruits under the same hail of shocks hold about half again as long beside one elite. Mixing a few veterans into a green line is worth more than the veterans alone.
+A soldier counts the veterans and heroes near him who are not shaken themselves. Each veteran of a higher grade than his within **12 m** takes **4%** off his shocks (an elite **6%**); a hero of his side within 30 m **15%**; together at most **25%**. Regulars steady nobody, and nor does a veteran who is wavering or broken himself. The same steadiness helps him recover: 1.5 morale a second for each percent (a hero beside him: about +21 a second, besides the +45). Recruits under the same hail of shocks hold about half again as long beside one elite. Mixing a few veterans into a green line is worth more than the veterans alone.
 
 A hero's fall cancels the steadiness at once, which is why his death still breaks green troops.
 
