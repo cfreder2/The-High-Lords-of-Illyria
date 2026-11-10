@@ -43,11 +43,9 @@ Since the rank is the survivors' average, **losses cost rank as well as men**: a
 
 Armies move about the map in **stacks**. A stack is shown as its soldiers, in a column of squads, in its lord's colour (they are points from high up, and the men themselves close in). A stack is a **group** of up to **eight armies** that march together; any number of stacks may stand in one place, and a town holds whatever fits inside its walls (the old limits of eight to a cell and 32 to a city are gone). A fight is between the men there are, wherever they stand.
 
-Tap a soldier of yours to select him (again, for all of his kind in view; or box them: shift and drag, or hold and drag); the squads that march are those his army's, whole. A stack that arrives where another of yours is standing joins it, up to a group of eight armies. New armies trained in a city join a stack of yours standing idle there.
+Tap a soldier of yours to select him (again, for all of his kind in view; or box them: shift and drag, or hold and drag); the squads that march are those his army's, whole. A stack that arrives where another of yours is standing idle joins it, up to a group of eight armies. New armies trained in a city join a stack of yours standing idle there, if it has fewer than eight, or make a new one.
 
-::: note "Not yet built"
-In this edition a stack cannot yet be split by hand. A stack boarding a boat leaves its weakest army on the quay when it has eight (chapter [](#boats)); a hero going to search a ruin takes the stack with him.
-:::
+To **split** a stack, select only the armies that are to go and give them their order: they march off as a stack of their own, and the rest stay where they were. (A company aboard a boat sails as one.) A stack boarding a boat leaves its weakest army on the quay when it has eight (chapter [](#boats)); a hero going to search a ruin takes the stack with him.
 
 ## Heroes {#heroes-armies}
 
@@ -70,6 +68,6 @@ The cards are the battle's (chapter [](#orders)): your heroes in gold, and the g
 - its **strength** badge, and under it the **rank** (◆◇◇) or the hero's **level** (Lv 3);
 - **✦** for each blessing, **✧** and the names of any artifacts a hero carries;
 - the tally of the army's **kills**;
-- a **violet border** for rare troops, which no city can train or replace.
+- a **violet border** for rare troops, which no city can train or replace (chapter [](#rare-troops)).
 
-Rest the pointer on a hero's card to see what he carries. Select whole armies (box their soldiers) and tap **Disband** (under the bar at the top) twice: they go home and cost no more upkeep. The game warns you when an army is rare or seasoned, since nothing will replace it.
+Rest the pointer on a hero's card to see what he carries. Select whole armies (box their soldiers) and tap **Disband** (under the bar at the top) twice: they go home and cost no more upkeep (once, if you have turned *Confirm before disbanding* off in the settings). A hero cannot be disbanded. The game warns you when an army is rare or a veteran, since nothing will replace it.

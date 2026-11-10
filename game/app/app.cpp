@@ -2124,11 +2124,13 @@ ILLYRIA_API const char* illyria_campaign_state() {
         const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
         int docked = 0;
         for (const C::Boat& b : c.boats()) docked += b.port == cv.city && !b.stack;
+        // A capital drills two days in one (Campaign::newDay): the panel counts its days as they pass there.
+        const bool capitalPace = c.continent().cities()[static_cast<size_t>(cv.city)].capital;
         std::snprintf(buf, sizeof buf,
                       ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,"
                       "\"port\":%s,\"boatDays\":%d,\"boats\":%d,\"boatCost\":%d,\"boatTime\":%d,\"boatUpkeep\":%d,"
                       "\"vectorTo\":\"%s\",\"choosing\":%s,\"options\":[",
-                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress,
+                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, capitalPace ? cs.progress / 2 : cs.progress,
                       cs.port ? "true" : "false", cs.boatDays, docked, C::kBoatCost, C::kBoatDays, C::kBoatUpkeep,
                       cs.vectorTo >= 0 ? c.continent().cities()[static_cast<size_t>(cs.vectorTo)].name.c_str() : "",
                       cv.vectorFrom == cv.city ? "true" : "false");
@@ -2136,7 +2138,7 @@ ILLYRIA_API const char* illyria_campaign_state() {
         for (size_t k = 0; k < cs.options.size(); ++k) {
             const C::Option& op = cs.options[k];
             std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"days\":%d,\"cost\":%d,\"upkeep\":%d,\"strength\":%d,\"levy\":%d}", k ? "," : "",
-                          illyria::sim::unitTypeName(op.type), op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type), op.left);
+                          illyria::sim::unitTypeName(op.type), capitalPace ? (op.days + 1) / 2 : op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type), op.left);
             s += buf;
         }
         // The rare troops no city trains, and where each can be had.

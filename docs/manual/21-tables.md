@@ -2,7 +2,7 @@
 
 ## Every army in the campaign {#campaign-table}
 
-Strength, soldiers in a fresh army, speed on open ground in metres a second (fliers: flying on their own in the long run, and walking), the training (days and gold) or where a rare army comes from, and the upkeep a day (allies serve for nothing).
+Strength, soldiers in a fresh army, speed on open ground in metres a second (fliers: flying on their own in the long run, and walking), the training (a town's days, and gold) or where a rare army comes from, and the upkeep a day (allies serve for nothing).
 
 | Army | Str | Men | Speed | Training or source | Upkeep |
 |---|---|---|---|---|---|
@@ -12,7 +12,7 @@ Strength, soldiers in a fresh army, speed on open ground in metres a second (fli
 | Pikemen | 4 | 12 | 2.0 | 4 d, 20 g | 5 |
 | Light Cavalry | 4 | 8 | 7.0 | 5 d, 28 g | 7 |
 | Heavy Cavalry | 6 | 8 | 5.5 | 6 d, 36 g | 9 |
-| Dwarven Grenadiers | 4 | 6 | 1.8 | 4 d, 24 g | 4 |
+| Dwarven Grenadiers | 4 | 6 | 1.8 | 4 d, 24 g | 6 |
 | Wolf Riders | 5 | 8 | 7.5 | 5 d, 28 g | 7 |
 | Warriors | 5 | 12 | 2.2 | 4 d, 24 g | 6 |
 | Catapults | 3 | 2 | 0.8 | 6 d, 40 g (three capitals) | 10 |
@@ -33,7 +33,66 @@ Strength, soldiers in a fresh army, speed on open ground in metres a second (fli
 | Berserkers | 5 | 10 | 3.6 | realm, levy, hire | 3 |
 | Hero | 3 + level | 1 | 2.8 | the start, hire | 0 |
 
-A levy takes 3 days and 5 gold a point of strength to muster, once.
+A levy takes 3 days (2 in a capital) and 5 gold a point of strength to muster, once.
+
+## Training {#training-table}
+
+What the cities train (chapter [](#training)). The price is paid at the dawn the drill begins; a capital drills two days in one. Upkeep is a quarter of the price a day, rounded up.
+
+| Army | Men | Days in a town | Days in a capital | Gold | Upkeep a day | Trained in |
+|---|---|---|---|---|---|---|
+| Light Infantry | 12 | 2 | 1 | 12 | 3 | every capital, town and village |
+| Heavy Infantry | 12 | 4 | 2 | 20 | 5 | hill and plain towns; Kingshold, Highcrag, Deepforge, Dreadspire |
+| Archers | 12 | 4 | 2 | 20 | 5 | woodland towns; Sylvaris, Moonhaven |
+| Pikemen | 12 | 4 | 2 | 20 | 5 | hill and plain towns; Highcrag, Moonhaven |
+| Dwarven Grenadiers | 6 | 4 | 2 | 24 | 6 | hill towns; Deepforge |
+| Warriors | 12 | 4 | 2 | 24 | 6 | woodland towns; Grathmaw |
+| Light Cavalry | 8 | 5 | 3 | 28 | 7 | plain towns; Sylvaris, Sunreach |
+| Wolf Riders | 8 | 5 | 3 | 28 | 7 | woodland towns; Grathmaw, Dreadspire |
+| Heavy Cavalry | 8 | 6 | 3 | 36 | 9 | plain towns; Kingshold, Sunreach |
+| Catapults | 2 | 6 | 3 | 40 | 10 | Kingshold, Deepforge, Dreadspire |
+
+The levies of rare troops (chapter [](#rare-troops)): 3 days each in a town or village, 2 in a capital.
+
+| Levy | Men | Gold each | Upkeep a day | Mustered at |
+|---|---|---|---|---|
+| Journeymen | 4 | 10 | 3 | Moonhaven (2) |
+| Berserkers | 10 | 25 | 3 | Grathmaw (2); woodland places (2) |
+| Giant Spiders | 6 | 25 | 3 | Dreadspire (2); woodland places (2) |
+| Giants | 3 | 30 | 4 | Highcrag (1); hill places (2) |
+| Minotaurs | 4 | 30 | 4 | hill places (2) |
+| Griffins | 4 | 30 | 8 | Deepforge (1); hill places (2) |
+| Pegasi | 4 | 30 | 8 | Kingshold (1); places of the plain (2) |
+| Unicorns | 4 | 30 | 7 | Sylvaris (1); woodland places and places of the plain (2) |
+| Elephants | 2 | 35 | 6 | Sunreach (1); places of the plain (1) |
+
+## Places and gold {#places-table}
+
+| | Capital | Walled town | Village |
+|---|---|---|---|
+| How many | 8 | about twenty | about fifty |
+| Walls (the panel's number) | 6 | 3 to 5 | 1 (none to see) |
+| Gold a day | 50 | 21 to 30 (15, 2 a point of walls, and up to 5) | 8 to 12 |
+| Trains | light infantry and the realm's kinds, two days' drill a day | light infantry and one or two kinds of the land | light infantry |
+| Neutral garrison | five armies, in the walled town's order (only where its realm is not in the war) | as many armies as its walls: archers, light infantry, archers, heavy infantry, pikemen, in that order | one levy: light infantry or pikemen |
+
+| Gold | |
+|---|---|
+| The land | 1 a day for every 5 hexes held |
+| The Purse of Plenty | 10 a day to the lord whose hero carries it |
+| Taking a lord's city | he loses his gold divided by his cities; half of that is yours |
+| A boat | 20 gold, 4 days; 2 a day; carries 7 armies at 6 m/s (720 m a day) |
+| Sending new armies to another city | 2 days on the road; at most 4 cities to one |
+| A campaign day | 2 minutes at 1×; 1 minute at 2×, 30 seconds at 4×, 15 seconds at 8× |
+| The treasury below nothing at dawn | armies desert, the newest first, recruits and regulars before veterans and rare troops |
+
+| Starting gold | |
+|---|---|
+| The Ironhold Dwarves | 450 |
+| Lord Malvoren | 350 |
+| The Aurelian Throne, the Sunreach Riders, the Moonward Order | 300 |
+| The Orcs of Grath, the Sylvaran Elves | 250 |
+| The Highcrag Giants | 200 |
 
 ## Every soldier on the field {#roster-table}
 
@@ -57,7 +116,7 @@ Each gait's pace on the campaign map's ground, as a share of the army's speed on
 | Undead | 2 | 1 | 0.70 | 1.00 | 100% | undead |
 | Wheeled | 2 | 1 | 0.40 | 0.25 | 150% | catapults |
 
-A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
+A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s. A realm's armies march 15% quicker on foot over its own kind of country (chapter [](#own-country)); the Winged Sandals make a stack a third quicker.
 
 ## Ranks and levels {#ranks-table}
 
@@ -86,17 +145,17 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s.
 | City walls 2-6 / 7-8 / 9 (defenders) | +1 / +2 / +3 |
 | Each attacking catapult | −1 to the walls' bonus |
 | A catapult attacking a city | +2 to itself |
-| On a boat's deck | −1 |
 
 | Edge | |
 |---|---|
 | Home land | +3% |
-| Familiar ground | up to +6% |
+| The realm's own kind of country | +8% |
+| Familiar ground | +4% |
 | Veterans | +3% a rank |
 | A hero leads | +2%, +4% or +6% |
 | High ground | +4% |
 | Holding a temple, ruin or outpost | +4% |
-| All together | at most +15% |
+| All together | at most +20% |
 
 ## Morale {#morale-table}
 
