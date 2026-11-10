@@ -129,7 +129,8 @@ float valueNoise2(vec2 p) {
 // far river ribbons all use it, so a river runs into a lake (or a lake into a river) without a change of colour.
 vec3 inlandWater(float depth, vec2 p) {
     vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7));
-    vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
+    // (Peat-dark and green, as the rivers of a moorland are: no swimming-pool blue.)
+    vec3 water = mix(vec3(0.15, 0.28, 0.23), vec3(0.04, 0.11, 0.14), smoothstep(0.5, 3.0, depth));
     return mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
 }
 // The energy of the waves on a shore, 0..1, from the surface level of the water (the sea is at 0 and rivers reach it at their
@@ -225,6 +226,18 @@ float hexEdge(vec2 p, float s) {
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
 float fbm3(vec2 p) { return valueNoise2(p) * 0.55 + valueNoise2(p * 2.1 + 3.7) * 0.3 + valueNoise2(p * 4.3 + 9.1) * 0.15; }
+// The land is shaded as a painter shades a map of it: every slope turned further to or from the low sun than it
+// lies, so a knoll a few metres high throws a lit face and a dark one and the lie of the land reads at a glance,
+// from any height (the true normal still places the shadows and wets the banks).
+vec3 reliefNormal(vec3 n) { return normalize(vec3(n.xy * 2.6, n.z)); }
+// Open country is not lawn: over the meadows lie broad reaches of moor (heather, bracken and dead grass, brown and
+// dun), a few hundred metres across with ragged edges, the same on every kind of land shader.
+vec3 moorland(vec3 meadow, vec2 p) {
+    float reach = smoothstep(0.50, 0.68, valueNoise2(p * 0.0045 + 17.0) * 0.6 + valueNoise2(p * 0.017 + 3.0) * 0.28 + valueNoise2(p * 0.07 + 9.0) * 0.12);
+    vec3 moor = mix(vec3(0.40, 0.34, 0.20), vec3(0.31, 0.29, 0.21), valueNoise2(p * 0.11 + 5.0));
+    moor = mix(moor, vec3(0.36, 0.25, 0.27), smoothstep(0.6, 0.85, valueNoise2(p * 0.05 + 31.0)) * 0.45);  // heather in flower
+    return mix(meadow, moor, reach * 0.62);
+}
 // Territory (sim campaign_territory.cpp): one texel per campaign hex, the
 // holder's colour with alpha for how firmly; drawn on the campaign map only.
 uniform sampler2D uTerritory;
@@ -301,7 +314,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     float slope = 1.0 - n.z;
     // Meadows: lush and dry patches, as on the battlefield.
     float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
-    vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * valueNoise2(p * 0.4));
+    vec3 meadow = moorland(mix(vec3(0.47, 0.45, 0.24), vec3(0.22, 0.35, 0.15), lush), p) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
     albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
     // Each kind's look is worked out only where the kind is (the noise is most of this function's cost, and
@@ -445,8 +458,17 @@ void main() {
     // Meadows are not one green: lush and dry patches at a few scales (always
     // on; it is what keeps mid zoom from looking like felt).
     float lush = valueNoise(p * 0.045 + 3.1) * 0.65 + valueNoise(p * 0.13 + 8.7) * 0.35;
-    vec3 dry = vec3(0.50, 0.50, 0.25), wet = vec3(0.24, 0.40, 0.15);
-    albedo = mix(albedo, mix(albedo, mix(dry, wet, lush), 0.55), kind.x);
+    vec3 dry = vec3(0.47, 0.45, 0.24), wet = vec3(0.21, 0.34, 0.15);
+    albedo = mix(albedo, mix(albedo, moorland(mix(dry, wet, lush), p), 0.62), kind.x);
+    // The ground wears through where it is steep: earth on the banks of a knoll, stone where it stands like a wall.
+    {
+        float ragged = (fine - 0.5) * 0.035 + (broad - 0.5) * 0.02;
+        float bank = smoothstep(0.045, 0.115, slope + ragged), scar = smoothstep(0.15, 0.27, slope + ragged);
+        vec3 earth = mix(vec3(0.38, 0.30, 0.20), vec3(0.47, 0.40, 0.27), valueNoise(p * 0.9 + 2.0));
+        vec3 stone = mix(vec3(0.36, 0.35, 0.33), vec3(0.50, 0.48, 0.44), valueNoise(p * 0.6 + 11.0)) * (0.9 + 0.2 * valueNoise(p * 3.1));
+        albedo = mix(albedo, earth, bank * 0.7 * (kind.x + kind.y * 0.6));
+        albedo = mix(albedo, stone, scar * 0.85 * (kind.x + kind.y));
+    }
 
     if (feature(kFeatGroundDetail)) {
         float near = 1.0 - smoothstep(60.0, 220.0, dist);
@@ -617,10 +639,18 @@ void main() {
         }
     }
 
-    // Low sun so the hills read clearly from above; groves shade the ground.
-    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
+    // Low sun so the hills read clearly from above (reliefNormal); groves shade the ground.
+    float sun = max(dot(reliefNormal(n), kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
     float grove = canopy * (1.0 - farBlend);  // from high up the coarse land's canopy carries the woods
     float ambient = 0.30 * (1.0 - grove * 0.45);
+    if (feature(kFeatGroundDetail)) {
+        // Hollows lie in their own shade and crests catch the sky: the ground a few metres round is higher, or lower.
+        const float r = 9.0;
+        float round = (groundZ(p + vec2(r, 0.0)) + groundZ(p - vec2(r, 0.0)) + groundZ(p + vec2(0.0, r)) + groundZ(p - vec2(0.0, r))) * 0.25;
+        float hollow = clamp((round - groundZ(p)) / 1.6, -1.0, 1.0);
+        ambient *= 1.0 - 0.42 * max(hollow, 0.0) + 0.22 * max(-hollow, 0.0);
+        sun *= 1.0 - 0.18 * max(hollow, 0.0);
+    }
     if (!feature(kFeatShadows)) sun *= 1.0 - grove * 0.55;  // no shadow map: fake the groves' shade
     vec3 color = albedo * (ambient + 0.95 * sun);
     if (puddle > 0.0) {  // standing water: the sky in it, and the sun's glint
@@ -1942,6 +1972,13 @@ void main() {
         albedo *= 0.9 + 0.14 * valueNoise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));
         float lichen = smoothstep(0.62, 0.8, valueNoise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
         albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
+        if (top) {
+            // Paving that has been walked on for three hundred years: trodden earth in drifts over the flags, darker
+            // where the damp sits, each flag a little its own colour.
+            float drift = smoothstep(0.45, 0.75, valueNoise2(uv * 0.16 + 3.0) * 0.6 + valueNoise2(uv * 0.7 + 9.0) * 0.4);
+            albedo = mix(albedo, vec3(0.37, 0.31, 0.23) * (0.85 + 0.3 * valueNoise2(uv * 2.3)), drift * 0.5);
+            albedo *= 0.86 + 0.2 * valueNoise2(uv * 0.09 + 21.0);
+        }
     }
     oColor = sceneryColor(albedo, n, vWorld);
 }
@@ -2390,7 +2427,7 @@ void main() {
     c = mix(c * 0.86, sky, clamp(fresnel * 1.5 + 0.06, 0.0, 0.9));
     float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(p);
     c *= 0.72 + 0.28 * lit;
-    c += vec3(1.0, 0.93, 0.80) * pow(max(dot(reflect(-kSun, n), v), 0.0), 140.0) * 2.0 * lit;
+    c += vec3(1.0, 0.93, 0.80) * pow(max(dot(reflect(-kSun, n), v), 0.0), 320.0) * 1.5 * lit;
     // Foam: a thin wet line at the edge, and white water over the riffles.
     float riffle = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(0.1, 0.45, depth)) * step(0.05, speed);
     float edge = 1.0 - smoothstep(0.0, 0.08, depth);
@@ -2481,7 +2518,7 @@ void main() {
         }
     }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
-    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
+    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(wetHere ? n : reliefNormal(n), kSun), 0.0) * cloudShade(vWorld.xy);
     vec3 c = inland.r >= 0.0 ? inland : albedo * light;
     if (glint > 0.0) {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));
