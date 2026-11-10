@@ -156,7 +156,7 @@ void Renderer::bakeTreeBoards() {
         std::copy(size, size + 3, boardSizes_.begin() + static_cast<long>(k) * 3);
     }
     glBindVertexArray(0);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, frameFbo_);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     glDeleteFramebuffers(1, &fbo);
     glDeleteRenderbuffers(1, &depth);

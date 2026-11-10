@@ -86,6 +86,14 @@ inline Gate gateOf(const Continent::Castle::Ring& ring) {
     g.mouth = g.mid + nrm * (g.thick * 0.5);
     return g;
 }
+// A place's gate: a walled town's own; a village's is where its lane meets its green (no wall, so no thickness).
+inline Gate gateOf(const Continent::City& city) {
+    if (city.walled) return gateOf(city.castle.rings.front());
+    Gate g;
+    g.out = unit(pt(city.castle.keepAxis));
+    g.mid = g.mouth = pt(city.pos) + g.out * city.castle.courtyardRadius.toDouble();
+    return g;
+}
 
 // Where a road runs through water that is neither a bridge nor a ford (points every 4 m: its first such point, and how many).
 struct WetRun {
@@ -193,7 +201,7 @@ inline RoadFlaws roadFlaws(const Continent& c, double merge = 5.0, double kStub 
         grid[static_cast<size_t>(cellOf(pts[i].p).second) * gw + cellOf(pts[i].p).first].push_back(i);
     }
     std::vector<P> gates;
-    for (const Continent::City& city : c.cities()) gates.push_back(gateOf(city.castle.rings.front()).mid);
+    for (const Continent::City& city : c.cities()) gates.push_back(gateOf(city).mid);
     // Nodes and edges.
     std::map<size_t, size_t> id;
     RoadGraph g;
@@ -338,6 +346,7 @@ struct CastleReport {
 // The embrasures of ring 0 that can shoot onto the ground `ahead` metres in front of its gate.
 inline int overlookAt(const Continent&, const Continent::City& city, double ahead, double range = 55) {
     const Continent::Castle& k = city.castle;
+    if (!city.walled) return 0;  // no wall to shoot from
     const Continent::Castle::Ring& ring = k.rings[0];
     const Gate g = gateOf(ring);
     const P target = g.mouth + g.out * ahead;
@@ -378,12 +387,13 @@ inline CastleReport inspect(const Continent& c, const Continent::City& city) {
     CastleReport r;
     const Continent::Castle& k = city.castle;
     r.towers = k.towers.size();
-    const Continent::Castle::Ring& ring = k.rings[0];
-    const Gate g = gateOf(ring);
+    const Gate g = gateOf(city);
     for (double d = 0; d <= 4.0 && !r.gateRoad; d += 1.0) r.gateRoad = onRoad(c, g.mouth + g.out * d);
     r.spur = std::max(0.0, roadGap(c, g.mouth));
     r.linked = r.gateRoad && r.spur < 4.0;
     r.gateWet = wetAt(c, g.mouth + g.out * 2.0) || wetAt(c, g.mouth + g.out * 8.0);
+    if (!city.walled) return r;  // a village: its lane, and nothing of walls and towers
+    const Continent::Castle::Ring& ring = k.rings[0];
     std::vector<P> poly;
     for (const Vec3& q : ring.corners) poly.push_back(pt(q));
     for (const Polyline& rd : c.roads())

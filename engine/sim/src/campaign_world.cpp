@@ -242,6 +242,8 @@ void Campaign::ensureWorld() {
     if (world_) return;
     region_ = islandRegion(continent_);
     WorldConfig cfg;
+    // Each side at home on its realm's kind of land (edges.h).
+    for (uint8_t side = 0; side < 8; ++side) cfg.sideLand[side] = inGame(factionOf(side)) ? realmLand(factionOf(side)) : 0;
     cfg.seed = seed_ ^ 0x5A17E;
     cfg.region = region_;
     world_ = std::make_unique<World>(cfg);

@@ -16,6 +16,19 @@ Your object is simple to state: **be the last lord standing**, or hold so many o
 
 ## The realms and their lords {#the-realms}
 
+Each realm has **its own country**, the kind of land its people were bred on. There its soldiers strike a little harder (8%) and march quicker (15%), wherever in Illyria that kind of land is found. Fight a lord on his own ground only when you must.
+
+| Realm | Its country |
+|---|---|
+| The Aurelian Throne | the open country: level fields and the roads |
+| The Highcrag Giants | the hills: steep ground and bare rock |
+| The Ironhold Dwarves | the hills |
+| The Orcs of Grath | the fens and the hills |
+| The Sylvaran Elves | the woods |
+| The Sunreach Riders | the open country |
+| The Moonward Order | the water's edge (sand, shallows, fords, bridges) and the woods |
+| Lord Malvoren | the fens and the dark woods |
+
 The land is roughly divided between the eight lords, each with a capital castle, a hero and a war chest. Their colours are those of their soldiers on the map, and of the banners that fly over their towns.
 
 ### The Aurelian Throne <span class="swatch" style="background:#f4f1e8"></span> {#aurelian-throne}

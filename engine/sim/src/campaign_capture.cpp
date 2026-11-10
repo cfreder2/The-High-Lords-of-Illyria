@@ -21,29 +21,49 @@
 namespace illyria::sim {
 
 namespace {
-constexpr int64_t kInTownMm = 60000;  // inside the walls: within this of the courtyard
+// A stack whose middle is this far beyond a town's edge may still have a man inside it.
+constexpr int64_t kStragglersMm = 60000;
+int64_t toMmOf(Fixed metres) { return (metres.raw * 1000) >> Fixed::kFracBits; }
 }
 
 // How many armies of each side (the last: the neutral) have men in the town.
 int32_t Campaign::armiesInTown(int32_t city, int32_t (&in)[9]) const {
-    const CityState& c = cities_[static_cast<size_t>(city)];
     for (int32_t& n : in) n = 0;
-    int32_t cx, cy;
-    anchorOf(c.cx, c.cy, cx, cy);
+    // In the town: inside its outer wall (a walled place: the ring itself, so that nobody at the foot of the wall or
+    // before the gate is in it, and a man on the far wall of a capital is), or on a village's pad.
+    const Continent::City& town = continent_.cities()[static_cast<size_t>(city)];
+    const int64_t tx = toMmOf(town.pos.x), ty = toMmOf(town.pos.y);
+    const int64_t reach = toMmOf(town.radius) + 30000;
+    std::vector<std::pair<int64_t, int64_t>> wall;
+    if (town.walled)
+        for (const Vec3& q : town.castle.rings.front().corners) wall.push_back({toMmOf(q.x), toMmOf(q.y)});
+    const int64_t pad = toMmOf(town.radius);
+    const auto inside = [&](int64_t x, int64_t y) {
+        if (wall.empty()) return (x - tx) * (x - tx) + (y - ty) * (y - ty) <= pad * pad;
+        bool in = false;
+        for (size_t i = 0, j = wall.size() - 1; i < wall.size(); j = i++) {
+            const auto& [ax, ay] = wall[i];
+            const auto& [bx, by] = wall[j];
+            // (Crossing test in whole millimetres: which side of the edge the point lies, without a division.)
+            if ((ay > y) == (by > y)) continue;
+            const int64_t lhs = (x - ax) * (by - ay), rhs = (bx - ax) * (y - ay);
+            if (by > ay ? lhs < rhs : lhs > rhs) in = !in;
+        }
+        return in;
+    };
     int32_t total = 0;
     for (const Stack& s : stacks_) {
         if (s.armies.empty() || s.boat) continue;
         int32_t bx, by;
         bodyOf(s, 0, bx, by);
-        const int64_t d0 = int64_t{bx} - cx, d1 = int64_t{by} - cy;
-        if (d0 * d0 + d1 * d1 > (kInTownMm + 30000) * (kInTownMm + 30000)) continue;
+        const int64_t d0 = int64_t{bx} - tx, d1 = int64_t{by} - ty;
+        if (d0 * d0 + d1 * d1 > (reach + kStragglersMm) * (reach + kStragglersMm)) continue;
         for (const Army& a : s.armies) {
             if (a.soldiers <= 0) continue;
             int32_t nIn = 0;
             for (const Man& m : a.men) {
                 if (!m.alive() || !m.unit) continue;
-                const int64_t e0 = int64_t{m.ax} - cx, e1 = int64_t{m.ay} - cy;
-                nIn = nIn || e0 * e0 + e1 * e1 <= kInTownMm * kInTownMm;
+                nIn = nIn || inside(m.ax, m.ay);
             }
             in[s.owner < 8 ? s.owner : 8] += nIn;
             total += nIn;

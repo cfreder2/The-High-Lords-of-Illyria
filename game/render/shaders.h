@@ -42,7 +42,9 @@ uniform vec4 uShadowInfo;  // texel size (uv), fade start, fade end (metres from
 uniform vec2 uFocus;       // camera target on the ground
 
 const vec3 kSun = normalize(vec3(-0.62, 0.38, 0.52));
-const vec3 kSky = vec3(0.64, 0.74, 0.84);
+// The air of a grim war: a pale, cold haze under a heavy sky, warm only toward the low sun. Everything far off sinks
+// into it (fogFactor), so the land reads in layers: dark near ground, paler ridges behind, the horizon lost.
+const vec3 kSky = vec3(0.60, 0.65, 0.69);
 
 // Which land the ground textures hold. 0: the battlefield, from (0, 0),
 // clamped at its edges. 1: the close-up land around the camera off the
@@ -92,7 +94,10 @@ float hash12(vec2 p) {
 float fogFactor(float d) {
     float range = uCamDist * 5.0 + 700.0;
     float x = d / range;
-    return clamp(1.0 - exp(-x * x * 2.0), 0.0, 1.0);
+    // With the atmosphere on, the haze begins nearer (a part that grows with the distance itself, not only its square),
+    // so ground a few hundred metres off already pales: aerial perspective, which is what gives the land its depth.
+    float near = feature(kFeatAtmosphere) ? x * 0.55 : 0.0;
+    return clamp(1.0 - exp(-(near + x * x * 2.0)), 0.0, 1.0);
 }
 // Degenerate vertex: nothing is rasterised.
 const vec4 kCulled = vec4(2.0, 2.0, 2.0, 1.0);
@@ -198,8 +203,10 @@ float cloudShade(vec2 xy) {
 vec3 hazeColor(vec3 world) {
     if (!feature(kFeatAtmosphere)) return kSky;
     vec3 v = normalize(world - uEye);
-    float sun = pow(max(dot(v, kSun), 0.0), 6.0);
-    return mix(kSky * 1.02, vec3(0.92, 0.84, 0.72), sun * 0.35);
+    float sun = pow(max(dot(v, kSun), 0.0), 5.0);
+    // Colder and darker away from the sun, a dusty amber toward it.
+    vec3 away = mix(kSky * 0.94, kSky * 1.03, clamp(v.z * 2.0 + 0.5, 0.0, 1.0));
+    return mix(away, vec3(0.93, 0.80, 0.62), sun * 0.5);
 }
 )";
 
@@ -2094,15 +2101,95 @@ out vec4 oColor;
 void main() {
     vec3 d = normalize(uCamFwd + uCamRight * vNdc.x * uProj.x * uProj.y + uCamUp * vNdc.y * uProj.x);
     float up = clamp(d.z, 0.0, 1.0);
-    vec3 zenith = vec3(0.30, 0.47, 0.74);
-    vec3 c = mix(kSky, zenith, pow(up, 0.55));
+    // A heavy sky: slate overhead, the haze's own colour at the horizon, a wide dusty glow about the low sun.
+    vec3 zenith = vec3(0.27, 0.33, 0.43);
+    vec3 c = mix(kSky, zenith, pow(up, 0.5));
     float sun = max(dot(d, kSun), 0.0);
-    c += vec3(1.0, 0.86, 0.6) * (pow(sun, 8.0) * 0.25 + pow(sun, 400.0) * 1.5);
-    // Faint high cloud.
-    vec2 q = d.xy / max(d.z, 0.08) * 1.6 + vec2(uTime * 0.003, 0.0);
-    float cl = smoothstep(0.55, 0.85, valueNoise2(q) * 0.6 + valueNoise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
-    c = mix(c, vec3(0.97, 0.97, 0.98), cl * 0.55);
+    c = mix(c, vec3(0.93, 0.80, 0.62), pow(sun, 5.0) * 0.5 * (1.0 - up * 0.6));
+    c += vec3(1.0, 0.84, 0.58) * (pow(sun, 24.0) * 0.22 + pow(sun, 400.0) * 1.6);
+    // Banks of cloud, lit from under on the sun's side and dark-bellied away from it, drifting.
+    vec2 q = d.xy / max(d.z, 0.08) * 1.3 + vec2(uTime * 0.004, uTime * 0.0015);
+    float n = valueNoise2(q) * 0.55 + valueNoise2(q * 2.3 + 3.1) * 0.3 + valueNoise2(q * 5.7 + 9.2) * 0.15;
+    float cl = smoothstep(0.42, 0.74, n) * smoothstep(0.015, 0.22, d.z);
+    vec3 cloud = mix(vec3(0.44, 0.46, 0.50), vec3(0.96, 0.88, 0.76), pow(sun, 3.0) * 0.8 + smoothstep(0.6, 0.9, n) * 0.25);
+    c = mix(c, cloud, cl * 0.8);
     oColor = vec4(c, 1.0);
+}
+)";
+
+// ---------------------------------------------------------------- the film look
+// The finished frame, drawn into a texture (Renderer::beginPost), is put on the screen through these
+// (renderer_post.cpp): its bright parts bloom, and the whole is graded for a grim war: a filmic shoulder and toe,
+// colour pulled back toward earth and steel, cold in the shadows and warm in the lights, the corners darkened, a
+// little grain. Cosmetic like all the rest.
+inline const char* kPostVs = R"(
+out vec2 vUv;
+void main() {
+    vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    vUv = c;
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+// One step of the bloom: uPostInfo.xy the source's texel; z the mode (0: the bright parts, shrunk; 1: a blur along
+// uPostDir; 2: shrunk as it is); w the brightness the bloom begins at.
+inline const char* kBloomFs = R"(
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform vec4 uPostInfo;
+uniform vec2 uPostDir;
+out vec4 oColor;
+vec3 bright(vec2 uv) {
+    vec3 c = texture(uScene, uv).rgb;
+    float l = max(c.r, max(c.g, c.b));
+    return c * smoothstep(uPostInfo.w, uPostInfo.w + 0.22, l);
+}
+void main() {
+    vec2 t = uPostInfo.xy;
+    if (uPostInfo.z < 0.5) {
+        oColor = vec4((bright(vUv + t * vec2(-1.0, -1.0)) + bright(vUv + t * vec2(1.0, -1.0)) + bright(vUv + t * vec2(-1.0, 1.0)) +
+                       bright(vUv + t * vec2(1.0, 1.0))) * 0.25, 1.0);
+    } else if (uPostInfo.z < 1.5) {
+        vec2 d = uPostDir * t;
+        vec3 c = texture(uScene, vUv).rgb * 0.227;
+        c += (texture(uScene, vUv + d * 1.385).rgb + texture(uScene, vUv - d * 1.385).rgb) * 0.316;
+        c += (texture(uScene, vUv + d * 3.231).rgb + texture(uScene, vUv - d * 3.231).rgb) * 0.0703;
+        oColor = vec4(c, 1.0);
+    } else {
+        oColor = vec4((texture(uScene, vUv + t * vec2(-1.0, -1.0)).rgb + texture(uScene, vUv + t * vec2(1.0, -1.0)).rgb +
+                       texture(uScene, vUv + t * vec2(-1.0, 1.0)).rgb + texture(uScene, vUv + t * vec2(1.0, 1.0)).rgb) * 0.25, 1.0);
+    }
+}
+)";
+inline const char* kGradeFs = R"(
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform sampler2D uBloomNear;
+uniform sampler2D uBloomWide;
+uniform vec4 uPostInfo;  // bloom strength, vignette, grain, saturation
+out vec4 oColor;
+void main() {
+    vec3 c = texture(uScene, vUv).rgb;
+    vec3 glow = texture(uBloomNear, vUv).rgb * 0.6 + texture(uBloomWide, vUv).rgb * 0.8;
+    c += glow * uPostInfo.x;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    // Colour pulled back: the greens of the grass most of all, toward the ochre of trodden land.
+    float green = clamp((c.g - max(c.r, c.b)) * 4.0, 0.0, 1.0);
+    c = mix(vec3(l), c, uPostInfo.w - green * 0.14);
+    c = mix(c, c * vec3(1.06, 0.98, 0.84), green * 0.5);
+    // Cold in the shadows, warm in the lights.
+    c += vec3(-0.012, 0.004, 0.022) * (1.0 - smoothstep(0.0, 0.45, l));
+    c *= mix(vec3(1.0), vec3(1.05, 1.0, 0.92), smoothstep(0.45, 1.0, l));
+    // A filmic curve: a toe that lets the darks go deep, a shoulder that rolls the lights off instead of clipping.
+    c = clamp(c, 0.0, 1.6);
+    vec3 x = c * 1.06;
+    c = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+    c = mix(c, x, 0.42);
+    // The corners fall away.
+    vec2 v = vUv - 0.5;
+    c *= mix(1.0, smoothstep(0.98, 0.18, dot(v, v) * 1.9), uPostInfo.y);
+    // Grain, finer than a pixel can dither away.
+    c += (hash12(gl_FragCoord.xy + fract(uTime) * 311.7) - 0.5) * uPostInfo.z;
+    oColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
 )";
 
@@ -2292,12 +2379,18 @@ void main() {
     // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);
     vec3 refl = reflect(-v, n);
-    vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(refl.z, 0.0, 1.0));
+    // (The sky of kSkyFs: slate overhead, its cloud banks drifting in the surface as in a dark mirror.)
+    vec3 sky = mix(kSky, vec3(0.27, 0.33, 0.43), clamp(refl.z, 0.0, 1.0));
+    if (feature(kFeatAtmosphere)) {
+        vec2 q = refl.xy / max(refl.z, 0.08) * 1.3 + vec2(uTime * 0.004, uTime * 0.0015);
+        float cn = valueNoise2(q) * 0.55 + valueNoise2(q * 2.3 + 3.1) * 0.3 + valueNoise2(q * 5.7 + 9.2) * 0.15;
+        sky = mix(sky, vec3(0.62, 0.63, 0.65), smoothstep(0.42, 0.74, cn) * 0.55);
+    }
     float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    c = mix(c, sky, clamp(fresnel * 1.3, 0.0, 0.85));
+    c = mix(c * 0.86, sky, clamp(fresnel * 1.5 + 0.06, 0.0, 0.9));
     float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(p);
-    c *= 0.75 + 0.25 * lit;
-    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 120.0) * 1.2 * lit;
+    c *= 0.72 + 0.28 * lit;
+    c += vec3(1.0, 0.93, 0.80) * pow(max(dot(reflect(-kSun, n), v), 0.0), 140.0) * 2.0 * lit;
     // Foam: a thin wet line at the edge, and white water over the riffles.
     float riffle = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(0.1, 0.45, depth)) * step(0.05, speed);
     float edge = 1.0 - smoothstep(0.0, 0.08, depth);

@@ -245,11 +245,11 @@ void Battle::setUpFord() {
 }
 
 const sim::Continent::City& siegeTown(const sim::Continent& c) {
-    // The neutral town nearest Oakhaven Ford.
+    // The neutral walled town nearest Oakhaven Ford.
     const sim::Vec3 ford = c.crossings().front().pos;
     const sim::Continent::City* best = nullptr;
     for (const sim::Continent::City& city : c.cities()) {
-        if (city.capital) continue;
+        if (city.capital || !city.walled) continue;
         if (!best || (city.pos - ford).flat().lengthSq() < (best->pos - ford).flat().lengthSq()) best = &city;
     }
     return *best;

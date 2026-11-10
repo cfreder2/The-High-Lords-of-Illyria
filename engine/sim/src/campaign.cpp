@@ -223,10 +223,16 @@ void Campaign::initCities() {
         terrain_[static_cast<size_t>(st.cy) * nx_ + st.cx] = Lay::City;
         const auto roll = [&](int64_t k) { return noise::lattice(sc, static_cast<int64_t>(i), k); };
         if (c.capital) {
+            // A capital is worth two towns: the seat of the realm's trade, and the one place its own kinds are trained.
             st.defense = 6;
-            st.income = 30;
+            st.income = 50;
             st.options.push_back(trained(T::LightInfantry));
             for (UnitType t : realm(factionOf(st.owner == kNeutral ? 0 : st.owner)).specialties) st.options.push_back(trained(t));
+        } else if (!c.walled) {
+            // A village: a little gold, and a levy of light infantry. No walls, so Warlords' lowest defence.
+            st.defense = 1;
+            st.income = 8 + static_cast<int32_t>((roll(2) * 5).floorToInt());
+            st.options.push_back(trained(T::LightInfantry));
         } else {
             st.defense = 3 + static_cast<int32_t>((roll(1) * 3).floorToInt());
             st.income = 15 + st.defense * 2 + static_cast<int32_t>((roll(2) * 6).floorToInt());
@@ -264,15 +270,25 @@ void Campaign::initCities() {
             Army hero = makeArmy(T::Hero, "Lord of " + c.name);
             s.armies.push_back(hero);
             s.armies.push_back(makeArmy(T::LightInfantry, ""));
+            // The capital's own guard, there from the first day: bows for its walls and shields for its gate, so
+            // that the lord can ride out with his host and not leave his seat empty behind him.
+            Stack& guard = newStack(st.owner, st.cx, st.cy);
+            guard.armies.push_back(makeArmy(T::Archers, "Guard of " + c.name));
+            guard.armies.push_back(makeArmy(T::HeavyInfantry, "Guard of " + c.name));
             continue;
         }
         Stack& g = newStack(kNeutral, st.cx, st.cy);
         g.garrison = true;
-        const int32_t armies = st.defense - 2;
-        for (int32_t k = 0; k < armies; ++k) {
-            const UnitType t = k == 0 ? T::LightInfantry : k == 1 ? T::Archers : T::HeavyInfantry;
-            g.armies.push_back(makeArmy(t, "Garrison of " + c.name));
+        if (!c.walled) {
+            // A village's own men: a levy on its green.
+            g.armies.push_back(makeArmy(T::LightInfantry, "Levy of " + c.name));
+            continue;
         }
+        // A walled town's garrison is one for its walls: two companies of bows (the first up over the gate), and
+        // foot for the horseshoe behind the doors, more of them where the defence is higher.
+        const UnitType order[] = {T::Archers, T::LightInfantry, T::Archers, T::HeavyInfantry, T::Pikemen};
+        const int32_t armies = c.capital ? 5 : st.defense;
+        for (int32_t k = 0; k < armies; ++k) g.armies.push_back(makeArmy(order[k % 5], "Garrison of " + c.name));
     }
 }
 
@@ -509,7 +525,9 @@ void Campaign::newDay() {
             if (sides_[c.owner].gold < o.cost) continue;  // waits for the money
             sides_[c.owner].gold -= o.cost;
         }
-        if (++c.progress < o.days) continue;
+        // A capital's yards train at twice a town's pace (two days' drill in one), so the first weeks are not spent waiting.
+        c.progress += continent_.cities()[i].capital ? 2 : 1;
+        if (c.progress < o.days) continue;
         c.progress = 0;
         const int32_t n = ++armiesRaised_[c.owner];
         const char* suffix = n % 10 == 1 && n % 100 != 11 ? "st" : n % 10 == 2 && n % 100 != 12 ? "nd" : n % 10 == 3 && n % 100 != 13 ? "rd" : "th";

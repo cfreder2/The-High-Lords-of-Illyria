@@ -64,6 +64,10 @@ TEST(castle_ramps_start_on_the_ground_and_reach_the_walk) {
     // its foot and ends at its ring's walk; outer rings get three, inner baileys one.
     for (const Continent::City& city : continent().cities()) {
         const Castle& k = city.castle;
+        if (!city.walled) {  // a village: no wall, so no ramp
+            CHECK(k.ramps.empty() && k.rings.empty());
+            continue;
+        }
         CHECK(k.ramps.size() == (city.capital ? 4u : 3u));
         for (const Castle::Ramp& rp : k.ramps) {
             CHECK(rp.foot.z == city.pos.z);

@@ -432,10 +432,17 @@ void Continent::layApproaches() {
     std::vector<size_t> gateRoad(cities_.size(), SIZE_MAX);
     for (size_t ci : approachOrder_) {
         const City& city = cities_[ci];
-        const Castle::Ring& ring = city.castle.rings.front();
-        const size_t n = ring.corners.size();
-        const Vec3 a = ring.corners[ring.gateEdge], b = ring.corners[(ring.gateEdge + 1) % n];
-        const Vec3 mid = (a + b) * r(1, 2);
+        // A walled place's road starts in its gate; a village's lane at the edge of its green (a wall of no
+        // thickness there, facing the way its tower house does).
+        Castle::Ring lane;
+        lane.thick = Fixed::zero();
+        const Castle::Ring& ring = city.walled ? city.castle.rings.front() : lane;
+        Vec3 mid = city.pos + city.castle.keepAxis * city.castle.courtyardRadius;
+        if (city.walled) {
+            const size_t n = ring.corners.size();
+            const Vec3 a = ring.corners[ring.gateEdge], b = ring.corners[(ring.gateEdge + 1) % n];
+            mid = (a + b) * r(1, 2);
+        }
         const Vec3 out = unitFlat(mid - city.pos);
         const Fixed reach = (mid - city.pos).flat().length() + ring.thick;
         // From the gate straight out, then along the path from where it leaves the walls.
@@ -587,6 +594,7 @@ void Continent::layApproaches() {
                                     [&](const Crossing& cr) {
                                         if (!cr.bridged() || cr.kind == Crossing::Kind::Footbridge) return false;
                                         for (const City& city : cities_) {
+                                            if (!city.walled) continue;
                                             Fixed reach;
                                             for (const Vec3& q : city.castle.rings.front().corners) reach = max(reach, (q - city.pos).flat().length());
                                             for (int64_t k = 0; k <= 20; ++k) {

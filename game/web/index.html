@@ -324,6 +324,7 @@
       <label class="set"><span>Sharp, wide shadows</span><input type="checkbox" data-bit="8"></label>
       <label class="set"><span>Detailed distant land</span><input type="checkbox" data-bit="16"></label>
       <label class="set"><span>Sky, haze and clouds</span><input type="checkbox" data-bit="32"></label>
+      <label class="set"><span>Film look (bloom, grade, grain)</span><input type="checkbox" data-bit="128"></label>
       <label class="set"><span>Full resolution<small>Every pixel the screen has: sharpest, slowest</small></span><input type="checkbox" data-res="1"></label>
       <label class="set"><span>Dynamic resolution<small>Drawn coarser when the frame rate drops, finer when it recovers</small></span><input type="checkbox" id="dynamicRes"></label>
       <label class="set"><span>Show frame rate<small>fps and where a frame's time goes, by the game's name</small></span><input type="checkbox" id="showPerf"></label>
@@ -613,6 +614,8 @@
       const level = phone ? 1 : 2;
       gfx = { preset: level, features: api.preset(level), fullRes: !phone };
     }
+    // A saved preset means what the preset means now (a build may add to it: the film look joined Medium and High).
+    if (gfx.preset >= 0) gfx.features = api.preset(gfx.preset);
     if (typeof gfx.dynamicRes !== "boolean") gfx.dynamicRes = true;
     if (typeof gfx.showPerf !== "boolean") gfx.showPerf = true;
     applyGraphics();
@@ -1179,7 +1182,7 @@
       for (const line of api.mini().split("\n")) {
         const f = line.split("|");
         if (f[0] === "m") { mini.w = +f[1]; mini.h = +f[2]; }
-        else if (f[0] === "t") mini.towns.push({ x: +f[1], y: +f[2], c: f[3], cap: f[4] === "1" });
+        else if (f[0] === "t") mini.towns.push({ x: +f[1], y: +f[2], c: f[3], cap: f[4] === "1", village: f[4] === "2" });
         else if (f[0] === "s") mini.sites.push({ x: +f[1], y: +f[2], k: +f[3] });
         else if (f[0] === "k") mini.heaps.push({ c: f[1], x: +f[2], y: +f[3], n: +f[4] });
         else if (f[0] === "d") mini.dots.push({ c: f[1], x: +f[2], y: +f[3] });
@@ -1228,9 +1231,9 @@
       g.fillStyle = grad;
       g.beginPath(); g.arc(X(f.x), Y(f.y), r, 0, 7); g.fill();
     }
-    // Towns, always: a square in the holder's colour, larger for a capital.
+    // Towns, always: a square in the holder's colour, larger for a capital, small for an open village.
     for (const tw of mini.towns) {
-      const r = (tw.cap ? 3.4 : 2.4) * u, x = X(tw.x), y = Y(tw.y);
+      const r = (tw.cap ? 3.4 : tw.village ? 1.5 : 2.4) * u, x = X(tw.x), y = Y(tw.y);
       g.fillStyle = "#000"; g.fillRect(x - r - u * 0.6, y - r - u * 0.6, 2 * r + u * 1.2, 2 * r + u * 1.2);
       g.fillStyle = tw.c; g.fillRect(x - r, y - r, 2 * r, 2 * r);
     }

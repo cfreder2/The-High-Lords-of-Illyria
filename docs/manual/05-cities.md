@@ -14,13 +14,15 @@ Tap one of your cities (its square on the map, or the ground in it with nothing 
 
 ![A city's panel: walls and income, the armies it can train (a levy in violet), sending new armies elsewhere, raising the walls, and the rare troops folded away below.](images/shots/city_panel.jpg "tall")
 
-| | Capital | Town |
-|---|---|---|
-| Walls | 6 | 3 to 5 |
-| Gold a day | 30 | 21 to 30 (the stronger its walls, the more) |
-| Trains | light infantry and the realm's specialties | light infantry and one or two kinds the land raises |
-| A levy | always (the realm's rare troops) | about one town in twelve |
-| Garrison at the start | the lord's stack | 1 to 3 armies, more behind stronger walls |
+| | Capital | Walled town | Village |
+|---|---|---|---|
+| Walls | 6 | 3 to 5 | none (1) |
+| Gold a day | 50 | 21 to 30 (the stronger its walls, the more) | 8 to 12 |
+| Trains | light infantry and the realm's specialties, twice as fast | light infantry and one or two kinds the land raises | light infantry |
+| A levy | always (the realm's rare troops) | about one town in twelve | about one in twelve |
+| Garrison at the start | the lord's stack and the capital's guard | 3 to 5 armies, bows on the walls | a levy on the green |
+
+Of the eighty places of Illyria only eight are capitals and about twenty are walled towns, and those stand where the land narrows: by the fords and bridges, and at the feet of the passes. The rest are open villages: a tower house, a green and a dozen roofs. A village falls to whoever stands on its green; a walled town must be entered, and its banner counts only the men **inside the wall**.
 
 ## Gold {#gold}
 

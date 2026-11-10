@@ -1173,6 +1173,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Fixed dist = delta.length();
     Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, groundAt(u.pos.x, u.pos.y));
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
+    else if (onOwnLand(u)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;

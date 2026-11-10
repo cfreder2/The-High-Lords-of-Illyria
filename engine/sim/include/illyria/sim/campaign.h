@@ -566,11 +566,14 @@ private:
         Gait gait[kGaitCount] = {};
         int32_t speed[kGaitCount] = {};  // mm a second
         int32_t best = 1;     // mm a second: the most it could make on any ground (the route search's estimate)
+        uint8_t land = 0;     // its realm's own kinds of land (edges.h), crossed kRealmPacePct quicker on foot
     };
     Pace paceOf(const Stack& s) const;
     // A step from a cell to its neighbour in direction dir (0-7, east first,
     // round through the north: direction(dx, dy), -1 if not a neighbour), on foot or wing.
     static int32_t direction(int32_t dx, int32_t dy);
+    // The Land bits (edges.h) of a cell, for the realms' home ground.
+    uint8_t landAt(int32_t cx, int32_t cy) const;
     int32_t marchTime(const Pace& p, int32_t cell, int32_t dir) const;
     int32_t seaTime(int32_t dx, int32_t dy) const;  // afloat, so many cells across and up
     // Per gait, built on first use: the effort() of every step, cell x 8 + direction.

@@ -30,6 +30,7 @@ const Continent::City& town() {
         const Continent::City* best = &cs[Continent::kFactionCount];
         int most = -1;
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
+            if (!cs[i].walled) continue;  // (a village has no walls)
             int open = 0;
             for (int a = 0; a < 24; ++a) {
                 const Fixed angle = kTwoPi * a / 24;
@@ -913,6 +914,7 @@ TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
     const auto& cs = continent().cities();
     int ramps = 0, unreached = 0, castlesWithoutAWay = 0;
     for (const Continent::City& city : cs) {
+        if (!city.walled) continue;  // (a village has no walls, and so no ramps)
         const Region rg = Region::fromContinent(continent(), city.pos, 128);
         NavGrid nav(rg);
         for (size_t g = 0; g < rg.gates().size(); ++g) nav.openGate(g);

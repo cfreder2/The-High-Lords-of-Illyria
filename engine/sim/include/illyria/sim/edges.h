@@ -22,10 +22,31 @@ inline constexpr int32_t kEdgeGroundMaxPct = 6;
 inline constexpr int32_t kEdgeRankPct = 3;     // per rank: regular 3, veteran 6, elite 9
 inline constexpr int32_t kEdgeHeightPct = 4;   // the high ground
 inline constexpr int32_t kEdgeHoldPct = 4;     // holding a temple, a ruin's stones or an outpost tower
-inline constexpr int32_t kEdgeCapPct = 15;     // all of them together, at most
+inline constexpr int32_t kEdgeRealmPct = 8;    // the kind of land your realm is at home on (realmLand)
+inline constexpr int32_t kEdgeCapPct = 20;     // all of them together, at most
+// A realm's men also march quicker over its own kind of land, by this many percent.
+inline constexpr int32_t kRealmPacePct = 15;
+
+// The kinds of land a realm can be at home on, a bit each: where it fights harder (kEdgeRealmPct) and marches
+// quicker (kRealmPacePct), in the battle and on the campaign map alike. After Warlords' empires, each with its
+// country: the knights and the horse lords in the open, the elves in the woods, giants and dwarves in the hills,
+// the orcs and the dark lord in the fens and wastes, the sea-minded order at the water's edge.
+enum Land : uint8_t {
+    kLandOpen = 1,    // level plains and the roads over them
+    kLandForest = 2,  // woods
+    kLandHills = 4,   // steep ground and bare rock
+    kLandMarsh = 8,   // swamp and mud
+    kLandShore = 16,  // sand, shallows, fords and bridges
+};
+// What a spot of the battlefield counts as (hilly: steeper than about 1 in 7).
+uint8_t landOfGround(Ground ground, bool hilly);
+// The realm's own land, by the continent's order of factions (0 for anyone else).
+uint8_t realmLand(uint8_t faction);
+// "the open country", "the woods"...: a realm's land in words, for the player.
+const char* landName(uint8_t land);
 
 struct Edges {
-    int32_t home = 0, ground = 0, seniority = 0, hero = 0, height = 0, holding = 0;
+    int32_t home = 0, ground = 0, seniority = 0, hero = 0, height = 0, holding = 0, realm = 0;
     // All of them, in percent, at most kEdgeCapPct.
     int32_t total() const;
     // For the player: "home land +3% · high ground +4%", or "" with none.

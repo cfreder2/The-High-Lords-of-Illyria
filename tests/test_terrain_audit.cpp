@@ -25,7 +25,7 @@ const Continent& continent() {
 
 // The road (index) that starts at this castle's gate: the road laid to it.
 size_t roadOf(const Continent::City& city) {
-    const audit::Gate g = audit::gateOf(city.castle.rings.front());
+    const audit::Gate g = audit::gateOf(city);
     const auto& roads = continent().roads();
     for (size_t ri = 0; ri < roads.size(); ++ri)
         if (!roads[ri].points.empty() && audit::len(audit::pt(roads[ri].points.front()) - g.mid) < 0.5) return ri;
@@ -127,7 +127,7 @@ TEST(a_battle_window_shows_the_road_at_the_gate) {
     // Skirmish and Conquest both stand the castle in a window of this continent: the road is ground there.
     const Continent::City& city = continent().cities()[Continent::kFactionCount + 3];
     const Region rg = Region::fromContinent(continent(), city.pos, 128);
-    const audit::Gate g = audit::gateOf(city.castle.rings.front());
+    const audit::Gate g = audit::gateOf(city);
     const Vec3 o = rg.origin();
     int road = 0;
     for (double d = 4; d <= 12; d += 4) {
@@ -199,7 +199,7 @@ TEST(a_gate_still_has_archer_stations_beside_it_when_corners_are_bare) {
     for (size_t ci = 0; ci < continent().cities().size(); ci += 5) {
         const Continent::City& city = continent().cities()[ci];
         const Region rg = Region::fromContinent(continent(), city.pos, 128);
-        const audit::Gate g = audit::gateOf(city.castle.rings.front());
+        const audit::Gate g = audit::gateOf(city);
         const Vec3 o = rg.origin();
         const audit::P mid = g.mid - audit::P{o.x.toDouble(), o.y.toDouble()};
         int stations = 0;

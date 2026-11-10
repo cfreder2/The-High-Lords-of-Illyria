@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <map>
@@ -548,6 +549,9 @@ struct WorldConfig {
     // The side whose land the battle is fought on (the home-land edge,
     // edges.h), or -1 for nobody's.
     int32_t homeSide = -1;
+    // The kind of land each side is at home on (Land bits, edges.h; 0: none): its men strike harder there
+    // (kEdgeRealmPct) and walk quicker over it (kRealmPacePct). By PlayerId; sides beyond the array have none.
+    std::array<uint8_t, 8> sideLand = {};
 };
 
 class World {
@@ -652,6 +656,9 @@ public:
     Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
     const Region* region() const { return config_.region.get(); }
     int32_t homeSide() const { return config_.homeSide; }
+    // The Land bits (edges.h) the side is at home on, and whether a man of it stands on such land now.
+    uint8_t sideLand(PlayerId side) const { return side < config_.sideLand.size() ? config_.sideLand[side] : 0; }
+    bool onOwnLand(const Unit& u) const;
     // The small edges a soldier fights with (world_edges.cpp, edges.h): his
     // side's land, ground his kind knows, his rank, a hero beside him, and
     // (against a foe dz above him over dist) the high ground.

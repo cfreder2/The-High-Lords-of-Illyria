@@ -277,7 +277,28 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 ### 4.2.2 Cities & Castles
 
 Following Warlords: **80 cities**, and whoever holds two thirds of them (or all of them) wins.
-- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers. The other 72 cities start neutral, held by their own garrisons.
+- **Three kinds of place** (`Continent::City::walled`, `Continent::placeCities`, docs/MAP.md): eight **capitals**, about twenty **walled towns** set first at the river crossings and the feet of the passes, and some fifty open **villages** (houses round a green and a tower house, no wall). All count alike toward victory. The country between the walls is open: walled places keep 170 m between their walls, and a village stands out of bowshot of every wall, so armies meet in the field and a siege is a decision, not the only kind of fight there is.
+
+  | | Capital | Walled town | Village |
+  |---|---|---|---|
+  | Gold a day | 50 | 21 to 30 | 8 to 12 |
+  | Trains | light infantry and the realm's kinds, at twice a town's pace | light infantry and one or two kinds the land raises | light infantry |
+  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy of light infantry |
+  | Taken by | men inside the outer wall | men inside the wall | men on its pad |
+
+- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers, its lord with a company of light infantry and the realm's rare troops, and a **guard of the capital** (archers and heavy infantry) so that the lord can march and not leave his seat empty. The other 72 places start neutral, held by their own garrisons.
+- **In the town means inside it** (`Campaign::armiesInTown`): a banner counts the men within the outer wall itself (a village: on its pad). It used to count everyone within 60 m of the courtyard, which for a town took in the ground before the gate and outside the walls (55% of the circle) and left out the far wall of a capital.
+- **Each realm has its own country** (`edges.h` `realmLand`, `World::onOwnLand`, `Campaign::landAt`), as Warlords' empires do: on that kind of land its men strike 8% harder (one of the small edges, §3.4, which now add up to at most 20%) and march 15% quicker, in the battle and on the campaign map alike, and the computer lords' estimate counts it. The land is what is under a man's feet: level plains and roads are the open country, woods the woods, steep ground (about 1 in 7 and more) and bare rock the hills, swamp and mud the fens, sand, shallows, fords and bridges the water's edge.
+
+  | Realm | Its country |
+  |---|---|
+  | The Aurelian Throne, the Sunreach Riders | the open country |
+  | The Highcrag Giants, the Ironhold Dwarves | the hills |
+  | The Orcs of Grath | the fens and the hills |
+  | The Sylvaran Elves | the woods |
+  | The Moonward Order | the water's edge and the woods |
+  | Lord Malvoren | the fens and the dark woods |
+
 - **What a city gives:** it produces armies (a few unit types per city, each with a build time) and pays gold to its owner every turn. Owners can raze it, which turns it into a ruin forever (§5.5).
 - **Siege:** a city is defended by whatever men stand in it, and attacked by as many as march on it (no caps on either, §4.2.4). The walls, towers and gates are real obstacles, on the campaign map itself. Fliers clear walls, soldiers hack at gates, grenadiers' satchels (laid at a gate, set off with fire) and catapult stones breach them.
 - **Siege engines in the campaign:** catapults are trained at the capitals of the Aurelian Throne, the Ironhold Dwarves and Lord Malvoren (6 days, 40 gold, 2 engines to an army; the one kind of special army a city still builds, §4.2.4; wheels want roads: 6 movement points a day, slow in woods and hills, no marshes). They are weak in the field (strength 3), but at a town's walls their stones break the real gate and the real walls' defenders (World's own rules); the computer lords' estimate still counts each catapult as a point off the walls' bonus. In a siege the attackers' catapults fight where they stand, (the Siege scenario gives the besiegers two); the enemy's battle AI never marches its engines at the foe, but turns them on the player's gate when it besieges a town of the player's.

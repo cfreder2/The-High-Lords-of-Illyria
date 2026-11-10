@@ -29,8 +29,18 @@ constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 constexpr int32_t kHeightPctPerGrade = 20;
 }  // namespace
 
+bool World::onOwnLand(const Unit& u) const {
+    const uint8_t land = sideLand(u.owner);
+    if (!land || u.inAir()) return false;
+    const Ground g = groundAt(u.pos.x, u.pos.y);
+    // (The slope is asked only where it could change the answer.)
+    const bool mayBeHilly = (land & (kLandHills | kLandOpen)) && (g == Ground::Plains || g == Ground::Road || g == Ground::Forest);
+    return (landOfGround(g, mayBeHilly && steeperThan(u.pos.x, u.pos.y, kHillsSlope)) & land) != 0;
+}
+
 Edges World::edgesOf(const Unit& u, Fixed dist, Fixed dz) const {
     Edges e;
+    if (onOwnLand(u)) e.realm = kEdgeRealmPct;
     if (config_.homeSide >= 0 && u.owner == static_cast<PlayerId>(config_.homeSide)) e.home = kEdgeHomePct;
     int32_t ground = familiarGround(u.stats.gait, groundAt(u.pos.x, u.pos.y)) ? kEdgeGroundPct : 0;
     if (u.stats.terrain.openPct > 0 || u.stats.terrain.hillsPct > 0) {
