@@ -1171,9 +1171,10 @@ bool World::planRampartPath(Unit& u, const Vec3& to) {
 bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     const Vec3 delta = (to - u.pos).flat();
     const Fixed dist = delta.length();
-    Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, groundAt(u.pos.x, u.pos.y));
+    const Ground under = groundAt(u.pos.x, u.pos.y);
+    Fixed speed = u.stats.moveSpeed * speedScale * gaitSpeed(u.stats.gait, under);
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
-    else if (onOwnLand(u)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
+    else if (onOwnLand(u, under)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;

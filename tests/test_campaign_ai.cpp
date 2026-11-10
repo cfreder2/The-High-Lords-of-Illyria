@@ -56,7 +56,7 @@ TEST(terrain_and_walls_change_the_odds) {
     CHECK(capital >= 0);
     int32_t town = -1;
     for (size_t i = 0; i < c.cities().size(); ++i)
-        if (c.cities()[i].owner == Campaign::kNeutral) town = static_cast<int32_t>(i);
+        if (c.cities()[i].owner == Campaign::kNeutral && c.continent().cities()[i].walled) town = static_cast<int32_t>(i);  // (a village has no walls)
     const Campaign::CityState& t = c.cities()[static_cast<size_t>(town)];
     std::vector<const Army*> garrison = c.defendersAt(0, t.cx, t.cy);
     CHECK(!garrison.empty());

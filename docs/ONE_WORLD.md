@@ -62,7 +62,7 @@ A stack of fliers alone goes straight over mountains and water at the long-run p
 flight (a take-off run, a flight as long as its endurance, then twice as long resting),
 which nothing below changes: quicker than any foot, slower than horse. A stack with any
 walker in it walks, and a hero walks with his stack. Every site can be reached on foot from
-some town, the Seer's Tower from the two towns on its isle; only boats (6 m/s for now)
+some town, the Seer's Tower from the two villages on its isle; only boats (6 m/s for now)
 reach those two.
 
 ## The map

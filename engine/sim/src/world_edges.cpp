@@ -29,10 +29,11 @@ constexpr Fixed kHillsSlope = Fixed::fromRatio(3, 20);
 constexpr int32_t kHeightPctPerGrade = 20;
 }  // namespace
 
-bool World::onOwnLand(const Unit& u) const {
+bool World::onOwnLand(const Unit& u) const { return sideLand(u.owner) && onOwnLand(u, groundAt(u.pos.x, u.pos.y)); }
+
+bool World::onOwnLand(const Unit& u, Ground g) const {
     const uint8_t land = sideLand(u.owner);
     if (!land || u.inAir()) return false;
-    const Ground g = groundAt(u.pos.x, u.pos.y);
     // (The slope is asked only where it could change the answer.)
     const bool mayBeHilly = (land & (kLandHills | kLandOpen)) && (g == Ground::Plains || g == Ground::Road || g == Ground::Forest);
     return (landOfGround(g, mayBeHilly && steeperThan(u.pos.x, u.pos.y, kHillsSlope)) & land) != 0;

@@ -271,17 +271,20 @@ void Campaign::initCities() {
             s.armies.push_back(hero);
             s.armies.push_back(makeArmy(T::LightInfantry, ""));
             // The capital's own guard, there from the first day: bows for its walls and shields for its gate, so
-            // that the lord can ride out with his host and not leave his seat empty behind him.
-            Stack& guard = newStack(st.owner, st.cx, st.cy);
-            guard.armies.push_back(makeArmy(T::Archers, "Guard of " + c.name));
-            guard.armies.push_back(makeArmy(T::HeavyInfantry, "Guard of " + c.name));
+            // that the lord can ride out with his host and not leave his seat empty behind him. (Of his stack, to
+            // stand with it in the courtyard: he leaves them by marching the rest. A computer lord keeps his
+            // weakest at home, CampaignAi::reorganize.)
+            s.armies.push_back(makeArmy(T::Archers, "Guard of " + c.name));
+            s.armies.push_back(makeArmy(T::HeavyInfantry, "Guard of " + c.name));
             continue;
         }
         Stack& g = newStack(kNeutral, st.cx, st.cy);
         g.garrison = true;
         if (!c.walled) {
-            // A village's own men: a levy on its green.
-            g.armies.push_back(makeArmy(T::LightInfantry, "Levy of " + c.name));
+            // A village's own men: a levy on its green, with spears as often as not (no wall keeps the horsemen
+            // out of a village; a hedge of pikes does).
+            const bool pikes = noise::lattice(sc, static_cast<int64_t>(i), 77) < Fixed::fromRatio(1, 2);
+            g.armies.push_back(makeArmy(pikes ? T::Pikemen : T::LightInfantry, "Levy of " + c.name));
             continue;
         }
         // A walled town's garrison is one for its walls: two companies of bows (the first up over the gate), and

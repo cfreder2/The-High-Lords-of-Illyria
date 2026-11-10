@@ -659,6 +659,7 @@ public:
     // The Land bits (edges.h) the side is at home on, and whether a man of it stands on such land now.
     uint8_t sideLand(PlayerId side) const { return side < config_.sideLand.size() ? config_.sideLand[side] : 0; }
     bool onOwnLand(const Unit& u) const;
+    bool onOwnLand(const Unit& u, Ground under) const;  // (the ground under him already known)
     // The small edges a soldier fights with (world_edges.cpp, edges.h): his
     // side's land, ground his kind knows, his rank, a hero beside him, and
     // (against a foe dz above him over dist) the high ground.

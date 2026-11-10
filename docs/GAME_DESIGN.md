@@ -283,11 +283,11 @@ Following Warlords: **80 cities**, and whoever holds two thirds of them (or all 
   |---|---|---|---|
   | Gold a day | 50 | 21 to 30 | 8 to 12 |
   | Trains | light infantry and the realm's kinds, at twice a town's pace | light infantry and one or two kinds the land raises | light infantry |
-  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy of light infantry |
+  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy: light infantry, or as often pikemen (no wall keeps horsemen out of a village) |
   | Taken by | men inside the outer wall | men inside the wall | men on its pad |
 
-- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers, its lord with a company of light infantry and the realm's rare troops, and a **guard of the capital** (archers and heavy infantry) so that the lord can march and not leave his seat empty. The other 72 places start neutral, held by their own garrisons.
-- **In the town means inside it** (`Campaign::armiesInTown`): a banner counts the men within the outer wall itself (a village: on its pad). It used to count everyone within 60 m of the courtyard, which for a town took in the ground before the gate and outside the walls (55% of the circle) and left out the far wall of a capital.
+- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers, its lord with a company of light infantry and the realm's rare troops, and a **guard of the capital** (archers and heavy infantry, of his own stack: he leaves them by marching the rest) so that the lord can march and not leave his seat empty. The other 72 places start neutral, held by their own garrisons.
+- **In the town means inside it** (`Campaign::armiesInTown`): a banner counts the men within the outer wall itself (a village: on its pad and the ten metres about it). It used to count everyone within 60 m of the courtyard, which for a town took in the ground before the gate and outside the walls (55% of the circle) and left out the far wall of a capital.
 - **Each realm has its own country** (`edges.h` `realmLand`, `World::onOwnLand`, `Campaign::landAt`), as Warlords' empires do: on that kind of land its men strike 8% harder (one of the small edges, §3.4, which now add up to at most 20%) and march 15% quicker, in the battle and on the campaign map alike, and the computer lords' estimate counts it. The land is what is under a man's feet: level plains and roads are the open country, woods the woods, steep ground (about 1 in 7 and more) and bare rock the hills, swamp and mud the fens, sand, shallows, fords and bridges the water's edge.
 
   | Realm | Its country |

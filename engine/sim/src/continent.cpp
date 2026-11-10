@@ -99,7 +99,7 @@ constexpr size_t kWalledTowns = 24;
 constexpr int64_t kWalledGap = 170, kVillageFromWalls = 85, kVillageGap = 60, kMaxVillageGap = 200;
 // A town set to hold a crossing or a pass stands within kNarrowsReach of it, and no nearer than kNarrowsBack from its walls.
 constexpr int64_t kNarrowsReach = 260, kPassReach = 420, kNarrowsBack = 25;
-// No place on the Isle of the Seer (within this of its middle).
+// No walled town on the Isle of the Seer (within this of its middle).
 constexpr Fixed kIsleClear = Fixed::fromInt(260);
 // No town this near Oakhaven Ford: the set battle there is fought on open
 // ground (Battle::setUpFord: the two armies 230 m apart either side of it).
@@ -1642,7 +1642,7 @@ void Continent::placeCities() {
     std::vector<Candidate> candidates;
     const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
     const Vec3 ford = crossings_.front().pos;
-    // The Isle of the Seer is the sage's alone: too small for a town and its fields, and no road leaves it.
+    // The Isle of the Seer is too small for walls (a town and its bowshot covered all of it): a fishing village at most.
     const Vec3 seersIsle = N(70, 935);
     int64_t order = 0;
     const int64_t grid = scaledI(100);
@@ -1651,7 +1651,6 @@ void Continent::placeCities() {
             const Fixed x = m(i * grid + grid / 2) + (noise::lattice(sj, i, j) - r(1, 2)) * scaledI(60);
             const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(60);
             if ((Vec3{x, y, Fixed::zero()} - ford).flat().lengthSq() < kFordClear * kFordClear) continue;
-            if ((Vec3{x, y, Fixed::zero()} - seersIsle).flat().lengthSq() < kIsleClear * kIsleClear) continue;
             if (onSetPiece({x, y, Fixed::zero()}, kVillageRadius + m(20))) continue;
             Sample c;
             Fixed slope;
@@ -1665,7 +1664,8 @@ void Continent::placeCities() {
             if (!offRoads(x, y, kVillageRadius)) continue;
             Sample ct;
             Fixed slopeT;
-            const bool town = !onSetPiece({x, y, Fixed::zero()}, kTownRadius + m(20)) && buildable(x, y, kTownRadius, peakM(80), ct, slopeT) &&
+            const bool town = (Vec3{x, y, Fixed::zero()} - seersIsle).flat().lengthSq() >= kIsleClear * kIsleClear &&
+                              !onSetPiece({x, y, Fixed::zero()}, kTownRadius + m(20)) && buildable(x, y, kTownRadius, peakM(80), ct, slopeT) &&
                               slopeT <= r(1, 5) && offRoads(x, y, kTownRadius);
             candidates.push_back({{x, y, c.height}, score, order, town});
         }
@@ -1823,20 +1823,6 @@ std::vector<uint8_t> Continent::walkableCells() const {
         const int32_t k = static_cast<int32_t>(c.pos.y.floorToInt() / cell) * nx + static_cast<int32_t>(c.pos.x.floorToInt() / cell);
         if (!reached[static_cast<size_t>(k)]) queue.push_back(k);
         reached[static_cast<size_t>(k)] = 1;
-    }
-    // The Isle of the Seer has no town: a hero is put ashore on it from a boat, and walks from there.
-    {
-        const Vec3 isle = N(66, 893);
-        const int32_t ix = static_cast<int32_t>(isle.x.floorToInt() / cell), iy = static_cast<int32_t>(isle.y.floorToInt() / cell);
-        for (int32_t dy = -2; dy <= 2; ++dy)
-            for (int32_t dx = -2; dx <= 2; ++dx) {
-                const int32_t x = ix + dx, y = iy + dy;
-                if (x < 0 || y < 0 || x >= nx || y >= ny) continue;
-                const size_t k = static_cast<size_t>(y) * nx + x;
-                if (!open[k] || reached[k]) continue;
-                reached[k] = 1;
-                queue.push_back(static_cast<int32_t>(k));
-            }
     }
     for (size_t head = 0; head < queue.size(); ++head) {
         const int32_t cx = queue[head] % nx, cy = queue[head] / nx;

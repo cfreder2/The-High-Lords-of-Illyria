@@ -23,6 +23,8 @@ namespace illyria::sim {
 namespace {
 // A stack whose middle is this far beyond a town's edge may still have a man inside it.
 constexpr int64_t kStragglersMm = 60000;
+// A village has no wall to say where it ends: its pad and this much of the ground about it.
+constexpr int64_t kVillageEdgeMm = 10000;
 int64_t toMmOf(Fixed metres) { return (metres.raw * 1000) >> Fixed::kFracBits; }
 }
 
@@ -30,14 +32,14 @@ int64_t toMmOf(Fixed metres) { return (metres.raw * 1000) >> Fixed::kFracBits; }
 int32_t Campaign::armiesInTown(int32_t city, int32_t (&in)[9]) const {
     for (int32_t& n : in) n = 0;
     // In the town: inside its outer wall (a walled place: the ring itself, so that nobody at the foot of the wall or
-    // before the gate is in it, and a man on the far wall of a capital is), or on a village's pad.
+    // before the gate is in it, and a man on the far wall of a capital is), or on a village's pad and the ten metres about it.
     const Continent::City& town = continent_.cities()[static_cast<size_t>(city)];
     const int64_t tx = toMmOf(town.pos.x), ty = toMmOf(town.pos.y);
     const int64_t reach = toMmOf(town.radius) + 30000;
     std::vector<std::pair<int64_t, int64_t>> wall;
     if (town.walled)
         for (const Vec3& q : town.castle.rings.front().corners) wall.push_back({toMmOf(q.x), toMmOf(q.y)});
-    const int64_t pad = toMmOf(town.radius);
+    const int64_t pad = toMmOf(town.radius) + kVillageEdgeMm;
     const auto inside = [&](int64_t x, int64_t y) {
         if (wall.empty()) return (x - tx) * (x - tx) + (y - ty) * (y - ty) <= pad * pad;
         bool in = false;

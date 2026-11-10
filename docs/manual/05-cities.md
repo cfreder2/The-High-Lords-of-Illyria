@@ -20,7 +20,7 @@ Tap one of your cities (its square on the map, or the ground in it with nothing 
 | Gold a day | 50 | 21 to 30 (the stronger its walls, the more) | 8 to 12 |
 | Trains | light infantry and the realm's specialties, twice as fast | light infantry and one or two kinds the land raises | light infantry |
 | A levy | always (the realm's rare troops) | about one town in twelve | about one in twelve |
-| Garrison at the start | the lord's stack and the capital's guard | 3 to 5 armies, bows on the walls | a levy on the green |
+| Garrison at the start | the lord's stack, the capital's guard among it | 3 to 5 armies, bows on the walls | a levy on the green, spears as often as not |
 
 Of the eighty places of Illyria only eight are capitals and about twenty are walled towns, and those stand where the land narrows: by the fords and bridges, and at the feet of the passes. The rest are open villages: a tower house, a green and a dozen roofs. A village falls to whoever stands on its green; a walled town must be entered, and its banner counts only the men **inside the wall**.
 

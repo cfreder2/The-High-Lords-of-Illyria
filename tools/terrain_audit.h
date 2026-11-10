@@ -231,9 +231,14 @@ inline RoadFlaws roadFlaws(const Continent& c, double merge = 5.0, double kStub 
             prev = cur;
         }
     }
-    for (size_t i = 0; i < pts.size(); ++i)
-        for (const P& gp : gates)
-            if (len(pts[i].p - gp) < 3.0) g.gate[nodeId(i)] = 1;
+    // (The point of a road nearest each gate, within 3 m: one node a gate, so that a lane which is the whole of its
+    // road, a village's on an isle, ends at its gate and not a step short of it.)
+    for (const P& gp : gates) {
+        size_t nearest = pts.size();
+        for (size_t i = 0; i < pts.size(); ++i)
+            if (len(pts[i].p - gp) < 3.0 && (nearest == pts.size() || len(pts[i].p - gp) < len(pts[nearest].p - gp))) nearest = i;
+        if (nearest < pts.size()) g.gate[nodeId(nearest)] = 1;
+    }
     // A road's two ends: free unless at a gate, near the coast or the map's edge.
     for (const std::vector<size_t>& pr : ofRoad) {
         if (pr.empty()) continue;
