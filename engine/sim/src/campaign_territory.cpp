@@ -112,7 +112,7 @@ void Campaign::territoryStep() {
         if (s.owner < kSides && !s.armies.empty() && !s.boat) add(hexAt(s.cx, s.cy), s.owner, static_cast<int32_t>(s.armies.size()));
     std::vector<int32_t> ring;
     for (const CityState& c : cities_) {
-        if (c.owner >= kSides || c.razed) continue;
+        if (c.owner >= kSides) continue;
         ring.assign(1, hexAt(c.cx, c.cy));
         hexNeighbours(ring.front(), ring);
         for (int32_t h : ring) add(h, c.owner, kCityPresence);

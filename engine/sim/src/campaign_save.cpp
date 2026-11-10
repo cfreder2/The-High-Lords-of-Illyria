@@ -17,7 +17,7 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC7.";  // bump the digit when the layout changes
+constexpr const char* kMagic = "ILC8.";  // bump the digit when the layout changes
 constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
 
 class Writer {
@@ -323,7 +323,6 @@ std::string Campaign::save() {
         w.i(c.progress);
         w.i(c.cx);
         w.i(c.cy);
-        w.b(c.razed);
         w.i(c.vectorTo);
         w.b(c.port);
         w.i(c.hx);
@@ -493,7 +492,6 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
         cs.progress = r.i32();
         cs.cx = r.i32();
         cs.cy = r.i32();
-        cs.razed = r.b();
         cs.vectorTo = r.i32();
         cs.port = r.b();
         cs.hx = r.i32();

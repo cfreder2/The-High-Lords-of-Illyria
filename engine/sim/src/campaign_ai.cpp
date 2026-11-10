@@ -199,12 +199,12 @@ private:
         cityView_.clear();
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& cs = c_.cities_[i];
-            if (cs.owner != side_ || cs.razed) continue;
+            if (cs.owner != side_) continue;
             CityView v;
             v.index = static_cast<int32_t>(i);
             for (size_t j = 0; j < c_.cities_.size() && !v.frontier; ++j) {
                 const C::CityState& o = c_.cities_[j];
-                v.frontier = o.owner != side_ && o.owner != C::kNeutral && !o.razed && cityDays10(static_cast<int32_t>(j), v.index) <= 30;
+                v.frontier = o.owner != side_ && o.owner != C::kNeutral && cityDays10(static_cast<int32_t>(j), v.index) <= 30;
             }
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
                 const C::Stack& e = c_.stacks_[k];
@@ -430,7 +430,7 @@ private:
         int32_t prize = -1, prizeScore = -1;
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& t = c_.cities_[i];
-            if (t.owner == side_ || t.razed) continue;
+            if (t.owner == side_) continue;
             int32_t near = INT32_MAX;
             for (const CityView& m : mine_) near = std::min(near, cityDays10(m.index, static_cast<int32_t>(i)));
             if (near == INT32_MAX) continue;
@@ -474,7 +474,7 @@ private:
         std::vector<std::pair<int32_t, int32_t>> cand;
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& t = c_.cities_[i];
-            if (t.owner == side_ || t.razed) continue;
+            if (t.owner == side_) continue;
             if (std::find(claimed_.begin(), claimed_.end(), static_cast<int32_t>(i)) != claimed_.end()) continue;
             const int32_t when = eta(s, static_cast<int32_t>(i));
             if (when > t_.rangeDays10) continue;

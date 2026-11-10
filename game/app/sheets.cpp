@@ -51,14 +51,8 @@ ILLYRIA_API void illyria_test_closeups(int on) {
 }
 ILLYRIA_API const float* illyria_test_sheet_cells() { return readCells.data(); }
 
-ILLYRIA_API int illyria_sheet_loaded(int type, const uint8_t* rgba, int width, int height, const float* cells) {
-    return target && target->loadSheet(type, rgba, width, height, cells) ? 1 : 0;
-}
-ILLYRIA_API int illyria_sheet_loaded2(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount,
-                                               int framesPerView, int closeup) {
-    return target && target->loadSheet(type, rgba, width, height, cells, cellCount, framesPerView, closeup != 0) ? 1 : 0;
-}
-// The same with the sheet's own clips, as text (sprite_clips.h parseClips; "" for a sheet of the fixed layout).
+// A sheet read by the platform: its pixels, where its cells are, and its own clips as text (sprite_clips.h parseClips;
+// "" for a sheet of the fixed layout).
 ILLYRIA_API int illyria_sheet_loaded3(int type, const uint8_t* rgba, int width, int height, const float* cells, int cellCount,
                                                int framesPerView, int closeup, const char* clips) {
     const illyria::game::sprites::SheetClips listed = illyria::game::sprites::parseClips(clips ? clips : "");

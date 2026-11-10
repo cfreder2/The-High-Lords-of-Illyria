@@ -248,7 +248,7 @@ void Campaign::ensureWorld() {
     cfg.region = region_;
     world_ = std::make_unique<World>(cfg);
     syncLand();
-    // Each gate is some town's: its holder does not hack at it, and a stronger wall holds longer.
+    // Each gate is some town's: its holder does not hack at it.
     const Vec3 origin = region_->origin();
     gateCity_.assign(region_->gates().size(), -1);
     for (size_t g = 0; g < gateCity_.size(); ++g) {
@@ -525,15 +525,6 @@ void Campaign::syncMen(Stack& s) {
 }
 
 // ---------------------------------------------------------------- orders
-
-bool Campaign::underOrders(const Stack& s) const {
-    for (const Army& a : s.armies)
-        for (const Man& m : a.men) {
-            const Unit* u = m.alive() && m.unit && world_ ? world_->findUnit(m.unit) : nullptr;
-            if (u && u->alive() && (u->hasMoveTarget || u->hasAttackTarget || u->targetUnit != kNoEntity)) return true;
-        }
-    return false;
-}
 
 // ---------------------------------------------------------------- stepping
 

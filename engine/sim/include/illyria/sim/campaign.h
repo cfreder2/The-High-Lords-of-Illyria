@@ -138,7 +138,6 @@ public:
         int32_t producing = -1;  // index into options, or -1
         int32_t progress = 0;    // days trained so far
         int32_t cx = 0, cy = 0;  // its cell
-        bool razed = false;
         int32_t vectorTo = -1;   // Warlords' LOC: new armies march to this city instead (two days more)
         bool port = false;          // on the coast: builds boats, which put out to its harbour cell
         int32_t hx = -1, hy = -1;   // the harbour: the nearest navigable water cell
@@ -524,7 +523,6 @@ private:
     Stack* stackFor(const Order& o, bool splitting);
     // A Command: whose unit it is (his stack, of the side that gives it), else it is refused.
     void commandMen(const Order& o);
-    bool underOrders(const Stack& s) const;  // a man of it has somewhere to go or someone to fight on orders
     // Tells the world whose land each cell is (World::setLandHolders): when the world is made, and whenever the land is reckoned.
     void syncLand();
     void initTerrain();

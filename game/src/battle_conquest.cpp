@@ -312,8 +312,8 @@ const char* Battle::selectionLabel() const {
 }
 
 std::string Battle::selectionEdges() const {
-    for (sim::EntityId id : selectedAlive()) return world_->edgesOf(world_->units()[id - 1]).describe();
-    return "";
+    const std::vector<sim::EntityId> chosen = selectedAlive();
+    return chosen.empty() ? "" : world_->edgesOf(world_->units()[chosen.front() - 1]).describe();
 }
 
 bool Battle::selectionBatters() const {

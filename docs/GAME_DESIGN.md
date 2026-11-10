@@ -446,7 +446,7 @@ From the Warlords (1990) manual, rule by rule. "Ours" says where we differ and w
 | Computer players (§4.1) | Knight to Warlord, no secret bonuses; Knights waste money and forget | Easy and Hard, §4.2.6 |
 | Strengths and speeds (App. city table) | Per city, e.g. heavy infantry 5, pegasi 4-5 | Per type (docs/UNITS.md), heavy infantry 4, pegasi 6: kept to match the 3D battle's units |
 | Hatreds (§4.3.4) | Computer players' attitudes to each side | Not built; the AI gangs up on the leader instead |
-| RAZE (§4.3.2) | Destroy a city for good | Not built (the state has `razed`) |
+| RAZE (§4.3.2) | Destroy a city for good | Not built |
 | Capital lost (§4.3.2) | A new capital is chosen | Not built: no rule depends on the capital after the start |
 
 ### 4.2.8 Raising a Banner (built)

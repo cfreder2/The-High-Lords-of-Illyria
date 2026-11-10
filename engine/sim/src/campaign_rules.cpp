@@ -102,7 +102,7 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
     const int32_t city = cityAt(cx, cy);
     if (defending && city >= 0) {
         const int32_t d = cities_[static_cast<size_t>(city)].defense;
-        const int32_t walls = d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
+        const int32_t walls = d >= 2 ? 1 : 0;  // (a walled place: nothing has walls past 6, where Warlords gave more)
         m += walls - std::min(walls, engines);  // each siege engine breaks a point of the walls
     }
     return m;
@@ -299,7 +299,7 @@ void Campaign::deliverTransits() {
         int32_t where = -1;
         for (const int32_t c : {t.to, t.from}) {
             const CityState& cs = cities_[static_cast<size_t>(c)];
-            if (where < 0 && cs.owner == t.owner && !cs.razed && cs.banner == kNeutral) where = c;
+            if (where < 0 && cs.owner == t.owner && cs.banner == kNeutral) where = c;
         }
         if (where < 0) continue;
         const CityState& cs = cities_[static_cast<size_t>(where)];
@@ -326,7 +326,7 @@ uint32_t Campaign::raise(uint8_t owner, int32_t cx, int32_t cy, const std::vecto
 int32_t Campaign::income(uint8_t side) const {
     int32_t gold = 0;
     for (const CityState& c : cities_)
-        if (c.owner == side && !c.razed) gold += c.income;
+        if (c.owner == side) gold += c.income;
     // The land pays a little (campaign_territory.cpp).
     gold += hexesHeld(side) / kHexesPerGold;
     // Warlords' Knights "deliberately waste money": an Easy lord loses a fifth.

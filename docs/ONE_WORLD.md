@@ -307,7 +307,7 @@ A short note on how it works, and what it costs.
 - **Bounded.** At most `World::kMaxQueuedOrders` (8) wait behind a man's own: every man carries, hashes and saves
   his queue, and a long script is a long line of numbers on the screen. The ninth is dropped.
 - **Hashed only when non-empty**, so no battle without a queue changed its checksum (no golden moved).
-- **Saved.** Campaign saves are `ILC7.`: after each man, the orders waiting behind his own. The order he was walking is
+- **Saved.** Campaign saves are `ILC8.`: after each man, the orders waiting behind his own. The order he was walking is
   a moment and, like arrows in the air, is not kept (`reseatAll` puts every man back standing, in the live game too),
   so the first of his queue is what he does next. An attack on a soldier names a unit of the world, whose ids are made
   anew when the men are put back, so it is not kept. A man aboard a boat keeps his queue on the `Man`.

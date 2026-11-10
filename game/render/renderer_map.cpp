@@ -50,7 +50,7 @@ float manPulse(uint32_t id, float seconds) {
 int manSide(uint8_t owner) { return owner < sim::Continent::kFactionCount ? owner : 8; }
 
 // The frame's level of detail: how near the camera is, which men are near it, how wide a dot is.
-void Renderer::beginMen(const Battle& battle, const Camera& camera, float seconds) {
+void Renderer::beginMen(const Camera& camera, float seconds) {
     MenLod& m = men_;
     m.seconds = seconds;
     m.dots.clear();

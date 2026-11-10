@@ -37,7 +37,7 @@ void World::setLandHolders(std::vector<uint8_t> holders, int32_t nx, Fixed cell,
 }
 
 int32_t World::landHolderAt(Fixed x, Fixed y) const {
-    if (landHolders_.empty() || landNx_ <= 0) return config_.homeSide;
+    if (landHolders_.empty() || landNx_ <= 0) return -1;
     const int64_t cx = ((x - landOrigin_.x) / landCell_).floorToInt(), cy = ((y - landOrigin_.y) / landCell_).floorToInt();
     if (cx < 0 || cy < 0 || cx >= landNx_) return -1;
     const size_t k = static_cast<size_t>(cy) * static_cast<size_t>(landNx_) + static_cast<size_t>(cx);

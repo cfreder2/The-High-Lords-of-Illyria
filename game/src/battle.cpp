@@ -121,10 +121,9 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     finish();
 }
 
-void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide, float farReachM) {
+void Battle::build(uint64_t seed, const sim::Vec3& centre, float farReachM) {
     sim::WorldConfig cfg;
     cfg.seed = seed;
-    cfg.homeSide = homeSide;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));

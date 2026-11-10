@@ -326,13 +326,12 @@ const Campaign::Stack* Campaign::findStack(uint32_t id) const {
 
 int32_t Campaign::cityAt(int32_t cx, int32_t cy) const {
     if (cx < 0 || cy < 0 || cx >= nx_ || cy >= ny_) return -1;
-    const int32_t i = cityCell_[static_cast<size_t>(cy) * nx_ + cx];
-    return i >= 0 && !cities_[static_cast<size_t>(i)].razed ? i : -1;
+    return cityCell_[static_cast<size_t>(cy) * nx_ + cx];
 }
 
 int32_t Campaign::citiesOwned(uint8_t side) const {
     int32_t n = 0;
-    for (const CityState& c : cities_) n += c.owner == side && !c.razed;
+    for (const CityState& c : cities_) n += c.owner == side;
     return n;
 }
 
@@ -522,7 +521,7 @@ void Campaign::newDay() {
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         // An enemy raising its banner in the city: it trains nothing until they are gone.
-        if (c.producing < 0 || c.owner == kNeutral || c.razed || c.banner != kNeutral) continue;
+        if (c.producing < 0 || c.owner == kNeutral || c.banner != kNeutral) continue;
         const Option& o = c.options[static_cast<size_t>(c.producing)];
         const bool sent = c.vectorTo >= 0;
         if (c.progress == 0) {

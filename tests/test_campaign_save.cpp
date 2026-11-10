@@ -133,7 +133,7 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Campaign::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved campaign");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC7.") == 0);
+    CHECK(text.compare(0, 5, "ILC8.") == 0);
     CHECK(Campaign::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     // ... as is the layout before the orders waiting behind a man's own were kept (ILC6).
@@ -465,7 +465,7 @@ TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
     CHECK(saves >= 2);
 }
 
-// A man's queue of orders is kept in a save (ILC7): the orders behind his own come back on the man put back in the world,
+// A man's queue of orders is kept in a save (ILC8): the orders behind his own come back on the man put back in the world,
 // and the loaded game carries on as the saved one does. The order he was walking is a moment and is not kept (a save puts
 // every man back standing), so the first of his queue begins; an attack on a soldier names a unit of the world's, which
 // are made anew, so it is not kept either.
@@ -500,7 +500,7 @@ TEST(the_orders_queued_behind_a_mans_own_are_saved_with_the_game) {
     c.step();
     CHECK(w.findUnit(unit)->queue.size() == 2);
     const std::string text = c.save();
-    CHECK(text.compare(0, 5, "ILC7.") == 0);
+    CHECK(text.compare(0, 5, "ILC8.") == 0);
     std::string why;
     std::unique_ptr<Campaign> r = Campaign::load(continent(), text, &why);
     if (!r) std::printf("  load refused: %s\n", why.c_str());

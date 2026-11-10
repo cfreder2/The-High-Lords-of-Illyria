@@ -2294,7 +2294,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         return victors;
     };
     men_.dt = sinceLastDraw;
-    beginMen(battle, camera, gameSeconds);
+    beginMen(camera, gameSeconds);
     ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won};
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];

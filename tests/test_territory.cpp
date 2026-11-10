@@ -280,8 +280,9 @@ TEST(the_edges_give_a_clear_but_not_decisive_lead_in_3d) {
         const PlayerId edged = static_cast<PlayerId>(run % 2);
         WorldConfig cfg;
         cfg.seed = run / 2 + 1;
-        cfg.homeSide = edged;
         World w(cfg);
+        // (The whole field the edged side's land.)
+        w.setLandHolders(std::vector<uint8_t>(1, edged), 1, Fixed::fromInt(1000000), {-Fixed::fromInt(500000), -Fixed::fromInt(500000), Fixed::zero()});
         Rng jitter(run / 2 + 1, 99);
         std::vector<EntityId> a, b;
         const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};

@@ -167,7 +167,6 @@
   #capture .bar { position: relative; height: 8px; margin-top: 4px; border-radius: 4px; background: #8a2a20; overflow: hidden; }
   #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: #3a6ce8; }
   #capture.taken { border-color: #8fd0ff; }
-  #landTag { position: fixed; left: calc(8px + var(--safe-l)); top: calc(56px + var(--safe-t)); padding: 3px 8px; font-size: 11px; z-index: 3; }
   /* The compass, under the top right buttons (left of the sandbox's panel): its needle points north; a tap turns the view north up. */
   #compass { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); z-index: 2; width: 40px; height: 40px;
              min-width: 0; min-height: 0; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
@@ -207,12 +206,6 @@
   /* Every pop-up closes with its ✕, a tap on the map, or Esc. */
   .popup > .x { position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; min-height: 0; padding: 0; font-size: 14px; line-height: 1;
                 border-radius: 8px; z-index: 1; }
-  #levelPrompt { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); width: min(340px, 90vw); padding: 14px 16px; z-index: 7; text-align: center; }
-  #levelPrompt h3 { margin: 0 0 6px; color: var(--gold); font-size: 17px; }
-  #levelPrompt p { margin: 0 0 12px; font-size: 13px; }
-  #levelPrompt .choices { display: flex; gap: 8px; }
-  #levelPrompt .choices button { flex: 1; min-height: 64px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
-  #levelPrompt .choices small { font-size: 11px; opacity: 0.8; font-weight: 400; }
   /* Heroes: search a ruin, kneel at a temple, hire a sword. */
   /* The selected stack on the march: there in so many days (and minutes at this speed). */
   /* The conquest's own actions for the stack selected (search a ruin, send armies home) and where it is bound, under the
@@ -259,7 +252,6 @@
   #menu { display: none; position: absolute; top: calc(100% + 6px); right: 0; flex-direction: column; gap: 6px; z-index: 6; }
   body.menu-open #menu { display: flex; }
   #menu button { min-width: 150px; text-align: left; }
-  #menu .legacy { display: none; }
   body.campaign #menu .camp-only { display: block; }
   @media (max-width: 560px) {
     /* Portrait phones: one row of buttons; the rest in the menu. */
@@ -299,9 +291,6 @@
       <button id="controlsButton" aria-label="Controls">✋︎ Controls</button>
       <button id="manualButton" aria-label="The manual">📖︎ Manual</button>
       <button id="mainMenu" aria-label="Back to the main menu">⌂ Main menu</button>
-      <!-- The old switches, kept for scripts and tests (the title screen starts the modes now). -->
-      <button id="scenario" class="battle-only nofight legacy" aria-label="Switch battle">Siege</button>
-      <button id="campaign" class="nofight legacy" aria-label="Play the campaign">Campaign</button>
     </div>
   </div>
 </div>
@@ -368,7 +357,6 @@
 <div id="inspect" class="panel hidden" aria-live="polite"></div>
 <div id="minimap" class="panel" aria-label="Map of the whole island"><canvas id="miniCanvas"></canvas></div>
 <div id="capture" class="panel battle-only hidden"><span id="captureText"></span><div class="bar"><b id="captureBar"></b></div></div>
-<div id="landTag" class="panel battle-only hidden"></div>
 <button id="compass" aria-label="North up" title="North up (N)">
   <svg viewBox="0 0 32 32" aria-hidden="true"><g id="compassNeedle">
     <text x="16" y="8" text-anchor="middle" font-size="7" font-weight="700" fill="#f3ead8" font-family="Georgia, serif">N</text>
@@ -383,14 +371,6 @@
 </div>
 <div id="cityPanel" class="panel hidden"></div>
 <div id="voyage" class="panel hidden"><span id="voyageText"></span><button id="voyageButton">Embark</button></div>
-<div id="levelPrompt" class="panel hidden" role="dialog" aria-labelledby="levelTitle">
-  <h3 id="levelTitle">The other lords of Illyria</h3>
-  <p>How well should the seven computer lords play?</p>
-  <div class="choices">
-    <button id="levelEasy"><b>Easy</b><small>Knights: slow, careless, short of gold</small></button>
-    <button id="levelHard"><b>Hard</b><small>Warlords: every trick, no mercy</small></button>
-  </div>
-</div>
 
 <div id="hirePrompt" class="panel camp-only hidden">
   <h3 id="hireTitle">A hero offers their sword</h3>
@@ -558,7 +538,6 @@
       campStart: Module.cwrap("illyria_campaign_start", null, ["number"]),
       campVector: Module.cwrap("illyria_campaign_vector", null, ["number", "number"]),
       campDisband: Module.cwrap("illyria_campaign_disband", null, ["number"]),
-      campLeave: Module.cwrap("illyria_campaign_leave", null, []),
       campState: Module.cwrap("illyria_campaign_state", "string", []),
       perf: Module.cwrap("illyria_perf", "string", []),
       campProduce: Module.cwrap("illyria_campaign_produce", null, ["number", "number"]),
@@ -594,7 +573,7 @@
     const skipTitle = /[?&](siege|campaign|play)\b/.test(q) || (navigator.webdriver && !/[?&]title\b/.test(q));
     if (/[?&]siege\b/.test(q)) api.setScenario(1);
     // ?campaign starts it against Hard lords (?campaign=easy: Easy ones).
-    if (/[?&]campaign\b/.test(q)) setCampaign(true, /[?&]campaign=easy\b/.test(q) ? 0 : 1);
+    if (/[?&]campaign\b/.test(q)) setCampaign(/[?&]campaign=easy\b/.test(q) ? 0 : 1);
     requestAnimationFrame(updateCampaign);
     $("overlay").classList.add("hidden");
     if (!skipTitle && window.IllyriaTitle) toMenu(false);
@@ -854,7 +833,7 @@
     campaign = false;
     document.body.classList.remove("campaign", "at-title", "menu-open");
     $("hot").style.display = "";  // (the campaign hides it while nothing is being fought)
-    for (const id of ["overlay", "cityPanel", "hirePrompt", "levelPrompt", "voyage", "news", "picker", "toast"]) $(id).classList.add("hidden");
+    for (const id of ["overlay", "cityPanel", "hirePrompt", "voyage", "news", "picker", "toast"]) $(id).classList.add("hidden");
     $("overlayMenu").classList.add("hidden");
     $("banners").innerHTML = "";
     $("cards").innerHTML = "";
@@ -876,9 +855,7 @@
       campaign = true;
       campLevel = options && options.hard === 0 ? 0 : 1;
       document.body.classList.add("campaign");
-      $("campaign").textContent = "Battle";
     } else {
-      $("campaign").textContent = "Campaign";
       showHint();
     }
     // A mode built elsewhere (Horde, Capture the Flag) sets up its own HUD.
@@ -895,28 +872,19 @@
     startMode("title");
     if (window.IllyriaTitle) IllyriaTitle.show();
   }
-  function setCampaign(on, level) {
-    campaign = on;
-    document.body.classList.toggle("campaign", on);
-    $("campaign").textContent = on ? "Battle" : "Campaign";
+  // The campaign, begun from the page's address (?campaign): the title screen starts it through startMode.
+  function setCampaign(level) {
+    campaign = true;
+    document.body.classList.add("campaign");
     $("cards").innerHTML = "";
     lastSquadsKey = "";
     // A battle's end (won at its capture point, say) is not the campaign's.
     $("overlay").classList.add("hidden");
     document.body.classList.remove("at-title");
-    mode = on ? "campaign" : "skirmish";
-    if (on) { campLevel = level; api.campStart(level); } else api.campLeave();
-    if (!on) { $("banners").innerHTML = ""; $("cityPanel").classList.add("hidden"); }
+    mode = "campaign";
+    campLevel = level;
+    api.campStart(level);
   }
-  // Starting the campaign: first, how hard the other lords play.
-  $("campaign").onclick = () => {
-    if (!api) return;
-    if (campaign) setCampaign(false);
-    else $("levelPrompt").classList.toggle("hidden");
-  };
-  const chooseLevel = (level) => { $("levelPrompt").classList.add("hidden"); setCampaign(true, level); };
-  $("levelEasy").onclick = () => api && chooseLevel(0);
-  $("levelHard").onclick = () => api && chooseLevel(1);
   // Heroes: what a search found shows for a few seconds, and stays in the news.
   let toastTimer = 0;
   function toast(text) {
@@ -945,8 +913,6 @@
   };
   $("hireYes").onclick = () => { if (api && api.campHire(1)) toast(`${campState.offer.name} rides to your banner`); };
   $("hireNo").onclick = () => api && api.campHire(0);
-  let scenario = 0;
-  $("scenario").onclick = () => api && api.setScenario(scenario === 1 ? 0 : 1);
   $("overlayButton").onclick = () => { if (api) api.restart(); };
   $("overlayMenu").onclick = () => api && toMenu(true);
   $("hold").onclick = () => api && api.stop();
@@ -1000,10 +966,12 @@
   // Z turns it north up, C brings it to the selection (the camera, in a battle
   // and on the campaign map alike; the arrows pan too, shift + left and right
   // turning the view, and N is north as well).
-  // G attack mode, V force march, T the selection's special action (the
+  // Z attack mode, V force march, T the selection's special action (the
   // hyena-folk raid at once, grenadiers lay satchels where the next click
-  // is), X scatter, B halt, ` picks the heroes, Space pauses, Esc lets go
-  // (M, L, H still do as V, T, B).
+  // is), X scatter, B halt, G a new group of the selection and U ungroups,
+  // O opens or shuts a gate of ours (Shift lets it go), H picks the heroes,
+  // ` plans (again sends what is held), Tab the next group, Esc lets go
+  // (M and L still do as V and T).
   // Alt (or Ctrl) + number saves the selection as that group, the number
   // recalls it (twice: the camera goes to it); the keypad's 1-9 (or shift +
   // number) pick a formation and 0 scatters; shift-drag draws a box,
@@ -1472,14 +1440,10 @@
         `Take the courtyard: your flag ${cap.p}% · ${cap.att} of yours there, ${cap.def} of theirs` +
         (cap.att > cap.def ? " (rising)" : cap.def > cap.att ? " (falling)" : cap.att ? " (held)" : "");
     }
-    $("landTag").classList.toggle("hidden", s.land < 0);
-    $("landTag").textContent = s.land === 0 ? "⚑ Your land: home edge +3%" : s.land === 1 ? "⚑ Their land: their home edge +3%" : "";
     // (anyone not of the local side is the foe: a match may seat the player on any)
     // The cards' strength bars in the local side's colour (mode.cpp teamColour: blue, red, gold, green).
     const sideColour = ["#4a78e6", "#db2e24", "#eab829", "#38a34c"][s.side & 3];
     if (sideColour !== lastSideColour) document.documentElement.style.setProperty("--blue", (lastSideColour = sideColour));
-    scenario = s.scenario;
-    $("scenario").textContent = s.scenario === 1 ? "Ford" : "Siege";
     $("foe").textContent = s.foe;
     $("enemyCount").textContent = `${s.foeAlive} / ${s.foeTotal}`;
     selCount = s.selCount;

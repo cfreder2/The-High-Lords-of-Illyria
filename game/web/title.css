@@ -3,8 +3,7 @@
    the buttons sit low, in thumb reach; nothing scrolls sideways. */
 body.at-title #top, body.at-title #bottom, body.at-title #labels, body.at-title #banners,
 body.at-title #hint, body.at-title #news, body.at-title #cityPanel, body.at-title #voyage,
-body.at-title #capture, body.at-title #landTag,
-body.at-title #battlePrompt, body.at-title #hirePrompt, body.at-title #levelPrompt { display: none !important; }
+body.at-title #capture, body.at-title #hirePrompt { display: none !important; }
 body.screen-open #top, body.screen-open #bottom { visibility: hidden; }
 #top { z-index: 7; }  /* the ☰ menu over the news and panels */
 

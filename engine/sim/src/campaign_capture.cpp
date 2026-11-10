@@ -85,7 +85,6 @@ int32_t Campaign::bannerContest(int32_t city, uint8_t raiser) const {
 void Campaign::bannerStep() {
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
-        if (c.razed) continue;
         int32_t in[9];
         const bool any = armiesInTown(static_cast<int32_t>(i), in) > 0;
         const std::string& name = continent_.cities()[i].name;
