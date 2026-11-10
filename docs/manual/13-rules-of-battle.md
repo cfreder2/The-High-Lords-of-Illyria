@@ -223,7 +223,7 @@ Every soldier reckons his own edges, at every blow and every shot. Each is a few
 | Edge | When | Worth |
 |---|---|---|
 | **The realm's own country** | he stands on the kind of land his realm is at home on (below) | **+8%**, and he walks 15% quicker there |
-| **Home land** | his side holds the hex the battle is fought in | +3% |
+| **Home land** | his side holds the hex the battle is fought in | +3% in the lords' reckoning only: no soldier on the field has it in this edition |
 | **Familiar ground** | his kind knows the ground under his feet: archers, spiders, wolf riders and hyena-folk in the woods; giants, minotaurs, elephants, devils and demons in mud and fords; the dead in swamp, mud and fords; grenadiers on bare rock; hyena-folk in the fens and on rock too (+4%). Or his kind's liking for level open ground: pikemen and light cavalry +3%, heavy cavalry +5%. The better of the two | at most +6% |
 | **Veterans** | his rank: regular, veteran, elite (not heroes) | +3%, +6%, +9% |
 | **A hero leads** | the best living hero of his side within 30 m (not himself), by level: 1 to 3, 4 and 5, 6 and up | +2%, +4%, +6% |

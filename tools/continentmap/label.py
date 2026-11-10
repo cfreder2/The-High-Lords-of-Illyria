@@ -43,8 +43,11 @@ for c in data.get('sites', []):
 for c in data.get('cities', []):
     x, y = P(c['p'])
     col = FACTION[c['o']] if c['o'] >= 0 else (150, 150, 150)
-    s_ = 15 if c['cap'] else 9
-    d.rectangle([x-s_, y-s_, x+s_, y+s_], fill=col, outline=(30, 20, 10), width=3 if c['cap'] else 2)
+    s_ = 15 if c['cap'] else 9 if c.get('w', 1) else 5
+    if c['cap'] or c.get('w', 1):
+        d.rectangle([x-s_, y-s_, x+s_, y+s_], fill=col, outline=(30, 20, 10), width=3 if c['cap'] else 2)
+    else:  # an open village: a dot
+        d.ellipse([x-s_, y-s_, x+s_, y+s_], fill=col, outline=(30, 20, 10), width=2)
     if c['cap']:
         for dx in (-s_, s_):
             for dy in (-s_, s_):
@@ -70,6 +73,6 @@ od.rectangle([border-6, border+54, border+big.width+5, border+60+big.height+5], 
 t = 'THE CONTINENT OF ILLYRIA'
 tf = font(40, True)
 od.text(((out.width - od.textlength(t, font=tf))/2, 18), t, font=tf, fill=(110, 30, 20))
-od.text((border, out.height - 22), '2.8 km x 3.6 km  ·  castles = capitals, squares = cities, pillars = ruins, roofs = temples, violet = sages  ·  original map after Warlords (1990)', font=font(16), fill=(80, 50, 30))
+od.text((border, out.height - 22), '2.8 km x 3.6 km  ·  castles = capitals, squares = walled towns, dots = villages, pillars = ruins, roofs = temples, violet = sages  ·  original map after Warlords (1990)', font=font(16), fill=(80, 50, 30))
 out.resize((out.width//2, out.height//2), Image.LANCZOS).save(sys.argv[3])
 print(out.size)
