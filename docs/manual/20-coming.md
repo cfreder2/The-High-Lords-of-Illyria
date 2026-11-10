@@ -6,11 +6,13 @@
 — a hero, idle
 :::
 
-The game is being built in the open, and some of what it will be is not here yet. This chapter says what is coming, so that you do not go looking for it. Everything in the rest of this book is in the game today, Horde and Capture the Flag among it (chapter [](#other-wars)).
+The game is being built in the open, and some of what it will be is not here yet. This chapter says what is coming, so that you do not go looking for it. Everything in the rest of this book is in the game today: the campaign with a choice of lord and of foes, the two skirmishes, Horde, Capture the Flag and the sandbox (chapter [](#other-wars)).
 
 ## Online play {#online}
 
-The battle was made from the first day to be played between people. Every order is an order to the simulation, which runs exactly the same on every phone and computer, so players need only send each other their orders; the matches are already played that way inside the game, by **seats** (chapter [](#seats)). The plan:
+**There is no play between people in the game today**: no hosting, no joining, no network of any kind. Every mode is one person on one device against the computer.
+
+The battle was made from the first day to be played between people. Every order is an order to the simulation, which runs exactly the same on every phone and computer, so players need only send each other their orders; the matches are already played that way inside the game, by **seats** (chapter [](#seats)), with the computer in every seat but yours. What is missing is everything that carries the orders from one device to another. The plan:
 
 - **Horde and Capture the Flag first**, for up to four people, phone against phone over the mobile network, through a small relay that passes the orders on (no server runs the battle).
 - **Before the battle**, one player hosts: the others join him, and everyone agrees the place, the seats and teams, the difficulty or the budget and each army. Everyone's game then builds the same field and armies.
@@ -21,17 +23,17 @@ The battle was made from the first day to be played between people. Every order 
 ## Planned for the campaign {#planned-campaign}
 
 - **Ruins fought in the ruin:** the hero (and perhaps a companion) against the guardian, in the ruin's own interior, instead of one roll of the dice: the last dice left in the campaign.
-- **The rest of One World:** fog of war (and what the computer lords may see), the lords planning in real time instead of at dawn, splitting a stack into squads to give each its own order, the speed dropping to what a big fight allows, saved games that keep a fight in progress, multiplayer, and boats that carry soldiers and fight.
+- **The rest of One World:** fog of war (today every lord sees everything), the lords planning in real time instead of at dawn, the speed dropping to what a big fight allows, saved games that keep a fight in progress, multiplayer, and boats that fight at sea (today they only carry).
 - **Temple quests**, with an artifact for reward.
 - **Razing** a city, and a new capital chosen when the old one falls.
 - **Hatreds:** computer lords with attitudes to each of the others.
-- **Splitting a stack** by hand.
 - **Generals:** handing an army to the computer to command (hold, skirmish, assault, retreat at a given loss), and several battles across the continent at once.
 - **The land remembers:** the dead, the arrows, the craters and the burnt houses of every battle staying on the land, weathering slowly through the war.
-- **Choosing your realm** when the campaign begins.
+- **Mending gates and raising walls:** a gate broken in the campaign stays broken for the rest of the war, and nothing raises a town's walls number once a capture has lowered it.
+- **The hyena-folk** in the campaign: today they fight only in the sandbox and at Oakhaven Ford.
 
 ## Planned for the battle {#planned-battle}
 
-- Walls breached and woods burnt.
+- Walls breached and woods burnt: today the stone never breaks, only the gates.
 - Reinforcements arriving during a campaign battle (in Horde they already come between the waves).
 - Weather: rain and snow (the sounds of rain and thunder are already made).

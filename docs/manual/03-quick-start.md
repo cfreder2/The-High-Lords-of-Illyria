@@ -33,7 +33,7 @@ Choose **Skirmish**, then **Oakhaven Ford**. You are where the northern road cro
 6. **Charge.** When the enemy are across the ford and in your bowmen's arrows, press **Charge** at the top: every squad goes at the nearest enemy, the archers and others who shoot stopping at a long bowshot (the engines stay where they are).
 7. **Find the fight.** **Fight!** brings the camera to the fiercest fighting, on the field or on the campaign map. **Pause** stops the battle while you think (and orders can still be given); **1×** cycles the speed.
 
-The battle is won when the last of the Red Hand is dead or fled, and lost when the last of yours is. Then you may fight it again, or go back to the main menu. To learn the walls and gates instead, choose **Skirmish** and **The siege**: the foot of the same host, without its horse, before the gate of the walled town nearest the ford, with two catapults and two squads of grenadiers, against a garrison on its walls (chapter [](#sieges)).
+The battle is won when the last of the Red Hand is dead (a man who has broken and run is still on the field, and must be ridden down), and lost when the last of yours is. Then you may fight it again, or go back to the main menu. To learn the walls and gates instead, choose **Skirmish** and **The siege**: the foot of the same host, without its horse, before the gate of the walled town nearest the ford, with two catapults and two squads of grenadiers, against a garrison on its walls (chapter [](#sieges)).
 
 ## Your first campaign, in ten minutes {#first-campaign}
 

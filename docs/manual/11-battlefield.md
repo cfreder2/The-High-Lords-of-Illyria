@@ -67,6 +67,6 @@ Over a soldier who is hurt, ranked, shaken or selected, close enough to read, fl
 
 ## Speed, pause and the end {#battle-end}
 
-- The battle is **won** when the last enemy soldier on the field is dead or has fled, or, in a siege, when your flag reaches the top of the courtyard's pole (chapter [](#capture-point)).
+- The battle is **won** when the last enemy soldier on the field is dead (one who has broken and run still counts until he is caught), or, in a siege, when your flag reaches the top of the courtyard's pole (chapter [](#capture-point)).
 - It is **lost** when the last of yours is, or, when the enemy is besieging a town of yours, when his flag reaches the top.
 - The herald reports your losses as they mount: *"Casualties"* at a quarter of your soldiers lost, *"Severe casualties"* at a half, *"Total casualties"* at four fifths.
