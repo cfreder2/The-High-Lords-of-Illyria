@@ -63,7 +63,8 @@ public:
     void pinchWheel(float deltaY, float x, float y);
     // A trackpad's two-finger swipe: pans as a drag of (-dx, -dy) pixels from (x, y) would.
     void scroll(float dx, float dy, float x, float y);
-    // A trackpad's pinch: zoom by `factor` about (x, y), and turn by `radians` (a twist).
+    // A trackpad's pinch: zoom by `factor` about (x, y), and turn the view by `radians` anticlockwise about it
+    // (a twist: the land turns clockwise on the screen, so a clockwise twist of the fingers is positive).
     void pinch(float factor, float radians, float x, float y);
     // Keys held (desktop), each -1, 0 or 1: pan right / forward (up the
     // screen), turn (1: the view turns left), and zoom (1: in, about the
@@ -115,6 +116,9 @@ private:
     float turnToYaw_ = 0;
     // Two-finger baseline.
     float pinchDist_ = 0, pinchAngle_ = 0, pinchMidX_ = 0, pinchMidY_ = 0;
+    // How far two fingers have turned since they came down; the view turns only once that is a real twist.
+    float twist_ = 0;
+    bool twisting_ = false;
 };
 
 }  // namespace illyria::game

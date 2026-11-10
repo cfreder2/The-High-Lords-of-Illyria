@@ -80,6 +80,53 @@ TEST(gestures_tap_and_pinch) {
     CHECK(taps == 1);  // ending a pinch is not a tap
 }
 
+TEST(a_twist_turns_the_land_with_the_fingers_about_the_ground_between_them) {
+    Camera c = flatCamera();
+    Gestures g(c, [](float, float) {});
+    // A pinch whose fingers wobble a few degrees zooms and never turns the view.
+    const float yaw0 = c.yaw();
+    g.pointer(PointerEvent::Down, 1, 300, 300, 0, 0);
+    g.pointer(PointerEvent::Down, 2, 500, 300, 0, 0);
+    g.pointer(PointerEvent::Move, 2, 560, 312, 0, 30);
+    g.pointer(PointerEvent::Move, 2, 600, 290, 0, 60);
+    CHECK(c.yaw() == yaw0);
+    g.pointer(PointerEvent::Up, 2, 600, 290, 0, 90);
+    g.pointer(PointerEvent::Up, 1, 300, 300, 0, 90);
+    for (int i = 0; i < 120; ++i) c.advance(0.016f);
+    // Two fingers either side of a point turn a quarter of the way round it, clockwise on the screen (y is down:
+    // the right finger goes down, the left one up), in small steps as a hand does.
+    const float mx = 400, my = 320, r = 90;
+    V3 mid, east;
+    CHECK(c.pickGround(mx, my, mid));
+    CHECK(c.pickGround(mx + 60, my, east));  // ground to the right of the point
+    const auto finger = [&](float a, float sign, float& x, float& y) { x = mx + sign * r * std::cos(a); y = my + sign * r * std::sin(a); };
+    float ax, ay, bx, by;
+    finger(0, 1, ax, ay);
+    finger(0, -1, bx, by);
+    g.pointer(PointerEvent::Down, 1, ax, ay, 0, 1000);
+    g.pointer(PointerEvent::Down, 2, bx, by, 0, 1000);
+    double t = 1000;
+    float began = -1;  // how far the fingers had turned when the view first did (the dead zone)
+    for (int i = 1; i <= 60; ++i) {
+        const float a = 1.5707963f * static_cast<float>(i) / 60;
+        finger(a, 1, ax, ay);
+        finger(a, -1, bx, by);
+        g.pointer(PointerEvent::Move, 1, ax, ay, 0, t += 8);
+        g.pointer(PointerEvent::Move, 2, bx, by, 0, t += 8);
+        if (began < 0 && c.yaw() != yaw0) began = a;
+    }
+    CHECK(began > 0.1f && began < 0.25f);
+    // The view's yaw grew by what the fingers turned after that: the land went clockwise with them...
+    CHECK_NEAR(c.yaw() - yaw0, 1.5707963f - began, 0.06);
+    // ...about the ground between them, which never left them; what was to its right is now below it.
+    float px, py;
+    CHECK(c.project(mid, px, py));
+    CHECK_NEAR(px, mx, 1.5);
+    CHECK_NEAR(py, my, 1.5);
+    CHECK(c.project(east, px, py));
+    CHECK(py > my + 20 && std::abs(px - mx) < 30);
+}
+
 TEST(battle_runs_and_player_can_command_a_squad) {
     Battle b(42);
     CHECK(b.outcome() == 0);

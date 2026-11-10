@@ -19,6 +19,9 @@ constexpr float kKeyZoomPerSecond = 1.2f;  // e-fold of the distance a second: t
 constexpr float kZoomPerWheelPixel = 0.0015f;  // a mouse notch (100 px) is e^0.15
 constexpr float kZoomPerPinchPixel = 0.01f;
 constexpr double kKeyEaseMs = 90.0;
+// Two fingers turn the view only once they have turned this far themselves (about 9 degrees): a pinch or a
+// two-finger drag never swings the land round by accident.
+constexpr float kTwistStart = 0.16f;
 // Turning to a heading (turnTo): nearly there in a third of a second.
 constexpr double kTurnEaseMs = 90.0;
 }  // namespace
@@ -37,6 +40,8 @@ void Gestures::resetBaseline() {
     pinchAngle_ = std::atan2(b.y - a.y, b.x - a.x);
     pinchMidX_ = (a.x + b.x) / 2;
     pinchMidY_ = (a.y + b.y) / 2;
+    twist_ = 0;
+    twisting_ = false;
 }
 
 void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, double timeMs) {
@@ -88,8 +93,14 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
                 float dAngle = angle - pinchAngle_;
                 if (dAngle > kPi) dAngle -= 2 * kPi;
                 if (dAngle < -kPi) dAngle += 2 * kPi;
-                camera_.rotate(-dAngle);
-                if (dAngle != 0) turning_ = false;
+                // The land turns with the fingers, about the ground between them: on the screen (y down) the angle
+                // grows clockwise, and the land goes clockwise as the view's yaw grows.
+                if (twisting_) {
+                    camera_.rotateAt(dAngle, midX, midY);
+                    if (dAngle != 0) turning_ = false;
+                } else if (std::abs(twist_ += dAngle) > kTwistStart) {
+                    twisting_ = true;
+                }
                 pinchDist_ = dist;
                 pinchAngle_ = angle;
                 pinchMidX_ = midX;
@@ -150,7 +161,7 @@ void Gestures::scroll(float dx, float dy, float x, float y) {
 void Gestures::pinch(float factor, float radians, float x, float y) {
     if (factor > 0) camera_.zoomAt(factor, x, y);
     if (radians != 0) {
-        camera_.rotate(radians);
+        camera_.rotateAt(radians, x, y);
         turning_ = false;
     }
 }

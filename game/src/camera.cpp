@@ -135,6 +135,17 @@ void Camera::pan(float right, float forward) {
     clampTarget();
 }
 
+void Camera::rotateAt(float radians, float px, float py) {
+    const float planeZ = target().z;
+    V3 before, after;
+    const bool held = pickPlane(px, py, planeZ, before);
+    yaw_ += radians;
+    if (!held || !pickPlane(px, py, planeZ, after)) return;
+    tx_ += before.x - after.x;
+    ty_ += before.y - after.y;
+    clampTarget();
+}
+
 void Camera::zoomAt(float factor, float px, float py) {
     if (!(factor > 0)) return;
     goalLog_ = std::clamp(goalLog_ - std::log(factor), std::log(kMinDistance), std::log(maxDistance_));

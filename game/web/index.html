@@ -85,6 +85,8 @@
   #scatter { border-color: rgba(230, 110, 80, 0.85); color: #ffd9c8; font-weight: 600; }
   /* The attack button: lit red while the next tap attacks, gold for a force march. */
   #attack { font-weight: 600; }
+  #attack::before { content: "⚔ "; }
+  #attack.march::before { content: "» "; }
   #plan.on { background: rgba(110, 50, 170, 0.88); border-color: #d680ff; color: #fff; box-shadow: 0 0 0 2px rgba(214, 128, 255, 0.5); }
   #attack.on { background: rgba(200, 40, 30, 0.85); border-color: #ff8a70; color: #fff; box-shadow: 0 0 0 2px rgba(255, 120, 90, 0.5); }
   #attack.march { background: rgba(170, 130, 30, 0.85); border-color: #ffd36e; color: #fff; box-shadow: 0 0 0 2px rgba(255, 210, 110, 0.5); }
@@ -264,7 +266,50 @@
     .card { width: 146px; }
     #enemy { display: none; }
     #cityPanel:not(.hidden) + #voyage { display: none; }  /* no room for both: close the city to sail */
+    /* The title is its name, and the frame rate if that is asked for (the version is on the title screen). */
+    body.no-perf #title .meta { display: none; }
+    #version, #title .meta .sep { display: none; }
+    body.no-perf #title { display: flex; align-items: center; min-height: 40px; }
+    #controls { gap: 5px; margin-left: auto; }
+    #controls button { padding: 0 9px; }
+    /* Pause is its sign: "Resume" is too wide a word for the row. */
+    #pause { font-size: 0; }
+    #pause::before { content: ""; display: inline-block; width: 16px; height: 16px; vertical-align: middle; background: currentColor;
+                     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M6 4h4v16H6zM14 4h4v16h-4z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M6 4h4v16H6zM14 4h4v16h-4z'/%3E%3C/svg%3E") center / contain no-repeat; }
+    #pause.paused::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M7 4l13 8-13 8z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M7 4l13 8-13 8z'/%3E%3C/svg%3E"); }
+    /* The conquest's day and purse: a line of their own under the buttons, never wrapped, clear of the compass. */
+    #campBar { position: fixed; top: calc(56px + var(--safe-t)); left: calc(8px + var(--safe-l)); height: 40px; padding: 0 10px; line-height: 38px;
+               max-width: calc(100vw - 64px - var(--safe-l) - var(--safe-r)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #campLevel { display: none; }
+    /* Its actions and the march under that, at the left: the minimap has the right. */
+    #campStrip { top: calc(102px + var(--safe-t)); left: calc(8px + var(--safe-l)); transform: none; align-items: flex-start;
+                 max-width: calc(100vw - 140px - var(--safe-l) - var(--safe-r)); }
+    #campMarch { font-size: 12px; }
+    #campActions { flex-wrap: wrap; }
+    #campActions button { min-height: 40px; padding: 0 10px; font-size: 13px; }
+    #news { top: calc(196px + var(--safe-t)); max-width: calc(100vw - 140px - var(--safe-l) - var(--safe-r)); }
+    #selInfo { font-size: 11px; }
+    /* The orders: one row of equal buttons, each a sign over its name, so six fit a phone and none spills. */
+    #actions { gap: 4px; align-items: stretch; }
+    #actions button { flex: 1 1 0; min-width: 0; min-height: 52px; padding: 5px 2px 4px; font-size: 11px; line-height: 1.15; white-space: nowrap; overflow: hidden;
+                      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+    #actions button::before { content: ""; flex: none; width: 20px; height: 20px; background: currentColor;
+                              -webkit-mask: var(--sign) center / contain no-repeat; mask: var(--sign) center / contain no-repeat; }
+    #actions #attack::before { content: ""; }
+    #formation { min-width: 0; flex-grow: 1.25; }
+    #formation::before { display: none; }
+    #formation span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    #actions svg { flex: none; width: 28px; height: 20px; margin: 0; vertical-align: 0; }
+    #attack { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 4l11 11M19 4L8 15M4 15l5 5M20 15l-5 5M6 18l-2.5 2.5M18 18l2.5 2.5'/%3E%3C/svg%3E"); }
+    #attack.march { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 6l6 6-6 6M13 6l6 6-6 6'/%3E%3C/svg%3E"); }
+    #scatter { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v6M12 21v-6M3 12h6M21 12h-6M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5'/%3E%3C/svg%3E"); }
+    #raid { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3c1 4 6 6 6 11a6 6 0 0 1-12 0c0-2 1-4 2.5-5 0 2 1 3.500 2 3.500C11 10 10 7 12 3z'/%3E%3C/svg%3E"); }
+    #hold { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z'/%3E%3C/svg%3E"); }
+    #plan { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 4h12v16H6zM9 9h6M9 13h6M9 17h3'/%3E%3C/svg%3E"); }
+    #focus { --sign: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='6'/%3E%3Cpath d='M12 2v5M12 17v5M2 12h5M17 12h5'/%3E%3C/svg%3E"); }
   }
+  /* The narrowest phones: a battle's five buttons leave the title no room. */
+  @media (max-width: 380px) { body:not(.campaign) #title { display: none; } }
 </style>
 </head>
 <body>
@@ -274,10 +319,10 @@
 <div id="top">
   <div id="title" class="panel">
     <h1><span class="long">The High Lords of </span>Illyria</h1>
-    <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span><span class="perf-part"> · <span id="perf">–</span></span></div>
+    <div class="meta"><span id="version">v@ILLYRIA_VERSION@</span><span class="perf-part"><span class="sep"> · </span><span id="perf">–</span></span></div>
   </div>
   <div id="enemy" class="panel battle-only"><span id="foe">Red Hand</span> <b id="enemyCount">–</b></div>
-  <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> cities · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
+  <div id="campBar" class="panel camp-only">Day <b id="campDay">1</b> · <b id="campGold">0</b> gold · <b id="campCities">1</b> <span id="campCitiesWord">city</span> · <span title="Hexes of land you hold (each five pay a gold a day)">⚑<b id="campHexes">0</b></span><span id="campLevel"></span></div>
   <div id="controls">
     <button id="charge" aria-label="Send every squad at the nearest enemy">Charge</button>
     <button id="hot" aria-label="Jump to the fiercest fighting">Fight!</button>
@@ -386,7 +431,7 @@
   <div id="modeBar" class="panel hidden" role="status"></div>
   <div id="actions" class="hidden">
     <button id="formation" aria-label="Choose a formation" aria-haspopup="menu">Line</button>
-    <button id="attack" aria-label="Attack: the next tap attacks what you tap (hold for a force march)">⚔ Attack</button>
+    <button id="attack" aria-label="Attack: the next tap attacks what you tap (hold for a force march)">Attack</button>
     <button id="scatter" aria-label="Scatter: everyone selected runs outward">Scatter</button>
     <button id="raid" class="hidden" aria-label="Raid: the hyena-folk selected are let loose to raid from where they stand">Raid</button>
     <button id="hold">Hold</button>
@@ -786,7 +831,7 @@
     const cx = Number.isFinite(e.clientX) ? e.clientX : Number.isFinite(mouseX) ? mouseX : r.left + r.width / 2;
     const cy = Number.isFinite(e.clientY) ? e.clientY : Number.isFinite(mouseY) ? mouseY : r.top + r.height / 2;
     const scale = e.scale > 0 ? e.scale : 1, rotation = e.rotation || 0;
-    api.pinch(scale / safariPinch.scale, -(rotation - safariPinch.rotation) * Math.PI / 180, cx - r.left, cy - r.top);
+    api.pinch(scale / safariPinch.scale, (rotation - safariPinch.rotation) * Math.PI / 180, cx - r.left, cy - r.top);  // the land turns with the fingers
     safariPinch = { scale, rotation };
     hideHint();
   });
@@ -1274,9 +1319,11 @@
     $("campDay").textContent = campState.day;
     $("campGold").textContent = campState.gold;
     $("campCities").textContent = campState.cities;
+    $("campCitiesWord").textContent = campState.cities === 1 ? "city" : "cities";
     $("campHexes").textContent = campState.land;
     $("campLevel").textContent = campState.hard ? " · Hard lords" : " · Easy lords";
     $("pause").textContent = campState.paused ? "Resume" : "Pause";
+    $("pause").classList.toggle("paused", !!campState.paused);
     $("speed").textContent = `${campState.speed}×`;
     const news = $("news");
     const newsKey = campState.news.join("|");
@@ -1430,6 +1477,7 @@
     // (The clock of a conquest is its own: updateCampaign.)
     if (!campaign) {
       $("pause").textContent = s.paused ? "Resume" : "Pause";
+      $("pause").classList.toggle("paused", !!s.paused);
       pace = s.slow < 1 ? s.slow : s.speed;
       $("speed").textContent = paceLabel(pace);
     }
@@ -1460,7 +1508,7 @@
     const fmKey = `${s.formationId}`;
     if ($("formation").dataset.key !== fmKey) {
       $("formation").dataset.key = fmKey;
-      $("formation").innerHTML = (fm ? glyph(fm.slots) : "") + s.formation;
+      $("formation").innerHTML = (fm ? glyph(fm.slots) : "") + `<span>${s.formation}</span>`;
     }
     for (const b of $("picker").children) b.classList.toggle("on", +b.dataset.id === s.formationId);
     // The order mode: the button lit and a line saying what the next tap does.
@@ -1468,7 +1516,8 @@
     if (!s.selCount && s.mode) api.setMode(0);
     $("attack").classList.toggle("on", orderMode === 1);
     $("attack").classList.toggle("march", orderMode === 2);
-    $("attack").textContent = orderMode === 2 ? "» March" : "⚔ Attack";
+    const attackText = orderMode === 2 ? "March" : "Attack";  // (its sign is the stylesheet's)
+    if ($("attack").textContent !== attackText) $("attack").textContent = attackText;
     const bar = $("modeBar");
     bar.classList.toggle("hidden", !orderMode && !planning);
     bar.classList.toggle("plan", planning);

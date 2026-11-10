@@ -61,6 +61,8 @@ public:
     // Moves the target over the ground by metres along the view's right and its forward (up the screen).
     void pan(float right, float forward);
     void rotate(float radians) { yaw_ += radians; }
+    // Turns the view about the ground under a pixel (a twist's fingers): that ground stays under it.
+    void rotateAt(float radians, float px, float py);
     V3 eye() const;
     // The point the view is centred on. Close to the ground its height is the ground's; from high above it follows
     // the ground slowly (a low-pass), so crossing mountains does not bob the view. The eye alone is lifted at once
