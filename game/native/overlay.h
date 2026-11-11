@@ -22,9 +22,15 @@ public:
     void begin(int pixelsW, int pixelsH, float scale);
     void rect(float x, float y, float w, float h, Colour c);
     void frame(float x, float y, float w, float h, float line, Colour c);
+    void line(float x0, float y0, float x1, float y1, float thickness, Colour c);
     // A sheet of parchment: drop shadow, deckled darker rim, a soft vignette and fibre specks, all from rectangles
     // (the layer has no textures). `seed` makes each sheet's edge its own, the same every frame.
     void paper(float x, float y, float w, float h, uint32_t seed = 1);
+    // A picture (RGBA, rows from the top) kept on the card: `image` draws it, tinted, over a rectangle (the minimap's
+    // land). Draw order is kept with the rectangles and text before and after it.
+    unsigned makeImage(const uint8_t* rgba, int w, int h);
+    void updateImage(unsigned id, const uint8_t* rgba, int w, int h);
+    void image(unsigned id, float x, float y, float w, float h, Colour tint = {255, 255, 255, 255});
     // Text of size `size` points tall, left edge at x; returns its width in points.
     float text(float x, float y, const std::string& s, Colour c, float size = 14);
     float width(const std::string& s, float size = 14) const;
@@ -33,10 +39,16 @@ public:
 private:
     struct Vertex {
         float x, y;
+        float u, v;
         uint8_t r, g, b, a;
     };
-    unsigned program_ = 0, vao_ = 0, vbo_ = 0;
-    int uSize_ = -1;
+    struct Batch {
+        size_t end;  // the vertices up to here are drawn with `texture` (0: the plain white pixel)
+        unsigned texture;
+    };
+    unsigned program_ = 0, vao_ = 0, vbo_ = 0, white_ = 0;
+    int uSize_ = -1, uTexture_ = -1;
+    std::vector<Batch> batches_;
     int w_ = 0, h_ = 0;
     float scale_ = 1;
     std::vector<Vertex> verts_;

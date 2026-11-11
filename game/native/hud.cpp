@@ -10,6 +10,7 @@
 
 #include "api.h"
 #include "assets.h"
+#include "illyria/game/palette.h"
 #include "json.h"
 
 namespace illyria::native {
@@ -39,6 +40,12 @@ Colour hex(const std::string& s) {
 }
 
 std::string clip(const std::string& s, size_t n) { return s.size() <= n ? s : s.substr(0, n - 1) + "."; }
+
+// The palette's twelve (game/include/illyria/game/palette.h), as the menu draws them.
+Colour swatchColour(int i) {
+    const auto v = illyria::game::palette::swatch(i).rgb;
+    return {static_cast<uint8_t>(v.x * 255 + 0.5f), static_cast<uint8_t>(v.y * 255 + 0.5f), static_cast<uint8_t>(v.z * 255 + 0.5f), 255};
+}
 
 Json read(const char* text) {
     Json j;
@@ -88,7 +95,68 @@ void Hud::saveConquest() {
     std::ofstream(savePath_, std::ios::binary | std::ios::trunc) << text;
 }
 
+// What is kept on this device: lines of "key=value" in the preferences folder (the page keeps the same in localStorage).
+void Hud::setSettingsFile(std::string path) {
+    settingsPath_ = std::move(path);
+    std::string text;
+    if (settingsPath_.empty() || !readText(settingsPath_, text)) return;
+    std::istringstream lines(text);
+    for (std::string line; std::getline(lines, line);) {
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+        if (key == "minimap") minimapOn_ = value != "0";
+        else if (key == "colour") {
+            illyria::game::V3 c;
+            if (!illyria::game::palette::parseHex(value.c_str(), c)) continue;
+            // The swatch it is, or (a colour of the web's own, say) the nearest.
+            colour_ = -1;
+            float best = 1e9f;
+            for (int i = 0; i < illyria::game::palette::kSwatches; ++i) {
+                const float d = illyria::game::palette::distance(c, illyria::game::palette::swatch(i).rgb);
+                if (d < best) best = d, colour_ = i;
+            }
+        }
+    }
+}
+
+void Hud::saveSettings() const {
+    if (settingsPath_.empty()) return;
+    std::ofstream f(settingsPath_, std::ios::binary | std::ios::trunc);
+    f << "minimap=" << (minimapOn_ ? 1 : 0) << "\n";
+    if (colour_ >= 0) f << "colour=" << illyria::game::palette::hex(illyria::game::palette::swatch(colour_).rgb) << "\n";
+}
+
+std::string Hud::chosenColour() const {
+    return colour_ >= 0 ? illyria::game::palette::hex(illyria::game::palette::swatch(colour_).rgb) : "";
+}
+
+// C in the menu: through the twelve and back to the lord's own.
+void Hud::menuCycleColour(int by) {
+    if (!menu_) return;
+    const int n = illyria::game::palette::kSwatches;
+    // (the lord's own swatch is the lord's: it clears the choice)
+    int at = colour_ < 0 ? lord_ : colour_;
+    at = (at + by + n) % n;
+    colour_ = at == lord_ ? -1 : at;
+    saveSettings();
+}
+
+void Hud::toggleMinimap() {
+    minimapOn_ = !minimapOn_;
+    saveSettings();
+}
+
+void Hud::setMinimapLand(const uint8_t* rgba, int w, int h) {
+    miniPixels_.assign(rgba, rgba + static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
+    miniW_ = w;
+    miniH_ = h;
+    miniDirty_ = true;
+}
+
 bool Hud::start(const std::string& mode, const std::string& options) {
+    illyria_set_side_colour(chosenColour().c_str());  // cosmetic, and the engine's: the sim never sees it
+    miniLandStale_ = true;
     // The island's ground is made at the start of a conquest, a few seconds: say so first, as the page does.
     pendingMode_ = mode;
     pendingOptions_ = options;
@@ -170,7 +238,14 @@ bool Hud::click(float x, float y) {
                 menuDigit(r.what - 200 + 1);
             } else if (r.what == 300) {
                 hard_ = !hard_;
+            } else if (r.what >= 400 && r.what < 400 + illyria::game::palette::kSwatches) {
+                const int i = r.what - 400;
+                colour_ = i == lord_ ? -1 : i;
+                saveSettings();
             }
+        } else if (r.what == 2000) {
+            lookAt(x, y);
+            return true;
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
         } else if (r.what >= 1000) {
@@ -226,7 +301,10 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
     for (const std::string& l : wrap(o, "Up / down, Enter, or click. In a battle, / shows the keys.", 12, inner)) hints.push_back(l);
     const std::vector<std::string> errors = wrap(o, error_, 13, inner);
 
-    const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 +
+    const std::string colourLabel = "Your colour (C, or click; the sides keep theirs unless they clash):";
+    const float colourSize = fit(o, colourLabel, 13, inner);
+    constexpr float kSwatch = 24;
+    const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 + colourSize + 8 + kSwatch + 14 +
                      static_cast<float>(hints.size()) * 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
     const float px = (w - pw) / 2, py = std::max(10.0f, (h - ph) / 2);
     o.paper(px, py, pw, ph, 7);
@@ -263,6 +341,22 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
         hits_.push_back({x + 16, yy - 2, col - 20, 18, 200 + i});  // the name: in the war, or not
     }
     y += 4 * kLordRow + 8;
+    // The colour you will wear: the twelve of the palette, a ring on the chosen one (the lord's own, if none).
+    o.text(px + kPad, y, colourLabel, kPaperDim, colourSize);
+    y += colourSize + 8;
+    {
+        const int n = illyria::game::palette::kSwatches;
+        const float step = std::min(kSwatch + 6.0f, (inner - kSwatch) / static_cast<float>(n - 1));
+        const int shown = colour_ >= 0 ? colour_ : lord_;
+        for (int i = 0; i < n; ++i) {
+            const float sx = px + kPad + static_cast<float>(i) * step;
+            o.rect(sx, y, kSwatch, kSwatch, swatchColour(i));
+            o.frame(sx, y, kSwatch, kSwatch, 1.5f, rgba(0x2B1E10, 200));
+            if (i == shown) o.frame(sx - 3, y - 3, kSwatch + 6, kSwatch + 6, 2.5f, kSeal);
+            hits_.push_back({sx, y, kSwatch, kSwatch, 400 + i});
+        }
+        y += kSwatch + 14;
+    }
     for (size_t i = 0; i < hints.size(); ++i, y += 16) {
         o.text(px + kPad, y, hints[i], kPaperDim, 12);
         if (i < difficultyLines) hits_.push_back({px + kPad, y - 3, inner, 18, 300});
@@ -271,6 +365,119 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
         y += 6;
         for (const std::string& l : errors) o.text(px + kPad, y, l, kSeal, 13), y += 17;
     }
+}
+
+// A press on the minimap, at (x, y) points: the camera over that point of the map.
+void Hud::lookAt(float x, float y) {
+    if (miniW0_ <= 0 || miniH0_ <= 0) return;
+    const float u = std::clamp((x - miniX_) / miniW0_, 0.0f, 1.0f), v = std::clamp((y - miniY_) / miniH0_, 0.0f, 1.0f);
+    illyria_minimap_look(u * mapW_, (1 - v) * mapH_);
+}
+
+bool Hud::drag(float x, float y) {
+    if (!minimapOn_ || menu_ || miniW0_ <= 0) return false;
+    // Only a press that began on the map keeps steering (Input hands every move of a captured press here; a card's press is far off).
+    if (x < miniX_ - 40 || x > miniX_ + miniW0_ + 40 || y < miniY_ - 40 || y > miniY_ + miniH0_ + 40) return false;
+    lookAt(x, y);
+    return true;
+}
+
+// The map in the corner (M): the engine's lines (minimap.h) drawn on a small parchment, about 18% of the window's
+// height, top right under the status bar. The conquest's island or a battle's field; only what the engine lets the
+// viewer see is in the lines. A press on it takes the camera there.
+void Hud::drawMinimap(Overlay& o, float w, float h) {
+    miniW0_ = miniH0_ = 0;
+    const int kind = illyria_minimap_kind();
+    if (kind == 0 || !minimapOn_) return;
+    if (kind != miniKind_ || miniLandStale_) {
+        miniKind_ = kind;
+        miniLandStale_ = false;
+        illyria_minimap_land();  // (-> setMinimapLand)
+    }
+    if (miniDirty_ && miniW_ > 0) {
+        if (miniTexture_) o.updateImage(miniTexture_, miniPixels_.data(), miniW_, miniH_);
+        else miniTexture_ = o.makeImage(miniPixels_.data(), miniW_, miniH_);
+        miniDirty_ = false;
+    }
+    // Ten times a second is plenty.
+    if (const unsigned now = static_cast<unsigned>(SDL_GetTicks()); miniText_.empty() || now - miniAt_ > 100) {
+        miniText_ = illyria_minimap();
+        miniAt_ = now;
+    }
+    const float mh = std::clamp(h * 0.18f, 96.0f, 260.0f), mw = kind == 1 ? mh * 0.8f : mh;
+    const float x0 = w - mw - 16, y0 = 44;
+    miniX_ = x0, miniY_ = y0, miniW0_ = mw, miniH0_ = mh;
+    // The frame: parchment, laid thin enough to see the ground through its margin, with a gold line and an inked rim.
+    o.rect(x0 - 5, y0 - 5, mw + 10, mh + 10, rgba(0xE9D9B0, 168));
+    o.frame(x0 - 5, y0 - 5, mw + 10, mh + 10, 2, rgba(0x7A5A2C, 235));
+    o.frame(x0 - 2, y0 - 2, mw + 4, mh + 4, 1, rgba(0xB58A2C, 220));
+    if (miniTexture_) o.image(miniTexture_, x0, y0, mw, mh, rgba(0xFFFFFF, 235));
+    else o.rect(x0, y0, mw, mh, rgba(0x1A2A38, 200));
+    // Lines to marks.
+    std::istringstream lines(miniText_);
+    float mapW = 1, mapH = 1;
+    std::vector<std::vector<std::string>> rows;
+    for (std::string line; std::getline(lines, line);) {
+        std::vector<std::string> f;
+        size_t from = 0;
+        for (;;) {
+            const size_t bar = line.find('|', from);
+            f.push_back(line.substr(from, bar == std::string::npos ? std::string::npos : bar - from));
+            if (bar == std::string::npos) break;
+            from = bar + 1;
+        }
+        if (f[0] == "m" && f.size() >= 3) mapW = static_cast<float>(std::atof(f[1].c_str())), mapH = static_cast<float>(std::atof(f[2].c_str()));
+        else rows.push_back(std::move(f));
+    }
+    mapW_ = mapW, mapH_ = mapH;
+    const auto X = [&](float m) { return x0 + std::clamp(m / mapW, 0.0f, 1.0f) * mw; };
+    const auto Y = [&](float m) { return y0 + mh - std::clamp(m / mapH, 0.0f, 1.0f) * mh; };
+    const auto at = [&](const std::vector<std::string>& f, size_t i) { return i < f.size() ? static_cast<float>(std::atof(f[i].c_str())) : 0.0f; };
+    const Colour ink = rgba(0x000000, 200);
+    for (const auto& f : rows) {  // fights glow, then heaps, then men
+        if (f[0] != "f") continue;
+        const float r = std::min(3.0f + std::sqrt(at(f, 3)), 8.0f);
+        o.rect(X(at(f, 1)) - r, Y(at(f, 2)) - r, 2 * r, 2 * r, rgba(0xFF8C28, 150));
+    }
+    for (const auto& f : rows) {
+        if (f[0] == "s") {  // ruins, temples, sages: a pale mark
+            const float sx = X(at(f, 1)), sy = Y(at(f, 2));
+            o.rect(sx - 2, sy - 2, 4, 4, ink);
+            o.rect(sx - 1.2f, sy - 1.2f, 2.4f, 2.4f, rgba(0xF4EAD0));
+        } else if (f[0] == "k" && f.size() >= 5) {
+            const float r = std::min(1.5f + std::sqrt(at(f, 4)) * 0.3f, 4.5f);
+            o.rect(X(at(f, 2)) - r - 0.8f, Y(at(f, 3)) - r - 0.8f, 2 * r + 1.6f, 2 * r + 1.6f, ink);
+            o.rect(X(at(f, 2)) - r, Y(at(f, 3)) - r, 2 * r, 2 * r, hex(f[1]));
+        } else if (f[0] == "d" && f.size() >= 4) {
+            o.rect(X(at(f, 2)) - 1.7f, Y(at(f, 3)) - 1.7f, 3.4f, 3.4f, ink);
+            o.rect(X(at(f, 2)) - 1.2f, Y(at(f, 3)) - 1.2f, 2.4f, 2.4f, hex(f[1]));
+        }
+    }
+    for (const auto& f : rows) {  // towns on top: a square in the holder's colour
+        if (f[0] != "t" || f.size() < 5) continue;
+        const float r = f[4] == "1" ? 3.4f : f[4] == "2" ? 1.7f : 2.6f, sx = X(at(f, 1)), sy = Y(at(f, 2));
+        o.rect(sx - r - 0.8f, sy - r - 0.8f, 2 * r + 1.6f, 2 * r + 1.6f, ink);
+        o.rect(sx - r, sy - r, 2 * r, 2 * r, hex(f[3]));
+    }
+    // Where the camera looks.
+    {
+        float px[4], py[4];
+        const std::string view = illyria_minimap_view();
+        int n = 0;
+        std::istringstream corners(view);
+        for (std::string c; n < 4 && corners >> c;) {
+            const size_t comma = c.find(',');
+            if (comma == std::string::npos) break;
+            px[n] = X(static_cast<float>(std::atof(c.c_str()))), py[n] = Y(static_cast<float>(std::atof(c.c_str() + comma + 1)));
+            ++n;
+        }
+        if (n == 4)
+            for (int i = 0; i < 4; ++i) {
+                o.line(px[i], py[i], px[(i + 1) % 4], py[(i + 1) % 4], 3, rgba(0x000000, 150));
+                o.line(px[i], py[i], px[(i + 1) % 4], py[(i + 1) % 4], 1.4f, rgba(0xFFFFFF, 235));
+            }
+    }
+    hits_.insert(hits_.begin(), {x0, y0, mw, mh, 2000});
 }
 
 void Hud::draw(Overlay& o, float w, float h) {
@@ -389,6 +596,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.text(10, h - 94, buf, kGold, 13);
     }
     float x = 8;
+    const Colour side = hex(hud.str("colour"));  // the player's colour (palette.h), the bars of the cards
     const float cw = 132, ch = 56, y = h - ch - 8;
     for (const Json& q : hud.list("squads")) {
         const int i = static_cast<int>(q.num("i"));
@@ -401,10 +609,12 @@ void Hud::draw(Overlay& o, float w, float h) {
         std::snprintf(buf, sizeof buf, "%d/%d  %s", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")), q.str("role").c_str());
         o.text(x + 6, y + 22, buf, kDim, 10);
         const double total = std::max(1.0, q.num("total"));
-        o.rect(x + 6, y + 42, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : rgba(0x5CB85C));
+        o.rect(x + 6, y + 42, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
         hits_.push_back({x, y, cw, ch, -1 - i});
         x += cw + 6;
     }
+
+    drawMinimap(o, w, h);
 
     // Looking at a man or gate that is not ours.
     if (const Json* in = hud.find("inspect")) {
@@ -444,6 +654,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             {"Keys",
              {{"W A S D, arrows", "pan"},
               {"Q E, R F, N", "turn, zoom, north"},
+              {"M", "show or hide the map (click or drag it to look)"},
               {"Z, V", "attack mode, force march (one order)"},
               {"Space, B", "stop the march (halt)"},
               {"T, X, C", "special, scatter, find selection"},

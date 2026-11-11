@@ -389,6 +389,22 @@ TEST(a_side_hidden_from_the_viewer_is_on_no_surface_the_viewer_reads) {
     CHECK(tried);
 }
 
+// The battle minimap (minimap.h) draws through the same seam: a man the viewer may not see is on none of its lines.
+TEST(the_battle_minimap_leaves_out_the_men_the_viewer_cannot_see) {
+    Island w;
+    w.frame();
+    char b[8];
+    const V3 c1 = illyria::game::factionColor(1);
+    std::snprintf(b, sizeof b, "#%02x%02x%02x", static_cast<int>(c1.x * 255), static_cast<int>(c1.y * 255), static_cast<int>(c1.z * 255));
+    const std::string colour1 = b;
+    const size_t before = linesWith(illyria::game::battleMinimapText(*w.b), "|" + colour1 + "|");
+    CHECK(before > 0);
+    w.c.setSight(hides12);
+    CHECK(linesWith(illyria::game::battleMinimapText(*w.b), "|" + colour1 + "|") == 0);
+    w.c.setSight({});
+    CHECK(linesWith(illyria::game::battleMinimapText(*w.b), "|" + colour1 + "|") == before);
+}
+
 TEST(the_fight_the_camera_is_taken_to_is_one_the_viewer_may_see) {
     // Two lords' stacks fight far from the player; the hot spot finds it while it can be seen and not when it cannot.
     const auto fight = [](bool hidden) {

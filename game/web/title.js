@@ -316,6 +316,7 @@
     const html = () =>
       `<p class="lead">Slot ${k}: who will you be?</p>` +
       `<div class="choice wrap" data-players>` + lords.map((l, i) => `<button data-player="${i}"><b>${l.name}</b><small>${l.hero} · ${l.note}</small></button>`).join("") + `</div>` +
+      `<p class="lead" style="margin-top:14px">Your colour</p><div data-colour></div>` +
       `<p class="lead" style="margin-top:14px">Which lords will you face? <small data-count></small></p>` +
       `<div class="choice wrap" data-foes>` + lords.map((l, i) => `<button data-foe="${i}"><b>${l.name}</b><small data-foesub="${i}"></small></button>`).join("") + `</div>` +
       `<div class="choice"><button data-all="1">All</button><button data-all="0">None</button></div>` +
@@ -345,6 +346,9 @@
     body.querySelectorAll("[data-foe]").forEach((b) => { b.onclick = () => { enemies ^= 1 << +b.dataset.foe; sync(); }; });
     body.querySelectorAll("[data-all]").forEach((b) => { b.onclick = () => { enemies = +b.dataset.all ? 0xff : 0; sync(); }; });
     sync();
+    const colourSlot = body.querySelector("[data-colour]");
+    const picker = window.IllyriaPalette ? IllyriaPalette.picker(colourSlot, player, null, lords.map((l) => l.name)) : null;
+    body.querySelectorAll("[data-player]").forEach((b) => { const was = b.onclick; b.onclick = () => { was(); if (picker) picker.faction = player; }; });
     body.querySelector("[data-start]").onclick = () => startCampaign(k, hard, player, enemies & ~(1 << player));
     focusFirst(body.parentElement);
   }
@@ -352,7 +356,10 @@
     el.querySelector(".body").innerHTML = `<p class="lead">One battle, fought out in full. Nothing carries over.</p>` +
       `<button class="big" data-s="0"><span>Oakhaven Ford<br><small style="text-align:left;display:block">Hold the ford against the Red Hand</small></span><small>Battle</small></button>` +
       `<div style="height:8px"></div>` +
-      `<button class="big" data-s="1"><span>The siege<br><small style="text-align:left;display:block">Storm a neutral town and take its courtyard</small></span><small>Siege</small></button>`;
+      `<button class="big" data-s="1"><span>The siege<br><small style="text-align:left;display:block">Storm a neutral town and take its courtyard</small></span><small>Siege</small></button>` +
+      `<h3>Your colour</h3><div data-colour></div>` +
+      `<p class="note">Only you see it. The sides keep their own colours, except one that clashes with yours, which takes the one you gave up.</p>`;
+    if (window.IllyriaPalette) IllyriaPalette.picker(el.querySelector("[data-colour]"), 6, null, lords.map((l) => l.name));  // (a skirmish leads the Moonward seat)
     el.querySelectorAll("[data-s]").forEach((b) => {
       b.onclick = () => {
         busy("Raising the banners", b.dataset.s === "1" ? "The siege" : "Oakhaven Ford");
@@ -491,6 +498,7 @@
     `<tr><td>${k("Q")} · ${k("E")}</td><td>Turn the view left · right (or ${k("Shift")} + ${k("←")}${k("→")}).</td></tr>` +
     `<tr><td>${k("R")} · ${k("F")}</td><td>Zoom in · out while held (or the wheel, or pinch).</td></tr>` +
     `<tr><td>${k("N")}</td><td>North up (or click the compass under the top right buttons).</td></tr>` +
+    `<tr><td>${k("M")}</td><td>Show or hide the map in the corner (the island, or the battlefield). Click or drag on it to move the view.</td></tr>` +
     `<tr><td>${k("C")}</td><td>The camera to the selection.</td></tr></table>` +
     `<h3>Keys in battle</h3>` +
     `<table class="keys">` +

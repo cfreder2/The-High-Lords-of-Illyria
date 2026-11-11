@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "illyria/game/gmath.h"
+#include "illyria/game/palette.h"
 #include "illyria/sim/continent.h"
 
 namespace illyria::game {
@@ -12,23 +13,18 @@ namespace illyria::game {
 // colours of the faction it plays. The identity until a campaign sets it.
 inline uint8_t* sideFactions() {
     // (a skirmish's seats: the player the Moonward blue, the enemy the Ironhold red, then gold and green)
-    static uint8_t table[sim::Continent::kFactionCount] = {6, 2, 1, 4, 5, 3, 0, 7};
+    static uint8_t table[sim::Continent::kFactionCount] = {6, 2, 1, 4, 5, 3, 0, 7};  // (kSkirmishSeats)
     return table;
 }
+// The colour a side wears: its faction's, as the player's choice leaves it (palette.h: the one place colours come from).
 inline V3 factionColor(uint8_t owner) {
     if (owner < sim::Continent::kFactionCount) owner = sideFactions()[owner];
-    static const V3 kColors[sim::Continent::kFactionCount] = {
-        {0.95f, 0.95f, 0.92f},  // the Aurelian Throne: white
-        {0.92f, 0.75f, 0.15f},  // the Highcrag Giants: gold
-        {0.80f, 0.15f, 0.12f},  // the Ironhold Dwarves: red
-        {0.92f, 0.48f, 0.12f},  // the Orcs of Grath: orange
-        {0.16f, 0.60f, 0.24f},  // the Sylvaran Elves: green
-        {0.60f, 0.40f, 0.24f},  // the Sunreach Riders: tan
-        {0.20f, 0.36f, 0.82f},  // the Moonward Order: blue
-        {0.10f, 0.10f, 0.10f},  // Lord Malvoren: black
-    };
-    return owner < sim::Continent::kFactionCount ? kColors[owner] : V3{0.6f, 0.6f, 0.6f};
+    return palette::faction(owner);
 }
+
+// Whose seat each of a skirmish's four teams is (the factions behind the Blue, Red, Gold and Green teams), and the
+// order sideFactions has outside a conquest.
+constexpr uint8_t kSkirmishSeats[8] = {6, 2, 1, 4, 5, 3, 0, 7};
 
 // A banner's cloth: the lord's colour, or for nobody's (a neutral town, an
 // outpost unclaimed) undyed linen, which the flag shader marks with a red cross.

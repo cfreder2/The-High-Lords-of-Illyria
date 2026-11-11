@@ -23,6 +23,8 @@
 
 namespace {
 
+illyria::native::Hud* gHud = nullptr;  // where the minimap's picture goes (platform::minimapLand)
+
 // The simulation's tick count (illyria_hud): 0 until a mode is begun, and held there while the menu is the title's.
 unsigned hudTick() {
     illyria::native::Json hud;
@@ -297,7 +299,9 @@ void sfxAmbience(float wm, float wv, float sw, float swp, float fl, float flp, f
 }
 void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience) { native::audio::underwater(cutoffHz, gain, wobble, ambience); }
 void sfxUnderwaterCue(bool entering) { native::audio::underwaterCue(entering); }
-void minimapLand(const uint8_t*, int, int) {}  // (no minimap yet)
+void minimapLand(const uint8_t* rgba, int w, int h) {
+    if (gHud != nullptr && rgba != nullptr && w > 0 && h > 0) gHud->setMinimapLand(rgba, w, h);
+}
 void modeStarted(const char*) {}
 void requestSheet(int type, bool closeup, int standIn) { native::requestSheet(type, closeup, standIn); }
 void requestModel(int kind) { native::requestModel(kind); }
@@ -364,9 +368,13 @@ int runApp(int argc, char** argv) {
     native::Hud hud;
     {
         char* pref = SDL_GetPrefPath("cfreder2", "Illyria");
-        if (pref) hud.setSaveFile(std::string(pref) + "conquest.save");
+        if (pref) {
+            hud.setSaveFile(std::string(pref) + "conquest.save");
+            hud.setSettingsFile(std::string(pref) + "settings.ini");  // the player's colour, the map shown
+        }
         SDL_free(pref);
     }
+    gHud = &hud;
     native::Input input(hud);
 
     if (opt.mode.empty()) {

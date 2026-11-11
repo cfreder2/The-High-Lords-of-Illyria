@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "illyria/game/battle.h"
+#include "illyria/game/factions.h"
 
 namespace illyria::game {
 
@@ -47,15 +48,7 @@ sim::Vec3 insideField(const sim::Vec3& p, int32_t size, int32_t margin) {
     return {std::clamp(p.x, lo, hi), std::clamp(p.y, lo, hi), p.z};
 }
 
-V3 teamColour(sim::PlayerId team) {
-    static const V3 kColours[4] = {
-        {0.22f, 0.42f, 0.92f},  // blue: the renderer's player colour
-        {0.86f, 0.18f, 0.14f},  // red: its enemy colour
-        {0.92f, 0.72f, 0.16f},  // gold
-        {0.22f, 0.64f, 0.30f},  // green
-    };
-    return kColours[team % 4];
-}
+V3 teamColour(sim::PlayerId team) { return palette::faction(kSkirmishSeats[team % 4]); }
 
 const char* teamName(sim::PlayerId team) {
     static const char* kNames[4] = {"Blue", "Red", "Gold", "Green"};

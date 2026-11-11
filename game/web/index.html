@@ -153,18 +153,24 @@
   #banners .raise.held { color: #ffd27a; }
   #banners .raise.losing { color: #ff8a7a; }
   /* The minimap: every town and site, the soldiers as points or heat, where the camera looks; tap to go there. */
-  #minimap { display: none; position: fixed; right: calc(8px + var(--safe-r)); top: calc(104px + var(--safe-t)); z-index: 3; padding: 3px;
-             touch-action: none; user-select: none; -webkit-user-select: none; }
-  body.campaign #minimap { display: block; }
-  #minimap canvas { display: block; width: 150px; height: 187.5px; border-radius: 7px; cursor: crosshair; touch-action: none; }
-  @media (max-width: 600px) { #minimap canvas { width: 108px; height: 135px; } #minimap { top: calc(100px + var(--safe-t)); } }
+  #minimap { display: none; position: fixed; right: calc(8px + var(--safe-r)); top: calc(104px + var(--safe-t)); z-index: 3; padding: 6px;
+             touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 3px; border: 2px solid #7a5a2c;
+             background: rgba(233, 217, 176, 0.62); backdrop-filter: none; -webkit-backdrop-filter: none;
+             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(181, 138, 44, 0.7), inset 0 0 14px rgba(110, 74, 30, 0.35); }
+  #minimap.on { display: block; }
+  /* About 18% of the screen's height; the island is 4 : 5, a battlefield square. */
+  #minimap canvas { display: block; height: clamp(110px, 18vh, 240px); aspect-ratio: 4 / 5; width: auto; border-radius: 2px; cursor: crosshair; touch-action: none;
+                    box-shadow: 0 0 0 1px rgba(43, 30, 16, 0.7); }
+  #minimap.square canvas { aspect-ratio: 1; }
+  @media (max-width: 600px) { #minimap { top: calc(100px + var(--safe-t)); } }
+  body.sandbox-on #minimap { right: calc(268px + var(--safe-r)); }
   #labels .k7 { font-size: 11px; font-style: italic; color: #e2d8c4; }
   #labels .k7 .tw { font-style: normal; font-size: 12px; margin-right: 3px; }
   /* The siege's capture point, at the top of the battle. */
   #capture { position: fixed; left: 50%; top: calc(56px + var(--safe-t)); transform: translateX(-50%); width: min(300px, 70vw); padding: 5px 10px 6px;
              font-size: 12px; text-align: center; z-index: 3; }
   #capture .bar { position: relative; height: 8px; margin-top: 4px; border-radius: 4px; background: #8a2a20; overflow: hidden; }
-  #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: #3a6ce8; }
+  #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); }
   #capture.taken { border-color: #8fd0ff; }
   /* The compass, under the top right buttons (left of the sandbox's panel): its needle points north; a tap turns the view north up. */
   #compass { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); z-index: 2; width: 40px; height: 40px;
@@ -525,6 +531,7 @@
       setMode: Module.cwrap("illyria_set_order_mode", null, ["number"]),
       hover: Module.cwrap("illyria_hover", "number", ["number", "number"]),
       dragBox: Module.cwrap("illyria_drag_box", "string", []),
+      miniKind: Module.cwrap("illyria_minimap_kind", "number", []),
       miniLand: Module.cwrap("illyria_minimap_land", null, []),
       mini: Module.cwrap("illyria_minimap", "string", []),
       miniView: Module.cwrap("illyria_minimap_view", "string", []),
@@ -556,6 +563,7 @@
       setGraphics: Module.cwrap("illyria_set_graphics", null, ["number", "number"]),
       preset: Module.cwrap("illyria_graphics_preset", "number", ["number"]),
       setDynamicRes: Module.cwrap("illyria_set_dynamic_resolution", null, ["number"]),
+      setSideColour: Module.cwrap("illyria_set_side_colour", null, ["string"]),
       campSave: Module.cwrap("illyria_campaign_save", "string", []),
       campSetSpeed: Module.cwrap("illyria_campaign_set_speed", null, ["number"]),
       modeError: Module.cwrap("illyria_mode_error", "string", []),
@@ -846,8 +854,10 @@
   // the toast) when the engine has no such mode or it could not start.
   function startMode(id, options) {
     if (!api) return false;
+    if (window.IllyriaPalette) IllyriaPalette.apply(api);  // the player's colour, before anything is drawn in it
     if (!api.startMode(id, JSON.stringify(options || {}))) return false;
     resetHud();
+    if (window.IllyriaMinimap) IllyriaMinimap.reset();
     mode = id;
     if (id === "title") document.body.classList.add("at-title");
     else if (id === "campaign") {
@@ -1057,7 +1067,8 @@
         else { const slot = api.group(2, 0); toast(slot >= 0 ? `Group ${slot} made` : "All ten groups are in use"); }
         break;
       }
-      case "KeyV": case "KeyM": setMode(orderMode === 2 ? 0 : 2); break;
+      case "KeyV": setMode(orderMode === 2 ? 0 : 2); break;
+      case "KeyM": toggleMinimap(); break;  // the map in the corner, kept on this device
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": api.stop(); break;
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
@@ -1122,10 +1133,18 @@
     return `<svg viewBox="0 0 16 ${4 + n * 4}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
   }
 
-  // The minimap (illyria_minimap in main.cpp): the land drawn once by the engine, then every town and
-  // site, the soldiers as points where they stand apart and as heat where they cannot be told apart,
-  // and the ground the camera sees. A tap or a drag on it takes the camera there.
-  const mini = { canvas: $("miniCanvas"), land: null, w: 2844, h: 3556, next: 0, towns: [], sites: [], heaps: [], dots: [], fights: [] };
+  // The minimap (illyria_minimap in app.cpp): the land drawn once by the engine, then (for a conquest) every town and
+  // site, the soldiers as points where they stand apart and as heat where they cannot be told apart, and the ground
+  // the camera sees. A battle has the same, without towns: its field, its men, the camera. A tap or a drag on it takes
+  // the camera there. M shows and hides it.
+  const miniKey = "illyria.minimap.hidden";
+  const mini = { canvas: $("miniCanvas"), box: $("minimap"), land: null, kind: 0, hidden: false, w: 2844, h: 3556, next: 0, towns: [], sites: [], heaps: [], dots: [], fights: [] };
+  try { mini.hidden = localStorage.getItem(miniKey) === "1"; } catch (e) { /* shown */ }
+  function toggleMinimap() {
+    mini.hidden = !mini.hidden;
+    try { localStorage.setItem(miniKey, mini.hidden ? "1" : "0"); } catch (e) { /* for this visit */ }
+    toast(mini.hidden ? "Map hidden (M shows it)" : "Map shown");
+  }
   window.IllyriaMinimap = {
     land(rgba, w, h) {
       const c = document.createElement("canvas");
@@ -1133,10 +1152,17 @@
       c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, rgba.length), w, h), 0, 0);
       mini.land = c;
     },
+    reset() { mini.land = null; mini.next = 0; },  // a new game: its ground is fetched again
   };
   function drawMinimap(t) {
     requestAnimationFrame(drawMinimap);
-    if (!api || !campaign) return;
+    if (!api) return;
+    const kind = api.miniKind();
+    if (kind !== mini.kind) { mini.kind = kind; mini.land = null; mini.next = 0; }
+    const show = kind !== 0 && !mini.hidden && !document.body.classList.contains("screen-open") && !document.body.classList.contains("mode-setup");
+    mini.box.classList.toggle("on", show);
+    mini.box.classList.toggle("square", kind === 2);
+    if (!show) return;
     const cv = mini.canvas, dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = cv.clientWidth, cssH = cv.clientHeight;
     if (!cssW) return;
@@ -1222,7 +1248,7 @@
     const look = (e) => {
       const r = cv.getBoundingClientRect();
       const x = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), y = Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1);
-      if (api) api.miniLook(x * mini.w, (1 - y) * mini.h);
+      if (api && mini.kind) api.miniLook(x * mini.w, (1 - y) * mini.h);
     };
     cv.addEventListener("pointerdown", (e) => { down = true; cv.setPointerCapture(e.pointerId); look(e); e.preventDefault(); e.stopPropagation(); });
     cv.addEventListener("pointermove", (e) => { if (down) look(e); });
@@ -1440,8 +1466,8 @@
         (cap.att > cap.def ? " (rising)" : cap.def > cap.att ? " (falling)" : cap.att ? " (held)" : "");
     }
     // (anyone not of the local side is the foe: a match may seat the player on any)
-    // The cards' strength bars in the local side's colour (mode.cpp teamColour: blue, red, gold, green).
-    const sideColour = ["#4a78e6", "#db2e24", "#eab829", "#38a34c"][s.side & 3];
+    // The cards' strength bars in the local side's colour (the engine says it: palette.h, with the player's choice).
+    const sideColour = s.colour || ["#4a78e6", "#db2e24", "#eab829", "#38a34c"][s.side & 3];
     if (sideColour !== lastSideColour) document.documentElement.style.setProperty("--blue", (lastSideColour = sideColour));
     $("foe").textContent = s.foe;
     $("enemyCount").textContent = `${s.foeAlive} / ${s.foeTotal}`;
@@ -1611,6 +1637,7 @@
   };
 })();
 </script>
+<script src="palette.js?v=@ILLYRIA_VERSION@"></script>
 <script src="title.js?v=@ILLYRIA_VERSION@"></script>
 <script src="audio.js?v=@ILLYRIA_VERSION@"></script>
 <script src="voice.js?v=@ILLYRIA_VERSION@"></script>

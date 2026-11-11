@@ -68,6 +68,7 @@ add_executable(illyria_tests
     test_voice.cpp
     test_death.cpp
     test_capture.cpp
+    test_palette.cpp
     test_territory.cpp
     test_realm_land.cpp
     test_sprite_layout.cpp
@@ -93,6 +94,9 @@ add_executable(illyria_tests
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)
 # (The castle and road measuring the tests share with tools/terrainaudit.)
 target_include_directories(illyria_tests PRIVATE ${CMAKE_SOURCE_DIR}/tools)
+if(NOT EMSCRIPTEN)
+    target_compile_definitions(illyria_tests PRIVATE ILLYRIA_WEB_DIR="${CMAKE_SOURCE_DIR}/game/web")  # (the page's palette.js is checked against palette.cpp)
+endif()
 
 if(EMSCRIPTEN)
     # Propagate main()'s return value as the node process exit code.
