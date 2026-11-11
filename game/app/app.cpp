@@ -1851,7 +1851,17 @@ ILLYRIA_API const char* illyria_labels() {
     const illyria::sim::Continent& c = app->battle->continent();
     const V3 o = app->battle->origin();
     char buf[160];
-    const auto add = [&](int kind, const V3& colour, const illyria::sim::Vec3& at, const std::string& name, int town = -1) {
+    // Every label of the frame is collected, then thinned (below): names that would print over another label, a town's
+    // marker or an army's box are left off, the least important first, so the map reads at any zoom. A marker is never
+    // dropped (it is the tap on its town), only its name.
+    struct Entry {
+        int kind, town;
+        V3 colour;
+        float px, py, priority;
+        std::string name;
+    };
+    std::vector<Entry> entries;
+    const auto add = [&](int kind, const V3& colour, const illyria::sim::Vec3& at, const std::string& name, int town = -1, float priority = 0) {
         V3 p = toV3(at) - V3{o.x, o.y, 0};
         p.z = app->battle->heightAt(p.x, p.y) + 10;
         float px, py;
@@ -1861,9 +1871,7 @@ ILLYRIA_API const char* illyria_labels() {
         // A town's marker stands above its men's dots, never over them (a dot reaches dotReachPx from his place; the marker is 12 px).
         if (kind <= 1) py -= app->renderer.dotReachPx() / app->pixelRatio + 8.0f;
         if (px < -80 || py < -40 || px > cam.width() / app->pixelRatio + 80 || py > cam.height() / app->pixelRatio + 40) return;
-        std::snprintf(buf, sizeof buf, "%d|#%02x%02x%02x|%.0f|%.0f|%d|%s\n", kind, static_cast<int>(colour.x * 255),
-                      static_cast<int>(colour.y * 255), static_cast<int>(colour.z * 255), px, py, town, name.c_str());
-        out += buf;
+        entries.push_back({kind, town, colour, px, py, priority, name});
     };
     for (size_t ci = 0; ci < c.cities().size(); ++ci) {
         const auto& city = c.cities()[ci];
@@ -1873,14 +1881,15 @@ ILLYRIA_API const char* illyria_labels() {
             add(0, factionColor(owner), city.pos, "", static_cast<int>(ci));  // a marker only
             continue;
         }
-        add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name, static_cast<int>(ci));
+        add(city.capital ? 1 : 0, factionColor(owner), city.pos, city.name, static_cast<int>(ci), (city.capital ? 100.0f : 60.0f) + static_cast<float>(city.radius.toDouble()) * 0.05f);
     }
     if (d < 2000) {
         for (size_t k = 0; k < c.sites().size(); ++k) {
             const auto& site = c.sites()[k];
             // In the campaign, a ruin whose guardian is slain lies empty.
             const bool explored = app->camp.on && site.kind == illyria::sim::Continent::Site::Kind::Ruin && app->camp.c->sites()[k].searched;
-            add(2 + static_cast<int>(site.kind), explored ? V3{0.6f, 0.6f, 0.6f} : V3{1, 1, 1}, site.pos, explored ? site.name + " (explored)" : site.name);
+            add(2 + static_cast<int>(site.kind), explored ? V3{0.6f, 0.6f, 0.6f} : V3{1, 1, 1}, site.pos, explored ? site.name + " (explored)" : site.name, -1,
+                site.kind == illyria::sim::Continent::Site::Kind::Ruin ? 20.0f : 35.0f);
         }
     }
     // The campaign's outpost towers (kind 7), in the colours of whoever holds their land.
@@ -1890,12 +1899,68 @@ ILLYRIA_API const char* illyria_labels() {
             const uint8_t w = cc.hexes()[static_cast<size_t>(op.hex)].owner;
             const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cx)),
                                         illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cy)), {}};
-            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 1000 && !op.name.empty() ? op.name + " tower" : "");
+            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 1000 && !op.name.empty() ? op.name + " tower" : "", -1, 30.0f);
         }
     }
     for (const auto& l : c.labels()) {
-        if (l.kind == 0 && d > 667) add(5, {1, 1, 1}, l.pos, l.name);
-        else if (l.kind != 0 && l.kind != 4 && d > 450 && d < 2667) add(6, {1, 1, 1}, l.pos, l.name);
+        if (l.kind == 0 && d > 667) add(5, {1, 1, 1}, l.pos, l.name, -1, 50.0f);
+        else if (l.kind != 0 && l.kind != 4 && d > 450 && d < 2667) add(6, {1, 1, 1}, l.pos, l.name, -1, 40.0f);
+    }
+    // Thinning. Text is about 0.6 of its height wide a letter (the page's 14 px capital, 22 px realm, 11 px the rest).
+    struct Box {
+        float x0, y0, x1, y1;
+    };
+    const auto overlaps = [](const Box& a, const Box& b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; };
+    std::vector<Box> taken;
+    for (const Entry& e : entries)
+        if (e.kind <= 1 || e.kind == 7) taken.push_back({e.px - 6, e.py + 1, e.px + 5.5f, e.py + 15});  // every marker keeps its square
+    std::vector<Box> flags;
+    if (app->camp.on) {  // and every army its flag (the native HUD's box, 18 x 14 about the stack's point, with its ring)
+        const illyria::sim::Campaign& cc = *app->camp.c;
+        for (const illyria::sim::Campaign::Stack& st : cc.stacks()) {
+            if (st.armies.empty()) continue;
+            V3 p = stackPosition(cc, st);
+            if (!cc.canSee(cc.localSide(), st.owner, p.x + o.x, p.y + o.y)) continue;
+            p.z += 30;
+            float px, py;
+            if (!cam.project(p, px, py)) continue;
+            px /= app->pixelRatio;
+            py /= app->pixelRatio;
+            flags.push_back({px - 12, py - 11, px + 12, py + 9});
+        }
+    }
+    std::vector<size_t> order(entries.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return entries[a].priority > entries[b].priority; });
+    for (const size_t i : order) {
+        Entry& e = entries[i];
+        if (e.name.empty()) continue;
+        const float size = e.kind == 1 ? 14.0f : e.kind == 5 ? 22.0f : 11.0f;
+        const float w = static_cast<float>(e.name.size()) * size * (e.kind == 5 ? 0.78f : 0.62f) + 8.0f;
+        const Box b{e.px + 6, e.py + 1, e.px + 6 + w, e.py + 3 + size + 2};
+        bool clear = true;
+        for (const Box& t : taken) {
+            // (a town's own marker is the square at its left: its name is clear of it by the 6 px)
+            if (overlaps(b, t)) {
+                clear = false;
+                break;
+            }
+        }
+        if (e.kind > 1 && e.kind != 7)  // (a town's name outranks an army's flag; the lesser names keep clear of them)
+            for (const Box& t : flags) clear = clear && !overlaps(b, t);
+        if (clear) {
+            taken.push_back(b);
+        } else if (e.kind <= 1 || e.kind == 7) {
+            e.name.clear();  // the marker stays, the name goes
+        } else {
+            e.kind = -1;  // not drawn
+        }
+    }
+    for (const Entry& e : entries) {
+        if (e.kind < 0) continue;
+        std::snprintf(buf, sizeof buf, "%d|#%02x%02x%02x|%.0f|%.0f|%d|%s\n", e.kind, static_cast<int>(e.colour.x * 255),
+                      static_cast<int>(e.colour.y * 255), static_cast<int>(e.colour.z * 255), e.px, e.py, e.town, e.name.c_str());
+        out += buf;
     }
     return out.c_str();
 }

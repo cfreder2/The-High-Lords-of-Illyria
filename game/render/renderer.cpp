@@ -428,6 +428,8 @@ bool Renderer::buildPrograms() {
         s.p.board = glGetUniformLocation(s.p.id, "uExtents");
         s.p.forestMap = glGetUniformLocation(s.p.id, "uForestMap");
         s.p.forestRect = glGetUniformLocation(s.p.id, "uForestRect");
+        s.p.farField = glGetUniformLocation(s.p.id, "uFarField");
+        s.p.farFieldRect = glGetUniformLocation(s.p.id, "uFarFieldRect");
         s.p.cell = glGetUniformLocation(s.p.id, "uPictures");
         s.p.boardNormal = glGetUniformLocation(s.p.id, "uBoardNormal");
         s.p.bakeBox = glGetUniformLocation(s.p.id, "uBakeBox");
@@ -871,15 +873,17 @@ void Renderer::buildLand(const Battle& battle, const FarGrid& g, LandMesh& out, 
             case sim::Ground::Road: c = {0.48f, 0.40f, 0.27f}; break;
             case sim::Ground::Forest: c = {0.18f, 0.25f, 0.11f}; break;
             case sim::Ground::Swamp: c = {0.24f, 0.29f, 0.17f}; break;
-            case sim::Ground::Shallows: c = {0.30f, 0.50f, 0.55f}; break;
-            case sim::Ground::DeepWater: c = {0.10f, 0.26f, 0.42f}; break;
+            // Water's colour is the shader's (kFarFs); the vertex carries the bank beside it, which the coarse land's dry
+            // pixels next to the waterline blend with: sand on the sea's shore, mud and gravel by a lake or river.
+            case sim::Ground::Shallows:
+            case sim::Ground::DeepWater: c = h < 1.2f ? V3{0.74f, 0.68f, 0.52f} : V3{0.40f, 0.37f, 0.28f}; break;
             case sim::Ground::Rock: c = {0.48f, 0.46f, 0.43f}; break;
             case sim::Ground::Bridge: c = {0.45f, 0.36f, 0.26f}; break;
             case sim::Ground::Mud: c = {0.33f, 0.27f, 0.18f}; break;
             case sim::Ground::Sand: c = {0.80f, 0.73f, 0.55f}; break;
             default: c = {0.40f, 0.49f, 0.21f}; break;
         }
-        if (ground != sim::Ground::DeepWater) {
+        if (ground != sim::Ground::DeepWater && ground != sim::Ground::Shallows) {
             const float snow = std::clamp((h - 107.0f) / 13.0f, 0.0f, 1.0f);  // the mountains' scale of height
             c = c + (V3{0.93f, 0.94f, 0.96f} - c) * snow;
         }
@@ -1017,6 +1021,7 @@ void Renderer::uploadContinent(const Battle& battle) {
     // battlefield (drawn with kFarDetail; the coarse land sinks beneath it).
     buildLand(battle, battle.farGrid(), farLand_, false);
     buildLand(battle, battle.nearGrid(), nearLand_, true);
+    uploadFarField(battle);
     {
         // The sea runs on past the edges of the map, out to the haze.
         const FarGrid& fg = battle.farGrid();
@@ -2212,6 +2217,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
         glBindTexture(GL_TEXTURE_2D, forestMap_);
         glUniform1i(p.forestMap, 14);
         glUniform4fv(p.forestRect, 1, forestRect_);
+        glActiveTexture(GL_TEXTURE0);
+    }
+    if (p.farField >= 0) {
+        glActiveTexture(GL_TEXTURE15);
+        glBindTexture(GL_TEXTURE_2D, farFieldTex_);
+        glUniform1i(p.farField, 15);
+        glUniform4fv(p.farFieldRect, 1, farFieldRect_);
         glActiveTexture(GL_TEXTURE0);
     }
     if (p.focus >= 0) glUniform2f(p.focus, camera.target().x, camera.target().y);

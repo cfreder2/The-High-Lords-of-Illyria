@@ -155,7 +155,7 @@ private:
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1, uw = -1;
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
-        GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1;
+        GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1, farField = -1, farFieldRect = -1;
     };
     // An instanced mesh: shared vertices plus a per-instance buffer of
     // position (3), rotation quaternion (4), scale (3), tint (3).
@@ -574,6 +574,10 @@ private:
     GLuint forestMap_ = 0;
     float forestRect_[4] = {0, 0, 1, 1};
     void uploadFarForest(const Battle& battle);
+    // The far land's field (renderer_farfield.cpp): a smooth shore, lake depth and relief, read per pixel.
+    GLuint farFieldTex_ = 0;
+    float farFieldRect_[4] = {0, 0, 1, 16};
+    void uploadFarField(const Battle& battle);
     void makeFarTrees();
     uint64_t marksUploaded_ = 0;
 

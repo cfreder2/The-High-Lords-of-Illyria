@@ -556,8 +556,26 @@ void Hud::draw(Overlay& o, float w, float h) {
             const float x = static_cast<float>(std::atof(f[2].c_str())), y = static_cast<float>(std::atof(f[3].c_str()));
             if (y < 38) continue;  // (under the status bar)
             const Colour c = hex(f[1]);
-            if (f[0] == "0" || f[0] == "1" || f[0] == "7") o.rect(x - 4, y + 4, 8, 8, c);
-            o.text(x + 8, y + 2, name, kInk, 11);
+            if (f[0] == "0" || f[0] == "1" || f[0] == "7") {  // a marker: the holder's colour in a dark frame with a light top edge
+                o.rect(x - 6, y + 2, 12, 12, rgba(0x000000, 200));
+                o.rect(x - 5, y + 3, 10, 10, c);
+                o.rect(x - 5, y + 3, 10, 2, rgba(0xFFFFFF, 70));
+            }
+            float lx = x + 8;
+            if (!name.empty() && conquest && (f[0] == "0" || f[0] == "1")) {  // a town's name clears the flag of an army standing in it
+                const float nw = o.width(name, f[0] == "1" ? 13.0f : 11.0f);
+                for (const Json& st : camp.list("stacks")) {
+                    const float sx = static_cast<float>(st.num("x")), sy = static_cast<float>(st.num("y"));
+                    if (sy + 9 > y + 2 && sy - 11 < y + 15 && sx - 14 < lx + nw && sx + 14 > lx) lx = std::max(lx, sx + 16);
+                }
+            }
+            if (!name.empty()) {  // names carry a dark shadow, so they read over forest, field and water alike
+                const float size = f[0] == "1" ? 13.0f : 11.0f;
+                const Colour ink = f[0] == "2" || f[0] == "7" ? kDim : kInk;
+                static const float kOutline[5][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}};
+                for (const auto& d : kOutline) o.text(lx + d[0], y + 2 + d[1], name, rgba(0x000000, 190), size);
+                o.text(lx, y + 2, name, ink, size);
+            }
         }
     }
 
@@ -575,16 +593,29 @@ void Hud::draw(Overlay& o, float w, float h) {
             const float x = static_cast<float>(s.num("x")), y = static_cast<float>(s.num("y"));
             const unsigned id = static_cast<unsigned>(s.num("id"));
             const Colour c = hex(s.str("color"));
-            o.rect(x - 9, y - 8, 18, 14, rgba(0x000000, 190));
-            o.rect(x - 8, y - 7, 16, 12, c);
+            // A small pennant on a pole: dark edge, the holder's colour, a lit top edge, the count centred (a star for a hero).
             std::snprintf(buf, sizeof buf, "%d%s", static_cast<int>(s.num("count")), s.flag("hero") ? "*" : "");
-            o.text(x - 6, y - 5, buf, c.r + c.g + c.b > 380 ? rgba(0x000000) : rgba(0xFFFFFF), 9);
-            if (id == selected) o.frame(x - 11, y - 10, 22, 18, 2, kGold);
-            hits_.push_back({x - 11, y - 10, 22, 18, 1000 + static_cast<int>(id)});
+            const float tw = o.width(buf, 10);
+            const float bw = std::max(16.0f, tw + 8);
+            o.rect(x - 1, y - 8, 2, 16, rgba(0x000000, 200));  // the pole
+            o.rect(x - bw / 2 - 1, y - 11, bw + 2, 16, rgba(0x000000, 210));
+            o.rect(x - bw / 2, y - 10, bw, 14, c);
+            o.rect(x - bw / 2, y - 10, bw, 2, rgba(0xFFFFFF, 80));
+            const bool light = c.r + c.g + c.b > 380;
+            o.text(x - tw / 2 + 0.5f, y - 8 + 0.5f, buf, light ? rgba(0xFFFFFF, 90) : rgba(0x000000, 130), 10);
+            o.text(x - tw / 2, y - 8, buf, light ? rgba(0x000000) : rgba(0xFFFFFF), 10);
+            if (id == selected) o.frame(x - bw / 2 - 3, y - 13, bw + 6, 20, 2, kGold);
+            hits_.push_back({x - bw / 2 - 3, y - 13, bw + 6, 20, 1000 + static_cast<int>(id)});
         }
         for (const Json& b : camp.list("banners")) {
             std::snprintf(buf, sizeof buf, "%s %d%%", b.str("name").c_str(), static_cast<int>(b.num("p")));
-            o.text(static_cast<float>(b.num("x")) - 30, static_cast<float>(b.num("y")) - 24, buf, hex(b.str("byColor")), 11);
+            // A pill under the town's marker: the raiser's colour, a bar for how far the banner has risen, and the name's shadow.
+            const float bx = static_cast<float>(b.num("x")), by = static_cast<float>(b.num("y")) - 26;
+            const float bwid = o.width(buf, 11) + 12;
+            const Colour bc = hex(b.str("byColor"));
+            o.rect(bx - bwid / 2, by - 2, bwid, 17, rgba(0x000000, 170));
+            o.rect(bx - bwid / 2, by + 13, bwid * static_cast<float>(std::clamp(b.num("p") / 100.0, 0.0, 1.0)), 2, bc);
+            o.text(bx - bwid / 2 + 6, by, buf, bc, 11);
         }
     }
 

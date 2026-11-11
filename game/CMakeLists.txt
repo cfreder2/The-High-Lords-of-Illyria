@@ -58,6 +58,7 @@ if(EMSCRIPTEN OR ILLYRIA_BUILD_APP)
         render/renderer_models.cpp
         render/renderer_trees.cpp
         render/renderer_post.cpp
+        render/renderer_farfield.cpp
         render/meshes.cpp
     )
     target_link_libraries(illyria_runtime PUBLIC illyria_game illyria_figures)

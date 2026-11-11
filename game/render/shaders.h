@@ -124,6 +124,38 @@ float valueNoise2(vec2 p) {
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
 }
+// The far land's field (Renderer::uploadFarField): the 16 m samples read through a cubic B-spline filter (four bilinear taps), so
+// what the mesh's triangles stepped in blocks is smooth per pixel. R water (1 + depth / 12 wet, below 1 dry, the waterline 1), G
+// height in metres, B convexity, A rock less swamp. Only where p is a cell inside the map; farFieldHas says whether it is.
+uniform sampler2D uFarField;
+uniform vec4 uFarFieldRect;  // min xy, 1 / cell, cell
+bool farFieldHas(vec2 p) {
+    vec2 sz = vec2(textureSize(uFarField, 0));
+    vec2 q = (p - uFarFieldRect.xy) * uFarFieldRect.z;
+    return sz.x > 3.0 && all(greaterThan(q, vec2(1.0))) && all(lessThan(q, sz - 2.0));
+}
+// Metres from p to the edge of the map's samples (0 outside): the sea there is only 5 to 13 m deep where the sea beyond the map is
+// deep, so the sea's depth is eased to deep toward the edge (farSea's callers) and no rectangle of the map shows in the water.
+float farFieldEdge(vec2 p) {
+    vec2 sz = vec2(textureSize(uFarField, 0));
+    if (sz.x < 4.0) return 1e6;
+    vec2 q = (p - uFarFieldRect.xy) * uFarFieldRect.z;
+    return max(min(min(q.x, sz.x - 1.0 - q.x), min(q.y, sz.y - 1.0 - q.y)), 0.0) * uFarFieldRect.w;
+}
+vec4 farField(vec2 p) {
+    vec2 sz = vec2(textureSize(uFarField, 0));
+    vec2 g = (p - uFarFieldRect.xy) * uFarFieldRect.z;
+    vec2 i = floor(g), f = g - i;
+    vec2 f2 = f * f, f3 = f2 * f;
+    vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+    vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+    vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+    vec2 w3 = f3 / 6.0;
+    vec2 s0 = w0 + w1, s1 = w2 + w3;
+    vec2 h0 = (i - 1.0 + w1 / s0 + 0.5) / sz, h1 = (i + 1.0 + w3 / s1 + 0.5) / sz;
+    return s0.y * (s0.x * texture(uFarField, vec2(h0.x, h0.y)) + s1.x * texture(uFarField, vec2(h1.x, h0.y))) +
+           s1.y * (s0.x * texture(uFarField, vec2(h0.x, h1.y)) + s1.x * texture(uFarField, vec2(h1.x, h1.y)));
+}
 // The colour of inland water, one for rivers, lakes and pools, from how deep it is in metres: the bed shows through
 // the shallows, silt-green gives way to deep blue by three metres. The battlefield's water, the far land's and the
 // far river ribbons all use it, so a river runs into a lake (or a lake into a river) without a change of colour.
@@ -215,13 +247,41 @@ vec3 hazeColor(vec3 world) {
 // the lit colour: shallows teal to deep blue, a swell, chop and glints, and the foam of a shore, which is kept to the
 // shallows (the foam band widens with the pixel so that it reads from high up, and must not run out over the shelf, where the
 // sea bed is only 5 to 13 m down all the way to the edge of the map).
+// Value noise and its slope (a quintic, so no grid creases); the caller turns the lattice.
+vec3 noised2(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0), du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+    float a = hash12(i), b = hash12(i + vec2(1.0, 0.0)), c = hash12(i + vec2(0.0, 1.0)), d = hash12(i + vec2(1.0, 1.0));
+    return vec3(a + (b - a) * u.x + (c - a) * u.y + (a - b - c + d) * u.x * u.y, du * vec2(b - a + (a - b - c + d) * u.y, c - a + (a - b - c + d) * u.x));
+}
+// The slope of the sea's chop, the one ripple function of every water the player can see (the battlefield's sea, the close-up
+// land's, the far land's, the sea beyond the map): position and time only, so the water is the same wave wherever and at
+// whatever height it is looked at, in four wavelengths from 7 m down to a metre, each fading out as it falls under a few pixels
+// (`px`, metres a pixel) instead of aliasing into grit; each octave's lattice is turned, so no grid of tiles shows.
+vec2 seaChop(vec2 p, float px, float t) {
+    const mat2 R = mat2(0.8, -0.6, 0.6, 0.8);
+    mat2 Ro = mat2(1.0, 0.0, 0.0, 1.0);
+    vec2 g = vec2(0.0);
+    float lam = 7.0;
+    for (int k = 0; k < 4; ++k) {
+        float fade = 1.0 - smoothstep(0.35 * lam, 1.3 * lam, px);
+        if (fade > 0.0) {
+            vec3 nz = noised2(Ro * p / lam + vec2(t * 0.30, -t * 0.24) * (1.0 + 0.6 * float(k)) + float(k) * 7.3);
+            g += (nz.yz * Ro) * (0.12 / (1.0 + 0.35 * float(k))) * fade;  // (the lattice's slope, back to world axes)
+        }
+        Ro = Ro * R;
+        lam *= 0.45;
+    }
+    return g;
+}
 vec3 farSea(vec2 p, vec3 world, float depthM) {
     float depth = clamp(depthM / 12.0, 0.0, 1.0);
     float t = uTime;
+    float pxm = uPxScale * distance(uEye, world);
     vec3 albedo = mix(vec3(0.22, 0.50, 0.50), vec3(0.06, 0.19, 0.34), smoothstep(0.0, 0.6, depth));
     vec2 g = vec2(0.8, 0.6) * cos(dot(p, vec2(0.8, 0.6)) * 0.09 - t * 1.1) * 0.10;
     g += vec2(-0.3, 0.95) * cos(dot(p, vec2(-0.3, 0.95)) * 0.16 - t * 1.6) * 0.06;
-    g += (vec2(valueNoise2(p / 6.0 + t * 0.35), valueNoise2(p / 6.0 - t * 0.3 + 5.0)) - 0.5) * 0.3;
+    g += seaChop(p, pxm, t);
     vec3 n = normalize(vec3(-g, 1.0));
     // The sea: lines of foam roll in over the shallows and break on the sand.
     float foam = shoreSwash(p, -depth * 12.0, 0.1, 1.0, uPxScale * distance(uEye, world)).x * (1.0 - smoothstep(1.0, 3.0, depthM));
@@ -239,6 +299,20 @@ float seaWeight(float surface) { return 1.0 - smoothstep(0.1, 2.0, surface); }
 vec3 farInland(vec2 p, float depthM) {
     vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7)) * 0.8;
     return mix(bed, inlandWater(depthM, p), clamp(0.55 + depthM * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
+}
+
+// The still water's finish from afar, one function for the far land's lakes and the river ribbons that run into them (so a river
+// and the lake it feeds are one sheet, with no seam where the ribbon gives way): the sky in the surface, more at grazing angles,
+// a broad glitter in the sun, and slow patches of light and dark. `lake`: 1 for still inland water, 0 where the sea's own look rules.
+vec3 farWaterSheen(vec3 w, vec2 p, vec3 world, float lake) {
+    vec3 v = normalize(uEye - world);
+    vec3 wn = normalize(vec3(-seaChop(p, uPxScale * distance(uEye, world), uTime) * 0.45, 1.0));  // (kWaterFs: the same ripple)
+    float fres = 0.03 + 0.5 * pow(1.0 - max(wn.z * v.z + dot(wn.xy, v.xy), 0.0), 4.0);
+    vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(reflect(-v, wn).z, 0.0, 1.0));
+    w = mix(w, sky * (0.8 + 0.2 * cloudShade(p)), clamp(fres * lake, 0.0, 0.5));
+    vec3 h = normalize(kSun + v);
+    w += vec3(1.0, 0.97, 0.9) * (pow(max(dot(wn, h), 0.0), 140.0) * 0.5 + pow(max(dot(wn, h), 0.0), 20.0) * 0.07) * lake * cloudShade(p);
+    return w * mix(1.0, 0.86 + 0.28 * valueNoise2(p / 45.0 + 2.0), lake);
 }
 
 // ---------------------------------------------------------------- under water
@@ -408,7 +482,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // positions, grows to a solid canopy as the cards shrink to specks.
     float canopyWeight = mix(0.55, 1.0, smoothstep(250.0, 2500.0, uCamDist));
     float forest = smoothstep(0.1, 0.4, forestCover(p) * canopyWeight * 1.6 + edge * 0.1);
-    float rock = smoothstep(0.35, 0.65, kinds.y + edge * 0.8);
+    float rock = smoothstep(0.4, 0.6, kinds.y + edge * 0.55);
     float swamp = smoothstep(0.4, 0.6, kinds.z + edge);
     float water = step(1.0, kinds.w + farShoreWobble(p));
     float slope = 1.0 - n.z;
@@ -416,25 +490,67 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
     vec3 meadow = moorland(mix(vec3(0.47, 0.45, 0.24), vec3(0.22, 0.35, 0.15), lush), p) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
-    albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
+    float pxm = uPxScale * distance(uEye, world);  // metres a pixel spans here: patterns finer than a pixel or two fade to their mean
+    // Farmland on the gentle plain: a patchwork of fields (pasture, crops, plough and hay), rows in each, hedged at the edges. The
+    // frame is turned a different way in each 400 m square so no grid shows; the patchwork fades to its mean colour before it shimmers.
+    float open = land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55);
+    float farm = smoothstep(0.55, 0.68, valueNoise2(p / 240.0 + 17.0)) * (1.0 - smoothstep(0.05, 0.12, slope)) * open;
+    if (farm > 0.0) {
+        float a = hash12(floor(p / 400.0)) * 3.14159;
+        vec2 u = vec2(cos(a) * p.x + sin(a) * p.y, -sin(a) * p.x + cos(a) * p.y);
+        vec2 q = u / vec2(46.0, 78.0) + vec2(hash12(floor(p / 400.0) + 3.0) * 9.0);
+        vec2 cid = floor(q), cf = fract(q);
+        float hf = hash12(cid + 41.0);
+        vec3 crop = hf < 0.28 ? vec3(0.32, 0.46, 0.18) : hf < 0.5 ? vec3(0.58, 0.52, 0.27) : hf < 0.7 ? vec3(0.42, 0.33, 0.21) : hf < 0.85 ? vec3(0.52, 0.55, 0.29) : vec3(0.26, 0.38, 0.16);
+        float rows = 0.5 + 0.5 * sin(u.y * 6.2832 / 3.2 + hf * 20.0);
+        float rowFade = 1.0 - smoothstep(0.9, 2.2, pxm);
+        crop *= 1.0 + (rows - 0.5) * 0.24 * rowFade * (hf < 0.7 ? 1.0 : 0.4);
+        vec2 ed = min(cf, 1.0 - cf) * vec2(46.0, 78.0);
+        float hedge = 1.0 - smoothstep(0.4, 1.4 + pxm * 0.6, min(ed.x, ed.y));
+        crop = mix(crop, vec3(0.12, 0.20, 0.07), hedge * 0.7);
+        albedo = mix(albedo, mix(albedo, crop, 0.75), farm);
+    }
+    albedo = mix(albedo, mix(albedo, meadow, 0.7), open * (1.0 - farm));
+    // A wood throws its shadow across the open ground beside it, away from the sun: the forest's edge reads.
+    if (open > 0.0 && forest < 0.5) {
+        float behind = forestCover(p + normalize(kSun.xy) * (6.0 + pxm * 2.0));
+        albedo *= 1.0 - 0.38 * smoothstep(0.25, 0.7, behind * canopyWeight * 1.6) * open;
+    }
     // Each kind's look is worked out only where the kind is (the noise is most of this function's cost, and
     // most land is meadow): the same picture as working all of them out and weighing them by nothing.
     // Forest canopy: crowns and gaps, lit as a rough surface.
     if (forest > 0.0) {
-        float crowns = fbm3(p / 9.0);
-        vec3 canopy = mix(vec3(0.07, 0.13, 0.05), vec3(0.19, 0.28, 0.10), crowns);
+        // Crowns: lumps of a few metres, each lit on its sun side and dark where they part (fine, from a pixel or two across).
+        float crowns = fbm3(p / 9.0) * 0.7 + valueNoise2(p / 3.4 + 11.0) * 0.5 * (1.0 - smoothstep(1.2, 3.0, pxm)) + 0.15;
+        vec3 canopy = mix(vec3(0.045, 0.10, 0.035), vec3(0.24, 0.34, 0.12), smoothstep(0.2, 0.95, crowns));
         canopy = mix(canopy, vec3(0.42, 0.34, 0.14), smoothstep(0.78, 0.9, valueNoise2(p / 160.0 + 5.0)) * 0.5);  // turning leaves
         albedo = mix(albedo, canopy, forest * land);
         n = normalize(n + vec3(valueNoise2(p / 6.0) - 0.5, valueNoise2(p / 6.0 + 4.0) - 0.5, 0.0) * 0.5 * forest);
     }
+    // Relief finer than the mesh's 16 m cells: ridged noise tilts the normal on slopes (spurs and gullies a few metres to a dozen
+    // across), the more the steeper the ground, and fades before it shimmers (feature size against pixel size).
+    float rough = smoothstep(0.05, 0.26, slope) * (1.0 - smoothstep(2.5, 6.0, pxm)) * land;
+    if (rough > 0.0) {
+        vec3 ra = noised2(p / 14.0 + 21.0), rb = noised2(mat2(0.8, -0.6, 0.6, 0.8) * p / 5.5 + 3.0);
+        vec2 ga = ra.yz * (ra.x > 0.5 ? 1.0 : -1.0) * (3.0 / 14.0) * 2.0;
+        vec2 gb = (rb.yz * (rb.x > 0.5 ? 1.0 : -1.0)) * mat2(0.8, -0.6, 0.6, 0.8) * (1.1 / 5.5) * 2.0;
+        n = normalize(n + vec3(ga + gb, 0.0) * rough * 0.55);
+        slope = 1.0 - n.z;
+    }
     // Rock: strata, crags and scree.
     if (rock > 0.0 || slope > 0.3) {
         // Broken bands, warped hard so they read as rock, not contour lines.
-        float strata = 0.5 + 0.5 * sin(world.z * 0.22 + fbm3(p / 55.0) * 14.0 + valueNoise2(p / 9.0) * 3.0);
+        float strata = smoothstep(0.1, 0.9, 0.5 + 0.5 * sin((world.z + 0.45 * dot(p, vec2(0.8, 0.6))) * 0.3 + fbm3(p / 90.0) * 26.0 + valueNoise2(p / 11.0) * 3.0));  // beds dip across the contours
+        // Beds read on cliffs, not as fingerprint ridges across a gentle slope: banded by slope, and gone before they alias.
+        strata = mix(0.5, strata, smoothstep(0.22, 0.6, slope) * (1.0 - smoothstep(4.0, 12.0, pxm)));
+        float seam = abs(valueNoise2(p / 6.0 + vec2(0.0, world.z * 0.4)) - 0.5);  // the cracks
         float tone = fbm3(p / 18.0) * 0.6 + 0.2;
         vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * valueNoise2(p / 5.0));
         // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
+        stone *= 0.9 + 0.18 * strata;
         stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
+        // (The cracks, the isolines of a noise, drew worms and fingerprints across the rock at mid distance: not drawn from afar.)
+        stone *= 1.0 - 0.14 * (1.0 - smoothstep(0.0, 0.05, seam)) * (1.0 - smoothstep(0.35, 0.9, pxm));
         stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, valueNoise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
         // Bare rock on the steeps and the heights; alpine turf holds on the
         // gentler mountain ground and climbs the ravines, so the cover follows the land.
@@ -446,14 +562,23 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
         albedo = mix(albedo, turf, rock * (1.0 - bare) * land);
         albedo = mix(albedo, stone, rocky);
         vec2 crag = vec2(fbm3(p / 22.0) - 0.5, fbm3(p / 22.0 + 7.0) - 0.5);
-        n = normalize(n + vec3(crag, 0.0) * 0.35 * rocky);
+        vec2 crag2 = vec2(valueNoise2(p / 7.0) - 0.5, valueNoise2(p / 7.0 + 5.0) - 0.5) * (1.0 - smoothstep(2.0, 5.0, pxm));
+        n = normalize(n + vec3(crag, 0.0) * 0.5 * rocky + vec3(crag2, 0.0) * 0.55 * rocky);
     }
     // Snow lies on the heights, but not on cliffs.
     if (world.z > 90.0) {
-        float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
-        albedo = mix(albedo, vec3(0.78, 0.81, 0.86), snow);  // (old snow under a heavy sky: not so white that it glares)
+        float snow = smoothstep(104.0, 112.0, world.z + (fbm3(p / 60.0) - 0.5) * 24.0 + (valueNoise2(p / 5.0) - 0.5) * 5.0) * smoothstep(0.62, 0.34, slope) * land;
+        albedo = mix(albedo, mix(vec3(0.74, 0.78, 0.85), vec3(0.84, 0.86, 0.91), valueNoise2(p / 14.0)), snow);
     }
-    if (swamp > 0.0) albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
+    if (swamp > 0.0) {
+        // Reed and sedge, dark mud, and open pools that pick up the sky.
+        float pools = smoothstep(0.52, 0.64, fbm3(p / 26.0));
+        float tussock = valueNoise2(p / 2.6) * (1.0 - smoothstep(1.0, 3.0, pxm));
+        vec3 marsh = mix(vec3(0.17, 0.22, 0.11), vec3(0.30, 0.34, 0.16), fbm3(p / 11.0 + 4.0)) * (0.85 + 0.3 * tussock);
+        marsh = mix(marsh, vec3(0.16, 0.26, 0.28), pools * 0.8);
+        marsh = mix(marsh, vec3(0.26, 0.36, 0.40), pools * smoothstep(0.7, 0.95, valueNoise2(p / 5.0)) * 0.6);
+        albedo = mix(albedo, marsh, swamp * land);
+    }
     return albedo;
 }
 )"
@@ -618,6 +743,7 @@ void main() {
         float stoneShown = max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8;
         if (stoneShown > 0.0) {
             float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
+            strata = mix(0.5, strata, smoothstep(0.25, 0.55, slope) * (1.0 - smoothstep(0.3, 1.0, px)));  // beds on cliffs only: on a flat top the isolines were worms and fingerprints
             vec2 rc = rockCoord(p);
             vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * mix(valueNoise(rc * 3.1), 0.5, smoothstep(0.1, 0.5, px)));
             stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(rc * 1.9 + 4.0)) * 0.6);
@@ -2518,8 +2644,12 @@ void main() {
     float h0 = current(along, t), hx = current(along + vec2(e, 0.0), t), hy = current(along + vec2(0.0, e), t);
     vec2 g = vec2(hx - h0, hy - h0) / e;
     vec2 gw = dir * g.x + vec2(-dir.y, dir.x) * g.y;  // back to world axes
+    float pxw = uPxScale * dist;
+    // Still water (a lake, a pool, the sea) has no current to stretch ripples along: it wears the one chop every water has
+    // (seaChop), the far land's lakes' too, so a lake is the same water near and far and shows no seam where they meet.
+    if (speed <= 0.05) gw = seaChop(p, pxw, uTime) * 0.45 / 0.06;
     float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
-    vec3 n = normalize(vec3(-gw * 0.06 * calm, 1.0));
+    vec3 n = normalize(vec3(-gw * 0.06 * (speed <= 0.05 ? 1.0 : calm), 1.0));
     // Colour: the bed shows through the shallows; silt-green to deep blue.
     vec3 c = inlandWater(depth, p);
     // Sky in the surface, more at grazing angles.
@@ -2545,7 +2675,7 @@ void main() {
     float alpha = mix(0.0, 1.0, smoothstep(-0.02, 0.12, depth)) * clamp(0.55 + depth * 0.3, 0.55, 0.95);
     // Open sea seen from higher up is the far sea's own (farSea), not a flat deep blue in a square: the battlefield's edge
     // must not show against the sea around it.
-    float seaHere = seaWeight(vWorld.z) * smoothstep(40.0, 200.0, dist);
+    float seaHere = seaWeight(vWorld.z);
     c = mix(c, farSea(p, vWorld, depth), seaHere);
     alpha = mix(alpha, smoothstep(-0.02, 0.12, depth), seaHere);
     // The waves of the shore over the shallows (shoreSwash, as on the land beside them).
@@ -2602,44 +2732,83 @@ void main() {
     if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land is drawn there
 #endif
     vec3 n = normalize(vNormal);
-    vec3 albedo = vColor;
     vec2 p = vWorld.xy;
-    if (feature(kFeatFarDetail)) albedo = farAlbedo(vColor, vKinds, vWorld, n);
+    float dist = distance(uEye, vWorld);
+    bool detail = feature(kFeatFarDetail);
+    // The waterline. Where the field covers the map it is the shore's own smooth line (a cubic read of the 16 m samples, not the
+    // mesh's triangles, which stepped a coast in blocks and diagonals); D is the metres of water over the bed (negative: the
+    // bank's height over the water), sd that in pixels from the shore (the gradient's own scale), so the bands drawn at a shore
+    // keep their width on the screen at any height and the edge is anti-aliased.
+    bool fielded = detail && farFieldHas(p);
+    vec4 ff = fielded ? farField(p) : vec4(0.0);
+    float D = ((fielded ? ff.r : vKinds.w) - 1.0 + farShoreWobble(p) * (fielded ? 0.25 : 1.0)) * 12.0;
+    float sd = clamp(D / max(fwidth(D), 1e-3), -80.0, 80.0);
+    float wetMask = fielded ? clamp(sd + 0.5, 0.0, 1.0) : step(0.0, D);
+    // Land.
+    vec3 c = vec3(0.0);
+    if (wetMask < 1.0 || !detail) {
+        vec3 albedo = vColor;
+        vec4 kinds = vKinds;
+        if (fielded) kinds = vec4(vKinds.x, max(ff.a, 0.0), max(-ff.a, 0.0), 0.0);
+        if (fielded) {
+            // The vertex colours step in 16 m squares (a ground is one kind to a cell): the kinds that matter here (forest, rock, swamp,
+            // snow) are worked out per pixel from the smooth field and the trees' cover, so the base is the plain's own green except
+            // where the ground is trodden, sandy or muddy (red over green: the town's yards, beaches, mud), which keep their colour.
+            float trodden = smoothstep(0.02, 0.05, vColor.r - vColor.g);
+            albedo = mix(vec3(0.40, 0.49, 0.21), vColor, trodden);
+        }
+        if (detail) albedo = farAlbedo(albedo, kinds, fielded ? vec3(vWorld.xy, ff.g) : vWorld, n);  // (heights from the smooth field)
+        else if (vKinds.w >= 1.0) albedo = mix(vec3(0.30, 0.50, 0.55), vec3(0.10, 0.26, 0.42), clamp(vKinds.w - 1.0, 0.0, 1.0));
+        if (fielded && D > -2.4 && seaWeight(vWorld.z + D) > 0.5) {  // a sea shore's beach: sand to a couple of metres over the water, a ragged edge
+            float beach = (1.0 - smoothstep(0.4 + 0.5 * valueNoise2(p / 9.0), 2.4, -D)) * (1.0 - 0.7 * smoothstep(0.3, 0.7, kinds.y));
+            albedo = mix(albedo, mix(vec3(0.80, 0.72, 0.54), vec3(0.68, 0.60, 0.44), valueNoise2(p / 3.0)), beach * 0.9);
+        }
+        // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
+        // (Myth-style relief, as the near land: reliefNormal exaggerates the tilt; a face turned full to the sun is lit no more than level
+        // ground was before the relief was drawn up, so pale rock does not burn out.)
+        float light = 0.18 + 0.14 * n.z + 0.95 * min(max(dot(reliefNormal(n), kSun), 0.0), 0.66) * cloudShade(p);
+        if (fielded) light *= clamp(1.0 + ff.b * 0.45, 0.78, 1.25);  // relief: ridges catch light, ravines hold shade
+        c = albedo * light;
+        if (fielded) {  // the bank: a darker wet band at the waterline, drying to sand and gravel
+            float bank = 1.0 - smoothstep(0.0, 7.0, -sd);
+            c = mix(c, c * vec3(0.62, 0.58, 0.52), bank * 0.75);
+        }
+        c = landGrids(c, p);  // the grid is the land's; the sea goes unmarked
+    }
     // Open water: coloured by depth, with swells, chop, surf and glints.
-    float glint = 0.0;
-    vec3 inland = vec3(-1.0);
-    bool wetHere = vKinds.w + farShoreWobble(p) >= 1.0;
-    if (feature(kFeatFarDetail) && wetHere) {
+    if (wetMask > 0.0 && detail) {
         // Rivers, lakes and pools (the battlefield's water, seen from high up) and the sea are one family, and they run into each
         // other: a river's surface falls to the sea's level over the flare of its mouth, and its colour goes with it, from the
         // inland water's (silt-green shallows to deep blue, calm) to the sea's (a swell, glints and the foam of a shore).
-        float dm = clamp(vKinds.w - 1.0, 0.0, 1.0) * 12.0;
-        float lake = 1.0 - seaWeight(vWorld.z);
+        float dm = clamp(D, 0.0, 12.0);
+        dm = mix(12.0, dm, smoothstep(0.0, 70.0, farFieldEdge(p)));  // (a sea's; a lake is nowhere near the edge)
+        float surface = vWorld.z + min(D, 0.0);  // the water's level (on the dry side of the line the ground is D over it)
+        float lake = 1.0 - seaWeight(surface);
         vec3 sea = lake < 0.999 ? farSea(p, vWorld, dm) : vec3(0.0);
+        vec3 w = sea;
         if (lake > 0.001) {
             // A lake's gentle lap (a river's mouth is the ribbon's, and rivers have no waves: shoreEnergy's current is not known here, so
             // only the still water at a shore: the lakes' own, which the coarse land marks by their depth rising from nothing).
             vec3 lakeColour = farInland(p, dm);
-            lakeColour = mix(lakeColour, vec3(0.9, 0.93, 0.94), shoreSwash(p, -dm, 0.1, 0.13 * smoothstep(0.0, 0.08, vKinds.w - 1.0 + 0.04), uPxScale * distance(uEye, vWorld)).x * 0.7);
-            inland = mix(sea, lakeColour, lake);
-        } else {
-            inland = sea;
+            lakeColour = mix(lakeColour, vec3(0.9, 0.93, 0.94), shoreSwash(p, -dm, 0.1, 0.13 * smoothstep(0.0, 0.08, D / 12.0 + 0.04), uPxScale * dist).x * 0.7);
+            w = mix(sea, lakeColour, lake);
         }
-        n = vec3(0.0, 0.0, 1.0);
-        glint = 0.25 * lake;
+        if (fielded) {
+            w = farWaterSheen(w, p, vWorld, lake);  // the sky in the water, the sun's glitter, slow patches of light and dark
+            // The shore: a lighter shelf in the shallows, and the foam line at the waterline (a sea's strong, a lake's a pale lap).
+            float shelf = 1.0 - smoothstep(0.0, 14.0, sd);
+            w = mix(w, vec3(0.22, 0.46, 0.44), shelf * 0.35 * lake);
+            float line = (1.0 - smoothstep(0.5, 2.6, sd)) * (0.35 + 0.55 * (1.0 - lake));
+            w = mix(w, vec3(0.92, 0.95, 0.95), line * (0.6 + 0.4 * valueNoise2(p / 5.0)));
+        } else {
+            float glint = 0.25 * lake;
+            vec3 h = normalize(kSun + normalize(uEye - vWorld));
+            w += vec3(1.0, 0.97, 0.9) * pow(max(h.z, 0.0), 90.0) * 0.6 * glint;
+        }
+        c = mix(c, w, wetMask);
     }
-    // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
-    // (A face turned full to the sun is lit no more than the level ground was before the relief was drawn up: pale
-    // rock would burn out.)
-    float light = 0.18 + 0.14 * n.z + 0.95 * min(max(dot(wetHere ? n : reliefNormal(n), kSun), 0.0), 0.66) * cloudShade(vWorld.xy);
-    vec3 c = inland.r >= 0.0 ? inland : albedo * light;
-    if (glint > 0.0) {
-        vec3 h = normalize(kSun + normalize(uEye - vWorld));
-        c += vec3(1.0, 0.97, 0.9) * pow(max(dot(n, h), 0.0), 90.0) * 0.6 * glint;
-    }
-    if (!wetHere) c = landGrids(c, vWorld.xy);  // the grid is the land's; the sea goes unmarked
-    if (wetHere && uUw.x > 0.0 && uEye.z < vWorld.z) c = mix(c, uwUnderside(vWorld), uwUnder());  // (under water: the surface from below)
-    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(distance(uEye, vWorld)) * 0.6), vWorld), 1.0);
+    if (wetMask > 0.5 && detail && uUw.x > 0.0 && uEye.z < vWorld.z) c = mix(c, uwUnderside(vWorld), uwUnder());  // (under water: the surface from below)
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(dist) * 0.6), vWorld), 1.0);
 }
 )"
 inline const char* kFarFs = ILLYRIA_LAND_FS ILLYRIA_FAR_FS;
@@ -2708,8 +2877,30 @@ void main() {
         c = farInland(vXy, depth);
         // At the sea the river flares into the estuary over its last stretch and gives way to the water the land draws there.
         alpha = min(1.0 - seaWeight(vLevel), smoothstep(0.0, 140.0, vMouth));
+        // Over a lake's open water the land's own water is drawn (the same colours, and no rectangles): the ribbon is where the
+        // river is narrow, a cell or so across, and gives way as the water widens (the field's distance from dry land).
+        if (farFieldHas(vXy)) {
+            vec4 ff = farField(vXy);
+            // open water: all four points a cell and a half off are wet (a river's bank is within that, a lake's is not)
+            float openW = min(min(farField(vXy + vec2(24.0, 0.0)).r, farField(vXy - vec2(24.0, 0.0)).r), min(farField(vXy + vec2(0.0, 24.0)).r, farField(vXy - vec2(0.0, 24.0)).r));
+            // The ribbon deepens toward the lake's own colour as the water opens, and gives way to it over a wide soft range, not at a
+            // line: the two were a different blue with a hard edge between (a seam where every river met a lake).
+            float lakeDepth = clamp((ff.r - 1.0) * 12.0, 0.0, 12.0);
+            c = farInland(vXy, max(depth, lakeDepth));
+            alpha *= 1.0 - smoothstep(1.0, 1.35, openW);
+            alpha *= 1.0 - smoothstep(0.4, 3.0, (ff.r - 1.0) * 12.0);  // and where the land's own water is already a river's width
+        }
+        c = farWaterSheen(c, vXy, vec3(vXy, vLevel), 1.0 - seaWeight(vLevel));
+        alpha *= 1.0 - smoothstep(0.78, 1.0, abs(vAcross));  // a soft bank, not a cut
     } else {
-        c = vec3(0.45, 0.39, 0.27) * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
+        // Packed dirt, a little paler down the wheel-worn middle and darker at the verges where the grass creeps in, with a soft edge
+        // and the patchy wear of a road, lit like the land. Its width is the sim's (the road's class), never under a lane.
+        float across = abs(vAcross);
+        vec3 dirt = mix(vec3(0.50, 0.42, 0.29), vec3(0.58, 0.50, 0.36), valueNoise2(vXy / 7.0));
+        dirt *= 1.0 + 0.1 * (1.0 - smoothstep(0.0, 0.5, across)) - 0.34 * smoothstep(0.55, 1.0, across);
+        dirt = mix(dirt, vec3(0.27, 0.34, 0.15), smoothstep(0.7, 1.0, across) * 0.45);
+        c = dirt * (0.32 + 0.95 * kSun.z * cloudShade(vXy));
+        alpha = 1.0 - smoothstep(0.82, 1.0, across);
     }
     oColor = vec4(mix(c, uwSky(), uwFull(vFog * 0.6, vFog)), alpha);
 }
