@@ -75,7 +75,7 @@ void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
 
 constexpr uint64_t kBattleSeed = 20261027;
 // Which faction each seat plays outside a conquest: the colours of a skirmish (factions.h).
-constexpr uint8_t kSkirmishSeats[8] = {6, 2, 1, 4, 5, 3, 0, 7};
+using illyria::game::kSkirmishSeats;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
 // The whole continent in view (2.8 x 3.6 km), and a campaign stack with the
@@ -137,6 +137,11 @@ struct App {
         std::vector<uint8_t> miniLand;
         std::string mini;
     } camp;
+    // A battle's minimap: its ground (drawn once per battle) and the text handed to the page or the overlay.
+    std::vector<uint8_t> battleMiniLand;
+    const Battle* battleMiniFor = nullptr;
+    uint32_t battleMiniTick = 0;
+    std::string battleMini;
     // The title screen: the battlefield, still, the camera slowly circling it
     // (cheaply: low resolution, every other frame) behind the page's menu.
     bool title = false;
@@ -198,6 +203,7 @@ Scenario gScenario = Scenario::Ford;
 
 void newBattle() {
     app->battle = std::make_unique<Battle>(kBattleSeed, gScenario);
+    app->battleMiniLand.clear();
     // The whole continent, in battle-local coordinates.
     const V3 o = app->battle->origin();
     app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
@@ -498,8 +504,8 @@ void placeFlags(float dt) {
             V3 base = toV3(cap.at());
             base.z = app->battle->heightAt(base.x, base.y);
             const float p = static_cast<float>(cap.progress()) / CapturePoint::kFull;
-            // the battle's colours: the defenders red, the player blue
-            const PoleTarget t = contestedPole({0.86f, 0.18f, 0.14f}, {0.22f, 0.42f, 0.92f}, p);
+            // the battle's colours (factions.h: the defenders are the second seat, the player the first)
+            const PoleTarget t = contestedPole(illyria::game::factionColor(1), illyria::game::factionColor(0), p);
             put(kSiegePole, {base, 14, t.level, 3.4f, t.colour});
         }
     }
@@ -577,6 +583,7 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     App::CampaignView& cv = app->camp;
     cv.c = std::move(campaign);
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = cv.c->factionOf(side);
+    illyria::game::palette::bind(cv.c->factionOf(cv.c->localSide()));  // (the player's own colour, before anything is drawn in it)
     cv.c->prepareWorld();  // the island's ground for the fights, a few seconds, once (the page has said so)
     // The field is made on the island's own origin and presents the campaign's world as it presents any battle's.
     {
@@ -1894,33 +1901,53 @@ ILLYRIA_API const char* illyria_labels() {
 }
 
 
-// The minimap's land, to the page (IllyriaMinimap.land): RGBA, rows from the north.
-ILLYRIA_API void illyria_minimap_land() {
-    if (!app || !app->camp.on) return;
-    if (app->camp.miniLand.empty()) buildMiniLand();
-    platform::minimapLand(app->camp.miniLand.data(), kMiniW, kMiniH);
+// What the minimap shows: 0 nothing (the title), 1 the conquest's island, 2 a battle's field. The page and the
+// desktop's overlay ask first, and again for the land when it changes.
+ILLYRIA_API int illyria_minimap_kind() {
+    if (!app || app->title) return 0;
+    return app->camp.on ? 1 : 2;
 }
-// The minimap's contents, a line each, continent metres from the south-west corner:
-//   m|width|height          the continent's size
-//   t|x|y|colour|capital    every town, in its holder's colour
-//   s|x|y|kind              every ruin (0), temple (1) and sage (2)
+constexpr int kBattleMiniSize = 128;
+// The minimap's land, to the page (IllyriaMinimap.land): RGBA, rows from the north. A conquest's island, or the field.
+ILLYRIA_API void illyria_minimap_land() {
+    if (!app || app->title) return;
+    if (app->camp.on) {
+        if (app->camp.miniLand.empty()) buildMiniLand();
+        platform::minimapLand(app->camp.miniLand.data(), kMiniW, kMiniH);
+        return;
+    }
+    const Battle& b = *app->battle;
+    if (app->battleMiniLand.empty() || app->battleMiniFor != &b || b.world().tick() < app->battleMiniTick) {
+        app->battleMiniLand = illyria::game::battleMinimapLand(b, kBattleMiniSize, kBattleMiniSize);
+        app->battleMiniFor = &b;
+    }
+    app->battleMiniTick = b.world().tick();
+    platform::minimapLand(app->battleMiniLand.data(), kBattleMiniSize, kBattleMiniSize);
+}
+// The minimap's contents, a line each, in metres from the map's south-west corner (minimap.h):
+//   m|width|height          the map's size
+//   t|x|y|colour|capital    every town, in its holder's colour (a conquest)
+//   s|x|y|kind              every ruin (0), temple (1) and sage (2) (a conquest)
 //   k|colour|x|y|count      a heap of soldiers too close to tell apart: a heat blob
 //   d|colour|x|y            a soldier (or two) standing apart, a point
 //   f|x|y|men               men fighting there now (the page glows it)
-// Nothing is hidden yet: fog of war (docs/ONE_WORLD.md step 4) will leave out the
-// soldiers the player's own cannot see.
+// Only what the viewer is allowed to see (Campaign::canSee; a battle's Battle::sees).
 ILLYRIA_API const char* illyria_minimap() {
-    if (!app || !app->camp.on) return "";
-    app->camp.mini = minimapText(*app->camp.c, app->camp.c->localSide());
-    return app->camp.mini.c_str();
+    if (!app || app->title) return "";
+    if (app->camp.on) {
+        app->camp.mini = minimapText(*app->camp.c, app->camp.c->localSide());
+        return app->camp.mini.c_str();
+    }
+    app->battleMini = illyria::game::battleMinimapText(*app->battle);
+    return app->battleMini.c_str();
 }
-// The ground the camera sees, as four corners in continent metres (top left,
+// The ground the camera sees, as four corners in the map's metres (top left,
 // top right, bottom right, bottom left of the screen), "x,y x,y x,y x,y"; "" if the sky shows.
 ILLYRIA_API const char* illyria_minimap_view() {
     static char buf[160];
     buf[0] = 0;
-    if (!app || !app->camp.on) return buf;
-    const V3 o = app->battle->origin();
+    if (!app || app->title) return buf;
+    const V3 o = app->camp.on ? app->battle->origin() : V3{};
     const float w = app->camera.width(), h = app->camera.height();
     const float corners[4][2] = {{0, 0}, {w, 0}, {w, h}, {0, h}};
     int n = 0;
@@ -1931,16 +1958,21 @@ ILLYRIA_API const char* illyria_minimap_view() {
         bool ok = app->camera.pickGround(c[0], py, hit);
         for (int tries = 0; !ok && tries < 24; ++tries) ok = app->camera.pickGround(c[0], py += h * 0.04f, hit);
         if (!ok) return buf;
-        n += std::snprintf(buf + n, sizeof buf - n, "%s%.0f,%.0f", n ? " " : "", hit.x + o.x, hit.y + o.y);
+        n += std::snprintf(buf + n, sizeof buf - static_cast<size_t>(n), "%s%.0f,%.0f", n ? " " : "", hit.x + o.x, hit.y + o.y);
     }
     return buf;
 }
 // A tap on the minimap: the camera over that point, as high as it was.
 ILLYRIA_API void illyria_minimap_look(float x, float y) {
-    if (!app || !app->camp.on) return;
+    if (!app || app->title) return;
     app->introStartMs = -1;
-    const V3 o = app->battle->origin();
-    app->camera.lookAt(x - o.x, y - o.y, app->camera.distance());
+    if (app->camp.on) {
+        const V3 o = app->battle->origin();
+        app->camera.lookAt(x - o.x, y - o.y, app->camera.distance());
+    } else {
+        const float size = Battle::kWorldSize;
+        app->camera.lookAt(std::clamp(x, 0.0f, size), std::clamp(y, 0.0f, size), app->camera.distance());
+    }
 }
 // Test hook: how many soldiers the campaign holds, how many are drawn as sprites and
 // as dots, and what laying them out and drawing a frame cost (milliseconds, smoothed).
@@ -2476,10 +2508,10 @@ ILLYRIA_API const char* illyria_hud() {
     char buf[1024];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"slow\":%.3g,\"outcome\":%d,\"fps\":%.0f,"
-                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"side\":%d,",
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"side\":%d,\"colour\":\"%s\",",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.slowMotion(), b.outcome(), app->fps,
                   b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str(),
-                  b.localSide());
+                  b.localSide(), illyria::game::palette::hex(illyria::game::factionColor(static_cast<uint8_t>(b.localSide()))).c_str());
     s = buf;
     // The town's capture point, and the selection's small edges.
     {
@@ -2566,7 +2598,27 @@ ILLYRIA_API const char* illyria_hud() {
 // {"save":"ILC2...."} to carry on a saved one), and the modes built into
 // startOtherMode ("horde", "ctf"). 1 when started, 0 when the mode is not
 // built in or could not start (illyria_mode_error says why).
+static int startMode(const char* id, const char* options);
 ILLYRIA_API int illyria_start_mode(const char* id, const char* options) {
+    const int ok = startMode(id, options);
+    // The player's colour follows the side they lead in what began (palette.h); nothing the simulation reads.
+    if (ok && app) illyria::game::palette::bind(illyria::game::sideFactions()[app->battle->localSide() & 7]);
+    return ok;
+}
+// The colour the player chose for their side ("#rrggbb"; "" for each lord's own), kept by the shell on the device.
+ILLYRIA_API void illyria_set_side_colour(const char* hex) {
+    illyria::game::V3 c;
+    if (illyria::game::palette::parseHex(hex, c)) illyria::game::palette::choose(c);
+    else illyria::game::palette::clear();
+}
+// What a colour would become for the side led (the swatch itself, a colour apart from the others, or the nearest swatch).
+ILLYRIA_API const char* illyria_snap_colour(const char* hex, int faction) {
+    static std::string out;
+    illyria::game::V3 c;
+    out = illyria::game::palette::parseHex(hex, c) ? illyria::game::palette::hex(illyria::game::palette::snap(c, static_cast<uint8_t>(faction & 7))) : "";
+    return out.c_str();
+}
+static int startMode(const char* id, const char* options) {
     if (!app) return 0;
     const std::string mode = id ? id : "", opts = options ? options : "{}";
     app->error.clear();

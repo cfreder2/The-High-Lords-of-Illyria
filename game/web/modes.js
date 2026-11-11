@@ -40,7 +40,7 @@
     max-width: calc(100vw - 16px); text-align: center; font-size: 13px; pointer-events: none; z-index: 4; }
   #mdHud .line b { color: #d6b46e; }
   #mdHud .bar { height: 7px; border-radius: 4px; background: rgba(217,64,47,.55); overflow: hidden; margin-top: 4px; }
-  #mdHud .bar i { display: block; height: 100%; background: #4a78e6; transition: width .25s; }
+  #mdHud .bar i { display: block; height: 100%; background: var(--blue, #4a78e6); transition: width .25s; }
   #mdHud .warn { color: #ff8a70; font-weight: 600; }
   #mdHud .teams { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
   #mdHud .team { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,.06); }
@@ -91,7 +91,9 @@
                   teamAlly: false, army: [] };
   // Horde's four seats: each hero's side of the hill (mode_horde.cpp sector: east, north, west, south).
   const SEATS = [["East", "Lord Aldric"], ["North", "Lady Wren"], ["West", "Sir Corvin"], ["South", "Dame Isolde"]];
-  const TEAMS = [["Blue", "#386be8"], ["Red", "#db2e24"], ["Gold", "#eab829"], ["Green", "#38a34c"]];
+  // The teams keep their names; their colours are the player's palette (palette.js, the engine's teamColour) with the player on `led`.
+  const TEAM_NAMES = ["Blue", "Red", "Gold", "Green"];
+  const teamColour = (t, led) => (window.IllyriaPalette ? IllyriaPalette.team(t, led) : ["#386be8", "#db2e24", "#eab829", "#38a34c"][t & 3]);
   // Where the flags stand round the field (mode_ctf.cpp startOf), by place, for two, three and four teams.
   const PLACES = { 2: ["West", "East"], 3: ["West", "North-east", "South-east"], 4: ["South-west", "North-east", "North-west", "South-east"] };
   let lastOptions = null;
@@ -138,7 +140,7 @@
         if (state.team >= v) state.team = 0;
         if (state.start >= v) state.start = 0;
       }),
-      ...seg("Your colour", TEAMS.slice(0, state.teams).map(([name, c], t) => [t, `<span style="color:${c}">⚑</span> ${name}`]), () => state.team, (v) => (state.team = v)),
+      ...seg("Your colour", TEAM_NAMES.slice(0, state.teams).map((name, t) => [t, `<span style="color:${teamColour(t, state.team)}">⚑</span> ${name}`]), () => state.team, (v) => (state.team = v)),
       ...seg("Your flag stands", PLACES[state.teams].map((name, k) => [k, name]), () => state.start, (v) => (state.start = v)),
       ...seg("Your team", [[false, "You alone"], [true, "You + a computer ally"]], () => state.teamAlly, (v) => { state.teamAlly = v; state.army = []; }),
       ...seg("Army points (each team)", [[24, "24"], [36, "36"], [48, "48"]], () => state.budget, (v) => { state.budget = v; state.army = []; }),

@@ -221,3 +221,16 @@ kbd.k { display: inline-block; min-width: 24px; padding: 1px 6px; margin: 1px 2p
   .title-menu .big { min-height: 44px; font-size: 16px; }
   .title-foot { position: absolute; left: calc(16px + var(--safe-l)); bottom: calc(8px + var(--safe-b)); }
 }
+
+/* The colour picker (palette.js): swatches in the round, a mark on the chosen one, and a colour of your own. */
+.colour-pick .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+:is(#titleScreen, .screen, #confirmBox, #overlay) .colour-pick button.swatch {
+  flex: 0 0 auto; width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; clip-path: none; position: relative;
+  background: var(--swatch); box-shadow: inset 0 0 0 2px rgba(43, 30, 16, 0.55), inset 0 -5px 8px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 246, 220, 0.7);
+}
+:is(#titleScreen, .screen, #confirmBox, #overlay) .colour-pick button.swatch.on {
+  box-shadow: inset 0 0 0 2px rgba(43, 30, 16, 0.55), 0 0 0 3px var(--pg-paper), 0 0 0 5.5px var(--pg-seal);
+}
+.colour-pick .own { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ink-dim); }
+.colour-pick .own input[type=color] { width: 54px; height: 36px; padding: 0; border: 2px solid var(--pg-wood); border-radius: 4px; background: var(--pg-paper-hi); cursor: pointer; }
+.colour-pick .colour-note { display: block; margin-top: 6px; font-style: italic; color: var(--ink-dim); font-size: 13px; }

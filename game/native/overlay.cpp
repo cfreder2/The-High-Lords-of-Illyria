@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <cstdio>
 
 #include "../render/gl.h"
@@ -19,17 +20,22 @@ namespace {
 const char* kVertex = R"(#version 410 core
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec4 aColour;
+layout(location = 2) in vec2 aUV;
 uniform vec2 uSize;
 out vec4 vColour;
+out vec2 vUV;
 void main() {
     vColour = aColour;
+    vUV = aUV;
     gl_Position = vec4(aPos.x / uSize.x * 2.0 - 1.0, 1.0 - aPos.y / uSize.y * 2.0, 0.0, 1.0);
 })";
 
 const char* kFragment = R"(#version 410 core
 in vec4 vColour;
+in vec2 vUV;
+uniform sampler2D uTexture;
 out vec4 outColour;
-void main() { outColour = vColour; })";
+void main() { outColour = vColour * texture(uTexture, vUV); })";
 
 GLuint compile(GLenum type, const char* source) {
     GLuint s = glCreateShader(type);
@@ -62,6 +68,16 @@ bool Overlay::init() {
     glGetProgramiv(program_, GL_LINK_STATUS, &ok);
     if (!ok) return false;
     uSize_ = glGetUniformLocation(program_, "uSize");
+    uTexture_ = glGetUniformLocation(program_, "uTexture");
+    {
+        const uint8_t pixel[4] = {255, 255, 255, 255};
+        glGenTextures(1, &white_);
+        glBindTexture(GL_TEXTURE_2D, white_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
     glBindVertexArray(vao_);
@@ -70,6 +86,8 @@ bool Overlay::init() {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, x)));
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, r)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, u)));
     glBindVertexArray(0);
     return true;
 }
@@ -79,12 +97,51 @@ void Overlay::begin(int pixelsW, int pixelsH, float scale) {
     h_ = pixelsH;
     scale_ = scale;
     verts_.clear();
+    batches_.clear();
 }
 
 void Overlay::rect(float x, float y, float w, float h, Colour c) {
     const float x0 = x * scale_, y0 = y * scale_, x1 = (x + w) * scale_, y1 = (y + h) * scale_;
-    const Vertex a{x0, y0, c.r, c.g, c.b, c.a}, b{x1, y0, c.r, c.g, c.b, c.a}, d{x1, y1, c.r, c.g, c.b, c.a}, e{x0, y1, c.r, c.g, c.b, c.a};
+    const Vertex a{x0, y0, 0, 0, c.r, c.g, c.b, c.a}, b{x1, y0, 0, 0, c.r, c.g, c.b, c.a}, d{x1, y1, 0, 0, c.r, c.g, c.b, c.a}, e{x0, y1, 0, 0, c.r, c.g, c.b, c.a};
     verts_.insert(verts_.end(), {a, b, d, a, d, e});
+}
+
+void Overlay::line(float x0, float y0, float x1, float y1, float thickness, Colour c) {
+    const float dx = x1 - x0, dy = y1 - y0, len = std::sqrt(dx * dx + dy * dy);
+    if (len < 1e-4f) return;
+    const float nx = -dy / len * thickness * 0.5f * scale_, ny = dx / len * thickness * 0.5f * scale_;
+    const float ax = x0 * scale_, ay = y0 * scale_, bx = x1 * scale_, by = y1 * scale_;
+    const Vertex a{ax + nx, ay + ny, 0, 0, c.r, c.g, c.b, c.a}, b{bx + nx, by + ny, 0, 0, c.r, c.g, c.b, c.a}, d{bx - nx, by - ny, 0, 0, c.r, c.g, c.b, c.a},
+        e{ax - nx, ay - ny, 0, 0, c.r, c.g, c.b, c.a};
+    verts_.insert(verts_.end(), {a, b, d, a, d, e});
+}
+
+unsigned Overlay::makeImage(const uint8_t* rgba, int w, int h) {
+    unsigned id = 0;
+    glGenTextures(1, &id);
+    glBindTexture(GL_TEXTURE_2D, id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    updateImage(id, rgba, w, h);
+    return id;
+}
+
+void Overlay::updateImage(unsigned id, const uint8_t* rgba, int w, int h) {
+    glBindTexture(GL_TEXTURE_2D, id);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Overlay::image(unsigned id, float x, float y, float w, float h, Colour c) {
+    batches_.push_back({verts_.size(), 0});  // what came before: plain
+    const float x0 = x * scale_, y0 = y * scale_, x1 = (x + w) * scale_, y1 = (y + h) * scale_;
+    const Vertex a{x0, y0, 0, 0, c.r, c.g, c.b, c.a}, b{x1, y0, 1, 0, c.r, c.g, c.b, c.a}, d{x1, y1, 1, 1, c.r, c.g, c.b, c.a}, e{x0, y1, 0, 1, c.r, c.g, c.b, c.a};
+    verts_.insert(verts_.end(), {a, b, d, a, d, e});
+    batches_.push_back({verts_.size(), id});
 }
 
 void Overlay::frame(float x, float y, float w, float h, float line, Colour c) {
@@ -162,7 +219,7 @@ float Overlay::text(float x, float y, const std::string& s, Colour c, float size
     const Raw* raw = reinterpret_cast<const Raw*>(buffer);
     for (int q = 0; q < quads; ++q) {
         Vertex v[4];
-        for (int i = 0; i < 4; ++i) v[i] = {(x + raw[q * 4 + i].x * k) * scale_, (y + raw[q * 4 + i].y * k) * scale_, c.r, c.g, c.b, c.a};
+        for (int i = 0; i < 4; ++i) v[i] = {(x + raw[q * 4 + i].x * k) * scale_, (y + raw[q * 4 + i].y * k) * scale_, 0, 0, c.r, c.g, c.b, c.a};
         verts_.insert(verts_.end(), {v[0], v[1], v[2], v[0], v[2], v[3]});
     }
     return width(s, size);
@@ -181,7 +238,18 @@ void Overlay::end() {
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts_.size() * sizeof(Vertex)), verts_.data(), GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(verts_.size()));
+    glUniform1i(uTexture_, 0);
+    glActiveTexture(GL_TEXTURE0);
+    batches_.push_back({verts_.size(), 0});
+    size_t from = 0;
+    for (const Batch& b : batches_) {
+        if (b.end > from) {
+            glBindTexture(GL_TEXTURE_2D, b.texture ? b.texture : white_);
+            glDrawArrays(GL_TRIANGLES, static_cast<GLint>(from), static_cast<GLsizei>(b.end - from));
+        }
+        from = b.end;
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
     glBindVertexArray(0);
     glUseProgram(0);
     glEnable(GL_DEPTH_TEST);

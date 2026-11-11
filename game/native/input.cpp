@@ -179,6 +179,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
             case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: hud_.menuKey(Key::Enter); break;
             case SDL_SCANCODE_ESCAPE: hud_.menuKey(Key::Back); break;
             case SDL_SCANCODE_D: hud_.menuToggleDifficulty(); break;
+            case SDL_SCANCODE_C: hud_.menuCycleColour(shift ? -1 : 1); break;
             default:
                 if (const int d = digitOf(c); d >= 1) hud_.menuDigit(d);
         }
@@ -230,7 +231,8 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_X: illyria_scatter(); break;
         case SDL_SCANCODE_Z: setMode(orderMode_ == 1 ? 0 : 1); break;
         case SDL_SCANCODE_G: illyria_group(2, 0); break;
-        case SDL_SCANCODE_V: case SDL_SCANCODE_M: setMode(orderMode_ == 2 ? 0 : 2); break;
+        case SDL_SCANCODE_V: setMode(orderMode_ == 2 ? 0 : 2); break;
+        case SDL_SCANCODE_M: hud_.toggleMinimap(); break;  // the map in the corner
         case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
         case SDL_SCANCODE_B: illyria_stop(); break;
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
@@ -282,7 +284,11 @@ void Input::handle(const SDL_Event& e) {
             break;
         }
         case SDL_EVENT_MOUSE_MOTION: {
-            if (captured_ || hud_.menuOpen()) break;
+            if (captured_) {
+                hud_.drag(e.motion.x, e.motion.y);  // (a press on the minimap goes on steering the camera)
+                break;
+            }
+            if (hud_.menuOpen()) break;
             pointer(1, e, e.motion.x, e.motion.y, 0);
             if (!e.motion.state) SDL_SetCursor(cursorFor(illyria_hover(e.motion.x, e.motion.y)));
             else if (e.motion.state & SDL_BUTTON_RMASK) SDL_SetCursor(SDL_GetDefaultCursor());

@@ -57,7 +57,7 @@
   document.head.appendChild(style);
 
   // Four sides, in the match colours (mode.h teamColour).
-  const SIDES = [["Blue", "#4a78e6"], ["Red", "#d9402f"], ["Gold", "#e0b43a"], ["Green", "#4caf50"]];
+  const SIDES = ["Blue", "Red", "Gold", "Green"].map((n, i) => [n, window.IllyriaPalette ? IllyriaPalette.team(i) : ["#4a78e6", "#d9402f", "#e0b43a", "#4caf50"][i]]);
   const SLOW = [[0.1, "⅒"], [0.25, "¼"], [0.5, "½"], [1, "1×"], [2, "2×"], [4, "4×"]];
   // The numbers the sandbox tunes (SandboxMode::statsJson): key, label, step.
   const TUNE = [["hp", "Health", 1], ["melee", "Melee damage", 1], ["swing", "Seconds a swing", 0.05], ["reach", "Reach (m)", 0.1],

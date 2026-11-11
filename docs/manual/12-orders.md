@@ -21,7 +21,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Open or shut a gate of yours | tap it (men selected or not), or **Open gate** / **Close gate** on its card | click it (a gate cursor), or [[O]] |
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
-| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] (or [[M]]) then click |
+| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Queue an order (after the one in hand) | **Plan** (below) | [[Shift]] + right-click (or right-hold and drag, for a facing) |
 | Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[`]] to start, [[`]] to send, [[Backspace]] to drop them |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
