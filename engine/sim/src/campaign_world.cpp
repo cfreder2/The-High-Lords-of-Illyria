@@ -14,6 +14,7 @@
 
 #include "illyria/sim/campaign.h"
 #include "illyria/sim/isqrt.h"
+#include "placement.h"
 
 namespace illyria::sim {
 
@@ -42,21 +43,6 @@ uint32_t hash32(uint32_t v) {
     v *= 2246822519u;
     v ^= v >> 13;
     return v;
-}
-
-// The nearest place to p that fits, a ring at a time (round the compass in sixths of a turn per metre of radius), or p.
-template <class Fits>
-Vec3 nearestFit(const Vec3& p, const Fits& fits) {
-    for (int ring = 0; ring <= 40 && !fits(p); ++ring) {
-        for (int step = 0; step < std::max(1, 6 * ring); ++step) {
-            static const int32_t kCos[24] = {1000, 966, 866, 707, 500, 259, 0, -259, -500, -707, -866, -966, -1000, -966, -866, -707, -500, -259, 0, 259, 500, 707, 866, 966};
-            static const int32_t kSin[24] = {0, 259, 500, 707, 866, 966, 1000, 966, 866, 707, 500, 259, 0, -259, -500, -707, -866, -966, -1000, -966, -866, -707, -500, -259};
-            const int32_t dir = step * 24 / std::max(1, 6 * ring);
-            const Vec3 q{p.x + Fixed::fromRatio(kCos[dir] * ring, 1000), p.y + Fixed::fromRatio(kSin[dir] * ring, 1000), p.z};
-            if (fits(q)) return q;
-        }
-    }
-    return p;
 }
 
 // The island's ground, made once for every campaign on a continent: it is a
@@ -356,6 +342,24 @@ void Campaign::seat(Stack& s) {
                 if ((rp.centre - heart).flat().length() < Fixed::fromInt(20)) walls.push_back(&rp);
         }
     }
+    // A garrison in its own walled town is stationed as one (World::garrisonPosts): bowmen on the walk, foot in ranks behind the
+    // doors, the rest behind them. The men a save or a landing placed stay where they are.
+    std::vector<World::GarrisonPost> posts;
+    size_t postAt = 0;
+    if (!walls.empty()) {
+        const size_t gate = world_->gateOfTown(continent_.cities()[static_cast<size_t>(cityAt(s.cx, s.cy))].pos - origin);
+        if (gate != World::kNoGate) {
+            std::vector<UnitStats> kinds;
+            for (const Army& a : s.armies) {
+                const UnitStats stats = unitStats(a.type);
+                for (const Man& m : a.men)
+                    if (m.alive() && !m.unit && !m.placed && stats.flyAltitude == Fixed::zero()) kinds.push_back(stats);  // (a flier stands as it did: it wants room to take wing)
+            }
+            std::vector<const UnitStats*> ptrs;
+            for (const UnitStats& k : kinds) ptrs.push_back(&k);
+            posts = world_->garrisonPosts(gate, ptrs);
+        }
+    }
     std::vector<Vec3> taken;
     // Where a man may stand: on open ground (not in water, a house, a wall or a tree), inside the walls
     // if it is a garrison's, and clear of the others. His slot if it fits, else the nearest place that does.
@@ -389,6 +393,12 @@ void Campaign::seat(Stack& s) {
                 // Where a save or a landing says he stands: exactly there.
                 at = Vec3{fromMm(m.ax) - origin.x, fromMm(m.ay) - origin.y, Fixed::zero()};
                 fx = m.fx, fy = m.fy;
+            } else if (postAt < posts.size() && stats.flyAltitude == Fixed::zero()) {
+                // His station: exactly there (on the millimetre the campaign keeps him at), facing as it says.
+                const World::GarrisonPost& post = posts[postAt++];
+                at = Vec3{fromMm(toMm(post.pos.x + origin.x)) - origin.x, fromMm(toMm(post.pos.y + origin.y)) - origin.y, post.pos.z};
+                fx = toMm(post.face.x);
+                fy = toMm(post.face.y);
             } else {
                 int32_t dx, dy;
                 slotToWorld(slot, s.hx, s.hy, dx, dy);
@@ -421,6 +431,26 @@ void Campaign::seat(Stack& s) {
     s.ly = s.py;
     s.lt = tick_;
     s.forceUntil = 0;
+}
+
+void Campaign::station(const Stack& s) {
+    if (!world_ || s.boat || !s.path.empty() || s.commanded) return;
+    const int32_t town = cityAt(s.cx, s.cy);
+    if (town < 0 || cities_[static_cast<size_t>(town)].owner != s.owner) return;
+    const Continent::City& city = continent_.cities()[static_cast<size_t>(town)];
+    const Vec3 heart = city.pos - region_->origin();
+    const size_t gate = city.walled ? world_->gateOfTown(heart) : World::kNoGate;
+    if (gate == World::kNoGate) return;
+    // The men inside its walls (or at them) who are on their feet and not in a fight.
+    std::vector<EntityId> ids;
+    for (const Army& a : s.armies)
+        for (const Man& m : a.men) {
+            const Unit* u = m.alive() && m.unit ? world_->findUnit(m.unit) : nullptr;
+            if (!u || !u->alive() || u->routed || u->inAir() || u->stats.flyAltitude > Fixed::zero() || u->engaged || u->targetUnit != kNoEntity || u->foe != kNoEntity) continue;
+            if ((u->pos - heart).flat().length() > city.radius + Fixed::fromInt(10)) continue;
+            ids.push_back(m.unit);
+        }
+    world_->stationMen(gate, ids);
 }
 
 void Campaign::release(Army& a) {
@@ -585,7 +615,10 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
             s.path.erase(s.path.begin());
             s.orderCell = -1;
             pickUp(s);
-            if (s.path.empty()) return;
+            if (s.path.empty()) {
+                station(s);  // (home, or a friend's town: to the garrison's stations)
+                return;
+            }
             if (navigable(s.path.front().first, s.path.front().second) && !passable(s, s.path.front().first, s.path.front().second)) {
                 boarding_.push_back(s.id);  // at the quay: the boat takes them (after this step, stepWorld)
                 return;

@@ -36,6 +36,15 @@ int32_t emptyHex(const Campaign& c, int32_t& cx, int32_t& cy) {
                 for (int32_t n : ring) quiet = quiet && c.hexAt(t.cx, t.cy) != n;
             for (int32_t n : ring) quiet = quiet && c.hexes()[static_cast<size_t>(n)].outpost < 0;
             if (!quiet) continue;
+            // (and out of a garrison's bowshot: its archers stand on the walls, and an army of ours near them would be shot at and driven off)
+            int32_t hx, hy;
+            Campaign::hexCentre(h, hx, hy);
+            for (const Continent::City& t : c.continent().cities()) quiet = quiet && std::hypot(t.pos.x.toDouble() - hx, t.pos.y.toDouble() - hy) > t.radius.toDouble() + 150.0;
+            // (and another dry cell in the hex, for the tests that put a rival in it)
+            bool second = false;
+            for (int32_t oy = y - 1; oy <= y + 1; ++oy)
+                for (int32_t ox = x - 1; ox <= x + 1; ++ox) second = second || ((ox != x || oy != y) && c.hexAt(ox, oy) == h && c.terrainAt(ox, oy) != Lay::Water);
+            if (!quiet || !second) continue;
             cx = x;
             cy = y;
             return h;

@@ -635,6 +635,9 @@ private:
     // campaign_world.cpp: the men on the land.
     void ensureWorld();
     void seat(Stack& s);                 // puts the men of the stack that are not in the world into it
+    // A stack that has come into its own walled town, or whose town has just been taken, goes to the stations of a garrison
+    // (World::stationMen): the men not fighting walk to them, and are then their own again.
+    void station(const Stack& s);
     void release(Army& a);               // takes an army's men out of the world (boarding, disbanded), keeping what they are
     void freshWorld();                   // the world cleared of what is in the air and the men not in it put in (a save, a load)
     void seatNew();                      // seat() for each stack with an army not seated

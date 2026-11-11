@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "illyria/sim/campaign.h"
 #include "illyria/sim/scenario.h"
 
 using namespace illyria::sim;
@@ -26,5 +27,14 @@ int main(int argc, char** argv) {
     run<scenarios::Crossing>("crossing", seed);
     run<scenarios::Oakhaven>("oakhaven", seed);
     run<scenarios::Raid>("raid", seed);
+    // The garrisons of the continent's castles, put in their stations at the start of a conquest (World::garrisonPosts): the
+    // world's checksum after seating every town's men, for each lord.
+    static const Continent continent(20261027);
+    for (uint8_t lord = 0; lord < 8; lord += 3) {
+        Campaign c(continent, seed, Campaign::Setup{lord, 0xFF});
+        c.setHuman(0, true);
+        c.prepareWorld();
+        std::printf("garrisons lord %u  men %d  checksum %016" PRIx64 "\n", lord, c.menInWorld(), c.world()->checksum());
+    }
     return 0;
 }
