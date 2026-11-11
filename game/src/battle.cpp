@@ -32,21 +32,6 @@ uint32_t mix(uint32_t a, uint32_t b) {
 
 float unit01(uint32_t h) { return static_cast<float>(h & 0xFFFF) / 65535.0f; }
 
-// A town's outer ring of walls on the battlefield (the rampart round `centre`), or null.
-const sim::Rampart* townRampart(const sim::Region& rg, V3 centre) {
-    const sim::Rampart* best = nullptr;
-    float bestD = 1e30f;
-    for (const sim::Rampart& rp : rg.ramparts()) {
-        const V3 c = toV3(rp.centre);
-        const float d = (c.x - centre.x) * (c.x - centre.x) + (c.y - centre.y) * (c.y - centre.y);
-        if (d < bestD) {  // the outer ring comes first, and keeps ties
-            bestD = d;
-            best = &rp;
-        }
-    }
-    return best;
-}
-
 // Where a man may stand when a battle starts: on dry, open ground the routes
 // cross (World::standable), and inside no town's walls.
 bool openFor(const sim::Region& rg, const sim::World& w, V3 p) {
@@ -78,15 +63,6 @@ V3 campBefore(const sim::Region& rg, const sim::World& w, V3 gate, V3 out, float
             if (open) return c;
         }
     return gate + out * want;
-}
-
-// `want` of the walls' embrasures (one archer each), spread evenly round them.
-std::vector<sim::Rampart::Embrasure> spreadEmbrasures(const sim::Rampart& rp, int want) {
-    std::vector<sim::Rampart::Embrasure> out;
-    const size_t n = rp.embrasures.size();
-    const size_t k = std::min(n, static_cast<size_t>(std::max(0, want)));
-    for (size_t i = 0; i < k; ++i) out.push_back(rp.embrasures[(i * n + n / (2 * k)) / k]);
-    return out;
 }
 
 }  // namespace
@@ -270,28 +246,42 @@ void Battle::setUpSiege() {
     V3 out = V3{gate.x - centre.x, gate.y - centre.y, 0};
     out = out * (1.0f / out.length());
 
-    // Archers spread round the walk, one to an embrasure, a pair to a wall.
+    // Stationed as any garrison is (World::garrisonPosts): archers on the walk, one to an embrasure, spread round the ring; the
+    // pikes and the militia in ranks behind the gate; the guard of the castellan behind them.
     {
-        Squad s{"Town Watch", kEnemy, UnitType::Archers, {}};
-        s.formation = Formation::Loose;
-        s.garrison = true;
-        const sim::UnitStats stats = sim::unitStats(UnitType::Archers);
-        const sim::Rampart* walls = townRampart(*region_, centre);
-        for (const sim::Rampart::Embrasure& e : walls ? spreadEmbrasures(*walls, static_cast<int>(nc * 2)) : std::vector<sim::Rampart::Embrasure>{}) {
-            const sim::EntityId id = world_->spawnUnit(kEnemy, e.pos, e.out, stats);
-            s.members.push_back(id);
-            if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
-            squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
+        struct Company {
+            const char* name;
+            UnitType type;
+            int count;
+        };
+        const Company companies[] = {{"Town Watch", UnitType::Archers, static_cast<int>(nc * 2)},
+                                     {"Gate Wardens", UnitType::Pikemen, 8},
+                                     {"Town Militia", UnitType::LightInfantry, 12},
+                                     {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        std::vector<sim::UnitStats> kinds;
+        for (const Company& c : companies)
+            for (int i = 0; i < c.count; ++i) kinds.push_back(sim::unitStats(c.type));
+        std::vector<const sim::UnitStats*> ptrs;
+        for (const sim::UnitStats& k : kinds) ptrs.push_back(&k);
+        const size_t gateIndex = world_->gateOfTown(town.pos - region_->origin());
+        const std::vector<sim::World::GarrisonPost> posts = gateIndex == sim::World::kNoGate ? std::vector<sim::World::GarrisonPost>{} : world_->garrisonPosts(gateIndex, ptrs);
+        size_t next = 0;
+        for (const Company& c : companies) {
+            Squad s{c.name, kEnemy, c.type, {}};
+            s.formation = c.type == UnitType::Archers ? Formation::Loose : defaultFormation(c.type);
+            s.facing = out;
+            s.garrison = true;
+            const sim::UnitStats stats = sim::unitStats(c.type);
+            for (int i = 0; i < c.count; ++i, ++next) {
+                if (next >= posts.size()) break;
+                const sim::EntityId id = world_->spawnUnit(kEnemy, posts[next].pos, posts[next].face, stats);
+                s.members.push_back(id);
+                if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
+                squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
+            }
+            squads_.push_back(std::move(s));
         }
-        squads_.push_back(std::move(s));
     }
-    const auto hold = [&](const std::string& name, UnitType type, int count, V3 at, V3 facing) {
-        spawnSquad(name, kEnemy, type, count, at, facing);
-        squads_.back().garrison = true;
-    };
-    hold("Gate Wardens", UnitType::Pikemen, 8, gate - out * 12.0f, out);
-    hold("Town Militia", UnitType::LightInfantry, 12, local(k.courtyard), out);
-    hold("Castellan's Guard", UnitType::HeavyInfantry, 6, local(k.keep) + out * (static_cast<float>(k.keepHalf.toDouble()) + 8), out);
 
     // The besiegers form up on the road before the gate (or the nearest open
     // ground out from it, clear of the neighbouring towns).

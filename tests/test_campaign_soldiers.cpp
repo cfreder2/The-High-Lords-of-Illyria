@@ -187,6 +187,8 @@ TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
             const int32_t town = s ? c.cityAt(s->cx, s->cy) : -1;
             if (!s || !s->path.empty() || town < 0) continue;
             const Continent::City& city = c.continent().cities()[static_cast<size_t>(town)];
+            // (A garrison's bowmen stand up on the wall-walk, at the embrasures: on the wall by design, and above the ground.)
+            if (m.unit && m.unit->pos.z > city.pos.z + Fixed::fromInt(4)) continue;
             ++men;
             const bool wrong = onBuilding(city.castle, m.x, m.y) || !insideOuter(city.castle, m.x, m.y);
             if (wrong) ++bad;

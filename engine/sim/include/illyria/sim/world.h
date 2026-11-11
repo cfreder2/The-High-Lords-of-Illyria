@@ -644,6 +644,24 @@ public:
     // Whether this man is one of a garrisoned gate's keepers (inside its walls, near it, on its side): the gate's strategy
     // gives him his station, so no other thinking (the computer lords' campaign AI) orders him about.
     bool gateKeeper(const Unit& u) const;
+    // A garrison standing in a walled town is stationed as one (world_keep.cpp): bowmen on the wall-walk, one to an embrasure,
+    // spread round the ring; foot in the keepers' horseshoe behind the doors; casters, healers, engines and the lord behind
+    // the foot. This is where men are placed, not an order they keep: they are ordinary men, and the player's hand is free.
+    enum class GarrisonRole : uint8_t { Wall, Foot, Rear };
+    static GarrisonRole garrisonRole(const UnitStats& stats);
+    struct GarrisonPost {
+        Vec3 pos, face;
+        GarrisonRole role = GarrisonRole::Foot;  // Wall: an embrasure on the walk; Foot: a place in the courtyard (the men beyond the embrasures too)
+    };
+    static constexpr size_t kNoGate = static_cast<size_t>(-1);
+    // The gate of the walled town whose heart is `heart` (region coordinates): of the rings round it, the outer one's. kNoGate if none.
+    size_t gateOfTown(const Vec3& heart) const;
+    // The stations of `men` (one post each, in their order) for the garrison of this gate's ring; places already held by men in
+    // the world are left. Empty if the gate is not one.
+    // (`except`: men in the world who are among them, whose own places do not count as held.)
+    std::vector<GarrisonPost> garrisonPosts(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except = {}) const;
+    // Sends these men (idle or not: the caller says who) to their stations in this gate's ring, each to the nearest of its role.
+    void stationMen(size_t gate, const std::vector<EntityId>& ids);
     Fixed groundHeight(Fixed x, Fixed y) const;
     // The least elevation (its tangent) of an arc from `origin` down onto
     // `mark` that passes over everything on the way, up to `shortOf` from it:
@@ -1020,6 +1038,11 @@ private:
     void stopAtShutGate(const Unit& u, std::vector<Vec3>& way, const std::vector<uint8_t>* hidden) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
+    // Ranks across the courtyard behind a gate for each of the groups of men (counts) in turn, each group in ranks of its own,
+    // every place open ground, centred on the doors' axis and clear of `avoid`: the places of each group, left to right.
+    std::vector<std::vector<Vec3>> yardRanks(const Gate& g, const Rampart& ring, const std::vector<int32_t>& groups, Fixed gap, const std::vector<Vec3>& avoid) const;
+    // Open courtyard ground inside the ring: not a ramp's foot or a stair, nor under the wall-walk's gallery.
+    bool courtyardSpot(const Rampart& ring, const Vec3& p) const;
     void applyGateOrder(const Command& cmd);
     // What a Move order sets on a man (the route is planned after it): the goal, the pace, the way to face there.
     void beginMove(Unit& unit, const Vec3& target, Fixed speed, const Vec3& face);

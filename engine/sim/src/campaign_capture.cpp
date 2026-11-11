@@ -154,6 +154,9 @@ void Campaign::transfer(int32_t city, uint8_t side) {
     // Each successful siege lowers the walls by one (Warlords 12).
     c.defense = std::max(1, c.defense - 1);
     holdGates(city);  // its gates are the new lord's now: his men do not hack at them
+    // The men of his who stand in it take their stations as its garrison (the same place for them as for any garrison).
+    for (const Stack& st : stacks_)
+        if (st.owner == side && cityAt(st.cx, st.cy) == city) station(st);
     for (CityState& o : cities_)
         if (o.vectorTo == city) o.vectorTo = -1;
     deed(side, "Our banner flies over " + name);
