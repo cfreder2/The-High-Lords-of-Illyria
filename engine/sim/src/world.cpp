@@ -573,6 +573,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     Unit* u = &unit;
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
+    u->stationed = false;   // ... and an order is not a garrison's station
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -2616,6 +2617,7 @@ uint64_t World::checksum() const {
             h.addU64(u.thrower);
             h.addU64(u.thrownTick);
         }
+        if (u.stationed) h.addU64(u.stationed);  // only once a garrison has stationed him, so battles without one hash as before
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);
@@ -2677,7 +2679,7 @@ uint64_t World::checksum() const {
         h.addU64(static_cast<uint64_t>(g.mode));
         h.addU64(g.since);
         h.addU64(g.openUntil);
-        h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u));
+        h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u) | (g.garrisoned && !g.recalls ? 8u : 0u));
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

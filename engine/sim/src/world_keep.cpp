@@ -53,12 +53,15 @@ constexpr Fixed kSlotTolerance = Fixed::fromInt(2);
 constexpr Fixed kEmbrasureTolerance = Fixed::fromRatio(6, 5);
 constexpr Fixed kEmbrasureHeight = Fixed::fromRatio(3, 2);
 
-enum class Post : uint8_t { None, Archer, Foot };
+enum class Post : uint8_t { None, Archer, Foot, Lord };
 
 // What a man is to the garrison: bowmen to the walls, the fighting rest to the horseshoe; engines, healers and the broken
 // keep to themselves.
 Post postOfStats(const UnitStats& s) {
     if (s.healing.amount > 0) return Post::None;
+    // The lord stands in the rank behind the foot (garrisonPosts) and keeps that place when a foe comes: he is the garrison's,
+    // but no station of the gate's calls him into the horseshoe.
+    if (s.type == static_cast<uint8_t>(UnitType::Hero)) return Post::Lord;
     if (s.ranged.muzzleSpeed > Fixed::zero()) return World::canBatter(s) ? Post::None : Post::Archer;
     return s.melee.damage > 0 ? Post::Foot : Post::None;
 }
@@ -68,19 +71,28 @@ Post postOf(const Unit& u) {
     return postOfStats(u.stats);
 }
 
+// A man with an order of his own (a move, an attack or orders waiting, unless the garrison's own: Unit::stationed) is not at the
+// gate's disposal: he is no keeper, and is never pulled to a post. Once the order is done he is a garrison man again. (The computer
+// lords' and neutral towns' men have no orders but their stations by construction.)
+bool ordered(const Unit& u) {
+    if (!u.queue.empty()) return true;
+    if (u.stationed) return false;
+    return u.hasMoveTarget || u.hasAttackTarget || (u.targetUnit != kNoEntity && !u.targetChosen);
+}
+
 bool idle(const Unit& u) { return !u.hasMoveTarget && !u.hasAttackTarget && u.targetUnit == kNoEntity && u.foe == kNoEntity && !u.engaged; }
 
 }  // namespace
 
 bool World::gateKeeper(const Unit& u) const {
-    if (!config_.region || gates_.empty() || postOf(u) == Post::None) return false;
+    if (!config_.region || gates_.empty() || postOf(u) == Post::None || ordered(u)) return false;
     const Region& rg = *config_.region;
     for (const size_t i : rg.gatesNear(u.pos.x, u.pos.y)) {
         const GateState& st = gates_[i];
         if (!st.garrisoned || st.holder != u.owner) continue;
         const Gate& g = rg.gates()[i];
         const Fixed d2 = (u.pos - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().lengthSq();
-        if (d2 <= kRecallRange * kRecallRange || (d2 <= kKeepRadius * kKeepRadius && withinRing(rg.ramparts()[static_cast<size_t>(g.ring)], u.pos))) return true;
+        if ((st.recalls && d2 <= kRecallRange * kRecallRange) || (d2 <= kKeepRadius * kKeepRadius && withinRing(rg.ramparts()[static_cast<size_t>(g.ring)], u.pos))) return true;
     }
     return false;
 }
@@ -113,8 +125,9 @@ void World::keepGates() {
                 else ++coming, outside += d2 <= kLureRange * kLureRange;
                 continue;
             }
-            if (d2 > kKeepRadius * kKeepRadius || (d2 > kRecallRange * kRecallRange && !withinRing(ring, u.pos))) continue;
+            if (d2 > kKeepRadius * kKeepRadius || (!withinRing(ring, u.pos) && !(st.recalls && d2 <= kRecallRange * kRecallRange))) continue;
             const Post post = postOf(u);
+            if (ordered(u)) continue;
             if (post == Post::Archer) archers.push_back(&u);
             else if (post == Post::Foot) foot.push_back(&u);
         }
@@ -151,6 +164,7 @@ void World::keepGates() {
                     u->routeFrom = u->pos;
                     beginMove(*u, ring.embrasures[e].pos, Fixed::zero(), ring.embrasures[e].out);
                     planPath(*u, ring.embrasures[e].pos);
+                    u->stationed = true;
                     break;
                 }
             }
@@ -208,6 +222,7 @@ void World::keepGates() {
                 u->routeFrom = u->pos;
                 beginMove(*u, slots[best], Fixed::zero(), mid - slots[best]);
                 planPath(*u, slots[best]);
+                u->stationed = true;
             }
         }
 
@@ -229,6 +244,7 @@ void World::keepGates() {
             Command c{u->owner, u->id, Command::Type::AttackUnit, {}};
             c.targetUnit = best->id;
             applyCommand(c);
+            u->stationed = true;
         }
 
         // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed
@@ -487,6 +503,7 @@ void World::stationMen(size_t gate, const std::vector<EntityId>& ids) {
         Command c{men[i]->owner, men[i]->id, Command::Type::Move, posts[best].pos};
         c.face = posts[best].face;
         applyCommand(c);
+        men[i]->stationed = true;  // (a placing, as the keepers' own)
     }
 }
 
