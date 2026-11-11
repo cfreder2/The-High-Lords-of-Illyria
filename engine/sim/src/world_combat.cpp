@@ -34,6 +34,9 @@ constexpr Fixed kFoeSlack = Fixed::fromRatio(1, 2);
 // foe within kFlankSlack of the nearest, or, with none, stand off this far from his reach and wait for a place.
 constexpr Fixed kFlankSlack = Fixed::fromInt(3);
 constexpr Fixed kStandOff = Fixed::fromInt(2);
+// Closing on a foe, within this of his reach a man heads for a free place on his ring (ringSlot) rather than for his middle; a friend
+// within kFlankCrowd of a place counts kCrowdCost metres against it.
+constexpr Fixed kSlotRange = Fixed::fromInt(4), kFlankCrowd = Fixed::fromRatio(5, 2), kCrowdCost = Fixed::fromRatio(3, 4);
 constexpr Fixed kRingShare = Fixed::fromRatio(3, 1);  // of the ring round a foe, a third is the front
 // Melee blows are blocked less often than arrows: the attacker can work round the shield.
 constexpr Fixed kMeleeBlockScale = Fixed::fromRatio(7, 10);
@@ -158,8 +161,11 @@ int32_t World::meleeCap(const Unit& u, const Unit& foe) const {
     // The men that stand shoulder to shoulder across a third of the ring at which `u` strikes `foe`: three on a man, a few more
     // on a giant, never fewer than two (a pike's long reach rings a wider circle but a rank still strikes past its friends).
     const Fixed ring = foe.stats.radius + u.stats.radius + u.stats.melee.reach;
-    const int64_t abreast = (ring * kPi / (kRingShare * u.stats.radius)).floorToInt();
-    return static_cast<int32_t>(std::clamp<int64_t>(abreast, 2, 6));
+    Fixed abreast = ring * kPi / (kRingShare * u.stats.radius);
+    // A long weapon (a pike) is struck past the friend in front: the rank behind adds nothing, so fewer stand in the front.
+    if (u.stats.melee.reach > Fixed::one()) abreast = abreast / u.stats.melee.reach;
+    const int64_t slots = abreast.floorToInt();
+    return static_cast<int32_t>(std::clamp<int64_t>(slots, 2, 6));
 }
 
 bool World::meleeFull(const Unit& u, const Unit& foe) const {
@@ -174,6 +180,41 @@ bool World::meleeFull(const Unit& u, const Unit& foe) const {
         full = ++on >= cap;
     });
     return full;
+}
+
+bool World::ringSlot(const Unit& u, const Unit& foe, Vec3& slot) const {
+    // Eight places round the foe at his reach (evenly by angle), the nearest to him that no friend holds or crowds, so that a line
+    // closing on one man wraps him instead of piling at the point it met him.
+    static constexpr Fixed kD = Fixed::fromRatio(7071, 10000);
+    static const Vec3 dirs[8] = {{Fixed::one(), Fixed::zero(), Fixed::zero()}, {kD, kD, Fixed::zero()},
+                                 {Fixed::zero(), Fixed::one(), Fixed::zero()}, {-kD, kD, Fixed::zero()},
+                                 {-Fixed::one(), Fixed::zero(), Fixed::zero()}, {-kD, -kD, Fixed::zero()},
+                                 {Fixed::zero(), -Fixed::one(), Fixed::zero()}, {kD, -kD, Fixed::zero()}};
+    const Fixed radius = foe.stats.radius + u.stats.radius + u.stats.melee.reach - kCloseIn;
+    const Fixed width = u.stats.radius * 2 * Fixed::fromRatio(9, 10);
+    Vec3 at[8];
+    Fixed crowd[8] = {};
+    bool taken[8] = {};
+    for (int k = 0; k < 8; ++k) at[k] = foe.pos + dirs[k] * radius;
+    nearby(foe.pos.x, foe.pos.y, radius + kFlankCrowd, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (o.id == u.id || o.owner != u.owner || !o.alive() || o.inAir()) return;
+        for (int k = 0; k < 8; ++k) {
+            const Fixed d = (o.pos - at[k]).flat().length();
+            if (d < width) taken[k] = true;
+            if (d < kFlankCrowd) crowd[k] += Fixed::one();
+        }
+    });
+    int best = -1;
+    Fixed bestScore;
+    for (int k = 0; k < 8; ++k) {
+        if (taken[k]) continue;
+        const Fixed score = (at[k] - u.pos).flat().length() + crowd[k] * kCrowdCost;
+        if (best < 0 || score < bestScore) best = k, bestScore = score;
+    }
+    if (best < 0) return false;
+    slot = at[best];
+    return true;
 }
 
 Unit* World::meleeTarget(Unit& u, EntityId lastFoe) {
@@ -227,6 +268,13 @@ void World::fight(Unit& u, Unit& enemy) {
         if (gap <= m.reach + kStandOff && meleeFull(u, enemy)) {
             turnToward(u, dir);
             return;
+        }
+        // Near him, to a free place on his ring: the line wraps him (and the foe of the next man is not the same man's front).
+        if (gap <= m.reach + kSlotRange) {
+            if (Vec3 slot; ringSlot(u, enemy, slot)) {
+                walk(u, slot);
+                return;
+            }
         }
         // A little inside reach: closing on the exact edge of it never quite arrives.
         walk(u, u.pos + dir * min(gap - m.reach + kCloseIn, u.stats.moveSpeed));

@@ -1142,6 +1142,8 @@ private:
     // How many men may strike one foe at once, and whether that many already do (a foe ringed, so the rest must wait or go round).
     int32_t meleeCap(const Unit& unit, const Unit& foe) const;
     bool meleeFull(const Unit& unit, const Unit& foe) const;
+    // A free place on the ring at which `unit` strikes `foe`, the nearest to him and away from his friends; false when all are held.
+    bool ringSlot(const Unit& unit, const Unit& foe, Vec3& slot) const;
     // Turns toward a flat unit direction at the unit's own pace; true once facing it.
     bool turnToward(Unit& unit, const Vec3& dir) const;
     // Melee damage multiplier (percent) of a blow from `attacker` to `target`,
