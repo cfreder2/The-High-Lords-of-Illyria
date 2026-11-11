@@ -45,6 +45,14 @@ Ranged attacks do not use guaranteed hit animations. Projectiles follow real New
 - Missed projectiles stay physical: they can strike friendly units, terrain, or debris along their path.
 - *All randomness must come from the seeded, deterministic simulation RNG (§5).*
 
+**Friendly fire (built; `engine/sim/src/world_aoe.cpp`, `world_satchels.cpp`; tests in `tests/test_friendly_fire.cpp`).** Friendly fire is a core joy of the genre and stays, with one rule on who looks where they shoot:
+
+- **Direct fire does not look.** Archers, crossbows, thrown spears and any shot that flies a flat path shoot at the foe and hit the first man in the line, friend or foe: a friend standing in front of an archer takes the arrow in the back. They never look for friends.
+- **Blast throwers aim, to minimise the harm to their own.** The catapult's stone, the wizard's and the dragon's fireballs, the grenadier's Molotov and his satchels can aim, so each volley weighs a few places to drop the blast. Score of a place = the damage the blast would do the foes in reach (centre damage x `1 - d/radius`, as `World::explode` deals it) minus **2 x** the same sum for his own side (every man of his team, himself included). The places are the mark and eight more, at half and at the whole of the blast's radius along the line to him (nearer, farther) and across it, within the weapon's reach. A fireball or Molotov flies flat and bursts on the first man in its way, so it is scored where it would burst. If no friend is in the blast of the mark, or no foe (a wall, a gate), he shoots as he always did.
+- **Holding fire.** If even the best place would badly hurt a friend (more than a tenth of his health; any friend at all for a bomb), he holds the volley and looks again every fifth of a second, for the melee to shift. He holds **5 s** at most (a stone takes 14 s to wind; a longer wait in a fight that does not shift costs more than the friend), then looses at the place where his own side is hurt least and a foe still is. A man with a foe within 6 m of him does not hold: he looses at the best place at once.
+- **Satchels.** A grenadier lays one where his own men are out of its blast, at his feet or tossed 5 or 9 m ahead (short of the foe); if none is clear he lays none. The Molotov that sets one off waits while a friend is in its blast, up to the same 5 s, then sparks the one with the fewest (and goes on with other targets meanwhile).
+- A player's explicit orders are not second-guessed except that the blast shooter above still picks the place within the order. Computer lords order attacks on units and points; none targets a point inside its own men by design, and the shooter's own rule covers when one does.
+
 ### 3.2 Spatial Melee Physics (Sword vs. Shield / Flesh)
 
 Melee combat is dictated by physical bounding volumes and weapon trace envelopes rather than percentage-based hit rolls.
