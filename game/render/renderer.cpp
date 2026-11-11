@@ -1559,6 +1559,7 @@ bool Renderer::init(Battle& battle) {
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
     for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
+    makeBatch(bigDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
     makeBatch(sprites_, {3, 3, 4, 4, 3, 2, 1}, 0);
     makeBatch(units_, {3, 1, 1, 1, 1}, 0);
@@ -2330,7 +2331,8 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         drawMan(v, pass);
     }
     battle.setSpriteBoxes(std::move(boxes));
-    endMen(battle, camera, decals);
+    bigDecalData_.clear();
+    endMen(battle, camera, bigDecalData_);
 
     battle.forEachProjectile([&](const sim::Projectile& p, const V3& pos, const V3& vel) {
         const float* team = sideColor(p.owner);
@@ -2507,6 +2509,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     }
 
     uploadDynamic(dynamicDecals_, decals);
+    uploadDynamic(bigDecals_, bigDecalData_);
     uploadDynamic(sprites_, sprites);
     uploadDynamic(flyingArrows_, arrows);
     uploadDynamic(particles_, particles);
@@ -2629,11 +2632,12 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glPolygonOffset(0.0f, -2.0f);  // constant: a slope term pulls grazing decals through nearby stone
     setCommon(decal_, camera, timeSeconds, gameSeconds);
     const bool realShadows = shadowInfo_[2] > 0;
-    for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_}) {
+    for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_, &bigDecals_}) {
         // Blob shadows under the battlefield's trees only while they stand (see sceneryNear in kMeshVs).
         if (b->count == 0 || (b == &sceneryShadows_ && (realShadows || camera.distance() > 850.0f))) continue;
         // Per-frame marks (rings, order markers) can be big: more cells to follow the land.
-        const int grid = b == &dynamicDecals_ ? 4 : b == &marks_ ? 2 : 1;
+        // The selection's ring is up to 90 m across: finely cut, or its chords would sink into every rise it crosses.
+        const int grid = b == &bigDecals_ ? 24 : b == &dynamicDecals_ ? 4 : b == &marks_ ? 2 : 1;
         glUniform1f(decal_.decalGrid, static_cast<float>(grid));
         glBindVertexArray(b->vao);
         drawArrays(GL_TRIANGLES, 0, 6 * grid * grid, b->count);

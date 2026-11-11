@@ -260,6 +260,7 @@ private:
         std::function<uint32_t()> won;
     };
     void drawMan(const ManView& v, ManPass& pass);
+    std::vector<float> bigDecalData_;  // this frame's decals big enough to need a fine grid (the selection's ring)
     void endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals);
     void drawDots(const Camera& camera, double timeSeconds, float gameSeconds);
     float mapDotPx_ = 4;  // a dot's width, in device pixels
@@ -512,7 +513,7 @@ private:
     int cells_ = 0;
     float cellSize_ = 1;
 
-    Batch ribbons_, waterfalls_, rockRings_, detailRockRings_, marks_, remainArrows_, dynamicDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
+    Batch ribbons_, waterfalls_, rockRings_, detailRockRings_, marks_, remainArrows_, dynamicDecals_, bigDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
     MeshBatch houses_, pillars_, capsules_, spheres_;
     // Several shapes per kind of scenery (meshes::pineVariants() and so on).
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
