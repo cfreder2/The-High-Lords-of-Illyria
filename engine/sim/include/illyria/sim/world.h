@@ -361,6 +361,13 @@ struct Unit {
     int32_t satchels = 0;
     int32_t layCooldown = 0;
     bool layOrdered = false;
+    // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
+    // tick he last held. Both rest at zero once he fires (or is left alone for a while).
+    int32_t aoeHeld = 0;
+    uint32_t aoeHeldTick = 0;
+    // The same for a grenadier's spark kept from a laid satchel with a friend by it (shootSatchel).
+    int32_t sparkHeld = 0;
+    uint32_t sparkHeldTick = 0;
     // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
     // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
     std::vector<Command> queue;
@@ -1013,6 +1020,14 @@ private:
     // past the walls, gates and trees in the way.
     // `atWalk`: the target is a defender on a wall-walk, shot at direct (never lobbed).
     bool fire(Unit& unit, const Vec3& target, bool atWalk = false);
+    // `fire`, and the reload that follows, for any shooter (world_aoe.cpp). One with a blast to throw (stones, fireballs,
+    // Molotovs) chooses where it falls so as to spare his own side, or holds his fire a while (true, loosing nothing,
+    // when held); a bowman's flat shot is as ever: whoever stands in the line takes it. False: no clear shot.
+    bool fireAt(Unit& unit, const Vec3& target, bool atWalk = false);
+    // Where a missile aimed at `aim` from `origin` bursts: a flat shot (fireball, Molotov) on the first man in its way.
+    Vec3 burstPoint(const Unit& shooter, const Vec3& origin, const Vec3& aim) const;
+    // A foe within a few metres of him: he is not to wait on his aim.
+    bool overrun(const Unit& u) const;
     // At a mark in range this tick, called every tick he is: true when his
     // reload has run out and his bow is drawn (a fresh mark is drawn on first).
     bool readyToLoose(Unit& unit);
@@ -1112,7 +1127,7 @@ private:
     void setOffHeld(Unit& u);
     // Satchel charges (world_satchels.cpp).
     // Lays one where he stands, toward `toward`, and steps back from it.
-    void laySatchel(Unit& u, const Vec3& toward);
+    void laySatchel(Unit& u, const Vec3& toward, Fixed reach = Fixed::zero());
     // Idle with satchels left and the enemy coming: lays one in their path (true).
     bool layInPath(Unit& u);
     // A Molotov thrower's shot at a satchel lying among the enemy, if he has

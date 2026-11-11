@@ -86,6 +86,7 @@ add_executable(illyria_tests
     test_water_rocks.cpp
     test_site_clearance.cpp
     test_satchels.cpp
+    test_friendly_fire.cpp
     test_scavenge.cpp
     test_match_seats.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp

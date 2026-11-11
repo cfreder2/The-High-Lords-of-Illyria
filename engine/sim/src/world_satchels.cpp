@@ -29,6 +29,11 @@ constexpr int32_t kLayTicks = kTicksPerSecond / 2;
 constexpr Fixed kStepBackMargin = Fixed::fromInt(3);
 // He sets off a satchel with his Molotov only from beyond its blast and this much more.
 constexpr Fixed kShootMargin = Fixed::fromInt(2);
+// Where a satchel is tossed when his own men crowd his feet.
+constexpr Fixed kTossShort = Fixed::fromInt(5), kTossFar = Fixed::fromInt(9);
+// The spark waits on a friend in the blast this long at most (as a thrown stone does: world_aoe.cpp).
+constexpr int32_t kSparkWaitTicks = 5 * kTicksPerSecond;
+constexpr uint32_t kSparkForgetTicks = 2 * kTicksPerSecond;
 
 Vec3 flatDir(const Vec3& from, const Vec3& to, const Vec3& fallback) {
     const Vec3 d = (to - from).flat();
@@ -41,11 +46,12 @@ bool laid(const Projectile& p) { return p.kind == ProjectileKind::Bomb && !p.thr
 
 }  // namespace
 
-void World::laySatchel(Unit& u, const Vec3& toward) {
+void World::laySatchel(Unit& u, const Vec3& toward, Fixed reach) {
     if (u.satchels <= 0) return;
     const Vec3 dir = flatDir(u.pos, toward, u.facing);
     const Explosive& charge = u.stats.satchels.charge;
-    placeSatchel(u.owner, u.pos + dir * (u.stats.radius + Fixed::fromRatio(1, 2)), charge, 0);
+    if (reach <= Fixed::zero()) reach = u.stats.radius + Fixed::fromRatio(1, 2);  // at his feet, as he stoops
+    placeSatchel(u.owner, u.pos + dir * reach, charge, 0);
     --u.satchels;
     u.layCooldown = u.stats.satchels.layTicks;
     u.reloadRemaining = std::max(u.reloadRemaining, kLayTicks);  // a stoop (the game plays his stroke)
@@ -76,8 +82,25 @@ bool World::layInPath(Unit& u) {
     if (foe == nullptr || best < kLayNear * kLayNear) return false;
     for (const Projectile& p : projectiles_)
         if (laid(p) && (p.pos - u.pos).flat().lengthSq() < kLaySpacing * kLaySpacing) return false;
-    laySatchel(u, foe->pos);
-    return true;
+    // Where it lies keeps clear of his own men (the blast of it would take them, and any spark that finds it):
+    // at his feet, or tossed out ahead of him, short of the foe. None clear: none laid.
+    const Vec3 dir = flatDir(u.pos, foe->pos, u.facing);
+    const Fixed foeAt = sqrt(best);
+    const Explosive& charge = u.stats.satchels.charge;
+    for (const Fixed reach : {Fixed::zero(), kTossShort, kTossFar}) {
+        if (reach > Fixed::zero() && reach + Fixed::one() > foeAt) break;
+        const Vec3 spot = u.pos + dir * (reach > Fixed::zero() ? reach : u.stats.radius + Fixed::fromRatio(1, 2));
+        bool clear = true;
+        nearby(spot.x, spot.y, charge.radius, [&](uint32_t k) {
+            const Unit& o = units_[k];
+            if (!clear || o.id == u.id || !o.alive() || o.owner != u.owner) return;
+            clear = (o.pos - spot).flat().lengthSq() >= charge.radius * charge.radius;
+        });
+        if (!clear) continue;
+        laySatchel(u, foe->pos, reach);
+        return true;
+    }
+    return false;
 }
 
 bool World::shootSatchel(Unit& u) {
@@ -87,26 +110,52 @@ bool World::shootSatchel(Unit& u) {
     bool found = false;
     Vec3 at;
     int32_t most = 0;
+    // And, failing that, the one with foes in it and the fewest friends, to spark at the last.
+    bool blocked = false;
+    Vec3 blockedAt;
+    int32_t fewestFriends = 0, blockedFoes = 0;
     for (const Projectile& p : projectiles_) {
         if (!laid(p)) continue;
         const Fixed d = (p.pos - u.pos).flat().length();
         if (d > shotRange(u, w.autoRange, p.pos) || d < p.explosive.radius + kShootMargin) continue;
         const Fixed reach2 = p.explosive.radius * p.explosive.radius;
-        int32_t foes = 0;
-        bool friends = false;
+        int32_t foes = 0, friends = 0;
         for (const Unit& o : units_) {
             if (!o.alive() || o.inAir() || (o.pos - p.pos).flat().lengthSq() >= reach2) continue;
-            if (o.owner == u.owner) friends = true;
+            if (o.owner == u.owner) ++friends;
             else ++foes;
         }
-        if (friends || foes <= most) continue;
+        if (friends > 0) {
+            if (foes > 0 && (!blocked || friends < fewestFriends || (friends == fewestFriends && foes > blockedFoes))) {
+                blocked = true;
+                blockedAt = p.pos;
+                fewestFriends = friends;
+                blockedFoes = foes;
+            }
+            continue;
+        }
+        if (foes <= most) continue;
         found = true;
         most = foes;
         at = p.pos;
     }
-    if (!found) return false;
+    if (!found) {
+        if (!blocked) return false;
+        // The spark waits while his own men stand in the blast, up to a cap (then it goes where the fewest are; a
+        // blast on his own men is no answer to a foe at his back). He does what else he can meanwhile.
+        if (u.sparkHeldTick + kSparkForgetTicks < tick_) u.sparkHeld = 0;
+        u.sparkHeldTick = tick_;
+        if (u.sparkHeld < kSparkWaitTicks) {
+            ++u.sparkHeld;
+            return false;
+        }
+        at = blockedAt;
+    }
     u.facing = flatDir(u.pos, at, u.facing);
-    if (u.reloadRemaining == 0 && fire(u, at)) u.reloadRemaining = attackTicks(u, w.reloadTicks);
+    if (u.reloadRemaining == 0 && fire(u, at)) {
+        u.reloadRemaining = attackTicks(u, w.reloadTicks);
+        u.sparkHeld = 0;
+    }
     return true;
 }
 

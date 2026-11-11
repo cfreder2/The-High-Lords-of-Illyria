@@ -1381,7 +1381,7 @@ void World::updateUnit(Unit& u) {
         } else if (range >= u.stats.ranged.minRange && readyToLoose(u)) {
             Vec3 aim = u.attackTarget;
             const bool atWalk = u.attackGate < 0 && aimHigh(u, aim, Fixed::fromRatio(9, 5));  // a man up there
-            if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
+            fireAt(u, aim, atWalk);
         }
     } else if (u.scav.raiding) {
         // A scavenger let loose runs his own fight (world_scavenge.cpp); else
@@ -1405,7 +1405,7 @@ void World::updateUnit(Unit& u) {
         if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
             Vec3 aim = target->pos;
             const bool atWalk = aimHigh(u, aim, target->stats.height);
-            if (fire(u, aim, atWalk)) u.reloadRemaining = attackTicks(u, u.stats.ranged.reloadTicks);
+            fireAt(u, aim, atWalk);
         }
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
@@ -2600,6 +2600,15 @@ uint64_t World::checksum() const {
             h.addI64(u.satchels);
             h.addI64(u.layCooldown);
             h.addU64(u.layOrdered);
+        }
+        // Only while a blast thrower is waiting on a friend in his way.
+        if (u.aoeHeld != 0) {
+            h.addI64(u.aoeHeld);
+            h.addU64(u.aoeHeldTick);
+        }
+        if (u.sparkHeld != 0) {
+            h.addI64(u.sparkHeld);
+            h.addU64(u.sparkHeldTick);
         }
         if (u.stats.scavenge.sight > Fixed::zero()) hashScavenger(h, u.scav);
         // Only once a scavenger's throw has struck him, so battles without one hash as before.
