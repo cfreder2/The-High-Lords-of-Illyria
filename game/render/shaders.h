@@ -301,6 +301,20 @@ vec3 farInland(vec2 p, float depthM) {
     return mix(bed, inlandWater(depthM, p), clamp(0.55 + depthM * 0.3, 0.55, 0.95)) * (0.8 + 0.2 * cloudShade(p));
 }
 
+// The still water's finish from afar, one function for the far land's lakes and the river ribbons that run into them (so a river
+// and the lake it feeds are one sheet, with no seam where the ribbon gives way): the sky in the surface, more at grazing angles,
+// a broad glitter in the sun, and slow patches of light and dark. `lake`: 1 for still inland water, 0 where the sea's own look rules.
+vec3 farWaterSheen(vec3 w, vec2 p, vec3 world, float lake) {
+    vec3 v = normalize(uEye - world);
+    vec3 wn = normalize(vec3(-seaChop(p, uPxScale * distance(uEye, world), uTime) * 0.45, 1.0));  // (kWaterFs: the same ripple)
+    float fres = 0.03 + 0.5 * pow(1.0 - max(wn.z * v.z + dot(wn.xy, v.xy), 0.0), 4.0);
+    vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(reflect(-v, wn).z, 0.0, 1.0));
+    w = mix(w, sky * (0.8 + 0.2 * cloudShade(p)), clamp(fres * lake, 0.0, 0.5));
+    vec3 h = normalize(kSun + v);
+    w += vec3(1.0, 0.97, 0.9) * (pow(max(dot(wn, h), 0.0), 140.0) * 0.5 + pow(max(dot(wn, h), 0.0), 20.0) * 0.07) * lake * cloudShade(p);
+    return w * mix(1.0, 0.86 + 0.28 * valueNoise2(p / 45.0 + 2.0), lake);
+}
+
 // ---------------------------------------------------------------- under water
 // When the eye is below the water (game/underwater.h): the whole scene is tinted and fogged by exponential absorption (reds die
 // first), lit by drifting caustics, the surface seen from below is a bright window with total internal reflection round it. All
@@ -527,13 +541,16 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     if (rock > 0.0 || slope > 0.3) {
         // Broken bands, warped hard so they read as rock, not contour lines.
         float strata = smoothstep(0.1, 0.9, 0.5 + 0.5 * sin((world.z + 0.45 * dot(p, vec2(0.8, 0.6))) * 0.3 + fbm3(p / 90.0) * 26.0 + valueNoise2(p / 11.0) * 3.0));  // beds dip across the contours
+        // Beds read on cliffs, not as fingerprint ridges across a gentle slope: banded by slope, and gone before they alias.
+        strata = mix(0.5, strata, smoothstep(0.22, 0.6, slope) * (1.0 - smoothstep(4.0, 12.0, pxm)));
         float seam = abs(valueNoise2(p / 6.0 + vec2(0.0, world.z * 0.4)) - 0.5);  // the cracks
         float tone = fbm3(p / 18.0) * 0.6 + 0.2;
         vec3 stone = mix(vec3(0.40, 0.38, 0.36), vec3(0.56, 0.53, 0.49), tone) * (0.9 + 0.14 * strata) * (0.94 + 0.12 * valueNoise2(p / 5.0));
         // Cliffs dark, ledges and scree pale: the shape of the range reads from afar.
         stone *= 0.9 + 0.18 * strata;
         stone *= mix(1.08, 0.72, smoothstep(0.3, 0.75, slope));
-        stone *= 1.0 - 0.14 * (1.0 - smoothstep(0.0, 0.05, seam)) * (1.0 - smoothstep(1.2, 3.0, pxm));
+        // (The cracks, the isolines of a noise, drew worms and fingerprints across the rock at mid distance: not drawn from afar.)
+        stone *= 1.0 - 0.14 * (1.0 - smoothstep(0.0, 0.05, seam)) * (1.0 - smoothstep(0.35, 0.9, pxm));
         stone = mix(stone, vec3(0.36, 0.38, 0.28), smoothstep(0.62, 0.8, valueNoise2(p / 35.0 + 2.0)) * 0.35);  // lichen and scrub
         // Bare rock on the steeps and the heights; alpine turf holds on the
         // gentler mountain ground and climbs the ravines, so the cover follows the land.
@@ -726,6 +743,7 @@ void main() {
         float stoneShown = max(kind.z, smoothstep(0.3, 0.45, slope)) * 0.8;
         if (stoneShown > 0.0) {
             float strata = 0.5 + 0.5 * sin(vWorld.z * 2.6 + valueNoise(p * 0.3) * 6.0);
+            strata = mix(0.5, strata, smoothstep(0.25, 0.55, slope) * (1.0 - smoothstep(0.3, 1.0, px)));  // beds on cliffs only: on a flat top the isolines were worms and fingerprints
             vec2 rc = rockCoord(p);
             vec3 stone = vec3(0.48, 0.46, 0.43) * (0.8 + 0.3 * strata) * (0.85 + 0.3 * mix(valueNoise(rc * 3.1), 0.5, smoothstep(0.1, 0.5, px)));
             stone = mix(stone, vec3(0.62, 0.62, 0.42), smoothstep(0.7, 0.85, valueNoise(rc * 1.9 + 4.0)) * 0.6);
@@ -2776,15 +2794,7 @@ void main() {
             w = mix(sea, lakeColour, lake);
         }
         if (fielded) {
-            // The sky in the water, more at grazing angles, and a still sheet's broad glitter in the sun.
-            vec3 v = normalize(uEye - vWorld);
-            vec3 wn = normalize(vec3(-seaChop(p, uPxScale * dist, uTime) * 0.45, 1.0));  // the still water's ripple (kWaterFs: the same)
-            float fres = 0.03 + 0.5 * pow(1.0 - max(wn.z * v.z + dot(wn.xy, v.xy), 0.0), 4.0);
-            vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(reflect(-v, wn).z, 0.0, 1.0));
-            w = mix(w, sky * (0.8 + 0.2 * cloudShade(p)), clamp(fres * lake, 0.0, 0.5));
-            vec3 h = normalize(kSun + v);
-            w += vec3(1.0, 0.97, 0.9) * (pow(max(dot(wn, h), 0.0), 140.0) * 0.5 + pow(max(dot(wn, h), 0.0), 20.0) * 0.07) * lake * cloudShade(p);
-            w *= mix(1.0, 0.86 + 0.28 * valueNoise2(p / 45.0 + 2.0) , lake);  // slow patches of light and dark on the open water
+            w = farWaterSheen(w, p, vWorld, lake);  // the sky in the water, the sun's glitter, slow patches of light and dark
             // The shore: a lighter shelf in the shallows, and the foam line at the waterline (a sea's strong, a lake's a pale lap).
             float shelf = 1.0 - smoothstep(0.0, 14.0, sd);
             w = mix(w, vec3(0.22, 0.46, 0.44), shelf * 0.35 * lake);
@@ -2873,9 +2883,14 @@ void main() {
             vec4 ff = farField(vXy);
             // open water: all four points a cell and a half off are wet (a river's bank is within that, a lake's is not)
             float openW = min(min(farField(vXy + vec2(24.0, 0.0)).r, farField(vXy - vec2(24.0, 0.0)).r), min(farField(vXy + vec2(0.0, 24.0)).r, farField(vXy - vec2(0.0, 24.0)).r));
-            alpha *= 1.0 - smoothstep(1.0, 1.04, openW);
-            alpha *= 1.0 - smoothstep(0.4, 1.6, (ff.r - 1.0) * 12.0);  // and where the land's own water is already a river's width
+            // The ribbon deepens toward the lake's own colour as the water opens, and gives way to it over a wide soft range, not at a
+            // line: the two were a different blue with a hard edge between (a seam where every river met a lake).
+            float lakeDepth = clamp((ff.r - 1.0) * 12.0, 0.0, 12.0);
+            c = farInland(vXy, max(depth, lakeDepth));
+            alpha *= 1.0 - smoothstep(1.0, 1.35, openW);
+            alpha *= 1.0 - smoothstep(0.4, 3.0, (ff.r - 1.0) * 12.0);  // and where the land's own water is already a river's width
         }
+        c = farWaterSheen(c, vXy, vec3(vXy, vLevel), 1.0 - seaWeight(vLevel));
         alpha *= 1.0 - smoothstep(0.78, 1.0, abs(vAcross));  // a soft bank, not a cut
     } else {
         // Packed dirt, a little paler down the wheel-worn middle and darker at the verges where the grass creeps in, with a soft edge

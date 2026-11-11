@@ -41,7 +41,10 @@ void Renderer::uploadFarField(const Battle& battle) {
                         const int a = i + di, b = j + dj;
                         if (a >= 0 && b >= 0 && a < nx && b < ny && wetAt(a, b)) surface = std::max(surface, g.height[at(a, b)]);
                     }
-                w = surface < -1e5f ? 0.0f : std::clamp(1.0f - (g.height[at(i, j)] - surface) / 12.0f, 0.0f, 0.999f);
+                // (No floor at 0: a steep bank, 12 m or more over the water next door, used to clamp to 0, which put the waterline's crossing
+                // at the wet sample's centre, so a bank's shore snapped to the 16 m grid in stairs. The field is a float texture: the bank
+                // goes on falling below 0, and the line is where the ground meets the water, linearly between the two samples.)
+                w = surface < -1e5f ? -4.0f : std::clamp(1.0f - (g.height[at(i, j)] - surface) / 12.0f, -4.0f, 0.999f);
             }
             const float h = groundAt(i, j);
             const float around = (groundAt(i - 2, j) + groundAt(i + 2, j) + groundAt(i, j - 2) + groundAt(i, j + 2)) * 0.25f;
