@@ -1219,6 +1219,30 @@ ILLYRIA_API void illyria_paths_demo() {
     app->introStartMs = -1;
 }
 
+// Test hook (--garrison-demo on the desktop, in a conquest): four giants of the second side stand 60 m outside the doors of the
+// player's capital, to see its idle garrison take its stations (World::keepGates).
+ILLYRIA_API void illyria_garrison_demo() {
+    using namespace illyria::sim;
+    if (!app || !app->camp.on || !app->camp.c || !app->camp.c->presentedWorld()) return;
+    Campaign& c = *app->camp.c;
+    World& w = *c.presentedWorld();
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        if (c.cities()[i].owner != 0 || !c.continent().cities()[i].capital) continue;
+        const size_t gate = w.gateOfTown(c.continent().cities()[i].pos - w.region()->origin());
+        if (gate == World::kNoGate) return;
+        const Gate& g = w.region()->gates()[gate];
+        const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
+        for (int k = 0; k < 4; ++k) {
+            Vec3 p = mid + g.out * Fixed::fromInt(60) + Vec3{Fixed::fromInt(k * 3 - 4), Fixed::zero(), Fixed::zero()};
+            p.z = w.groundHeight(p.x, p.y);
+            const EntityId id = w.spawnUnit(1, p, -g.out, unitStats(UnitType::Giants));
+            if (k == 1) std::fprintf(stderr, "garrison-demo: gate at continent %.1f %.1f, out %.3f %.3f\n", (mid.x + w.region()->origin().x).toDouble(), (mid.y + w.region()->origin().y).toDouble(), g.out.x.toDouble(), g.out.y.toDouble());
+            (void)id;
+        }
+        return;
+    }
+}
+
 // Test hook (--queue-demo on the desktop): the first squad given a march and two queued after it (Shift + right-click), the
 // second given the same while planning (held: dashed, violet, numbered), the third a plain march; none selected, the camera
 // above them. Right clicks are made through the camera, as the player's are.

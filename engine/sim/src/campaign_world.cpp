@@ -303,8 +303,12 @@ void Campaign::holdGates(int32_t city) {
         if (gateCity_[g] == city) {
             const uint8_t owner = cities_[static_cast<size_t>(city)].owner;
             world_->setGateHolder(g, owner);
-            // A neutral town's gate and a computer lord's are kept by their garrison (World::keepGates); the player's by his hand.
-            world_->setGateGarrisoned(g, owner == kNeutral || !sides_[owner].human);
+            // Every town's gate is kept by its garrison (World::keepGates): the men of it who have no order of their own take their
+            // stations when a foe comes near. A neutral town's and a computer lord's garrison is idle by construction; the
+            // player's men are kept only while idle, and only inside his walls (a man he sent out and who stands there, outside,
+            // is his to leave). The gate itself stays his hand's: his men bound through it ask it open (World::updateGates), a foe
+            // never does, and his pin overrules the keepers' lure.
+            world_->setGateGarrisoned(g, true, owner == kNeutral || !sides_[owner].human);
         }
 }
 

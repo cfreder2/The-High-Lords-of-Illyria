@@ -361,6 +361,10 @@ struct Unit {
     int32_t satchels = 0;
     int32_t layCooldown = 0;
     bool layOrdered = false;
+    // His move or attack is a garrison's own (World::keepGates, World::stationMen: his station, or a foe come into the
+    // walls), not an order of the player's. Any order given to him (World::startOrder) clears it. A man with a move, an
+    // attack or a queue and this unset is "ordered", and is not one of a gate's keepers (world_keep.cpp).
+    bool stationed = false;
     // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
     // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
     std::vector<Command> queue;
@@ -528,6 +532,9 @@ struct GateState {
     Command::GatePin pin = Command::GatePin::Auto;
     // A garrison keeps it (World::keepGates): its men take their stations by role when a foe comes near.
     bool garrisoned = false;
+    // ... and also takes in its idle men standing outside the doors within 70 m (fled and rallied, or driven out). A human
+    // holder's men are free to stand where they were put: his gate keeps only the men inside his walls.
+    bool recalls = true;
     bool broken() const { return hp <= 0; }
     bool opened() const { return mode == Mode::Open; }
     bool passable() const { return broken() || mode == Mode::Open; }
@@ -639,7 +646,7 @@ public:
     void setGateHolder(size_t gate, PlayerId holder);
     void setGateHp(size_t gate, int32_t hp);
     // A garrison keeps the gate (keepGates, world_keep.cpp); the pin is the holder's hand on it (Command::SetGate).
-    void setGateGarrisoned(size_t gate, bool on);
+    void setGateGarrisoned(size_t gate, bool on, bool recallsOutside = true);
     void setGatePin(size_t gate, Command::GatePin pin);
     // Whether this man is one of a garrisoned gate's keepers (inside its walls, near it, on its side): the gate's strategy
     // gives him his station, so no other thinking (the computer lords' campaign AI) orders him about.

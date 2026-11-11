@@ -44,6 +44,7 @@ add_executable(illyria_tests
     test_ground.cpp
     test_castle.cpp
     test_garrison.cpp
+    test_garrison_keep.cpp
     test_ramps.cpp
     test_walls.cpp
     test_campaign.cpp

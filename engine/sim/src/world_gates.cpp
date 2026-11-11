@@ -112,8 +112,10 @@ void World::applyGateOrder(const Command& cmd) {
     st.pin = cmd.gatePin;
 }
 
-void World::setGateGarrisoned(size_t gate, bool on) {
-    if (gate < gates_.size()) gates_[gate].garrisoned = on;
+void World::setGateGarrisoned(size_t gate, bool on, bool recallsOutside) {
+    if (gate >= gates_.size()) return;
+    gates_[gate].garrisoned = on;
+    gates_[gate].recalls = recallsOutside;
 }
 
 void World::setGatePin(size_t gate, Command::GatePin pin) {

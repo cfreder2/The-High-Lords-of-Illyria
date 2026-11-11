@@ -28,6 +28,7 @@ void illyria_set_camera_world(float x, float y, float distance, float yaw);
 #ifdef ILLYRIA_DEV_HOOKS
 void illyria_queue_demo();  // --queue-demo: see game/app/app.cpp
 void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
+void illyria_garrison_demo();  // --garrison-demo: see game/app/app.cpp
 void illyria_set_shader_time(double seconds);  // --time-step: the renderer's clock (the water's animation) moved on by this much
 #endif
 void illyria_finish_detail();

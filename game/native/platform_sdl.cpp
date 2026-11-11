@@ -45,6 +45,7 @@ struct Options {
     bool fullscreen = false, sound = true, stats = false, vsync = true;
     int trees = -1;  // --trees N: how trees are drawn (0 one card, 1 two crossed, 2 three, 3 four); 99: --shot takes one picture of each
 #ifdef ILLYRIA_DEV_HOOKS
+    int garrisonDemo = 0;  // --garrison-demo FRAME: four giants stand 60 m outside the player's capital's gate
     int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
 #endif
@@ -122,6 +123,7 @@ bool parse(int argc, char** argv, Options& o) {
 #ifdef ILLYRIA_DEV_HOOKS
         else if (a == "--paths-demo") o.pathsDemo = std::atoi(next());
         else if (a == "--queue-demo") o.queueDemo = std::atoi(next());
+        else if (a == "--garrison-demo") o.garrisonDemo = std::atoi(next());
         else if (a == "--time-step") o.timeStep = std::atof(next());
 #endif
         else if (a == "--click") o.clicks.push_back(next());
@@ -421,6 +423,7 @@ int runApp(int argc, char** argv) {
 #ifdef ILLYRIA_DEV_HOOKS
         if (opt.pathsDemo > 0 && frame == opt.pathsDemo) illyria_paths_demo();
         if (opt.queueDemo > 0 && frame == opt.queueDemo) illyria_queue_demo();
+        if (opt.garrisonDemo > 0 && frame == opt.garrisonDemo) illyria_garrison_demo();
 #endif
         native::pumpAssets();
         hud.tick();
