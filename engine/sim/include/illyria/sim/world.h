@@ -1139,6 +1139,9 @@ private:
     // Battle mechanics in world_combat.cpp.
     // The enemy to fight: the foe still in reach, or the nearest within aggro range.
     Unit* meleeTarget(Unit& unit, EntityId lastFoe);
+    // How many men may strike one foe at once, and whether that many already do (a foe ringed, so the rest must wait or go round).
+    int32_t meleeCap(const Unit& unit, const Unit& foe) const;
+    bool meleeFull(const Unit& unit, const Unit& foe) const;
     // Turns toward a flat unit direction at the unit's own pace; true once facing it.
     bool turnToward(Unit& unit, const Vec3& dir) const;
     // Melee damage multiplier (percent) of a blow from `attacker` to `target`,
