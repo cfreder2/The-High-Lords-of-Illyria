@@ -117,9 +117,9 @@ void Renderer::manDot(const V3& p, const V3& colour, bool owned, bool selected, 
 // The frame's men done with: the selected ringed, the dots uploaded, the sheets asked for baked.
 void Renderer::endMen(const Battle& battle, const Camera& camera, std::vector<float>& decals) {
     MenLod& m = men_;
-    // The selected, ringed: wide enough to see from the height of the dots (close in, each of the sprites is
-    // marked itself, and a ring across the field would only hide it).
-    if (!m.selected.empty() && camera.distance() > 120.0f) {
+    // The selected, ringed as one only from so high that the men are specks (nearer, every man carries his own
+    // ring or his own pale-rimmed dot, and a ring across the field would only hide what it surrounds).
+    if (!m.selected.empty() && camera.distance() > 700.0f) {
         V3 centre{0, 0, 0};
         for (const V3& p : m.selected) centre = centre + p;
         centre = centre * (1.0f / static_cast<float>(m.selected.size()));
