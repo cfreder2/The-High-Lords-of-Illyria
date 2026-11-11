@@ -1,5 +1,7 @@
 #include "overlay.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 
 #include "../render/gl.h"
@@ -90,6 +92,49 @@ void Overlay::frame(float x, float y, float w, float h, float line, Colour c) {
     rect(x, y + h - line, w, line, c);
     rect(x, y + line, line, h - 2 * line, c);
     rect(x + w - line, y + line, line, h - 2 * line, c);
+}
+
+namespace {
+// A small stateless hash, so a sheet's tear and specks never change from frame to frame.
+float noise01(uint32_t seed, uint32_t i) {
+    uint32_t v = seed * 747796405u + i * 2891336453u + 12345u;
+    v = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    v = (v >> 22u) ^ v;
+    return static_cast<float>(v & 0xFFFFu) / 65535.0f;
+}
+}  // namespace
+
+void Overlay::paper(float x, float y, float w, float h, uint32_t seed) {
+    const Colour sheet = rgba(0xE9D9B0, 244), rim = rgba(0x7A5A2C, 255), brown = rgba(0x6E4A1E);
+    constexpr float kBand = 5, kStep = 3, kRim = 1.6f;
+    rect(x + 4, y + 5, w, h, rgba(0x000000, 80));  // the shadow on the table
+    rect(x + kBand, y + kBand, w - 2 * kBand, h - 2 * kBand, sheet);
+    // The deckled ring: per step, a dark rim to the torn depth and paper behind it.
+    uint32_t n = 0;
+    for (float t = 0; t < w; t += kStep, ++n) {
+        const float sw = std::min(kStep, w - t), dT = noise01(seed, n) * 3.2f, dB = noise01(seed + 7, n) * 3.2f;
+        rect(x + t, y + dT, sw, kBand - dT + 1, sheet);
+        rect(x + t, y + dT, sw, kRim, rim);
+        rect(x + t, y + h - kBand - 1, sw, kBand - dB + 1, sheet);
+        rect(x + t, y + h - dB - kRim, sw, kRim, rim);
+    }
+    for (float t = 0; t < h; t += kStep, ++n) {
+        const float sh = std::min(kStep, h - t), dL = noise01(seed + 13, n) * 3.2f, dR = noise01(seed + 29, n) * 3.2f;
+        rect(x + dL, y + t, kBand - dL + 1, sh, sheet);
+        rect(x + dL, y + t, kRim, sh, rim);
+        rect(x + w - kBand - 1, y + t, kBand - dR + 1, sh, sheet);
+        rect(x + w - dR - kRim, y + t, kRim, sh, rim);
+    }
+    // The edges darken inward, as old paper does.
+    for (int i = 0; i < 7; ++i) frame(x + kBand + static_cast<float>(i) * 3, y + kBand + static_cast<float>(i) * 3, w - 2 * (kBand + static_cast<float>(i) * 3), h - 2 * (kBand + static_cast<float>(i) * 3), 3, Colour{brown.r, brown.g, brown.b, static_cast<uint8_t>(34 - i * 4)});
+    // Fibre specks.
+    const int specks = static_cast<int>(w * h / 700.0f);
+    for (int i = 0; i < specks; ++i) {
+        const float sx = x + kBand + noise01(seed + 3, static_cast<uint32_t>(i) * 2) * (w - 2 * kBand - 2);
+        const float sy = y + kBand + noise01(seed + 5, static_cast<uint32_t>(i) * 2 + 1) * (h - 2 * kBand - 2);
+        const bool dash = noise01(seed + 9, static_cast<uint32_t>(i)) > 0.8f;
+        rect(sx, sy, dash ? 3.0f : 1.2f, 1.1f, Colour{brown.r, brown.g, brown.b, static_cast<uint8_t>(14 + noise01(seed + 11, static_cast<uint32_t>(i)) * 22)});
+    }
 }
 
 // The font has ASCII only: anything else (the page's middle dots) becomes a space.

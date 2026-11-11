@@ -1,6 +1,56 @@
 /* The title screen and the full-screen pages over the game: the campaign's
    save slots, skirmishes, settings, controls, credits (title.js). Phone first:
-   the buttons sit low, in thumb reach; nothing scrolls sideways. */
+   the buttons sit low, in thumb reach; nothing scrolls sideways.
+
+   The look is aged parchment, a map table and iron-gall ink. Everything that
+   sets it is a --pg-* token below, so retuning is one edit. The tokens are
+   handed to the menu's own elements only (the scope list), never to :root's
+   --ink / --panel / --gold, so the battle HUD keeps its dark panels. The
+   paper itself (noise, doodles, vignette) is one static background on each
+   fixed page, never on the scrolling lists. */
+:root {
+  --pg-paper: #e9d9b0;        /* the ground */
+  --pg-paper-hi: #f2e6c4;     /* cards, a little lighter than the ground */
+  --pg-paper-lo: #d9c391;     /* pressed and selected paper */
+  --pg-edge: #7a5a2c;         /* deckled rims and rules */
+  --pg-ink: #2b1e10;          /* iron-gall ink: all body text (11:1 on paper) */
+  --pg-ink-dim: #5a4326;      /* second ink, for notes (6:1 on paper) */
+  --pg-seal: #8b2b20;         /* faded red: headings, primary button, seal (6:1) */
+  --pg-seal-deep: #6d1f17;
+  --pg-gold-leaf: #b58a2c;    /* accent lines and fine borders, never text */
+  --pg-wood: #5b3d1f;         /* the switch tracks */
+  --pg-focus: #1f4a8a;
+  --pg-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --pg-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.36 0 0 0 0 0.24 0 0 0 0 0.10 0 0 0 0.9 -0.28'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  --pg-fibre: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.03' numOctaves='2' seed='9' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.38 0 0 0 0 0.16 0 0 0 0.55 -0.2'/%3E%3C/filter%3E%3Crect width='480' height='480' filter='url(%23f)'/%3E%3C/svg%3E");
+  --pg-doodle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='440' viewBox='0 0 440 440' fill='none' stroke='%235e3f1c' stroke-opacity='0.15' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E %3Cpath d='M0 214 C30 190 50 236 86 220 S140 176 176 204 S230 246 262 218 S320 180 352 206 S410 230 440 214'/%3E %3Cpath d='M0 226 C30 204 50 248 86 233 S140 190 176 217 S230 258 262 231 S320 194 352 219 S410 242 440 226' stroke-opacity='0.1'/%3E %3Cpath d='M212 0 C190 40 236 70 214 110 S180 160 204 200 M222 250 C250 290 200 330 226 372 S250 410 224 440' stroke-opacity='0.13'/%3E %3Cpath d='M60 130 l9.0 -12.0 l9.0 12.0 M69.0 118.0 l3.0 5.0 M72.0 121.0 l3.0 4.0 M69.0 123.0 l2.0 3.0 M82 142 l7.2 -9.6 l7.2 9.6 M89.2 132.4 l2.4 4.0 M91.6 134.8 l2.4 3.2 M89.2 136.4 l1.6 2.4 M300 70 l9.9 -13.2 l9.9 13.2 M309.9 56.8 l3.3 5.5 M313.2 60.1 l3.3 4.4 M309.9 62.3 l2.2 3.3 M326 84 l7.2 -9.6 l7.2 9.6 M333.2 74.4 l2.4 4.0 M335.6 76.8 l2.4 3.2 M333.2 78.4 l1.6 2.4 M120 360 l8.1 -10.8 l8.1 10.8 M128.1 349.2 l2.7 4.5 M130.8 351.9 l2.7 3.6 M128.1 353.7 l1.8 2.7 M144 372 l9.0 -12.0 l9.0 12.0 M153.0 360.0 l3.0 5.0 M156.0 363.0 l3.0 4.0 M153.0 365.0 l2.0 3.0 M350 330 l7.2 -9.6 l7.2 9.6 M357.2 320.4 l2.4 4.0 M359.6 322.8 l2.4 3.2 M357.2 324.4 l1.6 2.4'/%3E %3Cg transform='translate(372 118)'%3E%3Ccircle r='20'/%3E%3Ccircle r='13' stroke-opacity='0.12'/%3E%3Cpath d='M0 -30 L5 -5 L30 0 L5 5 L0 30 L-5 5 L-30 0 L-5 -5 Z'/%3E%3Cpath d='M-14 -14 L0 0 L14 14 M14 -14 L0 0 L-14 14' stroke-opacity='0.12'/%3E%3C/g%3E %3Cpath d='M20 300 C60 280 90 310 130 290 S190 270 230 300' stroke-dasharray='1 7' stroke-width='2.2'/%3E %3Cpath d='M270 380 C300 350 340 372 372 350 S420 330 440 336' stroke-dasharray='1 7' stroke-width='2.2'/%3E %3Cpath d='M24 60 l10 10 m0 -10 l-10 10' stroke-width='2'/%3E %3Cpath d='M266 56 c10 -8 22 -4 24 6 s-8 14 -18 10 M176 420 c8 -6 18 -2 18 6'/%3E %3C/svg%3E");
+  /* Torn edges: x in percent, depth in px, so a tear is the same size on any card. */
+  --pg-torn-a: polygon(0 1.0px, 5.6% 2.2px, 11.1% 1.5px, 16.7% 2.4px, 22.2% 2.5px, 27.8% 0.3px, 33.3% 0.1px, 38.9% 3.3px, 44.4% 1.0px, 50.0% 0.9px, 55.6% 4.0px, 61.1% 1.9px, 66.7% 3.3px, 72.2% 1.9px, 77.8% 2.6px, 83.3% 0.6px, 88.9% 2.5px, 94.4% 3.5px, 100% 2.1px, calc(100% - 2.4px) 16.7%, calc(100% - 2.1px) 33.3%, calc(100% - 0.2px) 50.0%, calc(100% - 2.4px) 66.7%, calc(100% - 1.9px) 83.3%, 100% calc(100% - 1.2px), 94.4% calc(100% - 0.1px), 88.9% calc(100% - 3.5px), 83.3% calc(100% - 1.9px), 77.8% calc(100% - 2.9px), 72.2% calc(100% - 3.5px), 66.7% calc(100% - 2.9px), 61.1% calc(100% - 3.7px), 55.6% calc(100% - 1.6px), 50.0% calc(100% - 3.2px), 44.4% calc(100% - 1.8px), 38.9% calc(100% - 3.7px), 33.3% calc(100% - 3.5px), 27.8% calc(100% - 0.4px), 22.2% calc(100% - 0.5px), 16.7% calc(100% - 0.9px), 11.1% calc(100% - 3.9px), 5.6% calc(100% - 1.7px), 0 calc(100% - 2.5px), 1.0px 83.3%, 1.6px 66.7%, 1.2px 50.0%, 1.1px 33.3%, 1.9px 16.7%);
+  --pg-torn-b: polygon(0 1.8px, 5.6% 2.2px, 11.1% 3.7px, 16.7% 1.9px, 22.2% 2.0px, 27.8% 2.3px, 33.3% 0.7px, 38.9% 2.0px, 44.4% 2.5px, 50.0% 3.2px, 55.6% 0.4px, 61.1% 1.2px, 66.7% 0.4px, 72.2% 3.2px, 77.8% 2.8px, 83.3% 0.2px, 88.9% 3.9px, 94.4% 3.9px, 100% 2.6px, calc(100% - 2.0px) 16.7%, calc(100% - 0.5px) 33.3%, calc(100% - 0.0px) 50.0%, calc(100% - 1.7px) 66.7%, calc(100% - 0.2px) 83.3%, 100% calc(100% - 0.8px), 94.4% calc(100% - 1.0px), 88.9% calc(100% - 0.1px), 83.3% calc(100% - 1.9px), 77.8% calc(100% - 1.8px), 72.2% calc(100% - 3.4px), 66.7% calc(100% - 2.1px), 61.1% calc(100% - 2.6px), 55.6% calc(100% - 2.0px), 50.0% calc(100% - 2.6px), 44.4% calc(100% - 1.8px), 38.9% calc(100% - 1.1px), 33.3% calc(100% - 4.0px), 27.8% calc(100% - 4.0px), 22.2% calc(100% - 3.4px), 16.7% calc(100% - 2.8px), 11.1% calc(100% - 1.3px), 5.6% calc(100% - 0.9px), 0 calc(100% - 1.2px), 0.2px 83.3%, 2.5px 66.7%, 1.3px 50.0%, 2.7px 33.3%, 1.2px 16.7%);
+  --pg-torn-c: polygon(0 3.7px, 5.6% 3.8px, 11.1% 3.6px, 16.7% 0.3px, 22.2% 2.4px, 27.8% 1.7px, 33.3% 2.1px, 38.9% 0.5px, 44.4% 0.8px, 50.0% 1.8px, 55.6% 0.9px, 61.1% 1.8px, 66.7% 0.1px, 72.2% 0.3px, 77.8% 2.8px, 83.3% 1.7px, 88.9% 2.1px, 94.4% 2.9px, 100% 1.4px, calc(100% - 0.2px) 16.7%, calc(100% - 2.5px) 33.3%, calc(100% - 1.9px) 50.0%, calc(100% - 2.1px) 66.7%, calc(100% - 2.0px) 83.3%, 100% calc(100% - 3.9px), 94.4% calc(100% - 1.5px), 88.9% calc(100% - 3.0px), 83.3% calc(100% - 1.5px), 77.8% calc(100% - 2.3px), 72.2% calc(100% - 2.6px), 66.7% calc(100% - 1.3px), 61.1% calc(100% - 0.3px), 55.6% calc(100% - 1.9px), 50.0% calc(100% - 2.9px), 44.4% calc(100% - 2.4px), 38.9% calc(100% - 1.8px), 33.3% calc(100% - 2.6px), 27.8% calc(100% - 0.7px), 22.2% calc(100% - 0.7px), 16.7% calc(100% - 1.3px), 11.1% calc(100% - 3.3px), 5.6% calc(100% - 0.8px), 0 calc(100% - 0.5px), 0.3px 83.3%, 0.1px 66.7%, 0.9px 50.0%, 1.8px 33.3%, 2.6px 16.7%);
+  --pg-nick-a: polygon(0 1.1px, 10.0% 1.3px, 20.0% 1.4px, 30.0% 1.7px, 40.0% 1.3px, 50.0% 1.7px, 60.0% 0.1px, 70.0% 0.8px, 80.0% 1.7px, 90.0% 1.2px, 100% 1.6px, calc(100% - 0.2px) 16.7%, calc(100% - 0.7px) 33.3%, calc(100% - 0.4px) 50.0%, calc(100% - 0.8px) 66.7%, calc(100% - 0.8px) 83.3%, 100% calc(100% - 0.0px), 90.0% calc(100% - 0.4px), 80.0% calc(100% - 0.5px), 70.0% calc(100% - 1.6px), 60.0% calc(100% - 1.4px), 50.0% calc(100% - 0.3px), 40.0% calc(100% - 1.4px), 30.0% calc(100% - 0.2px), 20.0% calc(100% - 1.1px), 10.0% calc(100% - 0.2px), 0 calc(100% - 0.0px), 1.3px 83.3%, 0.3px 66.7%, 0.3px 50.0%, 1.4px 33.3%, 1.3px 16.7%);
+  --pg-nick-b: polygon(0 0.4px, 10.0% 1.7px, 20.0% 0.2px, 30.0% 1.3px, 40.0% 0.2px, 50.0% 0.4px, 60.0% 1.8px, 70.0% 0.4px, 80.0% 1.2px, 90.0% 0.8px, 100% 0.8px, calc(100% - 0.7px) 16.7%, calc(100% - 0.3px) 33.3%, calc(100% - 1.2px) 50.0%, calc(100% - 0.1px) 66.7%, calc(100% - 0.3px) 83.3%, 100% calc(100% - 0.0px), 90.0% calc(100% - 0.5px), 80.0% calc(100% - 0.7px), 70.0% calc(100% - 1.6px), 60.0% calc(100% - 0.7px), 50.0% calc(100% - 0.2px), 40.0% calc(100% - 0.5px), 30.0% calc(100% - 1.8px), 20.0% calc(100% - 0.1px), 10.0% calc(100% - 1.1px), 0 calc(100% - 0.7px), 1.0px 83.3%, 0.5px 66.7%, 1.0px 50.0%, 0.7px 33.3%, 0.9px 16.7%);
+  --pg-nick-c: polygon(0 0.2px, 10.0% 1.3px, 20.0% 1.2px, 30.0% 1.7px, 40.0% 0.5px, 50.0% 0.5px, 60.0% 1.3px, 70.0% 1.2px, 80.0% 0.5px, 90.0% 1.2px, 100% 0.7px, calc(100% - 1.1px) 16.7%, calc(100% - 0.2px) 33.3%, calc(100% - 0.3px) 50.0%, calc(100% - 1.3px) 66.7%, calc(100% - 0.5px) 83.3%, 100% calc(100% - 0.5px), 90.0% calc(100% - 1.4px), 80.0% calc(100% - 1.1px), 70.0% calc(100% - 0.3px), 60.0% calc(100% - 1.0px), 50.0% calc(100% - 1.2px), 40.0% calc(100% - 0.3px), 30.0% calc(100% - 1.2px), 20.0% calc(100% - 0.2px), 10.0% calc(100% - 0.6px), 0 calc(100% - 0.1px), 0.3px 83.3%, 1.4px 66.7%, 0.6px 50.0%, 1.4px 33.3%, 0.6px 16.7%);
+}
+
+/* Hand the tokens to the menu's elements, under the names the rules below use. */
+#titleScreen, .screen, #confirmBox, #busy, #overlay {
+  --ink: var(--pg-ink); --ink-dim: var(--pg-ink-dim); --gold: var(--pg-gold-leaf);
+  --panel: var(--pg-paper-hi); --panel-edge: var(--pg-edge);
+  font-family: var(--pg-display); color: var(--pg-ink);
+}
+/* The paper: vignette, two stains, the doodle tile, fibres, grain, then the base tone. */
+#titleScreen, .screen, #busy, #overlay {
+  background-color: var(--pg-paper);
+  background-image:
+    radial-gradient(ellipse 110% 100% at 50% 45%, rgba(90, 60, 25, 0) 55%, rgba(90, 60, 25, 0.42) 100%),
+    radial-gradient(circle at 14% 82%, rgba(140, 92, 36, 0.16), rgba(140, 92, 36, 0) 24%),
+    radial-gradient(circle at 88% 16%, rgba(140, 92, 36, 0.12), rgba(140, 92, 36, 0) 20%),
+    var(--pg-doodle), var(--pg-fibre), var(--pg-noise),
+    linear-gradient(170deg, #efe0b8, #e2cd9a);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 440px 440px, 480px 480px, 240px 240px, 100% 100%;
+}
+
 body.at-title #top, body.at-title #bottom, body.at-title #labels, body.at-title #banners,
 body.at-title #hint, body.at-title #news, body.at-title #cityPanel, body.at-title #voyage,
 body.at-title #capture, body.at-title #hirePrompt { display: none !important; }
@@ -12,116 +62,155 @@ body.screen-open #top, body.screen-open #bottom { visibility: hidden; }
   padding: calc(14px + var(--safe-t)) calc(16px + var(--safe-r)) calc(14px + var(--safe-b)) calc(16px + var(--safe-l));
   overflow-x: hidden;
 }
-#titleScreen {
-  z-index: 19;
-  /* The battlefield shows through the middle, darkened toward the edges. */
-  background:
-    radial-gradient(ellipse 120% 70% at 50% 42%, rgba(10, 8, 6, 0) 0%, rgba(10, 8, 6, 0.35) 55%, rgba(10, 8, 6, 0.92) 100%),
-    linear-gradient(rgba(10, 8, 6, 0.55), rgba(10, 8, 6, 0) 28%, rgba(10, 8, 6, 0) 50%, rgba(10, 8, 6, 0.88) 78%);
-  align-items: center; justify-content: space-between; text-align: center;
-}
+#titleScreen { z-index: 19; align-items: center; justify-content: space-between; text-align: center; }
 body:not(.at-title) #titleScreen, .screen.hidden { display: none; }
 #toast { z-index: 50; }
 .title-head { margin-top: 4vh; animation: titleIn 1.6s ease-out both; }
-.title-head .crest { width: 54px; height: 54px; color: var(--gold); opacity: 0.9; filter: drop-shadow(0 2px 6px #000); }
-.title-head .pre { display: block; font-size: 15px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--ink-dim); text-shadow: 0 1px 3px #000; }
+.title-head .crest { width: 54px; height: 54px; color: var(--pg-seal); opacity: 0.92; }
+.title-head .pre { display: block; font-size: 15px; font-style: italic; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
 .title-head h1 {
-  margin: 2px 0 0; font-size: clamp(44px, 14vw, 76px); line-height: 1; font-weight: 600; letter-spacing: 0.05em; color: var(--gold);
-  text-shadow: 0 2px 0 #3a2a10, 0 4px 18px rgba(0, 0, 0, 0.9);
+  margin: 2px 0 0; font-size: clamp(44px, 14vw, 76px); line-height: 1; font-weight: 600; letter-spacing: 0.05em; color: var(--pg-ink);
+  text-shadow: 0 1px 0 rgba(255, 246, 220, 0.75), 0 0 1px rgba(43, 30, 16, 0.4);
 }
-.title-head .rule { width: 160px; height: 1px; margin: 10px auto 0; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.title-head .rule { width: 180px; height: 2px; margin: 12px auto 0; background: linear-gradient(90deg, transparent, var(--pg-gold-leaf), transparent); }
 @keyframes titleIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
-.title-menu { margin-top: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 8px; animation: titleIn 1.2s 0.3s ease-out both; }
-.title-menu .big, .screen .big {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 52px; padding: 8px 16px;
-  font-size: 18px; letter-spacing: 0.02em; text-align: left; background: rgba(20, 17, 13, 0.82); border-color: rgba(214, 180, 110, 0.45);
+/* Paper buttons: a pale card with an inked rim and a torn edge, a different tear on each. */
+:is(#titleScreen, .screen, #confirmBox, #overlay) button {
+  font-family: var(--pg-display); color: var(--pg-ink); border: 1px solid transparent; border-radius: 2px;
+  background: linear-gradient(var(--pg-paper-hi), #e6d4a6);
+  box-shadow: inset 0 0 0 1.5px rgba(122, 90, 44, 0.6), inset 0 -4px 8px rgba(122, 90, 44, 0.16);
+  clip-path: var(--pg-nick-a);
 }
-.title-menu .big small, .screen .big small { font-size: 12px; color: var(--ink-dim); letter-spacing: 0; text-align: right; }
-:is(.title-menu, .screen) .big.primary { border-color: var(--gold); background: linear-gradient(rgba(120, 88, 32, 0.55), rgba(60, 44, 18, 0.75)); color: #fff3d6; }
-:is(.title-menu, .screen) .big.primary small { color: #f0dcae; }
-.title-menu .row { display: flex; gap: 8px; }
-.title-menu .row button { flex: 1; min-height: 46px; padding: 0 6px; font-size: 14px; background: rgba(20, 17, 13, 0.78); }
-.title-menu .soon, .screen .soon { font-size: 11px; color: #c9a6ff; border: 1px solid rgba(201, 166, 255, 0.5); border-radius: 6px; padding: 1px 6px; }
-.title-foot { margin-top: 8px; font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-dim); opacity: 0.8; }
-:is(#titleScreen, .screen) button:focus-visible { outline: 2px solid #8fd0ff; outline-offset: 2px; }
-:is(#titleScreen, .screen) button.kbd-focus { outline: 2px solid #8fd0ff; outline-offset: 2px; }
+:is(#titleScreen, .screen, #confirmBox, #overlay) button:nth-child(3n+2) { clip-path: var(--pg-nick-b); }
+:is(#titleScreen, .screen, #confirmBox, #overlay) button:nth-child(3n) { clip-path: var(--pg-nick-c); }
+:is(#titleScreen, .screen, #confirmBox, #overlay) button:active { background: var(--pg-paper-lo); }
+:is(#titleScreen, .screen, #confirmBox, #overlay) button:disabled { color: var(--pg-ink-dim); }
+
+.title-menu { margin-top: auto; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 9px; animation: titleIn 1.2s 0.3s ease-out both; }
+.title-menu .big, .screen .big {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 54px; padding: 8px 18px;
+  font-size: 19px; letter-spacing: 0.02em; text-align: left;
+}
+.title-menu .big small, .screen .big small { font-size: 12.5px; font-style: italic; color: var(--ink-dim); letter-spacing: 0; text-align: right; }
+:is(#titleScreen, .screen) button.big.primary {
+  color: #fbf0d4; background: linear-gradient(var(--pg-seal), var(--pg-seal-deep));
+  box-shadow: inset 0 0 0 1.5px rgba(214, 172, 84, 0.85), inset 0 0 0 4px rgba(109, 31, 23, 0.9), inset 0 -4px 8px rgba(0, 0, 0, 0.25);
+}
+:is(#titleScreen, .screen) button.big.primary small { color: #f3e0b6; }
+:is(#titleScreen, .screen) button.big.primary:active { background: var(--pg-seal-deep); }
+.title-menu .row { display: flex; gap: 9px; }
+.title-menu .row button { flex: 1; min-height: 48px; padding: 0 6px; font-size: 15px; }
+.title-menu .soon, .screen .soon { font-size: 11px; font-style: italic; color: var(--pg-seal); border: 1px solid rgba(139, 43, 32, 0.6); border-radius: 3px; padding: 1px 6px; }
+.title-foot { margin-top: 8px; font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-dim); }
+/* The focus ring sits inside the paper, so a torn edge cannot clip it. */
+:is(#titleScreen, .screen, #confirmBox, #overlay) button:focus-visible,
+:is(#titleScreen, .screen, #confirmBox, #overlay) button.kbd-focus { outline: 3px solid var(--pg-focus); outline-offset: -6px; }
+:is(#titleScreen, .screen) button.big.primary:focus-visible, :is(#titleScreen, .screen) button.big.primary.kbd-focus { outline-color: #fbf0d4; }
 
 /* The pages: a header with the way back, then whatever the page holds. */
-.screen { background: rgba(14, 12, 9, 0.94); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding-bottom: 0; }
-.screen > header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; max-width: 720px; width: 100%; margin: 0 auto 10px; }
-.screen > header h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: 0.04em; color: var(--gold); flex: 1; }
-.screen > header .back { min-width: 44px; font-size: 18px; }
+.screen { padding-bottom: 0; }
+.screen > header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; max-width: 720px; width: 100%; margin: 0 auto 10px; padding-bottom: 8px;
+                   border-bottom: 2px solid transparent; border-image: linear-gradient(90deg, var(--pg-edge), rgba(122, 90, 44, 0.15)) 1; }
+.screen > header h2 { margin: 0; font-size: 26px; font-style: italic; font-weight: 600; letter-spacing: 0.02em; color: var(--pg-seal); flex: 1; }
+.screen > header .back { min-width: 48px; min-height: 44px; font-size: 22px; }
 .screen .body { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; max-width: 720px; width: 100%; margin: 0 auto;
                 padding-bottom: calc(18px + var(--safe-b)); overscroll-behavior: contain; touch-action: pan-y; }
-.screen p.lead { margin: 0 0 12px; color: var(--ink-dim); font-size: 14px; }
-.screen h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 600; color: var(--gold); letter-spacing: 0.03em; }
+.screen p.lead { margin: 0 0 12px; color: var(--ink-dim); font-size: 15px; }
+.screen h3 { margin: 18px 0 8px; font-size: 17px; font-style: italic; font-weight: 600; color: var(--pg-seal); letter-spacing: 0.02em;
+             padding-bottom: 3px; border-bottom: 1px dotted rgba(122, 90, 44, 0.6); }
 .screen h3:first-child { margin-top: 4px; }
 
+/* Cards of torn paper: the save slots, the confirm box. */
+.screen .panel, #confirmBox .panel {
+  backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; border-radius: 0;
+  background: linear-gradient(172deg, var(--pg-paper-hi), #e9d8ad);
+  box-shadow: inset 0 0 0 2px rgba(122, 90, 44, 0.5), inset 0 0 18px rgba(122, 90, 44, 0.22);
+  clip-path: var(--pg-torn-a);
+}
+
 /* Save slots. */
-.slot { padding: 12px 14px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
-.slot .name { font-size: 16px; color: var(--gold); font-weight: 600; }
-.slot .when { font-size: 12px; color: var(--ink-dim); text-align: right; }
-.slot .facts { grid-column: 1 / -1; font-size: 14px; }
-.slot .facts b { color: var(--gold); font-weight: 600; }
+.slot { padding: 14px 16px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.slot:nth-of-type(3n+2) { clip-path: var(--pg-torn-b); }
+.slot:nth-of-type(3n) { clip-path: var(--pg-torn-c); }
+.slot .name { font-size: 18px; font-style: italic; color: var(--pg-seal); font-weight: 600; }
+.slot .when { font-size: 13px; color: var(--ink-dim); text-align: right; }
+.slot .facts { grid-column: 1 / -1; font-size: 15px; }
+.slot .facts b { color: var(--pg-ink); font-weight: 700; }
 .slot .acts { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .slot .acts button { flex: 1 1 auto; min-height: 44px; }
-.slot .acts button.go { border-color: var(--gold); color: #fff3d6; background: rgba(120, 88, 32, 0.45); }
-.slot .acts button.del { flex: 0 0 auto; color: #ffb4a6; }
+:is(#titleScreen, .screen, #confirmBox, #overlay) .slot .acts button.go { color: #fbf0d4; background: linear-gradient(var(--pg-seal), var(--pg-seal-deep));
+  box-shadow: inset 0 0 0 1.5px rgba(214, 172, 84, 0.8), inset 0 0 0 3.5px rgba(109, 31, 23, 0.9); }
+:is(#titleScreen, .screen, #confirmBox, #overlay) .slot .acts button.del { flex: 0 0 auto; color: var(--pg-seal-deep); }
 .slot.empty .facts { color: var(--ink-dim); font-style: italic; }
-.slot.bad .facts { color: #ffb4a6; }
+.slot.bad .facts { color: var(--pg-seal-deep); }
 .choice { display: flex; gap: 8px; }
 .choice button { flex: 1; min-height: 72px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
-.choice button small { font-size: 12px; opacity: 0.8; }
+.choice button small { font-size: 12.5px; font-style: italic; color: var(--ink-dim); }
 .choice.wrap { flex-wrap: wrap; }
 .choice.wrap button { flex: 1 1 calc(50% - 8px); min-height: 56px; }
-.choice button:disabled { opacity: 0.55; }
-.choice button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.18); box-shadow: 0 0 0 2px rgba(214, 180, 110, 0.35) inset; }
+.choice button:disabled { opacity: 0.6; }
+/* A chosen card is pressed paper with a red inked rim. */
+:is(#titleScreen, .screen, #confirmBox, #overlay) .choice button.on, :is(#titleScreen, .screen, #confirmBox, #overlay) .tabs button.on, :is(#titleScreen, .screen, #confirmBox, #overlay) .presets button.on {
+  background: var(--pg-paper-lo); color: var(--pg-ink);
+  box-shadow: inset 0 0 0 2.5px var(--pg-seal), inset 0 0 14px rgba(122, 90, 44, 0.3);
+}
+.screen .choice button.on b, .screen .tabs button.on { font-weight: 700; }
 
 /* Settings: tabs, then rows of switches and sliders. */
 .tabs { display: flex; gap: 6px; margin: 0 auto 10px; max-width: 720px; width: 100%; overflow-x: auto; scrollbar-width: none; flex: 0 0 auto; }
 .tabs::-webkit-scrollbar { display: none; }
-.tabs button { flex: 1 0 auto; min-height: 40px; font-size: 14px; }
-.tabs button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); color: #fff3d6; }
-.set { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 6px 2px; border-bottom: 1px solid rgba(214, 180, 110, 0.12); font-size: 15px; }
+.tabs button { flex: 1 0 auto; min-height: 44px; font-size: 15px; }
+.set { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 6px 2px; border-bottom: 1px dotted rgba(122, 90, 44, 0.5); font-size: 16px; }
 .set > span { flex: 1; }
-.set > span small { display: block; font-size: 12px; color: var(--ink-dim); }
-.set input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--gold); flex: 0 0 auto; }
-.set input[type=range] { flex: 0 1 46%; min-width: 110px; height: 30px; accent-color: var(--gold); }
-.set select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 8px; min-height: 38px; padding: 0 8px; }
+.set > span small { display: block; font-size: 13px; font-style: italic; color: var(--ink-dim); }
+/* A switch: a wooden track and a paper knob that slides to the right when on. */
+.set input[type=checkbox] {
+  -webkit-appearance: none; appearance: none; flex: 0 0 auto; width: 54px; height: 30px; margin: 0; cursor: pointer; border-radius: 15px;
+  background-color: #cdb988; border: 2px solid var(--pg-wood);
+  background-image: radial-gradient(circle at 50% 50%, var(--pg-wood) 0 8px, transparent 8.5px);
+  background-repeat: no-repeat; background-size: 26px 26px; background-position: 0 50%;
+  transition: background-position 0.14s, background-color 0.14s;
+}
+.set input[type=checkbox]:checked {
+  background-color: var(--pg-wood); background-position: 100% 50%;
+  background-image: radial-gradient(circle at 50% 50%, var(--pg-paper-hi) 0 9px, var(--pg-gold-leaf) 9.5px 11px, transparent 11.5px);
+}
+.set input[type=checkbox]:focus-visible { outline: 3px solid var(--pg-focus); outline-offset: 2px; }
+.set input[type=range] { flex: 0 1 46%; min-width: 110px; height: 32px; accent-color: var(--pg-seal); }
+.set select { font: inherit; color: var(--pg-ink); background: var(--pg-paper-hi); border: 2px solid var(--pg-wood); border-radius: 4px; min-height: 44px; padding: 0 8px; }
 .presets { display: flex; gap: 6px; margin-bottom: 6px; }
-.presets button { flex: 1; min-height: 40px; }
-.presets button.on { border-color: var(--gold); background: rgba(214, 180, 110, 0.2); }
-.screen .note { font-size: 12px; color: var(--ink-dim); margin: 8px 0; }
-.screen a { color: var(--gold); }
+.presets button { flex: 1; min-height: 44px; }
+.screen .note { font-size: 13px; font-style: italic; color: var(--ink-dim); margin: 8px 0; }
+.screen a { color: var(--pg-seal); text-decoration-thickness: 1px; }
 
 /* Controls: a sketch of each gesture beside what it does. */
-.ctl { display: grid; grid-template-columns: 52px 1fr; gap: 2px 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(214, 180, 110, 0.12); }
-.ctl svg { width: 52px; height: 40px; color: var(--gold); grid-row: span 2; }
-.ctl b { font-weight: 600; color: #fff3d6; font-size: 15px; }
-.ctl span { font-size: 13px; color: var(--ink-dim); }
-.keys { width: 100%; border-collapse: collapse; font-size: 14px; }
-.keys td { padding: 7px 4px; border-bottom: 1px solid rgba(214, 180, 110, 0.12); vertical-align: top; }
+.ctl { display: grid; grid-template-columns: 52px 1fr; gap: 2px 12px; align-items: center; padding: 8px 0; border-bottom: 1px dotted rgba(122, 90, 44, 0.5); }
+.ctl svg { width: 52px; height: 40px; color: var(--pg-wood); grid-row: span 2; }
+.ctl b { font-weight: 700; color: var(--ink); font-size: 16px; }
+.ctl span { font-size: 14px; color: var(--ink-dim); }
+.keys { width: 100%; border-collapse: collapse; font-size: 15px; }
+.keys td { padding: 7px 4px; border-bottom: 1px dotted rgba(122, 90, 44, 0.5); vertical-align: top; }
 .keys td:first-child { width: 42%; white-space: nowrap; }
-kbd.k { display: inline-block; min-width: 22px; padding: 1px 6px; margin: 1px 2px 1px 0; border: 1px solid rgba(214, 180, 110, 0.55); border-bottom-width: 2px;
-        border-radius: 5px; font: 12px/1.5 ui-monospace, Menlo, monospace; color: #fff3d6; text-align: center; background: rgba(255, 255, 255, 0.05); }
+kbd.k { display: inline-block; min-width: 24px; padding: 1px 6px; margin: 1px 2px 1px 0; border: 1px solid var(--pg-wood); border-bottom-width: 3px;
+        border-radius: 4px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; color: var(--pg-ink); text-align: center; background: var(--pg-paper-hi); }
 
-/* Small confirmations over everything. */
-#confirmBox { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 6, 4, 0.6); }
+/* Small confirmations over everything: a torn note laid on a darkened table. */
+#confirmBox { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(30, 20, 8, 0.55); }
 #confirmBox.hidden { display: none; }
-#confirmBox .panel { width: min(360px, 100%); padding: 16px; text-align: center; }
-#confirmBox h3 { margin: 0 0 6px; color: var(--gold); font-size: 18px; font-weight: 600; }
-#confirmBox p { margin: 0 0 14px; font-size: 14px; color: var(--ink-dim); }
+#confirmBox .panel { width: min(380px, 100%); padding: 22px 20px 18px; text-align: center; background-image: var(--pg-noise), linear-gradient(172deg, var(--pg-paper-hi), #e9d8ad); background-size: 240px 240px, 100% 100%; }
+#confirmBox h3 { margin: 0 0 6px; color: var(--pg-seal); font-size: 20px; font-style: italic; font-weight: 600; }
+#confirmBox p { margin: 0 0 16px; font-size: 15px; color: var(--ink-dim); }
 #confirmBox .choice button { min-height: 48px; }
-#busy { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-        background: rgba(10, 8, 6, 0.82); text-align: center; padding: 24px; }
+#busy { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 24px; }
 #busy.hidden { display: none; }
-#busy h2 { margin: 0; color: var(--gold); font-size: 24px; font-weight: 600; letter-spacing: 0.05em; }
-#busy p { margin: 0; color: var(--ink-dim); }
+#busy h2, #overlay h2 { margin: 0; color: var(--pg-seal); font-size: 28px; font-style: italic; font-weight: 600; letter-spacing: 0.04em; }
+#busy p, #overlay p { margin: 0; color: var(--ink-dim); font-size: 16px; }
+#busy h2::after, #overlay h2::after { content: ""; display: block; width: 140px; height: 2px; margin: 10px auto 0; background: linear-gradient(90deg, transparent, var(--pg-gold-leaf), transparent); }
 
-/* The overlay's way back to the menu. */
+/* The overlay (victory, defeat, loading): a page of its own, with the way back to the menu. */
 #overlay .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-#overlay .acts button { min-height: 46px; padding: 0 18px; }
+#overlay .acts button { min-height: 48px; padding: 0 20px; font-size: 16px; }
 
 /* Landscape phones: the name to the left, the buttons to the right. */
 @media (orientation: landscape) and (max-height: 520px) {

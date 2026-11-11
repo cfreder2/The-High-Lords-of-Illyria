@@ -22,6 +22,9 @@ public:
     void begin(int pixelsW, int pixelsH, float scale);
     void rect(float x, float y, float w, float h, Colour c);
     void frame(float x, float y, float w, float h, float line, Colour c);
+    // A sheet of parchment: drop shadow, deckled darker rim, a soft vignette and fibre specks, all from rectangles
+    // (the layer has no textures). `seed` makes each sheet's edge its own, the same every frame.
+    void paper(float x, float y, float w, float h, uint32_t seed = 1);
     // Text of size `size` points tall, left edge at x; returns its width in points.
     float text(float x, float y, const std::string& s, Colour c, float size = 14);
     float width(const std::string& s, float size = 14) const;

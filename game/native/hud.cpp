@@ -29,7 +29,9 @@ constexpr Lord kLords[8] = {
 enum Row { kConquest, kFord, kSiege, kContinue, kQuit, kRows };
 static_assert(kContinue == 3, "Hud::startSaved");
 
-constexpr Colour kInk = rgba(0xF2EBD8), kDim = rgba(0xB9B0A0), kGold = rgba(0xE8C25A), kPanel = rgba(0x15110C, 205), kRed = rgba(0xFF7060);
+constexpr Colour kInk = rgba(0xF2EBD8), kDim = rgba(0xB9B0A0), kGold = rgba(0xE8C25A), kRed = rgba(0xFF7060);
+// The menu and the help are laid on parchment (Overlay::paper): iron-gall ink, faded red, gold leaf (the page's --pg-* tokens).
+constexpr Colour kPaperInk = rgba(0x2B1E10), kPaperDim = rgba(0x5A4326), kSeal = rgba(0x8B2B20), kLeaf = rgba(0xB58A2C), kPaperOff = rgba(0x7D6B4A), kPaperOut = rgba(0x8A7A5C);
 
 Colour hex(const std::string& s) {
     if (s.size() != 7 || s[0] != '#') return rgba(0xCCCCCC);
@@ -227,44 +229,47 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
     const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 +
                      static_cast<float>(hints.size()) * 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
     const float px = (w - pw) / 2, py = std::max(10.0f, (h - ph) / 2);
-    o.rect(px, py, pw, ph, kPanel);
-    o.frame(px, py, pw, ph, 2, kGold);
+    o.paper(px, py, pw, ph, 7);
 
     float y = py + kPad;
-    o.text(px + kPad, y, title, kGold, titleSize);
+    o.text(px + kPad, y, title, kSeal, titleSize);
     y += titleSize + 8;
-    o.text(px + kPad, y, sub, kDim, 12);
+    o.text(px + kPad, y, sub, kPaperDim, 12);
     y += 12 + 18;
     std::string save;
     for (int r = 0; r < kRows; ++r, y += kRow) {
         const bool off = r == kContinue && !loadSave(save);
         const std::string label = (r == row_ ? "> " : "  ") + std::string(kLabel[r]);
-        if (r == row_) o.rect(px + 12, y - 5, pw - 24, 28, rgba(0x6A5320, 160));
-        o.text(px + kPad, y, label, off ? rgba(0x70695C) : kInk, fit(o, label, 18, inner));
+        if (r == row_) {
+            o.rect(px + 12, y - 5, pw - 24, 28, rgba(0xB89A5A, 120));
+            o.frame(px + 12, y - 5, pw - 24, 28, 1.5f, kSeal);
+        }
+        o.text(px + kPad, y, label, off ? kPaperOff : r == row_ ? kSeal : kPaperInk, fit(o, label, 18, inner));
         hits_.push_back({px + 12, y - 5, pw - 24, 28, r});
     }
     // The conquest's choices: who you are and who else is in the war.
     y += 12 - 5;
-    o.text(px + kPad, y, leadLabel, kDim, leadSize);
+    o.text(px + kPad, y, leadLabel, kPaperDim, leadSize);
     y += leadSize + 9;
     const float col = inner / 2;
     for (int i = 0; i < 8; ++i) {
         const float x = px + kPad + static_cast<float>(i % 2) * col, yy = y + static_cast<float>(i / 2) * kLordRow;
         const bool me = i == lord_, foe = !me && (foes_ >> i & 1);
         const std::string name = kLords[i].name;
-        o.rect(x, yy + 2, 10, 10, me ? kGold : foe ? kRed : rgba(0x50483A));
-        o.text(x + 18, yy, name, me ? kGold : foe ? kInk : kDim, fit(o, name, 13, col - 24));
+        o.rect(x, yy + 2, 10, 10, me ? kLeaf : foe ? kSeal : rgba(0xCDB988));
+        o.frame(x, yy + 2, 10, 10, 1.2f, me ? kPaperInk : foe ? kSeal : kPaperOut);
+        o.text(x + 18, yy, name, me ? kSeal : foe ? kPaperInk : kPaperOut, fit(o, name, 13, col - 24));
         hits_.push_back({x, yy - 2, 16, 18, 100 + i});  // the square: lead as them
         hits_.push_back({x + 16, yy - 2, col - 20, 18, 200 + i});  // the name: in the war, or not
     }
     y += 4 * kLordRow + 8;
     for (size_t i = 0; i < hints.size(); ++i, y += 16) {
-        o.text(px + kPad, y, hints[i], kDim, 12);
+        o.text(px + kPad, y, hints[i], kPaperDim, 12);
         if (i < difficultyLines) hits_.push_back({px + kPad, y - 3, inner, 18, 300});
     }
     if (!errors.empty()) {
         y += 6;
-        for (const std::string& l : errors) o.text(px + kPad, y, l, kRed, 13), y += 17;
+        for (const std::string& l : errors) o.text(px + kPad, y, l, kSeal, 13), y += 17;
     }
 }
 
@@ -467,15 +472,14 @@ void Hud::draw(Overlay& o, float w, float h) {
         const float pw = std::min(w - 20, colW[0] + kColGap + colW[1] + 2 * kPad);
         const float ph = 2 * kPad + (static_cast<float>(rowsMax) + 1) * kLine + 4;
         const float x0 = w / 2 - pw / 2, y0 = 60;
-        o.rect(x0, y0, pw, ph, kPanel);
-        o.frame(x0, y0, pw, ph, 2, kGold);
+        o.paper(x0, y0, pw, ph, 19);
         float x = x0 + kPad;
         for (int c = 0; c < 2; ++c) {
-            o.text(x, y0 + kPad, kHelp[c].title, kGold, kSize);
+            o.text(x, y0 + kPad, kHelp[c].title, kSeal, kSize);
             float y = y0 + kPad + kLine + 4;
             for (const Row& r : kHelp[c].rows) {
-                o.text(x, y, r.keys, kGold, kSize);
-                o.text(x + keyW[c] + kGap, y, r.what, kInk, kSize);
+                o.text(x, y, r.keys, kSeal, kSize);
+                o.text(x + keyW[c] + kGap, y, r.what, kPaperInk, kSize);
                 y += kLine;
             }
             x += colW[c] + kColGap;
