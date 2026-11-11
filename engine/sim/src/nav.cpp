@@ -49,6 +49,17 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
     fine_.resize(static_cast<size_t>(fineCells_) * fineCells_);
     for (int32_t y = 0; y < fineCells_; ++y)
         for (int32_t x = 0; x < fineCells_; ++x) fine_[static_cast<size_t>(y) * fineCells_ + x] = static_cast<uint8_t>(region.cellGround(x, y));
+    // Under a bridge the river is still the river: a straight line may run along the deck, never in under it from the side.
+    riverUnder_.assign(fine_.size(), 0);
+    bool bridged = false;
+    for (const Deck& d : decks_) bridged = bridged || !d.raised;
+    for (int32_t y = 0; bridged && y < fineCells_; ++y)
+        for (int32_t x = 0; x < fineCells_; ++x) {
+            const size_t k = static_cast<size_t>(y) * fineCells_ + x;
+            if (static_cast<Ground>(fine_[k]) != Ground::Bridge) continue;
+            const Fixed half = fineSize_ / 2;
+            riverUnder_[k] = region.underWater(fineSize_ * x + half, fineSize_ * y + half) ? 1 : 0;
+        }
     const size_t count = static_cast<size_t>(n_) * n_;
     open_.assign(count, 0);
     mask_.assign(count, 0);
@@ -900,6 +911,24 @@ bool NavGrid::groundClear(const Vec3& from, const Vec3& to, Gait gait) const {
         for (const Deck& k : decks_) onDeck = onDeck || (!k.raised && k.contains(p.x, p.y));
         if (!onDeck) return false;
     }
+    // By a bridge: every half metre of the line that is over its river is on its deck.
+    for (const Deck& k : decks_) {
+        if (k.raised) continue;
+        const Fixed reach = k.halfSpan + k.halfWidth + fineSize_ * 2;
+        if (min(from.x, to.x) > k.centre.x + reach || max(from.x, to.x) < k.centre.x - reach || min(from.y, to.y) > k.centre.y + reach ||
+            max(from.y, to.y) < k.centre.y - reach)
+            continue;
+        const int64_t fine = (len * 2).floorToInt() + 1;
+        for (int64_t i = 0; i <= fine; ++i) {
+            const Vec3 p = from + d * Fixed::fromRatio(i, fine);
+            const int64_t fx = std::clamp<int64_t>((p.x / fineSize_).floorToInt(), 0, fineCells_ - 1);
+            const int64_t fy = std::clamp<int64_t>((p.y / fineSize_).floorToInt(), 0, fineCells_ - 1);
+            if (riverUnder_[static_cast<size_t>(fy * fineCells_ + fx)] == 0) continue;
+            bool onDeck = false;
+            for (const Deck& o : decks_) onDeck = onDeck || (!o.raised && o.contains(p.x, p.y));
+            if (!onDeck) return false;
+        }
+    }
     return !site || siteClear(from, to, gaitClearance(gait));
 }
 
@@ -1257,10 +1286,18 @@ bool NavGrid::route(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Ga
         const Vec3 a = d.centre + d.dir * d.halfSpan, b = d.centre - d.dir * d.halfSpan;
         const Vec3 before = first > 0 ? cells[first - 1] : from;
         const bool aFirst = (a - before).flat().lengthSq() < (b - before).flat().lengthSq();
+        // (the same end is nearest where the route goes on: it passes by the bridge, or leaves from beside it, and does not cross)
+        const Vec3 after = cells[last + 1];
+        const bool crosses = aFirst != ((a - after).flat().lengthSq() < (b - after).flat().lengthSq());
         std::vector<Vec3> rest(cells.begin() + static_cast<long>(last) + 1, cells.end());
         std::vector<bool> restPinned(pinned.begin() + static_cast<long>(last) + 1, pinned.end());
         cells.resize(first);
         pinned.resize(first);
+        if (!crosses) {
+            cells.insert(cells.end(), rest.begin(), rest.end());
+            pinned.insert(pinned.end(), restPinned.begin(), restPinned.end());
+            continue;
+        }
         // Along the deck's axis, a pinned point every 10 m at most (a long deck is not left to the cells' middles, which wander
         // from it by more than a narrow deck is wide).
         const Vec3 from0 = aFirst ? a : b, to0 = aFirst ? b : a;

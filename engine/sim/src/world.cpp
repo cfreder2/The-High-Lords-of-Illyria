@@ -41,6 +41,12 @@ constexpr Fixed kCliffGrade = Fixed::one();
 // (a wall-walk's edge, the side of a stair).
 constexpr Fixed kMaxStepUp = Fixed::fromRatio(9, 10);
 constexpr Fixed kMaxStepDown = Fixed::fromRatio(3, 2);
+// A man in the river swims for the bank at this share of his pace on land.
+constexpr Fixed kSwimPace = Fixed::fromRatio(1, 3);
+// How far past a bridge's edge the press of bodies can have put a man in a tick and he is still held on it.
+constexpr Fixed kBridgeHold = Fixed::fromInt(2);
+// A swimmer's head is above the water: this share of his height is under it.
+constexpr Fixed kSwimDepth = Fixed::fromRatio(7, 10);
 // Soldiers this far below a wall's top are blocked by it; above, they walk its top.
 constexpr Fixed kWallClear = Fixed::fromInt(2);
 // Shot blind over a wall, at a mark the archer cannot see, arrows scatter this much wider.
@@ -462,8 +468,25 @@ Fixed World::groundHeight(Fixed x, Fixed y) const {
 Fixed World::standingHeight(Fixed x, Fixed y, Fixed z) const {
     const Fixed ground = config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
     Fixed deck;
-    if (config_.region && !config_.region->decks().empty() && config_.region->deckBelow(x, y, z + kMaxStepUp, deck)) return max(ground, deck);
+    if (config_.region && !config_.region->decks().empty()) {
+        if (config_.region->deckBelow(x, y, z + kMaxStepUp, deck)) return max(ground, deck);
+        if (bridgeStep(x, y, z, ground, deck)) return deck;
+    }
     return ground;
+}
+
+bool World::bridgeStep(Fixed x, Fixed y, Fixed z, Fixed ground, Fixed& deck) const {
+    // Where a bridge's deck comes down to the bank it may stand a long step over the ground (the bank is not level across
+    // its width): from under its end a man is up on it, not on under it to the river's bed.
+    for (const uint32_t ki : config_.region->decksAt(x, y)) {
+        const Deck& k = config_.region->decks()[ki];
+        if (k.raised || k.ramp || k.arc || !k.contains(x, y)) continue;
+        const Fixed h = k.heightAt(x, y);
+        if (h > z + kMaxStepDown || h - ground > kMaxStepDown || h < ground) continue;
+        deck = h;
+        return true;
+    }
+    return false;
 }
 
 Ground World::groundAt(Fixed x, Fixed y) const {
@@ -473,6 +496,73 @@ Ground World::groundAt(Fixed x, Fixed y) const {
 bool World::isWater(Fixed x, Fixed y) const {
     const Ground g = groundAt(x, y);
     return g == Ground::Shallows || g == Ground::DeepWater;
+}
+
+bool World::inRiver(Fixed x, Fixed y, Fixed z) const {
+    if (!config_.region) return false;
+    const Ground g = groundAt(x, y);
+    if (g != Ground::DeepWater && g != Ground::Bridge) return false;
+    Fixed deck;
+    if (!config_.region->decks().empty() && config_.region->deckBelow(x, y, z + kMaxStepUp, deck)) return false;  // on a deck over it
+    if (g == Ground::DeepWater) return true;
+    if (bridgeStep(x, y, z, config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero(), deck)) return false;  // (or about to be)
+    // By a bridge (a castle's walls are Bridge ground too, and men stand under their walks): in the water beside or under
+    // it, or on the bank well under its deck, where no one walks either (the only way on from there is the river). Where the
+    // deck comes down to the bank a man may be under its end by a step or so: that is the way onto it.
+    for (const uint32_t ki : config_.region->decksAt(x, y)) {
+        const Deck& k = config_.region->decks()[ki];
+        if (k.raised || k.ramp || k.arc) continue;
+        if (config_.region->underWater(x, y)) return true;
+        const Fixed ground = config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero();
+        return k.contains(x, y) && k.heightAt(x, y) - ground > kMaxStepDown;
+    }
+    return false;
+}
+
+void World::swimAshore(Unit& u) {
+    // The nearest ground to stand on, looked for in rings about him (few are ever in the river: a search a tick is cheap).
+    static const int kDirs[16][2] = {{1000, 0}, {924, 383}, {707, 707}, {383, 924}, {0, 1000}, {-383, 924}, {-707, 707}, {-924, 383},
+                                     {-1000, 0}, {-924, -383}, {-707, -707}, {-383, -924}, {0, -1000}, {383, -924}, {707, -707}, {924, -383}};
+    const Terrain* t = config_.terrain.get();
+    const auto ground = [&](Fixed x, Fixed y) { return t ? t->heightAt(x, y) : Fixed::zero(); };
+    Vec3 dir{};
+    bool found = false;
+    for (int r = 1; r <= 96 && !found; ++r) {
+        for (const auto& d : kDirs) {
+            const Vec3 v{Fixed::fromRatio(d[0], 1000), Fixed::fromRatio(d[1], 1000), Fixed::zero()};
+            const Fixed x = u.pos.x + v.x * r, y = u.pos.y + v.y * r;
+            if (t && (x < Fixed::zero() || y < Fixed::zero() || x > t->size() || y > t->size())) continue;
+            if (inRiver(x, y, ground(x, y))) continue;
+            dir = v;
+            found = true;
+            break;
+        }
+    }
+    if (!found) return;
+    u.facing = dir;
+    u.pos += dir * (u.stats.moveSpeed * kSwimPace * kTickDt);
+    // Out: on his feet again, and on with what he was ordered to do, from where he came ashore.
+    if (!inRiver(u.pos.x, u.pos.y, ground(u.pos.x, u.pos.y))) {
+        u.pos.z = ground(u.pos.x, u.pos.y);
+        if (u.hasMoveTarget) planPath(u, u.moveTarget);
+    }
+}
+
+void World::keepOnBridge(Unit& u) {
+    if (!config_.region || config_.region->decks().empty()) return;
+    for (const uint32_t ki : config_.region->decksAt(u.pos.x, u.pos.y)) {
+        const Deck& k = config_.region->decks()[ki];
+        if (k.raised || k.ramp || k.arc) continue;
+        const Vec3 across{-k.dir.y, k.dir.x, Fixed::zero()}, rel = (u.pos - k.centre).flat();
+        const Fixed along = rel.dot(k.dir), side = rel.dot(across);
+        if (abs(along) > k.halfSpan || abs(side) <= k.halfWidth || abs(side) > k.halfWidth + kBridgeHold) continue;
+        // He was on it (his height is still the deck's), and off its side is a drop, not a step.
+        const Fixed top = k.heightAt(u.pos.x, u.pos.y);
+        if (u.pos.z + kMaxStepUp < top || u.pos.z > top + kMaxStepUp) continue;
+        const Fixed below = config_.terrain ? config_.terrain->heightAt(u.pos.x, u.pos.y) : Fixed::zero();
+        if (top - below <= kMaxStepDown) continue;
+        u.pos -= across * (side - (side < Fixed::zero() ? -k.halfWidth : k.halfWidth));
+    }
 }
 
 Fixed World::slopeSquared(Fixed x, Fixed y) const {
@@ -1196,6 +1286,8 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
         // Over the water beside a narrow deck: off the edge is the river.
         Fixed deck;
         if (g == Ground::Bridge && config_.region && !config_.region->deckAt(x, y, deck) && config_.region->underWater(x, y)) return true;
+        // And under a deck he is not on (in by the side of its ramp, where the bank falls away below it) the river is the river.
+        if (g == Ground::Bridge && inRiver(x, y, u.pos.z)) return true;
         const Fixed dh = standingHeight(x, y, u.pos.z) - here;
         // Off the end of a bridge deck onto the bank is a step down, never a ledge.
         const auto offDeckEnd = [&] {
@@ -1209,7 +1301,11 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
             return false;
         };
         const bool deckEnd = offDeckEnd();
-        if (dh > kMaxStepUp || (dh < -kMaxStepDown && !deckEnd)) return true;  // a ledge: off a wall-walk, up the side of a ramp
+        // (up onto a bridge's end from the bank under it is a long step, not a ledge: bridgeStep)
+        Fixed onto;
+        const bool ontoBridge = dh > kMaxStepUp && dh <= kMaxStepDown && config_.region && !config_.region->decks().empty() &&
+                                bridgeStep(x, y, u.pos.z, config_.terrain ? config_.terrain->heightAt(x, y) : Fixed::zero(), onto);
+        if ((dh > kMaxStepUp && !ontoBridge) || (dh < -kMaxStepDown && !deckEnd)) return true;  // a ledge: off a wall-walk, up the side of a ramp
         if (deckEnd) return false;  // off a bridge's end onto its bank: a step down, never a cliff
         if (config_.region && config_.region->inRamp(x, y, u.pos.z + kMaxStepUp)) return true;  // into a ramp's side, below its slope
         // Onto or along a deck is never a cliff, whatever lies below its edges.
@@ -1232,7 +1328,26 @@ bool World::followPath(Unit& u, Fixed pace) {
     if (u.path.empty()) return true;
     const Vec3& waypoint = u.path[std::min<size_t>(u.pathIndex, u.path.size() - 1)];
     const bool last = u.pathIndex + 1 >= u.path.size();
+    const Vec3 was = u.pos;
     const bool arrived = walk(u, waypoint, pace);
+    // Stopped dead by a bridge (thrown off its deck onto the bank or into the shallows beside it, his route still the one
+    // along the deck): once a second he looks for the way again from where he stands.
+    if (!arrived && u.pos.x == was.x && u.pos.y == was.y && (tick_ + u.id) % kTicksPerSecond == 0 && config_.region && !config_.region->decks().empty()) {
+        for (const uint32_t ki : config_.region->decksAt(u.pos.x, u.pos.y)) {
+            const Deck& k = config_.region->decks()[ki];
+            if (k.raised || k.ramp || k.arc) continue;
+            // (Under the deck's end, where it is a step or so over the bank: out by its nearer side first, or the way would
+            // be found as for a man on the deck.)
+            if (k.contains(u.pos.x, u.pos.y) && k.heightAt(u.pos.x, u.pos.y) > u.pos.z + kMaxStepUp) {
+                const Vec3 across{-k.dir.y, k.dir.x, Fixed::zero()};
+                const Fixed side = (u.pos - k.centre).flat().dot(across);
+                u.pos += across * ((side < Fixed::zero() ? -k.halfWidth - Fixed::one() : k.halfWidth + Fixed::one()) - side);
+            }
+            const Vec3 goal = u.path.back();
+            planPath(u, goal);
+            return false;
+        }
+    }
     bool onward = false;
     // A ramp's foot and the walk's lanes (their heights given) are reached,
     // not cut: beside a ramp is not on it.
@@ -1301,6 +1416,12 @@ void World::updateUnit(Unit& u) {
     }
     // Resting on the ground restores a flier at half the rate flying spends it.
     if (flier && u.stamina < u.stats.staminaTicks && tick_ % kFlierRestTicks == 0) ++u.stamina;
+
+    // In the river (thrown off a bridge, shoved in): he swims for the bank and does nothing else.
+    if (inRiver(u.pos.x, u.pos.y, u.pos.z)) {
+        swimAshore(u);
+        return;
+    }
 
     // Broken, he runs from the foes near him; but an order given him since is obeyed.
     if (u.routed && !u.hasMoveTarget && !u.hasAttackTarget && u.targetUnit == kNoEntity && u.attackGate < 0) {
@@ -1530,6 +1651,7 @@ void World::separateBodies() {
             }
         };
         offObstacles(false);
+        keepOnBridge(u);
         keepOutOfGates(u);
         // Castle walls: out of the slab, unless walking along its top (or
         // under the stone over a gate passage).
@@ -1579,7 +1701,12 @@ void World::separateBodies() {
         if (u.present()) keepOnWalk(u);  // the thrown too
     }
     for (Unit& u : units_) {
-        if (u.present() && !u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        if (!u.present() || u.inAir() || u.flight != Unit::Flight::Grounded) continue;
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        // In the river, the living swim: head above the water, not walking its bed.
+        Fixed surface;
+        if (u.alive() && inRiver(u.pos.x, u.pos.y, u.pos.z) && config_.region->waterSurface(u.pos.x, u.pos.y, surface))
+            u.pos.z = max(u.pos.z, surface - u.stats.height * kSwimDepth);
     }
 }
 

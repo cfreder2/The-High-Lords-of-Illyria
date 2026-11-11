@@ -368,6 +368,11 @@ int Region::rampartAt(Fixed x, Fixed y, Fixed z) const {
 }
 
 bool Region::underWater(Fixed x, Fixed y) const {
+    Fixed surface;
+    return waterSurface(x, y, surface) && terrain_.heightAt(x, y) < surface;
+}
+
+bool Region::waterSurface(Fixed x, Fixed y, Fixed& out) const {
     const int32_t n = terrain_.cells() + 1;
     const Fixed cs = terrain_.cellSize();
     const int64_t ix = std::clamp<int64_t>((x / cs).floorToInt(), 0, n - 2), iy = std::clamp<int64_t>((y / cs).floorToInt(), 0, n - 2);
@@ -376,7 +381,8 @@ bool Region::underWater(Fixed x, Fixed y) const {
         const Fixed w = water_[static_cast<size_t>((iy + k / 2) * n + ix + k % 2)];
         if (w.raw != kDryRaw) surface = max(surface, w);
     }
-    return terrain_.heightAt(x, y) < surface;
+    out = surface;
+    return surface > -Fixed::fromInt(100000);
 }
 
 Ground Region::groundAt(Fixed x, Fixed y) const {

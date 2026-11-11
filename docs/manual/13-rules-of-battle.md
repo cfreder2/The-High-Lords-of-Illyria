@@ -18,7 +18,8 @@ Every soldier walks at his **speed** (in the compendium) times what the ground u
 The same table sets every soldier's path: each takes the way that is quickest **for him**, which is why a mixed host on the march comes apart unless you move it as one formation (which keeps to the pace of the slowest).
 
 - **Deep water** cannot be walked. Fords and their margins are shallows and mud: slow to cross, slower to climb out of.
-- **Bridges** are real: men walk on their decks, arrows land on them, and narrow timber footbridges take infantry over one at a time.
+- **Bridges** are real: men walk on their decks, arrows land on them, and narrow timber footbridges take a column over in single file. The press of a fight does not shove a man off a deck, and no one walks in under one; but a heavy blow or a blast can throw him over the side.
+- **A man in the river swims.** Thrown into water too deep to stand in, he makes for the nearest bank at a third of his pace, head above the water, and fights no one until he is out. Ashore, he takes up his orders again.
 - **His realm's own country.** A soldier walks **15% quicker** over the kind of land his realm is at home on (the table under [](#battle-edges)), and strikes harder there too.
 - **Climbing.** Speed divides by 1 + 2.5 × the slope × the gait's climb (a 1 in 4 slope takes a man about 1.6 times as long), and going down is up to 15% quicker. Slopes steeper than 35% slow a walker a further fifth. An army that charges uphill arrives late and tired.
 - **Cliffs are walls.** No one walks a face steeper than 45 degrees.

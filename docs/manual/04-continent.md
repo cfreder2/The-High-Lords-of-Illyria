@@ -49,7 +49,7 @@ The rivers are the walls of the realms and the crossings are their gates. There 
 | Kingsbridge | bridge | the Aldwater, above the Heartmere, on the great road |
 | Old Bridge | ford | the Westrun, where the road wades its broad mouth |
 | Greymere Bridge | bridge | the lower Greymere, on the north road |
-| Heron Footbridge, Millrace Footbridge, Hangman's Span | footbridges | for men on foot only |
+| Heron Footbridge, Millrace Footbridge, Hangman's Span | footbridges | one man or one horse wide: a column crosses in single file |
 
 Every crossing has an **outpost tower** beside it, and whoever holds the land there holds the tower (chapter [](#territory)). A **walled town** stands within 260 m of every named ford and bridge but Oakhaven Ford, where there was a good site for one, and within 420 m of the foot of each of the three passes: who holds the town holds the way. Oakhaven Ford is kept open: no place stands within 350 m of it.
 

@@ -652,6 +652,9 @@ public:
     // Very low when nothing rises into the way.
     Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
     const Region* region() const { return config_.region.get(); }
+    // In the river: water no one walks in (deep, or beside or under a bridge) or the bank under a bridge's deck, with no
+    // deck under his feet at height z. A man thrown or shoved in swims for the bank.
+    bool inRiver(Fixed x, Fixed y, Fixed z) const;
     // Whose land each part of the field is (the campaign's territory, which changes as the war goes; a set battle
     // or a match is fought on nobody's): a side for each square of `cell` metres, `nx` to a row from `origin` (a place of the
     // world), 255 for nobody's. A soldier standing on his own side's land has the home-land edge (edges.h). Not part
@@ -1169,6 +1172,7 @@ private:
     // The surface a walker at height z stands on here: the ground, or a deck
     // within a step of z (not a wall-walk high above a gate passage).
     Fixed standingHeight(Fixed x, Fixed y, Fixed z) const;
+    bool bridgeStep(Fixed x, Fixed y, Fixed z, Fixed ground, Fixed& deck) const;
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     // `stone` (if given) tells whether it was stone (walls, towers, houses,
     // rocks), off which arrows glance, or wood (trees, gates), which they stick in.
@@ -1217,6 +1221,10 @@ private:
     Fixed slopeSquared(Fixed x, Fixed y) const;
     Ground groundAt(Fixed x, Fixed y) const;
     bool isWater(Fixed x, Fixed y) const;
+    // One in the river (inRiver) swims for the nearest ground to stand on, and does nothing else until he stands on it.
+    void swimAshore(Unit& u);
+    // A bridge's deck holds the men on it against the press of bodies (a blow can still throw one off).
+    void keepOnBridge(Unit& u);
 
     WorldConfig config_;
     std::vector<uint8_t> landHolders_;

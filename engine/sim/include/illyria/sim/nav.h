@@ -130,6 +130,7 @@ private:
     // in the stone either side), and those beside a ramp (a man's breadth off
     // its side, not scraping up it).
     std::vector<std::pair<int32_t, Vec3>> through_;
+    std::vector<uint8_t> riverUnder_;  // per fine cell: a bridge's cell with water under it (no way but along the deck)
     std::vector<Deck> decks_;    // routes over a bridge go end to end along its deck
     std::vector<uint8_t> walled_;  // per deck: a castle wall stands across it (no way over)
     // A castle's stone, which no straight line on the ground may cut through

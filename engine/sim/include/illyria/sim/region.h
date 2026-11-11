@@ -182,6 +182,8 @@ public:
     bool inRamp(Fixed x, Fixed y, Fixed z) const;
     // True where the ground at this exact point lies under water.
     bool underWater(Fixed x, Fixed y) const;
+    // The water's surface over this point, if there is water by it (false: none).
+    bool waterSurface(Fixed x, Fixed y, Fixed& surface) const;
     // Ponds: (x, y) centre, z = radius.
     const std::vector<Vec3>& ponds() const { return ponds_; }
     // Where armies are meant to meet: the ford.

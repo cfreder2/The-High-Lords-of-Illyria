@@ -39,6 +39,7 @@ add_executable(illyria_tests
     test_combat.cpp
     test_game.cpp
     test_units.cpp
+    test_bridge.cpp
     test_region.cpp
     test_continent.cpp
     test_ground.cpp
