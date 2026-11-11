@@ -305,11 +305,18 @@ TEST(a_route_stops_at_a_shut_or_swinging_gate_and_goes_through_an_open_one) {
     World w(cfg);
     const Region& rg = *cfg.region;
     if (rg.gates().empty()) return;
-    const size_t gi = 0;
+    // The town's own gate (the window holds its neighbours' too, and some of those lie off its edge).
+    size_t gi = 0;
+    const Vec3 heart = town.pos - rg.origin();
+    for (size_t k = 0; k < rg.gates().size(); ++k)
+        if ((rg.gates()[k].a - heart).flat().lengthSq() < (rg.gates()[gi].a - heart).flat().lengthSq()) gi = k;
     w.setGateHolder(gi, 1);
     const Gate& g = rg.gates()[gi];
     const Vec3 centre = (g.a + g.b) * Fixed::fromRatio(1, 2);
-    const Vec3 from = centre + g.out * m(14), to = centre - g.out * m(14);
+    // (To open ground behind the doors: 14 m in, or as much farther as a house or a ramp's foot there makes it.)
+    int64_t in = 14;
+    while (in < 30 && !w.standable(centre - g.out * m(in))) ++in;
+    const Vec3 from = centre + g.out * m(14), to = centre - g.out * m(in);
     const auto way = [&] {
         // (A man newly come to the gate each time: the last one has walked on.)
         const EntityId a = w.spawnUnit(0, from, -g.out, unitStats(UnitType::LightInfantry));

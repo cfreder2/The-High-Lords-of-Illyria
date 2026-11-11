@@ -180,7 +180,7 @@
   // engine has them (illyria_mode_available), they are marked "soon".
   const extraModes = [
     { id: "horde", name: "Horde", blurb: "Wave on wave of the Red Hand against your line. How long can you hold?" },
-    { id: "ctf", name: "Capture the Flag", blurb: "Carry their banner home while keeping your own." },
+    { id: "ctf", name: "Capture the Flag", blurb: "Take their flag where it stands, and hold your own." },
     { id: "sandbox", name: "Sandbox", blurb: "Set any army down, let them fight, play any animation." },
   ];
   function available(id) {

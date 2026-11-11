@@ -242,10 +242,13 @@ void Campaign::ensureWorld() {
     if (world_) return;
     region_ = islandRegion(continent_);
     WorldConfig cfg;
+    // Each side at home on its realm's kind of land (edges.h).
+    for (uint8_t side = 0; side < 8; ++side) cfg.sideLand[side] = inGame(factionOf(side)) ? realmLand(factionOf(side)) : 0;
     cfg.seed = seed_ ^ 0x5A17E;
     cfg.region = region_;
     world_ = std::make_unique<World>(cfg);
-    // Each gate is some town's: its holder does not hack at it, and a stronger wall holds longer.
+    syncLand();
+    // Each gate is some town's: its holder does not hack at it.
     const Vec3 origin = region_->origin();
     gateCity_.assign(region_->gates().size(), -1);
     for (size_t g = 0; g < gateCity_.size(); ++g) {
@@ -523,15 +526,6 @@ void Campaign::syncMen(Stack& s) {
 
 // ---------------------------------------------------------------- orders
 
-bool Campaign::underOrders(const Stack& s) const {
-    for (const Army& a : s.armies)
-        for (const Man& m : a.men) {
-            const Unit* u = m.alive() && m.unit && world_ ? world_->findUnit(m.unit) : nullptr;
-            if (u && u->alive() && (u->hasMoveTarget || u->hasAttackTarget || u->targetUnit != kNoEntity)) return true;
-        }
-    return false;
-}
-
 // ---------------------------------------------------------------- stepping
 
 void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
@@ -638,6 +632,8 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
     unitOf(int64_t{tx} - s.px, int64_t{ty} - s.py, ux, uy);
     Fixed pace = Fixed::fromInt(100);
     for (const Army& a : s.armies) pace = min(pace, unitStats(a.type).moveSpeed);
+    // (A hero's Winged Sandals: the whole stack quicker, as its march is reckoned: paceOf.)
+    if (const int32_t quicker = paceOf(s).quicker; quicker > 0) pace = pace * (100 + quicker) / 100;
     std::vector<std::pair<int32_t, int32_t>> slots;
     layout(s, slots, s.path.size() > 1);  // (a column on the way, a block at the end of it)
     const Vec3 origin = region_->origin();

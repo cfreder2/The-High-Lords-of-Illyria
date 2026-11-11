@@ -274,7 +274,7 @@ void Campaign::questsNewDay() {
         if (!side.alive || citiesOwned(static_cast<uint8_t>(s)) <= heroes * 2 || rng_.nextBelow(12) != 0) continue;
         std::vector<int32_t> owned;
         for (size_t i = 0; i < cities_.size(); ++i)
-            if (cities_[i].owner == s && !cities_[i].razed) owned.push_back(static_cast<int32_t>(i));
+            if (cities_[i].owner == s) owned.push_back(static_cast<int32_t>(i));
         Offer& o = offers_[s];
         o.open = true;
         o.city = owned[rng_.nextBelow(static_cast<uint32_t>(owned.size()))];
@@ -296,7 +296,7 @@ bool Campaign::hire(uint8_t side, bool accept) {
         return true;
     }
     CityState& c = cities_[static_cast<size_t>(o.city)];
-    if (sides_[side].gold < o.price || c.owner != side || c.razed || c.banner != kNeutral) return false;  // not while an enemy holds the town
+    if (sides_[side].gold < o.price || c.owner != side || c.banner != kNeutral) return false;  // not while an enemy holds the town
     o.open = false;
     sides_[side].gold -= o.price;
     Stack* home = nullptr;

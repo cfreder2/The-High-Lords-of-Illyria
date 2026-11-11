@@ -96,7 +96,8 @@ TEST(a_step_takes_its_distance_over_the_speed_and_a_road_halves_it) {
     Campaign c = still(1);
     int32_t x = 0, y = 0;
     CHECK(levelPlain(c, x, y));
-    const uint32_t id = c.raise(0, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
+    // (The Highcrag Giants' men: the plain is not their realm's own country, which they would cross quicker.)
+    const uint32_t id = c.raise(1, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
     const int64_t want = ticksFor(int64_t{Campaign::kCell} * 1000, 1900);
     CHECK(c.stepTime(*c.findStack(id), x, y, x + 1, y) == want);
     CHECK(CampaignOrders::move(c, id, x + 1, y));

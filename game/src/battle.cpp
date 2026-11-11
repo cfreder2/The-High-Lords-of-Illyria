@@ -121,10 +121,9 @@ Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
     finish();
 }
 
-void Battle::build(uint64_t seed, const sim::Vec3& centre, int homeSide, float farReachM) {
+void Battle::build(uint64_t seed, const sim::Vec3& centre, float farReachM) {
     sim::WorldConfig cfg;
     cfg.seed = seed;
-    cfg.homeSide = homeSide;
     cfg.wind = {sim::Fixed::fromRatio(1, 2), -sim::Fixed::fromRatio(1, 2), sim::Fixed::zero()};
     cfg.maxRemains = kMaxRemains;
     region_ = std::make_shared<const sim::Region>(sim::Region::fromContinent(*continent_, centre, kTerrainCells));
@@ -245,11 +244,11 @@ void Battle::setUpFord() {
 }
 
 const sim::Continent::City& siegeTown(const sim::Continent& c) {
-    // The neutral town nearest Oakhaven Ford.
+    // The neutral walled town nearest Oakhaven Ford.
     const sim::Vec3 ford = c.crossings().front().pos;
     const sim::Continent::City* best = nullptr;
     for (const sim::Continent::City& city : c.cities()) {
-        if (city.capital) continue;
+        if (city.capital || !city.walled) continue;
         if (!best || (city.pos - ford).flat().lengthSq() < (best->pos - ford).flat().lengthSq()) best = &city;
     }
     return *best;

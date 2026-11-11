@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
             const auto [cx, cy] = at(audit::pt(city.pos));
             for (int d = -2; d <= 2; ++d)
                 for (int e = -2; e <= 2; ++e) put(cx + d, cy + e, 255, 255, 0);
-            const audit::Gate gate = audit::gateOf(city.castle.rings[0]);
+            const audit::Gate gate = audit::gateOf(city);
             const auto [gx, gy] = at(gate.mouth);
             for (int d = -1; d <= 1; ++d)
                 for (int e = -1; e <= 1; ++e) put(gx + d, gy + e, 255, 0, 255);
@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
         if (verbose || bad)
             std::printf("%-3s %-18s (%6.0f,%6.0f) shape %u corners %zu towers %2zu  gate-road %-3s  spur %5.1f m  linked %-3s  wet %-3s road-through-wall %-3s  overlook %2d  perim %4.0f m  crowded %d (min gap %.1f m)  gentle corners %d  ramps %zu\n",
                         city.capital ? "CAP" : "", city.name.c_str(), city.pos.x.toDouble(), city.pos.y.toDouble(), city.castle.shape,
-                        city.castle.rings[0].corners.size(), r.towers, r.gateRoad ? "yes" : "NO", r.spur, r.linked ? "yes" : "NO",
+                        (city.walled ? city.castle.rings[0].corners.size() : size_t{0}), r.towers, r.gateRoad ? "yes" : "NO", r.spur, r.linked ? "yes" : "NO",
                         r.gateWet ? "YES" : "no", r.roadThroughWall ? "YES" : "no", r.overlook, r.perimeter, r.crowded, r.minGap, r.sharpCorners, city.castle.ramps.size());
     }
     std::printf("\ngate without a road to its mouth: %d\ncastle not joined to the road network: %d\ngate mouth in water: %d\n"

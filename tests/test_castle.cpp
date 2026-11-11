@@ -30,6 +30,7 @@ const Continent::City& town() {
         const Continent::City* best = &cs[Continent::kFactionCount];
         int most = -1;
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
+            if (!cs[i].walled) continue;  // (a village has no walls)
             int open = 0;
             for (int a = 0; a < 24; ++a) {
                 const Fixed angle = kTwoPi * a / 24;
@@ -366,7 +367,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0x6f6e531b9580e6f3;  // (was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0xe96650fb3913d5c3;  // (was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -913,6 +914,7 @@ TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
     const auto& cs = continent().cities();
     int ramps = 0, unreached = 0, castlesWithoutAWay = 0;
     for (const Continent::City& city : cs) {
+        if (!city.walled) continue;  // (a village has no walls, and so no ramps)
         const Region rg = Region::fromContinent(continent(), city.pos, 128);
         NavGrid nav(rg);
         for (size_t g = 0; g < rg.gates().size(); ++g) nav.openGate(g);

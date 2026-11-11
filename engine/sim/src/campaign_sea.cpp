@@ -95,7 +95,7 @@ const Campaign::Boat* Campaign::boatInPort(int32_t city) const {
 bool Campaign::buildBoat(int32_t city) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
-    if (!c.port || c.razed || c.owner == kNeutral || c.boatDays > 0 || sides_[c.owner].gold < kBoatCost) return false;
+    if (!c.port || c.owner == kNeutral || c.boatDays > 0 || sides_[c.owner].gold < kBoatCost) return false;
     sides_[c.owner].gold -= kBoatCost;
     c.boatDays = kBoatDays;
     return true;
@@ -106,7 +106,7 @@ void Campaign::seaDay() {
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         if (c.boatDays <= 0) continue;
-        if (c.razed || c.owner == kNeutral) {
+        if (c.owner == kNeutral) {
             c.boatDays = 0;
             continue;
         }
@@ -227,7 +227,7 @@ bool Campaign::land(uint32_t stackId) {
     // Ashore at the nearest friendly port, else the easiest ground alongside.
     for (size_t i = 0; i < cities_.size(); ++i) {
         const CityState& c = cities_[i];
-        if (c.port && c.owner == s->owner && !c.razed && c.hx == s->cx && c.hy == s->cy) {
+        if (c.port && c.owner == s->owner && c.hx == s->cx && c.hy == s->cy) {
             s->path = {{c.cx, c.cy}};
             s->progress = 0;
             return true;
@@ -292,8 +292,7 @@ void Campaign::syncBoats() {
             }
         } else if (b.port >= 0) {
             const CityState& c = cities_[static_cast<size_t>(b.port)];
-            if (c.razed) lost[i] = 1;
-            else if (c.owner != b.owner && c.owner != kNeutral) b.owner = c.owner;  // taken with the port
+            if (c.owner != b.owner && c.owner != kNeutral) b.owner = c.owner;  // taken with the port
         } else {
             for (const Stack& o : stacks_)
                 if (o.owner != b.owner && o.boat && o.cx == b.cx && o.cy == b.cy && !o.armies.empty()) lost[i] = 1;  // burnt at anchor
@@ -328,7 +327,6 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
     std::vector<int32_t> cityOf(n, -1);
     std::vector<uint8_t> harbour(n, 0);
     for (size_t i = 0; i < cities_.size(); ++i) {
-        if (cities_[i].razed) continue;
         cityOf[static_cast<size_t>(cities_[i].cy) * nx_ + cities_[i].cx] = static_cast<int32_t>(i);
         if (cities_[i].port) harbour[static_cast<size_t>(cities_[i].hy) * nx_ + cities_[i].hx] = 1;
     }
@@ -359,7 +357,7 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
         if (afloat && harbour[static_cast<size_t>(cell)]) {
             // Into port from its harbour, which may lie two cells out.
             for (const CityState& c : cities_)
-                if (c.port && !c.razed && c.hx == cx && c.hy == cy && passable(s, c.cx, c.cy))
+                if (c.port && c.hx == cx && c.hy == cy && passable(s, c.cx, c.cy))
                     relax(cur, c.cy * nx_ + c.cx, 0, seaTime(c.cx - cx, c.cy - cy));
         }
         for (int32_t dy = -1; dy <= 1; ++dy) {
@@ -464,7 +462,7 @@ void Campaign::runSeaAi(uint8_t side) {
         int32_t target = -1, best = INT32_MAX;
         for (size_t i = 0; i < cities_.size(); ++i) {
             const CityState& c = cities_[i];
-            if (c.owner == side || c.razed || !attackable(c, strengthNeeded)) continue;
+            if (c.owner == side || !attackable(c, strengthNeeded)) continue;
             const size_t cell = static_cast<size_t>(c.cy) * nx_ + c.cx;
             const int32_t sea = std::min(gs[cell * 2], gs[cell * 2 + 1]);
             if (sea == INT32_MAX) continue;
@@ -491,7 +489,7 @@ void Campaign::runSeaAi(uint8_t side) {
         int32_t tried = 0;
         for (size_t i = 0; i < cities_.size() && tried < 3; ++i) {
             const CityState& c = cities_[i];
-            if (c.owner != side || c.razed || !c.port) continue;
+            if (c.owner != side || !c.port) continue;
             ++tried;
             Stack probe;
             probe.owner = side;

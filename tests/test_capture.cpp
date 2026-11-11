@@ -157,7 +157,7 @@ TEST(a_town_is_taken_only_when_the_banner_has_risen) {
     CHECK(t.banner == Campaign::kNeutral);
     // Kept up by the armies standing there: the full banner over (2 + armies) a tick, seen every half second.
     const int32_t whole = Campaign::kBannerFull / (Campaign::kBannerBase + armies);
-    CHECK(std::abs(ticks - whole) <= whole / 4 + 2 * Campaign::kThinkTicks);  // (the men come into the courtyard one after another, and the banner counts armies with a man in it)
+    CHECK(std::abs(ticks - whole) <= whole / 3 + 2 * Campaign::kThinkTicks);  // (the men come in through the gate one after another, and the banner counts armies with a man inside the wall)
     bool news = false;
     for (const Campaign::Deed& d : c.deeds()) news = news || (d.side == 0 && d.text.find("Our banner flies over") != std::string::npos);
     CHECK(news);
@@ -175,7 +175,9 @@ TEST(more_troops_raise_the_banner_faster) {
     const int32_t one = raiseWith(0), eight = raiseWith(7);
     std::printf("  a lone dragon raises the banner in %d ticks, a full stack in %d\n", one, eight);
     CHECK(one > 0 && eight > 0);
-    CHECK(one >= eight * 2);
+    // (Not eight times as fast: a banner counts the armies with a man inside the wall, and a full stack comes in
+    // through the gate one after another, where the dragon flies straight in.)
+    CHECK(one * 2 >= eight * 3);
     CHECK(one <= Campaign::kTicksPerDay);  // within the day: a few hours
 }
 

@@ -245,7 +245,17 @@ TEST(a_flier_sent_onto_the_wall_walk_has_his_marker_on_the_walk) {
     CHECK(griffins >= 0);
     b.select({b.squads()[static_cast<size_t>(griffins)].members.front()});  // one: his slot is the spot itself
     // A spot on the walk (behind an embrasure), from far enough off to fly there.
-    const Rampart::Embrasure& e = siegeWalls(b).embrasures.front();
+    // (One nobody of the garrison stands at: a place taken is not a place to land.)
+    const Rampart::Embrasure* free = &siegeWalls(b).embrasures.front();
+    for (const Rampart::Embrasure& c : siegeWalls(b).embrasures) {
+        bool taken = false;
+        for (const Unit& u : b.world().units()) taken = taken || (u.alive() && (u.pos - c.pos).flat().length() < Fixed::fromInt(3));
+        if (!taken) {
+            free = &c;
+            break;
+        }
+    }
+    const Rampart::Embrasure& e = *free;
     const V3 out = illyria::game::toV3(e.out);
     const V3 spot = illyria::game::toV3(e.pos) - out * 0.6f;
     V3 away = spot + out * 120.0f;

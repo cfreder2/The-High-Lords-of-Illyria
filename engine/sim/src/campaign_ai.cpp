@@ -104,20 +104,11 @@ public:
             if (c_.attackOdds(view(c_.stacks_[k]), side_, cs.cx, cs.cy) < needed(c_.stacks_[k].armies)) continue;
             if (march(k, cs.cx, cs.cy)) return;
         }
-        // None can win: the nearest one stands at the gates, which stops the banner.
-        for (const auto& [when, k] : near) {
-            const C::Stack& s = c_.stacks_[k];
-            int32_t bx = -1, by = -1, best = INT32_MAX;
-            for (int32_t dy = -1; dy <= 1; ++dy)
-                for (int32_t dx = -1; dx <= 1; ++dx) {
-                    const int32_t x = cs.cx + dx, y = cs.cy + dy;
-                    if ((dx == 0 && dy == 0) || x < 0 || y < 0 || x >= c_.nx_ || y >= c_.ny_) continue;
-                    if (!c_.passable(s, x, y) || !c_.defendersAt(side_, x, y).empty() || c_.cityAt(x, y) >= 0) continue;
-                    const int32_t d = std::max(std::abs(x - s.cx), std::abs(y - s.cy));
-                    if (d < best) best = d, bx = x, by = y;
-                }
-            if (bx >= 0 && march(k, bx, by)) return;
-        }
+        // None can win: the nearest goes in all the same. A banner counts only the men inside the wall (or on a
+        // village's green), so it is by standing in the town, for as long as they last, that they hold it up; at
+        // the gates they would hold up nothing.
+        for (const auto& [when, k] : near)
+            if (march(k, cs.cx, cs.cy)) return;
     }
 
 private:
@@ -208,12 +199,12 @@ private:
         cityView_.clear();
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& cs = c_.cities_[i];
-            if (cs.owner != side_ || cs.razed) continue;
+            if (cs.owner != side_) continue;
             CityView v;
             v.index = static_cast<int32_t>(i);
             for (size_t j = 0; j < c_.cities_.size() && !v.frontier; ++j) {
                 const C::CityState& o = c_.cities_[j];
-                v.frontier = o.owner != side_ && o.owner != C::kNeutral && !o.razed && cityDays10(static_cast<int32_t>(j), v.index) <= 30;
+                v.frontier = o.owner != side_ && o.owner != C::kNeutral && cityDays10(static_cast<int32_t>(j), v.index) <= 30;
             }
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
                 const C::Stack& e = c_.stacks_[k];
@@ -439,7 +430,7 @@ private:
         int32_t prize = -1, prizeScore = -1;
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& t = c_.cities_[i];
-            if (t.owner == side_ || t.razed) continue;
+            if (t.owner == side_) continue;
             int32_t near = INT32_MAX;
             for (const CityView& m : mine_) near = std::min(near, cityDays10(m.index, static_cast<int32_t>(i)));
             if (near == INT32_MAX) continue;
@@ -483,7 +474,7 @@ private:
         std::vector<std::pair<int32_t, int32_t>> cand;
         for (size_t i = 0; i < c_.cities_.size(); ++i) {
             const C::CityState& t = c_.cities_[i];
-            if (t.owner == side_ || t.razed) continue;
+            if (t.owner == side_) continue;
             if (std::find(claimed_.begin(), claimed_.end(), static_cast<int32_t>(i)) != claimed_.end()) continue;
             const int32_t when = eta(s, static_cast<int32_t>(i));
             if (when > t_.rangeDays10) continue;

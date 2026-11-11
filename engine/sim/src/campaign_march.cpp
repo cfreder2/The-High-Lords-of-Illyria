@@ -151,6 +151,7 @@ Campaign::Pace Campaign::paceOf(const Stack& s) const {
         p.best = std::max<int32_t>(1, static_cast<int32_t>(int64_t{p.flight} * (100 + p.quicker) / 100));
         return p;
     }
+    if (s.owner < kNeutral) p.land = realmLand(factionOf(s.owner));
     for (const Army& a : s.armies) {
         const Gait g = gaitOf(a.type);
         const int32_t v = std::max(1, groundSpeed(a.type));
@@ -167,6 +168,7 @@ Campaign::Pace Campaign::paceOf(const Stack& s) const {
     int64_t best = INT64_MAX;
     for (int32_t k = 0; k < p.gaits; ++k)
         best = std::min<int64_t>(best, (Fixed::fromInt(p.speed[k]) * bestGround(p.gait[k]) * (Fixed::one() + kDescentMax)).floorToInt() + 1);
+    if (p.land) best = best * (100 + kRealmPacePct) / 100;
     p.best = static_cast<int32_t>(std::clamp<int64_t>(best * (100 + p.quicker) / 100, 1, INT32_MAX));
     return p;
 }
@@ -184,6 +186,8 @@ int32_t Campaign::marchTime(const Pace& p, int32_t cell, int32_t dir) const {
             if (e == kClosed) return kClosed;
             t = std::max(t, ticksFor(e, p.speed[k]));  // the slowest on this ground sets the time
         }
+        // Into its realm's own kind of country: quicker, as its men walk it in the world (World::walk).
+        if (p.land & landAt(x, y)) t = t * 100 / (100 + kRealmPacePct);
     }
     return clampTime(t * 100 / (100 + p.quicker));
 }

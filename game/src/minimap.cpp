@@ -29,7 +29,7 @@ std::string minimapText(const sim::Campaign& c, uint8_t viewer) {
     for (size_t i = 0; i < c.cities().size(); ++i) {
         const auto& town = c.continent().cities()[i];
         std::snprintf(buf, sizeof buf, "t|%.0f|%.0f|%s|%d\n", town.pos.x.toDouble(), town.pos.y.toDouble(),
-                      hex(factionColor(c.knownOwner(viewer, static_cast<int32_t>(i)))).c_str(), town.capital ? 1 : 0);
+                      hex(factionColor(c.knownOwner(viewer, static_cast<int32_t>(i)))).c_str(), town.capital ? 1 : town.walled ? 0 : 2);  // a capital, a walled town, a village
         out += buf;
     }
     for (size_t k = 0; k < c.sites().size(); ++k) {

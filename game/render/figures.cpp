@@ -34,7 +34,6 @@ enum Material : int { kPlain, kClothM, kSkinM, kSteelM, kMailM, kLeatherM, kWood
 // A colour and what it is painted on. Arithmetic keeps the material.
 struct Paint : V3 {
     int mat = kPlain;
-    Paint() = default;
     Paint(V3 c) : V3(c) {}
     Paint(V3 c, int m) : V3(c), mat(m) {}
     Paint(float r, float g, float b, int m) : V3{r, g, b}, mat(m) {}
@@ -46,7 +45,6 @@ struct Paint : V3 {
     Paint(const Paint&) = default;
     Paint& operator=(const Paint&) = default;
     Paint operator*(float f) const { return {static_cast<const V3&>(*this) * f, mat}; }
-    Paint operator+(const V3& o) const { return {static_cast<const V3&>(*this) + o, mat}; }
 };
 Paint as(V3 c, int m) { return {c, m}; }
 

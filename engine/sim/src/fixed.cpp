@@ -1,6 +1,7 @@
 #include "illyria/sim/fixed.h"
 
 #include <array>
+#include <cstddef>
 
 namespace illyria::sim {
 

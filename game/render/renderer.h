@@ -44,13 +44,17 @@ public:
         kFarDetail = 16,     // finer land around the battlefield, detailed far terrain
         kAtmosphere = 32,    // sky, haze and drifting cloud shadows
         kCoverDense = 64,    // denser, wider ground cover
+        kFilm = 128,         // the film look: bloom, a grim grade, darkened corners, grain (renderer_post.cpp)
     };
-    static constexpr int kHigh = kGroundDetail | kGroundCover | kShadows | kShadowsHigh | kFarDetail | kAtmosphere | kCoverDense;
-    static constexpr int kMedium = kGroundDetail | kGroundCover | kShadows | kFarDetail | kAtmosphere;
+    static constexpr int kHigh = kGroundDetail | kGroundCover | kShadows | kShadowsHigh | kFarDetail | kAtmosphere | kCoverDense | kFilm;
+    static constexpr int kMedium = kGroundDetail | kGroundCover | kShadows | kFarDetail | kAtmosphere | kFilm;
     static constexpr int kLow = 0;
     void setFeatures(int features);
     // Where the frame is drawn: the window's own framebuffer (0), or one the platform shows scaled (a lower resolution).
-    void setScreenFramebuffer(GLuint fbo) { screenFbo_ = fbo; }
+    void setScreenFramebuffer(GLuint fbo) {
+        if (frameFbo_ == screenFbo_) frameFbo_ = fbo;
+        screenFbo_ = fbo;
+    }
     // The eye below the water (game/underwater.h): the look 0..1, the eye's depth (m), the murk 0..1, the surface's height.
     // All zero while the eye is above water: the shaders then do nothing more than one comparison.
     void setUnderwater(float look, float eyeDepth, float murk, float surface) {
@@ -227,7 +231,7 @@ private:
         std::vector<std::pair<int, V3>> seen;  // the sprites' types and places, for sizing the close-up sheets next frame
         size_t sprites = 0;
     } men_;
-    void beginMen(const Battle& battle, const Camera& camera, float seconds);
+    void beginMen(const Camera& camera, float seconds);
     bool manOnScreen(const V3& p) const;
     bool manIsSprite(const V3& p, int type);
     void manDot(const V3& p, const V3& colour, bool owned, bool selected, bool inspected, float pulse, bool alsoSprite);
@@ -471,6 +475,19 @@ private:
     uint32_t detailGen_ = UINT32_MAX;
     float detailRect_[4] = {1e9f, 1e9f, -1e9f, -1e9f};
     GLuint screenFbo_ = 0;
+    // The film look (renderer_post.cpp). Where this frame is being drawn: the screen, or the film look's own target
+    // (everything that leaves the frame for a bake comes back to this, never to screenFbo_ itself).
+    GLuint frameFbo_ = 0;
+    GLuint postFbo_ = 0, postColour_ = 0, postDepth_ = 0, sceneFbo_ = 0, sceneTex_ = 0;
+    GLuint bloomFbo_[2][2] = {}, bloomTex_[2][2] = {};
+    int postW_ = 0, postH_ = 0;
+    bool postOk_ = false;
+    Program bloom_, grade_;
+    // The brightness the bloom begins at, how strong it is, how far the corners fall, the grain, the colour kept.
+    static constexpr float kBloomFrom = 0.74f, kBloomStrength = 0.55f, kVignette = 0.55f, kGrain = 0.035f, kSaturation = 0.84f;
+    // The target for a frame of this size (the film look's, or the screen), and its end: bloomed, graded, on the screen.
+    GLuint beginPost(int w, int h);
+    void endPost(double timeSeconds);
     float detailFade_ = 0;   // by the camera's height (see detailWeight in kCommon)
     std::vector<float> chunkFade_;  // per slot: fading in once finished
     double detailClock_ = -1;

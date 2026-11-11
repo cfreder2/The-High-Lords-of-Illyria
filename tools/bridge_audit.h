@@ -68,7 +68,6 @@ inline BridgeReport auditBridge(const Continent& c, size_t crossing, int cells =
         Fixed deck;
         region->deckAt(last.x, last.y, deck);
         out.rise[side] = (deck - region->terrain().heightAt(last.x, last.y)).toDouble();
-        Fixed surface;
         out.waterEnds += region->groundAt(last.x + d.x * Fixed::fromInt(2), last.y + d.y * Fixed::fromInt(2)) == Ground::DeepWater;
         // The road nearest the end, in continent coordinates.
         double best = 1e9;

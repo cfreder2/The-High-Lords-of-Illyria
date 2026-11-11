@@ -1978,16 +1978,9 @@ ILLYRIA_API int illyria_campaign_hire(int accept) {
     submitOrder(illyria::sim::Campaign::Order::Kind::Hire, 0, accept != 0);
     return 1;
 }
-ILLYRIA_API void illyria_campaign_leave() {
-    if (!app) return;
-    app->camp.on = false;
-    app->renderer.setShowUnits(true);
-    frameCamera();
-}
 ILLYRIA_API void illyria_campaign_produce(int city, int option) {
     if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::Produce, 0, city, option);
 }
-// Warlords' BUILD: raise the open city's walls by one, for gold.
 // Where a city sends its new armies: start choosing (the next city tapped), or -1 to keep them home.
 ILLYRIA_API void illyria_campaign_vector(int city, int choose) {
     if (!app || !app->camp.on) return;
@@ -2171,11 +2164,13 @@ ILLYRIA_API const char* illyria_campaign_state() {
         const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
         int docked = 0;
         for (const C::Boat& b : c.boats()) docked += b.port == cv.city && !b.stack;
+        // A capital drills two days in one (Campaign::newDay): the panel counts its days as they pass there.
+        const bool capitalPace = c.continent().cities()[static_cast<size_t>(cv.city)].capital;
         std::snprintf(buf, sizeof buf,
                       ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,"
                       "\"port\":%s,\"boatDays\":%d,\"boats\":%d,\"boatCost\":%d,\"boatTime\":%d,\"boatUpkeep\":%d,"
                       "\"vectorTo\":\"%s\",\"choosing\":%s,\"options\":[",
-                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, cs.progress,
+                      cv.city, c.continent().cities()[static_cast<size_t>(cv.city)].name.c_str(), cs.defense, cs.income, cs.producing, capitalPace ? cs.progress / 2 : cs.progress,
                       cs.port ? "true" : "false", cs.boatDays, docked, C::kBoatCost, C::kBoatDays, C::kBoatUpkeep,
                       cs.vectorTo >= 0 ? c.continent().cities()[static_cast<size_t>(cs.vectorTo)].name.c_str() : "",
                       cv.vectorFrom == cv.city ? "true" : "false");
@@ -2183,7 +2178,7 @@ ILLYRIA_API const char* illyria_campaign_state() {
         for (size_t k = 0; k < cs.options.size(); ++k) {
             const C::Option& op = cs.options[k];
             std::snprintf(buf, sizeof buf, "%s{\"type\":\"%s\",\"days\":%d,\"cost\":%d,\"upkeep\":%d,\"strength\":%d,\"levy\":%d}", k ? "," : "",
-                          illyria::sim::unitTypeName(op.type), op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type), op.left);
+                          illyria::sim::unitTypeName(op.type), capitalPace ? (op.days + 1) / 2 : op.days, op.cost, C::upkeep(op.type), illyria::sim::warlordsStrength(op.type), op.left);
             s += buf;
         }
         // The rare troops no city trains, and where each can be had.
@@ -2486,14 +2481,13 @@ ILLYRIA_API const char* illyria_hud() {
                   b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str(),
                   b.localSide());
     s = buf;
-    // The town's capture point, whose land this is, and the selection's small edges.
+    // The town's capture point, and the selection's small edges.
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        const int home = b.world().homeSide();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"land\":%d,\"edges\":\"%s\",",
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"edges\":\"%s\",",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", home, edges.c_str());
+                      cap.taken() ? "true" : "false", edges.c_str());
         s += buf;
     }
     // The selection (how many, in what formation, of what kind) and the saved groups.

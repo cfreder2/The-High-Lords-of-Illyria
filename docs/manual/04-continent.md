@@ -8,20 +8,32 @@
 
 There are no separate battle maps in this game. Illyria is one continuous land, modelled down to the tussock, and the camera goes all the way from a god's view of the island, where armies are columns of points, to the mud of a single ford, where you can count the arrows in a shield. The campaign is played high up; battles are fought at the bottom; it is the same land all the way down, and a battle fought anywhere is fought on the hills, woods and streams that are really there.
 
-![The continent of Illyria, north up: the eight capitals as coloured castles, the neutral cities as grey squares, ruins, temples and sages, roads and rivers.](images/continent-map.jpg "tall")
+![The continent of Illyria, north up: the eight capitals as coloured castles, the neutral towns and villages in grey, ruins, temples and sages, roads and rivers.](images/continent-map.jpg "tall")
 
 ## The lie of the land {#lie-of-the-land}
 
 ::: note "The measure of the land"
-The island is **2.8 km** from west to east and **3.6 km** from south to north. The campaign map divides it into cells **44 m** across, 64 by 80 of them; ownership is reckoned in hexes **89 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,120 of them with land). A battle is fought on a window **1 km** square cut out of the land where the armies met, so it holds a good piece of the island, and often a town or two at its edges. The towns' walls stand at least 30 m apart, typically about 70 m from their nearest neighbour's. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
+The island is **2.8 km** from west to east and **3.6 km** from south to north. The campaign map divides it into cells **44 m** across, 64 by 80 of them; ownership is reckoned in hexes **89 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,120 of them with land). A set battle is fought on a window **1 km** square cut out of the land, so it holds a good piece of the island, and often a town or a village or two. Walled places keep at least **170 m** of open country between their walls (three bowshots: two hosts can form up between two towns out of reach of both); a village stands at least **85 m** from any wall, beyond a bow's reach from the walk, and 60 m from the next village. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
 :::
 
-- **The sea.** The Sunderwave Sea runs the length of the west coast and round the north; the Isle of the Seer lies off the north-west, with the first of the two sages on it. The coast is a wandering shore of bays and headlands, with sand beaches where the swell rolls in, runs up the sand and slides back, leaving it dark and wet. Rocks and boulders stand in the water along the shores, about the isles and in the rivers, some breaking the surface in a ring of foam and some lying just beneath it; a lake laps its shore gently, and a river has no waves at all.
-- **The rivers.** The **Aldwater** flows south from the northern coast down the middle of the land. The **Greymere** leaves it in the north and runs west to the sea, cutting off the north-west country of the Darkwood and the Thornspine: only Greymere Bridge and Greymere Ford lead in. Below **Kingsbridge** the Aldwater forks: the **Westrun** runs west to the sea and the **Sorrow** runs on south. The **Emberflow** drains Silverlake into it from the east; the Wending is a smaller stream. Every river runs downhill to the sea, and every one is too deep to wade except at a ford.
+- **The sea.** The Sunderwave Sea runs the length of the west coast and round the north; the **Isle of the Seer** lies off the north-west, with the first of the two sages on it and one fishing village: the isle is too small for walls. The coast is a wandering shore of bays and headlands, with sand beaches where the swell rolls in, runs up the sand and slides back, leaving it dark and wet. Rocks and boulders stand in the water along the shores, about the isles and in the rivers, some breaking the surface in a ring of foam and some lying just beneath it; a lake laps its shore gently, and a river has no waves at all.
+- **The rivers.** The **Aldwater** flows south from the northern coast down the middle of the land. The **Greymere** leaves it in the north and runs west to the sea, cutting off the north-west country of the Darkwood and the Thornspine: only Greymere Bridge and Greymere Ford lead in. Below **Kingsbridge** the Aldwater forks: the **Westrun** runs west to the sea and the **Sorrow** runs on south. The **Emberflow** drains Silverlake into the Sorrow from the east; the Wending is a smaller stream in the south-west. Every river runs downhill to the sea, and every one is too deep to wade except at a ford.
 - **The lakes.** The **Heartmere** lies where the rivers meet, a broad lake with **Abbey Isle** in it, reached only by the Spit from the eastern shore; on the isle stand the ruins of the Drowned Abbey. **Longmere** lies inside the Longwood; Mirrormere and Silverlake are smaller.
-- **The mountains.** The Thornspine closes off the north. The Graycrown splits Westmarch from the central plain, with one pass through it. The **Ironveil** walls off the whole east; the Frostfang and Cinder spurs reach west from it. The east is broken country: the Ungoeth Mountains, the Beren Heights, the Kestrel Fells, the Grimtor Hills and the **Mirefen** swamp. The Dragonback lies to the south, and the Ashen Hills, Northmoor and Southdown hills stand inland. High mountains are closed to everything that walks; only fliers cross them.
-- **The forests.** The Darkwood in the north-west, the Elderwood in the middle, the Thornwood and the Eastwood in the east, the Northwood round Sylvaris, and the long Longwood in the south around its lake.
-- **The realms.** Westmarch is the north-west, beyond the Greymere and the Graycrown; Valdor the south-west, the plains and the hills down to the Dragonback; Eastreach the land east of the Aldwater.
+- **The mountains.** The Thornspine closes off the north, with a pass where the north road climbs it. The Graycrown runs east and west below the Greymere, shutting the central plain off from the north-west, with one pass through it. The **Ironveil** walls off the whole east, with a pass where the great road goes over it; the Frostfang and Cinder spurs reach west from it. The east is broken country: the Ungoeth Mountains, the Beren Heights, the Kestrel Fells, the Grimtor Hills and the **Mirefen** swamp. The Dragonback lies to the south-west, with the third pass on the south road, and the Ashen Hills, Northmoor and Southdown hills stand inland. High mountains are closed to everything that walks; only fliers cross them.
+- **The forests.** The Darkwood in the north-west, the Elderwood in the middle by Kingshold, the Thornwood and the Eastwood in the east, the Northwood in the north-east, and the long Longwood in the south around its lake, with Sylvaris at its edge.
+- **The old provinces.** Westmarch is the north-west, beyond the Greymere; Valdor the south-west, the plains and the hills down to the Dragonback; Eastreach the land east of the Aldwater.
+- **The landmarks.** Three places made by hand: **Church Hill**, a broad rocky hill with a church and a pond on its level top and a lane winding up round it; **the Narrows**, where the south road runs along the floor of a gorge between sheer walls; and **the Terraces**, a low hill stepped into level fields. Each is a field for Horde and Capture the Flag (chapter [](#other-wars)).
+
+| Lord | Capital | Where it stands |
+|---|---|---|
+| The Aurelian Throne | Kingshold | the middle of the land, west of Kingsbridge |
+| The Highcrag Giants | Highcrag | the north-west, between the Darkwood and the Thornspine |
+| The Ironhold Dwarves | Deepforge | the south-west, under the Dragonback |
+| The Orcs of Grath | Grathmaw | the north-east, north of the Frostfang Spur |
+| The Sylvaran Elves | Sylvaris | the south, at the eastern edge of the Longwood |
+| The Sunreach Riders | Sunreach | the west, between the Greymere and the Westrun |
+| The Moonward Order | Moonhaven | the east, beyond the Heartmere |
+| Lord Malvoren | Dreadspire | the south-east, by the Eastwood, south of the Cinder Spur |
 
 ## Crossings {#crossings}
 
@@ -30,29 +42,41 @@ The rivers are the walls of the realms and the crossings are their gates. There 
 | Crossing | Kind | Where |
 |---|---|---|
 | Oakhaven Ford | ford | the Aldwater, north of Kingsbridge: the set battle |
-| Westrun Ford | ford | the Westrun |
-| Sorrow Ford | ford | the Sorrow, in the south |
+| Westrun Ford | ford | the Westrun, on the south road |
+| Sorrow Ford | ford | the Sorrow, in the south, between Sylvaris and Dreadspire |
 | Emberflow Ford | ford | the Emberflow, below Silverlake |
-| Greymere Ford | ford | the Greymere, into the north-west |
-| Kingsbridge | bridge | the Aldwater, at the fork |
+| Greymere Ford | ford | the upper Greymere, into the north-west |
+| Kingsbridge | bridge | the Aldwater, above the Heartmere, on the great road |
 | Old Bridge | ford | the Westrun, where the road wades its broad mouth |
-| Greymere Bridge | bridge | the Greymere |
+| Greymere Bridge | bridge | the lower Greymere, on the north road |
 | Heron Footbridge, Millrace Footbridge, Hangman's Span | footbridges | for men on foot only |
 
-Every crossing has an **outpost tower** beside it, and whoever holds the land there holds the tower (chapter [](#territory)).
+Every crossing has an **outpost tower** beside it, and whoever holds the land there holds the tower (chapter [](#territory)). A **walled town** stands within 260 m of every named ford and bridge but Oakhaven Ford, where there was a good site for one, and within 420 m of the foot of each of the three passes: who holds the town holds the way. Oakhaven Ford is kept open: no place stands within 350 m of it.
 
 ## Cities and places {#places}
 
-There are **eighty** walled cities. Eight are the capitals of the lords, castles with heavier walls, a tall keep and more towers; seventy-two start neutral. Every castle is different: square, long, many-sided or shield-shaped walls, drum towers at the corners and beside the gate, a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops. Seventeen cities stand near enough to the sea or the Heartmere to be **ports**, with a pier below the walls (chapter [](#boats)).
+There are **eighty** places, of three kinds, and seventy-two of them start neutral.
 
-Out in the wild places there are **34 ruins** in the forests and foothills, **4 temples**, one in each quarter of the land (the Temples of the Dawn, the Tides, the Stars and the Oak), and **2 sages**: the Seer's Tower on its island and the Hermit of the Peaks, high in the Ironveil. Every one of them can be reached on foot: those in the mountains by the passes, the Drowned Abbey by the Spit. What they hold is in chapter [](#heroes).
+| Kind | How many | What it is |
+|---|---|---|
+| Capital | 8 | a lord's castle: walls 85 m from the middle, an outer ring and an inner bailey, a tall keep and more towers |
+| Walled town | 21 | walls 55 m from the middle, one gate, towers, a keep, streets of houses and a courtyard behind the gate |
+| Village | 51 | houses round a green and a tower house on a 30 m pad at the end of a lane: no wall, no gate, no towers |
+
+Every walled place is different: square, long, many-sided or shield-shaped walls, drum towers at the corners and beside the gate, a keep, streets of houses, and a courtyard behind the gate kept open for mustering troops. A village has nothing to shoot from and nothing to batter down, and whoever stands on its green holds it.
+
+The land is shared out evenly. Each lord has ten places in his own country, nearer his seat on foot than any other lord's: the seat itself, three walled towns and six villages, or a village in a town's stead where there was no room for walls (which is why there are 21 walled towns and not 24). The fishing village on the Isle of the Seer is counted with the lord whose seat is nearest over the water.
+
+Places that stand within two cells of the sea or the Heartmere are **ports**, with a pier below them (chapter [](#boats)). What each kind pays and trains is in chapter [](#cities).
+
+Out in the wild places there are **34 ruins** in the forests and foothills, **4 temples**, one in each quarter of the land (the Temples of the Dawn, the Tides, the Stars and the Oak), and **2 sages**: the Seer's Tower on its island and the Hermit of the Peaks, high in the Ironveil. Every one of them stands on ground a walker can reach: those in the mountains by the passes, the Drowned Abbey by the Spit, the Seer's Tower from the village on its isle, once a boat has brought you there. What they hold is in chapter [](#heroes).
 
 ## From the gods to the mud {#zoom}
 
 | Zoom | What you see |
 |---|---|
-| The whole island | the realms, the hexes washed in their holders' colours, every soldier a point in his lord's colour, castles; the minimap |
-| A region | cities, roads, rivers, columns and blocks of points marching, every tree of the woods, dark where the forest is thick |
+| The whole island | the realms, the hexes washed in their holders' colours, every soldier a point in his lord's colour, castles and villages; the minimap |
+| A region | towns and villages, roads, rivers, columns and blocks of points marching, every tree of the woods, dark where the forest is thick |
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 

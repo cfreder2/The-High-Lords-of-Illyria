@@ -215,6 +215,9 @@ public:
         uint8_t owner = kNeutral;
         bool capital = false;
         Castle castle = {};
+        // A capital or a walled town (rings, gates, towers), or an open village: houses round a green and a tower
+        // house (the castle's keep, courtyard and houses, and no rings), taken by whoever holds its green.
+        bool walled = true;
     };
     // Places heroes explore: ruins hold a guardian and a reward, temples bless,
     // sages tell what they know (first come, first served).

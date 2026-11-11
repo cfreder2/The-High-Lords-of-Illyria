@@ -16,34 +16,21 @@ using T = UnitType;
 // A catapult's strength against a town's walls, over its strength in the field.
 constexpr int32_t kCatapultSiegeBonus = 2;
 
-// How each empire likes the ground it fights on (the appendix's first
-// terrain table), by side: road, water, shore, forest, hill, plain, marsh.
-// Ours follow the Warlords archetypes: knights, giants, dwarves, orcs, elves,
-// horse lords, the sea-minded order (Selentines) and the dark lord (Bane).
-int32_t empireTerrain(uint8_t owner, Lay lay) {
-    static const int8_t kEmpires[8][7] = {
-        {0, 0, 0, 0, 0, 0, 0},     // Sirians: they don't mind where they fight
-        {0, 0, 0, 0, 1, 0, -1},    // Storm Giants
-        {0, 0, 0, -1, 2, 0, -1},   // Grey Dwarves
-        {0, 0, 0, -1, 0, 0, 1},    // Orcs of Kor
-        {0, 0, 0, 1, -1, 0, -1},   // Elvallie
-        {1, 0, 0, -1, -1, 1, 0},   // Horse Lords
-        {0, 1, 1, 0, 0, 0, 0},     // Selentines
-        {0, 0, 0, -1, 0, 0, 1},    // Lord Bane
-    };
-    if (owner >= 8) return 0;  // neutral garrisons have no likes
-    int col;
+// What a campaign cell counts as, of the kinds of land a realm can be at home on (edges.h, realmLand): where its armies
+// are reckoned stronger and march quicker, as its men are in the battle (World::onOwnLand). Mountains and hills are
+// the hills; a bridge and the water are the water's edge; a town's streets are nobody's.
+uint8_t landOfLay(Lay lay) {
     switch (lay) {
         case Lay::Road:
-        case Lay::Bridge: col = 0; break;
-        case Lay::Water: col = 1; break;
-        case Lay::Forest: col = 3; break;
-        case Lay::Hill: col = 4; break;
-        case Lay::Plain: col = 5; break;
-        case Lay::Marsh: col = 6; break;
-        default: return 0;  // mountains and cities: no effect
+        case Lay::Plain: return kLandOpen;
+        case Lay::Forest: return kLandForest;
+        case Lay::Hill:
+        case Lay::Mountain: return kLandHills;
+        case Lay::Marsh: return kLandMarsh;
+        case Lay::Bridge:
+        case Lay::Water: return kLandShore;
+        default: return 0;
     }
-    return kEmpires[owner][col];
 }
 
 // How each army type likes forest, hill and marsh (the second table).
@@ -115,11 +102,13 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
     const int32_t city = cityAt(cx, cy);
     if (defending && city >= 0) {
         const int32_t d = cities_[static_cast<size_t>(city)].defense;
-        const int32_t walls = d >= 9 ? 3 : d >= 7 ? 2 : d >= 2 ? 1 : 0;
+        const int32_t walls = d >= 2 ? 1 : 0;  // (a walled place: nothing has walls past 6, where Warlords gave more)
         m += walls - std::min(walls, engines);  // each siege engine breaks a point of the walls
     }
     return m;
 }
+
+uint8_t Campaign::landAt(int32_t cx, int32_t cy) const { return landOfLay(terrainAt(cx, cy)); }
 
 Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
                           int32_t oppX, int32_t oppY) const {
@@ -128,8 +117,10 @@ Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, u
     if (owner < kNeutral && landOwner(cx, cy) == owner) e.home = kEdgeHomePct;
     // The type's liking for the ground (the manual's second table, its
     // pluses only) and the empire's (the first): 4% and 2% a point.
-    const int32_t likes = std::max(0, typeTerrain(a.type, lay)) * kEdgeGroundPct + std::max(0, empireTerrain(owner, lay)) * 2;
+    const int32_t likes = std::max(0, typeTerrain(a.type, lay)) * kEdgeGroundPct;
     e.ground = std::min(kEdgeGroundMaxPct, likes);
+    // The realm's own kind of country (the manual's first table, as the battle reckons it: World::onOwnLand).
+    if (owner < kNeutral && (landOfLay(lay) & realmLand(factionOf(owner)))) e.realm = kEdgeRealmPct;
     if (!a.hero()) e.seniority = kEdgeRankPct * std::clamp(a.rank, 0, 3);
     int32_t hero = 0;
     for (const Army* o : side)
@@ -158,6 +149,7 @@ Edges Campaign::stackEdges(const std::vector<const Army*>& armies, uint8_t owner
         best.hero = std::max(best.hero, e.hero);
         best.height = std::max(best.height, e.height);
         best.holding = std::max(best.holding, e.holding);
+        best.realm = std::max(best.realm, e.realm);
     }
     return best;
 }
@@ -307,7 +299,7 @@ void Campaign::deliverTransits() {
         int32_t where = -1;
         for (const int32_t c : {t.to, t.from}) {
             const CityState& cs = cities_[static_cast<size_t>(c)];
-            if (where < 0 && cs.owner == t.owner && !cs.razed && cs.banner == kNeutral) where = c;
+            if (where < 0 && cs.owner == t.owner && cs.banner == kNeutral) where = c;
         }
         if (where < 0) continue;
         const CityState& cs = cities_[static_cast<size_t>(where)];
@@ -334,7 +326,7 @@ uint32_t Campaign::raise(uint8_t owner, int32_t cx, int32_t cy, const std::vecto
 int32_t Campaign::income(uint8_t side) const {
     int32_t gold = 0;
     for (const CityState& c : cities_)
-        if (c.owner == side && !c.razed) gold += c.income;
+        if (c.owner == side) gold += c.income;
     // The land pays a little (campaign_territory.cpp).
     gold += hexesHeld(side) / kHexesPerGold;
     // Warlords' Knights "deliberately waste money": an Easy lord loses a fifth.

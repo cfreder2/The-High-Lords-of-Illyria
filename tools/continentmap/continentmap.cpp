@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     fprintf(j, "],\"labels\":[");
     for (size_t r = 0; r < c.labels().size(); ++r) { double x, y; P(c.labels()[r].pos, x, y); fprintf(j, "%s{\"k\":%d,\"n\":\"%s\",\"p\":[%.1f,%.1f]}", r ? "," : "", c.labels()[r].kind, c.labels()[r].name.c_str(), x, y); }
     fprintf(j, "],\"cities\":[");
-    for (size_t r = 0; r < c.cities().size(); ++r) { const auto& q = c.cities()[r]; double x, y; P(q.pos, x, y); fprintf(j, "%s{\"o\":%d,\"cap\":%d,\"n\":\"%s\",\"p\":[%.1f,%.1f]}", r ? "," : "", q.owner == Continent::kNeutral ? -1 : q.owner, q.capital ? 1 : 0, q.name.c_str(), x, y); }
+    for (size_t r = 0; r < c.cities().size(); ++r) { const auto& q = c.cities()[r]; double x, y; P(q.pos, x, y); fprintf(j, "%s{\"o\":%d,\"cap\":%d,\"w\":%d,\"n\":\"%s\",\"p\":[%.1f,%.1f]}", r ? "," : "", q.owner == Continent::kNeutral ? -1 : q.owner, q.capital ? 1 : 0, q.walled ? 1 : 0, q.name.c_str(), x, y); }
     fprintf(j, "],\"sites\":[");
     for (size_t r = 0; r < c.sites().size(); ++r) { const auto& q = c.sites()[r]; double x, y; P(q.pos, x, y); fprintf(j, "%s{\"k\":%d,\"n\":\"%s\",\"p\":[%.1f,%.1f]}", r ? "," : "", (int)q.kind, q.name.c_str(), x, y); }
     fprintf(j, "]}\n"); fclose(j);

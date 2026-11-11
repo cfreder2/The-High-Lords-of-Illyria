@@ -666,7 +666,7 @@ private:
     std::string foeName_ = "Red Hand";
     void setUpFord();
     void setUpSiege();
-    void build(uint64_t seed, const sim::Vec3& centre, int homeSide = -1, float farReachM = 0);
+    void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);

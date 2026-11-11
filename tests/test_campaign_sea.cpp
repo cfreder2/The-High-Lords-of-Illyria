@@ -15,13 +15,14 @@ const Continent& continent() {
     return c;
 }
 
-// The ports furthest north and furthest south.
+// The port furthest to the north-west (the fishing village on the Isle of the Seer, which no road reaches) and the one
+// furthest south.
 std::pair<int32_t, int32_t> farPorts(const Campaign& c) {
     int32_t north = -1, south = -1;
     for (size_t i = 0; i < c.cities().size(); ++i) {
         const Campaign::CityState& s = c.cities()[i];
         if (!s.port) continue;
-        if (north < 0 || s.cy > c.cities()[static_cast<size_t>(north)].cy) north = static_cast<int32_t>(i);
+        if (north < 0 || s.cy - s.cx > c.cities()[static_cast<size_t>(north)].cy - c.cities()[static_cast<size_t>(north)].cx) north = static_cast<int32_t>(i);
         if (south < 0 || s.cy < c.cities()[static_cast<size_t>(south)].cy) south = static_cast<int32_t>(i);
     }
     return {north, south};
@@ -176,7 +177,7 @@ TEST(boats_are_deterministic) {
     };
     const uint64_t a = run();
     CHECK(a == run());
-    constexpr uint64_t kGolden = 0xbf30cafb2cb1674b;  // (was 0x910a1c989629d744 before fliers no longer stand stuck on a wall-walk: a take-off from a deck, or a blocked run, lifts at once; an order's place on the walk is drawn in from the parapet to what a body can stand on; fliers go over curtain walls and after their quarry and land on their goal; was 0xd05c93381dec5eb6 before rocks and boulders stood in the water, on top of the raised gates, the roads and the lakes; was 0xe7b598fa489fd29f before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xd02820a3fdabafa0 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0x1cf280b530b703f8 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x97cca409dfa1645e before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes; 0x2b2dae8e767173ae before the men snapped to the millimetre where a blocked slot moved them, and the glade round ruins; was 0x61b877ad55c6bf95 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x0ab45466173fa4a6 before every gate's fields were hashed always and the keepers met and recalled men; was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
+    constexpr uint64_t kGolden = 0x84973f217900ed65;  // (was 0xbd551b01ce28f587 before master (the realm layout, the land painted as Myth's) was merged with the roads, lakes, water and underwater work; was 0x27a212d6eb73821f before the home-land edge was felt in the fight (a man on land his side holds), a march could be given quicker than a man's pace (the Winged Sandals), and a lord with no hope of winning a town back went in to hold its banner up; was 0xd8427d0a93440509 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x910a1c989629d744 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md); was 0xd05c93381dec5eb6 before rocks and boulders stood in the water, on top of the raised gates, the roads and the lakes; was 0xe7b598fa489fd29f before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xd02820a3fdabafa0 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0x1cf280b530b703f8 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x97cca409dfa1645e before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes; 0x2b2dae8e767173ae before the men snapped to the millimetre where a blocked slot moved them, and the glade round ruins; was 0x61b877ad55c6bf95 before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x0ab45466173fa4a6 before every gate's fields were hashed always and the keepers met and recalled men; was 0x91e12578ff9e4f40 before gates swung and garrisons kept them; was 0xf890e20e88726753 before the same two changes; was 0x82c2a1bb6dc30f79 before every man became a unit of the world at all times)
     if (a != kGolden) std::printf("  boats checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

@@ -476,7 +476,7 @@ TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no
     std::printf("  twenty days: %zu places for at most %zu men at once; %zu places given to another man\n", w.units().size(), peakPresent, reused);
     CHECK(peakPresent > 0 && reused > 0 && shown > 0);  // there were fights, and places were reused
     CHECK(w.units().size() == peakPresent);              // (a place is made only when none is empty)
-    CHECK(w.units().size() < 4000);
+    CHECK(w.units().size() < 6000);  // (the island starts with about 2,000 men: the walled towns' garrisons are one for their walls)
 }
 
 // A group is a list of men, and in the conquest a unit id is a place in the world that men come to and leave as fights begin

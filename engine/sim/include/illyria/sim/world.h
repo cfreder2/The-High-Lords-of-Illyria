@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <map>
@@ -545,9 +546,9 @@ struct WorldConfig {
     std::shared_ptr<const Region> region;
     // Remains are kept in a ring; the oldest are recycled beyond this.
     uint32_t maxRemains = 40000;
-    // The side whose land the battle is fought on (the home-land edge,
-    // edges.h), or -1 for nobody's.
-    int32_t homeSide = -1;
+    // The kind of land each side is at home on (Land bits, edges.h; 0: none): its men strike harder there
+    // (kEdgeRealmPct) and walk quicker over it (kRealmPacePct). By PlayerId; sides beyond the array have none.
+    std::array<uint8_t, 8> sideLand = {};
 };
 
 class World {
@@ -651,7 +652,17 @@ public:
     // Very low when nothing rises into the way.
     Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
     const Region* region() const { return config_.region.get(); }
-    int32_t homeSide() const { return config_.homeSide; }
+    // Whose land each part of the field is (the campaign's territory, which changes as the war goes; a set battle
+    // or a match is fought on nobody's): a side for each square of `cell` metres, `nx` to a row from `origin` (a place of the
+    // world), 255 for nobody's. A soldier standing on his own side's land has the home-land edge (edges.h). Not part
+    // of the world's own state: whoever sets it sets it again when the land changes hands, and after a load.
+    void setLandHolders(std::vector<uint8_t> holders, int32_t nx, Fixed cell, const Vec3& origin);
+    // The side that holds the land at a place, or -1.
+    int32_t landHolderAt(Fixed x, Fixed y) const;
+    // The Land bits (edges.h) the side is at home on, and whether a man of it stands on such land now.
+    uint8_t sideLand(PlayerId side) const { return side < config_.sideLand.size() ? config_.sideLand[side] : 0; }
+    bool onOwnLand(const Unit& u) const;
+    bool onOwnLand(const Unit& u, Ground under) const;  // (the ground under him already known)
     // The small edges a soldier fights with (world_edges.cpp, edges.h): his
     // side's land, ground his kind knows, his rank, a hero beside him, and
     // (against a foe dz above him over dist) the high ground.
@@ -1214,6 +1225,10 @@ private:
     bool isWater(Fixed x, Fixed y) const;
 
     WorldConfig config_;
+    std::vector<uint8_t> landHolders_;
+    int32_t landNx_ = 0;
+    Fixed landCell_ = Fixed::one();
+    Vec3 landOrigin_;
     std::unique_ptr<NavGrid> nav_;
     Rng rng_;
     uint32_t tick_ = 0;

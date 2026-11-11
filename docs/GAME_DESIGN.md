@@ -96,7 +96,7 @@ Like the attachments on a rifle: each a few percent, they add up, and none decid
 
 ### 3.5 Taking a Town in 3D: the Capture Point (built)
 
-`game/src/battle_capture.cpp` (`CapturePoint`, hooked into `Battle::step` and `Battle::outcome`): in a siege (the **Siege** scenario and every campaign battle for a town) a flagpole stands in the town's courtyard. Every tick it counts the men of each side standing within **14 m** of it (alive, on their feet, not routed). If the attackers have more there, their flag climbs by **2 + one point for each man they are ahead by (at most 8)** of **1000**: one man more takes 33 s, eight more 10 s. If the defenders have more it comes down as fast; even numbers hold it where it is; an empty courtyard lets it sink a point a tick. When the attackers' flag reaches the top **the town is taken and the battle ends** (a victory, whoever is still standing elsewhere): a siege is won by taking the heart of the town, not by killing every last man.
+`game/src/battle_capture.cpp` (`CapturePoint`, hooked into `Battle::step` and `Battle::outcome`): in a siege (the **Siege** scenario and every campaign battle for a town) a flagpole stands in the town's courtyard. Every tick it counts the men of each side standing within **14 m** of it (alive, on their feet, not routed). If the attackers have more there, their flag climbs by **2 + one point for each man they are ahead by (at most 8)** of **1000**: one man more takes 11 s, eight more 3.3 s (30 ticks a second). If the defenders have more it comes down as fast; even numbers hold it where it is; an empty courtyard lets it sink a point a tick. When the attackers' flag reaches the top **the town is taken and the battle ends** (a victory, whoever is still standing elsewhere): a siege is won by taking the heart of the town, not by killing every last man.
 - On screen: the pole in the courtyard, with **one flag at a time**: the defenders' red flag comes down to the foot as the attackers' progress passes half, then the attackers' blue one goes up (every pole works so: the campaign's banners over towns, Horde's hill, capture the flag's flags; `game/src/flag_poles.cpp` shows a change of holder as the old flag lowered, then the new one raised, a second and a half each, on the frame's clock and never touching the simulation; while a banner is going up over a town the keep's own small banner stands aside); a bar at the top of the battle ("Take the courtyard: your flag 45% · 12 of yours there, 3 of theirs (rising)").
 - Back on the campaign map a town taken at its capture point is the player's at once (the banner rose in the battle: `Campaign::applyBattle(outcomes, won, bannerRaised)`); the defenders still standing fall back to an open cell next to the town, or, for a neutral garrison (or with nowhere to go), lay down their arms. A town won by killing or routing every defender is held and its banner raised on the map, as after the dice (§4.2.8).
 - Tests (`tests/test_capture.cpp`): six against two in the courtyard take it in 16.7 s exactly; even numbers hold it, more defenders pull it down; the Siege battle has its point in the courtyard, held by its defenders at the start; the Ford battle has none.
@@ -278,7 +278,28 @@ Exact numbers (hit points, speeds, damage, attack rates, ranges, flight) are loc
 ### 4.2.2 Cities & Castles
 
 Following Warlords: **80 cities**, and whoever holds two thirds of them (or all of them) wins.
-- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers. The other 72 cities start neutral, held by their own garrisons.
+- **Three kinds of place** (`Continent::City::walled`, `Continent::placeCities`, docs/MAP.md): eight **capitals**, about twenty **walled towns** set first at the river crossings and the feet of the passes, and some fifty open **villages** (houses round a green and a tower house, no wall). All count alike toward victory, and every realm has the same share: three walled towns and six villages drafted from its own country (docs/MAP.md). The country between the walls is open: walled places keep 170 m between their walls, and a village stands out of bowshot of every wall, so armies meet in the field and a siege is a decision, not the only kind of fight there is.
+
+  | | Capital | Walled town | Village |
+  |---|---|---|---|
+  | Gold a day | 50 | 21 to 30 | 8 to 12 |
+  | Trains | light infantry and the realm's kinds, at twice a town's pace | light infantry and one or two kinds the land raises | light infantry |
+  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy: light infantry, or as often pikemen (no wall keeps horsemen out of a village) |
+  | Taken by | men inside the outer wall | men inside the wall | men on its pad |
+
+- **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers, its lord with a company of light infantry and the realm's rare troops, and a **guard of the capital** (archers and heavy infantry, of his own stack: he leaves them by marching the rest) so that the lord can march and not leave his seat empty. The other 72 places start neutral, held by their own garrisons.
+- **In the town means inside it** (`Campaign::armiesInTown`): a banner counts the men within the outer wall itself (a village: on its pad and the ten metres about it). It used to count everyone within 60 m of the courtyard, which for a town took in the ground before the gate and outside the walls (55% of the circle) and left out the far wall of a capital.
+- **Each realm has its own country** (`edges.h` `realmLand`, `World::onOwnLand`, `Campaign::landAt`), as Warlords' empires do: on that kind of land its men strike 8% harder (one of the small edges, §3.4, which now add up to at most 20%) and march 15% quicker, in the battle and on the campaign map alike, and the computer lords' estimate counts it. The land is what is under a man's feet: level plains and roads are the open country, woods the woods, steep ground (about 1 in 7 and more) and bare rock the hills, swamp and mud the fens, sand, shallows, fords and bridges the water's edge.
+
+  | Realm | Its country |
+  |---|---|
+  | The Aurelian Throne, the Sunreach Riders | the open country |
+  | The Highcrag Giants, the Ironhold Dwarves | the hills |
+  | The Orcs of Grath | the fens and the hills |
+  | The Sylvaran Elves | the woods |
+  | The Moonward Order | the water's edge and the woods |
+  | Lord Malvoren | the fens and the dark woods |
+
 - **What a city gives:** it produces armies (a few unit types per city, each with a build time) and pays gold to its owner every turn. Owners can raze it, which turns it into a ruin forever (§5.5).
 - **Siege:** a city is defended by whatever men stand in it, and attacked by as many as march on it (no caps on either, §4.2.4). The walls, towers and gates are real obstacles, on the campaign map itself. Fliers clear walls, soldiers hack at gates, grenadiers' satchels (laid at a gate, set off with fire) and catapult stones breach them.
 - **Siege engines in the campaign:** catapults are trained at the capitals of the Aurelian Throne, the Ironhold Dwarves and Lord Malvoren (6 days, 40 gold, 2 engines to an army; the one kind of special army a city still builds, §4.2.4; wheels want roads: 6 movement points a day, slow in woods and hills, no marshes). They are weak in the field (strength 3), but at a town's walls their stones break the real gate and the real walls' defenders (World's own rules); the computer lords' estimate still counts each catapult as a point off the walls' bonus. In a siege the attackers' catapults fight where they stand, (the Siege scenario gives the besiegers two); the enemy's battle AI never marches its engines at the foe, but turns them on the player's gate when it besieges a town of the player's.
@@ -426,7 +447,7 @@ From the Warlords (1990) manual, rule by rule. "Ours" says where we differ and w
 | Computer players (§4.1) | Knight to Warlord, no secret bonuses; Knights waste money and forget | Easy and Hard, §4.2.6 |
 | Strengths and speeds (App. city table) | Per city, e.g. heavy infantry 5, pegasi 4-5 | Per type (docs/UNITS.md), heavy infantry 4, pegasi 6: kept to match the 3D battle's units |
 | Hatreds (§4.3.4) | Computer players' attitudes to each side | Not built; the AI gangs up on the leader instead |
-| RAZE (§4.3.2) | Destroy a city for good | Not built (the state has `razed`) |
+| RAZE (§4.3.2) | Destroy a city for good | Not built |
 | Capital lost (§4.3.2) | A new capital is chosen | Not built: no rule depends on the capital after the start |
 
 ### 4.2.8 Raising a Banner (built)

@@ -16,7 +16,7 @@ Battle::Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim
     : scenario_(Scenario::Mode) {
     continent_ = continent ? std::move(continent) : std::make_shared<const sim::Continent>(kRegionSeed);
     foeName_.clear();
-    build(seed, centre, -1, farReachM);
+    build(seed, centre, farReachM);
     finish();
 }
 

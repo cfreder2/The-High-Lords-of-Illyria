@@ -59,7 +59,6 @@
   #mdEnd h2 { margin: 0 0 6px; color: #d6b46e; font-size: 28px; font-weight: 600; letter-spacing: .06em; }
   #mdEnd p { margin: 4px 0; color: #c9bc9f; }
   body.mode-on #overlay { display: none !important; }
-  body.mode-on #scenario, body.mode-on #campaign { display: none; }
   body.mode-setup #bottom, body.mode-setup #mdHud { display: none; }
   `;
   const style = document.createElement("style");

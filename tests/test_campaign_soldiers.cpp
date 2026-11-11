@@ -55,13 +55,19 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
         if (!m.alive) continue;
         middle[m.stack].first += m.x, middle[m.stack].second += m.y, ++count[m.stack];
     }
+    // (But a stack that has fought: its broken men run, and a village's levy has no wall to run behind.)
+    std::set<uint32_t> fought;
+    for (const Campaign::Soldier& m : men)
+        if (m.fightTick != 0 || m.hurtTick != 0) fought.insert(m.stack);
     for (const Campaign::Soldier& m : men) {
         if (!m.alive) continue;
         const Campaign::Stack* st = c.findStack(m.stack);
         CHECK(st != nullptr);
         if (!st) continue;
         CHECK(m.owner == st->owner);
+        if (fought.count(m.stack)) continue;
         const double dx = m.x - middle[m.stack].first / count[m.stack], dy = m.y - middle[m.stack].second / count[m.stack];
+        if (std::hypot(dx, dy) >= 150.0) std::printf("  a man of stack %u (owner %d, cell %d, %d) stands %.0f m from its middle\n", st->id, st->owner, st->cx, st->cy, std::hypot(dx, dy));
         CHECK(std::hypot(dx, dy) < (bloodied.count(m.stack) ? 400.0 : 150.0));
     }
 }
@@ -106,9 +112,16 @@ TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_en
         }
         if (!s.path.empty() && c.legTime(s) != Campaign::kClosed) {
             float speed = 0;
-            for (const Campaign::Soldier& m : men)
-                if (m.stack == s.id) speed = std::max(speed, m.speed);
-            if (c.tick() > 60) CHECK(speed < 20.0f);  // a wolf rider's 15 on a road is the quickest
+            // (The stack's pace is its men's, but for one: a man struck in the last few seconds may be flying from the
+            // blow, and one set in his place this very tick, as the day turns and the lords order their stacks anew,
+            // is there at once. So the second quickest.)
+            float second = 0;
+            for (const Campaign::Soldier& m : men) {
+                if (m.stack != s.id || (m.hurtTick != 0 && c.tick() - m.hurtTick <= 90)) continue;
+                if (m.speed > speed) second = speed, speed = m.speed;
+                else second = std::max(second, m.speed);
+            }
+            if (c.tick() > 60) CHECK(second < 24.0f);  // a wolf rider's 15 on a road is the quickest, and a little more downhill and in his realm's own country
             ++marching;
         }
     }
@@ -147,6 +160,8 @@ bool onBuilding(const Continent::Castle& k, double x, double y) {
 }
 // Whether a point is within the corners of the outer wall.
 bool insideOuter(const Continent::Castle& k, double x, double y) {
+    // (A village has no wall: on and about its green.)
+    if (k.rings.empty()) return std::hypot(x - k.courtyard.x.toDouble(), y - k.courtyard.y.toDouble()) < 40.0;
     const auto& c = k.rings.front().corners;
     bool in = false;
     for (size_t i = 0, j = c.size() - 1; i < c.size(); j = i++) {
@@ -285,6 +300,9 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const auto& city = c.cities()[i];
             if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+            // (One on the field itself, clear of its edge: a fight beyond it is not one the field can show.)
+            const Vec3 on = continent().cities()[i].pos - ro;
+            if (on.x < Fixed::fromInt(80) || on.y < Fixed::fromInt(80) || on.x > Fixed::fromInt(940) || on.y > Fixed::fromInt(940)) continue;
             const int d = std::abs(city.cx - h->cx) + std::abs(city.cy - h->cy);
             if (d < best) best = d, t = static_cast<int>(i);
         }

@@ -21,7 +21,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Open or shut a gate of yours | tap it (men selected or not), or **Open gate** / **Close gate** on its card | click it (a gate cursor), or [[O]] |
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
 | Strike at a wall, a house or a tree | **⚔ Attack**, then tap it | [[Z]] then click, or [[Ctrl]] + click |
-| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
+| Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] (or [[M]]) then click |
 | Queue an order (after the one in hand) | **Plan** (below) | [[Shift]] + right-click (or right-hold and drag, for a facing) |
 | Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[`]] to start, [[`]] to send, [[Backspace]] to drop them |
 | Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
@@ -29,9 +29,9 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |
-| Raid (hyena-folk) | **Raid** | [[T]] |
+| Raid (hyena-folk) | **Raid** | [[T]] (or [[L]]) |
 | Lay satchels (grenadiers) | | [[T]], then click where |
-| Cancel a mode | tap the mode's button again | [[Esc]] |
+| Cancel a mode | tap the mode's button again | [[Esc]] (with no mode in hand: in the browser it lets the selection go; in the desktop app it pauses and opens the menu) |
 | Pause | **Pause** | [[P]] (the desktop app: [[Esc]] pauses and opens the menu) |
 
 The **⚔ Attack** button sits in the action row. One tap lights it red, and a line above it says what the next tap does: *Attack: tap a soldier (ours too), a gate, a wall, house or tree, or the ground*. Held, it turns gold for a force march. Either lasts one order. On a desktop the left button only selects: click one of your men to pick him (again, for all his kind in view), drag a box, shift-click to add or drop one, click the ground to let everyone go. The right button gives the orders (a click, or held and dragged for a facing line), the right button dragged turns the view, and the middle button dragged pans it. The cursor shows what a right click would do: a hand over your own men, a sword over an enemy (or over a friend with Ctrl), a target over a gate, wall, house or tree in attack mode, a crosshair over the ground in attack mode, a double chevron for a force march, and "not allowed" when nobody selected can strike what is under it.
@@ -85,7 +85,7 @@ Press [[`]] (the backtick; on a phone, the **Plan** button) and the game says **
 
 - A plain order held for a man replaces the orders held for him before it, as it would on arrival.
 - [[Space]] (Hold) is never held: it halts at once, and drops whatever was held for those men.
-- [[Esc]] still opens the menu.
+- [[Esc]] does what it always does (above); it neither sends nor drops what is held.
 - Held orders are forgotten if the battle or its world changes, and a man dead before the send is skipped.
 - Nothing is sent, and nobody else can see anything, until the send: planning is on your own screen only. In the campaign a march beyond the men's reach (a stack's) is held too, and drawn as one violet line from its squad.
 
@@ -142,6 +142,7 @@ The hyena-folk are soldiers like any others until you let them loose. Sent somew
 - **Find** brings the camera to the selection.
 - **Tab** selects the next group of units, [[Shift]] + [[Tab]] the previous: first your saved groups in number order (1 to 9, then 0), then the squads that are in no saved group, in a fixed order. It wraps round at both ends, and the camera goes to them if they are off the screen.
 - **Scatter** (below) sends everyone selected running outward.
+- **Gates.** A gate of yours left to itself opens to your men and shuts behind them. Tap it (or [[O]]) and it is **held open**, or if it stands open, **held shut**, whoever comes; **Let go** on its card (shown only while it is held; [[Shift]] + [[O]]) gives it back to its habit. [[O]] swings the gate whose card is showing, else the gate of yours nearest the selection (with nobody selected, nearest the middle of your men). A broken gate is nobody's. More in chapter [](#gates).
 - **Charge** (at the top of the screen) sends every one of your squads at the nearest enemy, the archers stopping at a long bowshot.
 
 ## Formations {#formations}
@@ -177,6 +178,6 @@ The **Formation** button opens a picker of seven formations, each sketched as it
 | 7 | **V** | the point at the back, the arms reaching forward at 45 degrees | 90% | drawing a charge onto the point and closing on its flanks; a wide front from few men |
 | 0 | **Scatter** | not a formation: everyone runs flat out 7-10 m directly away from the group's centre | full speed | the moment a bomb, stone or fireball is in the air |
 
-The gap between men is set by the biggest soldier selected (2.6 times his girth, at least 1.8 m); Loose opens it wider, so it is also the safe one against blasts. A squad marches at its slowest member's pace times the formation's pace: the box a little slower than the lines, and they than the loose. The computer forms its squads the same way: archers, grenadiers, wizards and healers loose, foot in a double line, horse in a wedge.
+The gap between men is set by the biggest soldier selected (2.6 times his girth, at least 1.8 m); Loose opens it wider, so it is also the safe one against blasts. A squad marches at its slowest member's pace times the formation's pace: the box a little slower than the lines, and they than the loose. The computer forms its squads the same way: archers, grenadiers, wizards and healers loose, foot in a double line, horse in a wedge. Catapults default to a line, a hero to a box.
 
 ![The formation picker: a sketch of each, drawn from the game's own slots.](images/shots/battle_picker.jpg)

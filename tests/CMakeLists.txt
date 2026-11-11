@@ -68,6 +68,7 @@ add_executable(illyria_tests
     test_death.cpp
     test_capture.cpp
     test_territory.cpp
+    test_realm_land.cpp
     test_sprite_layout.cpp
     test_sprite_clips.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp

@@ -120,7 +120,8 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
             if ((x != cx || y != cy) && c.hexAt(x, y) == hex && c.terrainAt(x, y) != Lay::Water) ox = x, oy = y;
     CHECK(ox >= 0);
     if (ox < 0) return;
-    const uint32_t theirs = c.raise(3, ox, oy, {UnitType::LightInfantry, UnitType::LightInfantry, UnitType::LightInfantry});
+    // (One company against three: the fight has a winner, whose claim this test is about.)
+    const uint32_t theirs = c.raise(3, ox, oy, {UnitType::LightInfantry});
     const auto standing = [&](uint32_t id) {
         const Campaign::Stack* s = c.findStack(id);
         return s != nullptr && !s->armies.empty() && c.hexAt(s->cx, s->cy) == hex;
@@ -279,8 +280,9 @@ TEST(the_edges_give_a_clear_but_not_decisive_lead_in_3d) {
         const PlayerId edged = static_cast<PlayerId>(run % 2);
         WorldConfig cfg;
         cfg.seed = run / 2 + 1;
-        cfg.homeSide = edged;
         World w(cfg);
+        // (The whole field the edged side's land.)
+        w.setLandHolders(std::vector<uint8_t>(1, edged), 1, Fixed::fromInt(1000000), {-Fixed::fromInt(500000), -Fixed::fromInt(500000), Fixed::zero()});
         Rng jitter(run / 2 + 1, 99);
         std::vector<EntityId> a, b;
         const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};

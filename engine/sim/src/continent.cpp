@@ -1,6 +1,7 @@
 #include "illyria/sim/continent.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 #include "continent_shapes.h"
@@ -88,7 +89,23 @@ constexpr Fixed kCapitalRadius = Fixed::fromInt(85), kTownRadius = Fixed::fromIn
 constexpr Fixed peakM(int64_t v) { return Continent::peakHeight(v); }
 // Metres between two towns' walls (their radii): beyond kMaxWallGap the placer
 // prefers the better site to the wider gap; it never goes below kMinWallGap.
-constexpr int64_t kMaxWallGap = 180, kMinWallGap = 30;
+constexpr int64_t kMaxWallGap = 420;
+// A village: houses round a green and a tower house, on a pad a third the size of a town's, with no wall.
+constexpr Fixed kVillageRadius = Fixed::fromInt(30);
+// Of the 80 places, eight are capitals, some are walled towns and the rest are villages. Walled places
+// keep kWalledGap of open country between their walls (three bowshots: two hosts can form up between two towns out of
+// reach of both), villages kVillageFromWalls from any wall (beyond a bow's 70 m from the walk) and kVillageGap from
+// each other.
+// Each of the eight realms has, in its own country (nearer its lord's seat on foot than any other's), kProvinceTowns
+// walled towns, those that hold the crossings and passes among them, and kProvinceVillages villages: with the seats,
+// the eighty.
+constexpr size_t kProvinceTowns = 3, kProvinceVillages = 6;
+static_assert(8 * (1 + kProvinceTowns + kProvinceVillages) == 80);
+constexpr int64_t kWalledGap = 170, kVillageFromWalls = 85, kVillageGap = 60, kMaxVillageGap = 200;
+// A town set to hold a crossing or a pass stands within kNarrowsReach of it, and no nearer than kNarrowsBack from its walls.
+constexpr int64_t kNarrowsReach = 260, kPassReach = 420, kNarrowsBack = 25;
+// No walled town on the Isle of the Seer (within this of its middle).
+constexpr Fixed kIsleClear = Fixed::fromInt(260);
 // No town this near Oakhaven Ford: the set battle there is fought on open
 // ground (Battle::setUpFord: the two armies 230 m apart either side of it).
 constexpr Fixed kFordClear = Fixed::fromInt(350);
@@ -505,6 +522,33 @@ void Continent::planCastles() {
         }
         const Vec3 side{-toward.y, toward.x, Fixed::zero()};
         const Fixed R = city.radius * 4 / 5;
+        if (!city.walled) {
+            // A village: a tower house at the back of a green, the lane from the road running up to the green, and
+            // the houses in a loose ring about it. No ring, tower, gate or ramp: it is taken on its green.
+            const auto world = [&](const Vec3& l) { return Vec3{c.x + side.x * l.x + toward.x * l.y, c.y + side.y * l.x + toward.y * l.y, c.z}; };
+            k.shape = 0;
+            k.keepAxis = toward;
+            k.keepHalf = m(3) + roll(4);
+            k.keepHeight = m(9) + roll(5) * 4;
+            k.keep = world({(roll(6) - r(1, 2)) * R * r(1, 2), -R * r(11, 20), Fixed::zero()});
+            k.courtyard = c;
+            k.courtyardRadius = R * r(2, 5);
+            const int n = 7 + static_cast<int>((roll(2) * 4).floorToInt());
+            for (int i = 0; i < n; ++i) {
+                const Fixed a = Fixed::fromRatio(i, n) * 6283 / 1000 + roll(100 + i) * r(1, 2);
+                const Fixed rr = R * (r(13, 20) + roll(200 + i) * r(3, 10));
+                const Vec3 l{cos(a) * rr, sin(a) * rr, Fixed::zero()};
+                if (abs(l.x) < m(5) && l.y > Fixed::zero()) continue;  // the lane in
+                const Vec3 p = world(l);
+                if ((p - k.keep).flat().length() < k.keepHalf * 3 / 2 + m(6)) continue;
+                const bool turned = roll(3000 + i) < r(1, 2);
+                const Fixed hx = m(2) + roll(4000 + i) * 2, hy = Fixed::fromRatio(17, 10) + roll(5000 + i) * Fixed::fromRatio(13, 10);
+                bool clear = true;
+                for (const Castle::House& o : k.houses) clear = clear && (o.pos - p).flat().length() > m(8);
+                if (clear) k.houses.push_back({p, turned ? hy : hx, turned ? hx : hy, m(3) + roll(6000 + i) * 2});
+            }
+            continue;
+        }
         k.shape = city.capital ? 2 : static_cast<uint8_t>((roll(1) * 4).floorToInt());
         // Corners in the frame (side, toward), then into the world.
         std::vector<Vec3> local;
@@ -1569,7 +1613,7 @@ void Continent::placeCities() {
     };
     // Capitals: one castle in each faction's homeland, on the flattest spot nearby.
     const Vec3 homes[kFactionCount] = {N(470, 545), N(260, 860), N(250, 150), N(810, 770),
-                                       N(700, 830), N(200, 360), N(700, 470), N(800, 160)};
+                                       N(460, 290), N(140, 560), N(700, 470), N(740, 215)};
     std::vector<City> cities;
     for (int f = 0; f < kFactionCount; ++f) {
         Fixed bestScore = m(1000000);
@@ -1590,16 +1634,21 @@ void Continent::placeCities() {
         cities.push_back(best);
     }
 
-    // The neutral cities: the best of a jittered grid, preferring roads and
-    // river valleys, never crowding each other or the battlefield at the ford.
+    // The neutral places, in two kinds (docs/MAP.md): a few walled towns, far enough apart that open country lies
+    // between them and set first where the land narrows (the river crossings and the mountain passes), and many open
+    // villages, a third the size, with no wall to shoot from. Both from the best of a jittered grid, preferring
+    // roads and river valleys, never crowding each other or the battlefield at the ford.
     struct Candidate {
         Vec3 pos;
         Fixed score;
         int64_t order;
+        bool town;  // room for a walled town (else a village only)
     };
     std::vector<Candidate> candidates;
     const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
     const Vec3 ford = crossings_.front().pos;
+    // The Isle of the Seer is too small for walls (a town and its bowshot covered all of it): a fishing village at most.
+    const Vec3 seersIsle = N(70, 935);
     int64_t order = 0;
     const int64_t grid = scaledI(100);
     for (int64_t j = 0; j * grid < kHeight; ++j) {
@@ -1607,52 +1656,211 @@ void Continent::placeCities() {
             const Fixed x = m(i * grid + grid / 2) + (noise::lattice(sj, i, j) - r(1, 2)) * scaledI(60);
             const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(60);
             if ((Vec3{x, y, Fixed::zero()} - ford).flat().lengthSq() < kFordClear * kFordClear) continue;
-            if (onSetPiece({x, y, Fixed::zero()}, kTownRadius + m(20))) continue;
+            if (onSetPiece({x, y, Fixed::zero()}, kVillageRadius + m(20))) continue;
             Sample c;
             Fixed slope;
-            // Up into the foothills and on slopes to 1 in 5 (the pad levels
-            // it): the land is crowded since the map shrank to a third.
-            if (!buildable(x, y, kTownRadius, peakM(80), c, slope)) continue;
+            // Up into the foothills and on slopes to 1 in 5 (the pad levels it).
+            if (!buildable(x, y, kVillageRadius, peakM(80), c, slope)) continue;
             if (slope > r(1, 5)) continue;
             Fixed score = noise::lattice(sj ^ 0x5C0, i, j) - slope * 3;
             if (c.roadDist < scaled(250)) score += r(3, 5);
             if (c.riverDist < scaled(600)) score += r(2, 5);
             // (Never astride a road: its walls would run across it, and a road has one gate to lead to.)
-            if (!offRoads(x, y, kTownRadius)) continue;
-            candidates.push_back({{x, y, c.height}, score, order});
+            if (!offRoads(x, y, kVillageRadius)) continue;
+            Sample ct;
+            Fixed slopeT;
+            const bool town = (Vec3{x, y, Fixed::zero()} - seersIsle).flat().lengthSq() >= kIsleClear * kIsleClear &&
+                              !onSetPiece({x, y, Fixed::zero()}, kTownRadius + m(20)) && buildable(x, y, kTownRadius, peakM(80), ct, slopeT) &&
+                              slopeT <= r(1, 5) && offRoads(x, y, kTownRadius);
+            candidates.push_back({{x, y, c.height}, score, order, town});
         }
     }
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
         return a.score != b.score ? a.score > b.score : a.order < b.order;
     });
-    // Spaced by their walls, not their centres (a capital is wider than a
-    // town), and spread as evenly as the land allows: each in turn goes
-    // where the gap to the nearest walls is widest (the best scored first,
-    // while there is room for kMaxWallGap anywhere), never nearer than
-    // kMinWallGap.
-    constexpr size_t kTotal = 80;
     std::vector<City> chosen = cities;
-    std::vector<Fixed> gapTo(candidates.size(), m(100000));
+    // The gap from a candidate's edge to the nearest walls, and to the nearest place of any kind.
+    std::vector<Fixed> toWalls(candidates.size(), m(100000)), toAny(candidates.size(), m(100000));
     const auto keepClear = [&](const City& o) {
-        for (size_t i = 0; i < candidates.size(); ++i)
-            gapTo[i] = min(gapTo[i], (candidates[i].pos - o.pos).flat().length() - kTownRadius - o.radius);
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            const Fixed d = (candidates[i].pos - o.pos).flat().length() - o.radius;
+            if (o.walled) toWalls[i] = min(toWalls[i], d);
+            toAny[i] = min(toAny[i], d);
+        }
     };
     for (const City& o : chosen) keepClear(o);
-    while (chosen.size() < kTotal) {
+    const auto addTown = [&](size_t i) {
+        chosen.push_back({"", candidates[i].pos, kTownRadius, kNeutral, false});
+        keepClear(chosen.back());
+    };
+    // A walled town at each narrow place: the nearest good site to every crossing of the design (but Oakhaven
+    // Ford, kept open) and every pass, a bowshot or two back from it, so that who holds the town holds the way.
+    std::vector<Vec3> narrows;
+    for (size_t i = 1; i < crossings_.size(); ++i)
+        if (!crossings_[i].name.empty()) narrows.push_back(crossings_[i].pos);
+    const size_t firstPass = narrows.size();
+    for (const Vec3& p : passes_) narrows.push_back(p);
+    // How far each site is from each lord's seat on foot, as the campaign reckons it (Campaign::initTerrain): over its
+    // cells, never through the sea, a lake or the high rock, and over a river only at a crossing of the design (the
+    // bridges the towns' own roads will need are not built yet). A site no lord can walk to is reckoned as the crow
+    // flies and half as far again. A site is in a lord's country when he is the nearest to it, or nearly so (within
+    // kSharedPct percent and a field's breadth of the nearest): the marches between two realms belong to both.
+    constexpr int64_t cell = Campaign::kCell;
+    const int32_t gx = static_cast<int32_t>(kWidth / cell), gy = static_cast<int32_t>(kHeight / cell);
+    std::vector<std::vector<int32_t>> steps(kFactionCount, std::vector<int32_t>(static_cast<size_t>(gx) * gy, -1));
+    {
+        std::vector<uint8_t> open(static_cast<size_t>(gx) * gy, 0), riverEast(open.size(), 0), riverNorth(open.size(), 0);
+        for (int32_t y = 0; y < gy; ++y)
+            for (int32_t x = 0; x < gx; ++x) {
+                const Fixed px = m(x * cell + cell / 2), py = m(y * cell + cell / 2);
+                const Sample sm = sample(px, py);
+                Fixed surface;
+                const bool mountain = landGround(px, py, sm.height, sm.mountain, sm.roadDist) == Ground::Rock && sm.mountain > peakM(90);
+                open[static_cast<size_t>(y) * gx + x] = !waterSurfaceOf(sm, surface) && !mountain;
+            }
+        const auto atCrossing = [&](Fixed x, Fixed y) {
+            for (const Crossing& cr : crossings_)
+                if (!cr.name.empty() && (Vec3{x, y, Fixed::zero()} - cr.pos).flat().lengthSq() < m(40) * m(40)) return true;
+            return false;
+        };
+        for (int32_t y = 0; y < gy; ++y)
+            for (int32_t x = 0; x < gx; ++x)
+                for (int dir = 0; dir < 2; ++dir) {
+                    const int32_t bx = x + (dir == 0), by = y + (dir == 1);
+                    if (bx >= gx || by >= gy) continue;
+                    bool river = false;
+                    for (int64_t i = 1; i < 10 && !river; ++i) {
+                        const Fixed px = m(x * cell + cell / 2 + (bx - x) * cell * i / 10), py = m(y * cell + cell / 2 + (by - y) * cell * i / 10);
+                        const Sample sm = sample(px, py);
+                        river = sm.riverDist < sm.riverHalfWidth && !sm.atFord && !atCrossing(px, py);
+                    }
+                    (dir == 0 ? riverEast : riverNorth)[static_cast<size_t>(y) * gx + x] = river;
+                }
+        for (int f = 0; f < kFactionCount; ++f) {
+            std::vector<int32_t>& d = steps[static_cast<size_t>(f)];
+            const Vec3& at = cities[static_cast<size_t>(f)].pos;
+            std::vector<int32_t> queue{static_cast<int32_t>(at.y.floorToInt() / cell) * gx + static_cast<int32_t>(at.x.floorToInt() / cell)};
+            d[static_cast<size_t>(queue.front())] = 0;
+            for (size_t head = 0; head < queue.size(); ++head) {
+                const int32_t cx = queue[head] % gx, cy = queue[head] / gx;
+                constexpr int32_t kStep[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+                for (const auto& st : kStep) {
+                    const int32_t x = cx + st[0], y = cy + st[1];
+                    if (x < 0 || y < 0 || x >= gx || y >= gy) continue;
+                    const size_t k = static_cast<size_t>(y) * gx + x;
+                    const bool river = st[0] ? riverEast[static_cast<size_t>(cy) * gx + std::min(cx, x)] : riverNorth[static_cast<size_t>(std::min(cy, y)) * gx + cx];
+                    if (d[k] >= 0 || !open[k] || river) continue;
+                    d[k] = d[static_cast<size_t>(queue[head])] + 1;
+                    queue.push_back(static_cast<int32_t>(k));
+                }
+            }
+        }
+    }
+    constexpr int64_t kSharedPct = 130, kSharedField = 90;
+    // away[i][f]: metres of marching from candidate i to lord f's seat; province[i]: a bit for each lord whose country it is in.
+    std::vector<std::array<int64_t, kFactionCount>> away(candidates.size());
+    std::vector<uint8_t> province(candidates.size(), 0), onIsle(candidates.size(), 0);
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        const int32_t x = std::clamp(static_cast<int32_t>(candidates[i].pos.x.floorToInt() / cell), 0, gx - 1);
+        const int32_t y = std::clamp(static_cast<int32_t>(candidates[i].pos.y.floorToInt() / cell), 0, gy - 1);
+        int64_t nearest = INT64_MAX;
+        for (int f = 0; f < kFactionCount; ++f) {
+            const int32_t st = steps[static_cast<size_t>(f)][static_cast<size_t>(y) * gx + x];
+            away[i][static_cast<size_t>(f)] = st >= 0 ? int64_t{st} * cell : (candidates[i].pos - cities[static_cast<size_t>(f)].pos).flat().length().floorToInt() * 3 / 2;
+            nearest = std::min(nearest, away[i][static_cast<size_t>(f)]);
+        }
+        for (int f = 0; f < kFactionCount; ++f)
+            if (away[i][static_cast<size_t>(f)] <= nearest * kSharedPct / 100 + kSharedField) province[i] = static_cast<uint8_t>(province[i] | (1u << f));
+        onIsle[i] = (candidates[i].pos - seersIsle).flat().lengthSq() < kIsleClear * kIsleClear;
+    }
+    // The lord whose seat is nearest a site on foot.
+    const auto realmAt = [&](size_t i) {
+        int best = 0;
+        for (int f = 1; f < kFactionCount; ++f)
+            if (away[i][static_cast<size_t>(f)] < away[i][static_cast<size_t>(best)]) best = f;
+        return best;
+    };
+    // Every lord's country is laid out alike, as the realms of Warlords are: besides his seat, kProvinceTowns walled
+    // towns and kProvinceVillages villages lie nearer to him on foot than to any other lord, ten places a realm and
+    // eighty in all. The towns come first where the land narrows (below), each counted for the realm it stands in;
+    // then each realm in turn takes one more place, where the gap to its neighbours is widest (the better site first,
+    // while there is room), so that no realm is served before another. A realm with no room left for walls takes a
+    // village in a town's stead.
+    size_t towns[kFactionCount] = {}, villages[kFactionCount] = {};
+    const auto addVillage = [&](size_t i) {
+        City v{"", candidates[i].pos, kVillageRadius, kNeutral, false};
+        v.walled = false;
+        chosen.push_back(v);
+        keepClear(chosen.back());
+    };
+    for (size_t ni = 0; ni < narrows.size(); ++ni) {
+        const Vec3& at = narrows[ni];
         size_t best = candidates.size();
-        Fixed widest = -m(kMaxWallGap);
+        // (A pass lies high in the rock: its town stands at the foot of it, farther off than a ford's.)
+        Fixed nearest = m(ni >= firstPass ? kPassReach : kNarrowsReach);
         for (size_t i = 0; i < candidates.size(); ++i) {
-            if (gapTo[i] < m(kMinWallGap)) continue;
-            const Fixed gap = min(gapTo[i], m(kMaxWallGap));
-            if (gap >= widest && (gap > widest || best == candidates.size())) {
-                widest = gap;
+            if (!candidates[i].town || onIsle[i] || towns[realmAt(i)] >= kProvinceTowns || toWalls[i] - kTownRadius < m(kWalledGap)) continue;
+            const Fixed d = (candidates[i].pos - at).flat().length();
+            if (d < kTownRadius + m(kNarrowsBack) || d >= nearest) continue;
+            nearest = d;
+            best = i;
+        }
+        if (best == candidates.size()) continue;
+        ++towns[realmAt(best)];
+        addTown(best);
+    }
+    // The next place for a realm: in its country, where the gap to its neighbours is widest (the better site first);
+    // and with no room left there, the nearest site to its seat that there is room for anywhere.
+    const auto widest = [&](int realm, bool town) {
+        size_t best = candidates.size(), nearest = candidates.size();
+        Fixed most = -m(100000);
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            if (onIsle[i]) continue;
+            Fixed gap;
+            if (town) {
+                if (!candidates[i].town || toWalls[i] - kTownRadius < m(kWalledGap)) continue;
+                gap = min(toWalls[i] - kTownRadius, m(kMaxWallGap));
+            } else {
+                if (toWalls[i] - kVillageRadius < m(kVillageFromWalls) || toAny[i] - kVillageRadius < m(kVillageGap)) continue;
+                gap = min(toAny[i] - kVillageRadius, m(kMaxVillageGap));
+            }
+            if (nearest == candidates.size() || away[i][static_cast<size_t>(realm)] < away[nearest][static_cast<size_t>(realm)]) nearest = i;
+            if (!(province[i] >> realm & 1)) continue;
+            if (gap >= most && (gap > most || best == candidates.size())) {
+                most = gap;
                 best = i;
             }
         }
-        if (best == candidates.size()) break;
-        chosen.push_back({"", candidates[best].pos, kTownRadius, kNeutral, false});
-        keepClear(chosen.back());
+        return best != candidates.size() ? best : nearest;
+    };
+    for (size_t round = 0; round < kProvinceTowns; ++round)
+        for (int f = 0; f < kFactionCount; ++f) {
+            if (towns[f] >= kProvinceTowns) continue;
+            const size_t best = widest(f, true);
+            if (best == candidates.size()) continue;
+            ++towns[f];
+            addTown(best);
+        }
+    // The Isle of the Seer: one fishing village, the best site it has, counted among the villages of the lord whose
+    // seat is nearest over the water (his one place beyond the sea).
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (!onIsle[i] || toAny[i] - kVillageRadius < m(kVillageGap)) continue;
+        int nearest = 0;
+        for (int f = 1; f < kFactionCount; ++f)
+            if ((candidates[i].pos - cities[static_cast<size_t>(f)].pos).flat().lengthSq() < (candidates[i].pos - cities[static_cast<size_t>(nearest)].pos).flat().lengthSq()) nearest = f;
+        ++villages[nearest];
+        addVillage(i);
+        break;
     }
+    // (A village for each town a realm had no room for, so that every realm has its ten places.)
+    for (size_t round = 0; round < kProvinceTowns + kProvinceVillages; ++round)
+        for (int f = 0; f < kFactionCount; ++f) {
+            if (towns[f] + villages[f] >= kProvinceTowns + kProvinceVillages) continue;
+            const size_t best = widest(f, false);
+            if (best == candidates.size()) continue;
+            ++villages[f];
+            addVillage(best);
+        }
     for (size_t i = kFactionCount; i < chosen.size(); ++i) chosen[i].name = kCityNames[(i - kFactionCount) % kCityNameCount];
     cities_ = std::move(chosen);
 }

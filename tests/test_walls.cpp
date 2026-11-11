@@ -30,6 +30,7 @@ const Continent::City& town() {
         const Continent::City* best = &cs[Continent::kFactionCount];
         int most = -1;
         for (size_t i = Continent::kFactionCount; i < cs.size(); ++i) {
+            if (!cs[i].walled) continue;  // (a village has no walls)
             int open = 0;
             for (int a = 0; a < 24; ++a) {
                 const Fixed angle = kTwoPi * a / 24;

@@ -62,7 +62,7 @@ A stack of fliers alone goes straight over mountains and water at the long-run p
 flight (a take-off run, a flight as long as its endurance, then twice as long resting),
 which nothing below changes: quicker than any foot, slower than horse. A stack with any
 walker in it walks, and a hero walks with his stack. Every site can be reached on foot from
-some town, the Seer's Tower from the two towns on its isle; only boats (6 m/s for now)
+some town, the Seer's Tower from the village on its isle; only boats (6 m/s for now)
 reach those two.
 
 ## The map
@@ -307,7 +307,7 @@ A short note on how it works, and what it costs.
 - **Bounded.** At most `World::kMaxQueuedOrders` (8) wait behind a man's own: every man carries, hashes and saves
   his queue, and a long script is a long line of numbers on the screen. The ninth is dropped.
 - **Hashed only when non-empty**, so no battle without a queue changed its checksum (no golden moved).
-- **Saved.** Campaign saves are `ILC7.`: after each man, the orders waiting behind his own. The order he was walking is
+- **Saved.** Campaign saves are `ILC8.`: after each man, the orders waiting behind his own. The order he was walking is
   a moment and, like arrows in the air, is not kept (`reseatAll` puts every man back standing, in the live game too),
   so the first of his queue is what he does next. An attack on a soldier names a unit of the world, whose ids are made
   anew when the men are put back, so it is not kept. A man aboard a boat keeps his queue on the `Man`.

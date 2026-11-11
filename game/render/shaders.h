@@ -42,7 +42,9 @@ uniform vec4 uShadowInfo;  // texel size (uv), fade start, fade end (metres from
 uniform vec2 uFocus;       // camera target on the ground
 
 const vec3 kSun = normalize(vec3(-0.62, 0.38, 0.52));
-const vec3 kSky = vec3(0.64, 0.74, 0.84);
+// The air of a grim war: a pale, cold haze under a heavy sky, warm only toward the low sun. Everything far off sinks
+// into it (fogFactor), so the land reads in layers: dark near ground, paler ridges behind, the horizon lost.
+const vec3 kSky = vec3(0.60, 0.65, 0.69);
 
 // Which land the ground textures hold. 0: the battlefield, from (0, 0),
 // clamped at its edges. 1: the close-up land around the camera off the
@@ -92,7 +94,10 @@ float hash12(vec2 p) {
 float fogFactor(float d) {
     float range = uCamDist * 5.0 + 700.0;
     float x = d / range;
-    return clamp(1.0 - exp(-x * x * 2.0), 0.0, 1.0);
+    // With the atmosphere on, the haze begins nearer (a part that grows with the distance itself, not only its square),
+    // so ground a few hundred metres off already pales: aerial perspective, which is what gives the land its depth.
+    float near = feature(kFeatAtmosphere) ? x * 0.55 : 0.0;
+    return clamp(1.0 - exp(-(near + x * x * 2.0)), 0.0, 1.0);
 }
 // Degenerate vertex: nothing is rasterised.
 const vec4 kCulled = vec4(2.0, 2.0, 2.0, 1.0);
@@ -124,7 +129,8 @@ float valueNoise2(vec2 p) {
 // far river ribbons all use it, so a river runs into a lake (or a lake into a river) without a change of colour.
 vec3 inlandWater(float depth, vec2 p) {
     vec3 bed = mix(vec3(0.46, 0.40, 0.30), vec3(0.36, 0.34, 0.26), valueNoise2(p * 0.7));
-    vec3 water = mix(vec3(0.16, 0.34, 0.32), vec3(0.05, 0.16, 0.26), smoothstep(0.5, 3.0, depth));
+    // (Peat-dark and green, as the rivers of a moorland are: no swimming-pool blue.)
+    vec3 water = mix(vec3(0.15, 0.28, 0.23), vec3(0.04, 0.11, 0.14), smoothstep(0.5, 3.0, depth));
     return mix(bed, water, 1.0 - exp(-max(depth, 0.0) * 1.6));
 }
 // The energy of the waves on a shore, 0..1, from the surface level of the water (the sea is at 0 and rivers reach it at their
@@ -198,8 +204,10 @@ float cloudShade(vec2 xy) {
 vec3 hazeColor(vec3 world) {
     if (!feature(kFeatAtmosphere)) return kSky;
     vec3 v = normalize(world - uEye);
-    float sun = pow(max(dot(v, kSun), 0.0), 6.0);
-    return mix(kSky * 1.02, vec3(0.92, 0.84, 0.72), sun * 0.35);
+    float sun = pow(max(dot(v, kSun), 0.0), 5.0);
+    // Colder and darker away from the sun, a dusty amber toward it.
+    vec3 away = mix(kSky * 0.94, kSky * 1.03, clamp(v.z * 2.0 + 0.5, 0.0, 1.0));
+    return mix(away, vec3(0.93, 0.80, 0.62), sun * 0.5);
 }
 // The sea seen from afar, one function for every sea the player can see: the far land's, the sea beyond the map and the
 // battlefield's own water where it is open sea (kWaterFs gives way to this as the camera rises), so that no edge of the
@@ -318,6 +326,18 @@ float hexEdge(vec2 p, float s) {
     return 0.5 - max(dot(g, normalize(vec2(1.0, 1.7320508))), g.x);
 }
 float fbm3(vec2 p) { return valueNoise2(p) * 0.55 + valueNoise2(p * 2.1 + 3.7) * 0.3 + valueNoise2(p * 4.3 + 9.1) * 0.15; }
+// The land is shaded as a painter shades a map of it: every slope turned further to or from the low sun than it
+// lies, so a knoll a few metres high throws a lit face and a dark one and the lie of the land reads at a glance,
+// from any height (the true normal still places the shadows and wets the banks).
+vec3 reliefNormal(vec3 n) { return normalize(vec3(n.xy * 2.2, n.z)); }
+// Open country is not lawn: over the meadows lie broad reaches of moor (heather, bracken and dead grass, brown and
+// dun), a few hundred metres across with ragged edges, the same on every kind of land shader.
+vec3 moorland(vec3 meadow, vec2 p) {
+    float reach = smoothstep(0.50, 0.68, valueNoise2(p * 0.0045 + 17.0) * 0.6 + valueNoise2(p * 0.017 + 3.0) * 0.28 + valueNoise2(p * 0.07 + 9.0) * 0.12);
+    vec3 moor = mix(vec3(0.40, 0.34, 0.20), vec3(0.31, 0.29, 0.21), valueNoise2(p * 0.11 + 5.0));
+    moor = mix(moor, vec3(0.36, 0.25, 0.27), smoothstep(0.6, 0.85, valueNoise2(p * 0.05 + 31.0)) * 0.45);  // heather in flower
+    return mix(meadow, moor, reach * 0.62);
+}
 // Territory (sim campaign_territory.cpp): one texel per campaign hex, the
 // holder's colour with alpha for how firmly; drawn on the campaign map only.
 uniform sampler2D uTerritory;
@@ -394,7 +414,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     float slope = 1.0 - n.z;
     // Meadows: lush and dry patches, as on the battlefield.
     float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
-    vec3 meadow = mix(vec3(0.50, 0.50, 0.25), vec3(0.26, 0.42, 0.16), lush) * (0.9 + 0.2 * valueNoise2(p * 0.4));
+    vec3 meadow = moorland(mix(vec3(0.47, 0.45, 0.24), vec3(0.22, 0.35, 0.15), lush), p) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
     albedo = mix(albedo, mix(albedo, meadow, 0.6), land * (1.0 - max(max(forest, rock), swamp)) * step(base.r, 0.55));
     // Each kind's look is worked out only where the kind is (the noise is most of this function's cost, and
@@ -431,7 +451,7 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     // Snow lies on the heights, but not on cliffs.
     if (world.z > 90.0) {
         float snow = smoothstep(100.0, 120.0, world.z + (fbm3(p / 60.0) - 0.5) * 20.0) * smoothstep(0.55, 0.3, slope) * land;
-        albedo = mix(albedo, vec3(0.93, 0.94, 0.97), snow);
+        albedo = mix(albedo, vec3(0.78, 0.81, 0.86), snow);  // (old snow under a heavy sky: not so white that it glares)
     }
     if (swamp > 0.0) albedo = mix(albedo, mix(vec3(0.20, 0.24, 0.15), vec3(0.18, 0.23, 0.24), smoothstep(0.55, 0.7, valueNoise2(p / 30.0))), swamp * land);
     return albedo;
@@ -544,8 +564,17 @@ void main() {
     // Meadows are not one green: lush and dry patches at a few scales (always
     // on; it is what keeps mid zoom from looking like felt).
     float lush = valueNoise(p * 0.045 + 3.1) * 0.65 + valueNoise(p * 0.13 + 8.7) * 0.35;
-    vec3 dry = vec3(0.50, 0.50, 0.25), wet = vec3(0.24, 0.40, 0.15);
-    albedo = mix(albedo, mix(albedo, mix(dry, wet, lush), 0.55), kind.x);
+    vec3 dry = vec3(0.47, 0.45, 0.24), wet = vec3(0.21, 0.34, 0.15);
+    albedo = mix(albedo, mix(albedo, moorland(mix(dry, wet, lush), p), 0.62), kind.x);
+    // The ground wears through where it is steep: earth on the banks of a knoll, stone where it stands like a wall.
+    {
+        float ragged = (fine - 0.5) * 0.035 + (broad - 0.5) * 0.02;
+        float bank = smoothstep(0.045, 0.115, slope + ragged), scar = smoothstep(0.15, 0.27, slope + ragged);
+        vec3 earth = mix(vec3(0.38, 0.30, 0.20), vec3(0.47, 0.40, 0.27), valueNoise(p * 0.9 + 2.0));
+        vec3 stone = mix(vec3(0.36, 0.35, 0.33), vec3(0.50, 0.48, 0.44), valueNoise(p * 0.6 + 11.0)) * (0.9 + 0.2 * valueNoise(p * 3.1));
+        albedo = mix(albedo, earth, bank * 0.7 * (kind.x + kind.y * 0.6));
+        albedo = mix(albedo, stone, scar * 0.85 * (kind.x + kind.y));
+    }
 
     if (feature(kFeatGroundDetail)) {
         float near = 1.0 - smoothstep(60.0, 220.0, dist);
@@ -663,7 +692,7 @@ void main() {
         }
     }
     // Snow on the high peaks.
-    albedo = mix(albedo, vec3(0.93, 0.94, 0.96), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
+    albedo = mix(albedo, vec3(0.78, 0.81, 0.86), smoothstep(103.0, 117.0, vWorld.z + fine * 6.0) * smoothstep(0.55, 0.3, slope));
     // From high up, the coarse land's look, so the battlefield and the land
     // around it read as one (the coarse land beyond knows nothing finer).
     float farBlend = feature(kFeatFarDetail) ? smoothstep(450.0, 1100.0, uCamDist) : 0.0;
@@ -718,10 +747,18 @@ void main() {
         }
     }
 
-    // Low sun so the hills read clearly from above; groves shade the ground.
-    float sun = max(dot(n, kSun), 0.0) * shadowAt(vWorld, n) * cloudShade(p);
+    // Low sun so the hills read clearly from above (reliefNormal); groves shade the ground.
+    float sun = min(max(dot(reliefNormal(n), kSun), 0.0), 0.66) * shadowAt(vWorld, n) * cloudShade(p);
     float grove = canopy * (1.0 - farBlend);  // from high up the coarse land's canopy carries the woods
     float ambient = 0.30 * (1.0 - grove * 0.45);
+    if (feature(kFeatGroundDetail)) {
+        // Hollows lie in their own shade and crests catch the sky: the ground a few metres round is higher, or lower.
+        const float r = 9.0;
+        float round = (groundZ(p + vec2(r, 0.0)) + groundZ(p - vec2(r, 0.0)) + groundZ(p + vec2(0.0, r)) + groundZ(p - vec2(0.0, r))) * 0.25;
+        float hollow = clamp((round - groundZ(p)) / 1.6, -1.0, 1.0);
+        ambient *= 1.0 - 0.42 * max(hollow, 0.0) + 0.22 * max(-hollow, 0.0);
+        sun *= 1.0 - 0.18 * max(hollow, 0.0);
+    }
     if (!feature(kFeatShadows)) sun *= 1.0 - grove * 0.55;  // no shadow map: fake the groves' shade
     vec3 color = albedo * (ambient + 0.95 * sun);
     if (puddle > 0.0) {  // standing water: the sky in it, and the sun's glint
@@ -2043,6 +2080,13 @@ void main() {
         albedo *= 0.9 + 0.14 * valueNoise2(top ? uv * 0.45 : vec2(uv.x * 0.8, uv.y * 0.07));
         float lichen = smoothstep(0.62, 0.8, valueNoise2(uv * 0.35 + 7.0)) * (top ? 0.3 : 0.55);
         albedo = mix(albedo, albedo * vec3(0.78, 0.86, 0.62), lichen);
+        if (top) {
+            // Paving that has been walked on for three hundred years: trodden earth in drifts over the flags, darker
+            // where the damp sits, each flag a little its own colour.
+            float drift = smoothstep(0.45, 0.75, valueNoise2(uv * 0.16 + 3.0) * 0.6 + valueNoise2(uv * 0.7 + 9.0) * 0.4);
+            albedo = mix(albedo, vec3(0.37, 0.31, 0.23) * (0.85 + 0.3 * valueNoise2(uv * 2.3)), drift * 0.5);
+            albedo *= 0.86 + 0.2 * valueNoise2(uv * 0.09 + 21.0);
+        }
     }
     oColor = sceneryColor(albedo, n, vWorld);
 }
@@ -2202,16 +2246,96 @@ out vec4 oColor;
 void main() {
     vec3 d = normalize(uCamFwd + uCamRight * vNdc.x * uProj.x * uProj.y + uCamUp * vNdc.y * uProj.x);
     float up = clamp(d.z, 0.0, 1.0);
-    vec3 zenith = vec3(0.30, 0.47, 0.74);
-    vec3 c = mix(kSky, zenith, pow(up, 0.55));
+    // A heavy sky: slate overhead, the haze's own colour at the horizon, a wide dusty glow about the low sun.
+    vec3 zenith = vec3(0.27, 0.33, 0.43);
+    vec3 c = mix(kSky, zenith, pow(up, 0.5));
     float sun = max(dot(d, kSun), 0.0);
-    c += vec3(1.0, 0.86, 0.6) * (pow(sun, 8.0) * 0.25 + pow(sun, 400.0) * 1.5);
-    // Faint high cloud.
-    vec2 q = d.xy / max(d.z, 0.08) * 1.6 + vec2(uTime * 0.003, 0.0);
-    float cl = smoothstep(0.55, 0.85, valueNoise2(q) * 0.6 + valueNoise2(q * 2.7) * 0.4) * smoothstep(0.02, 0.25, d.z);
-    c = mix(c, vec3(0.97, 0.97, 0.98), cl * 0.55);
+    c = mix(c, vec3(0.93, 0.80, 0.62), pow(sun, 5.0) * 0.5 * (1.0 - up * 0.6));
+    c += vec3(1.0, 0.84, 0.58) * (pow(sun, 24.0) * 0.22 + pow(sun, 400.0) * 1.6);
+    // Banks of cloud, lit from under on the sun's side and dark-bellied away from it, drifting.
+    vec2 q = d.xy / max(d.z, 0.08) * 1.3 + vec2(uTime * 0.004, uTime * 0.0015);
+    float n = valueNoise2(q) * 0.55 + valueNoise2(q * 2.3 + 3.1) * 0.3 + valueNoise2(q * 5.7 + 9.2) * 0.15;
+    float cl = smoothstep(0.42, 0.74, n) * smoothstep(0.015, 0.22, d.z);
+    vec3 cloud = mix(vec3(0.44, 0.46, 0.50), vec3(0.96, 0.88, 0.76), pow(sun, 3.0) * 0.8 + smoothstep(0.6, 0.9, n) * 0.25);
+    c = mix(c, cloud, cl * 0.8);
     if (uUw.x > 0.0) c = mix(c, uwWaterColour(uUw.y), uUw.x);  // under water the sky is not seen: the water's colour, the surface drawn over it
     oColor = vec4(c, 1.0);
+}
+)";
+
+// ---------------------------------------------------------------- the film look
+// The finished frame, drawn into a texture (Renderer::beginPost), is put on the screen through these
+// (renderer_post.cpp): its bright parts bloom, and the whole is graded for a grim war: a filmic shoulder and toe,
+// colour pulled back toward earth and steel, cold in the shadows and warm in the lights, the corners darkened, a
+// little grain. Cosmetic like all the rest.
+inline const char* kPostVs = R"(
+out vec2 vUv;
+void main() {
+    vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    vUv = c;
+    gl_Position = vec4(c * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+// One step of the bloom: uPostInfo.xy the source's texel; z the mode (0: the bright parts, shrunk; 1: a blur along
+// uPostDir; 2: shrunk as it is); w the brightness the bloom begins at.
+inline const char* kBloomFs = R"(
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform vec4 uPostInfo;
+uniform vec2 uPostDir;
+out vec4 oColor;
+vec3 bright(vec2 uv) {
+    vec3 c = texture(uScene, uv).rgb;
+    float l = max(c.r, max(c.g, c.b));
+    return c * smoothstep(uPostInfo.w, uPostInfo.w + 0.22, l);
+}
+void main() {
+    vec2 t = uPostInfo.xy;
+    if (uPostInfo.z < 0.5) {
+        oColor = vec4((bright(vUv + t * vec2(-1.0, -1.0)) + bright(vUv + t * vec2(1.0, -1.0)) + bright(vUv + t * vec2(-1.0, 1.0)) +
+                       bright(vUv + t * vec2(1.0, 1.0))) * 0.25, 1.0);
+    } else if (uPostInfo.z < 1.5) {
+        vec2 d = uPostDir * t;
+        vec3 c = texture(uScene, vUv).rgb * 0.227;
+        c += (texture(uScene, vUv + d * 1.385).rgb + texture(uScene, vUv - d * 1.385).rgb) * 0.316;
+        c += (texture(uScene, vUv + d * 3.231).rgb + texture(uScene, vUv - d * 3.231).rgb) * 0.0703;
+        oColor = vec4(c, 1.0);
+    } else {
+        oColor = vec4((texture(uScene, vUv + t * vec2(-1.0, -1.0)).rgb + texture(uScene, vUv + t * vec2(1.0, -1.0)).rgb +
+                       texture(uScene, vUv + t * vec2(-1.0, 1.0)).rgb + texture(uScene, vUv + t * vec2(1.0, 1.0)).rgb) * 0.25, 1.0);
+    }
+}
+)";
+inline const char* kGradeFs = R"(
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform sampler2D uBloomNear;
+uniform sampler2D uBloomWide;
+uniform vec4 uPostInfo;  // bloom strength, vignette, grain, saturation
+out vec4 oColor;
+void main() {
+    vec3 c = texture(uScene, vUv).rgb;
+    vec3 glow = texture(uBloomNear, vUv).rgb * 0.6 + texture(uBloomWide, vUv).rgb * 0.8;
+    c += glow * uPostInfo.x;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    // Colour pulled back: the greens of the grass most of all, toward the ochre of trodden land.
+    float green = clamp((c.g - max(c.r, c.b)) * 4.0, 0.0, 1.0);
+    c = mix(vec3(l), c, uPostInfo.w - green * 0.14);
+    c = mix(c, c * vec3(1.06, 0.98, 0.84), green * 0.5);
+    // Cold in the shadows, warm in the lights.
+    c += vec3(-0.012, 0.004, 0.022) * (1.0 - smoothstep(0.0, 0.45, l));
+    c *= mix(vec3(1.0), vec3(1.05, 1.0, 0.92), smoothstep(0.45, 1.0, l));
+    // A filmic curve: a toe that lets the darks go deep, a shoulder that rolls the lights off instead of clipping.
+    c = clamp(c, 0.0, 1.6);
+    vec3 x = c * 1.06;
+    c = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+    c = mix(c, x, 0.42);
+    // The corners fall away.
+    vec2 v = vUv - 0.5;
+    c *= mix(1.0, smoothstep(0.98, 0.18, dot(v, v) * 1.9), uPostInfo.y);
+    // Grain, finer than a pixel can dither away.
+    c += (hash12(gl_FragCoord.xy + fract(uTime) * 311.7) - 0.5) * uPostInfo.z;
+    oColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
 )";
 
@@ -2401,12 +2525,18 @@ void main() {
     // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);
     vec3 refl = reflect(-v, n);
-    vec3 sky = mix(kSky, vec3(0.30, 0.47, 0.74), clamp(refl.z, 0.0, 1.0));
+    // (The sky of kSkyFs: slate overhead, its cloud banks drifting in the surface as in a dark mirror.)
+    vec3 sky = mix(kSky, vec3(0.27, 0.33, 0.43), clamp(refl.z, 0.0, 1.0));
+    if (feature(kFeatAtmosphere)) {
+        vec2 q = refl.xy / max(refl.z, 0.08) * 1.3 + vec2(uTime * 0.004, uTime * 0.0015);
+        float cn = valueNoise2(q) * 0.55 + valueNoise2(q * 2.3 + 3.1) * 0.3 + valueNoise2(q * 5.7 + 9.2) * 0.15;
+        sky = mix(sky, vec3(0.62, 0.63, 0.65), smoothstep(0.42, 0.74, cn) * 0.55);
+    }
     float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    c = mix(c, sky, clamp(fresnel * 1.3, 0.0, 0.85));
+    c = mix(c * 0.86, sky, clamp(fresnel * 1.5 + 0.06, 0.0, 0.9));
     float lit = shadowAt(vWorld, vec3(0.0, 0.0, 1.0)) * cloudShade(p);
-    c *= 0.75 + 0.25 * lit;
-    c += vec3(1.0, 0.95, 0.85) * pow(max(dot(reflect(-kSun, n), v), 0.0), 120.0) * 1.2 * lit;
+    c *= 0.72 + 0.28 * lit;
+    c += vec3(1.0, 0.93, 0.80) * pow(max(dot(reflect(-kSun, n), v), 0.0), 320.0) * 1.5 * lit;
     // Foam: a thin wet line at the edge, and white water over the riffles.
     float riffle = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(0.1, 0.45, depth)) * step(0.05, speed);
     float edge = 1.0 - smoothstep(0.0, 0.08, depth);
@@ -2499,7 +2629,9 @@ void main() {
         glint = 0.25 * lake;
     }
     // Sky light falls less into steep ground, so ridges and ravines model even out of the sun.
-    float light = 0.18 + 0.14 * n.z + 0.95 * max(dot(n, kSun), 0.0) * cloudShade(vWorld.xy);
+    // (A face turned full to the sun is lit no more than the level ground was before the relief was drawn up: pale
+    // rock would burn out.)
+    float light = 0.18 + 0.14 * n.z + 0.95 * min(max(dot(wetHere ? n : reliefNormal(n), kSun), 0.0), 0.66) * cloudShade(vWorld.xy);
     vec3 c = inland.r >= 0.0 ? inland : albedo * light;
     if (glint > 0.0) {
         vec3 h = normalize(kSun + normalize(uEye - vWorld));

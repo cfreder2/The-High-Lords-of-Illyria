@@ -350,7 +350,9 @@ bool Renderer::buildPrograms() {
                  {dot_, shaders::kDotVs, shaders::kDotFs},
                  {board_, shaders::kBoardVs, shaders::kBoardFs},
                  {boardDepth_, shaders::kBoardVs, shaders::kBoardDepthFs},
-                 {boardBake_, shaders::kBoardBakeVs, shaders::kBoardBakeFs}};
+                 {boardBake_, shaders::kBoardBakeVs, shaders::kBoardBakeFs},
+                 {bloom_, shaders::kPostVs, shaders::kBloomFs},
+                 {grade_, shaders::kPostVs, shaders::kGradeFs}};
     for (Spec& s : specs) {
         if (!link(s.vs, s.fs, s.p.id)) return false;
         s.p.viewProj = glGetUniformLocation(s.p.id, "uViewProj");
@@ -1350,7 +1352,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             const V3 p = local(k.keep);
             pushInstance(keeps, p, q, {half, half, h}, look.cone);  // (the stone ignores the tint; the turrets' caps wear it)
             keepCity.push_back(static_cast<uint32_t>(ci));
-            const float s = c.capital ? 14.0f : 9.0f;
+            const float s = c.capital ? 14.0f : c.walled ? 9.0f : 6.0f;
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
             bannerCity_.push_back(static_cast<uint32_t>(ci));
             bannerIsKeep_.push_back(1);
@@ -1820,7 +1822,7 @@ void Renderer::bakeSheet(Sheet& sh, UnitType type, const figures::Plan& plan, fl
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, kCells, 2, 0, GL_RGBA, GL_FLOAT, table.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, frameFbo_);
     glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
     glEnable(GL_DEPTH_TEST);
     glBindVertexArray(0);
@@ -2075,7 +2077,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     features_ = features;
     viewProjOverride_ = nullptr;
     glDisable(GL_POLYGON_OFFSET_FILL);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, frameFbo_);
 }
 
 void Renderer::setFeatures(int features) {
@@ -2114,7 +2116,7 @@ void Renderer::ensureShadowMap() {
     const GLenum none = GL_NONE;
     glDrawBuffers(1, &none);
     glReadBuffer(GL_NONE);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
+    glBindFramebuffer(GL_FRAMEBUFFER, frameFbo_);
 }
 
 void Renderer::uploadCanopy(const Battle& battle) {
@@ -2292,7 +2294,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         return victors;
     };
     men_.dt = sinceLastDraw;
-    beginMen(battle, camera, gameSeconds);
+    beginMen(camera, gameSeconds);
     ManPass pass{battle, byGroup, decals, arrows, bars, boxes, camRight, toViewer, gameSeconds, sinceLastDraw, won};
     for (size_t i = 0; i < (showUnits_ ? units.size() : 0); ++i) {
         const sim::Unit& u = units[i];
@@ -2515,9 +2517,10 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     renderShadowMap(camera, timeSeconds, gameSeconds);
-    glBindFramebuffer(GL_FRAMEBUFFER, screenFbo_);
+    frameFbo_ = beginPost(static_cast<int>(camera.width()), static_cast<int>(camera.height()));
+    glBindFramebuffer(GL_FRAMEBUFFER, frameFbo_);
     glViewport(0, 0, static_cast<GLsizei>(camera.width()), static_cast<GLsizei>(camera.height()));
-    glClearColor(0.64f, 0.74f, 0.84f, 1.0f);
+    glClearColor(0.60f, 0.65f, 0.69f, 1.0f);  // (shaders.h kSky)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -2727,6 +2730,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glEnable(GL_DEPTH_TEST);
     }
+    endPost(timeSeconds);
     glBindVertexArray(0);
 }
 
