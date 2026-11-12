@@ -219,6 +219,23 @@ town's approach road used to bridge the gap).
   or inside a lake's shore. Re-baking (`tools/terrainbake`) would settle them.
 - Roads 0, 2, 3 and 5 still wade (as above): road 0 now 34 points (it was 30) near (1306, 1880), by the Heartmere's shore.
 
+### The Heartmere and the other lakes: pebbles with a cove, rivers that stop at the shore
+
+The complaint ("the lake sucks"): a lobed, ragged pool with arms (a four-octave fbm warp 2.0 of the reach wide in
+`shoreDistance`), the three rivers drawn on over its surface (`riverRibbons` took every vertex of each river, and the sim's
+rivers run on through the Heartmere's middle where they meet), three rocks and puddles about the isle.
+
+- `lakeShoreDistance` (continent.cpp): the ellipse warped by two single-octave value-noise swells in the ellipse's own units
+  (so the lobe count does not depend on size or elongation, and there is no fine octave to make arms), then one round cove
+  eased in with a smooth maximum (`planLakeBays` picks its direction of 24: farthest from the rivers, roads and isles at the
+  lake; for a long thin lake its side). Where a lake's isles lie the swell dies away so the spit still reaches the shore.
+- The isle's shore (`shoreDistance`) is single-octave too, so no inlet pinches into a puddle; the three rocks off Abbey Isle are gone.
+- `riverRibbons` (river_ribbons.cpp) cuts each river where it enters open lake water (bisection to the shore), starts it again
+  where it leaves, and opens each lake mouth out over its last 36 m. The sim's river course is untouched.
+- Audits (`tools/shape_audit.h`): `roughness` (outline over its same-moments ellipse's perimeter, 1 = smooth), `peaks` (capes),
+  `strays` (scraps of water in the lake's window) and `ribbonMetresInLake`; printed by `illyria_terrainaudit`, held by
+  `a_lake_is_one_calm_body_with_a_smooth_shore_a_few_capes_and_no_puddles` and `river_ribbons_end_at_a_lakes_shore_and_never_cross_its_water`.
+
 ## Roads and lakes together
 
 The road look (classes, junctions, bridges that meet the ground) and the water (levelled rivers, natural lakes, one water

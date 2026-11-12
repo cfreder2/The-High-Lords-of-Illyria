@@ -20,6 +20,12 @@ struct Shape {
     double deviation = 0;   // |body xor its equivalent ellipse| / body area; an ellipse is 0
     double solidity = 0;    // body area / convex hull area; a convex shape is 1
     double lobes = 0;       // std deviation of the radius about the centroid, over its mean; a circle is 0
+    double roughness = 0;   // the outline's length over the perimeter of the ellipse of the same moments (the outline's edges counted at 0.8 of their length, as a staircase runs shorter than its steps): a smooth shore is about 1, a ragged or tentacled one well above
+    int peaks = 0;          // capes: local maxima of the radius about the centroid (72 directions) that stand out of the valleys beside them by 12% of the mean radius
+    int strays = 0;         // other bodies of the same kind inside the window, apart from the main one (puddles, scraps of water)
+    double strayArea = 0;   // m^2 of them all
+    double smallestStray = 0;
+    double smallestAtX = 0, smallestAtY = 0;  // where it lies
 };
 
 // The body: every grid cell (of `cell` metres, in the window about (cx, cy)) for which `in` holds, kept if it joins the
@@ -42,6 +48,47 @@ inline Shape measure(const std::string& name, bool lake, double cx, double cy, d
     out.name = name;
     out.lake = lake;
     if (best < 0) return out;
+    // The scraps: every other 4-connected body of cells in the window.
+    {
+        std::vector<char> seen2 = mask;
+        std::vector<int> st{best};
+        seen2[static_cast<size_t>(best)] = 0;
+        // (Wipe the main body, then count what is left.)
+        while (!st.empty()) {
+            const int c = st.back();
+            st.pop_back();
+            const int ci = c % n, cj = c / n;
+            const int nb[4][2] = {{ci + 1, cj}, {ci - 1, cj}, {ci, cj + 1}, {ci, cj - 1}};
+            for (const auto& q : nb)
+                if (q[0] >= 0 && q[1] >= 0 && q[0] < n && q[1] < n) {
+                    const size_t k = static_cast<size_t>(q[1]) * n + q[0];
+                    if (seen2[k]) seen2[k] = 0, st.push_back(static_cast<int>(k));
+                }
+        }
+        out.smallestStray = 1e18;
+        for (size_t c0 = 0; c0 < seen2.size(); ++c0) {
+            if (!seen2[c0]) continue;
+            int count = 0;
+            st.assign(1, static_cast<int>(c0));
+            seen2[c0] = 0;
+            while (!st.empty()) {
+                const int c = st.back();
+                st.pop_back();
+                ++count;
+                const int ci = c % n, cj = c / n;
+                const int nb[4][2] = {{ci + 1, cj}, {ci - 1, cj}, {ci, cj + 1}, {ci, cj - 1}};
+                for (const auto& q : nb)
+                    if (q[0] >= 0 && q[1] >= 0 && q[0] < n && q[1] < n) {
+                        const size_t k = static_cast<size_t>(q[1]) * n + q[0];
+                        if (seen2[k]) seen2[k] = 0, st.push_back(static_cast<int>(k));
+                    }
+            }
+            ++out.strays;
+            out.strayArea += count * cell * cell;
+            if (count * cell * cell < out.smallestStray) out.smallestStray = count * cell * cell, out.smallestAtX = cx - reach + (static_cast<int>(c0) % n) * cell, out.smallestAtY = cy - reach + (static_cast<int>(c0) / n) * cell;
+        }
+        if (out.strays == 0) out.smallestStray = 0;
+    }
     std::vector<int> stack{best}, cells;
     seen[static_cast<size_t>(best)] = 1;
     while (!stack.empty()) {
@@ -114,6 +161,72 @@ inline Shape measure(const std::string& name, bool lake, double cx, double cy, d
     mean /= 24;
     for (double rr : rmax) var += (rr - mean) * (rr - mean);
     out.lobes = mean > 0 ? std::sqrt(var / 24) / mean : 0;
+    // The outline: exposed cell edges, each counted at 0.8 of a cell edge's length (a staircase's diagonal runs shorter than
+    // its steps), over the equivalent circle's perimeter.
+    {
+        // (Isles in the body are not part of its outline: fill the holes, the cells the window's border cannot reach.)
+        std::vector<char> outside(seen.size(), 0);
+        std::vector<int> st;
+        for (int i = 0; i < n; ++i)
+            for (const int k : {i, (n - 1) * n + i, i * n, i * n + n - 1})
+                if (!seen[static_cast<size_t>(k)] && !outside[static_cast<size_t>(k)]) outside[static_cast<size_t>(k)] = 1, st.push_back(k);
+        while (!st.empty()) {
+            const int c = st.back();
+            st.pop_back();
+            const int ci = c % n, cj = c / n;
+            const int nb[4][2] = {{ci + 1, cj}, {ci - 1, cj}, {ci, cj + 1}, {ci, cj - 1}};
+            for (const auto& q : nb)
+                if (q[0] >= 0 && q[1] >= 0 && q[0] < n && q[1] < n) {
+                    const size_t k = static_cast<size_t>(q[1]) * n + q[0];
+                    if (!seen[k] && !outside[k]) outside[k] = 1, st.push_back(static_cast<int>(k));
+                }
+        }
+        int edges = 0;
+        double filled = 0;
+        for (size_t k = 0; k < seen.size(); ++k) filled += !outside[k];
+        for (size_t k = 0; k < seen.size(); ++k) {
+            if (outside[k]) continue;
+            const int ci = static_cast<int>(k) % n, cj = static_cast<int>(k) / n;
+            const int nb[4][2] = {{ci + 1, cj}, {ci - 1, cj}, {ci, cj + 1}, {ci, cj - 1}};
+            for (const auto& q : nb)
+                if (q[0] < 0 || q[1] < 0 || q[0] >= n || q[1] >= n || outside[static_cast<size_t>(q[1]) * n + q[0]]) ++edges;
+        }
+        const double perimeter = 0.8 * edges;
+        (void)filled;
+        const double h = (a - b) * (a - b) / ((a + b) * (a + b));
+        out.roughness = perimeter / (3.14159265358979 * (a + b) * (1 + 3 * h / (10 + std::sqrt(4 - 3 * h))));  // (Ramanujan's perimeter of the ellipse)
+    }
+    // Capes: the radius by direction (72 bins, the farthest cell of each), smoothed over three bins, its peaks that stand out.
+    {
+        constexpr int kBins = 72;
+        std::vector<double> rad(kBins, 0.0);
+        for (int c : cells) {
+            const double dx = c % n - mx, dy = c / n - my;
+            const int bin = static_cast<int>((std::atan2(dy, dx) + 3.14159265358979) / (2 * 3.14159265358979) * kBins) % kBins;
+            rad[static_cast<size_t>(bin)] = std::max(rad[static_cast<size_t>(bin)], std::hypot(dx, dy));
+        }
+        std::vector<double> sm(kBins);
+        double avg = 0;
+        for (int i = 0; i < kBins; ++i) sm[static_cast<size_t>(i)] = (rad[static_cast<size_t>((i + kBins - 1) % kBins)] + rad[static_cast<size_t>(i)] + rad[static_cast<size_t>((i + 1) % kBins)]) / 3, avg += sm[static_cast<size_t>(i)] / kBins;
+        // A peak: higher than every bin within 4 either side, and 12% of the mean above the lowest point between it and the next peak either way (the prominence).
+        for (int i = 0; i < kBins; ++i) {
+            bool top = true;
+            for (int d = -4; d <= 4 && top; ++d) top = d == 0 || sm[static_cast<size_t>(i)] > sm[static_cast<size_t>((i + d + kBins) % kBins)] || (sm[static_cast<size_t>(i)] == sm[static_cast<size_t>((i + d + kBins) % kBins)] && d < 0);
+            if (!top) continue;
+            double lowL = sm[static_cast<size_t>(i)], lowR = sm[static_cast<size_t>(i)];
+            for (int d = 1; d < kBins / 2; ++d) {
+                const double v = sm[static_cast<size_t>((i - d + kBins) % kBins)];
+                if (v > sm[static_cast<size_t>(i)]) break;
+                lowL = std::min(lowL, v);
+            }
+            for (int d = 1; d < kBins / 2; ++d) {
+                const double v = sm[static_cast<size_t>((i + d) % kBins)];
+                if (v > sm[static_cast<size_t>(i)]) break;
+                lowR = std::min(lowR, v);
+            }
+            if (sm[static_cast<size_t>(i)] - std::max(lowL, lowR) > 0.12 * avg) ++out.peaks;
+        }
+    }
     return out;
 }
 
@@ -126,12 +239,28 @@ inline std::vector<Shape> bodies(const illyria::sim::Continent& c, double cell =
         const double cx = lake.centre.x.toDouble(), cy = lake.centre.y.toDouble(), rx = lake.rx.toDouble(), ry = lake.ry.toDouble();
         const double reach = std::max(rx, ry) * 1.5;
         // The water of this lake only (a lake's window never holds another).
-        out.push_back(measure(lake.name, true, cx, cy, reach, std::max(cell, reach / 400), [&](double x, double y) {
+        const double cellSize = std::max(cell, reach / 400);
+        Shape sh = measure(lake.name, true, cx, cy, reach, cellSize, [&](double x, double y) {
             const double dx = (x - cx) / rx, dy = (y - cy) / ry;
             if (dx * dx + dy * dy > 2.25) return false;
             const Continent::Sample s = c.sample(F(x), F(y));
             return s.inLake && s.height < s.lakeSurface;
-        }));
+        });
+        // The outline (roughness, capes) is the shore of the lake with its isles and the spit counted as water: what the
+        // eye sees from afar is where the lake ends, not the path across it.
+        const std::vector<Continent::Area> isleAreas = c.isles();
+        const Shape filled = measure(lake.name, true, cx, cy, reach, cellSize, [&](double x, double y) {
+            const double dx = (x - cx) / rx, dy = (y - cy) / ry;
+            if (dx * dx + dy * dy > 2.25) return false;
+            const Continent::Sample s = c.sample(F(x), F(y));
+            if (s.inLake && s.height < s.lakeSurface) return true;
+            for (size_t i = 0; i < isleAreas.size(); ++i)
+                if (c.isleDistance(i, F(x), F(y)) < Fixed::fromRatio(14, 10) && (isleAreas[i].centre - lake.centre).flat().length().toDouble() < std::max(rx, ry) && dx * dx + dy * dy < 1.0) return true;
+            return false;
+        });
+        sh.roughness = filled.roughness;
+        sh.peaks = filled.peaks;
+        out.push_back(sh);
     }
     const std::vector<Continent::Area> isles = c.isles();
     for (size_t i = 0; i < isles.size(); ++i) {
@@ -148,6 +277,25 @@ inline std::vector<Shape> bodies(const illyria::sim::Continent& c, double cell =
         if (l.name == "Isle of the Seer")
             out.push_back(measure(l.name, false, l.pos.x.toDouble(), l.pos.y.toDouble(), 300, 3, [&](double x, double y) { return c.landform(F(x), F(y)).land > Fixed::zero(); }));
     return out;
+}
+
+// Metres of river ribbon lying over open lake water (the ribbons of `segs`, vertices battle-local about `origin`, a segment
+// sampled every `step` metres): a lake's rivers end at its shore, so this is 0. `Seg` has a, b (V3: x, y).
+template <class Seg, class Origin>
+inline double ribbonMetresInLake(const illyria::sim::Continent& c, const std::vector<Seg>& segs, const Origin& origin, double step = 1.0) {
+    using namespace illyria::sim;
+    const auto F = [](double v) { return Fixed::fromRatio(static_cast<int64_t>(std::llround(v * 1000)), 1000); };
+    double metres = 0;
+    for (const Seg& sg : segs) {
+        const double len = std::hypot(sg.b.x - sg.a.x, sg.b.y - sg.a.y);
+        const int n = std::max(1, static_cast<int>(len / step));
+        for (int k = 0; k < n; ++k) {
+            const double t = (k + 0.5) / n;
+            const Continent::Sample s = c.sample(F(sg.a.x + (sg.b.x - sg.a.x) * t + origin.x), F(sg.a.y + (sg.b.y - sg.a.y) * t + origin.y));
+            if (s.inLake && s.height < s.lakeSurface - Fixed::fromRatio(1, 20)) metres += len / n;
+        }
+    }
+    return metres;
 }
 
 }  // namespace shapeaudit

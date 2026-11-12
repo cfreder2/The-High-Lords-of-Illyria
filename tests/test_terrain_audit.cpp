@@ -455,6 +455,22 @@ TEST(no_lake_or_island_is_a_drawn_oval) {
     }
 }
 
+TEST(a_lake_is_one_calm_body_with_a_smooth_shore_a_few_capes_and_no_puddles) {
+    // Before (the game's Heartmere): a four-octave warp 2.0 of the reach wide, so the shore had ragged arms, lobes and scraps of water
+    // (the audit did not measure them; the eye did: "the lake sucks"). Now the shore is a pebble of two smooth value-noise swells
+    // with one round cove eased into it, so its outline is within a few percent of its ellipse's length, has at most three capes,
+    // and no lake is shattered into scraps smaller than 100 m2 (the rivers' levees do cut a corner off a lake now and then).
+    for (const uint64_t seed : kSeeds) {
+        for (const shapeaudit::Shape& sh : shapeaudit::bodies(continentOf(seed), 3.0)) {
+            if (!sh.lake || sh.area < 1000) continue;
+            std::printf("  seed %llu %-12s roughness %.2f capes %d scraps %d (smallest %.0f m2)\n", static_cast<unsigned long long>(seed), sh.name.c_str(), sh.roughness, sh.peaks, sh.strays, sh.smallestStray);
+            CHECK(sh.roughness < 1.45);  // 1 = as long as its ellipse's perimeter; a shore with arms and ragged bays is 1.6 and more
+            CHECK(sh.peaks <= 4);
+            CHECK(sh.strays == 0 || sh.smallestStray >= 100.0);
+        }
+    }
+}
+
 TEST(abbey_isle_is_reached_on_foot_by_a_spit_that_wanders) {
     const Continent& c = continent();
     const Continent::Area heart = c.lakes()[3];  // the Heartmere

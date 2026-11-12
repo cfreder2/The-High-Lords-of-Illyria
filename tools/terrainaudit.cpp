@@ -154,9 +154,9 @@ int main(int argc, char** argv) {
     for (const wateraudit::RiverReport& r : wateraudit::rivers(c))
         std::printf("  %-14s sections %5d  walls %4d (tallest %5.2f m)  steep %4d (steepest 1 in %5.1f, biggest step %5.2f m)  uphill %d\n", c.rivers()[r.river].name.c_str(), r.sections, r.walls, r.tallestWall,
                     r.steep, r.steepest > 0 ? 1 / r.steepest : 0.0, r.biggestStep, r.uphill);
-    std::printf("\nlakes and islands (deviation from the ellipse of the same moments, 0 = a drawn oval; solidity = area / convex hull; lobes = radius spread):\n");
+    std::printf("\nlakes and islands (deviation from the ellipse of the same moments, 0 = a drawn oval; solidity = area / convex hull; lobes = radius spread; roughness = outline over the same-moments ellipse's perimeter, 1 = as smooth as it; capes = prominent peaks of the radius; scraps = other bodies of water in the window):\n");
     for (const shapeaudit::Shape& sh : shapeaudit::bodies(c))
-        std::printf("  %-18s %-4s area %9.0f m2  deviation %5.3f  solidity %5.3f  lobes %5.3f\n", sh.name.c_str(), sh.lake ? "lake" : "land", sh.area, sh.deviation, sh.solidity, sh.lobes);
+        std::printf("  %-18s %-4s area %9.0f m2  deviation %5.3f  solidity %5.3f  lobes %5.3f  roughness %5.2f  capes %d  scraps %d (%.0f m2, smallest %.1f m2 at (%.0f, %.0f))\n", sh.name.c_str(), sh.lake ? "lake" : "land", sh.area, sh.deviation, sh.solidity, sh.lobes, sh.roughness, sh.peaks, sh.strays, sh.strayArea, sh.smallestStray, sh.smallestAtX, sh.smallestAtY);
     std::printf("\ntowers per castle:\n");
     for (size_t n = 0; n < towerHist.size(); ++n)
         if (towerHist[n]) std::printf("  %2zu towers: %d castles\n", n, towerHist[n]);

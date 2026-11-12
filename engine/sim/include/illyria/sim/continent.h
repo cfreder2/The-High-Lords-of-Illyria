@@ -387,6 +387,7 @@ private:
     void shapeRoads(const std::vector<size_t>& gateRoad);
     void bucketRoads();
     void applyLake(size_t lake, Fixed& z, Sample& s, Fixed x, Fixed y) const;
+    void planLakeBays();
     // The lakes of the design; the landmarks' ponds follow them in lakes_.
     size_t naturalLakes() const { return naturalLakes_ ? naturalLakes_ : lakes_.size(); }
 
@@ -444,6 +445,8 @@ private:
     std::vector<Isle> isles_;
     std::vector<std::vector<std::pair<uint32_t, uint32_t>>> roadBuckets_;  // road and segment near each bucket
     std::vector<Fixed> lakeSurfaces_;
+    std::vector<Vec3> lakePins_;  // the way a lake's isles lie from its middle (flat unit vector, or zero): its shore keeps to the ellipse there (planLakeBays)
+    std::vector<Vec3> lakeBays_;  // each lake's cove: a flat unit vector, the way it opens (clear of the rivers and isles: planLakeBays)
     std::vector<Label> labels_;
     std::vector<City> cities_;
     // Between routeApproaches and layApproaches: each town's path from its middle to the road network, and the order they were found in.
