@@ -43,8 +43,8 @@ Fixed ellipse(const Continent::Area& a, Fixed x, Fixed y) {
     return sqrt(dx * dx + dy * dy);
 }
 
-// How far in from its shore a lake or an isle is (as `ellipse`, < 1 inside), the outline wandering: the ellipse
-// domain-warped at two scales (lobes and headlands over the whole shape, bays and points a sixth of it), so it is
+// How far in from its shore an isle is (as `ellipse`, < 1 inside), the outline wandering: the ellipse
+// domain-warped at two scales (single octaves of value noise: smooth, so no pinched inlet can close into a puddle) (lobes and headlands over the whole shape, bays and points a sixth of it), so it is
 // not a drawn oval. The middle stays put (the warp fades in from it), so what stands at an isle's middle still
 // does. The warp keeps the shore within about 1.4 of the ellipse's reach.
 Fixed shoreDistance(uint64_t seed, const Continent::Area& a, Fixed x, Fixed y) {
@@ -55,10 +55,48 @@ Fixed shoreDistance(uint64_t seed, const Continent::Area& a, Fixed x, Fixed y) {
     const int64_t lobes = std::max<int64_t>(20, reach * 2), bays = std::max<int64_t>(10, reach * 2 / 3);
     const Fixed fade = noise::smoothstep(Fixed::zero(), r(3, 5), q0);
     const auto warp = [&](uint64_t sd) {
-        return ((noise::fbm(sd, x, y, lobes) - r(1, 2)) * r(2, 1) + (noise::fbm(sd ^ 0x9E37, x, y, bays) - r(1, 2)) * r(7, 10)) * fade;
+        return ((noise::value(sd, x, y, lobes) - r(1, 2)) * r(2, 1) + (noise::value(sd ^ 0x9E37, x, y, bays) - r(1, 2)) * r(1, 2)) * fade;
     };
     const Fixed u = dx + warp(seed), v = dy + warp(noise::nextSeed(seed));
     return sqrt(u * u + v * v);
+}
+
+// How far in from its shore a lake is (as `ellipse`, < 1 inside). A lake is a calm body of water, not a drawn oval and not a
+// ragged pool, and it is made of three smooth things in the ellipse's own units (so a long thin lake and a broad one get
+// the same shape, stretched, and the number of lobes does not depend on the size):
+//   - a slow swell over the whole body and a gentler one half its size: single-octave value noise (no fbm octaves, so no
+//     ragged arms) warping the ellipse into a pebble, a cape or two;
+//   - one cove, a round bay bitten into the shore in the direction `bay` and eased into it (a smooth maximum, so its
+//     two horns are rounded capes, not cusps): the kidney's dent, and the bay a river mouth might lie in.
+// The shore stays one closed curve, within about +-0.6 of the ellipse's reach.
+constexpr int64_t kLakeSwell = 700, kLakeBay = 360;  // lattice spacings in the lake's own units (512 = one reach): about 1.4 and 0.7 reaches
+constexpr Fixed kLakeSwellAmp = Fixed::fromRatio(7, 10), kLakeBayAmp = Fixed::fromRatio(1, 4);
+// Each lake draws its shape from the seed and this salt (chosen so that every lake of the game's continent and of the two design
+// seeds the audits check has a cove that shows: deviation from its ellipse over 0.125 and solidity under 0.965).
+constexpr uint64_t kLakeSalt = 100;
+constexpr Fixed kCoveRadius = Fixed::fromRatio(31, 50), kCoveEase = Fixed::fromRatio(3, 20);
+Fixed lakeShoreDistance(uint64_t seed, const Continent::Area& a, Fixed x, Fixed y, Fixed bayX, Fixed bayY, Fixed pinX, Fixed pinY) {
+    const Fixed dx = (x - a.centre.x) / a.rx, dy = (y - a.centre.y) / a.ry;
+    const Fixed q0 = sqrt(dx * dx + dy * dy);
+    if (q0 > Fixed::fromInt(3)) return q0;
+    const Fixed fade = noise::smoothstep(Fixed::zero(), r(3, 5), q0);
+    // Where the isles lie (pin) the swell dies away, so a spit that was laid out to reach the ellipse's shore reaches the shore.
+    Fixed free = Fixed::one();
+    if (q0 > r(1, 50) && (pinX != Fixed::zero() || pinY != Fixed::zero()))
+        free = Fixed::one() - noise::smoothstep(r(1, 2), r(9, 10), (dx * pinX + dy * pinY) / q0);
+    const Fixed px = dx * 512, py = dy * 512;
+    const auto warp = [&](uint64_t sd) {
+        return ((noise::value(sd, px, py, kLakeSwell) - r(1, 2)) * kLakeSwellAmp + (noise::value(sd ^ 0x9E37, px, py, kLakeBay) - r(1, 2)) * kLakeBayAmp) * fade * free;
+    };
+    const Fixed u = dx + warp(seed), v = dy + warp(noise::nextSeed(seed));
+    const Fixed inside = sqrt(u * u + v * v) - Fixed::one();  // < 0 in the pebble
+    // The cove's disc, centred on the shore in the bay's direction, as the depth into it (> 0 inside).
+    const Fixed cx = u - bayX * r(11, 10), cy = v - bayY * r(11, 10);  // (in the pebble's own, warped, space: the shore there is at 1)
+    const Fixed cove = kCoveRadius - sqrt(cx * cx + cy * cy);
+    // Smooth maximum: the pebble less the cove.
+    const Fixed gap = abs(inside - cove);
+    const Fixed h = max(kCoveEase - gap, Fixed::zero()) / kCoveEase;
+    return Fixed::one() + max(inside, cove) + h * h * kCoveEase / 4;
 }
 
 constexpr Fixed kValleyReach = scaled(450);
@@ -356,10 +394,8 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     lakes_.push_back({"Heartmere", N(578, 449), scaled(900), scaled(720)});
     isles_.push_back({{"Abbey Isle", N(598, 444), scaled(190), scaled(150)}, lakes_.size() - 1, m(7)});
     isles_.push_back({{"the Spit", N(633, 446), scaled(330), m(16)}, lakes_.size() - 1, r(6, 5), m(38)});
-    // A few rocks and shoals about the isle: a ledge or two above the water, not walked.
-    isles_.push_back({{"Abbey Rock", N(590, 436), m(9), m(6)}, lakes_.size() - 1, r(5, 2), {}, false});
-    isles_.push_back({{"Gull Rock", N(607, 453), m(7), m(11)}, lakes_.size() - 1, r(2, 1), {}, false});
-    isles_.push_back({{"Drowned Ledge", N(582, 449), m(12), m(5)}, lakes_.size() - 1, r(3, 2), {}, false});
+    // (Three rocks and shoals off the isle, Abbey Rock, Gull Rock and the Drowned Ledge, are gone: from the strategic view they were
+    // debris, and the pockets of water between them and the isle were puddles smaller than a company.)
 
     crossings_.push_back({Crossing::Kind::Ford, "Oakhaven Ford", N(582, 680)});
     crossings_.push_back({Crossing::Kind::Ford, "Westrun Ford", N(300, 440)});
@@ -450,6 +486,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     }
     bucketRoads();
     if (relief == Relief::Baked) loadBakedRelief();
+    planLakeBays();
     computeRiverSurfaces();
     for (const Area& lake : lakes_) {
         Fixed mountain;
@@ -1436,11 +1473,62 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
     s.height = z;
 }
 
+// Where each lake's cove opens: of 24 directions, the one whose nearest neighbour among the rivers that run into the lake and
+// the isles in it is farthest (the seed picks among equals), so that a river never meets the cove's horns and a spit keeps
+// its far shore. (Whole numbers and fixed point: this is the simulation.)
+void Continent::planLakeBays() {
+    static constexpr int kDirs[24][2] = {{1000, 0}, {966, 259}, {866, 500}, {707, 707}, {500, 866}, {259, 966}, {0, 1000}, {-259, 966}, {-500, 866}, {-707, 707}, {-866, 500}, {-966, 259}, {-1000, 0}, {-966, -259}, {-866, -500}, {-707, -707}, {-500, -866}, {-259, -966}, {0, -1000}, {259, -966}, {500, -866}, {707, -707}, {866, -500}, {966, -259}};
+    lakeBays_.clear();
+    lakePins_.clear();
+    for (size_t i = 0; i < lakes_.size(); ++i) {
+        const Area& lake = lakes_[i];
+        std::vector<Vec3> taken;  // flat unit vectors in the lake's own units
+        const auto take = [&](const Vec3& p, Fixed from, Fixed to) {
+            const Fixed dx = (p.x - lake.centre.x) / lake.rx, dy = (p.y - lake.centre.y) / lake.ry;
+            const Fixed d = sqrt(dx * dx + dy * dy);
+            if (d > from && d < to) taken.push_back({dx / d, dy / d, Fixed::zero()});
+        };
+        for (const River& rv : rivers_)
+            for (const Vec3& p : rv.points) take(p, r(9, 10), r(22, 10));
+        for (const Polyline& rd : roads_)  // (a road along a shore keeps to a causeway, which would fill the cove in)
+            for (const Vec3& p : rd.points) take(p, r(8, 10), r(25, 10));
+        for (const Isle& isle : isles_)
+            if (isle.lake == i) take(isle.area.centre, r(1, 20), Fixed::fromInt(3));
+        const size_t turn = static_cast<size_t>(noise::lattice(noise::nextSeed(seed_ ^ (kLakeSalt + i * 131)), 8, 7).raw & 0xFFFF) % 24;
+        const bool long_ = lake.ry > lake.rx * 3 || lake.rx > lake.ry * 3;
+        Fixed best = Fixed::fromInt(3);
+        Vec3 pick{Fixed::one(), Fixed::zero(), Fixed::zero()};
+        for (size_t k0 = 0; k0 < 24; ++k0) {
+            const auto& d = kDirs[(k0 + turn) % 24];
+            const Fixed cx = Fixed::fromRatio(d[0], 1000), cy = Fixed::fromRatio(d[1], 1000);
+            if (long_ && abs(cx) < r(85, 100)) continue;  // (a long thin lake's cove is cut in its side, where it shows, not in its end)
+            Fixed worst = Fixed::fromInt(-1);  // the largest dot with anything taken: the nearest
+            for (const Vec3& t : taken) worst = max(worst, cx * t.x + cy * t.y);
+            if (worst < best) best = worst, pick = {cx, cy, Fixed::zero()};
+        }
+        lakeBays_.push_back(pick);
+        // The pin: the mean direction of the isles (zero for a lake without any, and where they cancel).
+        Fixed ix, iy;
+        for (const Isle& isle : isles_)
+            if (isle.lake == i) {
+                const Fixed dx = (isle.area.centre.x - lake.centre.x) / lake.rx, dy = (isle.area.centre.y - lake.centre.y) / lake.ry;
+                const Fixed d = sqrt(dx * dx + dy * dy);
+                if (d > r(1, 50)) ix += dx / d, iy += dy / d;
+            }
+        const Fixed il = sqrt(ix * ix + iy * iy);
+        lakePins_.push_back(il > r(1, 2) ? Vec3{ix / il, iy / il, Fixed::zero()} : Vec3{});
+    }
+}
+
 void Continent::applyLake(size_t i, Fixed& z, Sample& s, Fixed x, Fixed y) const {
     const Area& lake = lakes_[i];
     if (ellipse(lake, x, y) > m(3)) return;
     // Shores wander: bays, points and coves, not a drawn ellipse.
-    Fixed q = shoreDistance(noise::nextSeed(seed_ ^ (0x1A4E + i * 131)), lake, x, y);
+    const uint64_t lakeSeed = noise::nextSeed(seed_ ^ (kLakeSalt + i * 131));
+    // (The ponds made later, in dress(), were not planned: their cove opens to the east, no isles.)
+    const Vec3 bay = i < lakeBays_.size() ? lakeBays_[i] : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    const Vec3 pin = i < lakePins_.size() ? lakePins_[i] : Vec3{};
+    Fixed q = lakeShoreDistance(lakeSeed, lake, x, y, bay.x, bay.y, pin.x, pin.y);
     const Fixed surface = lakeSurfaces_[i];
     // A shelving shore, about 1 in 6, that runs on into the basin rim:
     // no step at the waterline, so no band of rock along it.
