@@ -30,6 +30,14 @@ constexpr Fixed kStrikeCos = Fixed::fromRatio(7071, 10000);
 constexpr Fixed kCloseIn = Fixed::fromRatio(1, 10);
 // A foe is kept while within this much more than reach (bodies jostle).
 constexpr Fixed kFoeSlack = Fixed::fromRatio(1, 2);
+// Myth's rule: no man is ringed by a crowd. A foe takes only so many men's blows at once (meleeCap); the rest take another
+// foe within kFlankSlack of the nearest, or, with none, stand off this far from his reach and wait for a place.
+constexpr Fixed kFlankSlack = Fixed::fromInt(3);
+constexpr Fixed kStandOff = Fixed::fromInt(2);
+// Closing on a foe, within this of his reach a man heads for a free place on his ring (ringSlot) rather than for his middle; a friend
+// within kFlankCrowd of a place counts kCrowdCost metres against it.
+constexpr Fixed kSlotRange = Fixed::fromInt(4), kFlankCrowd = Fixed::fromRatio(5, 2), kCrowdCost = Fixed::fromRatio(3, 4);
+constexpr Fixed kRingShare = Fixed::fromRatio(3, 1);  // of the ring round a foe, a third is the front
 // Melee blows are blocked less often than arrows: the attacker can work round the shield.
 constexpr Fixed kMeleeBlockScale = Fixed::fromRatio(7, 10);
 // Charges. Momentum builds toward the rider's speed by this share a tick
@@ -149,6 +157,66 @@ bool World::turnToward(Unit& u, const Vec3& dir) const {
     return u.facing.dot(dir) >= kStrikeCos;
 }
 
+int32_t World::meleeCap(const Unit& u, const Unit& foe) const {
+    // The men that stand shoulder to shoulder across a third of the ring at which `u` strikes `foe`: three on a man, a few more
+    // on a giant, never fewer than two (a pike's long reach rings a wider circle but a rank still strikes past its friends).
+    const Fixed ring = foe.stats.radius + u.stats.radius + u.stats.melee.reach;
+    Fixed abreast = ring * kPi / (kRingShare * u.stats.radius);
+    // A long weapon (a pike) is struck past the friend in front: the rank behind adds nothing, so fewer stand in the front.
+    if (u.stats.melee.reach > Fixed::one()) abreast = abreast / u.stats.melee.reach;
+    const int64_t slots = abreast.floorToInt();
+    return static_cast<int32_t>(std::clamp<int64_t>(slots, 2, 6));
+}
+
+bool World::meleeFull(const Unit& u, const Unit& foe) const {
+    // Men of the other side now striking him (each man's `foe` is his latest: this tick's for those already moved).
+    const int32_t cap = meleeCap(u, foe);
+    int32_t on = 0;
+    const Fixed look = foe.stats.radius + u.stats.melee.reach + u.stats.radius + kFoeSlack + Fixed::fromInt(1);
+    bool full = false;
+    nearby(foe.pos.x, foe.pos.y, look, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (full || o.id == u.id || o.owner == foe.owner || !o.alive() || o.foe != foe.id) return;
+        full = ++on >= cap;
+    });
+    return full;
+}
+
+bool World::ringSlot(const Unit& u, const Unit& foe, Vec3& slot) const {
+    // Eight places round the foe at his reach (evenly by angle), the nearest to him that no friend holds or crowds, so that a line
+    // closing on one man wraps him instead of piling at the point it met him.
+    static constexpr Fixed kD = Fixed::fromRatio(7071, 10000);
+    static const Vec3 dirs[8] = {{Fixed::one(), Fixed::zero(), Fixed::zero()}, {kD, kD, Fixed::zero()},
+                                 {Fixed::zero(), Fixed::one(), Fixed::zero()}, {-kD, kD, Fixed::zero()},
+                                 {-Fixed::one(), Fixed::zero(), Fixed::zero()}, {-kD, -kD, Fixed::zero()},
+                                 {Fixed::zero(), -Fixed::one(), Fixed::zero()}, {kD, -kD, Fixed::zero()}};
+    const Fixed radius = foe.stats.radius + u.stats.radius + u.stats.melee.reach - kCloseIn;
+    const Fixed width = u.stats.radius * 2 * Fixed::fromRatio(9, 10);
+    Vec3 at[8];
+    Fixed crowd[8] = {};
+    bool taken[8] = {};
+    for (int k = 0; k < 8; ++k) at[k] = foe.pos + dirs[k] * radius;
+    nearby(foe.pos.x, foe.pos.y, radius + kFlankCrowd, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (o.id == u.id || o.owner != u.owner || !o.alive() || o.inAir()) return;
+        for (int k = 0; k < 8; ++k) {
+            const Fixed d = (o.pos - at[k]).flat().length();
+            if (d < width) taken[k] = true;
+            if (d < kFlankCrowd) crowd[k] += Fixed::one();
+        }
+    });
+    int best = -1;
+    Fixed bestScore;
+    for (int k = 0; k < 8; ++k) {
+        if (taken[k]) continue;
+        const Fixed score = (at[k] - u.pos).flat().length() + crowd[k] * kCrowdCost;
+        if (best < 0 || score < bestScore) best = k, bestScore = score;
+    }
+    if (best < 0) return false;
+    slot = at[best];
+    return true;
+}
+
 Unit* World::meleeTarget(Unit& u, EntityId lastFoe) {
     if (lastFoe != kNoEntity) {
         Unit* f = mutableUnit(lastFoe);
@@ -157,7 +225,26 @@ Unit* World::meleeTarget(Unit& u, EntityId lastFoe) {
             if (gap <= u.stats.melee.reach + kFoeSlack) return f;
         }
     }
-    return nearestEnemy(u, u.stats.aggroRange);
+    Unit* near = nearestEnemy(u, u.stats.aggroRange);
+    if (near == nullptr) return nullptr;
+    const Fixed nearGap = (near->pos - u.pos).flat().length() - u.stats.radius - near->stats.radius;
+    if (nearGap > u.stats.melee.reach + kFlankSlack || !meleeFull(u, *near)) return near;
+    // His nearest is ringed already: the nearest of the rest that is not, within a few strides more.
+    Unit* open = nullptr;
+    Fixed openDist;
+    uint32_t openIndex = 0;
+    const Fixed range = std::min(u.stats.aggroRange, nearGap + u.stats.radius + near->stats.radius + kFlankSlack);
+    nearbyNotOf(u.owner, u.pos.x, u.pos.y, range, [&](uint32_t i) {
+        Unit& o = units_[i];
+        if (!o.alive() || o.inAir() || o.owner == u.owner || o.id == near->id) return;
+        const Fixed d = (o.pos - u.pos).flat().length();
+        if (open != nullptr && (d > openDist || (d == openDist && i > openIndex))) return;
+        if (meleeFull(u, o)) return;
+        open = &o;
+        openDist = d;
+        openIndex = i;
+    });
+    return open != nullptr ? open : near;  // none: he waits on the nearest, standing off (fight)
 }
 
 int32_t World::blowPct(const Unit& u, const Unit& enemy, Fixed dist, Fixed dz) const {
@@ -177,6 +264,18 @@ void World::fight(Unit& u, Unit& enemy) {
     const Fixed gap = dist - u.stats.radius - enemy.stats.radius;
     if (gap > m.reach) {
         if (shutGateBetween(u, enemy.pos)) return;  // not at a foe the other side of a shut gate (he holds his place)
+        // A foe ringed by his full share: no pushing in behind them. He closes to a stand-off and waits his turn, facing him.
+        if (gap <= m.reach + kStandOff && meleeFull(u, enemy)) {
+            turnToward(u, dir);
+            return;
+        }
+        // Near him, to a free place on his ring: the line wraps him (and the foe of the next man is not the same man's front).
+        if (gap <= m.reach + kSlotRange) {
+            if (Vec3 slot; ringSlot(u, enemy, slot)) {
+                walk(u, slot);
+                return;
+            }
+        }
         // A little inside reach: closing on the exact edge of it never quite arrives.
         walk(u, u.pos + dir * min(gap - m.reach + kCloseIn, u.stats.moveSpeed));
         return;

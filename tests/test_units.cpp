@@ -260,7 +260,7 @@ TEST(melee_scenario_is_deterministic) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x074ac72ad54fc677;  // (was 0x79395485b8e4f1a2 before blast throwers aimed to spare their own side (stones, fireballs and Molotovs weighed for friends in the blast; satchels laid clear of his own men); was 0x2b832f5e35b1bb99 before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
+    constexpr uint64_t kGolden = 0xd68130cd068b5e0a;  // (was 0x79395485b8e4f1a2 before a foe was struck by no more than his share of men at once (meleeCap), the rest wrapping him by free places on his ring (ringSlot) or taking another foe; was 0x2b832f5e35b1bb99 before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
     if (a != kGolden) std::printf("  Melee checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

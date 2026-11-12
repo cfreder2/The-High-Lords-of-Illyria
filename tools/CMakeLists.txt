@@ -46,3 +46,9 @@ endif()
 add_executable(illyria_terrainaudit terrainaudit.cpp)
 target_link_libraries(illyria_terrainaudit PRIVATE illyria_sim)
 target_include_directories(illyria_terrainaudit PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Clumping in melee on open ground: spacing, men in reach, attackers on one target, the line's width, once a second,
+# and the mirror match's win rate:
+#   illyria_clumpcheck [scenario|all] [seed]       illyria_clumpcheck mirror [seeds]
+add_executable(illyria_clumpcheck clumpcheck.cpp)
+target_link_libraries(illyria_clumpcheck PRIVATE illyria_sim)

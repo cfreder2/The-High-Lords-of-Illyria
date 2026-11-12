@@ -320,7 +320,7 @@ TEST(crossing_scenario_is_deterministic_and_pinned) {
     };
     const uint64_t a = run(1234);
     CHECK(a == run(1234));
-    constexpr uint64_t kGolden = 0x698eb5b5e3e3bbad;  // (was 0x76618e3a101c1b5e before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x95f17af2982566da before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
+    constexpr uint64_t kGolden = 0x5b50949e4c1b5c94;  // (was 0x698eb5b5e3e3bbad before a foe was struck by no more than his share of men at once (meleeCap), the rest wrapping him by free places on his ring (ringSlot) or taking another foe; was 0x76618e3a101c1b5e before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0x95f17af2982566da before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
     if (a != kGolden) std::printf("  Crossing checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

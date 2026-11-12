@@ -516,7 +516,7 @@ TEST(raid_scenario_is_deterministic) {
     std::printf("  raid: %d things thrown (%d heads), %d killed by hyena-folk\n", thrown, heads, kills);
     CHECK(a == run(1234, nullptr, nullptr, nullptr));
     CHECK(thrown > 0);
-    constexpr uint64_t kGolden = 0x1fee797cefbe7aa0;  // (was 0xd332945f49867e4f before blast throwers aimed to spare their own side (stones, fireballs and Molotovs weighed for friends in the blast; satchels laid clear of his own men))
+    constexpr uint64_t kGolden = 0xe3e62aedfc458a83;  // (was 0xd332945f49867e4f before a foe was struck by no more than his share of men at once (meleeCap), the rest wrapping him by free places on his ring (ringSlot))
     if (a != kGolden) std::printf("  Raid checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
