@@ -176,7 +176,7 @@ A stack of fliers alone flies over anything at its pace. A boat sails at 6 m/s. 
 
 | | Phone | Desktop |
 |---|---|---|
-| Zoom / pan / turn | pinch / drag / twist | wheel / left drag / right drag |
+| Zoom / pan / turn | pinch / drag / twist | wheel (toward the pointer) / middle drag / right drag, or [[Q]] [[E]] |
 | Select a soldier, his kind in view | tap, tap again | click, double-click |
 | Select a hero or a group | its card | its card, or the group's number |
 | Everyone in view | | [[Ctrl]] / [[⌘]] + [[A]] |

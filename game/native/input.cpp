@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "api.h"
+#include "../app/platform.h"
 #include "json.h"
 
 namespace illyria::native {
@@ -102,7 +103,9 @@ void Input::modifiers(SDL_Keymod mod) { illyria_set_keys((mod & (SDL_KMOD_CTRL |
 void Input::pointer(int type, const SDL_Event& e, float x, float y, int button) {
     (void)e;
     illyria_set_mouse(1);  // left selects, right orders, middle pans (Gestures)
-    illyria_pointer(type, 1, x, y, button, static_cast<double>(SDL_GetTicks()));
+    // The clock the frame's own Gestures::update reads (platform::nowMs): a press's time must be on it, or a right press
+    // looks held for 300 ms the moment the next frame runs and every right drag with men selected is a march.
+    illyria_pointer(type, 1, x, y, button, platform::nowMs());
 }
 
 void Input::sendCameraKeys(bool shift) {
@@ -266,7 +269,7 @@ void Input::handle(const SDL_Event& e) {
     switch (e.type) {
         case SDL_EVENT_MOUSE_BUTTON_DOWN: {
             if (e.button.which == SDL_TOUCH_MOUSEID) break;
-            if (hud_.click(e.button.x, e.button.y)) {
+            if (hud_.click(e.button.x, e.button.y, e.button.button == SDL_BUTTON_LEFT)) {
                 captured_ = true;
                 break;
             }
@@ -298,6 +301,7 @@ void Input::handle(const SDL_Event& e) {
         case SDL_EVENT_MOUSE_WHEEL: {
             if (hud_.menuOpen()) break;
             const float x = e.wheel.mouse_x, y = e.wheel.mouse_y;
+            if (hud_.wheel(x, y, e.wheel.y)) break;  // (over a strip of cards with pages: the wheel turns them)
             const Uint64 now = SDL_GetTicks();
             // A mouse's wheel zooms; a trackpad's two-finger swipe pans (the page tells them apart the same way: whole notches or not).
             const bool fine = e.wheel.x != 0 || std::abs(e.wheel.y - std::round(e.wheel.y)) > 1e-3f;

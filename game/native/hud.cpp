@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -10,6 +11,7 @@
 
 #include "api.h"
 #include "assets.h"
+#include "illyria/game/card_layout.h"
 #include "illyria/game/card_name.h"
 #include "illyria/game/palette.h"
 #include "json.h"
@@ -223,9 +225,16 @@ void Hud::menuDigit(int digit) {
     foes_ ^= 1 << (digit - 1);
 }
 
-bool Hud::click(float x, float y) {
+bool Hud::wheel(float x, float y, float notches) {
+    if (menu_ || !stripPaged_ || x < stripX_ || y < stripY_ || x >= stripX_ + stripW_ || y >= stripY_ + stripH_ || notches == 0) return false;
+    cardPage_ = std::clamp(cardPage_ + (notches > 0 ? -1 : 1), 0, std::max(0, cardPages_ - 1));  // (a roll away from you: back a page)
+    return true;
+}
+
+bool Hud::click(float x, float y, bool left) {
     for (const Rect& r : hits_) {
         if (x < r.x || y < r.y || x >= r.x + r.w || y >= r.y + r.h) continue;
+        if (r.what >= 5000 && !left) continue;  // (a right click on a town is an order, not a tap on its name)
         if (menu_) {
             if (r.what >= 0 && r.what < kRows) {
                 row_ = r.what;
@@ -245,8 +254,12 @@ bool Hud::click(float x, float y) {
         } else if (r.what == 2000) {
             lookAt(x, y);
             return true;
+        } else if (r.what == -2000 || r.what == -2001) {  // the page arrows of a long strip of cards
+            cardPage_ = std::clamp(cardPage_ + (r.what == -2000 ? -1 : 1), 0, std::max(0, cardPages_ - 1));
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
+        } else if (r.what >= 5000) {
+            illyria_conquest_open_city(r.what - 5000);
         } else if (r.what >= 1000) {
             illyria_conquest_select(static_cast<unsigned>(r.what - 1000));
         }
@@ -563,7 +576,18 @@ void Hud::draw(Overlay& o, float w, float h) {
 
     // Names of towns and places when the view is high.
     const size_t sel = static_cast<size_t>(hud.num("selCount"));
-    const bool squadCards = !hud.list("squads").empty();
+    const std::vector<Json>& squads = hud.list("squads");
+    const bool squadCards = !squads.empty();
+    // The squad cards: every squad has one (card_layout.h: smaller cards, more rows, then pages), so the strip's height
+    // depends on how many there are. Its top is what the selection line, the names of places and the inspect line keep above.
+    constexpr float kCardH = 62;
+    const illyria::game::CardLayout cards = illyria::game::layoutCards(static_cast<int>(squads.size()), w - 16);
+    const float cardsTop = h - 8 - (squadCards ? cards.rows * kCardH + (cards.rows - 1) * illyria::game::kCardGap : kCardH);
+    cardPage_ = cards.paged ? std::clamp(cardPage_, 0, cards.pages - 1) : 0;
+    stripX_ = 0, stripY_ = squadCards ? cardsTop : 0, stripW_ = squadCards ? w : 0, stripH_ = squadCards ? h - cardsTop : 0;
+    stripPaged_ = cards.paged;
+    cardPages_ = cards.pages;
+    std::vector<Rect> townHits;  // taps on towns' markers and names, added after the armies' flags (which come first where they overlap)
     {
         std::istringstream lines(illyria_labels());
         std::string line;
@@ -578,15 +602,17 @@ void Hud::draw(Overlay& o, float w, float h) {
             }
             if (f.size() < 5) continue;
             const std::string name = line.substr(from);
+            const int townId = std::atoi(f[4].c_str());
             const float x = static_cast<float>(std::atof(f[2].c_str())), y = static_cast<float>(std::atof(f[3].c_str()));
             if (y < 38) continue;  // (under the status bar)
             // A name is drawn whole or not at all: it fades over the last stretch before a screen edge or a strip
             // of the HUD (the bar above; below, the selection line and the cards), and goes when it would be cut.
             const float size = f[0] == "1" ? 13.0f : 11.0f;
             const float nw = name.empty() ? 0.0f : o.width(name, size);
-            const float stripTop = h - (sel > 0 ? 104.0f : squadCards ? 76.0f : 12.0f);
+            const float stripTop = squadCards ? cardsTop - (sel > 0 ? 34.0f : 6.0f) : h - (sel > 0 ? 104.0f : 12.0f);
             const bool markerShown = y + 2 < stripTop && x > 6 && x < w - 6;
             const Colour c = hex(f[1]);
+            if (conquest && markerShown && townId >= 0 && (f[0] == "0" || f[0] == "1")) townHits.push_back({x - 8, y, 16, 16, 5000 + townId});  // (the marker is a tap on its town)
             if (markerShown && (f[0] == "0" || f[0] == "1" || f[0] == "7")) {  // a marker: the holder's colour in a dark frame with a light top edge
                 o.rect(x - 6, y + 2, 12, 12, rgba(0x000000, 200));
                 o.rect(x - 5, y + 3, 10, 10, c);
@@ -609,6 +635,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             // names carry a dark shadow, so they read over forest, field and water alike
             const Colour ink = f[0] == "2" || f[0] == "7" ? kDim : kInk;
             static const float kOutline[5][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}};
+            if (conquest && townId >= 0 && (f[0] == "0" || f[0] == "1") && fade > 0.5f) townHits.push_back({lx, y + 2, nw, size + 2, 5000 + townId});  // (and so is its name)
             for (const auto& d : kOutline) o.text(lx + d[0], y + 2 + d[1], name, rgba(0x000000, alpha(190)), size);
             o.text(lx, y + 2, name, {ink.r, ink.g, ink.b, alpha(ink.a)}, size);
         }
@@ -642,6 +669,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             if (id == selected) o.frame(x - bw / 2 - 3, y - 13, bw + 6, 20, 2, kGold);
             hits_.push_back({x - bw / 2 - 3, y - 13, bw + 6, 20, 1000 + static_cast<int>(id)});
         }
+        for (const Rect& r : townHits) hits_.push_back(r);
         for (const Json& b : camp.list("banners")) {
             std::snprintf(buf, sizeof buf, "%s %d%%", b.str("name").c_str(), static_cast<int>(b.num("p")));
             // A pill under the town's marker: the raiser's colour, a bar for how far the banner has risen, and the name's shadow.
@@ -654,20 +682,44 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
     }
 
+    // The march of the selected stack: when it gets there.
+    if (conquest) {
+        if (const Json* m = camp.find("march")) {
+            const double ticks = m->num("ticks"), perDay = std::max(1.0, m->num("perDay")), perSecond = std::max(1.0, m->num("perSecond"));
+            const int speed = camp.flag("paused") ? 1 : std::max(1, static_cast<int>(camp.num("speed")));
+            // Days and hours of the game's calendar (a day is perDay ticks), rounded up to the hour so a stack never "arrives in 0h".
+            const int hours = std::max(1, static_cast<int>(std::ceil(ticks / perDay * 24.0)));
+            const int secs = std::max(1, static_cast<int>(std::lround(ticks / perSecond / speed)));
+            char when[64], clock[48];
+            if (hours >= 24) std::snprintf(when, sizeof when, "%dd %dh", hours / 24, hours % 24);
+            else std::snprintf(when, sizeof when, "%dh", hours);
+            if (secs < 60) std::snprintf(clock, sizeof clock, "%d s", secs);
+            else if (secs < 600 && secs % 60) std::snprintf(clock, sizeof clock, "%d min %d s", secs / 60, secs % 60);
+            else std::snprintf(clock, sizeof clock, "%d min", secs / 60);
+            std::snprintf(buf, sizeof buf, "On the march: arrives in %s  (%s at %dx)", when, clock, speed);
+            const float mw = o.width(buf, 14), my = !notice.empty() || hud.flag("planning") ? 94.0f : 40.0f;
+            o.rect((w - mw) / 2 - 10, my - 4, mw + 20, 24, rgba(0x000000, 170));
+            o.text((w - mw) / 2, my, buf, kGold, 14);
+        }
+    }
+
     // The selection and the squad cards, bottom.
     if (sel > 0) {
         std::snprintf(buf, sizeof buf, "%zu selected  %s  %s", sel, hud.str("selLabel").c_str(), hud.str("formation").c_str());
-        o.rect(0, h - 98, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
-        o.text(10, h - 94, buf, kGold, 13);
+        o.rect(0, cardsTop - 28, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
+        o.text(10, cardsTop - 24, buf, kGold, 13);
     }
-    float x = 8;
     const Colour side = hex(hud.str("colour"));  // the player's colour (palette.h), the bars of the cards
-    const float cw = 132, ch = 62, y = h - ch - 8;
-    for (const Json& q : hud.list("squads")) {
+    const float cw = cards.width, ch = kCardH;
+    const int first = cards.paged ? cardPage_ * cards.perPage : 0;
+    const int last = std::min(static_cast<int>(squads.size()), first + cards.perPage);
+    for (int k = first; k < last; ++k) {
+        const Json& q = squads[static_cast<size_t>(k)];
+        const int cell = k - first;
+        const float x = 8 + (cell % cards.columns) * (cw + illyria::game::kCardGap), y = cardsTop + (cell / cards.columns) * (ch + illyria::game::kCardGap);
         const int i = static_cast<int>(q.num("i"));
         const int sq = static_cast<int>(q.num("sel"));
         const bool mine = q.flag("mine");
-        if (x + cw > w - 8) break;
         o.rect(x, y, cw, ch, rgba(0x0E0B08, 190));
         o.frame(x, y, cw, ch, sq == 2 ? 3.0f : 1.5f, sq ? kGold : mine ? rgba(0x7C6E50) : rgba(0x4A4A4A));
         // The name whole if it fits, else over two lines, else a step smaller, and only then cut (card_name.h).
@@ -682,11 +734,26 @@ void Hud::draw(Overlay& o, float w, float h) {
             ny += 12;
         }
         std::snprintf(buf, sizeof buf, "%d/%d  %s", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")), q.str("role").c_str());
+        if (o.width(buf, 10) > cw - 12) std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));  // (a narrow card: the count, not the role)
         o.text(x + 6, ny + 4, buf, kDim, 10);
         const double total = std::max(1.0, q.num("total"));
         o.rect(x + 6, y + ch - 14, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
         hits_.push_back({x, y, cw, ch, -1 - i});
-        x += cw + 6;
+    }
+    if (cards.paged) {  // the page arrows take the cell after the last card's place on the page: < page n of m >
+        const int cell = cards.perPage;
+        const float x = 8 + (cell % cards.columns) * (cw + illyria::game::kCardGap), y = cardsTop + (cell / cards.columns) * (ch + illyria::game::kCardGap);
+        o.rect(x, y, cw, ch, rgba(0x0E0B08, 190));
+        o.frame(x, y, cw, ch, 1.5f, rgba(0x7C6E50));
+        std::snprintf(buf, sizeof buf, "%d / %d", cardPage_ + 1, cards.pages);
+        o.text(x + (cw - o.width(buf, 12)) / 2, y + 8, buf, kInk, 12);
+        o.text(x + (cw - o.width("wheel pages", 9)) / 2, y + 26, "wheel pages", kDim, 9);
+        o.rect(x + 4, y + ch - 22, cw / 2 - 6, 18, rgba(0x3A3226, 220));
+        o.rect(x + cw / 2 + 2, y + ch - 22, cw / 2 - 6, 18, rgba(0x3A3226, 220));
+        o.text(x + cw / 4 - 3, y + ch - 20, "<", cardPage_ > 0 ? kGold : kDim, 14);
+        o.text(x + 3 * cw / 4 - 1, y + ch - 20, ">", cardPage_ + 1 < cards.pages ? kGold : kDim, 14);
+        hits_.push_back({x + 4, y + ch - 22, cw / 2 - 6, 18, -2000});
+        hits_.push_back({x + cw / 2 + 2, y + ch - 22, cw / 2 - 6, 18, -2001});
     }
 
     drawMinimap(o, w, h);
@@ -705,8 +772,8 @@ void Hud::draw(Overlay& o, float w, float h) {
         else
             std::snprintf(buf, sizeof buf, "%s  hp %d / %d  morale %d", in->str("type").c_str(), static_cast<int>(in->num("hp")), static_cast<int>(in->num("max")),
                           static_cast<int>(in->num("morale")));
-        o.rect(w - o.width(buf, 13) - 20, h - 98, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
-        o.text(w - o.width(buf, 13) - 10, h - 94, buf, kRed, 13);
+        o.rect(w - o.width(buf, 13) - 20, cardsTop - 28, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
+        o.text(w - o.width(buf, 13) - 10, cardsTop - 24, buf, kRed, 13);
     }
 
     if (help_) {
@@ -719,11 +786,11 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"Shift + click", "add or drop one"},
               {"Drag", "a box (Shift adds)"},
               {"Right click", "march there / attack what is there"},
-              {"Right hold, drag", "march there, facing the drag"},
+              {"Right hold, drag", "hold still, then drag: march, facing the drag"},
               {"Shift + right click", "queue it after the order in hand"},
               {"Ctrl or Cmd + click", "attack, even a friend"},
               {"Alt + click", "force march"},
-              {"Right drag", "turn the view"},
+              {"Right drag", "turn the view (start moving at once)"},
               {"Middle drag", "pan"},
               {"Wheel", "zoom (trackpad: swipe pans, pinch zooms)"}}},
             {"Keys",

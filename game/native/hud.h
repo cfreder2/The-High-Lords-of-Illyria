@@ -34,7 +34,9 @@ public:
     void toggleStats() { showStats_ = !showStats_; }
     void draw(Overlay& o, float w, float h);
     // A click at (x, y) points: true if the HUD took it (a card, a banner, a menu row).
-    bool click(float x, float y);
+    bool click(float x, float y, bool left = true);
+    // The wheel over a strip of cards too long for one page turns its page (true: taken).
+    bool wheel(float x, float y, float notches);
     void menuKey(Key k);
     void menuDigit(int digit);  // 1-8 toggle a computer lord
     void menuToggleDifficulty() { hard_ = !hard_; }
@@ -81,6 +83,9 @@ private:
     int busyFrames_ = 0;
     int savedDay_ = -1;
     std::vector<Rect> hits_;
+    int cardPage_ = 0, cardPages_ = 1;  // the page of squad cards shown when there are too many for the strip
+    bool stripPaged_ = false;
+    float stripX_ = 0, stripY_ = 0, stripW_ = 0, stripH_ = 0;  // the strip of cards, for the wheel
     int lastDay_ = 0;
 };
 

@@ -531,6 +531,31 @@ void submitOrder(illyria::sim::Conquest::Order::Kind kind, uint32_t stack = 0, i
     app->camp.c->submit(o);
 }
 
+// A tap on a town of the player's (its ground, its marker or its name): the army standing in it is picked, as a tap on its
+// banner picks it (the view stays), and the town's panel opens with it. One army there: that one; several: the one with the
+// lord (a hero), if only one has a hero. False when no army can be picked (none there, or the choice is not clear): the
+// caller opens the panel alone or leaves the tap to the battle.
+bool pickStackIn(int town) {
+    using C = illyria::sim::Conquest;
+    App::ConquestView& cv = app->camp;
+    const C& c = *cv.c;
+    const C::Stack* only = nullptr;
+    const C::Stack* lord = nullptr;
+    int standing = 0, lords = 0;
+    for (const C::Stack& st : c.stacks()) {
+        if (st.owner != c.localSide() || st.armies.empty() || c.cityAt(st.cx, st.cy) != town) continue;
+        ++standing;
+        only = &st;
+        if (std::any_of(st.armies.begin(), st.armies.end(), [](const illyria::sim::Army& a) { return a.hero(); })) ++lords, lord = &st;
+    }
+    const C::Stack* pick = standing == 1 ? only : lords == 1 ? lord : nullptr;
+    if (!pick) return false;
+    if (app->battle->selectedStack() != pick->id) app->battle->selectStack(pick->id);
+    cv.panelStack = pick->id;  // (so the panel stays: it shuts only when the selection moves to another stack)
+    cv.city = town;
+    return true;
+}
+
 // The town screens are the conquest's own (what a town trains, its boats, where its new armies go), and a tap that
 // belongs to them is theirs: the tap that says which town new armies go to, and a tap on one of the player's towns
 // with nothing selected, which opens its panel. Every other tap is the battle's (Battle::tap).
@@ -539,7 +564,7 @@ bool townTap(float px, float py) {
     App::ConquestView& cv = app->camp;
     const C& c = *cv.c;
     const uint8_t me = c.localSide();
-    if (cv.vectorFrom < 0 && app->battle->selectionSize() > 0) return false;
+    const bool holding = cv.vectorFrom < 0 && app->battle->selectionSize() > 0;  // (men selected: only a town of ours with its stack in it is the town's)
     V3 hit;
     if (!app->camera.pickGround(px, py, hit)) return cv.vectorFrom >= 0 && (cv.vectorFrom = -1, true);
     const V3 o = app->battle->origin();
@@ -552,6 +577,12 @@ bool townTap(float px, float py) {
             const int32_t k = c.cityAt(std::clamp(tx + dx, 0, c.width() - 1), std::clamp(ty + dy, 0, c.height() - 1));
             if (k >= 0 && c.cities()[static_cast<size_t>(k)].owner == me) town = k;
         }
+    // ... or anywhere inside its walls (a capital's walls stand two cells out from its middle).
+    for (size_t k = 0; k < c.cities().size() && town < 0; ++k) {
+        const illyria::sim::Continent::City& ct = c.continent().cities()[k];
+        const double dx = hit.x + o.x - ct.pos.x.toDouble(), dy = hit.y + o.y - ct.pos.y.toDouble();
+        if (c.cities()[k].owner == me && std::sqrt(dx * dx + dy * dy) <= ct.radius.toDouble()) town = static_cast<int32_t>(k);
+    }
     if (cv.vectorFrom >= 0) {
         // Sending a city's new armies: the tapped city of ours receives them.
         const int from = cv.vectorFrom;
@@ -562,6 +593,9 @@ bool townTap(float px, float py) {
     // Nothing of ours under the tap, but a town: its panel. (A man or a gate under it is the battle's to select or look at.)
     const Battle::Pick pick = app->battle->pickAt(app->camera, px, py, app->pixelRatio);
     if (town < 0 || (pick.kind != Battle::Pick::Kind::Ground && pick.kind != Battle::Pick::Kind::Wall && pick.kind != Battle::Pick::Kind::Obstacle)) return false;
+    // The army standing in the town is picked with the tap (pickStackIn).
+    if (pickStackIn(town)) return true;
+    if (holding) return false;
     cv.city = town;
     return true;
 }
@@ -2143,7 +2177,8 @@ ILLYRIA_API void illyria_conquest_land() {
 // A tap on a town's marker: the panel of the player's town, whatever is selected.
 ILLYRIA_API void illyria_conquest_open_city(int city) {
     if (!app || !app->camp.on || city < 0 || city >= static_cast<int>(app->camp.c->cities().size())) return;
-    if (app->camp.c->cities()[static_cast<size_t>(city)].owner == app->camp.c->localSide()) app->camp.city = city;
+    if (app->camp.c->cities()[static_cast<size_t>(city)].owner != app->camp.c->localSide()) return;
+    if (!pickStackIn(city)) app->camp.city = city;
 }
 ILLYRIA_API void illyria_conquest_close_city() {
     if (app) app->camp.city = -1;
@@ -2162,6 +2197,27 @@ ILLYRIA_API void illyria_conquest_select(unsigned id) {
         app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), kStackView));
     }
 }
+// The time (in the conquest's hundredths of a tick) a marching stack still has to go. The sim's own reckoning (timeLeft) is
+// the route from the stack's cell, and it is closed when the cell the men have walked to is not next to the route's first
+// step (the men run ahead of or beside the grid's steps in the one world): then it is the route's own steps summed, and the
+// way from the men to its first step at the pace of the route's average step.
+static int32_t marchTimeLeft(const illyria::sim::Conquest& c, const illyria::sim::Conquest::Stack& s) {
+    using C = illyria::sim::Conquest;
+    const int32_t left = c.timeLeft(s);
+    if (left != C::kClosed || s.path.empty()) return left;
+    int64_t total = 0;
+    for (size_t i = 0; i + 1 < s.path.size(); ++i) {
+        const int32_t step = c.stepTime(s, s.path[i].first, s.path[i].second, s.path[i + 1].first, s.path[i + 1].second);
+        if (step == C::kClosed) return C::kClosed;
+        total += step;
+    }
+    const int64_t legs = static_cast<int64_t>(s.path.size()) - 1;
+    const int64_t cells = std::max(std::abs(s.path[0].first - s.cx), std::abs(s.path[0].second - s.cy));
+    if (legs > 0) total += total / legs * cells;
+    else if (cells == 1) total = std::max<int64_t>(0, c.stepTime(s, s.cx, s.cy, s.path[0].first, s.path[0].second));
+    return static_cast<int32_t>(std::min<int64_t>(total, C::kClosed - 1));
+}
+
 // Everything the conquest HUD shows, as JSON: the day and the treasury, every
 // banner on screen, the selected stack's armies and the open city's panel.
 ILLYRIA_API const char* illyria_conquest_state() {
@@ -2258,7 +2314,7 @@ ILLYRIA_API const char* illyria_conquest_state() {
     s += "]";
     // The selected stack on the march: how long until it is there, in ticks (the page puts it in days and minutes).
     if (sel && !sel->path.empty()) {
-        const int32_t left = c.timeLeft(*sel);
+        const int32_t left = marchTimeLeft(c, *sel);
         if (left != C::kClosed) {
             std::snprintf(buf, sizeof buf, ",\"march\":{\"ticks\":%d,\"perDay\":%d,\"perSecond\":%d}", (left + C::kTimeScale - 1) / C::kTimeScale,
                           C::kTicksPerDay, C::kTicksPerSecond);

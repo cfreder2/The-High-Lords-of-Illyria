@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "illyria/game/card_layout.h"
 #include "illyria/game/card_name.h"
 #include "test.h"
 
@@ -64,4 +65,31 @@ TEST(card_name_cut_never_ends_on_of_or_a_gap) {
 TEST(card_name_is_deterministic) {
     CHECK(fit("Silverwood Archers of the Vale", 9, 2) == fit("Silverwood Archers of the Vale", 9, 2));
     CHECK(fit("", 9, 2) == "");
+}
+
+// The squad cards (card_layout.h): none is ever left out of reach, whatever the window and the number of squads.
+TEST(card_layout_never_drops_a_squad) {
+    for (const float w : {640.0f, 1000.0f, 1280.0f, 1600.0f, 1920.0f, 2600.0f}) {
+        for (int n = 0; n <= 80; ++n) {
+            const CardLayout l = layoutCards(n, w - 16);
+            CHECK(l.columns >= 1 && l.rows >= 1 && l.rows <= kCardMaxRows);
+            CHECK(l.width >= 96 && l.width <= 132);
+            // a row of cards, gaps between, fits the room
+            CHECK(l.columns * l.width + (l.columns - 1) * kCardGap <= w - 16 + 0.01f || l.columns == 1);
+            // every card is on some page, and all the pages' cells fit the rows
+            CHECK(l.perPage >= 1 || n == 0);
+            CHECK(l.pages * l.perPage >= n);
+            CHECK(l.perPage + (l.paged ? 1 : 0) <= l.rows * l.columns);
+            if (!l.paged) CHECK(l.pages == 1 && l.perPage == n);
+        }
+    }
+    // The Ford's 18 squads: one row at 1600 shrinks, two rows at 1280 and 1600 keep full cards, nothing is paged.
+    CardLayout l = layoutCards(18, 1600 - 16);
+    CHECK(!l.paged && l.rows <= 2);
+    l = layoutCards(18, 1280 - 16);
+    CHECK(!l.paged && l.rows == 2 && l.width == 132);
+    l = layoutCards(11, 1600 - 16);  // what fitted before: still one full row
+    CHECK(l.rows == 1 && l.width == 132);
+    l = layoutCards(200, 1280 - 16);  // too many for three rows: paged
+    CHECK(l.paged && l.pages > 1);
 }

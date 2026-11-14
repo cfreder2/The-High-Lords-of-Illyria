@@ -766,6 +766,14 @@
     if (wy || wx) return Math.abs(wy + 3 * e.deltaY) <= 3 && Math.abs(wx + 3 * e.deltaX) <= 3;
     return true;
   }
+  // The strip of cards scrolls sideways, so no card is out of reach (the desktop's strip wraps and pages for the same
+  // reason); a mouse's wheel over it turns into that scroll, a trackpad's own sideways swipe already is one.
+  $("cards").addEventListener("wheel", (e) => {
+    const strip = $("cards");
+    if (e.deltaX || strip.scrollWidth <= strip.clientWidth) return;
+    strip.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
   canvas.addEventListener("wheel", (e) => {
     if (!api) return;
     e.preventDefault();

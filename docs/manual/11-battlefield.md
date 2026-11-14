@@ -15,8 +15,8 @@ The battle runs in real time, thirty steps of the simulation every second, and i
 | | Phone or tablet | Desktop |
 |---|---|---|
 | Zoom | pinch | the mouse wheel, pinch the trackpad, or hold [[R]] (in) or [[F]] (out) |
-| Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold [[W]] [[A]] [[S]] [[D]] (or the arrows) |
-| Turn the view | twist two fingers | drag with the right button, or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
+| Move over the land | drag one finger | drag with the middle button, swipe two fingers on the trackpad, or hold [[W]] [[A]] [[S]] [[D]] (or the arrows) |
+| Turn the view | twist two fingers | drag with the right button, starting to move at once (with soldiers selected too; hold the button still first and the drag is an order with a facing instead), or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
 | North up | tap the compass | click the compass, or [[N]] |
 | Show or hide the map | tap or drag on the map to move the view | [[M]] (the map in the corner: the island in a Conquest, the field in a battle; click or drag on it to move the view) |
 | Move and zoom together | drag two fingers | |

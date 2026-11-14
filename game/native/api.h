@@ -70,6 +70,7 @@ const char* illyria_drag_box();
 void illyria_conquest_pause();
 void illyria_conquest_speed();
 void illyria_conquest_select(unsigned id);
+void illyria_conquest_open_city(int city);  // a tap on a town's marker or name: its army picked, its panel opened
 const char* illyria_conquest_state();
 const char* illyria_conquest_save();
 void illyria_set_side_colour(const char* hex);

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <utility>
 #include <vector>
 
 #include "illyria/game/battle.h"
@@ -266,4 +267,79 @@ TEST(camera_never_goes_below_the_terrain_at_the_closest_zoom) {
             CHECK(e.z >= hills(e.x, e.y) + 0.3f);
         }
     }
+}
+
+namespace {
+// Wheel notches at a pointer, the glide run to its end: how far (in pixels) the ground that was under the pointer has
+// slid from it. (In pixels, not metres: a ray that skims the hills moves its hit by hundreds of metres for a pixel.)
+float zoomDrift(Camera c, int notches, float px, float py, bool wheelEachFrame) {
+    V3 before;
+    CHECK(c.pickGround(px, py, before));
+    Gestures g(c, [](float, float) {});
+    for (int n = 0; n < notches; ++n) {
+        g.wheel(-100.0f, px, py);
+        for (int f = 0; f < (wheelEachFrame ? 2 : 40); ++f) c.advance(1.0f / 60);
+    }
+    for (int f = 0; f < 240; ++f) c.advance(1.0f / 60);
+    float qx = 0, qy = 0;
+    if (!c.project(before, qx, qy)) return 1e6f;
+    return std::hypot(qx - px, qy - py);
+}
+}  // namespace
+
+TEST(camera_wheel_zoom_holds_the_ground_under_the_pointer) {
+    // Flat land and rolling land, from a close tilted view to the whole island, off-centre pointers, a turned view.
+    const std::pair<float, float> pointers[] = {{600, 200}, {150, 480}, {400, 300}, {700, 560}};
+    for (const bool hilly : {false, true}) {
+        for (const float distance : {12.0f, 40.0f, 120.0f, 400.0f, 1500.0f, 4000.0f}) {
+            for (const float yaw : {0.0f, 1.1f}) {
+                for (const bool rested : {true, false}) {
+                    for (const auto& p : pointers) {
+                        Camera c;
+                        c.setBounds(0, 0, 8000, 8000);
+                        c.setViewport(800, 600);
+                        c.setHeightFn([hilly](float x, float y) { return hilly ? 25.0f * std::sin(x * 0.01f) + 15.0f * std::cos(y * 0.013f) + 40.0f : 0.0f; });
+                        c.lookAt(4000, 4000, distance);
+                        c.rotate(yaw);
+                        for (int f = 0; f < 120; ++f) c.advance(1.0f / 60);  // (the view's centre settled on its ground)
+                        const float drift = zoomDrift(c, 3, p.first, p.second, !rested);
+                        if (!(drift < 3.0f))
+                            std::printf("  distance %.0f yaw %.1f hilly %d %s pointer (%.0f,%.0f): the ground slid %.1f px\n", distance, yaw, hilly, rested ? "rested" : "per frame",
+                                        p.first, p.second, drift);
+                        CHECK(drift < 3.0f);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A mouse's right button, with men selected (the hold handler accepts): pressed and moved at once it turns the view; held
+// still a moment it is the order's facing line. The frame's update and the pointer's events share one clock (the
+// desktop once gave them two, and every right press was a hold on the next frame).
+TEST(gestures_right_drag_turns_the_view_even_with_men_selected_and_a_held_press_is_a_facing) {
+    Camera c = flatCamera();
+    Gestures g(c, [](float, float) {});
+    int holds = 0;
+    g.setMouse(true);
+    g.setHold([&](float, float, bool) { ++holds; return true; }, [](float, float) {}, [](float, float, bool) {});
+    const double t0 = 100000.0;  // (a late clock: the press's own time, not the start of the program)
+    const float yaw0 = c.yaw();
+    g.pointer(PointerEvent::Down, 1, 400, 300, 2, t0);
+    g.update(t0 + 16);  // a frame between the press and the first move
+    g.pointer(PointerEvent::Move, 1, 440, 300, 2, t0 + 40);
+    g.update(t0 + 50);
+    g.pointer(PointerEvent::Move, 1, 520, 300, 2, t0 + 80);
+    g.pointer(PointerEvent::Up, 1, 520, 300, 2, t0 + 120);
+    CHECK(holds == 0);
+    CHECK(std::abs(c.yaw() - yaw0) > 0.3f);
+
+    const float yaw1 = c.yaw();
+    const double t1 = t0 + 1000;
+    g.pointer(PointerEvent::Down, 1, 400, 300, 2, t1);
+    for (double t = t1 + 16; t < t1 + 400; t += 16) g.update(t);  // held still
+    CHECK(holds == 1);
+    g.pointer(PointerEvent::Move, 1, 520, 300, 2, t1 + 420);
+    g.pointer(PointerEvent::Up, 1, 520, 300, 2, t1 + 450);
+    CHECK_NEAR(c.yaw(), yaw1, 1e-6);
 }
