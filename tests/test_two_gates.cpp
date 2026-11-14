@@ -86,7 +86,7 @@ TEST(a_capital_and_a_long_town_have_a_second_door_in_a_side_wall) {
         longTowns += !city.capital;
         const size_t n = outer.corners.size();
         CHECK(outer.gateEdge2 == (outer.gateEdge + n / 4) % n);
-        CHECK(outer.gateOn(outer.gateEdge) && outer.gateOn(outer.gateEdge2) && !outer.gateOn((outer.gateEdge + 1) % n));
+        CHECK(outer.gateOn(outer.gateEdge) && outer.gateOn(outer.gateEdge2) && outer.gateEdge2 != outer.gateEdge && !outer.gateOn((outer.gateEdge + n / 2) % n));  // (a four-sided town's side wall is the next edge)
         // The pair of towers flanking each door: four gate towers on the outer ring, and the walls' crenels stay clear of them.
         CHECK(outer.galleries().size() == n + 4);
         CHECK(city.castle.rings.size() == (city.capital ? 2u : 1u));
