@@ -73,7 +73,7 @@ Three presets, and each part of the look on its own. Changing a part by hand lea
 | **Film look (bloom, grade, grain)** | a glow round bright things, a grim colour grade, darkened corners and a fine grain over the picture | | ✓ | ✓ |
 | **Full resolution** | every pixel the screen has: sharpest, slowest | | | ✓ |
 
-A phone starts on Medium, a computer on High. Two more switches stand outside the presets: **Dynamic resolution** draws the picture coarser when the frame rate drops and finer when it recovers (it has nothing to do while Full resolution is on), and **Show frame rate** shows the frames a second and where a frame's time goes.
+A phone starts on Medium, a computer on High. Two more switches stand outside the presets: **Dynamic resolution** draws the picture coarser when the frame rate drops and finer when it recovers (it has nothing to do while Full resolution is on), and **Show frame rate** shows the frames a second and where a frame's time goes (off at the start; the [[I]] key does the same, and so does `?stats` at the end of the address).
 
 ### Sound {#settings-sound}
 

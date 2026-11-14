@@ -233,6 +233,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_G: illyria_group(2, 0); break;
         case SDL_SCANCODE_V: setMode(orderMode_ == 2 ? 0 : 2); break;
         case SDL_SCANCODE_M: hud_.toggleMinimap(); break;  // the map in the corner
+        case SDL_SCANCODE_I: hud_.toggleStats(); break;    // the developer line: frame rate and where the frame went
         case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
         case SDL_SCANCODE_B: illyria_stop(); break;
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;

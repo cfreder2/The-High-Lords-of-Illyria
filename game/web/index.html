@@ -76,7 +76,7 @@
   .card.selected { border-color: #8fd0ff; box-shadow: 0 0 0 2px rgba(143, 208, 255, 0.45) inset; }
   .card.dead { opacity: 0.45; }
   .card svg { width: 22px; height: 22px; grid-row: span 2; color: var(--gold); }
-  .card .name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .name { font-size: 13px; line-height: 1.15; white-space: pre-line; overflow: hidden; min-width: 0; }
   .card .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
   .card .bar i { display: block; height: 100%; background: var(--blue); }
   #actions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; align-items: center; }
@@ -321,7 +321,7 @@
       <label class="set"><span>Film look (bloom, grade, grain)</span><input type="checkbox" data-bit="128"></label>
       <label class="set"><span>Full resolution<small>Every pixel the screen has: sharpest, slowest</small></span><input type="checkbox" data-res="1"></label>
       <label class="set"><span>Dynamic resolution<small>Drawn coarser when the frame rate drops, finer when it recovers</small></span><input type="checkbox" id="dynamicRes"></label>
-      <label class="set"><span>Show frame rate<small>fps and where a frame's time goes, by the game's name</small></span><input type="checkbox" id="showPerf"></label>
+      <label class="set"><span>Show frame rate<small>fps and where a frame's time goes, by the game's name (the I key does the same)</small></span><input type="checkbox" id="showPerf"></label>
       <div class="note">Looks only: everyone sees the same battle on any setting.</div>
     </section>
     <section data-pane="sound">
@@ -603,7 +603,9 @@
     // A saved preset means what the preset means now (a build may add to it: the film look joined Medium and High).
     if (gfx.preset >= 0) gfx.features = api.preset(gfx.preset);
     if (typeof gfx.dynamicRes !== "boolean") gfx.dynamicRes = true;
-    if (typeof gfx.showPerf !== "boolean") gfx.showPerf = true;
+    // The developer line (frame rate) is off unless asked for: the I key, the Settings box, or ?stats in the address.
+    if (!gfx.perfAsked) { gfx.showPerf = false; gfx.perfAsked = true; }
+    if (/[?&]stats\b/.test(location.search)) gfx.showPerf = true;
     applyGraphics();
   }
   const gfxQ = (sel) => document.querySelectorAll("#settingsScreen " + sel);
@@ -1069,6 +1071,7 @@
       }
       case "KeyV": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyM": toggleMinimap(); break;  // the map in the corner, kept on this device
+      case "KeyI": gfx.showPerf = !gfx.showPerf; applyGraphics(); break;  // the developer line: frame rate and where the frame went
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": api.stop(); break;
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
@@ -1510,13 +1513,67 @@
     if (s.notice && s.notice !== lastNotice) toast(s.notice);
     lastNotice = s.notice;
 
+    // A squad's name on its card: whole, or over two lines (never leaving "of" or "the" at a line's end), or with its
+    // small words dropped, and only then cut. The same steps as game/include/illyria/game/card_name.h (fitCardName).
+    const cardCtx = document.createElement("canvas").getContext("2d");
+    const connector = (w) => ["of", "the", "and", "at", "in", "on"].includes(w);
+    function packCardWords(words, width, maxW, maxLines) {
+      const out = [];
+      let line = [];
+      for (const w of words) {
+        const tried = [...line, w];
+        if (!line.length || width(tried.join(" ")) <= maxW) { line = tried; continue; }
+        const carry = [];
+        while (line.length > 1 && connector(line[line.length - 1])) carry.unshift(line.pop());
+        out.push(line.join(" "));
+        line = [...carry, w];
+      }
+      if (line.length) out.push(line.join(" "));
+      return out.length <= maxLines && out.every((l) => width(l) <= maxW) ? out : null;
+    }
+    function cardNameLines(name, width, maxW, maxLines) {
+      const words = name.split(" ").filter(Boolean);
+      if (!words.length) return [""];
+      let out = packCardWords(words, width, maxW, maxLines);
+      if (out) return out;
+      for (const pass of [0, 1]) {
+        const kept = words.filter((w, i) => i === 0 || !(pass === 0 ? w === "the" : connector(w)));
+        if (kept.length !== words.length && (out = packCardWords(kept, width, maxW, maxLines))) return out;
+      }
+      out = [];
+      let line = "", i = 0;
+      while (i < words.length && out.length + 1 < maxLines) {
+        const tried = line ? line + " " + words[i] : words[i];
+        if (line && width(tried) > maxW) { out.push(line); line = ""; continue; }
+        line = tried;
+        i++;
+      }
+      let last = [line, ...words.slice(i)].filter(Boolean).join(" ");
+      while (last.length > 1 && width(last + "…") > maxW) last = last.slice(0, -1);
+      for (;;) {
+        last = last.replace(/[ .…]+$/, "");
+        const sp = last.lastIndexOf(" ");
+        if (sp >= 0 && connector(last.slice(sp + 1))) last = last.slice(0, sp); else break;
+      }
+      out.push(last + "…");
+      return out;
+    }
+    function setCardName(el, name, tail) {
+      const maxW = el.clientWidth;
+      const key = `${name}|${tail}|${maxW}`;
+      if (!maxW || el.dataset.fit === key) return;
+      el.dataset.fit = key;
+      cardCtx.font = getComputedStyle(el).font;
+      const lines = cardNameLines(name, (t) => cardCtx.measureText(t).width, maxW - cardCtx.measureText(tail).width, 2);
+      el.textContent = lines.join("\n") + tail;
+    }
     function squadCard(q) {
       const b = document.createElement("button");
       b.className = "card panel" + (q.type === "Hero" ? " hero" : "");
       b.dataset.key = q.key;  // (the squad's own: a conquest makes its squads afresh each frame, and their indices move)
       b.innerHTML = `${q.type === "Hero" ? icons.hero : icons[q.role] || icons.melee}<span class="name"></span><span class="badge"></span><span class="bar"><i></i></span>`;
       b.title = `${q.name}: ${q.type}`;
-      b.querySelector(".name").textContent = q.name;
+      b.querySelector(".name").textContent = q.name;  // (fitted to the card when it is on the page: setCardName)
       b.onclick = () => {
         if (!api) return;
         const now = JSON.parse(api.hud()).squads.find((x) => x.key === q.key);
@@ -1587,7 +1644,7 @@
       b.classList.toggle("partial", q.sel === 1);
       b.classList.toggle("dead", q.alive === 0);
       b.querySelector("i").style.width = `${(100 * q.alive) / q.total}%`;
-      b.querySelector(".name").textContent = `${q.name} · ${q.alive}`;
+      setCardName(b.querySelector(".name"), q.name, ` · ${q.alive}`);
       const badge = b.querySelector(".badge");
       const look = `${q.strength}|${q.rank}|${q.level}|${q.blessings}`;
       if (badge.dataset.look !== look) {

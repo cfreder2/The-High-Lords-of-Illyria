@@ -1,27 +1,20 @@
 # The High Lords of Illyria
 
-A real-time tactical strategy game with grand-strategy campaign mechanics: the spatial physics combat of *Myth: The Fallen Lords* meets the named-army attrition campaign of *Warlords*. Built on a custom C++ engine, web-first (itch.io via WebAssembly), native later (Steam).
+A real-time strategy game in two layers. Above, a conquest of a continent after *Warlords*: eight lords, castles and towns, armies marching on roads, heroes, gold. Below, wherever two armies meet, a battle after *Myth: The Fallen Lords*: every soldier is a figure on real ground, arrows fly and can miss. The land you march over is the land you fight on. It also has skirmishes (Oakhaven Ford and a siege), Horde, Capture the Flag and a sandbox in the web build. The simulation is a custom C++ engine, deterministic for lockstep play.
 
-- 📜 [Technical & Game Design Starter Document](docs/GAME_DESIGN.md)
-- 👥 [Target Audience Personas](docs/AUDIENCE_PERSONAS.md)
-- ⚔️ [Unit Sheet](docs/UNITS.md) (locked stats for every unit type)
-- 🎞️ [Devlog: screenshots and videos of every build](https://github.com/cfreder2/The-High-Lords-of-Illyria/tree/devlog) (`devlog` branch, filled in automatically on each deploy)
+**Play the live build:** https://cfreder2.github.io/The-High-Lords-of-Illyria/ (desktop or phone browser). Every push to `master` deploys it; the version is under the game's name at the top left.
 
-**Play the latest build:** https://cfreder2.github.io/The-High-Lords-of-Illyria/ (desktop or phone browser; the version is shown top-left and goes up with every deploy)
+**Status:** playable, and still changing. The web build is the complete one. The desktop app (SDL 3) shares its game loop and renderer, and has a start menu, the conquest, the two skirmishes, a minimap and a HUD; it does not yet have the town and settings screens, voices or touch.
 
-**Status:** Phase 0 (pre-production): deterministic simulation core and first playable battle.
+## Documents
 
-### Controls
+- [Manual](docs/manual/) (the same text the game's Manual page shows; the controls table is in `docs/manual/21-tables.md`)
+- [Game design](docs/GAME_DESIGN.md), [units](docs/UNITS.md), [one world](docs/ONE_WORLD.md), [netcode](docs/NETCODE.md), [architecture rules](docs/ARCHITECTURE_RULES.md)
+- [Devlog](https://github.com/cfreder2/The-High-Lords-of-Illyria/tree/devlog): screenshots and videos of each build (the `devlog` branch)
 
-| | Touch | Mouse |
-|---|---|---|
-| Zoom (god ↔ ground) | Pinch | Wheel |
-| Pan | Drag | Left-drag |
-| Rotate | Two-finger twist | Right-drag |
-| Select a squad | Tap a blue soldier or a squad card | Click |
-| March / attack | Tap ground / tap an enemy | Click |
+## Controls
 
-Settings (on the title screen, or ⚙ Settings in the in-game ☰ menu) hold the graphics (Low, Medium or High, or each effect on and off: they change only the look, every setting plays the same battle), the sound and gameplay settings, and Controls lists every gesture, click and key. The campaign keeps three save slots in the browser.
+Press `/` in a battle for the keys; Controls on the title screen lists every gesture, click and key. In short: click or tap to select, right-click or tap the ground to march, drag a box to select several, wheel or pinch to zoom, `M` shows the map, `Esc` pauses. The frame rate line is off until asked for: `I`, or `--stats` on the desktop, or `?stats` on the web.
 
 ## Layout
 
@@ -65,7 +58,7 @@ open build-app/game/native/Illyria.app            # macOS bundle, files in Conte
 build-app/game/native/Illyria.app/Contents/MacOS/Illyria --conquest   # or from a shell, with options
 ```
 
-With no option the program opens its start menu (lord, computer lords, Easy/Hard, skirmish at the Ford or the siege, continue). `--conquest [--lord N --foes MASK --easy]`, `--continue`, `--skirmish`, `--siege`, `--stats`, `--size WxH`, `--no-sound`, `--shot FILE.tga:N`, `--help`. On Linux and Windows the build puts an `assets/` folder beside the program. The game loop, renderer and asset files are the web build's; `game/app/platform.h` is the one seam (`game/web/platform_web.cpp`, `game/native/`). In a battle, `/` lists the keys (the page's own). Not there yet: voices, the town and settings screens, the minimap, touch.
+With no option the program opens its start menu (lord, computer lords, Easy/Hard, skirmish at the Ford or the siege, continue). `--conquest [--lord N --foes MASK --easy]`, `--continue`, `--skirmish`, `--siege`, `--stats`, `--size WxH`, `--no-sound`, `--shot FILE.tga:N`, `--help`. On Linux and Windows the build puts an `assets/` folder beside the program. The game loop, renderer and asset files are the web build's; `game/app/platform.h` is the one seam (`game/web/platform_web.cpp`, `game/native/`). In play, `/` lists the keys and `I` shows the frame rate line. Not there yet: voices, the town and settings screens, touch.
 
 Deploys: every push to `master` runs `.github/workflows/deploy.yml`, which builds the site and publishes it to GitHub Pages as version `VERSION.<run number>`.
 

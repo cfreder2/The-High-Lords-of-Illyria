@@ -517,6 +517,7 @@
     `<tr><td>${k("Tab")}, ${k("Shift")} + ${k("Tab")}</td><td>Select the next, or the previous, group of units: the saved groups in number order, then the squads in no group. Wraps round; the camera follows if they are off screen.</td></tr>` +
     `<tr><td>${k("`")}</td><td>Planning: orders you give are held (drawn dashed in violet, numbered, for every man that has any) until you press ${k("`")} again, which sends them all at once, in the order given. ${k("Backspace")} drops them. ${k("Space")} still halts at once. On a phone, the Plan button.</td></tr>` +
     `<tr><td>${k("Esc")}</td><td>Cancel the mode, else let go of the selection; closes pop-ups.</td></tr>` +
+    `<tr><td>${k("I")}</td><td>Show or hide the developer line: the frame rate and where a frame's time goes (off at the start; ?stats in the address turns it on).</td></tr>` +
     `<tr><td>${k("P")}</td><td>Pause the battle.</td></tr>` +
     `<tr><td>${k("-")} · ${k("=")}</td><td>Slower · faster: ¼×, ½×, 1×, 2×, 4×. The speed button too: a click for 2× and 4×, held for slow motion.</td></tr></table>` +
     `<h3>Menus</h3>` +

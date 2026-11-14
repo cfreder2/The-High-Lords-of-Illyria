@@ -28,8 +28,10 @@ public:
     bool helpOpen() const { return help_; }
     void toggleHelp() { help_ = !help_; }
 
-    // The frame rate and where the frame went, a line, shown top left at all times.
+    // The frame rate and where the frame went, a line top left: a developer's, shown when asked for (I, or --stats).
     void setPerf(std::string line) { perf_ = std::move(line); }
+    void setShowStats(bool on) { showStats_ = on; }
+    void toggleStats() { showStats_ = !showStats_; }
     void draw(Overlay& o, float w, float h);
     // A click at (x, y) points: true if the HUD took it (a card, a banner, a menu row).
     bool click(float x, float y);
@@ -58,6 +60,7 @@ private:
     bool loadSave(std::string& text) const;
 
     std::string savePath_, perf_;
+    bool showStats_ = false;
     bool menu_ = false, help_ = false, playing_ = false, heldByMenu_ = false;
     int row_ = 0;
     int lord_ = 6;      // the Moonward Order, the skirmish's blue

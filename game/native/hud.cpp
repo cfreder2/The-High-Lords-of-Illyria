@@ -10,6 +10,7 @@
 
 #include "api.h"
 #include "assets.h"
+#include "illyria/game/card_name.h"
 #include "illyria/game/palette.h"
 #include "json.h"
 
@@ -38,8 +39,6 @@ Colour hex(const std::string& s) {
     if (s.size() != 7 || s[0] != '#') return rgba(0xCCCCCC);
     return rgba(static_cast<unsigned>(std::strtoul(s.c_str() + 1, nullptr, 16)));
 }
-
-std::string clip(const std::string& s, size_t n) { return s.size() <= n ? s : s.substr(0, n - 1) + "."; }
 
 // The palette's twelve (game/include/illyria/game/palette.h), as the menu draws them.
 Colour swatchColour(int i) {
@@ -482,7 +481,7 @@ void Hud::drawMinimap(Overlay& o, float w, float h) {
 
 void Hud::draw(Overlay& o, float w, float h) {
     hits_.clear();
-    if (!notice_.empty() || menu_) o.text(6, 4, perf_, kGold, 10);  // (in play, the status bar carries it)
+    if (showStats_ && (!notice_.empty() || menu_)) o.text(6, 4, perf_, kGold, 10);  // (in play, the status bar carries it)
     if (!notice_.empty()) {
         o.rect(0, 0, w, h, rgba(0x000000, 190));
         const float tw = o.width(notice_, 20);
@@ -497,25 +496,37 @@ void Hud::draw(Overlay& o, float w, float h) {
     const Json camp = read(illyria_campaign_state());
     const bool conquest = camp.find("day") != nullptr;
     char buf[256];
+    std::vector<std::string> status;  // the bar's words, the fullest first; the first that fits is shown
 
     // The status line.
     o.rect(0, 0, w, 34, rgba(0x000000, 150));
-    o.text(6, 4, perf_, kGold, 10);
+    if (showStats_) o.text(6, 4, perf_, kGold, 10);
     if (conquest) {
         const int day = static_cast<int>(camp.num("day"));
-        std::snprintf(buf, sizeof buf, "Conquest  Day %d   Gold %d   Towns %d   Land %d   %dx%s", day, static_cast<int>(camp.num("gold")),
-                      static_cast<int>(camp.num("cities")), static_cast<int>(camp.num("land")), static_cast<int>(camp.num("speed")),
-                      camp.flag("paused") ? " PAUSED" : "");
+        const int gold = static_cast<int>(camp.num("gold")), towns = static_cast<int>(camp.num("cities")), land = static_cast<int>(camp.num("land"));
+        const int speed = static_cast<int>(camp.num("speed"));
+        const std::string held = camp.flag("paused") ? " PAUSED" : "";
+        const std::string sp = std::to_string(speed) + "x" + held;
+        status = {"Conquest  Day " + std::to_string(day) + "   Gold " + std::to_string(gold) + "   Towns " + std::to_string(towns) + "   Land " + std::to_string(land) + "   " + sp,
+                  "Day " + std::to_string(day) + "  Gold " + std::to_string(gold) + "  Towns " + std::to_string(towns) + "  " + sp,
+                  "Day " + std::to_string(day) + "  Gold " + std::to_string(gold) + held};
         if (day != savedDay_) {
             savedDay_ = day;
             saveConquest();
         }
         lastDay_ = day;
     } else {
-        std::snprintf(buf, sizeof buf, "%s   %s%s%s", hud.num("scenario") == 1 ? "Siege" : "Skirmish", hud.flag("paused") ? "PAUSED   " : "",
-                      hud.str("foe").empty() ? "" : ("v " + hud.str("foe")).c_str(), "");
+        // A battle on its own, in a player's words: where, what wins it, how many of the foe are left.
+        const bool siege = hud.num("scenario") == 1;
+        std::string foe = hud.str("foe");
+        std::string town = foe.rfind("Garrison of ", 0) == 0 ? foe.substr(12) : "";
+        const std::string where = siege ? "Siege" + (town.empty() ? "" : ": " + town) : "Skirmish: the Ford";
+        const std::string goal = siege ? "take the courtyard" : foe.empty() ? "" : "rout the " + foe;
+        const std::string held = hud.flag("paused") ? "PAUSED   " : "";
+        const std::string count = hud.num("foeTotal") > 0 ? "Foe " + std::to_string(static_cast<int>(hud.num("foeAlive"))) + "/" + std::to_string(static_cast<int>(hud.num("foeTotal"))) : "";
+        status = {held + where + (goal.empty() ? "" : "   Objective: " + goal) + (count.empty() ? "" : "   " + count),
+                  held + where + (count.empty() ? "" : "   " + count), held + where};
     }
-    o.text(6, 18, buf, kInk, 13);
     if (hud.flag("planning")) {
         char plan[160];
         std::snprintf(plan, sizeof plan, "PLANNING  %d held   `: send   Backspace: drop", static_cast<int>(hud.num("planned")));
@@ -523,8 +534,20 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.rect((w - pw) / 2 - 10, 64, pw + 20, 24, rgba(0x000000, 170));
         o.text((w - pw) / 2, 68, plan, rgba(0xD680FF, 255), 14);
     }
-    const std::string hint = "Enter: menu    /: keys";
-    o.text(w - o.width(hint, 12) - 10, 18, hint, kDim, 12);
+    // (With the developer line on, the status sits under it; else it is centred in the bar. In a narrow window it shrinks to leave the hint room.)
+    const std::string hint = w < 560 ? "/: keys" : "Enter: menu    /: keys";
+    const float hintX = w - o.width(hint, 12) - 10, statusSize = showStats_ ? 13.0f : 14.0f;
+    {
+        const float room = std::max(40.0f, hintX - 16);
+        const std::string* pick = &status.back();
+        for (const std::string& v : status)
+            if (o.width(v, statusSize) <= room) {
+                pick = &v;
+                break;
+            }
+        o.text(6, showStats_ ? 18 : 10, *pick, kInk, fit(o, *pick, statusSize, room));
+    }
+    o.text(hintX, showStats_ ? 18 : 11, hint, kDim, 12);
 
     const int outcome = static_cast<int>(hud.num("outcome"));
     if (!conquest && outcome != 0) {
@@ -539,6 +562,8 @@ void Hud::draw(Overlay& o, float w, float h) {
     if (!notice.empty()) o.text((w - o.width(notice, 16)) / 2, 40, notice, kRed, 16);
 
     // Names of towns and places when the view is high.
+    const size_t sel = static_cast<size_t>(hud.num("selCount"));
+    const bool squadCards = !hud.list("squads").empty();
     {
         std::istringstream lines(illyria_labels());
         std::string line;
@@ -555,27 +580,37 @@ void Hud::draw(Overlay& o, float w, float h) {
             const std::string name = line.substr(from);
             const float x = static_cast<float>(std::atof(f[2].c_str())), y = static_cast<float>(std::atof(f[3].c_str()));
             if (y < 38) continue;  // (under the status bar)
+            // A name is drawn whole or not at all: it fades over the last stretch before a screen edge or a strip
+            // of the HUD (the bar above; below, the selection line and the cards), and goes when it would be cut.
+            const float size = f[0] == "1" ? 13.0f : 11.0f;
+            const float nw = name.empty() ? 0.0f : o.width(name, size);
+            const float stripTop = h - (sel > 0 ? 104.0f : squadCards ? 76.0f : 12.0f);
+            const bool markerShown = y + 2 < stripTop && x > 6 && x < w - 6;
             const Colour c = hex(f[1]);
-            if (f[0] == "0" || f[0] == "1" || f[0] == "7") {  // a marker: the holder's colour in a dark frame with a light top edge
+            if (markerShown && (f[0] == "0" || f[0] == "1" || f[0] == "7")) {  // a marker: the holder's colour in a dark frame with a light top edge
                 o.rect(x - 6, y + 2, 12, 12, rgba(0x000000, 200));
                 o.rect(x - 5, y + 3, 10, 10, c);
                 o.rect(x - 5, y + 3, 10, 2, rgba(0xFFFFFF, 70));
             }
+            if (name.empty()) continue;
             float lx = x + 8;
-            if (!name.empty() && conquest && (f[0] == "0" || f[0] == "1")) {  // a town's name clears the flag of an army standing in it
-                const float nw = o.width(name, f[0] == "1" ? 13.0f : 11.0f);
+            if (conquest && (f[0] == "0" || f[0] == "1")) {  // a town's name clears the flag of an army standing in it
                 for (const Json& st : camp.list("stacks")) {
                     const float sx = static_cast<float>(st.num("x")), sy = static_cast<float>(st.num("y"));
                     if (sy + 9 > y + 2 && sy - 11 < y + 15 && sx - 14 < lx + nw && sx + 14 > lx) lx = std::max(lx, sx + 16);
                 }
             }
-            if (!name.empty()) {  // names carry a dark shadow, so they read over forest, field and water alike
-                const float size = f[0] == "1" ? 13.0f : 11.0f;
-                const Colour ink = f[0] == "2" || f[0] == "7" ? kDim : kInk;
-                static const float kOutline[5][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}};
-                for (const auto& d : kOutline) o.text(lx + d[0], y + 2 + d[1], name, rgba(0x000000, 190), size);
-                o.text(lx, y + 2, name, ink, size);
-            }
+            if (lx + nw > w - 6 && x - 8 - nw >= 6) lx = x - 8 - nw;  // no room on the right: the left of the marker
+            const float room = std::min({lx - 6, w - 6 - (lx + nw), stripTop - (y + 2 + size + 2), y + 2 - 36});
+            if (room < 0) continue;
+            if (miniW0_ > 0 && lx < miniX_ + miniW0_ + 6 && lx + nw > miniX_ - 6 && y + 2 < miniY_ + miniH0_ + 6 && y + 2 + size > miniY_ - 6) continue;  // (under the minimap)
+            const float fade = std::min(1.0f, room / 24.0f);
+            const auto alpha = [fade](uint8_t v) { return static_cast<uint8_t>(v * fade); };
+            // names carry a dark shadow, so they read over forest, field and water alike
+            const Colour ink = f[0] == "2" || f[0] == "7" ? kDim : kInk;
+            static const float kOutline[5][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {1, 1}};
+            for (const auto& d : kOutline) o.text(lx + d[0], y + 2 + d[1], name, rgba(0x000000, alpha(190)), size);
+            o.text(lx, y + 2, name, {ink.r, ink.g, ink.b, alpha(ink.a)}, size);
         }
     }
 
@@ -620,7 +655,6 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
 
     // The selection and the squad cards, bottom.
-    const size_t sel = static_cast<size_t>(hud.num("selCount"));
     if (sel > 0) {
         std::snprintf(buf, sizeof buf, "%zu selected  %s  %s", sel, hud.str("selLabel").c_str(), hud.str("formation").c_str());
         o.rect(0, h - 98, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
@@ -628,7 +662,7 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
     float x = 8;
     const Colour side = hex(hud.str("colour"));  // the player's colour (palette.h), the bars of the cards
-    const float cw = 132, ch = 56, y = h - ch - 8;
+    const float cw = 132, ch = 62, y = h - ch - 8;
     for (const Json& q : hud.list("squads")) {
         const int i = static_cast<int>(q.num("i"));
         const int sq = static_cast<int>(q.num("sel"));
@@ -636,11 +670,21 @@ void Hud::draw(Overlay& o, float w, float h) {
         if (x + cw > w - 8) break;
         o.rect(x, y, cw, ch, rgba(0x0E0B08, 190));
         o.frame(x, y, cw, ch, sq == 2 ? 3.0f : 1.5f, sq ? kGold : mine ? rgba(0x7C6E50) : rgba(0x4A4A4A));
-        o.text(x + 6, y + 5, clip(q.str("name"), 15), mine ? kInk : kDim, 10);
+        // The name whole if it fits, else over two lines, else a step smaller, and only then cut (card_name.h).
+        std::vector<std::string> nameLines;
+        float nameSize = 10;
+        for (; nameSize >= 9; nameSize -= 1)
+            if (illyria::game::fitCardName(q.str("name"), [&](const std::string& t) { return o.width(t, nameSize); }, cw - 12, 2, nameLines)) break;
+        if (nameSize < 9) nameSize = 9;
+        float ny = y + 5;
+        for (const std::string& l : nameLines) {
+            o.text(x + 6, ny, l, mine ? kInk : kDim, nameSize);
+            ny += 12;
+        }
         std::snprintf(buf, sizeof buf, "%d/%d  %s", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")), q.str("role").c_str());
-        o.text(x + 6, y + 22, buf, kDim, 10);
+        o.text(x + 6, ny + 4, buf, kDim, 10);
         const double total = std::max(1.0, q.num("total"));
-        o.rect(x + 6, y + 42, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
+        o.rect(x + 6, y + ch - 14, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
         hits_.push_back({x, y, cw, ch, -1 - i});
         x += cw + 6;
     }
@@ -697,7 +741,8 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"`, Backspace", "plan: hold orders, send them / drop them"},
               {"Esc", "pause and bring up the menu (or cancel a mode)"},
               {"P, - =", "pause, slower and faster"},
-              {"Enter, /", "menu, this help"}}}};
+              {"Enter, /", "menu, this help"},
+              {"I", "show or hide the developer line (frame rate)"}}}};
         constexpr float kSize = 12, kLine = 18, kPad = 14, kGap = 14, kColGap = 28;
         float colW[2] = {};
         float keyW[2] = {};

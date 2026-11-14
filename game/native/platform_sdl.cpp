@@ -368,6 +368,7 @@ int runApp(int argc, char** argv) {
     }
     if (opt.trees >= 0 && opt.trees != kAllTreeStyles) illyria_set_tree_style(opt.trees);
     native::Hud hud;
+    hud.setShowStats(opt.stats);  // (--stats, --profile: the developer line is on from the start)
     {
         char* pref = SDL_GetPrefPath("cfreder2", "Illyria");
         if (pref) {
