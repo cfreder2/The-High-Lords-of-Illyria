@@ -17,6 +17,10 @@ struct ConquestOrders {
     static bool land(Conquest& c, uint32_t stack) { return c.land(stack); }
     static bool search(Conquest& c, uint32_t stack) { return c.search(stack); }
     static bool hire(Conquest& c, uint8_t side, bool accept) { return c.hire(side, accept); }
+    // A town changing hands as when a banner reaches the top, and a computer lord's dawn (tests/test_conquest_realm.cpp).
+    static void transfer(Conquest& c, int32_t city, uint8_t side) { c.transfer(city, side); }
+    static void runAi(Conquest& c, uint8_t side) { c.runAi(side); }
+    static void council(Conquest& c) { c.council(); }  // (as at a tenth dawn)
 };
 
 }  // namespace illyria::sim

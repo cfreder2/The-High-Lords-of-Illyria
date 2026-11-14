@@ -33,7 +33,8 @@ On either difficulty a lord:
 - stays in a town while its banner rises there;
 - sends its heroes, when no enemy is near, to search ruins whose guardian is weaker than the hero, to temples and to sages within about a kilometre; a hero in a town slips out alone and leaves the others on guard;
 - hires a hero when it can pay him and keep 100 gold over;
-- keeps its armies' pay within 95% of its income (and a twentieth of its chest), trains nothing it could not keep, and sends its weakest armies home before the chest runs dry;
+- keeps its armies' pay within 95% of its income (and a twelfth of its chest: gold from a sack, a ruin or a fallen lord goes into the field), trains nothing it could not keep, and sends its weakest armies home before the chest runs dry;
+- of the armies standing in its **seat**, leaves a guard that grows with its realm when the rest march: one army, and one more for every four places it holds, five at the most (its seat is its realm: [](#seat)). It does not send armies there to make the number up, and an Easy lord's seat is sometimes found empty;
 - builds boats (three at most, one at a time) where a place it could take is out of reach on foot or reached in under three fifths of the time by sea, and sails stacks of three armies or more at it, leaving one army to hold the port.
 
 ### Easy and Hard, in numbers
@@ -51,6 +52,7 @@ On either difficulty a lord:
 | Picks a target at random, not the best | 35 times in 100 | never |
 | Trains | whatever takes its fancy (the quickest, with an enemy at the gates) | what fights best for the days it takes |
 | Hears of a banner over one of its towns | at the next dawn | at once |
+| Bends the knee, at a council, to a lord with twice its places | only if that lord is you | whoever he is |
 
 ### Easy: the Knights
 
@@ -62,6 +64,9 @@ On either difficulty a lord:
 
 - **sallies**: a garrison that is threatened marches out and destroys the threat itself, all but one guard, when the odds are good; and its stacks strike enemy stacks in the field that threaten its places, within about half a kilometre;
 - **gathers**: a stack too weak to attack alone marches to join a bigger one in a town of its own within a day and a half, when together (eight armies at most) they could take what neither could alone; and a stack with reinforcements a day off waits for them unless the prize is all but sure;
+- **musters**: stacks with nothing to strike at march to its town nearest the best prize and stand there together;
+- **goes as a host**: the dice count armies one against one and would send nothing at a held wall, so against walls a Hard lord counts **men**. Men behind a wall count three times over (that is what a gate costs: chapter [](#sieges)). When the stacks standing together in one of its towns, three at the most, have enough men by that sum for a prize half as good again as any one of them could take alone (a walled town for a village, a lord's seat for a town), the fewest that will do set out together. It counts a host marching on its own towns the same way, and holds everything home for it;
+- **knows what a seat is worth**: it values a lord's seat by every place that lord holds, since all of them come with it;
 - **spares its best**: a stack setting out from one of its towns leaves its veterans and rare troops at home, the strongest first, whenever the attack would still have the odds without them;
 - **sends recruits forward**: quiet towns in the rear send what they train to the town nearest the next prize;
 - **builds catapults** from day 40, about one for every eight places it holds, in frontier towns that can build them;
@@ -74,12 +79,36 @@ On either difficulty a lord:
 
 ## How to win {#victory}
 
-You win the war in either of two ways, as in *Warlords*:
+You win the war in either of two ways:
 
-1. **Be the last lord standing.** A lord is out of the war when, at a dawn, it holds no place and has no army anywhere. A lord with one army left and no town is still in it.
-2. **Make them surrender.** When one lord holds **more than half** of the eighty places (41 or more) and no other lord still in the war holds within 15 of its number (the nearest is 16 or more behind), the rest lay down their arms.
+1. **Be the last lord standing.**
+2. **Hold more than half of Illyria.** When one lord holds **41 or more** of the eighty places, the rest lay down their arms. (*Warlords* asked also that no rival be within fifteen of him; that only drew out a war already won.)
 
-When you win, the field says *High Lord of Illyria*: "The other lords of Illyria lay down their arms before you." When another lord does, *Illyria is lost*: "Another lord has won Illyria, and the rest bow to him." The clock stops there. In a war with no lord against you (see [](#setup)) neither can happen.
+When you win, the field says *High Lord of Illyria*: "The other lords of Illyria lay down their arms before you." When another lord does, or when your own realm has fallen, *Illyria is lost*: "Another lord has won Illyria, and the rest bow to him." The clock stops there. In a war with no lord against you (see [](#setup)) neither can happen.
+
+### A seat is a realm {#seat}
+
+A lord's **seat** is the capital he began the war in. **Whoever takes it takes his realm.** When your banner reaches the top over a lord's seat:
+
+- he is **out of the war**, at once;
+- **every place he held is yours**, wherever it lies, with its land;
+- **the garrisons of those places swear to you**, man for man where they stand, wounds, ranks and all, and are yours to pay from the next dawn;
+- his armies in the field and at sea **go home**: they followed a lord, and there is none;
+- he and his heroes are gone, and what they carried lies where they stood for the next hero to take up;
+- **his whole chest is yours**, besides the sack of the seat.
+
+It is the same for you. **Lose your seat and you have lost the war**, however many towns you hold. A banner climbs over a seat at **a third of the usual pace** (a lone army a day and a half, a full stack about a minute at normal speed), so there is time to come back; use it.
+
+A capital you took from another lord is not a seat of yours: losing it again costs you only the place.
+
+### The council of the tenth day {#council}
+
+Walls are strong in Illyria. Three men to one are wanted at a gate (chapter [](#strategy)), so two lords of equal strength can face each other for ever. The computer lords know when they are beaten. From **day 30**, at every **tenth dawn** (30, 40, 50 and so on), the **weakest computer lord** (the fewest places; of equals, the first) looks at the strongest lord in the war. If that lord holds **twice** his places, he **bends the knee**: his realm goes to the strongest lord exactly as if his seat had been taken, with no blow struck.
+
+- One lord at a council, never more.
+- **You never bend the knee**: nobody plays your hand for you. But the strongest lord may be you, and then the realm is yours.
+- **On Easy the lords yield only to you.** The Knights are too proud to kneel to one another, so no computer lord is handed the war; get ahead and it is handed to you.
+- **On Hard they yield to whoever is strongest.** If that is somebody else, he grows by a realm every ten days. His seat is still one place, and everything he was given comes with it.
 
 ## Saving the war {#saving}
 

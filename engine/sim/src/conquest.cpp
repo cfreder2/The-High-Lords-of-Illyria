@@ -570,6 +570,7 @@ void Conquest::newDay() {
         home->armies.push_back(army);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
+    if (day() >= kCouncilFrom && day() % kCouncilEvery == 0) council();  // (a lord who bends the knee today gives no orders)
     for (size_t s = 0; s < sides_.size(); ++s)
         if (!sides_[s].human && sides_[s].alive) runAi(static_cast<uint8_t>(s));
     for (size_t s = 0; s < sides_.size(); ++s) {

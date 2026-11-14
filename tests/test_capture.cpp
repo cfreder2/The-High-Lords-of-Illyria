@@ -65,7 +65,8 @@ uint32_t besiege(Conquest& c, int32_t city, const std::vector<UnitType>& types, 
 }
 
 // Side 1's capital with nobody to hold it: every army but the hero's disbanded, and the hero's stack
-// sent off. The index of the city.
+// sent off. The index of the city. (It is his seat: a banner climbs over it at a third of the pace,
+// Conquest::kSeatBannerSlow, and his realm falls with it.)
 int32_t emptyCapital(Conquest& c) {
     int32_t cap = -1;
     for (size_t i = 0; i < c.cities().size(); ++i)
@@ -115,7 +116,7 @@ uint32_t raiseNear(Conquest& c, int32_t city, const std::vector<UnitType>& types
 }
 
 // Ticks until the town is ours (or `most`).
-int32_t untilTaken(Conquest& c, int32_t city, int32_t most = Conquest::kTicksPerDay) {
+int32_t untilTaken(Conquest& c, int32_t city, int32_t most = Conquest::kSeatBannerSlow * Conquest::kTicksPerDay) {
     int32_t t = 0;
     while (t < most && c.cities()[static_cast<size_t>(city)].owner != 0) {
         c.step();
@@ -125,12 +126,12 @@ int32_t untilTaken(Conquest& c, int32_t city, int32_t most = Conquest::kTicksPer
 }
 
 // Orders the stack in and times the banner: from the moment it goes up (it may already be rising before the stack
-// has marched in) to the town's fall; -1 if either does not happen in two days.
+// has marched in) to the town's fall; -1 if either does not happen in four days.
 int32_t bannerTime(Conquest& c, uint32_t id, int32_t city) {
     const Conquest::CityState& t = c.cities()[static_cast<size_t>(city)];
     if (!id || !ConquestOrders::move(c, id, t.cx, t.cy)) return -1;
     int32_t first = -1, taken = -1;
-    for (int32_t k = 0; k < 2 * Conquest::kTicksPerDay; ++k) {
+    for (int32_t k = 0; k < 4 * Conquest::kTicksPerDay; ++k) {
         if (first < 0 && t.banner != Conquest::kNeutral) first = k;
         if (t.owner == 0) {
             taken = k;
@@ -155,8 +156,8 @@ TEST(a_town_is_taken_only_when_the_banner_has_risen) {
                 ticks, ticks * 24.0 / Conquest::kTicksPerDay);
     CHECK(t.owner == 0);
     CHECK(t.banner == Conquest::kNeutral);
-    // Kept up by the armies standing there: the full banner over (2 + armies) a tick, seen every half second.
-    const int32_t whole = Conquest::kBannerFull / (Conquest::kBannerBase + armies);
+    // Kept up by the armies standing there: the full banner over (2 + armies) a tick, seen every half second; over a seat, a third of that.
+    const int32_t whole = Conquest::kSeatBannerSlow * Conquest::kBannerFull / (Conquest::kBannerBase + armies);
     CHECK(std::abs(ticks - whole) <= whole / 3 + 2 * Conquest::kThinkTicks);  // (the men come in through the gate one after another, and the banner counts armies with a man inside the wall)
     bool news = false;
     for (const Conquest::Deed& d : c.deeds()) news = news || (d.side == 0 && d.text.find("Our banner flies over") != std::string::npos);
@@ -178,7 +179,7 @@ TEST(more_troops_raise_the_banner_faster) {
     // (Not eight times as fast: a banner counts the armies with a man inside the wall, and a full stack comes in
     // through the gate one after another, where the dragon flies straight in.)
     CHECK(one * 2 >= eight * 3);
-    CHECK(one <= Conquest::kTicksPerDay);  // within the day: a few hours
+    CHECK(one <= 2 * Conquest::kTicksPerDay);  // a seat: a day and a half for one army (an ordinary town: half a day)
 }
 
 TEST(a_banner_does_not_rise_while_the_towns_men_stand_in_it) {
@@ -227,7 +228,7 @@ TEST(leaving_the_town_abandons_the_banner) {
     CHECK(ConquestOrders::move(c, id, t.cx, t.cy));
     for (int k = 0; k < Conquest::kTicksPerDay && t.banner == Conquest::kNeutral; ++k) c.step();
     CHECK(t.banner == 0);
-    CHECK(untilTaken(c, town) < Conquest::kTicksPerDay);
+    CHECK(untilTaken(c, town) < 2 * Conquest::kTicksPerDay);
 }
 
 TEST(a_town_being_taken_trains_nothing) {

@@ -58,6 +58,7 @@ add_executable(illyria_tests
     test_conquest_quests.cpp
     test_conquest_sea.cpp
     test_conquest_ai.cpp
+    test_conquest_realm.cpp
     test_conquest_rare.cpp
     test_conquest_save.cpp
     test_conquest_soldiers.cpp
