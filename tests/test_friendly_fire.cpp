@@ -68,7 +68,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0xcd43c73604019bef;  // the twelve worlds with no friend near, as on master before the rule
+constexpr uint64_t kAloneSum = 0x2fad2b1c31c46429;  // the twelve worlds with no friend near, as on master before the rule (was 0xcd43c73604019bef before the siege train's gate reach and the balance pass; the foes' toll is the same 6156)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
