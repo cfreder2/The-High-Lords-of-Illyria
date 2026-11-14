@@ -296,6 +296,12 @@ void Runner::execute(const Command& c) {
             break;
         case Op::Stats: stats(); break;
         case Op::Spread: std::printf("%s\n", illyria_army_spread()), std::fflush(stdout); break;
+        case Op::Deaths: {
+            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot"};
+            for (int k = 0; k < 6; ++k)
+                if (c.text == kinds[k]) std::printf("%s\n", illyria_death_demo(k, static_cast<float>(c.a), static_cast<float>(c.b))), std::fflush(stdout);
+            break;
+        }
         case Op::Cards: cards(); break;
         case Op::Wait:
             // Waits follow on from one another without drift: a shot's own time is part of the wait before it.

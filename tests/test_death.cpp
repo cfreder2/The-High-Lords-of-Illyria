@@ -283,3 +283,36 @@ TEST(the_death_matrix_is_deterministic) {
     CHECK(kinds.size() >= 3);
     CHECK(battle(6).checksum != a.checksum);
 }
+
+// World::testBlow (the desktop's `deaths` demo, docs/PLAYTEST.md): a blow queued from outside lands in the next
+// step as a weapon's would, so the death is announced, the cut limb flies, and the matrix chooses the body.
+TEST(death_test_blow_lands_in_the_next_step) {
+    WorldConfig cfg;
+    cfg.seed = 7;
+    World w(cfg);
+    const UnitStats man = unitStats(UnitType::Archers);
+    const EntityId felled = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, man);
+    const EntityId cut = w.spawnUnit(0, {m(40), m(0), m(0)}, kEast, man);
+    const EntityId burned = w.spawnUnit(0, {m(80), m(0), m(0)}, kEast, man);
+    const EntityId spared = w.spawnUnit(0, {m(120), m(0), m(0)}, kEast, man);
+    Blow b;
+    b.dir = kEast;
+    b.type = DamageType::Blunt;
+    w.testBlow(felled, man.maxHp + 4, b);
+    b.type = DamageType::Cleave;
+    w.testBlow(cut, man.maxHp + 2 * kSeverOverkillCleave, b);
+    b.type = DamageType::Fire;
+    w.testBlow(burned, man.maxHp * 3, b);
+    CHECK(w.units()[felled - 1].alive());  // not yet: in the step
+    w.step({});
+    std::map<EntityId, DeathKind> kinds;
+    for (const DeathEvent& d : w.deathEvents()) kinds[d.unit] = d.kind;
+    CHECK(kinds.size() == 3 && kinds[felled] == DeathKind::Fell && kinds[cut] == DeathKind::Severed && kinds[burned] == DeathKind::Charred);
+    CHECK(w.units()[cut - 1].death.severed == RemainKind::Head && w.units()[spared - 1].alive());
+    int parts = 0;
+    for (const Projectile& p : w.projectiles()) parts += p.kind == ProjectileKind::Debris && p.remain == RemainKind::Head && p.source == man.type;
+    CHECK(parts == 1);
+    // Once only: nothing waits for the step after.
+    w.step({});
+    CHECK(w.deathEvents().empty());
+}

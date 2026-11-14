@@ -396,8 +396,9 @@ private:
     void bakeMissing(const Battle& battle);
     void bakeTypes(const std::vector<sim::UnitType>& need);
     // Body parts drawn as pieces of their soldier's own picture (the sheet's
-    // gib cells, sprite_layout.h; renderer_gibs.cpp), where his sheet has
-    // them; the rest stay 3D (pushPart). Each flying part, by projectile id,
+    // gib cells, sprite_layout.h; renderer_gibs.cpp). Every shipped sheet has
+    // them (tools/sprites/sheet_gibs.py); only a sheet baked at run time while
+    // its own is fetched has none, and its parts are 3D until then (pushPart). Each flying part, by projectile id,
     // and each landed one, by remain slot, keeps the type it came from, its
     // cell, mirrored or not, and its turn in the picture's plane.
     struct GibLook {
@@ -411,8 +412,11 @@ private:
     std::map<sim::EntityId, GibLook> debrisLooks_;
     std::vector<GibLook> remainLooks_;
     std::vector<GibLook> landed_;              // parts that stopped flying this frame, for the remains they became
-    std::map<sim::EntityId, int> gibChunks_;  // gobbets given out per blown-apart soldier: the first two are his weapon and shield
+    std::map<sim::EntityId, int> gibChunks_;  // gobbets given out per blown-apart soldier: the first are his weapon, shield, mount's head, a wing
     bool hasGibCell(int type, int cell) const;
+    // The slot a part of a type is drawn with: its own, or what stands in for it in his sheet (sprite_layout.h gibSlotFor); -1 if none.
+    int gibCellFor(int type, sprites::Gib g, int variant) const;
+    bool gibWide(int type, int slot) const;  // whether the part's picture is wider than it is tall (it lies as drawn)
     // Follows the flying parts (before uploadRemains, which hands their looks to the remains they become).
     void trackDebris(const Battle& battle, float dt);
     GibLook gibLookFor(const Battle& battle, const sim::Projectile& p);

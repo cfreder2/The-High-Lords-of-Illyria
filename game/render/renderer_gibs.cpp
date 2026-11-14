@@ -1,7 +1,9 @@
 // Body parts as pieces of the soldier's own picture: a sheet's gib cells
 // (sprite_layout.h; cut from the idle pictures by tools/sprites/gibs.py),
 // drawn by the unit program (kUnitVs) as small billboards that spin while
-// they fly and lie where they land. The sim's flying parts and remains carry
+// they fly and lie where they land. A part his sheet has no picture of is
+// drawn as the nearest it has (sprite_layout.h gibStandIn), so nothing of a
+// sheet with gib cells is ever a 3D stand-in. The sim's flying parts and remains carry
 // the type of the soldier they came from (Projectile/Remain::source); the
 // body blown apart beside a fresh one still decides which of his gobbets fly
 // as his sword and shield.
@@ -26,29 +28,34 @@ float hashUnit(uint32_t v) {
     return static_cast<float>(v & 0xFFFF) / 65535.0f;
 }
 
-sprites::Gib gibOf(sim::RemainKind k) {
+sprites::Gib gibOf(sim::RemainKind k, uint32_t pick) {
     switch (k) {
+        case sim::RemainKind::Bone: return sprites::gibOfBone(pick);  // the bloodless: a piece of the skeleton
+        case sim::RemainKind::Chunk: return sprites::Gib::Chunk;
         case sim::RemainKind::Head: return sprites::Gib::Head;
         case sim::RemainKind::Torso: return sprites::Gib::Torso;
         case sim::RemainKind::Arm: return sprites::Gib::Arm;
         case sim::RemainKind::Leg: return sprites::Gib::Leg;
         case sim::RemainKind::Blade: return sprites::Gib::Weapon;  // a blade a scavenger threw
-        default: return sprites::Gib::Chunk;  // gobbets, and the bones of the bloodless
+        default: return sprites::Gib::Chunk;
     }
 }
 
 bool isPart(sim::RemainKind k) { return k != sim::RemainKind::None && k != sim::RemainKind::Arrow; }
 
-// Long parts come to rest lying down (turned a quarter either way from how
-// they were drawn standing); the rest as they fall.
+// Long parts come to rest lying down, their length along the ground: a part drawn standing (a man's trunk, an arm,
+// a leg, a spear) turned a quarter either way, one drawn lying (a beast's barrel, cut from its side) as it is or
+// end for end; the rest (heads, gobbets, shields) as they fall.
 bool liesDown(int cell) {
     const int g = (cell - sprites::gibSlot(sprites::Gib::Head, 0)) / sprites::kGibVariants;
     const auto gib = static_cast<sprites::Gib>(g);
-    return gib == sprites::Gib::Torso || gib == sprites::Gib::Arm || gib == sprites::Gib::Leg || gib == sprites::Gib::Weapon;
+    return gib == sprites::Gib::Torso || gib == sprites::Gib::Arm || gib == sprites::Gib::Leg || gib == sprites::Gib::Weapon ||
+           gib == sprites::Gib::MountLeg || gib == sprites::Gib::Wing;
 }
 float wrap(float a) { return a - kTau * std::floor((a + kTau / 2) / kTau); }
-float restAngle(int cell, float a) {
+float restAngle(int cell, bool wide, float a) {
     if (!liesDown(cell)) return wrap(a);
+    if (wide) return std::fabs(wrap(a)) < kTau / 4 ? 0.0f : kTau / 2;
     return wrap(a) >= 0 ? kTau / 4 : -kTau / 4;
 }
 
@@ -86,6 +93,18 @@ bool Renderer::hasGibCell(int type, int slot) const {
     return cu == closeups_.end() || !cu->second.tex || has(cu->second);
 }
 
+int Renderer::gibCellFor(int type, sprites::Gib g, int variant) const {
+    return sprites::gibSlotFor(g, variant, [&](int slot) { return hasGibCell(type, slot); });
+}
+
+bool Renderer::gibWide(int type, int slot) const {
+    const auto it = sheets_.find(type);
+    if (it == sheets_.end() || !hasGibCell(type, slot)) return false;
+    const Sheet& sh = it->second;
+    const float* extent = &sh.table[(static_cast<size_t>(sh.cellCount) + sprites::gibCell(slot, sh.framesPerView)) * 4];
+    return extent[2] > extent[3];
+}
+
 Renderer::GibLook Renderer::gibLookFor(const Battle& battle, const sim::Projectile& p) {
     GibLook look;
     look.kind = p.remain;
@@ -111,17 +130,13 @@ Renderer::GibLook Renderer::gibLookFor(const Battle& battle, const sim::Projecti
     const int src = sourceOf(battle, p.owner, look.pos, 4.0f, 2 * sim::kTicksPerSecond);
     if (p.source == sim::kNoSource && src < 0) return look;
     const int variant = hashUnit(h) < 0.5f ? 0 : 1;
-    sprites::Gib g = gibOf(p.remain);
+    sprites::Gib g = gibOf(p.remain, h >> 3);
     look.type = p.source != sim::kNoSource ? p.source : battle.world().units()[static_cast<size_t>(src)].stats.type;
-    // His weapon and shield fly with the first two gobbets, if his sheet has them.
+    // His weapon and shield, his mount's head and a wing fly as his first gobbets, if his sheet has them (gibSpoil).
     const sim::Unit* body = src >= 0 ? &battle.world().units()[static_cast<size_t>(src)] : nullptr;
-    if (g == sprites::Gib::Chunk && body && body->gibbed && body->stats.type == look.type) {
-        const sim::Unit& u = *body;
-        const int n = gibChunks_[u.id]++;
-        if (n == 0 && hasGibCell(look.type, sprites::gibSlot(sprites::Gib::Weapon, variant))) g = sprites::Gib::Weapon;
-        if (n == 1 && hasGibCell(look.type, sprites::gibSlot(sprites::Gib::Shield, variant))) g = sprites::Gib::Shield;
-    }
-    look.cell = sprites::gibSlot(g, variant);
+    if (p.remain == sim::RemainKind::Chunk && body && body->gibbed && body->stats.type == look.type)
+        g = sprites::gibSpoil(gibChunks_[body->id]++, [&](int slot) { return hasGibCell(look.type, slot); });
+    look.cell = gibCellFor(look.type, g, variant);
     return look;
 }
 
@@ -138,7 +153,7 @@ void Renderer::trackDebris(const Battle& battle, float dt) {
         const float speed = toV3(p.vel).length();
         g.angle = wrap(g.angle + g.spin * std::min(1.0f, speed / 4.0f) * dt);
         if (speed < 3.0f && liesDown(g.cell)) {
-            const float to = restAngle(g.cell, g.angle), step = 6.0f * dt;
+            const float to = restAngle(g.cell, gibWide(g.type, g.cell), g.angle), step = 6.0f * dt;
             g.angle += std::clamp(wrap(to - g.angle), -step, step);
         }
     }
@@ -175,18 +190,21 @@ Renderer::GibLook Renderer::restingLook(const Battle& battle, const sim::Remain&
         if (r.source == sim::kNoSource && src < 0) return GibLook{};
         const uint32_t h = slot * 2654435761u + r.tick;
         look.type = r.source != sim::kNoSource ? r.source : battle.world().units()[static_cast<size_t>(src)].stats.type;
-        look.cell = sprites::gibSlot(gibOf(r.kind), hashUnit(h) < 0.5f ? 0 : 1);
+        look.cell = gibCellFor(look.type, gibOf(r.kind, h >> 3), hashUnit(h) < 0.5f ? 0 : 1);
         look.mirror = hashUnit(h * 3u + 1u) < 0.5f;
         look.angle = hashUnit(h * 5u + 2u) * kTau;
         look.kind = r.kind, look.owner = r.owner;
     }
     look.pos = at;
-    look.angle = restAngle(look.cell, look.angle);
+    look.angle = restAngle(look.cell, gibWide(look.type, look.cell), look.angle);
     return look;
 }
 
 bool Renderer::pushGib(std::map<int, std::vector<float>>& groups, const GibLook& look, const V3& pos) {
     if (look.type < 0 || !hasGibCell(look.type, look.cell)) return false;
+    // The men's level of detail (renderer_map.cpp manIsSprite): where the dead are no longer drawn as pictures, neither
+    // are the pieces of them (a dragon's trunk would lie there with no dragons' bodies round it).
+    if (!men_.near || std::hypot(pos.x - men_.at.x, pos.y - men_.at.y) > men_.reach) return true;
     std::vector<float>& g = groups[kMapKeyBase + look.type * kMapSides + manSide(look.owner)];  // a group a sheet and side (renderer.cpp)
     // The part's place among the gib cells: kUnitVs finds them after the views' of whichever sheet it draws with.
     g.insert(g.end(), {pos.x, pos.y, pos.z, look.angle, -static_cast<float>(look.cell - sprites::kGibBase + 1), 0.0f, look.mirror ? 1.0f : 0.0f});

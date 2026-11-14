@@ -1349,6 +1349,55 @@ ILLYRIA_API void illyria_queue_demo() {
     b.clearSelection();
 }
 
+// Test hook (the --play script's `deaths`, docs/PLAYTEST.md): the death demo. Stage 0 stands one soldier of every unit type
+// in a grid at (x, y), seven to a row, 10 m apart, of the player's side and facing south; the later stages kill every one of
+// them still standing in one way, as the sim's own blows would (World::testBlow): 1 a satchel's blast beside him, 2 a club's
+// blow that only fells him, 3 fire, 4 a cleaving cut far past death (a limb or the head off, for those a cut can), 5 an arrow.
+ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
+    using namespace illyria::sim;
+    static std::vector<EntityId> men;
+    static char line[160];
+    if (!app || !app->battle) return "deaths: no battle";
+    World& w = app->battle->mutableWorld();
+    if (stage == 0) {
+        men.clear();
+        for (int t = 0; t < kUnitTypeCount; ++t) {
+            Vec3 p{Fixed::fromInt(static_cast<int64_t>(x) + (t % 7) * 10), Fixed::fromInt(static_cast<int64_t>(y) - (t / 7) * 10), Fixed::zero()};
+            p.z = w.groundHeight(p.x, p.y);
+            men.push_back(w.spawnUnit(0, p, Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()}, unitStats(static_cast<UnitType>(t))));
+        }
+        std::snprintf(line, sizeof line, "deaths: %d types at %.0f,%.0f, rows 10 m apart to the south", kUnitTypeCount, x, y);
+        return line;
+    }
+    int struck = 0;
+    for (EntityId id : men) {
+        if (id < 1 || id > w.units().size()) continue;
+        const Unit& u = w.units()[id - 1];
+        if (!u.alive()) continue;
+        ++struck;
+        Blow b;
+        b.dir = Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
+        b.at = u.pos + Vec3{Fixed::zero(), Fixed::zero(), u.stats.height / 2};
+        const int32_t hp = u.hp;  // (a little past it: far past, any blow but fire tears the body apart)
+        switch (stage) {
+            case 1: {
+                Explosive ex;
+                ex.radius = Fixed::fromInt(3);
+                ex.damage = 30000;
+                ex.impulse = Fixed::fromInt(9);
+                w.placeSatchel(1, u.pos + Vec3{-Fixed::fromRatio(1, 2), Fixed::zero(), Fixed::zero()}, ex, 2);
+                break;
+            }
+            case 2: b.type = DamageType::Blunt, w.testBlow(id, hp + 4, b); break;
+            case 3: b.type = DamageType::Fire, w.testBlow(id, hp * 3, b); break;
+            case 4: b.type = DamageType::Cleave, w.testBlow(id, hp + 9 + static_cast<int32_t>(id % 2) * 12, b); break;  // a limb, or the head
+            default: b.type = DamageType::Pierce, b.missile = true, b.dir = b.dir * Fixed::fromInt(40), w.testBlow(id, hp + 4, b); break;
+        }
+    }
+    std::snprintf(line, sizeof line, "deaths: stage %d, %d struck", stage, struck);
+    return line;
+}
+
 // The --play script's `select all`: every soldier of every squad the local side commands, on screen or not (Ctrl+A
 // takes only the ones on screen). Selection only: nothing the simulation reads.
 ILLYRIA_API const char* illyria_army_spread() {

@@ -38,6 +38,12 @@ also machine-readable in `docs/sprite_templates/manifest.json` (loop over its
 `view` is 0-4, `frame` two digits from 00. The full list is
 `docs/sprite_templates/files.txt` (one name a line, marked required/optional).
 
+Gib parts not delivered are cut from the unit's own idle pictures, so no part is ever a 3D stand-in: by
+`tools/sprites/import.py` for a delivery (man-shaped types, `gibs.py`), and by `tools/sprites/sheet_gibs.py` for every
+packed sheet that has none (the old 26-frame sheets, which then hold 150 cells; riders, beasts and the catapult are
+cut from the side view along lines measured from the picture). A part a sheet still lacks is drawn as the nearest it
+has (`sprite_layout.h` `gibStandIn`). Drawn parts replace cut ones: deliver them and import.
+
 ### Canvas, scale, anchor (fixed per size class)
 
 | class | canvas | px a metre | anchor (feet), px from top-left | types |

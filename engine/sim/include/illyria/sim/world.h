@@ -580,6 +580,9 @@ public:
     // The orders waiting behind his own (Unit::queue), as a save keeps them: put back, at most kMaxQueuedOrders.
     void restoreQueue(EntityId id, std::vector<Command> queue);
     void testQueue(EntityId id, const Command& c) { if (Unit* u = mutableUnit(id)) u->queue.push_back(c); }  // (tests)
+    // A blow dealt to a man at the start of the next step, as a weapon's would be (tests, and the desktop's `deaths` demo:
+    // docs/PLAYTEST.md). No game calls it; the blows waiting are not state.
+    void testBlow(EntityId id, int32_t amount, const Blow& blow) { testBlows_.push_back({id, amount, blow}); }
     // Taking a man out of the world leaves his place in the list, empty (Unit::removed), and the next man to come takes the
     // lowest empty place (so that a world with fights always going on does not grow for ever): a unit's place is his id less
     // one, `units()[id - 1]`, as in any battle. A place is given to a man afresh each time (generation): whatever a
@@ -1368,6 +1371,12 @@ private:
         DamageType cause;
     };
     std::vector<PendingExplosion> pendingExplosions_;
+    struct TestBlow {
+        EntityId id;
+        int32_t amount;
+        Blow blow;
+    };
+    std::vector<TestBlow> testBlows_;  // (testBlow)
     ObstacleGrid obstacleGrid_;
     Fixed obstacleReach_;  // the largest obstacle's reach from its middle (grid queries look this far)
     SpatialHash remainGrid_{4};

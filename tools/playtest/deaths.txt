@@ -1,0 +1,53 @@
+# The death demo: one soldier of every unit type on open grass, killed one way, looked at close.
+# What every type leaves on the ground (docs/DEATH_AUDIT.md) was read off these pictures.
+#
+#   Illyria --play tools/playtest/deaths.txt --play-out out/deaths
+#
+# `deaths spawn X Y` stands the 28 types in a grid from (X, Y): seven to a row eastward, the rows 10 m apart to the
+# south, in unit type order (row 1: light infantry .. the retired dwarves; row 2: wolf riders .. elephants; row 3:
+# unicorns .. archons; row 4: the hero .. the hyena-folk). Then one of:
+#   deaths blast   a satchel beside each: torn apart, the pieces thrown
+#   deaths fell    a club's blow: the body whole
+#   deaths cut     a cleaving blow well past death: a limb or the head off (bodies a cut can sever)
+#   deaths burn    fire: burned black
+#   deaths shot    an arrow: the shaft left in him
+# Change the word below for the other deaths. The camera looks north; each close shot holds about three columns.
+
+size 1600 900
+start skirmish field
+wait 1
+deaths spawn 330 520
+wait_ticks 20
+camera 345 512 30 1.57
+wait 2.5
+shot deaths-0-standing
+deaths blast
+wait_ticks 14
+shot deaths-1-flying
+wait_ticks 20
+shot deaths-2-landing
+wait_ticks 200
+
+camera 340 513 30 1.57
+wait 1.2
+shot deaths-3-row12-west
+camera 360 513 30 1.57
+wait 1.2
+shot deaths-4-row12-mid
+camera 380 513 30 1.57
+wait 1.2
+shot deaths-5-row12-east
+camera 340 495 30 1.57
+wait 1.2
+shot deaths-6-row34-west
+camera 360 495 30 1.57
+wait 1.2
+shot deaths-7-row34-mid
+camera 380 495 30 1.57
+wait 1.2
+shot deaths-8-row34-east
+camera 360 505 75 1.57
+wait 1.2
+shot deaths-9-field
+stats
+quit

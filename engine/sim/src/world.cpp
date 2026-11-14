@@ -506,6 +506,13 @@ void World::step(std::span<const Command> commands) {
     deathEvents_.clear();
     deaths_.clear();
     changedRemains_.clear();
+    for (const TestBlow& t : testBlows_)
+        if (Unit* u = mutableUnit(t.id); u && u->alive()) {
+            // Announced as a weapon's blow is (world_combat.cpp), so the presentation sees him struck and fall.
+            const bool killed = damage(*u, t.amount, nullptr, t.blow);
+            impacts_.push_back({ImpactEvent::Kind::Hit, t.blow.at, t.blow.dir, kNoEntity, u->id, killed, {}, -1, t.blow.type});
+        }
+    testBlows_.clear();
 
     // Peers may receive one tick's commands from different players in any
     // order; applying them grouped by player keeps the outcome identical.

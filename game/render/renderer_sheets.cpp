@@ -91,8 +91,8 @@ bool Renderer::loadSheet(int type, const uint8_t* rgba, int width, int height, c
             !(cellCount == views || cellCount == views + sprites::kGibCount * sprites::kGibVariants))
             return false;
     } else {
-        // The old layout (130 cells) or the new (sprite_layout.h: the views' cells, then any gib parts).
-        const bool legacy = framesPerView == sprites::kLegacyFramesPerView && cellCount == sprites::kLegacyCells;
+        // The old layout (130 cells, or 150 with its gib parts) or the new (sprite_layout.h: the views' cells, then any gib parts).
+        const bool legacy = framesPerView == sprites::kLegacyFramesPerView && (cellCount == sprites::kLegacyCells || cellCount == sprites::kLegacyGibCells);
         if (!legacy && !(framesPerView == sprites::kFramesPerView && (cellCount == sprites::kViews * sprites::kFramesPerView || cellCount == sprites::kCells)))
             return false;
     }
@@ -332,7 +332,8 @@ int Renderer::deathFrame(int type, const sim::Unit& u, float secondsDead, float*
     const float seconds = clip == sprites::Clip::DieBurn ? sprites::kBurnSeconds : sprites::kDieSeconds;
     const int n = sprites::kClipFrames[static_cast<int>(clip)];
     // Thrown through the air by a blow, he stays mid-fall until he lands.
-    const int i = u.airborne ? 2 : static_cast<int>(secondsDead / seconds * static_cast<float>(n));
+    // (A body whose fall was not seen is dead "for ever", 1e9 s: past the clip is its last frame, not a number too big for an int.)
+    const int i = u.airborne ? 2 : secondsDead >= seconds ? n - 1 : static_cast<int>(std::max(0.0f, secondsDead) / seconds * static_cast<float>(n));
     if (down) *down = u.airborne ? 0.0f : downAt(clip, secondsDead / seconds);
     return clipFrame(type, clip, i);
 }

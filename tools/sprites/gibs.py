@@ -13,9 +13,10 @@ the shield's painted face is a, its back b), each by a fixed outline in
 proportion to the figure: across and up in heights of the figure from its
 feet to the top of its head, from the middle of the head. Where a cut goes
 through the body, the edge is bloody; weapons and shields come away clean.
-Only man-shaped types are cut (head, trunk, arms and legs; no mount); the
-rest keep their old 3D parts until their gibs are drawn. The output depends
-only on the pictures.
+Only man-shaped types are cut here (head, trunk, arms and legs; no mount);
+sheet_gibs.py cuts the rest (riders, beasts, the engine), and every sheet
+packed without parts, from the packed sheet's own pictures. The output
+depends only on the pictures.
 """
 
 import argparse

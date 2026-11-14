@@ -26,6 +26,7 @@ enum class Op {
     WaitTicks,  // wait_ticks N        (simulation ticks, 30 a second)
     Speed,      // speed N
     Camera,     // camera X Y DISTANCE YAW   (battle metres, as --camera)
+    Deaths,     // deaths spawn X Y | blast | fell | burn | cut | shot   (the death demo: every unit type in a grid, then killed that way)
     Print,      // print TEXT...       (a line to stdout, to mark a place in the log)
     Quit,       // quit
 };

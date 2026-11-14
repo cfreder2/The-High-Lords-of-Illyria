@@ -1885,6 +1885,9 @@ void main() {
     vec4 t = texture(uSheet, vUv);
     if (t.a < 0.5) discard;
     vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    // Burned black (vSelected below zero, by how far: renderer.cpp drawMan), cloth and all.
+    float charred = clamp(-vSelected, 0.0, 1.0);
+    c = mix(c, vec3(0.05, 0.04, 0.035) + dot(c, vec3(0.3, 0.59, 0.11)) * vec3(0.2, 0.15, 0.12), charred * 0.94);
     c *= vShade;
     if (vSelected > 0.5) c = c * 1.15 + team * 0.12;
     oColor = vec4(mix(c, uwSky(), vFog), 1.0);

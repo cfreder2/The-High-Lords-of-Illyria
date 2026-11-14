@@ -5,7 +5,8 @@
 // view, every frame of every clip, then the gib parts. Old sheets (26 frames
 // a view: idle, walk, attack, flinch, one death) still load: the clips they
 // lack fall back to ones they have. A sheet may instead list its own clips
-// (sprite_clips.h: any clips, any frames a view, the gib parts after them).
+// (sprite_clips.h: any clips, any frames a view, the gib parts after them). An old sheet may hold the gib parts
+// too (150 cells: tools/sprites/sheet_gibs.py cuts them from its idle pictures).
 
 #include <cstdint>
 
@@ -27,6 +28,7 @@ constexpr const char* kGibNames[kGibCount] = {"head", "torso", "arm", "leg", "ch
 constexpr int kGibVariants = 2;
 constexpr int kCells = kViews * kFramesPerView + kGibCount * kGibVariants;  // 240
 constexpr int kLegacyCells = kViews * kLegacyFramesPerView;                // 130
+constexpr int kLegacyGibCells = kLegacyCells + kGibCount * kGibVariants;   // 150: an old sheet given its gib parts
 
 // Seconds the deaths take (figures::kDieSeconds for the falls); burning is slower.
 constexpr float kDieSeconds = 0.9f;
@@ -55,6 +57,52 @@ constexpr int gibSlot(Gib g, int variant) {
 // frames a view: the gib parts follow its views' cells.
 constexpr int kGibBase = kViews * kFramesPerView;
 constexpr int gibCell(int slot, int framesPerView) { return slot - kGibBase + kViews * framesPerView; }
+
+// The part drawn for one a sheet has no picture of, in turn (`step` 0 the part itself; Gib::Count past the last): a
+// beast has no arms, so its second pair of limbs are its wings or its legs; a rider's mount gives the legs; what
+// nothing else stands in for is a gobbet. So every part the sim throws is a piece of the soldier's own picture.
+constexpr Gib gibStandIn(Gib g, int step) {
+    constexpr Gib kNone = Gib::Count;
+    constexpr Gib kChain[kGibCount][5] = {
+        {Gib::Head, Gib::MountHead, Gib::Chunk, kNone, kNone},
+        {Gib::Torso, Gib::Chunk, kNone, kNone, kNone},
+        {Gib::Arm, Gib::Wing, Gib::MountLeg, Gib::Leg, Gib::Chunk},
+        {Gib::Leg, Gib::MountLeg, Gib::Chunk, kNone, kNone},
+        {Gib::Chunk, kNone, kNone, kNone, kNone},
+        {Gib::Weapon, Gib::Chunk, kNone, kNone, kNone},
+        {Gib::Shield, Gib::Chunk, kNone, kNone, kNone},
+        {Gib::MountHead, Gib::Head, Gib::Chunk, kNone, kNone},
+        {Gib::MountLeg, Gib::Leg, Gib::Chunk, kNone, kNone},
+        {Gib::Wing, Gib::Arm, Gib::Chunk, kNone, kNone},
+    };
+    return step < 0 || step >= 5 || g >= Gib::Count ? kNone : kChain[static_cast<int>(g)][step];
+}
+// The slot (gibSlot) to draw part g with in a sheet where `has(slot)` says which it holds: the part's own look
+// `variant`, else its other look, else what stands in for it; -1 when the sheet has none of them.
+template <class Has>
+constexpr int gibSlotFor(Gib g, int variant, Has&& has) {
+    for (int step = 0; gibStandIn(g, step) != Gib::Count; ++step)
+        for (int v = 0; v < kGibVariants; ++v)
+            if (const int slot = gibSlot(gibStandIn(g, step), variant ^ v); has(slot)) return slot;
+    return -1;
+}
+// What a body blown apart throws besides flesh, given out in this order to its first gobbets (the n-th gobbet takes
+// the n-th of these its sheet holds; the rest stay gobbets): its weapon, its shield, its mount's head, a wing.
+constexpr Gib kGibSpoils[] = {Gib::Weapon, Gib::Shield, Gib::MountHead, Gib::Wing};
+template <class Has>
+constexpr Gib gibSpoil(int n, Has&& has) {
+    for (Gib g : kGibSpoils) {
+        if (!has(gibSlot(g, 0)) && !has(gibSlot(g, 1))) continue;
+        if (n-- == 0) return g;
+    }
+    return Gib::Chunk;
+}
+// The bones of the bloodless (the sim throws every piece of them as a bone): by a number of the piece's own, a
+// skull or a ribcage now and then, arm and leg bones mostly.
+constexpr Gib gibOfBone(uint32_t pick) {
+    constexpr Gib kBones[8] = {Gib::Head, Gib::Torso, Gib::Arm, Gib::Leg, Gib::Arm, Gib::Leg, Gib::Arm, Gib::Leg};
+    return kBones[pick % 8];
+}
 
 // The pre-rendered sheet a unit type (sim::UnitType's number) is drawn with:
 // its own once the site's sprites/index.json lists it (`listed`), else a

@@ -238,3 +238,51 @@ TEST(closeup_sheets_load_near_and_drop_far) {
     CHECK_NEAR(closeup::minDistanceFor(20, 144, 48), 20 * 3 / closeup::kMaxMagnification, 0.01);
     CHECK_NEAR(closeup::minDistanceFor(20, 72, 48), 20 * 1.5 / closeup::kMaxMagnification, 0.01);
 }
+
+// Every part the sim throws is drawn as a piece of the soldier's own sheet: a part the sheet has no picture of is
+// the nearest it has (gibStandIn), and only a sheet with no gib cells at all leaves it to the 3D stand-ins.
+TEST(sprite_gib_parts_stand_in_for_those_a_sheet_lacks) {
+    using sprites::Gib;
+    const auto sheet = [](std::set<Gib> parts) {
+        return [parts](int slot) { return parts.count(static_cast<Gib>((slot - sprites::kGibBase) / sprites::kGibVariants)) > 0; };
+    };
+    // A man's sheet: each part itself, in the look asked for.
+    const auto man = sheet({Gib::Head, Gib::Torso, Gib::Arm, Gib::Leg, Gib::Chunk, Gib::Weapon, Gib::Shield});
+    for (Gib g : {Gib::Head, Gib::Torso, Gib::Arm, Gib::Leg, Gib::Chunk, Gib::Weapon, Gib::Shield})
+        for (int v = 0; v < 2; ++v) CHECK(sprites::gibSlotFor(g, v, man) == sprites::gibSlot(g, v));
+    // A beast (a spider, a unicorn): no arms, so its second pair of limbs are legs; a griffin's or a dragon's are wings.
+    const auto beast = sheet({Gib::Head, Gib::Torso, Gib::Leg, Gib::Chunk});
+    CHECK(sprites::gibSlotFor(Gib::Arm, 1, beast) == sprites::gibSlot(Gib::Leg, 1));
+    CHECK(sprites::gibSlotFor(Gib::Weapon, 0, beast) == sprites::gibSlot(Gib::Chunk, 0));  // a blade taken from it: a gobbet, not a steel bar
+    const auto winged = sheet({Gib::Head, Gib::Torso, Gib::Leg, Gib::Chunk, Gib::Wing});
+    CHECK(sprites::gibSlotFor(Gib::Arm, 0, winged) == sprites::gibSlot(Gib::Wing, 0));
+    // A sheet with one look of a part gives it for both.
+    const auto oneLook = [](int slot) { return slot == sprites::gibSlot(Gib::Head, 1) || slot == sprites::gibSlot(Gib::Chunk, 0); };
+    CHECK(sprites::gibSlotFor(Gib::Head, 0, oneLook) == sprites::gibSlot(Gib::Head, 1));
+    CHECK(sprites::gibSlotFor(Gib::Leg, 1, oneLook) == sprites::gibSlot(Gib::Chunk, 0));
+    // No gib cells: nothing (the renderer's 3D parts are for that sheet only).
+    CHECK(sprites::gibSlotFor(Gib::Head, 0, [](int) { return false; }) == -1);
+    // Every part ends in a gobbet, and no chain names a part twice.
+    for (int g = 0; g < sprites::kGibCount; ++g) {
+        std::set<Gib> seen;
+        Gib last = Gib::Count;
+        for (int step = 0; sprites::gibStandIn(static_cast<Gib>(g), step) != Gib::Count; ++step) {
+            last = sprites::gibStandIn(static_cast<Gib>(g), step);
+            CHECK(seen.insert(last).second);
+        }
+        CHECK(sprites::gibStandIn(static_cast<Gib>(g), 0) == static_cast<Gib>(g) && last == Gib::Chunk);
+    }
+    // What a body blown apart throws with its first gobbets: a knight his sword and shield, a rider his lance and his
+    // horse's head, then flesh.
+    CHECK(sprites::gibSpoil(0, man) == Gib::Weapon && sprites::gibSpoil(1, man) == Gib::Shield && sprites::gibSpoil(2, man) == Gib::Chunk);
+    const auto rider = sheet({Gib::Head, Gib::Torso, Gib::Arm, Gib::Leg, Gib::Chunk, Gib::Weapon, Gib::MountHead, Gib::MountLeg});
+    CHECK(sprites::gibSpoil(0, rider) == Gib::Weapon && sprites::gibSpoil(1, rider) == Gib::MountHead && sprites::gibSpoil(2, rider) == Gib::Chunk);
+    CHECK(sprites::gibSpoil(0, beast) == Gib::Chunk);
+    // The bloodless leave bones of every kind, limbs mostly; never a gobbet of flesh.
+    int counts[sprites::kGibCount] = {};
+    for (uint32_t i = 0; i < 64; ++i) ++counts[static_cast<int>(sprites::gibOfBone(i))];
+    CHECK(counts[static_cast<int>(Gib::Head)] == 8 && counts[static_cast<int>(Gib::Torso)] == 8);
+    CHECK(counts[static_cast<int>(Gib::Arm)] == 24 && counts[static_cast<int>(Gib::Leg)] == 24 && counts[static_cast<int>(Gib::Chunk)] == 0);
+    // An old sheet given its parts (tools/sprites/sheet_gibs.py): the 20 after its 130.
+    CHECK(sprites::kLegacyGibCells == 150 && sprites::gibCell(sprites::gibSlot(Gib::Head, 0), sprites::kLegacyFramesPerView) == sprites::kLegacyCells);
+}

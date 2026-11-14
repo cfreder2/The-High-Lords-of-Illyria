@@ -37,6 +37,7 @@ int SheetClip::frameAt(float t, float len, bool looped) const {
     if (!(t > 0)) t = 0;
     if (static_cast<int>(times.size()) == frames)
         return clampFrame(static_cast<int>(std::upper_bound(times.begin(), times.end(), t) - times.begin()) - 1, frames);
+    if (t >= len) return frames - 1;  // (a body dead "for ever": not a number too big for an int)
     return clampFrame(static_cast<int>(t / len * static_cast<float>(frames)), frames);
 }
 

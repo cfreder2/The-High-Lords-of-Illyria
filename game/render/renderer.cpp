@@ -313,7 +313,17 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
         }
     }
     std::vector<float>& g = p.groups[kMapKeyBase + v.type * kMapSides + manSide(v.owner)];
-    g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), v.selected || v.inspected ? 1.0f : 0.0f, down});
+    // A burned man whose sheet has no burning of its own (the old sheets: the fall stands in for it) blackens as he
+    // falls and lies charred, not as fresh as one felled by a club: -1 in the selected slot (kUnitFs).
+    float mark = v.selected || v.inspected ? 1.0f : 0.0f;
+    if (!v.alive && u->death.kind == sim::DeathKind::Charred) {
+        const sprites::SheetClips* clips = clipsFor(v.type);
+        const sprites::SheetClip* burn = clips ? clips->play("die_burn") : nullptr;
+        const bool own = clips ? burn && burn->name == "die_burn"
+                               : sprites::available(sprites::Clip::DieBurn, sheetFor(v.type).framesPerView) == sprites::Clip::DieBurn;
+        if (!own) mark = -std::clamp(v.died / sprites::kBurnSeconds, 0.05f, 1.0f);
+    }
+    g.insert(g.end(), {pos.x, pos.y, pos.z, yaw, static_cast<float>(frame), mark, down});
 }
 
 bool Renderer::buildPrograms() {
@@ -2391,7 +2401,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                                                  std::sin(spin), 0, 0});
                 } else if (const auto look = debrisLooks_.find(p.id);
                            showUnits_ && look != debrisLooks_.end() && pushGib(byGroup, look->second, pos)) {
-                    // A piece of his picture, spinning (renderer_gibs.cpp).
+                    // A piece of his picture, spinning (renderer_gibs.cpp), its shadow on the ground under it: the arc reads.
+                    const float floor = battle.floorAt(pos);
+                    if (pos.z > floor + 0.15f) decals.insert(decals.end(), {pos.x, pos.y, floor, 0, 0.3f, 0, kDecalShadow, 0, 1, 0, 0});
                 } else {
                     // Tumbling through the air.
                     const float t = static_cast<float>(timeSeconds) * 9.0f + static_cast<float>(p.id);
@@ -2427,7 +2439,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                                : u.scav.held == sim::RemainKind::Arm ? sprites::Gib::Arm
                                : u.scav.held == sim::RemainKind::Leg ? sprites::Gib::Leg
                                                                      : sprites::Gib::Chunk;
-        look.cell = sprites::gibSlot(g, static_cast<int>(u.id & 1));
+        look.cell = look.type >= 0 ? gibCellFor(look.type, g, static_cast<int>(u.id & 1)) : -1;
         look.angle = std::atan2(fy, fx);
         if (pushGib(byGroup, look, hand)) continue;
         const float* team = sideColor(u.scav.heldOwner);
