@@ -523,6 +523,7 @@ void World::step(std::span<const Command> commands) {
     buildBroad();
     updateGates();
     keepGates();
+    updateSiege();
 
     for (Unit& u : units_) {
         if (!u.present()) continue;
@@ -1408,6 +1409,12 @@ void World::updateUnit(Unit& u) {
             updateFlight(u);
             return;
         }
+        // Bound through a breach: he waits outside it for his side to gather, and shoots whatever is in reach meanwhile.
+        if (rallyHold(u)) {
+            shootNearby(u);
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+            return;
+        }
         if (Vec3 spot; placeAtGate(u, spot)) {
             walk(u, spot);  // up to the doors beside the others, to hack at them too
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
@@ -1459,31 +1466,41 @@ void World::updateUnit(Unit& u) {
         // The enemy coming: a satchel in their path, then back from it (world_satchels.cpp).
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
+    } else if (Unit* sortie = escortFoe(u)) {
+        // A sortie against the engines he guards: he meets it.
+        fight(u, *sortie);
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr; enemy != nullptr && !outruns(u, *enemy)) {
         // (Not one he cannot catch: shieldTarget, below.)
         fight(u, *enemy);
     } else if (u.stats.ranged.kind == ProjectileKind::Molotov && shootSatchel(u)) {
         // Fire on a satchel lying among the enemy, before any one man.
-    } else if (Unit* target = u.stats.ranged.autoRange > Fixed::zero()
-                                  ? nearestEnemy(u, u.stats.ranged.autoRange * 3 / 2)
-                                  : nullptr;
-               target != nullptr && (target->pos - u.pos).flat().length() <= shotRange(u, u.stats.ranged.autoRange, target->pos)) {
-        // From high ground the bow carries farther (shotRange).
-        u.facing = flatDirection(u.pos, target->pos, u.facing);
-        if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
-            Vec3 aim = target->pos;
-            const bool atWalk = aimHigh(u, aim, target->stats.height);
-            fireAt(u, aim, atWalk);
-        }
+    } else if (shootNearby(u)) {
+        // (From high ground the bow carries farther: shotRange; the walls' shooters first: autoTarget.)
+    } else if (creepToWall(u)) {
+        // (Closer to the walls' men, to be within the throw.)
     } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
         // An engine with no foe in reach throws at a gate of a foe's that is (never walking up to it).
         batterGate(u, gate);
+    } else if (escortSpot(u)) {
+        // Idle near engines at a gate: the line in front of them (world_siege.cpp).
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
         // his shield to him, holding his place (world_scavenge.cpp).
         turnToward(u, flatDirection(u.pos, t->pos, u.facing));
     }
     u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+}
+
+bool World::shootNearby(Unit& u) {
+    Unit* target = autoTarget(u);
+    if (target == nullptr || (target->pos - u.pos).flat().length() > shotRange(u, autoReach(u), target->pos)) return false;
+    u.facing = flatDirection(u.pos, target->pos, u.facing);
+    if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
+        Vec3 aim = target->pos;
+        const bool atWalk = aimHigh(u, aim, target->stats.height);
+        fireAt(u, aim, atWalk);
+    }
+    return true;
 }
 
 bool World::takesWing(const Unit& u, const Vec3& goal) const {

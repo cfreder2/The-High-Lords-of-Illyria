@@ -353,7 +353,9 @@ void Battle::aimEngines(const Squad& s) {
         // battered at the weaker, and the engines go on at it until it falls, then turn to the other).
         const sim::Gate& door = worldRegion().gates()[i];
         const float failing = static_cast<float>(door.maxHp - gs.hp) / static_cast<float>(std::max(1, door.maxHp));
-        const float d = V3{g.x - c.x, g.y - c.y, 0}.length() - 30.0f * failing;
+        const float away = V3{g.x - c.x, g.y - c.y, 0}.length();
+        if (away > kSiegeScope) continue;  // (a gate of another town beyond the field: not this siege's)
+        const float d = away - 30.0f * failing;
         if (d < bestD) {
             bestD = d;
             best = static_cast<int>(i);
@@ -889,6 +891,8 @@ void Battle::runEnemyAi() {
         }
         return goal;
     };
+    V3 engineAt, doorAt;
+    const bool siege = aiSiege(kEnemy, engineAt, doorAt);
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
@@ -903,6 +907,10 @@ void Battle::runEnemyAi() {
             continue;
         }
         if (s.garrison && role != Role::Healer) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
+        if (siege && role != Role::Healer && role != Role::Scout) {
+            aiEscort(q, engineAt, doorAt);  // engines first, from range; the rest hold their line until the doors are down
+            continue;
+        }
         // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code path.
         aiFight(q, goal, c, 1e4f);
     }

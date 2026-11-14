@@ -1099,6 +1099,40 @@ private:
     int engineGateInReach(const Unit& u, const Vec3& near, Fixed grab) const;
     // Sets the engine to batter that gate from where it is.
     void batterGate(Unit& u, int gate);
+    // A siege played as one (world_siege.cpp). Derived from the men's own state at the start of each step, never saved:
+    // the engines at work on a standing gate (their owner, the gate, their middle, and the way from them to it) ...
+    struct Battery {
+        PlayerId owner;
+        int32_t gate;
+        Vec3 centre, toward;
+    };
+    // ... and, at each breach not yet old, whether a side's wave is gathered (go) or men are still coming.
+    struct Rally {
+        int32_t gate;
+        PlayerId owner;
+        bool go;
+    };
+    std::vector<Battery> batteries_;
+    std::vector<Rally> rallies_;
+    void updateSiege();
+    // Held at a breach: he is bound through it and waits outside for the rest of his side to come up.
+    bool rallyHold(const Unit& u) const;
+    // Escort: a foe at a sortie against engines, for the man (idle, near them) to meet; and his place on the line in front of
+    // the engines, walked to or held (false: no engine of his side near enough).
+    Unit* escortFoe(const Unit& u);
+    bool escortSpot(Unit& u);
+    // Suppression: the garrison's man on a wall-walk within reach, for a shooter outside the walls to answer first; and the
+    // man a shooter takes on his own (that, unless a foe is on him, else the nearest).
+    Unit* wallShooter(const Unit& u, Fixed reach);
+    // One of his own side's (a grounded one) within `radius` of the place.
+    bool friendNear(const Unit& u, const Vec3& at, Fixed radius) const;
+    // An engine with no order and no mark in reach, the garrison's men on the wall a little beyond it: it walks up to its own reach.
+    bool creepToWall(Unit& u);
+    Unit* autoTarget(const Unit& u);
+    // How far a man looses on his own: an engine at four fifths of its throw (a stone at the whole of it scatters wide of one man), the rest at autoRange.
+    Fixed autoReach(const Unit& u) const;
+    // He looses at autoTarget if one is in his reach (true: there is one, whether or not the bow is ready).
+    bool shootNearby(Unit& u);
     // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
     bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);

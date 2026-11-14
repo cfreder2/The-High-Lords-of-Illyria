@@ -319,6 +319,33 @@ bool Battle::armyStrung(const Squad& s, const V3& dir) const {
 }
 
 
+bool Battle::aiSiege(sim::PlayerId owner, V3& engines, V3& gate) const {
+    // The engines (aimEngines has sent them at a gate): where they are, and the gate they are at, while it stands.
+    V3 sum{};
+    int n = 0, at = -1;
+    for (const Squad& s : squads_) {
+        if (s.owner != owner || roleOf(s.type) != Role::Siege) continue;
+        for (sim::EntityId id : s.members) {
+            const sim::Unit& u = world_->units()[id - 1];
+            if (!u.alive()) continue;
+            sum = sum + toV3(u.pos);
+            ++n;
+            if (u.attackGate >= 0 && u.hasAttackTarget && !world_->gates()[static_cast<size_t>(u.attackGate)].broken()) at = u.attackGate;
+        }
+    }
+    if (n == 0 || at < 0) return false;
+    engines = sum * (1.0f / static_cast<float>(n));
+    gate = toV3(worldRegion().gates()[static_cast<size_t>(at)].a + worldRegion().gates()[static_cast<size_t>(at)].b) * 0.5f;
+    return true;
+}
+
+void Battle::aiEscort(size_t squad, const V3& engines, const V3& gate) {
+    // The engines work from their own reach, and their men keep the line in front of them (World::escortSpot): come up to them, then stand.
+    const V3 c = squadCentre(squads_[squad], false);
+    if (V3{c.x - engines.x, c.y - engines.y, 0}.length() > 50.0f) aiSteer(squad, engines + dir2(engines, gate) * 12.0f);
+    else aiHalt(squad);
+}
+
 void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach) {
     // As runEnemyAi, for any side, from the simulation's state only.
     if (squad >= squads_.size()) return;

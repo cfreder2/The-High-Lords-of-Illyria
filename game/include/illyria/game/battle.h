@@ -199,6 +199,7 @@ public:
     // Conquest: beyond this from the men (metres) an order is not the world's (no fight is there to be ordered), it is a
     // march of their squads (battle_conquest.cpp).
     static constexpr float kLocalReachM = 200.0f;
+    static constexpr float kSiegeScope = 250.0f;  // the engines of a computer side take the gates this near them (aimEngines): one siege at a time
     static constexpr float kGatherMetres = 60.0f;  // an attack on a foe farther than this is a march together first
     static constexpr size_t kMaxParticles = 4000;
 
@@ -729,6 +730,10 @@ private:
                     V3 facing);
     void step();
     void runEnemyAi();
+    // A computer side with engines at a standing gate of the other's: where its engines are and the gate they are at. Its other
+    // squads escort them (aiEscort) until the gate is down.
+    bool aiSiege(sim::PlayerId owner, V3& engines, V3& gate) const;
+    void aiEscort(size_t squad, const V3& engines, const V3& gate);
     // Where the army's foot stands against `foe`: how far toward it the front reaches (metres along `dir`), false with no foot.
     bool footFront(sim::PlayerId owner, const Squad& except, const V3& dir, float& front) const;
     // A squad of the owner's well behind this one (aiFight's massing): it would arrive piecemeal, ahead of the rest.

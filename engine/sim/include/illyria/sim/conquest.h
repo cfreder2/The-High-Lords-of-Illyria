@@ -180,7 +180,7 @@ public:
         // (a unit vector in thousandths; south until it first moves). Afloat, the boat carries it: its cell says where.
         int32_t px = 0, py = 0;
         int32_t hx = 0, hy = -1000;
-        int32_t orderCell = -1;  // the cell its men were last sent marching to (-1: none)
+        int32_t orderCell = -1;  // the cell its men were last sent marching to (-1: none; kSiegeHold: standing to its engines' work)
         // Bound somewhere and held up (a foe it cannot get at, behind a wall): where it was and when it last got
         // anywhere, and how long it goes deaf to the enemy to pull itself free.
         int32_t lx = 0, ly = 0;
@@ -646,6 +646,9 @@ private:
     void seatNew();                      // seat() for each stack with an army not seated
     void stepWorld();
     void steer(Stack& s, std::vector<Command>& commands, bool think);
+    // A stack whose engines are at work on a standing gate holds its other men where they are, to be the engines' escort
+    // (World::escortSpot), until the gate falls; then it marches on and they gather at the breach (World::rallyHold).
+    bool siegeHeld(Stack& s, std::vector<Command>& commands, bool think);
     void fightAi(Stack& s, std::vector<Command>& commands);
     // fightAi's grid of the units a man may fight, built at the first use in a think (scratch, not state).
     bool foeGridBuilt_ = false;
