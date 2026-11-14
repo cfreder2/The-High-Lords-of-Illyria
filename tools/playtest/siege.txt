@@ -1,0 +1,62 @@
+# Example 2: the Siege. Your army starts in the west; the Garrison of Eastwatch holds the walls, with the gate in the
+# west wall, between its two towers. Plan: the siege train (catapults) and the foot go to the gate together; the
+# right-click on the gate is an attack on it (the cursor over it says so).
+#
+#   Illyria --play tools/playtest/siege.txt --play-out out/siege --play-log out/siege/siege.log
+#
+# Coordinates: window points at 1600 x 900, with the camera below. Squad cards (`cards`) here are 4-13: 0-3 are the garrison's.
+
+size 1600 900
+start skirmish siege
+wait 0.5
+camera 440 500 250 1.610
+wait 1
+shot siege-00-start
+cards
+stats
+
+# The siege train alone first: a click on its card, a march out of the garrison's reach, and look.
+select 13
+click right 640 520
+wait_ticks 150
+shot siege-01-train
+stats
+
+# Then the army: a box round everything on the plain, and a right-click on the gate (an attack on it).
+drag left 330 400 570 790
+wait 0.3
+shot siege-02-box
+click right 975 445
+wait 0.5
+shot siege-03-orders
+
+# Shots every 10 s of game time for 90 s, the numbers each time.
+wait_ticks 300
+shot siege-10
+stats
+wait_ticks 300
+shot siege-20
+stats
+wait_ticks 300
+shot siege-30
+stats
+wait_ticks 300
+shot siege-40
+stats
+wait_ticks 300
+shot siege-50
+stats
+wait_ticks 300
+shot siege-60
+stats
+wait_ticks 300
+shot siege-70
+stats
+wait_ticks 300
+shot siege-80
+stats
+wait_ticks 300
+shot siege-90
+stats
+cards
+quit

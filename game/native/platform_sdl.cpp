@@ -20,6 +20,13 @@
 #include "input.h"
 #include "json.h"
 #include "overlay.h"
+#ifdef ILLYRIA_DEV_HOOKS
+#include <fstream>
+#include <memory>
+#include <sstream>
+
+#include "playrun.h"
+#endif
 
 namespace {
 
@@ -50,6 +57,7 @@ struct Options {
     int garrisonDemo = 0;  // --garrison-demo FRAME: four giants stand 60 m outside the player's capital's gate
     int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
+    std::string play, playOut, playLog;  // --play SCRIPT, --play-out DIR, --play-log FILE (docs/PLAYTEST.md)
 #endif
     bool worldCamera = false;  // --world: --camera's x, y are continent metres
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
@@ -84,6 +92,10 @@ void usage() {
         "  --paths-demo FRAME    at that frame send three squads three ways, all selected: a hunt, a patrol and a force\n"
         "                        march, to see the path lines (a build with -DILLYRIA_DEV_HOOKS=ON only)\n"
         "  --queue-demo FRAME    at that frame queue orders for one squad, hold some for another (planning), to see them\n"
+        "  --play SCRIPT         play a script of keys, clicks, waits and shots (docs/PLAYTEST.md), no one at the keyboard;\n"
+        "                        the window need not be focused or visible; the conquest is not saved\n"
+        "    --play-out DIR      where its shots go (default: beside the script)\n"
+        "    --play-log FILE     one line a second of game time: tick, fps, men alive, what the HUD announces\n"
         "  --time-step S         with a --camera tour: the water's clock moves on S seconds at each camera (pictures of its waves apart)\n"
 #endif
         "  --click X,Y,FRAME[,r] a click (right if r) at a frame, for testing");
@@ -127,6 +139,9 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--queue-demo") o.queueDemo = std::atoi(next());
         else if (a == "--garrison-demo") o.garrisonDemo = std::atoi(next());
         else if (a == "--time-step") o.timeStep = std::atof(next());
+        else if (a == "--play") o.play = next();
+        else if (a == "--play-out") o.playOut = next();
+        else if (a == "--play-log") o.playLog = next();
 #endif
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -315,6 +330,26 @@ int runApp(int argc, char** argv) {
     using namespace illyria;
     Options opt;
     if (!parse(argc, argv, opt)) return 2;
+#ifdef ILLYRIA_DEV_HOOKS
+    // --play: read the script first (a bad line is named, and nothing runs); no sound, and the window takes no focus from
+    // whoever is at the keyboard (macOS: an app with no Dock icon, a window that cannot become key).
+    native::play::Script script;
+    std::string scriptDir;
+    const bool playing = !opt.play.empty();
+    if (playing) {
+        std::ifstream in(opt.play);
+        if (!in) return std::fprintf(stderr, "play: cannot read %s\n", opt.play.c_str()), 2;
+        std::stringstream text;
+        text << in.rdbuf();
+        script = native::play::parse(text.str());
+        for (const std::string& err : script.errors) std::fprintf(stderr, "play: %s: %s\n", opt.play.c_str(), err.c_str());
+        if (!script.ok()) return 2;
+        const size_t slash = opt.play.rfind('/');
+        scriptDir = slash == std::string::npos ? "." : opt.play.substr(0, slash);
+        opt.sound = false;
+        SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+    }
+#endif
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "SDL: %s\n", SDL_GetError());
@@ -330,7 +365,11 @@ int runApp(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, opt.msaa > 0 ? 1 : 0);  // (the page asks for antialiasing too)
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, opt.msaa);
     window = SDL_CreateWindow("The High Lords of Illyria", opt.width, opt.height,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (opt.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (opt.fullscreen ? SDL_WINDOW_FULLSCREEN : 0)
+#ifdef ILLYRIA_DEV_HOOKS
+                                  | (playing ? SDL_WINDOW_NOT_FOCUSABLE : 0)
+#endif
+    );
     if (!window) {
         std::fprintf(stderr, "No window: %s\n", SDL_GetError());
         return 1;
@@ -370,6 +409,12 @@ int runApp(int argc, char** argv) {
     native::Hud hud;
     {
         char* pref = SDL_GetPrefPath("cfreder2", "Illyria");
+#ifdef ILLYRIA_DEV_HOOKS
+        if (playing) {
+            SDL_free(pref);  // (a played script neither reads nor overwrites the player's saved conquest and settings)
+            pref = nullptr;
+        }
+#endif
         if (pref) {
             hud.setSaveFile(std::string(pref) + "conquest.save");
             hud.setSettingsFile(std::string(pref) + "settings.ini");  // the player's colour, the map shown
@@ -378,6 +423,18 @@ int runApp(int argc, char** argv) {
     }
     gHud = &hud;
     native::Input input(hud);
+#ifdef ILLYRIA_DEV_HOOKS
+    std::unique_ptr<native::play::Runner> player;
+    if (playing) {
+        native::play::Setup setup;
+        setup.outDir = opt.playOut.empty() ? scriptDir : opt.playOut;
+        setup.logPath = opt.playLog;
+        setup.lord = opt.lord;
+        setup.foes = opt.foes;
+        setup.hard = opt.hard;
+        player = std::make_unique<native::play::Runner>(std::move(script), window, input, hud, setup);
+    }
+#endif
 
     if (opt.mode.empty()) {
         illyria_start_mode("title", "{}");
@@ -410,6 +467,9 @@ int runApp(int argc, char** argv) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
+#ifdef ILLYRIA_DEV_HOOKS
+            else if (player && native::play::Runner::isRealInput(e)) continue;  // (the script is the only player)
+#endif
             else input.handle(e);
         }
         for (const std::string& c : opt.clicks) {
@@ -432,6 +492,9 @@ int runApp(int argc, char** argv) {
         if (opt.pathsDemo > 0 && frame == opt.pathsDemo) illyria_paths_demo();
         if (opt.queueDemo > 0 && frame == opt.queueDemo) illyria_queue_demo();
         if (opt.garrisonDemo > 0 && frame == opt.garrisonDemo) illyria_garrison_demo();
+#endif
+#ifdef ILLYRIA_DEV_HOOKS
+        if (player && !player->step()) running = false;
 #endif
         native::pumpAssets();
         hud.tick();
@@ -478,6 +541,9 @@ int runApp(int argc, char** argv) {
                 writeShot(opt.shot, pw, ph);
                 running = false;
             }
+#ifdef ILLYRIA_DEV_HOOKS
+            if (player) player->afterDraw(pw, ph);
+#endif
             SDL_GL_SwapWindow(window);
         }
         glEndQuery(GL_TIME_ELAPSED);
@@ -508,6 +574,9 @@ int runApp(int argc, char** argv) {
                           gpuMs, sim ? std::atof(sim + 4) : 0.0, hudTick());
             hudPerf = line;
             hud.setPerf(line);
+#ifdef ILLYRIA_DEV_HOOKS
+            if (player) player->perf(1000.0 / std::max(loopMs, 0.1), loopMs, cpuMs, gpuMs);
+#endif
         }
         if (const GLenum err = glGetError(); err != GL_NO_ERROR && frame < 600) std::fprintf(stderr, "GL error 0x%x at frame %d\n", err, frame);
         if (opt.profile > 0 && !profile.step(frame, rawGpuMs)) running = false;
@@ -520,6 +589,9 @@ int runApp(int argc, char** argv) {
         }
     }
     hud.saveConquest();
+#ifdef ILLYRIA_DEV_HOOKS
+    if (player) return player->exitCode();
+#endif
     return 0;
 }
 }  // namespace
