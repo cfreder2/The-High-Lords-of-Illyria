@@ -97,162 +97,311 @@ bool World::gateKeeper(const Unit& u) const {
     return false;
 }
 
+std::vector<size_t> World::doorsOfRing(size_t gate) const {
+    // The gates of the ring this one opens, in the world's order: a castle with two doors has one garrison between them.
+    std::vector<size_t> out;
+    if (!config_.region || gate >= config_.region->gates().size()) return out;
+    const auto& gs = config_.region->gates();
+    for (size_t j = 0; j < gs.size(); ++j)
+        if (gs[j].ring == gs[gate].ring) out.push_back(j);
+    return out;
+}
+
 void World::keepGates() {
     if (!config_.region || !nav_) return;
     const Region& rg = *config_.region;
     for (size_t i = 0; i < gates_.size() && i < rg.gates().size(); ++i) {
-        GateState& st = gates_[i];
-        if (!st.garrisoned || st.holder == GateState::kNoHolder || (tick_ + i * 3) % kKeepThink != 0) continue;
-        const Gate& g = rg.gates()[i];
-        const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
-        const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
+        const GateState& lead = gates_[i];
+        if (!lead.garrisoned || lead.holder == GateState::kNoHolder) continue;
+        // The doors of one ring and one holder are kept together, by the first of them, on its beat: one garrison, shared out by
+        // where the foes are, so that no door is left bare and none is crowded (a breach at one door draws on the others).
+        std::vector<size_t> doors;
+        for (const size_t j : doorsOfRing(i))
+            if (j < gates_.size() && gates_[j].garrisoned && gates_[j].holder == lead.holder) doors.push_back(j);
+        if (doors.empty() || doors.front() != i || (tick_ + i * 3) % kKeepThink != 0) continue;
+        keepDoors(doors);
+    }
+}
 
-        // Who is about: the garrison (in the world's order) and the foes.
-        std::vector<uint32_t> near;
-        unitGrid_.query(mid.x, mid.y, kAlertRange, [&](uint32_t j) { near.push_back(j); });
-        std::sort(near.begin(), near.end());
-        std::vector<Unit*> archers, foot;
-        int32_t outside = 0, coming = 0, inside = 0;  // foes at the doors outside, all foes outside within the alert range, and inside
-        bool alert = false;
-        for (const uint32_t j : near) {
-            Unit& u = units_[j];
-            if (!u.alive() || u.routed) continue;
-            const Fixed d2 = (u.pos - mid).flat().lengthSq();
-            if (u.owner != st.holder) {
+void World::keepDoors(const std::vector<size_t>& doors) {
+    const Region& rg = *config_.region;
+    const size_t nd = doors.size();
+    const PlayerId holder = gates_[doors.front()].holder;
+    const Rampart& ring = rg.ramparts()[static_cast<size_t>(rg.gates()[doors.front()].ring)];
+    std::vector<Vec3> mids(nd);
+    for (size_t d = 0; d < nd; ++d) mids[d] = (rg.gates()[doors[d]].a + rg.gates()[doors[d]].b) * Fixed::fromRatio(1, 2);
+    // Which door a place is nearest (the first on a tie).
+    const auto nearestDoor = [&](const Vec3& p) {
+        size_t best = 0;
+        Fixed bestD2 = (p - mids[0]).flat().lengthSq();
+        for (size_t d = 1; d < nd; ++d) {
+            const Fixed d2 = (p - mids[d]).flat().lengthSq();
+            if (d2 < bestD2) best = d, bestD2 = d2;
+        }
+        return best;
+    };
+
+    // Who is about: the garrison (in the world's order) and the foes, near any of the doors.
+    std::vector<uint32_t> near;
+    for (size_t d = 0; d < nd; ++d) unitGrid_.query(mids[d].x, mids[d].y, kAlertRange, [&](uint32_t j) { near.push_back(j); });
+    std::sort(near.begin(), near.end());
+    near.erase(std::unique(near.begin(), near.end()), near.end());
+    struct Keeper {
+        Unit* u;
+        size_t door;
+    };
+    std::vector<Keeper> archers, foot;
+    // By door: foes at the doors outside, all foes outside within the alert range, and inside.
+    std::vector<int32_t> outside(nd, 0), coming(nd, 0), inside(nd, 0);
+    bool alert = false;
+    for (const uint32_t j : near) {
+        Unit& u = units_[j];
+        if (!u.alive() || u.routed) continue;
+        if (u.owner != holder) {
+            for (size_t d = 0; d < nd; ++d) {
+                const Fixed d2 = (u.pos - mids[d]).flat().lengthSq();
+                if (d2 > kAlertRange * kAlertRange) continue;
                 alert = true;
                 if (u.inAir() || u.flight != Unit::Flight::Grounded) continue;
-                if (townSide(g, ring, u.pos)) inside += d2 <= kInsideRange * kInsideRange;
-                else ++coming, outside += d2 <= kLureRange * kLureRange;
-                continue;
+                if (townSide(rg.gates()[doors[d]], ring, u.pos)) inside[d] += d2 <= kInsideRange * kInsideRange;
+                else ++coming[d], outside[d] += d2 <= kLureRange * kLureRange;
             }
-            if (d2 > kKeepRadius * kKeepRadius || (!withinRing(ring, u.pos) && !(st.recalls && d2 <= kRecallRange * kRecallRange))) continue;
-            const Post post = postOf(u);
-            if (ordered(u)) continue;
-            if (post == Post::Archer) archers.push_back(&u);
-            else if (post == Post::Foot) foot.push_back(&u);
+            continue;
         }
-        if (!alert) continue;
+        bool mine = false;
+        for (size_t d = 0; d < nd; ++d) {
+            const Fixed d2 = (u.pos - mids[d]).flat().lengthSq();
+            mine = mine || (d2 <= kKeepRadius * kKeepRadius && (withinRing(ring, u.pos) || (gates_[doors[d]].recalls && d2 <= kRecallRange * kRecallRange)));
+        }
+        if (!mine) continue;
+        const Post post = postOf(u);
+        if (ordered(u)) continue;
+        // His door: the one he stands at, or (walking to a station) the one he is bound for.
+        const size_t home = nearestDoor(u.stationed && u.hasMoveTarget ? u.moveTarget : u.pos);
+        if (post == Post::Archer) archers.push_back({&u, home});
+        else if (post == Post::Foot) foot.push_back({&u, home});
+    }
+    if (!alert) return;
 
-        int32_t manned = 0;
-        // The archers up on the walls: an embrasure each, the nearest the doors first.
-        if (!archers.empty()) {
-            std::vector<size_t> order;
-            for (size_t e = 0; e < ring.embrasures.size(); ++e)
-                if ((ring.embrasures[e].pos - mid).flat().lengthSq() <= kKeepRadius * kKeepRadius) order.push_back(e);
-            std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-                return (ring.embrasures[a].pos - mid).flat().lengthSq() < (ring.embrasures[b].pos - mid).flat().lengthSq();
-            });
-            std::vector<uint8_t> taken(ring.embrasures.size(), 0);
-            std::vector<Unit*> loose;
-            for (Unit* u : archers) {
-                bool placed = false;
-                for (const size_t e : order) {
-                    const Rampart::Embrasure& em = ring.embrasures[e];
-                    if (!taken[e] && (u->pos - em.pos).flat().lengthSq() <= kEmbrasureTolerance * kEmbrasureTolerance && abs(u->pos.z - em.pos.z) < kEmbrasureHeight) {
-                        taken[e] = 1;
-                        placed = true;
-                        break;
-                    }
-                }
-                manned += placed;
-                if (!placed && idle(*u)) loose.push_back(u);
+    // A door's horseshoe for n men: the places the wall or a house leaves free, the middle rank deepest, the wings bent in toward
+    // the doors.
+    const auto horseshoe = [&](size_t d, int32_t n, Fixed gap) {
+        const Gate& g = rg.gates()[doors[d]];
+        const Vec3 inward = -g.out;
+        const Vec3 along = (g.b - g.a).flat() / max(Fixed::fromRatio(1, 10), (g.b - g.a).flat().length());
+        std::vector<Vec3> slots;
+        for (int32_t k = 0; k < n; ++k) {
+            const int32_t rank = k / kRankWidth, inRank = std::min(kRankWidth, n - rank * kRankWidth);
+            Vec3 p;
+            // A place the wall or a house takes is brought in toward the axis until it is free (else left to the others).
+            Fixed lateral = gap * (Fixed::fromInt(k % kRankWidth * 2 - (inRank - 1)) / 2);
+            for (int tries = 0; tries < 4; ++tries) {
+                const Fixed depth = kHoldDepth + gap * rank - lateral * lateral / (kBowlRadius * 2);
+                p = mids[d] + inward * depth + along * lateral;
+                p.z = rg.terrain().heightAt(p.x, p.y);
+                if (courtyardSpot(ring, p)) break;
+                lateral = lateral * 3 / 4;
+                p = {};
             }
-            for (Unit* u : loose) {
-                for (const size_t e : order) {
-                    if (taken[e]) continue;
-                    taken[e] = 1;
-                    u->routeFrom = u->pos;
-                    beginMove(*u, ring.embrasures[e].pos, Fixed::zero(), ring.embrasures[e].out);
-                    planPath(*u, ring.embrasures[e].pos);
-                    u->stationed = true;
+            if (p == Vec3{}) continue;
+            slots.push_back(p);
+        }
+        return slots;
+    };
+    Fixed gap = kSlotGap;
+    for (const Keeper& k : foot) gap = max(gap, k.u->stats.radius * 2 + Fixed::fromRatio(1, 2));
+    // What each door can take: the embrasures within reach of it, and the places of its horseshoe (a door that cannot hold more
+    // men than it has room for is not given them).
+    std::vector<std::vector<size_t>> order(nd);
+    std::vector<int64_t> bowRoom(nd), footRoom(nd);
+    for (size_t d = 0; d < nd; ++d) {
+        for (size_t e = 0; e < ring.embrasures.size(); ++e)
+            if ((ring.embrasures[e].pos - mids[d]).flat().lengthSq() <= kKeepRadius * kKeepRadius) order[d].push_back(e);
+        std::stable_sort(order[d].begin(), order[d].end(), [&](size_t a, size_t b) {
+            return (ring.embrasures[a].pos - mids[d]).flat().lengthSq() < (ring.embrasures[b].pos - mids[d]).flat().lengthSq();
+        });
+        bowRoom[d] = static_cast<int64_t>(order[d].size());
+        footRoom[d] = static_cast<int64_t>(horseshoe(d, static_cast<int32_t>(foot.size()), gap).size());
+    }
+
+    // How the garrison is shared: by the foes at each door (those inside the walls count double), but no door with less than a
+    // third of what the busiest has (a door not yet attacked keeps a guard, and the foes are as likely to come to it next); and
+    // a man moves only when a door is two men over or under its share, so that the shares do not seesaw as the foes come and
+    // go. The man who goes is the one of the surplus door nearest the door that wants him, sent whatever he was doing for the
+    // garrison.
+    std::vector<EntityId> sent;
+    std::vector<Vec3> scratch;
+    std::vector<std::vector<Vec3>> heads(nd);
+    for (size_t d = 0; d < nd; ++d) {
+        const std::vector<Vec3> all = horseshoe(d, static_cast<int32_t>(foot.size()), gap);
+        if (!all.empty()) heads[d] = {all[all.size() / 2]};
+    }
+    const auto share = [&](std::vector<Keeper>& men, const std::vector<int64_t>& room, bool walk) {
+        const int64_t total = static_cast<int64_t>(men.size());
+        std::vector<int64_t> weight(nd), quota(nd), have(nd, 0);
+        int64_t sum = 0, most = 0;
+        for (size_t d = 0; d < nd; ++d) most = std::max<int64_t>(most, coming[d] + 2 * inside[d]);
+        for (size_t d = 0; d < nd; ++d) sum += weight[d] = std::max<int64_t>(coming[d] + 2 * inside[d], (most + 2) / 3);
+        int64_t given = 0;
+        for (size_t d = 0; d < nd; ++d) given += quota[d] = total * weight[d] / sum;
+        while (given < total) {
+            // The rest, to the door with the largest part of a man owing.
+            size_t pick = 0;
+            for (size_t d = 1; d < nd; ++d)
+                if (total * weight[d] - quota[d] * sum > total * weight[pick] - quota[pick] * sum) pick = d;
+            ++quota[pick];
+            ++given;
+        }
+        // (No more than a door has room for: the rest to the doors with room left.)
+        for (size_t d = 0; d < nd; ++d)
+            while (quota[d] > room[d]) {
+                size_t spare = nd;
+                for (size_t e = 0; e < nd; ++e)
+                    if (e != d && quota[e] < room[e] && (spare == nd || room[e] - quota[e] > room[spare] - quota[spare])) spare = e;
+                if (spare == nd) break;
+                --quota[d];
+                ++quota[spare];
+            }
+        for (const Keeper& k : men) ++have[k.door];
+        for (int guard = 0; guard < 64; ++guard) {
+            size_t over = nd, under = nd;
+            for (size_t d = 0; d < nd; ++d) {
+                if (have[d] - quota[d] >= 2 && (over == nd || have[d] - quota[d] > have[over] - quota[over])) over = d;
+                if (quota[d] - have[d] >= 2 && (under == nd || quota[d] - have[d] > quota[under] - have[under])) under = d;
+            }
+            if (over == nd || under == nd) break;
+            size_t who = men.size();
+            Fixed whoD2;
+            for (size_t m = 0; m < men.size(); ++m) {
+                if (men[m].door != over || men[m].u->engaged || men[m].u->foe != kNoEntity) continue;
+                // (A man on foot goes only where the ground leads him: a back door may lie behind walls from the front.)
+                if (!walk && (heads[under].empty() || !nav_->findPath(men[m].u->pos, heads[under].front(), scratch, men[m].u->stats.gait))) continue;
+                const Fixed d2 = (men[m].u->pos - mids[under]).flat().lengthSq();
+                if (who == men.size() || d2 < whoD2) who = m, whoD2 = d2;
+            }
+            if (who == men.size()) break;
+            men[who].door = under;
+            sent.push_back(men[who].u->id);
+            --have[over];
+            ++have[under];
+        }
+    };
+    if (getenv("KEEPDBG") && alert && foot.size() > 20) fprintf(stderr, "foot %zu room %ld %ld bow %ld %ld\n", foot.size(), (long)footRoom[0], (long)footRoom[nd-1], (long)bowRoom[0], (long)bowRoom[nd-1]);
+    if (getenv("KEEPDBG") && alert && foot.size() > 20) { fprintf(stderr, "foot %zu room %ld %ld coming %d %d inside %d %d\n", foot.size(), (long)footRoom[0], (long)footRoom[1], coming[0], coming[1], inside[0], inside[1]); int h0=0; for (auto& k: foot) h0 += k.door==0; fprintf(stderr, " home0 %d heads %zu %zu\n", h0, heads[0].size(), heads[1].size()); }
+    share(archers, bowRoom, true);
+    share(foot, footRoom, false);
+    const auto wasSent = [&](const Unit* u) { return std::find(sent.begin(), sent.end(), u->id) != sent.end(); };
+
+    // The archers up on the walls: an embrasure each, the nearest their door first. Those already at one are counted first, so
+    // that no man is sent to a place another holds, whichever door he is of.
+    std::vector<uint8_t> taken(ring.embrasures.size(), 0);
+    std::vector<int32_t> manned(nd, 0), archersAt(nd, 0), formed(nd, 0), footAt(nd, 0);
+
+    std::vector<Keeper> loose;
+    for (const Keeper& k : archers) {
+        ++archersAt[k.door];
+        size_t at = ring.embrasures.size();
+        for (size_t d = 0; d < nd && at == ring.embrasures.size(); ++d)
+            for (const size_t e : order[d]) {
+                const Rampart::Embrasure& em = ring.embrasures[e];
+                if (!taken[e] && (k.u->pos - em.pos).flat().lengthSq() <= kEmbrasureTolerance * kEmbrasureTolerance && abs(k.u->pos.z - em.pos.z) < kEmbrasureHeight) {
+                    at = e;
                     break;
                 }
             }
+        if (at < ring.embrasures.size() && !wasSent(k.u)) {
+            taken[at] = 1;
+            ++manned[k.door];
+        } else if (idle(*k.u) || wasSent(k.u)) {
+            loose.push_back(k);
         }
-
-        // The foot in a horseshoe behind the doors, the mouth of the gate its kill zone: the middle rank deepest, the wings
-        // bent in toward the doors, every man facing the mouth.
-        int32_t formed = 0;
-        if (!foot.empty()) {
-            Fixed gap = kSlotGap;
-            for (const Unit* u : foot) gap = max(gap, u->stats.radius * 2 + Fixed::fromRatio(1, 2));
-            const Vec3 inward = -g.out;
-            const Vec3 along = (g.b - g.a).flat() / max(Fixed::fromRatio(1, 10), (g.b - g.a).flat().length());
-            const int32_t n = static_cast<int32_t>(foot.size());
-            std::vector<Vec3> slots;
-            for (int32_t k = 0; k < n; ++k) {
-                const int32_t rank = k / kRankWidth, inRank = std::min(kRankWidth, n - rank * kRankWidth);
-                Vec3 p;
-                // A place the wall or a house takes is brought in toward the axis until it is free (else left to the others).
-                Fixed lateral = gap * (Fixed::fromInt(k % kRankWidth * 2 - (inRank - 1)) / 2);
-                for (int tries = 0; tries < 4; ++tries) {
-                    const Fixed depth = kHoldDepth + gap * rank - lateral * lateral / (kBowlRadius * 2);
-                    p = mid + inward * depth + along * lateral;
-                    p.z = rg.terrain().heightAt(p.x, p.y);
-                    if (courtyardSpot(ring, p)) break;
-                    lateral = lateral * 3 / 4;
-                    p = {};
-                }
-                if (p == Vec3{}) continue;
-                slots.push_back(p);
-            }
-            // Those already at a place keep it; the rest (idle) go to the nearest places left.
-            std::vector<uint8_t> taken(slots.size(), 0);
-            std::vector<Unit*> loose;
-            for (Unit* u : foot) {
-                size_t at = slots.size();
-                Fixed atD2;
-                for (size_t s = 0; s < slots.size(); ++s) {
-                    const Fixed d2 = (slots[s] - u->pos).flat().lengthSq();
-                    if (!taken[s] && d2 <= kSlotTolerance * kSlotTolerance && (at == slots.size() || d2 < atD2)) at = s, atD2 = d2;
-                }
-                if (at < slots.size()) taken[at] = 1, ++formed;
-                else loose.push_back(u);
-            }
-            for (Unit* u : loose) {
-                size_t best = slots.size();
-                Fixed bestD2;
-                for (size_t s = 0; s < slots.size(); ++s) {
-                    const Fixed d2 = (slots[s] - u->pos).flat().lengthSq();
-                    if (!taken[s] && (best == slots.size() || d2 < bestD2)) best = s, bestD2 = d2;
-                }
-                if (best == slots.size()) continue;
-                taken[best] = 1;
-                if (!idle(*u)) continue;
-                u->routeFrom = u->pos;
-                beginMove(*u, slots[best], Fixed::zero(), mid - slots[best]);
-                planPath(*u, slots[best]);
-                u->stationed = true;
-            }
+    }
+    for (const Keeper& k : loose) {
+        for (const size_t e : order[k.door]) {
+            if (taken[e]) continue;
+            taken[e] = 1;
+            Unit* u = k.u;
+            u->routeFrom = u->pos;
+            beginMove(*u, ring.embrasures[e].pos, Fixed::zero(), ring.embrasures[e].out);
+            planPath(*u, ring.embrasures[e].pos);
+            u->stationed = true;
+            break;
         }
+    }
 
-        // A foe who is in reach, inside the walls or through the open doors, is met by the foot who stand idle (then back to the
-        // places); the foe outside a shut gate is not walked at.
-        const bool through = st.passable();
-        for (Unit* u : foot) {
-            if (!idle(*u)) continue;
-            Unit* best = nullptr;
+    // The foot in a horseshoe behind each door, the mouth of the gate its kill zone: the middle rank deepest, the wings bent in
+    // toward the doors, every man facing the mouth.
+    for (size_t d = 0; d < nd; ++d) {
+        const Vec3& mid = mids[d];
+        std::vector<Unit*> men;
+        for (const Keeper& k : foot)
+            if (k.door == d) men.push_back(k.u);
+        footAt[d] = static_cast<int32_t>(men.size());
+        if (men.empty()) continue;
+        const std::vector<Vec3> slots = horseshoe(d, static_cast<int32_t>(men.size()), gap);
+        // Those already at a place keep it; the rest (idle, or sent here from the other door) go to the nearest places left.
+        std::vector<uint8_t> used(slots.size(), 0);
+        std::vector<Unit*> unplaced;
+        for (Unit* u : men) {
+            size_t at = slots.size();
+            Fixed atD2;
+            for (size_t s = 0; s < slots.size(); ++s) {
+                const Fixed d2 = (slots[s] - u->pos).flat().lengthSq();
+                if (!used[s] && d2 <= kSlotTolerance * kSlotTolerance && (at == slots.size() || d2 < atD2)) at = s, atD2 = d2;
+            }
+            if (at < slots.size()) used[at] = 1, ++formed[d];
+            else unplaced.push_back(u);
+        }
+        for (Unit* u : unplaced) {
+            size_t best = slots.size();
             Fixed bestD2;
-            for (const uint32_t j : near) {
-                Unit& f = units_[j];
-                if (f.owner == st.holder || !f.alive() || f.routed || f.inAir() || f.flight != Unit::Flight::Grounded) continue;
-                if ((f.pos - mid).flat().lengthSq() > kMeetRange * kMeetRange || !(through || townSide(g, ring, f.pos))) continue;
-                const Fixed d2 = (f.pos - u->pos).flat().lengthSq();
-                if (best == nullptr || d2 < bestD2) best = &f, bestD2 = d2;
+            for (size_t s = 0; s < slots.size(); ++s) {
+                const Fixed d2 = (slots[s] - u->pos).flat().lengthSq();
+                if (!used[s] && (best == slots.size() || d2 < bestD2)) best = s, bestD2 = d2;
             }
-            if (best == nullptr) continue;
-            Command c{u->owner, u->id, Command::Type::AttackUnit, {}};
-            c.targetUnit = best->id;
-            applyCommand(c);
+            if (best == slots.size()) continue;
+            used[best] = 1;
+            if (!idle(*u) && !wasSent(u)) continue;
+            u->routeFrom = u->pos;
+            beginMove(*u, slots[best], Fixed::zero(), mid - slots[best]);
+            planPath(*u, slots[best]);
             u->stationed = true;
         }
+    }
 
-        // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed
-        // to take them, the room inside is not yet full of them, and the doors are failing or the foes few.
-        if (st.broken() || foot.empty() || outside == 0 || inside >= static_cast<int32_t>(foot.size())) continue;
-        const bool formedUp = formed * 100 >= static_cast<int32_t>(foot.size()) * kFormedPct && manned * 100 >= static_cast<int32_t>(archers.size()) * kMannedPct;
+    // A foe who is in reach, inside the walls or through open doors, is met by the foot who stand idle, of whichever door (then
+    // back to the places); the foe outside a shut gate is not walked at.
+    for (const Keeper& k : foot) {
+        Unit* u = k.u;
+        if (!idle(*u)) continue;
+        Unit* best = nullptr;
+        Fixed bestD2;
+        for (const uint32_t j : near) {
+            Unit& f = units_[j];
+            if (f.owner == holder || !f.alive() || f.routed || f.inAir() || f.flight != Unit::Flight::Grounded) continue;
+            bool reach = false;
+            for (size_t d = 0; d < nd && !reach; ++d)
+                reach = (f.pos - mids[d]).flat().lengthSq() <= kMeetRange * kMeetRange && (gates_[doors[d]].passable() || townSide(rg.gates()[doors[d]], ring, f.pos));
+            if (!reach) continue;
+            const Fixed d2 = (f.pos - u->pos).flat().lengthSq();
+            if (best == nullptr || d2 < bestD2) best = &f, bestD2 = d2;
+        }
+        if (best == nullptr) continue;
+        Command c{u->owner, u->id, Command::Type::AttackUnit, {}};
+        c.targetUnit = best->id;
+        applyCommand(c);
+        u->stationed = true;
+    }
+
+    // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed to
+    // take them, the room inside is not yet full of them, and the doors are failing or the foes few.
+    for (size_t d = 0; d < nd; ++d) {
+        GateState& st = gates_[doors[d]];
+        const Gate& g = rg.gates()[doors[d]];
+        if (st.broken() || footAt[d] == 0 || outside[d] == 0 || inside[d] >= footAt[d]) continue;
+        const bool formedUp = formed[d] * 100 >= footAt[d] * kFormedPct && manned[d] * 100 >= archersAt[d] * kMannedPct;
         const bool failing = static_cast<int64_t>(st.hp) * 100 < static_cast<int64_t>(g.maxHp) * kLureHpPct;
-        if (formedUp && (failing || coming <= static_cast<int32_t>(foot.size()) * kLureOddsPerMan))
+        if (formedUp && (failing || coming[d] <= footAt[d] * kLureOddsPerMan))
             st.openUntil = std::max(st.openUntil, tick_ + static_cast<uint32_t>(kLureOpenSeconds * kTicksPerSecond));
     }
 }
@@ -262,8 +411,18 @@ void World::keepGates() {
 bool World::courtyardSpot(const Rampart& ring, const Vec3& p) const {
     // On the courtyard's own ground: not the foot of a ramp or a stair, nor under the wall-walk's gallery (an order there is an
     // order up onto the walk).
-    return standable(p) && Gate::inside(ring, p) && abs(groundHeight(p.x, p.y) - p.z) < Fixed::fromRatio(1, 4) &&
-           config_.region->rampartAt(p.x, p.y, ring.corners.front().z) < 0;
+    if (!standable(p) || !Gate::inside(ring, p) || abs(groundHeight(p.x, p.y) - p.z) >= Fixed::fromRatio(1, 4) ||
+        config_.region->rampartAt(p.x, p.y, ring.corners.front().z) >= 0)
+        return false;
+    // Not inside an inner bailey (a ring within this one): its doors are shut, and a man put there could not come out. A back door
+    // has the bailey close behind it, and its horseshoe is the narrow ground between.
+    for (const Rampart& inner : config_.region->ramparts()) {
+        if (&inner == &ring || !Gate::inside(inner, p)) continue;
+        bool within = !inner.corners.empty();
+        for (const Vec3& c : inner.corners) within = within && Gate::inside(ring, c);
+        if (within) return false;
+    }
+    return true;
 }
 
 std::vector<std::vector<Vec3>> World::yardRanks(const Gate& g, const Rampart& ring, const std::vector<int32_t>& groups, Fixed gap, const std::vector<Vec3>& avoid) const {
@@ -337,12 +496,46 @@ size_t World::gateOfTown(const Vec3& heart) const {
         if (g.ring < 0 || static_cast<size_t>(g.ring) >= rg.ramparts().size()) continue;
         if ((rg.ramparts()[static_cast<size_t>(g.ring)].centre - heart).flat().length() >= Fixed::fromInt(20)) continue;
         const Fixed d = ((g.a + g.b) * Fixed::fromRatio(1, 2) - heart).flat().lengthSq();
-        if (best == kNoGate || d > bestD) best = i, bestD = d;  // (the outer ring's: its gate is farthest from the heart)
+        // (The outer ring's: its gate is farthest from the heart; of a ring with two, the first, whose road leads to the town.)
+        if (g.side) continue;
+        if (best == kNoGate || d > bestD) best = i, bestD = d;
     }
     return best;
 }
 
 std::vector<World::GarrisonPost> World::garrisonPosts(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except) const {
+    if (!config_.region || gate >= config_.region->gates().size()) return {};
+    // A ring with more than one door: the bowmen and the foot are dealt out between the doors in turn (this one first, which
+    // also has the lord and the rest), and each door's share is placed by the one rule, clear of the places already given.
+    std::vector<size_t> doors{gate};
+    for (const size_t j : doorsOfRing(gate))
+        if (j != gate) doors.push_back(j);
+    if (doors.size() == 1) return garrisonPostsAt(gate, men, except, {});
+    std::vector<std::vector<size_t>> share(doors.size());
+    size_t nextWall = 0, nextFoot = 0;
+    for (size_t i = 0; i < men.size(); ++i) {
+        switch (garrisonRole(*men[i])) {
+            case GarrisonRole::Wall: share[nextWall++ % doors.size()].push_back(i); break;
+            case GarrisonRole::Foot: share[nextFoot++ % doors.size()].push_back(i); break;
+            case GarrisonRole::Rear: share[0].push_back(i); break;
+        }
+    }
+    std::vector<GarrisonPost> out(men.size());
+    std::vector<Vec3> given;
+    for (size_t d = 0; d < doors.size(); ++d) {
+        std::vector<const UnitStats*> mine;
+        for (const size_t i : share[d]) mine.push_back(men[i]);
+        if (mine.empty()) continue;
+        const std::vector<GarrisonPost> posts = garrisonPostsAt(doors[d], mine, except, given);
+        for (size_t k = 0; k < posts.size(); ++k) {
+            out[share[d][k]] = posts[k];
+            given.push_back(posts[k].pos);
+        }
+    }
+    return out;
+}
+
+std::vector<World::GarrisonPost> World::garrisonPostsAt(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except, const std::vector<Vec3>& alsoHeld) const {
     std::vector<GarrisonPost> out;
     if (!config_.region || !nav_ || gate >= config_.region->gates().size() || men.empty()) return out;
     const Region& rg = *config_.region;
@@ -359,6 +552,7 @@ std::vector<World::GarrisonPost> World::garrisonPosts(size_t gate, const std::ve
         if (std::find(except.begin(), except.end(), u.id) != except.end()) continue;
         held.push_back(u.pos);
     }
+    held.insert(held.end(), alsoHeld.begin(), alsoHeld.end());
 
     std::vector<size_t> wall, line, rear;
     Fixed gap = kSlotGap;

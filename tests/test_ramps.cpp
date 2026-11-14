@@ -298,7 +298,7 @@ TEST(every_tower_has_a_gallery_clear_of_the_ramps_and_houses) {
         for (size_t ri = 0; ri < k.rings.size(); ++ri) {
             const Castle::Ring& ring = k.rings[ri];
             const std::vector<Castle::Gallery> gs = ring.galleries();
-            CHECK(gs.size() == ring.corners.size() + 2);
+            CHECK(gs.size() == ring.corners.size() + (ring.gateEdge2 == Castle::Ring::kNoEdge ? 2 : 4));  // (a pair of towers to each gate)
             const Vec3 middle = ring.centre();
             for (const Castle::Gallery& g : gs) {
                 CHECK((g.pos + g.mid * (g.radius + Castle::kGalleryWidth) - middle).flat().length() < (g.pos - middle).flat().length());

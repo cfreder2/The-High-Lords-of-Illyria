@@ -112,6 +112,7 @@ struct Gate {
     Vec3 out;           // unit, horizontal: from the town out through the gate
     int32_t maxHp = 1;
     int32_t ring = 0;   // the rampart (ring of walls) it opens
+    bool side = false;  // the second gate of a ring that has two (the road runs to the first)
     // True inside that ring's walls.
     static bool inside(const Rampart& ring, const Vec3& p);
 };

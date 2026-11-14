@@ -23,6 +23,11 @@ constexpr int32_t kFireGatePct = 150;
 constexpr Fixed kGateApproach = Fixed::fromInt(4);
 // A little more than a blow's reach: soldiers pressed against the doors.
 constexpr Fixed kHackSlack = Fixed::fromRatio(3, 10);
+// Choosing between a ring's doors (routeToGate): a door nearly down is this many metres nearer than it lies, and every man of its
+// holder within kDefendedRange of it is kHeldCost metres farther.
+constexpr Fixed kWeakPull = Fixed::fromInt(30);
+constexpr Fixed kHeldCost = Fixed::fromRatio(3, 2);
+constexpr Fixed kDefendedRange = Fixed::fromInt(20);
 // Those who cannot get through a shut gate stop this near its doors, or
 // against their own men stopped before it, this near.
 constexpr Fixed kHaltReach = Fixed::fromInt(6);
@@ -359,7 +364,21 @@ bool World::routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out
         const Rampart& ring = rg.ramparts()[static_cast<size_t>(gs[i].ring)];
         if (townSide(gs[i], ring, from) == withinRing(ring, to)) continue;
         const Vec3 c = (gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2);
-        choices.push_back({(c - from).flat().length() + (to - c).flat().length(), i});
+        Fixed cost = (c - from).flat().length() + (to - c).flat().length();
+        // A ring with more than one door: the way in is not just the shortest. A door already battered is the weaker (up to
+        // kWeakPull metres off the way for a door nearly down), and each man the door's holder has at it costs a little more, so
+        // that an attack falls on the door least held and does not all come through one (squads set off from different cells,
+        // each reckoning it afresh).
+        if (doorsOfRing(i).size() > 1) {
+            cost -= kWeakPull * Fixed::fromRatio(gs[i].maxHp - gates_[i].hp, std::max(1, gs[i].maxHp));
+            int32_t held = 0;
+            unitGrid_.query(c.x, c.y, kDefendedRange, [&](uint32_t j) {
+                const Unit& u = units_[j];
+                held += u.alive() && !u.routed && u.owner == gates_[i].holder && u.pos.z < gs[i].top;
+            });
+            cost += kHeldCost * Fixed::fromInt(held);
+        }
+        choices.push_back({cost, i});
     }
     std::stable_sort(choices.begin(), choices.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
     for (const auto& choice : choices) {
