@@ -346,6 +346,7 @@ bool Renderer::buildPrograms() {
                  {detailTerrain_, shaders::kPatchVs, shaders::kPatchFs},
                  {detailDepth_, shaders::kPatchVs, shaders::kDepthFs},
                  {farCut_, shaders::kFarVs, shaders::kFarCutFs},
+                 {terrainCut_, shaders::kTerrainVs, shaders::kTerrainCutFs},
                  {bar_, shaders::kBarVs, shaders::kBarFs},
                  {dot_, shaders::kDotVs, shaders::kDotFs},
                  {board_, shaders::kBoardVs, shaders::kBoardFs},
@@ -2562,7 +2563,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         drawArrays(GL_TRIANGLES, 0, 3);
         glDepthMask(GL_TRUE);
     }
-    setCommon(terrain_, camera, timeSeconds, gameSeconds);
+    setCommon(detailOn_ ? terrainCut_ : terrain_, camera, timeSeconds, gameSeconds);
     glBindVertexArray(terrainVao_);
     part_ = Part::Land;
     drawElements(GL_TRIANGLES, terrainIndexCount_, GL_UNSIGNED_INT);

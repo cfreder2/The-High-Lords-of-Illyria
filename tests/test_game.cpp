@@ -127,6 +127,28 @@ void settle(Camera& c) {
 }
 }  // namespace
 
+TEST(camera_settle_ends_the_glide_where_the_glide_was_going) {
+    // What a press does: the ground under the pointer is the ground the view will rest on, not one it is gliding past.
+    Camera glided = flatCamera(), snapped = flatCamera();
+    for (Camera* c : {&glided, &snapped}) {
+        c->lookAt(512, 512, 300);
+        c->zoomAt(3.0f, 200, 150);
+        c->advance(0.016f);
+    }
+    CHECK(snapped.distance() > 150.0f);  // still gliding
+    snapped.settle();
+    settle(glided);
+    CHECK_NEAR(snapped.distance(), glided.distance(), 0.5);
+    V3 a, b;
+    CHECK(snapped.pickGround(200, 150, a) && glided.pickGround(200, 150, b));
+    CHECK_NEAR(a.x, b.x, 1.0);
+    CHECK_NEAR(a.y, b.y, 1.0);
+    // And it holds: nothing more is owed.
+    const float d = snapped.distance();
+    snapped.advance(0.5f);
+    CHECK_NEAR(snapped.distance(), d, 0.001);
+}
+
 TEST(camera_zoom_reaches_both_limits_and_banks_nothing_beyond_them) {
     Camera c = flatCamera();
     CHECK(Camera::kMinDistance <= 2.0f);

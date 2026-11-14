@@ -1,6 +1,7 @@
 // Every program the renderer links: name, vertex body, fragment body.
 // Included by renderer.cpp and tools/shaders/shaderdump.cpp.
 ILLYRIA_SHADER("terrain", shaders::kTerrainVs, shaders::kTerrainFs)
+ILLYRIA_SHADER("terrainCut", shaders::kTerrainVs, shaders::kTerrainCutFs)
 ILLYRIA_SHADER("decal", shaders::kDecalVs, shaders::kDecalFs)
 ILLYRIA_SHADER("arrow", shaders::kArrowVs, shaders::kArrowFs)
 ILLYRIA_SHADER("sprite", shaders::kSpriteVs, shaders::kSpriteFs)

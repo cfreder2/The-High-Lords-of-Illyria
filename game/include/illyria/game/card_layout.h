@@ -23,12 +23,15 @@ constexpr float kCardWidths[] = {132, 112, 96};  // the card's steps, widest fir
 constexpr int kCardMaxRows = 3;
 
 // `count` cards in `avail` points of width (the screen less its margins).
-inline CardLayout layoutCards(int count, float avail) {
+// `maxRows` caps the strip's height: the HUD asks for one row, so the cards never take more than their own height of the ground
+// and the squads that do not fit page behind the last cell ("+N more").
+inline CardLayout layoutCards(int count, float avail, int maxRows = kCardMaxRows) {
     CardLayout out;
     count = std::max(count, 0);
     const auto columnsAt = [&](float width) { return std::max(1, static_cast<int>((avail + kCardGap) / (width + kCardGap))); };
     // Rows first, widest card first: one row of full cards, one of narrower, then two rows of full cards, and so on.
-    for (int rows = 1; rows <= kCardMaxRows; ++rows)
+    maxRows = std::clamp(maxRows, 1, kCardMaxRows);
+    for (int rows = 1; rows <= maxRows; ++rows)
         for (const float width : kCardWidths) {
             const int columns = columnsAt(width);
             if (columns * rows >= count) {
@@ -42,7 +45,7 @@ inline CardLayout layoutCards(int count, float avail) {
         }
     // Too many even so: the narrowest card, the most rows, a page at a time; the last cell is the arrows.
     out.width = kCardWidths[sizeof kCardWidths / sizeof *kCardWidths - 1];
-    out.rows = kCardMaxRows;
+    out.rows = maxRows;
     out.columns = columnsAt(out.width);
     out.paged = true;
     out.perPage = std::max(1, out.rows * out.columns - 1);

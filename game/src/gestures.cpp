@@ -43,6 +43,7 @@ void Gestures::pointer(PointerEvent type, int id, float x, float y, int button, 
     switch (type) {
         case PointerEvent::Down: {
             if (find(id) != nullptr) return;
+            camera_.settle();  // a press lands on the ground the view is going to, not one it is gliding past
             pointers_.push_back({id, x, y, x, y, button, timeMs, mouse_});
             tapCandidate_ = pointers_.size() == 1 && button == 0;
             secondaryCandidate_ = pointers_.size() == 1 && button == 2;

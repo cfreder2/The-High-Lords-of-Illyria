@@ -58,6 +58,10 @@ public:
     void zoomAt(float factor, float px, float py);
     // Glides the distance toward the ask, critically damped on its logarithm.
     void advance(float dtSeconds);
+    // Ends the glide where it was going: the distance at the ask, the zoom's anchor held, the view's centre on its
+    // ground. A press does this first, so the ground under the pointer is the ground the view settles on, and
+    // what is clicked is what is ordered.
+    void settle();
     // Moves the target over the ground by metres along the view's right and its forward (up the screen).
     void pan(float right, float forward);
     void rotate(float radians) { yaw_ += radians; }

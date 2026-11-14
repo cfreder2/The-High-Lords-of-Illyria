@@ -240,7 +240,13 @@ int blockFrontage(int count) {
     return std::max(kBlockFrontMin, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(0, count))) * kBlockWiden)));
 }
 
-std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types) {
+int dragFrontage(float metres) {
+    constexpr float kShortDrag = 12.0f;  // a shorter drag only turns the army
+    if (metres < kShortDrag) return 0;
+    return std::max(8, static_cast<int>(std::lround(metres / kBlockMetres)));
+}
+
+std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types, int front) {
     const int total = static_cast<int>(types.size());
     std::vector<FormationSlot> out(types.size());
     if (total == 0) return out;
@@ -258,8 +264,9 @@ std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types) {
     const int cavalry = count(Post::Cavalry);
     // The horse ride the flanks of the front: two columns a side.
     constexpr int kWingColumns = 2;
-    const int perRank = std::max(6, blockFrontage(total) - (cavalry > 0 ? 2 * kWingColumns : 0));
-    const float frontMetres = static_cast<float>(blockFrontage(total)) * kBlockMetres;
+    const int abreast = front > 0 ? std::clamp(front, std::min(8, total), std::max(8, total)) : blockFrontage(total);
+    const int perRank = std::max(6, abreast - (cavalry > 0 ? 2 * kWingColumns : 0));
+    const float frontMetres = static_cast<float>(abreast) * kBlockMetres;
     float y = 0, half = 0;  // the next rank's depth, and the widest rank's half width
     // A post's men in centred ranks of at most perRank, balanced so none is a stub.
     const auto ranks = [&](Post post) {
@@ -708,7 +715,7 @@ bool Battle::standsTooWide(const std::vector<sim::EntityId>& units) const {
     return hi - lo > kBlockStretch * (bhi - blo);
 }
 
-std::vector<Battle::MarchOrder> Battle::planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const {
+std::vector<Battle::MarchOrder> Battle::planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, int front) const {
     const V3 right{facing.y, -facing.x, 0};
     const auto pos = [&](sim::EntityId id) { return toV3(world_->units()[id - 1].pos); };
     const V3 from = centreOf(units);
@@ -716,7 +723,7 @@ std::vector<Battle::MarchOrder> Battle::planBlock(const std::vector<sim::EntityI
     const auto across = [&](sim::EntityId id) { return (pos(id) - from).dot(right); };
     std::vector<UnitType> types;
     for (sim::EntityId id : units) types.push_back(static_cast<UnitType>(world_->units()[id - 1].stats.type));
-    const std::vector<FormationSlot> layout = blockLayout(types);
+    const std::vector<FormationSlot> layout = blockLayout(types, front);
     // The men of each post, and the places of their post.
     std::map<int, std::vector<sim::EntityId>> men;
     std::map<int, std::vector<size_t>> places;
@@ -759,8 +766,8 @@ std::vector<Battle::MarchOrder> Battle::planBlock(const std::vector<sim::EntityI
 }
 
 std::vector<Battle::MarchOrder> Battle::planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                                     const V3& facing) const {
-    if (blockFits(formation, static_cast<int>(units.size()))) return planBlock(units, to, facing);
+                                                     const V3& facing, int front) const {
+    if (blockFits(formation, static_cast<int>(units.size()))) return planBlock(units, to, facing, front);
     std::vector<sim::EntityId> alive = units;
     const V3 from = centreOf(alive);
     const V3 right{facing.y, -facing.x, 0};
@@ -904,11 +911,12 @@ std::vector<Battle::MarchOrder> Battle::planShape(const Shape& shape, const std:
     return plan;
 }
 
-std::vector<Battle::MarchOrder> Battle::planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const {
+std::vector<Battle::MarchOrder> Battle::planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, int front) const {
     // As they stand, unless that is a rank much wider than the block a Myth army takes: then it is the block.
-    const bool block = selKeep_ && standsTooWide(units);
+    // A width dragged out is a width asked for: the block of that frontage, whatever the army stands as.
+    const bool block = selKeep_ && (standsTooWide(units) || (front > 0 && blockFits(Formation::Line, static_cast<int>(units.size()))));
     std::vector<MarchOrder> plan = selKeep_ && !block ? planShape(selectionShape(), units, to, facing)
-                                                      : planFormation(units, block ? Formation::Line : selFormation_, to, facing);
+                                                      : planFormation(units, block ? Formation::Line : selFormation_, to, facing, front);
     keepClear(plan);
     return plan;
 }
@@ -954,7 +962,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
     }
 }
 
-void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force) {
+void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force, int abreast) {
     if (units.empty()) return;
     markOrdered(units);
     // Facing as they do now, unless given a way to face.
@@ -968,7 +976,7 @@ void Battle::marchSelection(const std::vector<sim::EntityId>& units, const V3& t
             pace = std::min(pace, squad >= 0 ? formationPace(squads_[static_cast<size_t>(squad)].formation) : 0.9f);
         }
     }
-    sendMarch(local_, planSelection(units, to, front), centreOf(units), to, front, pace, force);
+    sendMarch(local_, planSelection(units, to, front, abreast), centreOf(units), to, front, pace, force);
 }
 
 void Battle::sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan, const V3& from, const V3& to, const V3& front,
@@ -1101,9 +1109,9 @@ void Battle::orderMove(const V3& to) {
     voice_.order(Situation::Move, *world_, selection_);
 }
 
-void Battle::orderMoveFacing(const V3& to, const V3& facing) {
+void Battle::orderMoveFacing(const V3& to, const V3& facing, float frontMetres) {
     if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
-    marchSelection(selectedAlive(), to, &facing, false);
+    marchSelection(selectedAlive(), to, &facing, false, dragFrontage(frontMetres));
     voice_.order(Situation::Move, *world_, selection_);
 }
 
@@ -1336,7 +1344,7 @@ bool Battle::pressBegin(const Camera& camera, float x, float y, float pixelScale
 
 void Battle::updateGhost() {
     drag_.ghost.clear();
-    for (const MarchOrder& o : planSelection(selectedAlive(), drag_.anchor, drag_.facing))
+    for (const MarchOrder& o : planSelection(selectedAlive(), drag_.anchor, drag_.facing, drag_.aimed ? dragFrontage(flat(drag_.tip - drag_.anchor).length()) : 0))
         drag_.ghost.push_back({{o.target.x, o.target.y, heightAt(o.target.x, o.target.y)}, o.face});
 }
 
@@ -1372,7 +1380,7 @@ void Battle::pressEnd(const Camera& camera, float x, float y, bool cancelled, bo
     orderMode_ = OrderMode::Normal;
     OrderScope scope(*this, additive);
     if (force) orderForceMarch(d.anchor, d.aimed ? &d.facing : nullptr);
-    else if (d.aimed) orderMoveFacing(d.anchor, d.facing);
+    else if (d.aimed) orderMoveFacing(d.anchor, d.facing, flat(d.tip - d.anchor).length());
     else orderMove(d.anchor);
 }
 

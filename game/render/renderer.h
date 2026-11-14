@@ -468,7 +468,7 @@ private:
     // its own repeating textures (renderer_detail.cpp); the coarse land and the
     // ribbons give way where it is shown.
     DetailLand detail_;
-    Program detailTerrain_, detailDepth_, farCut_;
+    Program detailTerrain_, detailDepth_, farCut_, terrainCut_;
     GLuint detailTex_[6] = {0, 0, 0, 0, 0, 0};  // heights, ground, water, flow, road, canopy
     GLuint detailMask_ = 0, detailVao_ = 0, detailVbo_ = 0, detailIbo_ = 0, detailInst_ = 0;
     GLuint detailWaterVao_ = 0, detailWaterVbo_ = 0, detailWetInst_ = 0;

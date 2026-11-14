@@ -607,7 +607,7 @@ void Hud::draw(Overlay& o, float w, float h) {
     // The squad cards: every squad has one (card_layout.h: smaller cards, more rows, then pages), so the strip's height
     // depends on how many there are. Its top is what the selection line, the names of places and the inspect line keep above.
     constexpr float kCardH = 62;
-    const illyria::game::CardLayout cards = illyria::game::layoutCards(static_cast<int>(squads.size()), w - 16);
+    const illyria::game::CardLayout cards = illyria::game::layoutCards(static_cast<int>(squads.size()), w - 16, 1);  // one row: the rest page behind the last card
     const float cardsTop = h - 8 - (squadCards ? cards.rows * kCardH + (cards.rows - 1) * illyria::game::kCardGap : kCardH);
     cardPage_ = cards.paged ? std::clamp(cardPage_, 0, cards.pages - 1) : 0;
     stripX_ = 0, stripY_ = squadCards ? cardsTop : 0, stripW_ = squadCards ? w : 0, stripH_ = squadCards ? h - cardsTop : 0;
@@ -800,7 +800,8 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.frame(x, y, cw, ch, 1.5f, rgba(0x7C6E50));
         std::snprintf(buf, sizeof buf, "%d / %d", cardPage_ + 1, cards.pages);
         o.text(x + (cw - o.width(buf, 12)) / 2, y + 8, buf, kInk, 12);
-        o.text(x + (cw - o.width("wheel pages", 9)) / 2, y + 26, "wheel pages", kDim, 9);
+        std::snprintf(buf, sizeof buf, "+%d more", static_cast<int>(squads.size()) - cards.perPage);
+        o.text(x + (cw - o.width(buf, 10)) / 2, y + 26, buf, kDim, 10);
         o.rect(x + 4, y + ch - 22, cw / 2 - 6, 18, rgba(0x3A3226, 220));
         o.rect(x + cw / 2 + 2, y + ch - 22, cw / 2 - 6, 18, rgba(0x3A3226, 220));
         o.text(x + cw / 4 - 3, y + ch - 20, "<", cardPage_ > 0 ? kGold : kDim, 14);
