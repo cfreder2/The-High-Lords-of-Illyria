@@ -66,6 +66,23 @@ float groundZ(vec2 p) {
     float c = heightTexel(i + vec2(0, 1)), d = heightTexel(i + vec2(1, 1));
     return t.x >= t.y ? a + (b - a) * t.x + (d - b) * t.y : a + (c - a) * t.y + (d - c) * t.x;
 }
+// The ground at p through a cubic B-spline of its samples (16 taps): a smooth surface for the waterline's crossing. The two-triangle
+// groundZ is piecewise linear with a diagonal in every cell, so where a gentle bank meets the water its contour is a saw of
+// cell-sized teeth, and the water's edge stair-stepped; this one's contour is a smooth line. (A little blurred: only for the
+// water's own edge, within a metre of the surface.)
+float groundZSmooth(vec2 p) {
+    vec2 f = p / uCellSize;
+    vec2 i = floor(f), t = f - i, t2 = t * t, t3 = t2 * t;
+    vec4 wx = vec4((1.0 - t.x) * (1.0 - t.x) * (1.0 - t.x), 4.0 - 6.0 * t2.x + 3.0 * t3.x, 1.0 + 3.0 * t.x + 3.0 * t2.x - 3.0 * t3.x, t3.x) / 6.0;
+    vec4 wy = vec4((1.0 - t.y) * (1.0 - t.y) * (1.0 - t.y), 4.0 - 6.0 * t2.y + 3.0 * t3.y, 1.0 + 3.0 * t.y + 3.0 * t2.y - 3.0 * t3.y, t3.y) / 6.0;
+    float s = 0.0;
+    for (int b = 0; b < 4; ++b) {
+        float row = heightTexel(i + vec2(-1, b - 1)) * wx.x + heightTexel(i + vec2(0, b - 1)) * wx.y + heightTexel(i + vec2(1, b - 1)) * wx.z +
+                    heightTexel(i + vec2(2, b - 1)) * wx.w;
+        s += row * wy[b];
+    }
+    return s;
+}
 // How much the close-up land shows here, 0..1 (the coarse land and the
 // ribbons give way to it): inside uDetailRect, in the 64 m chunks uDetailMask
 // marks (one texel per chunk, repeating like the land's textures, rising as a
@@ -2627,6 +2644,8 @@ void main() {
 inline const char* kWaterFs = R"(
 in vec3 vWorld;
 uniform sampler2D uFlow;  // RG8: downstream direction per terrain sample (0.5 = still)
+uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
+float waterTexel(vec2 c) { return texelFetch(uWaterTex, texCell(c, uCells), 0).r; }
 out vec4 oColor;
 // Ripples drawn along the current: stretched noise drifting downstream.
 float current(vec2 along, float t) {
@@ -2637,7 +2656,30 @@ void main() {
     vec2 p = vWorld.xy;
     if (uWrap > 0.5 && detailWeight(p) <= hash12(floor(gl_FragCoord.xy)) * 0.92) discard;  // the close-up land's, cross-fading
     float depth = vWorld.z - groundZ(p);
+    if (depth < 1.0 && depth > -1.0) depth = vWorld.z - groundZSmooth(p);  // (the waterline's own smooth contour, see groundZSmooth)
     if (depth <= -0.02) discard;
+    // Where the bank is low and gentle the ground stays under the surface for cells beyond the last wet sample, and the water
+    // ended on the grid in cell-sized stairs (the mesh only has a ring of dry samples). The wet samples' own shore, as a smooth line:
+    // the wet-or-dry of the samples through a cubic B-spline, cut a little on the dry side of its middle, so the edge is a curve
+    // where the ground would have let the water on, and the ground's own contour (steep banks) still rules where it comes first.
+    float shore = 1.0;
+    {
+        vec2 f = p / uCellSize, i = floor(f), t = f - i;
+        float c00 = waterTexel(i) > -1000.0 ? 1.0 : 0.0, c10 = waterTexel(i + vec2(1, 0)) > -1000.0 ? 1.0 : 0.0;
+        float c01 = waterTexel(i + vec2(0, 1)) > -1000.0 ? 1.0 : 0.0, c11 = waterTexel(i + vec2(1, 1)) > -1000.0 ? 1.0 : 0.0;
+        if (c00 + c10 + c01 + c11 < 3.5) {  // (any dry corner: the shore is near)
+            vec2 t2 = t * t, t3 = t2 * t;
+            vec4 wx = vec4((1.0 - t.x) * (1.0 - t.x) * (1.0 - t.x), 4.0 - 6.0 * t2.x + 3.0 * t3.x, 1.0 + 3.0 * t.x + 3.0 * t2.x - 3.0 * t3.x, t3.x) / 6.0;
+            vec4 wy = vec4((1.0 - t.y) * (1.0 - t.y) * (1.0 - t.y), 4.0 - 6.0 * t2.y + 3.0 * t3.y, 1.0 + 3.0 * t.y + 3.0 * t2.y - 3.0 * t3.y, t3.y) / 6.0;
+            float b = 0.0;
+            for (int k = 0; k < 16; ++k) {
+                vec2 o = vec2(k & 3, k >> 2) - 1.0;
+                b += (waterTexel(i + o) > -1000.0 ? 1.0 : 0.0) * wx[k & 3] * wy[k >> 2];
+            }
+            shore = clamp((b - 0.25) / max(fwidth(b), 1e-3) + 0.5, 0.0, 1.0);
+            if (shore <= 0.0) discard;
+        }
+    }
     float dist = distance(uEye, vWorld);
     vec2 flow = texture(uFlow, p / (uCells * uCellSize)).rg * 2.0 - 1.0;
     float speed = length(flow);
@@ -2696,6 +2738,7 @@ void main() {
         c = mix(c, uwUnderside(vWorld), uwUnder());
         alpha = mix(alpha, 1.0, uwUnder());
     }
+    alpha *= shore;
     // (The haze of the land and the far water, 0.6 of the full: the battlefield's water must not be paler than the sea around it.)
     oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(dist) * 0.6), vWorld), alpha);
 }
