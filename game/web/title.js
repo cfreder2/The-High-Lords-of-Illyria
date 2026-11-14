@@ -502,7 +502,7 @@
     row("attack", "⚔ Attack, then tap", "Attack whatever you tap next: any soldier (even one of ours), a gate, a wall, house or tree (only engines, grenadiers and wizards can hurt those), or the ground.") +
     row("march", "Hold ⚔ Attack: » March", "A force march: tap where to go and they ignore the enemy on the way, to pull out of a fight or run past one.") +
     row("tap", "The lines on the ground", "Your own selected men show the way they will walk (never a foe's), one line for the men who go together. Dashes with chevrons and a ring: they fight what they meet. A solid line with arrowheads and a cross-hair: a hunt, after one foe and deaf to the rest. Dots and a filled spot: a force march.") +
-    row("formation", "Formation", "The picker: Line, Double line, Box (hollow, facing out), Wedge, Loose, Encircle and V, each sketched; or As they stand, the arrangement they are in, as every selection starts.") +
+    row("formation", "Formation", "The picker: Line, Double line, Box (hollow, facing out), Wedge, Loose, Encircle and V, each sketched; the last picker cell, a sketched face, keeps the arrangement they are in, as every selection starts.") +
     row("scatter", "Scatter", "Everyone selected runs outward, the moment a bomb or fireball is in the air.") +
     row("attack", "Raid", "Shown with hyena-folk selected: they are let loose at once to raid from where they stand, taking what lies about and throwing it at the soft and the stragglers they can see. Any other order ends it.") +
     `<div class="ctl">${pic.card}<b>Hold · Find</b><span>Hold stops them where they stand; Find brings the camera to them.</span></div>` +
@@ -555,7 +555,7 @@
     `<tr><td>${k("G")}</td><td>A new group of the selection, on the next free number.</td></tr>` +
     `<tr><td>${k("U")}</td><td>Ungroup: forget every group the selection holds whole (the soldiers stay selected).</td></tr>` +
     `<tr><td>${k("Ctrl")}/${k("⌘")} + ${k("A")}</td><td>Select every soldier of yours on the screen.</td></tr>` +
-    `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 as they stand.</td></tr>` +
+    `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 keeps the arrangement they are in.</td></tr>` +
     `<tr><td>${k("Z")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground). Or hold ${k("Ctrl")} as you click.</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +

@@ -24,7 +24,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Force march | hold **⚔ Attack** until it turns gold (» March), then tap the ground | [[Alt]] + click (a gold double chevron), or [[V]] then click |
 | Queue an order (after the one in hand) | **Plan** (below) | [[Shift]] + right-click (or right-hold and drag, for a facing) |
 | Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[`]] to start, [[`]] to send, [[Backspace]] to drop them |
-| Formation | **Formation**, then pick one (or **As they stand**, the last) | the keypad 1-7 (8: as they stand), or shift + 1-8 |
+| Formation | **Formation**, then pick one (or the last cell, a face drawn in men) | the keypad 1-7 (8: keep the arrangement), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
 | The camera to the selection | **Find** | [[C]] |
@@ -44,7 +44,7 @@ What they keep is where each was last *sent*, not where the fighting or the road
 
 **To face a way**, press and hold where they should go. After a moment (0.3 s) a **gold ghost** of the selection appears there; drag the way they should face, and a dotted line follows your finger. The ghost turns with it, the whole arrangement at once, so the archers stay behind the knights. Let go, and they march; they arrive facing that way, whichever way their road took them.
 
-**Formations.** Pick one and the selection re-forms in it where it stands, and marches in it (closing the gaps its dead leave) until you select it afresh, or pick **As they stand**, the picker's last. Select them again later and they march as the formation left them.
+**Formations.** Pick one and the selection re-forms in it where it stands, and marches in it (closing the gaps its dead leave) until you select it afresh, or pick the picker's last cell, a face drawn in men, which keeps the arrangement they are in. Select them again later and they march as the formation left them.
 
 **Groups keep their shape.** A group saved (Alt + its number, or the **+** card) remembers how it stood; recalled, it marches so, whatever its squads have done since.
 
@@ -147,7 +147,7 @@ The hyena-folk are soldiers like any others until you let them loose. Sent somew
 
 ## Formations {#formations}
 
-The **Formation** button opens a picker of seven formations, each sketched as it stands, and **As they stand** last. On a desktop the keypad's 1 to 7 (or shift and 1 to 7) choose one, 8 is as they stand, and 0 scatters. A formation re-forms the selection where it stands. A line turned side on is a column: draw its facing along the road.
+The **Formation** button opens a picker of seven formations, each sketched as it stands, and a face drawn in men last, which keeps the arrangement they are in. On a desktop the keypad's 1 to 7 (or shift and 1 to 7) choose one, 8 keeps the arrangement, and 0 scatters. A formation re-forms the selection where it stands. A line turned side on is a column: draw its facing along the road.
 
 ::: grid
 ![1 Line](images/formations/line.svg)

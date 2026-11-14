@@ -47,7 +47,7 @@ const char* formationName(Formation f);
 // The picker's tenth entry, after the nine: the selection as it stands
 // (Battle::keepShape), its own arrangement kept as it moves.
 constexpr int kKeepShapeId = kFormationCount;
-constexpr const char* kKeepShapeName = "As they stand";
+constexpr const char* kKeepShapeName = "";
 // A place in a formation, relative to its centre (x to the right, y forward),
 // and the way to face there (forward is {0, 1}).
 struct FormationSlot {
