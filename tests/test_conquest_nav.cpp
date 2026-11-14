@@ -254,6 +254,21 @@ TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
             if (m.unit) man = m.unit;
     CHECK(man != 0);
     if (man == 0) return;
+    // (A garrison man is put at his post, behind whichever door of the ring the garrison shares him out to, as a capital has two:
+    // the skirmish's man is spawned in the courtyard, so bring this one to the courtyard first, the same start for both.)
+    const Vec3 courtyard = {town.castle.courtyard.x - r.origin().x, town.castle.courtyard.y - r.origin().y, town.castle.courtyard.z};
+    {
+        Conquest::Order o;
+        o.kind = Conquest::Order::Kind::Command;
+        o.side = 0;
+        o.command = Command{0, man, Command::Type::Move, courtyard};
+        c.submit(o);
+        for (int t = 0; t < 120 * kTicksPerSecond; ++t) {
+            c.step();
+            const Unit* u = c.world()->findUnit(man);
+            if (u && (u->pos - courtyard).flat().length() < Fixed::fromInt(2)) break;
+        }
+    }
     const Gate& g = r.gates()[gate];
     const Vec3 inner = (g.a + g.b) * Fixed::fromRatio(1, 2) - g.out * Fixed::fromInt(8);
     const GateRun conquest = runGate(
