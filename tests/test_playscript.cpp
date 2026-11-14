@@ -111,7 +111,7 @@ TEST(playscript_key_names) {
     CHECK(scancodeOf("space") == 44 && scancodeOf("tab") == 43 && scancodeOf("return") == 40 && scancodeOf("escape") == 41);
     CHECK(scancodeOf("backtick") == 53 && scancodeOf("`") == 53 && scancodeOf("slash") == 56);
     CHECK(scancodeOf("left") == 80 && scancodeOf("right") == 79 && scancodeOf("up") == 82 && scancodeOf("down") == 81);
-    CHECK(scancodeOf("shift") == 235 && scancodeOf("ctrl") == 234);
+    CHECK(scancodeOf("shift") == 225 && scancodeOf("ctrl") == 224);
     CHECK(scancodeOf("f1") == 0);  // (the game binds no function keys)
     CHECK(scancodeOf("") == 0);
 }

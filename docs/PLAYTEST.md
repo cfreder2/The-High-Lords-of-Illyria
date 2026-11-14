@@ -63,7 +63,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
 | `mouse X Y` | move the pointer (one motion event). |
 | `click left\|right\|middle [X Y]` | move there (if given) and click: down, 0.06 s, up. Left selects, right orders, middle pans. |
-| `drag left\|right\|middle X1 Y1 X2 Y2 [SECONDS [HOLD]]` | press at the first point, hold still HOLD seconds, move to the second over SECONDS (default 0.4) in many small motions, release. Left: a selection box. Right: HOLD defaults to 0.4, because a right press held still 0.3 s is a march with a facing (the soldiers end facing along the drag); `drag right ... 0.4 0` turns the view instead, as a quick right drag does. |
+| `drag left\|right\|middle X1 Y1 X2 Y2 [SECONDS [HOLD]]` | press at the first point, hold still HOLD seconds, move to the second over SECONDS (default 0.4) in many small motions, release. Left: a selection box. Right: HOLD defaults to 0.4, because a right press held still 0.3 s is a march with a facing (the soldiers end facing along the drag). With `HOLD` 0 a short right drag is a plain march to where it began (seen in play; the view did not turn). |
 | `wheel DY` | wheel notches at the pointer; positive rolls away from you (zooms in), negative toward (out). |
 | `select all` | every soldier your side commands (Ctrl+A takes only those on screen; use `key ctrl down` ... for that). |
 | `select N` | the squad card with index N: what clicking that card does. `cards` lists the indices. |
@@ -71,7 +71,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `stats` | prints one line of `key=value`: see below. |
 | `shot NAME [full]` | writes `NAME.png` (into `--play-out`). The shot is of the frame as the player sees it, HUD included. |
 | `wait SECONDS` | wall-clock time. Consecutive waits do not drift: the time a `shot` takes is part of the wait before it. |
-| `wait_ticks N` | N simulation ticks (30 a second) of the game, however fast or slow the machine. Gives up after a long wall time if the game is paused (and says so). |
+| `wait_ticks N` | N simulation ticks (30 a second) of the game, however fast or slow the machine. In a Conquest the tick starts again from 0 each day (3600 ticks); the wait counts across that. Gives up after a long wall time if the game is paused (and says so). |
 | `speed N` | the game's pace: 0.25, 0.5, 1, 2, 4 (Conquest: 1, 2, 4, 8). As the `-` and `=` keys. |
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
@@ -97,8 +97,7 @@ squads on your side's cards (allies' too), `foe=alive/total` the others; `outcom
 
 ### The log
 
-`--play-log FILE` writes a line each second of game time (each 30 ticks; in a Conquest's map, where the ticks may stand still, each
-wall second), and at once when the day, the outcome or a notice changes:
+`--play-log FILE` writes a line each second of game time (each 30 ticks), and at once when the day, the outcome or a notice changes:
 
 ```
 tick=300 t=10 fps=60 frame_ms=16.6 mine=150 foe=150
@@ -119,7 +118,7 @@ town's capture point, `day=` the Conquest's day.
 - **Hold a camera key, then let go**: `key w 1.2`. A held key is the real pan.
 - **A box needs a drag long enough to be a box**: the default 0.4 s is, and the shape of it matters (the game picks
   the soldiers inside the screen rectangle, not the squad).
-- **Facing**: a right-button `drag` is the facing line. A right `click` is a march to the point.
+- **Facing**: a right-button `drag` is the facing line (held still 0.4 s first, as the game asks). A right `click` is a march to the point.
 - **Queued orders**: `key backtick` starts planning, orders are then held (dashed), and `key backtick` again releases them.
   With `key shift down` a click queues after the last order instead.
 
@@ -143,4 +142,24 @@ $Illyria --play tools/playtest/conquest.txt --play-out out/conquest --play-log o
 
 ## What it cannot do
 
-(See the section at the end, kept honest by the playtest reports.)
+- **It cannot see.** The script does not know where a squad is on the screen. Read coordinates off a `shot`, with the camera
+  fixed by `camera` (or the start view, which is the same each run), and expect them to be wrong the first time. There is
+  no "click the Archers": `select N` is the only way to pick a squad by name; everything else is a box or a click on the map.
+- **A squad card can be out of reach.** The HUD draws as many squad cards as fit the window's width and drops the rest
+  (`hud.cpp`: `if (x + cw > w - 8) break`). In the Ford at 1600 wide 11 of 18 have one. `select N` still reaches the others;
+  a click on a card does not.
+- **Picking several squads, not all, needs a box.** The HUD's card click replaces the selection; there is no add. `select`
+  does the same. A box (`drag left`, with `key shift down` to add) is how a script, like a hand, picks a few.
+- **Time is the game's, not frozen.** `wait` is wall time; the simulation runs at 30 ticks a second in real time (faster
+  with `speed`), so a slow machine runs the same ticks in more wall seconds, and a script is repeatable in what the game
+  does, not in what the camera sees at an exact instant. The AI's choices are the game's (seeded); two runs of one script differ
+  only through the real-time input timing, and small ones at that.
+- **No sound**, no typed text, no touch, no pinch. The trackpad's two-finger pan and the mouse wheel's difference are not
+  separately scripted (`wheel` sends whole notches: a mouse wheel).
+- **Retina and the window's size.** `size` asks the window system; a window the display cannot hold is made smaller, and
+  the run says so. Shots are in window points unless `full`.
+- **Behind other windows, on a locked screen.** The window takes no focus and the app has no Dock icon, so a script does
+  not take typing from the session; every run drew and read back frames with the window never made key. What was not
+  checked: the window's place in the stack while it ran, a covered window, a locked screen or a sleeping display. macOS may
+  stop drawing a window it knows is not on any display; if shots come back black or stale in that case, run with the screen on.
+- **Numbers under load.** `fps`, `frame_ms` and `gpu_ms` are those of the machine the script ran on at that moment.
