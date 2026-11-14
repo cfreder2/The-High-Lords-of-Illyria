@@ -275,6 +275,11 @@ vec2 seaChop(vec2 p, float px, float t) {
     return g;
 }
 vec3 farSea(vec2 p, vec3 world, float depthM) {
+    // Open sea reads as deep wherever it is more than a few metres down: the continental shelf is only 5 to 13 m under the sea, the
+    // battlefield's bed and the far land's field are at those depths, and the sea beyond the field is a flat 12, so by the bed's
+    // own depth the sea showed a pale rectangle at the battlefield and a hard line at the field's edge. Only the shallows keep
+    // their depth (the teal shelf, the foam, which read from 0 to 3 m).
+    depthM = mix(depthM, max(depthM, 12.0), smoothstep(2.5, 7.0, depthM));
     float depth = clamp(depthM / 12.0, 0.0, 1.0);
     float t = uTime;
     float pxm = uPxScale * distance(uEye, world);
@@ -2691,7 +2696,8 @@ void main() {
         c = mix(c, uwUnderside(vWorld), uwUnder());
         alpha = mix(alpha, 1.0, uwUnder());
     }
-    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(dist)), vWorld), alpha);
+    // (The haze of the land and the far water, 0.6 of the full: the battlefield's water must not be paler than the sea around it.)
+    oColor = vec4(underwaterApply(mix(c, hazeColor(vWorld), fogFactor(dist) * 0.6), vWorld), alpha);
 }
 )";
 
