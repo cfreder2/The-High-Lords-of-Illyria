@@ -31,7 +31,36 @@ A catapult (150 m throw, nearest 30 m) outranges every archer (70 m). The review
 | Stone against a gate | 500% of 100 (average about 170 a stone, 12 stones for a 2000 hp gate) | 900% (about 300 a stone, 6 or 7 stones) | two catapults open a gate in about 40 s, not 80 |
 | Selected shooters | no reach shown | a dotted ring at the weapon's furthest reach (and the engines' nearest) for each kind selected (`Battle::rangeRings`, `pushRangeRings`) | you can see what is out of the archers' reach |
 
-Archers' own kill rate is unchanged: they cannot reach an engine that holds its stand-off, and an engine walked in still dies as before. Measured with `tools/playtest/siege-catapults-first.txt` (the two catapults alone, then foot and sappers once the doors are down): gate down by 54 s, all 72 alive at that point, won with 50/72. `08-siege-all-in.txt` (the rush, select all): won with 65/72, the engines now throwing from their reach as the army goes in. The rush is still the cheaper win against this garrison; the patient siege is safe and certain but costs more men once the foot go in, because the wall archers are left alone. Not done: a foot escort that moves with the engines, and a mark for who is shooting at the selected unit.
+Archers' own kill rate is unchanged: they cannot reach an engine that holds its stand-off, and an engine walked in still dies as before. Measured with `tools/playtest/siege-catapults-first.txt` (the two catapults alone, then foot and sappers once the doors are down): gate down by 54 s, all 72 alive at that point, won with 50/72. `08-siege-all-in.txt` (the rush, select all): won with 65/72, the engines now throwing from their reach as the army goes in. The rush is still the cheaper win against this garrison. A foot escort, the rally and the suppression rules followed (the next section). Not done: a mark for who is shooting at the selected unit.
+
+## The siege played as one (2026-11-14, review2 issue 12, second pass)
+
+Engines batter a gate from their own reach, but nothing cleared the wall archers and nobody stood with the engines. The rules below are the World's (`engine/sim/src/world_siege.cpp`), derived from the men's own state each step (nothing saved, `Fixed` only), so Skirmish and Conquest, the player and the computer, play one siege.
+
+| Rule | What it does |
+|---|---|
+| Escort | Men with no order within 80 m of an engine at work on a standing gate hold a line 14 m in front of it (shooters 5 m, healers 3 m behind it), and a melee man meets a foe within 45 m of the engines (the sortie) and goes back to his place. Men with an order (the rush) are not taken off it. |
+| Suppression | A shooter outside the walls takes a garrison shooter on a wall-walk before any foe farther than 18 m; an engine takes any man on a wall-walk, none with a friend within 10 m of him. An idle engine creeps up to 120 m of such a man (its stone scatters at its whole 150 m) and no nearer: the walls' bows reach 70. Engines now throw on their own at four fifths of their reach. |
+| Rally | After a breach, men bound through it from outside gather 70 to 95 m from it (outside the garrison's bows) until 70% of their side within 220 m has come up, then go in together. A breach older than four minutes, an order older than a minute, an engine or a man already nearer than 70 m is not held. |
+| Weaker door | An engine with two doors in its reach takes the weaker (a failing door counts 30 m nearer, as `routeToGate` does). |
+| Computer, battle | `aiSiege`/`aiEscort`: with engines at a standing gate the computer's other squads come up to them and halt (so the escort and the sortie rules take them) until it falls, then `aiFight` as ever, and the rally gathers them; `aimEngines` takes only gates within 250 m (one siege at a time). |
+| Computer, Conquest | `Conquest::siegeHeld`: a stack whose engines are at work on a standing gate stops its other men (`Stop` once, `orderCell` = hold) and marches on when it falls; the rally gathers them. |
+
+Measured with the play harness (speed 4, the same seeds; `mine` of 72 is every squad on the player's side, the engines and the bowmen included), before and after:
+
+| Script | Before | After |
+|---|---|---|
+| `siege-catapults-first.txt` (catapults alone, foot and sappers in after the doors fall; the bowmen stay at camp) | won, 34/72 (38 lost) | won, 63/72 (9 lost) |
+| `08-siege-all-in.txt` (the rush: select all, click the gate) | won, 65/72 (7 lost) | won, 66/72 (6 lost) |
+
+What was tried and left, with why:
+
+- **The patient siege is not yet cheaper than the rush** (9 lost against 6). The rush is cheap because the whole garrison comes out to meet 72 men in the open (the doors open to lure them), where numbers tell; the patient wave meets the horseshoe behind the breach, in a choke, with the wall bowmen over it. The two catapults kill about one man in the garrison before the wave goes: the garrison stands behind the doors and only mounts the walls when a foe is within 70 m, which is beyond the engines' creep.
+- **Garrison on the walls when the door is struck**: tried, no gain (the bowmen mount but the two engines are too few to thin them), and it broke `a_breach_at_one_door_pulls_reserves_from_the_other`'s set-up; not kept.
+- **Faster, wider stones** (9 s, 4 m): the engines then shell the melee at the breach and kill their own side (29/72 left); not kept. Holding fire wherever a friend is near silences them at the breach, where they help more than they hurt (30/72 left); not kept (the World's own friendly-fire hold, `world_aoe.cpp`, stands).
+- **Bowmen on a firing line 60 m from the breach**: 17 of 24 died to the walls' bows, which outrange them from the height (the same reason the rally stands beyond 70 m).
+
+The lever left is the garrison, not the attackers: a gatehouse that gives the defenders more to lose by coming out (docs/CASTLE_GATEHOUSE.md), or a third and fourth engine in the train.
 
 ## What changed, and why
 

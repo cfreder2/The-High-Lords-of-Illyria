@@ -596,6 +596,7 @@ void Conquest::steer(Stack& s, std::vector<Command>& commands, bool think) {
         }
         return;
     }
+    if (siegeHeld(s, commands, think)) return;
     int32_t tx, ty;
     anchorOf(s.path.front().first, s.path.front().second, tx, ty);
     if (think) {
@@ -698,6 +699,30 @@ void Conquest::steer(Stack& s, std::vector<Command>& commands, bool think) {
             c.face = face;
             commands.push_back(c);
         }
+}
+
+bool Conquest::siegeHeld(Stack& s, std::vector<Command>& commands, bool think) {
+    constexpr int32_t kSiegeHold = -3;
+    if (think) {
+        const World& w = *world_;
+        bool battering = false;
+        for (const Army& a : s.armies)
+            for (const Man& m : a.men) {
+                const Unit* u = m.alive() && m.unit && unitStats(a.type).ranged.kind == ProjectileKind::Stone ? w.findUnit(m.unit) : nullptr;
+                battering = battering || (u && u->alive() && u->hasAttackTarget && u->attackGate >= 0 &&
+                                          static_cast<size_t>(u->attackGate) < w.gates().size() && !w.gates()[static_cast<size_t>(u->attackGate)].broken());
+            }
+        if (battering && s.orderCell != kSiegeHold) {
+            s.orderCell = kSiegeHold;
+            for (const Army& a : s.armies)
+                if (unitStats(a.type).ranged.kind != ProjectileKind::Stone)
+                    for (const Man& m : a.men)
+                        if (m.alive() && m.unit) commands.push_back({s.owner, m.unit, Command::Type::Stop, {}});
+        } else if (!battering && s.orderCell == kSiegeHold) {
+            s.orderCell = -1;
+        }
+    }
+    return s.orderCell == kSiegeHold;
 }
 
 // Men standing, with the battle's own habits: foot go at the nearest foe near

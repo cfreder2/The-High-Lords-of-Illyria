@@ -245,6 +245,129 @@ TEST(soldiers_hack_a_shut_gate_down_and_march_in) {
     CHECK(inside >= 6);
 }
 
+// A siege played as one (engine/sim/src/world_siege.cpp): escort, sortie, suppression, rally.
+TEST(men_idle_near_battering_engines_hold_a_line_in_front_and_meet_a_sortie) {
+    GateField f = gateField(11);
+    World& w = *f.w;
+    const Vec3 engineAt = f.centre + f.out * m(110);
+    const EntityId engine = w.spawnUnit(0, engineAt, -f.out, unitStats(UnitType::Catapult));
+    std::vector<EntityId> foot;
+    for (int i = 0; i < 8; ++i) foot.push_back(w.spawnUnit(0, engineAt + f.out * m(20) + Vec3{m(i * 3 - 12), m(0), m(0)}, -f.out, unitStats(UnitType::LightInfantry)));
+    const Command shoot{0, engine, Command::Type::AttackGate, f.centre};
+    w.step(std::span(&shoot, 1));
+    for (int t = 0; t < 20 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.findUnit(engine)->hasAttackTarget && !w.gates()[f.gate].broken());
+    // Every man stands between the engine and the doors, within a stone's throw of the engine.
+    int inLine = 0;
+    for (EntityId id : foot) {
+        const Vec3 d = (w.findUnit(id)->pos - w.findUnit(engine)->pos).flat();
+        inLine += d.dot(-f.out) > m(6) && d.length() < m(40);
+    }
+    CHECK(inLine >= 7);
+    // A sortie at the engine: one of the garrison's men comes out at it and is met by the line.
+    const EntityId raider = w.spawnUnit(1, w.findUnit(engine)->pos + (-f.out) * m(35), f.out, unitStats(UnitType::LightInfantry));
+    for (int t = 0; t < 20 * kTicksPerSecond && w.findUnit(raider)->alive(); ++t) w.step({});
+    CHECK(!w.findUnit(raider)->alive());
+    int fallen = 0;
+    for (EntityId id : foot) fallen += !w.findUnit(id)->alive();
+    CHECK(fallen <= 1);
+}
+
+TEST(an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_the_ground) {
+    WorldConfig cfg;
+    cfg.region = siege();
+    cfg.seed = 13;
+    World w(cfg);
+    const Continent::Castle::Ring& ring = town().castle.rings.front();
+    const Vec3 centre = local(town().pos);
+    // A wall of the town with open fields 120 m out (as catapult_stones_kill_defenders_on_the_walls).
+    size_t e = (ring.gateEdge + 1) % ring.corners.size();
+    for (size_t k = 1; k < ring.corners.size(); ++k) {
+        const size_t c = (ring.gateEdge + k) % ring.corners.size();
+        const Vec3 m0 = (local(ring.corners[c]) + local(ring.corners[(c + 1) % ring.corners.size()])) * Fixed::fromRatio(1, 2);
+        const Vec3 at = m0 + (m0 - centre).flat() / (m0 - centre).flat().length() * m(120);
+        bool open = siege()->groundAt(at.x, at.y) == Ground::Plains || siege()->groundAt(at.x, at.y) == Ground::Road;
+        for (const Rampart& rp : siege()->ramparts()) open = open && !Gate::inside(rp, at);
+        if (open) {
+            e = c;
+            break;
+        }
+    }
+    const Vec3 a = local(ring.corners[e]), b = local(ring.corners[(e + 1) % ring.corners.size()]);
+    const Vec3 mid = (a + b) * Fixed::fromRatio(1, 2);
+    const Vec3 out = (mid - centre).flat() / (mid - centre).flat().length();
+    const Vec3 along = (b - a).flat() / (b - a).flat().length();
+    std::vector<EntityId> wall;
+    for (int i = 0; i < 4; ++i) wall.push_back(w.spawnUnit(1, mid + along * m(i * 2 - 3), out, unitStats(UnitType::Archers)));
+    CHECK(w.region()->rampartAt(w.findUnit(wall[0])->pos.x, w.findUnit(wall[0])->pos.y, w.findUnit(wall[0])->pos.z) >= 0);
+    w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    // A man of the other side's on the ground, nearer the engine than the wall is, with a good deal of life in him.
+    const EntityId nearer = w.spawnUnit(1, mid + out * m(85), out, unitStats(UnitType::HeavyInfantry));
+    bool wallHurt = false;
+    for (int t = 0; t < 60 * kTicksPerSecond && !wallHurt; ++t) {
+        w.step({});
+        for (EntityId id : wall) wallHurt = wallHurt || !w.findUnit(id)->alive() || w.findUnit(id)->hp < unitStats(UnitType::Archers).maxHp;
+    }
+    CHECK(wallHurt);
+    CHECK(w.findUnit(nearer)->hp == unitStats(UnitType::HeavyInfantry).maxHp);  // (the stone that hurt the walk was not thrown at him)
+}
+
+TEST(an_engine_creeps_up_to_its_reach_of_the_men_on_the_wall_and_no_nearer) {
+    GateField f = gateField(19);
+    World& w = *f.w;
+    w.setGateHp(f.gate, 0);
+    const Gate& g = w.region()->gates()[f.gate];
+    const Vec3 along = (g.b - g.a).flat() / (g.b - g.a).flat().length();
+    std::vector<EntityId> wall;
+    for (int i = 0; i < 3; ++i) wall.push_back(w.spawnUnit(1, f.centre + along * m(14 + 2 * i) - f.out * m(1), f.out, unitStats(UnitType::Archers)));
+    const Vec3 up = w.findUnit(wall[0])->pos;
+    CHECK(w.region()->rampartAt(up.x, up.y, up.z) >= 0);
+    const EntityId engine = w.spawnUnit(0, f.centre + f.out * m(150), -f.out, unitStats(UnitType::Catapult));
+    for (int t = 0; t < 90 * kTicksPerSecond; ++t) w.step({});
+    int hurt = 0;
+    for (EntityId id : wall) hurt += !w.findUnit(id)->alive() || w.findUnit(id)->hp < unitStats(UnitType::Archers).maxHp;
+    const double reach = (w.findUnit(engine)->pos - w.findUnit(wall[0])->pos).flat().length().toDouble();
+    std::printf("  %d of 3 hurt, the engine %.0f m from them\n", hurt, reach);
+    CHECK(hurt >= 1);
+    CHECK(reach > 100.0);  // (never within the bow's reach of the men it shells)
+}
+
+TEST(men_bound_through_a_breach_gather_outside_it_and_go_in_together) {
+    GateField f = gateField(17);
+    World& w = *f.w;
+    w.setGateHp(f.gate, 0);
+    const Vec3 yard = local(town().castle.courtyard);
+    std::vector<EntityId> near, far;
+    for (int i = 0; i < 6; ++i) near.push_back(w.spawnUnit(0, f.centre + f.out * m(130) + Vec3{m(i * 3 - 8), m(0), m(0)}, -f.out, unitStats(UnitType::LightInfantry)));
+    for (int i = 0; i < 6; ++i) far.push_back(w.spawnUnit(0, f.centre + f.out * m(200) + Vec3{m(i * 3 - 8), m(0), m(0)}, -f.out, unitStats(UnitType::LightInfantry)));
+    std::vector<Command> go;
+    for (EntityId id : near) go.push_back({0, id, Command::Type::Move, yard});
+    for (EntityId id : far) go.push_back({0, id, Command::Type::Move, yard});
+    w.step(go);
+    const Rampart& ring = ownWalls(*w.region());
+    const auto inside = [&](const std::vector<EntityId>& ids) {
+        int n = 0;
+        for (EntityId id : ids) n += Gate::inside(ring, w.findUnit(id)->pos);
+        return n;
+    };
+    // The near half comes to the ring and waits there, the breach before it, while the rest are on their way.
+    bool held = true;
+    for (int t = 0; t < 20 * kTicksPerSecond; ++t) {
+        w.step({});
+        held = held && inside(near) == 0;
+    }
+    CHECK(held);
+    int waiting = 0;
+    for (EntityId id : near) {
+        const Fixed d = (w.findUnit(id)->pos - f.centre).flat().length();
+        waiting += d > m(60) && d < m(100);
+    }
+    CHECK(waiting >= 5);
+    // The wave goes when the rest have come up, and everyone is in.
+    for (int t = 0; t < 120 * kTicksPerSecond; ++t) w.step({});
+    CHECK(inside(near) + inside(far) >= 11);
+}
+
 TEST(giants_hack_a_shut_gate_down_and_walk_through_the_gap) {
     // The biggest walkers (a giant is 5.5 m tall and 2.4 m across) against the
     // town's gate: they can reach it to strike, they break it, and they pass.
@@ -393,6 +516,41 @@ TEST(the_siege_train_batters_the_gate_when_ordered) {
     for (int i = 0; i < 300; ++i) b.advance(0.1);
     std::printf("  gate after 30 s of the siege train: %d hp (%.0f m away)\n", b.world().gates()[g].hp, best);
     CHECK(b.world().gates()[g].hp < b.region().gates()[g].maxHp);
+}
+
+TEST(the_computer_attacker_batters_from_range_with_its_foot_in_line_then_masses_and_goes_in) {
+    illyria::game::Battle b(1, illyria::game::Scenario::Siege);
+    using illyria::game::V3;
+    constexpr PlayerId kMe = illyria::game::Battle::kPlayer, kThem = illyria::game::Battle::kEnemy;
+    // The player's town: its gate is the computer's to take (the garrison is the player's, and far off).
+    int gate = -1;
+    float best = 1e9f;
+    const V3 camp = b.squadCentre(b.squads().front(), false);
+    for (size_t i = 0; i < b.region().gates().size(); ++i) {
+        const float d = (illyria::game::toV3(b.region().gates()[i].a) - camp).length();
+        if (d < best) best = d, gate = static_cast<int>(i);
+    }
+    const size_t g = static_cast<size_t>(gate);
+    const_cast<World&>(b.world()).setGateHolder(g, kMe);
+    const V3 mid = illyria::game::toV3(b.region().gates()[g].a + b.region().gates()[g].b) * 0.5f;
+    const V3 out = illyria::game::toV3(b.region().gates()[g].out);
+    // (the player's camp is elsewhere and not in this: only the town's own men are his)
+    for (const illyria::game::Squad& sq : b.squads())
+        if (sq.owner == kMe)
+            for (EntityId id : sq.members) const_cast<Unit&>(*b.world().findUnit(id)).hp = 0;
+    b.addSquad("Garrison", kMe, UnitType::HeavyInfantry, 6, mid + out * -25.0f, out);
+    const int train = b.addSquad("Train", kThem, UnitType::Catapult, 2, mid + out * 140.0f, out * -1.0f);
+    const int foot = b.addSquad("Foot", kThem, UnitType::HeavyInfantry, 12, mid + out * 150.0f + V3{0, 14, 0}, out * -1.0f);
+    const auto dist = [&](int q) { return (b.squadCentre(b.squads()[static_cast<size_t>(q)], false) - mid).length(); };
+    for (int i = 0; i < 200; ++i) b.advance(0.1);
+    const int hpLeft = b.world().gates()[g].hp;
+    std::printf("  after 20 s: gate %d of %d hp, the foot %.0f m out, the engines %.0f m\n", hpLeft, b.region().gates()[g].maxHp, dist(foot), dist(train));
+    CHECK(hpLeft < b.region().gates()[g].maxHp);  // the engines are at the gate
+    CHECK(dist(foot) > 100.0f);                   // and the foot hold their line, they have not rushed it
+    b.breakGate(gate);
+    for (int i = 0; i < 600; ++i) b.advance(0.1);
+    std::printf("  60 s after it fell: the foot %.0f m from the doors\n", dist(foot));
+    CHECK(dist(foot) < 100.0f);  // on the way in, to the gathering outside the breach, where they wait for the rest
 }
 
 TEST(archers_shoot_over_a_wall_not_into_it) {

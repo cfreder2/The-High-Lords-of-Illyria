@@ -165,9 +165,13 @@ int World::engineGateInReach(const Unit& u, const Vec3& near, Fixed grab) const 
         if ((mid - near).flat().length() > grab) continue;
         const Fixed d = (mid - u.pos).flat().length();
         if (d > shotRange(u, u.stats.ranged.maxRange, mid) - kEngineMargin || d < u.stats.ranged.minRange) continue;
-        if (best < 0 || d < bestD) {
+        // Of two doors in reach the weaker is the mark (a door failing counts nearer, as in routeToGate), so the engines go on at it
+        // until it falls and then turn to the other.
+        const Fixed hurt = Fixed::fromInt(gs[i].maxHp - st.hp) / Fixed::fromInt(std::max(1, gs[i].maxHp));
+        const Fixed score = d - kWeakPull * hurt;
+        if (best < 0 || score < bestD) {
             best = static_cast<int>(i);
-            bestD = d;
+            bestD = score;
         }
     }
     return best;
