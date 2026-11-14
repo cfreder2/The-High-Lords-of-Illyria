@@ -107,7 +107,8 @@ tick=900 t=30 fps=41 frame_ms=24.1 mine=131 foe=120 lost 3 killed 7 broken=2 not
 ```
 
 `lost` and `killed` are the men that fell on each side since the last line, `broken` the squads of yours that have
-broken, `notice` what the HUD would show a player (a refused order's reason), `outcome` the result, `capture` the
+broken, `notice` what the HUD would show a player (a refused order's reason), `event` the newest line of the strip of what
+happened to your own (a squad broke or was wiped out, a hero fell, the last army of a Conquest destroyed), `outcome` the result, `capture` the
 town's capture point, `day=` the Conquest's day.
 
 ## Writing scripts that read well

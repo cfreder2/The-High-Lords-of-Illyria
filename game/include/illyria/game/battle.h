@@ -196,6 +196,7 @@ public:
     // Conquest: beyond this from the men (metres) an order is not the world's (no fight is there to be ordered), it is a
     // march of their squads (battle_conquest.cpp).
     static constexpr float kLocalReachM = 200.0f;
+    static constexpr float kGatherMetres = 60.0f;  // an attack on a foe farther than this is a march together first
     static constexpr size_t kMaxParticles = 4000;
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
@@ -438,6 +439,19 @@ public:
     // The last order refused or explained ("Only engines ... can harm walls"), and when (tick).
     const std::string& notice() const { return notice_; }
     uint32_t noticeTick() const { return noticeTick_; }
+    // What just happened to the player's own, for a short strip (battle_events.cpp): squads that broke or were
+    // wiped out, a hero fallen, the last army of a Conquest destroyed. One path for a skirmish and a Conquest.
+    // `at` counts the world's steps (not its day's tick); a line is kept a while (kEventKeep) and shown for less.
+    struct Event {
+        uint32_t at = 0;
+        std::string text;
+    };
+    static constexpr uint32_t kEventShown = 7 * sim::kTicksPerSecond, kEventKeep = 30 * sim::kTicksPerSecond;
+    const std::vector<Event>& events() const { return events_; }
+    uint32_t eventClock() const { return eventClock_; }
+    // Orders the player has given since the game began (a march across the Conquest, or a squad's in a fight): the
+    // first-order hint fades on the first.
+    uint32_t ordersGiven() const { return ordersGiven_; }
     // Where the player's soldiers are going and what they are after, for the
     // ground markers: shown for each soldier selected (not his squad- or
     // group-mates) and, fading, for a few seconds after any order; only his
@@ -777,6 +791,9 @@ private:
     // The player just gave these soldiers an order (their markers show a while).
     void markOrdered(const std::vector<sim::EntityId>& units);
     void say(const std::string& notice);
+    // The strip of events (events()), called once after each step of the world.
+    void observeSquads();
+    void announce(const std::string& text);
     // Of these, the one nearest p.
     sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.
@@ -884,6 +901,15 @@ private:
     std::vector<uint32_t> seenGen_;    // by EntityId - 1: which man of the place the world has given (World::generation) this holds
     std::string notice_;
     uint32_t noticeTick_ = 0;
+    std::vector<Event> events_;
+    uint32_t eventClock_ = 0, ordersGiven_ = 0;
+    struct SquadWatch {
+        int alive = -1;  // -1: not seen yet
+        bool broke = false;
+        uint32_t brokeAt = 0;
+    };
+    std::map<uint32_t, SquadWatch> squadWatch_;  // by army (a Conquest's) or squad
+    bool hadArmy_ = false;  // a Conquest: the local side has had an army standing
     bool paused_ = false;
     int speed_ = 1;
     float slow_ = 1;

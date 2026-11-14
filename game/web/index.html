@@ -946,7 +946,7 @@
   onLongPress($("attack"), () => setMode(orderMode === 2 ? 0 : 2));
   $("attack").onclick = () => setMode(orderMode === 0 ? 1 : 0);
   $("formation").onclick = () => $("picker").classList.toggle("hidden");
-  let selected = -1, selCount = 0, lastNotice = "", lastSideColour = "";
+  let selected = -1, selCount = 0, lastNotice = "", lastEvents = "", lastSideColour = "";
   $("focus").onclick = () => api && api.focusSelection();
   // Planning: orders are held (drawn in violet, numbered) and sent together when it is switched off; the key is `.
   $("plan").onclick = () => { if (!api) return; api.plan(0); updateHud(); };
@@ -1394,7 +1394,7 @@
       const clock = secs < 60 ? `${secs} s` : secs < 3600 ? `${Math.floor(secs / 60)} min${secs % 60 && secs < 600 ? ` ${secs % 60} s` : ""}`
         : `${Math.floor(secs / 3600)} h ${Math.round((secs % 3600) / 60)} min`;
       const when = days < 0.05 ? "there now" : `there in ${days < 10 ? days.toFixed(1) : Math.round(days)} ${days >= 0.95 && days < 1.05 ? "day" : "days"}`;
-      const text = `On the march · ${when} · ${clock} at ${pace}×`;
+      const text = `On the march · ${when} · ${clock} at ${pace}×` + (conqState.forecast ? ` · ${conqState.forecast}` : "");
       if (marchBox.textContent !== text) marchBox.textContent = text;
     }
     // On a ruin, temple or sage: the Search / Visit button.
@@ -1521,6 +1521,10 @@
     if (bar.textContent !== modeText) bar.textContent = modeText;
     if (s.notice && s.notice !== lastNotice) toast(s.notice);
     lastNotice = s.notice;
+    // What happened to our own (squads broke or wiped out, a hero fallen): the engine's strip, said once as a toast.
+    const events = (s.events || []).map((e) => e.text).join(" · ");
+    if (events && events !== lastEvents) toast(events);
+    lastEvents = events;
 
     // A squad's name on its card: whole, or over two lines (never leaving "of" or "the" at a line's end), or with its
     // small words dropped, and only then cut. The same steps as game/include/illyria/game/card_name.h (fitCardName).

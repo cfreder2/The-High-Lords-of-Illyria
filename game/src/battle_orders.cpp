@@ -117,6 +117,7 @@ void Battle::discardPlan() {
 }
 
 void Battle::markOrdered(const std::vector<sim::EntityId>& units) {
+    ++ordersGiven_;
     if (orderTick_.size() < world_->units().size()) orderTick_.resize(world_->units().size(), UINT32_MAX);
     for (sim::EntityId id : units)
         if (controllable(world_->units()[id - 1])) orderTick_[id - 1] = world_->tick();  // an ally's orders are his own business
@@ -151,6 +152,16 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     // Out of the men's reach: they march against his place, and the fight is where they meet.
     if (marchOrder(toV3(t->pos))) return voice_.order(Situation::Attack, *world_, selection_);
     if (mine.empty()) return;
+    // A foe a good way off: the men who close with him go together at the slowest's pace, as for a march, and fight whom
+    // they meet; else the hero and the healers (the quickest) arrive first, alone, and the rest come in one at a time.
+    // (Missile troops keep to the order: they stop at a bowshot and loose.)
+    std::vector<sim::EntityId> together;
+    if (t->owner != local_ && (centreOf(mine) - toV3(t->pos)).length() > kGatherMetres) {
+        for (sim::EntityId id : mine)
+            if (world_->units()[id - 1].stats.ranged.muzzleSpeed <= sim::Fixed::zero()) together.push_back(id);
+        std::erase_if(mine, [&](sim::EntityId id) { return std::find(together.begin(), together.end(), id) != together.end(); });
+        marchSelection(together, toV3(t->pos), nullptr, false);
+    }
     for (sim::EntityId id : mine) {
         const sim::Unit& u = world_->units()[id - 1];
         sim::Command c{local_, id, sim::Command::Type::AttackUnit, t->pos};

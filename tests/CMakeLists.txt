@@ -31,6 +31,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SPRITE
 
 add_executable(illyria_tests
     test_main.cpp
+    test_events.cpp
     test_fixed.cpp
     test_rng.cpp
     test_ballistics.cpp

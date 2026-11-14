@@ -292,7 +292,7 @@ Following Warlords: **80 cities**, and whoever holds two thirds of them (or all 
   |---|---|---|---|
   | Gold a day | 50 | 21 to 30 | 8 to 12 |
   | Trains | light infantry and the realm's kinds, at twice a town's pace | light infantry and one or two kinds the land raises | light infantry |
-  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy: light infantry, or as often pikemen (no wall keeps horsemen out of a village) |
+  | Neutral garrison | (a realm not in the game: 5 armies) | 3 to 5 armies: archers first, then light infantry, archers, heavy infantry, pikemen | a levy of eight men (a squad is twelve): light infantry, or as often pikemen (no wall keeps horsemen out of a village) |
   | Taken by | men inside the outer wall | men inside the wall | men on its pad |
 
 - **Starting cities:** each of the eight sides starts with only its capital, a castle with heavier walls, a tall keep and more towers, its lord with a company of light infantry and the realm's rare troops, and a **guard of the capital** (archers and heavy infantry, of his own stack: he leaves them by marching the rest) so that the lord can march and not leave his seat empty. The other 72 places start neutral, held by their own garrisons.

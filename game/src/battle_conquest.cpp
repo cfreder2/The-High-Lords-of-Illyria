@@ -205,6 +205,7 @@ void Battle::marchArmies(std::vector<uint32_t> armies, const V3& to) {
     std::sort(armies.begin(), armies.end());
     armies.erase(std::unique(armies.begin(), armies.end()), armies.end());
     if (armies.empty()) return;
+    ++ordersGiven_;
     const V3 o = origin();
     const int32_t cx = std::clamp(sim::Conquest::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1);
     const int32_t cy = std::clamp(sim::Conquest::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1);
