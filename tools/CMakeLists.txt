@@ -8,6 +8,10 @@ if(EMSCRIPTEN)
     target_link_options(illyria_simcheck PRIVATE -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1)
 endif()
 
+# Balance harness: march speeds, campaign marches and the equal-gold matchup matrix (docs/BALANCE.md).
+add_executable(illyria_balance balance.cpp)
+target_link_libraries(illyria_balance PRIVATE illyria_sim)
+
 # Prints docs/UNITS.md from the locked unit sheet.
 add_executable(illyria_unitsheet unitsheet.cpp)
 target_link_libraries(illyria_unitsheet PRIVATE illyria_sim)
