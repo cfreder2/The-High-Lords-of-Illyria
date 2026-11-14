@@ -12,6 +12,9 @@ const char* illyria_mode_error();
 const char* illyria_perf();
 const char* illyria_draw_counts();
 void illyria_hide_parts(unsigned mask);
+void illyria_set_graphics(int features, double maxPixelRatio);
+void illyria_set_dynamic_resolution(int on);
+int illyria_graphics_preset(int level);
 void illyria_set_tree_style(int style);
 
 void illyria_pointer(int type, int id, float x, float y, int button, double timeMs);

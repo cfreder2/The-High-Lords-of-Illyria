@@ -97,6 +97,7 @@ struct App {
     double minPixelRatio = 1.0, ratio = 1.5;
     bool dynamicResolution = true;  // off: always the settings' ceiling
     double slowSince = -1, fastSince = -1;
+    double ceiling = 99, ceilingUntil = -1;  // the finest ratio worth trying again, until then (adaptResolution)
     double fps = 60;
     float rain = 0;              // weather hook (illyria_set_rain)
     uint32_t ambienceSeen = ~0u;  // the ambience last sent to the page
@@ -210,21 +211,26 @@ void newBattle() {
     app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
 }
 
-// Below 28 frames a second for two seconds: a quarter step coarser; above 50
-// for four: a quarter step finer. Phones differ by ten times in speed.
+// Aims at 60: under 56 frames a second for a second (under 28 for half of one): a quarter step coarser, and that
+// ratio is not tried again for half a minute; at 58 or more for four seconds: a quarter step finer (the display
+// holds the rate at its own, so "fast" can only be read as "keeping up"). Phones differ by ten times in speed.
 void adaptResolution(double now) {
-    if (app->fps < 28) {
+    if (app->fps < 56) {
         app->fastSince = -1;
         if (app->slowSince < 0) app->slowSince = now;
-        if (now - app->slowSince > 2000 && app->ratio > app->minPixelRatio) {
+        if (now - app->slowSince > (app->fps < 28 ? 500 : 1000) && app->ratio > app->minPixelRatio) {
+            app->ceiling = app->ratio - 0.25;  // (this one was too much for now)
+            app->ceilingUntil = now + 30000;
             app->ratio = std::max(app->minPixelRatio, app->ratio - 0.25);
             app->slowSince = now;
         }
-    } else if (app->fps > 50) {
+    } else if (app->fps > 58) {
         app->slowSince = -1;
         if (app->fastSince < 0) app->fastSince = now;
-        if (now - app->fastSince > 4000 && app->ratio < std::min(app->maxPixelRatio, platform::canvas().pixelRatio)) {
-            app->ratio = std::min(app->maxPixelRatio, app->ratio + 0.25);
+        const double most = std::min(app->maxPixelRatio, platform::canvas().pixelRatio);
+        const double cap = now < app->ceilingUntil ? std::min(most, app->ceiling) : most;
+        if (now - app->fastSince > 4000 && app->ratio < cap) {
+            app->ratio = std::min(cap, app->ratio + 0.25);
             app->fastSince = now;
         }
     } else {

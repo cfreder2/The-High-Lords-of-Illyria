@@ -32,7 +32,9 @@ GLuint Renderer::beginPost(int w, int h) {
         postH_ = h;
         GLint most = 0;
         glGetIntegerv(GL_MAX_SAMPLES, &most);
-        const GLsizei samples = std::min<GLint>(4, most);
+        // Four samples a pixel until the frame is dense already (a retina window at its own resolution, over ~4 million pixels, has four
+        // device pixels to each point): then two, which the eye cannot tell, for half the multisampled colour and depth written and read.
+        const GLsizei samples = std::min<GLint>(static_cast<long>(w) * h > 4000000L ? 2 : 4, most);
         if (!postFbo_) glGenFramebuffers(1, &postFbo_);
         if (!postColour_) glGenRenderbuffers(1, &postColour_);
         if (!postDepth_) glGenRenderbuffers(1, &postDepth_);
