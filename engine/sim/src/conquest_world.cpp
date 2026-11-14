@@ -791,6 +791,11 @@ void Conquest::fightAi(Stack& s, std::vector<Command>& commands) {
     }
 }
 
+bool Conquest::holdsTown(const Stack& s) const {
+    const int32_t city = cityAt(s.cx, s.cy);
+    return city >= 0 && cities_[static_cast<size_t>(city)].owner == s.owner;
+}
+
 uint32_t Conquest::stackOfUnit(uint32_t unit) const {
     for (const Stack& s : stacks_)
         for (const Army& a : s.armies)
@@ -827,8 +832,9 @@ void Conquest::stepWorld() {
         steer(s, commands_, think);
         // Marching, men fight with the battle's initiative (whoever strikes them or crosses their path); standing, the
         // computer lords' men and the player's alike meet whoever comes near their post (fightAi).
-        if (think && s.path.empty() && !s.commanded) fightAi(s, commands_);
+        if (think && s.path.empty() && !s.commanded && !((thinkerSides_ >> s.owner & 1) && !holdsTown(s))) fightAi(s, commands_);
     }
+    if (think && thinker_) thinker_(commands_);
     // The player's orders to men of the world go in after the stacks' own, whose men they are given to (commandMen).
     commands_.insert(commands_.end(), playerCommands_.begin(), playerCommands_.end());
     playerCommands_.clear();

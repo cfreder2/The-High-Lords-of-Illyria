@@ -10,7 +10,10 @@
 // - it gathers its armies into stacks of up to eight, merges small stacks
 //   when together they could take what neither can alone, and sends them
 //   where the prize is best for the risk: neutral towns early, weak enemy
-//   cities later, the leader's cities when one side runs away with the war;
+//   cities later, the leader's cities when one side runs away with the war,
+//   and above all the towns of its own country that it has lost (the fights
+//   are of men, not of dice: a stack never goes at fewer men than the town's
+//   own and those of its lord a day from it, whatever the dice say);
 // - it trains what fights best for the days it takes (the quickest where a
 //   city is threatened), sends what quiet rear cities train to the front
 //   (LOC), keeps its upkeep inside its income, raises the walls of frontier
@@ -45,6 +48,7 @@ struct Temper {
     bool thrifty;         // trains what fights best for the days (else the quickest)
     int32_t care;         // thousandths more needed to attack for each precious army risked
     int32_t mostOdds;     // ... but never more than this
+    int32_t menPercent;   // a stack goes only with this percent of the men it will meet (0: the dice alone decide)
 };
 // The Warlord: the best odds-taking we found (bolder loses armies, timider
 // loses the race for the neutral towns; with armies slow to train, bolder than
@@ -53,12 +57,12 @@ struct Temper {
 // walls, which would keep every army home), and every strategy. (40% since
 // the small edges made the odds finer and a town must be held while the
 // banner rises: at 35% it threw armies away at the walls.)
-constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, 60, 850};
+constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, 60, 850, 90};
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
 // trains whatever takes its fancy (the quickest with an enemy at the gates),
 // never gathers, and wastes a fifth of its income (Conquest::income).
-constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000};
+constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000, 0};
 
 }  // namespace
 
@@ -155,6 +159,26 @@ private:
             precious += !a.hero() && C::precious(a);
         }
         return std::min(t_.mostOdds, (hero ? t_.heroOdds : t_.attackOdds) + t_.care * precious);
+    }
+    // The men a stack would meet at a place: whoever stands there, and the other stacks of the town's lord that could be
+    // in it within a day (the fights are of men: the dice do not see the ones about to arrive).
+    int64_t menMet(int32_t cx, int32_t cy) const {
+        int64_t men = 0;
+        for (const Army* a : c_.defendersAt(side_, cx, cy)) men += a->soldiers;
+        const int32_t city = c_.cityAt(cx, cy);
+        if (city < 0) return men;
+        const uint8_t lord = c_.cities_[static_cast<size_t>(city)].owner;
+        for (const C::Stack& e : c_.stacks_) {
+            if (!foe(e) || e.owner != lord || (e.cx == cx && e.cy == cy) || eta(e, city) > 10) continue;
+            for (const Army& a : e.armies) men += a.soldiers;
+        }
+        return men;
+    }
+    // Enough men to go at a place (a Knight goes on the dice alone).
+    bool enough(const std::vector<Army>& armies, int32_t cx, int32_t cy) const {
+        int64_t mine = 0;
+        for (const Army& a : armies) mine += a.soldiers;
+        return mine * 100 >= menMet(cx, cy) * t_.menPercent;
     }
     // Tenths of days to march so many millimetres of level plains at so many a second.
     static int32_t days10(int64_t mm, int64_t speed) {
@@ -385,6 +409,8 @@ private:
             v += day < 30 ? 0 : 5;  // then the enemy's
             if (c_.continent_.cities()[static_cast<size_t>(city)].capital) v += 10;
             if (t_.gangUp && t.owner == leader) v += 15;
+            // Our own country, lost: the first thing to win back (its land and its people were ours).
+            if (t_.gangUp && c_.continent_.cities()[static_cast<size_t>(city)].owner == c_.factionOf(side_)) v += 12;
         }
         // Position: a town among our own is easy to hold.
         for (const CityView& m : mine_)
@@ -508,14 +534,14 @@ private:
             for (const auto& [rough, city] : prizes(s, lead, 8)) {
                 const C::CityState& t = c_.cities_[static_cast<size_t>(city)];
                 const int32_t odds = c_.attackOdds(view(s), side_, t.cx, t.cy);
-                if (odds >= need) options.push_back({-rough * odds / 1000, t.cx, t.cy, city, odds});
+                if (odds >= need && enough(s.armies, t.cx, t.cy)) options.push_back({-rough * odds / 1000, t.cx, t.cy, city, odds});
             }
         } else if (t_.gather) {
             // Held at home by a threat: strike the threat itself, in a city or not.
             const CityView& m = mine_[cityView_.at(cityHere(s))];
             const C::Stack& e = c_.stacks_[m.threatStack];
             const int32_t odds = c_.attackOdds(view(s), side_, e.cx, e.cy);
-            if (odds >= need) options.push_back({1000, e.cx, e.cy, c_.cityAt(e.cx, e.cy), odds});
+            if (odds >= need && enough(s.armies, e.cx, e.cy)) options.push_back({1000, e.cx, e.cy, c_.cityAt(e.cx, e.cy), odds});
         }
         if (t_.reactDays10 >= 10) {
             for (const CityView& m : mine_) {
@@ -525,7 +551,7 @@ private:
                 const int32_t d = std::max(std::abs(e.cx - s.cx), std::abs(e.cy - s.cy));
                 if (d > 12) continue;
                 const int32_t odds = c_.attackOdds(view(s), side_, e.cx, e.cy);
-                if (odds >= need) options.push_back({3000 / (d + 10) * odds / 1000 + 20, e.cx, e.cy, -1, odds});
+                if (odds >= need && enough(s.armies, e.cx, e.cy)) options.push_back({3000 / (d + 10) * odds / 1000 + 20, e.cx, e.cy, -1, odds});
             }
         }
         if (options.empty()) return false;
@@ -566,7 +592,7 @@ private:
                     rest.push_back(go[b]);
                     soldiers = soldiers || !go[b].hero();
                 }
-            if (!soldiers || c_.attackOdds(viewOf(rest), side_, tx, ty) < needed(rest)) left[a] = 0;
+            if (!soldiers || c_.attackOdds(viewOf(rest), side_, tx, ty) < needed(rest) || !enough(rest, tx, ty)) left[a] = 0;
         }
         std::vector<Army> rest;
         for (size_t b = 0; b < go.size(); ++b) (left[b] ? stay : rest).push_back(go[b]);
@@ -606,7 +632,7 @@ private:
             const int32_t need = std::max(needed(together), bestAlone(o, lead) + 1);
             for (const auto& [rough, target] : prizes(o, lead, 4)) {
                 const C::CityState& t = c_.cities_[static_cast<size_t>(target)];
-                if (c_.attackOdds(both, side_, t.cx, t.cy) < need) continue;
+                if (c_.attackOdds(both, side_, t.cx, t.cy) < need || !enough(together, t.cx, t.cy)) continue;
                 if (!march(k, o.cx, o.cy)) break;
                 used_[j] = 1;  // it waits for us
                 return true;

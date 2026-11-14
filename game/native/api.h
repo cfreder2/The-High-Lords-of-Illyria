@@ -72,6 +72,10 @@ void illyria_conquest_pause();
 void illyria_conquest_speed();
 void illyria_conquest_select(unsigned id);
 void illyria_conquest_open_city(int city);  // a tap on a town's marker or name: its army picked, its panel opened
+void illyria_conquest_close_city();
+void illyria_conquest_produce(int city, int option);  // a town trains an option (-1: stops)
+void illyria_conquest_vector(int city, int choose);  // where a town sends its new armies (choose: tap a town next; else keep them home)
+void illyria_conquest_build_boat(int city);
 const char* illyria_conquest_state();
 const char* illyria_conquest_save();
 void illyria_set_side_colour(const char* hex);

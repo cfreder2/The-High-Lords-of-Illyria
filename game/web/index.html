@@ -1342,7 +1342,7 @@
     const c = conqState.city;
     panel.classList.toggle("hidden", !c);
     if (c) {
-      const key = `${c.index}|${c.producing}|${c.progress}|${conqState.gold}|${c.boatDays}|${c.boats}|${c.defense}|${c.vectorTo}|${c.choosing}|${c.banner}|${c.bannerP}|${c.bannerFoes}|${c.mine}`;
+      const key = `${c.index}|${c.producing}|${c.progress}|${conqState.gold}|${c.boatDays}|${c.boats}|${c.defense}|${c.vectorTo}|${c.choosing}|${c.banner}|${c.bannerP}|${c.bannerFoes}|${c.mine}|${c.garrison.map((g) => g.stack + ":" + g.armies.map((a) => a.men).join(",")).join(";")}`;
       // A banner going up over the town (ours over theirs, or theirs over ours).
       const bannerLine = c.banner < 0 ? "" : `<div class="port">⚑ ${c.banner === 0 ? "Your banner" : `${c.bannerBy}'s banner`} over ${c.name}: ${c.bannerP}%` +
         (c.bannerFoes ? ` · ${c.bannerFoes} ${c.bannerFoes === 1 ? "army" : "armies"} of another lord near hold it up` : " · rising") +
@@ -1358,6 +1358,8 @@
         const prod = c.producing >= 0 ? c.options[c.producing] : null;
         panel.innerHTML = `<h3>${c.name}</h3><div class="meta">Walls ${c.defense} · ${c.income} gold a day` +
           (prod ? ` · training ${prod.type}, day ${c.progress} of ${prod.days}` : " · idle") + `</div>` + bannerLine +
+          // Who stands in the town: pick a stack to send it out (then right-click where it should go).
+          (c.garrison.length ? `<div class="port">In the town:</div>` + c.garrison.map((g) => `<button data-stack="${g.stack}"><span>${g.armies.map((a) => `${a.name} ${a.men}/${a.of}`).join(", ")}</span><span>send out</span></button>`).join("") : `<div class="port">Nobody stands in the town.</div>`) +
           c.options.map((o, i) => `<button data-i="${i}" class="${i === c.producing ? "on" : ""}${o.levy > 0 ? " levy" : ""}"><span>${o.type} <small>(${o.strength})</small>` +
             (o.levy > 0 ? ` <small class="lv">levy, ${o.levy} left</small>` : "") + `</span><span>${o.days}d · ${o.cost}g · ${o.upkeep}/day</span></button>`).join("") +
           `<button data-i="-1"><span>Stop training</span></button>` +
@@ -1376,6 +1378,7 @@
         panel.querySelectorAll("button").forEach((b) => {
           b.onclick = () => {
             if (b.dataset.close) api.conqCloseCity();
+            else if (b.dataset.stack) api.conqSelect(+b.dataset.stack);
             else if (b.dataset.boat) api.conqBuildBoat(c.index);
             else if (b.dataset.vector) api.conqVector(c.index, 1);
             else if (b.dataset.home) api.conqVector(c.index, 0);

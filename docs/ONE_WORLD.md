@@ -192,7 +192,10 @@ A short note on how it works, and what it costs.
   go on when it is done; standing, they meet whoever comes within 45 m of their post: foot go at
   the nearest foe, missile troops close to a good bowshot and shoot on their own
   (`Conquest::fightAi`, a small version of the battle AI's habits). A town's garrison holds its
-  post. A stack held up for ten seconds with nothing struck goes deaf to the enemy for ten
+  post. In the game (the page and the desktop) the computer lords' men standing in the field are played by the battle's
+  own AI (`Battle::conquestAi`, installed with `Conquest::setThinker`, at the lord's Easy or Hard skill): the sim cannot
+  call the game layer, so `fightAi` remains for garrisons at their posts, the player's men standing, and headless runs
+  (`illyria_conquestsim`), where no page is thinking. A stack held up for ten seconds with nothing struck goes deaf to the enemy for ten
   seconds (a force march) and, held up again, gives up the cell of its route the ground does not
   allow. A cell is reached when the middle of the men is at its anchor or most of them are about it. Gates are held
   by their town's owner (`World::setGateHolder`): everyone else hacks at them.

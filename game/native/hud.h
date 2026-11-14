@@ -3,11 +3,12 @@
 // The desktop's HUD and start menu, drawn by the shell over the frame (overlay.h) from the same state
 // the page's HUD reads: illyria_hud, illyria_conquest_state, illyria_labels, illyria_drag_box. It is small: the
 // status line, the squad cards, the conquest's banners and the start menu (which lord, which computer
-// lords, skirmish or conquest). The town screens, the settings and the manual are the page's, not here yet.
+// lords, skirmish or conquest). The town's screen is here, the settings and the manual are the page's, not here yet.
 
 #include <string>
 #include <vector>
 
+#include "json.h"
 #include "overlay.h"
 
 namespace illyria::native {
@@ -54,6 +55,8 @@ private:
         int what;  // a menu row, or a card (-1 - squad), or a banner (1000 + stack)
     };
     void drawMenu(Overlay& o, float w, float h);
+    void townAction(int what);  // a press on the open town's screen
+    void drawTown(Overlay& o, const Json& city, int gold, float w);  // the open town on parchment
     void drawMinimap(Overlay& o, float w, float h);
     void lookAt(float x, float y);
     void saveSettings() const;
@@ -83,6 +86,7 @@ private:
     int busyFrames_ = 0;
     int savedDay_ = -1;
     std::vector<Rect> hits_;
+    int town_ = -1;  // the town whose screen is open (drawTown), for the presses on it
     int cardPage_ = 0, cardPages_ = 1;  // the page of squad cards shown when there are too many for the strip
     bool stripPaged_ = false;
     float stripX_ = 0, stripY_ = 0, stripW_ = 0, stripH_ = 0;  // the strip of cards, for the wheel
