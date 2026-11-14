@@ -83,7 +83,18 @@ struct Case {
             if ((u.pos - e.pos).flat().length() < Fixed::fromRatio(6, 5) && abs(u.pos.z - e.pos.z) < Fixed::fromRatio(3, 2)) return true;
         return false;
     }
-    double depthOf(const Unit& u) const { return (mid - u.pos).flat().dot(out).toDouble(); }
+    // The door of the ring this man stands nearest (a capital's outer ring has two: the road's, `gate`, and a side door).
+    const Gate& doorNear(const Unit& u) const {
+        const Gate* best = &w->region()->gates()[gate];
+        for (const Gate& g : w->region()->gates())
+            if (g.ring == best->ring && ((g.a + g.b) * Fixed::fromRatio(1, 2) - u.pos).flat().lengthSq() < ((best->a + best->b) * Fixed::fromRatio(1, 2) - u.pos).flat().lengthSq()) best = &g;
+        return *best;
+    }
+    bool atMainDoor(const Unit& u) const { return &doorNear(u) == &w->region()->gates()[gate]; }
+    double depthOf(const Unit& u) const {
+        const Gate& g = doorNear(u);
+        return ((g.a + g.b) * Fixed::fromRatio(1, 2) - u.pos).flat().dot(g.out).toDouble();
+    }
 };
 
 double moved(const Vec3& a, const Vec3& b) { return (a - b).flat().length().toDouble(); }
@@ -119,7 +130,7 @@ TEST(an_idle_human_garrison_takes_its_stations_when_a_foe_is_at_60_m) {
         const Unit& u = k.unit(foot[i]);
         if (!u.alive()) continue;
         const double d = k.depthOf(u);
-        formed += d >= 8.0 && d <= 34.0 && Gate::inside(k.ring(), u.pos) && u.facing.flat().dot(k.out) > Fixed::zero();
+        formed += d >= 8.0 && d <= 34.0 && Gate::inside(k.ring(), u.pos) && u.facing.flat().dot(k.doorNear(u).out) > Fixed::zero();
         forward += moved(u.pos, footBefore[i]) > 3.0;
     }
     std::printf("  %d of %zu bowmen at embrasures, %d of %zu foot in the horseshoe (%d moved)\n", manned, wall.size(), formed, foot.size(), forward);
@@ -208,7 +219,8 @@ TEST(a_lord_stays_behind_the_foot_for_a_computer_side_and_the_player) {
         k.run(150);
         const Unit& u = k.unit(lord);
         double footDepth = 0;
-        for (const EntityId id : k.grounded(World::GarrisonRole::Foot)) footDepth = std::max(footDepth, k.depthOf(k.unit(id)));
+        for (const EntityId id : k.grounded(World::GarrisonRole::Foot))
+            if (k.atMainDoor(k.unit(id))) footDepth = std::max(footDepth, k.depthOf(k.unit(id)));
         std::printf("  side %d: lord moved %.2f m, at depth %.1f, foot to %.1f\n", side, moved(u.pos, at), k.depthOf(u), footDepth);
         CHECK(u.alive());
         CHECK(moved(u.pos, at) < 0.5);  // not called into the horseshoe

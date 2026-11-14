@@ -23,7 +23,7 @@ std::vector<Fixed> Continent::Castle::Ring::crenels(size_t edge) const {
     const Fixed corner = thick * 3 / 2 + kTowerClear;
     if (towerAt(edge)) towers.push_back({-corner, corner});
     if (towerAt((edge + 1) % n)) towers.push_back({len - corner, len + corner});
-    if (edge == gateEdge) {
+    if (gateOn(edge)) {
         const Fixed reach = thick * 6 / 5 + kTowerClear;
         for (int s = -1; s <= 1; s += 2) {
             const Fixed at = len / 2 + gateTowerAt() * s;
@@ -98,7 +98,7 @@ std::vector<Continent::Castle::Gallery> Continent::Castle::Ring::galleries() con
         // the corner points inward).
         // (A bare corner is a gallery round no tower: the walk keeps to the wall's middle line and turns at the corner.)
         out.push_back({at, towerAt(e) ? thick * 3 / 2 : Fixed::zero(), -in, unitFlat(inward(in) + inward(onward)), onward});
-        if (e == gateEdge) {
+        if (gateOn(e)) {
             const Vec3 mid = (at + next) * Fixed::fromRatio(1, 2);
             for (int s = -1; s <= 1; s += 2) out.push_back({mid + onward * (gateTowerAt() * s), thick * 6 / 5, -onward, inward(onward), onward});
         }

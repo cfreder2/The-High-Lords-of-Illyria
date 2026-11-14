@@ -959,7 +959,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                         if (c >= from && c < to) out.push_back(c - from);
                     return out;
                 };
-                if (e == ring.gateEdge) {
+                if (ring.gateOn(e)) {
                     const Vec3 mid = a + along * (len / 2);
                     const Fixed g0 = len / 2 - ring.gateWidth / 2, g1 = len / 2 + ring.gateWidth / 2;
                     rg.walls_.push_back({a, mid - along * (ring.gateWidth / 2), ring.thick / 2, top, walk, outward, within(Fixed::zero(), g0)});
@@ -980,6 +980,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                     g.top = city.pos.z + std::max(ring.height * 31 / 50, Fixed::fromRatio(58, 10));
                     g.maxHp = static_cast<int32_t>((ring.gateWidth * kGateHpPerMetre).floorToInt());
                     g.ring = static_cast<int32_t>(rg.ramparts_.size());
+                    g.side = e != ring.gateEdge;
                     rg.gates_.push_back(g);
                     // The stone over the passage, from the doors' lintel up to the walk.
                     Vec3 la = mid - along * (ring.gateWidth / 2), lb = mid + along * (ring.gateWidth / 2);

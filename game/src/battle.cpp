@@ -349,7 +349,11 @@ void Battle::aimEngines(const Squad& s) {
         const sim::GateState& gs = world_->gates()[i];
         if (gs.broken() || gs.holder != kPlayer) continue;
         const V3 g = toV3(worldRegion().gates()[i].a + worldRegion().gates()[i].b) * 0.5f;
-        const float d = V3{g.x - c.x, g.y - c.y, 0}.length();
+        // The nearest door, but a door already failing is worth some metres more than it lies (a castle with two doors is
+        // battered at the weaker, and the engines go on at it until it falls, then turn to the other).
+        const sim::Gate& door = worldRegion().gates()[i];
+        const float failing = static_cast<float>(door.maxHp - gs.hp) / static_cast<float>(std::max(1, door.maxHp));
+        const float d = V3{g.x - c.x, g.y - c.y, 0}.length() - 30.0f * failing;
         if (d < bestD) {
             bestD = d;
             best = static_cast<int>(i);

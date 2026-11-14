@@ -79,11 +79,24 @@ Layout inspect(const Seat& s) {
                 walls.push_back(u->pos);
                 continue;
             }
-            const double depth = (mid - u->pos).flat().dot(g.out).toDouble();
-            if (role == World::GarrisonRole::Foot) ++l.foot, l.footDepth = std::max(l.footDepth, depth);
-            else ++l.rear, l.rearDepth = std::min(l.rearDepth, depth);
+            // Each man against the door he is nearest (a ring may have two); the depth that matters is that of the first door's,
+            // the road's, whose horseshoe the lord and the rest stand behind.
+            const Gate* door = &g;
+            Vec3 doorMid = mid;
+            for (const Gate& other : w.region()->gates()) {
+                const Vec3 om = (other.a + other.b) * Fixed::fromRatio(1, 2);
+                if (other.ring == g.ring && (u->pos - om).flat().lengthSq() < (u->pos - doorMid).flat().lengthSq()) door = &other, doorMid = om;
+            }
+            const double depth = (doorMid - u->pos).flat().dot(door->out).toDouble();
+            if (role == World::GarrisonRole::Foot) {
+                ++l.foot;
+                if (door == &g) l.footDepth = std::max(l.footDepth, depth);
+            } else {
+                ++l.rear;
+                l.rearDepth = std::min(l.rearDepth, depth);
+            }
             l.groundInside = l.groundInside && Gate::inside(ring, u->pos) && abs(u->pos.z - w.groundHeight(u->pos.x, u->pos.y)) < Fixed::fromRatio(1, 4);
-            const Vec3 toGate = (mid - u->pos).flat();
+            const Vec3 toGate = (doorMid - u->pos).flat();
             l.facing = l.facing && u->facing.flat().dot(toGate) > toGate.length() * Fixed::fromRatio(9, 10);
         }
     l.rearBehind = l.rear == 0 || l.foot == 0 || l.rearDepth > l.footDepth;

@@ -123,6 +123,11 @@ public:
             std::vector<Vec3> corners;
             Fixed height, thick;  // walls; the walk lies kWalkBelow under the height
             size_t gateEdge = 0;  // edge corners[i] -> corners[i + 1] holding the gate
+            // A second gate, in a side wall (a capital's outer ring, a long town's): kNoEdge when the ring has the one.
+            // The road runs to the first; the second is a back door, and the garrison keeps both (World::keepGates).
+            static constexpr size_t kNoEdge = static_cast<size_t>(-1);
+            size_t gateEdge2 = kNoEdge;
+            bool gateOn(size_t edge) const { return edge == gateEdge || edge == gateEdge2; }
             Fixed gateWidth;
             // Which corners have a tower (planCastles: where the wall turns
             // sharply, and about one to every kTowerSpacing of wall); the walk
@@ -145,7 +150,7 @@ public:
             std::vector<Fixed> crenels(size_t edge) const;
             // The galleries round its towers (castle_walls.cpp), in the order
             // the walk passes them: each corner's (radius 0 at a bare corner: the walk
-            // just turns there), then on the gate's edge the pair flanking the gate.
+            // just turns there), then on each gate's edge the pair flanking the gate.
             std::vector<Gallery> galleries() const;
             // The way men go round its walk: along the walk's middle line and
             // round each tower on its gallery, kGalleryWay out from the tower;

@@ -211,7 +211,7 @@ void unsealCastle(Continent::Castle& k) {
         std::vector<uint8_t> closed(static_cast<size_t>(nx * ny), 0);
         for (const Castle::Ring& ring : k.rings)
             for (size_t i = 0; i < ring.corners.size(); ++i)
-                if (i != ring.gateEdge) closeWall(closed, ring.corners[i], ring.corners[(i + 1) % ring.corners.size()], ring.thick / 2);
+                if (!ring.gateOn(i)) closeWall(closed, ring.corners[i], ring.corners[(i + 1) % ring.corners.size()], ring.thick / 2);
         {
             const Vec3 ax = k.keepAxis, ay{-ax.y, ax.x, Fixed::zero()};
             const Vec3 corner[4] = {k.keep + (ax + ay) * k.keepHalf, k.keep + (ax - ay) * k.keepHalf, k.keep - (ax + ay) * k.keepHalf, k.keep - (ax - ay) * k.keepHalf};
@@ -639,6 +639,10 @@ void Continent::planCastles() {
                 outer.gateEdge = i;
             }
         }
+        // A capital and a long town have a second gate, a quarter of the way round the wall (the side wall: the inner bailey leaves a
+        // capital's back wall no room for a courtyard behind a gate). The road runs to the first; the garrison keeps both, and an
+        // attacker chooses between them (World::keepDoors, World::routeToGate).
+        if ((city.capital || k.shape == 1) && outer.corners.size() % 4 == 0) outer.gateEdge2 = (outer.gateEdge + outer.corners.size() / 4) % outer.corners.size();
         k.rings.push_back(outer);
         if (city.capital) {
             // An inner bailey: higher walls round the keep, square, so each
@@ -669,10 +673,13 @@ void Continent::planCastles() {
         // short walls crowds it; and none standing against a gate tower).
         for (Castle::Ring& ring : k.rings) {
             const size_t n = ring.corners.size();
-            const Vec3 a = ring.corners[ring.gateEdge], b = ring.corners[(ring.gateEdge + 1) % n];
-            const Vec3 mid = (a + b) * r(1, 2), along = unitFlat(b - a);
-            Vec3 gateTower[2];
-            for (int s = -1; s <= 1; s += 2) gateTower[(s + 1) / 2] = mid + along * (ring.gateTowerAt() * s);
+            std::vector<Vec3> gateTower;
+            for (const size_t edge : {ring.gateEdge, ring.gateEdge2}) {
+                if (edge == Castle::Ring::kNoEdge) continue;
+                const Vec3 ea = ring.corners[edge], eb = ring.corners[(edge + 1) % n];
+                const Vec3 emid = (ea + eb) * r(1, 2), ealong = unitFlat(eb - ea);
+                for (int s = -1; s <= 1; s += 2) gateTower.push_back(emid + ealong * (ring.gateTowerAt() * s));
+            }
             // Walking round from the gate's far side: the wall since the last tower.
             ring.towered.assign(n, 0);
             Fixed run = (ring.corners[(ring.gateEdge + 1) % n] - gateTower[1]).flat().length();
@@ -722,6 +729,7 @@ void Continent::planCastles() {
             size_t placed = 0;
             for (size_t e : edges) {
                 if (placed == (ri == 0 ? 3u : 1u)) break;
+                if (ring.gateOn(e)) continue;
                 const Vec3 a = ring.corners[e], b = ring.corners[(e + 1) % n];
                 const Vec3 along = unitFlat(b - a);
                 Vec3 in{-along.y, along.x, Fixed::zero()};

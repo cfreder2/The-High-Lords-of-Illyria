@@ -678,7 +678,8 @@ public:
     // The gate of the walled town whose heart is `heart` (region coordinates): of the rings round it, the outer one's. kNoGate if none.
     size_t gateOfTown(const Vec3& heart) const;
     // The stations of `men` (one post each, in their order) for the garrison of this gate's ring; places already held by men in
-    // the world are left. Empty if the gate is not one.
+    // the world are left. Empty if the gate is not one. A ring of two doors has its bowmen and foot shared between them (the
+    // lord and the rear behind this gate's), so that neither door is crowded or bare.
     // (`except`: men in the world who are among them, whose own places do not count as held.)
     std::vector<GarrisonPost> garrisonPosts(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except = {}) const;
     // Sends these men (idle or not: the caller says who) to their stations in this gate's ring, each to the nearest of its role.
@@ -1068,6 +1069,13 @@ private:
     void stopAtShutGate(const Unit& u, std::vector<Vec3>& way, const std::vector<uint8_t>* hidden) const;
     void updateGates();  // a gate opens to its holder's men who are bound through it, and shuts behind them
     void keepGates();    // garrisoned gates: stations by role, the lure (world_keep.cpp)
+    // The garrison of one ring's doors (all of them, the first of the ring's gates thinking for the rest): shared among the
+    // doors by where the foes are, each door's keepers in their stations.
+    void keepDoors(const std::vector<size_t>& doors);
+    // The gates (in the world's order) of the ring this gate opens: a castle may have more than one door.
+    std::vector<size_t> doorsOfRing(size_t gate) const;
+    // garrisonPosts for the one door.
+    std::vector<GarrisonPost> garrisonPostsAt(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except, const std::vector<Vec3>& alsoHeld) const;
     // Ranks across the courtyard behind a gate for each of the groups of men (counts) in turn, each group in ranks of its own,
     // every place open ground, centred on the doors' axis and clear of `avoid`: the places of each group, left to right.
     std::vector<std::vector<Vec3>> yardRanks(const Gate& g, const Rampart& ring, const std::vector<int32_t>& groups, Fixed gap, const std::vector<Vec3>& avoid) const;

@@ -1195,19 +1195,22 @@ void Renderer::uploadGates(const Battle& battle) {
         const V3 centre = toV3(c.pos) - V3{o.x, o.y, 0};
         for (const sim::Continent::Castle::Ring& ring : c.castle.rings) {
             const size_t n = ring.corners.size();
-            const V3 a = toV3(ring.corners[ring.gateEdge]) - V3{o.x, o.y, 0}, b = toV3(ring.corners[(ring.gateEdge + 1) % n]) - V3{o.x, o.y, 0};
-            V3 mid = (a + b) * 0.5f;
-            mid.z = centre.z;
-            bool onField = false;
-            for (const sim::Gate& g : gates) {
-                const V3 gm = toV3(g.a + g.b) * 0.5f;
-                onField = onField || (gm.x - mid.x) * (gm.x - mid.x) + (gm.y - mid.y) * (gm.y - mid.y) < 4.0f;
+            for (const size_t edge : {ring.gateEdge, ring.gateEdge2}) {
+                if (edge == sim::Continent::Castle::Ring::kNoEdge) continue;
+                const V3 a = toV3(ring.corners[edge]) - V3{o.x, o.y, 0}, b = toV3(ring.corners[(edge + 1) % n]) - V3{o.x, o.y, 0};
+                V3 mid = (a + b) * 0.5f;
+                mid.z = centre.z;
+                bool onField = false;
+                for (const sim::Gate& g : gates) {
+                    const V3 gm = toV3(g.a + g.b) * 0.5f;
+                    onField = onField || (gm.x - mid.x) * (gm.x - mid.x) + (gm.y - mid.y) * (gm.y - mid.y) < 4.0f;
+                }
+                if (onField) continue;
+                V3 along = V3{b.x - a.x, b.y - a.y, 0}.normalized();
+                V3 outward = V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized();
+                const float half = static_cast<float>(ring.gateWidth.toDouble()) / 2;
+                put(shut, mid - along * half, mid + along * half, outward, centre.z + static_cast<float>(ring.height.toDouble()) * 0.62f);
             }
-            if (onField) continue;
-            V3 along = V3{b.x - a.x, b.y - a.y, 0}.normalized();
-            V3 outward = V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized();
-            const float half = static_cast<float>(ring.gateWidth.toDouble()) / 2;
-            put(shut, mid - along * half, mid + along * half, outward, centre.z + static_cast<float>(ring.height.toDouble()) * 0.62f);
         }
     }
     uploadMeshInstances(gates_, shut);
@@ -1266,7 +1269,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
                     pushInstance(walls, a + along * mid + V3{0, 0, z0}, q, {half, thick / 2, h}, {1, 1, 1});
                 };
                 std::vector<std::pair<float, float>> spans;
-                if (e == ring.gateEdge) {
+                if (ring.gateOn(e)) {
                     spans = {{0, len / 2 - gate / 2}, {len / 2 + gate / 2, len}};
                     // The lintel over the gate passage.
                     pushInstance(walls, a + along * (len / 2) + V3{0, 0, lintel}, q, {gate / 2 + 0.5f, thick / 2, height - lintel}, {0.95f, 0.95f, 0.95f});
