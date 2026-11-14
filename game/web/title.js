@@ -356,7 +356,7 @@
   // engine's list: IllyriaGame.skirmishOffers), how well the computer plays, your colour. The same choices as the desktop's screen.
   const skirmishMaps = [
     { name: "Oakhaven Ford", note: "Hold the ford against the Red Hand", siege: false },
-    { name: "A village siege", note: "Storm a walled town of one gate and take its courtyard", siege: true },
+    { name: "A village siege", note: "", siege: true },
     { name: "A capital siege", note: "A castle of two doors and an inner bailey", siege: true },
     { name: "Open field", note: "Two armies on open ground", siege: false },
   ];

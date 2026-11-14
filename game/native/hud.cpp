@@ -39,7 +39,7 @@ struct SkirmishMap {
     bool siege;
 };
 constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "two armies across a river", false},
-                                  {"A village siege", "a walled town, one gate", true},
+                                  {"A village siege", "", true},
                                   {"A capital siege", "a castle of two doors and an inner bailey", true},
                                   {"Open field", "two armies on open ground", false}};
 constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
