@@ -16,6 +16,7 @@ constexpr float kEyeAboveGround = 0.4f;
 // bed under water is metres below the shore) is always eased, so crossing it does not bump the view.
 constexpr float kFocusNear = 80.0f, kFocusFar = 400.0f, kFocusSlowSeconds = 0.5f, kFocusQuickSeconds = 0.3f;
 constexpr float kFocusStep = 0.5f;
+constexpr float kFocusSettled = 0.01f, kAnchorSeconds = 4.0f;  // the zoom's anchor outlives the glide by this long at most
 constexpr float kPitchFar = 1.31f;   // ~75 degrees, near top-down at god view
 }  // namespace
 
@@ -142,12 +143,14 @@ void Camera::pan(float right, float forward) {
 void Camera::zoomAt(float factor, float px, float py) {
     if (!(factor > 0)) return;
     goalLog_ = std::clamp(goalLog_ - std::log(factor), std::log(kMinDistance), std::log(maxDistance_));
+    anchorLeft_ = kAnchorSeconds;
     // One anchor for a run of zooms about the same pixel, so the hills under the
     // eye as it moves never shift the plane the point is held on.
     if (anchored_ && std::abs(px - anchorPx_) < 2 && std::abs(py - anchorPy_) < 2) return;
     anchorPx_ = px;
     anchorPy_ = py;
     anchored_ = pickGround(px, py, anchor_) || pickPlane(px, py, target().z, anchor_);
+    anchorLeft_ = kAnchorSeconds;
 }
 
 void Camera::advance(float dtSeconds) {
@@ -156,7 +159,11 @@ void Camera::advance(float dtSeconds) {
     if (std::abs(goalLog_ - x) < 1e-4f && std::abs(speedLog_) < 1e-4f) {
         distance_ = std::exp(goalLog_);
         speedLog_ = 0;
-        anchored_ = false;
+        // The glide is over, but the view's centre height is still easing to the ground it now stands over, and that
+        // lifts or drops the eye: the anchor is held until it has settled (or a few seconds, whatever the land does).
+        anchorLeft_ -= dtSeconds;
+        if (anchored_ && anchorLeft_ > 0 && std::abs(groundAt(tx_, ty_) - focusZ_) > kFocusSettled) holdAnchor();
+        else anchored_ = false;
         return;
     }
     // Critically damped spring (Unity's SmoothDamp): stable for any step.

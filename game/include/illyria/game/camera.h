@@ -102,6 +102,7 @@ private:
     bool anchored_ = false;
     V3 anchor_{};
     float anchorPx_ = 0, anchorPy_ = 0;
+    float anchorLeft_ = 0;  // seconds the anchor may still be held after the glide ends
     float maxDistance_ = kMaxDistance;
     float cx_ = 0, cy_ = 0, radius_ = 0;
     float yaw_ = 0.0f;
