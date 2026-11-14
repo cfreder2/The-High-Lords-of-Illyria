@@ -1023,6 +1023,7 @@ private:
     // A soldier's share of its squad's route: the squad's one fastest route
     // from `from` to `goal`, with the soldier's file kept where the ground allows.
     void planMarch(Unit& unit, const Vec3& to, const Vec3& from, const Vec3& goal);
+    bool openStraight(const Vec3& a, const Vec3& b, Gait gait) const;
     void groundPath(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     // Routes onto, along and off castle wall-walks and their ramps (up and
     // down the ramps only, and round by the gates on the ground between);

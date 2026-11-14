@@ -20,7 +20,8 @@ enum class Op {
     Select,     // select all | N      (all: the soldiers on screen, as Ctrl+A; N: the squad card of that index)
     Shot,       // shot NAME [full]
     Stats,      // stats
-    Cards,      // cards              (one line: each squad card's index, name, men alive; the `select N` numbers)
+    Spread,     // spread             (one line: the local side's men: count, bounding box, 5-95 percent extent)
+    Cards,     // cards              (one line: each squad card's index, name, men alive; the `select N` numbers)
     Wait,       // wait SECONDS        (wall clock)
     WaitTicks,  // wait_ticks N        (simulation ticks, 30 a second)
     Speed,      // speed N

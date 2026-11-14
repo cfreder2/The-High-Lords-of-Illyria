@@ -371,6 +371,145 @@ TEST(pressed_on_the_selected_they_turn_where_they_stand) {
     b.pressEnd(c, px, py, true);
 }
 
+namespace {
+// A mixed army of about 200: foot, horse, heroes, missile troops and casters, engines.
+std::vector<UnitType> mixedArmy() {
+    std::vector<UnitType> t;
+    const auto add = [&](UnitType type, int n) { t.insert(t.end(), static_cast<size_t>(n), type); };
+    add(UnitType::HeavyInfantry, 50);
+    add(UnitType::Pikemen, 40);
+    add(UnitType::Warrior, 20);
+    add(UnitType::LightCavalry, 16);
+    add(UnitType::Hero, 4);
+    add(UnitType::Archers, 40);
+    add(UnitType::Wizards, 8);
+    add(UnitType::Journeyman, 6);
+    add(UnitType::Catapult, 6);
+    return t;
+}
+
+float meanY(const std::vector<FormationSlot>& s, const std::vector<UnitType>& types, illyria::game::Post post) {
+    float sum = 0;
+    int n = 0;
+    for (size_t i = 0; i < s.size(); ++i)
+        if (postOf(types[i]) == post) sum += s[i].pos.y, ++n;
+    return n > 0 ? sum / static_cast<float>(n) : 0;
+}
+}  // namespace
+
+TEST(a_big_mixed_army_forms_a_block_with_a_capped_front_and_ranks_by_post) {
+    const std::vector<UnitType> types = mixedArmy();
+    const int n = static_cast<int>(types.size());
+    CHECK(n >= 190);
+    const std::vector<FormationSlot> block = blockLayout(types);
+    CHECK(static_cast<int>(block.size()) == n);
+    // The front: capped by a rule of the army's size, in the order of 30 to 60 m, not one rank of 200.
+    float lo = 1e9f, hi = -1e9f, front = -1e9f, back = 1e9f;
+    for (const FormationSlot& s : block) {
+        lo = std::min(lo, s.pos.x), hi = std::max(hi, s.pos.x);
+        front = std::max(front, s.pos.y), back = std::min(back, s.pos.y);
+    }
+    CHECK(blockFrontage(n) <= 25);
+    CHECK(blockFrontage(4) == 20);
+    CHECK(hi - lo >= 25.0f);
+    CHECK(hi - lo <= 65.0f);
+    CHECK(front - back > 15.0f);  // many ranks deep
+    // Nobody is on top of another.
+    CHECK(minGap(block) > 1.7f);
+    // The foot in front, the heroes behind them, then the missile troops and casters, the engines last.
+    using illyria::game::Post;
+    const float foot = meanY(block, types, Post::Foot), hero = meanY(block, types, Post::Hero), rear = meanY(block, types, Post::Rear),
+                engines = meanY(block, types, Post::Siege);
+    CHECK(foot > hero);
+    CHECK(hero > rear);
+    CHECK(rear > engines);
+    // The horse on the flanks of the front, outside the foot; the heroes in the middle.
+    float footHalf = 0, horseNear = 1e9f, heroSpread = 0;
+    for (size_t i = 0; i < block.size(); ++i) {
+        if (postOf(types[i]) == Post::Foot) footHalf = std::max(footHalf, std::abs(block[i].pos.x));
+        if (postOf(types[i]) == Post::Hero) heroSpread = std::max(heroSpread, std::abs(block[i].pos.x));
+    }
+    for (size_t i = 0; i < block.size(); ++i)
+        if (postOf(types[i]) == Post::Cavalry) horseNear = std::min(horseNear, std::abs(block[i].pos.x));
+    CHECK(horseNear > footHalf);
+    CHECK(heroSpread < footHalf * 0.5f);
+    // The same army makes the same block, and a lone squad is no block (blockFits only for the ranks of a big army).
+    const std::vector<FormationSlot> again = blockLayout(types);
+    for (size_t i = 0; i < block.size(); ++i) CHECK(again[i].pos.x == block[i].pos.x && again[i].pos.y == block[i].pos.y);
+}
+
+TEST(the_whole_army_marched_with_a_facing_forms_a_block_not_one_long_rank) {
+    Battle b(42);
+    std::vector<illyria::sim::EntityId> all;
+    for (const Squad& q : b.squads())
+        if (b.controllable(q)) all.insert(all.end(), q.members.begin(), q.members.end());
+    CHECK(all.size() > 100);
+    b.select(all);
+    run(b, 1);
+    // The places they are sent to (where each man's march ends), across the facing (the army faces east: north to south).
+    const auto spanOf = [&](bool across) {
+        std::vector<float> v;
+        for (illyria::sim::EntityId id : all) {
+            const illyria::sim::Unit& u = b.world().units()[id - 1];
+            if (u.alive() && u.hasMoveTarget) v.push_back(static_cast<float>((across ? u.moveTarget.y : u.moveTarget.x).toDouble()));
+        }
+        std::sort(v.begin(), v.end());
+        return v.size() < 10 ? 0.0f : v[v.size() - 1] - v[0];
+    };
+    float before = 0, lo = 1e9f, hi = -1e9f;
+    for (illyria::sim::EntityId id : all) lo = std::min(lo, toV3(b.world().units()[id - 1].pos).y), hi = std::max(hi, toV3(b.world().units()[id - 1].pos).y);
+    before = hi - lo;
+    CHECK(before > 120.0f);  // the Ford's deployment: one long line along the bank
+    b.orderMoveFacing(middleOf(b, all) + V3{-40, 0, 0}, V3{1, 0, 0});
+    run(b, 0.2);
+    const float front = spanOf(true), depth = spanOf(false);
+    CHECK(front > 20.0f);
+    CHECK(front <= 65.0f);  // the front is capped
+    CHECK(depth > 12.0f);   // and it is many ranks deep
+    // Foot in front (east, the facing), the missile troops behind (west).
+    float foot = 0, bows = 0;
+    int nf = 0, nb = 0;
+    for (illyria::sim::EntityId id : all) {
+        const illyria::sim::Unit& u = b.world().units()[id - 1];
+        const Post post = postOf(static_cast<UnitType>(u.stats.type));
+        if (post == Post::Foot) foot += static_cast<float>(u.moveTarget.x.toDouble()), ++nf;
+        if (post == Post::Rear) bows += static_cast<float>(u.moveTarget.x.toDouble()), ++nb;
+    }
+    CHECK(nf > 0 && nb > 0);
+    CHECK(foot / static_cast<float>(nf) > bows / static_cast<float>(nb) + 3.0f);
+}
+
+TEST(a_block_ordered_across_open_ground_arrives_in_time_and_keeps_its_width) {
+    // The Siege's plain (the garrison holds its walls): the whole army, a block, to a point 80 m on.
+    Battle b(42, Scenario::Siege);
+    std::vector<illyria::sim::EntityId> all;
+    for (const Squad& q : b.squads())
+        if (b.controllable(q)) all.insert(all.end(), q.members.begin(), q.members.end());
+    b.select(all);
+    run(b, 1);
+    const V3 to = middleOf(b, all) + V3{80, 12, 0};
+    b.orderMove(to);
+    float headT = -1, tailT = -1;
+    for (int t = 1; t <= 150; ++t) {
+        run(b, 1);
+        float nearest = 1e9f;
+        for (illyria::sim::EntityId id : all)
+            if (b.world().units()[id - 1].alive()) nearest = std::min(nearest, (toV3(b.world().units()[id - 1].pos) - to).length());
+        if (headT < 0 && nearest < 8.0f) headT = static_cast<float>(t);
+        if (tailT < 0 && (middleOf(b, all) - to).length() < 8.0f) tailT = static_cast<float>(t);
+    }
+    CHECK(headT > 0 && headT <= 60.0f);  // 80 m at the army's pace (it was 90 s and more with a single lane down the road)
+    CHECK(tailT > 0 && tailT <= 120.0f);
+    // The army holds a block's width across the way it went, never a column's, and never a thin line.
+    std::vector<float> ys;
+    for (illyria::sim::EntityId id : all)
+        if (b.world().units()[id - 1].alive()) ys.push_back(toV3(b.world().units()[id - 1].pos).y);
+    std::sort(ys.begin(), ys.end());
+    const float width = ys[ys.size() * 95 / 100] - ys[ys.size() * 5 / 100];
+    CHECK(width >= 15.0f);
+    CHECK(width <= 80.0f);
+}
+
 TEST(a_selection_marches_as_it_stands) {
     // Tapped somewhere else, knights and archers keep their places and their
     // front; given a new front, the whole of it turns, the archers still behind.

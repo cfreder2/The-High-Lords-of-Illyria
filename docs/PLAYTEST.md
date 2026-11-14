@@ -67,6 +67,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `wheel DY` | wheel notches at the pointer; positive rolls away from you (zooms in), negative toward (out). |
 | `select all` | every soldier your side commands (Ctrl+A takes only those on screen; use `key ctrl down` ... for that). |
 | `select N` | the squad card with index N: what clicking that card does. `cards` lists the indices. |
+| `spread` | prints one line: how many of your men are alive and their extent: `x=MIN..MAX (w width, 5-95 the middle nine in ten)`, the same for `y`, and the median position. For frontage and depth of a march. |
 | `cards` | prints one line: `cards 0:Name(type)=alive/total* ...` (`*` all selected, `+` some; `(ally)` not yours to order). |
 | `stats` | prints one line of `key=value`: see below. |
 | `shot NAME [full]` | writes `NAME.png` (into `--play-out`). The shot is of the frame as the player sees it, HUD included. |
