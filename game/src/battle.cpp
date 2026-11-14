@@ -315,12 +315,9 @@ void Battle::testMove(sim::EntityId unit, const V3& to) {
 }
 
 void Battle::holdGates(sim::PlayerId holder) {
-    // The computer's garrison keeps them (World::keepGates): the archers go up on the walls, the foot form behind the doors;
-    // the player's are his to open and shut.
-    for (size_t i = 0; i < world_->gates().size(); ++i) {
-        world_->setGateHolder(i, holder);
-        world_->setGateGarrisoned(i, holder != kPlayer);
-    }
+    // Every gate is kept by its holder's garrison (World::keepGate, the Conquest's rule too): the archers go up on the walls, the
+    // foot form behind the doors; the player's keepers are his idle men inside his walls, and his hand on the gate overrules them.
+    for (size_t i = 0; i < world_->gates().size(); ++i) world_->keepGate(i, holder, holder == kPlayer);
 }
 
 int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) const {

@@ -245,7 +245,7 @@ TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
     const Region& r = *c.world()->region();
     const size_t gate = gateNear(r, is.local(town.pos));
     CHECK(c.world()->gates()[gate].holder == 0);
-    CHECK(!c.world()->gates()[gate].garrisoned);
+    CHECK(c.world()->gates()[gate].garrisoned && !c.world()->gates()[gate].recalls);  // (kept for his idle men inside his walls; the gate is his hand's)
     const uint32_t id = c.raise(0, cap.cx, cap.cy, {UnitType::Pikemen});
     c.step();
     EntityId man = 0;
@@ -274,7 +274,8 @@ TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
     cfg.region = window;
     World w(cfg);
     const size_t wgate = gateNear(*window, {town.pos.x - window->origin().x, town.pos.y - window->origin().y, town.pos.z});
-    w.setGateHolder(wgate, 0);
+    w.keepGate(wgate, 0, true);  // (the one rule: the player's gate is kept for his idle men, his pin overruling)
+    CHECK(w.gates()[wgate].garrisoned == c.world()->gates()[gate].garrisoned && w.gates()[wgate].recalls == c.world()->gates()[gate].recalls);
     const Vec3 yard = {town.castle.courtyard.x - window->origin().x, town.castle.courtyard.y - window->origin().y, town.castle.courtyard.z};
     const EntityId a = w.spawnUnit(0, yard, {Fixed::one(), Fixed::zero(), Fixed::zero()}, unitStats(UnitType::Pikemen));
     const Gate& wg = window->gates()[wgate];

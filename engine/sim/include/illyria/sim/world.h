@@ -655,6 +655,13 @@ public:
     // A garrison keeps the gate (keepGates, world_keep.cpp); the pin is the holder's hand on it (Command::SetGate).
     void setGateGarrisoned(size_t gate, bool on, bool recallsOutside = true);
     void setGatePin(size_t gate, Command::GatePin pin);
+    // The one rule for whose gate it is and who keeps it, in a Conquest town and a Skirmish castle alike: every gate is kept by
+    // its holder's garrison (keepGates); a human holder's keepers are his idle men inside his walls only, and his pin overrules
+    // them; a computer's or a neutral town's also take in idle men outside the doors.
+    void keepGate(size_t gate, PlayerId holder, bool humanHolder) {
+        setGateHolder(gate, holder);
+        setGateGarrisoned(gate, true, !humanHolder);
+    }
     // Whether this man is one of a garrisoned gate's keepers (inside its walls, near it, on its side): the gate's strategy
     // gives him his station, so no other thinking (the computer lords' campaign AI) orders him about.
     bool gateKeeper(const Unit& u) const;

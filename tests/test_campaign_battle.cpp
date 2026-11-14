@@ -467,13 +467,21 @@ TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no
     const World& w = *isl.c.presentedWorld();
     size_t peakPresent = 0, reused = 0, shown = 0;
     std::vector<uint32_t> gen;
+    // The most men the world held at once is found at every point a step puts men in or takes them out (before and after the
+    // world's own step as well as after the campaign's), not once a campaign step: a man put in and another taken out within one
+    // campaign step (a stack seated or a place given up) would leave a once-a-step sample a man short of the world's real peak.
+    const auto sample = [&] {
+        size_t present = 0;
+        for (const Unit& u : w.units()) present += u.present();
+        peakPresent = std::max(peakPresent, present);
+    };
+    isl.c.onWorldStep([&] { sample(); isl.b->beforeWorldStep(); }, [&] { isl.b->afterWorldStep(); sample(); }, [&] { isl.b->forgetMen(); });
     for (int t = 0; t < 20 * Campaign::kTicksPerDay; ++t) {
+        sample();
         isl.c.step();
         if (t % 60 == 0) isl.frame();
         const auto& units = w.units();
-        size_t present = 0;
-        for (const Unit& u : units) present += u.present();
-        peakPresent = std::max(peakPresent, present);
+        sample();
         if (gen.size() < units.size()) gen.resize(units.size(), 0);
         for (size_t i = 0; i < units.size(); ++i) {
             const uint32_t g = w.generation(units[i].id);
