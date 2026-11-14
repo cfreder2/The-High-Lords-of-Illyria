@@ -24,7 +24,7 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 | Light Cavalry | 4 | 85 | 2.50 | 0.90 | 3.0 | 7.0 | 13 | slash | 1.20 s | 0.8 | 3 |  | 100% | mounted; +3% in the open;  |
 | Heavy Cavalry | 6 | 130 | 2.70 | 0.95 | 4.0 | 5.5 | 20 | pierce | 1.50 s | 0.8 | 5 | 40% | 80% | mounted; +5% in the open;  |
 | Wolf Riders | 5 | 75 | 1.90 | 0.80 | 2.0 | 7.5 | 12 | slash | 1.10 s | 0.6 | 2 |  | 100% | mounted;  |
-| Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 2.4 | 45 | blunt | 2.20 s | 1.6 | 12 |  | 60% |  |
+| Giants | 6 | 350 | 5.50 | 1.20 | 8.0 | 3.0 | 45 | blunt | 2.20 s | 1.6 | 12 |  | 60% |  |
 | Minotaurs | 6 | 230 | 3.00 | 0.90 | 4.0 | 3.0 | 32 | cleave | 1.70 s | 1.0 | 8 |  | 60% |  |
 | Giant Spiders | 5 | 120 | 1.30 | 1.10 | 2.0 | 5.0 | 18 | pierce | 1.00 s | 0.6 | 0 |  | 70% |  |
 | Griffins | 6 | 150 | 2.20 | 1.20 | 3.0 | 3.0 | 24 | slash | 1.20 s | 0.8 | 4 |  | 70% |  |
@@ -35,14 +35,14 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 | Dragons | 9 | 650 | 4.50 | 2.50 | 15.0 | 2.5 | 40 | cleave | 1.80 s | 1.2 | 10 |  | 25% |  |
 | Devils | 8 | 270 | 3.00 | 1.00 | 4.0 | 3.2 | 36 | cleave | 1.50 s | 1.0 | 6 |  | 20% |  |
 | Demons | 8 | 320 | 3.60 | 1.10 | 5.0 | 3.4 | 40 | cleave | 1.60 s | 1.2 | 8 |  | 30% |  |
-| Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.6 | 11 | slash | 1.40 s | 0.6 | 0 |  | never | no blood;  |
+| Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.8 | 11 | slash | 1.40 s | 0.6 | 0 |  | never | no blood;  |
 | Archons | 8 | 170 | 2.40 | 0.80 | 2.0 | 2.8 | 26 | slash | 1.20 s | 0.8 | 3 |  | 30% |  |
 | Hero | 4 | 260 | 2.00 | 0.50 | 2.0 | 2.8 | 30 | slash | 1.10 s | 0.8 | 3 | 55% | never |  |
 | Dwarven Grenadiers | 4 | 50 | 1.30 | 0.45 | 1.0 | 1.8 | 5 | blunt | 1.20 s | 0.5 | 0 |  | 100% |  |
 | Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | blunt | 1.20 s | 0.5 | 0 |  | 120% | heals 35 every 2.5 s, 6 charges;  |
 | Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | slash | 1.20 s | 0.6 | 0 | 65% | 85% |  |
 | Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | cleave | 0.93 s | 0.6 | 0 |  | 35% |  |
-| Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 0.8 | 0 |  | 0.00 s | 0.0 | 0 |  | 110% | no blood;  |
+| Catapults | 3 | 380 | 2.50 | 1.60 | 25.0 | 1.4 | 0 |  | 0.00 s | 0.0 | 0 |  | 110% | no blood;  |
 | Hyena-folk | 3 | 35 | 1.55 | 0.40 | 0.9 | 6.0 | 8 | slash | 1.00 s | 0.9 | 0 |  | never |  |
 
 ## Missile troops
@@ -57,8 +57,8 @@ A Molotov shatters where it strikes into a burst of fire, and its fire sets off 
 | Unit | Missile | Wounds | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Archers | arrow | pierce | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
-| Wizards | fireball | fire | 24 m/s | 9.0 s |  | 50 m | 45 m |  | 4 m |  | 3.5 m | 40 |  |
-| Dragons | fireball | fire | 30 m/s | 6.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 50 |  |
+| Wizards | fireball | fire | 24 m/s | 8.0 s |  | 50 m | 45 m |  | 4 m |  | 3.5 m | 50 |  |
+| Dragons | fireball | fire | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
 | Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
 | Catapults | stone | blunt | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 

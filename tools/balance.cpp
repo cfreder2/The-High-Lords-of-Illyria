@@ -29,6 +29,9 @@ double goldPer(UnitType t) { return static_cast<double>(Conquest::price(t)) / st
 // Soldiers of `t` that `gold` buys (at least one).
 int soldiersFor(UnitType t, int gold) { return std::max(1, static_cast<int>(std::lround(gold / goldPer(t)))); }
 
+// BAL_MEN_A / BAL_MEN_B in the environment fix the numbers in a duel, to try a price without changing it.
+int gMen[2] = {0, 0};
+
 bool ranged(UnitType t) { return unitStats(t).ranged.muzzleSpeed > Fixed::zero(); }
 
 // One army: `n` soldiers of a type in ranks, the front rank at x = front, facing east (dir 1) or west (-1).
@@ -94,8 +97,8 @@ Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int m
     cfg.seed = seed;
     World w(cfg);
     const double dist = 45;
-    deploy(w, {pa, a, soldiersFor(a, gold), aWest ? -dist : dist, aWest ? 1.0 : -1.0},
-           {pb, b, soldiersFor(b, gold), aWest ? dist : -dist, aWest ? -1.0 : 1.0}, variant / 4 % 2 == 0);
+    deploy(w, {pa, a, gMen[0] ? gMen[0] : soldiersFor(a, gold), aWest ? -dist : dist, aWest ? 1.0 : -1.0},
+           {pb, b, gMen[1] ? gMen[1] : soldiersFor(b, gold), aWest ? dist : -dist, aWest ? -1.0 : 1.0}, variant / 4 % 2 == 0);
     for (int t = 0; t < maxSeconds * kTicksPerSecond; ++t) {
         w.step({});
         if (t % 15 == 0 && (alive(w, pa) == 0 || alive(w, pb) == 0)) break;
@@ -259,6 +262,8 @@ int byName(const char* s) {
 
 int main(int argc, char** argv) {
     const char* mode = argc > 1 ? argv[1] : "matrix";
+    if (const char* e = std::getenv("BAL_MEN_A")) gMen[0] = std::atoi(e);
+    if (const char* e = std::getenv("BAL_MEN_B")) gMen[1] = std::atoi(e);
     if (!std::strcmp(mode, "speeds")) speeds();
     else if (!std::strcmp(mode, "march")) march();
     else if (!std::strcmp(mode, "trace") && argc > 3)

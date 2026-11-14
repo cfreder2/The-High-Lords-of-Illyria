@@ -52,7 +52,8 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    constexpr uint64_t kSheet = 0xf46df2f1066b8a8e;
+    // (was 0xf46df2f1066b8a8e before the balance pass: giants 3.0 m/s, undead 1.8, catapults 1.4, wizard and dragon fireballs, docs/BALANCE.md)
+    constexpr uint64_t kSheet = 0xc0ea5f002036ab67;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }

@@ -41,16 +41,24 @@ const Realm& realm(uint8_t side) {
 // them takes three days and five gold a point of strength to muster.
 Conquest::Option trained(UnitType t) {
     switch (t) {
-        case T::LightInfantry: return {t, 2, 12};
-        case T::HeavyInfantry: return {t, 4, 20};
-        case T::Archers: return {t, 4, 20};
-        case T::Pikemen: return {t, 4, 20};
-        case T::LightCavalry: return {t, 5, 28};
-        case T::HeavyCavalry: return {t, 6, 36};
-        case T::DwarfGrenadier: return {t, 4, 24};  // where the retired legion was trained
-        case T::WolfRiders: return {t, 5, 28};
+        case T::LightInfantry: return {t, 2, 14};
+        case T::HeavyInfantry: return {t, 4, 17};
+        case T::Archers: return {t, 4, 30};
+        case T::Pikemen: return {t, 4, 18};
+        case T::LightCavalry: return {t, 5, 20};
+        case T::HeavyCavalry: return {t, 6, 26};
+        case T::DwarfGrenadier: return {t, 4, 32};  // where the retired legion was trained
+        case T::WolfRiders: return {t, 5, 20};
         case T::Warrior: return {t, 4, 24};
         case T::Catapult: return {t, 6, 40};  // dear and slow to build, as Warlords II's siege engines
+        // The levies, dearer or cheaper than a point of strength is worth (docs/BALANCE.md).
+        case T::Berserker: return {t, 3, 40};
+        case T::Archons: return {t, 3, 60};
+        case T::Wizards: return {t, 3, 30};
+        case T::Elephants: return {t, 3, 25};
+        case T::Demons: return {t, 3, 26};
+        case T::Dragons: return {t, 3, 40};
+        case T::Unicorns: return {t, 3, 24};
         default: return {t, 3, 5 * warlordsStrength(t)};  // a levy
     }
 }
