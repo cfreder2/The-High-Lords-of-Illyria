@@ -90,6 +90,11 @@ TEST(card_layout_never_drops_a_squad) {
     CHECK(!l.paged && l.rows == 2 && l.width == 132);
     l = layoutCards(11, 1600 - 16);  // what fitted before: still one full row
     CHECK(l.rows == 1 && l.width == 132);
+    // The HUD's one row: 18 squads page behind a last card, and the strip is one card high.
+    l = layoutCards(18, 1600 - 16, 1);
+    CHECK(l.rows == 1 && l.paged && l.perPage * l.pages >= 18 && l.perPage + 1 <= l.columns);
+    l = layoutCards(11, 1600 - 16, 1);
+    CHECK(l.rows == 1 && !l.paged && l.width == 132);
     l = layoutCards(200, 1280 - 16);  // too many for three rows: paged
     CHECK(l.paged && l.pages > 1);
 }

@@ -132,7 +132,10 @@ int blockFrontage(int count);
 // Where `types[i]` stands in the block (x right, y forward, centred), as in
 // formationLayout; the places of one post are interchangeable, so which man
 // takes which is for the caller (Battle::planBlock) to decide.
-std::vector<FormationSlot> blockLayout(const std::vector<sim::UnitType>& types);
+// `front`: men abreast of the whole front, the horse on the wings included (0: blockFrontage); kept between 8 and the army.
+std::vector<FormationSlot> blockLayout(const std::vector<sim::UnitType>& types, int front = 0);
+// The men abreast a facing drag of `metres` makes (0 when too short to mean a width: the usual block).
+int dragFrontage(float metres);
 
 // Decals derived only from simulation events, so every peer accumulates the
 // same ones (docs/GAME_DESIGN.md §5.5).
@@ -362,7 +365,8 @@ public:
     void orderMove(const V3& to);
     // March there and face that way on arrival (pressed there and dragged
     // the way to face: pressEnd), the whole arrangement turned to it.
-    void orderMoveFacing(const V3& to, const V3& facing);
+    // `frontMetres`: the drag's length, the width the front is made (0: the usual block).
+    void orderMoveFacing(const V3& to, const V3& facing, float frontMetres = 0);
     void stopSelected();
     // Planning (client side only; the sim and the other peers know nothing of it until the release). While on, the orders a
     // gesture gives (a right click, a facing drag, an attack, a formation, scatter, raid) are not sent but held, per man, and
@@ -728,11 +732,11 @@ private:
     // The block (blockLayout) of a big army, men placed by post and then by where they stand.
     static bool blockFits(Formation formation, int count);
     bool standsTooWide(const std::vector<sim::EntityId>& units) const;
-    std::vector<MarchOrder> planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const;
+    std::vector<MarchOrder> planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, int front = 0) const;
     // A formation at `to`: the soldiers nearest the front take the front
     // ranks, keeping their order left to right, so no one crosses another.
     std::vector<MarchOrder> planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
-                                          const V3& facing) const;
+                                          const V3& facing, int front = 0) const;
     // An arrangement moved to `to` and turned to face `facing`; within each
     // squad the men take its places by the least walking in all, so none
     // crosses another and no squad takes another's.
@@ -744,8 +748,8 @@ private:
     // Places on a rock, a tree or a house moved just clear of it, where a man can stand.
     void keepClear(std::vector<MarchOrder>& plan) const;
     // The selection's march (or these of it): as they stand or in its formation.
-    std::vector<MarchOrder> planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const;
-    void marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force);
+    std::vector<MarchOrder> planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing, int front = 0) const;
+    void marchSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3* facing, bool force, int front = 0);
     // The orders out, everyone arriving together at the slowest one's pace
     // (times `pace`), all on the one route from `from` to `to`; and where each
     // was sent remembered (slots_).

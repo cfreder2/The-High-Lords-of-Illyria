@@ -127,7 +127,7 @@ float fogFactor(float d) {
 // Degenerate vertex: nothing is rasterised.
 const vec4 kCulled = vec4(2.0, 2.0, 2.0, 1.0);
 
-// 1 in full sun, toward 0 in shadow. Five taps of hardware 2x2 PCF.
+// 1 in full sun, toward 0 in shadow. Five taps of hardware 2x2 PCF close in, one from a high camera.
 float shadowAt(vec3 world, vec3 n) {
     if (!feature(kFeatShadows)) return 1.0;
     float fromFocus = distance(world.xy, uFocus);
@@ -137,11 +137,16 @@ float shadowAt(vec3 world, vec3 n) {
     vec3 c = l.xyz / l.w * 0.5 + 0.5;
     if (any(lessThan(c.xy, vec2(0.0))) || any(greaterThan(c.xy, vec2(1.0)))) return 1.0;
     float t = uShadowInfo.x, z = c.z - uShadowInfo.w;
-    float s = texture(uShadowMap, vec3(c.xy, z)) * 0.4;
-    s += texture(uShadowMap, vec3(c.xy + vec2(t, t), z)) * 0.15;
-    s += texture(uShadowMap, vec3(c.xy + vec2(-t, t), z)) * 0.15;
-    s += texture(uShadowMap, vec3(c.xy + vec2(t, -t), z)) * 0.15;
-    s += texture(uShadowMap, vec3(c.xy + vec2(-t, -t), z)) * 0.15;
+    float s = texture(uShadowMap, vec3(c.xy, z));
+    // From a high camera a map texel is no more than a pixel or two across, and the one hardware-filtered tap is as soft as
+    // the five were (they were there for the close camera, where a texel is several pixels): a fifth of the reads.
+    if (uCamDist < 110.0) {
+        s *= 0.4;
+        s += texture(uShadowMap, vec3(c.xy + vec2(t, t), z)) * 0.15;
+        s += texture(uShadowMap, vec3(c.xy + vec2(-t, t), z)) * 0.15;
+        s += texture(uShadowMap, vec3(c.xy + vec2(t, -t), z)) * 0.15;
+        s += texture(uShadowMap, vec3(c.xy + vec2(-t, -t), z)) * 0.15;
+    }
     return mix(s, 1.0, smoothstep(uShadowInfo.y, uShadowInfo.z, fromFocus));
 }
 float valueNoise2(vec2 p) {
@@ -517,8 +522,6 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
     float water = step(1.0, kinds.w + farShoreWobble(p));
     float slope = 1.0 - n.z;
     // Meadows: lush and dry patches, as on the battlefield.
-    float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
-    vec3 meadow = moorland(mix(vec3(0.47, 0.45, 0.24), vec3(0.22, 0.35, 0.15), lush), p) * (0.9 + 0.2 * valueNoise2(p * 0.4));
     float land = 1.0 - water;
     float pxm = uPxScale * distance(uEye, world);  // metres a pixel spans here: patterns finer than a pixel or two fade to their mean
     // Farmland on the gentle plain: a patchwork of fields (pasture, crops, plough and hay), rows in each, hedged at the edges. The
@@ -540,7 +543,11 @@ vec3 farAlbedo(vec3 base, vec4 kinds, vec3 world, inout vec3 n) {
         crop = mix(crop, vec3(0.12, 0.20, 0.07), hedge * 0.7);
         albedo = mix(albedo, mix(albedo, crop, 0.75), farm);
     }
-    albedo = mix(albedo, mix(albedo, meadow, 0.7), open * (1.0 - farm));
+    if (open * (1.0 - farm) > 0.0) {  // (the meadow's noise only where there is meadow: woods, fields, rock and water never show it)
+        float lush = valueNoise2(p * 0.045 + 3.1) * 0.65 + valueNoise2(p * 0.13 + 8.7) * 0.35;
+        vec3 meadow = moorland(mix(vec3(0.47, 0.45, 0.24), vec3(0.22, 0.35, 0.15), lush), p) * (0.9 + 0.2 * valueNoise2(p * 0.4));
+        albedo = mix(albedo, mix(albedo, meadow, 0.7), open * (1.0 - farm));
+    }
     // A wood throws its shadow across the open ground beside it, away from the sun: the forest's edge reads.
     if (open > 0.0 && forest < 0.5) {
         float behind = forestCover(p + normalize(kSun.xy) * (6.0 + pxm * 2.0));
@@ -701,6 +708,9 @@ vec2 rockCoord(vec2 p) {
 void main() {
 #ifdef DETAIL_FADE
     if (detailWeight(vWorld.xy) <= hash12(floor(gl_FragCoord.xy)) * 0.92) discard;  // cross-fading with the coarse land
+#endif
+#ifdef DETAIL_CUT
+    if (detailWeight(vWorld.xy) > hash12(floor(gl_FragCoord.xy)) * 0.92 + 0.08) discard;  // the close-up land is drawn there
 #endif
     vec3 n = normalize(vNormal);
     float slope = 1.0 - n.z;
@@ -875,11 +885,11 @@ void main() {
     {
         ivec2 cc = ivec2(floor(p / uCellSize));
         float surf = -1e9, nearby = 0.0;  // and how much wet sample is about (each fades out with its distance)
-        // The 4x4 samples about p (the 2x2 when the ground detail is off): every wet one within a cell counts, fading to
-        // nothing at a cell's distance, so the band follows the waterline and not the grid's cells.
-        bool wide = feature(kFeatGroundDetail);
-        for (int k = 0; k < (wide ? 16 : 4); ++k) {
-            ivec2 o = wide ? ivec2(k & 3, k >> 2) - ivec2(1) : ivec2(k & 1, k >> 1);
+        // The 2x2 samples about p: every wet one within a cell counts, fading to nothing at a cell's distance, so the band
+        // follows the waterline and not the grid's cells. (The ring of twelve beyond them is a whole cell or more from p,
+        // where the weight is already nothing: it was fetched for no pixel's sake.)
+        for (int k = 0; k < 4; ++k) {
+            ivec2 o = ivec2(k & 1, k >> 1);
             float w = texelFetch(uWaterTex, texCell(vec2(cc + o), uCells), 0).r;
             if (w > -1000.0) {
                 float here = 1.0 - smoothstep(0.25 * uCellSize, uCellSize, distance(p, vec2(cc + o) * uCellSize));
@@ -942,6 +952,9 @@ inline const char* kTerrainFs = ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
 // The close-up land off the battlefield: the same, cross-fading at its edges
 // (a separate program, so the battlefield's ground never pays for discard).
 inline const char* kPatchFs = "#define DETAIL_FADE 1\n" ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
+// The battlefield's own land, giving way where the close-up land is drawn over it: without the cut every pixel of the close-up
+// land was shaded twice, the whole ground shader for nothing (the cut is the coarse land's, as kFarCutFs is the far land's).
+inline const char* kTerrainCutFs = "#define DETAIL_CUT 1\n" ILLYRIA_LAND_FS ILLYRIA_TERRAIN_FS;
 #undef ILLYRIA_TERRAIN_FS
 
 // ---------------------------------------------------------------- decals
@@ -2746,8 +2759,10 @@ void main() {
     // Open sea seen from higher up is the far sea's own (farSea), not a flat deep blue in a square: the battlefield's edge
     // must not show against the sea around it.
     float seaHere = seaWeight(vWorld.z);
-    c = mix(c, farSea(p, vWorld, depth), seaHere);
-    alpha = mix(alpha, smoothstep(-0.02, 0.12, depth), seaHere);
+    if (seaHere > 0.0) {  // (a river or a lake is none of it: the sea's whole shader, chop and foam, only where there is sea)
+        c = mix(c, farSea(p, vWorld, depth), seaHere);
+        alpha = mix(alpha, smoothstep(-0.02, 0.12, depth), seaHere);
+    }
     // The waves of the shore over the shallows (shoreSwash, as on the land beside them).
     float energy = shoreEnergy(vWorld.z, speed);
     if (energy > 0.01 && depth < 1.4) {
@@ -2845,7 +2860,7 @@ void main() {
             float bank = 1.0 - smoothstep(0.0, 7.0, -sd);
             c = mix(c, c * vec3(0.62, 0.58, 0.52), bank * 0.75);
         }
-        c = landGrids(c, p);  // the grid is the land's; the sea goes unmarked
+        // c = landGrids(c, p);
     }
     // Open water: coloured by depth, with swells, chop, surf and glints.
     if (wetMask > 0.0 && detail) {

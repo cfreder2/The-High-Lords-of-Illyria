@@ -438,6 +438,28 @@ TEST(a_big_mixed_army_forms_a_block_with_a_capped_front_and_ranks_by_post) {
     for (size_t i = 0; i < block.size(); ++i) CHECK(again[i].pos.x == block[i].pos.x && again[i].pos.y == block[i].pos.y);
 }
 
+TEST(a_dragged_frontage_sets_the_width_of_the_block) {
+    using illyria::game::dragFrontage;
+    CHECK(dragFrontage(3.0f) == 0);  // a short drag only turns the army
+    CHECK(dragFrontage(88.0f) == 40);
+    const std::vector<UnitType> types = mixedArmy();
+    const auto width = [&](int front) {
+        float lo = 1e9f, hi = -1e9f;
+        for (const FormationSlot& s : blockLayout(types, front)) lo = std::min(lo, s.pos.x), hi = std::max(hi, s.pos.x);
+        return hi - lo;
+    };
+    const float usual = width(0), wide = width(dragFrontage(150.0f)), narrow = width(dragFrontage(30.0f));
+    CHECK(wide > usual * 1.4f);
+    CHECK(narrow < usual * 0.8f);
+    CHECK(wide >= 80.0f);  // 150 m dragged: ranks balanced to the foot, so a front well past the usual 40 m
+    CHECK(wide <= 170.0f);
+    // The foot still in front, the missile troops behind, the horse out on the wings.
+    using illyria::game::Post;
+    const std::vector<FormationSlot> block = blockLayout(types, dragFrontage(150.0f));
+    CHECK(meanY(block, types, Post::Foot) > meanY(block, types, Post::Rear));
+    CHECK(minGap(block) > 1.7f);
+}
+
 TEST(the_whole_army_marched_with_a_facing_forms_a_block_not_one_long_rank) {
     Battle b(42);
     std::vector<illyria::sim::EntityId> all;

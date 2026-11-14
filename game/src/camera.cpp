@@ -176,6 +176,15 @@ void Camera::advance(float dtSeconds) {
     holdAnchor();
 }
 
+void Camera::settle() {
+    distance_ = std::clamp(std::exp(goalLog_), kMinDistance, maxDistance_);
+    speedLog_ = 0;
+    holdAnchor();
+    focusZ_ = groundAt(tx_, ty_);
+    holdAnchor();
+    anchored_ = false;
+}
+
 void Camera::holdAnchor() {
     if (!anchored_) return;
     for (int i = 0; i < 2; ++i) {  // twice: the target's height moves the eye as it slides
