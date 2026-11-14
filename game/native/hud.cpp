@@ -920,7 +920,7 @@ void Hud::draw(Overlay& o, float w, float h) {
     // The selection and the squad cards, bottom.
     float selEnd = 0;
     if (sel > 0) {
-        std::snprintf(buf, sizeof buf, "%zu selected  %s  %s", sel, hud.str("selLabel").c_str(), hud.str("formation").c_str());
+        std::snprintf(buf, sizeof buf, "%zu selected  %s", sel, hud.str("selLabel").c_str());
         selEnd = o.width(buf, 13) + 20;
         o.rect(0, cardsTop - 28, selEnd, 22, rgba(0x000000, 150));
         o.text(10, cardsTop - 24, buf, kGold, 13);
