@@ -294,6 +294,7 @@ void Runner::execute(const Command& c) {
             block_ = Block::Shot;
             break;
         case Op::Stats: stats(); break;
+        case Op::Spread: std::printf("%s\n", illyria_army_spread()), std::fflush(stdout); break;
         case Op::Cards: cards(); break;
         case Op::Wait:
             // Waits follow on from one another without drift: a shot's own time is part of the wait before it.

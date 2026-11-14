@@ -119,6 +119,21 @@ const sim::Continent::City& siegeTown(const sim::Continent& c);
 enum class Role { Melee, Ranged, Bomber, Caster, Healer, Flier, Siege, Scout };
 Role roleOf(sim::UnitType type);
 
+// A big army ordered into a rank formation (Line, Double line, Loose) or kept
+// as it stands when that is one long rank forms a block instead, as in Myth:
+// the front is capped by blockFrontage (men a rank, scaling with the square
+// root of the army), the rest in ranks behind. By post: foot in front, the
+// horse on the flanks of the front, heroes in the middle behind the foot,
+// then missile troops and casters, and the engines last.
+enum class Post { Foot, Cavalry, Hero, Rear, Siege };
+Post postOf(sim::UnitType type);
+// The most men abreast in the block of `count` men.
+int blockFrontage(int count);
+// Where `types[i]` stands in the block (x right, y forward, centred), as in
+// formationLayout; the places of one post are interchangeable, so which man
+// takes which is for the caller (Battle::planBlock) to decide.
+std::vector<FormationSlot> blockLayout(const std::vector<sim::UnitType>& types);
+
 // Decals derived only from simulation events, so every peer accumulates the
 // same ones (docs/GAME_DESIGN.md §5.5).
 struct GroundMark {
@@ -690,6 +705,10 @@ private:
         sim::EntityId id;
         V3 target, face;
     };
+    // The block (blockLayout) of a big army, men placed by post and then by where they stand.
+    static bool blockFits(Formation formation, int count);
+    bool standsTooWide(const std::vector<sim::EntityId>& units) const;
+    std::vector<MarchOrder> planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const;
     // A formation at `to`: the soldiers nearest the front take the front
     // ranks, keeping their order left to right, so no one crosses another.
     std::vector<MarchOrder> planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,

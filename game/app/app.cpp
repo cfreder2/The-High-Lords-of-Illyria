@@ -1292,6 +1292,30 @@ ILLYRIA_API void illyria_queue_demo() {
 
 // The --play script's `select all`: every soldier of every squad the local side commands, on screen or not (Ctrl+A
 // takes only the ones on screen). Selection only: nothing the simulation reads.
+ILLYRIA_API const char* illyria_army_spread() {
+    static char line[256];
+    std::vector<float> xs, ys;
+    if (app)
+        for (const Squad& q : app->battle->squads()) {
+            if (!app->battle->controllable(q)) continue;
+            for (illyria::sim::EntityId id : q.members) {
+                const illyria::sim::Unit& u = app->battle->world().units()[id - 1];
+                if (!u.alive()) continue;
+                xs.push_back(static_cast<float>(u.pos.x.toDouble()));
+                ys.push_back(static_cast<float>(u.pos.y.toDouble()));
+            }
+        }
+    if (xs.empty()) return "spread n=0";
+    const auto pct = [](std::vector<float> v, double q) {
+        std::sort(v.begin(), v.end());
+        return v[static_cast<size_t>(q * static_cast<double>(v.size() - 1))];
+    };
+    const float x0 = pct(xs, 0), x1 = pct(xs, 1), y0 = pct(ys, 0), y1 = pct(ys, 1);
+    std::snprintf(line, sizeof line, "spread n=%zu x=%.1f..%.1f (w %.1f, 5-95 %.1f) y=%.1f..%.1f (w %.1f, 5-95 %.1f) mid=%.1f,%.1f", xs.size(), x0, x1, x1 - x0,
+                  pct(xs, 0.95) - pct(xs, 0.05), y0, y1, y1 - y0, pct(ys, 0.95) - pct(ys, 0.05), pct(xs, 0.5), pct(ys, 0.5));
+    return line;
+}
+
 ILLYRIA_API void illyria_select_all() {
     if (!app) return;
     std::vector<illyria::sim::EntityId> all;

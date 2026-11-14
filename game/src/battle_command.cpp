@@ -22,6 +22,10 @@ constexpr float kScatterMetres = 7.0f;  // how far they run from the centre
 constexpr float kAimMetres = 1.5f;      // drag this far from the destination to set a facing
 constexpr float kBoxSlopPx = 12.0f;     // a smaller box is a tap
 constexpr float kCrescent = 3.84f;      // Encircle: 220 degrees of arc
+constexpr int kBlockFrontMin = 20;      // blockFrontage: never fewer men than this abreast
+constexpr float kBlockWiden = 1.6f;     // ... and the front is this many times the square root of the army
+constexpr float kBlockMetres = 2.2f;    // blockFrontage men abreast, of the usual size: the front's width in metres
+constexpr float kBlockStretch = 2.0f;   // an army as it stands this many times wider than the block is made into one
 constexpr float kVeeStep = 0.8f;        // V: each man this many gaps forward and out (1.13 gaps apart)
 
 uint32_t hash32(uint32_t x) {
@@ -208,6 +212,89 @@ float formationPace(Formation f) {
 
 float formationSpacing(UnitType type) {
     return std::max(kMinSpacing, static_cast<float>(sim::unitStats(type).radius.toDouble()) * 2.6f);
+}
+
+Post postOf(UnitType type) {
+    switch (roleOf(type)) {
+        case Role::Siege: return Post::Siege;
+        case Role::Ranged:
+        case Role::Bomber:
+        case Role::Caster:
+        case Role::Healer:
+        case Role::Flier:
+        case Role::Scout: return Post::Rear;
+        case Role::Melee: break;
+    }
+    switch (type) {
+        case UnitType::LightCavalry:
+        case UnitType::HeavyCavalry:
+        case UnitType::WolfRiders:
+        case UnitType::Unicorns: return Post::Cavalry;
+        case UnitType::Hero: return Post::Hero;
+        default: return Post::Foot;
+    }
+}
+
+int blockFrontage(int count) {
+    // A square army has a front of its side; a Myth line is a little wider than it is deep.
+    return std::max(kBlockFrontMin, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(std::max(0, count))) * kBlockWiden)));
+}
+
+std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types) {
+    const int total = static_cast<int>(types.size());
+    std::vector<FormationSlot> out(types.size());
+    if (total == 0) return out;
+    constexpr int kPosts = 5;
+    std::vector<size_t> men[kPosts];
+    float gap[kPosts] = {};
+    for (size_t i = 0; i < types.size(); ++i) {
+        const int p = static_cast<int>(postOf(types[i]));
+        men[p].push_back(i);
+        gap[p] = std::max(gap[p], std::max(kMinSpacing, formationSpacing(types[i])));
+    }
+    const auto count = [&](Post p) { return static_cast<int>(men[static_cast<int>(p)].size()); };
+    const auto at = [&](Post p) -> std::vector<size_t>& { return men[static_cast<int>(p)]; };
+    const float spaceOf[kPosts] = {gap[0], gap[1], gap[2], gap[3], gap[4]};
+    const int cavalry = count(Post::Cavalry);
+    // The horse ride the flanks of the front: two columns a side.
+    constexpr int kWingColumns = 2;
+    const int perRank = std::max(6, blockFrontage(total) - (cavalry > 0 ? 2 * kWingColumns : 0));
+    const float frontMetres = static_cast<float>(blockFrontage(total)) * kBlockMetres;
+    float y = 0, half = 0;  // the next rank's depth, and the widest rank's half width
+    // A post's men in centred ranks of at most perRank, balanced so none is a stub.
+    const auto ranks = [&](Post post) {
+        const int n = count(post), p = static_cast<int>(post);
+        if (n == 0) return;
+        // Capped in men, and in metres: big soldiers (giants, elephants) take more room abreast.
+        const int fits = std::max(1, static_cast<int>(frontMetres / spaceOf[p]) + 1), cap = std::min(perRank, fits);
+        const int rows = (n + cap - 1) / cap, per = (n + rows - 1) / rows;
+        for (int i = 0; i < n; ++i) {
+            const int row = i / per, inRow = std::min(per, n - row * per);
+            const float col = static_cast<float>(i % per) - static_cast<float>(inRow - 1) / 2.0f;
+            out[men[p][static_cast<size_t>(i)]] = {{col * spaceOf[p], y - static_cast<float>(row) * spaceOf[p], 0}};
+            half = std::max(half, (static_cast<float>(inRow) - 1) / 2.0f * spaceOf[p]);
+        }
+        y -= static_cast<float>(rows) * spaceOf[p] + spaceOf[p] * 0.5f;
+    };
+    // The foot at the front; with none, the first post there is.
+    for (Post post : {Post::Foot, Post::Hero, Post::Rear, Post::Siege}) ranks(post);
+    if (cavalry > 0) {
+        const int p = static_cast<int>(Post::Cavalry), left = cavalry / 2;
+        const float s = spaceOf[p];
+        for (int i = 0; i < cavalry; ++i) {
+            const bool onLeft = i < left;
+            const int k = onLeft ? i : i - left;
+            const int column = k % kWingColumns, row = k / kWingColumns;
+            const float x = (half + s * (0.5f + 1.0f) + static_cast<float>(column) * s) * (onLeft ? -1.0f : 1.0f);
+            out[at(Post::Cavalry)[static_cast<size_t>(i)]] = {{x, -static_cast<float>(row) * s, 0}};
+        }
+    }
+    // Centred: across on the middle of the front, down the depth on the middle of the men.
+    float lo = 1e30f, hi = -1e30f, mean = 0;
+    for (const FormationSlot& s : out) lo = std::min(lo, s.pos.x), hi = std::max(hi, s.pos.x), mean += s.pos.y;
+    mean /= static_cast<float>(out.size());
+    for (FormationSlot& s : out) s.pos = {s.pos.x - (lo + hi) / 2, s.pos.y - mean, 0};
+    return out;
 }
 
 Formation defaultFormation(UnitType type) {
@@ -597,8 +684,83 @@ void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Fo
     sendMarch(owner, planFormation(alive, formation, to, facing), from, to, facing, formationPace(formation), force);
 }
 
+bool Battle::blockFits(Formation formation, int count) {
+    // The rank formations of a big army; the wedge, V, box and crescent are their own shapes.
+    const bool ranked = formation == Formation::Line || formation == Formation::DoubleLine || formation == Formation::Loose;
+    return ranked && count > blockFrontage(count);
+}
+
+bool Battle::standsTooWide(const std::vector<sim::EntityId>& units) const {
+    if (!blockFits(Formation::Line, static_cast<int>(units.size()))) return false;
+    // The width of the arrangement across its front, against the block's.
+    const Shape shape = selectionShape();
+    const V3 right{shape.front.y, -shape.front.x, 0};
+    float lo = 1e30f, hi = -1e30f;
+    std::vector<UnitType> types;
+    for (size_t k = 0; k < shape.ids.size(); ++k) {
+        if (std::find(units.begin(), units.end(), shape.ids[k]) == units.end()) continue;
+        const float x = shape.offset[k].dot(right);
+        lo = std::min(lo, x), hi = std::max(hi, x);
+        types.push_back(static_cast<UnitType>(world_->units()[shape.ids[k] - 1].stats.type));
+    }
+    float blo = 1e30f, bhi = -1e30f;
+    for (const FormationSlot& s : blockLayout(types)) blo = std::min(blo, s.pos.x), bhi = std::max(bhi, s.pos.x);
+    return hi - lo > kBlockStretch * (bhi - blo);
+}
+
+std::vector<Battle::MarchOrder> Battle::planBlock(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const {
+    const V3 right{facing.y, -facing.x, 0};
+    const auto pos = [&](sim::EntityId id) { return toV3(world_->units()[id - 1].pos); };
+    const V3 from = centreOf(units);
+    const auto ahead = [&](sim::EntityId id) { return (pos(id) - from).dot(facing); };
+    const auto across = [&](sim::EntityId id) { return (pos(id) - from).dot(right); };
+    std::vector<UnitType> types;
+    for (sim::EntityId id : units) types.push_back(static_cast<UnitType>(world_->units()[id - 1].stats.type));
+    const std::vector<FormationSlot> layout = blockLayout(types);
+    // The men of each post, and the places of their post.
+    std::map<int, std::vector<sim::EntityId>> men;
+    std::map<int, std::vector<size_t>> places;
+    for (size_t i = 0; i < units.size(); ++i) {
+        const int post = static_cast<int>(postOf(types[i]));
+        men[post].push_back(units[i]);
+        places[post].push_back(i);
+    }
+    std::vector<MarchOrder> plan;
+    const auto order = [&](sim::EntityId id, size_t slot) {
+        const FormationSlot& s = layout[slot];
+        plan.push_back({id, to + right * s.pos.x + facing * s.pos.y, right * s.face.x + facing * s.face.y});
+    };
+    for (auto& [post, ids] : men) {
+        std::vector<size_t>& slots = places[post];
+        if (post == static_cast<int>(Post::Cavalry)) {
+            // Each wing's: the horse furthest left take the left.
+            std::stable_sort(ids.begin(), ids.end(), [&](sim::EntityId a, sim::EntityId b) { return across(a) < across(b); });
+            std::stable_sort(slots.begin(), slots.end(), [&](size_t a, size_t b) { return layout[a].pos.x < layout[b].pos.x; });
+            for (size_t k = 0; k < ids.size(); ++k) order(ids[k], slots[k]);
+            continue;
+        }
+        // The nearest the front take the front ranks, and within a rank keep their left to right.
+        std::stable_sort(ids.begin(), ids.end(), [&](sim::EntityId a, sim::EntityId b) { return ahead(a) > ahead(b); });
+        std::stable_sort(slots.begin(), slots.end(), [&](size_t a, size_t b) {
+            const float ya = layout[a].pos.y, yb = layout[b].pos.y;
+            return std::abs(ya - yb) > 0.01f ? ya > yb : layout[a].pos.x < layout[b].pos.x;
+        });
+        for (size_t start = 0; start < slots.size();) {
+            size_t end = start;
+            while (end < slots.size() && std::abs(layout[slots[end]].pos.y - layout[slots[start]].pos.y) <= 0.01f) ++end;
+            std::vector<sim::EntityId> rank(ids.begin() + static_cast<long>(start), ids.begin() + static_cast<long>(end));
+            std::stable_sort(rank.begin(), rank.end(), [&](sim::EntityId a, sim::EntityId b) { return across(a) < across(b); });
+            for (size_t k = start; k < end; ++k) order(rank[k - start], slots[k]);
+            start = end;
+        }
+    }
+    std::sort(plan.begin(), plan.end(), [](const MarchOrder& a, const MarchOrder& b) { return a.id < b.id; });
+    return plan;
+}
+
 std::vector<Battle::MarchOrder> Battle::planFormation(const std::vector<sim::EntityId>& units, Formation formation, const V3& to,
                                                      const V3& facing) const {
+    if (blockFits(formation, static_cast<int>(units.size()))) return planBlock(units, to, facing);
     std::vector<sim::EntityId> alive = units;
     const V3 from = centreOf(alive);
     const V3 right{facing.y, -facing.x, 0};
@@ -743,7 +905,10 @@ std::vector<Battle::MarchOrder> Battle::planShape(const Shape& shape, const std:
 }
 
 std::vector<Battle::MarchOrder> Battle::planSelection(const std::vector<sim::EntityId>& units, const V3& to, const V3& facing) const {
-    std::vector<MarchOrder> plan = selKeep_ ? planShape(selectionShape(), units, to, facing) : planFormation(units, selFormation_, to, facing);
+    // As they stand, unless that is a rank much wider than the block a Myth army takes: then it is the block.
+    const bool block = selKeep_ && standsTooWide(units);
+    std::vector<MarchOrder> plan = selKeep_ && !block ? planShape(selectionShape(), units, to, facing)
+                                                      : planFormation(units, block ? Formation::Line : selFormation_, to, facing);
     keepClear(plan);
     return plan;
 }
@@ -813,11 +978,16 @@ void Battle::sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan,
     // Everyone arrives together at the slowest member's pace (slower in the
     // tight formations): the farthest walks at that pace, the others slower
     // in proportion.
-    float slowest = 1e9f, farthest = 0;
+    // The engines are no one's pace: a catapult crew walks at 0.8 m/s, and an army held to
+    // that takes minutes to cross a field. They follow at their own pace (Post::Siege).
+    float slowest = 1e9f, slowestEngine = 1e9f, farthest = 0;
     for (const MarchOrder& o : plan) {
-        slowest = std::min(slowest, static_cast<float>(world_->units()[o.id - 1].stats.moveSpeed.toDouble()));
+        const float speed = static_cast<float>(world_->units()[o.id - 1].stats.moveSpeed.toDouble());
+        if (postOf(static_cast<UnitType>(world_->units()[o.id - 1].stats.type)) == Post::Siege) slowestEngine = std::min(slowestEngine, speed);
+        else slowest = std::min(slowest, speed);
         farthest = std::max(farthest, (o.target - pos(o.id)).length());
     }
+    if (slowest > 1e8f) slowest = slowestEngine;  // engines alone
     if (slots_.size() < world_->units().size()) slots_.resize(world_->units().size());
     const uint32_t order = ++marches_;
     for (const MarchOrder& o : plan) {

@@ -140,6 +140,9 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
     } else if (verb == "stats") {
         c.op = Op::Stats;
         if (n) return usage("stats");
+    } else if (verb == "spread") {
+        c.op = Op::Spread;
+        if (n) return usage("spread");
     } else if (verb == "cards") {
         c.op = Op::Cards;
         if (n) return usage("cards");

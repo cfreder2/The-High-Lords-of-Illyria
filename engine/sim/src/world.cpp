@@ -34,6 +34,8 @@ constexpr Fixed kWaypointNear = Fixed::fromInt(4);
 constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 // Marching soldiers keep their files this far either side of the squad's route.
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
+// ... and on open ground as far as this: a block's width, not a column's (planMarch).
+constexpr Fixed kMarchFileWide = Fixed::fromInt(40);
 // Bodies walking through loose remains kick them along.
 constexpr Fixed kKickReach = Fixed::fromRatio(1, 4);
 constexpr int kMaxKicksPerTick = 2;
@@ -688,10 +690,36 @@ void World::planPath(Unit& u, const Vec3& to) {
     groundPath(u.pos, to, u.path, u.stats.gait);
 }
 
+// Whether the way from a to b is clear of stone and water and runs over ground a man walks at his pace
+// (plains, road, sand): no wood, bog, rock or ford to slow him or narrow the way, and no site's
+// stone near (there the squad's one route, planned round it, stays).
+bool World::openStraight(const Vec3& a, const Vec3& b, Gait gait) const {
+    if (!nav_->clearLine(a, b, gait)) return false;
+    const Vec3 d = (b - a).flat();
+    const int64_t steps = (d.length() / 4).floorToInt() + 1;
+    for (int64_t i = 0; i <= steps; ++i) {
+        const Vec3 p = a + d * Fixed::fromRatio(i, steps);
+        const Ground g = groundAt(p.x, p.y);
+        if ((g != Ground::Plains && g != Ground::Road && g != Ground::Sand) || nav_->nearSite(p)) return false;
+    }
+    return true;
+}
+
 void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goal) {
-    if (!nav_ || !config_.region->ramparts().empty()) {
+    if (!nav_) {
         planPath(u, to);
         return;
+    }
+    // By a castle's walls (or any site's stone) each man's own way; across open plain in
+    // front of them, on the ground at both ends, he marches with the group like anywhere.
+    if (!config_.region->ramparts().empty()) {
+        if (nav_->nearSite(u.pos) || nav_->nearSite(to) || nav_->nearSite(from) || nav_->nearSite(goal) || !openStraight(from, goal, u.stats.gait)) {
+            planPath(u, to);
+            return;
+        }
+        u.path.clear();
+        u.pathIndex = 0;
+        if (planRampartPath(u, to)) return;
     }
     // Onto or off a ruin's platform each man finds his own way, by its stair.
     if (!config_.region->floors().empty() && (nav_->floorAt(u.pos, true) >= 0 || nav_->floorAt(to, false) >= 0 ||
@@ -703,29 +731,61 @@ void World::planMarch(Unit& u, const Vec3& to, const Vec3& from, const Vec3& goa
     u.pathIndex = 0;
     // One route for the squad (planned once a tick for all of them).
     std::vector<Vec3> route;
-    groundPath(from, goal, route, u.stats.gait);
+    if (openStraight(from, goal, u.stats.gait)) {
+        // Across open ground the group takes the straight line, not the road's: a marching
+        // soldier is held to the group's pace (Command::speed), so a road saves him nothing,
+        // and the cheapest way for everyone is one lane down it (a column of the whole army).
+        route = {(from + goal) * Fixed::fromRatio(1, 2), goal};
+    } else {
+        groundPath(from, goal, route, u.stats.gait);
+    }
     if (route.size() <= 1) {
         groundPath(u.pos, to, u.path, u.stats.gait);
         return;
     }
-    // Each soldier keeps his file, a little to the side of the route, where
-    // the ground there is the same (on the road, not the field beside it).
+    // Each soldier keeps his file, to the side of the route by his own place's
+    // offset from the group's goal. On open ground the whole width of the
+    // group is kept (a block advancing, each man on a line parallel to the
+    // route); where the route runs on a road, a bridge, a ford or other
+    // narrow ground he keeps within the ground the route is on, so the group
+    // narrows to the width that ground allows and spreads again after.
     const Vec3 dir = flatDirection(route[route.size() - 2], goal, flatDirection(from, goal, u.facing));
-    const Fixed file = clamp((to - goal).flat().dot(Vec3{dir.y, -dir.x, Fixed::zero()}), -kMarchFile, kMarchFile);
+    const Fixed want = clamp((to - goal).flat().dot(Vec3{dir.y, -dir.x, Fixed::zero()}), -kMarchFileWide, kMarchFileWide);
+    // A route that passes a site's stone keeps the narrow file all the way (the way round it was planned for that).
+    bool stoneNear = nav_->nearSite(from) || nav_->nearSite(to);
+    for (const Vec3& r : route) stoneNear = stoneNear || nav_->nearSite(r);
+    const auto open = [](Ground g) { return g == Ground::Plains || g == Ground::Forest || g == Ground::Sand; };
     for (size_t k = 0; k + 1 < route.size(); ++k) {
         const Vec3 w = route[k];
         const Vec3 d = flatDirection(k == 0 ? from : route[k - 1], route[k + 1], dir);
-        const Vec3 p = w + Vec3{d.y, -d.x, Fixed::zero()} * file;
-        bool same = groundAt(p.x, p.y) == groundAt(w.x, w.y) && !nav_->blocked(p);
-        // By a site's stone his file's way must stay as clear of it as the
-        // route's: from his last point and on to the route's next, else he
-        // closes on the route there (a file on the inside of a corner).
-        if (same && (nav_->nearSite(w) || nav_->nearSite(p))) {
-            const Vec3 next = route[k + 1];
-            same = nav_->clearLine(w, p, u.stats.gait) && nav_->clearLine(p, next, u.stats.gait) &&
-                   (u.path.empty() || nav_->clearLine(u.path.back(), p, u.stats.gait));
+        const Vec3 side{d.y, -d.x, Fixed::zero()};
+        const Ground onRoute = groundAt(w.x, w.y);
+        Vec3 chosen = w;
+        // The widest file the ground allows: his own, then halved, down to the old narrow file.
+        for (Fixed file = want;; file = file / 2) {
+            // (By a site's stone only the narrow file: the squad's way round it was planned for that.)
+            const bool wide = abs(file) > kMarchFile && !stoneNear;
+            if (!wide) file = clamp(want, -kMarchFile, kMarchFile);
+            const Vec3 p = w + side * file;
+            const Ground g = groundAt(p.x, p.y);
+            bool ok = !nav_->blocked(p) && (g == onRoute || (wide && open(onRoute) && (open(g) || g == Ground::Road)));
+            if (ok && wide && (nav_->nearSite(p) || !nav_->clearLine(p, route[k + 1], u.stats.gait) ||
+                                (!u.path.empty() && !nav_->clearLine(u.path.back(), p, u.stats.gait)))) ok = false;
+            // By a site's stone his file's way must stay as clear of it as the
+            // route's: from his last point and on to the route's next, else he
+            // closes on the route there (a file on the inside of a corner).
+            if (ok && (nav_->nearSite(w) || nav_->nearSite(p))) {
+                const Vec3 next = route[k + 1];
+                ok = nav_->clearLine(w, p, u.stats.gait) && nav_->clearLine(p, next, u.stats.gait) &&
+                     (u.path.empty() || nav_->clearLine(u.path.back(), p, u.stats.gait));
+            }
+            if (ok) {
+                chosen = p;
+                break;
+            }
+            if (!wide) break;
         }
-        u.path.push_back(same ? p : w);
+        u.path.push_back(chosen);
     }
     // Skip waypoints already behind him, and join the route where he can.
     size_t skip = 0;
