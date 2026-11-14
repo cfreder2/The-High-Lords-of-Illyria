@@ -52,8 +52,13 @@ constexpr Fixed kChargeSpeedShare = Fixed::fromRatio(3, 5);
 // gallop on the flat: 5.5 x 4 x 1.2 = 26 on top of its blow), and the throw.
 constexpr Fixed kChargeDamage = Fixed::fromRatio(6, 5);
 constexpr Fixed kChargeKnock = Fixed::fromRatio(1, 3);
-// Ridden down by a charge shakes the bravest (world_morale.cpp).
-constexpr int32_t kChargedShock = 150;
+// (What a charge does to the nerve of the man ridden down, by where it lands: chargeShock, world_tactics.cpp.)
+// Braced pikes: their blow on the horse that runs onto them, in percent, and what it does to the rider's nerve.
+constexpr int32_t kBracedPct = 150, kBracedShock = 250;
+// A blow from this much above (hundredths of grade: 0.06, about 1 in 16) is told as the high ground's.
+constexpr int32_t kHighToldGrade = 6;
+// A man wading, struck by a man on dry ground: what each such blow does to his nerve.
+constexpr int32_t kFordShock = 40;
 // The run in: each unit of grade downhill adds 200% (a 1 in 3 slope: x1.67, at
 // most x2); uphill takes 250% a unit (a 1 in 3 slope: x0.17, at least x0.25).
 constexpr int32_t kChargeDownhillPctPerGrade = 200, kChargeDownhillPctMax = 100;
@@ -251,7 +256,8 @@ int32_t World::blowPct(const Unit& u, const Unit& enemy, Fixed dist, Fixed dz) c
     // The weapon against riders, a hero's levels and blessings, and the
     // small edges (world_edges.cpp): the ground, the rank, a hero near, and
     // the high ground over this foe.
-    int32_t pct = gracePct(u) + edgesOf(u, dist, dz).total();
+    // ... and position (world_tactics.cpp): wading, and the slope between them.
+    int32_t pct = gracePct(u) + edgesOf(u, dist, dz).total() + positionPct(u, enemy, dist, dz);
     if (enemy.stats.mounted) pct += u.stats.melee.bonusVsMountedPct;
     return std::max(10, pct);
 }
@@ -264,13 +270,16 @@ void World::fight(Unit& u, Unit& enemy) {
     const Fixed gap = dist - u.stats.radius - enemy.stats.radius;
     if (gap > m.reach) {
         if (shutGateBetween(u, enemy.pos)) return;  // not at a foe the other side of a shut gate (he holds his place)
+        // A rider at the gallop rides straight at his man: a charge is no place in the ring, and wheeling to one at the last
+        // stride would lose it (he must be facing his man to strike: turnToward, below).
+        const bool charging = chargeReady(u);
         // A foe ringed by his full share: no pushing in behind them. He closes to a stand-off and waits his turn, facing him.
-        if (gap <= m.reach + kStandOff && meleeFull(u, enemy)) {
+        if (!charging && gap <= m.reach + kStandOff && meleeFull(u, enemy)) {
             turnToward(u, dir);
             return;
         }
         // Near him, to a free place on his ring: the line wraps him (and the foe of the next man is not the same man's front).
-        if (gap <= m.reach + kSlotRange) {
+        if (!charging && gap <= m.reach + kSlotRange) {
             if (Vec3 slot; ringSlot(u, enemy, slot)) {
                 walk(u, slot);
                 return;
@@ -299,6 +308,12 @@ void World::fight(Unit& u, Unit& enemy) {
     HitSide side = hitSide(enemy.facing, dir);
     // Busy with someone else, it is off guard: a flank is as open as its back.
     if (side == HitSide::Flank && enemy.foe != kNoEntity && enemy.foe != u.id) side = HitSide::Rear;
+    // Position, told (world_tactics.cpp): a man caught wading, a blow from well above.
+    if (wading(enemy) && !wading(u)) {
+        tell(TacticEvent::Kind::Ford, enemy);
+        shakeMorale(enemy, kFordShock);  // struck from the bank with the water round his knees
+    }
+    else if (dist > Fixed::zero() && -dz * 100 >= dist * kHighToldGrade) tell(TacticEvent::Kind::HighGround, enemy);
     if (shieldBlocks(enemy, dir, kMeleeBlockScale)) {
         impacts_.push_back({ImpactEvent::Kind::Blocked, at, dir, kNoEntity, enemy.id, false, {}, -1, m.damageType});
         return;
@@ -330,16 +345,22 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const Fixed weight = speed * u.stats.mass * slopePct / 100;
     const int32_t impact = floorPct(weight * kChargeDamage);
     HitSide side = hitSide(enemy.facing, dir);
-    if (side == HitSide::Flank && enemy.foe != kNoEntity && enemy.foe != u.id) side = HitSide::Rear;
+    const bool busy = enemy.foe != kNoEntity && enemy.foe != u.id;
+    const bool behind = side == HitSide::Rear;  // truly at his back (not a flank that counts as one because he is busy)
+    if (side == HitSide::Flank && busy) side = HitSide::Rear;
 
     // Braced pikes, met head on: the charge runs onto their points.
     const MeleeWeapon& pike = enemy.stats.melee;
     if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() &&
         (!enemy.hasMoveTarget || enemy.engageFoe != kNoEntity)) {
-        const int32_t amount = scaledDamage(pike.damage, blowPct(enemy, u, dist, -dz)) + impact / 2;
+        // The horse's own weight is what drives it on: the whole of the impact, and the pike's blow half again. The
+        // charge is stopped cold (thrown back, his nerve shaken), and the pikeman takes nothing.
+        const int32_t amount = scaledDamage(pike.damage, blowPct(enemy, u, dist, -dz), kBracedPct) + impact;
         const Vec3 at = u.pos + up(u.stats.height * 3 / 5);
         const bool killed = damage(u, amount, &enemy, {pike.damageType, -dir, at});
         knock(u, -dir, weight * kChargeKnock);
+        shakeMorale(u, kBracedShock);
+        tell(TacticEvent::Kind::Braced, enemy);
         impacts_.push_back({ImpactEvent::Kind::Hit, at, -dir, kNoEntity, u.id, killed, {}, -1, pike.damageType});
         return;
     }
@@ -350,7 +371,7 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const int32_t blow = blocked ? 0 : scaledDamage(u.stats.melee.damage, blowPct(u, enemy, dist, dz));
     const int32_t amount = (blow + (blocked ? impact / 2 : impact)) * sidePct(side, false) / 100;
     const bool killed = damage(enemy, amount, &u, {u.stats.melee.damageType, dir, at});
-    shakeMorale(enemy, kChargedShock * sidePct(side, false) / 100);
+    chargeShock(enemy, side, busy && behind);
     knock(enemy, dir, weight * kChargeKnock * (blocked ? Fixed::fromRatio(1, 2) : Fixed::one()) + u.stats.melee.knockback);
     impacts_.push_back({blocked ? ImpactEvent::Kind::Blocked : ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}, -1,
                         u.stats.melee.damageType});

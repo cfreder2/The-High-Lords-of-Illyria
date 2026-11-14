@@ -26,11 +26,11 @@ constexpr int32_t kOutnumberedShock = 10;
 // Recovery a census, once calm for kCalmTicks: a base, more near a living
 // friendly hero (within his leadership reach), more for each friend near (up to 6).
 constexpr int32_t kCalmTicks = 2 * kTicksPerSecond;
-constexpr int32_t kRecoverBase = 15, kRecoverHero = 15, kRecoverPerFriend = 2, kRecoverFriendsMax = 6;
+// (The gain itself: World::recoveryGain, world_tactics.cpp, which the rally countdown shares.)
 constexpr Fixed kLeadReach = Fixed::fromInt(30);
 // Veterans are steadier: each step of veterancy takes 3% off a shock, and
 // they recover a quarter faster per step.
-constexpr int32_t kVetSteadyPct = 3, kVetRecoverPct = 25;  // (8% before the small edges: a rank is a slight edge, edges.h)
+constexpr int32_t kVetSteadyPct = 3;  // (8% before the small edges: a rank is a slight edge, edges.h)
 // A broken unit rallies at this morale with no foe within kSafeReachM metres; each
 // veterancy step lowers the bar by kRallyPerStep and shortens the reach by
 // kSafePerStepM metres, so elites come back to the fight first. It flees from
@@ -87,15 +87,27 @@ void World::updateMorale() {
             if (u.owner == owner && u.alive() && (u.pos - at).flat().lengthSq() < kLossReach * kLossReach) shakeMorale(u, kFriendFalls);
 
     const bool census = tick_ % kCensusTicks == 0;
-    for (Unit& u : units_)
+    // Position in the census (world_tactics.cpp): to a man on dry ground a foe floundering in the water is half a foe, so
+    // a line that holds a bank is not cowed by the numbers wading at it. Who is wading, reckoned once a census.
+    if (census && config_.region) {
+        wet_.assign(units_.size(), 0);
+        for (size_t i = 0; i < units_.size(); ++i) wet_[i] = wading(units_[i]);
+    } else if (census) {
+        wet_.clear();
+    }
+    for (Unit& u : units_) {
         if (u.callCooldown > 0) --u.callCooldown;
+        if (u.rallyCooldown > 0) --u.rallyCooldown;
+    }
     for (Unit& u : units_) {
         if (!u.alive() || u.stats.moraleShockPct == 0) continue;
         u.calmTicks = std::min(u.calmTicks + 1, kCalmTicks);
         if (census) {
             int32_t friends = 1, foes = 0;  // itself among its friends
+            int32_t wetFoes = 0;            // of the foes, those wading while he is not
+            const bool dry = !wet_.empty() && !wet_[static_cast<size_t>(&u - units_.data())];
             int32_t steady = 0;
-            bool hero = false;
+            bool hero = false, lordClose = false;
             const int32_t grade = veteranGrade(u);
             nearby(u.pos.x, u.pos.y, kLeadReach, [&](uint32_t i) {
                 const Unit& o = units_[i];
@@ -104,20 +116,21 @@ void World::updateMorale() {
                 if (o.owner == u.owner && isHero(o) && d2 < kLeadReach * kLeadReach) {
                     if (!hero) steady += kSteadyHero;
                     hero = true;
+                    lordClose = lordClose || d2 < kRallyLordReach * kRallyLordReach;
                 } else if (o.owner == u.owner && d2 < kSteadyReach * kSteadyReach && !o.routed && !o.wavering()) {
                     const int32_t og = veteranGrade(o);
                     if (og >= 2 && og > grade) steady += og >= 3 ? kSteadyElite : kSteadyVeteran;
                 }
                 if (d2 >= kCensusReach * kCensusReach) return;
                 (o.owner == u.owner ? friends : foes) += 1;
+                if (dry && o.owner != u.owner && wet_[i]) ++wetFoes;
             });
+            foes -= wetFoes / 2;
             u.steady = std::min(steady, kSteadyMax);
             if (foes > friends) {
                 shakeMorale(u, (foes - friends) * kOutnumberedShock);
             } else if (u.calmTicks >= kCalmTicks) {
-                const int32_t gain = kRecoverBase + (hero ? kRecoverHero : 0) +
-                                     std::min(friends - 1, kRecoverFriendsMax) * kRecoverPerFriend + u.steady / 2;
-                u.morale = std::min(kMoraleFull, u.morale + gain * (100 + kVetRecoverPct * veteranSteps(u)) / 100);
+                u.morale = std::min(kMoraleFull, u.morale + recoveryGain(u, friends, hero, lordClose));
             }
         }
         if (!u.routed && u.morale < kMoraleBreak) {

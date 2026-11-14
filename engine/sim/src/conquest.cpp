@@ -426,6 +426,11 @@ void Conquest::commandMen(const Order& o) {
         for (const Army& a : s.armies)
             for (const Man& m : a.men)
                 if (m.unit == o.command.unit && m.alive()) {
+                    // A stance or the lord's Rally is no order to go anywhere: the stack's march stands.
+                    if (o.command.type == Command::Type::SetStance || o.command.type == Command::Type::Rally) {
+                        playerCommands_.push_back(o.command);
+                        return;
+                    }
                     // The men are the player's now: no route of the stack's is walked, no habit of its own taken.
                     s.commanded = true;
                     s.path.clear();

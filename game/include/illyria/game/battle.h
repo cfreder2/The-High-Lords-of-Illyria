@@ -122,6 +122,8 @@ struct Buy {
 // gold budget and the computer plays as a lord does (AiSkill). `budget` 0 is the classic muster of the Ford and the village
 // siege (the armies the first builds were made with); every other map, and any budget, buys.
 struct SkirmishSetup {
+    // The computer plays Easy: a smaller purse (kEasyPursePct of the player's), and it comes late and piecemeal (Battle::runEnemyAi, aiFight).
+    bool easy = false;
     int budget = 0;
     std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
     bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
@@ -402,6 +404,40 @@ public:
     // `frontMetres`: the drag's length, the width the front is made (0: the usual block).
     void orderMoveFacing(const V3& to, const V3& facing, float frontMetres = 0);
     void stopSelected();
+    // Tactics told and commanded (battle_tactics.cpp; the rules are the world's: world_tactics.cpp).
+    // The selection's stance with no order in hand: Hold (they keep their place), or support (the default: they go to the
+    // help of a friend fighting within 40 m). holdSelected switches between the two.
+    void holdSelected();
+    bool selectionHolds() const;
+    // What a squad's card says beyond its men: idle (no order, nothing to fight), holding, and broken: the seconds until it
+    // rallies on its own (0: not broken; -1: a foe is too near for it to rally).
+    struct SquadState {
+        bool idle = false, hold = false;
+        int rally = 0;
+    };
+    SquadState squadState(const Squad& s) const;
+    // Selects the next of the player's squads standing idle (its index; -1 and a notice when none is).
+    int selectNextIdle();
+    // The lord's Rally: every broken man of his within 40 m turns back at once; then he waits a minute. False (and a notice)
+    // when there is no lord, he has just called, or nobody broken hears him.
+    bool orderRally();
+    struct RallyState {
+        bool lord = false;  // a lord of the player's is on the field
+        int cooldown = 0;   // seconds until he may call again
+        int heard = 0;      // broken men in his earshot now
+    };
+    RallyState rallyState() const;
+    // A word floated over the men it happened to ("Flanked", "In the ford", "Braced"): where, and whether it is good news
+    // for the viewer. Only what he can see (sees()).
+    struct Float {
+        uint32_t tick = 0;
+        sim::EntityId unit = sim::kNoEntity;
+        V3 pos;
+        const char* text = "";
+        bool good = false;
+    };
+    static constexpr uint32_t kFloatShown = 3 * sim::kTicksPerSecond;
+    const std::vector<Float>& floats() const { return floats_; }
     // Planning (client side only; the sim and the other peers know nothing of it until the release). While on, the orders a
     // gesture gives (a right click, a facing drag, an attack, a formation, scatter, raid) are not sent but held, per man, and
     // drawn as pending paths for every man that has any. Releasing sends them all in the one tick in the order given, exactly as if
@@ -624,6 +660,12 @@ public:
     void aiForceMarch(size_t squad, const V3& to);
     void aiAttack(size_t squad, sim::EntityId target);
     void aiHalt(size_t squad);
+    // A computer's lord calls the Rally when enough of his broken men hear him: the player's own command (Command::Rally).
+    void aiRally(size_t squad);
+    // The computer's purse on Easy, as a share of the player's.
+    static constexpr int kEasyPursePct = 75;
+    // Easy comes late: it stands this long before it marches (unless the player comes to it).
+    static constexpr uint32_t kEasyWaitTicks = 45 * sim::kTicksPerSecond;
     // How well the computer plays (decision quality, never stats). Easy: the
     // nearest foe, marching piecemeal, archers wherever they like, the
     // broken fighting on. Normal: weak and exposed foes first (healers,
@@ -879,6 +921,11 @@ private:
     // The strip of events (events()), called once after each step of the world.
     void observeSquads();
     void announce(const std::string& text);
+    void collectTactics();
+    sim::EntityId lordOf(sim::PlayerId owner, bool controllableOnly) const;
+    std::vector<Float> floats_;
+    std::map<uint64_t, uint32_t> floatSaid_;  // by word, side and place: when it was last floated
+    int idleCursor_ = -1;                     // the squad the idle key last chose
     // Of these, the one nearest p.
     sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.

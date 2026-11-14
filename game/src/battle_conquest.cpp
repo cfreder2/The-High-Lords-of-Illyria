@@ -167,6 +167,7 @@ void Battle::conquestAi(std::vector<sim::Command>& out) {
     constexpr float kHoldM = 45.0f;
     for (size_t q = 0; q < squads_.size(); ++q) {
         const Squad& s = squads_[q];
+        if (s.owner != local_ && aliveCount(s) > 0) aiRally(q);  // a computer's lord calls his broken men back, marching or standing
         if (s.owner == local_ || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // (routed: beyond orders)
         const sim::Conquest::Stack* st = conquest_->findStack(s.stack);
         if (!st || !st->path.empty() || st->commanded || conquest_->holdsTown(*st) || roleOf(s.type) == Role::Siege) continue;

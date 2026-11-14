@@ -374,7 +374,7 @@
       `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div>` +
       `<h3>Gold</h3><div class="choice wrap" data-purses>` + skirmishPurses.map((g, i) => `<button data-purse="${i}" style="min-height:44px"><b>${g}</b></button>`).join("") + `</div>` +
       `<h3>Your army <small data-left></small></h3><div data-army></div>` +
-      `<h3>The computer plays</h3><div class="choice"><button data-hard="0"><b>Easy</b><small>The nearest foe, piecemeal</small></button><button data-hard="1"><b>Normal</b><small>Weak foes first, the army massed</small></button></div>` +
+      `<h3>The computer plays</h3><div class="choice"><button data-hard="0"><b>Easy</b><small>Three quarters of your gold; comes late, piecemeal</small></button><button data-hard="1"><b>Normal</b><small>Your equal; it masses, flanks and falls back</small></button></div>` +
       `<h3>Your colour</h3><div data-colour></div>` +
       `<p class="note">Only you see it.</p>` +
       `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small data-startnote></small></button>`;
@@ -561,6 +561,9 @@
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
+    `<tr><td>${k("K")}</td><td>Hold: the selection keeps its place. Again: back to support, where men with no order go to the help of friends fighting within 40 m.</td></tr>` +
+    `<tr><td>${k("J")}</td><td>Select the next squad standing idle.</td></tr>` +
+    `<tr><td>${k("Y")}</td><td>Rally: your lord calls back every broken man within 40 m. Then he waits a minute.</td></tr>` +
     `<tr><td>${k("H")}</td><td>Select the heroes.</td></tr>` +
     `<tr><td>${k("Tab")}, ${k("Shift")} + ${k("Tab")}</td><td>Select the next, or the previous, group of units: the saved groups in number order, then the squads in no group. Wraps round; the camera follows if they are off screen.</td></tr>` +
     `<tr><td>${k("`")}</td><td>Planning: orders you give are held (drawn dashed in violet, numbered, for every man that has any) until you press ${k("`")} again, which sends them all at once, in the order given. ${k("Backspace")} drops them. ${k("Space")} still halts at once. On a phone, the Plan button.</td></tr>` +

@@ -63,7 +63,7 @@ TEST(cliffs_are_walls) {
     CHECK(w.findUnit(id)->pos.x < m(129));
 }
 
-TEST(the_high_ground_is_a_small_edge) {
+TEST(the_high_ground_wins_an_even_duel) {
     // Equal skirmishers meet on a slope (each seed shuffles the dice).
     const WorldConfig slope = shaped([](int64_t x) { return Fixed::fromInt(x) / 3; });
     int upperWins = 0, lowerWins = 0;
@@ -80,9 +80,10 @@ TEST(the_high_ground_is_a_small_edge) {
         upperWins += w.findUnit(upper)->alive() && !w.findUnit(lower)->alive();
         lowerWins += w.findUnit(lower)->alive() && !w.findUnit(upper)->alive();
     }
-    // The high ground is a small edge (edges.h): +4% at most to the blow
-    // struck down at the foe, nothing for the one below. It tips close
-    // fights, it does not decide them: no more lopsided duels.
+    // The high ground is a small edge in the Conquest's reckoning (edges.h: +4% at most to the blow struck down), and
+    // position in the fight itself (world_tactics.cpp): on a 1 in 3 slope the man above strikes 30% harder and the man
+    // below 20% weaker, so that holding a hill is worth an order. (Was a small edge only, both men
+    // winning some, before position was given teeth: docs/BALANCE.md, Tactics.)
     World w(slope);
     const EntityId lower = w.spawnUnit(0, {m(120), m(128), m(0)}, kEast, unitStats(UnitType::LightInfantry));
     const EntityId upper = w.spawnUnit(1, {m(122), m(128), m(0)}, kWest, unitStats(UnitType::LightInfantry));
@@ -93,7 +94,9 @@ TEST(the_high_ground_is_a_small_edge) {
     CHECK(w.edgesOf(lo, dist, up.pos.z - lo.pos.z).height == 0);
     std::printf("  high ground duels: upper %d, lower %d\n", upperWins, lowerWins);
     CHECK(upperWins + lowerWins >= 8);
-    CHECK(upperWins >= 2 && lowerWins >= 2);
+    CHECK(upperWins >= 9);
+    CHECK(w.positionPct(up, lo, dist, lo.pos.z - up.pos.z) == 30);
+    CHECK(w.positionPct(lo, up, dist, up.pos.z - lo.pos.z) == -20);
 }
 
 TEST(soldiers_cross_a_footbridge_without_wading) {

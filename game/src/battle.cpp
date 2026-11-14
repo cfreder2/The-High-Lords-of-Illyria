@@ -323,8 +323,9 @@ std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines) co
 }
 
 std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines) const {
-    // The same purse as the player's (what he bought is what the other side has to match).
-    return buyArmy(setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1), engines);
+    // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it.
+    const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
+    return buyArmy(setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse, engines);
 }
 
 void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord) {
@@ -740,6 +741,7 @@ void Battle::afterWorldStep() {
     for (size_t i = 0; i < units.size() && i < readied_.size(); ++i)
         if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
     collectEvents();
+    collectTactics();
     voice_.observe(*world_, outcome());
     presentDeaths();
     observeSquads();
@@ -1117,6 +1119,7 @@ void Battle::runEnemyAi() {
     };
     V3 engineAt, doorAt;
     const bool siege = aiSiege(kEnemy, engineAt, doorAt);
+    constexpr float kEasyNearM = 60.0f;  // Easy: a foe this near a squad is fought at once, however early
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
@@ -1125,6 +1128,12 @@ void Battle::runEnemyAi() {
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
         const size_t q = static_cast<size_t>(&s - squads_.data());
+        aiRally(q);
+        const bool easyMarch = aiSkill_ == AiSkill::Easy && !siege && !s.garrison && role != Role::Siege && dist > kEasyNearM;
+        // Easy comes late: it stands a while (the player has time to set his line), then each squad goes for the foe nearest
+        // it, piecemeal, with no massing and no falling back (aiFight). (Every squad on the one foe nearest the army's middle,
+        // "by one road", was tried: that is a concentration, and it cost a player who gave no orders 86 men for 57.)
+        if (easyMarch && world_->tick() < kEasyWaitTicks) continue;
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand.
             if (!s.garrison) aimEngines(s);

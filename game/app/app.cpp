@@ -1653,6 +1653,20 @@ ILLYRIA_API int illyria_plan(int op) {
 ILLYRIA_API void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+// Hold (K): the selection keeps its place with no order in hand; again: back to support.
+ILLYRIA_API void illyria_hold() {
+    if (app) app->battle->holdSelected();
+}
+// The lord's Rally (Y): 1 when he called.
+ILLYRIA_API int illyria_rally() {
+    return app && app->battle->orderRally() ? 1 : 0;
+}
+// The next squad standing idle (J), and the camera to it if it is off screen. 1 when there was one.
+ILLYRIA_API int illyria_next_idle() {
+    if (!app || app->battle->selectNextIdle() < 0) return 0;
+    focusSelection(true);
+    return 1;
+}
 // The selected hyena-folk let loose to raid from where they stand (the Raid button).
 ILLYRIA_API void illyria_raid() {
     if (app) app->battle->orderRaid();
@@ -3022,6 +3036,28 @@ ILLYRIA_API const char* illyria_hud() {
         }
         std::snprintf(buf, sizeof buf, "],\"orders\":%u,", b.ordersGiven());
         s += buf;
+        // Position told: the words floated over the men it happened to, where they are on the screen (Battle::floats).
+        s += "\"floats\":[";
+        {
+            bool any = false;
+            for (const Battle::Float& f : b.floats()) {
+                V3 p = f.pos;
+                if (f.unit >= 1 && f.unit <= b.world().units().size() && b.world().units()[f.unit - 1].alive()) p = b.unitPosition(f.unit - 1);
+                p.z += 3.0f;
+                float px, py;
+                if (!app->camera.project(p, px, py)) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"x\":%.0f,\"y\":%.0f,\"text\":\"%s\",\"good\":%s,\"age\":%u}", any ? "," : "", px / app->pixelRatio,
+                              py / app->pixelRatio, f.text, f.good ? "true" : "false", b.world().tick() - f.tick);
+                s += buf;
+                any = true;
+            }
+        }
+        {
+            const Battle::RallyState r = b.rallyState();
+            std::snprintf(buf, sizeof buf, "],\"rally\":{\"lord\":%s,\"cooldown\":%d,\"heard\":%d},\"holding\":%s,", r.lord ? "true" : "false", r.cooldown, r.heard,
+                          b.selectionHolds() ? "true" : "false");
+            s += buf;
+        }
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
                       b.selectionSize(), b.selectionLabel(), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
@@ -3053,14 +3089,16 @@ ILLYRIA_API const char* illyria_hud() {
         const Standing st = b.standing(q);
         // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
         const bool mine = b.controllable(q);
+        const Battle::SquadState state = b.squadState(q);
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\"}",
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
-                      q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str());
+                      q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
+                      state.hold ? "true" : "false", state.rally);
         s += buf;
         firstSquad = false;
     }
@@ -3163,6 +3201,7 @@ static int startMode(const char* id, const char* options) {
         }
         gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
         gDeploy = optionNumber(opts, "deploy", 0) != 0;
+        gSetup.easy = gSkill == Battle::AiSkill::Easy;
         newBattle();
         app->renderer.reset(*app->battle);
         if (gDeploy) startOpening();

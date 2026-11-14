@@ -7,6 +7,7 @@ add_library(illyria_sim
     src/world.cpp
     src/world_gates.cpp
     src/world_siege.cpp
+    src/world_tactics.cpp
     src/world_keep.cpp
     src/world_walls.cpp
     src/castle_walls.cpp

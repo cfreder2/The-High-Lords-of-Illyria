@@ -79,6 +79,14 @@ Height does three things in a melee, none of them large: it is one of the small 
 
 For **archers**, height is reach: missile range grows by a metre for every metre the shooter stands above his target (up to half again) and shrinks as much shooting up (by a quarter at most). Archers 16 m up a 1 in 4 slope hit troops 64 m away, beyond their flat reach of 55 m, who cannot answer them. A **plunging** arrow strikes harder: +1% for each hundredth of the sine of its fall beyond a quarter (about 15 degrees), up to **+25%** (shot down from a 20 m hill at 70 m: about +18%). The small edge for height is for blows only; missiles have the plunge instead.
 
+### Position {#position}
+
+Beyond the small edge, position has teeth in the fight itself, and a word floats over the men when it tells:
+
+- **The high ground.** A blow struck downhill does **+2% for each 0.01 of grade**, at most **+30%** (a 1 in 7 slope); struck uphill it does as much less, at most **-20%** ("High ground").
+- **Wading.** A man in the shallows (not the giants and their like, who are at home there) strikes **half as hard**; a man on dry ground strikes him **half as hard again**, and each such blow shakes him; missiles do **three quarters more** to him and his shield turns half as many ("In the ford", "Shot in the water"). Hold the bank and make them come to you.
+- **A volley from above** does **+5% for each metre** the shooter stands over his mark beyond the first, at most **+50%**.
+
 ## Charges {#charges}
 
 Riders (the mounted kinds: light and heavy cavalry, wolf riders, pegasi, elephants) build **momentum** as they gather speed: most of the way to their full speed in about a second, shed at 8 m/s a second when slowing, lost at once below 1 m/s, when thrown, or once in melee.
@@ -96,11 +104,11 @@ A climb also slows the horse, and a horse too slow has no charge at all: heavy c
 | up a 1 in 4 slope: too slow, no charge | 20 |
 | light cavalry on the flat, into his front / his back | 38 / 76 |
 
-Being charged shakes a man (chapter [](#morale)), the more so in the flank or rear.
+Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands.
 
 ### Braced pikes {#pikes}
 
-A charge into the **front** of pikemen who are standing or already fighting (not marching) runs onto their points: the rider deals nothing, takes the pikeman's blow with its bonus against riders (+150%: 35) and half his own impact, and is thrown back. Heavy cavalry lose about 48 of their 130 hit points in that moment. Into their flank or rear, the charge goes home as usual (69 to the pikeman in the flank, 92 in the back), and pikemen carry no shield.
+A charge into the **front** of pikemen who are standing or already fighting (not marching) runs onto their points: the rider deals nothing, takes the pikeman's blow with its bonus against riders, half again (+150%, then x1.5: 52) and the whole of his own impact, is thrown back and badly shaken ("Braced"). Heavy cavalry lose about 78 of their 130 hit points in that moment. Into their flank or rear, the charge goes home as usual (69 to the pikeman in the flank, 92 in the back), and pikemen carry no shield.
 
 In an ordinary melee the pike's bonus holds too: a pikeman's blow on any rider is 35 where it is 14 on a man on foot.
 

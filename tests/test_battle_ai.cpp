@@ -97,7 +97,8 @@ TEST(ai_shattered_squad_falls_back_on_its_friends) {
 
 TEST(ai_masses_before_it_engages) {
     // A fast squad of horse and a slow body of foot, the foe far off: the
-    // easy computer lets the horse arrive alone; the normal one keeps the army together.
+    // easy computer (once it marches: it stands the first 45 s, Battle::kEasyWaitTicks) lets the horse arrive alone; the
+    // normal one keeps the army together.
     const auto spread = [](Battle::AiSkill skill) {
         auto b = field(skill);
         const V3 o = V3{Battle::kWorldSize / 2, Battle::kWorldSize / 2, 0};
@@ -105,8 +106,9 @@ TEST(ai_masses_before_it_engages) {
         const int horse = b->addSquad("Horse", kThem, UnitType::LightCavalry, 8, o + V3{60, 0, 0}, kWest);
         const int foot = b->addSquad("Foot", kThem, UnitType::Pikemen, 12, o + V3{110, 0, 0}, kWest);
         float worst = 0;
-        for (int t = 0; t < 12; ++t) {
+        for (int t = 0; t < 36; ++t) {
             run(*b, 60);
+            if (t == 20 && skill == Battle::AiSkill::Easy) CHECK(std::abs(centreOf(*b, foot).x - centreOf(*b, horse).x - 50.0f) < 2.0f);  // (40 s in: Easy has not stirred)
             worst = std::max(worst, centreOf(*b, foot).x - centreOf(*b, horse).x);
         }
         return worst;
