@@ -158,6 +158,7 @@ A town defends with every man inside it, however many, and is attacked by every 
 
 - **It starts** when armies of one lord are in the town and nobody else's are: none of the town's own (its lord's, or a neutral garrison) and none of any third lord's.
 - **More armies raise it faster.** The banner climbs by 2 points and 1 more for each army you have in the town (eight at most) every tick, to 5,760. A lone army takes 64 seconds at normal speed (a little over half a Conquest day), four armies 32 seconds, eight or more 19 seconds.
+- **Over a lord's seat it climbs at a third of that pace:** a lone army 3 minutes 12 seconds (a day and a half), eight or more 58 seconds. His realm hangs on it ([](#seat)).
 - **Enemies in the town stop it.** Armies of anyone else in the town contest it: while they are as many as yours or fewer, the banner stops; while they are more, it comes down as fast as it would rise for them.
 - **Leaving gives it up.** If none of your men is left in the town, marched out or fallen, the attempt is abandoned and its progress lost.
 - **A town being taken trains nothing,** takes in no armies sent to it and hires no hero until the raisers are gone.
@@ -165,7 +166,8 @@ A town defends with every man inside it, however many, and is attacked by every 
 **At the top** the town is yours, and with it:
 
 - its income and its training (stopped, for you to choose again);
-- gold, if it was a lord's: he loses his treasury divided by the number of places he held, and half of what he loses is yours;
+- gold, if it was a lord's: he loses his treasury divided by the number of places he held, and half of what he loses is yours; and **the sack**, four days of the town's own income (32 to 48 gold for a village, 84 to 120 for a walled town, 200 for a capital). A neutral town pays nothing;
+- **his whole realm**, if it was his seat ([](#seat));
 - its walls, counted one lower (never below 1);
 - its gates, which your men now pass and no longer hack at;
 - its own hex and the six round it, at half a claim or better;

@@ -13,7 +13,13 @@
 //   cities later, the leader's cities when one side runs away with the war,
 //   and above all the towns of its own country that it has lost (the fights
 //   are of men, not of dice: a stack never goes at fewer men than the town's
-//   own and those of its lord a day from it, whatever the dice say);
+//   own and those of its lord a day from it, whatever the dice say); against
+//   walls a Warlord counts men, not dice (menOdds): its idle stacks muster
+//   at its town nearest the best prize, and those standing together go as a
+//   host at a walled town or a lord's seat when they have the men for it;
+// - it minds its seat, which is its realm (Conquest::fallOfRealm), with a
+//   guard that grows with its towns; and when it is hopelessly outmatched it
+//   bends the knee to the strongest lord (Conquest::council);
 // - it trains what fights best for the days it takes (the quickest where a
 //   city is threatened), sends what quiet rear cities train to the front
 //   (LOC), keeps its upkeep inside its income, raises the walls of frontier
@@ -49,6 +55,7 @@ struct Temper {
     int32_t care;         // thousandths more needed to attack for each precious army risked
     int32_t mostOdds;     // ... but never more than this
     int32_t menPercent;   // a stack goes only with this percent of the men it will meet (0: the dice alone decide)
+    bool yieldToLords;    // bends the knee to a computer lord too (else only to a person: Conquest::council)
 };
 // The Warlord: the best odds-taking we found (bolder loses armies, timider
 // loses the race for the neutral towns; with armies slow to train, bolder than
@@ -57,12 +64,12 @@ struct Temper {
 // walls, which would keep every army home), and every strategy. (40% since
 // the small edges made the odds finer and a town must be held while the
 // banner rises: at 35% it threw armies away at the walls.)
-constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, 60, 850, 90};
+constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, true, 60, 850, 90, true};
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
 // trains whatever takes its fancy (the quickest with an enemy at the gates),
 // never gathers, and wastes a fifth of its income (Conquest::income).
-constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000, 0};
+constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000, 0, false};
 
 }  // namespace
 
@@ -94,7 +101,7 @@ public:
         const std::vector<const Army*> raisers = c_.defendersAt(side_, cs.cx, cs.cy);
         if (raisers.empty()) return;
         const int32_t rate = C::kBannerBase + std::min(static_cast<int32_t>(raisers.size()), C::kMaxStack);
-        const int32_t left10 = (C::kBannerFull - cs.bannerProgress) / rate * 10 / C::kTicksPerDay + 1;  // tenths of days
+        const int32_t left10 = (C::kBannerFull - cs.bannerProgress) / rate * c_.bannerSlow(city) * 10 / C::kTicksPerDay + 1;  // tenths of days
         std::vector<std::pair<int32_t, size_t>> near;
         for (size_t k = 0; k < c_.stacks_.size(); ++k) {
             const C::Stack& s = c_.stacks_[k];
@@ -123,6 +130,7 @@ private:
         int32_t threatEta = INT32_MAX;  // tenths of days until the nearest threat arrives
         int32_t threatOdds = 0;         // the worst chance a threat has of taking it
         size_t threatStack = SIZE_MAX;  // that threat
+        int64_t threatMen = 0;          // a host marching on it together: its men (0: the threat is one stack, and the dice's)
     };
 
     Conquest& c_;
@@ -185,6 +193,19 @@ private:
         const int32_t percent = t_.menPercent == 0 ? 0 : std::max(55, t_.menPercent - std::clamp(static_cast<int32_t>(c_.day()) - 30, 0, 35));
         return mine * 100 >= menMet(cx, cy) * percent;
     }
+    // What the men say of a force going at a place, in thousandths (the dice reckon armies one against one; a real
+    // fight is of men, and numbers tell): even at as many men as it will meet, every tenth more men than that a
+    // hundred more. Men behind a wall count three times over: measured (illyria_conquestsim siege, docs/BALANCE.md),
+    // two men to one at a walled town's gate are beaten off and four to one take it in two days and a half.
+    static constexpr int64_t kWallMen = 3;
+    int32_t menOdds(int64_t mine, int64_t theirs, int32_t city) const {
+        if (theirs <= 0) return 1000;
+        const int64_t wall = city >= 0 && c_.continent_.cities()[static_cast<size_t>(city)].walled ? kWallMen : 1;
+        return static_cast<int32_t>(std::clamp<int64_t>(mine * 1000 / (theirs * wall) - 500, 0, 950));
+    }
+    // The odds a force going by its men wants (a host, or a stack the dice would never send at a wall): a Warlord's with
+    // a hero, less as the war drags on.
+    int32_t menNeeded() const { return std::max(300, t_.heroOdds - weary()); }
     // Tenths of days to march so many millimetres of level plains at so many a second.
     static int32_t days10(int64_t mm, int64_t speed) {
         return static_cast<int32_t>(std::min<int64_t>(INT32_MAX - 1, mm * C::kTicksPerSecond * 10 / (std::max<int64_t>(1, speed) * C::kTicksPerDay)));
@@ -235,11 +256,23 @@ private:
                 const C::CityState& o = c_.cities_[j];
                 v.frontier = o.owner != side_ && o.owner != C::kNeutral && cityDays10(static_cast<int32_t>(j), v.index) <= 30;
             }
+            struct Host {
+                int64_t men = 0;
+                int32_t stacks = 0;
+                size_t biggest = SIZE_MAX;
+            };
+            std::map<uint8_t, Host> hosts;  // per lord: his stacks marching on it together, or at its walls
             for (size_t k = 0; k < c_.stacks_.size(); ++k) {
                 const C::Stack& e = c_.stacks_[k];
                 if (!foe(e)) continue;
                 const int32_t when = eta(e, v.index);
                 const bool garrisoned = e.path.empty() && c_.cityAt(e.cx, e.cy) >= 0;  // sitting in its own walls
+                if (((e.path.empty() && e.cx == cs.cx && e.cy == cs.cy) || (!e.path.empty() && e.path.back() == std::make_pair(cs.cx, cs.cy))) && when <= t_.reactDays10) {
+                    Host& h = hosts[e.owner];
+                    for (const Army& a : e.armies) h.men += a.soldiers;
+                    ++h.stacks;
+                    if (h.biggest == SIZE_MAX || e.armies.size() > c_.stacks_[h.biggest].armies.size()) h.biggest = k;
+                }
                 if (!garrisoned && when <= 20) v.frontier = true;
                 // Marching on us, or idle in the field within reach: a threat.
                 // A garrison next door, or a stack marching elsewhere: only
@@ -253,6 +286,17 @@ private:
                     v.threatStack = k;
                 }
                 v.threatEta = std::min(v.threatEta, when);
+            }
+            // A host is one threat, and the men say what it is (as they say it to the host: menOdds).
+            for (const auto& [lord, h] : hosts) {
+                if (h.stacks < 2) continue;
+                int64_t here = 0;
+                for (const Army* a : c_.defendersAt(lord, cs.cx, cs.cy)) here += a->soldiers;
+                const int32_t odds = menOdds(h.men, here, v.index);
+                if (odds <= v.threatOdds) continue;
+                v.threatOdds = odds;
+                v.threatMen = h.men;
+                v.threatStack = h.biggest;
             }
             cityView_[v.index] = mine_.size();
             mine_.push_back(v);
@@ -291,7 +335,7 @@ private:
                 // Everyone stays, unless all but one guard could go out and
                 // destroy the threat itself (the best defence, when the odds are good).
                 keep = pool.size();
-                if (t_.gather && pool.size() > 1) {
+                if (t_.gather && pool.size() > 1 && v.threatMen == 0) {
                     const C::Stack& e = c_.stacks_[v.threatStack];
                     std::vector<Army> out(pool.begin() + 1, pool.end());
                     if (c_.attackOdds(viewOf(out), side_, e.cx, e.cy) >= needed(out)) keep = 1;
@@ -310,6 +354,9 @@ private:
                     }
                 }
             }
+            // His seat is his realm (Conquest::fallOfRealm): its guard grows with what he stands to lose, a squad more for
+            // every four towns, five at the most.
+            if (c_.seatOf(side_) == c_.cityAt(cx, cy)) keep = std::max(keep, std::min<size_t>(5, 1 + mine_.size() / 4));
             std::vector<Army> guard, strike;
             // Siege engines are for taking towns, not for holding them.
             for (const Army& a : pool) {
@@ -395,6 +442,11 @@ private:
             while (take < help.size() && odds > t_.accept) {
                 for (const Army& a : c_.stacks_[help[take].second].armies) def.push_back(&a);
                 odds = C::winChance(att, c_.lineup(def, side_, cs.cx, cs.cy, true));
+                if (v.threatMen > 0) {
+                    int64_t men = 0;
+                    for (const Army* a : def) men += a->soldiers;
+                    odds = std::max(odds, menOdds(v.threatMen, men, v.index));
+                }
                 ++take;
             }
             // Lost anyway? Then do not throw good armies after it.
@@ -413,6 +465,8 @@ private:
         } else {
             v += day < 30 ? 0 : 5;  // then the enemy's
             if (c_.continent_.cities()[static_cast<size_t>(city)].capital) v += 10;
+            // A lord's seat is his realm: every town he holds comes with it (Conquest::fallOfRealm).
+            if (t_.gather && c_.seatOf(t.owner) == city) v += 4 * c_.citiesOwned(t.owner);
             if (t_.gangUp && t.owner == leader) v += 15;
             // Our own country, lost: the first thing to win back (its land and its people were ours).
             if (t_.gangUp && c_.continent_.cities()[static_cast<size_t>(city)].owner == c_.factionOf(side_)) v += 12;
@@ -494,7 +548,7 @@ private:
             if (chance(t_.forget)) continue;  // an Easy lord forgets what he was doing
             if (strikeFrom(k, lead)) continue;
             if (pinned(k)) continue;  // stays to hold a threatened city
-            if (t_.gather && gather(k, lead)) continue;
+            if (t_.gather && (gather(k, lead) || muster(k))) continue;
             goHome(k);
         }
     }
@@ -559,8 +613,9 @@ private:
                 if (odds >= need && enough(s.armies, e.cx, e.cy)) options.push_back({3000 / (d + 10) * odds / 1000 + 20, e.cx, e.cy, -1, odds});
             }
         }
-        if (options.empty()) return false;
         std::stable_sort(options.begin(), options.end(), [](const Option& a, const Option& b) { return a.score > b.score; });
+        if (t_.gather && !pinned(k) && host(k, lead, options.empty() ? 0 : options.front().score)) return true;
+        if (options.empty()) return false;
         // Reinforcements a day off: unless the prize is sure, wait for them.
         if (t_.gather && options.front().odds < 850 && reinforced(k)) {
             used_[k] = 1;
@@ -574,6 +629,54 @@ private:
             return true;
         }
         return false;
+    }
+
+    // By its men, not the dice: this stack, or with it the strike stacks standing beside it (the fewest that will do,
+    // three at the most: a host), goes at a prize the dice would not send it at, when that prize is half as good again
+    // as the best the dice allow it alone (a walled town for a village, a lord's seat for a town). A host sets out
+    // together, and its fight is one fight.
+    bool host(size_t k, int32_t lead, int32_t alone) {
+        const C::Stack& s = c_.stacks_[k];
+        std::vector<size_t> with;
+        for (size_t j = 0; j < c_.stacks_.size(); ++j) {
+            const C::Stack& o = c_.stacks_[j];
+            if (j != k && ours(o) && o.cx == s.cx && o.cy == s.cy && o.path.empty() && !o.boat && !used_[j] && !isGarrison(j) && !raising(o)) with.push_back(j);
+        }
+        std::stable_sort(with.begin(), with.end(), [&](size_t a, size_t b) { return c_.stacks_[a].armies.size() > c_.stacks_[b].armies.size(); });
+        if (with.size() > 2) with.resize(2);
+        const std::vector<std::pair<int32_t, int32_t>> near = prizes(s, lead, 8);
+        int64_t men = 0;
+        for (const Army& a : s.armies) men += a.soldiers;
+        for (size_t n = 0; n <= with.size(); ++n) {
+            if (n > 0)
+                for (const Army& a : c_.stacks_[with[n - 1]].armies) men += a.soldiers;
+            int32_t best = 0, bestCity = -1;
+            for (const auto& [rough, city] : near) {
+                const C::CityState& t = c_.cities_[static_cast<size_t>(city)];
+                const int32_t odds = menOdds(men, menMet(t.cx, t.cy), city);
+                if (odds < menNeeded()) continue;
+                const int32_t score = -rough * odds / 1000;
+                if (score > best) best = score, bestCity = city;
+            }
+            if (bestCity < 0 || best * 2 <= alone * 3) continue;
+            const C::CityState& t = c_.cities_[static_cast<size_t>(bestCity)];
+            if (!march(k, t.cx, t.cy)) return false;
+            for (size_t m = 0; m < n; ++m) march(with[m], t.cx, t.cy);
+            claimed_.push_back(bestCity);
+            return true;
+        }
+        return false;
+    }
+
+    // Nothing to strike at and nobody to join: a Warlord's idle stacks muster at his town nearest the best prize, where
+    // they stand together (reorganize makes them stacks of eight) and go as a host when they are enough.
+    bool muster(size_t k) {
+        const C::Stack& s = c_.stacks_[k];
+        if (staging_ < 0 || !ownCity(cityHere(s))) return false;
+        if (cityHere(s) == staging_) return true;
+        if (eta(s, staging_) > 60) return false;
+        const C::CityState& to = c_.cities_[static_cast<size_t>(staging_)];
+        return march(k, to.cx, to.cy);
     }
 
     // A stack setting out from one of our cities leaves its veterans and
@@ -691,7 +794,8 @@ private:
             upkeep -= C::upkeep(s.armies[bestArmy].type);
             s.armies.erase(s.armies.begin() + static_cast<long>(bestArmy));
         }
-        const int32_t allowed = income * t_.upkeepShare / 100 + side.gold / 20;
+        // (A twelfth of the chest a day: the sack of a town, a fallen lord's treasury and a ruin's gold put more men in the field.)
+        const int32_t allowed = income * t_.upkeepShare / 100 + side.gold / 12;
         // Siege engines, for the walled enemy towns of the later war (from day
         // 40): about one for every eight cities. They are slow and dear; more
         // cost the race for towns more than they win at the walls.
@@ -752,6 +856,34 @@ private:
         }
     }
 };
+
+// The council of the tenth day. No wall in Illyria falls to an equal (three men to one are wanted at a gate: docs/BALANCE.md),
+// so a war between lords who will not give in has no end. The computer lords know when they are beaten: from day
+// kCouncilFrom, at every kCouncilEvery-th dawn, the weakest of them (the fewest towns; of equals, the first) looks at the
+// strongest lord in the war, and if that lord holds kYieldTimes his towns he bends the knee: his realm is that lord's, as if
+// his seat had been taken (fallOfRealm), with no blow struck. A Warlord yields to whoever is strongest. A Knight yields only
+// to a person: among themselves the Knights are too proud, so on Easy no computer lord is ever handed the war, and the
+// player who gets ahead is. One lord at a council, never a person: nobody plays a person's hand for him.
+void Conquest::council() {
+    int32_t strongest = -1, weakest = -1;
+    for (size_t s = 0; s < sides_.size(); ++s) {
+        if (!sides_[s].alive) continue;
+        const int32_t n = citiesOwned(static_cast<uint8_t>(s));
+        if (strongest < 0 || n > citiesOwned(static_cast<uint8_t>(strongest))) strongest = static_cast<int32_t>(s);
+        if (!sides_[s].human && (weakest < 0 || n < citiesOwned(static_cast<uint8_t>(weakest)))) weakest = static_cast<int32_t>(s);
+    }
+    if (weakest < 0 || weakest == strongest) return;
+    const Temper& t = sides_[static_cast<size_t>(weakest)].difficulty == Difficulty::Hard ? kHard : kEasy;
+    if (!t.yieldToLords && !sides_[static_cast<size_t>(strongest)].human) return;
+    if (citiesOwned(static_cast<uint8_t>(strongest)) < kYieldTimes * citiesOwned(static_cast<uint8_t>(weakest))) return;
+    const uint8_t loser = static_cast<uint8_t>(weakest), victor = static_cast<uint8_t>(strongest);
+    deed(loser, "Outmatched, our lord bends the knee to " + sides_[victor].name);
+    deed(victor, sides_[loser].name + " bend the knee to us: their towns and garrisons are ours");
+    for (size_t s = 0; s < sides_.size(); ++s)  // (a council is held before every lord: all of them know)
+        if (s != loser && s != victor && sides_[s].alive) deed(static_cast<uint8_t>(s), "At the council " + sides_[loser].name + " bend the knee to " + sides_[victor].name);
+    fallOfRealm(loser, victor);
+    syncLand();
+}
 
 void Conquest::bannerAlarm(int32_t city) {
     const uint8_t side = cities_[static_cast<size_t>(city)].owner;

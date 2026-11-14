@@ -80,7 +80,10 @@ The levies of rare troops (chapter [](#rare-troops)): 3 days each in a town or v
 |---|---|
 | The land | 1 a day for every 5 hexes held |
 | The Purse of Plenty | 10 a day to the lord whose hero carries it |
-| Taking a lord's city | he loses his gold divided by his cities; half of that is yours |
+| Taking a lord's city | he loses his gold divided by his cities; half of that is yours; and the sack, four days of the city's income |
+| Taking a lord's seat | besides: he is out of the war, and his chest, his places and their garrisons are yours; the banner climbs at a third of the pace |
+| The council | from day 30, every tenth dawn: the weakest computer lord bends the knee to the strongest lord, if he holds twice his places (on Easy: only if he is you) |
+| Winning | the last lord standing, or 41 of the 80 places |
 | A boat | 20 gold, 4 days; 2 a day; carries 7 armies at 6 m/s (720 m a day) |
 | Sending new armies to another city | 2 days on the road; at most 4 cities to one |
 | A Conquest day | 2 minutes at 1×; 1 minute at 2×, 30 seconds at 4×, 15 seconds at 8× |

@@ -109,6 +109,9 @@ public:
     // beside the city stop it, and pull it down when they outnumber the raisers.
     static constexpr int32_t kBannerFull = kTicksPerDay * 8 / 5;
     static constexpr int32_t kBannerBase = 2;
+    // Over a lord's seat (seatOf) a banner climbs so many times slower: a lone army 1.6 days, a full stack half a day.
+    static constexpr int32_t kSeatBannerSlow = 3;
+    int32_t bannerSlow(int32_t city) const;  // kSeatBannerSlow for a seat its lord still holds, else 1
     // Territory (conquest_territory.cpp): the map's conquest hexes, 89 m
     // between centres (pointy-top; odd rows shifted half a hex east), each
     // claimed by the side whose armies stand in it uncontested.
@@ -438,8 +441,9 @@ public:
     // Gold a day its armies cost.
     int32_t upkeepOf(uint8_t side) const;
     // 0 while the war goes on, else the winning side + 1: the last side
-    // standing, or the one the others surrender to (Warlords §14: more than
-    // half the cities, and no rival within 15 of it).
+    // standing, or the one the others lay down their arms before (more than
+    // half the towns); and when every person playing is out of the war, the
+    // lord with the most towns.
     int32_t winner() const;
     const std::vector<Transit>& transits() const { return transits_; }
     // Warlords' combat, for prediction: the attack strength (AS) or defence
@@ -493,6 +497,13 @@ public:
     int32_t hexesHeld(uint8_t side) const;
     // Gold a day a side's land pays: one for every kHexesPerGold hexes it holds.
     static constexpr int32_t kHexesPerGold = 5;
+    // The sack of a lord's town: so many days of its income to whoever takes it (conquest_capture.cpp).
+    static constexpr int32_t kSackDays = 4;
+    // A lord's seat: the capital he began the war with (-1: a side not in the game). Whoever takes it takes his realm.
+    int32_t seatOf(uint8_t side) const;
+    // The council (conquest_ai.cpp): from this day, every so many days, the computer lords take stock of the war.
+    static constexpr uint32_t kCouncilFrom = 30, kCouncilEvery = 10;
+    static constexpr int32_t kYieldTimes = 2;  // a lord bends the knee to one with so many times his towns
     // The small edges an army fights with here (edges.h); opp: the cell the
     // other side fights from, for the high ground (-1: unknown).
     Edges armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
@@ -650,6 +661,9 @@ private:
     void bannerStep();
     int32_t armiesInTown(int32_t city, int32_t (&in)[9]) const;
     void transfer(int32_t city, uint8_t side);
+    void handOver(int32_t city, uint8_t side);       // the town, its gates and its land change lord (no spoils, no news)
+    void fallOfRealm(uint8_t loser, uint8_t victor); // a lord's seat was taken, or he bent the knee: his towns and their garrisons are the victor's
+    void council();  // conquest_ai.cpp: (every tenth dawn, newDay) the weakest computer lord, outmatched, bends the knee to the strongest
     // conquest_world.cpp: the men on the land.
     void ensureWorld();
     void seat(Stack& s);                 // puts the men of the stack that are not in the world into it

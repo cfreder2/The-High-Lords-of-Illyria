@@ -25,7 +25,7 @@ The battle was made from the first day to be played between people. Every order 
 - **Ruins fought in the ruin:** the hero (and perhaps a companion) against the guardian, in the ruin's own interior, instead of one roll of the dice: the last dice left in the Conquest.
 - **The rest of One World:** fog of war (today every lord sees everything), the lords planning in real time instead of at dawn, the speed dropping to what a big fight allows, saved games that keep a fight in progress, multiplayer, and boats that fight at sea (today they only carry).
 - **Temple quests**, with an artifact for reward.
-- **Razing** a city, and a new capital chosen when the old one falls.
+- **Razing** a city.
 - **Hatreds:** computer lords with attitudes to each of the others.
 - **Generals:** handing an army to the computer to command (hold, skirmish, assault, retreat at a given loss), and several battles across the continent at once.
 - **The land remembers:** the dead, the arrows, the craters and the burnt houses of every battle staying on the land, weathering slowly through the war.

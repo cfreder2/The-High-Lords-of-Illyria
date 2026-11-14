@@ -18,7 +18,7 @@ These remarks assume you are playing against Hard computer lords; Easy ones, and
 
 **The capital is worth five villages.** It pays 50 gold a day, it alone trains your realm's own kinds, and it trains at twice a town's pace: two days' drill every day, so light infantry in one day and knights in three. Keep it training from the first day to the last, and send what it trains to the front (below).
 
-**Never leave the capital empty.** The neighbours are racing too, and one enemy army inside your wall with none of yours there starts a banner. You begin with a guard of archers and heavy infantry in your lord's stack: leave them at home when he marches, the bows on the wall and the shields behind the gate, and train behind them.
+**Never leave the capital empty.** It is your seat, and **your realm falls with it**: every town, every garrison and your chest go to whoever raises a banner over it ([](#seat)). The neighbours are racing too, and one enemy army inside your wall with none of yours there starts a banner (at a third of the usual pace over a seat: you have a day or so to come back). You begin with a guard of archers and heavy infantry in your lord's stack: leave them at home when he marches, the bows on the wall and the shields behind the gate, and train behind them.
 
 **Raise banners with enough men.** A lone army takes about a minute, half a day, to raise a banner; eight take a third of that. An army of anyone else's that comes inside the place stops your banner while it stands there, more armies than yours bring it down, and if your men leave or fall the attempt is lost. Bring three or four armies, or follow up with more.
 
@@ -34,7 +34,13 @@ These remarks assume you are playing against Hard computer lords; Easy ones, and
 
 **Send new armies to the front.** Rear cities should send what they train to the city nearest your next prize (**Send new armies to…**), two days later and with no marching. Up to four cities can feed one.
 
-**Bring engines to the capitals.** A capital has an outer wall and an inner bailey, each with its own gate (2,000 and 1,500 hit points). Four catapult stones square on the doors break the outer gate; satchels laid at it and lit do the work without an engine (chapter [](#gates)). Only the Throne, the Dwarves and Malvoren build catapults, at their capitals; the others must bring grenadiers from a hill town, take a capital that builds engines, or go over on wings. Taking a capital is worth it: its 50 gold a day and its double pace become yours.
+**Three to one at a wall.** Men behind a wall are worth three in front of it. Measured with light infantry marched straight at the gate: two to one against a walled town's garrison of forty-eight are beaten off with half their number lost; three to one take it about one time in two; four to one take it in two and a half days and lose a quarter. Do not send eight squads at a held wall. Send sixteen, or go where the wall is held by one.
+
+**Go for the seat.** One siege of a lord's seat wins everything he holds, and everything other lords have given him at the councils. A lord's armies are mostly on his frontier; look at what is standing in his seat, and what is within a day of it, before you look at anything else of his.
+
+**Mind the tenth day.** From day 30 the weakest computer lord bends the knee to the strongest whenever the strongest holds twice his places ([](#council)). Be the strongest on a tenth day and realms come to you for nothing. On Hard, let another lord be the strongest and he grows by a realm every ten days until he holds 41 places; the only cure is his seat.
+
+**Bring engines to the capitals.** A capital has an outer wall and an inner bailey, each with its own gate (2,000 and 1,500 hit points). Four catapult stones square on the doors break the outer gate; satchels laid at it and lit do the work without an engine (chapter [](#gates)). Only the Throne, the Dwarves and Malvoren build catapults, at their capitals; the others must bring grenadiers from a hill town, take a capital that builds engines, or go over on wings. Taking a capital is worth it: its 50 gold a day and its double pace become yours, and if it is a lord's seat, so does his realm.
 
 **Heroes should always be doing something.** Ruins near home have weak guardians: send your lord after them early, alone if you dare. A hero of strength 4 beats wolves four times in five and a troll one time in two. Visit the temples (every stack may), consult the sages (the first hero takes the gold), and hire heroes whenever you can afford them. Watch for an enemy hero alone or lightly guarded: you never know what he is carrying.
 
