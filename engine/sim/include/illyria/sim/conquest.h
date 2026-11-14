@@ -410,6 +410,8 @@ public:
     bool passable(const Stack& s, int32_t cx, int32_t cy) const;
     // Gold a day an army costs to keep: half its training cost, as in Warlords.
     static int32_t upkeep(UnitType t);
+    // Gold to train an army of this type (a levy's price for the rare ones).
+    static int32_t price(UnitType t);
     static int32_t armyUpkeep(const Army& a) { return a.ally ? 0 : upkeep(a.type); }  // allies serve for nothing
     // How many soldiers a fresh army of this type has.
     static int32_t squadSize(UnitType t);

@@ -92,6 +92,8 @@ int32_t Conquest::squadSize(UnitType t) {
     }
 }
 
+int32_t Conquest::price(UnitType t) { return trained(t).cost; }
+
 int32_t Conquest::upkeep(UnitType t) {
     // Common troops: a quarter of their training price a day. Rare ones what
     // Warlords asked for them (half their price in its city table).

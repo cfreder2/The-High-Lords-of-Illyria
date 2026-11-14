@@ -10,7 +10,8 @@
 #include <cstring>
 #include <vector>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
+#include "../tests/conquest_orders.h"  // the one public way to give the march order outside a step
 #include "illyria/sim/world.h"
 
 using namespace illyria::sim;
@@ -23,7 +24,7 @@ const Vec3 kEast{Fixed::one(), Fixed::zero(), Fixed::zero()};
 UnitType typeAt(int i) { return static_cast<UnitType>(i); }
 
 // The campaign's price of a soldier, in gold (a squad's price over its size).
-double goldPer(UnitType t) { return static_cast<double>(Campaign::price(t)) / std::max(1, Campaign::squadSize(t)); }
+double goldPer(UnitType t) { return static_cast<double>(Conquest::price(t)) / std::max(1, Conquest::squadSize(t)); }
 
 // Soldiers of `t` that `gold` buys (at least one).
 int soldiersFor(UnitType t, int gold) { return std::max(1, static_cast<int>(std::lround(gold / goldPer(t)))); }
@@ -58,7 +59,7 @@ void deploy(World& w, const Force& a, const Force& b, bool aFirst) {
             c.player = s->side;
             c.unit = id;
             c.type = Command::Type::Move;
-            c.target = {mm(0), mm(0), m(0)};
+            c.target = {mm(-s->front), mm(0), m(0)};  // the enemy's line: fight on the way
             cmds.push_back(c);
         }
     w.step(cmds);
@@ -86,7 +87,7 @@ struct Result {
 
 // A fights B with `gold` each, 90 m apart. `variant` picks the end of the field A starts at (bit 0) and whether it
 // is player 0 or 1 (bit 1): the simulation resolves player 0's orders and blows first, so both are alternated.
-Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int maxSeconds = 150) {
+Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int maxSeconds = 100) {
     const bool aWest = variant % 2 == 0;
     const PlayerId pa = static_cast<PlayerId>(variant / 2 % 2), pb = static_cast<PlayerId>(1 - pa);
     WorldConfig cfg;
@@ -108,11 +109,17 @@ Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int m
     return r;
 }
 
+// The end, player and spawn order of fight s of n: eight cover every combination, four cover each bit evenly.
+int variantOf(int s, int n) {
+    static const int kFour[4] = {0, 3, 5, 6};
+    return n <= 4 ? kFour[s % 4] : s % 8;
+}
+
 // Share of the fights A won (a stand-off counts for whoever holds more value), over both sides of the field.
 double winRate(UnitType a, UnitType b, int gold, int seeds) {
     double wins = 0;
     for (int s = 0; s < seeds; ++s) {
-        const Result r = fight(a, b, gold, 1000 + static_cast<uint64_t>(s), s % 8);
+        const Result r = fight(a, b, gold, 1000 + static_cast<uint64_t>(s), variantOf(s, seeds));
         wins += r.score > 0.5 ? 1.0 : r.score == 0.5 ? 0.5 : 0.0;
     }
     return wins / seeds;
@@ -144,8 +151,8 @@ void speeds() {
 
 void march() {
     const Continent cont(20261027);
-    Campaign c(cont, 1);
-    const UnitType walkers[] = {UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Dwarves, UnitType::LightCavalry,
+    Conquest c(cont, 1);
+    const UnitType walkers[] = {UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Pikemen, UnitType::LightCavalry,
                                 UnitType::Giants,        UnitType::Catapult,      UnitType::Dragons};
     const size_t kinds = sizeof(walkers) / sizeof(walkers[0]);
     std::vector<double> nearest;
@@ -164,18 +171,14 @@ void march() {
             const auto& b = c.cities()[near[k].second];
             for (size_t w = 0; w < kinds; ++w) {
                 const uint32_t id = c.raise(7, a.cx, a.cy, {walkers[w]});
-                if (!c.move(id, b.cx, b.cy)) continue;
-                const Campaign::Stack* st = nullptr;
+                if (!ConquestOrders::move(c, id, b.cx, b.cy)) continue;
+                const Conquest::Stack* st = nullptr;
                 for (const auto& s : c.stacks())
                     if (s.id == id) st = &s;
                 if (!st) continue;
-                double mp = 0;
-                int px = st->cx, py = st->cy;
-                for (const auto& [x, y] : st->path) {
-                    mp += (x != px && y != py ? 1.5 : 1.0) * Campaign::moveCost(walkers[w], c.terrainAt(x, y));
-                    px = x, py = y;
-                }
-                secs[w].push_back(mp / Campaign::movesPerDay(walkers[w]) * 30.0);
+                const int32_t left = c.timeLeft(*st);
+                if (left >= Conquest::kClosed) continue;
+                secs[w].push_back(double(left) / (Conquest::kTimeScale * Conquest::kTicksPerSecond));
             }
         }
     }
@@ -184,8 +187,8 @@ void march() {
         return v.empty() ? 0.0 : v[static_cast<size_t>(p * (v.size() - 1))];
     };
     std::printf("%d towns; nearest neighbour: median %.0f cells (%.0f m)\n", static_cast<int>(c.cities().size()), q(nearest, 0.5),
-                q(nearest, 0.5) * Campaign::kCell);
-    std::printf("seconds to the three nearest towns (a day is 30 s):\n%-18s %6s %6s %6s\n", "stack", "p10", "median", "p90");
+                q(nearest, 0.5) * Conquest::kCell);
+    std::printf("seconds to the three nearest towns (a day is %d s)\n%-18s %6s %6s %6s\n", Conquest::kTicksPerDay / Conquest::kTicksPerSecond, "stack", "p10", "median", "p90");
     for (size_t w = 0; w < kinds; ++w)
         std::printf("%-18s %6.0f %6.0f %6.0f\n", unitTypeName(walkers[w]), q(secs[w], 0.1), q(secs[w], 0.5), q(secs[w], 0.9));
 }
@@ -193,14 +196,17 @@ void march() {
 void matrix(int seeds, int gold) {
     std::printf("equal gold (%d) a side, %d seeds, both ends of the field; cell = %% of fights the row won\n", gold, seeds);
     std::printf("%-7s", "");
-    for (int j = 0; j < kUnitTypeCount; ++j) std::printf("%4.3s", unitTypeName(typeAt(j)));
+    for (int j = 0; j < kUnitTypeCount; ++j)
+        if (!retired(typeAt(j))) std::printf("%4.3s", unitTypeName(typeAt(j)));
     std::printf("  mean  men\n");
     static double done[kUnitTypeCount][kUnitTypeCount];
     for (int i = 0; i < kUnitTypeCount; ++i) {
+        if (retired(typeAt(i))) continue;
         std::printf("%-7.6s", unitTypeName(typeAt(i)));
         double sum = 0;
         int n = 0;
         for (int j = 0; j < kUnitTypeCount; ++j) {
+            if (retired(typeAt(j))) continue;
             if (i == j) {
                 std::printf("%4s", ".");
                 continue;
@@ -218,7 +224,7 @@ void matrix(int seeds, int gold) {
 void duel(UnitType a, UnitType b, int seeds, int gold) {
     std::printf("%s (%d) vs %s (%d), %d gold\n", unitTypeName(a), soldiersFor(a, gold), unitTypeName(b), soldiersFor(b, gold), gold);
     for (int s = 0; s < seeds; ++s) {
-        const Result r = fight(a, b, gold, 1000 + static_cast<uint64_t>(s), s % 8);
+        const Result r = fight(a, b, gold, 1000 + static_cast<uint64_t>(s), variantOf(s, seeds));
         std::printf("  seed %d: A %.2f  left %d vs %d%s\n", s, r.score, r.aLeft, r.bLeft, r.timeout ? "  (timeout)" : "");
     }
 }
