@@ -1289,6 +1289,16 @@ ILLYRIA_API void illyria_queue_demo() {
     rightClick(mine[1], 60, 45, true);
     b.clearSelection();
 }
+
+// The --play script's `select all`: every soldier of every squad the local side commands, on screen or not (Ctrl+A
+// takes only the ones on screen). Selection only: nothing the simulation reads.
+ILLYRIA_API void illyria_select_all() {
+    if (!app) return;
+    std::vector<illyria::sim::EntityId> all;
+    for (const Squad& q : app->battle->squads())
+        if (app->battle->controllable(q)) all.insert(all.end(), q.members.begin(), q.members.end());
+    app->battle->select(all);
+}
 #endif
 
 ILLYRIA_API void illyria_focus_squad(int index) {

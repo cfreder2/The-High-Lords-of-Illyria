@@ -33,6 +33,7 @@ void illyria_queue_demo();  // --queue-demo: see game/app/app.cpp
 void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
 void illyria_garrison_demo();  // --garrison-demo: see game/app/app.cpp
 void illyria_set_shader_time(double seconds);  // --time-step: the renderer's clock (the water's animation) moved on by this much
+void illyria_select_all();  // --play's `select all`: every soldier the local side commands
 #endif
 void illyria_finish_detail();
 void illyria_set_shift(int down);

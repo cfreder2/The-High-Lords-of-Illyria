@@ -79,6 +79,8 @@ target_link_libraries(illyria_app PRIVATE illyria_runtime SDL3::SDL3 ${ILLYRIA_W
 target_compile_options(illyria_app PRIVATE -Wno-conversion)
 if(ILLYRIA_DEV_HOOKS)
     target_compile_definitions(illyria_app PRIVATE ILLYRIA_DEV_HOOKS)
+    # --play (docs/PLAYTEST.md): the scripted player, in the developer builds only.
+    target_sources(illyria_app PRIVATE playrun.cpp playscript.cpp)
 endif()
 # Run from the source tree without copying: the folders the browser build serves.
 target_compile_definitions(illyria_app PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}" ILLYRIA_SOURCE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/../web")

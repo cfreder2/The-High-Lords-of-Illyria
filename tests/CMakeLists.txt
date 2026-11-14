@@ -92,6 +92,8 @@ add_executable(illyria_tests
     test_friendly_fire.cpp
     test_scavenge.cpp
     test_match_seats.cpp
+    test_playscript.cpp
+    ${CMAKE_SOURCE_DIR}/game/native/playscript.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp
 )
 target_link_libraries(illyria_tests PRIVATE illyria_game illyria_figures)

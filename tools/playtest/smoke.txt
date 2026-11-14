@@ -1,0 +1,8 @@
+# The smallest script: start the Ford, look, stop. Run: Illyria --play tools/playtest/smoke.txt --play-out /tmp/smoke
+size 1600 900
+start skirmish ford
+wait 2
+cards
+stats
+shot smoke
+quit

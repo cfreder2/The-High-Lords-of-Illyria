@@ -1,0 +1,64 @@
+# Example 1: Skirmish at the Ford. Your army starts west of the river; the Red Hand are across it, to the east.
+# Plan: everyone forms one line on the near bank facing east; then a box round the middle of the line crosses the
+# ford; a shot every 10 s of game time for 90 s; the numbers at the end.
+#
+#   Illyria --play tools/playtest/ford.txt --play-out out/ford --play-log out/ford/ford.log
+#
+# The coordinates are window points at 1600 x 900 with the camera set below (north is up the screen). They were read off
+# pictures taken with it: if you change the camera or the size, take `shot` again and move them.
+
+size 1600 900
+start skirmish ford
+wait 0.5
+camera 520 500 230 1.592
+wait 1
+shot ford-00-start
+cards
+stats
+
+# Everyone: select all, then a right-button drag (held still first, as a march with a facing) from the ford's near
+# bank eastward: the army marches there and ends in a line facing east.
+select all
+drag right 640 420 740 420 0.6
+wait_ticks 600
+shot ford-01-line
+stats
+
+# A box round the middle of the line, and a march across the ford onto the far bank.
+drag left 420 300 720 520
+wait 0.3
+shot ford-02-box
+click right 950 410
+wait 0.5
+shot ford-03-crossing
+
+# Let the game run: a shot every 10 s of game time (300 ticks) for 90 s.
+wait_ticks 300
+shot ford-10
+stats
+wait_ticks 300
+shot ford-20
+stats
+wait_ticks 300
+shot ford-30
+stats
+wait_ticks 300
+shot ford-40
+stats
+wait_ticks 300
+shot ford-50
+stats
+wait_ticks 300
+shot ford-60
+stats
+wait_ticks 300
+shot ford-70
+stats
+wait_ticks 300
+shot ford-80
+stats
+wait_ticks 300
+shot ford-90
+stats
+cards
+quit

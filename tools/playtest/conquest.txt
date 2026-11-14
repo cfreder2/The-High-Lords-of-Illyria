@@ -1,0 +1,60 @@
+# Example 3: Conquest, the first days. You lead the Moonward Order from Moonhaven; the stack standing in the capital is
+# picked, sent to the nearest town that is nobody's, at four times the speed, for three minutes of game time
+# (5400 ticks, a day and a half), a shot every 20 s.
+#
+#   Illyria --play tools/playtest/conquest.txt --play-out out/conquest --play-log out/conquest/conquest.log
+#
+# Coordinates: window points at 1600 x 900, after the wheel turns below have zoomed the map out. With another lord
+# (`start conquest lord N`) the capital is elsewhere: look at `shot conquest-00-start` and move them. Nothing is saved.
+# (A Conquest's tick starts again from 0 each day, 3600 ticks; wait_ticks counts across that.)
+
+size 1600 900
+start conquest
+wait_ticks 30
+wheel -4
+wait 1.5
+shot conquest-00-start
+stats
+
+# Click the stack's banner (the "6x" on Moonhaven's gate): the stack is picked and the view comes down to it.
+click left 763 350
+wait 2
+shot conquest-01-picked
+stats
+
+# A right-click on Wolfsden, the nearest town nobody holds: the dashed line is the route. Then the days speed up.
+click right 470 300
+wait 1
+shot conquest-02-ordered
+speed 4
+stats
+
+# Every 20 s of game time (600 ticks) for three minutes.
+wait_ticks 600
+shot conquest-020
+stats
+wait_ticks 600
+shot conquest-040
+stats
+wait_ticks 600
+shot conquest-060
+stats
+wait_ticks 600
+shot conquest-080
+stats
+wait_ticks 600
+shot conquest-100
+stats
+wait_ticks 600
+shot conquest-120
+stats
+wait_ticks 600
+shot conquest-140
+stats
+wait_ticks 600
+shot conquest-160
+stats
+wait_ticks 600
+shot conquest-180
+stats
+quit
