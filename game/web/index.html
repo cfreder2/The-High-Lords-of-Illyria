@@ -128,6 +128,19 @@
     flex-direction: column; gap: 14px; text-align: center; padding: 24px;
   }
   #overlay p { max-width: 420px; }
+  /* The results sheet (illyria_hud: result): the toll in a line, then a row a squad. */
+  #result { width: min(92vw, 460px); max-height: 46vh; overflow-y: auto; font-size: 14px; text-align: left; }
+  #result .toll, #result .note { text-align: center; margin: 0 0 8px; }
+  #result table { width: 100%; border-collapse: collapse; }
+  #result th { font-weight: 600; color: var(--pg-seal); border-bottom: 1px solid rgba(43, 30, 16, 0.4); text-align: left; padding: 2px 6px; }
+  #result td { padding: 2px 6px; }
+  #result tr.gone td { color: var(--pg-ink-dim); }
+  #result .broke { color: var(--pg-seal); }
+  /* A battle's deployment and briefing, and a host chased off the field; a kind's tip over the cards. */
+  #deploy { position: fixed; left: 50%; top: calc(74px + var(--safe-t, 0px)); transform: translateX(-50%); padding: 10px 16px; text-align: center; max-width: 90vw; }
+  #deploy b { display: block; color: var(--gold); font-size: 18px; font-weight: 600; }
+  #deploy button { margin-top: 8px; }
+  #tip { margin: 0 0 6px; padding: 4px 10px; width: max-content; max-width: 92vw; border: 1px solid var(--gold); }
   /* Map labels over the 3D view, Warlords style. */
   #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
   #labels div {
@@ -383,9 +396,11 @@
   <button id="hireYes">Hire</button><button id="hireNo">Decline</button>
 </div>
 <div id="toast" class="panel hidden"></div>
+<div id="deploy" class="panel hidden"><b id="deployTitle"></b><span id="deployBrief"></span><div><button id="deployBegin" class="hidden">Begin</button></div></div>
 <div id="selBox"></div>
 
 <div id="bottom">
+  <div id="tip" class="panel hidden"></div>
   <div id="selInfo" class="hidden"></div>
   <div id="picker" class="panel hidden popup" role="menu" aria-label="Formations"></div>
   <div id="modeBar" class="panel hidden" role="status"></div>
@@ -404,7 +419,8 @@
 <div id="overlay">
   <h2 id="overlayTitle">Loading…</h2>
   <p id="overlayText">Raising the banners of Oakhaven.</p>
-  <div class="acts"><button id="overlayButton" class="hidden">Fight again</button><button id="overlayMenu" class="hidden">Main menu</button></div>
+  <div id="result" class="hidden"></div>
+  <div class="acts"><button id="overlayButton" class="hidden">Again</button><button id="overlayArmy" class="hidden">Change army</button><button id="overlayMenu" class="hidden">Menu</button></div>
 </div>
 
 <div id="titleScreen" role="main">
@@ -449,6 +465,8 @@
   let api = null;
   let lastSquadsKey = "";
   let hintShown = false;
+  let deploying = false;  // a battle waiting on its deployment (illyria_hud: deploy)
+  const coarse = matchMedia("(pointer: coarse)").matches;
 
   const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
   const icons = {
@@ -540,6 +558,7 @@
       pause: Module.cwrap("illyria_toggle_pause", null, []),
       speed: Module.cwrap("illyria_cycle_speed", null, []),
       restart: Module.cwrap("illyria_restart", null, []),
+      begin: Module.cwrap("illyria_begin_battle", null, []),
       setScenario: Module.cwrap("illyria_set_scenario", null, ["number"]),
       conqStart: Module.cwrap("illyria_conquest_start", null, ["number"]),
       conqVector: Module.cwrap("illyria_conquest_vector", null, ["number", "number"]),
@@ -937,6 +956,8 @@
   $("hireNo").onclick = () => api && api.conqHire(0);
   $("overlayButton").onclick = () => { if (api) api.restart(); };
   $("overlayMenu").onclick = () => api && toMenu(true);
+  $("overlayArmy").onclick = () => { if (!api) return; toMenu(false); if (window.IllyriaTitle) IllyriaTitle.open("skirmish"); };
+  $("deployBegin").onclick = () => api && api.begin();
   $("hold").onclick = () => api && api.stop();
   $("charge").onclick = () => api && api.charge();
   $("scatter").onclick = () => api && api.scatter();
@@ -1046,6 +1067,11 @@
       return;
     }
     if (!api || e.repeat) return;
+    if ((e.code === "Enter" || e.code === "NumpadEnter") && deploying && !typing(e)) {  // the line is set: the battle begins
+      api.begin();
+      e.preventDefault();
+      return;
+    }
     const digit = /^(Digit|Numpad)([0-9])$/.exec(e.code);
     if (digit) {
       const n = +digit[2];
@@ -1678,21 +1704,41 @@
       }
     }
 
-    // A match (modes.js) shows its own end.
-    if (s.outcome !== 0 && mode !== "title" && !(window.IllyriaMatch && window.IllyriaMatch.active)) {
+    // A battle's start and end, from the same state as the desktop's HUD: the deployment and its briefing, a host
+    // chased off the field, a kind's tip the first time it is picked.
+    const playing = mode !== "title" && !conquest;
+    deploying = playing && !!s.deploy;
+    const chased = playing && !s.result && s.routed >= 0;
+    $("deploy").classList.toggle("hidden", !(deploying || chased));
+    if (deploying || chased) {
+      $("deployTitle").textContent = deploying ? (coarse ? "Place your line" : "Place your line. Enter to begin") : s.routed === s.side ? "Your host has quit the field" : "The enemy has quit the field";
+      $("deployBrief").textContent = deploying ? s.brief : "";
+      $("deployBegin").classList.toggle("hidden", !(deploying && coarse));
+    }
+    $("tip").classList.toggle("hidden", !s.tip);
+    if (s.tip) $("tip").textContent = s.tip;
+    // The fight has stopped: the results sheet. A match (modes.js) shows its own end.
+    if (s.result && mode !== "title" && !(window.IllyriaMatch && window.IllyriaMatch.active)) {
+      const r = s.result;
+      if ($("result").dataset.at !== String(s.tick)) {
+        $("result").dataset.at = String(s.tick);
+        $("overlayTitle").textContent = r.outcome === 1 ? "Victory" : "Defeat";
+        $("overlayText").textContent = r.line;
+        const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+        const best = r.rows.find((q) => q.name === r.best);
+        $("result").innerHTML =
+          `<p class="toll">Time ${Math.floor(r.seconds / 60)}:${String(r.seconds % 60).padStart(2, "0")} · Killed ${r.killed} · Lost ${r.lost}</p>` +
+          `<table><tr><th>Squad</th><th>Left</th><th>Killed</th><th></th></tr>` +
+          r.rows.map((q) => `<tr class="${q.alive ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.alive} / ${q.total}</td><td>${q.kills}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
+          `</table>` + (best ? `<p class="note">Best squad: ${esc(best.name)}, ${best.kills} killed</p>` : "") +
+          (r.fallen.length ? `<p class="note broke">Heroes fallen: ${r.fallen.map(esc).join(", ")}</p>` : "");
+      }
       $("overlay").classList.remove("hidden");
-      const siege = s.scenario === 1 || s.scenario === 2;  // (0 the Ford, 1 a village's siege, 2 a capital's, 3 open ground)
-      $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
-      $("overlayText").textContent = s.outcome === 1
-        ? (siege ? (s.defend ? "The walls held. Their dead lie where they fell; the land will remember." : "The town is yours. Its dead lie where they fell; the land will remember.")
-                 : s.scenario === 3 ? "The field is yours. The dead lie where they fell; the land will remember." : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
-        : (siege ? (s.defend ? "The walls have fallen. The besiegers hold the town." : `The walls held. ${s.foe} keeps its town.`)
-                 : s.scenario === 3 ? "Your host is broken." : "Oakhaven has fallen. The Red Hand marches west.");
-      $("overlayButton").textContent = "Fight again";
-      $("overlayButton").classList.remove("hidden");
-      $("overlayMenu").classList.remove("hidden");
+      for (const id of ["result", "overlayButton", "overlayArmy", "overlayMenu"]) $(id).classList.remove("hidden");
     } else if ($("overlayButton").offsetParent !== null) {
       $("overlay").classList.add("hidden");
+      $("result").classList.add("hidden");
+      $("result").dataset.at = "";
     }
   }
 

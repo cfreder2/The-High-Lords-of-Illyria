@@ -57,7 +57,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | --- | --- |
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
-| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
+| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -72,7 +72,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `stats` | prints one line of `key=value`: see below. |
 | `shot NAME [full]` | writes `NAME.png` (into `--play-out`). The shot is of the frame as the player sees it, HUD included. |
 | `wait SECONDS` | wall-clock time. Consecutive waits do not drift: the time a `shot` takes is part of the wait before it. |
-| `wait_ticks N` | N simulation ticks (30 a second) of the game, however fast or slow the machine. In a Conquest the tick starts again from 0 each day (3600 ticks); the wait counts across that. Gives up after a long wall time if the game is paused (and says so). |
+| `wait_ticks N` | N simulation ticks (30 a second) of the game, however fast or slow the machine. In a Conquest the tick starts again from 0 each day (3600 ticks); the wait counts across that. Gives up after a long wall time if the game is paused (and says so); ends at once when the battle is over (it steps no more). |
 | `speed N` | the game's pace: 0.25, 0.5, 1, 2, 4 (Conquest: 1, 2, 4, 8). As the `-` and `=` keys. |
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `deaths spawn X Y` | the death demo: one soldier of every unit type, of your side, in a grid from (X, Y) in battle metres: seven to a row eastward, the rows 10 m apart southward, in unit type order. |
@@ -80,7 +80,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
 
-Key names: `a`-`z`, `0`-`9`, `space`, `tab`, `return` (opens the menu), `escape`, `backspace`, `backtick` (or `` ` ``: plan
+Key names: `a`-`z`, `0`-`9`, `space`, `tab`, `return` (begins a battle waiting on its deployment, fights a finished one again, else opens the menu), `escape`, `backspace`, `backtick` (or `` ` ``: plan
 orders), `slash` (help), `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. There are
 no function keys (the game binds none). The game's keys are in the in-game help (`slash`).
 
@@ -94,7 +94,7 @@ stats t=41.2 tick=1080 fps=60 frame_ms=16.7 cpu_ms=4.1 gpu_ms=6.2 sim_ms=0.35 mi
 
 `t` is wall seconds since the run began; `tick` the simulation's (0 until a battle has begun); `fps`, `frame_ms`,
 `cpu_ms`, `gpu_ms` the HUD's own smoothed figures; `sim_ms` the cost of one simulation tick; `mine=alive/total` all the
-squads on your side's cards (allies' too), `foe=alive/total` the others; `outcome` 0 while it is undecided;
+squads on your side's cards (allies' too), `foe=alive/total` the others; `outcome` 0 while it is undecided (1 won, 2 lost: the fight stops eight ticks later and the results sheet is up);
 `selected` the soldiers selected; `cam_*` the camera (battle metres; `cam_height` is its distance). In a Conquest
 `day`, `gold`, `cities` and `winner` follow.
 

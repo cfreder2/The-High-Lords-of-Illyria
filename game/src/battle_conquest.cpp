@@ -23,6 +23,7 @@ bool Battle::sees(uint8_t owner, float x, float y) const {
 
 void Battle::borrow(sim::Conquest* conquest) {
     conquest_ = conquest;
+    quitSeen_ = 0;  // (a conquest begun or loaded has told of none)
     if (conquest == nullptr) {
         world_ = ownWorld_.get();
         alphaSet_ = false;

@@ -20,6 +20,7 @@ add_library(illyria_game
     src/voice.cpp
     src/sfx.cpp
     src/battle_deaths.cpp
+    src/battle_end.cpp
     src/battle_events.cpp
     src/minimap.cpp
     src/palette.cpp

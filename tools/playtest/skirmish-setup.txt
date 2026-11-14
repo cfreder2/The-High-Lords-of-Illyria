@@ -45,7 +45,11 @@ key down
 wait 0.2
 shot setup-04-start-row
 key return
-wait 3
-shot setup-05-started
+wait 6
+# The battle waits on its deployment (the camera has come from the other host to yours): Enter begins it.
+shot setup-05-deployment
+key return
+wait 2
+shot setup-06-begun
 stats
 quit

@@ -136,6 +136,72 @@ void FlagRule::hash(StateHasher& h) const {
     }
 }
 
+// --- The rout ----------------------------------------------------------------
+
+bool squadSpent(const World& world, const std::vector<EntityId>& members, int32_t full) {
+    int32_t alive = 0, steady = 0;
+    for (EntityId id : members) {
+        const Unit* u = world.findUnit(id);
+        if (u == nullptr || !u->alive()) continue;
+        ++alive;
+        steady += !u->routed;
+    }
+    if (full <= 0) full = static_cast<int32_t>(members.size());
+    return steady == 0 || alive * kSpentShare < full;
+}
+
+bool hostBeaten(const World& world, const std::vector<HostSquad>& squads, PlayerId owner) {
+    bool any = false, spent = true;
+    int32_t full = 0;
+    for (const HostSquad& s : squads) {
+        if (s.owner != owner) continue;
+        any = true;
+        full += s.full > 0 ? s.full : static_cast<int32_t>(s.members.size());
+        bool men = false;  // a living man of it who is no engine
+        for (EntityId id : s.members) {
+            const Unit* u = world.findUnit(id);
+            men = men || (u != nullptr && u->alive() && u->stats.ranged.kind != ProjectileKind::Stone);
+        }
+        if (men && !squadSpent(world, s.members, s.full)) spent = false;
+    }
+    if (!any || spent) return any;
+    // The host as a whole: under a third of its men left alive (the broken among them: a panic that may pass is not
+    // a host worn down), and outnumbered three to two by the unbroken men against it.
+    int32_t left = 0, against = 0;
+    for (const Unit& u : world.units()) {
+        if (!u.alive()) continue;
+        if (u.owner == owner) ++left;
+        else if (!u.routed) ++against;
+    }
+    return left * kWornShare < full && against * 2 >= left * 3;
+}
+
+void RoutRule::step(World& world, const std::vector<HostSquad>& squads) {
+    if (quitter_ != kNobody) return;
+    std::array<int32_t, 256> standing{};
+    std::array<bool, 256> seen{};
+    for (const Unit& u : world.units())
+        if (standsGround(u)) ++standing[u.owner];
+    PlayerId worst = kNobody;
+    int32_t hosts = 0;
+    for (const HostSquad& s : squads) {
+        if (seen[s.owner]) continue;
+        seen[s.owner] = true;
+        ++hosts;
+        if (!hostBeaten(world, squads, s.owner)) continue;
+        if (worst == kNobody || standing[s.owner] < standing[worst] || (standing[s.owner] == standing[worst] && s.owner > worst)) worst = s.owner;
+    }
+    if (worst == kNobody || hosts < 2) return;
+    quitter_ = worst;
+    quitTick_ = world.tick();
+    world.quitField(worst);
+}
+
+void RoutRule::hash(StateHasher& h) const {
+    h.addU64(quitter_);
+    h.addU64(quitTick_);
+}
+
 // --- The waves ---------------------------------------------------------------
 
 int32_t waveThreat(UnitType type) {

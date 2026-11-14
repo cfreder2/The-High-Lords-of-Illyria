@@ -207,7 +207,14 @@ void Input::key(const SDL_KeyboardEvent& k) {
     }
     if (k.repeat) return;
     if (c == SDL_SCANCODE_RETURN || c == SDL_SCANCODE_KP_ENTER) {
-        hud_.openMenu();
+        // A battle waiting on its deployment begins; one that is over is fought again; else the menu.
+        if (hud_.deploying()) illyria_begin_battle();
+        else if (hud_.resultOpen()) hud_.afterBattle(Hud::After::Again);
+        else hud_.openMenu();
+        return;
+    }
+    if (hud_.resultOpen() && (c == SDL_SCANCODE_C || c == SDL_SCANCODE_ESCAPE) && !ctrl && !alt) {
+        hud_.afterBattle(c == SDL_SCANCODE_C ? Hud::After::ChangeArmy : Hud::After::Menu);
         return;
     }
     if (c == SDL_SCANCODE_SLASH) {

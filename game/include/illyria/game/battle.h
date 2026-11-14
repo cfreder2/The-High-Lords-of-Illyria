@@ -17,6 +17,7 @@
 #include "illyria/game/voice.h"
 #include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
+#include "illyria/sim/mode_rules.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
@@ -690,8 +691,39 @@ public:
     int groupSelection(int slot) const;
     bool paused() const { return paused_; }
     int speed() const { return speed_; }
-    // 0 in progress, 1 victory, 2 defeat.
+    // 0 in progress, 1 victory, 2 defeat. A battle is won when no foe is left, when the town's heart is taken, or when
+    // a host has quit the field (sim::RoutRule) and the pursuit is over.
     int outcome() const;
+    // The end of a battle (battle_end.cpp). The side that has quit the field and is being chased off it (or kNobody).
+    sim::PlayerId routedSide() const { return rout_.quitter(); }
+    // Decided: the clock runs slow over the last blow (kLastBlowTicks at kLastBlowPace), then the fight stops for good.
+    // The ticks are the world's, so every peer stops on the same one; the slowing is the clock's alone.
+    static constexpr uint32_t kLastBlowTicks = 8;
+    static constexpr double kLastBlowPace = 0.25;
+    bool decided() const { return decidedTick_ != UINT32_MAX; }
+    bool over() const { return decided() && world_->tick() >= decidedTick_ + kLastBlowTicks; }
+    // What the results sheet says: how long, what each of the local side's squads did and lost, who fell.
+    struct Result {
+        int outcome = 0;
+        enum class How : uint8_t { Wiped, Rout, Flag } how = How::Wiped;
+        int seconds = 0, killed = 0, lost = 0;
+        struct Row {
+            std::string name;
+            int alive = 0, total = 0, kills = 0;
+            bool broke = false;
+        };
+        std::vector<Row> rows;
+        std::string best;                 // the squad with the most kills ("" with none)
+        std::vector<std::string> fallen;  // heroes fallen, the local side's first
+    };
+    Result result() const;
+    // Deployment: the battle waits at its first tick for the player to set his line. Orders are taken (they are held
+    // as any order is until the next step, and their markers show); beginBattle starts the clock. The app asks for it
+    // (a skirmish from the menu); a battle made by a test or a hook runs at once. Single player: over the network the
+    // start is every seat's to agree, as a change of pace is (docs/NETCODE.md).
+    void setDeploying(bool on) { deploy_ = on; }
+    bool deploying() const { return deploy_; }
+    void beginBattle() { deploy_ = false; }
     // A town's capture point (battle_capture.h); inactive in the field.
     const CapturePoint& capturePoint() const { return capture_; }
     // Test hook: the gates battered in and every squad of ours sent to the capture point.
@@ -963,6 +995,7 @@ private:
     };
     std::map<uint32_t, SquadWatch> squadWatch_;  // by army (a Conquest's) or squad
     bool hadArmy_ = false;  // a Conquest: the local side has had an army standing
+    uint32_t quitSeen_ = 0;  // a Conquest: the tick of the last stack told of as quitting a field
     bool paused_ = false;
     int speed_ = 1;
     float slow_ = 1;
@@ -999,6 +1032,13 @@ private:
     };
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
     CapturePoint capture_;
+    // The end (battle_end.cpp): the rout rule, when the battle was decided, and the squads that ever broke.
+    sim::RoutRule rout_;
+    std::vector<sim::HostSquad> hosts_;
+    uint32_t decidedTick_ = UINT32_MAX;
+    std::vector<uint8_t> everBroke_;
+    bool deploy_ = false;
+    void judge();
     void placeCapturePoint(const sim::Continent::City& town, sim::PlayerId keeper);
     std::unique_ptr<BattleMode> mode_;
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)

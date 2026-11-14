@@ -374,6 +374,14 @@ public:
     const std::vector<CityState>& cities() const { return cities_; }
     const std::vector<Stack>& stacks() const { return stacks_; }
     const std::vector<Fight>& fights() const { return fights_; }
+    // The stacks that quit a field (quitFields), the newest last, for the strip of events: where its men stood (mm on
+    // the continent) and when. Told, not kept: no part of the game's state (not saved, not hashed).
+    struct Quit {
+        uint32_t tick = 0;
+        uint8_t owner = 0;
+        int32_t px = 0, py = 0;
+    };
+    const std::vector<Quit>& quits() const { return quits_; }
     const std::vector<Boat>& boats() const { return boats_; }
     const Boat* findBoat(uint32_t id) const;
     // A free boat of the city's owner docked there, or nullptr.
@@ -657,6 +665,14 @@ private:
     // (World::escortSpot), until the gate falls; then it marches on and they gather at the breach (World::rallyHold).
     bool siegeHeld(Stack& s, std::vector<Command>& commands, bool think);
     void fightAi(Stack& s, std::vector<Command>& commands);
+    // A stack beaten in a fight quits the field (mode_rules.h: every squad of it spent, the skirmish's own test): it
+    // marches for the nearest town of its side, deaf to the enemy for kQuitTicks. A garrison and a stack in its own
+    // town have nowhere to go and fight on. Its state is the march's own (path, forceUntil): nothing more is saved.
+    // (Not the skirmish's second test, a host worn to a third: an army's full strength here is its muster, worn by
+    // every fight before this one, and a fight in the Conquest has no start to count a toll from.)
+    static constexpr int32_t kQuitTicks = 30 * kTicksPerSecond;
+    void quitFields();
+    std::vector<Quit> quits_;
     // fightAi's grid of the units a man may fight, built at the first use in a think (scratch, not state).
     bool foeGridBuilt_ = false;
     int32_t foeCells_ = 0;

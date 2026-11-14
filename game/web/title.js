@@ -412,7 +412,7 @@
       busy("Raising the banners", map.name);
       setTimeout(() => {
         const army = offers.filter((o) => skirmish.bought[o.type] > 0).map((o) => `${o.type}:${skirmish.bought[o.type]}`).join(",");
-        const ok = game().startMode("skirmish", { scenario: skirmish.map, budget: skirmishPurses[skirmish.purse], defend: skirmish.defend ? 1 : 0, hard: skirmish.hard ? 1 : 0, army });
+        const ok = game().startMode("skirmish", { scenario: skirmish.map, budget: skirmishPurses[skirmish.purse], defend: skirmish.defend ? 1 : 0, hard: skirmish.hard ? 1 : 0, deploy: 1, army });
         unbusy();
         if (!ok) return failed("battle");
         slot = 0;

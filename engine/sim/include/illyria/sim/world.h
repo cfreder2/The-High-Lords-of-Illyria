@@ -733,6 +733,9 @@ public:
     // and none ever rallies.
     void breakSide(PlayerId owner);
     bool sideBroken(PlayerId owner) const;
+    // A beaten host quits the field (RoutRule, mode_rules.h): breakSide, and every man of it runs, deaf to the enemy,
+    // for the edge of the ground away from the foes' middle.
+    void quitField(PlayerId owner);
     // A match's field, a circle round `centre` (radius zero: none, the
     // default): a soldier outside it loses `pctPerSecond` of his full health
     // every second, so armies stay on the field the match loaded (and a

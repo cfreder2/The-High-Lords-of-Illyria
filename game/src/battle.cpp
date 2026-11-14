@@ -183,6 +183,7 @@ Standing Battle::standing(const Squad& s) const {
     int alive = 0, ranks = 0, bless = 0, best = 0;
     for (sim::EntityId id : s.members) {
         const sim::Unit* u = world_->findUnit(id);
+        if (!u) continue;  // (taken out of the world)
         st.kills += u->kills;
         if (!u->alive()) continue;
         ++alive;
@@ -695,11 +696,11 @@ float Battle::heightAt(float x, float y) const {
 }
 
 void Battle::advance(double seconds) {
-    if (paused_) return;
-    const double scaled = std::min(seconds, 0.25) * speed_ * slow_;
+    if (paused_ || deploy_ || over()) return;
+    const double scaled = std::min(seconds, 0.25) * (decided() ? kLastBlowPace : speed_ * slow_);
     accumulator_ += scaled;
     int ticks = 0;
-    while (accumulator_ >= kTickSeconds && ticks < kMaxTicksPerFrame) {
+    while (accumulator_ >= kTickSeconds && ticks < kMaxTicksPerFrame && !over()) {
         step();
         accumulator_ -= kTickSeconds;
         ++ticks;
@@ -775,6 +776,7 @@ void Battle::step() {
     pending_.clear();
     capture_.step(*world_);  // battle_capture.cpp
     if (mode_) mode_->afterStep(*this);  // its rules: the hill, the flags, the waves
+    else judge();                        // battle_end.cpp: a host quits the field, the defenders lay down arms
     afterWorldStep();
 }
 
@@ -1149,6 +1151,7 @@ int Battle::outcome() const {
     if (!enemyAlive) return 1;
     if (!playerAlive) return 2;
     if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
+    if (rout_.called(*world_)) return rout_.quitter() == kPlayer ? 2 : 1;  // a host has quit the field
     return 0;
 }
 

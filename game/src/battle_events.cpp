@@ -56,6 +56,17 @@ void Battle::observeSquads() {
     }
     if (!wiped.empty()) announce(listOf(wiped, "squads") + (wiped.size() == 1 ? " was wiped out" : " were wiped out"));
     if (!broke.empty()) announce(listOf(broke, "squads") + (broke.size() == 1 ? " broke and is running" : " broke and are running"));
+    // A Conquest: a stack beaten in a fight has quit the field (Conquest::quitFields): the local side's own, or
+    // another's that the viewer may see.
+    if (conquest_) {
+        const V3 o = origin();
+        for (const sim::Conquest::Quit& q : conquest_->quits()) {
+            if (q.tick <= quitSeen_) continue;
+            quitSeen_ = q.tick;
+            if (q.owner == conquest_->localSide()) announce("Your host has quit the field");
+            else if (sees(q.owner, static_cast<float>(q.px) / 1000.0f - o.x, static_cast<float>(q.py) / 1000.0f - o.y)) announce("The enemy has quit the field");
+        }
+    }
     // A Conquest: the last army of the local side gone. The map's banner stays while it is so; this is the moment.
     if (conquest_ && eventClock_ % 30 == 0) {
         bool any = false;

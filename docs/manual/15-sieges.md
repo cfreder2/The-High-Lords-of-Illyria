@@ -62,7 +62,7 @@ This is the rule of the set battle (**Skirmish**, **The siege**: chapter [](#ski
 
 - If the **attackers** have more there, their flag climbs: **2 points, and one more for each man they are ahead by (at most 8 more)**, of 1,000, thirty times a second. One man more takes 11 seconds to raise it from the foot of the pole; eight or more, a little over 3 seconds.
 - If the **defenders** have more, it comes down as fast. Even numbers hold it where it is. An empty courtyard lets it sink slowly (a point at a time: half a minute from the top).
-- When the attackers' flag reaches the top, **the town is taken** for good and the battle ends in their victory, whoever is still standing elsewhere. (The battle is also won if every defender is dead, and lost if every attacker is.)
+- When the attackers' flag reaches the top, **the town is taken** for good and the battle ends in their victory: the defenders still standing lay down their arms. (The battle is also won if every defender is dead or the garrison quits the field, and lost if every attacker is dead or their host quits it: chapter [](#rout).)
 
 A bar at the top of the screen says how it goes: *Take the courtyard: your flag 45% · 12 of yours there, 3 of theirs (rising)*. On the pole, the defenders' flag comes down as yours goes up.
 

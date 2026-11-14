@@ -86,6 +86,41 @@ private:
     std::vector<Flag> flags_;
 };
 
+// A host quits the field (docs/GAME_DESIGN.md §4.5.1). A squad is spent when none of it is left, when it is under a
+// fifth of its full strength, or when every man left of it is broken. A host whose every squad is spent has lost; so
+// has one with under a third of its men left alive that the unbroken men against it outnumber three to two (it
+// has pulled its mauled squads back and will not come again). A skirmish breaks the side, sends it running for its
+// edge of the ground (World::quitField) and calls the battle after a few seconds of pursuit; a Conquest marches the
+// stack off to its nearest town (Conquest::quitFields). Engines hold no field by themselves: a squad with only
+// engines left is not counted among the spent.
+struct HostSquad {
+    PlayerId owner = 0;
+    std::vector<EntityId> members;
+    int32_t full = 0;  // its full strength (0: its members)
+};
+inline constexpr int32_t kSpentShare = 5;  // a squad under one man in this many: spent
+inline constexpr int32_t kWornShare = 3;   // a host under one man in this many, and outnumbered three to two: beaten
+bool squadSpent(const World& world, const std::vector<EntityId>& members, int32_t full);
+// Every squad of `owner` spent (engines apart), or the host worn and outnumbered. False for a side with no squad.
+bool hostBeaten(const World& world, const std::vector<HostSquad>& squads, PlayerId owner);
+
+class RoutRule {
+public:
+    static constexpr int32_t kPursuitTicks = 6 * kTicksPerSecond;
+    static constexpr PlayerId kNobody = 255;
+    // After each step of the world. The first host beaten quits (two at once: the one with fewer men standing).
+    void step(World& world, const std::vector<HostSquad>& squads);
+    PlayerId quitter() const { return quitter_; }
+    uint32_t quitTick() const { return quitTick_; }
+    // The pursuit is over: the battle is called.
+    bool called(const World& world) const { return quitter_ != kNobody && world.tick() >= quitTick_ + kPursuitTicks; }
+    void hash(StateHasher& h) const;
+
+private:
+    PlayerId quitter_ = kNobody;
+    uint32_t quitTick_ = 0;
+};
+
 // Horde's waves: what comes at the hill in round `wave` (1, 2, ...). Each
 // wave is stronger than the last and brings more kinds: the dead first, then
 // men, beasts, brutes, fiends and sorcerers; every third an elite wave of

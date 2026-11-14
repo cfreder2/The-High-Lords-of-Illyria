@@ -47,6 +47,7 @@ add_executable(illyria_tests
     test_garrison.cpp
     test_garrison_keep.cpp
     test_two_gates.cpp
+    test_battle_end.cpp
     test_skirmish.cpp
     test_ramps.cpp
     test_walls.cpp

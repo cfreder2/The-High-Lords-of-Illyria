@@ -66,6 +66,7 @@ void illyria_toggle_pause();
 void illyria_cycle_speed();
 void illyria_set_pace(float pace);
 void illyria_restart();
+void illyria_begin_battle();  // the deployment is done: the clock starts
 
 const char* illyria_hud();
 const char* illyria_labels();

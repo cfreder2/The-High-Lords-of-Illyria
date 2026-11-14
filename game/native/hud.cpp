@@ -45,6 +45,7 @@ constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "", false},
 constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
 constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 // What a press on the open town's screen is (Hud::click): from kTownAct up, the option's number, or one of these.
+constexpr int kAfterBattle = 3000;  // + Hud::After
 constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
 static_assert(kContinue == 2, "Hud::startSaved");
 
@@ -226,6 +227,21 @@ void Hud::activate(int row) {
 
 void Hud::startSaved() { activate(kContinue); }
 
+bool Hud::deploying() const { return !menu_ && read(illyria_hud()).flag("deploy"); }
+bool Hud::resultOpen() const { return !menu_ && read(illyria_hud()).find("result") != nullptr; }
+
+void Hud::afterBattle(After what) {
+    if (what == After::Again) {
+        illyria_restart();
+        return;
+    }
+    openMenu();
+    if (what == After::ChangeArmy) {  // the Skirmish screen as it was left (or filled, if this battle did not come from it)
+        if (offers_.empty()) skirmishOpen();
+        skirmishPage_ = true;
+    }
+}
+
 void Hud::skirmishOpen() {
     if (offers_.empty()) {
         Json list;
@@ -283,7 +299,7 @@ void Hud::skirmishStart() {
         return;
     }
     char buf[400];
-    std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"army\":\"%s\"}", skMap_, kPurses[skGold_], skDefend_ ? 1 : 0, hard_ ? 1 : 0, army.c_str());
+    std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":1,\"army\":\"%s\"}", skMap_, kPurses[skGold_], skDefend_ ? 1 : 0, hard_ ? 1 : 0, army.c_str());
     skirmishPage_ = false;
     start("skirmish", buf);
 }
@@ -375,6 +391,8 @@ bool Hud::click(float x, float y, bool left) {
             cardPage_ = std::clamp(cardPage_ + (r.what == -2000 ? -1 : 1), 0, std::max(0, cardPages_ - 1));
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
+        } else if (r.what >= kAfterBattle && r.what < kAfterBattle + 3) {
+            afterBattle(static_cast<After>(r.what - kAfterBattle));
         } else if (r.what >= kTownAct) {
             townAction(r.what);
         } else if (r.what >= 5000) {
@@ -799,6 +817,81 @@ void Hud::drawTown(Overlay& o, const Json& city, int gold, float w) {
     hits_.insert(hits_.begin(), panel.begin(), panel.end());
 }
 
+// The fight has stopped (illyria_hud: result): the outcome, how it came, the time and the toll, each squad's count,
+// who broke, the heroes fallen and the best squad, on parchment, with what to do next.
+void Hud::drawResult(Overlay& o, const Json& hud, float w, float h) {
+    const Json* r = hud.find("result");
+    if (!r) return;
+    const bool won = r->num("outcome") == 1;
+    const std::string line = r->str("line");
+    const std::vector<Json>& rows = r->list("rows");
+    constexpr float kRow = 17, kPad = 22;
+    const size_t room = static_cast<size_t>(std::max(4.0f, (h - 360) / kRow));
+    const size_t shown = std::min(rows.size(), room);
+    std::string fallen;
+    for (const Json& f : r->list("fallen")) fallen += (fallen.empty() ? "" : ", ") + f.string;
+    const float pw = std::min(w - 20, 600.0f), ph = 232 + static_cast<float>(shown) * kRow + (rows.size() > shown ? kRow : 0) + (fallen.empty() ? 0 : 20);
+    const float x0 = (w - pw) / 2, y0 = std::max(40.0f, (h - ph) / 2 - 20);
+    o.paper(x0, y0, pw, ph, 41);
+    const std::string title = won ? "VICTORY" : "DEFEAT";
+    o.text(x0 + (pw - o.width(title, 30)) / 2, y0 + kPad, title, won ? kLeaf : kSeal, 30);
+    o.text(x0 + (pw - o.width(line, 14)) / 2, y0 + kPad + 40, line, kPaperInk, 14);
+    char buf[160];
+    const int secs = static_cast<int>(r->num("seconds"));
+    std::snprintf(buf, sizeof buf, "Time %d:%02d     Killed %d     Lost %d", secs / 60, secs % 60, static_cast<int>(r->num("killed")), static_cast<int>(r->num("lost")));
+    o.text(x0 + (pw - o.width(buf, 14)) / 2, y0 + kPad + 64, buf, kPaperInk, 14);
+    // The squads: name, men left of its strength, killed, and whether it broke.
+    const float cName = x0 + kPad, cLeft = x0 + pw - 250, cKilled = x0 + pw - 160, cBroke = x0 + pw - 80;
+    float y = y0 + kPad + 96;
+    o.text(cName, y, "Squad", kSeal, 12);
+    o.text(cLeft, y, "Left", kSeal, 12);
+    o.text(cKilled, y, "Killed", kSeal, 12);
+    o.line(x0 + kPad, y + 16, x0 + pw - kPad, y + 16, 1, kPaperOut);
+    y += 20;
+    for (size_t i = 0; i < shown; ++i, y += kRow) {
+        const Json& q = rows[i];
+        const bool gone = q.num("alive") == 0;
+        const std::string name = q.str("name");
+        o.text(cName, y, name, gone ? kPaperOff : kPaperInk, fit(o, name, 12, cLeft - cName - 10));
+        std::snprintf(buf, sizeof buf, "%d / %d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));
+        o.text(cLeft, y, buf, gone ? kSeal : kPaperInk, 12);
+        std::snprintf(buf, sizeof buf, "%d", static_cast<int>(q.num("kills")));
+        o.text(cKilled, y, buf, kPaperInk, 12);
+        if (q.flag("broke")) o.text(cBroke, y, "broke", kSeal, 12);
+    }
+    if (rows.size() > shown) {
+        std::snprintf(buf, sizeof buf, "and %zu more", rows.size() - shown);
+        o.text(cName, y, buf, kPaperDim, 12);
+        y += kRow;
+    }
+    y += 8;
+    if (const std::string best = r->str("best"); !best.empty()) {
+        int kills = 0;
+        for (const Json& q : rows)
+            if (q.str("name") == best) kills = std::max(kills, static_cast<int>(q.num("kills")));
+        std::snprintf(buf, sizeof buf, "Best squad: %s, %d killed", best.c_str(), kills);
+        o.text(cName, y, buf, kPaperInk, 13);
+    }
+    y += 20;
+    if (!fallen.empty()) {
+        const std::string t = "Heroes fallen: " + fallen;
+        o.text(cName, y, t, kSeal, fit(o, t, 13, pw - 2 * kPad));
+        y += 20;
+    }
+    // What next: fight it again, change the army, or the menu.
+    static const char* const kActs[3] = {"Again (Enter)", "Change army (C)", "Menu (Esc)"};
+    const float bw = (pw - 2 * kPad - 20) / 3, by = y0 + ph - kPad - 26;
+    for (int k = 0; k < 3; ++k) {
+        const float bx = x0 + kPad + static_cast<float>(k) * (bw + 10);
+        o.rect(bx, by, bw, 28, rgba(0x2B1E10, 28));
+        o.frame(bx, by, bw, 28, 1.5f, k == 0 ? kSeal : kPaperOut);
+        const float size = fit(o, kActs[k], 13, bw - 12);
+        o.text(bx + (bw - o.width(kActs[k], size)) / 2, by + 7, kActs[k], k == 0 ? kSeal : kPaperInk, size);
+        hits_.insert(hits_.begin(), {bx, by, bw, 28, kAfterBattle + k});
+    }
+    hits_.insert(hits_.begin() + 3, {x0, y0, pw, ph, kTownSwallow});  // (a press on the sheet is not one on the field under it)
+}
+
 void Hud::draw(Overlay& o, float w, float h) {
     hits_.clear();
     if (showStats_ && (!notice_.empty() || menu_)) o.text(6, 4, perf_, kGold, 10);  // (in play, the status bar carries it)
@@ -858,7 +951,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.text((w - pw) / 2, 68, plan, rgba(0xD680FF, 255), 14);
     }
     // (With the developer line on, the status sits under it; else it is centred in the bar. In a narrow window it shrinks to leave the hint room.)
-    const std::string hint = w < 560 ? "/: keys" : "Enter: menu    /: keys";
+    const std::string hint = w < 560 ? "/: keys" : hud.flag("deploy") ? "Enter: begin    /: keys" : "Enter: menu    /: keys";
     const float hintX = w - o.width(hint, 12) - 10, statusSize = showStats_ ? 13.0f : 14.0f;
     {
         const float room = std::max(40.0f, hintX - 16);
@@ -872,10 +965,18 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
     o.text(hintX, showStats_ ? 18 : 11, hint, kDim, 12);
 
-    const int outcome = static_cast<int>(hud.num("outcome"));
-    if (!conquest && outcome != 0) {
-        const std::string t = outcome > 0 ? "VICTORY" : "DEFEAT";
-        o.text((w - o.width(t, 40)) / 2, h * 0.3f, t, outcome > 0 ? kGold : kRed, 40);
+    // A battle's start and end: the deployment and its one-line briefing; a host chased off the field.
+    if (hud.flag("deploy")) {
+        const std::string t = "Place your line. Enter to begin", brief = hud.str("brief");
+        const float bw = std::max(o.width(t, 22), o.width(brief, 14)) + 40;
+        o.rect((w - bw) / 2, 78, bw, brief.empty() ? 40 : 64, rgba(0x000000, 170));
+        o.text((w - o.width(t, 22)) / 2, 86, t, kGold, 22);
+        if (!brief.empty()) o.text((w - o.width(brief, 14)) / 2, 118, brief, kInk, 14);
+    } else if (const int routed = static_cast<int>(hud.num("routed", -1)); routed >= 0 && !hud.find("result")) {
+        const bool mine = routed == static_cast<int>(hud.num("side"));
+        const std::string t = mine ? "Your host has quit the field" : "The enemy has quit the field";
+        o.rect((w - o.width(t, 24)) / 2 - 14, h * 0.24f - 8, o.width(t, 24) + 28, 42, rgba(0x000000, 170));
+        o.text((w - o.width(t, 24)) / 2, h * 0.24f, t, mine ? kRed : kGold, 24);
     }
     if (conquest && camp.num("winner") != 0) {
         const std::string t = "The war is decided";
@@ -1067,6 +1168,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
     }
     const Colour side = hex(hud.str("colour"));  // the player's colour (palette.h), the bars of the cards
+    bool tipDrawn = false;
     const float cw = cards.width, ch = kCardH;
     const int first = cards.paged ? cardPage_ * cards.perPage : 0;
     const int last = std::min(static_cast<int>(squads.size()), first + cards.perPage);
@@ -1096,6 +1198,14 @@ void Hud::draw(Overlay& o, float w, float h) {
         const double total = std::max(1.0, q.num("total"));
         o.rect(x + 6, y + ch - 14, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
         hits_.push_back({x, y, cw, ch, -1 - i});
+        // What its kind is for, over the card, the first time the kind is picked (illyria_hud: tip).
+        if (const std::string tip = hud.str("tip"); sq && !tip.empty() && !tipDrawn) {
+            tipDrawn = true;
+            const float tw = o.width(tip, 13) + 16, tx = std::clamp(x, 8.0f, std::max(8.0f, w - 8 - tw));
+            o.rect(tx, y - 56, tw, 22, rgba(0x000000, 200));
+            o.frame(tx, y - 56, tw, 22, 1, kGold);
+            o.text(tx + 8, y - 52, tip, kInk, 13);
+        }
     }
     if (cards.paged) {  // the page arrows take the cell after the last card's place on the page: < page n of m >
         const int cell = cards.perPage;
@@ -1138,6 +1248,8 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.text(w - o.width(buf, 13) - 10, cardsTop - 24, buf, kRed, 13);
     }
 
+    drawResult(o, hud, w, h);
+
     if (help_) {
         // Two columns, each a title and rows of "keys  what they do", sized to the words.
         struct Row { const char* keys; const char* what; };
@@ -1170,7 +1282,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"`, Backspace", "plan: hold orders, send them / drop them"},
               {"Esc", "pause and bring up the menu (or cancel a mode)"},
               {"P, - =", "pause, slower and faster"},
-              {"Enter, /", "menu, this help"},
+              {"Enter, /", "begin the battle (else the menu), this help"},
               {"I", "show or hide the developer line (frame rate)"}}}};
         constexpr float kSize = 12, kLine = 18, kPad = 14, kGap = 14, kColGap = 28;
         float colW[2] = {};
