@@ -638,6 +638,7 @@ void startConquest(std::unique_ptr<illyria::sim::Conquest> conquest) {
         cv.c->onWorldStep([] { app->battle->beforeWorldStep(); }, [] { app->battle->afterWorldStep(); }, [] { app->battle->forgetMen(); });
     }
     cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
+    app->battle->setAiSkill(cv.hard ? Battle::AiSkill::Normal : Battle::AiSkill::Easy);  // the battle AI plays as the lords do
     cv.owners.clear();
     cv.territoryTick = -1;
     cv.vectorFrom = -1;

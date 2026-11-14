@@ -565,6 +565,22 @@ public:
     void aiForceMarch(size_t squad, const V3& to);
     void aiAttack(size_t squad, sim::EntityId target);
     void aiHalt(size_t squad);
+    // How well the computer plays (decision quality, never stats). Easy: the
+    // nearest foe, marching piecemeal, archers wherever they like, the
+    // broken fighting on. Normal: weak and exposed foes first (healers,
+    // casters, engines, archers, the lord, the wounded), the army massed
+    // before it engages, missile troops and the lord behind the foot, the
+    // shattered pulled back to mend. The conquest's Easy/Hard map onto them.
+    enum class AiSkill : uint8_t { Easy, Normal };
+    void setAiSkill(AiSkill s) { aiSkill_ = s; }
+    AiSkill aiSkill() const { return aiSkill_; }
+    // Whether the squad is shattered enough that the computer pulls it back
+    // (a third of its men left, or half of them wavering), with a friend to fall back on.
+    bool aiShattered(const Squad& s) const;
+    // The foe the computer would go for from `around` within `reach`: the
+    // nearest, but weak and exposed ones count nearer (Normal). The one
+    // place the computer reads the enemy: where fog will filter.
+    sim::EntityId pickFoe(sim::PlayerId owner, const V3& around, float reach, bool mounted) const;
     // The computer's scavengers (the hyena-folk): marched toward `goal`
     // until a foe is within kRaidCallM of them, then let loose to raid
     // (sim Command::Raid); left to it while any of them raids, and rested a
@@ -687,6 +703,10 @@ private:
                     V3 facing);
     void step();
     void runEnemyAi();
+    // Where the army's foot stands against `foe`: how far toward it the front reaches (metres along `dir`), false with no foot.
+    bool footFront(sim::PlayerId owner, const Squad& except, const V3& dir, float& front) const;
+    // A squad of the owner's well behind this one (aiFight's massing): it would arrive piecemeal, ahead of the rest.
+    bool armyStrung(const Squad& s, const V3& dir) const;
     void collectEvents();
     void applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source, V3 shift, bool own);
     // Each tick's deaths, seen and heard (battle_deaths.cpp): blood rain, smoke, sound effects.
@@ -903,9 +923,13 @@ private:
     struct AiMemo {
         V3 last;
         int still = 0, detour = 0;
+        int retreat = 0;  // looks left falling back to mend
+        int waited = 0;   // looks spent waiting for the army to close up
+        int rested = 0;   // looks before it may wait again (a laggard stuck behind a cliff must not stall the army)
         bool raiding = false;
         uint32_t restUntil = 0;
     };
+    AiSkill aiSkill_ = AiSkill::Normal;
     std::vector<AiMemo> aiMemo_;
     // The per-soldier presentation state grown for soldiers raised mid-battle.
     void growUnits();

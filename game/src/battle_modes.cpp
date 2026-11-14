@@ -217,6 +217,108 @@ sim::EntityId Battle::nearestFoe(sim::PlayerId owner, const V3& at, float reach)
     return best;
 }
 
+namespace {
+float dot2(const V3& a, const V3& b) { return a.x * b.x + a.y * b.y; }
+V3 dir2(const V3& from, const V3& to) {
+    V3 d{to.x - from.x, to.y - from.y, 0};
+    return d.length() > 0.001f ? d.normalized() : V3{1, 0, 0};
+}
+// Casualties that make a squad of this many men shattered: a third left.
+bool shatteredSelf(int alive, int total, int wavering) {
+    return alive > 0 && ((total >= 4 && alive * 3 <= total) || wavering * 2 >= alive);
+}
+}  // namespace
+
+bool Battle::aiShattered(const Squad& s) const {
+    const auto broken = [&](const Squad& q, int& alive) {
+        alive = 0;
+        int wavering = 0;
+        for (sim::EntityId id : q.members) {
+            const sim::Unit& u = world_->units()[id - 1];
+            if (!u.alive()) continue;
+            ++alive;
+            wavering += u.routed || u.wavering();
+        }
+        return shatteredSelf(alive, static_cast<int>(q.members.size()), wavering);
+    };
+    int alive;
+    if (!broken(s, alive)) return false;
+    // Only with someone to fall back on; cornered, they fight on.
+    for (const Squad& f : squads_) {
+        if (f.owner != s.owner || &f == &s || f.garrison) continue;
+        const Role r = roleOf(f.type);
+        if (r == Role::Siege || r == Role::Healer) continue;
+        int fa;
+        if (!broken(f, fa) && fa > 0) return true;
+    }
+    return false;
+}
+
+sim::EntityId Battle::pickFoe(sim::PlayerId owner, const V3& around, float reach, bool mounted) const {
+    if (aiSkill_ == AiSkill::Easy) return nearestFoe(owner, around, reach);
+    sim::EntityId best = sim::kNoEntity;
+    float bestScore = reach;
+    for (const sim::Unit& u : world_->units()) {
+        if (!u.alive() || u.owner == owner || u.routed || u.inAir()) continue;
+        const V3 d = toV3(u.pos) - around;
+        const float d2 = d.x * d.x + d.y * d.y;
+        if (d2 >= reach * reach) continue;
+        // The softer the target, the nearer it counts: horse ride for the
+        // archers and the healers, foot only prefer them a little.
+        float f = 1.0f;
+        if (u.stats.type == static_cast<uint8_t>(UnitType::Hero)) f = 0.7f;
+        else
+            switch (roleOf(static_cast<UnitType>(u.stats.type))) {
+                case Role::Healer: f = 0.45f; break;
+                case Role::Caster: f = 0.5f; break;
+                case Role::Siege: f = 0.5f; break;
+                case Role::Ranged:
+                case Role::Bomber: f = 0.55f; break;
+                default: break;
+            }
+        if (!mounted) f = (1.0f + f) * 0.5f;
+        f *= 0.6f + 0.4f * static_cast<float>(u.hp) / static_cast<float>(std::max(1, u.stats.maxHp));  // the wounded first
+        const float score = std::sqrt(d2) * f;
+        if (score < bestScore) {
+            bestScore = score;
+            best = u.id;
+        }
+    }
+    return best;
+}
+
+bool Battle::footFront(sim::PlayerId owner, const Squad& except, const V3& dir, float& front) const {
+    bool any = false;
+    front = -1e30f;
+    for (const Squad& f : squads_) {
+        if (f.owner != owner || &f == &except || f.garrison || aliveCount(f) == 0) continue;
+        if (roleOf(f.type) != Role::Melee || f.type == UnitType::Hero || aiShattered(f)) continue;
+        const V3 fc = squadCentre(f, false);
+        const float p = dot2(fc, dir);
+        if (p > front) {
+            front = p;
+            any = true;
+        }
+    }
+    return any;
+}
+
+bool Battle::armyStrung(const Squad& s, const V3& dir) const {
+    // A friend within reach of the army that is well behind this squad: it
+    // would arrive piecemeal, alone, ahead of the rest.
+    const V3 c = squadCentre(s, false);
+    const float mine = dot2(c, dir);
+    for (const Squad& f : squads_) {
+        if (f.owner != s.owner || &f == &s || f.garrison || aliveCount(f) == 0) continue;
+        const Role r = roleOf(f.type);
+        if (r == Role::Siege || r == Role::Healer || r == Role::Flier) continue;
+        const V3 fc = squadCentre(f, false);
+        if ((fc - c).length() < 150.0f && dot2(fc, dir) < mine - 35.0f && !aiShattered(f)) return true;
+    }
+    return false;
+}
+
+
 void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach) {
     // As runEnemyAi, for any side, from the simulation's state only.
     if (squad >= squads_.size()) return;
@@ -275,16 +377,89 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         if (V3{goal.x - c.x, goal.y - c.y, 0}.length() > 6.0f) return;  // still on the way round
         memo.detour = 0;
     }
-    const sim::EntityId foe = nearestFoe(s.owner, around, reach);
+    const bool smart = aiSkill_ == AiSkill::Normal;
+    if (memo.rested > 0) --memo.rested;
+    const sim::UnitStats stats = sim::unitStats(s.type);
+    if (smart) {
+        // The shattered fall back on their friends to mend, deaf to the foe,
+        // and stay out a few looks before they come back.
+        if (memo.retreat > 0) {
+            --memo.retreat;
+            return;
+        }
+        const sim::EntityId threat = nearestFoe(s.owner, c, 60.0f);
+        if (threat != sim::kNoEntity && aiShattered(s)) {
+            const V3 away = dir2(toV3(world_->units()[threat - 1].pos), c);
+            const Squad* friendly = nullptr;
+            float best = 1e30f;
+            for (const Squad& f : squads_) {
+                if (f.owner != s.owner || &f == &s || f.garrison || aliveCount(f) == 0 || aiShattered(f)) continue;
+                const Role r = roleOf(f.type);
+                if (r == Role::Siege) continue;
+                const float d = (squadCentre(f, false) - c).length();
+                if (d < best) {
+                    best = d;
+                    friendly = &f;
+                }
+            }
+            if (friendly) {
+                // Behind them: on their far side from the foe.
+                aiForceMarch(squad, squadCentre(*friendly, false) + away * 14.0f);
+                memo.retreat = 4;
+                return;
+            }
+        }
+    }
+    const sim::EntityId foe = pickFoe(s.owner, around, reach, stats.mounted);
     if (foe == sim::kNoEntity) {
         go(goal);
         return;
     }
     const V3 fp = toV3(world_->units()[foe - 1].pos);
     const float dist = V3{fp.x - c.x, fp.y - c.y, 0}.length();
-    const sim::UnitStats stats = sim::unitStats(s.type);
     const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
+    const V3 fdir = dir2(c, fp);
+    if (smart && dist > 60.0f && role != Role::Flier && role != Role::Ranged && role != Role::Caster && s.type != UnitType::Hero) {
+        // Mass before engaging: nobody marches in ahead of the army, for a while.
+        bool joined = false;
+        for (const Squad& f : squads_)
+            for (sim::EntityId id : f.members)
+                if (f.owner == s.owner && world_->units()[id - 1].alive() && world_->units()[id - 1].engaged) joined = true;
+        if (!joined && memo.rested == 0 && armyStrung(s, fdir)) {
+            if (++memo.waited <= 8) {
+                aiHalt(squad);
+                return;
+            }
+            memo.waited = 0;
+            memo.rested = 10;  // the laggard is not coming: go
+        } else if (!armyStrung(s, fdir)) {
+            memo.waited = 0;
+        }
+    }
     V3 flank;
+    const bool covered = smart && (role == Role::Ranged || role == Role::Caster || s.type == UnitType::Hero);
+    float front = 0;
+    if (covered && footFront(s.owner, s, fdir, front)) {
+        // Behind the foot: the archers and the lord never stand ahead of it.
+        const float gap = s.type == UnitType::Hero ? 10.0f : 7.0f;
+        const float limit = front - gap;
+        const float mine = dot2(c, fdir);
+        const float keep = range > 0 ? range * 0.8f : 0.0f;
+        if (mine > limit + 2.0f) {
+            aiSteer(squad, c - fdir * (mine - limit));  // back through the line
+        } else if (range > 0 && dist > keep) {
+            const float room = limit - mine;
+            if (room > 3.0f) aiSteer(squad, c + fdir * std::min(dist - keep + 4, room));  // on with the foot, not past
+            else aiHalt(squad);
+        } else if (s.type == UnitType::Hero && dist > 20.0f) {
+            const float room = limit - mine;
+            if (room > 3.0f) aiSteer(squad, c + fdir * room);
+            else aiHalt(squad);
+        } else if (range > 0) {
+            aiHalt(squad);
+        }
+        if (range > 0 || s.type == UnitType::Hero) return;
+    }
     if (stats.mounted && role == Role::Melee && flankPoint(s, flank)) {
         aiSteer(squad, flank);  // round a foe locked in melee, into its flank or rear
     } else if (range > 0 && role != Role::Flier) {

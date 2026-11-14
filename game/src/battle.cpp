@@ -884,60 +884,22 @@ void Battle::runEnemyAi() {
         }
         return goal;
     };
-    const auto stop = [&](const Squad& s) {
-        s.hasGoal = false;
-        for (sim::EntityId id : s.members) issue(kEnemy, id, sim::Command::Type::Stop, {});
-    };
-
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
         float dist;
         const Role role = roleOf(s.type);
-        if (role == Role::Healer) {
-            // Stay a little behind the nearest friendly fighting squad.
-            float friendDist = 1e30f;
-            V3 friendPos;
-            for (const Squad& f : squads_) {
-                if (f.owner != kEnemy || &f == &s || aliveCount(f) == 0 || roleOf(f.type) == Role::Healer) continue;
-                const V3 fc = squadCentre(f, false);
-                const float d = (fc - c).length();
-                if (d < friendDist) {
-                    friendDist = d;
-                    friendPos = fc;
-                }
-            }
-            if (friendDist < 1e30f && friendDist > 15.0f) steerSquad(s, friendPos + V3{10, 0, 0});
-            continue;
-        }
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
-        if (role == Role::Scout) {
-            // The hyena-folk: up toward the nearest foe, then let loose to raid (world_scavenge.cpp).
-            aiRaid(static_cast<size_t>(&s - squads_.data()), goal);
-            continue;
-        }
+        const size_t q = static_cast<size_t>(&s - squads_.data());
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand.
             if (!s.garrison) aimEngines(s);
             continue;
         }
-        if (s.garrison) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
-        const sim::UnitStats stats = sim::unitStats(s.type);
-        const float range = static_cast<float>(stats.ranged.autoRange.toDouble());
-        V3 flank;
-        if (stats.mounted && role == Role::Melee && flankPoint(s, flank)) {
-            // Horse ride round a foe already locked in melee and charge its rear.
-            steerSquad(s, flank);
-        } else if (range > 0 && role != Role::Flier) {
-            const float keep = range * 0.8f;
-            if (dist > keep) steerSquad(s, c + (goal - c) * ((dist - keep + 4) / dist));
-            else if (role != Role::Bomber) stop(s);  // (grenadiers in range lay satchels and step back from them: no halt)
-        } else if (dist > 15.0f) {
-            steerSquad(s, goal);
-        } else {
-            stop(s);
-        }
+        if (s.garrison && role != Role::Healer) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
+        // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code path.
+        aiFight(q, goal, c, 1e4f);
     }
 }
 
