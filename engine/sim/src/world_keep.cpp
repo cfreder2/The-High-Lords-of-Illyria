@@ -190,8 +190,12 @@ void World::keepDoors(const std::vector<size_t>& doors) {
         const Vec3 inward = -g.out;
         const Vec3 along = (g.b - g.a).flat() / max(Fixed::fromRatio(1, 10), (g.b - g.a).flat().length());
         std::vector<Vec3> slots;
-        for (int32_t k = 0; k < n; ++k) {
-            const int32_t rank = k / kRankWidth, inRank = std::min(kRankWidth, n - rank * kRankWidth);
+        // At a door with foes inside the walls (a breach) a place the wall or a house takes is made up from a rank farther back: the
+        // men sent over from the other door (the quotas, below) must all find one, or they stand where they were and the breach
+        // has no reserves. (Elsewhere the places are left as the courtyard gives them: the lord stands behind the foot.)
+        const int32_t reach = nd > 1 && inside[d] > 0 ? n * 3 : n;
+        for (int32_t k = 0; k < reach && static_cast<int32_t>(slots.size()) < n; ++k) {
+            const int32_t rank = k / kRankWidth, inRank = n - rank * kRankWidth > 0 ? std::min(kRankWidth, n - rank * kRankWidth) : kRankWidth;
             Vec3 p;
             // A place the wall or a house takes is brought in toward the axis until it is free (else left to the others).
             Fixed lateral = gap * (Fixed::fromInt(k % kRankWidth * 2 - (inRank - 1)) / 2);
@@ -286,8 +290,6 @@ void World::keepDoors(const std::vector<size_t>& doors) {
             ++have[under];
         }
     };
-    if (getenv("KEEPDBG") && alert && foot.size() > 20) fprintf(stderr, "foot %zu room %ld %ld bow %ld %ld\n", foot.size(), (long)footRoom[0], (long)footRoom[nd-1], (long)bowRoom[0], (long)bowRoom[nd-1]);
-    if (getenv("KEEPDBG") && alert && foot.size() > 20) { fprintf(stderr, "foot %zu room %ld %ld coming %d %d inside %d %d\n", foot.size(), (long)footRoom[0], (long)footRoom[1], coming[0], coming[1], inside[0], inside[1]); int h0=0; for (auto& k: foot) h0 += k.door==0; fprintf(stderr, " home0 %d heads %zu %zu\n", h0, heads[0].size(), heads[1].size()); }
     share(archers, bowRoom, true);
     share(foot, footRoom, false);
     const auto wasSent = [&](const Unit* u) { return std::find(sent.begin(), sent.end(), u->id) != sent.end(); };
