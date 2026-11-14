@@ -80,7 +80,7 @@
   function startConquest(k, hard, player, enemies) {
     // The island's ground (every wall, gate and tree, for the fights) is made now, once, a few seconds:
     // let the page draw the notice first.
-    busy("Laying out the island", "Every wall, gate and tree, for the fights");
+    busy("Laying out the island", "");
     setTimeout(() => {
       const ok = game().startMode("conquest", { hard: hard ? 1 : 0, player, enemies, speed: prefs.speed });
       unbusy();
@@ -357,8 +357,8 @@
   const skirmishMaps = [
     { name: "Oakhaven Ford", note: "Hold the ford against the Red Hand", siege: false },
     { name: "A village siege", note: "", siege: true },
-    { name: "A capital siege", note: "A castle of two doors and an inner bailey", siege: true },
-    { name: "Open field", note: "Two armies on open ground", siege: false },
+    { name: "A capital siege", note: "", siege: true },
+    { name: "Open field", note: "", siege: false },
   ];
   const skirmishPurses = [100, 200, 300, 450, 600, 900, 1200];
   const skirmish = { map: 0, defend: false, purse: 2, hard: true, bought: {} };
@@ -372,11 +372,11 @@
     body.innerHTML = `<p class="lead">A battle fought out in full, built as a Conquest is. Nothing carries over.</p>` +
       `<h3>The ground</h3><div class="choice wrap" data-maps>` + skirmishMaps.map((m, i) => `<button data-map="${i}"><b>${m.name}</b><small>${m.note}</small></button>`).join("") + `</div>` +
       `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div>` +
-      `<h3>Gold each side</h3><div class="choice wrap" data-purses>` + skirmishPurses.map((g, i) => `<button data-purse="${i}" style="min-height:44px"><b>${g}</b></button>`).join("") + `</div>` +
+      `<h3>Gold</h3><div class="choice wrap" data-purses>` + skirmishPurses.map((g, i) => `<button data-purse="${i}" style="min-height:44px"><b>${g}</b></button>`).join("") + `</div>` +
       `<h3>Your army <small data-left></small></h3><div data-army></div>` +
       `<h3>The computer plays</h3><div class="choice"><button data-hard="0"><b>Easy</b><small>The nearest foe, piecemeal</small></button><button data-hard="1"><b>Normal</b><small>Weak foes first, the army massed</small></button></div>` +
       `<h3>Your colour</h3><div data-colour></div>` +
-      `<p class="note">Only you see it. The sides keep their own colours, except one that clashes with yours, which takes the one you gave up. The other side raises as much gold as you.</p>` +
+      `<p class="note">Only you see it.</p>` +
       `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small data-startnote></small></button>`;
     const army = body.querySelector("[data-army]");
     army.innerHTML = offers.map((o) => `<div class="choice" style="margin-bottom:6px;align-items:center"><span style="flex:2"><b>${o.name}</b> <small>${o.men} men, ${o.price} gold</small></span>` +

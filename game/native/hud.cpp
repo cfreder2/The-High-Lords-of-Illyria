@@ -38,10 +38,10 @@ struct SkirmishMap {
     const char* note;
     bool siege;
 };
-constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "two armies across a river", false},
+constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "", false},
                                   {"A village siege", "", true},
-                                  {"A capital siege", "a castle of two doors and an inner bailey", true},
-                                  {"Open field", "two armies on open ground", false}};
+                                  {"A capital siege", "", true},
+                                  {"Open field", "", false}};
 constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
 constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 // What a press on the open town's screen is (Hud::click): from kTownAct up, the option's number, or one of these.
@@ -179,7 +179,7 @@ bool Hud::start(const std::string& mode, const std::string& options) {
     pendingMode_ = mode;
     pendingOptions_ = options;
     busyFrames_ = 2;
-    notice_ = mode == "conquest" ? "Laying out the island - every wall, gate and tree, for the fights" : "Setting out the battle";
+    notice_ = mode == "conquest" ? "Laying out the island" : "Setting out the battle";
     error_.clear();
     menu_ = false;
     heldByMenu_ = false;  // (a new game starts afresh)
@@ -427,13 +427,13 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
     const std::string sub = std::string("v") + illyria_version() + " - desktop";
     const std::string leadLabel = "You lead (left / right, or click a square):";
     const float leadSize = fit(o, leadLabel, 13, inner);
-    const std::string difficulty = std::string("Computer lords: keys 1-8 toggle them (red are in the war). They play ") + (hard_ ? "Hard" : "Easy") + " (D).";
+    const std::string difficulty = std::string("Computer lords: keys 1-8 toggle them (red are in the war): ") + (hard_ ? "Hard" : "Easy") + " (D).";
     std::vector<std::string> hints = wrap(o, difficulty, 12, inner);
     const size_t difficultyLines = hints.size();
     for (const std::string& l : wrap(o, "Up / down, Enter, or click. In a battle, / shows the keys.", 12, inner)) hints.push_back(l);
     const std::vector<std::string> errors = wrap(o, error_, 13, inner);
 
-    const std::string colourLabel = "Your colour (C, or click; the sides keep theirs unless they clash):";
+    const std::string colourLabel = "Your colour (C, or click):";
     const float colourSize = fit(o, colourLabel, 13, inner);
     constexpr float kSwatch = 24;
     const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 + colourSize + 8 + kSwatch + 14 +
@@ -518,13 +518,13 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
     y += 26 + 10;
     const SkirmishMap& map = kMaps[skMap_];
     const int purse = kPurses[skGold_], left = purse - skirmishSpent();
-    const std::string side = !map.siege ? "(a siege has sides)" : skDefend_ ? "You hold the walls" : "You storm the walls";
+    const std::string side = !map.siege ? "" : skDefend_ ? "Defend" : "Attack";
     for (int r = 0; r < rows; ++r, y += kRow) {
         std::string label, value, info;
         bool arrows = r < 4 + units, dim = false;
         if (r == 0) label = "Map", value = map.name;
         else if (r == 1) label = "Side", value = side, dim = !map.siege;
-        else if (r == 2) label = "Gold each side", value = std::to_string(purse);
+        else if (r == 2) label = "Gold", value = std::to_string(purse);
         else if (r == 3) label = "Computer plays", value = hard_ ? "Normal" : "Easy";
         else if (r < 4 + units) {
             const Offer& of = offers_[static_cast<size_t>(r - 4)];
@@ -551,7 +551,7 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
         hits_.push_back({px + 12, y - 3, pw - 24, kRow, 600 + r});
     }
     y += 4;
-    const std::string purseLine = std::string(map.name) + ": " + map.note + ".  Gold left " + std::to_string(left) + " of " + std::to_string(purse) + ", at the Conquest's prices; the other side raises as much.";
+    const std::string purseLine = std::string(map.name) + ": gold left " + std::to_string(left) + " of " + std::to_string(purse) + ".";
     for (const std::string& l : wrap(o, purseLine, 12, inner)) o.text(px + kPad, y, l, kPaperDim, 12), y += 16;
     y += 4;
     o.text(px + kPad, y, "Your colour (click):", kPaperDim, 13);
