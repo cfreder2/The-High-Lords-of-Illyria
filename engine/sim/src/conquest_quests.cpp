@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <climits>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 
@@ -34,7 +34,7 @@ const char* const kHeroNames[] = {
 };
 
 // How great a treasure is: 1 moderate, 2 considerable, 3 supreme.
-int32_t power(const Campaign::Artifact& a) { return std::max({a.battle, a.command, a.speed > 0 ? 1 : 0, a.gold > 0 ? 1 : 0}); }
+int32_t power(const Conquest::Artifact& a) { return std::max({a.battle, a.command, a.speed > 0 ? 1 : 0, a.gold > 0 ? 1 : 0}); }
 
 std::string plural(int32_t n, const char* type) {
     std::string t = type;
@@ -43,11 +43,11 @@ std::string plural(int32_t n, const char* type) {
 
 }  // namespace
 
-const std::vector<Campaign::Artifact>& Campaign::artifacts() {
+const std::vector<Conquest::Artifact>& Conquest::artifacts() {
     // As in Warlords: battle items for the hero's own arm, command items for
     // everyone who fights beside them; and a few for the road and the purse.
     // The sandals, once four movement points a day more, now make the hero's
-    // whole stack a third quicker on the march (Campaign::paceOf).
+    // whole stack a third quicker on the march (Conquest::paceOf).
     static const std::vector<Artifact> kArtifacts = {
         {"Firebrand", 1, 0, 0, 0},          {"Frostblade", 1, 0, 0, 0},       {"Spear of Ashkar", 1, 0, 0, 0},
         {"Sunblade", 2, 0, 0, 0},           {"Shadowblade", 2, 0, 0, 0},      {"Bow of the Morning Star", 2, 0, 0, 0},
@@ -58,16 +58,16 @@ const std::vector<Campaign::Artifact>& Campaign::artifacts() {
     return kArtifacts;
 }
 
-const char* Campaign::guardianName(int32_t g) { return g >= 0 && g < kGuardianCount ? kGuardians[g].name : ""; }
-int32_t Campaign::guardianStrength(int32_t g) { return g >= 0 && g < kGuardianCount ? kGuardians[g].strength : 0; }
+const char* Conquest::guardianName(int32_t g) { return g >= 0 && g < kGuardianCount ? kGuardians[g].name : ""; }
+int32_t Conquest::guardianStrength(int32_t g) { return g >= 0 && g < kGuardianCount ? kGuardians[g].strength : 0; }
 
-int32_t Campaign::command(const Army& a) {
+int32_t Conquest::command(const Army& a) {
     int32_t c = 0;
     for (uint8_t k : a.artifacts) c += artifacts()[k].command;
     return c;
 }
 
-void Campaign::initSites() {
+void Conquest::initSites() {
     // Guardians grow fiercer with the distance from the nearest capital, so a
     // young hero finds an easy ruin near home and a hard one in the wilds.
     const uint64_t sg = noise::nextSeed(continent_.seed() ^ 0x6A4D);
@@ -96,27 +96,27 @@ void Campaign::initSites() {
     artifactFound_.assign(artifacts().size(), 0);
 }
 
-int32_t Campaign::siteAt(int32_t cx, int32_t cy) const {
+int32_t Conquest::siteAt(int32_t cx, int32_t cy) const {
     for (size_t i = 0; i < sites_.size(); ++i)
         if (sites_[i].cx == cx && sites_[i].cy == cy) return static_cast<int32_t>(i);
     return -1;
 }
 
-void Campaign::deed(uint8_t side, std::string text) { deeds_.push_back({day(), side, std::move(text)}); }
+void Conquest::deed(uint8_t side, std::string text) { deeds_.push_back({day(), side, std::move(text)}); }
 
 namespace {
 // The stack's strongest hero (the one who goes in), or -1.
-int32_t bestHero(const Campaign::Stack& s) {
+int32_t bestHero(const Conquest::Stack& s) {
     int32_t best = -1;
     for (size_t k = 0; k < s.armies.size(); ++k)
         if (s.armies[k].hero() && s.armies[k].soldiers > 0 &&
-            (best < 0 || Campaign::strength(s.armies[k]) > Campaign::strength(s.armies[static_cast<size_t>(best)])))
+            (best < 0 || Conquest::strength(s.armies[k]) > Conquest::strength(s.armies[static_cast<size_t>(best)])))
             best = static_cast<int32_t>(k);
     return best;
 }
 }  // namespace
 
-bool Campaign::canSearch(uint32_t stackId) const {
+bool Conquest::canSearch(uint32_t stackId) const {
     const Stack* s = findStack(stackId);
     if (!s || s->garrison || s->armies.empty() || !s->path.empty()) return false;
     const int32_t site = siteAt(s->cx, s->cy);
@@ -130,7 +130,7 @@ bool Campaign::canSearch(uint32_t stackId) const {
     return !st.searched && bestHero(*s) >= 0;
 }
 
-bool Campaign::search(uint32_t stackId) {
+bool Conquest::search(uint32_t stackId) {
     if (!canSearch(stackId)) return false;
     Stack& s = *stackById(stackId);
     const size_t site = static_cast<size_t>(siteAt(s.cx, s.cy));
@@ -146,7 +146,7 @@ bool Campaign::search(uint32_t stackId) {
             ++n;
         }
         if (n) deed(s.owner, where + " blessed " + (n == 1 ? std::string("one army") : std::to_string(n) + " armies"));
-        templeGift(s, st, where);  // the temple's guard follows the first hero (campaign_rare.cpp)
+        templeGift(s, st, where);  // the temple's guard follows the first hero (conquest_rare.cpp)
         return true;
     }
     Army& hero = s.armies[static_cast<size_t>(bestHero(s))];
@@ -232,14 +232,14 @@ bool Campaign::search(uint32_t stackId) {
     return true;
 }
 
-void Campaign::bury(Stack& s, int32_t cx, int32_t cy) {
+void Conquest::bury(Stack& s, int32_t cx, int32_t cy) {
     for (const Army& a : s.armies)
         if (a.soldiers <= 0)
             for (uint8_t k : a.artifacts) loot_.push_back({cx, cy, k});
     s.armies.erase(std::remove_if(s.armies.begin(), s.armies.end(), [](const Army& a) { return a.soldiers <= 0; }), s.armies.end());
 }
 
-void Campaign::pickUp(Stack& s) {
+void Conquest::pickUp(Stack& s) {
     if (loot_.empty()) return;
     const int32_t h = bestHero(s);
     if (h < 0) return;
@@ -255,7 +255,7 @@ void Campaign::pickUp(Stack& s) {
     }
 }
 
-void Campaign::questsNewDay() {
+void Conquest::questsNewDay() {
     // Purses pay their gold; then, now and then, a hero offers their sword to
     // a side with more than two cities for each hero it has, the price rising
     // with each hero on the payroll, as in Warlords. Offers last until the
@@ -283,12 +283,12 @@ void Campaign::questsNewDay() {
         constexpr int32_t kNames = static_cast<int32_t>(sizeof kHeroNames / sizeof kHeroNames[0]);
         o.name = kHeroNames[n % kNames];
         if (n >= kNames) o.name += " the Younger";
-        offerCompanions(o);  // some come with rare troops of their own (campaign_rare.cpp)
+        offerCompanions(o);  // some come with rare troops of their own (conquest_rare.cpp)
         if (!side.human) hire(static_cast<uint8_t>(s), side.gold >= o.price + 100);  // keeping enough to train troops
     }
 }
 
-bool Campaign::hire(uint8_t side, bool accept) {
+bool Conquest::hire(uint8_t side, bool accept) {
     if (side >= offers_.size() || !offers_[side].open) return false;
     Offer& o = offers_[side];
     if (!accept) {
@@ -309,7 +309,7 @@ bool Campaign::hire(uint8_t side, bool accept) {
     return true;
 }
 
-void Campaign::questAi(uint8_t side) {
+void Conquest::questAi(uint8_t side) {
     // The computer's heroes explore when it is safe: search what they stand
     // on, then make for the nearest ruin they can likely beat, a temple that
     // has not yet blessed them, or an unvisited sage, with no enemy near it.
@@ -387,7 +387,7 @@ void Campaign::questAi(uint8_t side) {
     }
 }
 
-void Campaign::hashQuests(StateHasher& h) const {
+void Conquest::hashQuests(StateHasher& h) const {
     for (const SiteState& s : sites_) h.addU64(s.searched | (s.gifted ? 2u : 0u));
     for (const Loot& l : loot_) {
         h.addI64(l.cx);

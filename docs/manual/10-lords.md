@@ -8,7 +8,7 @@
 
 ## Choosing the war {#setup}
 
-A new campaign (**Campaign**, a slot, **New game**) asks three things before day 1.
+A new Conquest (**Conquest**, a slot, **New game**) asks three things before day 1.
 
 - **Who will you be?** Any of the eight lords. You take that realm's capital, its hero, its treasury, the kinds it trains and its rare troops (chapter [](#realm-hints)).
 - **Which lords will you face?** Any of the other seven, from all of them to none; **All** and **None** set the lot. A lord you do not face is *not in the war*: no hero, no army, nobody playing him. His capital stands as a neutral walled place with a garrison of five armies, and the places of his country are neutral like any others.
@@ -83,7 +83,7 @@ When you win, the field says *High Lord of Illyria*: "The other lords of Illyria
 
 ## Saving the war {#saving}
 
-A campaign lives in one of **three slots**, kept in this browser on this device.
+A Conquest lives in one of **three slots**, kept in this browser on this device.
 
 - **It saves itself** into its slot when it begins, at every dawn (Settings: *Autosave every day*), and when you go back to the menu.
 - **💾 Save** in the menu saves now, into a slot you choose; from then on that is the slot it saves into.

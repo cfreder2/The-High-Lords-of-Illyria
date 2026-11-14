@@ -8,13 +8,13 @@
 #include <optional>
 #include <span>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
-#include "campaign_orders.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -28,7 +28,7 @@ const Continent& continent() {
 
 // The island's ground and navigation grid.
 struct Island {
-    Campaign c;
+    Conquest c;
     explicit Island(uint64_t seed) : c(continent(), seed) {
         for (uint8_t s = 0; s < Continent::kFactionCount; ++s) c.setHuman(s, true);  // (no computer lords: only what the test does moves)
         c.prepareWorld();
@@ -61,8 +61,8 @@ TEST(a_march_across_a_walled_town_goes_round_its_walls) {
     // From the capital's courtyard to a place on the far side of its walls, in each of the eight directions: no man of
     // the march is ever inside a wall, a tower, a house or a shut gate (the ground the World's navigation keeps men out of).
     Island is(5);
-    Campaign& c = is.c;
-    const Campaign::CityState& cap = c.cities().front();
+    Conquest& c = is.c;
+    const Conquest::CityState& cap = c.cities().front();
     const Continent::City& town = continent().cities().front();
     int tested = 0, inside = 0, arrived = 0;
     for (const int d : {0, 4}) {  // (east and west: each takes the men out of the courtyard and round the walls)
@@ -70,16 +70,16 @@ TEST(a_march_across_a_walled_town_goes_round_its_walls) {
         const int32_t x = cap.cx + dx[d] * 4, y = cap.cy + dy[d] * 4;
         if (x < 0 || y < 0 || x >= c.width() || y >= c.height() || c.cityAt(x, y) >= 0) continue;
         const uint32_t id = c.raise(0, cap.cx, cap.cy, {UnitType::LightInfantry, UnitType::Archers});
-        if (!CampaignOrders::move(c, id, x, y)) continue;
+        if (!ConquestOrders::move(c, id, x, y)) continue;
         ++tested;
         for (int t = 0; t < 4500; ++t) {
             c.step();
             if (t % 5) continue;
-            const Campaign::Stack* s = c.findStack(id);
+            const Conquest::Stack* s = c.findStack(id);
             if (!s) break;
-            std::vector<Campaign::Soldier> men;
+            std::vector<Conquest::Soldier> men;
             c.soldiers(0, men);
-            for (const Campaign::Soldier& m : men) {
+            for (const Conquest::Soldier& m : men) {
                 if (m.stack != id) continue;
                 const Vec3 p = m.unit ? m.unit->pos
                                       : Vec3{Fixed::fromRatio(static_cast<int64_t>(m.x * 100), 100) - c.world()->region()->origin().x,
@@ -90,7 +90,7 @@ TEST(a_march_across_a_walled_town_goes_round_its_walls) {
             if (s->path.empty() && t > 60) break;
         }
         // They are under way for the place: well out of the courtyard (the way round the walls, then the long way, is the World's).
-        const Campaign::Stack* end = c.findStack(id);
+        const Conquest::Stack* end = c.findStack(id);
         const int64_t ax = town.castle.courtyard.x.floorToInt() * 1000, ay = town.castle.courtyard.y.floorToInt() * 1000;
         if (end && (end->px - ax) * (end->px - ax) + (end->py - ay) * (end->py - ay) > int64_t{60000} * 60000) ++arrived;
     }
@@ -102,8 +102,8 @@ TEST(a_march_across_a_walled_town_goes_round_its_walls) {
 
 TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
     Island is(5);
-    Campaign& c = is.c;
-    const Campaign::CityState& cap = c.cities().front();
+    Conquest& c = is.c;
+    const Conquest::CityState& cap = c.cities().front();
     const Continent::City& town = continent().cities().front();
     const Region& r = *c.world()->region();
     // The embrasure farthest round from the courtyard, on the town's outer ring.
@@ -119,7 +119,7 @@ TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
         if ((e.pos - yard).flat().length() > (post - yard).flat().length()) post = e.pos;
     const uint32_t id = c.raise(0, cap.cx, cap.cy, {UnitType::Archers});
     c.step();
-    const Campaign::Stack* st = c.findStack(id);
+    const Conquest::Stack* st = c.findStack(id);
     CHECK(st != nullptr);
     if (!st) return;
     std::vector<uint32_t> units;
@@ -130,8 +130,8 @@ TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
     if (units.empty()) return;
     // (A garrison's bowmen are put on the walk to begin with: bring them down into the courtyard first, so that they climb.)
     for (uint32_t u : units) {
-        Campaign::Order o;
-        o.kind = Campaign::Order::Kind::Command;
+        Conquest::Order o;
+        o.kind = Conquest::Order::Kind::Command;
         o.side = 0;
         o.command = Command{0, u, Command::Type::Move, yard};
         c.submit(o);
@@ -145,8 +145,8 @@ TEST(archers_ordered_onto_the_wall_walk_climb_the_ramps_as_in_a_skirmish) {
     }
     // The Conquest: the order is the skirmish's own Command, carried by an Order.
     for (uint32_t u : units) {
-        Campaign::Order o;
-        o.kind = Campaign::Order::Kind::Command;
+        Conquest::Order o;
+        o.kind = Conquest::Order::Kind::Command;
         o.side = 0;
         o.command = Command{0, u, Command::Type::Move, post};
         c.submit(o);
@@ -200,7 +200,7 @@ size_t gateNear(const Region& r, const Vec3& at) {
     }
     return best;
 }
-// `step` advances the one world a tick (a campaign's, or a skirmish's) with the commands given; `world` is that world.
+// `step` advances the one world a tick (a conquest's, or a skirmish's) with the commands given; `world` is that world.
 template <class Step, class WorldOf>
 GateRun runGate(Step step, WorldOf world, size_t gate, EntityId man, const Vec3& to) {
     GateRun run;
@@ -237,8 +237,8 @@ GateRun runGate(Step step, WorldOf world, size_t gate, EntityId man, const Vec3&
 
 TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
     Island is(5);
-    Campaign& c = is.c;
-    const Campaign::CityState& cap = c.cities().front();
+    Conquest& c = is.c;
+    const Conquest::CityState& cap = c.cities().front();
     const Continent::City& town = continent().cities().front();
     // The Conquest: the capital's own gate (the player's side holds it, by his hand and not a garrison's), a man of his
     // raised in the courtyard, the commands carried by Orders.
@@ -259,8 +259,8 @@ TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
     const GateRun conquest = runGate(
         [&](std::optional<Command> cmd) {
             if (cmd) {
-                Campaign::Order o;
-                o.kind = Campaign::Order::Kind::Command;
+                Conquest::Order o;
+                o.kind = Conquest::Order::Kind::Command;
                 o.side = 0;
                 o.command = *cmd;
                 c.submit(o);
@@ -299,17 +299,17 @@ TEST(a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle) {
 }
 
 // Not a rule but a measurement, printed for the record (docs/ONE_WORLD.md, "What it costs"): every man on the island is a
-// unit of the world, stepped every tick as in a skirmish. An all-computer campaign from the start, then the same with
+// unit of the world, stepped every tick as in a skirmish. An all-computer conquest from the start, then the same with
 // stacks added in every town until the island holds about 3,000 and 6,800 men (the population of day 40 and day 120).
 TEST(the_whole_population_in_one_world_costs_what_a_skirmish_man_costs) {
-    Campaign c(continent(), 7);
+    Conquest c(continent(), 7);
     c.prepareWorld();
     c.step();
     size_t town = 0;
     for (const int32_t want : {0, 3000, 6800}) {
         while (c.menInWorld() < want) {
-            const Campaign::CityState& cs = c.cities()[town++ % c.cities().size()];
-            c.raise(cs.owner == Campaign::kNeutral ? 0 : cs.owner, cs.cx, cs.cy, std::vector<UnitType>(8, UnitType::LightInfantry));
+            const Conquest::CityState& cs = c.cities()[town++ % c.cities().size()];
+            c.raise(cs.owner == Conquest::kNeutral ? 0 : cs.owner, cs.cx, cs.cy, std::vector<UnitType>(8, UnitType::LightInfantry));
             if (town % 8 == 0) c.step();  // (seated as they come)
         }
         c.step();

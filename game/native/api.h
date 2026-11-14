@@ -67,16 +67,16 @@ const char* illyria_hud();
 const char* illyria_labels();
 const char* illyria_drag_box();
 
-void illyria_campaign_pause();
-void illyria_campaign_speed();
-void illyria_campaign_select(unsigned id);
-const char* illyria_campaign_state();
-const char* illyria_campaign_save();
+void illyria_conquest_pause();
+void illyria_conquest_speed();
+void illyria_conquest_select(unsigned id);
+const char* illyria_conquest_state();
+const char* illyria_conquest_save();
 void illyria_set_side_colour(const char* hex);
 int illyria_minimap_kind();
 void illyria_minimap_land();
 const char* illyria_minimap();
 const char* illyria_minimap_view();
 void illyria_minimap_look(float x, float y);
-void illyria_campaign_start(int hard);
+void illyria_conquest_start(int hard);
 }

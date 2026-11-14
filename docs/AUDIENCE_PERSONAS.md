@@ -18,14 +18,14 @@ Played *Myth: The Fallen Lords* and *Myth II* online in 1998, still visits Proje
 ### 2. Margaret, 56 — The Warlords Loyalist
 Played *Warlords II Deluxe* on DOS for years; still plays it in DOSBox. Prefers to think, not click.
 - **Hooks:** The continent, cities, heroes, temples, the 8-stack, building an empire over an evening.
-- **Turn-offs:** Real-time pressure on the campaign map. Being forced to micro every skirmish.
+- **Turn-offs:** Real-time pressure on the Conquest map. Being forced to micro every skirmish.
 - **Wants:** Pause, or a slow strategic clock in single-player; auto-resolve for battles she doesn't care about; a strong AI to play against alone.
 - **Appeal:** ★★★☆☆ — rises to ★★★★★ with real-time-with-pause and auto-resolve.
 
-### 3. Raj, 34 — The Total War Campaigner
+### 3. Raj, 34 — The Total War Conquester
 Hundreds of hours in *Rome II* and *Warhammer III*.
-- **Hooks:** Campaign map consequences flowing into battles; seeing his named veteran units survive (or not).
-- **Turn-offs:** The loading-screen split between campaign and battle (he'd love seamless); thin diplomacy.
+- **Hooks:** Conquest map consequences flowing into battles; seeing his named veteran units survive (or not).
+- **Turn-offs:** The loading-screen split between Conquest and battle (he'd love seamless); thin diplomacy.
 - **Wants:** Sieges with walls that physically break; faction variety; meaningful army composition.
 - **Appeal:** ★★★★☆ — the seamless zoom is the thing Total War never gave him.
 
@@ -54,7 +54,7 @@ Browses itch.io for free and pay-what-you-want browser games between classes.
 Played RTS in his 20s; now has 45-minute windows after the kids sleep.
 - **Hooks:** Deep strategy he can chip away at; nostalgia for both source games.
 - **Turn-offs:** Matches that can't be saved; multiplayer that demands 3-hour sessions.
-- **Wants:** Save anywhere, pause, single-player campaign, asynchronous or short multiplayer.
+- **Wants:** Save anywhere, pause, single-player Conquest, asynchronous or short multiplayer.
 - **Appeal:** ★★★★☆ if save/pause exist.
 
 ### 8. Ana, 26 — The Competitive RTS Player
@@ -68,7 +68,7 @@ Top-percent ladder player in *Age of Empires II*.
 Plays *Crusader Kings III* and *Mount & Blade II: Bannerlord* for the stories.
 - **Hooks:** *The Grey Watch*, a squad with a history: battles fought, kills, the day they held a bridge.
 - **Turn-offs:** Units as anonymous numbers.
-- **Wants:** Squad histories, heroes with traits, rivalries, a chronicle of the campaign.
+- **Wants:** Squad histories, heroes with traits, rivalries, a chronicle of the Conquest.
 - **Appeal:** ★★★★★ — the named-unit system is exactly her hook.
 
 ### 10. Ivo, 37 — The Simulation Storyteller
@@ -96,7 +96,7 @@ Loves the "boomer shooter" revival and HD-2D games.
 Play co-op games together on weekends.
 - **Hooks:** Each friend runs a front of the same war; one zooms in to save another's battle.
 - **Turn-offs:** Only competitive multiplayer; complicated hosting.
-- **Wants:** 2–4 player co-op campaign against AI factions, drop-in links, voice-friendly pacing.
+- **Wants:** 2–4 player co-op Conquest against AI factions, drop-in links, voice-friendly pacing.
 - **Appeal:** ★★★★★ — the seamless shared continent is a natural co-op game.
 
 ### 14. Lena, 27 — The Streamer
@@ -131,7 +131,7 @@ Played board wargames for decades; now plays *Combat Mission* and *Unity of Comm
 Reads epic fantasy; plays games for their worlds.
 - **Hooks:** The High Lords, the temples, the history of Illyria.
 - **Turn-offs:** Lore-free sandboxes.
-- **Wants:** A narrative single-player campaign, faction stories, a reason to care which banner wins.
+- **Wants:** A narrative single-player Conquest, faction stories, a reason to care which banner wins.
 - **Appeal:** ★★★☆☆ — depends on writing that doesn't exist yet.
 
 ### 19. Ade, 30 — The Commuter

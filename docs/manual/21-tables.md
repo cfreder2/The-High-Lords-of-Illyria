@@ -1,6 +1,6 @@
 # Tables {#tables}
 
-## Every army in the campaign {#campaign-table}
+## Every army in the Conquest {#Conquest-table}
 
 Strength, soldiers in a fresh army, speed on open ground in metres a second (fliers: flying on their own in the long run, and walking), the training (a town's days, and gold) or where a rare army comes from, and the upkeep a day (allies serve for nothing).
 
@@ -83,7 +83,7 @@ The levies of rare troops (chapter [](#rare-troops)): 3 days each in a town or v
 | Taking a lord's city | he loses his gold divided by his cities; half of that is yours |
 | A boat | 20 gold, 4 days; 2 a day; carries 7 armies at 6 m/s (720 m a day) |
 | Sending new armies to another city | 2 days on the road; at most 4 cities to one |
-| A campaign day | 2 minutes at 1×; 1 minute at 2×, 30 seconds at 4×, 15 seconds at 8× |
+| A Conquest day | 2 minutes at 1×; 1 minute at 2×, 30 seconds at 4×, 15 seconds at 8× |
 | The treasury below nothing at dawn | armies desert, the newest first, recruits and regulars before veterans and rare troops |
 
 | Starting gold | |
@@ -103,7 +103,7 @@ From the game's unit sheet: strength, hit points, speed on open ground (m/s), th
 
 ## The ground {#movement-table}
 
-Each gait's pace on the campaign map's ground, as a share of the army's speed on open ground (the battlefield's own table, chapter [](#speed)); climbing slows it by the share shown. Mountains and water are closed to everyone on foot; a city is plain, or road where a road runs through it.
+Each gait's pace on the Conquest map's ground, as a share of the army's speed on open ground (the battlefield's own table, chapter [](#speed)); climbing slows it by the share shown. Mountains and water are closed to everyone on foot; a city is plain, or road where a road runs through it.
 
 | Gait | Road | Plain | Forest | Marsh | Climb | Armies |
 |---|---|---|---|---|---|---|

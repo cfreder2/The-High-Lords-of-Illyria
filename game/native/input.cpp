@@ -251,8 +251,8 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_SPACE: illyria_stop(); break;  // the march stops: the selection halts
         case SDL_SCANCODE_P: {
             Json camp;
-            Json::parse(illyria_campaign_state(), camp);
-            if (camp.find("day")) illyria_campaign_pause();
+            Json::parse(illyria_conquest_state(), camp);
+            if (camp.find("day")) illyria_conquest_pause();
             else illyria_toggle_pause();
             break;
         }

@@ -1,12 +1,12 @@
-// Heroes, ruins, temples and sages in the campaign, after Warlords.
+// Heroes, ruins, temples and sages in the conquest, after Warlords.
 #include <algorithm>
 #include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "illyria/sim/campaign.h"
-#include "campaign_orders.h"
+#include "illyria/sim/conquest.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -20,8 +20,8 @@ const Continent& continent() {
 using Kind = Continent::Site::Kind;
 
 // Side 0's hero stack (its first stack with a hero).
-const Campaign::Stack* heroStack(const Campaign& c, uint8_t side = 0) {
-    for (const Campaign::Stack& s : c.stacks())
+const Conquest::Stack* heroStack(const Conquest& c, uint8_t side = 0) {
+    for (const Conquest::Stack& s : c.stacks())
         if (s.owner == side && !s.garrison)
             for (const Army& a : s.armies)
                 if (a.hero()) return &s;
@@ -29,10 +29,10 @@ const Campaign::Stack* heroStack(const Campaign& c, uint8_t side = 0) {
 }
 
 // The nearest site of a kind the stack can walk to.
-int32_t nearestSite(Campaign& c, const Campaign::Stack& s, Kind kind) {
+int32_t nearestSite(Conquest& c, const Conquest::Stack& s, Kind kind) {
     int32_t best = 1 << 30, which = -1;
     for (size_t k = 0; k < c.sites().size(); ++k) {
-        const Campaign::SiteState& st = c.sites()[k];
+        const Conquest::SiteState& st = c.sites()[k];
         if (st.kind != kind || st.searched) continue;
         const int32_t d = std::max(std::abs(st.cx - s.cx), std::abs(st.cy - s.cy));
         if (d < best) {
@@ -44,10 +44,10 @@ int32_t nearestSite(Campaign& c, const Campaign::Stack& s, Kind kind) {
 }
 
 // Marches a stack to a cell and waits until it is there (or the days run out).
-bool march(Campaign& c, uint32_t id, int32_t cx, int32_t cy) {
-    if (!CampaignOrders::move(c, id, cx, cy)) return false;
-    for (int t = 0; t < Campaign::kTicksPerDay * 40; ++t) {
-        const Campaign::Stack* s = c.findStack(id);
+bool march(Conquest& c, uint32_t id, int32_t cx, int32_t cy) {
+    if (!ConquestOrders::move(c, id, cx, cy)) return false;
+    for (int t = 0; t < Conquest::kTicksPerDay * 40; ++t) {
+        const Conquest::Stack* s = c.findStack(id);
         if (!s) return false;
         if (s->cx == cx && s->cy == cy && s->path.empty()) return true;
         c.step();
@@ -57,13 +57,13 @@ bool march(Campaign& c, uint32_t id, int32_t cx, int32_t cy) {
 }  // namespace
 
 TEST(sites_cover_the_continent) {
-    const Campaign c(continent(), 1);
+    const Conquest c(continent(), 1);
     int ruins = 0, temples = 0, sages = 0;
-    for (const Campaign::SiteState& s : c.sites()) {
+    for (const Conquest::SiteState& s : c.sites()) {
         ruins += s.kind == Kind::Ruin;
         temples += s.kind == Kind::Temple;
         sages += s.kind == Kind::Sage;
-        if (s.kind == Kind::Ruin) CHECK(Campaign::guardianStrength(s.guardian) >= 2);
+        if (s.kind == Kind::Ruin) CHECK(Conquest::guardianStrength(s.guardian) >= 2);
         CHECK(c.siteAt(s.cx, s.cy) >= 0);
     }
     CHECK(ruins == 34);
@@ -76,15 +76,15 @@ TEST(every_site_is_reached_on_foot) {
     // (neither water nor mountain) and a stack on foot can march there from
     // some town (the mountains' sites by their passes, the Drowned Abbey by
     // the Spit, the Seer's Tower from the towns on its isle).
-    Campaign c(continent(), 1);
+    Conquest c(continent(), 1);
     std::vector<uint32_t> walkers;
-    for (const Campaign::CityState& t : c.cities()) walkers.push_back(c.raise(0, t.cx, t.cy, {UnitType::LightInfantry}));
+    for (const Conquest::CityState& t : c.cities()) walkers.push_back(c.raise(0, t.cx, t.cy, {UnitType::LightInfantry}));
     int reached = 0;
     for (size_t i = 0; i < c.sites().size(); ++i) {
-        const Campaign::SiteState& s = c.sites()[i];
+        const Conquest::SiteState& s = c.sites()[i];
         const Lay lay = c.terrainAt(s.cx, s.cy);
         bool there = false;
-        for (size_t k = 0; k < walkers.size() && !there; ++k) there = CampaignOrders::move(c, walkers[k], s.cx, s.cy);
+        for (size_t k = 0; k < walkers.size() && !there; ++k) there = ConquestOrders::move(c, walkers[k], s.cx, s.cy);
         if (lay == Lay::Water || lay == Lay::Mountain || !there)
             std::printf("  %s (cell %d, %d): %s\n", continent().sites()[i].name.c_str(), s.cx, s.cy, there ? "on a closed cell" : "no way there on foot");
         CHECK(lay != Lay::Water && lay != Lay::Mountain);
@@ -97,38 +97,38 @@ TEST(every_site_is_reached_on_foot) {
 TEST(artifacts_change_strength) {
     Army hero;
     hero.type = UnitType::Hero;
-    const int32_t base = Campaign::strength(hero);
+    const int32_t base = Conquest::strength(hero);
     CHECK(base == 4);
-    CHECK(Campaign::command(hero) == 0);
+    CHECK(Conquest::command(hero) == 0);
     const auto find = [](const char* name) {
-        for (size_t k = 0; k < Campaign::artifacts().size(); ++k)
-            if (std::string(Campaign::artifacts()[k].name) == name) return static_cast<uint8_t>(k);
+        for (size_t k = 0; k < Conquest::artifacts().size(); ++k)
+            if (std::string(Conquest::artifacts()[k].name) == name) return static_cast<uint8_t>(k);
         return uint8_t{255};
     };
     hero.artifacts.push_back(find("Sunblade"));  // battle +2
-    CHECK(Campaign::strength(hero) == base + 2);
+    CHECK(Conquest::strength(hero) == base + 2);
     hero.artifacts.push_back(find("Crown of Kings"));  // command +1: the hero's own arm is no stronger
-    CHECK(Campaign::strength(hero) == base + 2);
-    CHECK(Campaign::command(hero) == 1);
+    CHECK(Conquest::strength(hero) == base + 2);
+    CHECK(Conquest::command(hero) == 1);
     hero.artifacts.push_back(find("Staff of Thunders"));  // never past nine
     hero.rank = 3;
-    CHECK(Campaign::strength(hero) == 9);
+    CHECK(Conquest::strength(hero) == 9);
 }
 
 TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
-    // Some campaigns: march side 0's hero to the nearest ruin and search it. (The road is fought for, and a hero often does
-    // not arrive, and with roads to every town the computer lords' heroes reach the nearest ruin first more often: over 60 seeds 6 won before the roads (the hero dead on the road in 54, the walk 12 days), 3 after (46 beaten to it, 10 dead, 9 days), so campaigns are taken, up to 120, until three have.)
+    // Some conquests: march side 0's hero to the nearest ruin and search it. (The road is fought for, and a hero often does
+    // not arrive, and with roads to every town the computer lords' heroes reach the nearest ruin first more often: over 60 seeds 6 won before the roads (the hero dead on the road in 54, the walk 12 days), 3 after (46 beaten to it, 10 dead, 9 days), so conquests are taken, up to 120, until three have.)
     int won = 0, fell = 0, artifacts = 0, allies = 0, gold = 0;
     for (uint64_t seed = 1; seed <= 120 && won < 3; ++seed) {
-        Campaign c(continent(), seed);
+        Conquest c(continent(), seed);
         c.setHuman(0, true);
-        const Campaign::Stack* s = heroStack(c);
+        const Conquest::Stack* s = heroStack(c);
         CHECK(s != nullptr);
         if (!s) return;
         const uint32_t id = s->id;
         const int32_t ruin = nearestSite(c, *s, Kind::Ruin);
         CHECK(ruin >= 0);
-        const Campaign::SiteState site = c.sites()[static_cast<size_t>(ruin)];
+        const Conquest::SiteState site = c.sites()[static_cast<size_t>(ruin)];
         CHECK(!c.canSearch(id));  // nothing to search at home
         if (!march(c, id, site.cx, site.cy) || c.sites()[static_cast<size_t>(ruin)].searched) continue;  // beaten to it
         if (!c.findStack(id)) continue;
@@ -136,10 +136,10 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         for (const Army& a : c.findStack(id)->armies) alive = alive || a.hero();
         if (!alive) continue;
         CHECK(c.canSearch(id));
-        const Campaign::Stack before = *c.findStack(id);
+        const Conquest::Stack before = *c.findStack(id);
         const int32_t goldBefore = c.sides()[0].gold;
-        CHECK(CampaignOrders::search(c, id));
-        const Campaign::Stack* after = c.findStack(id);
+        CHECK(ConquestOrders::search(c, id));
+        const Conquest::Stack* after = c.findStack(id);
         const Army* hero = nullptr;
         for (const Army& a : after->armies)
             if (a.hero()) hero = &a;
@@ -160,8 +160,8 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         artifacts += gotArtifact;
         allies += gotAllies;
         // (a battle or command item; sandals and the purse help elsewhere)
-        if (gotArtifact && Campaign::artifacts()[hero->artifacts.back()].battle + Campaign::artifacts()[hero->artifacts.back()].command > 0)
-            CHECK(Campaign::strength(*hero) + Campaign::command(*hero) > 4 + hero->rank);
+        if (gotArtifact && Conquest::artifacts()[hero->artifacts.back()].battle + Conquest::artifacts()[hero->artifacts.back()].command > 0)
+            CHECK(Conquest::strength(*hero) + Conquest::command(*hero) > 4 + hero->rank);
         for (const Army& a : after->armies)
             if (!a.hero() && a.ally) CHECK(a.type == UnitType::Undead || a.type == UnitType::Wizards || a.type == UnitType::Devils ||
                                            a.type == UnitType::Archons || a.type == UnitType::Dragons ||
@@ -169,7 +169,7 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
         // Once: the ruin is empty now.
         const int32_t g = c.sides()[0].gold;
         CHECK(!c.canSearch(id));
-        CHECK(!CampaignOrders::search(c, id));
+        CHECK(!ConquestOrders::search(c, id));
         CHECK(c.sides()[0].gold == g);
         CHECK(!c.deeds().empty());
     }
@@ -180,13 +180,13 @@ TEST(a_ruin_is_searched_once_and_its_hero_may_fall) {
 TEST(allies_serve_without_pay) {
     Army dragons;
     dragons.type = UnitType::Dragons;
-    CHECK(Campaign::armyUpkeep(dragons) > 0);
+    CHECK(Conquest::armyUpkeep(dragons) > 0);
     dragons.ally = true;
-    CHECK(Campaign::armyUpkeep(dragons) == 0);
+    CHECK(Conquest::armyUpkeep(dragons) == 0);
 }
 
 TEST(a_temple_blesses_each_army_once) {
-    Campaign c(continent(), 2);
+    Conquest c(continent(), 2);
     // Nobody else moves: a computer hero standing on the temple would make it a battle.
     for (size_t s = 0; s < c.sides().size(); ++s) c.setHuman(static_cast<uint8_t>(s), true);
     // A stack in the city nearest a temple, marched there (any stack is
@@ -194,7 +194,7 @@ TEST(a_temple_blesses_each_army_once) {
     uint32_t id = 0;
     int32_t temple = -1;
     for (size_t k = 0; k < c.sites().size() && temple < 0; ++k) {
-        const Campaign::SiteState st = c.sites()[k];
+        const Conquest::SiteState st = c.sites()[k];
         if (st.kind != Kind::Temple) continue;
         int32_t best = 1 << 30, city = -1;
         for (size_t i = 0; i < c.cities().size(); ++i) {
@@ -207,27 +207,27 @@ TEST(a_temple_blesses_each_army_once) {
     CHECK(temple >= 0);
     if (temple < 0) return;
     std::vector<int32_t> before;
-    for (const Army& a : c.findStack(id)->armies) before.push_back(Campaign::strength(a));
+    for (const Army& a : c.findStack(id)->armies) before.push_back(Conquest::strength(a));
     CHECK(c.canSearch(id));
-    CHECK(CampaignOrders::search(c, id));
-    const Campaign::Stack* after = c.findStack(id);
+    CHECK(ConquestOrders::search(c, id));
+    const Conquest::Stack* after = c.findStack(id);
     CHECK(after->armies.size() == before.size());
     for (size_t k = 0; k < after->armies.size() && k < before.size(); ++k) {
         CHECK(after->armies[k].blessings == 1);
-        CHECK(Campaign::strength(after->armies[k]) == std::min(9, before[k] + 1));
+        CHECK(Conquest::strength(after->armies[k]) == std::min(9, before[k] + 1));
     }
     // Only once per temple.
     CHECK(!c.canSearch(id));
-    CHECK(!CampaignOrders::search(c, id));
+    CHECK(!ConquestOrders::search(c, id));
     for (const Army& a : c.findStack(id)->armies) CHECK(a.blessings == 1);
 }
 
 TEST(the_computer_explores_and_hires_heroes) {
-    Campaign c(continent(), 4);
-    for (int t = 0; t < Campaign::kTicksPerDay * 20; ++t) c.step();
+    Conquest c(continent(), 4);
+    for (int t = 0; t < Conquest::kTicksPerDay * 20; ++t) c.step();
     int searched = 0, hired = 0, blessed = 0, found = 0, fell = 0;
-    for (const Campaign::SiteState& s : c.sites()) searched += s.kind == Kind::Ruin && s.searched;
-    for (const Campaign::Deed& d : c.deeds()) {
+    for (const Conquest::SiteState& s : c.sites()) searched += s.kind == Kind::Ruin && s.searched;
+    for (const Conquest::Deed& d : c.deeds()) {
         hired += d.text.find("took service") != std::string::npos;
         blessed += d.text.find("blessed") != std::string::npos;
         found += d.text.find(" found the ") != std::string::npos;
@@ -241,20 +241,20 @@ TEST(the_computer_explores_and_hires_heroes) {
 TEST(the_player_is_offered_a_hero_for_gold) {
     // Side 0 takes two more towns (heroes serve lords of more than two cities
     // each), then waits for a hero to offer their sword.
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     c.setHuman(0, true);
-    const Campaign::Stack* home = heroStack(c);
+    const Conquest::Stack* home = heroStack(c);
     CHECK(home != nullptr);
     if (!home) return;
     const uint32_t id = home->id;
     // (Two neutral towns handed over: how they are taken is the fights' own business.)
     for (int town = 0; town < 2; ++town) {
-        const Campaign::Stack* s = c.findStack(id);
+        const Conquest::Stack* s = c.findStack(id);
         int32_t target = -1, best = 1 << 30;
         for (size_t i = 0; i < c.cities().size(); ++i) {
-            const Campaign::CityState& city = c.cities()[i];
+            const Conquest::CityState& city = c.cities()[i];
             const int32_t d = std::abs(city.cx - s->cx) + std::abs(city.cy - s->cy);
-            if (city.owner == Campaign::kNeutral && d < best) {
+            if (city.owner == Conquest::kNeutral && d < best) {
                 best = d;
                 target = static_cast<int32_t>(i);
             }
@@ -265,15 +265,15 @@ TEST(the_player_is_offered_a_hero_for_gold) {
     CHECK(c.citiesOwned(0) == 3);
     // The other lords hold still meanwhile (else one may retake a town).
     for (uint8_t side = 1; side < Continent::kFactionCount; ++side) c.setHuman(side, true);
-    for (int t = 0; t < Campaign::kTicksPerDay * 60 && !c.offer(0).open; ++t) c.step();
+    for (int t = 0; t < Conquest::kTicksPerDay * 60 && !c.offer(0).open; ++t) c.step();
     CHECK(c.offer(0).open);
     if (!c.offer(0).open) return;
-    const Campaign::Offer o = c.offer(0);
+    const Conquest::Offer o = c.offer(0);
     std::printf("  day %u: %s offers their sword for %d gold\n", c.day() + 1, o.name.c_str(), o.price);
     CHECK(o.price >= 250);  // dearer with a hero already on the payroll
     const auto heroes = [&] {
         int n = 0;
-        for (const Campaign::Stack& s : c.stacks())
+        for (const Conquest::Stack& s : c.stacks())
             if (s.owner == 0)
                 for (const Army& a : s.armies) n += a.hero();
         return n;
@@ -281,24 +281,24 @@ TEST(the_player_is_offered_a_hero_for_gold) {
     const int32_t gold = c.sides()[0].gold;
     const int n = heroes();
     if (gold < o.price) {
-        CHECK(!CampaignOrders::hire(c, 0, true));  // cannot afford it
-        CHECK(CampaignOrders::hire(c, 0, false));
+        CHECK(!ConquestOrders::hire(c, 0, true));  // cannot afford it
+        CHECK(ConquestOrders::hire(c, 0, false));
         CHECK(!c.offer(0).open);
         return;
     }
-    CHECK(CampaignOrders::hire(c, 0, true));
+    CHECK(ConquestOrders::hire(c, 0, true));
     CHECK(heroes() == n + 1);
     CHECK(c.sides()[0].gold == gold - o.price);
     CHECK(!c.offer(0).open);
-    CHECK(!CampaignOrders::hire(c, 0, true));
+    CHECK(!ConquestOrders::hire(c, 0, true));
 }
 
 TEST(quests_are_deterministic) {
     const auto run = [] {
-        Campaign c(continent(), 9);
-        for (int t = 0; t < Campaign::kTicksPerDay * 12; ++t) c.step();
+        Conquest c(continent(), 9);
+        for (int t = 0; t < Conquest::kTicksPerDay * 12; ++t) c.step();
         std::string log;
-        for (const Campaign::Deed& d : c.deeds()) log += d.text + "\n";
+        for (const Conquest::Deed& d : c.deeds()) log += d.text + "\n";
         return std::make_pair(c.checksum(), log);
     };
     const auto a = run(), b = run();

@@ -19,7 +19,7 @@ Every lord begins with one hero, its lord, named for its capital (*Lord of Kings
 - draws no upkeep;
 - **never breaks** in battle (chapter [](#morale)).
 
-A hero who dies in the campaign is gone for good (in Horde he comes back between the waves: chapter [](#hero-returns)). What he carried lies where he fell, and the next hero of any side whose stack marches through that cell takes it up ("*Dame Rowena took up the Sunblade*").
+A hero who dies in the Conquest is gone for good (in Horde he comes back between the waves: chapter [](#hero-returns)). What he carried lies where he fell, and the next hero of any side whose stack marches through that cell takes it up ("*Dame Rowena took up the Sunblade*").
 
 ## Searching {#searching}
 
@@ -107,5 +107,5 @@ The offer appears as a prompt: **Hire for 270 gold** or **Decline**. It stands u
 
 
 ::: note "Not yet built"
-The guardian of a ruin is still fought with the dice, the last in the campaign. A real-time fight in the ruin's own interior, the hero and perhaps a companion against the guardian in 3D, is planned; so are temple quests with artifacts for reward.
+The guardian of a ruin is still fought with the dice, the last in the Conquest. A real-time fight in the ruin's own interior, the hero and perhaps a companion against the guardian in 3D, is planned; so are temple quests with artifacts for reward.
 :::

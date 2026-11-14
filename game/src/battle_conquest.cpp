@@ -21,7 +21,7 @@ bool Battle::sees(uint8_t owner, float x, float y) const {
     return !conquest_ || conquest_->canSee(conquest_->localSide(), owner, x + origin().x, y + origin().y);
 }
 
-void Battle::borrow(sim::Campaign* conquest) {
+void Battle::borrow(sim::Conquest* conquest) {
     conquest_ = conquest;
     if (conquest == nullptr) {
         world_ = ownWorld_.get();
@@ -52,9 +52,9 @@ int Battle::squadOfArmy(uint32_t army) const {
     return it == squadOfArmy_.end() ? -1 : it->second;
 }
 
-void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
-    using Soldier = sim::Campaign::Soldier;
-    const sim::Campaign& c = *conquest_;
+void Battle::presentConquest(const std::vector<sim::Conquest::Soldier>& men) {
+    using Soldier = sim::Conquest::Soldier;
+    const sim::Conquest& c = *conquest_;
     growUnits();
     const size_t n = world_->units().size();
     // Who is of which army: one pass over the stacks.
@@ -63,7 +63,7 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
         uint32_t stack;
     };
     std::map<uint32_t, Of> armies;
-    for (const sim::Campaign::Stack& s : c.stacks())
+    for (const sim::Conquest::Stack& s : c.stacks())
         for (const sim::Army& a : s.armies) armies[a.id] = {&a, s.id};
 
     for (const Squad& q : squads_) armyMemo_[q.army] = {q.formation, q.facing};  // (the squads are made afresh)
@@ -104,15 +104,15 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
             q.stack = of->stack;
             q.total = a.fullStrength;
             q.told = true;
-            q.standing.strength = sim::Campaign::strength(a);
+            q.standing.strength = sim::Conquest::strength(a);
             q.standing.rank = a.hero() ? 0 : a.rank;
             q.standing.level = a.hero() ? a.rank + 1 : 0;
             q.standing.blessings = a.blessings;
             q.standing.kills = a.kills;
-            for (uint8_t k : a.artifacts) q.arms += (q.arms.empty() ? "" : ", ") + std::string(sim::Campaign::artifacts()[k].name);
-            q.rare = sim::Campaign::rare(a.type) && !a.hero();
+            for (uint8_t k : a.artifacts) q.arms += (q.arms.empty() ? "" : ", ") + std::string(sim::Conquest::artifacts()[k].name);
+            q.rare = sim::Conquest::rare(a.type) && !a.hero();
             q.hired = a.ally;
-            q.command = sim::Campaign::command(a);
+            q.command = sim::Conquest::command(a);
             squad = static_cast<int>(squads_.size());
             squads_.push_back(std::move(q));
         }
@@ -145,8 +145,8 @@ void Battle::presentConquest(const std::vector<sim::Campaign::Soldier>& men) {
 void Battle::flushOrders() {
     if (!conquest_) return;
     for (const sim::Command& cmd : pending_) {
-        sim::Campaign::Order o;
-        o.kind = sim::Campaign::Order::Kind::Command;
+        sim::Conquest::Order o;
+        o.kind = sim::Conquest::Order::Kind::Command;
         o.side = local_;
         o.command = cmd;
         conquest_->submit(std::move(o));
@@ -185,10 +185,10 @@ void Battle::submitMarch(const std::vector<uint32_t>& armies, int32_t cx, int32_
         if (s >= 0) byStack[squads_[static_cast<size_t>(s)].stack].push_back(army);
     }
     for (auto& [stack, named] : byStack) {
-        const sim::Campaign::Stack* st = conquest_->findStack(stack);
+        const sim::Conquest::Stack* st = conquest_->findStack(stack);
         if (!st) continue;
-        sim::Campaign::Order o;
-        o.kind = sim::Campaign::Order::Kind::Move;
+        sim::Conquest::Order o;
+        o.kind = sim::Conquest::Order::Kind::Move;
         o.side = local_;
         o.stack = stack;
         o.a = cx;
@@ -206,8 +206,8 @@ void Battle::marchArmies(std::vector<uint32_t> armies, const V3& to) {
     armies.erase(std::unique(armies.begin(), armies.end()), armies.end());
     if (armies.empty()) return;
     const V3 o = origin();
-    const int32_t cx = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1);
-    const int32_t cy = std::clamp(sim::Campaign::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1);
+    const int32_t cx = std::clamp(sim::Conquest::cellOf(static_cast<int32_t>(to.x + o.x)), 0, conquest_->width() - 1);
+    const int32_t cy = std::clamp(sim::Conquest::cellOf(static_cast<int32_t>(to.y + o.y)), 0, conquest_->height() - 1);
     submitMarch(armies, cx, cy);
     for (uint32_t army : armies)
         if (const int s = squadOfArmy(army); s >= 0) {
@@ -222,7 +222,7 @@ bool Battle::marchOrder(const V3& to, bool wholly) {
     // Out of reach of the men (a long way): the whole order is a march, of every squad ordered.
     const bool far = wholly || (!awake.empty() && beyondReach(centreOf(awake), to));
     if (!far) return false;
-    if (appending_) say("Too far to queue: they march there now");  // (a stack's march is the campaign's, and has no queue)
+    if (appending_) say("Too far to queue: they march there now");  // (a stack's march is the conquest's, and has no queue)
     std::vector<uint32_t> armies;
     for (sim::EntityId id : awake)
         if (const int s = squadOfUnit_[id - 1]; s >= 0) armies.push_back(squads_[static_cast<size_t>(s)].army);
@@ -295,7 +295,7 @@ Battle::Glance Battle::glance() const {
         g.morale = u->routed ? 2 : u->wavering() ? 1 : 0;
     }
     if (u && conquest_)
-        if (const sim::Campaign::Stack* s = conquest_->findStack(conquest_->stackOfUnit(u->id))) g.stack = static_cast<int>(s->armies.size());
+        if (const sim::Conquest::Stack* s = conquest_->findStack(conquest_->stackOfUnit(u->id))) g.stack = static_cast<int>(s->armies.size());
     return g;
 }
 

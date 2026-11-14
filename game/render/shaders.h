@@ -442,13 +442,13 @@ vec3 moorland(vec3 meadow, vec2 p) {
     moor = mix(moor, vec3(0.36, 0.25, 0.27), smoothstep(0.6, 0.85, valueNoise2(p * 0.05 + 31.0)) * 0.45);  // heather in flower
     return mix(meadow, moor, reach * 0.62);
 }
-// Territory (sim campaign_territory.cpp): one texel per campaign hex, the
-// holder's colour with alpha for how firmly; drawn on the campaign map only.
+// Territory (sim conquest_territory.cpp): one texel per conquest hex, the
+// holder's colour with alpha for how firmly; drawn on the conquest map only.
 uniform sampler2D uTerritory;
 uniform vec4 uTerritoryInfo;  // xy: the battlefield's origin on the continent (m); z: tint strength, 0 off
-// The campaign hex (column, row) nearest p in continent metres: 89 m apart,
-// rows 77.08 m apart, odd rows half a hex east (as Campaign::hexOfMetres).
-ivec2 campaignHex(vec2 p) {
+// The conquest hex (column, row) nearest p in continent metres: 89 m apart,
+// rows 77.08 m apart, odd rows half a hex east (as Conquest::hexOfMetres).
+ivec2 conquestHex(vec2 p) {
     const float rowH = 77.08;
     float r0 = floor(p.y / rowH);
     vec2 best = vec2(0.0);
@@ -465,14 +465,14 @@ ivec2 campaignHex(vec2 p) {
 }
 // The grids over all land alike, world-aligned so they run on unbroken across
 // the battlefield's edge: the tactical hex grid fades in as the camera rises,
-// then hands over to the campaign's (laid on the continent's own hexes, which
+// then hands over to the conquest's (laid on the continent's own hexes, which
 // are under twice as wide since the map shrank to a third).
 vec3 landGrids(vec3 c, vec2 xy) {
     vec2 land = xy + uTerritoryInfo.xy;
     if (uTerritoryInfo.z > 0.0 && uCamDist > 170.0) {
         // Whose land: a faint wash of the holder's colour, stronger along each hex's rim.
         ivec2 size = textureSize(uTerritory, 0);
-        vec4 t = texelFetch(uTerritory, clamp(campaignHex(land), ivec2(0), size - 1), 0);
+        vec4 t = texelFetch(uTerritory, clamp(conquestHex(land), ivec2(0), size - 1), 0);
         float e = hexEdge(land, 89.0);
         float rim = 1.0 - smoothstep(0.0, max(0.035, fwidth(e) * 2.5), e);
         float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(170.0, 300.0, uCamDist);
@@ -3207,7 +3207,7 @@ void main() {
 }
 )";
 
-// The campaign's soldiers from high up (renderer_map.cpp): a round dot in his
+// The conquest's soldiers from high up (renderer_map.cpp): a round dot in his
 // side's colour, a few pixels wide whatever the distance. Drawn twice, so that
 // a crowd has one dark outline and not one a man: first every dot wider by
 // uRim (dark; pale for the selected stack's), then the colours.

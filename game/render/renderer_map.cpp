@@ -4,7 +4,7 @@
 // in a fight pulses as a dot, rapidly and at random in strength, and swings and flinches as a sprite. Which is
 // which depends on the camera, but only the drawing does.
 //
-// The men are the presented world's own units (Battle::borrow: the campaign's world).
+// The men are the presented world's own units (Battle::borrow: the conquest's world).
 #include <algorithm>
 #include <cmath>
 

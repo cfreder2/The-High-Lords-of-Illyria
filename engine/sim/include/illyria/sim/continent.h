@@ -24,7 +24,7 @@ public:
     static constexpr int64_t kWidth = 2844;   // metres, west to east
     static constexpr int64_t kHeight = 3556;  // metres, south to north
     // Heights on the mountains' own scale, given as they were first laid out:
-    // the ranges' peaks, and what is judged by them (bare rock, the campaign's
+    // the ranges' peaks, and what is judged by them (bare rock, the conquest's
     // hills and mountains, how high a town may stand). A third of that, as
     // the map is a third of the size it was before One World, so the ranges
     // are as steep as they were and their passes as easy (docs/MAP.md).
@@ -207,7 +207,7 @@ public:
         uint8_t shape = 0;  // 0 square, 1 long, 2 polygon, 3 shield
     };
     // A walled city on a levelled pad; capitals are castles. Every city produces
-    // armies and income for its owner (the campaign layer).
+    // armies and income for its owner (the conquest layer).
     struct City {
         std::string name;
         Vec3 pos;      // z = the pad's height
@@ -300,7 +300,7 @@ public:
     // drawn from; the shore itself wanders: shoreDistance).
     std::vector<Area> isles() const;
     // Points along each isle's middle line (its longer axis), every 4 m,
-    // where its ground stands out of the water: the campaign's grid counts
+    // where its ground stands out of the water: the conquest's grid counts
     // every cell they fall in as land, so a walker crosses the Spit, too
     // narrow for its cells' middles to fall on.
     std::vector<Vec3> isleWalk() const;
@@ -361,8 +361,8 @@ private:
     void computeRiverSurfaces();
     void placeCities();
     void placeSites();
-    // The campaign's cells (Campaign::kCell) a walker can reach from a town:
-    // neither water nor mountain (Campaign::initTerrain), joined to a town's.
+    // The conquest's cells (Conquest::kCell) a walker can reach from a town:
+    // neither water nor mountain (Conquest::initTerrain), joined to a town's.
     std::vector<uint8_t> walkableCells() const;
     // Whether a footprint of this radius is dry, gentle land clear of rivers; returns the slope.
     bool buildable(Fixed x, Fixed y, Fixed radius, Fixed maxMountain, Sample& centre, Fixed& slope) const;

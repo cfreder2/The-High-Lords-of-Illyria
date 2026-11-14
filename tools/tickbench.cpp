@@ -1,5 +1,5 @@
 // Times the Conquest tick with the whole population in one World (docs/ONE_WORLD.md, "What it costs"): an all-computer
-// campaign from the start, then the same with stacks added in every town until the island holds about 3,000 and
+// conquest from the start, then the same with stacks added in every town until the island holds about 3,000 and
 // 6,800 men. Prints ms a tick for each size and the checksum of the world after the timed ticks, so an optimisation
 // can be shown to change speed and not the result.
 //   illyria_tickbench [ticks=200] [men ...]        (default sizes: 0 3000 6800)
@@ -11,7 +11,7 @@
 #include <ctime>
 #include <vector>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/units.h"
 
@@ -23,14 +23,14 @@ int main(int argc, char** argv) {
     for (int i = 2; i < argc; ++i) sizes.push_back(std::atoi(argv[i]));
     if (sizes.empty()) sizes = {0, 3000, 6800};
     const Continent continent(20261027);
-    Campaign c(continent, 7);
+    Conquest c(continent, 7);
     c.prepareWorld();
     c.step();
     size_t town = 0;
     for (const int32_t want : sizes) {
         while (c.menInWorld() < want) {
-            const Campaign::CityState& cs = c.cities()[town++ % c.cities().size()];
-            c.raise(cs.owner == Campaign::kNeutral ? 0 : cs.owner, cs.cx, cs.cy, std::vector<UnitType>(8, UnitType::LightInfantry));
+            const Conquest::CityState& cs = c.cities()[town++ % c.cities().size()];
+            c.raise(cs.owner == Conquest::kNeutral ? 0 : cs.owner, cs.cx, cs.cy, std::vector<UnitType>(8, UnitType::LightInfantry));
             if (town % 8 == 0) c.step();
         }
         c.step();

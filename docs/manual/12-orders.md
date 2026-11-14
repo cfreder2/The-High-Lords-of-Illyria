@@ -76,7 +76,7 @@ Hold [[Shift]] as you right-click and the order is **added to the end** of each 
 - **Shooting at the ground, a wall, a house or a tree** never ends of itself, so with orders behind it it lasts ten seconds, or until the gate it shoots at is broken.
 - **At most eight** orders wait behind a man's own; the ninth is dropped. (He carries them, the game checks them every tick, and they are in a save.)
 - **A save keeps the queue** (but not the march he was on, nor an attack on a soldier, who is a different man in a loaded game), so after loading a man goes on to the first of his queue.
-- **In the campaign** it is the same, within about 200 m of the men. A march beyond that is a stack's across the map, which has no queue: with [[Shift]] it still goes, replacing, and the game says so.
+- **In the Conquest** it is the same, within about 200 m of the men. A march beyond that is a stack's across the map, which has no queue: with [[Shift]] it still goes, replacing, and the game says so.
 - **Seen** only for your own men: the queue is drawn behind the line of the order in hand, each leg in the look of its own stance (below) and ending in a small **numbered disc** (1, 2, 3...) for its place in the queue. A leg after a foe you cannot see is not drawn. The legs run straight; the way round a wall or a river is found when the order begins.
 
 ## Planning {#planning}
@@ -87,7 +87,7 @@ Press [[`]] (the backtick; on a phone, the **Plan** button) and the game says **
 - [[Space]] (Hold) is never held: it halts at once, and drops whatever was held for those men.
 - [[Esc]] does what it always does (above); it neither sends nor drops what is held.
 - Held orders are forgotten if the battle or its world changes, and a man dead before the send is skipped.
-- Nothing is sent, and nobody else can see anything, until the send: planning is on your own screen only. In the campaign a march beyond the men's reach (a stack's) is held too, and drawn as one violet line from its squad.
+- Nothing is sent, and nobody else can see anything, until the send: planning is on your own screen only. In the Conquest a march beyond the men's reach (a stack's) is held too, and drawn as one violet line from its squad.
 
 ## Marching with initiative {#initiative}
 

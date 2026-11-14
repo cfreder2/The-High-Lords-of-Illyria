@@ -95,7 +95,7 @@ A village's levy is weak, and in the first weeks of the war the race for the vil
 
 ## Two layers, one war
 
-*The High Lords of Illyria* is played on the campaign map, a continent seen from the sky with its roads, rivers, forests and mountains, its cities, its ruins and its temples. Time passes in campaign days; armies march, cities train, gold comes in and goes out.
+*The High Lords of Illyria* is played on the Conquest map, a continent seen from the sky with its roads, rivers, forests and mountains, its cities, its ruins and its temples. Time passes in Conquest days; armies march, cities train, gold comes in and goes out.
 
 When your stack marches into an enemy, nothing stops and nothing asks. The armies fight where they meet, on the map, with every man in them stepped by the battle's own rules, and the camera need not move: zoom in to see the men, out to see each of them as a dot that flashes while he fights. There are no dice and no battle screen; the survivors are simply who is left standing, with their kills and their new ranks.
 

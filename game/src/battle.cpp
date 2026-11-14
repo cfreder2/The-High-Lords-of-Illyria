@@ -46,7 +46,7 @@ bool openFor(const sim::Region& rg, const sim::World& w, V3 p) {
 // way out from the gate, about `want` metres off, a stretch 30 m round clear
 // of every town's walls (the towns stand close together since the map shrank
 // to a third), on the battlefield. The gate's way out at `want` if none is.
-V3 campBefore(const sim::Region& rg, const sim::World& w, V3 gate, V3 out, float want) {
+V3 conqBefore(const sim::Region& rg, const sim::World& w, V3 gate, V3 out, float want) {
     const V3 side{out.y, -out.x, 0};
     const float edge = Battle::kWorldSize - 60.0f;
     for (int ring = 0; ring <= 10; ++ring)
@@ -285,7 +285,7 @@ void Battle::setUpSiege() {
 
     // The besiegers form up on the road before the gate (or the nearest open
     // ground out from it, clear of the neighbouring towns).
-    const V3 camp = campBefore(*region_, *world_, gate, out, 110.0f), in = out * -1.0f;
+    const V3 camp = conqBefore(*region_, *world_, gate, out, 110.0f), in = out * -1.0f;
     const V3 side{out.y, -out.x, 0};
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, camp + side * 14.0f, in);
@@ -609,7 +609,7 @@ void Battle::collectEvents() {
 
 // What blows and wounds do to the look of the field: blood and dust on the ground, sparks, splinters
 // off a gate, craters and flames. `source` is the world that reported them (the battle's own, or the
-// campaign's, whose men fight on the same ground), `shift` its places in this battle's coordinates;
+// conquest's, whose men fight on the same ground), `shift` its places in this battle's coordinates;
 // `own`: they are this battle's men, whose hits and deaths are kept for the pictures (hitTick_, deathTick_).
 void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim::World& source, V3 shift, bool own) {
     const uint32_t tick = world_->tick();
@@ -942,7 +942,7 @@ void Battle::runEnemyAi() {
 }
 
 int Battle::outcome() const {
-    if (conquest_) return 0;  // (a fight in the conquest is not the end of anything: its own end is Campaign::winner)
+    if (conquest_) return 0;  // (a fight in the conquest is not the end of anything: its own end is Conquest::winner)
     if (mode_) return mode_->outcome();
     bool playerAlive = false, enemyAlive = false;
     for (const sim::Unit& u : world_->units()) {

@@ -1,6 +1,6 @@
 // The small edges in the 3D battle (edges.h, docs/GAME_DESIGN.md §3.4): each a
 // few percent more damage, added up to at most kEdgeCapPct, as in the
-// campaign's dice. Every soldier reckons his own:
+// conquest's dice. Every soldier reckons his own:
 // - home land: his side holds the hex the battle is fought in (+3%);
 // - familiar ground: his kind is at home on the ground under his feet (his
 //   gait clearly quicker over it than a man on foot: elves and wolves in the

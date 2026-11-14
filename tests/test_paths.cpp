@@ -6,13 +6,13 @@
 #include <cstdio>
 #include <memory>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/nav.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
-#include "campaign_orders.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -364,9 +364,9 @@ TEST(long_routes_are_cheap_enough_for_phones) {
     CHECK(found * 2 > tried);
 }
 
-TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
+TEST(a_conquest_stack_takes_the_road_to_a_far_city) {
     const Continent& c = continent();
-    Campaign camp(c, 3);
+    Conquest camp(c, 3);
     // The road cells follow the roads.
     int samples = 0, onRoad = 0;
     for (const Polyline& r : c.roads()) {
@@ -375,7 +375,7 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
             const int64_t steps = (d.flat().length() / 20).floorToInt() + 1;
             for (int64_t s = 0; s < steps; ++s) {
                 const Vec3 p = a + d * Fixed::fromRatio(s, steps);
-                const int32_t x = Campaign::cellOf(static_cast<int32_t>(p.x.floorToInt())), y = Campaign::cellOf(static_cast<int32_t>(p.y.floorToInt()));
+                const int32_t x = Conquest::cellOf(static_cast<int32_t>(p.x.floorToInt())), y = Conquest::cellOf(static_cast<int32_t>(p.y.floorToInt()));
                 if (x < 0 || y < 0 || x >= camp.width() || y >= camp.height()) continue;
                 const Lay l = camp.terrainAt(x, y);
                 ++samples;
@@ -383,9 +383,9 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
             }
         }
     }
-    std::printf("  campaign road cells: %d%% of %d road samples\n", samples ? onRoad * 100 / samples : 0, samples);
+    std::printf("  conquest road cells: %d%% of %d road samples\n", samples ? onRoad * 100 / samples : 0, samples);
     CHECK(samples > 0 && onRoad * 100 >= samples * 97);
-    CHECK(Campaign::effort(Gait::Foot, Ground::Road, Ground::Road, 0, false) * 2 <= Campaign::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false) + 1);
+    CHECK(Conquest::effort(Gait::Foot, Ground::Road, Ground::Road, 0, false) * 2 <= Conquest::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false) + 1);
 
     // A stack sent from a city to another far along a road keeps to the road,
     // and its way is quicker than straight over the country.
@@ -402,17 +402,17 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         if (towns.size() < 2) continue;
         const int32_t from = towns.front(), to = towns.back();
         if (from == to) continue;
-        const Campaign::CityState& cs = camp.cities()[static_cast<size_t>(from)];
-        const Campaign::CityState& ct = camp.cities()[static_cast<size_t>(to)];
+        const Conquest::CityState& cs = camp.cities()[static_cast<size_t>(from)];
+        const Conquest::CityState& ct = camp.cities()[static_cast<size_t>(to)];
         if (std::max(std::abs(cs.cx - ct.cx), std::abs(cs.cy - ct.cy)) < 12) continue;  // half a kilometre or more
         const uint32_t id = camp.grant(from, 0, UnitType::LightInfantry, 1);
-        if (!CampaignOrders::move(camp, id, ct.cx, ct.cy)) continue;
-        const Campaign::Stack* st = camp.findStack(id);
+        if (!ConquestOrders::move(camp, id, ct.cx, ct.cy)) continue;
+        const Conquest::Stack* st = camp.findStack(id);
         if (!st || st->path.empty()) continue;
         ++tested;
         int64_t cost = 0;
         int road = 0;
-        // Timed as the campaign times it, step by step.
+        // Timed as the conquest times it, step by step.
         int32_t px = cs.cx, py = cs.cy;
         for (const auto& [x, y] : st->path) {
             const Lay l = camp.terrainAt(x, y);
@@ -423,8 +423,8 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         }
         // (A closed step straight over the country counts as a long way round:
         // five hundred cells of plain.)
-        const int64_t closed = int64_t{Campaign::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false)} * Campaign::kTicksPerSecond *
-                               Campaign::kTimeScale / Campaign::groundSpeed(UnitType::LightInfantry) * 500;
+        const int64_t closed = int64_t{Conquest::effort(Gait::Foot, Ground::Plains, Ground::Plains, 0, false)} * Conquest::kTicksPerSecond *
+                               Conquest::kTimeScale / Conquest::groundSpeed(UnitType::LightInfantry) * 500;
         // Straight over the country, cell by cell (if no river is in the way).
         int64_t straight = 0;
         bool wet = false;
@@ -439,11 +439,11 @@ TEST(a_campaign_stack_takes_the_road_to_a_far_city) {
         for (int32_t s = 1; s <= n; ++s) {
             const int32_t x = cs.cx + (ct.cx - cs.cx) * s / n, y = cs.cy + (ct.cy - cs.cy) * s / n;
             const int32_t step = camp.stepTime(*st, px, py, x, y);
-            straight += step == Campaign::kClosed ? closed : step;
+            straight += step == Conquest::kClosed ? closed : step;
             px = x;
             py = y;
         }
-        const double perMin = 60.0 * Campaign::kTicksPerSecond * Campaign::kTimeScale;
+        const double perMin = 60.0 * Conquest::kTicksPerSecond * Conquest::kTimeScale;
         std::printf("  %s to %s: %zu cells, %d on the road, %.1f min (straight %.1f)\n", c.cities()[static_cast<size_t>(from)].name.c_str(),
                     c.cities()[static_cast<size_t>(to)].name.c_str(), st->path.size(), road, static_cast<double>(cost) / perMin, static_cast<double>(straight) / perMin);
         // (no dearer, within the creeks between cells this count does not see)

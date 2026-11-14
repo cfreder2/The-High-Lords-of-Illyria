@@ -111,7 +111,7 @@ bool parse(int argc, char** argv, Options& o) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         const auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : ""; };
-        if (a == "--conquest" || a == "--campaign") o.mode = "campaign";
+        if (a == "--conquest" || a == "--campaign") o.mode = "conquest";
         else if (a == "--continue") o.mode = "continue";
         else if (a == "--skirmish") o.mode = "skirmish";
         else if (a == "--siege") o.mode = "siege";
@@ -428,7 +428,7 @@ int runApp(int argc, char** argv) {
         }
 #endif
         if (pref) {
-            hud.setSaveFile(std::string(pref) + "conquest.save");
+            hud.setSaveFile(std::string(pref) + "campaign.save");  // (the file keeps its old name: saves made before the rename must still load)
             hud.setSettingsFile(std::string(pref) + "settings.ini");  // the player's colour, the map shown
         }
         SDL_free(pref);
@@ -451,10 +451,10 @@ int runApp(int argc, char** argv) {
     if (opt.mode.empty()) {
         illyria_start_mode("title", "{}");
         hud.openMenu();
-    } else if (opt.mode == "campaign") {
+    } else if (opt.mode == "conquest") {
         char buf[160];
         std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"player\":%d,\"enemies\":%d,\"speed\":1}", opt.hard ? 1 : 0, opt.lord, opt.foes & ~(1 << opt.lord) & 0xFF);
-        hud.start("campaign", buf);
+        hud.start("conquest", buf);
     } else if (opt.mode == "continue") {
         hud.startSaved();
     } else {

@@ -1,12 +1,12 @@
-// The computer lords (engine/sim/src/campaign_ai.cpp) and the Warlords rules
-// they reckon with (campaign_rules.cpp): exact dice odds, the Hard lord
+// The computer lords (engine/sim/src/conquest_ai.cpp) and the Warlords rules
+// they reckon with (conquest_rules.cpp): exact dice odds, the Hard lord
 // outplaying the Easy one, a capital saved, a treasury that never runs dry.
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 
-#include "illyria/sim/campaign.h"
-#include "campaign_orders.h"
+#include "illyria/sim/conquest.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -17,11 +17,11 @@ const Continent& continent() {
     return c;
 }
 
-void runDays(Campaign& c, int days) {
-    for (int t = 0; t < days * Campaign::kTicksPerDay && !c.winner(); ++t) c.step();
+void runDays(Conquest& c, int days) {
+    for (int t = 0; t < days * Conquest::kTicksPerDay && !c.winner(); ++t) c.step();
 }
 
-int32_t capitalOf(const Campaign& c, uint8_t side) {
+int32_t capitalOf(const Conquest& c, uint8_t side) {
     for (size_t i = 0; i < c.cities().size(); ++i)
         if (c.continent().cities()[i].capital && c.continent().cities()[i].owner == side) return static_cast<int32_t>(i);
     return -1;
@@ -30,38 +30,38 @@ int32_t capitalOf(const Campaign& c, uint8_t side) {
 
 TEST(warlords_dice_odds_are_exact) {
     // Strengths in hundredths. Equal strengths: a coin toss. One army against nobody: certain.
-    CHECK(Campaign::winChance({500}, {500}) == 500);
-    CHECK(Campaign::winChance({300}, {}) == 1000);
-    CHECK(Campaign::winChance({}, {300}) == 0);
+    CHECK(Conquest::winChance({500}, {500}) == 500);
+    CHECK(Conquest::winChance({300}, {}) == 1000);
+    CHECK(Conquest::winChance({}, {300}) == 0);
     // Strength 6 against 4: the next hit lands on the 4 with chance
     // 6*6 / (6*6 + 4*4) = 36/52; two hits before two: p^2 (3 - 2p) = 0.774.
-    CHECK(std::abs(Campaign::winChance({600}, {400}) - 774) <= 1);
+    CHECK(std::abs(Conquest::winChance({600}, {400}) - 774) <= 1);
     // Quality over quantity, as the manual warns: a dragon (9) beats four light infantry (3).
-    CHECK(Campaign::winChance({900}, {300, 300, 300, 300}) > 500);
+    CHECK(Conquest::winChance({900}, {300, 300, 300, 300}) > 500);
     // More armies, better odds; a stronger defence, worse.
-    CHECK(Campaign::winChance({400, 400, 400}, {500, 500}) > Campaign::winChance({400, 400}, {500, 500}));
-    CHECK(Campaign::winChance({400, 400}, {600, 600}) < Campaign::winChance({400, 400}, {500, 500}));
+    CHECK(Conquest::winChance({400, 400, 400}, {500, 500}) > Conquest::winChance({400, 400}, {500, 500}));
+    CHECK(Conquest::winChance({400, 400}, {600, 600}) < Conquest::winChance({400, 400}, {500, 500}));
     // A small edge is a small shift: 4.4 against 4 (+10%) is better than a
     // coin toss, but nothing like a whole point (5 against 4).
-    const int32_t edge = Campaign::winChance({440, 440, 440, 440}, {400, 400, 400, 400}), point = Campaign::winChance({500, 500, 500, 500}, {400, 400, 400, 400});
+    const int32_t edge = Conquest::winChance({440, 440, 440, 440}, {400, 400, 400, 400}), point = Conquest::winChance({500, 500, 500, 500}, {400, 400, 400, 400});
     std::printf("  four against four: +10%% %d/1000, a whole point %d/1000\n", edge, point);
     CHECK(edge > 550 && edge < 750);
     CHECK(point > edge + 100);
 }
 
 TEST(terrain_and_walls_change_the_odds) {
-    Campaign c(continent(), 1);
+    Conquest c(continent(), 1);
     // A neutral town's walls (defence 2-6 gives +1) make its garrison harder to beat.
     const int32_t capital = capitalOf(c, 0);
     CHECK(capital >= 0);
     int32_t town = -1;
     for (size_t i = 0; i < c.cities().size(); ++i)
-        if (c.cities()[i].owner == Campaign::kNeutral && c.continent().cities()[i].walled) town = static_cast<int32_t>(i);  // (a village has no walls)
-    const Campaign::CityState& t = c.cities()[static_cast<size_t>(town)];
+        if (c.cities()[i].owner == Conquest::kNeutral && c.continent().cities()[i].walled) town = static_cast<int32_t>(i);  // (a village has no walls)
+    const Conquest::CityState& t = c.cities()[static_cast<size_t>(town)];
     std::vector<const Army*> garrison = c.defendersAt(0, t.cx, t.cy);
     CHECK(!garrison.empty());
-    const std::vector<int32_t> walled = c.lineup(garrison, Campaign::kNeutral, t.cx, t.cy, true);
-    const std::vector<int32_t> open = c.lineup(garrison, Campaign::kNeutral, t.cx, t.cy, false);
+    const std::vector<int32_t> walled = c.lineup(garrison, Conquest::kNeutral, t.cx, t.cy, true);
+    const std::vector<int32_t> open = c.lineup(garrison, Conquest::kNeutral, t.cx, t.cy, false);
     for (size_t k = 0; k < walled.size(); ++k) CHECK(walled[k] == std::min(900, open[k] + 100));  // hundredths
 }
 
@@ -78,23 +78,23 @@ TEST(hard_lords_outplay_easy_ones) {
     };
     // Every side's tally in one game (hardSeat: the side played Hard, or -1).
     const auto play = [](uint64_t seed, int hardSeat) {
-        Campaign c(continent(), seed);
+        Conquest c(continent(), seed);
         for (uint8_t s = 0; s < 8; ++s) c.setDifficulty(s, s == hardSeat ? Difficulty::Hard : Difficulty::Easy);
         std::vector<Tally> t(8);
         std::vector<std::vector<uint32_t>> precious(8);  // each side's veterans and rare troops (not heroes), yesterday
         for (int day = 0; day < 25 && !c.winner(); ++day) {
             runDays(c, 1);
             std::vector<std::vector<uint32_t>> now(8);
-            for (const Campaign::Stack& s : c.stacks())
+            for (const Conquest::Stack& s : c.stacks())
                 if (s.owner < 8)
                     for (const Army& a : s.armies)
-                        if (Campaign::precious(a) && !a.hero()) now[s.owner].push_back(a.id);
+                        if (Conquest::precious(a) && !a.hero()) now[s.owner].push_back(a.id);
             for (size_t side = 0; side < 8; ++side)
                 for (uint32_t id : precious[side]) t[side].lost += std::find(now[side].begin(), now[side].end(), id) == now[side].end();
             precious = std::move(now);
         }
         for (uint8_t side = 0; side < 8; ++side) t[side].cities = c.citiesOwned(side);
-        for (const Campaign::Fight& f : c.fights()) {
+        for (const Conquest::Fight& f : c.fights()) {
             if (f.attacker < 8) ++t[f.attacker].fights;
             if (f.defender < 8) ++t[f.defender].fights;
         }
@@ -123,38 +123,38 @@ TEST(the_computer_saves_a_threatened_capital) {
     // Side 1 (played by hand here) marches a strong stack on side 0's
     // capital. Side 0 has a stack of its own out in the field, nearer home
     // than the enemy: the computer must bring it back in time, and hold.
-    Campaign c(continent(), 7);
+    Conquest c(continent(), 7);
     c.setHuman(1, true);
     const int32_t capital = capitalOf(c, 0);
-    const Campaign::CityState home = c.cities()[static_cast<size_t>(capital)];
+    const Conquest::CityState home = c.cities()[static_cast<size_t>(capital)];
     // Send the realm's rare troops home: the hero's escort alone holds the walls.
-    for (const Campaign::Stack& s : std::vector<Campaign::Stack>(c.stacks()))
+    for (const Conquest::Stack& s : std::vector<Conquest::Stack>(c.stacks()))
         if (s.owner == 0)
             for (const Army& a : s.armies)
-                if (Campaign::rare(a.type) && !a.hero()) CampaignOrders::disband(c, s.id, a.id);
+                if (Conquest::rare(a.type) && !a.hero()) ConquestOrders::disband(c, s.id, a.id);
     // A road out of the capital: the way to the furthest city within reach.
     const uint32_t probe = c.raise(0, home.cx, home.cy, {UnitType::LightInfantry});
     std::vector<std::pair<int32_t, int32_t>> road;
     for (size_t i = 0; i < c.cities().size() && road.size() < 14; ++i) {
-        if (c.cities()[i].owner != Campaign::kNeutral) continue;
-        if (!CampaignOrders::move(c, probe, c.cities()[i].cx, c.cities()[i].cy)) continue;
+        if (c.cities()[i].owner != Conquest::kNeutral) continue;
+        if (!ConquestOrders::move(c, probe, c.cities()[i].cx, c.cities()[i].cy)) continue;
         if (c.findStack(probe)->path.size() >= 14) road = c.findStack(probe)->path;
     }
     CHECK(road.size() >= 14);
     if (road.size() < 14) return;
-    CampaignOrders::disband(c, probe, c.findStack(probe)->armies.front().id);
+    ConquestOrders::disband(c, probe, c.findStack(probe)->armies.front().id);
     // How long heavy infantry take back along it to the capital, from each cell of it.
     const uint32_t pace = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
     std::vector<int64_t> back(road.size(), 0);
     for (size_t k = 0; k < road.size(); ++k)
         back[k] = (k ? back[k - 1] : 0) + c.stepTime(*c.findStack(pace), road[k].first, road[k].second, k ? road[k - 1].first : home.cx, k ? road[k - 1].second : home.cy);
-    CampaignOrders::disband(c, pace, c.findStack(pace)->armies.front().id);
+    ConquestOrders::disband(c, pace, c.findStack(pace)->armies.front().id);
     // Ours half a day out; theirs two days out along the same road. The
     // computer first looks at dawn, when they are a day out (inside the Hard
     // lord's two days): ours have half a day in hand. (A day and a half out
     // was a dead heat at that first dawn, decided by who reached the cell by
     // the gate first.)
-    const int64_t day = int64_t{Campaign::kTicksPerDay} * Campaign::kTimeScale;
+    const int64_t day = int64_t{Conquest::kTicksPerDay} * Conquest::kTimeScale;
     size_t near = 0, far = 0;
     for (size_t k = 0; k < road.size(); ++k) {
         if (back[k] * 2 <= day) near = k;
@@ -168,7 +168,7 @@ TEST(the_computer_saves_a_threatened_capital) {
     std::vector<uint32_t> ours;
     for (const Army& a : c.findStack(field)->armies) ours.push_back(a.id);
     const uint32_t foe = c.raise(1, ex, ey, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Giants, UnitType::Giants});
-    CHECK(CampaignOrders::move(c, foe, home.cx, home.cy));
+    CHECK(ConquestOrders::move(c, foe, home.cx, home.cy));
     // Before they march: the capital alone would likely fall.
     std::vector<const Army*> attackers;
     for (const Army& a : c.findStack(foe)->armies) attackers.push_back(&a);
@@ -179,15 +179,15 @@ TEST(the_computer_saves_a_threatened_capital) {
     int32_t foeMen = 0;
     for (const Army& a : c.findStack(foe)->armies) foeMen += a.soldiers;
     bool atHome = false, destroyed = false;
-    for (int t = 0; t < 10 * Campaign::kTicksPerDay; ++t) {
-        const Campaign::Stack* f = c.findStack(foe);
+    for (int t = 0; t < 10 * Conquest::kTicksPerDay; ++t) {
+        const Conquest::Stack* f = c.findStack(foe);
         if (!f || f->armies.empty()) {
             destroyed = true;  // (the enemy is met and beaten in the field before the gates: the capital is saved all the same)
             break;
         }
         if (f->path.size() <= 2) {  // at the gates, or held two steps short of them by the men who came to meet it
             int32_t inside = 0;
-            for (const Campaign::Stack& s : c.stacks())
+            for (const Conquest::Stack& s : c.stacks())
                 // (at the capital or in the cell beside it, where the garrison goes out to meet the foe and the field army joins it:
                 // what the test reckons is that the army came home in time, not which of the two cells the fight is in)
                 if (s.owner == 0 && std::abs(s.cx - home.cx) <= 1 && std::abs(s.cy - home.cy) <= 1)
@@ -200,7 +200,7 @@ TEST(the_computer_saves_a_threatened_capital) {
     // What follows is a fight at the capital's walls, not a roll of the dice: whether the capital stands depends on
     // the men and the stone, and is not what this test reckons; the attackers did lose men to it.
     int32_t foeLeft = 0;
-    if (const Campaign::Stack* f = c.findStack(foe))
+    if (const Conquest::Stack* f = c.findStack(foe))
         for (const Army& a : f->armies) foeLeft += a.soldiers;
     std::printf("  the enemy lost %d of %d men at the capital, which %s\n", foeMen - foeLeft, foeMen,
                 c.cities()[static_cast<size_t>(capital)].owner == 0 ? "stands" : "fell");
@@ -211,7 +211,7 @@ TEST(computer_lords_keep_out_of_debt) {
     // Twenty days of all-computer war (every fight stepped in full, so no longer sixty): nobody's armies desert for want of pay
     // while their side still holds a realm (a side down to its last city can
     // lose it in a day; then nothing pays anyone).
-    Campaign c(continent(), 5);
+    Conquest c(continent(), 5);
     c.setComputerDifficulty(Difficulty::Easy);
     for (uint8_t s = 0; s < 8; s += 2) c.setDifficulty(s, Difficulty::Hard);
     std::vector<int32_t> cities(8), deserted(8, 0);

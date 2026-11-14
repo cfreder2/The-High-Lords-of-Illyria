@@ -134,7 +134,7 @@ already the one garrison rule for both.
   Tick cost: the garrison thinks every 10 ticks over `Rampart::embrasures` within 60 m of the gate: 22 more stations
   (about 44 in all with the curtain's) inside the sort: negligible against the unit grid query.
 - Determinism: all geometry is `Fixed` from the continent's fixed-point generator; the goldens move once (`continent
-  checksum`, the region and campaign goldens), and the gate hashes (`GateState`) do not change.
+  checksum`, the region and Conquest goldens), and the gate hashes (`GateState`) do not change.
 - Renderer: a gate tower is a taller cylinder and the hourd is one more box on the gate's mesh: the gate meshes are the
   other worker's (`meshes.cpp`, `renderer.cpp`), so that part waits for the merge.
 

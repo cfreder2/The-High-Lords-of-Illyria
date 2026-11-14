@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "illyria/game/factions.h"
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 namespace illyria::game {
 
@@ -51,9 +51,9 @@ inline std::vector<OwnerLook> townLooks(const std::vector<uint8_t>& owners) {
     return out;
 }
 
-// Who holds each town as `viewer` knows it (Campaign::knownOwner: what the game already shows of a town's holder;
+// Who holds each town as `viewer` knows it (Conquest::knownOwner: what the game already shows of a town's holder;
 // a town out of sight is nobody's).
-inline std::vector<uint8_t> knownOwners(const sim::Campaign& c, uint8_t viewer) {
+inline std::vector<uint8_t> knownOwners(const sim::Conquest& c, uint8_t viewer) {
     std::vector<uint8_t> out;
     out.reserve(c.cities().size());
     for (size_t i = 0; i < c.cities().size(); ++i) out.push_back(c.knownOwner(viewer, static_cast<int32_t>(i)));

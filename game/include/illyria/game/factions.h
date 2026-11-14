@@ -9,8 +9,8 @@
 namespace illyria::game {
 
 // Banner colours of the eight sides, in sim::Continent::factions() order.
-// Which faction each side plays (a campaign may start as any: Campaign::Setup, factionOf); a side keeps the
-// colours of the faction it plays. The identity until a campaign sets it.
+// Which faction each side plays (a conquest may start as any: Conquest::Setup, factionOf); a side keeps the
+// colours of the faction it plays. The identity until a conquest sets it.
 inline uint8_t* sideFactions() {
     // (a skirmish's seats: the player the Moonward blue, the enemy the Ironhold red, then gold and green)
     static uint8_t table[sim::Continent::kFactionCount] = {6, 2, 1, 4, 5, 3, 0, 7};  // (kSkirmishSeats)

@@ -11,8 +11,8 @@ namespace illyria::sim {
 
 // Climbing costs: a walker's speed divides by 1 + grade x this (x its gait's
 // climb percent); going down is a little quicker: speed x (1 + grade x
-// kDescentGain), to kDescentMax more at most. The campaign marches by the
-// same rule (campaign_march.cpp).
+// kDescentGain), to kDescentMax more at most. The conquest marches by the
+// same rule (conquest_march.cpp).
 inline constexpr Fixed kClimbCost = Fixed::fromRatio(5, 2);
 inline constexpr Fixed kDescentGain = Fixed::fromRatio(1, 2);
 inline constexpr Fixed kDescentMax = Fixed::fromRatio(3, 20);

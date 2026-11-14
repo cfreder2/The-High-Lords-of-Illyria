@@ -1,9 +1,9 @@
 # One World
 
 *A proposal (2026-11-01), built in steps. Steps 1 to 3 are in the game (see "Building it,
-in steps" below); the rest is not. It replaces the Warlords stack model on the campaign map
+in steps" below); the rest is not. It replaces the Warlords stack model on the Conquest map
 (GAME_DESIGN.md §4.2.4 to §4.2.9) and keeps the promise of §4.1: one continent, one clock,
-the camera from the gods to the mud. The campaign is not two modes, a map and a battle: it is
+the camera from the gods to the mud. The Conquest is not two modes, a map and a battle: it is
 always the tactical game, seen from as high or as low as you like.*
 
 ## The promise
@@ -28,9 +28,9 @@ always the tactical game, seen from as high or as low as you like.*
 
 | | Now (after steps 1 to 3) | One world |
 |---|---|---|
-| Clock | The campaign runs on the battle's 30 ticks a second, a day is 2 minutes, and fights are stepped on that same clock | One 30 Hz clock for everything |
+| Clock | The Conquest runs on the battle's 30 ticks a second, a day is 2 minutes, and fights are stepped on that same clock | One 30 Hz clock for everything |
 | Armies | Squads of real men on the land. A stack is a group of squads that march together (up to eight); any number may stand in a place. Drawn as points far out, sprites near (step 2), and stepped fully where they meet (step 3) | Squads of soldiers on the land, in formation, fully stepped where they meet, with orders to the squads themselves |
-| Moving | The battle's gaits and speeds over the 44 m campaign grid (step 1), at the pace of the slowest army | The battle's own route planner, gaits and terrain speeds, refined on the 4 m grid as they go |
+| Moving | The battle's gaits and speeds over the 44 m Conquest grid (step 1), at the pace of the slowest army | The battle's own route planner, gaits and terrain speeds, refined on the 4 m grid as they go |
 | Fights | Fought where the armies meet, always physically (step 3): the battle's own rules, on the whole island's ground. No prompt, no window, no dice | The same, with the computer lords in real time |
 | Zoomed out | Every soldier a point in his side's colour, flashing while he fights; no flags over armies. Towns' banners and outposts still fly flags | Points in side colours; no flags |
 | Overview | A minimap: every town and site, soldiers as points and heat in side colours, fights glowing, the camera's view; tap to go there. No fog yet | A minimap: every place, every soldier you can see, a heat map where they pile up |
@@ -38,8 +38,8 @@ always the tactical game, seen from as high or as low as you like.*
 
 ## How long things take
 
-Measured in the game on the map at a third (2.8 × 3.6 km, 44 m cells), with the campaign's
-own march (`engine/sim/src/campaign_march.cpp`): the battle's speeds and gait table, roads
+Measured in the game on the map at a third (2.8 × 3.6 km, 44 m cells), with the Conquest's
+own march (`engine/sim/src/conquest_march.cpp`): the battle's speeds and gait table, roads
 ×2, hills climbed at their grade, mountains and water closed to walkers, and fliers alone
 at the long-run pace of their flight. Nearest: from each town, the nearest other town or
 site, averaged over the 80. Longest: the longest of all the town-to-town marches. In
@@ -85,7 +85,7 @@ reach those two.
   (UNITS.md), so set battles feel it too. Fliers in the air ignore it. Bridges stay at the
   pace of the fields: in battle a castle's walks and ramps are Bridge ground too, and men
   must not run along the walls, so a road bridge's deck is crossed at field pace. (On the
-  campaign grid a road that crosses a river is road all the way.)
+  Conquest grid a road that crosses a river is road all the way.)
 - **Roads should reach every town.** On the map before it shrank they covered 8% of the
   land and passed within two cells of only 35 of the 80 towns, so doubling them shortened
   the longest march by just 8% (84 to 77 min there). For the road to be the fast way, the continent has to
@@ -110,7 +110,7 @@ How the size was chosen, moving today's 80 towns closer:
   and the economy: heavy infantry reach the nearest place in about three quarters of a day
   and make the longest march in about 13 days (measured: 0.74 and 12.9; under movement
   points on the old map, 0.7 and 13.6). So the Warlords tables for gold
-  and training stay as they are, in days, and a 120-day campaign is four hours at 1×.
+  and training stay as they are, in days, and a 120-day Conquest is four hours at 1×.
 - **New squads, at 2 minutes a day.** Each town trains one squad at a time, by today's
   table:
 
@@ -134,9 +134,9 @@ How the size was chosen, moving today's 80 towns closer:
 
 ## Armies on the land
 
-*Built in steps 2 and 3 (`engine/sim/src/campaign_world.cpp`, `game/src/campaign_soldiers.cpp`,
+*Built in steps 2 and 3 (`engine/sim/src/conquest_world.cpp`, `game/src/conquest_soldiers.cpp`,
 `game/render/renderer_map.cpp`): every squad is its real men, each with a place on the ground
-(`Man`, in `Army::men`). The campaign's stacks stay as the groups that march together, and as
+(`Man`, in `Army::men`). The Conquest's stacks stay as the groups that march together, and as
 the unit the computer lords plan with; they are no longer a place where armies are fought.*
 
 - **An army is a squad,** as in battle: its men, its formation, its facing, its orders. A
@@ -149,7 +149,7 @@ the unit the computer lords plan with; they are no longer a place where armies a
   Packing men tight is its own risk: a clump is what a dwarf's grenade is for.
 - **Orders are the battle's orders, at any distance.** Tap a town across the island: the
   route planner finds the fastest way and they set off. Long routes are planned on the
-  44 m campaign grid with the gaits' speeds, then refined on the 4 m grid over the next few hundred
+  44 m Conquest grid with the gaits' speeds, then refined on the 4 m grid over the next few hundred
   metres as the men go. (Planning a 3 km route on the 4 m grid in one go would be far too
   slow: a 100-man order across one battlefield already costs about 20 ms.)
 - **Formations hold on the march.** A squad narrows into a column where its road narrows
@@ -159,28 +159,28 @@ the unit the computer lords plan with; they are no longer a place where armies a
   ramps, gates, formations, orders and fights as a skirmish, whether he marches, rests or fights. A stack is
   only the group that marches together and the unit the computer lords plan with: it looks where its men are,
   sends them on to the next waypoint of its route and meets whoever comes near, every half second
-  (`Campaign::kThinkTicks`). The coarse route on the 44 m grid supplies waypoints; every step between them, round
+  (`Conquest::kThinkTicks`). The coarse route on the 44 m grid supplies waypoints; every step between them, round
   walls, through gates, up ramps, is the World's. The one exception is a man aboard a boat: he is out of the World
   while the ship carries him (the ship is not ground), and is put ashore as a unit where it lands.
 - **What it costs, and the budget (measured, see "What it costs" below).** The World is not made cheaper for
   Conquest: a man costs what a man costs in a skirmish. If that is too much for the whole island at 4x or 8x,
   the answer is a decision about the game, not a second way of moving men.
 
-## How the campaign holds the world (step 3)
+## How the Conquest holds the world (step 3)
 
 A short note on how it works, and what it costs.
 
-- **One ground.** The campaign owns one `sim::World` on the ground of the whole island:
+- **One ground.** The Conquest owns one `sim::World` on the ground of the whole island:
   `Region::fromContinent` cut 900 cells (3.6 km) wide, with all 80 castles' walls, gates,
   ramps and walks, every tree and house (about 65,000 obstacles), and the navigation grid
-  over it. It is made once per process, when a campaign starts (the page says so, a few
+  over it. It is made once per process, when a Conquest starts (the page says so, a few
   seconds), so that no fight waits for it.
 - **Every man is a unit of the World.** The World holds all the men of the island, 1,800 at the start of an
-  all-computer campaign and more as lords train them (`World::nearby` looks men up through a grid by place, so the
+  all-computer Conquest and more as lords train them (`World::nearby` looks men up through a grid by place, so the
   scans that make a battle cost what it does stay local). A man's place, wounds, kills, rank and morale are the
   unit's; the stack's `Man` records mirror them each tick for the computer lords, saves and the drawing.
 - **Saving.** A save writes every man where he stands (`Man::ax, ay, fx, fy`) with his wounds. Nothing of a moment
-  is kept (arrows in the air, cooldowns): `Campaign::save` first takes every man out of the World and puts him
+  is kept (arrows in the air, cooldowns): `Conquest::save` first takes every man out of the World and puts him
   back (`reseatAll`), clearing the air, so that the game saved and the game loaded from the save carry on as one.
 - **Gates open to their holder's men.** A shut gate swings open (three seconds) for the men of the side that holds it
   when they are bound through it (`World::updateGates`), and shuts behind them; everyone else hacks at it
@@ -191,18 +191,18 @@ A short note on how it works, and what it costs.
   route with the battle's initiative (they fight whoever strikes them or crosses their path) and
   go on when it is done; standing, they meet whoever comes within 45 m of their post: foot go at
   the nearest foe, missile troops close to a good bowshot and shoot on their own
-  (`Campaign::fightAi`, a small version of the battle AI's habits). A town's garrison holds its
+  (`Conquest::fightAi`, a small version of the battle AI's habits). A town's garrison holds its
   post. A stack held up for ten seconds with nothing struck goes deaf to the enemy for ten
   seconds (a force march) and, held up again, gives up the cell of its route the ground does not
   allow. A cell is reached when the middle of the men is at its anchor or most of them are about it. Gates are held
   by their town's owner (`World::setGateHolder`): everyone else hacks at them.
 - **Towns fall by banner.** The banner (§4.2.8) rises while the men of one other side stand in the
   courtyard and none of the town's own or any third side's do: men are what is counted
-  (`Campaign::armiesInTown`), in the courtyard, standing or fighting.
+  (`Conquest::armiesInTown`), in the courtyard, standing or fighting.
 - **What it costs** (measured, Apple M4 Pro; the page in headless Chrome):
   - *Making the ground:* the island's `Region` takes 6.3 s natively (it took 124 s before the
     castle, deck and house loops were boxed) and its navigation grid 0.4 s (11 s before); the page
-    makes it when a campaign starts and says so ("Laying out the island"), about 15 s in the browser,
+    makes it when a Conquest starts and says so ("Laying out the island"), about 15 s in the browser,
     once. The 1 km windows of the set battles are as quick as they were.
   - *Every man a unit (step 3e, measured by `the_whole_population_in_one_world_costs_what_a_skirmish_man_costs`, the
     machine shared with other work, towns' garrisons packed 8 armies to a town for the larger two):*
@@ -261,14 +261,14 @@ A short note on how it works, and what it costs.
     The goal of 0.5 us a man at 7,000 men is not met (0.55 in the quickest batch, 0.68 on average); the next step
     is caching what a standing man's `walk` asks (his height and slope under him do not change while he stands), which
     is exact only with a stamp that every writer of a position bumps.
-  - *An all-computer campaign* holds about 1,800 soldiers at the start and keeps small stacks
+  - *An all-computer Conquest* holds about 1,800 soldiers at the start and keeps small stacks
     besieging walls they cannot take for days; the computer lords no longer send a force a third the
     size of the men it would meet (`attackOdds`), a stack held up ten seconds goes deaf to what it
     cannot reach and gives up a cell of the route the ground does not allow.
 - **What is not kept.** A save writes every man where he stands and the gates' wounds, and
   nothing of a fight in the middle (arrows in the air, cooldowns, morale in the moment): saving
   settles the fight, and the game carries on from there (a save is exact between fights).
-  Fights the computer lords plan are still reckoned with Warlords' odds (`Campaign::winChance`,
+  Fights the computer lords plan are still reckoned with Warlords' odds (`Conquest::winChance`,
   `attackOdds`): that is an *estimate* of whether to attack, never what happens.
 
 ## Fights
@@ -284,7 +284,7 @@ A short note on how it works, and what it costs.
   squads with the battle AI. The player's squads fight back on their own when struck (they
   already do), the minimap shows the fight they're in, and **Fight!** takes the camera
   there.
-- **No dice.** `Campaign::winChance` stays only as the computer lords' estimate when they
+- **No dice.** `Conquest::winChance` stays only as the computer lords' estimate when they
   plan. The numbers on a town's walls are that estimate's too (Warlords' defence), not what
   the real walls do: the gate's hit points are the region's own, and the old *Raise the
   walls* purchase is gone, since it would have changed nothing a man can see.
@@ -307,11 +307,11 @@ A short note on how it works, and what it costs.
 - **Bounded.** At most `World::kMaxQueuedOrders` (8) wait behind a man's own: every man carries, hashes and saves
   his queue, and a long script is a long line of numbers on the screen. The ninth is dropped.
 - **Hashed only when non-empty**, so no battle without a queue changed its checksum (no golden moved).
-- **Saved.** Campaign saves are `ILC8.`: after each man, the orders waiting behind his own. The order he was walking is
+- **Saved.** Conquest saves are `ILC8.`: after each man, the orders waiting behind his own. The order he was walking is
   a moment and, like arrows in the air, is not kept (`reseatAll` puts every man back standing, in the live game too),
   so the first of his queue is what he does next. An attack on a soldier names a unit of the world, whose ids are made
   anew when the men are put back, so it is not kept. A man aboard a boat keeps his queue on the `Man`.
-- **Not in Conquest: a march beyond the men's reach.** That is a *stack's* march on the coarse grid, the campaign's own
+- **Not in Conquest: a march beyond the men's reach.** That is a *stack's* march on the coarse grid, the Conquest's own
   order and not a man's; it has no queue. With Shift it replaces, and says so.
 - **Fog-safe.** The queue is drawn (`Battle::queuedRoutes`) for the player's own men only, and a leg after a quarry the
   player cannot see is not drawn; nothing about another side's queue leaves the sim.
@@ -326,20 +326,20 @@ back), found again at the release; the plan is dropped when the battle borrows a
 
 ## One battle system, one renderer
 
-There is one game. A fight on the campaign is the Battle's fight, shown by the Battle's own presentation, drawn by
-the one renderer pass over the men. Nothing the battle has is copied for the campaign: it is the same code.
+There is one game. A fight on the Conquest is the Battle's fight, shown by the Battle's own presentation, drawn by
+the one renderer pass over the men. Nothing the battle has is copied for the Conquest: it is the same code.
 
-- **The field presents the conquest.** `Battle::borrow(Campaign*)` makes a Battle present the conquest's world as
+- **The field presents the conquest.** `Battle::borrow(Conquest*)` makes a Battle present the conquest's world as
   it presents its own. The conquest's field (`app->battle`) is a Battle made on the island's own origin (the
   field's 1 km window sits at the island's south-west corner), so the world's places are the battle's places and
-  nothing is translated. The conquest tells it round every step of its world (`Campaign::onWorldStep`:
+  nothing is translated. The conquest tells it round every step of its world (`Conquest::onWorldStep`:
   `beforeWorldStep`, `afterWorldStep`) and when a fight is cleared away (`forgetMen`); `Battle::step` is the same
   two calls round its own world's step. Everything after that is the battle's: `collectEvents` (blood, dust,
   sparks, splinters off gates, craters, fire), `presentDeaths` and the sounds (`Sfx::observe`), the shouts
   (`Voice::observe`), the per-man ticks that drive flinches, blows and death frames, the remains and gibs, the
   stuck arrows, the health bars, the gates drawn broken or battered (from the presented world's own region,
   `Battle::worldRegion`), and the tap on a gate that shows its hit points (`Battle::gateAt`).
-  `tests/test_campaign_soldiers.cpp` (`the_battle_presents_the_campaigns_fight_as_its_own`) runs a conquest fight
+  `tests/test_conquest_soldiers.cpp` (`the_battle_presents_the_conquests_fight_as_its_own`) runs a conquest fight
   with no code of the conquest's in the way and finds the battle's blood, deaths, sounds and shouts in it.
 - **The men are drawn once.** `Renderer::drawMan` draws every man of every battle at every distance: a dot in his
   side's colour from far off (pulsing, rapidly and at random, while he fights; a town's own garrison hollow), the
@@ -351,7 +351,7 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   `Battle::gateAt` the gate; `Battle::inspect` says who is looked at (a man not the player's, or a
   gate: grey, view only, one card for a skirmish's foe and a conquest's alike, `Battle::glance`).
 - **Commanding: one selection, one command bar, one order path.** (`game/src/battle_conquest.cpp`; tests in
-  `tests/test_campaign_battle.cpp`.) Each frame `Battle::presentConquest` makes the Battle's squads from the armies
+  `tests/test_conquest_battle.cpp`.) Each frame `Battle::presentConquest` makes the Battle's squads from the armies
   of the stacks (a squad is an army: its men are its members, and the card's numbers are the army's own). The selection is of men,
   by their ids, so that it holds through a man's boarding a boat and landing, and is made again each frame into the
   world's units. A tap, a box, a press with its facing line, the cards, Charge, Hold, Find, a
@@ -362,28 +362,28 @@ the one renderer pass over the men. Nothing the battle has is copied for the cam
   at the start of the step it falls in and the stack's men stand to them: `Stack::commanded`, which stops
   `steer` and `fightAi`), and an order further off is a march of their squads (`Order::Move`, naming the squads
   when they are only some of a stack): the coarse route's cells are waypoints for the world's own steps.
-- **Sight.** There is one seam, `Campaign::canSee(viewer, owner, x, y)` (everything is seen until fog is built in
-  step 4); the viewer is a parameter (`Campaign::localSide()`), never a literal. Everything shown of another side goes
+- **Sight.** There is one seam, `Conquest::canSee(viewer, owner, x, y)` (everything is seen until fog is built in
+  step 4); the viewer is a parameter (`Conquest::localSide()`), never a literal. Everything shown of another side goes
   through it: the men drawn, picked and looked at (`visibleSoldiers`, `Battle::sees`, which asks the conquest the
   Battle presents), the stacks listed, the minimap (`game/src/minimap.cpp`: its towns, men, heaps and fights), the
   towns' holders as the map and the minimap colour them, the banner going up over a town and the news of a town
-  changing hands (`Campaign::seesCity`, `knownOwner`), and the fight the Fight! button takes the camera to
+  changing hands (`Conquest::seesCity`, `knownOwner`), and the fight the Fight! button takes the camera to
   (`Battle::hotSpot`, from the blows the viewer may see). Always visible by decision, until step 4 chooses: the
   land's colour and the outposts (the hexes' holders are map knowledge, as the map's roads and towns are), and a
-  side's own news lines (a hero's deed is its own side's). `tests/test_campaign_battle.cpp` hides sides through the
+  side's own news lines (a hero's deed is its own side's). `tests/test_conquest_battle.cpp` hides sides through the
   seam and finds none of them on the minimap, under a finger, in the hot spot or as a town's holder, and measures what
   the seam costs (about 15 ns a man in `visibleSoldiers` with a stub, 1.5 ns a call to `canSee`).
-- **One record for a man.** A man is a `sim::Unit` in the world, and is presented as a `Campaign::Soldier` (his place,
+- **One record for a man.** A man is a `sim::Unit` in the world, and is presented as a `Conquest::Soldier` (his place,
   his stride, his side and kind, and his unit): the renderer, the picking and the minimap read that. There is no
   third record (the renderer's `ManView` is the arguments of one draw call).
-- **Player intent.** The page submits `Campaign::Order`s (stamped, ordered, serializable); they are applied inside
-  `step()`. `tests/test_campaign_save.cpp` replays the same Orders over the same save for the same checksum.
+- **Player intent.** The page submits `Conquest::Order`s (stamped, ordered, serializable); they are applied inside
+  `step()`. `tests/test_conquest_save.cpp` replays the same Orders over the same save for the same checksum.
 - **Gone.** `MapSoldier`, `collectMapSoldiers`, `Renderer::setMapSoldiers`, `placeMapSoldiers`, `pushMapSprites`,
-  `pushMapWounds`, `drawMapDots`, `setMapArrows`, the campaign's own mirroring of gates and its effects, its own
+  `pushMapWounds`, `drawMapDots`, `setMapArrows`, the Conquest's own mirroring of gates and its effects, its own
   picking by dots and by gates, the separate sleeper drawing loop, and the sleeping and waking of stacks with the body-stepped march.
 
 **What still differs, and why.** The conquest's clock and its speeds (1, 2, 4 and 8) are the conquest's own, not the
-battle's (1, 2, 4 and slow motion): the page keeps both (`illyria_campaign_pause`, `illyria_toggle_pause`). Saved groups (keys 1 to 9) are of men: in a skirmish their unit ids, in a conquest their man ids (a unit is a place in the world that a man leaves when he boards a boat), found again among the men each time.
+battle's (1, 2, 4 and slow motion): the page keeps both (`illyria_conquest_pause`, `illyria_toggle_pause`). Saved groups (keys 1 to 9) are of men: in a skirmish their unit ids, in a conquest their man ids (a unit is a place in the world that a man leaves when he boards a boat), found again among the men each time.
 The renderer's one fork on whether the world is the conquest's is that a skirmish's field bakes sprite sheets for
 the kinds of soldier it has at once, and a conquest's only for those near the camera (`Renderer::draw`). The town
 screens (what a town trains, its boats, where its new armies go) are the conquest's own, and so is the tap that

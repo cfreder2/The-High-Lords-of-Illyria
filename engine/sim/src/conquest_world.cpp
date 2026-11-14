@@ -1,18 +1,18 @@
 // The men on the land (docs/ONE_WORLD.md, "Armies on the land" and "Fights").
 //
-// Every squad is its real men, and every man on the land is a unit of the one sim::World the campaign holds on the
+// Every squad is its real men, and every man on the land is a unit of the one sim::World the conquest holds on the
 // ground of the whole island, with all eighty castles in it: the same World, the same navigation, steering, ramps,
 // gates, formations, orders and fights as a skirmish, on a ground without a fence. There is no other way a man moves.
 // The stacks are only the groups that march together and the unit the computer lords plan with: every
 // kThinkTicks a stack looks where its men are, sends them on to the next cell of its route, and meets whoever comes
 // near. A man aboard a boat is out of the world (the ship carries him) and is put ashore as a unit where it lands.
 //
-// Nothing is settled by dice: men die, towns fall by banners raised over them (campaign_capture.cpp).
+// Nothing is settled by dice: men die, towns fall by banners raised over them (conquest_capture.cpp).
 #include <algorithm>
 #include <cmath>
 #include <map>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/isqrt.h"
 #include "placement.h"
 
@@ -45,7 +45,7 @@ uint32_t hash32(uint32_t v) {
     return v;
 }
 
-// The island's ground, made once for every campaign on a continent: it is a
+// The island's ground, made once for every conquest on a continent: it is a
 // pure function of the continent, and a few seconds to make.
 std::shared_ptr<const Region> islandRegion(const Continent& c) {
     static std::map<uint64_t, std::pair<const Continent*, std::shared_ptr<const Region>>> made;
@@ -61,7 +61,7 @@ std::shared_ptr<const Region> islandRegion(const Continent& c) {
 
 // ---------------------------------------------------------------- where things are
 
-void Campaign::anchorOf(int32_t cx, int32_t cy, int32_t& x, int32_t& y) const {
+void Conquest::anchorOf(int32_t cx, int32_t cy, int32_t& x, int32_t& y) const {
     if (cx >= 0 && cy >= 0 && cx < nx_ && cy < ny_ && terrain_[static_cast<size_t>(cy) * nx_ + cx] == Lay::City) {
         const int32_t town = cityAt(cx, cy);
         if (town >= 0) {
@@ -77,7 +77,7 @@ void Campaign::anchorOf(int32_t cx, int32_t cy, int32_t& x, int32_t& y) const {
     y = centre(cy) * 1000;
 }
 
-void Campaign::bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) const {
+void Conquest::bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) const {
     if (!s.boat) {
         x = s.px;
         y = s.py;
@@ -94,7 +94,7 @@ void Campaign::bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) con
     y += static_cast<int32_t>((int64_t{ty} - y) * t / leg);
 }
 
-void Campaign::layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots, bool column) const {
+void Conquest::layout(const Stack& s, std::vector<std::pair<int32_t, int32_t>>& slots, bool column) const {
     slots.clear();
     struct Block {
         int32_t n = 0, cols = 1, rows = 0, spacing = 1400, depth = 0, width = 0;
@@ -170,7 +170,7 @@ void slotToWorld(const std::pair<int32_t, int32_t>& slot, int32_t hx, int32_t hy
 }
 }  // namespace
 
-void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
+void Conquest::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
     out.clear();
     const float alpha = std::clamp(static_cast<float>(ahead) / kTimeScale, 0.0f, 1.0f);
     for (const Stack& s : stacks_) {
@@ -203,18 +203,18 @@ void Campaign::soldiers(int32_t ahead, std::vector<Soldier>& out) const {
     }
 }
 
-void Campaign::visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const {
+void Conquest::visibleSoldiers(uint8_t viewer, int32_t ahead, std::vector<Soldier>& out) const {
     soldiers(ahead, out);
     std::erase_if(out, [&](const Soldier& m) { return !canSee(viewer, m.owner, m.x, m.y); });
 }
 
-bool Campaign::seesCity(uint8_t viewer, int32_t city) const {
+bool Conquest::seesCity(uint8_t viewer, int32_t city) const {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     const Vec3& at = continent_.cities()[static_cast<size_t>(city)].pos;
     return canSee(viewer, cities_[static_cast<size_t>(city)].owner, static_cast<float>(at.x.toDouble()), static_cast<float>(at.y.toDouble()));
 }
 
-int32_t Campaign::menInWorld() const {
+int32_t Conquest::menInWorld() const {
     int32_t n = 0;
     for (const Stack& s : stacks_)
         for (const Army& a : s.armies)
@@ -224,7 +224,7 @@ int32_t Campaign::menInWorld() const {
 
 // ---------------------------------------------------------------- the world
 
-void Campaign::ensureWorld() {
+void Conquest::ensureWorld() {
     if (world_) return;
     region_ = islandRegion(continent_);
     WorldConfig cfg;
@@ -258,12 +258,12 @@ void Campaign::ensureWorld() {
     endFight(seed_);
 }
 
-void Campaign::prepareWorld() {
+void Conquest::prepareWorld() {
     ensureWorld();
     seatNew();
 }
 
-void Campaign::gateHps(std::vector<int32_t>& out) const {
+void Conquest::gateHps(std::vector<int32_t>& out) const {
     // The gates that are not as new, as (gate, hit points left) pairs: all that
     // the world holds between fights, so the same whether or not there has been one.
     out.clear();
@@ -278,13 +278,13 @@ void Campaign::gateHps(std::vector<int32_t>& out) const {
         }
 }
 
-void Campaign::setHuman(uint8_t side, bool human) {
+void Conquest::setHuman(uint8_t side, bool human) {
     sides_[side].human = human;
     if (world_)
         for (size_t i = 0; i < cities_.size(); ++i) holdGates(static_cast<int32_t>(i));
 }
 
-void Campaign::gatePinList(std::vector<int32_t>& out) const {
+void Conquest::gatePinList(std::vector<int32_t>& out) const {
     out.clear();
     if (!world_) {
         out = gatePin_;
@@ -297,7 +297,7 @@ void Campaign::gatePinList(std::vector<int32_t>& out) const {
         }
 }
 
-void Campaign::holdGates(int32_t city) {
+void Conquest::holdGates(int32_t city) {
     if (!world_) return;
     for (size_t g = 0; g < gateCity_.size(); ++g)
         if (gateCity_[g] == city) {
@@ -311,7 +311,7 @@ void Campaign::holdGates(int32_t city) {
         }
 }
 
-void Campaign::seat(Stack& s) {
+void Conquest::seat(Stack& s) {
     ensureWorld();
     const Vec3 origin = region_->origin();
     // Where it stands if it has no place yet: its cell's anchor, set beside the stacks already standing there.
@@ -333,7 +333,7 @@ void Campaign::seat(Stack& s) {
     std::vector<std::pair<int32_t, int32_t>> slots;
     layout(s, slots, !s.path.empty() && !s.boat);
     int32_t command = 0;
-    for (const Army& a : s.armies) command += Campaign::command(a);
+    for (const Army& a : s.armies) command += Conquest::command(a);
     size_t k = 0;
     // A garrison at rest in its town is inside its walls: the rings round its keep, or none.
     std::vector<const Rampart*> walls;
@@ -377,7 +377,7 @@ void Campaign::seat(Stack& s) {
             if ((p - q).flat().lengthSq() < Fixed::fromRatio(9, 4)) return false;
         return true;
     };
-    // (Then on the millimetre the campaign keeps him at, so that a save, which keeps no finer, stands him exactly where he is.)
+    // (Then on the millimetre the conquest keeps him at, so that a save, which keeps no finer, stands him exactly where he is.)
     const auto place = [&](Vec3 p) {
         const Vec3 q = nearestFit(p, fits);
         return Vec3{fromMm(toMm(q.x + origin.x)) - origin.x, fromMm(toMm(q.y + origin.y)) - origin.y, q.z};
@@ -397,7 +397,7 @@ void Campaign::seat(Stack& s) {
                 at = Vec3{fromMm(m.ax) - origin.x, fromMm(m.ay) - origin.y, Fixed::zero()};
                 fx = m.fx, fy = m.fy;
             } else if (postAt < posts.size() && stats.flyAltitude == Fixed::zero()) {
-                // His station: exactly there (on the millimetre the campaign keeps him at), facing as it says.
+                // His station: exactly there (on the millimetre the conquest keeps him at), facing as it says.
                 const World::GarrisonPost& post = posts[postAt++];
                 at = Vec3{fromMm(toMm(post.pos.x + origin.x)) - origin.x, fromMm(toMm(post.pos.y + origin.y)) - origin.y, post.pos.z};
                 fx = toMm(post.face.x);
@@ -436,7 +436,7 @@ void Campaign::seat(Stack& s) {
     s.forceUntil = 0;
 }
 
-void Campaign::station(const Stack& s) {
+void Conquest::station(const Stack& s) {
     if (!world_ || s.boat || !s.path.empty() || s.commanded) return;
     const int32_t town = cityAt(s.cx, s.cy);
     if (town < 0 || cities_[static_cast<size_t>(town)].owner != s.owner) return;
@@ -456,7 +456,7 @@ void Campaign::station(const Stack& s) {
     world_->stationMen(gate, ids);
 }
 
-void Campaign::release(Army& a) {
+void Conquest::release(Army& a) {
     for (Man& m : a.men) {
         if (!m.unit) continue;
         const Unit* u = world_ ? world_->findUnit(m.unit) : nullptr;
@@ -483,7 +483,7 @@ void Campaign::release(Army& a) {
     a.seated = false;
 }
 
-void Campaign::seatNew() {
+void Conquest::seatNew() {
     bool any = false;
     for (const Stack& s : stacks_)
         if (!s.boat)
@@ -498,7 +498,7 @@ void Campaign::seatNew() {
     }
 }
 
-void Campaign::reseatAll() {
+void Conquest::reseatAll() {
     ensureWorld();
     for (Stack& s : stacks_)
         if (!s.boat) syncMen(s);
@@ -510,14 +510,14 @@ void Campaign::reseatAll() {
     freshWorld();
 }
 
-void Campaign::freshWorld() {
+void Conquest::freshWorld() {
     ensureWorld();
     corpses_.clear();
     endFight(seed_ ^ tick_);  // the air cleared, and the world as it is at the start of any (the same on every machine)
     seatNew();
 }
 
-void Campaign::syncMen(Stack& s) {
+void Conquest::syncMen(Stack& s) {
     for (Army& a : s.armies) {
         for (Man& m : a.men) {
             if (!m.unit) continue;
@@ -561,7 +561,7 @@ void Campaign::syncMen(Stack& s) {
 
 // ---------------------------------------------------------------- stepping
 
-void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
+void Conquest::steer(Stack& s, std::vector<Command>& commands, bool think) {
     if (think) {
         // The middle of its standing men: where the stack is.
         int64_t sx = 0, sy = 0, fx = 0, fy = 0, n = 0;
@@ -642,7 +642,7 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
             s.lt = tick_;
         } else if (tick_ - s.lt >= 10 * kTicksPerSecond && tick_ >= s.forceUntil) {
             if (s.forceUntil != 0 && tick_ < s.forceUntil + 30 * kTicksPerSecond) {
-                // Held up again: the way on the campaign grid is not one the ground allows (a cell inside a wall, a
+                // Held up again: the way on the conquest grid is not one the ground allows (a cell inside a wall, a
                 // drowned one), so the cell is given up and the next is the way.
                 s.cx = s.path.front().first;
                 s.cy = s.path.front().second;
@@ -703,7 +703,7 @@ void Campaign::steer(Stack& s, std::vector<Command>& commands, bool think) {
 // Men standing, with the battle's own habits: foot go at the nearest foe near
 // their post, missile troops close to a good bowshot and shoot on their own;
 // a garrison holds its post and meets whoever comes near it.
-void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
+void Conquest::fightAi(Stack& s, std::vector<Command>& commands) {
     const World& w = *world_;
     const Vec3 origin = region_->origin();
     int32_t ax, ay;
@@ -791,7 +791,7 @@ void Campaign::fightAi(Stack& s, std::vector<Command>& commands) {
     }
 }
 
-uint32_t Campaign::stackOfUnit(uint32_t unit) const {
+uint32_t Conquest::stackOfUnit(uint32_t unit) const {
     for (const Stack& s : stacks_)
         for (const Army& a : s.armies)
             for (const Man& m : a.men)
@@ -799,12 +799,12 @@ uint32_t Campaign::stackOfUnit(uint32_t unit) const {
     return 0;
 }
 
-void Campaign::endFight(uint64_t seed) {
+void Conquest::endFight(uint64_t seed) {
     world_->clearFight(seed);
     if (clearedHook_) clearedHook_();
 }
 
-void Campaign::stepWorld() {
+void Conquest::stepWorld() {
     seatNew();  // the men raised, hired, put ashore or loaded since the last step
     if (!world_) return;
     while (!corpses_.empty() && corpses_.front().first <= tick_) {

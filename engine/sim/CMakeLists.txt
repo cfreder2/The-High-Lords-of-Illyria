@@ -25,17 +25,17 @@ add_library(illyria_sim
     src/continent.cpp
     src/continent_roads.cpp
     src/continent_relief.cpp
-    src/campaign.cpp
-    src/campaign_rules.cpp
-    src/campaign_ai.cpp
-    src/campaign_march.cpp
-    src/campaign_quests.cpp
-    src/campaign_sea.cpp
-    src/campaign_rare.cpp
-    src/campaign_capture.cpp
-    src/campaign_world.cpp
-    src/campaign_territory.cpp
-    src/campaign_save.cpp
+    src/conquest.cpp
+    src/conquest_rules.cpp
+    src/conquest_ai.cpp
+    src/conquest_march.cpp
+    src/conquest_quests.cpp
+    src/conquest_sea.cpp
+    src/conquest_rare.cpp
+    src/conquest_capture.cpp
+    src/conquest_world.cpp
+    src/conquest_territory.cpp
+    src/conquest_save.cpp
     src/edges.cpp
     src/world_edges.cpp
     src/world_match.cpp

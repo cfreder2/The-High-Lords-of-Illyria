@@ -1,4 +1,4 @@
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/isqrt.h"
 
 #include <algorithm>
@@ -16,7 +16,7 @@ using T = UnitType;
 // What each side trains at its capital (light infantry is everywhere), and
 // the gold it starts with, after the empires of Warlords. Only common troops:
 // each realm's rare ones march with its hero from the start, and its capital
-// holds a one-off levy of more (campaign_rare.cpp).
+// holds a one-off levy of more (conquest_rare.cpp).
 struct Realm {
     std::vector<UnitType> specialties;
     int32_t gold;
@@ -39,7 +39,7 @@ const Realm& realm(uint8_t side) {
 // and dear (about twice the days, three to five times the gold), so that an
 // army lost is not soon replaced. Rare types are never trained; a levy of
 // them takes three days and five gold a point of strength to muster.
-Campaign::Option trained(UnitType t) {
+Conquest::Option trained(UnitType t) {
     switch (t) {
         case T::LightInfantry: return {t, 2, 12};
         case T::HeavyInfantry: return {t, 4, 20};
@@ -57,7 +57,7 @@ Campaign::Option trained(UnitType t) {
 
 }  // namespace
 
-int32_t Campaign::strength(const Army& a) {
+int32_t Conquest::strength(const Army& a) {
     int32_t battle = 0;
     for (uint8_t k : a.artifacts) battle += artifacts()[k].battle;  // a hero's swords and staves
     // A hero's level is his strength, as in Warlords; a soldier's rank is a
@@ -65,7 +65,7 @@ int32_t Campaign::strength(const Army& a) {
     return std::min(9, warlordsStrength(a.type) + (a.hero() ? a.rank : 0) + a.blessings + battle);
 }
 
-int32_t Campaign::squadSize(UnitType t) {
+int32_t Conquest::squadSize(UnitType t) {
     switch (t) {
         case T::LightCavalry:
         case T::HeavyCavalry:
@@ -92,7 +92,7 @@ int32_t Campaign::squadSize(UnitType t) {
     }
 }
 
-int32_t Campaign::upkeep(UnitType t) {
+int32_t Conquest::upkeep(UnitType t) {
     // Common troops: a quarter of their training price a day. Rare ones what
     // Warlords asked for them (half their price in its city table).
     if (t == T::Hero) return 0;
@@ -112,7 +112,7 @@ int32_t Campaign::upkeep(UnitType t) {
     }
 }
 
-Campaign::Campaign(const Continent& continent, uint64_t seed, Setup setup) : continent_(continent), seed_(seed), setup_(setup), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
+Conquest::Conquest(const Continent& continent, uint64_t seed, Setup setup) : continent_(continent), seed_(seed), setup_(setup), rng_(seed, 0xCA4A16), aiRng_(seed, 0xA1) {
     nx_ = static_cast<int32_t>(Continent::kWidth / kCell);
     ny_ = static_cast<int32_t>(Continent::kHeight / kCell);
     initTerrain();
@@ -129,7 +129,7 @@ Campaign::Campaign(const Continent& continent, uint64_t seed, Setup setup) : con
     initTerritory();  // after the cities: they claim the land around them
 }
 
-void Campaign::initTerrain() {
+void Conquest::initTerrain() {
     terrain_.assign(static_cast<size_t>(nx_) * ny_, Lay::Plain);
     roadCell_.assign(terrain_.size(), 0);
     riverEast_.assign(terrain_.size(), 0);
@@ -212,7 +212,7 @@ void Campaign::initTerrain() {
     }
 }
 
-void Campaign::initCities() {
+void Conquest::initCities() {
     const uint64_t sc = noise::nextSeed(continent_.seed() ^ 0xC17E5);
     for (size_t i = 0; i < continent_.cities().size(); ++i) {
         const Continent::City& c = continent_.cities()[i];
@@ -274,7 +274,7 @@ void Campaign::initCities() {
             // The capital's own guard, there from the first day: bows for its walls and shields for its gate, so
             // that the lord can ride out with his host and not leave his seat empty behind him. (Of his stack, to
             // stand with it in the courtyard: he leaves them by marching the rest. A computer lord keeps his
-            // weakest at home, CampaignAi::reorganize.)
+            // weakest at home, ConquestAi::reorganize.)
             s.armies.push_back(makeArmy(T::Archers, "Guard of " + c.name));
             s.armies.push_back(makeArmy(T::HeavyInfantry, "Guard of " + c.name));
             continue;
@@ -296,7 +296,7 @@ void Campaign::initCities() {
     }
 }
 
-Army Campaign::makeArmy(UnitType type, const std::string& name) {
+Army Conquest::makeArmy(UnitType type, const std::string& name) {
     Army a;
     a.id = nextId_++;
     a.type = type;
@@ -308,7 +308,7 @@ Army Campaign::makeArmy(UnitType type, const std::string& name) {
     return a;
 }
 
-Campaign::Stack& Campaign::newStack(uint8_t owner, int32_t cx, int32_t cy) {
+Conquest::Stack& Conquest::newStack(uint8_t owner, int32_t cx, int32_t cy) {
     Stack s;
     s.id = nextId_++;
     s.owner = owner;
@@ -318,24 +318,24 @@ Campaign::Stack& Campaign::newStack(uint8_t owner, int32_t cx, int32_t cy) {
     return stacks_.back();
 }
 
-const Campaign::Stack* Campaign::findStack(uint32_t id) const {
+const Conquest::Stack* Conquest::findStack(uint32_t id) const {
     for (const Stack& s : stacks_)
         if (s.id == id) return &s;
     return nullptr;
 }
 
-int32_t Campaign::cityAt(int32_t cx, int32_t cy) const {
+int32_t Conquest::cityAt(int32_t cx, int32_t cy) const {
     if (cx < 0 || cy < 0 || cx >= nx_ || cy >= ny_) return -1;
     return cityCell_[static_cast<size_t>(cy) * nx_ + cx];
 }
 
-int32_t Campaign::citiesOwned(uint8_t side) const {
+int32_t Conquest::citiesOwned(uint8_t side) const {
     int32_t n = 0;
     for (const CityState& c : cities_) n += c.owner == side;
     return n;
 }
 
-bool Campaign::produce(int32_t city, int32_t option) {
+bool Conquest::produce(int32_t city, int32_t option) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
     if (option >= static_cast<int32_t>(c.options.size())) return false;
@@ -344,7 +344,7 @@ bool Campaign::produce(int32_t city, int32_t option) {
     return true;
 }
 
-bool Campaign::edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
+bool Conquest::edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
     const auto river = [&](int32_t x, int32_t y, bool east) {
         return (east ? riverEast_ : riverNorth_)[static_cast<size_t>(y) * nx_ + x] != 0;
     };
@@ -356,7 +356,7 @@ bool Campaign::edgeOpen(int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
     return viaX || viaY;
 }
 
-bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
+bool Conquest::move(uint32_t stackId, int32_t cx, int32_t cy) {
     for (Stack& s : stacks_) {
         if (s.id != stackId || s.garrison) continue;
         std::vector<std::pair<int32_t, int32_t>> path;
@@ -369,12 +369,12 @@ bool Campaign::move(uint32_t stackId, int32_t cx, int32_t cy) {
     return false;
 }
 
-void Campaign::submit(Order order) {
+void Conquest::submit(Order order) {
     if (order.tick == 0) order.tick = tick_ + 1;
     pending_.push_back(order);
 }
 
-Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
+Conquest::Stack* Conquest::stackFor(const Order& o, bool splitting) {
     for (size_t i = 0; i < stacks_.size(); ++i) {
         if (stacks_[i].id != o.stack) continue;
         Stack& s = stacks_[i];
@@ -400,7 +400,7 @@ Campaign::Stack* Campaign::stackFor(const Order& o, bool splitting) {
     return nullptr;
 }
 
-void Campaign::commandMen(const Order& o) {
+void Conquest::commandMen(const Order& o) {
     if (o.command.player != o.side) return;
     if (o.command.type == Command::Type::SetGate) {  // a hand on a gate, no man: the World asks whose gate it is
         playerCommands_.push_back(o.command);
@@ -421,7 +421,7 @@ void Campaign::commandMen(const Order& o) {
     }
 }
 
-void Campaign::applyPending() {
+void Conquest::applyPending() {
     // (applying an Order may not submit another: those due are taken before any is run)
     std::vector<Order> due;
     std::erase_if(pending_, [&](const Order& o) {
@@ -472,17 +472,17 @@ void Campaign::applyPending() {
     }
 }
 
-void Campaign::step() {
+void Conquest::step() {
     ++tick_;
     applyPending();
     if (tick_ % kTicksPerDay == 0) newDay();
     moveStacks();
     stepWorld();  // every man on the land, as in any battle
-    if (tick_ % kThinkTicks == 0) bannerStep();  // campaign_capture.cpp
-    if (tick_ % kTerritoryTicks == 0) territoryStep();  // campaign_territory.cpp
+    if (tick_ % kThinkTicks == 0) bannerStep();  // conquest_capture.cpp
+    if (tick_ % kTerritoryTicks == 0) territoryStep();  // conquest_territory.cpp
 }
 
-void Campaign::newDay() {
+void Conquest::newDay() {
     seaDay();  // shipwrights and the boats' upkeep
     // Income, then upkeep; a side that cannot pay loses its newest armies.
     for (size_t s = 0; s < sides_.size(); ++s) {
@@ -564,7 +564,7 @@ void Campaign::newDay() {
     }
 }
 
-void Campaign::moveStacks() {
+void Conquest::moveStacks() {
     for (size_t i = 0; i < stacks_.size(); ++i) {
         if (stacks_[i].path.empty() || stacks_[i].armies.empty() || !stacks_[i].boat) continue;  // (on land the men march themselves, in the world: stepWorld)
         if (!boardIfSailing(i)) continue;  // stepping from a port onto the water boards a boat
@@ -606,7 +606,7 @@ void Campaign::moveStacks() {
     syncBoats();
 }
 
-void Campaign::arrive(Stack& s) {
+void Conquest::arrive(Stack& s) {
     // Join a friendly stack already standing here, as a group of eight at most
     // (a group is what marches together; any number may stand in a place).
     for (Stack& o : stacks_) {
@@ -618,7 +618,7 @@ void Campaign::arrive(Stack& s) {
     }
 }
 
-void Campaign::promote(Army& a) {
+void Conquest::promote(Army& a) {
     // As in battle: kills per soldier make a soldier a regular, a veteran,
     // elite; a hero's kills raise their level.
     if (a.hero()) {
@@ -630,13 +630,13 @@ void Campaign::promote(Army& a) {
     while (a.rank < 3 && a.kills >= kRanks[a.rank] * a.fullStrength) ++a.rank;
 }
 
-Campaign::Stack* Campaign::stackById(uint32_t id) {
+Conquest::Stack* Conquest::stackById(uint32_t id) {
     for (Stack& s : stacks_)
         if (s.id == id) return &s;
     return nullptr;
 }
 
-uint64_t Campaign::checksum() const {
+uint64_t Conquest::checksum() const {
     StateHasher h;
     h.addU64(tick_);
     for (const Side& s : sides_) {

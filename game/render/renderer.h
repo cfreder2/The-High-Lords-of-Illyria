@@ -23,7 +23,7 @@
 
 namespace illyria::game {
 
-// The campaign's soldiers are grouped for drawing past the battle's, by type and
+// The conquest's soldiers are grouped for drawing past the battle's, by type and
 // by side (a faction 0-7, or 8 for a town's own garrison), in the faction's own colour.
 constexpr int kMapKeyBase = 1 << 20, kMapSides = 9;
 float manPulse(uint32_t id, float seconds);  // how hard a man in a fight flashes as a dot (renderer_map.cpp)
@@ -87,7 +87,7 @@ public:
     // Forget uploaded remains and marks (call after the battle is replaced).
     void reset(Battle& battle);
     void draw(Battle& battle, const Camera& camera, double timeSeconds);
-    // The campaign map shows the land, not the battle's soldiers.
+    // The conquest map shows the land, not the battle's soldiers.
     // Builds all of the close-up land around the camera now (test hook; it is
     // otherwise built a little each frame).
     void finishDetail(const Battle& battle, const Camera& camera) { updateDetail(battle, camera, 1e9, true); }
@@ -98,7 +98,7 @@ public:
         showUnits_ = show;
         unitsChecked_ = SIZE_MAX;
     }
-    // Campaign map dressing, in battle-local metres, drawn only while the map
+    // Conquest map dressing, in battle-local metres, drawn only while the map
     // is shown: boats on the water (a sail in the side's colour) and piers at
     // the ports. scale: the boat's half length, the pier's length.
     struct Prop {
@@ -110,7 +110,7 @@ public:
     void setPiers(const std::vector<Prop>& piers);
     // Flags on poles (renderer_flags.cpp), in battle-local metres, drawn in
     // both views: the siege's capture point, the banners rising over the
-    // campaign's towns. raised: how far up the pole the cloth is (0 to 1).
+    // conquest's towns. raised: how far up the pole the cloth is (0 to 1).
     struct Flag {
         V3 base;
         float height = 10, raised = 1, size = 3;
@@ -137,7 +137,7 @@ public:
     // houses' tiles, the towers' and keep turrets' conical roofs.
     // keepsBare (per town, optional): the keep's small banner is not drawn (a tall pole stands there, setFlags).
     void setCityColours(const std::vector<OwnerLook>& looks, const std::vector<uint8_t>& keepsBare = {});
-    // The campaign's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
+    // The conquest's territory, one RGBA texel per hex (cols x rows); strength 0 hides it.
     void setTerritory(const std::vector<uint8_t>& rgba, int cols, int rows, float strength);
 
 private:
@@ -565,7 +565,7 @@ private:
     std::vector<uint8_t> bannerIsKeep_;  // (per banner instance)
     GLuint territoryTex_ = 0;
     float territoryInfo_[4] = {0, 0, 0, 0};
-    MeshBatch ships_, sails_, piers_;  // the campaign's boats and ports
+    MeshBatch ships_, sails_, piers_;  // the conquest's boats and ports
     MeshBatch bridges_;  // every bridge on the continent, one world-space mesh
     // Every tree of the continent beyond the battlefield and the close-up land (far_forest.h), as cards: one
     // instance buffer, each naming its picture; and the cover they make, which the land is shaded from.

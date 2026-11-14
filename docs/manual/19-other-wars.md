@@ -10,13 +10,13 @@ The title screen offers five things to play. All are fought on the same continen
 
 | On the title screen | What it is | How it ends |
 |---|---|---|
-| **Campaign** (and **Continue**, when a war is saved) | The war for all Illyria: chapters [](#continent) to [](#lords). You choose which of the eight lords you are, which of the other seven are in the war (any, from none to all), and whether they play *Easy* or *Hard*; three save slots | By conquest (chapter [](#victory)). With no lord against you it is a free game with no end |
+| **Conquest** (and **Continue**, when a war is saved) | The war for all Illyria: chapters [](#continent) to [](#lords). You choose which of the eight lords you are, which of the other seven are in the war (any, from none to all), and whether they play *Easy* or *Hard*; three save slots | By conquest (chapter [](#victory)). With no lord against you it is a free game with no end |
 | **Skirmish** | One set battle, fought out in full: **Oakhaven Ford** or **The siege** | The enemy destroyed, or the courtyard taken; or your army destroyed |
 | **Horde** | Your hero and a small army hold a hilltop against wave after wave | The waves you chose survived; or the hill lost, or every holder dead |
 | **Capture the Flag** | Two to four armies each guard a flag and go for the others' | One flag left standing; or time |
 | **Sandbox** | Any squads of any side set down on a field of your choosing, to watch, command and tune | It does not: nothing is won or lost |
 
-Everything outside the campaign is played against the computer, on one device. Horde and Capture the Flag are built to be played between people, by **seats** ([](#seats)), but **no play between people is in the game yet**: there is no network play of any kind (chapter [](#online)).
+Everything outside the Conquest is played against the computer, on one device. Horde and Capture the Flag are built to be played between people, by **seats** ([](#seats)), but **no play between people is in the game yet**: there is no network play of any kind (chapter [](#online)).
 
 ## Skirmish {#skirmish}
 

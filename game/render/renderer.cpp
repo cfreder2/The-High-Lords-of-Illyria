@@ -2252,7 +2252,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
 
 void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (PartCount& c : counts_) c = PartCount{};
-    // The campaign grid and territory lie on the continent's own hexes (shaders.h landGrids).
+    // The conquest grid and territory lie on the continent's own hexes (shaders.h landGrids).
     territoryInfo_[0] = battle.origin().x;
     territoryInfo_[1] = battle.origin().y;
     // A skirmish's field has its few kinds of soldier all in view: their sheets are baked at once, when it has a new kind.

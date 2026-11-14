@@ -415,7 +415,7 @@ void Renderer::updateCloseups(const Battle& battle, const Camera& camera) {
     }
     const float screen = closeupScreen_ > 0 ? closeupScreen_ : camera.height();
     const V3 eye = camera.eye();
-    // The soldiers to size the sheets for: a battle's, or the campaign's near the camera (renderer_map.cpp).
+    // The soldiers to size the sheets for: a battle's, or the conquest's near the camera (renderer_map.cpp).
     std::vector<std::pair<int, V3>> seen = men_.seen;  // (the men who were sprites last frame)
     {
         const auto& units = battle.world().units();

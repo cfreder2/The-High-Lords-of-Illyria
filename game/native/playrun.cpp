@@ -27,9 +27,9 @@ Json hudState() { return parsed(illyria_hud()); }
 
 unsigned tickNow() { return static_cast<unsigned>(hudState().num("tick")); }
 
-// The campaign's state when a conquest is on (it has a day), else an empty object.
-Json campaignState() {
-    Json j = parsed(illyria_campaign_state());
+// The conquest's state when a conquest is on (it has a day), else an empty object.
+Json conquestState() {
+    Json j = parsed(illyria_conquest_state());
     return j.find("day") ? j : Json();
 }
 
@@ -193,7 +193,7 @@ bool Runner::step() {
             }
             case Block::Start: {
                 ++startFrames_;
-                const bool begun = tickNow() > 0 || campaignState().find("day") != nullptr;
+                const bool begun = tickNow() > 0 || conquestState().find("day") != nullptr;
                 if (startFrames_ >= 4 && begun) {
                     block_ = Block::None;
                     lastDeadline_ = 0;
@@ -236,7 +236,7 @@ void Runner::execute(const Command& c) {
                 const int lord = c.lord >= 0 ? c.lord : setup_.lord;
                 std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"player\":%d,\"enemies\":%d,\"speed\":1}", (c.easy ? false : setup_.hard) ? 1 : 0, lord,
                               setup_.foes & ~(1 << lord) & 0xFF);
-                hud_.start("campaign", buf);
+                hud_.start("conquest", buf);
             } else if (c.text == "skirmish ford") {
                 hud_.start("skirmish", "{\"scenario\":0}");
             } else if (c.text == "skirmish siege") {
@@ -309,8 +309,8 @@ void Runner::execute(const Command& c) {
             block_ = Block::WaitTicks;
             break;
         case Op::Speed:
-            if (campaignState().find("day")) {
-                for (int i = 0; i < 4 && static_cast<int>(campaignState().num("speed")) != static_cast<int>(c.a); ++i) illyria_campaign_speed();
+            if (conquestState().find("day")) {
+                for (int i = 0; i < 4 && static_cast<int>(conquestState().num("speed")) != static_cast<int>(c.a); ++i) illyria_conquest_speed();
             } else {
                 illyria_set_pace(static_cast<float>(c.a));
             }
@@ -323,7 +323,7 @@ void Runner::execute(const Command& c) {
 
 void Runner::stats() {
     const Json hud = hudState(), cam = parsed(illyria_camera_state());
-    const Json camp = campaignState();
+    const Json camp = conquestState();
     const Men m = men(hud);
     const char* perf = illyria_perf();
     const char* sim = std::strstr(perf, "sim ");
@@ -357,7 +357,7 @@ void Runner::log() {
     if (!logFile_) return;
     const Json hud = hudState();
     const unsigned tick = static_cast<unsigned>(hud.num("tick"));
-    const Json camp = campaignState();
+    const Json camp = conquestState();
     if (tick == 0 && !camp.find("day")) return;  // (the title, or a start not yet begun)
     const long second = static_cast<long>(tick / kTicksPerSecond);  // (in a Conquest, of the day: the tick starts from 0 each day)
     const bool day = camp.find("day") != nullptr;

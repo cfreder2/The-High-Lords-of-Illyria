@@ -31,7 +31,7 @@ inline constexpr Fixed kTickDt = Fixed::fromRatio(1, kTicksPerSecond);
 // A flier's flight cycle (World::updateFlight): a ground run at this times
 // its walking pace to take off, a tick of stamina spent for each tick in the
 // air, and one restored for every kFlierRestTicks resting on the ground (half
-// the rate flight spends it). The campaign marches fliers at its long-run pace.
+// the rate flight spends it). The conquest marches fliers at its long-run pace.
 inline constexpr Fixed kTakeoffRunPace = Fixed::fromRatio(3, 2);
 inline constexpr uint32_t kFlierRestTicks = 2;
 
@@ -243,7 +243,7 @@ struct Command {
     bool queue = false;
 };
 
-// One soldier (or beast). Squads are a campaign-layer grouping of these.
+// One soldier (or beast). Squads are a conquest-layer grouping of these.
 struct Unit {
     EntityId id = kNoEntity;
     PlayerId owner = 0;
@@ -490,7 +490,7 @@ HitSide hitSide(const Vec3& targetFacing, const Vec3& travel);
 // elite), or a hero's level in thirds. What the health bar shows.
 int32_t veteranGrade(const Unit& u);
 
-// A hero fell this tick (for morale, the HUD, a campaign log). Like
+// A hero fell this tick (for morale, the HUD, a conquest log). Like
 // ImpactEvent, derived from the simulation state and not part of it.
 struct HeroDeath {
     EntityId hero = kNoEntity;
@@ -570,11 +570,11 @@ public:
     explicit World(const WorldConfig& config);
 
     EntityId spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing, const UnitStats& stats);
-    // A unit raised by the campaign: its rank (a hero's level less one) and
+    // A unit raised by the conquest: its rank (a hero's level less one) and
     // blessings, with a hero's extra hit points for the levels gained.
     void setVeterancy(EntityId id, int32_t rank, int32_t blessings);
-    // The campaign's squads come into the world to fight and leave it after
-    // (campaign_world.cpp): a soldier's wounds, kills and morale as he last
+    // The conquest's squads come into the world to fight and leave it after
+    // (conquest_world.cpp): a soldier's wounds, kills and morale as he last
     // stood, and taking him out again (the bodies of the fallen stay until then).
     void restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale);
     // The orders waiting behind his own (Unit::queue), as a save keeps them: put back, at most kMaxQueuedOrders.
@@ -588,8 +588,8 @@ public:
     uint32_t generation(EntityId id) const { return id >= 1 && id <= spawns_.size() ? spawns_[id - 1] : 0; }
     // Everything of a fight but the gates (their wounds, and the broken ones
     // open for good): no soldiers, missiles or remains, the dice and the clock
-    // as they start. What a campaign's world is between fights, so that it is
-    // the same on every machine whether or not it has seen one (campaign_world.cpp).
+    // as they start. What a conquest's world is between fights, so that it is
+    // the same on every machine whether or not it has seen one (conquest_world.cpp).
     void clearFight(uint64_t seed);
 
     // Advances the simulation by exactly one tick. Every peer must call this
@@ -663,7 +663,7 @@ public:
         setGateGarrisoned(gate, true, !humanHolder);
     }
     // Whether this man is one of a garrisoned gate's keepers (inside its walls, near it, on its side): the gate's strategy
-    // gives him his station, so no other thinking (the computer lords' campaign AI) orders him about.
+    // gives him his station, so no other thinking (the computer lords' conquest AI) orders him about.
     bool gateKeeper(const Unit& u) const;
     // A garrison standing in a walled town is stationed as one (world_keep.cpp): bowmen on the wall-walk, one to an embrasure,
     // spread round the ring; foot in the keepers' horseshoe behind the doors; casters, healers, engines and the lord behind
@@ -691,7 +691,7 @@ public:
     // Very low when nothing rises into the way.
     Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
     const Region* region() const { return config_.region.get(); }
-    // Whose land each part of the field is (the campaign's territory, which changes as the war goes; a set battle
+    // Whose land each part of the field is (the conquest's territory, which changes as the war goes; a set battle
     // or a match is fought on nobody's): a side for each square of `cell` metres, `nx` to a row from `origin` (a place of the
     // world), 255 for nobody's. A soldier standing on his own side's land has the home-land edge (edges.h). Not part
     // of the world's own state: whoever sets it sets it again when the land changes hands, and after a load.
@@ -968,7 +968,7 @@ private:
     // each cell's soldiers in the order of their index.
     // Soldiers move less than kBroadMargin between builds, so a query looks that
     // much further than it asked and the caller tests the exact distance, which
-    // finds exactly what a loop over every soldier would. (On a campaign's
+    // finds exactly what a loop over every soldier would. (On a conquest's
     // ground of thousands of soldiers that loop is the whole cost of a tick.)
     static constexpr int64_t kBroadCell = 8;
     static constexpr int64_t kBroadMargin = 4;

@@ -1,11 +1,11 @@
-// The rules of the Warlords manual the campaign follows beyond moving and
+// The rules of the Warlords manual the conquest follows beyond moving and
 // training: the combat modifiers of its appendix, the exact odds of its dice,
 // LOC, BUILD and DISBAND, the gold, and how a war is won (docs/GAME_DESIGN.md
 // §4.2.5 has the table). Integers only.
 #include <algorithm>
 #include <climits>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 namespace illyria::sim {
 
@@ -16,7 +16,7 @@ using T = UnitType;
 // A catapult's strength against a town's walls, over its strength in the field.
 constexpr int32_t kCatapultSiegeBonus = 2;
 
-// What a campaign cell counts as, of the kinds of land a realm can be at home on (edges.h, realmLand): where its armies
+// What a conquest cell counts as, of the kinds of land a realm can be at home on (edges.h, realmLand): where its armies
 // are reckoned stronger and march quicker, as its men are in the battle (World::onOwnLand). Mountains and hills are
 // the hills; a bridge and the water are the water's edge; a town's streets are nobody's.
 uint8_t landOfLay(Lay lay) {
@@ -71,20 +71,20 @@ int32_t typeTerrain(UnitType t, Lay lay) {
 
 }  // namespace
 
-bool Campaign::flies(UnitType t) {
+bool Conquest::flies(UnitType t) {
     return t == T::Pegasi || t == T::Griffins || t == T::Dragons || t == T::Archons;
 }
-bool Campaign::special(UnitType t) {
+bool Conquest::special(UnitType t) {
     return t == T::Wizards || t == T::Undead || t == T::Demons || t == T::Devils || t == T::Dragons;
 }
 
-int32_t Campaign::engines(const std::vector<const Army*>& armies) {
+int32_t Conquest::engines(const std::vector<const Army*>& armies) {
     int32_t n = 0;
     for (const Army* a : armies) n += a->type == T::Catapult;
     return n;
 }
 
-int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const {
+int32_t Conquest::forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const {
     // The whole points of the AFCM (or DFCM): the heroes' command artifacts,
     // one for fliers, one for special armies (a dragon is both), and the
     // city's walls for a defender. The manual's smaller things (a hero's
@@ -108,9 +108,9 @@ int32_t Campaign::forceModifier(const std::vector<const Army*>& armies, uint8_t 
     return m;
 }
 
-uint8_t Campaign::landAt(int32_t cx, int32_t cy) const { return landOfLay(terrainAt(cx, cy)); }
+uint8_t Conquest::landAt(int32_t cx, int32_t cy) const { return landOfLay(terrainAt(cx, cy)); }
 
-Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
+Edges Conquest::armyEdges(const Army& a, const std::vector<const Army*>& side, uint8_t owner, int32_t cx, int32_t cy, bool defending,
                           int32_t oppX, int32_t oppY) const {
     Edges e;
     const Lay lay = terrainAt(cx, cy);
@@ -138,7 +138,7 @@ Edges Campaign::armyEdges(const Army& a, const std::vector<const Army*>& side, u
     return e;
 }
 
-Edges Campaign::stackEdges(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t oppX,
+Edges Conquest::stackEdges(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t oppX,
                            int32_t oppY) const {
     Edges best;
     for (const Army* a : armies) {
@@ -154,7 +154,7 @@ Edges Campaign::stackEdges(const std::vector<const Army*>& armies, uint8_t owner
     return best;
 }
 
-void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power,
+void Conquest::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power,
                      int32_t engines, int32_t oppX, int32_t oppY) const {
     const std::vector<const Army*> view(armies.begin(), armies.end());
     const int32_t fcm = forceModifier(view, owner, cx, cy, defending, engines);
@@ -176,7 +176,7 @@ void Campaign::order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int3
     for (const Army* a : armies) power.push_back(as(a));
 }
 
-std::vector<int32_t> Campaign::lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending,
+std::vector<int32_t> Conquest::lineup(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending,
                                       int32_t engines, int32_t oppX, int32_t oppY) const {
     std::vector<Army*> list;
     for (const Army* a : armies) list.push_back(const_cast<Army*>(a));  // order() only reorders the pointers
@@ -185,7 +185,7 @@ std::vector<int32_t> Campaign::lineup(const std::vector<const Army*>& armies, ui
     return power;
 }
 
-int32_t Campaign::winChance(const std::vector<int32_t>& attack, const std::vector<int32_t>& defence) {
+int32_t Conquest::winChance(const std::vector<int32_t>& attack, const std::vector<int32_t>& defence) {
     // Each round both roll a d10 (a d1000 against strengths in hundredths); a roll
     // no higher than the other's strength is low; one low and one high puts a
     // hit on the low roller, two hits destroy. So the next hit lands on the
@@ -232,7 +232,7 @@ int32_t Campaign::winChance(const std::vector<int32_t>& attack, const std::vecto
     return static_cast<int32_t>(won * 1000 / kOne);
 }
 
-std::vector<const Army*> Campaign::defendersAt(uint8_t attacker, int32_t cx, int32_t cy) const {
+std::vector<const Army*> Conquest::defendersAt(uint8_t attacker, int32_t cx, int32_t cy) const {
     std::vector<const Army*> out;
     for (const Stack& o : stacks_)
         if (o.owner != attacker && o.cx == cx && o.cy == cy)
@@ -240,11 +240,11 @@ std::vector<const Army*> Campaign::defendersAt(uint8_t attacker, int32_t cx, int
     return out;
 }
 
-int32_t Campaign::attackOdds(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy) const {
+int32_t Conquest::attackOdds(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy) const {
     const std::vector<const Army*> def = defendersAt(owner, cx, cy);
     if (def.empty()) return 1000;
     const int32_t city = cityAt(cx, cy);
-    // Whoever stands there: the town's lord, or an enemy raising its banner in it (as Campaign::battle).
+    // Whoever stands there: the town's lord, or an enemy raising its banner in it (as Conquest::battle).
     uint8_t defOwner = city >= 0 ? cities_[static_cast<size_t>(city)].owner : kNeutral;
     for (const Stack& o : stacks_)
         if (o.owner != owner && o.cx == cx && o.cy == cy && !o.armies.empty()) defOwner = o.owner;
@@ -257,7 +257,7 @@ int32_t Campaign::attackOdds(const std::vector<const Army*>& armies, uint8_t own
     return winChance(lineup(armies, owner, cx, cy, false), lineup(def, defOwner, cx, cy, true, engines(armies)));
 }
 
-bool Campaign::disband(uint32_t stackId, uint32_t armyId) {
+bool Conquest::disband(uint32_t stackId, uint32_t armyId) {
     for (size_t k = 0; k < stacks_.size(); ++k) {
         Stack& s = stacks_[k];
         if (s.id != stackId || s.garrison) continue;
@@ -272,7 +272,7 @@ bool Campaign::disband(uint32_t stackId, uint32_t armyId) {
     return false;
 }
 
-bool Campaign::vectorProduction(int32_t city, int32_t to) {
+bool Conquest::vectorProduction(int32_t city, int32_t to) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
     if (to < 0 || to == city) {
@@ -287,7 +287,7 @@ bool Campaign::vectorProduction(int32_t city, int32_t to) {
     return true;
 }
 
-void Campaign::deliverTransits() {
+void Conquest::deliverTransits() {
     std::vector<Transit> still;
     for (Transit& t : transits_) {
         if (t.arriveDay > day()) {
@@ -312,22 +312,22 @@ void Campaign::deliverTransits() {
     transits_ = std::move(still);
 }
 
-void Campaign::setComputerDifficulty(Difficulty d) {
+void Conquest::setComputerDifficulty(Difficulty d) {
     for (Side& s : sides_)
         if (!s.human) s.difficulty = d;
 }
 
-uint32_t Campaign::raise(uint8_t owner, int32_t cx, int32_t cy, const std::vector<UnitType>& types) {
+uint32_t Conquest::raise(uint8_t owner, int32_t cx, int32_t cy, const std::vector<UnitType>& types) {
     Stack& s = newStack(owner, cx, cy);
     for (UnitType t : types) s.armies.push_back(makeArmy(t, ""));
     return s.id;
 }
 
-int32_t Campaign::income(uint8_t side) const {
+int32_t Conquest::income(uint8_t side) const {
     int32_t gold = 0;
     for (const CityState& c : cities_)
         if (c.owner == side) gold += c.income;
-    // The land pays a little (campaign_territory.cpp).
+    // The land pays a little (conquest_territory.cpp).
     gold += hexesHeld(side) / kHexesPerGold;
     // Warlords' Knights "deliberately waste money": an Easy lord loses a fifth.
     const Side& s = sides_[side];
@@ -335,7 +335,7 @@ int32_t Campaign::income(uint8_t side) const {
     return gold;
 }
 
-int32_t Campaign::upkeepOf(uint8_t side) const {
+int32_t Conquest::upkeepOf(uint8_t side) const {
     int32_t gold = 0;
     for (const Stack& st : stacks_)
         if (st.owner == side)
@@ -345,7 +345,7 @@ int32_t Campaign::upkeepOf(uint8_t side) const {
     return gold;
 }
 
-int32_t Campaign::winner() const {
+int32_t Conquest::winner() const {
     // The last side standing wins; and as in Warlords §14, the others
     // surrender to a side holding more than half the cities when no rival is
     // within fifteen of it.
@@ -370,7 +370,7 @@ int32_t Campaign::winner() const {
     return 0;
 }
 
-int32_t Campaign::armiesAt(uint8_t owner, int32_t cx, int32_t cy) const {
+int32_t Conquest::armiesAt(uint8_t owner, int32_t cx, int32_t cy) const {
     int32_t n = 0;
     for (const Stack& s : stacks_)
         if (s.owner == owner && s.cx == cx && s.cy == cy) n += static_cast<int32_t>(s.armies.size());

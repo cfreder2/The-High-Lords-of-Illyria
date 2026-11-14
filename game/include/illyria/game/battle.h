@@ -15,7 +15,7 @@
 #include "illyria/game/path_lines.h"
 #include "illyria/game/sfx.h"
 #include "illyria/game/voice.h"
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
@@ -109,7 +109,7 @@ enum class Scenario {
     Mode,      // a match: Horde or capture the flag (mode.h), on a field it fills itself
 };
 
-// A battle fought from the campaign: the armies of each side, as they stand.
+// A battle fought from the conquest: the armies of each side, as they stand.
 const sim::Continent::City& siegeTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
@@ -192,7 +192,7 @@ public:
     Battle(uint64_t seed, const sim::Vec3& centre, std::shared_ptr<const sim::Continent> continent = {},
            float farReachM = 0);
     ~Battle();
-    // For a campaign battle: what became of every army.
+    // For a conquest battle: what became of every army.
     Scenario scenario() const { return scenario_; }
     // Who the player is fighting, for the HUD.
     const std::string& foeName() const { return foeName_; }
@@ -204,23 +204,23 @@ public:
 
     // Conquest (game/src/battle_conquest.cpp): the whole island's war is a battle too, presented by this one Battle:
     // it shows the conquest's world exactly as it shows its own, from the same places. The world must be on a region
-    // with this battle's origin (the field is made at the island's: Campaign::islandOrigin), so that the world's
+    // with this battle's origin (the field is made at the island's: Conquest::islandOrigin), so that the world's
     // places are the battle's. Whoever steps the conquest calls beforeWorldStep() and afterWorldStep() round each
-    // step of its world (Campaign::onWorldStep), says how far between ticks it is, and calls presentConquest() once a
+    // step of its world (Conquest::onWorldStep), says how far between ticks it is, and calls presentConquest() once a
     // frame, after the steps, and flushOrders() once before them.
-    void borrow(sim::Campaign* conquest);  // nullptr: back to its own world
+    void borrow(sim::Conquest* conquest);  // nullptr: back to its own world
     bool borrowing() const { return conquest_ != nullptr; }
-    sim::Campaign* conquest() const { return conquest_; }
+    sim::Conquest* conquest() const { return conquest_; }
     void beforeWorldStep();
     void afterWorldStep();
     void setAlpha(float a) { alphaSet_ = true, alphaOver_ = a; }
     // The fight in the borrowed world was cleared away (its men are gone, new ones are not those): forget them.
     void forgetMen();
-    // Every man as the conquest says he stands this frame (Campaign::visibleSoldiers): the squads of the armies he is
+    // Every man as the conquest says he stands this frame (Conquest::visibleSoldiers): the squads of the armies he is
     // of (every man is a unit of the world), who is selected or looked at, and the selection kept through a man's
     // boarding a boat and landing (it is of men, not of the world's units, which come and go).
-    void presentConquest(const std::vector<sim::Campaign::Soldier>& men);
-    // The player's orders for the conquest, out as Orders (Campaign::submit): the commands to men in the world, as a
+    void presentConquest(const std::vector<sim::Conquest::Soldier>& men);
+    // The player's orders for the conquest, out as Orders (Conquest::submit): the commands to men in the world, as a
     // skirmish's step would take them; the marches are submitted as they are given (marchOrder).
     void flushOrders();
     // Every man of a stack of the player's selected (the page's, at the start: over the capital).
@@ -230,7 +230,7 @@ public:
     // The army (squad) the selection is exactly (every man of it and no other), or 0.
     uint32_t selectedArmy() const;
 
-    // What the viewer may see of the others (Campaign::canSee, through the conquest this field presents): a man of
+    // What the viewer may see of the others (Conquest::canSee, through the conquest this field presents): a man of
     // `owner` at battle-local x, y that it refuses is not drawn, picked or looked at. A skirmish's field sees all.
     bool sees(uint8_t owner, float x, float y) const;
     // The man nearest the finger on the screen within `tapPx` pixels, at any height and any distance (a dot is as
@@ -246,7 +246,7 @@ public:
     int gateAt(const Camera& camera, float x, float y, float pixelScale) const;
     // What the player looks at and cannot order: view-only, grey. One man not his (a unit of the world) or a gate; a tap on any of them with nothing selected looks at it, and any other tap lets it go.
     struct Inspected {
-        enum class Kind : uint8_t { None, Unit, Man, Gate } kind = Kind::None;  // Man: in Conquest, by his id (Campaign::Man)
+        enum class Kind : uint8_t { None, Unit, Man, Gate } kind = Kind::None;  // Man: in Conquest, by his id (Conquest::Man)
         uint32_t id = 0;
     };
     const Inspected& inspected() const { return inspected_; }
@@ -798,7 +798,7 @@ private:
     sim::EntityId inspectedUnit_ = 0;  // the unit of the world he is, awake (Conquest), or the unit looked at
     // Conquest (battle_conquest.cpp). The selection there is of men (their ids), so that it holds through a man's
     // boarding and landing; selection_ is what it is of the world's units now.
-    sim::Campaign* conquest_ = nullptr;
+    sim::Conquest* conquest_ = nullptr;
     std::vector<uint32_t> selMen_;
     std::vector<uint32_t> manOfUnit_;      // by EntityId - 1: the man a unit is (0: none)
     uint32_t selStack_ = 0;

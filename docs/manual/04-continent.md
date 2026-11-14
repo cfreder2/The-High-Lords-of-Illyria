@@ -6,14 +6,14 @@
 — a saying of the Valdor drovers
 :::
 
-There are no separate battle maps in this game. Illyria is one continuous land, modelled down to the tussock, and the camera goes all the way from a god's view of the island, where armies are columns of points, to the mud of a single ford, where you can count the arrows in a shield. The campaign is played high up; battles are fought at the bottom; it is the same land all the way down, and a battle fought anywhere is fought on the hills, woods and streams that are really there.
+There are no separate battle maps in this game. Illyria is one continuous land, modelled down to the tussock, and the camera goes all the way from a god's view of the island, where armies are columns of points, to the mud of a single ford, where you can count the arrows in a shield. The Conquest is played high up; battles are fought at the bottom; it is the same land all the way down, and a battle fought anywhere is fought on the hills, woods and streams that are really there.
 
 ![The continent of Illyria, north up: the eight capitals as coloured castles, the neutral towns and villages in grey, ruins, temples and sages, roads and rivers.](images/continent-map.jpg "tall")
 
 ## The lie of the land {#lie-of-the-land}
 
 ::: note "The measure of the land"
-The island is **2.8 km** from west to east and **3.6 km** from south to north. The campaign map divides it into cells **44 m** across, 64 by 80 of them; ownership is reckoned in hexes **89 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,120 of them with land). A set battle is fought on a window **1 km** square cut out of the land, so it holds a good piece of the island, and often a town or a village or two. Walled places keep at least **170 m** of open country between their walls (three bowshots: two hosts can form up between two towns out of reach of both); a village stands at least **85 m** from any wall, beyond a bow's reach from the walk, and 60 m from the next village. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
+The island is **2.8 km** from west to east and **3.6 km** from south to north. The Conquest map divides it into cells **44 m** across, 64 by 80 of them; ownership is reckoned in hexes **89 m** between centres, **33** columns by **47** rows (1,551 hexes, 1,120 of them with land). A set battle is fought on a window **1 km** square cut out of the land, so it holds a good piece of the island, and often a town or a village or two. Walled places keep at least **170 m** of open country between their walls (three bowshots: two hosts can form up between two towns out of reach of both); a village stands at least **85 m** from any wall, beyond a bow's reach from the walk, and 60 m from the next village. *(The numbers of this edition. Rivers, roads, bridges, walls and gates keep their real sizes; it is the distances between places that the map sets.)*
 :::
 
 - **The sea.** The Sunderwave Sea runs the length of the west coast and round the north; the **Isle of the Seer** lies off the north-west, with the first of the two sages on it and one fishing village: the isle is too small for walls. The coast is a wandering shore of bays and headlands, with sand beaches where the swell rolls in, runs up the sand and slides back, leaving it dark and wet. Rocks and boulders stand in the water along the shores, about the isles and in the rivers, some breaking the surface in a ring of foam and some lying just beneath it; a lake laps its shore gently, and a river has no waves at all.
@@ -80,10 +80,10 @@ Out in the wild places there are **34 ruins** in the forests and foothills, **4 
 | The battlefield | formations, every soldier, arrows in flight |
 | The ground | shields turning blades, the dead where they fell, blood on the grass |
 
-Wherever the camera comes closer than about 850 m, on the campaign map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads of worn dirt (a track one lane wide to a trunk road of three or four lanes, with the odd puddle), forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
+Wherever the camera comes closer than about 850 m, on the Conquest map too, the land under it is drawn at the battlefield's own detail: 4 m heights, roads of worn dirt (a track one lane wide to a trunk road of three or four lanes, with the odd puddle), forest floor, rock, snow and banks, grass and ferns and flowers, every tree and rock that a battle fought there would have. It fades in as you come down, a little at a time, so nothing jumps. A battle fought at that place later looks exactly as it did from the air.
 
 ## The ground and what it does {#ground}
 
-Each cell of the campaign map is one kind of ground: **road**, **bridge**, **plain**, **forest**, **hill**, **mountain**, **marsh**, **water** or **city**. The kind decides how fast each army marches across it (chapter [](#moving)) and how some armies fight on it (chapter [](#edges)).
+Each cell of the Conquest map is one kind of ground: **road**, **bridge**, **plain**, **forest**, **hill**, **mountain**, **marsh**, **water** or **city**. The kind decides how fast each army marches across it (chapter [](#moving)) and how some armies fight on it (chapter [](#edges)).
 
 On the battlefield the ground is finer: road, plains, forest, swamp, shallows, rock, mud, sand and bridge decks, and every soldier moves at his own pace on each (chapter [](#terrain)). The hills are real hills, the slopes really slow a man climbing them, and a cliff steeper than 45 degrees is a wall. Mountains are impassable except where a pass or a road is cut through, so the passes, fords and bridges are where armies meet.

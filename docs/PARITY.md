@@ -22,9 +22,9 @@ aboard a boat (the ship carries him).
 | Gates: hack and break (attackers) | `World::gateToHack` | same | by construction (`test_castle.cpp` runs it in a skirmish world; Conquest siege tests `a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there` use it) |
 | Gates: the holder's men pass | `World::updateGates`: the gate swings open (three seconds, blocking all the while) to its holder's men bound through it and shuts behind them; an enemy never opens it | same (the rule is the World's) | **test** `a_gate_opens_to_its_holders_men_and_to_nobody_else`, `a_squad_ordered_through_a_closed_gate_opens_it_passes_and_it_closes_behind`, `an_enemy_squad_cannot_pass_a_closed_gate_and_does_not_open_it` (skirmish world) and the capital marches (Conquest) |
 | Gates: the hand on the gate (open, shut, let go) | `Command::SetGate` through the one command list; tap a gate of one's own, `O`, the card's buttons | same command, carried by an `Order` | **test** `the_holder_pins_his_gate_open_or_shut_and_nobody_else_can`, `a_gate_swings_the_same_in_a_conquest_town_and_a_skirmish_castle` (one scenario, both modes, the same ticks), `a_gate_the_player_holds_open_or_shut_is_saved_with_the_game` |
-| A garrison at rest stands as one (bowmen on the walk at distinct embrasures, foot in ranks facing the doors, casters, healers and the lord behind) | `World::garrisonPosts`, used by `Campaign::seat` / `Campaign::station` | `Battle::setUpSiege` (the same call) | **test** `a_capitals_garrison_stands_as_one_bowmen_on_the_walk_foot_in_ranks_the_rest_behind`, `bowmen_are_spread_round_the_whole_ring_with_the_first_beside_the_doors`, `the_same_garrison_is_put_in_the_same_places_twice`, `men_sent_out_of_their_stations_go_back_to_them_when_stationed_again` |
-| Gates: a garrison keeps its gate (archers on the walls, foot in a horseshoe behind the doors, the lure); only men with no order of their own keep it, the lord stays behind the foot | `World::keepGates` for every `GateState::garrisoned` gate (Siege battle's, a neutral town's, a computer lord's, and in the campaign the player's own town's: his idle men, inside his walls) | same function | **test** `a_neutral_garrison_puts_its_archers_on_the_wall_and_its_foot_behind_the_gate` (skirmish world); Conquest towns by `a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there`; `an_idle_human_garrison_takes_its_stations_when_a_foe_is_at_60_m`, `the_same_men_with_an_order_are_not_pulled_to_posts_and_go_back_when_idle`, `a_lord_stays_behind_the_foot_for_a_computer_side_and_the_player`, `the_players_men_bound_through_his_own_gate_go_through_it_with_a_foe_about` |
-| Formations (shapes, narrowing, facing drag) | Battle's `moveGroup`/`Shape` over unit Commands | the same Battle functions, since a Conquest man is a unit. A *march* on the coarse route uses `Campaign::layout` (block/column), a second layout code | by construction for orders within 200 m; **gap** for the march (see section 3, item 1) |
+| A garrison at rest stands as one (bowmen on the walk at distinct embrasures, foot in ranks facing the doors, casters, healers and the lord behind) | `World::garrisonPosts`, used by `Conquest::seat` / `Conquest::station` | `Battle::setUpSiege` (the same call) | **test** `a_capitals_garrison_stands_as_one_bowmen_on_the_walk_foot_in_ranks_the_rest_behind`, `bowmen_are_spread_round_the_whole_ring_with_the_first_beside_the_doors`, `the_same_garrison_is_put_in_the_same_places_twice`, `men_sent_out_of_their_stations_go_back_to_them_when_stationed_again` |
+| Gates: a garrison keeps its gate (archers on the walls, foot in a horseshoe behind the doors, the lure); only men with no order of their own keep it, the lord stays behind the foot | `World::keepGates` for every `GateState::garrisoned` gate (Siege battle's, a neutral town's, a computer lord's, and in the Conquest the player's own town's: his idle men, inside his walls) | same function | **test** `a_neutral_garrison_puts_its_archers_on_the_wall_and_its_foot_behind_the_gate` (skirmish world); Conquest towns by `a_stack_marches_on_a_neutral_town_and_takes_it_by_fighting_there`; `an_idle_human_garrison_takes_its_stations_when_a_foe_is_at_60_m`, `the_same_men_with_an_order_are_not_pulled_to_posts_and_go_back_when_idle`, `a_lord_stays_behind_the_foot_for_a_computer_side_and_the_player`, `the_players_men_bound_through_his_own_gate_go_through_it_with_a_foe_about` |
+| Formations (shapes, narrowing, facing drag) | Battle's `moveGroup`/`Shape` over unit Commands | the same Battle functions, since a Conquest man is a unit. A *march* on the coarse route uses `Conquest::layout` (block/column), a second layout code | by construction for orders within 200 m; **gap** for the march (see section 3, item 1) |
 | Waypoints, attack-move, Charge, Hold, Find, Scatter | Battle | same Battle commands on units; far orders become a stack march | by construction; `the_players_men_in_a_fight_are_ordered_as_in_a_skirmish...` runs Hold, Scatter, Box, As they stand, Charge in a Conquest fight |
 | Hero abilities and edges | World | same | by construction (no Conquest hero-ability test) |
 | Stamina, flying | World; the fliers' take-off and rest | same World; the coarse planner times fliers by `flightPace` | by construction |
@@ -32,15 +32,15 @@ aboard a boat (the ship carries him).
 | Arrows, ballistics, engines | World | same | by construction |
 | Morale, rout, rally | World | same | by construction (`test_morale_rally.cpp` is World-only) |
 | Scavenging, raids, satchels | World | same | by construction |
-| Captures (flag, banner) | CTF mode flag; Conquest banner is `Campaign::bannerStep` | **differs**: two rules (see section 2) | n/a |
+| Captures (flag, banner) | CTF mode flag; Conquest banner is `Conquest::bannerStep` | **differs**: two rules (see section 2) | n/a |
 | Group hotkeys 1-9 | unit ids | man ids (units leave the World only aboard a boat) | `a_group_in_the_conquest_is_of_men...` |
 | Tab / Shift+Tab cycle the groups (saved groups, then squads in none) | `Battle::cycleGroup` over groups and squads | same (a Conquest squad is an army's men, a saved group is of men) | **test** `tab_cycles_the_saved_groups_then_the_squads_in_none_and_shift_tab_goes_back` (a skirmish); Conquest by construction (same function, `groupMen`/`squads_`) |
 | Queued orders (Shift + right-click appends; Space and a plain order clear) | `Unit::queue`, `World::advanceQueue` | same (the men are units); a stack's march beyond the men's reach has no queue (**exception**: a plain march, with a notice) | **test** `a_man_given_a_then_b_arrives_at_a_then_goes_on_to_b`, `a_plain_order_replaces_the_orders_in_hand_and_the_queue`, `halt_clears_the_queue_too`, `the_orders_queued_behind_a_mans_own_are_saved_with_the_game` (Conquest), `shift_right_click_queues_and_a_plain_one_replaces_and_stop_clears` (a skirmish) |
 | Planning mode (hold orders, send them together) | `Battle` holds per-man orders; sends the same Commands at release | same Battle, same Commands; a far march of squads is held as such | **test** `planning_holds_orders_off_the_sim_and_the_release_sends_them_in_one_tick_as_if_given_then`, `a_plain_order_held_replaces_the_held_ones_and_backspace_drops_them_all`, `halt_while_planning_halts_at_once_and_drops_that_mens_held_orders_and_the_dead_are_skipped` (a skirmish); Conquest by construction (`unitOfPlanned` finds the man) |
-| Camera, selection, command bar, minimap | Battle | Battle (`Battle::borrow`) | `test_campaign_battle.cpp` |
-| Sounds, voices, effects | Battle `collectEvents` | same | `the_battle_presents_the_campaigns_fight_as_its_own` |
+| Camera, selection, command bar, minimap | Battle | Battle (`Battle::borrow`) | `test_conquest_battle.cpp` |
+| Sounds, voices, effects | Battle `collectEvents` | same | `the_battle_presents_the_conquests_fight_as_its_own` |
 | A sleeping man selectable and orderable | n/a | now every man; no sleepers | `a_tap_selects_a_man_and_the_card_selects_his_squad` |
-| Save and load of the state | skirmish saves nothing | `Campaign::save` takes every man out of the World and puts him back (arrows in the air and cooldowns are not kept), so the saved game and the loaded game carry on as one | `test_campaign_save.cpp` (checksum equal after a save in the middle of a fight) |
+| Save and load of the state | skirmish saves nothing | `Conquest::save` takes every man out of the World and puts him back (arrows in the air and cooldowns are not kept), so the saved game and the loaded game carry on as one | `test_conquest_save.cpp` (checksum equal after a save in the middle of a fight) |
 
 Fixed by this step: the cause of the complaint (a stack was one body on the coarse grid and walked through walls) is
 deleted; marching men now go round walls through the World's nav, and the gate rule above was needed to let a town's
@@ -55,7 +55,7 @@ Known weaknesses that remain (honest list, not exceptions):
   (a 4 m grid search over 3 km is the cost the document warned about).
 - A gate is a bottleneck: a stack of 24 men leaving a castle by its one gate takes minutes (the same as a skirmish's
   six defenders took 40 s to pass); the old body march had none of that. It is the World's rule, now also Conquest's.
-  Measured (towns held by the computer lords at day 25, all-computer campaign, seeds 7 / 11 / 21): 35 / 36 / 36 at d6c56db;
+  Measured (towns held by the computer lords at day 25, all-computer Conquest, seeds 7 / 11 / 21): 35 / 36 / 36 at d6c56db;
   22 / 25 / 26 with garrisoned gates at the first cut, 29 / 23 / 25 after the recall reached 70 m; 37 / 37 with the gate keeping
   switched off; with only the neutral towns kept 33 / 20 / 23. So a neutral garrison holding its gate (archers up on the walls,
   foot behind the doors, no sortie to die in the open) is what slows the lords: about 28% fewer towns at day 25. Counting the
@@ -70,9 +70,9 @@ Known weaknesses that remain (honest list, not exceptions):
 - The coarse planner's flier estimate is optimistic by about 2.2 times against the World's flight cycles
   (`fliers_alone_go_at_their_flight_cycles_pace_over_anything` measures it); the lords plan with it.
 - The cost of the whole population in one World (section 4 of docs/ONE_WORLD.md, "What it costs"): 19 ms a tick native
-  and 41 ms in the browser at 7,000 men, against 33 ms at 1x. Campaign tests that play days (20 or more of them) take
+  and 41 ms in the browser at 7,000 men, against 33 ms at 1x. Conquest tests that play days (20 or more of them) take
   minutes each now (`hard_lords_outplay_easy_ones` is about 25 minutes native): they want shorter plays or fewer men.
-- A stack's march sends each man to `anchor + slot` of `Campaign::layout`. Slots in a tree or a wall's foot are moved to
+- A stack's march sends each man to `anchor + slot` of `Conquest::layout`. Slots in a tree or a wall's foot are moved to
   the nearest open ground; a column through a sharp turn has no tail-speed control (the tail follows its own path
   at the squad's pace; the old "tail moves fast" fault is not reproduced, but not tested either).
 - Formations and Scatter ordered on a march: they work in the World (the men are units) but a march in progress
@@ -81,45 +81,45 @@ Known weaknesses that remain (honest list, not exceptions):
 
 ## 2. Every Conquest-only capability, in Skirmish
 
-Per the principle: anything that can happen in the campaign can also happen in a skirmish; the rules and the way the
+Per the principle: anything that can happen in the Conquest can also happen in a skirmish; the rules and the way the
 world works are identical.
 
 | Capability | Where it lives now | In a skirmish? | What it needs |
 |---|---|---|---|
-| Hero enters a ruin, fights the guardian, takes the treasure, artifacts | `Campaign::search`, `campaign_quests.cpp`, `Continent::Site` | no | A `Site` as a World place (an object with a guardian and a prize) and an `Enter` command; the World's sites already exist as `Region` obstacles (ruin floors) |
-| Enter a castle and produce a unit | `Campaign::produce`, `CityState` options, `newDay` | no | A castle as a World object with a stock, a production queue and gold per side; a `Produce` command |
-| Hire heroes, companions | `Campaign::hire`, `Offer` | no | After production exists |
-| Capture of a town (banner over the courtyard) | `campaign_capture.cpp` | CTF has a flag, not this | The banner rule as a World rule on a castle |
-| Gold, income, upkeep, desertion | `Campaign::newDay`, `Side` | no | Economy in the World |
-| Day clock | `Campaign::kTicksPerDay`, `newDay` | no | A day as a World tick count |
-| Boats, ports, shipwrights | `campaign_sea.cpp` | no | Water as World ground a ship moves on; boats as World units that carry units |
-| Quests, temples, sages | `campaign_quests.cpp` | no | Sites as World objects |
-| Computer lords' planning | `campaign_ai.cpp` | no (Battle AI plays squads) | Their plan as a computer player of the World |
-| Territory, outposts | `campaign_territory.cpp` | no | Hexes as a World overlay |
-| Fog of war | `Campaign::canSee` | no | The same seam on the World |
-| Route planner on the coarse grid | `campaign_march.cpp`, `findPath` | no | Long legs by the World's own nav, then it is deleted |
-| Stacks (groups of up to eight squads) | `Campaign::Stack` | a squad is the skirmish's group | Stacks become the World's squad groups |
+| Hero enters a ruin, fights the guardian, takes the treasure, artifacts | `Conquest::search`, `conquest_quests.cpp`, `Continent::Site` | no | A `Site` as a World place (an object with a guardian and a prize) and an `Enter` command; the World's sites already exist as `Region` obstacles (ruin floors) |
+| Enter a castle and produce a unit | `Conquest::produce`, `CityState` options, `newDay` | no | A castle as a World object with a stock, a production queue and gold per side; a `Produce` command |
+| Hire heroes, companions | `Conquest::hire`, `Offer` | no | After production exists |
+| Capture of a town (banner over the courtyard) | `conquest_capture.cpp` | CTF has a flag, not this | The banner rule as a World rule on a castle |
+| Gold, income, upkeep, desertion | `Conquest::newDay`, `Side` | no | Economy in the World |
+| Day clock | `Conquest::kTicksPerDay`, `newDay` | no | A day as a World tick count |
+| Boats, ports, shipwrights | `conquest_sea.cpp` | no | Water as World ground a ship moves on; boats as World units that carry units |
+| Quests, temples, sages | `conquest_quests.cpp` | no | Sites as World objects |
+| Computer lords' planning | `conquest_ai.cpp` | no (Battle AI plays squads) | Their plan as a computer player of the World |
+| Territory, outposts | `conquest_territory.cpp` | no | Hexes as a World overlay |
+| Fog of war | `Conquest::canSee` | no | The same seam on the World |
+| Route planner on the coarse grid | `conquest_march.cpp`, `findPath` | no | Long legs by the World's own nav, then it is deleted |
+| Stacks (groups of up to eight squads) | `Conquest::Stack` | a squad is the skirmish's group | Stacks become the World's squad groups |
 
 Done in this step as small World rules: a gate opens to its holder's men (`World::updateGates`, usable in a
 skirmish and tested there). Not done: the rest, in the plan below.
 
-## 3. Campaign class dissolution plan
+## 3. Conquest class dissolution plan
 
-The `Campaign` class (`engine/sim/include/illyria/sim/campaign.h`, `campaign_*.cpp`, about 4,700 lines) is what is left to
+The `Conquest` class (`engine/sim/include/illyria/sim/conquest.h`, `conquest_*.cpp`, about 4,700 lines) is what is left to
 move into the World/Region/mode rules or to delete. Order is by what each step needs from the one before.
 
 | # | Step | What moves | Size | Risk | Needs |
 |---|---|---|---|---|---|
-| 1 | **One World ground for Conquest** (done as far as the men): the island is a `Region`, every man a unit, the stack steers its men | `campaign_world.cpp`, `campaign_march.cpp` body-stepping deleted | done | low | nothing |
-| 2 | **Sites and ruins as World places**: guardian, treasure, artifacts, temple blessing, sage; `Enter`/`Search` commands | `campaign_quests.cpp` (409), `campaign_rare.cpp` (178) | medium (about 600 lines, plus UI) | medium: heroes' item bookkeeping, saves | 1 |
-| 3 | **Castles produce**: stock, queue, options, gold per side, hire; `Produce`/`Hire` commands; the "day" becomes a World tick count a mode sets | `produce`, `newDay` training, `hire`, `campaign_rules.cpp` (389) | medium-large (about 700) | medium: balance, AI; economy golden tests | 1 |
-| 4 | **Capture as a World rule**: banner and flag are the same rule on a castle | `campaign_capture.cpp` (154), CTF flag | small | low | 3 |
-| 5 | **Boats**: water ground in the World, boats as units that carry units; deletes the "out of the World aboard" exception | `campaign_sea.cpp` (526) | large | high: nav on water, fliers, landing, AI | 1 |
-| 6 | **The computer lords as World players**: their planning (`runAi`, attack, defend, economy) as a player agent that issues commands, not code in the World | `campaign_ai.cpp` (749) | large | high: tuning, determinism, speed | 2, 3, 4 |
-| 7 | **Territory and hexes**: a World overlay a mode reads | `campaign_territory.cpp` (165) | small | low | 1 |
+| 1 | **One World ground for Conquest** (done as far as the men): the island is a `Region`, every man a unit, the stack steers its men | `conquest_world.cpp`, `conquest_march.cpp` body-stepping deleted | done | low | nothing |
+| 2 | **Sites and ruins as World places**: guardian, treasure, artifacts, temple blessing, sage; `Enter`/`Search` commands | `conquest_quests.cpp` (409), `conquest_rare.cpp` (178) | medium (about 600 lines, plus UI) | medium: heroes' item bookkeeping, saves | 1 |
+| 3 | **Castles produce**: stock, queue, options, gold per side, hire; `Produce`/`Hire` commands; the "day" becomes a World tick count a mode sets | `produce`, `newDay` training, `hire`, `conquest_rules.cpp` (389) | medium-large (about 700) | medium: balance, AI; economy golden tests | 1 |
+| 4 | **Capture as a World rule**: banner and flag are the same rule on a castle | `conquest_capture.cpp` (154), CTF flag | small | low | 3 |
+| 5 | **Boats**: water ground in the World, boats as units that carry units; deletes the "out of the World aboard" exception | `conquest_sea.cpp` (526) | large | high: nav on water, fliers, landing, AI | 1 |
+| 6 | **The computer lords as World players**: their planning (`runAi`, attack, defend, economy) as a player agent that issues commands, not code in the World | `conquest_ai.cpp` (749) | large | high: tuning, determinism, speed | 2, 3, 4 |
+| 7 | **Territory and hexes**: a World overlay a mode reads | `conquest_territory.cpp` (165) | small | low | 1 |
 | 8 | **Fog** on the World: the one `canSee` seam moves | `canSee` and its callers | small | low | 1 |
-| 9 | **The route planner deleted**: long legs planned by the World's nav in the window ahead of the men (the doc's "refined on the 4 m grid"), the coarse grid kept only for the lords' estimates until 6 | `campaign_march.cpp` (340), `findPath` | medium | medium: cost of long searches | 1 |
-| 10 | **Saves and orders**: a World/command-list save; `Campaign::Order` becomes the World's `Command`; delete `Campaign` | `campaign_save.cpp` (533), `Campaign::step` | medium | medium | 2 to 9 |
+| 9 | **The route planner deleted**: long legs planned by the World's nav in the window ahead of the men (the doc's "refined on the 4 m grid"), the coarse grid kept only for the lords' estimates until 6 | `conquest_march.cpp` (340), `findPath` | medium | medium: cost of long searches | 1 |
+| 10 | **Saves and orders**: a World/command-list save; `Conquest::Order` becomes the World's `Command`; delete `Conquest` | `conquest_save.cpp` (533), `Conquest::step` | medium | medium | 2 to 9 |
 
 Headline: ten steps; 1 is done; 2, 3, 4, 7, 8 are independent small-to-medium World rules that can run in parallel;
 5 and 6 are the big, risky ones; the class is deleted last. Steps 2 and 3 give the user's two examples (a hero

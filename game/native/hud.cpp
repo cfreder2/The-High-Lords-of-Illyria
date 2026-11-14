@@ -56,12 +56,12 @@ Json read(const char* text) {
 
 // Whether the game being played is stopped (a battle's clock, or the conquest's).
 static bool gamePaused() {
-    Json camp = read(illyria_campaign_state());
+    Json camp = read(illyria_conquest_state());
     if (camp.find("day")) return camp.flag("paused");
     return read(illyria_hud()).flag("paused");
 }
 static void togglePause() {
-    if (read(illyria_campaign_state()).find("day")) illyria_campaign_pause();
+    if (read(illyria_conquest_state()).find("day")) illyria_conquest_pause();
     else illyria_toggle_pause();
 }
 
@@ -89,7 +89,7 @@ bool Hud::loadSave(std::string& text) const {
 }
 
 void Hud::saveConquest() {
-    const std::string text = illyria_campaign_save();
+    const std::string text = illyria_conquest_save();
     if (text.empty() || savePath_.empty()) return;
     std::ofstream(savePath_, std::ios::binary | std::ios::trunc) << text;
 }
@@ -160,7 +160,7 @@ bool Hud::start(const std::string& mode, const std::string& options) {
     pendingMode_ = mode;
     pendingOptions_ = options;
     busyFrames_ = 2;
-    notice_ = mode == "campaign" ? "Laying out the island - every wall, gate and tree, for the fights" : "Setting out the battle";
+    notice_ = mode == "conquest" ? "Laying out the island - every wall, gate and tree, for the fights" : "Setting out the battle";
     error_.clear();
     menu_ = false;
     heldByMenu_ = false;  // (a new game starts afresh)
@@ -186,14 +186,14 @@ void Hud::activate(int row) {
     switch (row) {
         case kConquest:
             std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"player\":%d,\"enemies\":%d,\"speed\":1}", hard_ ? 1 : 0, lord_, foes_ & ~(1 << lord_) & 0xFF);
-            start("campaign", buf);
+            start("conquest", buf);
             break;
         case kFord: start("skirmish", "{\"scenario\":0}"); break;
         case kSiege: start("skirmish", "{\"scenario\":1}"); break;
         case kContinue: {
             std::string save;
             if (!loadSave(save)) break;
-            start("campaign", "{\"save\":\"" + save + "\",\"speed\":1}");
+            start("conquest", "{\"save\":\"" + save + "\",\"speed\":1}");
             break;
         }
         case kQuit: {
@@ -248,7 +248,7 @@ bool Hud::click(float x, float y) {
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
         } else if (r.what >= 1000) {
-            illyria_campaign_select(static_cast<unsigned>(r.what - 1000));
+            illyria_conquest_select(static_cast<unsigned>(r.what - 1000));
         }
         return true;
     }
@@ -287,7 +287,7 @@ float fit(const Overlay& o, const std::string& text, float size, float maxW) {
 void Hud::drawMenu(Overlay& o, float w, float h) {
     constexpr float kPad = 24, kRow = 34, kLordRow = 22;
     const float pw = std::min(580.0f, w - 20), inner = pw - 2 * kPad;
-    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: the Ford", "Skirmish: the siege", "Continue the conquest", "Quit"};
+    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: the Ford", "Skirmish: the siege", "Continue the Conquest", "Quit"};
 
     const std::string title = "THE HIGH LORDS OF ILLYRIA";
     const float titleSize = fit(o, title, 28, inner);
@@ -493,7 +493,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         return;
     }
     const Json hud = read(illyria_hud());
-    const Json camp = read(illyria_campaign_state());
+    const Json camp = read(illyria_conquest_state());
     const bool conquest = camp.find("day") != nullptr;
     char buf[256];
     std::vector<std::string> status;  // the bar's words, the fullest first; the first that fits is shown

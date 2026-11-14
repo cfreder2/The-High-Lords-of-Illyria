@@ -1,4 +1,4 @@
-// Where a man is put when the place he was given will not hold him (campaign_world.cpp's seating, world_keep.cpp's stations).
+// Where a man is put when the place he was given will not hold him (conquest_world.cpp's seating, world_keep.cpp's stations).
 #pragma once
 
 #include <algorithm>

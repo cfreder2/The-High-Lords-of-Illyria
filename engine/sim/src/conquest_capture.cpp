@@ -1,7 +1,7 @@
 // Raising a banner (docs/GAME_DESIGN.md §4.2.8): a city changes hands only by
 // being held. When the men of another side stand in it with none of the
 // town's own or any other side's near, they raise their banner over a few
-// hours of campaign time. Who stands in it is who is there: the men of an
+// hours of conquest time. Who stands in it is who is there: the men of an
 // army asleep in its courtyard, or the men of one fighting in it.
 // - every half second the banner climbs by (kBannerBase + one point an army
 //   in the town, eight at most) times the ticks since: 160 ticks for a lone
@@ -16,7 +16,7 @@
 // no new armies. Deterministic: integers, cities in index order.
 #include <algorithm>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 namespace illyria::sim {
 
@@ -29,7 +29,7 @@ int64_t toMmOf(Fixed metres) { return (metres.raw * 1000) >> Fixed::kFracBits; }
 }
 
 // How many armies of each side (the last: the neutral) have men in the town.
-int32_t Campaign::armiesInTown(int32_t city, int32_t (&in)[9]) const {
+int32_t Conquest::armiesInTown(int32_t city, int32_t (&in)[9]) const {
     for (int32_t& n : in) n = 0;
     // In the town: inside its outer wall (a walled place: the ring itself, so that nobody at the foot of the wall or
     // before the gate is in it, and a man on the far wall of a capital is), or on a village's pad and the ten metres about it.
@@ -74,7 +74,7 @@ int32_t Campaign::armiesInTown(int32_t city, int32_t (&in)[9]) const {
     return total;
 }
 
-int32_t Campaign::bannerContest(int32_t city, uint8_t raiser) const {
+int32_t Conquest::bannerContest(int32_t city, uint8_t raiser) const {
     int32_t in[9];
     armiesInTown(city, in);
     int32_t n = 0;
@@ -82,7 +82,7 @@ int32_t Campaign::bannerContest(int32_t city, uint8_t raiser) const {
     return n;
 }
 
-void Campaign::bannerStep() {
+void Conquest::bannerStep() {
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
         int32_t in[9];
@@ -108,7 +108,7 @@ void Campaign::bannerStep() {
             c.bannerProgress = 0;
             deed(c.banner, "Our banner goes up over " + name);
             if (c.owner != kNeutral) deed(c.owner, sides_[c.banner].name + " raise their banner over " + name + "!");
-            bannerAlarm(static_cast<int32_t>(i));  // its lord may send help at once (campaign_ai.cpp)
+            bannerAlarm(static_cast<int32_t>(i));  // its lord may send help at once (conquest_ai.cpp)
             continue;
         }
         const size_t raiserSide = c.banner;
@@ -133,7 +133,7 @@ void Campaign::bannerStep() {
     }
 }
 
-void Campaign::transfer(int32_t city, uint8_t side) {
+void Conquest::transfer(int32_t city, uint8_t side) {
     CityState& c = cities_[static_cast<size_t>(city)];
     const uint8_t loser = c.owner;
     const std::string& name = continent_.cities()[static_cast<size_t>(city)].name;

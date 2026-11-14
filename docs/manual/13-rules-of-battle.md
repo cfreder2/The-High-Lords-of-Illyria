@@ -191,7 +191,7 @@ So rank is worth, plainly: a little more damage, a much truer bow, a slightly be
 
 ### What a blessing gives {#blessings-in-battle}
 
-Each **blessing** of a temple, and each of a hero's artifacts that the campaign counts with them, is worth more than a rank and is the only thing that quickens a soldier's arm or thickens his skin:
+Each **blessing** of a temple, and each of a hero's artifacts that the Conquest counts with them, is worth more than a rank and is the only thing that quickens a soldier's arm or thickens his skin:
 
 | Each blessing | |
 |---|---|
@@ -223,7 +223,7 @@ Every soldier reckons his own edges, at every blow and every shot. Each is a few
 | Edge | When | Worth |
 |---|---|---|
 | **The realm's own country** | he stands on the kind of land his realm is at home on (below) | **+8%**, and he walks 15% quicker there |
-| **Home land** | he stands on land his side holds (the campaign's territory, chapter [](#territory); a set battle or a match is fought on nobody's land) | +3% |
+| **Home land** | he stands on land his side holds (the Conquest's territory, chapter [](#territory); a set battle or a match is fought on nobody's land) | +3% |
 | **Familiar ground** | his kind knows the ground under his feet: archers, spiders, wolf riders and hyena-folk in the woods; giants, minotaurs, elephants, devils and demons in mud and fords; the dead in swamp, mud and fords; grenadiers on bare rock; hyena-folk in the fens and on rock too (+4%). Or his kind's liking for level open ground: pikemen and light cavalry +3%, heavy cavalry +5%. The better of the two | at most +6% |
 | **Veterans** | his rank: regular, veteran, elite (not heroes) | +3%, +6%, +9% |
 | **A hero leads** | the best living hero of his side within 30 m (not himself), by level: 1 to 3, 4 and 5, 6 and up | +2%, +4%, +6% |

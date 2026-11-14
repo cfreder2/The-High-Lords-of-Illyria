@@ -458,7 +458,7 @@ int warlordsStrength(UnitType type) {
         case T::Journeyman: return 2;
         case T::Warrior: return 5;
         case T::Berserker: return 5;
-        case T::Catapult: return 3;  // weak in the field; +2 against a town (Campaign::battle)
+        case T::Catapult: return 3;  // weak in the field; +2 against a town (Conquest::battle)
         case T::Hyena: return 3;
         case T::Count: break;
     }

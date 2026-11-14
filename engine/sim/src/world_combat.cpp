@@ -60,7 +60,7 @@ constexpr int32_t kChargeDownhillPctPerGrade = 200, kChargeDownhillPctMax = 100;
 constexpr int32_t kChargeUphillPctPerGrade = 250, kChargeUphillPctMin = -75;
 // Veterans, per step of veterancy (a soldier's rank, a hero's level in thirds,
 // each blessing): back on their feet 15% sooner. Each blessing (the gods'
-// favour, and the artifacts the campaign counts with them; not a rank, whose
+// favour, and the artifacts the conquest counts with them; not a rank, whose
 // worth in a fight is a small edge: world_edges.cpp): blows and reloads 7%
 // quicker and 6% less damage taken. At most five steps.
 constexpr int32_t kVetQuickPct = 7, kVetRecoverPct = 15, kVetDefencePct = 6, kVetMaxSteps = 5;

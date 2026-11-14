@@ -6,7 +6,7 @@
 // join heroes from the ruins. Each that falls is gone for good.
 #include <algorithm>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/noise.h"
 
 namespace illyria::sim {
@@ -50,19 +50,19 @@ struct Guard {
     int32_t count;
 };
 constexpr Guard kTempleGuards[] = {{T::Archons, 1}, {T::Journeyman, 2}, {T::Unicorns, 1}, {T::Pegasi, 1}};
-// The allies found in ruins (Campaign::search), for sources().
+// The allies found in ruins (Conquest::search), for sources().
 constexpr UnitType kRuinAllies[] = {T::Undead, T::Wizards, T::Devils, T::Archons, T::Dragons, T::Demons};
 
-Campaign::Option levy(UnitType t, int32_t count) {
+Conquest::Option levy(UnitType t, int32_t count) {
     // Three days and five gold a point of strength to muster each army.
-    Campaign::Option o{t, 3, 5 * warlordsStrength(t)};
+    Conquest::Option o{t, 3, 5 * warlordsStrength(t)};
     o.left = count;
     return o;
 }
 
 }  // namespace
 
-bool Campaign::trainable(UnitType t) {
+bool Conquest::trainable(UnitType t) {
     switch (t) {
         case T::LightInfantry:
         case T::HeavyInfantry:
@@ -78,7 +78,7 @@ bool Campaign::trainable(UnitType t) {
     }
 }
 
-uint8_t Campaign::sources(UnitType t) {
+uint8_t Conquest::sources(UnitType t) {
     if (t == T::Hero) return kFromStart | kFromHire;
     if (trainable(t)) return 0;
     uint8_t m = 0;
@@ -96,7 +96,7 @@ uint8_t Campaign::sources(UnitType t) {
     return m;
 }
 
-UnitType Campaign::templeGuard(uint8_t bit, int32_t& count) {
+UnitType Conquest::templeGuard(uint8_t bit, int32_t& count) {
     int32_t k = 0;
     while (bit > 1) {
         bit = static_cast<uint8_t>(bit >> 1);
@@ -107,7 +107,7 @@ UnitType Campaign::templeGuard(uint8_t bit, int32_t& count) {
     return g.type;
 }
 
-void Campaign::initRare() {
+void Conquest::initRare() {
     const uint64_t sl = noise::nextSeed(continent_.seed() ^ 0x1E7F);
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& st = cities_[i];
@@ -133,7 +133,7 @@ void Campaign::initRare() {
     }
 }
 
-void Campaign::templeGift(Stack& s, SiteState& site, const std::string& where) {
+void Conquest::templeGift(Stack& s, SiteState& site, const std::string& where) {
     if (site.gifted) return;
     const Army* hero = nullptr;
     for (const Army& a : s.armies)
@@ -155,7 +155,7 @@ void Campaign::templeGift(Stack& s, SiteState& site, const std::string& where) {
     deed(s.owner, "the guard of " + where + " (" + unitTypeName(t) + ") went with " + who);
 }
 
-void Campaign::offerCompanions(Offer& o) {
+void Conquest::offerCompanions(Offer& o) {
     o.companion = UnitType::Count;
     o.companions = 0;
     if (rng_.nextBelow(3) != 0) return;
@@ -164,7 +164,7 @@ void Campaign::offerCompanions(Offer& o) {
     o.price += 50;
 }
 
-void Campaign::hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_t city) {
+void Conquest::hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_t city) {
     const CityState& c = cities_[static_cast<size_t>(city)];
     for (int32_t k = 0; k < o.companions; ++k) {
         if (home->armies.size() >= static_cast<size_t>(kMaxStack)) home = &newStack(side, c.cx, c.cy);

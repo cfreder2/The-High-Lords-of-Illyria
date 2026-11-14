@@ -1,14 +1,14 @@
-// Saved games: the campaign's whole state, written as compact bytes (varints,
+// Saved games: the conquest's whole state, written as compact bytes (varints,
 // length-prefixed strings) in base64 so a browser can keep it as text. What
 // the map decides (terrain, rivers, hexes' shape, outposts) is rebuilt by the
 // constructor from the same continent and seed; everything that changes as
-// the war goes on is written here. The save ends with the campaign's
-// checksum: a restored campaign must hash the same, or the save is refused.
+// the war goes on is written here. The save ends with the conquest's
+// checksum: a restored conquest must hash the same, or the save is refused.
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/hash.h"
 
 namespace illyria::sim {
@@ -18,7 +18,7 @@ namespace {
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
 constexpr const char* kMagic = "ILC8.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Campaign::Setup)
+constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
 
 class Writer {
 public:
@@ -265,7 +265,7 @@ uint64_t sealOf(const std::vector<uint8_t>& bytes) {
 }
 
 // What the map is: a save is for this continent only.
-uint64_t mapPrint(const Campaign& c) {
+uint64_t mapPrint(const Conquest& c) {
     StateHasher h;
     h.addI64(c.width());
     h.addI64(c.height());
@@ -275,7 +275,7 @@ uint64_t mapPrint(const Campaign& c) {
     h.addU64(c.sides().size());
     for (int32_t y = 0; y < c.height(); y += 7)
         for (int32_t x = 0; x < c.width(); x += 7) h.addU64(static_cast<uint64_t>(c.terrainAt(x, y)) | (c.navigable(x, y) ? 0x100u : 0u));
-    for (const Campaign::CityState& s : c.cities()) {
+    for (const Conquest::CityState& s : c.cities()) {
         h.addI64(s.cx);
         h.addI64(s.cy);
     }
@@ -284,7 +284,7 @@ uint64_t mapPrint(const Campaign& c) {
 
 }  // namespace
 
-std::string Campaign::save() {
+std::string Conquest::save() {
     reseatAll();  // nothing of a moment is kept (arrows in the air, cooldowns): the men are saved where they stand
     Writer w;
     w.u(kFormat);
@@ -435,16 +435,16 @@ std::string Campaign::save() {
     return kMagic + toBase64(bytes);
 }
 
-std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::string& text, std::string* error) {
+std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::string& text, std::string* error) {
     const auto fail = [&](const char* why) {
         if (error) *error = why;
-        return std::unique_ptr<Campaign>();
+        return std::unique_ptr<Conquest>();
     };
     const std::string magic = kMagic;
     std::vector<uint8_t> bytes;
-    // An older layout ("ILC2." before the men were on the land) is a campaign all the same: say so.
+    // An older layout ("ILC2." before the men were on the land) is a conquest all the same: say so.
     if (text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
-    if (text.compare(0, magic.size(), magic) != 0 || !fromBase64(text, magic.size(), bytes)) return fail("not a saved campaign");
+    if (text.compare(0, magic.size(), magic) != 0 || !fromBase64(text, magic.size(), bytes)) return fail("not a saved conquest");
     if (bytes.size() < 8) return fail("damaged (cut short)");
     uint64_t seal = 0;
     for (int k = 0; k < 8; ++k) seal |= static_cast<uint64_t>(bytes[bytes.size() - 8 + static_cast<size_t>(k)]) << (8 * k);
@@ -453,11 +453,11 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     Reader r(std::move(bytes));
     if (r.u() != kFormat) return fail("saved by another version of the game");
     const uint64_t seed = r.u();
-    Campaign::Setup setup;
+    Conquest::Setup setup;
     setup.player = static_cast<uint8_t>(r.u());
     setup.enemies = static_cast<uint8_t>(r.u());
     if (setup.player >= 8) return fail("damaged (players)");
-    auto c = std::make_unique<Campaign>(continent, seed, setup);
+    auto c = std::make_unique<Conquest>(continent, seed, setup);
     if (r.u() != mapPrint(*c)) return fail("saved on another map of Illyria (an older version of the game)");
     c->tick_ = r.u32();
     c->nextId_ = r.u32();
@@ -564,7 +564,7 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
         o.price = r.i32();
         o.name = r.str();
         o.companion = r.type(true);
-        if (static_cast<uint64_t>(o.companion) == kNoCompanionCode) o.companion = UnitType::Count;  // none (Campaign::kNoCompanionCode)
+        if (static_cast<uint64_t>(o.companion) == kNoCompanionCode) o.companion = UnitType::Count;  // none (Conquest::kNoCompanionCode)
         o.companions = r.i32();
     }
     if (r.count() != c->artifactFound_.size()) return fail("damaged (artifacts)");
@@ -594,7 +594,7 @@ std::unique_ptr<Campaign> Campaign::load(const Continent& continent, const std::
     }
     const uint64_t sum = r.u();
     if (!r.ok() || !r.done()) return fail("damaged (cut short)");
-    c->freshWorld();  // as the game that saved it left its world (Campaign::reseatAll)
+    c->freshWorld();  // as the game that saved it left its world (Conquest::reseatAll)
     if (sum != c->checksum()) return fail("damaged (its checksum does not match)");
     return c;
 }

@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <set>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/world.h"
 #include "test.h"
@@ -22,18 +22,18 @@ const Continent& continent() {
 
 // The side's capital, and the stack that stands in it.
 struct Seat {
-    Campaign c;
+    Conquest c;
     int32_t town = -1;
-    const Campaign::Stack* stack = nullptr;
+    const Conquest::Stack* stack = nullptr;
     size_t gate = World::kNoGate;
 };
 Seat seatOf(uint8_t player) {
-    Seat s{Campaign(continent(), 5, Campaign::Setup{player, 0xFF}), -1, nullptr, World::kNoGate};
+    Seat s{Conquest(continent(), 5, Conquest::Setup{player, 0xFF}), -1, nullptr, World::kNoGate};
     s.c.setHuman(0, true);
     s.c.prepareWorld();
     for (size_t i = 0; i < s.c.cities().size(); ++i)
         if (s.c.cities()[i].owner == 0 && continent().cities()[i].capital) s.town = static_cast<int32_t>(i);
-    for (const Campaign::Stack& st : s.c.stacks())
+    for (const Conquest::Stack& st : s.c.stacks())
         if (st.owner == 0 && s.c.cityAt(st.cx, st.cy) == s.town && st.path.empty()) s.stack = &st;
     const World& w = *s.c.world();
     s.gate = w.gateOfTown(continent().cities()[static_cast<size_t>(s.town)].pos - w.region()->origin());

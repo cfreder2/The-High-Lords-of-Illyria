@@ -1,4 +1,4 @@
-// The title screen and the menu's pages: the campaign's three save slots,
+// The title screen and the menu's pages: the Conquest's three save slots,
 // skirmishes, settings (graphics, sound, gameplay, controls), the controls
 // reference and the credits. Modes start through IllyriaGame.startMode (the
 // page's script in index.html), which calls the engine's one entry for every
@@ -23,13 +23,13 @@
   const savePrefs = () => store.set(prefKey, JSON.stringify(prefs));
 
   // ---- Save slots ----
-  // A slot holds the engine's saved campaign (Campaign::save, a few tens of
+  // A slot holds the engine's saved conquest (Conquest::save, a few tens of
   // kilobytes of text) and what the slot shows: the day, gold, cities, lords.
   const kSlots = 3;
   const slotKey = (k) => `illyria.save.${k}`;
-  let slot = 0;           // the slot the campaign being played saves into (0: none yet)
+  let slot = 0;           // the slot the Conquest being played saves into (0: none yet)
   let savedDay = -1;      // the last day saved, so each dawn saves once
-  let lastState = null;   // the campaign's last state, for saving from inside its 3D battle
+  let lastState = null;   // the Conquest's last state, for saving from inside its 3D battle
   function readSlot(k) {
     const text = store.get(slotKey(k));
     if (!text) return null;
@@ -49,9 +49,9 @@
   function snapshot() {
     const a = api();
     if (!a) return null;
-    const text = a.campSave();
+    const text = a.conqSave();
     if (!text) return null;
-    const st = (game().campState && game().campState()) || lastState || {};
+    const st = (game().conqState && game().conqState()) || lastState || {};
     return { v: 1, version, game: text, day: st.day || 0, gold: st.gold || 0, cities: st.cities || 0, hard: !!st.hard, saved: Date.now() };
   }
   function saveTo(k, quiet) {
@@ -71,20 +71,20 @@
     if (!slot || (!force && !prefs.autosave)) return;
     saveTo(slot, true);
   }
-  function campaignTick(st) {
+  function conquestTick(st) {
     lastState = st;
     if (!st || typeof st.day !== "number") return;
     if (savedDay < 0) savedDay = st.day;
     if (st.day > savedDay && !st.winner) autosave(false);
   }
-  function startCampaign(k, hard, player, enemies) {
+  function startConquest(k, hard, player, enemies) {
     // The island's ground (every wall, gate and tree, for the fights) is made now, once, a few seconds:
     // let the page draw the notice first.
     busy("Laying out the island", "Every wall, gate and tree, for the fights");
     setTimeout(() => {
-      const ok = game().startMode("campaign", { hard: hard ? 1 : 0, player, enemies, speed: prefs.speed });
+      const ok = game().startMode("conquest", { hard: hard ? 1 : 0, player, enemies, speed: prefs.speed });
       unbusy();
-      if (!ok) return failed("campaign");
+      if (!ok) return failed("conquest");
       slot = k;
       savedDay = -1;
       lastState = null;
@@ -98,7 +98,7 @@
     busy("Marching the armies back", `Slot ${k} · day ${d.day}`);
     // Let the page draw the notice before the engine reads the save.
     setTimeout(() => {
-      const ok = game().startMode("campaign", { save: d.game, speed: prefs.speed });
+      const ok = game().startMode("conquest", { save: d.game, speed: prefs.speed });
       unbusy();
       if (!ok) {
         notice("This save cannot be read", (api() && api().modeError()) || "It may be from an older version of the game.");
@@ -144,7 +144,7 @@
   const unbusy = () => $("busy").classList.add("hidden");
 
   // ---- Pages ----
-  const pages = { campaign: $("campaignScreen"), skirmish: $("skirmishScreen"), settings: $("settingsScreen"),
+  const pages = { conquest: $("conquestScreen"), skirmish: $("skirmishScreen"), settings: $("settingsScreen"),
                   controls: $("controlsScreen"), credits: $("creditsScreen") };
   const open = [];  // the pages open, the top one last
   function openPage(name, arg) {
@@ -205,7 +205,7 @@
     const k = latestSlot(), d = k ? readSlot(k) : null;
     let html = "";
     if (d) html += `<button class="big primary" data-act="continue"><span>Continue</span><small>Day ${d.day} · ${d.cities} ${d.cities === 1 ? "city" : "cities"} · ${lordsName(d.hard)}</small></button>`;
-    html += `<button class="big${d ? "" : " primary"}" data-act="campaign"><span>Campaign</span><small>${d ? "New game · load" : "The war for all Illyria"}</small></button>`;
+    html += `<button class="big${d ? "" : " primary"}" data-act="conquest"><span>Conquest</span><small>${d ? "New game · load" : "The war for all Illyria"}</small></button>`;
     html += `<button class="big" data-act="skirmish"><span>Skirmish</span><small>Oakhaven Ford · a siege</small></button>`;
     for (const m of extraModes) {
       html += `<button class="big" data-mode="${m.id}"><span>${m.name}</span>${available(m.id) ? "<small>New</small>" : '<span class="soon">soon</span>'}</button>`;
@@ -242,15 +242,15 @@
   const when = (ms) => {
     try { return new Date(ms).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
   };
-  // The campaign: three slots, each a war of its own. saving: the ☰ menu's Save, choosing where.
-  render.campaign = (el, saving) => {
+  // The conquest: three slots, each a war of its own. saving: the ☰ menu's Save, choosing where.
+  render.conquest = (el, saving) => {
     const body = el.querySelector(".body");
-    el.querySelector("h2").textContent = saving ? "Save the campaign" : "Campaign";
-    let html = `<p class="lead">${saving ? "Choose a slot for this campaign. It saves there every dawn from now on." :
+    el.querySelector("h2").textContent = saving ? "Save the Conquest" : "Conquest";
+    let html = `<p class="lead">${saving ? "Choose a slot for this Conquest. It saves there every dawn from now on." :
       "Eight lords, eighty cities, one continent. Each slot keeps a war of its own, saved every dawn in this browser."}</p>`;
     for (let k = 1; k <= kSlots; k++) {
       const d = readSlot(k);
-      const playing = k === slot && game().inCampaign();
+      const playing = k === slot && game().inConquest();
       if (!d) {
         html += `<div class="slot panel empty"><span class="name">Slot ${k}</span><span class="when"></span><div class="facts">Empty</div>` +
           `<div class="acts">${saving ? `<button class="go" data-save="${k}">Save here</button>` : `<button class="go" data-new="${k}">New game</button>`}</div></div>`;
@@ -272,17 +272,17 @@
       b.onclick = () => {
         const k = +b.dataset.save, d = readSlot(k);
         const go = () => { if (saveTo(k, false)) back(); };
-        if (d && !d.bad) confirm(`Save over slot ${k}?`, `Day ${d.day} of that campaign will be lost.`, "Save over it", go);
+        if (d && !d.bad) confirm(`Save over slot ${k}?`, `Day ${d.day} of that Conquest will be lost.`, "Save over it", go);
         else go();
       };
     });
     body.querySelectorAll("[data-del]").forEach((b) => {
       b.onclick = () => {
         const k = +b.dataset.del;
-        confirm(`Delete slot ${k}?`, "That campaign is gone for good.", "Delete", () => {
+        confirm(`Delete slot ${k}?`, "That conquest is gone for good.", "Delete", () => {
           store.remove(slotKey(k));
           if (slot === k) slot = 0;
-          render.campaign(el, saving);
+          render.conquest(el, saving);
           if (document.body.classList.contains("at-title")) renderTitle();
         });
       };
@@ -291,7 +291,7 @@
       b.onclick = () => {
         const k = +b.dataset.new, d = readSlot(k);
         const go = () => chooseLords(body, k);
-        if (d && !d.bad) confirm(`Start over in slot ${k}?`, `Day ${d.day} of the campaign there will be lost.`, "New game", go);
+        if (d && !d.bad) confirm(`Start over in slot ${k}?`, `Day ${d.day} of the Conquest there will be lost.`, "New game", go);
         else go();
       };
     });
@@ -307,7 +307,7 @@
     { name: "The Moonward Order", hero: "Moonhaven", note: "archers and pikes" },
     { name: "Lord Malvoren", hero: "Dreadspire", note: "foot, wolves and engines" },
   ];
-  // A new campaign: who you are, which of the other lords are in the war (any, from none to all; every lord left
+  // A new conquest: who you are, which of the other lords are in the war (any, from none to all; every lord left
   // out is not in the game, its towns plain neutral places), and how well those that are play.
   function chooseLords(body, k) {
     let hard = prefs.difficulty ? 1 : 0;
@@ -349,7 +349,7 @@
     const colourSlot = body.querySelector("[data-colour]");
     const picker = window.IllyriaPalette ? IllyriaPalette.picker(colourSlot, player, null, lords.map((l) => l.name)) : null;
     body.querySelectorAll("[data-player]").forEach((b) => { const was = b.onclick; b.onclick = () => { was(); if (picker) picker.faction = player; }; });
-    body.querySelector("[data-start]").onclick = () => startCampaign(k, hard, player, enemies & ~(1 << player));
+    body.querySelector("[data-start]").onclick = () => startConquest(k, hard, player, enemies & ~(1 << player));
     focusFirst(body.parentElement);
   }
   render.skirmish = (el) => {
@@ -397,7 +397,7 @@
     prefs.speed = +e.target.value;
     savePrefs();
     const a = api();
-    if (a && game().inCampaign()) a.campSetSpeed(prefs.speed);
+    if (a && game().inConquest()) a.conqSetSpeed(prefs.speed);
   };
   $("optDifficulty").onchange = (e) => { prefs.difficulty = +e.target.value; savePrefs(); };
   $("optAutosave").onchange = (e) => { prefs.autosave = e.target.checked; savePrefs(); };
@@ -462,12 +462,12 @@
     row("card", "+ New group", "Appears when the selection is not already a card: one tap makes it a group, with its own card and number. Only the heroes and the groups you make have cards.") +
     row("longcard", "Hold a group card", "Puts the current selection in that group, or forgets the group when it is the selection.") +
     `<h3>Along the top</h3>` +
-    `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting (on the campaign map too).</td></tr>` +
-    `<tr><td>Pause · 1×</td><td>Stop the battle (or the campaign's days); how fast time passes. Tap for 2× and 4× (the campaign's days up to 8×); hold it in a battle for slow motion, ½×, and hold again for ¼×.</td></tr>` +
+    `<table class="keys"><tr><td>Charge</td><td>Every squad at the nearest enemy.</td></tr><tr><td>Fight!</td><td>The camera to the fiercest fighting (on the Conquest map too).</td></tr>` +
+    `<tr><td>Pause · 1×</td><td>Stop the battle (or the Conquest's days); how fast time passes. Tap for 2× and 4× (the Conquest's days up to 8×); hold it in a battle for slow motion, ½×, and hold again for ¼×.</td></tr>` +
     `<tr><td>☰</td><td>Restart, Save, Settings, Controls, the Manual, Main menu.</td></tr></table>` +
-    campaignHtml();
-  const campaignHtml = () =>
-    `<h3>On the campaign map</h3>` +
+    conquestHtml();
+  const conquestHtml = () =>
+    `<h3>On the Conquest map</h3>` +
     row("banner", "Tap your soldiers, or box them", "Selects that stack (hold and drag, or shift and drag, a box round them); its armies show as cards. Then tap the ground to march, enemy soldiers or a town to attack. The minimap at the top right takes the camera anywhere.") +
     row("city", "Tap one of your towns' squares", "Its panel: what it trains, where new armies go, its walls, its boats. It stays until you select something else.") +
     `<table class="keys"><tr><td>Fight!</td><td>Armies that meet fight where they stand, on the map, with the same rules as any battle: there is nothing to choose and no dice. This takes the camera to the fiercest fighting; zoom in on it to see the men, and out to see every man as a dot that flashes while he fights.</td></tr>` +
@@ -523,7 +523,7 @@
     `<h3>Menus</h3>` +
     `<table class="keys"><tr><td>${k("↑")}${k("↓")}${k("←")}${k("→")}</td><td>Move between buttons.</td></tr>` +
     `<tr><td>${k("Enter")}</td><td>Choose.</td></tr><tr><td>${k("Esc")}</td><td>Back.</td></tr></table>` +
-    campaignHtml().replace(/Tap/g, "Click").replace(/tap/g, "click");
+    conquestHtml().replace(/Tap/g, "Click").replace(/tap/g, "click");
   let controlsView = matchMedia("(pointer: coarse)").matches ? "phone" : "desktop";
   function renderControls(root) {
     root.innerHTML = `<div class="tabs"><button data-v="phone">Phone and tablet</button><button data-v="desktop">Mouse and keys</button></div>` +
@@ -538,13 +538,13 @@
   render.credits = (el) => {
     el.querySelector(".body").innerHTML =
       `<p class="lead">The High Lords of Illyria, version ${esc(version)}.</p>` +
-      `<p>Real-time battles in the spirit of <i>Myth: The Fallen Lords</i> (Bungie, 1997), on a campaign continent after <i>Warlords</i> (SSG, 1990): ` +
+      `<p>Real-time battles in the spirit of <i>Myth: The Fallen Lords</i> (Bungie, 1997), on a Conquest continent after <i>Warlords</i> (SSG, 1990): ` +
       `every soldier simulated, every army named, every dead man left where he fell.</p>` +
       `<p>A custom C++ engine compiled to WebAssembly, drawn with WebGL 2. The simulation is deterministic: the same orders always give the same war, ` +
       `on a phone or a desktop, on any graphics setting.</p>` +
       `<h3>Links</h3><p><a href="https://github.com/cfreder2/The-High-Lords-of-Illyria" target="_blank" rel="noopener">The source and the design document ›</a><br>` +
       `<a href="sfx-test.html" target="_blank" rel="noopener">The sound test page ›</a></p>` +
-      `<h3>Your saves</h3><p class="note">Three campaign slots and your settings live in this browser only (local storage). Private windows forget them.</p>`;
+      `<h3>Your saves</h3><p class="note">Three Conquest slots and your settings live in this browser only (local storage). Private windows forget them.</p>`;
   };
 
   // ---- Keys: arrows move between the buttons in view, Enter chooses, Esc goes back ----
@@ -585,11 +585,11 @@
     notice,
     manual,
     autosave,
-    campaignTick,
-    // The ☰ menu's Save: into this campaign's slot, or choose one.
+    conquestTick,
+    // The ☰ menu's Save: into this Conquest's slot, or choose one.
     saveNow() {
       if (slot) saveTo(slot, false);
-      else openPage("campaign", true);
+      else openPage("conquest", true);
     },
     pref: (name) => prefs[name],
     slot: () => slot,

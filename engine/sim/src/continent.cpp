@@ -5,7 +5,7 @@
 #include <cstdint>
 
 #include "continent_shapes.h"
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/hash.h"
 #include "illyria/sim/noise.h"
 
@@ -413,7 +413,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     crossings_.push_back({Crossing::Kind::Footbridge, "Hangman's Span", N(240, 451)});
 
     // Roads join the realms through the crossings and passes (and keep off
-    // the lakes' wandering shores: half a campaign cell clear).
+    // the lakes' wandering shores: half a conquest cell clear).
     const Fixed roadHalf = m(3);
     roads_.push_back({{N(80, 560), N(200, 555), N(330, 540), N(450, 530), N(576, 520), N(680, 515), N(790, 540), N(860, 600), N(905, 640), N(1000, 650)}, roadHalf});
     roads_.push_back({{N(300, 760), N(360, 750), N(420, 735), N(500, 700), N(582, 680), N(700, 690), N(760, 690)}, roadHalf});
@@ -1788,12 +1788,12 @@ void Continent::placeCities() {
         if (!crossings_[i].name.empty()) narrows.push_back(crossings_[i].pos);
     const size_t firstPass = narrows.size();
     for (const Vec3& p : passes_) narrows.push_back(p);
-    // How far each site is from each lord's seat on foot, as the campaign reckons it (Campaign::initTerrain): over its
+    // How far each site is from each lord's seat on foot, as the conquest reckons it (Conquest::initTerrain): over its
     // cells, never through the sea, a lake or the high rock, and over a river only at a crossing of the design (the
     // bridges the towns' own roads will need are not built yet). A site no lord can walk to is reckoned as the crow
     // flies and half as far again. A site is in a lord's country when he is the nearest to it, or nearly so (within
     // kSharedPct percent and a field's breadth of the nearest): the marches between two realms belong to both.
-    constexpr int64_t cell = Campaign::kCell;
+    constexpr int64_t cell = Conquest::kCell;
     const int32_t gx = static_cast<int32_t>(kWidth / cell), gy = static_cast<int32_t>(kHeight / cell);
     std::vector<std::vector<int32_t>> steps(kFactionCount, std::vector<int32_t>(static_cast<size_t>(gx) * gy, -1));
     {
@@ -2002,10 +2002,10 @@ std::vector<Vec3> Continent::isleWalk() const {
 }
 
 std::vector<uint8_t> Continent::walkableCells() const {
-    // As Campaign::initTerrain has them: water (but a bridge, or land along
+    // As Conquest::initTerrain has them: water (but a bridge, or land along
     // an isle's middle) and mountain are closed to walkers. Rivers are left
     // open between cells: they are crossed at the fords and bridges.
-    constexpr int64_t cell = Campaign::kCell;
+    constexpr int64_t cell = Conquest::kCell;
     const int32_t nx = static_cast<int32_t>(kWidth / cell), ny = static_cast<int32_t>(kHeight / cell);
     std::vector<uint8_t> open(static_cast<size_t>(nx) * ny, 0), reached(open.size(), 0);
     for (int32_t y = 0; y < ny; ++y)
@@ -2042,12 +2042,12 @@ std::vector<uint8_t> Continent::walkableCells() const {
 void Continent::placeSites() {
     const uint64_t sj = noise::nextSeed(seed_ ^ 0x5173);
     // Every site is reached on foot (a hero walks with his stack): on a
-    // campaign cell joined to the towns by open ground, the mountains' by
+    // conquest cell joined to the towns by open ground, the mountains' by
     // their passes.
     const std::vector<uint8_t> walkable = walkableCells();
     const auto onFoot = [&](Fixed x, Fixed y) {
-        const int64_t cx = x.floorToInt() / Campaign::kCell, cy = y.floorToInt() / Campaign::kCell, nx = kWidth / Campaign::kCell;
-        return cx >= 0 && cy >= 0 && cx < nx && cy < kHeight / Campaign::kCell && walkable[static_cast<size_t>(cy * nx + cx)] != 0;
+        const int64_t cx = x.floorToInt() / Conquest::kCell, cy = y.floorToInt() / Conquest::kCell, nx = kWidth / Conquest::kCell;
+        return cx >= 0 && cy >= 0 && cx < nx && cy < kHeight / Conquest::kCell && walkable[static_cast<size_t>(cy * nx + cx)] != 0;
     };
     const auto farFrom = [&](const Vec3& p, Fixed fromCities, Fixed fromSites) {
         for (const City& c : cities_)

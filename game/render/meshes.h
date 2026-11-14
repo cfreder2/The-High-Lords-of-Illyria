@@ -66,7 +66,7 @@ Mesh gate(bool broken);
 Mesh gateLeaf(bool right);
 Mesh banner();
 // The banner in two, for a flag that can rise and fall (a capture point, a
-// match's flags, the banners rising over the campaign's towns): its pole (as
+// match's flags, the banners rising over the conquest's towns): its pole (as
 // banner's, z from 0 to 1) and its cloth (as banner's, flying along +x from
 // x = 0.012 to 0.52 and hanging from its top edge at z = 0 to
 // -kBannerClothDrop). Scale both alike: the cloth is 0.508 long to the scale.
@@ -78,7 +78,7 @@ Mesh temple();
 Mesh sageTower();
 // A fallen trunk along x from -1 to 1, radius 1 (scale: half length, girth, girth).
 Mesh log();
-// A campaign boat: a timber hull along x from -1 (stern) to 1 (bow), beam
+// A conquest boat: a timber hull along x from -1 (stern) to 1 (bow), beam
 // about 0.5, the waterline at z = 0, a mast to z = 1.5. The sail is its own
 // mesh in white, to tint with the side's colour; same unit space.
 Mesh ship();

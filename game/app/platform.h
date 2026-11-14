@@ -51,7 +51,7 @@ void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience);
 // The plunge in (entering) and the surfacing out, once each, as the eye crosses the surface.
 void sfxUnderwaterCue(bool entering);
 
-// The campaign minimap's land (RGBA, rows from the north) for the page's canvas; a match begun, for the page's HUD.
+// The conquest minimap's land (RGBA, rows from the north) for the page's canvas; a match begun, for the page's HUD.
 void minimapLand(const uint8_t* rgba, int w, int h);
 void modeStarted(const char* id);
 

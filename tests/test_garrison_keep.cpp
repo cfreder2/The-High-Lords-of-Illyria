@@ -1,4 +1,4 @@
-// A garrison at its stations (engine/sim/src/world_keep.cpp, keepGates) in a capital of the campaign: the player's idle men take
+// A garrison at its stations (engine/sim/src/world_keep.cpp, keepGates) in a capital of the conquest: the player's idle men take
 // their fighting stations when a foe comes near, as a computer lord's do; a man with an order of his own is never pulled to a post
 // (released when ordered, a garrison man again when he is idle); the lord keeps his place behind the foot; and the player's gate
 // is still his hand's: his men bound through it go through.
@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <vector>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/world.h"
 #include "test.h"
@@ -22,13 +22,13 @@ constexpr int kTps = static_cast<int>(kTicksPerSecond);
 
 // A capital of `side` (side 0 is the player's, human; the others are computer lords), the stack that stands in it.
 struct Case {
-    Campaign c;
+    Conquest c;
     int32_t town = -1;
     size_t gate = World::kNoGate;
     std::vector<EntityId> ids;
     Vec3 mid, out;
     World* w = nullptr;
-    explicit Case(uint8_t side) : c(continent(), 5, Campaign::Setup{0, 0xFF}) {
+    explicit Case(uint8_t side) : c(continent(), 5, Conquest::Setup{0, 0xFF}) {
         c.setHuman(0, true);
         c.prepareWorld();
         for (size_t i = 0; i < c.cities().size(); ++i)
@@ -38,7 +38,7 @@ struct Case {
         const Gate& g = w->region()->gates()[gate];
         mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
         out = g.out;
-        for (const Campaign::Stack& st : c.stacks())
+        for (const Conquest::Stack& st : c.stacks())
             if (st.owner == side && c.cityAt(st.cx, st.cy) == town && st.path.empty())
                 for (const Army& a : st.armies)
                     for (const Man& m : a.men)

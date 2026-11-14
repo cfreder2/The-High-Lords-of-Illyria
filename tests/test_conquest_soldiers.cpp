@@ -1,5 +1,5 @@
-// The campaign's soldiers on the land (engine/sim/src/campaign_world.cpp, docs/ONE_WORLD.md): a man for every soldier of
-// every stack, placed from the campaign's state alone, along the stack's route and in
+// The conquest's soldiers on the land (engine/sim/src/conquest_world.cpp, docs/ONE_WORLD.md): a man for every soldier of
+// every stack, placed from the conquest's state alone, along the stack's route and in
 // its town's courtyard, and none of it written back into the simulation.
 #include <cmath>
 #include <cstdio>
@@ -7,8 +7,8 @@
 #include <set>
 
 #include "illyria/game/battle.h"
-#include "illyria/sim/campaign.h"
-#include "campaign_orders.h"
+#include "illyria/sim/conquest.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -19,26 +19,26 @@ const Continent& continent() {
     return c;
 }
 
-// A campaign a few days old, the computer lords' stacks out on the march.
-Campaign started(uint64_t seed, int days) {
-    Campaign c(continent(), seed);
+// A conquest a few days old, the computer lords' stacks out on the march.
+Conquest started(uint64_t seed, int days) {
+    Conquest c(continent(), seed);
     c.setHuman(0, true);
-    for (int t = 0; t < days * Campaign::kTicksPerDay; ++t) c.step();
+    for (int t = 0; t < days * Conquest::kTicksPerDay; ++t) c.step();
     return c;
 }
 }  // namespace
 
 TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_is) {
-    Campaign c = started(7, 3);
-    std::vector<Campaign::Soldier> men;
+    Conquest c = started(7, 3);
+    std::vector<Conquest::Soldier> men;
     c.soldiers(static_cast<int32_t>(0), men);
     size_t want = 0;
-    for (const Campaign::Stack& s : c.stacks())
+    for (const Conquest::Stack& s : c.stacks())
         if (!s.boat)
             for (const Army& a : s.armies) want += static_cast<size_t>(a.soldiers);
     size_t alive = 0;
     std::set<uint32_t> ids;
-    for (const Campaign::Soldier& m : men) {
+    for (const Conquest::Soldier& m : men) {
         alive += m.alive;
         CHECK(ids.insert(m.id).second);  // each man once
     }
@@ -49,19 +49,19 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
     std::map<uint32_t, std::pair<double, double>> middle;
     std::map<uint32_t, int> count;
     std::set<uint32_t> bloodied;  // stacks that have lost a man: a survivor may be catching up on the march
-    for (const Campaign::Soldier& m : men)
+    for (const Conquest::Soldier& m : men)
         if (!m.alive) bloodied.insert(m.stack);
-    for (const Campaign::Soldier& m : men) {
+    for (const Conquest::Soldier& m : men) {
         if (!m.alive) continue;
         middle[m.stack].first += m.x, middle[m.stack].second += m.y, ++count[m.stack];
     }
     // (But a stack that has fought: its broken men run, and a village's levy has no wall to run behind.)
     std::set<uint32_t> fought;
-    for (const Campaign::Soldier& m : men)
+    for (const Conquest::Soldier& m : men)
         if (m.fightTick != 0 || m.hurtTick != 0) fought.insert(m.stack);
-    for (const Campaign::Soldier& m : men) {
+    for (const Conquest::Soldier& m : men) {
         if (!m.alive) continue;
-        const Campaign::Stack* st = c.findStack(m.stack);
+        const Conquest::Stack* st = c.findStack(m.stack);
         CHECK(st != nullptr);
         if (!st) continue;
         CHECK(m.owner == st->owner);
@@ -72,14 +72,14 @@ TEST(every_living_soldier_of_every_stack_on_land_is_drawn_once_where_his_stack_i
     }
 }
 
-TEST(laying_out_the_soldiers_changes_nothing_in_the_campaign) {
-    Campaign c = started(11, 2);
+TEST(laying_out_the_soldiers_changes_nothing_in_the_conquest) {
+    Conquest c = started(11, 2);
     const uint64_t before = c.checksum();
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     for (int k = 0; k < 5; ++k) c.soldiers(static_cast<int32_t>(50.0 * k), men);
     CHECK(c.checksum() == before);
-    // Nor does it depend on anything but the campaign: a man's place is the same on every call.
-    std::vector<Campaign::Soldier> again;
+    // Nor does it depend on anything but the conquest: a man's place is the same on every call.
+    std::vector<Conquest::Soldier> again;
     c.soldiers(static_cast<int32_t>(25.0), men);
     c.soldiers(static_cast<int32_t>(25.0), again);
     CHECK(men.size() == again.size());
@@ -87,36 +87,36 @@ TEST(laying_out_the_soldiers_changes_nothing_in_the_campaign) {
 }
 
 TEST(a_stack_in_a_town_stands_in_its_courtyard_and_a_marching_one_between_its_ends) {
-    Campaign c = started(13, 3);
+    Conquest c = started(13, 3);
     int garrisons = 0, marching = 0, garrisonMen = 0, walking = 0;
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     c.soldiers(static_cast<int32_t>(0), men);
-    for (const Campaign::Stack& s : c.stacks()) {
+    for (const Conquest::Stack& s : c.stacks()) {
         if (s.armies.empty() || s.boat) continue;
         double sx = 0, sy = 0;
         int n = 0;
-        for (const Campaign::Soldier& m : men)
+        for (const Conquest::Soldier& m : men)
             if (m.stack == s.id) sx += m.x, sy += m.y, ++n;
         if (n == 0) continue;
         sx /= n, sy /= n;
         const int32_t town = c.cityAt(s.cx, s.cy);
         bool fought = false;  // (a stack whose men are in a fight, or have been, follows it out of the courtyard: it is the rest that stands)
-        for (const Campaign::Soldier& m : men) fought = fought || (m.stack == s.id && m.fightTick != 0);
+        for (const Conquest::Soldier& m : men) fought = fought || (m.stack == s.id && m.fightTick != 0);
         if (s.path.empty() && town >= 0 && !fought) {
             const Continent::Castle& k = c.continent().cities()[static_cast<size_t>(town)].castle;
             // (a block of squads round the courtyard's middle; several stacks stand side by side)
             CHECK(std::hypot(sx - k.courtyard.x.toDouble(), sy - k.courtyard.y.toDouble()) < 40.0);
-            for (const Campaign::Soldier& m : men)
+            for (const Conquest::Soldier& m : men)
                 if (m.stack == s.id) ++garrisonMen, walking += m.speed >= 0.5f;  // (standing: a few shuffle into their places)
             ++garrisons;
         }
-        if (!s.path.empty() && c.legTime(s) != Campaign::kClosed) {
+        if (!s.path.empty() && c.legTime(s) != Conquest::kClosed) {
             float speed = 0;
             // (The stack's pace is its men's, but for one: a man struck in the last few seconds may be flying from the
             // blow, and one set in his place this very tick, as the day turns and the lords order their stacks anew,
             // is there at once. So the second quickest.)
             float second = 0;
-            for (const Campaign::Soldier& m : men) {
+            for (const Conquest::Soldier& m : men) {
                 if (m.stack != s.id || (m.hurtTick != 0 && c.tick() - m.hurtTick <= 90)) continue;
                 if (m.speed > speed) second = speed, speed = m.speed;
                 else second = std::max(second, m.speed);
@@ -177,13 +177,13 @@ bool insideOuter(const Continent::Castle& k, double x, double y) {
 TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
     int men = 0, towns = 0, bad = 0;
     for (uint8_t player = 0; player < 8; ++player) {
-        Campaign c(continent(), 5, Campaign::Setup{player, 0xFF});
+        Conquest c(continent(), 5, Conquest::Setup{player, 0xFF});
         c.setHuman(0, true);
         c.prepareWorld();
-        std::vector<Campaign::Soldier> all;
+        std::vector<Conquest::Soldier> all;
         c.soldiers(0, all);
-        for (const Campaign::Soldier& m : all) {
-            const Campaign::Stack* s = c.findStack(m.stack);
+        for (const Conquest::Soldier& m : all) {
+            const Conquest::Stack* s = c.findStack(m.stack);
             const int32_t town = s ? c.cityAt(s->cx, s->cy) : -1;
             if (!s || !s->path.empty() || town < 0) continue;
             const Continent::City& city = c.continent().cities()[static_cast<size_t>(town)];
@@ -193,7 +193,7 @@ TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
             const bool wrong = onBuilding(city.castle, m.x, m.y) || !insideOuter(city.castle, m.x, m.y);
             if (wrong) ++bad;
             int here = 0;
-            for (const Campaign::Stack& o : c.stacks()) here += o.path.empty() && o.cx == s->cx && o.cy == s->cy;
+            for (const Conquest::Stack& o : c.stacks()) here += o.path.empty() && o.cx == s->cx && o.cy == s->cy;
             if (wrong && bad <= 6) std::printf("  %s (faction %d, %d stacks there): a man at %.1f, %.1f (courtyard %.1f, %.1f r %.1f) is in a building (%d) or outside the walls\n", city.name.c_str(), player, here, m.x, m.y, city.castle.courtyard.x.toDouble(), city.castle.courtyard.y.toDouble(), city.castle.courtyardRadius.toDouble(), onBuilding(city.castle, m.x, m.y));
         }
         towns += static_cast<int>(c.cities().size());
@@ -205,17 +205,17 @@ TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
 }
 
 TEST(stacks_standing_in_one_town_stand_side_by_side_not_on_each_other) {
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     c.setHuman(0, true);
-    const Campaign::CityState& home = c.cities()[0];
+    const Conquest::CityState& home = c.cities()[0];
     const uint32_t a = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
     const uint32_t b = c.raise(0, home.cx, home.cy, {UnitType::HeavyInfantry});
     c.prepareWorld();
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     c.soldiers(static_cast<int32_t>(0), men);
     double ax = 0, ay = 0, bx = 0, by = 0;
     int na = 0, nb = 0;
-    for (const Campaign::Soldier& m : men) {
+    for (const Conquest::Soldier& m : men) {
         if (m.stack == a) ax += m.x, ay += m.y, ++na;
         if (m.stack == b) bx += m.x, by += m.y, ++nb;
     }
@@ -228,32 +228,32 @@ TEST(stacks_standing_in_one_town_stand_side_by_side_not_on_each_other) {
 // further than his pace can carry him, across a march and the fight at the end of it. `worst` is the biggest jump
 // of any man beyond what his speed explains.
 TEST(a_mans_drawn_place_is_continuous_across_a_march_and_a_fight) {
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);  // the lords stay home: only the scripted march moves
-    const Campaign::Stack* home = nullptr;
-    for (const Campaign::Stack& st : c.stacks())
+    const Conquest::Stack* home = nullptr;
+    for (const Conquest::Stack& st : c.stacks())
         if (st.owner == 0) home = &st;
     int target = -1, best = 1 << 30;
     for (size_t i = 0; i < c.cities().size(); ++i) {
         const auto& city = c.cities()[i];
-        if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+        if (city.owner != Conquest::kNeutral || city.defense > 4) continue;
         const int d = std::abs(city.cx - home->cx) + std::abs(city.cy - home->cy);
         if (d < best) best = d, target = static_cast<int>(i);
     }
     const auto& town = c.cities()[static_cast<size_t>(target)];
     c.raise(0, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
-    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == 0 && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
-    std::map<uint32_t, Campaign::Soldier> last;
-    std::vector<Campaign::Soldier> now;
+    for (const Conquest::Stack& st : std::vector<Conquest::Stack>(c.stacks()))
+        if (st.owner == 0 && !st.garrison) ConquestOrders::move(c, st.id, town.cx, town.cy);
+    std::map<uint32_t, Conquest::Soldier> last;
+    std::vector<Conquest::Soldier> now;
     double worst = 0, worstMetres = 0;
     uint32_t worstTick = 0, worstId = 0;
     int jumps = 0;
     const double dt = 1.0 / 60.0;
     for (int k = 0; k < 24000; ++k) {
-        for (const int32_t ahead : {0, static_cast<int32_t>(Campaign::kTimeScale / 2)}) {
+        for (const int32_t ahead : {0, static_cast<int32_t>(Conquest::kTimeScale / 2)}) {
             c.soldiers(static_cast<int32_t>(ahead), now);
-            for (const Campaign::Soldier& m : now) {
+            for (const Conquest::Soldier& m : now) {
                 if (!m.alive) continue;
                 const auto it = last.find(m.id);
                 if (it != last.end()) {
@@ -271,11 +271,11 @@ TEST(a_mans_drawn_place_is_continuous_across_a_march_and_a_fight) {
     CHECK(worst <= 0.1);  // (a tenth of a metre of rounding: the sim's millimetres and the clock's halves of a tick)
 }
 
-// There is one battle system: the Battle presents the campaign's fight as it presents its own, so everything the battle
-// has (blood on the ground, the deaths of its men, its sounds and shouts) appears in the campaign's fights with no
-// copy of any of it. The field is made on the island's origin; the campaign tells it round every step of the world.
-TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
-    Campaign c(continent(), 3);
+// There is one battle system: the Battle presents the conquest's fight as it presents its own, so everything the battle
+// has (blood on the ground, the deaths of its men, its sounds and shouts) appears in the conquest's fights with no
+// copy of any of it. The field is made on the island's origin; the conquest tells it round every step of the world.
+TEST(the_battle_presents_the_conquests_fight_as_its_own) {
+    Conquest c(continent(), 3);
     for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
     c.prepareWorld();
     World* world = c.presentedWorld();
@@ -289,19 +289,19 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     c.onWorldStep([&] { field.beforeWorldStep(); }, [&] { field.afterWorldStep(); }, [&] { field.forgetMen(); });
     // The lord whose nearest weak neutral town is the nearest to the battlefield's middle (the borrowed field is the
     // world's middle kilometre: a fight elsewhere is not one it can show).
-    const Campaign::Stack* home = nullptr;
+    const Conquest::Stack* home = nullptr;
     int target = -1;
     uint8_t owner = 0;
     double nearest = 1e18;
     for (uint8_t lord = 0; lord < 8; ++lord) {
-        const Campaign::Stack* h = nullptr;
-        for (const Campaign::Stack& st : c.stacks())
+        const Conquest::Stack* h = nullptr;
+        for (const Conquest::Stack& st : c.stacks())
             if (st.owner == lord) h = &st;
         if (!h) continue;
         int t = -1, best = 1 << 30;
         for (size_t i = 0; i < c.cities().size(); ++i) {
             const auto& city = c.cities()[i];
-            if (city.owner != Campaign::kNeutral || city.defense > 4) continue;
+            if (city.owner != Conquest::kNeutral || city.defense > 4) continue;
             // (One on the field itself, clear of its edge: a fight beyond it is not one the field can show.)
             const Vec3 on = continent().cities()[i].pos - ro;
             if (on.x < Fixed::fromInt(80) || on.y < Fixed::fromInt(80) || on.x > Fixed::fromInt(940) || on.y > Fixed::fromInt(940)) continue;
@@ -315,8 +315,8 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
     }
     const auto& town = c.cities()[static_cast<size_t>(target)];
     c.raise(owner, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
-    for (const Campaign::Stack& st : std::vector<Campaign::Stack>(c.stacks()))
-        if (st.owner == owner && !st.garrison) CampaignOrders::move(c, st.id, town.cx, town.cy);
+    for (const Conquest::Stack& st : std::vector<Conquest::Stack>(c.stacks()))
+        if (st.owner == owner && !st.garrison) ConquestOrders::move(c, st.id, town.cx, town.cy);
     size_t cues = 0, said = 0;
     for (int k = 0; k < 9000; ++k) {
         c.step();
@@ -328,28 +328,28 @@ TEST(the_battle_presents_the_campaigns_fight_as_its_own) {
         dead += field.deathTick(i) != UINT32_MAX;
         struck += field.hitTick(i) != UINT32_MAX || field.attackTick(i) != UINT32_MAX;
     }
-    std::printf("  the battle shows the campaign's fight: %zu men struck or striking, %zu dead, %zu ground marks, %zu sounds, %zu shouts\n", struck, dead,
+    std::printf("  the battle shows the conquest's fight: %zu men struck or striking, %zu dead, %zu ground marks, %zu sounds, %zu shouts\n", struck, dead,
                 field.groundMarks().size(), cues, said);
     CHECK(struck > 0);
     CHECK(field.groundMarks().size() > 0);  // blood on the ground
     CHECK(cues > 0);                        // the battle's sounds
 }
 
-// Sight has one seam (Campaign::canSee): what a side is shown that is not its own goes through it. With a stub that
+// Sight has one seam (Conquest::canSee): what a side is shown that is not its own goes through it. With a stub that
 // hides side 2, no list of men, no picking and no drawing reports a man of side 2; the side's own men still show.
 TEST(a_side_hidden_by_sight_is_in_no_list_of_men_and_cannot_be_picked) {
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
     c.prepareWorld();
-    std::vector<Campaign::Soldier> all, seen;
+    std::vector<Conquest::Soldier> all, seen;
     c.soldiers(0, all);
     c.visibleSoldiers(0, 0, seen);
     CHECK(seen.size() == all.size());  // until sight is built, everyone is seen
     c.setSight([](uint8_t viewer, uint8_t owner, float, float) { return owner == viewer || owner != 2; });
     c.visibleSoldiers(0, 0, seen);
     size_t two = 0, mine = 0, hidden = 0;
-    for (const Campaign::Soldier& m : all) two += m.owner == 2;
-    for (const Campaign::Soldier& m : seen) {
+    for (const Conquest::Soldier& m : all) two += m.owner == 2;
+    for (const Conquest::Soldier& m : seen) {
         hidden += m.owner == 2;
         mine += m.owner == 0;
     }

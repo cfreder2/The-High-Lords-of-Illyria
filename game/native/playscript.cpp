@@ -77,7 +77,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             mode += " " + w[i++];
         } else if (mode == "ford" || mode == "siege") {
             mode = "skirmish " + mode;
-        } else if (mode == "campaign") {
+        } else if (mode == "conquest") {
             mode = "conquest";
         } else if (mode != "conquest" && mode != "horde" && mode != "ctf") {
             return why = "unknown mode '" + mode + "'", false;

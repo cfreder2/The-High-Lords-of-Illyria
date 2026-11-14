@@ -24,7 +24,7 @@
 #include "illyria/game/mode_horde.h"
 #include "illyria/game/mode_sandbox.h"
 #include "illyria/game/underwater.h"
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 #ifndef ILLYRIA_VERSION
 #define ILLYRIA_VERSION "0.0.0-dev"
@@ -78,7 +78,7 @@ constexpr uint64_t kBattleSeed = 20261027;
 using illyria::game::kSkirmishSeats;
 constexpr double kMaxPixelRatio = 3.0;
 constexpr float kNorthUp = 1.5707963f;  // camera yaw looking north
-// The whole continent in view (2.8 x 3.6 km), and a campaign stack with the
+// The whole continent in view (2.8 x 3.6 km), and a conquest stack with the
 // towns round it.
 constexpr float kOverviewDistance = 4233.0f;
 constexpr float kStackView = 583.0f;
@@ -101,7 +101,7 @@ struct App {
     double fps = 60;
     float rain = 0;              // weather hook (illyria_set_rain)
     uint32_t ambienceSeen = ~0u;  // the ambience last sent to the page
-    bool hushed = false;          // ambience silenced on the campaign map
+    bool hushed = false;          // ambience silenced on the conquest map
     // Under water (underwater.h): what the eye is in, the sound's latched state and its glided values.
     Underwater under;
     SoundLatch underLatch;
@@ -112,13 +112,13 @@ struct App {
     bool mouse = false;  // the pointer is a mouse: left selects, right orders (Gestures)
     bool boxPress = false;  // the press in hand began as a selection box
     float pressX = 0, pressY = 0;
-    // The campaign, when playing it: the war on the continent map.
-    struct CampaignView {
-        std::unique_ptr<illyria::sim::Campaign> c;
+    // The conquest, when playing it: the war on the continent map.
+    struct ConquestView {
+        std::unique_ptr<illyria::sim::Conquest> c;
         std::shared_ptr<const illyria::sim::Continent> continent;  // outlives restarts of the battle
         bool on = false, paused = false;
         int speed = 1;
-        illyria::sim::Campaign::Setup setup{0, 0xFF};  // who plays, as the last campaign was started (a restart keeps it)
+        illyria::sim::Conquest::Setup setup{0, 0xFF};  // who plays, as the last conquest was started (a restart keeps it)
         int city = -1;  // the city whose panel is open
         uint32_t panelStack = 0;  // the stack the panel was last opened for (the selection's: Battle::selectedStack)
         double acc = 0;
@@ -132,7 +132,7 @@ struct App {
         // What the renderer was last given: the towns' holders (tower banners) and the land's reckoning.
         std::vector<uint8_t> owners, keepsBare;
         int64_t territoryTick = -1;
-        std::vector<illyria::sim::Campaign::Soldier> men;  // every man of the campaign, as it says he stands (for picking, the minimap and the tests)
+        std::vector<illyria::sim::Conquest::Soldier> men;  // every man of the conquest, as it says he stands (for picking, the minimap and the tests)
         double layoutMs = 0;  // smoothed
         // The minimap: its land, drawn once (RGBA, one pixel to 22 m), and the text handed to the page.
         std::vector<uint8_t> miniLand;
@@ -178,7 +178,7 @@ void startIntro() {
     app->introFrom = {illyria::sim::Continent::kWidth * 0.5f - o.x, illyria::sim::Continent::kHeight * 0.5f - o.y, 0};
     app->introFromDist = kOverviewDistance;
     app->introToYaw = app->camera.yaw();
-    // North up over the continent, like the campaign map.
+    // North up over the continent, like the conquest map.
     app->camera.rotate(kNorthUp - app->camera.yaw());
     app->camera.lookAt(app->introFrom.x, app->introFrom.y, app->introFromDist);
     app->introStartMs = 0;  // set on the first frame
@@ -269,14 +269,14 @@ float surfaceAt(float x, float y) {
 // The share of a tick the clock has run since the last, in the stacks' hundredths
 // of a tick: between ticks everything glides on by it, so nothing steps.
 double mapAhead() {
-    using C = illyria::sim::Campaign;
-    const App::CampaignView& cv = app->camp;
+    using C = illyria::sim::Conquest;
+    const App::ConquestView& cv = app->camp;
     return cv.paused ? 0.0 : std::clamp(cv.acc, 0.0, 1.0) * C::kTimeScale;
 }
 
-// Where a campaign stack stands now, in battle-local metres: the middle of its men (Campaign::bodyOf), or, afloat, its
+// Where a conquest stack stands now, in battle-local metres: the middle of its men (Conquest::bodyOf), or, afloat, its
 // boat along its route.
-V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::Stack& s) {
+V3 stackPosition(const illyria::sim::Conquest& c, const illyria::sim::Conquest::Stack& s) {
     const V3 o = app->battle->origin();
     int32_t bx, by;
     c.bodyOf(s, static_cast<int32_t>(mapAhead()), bx, by);
@@ -290,7 +290,7 @@ V3 stackPosition(const illyria::sim::Campaign& c, const illyria::sim::Campaign::
 // presentConquest). The field's effects, sounds, voices and gates are its own presentation of the conquest's world; here
 // it is only told how far between ticks the clock is, and moves on.
 void presentConquest(float dt) {
-    App::CampaignView& cv = app->camp;
+    App::ConquestView& cv = app->camp;
     const double started = platform::nowMs();
     cv.c->visibleSoldiers(cv.c->localSide(), static_cast<int32_t>(mapAhead()), cv.men);
     app->battle->presentConquest(cv.men);
@@ -300,8 +300,8 @@ void presentConquest(float dt) {
 }
 
 void placePiers() {
-    using C = illyria::sim::Campaign;
-    App::CampaignView& cv = app->camp;
+    using C = illyria::sim::Conquest;
+    App::ConquestView& cv = app->camp;
     const C& c = *cv.c;
     const V3 o = app->battle->origin();
     cv.pier.assign(c.cities().size(), V3{});
@@ -336,8 +336,8 @@ void placePiers() {
 // The boats, every frame: with their stacks as they sail, along a pier in
 // port, or riding at anchor.
 void placeBoats() {
-    using C = illyria::sim::Campaign;
-    App::CampaignView& cv = app->camp;
+    using C = illyria::sim::Conquest;
+    App::ConquestView& cv = app->camp;
     const C& c = *cv.c;
     const V3 o = app->battle->origin();
     std::vector<Renderer::Prop> out;
@@ -377,7 +377,7 @@ void placeBoats() {
 // untouched). ILLYRIA_LIST_CITIES=1 prints every town (number, name, holder, place in battle metres);
 // ILLYRIA_DEMO_OWNERS="town:side,town:side" shows those towns held by those sides (255: nobody); with
 // ILLYRIA_DEMO_FROM_TICK=N it starts at tick N, so a picture before and after a capture can be had in one run.
-void devOwners(std::vector<uint8_t>& owners, const illyria::sim::Campaign& c) {
+void devOwners(std::vector<uint8_t>& owners, const illyria::sim::Conquest& c) {
     static bool listed = false;
     if (!listed && std::getenv("ILLYRIA_LIST_CITIES")) {
         listed = true;
@@ -398,12 +398,12 @@ void devOwners(std::vector<uint8_t>& owners, const illyria::sim::Campaign& c) {
 }
 #endif
 
-// The flags on poles, every frame: on the campaign map the banners rising
+// The flags on poles, every frame: on the conquest map the banners rising
 // over towns being taken (the old colours coming down as the new go up) and
 // the outposts' flags, with the towns' tower banners and the land in their
 // holders' colours; in a siege, the capture point's pole.
 void placeFlags(float dt) {
-    using C = illyria::sim::Campaign;
+    using C = illyria::sim::Conquest;
     std::vector<Renderer::Flag> flags;
     // One flag to a pole: the old holder's comes down, then the new one's goes up (flag_poles.h). Presentation
     // only, on the frame's real time; the sim's state is untouched.
@@ -416,7 +416,7 @@ void placeFlags(float dt) {
     };
     const V3 o = app->battle->origin();
     if (app->camp.on) {
-        App::CampaignView& cv = app->camp;
+        App::ConquestView& cv = app->camp;
         const C& c = *cv.c;
         std::vector<uint8_t> owners = knownOwners(c, c.localSide());  // (as the viewer knows them)
 #ifdef ILLYRIA_DEV_HOOKS
@@ -462,7 +462,7 @@ void placeFlags(float dt) {
         for (const C::Outpost& op : c.outposts()) {
             V3 base{C::centre(op.cx) - o.x, C::centre(op.cy) - o.y, 0};
             // The flag stands on the dry bank at the bridge's head, beside the road, not mid-river on the cell's middle (the
-            // campaign's own position of the outpost is the cell's).
+            // conquest's own position of the outpost is the cell's).
             const illyria::sim::Continent::Crossing* span = nullptr;
             float nearest = 1e9f;
             for (const illyria::sim::Continent::Crossing& k : app->battle->continent().crossings()) {
@@ -519,10 +519,10 @@ void placeFlags(float dt) {
     app->renderer.setFlags(flags);
 }
 
-// What the player asks of the conquest is an Order, stamped and applied inside the next step (Campaign::submit); the
-// page never calls the campaign's own mutators. It takes effect with the next step (a paused clock holds it).
-void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, int32_t a = 0, int32_t b = 0) {
-    illyria::sim::Campaign::Order o;
+// What the player asks of the conquest is an Order, stamped and applied inside the next step (Conquest::submit); the
+// page never calls the conquest's own mutators. It takes effect with the next step (a paused clock holds it).
+void submitOrder(illyria::sim::Conquest::Order::Kind kind, uint32_t stack = 0, int32_t a = 0, int32_t b = 0) {
+    illyria::sim::Conquest::Order o;
     o.kind = kind;
     o.side = app->camp.c->localSide();
     o.stack = stack;
@@ -535,8 +535,8 @@ void submitOrder(illyria::sim::Campaign::Order::Kind kind, uint32_t stack = 0, i
 // belongs to them is theirs: the tap that says which town new armies go to, and a tap on one of the player's towns
 // with nothing selected, which opens its panel. Every other tap is the battle's (Battle::tap).
 bool townTap(float px, float py) {
-    using C = illyria::sim::Campaign;
-    App::CampaignView& cv = app->camp;
+    using C = illyria::sim::Conquest;
+    App::ConquestView& cv = app->camp;
     const C& c = *cv.c;
     const uint8_t me = c.localSide();
     if (cv.vectorFrom < 0 && app->battle->selectionSize() > 0) return false;
@@ -556,7 +556,7 @@ bool townTap(float px, float py) {
         // Sending a city's new armies: the tapped city of ours receives them.
         const int from = cv.vectorFrom;
         cv.vectorFrom = -1;
-        if (town >= 0) submitOrder(illyria::sim::Campaign::Order::Kind::VectorProduction, 0, from, town);
+        if (town >= 0) submitOrder(illyria::sim::Conquest::Order::Kind::VectorProduction, 0, from, town);
         return true;
     }
     // Nothing of ours under the tap, but a town: its panel. (A man or a gate under it is the battle's to select or look at.)
@@ -573,25 +573,25 @@ void clickAt(float x, float y) {
     else ::app->battle->tap(::app->camera, x, y, ::app->pixelRatio, ::app->shift);
 }
 
-// The town's panel opens only when the player taps the town (townTap above, or its marker on the map: illyria_campaign_open_city),
+// The town's panel opens only when the player taps the town (townTap above, or its marker on the map: illyria_conquest_open_city),
 // never by itself, and shuts when the selection comes to be of another stack.
 void syncTownPanel() {
-    App::CampaignView& cv = app->camp;
+    App::ConquestView& cv = app->camp;
     const uint32_t stack = app->battle->selectedStack();
     if (stack == cv.panelStack) return;
     cv.panelStack = stack;
     cv.city = -1;
 }
 
-// A new campaign, or one read back from a save.
-void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
-    using C = illyria::sim::Campaign;
-    App::CampaignView& cv = app->camp;
-    cv.c = std::move(campaign);
+// A new conquest, or one read back from a save.
+void startConquest(std::unique_ptr<illyria::sim::Conquest> conquest) {
+    using C = illyria::sim::Conquest;
+    App::ConquestView& cv = app->camp;
+    cv.c = std::move(conquest);
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = cv.c->factionOf(side);
     illyria::game::palette::bind(cv.c->factionOf(cv.c->localSide()));  // (the player's own colour, before anything is drawn in it)
     cv.c->prepareWorld();  // the island's ground for the fights, a few seconds, once (the page has said so)
-    // The field is made on the island's own origin and presents the campaign's world as it presents any battle's.
+    // The field is made on the island's own origin and presents the conquest's world as it presents any battle's.
     {
         const illyria::sim::Vec3 ro = cv.c->presentedWorld()->region()->origin();
         const illyria::sim::Vec3 centre{ro.x + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), ro.y + illyria::sim::Fixed::fromInt(Battle::kTerrainCells * 2), illyria::sim::Fixed::zero()};
@@ -636,21 +636,21 @@ void startCampaign(std::unique_ptr<illyria::sim::Campaign> campaign) {
     }
 }
 
-void startCampaign(bool hard, illyria::sim::Campaign::Setup setup) {
-    App::CampaignView& cv = app->camp;
+void startConquest(bool hard, illyria::sim::Conquest::Setup setup) {
+    App::ConquestView& cv = app->camp;
     cv.continent = app->battle->continentShared();
     cv.setup = setup;
-    auto c = std::make_unique<illyria::sim::Campaign>(*cv.continent, kBattleSeed, setup);
+    auto c = std::make_unique<illyria::sim::Conquest>(*cv.continent, kBattleSeed, setup);
     c->setHuman(0, true);
     c->setComputerDifficulty(hard ? illyria::sim::Difficulty::Hard : illyria::sim::Difficulty::Easy);
-    startCampaign(std::move(c));
+    startConquest(std::move(c));
 }
 
-// Out of whatever is being played (a campaign, its 3D battle, a skirmish), back
+// Out of whatever is being played (a conquest, its 3D battle, a skirmish), back
 // to a battlefield to show behind the title screen.
 void stopPlaying() {
     app->camera.setCircle(0, 0, 0, 0);  // a match's field no longer holds the camera
-    App::CampaignView& cv = app->camp;
+    App::ConquestView& cv = app->camp;
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = kSkirmishSeats[side];
     if (cv.on && cv.c) cv.c->onWorldStep({}, {}, {});
     if (app->battle->borrowing()) {
@@ -819,11 +819,11 @@ bool frame() {
     app->gestures->update(now);
     if (app->camp.on) {
         // The battle's thirty ticks a second, times the speed (8x: 240 a second).
-        App::CampaignView& cv = app->camp;
+        App::ConquestView& cv = app->camp;
         listenFromCamera();
         app->battle->flushOrders();  // (what was ordered since the last frame: the clock, paused or not, applies it with its next step)
         if (!cv.paused && cv.c->winner() == 0) {
-            cv.acc += dtMs / 1000.0 * illyria::sim::Campaign::kTicksPerSecond * cv.speed;
+            cv.acc += dtMs / 1000.0 * illyria::sim::Conquest::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
             // then the game runs slower than the clock (docs/ONE_WORLD.md, the fast-forward limit, step 4).
             const double began = platform::nowMs();
@@ -834,7 +834,7 @@ bool frame() {
         presentConquest(static_cast<float>(dtMs / 1000.0));
         syncTownPanel();
         playCues();
-        // No battle sounds over the campaign map.
+        // No battle sounds over the conquest map.
         if (!app->hushed) {
             set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
             app->hushed = true;
@@ -867,7 +867,7 @@ extern "C" {
 
 ILLYRIA_API const char* illyria_version() { return ILLYRIA_VERSION; }
 
-// The frame rate and where a frame's time goes, for the title panel (battle and campaign alike).
+// The frame rate and where a frame's time goes, for the title panel (battle and conquest alike).
 ILLYRIA_API const char* illyria_perf() {
     static char buf[96];
     if (!app) return "";
@@ -1237,7 +1237,7 @@ ILLYRIA_API void illyria_paths_demo() {
 ILLYRIA_API void illyria_garrison_demo() {
     using namespace illyria::sim;
     if (!app || !app->camp.on || !app->camp.c || !app->camp.c->presentedWorld()) return;
-    Campaign& c = *app->camp.c;
+    Conquest& c = *app->camp.c;
     World& w = *c.presentedWorld();
     for (size_t i = 0; i < c.cities().size(); ++i) {
         if (c.cities()[i].owner != 0 || !c.continent().cities()[i].capital) continue;
@@ -1835,7 +1835,7 @@ ILLYRIA_API void illyria_overview() {
 constexpr int kMiniW = 128, kMiniH = 160;
 void buildMiniLand() {
     using illyria::sim::Fixed;
-    App::CampaignView& cv = app->camp;
+    App::ConquestView& cv = app->camp;
     const illyria::sim::Continent& land = cv.c->continent();
     std::vector<float> height(static_cast<size_t>(kMiniW) * kMiniH);
     std::vector<uint8_t> kind(height.size(), 0);  // 0 land, 1 sea, 2 fresh water, 3 road
@@ -1915,7 +1915,7 @@ ILLYRIA_API const char* illyria_labels() {
     };
     for (size_t ci = 0; ci < c.cities().size(); ++ci) {
         const auto& city = c.cities()[ci];
-        // In the campaign, cities fly the colours of whoever holds them now, as far as the viewer knows.
+        // In the conquest, cities fly the colours of whoever holds them now, as far as the viewer knows.
         const uint8_t owner = app->camp.on ? app->camp.c->knownOwner(app->camp.c->localSide(), static_cast<int32_t>(ci)) : city.owner;
         if (!city.capital && d > 2000) {
             add(0, factionColor(owner), city.pos, "", static_cast<int>(ci));  // a marker only
@@ -1926,20 +1926,20 @@ ILLYRIA_API const char* illyria_labels() {
     if (d < 2000) {
         for (size_t k = 0; k < c.sites().size(); ++k) {
             const auto& site = c.sites()[k];
-            // In the campaign, a ruin whose guardian is slain lies empty.
+            // In the conquest, a ruin whose guardian is slain lies empty.
             const bool explored = app->camp.on && site.kind == illyria::sim::Continent::Site::Kind::Ruin && app->camp.c->sites()[k].searched;
             add(2 + static_cast<int>(site.kind), explored ? V3{0.6f, 0.6f, 0.6f} : V3{1, 1, 1}, site.pos, explored ? site.name + " (explored)" : site.name, -1,
                 site.kind == illyria::sim::Continent::Site::Kind::Ruin ? 20.0f : 35.0f);
         }
     }
-    // The campaign's outpost towers (kind 7), in the colours of whoever holds their land.
+    // The conquest's outpost towers (kind 7), in the colours of whoever holds their land.
     if (app->camp.on && d < 2000) {
-        const illyria::sim::Campaign& cc = *app->camp.c;
-        for (const illyria::sim::Campaign::Outpost& op : cc.outposts()) {
+        const illyria::sim::Conquest& cc = *app->camp.c;
+        for (const illyria::sim::Conquest::Outpost& op : cc.outposts()) {
             const uint8_t w = cc.hexes()[static_cast<size_t>(op.hex)].owner;
-            const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cx)),
-                                        illyria::sim::Fixed::fromInt(illyria::sim::Campaign::centre(op.cy)), {}};
-            add(7, w < illyria::sim::Campaign::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 1000 && !op.name.empty() ? op.name + " tower" : "", -1, 30.0f);
+            const illyria::sim::Vec3 at{illyria::sim::Fixed::fromInt(illyria::sim::Conquest::centre(op.cx)),
+                                        illyria::sim::Fixed::fromInt(illyria::sim::Conquest::centre(op.cy)), {}};
+            add(7, w < illyria::sim::Conquest::kNeutral ? factionColor(w) : V3{0.85f, 0.85f, 0.85f}, at, d < 1000 && !op.name.empty() ? op.name + " tower" : "", -1, 30.0f);
         }
     }
     for (const auto& l : c.labels()) {
@@ -1956,8 +1956,8 @@ ILLYRIA_API const char* illyria_labels() {
         if (e.kind <= 1 || e.kind == 7) taken.push_back({e.px - 6, e.py + 1, e.px + 5.5f, e.py + 15});  // every marker keeps its square
     std::vector<Box> flags;
     if (app->camp.on) {  // and every army its flag (the native HUD's box, 18 x 14 about the stack's point, with its ring)
-        const illyria::sim::Campaign& cc = *app->camp.c;
-        for (const illyria::sim::Campaign::Stack& st : cc.stacks()) {
+        const illyria::sim::Conquest& cc = *app->camp.c;
+        for (const illyria::sim::Conquest::Stack& st : cc.stacks()) {
             if (st.armies.empty()) continue;
             V3 p = stackPosition(cc, st);
             if (!cc.canSee(cc.localSide(), st.owner, p.x + o.x, p.y + o.y)) continue;
@@ -2036,7 +2036,7 @@ ILLYRIA_API void illyria_minimap_land() {
 //   k|colour|x|y|count      a heap of soldiers too close to tell apart: a heat blob
 //   d|colour|x|y            a soldier (or two) standing apart, a point
 //   f|x|y|men               men fighting there now (the page glows it)
-// Only what the viewer is allowed to see (Campaign::canSee; a battle's Battle::sees).
+// Only what the viewer is allowed to see (Conquest::canSee; a battle's Battle::sees).
 ILLYRIA_API const char* illyria_minimap() {
     if (!app || app->title) return "";
     if (app->camp.on) {
@@ -2079,9 +2079,9 @@ ILLYRIA_API void illyria_minimap_look(float x, float y) {
         app->camera.lookAt(std::clamp(x, 0.0f, size), std::clamp(y, 0.0f, size), app->camera.distance());
     }
 }
-// Test hook: how many soldiers the campaign holds, how many are drawn as sprites and
+// Test hook: how many soldiers the conquest holds, how many are drawn as sprites and
 // as dots, and what laying them out and drawing a frame cost (milliseconds, smoothed).
-ILLYRIA_API const char* illyria_campaign_map_stats() {
+ILLYRIA_API const char* illyria_conquest_map_stats() {
     static char buf[200];
     buf[0] = 0;
     if (!app || !app->camp.on) return buf;
@@ -2091,9 +2091,9 @@ ILLYRIA_API const char* illyria_campaign_map_stats() {
     return buf;
 }
 
-// The campaign: start it (0: Easy computer lords, 1: Hard), give orders, and read its state.
-ILLYRIA_API void illyria_campaign_start(int hard) {
-    if (app) startCampaign(hard != 0, app->camp.setup);
+// The conquest: start it (0: Easy computer lords, 1: Hard), give orders, and read its state.
+ILLYRIA_API void illyria_conquest_start(int hard) {
+    if (app) startConquest(hard != 0, app->camp.setup);
     if (app) app->title = false;
 }
 // Test hook: the 3D siege's capture point stormed (the title's set battle).
@@ -2102,72 +2102,72 @@ ILLYRIA_API void illyria_test_storm() {
 }
 // Heroes: search the ruin (or sage) the selected stack stands on, or be
 // blessed at a temple; take or turn down a hero offering their sword.
-ILLYRIA_API int illyria_campaign_search() {
+ILLYRIA_API int illyria_conquest_search() {
     if (!app || !app->camp.on) return 0;
     const uint32_t stack = app->battle->selectedStack();
     if (!app->camp.c->canSearch(stack)) return 0;
-    submitOrder(illyria::sim::Campaign::Order::Kind::Search, stack);
+    submitOrder(illyria::sim::Conquest::Order::Kind::Search, stack);
     return 1;
 }
-ILLYRIA_API int illyria_campaign_hire(int accept) {
+ILLYRIA_API int illyria_conquest_hire(int accept) {
     if (!app || !app->camp.on) return 0;
     if (!app->camp.c->offer(app->camp.c->localSide()).open) return 0;
-    submitOrder(illyria::sim::Campaign::Order::Kind::Hire, 0, accept != 0);
+    submitOrder(illyria::sim::Conquest::Order::Kind::Hire, 0, accept != 0);
     return 1;
 }
-ILLYRIA_API void illyria_campaign_produce(int city, int option) {
-    if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::Produce, 0, city, option);
+ILLYRIA_API void illyria_conquest_produce(int city, int option) {
+    if (app && app->camp.on) submitOrder(illyria::sim::Conquest::Order::Kind::Produce, 0, city, option);
 }
 // Where a city sends its new armies: start choosing (the next city tapped), or -1 to keep them home.
-ILLYRIA_API void illyria_campaign_vector(int city, int choose) {
+ILLYRIA_API void illyria_conquest_vector(int city, int choose) {
     if (!app || !app->camp.on) return;
     if (choose) app->camp.vectorFrom = city;
-    else submitOrder(illyria::sim::Campaign::Order::Kind::VectorProduction, 0, city, -1), app->camp.vectorFrom = -1;
+    else submitOrder(illyria::sim::Conquest::Order::Kind::VectorProduction, 0, city, -1), app->camp.vectorFrom = -1;
 }
 // Sends an army of the selected stack home for good (no more upkeep).
-ILLYRIA_API void illyria_campaign_disband(int army) {
+ILLYRIA_API void illyria_conquest_disband(int army) {
     if (!app || !app->camp.on) return;
     for (const Squad& q : app->battle->squads())
-        if (q.army == static_cast<uint32_t>(army) && app->battle->controllable(q)) submitOrder(illyria::sim::Campaign::Order::Kind::Disband, q.stack, army);
+        if (q.army == static_cast<uint32_t>(army) && app->battle->controllable(q)) submitOrder(illyria::sim::Conquest::Order::Kind::Disband, q.stack, army);
 }
 // Boats: lay one down in the open city's port; board or leave one with the selected stack.
-ILLYRIA_API void illyria_campaign_build_boat(int city) {
-    if (app && app->camp.on) submitOrder(illyria::sim::Campaign::Order::Kind::BuildBoat, 0, city);
+ILLYRIA_API void illyria_conquest_build_boat(int city) {
+    if (app && app->camp.on) submitOrder(illyria::sim::Conquest::Order::Kind::BuildBoat, 0, city);
 }
-ILLYRIA_API void illyria_campaign_embark() {
-    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Embark, app->battle->selectedStack());
+ILLYRIA_API void illyria_conquest_embark() {
+    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Conquest::Order::Kind::Embark, app->battle->selectedStack());
 }
-ILLYRIA_API void illyria_campaign_land() {
-    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Campaign::Order::Kind::Land, app->battle->selectedStack());
+ILLYRIA_API void illyria_conquest_land() {
+    if (app && app->camp.on && app->battle->selectedStack()) submitOrder(illyria::sim::Conquest::Order::Kind::Land, app->battle->selectedStack());
 }
 // A tap on a town's marker: the panel of the player's town, whatever is selected.
-ILLYRIA_API void illyria_campaign_open_city(int city) {
+ILLYRIA_API void illyria_conquest_open_city(int city) {
     if (!app || !app->camp.on || city < 0 || city >= static_cast<int>(app->camp.c->cities().size())) return;
     if (app->camp.c->cities()[static_cast<size_t>(city)].owner == app->camp.c->localSide()) app->camp.city = city;
 }
-ILLYRIA_API void illyria_campaign_close_city() {
+ILLYRIA_API void illyria_conquest_close_city() {
     if (app) app->camp.city = -1;
 }
-ILLYRIA_API void illyria_campaign_pause() {
+ILLYRIA_API void illyria_conquest_pause() {
     if (app) app->camp.paused = !app->camp.paused;
 }
-ILLYRIA_API void illyria_campaign_speed() {
+ILLYRIA_API void illyria_conquest_speed() {
     if (app) app->camp.speed = app->camp.speed >= 8 ? 1 : app->camp.speed * 2;
 }
-ILLYRIA_API void illyria_campaign_select(unsigned id) {
+ILLYRIA_API void illyria_conquest_select(unsigned id) {
     if (!app || !app->camp.on) return;
     app->battle->selectStack(id);
-    if (const illyria::sim::Campaign::Stack* s = app->camp.c->findStack(id)) {
+    if (const illyria::sim::Conquest::Stack* s = app->camp.c->findStack(id)) {
         const V3 p = stackPosition(*app->camp.c, *s);
         app->camera.lookAt(p.x, p.y, std::min(app->camera.distance(), kStackView));
     }
 }
-// Everything the campaign HUD shows, as JSON: the day and the treasury, every
+// Everything the conquest HUD shows, as JSON: the day and the treasury, every
 // banner on screen, the selected stack's armies and the open city's panel.
-ILLYRIA_API const char* illyria_campaign_state() {
-    using C = illyria::sim::Campaign;
+ILLYRIA_API const char* illyria_conquest_state() {
+    using C = illyria::sim::Conquest;
     if (!app || !app->camp.on) return "{}";
-    App::CampaignView& cv = app->camp;
+    App::ConquestView& cv = app->camp;
     const C& c = *cv.c;
     std::string& s = cv.json;
     char buf[1024];
@@ -2301,7 +2301,7 @@ ILLYRIA_API const char* illyria_campaign_state() {
         const C::CityState& cs = c.cities()[static_cast<size_t>(cv.city)];
         int docked = 0;
         for (const C::Boat& b : c.boats()) docked += b.port == cv.city && !b.stack;
-        // A capital drills two days in one (Campaign::newDay): the panel counts its days as they pass there.
+        // A capital drills two days in one (Conquest::newDay): the panel counts its days as they pass there.
         const bool capitalPace = c.continent().cities()[static_cast<size_t>(cv.city)].capital;
         std::snprintf(buf, sizeof buf,
                       ",\"city\":{\"index\":%d,\"name\":\"%s\",\"defense\":%d,\"income\":%d,\"producing\":%d,\"progress\":%d,"
@@ -2698,7 +2698,7 @@ ILLYRIA_API const char* illyria_hud() {
 // The game modes (docs/GAME_DESIGN.md §4.6): one entry for all of them, so
 // the title screen starts each the same way. Ids: "title" (the menu's
 // backdrop: the last battlefield, still), "skirmish" ({"scenario":0} Ford,
-// 1 Siege), "campaign" ({"hard":1} new, {"hard":0} Easy lords, "player" the faction to start as and "enemies" a bit for each
+// 1 Siege), "conquest" ({"hard":1} new, {"hard":0} Easy lords, "player" the faction to start as and "enemies" a bit for each
 // computer lord in the game, or
 // {"save":"ILC2...."} to carry on a saved one), and the modes built into
 // startOtherMode ("horde", "ctf"). 1 when started, 0 when the mode is not
@@ -2740,27 +2740,27 @@ static int startMode(const char* id, const char* options) {
         frameCamera();
         return 1;
     }
-    if (mode == "campaign") {
+    if (mode == "conquest") {
         const size_t at = opts.find("\"save\":\"");
         if (at != std::string::npos) {
             const size_t from = at + 8, to = opts.find('"', from);
             std::string why;
             const std::shared_ptr<const illyria::sim::Continent> continent = app->battle->continentShared();
-            std::unique_ptr<illyria::sim::Campaign> c = illyria::sim::Campaign::load(*continent, opts.substr(from, to - from), &why);
+            std::unique_ptr<illyria::sim::Conquest> c = illyria::sim::Conquest::load(*continent, opts.substr(from, to - from), &why);
             if (!c) {
                 app->error = "This save cannot be read: " + why + ".";
                 return 0;
             }
             stopPlaying();
             app->camp.continent = continent;
-            startCampaign(std::move(c));
+            startConquest(std::move(c));
         } else {
             stopPlaying();
             // Who plays: the faction the player starts as, and a bit for each computer lord in the game (all, by default).
-            illyria::sim::Campaign::Setup setup;
+            illyria::sim::Conquest::Setup setup;
             setup.player = static_cast<uint8_t>(std::clamp(static_cast<int>(optionNumber(opts, "player", 0)), 0, 7));
             setup.enemies = static_cast<uint8_t>(std::clamp(static_cast<int>(optionNumber(opts, "enemies", 255)), 0, 255));
-            startCampaign(optionNumber(opts, "hard", 1) != 0, setup);
+            startConquest(optionNumber(opts, "hard", 1) != 0, setup);
         }
         app->title = false;
         app->camp.speed = std::clamp(static_cast<int>(optionNumber(opts, "speed", 1)), 1, 8);
@@ -2777,16 +2777,16 @@ ILLYRIA_API const char* illyria_mode_error() { return app ? app->error.c_str() :
 // Whether a mode is built into this version (the title screen asks, to mark the rest "coming soon").
 ILLYRIA_API int illyria_mode_available(const char* id) {
     const std::string mode = id ? id : "";
-    return mode == "title" || mode == "skirmish" || mode == "campaign" || otherModeAvailable(mode) ? 1 : 0;
+    return mode == "title" || mode == "skirmish" || mode == "conquest" || otherModeAvailable(mode) ? 1 : 0;
 }
 
-// The campaign as text, to keep in a save slot ("" when none is being played).
-ILLYRIA_API const char* illyria_campaign_save() {
+// The conquest as text, to keep in a save slot ("" when none is being played).
+ILLYRIA_API const char* illyria_conquest_save() {
     if (!app || !app->camp.c || !app->camp.on) return "";
     app->saved = app->camp.c->save();
     return app->saved.c_str();
 }
-ILLYRIA_API void illyria_campaign_set_speed(int speed) {
+ILLYRIA_API void illyria_conquest_set_speed(int speed) {
     if (app) app->camp.speed = std::clamp(speed, 1, 8);
 }
 

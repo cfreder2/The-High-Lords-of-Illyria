@@ -50,7 +50,7 @@ Chance has the part it has in any battle and no more: a shield turns a blow or d
 You are shown no odds, because there are none to show. The only odds in the war are the ones the computer lords work out for themselves before they march, and those decide whether they come, never what happens when they arrive.
 
 ::: note "The one roll of the dice"
-A hero who goes into a ruin fights its guardian alone, and that fight is still thrown with dice (chapter [](#ruins)). It is the last thing in the campaign that is.
+A hero who goes into a ruin fights its guardian alone, and that fight is still thrown with dice (chapter [](#ruins)). It is the last thing in the Conquest that is.
 :::
 
 ## How the computer lords reckon a fight {#dice}
@@ -157,7 +157,7 @@ A town defends with every man inside it, however many, and is attacked by every 
 **Who is in the town.** Only men **inside its outer wall** count (for a capital, the outer of its two rings). Men at the foot of the wall or before the gate are not in the town. A village has no wall: its men are those on its 30 m pad and within 10 m of it. An army is in the town if any one of its living men is. Men aboard a boat are nowhere.
 
 - **It starts** when armies of one lord are in the town and nobody else's are: none of the town's own (its lord's, or a neutral garrison) and none of any third lord's.
-- **More armies raise it faster.** The banner climbs by 2 points and 1 more for each army you have in the town (eight at most) every tick, to 5,760. A lone army takes 64 seconds at normal speed (a little over half a campaign day), four armies 32 seconds, eight or more 19 seconds.
+- **More armies raise it faster.** The banner climbs by 2 points and 1 more for each army you have in the town (eight at most) every tick, to 5,760. A lone army takes 64 seconds at normal speed (a little over half a Conquest day), four armies 32 seconds, eight or more 19 seconds.
 - **Enemies in the town stop it.** Armies of anyone else in the town contest it: while they are as many as yours or fewer, the banner stops; while they are more, it comes down as fast as it would rise for them.
 - **Leaving gives it up.** If none of your men is left in the town, marched out or fallen, the attempt is abandoned and its progress lost.
 - **A town being taken trains nothing,** takes in no armies sent to it and hires no hero until the raisers are gone.

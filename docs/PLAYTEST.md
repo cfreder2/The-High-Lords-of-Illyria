@@ -12,7 +12,7 @@ and `--garrison-demo`). A normal build has none of this code.
 Every key, click, drag and wheel turn in a script is an SDL event handed to `Input::handle`, the function the window's own
 events go to (`game/native/input.cpp`). So the game does exactly what it would for a hand on the mouse: the HUD gets the
 first look at a click, the gestures tell a tap from a box, the key map is the real one. The simulation is not touched;
-the harness reads the same JSON the HUD reads (`illyria_hud`, `illyria_campaign_state`) for `stats` and the log.
+the harness reads the same JSON the HUD reads (`illyria_hud`, `illyria_conquest_state`) for `stats` and the log.
 
 - **Real input is ignored while a script runs.** A stray keystroke is not a second player.
 - **The window takes no focus.** The app runs without a Dock icon and its window cannot become key, so starting a
@@ -56,7 +56,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | command | does |
 | --- | --- |
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
-| `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `campaign`. |
+| `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
 | `start skirmish ford` / `start skirmish siege` | the menu's Skirmish at the Ford, and the Siege. (`start ford`, `start siege` too.) Also `start horde`, `start ctf`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |

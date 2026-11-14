@@ -18,7 +18,7 @@ The battle runs in real time, thirty steps of the simulation every second, and i
 | Move over the land | drag one finger | drag with the left button, swipe two fingers on the trackpad, or hold [[W]] [[A]] [[S]] [[D]] (or the arrows) |
 | Turn the view | twist two fingers | drag with the right button, or hold [[Q]] or [[E]] (or [[Shift]] and [[←]] or [[→]]) |
 | North up | tap the compass | click the compass, or [[N]] |
-| Show or hide the map | tap or drag on the map to move the view | [[M]] (the map in the corner: the island in a campaign, the field in a battle; click or drag on it to move the view) |
+| Show or hide the map | tap or drag on the map to move the view | [[M]] (the map in the corner: the island in a Conquest, the field in a battle; click or drag on it to move the view) |
 | Move and zoom together | drag two fingers | |
 | To a hero or a group | tap its card twice | tap its card twice, or the group's key twice |
 | To the selection | **Find** | **Find**, or [[C]] |

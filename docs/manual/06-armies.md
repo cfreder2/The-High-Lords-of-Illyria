@@ -8,7 +8,7 @@
 
 ## What an army is {#army}
 
-An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Iron Hill Sappers*, the *Garrison of Ashcombe*. On the campaign map it is one of the squads in a stack; on the battlefield too it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
+An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Iron Hill Sappers*, the *Garrison of Ashcombe*. On the Conquest map it is one of the squads in a stack; on the battlefield too it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
 
 | Soldiers | Armies |
 |---|---|
@@ -60,7 +60,7 @@ A hero goes where his stack goes, on foot: a hero among fliers keeps them on the
 
 ## The cards {#army-cards}
 
-![The campaign's cards and action row: your hero (gold, with his level), the selection, and the battle's orders.](images/shots/camp_cards.jpg)
+![The Conquest's cards and action row: your hero (gold, with his level), the selection, and the battle's orders.](images/shots/camp_cards.jpg)
 
 The cards are the battle's (chapter [](#orders)): your heroes in gold, and the groups you make. A card shows:
 

@@ -16,7 +16,7 @@
 #include <climits>
 #include <queue>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 namespace illyria::sim {
 
@@ -34,7 +34,7 @@ constexpr int32_t kBoatNameCount = static_cast<int32_t>(sizeof kBoatNames / size
 
 }  // namespace
 
-void Campaign::initSea() {
+void Conquest::initSea() {
     // Navigable water: the cells of every water body big enough to sail.
     const size_t n = static_cast<size_t>(nx_) * ny_;
     navigable_.assign(n, 0);
@@ -79,20 +79,20 @@ void Campaign::initSea() {
     }
 }
 
-const Campaign::Boat* Campaign::findBoat(uint32_t id) const {
+const Conquest::Boat* Conquest::findBoat(uint32_t id) const {
     for (const Boat& b : boats_)
         if (b.id == id) return &b;
     return nullptr;
 }
 
-const Campaign::Boat* Campaign::boatInPort(int32_t city) const {
+const Conquest::Boat* Conquest::boatInPort(int32_t city) const {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return nullptr;
     for (const Boat& b : boats_)
         if (b.port == city && !b.stack && b.owner == cities_[static_cast<size_t>(city)].owner) return &b;
     return nullptr;
 }
 
-bool Campaign::buildBoat(int32_t city) {
+bool Conquest::buildBoat(int32_t city) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
     if (!c.port || c.owner == kNeutral || c.boatDays > 0 || sides_[c.owner].gold < kBoatCost) return false;
@@ -101,7 +101,7 @@ bool Campaign::buildBoat(int32_t city) {
     return true;
 }
 
-void Campaign::seaDay() {
+void Conquest::seaDay() {
     // The shipwrights finish their boats; every boat afloat costs its upkeep.
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
@@ -125,7 +125,7 @@ void Campaign::seaDay() {
     for (const Boat& b : boats_) sides_[b.owner].gold = std::max(0, sides_[b.owner].gold - kBoatUpkeep);
 }
 
-uint32_t Campaign::grant(int32_t city, uint8_t side, UnitType type, int32_t armies) {
+uint32_t Conquest::grant(int32_t city, uint8_t side, UnitType type, int32_t armies) {
     CityState& c = cities_[static_cast<size_t>(city)];
     c.owner = side;
     c.producing = -1;
@@ -138,7 +138,7 @@ uint32_t Campaign::grant(int32_t city, uint8_t side, UnitType type, int32_t armi
     return s.id;
 }
 
-void Campaign::splitOff(size_t index, size_t keep) {
+void Conquest::splitOff(size_t index, size_t keep) {
     // The weakest (never a hero) stay behind on the quay, in a stack of their own.
     if (stacks_[index].armies.size() <= keep) return;
     Stack left;
@@ -159,7 +159,7 @@ void Campaign::splitOff(size_t index, size_t keep) {
     stacks_.push_back(left);
 }
 
-bool Campaign::boardIfSailing(size_t index) {
+bool Conquest::boardIfSailing(size_t index) {
     const Stack& s = stacks_[index];
     if (s.boat) return true;
     const auto [nx, ny] = s.path.front();
@@ -195,7 +195,7 @@ bool Campaign::boardIfSailing(size_t index) {
     return true;
 }
 
-bool Campaign::embark(uint32_t stackId) {
+bool Conquest::embark(uint32_t stackId) {
     size_t index = stacks_.size();
     for (size_t i = 0; i < stacks_.size(); ++i)
         if (stacks_[i].id == stackId) index = i;
@@ -221,7 +221,7 @@ bool Campaign::embark(uint32_t stackId) {
     return true;
 }
 
-bool Campaign::land(uint32_t stackId) {
+bool Conquest::land(uint32_t stackId) {
     Stack* s = stackById(stackId);
     if (!s || !s->boat || !navigable(s->cx, s->cy)) return false;
     // Ashore at the nearest friendly port, else the easiest ground alongside.
@@ -260,7 +260,7 @@ bool Campaign::land(uint32_t stackId) {
     return true;
 }
 
-void Campaign::syncBoats() {
+void Conquest::syncBoats() {
     std::vector<uint8_t> lost(boats_.size(), 0);
     for (size_t i = 0; i < boats_.size(); ++i) {
         Boat& b = boats_[i];
@@ -304,7 +304,7 @@ void Campaign::syncBoats() {
     boats_.resize(k);
 }
 
-void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32_t goal, std::vector<int32_t>& g,
+void Conquest::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32_t goal, std::vector<int32_t>& g,
                             std::vector<int32_t>& parent) const {
     // Dijkstra over (cell, afloat). Times are travel times (kTimeScale a
     // tick), walking or sailing. A cell held by another side can be entered
@@ -390,7 +390,7 @@ void Campaign::searchRoutes(const Stack& s, bool sail, int32_t assumePort, int32
     }
 }
 
-bool Campaign::routeTo(const Stack& s, int32_t cell, const std::vector<int32_t>& g, const std::vector<int32_t>& parent,
+bool Conquest::routeTo(const Stack& s, int32_t cell, const std::vector<int32_t>& g, const std::vector<int32_t>& parent,
                        std::vector<std::pair<int32_t, int32_t>>& out) const {
     out.clear();
     const int32_t a = cell * 2, b = cell * 2 + 1;
@@ -405,14 +405,14 @@ bool Campaign::routeTo(const Stack& s, int32_t cell, const std::vector<int32_t>&
     return !out.empty();
 }
 
-bool Campaign::boardsBoat(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
+bool Conquest::boardsBoat(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
     if (s.boat) return true;
     for (const auto& [x, y] : path)
         if (navigable(x, y) && !passable(s, x, y)) return true;
     return false;
 }
 
-bool Campaign::planRoute(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const {
+bool Conquest::planRoute(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const {
     out.clear();
     if (tx < 0 || ty < 0 || tx >= nx_ || ty >= ny_) return false;
     // Fliers fly; without a boat of our own anywhere, the road is the only way.
@@ -436,7 +436,7 @@ bool Campaign::planRoute(const Stack& s, int32_t tx, int32_t ty, std::vector<std
     return false;
 }
 
-void Campaign::runSeaAi(uint8_t side) {
+void Conquest::runSeaAi(uint8_t side) {
     // The computer takes to the boats where a city is out of reach on foot,
     // or much quicker to reach by water: it builds a boat in a port that has
     // such a city across the water, sails its strong stacks from there, and

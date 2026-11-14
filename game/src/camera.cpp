@@ -40,7 +40,7 @@ void Camera::followGround(float dtSeconds) {
 
 float Camera::pitch() const {
     // Interpolate on a log scale so each pinch step feels the same; above
-    // kTopDownDistance the view stays near top-down like the campaign map.
+    // kTopDownDistance the view stays near top-down like the conquest map.
     constexpr float kTopDownDistance = 3000.0f;
     const float t = std::clamp(std::log(distance_ / kPitchNearDistance) / std::log(kTopDownDistance / kPitchNearDistance), 0.0f, 1.0f);
     const float s = t * t * (3 - 2 * t);

@@ -8,5 +8,5 @@
 <p class="orn">❦</p>
 
 <p>Eight lords · eighty cities · one throne</p>
-<p>The campaign of the continent and the battles in its mud</p>
+<p>The Conquest of the continent and the battles in its mud</p>
 :::

@@ -671,7 +671,7 @@ bool Region::waterRockAt(uint64_t seed, const SceneryPoint& p, Fixed depth, int 
         if (!boulder && d > r(4, 5)) return false;
         const Fixed fresh = boulder ? r(7, 20) + size2 * r(11, 10) : r(1, 8) + size2 / 2;
         height = (d + fresh) / r(17, 20);
-        // Not under a boat: the campaign's boats sit on the 44 m cells' middles (Campaign::centre).
+        // Not under a boat: the conquest's boats sit on the 44 m cells' middles (Conquest::centre).
         const Fixed cx = Fixed::fromInt((p.x.floorToInt() / 44) * 44 + 22) - p.x, cy = Fixed::fromInt((p.y.floorToInt() / 44) * 44 + 22) - p.y;
         if (cx * cx + cy * cy < m(100)) return false;
     } else {

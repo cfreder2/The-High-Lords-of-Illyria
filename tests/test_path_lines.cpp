@@ -9,7 +9,7 @@
 
 #include "illyria/game/battle.h"
 #include "illyria/game/path_lines.h"
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
@@ -245,7 +245,7 @@ TEST(drawing_the_paths_changes_nothing_in_the_battle) {
 // An order to attack one man is a hunt, and its line follows him; in the fog of Conquest the line is not drawn (it
 // would tell where the foe is), nor is any route of a foe's ever told.
 TEST(a_hunt_follows_its_quarry_and_is_not_drawn_to_a_foe_in_the_fog) {
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
     c.prepareWorld();
     const Vec3 ro = c.presentedWorld()->region()->origin();
@@ -253,7 +253,7 @@ TEST(a_hunt_follows_its_quarry_and_is_not_drawn_to_a_foe_in_the_fog) {
              std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
     b.borrow(&c);
     c.onWorldStep([&] { b.beforeWorldStep(); }, [&] { b.afterWorldStep(); }, [&] { b.forgetMen(); });
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     const auto frame = [&] {
         c.visibleSoldiers(c.localSide(), 0, men);
         b.presentConquest(men);
@@ -399,7 +399,7 @@ TEST(the_paths_of_a_whole_army_cost_little_a_frame) {
 
 // The cost of asking for 200 men's routes in the conquest's world (the whole island: every town's gates).
 TEST(two_hundred_routes_across_the_island_are_cheap) {
-    Campaign c(continent(), 3);
+    Conquest c(continent(), 3);
     for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, true);
     c.prepareWorld();
     World& w = *c.presentedWorld();
@@ -432,22 +432,22 @@ TEST(two_hundred_routes_across_the_island_are_cheap) {
 
 // A foe's marching stack is never drawn, faint or not; a 500-man selection is still a few dozen lines.
 TEST(an_enemy_stack_never_has_a_faint_marching_line_and_a_big_selection_is_capped) {
-    Campaign c(continent(), 7);
+    Conquest c(continent(), 7);
     c.setHuman(0, true);
-    for (int t = 0; t < 3 * Campaign::kTicksPerDay; ++t) c.step();
+    for (int t = 0; t < 3 * Conquest::kTicksPerDay; ++t) c.step();
     c.prepareWorld();
     const Vec3 ro = c.presentedWorld()->region()->origin();
     Battle b(1, Vec3{ro.x + Fixed::fromInt(512), ro.y + Fixed::fromInt(512), Fixed::zero()},
              std::shared_ptr<const Continent>(&continent(), [](const Continent*) {}));
     b.borrow(&c);
     c.onWorldStep([&] { b.beforeWorldStep(); }, [&] { b.afterWorldStep(); }, [&] { b.forgetMen(); });
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     c.visibleSoldiers(c.localSide(), 0, men);
     b.presentConquest(men);
     int foes = 0;
     const V3 o = b.origin();
     const std::vector<RouteLine> lines = b.pathLines(false, true);
-    for (const Campaign::Stack& s : c.stacks()) {
+    for (const Conquest::Stack& s : c.stacks()) {
         if (s.owner == c.localSide() || s.path.empty()) continue;
         ++foes;
         for (const RouteLine& l : lines)

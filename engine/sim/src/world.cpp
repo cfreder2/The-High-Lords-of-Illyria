@@ -341,7 +341,7 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
 }
 
 void World::removeUnit(EntityId id) {
-    // (The campaign puts a squad's men in the world to fight and takes them out when it is over. His place stays, empty:
+    // (The conquest puts a squad's men in the world to fight and takes them out when it is over. His place stays, empty:
     // erasing it would move every unit after him, and everything that presents the world indexes by id.)
     Unit* u = mutableUnit(id);
     if (!u || u->removed) return;
@@ -380,9 +380,9 @@ void World::removeUnit(EntityId id) {
 
 void World::clearFight(uint64_t seed) {
     // The empty places (freeSlots_) and the generations (spawns_) go with the men: a fight starts with neither. They are not
-    // saved, and a save restores the same checksum all the same: Campaign::save settles every stack asleep first
+    // saved, and a save restores the same checksum all the same: Conquest::save settles every stack asleep first
     // (settleAll), which ends the fight and clears the world here, as it does in the game that goes on from the save; and
-    // Campaign::checksum hashes the world only while a fight is on. freeSlots_ is state (it says whose id the next man has)
+    // Conquest::checksum hashes the world only while a fight is on. freeSlots_ is state (it says whose id the next man has)
     // and is in World::checksum; spawns_ is not, for no step reads it: it is only what presentations (Battle, the renderer,
     // Voice) key what they keep by place on, and a loaded game presents from nothing.
     units_.clear();
@@ -1914,7 +1914,7 @@ void World::creditKill(Unit& killer) {
 
 int32_t World::gracePct(const Unit& u) const {
     // A hero's levels are his strength; blessings (and the artifacts the
-    // campaign counts with them) the gods' favour. A soldier's rank is an
+    // conquest counts with them) the gods' favour. A soldier's rank is an
     // edge instead (world_edges.cpp), and so is a hero leading him.
     const bool hero = u.stats.type == static_cast<uint8_t>(UnitType::Hero);
     return 100 + (hero ? u.rank * kHeroLevelDamagePct : 0) + u.blessings * kBlessingDamagePct;

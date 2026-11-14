@@ -1,6 +1,6 @@
 // Flags: the poles with banners on them (a siege's capture point, the
-// banners rising over the campaign's towns), the castles' tower banners in
-// their holders' colours, and the campaign's territory texture.
+// banners rising over the conquest's towns), the castles' tower banners in
+// their holders' colours, and the conquest's territory texture.
 #include <algorithm>
 #include <cmath>
 

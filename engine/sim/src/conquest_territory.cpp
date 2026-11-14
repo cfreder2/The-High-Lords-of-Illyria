@@ -1,5 +1,5 @@
 // Territory (docs/GAME_DESIGN.md §4.2.9), after the little towers with flags
-// that Warlords sets by its river crossings: the map's campaign hexes (89 m
+// that Warlords sets by its river crossings: the map's conquest hexes (89 m
 // between centres, the grid the map draws) each fly a side's banner, or none.
 // Ten times a day (every kTerritoryTicks):
 // - a hex where one side's armies stand, and nobody else's, is claimed for it:
@@ -10,12 +10,12 @@
 //   as one army; an outpost's own hex is claimed twice as fast;
 // - a hex nobody stands in loses a point (a full claim fades in ten days),
 //   and is nobody's at zero.
-// The land is worth a little gold (Campaign::income: one a day for every
+// The land is worth a little gold (Conquest::income: one a day for every
 // kHexesPerGold hexes) and the home-land edge in battle (edges.h).
 // Deterministic: integers, hexes and stacks in index order.
 #include <algorithm>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/hash.h"
 
 namespace illyria::sim {
@@ -26,7 +26,7 @@ constexpr int32_t kCityPresence = 2, kOutpostPresence = 1;
 constexpr int32_t kSides = 8;
 }  // namespace
 
-int32_t Campaign::hexOfMetres(int32_t x, int32_t y) {
+int32_t Conquest::hexOfMetres(int32_t x, int32_t y) {
     // The nearest centre of the two rows either side (in centimetres, exact).
     const int64_t px = int64_t(x) * 100, py = int64_t(y) * 100;
     const int64_t r0 = std::clamp<int64_t>(py / kHexRowX100, 0, kHexRows - 1);
@@ -45,13 +45,13 @@ int32_t Campaign::hexOfMetres(int32_t x, int32_t y) {
     return hex;
 }
 
-void Campaign::hexCentre(int32_t hex, int32_t& x, int32_t& y) {
+void Conquest::hexCentre(int32_t hex, int32_t& x, int32_t& y) {
     const int32_t r = hex / kHexCols, col = hex % kHexCols;
     x = col * kHexSpacing + (r & 1) * kHexSpacing / 2;
     y = static_cast<int32_t>(int64_t(r) * kHexRowX100 / 100);
 }
 
-void Campaign::hexNeighbours(int32_t hex, std::vector<int32_t>& out) {
+void Conquest::hexNeighbours(int32_t hex, std::vector<int32_t>& out) {
     // Odd rows sit half a hex east: their diagonal neighbours are this column and the next.
     const int32_t r = hex / kHexCols, col = hex % kHexCols;
     const int32_t odd = r & 1;
@@ -62,7 +62,7 @@ void Campaign::hexNeighbours(int32_t hex, std::vector<int32_t>& out) {
     }
 }
 
-void Campaign::initTerritory() {
+void Conquest::initTerritory() {
     hexes_.assign(static_cast<size_t>(kHexCols) * kHexRows, Hex{});
     cellHex_.assign(static_cast<size_t>(nx_) * ny_, 0);
     for (int32_t y = 0; y < ny_; ++y)
@@ -94,13 +94,13 @@ void Campaign::initTerritory() {
     }
 }
 
-int32_t Campaign::hexesHeld(uint8_t side) const {
+int32_t Conquest::hexesHeld(uint8_t side) const {
     int32_t n = 0;
     for (const Hex& h : hexes_) n += h.owner == side;
     return n;
 }
 
-void Campaign::territoryStep() {
+void Conquest::territoryStep() {
     // Who stands in each hex: armies, cities (their own hex and the ring
     // round it) and held outposts (the ring round them).
     std::vector<int16_t> here(hexes_.size() * kSides, 0);
@@ -156,9 +156,9 @@ void Campaign::territoryStep() {
     syncLand();
 }
 
-void Campaign::syncLand() {
+void Conquest::syncLand() {
     if (!world_ || !region_) return;
-    // A side for each campaign cell: the holder of the hex it lies in (the world's places are the continent's, less the
+    // A side for each conquest cell: the holder of the hex it lies in (the world's places are the continent's, less the
     // region's origin).
     std::vector<uint8_t> holders(static_cast<size_t>(nx_) * ny_, 255);
     for (int32_t y = 0; y < ny_; ++y)
@@ -167,7 +167,7 @@ void Campaign::syncLand() {
     world_->setLandHolders(std::move(holders), nx_, Fixed::fromInt(kCell), Vec3{-origin.x, -origin.y, Fixed::zero()});
 }
 
-void Campaign::hashTerritory(StateHasher& h) const {
+void Conquest::hashTerritory(StateHasher& h) const {
     for (const Hex& x : hexes_) {
         h.addU64(x.owner);
         h.addI64(x.claim);

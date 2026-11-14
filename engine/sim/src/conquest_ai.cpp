@@ -1,4 +1,4 @@
-// The computer lords of the campaign (docs/GAME_DESIGN.md §4.2.5). Once a day
+// The computer lords of the conquest (docs/GAME_DESIGN.md §4.2.5). Once a day
 // each computer side looks at the whole map, as Warlords' computer players do,
 // and plays by the same rules as the player:
 // - it knows, for each of its cities, the enemy stacks marching on it or
@@ -15,19 +15,19 @@
 //   city is threatened), sends what quiet rear cities train to the front
 //   (LOC), keeps its upkeep inside its income, raises the walls of frontier
 //   towns with the gold left over, and disbands rather than see armies desert.
-// Deterministic: integers, the campaign's own seeded Rng, stable orders.
+// Deterministic: integers, the conquest's own seeded Rng, stable orders.
 #include <algorithm>
 #include <climits>
 #include <map>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 
 namespace illyria::sim {
 
 namespace {
 
 // How a difficulty plays. The numbers came from playing the computer lords
-// against one another over many seeds (tests/test_campaign_ai.cpp).
+// against one another over many seeds (tests/test_conquest_ai.cpp).
 struct Temper {
     int32_t attackOdds;   // thousandths needed to attack
     int32_t heroOdds;     // ... with a hero in the stack
@@ -57,14 +57,14 @@ constexpr Temper kHard{400, 450, 400, 20, 0, 45, 95, 0, 0, 0, true, true, true, 
 // The Knight: attacks at poor odds, sees an attack coming only at the gates,
 // forgets a stack one day in four, picks a random target one time in three,
 // trains whatever takes its fancy (the quickest with an enemy at the gates),
-// never gathers, and wastes a fifth of its income (Campaign::income).
+// never gathers, and wastes a fifth of its income (Conquest::income).
 constexpr Temper kEasy{300, 300, 650, 5, 10, 45, 95, 25, 35, 100, false, false, false, false, 0, 1000};
 
 }  // namespace
 
-class CampaignAi {
+class ConquestAi {
 public:
-    CampaignAi(Campaign& c, uint8_t side)
+    ConquestAi(Conquest& c, uint8_t side)
         : c_(c), side_(side), t_(c.sides_[side].difficulty == Difficulty::Hard ? kHard : kEasy) {}
 
     void run() {
@@ -74,7 +74,7 @@ public:
         defend();
         attack();
         economy();
-        c_.stacks_.erase(std::remove_if(c_.stacks_.begin(), c_.stacks_.end(), [&](const Campaign::Stack& s) {
+        c_.stacks_.erase(std::remove_if(c_.stacks_.begin(), c_.stacks_.end(), [&](const Conquest::Stack& s) {
                              return s.armies.empty();
                          }),
                          c_.stacks_.end());
@@ -112,7 +112,7 @@ public:
     }
 
 private:
-    using C = Campaign;
+    using C = Conquest;
     struct CityView {
         int32_t index = 0;
         bool frontier = false;          // an enemy city or field stack is near
@@ -121,7 +121,7 @@ private:
         size_t threatStack = SIZE_MAX;  // that threat
     };
 
-    Campaign& c_;
+    Conquest& c_;
     uint8_t side_;
     Temper t_;
     std::vector<CityView> mine_;          // our cities
@@ -722,16 +722,16 @@ private:
     }
 };
 
-void Campaign::bannerAlarm(int32_t city) {
+void Conquest::bannerAlarm(int32_t city) {
     const uint8_t side = cities_[static_cast<size_t>(city)].owner;
     if (side >= kNeutral || sides_[side].human || !sides_[side].alive || sides_[side].difficulty != Difficulty::Hard) return;
-    CampaignAi(*this, side).respond(city);
+    ConquestAi(*this, side).respond(city);
 }
 
-void Campaign::runAi(uint8_t side) {
-    questAi(side);   // heroes go exploring when it is safe (campaign_quests.cpp)
-    runSeaAi(side);  // boats first: targets across the water (campaign_sea.cpp)
-    CampaignAi(*this, side).run();  // then the war on land
+void Conquest::runAi(uint8_t side) {
+    questAi(side);   // heroes go exploring when it is safe (conquest_quests.cpp)
+    runSeaAi(side);  // boats first: targets across the water (conquest_sea.cpp)
+    ConquestAi(*this, side).run();  // then the war on land
 }
 
 }  // namespace illyria::sim

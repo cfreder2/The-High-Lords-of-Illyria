@@ -80,9 +80,9 @@ again as hard for each one beyond the first; any other death spills them, unlit,
 Fliers walk by default. Moves longer than the minimum flight take a ground run, then they cruise at
 altitude over the terrain, tire, and must land to recover (rest restores stamina at half the rate
 flight spends it). They never attack from the air. Cruise heights are within a giant's reach, and
-arrows can hit them. On the campaign map a stack of fliers alone moves at the **long-run pace** of
+arrows can hit them. On the Conquest map a stack of fliers alone moves at the **long-run pace** of
 that cycle, whatever is below: the take-off run (at half again its walking pace), a flight as long as
-its endurance, then twice as long resting (`Campaign::flightPace`). A stack with a walker in it walks.
+its endurance, then twice as long resting (`Conquest::flightPace`). A stack with a walker in it walks.
 
 A flier takes wing (`World::takesWing`) for a goal, or a man he is ordered at, that is 50 m or more off; up onto a
 wall-walk from below and down off one (a wall is a hop, not a mile of stairs); and over any curtain wall between him and
@@ -136,8 +136,8 @@ slows it more than the detour does. A road doubles every gait's pace. A bridge i
 of the fields: Bridge is the ground of every deck, a castle's walls and ramps as well as the bridges
 over rivers. Deep water is impassable on foot. Climbing divides speed by 1 + grade x 2.5 x the gait's
 climb percentage; going down is up to 15% quicker; slopes steeper than 35% slow walkers a further
-20%. Fliers walk like men. The campaign map marches by the same table and the same climbs, cell by
-cell (`engine/sim/src/campaign_march.cpp`): a stack at the pace of its slowest army, a road cell as
+20%. Fliers walk like men. The Conquest map marches by the same table and the same climbs, cell by
+cell (`engine/sim/src/conquest_march.cpp`): a stack at the pace of its slowest army, a road cell as
 road, a hill as plains to be climbed, marsh as swamp, mountains and water closed.
 
 | Gait | Road | Plains | Forest | Swamp | Shallows | Rock | Mud | Sand | Bridge | Climb | Units |

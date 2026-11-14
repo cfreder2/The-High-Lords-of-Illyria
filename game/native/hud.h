@@ -1,8 +1,8 @@
 #pragma once
 
 // The desktop's HUD and start menu, drawn by the shell over the frame (overlay.h) from the same state
-// the page's HUD reads: illyria_hud, illyria_campaign_state, illyria_labels, illyria_drag_box. It is small: the
-// status line, the squad cards, the campaign's banners and the start menu (which lord, which computer
+// the page's HUD reads: illyria_hud, illyria_conquest_state, illyria_labels, illyria_drag_box. It is small: the
+// status line, the squad cards, the conquest's banners and the start menu (which lord, which computer
 // lords, skirmish or conquest). The town screens, the settings and the manual are the page's, not here yet.
 
 #include <string>
@@ -43,7 +43,7 @@ public:
     void toggleMinimap();
     bool drag(float x, float y);  // a press that began on the minimap, moved
     void setMinimapLand(const uint8_t* rgba, int w, int h);  // platform::minimapLand
-    void saveConquest();  // the campaign being played, to the file
+    void saveConquest();  // the conquest being played, to the file
     void tick();           // once a frame, before drawing: a start asked for, now begun
 
 private:

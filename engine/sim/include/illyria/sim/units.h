@@ -51,13 +51,13 @@ UnitStats unitStats(UnitType type);
 // How hard morale shocks shake this type, in percent of a man's; 0 never breaks.
 int32_t moraleShockPct(UnitType type);
 // Strength on the Warlords scale of 1 to 9 for a fresh unit of this type:
-// what the campaign map and the HUD show (ranks, levels and blessings add to it).
+// what the conquest map and the HUD show (ranks, levels and blessings add to it).
 int warlordsStrength(UnitType type);
 const char* unitTypeName(UnitType type);
 // How this type gets over the ground (gait.h).
 Gait gaitOf(UnitType type);
 // A type no longer raised anywhere: kept so its number (sprite sheets,
-// campaign saves) keeps its meaning. The Dwarven Legion is retired: the
+// conquest saves) keeps its meaning. The Dwarven Legion is retired: the
 // grenadiers are the one dwarf, and old saves' legions load as grenadiers.
 bool retired(UnitType type);
 // Whether his body keeps a blade (a sword, axe or spear) a scavenger can take.

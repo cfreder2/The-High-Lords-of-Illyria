@@ -11,7 +11,7 @@
 #include <span>
 #include <string>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
@@ -39,7 +39,7 @@ const char* nameOf(UnitType t) {
 Fixed m(int64_t v) { return Fixed::fromInt(v); }
 
 // One town's ground, driven the same way in either mode: a Conquest's capital (men raised in its courtyard, orders carried
-// by the Campaign) or a skirmish on that town's own window (men spawned there, orders handed to the World).
+// by the Conquest) or a skirmish on that town's own window (men spawned there, orders handed to the World).
 struct Rig {
     virtual ~Rig() = default;
     virtual const World& world() const = 0;
@@ -75,7 +75,7 @@ Site groundOf(const Region& r, const Vec3& townLocal, const Vec3& yardLocal) {
 }
 
 struct ConquestRig : Rig {
-    Campaign c;
+    Conquest c;
     uint32_t stack[2] = {0, 0};
     Vec3 org;
     ConquestRig() : c(continent(), 5) {
@@ -85,7 +85,7 @@ struct ConquestRig : Rig {
     }
     const World& world() const override { return *c.world(); }
     EntityId spawn(PlayerId side, UnitType type, const Vec3&, bool) override {
-        const Campaign::CityState& cap = c.cities().front();
+        const Conquest::CityState& cap = c.cities().front();
         const uint32_t id = c.raise(side, cap.cx, cap.cy, {type});
         c.step();
         for (const Army& a : c.findStack(id)->armies)
@@ -94,8 +94,8 @@ struct ConquestRig : Rig {
         return kNoEntity;
     }
     void order(const Command& cmd) override {
-        Campaign::Order o;
-        o.kind = Campaign::Order::Kind::Command;
+        Conquest::Order o;
+        o.kind = Conquest::Order::Kind::Command;
         o.side = cmd.player;
         o.command = cmd;
         c.submit(o);

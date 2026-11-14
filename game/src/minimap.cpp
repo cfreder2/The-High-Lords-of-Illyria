@@ -55,8 +55,8 @@ void appendMen(std::string& out, const std::vector<Man>& men, float bin) {
 
 }  // namespace
 
-std::string minimapText(const sim::Campaign& c, uint8_t viewer) {
-    using C = sim::Campaign;
+std::string minimapText(const sim::Conquest& c, uint8_t viewer) {
+    using C = sim::Conquest;
     std::string out;
     char buf[160];
     std::snprintf(buf, sizeof buf, "m|%d|%d\n", static_cast<int>(sim::Continent::kWidth), static_cast<int>(sim::Continent::kHeight));

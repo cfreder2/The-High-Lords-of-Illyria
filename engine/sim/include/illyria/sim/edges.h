@@ -4,7 +4,7 @@
 // land, on ground your kind of soldier knows, as veterans, with a hero
 // leading, from the high ground, holding a temple or a tower. Each is worth a
 // few percent; they add up, to at most kEdgeCapPct. The same numbers serve
-// the Warlords dice (a share more strength: campaign_rules.cpp) and the 3D
+// the Warlords dice (a share more strength: conquest_rules.cpp) and the 3D
 // battle (a share more damage: world_edges.cpp), so a stack that has the
 // edge on the map has it on the battlefield too. None of them decides a
 // fight alone: a weaker army with every edge is still the weaker army.
@@ -28,7 +28,7 @@ inline constexpr int32_t kEdgeCapPct = 20;     // all of them together, at most
 inline constexpr int32_t kRealmPacePct = 15;
 
 // The kinds of land a realm can be at home on, a bit each: where it fights harder (kEdgeRealmPct) and marches
-// quicker (kRealmPacePct), in the battle and on the campaign map alike. After Warlords' empires, each with its
+// quicker (kRealmPacePct), in the battle and on the conquest map alike. After Warlords' empires, each with its
 // country: the knights and the horse lords in the open, the elves in the woods, giants and dwarves in the hills,
 // the orcs and the dark lord in the fens and wastes, the sea-minded order at the water's edge.
 enum Land : uint8_t {

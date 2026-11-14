@@ -1,4 +1,4 @@
-// Marching on the campaign map at the battle's speeds (docs/ONE_WORLD.md,
+// Marching on the conquest map at the battle's speeds (docs/ONE_WORLD.md,
 // "The clock and the day"). One set of rules for both: a stack goes at the
 // pace of its slowest army, and an army goes at its unit's ground speed times
 // its gait's multiplier for the ground it is crossing (gait.h, the battle's
@@ -17,7 +17,7 @@
 #include <climits>
 #include <queue>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/nav.h"
 
 namespace illyria::sim {
@@ -28,16 +28,16 @@ namespace {
 constexpr int32_t kDirs[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
 constexpr Fixed kSqrt2 = Fixed::fromRatio(141421356, 100000000);
 // A step's length in millimetres, straight and diagonal.
-constexpr int64_t kStepMm = int64_t{Campaign::kCell} * 1000;
-constexpr int64_t kDiagonalMm = int64_t{Campaign::kCell} * 1414214 / 1000;
+constexpr int64_t kStepMm = int64_t{Conquest::kCell} * 1000;
+constexpr int64_t kDiagonalMm = int64_t{Conquest::kCell} * 1414214 / 1000;
 
 int32_t toMm(Fixed metres) { return static_cast<int32_t>((metres.raw * 1000 + Fixed::kOneRaw / 2) >> Fixed::kFracBits); }
 
 // Time, in kTimeScale-ths of a tick, to cover mm at mm a second.
 int64_t ticksFor(int64_t mm, int64_t speed) {
-    return mm * Campaign::kTicksPerSecond * Campaign::kTimeScale / std::max<int64_t>(1, speed);
+    return mm * Conquest::kTicksPerSecond * Conquest::kTimeScale / std::max<int64_t>(1, speed);
 }
-int32_t clampTime(int64_t t) { return static_cast<int32_t>(std::clamp<int64_t>(t, 1, Campaign::kClosed - 1)); }
+int32_t clampTime(int64_t t) { return static_cast<int32_t>(std::clamp<int64_t>(t, 1, Conquest::kClosed - 1)); }
 
 // The most a gait makes of its speed on any ground (a road), for the route search's estimate.
 Fixed bestGround(Gait gait) {
@@ -48,13 +48,13 @@ Fixed bestGround(Gait gait) {
 
 }  // namespace
 
-int32_t Campaign::direction(int32_t dx, int32_t dy) {
+int32_t Conquest::direction(int32_t dx, int32_t dy) {
     for (int32_t d = 0; d < 8; ++d)
         if (kDirs[d][0] == dx && kDirs[d][1] == dy) return d;
     return -1;
 }
 
-int32_t Campaign::groundSpeed(UnitType t) {
+int32_t Conquest::groundSpeed(UnitType t) {
     static const std::array<int32_t, kUnitTypeCount> kSpeed = [] {
         std::array<int32_t, kUnitTypeCount> s{};
         for (int k = 0; k < kUnitTypeCount; ++k) s[static_cast<size_t>(k)] = toMm(unitStats(static_cast<UnitType>(k)).moveSpeed);
@@ -64,7 +64,7 @@ int32_t Campaign::groundSpeed(UnitType t) {
     return k >= 0 && k < kUnitTypeCount ? kSpeed[static_cast<size_t>(k)] : 0;
 }
 
-int32_t Campaign::flightPace(UnitType t) {
+int32_t Conquest::flightPace(UnitType t) {
     static const std::array<int32_t, kUnitTypeCount> kPace = [] {
         std::array<int32_t, kUnitTypeCount> p{};
         for (int k = 0; k < kUnitTypeCount; ++k) {
@@ -84,14 +84,14 @@ int32_t Campaign::flightPace(UnitType t) {
     return k >= 0 && k < kUnitTypeCount ? kPace[static_cast<size_t>(k)] : 0;
 }
 
-bool Campaign::airborne(const Stack& s) {
+bool Conquest::airborne(const Stack& s) {
     if (s.armies.empty()) return false;
     for (const Army& a : s.armies)
         if (!flies(a.type)) return false;
     return true;
 }
 
-Ground Campaign::groundAt(int32_t cx, int32_t cy) const {
+Ground Conquest::groundAt(int32_t cx, int32_t cy) const {
     const size_t k = static_cast<size_t>(cy) * nx_ + cx;
     switch (terrain_[k]) {
         case Lay::Road: return Ground::Road;
@@ -107,7 +107,7 @@ Ground Campaign::groundAt(int32_t cx, int32_t cy) const {
     return Ground::DeepWater;
 }
 
-int32_t Campaign::effort(Gait gait, Ground from, Ground to, int32_t rise, bool diagonal) {
+int32_t Conquest::effort(Gait gait, Ground from, Ground to, int32_t rise, bool diagonal) {
     const Fixed a = gaitSpeed(gait, from), b = gaitSpeed(gait, to);
     if (b <= Fixed::zero()) return kClosed;
     // Out of ground it could not have walked into (set down by a boat, or by
@@ -123,7 +123,7 @@ int32_t Campaign::effort(Gait gait, Ground from, Ground to, int32_t rise, bool d
     return std::min(kClosed - 1, toMm(e));
 }
 
-const std::vector<int32_t>& Campaign::efforts(Gait gait) const {
+const std::vector<int32_t>& Conquest::efforts(Gait gait) const {
     if (efforts_.empty()) efforts_.resize(kGaitCount);
     std::vector<int32_t>& e = efforts_[static_cast<size_t>(gait)];
     if (!e.empty()) return e;
@@ -139,7 +139,7 @@ const std::vector<int32_t>& Campaign::efforts(Gait gait) const {
     return e;
 }
 
-Campaign::Pace Campaign::paceOf(const Stack& s) const {
+Conquest::Pace Conquest::paceOf(const Stack& s) const {
     Pace p;
     for (const Army& a : s.armies)
         for (uint8_t k : a.artifacts) p.quicker = std::max(p.quicker, artifacts()[k].speed);
@@ -173,7 +173,7 @@ Campaign::Pace Campaign::paceOf(const Stack& s) const {
     return p;
 }
 
-int32_t Campaign::marchTime(const Pace& p, int32_t cell, int32_t dir) const {
+int32_t Conquest::marchTime(const Pace& p, int32_t cell, int32_t dir) const {
     const int32_t x = cell % nx_ + kDirs[dir][0], y = cell / nx_ + kDirs[dir][1];
     if (x < 0 || y < 0 || x >= nx_ || y >= ny_) return kClosed;
     int64_t t = 0;
@@ -192,13 +192,13 @@ int32_t Campaign::marchTime(const Pace& p, int32_t cell, int32_t dir) const {
     return clampTime(t * 100 / (100 + p.quicker));
 }
 
-int32_t Campaign::seaTime(int32_t dx, int32_t dy) const {
+int32_t Conquest::seaTime(int32_t dx, int32_t dy) const {
     // From a port to its harbour may be two cells: the straight distance.
     const int64_t mm = (Fixed::fromInt(kCell) * sqrt(Fixed::fromInt(int64_t{dx} * dx + int64_t{dy} * dy)) * 1000).floorToInt();
     return clampTime(ticksFor(mm, kSeaSpeed));
 }
 
-bool Campaign::passable(const Stack& s, int32_t cx, int32_t cy) const {
+bool Conquest::passable(const Stack& s, int32_t cx, int32_t cy) const {
     if (cx < 0 || cy < 0 || cx >= nx_ || cy >= ny_) return false;
     if (airborne(s)) return true;
     const Ground g = groundAt(cx, cy);
@@ -207,14 +207,14 @@ bool Campaign::passable(const Stack& s, int32_t cx, int32_t cy) const {
     return !s.armies.empty();
 }
 
-int32_t Campaign::stepTime(const Stack& s, int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
+int32_t Conquest::stepTime(const Stack& s, int32_t ax, int32_t ay, int32_t bx, int32_t by) const {
     if (s.boat) return seaTime(bx - ax, by - ay);
     const int32_t d = direction(bx - ax, by - ay);
     if (d < 0 || ax < 0 || ay < 0 || ax >= nx_ || ay >= ny_) return kClosed;
     return marchTime(paceOf(s), ay * nx_ + ax, d);
 }
 
-int32_t Campaign::legTime(const Stack& s) const {
+int32_t Conquest::legTime(const Stack& s) const {
     if (s.path.empty()) return 0;
     const auto [x, y] = s.path.front();
     // About to put out from a port: the first step is at the boat's speed.
@@ -222,13 +222,13 @@ int32_t Campaign::legTime(const Stack& s) const {
     return stepTime(s, s.cx, s.cy, x, y);
 }
 
-int32_t Campaign::timeLeft(const Stack& s) const {
+int32_t Conquest::timeLeft(const Stack& s) const {
     if (s.path.empty()) return 0;
     const int32_t t = routeTime(s, s.path);
     return t == kClosed ? kClosed : std::max(0, t - s.progress);
 }
 
-int32_t Campaign::routeTime(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
+int32_t Conquest::routeTime(const Stack& s, const std::vector<std::pair<int32_t, int32_t>>& path) const {
     // Afloat steps at the boat's speed, the rest on foot or wing.
     const Pace p = paceOf(s);
     bool afloat = s.boat != 0;
@@ -252,7 +252,7 @@ int32_t Campaign::routeTime(const Stack& s, const std::vector<std::pair<int32_t,
     return static_cast<int32_t>(std::min<int64_t>(t, kClosed - 1));
 }
 
-bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const {
+bool Conquest::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std::pair<int32_t, int32_t>>& out) const {
     out.clear();
     if (tx < 0 || ty < 0 || tx >= nx_ || ty >= ny_ || s.armies.empty()) return false;
     const Pace p = paceOf(s);
@@ -303,7 +303,7 @@ bool Campaign::findPath(const Stack& s, int32_t tx, int32_t ty, std::vector<std:
     return true;
 }
 
-const std::vector<uint16_t>& Campaign::marchField(int32_t city) const {
+const std::vector<uint16_t>& Conquest::marchField(int32_t city) const {
     if (marchFields_.empty()) marchFields_.resize(cities_.size());
     std::vector<uint16_t>& f = marchFields_[static_cast<size_t>(city)];
     if (!f.empty()) return f;

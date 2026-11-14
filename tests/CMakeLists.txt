@@ -47,21 +47,21 @@ add_executable(illyria_tests
     test_garrison_keep.cpp
     test_ramps.cpp
     test_walls.cpp
-    test_campaign.cpp
-    test_campaign_march.cpp
+    test_conquest.cpp
+    test_conquest_march.cpp
     test_figures.cpp
     test_detail_land.cpp
     test_river_ribbons.cpp
-    test_campaign_quests.cpp
-    test_campaign_sea.cpp
-    test_campaign_ai.cpp
-    test_campaign_rare.cpp
-    test_campaign_save.cpp
-    test_campaign_soldiers.cpp
+    test_conquest_quests.cpp
+    test_conquest_sea.cpp
+    test_conquest_ai.cpp
+    test_conquest_rare.cpp
+    test_conquest_save.cpp
+    test_conquest_soldiers.cpp
     test_conquest_nav.cpp
     test_fliers.cpp
     test_underwater.cpp
-    test_campaign_battle.cpp
+    test_conquest_battle.cpp
     test_paths.cpp
     test_command.cpp
     test_orders.cpp

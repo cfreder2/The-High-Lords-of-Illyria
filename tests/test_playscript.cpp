@@ -66,7 +66,7 @@ TEST(playscript_reads_every_command) {
 
 TEST(playscript_start_modes) {
     CHECK(parse("start conquest").commands[0].text == "conquest");
-    CHECK(parse("start campaign").commands[0].text == "conquest");
+    CHECK(parse("start conquest").commands[0].text == "conquest");
     CHECK(parse("start skirmish siege").commands[0].text == "skirmish siege");
     CHECK(parse("start siege").commands[0].text == "skirmish siege");
     const Script s = parse("start conquest lord 3 easy");

@@ -669,15 +669,15 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
     // A stack marching on the conquest's grid is one line from the middle of it through its cells (the men's own routes
     // are only the leg to the next cell); its men need no line of their own.
     std::map<uint32_t, float> stacks;  // the stacks to draw, by id, and how strongly
-    const auto marching = [&](uint32_t id) -> const sim::Campaign::Stack* {
-        const sim::Campaign::Stack* s = conquest_ ? conquest_->findStack(id) : nullptr;
+    const auto marching = [&](uint32_t id) -> const sim::Conquest::Stack* {
+        const sim::Conquest::Stack* s = conquest_ ? conquest_->findStack(id) : nullptr;
         return s != nullptr && !s->path.empty() && !s->commanded && s->owner == local_ ? s : nullptr;
     };
     // A stack in a fight has no march to show: its men are at their own business.
-    const auto fighting = [&](const sim::Campaign::Stack& s) {
+    const auto fighting = [&](const sim::Conquest::Stack& s) {
         for (const sim::Army& a : s.armies)
             for (const sim::Man& m : a.men)
-                if (m.alive() && m.unit && conquest_->tick() - m.fightTick < 5 * sim::Campaign::kTicksPerSecond) return true;
+                if (m.alive() && m.unit && conquest_->tick() - m.fightTick < 5 * sim::Conquest::kTicksPerSecond) return true;
         return false;
     };
     for (size_t i = 0; i < units.size(); ++i) {
@@ -732,18 +732,18 @@ std::vector<RouteLine> Battle::pathLines(bool perMan, bool faintMarches) const {
     plannedRoutes(routes);
     std::vector<RouteLine> lines = mergeRoutes(routes, perMan ? -1.0f : kMergeMetres);
     if (conquest_ && faintMarches)
-        for (const sim::Campaign::Stack& s : conquest_->stacks())
+        for (const sim::Conquest::Stack& s : conquest_->stacks())
             if (marching(s.id) != nullptr && !fighting(s)) stacks.try_emplace(s.id, kFaint);
     const V3 o = origin();
     for (const auto& [id, opacity] : stacks) {
-        const sim::Campaign::Stack& s = *conquest_->findStack(id);
+        const sim::Conquest::Stack& s = *conquest_->findStack(id);
         RouteLine line;
         line.stance = s.forceUntil > conquest_->tick() ? Stance::Move : Stance::Patrol;
         line.opacity = opacity;
         const auto add = [&](float x, float y) { line.points.push_back({x, y, floorAt({x, y, 0})}); };
         add(static_cast<float>(s.px) * 0.001f - o.x, static_cast<float>(s.py) * 0.001f - o.y);
         for (const auto& [cx, cy] : s.path)
-            add(static_cast<float>(sim::Campaign::centre(cx)) - o.x, static_cast<float>(sim::Campaign::centre(cy)) - o.y);
+            add(static_cast<float>(sim::Conquest::centre(cx)) - o.x, static_cast<float>(sim::Conquest::centre(cy)) - o.y);
         lines.push_back(std::move(line));
     }
     return lines;

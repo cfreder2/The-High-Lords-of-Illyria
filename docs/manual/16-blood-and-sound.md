@@ -19,12 +19,12 @@ How a man dies decides what is left of him and how it sounds. Every weapon has a
 | Fire | whole, burned black | smoke rising from him for a while |
 | Anything else | whole, fallen the way the blow drove him | |
 
-A blast throws its pieces long and low: each strikes the ground, hops on and skids to a stop, leaving a splat of blood at every strike and a smear along the skid, so a burst leaves red trails radiating out from a ragged black star of scorch. Loose pieces can be kicked by men walking through them. On a castle's wall-walk the dead lie along the walk, never across it into the stone. In a skirmish or a match the dead of both sides stay where they fell for the rest of the battle, the corpses and the arrows in the ground; nothing is tidied away. In the campaign, where the battle never ends, the dead lie for ten minutes at most and are then taken away. The undead and catapults do not bleed: the dead leave bones, the engines a heap of timbers.
+A blast throws its pieces long and low: each strikes the ground, hops on and skids to a stop, leaving a splat of blood at every strike and a smear along the skid, so a burst leaves red trails radiating out from a ragged black star of scorch. Loose pieces can be kicked by men walking through them. On a castle's wall-walk the dead lie along the walk, never across it into the stone. In a skirmish or a match the dead of both sides stay where they fell for the rest of the battle, the corpses and the arrows in the ground; nothing is tidied away. In the Conquest, where the battle never ends, the dead lie for ten minutes at most and are then taken away. The undead and catapults do not bleed: the dead leave bones, the engines a heap of timbers.
 
 ![After the satchels: scorched ground, blood thrown out from the blasts, the dead where they fell.](images/shots/battle_blood.jpg)
 
 ::: note "Not yet built"
-Remains that stay on the land from battle to battle, weathering slowly over the campaign (the *Bone Field at Oakhaven Ford*), are planned.
+Remains that stay on the land from battle to battle, weathering slowly over the Conquest (the *Bone Field at Oakhaven Ford*), are planned.
 :::
 
 ## The voices {#voices}

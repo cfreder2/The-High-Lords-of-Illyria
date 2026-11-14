@@ -1,13 +1,13 @@
-// Territory (engine/sim/src/campaign_territory.cpp) and the small edges of
-// battle (edges.h): in the campaign's dice (campaign_rules.cpp) and in the 3D
+// Territory (engine/sim/src/conquest_territory.cpp) and the small edges of
+// battle (edges.h): in the conquest's dice (conquest_rules.cpp) and in the 3D
 // battle (world_edges.cpp).
 #include <cstdio>
 
-#include "illyria/sim/campaign.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/edges.h"
 #include "illyria/sim/rng.h"
 #include "illyria/sim/world.h"
-#include "campaign_orders.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -17,28 +17,28 @@ const Continent& continent() {
     static const Continent c(20261027);
     return c;
 }
-Campaign still(uint64_t seed) {
-    Campaign c(continent(), seed);
+Conquest still(uint64_t seed) {
+    Conquest c(continent(), seed);
     for (uint8_t s = 0; s < Continent::kFactionCount; ++s) c.setHuman(s, true);
     return c;
 }
 // A land hex nobody holds, with no town or outpost in it or round it, and
 // one of its cells open ground.
-int32_t emptyHex(const Campaign& c, int32_t& cx, int32_t& cy) {
+int32_t emptyHex(const Conquest& c, int32_t& cx, int32_t& cy) {
     for (int32_t y = 5; y < c.height() - 5; ++y)
         for (int32_t x = 5; x < c.width() - 5; ++x) {
             const int32_t h = c.hexAt(x, y);
-            if (c.terrainAt(x, y) != Lay::Plain || c.hexes()[static_cast<size_t>(h)].owner != Campaign::kNeutral) continue;
+            if (c.terrainAt(x, y) != Lay::Plain || c.hexes()[static_cast<size_t>(h)].owner != Conquest::kNeutral) continue;
             std::vector<int32_t> ring{h};
-            Campaign::hexNeighbours(h, ring);
+            Conquest::hexNeighbours(h, ring);
             bool quiet = true;
-            for (const Campaign::CityState& t : c.cities())
+            for (const Conquest::CityState& t : c.cities())
                 for (int32_t n : ring) quiet = quiet && c.hexAt(t.cx, t.cy) != n;
             for (int32_t n : ring) quiet = quiet && c.hexes()[static_cast<size_t>(n)].outpost < 0;
             if (!quiet) continue;
             // (and out of a garrison's bowshot: its archers stand on the walls, and an army of ours near them would be shot at and driven off)
             int32_t hx, hy;
-            Campaign::hexCentre(h, hx, hy);
+            Conquest::hexCentre(h, hx, hy);
             for (const Continent::City& t : c.continent().cities()) quiet = quiet && std::hypot(t.pos.x.toDouble() - hx, t.pos.y.toDouble() - hy) > t.radius.toDouble() + 150.0;
             // (and another dry cell in the hex, for the tests that put a rival in it)
             bool second = false;
@@ -51,71 +51,71 @@ int32_t emptyHex(const Campaign& c, int32_t& cx, int32_t& cy) {
         }
     return -1;
 }
-void reckon(Campaign& c, int times) {
-    for (int t = 0; t < times * Campaign::kTerritoryTicks; ++t) c.step();
+void reckon(Conquest& c, int times) {
+    for (int t = 0; t < times * Conquest::kTerritoryTicks; ++t) c.step();
 }
 }  // namespace
 
 TEST(the_hexes_are_the_maps_grid) {
-    const Campaign c = still(1);
-    CHECK(c.hexes().size() == static_cast<size_t>(Campaign::kHexCols * Campaign::kHexRows));
+    const Conquest c = still(1);
+    CHECK(c.hexes().size() == static_cast<size_t>(Conquest::kHexCols * Conquest::kHexRows));
     int land = 0;
     for (int32_t h = 0; h < static_cast<int32_t>(c.hexes().size()); ++h) {
         int32_t x, y;
-        Campaign::hexCentre(h, x, y);
-        CHECK(Campaign::hexOfMetres(x, y) == h);
+        Conquest::hexCentre(h, x, y);
+        CHECK(Conquest::hexOfMetres(x, y) == h);
         // Every neighbour's centre is 89 m away (within a metre or so: the
         // centres are whole metres, half a hex 44 or 45 m, a row 77 or 78).
         std::vector<int32_t> ring;
-        Campaign::hexNeighbours(h, ring);
+        Conquest::hexNeighbours(h, ring);
         for (int32_t n : ring) {
             int32_t nx, ny;
-            Campaign::hexCentre(n, nx, ny);
+            Conquest::hexCentre(n, nx, ny);
             const int64_t d2 = int64_t(nx - x) * (nx - x) + int64_t(ny - y) * (ny - y);
             CHECK(d2 > 88 * 88 && d2 < 91 * 91);
         }
         land += c.hexes()[static_cast<size_t>(h)].land;
     }
     // A point is in the hex whose centre is nearest.
-    CHECK(Campaign::hexOfMetres(45, 2) == 0 || Campaign::hexOfMetres(45, 2) == 1);
-    CHECK(Campaign::hexOfMetres(22, 73) == Campaign::kHexCols);        // row 1 (shifted east), column 0
+    CHECK(Conquest::hexOfMetres(45, 2) == 0 || Conquest::hexOfMetres(45, 2) == 1);
+    CHECK(Conquest::hexOfMetres(22, 73) == Conquest::kHexCols);        // row 1 (shifted east), column 0
     std::printf("  %zu hexes, %d of them land; %zu outpost towers\n", c.hexes().size(), land, c.outposts().size());
     CHECK(land > 600);
     CHECK(c.outposts().size() >= 8);
     // The realms begin holding the land round their capitals.
-    for (const Campaign::CityState& t : c.cities())
-        if (t.owner != Campaign::kNeutral) CHECK(c.landOwner(t.cx, t.cy) == t.owner);
+    for (const Conquest::CityState& t : c.cities())
+        if (t.owner != Conquest::kNeutral) CHECK(c.landOwner(t.cx, t.cy) == t.owner);
 }
 
 TEST(armies_claim_the_land_they_stand_on_and_it_fades_when_they_go) {
-    Campaign c = still(1);
+    Conquest c = still(1);
     int32_t cx = 0, cy = 0;
     const int32_t hex = emptyHex(c, cx, cy);
     CHECK(hex >= 0);
     if (hex < 0) return;
-    const Campaign::Hex& h = c.hexes()[static_cast<size_t>(hex)];
+    const Conquest::Hex& h = c.hexes()[static_cast<size_t>(hex)];
     const uint32_t id = c.raise(0, cx, cy, {UnitType::LightInfantry, UnitType::LightInfantry});
     reckon(c, 1);
     CHECK(h.owner == 0);
     CHECK(h.claim == 20);  // 10, and 5 an army
     reckon(c, 10);
-    CHECK(h.claim == Campaign::kClaimFull);
+    CHECK(h.claim == Conquest::kClaimFull);
     CHECK(c.landOwner(cx, cy) == 0);
     // Gone: it fades a point at each reckoning, ten a day.
-    for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) CampaignOrders::disband(c, id, a.id);
+    for (const Army& a : std::vector<Army>(c.findStack(id)->armies)) ConquestOrders::disband(c, id, a.id);
     reckon(c, 10);
-    CHECK(h.owner == 0 && h.claim == Campaign::kClaimFull - 10);
-    reckon(c, Campaign::kClaimFull - 10);
-    CHECK(h.owner == Campaign::kNeutral && h.claim == 0);
+    CHECK(h.owner == 0 && h.claim == Conquest::kClaimFull - 10);
+    reckon(c, Conquest::kClaimFull - 10);
+    CHECK(h.owner == Conquest::kNeutral && h.claim == 0);
 }
 
 TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
-    Campaign c = still(1);
+    Conquest c = still(1);
     int32_t cx = 0, cy = 0;
     const int32_t hex = emptyHex(c, cx, cy);
     CHECK(hex >= 0);
     if (hex < 0) return;
-    const Campaign::Hex& h = c.hexes()[static_cast<size_t>(hex)];
+    const Conquest::Hex& h = c.hexes()[static_cast<size_t>(hex)];
     const uint32_t ours = c.raise(0, cx, cy, {UnitType::LightInfantry, UnitType::LightInfantry, UnitType::LightInfantry});
     reckon(c, 8);
     const int32_t held = h.claim;
@@ -132,7 +132,7 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
     // (One company against three: the fight has a winner, whose claim this test is about.)
     const uint32_t theirs = c.raise(3, ox, oy, {UnitType::LightInfantry});
     const auto standing = [&](uint32_t id) {
-        const Campaign::Stack* s = c.findStack(id);
+        const Conquest::Stack* s = c.findStack(id);
         return s != nullptr && !s->armies.empty() && c.hexAt(s->cx, s->cy) == hex;
     };
     int32_t contested = 0;
@@ -153,10 +153,10 @@ TEST(another_lord_wears_the_claim_away_and_two_lords_stall_it) {
 }
 
 TEST(outposts_are_claimed_twice_as_fast_and_reach_round_them) {
-    Campaign c = still(1);
-    const Campaign::Outpost* op = nullptr;
-    for (const Campaign::Outpost& o : c.outposts())
-        if (c.hexes()[static_cast<size_t>(o.hex)].owner == Campaign::kNeutral && c.terrainAt(o.cx, o.cy) != Lay::Water) op = &o;
+    Conquest c = still(1);
+    const Conquest::Outpost* op = nullptr;
+    for (const Conquest::Outpost& o : c.outposts())
+        if (c.hexes()[static_cast<size_t>(o.hex)].owner == Conquest::kNeutral && c.terrainAt(o.cx, o.cy) != Lay::Water) op = &o;
     CHECK(op != nullptr);
     if (!op) return;
     std::printf("  %zu outposts; taking the tower at %s\n", c.outposts().size(), op->name.c_str());
@@ -166,30 +166,30 @@ TEST(outposts_are_claimed_twice_as_fast_and_reach_round_them) {
     reckon(c, 3);
     // Held: it claims the hexes round it as one army would.
     std::vector<int32_t> ring;
-    Campaign::hexNeighbours(op->hex, ring);
+    Conquest::hexNeighbours(op->hex, ring);
     int32_t reached = 0;
     for (int32_t n : ring) reached += c.hexes()[static_cast<size_t>(n)].owner == 0;
     CHECK(reached >= 3);
 }
 
 TEST(the_land_pays_a_little_gold) {
-    Campaign c = still(1);
+    Conquest c = still(1);
     const int32_t before = c.income(0);
     const int32_t held = c.hexesHeld(0);
     CHECK(held >= 5);
     int32_t cities = 0;
-    for (const Campaign::CityState& t : c.cities())
+    for (const Conquest::CityState& t : c.cities())
         if (t.owner == 0) cities += t.income;
-    CHECK(before == cities + held / Campaign::kHexesPerGold);
-    std::printf("  side 0: %d hexes, %d gold a day from them, %d from its city\n", held, held / Campaign::kHexesPerGold, cities);
+    CHECK(before == cities + held / Conquest::kHexesPerGold);
+    std::printf("  side 0: %d hexes, %d gold a day from them, %d from its city\n", held, held / Conquest::kHexesPerGold, cities);
 }
 
 TEST(territory_is_deterministic) {
     const auto run = [] {
-        Campaign c(continent(), 6);
-        for (int t = 0; t < Campaign::kTicksPerDay * 6; ++t) c.step();
+        Conquest c(continent(), 6);
+        for (int t = 0; t < Conquest::kTicksPerDay * 6; ++t) c.step();
         int32_t held = 0;
-        for (const Campaign::Hex& h : c.hexes()) held += h.owner != Campaign::kNeutral;
+        for (const Conquest::Hex& h : c.hexes()) held += h.owner != Conquest::kNeutral;
         return std::make_pair(c.checksum(), held);
     };
     const auto a = run();
@@ -219,10 +219,10 @@ TEST(each_edge_is_small_and_together_they_are_capped) {
 TEST(the_edges_tip_an_even_dice_battle_but_do_not_decide_it) {
     // Four heavy infantry (4) against four: a coin toss. Each edge alone
     // moves it a little; all of them together (capped at +15%) to about
-    // seven in ten. Exact (winChance) and rolled (the campaign's d100).
+    // seven in ten. Exact (winChance) and rolled (the conquest's d100).
     const auto odds = [](int32_t pct) {
         const int32_t s = 4 * (100 + pct);  // hundredths
-        return Campaign::winChance({s, s, s, s}, {400, 400, 400, 400});
+        return Conquest::winChance({s, s, s, s}, {400, 400, 400, 400});
     };
     const auto rolled = [](int32_t pct, uint64_t seed) {
         Rng rng(seed, 7);
@@ -247,15 +247,15 @@ TEST(the_edges_tip_an_even_dice_battle_but_do_not_decide_it) {
     CHECK(odds(kEdgeCapPct) >= 650 && odds(kEdgeCapPct) <= 780);
     CHECK(std::abs(rolled(kEdgeCapPct, 3) - odds(kEdgeCapPct)) < 40);
     // A weaker stack (3 against 4) with every edge is still the weaker stack.
-    CHECK(Campaign::winChance({345, 345, 345, 345}, {400, 400, 400, 400}) < 500);
+    CHECK(Conquest::winChance({345, 345, 345, 345}, {400, 400, 400, 400}) < 500);
 }
 
-TEST(the_campaign_reckons_each_armys_edges) {
-    Campaign c = still(1);
+TEST(the_conquest_reckons_each_armys_edges) {
+    Conquest c = still(1);
     int32_t cap = -1;
     for (size_t i = 0; i < c.cities().size(); ++i)
         if (c.cities()[i].owner == 0) cap = static_cast<int32_t>(i);
-    const Campaign::CityState& t = c.cities()[static_cast<size_t>(cap)];
+    const Conquest::CityState& t = c.cities()[static_cast<size_t>(cap)];
     Army vet;
     vet.type = UnitType::HeavyInfantry;
     vet.rank = 2;
@@ -267,12 +267,12 @@ TEST(the_campaign_reckons_each_armys_edges) {
     std::printf("  a veteran beside a level 5 hero at home: %s\n", e.describe().c_str());
     CHECK(e.home == kEdgeHomePct);  // the capital's own hex
     CHECK(e.seniority == 2 * kEdgeRankPct);
-    CHECK(e.hero == heroLeadPct(Campaign::strength(hero)));
+    CHECK(e.hero == heroLeadPct(Conquest::strength(hero)));
     CHECK(e.total() <= kEdgeCapPct);
     // A soldier's rank is an edge, not strength; a hero's level is his strength.
     Army green = vet;
     green.rank = 0;
-    CHECK(Campaign::strength(vet) == Campaign::strength(green));
+    CHECK(Conquest::strength(vet) == Conquest::strength(green));
     const std::vector<int32_t> a = c.lineup({&vet}, 0, t.cx, t.cy, false), b = c.lineup({&green}, 0, t.cx, t.cy, false);
     CHECK(a[0] > b[0] && a[0] < b[0] + 100);  // more, but less than a whole point
     // Another lord standing on our land has no home edge there.

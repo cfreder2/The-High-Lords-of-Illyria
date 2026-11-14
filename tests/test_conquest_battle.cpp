@@ -10,8 +10,8 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/factions.h"
 #include "illyria/game/minimap.h"
-#include "illyria/sim/campaign.h"
-#include "campaign_orders.h"
+#include "illyria/sim/conquest.h"
+#include "conquest_orders.h"
 #include "test.h"
 
 using namespace illyria::sim;
@@ -27,10 +27,10 @@ const Continent& continent() {
 
 // The island with the player on side 0 and the other lords at home, presented by a Battle as the page does.
 struct Island {
-    Campaign c;
+    Conquest c;
     std::unique_ptr<Battle> b;
     illyria::game::Camera cam;
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
 
     explicit Island(bool human = true) : c(continent(), 3) {
         for (uint8_t s = 0; s < 8; ++s) c.setHuman(s, human);
@@ -63,8 +63,8 @@ struct Island {
             if (b->squads()[i].type == type && b->squads()[i].owner == owner && b->aliveCount(b->squads()[i]) > 0) return static_cast<int>(i);
         return -1;
     }
-    const Campaign::Stack* stackOfArmy(uint32_t army) const {
-        for (const Campaign::Stack& s : c.stacks())
+    const Conquest::Stack* stackOfArmy(uint32_t army) const {
+        for (const Conquest::Stack& s : c.stacks())
             for (const Army& a : s.armies)
                 if (a.id == army) return &s;
         return nullptr;
@@ -78,8 +78,8 @@ struct Island {
 };
 
 // Whether any man of the island has been struck: the fight has begun.
-bool blows(const Campaign& c) {
-    for (const Campaign::Stack& s : c.stacks())
+bool blows(const Conquest& c) {
+    for (const Conquest::Stack& s : c.stacks())
         for (const Army& a : s.armies)
             for (const Man& m : a.men)
                 if (m.hp != -1) return true;
@@ -102,7 +102,7 @@ TEST(the_men_of_a_stack_are_the_battles_squads_with_cards_and_a_hero_level) {
     CHECK(w.squadOf(UnitType::LightInfantry) >= 0);
     // Every man is drawn in the one pass, one picture each.
     size_t mine = 0;
-    for (const Campaign::Soldier& m : w.men) mine += m.owner == 0 && m.unit != nullptr;
+    for (const Conquest::Soldier& m : w.men) mine += m.owner == 0 && m.unit != nullptr;
     CHECK(mine > 0);
 }
 
@@ -178,20 +178,20 @@ TEST(a_march_across_the_island_is_an_order_of_the_selected_squads_alone) {
     CHECK(far > 0);
     w.b->orderMove(town);
     w.tick(1);
-    const Campaign::Stack* moving = w.stackOfArmy(army);
+    const Conquest::Stack* moving = w.stackOfArmy(army);
     CHECK(moving != nullptr);
     if (!moving) return;
     CHECK(!moving->path.empty());                       // it is on its way
     CHECK(moving->armies.size() == 1);                  // alone: the squad ordered, not the stack
     CHECK(moving->id != stack);                         // (split off, a stack of its own)
-    const Campaign::Stack* rest = w.c.findStack(stack);
+    const Conquest::Stack* rest = w.c.findStack(stack);
     CHECK(rest != nullptr && rest->armies.size() == before - 1 && rest->path.empty());
     // Hold stops it at the next cell it reaches.
     w.tick(120);
     w.b->selectSquad(w.squadOf(UnitType::Hero));
     w.b->stopSelected();
     w.tick(1);
-    const Campaign::Stack* held = w.stackOfArmy(army);
+    const Conquest::Stack* held = w.stackOfArmy(army);
     CHECK(held != nullptr && held->path.size() <= 1);
     w.tick(60 * 30);
     held = w.stackOfArmy(army);
@@ -200,20 +200,20 @@ TEST(a_march_across_the_island_is_an_order_of_the_selected_squads_alone) {
 
 TEST(an_order_is_refused_for_a_stack_or_a_man_that_is_not_the_senders) {
     Island w;
-    const Campaign::Stack* foe = nullptr;
-    for (const Campaign::Stack& s : w.c.stacks())
+    const Conquest::Stack* foe = nullptr;
+    for (const Conquest::Stack& s : w.c.stacks())
         if (s.owner == 1 && !s.garrison && !s.armies.empty()) foe = &s;
     CHECK(foe != nullptr);
     if (!foe) return;
-    Campaign::Order o;
-    o.kind = Campaign::Order::Kind::Move;
+    Conquest::Order o;
+    o.kind = Conquest::Order::Kind::Move;
     o.side = 0;  // (not the stack's side)
     o.stack = foe->id;
     o.a = std::min(foe->cx + 5, w.c.width() - 1);
     o.b = foe->cy;
     w.c.submit(o);
-    Campaign::Order h = o;
-    h.kind = Campaign::Order::Kind::Produce;
+    Conquest::Order h = o;
+    h.kind = Conquest::Order::Kind::Produce;
     h.a = 0;
     for (size_t i = 0; i < w.c.cities().size(); ++i)
         if (w.c.cities()[i].owner == 1) h.a = static_cast<int32_t>(i);
@@ -229,8 +229,8 @@ TEST(an_order_is_refused_for_a_stack_or_a_man_that_is_not_the_senders) {
 // commands a skirmish's orders are, carried into the step as Orders.
 TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_through_it) {
     Island w;
-    const Campaign::Stack* home = nullptr;
-    for (const Campaign::Stack& st : w.c.stacks())
+    const Conquest::Stack* home = nullptr;
+    for (const Conquest::Stack& st : w.c.stacks())
         if (st.owner == 0) home = &st;
     CHECK(home != nullptr);
     if (!home) return;
@@ -238,8 +238,8 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     const uint32_t mine = w.c.raise(0, x, y, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     const uint32_t theirs = w.c.raise(1, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     // (neither side's lord moves them: the first marches out to meet the other)
-    CampaignOrders::move(w.c, mine, x + 3, y);
-    CampaignOrders::move(w.c, theirs, x + 1, y);
+    ConquestOrders::move(w.c, mine, x + 3, y);
+    ConquestOrders::move(w.c, theirs, x + 1, y);
     int guard = 0;
     while (!blows(w.c) && guard++ < 6000) w.tick(1, 10);
     CHECK(blows(w.c));
@@ -262,7 +262,7 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     w.b->setFormation(illyria::game::Formation::Box);
     w.b->keepShape();
     w.tick(2);
-    const Campaign::Stack* st = w.stackOfArmy(army);
+    const Conquest::Stack* st = w.stackOfArmy(army);
     CHECK(st != nullptr && st->commanded);  // its men stand to the player's orders, as a skirmish's do
     CHECK(st != nullptr && st->path.empty());
     // Charge: every squad at the nearest enemy, the foot with the world's attack commands.
@@ -287,7 +287,7 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
     // A man tapped who is not ours, with nothing selected, is looked at: view-only, grey, no order.
     w.b->clearSelection();
     w.tick(1);
-    for (const Campaign::Soldier& m : w.men)
+    for (const Conquest::Soldier& m : w.men)
         if (m.owner != 0 && m.unitId) {
             const V3 p = w.b->unitPosition(m.unitId - 1);
             w.cam.lookAt(p.x, p.y, 50.0f);
@@ -307,14 +307,14 @@ TEST(the_players_men_in_a_fight_are_ordered_as_in_a_skirmish_and_stay_selected_t
 TEST(a_fights_commands_are_orders_and_two_games_given_the_same_ones_are_one_game) {
     const auto play = [](uint64_t& sum) {
         Island w;
-        const Campaign::Stack* home = nullptr;
-        for (const Campaign::Stack& st : w.c.stacks())
+        const Conquest::Stack* home = nullptr;
+        for (const Conquest::Stack& st : w.c.stacks())
             if (st.owner == 0) home = &st;
         const int32_t x = std::min(home->cx + 8, w.c.width() - 12), y = home->cy;
         const uint32_t mine = w.c.raise(0, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
         const uint32_t theirs = w.c.raise(1, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
-        CampaignOrders::move(w.c, mine, x + 3, y);
-        CampaignOrders::move(w.c, theirs, x + 1, y);
+        ConquestOrders::move(w.c, mine, x + 3, y);
+        ConquestOrders::move(w.c, theirs, x + 1, y);
         int guard = 0;
         while (!blows(w.c) && guard++ < 6000) w.c.step();
         w.frame();
@@ -332,7 +332,7 @@ TEST(a_fights_commands_are_orders_and_two_games_given_the_same_ones_are_one_game
     CHECK(a != 0);
 }
 
-// Everything shown of another side goes through the one seam of sight (Campaign::canSee), with the viewer a parameter.
+// Everything shown of another side goes through the one seam of sight (Conquest::canSee), with the viewer a parameter.
 // Hide sides 1 and 2 and look at the surfaces that tell: the minimap's text, the man under a finger, the fight the
 // camera is taken to, the towns' holders.
 namespace {
@@ -363,17 +363,17 @@ TEST(a_side_hidden_from_the_viewer_is_on_no_surface_the_viewer_reads) {
     // The towns held by sides 1 and 2 are nobody's to the viewer; its own are its own.
     for (size_t i = 0; i < w.c.cities().size(); ++i) {
         const uint8_t owner = w.c.cities()[i].owner;
-        if (owner == 1 || owner == 2) CHECK(w.c.knownOwner(0, static_cast<int32_t>(i)) == Campaign::kNeutral);
+        if (owner == 1 || owner == 2) CHECK(w.c.knownOwner(0, static_cast<int32_t>(i)) == Conquest::kNeutral);
         if (owner == 0) CHECK(w.c.knownOwner(0, static_cast<int32_t>(i)) == 0);
         if (owner == 1) CHECK(w.c.knownOwner(1, static_cast<int32_t>(i)) == 1);  // (a side sees its own)
     }
     // Nobody of side 1 or 2 is picked under a finger (the Battle presents the conquest and asks it).
     w.frame();
     bool tried = false;
-    for (const Campaign::Soldier& m : w.men) CHECK(m.owner != 1 && m.owner != 2);
+    for (const Conquest::Soldier& m : w.men) CHECK(m.owner != 1 && m.owner != 2);
     w.c.setSight({});
     w.frame();
-    for (const Campaign::Soldier& m : w.men) {
+    for (const Conquest::Soldier& m : w.men) {
         if (m.owner != 1 || !m.unitId) continue;
         const V3 p = w.b->unitPosition(m.unitId - 1);
         w.cam.lookAt(p.x, p.y, 40.0f);
@@ -410,14 +410,14 @@ TEST(the_fight_the_camera_is_taken_to_is_one_the_viewer_may_see) {
     const auto fight = [](bool hidden) {
         Island w;
         if (hidden) w.c.setSight(seesOnlyItsOwn);  // (a town's garrison is a side's too: it would show the fight)
-        const Campaign::Stack* home = nullptr;
-        for (const Campaign::Stack& st : w.c.stacks())
+        const Conquest::Stack* home = nullptr;
+        for (const Conquest::Stack& st : w.c.stacks())
             if (st.owner == 1 && !st.garrison) home = &st;
         const int32_t x = std::min(home->cx + 6, w.c.width() - 14), y = home->cy;
         const uint32_t a = w.c.raise(1, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
         const uint32_t b = w.c.raise(2, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry});
-        CampaignOrders::move(w.c, a, x + 3, y);
-        CampaignOrders::move(w.c, b, x + 1, y);
+        ConquestOrders::move(w.c, a, x + 3, y);
+        ConquestOrders::move(w.c, b, x + 1, y);
         for (int k = 0; k < 2400; ++k) w.c.step();
         V3 at;
         return std::make_pair(blows(w.c) || w.b->hotSpot(at), w.b->hotSpot(at));
@@ -432,7 +432,7 @@ TEST(the_fight_the_camera_is_taken_to_is_one_the_viewer_may_see) {
 // asking it of every man a frame (visibleSoldiers) and of one man (canSee), without and with a stub answering.
 TEST(the_cost_of_asking_the_seam_of_sight) {
     Island w;
-    std::vector<Campaign::Soldier> men;
+    std::vector<Conquest::Soldier> men;
     const auto time = [&](const char* what, int reps) {
         const auto start = std::chrono::steady_clock::now();
         size_t kept = 0;
@@ -468,15 +468,15 @@ TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no
     size_t peakPresent = 0, reused = 0, shown = 0;
     std::vector<uint32_t> gen;
     // The most men the world held at once is found at every point a step puts men in or takes them out (before and after the
-    // world's own step as well as after the campaign's), not once a campaign step: a man put in and another taken out within one
-    // campaign step (a stack seated or a place given up) would leave a once-a-step sample a man short of the world's real peak.
+    // world's own step as well as after the conquest's), not once a conquest step: a man put in and another taken out within one
+    // conquest step (a stack seated or a place given up) would leave a once-a-step sample a man short of the world's real peak.
     const auto sample = [&] {
         size_t present = 0;
         for (const Unit& u : w.units()) present += u.present();
         peakPresent = std::max(peakPresent, present);
     };
     isl.c.onWorldStep([&] { sample(); isl.b->beforeWorldStep(); }, [&] { isl.b->afterWorldStep(); sample(); }, [&] { isl.b->forgetMen(); });
-    for (int t = 0; t < 20 * Campaign::kTicksPerDay; ++t) {
+    for (int t = 0; t < 20 * Conquest::kTicksPerDay; ++t) {
         sample();
         isl.c.step();
         if (t % 60 == 0) isl.frame();

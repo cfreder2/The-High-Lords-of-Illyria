@@ -1,6 +1,6 @@
 #pragma once
 
-// The campaign: the war for all of Illyria, after Warlords (docs/GAME_DESIGN.md
+// The conquest: the war for all of Illyria, after Warlords (docs/GAME_DESIGN.md
 // §4). Eight sides each start with a capital, a hero and some gold; the other
 // 72 cities are neutral, held by small garrisons. Cities pay gold every day
 // and train armies; armies cost upkeep. A stack is a group of squads that
@@ -8,7 +8,7 @@
 // battle's own speeds, on the battle's 30 Hz clock (docs/ONE_WORLD.md). Every
 // squad is its real men, each with a place on the ground, and where armies
 // meet they fight there as in any battle, with the battle's own rules
-// (campaign_world.cpp): there are no dice and no battle windows.
+// (conquest_world.cpp): there are no dice and no battle windows.
 // Deterministic: integers, fixed point and the seeded Rng only.
 
 #include <cstdint>
@@ -25,7 +25,7 @@
 
 namespace illyria::sim {
 
-// One soldier of a squad (campaign_world.cpp). Every man on the land is a unit of the campaign's one sim::World,
+// One soldier of a squad (conquest_world.cpp). Every man on the land is a unit of the conquest's one sim::World,
 // stepped with the battle's own rules whether he marches, rests or fights: there is no other way he moves. Only a man
 // aboard a boat is out of it (the ship carries him); he is put ashore as a unit where it lands.
 struct Man {
@@ -62,11 +62,11 @@ struct Army {
     uint32_t bornDay = 0;
     bool ally = false;               // joined a hero from a ruin: fights for no pay
     uint8_t temples = 0;             // the temples that have blessed it, a bit each
-    std::vector<uint8_t> artifacts;  // heroes: what they carry (Campaign::artifacts())
+    std::vector<uint8_t> artifacts;  // heroes: what they carry (Conquest::artifacts())
     bool hero() const { return type == UnitType::Hero; }
 };
 
-// The lay of a campaign cell, as in the Warlords movement table.
+// The lay of a conquest cell, as in the Warlords movement table.
 enum class Lay : uint8_t { Road, Bridge, Water, Forest, Hill, Mountain, Plain, Marsh, City };
 
 // How well the computer plays a side (docs/GAME_DESIGN.md §4.2.5). Easy is
@@ -76,7 +76,7 @@ enum class Lay : uint8_t { Road, Bridge, Water, Forest, Hill, Mountain, Plain, M
 enum class Difficulty : uint8_t { Easy, Hard };
 class StateHasher;
 
-class Campaign {
+class Conquest {
 public:
     // Metres. The grid is 64 x 80 cells, as it was before the map shrank to two
     // thirds and then to a third each way. 64 x 44 m and 80 x 44 m fall a
@@ -93,22 +93,22 @@ public:
     static constexpr int32_t kClosed = INT32_MAX;  // a travel time: no way through
     static constexpr int32_t kMaxStack = 8;  // squads in a group that march together; how many stand in one place is not limited
     static constexpr uint8_t kNeutral = Continent::kNeutral;
-    // Boats (campaign_sea.cpp), after Warlords' navies: built in ports, they
+    // Boats (conquest_sea.cpp), after Warlords' navies: built in ports, they
     // carry up to seven armies over the sea, lakes and wide rivers at their
     // own speed, whatever the armies aboard could walk.
     static constexpr int32_t kBoatCapacity = 7;  // armies aboard, as a Warlords navy
     static constexpr int32_t kSeaSpeed = 6000;   // mm a second (6 m/s, about 12 knots): quicker than any walker but horse on a road
     static constexpr int32_t kBoatCost = 20, kBoatDays = 4;  // gold and days to build one
     static constexpr int32_t kBoatUpkeep = 2;    // gold a day
-    // Raising a banner (campaign_capture.cpp): a city changes hands only when
+    // Raising a banner (conquest_capture.cpp): a city changes hands only when
     // the victors' banner has risen over it, while they stand in it unopposed.
     // Each tick it climbs kBannerBase + one point an army there (eight at
-    // most): a lone army takes 0.53 of a day (about 13 hours of campaign time,
+    // most): a lone army takes 0.53 of a day (about 13 hours of conquest time,
     // 64 s at normal speed), a full stack 0.16 (about 4 hours). Enemies in or
     // beside the city stop it, and pull it down when they outnumber the raisers.
     static constexpr int32_t kBannerFull = kTicksPerDay * 8 / 5;
     static constexpr int32_t kBannerBase = 2;
-    // Territory (campaign_territory.cpp): the map's campaign hexes, 89 m
+    // Territory (conquest_territory.cpp): the map's conquest hexes, 89 m
     // between centres (pointy-top; odd rows shifted half a hex east), each
     // claimed by the side whose armies stand in it uncontested.
     static constexpr int32_t kHexSpacing = 89;   // metres between neighbouring centres
@@ -121,7 +121,7 @@ public:
         std::string name;
         int32_t gold = 0;
         bool alive = true;
-        bool human = false;  // the computer plays the others (Campaign::runAi)
+        bool human = false;  // the computer plays the others (Conquest::runAi)
         Difficulty difficulty = Difficulty::Hard;
         int32_t deserted = 0;  // armies lost for want of pay
     };
@@ -145,7 +145,7 @@ public:
         uint8_t banner = kNeutral;  // the side raising its banner here (its armies in the city), or kNeutral
         int32_t bannerProgress = 0; // to kBannerFull
     };
-    // A campaign hex: who holds it and how firmly (0 to kClaimFull).
+    // A conquest hex: who holds it and how firmly (0 to kClaimFull).
     struct Hex {
         uint8_t owner = kNeutral;
         int32_t claim = 0;
@@ -175,7 +175,7 @@ public:
         int32_t progress = 0;              // time on the way to the next cell (kTimeScale a tick); there at legTime()
         bool garrison = false;             // a neutral city's own defenders: never moves
         uint32_t boat = 0;                 // the boat it sails in, or 0 on land
-        // Where the middle of its men is, in millimetres on the continent (campaign_world.cpp), and the way it faces
+        // Where the middle of its men is, in millimetres on the continent (conquest_world.cpp), and the way it faces
         // (a unit vector in thousandths; south until it first moves). Afloat, the boat carries it: its cell says where.
         int32_t px = 0, py = 0;
         int32_t hx = 0, hy = -1000;
@@ -202,7 +202,7 @@ public:
         uint32_t arriveDay = 0;
         Army army;
     };
-    // Heroes, ruins, temples and sages, after Warlords (campaign_quests.cpp).
+    // Heroes, ruins, temples and sages, after Warlords (conquest_quests.cpp).
     // Battle artifacts add to the hero's strength, command artifacts to every
     // army fighting beside the hero; some speed the stack (percent quicker:
     // the best of its heroes' counts) or pay gold daily.
@@ -259,8 +259,8 @@ public:
         uint8_t enemies = 0xFF;
         bool operator==(const Setup& o) const { return player == o.player && (enemies & ~(1u << player)) == (o.enemies & ~(1u << o.player)); }
     };
-    Campaign(const Continent& continent, uint64_t seed) : Campaign(continent, seed, Setup{0, 0xFF}) {}
-    Campaign(const Continent& continent, uint64_t seed, Setup setup);
+    Conquest(const Continent& continent, uint64_t seed) : Conquest(continent, seed, Setup{0, 0xFF}) {}
+    Conquest(const Continent& continent, uint64_t seed, Setup setup);
     const Setup& setup() const { return setup_; }
     // The faction (the continent's order, for names and what it trains) a side plays: sides 0 and `player` swap places.
     uint8_t factionOf(uint8_t side) const { return side == 0 ? setup_.player : side == setup_.player ? 0 : side; }
@@ -270,7 +270,7 @@ public:
     // What a side asks of the game is an Order: a plain, ordered record stamped with the tick it takes effect at.
     // Players only ever submit Orders; they are applied inside step(), at the start of the step that makes their
     // tick, in the order they were submitted, so the same Orders over the same saved game give the same game on
-    // every machine (the test in tests/test_campaign_save.cpp). The calls below are what an Order does.
+    // every machine (the test in tests/test_conquest_save.cpp). The calls below are what an Order does.
     struct Order {
         enum class Kind : uint8_t { Move, Produce, VectorProduction, Disband, Embark, Land, Search, Hire, BuildBoat, Command };
         Kind kind = Kind::Move;
@@ -296,8 +296,8 @@ public:
     // Advances one tick (a thirtieth of a second at normal speed).
     void step();
 
-    // The men on the land (campaign_world.cpp): every man of every stack that is not aboard a boat is a unit of the
-    // campaign's one world, and the world steps them all, every tick, as it steps a skirmish. The stacks only think
+    // The men on the land (conquest_world.cpp): every man of every stack that is not aboard a boat is a unit of the
+    // conquest's one world, and the world steps them all, every tick, as it steps a skirmish. The stacks only think
     // (look where their men are, send them on to the next cell of a route, meet whoever comes near) every kThinkTicks.
     static constexpr int32_t kThinkTicks = 15;
     // Where a stack's body is, in millimetres on the continent: the middle of its men; afloat, its cell's centre and
@@ -384,7 +384,7 @@ public:
     static int32_t cellOf(int32_t metres) { return metres / kCell; }
     // Strength on the Warlords scale (1-9) of an army, before any battle modifiers.
     static int32_t strength(const Army& a);
-    // Marching at the battle's speeds (campaign_march.cpp): a stack goes at
+    // Marching at the battle's speeds (conquest_march.cpp): a stack goes at
     // the pace of its slowest army, the unit's ground speed times its gait's
     // multiplier for the ground it is crossing (gait.h), climbs slowing it as
     // in battle; a stack of fliers alone goes at the long-run pace of their
@@ -445,10 +445,10 @@ public:
     static bool special(UnitType t);
     // Common troops are trained in cities, slowly and dearly; rare ones
     // (heroes, beasts, monsters, allies, Myth's specialists) never are: each
-    // that falls is gone for good (campaign_rare.cpp, docs/GAME_DESIGN.md §4.2.4).
+    // that falls is gone for good (conquest_rare.cpp, docs/GAME_DESIGN.md §4.2.4).
     static bool trainable(UnitType t);
     static bool rare(UnitType t) { return !trainable(t) && !fieldOnly(t) && !retired(t); }
-    // Types not in the campaign at all (no city trains them, no realm has
+    // Types not in the conquest at all (no city trains them, no realm has
     // them): the hyena-folk, so far only in the sandbox and the battles laid out with them.
     static bool fieldOnly(UnitType t) { return t == UnitType::Hyena; }
     // "No companion" as saves and checksums write it: the number
@@ -488,24 +488,24 @@ public:
     // stop its banner rising while as many as the raisers, and pull it down while more.
     int32_t bannerContest(int32_t city, uint8_t raiser) const;
     uint64_t checksum() const;
-    // Saved games (campaign_save.cpp): the whole state as printable text, and
-    // a campaign rebuilt from it on the same continent, identical to the one
+    // Saved games (conquest_save.cpp): the whole state as printable text, and
+    // a conquest rebuilt from it on the same continent, identical to the one
     // saved (nullptr, and why, for a damaged save or one from another map).
-    // New state must be written and read there too: tests/test_campaign_save.cpp
-    // checks that a restored campaign carries on exactly like the original
+    // New state must be written and read there too: tests/test_conquest_save.cpp
+    // checks that a restored conquest carries on exactly like the original
     // (while no fight is on: a save settles any, where they stand).
     std::string save();
-    static std::unique_ptr<Campaign> load(const Continent& continent, const std::string& text, std::string* error = nullptr);
+    static std::unique_ptr<Conquest> load(const Continent& continent, const std::string& text, std::string* error = nullptr);
     uint64_t seed() const { return seed_; }
 
 private:
-    // What an Order does (applyPending, and nothing else, calls them; the computer lords' own choices, CampaignAi, are
+    // What an Order does (applyPending, and nothing else, calls them; the computer lords' own choices, ConquestAi, are
     // theirs). A march to a cell (false if no route); LOC; a banner's army sent home; boats: lay one down in a port
     // (kBoatCost gold, ready in kBoatDays), board the stack (and friends in the port, up to kBoatCapacity) onto a free
     // boat there and put out to the harbour, or step ashore from the sea; a hero searching the ruin or sage the stack
     // stands on, or the whole stack blessed at a temple; taking (or turning down) the hero offering their service.
-    friend class CampaignAi;
-    friend struct CampaignOrders;  // the tests' way to ask one of them for its answer (tests/campaign_orders.h)
+    friend class ConquestAi;
+    friend struct ConquestOrders;  // the tests' way to ask one of them for its answer (tests/conquest_orders.h)
     bool move(uint32_t stackId, int32_t cx, int32_t cy);
     bool produce(int32_t city, int32_t option);  // -1 stops
     // Warlords' LOC: send what a city trains to another city of ours (-1 stops); at most four cities may send to one.
@@ -527,13 +527,13 @@ private:
     void syncLand();
     void initTerrain();
     void initCities();
-    void initRare();  // campaign_rare.cpp: the realms' rare troops and the levies
+    void initRare();  // conquest_rare.cpp: the realms' rare troops and the levies
     void newDay();
-    void runAi(uint8_t side);  // campaign_ai.cpp
-    void bannerAlarm(int32_t city);  // campaign_ai.cpp: a Hard lord answers an enemy banner over his town at once
+    void runAi(uint8_t side);  // conquest_ai.cpp
+    void bannerAlarm(int32_t city);  // conquest_ai.cpp: a Hard lord answers an enemy banner over his town at once
     void deliverTransits();
     int32_t armiesAt(uint8_t owner, int32_t cx, int32_t cy) const;
-    // Ports and boats (campaign_sea.cpp).
+    // Ports and boats (conquest_sea.cpp).
     void initSea();
     void seaDay();
     void runSeaAi(uint8_t side);
@@ -551,11 +551,11 @@ private:
     int32_t afloatPenalty(const Stack& s) const { return s.boat ? 1 : 0; }
     void moveStacks();
     void arrive(Stack& s);
-    // Sorts armies into battle order and gives each its AS or DS (campaign_rules.cpp).
+    // Sorts armies into battle order and gives each its AS or DS (conquest_rules.cpp).
     void order(std::vector<Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, std::vector<int32_t>& power, int32_t engines = 0,
                int32_t oppX = -1, int32_t oppY = -1) const;
     int32_t forceModifier(const std::vector<const Army*>& armies, uint8_t owner, int32_t cx, int32_t cy, bool defending, int32_t engines) const;
-    // How a stack marches (campaign_march.cpp): each gait among its walkers at
+    // How a stack marches (conquest_march.cpp): each gait among its walkers at
     // the speed of its slowest army of that gait (on each step the slowest of
     // them sets the time), or its fliers' pace; and its heroes' speed items.
     struct Pace {
@@ -589,7 +589,7 @@ private:
     Army makeArmy(UnitType type, const std::string& name);
     Stack& newStack(uint8_t owner, int32_t cx, int32_t cy);
     void promote(Army& a);
-    // campaign_quests.cpp
+    // conquest_quests.cpp
     void initSites();
     void questsNewDay();                            // artifact gold and heroes for hire
     void questAi(uint8_t side);                     // the computer's heroes go exploring
@@ -597,7 +597,7 @@ private:
     void pickUp(Stack& s);                          // a hero takes up artifacts lying here
     void hashQuests(StateHasher& h) const;
     void deed(uint8_t side, std::string text);
-    void templeGift(Stack& s, SiteState& site, const std::string& where);  // campaign_rare.cpp
+    void templeGift(Stack& s, SiteState& site, const std::string& where);  // conquest_rare.cpp
     void offerCompanions(Offer& o);
     void hireCompanions(Stack*& home, uint8_t side, const Offer& o, int32_t city);
 
@@ -628,11 +628,11 @@ private:
     std::vector<int32_t> boatsBuilt_;  // per side, for naming
     int32_t voyages_ = 0;
     Stack* stackById(uint32_t id);
-    // campaign_capture.cpp: the banners rising over cities, and a city changing hands.
+    // conquest_capture.cpp: the banners rising over cities, and a city changing hands.
     void bannerStep();
     int32_t armiesInTown(int32_t city, int32_t (&in)[9]) const;
     void transfer(int32_t city, uint8_t side);
-    // campaign_world.cpp: the men on the land.
+    // conquest_world.cpp: the men on the land.
     void ensureWorld();
     void seat(Stack& s);                 // puts the men of the stack that are not in the world into it
     // A stack that has come into its own walled town, or whose town has just been taken, goes to the stations of a garrison
@@ -670,7 +670,7 @@ private:
     std::vector<uint32_t> boarding_;  // (transient, within a step) the stacks that reached a quay with the sea next on their route
     std::vector<std::pair<uint32_t, uint32_t>> corpses_;  // (tick to take away, unit): the fallen lie a while
     std::vector<Command> commands_, playerCommands_;  // (the player's go into the world's step after the stacks' own)
-    // campaign_territory.cpp
+    // conquest_territory.cpp
     void initTerritory();
     void territoryStep();
     void hashTerritory(StateHasher& h) const;

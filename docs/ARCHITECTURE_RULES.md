@@ -20,7 +20,7 @@ Vocabulary: **Conquest** is the whole island with many computer lords (once call
 
 ## 2. DRY
 
-- Before adding a function, search for one that already does it (`campaign_*`, `battle_*`, `mode_*`, `renderer_map`, `renderer`, `main.cpp`, `title.js`). Extend it; do not copy it.
+- Before adding a function, search for one that already does it (`conquest_*`, `battle_*`, `mode_*`, `renderer_map`, `renderer`, `main.cpp`, `title.js`). Extend it; do not copy it.
 - Two bodies that differ by a constant or a branch are one function with a parameter.
 - When a path is replaced, delete the old one in the same commit: no shim, no dead flag, no kept-for-now helper, no stale comment, no stale doc or manual text.
 
@@ -34,7 +34,7 @@ Vocabulary: **Conquest** is the whole island with many computer lords (once call
 
 ## 4. Fog-ready
 
-- There is ONE visibility question (`Campaign::canSee(viewer, owner, x, y)`, taking the viewer's sight from own men, towns and heroes). The simulation stays whole-world; fog is in what is drawn, told and inspectable.
+- There is ONE visibility question (`Conquest::canSee(viewer, owner, x, y)`, taking the viewer's sight from own men, towns and heroes). The simulation stays whole-world; fog is in what is drawn, told and inspectable.
 - Everything shown of another side calls it: the men drawn (dots and sprites), picks, inspection, tooltips, the minimap, the Fight! button, event messages, unit and town lists, and the computer lords' difficulty (Easy sees its own, Medium points, Hard all).
 - The viewer is a parameter, never a literal `0`.
 - A test hides a side through the seam and checks that no surface mentions it.

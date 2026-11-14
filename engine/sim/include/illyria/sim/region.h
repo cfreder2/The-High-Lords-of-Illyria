@@ -231,7 +231,7 @@ public:
     // ground is Shallows or DeepWater. `depth` is the metres of water over the bed there; `shore` how near dry land is (kShoreNear:
     // within 10 m, kShoreMid: within 26 m, else kShoreOpen; see shoreBandOf). False if nothing stands there; else sets the rock's
     // kind, radius, height (so that it breaks the surface or lies just under it), variant, solidity and `halfX` (the depth), not
-    // its position. A rock that breaks the surface is dropped on a boat's cell centre (Campaign::centre, 44 m cells) and where
+    // its position. A rock that breaks the surface is dropped on a boat's cell centre (Conquest::centre, 44 m cells) and where
     // `keepsRockOut` says so.
     enum Shore : int { kShoreNear = 0, kShoreMid = 1, kShoreOpen = 2 };
     static bool waterRockAt(uint64_t seed, const SceneryPoint& p, Fixed depth, int shore, Obstacle& o);

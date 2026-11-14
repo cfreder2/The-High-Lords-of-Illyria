@@ -556,7 +556,7 @@ TEST(gestures_hold_is_offered_and_a_refused_hold_still_taps) {
     g.pointer(PointerEvent::Up, 1, 360, 330, 0, 450);
     CHECK(moves == 1 && ends == 1 && taps == 0);
     CHECK_NEAR(c.target().x, target.x, 1e-3);  // a hold does not pan
-    // Not taken (the campaign map): a slow tap is still a tap.
+    // Not taken (the conquest map): a slow tap is still a tap.
     take = false;
     g.pointer(PointerEvent::Down, 1, 300, 300, 0, 1000);
     g.update(1000 + Gestures::kHoldMs + 10);

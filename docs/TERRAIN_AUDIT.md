@@ -95,7 +95,7 @@ one width for all. What replaced them (`engine/sim/src/continent_roads.cpp`, `ga
   doubling of a walker's pace), `Region::fromContinent`'s ground and road beds (`roadDistance`, the same formula), the close-up
   land's and the battlefield's road field (`road_field.h`: the distance from the middle line and the half width, so the drawn road is as wide
   as the ground that is Road) and the far map's ribbons all read it. A battle window's Road ground now spans the real width, not 6 m.
-  The campaign's grid still has a road cell wherever a road crosses it.
+  The Conquest's grid still has a road cell wherever a road crosses it.
 - **Surface** (`ILLYRIA_TERRAIN_FS`): packed dirt and gravel in two tones with pale specks, a shade darker down the middle (no ruts, no centre
   line: on a 14 m road it did not read), and a ragged edge where the grass creeps in (the edge is displaced by two octaves of noise and
   blended into the grass colour), at every zoom; from afar the ribbons are never thinner than a lane. The thin outline of the old picture was the road field's
@@ -131,7 +131,7 @@ one width for all. What replaced them (`engine/sim/src/continent_roads.cpp`, `ga
   bridges and 30 fords. Seeds 7, 99 and others still have a crossing or two that fails, a design ford in deep water or a road that turns hard at a
   footbridge's end (up to three of ten crossings): the game's continent is clean.
   The outpost's pole stands at `Crossing::bridgehead()`, dry ground beside the road at a bridge's head, or on the nearest dry ground to a ford
-  (the campaign's own position of the outpost is unchanged).
+  (the Conquest's own position of the outpost is unchanged).
 
 ## Water: rivers below their banks, lakes and islands that are not ovals
 
@@ -196,7 +196,7 @@ the body's area: an oval scores 0), plus solidity (area over convex hull) and th
   Heartmere's rocks and the Seer's isle (its capsule is warped in `landDistance`) all use it.
 - The Spit (`Isle::wander`): its middle line swings up to 38 m sideways, its width swells and thins between 6 and 16 m
   either side of the line, and it fans out where it meets the isle and the shore; `isleWalk` marks every dry cell of it
-  for the campaign's grid. Three rocks and shoals stand about Abbey Isle (`Isle::walked` false: no way on foot).
+  for the Conquest's grid. Three rocks and shoals stand about Abbey Isle (`Isle::walked` false: no way on foot).
 - Lakes shelve from the waterline (no step) to a deep middle as deep as a river (5 m and a thirtieth of the reach, up to
   14 m), so the one water-colour function, `inlandWater(depth)` in `kCommon`, gives a lake and a river the same blue:
   the battlefield's water, the far land and the far river ribbons all use it.
@@ -207,7 +207,7 @@ Kept true: every castle's gate has its road (80 of 80), the castles are joined t
 test's own count: all but the Isle of the Seer's one), no gate in water, no road through walls; the Drowned Abbey is
 reached on foot by the Spit (test). The towns moved (their placement reads the terrain beside the water: 17 of 80 are
 elsewhere, and the order of them, and so their names and castle shapes, changed), which is why six goldens moved and a
-few scenario tests that pick a town or a place by a rule (`town()` in test_castle, the horde's hill, the campaign fight
+few scenario tests that pick a town or a place by a rule (`town()` in test_castle, the horde's hill, the Conquest fight
 the battle shows) were re-seated: see the commit message. Design road 4 now ends on road 3 (it ended 14 m short, and a
 town's approach road used to bridge the gap).
 
@@ -301,9 +301,9 @@ What a rock that breaks the surface keeps clear of (all tested on three seeds, `
   ford's whole width is a clear way), and the deck of every bridge and 8 m past its ends (the scatter's existing deck rule);
 - a river's mouth (170 m) and the water about a town (100 m, its pier and harbour), and every fourth point of the strand of an isle
   that is walked to (the Spit to the Drowned Abbey, 14 m): `Continent::waterKeepouts`, built when the land is dressed;
-- the middle of a campaign cell (10 m; Campaign::centre, 44 m cells), where a boat sits.
+- the middle of a Conquest cell (10 m; Conquest::centre, 44 m cells), where a boat sits.
 
-The campaign sails from cell to cell, never between metres, so no route is blocked by a rock: a boat is only kept off one at the cell
+The Conquest sails from cell to cell, never between metres, so no route is blocked by a rock: a boat is only kept off one at the cell
 middle, at a pier and at a river's mouth. The Ford scenario's own hand-made river has none (it is a set piece). The Region
 checksum, hence the goldens, moved with the rocks.
 
