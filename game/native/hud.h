@@ -87,6 +87,9 @@ private:
     bool stripPaged_ = false;
     float stripX_ = 0, stripY_ = 0, stripW_ = 0, stripH_ = 0;  // the strip of cards, for the wheel
     int lastDay_ = 0;
+    // The first-order hint: shown until the first order is given (kept on the device), fading over the frames after.
+    bool hintSeen_ = false;
+    int hintFade_ = -1;
 };
 
 }  // namespace illyria::native

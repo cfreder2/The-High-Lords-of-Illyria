@@ -365,13 +365,16 @@ void Runner::log() {
     const int dayNo = day ? static_cast<int>(camp.num("day")) : 0;
     const int outcome = static_cast<int>(hud.num("outcome"));
     const std::string notice = hud.str("notice");
-    if (second == logSecond_ && dayNo == lastDay_ && outcome == lastOutcome_ && (notice.empty() || notice == lastNotice_)) return;
+    const std::vector<Json>& strip = hud.list("events");  // the strip of what happened to our own: the newest line
+    const std::string event = strip.empty() ? "" : strip.back().str("text");
+    if (second == logSecond_ && dayNo == lastDay_ && outcome == lastOutcome_ && (notice.empty() || notice == lastNotice_) && (event.empty() || event == lastEvent_)) return;
     const Men m = men(hud);
     std::string events;
     if (lastMine_ >= 0 && m.mineAlive < lastMine_) events += " lost " + std::to_string(lastMine_ - m.mineAlive);
     if (lastFoe_ >= 0 && m.foeAlive < lastFoe_) events += " killed " + std::to_string(lastFoe_ - m.foeAlive);
     if (m.broken != lastBroken_) events += " broken=" + std::to_string(m.broken);
     if (!notice.empty() && notice != lastNotice_) events += " notice=\"" + notice + "\"";
+    if (!event.empty() && event != lastEvent_) events += " event=\"" + event + "\"";
     if (outcome != lastOutcome_) events += " outcome=" + std::to_string(outcome);
     if (dayNo != lastDay_ && day) events += " day=" + std::to_string(dayNo) + " gold=" + std::to_string(static_cast<int>(camp.num("gold"))) + " cities=" + std::to_string(static_cast<int>(camp.num("cities")));
     if (const Json* cap = hud.find("capture"); cap && cap->flag("on")) events += " capture=" + std::to_string(static_cast<int>(cap->num("p"))) + "%" + (cap->flag("taken") ? "(taken)" : "");
@@ -380,6 +383,7 @@ void Runner::log() {
     logSecond_ = second;
     lastMine_ = m.mineAlive, lastFoe_ = m.foeAlive, lastBroken_ = m.broken, lastOutcome_ = outcome, lastDay_ = dayNo;
     lastNotice_ = notice;
+    lastEvent_ = event;
 }
 
 bool Runner::writeShot(int pw, int ph) {

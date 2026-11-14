@@ -107,6 +107,7 @@ void Hud::setSettingsFile(std::string path) {
         if (eq == std::string::npos) continue;
         const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
         if (key == "minimap") minimapOn_ = value != "0";
+        else if (key == "hint") hintSeen_ = value != "0";
         else if (key == "colour") {
             illyria::game::V3 c;
             if (!illyria::game::palette::parseHex(value.c_str(), c)) continue;
@@ -125,6 +126,7 @@ void Hud::saveSettings() const {
     if (settingsPath_.empty()) return;
     std::ofstream f(settingsPath_, std::ios::binary | std::ios::trunc);
     f << "minimap=" << (minimapOn_ ? 1 : 0) << "\n";
+    f << "hint=" << (hintSeen_ ? 1 : 0) << "\n";
     if (colour_ >= 0) f << "colour=" << illyria::game::palette::hex(illyria::game::palette::swatch(colour_).rgb) << "\n";
 }
 
@@ -234,7 +236,7 @@ bool Hud::wheel(float x, float y, float notches) {
 bool Hud::click(float x, float y, bool left) {
     for (const Rect& r : hits_) {
         if (x < r.x || y < r.y || x >= r.x + r.w || y >= r.y + r.h) continue;
-        if (r.what >= 5000 && !left) continue;  // (a right click on a town is an order, not a tap on its name)
+        if (r.what >= 1000 && !left) continue;  // (a right click on a town, or on the flag of the men in it, is an order, not a tap)
         if (menu_) {
             if (r.what >= 0 && r.what < kRows) {
                 row_ = r.what;
@@ -335,6 +337,10 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
             o.frame(px + 12, y - 5, pw - 24, 28, 1.5f, kSeal);
         }
         o.text(px + kPad, y, label, off ? kPaperOff : r == row_ ? kSeal : kPaperInk, fit(o, label, 18, inner));
+        if (off) {  // (why it is grey)
+            const std::string why = "No saved Conquest yet";
+            o.text(px + kPad + o.width(label, 18) + 14, y + 5, why, kPaperDim, 12);
+        }
         hits_.push_back({px + 12, y - 5, pw - 24, 28, r});
     }
     // The conquest's choices: who you are and who else is in the war.
@@ -573,6 +579,26 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
     const std::string notice = hud.str("notice");
     if (!notice.empty()) o.text((w - o.width(notice, 16)) / 2, 40, notice, kRed, 16);
+    if (conquest && camp.flag("noArmy") && camp.num("winner") == 0) {  // no army anywhere: say so, and what to do
+        const std::string t = "Your army has been destroyed";
+        const std::string u = camp.num("cities") > 0 ? "Click a town you hold and train new armies there." : "You hold no town to train armies in.";
+        const float bw = std::max(o.width(t, 32), o.width(u, 16)) + 40;
+        o.rect((w - bw) / 2, h * 0.3f - 12, bw, 82, rgba(0x000000, 170));
+        o.text((w - o.width(t, 32)) / 2, h * 0.3f, t, kRed, 32);
+        o.text((w - o.width(u, 16)) / 2, h * 0.3f + 44, u, kInk, 16);
+    }
+    {  // What happened to our own: a few short lines, newest first, fading as they age (Battle::events).
+        const std::vector<Json>& events = hud.list("events");
+        float ey = 44;
+        int shown = 0;
+        for (size_t k = events.size(); k-- > 0 && shown < 3; ++shown, ey += 20) {
+            const double sec = events[k].num("age") / 30.0;  // (ticks of the world: 30 a second)
+            const uint8_t alpha = static_cast<uint8_t>(255 * std::clamp((7.0 - sec) / 2.0, 0.0, 1.0));
+            const std::string text = events[k].str("text");
+            o.rect(6, ey - 2, o.width(text, 14) + 12, 20, rgba(0x000000, alpha * 150 / 255));
+            o.text(12, ey, text, {kRed.r, kRed.g, kRed.b, alpha}, 14);
+        }
+    }
 
     // Names of towns and places when the view is high.
     const size_t sel = static_cast<size_t>(hud.num("selCount"));
@@ -656,7 +682,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             const unsigned id = static_cast<unsigned>(s.num("id"));
             const Colour c = hex(s.str("color"));
             // A small pennant on a pole: dark edge, the holder's colour, a lit top edge, the count centred (a star for a hero).
-            std::snprintf(buf, sizeof buf, "%d%s", static_cast<int>(s.num("count")), s.flag("hero") ? "*" : "");
+            std::snprintf(buf, sizeof buf, "%d%s", static_cast<int>(s.num("men")), s.flag("hero") ? "*" : "");  // the men in it, a garrison's too
             const float tw = o.width(buf, 10);
             const float bw = std::max(16.0f, tw + 8);
             o.rect(x - 1, y - 8, 2, 16, rgba(0x000000, 200));  // the pole
@@ -703,11 +729,38 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
     }
 
+    // What waits where the selection is going (illyria_conquest_state: forecast), under the march's line when there is one.
+    if (conquest) {
+        if (const std::string foe = camp.str("forecast"); !foe.empty()) {
+            const float fw = o.width(foe, 14), fy = (camp.find("march") ? (!notice.empty() || hud.flag("planning") ? 94.0f : 40.0f) + 26 : (!notice.empty() || hud.flag("planning") ? 94.0f : 40.0f)) - 4;
+            o.rect((w - fw) / 2 - 10, fy, fw + 20, 24, rgba(0x000000, 170));
+            o.text((w - fw) / 2, fy + 4, foe, kInk, 14);
+        }
+    }
+
     // The selection and the squad cards, bottom.
+    float selEnd = 0;
     if (sel > 0) {
         std::snprintf(buf, sizeof buf, "%zu selected  %s  %s", sel, hud.str("selLabel").c_str(), hud.str("formation").c_str());
-        o.rect(0, cardsTop - 28, o.width(buf, 13) + 20, 22, rgba(0x000000, 150));
+        selEnd = o.width(buf, 13) + 20;
+        o.rect(0, cardsTop - 28, selEnd, 22, rgba(0x000000, 150));
         o.text(10, cardsTop - 24, buf, kGold, 13);
+    }
+    // The first-order hint, one line for a battle and a Conquest, until the first order is given (then it fades and
+    // is not shown again on this device).
+    if (!hintSeen_) {
+        if (hud.num("orders") > 0 && hintFade_ < 0) hintFade_ = 45;
+        if (hintFade_ > 0 && --hintFade_ == 0) {
+            hintSeen_ = true;
+            saveSettings();
+        }
+        if (!hintSeen_) {
+            const std::string hint = conquest ? "Right-click a town to march there. Hold the right button, then drag, to face." : "Right-click to march or attack. Hold the right button, then drag, to face.";
+            const float hw = o.width(hint, 14), alpha = hintFade_ < 0 ? 1.0f : static_cast<float>(hintFade_) / 45.0f;
+            const float hx = std::max((w - hw) / 2, selEnd + 20), hy = cardsTop - 26;
+            o.rect(hx - 10, hy - 3, hw + 20, 24, rgba(0x000000, static_cast<uint8_t>(170 * alpha)));
+            o.text(hx, hy, hint, rgba(0xF2E6B8, static_cast<uint8_t>(255 * alpha)), 14);
+        }
     }
     const Colour side = hex(hud.str("colour"));  // the player's colour (palette.h), the bars of the cards
     const float cw = cards.width, ch = kCardH;
@@ -824,9 +877,26 @@ void Hud::draw(Overlay& o, float w, float h) {
             rowsMax = std::max(rowsMax, kHelp[c].rows.size());
         }
         const float pw = std::min(w - 20, colW[0] + kColGap + colW[1] + 2 * kPad);
-        const float ph = 2 * kPad + (static_cast<float>(rowsMax) + 1) * kLine + 4;
+        // The first minute, under the two columns: the path from a click on your men to a march facing the way you want.
+        static const char* const kFirst[] = {
+            "1  Click one of your men, or drag a box round them. Click him again: all of his kind in view.",
+            "2  Right-click the ground (in a Conquest, a town): they march there. Right-click a foe: they attack.",
+            "3  To face them too, hold the right button still for a moment, then drag the way they should face.",
+            "4  Space halts them, P pauses, Enter is the menu. In a Conquest the bar under the top line says how soon they arrive."};
+        std::vector<std::string> first;
+        for (const char* l : kFirst)
+            for (const std::string& part : wrap(o, l, kSize, pw - 2 * kPad)) first.push_back(part);
+        const float ph = 2 * kPad + (static_cast<float>(rowsMax) + 1) * kLine + 4 + 10 + (static_cast<float>(first.size()) + 1) * kLine;
         const float x0 = w / 2 - pw / 2, y0 = 60;
         o.paper(x0, y0, pw, ph, 19);
+        {
+            float fy = y0 + kPad + (static_cast<float>(rowsMax) + 1) * kLine + 14;
+            o.text(x0 + kPad, fy, "The first minute", kSeal, kSize);
+            for (const std::string& l : first) {
+                fy += kLine;
+                o.text(x0 + kPad, fy, l, kPaperInk, kSize);
+            }
+        }
         float x = x0 + kPad;
         for (int c = 0; c < 2; ++c) {
             o.text(x, y0 + kPad, kHelp[c].title, kSeal, kSize);

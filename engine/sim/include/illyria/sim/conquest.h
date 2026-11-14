@@ -91,6 +91,7 @@ public:
     // Travel times (stepTime, Stack::progress) are in hundredths of a tick.
     static constexpr int32_t kTimeScale = 100;
     static constexpr int32_t kClosed = INT32_MAX;  // a travel time: no way through
+    static constexpr int32_t kLevyMen = 8;  // the men of a village's own levy (a trained squad of light foot is twelve)
     static constexpr int32_t kMaxStack = 8;  // squads in a group that march together; how many stand in one place is not limited
     static constexpr uint8_t kNeutral = Continent::kNeutral;
     // Boats (conquest_sea.cpp), after Warlords' navies: built in ports, they

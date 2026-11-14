@@ -517,6 +517,7 @@ void Battle::afterWorldStep() {
     collectEvents();
     voice_.observe(*world_, outcome());
     presentDeaths();
+    observeSquads();
 }
 
 void Battle::forgetMen() {

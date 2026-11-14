@@ -94,7 +94,7 @@ private:
     FILE* logFile_ = nullptr;
     long logSecond_ = -1;
     int lastMine_ = -1, lastFoe_ = -1, lastOutcome_ = 0, lastDay_ = 0, lastBroken_ = 0;
-    std::string lastNotice_;
+    std::string lastNotice_, lastEvent_;
     double wallStart_ = 0;
 };
 

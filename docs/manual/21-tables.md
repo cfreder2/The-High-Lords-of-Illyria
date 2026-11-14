@@ -74,7 +74,7 @@ The levies of rare troops (chapter [](#rare-troops)): 3 days each in a town or v
 | Walls (the panel's number) | 6 | 3 to 5 | 1 (none to see) |
 | Gold a day | 50 | 21 to 30 (15, 2 a point of walls, and up to 5) | 8 to 12 |
 | Trains | light infantry and the realm's kinds, two days' drill a day | light infantry and one or two kinds of the land | light infantry |
-| Neutral garrison | five armies, in the walled town's order (only where its realm is not in the war) | as many armies as its walls: archers, light infantry, archers, heavy infantry, pikemen, in that order | one levy: light infantry or pikemen |
+| Neutral garrison | five armies, in the walled town's order (only where its realm is not in the war) | as many armies as its walls: archers, light infantry, archers, heavy infantry, pikemen, in that order | one levy of eight men: light infantry or pikemen |
 
 | Gold | |
 |---|---|

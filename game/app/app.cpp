@@ -2270,9 +2270,10 @@ ILLYRIA_API const char* illyria_conquest_state() {
         px /= app->pixelRatio;
         py /= app->pixelRatio;
         if (px < -40 || py < -40 || px > app->camera.width() / app->pixelRatio + 40 || py > app->camera.height() / app->pixelRatio + 40) continue;
-        int32_t strongest = 0, vets = 0;
+        int32_t strongest = 0, vets = 0, men = 0;
         bool hero = false;
         for (const illyria::sim::Army& a : st.armies) {
+            men += a.soldiers;
             strongest = std::max(strongest, C::strength(a));
             hero = hero || a.hero();
             vets += !a.hero() && a.rank >= 2;  // veterans and elites
@@ -2282,8 +2283,8 @@ ILLYRIA_API const char* illyria_conquest_state() {
         const int32_t town = c.cityAt(st.cx, st.cy);
         const int raising = st.path.empty() && town >= 0 && c.cities()[static_cast<size_t>(town)].banner == st.owner
                                 ? 100 * c.cities()[static_cast<size_t>(town)].bannerProgress / C::kBannerFull : -1;
-        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"hero\":%s,\"vets\":%d,\"moving\":%s,\"boat\":%s,\"raising\":%d,\"color\":\"#%02x%02x%02x\"}",
-                      first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), hero ? "true" : "false", vets,
+        std::snprintf(buf, sizeof buf, "%s{\"id\":%u,\"owner\":%d,\"x\":%.0f,\"y\":%.0f,\"strength\":%d,\"count\":%zu,\"men\":%d,\"hero\":%s,\"vets\":%d,\"moving\":%s,\"boat\":%s,\"raising\":%d,\"color\":\"#%02x%02x%02x\"}",
+                      first ? "" : ",", st.id, st.owner, px, py, strongest, st.armies.size(), men, hero ? "true" : "false", vets,
                       st.path.empty() ? "false" : "true", st.boat ? "true" : "false", raising, static_cast<int>(col.x * 255),
                       static_cast<int>(col.y * 255), static_cast<int>(col.z * 255));
         s += buf;
@@ -2322,7 +2323,10 @@ ILLYRIA_API const char* illyria_conquest_state() {
             any = true;
         }
     }
-    std::snprintf(buf, sizeof buf, "],\"land\":%d,\"landGold\":%d", c.hexesHeld(me), c.hexesHeld(me) / C::kHexesPerGold);
+    // No army of the local side stands anywhere (all destroyed, or sent home): the HUD says so and points at recruiting.
+    bool noArmy = true;
+    for (const C::Stack& st : c.stacks()) noArmy = noArmy && (st.owner != me || st.armies.empty());
+    std::snprintf(buf, sizeof buf, "],\"land\":%d,\"landGold\":%d,\"noArmy\":%s", c.hexesHeld(me), c.hexesHeld(me) / C::kHexesPerGold, noArmy ? "true" : "false");
     s += buf;
     // The squads wholly selected that can be sent home (a hero cannot): the Disband button's.
     s += ",\"armies\":[";
@@ -2341,8 +2345,66 @@ ILLYRIA_API const char* illyria_conquest_state() {
     if (sel && !sel->path.empty()) {
         const int32_t left = marchTimeLeft(c, *sel);
         if (left != C::kClosed) {
-            std::snprintf(buf, sizeof buf, ",\"march\":{\"ticks\":%d,\"perDay\":%d,\"perSecond\":%d}", (left + C::kTimeScale - 1) / C::kTimeScale,
-                          C::kTicksPerDay, C::kTicksPerSecond);
+            std::snprintf(buf, sizeof buf, ",\"march\":{\"ticks\":%d,\"perDay\":%d,\"perSecond\":%d}", (left + C::kTimeScale - 1) / C::kTimeScale, C::kTicksPerDay,
+                          C::kTicksPerSecond);
+            s += buf;
+        }
+    }
+    // The forecast for where the selection is headed: the end of its march, or (men sent on their own feet, a town
+    // near the keep) the place of the first order marker. Who stands there that is not ours (as far as we can see),
+    // against the selection's own men, said in a word: one sentence for both HUDs.
+    {
+        // The armies selected, wherever they stand (an order given to men on their own feet splits a stack).
+        bool any = false;
+        int32_t ownMen = 0, fromX = -1, fromY = -1;
+        for (const Squad& q : app->battle->squads()) {
+            if (q.owner != me || !q.army || !app->battle->controllable(q) || app->battle->squadSelection(q) == 0) continue;
+            for (const C::Stack& st : c.stacks())
+                for (const illyria::sim::Army& a : st.armies)
+                    if (st.owner == me && a.id == q.army) any = true, ownMen += a.soldiers, fromX = st.cx, fromY = st.cy;
+        }
+        int32_t gx = -1, gy = -1;
+        if (any && sel && !sel->path.empty()) {
+            gx = sel->path.back().first, gy = sel->path.back().second;
+        } else if (any) {
+            // (the middle of the places the selection is sent to; its men spread over a few cells)
+            double sx = 0, sy = 0;
+            int n = 0;
+            for (const Battle::OrderMark& m : app->battle->orderMarks())
+                if (m.opacity >= 0.99f) sx += m.pos.x, sy += m.pos.y, ++n;
+            if (n > 0) {
+                const V3 o = app->battle->origin();
+                gx = C::cellOf(static_cast<int32_t>(sx / n + o.x)), gy = C::cellOf(static_cast<int32_t>(sy / n + o.y));
+            }
+        }
+        int32_t foeMen = 0, foeArmies = 0;
+        bool foe = false, seen = true;
+        const int32_t aimX = gx, aimY = gy;
+        if (gx >= 0)
+            for (const C::Stack& o : c.stacks()) {
+                // (a stack on the cell, or next to it: the men are sent to the green, not to the cell's middle)
+                if (o.owner == me || o.armies.empty() || std::abs(o.cx - aimX) > 1 || std::abs(o.cy - aimY) > 1 || (o.cx == fromX && o.cy == fromY)) continue;
+                foe = true;
+                seen = seen && c.canSee(me, o.owner, static_cast<float>(C::centre(o.cx)), static_cast<float>(C::centre(o.cy)));
+                gx = o.cx, gy = o.cy;
+                for (const illyria::sim::Army& a : o.armies) foeMen += a.soldiers, ++foeArmies;
+            }
+        if (foe) {
+            const int32_t at = c.cityAt(gx, gy);
+            const char* place = at >= 0 ? c.continent().cities()[static_cast<size_t>(at)].name.c_str() : "There";
+            char text[256];
+            if (!seen) {
+                std::snprintf(text, sizeof text, "%s: defenders not in sight", place);
+            } else {
+                // By numbers, men against men, the walls counting twice for the defenders (the Warlords dice, attackOdds, call a
+                // handful of armies against a walled town "good" and the fight in the world is not so kind).
+                const bool walled = at >= 0 && c.continent().cities()[static_cast<size_t>(at)].walled;
+                const int64_t ratio = static_cast<int64_t>(ownMen) * 100 / std::max<int64_t>(1, static_cast<int64_t>(foeMen) * (walled ? 2 : 1));
+                const char* verdict = ratio >= 250 ? "good" : ratio >= 140 ? "fair" : ratio >= 80 ? "even" : "poor";
+                std::snprintf(text, sizeof text, "%s: %d defenders in %d %s%s against your %d men. Forecast: %s", place, foeMen, foeArmies, foeArmies == 1 ? "army" : "armies",
+                              walled ? " behind walls" : "", ownMen, verdict);
+            }
+            std::snprintf(buf, sizeof buf, ",\"forecast\":\"%s\"", text);
             s += buf;
         }
     }
@@ -2716,6 +2778,20 @@ ILLYRIA_API const char* illyria_hud() {
         std::snprintf(buf, sizeof buf, "\"mode\":%d,\"batter\":%s,\"raid\":%s,\"planning\":%s,\"planned\":%zu,\"notice\":\"%s\",", static_cast<int>(b.orderMode()),
                       b.selectionBatters() ? "true" : "false", b.selectionRaids() ? "true" : "false", b.planning() ? "true" : "false", b.plannedCount(),
                       fresh ? b.notice().c_str() : "");
+        s += buf;
+        // The strip of what happened to the player's own, newest last, those still fresh (Battle::events), and how many
+        // orders have been given (the first-order hint goes with the first).
+        s += "\"events\":[";
+        {
+            bool any = false;
+            for (const Battle::Event& e : b.events()) {
+                if (b.eventClock() - e.at >= Battle::kEventShown) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"text\":\"%s\",\"age\":%u}", any ? "," : "", e.text.c_str(), b.eventClock() - e.at);
+                s += buf;
+                any = true;
+            }
+        }
+        std::snprintf(buf, sizeof buf, "],\"orders\":%u,", b.ordersGiven());
         s += buf;
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",

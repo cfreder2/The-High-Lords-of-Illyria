@@ -295,7 +295,12 @@ void Conquest::initCities() {
             // A village's own men: a levy on its green, with spears as often as not (no wall keeps the horsemen
             // out of a village; a hedge of pikes does).
             const bool pikes = noise::lattice(sc, static_cast<int64_t>(i), 77) < Fixed::fromRatio(1, 2);
-            g.armies.push_back(makeArmy(pikes ? T::Pikemen : T::LightInfantry, "Levy of " + c.name));
+            // A levy is a squad short of its men: eight where a trained squad is twelve, so that the first march, the
+            // starting stack of forty-four against the nearest green, is won with a few losses and not for nothing.
+            Army levy = makeArmy(pikes ? T::Pikemen : T::LightInfantry, "Levy of " + c.name);
+            levy.soldiers = levy.fullStrength = kLevyMen;
+            levy.men.resize(static_cast<size_t>(kLevyMen));
+            g.armies.push_back(std::move(levy));
             continue;
         }
         // A walled town's garrison is one for its walls: two companies of bows (the first up over the gate), and
