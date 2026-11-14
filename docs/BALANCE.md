@@ -141,3 +141,7 @@ Hyena-  100  88 100 100 100 100 100 100 100 100 100 100 100 100 100  75 100 100 
 ## Not covered
 
 Walls and gates (engines against a castle), terrain in the fight (high ground, forest), hero levels and ranks, mixed armies, and fliers fighting from the air. A flat 90 m field favours shooters a little and charges less than a real battle would.
+
+## All-computer Conquest pacing (illyria_conquestsim [days] [hard|easy] [seed ...])
+
+Eight Hard lords, headless, seeds 1 to 3, before and after the men-aware attack gate and retaking bonus (conquest_ai.cpp). No war was decided in 60 days (70 to 75 with the later "weary" boldness): the most any lord held was 11 to 17 of 80 towns (41 are needed), nobody snowballed, and from about day 30 towns changed hands about once in five days. Men in the field stay near 2,600 because upkeep takes the income, so equal lords stand off behind their walls. Left as a design decision: a stalemate breaker in the economy (income per hex, cheaper upkeep for a lord with fewer towns).

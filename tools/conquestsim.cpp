@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
                 std::printf(" %3d  ", day);
                 for (uint8_t s = 0; s < 8; ++s) std::printf("%3d", c.citiesOwned(s));
                 std::printf("   %6d   %zu\n", men, c.fights().size());
+                std::fflush(stdout);
             }
         }
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();

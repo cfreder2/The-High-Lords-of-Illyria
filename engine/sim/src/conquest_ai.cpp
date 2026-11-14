@@ -158,8 +158,12 @@ private:
             hero = hero || a.hero();
             precious += !a.hero() && C::precious(a);
         }
-        return std::min(t_.mostOdds, (hero ? t_.heroOdds : t_.attackOdds) + t_.care * precious);
+        return std::min(t_.mostOdds, std::max(t_.attackOdds / 2, (hero ? t_.heroOdds : t_.attackOdds) + t_.care * precious - weary()));
     }
+    // A Warlord grows bolder as the war drags on: from day 30, two thousandths less in the odds it asks for each day (to half
+    // of them at the most), and from the same day fewer men in the ratio, so that two equal lords do not sit behind their
+    // walls for ever (the first 60-day runs of illyria_conquestsim showed the towns changing hands once in five days).
+    int32_t weary() const { return t_.gather ? std::clamp(static_cast<int32_t>(c_.day()) - 30, 0, 150) * 2 : 0; }
     // The men a stack would meet at a place: whoever stands there, and the other stacks of the town's lord that could be
     // in it within a day (the fights are of men: the dice do not see the ones about to arrive).
     int64_t menMet(int32_t cx, int32_t cy) const {
@@ -178,7 +182,8 @@ private:
     bool enough(const std::vector<Army>& armies, int32_t cx, int32_t cy) const {
         int64_t mine = 0;
         for (const Army& a : armies) mine += a.soldiers;
-        return mine * 100 >= menMet(cx, cy) * t_.menPercent;
+        const int32_t percent = t_.menPercent == 0 ? 0 : std::max(55, t_.menPercent - std::clamp(static_cast<int32_t>(c_.day()) - 30, 0, 35));
+        return mine * 100 >= menMet(cx, cy) * percent;
     }
     // Tenths of days to march so many millimetres of level plains at so many a second.
     static int32_t days10(int64_t mm, int64_t speed) {
