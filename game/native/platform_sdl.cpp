@@ -53,6 +53,9 @@ struct Options {
 #endif
     bool worldCamera = false;  // --world: --camera's x, y are continent metres
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
+    int bench = 0, preset = -1, hide = 0;  // --bench N: average 300 frames from frame N, print, quit; --preset 0..2; --hide MASK (parts)
+    std::string cycle;                     // --cycle "255,127h32,...": graphics masks (and hidden parts after an h) taken in turn every 80 frames, GPU time of each averaged
+    double ratio = 0;                      // --ratio R: pin the resolution scale (dynamic resolution off)
     int msaa = 0;  // (the window's own antialiasing: a scaled frame is drawn without it, and the display is dense)
     int lord = 6, foes = 0xFF & ~(1 << 6);
     bool hard = true;
@@ -74,6 +77,9 @@ void usage() {
         "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
         "  --trees N|all         draw trees as 0 one card, 1 two crossed cards, 2 three, 3 four (default: the game's);\n"
         "                        all: --shot FILE.tga writes FILE-0.tga to FILE-3.tga, one a style\n"
+        "  --bench N             after N frames, average 300 (frame ms, GPU ms), print and quit (with --novsync)\n"
+        "  --ratio R             pin the resolution scale (dynamic resolution off); --preset 0..2 or a Feature mask; --hide MASK of parts\n"
+        "  --cycle A,B,Ah32,...  take graphics masks (Ah32: with parts hidden) in turn, 80 frames each, print each one's GPU ms\n"
         "  --novsync, --msaa N   swap at once instead of with the display; samples of the window (default 0)\n"
         "  --shot FILE.tga[:N]   write the frame N (default 300) to FILE and quit\n"
         "  --world               --camera's x, y are continent metres (not the battle window's)\n"
@@ -108,6 +114,11 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--novsync") o.vsync = false;
         else if (a == "--trees") o.trees = std::strcmp(next(), "all") == 0 ? kAllTreeStyles : std::atoi(argv[i]);
         else if (a == "--profile") o.profile = std::atoi(next()), o.stats = true;
+        else if (a == "--bench") o.bench = std::atoi(next());
+        else if (a == "--preset") o.preset = std::atoi(next());
+        else if (a == "--hide") o.hide = std::atoi(next());
+        else if (a == "--cycle") o.cycle = next();
+        else if (a == "--ratio") o.ratio = std::atof(next());
         else if (a == "--msaa") o.msaa = std::atoi(next());
         else if (a == "--shot") {
             o.shot = next();
@@ -406,6 +417,24 @@ int runApp(int argc, char** argv) {
     Profile profile(opt.profile, static_cast<int>(drawCounts().size()));
     double rawGpuMs = 0;
     bool running = true;
+    double benchGpu = 0, benchCpu = 0, benchStart = 0;
+    int benchN = 0, benchGpuN = 0;
+    if (opt.ratio > 0) illyria_set_dynamic_resolution(0);
+    std::vector<std::pair<int, int>> cycle;  // (features, hidden parts)
+    std::vector<double> cycleSum;
+    std::vector<int> cycleN;
+    std::vector<std::vector<double>> cycleVisits;  // each visit's mean: the GPU is shared, so the least is the honest figure
+    for (size_t at = 0; at < opt.cycle.size();) {
+        const size_t end = std::min(opt.cycle.find(',', at), opt.cycle.size());
+        const std::string tok = opt.cycle.substr(at, end - at);
+        const size_t h = tok.find('h');
+        cycle.emplace_back(std::atoi(tok.c_str()), h == std::string::npos ? 0 : std::atoi(tok.c_str() + h + 1));
+        at = end + 1;
+    }
+    cycleSum.assign(cycle.size(), 0);
+    cycleN.assign(cycle.size(), 0);
+    cycleVisits.resize(cycle.size());
+    constexpr int kCycleLen = 80, kCycleWarm = 30, kCycleRounds = 8, kCycleFrom = 300;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -435,6 +464,8 @@ int runApp(int argc, char** argv) {
 #endif
         native::pumpAssets();
         hud.tick();
+        if (frame == 1 && (opt.ratio > 0 || opt.preset >= 0)) illyria_set_graphics(opt.preset > 2 ? opt.preset : illyria_graphics_preset(opt.preset >= 0 ? opt.preset : 2), opt.ratio > 0 ? opt.ratio : 3.0);
+        if (frame == 1 && opt.hide) illyria_hide_parts(static_cast<unsigned>(opt.hide));
         // One camera is set once the game runs; several are a tour, each held kTourFrames with the close-up land built.
         const int tourStep = opt.cameras.size() > 1 && frame >= opt.shotFrame ? (frame - opt.shotFrame) / kTourFrames : 0;
         if (!opt.cameras.empty() && hudTick() > 0 && (opt.cameras.size() == 1 ? !cameraSet : frame >= opt.shotFrame && (frame - opt.shotFrame) % kTourFrames == 0)) {
@@ -510,6 +541,38 @@ int runApp(int argc, char** argv) {
             hud.setPerf(line);
         }
         if (const GLenum err = glGetError(); err != GL_NO_ERROR && frame < 600) std::fprintf(stderr, "GL error 0x%x at frame %d\n", err, frame);
+        if (!cycle.empty() && frame >= kCycleFrom) {
+            const int k = (frame - kCycleFrom) / kCycleLen, within = (frame - kCycleFrom) % kCycleLen;
+            if (k >= kCycleRounds * static_cast<int>(cycle.size())) {
+                for (size_t i = 0; i < cycle.size(); ++i) {
+                    std::vector<double> v = cycleVisits[i];
+                    std::sort(v.begin(), v.end());
+                    std::printf("cycle %d%s%d: gpu min %.2f median %.2f ms\n", cycle[i].first, cycle[i].second ? " hide " : " ", cycle[i].second, v.empty() ? 0.0 : v.front(), v.empty() ? 0.0 : v[v.size() / 2]);
+                }
+                running = false;
+            } else {
+                const size_t i = static_cast<size_t>(k) % cycle.size();
+                if (within == 0) {
+                    illyria_set_graphics(cycle[i].first, opt.ratio > 0 ? opt.ratio : 3.0);
+                    illyria_hide_parts(static_cast<unsigned>(cycle[i].second));
+                    cycleSum[i] = 0;
+                    cycleN[i] = 0;
+                }
+                if (within >= kCycleWarm && rawGpuMs > 0) cycleSum[i] += rawGpuMs, ++cycleN[i];
+                if (within == kCycleLen - 1 && cycleN[i] > 0) cycleVisits[i].push_back(cycleSum[i] / cycleN[i]);
+            }
+        }
+        if (opt.bench > 0 && frame >= opt.bench && frame < opt.bench + 300) {
+            if (frame == opt.bench) benchStart = platform::nowMs();
+            if (rawGpuMs > 0) benchGpu += rawGpuMs, ++benchGpuN;
+            benchCpu += cpuMs;
+            ++benchN;
+        } else if (opt.bench > 0 && frame == opt.bench + 300) {
+            const double wall = (platform::nowMs() - benchStart) / 300.0;
+            std::printf("bench: %.1f fps  frame %.2f ms  gpu %.2f ms  cpu %.2f ms  %s\n", 1000.0 / wall, wall, benchGpuN ? benchGpu / benchGpuN : 0.0, benchN ? benchCpu / benchN : 0.0, illyria_perf());
+            std::fflush(stdout);
+            running = false;
+        }
         if (opt.profile > 0 && !profile.step(frame, rawGpuMs)) running = false;
         ++frame;
         if (opt.quitFrame && frame >= opt.quitFrame) running = false;

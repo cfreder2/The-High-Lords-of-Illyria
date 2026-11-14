@@ -66,6 +66,13 @@ float groundZ(vec2 p) {
     float c = heightTexel(i + vec2(0, 1)), d = heightTexel(i + vec2(1, 1));
     return t.x >= t.y ? a + (b - a) * t.x + (d - b) * t.y : a + (c - a) * t.y + (d - c) * t.x;
 }
+// Whether the ground a few metres round is higher (1) or lower (-1) than z here: hollows lie in their own shade, crests catch the
+// sky. A slow field, so the terrain's vertex shaders take it (twenty height fetches a pixel were the fragment shader's).
+float hollowAt(vec2 p, float z) {
+    const float r = 9.0;
+    float round = (groundZ(p + vec2(r, 0.0)) + groundZ(p - vec2(r, 0.0)) + groundZ(p + vec2(0.0, r)) + groundZ(p - vec2(0.0, r))) * 0.25;
+    return clamp((round - z) / 1.6, -1.0, 1.0);
+}
 // How much the close-up land shows here, 0..1 (the coarse land and the
 // ribbons give way to it): inside uDetailRect, in the 64 m chunks uDetailMask
 // marks (one texel per chunk, repeating like the land's textures, rising as a
@@ -587,9 +594,11 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 out vec3 vWorld;
 out vec3 vNormal;
+out float vHollow;
 void main() {
     vWorld = aPos;
     vNormal = aNormal;
+    vHollow = hollowAt(aPos.xy, aPos.z);
     gl_Position = uViewProj * vec4(aPos, 1.0);
 }
 )";
@@ -601,6 +610,7 @@ layout(location = 0) in vec3 aGrid;   // sample in the chunk (0..16), and 1 on t
 layout(location = 1) in vec2 aChunk;  // per instance: the chunk's corner
 out vec3 vWorld;
 out vec3 vNormal;
+out float vHollow;
 void main() {
     vec2 c = floor(aChunk / uCellSize + 0.5) + aGrid.xy;
     float z = heightTexel(c);
@@ -608,12 +618,14 @@ void main() {
     float d = heightTexel(c - vec2(0, 1)), u = heightTexel(c + vec2(0, 1));
     vNormal = normalize(vec3(l - r, d - u, 2.0 * uCellSize));
     vWorld = vec3(c * uCellSize, z - aGrid.z * 10.0);
+    vHollow = hollowAt(c * uCellSize, z);
     gl_Position = uViewProj * vec4(vWorld, 1.0);
 }
 )";
 #define ILLYRIA_TERRAIN_FS R"(
 in vec3 vWorld;
 in vec3 vNormal;
+in float vHollow;
 out vec4 oColor;
 
 float valueNoise(vec2 p) {
@@ -690,23 +702,29 @@ void main() {
     // on; it is what keeps mid zoom from looking like felt).
     float lush = valueNoise(p * 0.045 + 3.1) * 0.65 + valueNoise(p * 0.13 + 8.7) * 0.35;
     vec3 dry = vec3(0.47, 0.45, 0.24), wet = vec3(0.21, 0.34, 0.15);
-    albedo = mix(albedo, mix(albedo, moorland(mix(dry, wet, lush), p), 0.62), kind.x);
+    if (kind.x > 0.0) albedo = mix(albedo, mix(albedo, moorland(mix(dry, wet, lush), p), 0.62), kind.x);  // (the noise only where it shows)
     // The ground wears through where it is steep: earth on the banks of a knoll, stone where it stands like a wall.
     {
         float ragged = (fine - 0.5) * 0.035 + (broad - 0.5) * 0.02;
         float bank = smoothstep(0.045, 0.115, slope + ragged), scar = smoothstep(0.15, 0.27, slope + ragged);
-        vec3 earth = mix(vec3(0.38, 0.30, 0.20), vec3(0.47, 0.40, 0.27), valueNoise(p * 0.9 + 2.0));
-        vec3 stone = mix(vec3(0.36, 0.35, 0.33), vec3(0.50, 0.48, 0.44), valueNoise(p * 0.6 + 11.0)) * (0.9 + 0.2 * valueNoise(p * 3.1));
-        albedo = mix(albedo, earth, bank * 0.7 * (kind.x + kind.y * 0.6));
-        albedo = mix(albedo, stone, scar * 0.85 * (kind.x + kind.y));
+        if (bank > 0.0) {  // (level ground wears nothing through: the noise only where it shows)
+            vec3 earth = mix(vec3(0.38, 0.30, 0.20), vec3(0.47, 0.40, 0.27), valueNoise(p * 0.9 + 2.0));
+            albedo = mix(albedo, earth, bank * 0.7 * (kind.x + kind.y * 0.6));
+        }
+        if (scar > 0.0) {
+            vec3 stone = mix(vec3(0.36, 0.35, 0.33), vec3(0.50, 0.48, 0.44), valueNoise(p * 0.6 + 11.0)) * (0.9 + 0.2 * valueNoise(p * 3.1));
+            albedo = mix(albedo, stone, scar * 0.85 * (kind.x + kind.y));
+        }
     }
 
     if (feature(kFeatGroundDetail)) {
         float near = 1.0 - smoothstep(60.0, 220.0, dist);
         // Bare soil and trampled patches in the grass.
         float soilMask = smoothstep(0.7, 0.84, valueNoise(p * 0.085 + 41.0) * 0.6 + valueNoise(p * 0.5 + 5.0) * 0.4);
-        vec3 soil = mix(vec3(0.42, 0.33, 0.22), vec3(0.52, 0.43, 0.30), valueNoise(p * 1.7));
-        albedo = mix(albedo, soil, soilMask * kind.x * 0.85 * (1.0 - canopy));
+        if (soilMask > 0.0) {
+            vec3 soil = mix(vec3(0.42, 0.33, 0.22), vec3(0.52, 0.43, 0.30), valueNoise(p * 1.7));
+            albedo = mix(albedo, soil, soilMask * kind.x * 0.85 * (1.0 - canopy));
+        }
         // Grass: clumps, then blades (streaky noise), fading before they alias.
         float clump = valueNoise(p * 0.75 + 13.0);
         float grass = kind.x * (1.0 - soilMask);
@@ -879,9 +897,7 @@ void main() {
     float ambient = 0.30 * (1.0 - grove * 0.45);
     if (feature(kFeatGroundDetail)) {
         // Hollows lie in their own shade and crests catch the sky: the ground a few metres round is higher, or lower.
-        const float r = 9.0;
-        float round = (groundZ(p + vec2(r, 0.0)) + groundZ(p - vec2(r, 0.0)) + groundZ(p + vec2(0.0, r)) + groundZ(p - vec2(0.0, r))) * 0.25;
-        float hollow = clamp((round - groundZ(p)) / 1.6, -1.0, 1.0);
+        float hollow = vHollow;  // (from the vertices: hollowAt)
         ambient *= 1.0 - 0.42 * max(hollow, 0.0) + 0.22 * max(-hollow, 0.0);
         sun *= 1.0 - 0.18 * max(hollow, 0.0);
     }
@@ -2302,6 +2318,12 @@ void main() {
     bool outside = uWrap > 0.5 ? (all(greaterThan(xy, uHole.xy + 1.0)) && all(lessThan(xy, uHole.zw - 1.0))) || h1 >= detailWeight(xy)
                                : xy.x < 1.0 || xy.y < 1.0 || xy.x > size - 1.0 || xy.y > size - 1.0;
     if (fade <= 0.0 || outside) { gl_Position = kCulled; return; }
+    {   // Off the screen (the grid reaches all round the target, the screen shows part of it): the cheap test first, before the noise
+        // below, which every vertex of every instance would otherwise pay. A plant is two metres at most, in the margin.
+        vec4 cp = uViewProj * vec4(xy, groundZ(xy), 1.0);
+        vec2 margin = 2.0 * vec2(length(vec3(uViewProj[0][0], uViewProj[1][0], uViewProj[2][0])), length(vec3(uViewProj[0][1], uViewProj[1][1], uViewProj[2][1])));
+        if (cp.w < -2.0 || abs(cp.x) > cp.w + margin.x || abs(cp.y) > cp.w + margin.y) { gl_Position = kCulled; return; }
+    }
     int g = coverGround(xy);
     float canopy = texture(uCanopy, xy / size).r;
     vec2 road = texture(uRoad, xy / size).rg;
