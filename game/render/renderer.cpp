@@ -2455,6 +2455,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Where the player's soldiers are going, and what they are after.
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
+    pushRangeRings(battle, static_cast<float>(timeSeconds), decals);
     pushPathLines(battle, camera, static_cast<float>(timeSeconds), decals);
 
     // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.

@@ -67,6 +67,26 @@ void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& dec
     }
 }
 
+// A ring of dots on the ground, as far as the selected shooters reach: the bowmen's, the engines' (and the engines' nearest throw,
+// within which they cannot shoot). They creep round slowly. The dots lie on the floor each stands on.
+void pushRangeRings(const Battle& battle, float seconds, std::vector<float>& decals) {
+    constexpr float kBlue[3] = {0.4f, 0.9f, 1.0f};
+    constexpr float kDotSpacing = 4.0f;
+    constexpr int kMaxDots = 360;
+    for (const Battle::RangeRing& ring : battle.rangeRings()) {
+        for (const float radius : {ring.radius, ring.inner}) {
+            if (radius < 3.0f) continue;
+            const int dots = std::min(kMaxDots, std::max(12, static_cast<int>(6.2831853f * radius / kDotSpacing)));
+            for (int i = 0; i < dots; ++i) {
+                const float a = 6.2831853f * (static_cast<float>(i) + 0.15f * seconds) / static_cast<float>(dots);
+                V3 p{ring.centre.x + std::cos(a) * radius, ring.centre.y + std::sin(a) * radius, 0};
+                p.z = battle.floorAt(p);
+                decals.insert(decals.end(), {p.x, p.y, p.z, 0, radius > ring.inner ? 0.9f : 0.6f, 0, kDecalDot, kBlue[0], kBlue[1], kBlue[2], radius == ring.radius ? 0.1f : 0.35f});
+            }
+        }
+    }
+}
+
 // --- Paths --------------------------------------------------------------------------------------------------------
 // Three line languages, apart by shape as well as colour (for the colour-blind): a patrol (he fights what he meets)
 // is a dashed line with chevrons ending in an open ring; a hunt (he ignores all but his quarry) a solid line with

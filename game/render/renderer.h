@@ -591,6 +591,8 @@ private:
 
 // Order markers (renderer_orders.cpp): destinations, targets, attack lines.
 void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals);
+// How far the selected shooters reach: a ring of dots for each kind (renderer_orders.cpp).
+void pushRangeRings(const Battle& battle, float seconds, std::vector<float>& decals);
 // Paths of the soldiers going somewhere (Battle::pathLines); how many decals.
 size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, std::vector<float>& decals);
 

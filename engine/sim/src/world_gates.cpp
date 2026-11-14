@@ -16,9 +16,11 @@ constexpr int32_t kGateBlowDivisor = 4;
 // How much more than to a man blasts and stones do to a gate, in percent: a
 // stone flung at the doors, a satchel against them, a fireball (that scorches
 // more than it breaks).
-constexpr int32_t kStoneGatePct = 500;
+constexpr int32_t kStoneGatePct = 900;
 constexpr int32_t kBombGatePct = 300;
 constexpr int32_t kFireGatePct = 150;
+// An engine stops this much inside its own throw when it begins on a gate (so a stone does not fall short).
+constexpr Fixed kEngineMargin = Fixed::fromInt(6);
 // Where those coming up to a shut gate gather, in front of its face.
 constexpr Fixed kGateApproach = Fixed::fromInt(4);
 // A little more than a blow's reach: soldiers pressed against the doors.
@@ -149,6 +151,36 @@ Vec3 World::gateAimPoint(int gate, const Vec3& from) const {
     Vec3 p = (g.a + g.b) * Fixed::fromRatio(1, 2) + g.out * (outside ? g.halfThick : -g.halfThick);
     p.z = g.a.z + (g.top - g.a.z) / 2;
     return p;
+}
+
+int World::engineGateInReach(const Unit& u, const Vec3& near, Fixed grab) const {
+    if (!config_.region || u.stats.ranged.kind != ProjectileKind::Stone) return -1;
+    const auto& gs = config_.region->gates();
+    int best = -1;
+    Fixed bestD = Fixed::zero();
+    for (size_t i = 0; i < gs.size(); ++i) {
+        const GateState& st = gates_[i];
+        if (st.broken() || st.holder == GateState::kNoHolder || st.holder == u.owner) continue;
+        const Vec3 mid = (gs[i].a + gs[i].b) * Fixed::fromRatio(1, 2);
+        if ((mid - near).flat().length() > grab) continue;
+        const Fixed d = (mid - u.pos).flat().length();
+        if (d > shotRange(u, u.stats.ranged.maxRange, mid) - kEngineMargin || d < u.stats.ranged.minRange) continue;
+        if (best < 0 || d < bestD) {
+            best = static_cast<int>(i);
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+void World::batterGate(Unit& u, int gate) {
+    u.hasAttackTarget = true;
+    u.hasMoveTarget = false;
+    u.attackGate = gate;
+    u.attackTarget = gateAimPoint(gate, u.pos);
+    u.path.clear();
+    u.pathIndex = 0;
+    u.orderTick = tick_;
 }
 
 Fixed World::gateHit(const Vec3& a, const Vec3& b, Fixed limitT) const {

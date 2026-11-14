@@ -555,6 +555,32 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
     return out;
 }
 
+std::vector<Battle::RangeRing> Battle::rangeRings() const {
+    std::vector<RangeRing> out;
+    std::vector<int> count;
+    std::vector<uint8_t> kind;
+    const auto& units = world_->units();
+    for (size_t i = 0; i < units.size(); ++i) {
+        const sim::Unit& u = units[i];
+        if (!u.alive() || u.owner != local_ || !isSelected(u.id) || u.stats.ranged.muzzleSpeed <= sim::Fixed::zero()) continue;
+        const V3 at = unitPosition(i);
+        size_t k = 0;
+        while (k < kind.size() && kind[k] != u.stats.type) ++k;
+        if (k == kind.size()) {
+            kind.push_back(u.stats.type);
+            count.push_back(0);
+            out.push_back({{0, 0, 0}, static_cast<float>(u.stats.ranged.maxRange.toDouble()), static_cast<float>(u.stats.ranged.minRange.toDouble())});
+        }
+        out[k].centre = out[k].centre + at;
+        ++count[k];
+    }
+    for (size_t k = 0; k < out.size(); ++k) {
+        out[k].centre = out[k].centre * (1.0f / static_cast<float>(count[k]));
+        out[k].centre.z = floorAt(out[k].centre);
+    }
+    return out;
+}
+
 // The legs of the queues behind the orders in hand, one per queued order, each in the look of its own stance (sim::World::stanceOfOrder)
 // and numbered from 1. They start where the order before ends (the end of his route now, or where he stands), and run straight:
 // the way round something is found only when the order begins. The player's own men only; a leg after a quarry the player cannot see

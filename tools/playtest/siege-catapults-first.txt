@@ -1,0 +1,44 @@
+# Siege of Eastwatch the sensible way: the two catapults alone go at the gate, from their own reach, the army waits; once the
+# doors are down everyone goes in. Shots show the range ring of the selected engines.
+size 1600 900
+start skirmish siege
+wait 0.5
+camera 440 500 250 1.610
+wait 1
+select 13
+click right 1110 450
+wait_ticks 60
+shot 00-ring
+stats
+speed 4
+wait_ticks 1500
+shot 01-gate-down
+stats
+cards
+# the engines go on throwing at whoever stands in reach; the foot and the sappers go in once the doors are down
+wait_ticks 900
+shot 01b-engines-clear
+stats
+select 4
+click right 1110 450
+select 5
+click right 1110 450
+select 6
+click right 1110 450
+select 9
+click right 1110 450
+select 11
+click right 1110 450
+select 10
+click right 1110 450
+wait_ticks 1200
+shot 02-storm
+stats
+wait_ticks 1800
+shot 03-courtyard
+stats
+wait_ticks 2400
+shot 04
+stats
+cards
+quit

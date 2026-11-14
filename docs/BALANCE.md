@@ -20,6 +20,19 @@ Fights are decided by morale in seconds (a side that loses a few men breaks whol
 5. **Shooters.** The dragon's fireball (6 s, 50) was too slow to matter against a mass of foot.
 6. **Economy.** Upkeep is a quarter of the price a day and a town pays about 25 a day, so a town carries about eight armies of light infantry: the cap is the gold. Nothing is free: an army is paid for when training starts, and one that cannot be paid for deserts. Not broken; the one real hole was price (light infantry the best value in the game), changed below. Upkeep follows the new prices (`(price + 3) / 4`).
 
+## The siege (2026-11-14, review2 issues 1 and 12)
+
+A catapult (150 m throw, nearest 30 m) outranges every archer (70 m). The review's two catapults died because the click that was meant for the gate landed on the ground beside it: a plain march, and a marching engine walked on into the bowmen's reach and never threw. Measured on `07-siege-batter-long.txt`: engines dead (0/2) by 100 s, gate untouched in 320 s.
+
+| Change | Was | Now | Why |
+|---|---|---|---|
+| Engine ordered to march to within 40 m of a foe's standing gate | walks up to the doors | marches until the gate is within its throw (6 m inside the 150 m), then batters it from there (`World::engineGateInReach`) | engines stand off at their own reach, out of archer range; one rule for Skirmish and Conquest |
+| Engine with no order and a foe's gate in its autoRange (140 m) | does nothing (throws at men only) | batters the gate, never walking up to it | an engine left in reach does its work |
+| Stone against a gate | 500% of 100 (average about 170 a stone, 12 stones for a 2000 hp gate) | 900% (about 300 a stone, 6 or 7 stones) | two catapults open a gate in about 40 s, not 80 |
+| Selected shooters | no reach shown | a dotted ring at the weapon's furthest reach (and the engines' nearest) for each kind selected (`Battle::rangeRings`, `pushRangeRings`) | you can see what is out of the archers' reach |
+
+Archers' own kill rate is unchanged: they cannot reach an engine that holds its stand-off, and an engine walked in still dies as before. Measured with `tools/playtest/siege-catapults-first.txt` (the two catapults alone, then foot and sappers once the doors are down): gate down by 54 s, all 72 alive at that point, won with 50/72. `08-siege-all-in.txt` (the rush, select all): won with 65/72, the engines now throwing from their reach as the army goes in. The rush is still the cheaper win against this garrison; the patient siege is safe and certain but costs more men once the foot go in, because the wall archers are left alone. Not done: a foot escort that moves with the engines, and a mark for who is shooting at the selected unit.
+
 ## What changed, and why
 
 | Change | Was | Now | Why |

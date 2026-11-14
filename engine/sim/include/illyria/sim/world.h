@@ -1094,6 +1094,11 @@ private:
     void blastGates(const Vec3& at, const Explosive& ex, ProjectileKind kind);
     // Where to aim at a gate from `from`: its face on that side, half way up.
     Vec3 gateAimPoint(int gate, const Vec3& from) const;
+    // An engine's stand-off (world_gates.cpp): the nearest standing gate of another's town whose doors lie within `grab` of
+    // `near` and within the engine's own throw of where it stands, or -1.
+    int engineGateInReach(const Unit& u, const Vec3& near, Fixed grab) const;
+    // Sets the engine to batter that gate from where it is.
+    void batterGate(Unit& u, int gate);
     // A route to a target beyond a shut gate: up to the gate's face (false if no gate lies between).
     bool routeToGate(const Vec3& from, const Vec3& to, std::vector<Vec3>& out, Gait gait);
     void fight(Unit& unit, Unit& enemy);

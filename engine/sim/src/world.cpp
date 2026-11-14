@@ -103,6 +103,8 @@ constexpr Fixed kDebrisHurtSpeed = Fixed::fromInt(6);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
 // Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
+// An engine ordered to a place this near a foe's gate batters the gate from its own reach instead of walking up to the doors.
+constexpr Fixed kEngineGrab = Fixed::fromInt(40);
 constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
@@ -1395,6 +1397,11 @@ void World::updateUnit(Unit& u) {
             u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
             return;
         }
+        // An engine ordered up to a gate stops at its own throw and batters it from there, out of the archers' reach.
+        if (const int gate = engineGateInReach(u, u.moveTarget, kEngineGrab); gate >= 0) {
+            batterGate(u, gate);
+            return;
+        }
         if (flier && takesWing(u, u.moveTarget)) {
             u.flight = Unit::Flight::TakingOff;
             u.runway = Fixed::zero();
@@ -1468,6 +1475,9 @@ void World::updateUnit(Unit& u) {
             const bool atWalk = aimHigh(u, aim, target->stats.height);
             fireAt(u, aim, atWalk);
         }
+    } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
+        // An engine with no foe in reach throws at a gate of a foe's that is (never walking up to it).
+        batterGate(u, gate);
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
         // his shield to him, holding his place (world_scavenge.cpp).

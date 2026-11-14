@@ -399,3 +399,48 @@ TEST(walls_and_their_embrasures_are_deterministic) {
     CHECK(a.checksum != c.checksum);
     CHECK(siege()->checksum() == Region::fromContinent(continent(), town().pos, 256).checksum());
 }
+
+namespace {
+// The town's own gate (the one nearest its middle), as the siege scenario's.
+size_t townGate() {
+    const Region& rg = *siege();
+    const Vec3 middle{town().pos.x - rg.origin().x, town().pos.y - rg.origin().y, Fixed::zero()};
+    size_t best = 0;
+    for (size_t i = 1; i < rg.gates().size(); ++i)
+        if (((rg.gates()[i].a + rg.gates()[i].b) * r(1, 2) - middle).flat().length() < ((rg.gates()[best].a + rg.gates()[best].b) * r(1, 2) - middle).flat().length()) best = i;
+    return best;
+}
+}  // namespace
+
+TEST(engines_batter_a_gate_from_their_reach_and_open_it_in_a_few_stones) {
+    for (const int mode : {0, 1, 2}) {  // ordered at the gate; marched to the foot of it; left alone in reach
+        WorldConfig cfg;
+        cfg.region = siege();
+        cfg.seed = 5;
+        World w(cfg);
+        const Region& rg = *siege();
+        const size_t gi = townGate();
+        const Gate& g = rg.gates()[gi];
+        const Vec3 centre = (g.a + g.b) * r(1, 2);
+        w.setGateHolder(gi, 1);
+        std::vector<Command> orders;
+        std::vector<EntityId> cats;
+        for (int i = 0; i < 2; ++i) {
+            const Vec3 at = centre + g.out * m(mode == 2 ? 120 : 136) + (g.b - g.a).flat() * r(i * 3 - 2, 8);
+            cats.push_back(w.spawnUnit(0, at, -g.out, unitStats(UnitType::Catapult)));
+            if (mode == 0) orders.push_back({0, cats.back(), Command::Type::AttackGate, centre});
+            if (mode == 1) orders.push_back({0, cats.back(), Command::Type::Move, centre + g.out * m(4)});
+        }
+        w.step(orders);
+        int opened = -1;
+        for (int t = 0; t < 120 * kTicksPerSecond; ++t) {
+            w.step({});
+            if (opened < 0 && w.gates()[gi].broken()) opened = t / kTicksPerSecond;
+        }
+        float nearest = 1e9f;
+        for (EntityId id : cats) nearest = std::min(nearest, static_cast<float>((w.findUnit(id)->pos - centre).flat().length().toDouble()));
+        std::printf("  mode %d: gate open at %d s, hp %d, nearest engine %.0f m from the doors\n", mode, opened, w.gates()[gi].hp, nearest);
+        CHECK(opened >= 0 && opened <= 90);
+        CHECK(nearest > 90.0f);  // the archers' reach is 70
+    }
+}

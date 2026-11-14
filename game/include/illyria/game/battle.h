@@ -453,6 +453,14 @@ public:
         float opacity = 1;  // 1 while selected; fading after an order
     };
     std::vector<OrderMark> orderMarks() const;
+    // How far the shooters selected can throw or loose: one ring for each kind of shooter selected, round the middle of
+    // those of it selected (the radius is the weapon's furthest reach, `inner` the nearest it can shoot).
+    struct RangeRing {
+        V3 centre;
+        float radius = 0;
+        float inner = 0;
+    };
+    std::vector<RangeRing> rangeRings() const;
     // The paths the player's soldiers will walk (path_lines.h), shown as the order markers are: for each soldier
     // selected, and fading for a moment after an order; the player's own men only, so no foe's route is ever told.
     // Men going one way are one line. `perMan`: a line for each man, and `faintMarches` (Conquest): the player's

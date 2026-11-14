@@ -132,6 +132,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `smoke.txt` | start the Ford, `cards`, `stats`, one shot. A check that the harness works on this machine. |
 | `ford.txt` | the Ford: select all, box-select, march across the ford, wait for the clash, a shot every 10 s for 90 s, `stats` at the end. |
 | `siege.txt` | the Siege: the siege engines and the foot to the gate, shots every 10 s, `stats`. |
+| `siege-catapults-first.txt` | the Siege the patient way: the catapults alone at the gate from their reach (the range ring shown), then the foot once it is down. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 
 ```
