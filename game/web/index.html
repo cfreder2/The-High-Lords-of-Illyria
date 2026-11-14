@@ -227,6 +227,9 @@
   #hirePrompt p { margin: 0 0 12px; font-size: 13px; }
   #hirePrompt button { margin: 0 4px; padding: 8px 14px; }
   #hirePrompt button:disabled { opacity: 0.5; }
+  #floats { position: fixed; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
+  #floats span { position: absolute; transform: translateX(-50%); padding: 1px 6px; font-size: 15px; font-weight: 600; white-space: nowrap; background: rgba(0, 0, 0, 0.55); border-radius: 4px; color: #ff6a5a; }
+  #floats span.good { color: #ffd36e; }
   #toast { position: fixed; left: 50%; bottom: calc(150px + var(--safe-b)); transform: translateX(-50%); width: max-content; max-width: min(90vw, 420px);
            padding: 8px 14px; font-size: 14px; text-align: center; z-index: 5; pointer-events: none; color: #fff3d6; }
   .camp-only { display: none; }
@@ -383,6 +386,7 @@
   <button id="hireYes">Hire</button><button id="hireNo">Decline</button>
 </div>
 <div id="toast" class="panel hidden"></div>
+<div id="floats"></div>
 <div id="selBox"></div>
 
 <div id="bottom">
@@ -509,6 +513,9 @@
       select: Module.cwrap("illyria_select_squad", null, ["number"]),
       focus: Module.cwrap("illyria_focus_squad", null, ["number"]),
       stop: Module.cwrap("illyria_stop", null, []),
+      hold: Module.cwrap("illyria_hold", null, []),
+      rally: Module.cwrap("illyria_rally", "number", []),
+      nextIdle: Module.cwrap("illyria_next_idle", "number", []),
       gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
@@ -1085,6 +1092,9 @@
       case "KeyI": gfx.showPerf = !gfx.showPerf; applyGraphics(); break;  // the developer line: frame rate and where the frame went
       case "KeyT": case "KeyL": api.special(); break;
       case "KeyB": api.stop(); break;
+      case "KeyK": api.hold(); break;      // Hold: keep their place (again: back to support)
+      case "KeyY": api.rally(); break;     // the lord's Rally
+      case "KeyJ": api.nextIdle(); break;  // the next squad standing idle
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
@@ -1466,6 +1476,9 @@
     const s = JSON.parse(api.hud());
     selected = s.selected;
     showInspect(s.inspect);
+    // Position told: a word over the men it happened to, rising and fading (Battle::floats): gold for our gain, red for our loss.
+    $("floats").innerHTML = (s.floats || []).map((f) =>
+      `<span class="${f.good ? "good" : ""}" style="left:${f.x}px;top:${f.y - 18 - f.age / 3}px;opacity:${Math.max(0, Math.min(1, (90 - f.age) / 30))}">${f.text}</span>`).join("");
     // (The clock of a Conquest is its own: updateConquest.)
     if (!conquest) {
       $("pause").textContent = s.paused ? "Resume" : "Pause";

@@ -45,6 +45,7 @@ constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "", false},
 constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
 constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 // What a press on the open town's screen is (Hud::click): from kTownAct up, the option's number, or one of these.
+constexpr int kRallyHit = -3000;  // the Rally button over the cards
 constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
 static_assert(kContinue == 2, "Hud::startSaved");
 
@@ -373,6 +374,8 @@ bool Hud::click(float x, float y, bool left) {
             return true;
         } else if (r.what == -2000 || r.what == -2001) {  // the page arrows of a long strip of cards
             cardPage_ = std::clamp(cardPage_ + (r.what == -2000 ? -1 : 1), 0, std::max(0, cardPages_ - 1));
+        } else if (r.what == kRallyHit) {
+            illyria_rally();
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
         } else if (r.what >= kTownAct) {
@@ -503,6 +506,9 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
     }
 }
 
+// What the computer does at each setting, under the Skirmish rows (Battle::kEasyPursePct, kEasyWaitTicks, aiFight).
+constexpr const char* kSkillLine = "Easy: three quarters of your gold, comes late and piecemeal. Normal: your equal; it masses, flanks and falls back.";
+
 // The Skirmish screen, on the same parchment: a Conquest with a fence, so the army is bought at the Conquest's prices.
 void Hud::drawSkirmish(Overlay& o, float w, float h) {
     constexpr float kPad = 24, kRow = 21;
@@ -510,7 +516,7 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
     const int units = static_cast<int>(offers_.size()), rows = skirmishRows();
     const std::vector<std::string> errors = wrap(o, error_, 13, inner);
     constexpr float kSwatch = 22;
-    const float ph = kPad + 26 + 10 + kRow * static_cast<float>(rows) + 4 + 48 + 4 + 13 + 8 + kSwatch + 12 + 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
+    const float ph = kPad + 26 + 10 + kRow * static_cast<float>(rows) + 4 + 48 + 16 + 4 + 13 + 8 + kSwatch + 12 + 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
     const float px = (w - pw) / 2, py = std::max(6.0f, (h - ph) / 2);
     o.paper(px, py, pw, ph, 7);
     float y = py + kPad;
@@ -553,6 +559,8 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
     y += 4;
     const std::string purseLine = std::string(map.name) + ": gold left " + std::to_string(left) + " of " + std::to_string(purse) + ".";
     for (const std::string& l : wrap(o, purseLine, 12, inner)) o.text(px + kPad, y, l, kPaperDim, 12), y += 16;
+    o.text(px + kPad, y, kSkillLine, kPaperDim, fit(o, kSkillLine, 12, inner));  // what Easy and Normal do, in one line
+    y += 16;
     y += 4;
     o.text(px + kPad, y, "Your colour (click):", kPaperDim, 13);
     y += 13 + 8;
@@ -904,6 +912,21 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
     }
 
+    // Position told: a word over the men it happened to, rising and fading (Battle::floats): gold for the viewer's gain, red for his loss.
+    std::vector<std::pair<float, float>> floated;  // where a word already stands: the same ground seen from far is one word, not a pile
+    for (const Json& f : hud.list("floats")) {
+        const double sec = f.num("age") / 30.0;
+        const uint8_t alpha = static_cast<uint8_t>(255 * std::clamp((3.0 - sec) / 1.0, 0.0, 1.0));
+        const std::string text = f.str("text");
+        const float fw = o.width(text, 15), fx = static_cast<float>(f.num("x")) - fw / 2, fy = static_cast<float>(f.num("y")) - 18 - static_cast<float>(sec) * 10;
+        if (fy < 38 || fx < 4 || fx + fw > w - 4) continue;
+        if (std::any_of(floated.begin(), floated.end(), [&](const std::pair<float, float>& p) { return std::abs(p.first - fx) < fw + 12 && std::abs(p.second - fy) < 22; })) continue;
+        floated.push_back({fx, fy});
+        const Colour c = f.flag("good") ? kGold : kRed;
+        o.rect(fx - 5, fy - 2, fw + 10, 20, rgba(0x000000, static_cast<uint8_t>(alpha * 140 / 255)));
+        o.text(fx, fy, text, {c.r, c.g, c.b, alpha}, 15);
+    }
+
     // Names of towns and places when the view is high.
     const size_t sel = static_cast<size_t>(hud.num("selCount"));
     const std::vector<Json>& squads = hud.list("squads");
@@ -1045,7 +1068,7 @@ void Hud::draw(Overlay& o, float w, float h) {
     // The selection and the squad cards, bottom.
     float selEnd = 0;
     if (sel > 0) {
-        std::snprintf(buf, sizeof buf, "%zu selected  %s", sel, hud.str("selLabel").c_str());
+        std::snprintf(buf, sizeof buf, "%zu selected  %s%s", sel, hud.str("selLabel").c_str(), hud.flag("holding") ? "  HOLD (K: support)" : "");
         selEnd = o.width(buf, 13) + 20;
         o.rect(0, cardsTop - 28, selEnd, 22, rgba(0x000000, 150));
         o.text(10, cardsTop - 24, buf, kGold, 13);
@@ -1090,9 +1113,25 @@ void Hud::draw(Overlay& o, float w, float h) {
             o.text(x + 6, ny, l, mine ? kInk : kDim, nameSize);
             ny += 12;
         }
+        // Beside the count: a white flag and the seconds until a broken squad rallies ("--" while a foe is on it), else HOLD,
+        // else IDLE (no order and nothing to fight: the J key steps through these), else the squad's role.
+        const int rallyIn = static_cast<int>(q.num("rallyIn"));
+        char mark[16] = "";
+        if (rallyIn > 0) std::snprintf(mark, sizeof mark, "%ds", rallyIn);
+        else if (rallyIn < 0) std::snprintf(mark, sizeof mark, "--");
+        else if (q.flag("hold")) std::snprintf(mark, sizeof mark, "HOLD");
+        else if (q.flag("idle")) std::snprintf(mark, sizeof mark, "IDLE");
         std::snprintf(buf, sizeof buf, "%d/%d  %s", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")), q.str("role").c_str());
-        if (o.width(buf, 10) > cw - 12) std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));  // (a narrow card: the count, not the role)
+        if (mark[0] || o.width(buf, 10) > cw - 12) std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));  // (a narrow card: the count, not the role)
         o.text(x + 6, ny + 4, buf, kDim, 10);
+        if (mark[0]) {
+            const float mx = x + cw - 6 - o.width(mark, 10);
+            o.text(mx, ny + 4, mark, rallyIn != 0 ? rgba(0xFFFFFF) : q.flag("hold") ? kGold : rgba(0x9FD0FF), 10);
+            if (rallyIn != 0) {
+                o.rect(mx - 13, ny + 3, 1.5f, 12, rgba(0xFFFFFF));     // the pole
+                o.rect(mx - 11.5f, ny + 3, 8, 6, rgba(0xFFFFFF));      // the white flag
+            }
+        }
         const double total = std::max(1.0, q.num("total"));
         o.rect(x + 6, y + ch - 14, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
         hits_.push_back({x, y, cw, ch, -1 - i});
@@ -1112,6 +1151,20 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.text(x + 3 * cw / 4 - 1, y + ch - 20, ">", cardPage_ + 1 < cards.pages ? kGold : kDim, 14);
         hits_.push_back({x + 4, y + ch - 22, cw / 2 - 6, 18, -2000});
         hits_.push_back({x + cw / 2 + 2, y + ch - 22, cw / 2 - 6, 18, -2001});
+    }
+
+    // The lord's Rally, a button over the cards' right end (key Y): ready with broken men in earshot, or counting down.
+    if (const Json* rally = hud.find("rally"); rally && rally->flag("lord") && squadCards) {
+        const int cd = static_cast<int>(rally->num("cooldown")), heard = static_cast<int>(rally->num("heard"));
+        if (cd > 0) std::snprintf(buf, sizeof buf, "Rally  %d s", cd);
+        else if (heard > 0) std::snprintf(buf, sizeof buf, "Rally %d broken  (Y)", heard);
+        else std::snprintf(buf, sizeof buf, "Rally  (Y)");
+        const bool ready = cd == 0 && heard > 0;
+        const float bw = o.width(buf, 13) + 20, bx = w - bw - 8, by = cardsTop - 56;
+        o.rect(bx, by, bw, 22, rgba(0x0E0B08, ready ? 230 : 170));
+        o.frame(bx, by, bw, 22, ready ? 2.0f : 1.0f, ready ? rgba(0xFFFFFF) : rgba(0x7C6E50));
+        o.text(bx + 10, by + 4, buf, ready ? rgba(0xFFFFFF) : kDim, 13);
+        hits_.push_back({bx, by, bw, 22, kRallyHit});
     }
 
     drawMinimap(o, w, h);
@@ -1161,6 +1214,9 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"M", "show or hide the map (click or drag it to look)"},
               {"Z, V", "attack mode, force march (one order)"},
               {"Space, B", "stop the march (halt)"},
+              {"K", "hold: keep their place (again: support friends near)"},
+              {"J", "the next squad standing idle"},
+              {"Y", "the lord rallies broken men within 40 m"},
               {"T, X, C", "special, scatter, find selection"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},

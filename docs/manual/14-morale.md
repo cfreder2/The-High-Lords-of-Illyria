@@ -57,6 +57,12 @@ A soldier counts the veterans and heroes near him who are not shaken themselves.
 
 A hero's fall cancels the steadiness at once, which is why his death still breaks green troops.
 
+## Rallying them yourself {#rally}
+
+A squad half of whose men have broken shows a **white flag** on its card and the seconds until it comes back on its own ("--" while a foe is too near for it to rally at all). Your **lord within 20 m** of broken men halves that time.
+
+The **Rally** ([[Y]], or the button over the cards) is the lord's order: every broken man of yours within **40 m** of him turns back at once, and the shaken take heart. Then he must wait **a minute** before he can call again, so bring him to where the line is breaking and choose the moment. The computer's lords do the same.
+
 ## "Hold the line!" {#hold-the-line}
 
 A **veteran** or **elite** who is not wavering himself, and sees at least **two** friends within 20 m wavering or broken, calls out: "*Hold the line!*", "*Stand fast!*", "*Shields up, hold!*" A **hero** calls when he sees even **one**: "*Rally to me!*" Every friend in earshot (20 m) gains morale:

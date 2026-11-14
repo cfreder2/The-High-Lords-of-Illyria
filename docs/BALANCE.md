@@ -62,6 +62,54 @@ What was tried and left, with why:
 
 The lever left is the garrison, not the attackers: a gatehouse that gives the defenders more to lose by coming out (docs/CASTLE_GATEHOUSE.md), or a third and fourth engine in the train.
 
+## Tactics: position, support, the Rally, Easy (2026-11-14, review3 items 2, 3, 8, 15)
+
+The review's finding: on the open field at 450 gold a planned defence killed about as many per man lost as giving no order at all. The rules below are the World's (`engine/sim/src/world_tactics.cpp`, tests in `tests/test_tactics.cpp`), from the men's own state, `Fixed` only, the same for every side and for Skirmish and Conquest. Each tells the presentation when it happens (`World::tactics()`), which floats a word over the men (`Battle::floats`, only over men the viewer can see).
+
+| Rule | Was | Now | Word |
+|---|---|---|---|
+| A man wading (shallows; not the giants' gait) | slower, no other cost | his blows 50% weaker; a man on dry ground strikes him 50% harder and each such blow shakes him 40; missiles +75% and his shield turns half as many | In the ford, Shot in the water |
+| The morale census | every foe within 15 m counts | to a man on dry ground a wading foe is half a foe | |
+| A man with no order, a foe in the water | walks in after him | keeps the dry ground and lets him come (an order takes him across) | |
+| The high ground, melee | the small edge only (+4% at most) | also +2% for each 0.01 of grade striking down (at most +30%), as much less striking up (at most -20%) | High ground |
+| A volley from above | reach, and the plunge (+25% at most) | also +5% a metre over the mark beyond the first (at most +50%) | |
+| Charge, shock to the man struck | 150 front, 225 flank, 300 rear | 150 front, 400 flank, 600 rear, 950 in the back of a man busy with another; half of it to his friends within 6 m | Flanked, Hit from behind, Broken by the charge |
+| A rider at the gallop | wheeled to a free place on his man's ring, and lost the charge | rides straight at his man | |
+| Braced pikes, met head on | the pike's blow and half the impact | the pike's blow half again and the whole impact, and the rider shaken 250 (heavy horse loses 78 of 130, was about 48) | Braced |
+| A man with no order | fights what comes within his own reach (20 to 30 m) | goes to the help of a friend fighting within 40 m; horse ride round to the flank; `Hold` (K) keeps him in his place | |
+| A broken squad | comes back on its own clock, unseen | a white flag and the seconds on its card; the lord within 20 m halves it; the lord's Rally (Y, a minute's cooldown) brings back every broken man within 40 m, the computer's lords too | |
+| Easy (Skirmish) | the player's purse; attacks at once, piecemeal | three quarters of the purse; stands 45 s, then piecemeal; no massing, flanking or falling back | |
+
+Kills per man lost, the review's scripts on the play harness (`~/Desktop/review3/scripts`, field, 450 gold; the scripts take real-time input, so runs of one script differ: each run is listed). Before is merge-master's build run the same day.
+
+| Script | Before | After |
+|---|---|---|
+| `03` Normal, no orders (the army starts on the bank) | 2.1 (152 for 71) | 2.6 (156 for 61) |
+| `07` Normal, the planned bank defence, at 180 s | 2.2 (review), 2.7, 2.2, 2.4, 2.5 | 3.2, 3.3, 3.1 (145 to 161 for 46 to 49) |
+| `07` with the Rally pressed at each look | | 3.0 (153 for 51) |
+| `09` Normal, everyone across the river at once | 1.4 (169 for 124) | 1.6 (202 for 126) |
+| `12` the Ford, no orders | 1.4 (97 for 70) | 1.3 (90 for 70) |
+| `04` Easy, no orders | 3.1 (176 for 57) | 2.2 (146 of 166 for 66) |
+| `08` Easy, the same plan as `07` | 1.4 (179 for 132) | 2.8 (135 of 166 for 49; 134 of 183 left, was 51) |
+
+The set piece (`illyria_balance tactics`, flat open ground, 8 seeds, at 60 s): 12 heavy infantry and 8 light cavalry against 24 light infantry.
+
+| What the horse does | Kills per loss | The foe's line broke |
+|---|---|---|
+| No horse | 0.0 (0 for 95) | 0 of 8 |
+| Sent in at the front, through its own foot | 0.8 (79 for 100) | 0 of 8 |
+| Left on the wing with no order (support: round to the flank) | 6.4 (191 for 30) | 8 of 8 |
+
+Reading it, and what is not there yet:
+
+- **The held bank pays more and steadier, but not 4 to 1.** The plan loses 46 to 49 men where it lost 67 to 91, and for its first 110 s it kills about nine for one; the rest is lost where the foe's main body comes ashore on one squad of twelve. First teeth of 35%, 35% and +50% gave 1.7 to 3.7 run to run and were raised.
+- **No orders also gained** (2.1 to 2.6), because the field's army starts on the bank and men with no order now keep the dry ground and help each other. The plan beats it by about a quarter, not by a wide margin.
+- **A flank charge pays in the set piece (6.4 against 0.8) but is rare in the field battle**: two instrumented runs of `07` landed one and three charges in the whole fight, all frontal. Horse given a march to a place fights at a walk; the computer's riders halt behind their mark before they strike. The lever left is the order, not the rule: an attack order for horse that keeps the gallop.
+- **The Rally pressed blind did not help** (3.0 against 3.2): it brings men back into the fight they ran from. It is for the moment the lord is beside them and the foe is not.
+- **Easy is no longer harder than Normal for the plan** (49 lost against 46 to 49, where it was 132 against 67 to 91), **but it is not yet clearly easier**: with no orders it costs 66 men where Normal costs 61, from a smaller host. Easy by one road was tried and left: every squad on the one foe nearest the army's middle is a concentration (no orders: 86 lost).
+
+Matrix (flat field, no water, so only the charge rules show): light cavalry 71 to 77, wolf riders 61 to 70, heavy cavalry 64 to 66, elephants 36 to 44 on the mean; warriors 74 to 67, berserkers 56 to 53, archers 74 to 72. Pikes still beat all horse 100 to 0. The matrix printed below is from before these rules.
+
 ## What changed, and why
 
 | Change | Was | Now | Why |

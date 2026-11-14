@@ -239,6 +239,9 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_I: hud_.toggleStats(); break;    // the developer line: frame rate and where the frame went
         case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
         case SDL_SCANCODE_B: illyria_stop(); break;
+        case SDL_SCANCODE_K: illyria_hold(); break;       // Hold: keep their place (again: back to support)
+        case SDL_SCANCODE_Y: illyria_rally(); break;      // the lord's Rally
+        case SDL_SCANCODE_J: illyria_next_idle(); break;  // the next squad standing idle
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
         case SDL_SCANCODE_U: illyria_ungroup(); break;

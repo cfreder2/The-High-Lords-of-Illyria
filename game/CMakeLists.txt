@@ -21,6 +21,7 @@ add_library(illyria_game
     src/sfx.cpp
     src/battle_deaths.cpp
     src/battle_events.cpp
+    src/battle_tactics.cpp
     src/minimap.cpp
     src/palette.cpp
     src/detail_land.cpp
