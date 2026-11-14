@@ -568,6 +568,15 @@ bool pickStackIn(int town) {
     return true;
 }
 
+// Sending a city's new armies (the town screen's "Send new armies to..."): the next city of ours chosen (a tap on the
+// ground in it, or on its marker) receives them; anything else gives the choice up.
+void sendNewArmiesTo(int town) {
+    App::ConquestView& cv = app->camp;
+    const int from = cv.vectorFrom;
+    cv.vectorFrom = -1;
+    if (from >= 0 && town >= 0) submitOrder(illyria::sim::Conquest::Order::Kind::VectorProduction, 0, from, town);
+}
+
 // The town screens are the conquest's own (what a town trains, its boats, where its new armies go), and a tap that
 // belongs to them is theirs: the tap that says which town new armies go to, and a tap on one of the player's towns
 // with nothing selected, which opens its panel. Every other tap is the battle's (Battle::tap).
@@ -596,10 +605,7 @@ bool townTap(float px, float py) {
         if (c.cities()[k].owner == me && std::sqrt(dx * dx + dy * dy) <= ct.radius.toDouble()) town = static_cast<int32_t>(k);
     }
     if (cv.vectorFrom >= 0) {
-        // Sending a city's new armies: the tapped city of ours receives them.
-        const int from = cv.vectorFrom;
-        cv.vectorFrom = -1;
-        if (town >= 0) submitOrder(illyria::sim::Conquest::Order::Kind::VectorProduction, 0, from, town);
+        sendNewArmiesTo(town);
         return true;
     }
     // Nothing of ours under the tap, but a town: its panel. (A man or a gate under it is the battle's to select or look at.)
@@ -650,7 +656,13 @@ void startConquest(std::unique_ptr<illyria::sim::Conquest> conquest) {
         cv.c->onWorldStep([] { app->battle->beforeWorldStep(); }, [] { app->battle->afterWorldStep(); }, [] { app->battle->forgetMen(); });
     }
     cv.hard = cv.c->sides().size() > 1 && cv.c->sides()[1].difficulty == illyria::sim::Difficulty::Hard;
-    app->battle->setAiSkill(cv.hard ? Battle::AiSkill::Normal : Battle::AiSkill::Easy);  // the battle AI plays as the lords do
+    // The battle AI plays the computer lords' men standing in the field, as the lords play (Easy or Hard).
+    app->battle->setAiSkill(cv.hard ? Battle::AiSkill::Normal : Battle::AiSkill::Easy);
+    {
+        uint8_t computers = 0;
+        for (uint8_t side = 0; side < cv.c->sides().size(); ++side) computers |= static_cast<uint8_t>(!cv.c->sides()[side].human) << side;
+        cv.c->setThinker(computers, [](std::vector<illyria::sim::Command>& out) { app->battle->conquestAi(out); });
+    }
     cv.owners.clear();
     cv.territoryTick = -1;
     cv.vectorFrom = -1;
@@ -699,7 +711,7 @@ void stopPlaying() {
     app->camera.setCircle(0, 0, 0, 0);  // a match's field no longer holds the camera
     App::ConquestView& cv = app->camp;
     for (uint8_t side = 0; side < illyria::sim::Continent::kFactionCount; ++side) illyria::game::sideFactions()[side] = kSkirmishSeats[side];
-    if (cv.on && cv.c) cv.c->onWorldStep({}, {}, {});
+    if (cv.on && cv.c) cv.c->onWorldStep({}, {}, {}), cv.c->setThinker(0, {});
     if (app->battle->borrowing()) {
         app->battle->borrow(nullptr);
         newBattle();
@@ -2215,7 +2227,9 @@ ILLYRIA_API void illyria_conquest_land() {
 // A tap on a town's marker: the panel of the player's town, whatever is selected.
 ILLYRIA_API void illyria_conquest_open_city(int city) {
     if (!app || !app->camp.on || city < 0 || city >= static_cast<int>(app->camp.c->cities().size())) return;
-    if (app->camp.c->cities()[static_cast<size_t>(city)].owner != app->camp.c->localSide()) return;
+    const bool ours = app->camp.c->cities()[static_cast<size_t>(city)].owner == app->camp.c->localSide();
+    if (app->camp.vectorFrom >= 0) return sendNewArmiesTo(ours ? city : -1);
+    if (!ours) return;
     if (!pickStackIn(city)) app->camp.city = city;
 }
 ILLYRIA_API void illyria_conquest_close_city() {
@@ -2488,6 +2502,26 @@ ILLYRIA_API const char* illyria_conquest_state() {
                           illyria::sim::warlordsStrength(t), from.c_str());
             s += buf;
             any = true;
+        }
+        s += "]";
+        // The armies of ours standing in the town, stack by stack (a stack's id is what selecting it takes): its garrison.
+        // Only a town of ours tells: what stands in another's is not the viewer's to read (fog).
+        s += ",\"garrison\":[";
+        if (cs.owner == me) {
+            bool anyStack = false;
+            for (const C::Stack& st : c.stacks()) {
+                if (st.owner != me || st.armies.empty() || c.cityAt(st.cx, st.cy) != cv.city) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"stack\":%u,\"armies\":[", anyStack ? "," : "", st.id);
+                s += buf;
+                anyStack = true;
+                for (size_t k = 0; k < st.armies.size(); ++k) {
+                    const illyria::sim::Army& a = st.armies[k];
+                    std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"men\":%d,\"of\":%d,\"rank\":%d,\"hero\":%s}", k ? "," : "",
+                                  a.name.empty() ? illyria::sim::unitTypeName(a.type) : a.name.c_str(), a.soldiers, a.fullStrength, a.rank, a.hero() ? "true" : "false");
+                    s += buf;
+                }
+                s += "]}";
+            }
         }
         s += "]";
         const uint8_t land = c.landOwner(cs.cx, cs.cy);

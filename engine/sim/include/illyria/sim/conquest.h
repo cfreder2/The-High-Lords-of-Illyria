@@ -350,6 +350,13 @@ public:
     void onWorldStep(std::function<void()> before, std::function<void()> after, std::function<void()> cleared) {
         beforeHook_ = std::move(before), stepHook_ = std::move(after), clearedHook_ = std::move(cleared);
     }
+    // The page's own thinking for the men of the computer lords in the field: the battle's AI (game/src/battle_conquest.cpp,
+    // Battle::conquestAi), which the sim cannot call. Each think it is handed the step's commands to add to. The stacks of
+    // `sides` (a bit each) that are not holding a town of their own are its to play, and fightAi leaves them alone; fightAi
+    // still plays a garrison at its post, the player's men standing, and every man when no page is thinking (headless runs).
+    void setThinker(uint8_t sides, std::function<void(std::vector<Command>&)> thinker) { thinkerSides_ = sides, thinker_ = std::move(thinker); }
+    // A stack standing in a town of its own lord's: a garrison, held to its post.
+    bool holdsTown(const Stack& s) const;
     int32_t menInWorld() const;  // how many men are units of the world
     // Makes the island's ground now rather than at the first fight (a few seconds, once a process).
     void prepareWorld();  // (and puts the men in it)
@@ -667,6 +674,8 @@ private:
     std::vector<Order> pending_;
     void applyPending();  // the Orders whose tick has come, in the order submitted (step)
     std::function<void()> beforeHook_, stepHook_, clearedHook_;
+    std::function<void(std::vector<Command>&)> thinker_;
+    uint8_t thinkerSides_ = 0;
     std::function<bool(uint8_t, uint8_t, float, float)> sight_;
     void endFight(uint64_t seed);  // the world cleared of a fight (and the presentation told)
     std::vector<int32_t> gateHp_;  // the gates' wounds as saved, until the world exists to hold them

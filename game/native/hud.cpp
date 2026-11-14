@@ -44,6 +44,9 @@ constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "two armies across a river",
                                   {"Open field", "two armies on open ground", false}};
 constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
 constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
+// What a press on the open town's screen is (Hud::click): from kTownAct up, the option's number, or one of these.
+constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
+static_assert(kContinue == 2, "Hud::startSaved");
 
 constexpr Colour kInk = rgba(0xF2EBD8), kDim = rgba(0xB9B0A0), kGold = rgba(0xE8C25A), kRed = rgba(0xFF7060);
 // The menu and the help are laid on parchment (Overlay::paper): iron-gall ink, faded red, gold leaf (the page's --pg-* tokens).
@@ -326,6 +329,17 @@ bool Hud::wheel(float x, float y, float notches) {
     return true;
 }
 
+// A press on the open town's screen: the same calls the page's panel makes (game/web/index.html, the city panel).
+void Hud::townAction(int what) {
+    if (town_ < 0) return;
+    if (what >= kTownAct && what < kTownStop) illyria_conquest_produce(town_, what - kTownAct);
+    else if (what == kTownStop) illyria_conquest_produce(town_, -1);
+    else if (what == kTownSend) illyria_conquest_vector(town_, 1);
+    else if (what == kTownKeep) illyria_conquest_vector(town_, 0);
+    else if (what == kTownBoat) illyria_conquest_build_boat(town_);
+    else if (what == kTownClose) illyria_conquest_close_city();
+}
+
 bool Hud::click(float x, float y, bool left) {
     for (const Rect& r : hits_) {
         if (x < r.x || y < r.y || x >= r.x + r.w || y >= r.y + r.h) continue;
@@ -361,6 +375,8 @@ bool Hud::click(float x, float y, bool left) {
             cardPage_ = std::clamp(cardPage_ + (r.what == -2000 ? -1 : 1), 0, std::max(0, cardPages_ - 1));
         } else if (r.what <= -1 && r.what > -1000) {
             illyria_select_squad(-1 - r.what);
+        } else if (r.what >= kTownAct) {
+            townAction(r.what);
         } else if (r.what >= 5000) {
             illyria_conquest_open_city(r.what - 5000);
         } else if (r.what >= 1000) {
@@ -672,6 +688,115 @@ void Hud::drawMinimap(Overlay& o, float w, float h) {
             }
     }
     hits_.insert(hits_.begin(), {x0, y0, mw, mh, 2000});
+}
+
+// The open town on parchment, left of the field: who stands in it, what it earns, what it trains and at what price, where
+// its new armies go. The numbers are the page's panel's (illyria_conquest_state's "city"); a press is one of the page's calls.
+void Hud::drawTown(Overlay& o, const Json& city, int gold, float w) {
+    constexpr float kSize = 12, kLine = 18, kPad = 14, kRow = 22;
+    const bool mine = city.flag("mine");
+    const float pw = std::min(w - 20, 430.0f);
+    const float inner = pw - 2 * kPad;
+    town_ = static_cast<int>(city.num("index"));
+    char buf[160];
+    // What goes on the sheet, top to bottom: a line of text, or a button row (left text, right text, what a press is).
+    struct Line {
+        std::string left, right;
+        Colour ink;
+        int what;  // -1: text; else a press
+        bool on;   // the town is training it
+        bool dim;  // cannot be afforded
+    };
+    std::vector<Line> lines;
+    const auto text = [&](const std::string& t, Colour ink = kPaperInk) {
+        for (const std::string& l : wrap(o, t, kSize, inner)) lines.push_back({l, "", ink, -1, false, false});
+    };
+    std::snprintf(buf, sizeof buf, "Walls %d  -  %d gold a day  -  treasury %d", static_cast<int>(city.num("defense")), static_cast<int>(city.num("income")), gold);
+    text(buf, kPaperDim);
+    const int banner = static_cast<int>(city.num("banner"));
+    if (banner >= 0) {
+        std::snprintf(buf, sizeof buf, "%s over %s: %d%%", banner == 0 ? "Your banner" : (city.str("bannerBy") + "'s banner").c_str(), city.str("name").c_str(), static_cast<int>(city.num("bannerP")));
+        text(buf, kSeal);
+        text(banner == 0 ? "Stay in the town until it is up; leaving gives it up." : "Drive them out before it is up. The town trains nothing while they hold it.", kPaperDim);
+    }
+    if (!mine) {
+        text("Not yet yours.", kPaperDim);
+    } else {
+        text("In the town", kSeal);
+        const std::vector<Json>& garrison = city.list("garrison");
+        if (garrison.empty()) text("Nobody. Train armies below.", kPaperDim);
+        for (const Json& g : garrison) {
+            int men = 0, armies = 0;
+            for (const Json& a : g.list("armies")) men += static_cast<int>(a.num("men")), ++armies;
+            std::snprintf(buf, sizeof buf, "%d men in %d %s", men, armies, armies == 1 ? "army" : "armies");
+            lines.push_back({buf, "send out", kPaperInk, 1000 + static_cast<int>(g.num("stack")), false, false});
+            for (const Json& a : g.list("armies")) {
+                std::snprintf(buf, sizeof buf, "   %s  %d/%d", a.str("name").c_str(), static_cast<int>(a.num("men")), static_cast<int>(a.num("of")));
+                lines.push_back({buf, "", kPaperDim, -1, false, false});
+            }
+        }
+        const int producing = static_cast<int>(city.num("producing"));
+        const std::vector<Json>& options = city.list("options");
+        if (producing >= 0 && producing < static_cast<int>(options.size())) {
+            std::snprintf(buf, sizeof buf, "Training %s: day %d of %d", options[static_cast<size_t>(producing)].str("type").c_str(), static_cast<int>(city.num("progress")),
+                          static_cast<int>(options[static_cast<size_t>(producing)].num("days")));
+            text(buf, kSeal);
+        } else {
+            text("Training nothing. Choose an army:", kSeal);
+        }
+        for (size_t i = 0; i < options.size(); ++i) {
+            const Json& op = options[i];
+            const bool levy = op.num("levy") > 0;
+            std::string name = op.str("type") + " (" + std::to_string(static_cast<int>(op.num("strength"))) + ")";
+            if (levy) name += " levy x" + std::to_string(static_cast<int>(op.num("levy")));
+            char cost[64];
+            std::snprintf(cost, sizeof cost, "%dd  %dg  %d/day", static_cast<int>(op.num("days")), static_cast<int>(op.num("cost")), static_cast<int>(op.num("upkeep")));
+            lines.push_back({name, cost, levy ? rgba(0x5B2A86) : kPaperInk, kTownAct + static_cast<int>(i), static_cast<int>(i) == producing, gold < op.num("cost")});
+        }
+        lines.push_back({"Stop training", "", kPaperInk, kTownStop, false, false});
+        if (city.flag("choosing")) {
+            text("Click one of your towns to send its new armies there.", kSeal);
+        } else {
+            const std::string to = city.str("vectorTo");
+            lines.push_back({to.empty() ? "Send new armies to..." : "New armies march to " + to, to.empty() ? "" : "change", kPaperInk, kTownSend, false, false});
+            if (!to.empty()) lines.push_back({"Keep new armies here", "", kPaperInk, kTownKeep, false, false});
+        }
+        if (city.flag("port")) {
+            const int boats = static_cast<int>(city.num("boats")), days = static_cast<int>(city.num("boatDays"));
+            std::string port = "Port: " + std::to_string(boats) + (boats == 1 ? " boat" : " boats") + " in harbour";
+            if (days) port += ", one on the slips, " + std::to_string(days) + " days to go";
+            text(port, kPaperDim);
+            if (!days) {
+                std::snprintf(buf, sizeof buf, "%dd  %dg  %d/day", static_cast<int>(city.num("boatTime")), static_cast<int>(city.num("boatCost")), static_cast<int>(city.num("boatUpkeep")));
+                lines.push_back({"Build a boat (7 armies)", buf, kPaperInk, kTownBoat, false, gold < city.num("boatCost")});
+            }
+        }
+        text("Rare troops are never trained: levies (violet), ruins, temples and heroes for hire bring them.", kPaperOff);
+    }
+    lines.push_back({"Close", "", kPaperInk, kTownClose, false, false});
+    float ph = 2 * kPad + 22;
+    for (const Line& l : lines) ph += l.what < 0 ? kLine : kRow;
+    const float x0 = 10, y0 = 96;
+    o.paper(x0, y0, pw, ph, 31);
+    o.text(x0 + kPad, y0 + kPad - 2, city.str("name"), kSeal, 18);
+    float y = y0 + kPad + 22;
+    std::vector<Rect> panel;
+    for (const Line& l : lines) {
+        if (l.what < 0) {
+            o.text(x0 + kPad, y + 2, l.left, l.ink, kSize);
+            y += kLine;
+            continue;
+        }
+        if (l.on) o.rect(x0 + kPad - 4, y - 1, inner + 8, kRow - 2, rgba(0xB58A2C, 70));
+        o.frame(x0 + kPad - 4, y - 1, inner + 8, kRow - 2, 1, kPaperOut);
+        const Colour ink = l.dim ? kPaperOff : l.ink;
+        o.text(x0 + kPad, y + 3, l.left, ink, kSize);
+        if (!l.right.empty()) o.text(x0 + pw - kPad - o.width(l.right, kSize), y + 3, l.right, l.dim ? kPaperOff : kPaperDim, kSize);
+        panel.push_back({x0 + kPad - 4, y - 1, inner + 8, kRow - 2, l.what});
+        y += kRow;
+    }
+    panel.push_back({x0, y0, pw, ph, kTownSwallow});  // (the sheet takes the click: nothing is ordered through it)
+    hits_.insert(hits_.begin(), panel.begin(), panel.end());
 }
 
 void Hud::draw(Overlay& o, float w, float h) {
@@ -990,6 +1115,10 @@ void Hud::draw(Overlay& o, float w, float h) {
     }
 
     drawMinimap(o, w, h);
+    town_ = -1;
+    if (conquest && !menu_) {
+        if (const Json* city = camp.find("city")) drawTown(o, *city, static_cast<int>(camp.num("gold")), w);
+    }
 
     // Looking at a man or gate that is not ours.
     if (const Json* in = hud.find("inspect")) {

@@ -12,6 +12,10 @@ endif()
 add_executable(illyria_balance balance.cpp)
 target_link_libraries(illyria_balance PRIVATE illyria_sim)
 
+# An all-computer Conquest, headless: days to victory, towns by side, fights (illyria_conquestsim [days] [hard|easy] [seed ...]).
+add_executable(illyria_conquestsim conquestsim.cpp)
+target_link_libraries(illyria_conquestsim PRIVATE illyria_sim)
+
 # Prints docs/UNITS.md from the locked unit sheet.
 add_executable(illyria_unitsheet unitsheet.cpp)
 target_link_libraries(illyria_unitsheet PRIVATE illyria_sim)

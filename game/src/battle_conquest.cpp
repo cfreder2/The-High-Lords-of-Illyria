@@ -66,7 +66,10 @@ void Battle::presentConquest(const std::vector<sim::Conquest::Soldier>& men) {
     for (const sim::Conquest::Stack& s : c.stacks())
         for (const sim::Army& a : s.armies) armies[a.id] = {&a, s.id};
 
-    for (const Squad& q : squads_) armyMemo_[q.army] = {q.formation, q.facing};  // (the squads are made afresh)
+    for (size_t i = 0; i < squads_.size(); ++i) {  // (the squads are made afresh)
+        armyMemo_[squads_[i].army] = {squads_[i].formation, squads_[i].facing};
+        if (i < aiMemo_.size()) armyAi_[squads_[i].army] = aiMemo_[i];
+    }
     squads_.clear();
     squadOfArmy_.clear();
     squadOfUnit_.assign(n, -1);
@@ -134,6 +137,9 @@ void Battle::presentConquest(const std::vector<sim::Conquest::Soldier>& men) {
             oneStack = oneStack && stack == m.stack;
         }
     }
+    aiMemo_.assign(squads_.size(), {});
+    for (size_t i = 0; i < squads_.size(); ++i)
+        if (const auto it = armyAi_.find(squads_[i].army); it != armyAi_.end()) aiMemo_[i] = it->second;
     std::sort(kept.begin(), kept.end());
     selMen_ = std::move(kept);
     selStack_ = oneStack ? stack : 0;
@@ -152,6 +158,25 @@ void Battle::flushOrders() {
         conquest_->submit(std::move(o));
     }
     pending_.clear();
+}
+
+void Battle::conquestAi(std::vector<sim::Command>& out) {
+    if (!conquest_) return;
+    // A standing stack meets whoever comes within this of it (Conquest's own hold of its post).
+    constexpr float kHoldM = 45.0f;
+    for (size_t q = 0; q < squads_.size(); ++q) {
+        const Squad& s = squads_[q];
+        if (s.owner == local_ || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // (routed: beyond orders)
+        const sim::Conquest::Stack* st = conquest_->findStack(s.stack);
+        if (!st || !st->path.empty() || st->commanded || conquest_->holdsTown(*st) || roleOf(s.type) == Role::Siege) continue;
+        const V3 c = squadCentre(s, false);
+        if (nearestFoe(s.owner, c, kHoldM) == sim::kNoEntity) continue;  // nothing near: stand
+        aiFight(q, c, c, kHoldM);
+    }
+    // The computer's commands leave with this step; whatever the player's hand queued waits for flushOrders.
+    std::vector<sim::Command> mine;
+    for (const sim::Command& cmd : pending_) (cmd.player == local_ ? mine : out).push_back(cmd);
+    pending_ = std::move(mine);
 }
 
 void Battle::selectStack(uint32_t stack) {

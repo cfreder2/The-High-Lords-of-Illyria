@@ -651,6 +651,9 @@ public:
     // it in the flank), else it goes to `goal`; healers keep near their
     // friends, engines throw from where they stand. Routed: beyond orders.
     void aiFight(size_t squad, const V3& goal, const V3& around, float reach);
+    // The battle's AI for the computer lords' men standing in the field of a Conquest (Conquest::setThinker): the commands
+    // of the other sides' squads are added to `out`, the step's. Garrisons at their posts are the conquest's own (fightAi).
+    void conquestAi(std::vector<sim::Command>& out);
     // The nearest living, unbroken foe of `owner` to `at` within `reach` (or kNoEntity).
     sim::EntityId nearestFoe(sim::PlayerId owner, const V3& at, float reach) const;
 
@@ -1015,6 +1018,7 @@ private:
     };
     AiSkill aiSkill_ = AiSkill::Normal;
     std::vector<AiMemo> aiMemo_;
+    std::map<uint32_t, AiMemo> armyAi_;  // the computer's memory of each squad (aiMemo_), by army, kept across the frames' fresh squads
     // The per-soldier presentation state grown for soldiers raised mid-battle.
     void growUnits();
 };

@@ -317,12 +317,26 @@ TEST(the_battle_presents_the_conquests_fight_as_its_own) {
     c.raise(owner, home->cx, home->cy, {UnitType::Hero, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
     for (const Conquest::Stack& st : std::vector<Conquest::Stack>(c.stacks()))
         if (st.owner == owner && !st.garrison) ConquestOrders::move(c, st.id, town.cx, town.cy);
+    // The battle's AI plays the other side's men standing in the field (Conquest::setThinker), as the page installs it.
+    size_t thought = 0;
+    c.setThinker(static_cast<uint8_t>(0xFF & ~(1u << c.localSide())), [&](std::vector<illyria::sim::Command>& out) {
+        const size_t before = out.size();
+        field.conquestAi(out);
+        thought += out.size() - before;
+    });
     size_t cues = 0, said = 0;
+    std::vector<Conquest::Soldier> seen;
     for (int k = 0; k < 9000; ++k) {
+        if (k % 15 == 0) {  // (the page presents the conquest once a frame)
+            c.visibleSoldiers(c.localSide(), 0, seen);
+            field.presentConquest(seen);
+        }
         c.step();
         cues += field.sfx().take().size();
         said += field.voice().take().size();
     }
+    std::printf("  the battle AI gave the other lord's men %zu orders\n", thought);
+    if (owner != c.localSide()) CHECK(thought > 0);  // the lord's men at the town are played by the battle AI, not the conquest's nearest-foe habit
     size_t dead = 0, struck = 0;
     for (size_t i = 0; i < world->units().size(); ++i) {
         dead += field.deathTick(i) != UINT32_MAX;
