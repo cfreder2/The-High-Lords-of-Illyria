@@ -23,7 +23,7 @@ public:
     void openMenu();
     void closeMenu();
     bool start(const std::string& mode, const std::string& options);  // illyria_start_mode, with the busy notice
-    void startSaved() { activate(3); }  // carry on the saved conquest
+    void startSaved();  // carry on the saved conquest
     bool menuOpen() const { return menu_; }
     bool helpOpen() const { return help_; }
     void toggleHelp() { help_ = !help_; }
@@ -54,6 +54,15 @@ private:
         int what;  // a menu row, or a card (-1 - squad), or a banner (1000 + stack)
     };
     void drawMenu(Overlay& o, float w, float h);
+    // The Skirmish screen: the map, which side, the purse, the difficulty, the squads bought at the Conquest's prices, the colour.
+    void drawSkirmish(Overlay& o, float w, float h);
+    void skirmishOpen();
+    void skirmishKey(Key k);
+    void skirmishStep(int row, int by);  // Left / Right on a row (or a click on its arrows)
+    void skirmishFill();                 // buy the purse's army as a lord would (the starting point to change)
+    void skirmishStart();
+    int skirmishSpent() const;
+    int skirmishRows() const { return 4 + static_cast<int>(offers_.size()) + 2; }  // map, side, gold, difficulty, each squad, start, back
     void drawMinimap(Overlay& o, float w, float h);
     void lookAt(float x, float y);
     void saveSettings() const;
@@ -69,6 +78,16 @@ private:
     int foes_ = 0xFF & ~(1 << 6);
     bool hard_ = true;
     std::string settingsPath_;
+    struct Offer {
+        int type;
+        std::string name;
+        int price, men;
+    };
+    std::vector<Offer> offers_;  // what a skirmish may buy (the engine's list, read on first opening)
+    std::vector<int> bought_;    // squads of each offer bought
+    bool skirmishPage_ = false;
+    int skRow_ = 0, skMap_ = 0, skGold_ = 2;  // skGold_: the purse, an index into the page's list
+    bool skDefend_ = false;
     int colour_ = -1;        // the palette's swatch chosen for the player (-1: the lord's own)
     bool minimapOn_ = true;  // M
     // The minimap's picture (RGBA, one pixel a cell of the map) waits here until the overlay can make a texture of it.

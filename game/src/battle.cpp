@@ -65,6 +65,28 @@ V3 conqBefore(const sim::Region& rg, const sim::World& w, V3 gate, V3 out, float
     return gate + out * want;
 }
 
+// The field of the open-ground skirmish: the first place the continent offers (mode.h) that is open grass, not in a forest or a
+// swamp and not within a castle's reach (else the first of them, else the ford).
+sim::Vec3 fieldCentre(const sim::Continent& c) {
+    const auto inArea = [](const std::vector<sim::Continent::Area>& areas, const sim::Vec3& p) {
+        for (const sim::Continent::Area& a : areas) {
+            const double dx = (p.x - a.centre.x).toDouble() / a.rx.toDouble(), dy = (p.y - a.centre.y).toDouble() / a.ry.toDouble();
+            if (dx * dx + dy * dy < 2.5) return true;
+        }
+        return false;
+    };
+    const std::vector<Place> places = battlePlaces(c);
+    for (const Place& p : places) {
+        if (p.kind != Place::Kind::Hill) continue;
+        bool near = false;
+        for (const sim::Continent::City& city : c.cities()) near = near || (city.pos - p.pos).flat().lengthSq() < sim::Fixed::fromInt(300 * 300);
+        if (!near && !inArea(c.forests(), p.pos) && !inArea(c.swamps(), p.pos)) return p.pos;
+    }
+    return c.crossings().front().pos;
+}
+
+constexpr int kDefaultBudget = 300;  // gold a side raises when the page says nothing
+
 }  // namespace
 
 Role roleOf(UnitType type) {
@@ -83,17 +105,26 @@ Role roleOf(UnitType type) {
     }
 }
 
-Battle::Battle(uint64_t seed, Scenario scenario) : scenario_(scenario) {
-    // The battle is fought in a full-detail window of the continent: at
-    // Oakhaven Ford, or at the neutral town nearest it.
+Battle::Battle(uint64_t seed, Scenario scenario, const SkirmishSetup& setup) : scenario_(scenario), defend_(setup.defend) {
+    // The battle is fought in a full-detail window of the continent: at Oakhaven Ford, at the neutral town nearest it, at the
+    // nearest capital, or on the first hill the continent offers.
     continent_ = std::make_shared<const sim::Continent>(kRegionSeed);
     sim::Vec3 centre = continent_->crossings().front().pos;
-    if (scenario_ == Scenario::Siege) centre = siegeTown(*continent_).pos;
+    const bool siege = scenario_ == Scenario::Siege || scenario_ == Scenario::Capital;
+    const sim::Continent::City* town = nullptr;
+    if (scenario_ == Scenario::Siege) town = &siegeTown(*continent_);
+    if (scenario_ == Scenario::Capital) town = &capitalTown(*continent_);
+    if (town) centre = town->pos;
+    if (scenario_ == Scenario::Field) centre = fieldCentre(*continent_);
     build(seed, centre);
-    if (scenario_ == Scenario::Siege) setUpSiege();
-    else setUpFord();
-    if (scenario_ == Scenario::Siege) placeCapturePoint(siegeTown(*continent_));
-    if (scenario_ == Scenario::Siege) holdGates(kEnemy);
+    if (siege) setUpSiege(*town, setup);
+    else if (scenario_ == Scenario::Field) setUpField(setup);
+    else setUpFord(setup);
+    if (siege) {
+        const sim::PlayerId keeper = setup.defend ? kPlayer : kEnemy;
+        placeCapturePoint(*town, keeper);
+        holdGates(keeper);
+    }
     finish();
 }
 
@@ -171,11 +202,16 @@ Standing Battle::standing(const Squad& s) const {
     return st;
 }
 
-void Battle::setUpFord() {
+void Battle::setUpFord(const SkirmishSetup& setup) {
     const V3 east{1, 0, 0}, west{-1, 0, 0};
     // The armies face each other across the river, either side of the ford.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
     const float px = cx - 60, ex = cx + 170;
+    if (setup.budget > 0) {
+        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east);
+        muster(kEnemy, foeBuys(setup, false), {ex, cy, 0}, west);
+        return;
+    }
 
     // Oakhaven holds the berm above the ford: shield wall in front, archers and
     // grenadiers behind, healers at the rear, horse on the flanks, fliers behind.
@@ -230,61 +266,228 @@ const sim::Continent::City& siegeTown(const sim::Continent& c) {
     return *best;
 }
 
-void Battle::setUpSiege() {
-    // A neutral town's own garrison: few, but behind walls. Archers line the
-    // walk, pikes hold the gate, militia wait in the courtyard.
-    const sim::Continent::City& town = siegeTown(*continent_);
-    foeName_ = "Garrison of " + town.name;
+const sim::Continent::City& capitalTown(const sim::Continent& c) {
+    // The capital nearest Oakhaven Ford: a castle of two doors in its outer wall, and an inner bailey.
+    const sim::Vec3 ford = c.crossings().front().pos;
+    const sim::Continent::City* best = nullptr;
+    for (const sim::Continent::City& city : c.cities()) {
+        if (!city.capital) continue;
+        if (!best || (city.pos - ford).flat().lengthSq() < (best->pos - ford).flat().lengthSq()) best = &city;
+    }
+    return *best;
+}
+
+std::vector<sim::UnitType> skirmishTypes() {
+    std::vector<UnitType> out;
+    for (UnitType t : {UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Pikemen, UnitType::Warrior, UnitType::Archers, UnitType::DwarfGrenadier,
+                       UnitType::LightCavalry, UnitType::HeavyCavalry, UnitType::WolfRiders, UnitType::Catapult})
+        if (sim::Conquest::trainable(t)) out.push_back(t);
+    return out;
+}
+
+int armyCost(const std::vector<Buy>& army) {
+    int gold = 0;
+    for (const Buy& b : army) gold += b.squads * sim::Conquest::price(b.type);
+    return gold;
+}
+
+std::vector<Buy> buyArmy(int budget, bool engines) {
+    // A lord's mix: foot to hold, bowmen behind them, horse and bombers to finish, an engine to every eight squads when the
+    // work wants one. What the next pick costs too much for becomes the cheapest foot, until the purse is empty.
+    static const UnitType order[] = {UnitType::HeavyInfantry, UnitType::Archers, UnitType::Pikemen, UnitType::Warrior, UnitType::Archers, UnitType::HeavyInfantry,
+                                     UnitType::DwarfGrenadier, UnitType::HeavyCavalry, UnitType::LightInfantry, UnitType::Archers, UnitType::LightCavalry, UnitType::Pikemen};
+    std::vector<Buy> army;
+    const auto add = [&](UnitType t) {
+        for (Buy& b : army)
+            if (b.type == t) {
+                ++b.squads;
+                return;
+            }
+        army.push_back({t, 1});
+    };
+    int left = budget, n = 0;
+    for (size_t k = 0; left >= sim::Conquest::price(UnitType::LightInfantry) && n < 60; ++k) {
+        UnitType t = order[k % (sizeof order / sizeof order[0])];
+        if (engines && n > 0 && n % 8 == 0 && left >= sim::Conquest::price(UnitType::Catapult)) t = UnitType::Catapult;
+        if (sim::Conquest::price(t) > left) t = UnitType::LightInfantry;
+        add(t);
+        left -= sim::Conquest::price(t);
+        ++n;
+    }
+    return army;
+}
+
+std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines) const {
+    return setup.army.empty() ? buyArmy(setup.budget > 0 ? setup.budget : kDefaultBudget, engines) : setup.army;
+}
+
+std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines) const {
+    // The same purse as the player's (what he bought is what the other side has to match).
+    return buyArmy(setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1), engines);
+}
+
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord) {
+    // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
+    // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
+    constexpr float kSlotM = 28.0f, kRowM = 24.0f;
+    constexpr int kAcross = 5;
+    const V3 right{facing.y, -facing.x, 0};
+    // A place to stand a squad: the slot, or the nearest open ground to it (dry, standable, not in a wall's ring), looking out
+    // 10 m each way so a squad does not form up on a cliff's lip or in a wood.
+    const auto settle = [&](V3 p) {
+        const auto clear = [&](V3 q) {
+            for (const V3 d : {V3{0, 0, 0}, V3{10, 0, 0}, V3{-10, 0, 0}, V3{0, 10, 0}, V3{0, -10, 0}})
+                if (!openFor(*region_, *world_, q + d)) return false;
+            return true;
+        };
+        if (clear(p)) return p;
+        for (int r = 8; r <= 80; r += 8)
+            for (int k = 0; k < 12; ++k) {
+                static const float kCos[12] = {1, 0.866f, 0.5f, 0, -0.5f, -0.866f, -1, -0.866f, -0.5f, 0, 0.5f, 0.866f};  // (no libm: peers place alike)
+                static const float kSin[12] = {0, 0.5f, 0.866f, 1, 0.866f, 0.5f, 0, -0.5f, -0.866f, -1, -0.866f, -0.5f};
+                const V3 q = p + V3{kCos[k] * static_cast<float>(r), kSin[k] * static_cast<float>(r), 0};
+                if (q.x > 40 && q.y > 40 && q.x < kWorldSize - 40 && q.y < kWorldSize - 40 && clear(q)) return q;
+            }
+        return p;
+    };
+    struct Item {
+        UnitType type;
+        std::string name;
+    };
+    std::vector<Item> foot, rear, engines, horse;
+    for (const Buy& b : army)
+        for (int i = 0; i < b.squads; ++i) {
+            Item it{b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : "")};
+            switch (b.type) {
+                case UnitType::LightCavalry:
+                case UnitType::HeavyCavalry:
+                case UnitType::WolfRiders: horse.push_back(it); break;
+                case UnitType::Catapult: engines.push_back(it); break;
+                case UnitType::Archers:
+                case UnitType::DwarfGrenadier:
+                case UnitType::Wizards:
+                case UnitType::Journeyman: rear.push_back(it); break;
+                default: foot.push_back(it);
+            }
+        }
+    if (lord) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), {UnitType::Hero, "The Lord"});
+    float row = 0;
+    const auto rank = [&](const std::vector<Item>& items) {
+        for (size_t i = 0; i < items.size(); i += kAcross, ++row) {
+            const size_t n = std::min<size_t>(kAcross, items.size() - i);
+            for (size_t j = 0; j < n; ++j) {
+                const float lateral = (static_cast<float>(j) - static_cast<float>(n - 1) / 2) * kSlotM;
+                const Item& it = items[i + j];
+                spawnSquad(it.name, owner, it.type, it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type), settle(anchor + right * lateral - facing * (row * kRowM)), facing);
+            }
+        }
+    };
+    rank(foot);
+    // The horse on either wing of the front rank, outside the foot.
+    const float wing = (static_cast<float>(std::min<size_t>(kAcross, foot.size())) / 2 + 0.5f) * kSlotM;
+    for (size_t i = 0; i < horse.size(); ++i) {
+        const float side = i % 2 ? 1.0f : -1.0f, out = wing + static_cast<float>(i / 2) * kSlotM;
+        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * 8.0f), facing);
+    }
+    rank(rear);
+    rank(engines);
+}
+
+void Battle::setUpField(const SkirmishSetup& setup) {
+    // Open ground: the two armies a long bowshot apart, facing.
+    const float cx = kWorldSize / 2, cy = kWorldSize / 2;
+    muster(kPlayer, playerBuys(setup, true), {cx - 70, cy, 0}, {1, 0, 0}, true);
+    muster(kEnemy, foeBuys(setup, false), {cx + 70, cy, 0}, {-1, 0, 0}, false);
+    foeName_ = "other host";
+}
+
+void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& setup) {
+    // A walled town's keepers, few but behind walls, against an army raised at the Conquest's prices before its doors (a
+    // capital has two; the besiegers come to both). `defend`: the player keeps the walls.
+    const bool classic = setup.budget == 0 && setup.army.empty() && scenario_ == Scenario::Siege && !setup.defend;
+    const sim::PlayerId keeper = setup.defend ? kPlayer : kEnemy, besieger = setup.defend ? kEnemy : kPlayer;
+    foeName_ = (setup.defend ? "Besiegers of " : "Garrison of ") + town.name;
     const sim::Continent::Castle& k = town.castle;
     const V3 o = origin();
     const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
     const sim::Continent::Castle::Ring& ring = k.rings.front();
     const size_t nc = ring.corners.size();
     const V3 centre = local(town.pos);
-    const V3 ga = local(ring.corners[ring.gateEdge]), gb = local(ring.corners[(ring.gateEdge + 1) % nc]);
-    const V3 gate = (ga + gb) * 0.5f;
-    V3 out = V3{gate.x - centre.x, gate.y - centre.y, 0};
-    out = out * (1.0f / out.length());
+    // The doors: the first (the road's) and, in a capital or a long town, the second in a side wall.
+    std::vector<V3> gates, outs;
+    for (const size_t edge : {ring.gateEdge, ring.gateEdge2}) {
+        if (edge == sim::Continent::Castle::Ring::kNoEdge) continue;
+        const V3 mid = (local(ring.corners[edge]) + local(ring.corners[(edge + 1) % nc])) * 0.5f;
+        V3 away{mid.x - centre.x, mid.y - centre.y, 0};
+        gates.push_back(mid);
+        outs.push_back(away * (1.0f / away.length()));
+    }
+    const V3 gate = gates.front(), out = outs.front();
+    siegeCentre_ = centre, siegeOut_ = out, siegeDoors_ = static_cast<int>(gates.size());
+    for (const sim::Vec3& corner : ring.corners) siegeRadius_ = std::max(siegeRadius_, V3{local(corner).x - centre.x, local(corner).y - centre.y, 0}.length());
 
-    // Stationed as any garrison is (World::garrisonPosts): archers on the walk, one to an embrasure, spread round the ring; the
-    // pikes and the militia in ranks behind the gate; the guard of the castellan behind them.
+    // The keepers, stationed as any garrison is (World::garrisonPosts): archers on the walk, one to an embrasure, spread round
+    // the ring; the pikes and the militia in ranks behind the doors; the lord behind them.
     {
         struct Company {
-            const char* name;
+            std::string name;
             UnitType type;
             int count;
         };
-        const Company companies[] = {{"Town Watch", UnitType::Archers, static_cast<int>(nc * 2)},
-                                     {"Gate Wardens", UnitType::Pikemen, 8},
-                                     {"Town Militia", UnitType::LightInfantry, 12},
-                                     {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        std::vector<Company> companies;
+        if (classic) {
+            companies = {{"Town Watch", UnitType::Archers, static_cast<int>(nc * 2)},
+                         {"Gate Wardens", UnitType::Pikemen, 8},
+                         {"Town Militia", UnitType::LightInfantry, 12},
+                         {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        } else {
+            for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false))
+                companies.push_back({sim::unitTypeName(b.type), b.type, b.squads * sim::Conquest::squadSize(b.type)});
+            if (keeper == kPlayer) companies.push_back({"The Lord", UnitType::Hero, 1});
+        }
         std::vector<sim::UnitStats> kinds;
         for (const Company& c : companies)
             for (int i = 0; i < c.count; ++i) kinds.push_back(sim::unitStats(c.type));
         std::vector<const sim::UnitStats*> ptrs;
-        for (const sim::UnitStats& k : kinds) ptrs.push_back(&k);
+        for (const sim::UnitStats& u : kinds) ptrs.push_back(&u);
         const size_t gateIndex = world_->gateOfTown(town.pos - region_->origin());
         const std::vector<sim::World::GarrisonPost> posts = gateIndex == sim::World::kNoGate ? std::vector<sim::World::GarrisonPost>{} : world_->garrisonPosts(gateIndex, ptrs);
         size_t next = 0;
         for (const Company& c : companies) {
-            Squad s{c.name, kEnemy, c.type, {}};
+            Squad s{c.name, keeper, c.type, {}};
             s.formation = c.type == UnitType::Archers ? Formation::Loose : defaultFormation(c.type);
             s.facing = out;
             s.garrison = true;
             const sim::UnitStats stats = sim::unitStats(c.type);
             for (int i = 0; i < c.count; ++i, ++next) {
                 if (next >= posts.size()) break;
-                const sim::EntityId id = world_->spawnUnit(kEnemy, posts[next].pos, posts[next].face, stats);
+                const sim::EntityId id = world_->spawnUnit(keeper, posts[next].pos, posts[next].face, stats);
                 s.members.push_back(id);
                 if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
                 squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
             }
-            squads_.push_back(std::move(s));
+            if (!s.members.empty()) squads_.push_back(std::move(s));
         }
     }
 
-    // The besiegers form up on the road before the gate (or the nearest open
-    // ground out from it, clear of the neighbouring towns).
+    // The besiegers form up on the road before the gate (or the nearest open ground out from it, clear of the neighbouring
+    // towns), half to each door of a castle with two.
+    if (!classic) {
+        std::vector<Buy> all = besieger == kPlayer ? playerBuys(setup, true) : foeBuys(setup, true);
+        // The engines are dealt first, so the road's door has the first of them.
+        std::stable_partition(all.begin(), all.end(), [](const Buy& b) { return b.type == UnitType::Catapult; });
+        std::vector<std::vector<Buy>> byDoor(gates.size());
+        size_t turn = 0;
+        for (const Buy& b : all)
+            for (int i = 0; i < b.squads; ++i, ++turn) {
+                std::vector<Buy>& mine = byDoor[turn % gates.size()];
+                if (!mine.empty() && mine.back().type == b.type) ++mine.back().squads;
+                else mine.push_back({b.type, 1});
+            }
+        for (size_t d = 0; d < gates.size(); ++d)
+            muster(besieger, byDoor[d], conqBefore(*region_, *world_, gates[d], outs[d], 110.0f), outs[d] * -1.0f, besieger == kPlayer && d == 0);
+        return;
+    }
     const V3 camp = conqBefore(*region_, *world_, gate, out, 110.0f), in = out * -1.0f;
     const V3 side{out.y, -out.x, 0};
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
@@ -298,6 +501,25 @@ void Battle::setUpSiege() {
     spawnSquad("Eyrie Griffins", kPlayer, UnitType::Griffins, 3, camp + out * 36.0f + side * -30.0f, in);
     // Two mangonels well back, within a long throw of the gate.
     spawnSquad("Oakhaven Siege Train", kPlayer, UnitType::Catapult, 2, camp + out * 26.0f + side * 34.0f, in);
+}
+
+bool Battle::siegeFocus(V3& at, float& distance, V3& out) const {
+    if (siegeDoors_ == 0) return false;
+    // The besiegers' squads are those that are no garrison's.
+    V3 sum{};
+    int n = 0;
+    for (const Squad& s : squads_)
+        if (!s.garrison && aliveCount(s) > 0) sum = sum + squadCentre(s, false), ++n;
+    at = n ? V3{(siegeCentre_.x + sum.x / static_cast<float>(n)) / 2, (siegeCentre_.y + sum.y / static_cast<float>(n)) / 2, 0} : siegeCentre_;
+    float reach = siegeRadius_;
+    for (const Squad& s : squads_)
+        if (!s.garrison && aliveCount(s) > 0) {
+            const V3 c = squadCentre(s, false);
+            reach = std::max(reach, V3{c.x - at.x, c.y - at.y, 0}.length() + 20.0f);
+        }
+    distance = std::max(110.0f, reach * 3.0f);
+    out = siegeOut_;
+    return true;
 }
 
 void Battle::breakGate(int gate) {

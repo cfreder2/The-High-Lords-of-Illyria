@@ -40,11 +40,11 @@ void CapturePoint::step(const sim::World& world) {
     if (progress_ >= kFull) taken_ = true;
 }
 
-void Battle::placeCapturePoint(const sim::Continent::City& town) {
+void Battle::placeCapturePoint(const sim::Continent::City& town, sim::PlayerId keeper) {
     // In the courtyard before the keep: the town's defenders hold it at the
     // start (their garrison stands there), the player's army comes to take it.
     const sim::Vec3 at = town.castle.courtyard - region_->origin();
-    capture_.place({at.x, at.y, sim::Fixed::zero()}, kEnemy, kPlayer);
+    capture_.place({at.x, at.y, sim::Fixed::zero()}, keeper, keeper == kPlayer ? kEnemy : kPlayer);
 }
 
 void Battle::testStorm() {

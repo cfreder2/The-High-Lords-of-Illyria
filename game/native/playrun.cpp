@@ -237,10 +237,11 @@ void Runner::execute(const Command& c) {
                 std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"player\":%d,\"enemies\":%d,\"speed\":1}", (c.easy ? false : setup_.hard) ? 1 : 0, lord,
                               setup_.foes & ~(1 << lord) & 0xFF);
                 hud_.start("conquest", buf);
-            } else if (c.text == "skirmish ford") {
-                hud_.start("skirmish", "{\"scenario\":0}");
-            } else if (c.text == "skirmish siege") {
-                hud_.start("skirmish", "{\"scenario\":1}");
+            } else if (c.text.rfind("skirmish ", 0) == 0) {
+                const std::string map = c.text.substr(9);
+                const int scenario = map == "ford" ? 0 : map == "siege" ? 1 : map == "capital" ? 2 : 3;
+                std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d}", scenario, c.budget, c.defend ? 1 : 0, c.easy ? 0 : 1);
+                hud_.start("skirmish", buf);
             } else {
                 hud_.start(c.text, "{}");
             }

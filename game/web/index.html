@@ -567,6 +567,8 @@
       conqSave: Module.cwrap("illyria_conquest_save", "string", []),
       conqSetSpeed: Module.cwrap("illyria_conquest_set_speed", null, ["number"]),
       modeError: Module.cwrap("illyria_mode_error", "string", []),
+      skirmishOffers: Module.cwrap("illyria_skirmish_offers", "string", []),
+      skirmishBuy: Module.cwrap("illyria_skirmish_buy", "string", ["number", "number"]),
       modeAvailable: (id) => callWithStrings("illyria_mode_available", id),
       startMode: (id, options) => callWithStrings("illyria_start_mode", id, options),
     };
@@ -1676,10 +1678,13 @@
     // A match (modes.js) shows its own end.
     if (s.outcome !== 0 && mode !== "title" && !(window.IllyriaMatch && window.IllyriaMatch.active)) {
       $("overlay").classList.remove("hidden");
+      const siege = s.scenario === 1 || s.scenario === 2;  // (0 the Ford, 1 a village's siege, 2 a capital's, 3 open ground)
       $("overlayTitle").textContent = s.outcome === 1 ? "Victory" : "Defeat";
       $("overlayText").textContent = s.outcome === 1
-        ? (s.scenario === 1 ? `The town is yours. Its dead lie where they fell; the land will remember.` : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
-        : (s.scenario === 1 ? `The walls held. ${s.foe} keeps its town.` : "Oakhaven has fallen. The Red Hand marches west.");
+        ? (siege ? (s.defend ? "The walls held. Their dead lie where they fell; the land will remember." : "The town is yours. Its dead lie where they fell; the land will remember.")
+                 : s.scenario === 3 ? "The field is yours. The dead lie where they fell; the land will remember." : "The Red Hand is broken. Oakhaven's dead lie where they fell; the land will remember.")
+        : (siege ? (s.defend ? "The walls have fallen. The besiegers hold the town." : `The walls held. ${s.foe} keeps its town.`)
+                 : s.scenario === 3 ? "Your host is broken." : "Oakhaven has fallen. The Red Hand marches west.");
       $("overlayButton").textContent = "Fight again";
       $("overlayButton").classList.remove("hidden");
       $("overlayMenu").classList.remove("hidden");
@@ -1690,6 +1695,8 @@
 
   window.IllyriaGame = {
     startMode,
+    skirmishOffers: () => (api ? JSON.parse(api.skirmishOffers()) : []),
+    skirmishBuy: (gold) => (api ? api.skirmishBuy(gold, 1) : ""),
     toMenu,
     toast,
     mode: () => mode,

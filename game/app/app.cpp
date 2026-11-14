@@ -162,6 +162,15 @@ double shaderTimeSkew = 0;  // illyria_set_shader_time
 
 void frameCamera() {
     const Battle& b = *app->battle;
+    // A siege: over the castle from the road's side, high enough for the whole wall (a capital's two doors both in view) and
+    // the armies before them.
+    V3 at, out;
+    float distance;
+    if (b.siegeFocus(at, distance, out)) {
+        app->camera.lookAt(at.x, at.y, distance);
+        app->camera.rotate(std::atan2(-out.y, -out.x) - app->camera.yaw());
+        return;
+    }
     // Open just behind the Oakhaven shield wall, close enough to see soldiers, looking
     // east toward the Red Hand.
     const V3 c = b.squadCentre(b.squads()[0]);
@@ -201,9 +210,12 @@ void stepIntro(double now) {
 }
 
 Scenario gScenario = Scenario::Ford;
+illyria::game::SkirmishSetup gSetup;  // the Skirmish screen's army and side, kept for a restart
+Battle::AiSkill gSkill = Battle::AiSkill::Normal;
 
 void newBattle() {
-    app->battle = std::make_unique<Battle>(kBattleSeed, gScenario);
+    app->battle = std::make_unique<Battle>(kBattleSeed, gScenario, gSetup);
+    app->battle->setAiSkill(gSkill);
     app->battleMiniLand.clear();
     // The whole continent, in battle-local coordinates.
     const V3 o = app->battle->origin();
@@ -1579,9 +1591,10 @@ ILLYRIA_API void illyria_set_pace(float pace) {
     app->battle->setSlowMotion(std::min(pace, 1.0f));
     app->battle->setSpeed(static_cast<int>(std::max(pace, 1.0f)));
 }
-// Switch battle: 0 Oakhaven Ford, 1 the siege of a neutral town.
+// Switch battle: 0 Oakhaven Ford, 1 the siege of a neutral town (the classic musters).
 ILLYRIA_API void illyria_set_scenario(int scenario) {
     gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
+    gSetup = {};
     if (!app) return;
     app->title = false;
     newBattle();
@@ -2756,9 +2769,9 @@ ILLYRIA_API const char* illyria_hud() {
     char buf[1024];
     std::snprintf(buf, sizeof buf,
                   "{\"version\":\"%s\",\"tick\":%u,\"paused\":%s,\"speed\":%d,\"slow\":%.3g,\"outcome\":%d,\"fps\":%.0f,"
-                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"foe\":\"%s\",\"side\":%d,\"colour\":\"%s\",",
+                  "\"stepMs\":%.3f,\"zoom\":%.0f,\"selected\":%d,\"scenario\":%d,\"defend\":%s,\"foe\":\"%s\",\"side\":%d,\"colour\":\"%s\",",
                   ILLYRIA_VERSION, b.world().tick(), b.paused() ? "true" : "false", b.speed(), b.slowMotion(), b.outcome(), app->fps,
-                  b.stepMs(), app->camera.distance(), b.selectedSquad(), b.scenario() == Scenario::Siege ? 1 : 0, b.foeName().c_str(),
+                  b.stepMs(), app->camera.distance(), b.selectedSquad(), static_cast<int>(b.scenario()), b.defending() ? "true" : "false", b.foeName().c_str(),
                   b.localSide(), illyria::game::palette::hex(illyria::game::factionColor(static_cast<uint8_t>(b.localSide()))).c_str());
     s = buf;
     // The town's capture point, and the selection's small edges.
@@ -2867,6 +2880,26 @@ ILLYRIA_API int illyria_start_mode(const char* id, const char* options) {
     if (ok && app) illyria::game::palette::bind(illyria::game::sideFactions()[app->battle->localSide() & 7]);
     return ok;
 }
+// What a skirmish may buy, at the Conquest's prices: [{"type":N,"name":"...","price":gold,"men":N}], and an army bought for a
+// purse as the page's starting point ("type:squads,...", the "army" option of a skirmish; engines: with catapults).
+ILLYRIA_API const char* illyria_skirmish_offers() {
+    static std::string out;
+    out = "[";
+    for (illyria::sim::UnitType t : illyria::game::skirmishTypes()) {
+        char buf[200];
+        std::snprintf(buf, sizeof buf, "%s{\"type\":%d,\"name\":\"%s\",\"price\":%d,\"men\":%d}", out.size() > 1 ? "," : "", static_cast<int>(t),
+                      illyria::sim::unitTypeName(t), illyria::sim::Conquest::price(t), illyria::sim::Conquest::squadSize(t));
+        out += buf;
+    }
+    return (out += "]").c_str();
+}
+ILLYRIA_API const char* illyria_skirmish_buy(int budget, int engines) {
+    static std::string out;
+    out.clear();
+    for (const illyria::game::Buy& b : illyria::game::buyArmy(budget, engines != 0))
+        out += (out.empty() ? "" : ",") + std::to_string(static_cast<int>(b.type)) + ":" + std::to_string(b.squads);
+    return out.c_str();
+}
 // The colour the player chose for their side ("#rrggbb"; "" for each lord's own), kept by the shell on the device.
 ILLYRIA_API void illyria_set_side_colour(const char* hex) {
     illyria::game::V3 c;
@@ -2891,7 +2924,27 @@ static int startMode(const char* id, const char* options) {
     if (mode == "skirmish") {
         stopPlaying();
         app->title = false;
-        gScenario = optionNumber(opts, "scenario", 0) == 1 ? Scenario::Siege : Scenario::Ford;
+        // The map (0 the Ford, 1 a village's siege, 2 a capital's, 3 open ground), the purse, what was bought ("type:squads,..."),
+        // which side keeps the walls, and how the computer plays (hard 0: Easy).
+        static const Scenario maps[] = {Scenario::Ford, Scenario::Siege, Scenario::Capital, Scenario::Field};
+        gScenario = maps[std::clamp(static_cast<int>(optionNumber(opts, "scenario", 0)), 0, 3)];
+        gSetup = {};
+        gSetup.budget = std::clamp(static_cast<int>(optionNumber(opts, "budget", 0)), 0, 2000);
+        gSetup.defend = optionNumber(opts, "defend", 0) != 0 && (gScenario == Scenario::Siege || gScenario == Scenario::Capital);
+        if (const size_t at = opts.find("\"army\":\""); at != std::string::npos) {
+            const char* p = opts.c_str() + at + 8;
+            while (*p && *p != '"') {
+                char* end = nullptr;
+                const long type = std::strtol(p, &end, 10);
+                if (*end != ':') break;
+                const long squads = std::strtol(end + 1, &end, 10);
+                if (type >= 0 && type < static_cast<long>(illyria::sim::UnitType::Count) && squads > 0 && illyria::sim::Conquest::trainable(static_cast<illyria::sim::UnitType>(type)))
+                    gSetup.army.push_back({static_cast<illyria::sim::UnitType>(type), static_cast<int>(std::min(squads, 40L))});
+                p = *end == ',' ? end + 1 : end;
+            }
+            if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
+        }
+        gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
         newBattle();
         app->renderer.reset(*app->battle);
         frameCamera();

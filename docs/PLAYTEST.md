@@ -57,7 +57,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | --- | --- |
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
-| `start skirmish ford` / `start skirmish siege` | the menu's Skirmish at the Ford, and the Siege. (`start ford`, `start siege` too.) Also `start horde`, `start ctf`. |
+| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -134,6 +134,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `ford.txt` | the Ford: select all, box-select, march across the ford, wait for the clash, a shot every 10 s for 90 s, `stats` at the end. |
 | `siege.txt` | the Siege: the siege engines and the foot to the gate, shots every 10 s, `stats`. |
 | `siege-catapults-first.txt` | the Siege the patient way: the catapults alone at the gate from their reach (the range ring shown), then the foot once it is down. |
+| `capital.txt` | the capital's siege: both doors looked at close, the army split between them, each company ordered at its own door, speed 4 and a shot every 20 s of game time. |
+| `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 
 ```

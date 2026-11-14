@@ -206,7 +206,7 @@
     let html = "";
     if (d) html += `<button class="big primary" data-act="continue"><span>Continue</span><small>Day ${d.day} · ${d.cities} ${d.cities === 1 ? "city" : "cities"} · ${lordsName(d.hard)}</small></button>`;
     html += `<button class="big${d ? "" : " primary"}" data-act="conquest"><span>Conquest</span><small>${d ? "New game · load" : "The war for all Illyria"}</small></button>`;
-    html += `<button class="big" data-act="skirmish"><span>Skirmish</span><small>Oakhaven Ford · a siege</small></button>`;
+    html += `<button class="big" data-act="skirmish"><span>Skirmish</span><small>Ford, siege, capital, open field</small></button>`;
     for (const m of extraModes) {
       html += `<button class="big" data-mode="${m.id}"><span>${m.name}</span>${available(m.id) ? "<small>New</small>" : '<span class="soon">soon</span>'}</button>`;
     }
@@ -352,26 +352,74 @@
     body.querySelector("[data-start]").onclick = () => startConquest(k, hard, player, enemies & ~(1 << player));
     focusFirst(body.parentElement);
   }
+  // A skirmish is a Conquest with a fence: the map, which side, the purse and the squads bought at the Conquest's prices (the
+  // engine's list: IllyriaGame.skirmishOffers), how well the computer plays, your colour. The same choices as the desktop's screen.
+  const skirmishMaps = [
+    { name: "Oakhaven Ford", note: "Hold the ford against the Red Hand", siege: false },
+    { name: "A village siege", note: "Storm a walled town of one gate and take its courtyard", siege: true },
+    { name: "A capital siege", note: "A castle of two doors and an inner bailey", siege: true },
+    { name: "Open field", note: "Two armies on open ground", siege: false },
+  ];
+  const skirmishPurses = [100, 200, 300, 450, 600, 900, 1200];
+  const skirmish = { map: 0, defend: false, purse: 2, hard: true, bought: {} };
+  const parseArmy = (text) => { const out = {}; for (const p of text.split(",")) { const [t, n] = p.split(":"); if (t !== "") out[+t] = +n; } return out; };
   render.skirmish = (el) => {
-    el.querySelector(".body").innerHTML = `<p class="lead">One battle, fought out in full. Nothing carries over.</p>` +
-      `<button class="big" data-s="0"><span>Oakhaven Ford<br><small style="text-align:left;display:block">Hold the ford against the Red Hand</small></span><small>Battle</small></button>` +
-      `<div style="height:8px"></div>` +
-      `<button class="big" data-s="1"><span>The siege<br><small style="text-align:left;display:block">Storm a neutral town and take its courtyard</small></span><small>Siege</small></button>` +
+    const offers = game().skirmishOffers();
+    const body = el.querySelector(".body");
+    const spent = () => offers.reduce((g, o) => g + o.price * (skirmish.bought[o.type] || 0), 0);
+    const fill = () => { skirmish.bought = parseArmy(game().skirmishBuy(skirmishPurses[skirmish.purse])); };
+    if (!Object.keys(skirmish.bought).length) fill();
+    body.innerHTML = `<p class="lead">A battle fought out in full, built as a Conquest is. Nothing carries over.</p>` +
+      `<h3>The ground</h3><div class="choice wrap" data-maps>` + skirmishMaps.map((m, i) => `<button data-map="${i}"><b>${m.name}</b><small>${m.note}</small></button>`).join("") + `</div>` +
+      `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div>` +
+      `<h3>Gold each side</h3><div class="choice wrap" data-purses>` + skirmishPurses.map((g, i) => `<button data-purse="${i}" style="min-height:44px"><b>${g}</b></button>`).join("") + `</div>` +
+      `<h3>Your army <small data-left></small></h3><div data-army></div>` +
+      `<h3>The computer plays</h3><div class="choice"><button data-hard="0"><b>Easy</b><small>The nearest foe, piecemeal</small></button><button data-hard="1"><b>Normal</b><small>Weak foes first, the army massed</small></button></div>` +
       `<h3>Your colour</h3><div data-colour></div>` +
-      `<p class="note">Only you see it. The sides keep their own colours, except one that clashes with yours, which takes the one you gave up.</p>`;
-    if (window.IllyriaPalette) IllyriaPalette.picker(el.querySelector("[data-colour]"), 6, null, lords.map((l) => l.name));  // (a skirmish leads the Moonward seat)
-    el.querySelectorAll("[data-s]").forEach((b) => {
-      b.onclick = () => {
-        busy("Raising the banners", b.dataset.s === "1" ? "The siege" : "Oakhaven Ford");
-        setTimeout(() => {
-          const ok = game().startMode("skirmish", { scenario: +b.dataset.s });
-          unbusy();
-          if (!ok) return failed("battle");
-          slot = 0;
-          closeAll();
-        }, 60);
-      };
-    });
+      `<p class="note">Only you see it. The sides keep their own colours, except one that clashes with yours, which takes the one you gave up. The other side raises as much gold as you.</p>` +
+      `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small data-startnote></small></button>`;
+    const army = body.querySelector("[data-army]");
+    army.innerHTML = offers.map((o) => `<div class="choice" style="margin-bottom:6px;align-items:center"><span style="flex:2"><b>${o.name}</b> <small>${o.men} men, ${o.price} gold</small></span>` +
+      `<button data-less="${o.type}" aria-label="Fewer ${o.name}" style="min-height:44px;flex:0 0 52px">-</button><b data-count="${o.type}" style="flex:0 0 36px;text-align:center"></b>` +
+      `<button data-more="${o.type}" aria-label="More ${o.name}" style="min-height:44px;flex:0 0 52px">+</button></div>`).join("");
+    const sync = () => {
+      const map = skirmishMaps[skirmish.map];
+      if (!map.siege) skirmish.defend = false;
+      body.querySelectorAll("[data-map]").forEach((b) => b.classList.toggle("on", +b.dataset.map === skirmish.map));
+      body.querySelectorAll("[data-defend]").forEach((b) => { b.classList.toggle("on", (+b.dataset.defend === 1) === skirmish.defend); b.disabled = !map.siege; });
+      body.querySelectorAll("[data-purse]").forEach((b) => b.classList.toggle("on", +b.dataset.purse === skirmish.purse));
+      body.querySelectorAll("[data-hard]").forEach((b) => b.classList.toggle("on", (+b.dataset.hard === 1) === skirmish.hard));
+      const left = skirmishPurses[skirmish.purse] - spent();
+      body.querySelector("[data-left]").textContent = `(${left} gold left)`;
+      for (const o of offers) {
+        body.querySelector(`[data-count="${o.type}"]`).textContent = skirmish.bought[o.type] || 0;
+        body.querySelector(`[data-more="${o.type}"]`).disabled = o.price > left;
+        body.querySelector(`[data-less="${o.type}"]`).disabled = !(skirmish.bought[o.type] > 0);
+      }
+      body.querySelector("[data-startnote]").textContent = map.name;
+      body.querySelector("[data-start]").disabled = spent() === 0;
+    };
+    body.querySelectorAll("[data-map]").forEach((b) => { b.onclick = () => { skirmish.map = +b.dataset.map; sync(); }; });
+    body.querySelectorAll("[data-defend]").forEach((b) => { b.onclick = () => { skirmish.defend = b.dataset.defend === "1"; sync(); }; });
+    body.querySelectorAll("[data-purse]").forEach((b) => { b.onclick = () => { skirmish.purse = +b.dataset.purse; fill(); sync(); }; });
+    body.querySelectorAll("[data-hard]").forEach((b) => { b.onclick = () => { skirmish.hard = b.dataset.hard === "1"; sync(); }; });
+    body.querySelectorAll("[data-more]").forEach((b) => { b.onclick = () => { skirmish.bought[+b.dataset.more] = (skirmish.bought[+b.dataset.more] || 0) + 1; sync(); }; });
+    body.querySelectorAll("[data-less]").forEach((b) => { b.onclick = () => { skirmish.bought[+b.dataset.less] -= 1; sync(); }; });
+    sync();
+    if (window.IllyriaPalette) IllyriaPalette.picker(body.querySelector("[data-colour]"), 6, null, lords.map((l) => l.name));  // (a skirmish leads the Moonward seat)
+    body.querySelector("[data-start]").onclick = () => {
+      const map = skirmishMaps[skirmish.map];
+      busy("Raising the banners", map.name);
+      setTimeout(() => {
+        const army = offers.filter((o) => skirmish.bought[o.type] > 0).map((o) => `${o.type}:${skirmish.bought[o.type]}`).join(",");
+        const ok = game().startMode("skirmish", { scenario: skirmish.map, budget: skirmishPurses[skirmish.purse], defend: skirmish.defend ? 1 : 0, hard: skirmish.hard ? 1 : 0, army });
+        unbusy();
+        if (!ok) return failed("battle");
+        slot = 0;
+        closeAll();
+      }, 60);
+    };
+    focusFirst(el);
   };
   let settingsTab = "graphics";
   render.settings = (el, tab) => {

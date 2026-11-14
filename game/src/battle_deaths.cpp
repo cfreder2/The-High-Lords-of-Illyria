@@ -56,7 +56,7 @@ void Battle::presentDeaths() {
         if (age < 4 * sim::kTicksPerSecond)
             emit(Particle::Kind::Fire, at, {0, 0, 0.6f}, 0.35f, 0.25f + unitOf(h >> 6) * 0.15f);
     }
-    sfx_.observe(*world_, outcome(), *continent_, origin(), scenario_ == Scenario::Siege);
+    sfx_.observe(*world_, outcome(), *continent_, origin(), scenario_ == Scenario::Siege || scenario_ == Scenario::Capital);
 }
 
 }  // namespace illyria::game

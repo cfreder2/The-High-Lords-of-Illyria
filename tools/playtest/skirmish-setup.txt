@@ -1,0 +1,51 @@
+# The Skirmish setup screen, driven by keys as a player would: open the menu, choose Skirmish, pick the capital siege and a
+# purse, buy a catapult, and start. (The map, side, gold and difficulty rows change with left / right; each squad row buys or
+# gives back one squad at the Conquest's prices.)
+#
+#   Illyria --play tools/playtest/skirmish-setup.txt --play-out out/skirmish-setup
+
+size 1600 900
+start skirmish ford
+wait 1
+key return
+wait 0.3
+shot setup-00-menu
+key down
+key return
+wait 0.3
+shot setup-01-skirmish
+# Map: the capital siege (two doors).
+key right
+key right
+# Side: hold the walls.
+key down
+key right
+# Gold: 450.
+key down
+key right
+wait 0.2
+shot setup-02-capital-defend
+# Difficulty: Easy (one press), then down the squad rows to Catapults (row 13), one more of them, and on to Start (row 14).
+key down
+key right
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key down
+key right
+wait 0.2
+shot setup-03-rows
+key down
+wait 0.2
+shot setup-04-start-row
+key return
+wait 3
+shot setup-05-started
+stats
+quit

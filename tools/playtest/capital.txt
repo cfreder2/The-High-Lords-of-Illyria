@@ -1,0 +1,90 @@
+# The capital siege: Grathmaw, a castle with two doors in its outer wall (the road's, in the south wall, and a side door in the
+# east wall) and an inner bailey behind them. Your army is split between the doors (half to each); the garrison keeps both.
+#
+#   Illyria --play tools/playtest/capital.txt --play-out out/capital --play-log out/capital/capital.log
+#
+# Coordinates: window points at 1600 x 900, with the cameras below. `cards` lists the squads: 0-7 are the garrison's, then your
+# first door's company (foot, horse, bowmen and the lord, then the siege train), then the second door's.
+
+size 1600 900
+start skirmish capital easy
+wait 0.5
+shot capital-00-start
+cards
+stats
+
+# The road's door, close.
+camera 528 600 90 -1.57
+wait 0.5
+shot capital-01-road-door
+
+# The side door, close.
+camera 610 503 90 3.14
+wait 0.5
+shot capital-02-side-door
+
+# Both together: the start view again.
+camera 548 580 330 -1.8
+wait 0.5
+shot capital-03-both
+
+# Each company to its own door: the road's door company (cards 8-14, with the siege train) attacks the road's door, the second
+# company (15-20) the side door. A right-click on a gate is an attack on it.
+camera 528 600 90 -1.57
+wait 0.5
+select 8
+click right 797 243
+select 9
+click right 797 243
+select 10
+click right 797 243
+select 11
+click right 797 243
+select 12
+click right 797 243
+select 13
+click right 797 243
+select 14
+click right 797 243
+camera 610 503 90 3.14
+wait 0.5
+select 15
+click right 790 180
+select 16
+click right 790 180
+select 17
+click right 790 180
+select 18
+click right 790 180
+select 19
+click right 790 180
+select 20
+click right 790 180
+shot capital-04-ordered
+camera 548 580 330 -1.8
+speed 4
+wait_ticks 600
+shot capital-20
+stats
+wait_ticks 600
+shot capital-30
+stats
+wait_ticks 600
+shot capital-40
+stats
+wait_ticks 600
+shot capital-50
+stats
+wait_ticks 600
+shot capital-60
+stats
+wait_ticks 600
+shot capital-70
+stats
+wait_ticks 600
+shot capital-80
+stats
+wait_ticks 600
+shot capital-90
+stats
+quit

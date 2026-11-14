@@ -68,14 +68,14 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         c.a = v[0], c.b = v[1];
     } else if (verb == "start") {
         c.op = Op::Start;
-        static const char* kUsage = "start conquest | skirmish ford | skirmish siege | horde | ctf [lord 0-7] [easy]";
+        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend]";
         if (n < 1) return usage(kUsage);
         size_t i = 1;
         std::string mode = w[i++];
         if (mode == "skirmish") {
-            if (i > n || (w[i] != "ford" && w[i] != "siege")) return usage(kUsage);
+            if (i > n || (w[i] != "ford" && w[i] != "siege" && w[i] != "capital" && w[i] != "field")) return usage(kUsage);
             mode += " " + w[i++];
-        } else if (mode == "ford" || mode == "siege") {
+        } else if (mode == "ford" || mode == "siege" || mode == "capital" || mode == "field") {
             mode = "skirmish " + mode;
         } else if (mode == "conquest") {
             mode = "conquest";
@@ -85,8 +85,10 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         c.text = mode;
         for (; i <= n; ++i) {
             if (w[i] == "easy") c.easy = true;
+            else if (w[i] == "defend") c.defend = true;
+            else if (w[i] == "budget" && i < n && number(w[i + 1], v[0]) && v[0] >= 50 && v[0] <= 2000) c.budget = static_cast<int>(v[0]), ++i;
             else if (w[i] == "lord" && i < n && number(w[i + 1], v[0]) && v[0] >= 0 && v[0] <= 7) c.lord = static_cast<int>(v[0]), ++i;
-            else return why = "start: what is '" + w[i] + "'? (lord 0-7, easy)", false;
+            else return why = "start: what is '" + w[i] + "'? (lord 0-7, easy, budget 50-2000, defend)", false;
         }
     } else if (verb == "key") {
         c.op = Op::Key;

@@ -30,8 +30,20 @@ constexpr Lord kLords[8] = {
     {"The Sylvaran Elves", "Sylvaris"},   {"The Sunreach Riders", "Sunreach"}, {"The Moonward Order", "Moonhaven"},   {"Lord Malvoren", "Dreadspire"},
 };
 
-enum Row { kConquest, kFord, kSiege, kContinue, kQuit, kRows };
-static_assert(kContinue == 3, "Hud::startSaved");
+enum Row { kConquest, kSkirmish, kContinue, kQuit, kRows };
+
+// The Skirmish screen's maps (the engine's scenario numbers) and purses.
+struct SkirmishMap {
+    const char* name;
+    const char* note;
+    bool siege;
+};
+constexpr SkirmishMap kMaps[4] = {{"Oakhaven Ford", "two armies across a river", false},
+                                  {"A village siege", "a walled town, one gate", true},
+                                  {"A capital siege", "a castle of two doors and an inner bailey", true},
+                                  {"Open field", "two armies on open ground", false}};
+constexpr int kPurses[] = {100, 200, 300, 450, 600, 900, 1200};
+constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 
 constexpr Colour kInk = rgba(0xF2EBD8), kDim = rgba(0xB9B0A0), kGold = rgba(0xE8C25A), kRed = rgba(0xFF7060);
 // The menu and the help are laid on parchment (Overlay::paper): iron-gall ink, faded red, gold leaf (the page's --pg-* tokens).
@@ -192,8 +204,7 @@ void Hud::activate(int row) {
             std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"player\":%d,\"enemies\":%d,\"speed\":1}", hard_ ? 1 : 0, lord_, foes_ & ~(1 << lord_) & 0xFF);
             start("conquest", buf);
             break;
-        case kFord: start("skirmish", "{\"scenario\":0}"); break;
-        case kSiege: start("skirmish", "{\"scenario\":1}"); break;
+        case kSkirmish: skirmishOpen(); break;
         case kContinue: {
             std::string save;
             if (!loadSave(save)) break;
@@ -210,8 +221,90 @@ void Hud::activate(int row) {
     }
 }
 
+void Hud::startSaved() { activate(kContinue); }
+
+void Hud::skirmishOpen() {
+    if (offers_.empty()) {
+        Json list;
+        Json::parse(illyria_skirmish_offers(), list);
+        for (const Json& j : list.items) offers_.push_back({static_cast<int>(j.num("type")), j.str("name"), static_cast<int>(j.num("price")), static_cast<int>(j.num("men"))});
+        bought_.assign(offers_.size(), 0);
+    }
+    skirmishPage_ = true;
+    skRow_ = 0;
+    skirmishFill();
+}
+
+void Hud::skirmishFill() {
+    bought_.assign(offers_.size(), 0);
+    std::istringstream army(illyria_skirmish_buy(kPurses[skGold_], 1));
+    for (std::string item; std::getline(army, item, ',');) {
+        const size_t colon = item.find(':');
+        if (colon == std::string::npos) continue;
+        for (size_t i = 0; i < offers_.size(); ++i)
+            if (offers_[i].type == std::atoi(item.c_str())) bought_[i] = std::atoi(item.c_str() + colon + 1);
+    }
+}
+
+int Hud::skirmishSpent() const {
+    int gold = 0;
+    for (size_t i = 0; i < offers_.size(); ++i) gold += bought_[i] * offers_[i].price;
+    return gold;
+}
+
+void Hud::skirmishStep(int row, int by) {
+    const int units = static_cast<int>(offers_.size());
+    if (row == 0) {
+        skMap_ = (skMap_ + by + 4) % 4;
+        if (!kMaps[skMap_].siege) skDefend_ = false;
+    } else if (row == 1) {
+        if (kMaps[skMap_].siege) skDefend_ = !skDefend_;
+    } else if (row == 2) {
+        skGold_ = std::clamp(skGold_ + by, 0, kPurseCount - 1);
+        skirmishFill();
+    } else if (row == 3) {
+        hard_ = !hard_;
+    } else if (row < 4 + units) {
+        const size_t i = static_cast<size_t>(row - 4);
+        if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_]) ++bought_[i];
+        else if (by < 0 && bought_[i] > 0) --bought_[i];
+    }
+}
+
+void Hud::skirmishStart() {
+    std::string army;
+    for (size_t i = 0; i < offers_.size(); ++i)
+        if (bought_[i] > 0) army += (army.empty() ? "" : ",") + std::to_string(offers_[i].type) + ":" + std::to_string(bought_[i]);
+    if (army.empty()) {
+        error_ = "Buy at least one squad.";
+        return;
+    }
+    char buf[400];
+    std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"army\":\"%s\"}", skMap_, kPurses[skGold_], skDefend_ ? 1 : 0, hard_ ? 1 : 0, army.c_str());
+    skirmishPage_ = false;
+    start("skirmish", buf);
+}
+
+void Hud::skirmishKey(Key k) {
+    const int rows = skirmishRows(), units = static_cast<int>(offers_.size());
+    error_.clear();
+    switch (k) {
+        case Key::Up: skRow_ = (skRow_ + rows - 1) % rows; break;
+        case Key::Down: skRow_ = (skRow_ + 1) % rows; break;
+        case Key::Left: skirmishStep(skRow_, -1); break;
+        case Key::Right: skirmishStep(skRow_, 1); break;
+        case Key::Enter:
+            if (skRow_ == 4 + units) skirmishStart();
+            else if (skRow_ == 5 + units) skirmishPage_ = false;
+            else skirmishStep(skRow_, 1);
+            break;
+        case Key::Back: skirmishPage_ = false; break;
+    }
+}
+
 void Hud::menuKey(Key k) {
     if (!menu_) return;
+    if (skirmishPage_) return skirmishKey(k);
     switch (k) {
         case Key::Up: row_ = (row_ + kRows - 1) % kRows; break;
         case Key::Down: row_ = (row_ + 1) % kRows; break;
@@ -238,7 +331,15 @@ bool Hud::click(float x, float y, bool left) {
         if (x < r.x || y < r.y || x >= r.x + r.w || y >= r.y + r.h) continue;
         if (r.what >= 1000 && !left) continue;  // (a right click on a town, or on the flag of the men in it, is an order, not a tap)
         if (menu_) {
-            if (r.what >= 0 && r.what < kRows) {
+            if (skirmishPage_ && r.what >= 600 && r.what < 800) {  // a row of the Skirmish screen (the last two are Start and Back)
+                skRow_ = r.what - 600;
+                const int units = static_cast<int>(offers_.size());
+                if (skRow_ == 4 + units) skirmishStart();
+                else if (skRow_ == 5 + units) skirmishPage_ = false;
+            } else if (skirmishPage_ && r.what >= 800 && r.what < 1000) {  // an arrow of a row: 800 + 2 row (less), 801 + 2 row (more)
+                skRow_ = (r.what - 800) / 2;
+                skirmishStep(skRow_, (r.what - 800) % 2 ? 1 : -1);
+            } else if (r.what >= 0 && r.what < kRows) {
                 row_ = r.what;
                 activate(r.what);
             } else if (r.what >= 100 && r.what < 108) {
@@ -300,9 +401,10 @@ float fit(const Overlay& o, const std::string& text, float size, float maxW) {
 
 // The panel is sized from the text it holds (measured, wrapped or shrunk to the window), so nothing passes its edge.
 void Hud::drawMenu(Overlay& o, float w, float h) {
+    if (skirmishPage_) return drawSkirmish(o, w, h);
     constexpr float kPad = 24, kRow = 34, kLordRow = 22;
     const float pw = std::min(580.0f, w - 20), inner = pw - 2 * kPad;
-    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: the Ford", "Skirmish: the siege", "Continue the Conquest", "Quit"};
+    static const char* const kLabel[kRows] = {"Conquest of the island", "Skirmish: set up a battle", "Continue the Conquest", "Quit"};
 
     const std::string title = "THE HIGH LORDS OF ILLYRIA";
     const float titleSize = fit(o, title, 28, inner);
@@ -379,6 +481,80 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
         o.text(px + kPad, y, hints[i], kPaperDim, 12);
         if (i < difficultyLines) hits_.push_back({px + kPad, y - 3, inner, 18, 300});
     }
+    if (!errors.empty()) {
+        y += 6;
+        for (const std::string& l : errors) o.text(px + kPad, y, l, kSeal, 13), y += 17;
+    }
+}
+
+// The Skirmish screen, on the same parchment: a Conquest with a fence, so the army is bought at the Conquest's prices.
+void Hud::drawSkirmish(Overlay& o, float w, float h) {
+    constexpr float kPad = 24, kRow = 21;
+    const float pw = std::min(620.0f, w - 20), inner = pw - 2 * kPad;
+    const int units = static_cast<int>(offers_.size()), rows = skirmishRows();
+    const std::vector<std::string> errors = wrap(o, error_, 13, inner);
+    constexpr float kSwatch = 22;
+    const float ph = kPad + 26 + 10 + kRow * static_cast<float>(rows) + 4 + 48 + 4 + 13 + 8 + kSwatch + 12 + 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
+    const float px = (w - pw) / 2, py = std::max(6.0f, (h - ph) / 2);
+    o.paper(px, py, pw, ph, 7);
+    float y = py + kPad;
+    o.text(px + kPad, y, "SKIRMISH", kSeal, 24);
+    y += 26 + 10;
+    const SkirmishMap& map = kMaps[skMap_];
+    const int purse = kPurses[skGold_], left = purse - skirmishSpent();
+    const std::string side = !map.siege ? "(a siege has sides)" : skDefend_ ? "You hold the walls" : "You storm the walls";
+    for (int r = 0; r < rows; ++r, y += kRow) {
+        std::string label, value, info;
+        bool arrows = r < 4 + units, dim = false;
+        if (r == 0) label = "Map", value = map.name;
+        else if (r == 1) label = "Side", value = side, dim = !map.siege;
+        else if (r == 2) label = "Gold each side", value = std::to_string(purse);
+        else if (r == 3) label = "Computer plays", value = hard_ ? "Normal" : "Easy";
+        else if (r < 4 + units) {
+            const Offer& of = offers_[static_cast<size_t>(r - 4)];
+            label = of.name;
+            info = std::to_string(of.men) + " men, " + std::to_string(of.price) + " gold";
+            value = std::to_string(bought_[static_cast<size_t>(r - 4)]);
+        } else label = r == 4 + units ? "Start the battle" : "Back";
+        const bool on = r == skRow_;
+        if (on) {
+            o.rect(px + 12, y - 3, pw - 24, kRow, rgba(0xB89A5A, 120));
+            o.frame(px + 12, y - 3, pw - 24, kRow, 1.5f, kSeal);
+        }
+        const Colour ink = dim ? kPaperOut : on ? kSeal : kPaperInk;
+        const float split = px + kPad + inner * (info.empty() ? 0.40f : 0.74f);
+        o.text(px + kPad, y, label, ink, fit(o, label, 14, inner * 0.38f));
+        if (!info.empty()) o.text(px + kPad + inner * 0.40f, y + 1, info, kPaperDim, 12);
+        if (arrows) {
+            o.text(split, y, "<", kPaperDim, 14);
+            o.text(split + 18, y, value, ink, fit(o, value, 14, px + pw - kPad - 20 - split - 18));
+            o.text(px + pw - kPad - 8, y, ">", kPaperDim, 14);
+            hits_.push_back({split - 4, y - 3, 18, kRow, 800 + 2 * r});
+            hits_.push_back({px + pw - kPad - 12, y - 3, 18, kRow, 801 + 2 * r});
+        }
+        hits_.push_back({px + 12, y - 3, pw - 24, kRow, 600 + r});
+    }
+    y += 4;
+    const std::string purseLine = std::string(map.name) + ": " + map.note + ".  Gold left " + std::to_string(left) + " of " + std::to_string(purse) + ", at the Conquest's prices; the other side raises as much.";
+    for (const std::string& l : wrap(o, purseLine, 12, inner)) o.text(px + kPad, y, l, kPaperDim, 12), y += 16;
+    y += 4;
+    o.text(px + kPad, y, "Your colour (click):", kPaperDim, 13);
+    y += 13 + 8;
+    {
+        const int n = illyria::game::palette::kSwatches;
+        const float step = std::min(kSwatch + 6.0f, (inner - kSwatch) / static_cast<float>(n - 1));
+        const int shown = colour_ >= 0 ? colour_ : lord_;
+        for (int i = 0; i < n; ++i) {
+            const float sx = px + kPad + static_cast<float>(i) * step;
+            o.rect(sx, y, kSwatch, kSwatch, swatchColour(i));
+            o.frame(sx, y, kSwatch, kSwatch, 1.5f, rgba(0x2B1E10, 200));
+            if (i == shown) o.frame(sx - 3, y - 3, kSwatch + 6, kSwatch + 6, 2.5f, kSeal);
+            hits_.push_back({sx, y, kSwatch, kSwatch, 400 + i});
+        }
+        y += kSwatch + 12;
+    }
+    o.text(px + kPad, y, "Up / down, left / right to change, Enter, Esc to go back.", kPaperDim, 12);
+    y += 16;
     if (!errors.empty()) {
         y += 6;
         for (const std::string& l : errors) o.text(px + kPad, y, l, kSeal, 13), y += 17;
@@ -536,11 +712,14 @@ void Hud::draw(Overlay& o, float w, float h) {
         lastDay_ = day;
     } else {
         // A battle on its own, in a player's words: where, what wins it, how many of the foe are left.
-        const bool siege = hud.num("scenario") == 1;
+        const int map = static_cast<int>(hud.num("scenario"));  // 0 the Ford, 1 a town's siege, 2 a capital's, 3 open ground
+        const bool siege = map == 1 || map == 2, defend = hud.flag("defend");
         std::string foe = hud.str("foe");
-        std::string town = foe.rfind("Garrison of ", 0) == 0 ? foe.substr(12) : "";
-        const std::string where = siege ? "Siege" + (town.empty() ? "" : ": " + town) : "Skirmish: the Ford";
-        const std::string goal = siege ? "take the courtyard" : foe.empty() ? "" : "rout the " + foe;
+        const size_t of = foe.find(" of ");
+        const std::string town = siege && of != std::string::npos ? foe.substr(of + 4) : "";
+        const std::string where = siege ? std::string(map == 2 ? "Siege of the capital" : "Siege") + (town.empty() ? "" : ": " + town)
+                                        : map == 3 ? "Skirmish: open ground" : "Skirmish: the Ford";
+        const std::string goal = siege ? (defend ? "hold the courtyard" : "take the courtyard") : foe.empty() ? "" : "rout the " + foe;
         const std::string held = hud.flag("paused") ? "PAUSED   " : "";
         const std::string count = hud.num("foeTotal") > 0 ? "Foe " + std::to_string(static_cast<int>(hud.num("foeAlive"))) + "/" + std::to_string(static_cast<int>(hud.num("foeTotal"))) : "";
         status = {held + where + (goal.empty() ? "" : "   Objective: " + goal) + (count.empty() ? "" : "   " + count),

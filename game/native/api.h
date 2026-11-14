@@ -9,6 +9,8 @@ extern "C" {
 const char* illyria_version();
 int illyria_start_mode(const char* id, const char* options);
 const char* illyria_mode_error();
+const char* illyria_skirmish_offers();
+const char* illyria_skirmish_buy(int budget, int engines);
 const char* illyria_perf();
 const char* illyria_draw_counts();
 void illyria_hide_parts(unsigned mask);

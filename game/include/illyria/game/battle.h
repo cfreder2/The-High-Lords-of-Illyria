@@ -106,11 +106,36 @@ struct Squad {
 enum class Scenario {
     Ford,      // Oakhaven Ford: the Red Hand comes over the river
     Siege,     // a neutral town near Oakhaven, held by its own small garrison
+    Capital,   // the nearest capital: a castle of two doors and an inner bailey
+    Field,     // open ground (the first hill the continent offers): two armies and nothing between them
     Mode,      // a match: Horde or capture the flag (mode.h), on a field it fills itself
 };
 
+// A squad bought: `squads` squads of `type`, as many men each as the Conquest raises (Conquest::squadSize) at its price.
+struct Buy {
+    sim::UnitType type;
+    int squads;
+};
+
+// A skirmish as the Skirmish screen sets it up: a Conquest with a fence, so its army is bought at the Conquest's prices from a
+// gold budget and the computer plays as a lord does (AiSkill). `budget` 0 is the classic muster of the Ford and the village
+// siege (the armies the first builds were made with); every other map, and any budget, buys.
+struct SkirmishSetup {
+    int budget = 0;
+    std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
+    bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
+};
+// The types a skirmish may buy: what a Conquest city trains (Conquest::trainable).
+std::vector<sim::UnitType> skirmishTypes();
+// Gold for an army at the Conquest's prices.
+int armyCost(const std::vector<Buy>& army);
+// An army bought for `budget` gold: a mix of foot, bowmen, horse and (with `engines`) catapults, as a lord raises one.
+std::vector<Buy> buyArmy(int budget, bool engines);
+
 // A battle fought from the conquest: the armies of each side, as they stand.
 const sim::Continent::City& siegeTown(const sim::Continent& c);
+// The capital nearest Oakhaven Ford, for a siege of two doors.
+const sim::Continent::City& capitalTown(const sim::Continent& c);
 
 // What a squad does on the battlefield, for orders, the AI and HUD icons.
 // Scouts (the hyena-folk) are let loose to raid (sim Command::Raid,
@@ -202,7 +227,7 @@ public:
     static constexpr float kGatherMetres = 60.0f;  // an attack on a foe farther than this is a march together first
     static constexpr size_t kMaxParticles = 4000;
 
-    explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford);
+    explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford, const SkirmishSetup& setup = {});
     // An empty field for a match (Scenario::Mode): the mode raises the armies.
     // `continent` may be one already built (it is the same for every battle).
     // With `farReachM`, only the continent within that many metres of the
@@ -213,6 +238,12 @@ public:
     ~Battle();
     // For a conquest battle: what became of every army.
     Scenario scenario() const { return scenario_; }
+    // A siege the player keeps the walls of (SkirmishSetup::defend).
+    bool defending() const { return defend_; }
+    // A siege's view, for the camera: the point to look at (between the castle and the armies that come to its doors), how far
+    // off to stand to hold the whole wall and every besieging squad, and the way out of the first (the road's) door. False when the
+    // battle is no siege.
+    bool siegeFocus(V3& at, float& distance, V3& out) const;
     // Who the player is fighting, for the HUD.
     const std::string& foeName() const { return foeName_; }
 
@@ -720,9 +751,19 @@ public:
 
 private:
     Scenario scenario_ = Scenario::Ford;
+    bool defend_ = false;
+    V3 siegeCentre_{}, siegeOut_{};
+    float siegeRadius_ = 0;
+    int siegeDoors_ = 0;
     std::string foeName_ = "Red Hand";
-    void setUpFord();
-    void setUpSiege();
+    void setUpFord(const SkirmishSetup& setup);
+    void setUpField(const SkirmishSetup& setup);
+    void setUpSiege(const sim::Continent::City& town, const SkirmishSetup& setup);
+    // The player's army (what he bought, else bought for him) and the other side's, from the setup's budget.
+    std::vector<Buy> playerBuys(const SkirmishSetup& setup, bool engines) const;
+    std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines) const;
+    // An army in ranks (foot in front, bowmen behind, horse on the wings, engines last) about `anchor`, facing `facing`.
+    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false);
     void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
@@ -950,7 +991,7 @@ private:
     };
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
     CapturePoint capture_;
-    void placeCapturePoint(const sim::Continent::City& town);
+    void placeCapturePoint(const sim::Continent::City& town, sim::PlayerId keeper);
     std::unique_ptr<BattleMode> mode_;
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)
     // The computer's memory of each squad it handles (aiFight): where it was
