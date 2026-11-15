@@ -366,6 +366,7 @@ struct Unit {
     Death death;
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
     bool looted = false;       // dead: a scavenger took his blade
+    bool afloat = false;       // dead: the water bears him, and a river carries him (world_drift.cpp)
     Scavenger scav;            // scavengers only (UnitStats::scavenge)
     // Struck by something a scavenger threw: by whom, and when. With no
     // order of his own he turns his shield to him (World::shieldTarget).
@@ -459,6 +460,7 @@ struct Remain {
     Vec3 dir;            // arrows: shaft direction (tip first); parts: lying direction
     uint32_t tick = 0;   // when it came to rest
     uint8_t source = kNoSource;  // as Projectile::source
+    bool afloat = false;  // a part the water bears, carried by a river (world_drift.cpp)
 };
 
 
@@ -483,6 +485,7 @@ struct ImpactEvent {
     // A boulder (world_boulder.cpp; projectile = it, dir = its velocity): Bounce, it struck the ground and went on
     // (radius = how hard, m/s); Splash, it went into water and stopped; Struck, it hit a wall, tower, house, rock, tree
     // or gate (radius = the blow, World::strikeStructure's energy; gate = the Structure struck).
+    // Splash: a flying part (or a loose arrow) went into the water here, at the surface (radius = how big a splash).
     enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Bounce, Splash, Struck };
     Kind kind = Kind::Hit;
     Vec3 pos;
@@ -704,6 +707,15 @@ public:
     int32_t oddsAgainst(const Unit& u, const Unit& foe) const;
     // Everyone killed during the last step, and how (world_death.cpp).
     const std::vector<DeathEvent>& deathEvents() const { return deathEvents_; }
+    // The water (world_drift.cpp): the metres of it over the bed at a point (none: 0), the current there (m/s, along
+    // the nearest river's line; nothing in still water and on dry land), and how deep a body of these stats rides:
+    // in less it grounds. Read by the step and by the presentation alike (the cache behind flowAt is a function of
+    // the ground alone).
+    Fixed waterDepth(Fixed x, Fixed y) const;
+    Vec3 flowAt(Fixed x, Fixed y) const;
+    static Fixed draughtOf(const UnitStats& s);
+    // Whether a stone bridge's pier (or its cutwater) stands in the water at a point: what floats lodges against it.
+    bool pierAt(Fixed x, Fixed y) const;
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -1472,6 +1484,17 @@ private:
     Unit* debrisHit(const Vec3& a, const Vec3& b, EntityId ignore = kNoEntity);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source = kNoSource);
     void clearRemain(uint32_t slot);
+    // The dead in the water (world_drift.cpp). A body come to rest (killed, or landed after a blast) is borne up if
+    // the water is deep enough for it; a part laid in a slot likewise (false: it lies on the bed); what never floats
+    // (an arrow, a blade, a bone); a flying thing that has just gone under (it tells of the splash); and the step
+    // that carries everything afloat.
+    void floatBody(Unit& u);
+    bool floatRemain(uint32_t slot);
+    static bool sinksInWater(RemainKind kind);
+    bool plunge(const Projectile& p, const Vec3& before);
+    void driftAfloat();
+    bool carry(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
+    bool drift(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
     bool steeperThan(Fixed x, Fixed y, Fixed limit) const;  // slopeAt(x, y) > limit, without the root
@@ -1512,6 +1535,13 @@ private:
     std::vector<PlayerId> brokenSides_;  // breakSide, ascending
     uint64_t remainsAdded_ = 0;
     std::vector<uint32_t> changedRemains_;
+    // What the water is carrying, in the order it took them: a body (its id) or a part (its slot).
+    struct Floater {
+        bool unit;
+        uint32_t ref;
+    };
+    std::vector<Floater> afloat_;
+    mutable std::unordered_map<uint64_t, Vec3> flowCache_;  // flowAt, a square at a time: looked up, never walked
     struct PendingExplosion {
         Vec3 at;
         Explosive ex;

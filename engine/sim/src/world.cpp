@@ -401,6 +401,7 @@ void World::clearFight(uint64_t seed) {
     deaths_.clear();
     remains_.clear();
     changedRemains_.clear();
+    afloat_.clear();
     pendingExplosions_.clear();
     brokenSides_.clear();
     remainGrid_.clear();
@@ -540,6 +541,7 @@ void World::step(std::span<const Command> commands) {
     }
     separateBodies();
     updateProjectiles();
+    driftAfloat();
     updateMorale();
     applyZone();
     pathCache_.clear();
@@ -1855,6 +1857,7 @@ void World::updateAirborne(Unit& u) {
     }
     u.vel = {};
     u.airborne = false;
+    if (!u.alive()) floatBody(u);  // a body thrown into the water
     if (u.alive()) {
         u.reloadRemaining = std::max(u.reloadRemaining, recoverTicks(u));
         u.meleeCooldown = std::max(u.meleeCooldown, recoverTicks(u));
@@ -2317,7 +2320,8 @@ void World::updateProjectiles() {
             const Vec3 travel = p.vel.flat();
             const Vec3 prev = p.pos;
             const Fixed speedSq = p.vel.lengthSq();
-            const bool done = tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks;
+            // Into the water: it does not bounce along the bed, it is the water's (world_drift.cpp).
+            const bool done = tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks || plunge(p, prev);
             // A body part flying fast (thrown by a blast, or by a hand) hurts
             // the first man it strikes, a little, once; a kick never does.
             if (!done && p.remain != RemainKind::Arrow && p.damage == 0 && speedSq >= kDebrisHurtSpeed * kDebrisHurtSpeed) {
@@ -2649,8 +2653,10 @@ EntityId World::placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& e
 }
 
 void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source) {
-    // Whatever falls in the water sinks out of sight.
-    if (isWater(pos.x, pos.y) && pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2)) return;
+    // In the water an arrow, a blade or a bone sinks out of sight; a part of a body stays, and floats if there is
+    // water enough under it (world_drift.cpp).
+    const bool wet = isWater(pos.x, pos.y) && (pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2) || pos.z <= config_.region->waterSurfaceAt(pos.x, pos.y));
+    if (wet && sinksInWater(kind)) return;
     const uint32_t slot = static_cast<uint32_t>(remainsAdded_ % config_.maxRemains);
     const Remain r{kind, owner, pos, dir, tick_, source};
     if (remains_.size() < config_.maxRemains) {
@@ -2662,6 +2668,7 @@ void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const 
     remainGrid_.insert(slot, pos.x, pos.y);
     ++remainsAdded_;
     changedRemains_.push_back(slot);
+    if (wet) remains_[slot].afloat = floatRemain(slot);
 }
 
 uint64_t World::checksum() const {
@@ -2736,6 +2743,7 @@ uint64_t World::checksum() const {
         if (u.shieldArrows != 0) h.addI64(u.shieldArrows);
         // Only once a scavenger is about, so battles without one hash as before.
         if (u.looted) h.addU64(u.looted);
+        if (u.afloat) h.addU64(0xAF10A7);  // only while the water bears him (world_drift.cpp), likewise
         // Only for those who carry satchels, so battles without them hash as before.
         if (u.stats.satchels.count > 0) {
             h.addI64(u.satchels);
@@ -2860,6 +2868,12 @@ uint64_t World::checksum() const {
         hashVec(h, r.pos);
         hashVec(h, r.dir);
         h.addU64(r.tick);
+        if (r.afloat) h.addU64(0xAF10A7);  // only while the water bears it, so battles with nothing afloat hash as before
+    }
+    // What the water carries, in the order it took them: only while there is any.
+    if (!afloat_.empty()) {
+        h.addU64(afloat_.size());
+        for (const Floater& f : afloat_) h.addU64((static_cast<uint64_t>(f.unit) << 32) | f.ref);
     }
     return h.value();
 }

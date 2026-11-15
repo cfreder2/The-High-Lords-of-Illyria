@@ -197,9 +197,26 @@ struct GroundMark {
     uint32_t seed;
 };
 
-// Purely cosmetic, per client: fire, smoke, sparks, dirt, healing light.
+// What the water shows (battle_water.cpp), read by its shader: a ring spreading on the surface from where something
+// went in or waded (`born` in game seconds, `size` 0.2 a foot or an arrow .. 2.6 a catapult's stone), and a cloud of
+// blood in it, carried and thinned by the current. Cosmetic, like the particles.
+struct WaterRing {
+    V3 pos;
+    float born;
+    float size;
+};
+struct WaterDye {
+    V3 pos;
+    float amount;  // 1: a man's death
+    float radius;  // metres, growing
+    float age;     // seconds
+    float strength() const;  // what is left of it
+    static float life();     // seconds until it is gone
+};
+
+// Purely cosmetic, per client: fire, smoke, sparks, dirt, healing light, the water's spray, steam.
 struct Particle {
-    enum class Kind : uint8_t { Fire, Smoke, Spark, Dirt, Heal, Flash };
+    enum class Kind : uint8_t { Fire, Smoke, Spark, Dirt, Heal, Flash, Spray, Steam };
     Kind kind;
     V3 pos;
     V3 vel;
@@ -259,6 +276,7 @@ public:
     static constexpr float kSiegeScope = 250.0f;  // the engines of a computer side take the gates this near them (aimEngines): one siege at a time
     static constexpr float kGatherMetres = 60.0f;  // an attack on a foe farther than this is a march together first
     static constexpr size_t kMaxParticles = 4000;
+    static constexpr size_t kMaxWaterRings = 256, kMaxWaterDye = 40;
 
     explicit Battle(uint64_t seed, Scenario scenario = Scenario::Ford, const SkirmishSetup& setup = {});
     // An empty field for a match (Scenario::Mode): the mode raises the armies.
@@ -887,6 +905,11 @@ public:
     // Remain slots changed since the renderer last asked (then cleared).
     std::vector<uint32_t> takeDirtyRemains();
     const std::vector<Particle>& particles() const { return particles_; }
+    // The water's rings (a ring buffer: old ones are overwritten; the reader keeps those still spreading) and its blood.
+    const std::vector<WaterRing>& waterRings() const { return rings_; }
+    const std::vector<WaterDye>& waterDye() const { return dye_; }
+    // The water over a point of the world presented: its surface's height and the metres of it; false on dry land.
+    bool waterAt(float x, float y, float& surface, float& depth) const;
     // Centre of the fiercest fighting of the last few seconds; false if all is quiet.
     bool hotSpot(V3& at) const;
     double stepMs() const { return stepMs_; }
@@ -947,6 +970,17 @@ private:
     void presentDeaths();
     void addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint32_t seed);
     void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
+    // The water (battle_water.cpp). An event that fell in or on it is shown by the water and not by the ground (true):
+    // a ring and spray, a stone's column, a fire's steam, a struck man's blood in it and the splash of his fall. Each
+    // tick: the waders' rings and wakes, the wounded dripping, the dye going downstream.
+    bool presentInWater(const sim::ImpactEvent& e, const V3& pos, const sim::Unit* victim, const V3& body);
+    void stepWater();
+    void noteWound(const sim::Unit& victim);
+    void ring(const V3& at, float size, float delay = 0);
+    void splash(const V3& at, float size, const V3& travel);
+    void waterColumn(const V3& at, float reach);
+    void steam(const V3& at, float reach);
+    void dyeWater(const V3& at, float amount);
     void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
     // Men sent through a gate (they hack at it while it stands). Through a foe's, from outside, the order carries on to the
@@ -1186,6 +1220,16 @@ private:
         uint32_t since;
     };
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
+    std::vector<WaterRing> rings_;
+    uint64_t ringsAdded_ = 0;
+    std::vector<WaterDye> dye_;
+    struct Bleeder {
+        sim::EntityId unit;
+        uint32_t until;  // the tick his wound stops dripping
+        V3 last;         // where he left his last drop
+        float gap;       // metres to the next
+    };
+    std::vector<Bleeder> bleeders_;  // the wounded leaving a trail (battle_water.cpp)
     CapturePoint capture_;
     // The end (battle_end.cpp): the rout rule, when the battle was decided, and the squads that ever broke.
     sim::RoutRule rout_;

@@ -1038,11 +1038,11 @@ in float vFog;
 out vec4 oColor;
 
 vec3 bloodColor(float age) {
-    // Bright red, to brown within minutes, to near-black within the hour.
-    vec3 fresh = vec3(0.42, 0.03, 0.02);
-    vec3 brown = vec3(0.30, 0.07, 0.03);
+    // Wet red, brown within the minute as it dries, near-black within the hour.
+    vec3 fresh = vec3(0.47, 0.025, 0.02);
+    vec3 brown = vec3(0.25, 0.085, 0.04);
     vec3 old = vec3(0.13, 0.07, 0.05);
-    return mix(mix(fresh, brown, smoothstep(0.0, 240.0, age)), old, smoothstep(240.0, 3600.0, age));
+    return mix(mix(fresh, brown, smoothstep(4.0, 60.0, age)), old, smoothstep(240.0, 3600.0, age));
 }
 float seg(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a, ba = b - a;
@@ -1056,18 +1056,45 @@ void main() {
     float seed = vExtra.w;
     vec4 color;
     if (type < 0.5 || (type > 4.5 && type < 5.5)) {
-        // Blood (or bone dust): an irregular blob plus droplets.
+        // Blood (or bone dust), in one of four shapes by its seed, turned and sized by whoever laid it: a pool with a
+        // ragged edge, a splat thrown out in fingers, a spatter of drops, a smear drawn out along +x. A small mark (a
+        // drop off a wounded man, a fleck of the blood rain) is a spatter or a single soft drop. The edges are soft.
         float a = atan(vUv.y, vUv.x);
-        float edge = 0.55 + 0.18 * sin(a * 3.0 + seed * 6.28) + 0.1 * sin(a * 7.0 + seed * 17.0);
-        float blob = 1.0 - smoothstep(edge - 0.08, edge, r);
-        vec2 cell = floor((vUv + 1.0) * 4.0);
-        vec2 local = fract((vUv + 1.0) * 4.0) - 0.5;
-        float drop = step(0.78, hash12(cell + seed * 31.0)) * (1.0 - smoothstep(0.12, 0.2, length(local)));
-        float alpha = max(blob, drop * step(r, 0.95));
-        // Soaks into the soil over a very long half-life, never quite gone.
-        float soak = mix(0.85, 0.35, 1.0 - exp(-age / 21600.0));
-        vec3 c = type < 0.5 ? bloodColor(age) : vec3(0.62, 0.6, 0.55);
-        color = vec4(c, alpha * soak * (type < 0.5 ? 1.0 : 0.6));
+        float n1 = valueNoise2(vUv * 2.6 + seed * 41.0), n2 = valueNoise2(vUv * 6.5 + seed * 93.0);
+        float shape = floor(fract(seed * 7.31) * 4.0);
+        if (vParams.y < 0.22) shape = fract(seed * 3.77) < 0.5 ? 2.0 : 4.0;
+        float cover;
+        if (shape < 0.5) {
+            float edge = 0.6 + 0.3 * (n1 - 0.5) + 0.1 * sin(a * 3.0 + seed * 6.28) + 0.06 * sin(a * 8.0 + seed * 17.0);
+            cover = 1.0 - smoothstep(edge - 0.2, edge + 0.04, r);
+        } else if (shape < 1.5) {
+            float fingers = pow(0.5 + 0.5 * sin(a * (4.0 + floor(seed * 5.0)) + seed * 20.0), 3.0) * (0.5 + n1);
+            float edge = 0.27 + 0.6 * fingers;
+            cover = 1.0 - smoothstep(edge - 0.15, edge + 0.04, r + (n2 - 0.5) * 0.08);
+        } else if (shape < 2.5) {
+            vec2 g = (vUv + 1.0) * (2.5 + 2.5 * fract(seed * 5.3));
+            vec2 cell = floor(g), f = fract(g) - 0.5;
+            vec2 jit = vec2(hash12(cell + 3.1 + seed * 13.0), hash12(cell + 7.7 + seed * 29.0)) - 0.5;
+            float rad = 0.1 + 0.3 * hash12(cell + 11.0 + seed * 3.0);
+            float drop = step(0.4 + 0.45 * r, hash12(cell + seed * 31.0)) * (1.0 - smoothstep(rad * 0.45, rad, length(f - jit * 0.5)));
+            float core = 1.0 - smoothstep(0.1, 0.34, r + (n1 - 0.5) * 0.25);
+            cover = max(drop, core);
+        } else if (shape < 3.5) {
+            float w = 0.2 + 0.14 * n1;
+            float along = 1.0 - smoothstep(0.25, 0.95, abs(vUv.x + 0.08));
+            cover = (1.0 - smoothstep(w * 0.4, w, abs(vUv.y + (n1 - 0.5) * 0.3))) * along * (0.5 + 0.7 * n2);
+        } else {
+            cover = 1.0 - smoothstep(0.25 + 0.2 * n1, 0.6 + 0.2 * n1, r);
+        }
+        cover *= 1.0 - smoothstep(0.86, 1.0, r);
+        // It soaks in: wet, thick and darker at the rim at first; within the minute a thinner, flat stain the ground
+        // shows through, which then fades over a very long half-life and is never quite gone.
+        float dry = smoothstep(2.0, 60.0, age);
+        float rim = smoothstep(0.25, 0.8, cover) * (1.0 - smoothstep(0.8, 1.0, cover));
+        float soak = mix(0.9, 0.62, dry) * mix(1.0, 0.45, 1.0 - exp(-age / 21600.0));
+        soak *= mix(1.0, 0.72 + 0.5 * n2, dry);  // patchy once the soil has drunk it
+        vec3 c = type < 0.5 ? bloodColor(age) * (1.0 - 0.3 * rim * (1.0 - dry)) * (0.85 + 0.3 * n2) : vec3(0.62, 0.6, 0.55);
+        color = vec4(c, clamp(cover * soak, 0.0, 1.0) * (type < 0.5 ? 1.0 : 0.6));
     } else if (type < 1.5) {
         // A soldier's shadow (extra.x: how much narrower across his body than
         // along it), darker in the middle where he stands (extra.y: 1; not
@@ -2926,7 +2953,62 @@ in vec3 vWorld;
 uniform sampler2D uFlow;  // RG8: downstream direction per terrain sample (0.5 = still)
 uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
 float waterTexel(vec2 c) { return texelFetch(uWaterTex, texCell(c, uCells), 0).r; }
+// What a fight does to the water (game/src/battle_water.cpp, renderer_water.cpp): the rings spreading from whatever
+// wades or falls in, and the blood in it. Short lists, nearest the view; uWaterFx.xy says how many of each, and
+// uRingBox / uDyeBox the ground they can touch (min xy, max xy): water outside them does none of the work.
+#define MAX_RIPPLES 48
+#define MAX_DYE 40
+uniform vec4 uRipple[MAX_RIPPLES];  // x, y, seconds since it began, size (0.2 a foot .. 2.6 a stone)
+uniform vec4 uDye[MAX_DYE];         // x, y, radius (m), strength
+uniform vec4 uWaterFx;
+uniform vec4 uRingBox, uDyeBox;
+bool inBox(vec2 p, vec4 box) { return p.x > box.x && p.y > box.y && p.x < box.z && p.y < box.w; }
 out vec4 oColor;
+// The rings over p: xy the slope they give the surface, z their height (crest +, trough -), each a short train of
+// crests behind a front that runs outward and dies away.
+vec3 ripples(vec2 p) {
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < MAX_RIPPLES; ++i) {
+        if (float(i) >= uWaterFx.x) break;
+        vec4 r = uRipple[i];
+        vec2 d = p - r.xy;
+        float front = 0.1 * r.w + (0.8 + 0.3 * r.w) * r.z;
+        float dd = dot(d, d);
+        if (dd > (front + 0.4) * (front + 0.4)) continue;
+        float dist = sqrt(dd);
+        float life = 1.4 + 1.3 * r.w;
+        float fade = 1.0 - r.z / life;
+        float wl = 0.2 + 0.14 * r.w;
+        float behind = front - dist;
+        float env = smoothstep(-0.5 * wl, 0.0, behind) * exp(-max(behind, 0.0) / (wl * 1.5));
+        float amp = min(0.3 + 0.75 * r.w, 1.3) * fade * fade * env;  // (a foot's ring still reads)
+        float ph = behind / wl * 6.2832;
+        acc.xy += d / max(dist, 1e-3) * (-cos(ph) * amp);
+        acc.z += sin(ph) * amp;
+    }
+    return acc;
+}
+// How red the water is at p: the clouds of blood, pulled about by the eddies and drawn out along the current, in
+// threads and curls and not in discs.
+float bloodIn(vec2 p, vec2 dir, float speed, float t) {
+    vec2 w = vec2(valueNoise2(p * 0.4 + vec2(t * 0.11, -t * 0.07)), valueNoise2(p * 0.4 + vec2(-t * 0.09, t * 0.1) + 17.3)) - 0.5;
+    vec2 w2 = vec2(valueNoise2(p * 1.2 + vec2(t * 0.23, t * 0.19) + 5.1), valueNoise2(p * 1.2 - vec2(t * 0.21, t * 0.17) + 9.7)) - 0.5;
+    vec2 q = p + w * 2.4 + w2 * 0.8;
+    float stretch = speed > 0.05 ? 1.9 : 1.0;
+    float k = 0.0;
+    for (int i = 0; i < MAX_DYE; ++i) {
+        if (float(i) >= uWaterFx.y) break;
+        vec4 d = uDye[i];
+        vec2 o = q - d.xy;
+        float al = dot(o, dir) / stretch, ac = dot(o, vec2(-dir.y, dir.x));
+        float rr = (al * al + ac * ac) / (d.z * d.z);
+        if (rr > 5.0) continue;
+        k += d.w * exp(-rr * 1.3);
+    }
+    // Threads and curls in it: thick here, thin there, with finer filaments across.
+    float f1 = valueNoise2(q * 1.7 + vec2(t * 0.3, t * 0.13)), f2 = valueNoise2(q * 4.6 - vec2(t * 0.37, t * 0.21) + 3.3);
+    return k * (0.2 + 1.2 * f1 * f1 + 0.55 * (1.0 - abs(2.0 * f2 - 1.0)));
+}
 // Ripples drawn along the current: stretched noise drifting downstream.
 float current(vec2 along, float t) {
     return valueNoise2(along * vec2(0.35, 1.6) - vec2(t, 0.0)) * 0.55 + valueNoise2(along * vec2(0.9, 3.1) - vec2(t * 1.7, 0.0) + 7.3) * 0.3 +
@@ -2976,9 +3058,13 @@ void main() {
     // (seaChop), the far land's lakes' too, so a lake is the same water near and far and shows no seam where they meet.
     if (speed <= 0.05) gw = seaChop(p, pxw, uTime) * 0.45 / 0.06;
     float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
-    vec3 n = normalize(vec3(-gw * 0.06 * (speed <= 0.05 ? 1.0 : calm), 1.0));
+    vec3 rings = uWaterFx.x > 0.5 && inBox(p, uRingBox) ? ripples(p) : vec3(0.0);
+    vec3 n = normalize(vec3(-gw * 0.06 * (speed <= 0.05 ? 1.0 : calm) - rings.xy * 0.6, 1.0));
     // Colour: the bed shows through the shallows; silt-green to deep blue.
     vec3 c = inlandWater(depth, p);
+    // Blood in it: red where it is thin, dark where it is thick, and thick enough it hides the bed.
+    float blood = uWaterFx.y > 0.5 && inBox(p, uDyeBox) ? 1.0 - exp(-1.25 * bloodIn(p, dir, speed, uTime)) : 0.0;
+    c = mix(c, mix(vec3(0.6, 0.08, 0.06), vec3(0.36, 0.02, 0.025), blood), blood * 0.86);
     // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);
     vec3 refl = reflect(-v, n);
@@ -2998,8 +3084,12 @@ void main() {
     float riffle = smoothstep(0.72, 0.9, h0) * (1.0 - smoothstep(0.1, 0.45, depth)) * step(0.05, speed);
     float edge = 1.0 - smoothstep(0.0, 0.08, depth);
     c = mix(c, vec3(0.88, 0.91, 0.92), clamp(riffle * 0.7 + edge * 0.35, 0.0, 0.8));
+    // The rings: light on the crests, dark in the troughs, white water where a big one breaks.
+    c = c * (1.0 - 0.3 * clamp(-rings.z, 0.0, 1.0)) + vec3(0.5, 0.56, 0.6) * (0.38 * clamp(rings.z, 0.0, 1.0));
+    c = mix(c, vec3(0.9, 0.93, 0.94), smoothstep(0.55, 1.1, rings.z) * 0.6);
     // Soft edges: no hard cut where the water meets the bank.
     float alpha = mix(0.0, 1.0, smoothstep(-0.02, 0.12, depth)) * clamp(0.55 + depth * 0.3, 0.55, 0.95);
+    alpha = max(alpha, smoothstep(-0.02, 0.12, depth) * max(blood * 0.85, clamp(abs(rings.z), 0.0, 1.0) * 0.8));
     // Open sea seen from higher up is the far sea's own (farSea), not a flat deep blue in a square: the battlefield's edge
     // must not show against the sea around it.
     float seaHere = seaWeight(vWorld.z);
@@ -3359,9 +3449,15 @@ void main() {
     } else if (kind < 4.5) {  // healing light
         float a = soft * (1.0 - age);
         oColor = vec4(vec3(0.45, 1.0, 0.55) * a * 1.5, 0.0);
-    } else {                  // flash
+    } else if (kind < 5.5) {  // flash
         float a = soft * (1.0 - age);
         oColor = vec4(vec3(1.0, 0.95, 0.75) * a * 2.0, 0.0);
+    } else if (kind < 6.5) {  // spray: drops of water thrown up, bright against the river
+        float a = (1.0 - smoothstep(0.35, 0.9, r)) * 0.85 * (1.0 - age * age);
+        oColor = vec4(vec3(0.86, 0.91, 0.94) * a, a);
+    } else {                  // steam: fire on water, and the mist a stone's column leaves
+        float a = soft * 0.2 * (1.0 - age) * smoothstep(0.0, 0.08, age);
+        oColor = vec4(vec3(0.8, 0.81, 0.82) * a, a);  // (thin, and no brighter than a cloud: many overlap)
     }
 }
 )";

@@ -64,7 +64,8 @@ public:
 
     // Where a frame's drawing goes, counted as it is issued (the desktop's --stats table), and each kind switchable
     // off to time what it costs. Cosmetic like everything here.
-    enum class Part : int { Shadows, Sky, Land, Far, Water, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Count };
+    // (Wake: the rings and the blood on the water, renderer_water.cpp. It draws nothing of its own: hidden, the water is drawn bare.)
+    enum class Part : int { Shadows, Sky, Land, Far, Water, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Wake, Count };
     struct PartCount {
         int draws = 0;
         long triangles = 0;
@@ -154,6 +155,7 @@ private:
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1, uw = -1;
+        GLint ripples = -1, dye = -1, waterFx = -1, ringBox = -1, dyeBox = -1;  // the water's rings and blood (renderer_water.cpp)
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
         GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1, farField = -1, farFieldRect = -1;
     };
@@ -247,6 +249,7 @@ private:
         uint32_t id = 0;
         V3 pos;
         float yaw = 0, speed = 0, walked = 0, moved = 0;
+        float turn = 0;  // a body the water bears: how far the stream has turned it (renderer_water.cpp)
         float struck = 1e9f, hurt = 1e9f, died = 1e9f;  // seconds since he struck, was hurt, died
         int type = 0;
         uint8_t owner = 0;
@@ -444,6 +447,20 @@ private:
     // Presentation per soldier: metres walked, for the stride; and, for a
     // sheet of its own clips, his pace, gait, stride and deeds as last seen.
     std::vector<float> walked_;
+    // The water in a fight (renderer_water.cpp): the rings and the blood nearest the view, packed as kWaterFs reads
+    // them; and each body in the water, the height it is drawn at (it rises to the surface as he falls and sinks to
+    // the bed when the water lets him go) and how far the stream has turned it.
+    static constexpr int kWaterRings = 48, kWaterDyes = 40;  // (kWaterFs MAX_RIPPLES, MAX_DYE)
+    float waterRing_[kWaterRings * 4] = {}, waterDye_[kWaterDyes * 4] = {};
+    float ringBox_[4] = {}, dyeBox_[4] = {};  // the ground each list can touch: min x, y, max x, y
+    int waterRings_ = 0, waterDyes_ = 0;
+    void gatherWater(const Battle& battle, const Camera& camera, float gameSeconds);
+    struct Adrift {
+        float z = 0, turn = 0;
+        bool set = false;
+    };
+    std::vector<Adrift> adrift_;
+    V3 bodyInWater(const Battle& battle, size_t index, const sim::Unit& u, V3 pos, float dt, float gameSeconds, float& turn);
     std::vector<V3> lastSeen_;
     std::vector<sprites::ClipMemory> clipMemory_;
     std::vector<uint32_t> seenGen_;  // World::generation of each place, as last drawn

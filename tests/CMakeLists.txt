@@ -75,6 +75,7 @@ add_executable(illyria_tests
     test_morale_rally.cpp
     test_voice.cpp
     test_death.cpp
+    test_drift.cpp
     test_capture.cpp
     test_palette.cpp
     test_card_name.cpp
