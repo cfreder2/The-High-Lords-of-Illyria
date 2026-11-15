@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Sprite audit: The High Lords of Illyria</title>
+<link rel="stylesheet" href="audit.css">
+</head>
+<body data-bg="grass">
+<div class="bar" id="topbar">
+  <nav><a href="index.html">Audit</a><a id="home-link" class="here">Sprites</a><a href="sounds.html">Sounds</a></nav>
+  <div class="ctl">Team <span id="teams"></span><input type="color" id="team-own" title="A colour of your own" value="#335bd1"></div>
+  <div class="ctl">Ground
+    <select id="bg"><option value="grass">grass green</option><option value="grey">grey</option><option value="dark">dark</option><option value="light">light</option><option value="checker">checker</option></select></div>
+  <div class="ctl" title="The height of the game's canvas in device pixels (CSS height x devicePixelRatio, capped at 2): what the camera model below is worked out for.">Screen height
+    <input type="number" id="screen" min="300" max="4320" step="10" value="1080"> px <button id="screen-mine" title="Use this window's height">this window</button></div>
+  <div class="ctl">Pixels
+    <select id="mode"><option value="0">as the game draws them</option><option value="1">alpha codes (team magenta, outline cyan, stray red)</option></select></div>
+  <span id="status"></span>
+</div>
+<main id="home"></main>
+<main id="detail" hidden></main>
+<canvas id="gl"></canvas>
+<script src="sound-core.js"></script>
+<script src="sound-ui.js"></script>
+<script src="sprites.js"></script>
+</body>
+</html>

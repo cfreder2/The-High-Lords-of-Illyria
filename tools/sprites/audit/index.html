@@ -2,107 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Sprite audit: The High Lords of Illyria</title>
-<style>
-:root {
-  --bg: #16181c; --panel: #1e2127; --panel2: #262a31; --line: #343942; --text: #e4e6ea; --dim: #9aa1ac;
-  --red: #ff5d55; --amber: #f0b340; --green: #69c27a; --link: #8ab4ff; --tile: #577838;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-a { color: var(--link); text-decoration: none; cursor: pointer; }
-a:hover { text-decoration: underline; }
-h1 { font-size: 17px; margin: 0; font-weight: 650; }
-h2 { font-size: 15px; margin: 28px 0 8px; font-weight: 650; }
-h3 { font-size: 13px; margin: 0; font-weight: 650; }
-p.note { color: var(--dim); margin: 4px 0 10px; max-width: 110ch; }
-code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: #c9d1dc; }
-main { padding: 0 16px 80px; }
-#gl { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 1; }
-.bar { position: sticky; top: 0; z-index: 3; background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 16px;
-  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
-.bar.sub { top: var(--bar-h, 44px); z-index: 2; background: var(--panel2); }
-.ctl { display: flex; align-items: center; gap: 6px; color: var(--dim); white-space: nowrap; }
-.ctl b { color: var(--text); font-weight: 600; }
-button, select, input[type=number] { font: inherit; color: var(--text); background: #2c3038; border: 1px solid var(--line); border-radius: 5px; padding: 3px 8px; }
-button { cursor: pointer; }
-button:hover { background: #363b45; }
-button.on { background: #3f5fa8; border-color: #5b7fd0; }
-input[type=number] { width: 72px; }
-input[type=range] { vertical-align: middle; }
-.sw { width: 18px; height: 18px; border-radius: 4px; border: 2px solid transparent; padding: 0; outline: 1px solid #0006; }
-.sw.on { border-color: #fff; }
-input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line); background: none; }
-
-.tile { position: relative; flex: none; background: var(--tile); border-radius: 3px; overflow: hidden; }
-body[data-bg=grey] { --tile: #808080; }
-body[data-bg=dark] { --tile: #15171a; }
-body[data-bg=light] { --tile: #d8d8d2; }
-body[data-bg=checker] .tile { background: conic-gradient(#8a8a8a 25%, #b4b4b4 0 50%, #8a8a8a 0 75%, #b4b4b4 0) 0 0 / 16px 16px; }
-.tile.empty { background: none !important; border: 1px dashed var(--line); }
-.tile .rule { position: absolute; left: 0; right: 0; pointer-events: none; }
-.tile .ground { position: absolute; left: 0; right: 0; height: 1px; background: #fff8; pointer-events: none; }
-
-table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--dim); font-weight: 600; position: relative; white-space: nowrap; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-tr.row { cursor: pointer; }
-tr.row:hover td { background: #ffffff0a; }
-.bad { color: var(--red); font-weight: 650; }
-.warn { color: var(--amber); font-weight: 650; }
-.ok { color: var(--green); }
-.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 9px; border: 1px solid; margin: 1px 3px 1px 0; white-space: nowrap; }
-.badge.miss { color: var(--red); border-color: #ff5d5588; }
-.badge.info { color: var(--dim); border-color: var(--line); }
-.badge.good { color: var(--green); border-color: #69c27a66; }
-.badge.warnb { color: var(--amber); border-color: #f0b34088; }
-
-#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
-.card:hover { border-color: #5b7fd0; }
-.card .tile { align-self: center; }
-.card .meta { color: var(--dim); font-size: 12px; }
-.card .playing { color: var(--dim); font-size: 11px; height: 14px; }
-
-.cliprow { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
-.cliprow .head { width: 150px; flex: none; }
-.cliprow .head .f { color: var(--dim); font-size: 12px; }
-.facings { display: flex; flex-wrap: wrap; gap: 6px; }
-.cell { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.cap { font-size: 11px; color: var(--dim); text-align: center; max-width: 100%; }
-.cap b { color: var(--text); }
-.zoomgrid { display: grid; gap: 8px 10px; align-items: start; justify-content: start; }
-.zoomgrid .rowlab { font-weight: 600; padding-top: 6px; max-width: 120px; }
-.zoomgrid .colhead { font-weight: 600; }
-.zoomgrid .colhead span { display: block; color: var(--dim); font-weight: 400; font-size: 12px; }
-.drawn { outline: 2px solid #5b7fd0; outline-offset: 2px; }
-.gibs { display: flex; flex-wrap: wrap; gap: 8px; }
-.issues { margin: 6px 0; padding: 0 0 0 18px; }
-.issues li { color: var(--amber); }
-.kv { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--dim); }
-.kv b { color: var(--text); font-weight: 600; }
-#status { color: var(--dim); margin-left: auto; }
-.callout { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--red); padding: 8px 12px; border-radius: 4px; margin: 14px 0 0; max-width: 120ch; }
-</style>
+<title>Sprite audit (moved)</title>
+<script>
+// The sprite audit moved in with the sounds (tools/audit; /audit/ beside the web build). The old address, and a
+// link to a unit (#u=archers), still open it.
+location.replace((location.pathname.includes("/tools/sprites/audit") ? "../../audit/" : "../audit/") + "sprites.html" + location.hash);
+</script>
 </head>
-<body data-bg="grass">
-<div class="bar" id="topbar">
-  <h1><a id="home-link" style="color:inherit">Sprite audit</a></h1>
-  <div class="ctl">Team <span id="teams"></span><input type="color" id="team-own" title="A colour of your own" value="#335bd1"></div>
-  <div class="ctl">Ground
-    <select id="bg"><option value="grass">grass green</option><option value="grey">grey</option><option value="dark">dark</option><option value="light">light</option><option value="checker">checker</option></select></div>
-  <div class="ctl" title="The height of the game's canvas in device pixels (CSS height x devicePixelRatio, capped at 2): what the camera model below is worked out for.">Screen height
-    <input type="number" id="screen" min="300" max="4320" step="10" value="1080"> px <button id="screen-mine" title="Use this window's height">this window</button></div>
-  <div class="ctl">Pixels
-    <select id="mode"><option value="0">as the game draws them</option><option value="1">alpha codes (team magenta, outline cyan, stray red)</option></select></div>
-  <span id="status"></span>
-</div>
-<main id="home"></main>
-<main id="detail" hidden></main>
-<canvas id="gl"></canvas>
-<script src="audit.js"></script>
-</body>
+<body><p>The sprite audit moved: <a href="../../audit/sprites.html">tools/audit/sprites.html</a>.</p></body>
 </html>
