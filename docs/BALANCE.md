@@ -305,6 +305,144 @@ The Ford, no orders (3 seeds): 1.3 (232 for 180), won 3. The Lancers and the Fer
 
 Not mine: `tests/test_command.cpp` lines 613 and 818 (`a_shape_is_where_they_were_sent...`, `a_right_click_gives_the_tap_s_order...`) fail on merge-master itself, built clean beside this branch.
 
+## The orders pass: why formations did not matter (2026-11-15)
+
+The owner: "Flanking needs to actually work ... formations need to matter. In Myth, they really did ... Faster units approaching archers should be much more difficult to hit." Review 5: orders given mid-fight measured as noise; no orders won 7 of 7 Normal field battles; a line plan lost more than no plan; 44 of 97 answers were bow squads.
+
+**The diagnosis in two sentences.** The line plan lost because a bowman behind his own foot shot it in the back (on the open field 44 to 67% of every side's arrow hits landed on their own men, and bowmen with a foe within 20 m stood idle), while the morale that decides every fight was 85 to 90% the census of local numbers and of friends falling, so where a blow landed (a flank, a rear) hardly counted and a squad broke at a tenth of its men lost. Men also clumped (in a melee 56 to 100% of them touched a friend, depth was worth nothing, whoever was raised first struck first), arrows hit a horse galloping at them three times as often as a man standing still, and answers sent bowmen into the press: so a plan's value was drowned by noise.
+
+### How it was measured
+
+Before is merge-master as this branch began (6ee3a0d), built with this branch's tools; after is this branch. Tools: `illyria_ordersdiag spacing|frontage|flank|arrows|charge [seeds]` (set pieces on flat open ground through the World), `illyria_clumpcheck agg 8`, `illyria_balance counters 8` (equal gold, both ends, both player numbers; the balance harness now raises each side as one squad in its muster formation and attacks as the game's attack does: foot march on the enemy line file for file, riders gallop at the man of the front nearest their file), and `TAC_DIAG=1 TAC_PLAN=n TAC_SHIFT=t illyria_balance tactics 0 10` (whole Normal field battles at 450 gold, an even purse, headless through the game's own Battle: friendly arrows, blows by side, bow answers, the order squads break in; `TAC_SHIFT` delays every scripted order by t ticks). Every figure is in `~/Desktop/orders-pass/before` and `after`.
+
+### What was wrong, measured (before)
+
+| Question | Measured before |
+|---|---|
+| Spacing in a melee (nearest friend, centre to centre, p10/p50/p90) | 0.80/0.89/1.82 m light foot 12x2 v 12x2, first 8 s; 0.78/0.80/0.95 m for 24 round 8; touching a friend 57%, 84% and 93% of men (a body is 0.8 m) |
+| How many of a squad in a melee strike | 30 to 35% of the men of squads in a melee, any field battle |
+| Frontage against depth (24 heavy foot against a 12x2) | 24x1 won 12 of 12 at 1.65; 12x2 0.97; 8x3 0.77; 6x4 0.82: depth was worth nothing, width all |
+| Flank and rear contacts | the flank word was told only by a charge (never in a melee); in the field 30 to 45% of melee blows already landed in a flank or back, unseen and of little weight |
+| What shocks decide morale | census of numbers 42 to 57% and friends falling 30 to 47%; blows and charges by side about 10% (instrumented field battles) |
+| Squads breaking | the longest run of one side's squads breaking within 10 s of each other, mean per battle 4.0 to 4.7; 13 to 36% of breaks at under a quarter lost |
+| Arrows by target and range (hits per arrow, 20/35/50 m) | foot standing in a block 14/13/14%; walking across 1/1/3%; walking at them 31/25/18%; horse galloping at them 49%/-/42%: a charging horse was the easiest mark |
+| Friendly fire | of all arrow hits in a field battle 44% (no orders) to 65% (the line plan) were on the shooter's own side; a second rank of bowmen put 48 of its 72 arrows into its own front rank |
+| Bowmen with a foe within 20 m | stood idle (the support stance walked them to a bowshot and no further, and never loosed) |
+| Answers | with the full stop key answering every call, 11 to 18 answers a battle were bow squads (most of all answers), half or more of them to melee calls |
+| A tie | the men acted in the order raised, every tick: clumpcheck's 24 v 24 mirror went 15 to 23 (2 level) over 40 seeds |
+| Timing (the micro plan, 5 seeds x 5 shifts of 0 to 4 ticks) | the same seed's losses moved by 47 men on average (75 at most); won and lost flipped with the shift |
+
+### What was changed
+
+| Rule | Was | Now | Where |
+|---|---|---|---|
+| Arrows over their own | a flat shot hit the first man in its path, a friend in front included | lofted over the shooter's own men in the way (not within 4 m of the mark: the melee there takes its chance) | `World::clearingTan` |
+| Aim | at the feet; free shots did not lead; ordered shots led perfectly | at the chest; every shot leads a moving man by his pace and the flight, misjudged 60 to 110%, within a circle 30% of his travel wider | `World::leadMark`, `chestOf` |
+| A fast mark | | 14% of the arrows that would strike him go by for each m/s above 2.5, at most 70% (a gallop: about 60%) | `World::arrowSpared` |
+| Bowmen | stood idle with a foe within 20 m | shoot until he is within 3 m of their reach; step back from slower foot while they reload; posted, walk up to a bowshot within their post's 20 m | `shootsInstead`, `kite`, `closeToShoot` |
+| Room | bodies pushed apart only when overlapping | half a metre between the bodies of a side (a foe: his body) | `separateBodies` |
+| Places round a foe | eight round him, any of them | only those on the attacker's side of him (within about 105 degrees): wide lines wrap, ranks behind wait | `ringSlot` |
+| Who acts first | first raised, every tick | first to last on even ticks, last to first on odd | `World::step` |
+| Depth | nothing | each rank at his back (2 at most): shocks -15%, blows +10%, his push | `updateRanks`, `formShockPct`, `separateBodies` |
+| Flanked in a melee | a blow's own shock (25, 50) | the squad within 12 m of the man struck: 160, the back 260 (a line half again), once in 3 s; told "Flanked" or "Hit from behind" and an event line for both sides | `World::flankedInMelee` |
+| Census | every living foe and friend counted one | by weight (a rider 2.5), broken men not counted | `updateMorale` |
+| Braced foot | pikes only | any tight formation standing formed: a frontal charge breaks on it (a quarter of the impact, the rider thrown back and shaken 250); closed foot turn to receive horse at the gallop | `bracedFoot`, `braceFor` |
+| A charge into closed ranks from ahead | a slanting charge on a busy man counted as one in his back (950) | meets the front | `sideStruck` |
+| After a charge home | only a flank or back charge wheeled away | every unbraced charge wheels away and comes again | `charge` |
+| Loose order | 40% of arrows spared | half spared, and half a blast's hurt | `kRules`, `formBlastPct` |
+| Answers | the nearest free squad, bowmen too | a melee call: foot or horse (bowmen only when none is free); free horse go straight in, the flank ride is the commander's | `callForHelp`, `Battle::answerCall`, `support` |
+| Posted men | helped only against a foe within 20 m of their post | and against one who has a friend of theirs in the flank or back | `supportFoe` |
+
+### After
+
+**Spacing and frontage** (ordersdiag spacing, steady men, 6 seeds x 2 sides):
+
+| Piece | Before: nearest friend p10/p50/p90, touching | After |
+|---|---|---|
+| light foot 12x2 v 12x2, first 8 s of the melee | 0.80/0.89/1.82 m, 57% touching | 1.26/1.34/1.82 m, 0% |
+| heavy foot 6x4 v 12x2, first 8 s | 0.87/0.90/1.77 m, 84% | 1.26/1.34/1.43 m, 0% |
+| light foot 24 round heavy 8 | 0.78/0.80/0.95 m, 93% | 1.14/1.23/1.30 m, 1% |
+| clumpcheck 24 v 24 mirror, 40 seeds | 15 to 23 (2 level) | 21 to 19 |
+
+Men of a squad in a melee who strike at a given moment: 30 to 35% before, 26 to 29% after (the ranks behind wait their turn now). Of 24 heavy foot against a 12x2 (12 fights each), wins and exchange before / after: 24x1 12 / 0 (1.65 / 0.67), 12x2 4 / 6 (0.97 / 1.02), 8x3 2 / 8 (0.77 / 1.07), 6x4 4 / 2 (0.82 / 0.78), 4x6 6 / 10 (0.93 / 0.98): a single rank no longer wins by width alone, and depth trades evenly with width.
+
+**Flanks** (ordersdiag flank, 16 light foot v 16 head on, then 8 more of A arrive at 8 s; 12 fights): the extra men at B's front / flank / back, exchange before 3.56 / 2.58 / 7.00, after 1.11 / 1.55 / 7.50. Where the same men arrive now counts seven to one (before, two to one). "Flanked" or "Hit from behind" told in a melee: 0 before, 6 to 16 a fight after. A squad of 12 locked with 12 and taken in the back by 6 more: won 12 of 12 at 3.29 before, 2.44 after (the 6 alone head on lose every time).
+
+**Arrows** (ordersdiag arrows: 12 bowmen at 8 men who cannot die; hits per arrow at 20 / 35 / 50 m):
+
+| The mark | Before | After |
+|---|---|---|
+| foot standing, a close block | 14 / 13 / 14% | 78 / 63 / 48% |
+| foot standing, a loose file | 16 / 10 / 7% | 45 / 31 / 24% |
+| foot walking across | 1 / 1 / 3% | 26 / 26 / 20% |
+| foot walking at them | 31 / 25 / 18% | 25 / 30 / 29% |
+| horse standing | 19 / 15 / -% | 86 / 71 / -% |
+| horse galloping across | 23 / 12 / 8% | 24 / 21 / 17% |
+| horse galloping at them | 49 / - / 42% | 68 / - / 22% (at 20 m it has arrived and stands) |
+
+Of all arrow hits in a field battle, those on the shooter's own side: 44 to 67% before, 12 to 20% after.
+
+**Horse** (ordersdiag charge, 8 riders from 70 m at a standing body; 12 fights): at 12 bowmen, light horse won 12 of 12 before and after (120 killed for none; 28 for none: the bowmen now break and run sooner); at braced pikes, horse lost every time, both; at 16 heavy foot standing formed, 0 of 12 before (12 killed, none lost: the horse broke on its own nerve) and 0 of 12 after (none killed, 44 riders lost); at the same foot marching at them, 0 of 12 (10 for 2) before, 12 of 12 (88 for none) after; at a box, nothing happened before, 36 riders lost after.
+
+**Counters** (`illyria_balance counters 8`: equal gold, the second's gold lost for each of the first's; "won" the first's share):
+
+| Pair | Should win | Before | After |
+|---|---|---|---|
+| light horse at archers | horse | won 100%, 2.90 | 100%, 7.56 |
+| heavy horse at archers | horse | 100%, 6.45 | 100%, 10.81 |
+| light horse at braced pikes | pikes | 0%, 0.00 | 0%, 0.00 |
+| heavy horse at heavy foot standing formed | foot | 50%, 0.87 | 0%, 0.22 (foot 4.5 to 1) |
+| heavy horse and heavy foot both coming on | horse | 100%, 3.95 | 100%, 2.64 |
+| light horse at light foot standing formed | foot | 12%, 0.61 | 0%, 0.30 (foot 3.3 to 1) |
+| light horse and light foot both coming on | horse | 25%, 0.50 | 100%, 3.85 |
+| archers at heavy foot coming on | archers | 0%, 0.23 | 0%, 0.21 |
+| archers at pikes coming on | archers | 0%, 0.62 | 100%, none lost |
+| archers at light foot coming on | even | 0%, 0.32 | 0%, 0.31 |
+| heavy foot at light foot | heavy | 100%, 2.41 | 100%, 3.01 |
+| heavy foot at pikes | heavy | 100%, 2.75 | 100%, 3.07 |
+
+The full matrix (27 types, 8 seeds) before and after is in `~/Desktop/orders-pass/before/matrix.txt` and `after/matrix.txt`; the trained types' means, before to after: light foot 84 to 74, heavy foot 83 to 81, archers 41 to 36, pikes 83 to 76, light horse 88 to 92, heavy horse 95 to 96, wolf riders 78 to 83, warriors 78 to 74, catapult 8, hyena-folk 67 to 65.
+
+**Whole battles** (open field, Normal, 450 gold a side, an even purse, 10 seeds; kills for each loss, battles won and lost):
+
+| The player | Before | After |
+|---|---|---|
+| no orders | 1.5, won 10, lost 0 | 1.2, won 3, lost 6 |
+| line plan (bows behind heavy foot, pikes on the ends, horse posted on the wings) | 1.7, won 9, lost 0 | 1.1, won 3, lost 7 |
+| plan + micro (every call answered with the full stop key, the Rally) | 1.6, won 9, lost 0 | 1.2, won 3, lost 6 |
+| plan + a flank charge (horse round the side of the foot locked with the line, then in) | 1.8, won 10, lost 0 | 1.2, won 5, lost 4 |
+| plan + horse at their bowmen (round their side, then in) | 1.6, won 10, lost 0 | **2.1, won 10, lost 0** |
+| reckless charge | 0.9, won 2, lost 8 | 0.3, won 0, lost 10 |
+
+Breaking: the longest run of one side's squads breaking within 10 s of each other, mean per battle, 4.0 to 4.7 before, 3.1 to 4.1 after (a reckless charge 7.1: it is surrounded). Timing (5 seeds, each order delayed by 0 to 4 ticks): the micro plan's losses on one seed moved by 47 men on average before, 49 after; the horse-at-bows plan's by 39 (lost 74 on average, won 25 of 25), against no orders' 109 lost (won 10 of 25): its spread is smaller than its gap to no orders (35 men), and its result does not flip.
+
+Costs: the tick bench (3,300 men, 150 ticks) 0.83 to 0.91 microseconds a man a tick.
+
+### On screen
+
+Set pieces in the sandbox through the play harness (`start sandbox place 8`, `sandbox squad`; scripts and frames in `~/Desktop/orders-pass/<name>/`, a contact sheet `sheet.jpg` each), looked at frame by frame:
+
+| Script | What happened |
+|---|---|
+| `horse-archers` | 8 light horse ordered at 12 bowmen 63 m off on the flat bank: at the gallop in 8 s, 11 bowmen dead by 28 s for 1 rider |
+| `pikes-horse` | 8 heavy horse head on into 12 pikes standing: all 8 riders dead, no pikeman ("Braced") |
+| `archers-foot` | 16 pikemen walked 63 m at 12 bowmen: 3 dead on the way, the bowmen stepping back as they closed |
+| `flank` | heavy foot locked, then 8 heavy horse into the end of the foe's line: "Their Heavy Infantry 3 hit from behind", "... flanked" and our own squad's in the events; not decided in the 24 s shown |
+| `hyena-molotov`, `hyena-run` | the satchel run, below |
+
+### The hyena satchel run
+
+Built on the scavengers' satchel (world_scavenge.cpp; world_satchels.cpp untouched): `Command::TakeSatchel` (**;** and a click on a satchel lying on the ground) sends the nearest hyena with empty hands to take it up; any blast or a Molotov's burning ground reaching him sets it off in his hands (world_fire.cpp); `Command::LightFuse` (**'** and a click on a man) lights a 5 s fuse and he sprints 30% quicker at the man, deaf to all else, and it goes off where he is. The card counts the satchel and reads FUSE LIT. Tests: `a_hyena_takes_up_a_laid_satchel_and_lit_runs_it_into_the_bowmen` (it went off 3.3 m from the bowmen's middle, 5 of 6 hurt, the runner dead), `a_molotov_thrown_at_the_satchel_carrier_sets_it_off_in_his_hands` (one blast, 6 of 6 bowmen hurt, the carrier dead). On screen (`~/Desktop/orders-pass/hyena-molotov`): the hyena walked among 12 bowmen, our dwarf threw a bottle at him: 3 bowmen and 2 of ours dead. The lit sprint (`hyena-run`): against 12 alert bowmen 18 to 25 m off, the runner was shot down short of them in three runs of three (they lead a runner now), the satchel going off where he fell, once among our own foot ("Own blast: 6 down"). It works on bowmen that are busy or screened; alert ones at 20 m usually drop a lone runner. The computer does not use it yet.
+
+### Not met, and why
+
+- **The obvious line plan does not beat no orders** (1.1 against 1.2, 3 won each). It stands posted while the computer's bows outshoot it from in front of their foot, and its horse sits on the wings; once flanks counted, the computer's wing attack rolled it up (it lost 9 of 10 until posted men were allowed to close on a flank attack). What pays now is using the counters: horse sent at their bowmen doubles no orders' exchange near enough (2.1 against 1.2, 10 of 10 won). The plan's own value, short of that, is not shown here.
+- **A flank charge plan** wins more than it loses (5 to 4) but at no better exchange than no orders: the scripted ride goes in after the foe's foot is locked, often into its far end where the line is already falling back. In the set pieces the same men in a back are worth seven times as much as at a front.
+- **Archers do not beat heavy foot or light foot** coming on over 90 m at equal gold (0.21, 0.31): 55% shields, and the foot close before the volleys tell. They beat pikes outright, and in the field the bow plan's arrows now land on the foe.
+- **Timing spread** of the busiest script (answers on every call) is as wide as before (49 men); answers still pull squads out of a line. It is smaller than the gap only for the plan that uses a counter.
+- **The lit sprint** against alert bowmen usually fails (above); the computer does not use the satchel run.
+- **Field screenshots of a plan beating no orders** were not taken: in the headless battles that plan does not (the counter plan does).
+
 ## What changed, and why
 
 | Change | Was | Now | Why |
