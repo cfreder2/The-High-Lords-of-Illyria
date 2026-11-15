@@ -1162,6 +1162,17 @@ void main() {
         float edge = 0.7 + 0.16 * sin(a * 3.0 + seed * 6.28) + 0.1 * sin(a * 5.0 + seed * 17.0);
         float worn = (1.0 - smoothstep(edge * 0.35, edge, r)) * (0.6 + 0.4 * hash12(floor((vUv + 1.0) * 24.0) + seed));
         color = vec4(vec3(0.33, 0.27, 0.19) * (0.85 + 0.3 * hash12(floor((vUv + 1.0) * 9.0))), 0.78 * worn);
+    } else if (type > 13.5 && type < 14.5) {
+        // A stretch of a rolling boulder's furrow, along +x: bare scuffed earth down the middle, the grass pressed
+        // flat and pale either side of it, ragged at the edges; it greens over in a season.
+        float across = abs(vUv.y), grain = hash12(floor((vUv + 1.0) * 14.0) + seed * 57.0);
+        float ends = 1.0 - smoothstep(0.55, 1.0, abs(vUv.x));
+        float rut = 1.0 - smoothstep(0.2, 0.42 + 0.1 * grain, across);
+        float pressed = 1.0 - smoothstep(0.5, 0.78 + 0.12 * grain, across);
+        vec3 earth = vec3(0.2, 0.15, 0.1) * (0.8 + 0.4 * grain);
+        vec3 straw = vec3(0.47, 0.45, 0.25) * (0.85 + 0.3 * grain);
+        float heal = smoothstep(86400.0, 86400.0 * 90.0, age);
+        color = vec4(mix(straw, earth, rut), ends * max(rut * 0.8, pressed * 0.42) * mix(1.0, 0.2, heal));
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;

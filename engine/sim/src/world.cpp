@@ -102,10 +102,8 @@ constexpr Fixed kStickSpeed = Fixed::fromInt(9);
 constexpr Fixed kDebrisHurtSpeed = Fixed::fromInt(6);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
-// Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
 // An engine ordered to a place this near a foe's gate batters the gate from its own reach instead of walking up to the doors.
 constexpr Fixed kEngineGrab = Fixed::fromInt(40);
-constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
 
@@ -1779,7 +1777,7 @@ void World::kickRemains(Unit& u, const Vec3& moveDir) {
     }
 }
 
-Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly, bool* stone) const {
+Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly, bool* stone, int32_t* what) const {
     if (!config_.region) return -Fixed::one();
     const auto& obstacles = config_.region->obstacles();
     const Vec3 seg = b - a;
@@ -1801,6 +1799,7 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
         best = t;
         hit = true;
         if (stone) *stone = o.kind != Obstacle::Kind::Pine && o.kind != Obstacle::Kind::Oak && o.kind != Obstacle::Kind::Log;
+        if (what) *what = static_cast<int32_t>(k);
     });
     // Castle walls: their stone, open at the embrasures (world_walls.cpp).
     const Fixed wall = wallHit(a, b, best);
@@ -1808,10 +1807,12 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
         best = wall;
         hit = true;
         if (stone) *stone = true;
+        if (what) *what = kHitWall;
     }
     const Fixed gate = gateHit(a, b, best);
     if (gate >= Fixed::zero()) {
         if (stone) *stone = false;  // oak
+        if (what) *what = kHitGate;
         return gate;
     }
     return hit ? best : -Fixed::one();
@@ -2373,7 +2374,13 @@ void World::updateProjectiles() {
             continue;
         }
 
-        // Arrows and fireballs: ballistic flight, hitting the first thing in their path.
+        // A boulder come down goes on over the ground (world_boulder.cpp).
+        if (p.kind == ProjectileKind::Stone && p.landed) {
+            removed[i] = rollStone(p);
+            continue;
+        }
+
+        // Arrows, fireballs and stones: ballistic flight, hitting the first thing in their path.
         const Vec3 prev = p.pos;
         // Exact for constant acceleration, so flight paths match the aiming solution.
         // A stone is too heavy for the wind to carry.
@@ -2420,11 +2427,18 @@ void World::updateProjectiles() {
 
         // Trees, rocks and walls in the way stop it first.
         bool stone = false;
-        const Fixed obstacleT = obstacleHit(prev, p.pos, hitT, false, &stone);
+        int32_t what = 0;
+        const Fixed obstacleT = obstacleHit(prev, p.pos, hitT, false, &stone, &what);
+        // What bursts is spent where it strikes; a boulder smashes there and goes on (false: it is gone too).
+        const auto burst = [&](const Vec3& at, StoneFall how) {
+            pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+            return p.kind != ProjectileKind::Stone || !landStone(p, at, how, what);
+        };
+        bool spent = true;
         if (obstacleT >= Fixed::zero()) {
             const Vec3 at = prev + seg * obstacleT;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Obstacle);
             } else if (stone) {
                 // Off stone it glances back and drops to the foot of it.
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -2433,11 +2447,11 @@ void World::updateProjectiles() {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Man);
             } else if (shieldBlocks(*hit, p.vel, wading(*hit) ? Fixed::fromRatio(1, 2) : Fixed::one())) {  // (a man wading cannot keep his shield up)
                 // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
@@ -2456,16 +2470,16 @@ void World::updateProjectiles() {
                 shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (groundT <= Fixed::one()) {
             const Vec3 at = prev + seg * groundT;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Ground);
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (p.ageTicks >= kMaxProjectileAgeTicks) {
             removed[i] = 1;
         }
@@ -2826,6 +2840,11 @@ uint64_t World::checksum() const {
         h.addU64(static_cast<uint64_t>(p.cause));
         hashExplosive(h, p.explosive);
         if (p.thrown) h.addU64(p.thrown);
+        // (Only once a boulder is on the ground, so a world with none hashes as before.)
+        if (p.landed) {
+            h.addU64(p.landed);
+            h.addI64(p.rolled.raw);
+        }
     }
     // Only once a side is out of a match, so battles without one hash as before.
     if (!brokenSides_.empty()) {

@@ -64,6 +64,17 @@ TEST(playscript_reads_every_command) {
     CHECK(s.commands[22].op == Op::Quit);
 }
 
+TEST(playscript_reads_the_boulder_demo) {
+    const Script s = parse("boulder men 300 500 2 0 12\nboulder men 300 520 0 1.5 8 own\nboulder throw 200 500 290 500\nboulder count\nboulder ground 10 20\n");
+    CHECK(s.ok());
+    if (!s.ok() || s.commands.size() != 5) return;
+    CHECK(s.commands[0].op == Op::Boulder && s.commands[0].text == "men" && s.commands[0].a == 300 && s.commands[0].c == 2 && s.commands[0].seconds == 12 && !s.commands[0].all);
+    CHECK(s.commands[1].d == 1.5 && s.commands[1].seconds == 8 && s.commands[1].all);
+    CHECK(s.commands[2].text == "throw" && s.commands[2].a == 200 && s.commands[2].c == 290 && s.commands[2].d == 500);
+    CHECK(s.commands[3].text == "count" && s.commands[4].text == "ground" && s.commands[4].b == 20);
+    CHECK(!parse("boulder\n").ok() && !parse("boulder men 1 2 3 4\n").ok() && !parse("boulder throw 1 2 3\n").ok() && !parse("boulder roll\n").ok());
+}
+
 TEST(playscript_start_modes) {
     CHECK(parse("start conquest").commands[0].text == "conquest");
     CHECK(parse("start conquest").commands[0].text == "conquest");

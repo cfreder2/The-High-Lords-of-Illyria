@@ -68,7 +68,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0x2fad2b1c31c46429;  // the twelve worlds with no friend near, as on master before the rule (was 0xcd43c73604019bef before the siege train's gate reach and the balance pass; the foes' toll is the same 6156)
+constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
@@ -100,8 +100,9 @@ TEST(a_catapult_aims_to_spare_the_friends_beside_its_foes) {
     std::printf("  no friends: foes lost %d (checksum %016llx) | one friend: friends lost %d (dead %d), foes %d | three: friends lost %d (dead %d), foes %d\n",
                 alone.foesLost, static_cast<unsigned long long>(alone.sum), one.friendsLost, one.friendsDead, one.foesLost, three.friendsLost,
                 three.friendsDead, three.foesLost);
-    // No friend near: the catapult fires exactly as before (the same stones, the same worlds, tick for tick).
-    CHECK(alone.foesLost == 6156);
+    // No friend near: the catapult throws as it did before the rule (the same stones at the same marks; each now rolls
+    // on through the pile, world_boulder.cpp, so the toll is 8380 where the smash alone took 6156).
+    CHECK(alone.foesLost == 8380);
     CHECK(alone.sum == kAloneSum);
     // Friends near: nearly none of them hurt (a tenth of the old toll at most), and the pile still shelled to near as much.
     CHECK(one.friendsLost * 10 <= 90 && one.friendsDead == 0);
@@ -149,7 +150,8 @@ int firstSmash(bool ring, int leave = 0) {
         if (i == leave)
             for (const EntityId f : s.friends) {
                 const Vec3 at = s.w.findUnit(f)->pos;
-                const Command go{0, f, Command::Type::Move, at + (at - Vec3{}).flat() * m(8)};
+                // (Out of the smash and out of the stone's roll beyond it, world_boulder.cpp: away to the sides and back toward the engine.)
+                const Command go{0, f, Command::Type::Move, Vec3{-abs(at.x) * m(4) - m(8), at.y * m(8), m(0)}};
                 s.w.step(std::span(&go, 1));
             }
         else

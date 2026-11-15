@@ -1,0 +1,62 @@
+# The boulder, up a slope.
+# The same hillside from below, the same block: thrown 64 m north, it comes down under the block and dies on the slope.
+#
+#   Illyria --play tools/playtest/boulder-uphill.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 716 712 62 3.14
+boulder ground 700 704
+boulder men 696 710 0 2 12
+boulder men 698 710 0 2 12
+boulder men 700 710 0 2 12
+boulder men 702 710 0 2 12
+boulder men 704 710 0 2 12
+wait 2
+shot uphill-00-before
+boulder throw 700 640 700 704
+wait_ticks 111
+speed 0.25
+wait_ticks 5
+shot uphill-01
+wait_ticks 5
+shot uphill-02
+wait_ticks 5
+shot uphill-03
+wait_ticks 5
+shot uphill-04
+wait_ticks 5
+shot uphill-05
+wait_ticks 5
+shot uphill-06
+wait_ticks 5
+shot uphill-07
+wait_ticks 5
+shot uphill-08
+wait_ticks 5
+shot uphill-09
+wait_ticks 5
+shot uphill-10
+wait_ticks 5
+shot uphill-11
+wait_ticks 5
+shot uphill-12
+wait_ticks 5
+shot uphill-13
+wait_ticks 5
+shot uphill-14
+speed 1
+wait_ticks 300
+boulder count
+shot uphill-15-after
+camera 700 712 26 3.14
+wait 1.5
+shot uphill-16-close
+stats
+quit

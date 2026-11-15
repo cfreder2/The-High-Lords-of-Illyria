@@ -27,6 +27,7 @@ enum class Op {
     Speed,      // speed N
     Camera,     // camera X Y DISTANCE YAW   (battle metres, as --camera)
     Deaths,     // deaths spawn X Y | blast | fell | burn | cut | shot   (the death demo: every unit type in a grid, then killed that way)
+    Boulder,    // boulder men X Y DX DY N [own] | throw X Y TX TY | count | ground X Y   (the boulder demo: standing men, a stone thrown, the toll)
     Print,      // print TEXT...       (a line to stdout, to mark a place in the log)
     Quit,       // quit
 };

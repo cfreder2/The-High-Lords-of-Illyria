@@ -1,0 +1,62 @@
+# The boulder, on level open ground, through a column.
+# A stone thrown 100 m east over the plain comes down 6 m short of a file of sixteen men, two metres apart, and rolls down it.
+#
+#   Illyria --play tools/playtest/boulder-level.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 708 318 46 1.57
+boulder ground 690 320
+boulder men 696 320 2 0 16
+wait 2
+shot level-00-before
+boulder throw 590 320 690 320
+wait_ticks 142
+speed 0.25
+wait_ticks 5
+shot level-01
+wait_ticks 5
+shot level-02
+wait_ticks 5
+shot level-03
+wait_ticks 5
+shot level-04
+wait_ticks 5
+shot level-05
+wait_ticks 5
+shot level-06
+wait_ticks 5
+shot level-07
+wait_ticks 5
+shot level-08
+wait_ticks 5
+shot level-09
+wait_ticks 5
+shot level-10
+wait_ticks 5
+shot level-11
+wait_ticks 5
+shot level-12
+wait_ticks 5
+shot level-13
+wait_ticks 5
+shot level-14
+wait_ticks 5
+shot level-15
+wait_ticks 5
+shot level-16
+speed 1
+wait_ticks 300
+boulder count
+shot level-17-after
+camera 712 319 16 1.57
+wait 1.5
+shot level-18-close
+stats
+quit

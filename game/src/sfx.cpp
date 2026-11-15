@@ -287,6 +287,17 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                 case K::Ground: want(arrowSurface(world, e), at); break;
                 case K::Gate: want(e.killed ? Sound::GateBreak : Sound::GateHit, at); break;
                 case K::Heal: want(Sound::Heal, at); break;
+                // The boulder on the ground (sim world_boulder.cpp). Its rumble as it rolls has no sound of its own
+                // yet (docs/SOUND_EFFECTS.md): the hook is the rolling stone itself, Projectile::landed and not resting.
+                case K::Bounce:
+                    if (e.radius >= sim::Fixed::fromInt(3)) want(Sound::StoneSmash, at);
+                    break;
+                case K::Splash: want(Sound::ArrowWater, at); break;
+                case K::Struck:
+                    // (A gate's own blow is heard as the gate's: K::Gate.)
+                    if (static_cast<sim::Structure>(e.gate) == sim::Structure::Tree) want(Sound::ArrowWood, at);
+                    else if (static_cast<sim::Structure>(e.gate) != sim::Structure::Gate) want(Sound::StoneSmash, at);
+                    break;
                 case K::Blocked: {
                     const sim::Unit* v = unitAt(e.hitUnit);
                     if (e.projectile != sim::kNoEntity) {
@@ -304,6 +315,8 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                     const bool bone = !v->stats.bleeds && type != UnitType::Catapult;
                     if (e.projectile != sim::kNoEntity) {
                         const Flight* f = flightOf(e.projectile);
+                        // Under a rolling boulder: the crush.
+                        if (f && f->kind == sim::ProjectileKind::Stone) want(bone ? Sound::HitBone : Sound::BluntCrush, at);
                         if (f && f->kind != sim::ProjectileKind::Arrow) break;
                         want(bone ? Sound::HitBone : armoured(type) ? Sound::ArrowArmor : type == UnitType::Catapult ? Sound::ArrowWood : Sound::ArrowFlesh, at);
                         break;

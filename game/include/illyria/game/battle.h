@@ -169,7 +169,8 @@ int dragFrontage(float metres);
 // Decals derived only from simulation events, so every peer accumulates the
 // same ones (docs/GAME_DESIGN.md §5.5).
 struct GroundMark {
-    enum class Kind : uint8_t { Blood, Crater, Dust };
+    // Furrow: a stretch of the track a rolling boulder scuffs through the grass (yaw: the way it went).
+    enum class Kind : uint8_t { Blood, Crater, Dust, Furrow };
     Kind kind;
     V3 pos;
     float yaw;
@@ -560,6 +561,16 @@ public:
         float inner = 0;
     };
     std::vector<RangeRing> rangeRings() const;
+    // Where the selected catapults' boulders would come down and roll (sim::World::stonePath, the very steps the stone
+    // takes): at the place the pointer is over while a ground attack is the next click (aimHover), else at the ground
+    // each is ordered to shell. One for each engine in reach of its mark (a few at most).
+    struct StoneForecast {
+        V3 landing;
+        std::vector<V3> roll;  // from the landing to where it would lie
+    };
+    std::vector<StoneForecast> stoneForecasts() const;
+    // The pointer is over (x, y): if a click there would be a ground attack, the forecasts are shown for it.
+    void aimHover(const Camera& camera, float x, float y, float pixelScale);
     // The paths the player's soldiers will walk (path_lines.h), shown as the order markers are: for each soldier
     // selected, and fading for a moment after an order; the player's own men only, so no foe's route is ever told.
     // Men going one way are one line. `perMan`: a line for each man, and `faintMarches` (Conquest): the player's
@@ -1066,6 +1077,8 @@ private:
     Drag drag_;
     bool mouseScheme_ = false;
     OrderMode orderMode_ = OrderMode::Normal;
+    bool stoneAimed_ = false;  // aimHover: the pointer is over ground a click would shell
+    V3 stoneAim_;
     bool forceKey_ = false, marchKey_ = false;
     std::vector<uint32_t> orderTick_;  // by EntityId - 1: when the player last ordered him
     std::vector<uint32_t> seenGen_;    // by EntityId - 1: which man of the place the world has given (World::generation) this holds

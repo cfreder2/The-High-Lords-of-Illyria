@@ -77,6 +77,10 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `deaths spawn X Y` | the death demo: one soldier of every unit type, of your side, in a grid from (X, Y) in battle metres: seven to a row eastward, the rows 10 m apart southward, in unit type order. |
 | `deaths blast\|fell\|burn\|cut\|shot` | kills every one of them still standing that way, by a blow the simulation deals as a weapon's (`World::testBlow`; a satchel for `blast`): torn apart, felled whole, burned, a limb or the head cut off, shot. For looking at what each type leaves on the ground (docs/DEATH_AUDIT.md). |
+| `boulder men X Y DX DY N [own]` | the boulder demo: N light infantry who stand and do nothing, in a file from (X, Y) in battle metres, each (DX, DY) on from the last; the other side's, or with `own` yours. |
+| `boulder throw X Y TX TY` | throws a boulder as a catapult standing at (X, Y) would at the mark (TX, TY), with no scatter, and prints where it will come down and how far it will roll (`World::stonePath`, the forecast the player is shown). |
+| `boulder count` | prints one line: the demo's men unhurt, hurt and dead; where the last stone thrown lies and how far from where it came down; every gate's strength and place. |
+| `boulder ground X Y` | prints what the ground is at (X, Y), its height, and the heights 10 m each way: for finding a slope, a ford, a road. |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
 
@@ -140,6 +144,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `capital-keep.txt` | the capital to its keep: the engines open on their own, everyone is ordered at the road's door (the storm goes on to the courtyard and holds it), then at the keep's gate; the doors' strengths and the flag's line beside the minimap. |
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
+| `boulder-level.txt`, `boulder-line.txt`, `boulder-downhill.txt`, `boulder-uphill.txt`, `boulder-ford.txt`, `boulder-own.txt` | the boulder demo on the open ground skirmish: a stone thrown at a file of sixteen on the level, at a rank across its way, down a hillside, up it, at a bank before the ford, and through your own men behind the foe; a frame every five ticks at quarter speed from just before it comes down, then the toll (`boulder count`) and a close look at where it lies. Figures in docs/BALANCE.md, "The boulder". |
+| `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 
 ```

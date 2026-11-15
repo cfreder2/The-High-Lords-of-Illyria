@@ -147,11 +147,13 @@ A blast does its full damage at its centre, falling evenly to nothing at its edg
 
 A blast spares nobody: friend and foe alike, shield or no shield, flank or front. It is not made stronger by the rank, the edges or the blessings of whoever threw it, and **the men it kills are nobody's kills**: wizards, grenadiers and catapults earn no rank by their blasts.
 
+**The boulder rolls on.** A catapult's stone is not spent where it comes down. It bounces once and rolls, about 30 m over level grass from a long throw: half as far again along a road, a few metres in sand, mud or marsh, far down a hillside and hardly at all up one. Water stops it dead, and so does a tree, a rock, a house, a tower, a wall or a shut gate (rolled into a gate it still hurts the doors). Every man in its lane is crushed and thrown, and it is slowed a little by each: a **column marching straight at the engine** loses six or seven men to one stone, a **line across its way** one, or none. A great beast or another engine may stop it. It rolls through **your own men** as readily; your catapults reckon the whole roll before they throw, and drop the stone aside or wait rather than plough their own file. With catapults selected, [[Z]] shows where the stone would come down and how it would roll.
+
 ::: sheet Missile troops
 :::
 
 ::: tip
-Against grenadiers, wizards and catapults, fight **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**.
+Against grenadiers, wizards and catapults, fight **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**. Against catapults, come on in **line**, not in column, and not straight down a hill's foot at them: the stone rolls the way it was thrown and downhill.
 :::
 
 ## Fliers {#fliers}
