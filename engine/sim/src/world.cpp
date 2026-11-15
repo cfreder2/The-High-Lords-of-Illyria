@@ -1656,7 +1656,10 @@ void World::updateFlight(Unit& u) {
             const auto onDeck = [&](const Vec3& p, Fixed height) {
                 return height > (config_.terrain ? config_.terrain->heightAt(p.x, p.y) : Fixed::zero()) + kLandedReach / 6;
             };
-            const bool skimming = onDeck(u.pos, below) && !onDeck(goal, groundHeight(goal.x, goal.y));
+            // Nor on a deck that is not his goal's: bound for a wall-walk, he came down on the slope of a ramp built against
+            // that wall a few metres short of it, could not walk on from there, rose, and came down on it again, for ever.
+            const Fixed goalFloor = groundHeight(goal.x, goal.y);
+            const bool skimming = onDeck(u.pos, below) && (!onDeck(goal, goalFloor) || abs(goalFloor - below) > kLandedReach / 6);
             if (u.pos.z <= below && !skimming) {
                 u.flight = Unit::Flight::Grounded;
                 // Walk the rest of the way (a tired flier may have come down early).
