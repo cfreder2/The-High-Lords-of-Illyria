@@ -1511,15 +1511,14 @@
       pace = s.slow < 1 ? s.slow : s.speed;
       $("speed").textContent = paceLabel(pace);
     }
-    // The town's heart: whoever has more men in the courtyard raises their flag; the attackers' at the top takes the town.
+    // The town's heart: the attackers' flag climbs while they stand at the pole and no defender holds the ground; at the top the town is taken (a capital's keep after its courtyard).
     const cap = s.capture;
     $("capture").classList.toggle("hidden", !cap.on);
     if (cap.on) {
       $("captureBar").style.width = `${cap.p}%`;
       $("capture").classList.toggle("taken", cap.taken);
-      $("captureText").textContent = cap.taken ? "The town is yours: your flag flies over its courtyard" :
-        `Take the courtyard: your flag ${cap.p}% · ${cap.att} of yours there, ${cap.def} of theirs` +
-        (cap.att > cap.def ? " (rising)" : cap.def > cap.att ? " (falling)" : cap.att ? " (held)" : "");
+      // The engine's own words (Battle::siegeLine), and each door's strength.
+      $("captureText").textContent = [cap.text, ...cap.gates.map(g => g.hp > 0 ? `${g.name} ${g.hp}%` : `${g.name} down`)].join(" · ");
     }
     // (anyone not of the local side is the foe: a match may seat the player on any)
     // The cards' strength bars in the local side's colour (the engine says it: palette.h, with the player's choice).

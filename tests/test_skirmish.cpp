@@ -1,6 +1,7 @@
 // The Skirmish setup: armies bought at the Conquest's prices for a purse, and the four maps (the Ford, a village's siege, a
 // capital's siege of two doors, open ground) made by the one setup code (Battle's constructor, muster and setUpSiege).
 #include <algorithm>
+#include <cstdio>
 
 #include "illyria/game/battle.h"
 #include "illyria/sim/conquest.h"
@@ -25,6 +26,19 @@ int menNear(const Battle& b, uint8_t owner, const V3& p, float r) {
 V3 doorOf(const Battle& b, size_t gate) {
     const illyria::sim::Gate& g = b.worldRegion().gates()[gate];
     return toV3(g.a + g.b) * 0.5f;
+}
+
+// The besieged town's own gate (the region holds its neighbours' too): the one nearest its courtyard.
+int townGate(const Battle& b) {
+    const V3 yard = toV3(b.capturePoint().stages().front().at);
+    int best = -1;
+    float bestD = 1e30f;
+    for (size_t i = 0; i < b.worldRegion().gates().size(); ++i) {
+        const V3 d = doorOf(b, i);
+        const float dist = (V3{d.x - yard.x, d.y - yard.y, 0}).length();
+        if (dist < bestD) bestD = dist, best = static_cast<int>(i);
+    }
+    return best;
 }
 
 }  // namespace
@@ -95,6 +109,87 @@ TEST(holding_the_walls_puts_the_player_in_the_garrison_and_the_foe_outside) {
     CHECK(b.capturePoint().active());
     b.advance(1.0);
     CHECK(b.capturePoint().defendersIn() > 0);  // (the player's men hold the courtyard)
+}
+
+TEST(a_defence_starts_with_the_engines_throwing_from_two_camps_and_ends_when_the_besiegers_are_spent) {
+    // Review 3, item 5: the keeper waited 243 s with nobody in reach and the battle never ended.
+    SkirmishSetup setup;
+    setup.budget = 300;
+    setup.defend = true;
+    Battle b(1, Scenario::Siege, setup);
+    const V3 door = doorOf(b, static_cast<size_t>(townGate(b)));
+    // Two siege trains: one within its throw of the gate, the other in a camp of its own before another wall.
+    std::vector<V3> trains;
+    for (const Squad& s : b.squads())
+        if (s.owner == Battle::kEnemy && s.type == UnitType::Catapult) trains.push_back(b.squadCentre(s, false));
+    CHECK(trains.size() == 2);
+    if (trains.size() != 2) return;
+    const float d0 = (V3{trains[0].x - door.x, trains[0].y - door.y, 0}).length(), d1 = (V3{trains[1].x - door.x, trains[1].y - door.y, 0}).length();
+    std::printf("  the siege trains stand %.0f m and %.0f m from the gate, %.0f m apart\n", d0, d1, (trains[0] - trains[1]).length());
+    CHECK(std::min(d0, d1) < 144.0f);
+    CHECK((trains[0] - trains[1]).length() > 100.0f);
+    CHECK(menNear(b, Battle::kEnemy, trains[0], 90.0f) > 20);
+    CHECK(menNear(b, Battle::kEnemy, trains[1], 90.0f) > 10);
+    // The gate is being battered within a quarter of a minute, and the HUD has its strength.
+    CHECK(b.siegeGates().size() == 1 && b.siegeGates().front().hpPct == 100);
+    for (int i = 0; i < 150; ++i) b.advance(0.1);
+    std::printf("  after 15 s the gate is at %d%%\n", b.siegeGates().front().hpPct);
+    CHECK(b.siegeGates().front().hpPct < 100);
+    CHECK(b.outcome() == 0 && !b.besiegersBrokeOff());
+    CHECK(b.siegeLine() == "Hold the courtyard");
+    // Three in four of their fighting men fall: the host is spent, it breaks off, and the walls are held.
+    int n = 0;
+    for (const illyria::sim::Unit& u : b.world().units())
+        if (u.owner == Battle::kEnemy && u.alive() && static_cast<UnitType>(u.stats.type) != UnitType::Catapult && n++ % 4 != 0) const_cast<illyria::sim::Unit&>(u).hp = 0;
+    for (int i = 0; i < 30; ++i) b.advance(0.1);
+    CHECK(b.besiegersBrokeOff());
+    CHECK(b.outcome() == 1);
+    CHECK(b.siegeResult() == "The besiegers break off.");
+}
+
+TEST(a_storm_ordered_at_a_gate_goes_on_to_the_courtyard_and_holds_it) {
+    // Review 3, item 6: foot ordered at the gate broke in, lifted the flag to 78%, then went back to where they started.
+    Battle b(1, Scenario::Siege);
+    int foot = -1;
+    for (size_t i = 0; i < b.squads().size(); ++i)
+        if (b.squads()[i].owner == Battle::kPlayer && b.squads()[i].type == UnitType::HeavyInfantry) foot = static_cast<int>(i);
+    CHECK(foot >= 0);
+    if (foot < 0) return;
+    // (Nobody on the town's ground to fight: the order itself is what is looked at. The garrison's foot are stood in a far
+    // corner of the field and its watch left on the walls, so that it is no beaten host and the battle goes on.)
+    int far = 0;
+    for (const illyria::sim::Unit& u : b.world().units()) {
+        if (u.owner != Battle::kEnemy || static_cast<UnitType>(u.stats.type) == UnitType::Archers) continue;
+        illyria::sim::Unit& man = const_cast<illyria::sim::Unit&>(u);
+        man.pos.x = illyria::sim::Fixed::fromInt(60 + far % 8 * 2);
+        man.pos.y = illyria::sim::Fixed::fromInt(60 + far / 8 * 2);
+        man.pos.z = b.world().groundHeight(man.pos.x, man.pos.y);
+        ++far;
+    }
+    b.breakGate(townGate(b));
+    b.selectSquad(foot);
+    b.orderAtGate(townGate(b));
+    b.advance(0.2);
+    const V3 yard = toV3(b.capturePoint().at());
+    int holding = 0, queued = 0;
+    for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(foot)].members) {
+        const illyria::sim::Unit& u = *b.world().findUnit(id);
+        queued += !u.queue.empty() && u.queue.back().occupy;
+        holding += u.occupying;
+    }
+    CHECK(queued == 12);  // through the doors first, then on, to hold
+    CHECK(holding == 0);
+    for (int i = 0; i < 1500 && !b.capturePoint().taken(); ++i) b.advance(0.1);
+    int there = 0;
+    for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(foot)].members) {
+        const illyria::sim::Unit& u = *b.world().findUnit(id);
+        const V3 p = toV3(u.pos);
+        there += u.occupying && (V3{p.x - yard.x, p.y - yard.y, 0}).length() < 14.0f;
+    }
+    std::printf("  %d of 12 hold the courtyard; the flag is %s (outcome %d at tick %u, flag %d, holders %d)\n", there, b.capturePoint().taken() ? "up" : "not up", b.outcome(), b.world().tick(), b.capturePoint().progress(), b.capturePoint().defendersIn());
+    CHECK(there >= 8);
+    CHECK(b.capturePoint().taken());
+    CHECK(b.outcome() == 1);
 }
 
 TEST(open_ground_has_two_armies_facing_each_other) {

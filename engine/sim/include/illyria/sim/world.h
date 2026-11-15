@@ -232,6 +232,9 @@ struct Command {
     Vec3 face = {};
     // Move: a force march, deaf to the enemy on the way.
     bool force = false;
+    // Move: ground to be occupied (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight
+    // or a rout, until he is given another order. (Not the stance below: a man occupying ground still goes to his friends.)
+    bool occupy = false;
     // AttackUnit: the target, and a friend to rejoin once it is down.
     EntityId targetUnit = kNoEntity;
     EntityId rally = kNoEntity;
@@ -384,6 +387,10 @@ struct Unit {
     // walls), not an order of the player's. Any order given to him (World::startOrder) clears it. A man with a move, an
     // attack or a queue and this unset is "ordered", and is not one of a gate's keepers (world_keep.cpp).
     bool stationed = false;
+    // Sent to occupy a place (Command::occupy): with nothing else in hand he goes back to it (World::occupyGround), a rout
+    // and a rally later too. Any other order ends it.
+    bool occupying = false;
+    Vec3 occupyAt;
     // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
     // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
     std::vector<Command> queue;
@@ -1175,6 +1182,8 @@ private:
     // the engines, walked to or held (false: no engine of his side near enough).
     Unit* escortFoe(const Unit& u);
     bool escortSpot(Unit& u);
+    // A man sent to occupy ground (Unit::occupying) who stands idle away from it walks back to it.
+    bool occupyGround(Unit& u);
     // Suppression: the garrison's man on a wall-walk within reach, for a shooter outside the walls to answer first; and the
     // man a shooter takes on his own (that, unless a foe is on him, else the nearest).
     Unit* wallShooter(const Unit& u, Fixed reach);

@@ -30,10 +30,10 @@ constexpr Fixed kAlertRange = Fixed::fromInt(70);
 // Foes this near outside the doors may be drawn in, and counted inside this near.
 constexpr Fixed kLureRange = Fixed::fromInt(14);
 constexpr Fixed kInsideRange = Fixed::fromInt(20);
-// How long the doors stand open for a lure (seconds), and the doors' state below which they would rather fight at the mouth
-// than wait for the doors to go (percent of their hit points), or foes at the door at most this many to a man of the foot.
+// How long the doors stand open for a lure (seconds), and the most foes at a door to a man of its foot for it to be opened to
+// them. A host of more than that to a man of all the foot is overwhelming: the garrison does not go out to it through open
+// doors or a breach, it holds the horseshoe behind them (docs/BALANCE.md: the rush is not met in the open).
 constexpr int32_t kLureOpenSeconds = 4;
-constexpr int32_t kLureHpPct = 80;
 constexpr int32_t kLureOddsPerMan = 2;
 // The foot are formed when this share of them (percent) stand at their places.
 constexpr int32_t kFormedPct = 70;
@@ -372,7 +372,11 @@ void World::keepDoors(const std::vector<size_t>& doors) {
     }
 
     // A foe who is in reach, inside the walls or through open doors, is met by the foot who stand idle, of whichever door (then
-    // back to the places); the foe outside a shut gate is not walked at.
+    // back to the places); the foe outside a shut gate is not walked at, nor is an overwhelming host outside any gate, shut,
+    // open or broken: it is waited for behind the doors.
+    int64_t host = 0;
+    for (size_t d = 0; d < nd; ++d) host += coming[d];
+    const bool overwhelmed = host > static_cast<int64_t>(foot.size()) * kLureOddsPerMan;
     for (const Keeper& k : foot) {
         Unit* u = k.u;
         if (!idle(*u)) continue;
@@ -383,7 +387,7 @@ void World::keepDoors(const std::vector<size_t>& doors) {
             if (f.owner == holder || !f.alive() || f.routed || f.inAir() || f.flight != Unit::Flight::Grounded) continue;
             bool reach = false;
             for (size_t d = 0; d < nd && !reach; ++d)
-                reach = (f.pos - mids[d]).flat().lengthSq() <= kMeetRange * kMeetRange && (gates_[doors[d]].passable() || townSide(rg.gates()[doors[d]], ring, f.pos));
+                reach = (f.pos - mids[d]).flat().lengthSq() <= kMeetRange * kMeetRange && ((gates_[doors[d]].passable() && !overwhelmed) || townSide(rg.gates()[doors[d]], ring, f.pos));
             if (!reach) continue;
             const Fixed d2 = (f.pos - u->pos).flat().lengthSq();
             if (best == nullptr || d2 < bestD2) best = &f, bestD2 = d2;
@@ -396,14 +400,13 @@ void World::keepDoors(const std::vector<size_t>& doors) {
     }
 
     // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed to
-    // take them, the room inside is not yet full of them, and the doors are failing or the foes few.
+    // take them, the room inside is not yet full of them, and the foes are few (failing doors are no reason to open them to a
+    // crowd: the breach is held from behind).
     for (size_t d = 0; d < nd; ++d) {
         GateState& st = gates_[doors[d]];
-        const Gate& g = rg.gates()[doors[d]];
-        if (st.broken() || footAt[d] == 0 || outside[d] == 0 || inside[d] >= footAt[d]) continue;
+        if (st.broken() || footAt[d] == 0 || outside[d] == 0 || inside[d] >= footAt[d] || overwhelmed) continue;
         const bool formedUp = formed[d] * 100 >= footAt[d] * kFormedPct && manned[d] * 100 >= archersAt[d] * kMannedPct;
-        const bool failing = static_cast<int64_t>(st.hp) * 100 < static_cast<int64_t>(g.maxHp) * kLureHpPct;
-        if (formedUp && (failing || coming[d] <= footAt[d] * kLureOddsPerMan))
+        if (formedUp && coming[d] <= footAt[d] * kLureOddsPerMan)
             st.openUntil = std::max(st.openUntil, tick_ + static_cast<uint32_t>(kLureOpenSeconds * kTicksPerSecond));
     }
 }

@@ -2977,8 +2977,10 @@ static void endState(const Battle& b, std::string& s) {
     static const char* kLine[3][2] = {{"No foe is left standing.", "None of yours is left standing."},
                                       {"The enemy quit the field.", "Your host quit the field."},
                                       {"The courtyard is taken.", "The courtyard is lost."}};
+    // (A siege says it in its own words: the keep taken, the besiegers gone. Battle::siegeResult.)
+    const std::string siegeWhy = b.siegeResult();
     std::snprintf(buf, sizeof buf, ",\"result\":{\"outcome\":%d,\"how\":\"%s\",\"line\":\"%s\",\"seconds\":%d,\"killed\":%d,\"lost\":%d,\"best\":\"%s\",\"fallen\":[", r.outcome,
-                  kHow[static_cast<int>(r.how)], kLine[static_cast<int>(r.how)][r.outcome == 1 ? 0 : 1], r.seconds, r.killed, r.lost, r.best.c_str());
+                  kHow[static_cast<int>(r.how)], siegeWhy.empty() ? kLine[static_cast<int>(r.how)][r.outcome == 1 ? 0 : 1] : siegeWhy.c_str(), r.seconds, r.killed, r.lost, r.best.c_str());
     s += buf;
     for (size_t i = 0; i < r.fallen.size(); ++i) s += (i ? ",\"" : "\"") + r.fallen[i] + "\"";
     s += "],\"rows\":[";
@@ -3008,9 +3010,18 @@ ILLYRIA_API const char* illyria_hud() {
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"edges\":\"%s\",",
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"gates\":[",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", edges.c_str());
+                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str());
+        s += buf;
+        // The doors of the besieged town, with what is left of each.
+        bool firstGate = true;
+        for (const Battle::SiegeGate& g : b.siegeGates()) {
+            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"hp\":%d}", firstGate ? "" : ",", g.name, g.hpPct);
+            s += buf;
+            firstGate = false;
+        }
+        std::snprintf(buf, sizeof buf, "]},\"edges\":\"%s\",", edges.c_str());
         s += buf;
     }
     // The selection (how many, in what formation, of what kind) and the saved groups.

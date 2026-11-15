@@ -137,6 +137,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `siege.txt` | the Siege: the siege engines and the foot to the gate, shots every 10 s, `stats`. |
 | `siege-catapults-first.txt` | the Siege the patient way: the catapults alone at the gate from their reach (the range ring shown), then the foot once it is down. |
 | `capital.txt` | the capital's siege: both doors looked at close, the army split between them, each company ordered at its own door, speed 4 and a shot every 20 s of game time. |
+| `capital-keep.txt` | the capital to its keep: the engines open on their own, everyone is ordered at the road's door (the storm goes on to the courtyard and holds it), then at the keep's gate; the doors' strengths and the flag's line beside the minimap. |
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |

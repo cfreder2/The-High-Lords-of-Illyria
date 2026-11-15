@@ -62,6 +62,41 @@ What was tried and left, with why:
 
 The lever left is the garrison, not the attackers: a gatehouse that gives the defenders more to lose by coming out (docs/CASTLE_GATEHOUSE.md), or a third and fourth engine in the train.
 
+## Sieges with a second act (2026-11-14, review3 items 5, 6, 7)
+
+Three things were wrong: a keeper waited four minutes with nobody in reach and the battle never ended; a storm lifted the flag and walked home; a capital fell in nine seconds with most of its garrison alive. And from the pass above: the rush was cheaper than the patient siege.
+
+| Change | Was | Now | Why |
+|---|---|---|---|
+| The flag (`CapturePoint`) | the side with more men within 14 m raised it, up to 10 points a tick (3.3 s) | climbs only with attackers at the pole and **no unbroken defender on the ground inside the walls**; 1 point a tick and one more for every four men there, eight at most (11 s at the least); stops, not falls, while defenders hold; sinks 1 a tick with no attacker there | a town is taken by clearing its ground, not by outnumbering two men at a pole |
+| A capital | one flag in the outer ward | a second pole behind the bailey's doors, fought for after the first by the same rule | the keep must be taken too |
+| An order at a foe's gate (standing or down) | through the doors, 10 m, and stop | through, then on to the courtyard (a bailey's gate: the ground before the keep), and **occupy** it: an idle man more than 6 m from his place there walks back, after a rout and a rally too (`Command::occupy`) | the storm stays on the flag's ground |
+| A garrison and a host of more than two to a man of its foot | failing doors were opened to it, and the foot went out through open doors or a breach | the doors stay shut and the foot hold the horseshoe behind the breach | the rush is no longer met in the open, where its numbers told |
+| Besiegers' muster | foot in front 110 m from the door, engines last (60 to 90 m to walk) | engines in front, 132 m from the door, throwing from the first tick | a defence has a clock from the start |
+| A computer besieging a town of one door | one camp | a second camp (a third of the host, the second siege train) 112 m before a side wall; its engines shell the wall-walks while the first train batters the gate | two batteries to watch, and the walls are worth manning or leaving |
+| Siege purses | the same for both sides | besiegers have 150% of the keepers' (`kSiegeOddsPct`), whichever the player is; a siege train to every four squads, two at most for a computer | walls are worth men; with the honest flag an attacker at parity could not take a capital |
+| The end of a defence | none | the besiegers break off when 30% or fewer of their fighting men stand unbroken (`kSpentPct`): the keeper has won | a defence ends |
+| On screen | a flag on a pole | each door's strength and a line on the flag beside the minimap ("Gate 54%", "Defenders hold the bailey", "Courtyard 45%") | the clock, and what blocks the flag |
+
+Measured with the play harness on this branch merged with the battle endings (the clock stops at the decision, so `mine` is the price at the moment of victory), before on merge-master 7331ef2:
+
+| Script | Before | After |
+|---|---|---|
+| `10-siege-defend-look`, `22-siege-defend-hold` (keep the walls, 300 gold) | first man lost at about 280 s; 104 v 12 at 422 s and 92 v 2 at 667 s, undecided | the gate at 54% by 8 s and down by 30 s; first man lost at 71 s; **won at 184 s**, 71 of 143 left against 59 of 182 |
+| `siege-catapults-first.txt` (the patient way) | won at 136 s with 67 of 72 (the flag in 4 s, 27 of 36 defenders alive) | won at 146 s with 65 of 72 (7 lost) |
+| `08-siege-all-in.txt` (the rush) | won at 91 s with 65 of 72 (7 lost) | won at 100 s with 57 of 72 (**15 lost**) |
+| `13-siege-attack-patient` | flag 11% to 100% in 3 s; won at 169 s, 69 v 25 | flag in 39 s, the storm staying on it; won at 207 s, 60 v 13 |
+| `21-capital-patient` | flag 4% to 100% in 6 s; "won" at 342 s with 93 against 95 | no flag; 71 v 34 at 612 s, undecided (the script's squad numbers are those of the old muster, and it gives no order after the first storm) |
+| `capital-keep.txt` (everyone at the road's door, then at the keep's) | | won at 338 s with 68 of 99 against 28 of 86: the garrison quit the field with the courtyard's flag at 18% |
+
+Engines first is now the cheaper way into a town (7 lost against the rush's 15). Each figure is one run.
+
+What was tried and left, with why:
+
+- **The garrison's last stand at the keep** (a capital's garrison falling back through the bailey's doors when the outer ward is lost): written and taken out. The men were sent and the bailey's gate opened to them, but thirty of them jammed at its doors and none passed in 90 s (the way planned against shut doors leads every man to the one point at their middle; planning it again when the doors opened did not free them). So the keep's gate and ground are taken after the courtyard, but the garrison fights for the outer ward where it stands, and a garrison that breaks there ends the battle as a rout before the keep is asked for.
+- **A longer clock on the gate**: one siege train opens a gate in about 20 to 30 s, too short for a sortie on foot (132 m is 55 s) to save it. The second train is kept off the gate (it shells the walks) so that it is not 15 s. The gate's strength and the stone's blow were left as the pass above set them.
+- **A slower flag** (33 s for fewer than eight men): the patient storm then stood on the flag's ground under the walls' bows while the garrison rallied, and lost 43 of 72; the rate above is the one that measured well.
+
 ## Tactics: position, support, the Rally, Easy (2026-11-14, review3 items 2, 3, 8, 15)
 
 The review's finding: on the open field at 450 gold a planned defence killed about as many per man lost as giving no order at all. The rules below are the World's (`engine/sim/src/world_tactics.cpp`, tests in `tests/test_tactics.cpp`), from the men's own state, `Fixed` only, the same for every side and for Skirmish and Conquest. Each tells the presentation when it happens (`World::tactics()`), which floats a word over the men (`Battle::floats`, only over men the viewer can see).

@@ -3,6 +3,7 @@
 // the siege battle's capture point (game/src/battle_capture.cpp).
 #include <cstdio>
 #include <memory>
+#include <string>
 
 #include "illyria/game/battle.h"
 #include "illyria/game/owner_look.h"
@@ -282,48 +283,116 @@ UnitStats statue() {
 }
 }  // namespace
 
-TEST(the_side_with_more_men_in_the_courtyard_raises_its_flag) {
+TEST(the_flag_climbs_only_while_no_defender_holds_the_ground) {
+    // Review 3, item 7: a capital fell in nine seconds with 95 of its 142 defenders alive, because six men at the pole
+    // outnumbered two. Now one unbroken defender on the ground stops the flag, however many stand at the pole.
     World w(WorldConfig{});
     CapturePoint cap;
     cap.place({m(50), m(50), m(0)}, 1, 0);
-    // Six attackers in the courtyard, two defenders: the flag climbs 2 + 4 a tick.
     for (int k = 0; k < 6; ++k) w.spawnUnit(0, {m(46 + k), m(48), m(0)}, kEast, statue());
     std::vector<EntityId> def;
     for (int k = 0; k < 2; ++k) def.push_back(w.spawnUnit(1, {m(48 + k), m(53), m(0)}, kEast, statue()));
     w.spawnUnit(1, {m(80), m(50), m(0)}, kEast, statue());  // one far off: he does not count
     w.step({});
-    cap.step(w);
+    for (int t = 0; t < 100; ++t) cap.step(w);
     CHECK(cap.attackersIn() == 6 && cap.defendersIn() == 2);
-    CHECK(cap.progress() == CapturePoint::kBase + 4);
+    CHECK(cap.blocked());
+    CHECK(cap.progress() == 0);
+    // One of the two breaks and the other falls: nobody holds it, and it climbs 1 + 6 / 4 a tick.
+    const_cast<Unit&>(*w.findUnit(def[0])).routed = true;
+    const_cast<Unit&>(*w.findUnit(def[1])).hp = 0;
+    cap.step(w);
+    CHECK(!cap.blocked() && cap.defendersIn() == 0);
+    CHECK(cap.progress() == CapturePoint::kBase + 6 / CapturePoint::kMenPerPoint);
     int ticks = 1;
-    while (!cap.taken() && ticks < 1000) {
-        w.step({});
+    while (!cap.taken() && ticks < 2000) {
         cap.step(w);
         ++ticks;
     }
-    std::printf("  six against two: the courtyard is taken in %.1f s\n", ticks / 10.0);
+    std::printf("  six at the pole, nobody holding it: the courtyard is taken in %.1f s\n", ticks / 30.0);
     CHECK(cap.taken());
-    CHECK(ticks == (CapturePoint::kFull + 5) / 6);
+    CHECK(ticks == CapturePoint::kFull / (CapturePoint::kBase + 6 / CapturePoint::kMenPerPoint));
+    // (No town falls in under ten seconds, whatever the crowd at the pole.)
+    CHECK(CapturePoint::kFull / (CapturePoint::kBase + CapturePoint::kMostMen / CapturePoint::kMenPerPoint) >= 10 * kTicksPerSecond);
 }
 
-TEST(even_numbers_hold_the_flag_and_more_defenders_pull_it_down) {
+TEST(the_flag_stays_where_it_is_while_they_fight_for_it_and_sinks_when_the_attackers_leave) {
     World w(WorldConfig{});
     CapturePoint cap;
     cap.place({m(50), m(50), m(0)}, 1, 0);
     std::vector<EntityId> att;
     for (int k = 0; k < 4; ++k) att.push_back(w.spawnUnit(0, {m(46 + k), m(48), m(0)}, kEast, statue()));
+    w.step({});
     for (int t = 0; t < 50; ++t) cap.step(w);
     const int32_t up = cap.progress();
-    CHECK(up == 50 * (CapturePoint::kBase + 4));
-    for (int k = 0; k < 4; ++k) w.spawnUnit(1, {m(46 + k), m(53), m(0)}, kEast, statue());
+    CHECK(up == 50 * (CapturePoint::kBase + 4 / CapturePoint::kMenPerPoint));
+    // A defender comes back to the ground: held, neither up nor down, though four stand against one.
+    const EntityId back = w.spawnUnit(1, {m(50), m(55), m(0)}, kEast, statue());
     w.step({});
     for (int t = 0; t < 50; ++t) cap.step(w);
-    CHECK(cap.progress() == up);  // four and four: held
-    for (int k = 0; k < 3; ++k) w.spawnUnit(1, {m(50 + k), m(53), m(0)}, kEast, statue());
-    w.step({});
+    CHECK(cap.progress() == up);
+    // The attackers walk off (review 3, item 6: the storm that went home): it sinks a point a tick, to nothing.
+    const_cast<Unit&>(*w.findUnit(back)).hp = 0;
+    for (EntityId id : att) const_cast<Unit&>(*w.findUnit(id)).pos.x += m(60);
     for (int t = 0; t < 20; ++t) cap.step(w);
-    CHECK(cap.progress() == up - 20 * (CapturePoint::kBase + 3));
-    CHECK(!cap.taken());
+    CHECK(cap.progress() == up - 20 * CapturePoint::kBase);
+    for (int t = 0; t < 200; ++t) cap.step(w);
+    CHECK(cap.progress() == 0 && !cap.taken());
+}
+
+TEST(a_second_pole_must_be_taken_after_the_first) {
+    // A capital's keep: the courtyard's flag at the top is not the town.
+    World w(WorldConfig{});
+    CapturePoint cap;
+    cap.place({m(50), m(50), m(0)}, 1, 0);
+    cap.addStage({m(150), m(50), m(0)}, CapturePoint::kNoRing);
+    std::vector<EntityId> att;
+    for (int k = 0; k < 8; ++k) att.push_back(w.spawnUnit(0, {m(46 + k), m(48), m(0)}, kEast, statue()));
+    const EntityId keeper = w.spawnUnit(1, {m(150), m(52), m(0)}, kEast, statue());  // one man at the keep
+    w.step({});
+    for (int t = 0; t < 600; ++t) cap.step(w);
+    CHECK(cap.stage() == 1);      // the courtyard is theirs (the man at the keep is not on its ground)
+    CHECK(!cap.taken());          // ... and the town is not
+    CHECK(cap.progress() == 0);
+    CHECK((cap.at() - Vec3{m(150), m(50), m(0)}).flat().length() < m(1));
+    // To the keep: its one defender holds it against eight, until he falls.
+    for (EntityId id : att) const_cast<Unit&>(*w.findUnit(id)).pos.x += m(100);
+    for (int t = 0; t < 200; ++t) cap.step(w);
+    CHECK(cap.blocked() && cap.progress() == 0 && !cap.taken());
+    const_cast<Unit&>(*w.findUnit(keeper)).hp = 0;
+    for (int t = 0; t < 600; ++t) cap.step(w);
+    CHECK(cap.taken());
+}
+
+TEST(a_capitals_keep_is_a_second_pole_behind_the_baileys_doors_and_a_towns_ground_is_inside_its_walls) {
+    illyria::game::Battle capital(5, illyria::game::Scenario::Capital);
+    const CapturePoint& cap = capital.capturePoint();
+    CHECK(cap.stages().size() == 2);
+    const Region& rg = capital.region();
+    const int outer = cap.stages()[0].ring, inner = cap.stages()[1].ring;
+    CHECK(outer >= 0 && inner >= 0 && outer != inner);
+    const Rampart& walls = rg.ramparts()[static_cast<size_t>(outer)];
+    const Rampart& bailey = rg.ramparts()[static_cast<size_t>(inner)];
+    Vec3 pole = cap.stages()[1].at;
+    pole.z = capital.world().groundHeight(pole.x, pole.y);
+    CHECK(Gate::inside(bailey, pole));
+    CHECK(capital.world().standable(pole));
+    // The courtyard's ground is the outer ward: not the bailey, not the walks, not the field.
+    Vec3 yard = cap.stages()[0].at;
+    yard.z = capital.world().groundHeight(yard.x, yard.y);
+    CHECK(cap.onGround(capital.world(), yard));
+    CHECK(!cap.onGround(capital.world(), pole));
+    CHECK(!cap.onGround(capital.world(), walls.embrasures.front().pos));
+    CHECK(!cap.onGround(capital.world(), walls.centre + Vec3{m(400), m(0), m(0)}));
+    // Its doors are told to the HUD: two in the outer wall and the keep's.
+    const std::vector<illyria::game::Battle::SiegeGate> gates = capital.siegeGates();
+    CHECK(gates.size() == 3);
+    CHECK(std::string(gates.back().name) == "Keep gate" && gates.front().hpPct == 100);
+    // A town of one ring has one pole and one gate.
+    illyria::game::Battle town(5, illyria::game::Scenario::Siege);
+    CHECK(town.capturePoint().stages().size() == 1);
+    CHECK(town.siegeGates().size() == 1);
+    CHECK(town.siegeLine() == "Take the courtyard");
 }
 
 TEST(a_siege_has_a_capture_point_in_the_courtyard) {

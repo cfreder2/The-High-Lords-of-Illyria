@@ -292,9 +292,10 @@ int armyCost(const std::vector<Buy>& army) {
     return gold;
 }
 
-std::vector<Buy> buyArmy(int budget, bool engines) {
+std::vector<Buy> buyArmy(int budget, bool engines, int every, int most) {
     // A lord's mix: foot to hold, bowmen behind them, horse and bombers to finish, an engine to every eight squads when the
-    // work wants one. What the next pick costs too much for becomes the cheapest foot, until the purse is empty.
+    // work wants one (`every`: a siege train has one to every four, kSiegeEngines: two trains for 300 gold; `most`: no more trains than that). What the next pick costs too much for
+    // becomes the cheapest foot, until the purse is empty.
     static const UnitType order[] = {UnitType::HeavyInfantry, UnitType::Archers, UnitType::Pikemen, UnitType::Warrior, UnitType::Archers, UnitType::HeavyInfantry,
                                      UnitType::DwarfGrenadier, UnitType::HeavyCavalry, UnitType::LightInfantry, UnitType::Archers, UnitType::LightCavalry, UnitType::Pikemen};
     std::vector<Buy> army;
@@ -306,10 +307,10 @@ std::vector<Buy> buyArmy(int budget, bool engines) {
             }
         army.push_back({t, 1});
     };
-    int left = budget, n = 0;
+    int left = budget, n = 0, trains = 0;
     for (size_t k = 0; left >= sim::Conquest::price(UnitType::LightInfantry) && n < 60; ++k) {
         UnitType t = order[k % (sizeof order / sizeof order[0])];
-        if (engines && n > 0 && n % 8 == 0 && left >= sim::Conquest::price(UnitType::Catapult)) t = UnitType::Catapult;
+        if (engines && n > 0 && n % every == 0 && trains < most && left >= sim::Conquest::price(UnitType::Catapult)) t = UnitType::Catapult, ++trains;
         if (sim::Conquest::price(t) > left) t = UnitType::LightInfantry;
         add(t);
         left -= sim::Conquest::price(t);
@@ -318,19 +319,24 @@ std::vector<Buy> buyArmy(int budget, bool engines) {
     return army;
 }
 
-std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines) const {
-    return setup.army.empty() ? buyArmy(setup.budget > 0 ? setup.budget : kDefaultBudget, engines) : setup.army;
+std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines, int every) const {
+    return setup.army.empty() ? buyArmy(setup.budget > 0 ? setup.budget : kDefaultBudget, engines, every) : setup.army;
 }
 
-std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines) const {
-    // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it.
+std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int every, int pct) const {
+    // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it;
+    // and `pct` of that: walls are worth men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct),
+    // whichever the player is.
     const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
-    return buyArmy(setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse, engines);
+    const int easy = setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse;
+    return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst) {
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
+    // `enginesFirst` (a siege's besiegers): the engines are the front rank, at their throw from the gate, and the army stands
+    // behind them out of the walls' bowshot until the engines have done their work (World::escortSpot calls up their guard).
     constexpr float kSlotM = 28.0f, kRowM = 24.0f;
     constexpr int kAcross = 5;
     const V3 right{facing.y, -facing.x, 0};
@@ -384,15 +390,17 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             }
         }
     };
+    if (enginesFirst) rank(engines);
+    const float footRow = row;
     rank(foot);
     // The horse on either wing of the front rank, outside the foot.
     const float wing = (static_cast<float>(std::min<size_t>(kAcross, foot.size())) / 2 + 0.5f) * kSlotM;
     for (size_t i = 0; i < horse.size(); ++i) {
         const float side = i % 2 ? 1.0f : -1.0f, out = wing + static_cast<float>(i / 2) * kSlotM;
-        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * 8.0f), facing);
+        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)), facing);
     }
     rank(rear);
-    rank(engines);
+    if (!enginesFirst) rank(engines);
 }
 
 void Battle::setUpField(const SkirmishSetup& setup) {
@@ -443,7 +451,7 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                          {"Town Militia", UnitType::LightInfantry, 12},
                          {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
         } else {
-            for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false))
+            for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false, kFieldEngines, 10000 / kSiegeOddsPct))
                 companies.push_back({sim::unitTypeName(b.type), b.type, b.squads * sim::Conquest::squadSize(b.type)});
             if (keeper == kPlayer) companies.push_back({"The Lord", UnitType::Hero, 1});
         }
@@ -473,21 +481,60 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
     }
 
     // The besiegers form up on the road before the gate (or the nearest open ground out from it, clear of the neighbouring
-    // towns), half to each door of a castle with two.
+    // towns), half to each door of a castle with two: their engines in front, set up at their throw from the doors, the army
+    // behind them. A computer besieging a town of one door makes a second camp of a third of its host and its second
+    // engines before a side wall, to shell the walks from there (World::autoTarget) and to come in by the breach from
+    // another quarter: the keeper has two batteries to watch, and a sortie against one is seen by the other.
     if (!classic) {
-        std::vector<Buy> all = besieger == kPlayer ? playerBuys(setup, true) : foeBuys(setup, true);
+        std::vector<Buy> all = besieger == kPlayer ? playerBuys(setup, true, kSiegeEngines) : foeBuys(setup, true, kSiegeEngines, kSiegeOddsPct);
         // The engines are dealt first, so the road's door has the first of them.
         std::stable_partition(all.begin(), all.end(), [](const Buy& b) { return b.type == UnitType::Catapult; });
-        std::vector<std::vector<Buy>> byDoor(gates.size());
-        size_t turn = 0;
+        std::vector<V3> camps = gates, faces = outs;
+        std::vector<float> off(gates.size(), kBatteryM);
+        if (gates.size() == 1 && besieger != kPlayer) {
+            // The side wall that looks most squarely away from the road, with open ground before it and no water between
+            // that ground and the wall, or between it and the road before the gate (the way its men go to the breach).
+            const auto dry = [&](const V3& a, const V3& b) {
+                const int steps = std::max(1, static_cast<int>((b - a).length() / 8.0f));
+                for (int k = 0; k <= steps; ++k) {
+                    const sim::Vec3 q = toSim(a + (b - a) * (static_cast<float>(k) / static_cast<float>(steps)));
+                    if (region_->underWater(q.x, q.y)) return false;
+                }
+                return true;
+            };
+            size_t best = nc;
+            float bestDot = 2;
+            for (size_t e = 0; e < nc; ++e) {
+                const V3 mid = (local(ring.corners[e]) + local(ring.corners[(e + 1) % nc])) * 0.5f;
+                const V3 away = V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized();
+                const float d = std::abs(away.dot(out));
+                if (ring.gateOn(e) || d >= bestDot) continue;
+                const V3 camp = conqBefore(*region_, *world_, mid, away, kFlankM);
+                if (!openFor(*region_, *world_, camp) || !dry(camp, mid + away * 6.0f) || !dry(camp, gate + out * 60.0f)) continue;
+                bestDot = d;
+                best = e;
+            }
+            if (best < nc) {
+                const V3 mid = (local(ring.corners[best]) + local(ring.corners[(best + 1) % nc])) * 0.5f;
+                camps.push_back(mid);
+                faces.push_back(V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized());
+                off.push_back(kFlankM);
+            }
+        }
+        std::vector<std::vector<Buy>> byCamp(camps.size());
+        size_t engine = 0, other = 0;
         for (const Buy& b : all)
-            for (int i = 0; i < b.squads; ++i, ++turn) {
-                std::vector<Buy>& mine = byDoor[turn % gates.size()];
+            for (int i = 0; i < b.squads; ++i) {
+                // Each camp its engines in turn; the rest half to each door, or a third to the camp before the side wall.
+                const size_t turn = b.type == UnitType::Catapult ? engine++ : other++;
+                std::vector<Buy>& mine = byCamp[camps.size() > gates.size() && b.type != UnitType::Catapult ? (turn % 3 == 2 ? 1 : 0) : turn % camps.size()];
                 if (!mine.empty() && mine.back().type == b.type) ++mine.back().squads;
                 else mine.push_back({b.type, 1});
             }
-        for (size_t d = 0; d < gates.size(); ++d)
-            muster(besieger, byDoor[d], conqBefore(*region_, *world_, gates[d], outs[d], 110.0f), outs[d] * -1.0f, besieger == kPlayer && d == 0);
+        for (size_t d = 0; d < camps.size(); ++d)
+            muster(besieger, byCamp[d], conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, besieger == kPlayer && d == 0, true);
+        if (besieger != kPlayer)
+            for (const sim::Unit& u : world_->units()) besiegers_ += u.owner == besieger && roleOf(static_cast<UnitType>(u.stats.type)) != Role::Siege;
         return;
     }
     const V3 camp = conqBefore(*region_, *world_, gate, out, 110.0f), in = out * -1.0f;
@@ -549,7 +596,8 @@ int Battle::gateAt(const Camera& camera, float x, float y, float pixelScale) con
     float bestD2 = kSquadTapRadiusPx * pixelScale * kSquadTapRadiusPx * pixelScale;
     const auto& gates = worldRegion().gates();
     for (size_t i = 0; i < gates.size(); ++i) {
-        if (world_->gates()[i].broken()) continue;
+        // A gate that stands, or a foe's that is down: a breach is a place to order men through (stormGate).
+        if (world_->gates()[i].broken() && (world_->gates()[i].holder == local_ || world_->gates()[i].holder == sim::GateState::kNoHolder)) continue;
         V3 c = toV3(gates[i].a + gates[i].b) * 0.5f;
         c.z = (c.z + static_cast<float>(gates[i].top.toDouble())) * 0.5f;
         float px, py;
@@ -571,7 +619,7 @@ void Battle::aimEngines(const Squad& s) {
     float bestD = 1e30f;
     for (size_t i = 0; i < worldRegion().gates().size(); ++i) {
         const sim::GateState& gs = world_->gates()[i];
-        if (gs.broken() || gs.holder != kPlayer) continue;
+        if (gs.broken() || gs.holder != kPlayer || !siegeGate(i)) continue;
         const V3 g = toV3(worldRegion().gates()[i].a + worldRegion().gates()[i].b) * 0.5f;
         // The nearest door, but a door already failing is worth some metres more than it lies (a castle with two doors is
         // battered at the weaker, and the engines go on at it until it falls, then turn to the other).
@@ -1117,8 +1165,16 @@ void Battle::runEnemyAi() {
         }
         return goal;
     };
-    V3 engineAt, doorAt;
-    const bool siege = aiSiege(kEnemy, engineAt, doorAt);
+    if (aiBreakOff()) return;  // a siege it has lost: it marches off, and the day is the keepers'
+    // A town it besieges, once a way in is open and nobody holds the ground: its foot go to the pole (battle_capture.h).
+    const bool toPole = capture_.active() && capture_.attacker() == kEnemy && capture_.defendersIn() == 0 && [&] {
+        const int ring = capture_.stages()[capture_.stage()].ring;
+        for (size_t g = 0; g < world_->gates().size(); ++g)
+            if (worldRegion().gates()[g].ring == ring && world_->gates()[g].broken()) return true;
+        return false;
+    }();
+    V3 anyEngines, anyDoor;
+    const bool siege = aiSiege(kEnemy, {}, anyEngines, anyDoor);
     constexpr float kEasyNearM = 60.0f;  // Easy: a foe this near a squad is fought at once, however early
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
@@ -1135,13 +1191,20 @@ void Battle::runEnemyAi() {
         // "by one road", was tried: that is a concentration, and it cost a player who gave no orders 86 men for 57.)
         if (easyMarch && world_->tick() < kEasyWaitTicks) continue;
         if (role == Role::Siege) {
-            // Engines never march at the foe; they throw from where they stand.
-            if (!s.garrison) aimEngines(s);
+            // Engines never march at the foe; they throw from where they stand: at a gate in their throw, or (a battery set
+            // before a side wall, the gate beyond its throw) at the men on the walks until none are left in its reach.
+            if (!s.garrison && !aiShellsWalls(s)) aimEngines(s);
             continue;
         }
         if (s.garrison && role != Role::Healer) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
-        if (siege && role != Role::Healer && role != Role::Scout) {
-            aiEscort(q, engineAt, doorAt);  // engines first, from range; the rest hold their line until the doors are down
+        V3 engineAt, doorAt;
+        if (role != Role::Healer && role != Role::Scout && aiSiege(kEnemy, c, engineAt, doorAt)) {
+            aiEscort(q, engineAt, doorAt);  // engines first, from range; the rest hold their line by the nearest battery until the doors are down
+            continue;
+        }
+        if (toPole && role == Role::Melee) {
+            const V3 pole = toV3(capture_.at());
+            if (V3{pole.x - c.x, pole.y - c.y, 0}.length() > 8.0f) aiSteer(q, pole);
             continue;
         }
         // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code path.
@@ -1159,6 +1222,7 @@ int Battle::outcome() const {
     }
     if (!enemyAlive) return 1;
     if (!playerAlive) return 2;
+    if (brokeOff_) return 1;  // the besiegers are spent and have gone (aiBreakOff): the walls are held
     if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
     if (rout_.called(*world_)) return rout_.quitter() == kPlayer ? 2 : 1;  // a host has quit the field
     return 0;

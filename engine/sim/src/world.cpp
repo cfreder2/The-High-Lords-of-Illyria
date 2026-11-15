@@ -597,6 +597,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
     u->stationed = false;   // ... and an order is not a garrison's station
+    u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -650,6 +651,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             beginMove(*u, target, cmd.speed, cmd.face);
             if (cmd.march) planMarch(*u, target, cmd.marchFrom, cmd.marchTo);
             else planPath(*u, target);
+            u->occupying = cmd.occupy;
+            u->occupyAt = target;
             break;
         }
         case Command::Type::AttackGate:
@@ -1504,6 +1507,8 @@ void World::updateUnit(Unit& u) {
     } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
         // An engine with no foe in reach throws at a gate of a foe's that is (never walking up to it).
         batterGate(u, gate);
+    } else if (occupyGround(u)) {
+        // Back to the ground he was sent to occupy (world_siege.cpp).
     } else if (escortSpot(u)) {
         // Idle near engines at a gate: the line in front of them (world_siege.cpp).
     } else if (Unit* helped = supportFoe(u)) {
@@ -2739,6 +2744,7 @@ uint64_t World::checksum() const {
             h.addU64(u.thrownTick);
         }
         if (u.stationed) h.addU64(u.stationed);  // only once a garrison has stationed him, so battles without one hash as before
+        if (u.occupying) hashVec(h, u.occupyAt);  // only while he occupies ground, likewise
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);
@@ -2784,7 +2790,7 @@ uint64_t World::checksum() const {
                 hashVec(h, c.marchFrom);
                 hashVec(h, c.marchTo);
                 hashVec(h, c.face);
-                h.addU64(c.force);
+                h.addU64((c.force ? 1u : 0u) | (c.occupy ? 2u : 0u));
                 h.addU64(c.targetUnit);
                 h.addU64(c.rally);
                 h.addU64(static_cast<uint64_t>(c.object));
