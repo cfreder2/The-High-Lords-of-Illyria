@@ -100,6 +100,13 @@ constexpr Fixed kBombAimFraction = Fixed::fromRatio(7, 10);
 constexpr Fixed kStickSpeed = Fixed::fromInt(9);
 // A body part flying faster than this hurts whoever it strikes (a kick is far slower).
 constexpr Fixed kDebrisHurtSpeed = Fixed::fromInt(6);
+// A fall hurts above this speed of landing (a drop of about 4 m), by this much more for each m/s (from 6 m: about 30).
+constexpr Fixed kFallHurtSpeed = Fixed::fromInt(9);
+constexpr int32_t kFallHurtPerMps = 12;
+// Timber that strikes a man hurts by its weight and speed: hit points for each m/s of a beam, a plank, a splinter; and
+// splinters stop lying on the field past this many pieces of timber.
+constexpr int32_t kBeamHurt = 5, kPlankHurt = 2, kSplinterHurt = 1;
+constexpr uint32_t kTimberBudget = 600;
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
 // An engine ordered to a place this near a foe's gate batters the gate from its own reach instead of walking up to the doors.
@@ -172,6 +179,7 @@ void hashStats(StateHasher& h, const UnitStats& s) {
     }
     // Only for those with a store of missiles, so battles without them hash as before.
     if (s.ranged.ammo > 0) h.addI64(s.ranged.ammo);
+    if (s.fireArrows > 0) h.addI64(s.fireArrows + 0xF1A0);  // (bowmen with fire arrows: world_works.cpp)
     // Only for scavengers, so battles without them hash as before.
     if (s.scavenge.sight > Fixed::zero()) {
         h.addI64(s.scavenge.sight.raw);
@@ -279,6 +287,7 @@ World::World(const WorldConfig& config) : config_(config), rng_(config.seed, 0) 
         }
         obstacleGrid_.build(obstacles);
         for (const Gate& g : config_.region->gates()) gates_.push_back({g.maxHp});
+        initWorks();
     }
 }
 
@@ -331,6 +340,7 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     u.stamina = stats.staminaTicks;
     u.satchels = stats.satchels.count;
     u.ammo = stats.ranged.ammo;
+    u.fireArrows = stats.fireArrows;
     u.pos = pos;
     if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
@@ -410,6 +420,7 @@ void World::clearFight(uint64_t seed) {
     fires_.clear();
     brokenSides_.clear();
     remainGrid_.clear();
+    initWorks();  // (the garrisons mend their works between fights: docs/GAME_DESIGN.md, "Outworks and timber")
     unitGrid_.clear();
     broadValid_ = false;
     pathCache_.clear();
@@ -558,6 +569,7 @@ void World::step(std::span<const Command> commands) {
     updateProjectiles();
     updateFires();
     driftAfloat();
+    updateWorks();
     updateMorale();
     callForHelp();
     applyZone();
@@ -653,6 +665,9 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->helping = kNoEntity;  // ... nor an answer to a friend's call
     u->helpSince = 0;
     u->wheel = 0;
+    u->sortie = Unit::Sortie::None;  // ... nor a sortie (world_sortie.cpp), nor an attack on a work
+    u->attackWork = -1;
+    if (u->perch < -1) u->perch = -1;  // ... nor a climb he was bound for
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -718,6 +733,10 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             else planPath(*u, target);
             u->occupying = cmd.occupy;
             u->occupyAt = target;
+            // Sent onto a watchtower: a bowman climbs it when he gets there (world_works.cpp).
+            if (const int32_t t = workAt(cmd.target, Fixed::fromRatio(1, 2)); t >= 0 && works_[static_cast<size_t>(t)].def.kind == Work::Kind::Watchtower &&
+                                                                       u->stats.ranged.kind == ProjectileKind::Arrow && u->stats.ranged.muzzleSpeed > Fixed::zero() && !u->stats.mounted)
+                u->perch = u->perch >= 0 ? u->perch : -2 - t;
             break;
         }
         case Command::Type::AttackGate:
@@ -749,6 +768,9 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             u->hasMoveTarget = false;
             u->hasAttackTarget = false;
             u->attackGate = -1;
+            break;
+        case Command::Type::Sortie:
+            startSortie(*u, cmd);
             break;
         case Command::Type::SetGate:
         case Command::Type::SetStance:
@@ -1337,6 +1359,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     else if (onOwnLand(u, under)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (!fires_.empty()) speed = speed * fireWalkPct(u.pos) / 100;  // through burning ground (world_fire.cpp)
+    if (!works_.empty()) speed = speed * workPacePct(u) / 100;  // over a palisade, through abatis (world_works.cpp)
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
@@ -1351,6 +1374,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     Vec3 next = dist <= stepLen ? Vec3{to.x, to.y, u.pos.z} : u.pos + u.facing * stepLen;
     // Deep water and cliffs stop walkers: slide along if one axis is clear.
     const auto barred = [&](Fixed x, Fixed y) {
+        if (workBars(u, x, y) || ditchBars(u, x, y)) return true;  // timber, and a ditch to horse and wheels (world_works.cpp)
         const Ground g = groundAt(x, y);
         if (g == Ground::DeepWater && groundAt(u.pos.x, u.pos.y) != Ground::DeepWater) return true;
         // Over the water beside a narrow deck: off the edge is the river.
@@ -1455,6 +1479,8 @@ void World::updateUnit(Unit& u) {
     u.engaged = false;
     const EntityId lastFoe = u.foe;
     u.foe = kNoEntity;
+    // On a watchtower, at a work, on a sortie (world_works.cpp, world_sortie.cpp).
+    if (worksTick(u)) return;
 
     const bool flier = u.stats.flyAltitude > Fixed::zero();
     if (flier && u.flight != Unit::Flight::Grounded) {
@@ -1628,6 +1654,7 @@ void World::updateUnit(Unit& u) {
 }
 
 bool World::shootNearby(Unit& u) {
+    if (counterBattery(u)) return true;  // (an engine answers a foe's tower engine first: world_works.cpp)
     Unit* target = autoTarget(u);
     if (target == nullptr || (target->pos - u.pos).flat().length() > shotRange(u, autoReach(u), target->pos)) return false;
     // A store of missiles is not spent on a mark not worth one: he watches it, and does what else he can.
@@ -1759,7 +1786,7 @@ void World::separateBodies() {
     }
     for (uint32_t i = 0; i < units_.size(); ++i) {
         Unit& a = units_[i];
-        if (!a.alive() || a.inAir()) continue;
+        if (!a.alive() || a.inAir() || a.perch >= 0) continue;  // (a man on a watchtower stands on its platform: world_works.cpp)
         const Fixed radius = a.stats.radius;
         unitGrid_.queryRuns(a.pos.x, a.pos.y, radius + maxRadius, [&](uint32_t first, uint32_t last) {
             for (uint32_t m = first; m < last; ++m) {
@@ -1923,9 +1950,18 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
     }
     const Fixed gate = gateHit(a, b, best);
     if (gate >= Fixed::zero()) {
+        best = gate;
+        hit = true;
         if (stone) *stone = false;  // oak
         if (what) *what = kHitGate;
-        return gate;
+    }
+    // Timber works (world_works.cpp).
+    int32_t work = -1;
+    const Fixed timber = workHit(a, b, best, &work);
+    if (timber >= Fixed::zero()) {
+        if (stone) *stone = false;
+        if (what) *what = kHitWork - work;
+        return timber;
     }
     return hit ? best : -Fixed::one();
 }
@@ -1958,6 +1994,11 @@ void World::updateAirborne(Unit& u) {
     const Fixed ground = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     if (u.pos.z > ground) return;
     u.pos.z = ground;
+    // A fall from a height hurts (off a watchtower going over, off a wall-walk): by how hard he lands, above a jump's.
+    if (u.alive() && u.vel.z < -kFallHurtSpeed) {
+        const int32_t hurt = static_cast<int32_t>(((-u.vel.z - kFallHurtSpeed) * kFallHurtPerMps).floorToInt());
+        if (hurt > 0) damage(u, hurt, nullptr, {DamageType::Blunt, normalized(u.vel.flat()), u.pos, false, false});
+    }
     if (u.vel.z < -Fixed::fromInt(4)) {
         // A hard landing bounces a little.
         u.vel.z = -u.vel.z * kDebrisRestitution;
@@ -2493,6 +2534,12 @@ void World::updateProjectiles() {
                     const Fixed speed = sqrt(speedSq);
                     int32_t amount = std::clamp<int32_t>((speed / 3).floorToInt(), 2, 8);
                     if (p.remain == RemainKind::Torso) amount = amount * 3 / 2;
+                    // Timber hurts by its weight: a beam at speed kills, a plank knocks a man down, a splinter cuts.
+                    if (isTimber(p.remain)) {
+                        const int32_t per = p.remain == RemainKind::Beam ? kBeamHurt : p.remain == RemainKind::Plank ? kPlankHurt : kSplinterHurt;
+                        amount = std::max<int32_t>(2, static_cast<int32_t>((speed * per).floorToInt()));
+                        if (p.remain != RemainKind::Splinter) knock(*hit, normalized(p.vel.flat()), speed * (p.remain == RemainKind::Beam ? Fixed::fromRatio(3, 5) : Fixed::fromRatio(1, 4)));
+                    }
                     Blow blow;
                     blow.type = DamageType::Blunt;
                     blow.dir = normalized(p.vel);
@@ -2515,13 +2562,15 @@ void World::updateProjectiles() {
                         impacts_.push_back({ImpactEvent::Kind::Hit, p.pos, p.vel, p.id, hit->id, killed, {}, -1, blow.type});
                     }
                     p.damage = amount;  // spent: it strikes no one else
-                    p.vel = p.vel / Fixed::fromInt(4);  // and drops
+                    p.vel = p.vel / Fixed::fromInt(p.remain == RemainKind::Beam ? 2 : 4);  // and drops (a beam goes on)
                 }
             }
             if (done) {
                 Vec3 lie = normalized(travel);
                 if (lie.lengthSq() == Fixed::zero()) lie = {Fixed::one(), Fixed::zero(), Fixed::zero()};
-                placeRemain(p.remain, p.owner, p.pos, lie, p.source);
+                // (Splinters past the field's budget of timber are trodden in.)
+                if (p.remain != RemainKind::Splinter || timberLying_ < kTimberBudget) placeRemain(p.remain, p.owner, p.pos, lie, p.source);
+                if (isTimber(p.remain)) ++timberLying_;
                 removed[i] = 1;
             }
             continue;
@@ -2599,6 +2648,7 @@ void World::updateProjectiles() {
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
+                arrowInWork(p, what);  // (a fire arrow in timber: world_works.cpp)
             }
             removed[i] = spent;
         } else if (hit != nullptr) {
@@ -2629,6 +2679,8 @@ void World::updateProjectiles() {
                 if (shooter != nullptr && shooter->alive()) ambush(*shooter, *hit);
                 const bool killed = damage(*hit, amount, shooter, {p.cause, p.vel, at, true});
                 shakeBySide(*hit, side, true);
+                // A fire arrow in an engine's timber sets it alight (world_fire.cpp burns it).
+                if (p.fire && hit->alive() && hit->stats.gait == Gait::Wheeled && !douses(hit->pos)) hit->burning = std::max(hit->burning, 10 * kTicksPerSecond);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
             removed[i] = spent;
@@ -2687,6 +2739,7 @@ void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, Proj
                                                                   : ImpactEvent::Kind::Explosion;
     impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
     blastGates(at, ex, kind);
+    blastWorks(at, ex, kind);
     if (kind == ProjectileKind::Bomb) blastShock(at, ex);
     const auto awayFrom = [&](const Vec3& p) {
         Vec3 d = flatDirection(at, p, {});
@@ -2966,6 +3019,20 @@ uint64_t World::checksum() const {
             h.addU64(u.guardSquad);
         }
         if (u.burning != 0) h.addI64(u.burning);
+        // The works and sorties (world_works.cpp, world_sortie.cpp): only once a man has them, so battles without hash as before.
+        if (u.stats.fireArrows > 0) h.addI64(u.fireArrows);
+        if (u.perch != -1 || u.climb != 0 || u.attackWork != -1) {
+            h.addI64(u.perch);
+            h.addI64(u.perchSlot);
+            h.addI64(u.climb);
+            h.addI64(u.attackWork);
+        }
+        if (u.sortie != Unit::Sortie::None) {
+            h.addU64(static_cast<uint64_t>(u.sortie));
+            h.addU64(u.sortieMark);
+            hashVec(h, u.sortieHome);
+            h.addU64(u.sortieTick);
+        }
         // Only while a blast thrower is waiting on a friend in his way.
         if (u.aoeHeld != 0) {
             h.addI64(u.aoeHeld);
@@ -3037,6 +3104,21 @@ uint64_t World::checksum() const {
         }
     }
     h.addU64(gates_.size());
+    // The timber works (world_works.cpp): only once one has been touched or a barricade raised, so battles without hash as before.
+    for (size_t i = 0; i < works_.size(); ++i) {
+        const WorkState& w = works_[i];
+        if (w.hp == w.def.maxHp && w.fire == 0 && w.gate < 0 && w.reload == 0 && (w.def.kind != Work::Kind::Engine || w.ammo == kEngineBolts)) continue;
+        h.addU64(i);
+        h.addI64(w.hp);
+        h.addI64(w.fire);
+        h.addU64(w.fellTick);
+        h.addI64(w.gate);
+        h.addU64(w.barring);
+        h.addI64(w.ammo);
+        h.addI64(w.reload);
+        h.addU64(w.mark);
+    }
+    if (timberLying_ != 0) h.addU64(timberLying_);
     for (const GateState& g : gates_) {
         h.addI64(g.hp);
         h.addU64(g.holder);

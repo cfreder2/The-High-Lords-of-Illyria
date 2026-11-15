@@ -140,6 +140,9 @@ int32_t valueOf(RemainKind k) {
         case RemainKind::Chunk: return kScrapValue;
         case RemainKind::None:
         case RemainKind::Arrow: break;  // an arrow is no weight in the hand
+        case RemainKind::Beam:
+        case RemainKind::Plank:
+        case RemainKind::Splinter: break;  // (timber: too heavy, or nothing to throw)
     }
     return 0;
 }

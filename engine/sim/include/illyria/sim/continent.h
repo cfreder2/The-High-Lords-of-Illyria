@@ -229,8 +229,8 @@ public:
         // Outworks (planOutworks, docs/MAP.md "Outworks"): a ditch round the walls with a bank inside it (Ditch: z of the
         // centre is the pad), fair to every realm: its seat and one walled town of its country. `ditch.inner` zero: none.
         Ditch ditch = {};
-        Fixed ditchDepth, bankRise;  // the cut below the land, the bank above it
-        Fixed moatBed;               // a moat's bed (its water stands kMoatWater over it)
+        Fixed ditchDepth = {}, bankRise = {};  // the cut below the land, the bank above it
+        Fixed moatBed = {};            // a moat's bed (its water stands kMoatWater over it)
         static constexpr Fixed kMoatWater = Fixed::fromRatio(4, 5);
         bool fortified() const { return ditch.inner > Fixed::zero(); }
         // The land at (x, y) as the outworks leave it (`land`: as it lay): the bank built up, the ditch dug (a moat's bed level).

@@ -45,6 +45,7 @@ void World::kindle(const Vec3& at, const Explosive& ex, PlayerId owner) {
     const Fixed reach = ex.radius + kCatchBeside;
     for (Unit& u : units_)
         if (u.alive() && timber(u) && (u.pos - at).flat().length() - u.stats.radius < reach) u.burning = kTimberBurnTicks;
+    igniteWorksNear(at, reach);  // palisades, abatis, watchtowers, barricades (world_works.cpp)
     (void)owner;
 }
 

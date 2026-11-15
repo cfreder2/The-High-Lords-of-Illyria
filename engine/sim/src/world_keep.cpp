@@ -62,6 +62,8 @@ Post postOfStats(const UnitStats& s) {
     // The lord stands in the rank behind the foot (garrisonPosts) and keeps that place when a foe comes: he is the garrison's,
     // but no station of the gate's calls him into the horseshoe.
     if (s.type == static_cast<uint8_t>(UnitType::Hero)) return Post::Lord;
+    // A rider with a bottle of oil is a rider: the horseshoe, or a sortie (world_sortie.cpp).
+    if (s.mounted && s.melee.damage > 0) return Post::Foot;
     if (s.ranged.muzzleSpeed > Fixed::zero()) return World::canBatter(s) ? Post::None : Post::Archer;
     return s.melee.damage > 0 ? Post::Foot : Post::None;
 }
@@ -175,13 +177,17 @@ void World::keepDoors(const std::vector<size_t>& doors) {
         }
         if (!mine) continue;
         const Post post = postOf(u);
-        if (ordered(u)) continue;
+        if (ordered(u) || u.sortie != Unit::Sortie::None) continue;
+        // A bowman on the bank before the walls or up a watchtower keeps that post until he is called in (recallForward).
+        if (post == Post::Archer && onForwardPost(u, ring)) continue;
         // His door: the one he stands at, or (walking to a station) the one he is bound for.
         const size_t home = nearestDoor(u.stationed && u.hasMoveTarget ? u.moveTarget : u.pos);
         if (post == Post::Archer) archers.push_back({&u, home});
         else if (post == Post::Foot) foot.push_back({&u, home});
     }
     if (!alert) return;
+    recallForward(doors);  // (world_works.cpp)
+    garrisonSorties(doors);  // (world_sortie.cpp)
 
     // A door's horseshoe for n men: the places the wall or a house leaves free, the middle rank deepest, the wings bent in toward
     // the doors.

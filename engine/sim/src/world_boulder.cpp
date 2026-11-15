@@ -102,6 +102,7 @@ Vec3 flatUnit(const Vec3& v, const Vec3& fallback) {
 
 Structure World::structureOf(int32_t what) const {
     if (what == kHitGate) return Structure::Gate;
+    if (what <= kHitWork) return Structure::Timber;
     if (what == kHitWall || !config_.region || static_cast<size_t>(what) >= config_.region->obstacles().size()) return Structure::Wall;
     switch (config_.region->obstacles()[static_cast<size_t>(what)].kind) {
         case Obstacle::Kind::Pine:
@@ -126,7 +127,14 @@ void World::strikeStructure(Structure kind, const Vec3& where, const Vec3& dir, 
         const int32_t blow = static_cast<int32_t>((energy * kRolledGateShare).floorToInt());
         if (blow > 0) blastGates(where, Explosive{Fixed::one(), blow, Fixed::zero(), 0, Fixed::zero()}, ProjectileKind::Stone);
     }
-    // (Walls, towers and houses: no hit points yet. Castle damage begins here.)
+    // Timber works take the blow, and the engine on a tower's top a stone that strikes it high (world_works.cpp); a house's
+    // framing struck hard throws splinters. (Walls, towers and houses: no hit points yet.)
+    if (kind == Structure::Timber) strikeWork(where, dir, energy);
+    if (kind == Structure::Tower) strikeTowerTop(where, energy);
+    if (kind == Structure::House && energy >= Fixed::fromInt(40)) {
+        const Fixed len = dir.flat().length();
+        throwTimber(where, len > Fixed::zero() ? -dir.flat() / len : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()}, energy / 20, 3, 30);
+    }
 }
 
 EntityId World::launchStone(PlayerId owner, const Vec3& pos, const Vec3& vel) {

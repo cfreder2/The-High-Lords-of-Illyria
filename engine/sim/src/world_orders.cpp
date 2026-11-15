@@ -89,6 +89,10 @@ bool meets(const Vec3& p, const Vec3& q, const Vec3& a, const Vec3& b, Fixed& t)
 
 }  // namespace
 
+bool World::precious(const UnitStats& s) {
+    return s.type == static_cast<uint8_t>(UnitType::DwarfGrenadier) || s.type == static_cast<uint8_t>(UnitType::Wizards);
+}
+
 bool World::canBatter(const UnitStats& s) {
     if (s.ranged.muzzleSpeed == Fixed::zero()) return false;
     const ProjectileKind k = s.ranged.kind;
@@ -172,6 +176,10 @@ void World::applyOrder(Unit& u, const Command& cmd) {
         case Command::Type::AttackObject: {
             if (!config_.region) return;
             const Region& rg = *config_.region;
+            if (cmd.object == Command::Object::Work) {
+                orderAtWork(u, cmd);  // (world_works.cpp)
+                return;
+            }
             if (cmd.object == Command::Object::Gate) {
                 if (cmd.objectIndex < 0 || static_cast<size_t>(cmd.objectIndex) >= rg.gates().size()) return;
                 const size_t gi = static_cast<size_t>(cmd.objectIndex);
@@ -257,6 +265,7 @@ World::Stance World::stanceOfOrder(const Command& c) {
         case Command::Type::AttackGround:
         case Command::Type::AttackGate:
         case Command::Type::Detonate:
+        case Command::Type::Sortie:
         case Command::Type::AttackObject: return Stance::Hunt;
         case Command::Type::Stop:
         case Command::Type::Raid:

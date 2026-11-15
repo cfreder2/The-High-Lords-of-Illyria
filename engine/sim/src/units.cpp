@@ -223,6 +223,7 @@ UnitStats unitStats(UnitType type) {
             s.ranged.drawTicks = sec(22, 15);  // 1.47 s: the draw his sheet plays before the release
             melee(s, 5, r(1, 2), sec(6, 5));
             s.aggroRange = m(6);
+            s.fireArrows = 3;  // tow and pitch, for timber only (world_works.cpp)
             break;
         case T::Pikemen:
             s = base(type, r(2, 5), r(9, 5), m(2), 65);
@@ -237,6 +238,7 @@ UnitStats unitStats(UnitType type) {
             s.mass = m(3);
             s.aggroRange = m(30);
             s.terrain.openPct = 3;  // +1 in the open
+            molotov(s, 1);  // one bottle of oil, for an engine or timber (a sortie: world_sortie.cpp); then his sword
             break;
         case T::HeavyCavalry:
             s = base(type, r(19, 20), r(27, 10), r(11, 2), 130);

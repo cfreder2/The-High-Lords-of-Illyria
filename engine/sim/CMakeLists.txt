@@ -24,6 +24,8 @@ add_library(illyria_sim
     src/world_scavenge.cpp
     src/world_death.cpp
     src/world_drift.cpp
+    src/world_works.cpp
+    src/world_sortie.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp
