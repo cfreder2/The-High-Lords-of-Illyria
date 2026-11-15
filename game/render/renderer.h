@@ -423,6 +423,15 @@ private:
     bool gibWide(int type, int slot) const;  // whether the part's picture is wider than it is tall (it lies as drawn)
     // Follows the flying parts (before uploadRemains, which hands their looks to the remains they become).
     void trackDebris(const Battle& battle, float dt);
+    // The catapults' boulders (renderer_gibs.cpp), by projectile id: each one's turning, a slow tumble in the air and
+    // then as fast as it rolls over the ground (its speed over its radius, about the axis across its way), kept where
+    // it stops.
+    struct StoneLook {
+        float q[4] = {0, 0, 0, 1};
+        bool seen = false;
+    };
+    std::map<sim::EntityId, StoneLook> stoneLooks_;
+    void trackStones(const Battle& battle, float dt);
     GibLook gibLookFor(const Battle& battle, const sim::Projectile& p);
     GibLook restingLook(const Battle& battle, const sim::Remain& r, uint32_t slot);
     // The instance (units_ layout) drawing a part, into its sheet's group; false if it has no cell.
@@ -523,7 +532,7 @@ private:
 
     Batch ribbons_, waterfalls_, rockRings_, detailRockRings_, marks_, remainArrows_, dynamicDecals_, bigDecals_, flyingArrows_, sprites_, particles_, sceneryShadows_;
     Batch footShade_;  // the shade on the ground at the foot of every town structure (uploadSettlements; kDecalFs type 12)
-    MeshBatch houses_, pillars_, capsules_, spheres_;
+    MeshBatch houses_, pillars_, capsules_, spheres_, boulders_;
     // Several shapes per kind of scenery (meshes::pineVariants() and so on).
     std::vector<MeshBatch> pines_, oaks_, bushes_, rocks_;
     MeshBatch stumps_;
@@ -606,6 +615,9 @@ private:
 void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals);
 // How far the selected shooters reach: a ring of dots for each kind (renderer_orders.cpp).
 void pushRangeRings(const Battle& battle, float seconds, std::vector<float>& decals);
+// Where the selected catapults' boulders would come down (a ring) and roll (a line of dots fading out to where each
+// would lie): Battle::stoneForecasts (renderer_orders.cpp).
+void pushStoneForecasts(const Battle& battle, float seconds, std::vector<float>& decals);
 // Paths of the soldiers going somewhere (Battle::pathLines); how many decals.
 size_t pushPathLines(const Battle& battle, const Camera& camera, float seconds, std::vector<float>& decals);
 

@@ -98,6 +98,7 @@ add_executable(illyria_tests
     test_site_clearance.cpp
     test_satchels.cpp
     test_friendly_fire.cpp
+    test_boulder.cpp
     test_scavenge.cpp
     test_match_seats.cpp
     test_playscript.cpp

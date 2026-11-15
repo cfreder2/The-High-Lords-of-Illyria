@@ -245,6 +245,66 @@ TEST(soldiers_hack_a_shut_gate_down_and_march_in) {
     CHECK(inside >= 6);
 }
 
+// The boulder against a castle (engine/sim/src/world_boulder.cpp).
+namespace {
+struct Thrown {
+    int32_t gateLost = 0;
+    int struckGate = 0, struckStone = 0;  // World::strikeStructure's tellings: the doors; a wall, a tower or a house
+    bool lies = false, inside = false;
+    Fixed fromDoors;
+};
+// A stone thrown from 110 m out at a mark `out` metres before the doors and `along` metres along the wall from their
+// middle, `up` metres above the ground there: what it did.
+Thrown throwAt(int64_t out, int64_t along, int64_t up) {
+    GateField f = gateField(3);
+    World& w = *f.w;
+    const Gate& g = w.region()->gates()[f.gate];
+    const Vec3 side = (g.b - g.a).flat() / (g.b - g.a).flat().length();
+    Unit engine;
+    engine.stats = unitStats(UnitType::Catapult);
+    engine.pos = f.centre + f.out * m(110) + side * m(along);
+    engine.pos.z = w.groundHeight(engine.pos.x, engine.pos.y);
+    Vec3 mark = f.centre + f.out * m(out) + side * m(along);
+    mark.z = (out == 0 ? g.a.z : w.groundHeight(mark.x, mark.y)) + m(up);  // (at the doors: their sill, not the walk over them)
+    const int32_t before = w.gates()[f.gate].hp;
+    const EntityId stone = w.throwStone(engine, mark);
+    Thrown t;
+    for (int i = 0; i < 40 * kTicksPerSecond && !t.lies; ++i) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts()) {
+            if (e.kind != ImpactEvent::Kind::Struck) continue;
+            (static_cast<Structure>(e.gate) == Structure::Gate ? t.struckGate : t.struckStone) += 1;
+        }
+        for (const Projectile& p : w.projectiles()) {
+            if (p.id != stone || !p.resting) continue;
+            t.lies = true;
+            t.inside = Gate::inside(ownWalls(*w.region()), p.pos);
+            t.fromDoors = (p.pos - f.centre).flat().dot(f.out);
+        }
+    }
+    t.gateLost = before - w.gates()[f.gate].hp;
+    return t;
+}
+}  // namespace
+
+TEST(a_boulder_smashes_a_gate_from_the_air_rolls_into_it_for_less_and_stops_at_a_wall) {
+    // Straight at the doors, two metres up them: its smash on the gate, as ever (900% of the stone's 100).
+    const Thrown direct = throwAt(0, 0, 2);
+    // Fourteen metres short: it comes down on the road before the gate, rolls on into the doors and lies at their foot.
+    const Thrown rolled = throwAt(14, 0, 0);
+    // The same throw at the wall well to one side of the gate: it stops against the stone; the gate is not touched.
+    const Thrown wall = throwAt(14, 22, 0);
+    std::printf("  at the doors: gate lost %d | 14 m short: lost %d, struck the doors %d time(s), lies %.1f m before them | at the wall: gate lost %d, struck stone %d time(s), lies %.1f m out\n",
+                direct.gateLost, rolled.gateLost, rolled.struckGate, rolled.fromDoors.toDouble(), wall.gateLost, wall.struckStone, wall.fromDoors.toDouble());
+    CHECK(direct.gateLost >= 600 && direct.struckGate == 1);
+    CHECK(direct.lies && !direct.inside);
+    CHECK(rolled.struckGate >= 1);
+    CHECK(rolled.gateLost > 0 && rolled.gateLost * 2 < direct.gateLost);
+    CHECK(rolled.lies && !rolled.inside && rolled.fromDoors < m(6));
+    CHECK(wall.struckStone >= 1 && wall.gateLost == 0);
+    CHECK(wall.lies && !wall.inside);
+}
+
 // A siege played as one (engine/sim/src/world_siege.cpp): escort, sortie, suppression, rally.
 TEST(men_idle_near_battering_engines_hold_a_line_in_front_and_meet_a_sortie) {
     GateField f = gateField(11);
@@ -490,7 +550,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0x6f19db3c170cfe79;  // (was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0x1eaf19b9a7460fdb;  // (was 0x6f19db3c170cfe79 before a catapult's stone rolled on from where it comes down, world_boulder.cpp; was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

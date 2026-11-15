@@ -950,6 +950,16 @@ void Battle::collectEvents() {
             emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
         } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
             emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
+        } else if (p.kind == sim::ProjectileKind::Stone && p.landed && !p.resting && p.vel.z == sim::Fixed::zero()) {
+            // A boulder rolling: its furrow in the grass (a stretch each half metre it has gone), the dust it raises
+            // and the clods it throws up behind it.
+            const V3 at = toV3(p.pos), v = toV3(p.vel);
+            const float speed = std::sqrt(v.x * v.x + v.y * v.y), rolled = static_cast<float>(p.rolled.toDouble());
+            if (speed < 0.5f) continue;
+            if (static_cast<int>(rolled * 2.0f) != static_cast<int>((rolled - speed / sim::kTicksPerSecond) * 2.0f))
+                addMark(GroundMark::Kind::Furrow, at, std::atan2(v.y, v.x), 0.8f, mix(p.id, static_cast<uint32_t>(rolled * 2.0f)));
+            if (rnd() < speed / 9.0f) emit(Particle::Kind::Smoke, at + V3{srnd() * 0.4f, srnd() * 0.4f, 0.25f}, V3{srnd() - v.x * 0.08f, srnd() - v.y * 0.08f, 0.5f + rnd()}, 1.0f + rnd(), 0.5f + rnd() * 0.6f);
+            if (speed > 4.0f && (tick & 1)) emit(Particle::Kind::Dirt, at, V3{srnd() * 2.0f + v.x * 0.15f, srnd() * 2.0f + v.y * 0.15f, 2.0f + rnd() * 2.5f}, 0.9f, 0.05f + rnd() * 0.07f);
         }
     }
 }
@@ -1041,6 +1051,30 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.5f, seed);
                 for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.3f}, {srnd() * 2, srnd() * 2, 0.8f + rnd()}, 1.8f + rnd(), 0.8f + rnd() * 0.6f);
                 for (int i = 0; i < 20; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 5, srnd() * 5, 3 + rnd() * 6}, 1.4f, 0.07f + rnd() * 0.1f);
+                break;
+            }
+            case K::Bounce: {
+                // A boulder strikes the ground and goes on: a gouge, dust, clods thrown the way it is going.
+                const float hard = std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 10.0f);
+                const V3 on = toV3(e.dir);
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, 0.7f + 0.7f * hard, seed);
+                for (int i = 0; i < 5 + static_cast<int>(8 * hard); ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * 0.6f, srnd() * 0.6f, 0.3f}, {srnd() * 1.5f, srnd() * 1.5f, 0.6f + rnd()}, 1.4f + rnd(), 0.6f + rnd() * 0.6f);
+                for (int i = 0; i < 8 + static_cast<int>(12 * hard); ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3 + on.x * 0.3f, srnd() * 3 + on.y * 0.3f, 2 + rnd() * 5}, 1.2f, 0.06f + rnd() * 0.09f);
+                break;
+            }
+            case K::Splash: {
+                // Into the water: a column of spray thrown up and a ring of it thrown out.
+                for (int i = 0; i < 26; ++i) {
+                    const float a = rnd() * 6.2832f, out = 0.5f + rnd() * 2.5f;
+                    emit(Particle::Kind::Smoke, pos + V3{std::cos(a) * 0.3f, std::sin(a) * 0.3f, 0.2f}, V3{std::cos(a) * out, std::sin(a) * out, 2.5f + rnd() * 4.5f}, 0.7f + rnd() * 0.6f, 0.35f + rnd() * 0.4f);
+                }
+                break;
+            }
+            case K::Struck: {
+                // A boulder against stone, timber or a tree: chips and dust thrown back off it.
+                const int chips = 6 + static_cast<int>(std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 100.0f) * 22);
+                for (int i = 0; i < chips; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3, srnd() * 3, 1.5f + rnd() * 4} - dir * 3, 1.1f, 0.06f + rnd() * 0.1f);
+                for (int i = 0; i < chips / 3; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), srnd() * 0.5f}, V3{srnd(), srnd(), 0.8f + rnd()} - dir, 1.6f + rnd(), 0.7f + rnd() * 0.7f);
                 break;
             }
             case K::Gate: {

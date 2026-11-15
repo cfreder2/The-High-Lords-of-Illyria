@@ -309,6 +309,13 @@ void Runner::execute(const Command& c) {
                 if (c.text == kinds[k]) std::printf("%s\n", illyria_death_demo(k, static_cast<float>(c.a), static_cast<float>(c.b))), std::fflush(stdout);
             break;
         }
+        case Op::Boulder: {
+            const int stage = c.text == "men" ? 0 : c.text == "throw" ? 1 : c.text == "count" ? 2 : 3;
+            std::printf("%s\n", illyria_boulder_demo(stage, static_cast<float>(c.a), static_cast<float>(c.b), static_cast<float>(c.c), static_cast<float>(c.d),
+                                                     static_cast<int>(c.seconds), c.all ? 1 : 0));
+            std::fflush(stdout);
+            break;
+        }
         case Op::Cards: cards(); break;
         case Op::Wait:
             // Waits follow on from one another without drift: a shot's own time is part of the wait before it.

@@ -339,6 +339,36 @@ TEST(the_destination_markers_are_where_they_end_up) {
     CHECK(any);
 }
 
+TEST(the_catapults_boulder_forecast_is_shown_for_the_ground_they_are_ordered_to_shell) {
+    // The siege's two engines, selected and ordered to shell open ground 90 m off: for each a place it would come down
+    // and a line of where it would roll (Battle::stoneForecasts, drawn by pushStoneForecasts). Nothing for other men.
+    Battle b(42, illyria::game::Scenario::Siege);
+    std::vector<EntityId> engines;
+    V3 at{};
+    for (const Unit& u : b.world().units())
+        if (u.owner == 0 && u.alive() && u.stats.ranged.kind == ProjectileKind::Stone) engines.push_back(u.id), at = illyria::game::toV3(u.pos);
+    CHECK(!engines.empty());
+    if (engines.empty()) return;
+    b.select(engines);
+    CHECK(b.stoneForecasts().empty());  // no order, no aim: nothing to show
+    // (Away from the town, which lies ahead of them: back the way they came.)
+    const V3 front = illyria::game::toV3(b.world().units()[engines[0] - 1].facing);
+    const V3 mark = at - front * 90.0f;
+    b.orderAttackGround(mark);
+    b.advance(0.1);
+    const std::vector<Battle::StoneForecast> shown = b.stoneForecasts();
+    CHECK(shown.size() == engines.size());
+    for (const Battle::StoneForecast& f : shown) {
+        CHECK((V3{f.landing.x - mark.x, f.landing.y - mark.y, 0}).length() < 1.0f);
+        CHECK(f.roll.size() >= 2);
+        if (f.roll.size() < 2) continue;
+        const V3 lies = f.roll.back();
+        std::printf("  comes down at %.0f,%.0f and would lie %.1f m on\n", f.landing.x, f.landing.y, (V3{lies.x - f.landing.x, lies.y - f.landing.y, 0}).length());
+    }
+    b.clearSelection();
+    CHECK(b.stoneForecasts().empty());
+}
+
 TEST(tapping_an_enemy_sends_the_selection_after_him) {
     Battle b(42);
     const int watch = squadNamed(b, "The Grey Watch");

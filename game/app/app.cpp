@@ -1146,6 +1146,7 @@ ILLYRIA_API void illyria_set_order_mode(int mode) {
 ILLYRIA_API int illyria_hover(float x, float y) {
     if (!app) return 0;
     const float s = app->pixelRatio;
+    app->battle->aimHover(app->camera, x * s, y * s, s);  // (the catapults' forecast follows the pointer)
     return static_cast<int>(app->battle->intentAt(app->camera, x * s, y * s, s));
 }
 ILLYRIA_API void illyria_clear_selection() {
@@ -1446,6 +1447,83 @@ ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
         }
     }
     std::snprintf(line, sizeof line, "deaths: stage %d, %d struck", stage, struck);
+    return line;
+}
+
+// Test hook (the --play script's `boulder`, docs/PLAYTEST.md): the boulder demo. Stage 0 stands `n` light infantry who do
+// nothing from (a, b), each (c, d) metres on from the last, of the player's side (`own`) or the other; stage 1 throws a
+// stone as a catapult standing at (a, b) would at the mark (c, d), with no scatter, and says where it will come down and
+// lie (World::stonePath); stage 2 counts: the men standing, hurt and dead, where the stone lies, every held gate's strength and place;
+// stage 3 says what the ground is at (a, b).
+ILLYRIA_API const char* illyria_boulder_demo(int stage, float a, float b, float c, float d, int n, int own) {
+    using namespace illyria::sim;
+    static std::vector<EntityId> men;
+    static EntityId stone = kNoEntity;
+    static Vec3 landing;
+    static char line[400];
+    if (!app || !app->battle) return "boulder: no battle";
+    World& w = app->battle->mutableWorld();
+    const auto at = [&](float x, float y) {
+        Vec3 p{toFixed(x), toFixed(y), Fixed::zero()};
+        p.z = w.groundHeight(p.x, p.y);
+        return p;
+    };
+    static const char* kGround[] = {"plains", "road", "forest", "swamp", "shallows", "deep water", "rock", "bridge", "mud", "sand"};
+    if (stage == 0) {
+        UnitStats s = unitStats(UnitType::LightInfantry);
+        s.aggroRange = Fixed::zero();
+        s.melee.damage = 0;
+        const float len = std::sqrt(c * c + d * d);
+        const Vec3 face = len > 0 ? Vec3{toFixed(-c / len), toFixed(-d / len), Fixed::zero()} : Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()};
+        for (int k = 0; k < n; ++k) men.push_back(w.spawnUnit(own ? 0 : 1, at(a + c * static_cast<float>(k), b + d * static_cast<float>(k)), face, s));
+        std::snprintf(line, sizeof line, "boulder: %d men from %.0f,%.0f, %.1f,%.1f apart (%s)", n, a, b, c, d, own ? "ours" : "theirs");
+        return line;
+    }
+    if (stage == 1) {
+        Unit engine;
+        engine.stats = unitStats(UnitType::Catapult);
+        engine.pos = at(a, b);
+        const Vec3 mark = at(c, d);
+        const StonePath path = w.stonePath(engine, mark);
+        stone = w.throwStone(engine, path.landing);
+        landing = path.landing;
+        const Vec3 rest = path.roll.empty() ? path.landing : path.roll.back().pos;
+        std::snprintf(line, sizeof line, "boulder: thrown from %.0f,%.0f (z %.1f) at %.0f,%.0f (z %.1f, %s), %.0f m; forecast: rolls %.1f m to %.1f,%.1f (z %.1f)", a, b,
+                      engine.pos.z.toDouble(), c, d, mark.z.toDouble(), kGround[static_cast<int>(w.region()->groundAt(mark.x, mark.y))],
+                      (mark - engine.pos).flat().length().toDouble(), (rest - path.landing).flat().length().toDouble(), rest.x.toDouble(), rest.y.toDouble(), rest.z.toDouble());
+        return line;
+    }
+    if (stage == 3) {
+        const Vec3 p = at(a, b);
+        std::snprintf(line, sizeof line, "boulder: at %.0f,%.0f the ground is %s, z %.2f (10 m east %.2f, west %.2f, north %.2f, south %.2f)", a, b,
+                      kGround[static_cast<int>(w.region()->groundAt(p.x, p.y))], p.z.toDouble(), at(a + 10, b).z.toDouble(), at(a - 10, b).z.toDouble(),
+                      at(a, b + 10).z.toDouble(), at(a, b - 10).z.toDouble());
+        return line;
+    }
+    int standing = 0, hurt = 0, dead = 0;
+    for (const EntityId id : men) {
+        const Unit* u = w.findUnit(id);
+        if (u == nullptr) continue;
+        if (!u->alive()) ++dead;
+        else if (u->hp < u->stats.maxHp) ++hurt;
+        else ++standing;
+    }
+    int used = std::snprintf(line, sizeof line, "boulder: men %d unhurt, %d hurt, %d dead", standing, hurt, dead);
+    bool found = false;
+    for (const Projectile& p : w.projectiles()) {
+        if (p.id != stone) continue;
+        found = true;
+        used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; stone %s at %.1f,%.1f, %.1f m from where it came down (%.1f m rolled)",
+                              p.resting ? "lies" : p.landed ? "rolling" : "in the air", p.pos.x.toDouble(), p.pos.y.toDouble(), (p.pos - landing).flat().length().toDouble(),
+                              p.rolled.toDouble());
+    }
+    if (!found && stone != kNoEntity) used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; stone gone (sunk, or shattered on a wall-walk)");
+    for (size_t g = 0; g < w.gates().size() && used < static_cast<int>(sizeof line) - 60; ++g) {
+        const Gate& gate = w.region()->gates()[g];
+        if (w.gates()[g].holder == GateState::kNoHolder) continue;  // (a neighbour's, in nobody's battle)
+        used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; gate %zu %d/%d at %.0f,%.0f (out %.1f,%.1f)", g, w.gates()[g].hp, gate.maxHp,
+                              ((gate.a.x + gate.b.x) / 2).toDouble(), ((gate.a.y + gate.b.y) / 2).toDouble(), gate.out.x.toDouble(), gate.out.y.toDouble());
+    }
     return line;
 }
 

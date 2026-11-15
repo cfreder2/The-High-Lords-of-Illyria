@@ -97,6 +97,52 @@ What was tried and left, with why:
 - **A longer clock on the gate**: one siege train opens a gate in about 20 to 30 s, too short for a sortie on foot (132 m is 55 s) to save it. The second train is kept off the gate (it shells the walks) so that it is not 15 s. The gate's strength and the stone's blow were left as the pass above set them.
 - **A slower flag** (33 s for fewer than eight men): the patient storm then stood on the flag's ground under the walls' bows while the garrison rallied, and lost 43 of 72; the rate above is the one that measured well.
 
+## The boulder (2026-11-14)
+
+The owner: *"catapults should be able to fire boulders that roll on open ground smashing troops, while crushing doors, and smashing castles."* A catapult's stone no longer ends where it comes down: it smashes there as before (3 m, 100) and then bounces once and rolls on (`engine/sim/src/world_boulder.cpp`; the rules in docs/GAME_DESIGN.md, "The boulder"; the roll distances by ground and slope in docs/UNITS.md, "The boulder", made by the stone's own steps). The catapult's own figures (14 s, 150 m, 4 m of scatter at 100 m, the smash) are unchanged.
+
+**Tuning, and why.** Level grass holds a rolling stone back by 0.28 of its weight and takes 0.28 m/s of forward speed for each m/s it comes down with: a stone thrown 100 m comes down at 19 m/s over the ground, keeps 11.6, hops 9 m and rolls 20 more, **30 m in all** (11 m from the nearest throw, 45 m from the farthest). A man costs it a fifteenth of its speed and takes 30 + 12 a metre a second (dead above about 5 m/s; an armoured man lives through a slow one). A lane is the stone's half width and the man's: about 2 m across.
+
+**Kills per stone**, measured without scatter (a stone thrown 100 m to come down 6 m short of the first man; light infantry 2 m apart unless said; a scratch harness on bare test ground, the sim's own `World::throwStone`):
+
+| The men | Struck | Dead | The stone went |
+|---|---:|---:|---:|
+| nobody | | | 30 m |
+| a file of 16 in line with the roll | 7 | 7 | 19 m |
+| two files abreast | 10 | 10 (3 more hurt) | 16 m |
+| a loose file, 4 m apart | 4 | 4 | 23 m |
+| a rank of 16 across its way | 0 or 1 | 0 or 1 | 30 m |
+| a block 12 wide and 4 deep | the file in its lane: 4 | 4 | 21 m |
+| a file of heavy infantry | 6 | 5 | 18 m |
+| a file of heavy cavalry | 3 | 2 | 12 m |
+| a file on a road | 9 | 9 | 24 m |
+| a file in mud | 0 | 0 | 3 m |
+| a file standing out through a ford 12 m on | 4 (those on the bank) | 4 | 12 m (stopped at the water) |
+
+Slope tells in **reach**, not in the first few men (a dense file under the landing saturates it). The same file beginning 16 m beyond the landing:
+
+| Up 25 in 100 | Up 15 | Up 8 | Level | Down 8 | Down 15 | Down 25 | Down 35 | Road, level |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 3 | 4 | 4 | 5 | 6 | 6 | all 16 (it gathers speed and runs 300 m) | 7 |
+
+**In the game** (`tools/playtest/boulder-*.txt`, the open ground skirmish and the village siege; pictures and frame sequences were read from `~/Desktop/boulder`):
+
+| Script | What happened |
+|---|---|
+| `boulder-level.txt` (a file of 16 on level grass) | 7 dead; the stone lay 21 m from where it came down (25 m forecast with nobody there) |
+| `boulder-line.txt` (a rank of 16 across the roll) | none hurt; it passed between two men and lay 25 m on, its furrow behind it |
+| `boulder-downhill.txt` (a block of 60 on a 30 in 100 hillside, thrown from above) | 5 dead; it bore away down the fall of the hill and was still rolling 43 m on, ten seconds later |
+| `boulder-uphill.txt` (the same block, thrown from below) | 2 dead, 3 hurt; it climbed a few metres, stopped and rolled back to lie 15 m aside |
+| `boulder-ford.txt` (a file from the bank out through the ford) | 2 dead and 2 hurt on the bank; it hopped once and stopped dead at the water's edge 9 m on, the twelve in the ford untouched |
+| `boulder-own.txt` (six foes, eight of your own in file 8 m beyond them) | 7 dead and 6 hurt of the fourteen: it does not know sides |
+| `boulder-gate.txt` (two catapults at a village gate) | the two stones that came down short rolled into the doors for 214 each (gate 2000 to 1572); the next, straight on the doors, 900 |
+
+**Doors: the balance is kept.** A stone from the air does what it did (900% of 100 on the doors; `catapult_stones_break_a_gate_and_the_way_is_open`: one engine, three stones, 33 s; `engines_batter_a_gate_from_their_reach_and_open_it_in_a_few_stones`: two engines, 20 s). Those two figures are the same with the rolled blow switched off (measured with `kRolledGateShare` at nothing), so rolling into a gate is a consolation for a stone that fell short (about 200 from a 10 m/s roll, half the blow of its speed), not a faster siege. Walls, towers and houses take nothing yet (`World::strikeStructure`, the hook).
+
+**Its own men.** The aim weighs the whole roll (`World::rollToll`). A catapult shelling six foes with eight of its own in file 9 m beyond them (clear of the smash, in the roll), eight worlds, 90 s: with the roll left out of the aim its own side lost **8905** hit points; reckoned, **824** (it drops the stone a few metres aside or waits), and the foe lost more (7092 against 6068). With no friend near it throws at the same marks as before, and the pile it shells loses 8380 where the smash alone took 6156 (`tests/test_friendly_fire.cpp`, re-pinned).
+
+**What this does to the field, and what was not measured.** A catapult is stronger against anything deep: a column marched straight at it, a block, a storming party in a gateway. Against a line it is what it was. The duel matrix below (catapult mean 12) and the siege scripts of the sections above were **not** run again for this change; the catapult's price and the computer's use of engines are as they were.
+
 ## Tactics: position, support, the Rally, Easy (2026-11-14, review3 items 2, 3, 8, 15)
 
 The review's finding: on the open field at 450 gold a planned defence killed about as many per man lost as giving no order at all. The rules below are the World's (`engine/sim/src/world_tactics.cpp`, tests in `tests/test_tactics.cpp`), from the men's own state, `Fixed` only, the same for every side and for Skirmish and Conquest. Each tells the presentation when it happens (`World::tactics()`), which floats a word over the men (`Battle::floats`, only over men the viewer can see).

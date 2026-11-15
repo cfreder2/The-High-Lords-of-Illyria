@@ -1,0 +1,120 @@
+# The boulder at a gate: a village's siege, the two catapults alone.
+#
+#   Illyria --play tools/playtest/boulder-gate.txt --play-out ~/Desktop/boulder
+#
+# First the forecast: the catapults selected, Z (attack), the pointer on the road about 14 m before the gate: the amber
+# ring where the stone would come down and the dots of its roll into the doors. Then the click: they shell that ground,
+# and the stones that come down short roll into the gate (`boulder count` prints the gate's strength, gate 6, every five
+# seconds). Then they are sent at the gate itself, as a player would, until it is down.
+
+size 1600 900
+start skirmish siege
+wait 0.5
+camera 440 500 250 1.610
+wait 1
+select 13
+key z
+mouse 1012 483
+wait 1.5
+shot gate-00-forecast-far
+camera 462 492 70 1.610
+wait 1
+mouse 900 470
+wait 1.5
+shot gate-01-forecast
+camera 440 500 250 1.610
+wait 1
+key z
+mouse 1012 483
+wait 0.5
+click left 1012 483
+wait_ticks 30
+shot gate-02-ordered
+camera 468 495 55 1.610
+boulder count
+wait_ticks 50
+shot gate-03
+wait_ticks 50
+shot gate-04
+wait_ticks 50
+shot gate-05
+boulder count
+wait_ticks 50
+shot gate-06
+wait_ticks 50
+shot gate-07
+wait_ticks 50
+shot gate-08
+boulder count
+wait_ticks 50
+shot gate-09
+wait_ticks 50
+shot gate-10
+wait_ticks 50
+shot gate-11
+boulder count
+wait_ticks 50
+shot gate-12
+wait_ticks 50
+shot gate-13
+wait_ticks 50
+shot gate-14
+boulder count
+wait_ticks 50
+shot gate-15
+wait_ticks 50
+shot gate-16
+wait_ticks 50
+shot gate-17
+boulder count
+wait_ticks 50
+shot gate-18
+wait_ticks 50
+shot gate-19
+wait_ticks 50
+shot gate-20
+boulder count
+print now at the gate itself
+camera 440 500 250 1.610
+wait 1
+select 13
+click right 1110 450
+camera 468 495 55 1.610
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+shot gate-21-battering
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+shot gate-22-battering
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+shot gate-23-battering
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+wait_ticks 150
+boulder count
+shot gate-24-battering
+stats
+quit

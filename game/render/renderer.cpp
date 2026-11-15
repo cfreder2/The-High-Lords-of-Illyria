@@ -111,6 +111,7 @@ constexpr int kDecalFloats = 11;  // centre 3, params 4, extra 4
 constexpr int kArrowFloats = 8;   // pos 3, dir 3, info 2
 
 constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5, kDecalDot = 7, kDecalArrow = 8;  // (9 a stretch of path, 10 a cross-hair: renderer_orders.cpp)
+constexpr float kDecalFurrow = 14;  // a stretch of a rolling boulder's track
 constexpr float kPlanBomb = 9, kPlanOrb = 10;
 
 // Instance record for a mesh: position, quaternion, scale, tint.
@@ -535,7 +536,7 @@ void Renderer::uploadMeshInstances(MeshBatch& b, const std::vector<float>& data)
 }
 
 std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
-    std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_};
+    std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_, &boulders_};
     if (includeSmall) {
         for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_}) for (MeshBatch& b : *list) out.push_back(&b);
         for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) out.push_back(b);
@@ -1598,6 +1599,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(pillars_, meshes::pillar(), 0);
     makeMeshBatch(capsules_, meshes::capsule(), 0);
     makeMeshBatch(spheres_, meshes::sphere(), 0);
+    makeMeshBatch(boulders_, meshes::boulder(), 0);
     makeMeshBatch(walls_, meshes::curtain(), 0);
     makeMeshBatch(parapets_, meshes::block(), 0);
     makeMeshBatch(drums_, meshes::drum(), 0);
@@ -1656,7 +1658,7 @@ bool Renderer::init(Battle& battle) {
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.part = Part::Clutter;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
-    for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
+    for (MeshBatch* b : {&capsules_, &spheres_, &boulders_}) b->part = Part::Effects;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(bigDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
@@ -1679,6 +1681,7 @@ void Renderer::reset(Battle& battle) {
     remainArrows_.count = 0;
     battle.takeDirtyRemains();
     debrisLooks_.clear();
+    stoneLooks_.clear();
     remainLooks_.clear();
     landed_.clear();
     gibChunks_.clear();
@@ -2038,6 +2041,7 @@ void Renderer::uploadMarks(const Battle& battle) {
         const GroundMark& m = battle.groundMarks()[slot];
         const float type = m.kind == GroundMark::Kind::Blood ? kDecalBlood
                            : m.kind == GroundMark::Kind::Crater ? kDecalCrater
+                           : m.kind == GroundMark::Kind::Furrow ? kDecalFurrow
                                                                 : kDecalDust;
         const float data[kDecalFloats] = {m.pos.x, m.pos.y, m.pos.z, m.yaw, m.size, m.tick * tickSeconds, type,
                                           0, 0, 0, static_cast<float>(m.seed % 1000) / 1000.0f};
@@ -2367,6 +2371,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     trackDebris(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));  // renderer_gibs.cpp
+    trackStones(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));
     const float sinceLastDraw = std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.25f);
     gameSeconds_ = gameSeconds;
     uploadMarks(battle);
@@ -2376,7 +2381,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const V3 eye = camera.eye();
     const V3 fwd = (camera.target() - eye).normalized();
     const V3 camRight = fwd.cross({0, 0, 1}).normalized();
-    std::vector<float> decals, sprites, arrows, particles, capsules, spheres, bars;
+    std::vector<float> decals, sprites, arrows, particles, capsules, spheres, boulders, bars;
     const auto& units = world.units();
     const float week = 86400.0f * 7.0f;
 
@@ -2470,11 +2475,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 break;
             }
             case sim::ProjectileKind::Stone: {
-                // A dressed boulder, turning over in its flight.
-                const float t = static_cast<float>(timeSeconds) * 3.0f + static_cast<float>(p.id);
-                float q[4];
-                yprQuat(t, t * 0.6f, 0, q);
-                pushInstance(spheres, pos, q, {0.36f, 0.32f, 0.34f}, {0.62f, 0.6f, 0.56f});
+                // A boulder of rough granite: tumbling in its flight, turning as it rolls (trackStones), lying a
+                // little sunk where it stopped; its shadow on the ground under it.
+                const float r = static_cast<float>(sim::kStoneRadius.toDouble());
+                const float identity[4] = {0, 0, 0, 1};
+                const auto look = stoneLooks_.find(p.id);
+                pushInstance(boulders, pos + V3{0, 0, p.resting ? r * 0.82f : r}, look != stoneLooks_.end() ? look->second.q : identity, {2 * r, 2 * r, 2 * r}, {1, 1, 1});
+                decals.insert(decals.end(), {pos.x, pos.y, battle.floorAt(pos), 0, r * 1.7f, 0, kDecalShadow, 0, 1, 0, 0});
                 break;
             }
             case sim::ProjectileKind::Debris:
@@ -2553,6 +2560,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Where the player's soldiers are going, and what they are after.
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
     pushRangeRings(battle, static_cast<float>(timeSeconds), decals);
+    pushStoneForecasts(battle, static_cast<float>(timeSeconds), decals);
     pushPathLines(battle, camera, static_cast<float>(timeSeconds), decals);
 
     // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.
@@ -2629,6 +2637,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     uploadDynamic(bars_, bars);
     uploadMeshInstances(capsules_, capsules);
     uploadMeshInstances(spheres_, spheres);
+    uploadMeshInstances(boulders_, boulders);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
