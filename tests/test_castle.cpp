@@ -333,7 +333,10 @@ TEST(men_idle_near_battering_engines_hold_a_line_in_front_and_meet_a_sortie) {
     CHECK(fallen <= 1);
 }
 
-TEST(an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_the_ground) {
+// (Was an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_the_ground, before a train carried eight
+// stones in all: with no order it keeps them from a thin line on the walk and from a lone man; ordered at the men on the
+// wall, it throws at them and not at the nearer man.)
+TEST(an_engine_keeps_its_stones_from_a_few_men_on_the_wall_and_ordered_at_them_throws_at_them) {
     WorldConfig cfg;
     cfg.region = siege();
     cfg.seed = 13;
@@ -360,9 +363,14 @@ TEST(an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_
     std::vector<EntityId> wall;
     for (int i = 0; i < 4; ++i) wall.push_back(w.spawnUnit(1, mid + along * m(i * 2 - 3), out, unitStats(UnitType::Archers)));
     CHECK(w.region()->rampartAt(w.findUnit(wall[0])->pos.x, w.findUnit(wall[0])->pos.y, w.findUnit(wall[0])->pos.z) >= 0);
-    w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    const EntityId engine = w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
     // A man of the other side's on the ground, nearer the engine than the wall is, with a good deal of life in him.
     const EntityId nearer = w.spawnUnit(1, mid + out * m(85), out, unitStats(UnitType::HeavyInfantry));
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.findUnit(engine)->ammo == unitStats(UnitType::Catapult).ranged.ammo);  // not a stone thrown
+    Command at{0, engine, Command::Type::AttackUnit, {}};
+    at.targetUnit = wall[1];
+    w.step(std::span(&at, 1));
     bool wallHurt = false;
     for (int t = 0; t < 60 * kTicksPerSecond && !wallHurt; ++t) {
         w.step({});
@@ -379,7 +387,9 @@ TEST(an_engine_creeps_up_to_its_reach_of_the_men_on_the_wall_and_no_nearer) {
     const Gate& g = w.region()->gates()[f.gate];
     const Vec3 along = (g.b - g.a).flat() / (g.b - g.a).flat().length();
     std::vector<EntityId> wall;
-    for (int i = 0; i < 3; ++i) wall.push_back(w.spawnUnit(1, f.centre + along * m(14 + 2 * i) - f.out * m(1), f.out, unitStats(UnitType::Archers)));
+    // (Shoulder to shoulder, was 2 m apart: three in one stone's blast are worth a stone of its four unasked, a thin
+    // line is not. World::worthAShot)
+    for (int i = 0; i < 3; ++i) wall.push_back(w.spawnUnit(1, f.centre + along * m(14 + i) - f.out * m(1), f.out, unitStats(UnitType::Archers)));
     const Vec3 up = w.findUnit(wall[0])->pos;
     CHECK(w.region()->rampartAt(up.x, up.y, up.z) >= 0);
     const EntityId engine = w.spawnUnit(0, f.centre + f.out * m(150), -f.out, unitStats(UnitType::Catapult));
@@ -520,7 +530,11 @@ TEST(catapult_stones_kill_defenders_on_the_walls) {
     std::vector<EntityId> watch;
     for (int i = 0; i < 5; ++i) watch.push_back(w.spawnUnit(1, mid + along * m(i * 2 - 4), out, unitStats(UnitType::Archers)));
     const Fixed walk = w.findUnit(watch[0])->pos.z;
-    w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    // (Ordered at the middle of them: its four stones are not thrown at a thin line on a walk unasked.)
+    const EntityId engine = w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    Command at{0, engine, Command::Type::AttackUnit, {}};
+    at.targetUnit = watch[2];
+    w.step(std::span(&at, 1));
     for (int t = 0; t < 150 * kTicksPerSecond; ++t) w.step({});
     int hurt = 0;
     for (EntityId id : watch) hurt += w.findUnit(id)->hp < unitStats(UnitType::Archers).maxHp;

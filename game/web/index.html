@@ -558,6 +558,7 @@
       special: Module.cwrap("illyria_special", null, []),
       detonate: Module.cwrap("illyria_detonate", null, []),
       holdFire: Module.cwrap("illyria_hold_fire", null, []),
+      guard: Module.cwrap("illyria_guard", null, []),
       charge: Module.cwrap("illyria_charge", null, []),
       formation: Module.cwrap("illyria_cycle_formation", null, []),
       setFormation: Module.cwrap("illyria_set_formation", null, ["number"]),
@@ -1172,6 +1173,7 @@
       case "KeyT": api.special(); break;    // a grenadier's next click lays a satchel (Shift+click: a line); the hyena-folk raid
       case "KeyL": api.detonate(); break;   // the next click is the satchel to set off
       case "KeyB": api.stop(); break;
+      case "Comma": api.guard(); break;  // Guard: the next click is the squad of yours to guard
       case "KeyK": if (e.shiftKey) api.holdFire(); else api.hold(); break;  // Hold: keep their place (again: back to support); with Shift, hold fire
       case "KeyY": api.rally(); break;     // the lord's Rally
       case "KeyJ": api.nextIdle(); break;  // the next squad standing idle

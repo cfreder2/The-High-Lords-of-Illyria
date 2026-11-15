@@ -42,6 +42,11 @@ constexpr uint32_t kSparkForgetTicks = 2 * kTicksPerSecond;
 // Thrift: a missile from a store goes at this many men in its blast (a body of kThriftGreatHp or more is as many),
 // or at a foe within kThriftNear of him; and at a laid satchel with kSparkFoes or more on it.
 constexpr int32_t kThriftCluster = 3;
+// A stone's lane: this many men in it, this far short of the mark and beyond it, this far either side of its line.
+constexpr int32_t kStoneLane = 4;
+constexpr Fixed kStoneShort = Fixed::fromInt(2);
+constexpr Fixed kStoneRoll = Fixed::fromInt(14);
+constexpr Fixed kStoneHalf = Fixed::fromRatio(3, 2);
 constexpr int32_t kThriftGreatHp = 200;
 constexpr Fixed kThriftNear = Fixed::fromInt(6);
 constexpr int32_t kSparkFoes = 2;
@@ -260,9 +265,25 @@ bool World::worthAShot(const Unit& u, const Unit& target) const {
     const RangedWeapon& w = u.stats.ranged;
     // The last bottle is for his satchels.
     if (u.stats.satchels.count > 0 && sparks(u.stats) && u.ammo <= 1) return false;
-    // An engine's stones clear the walls: a man on a wall-walk is its work, one at a time (world_siege.cpp).
-    if (w.kind == ProjectileKind::Stone)
-        if (WalkSpot spot; walkSpot(target.pos, spot)) return true;
+    // A stone on the ground is worth its throw at a column end-on, or a deep block: kStoneLane men (a great body is as
+    // many) in the lane it rolls down, from just short of the mark to the end of its roll. A lone man, or a thin line
+    // across its path, loses one man to it at most: the stones wait for a gate, a column, or an order. (Men on a
+    // wall-walk: no roll up there, so the blast's count below.)
+    if (w.kind == ProjectileKind::Stone) {
+        if (WalkSpot spot; !walkSpot(target.pos, spot)) {
+            const Vec3 dir = flatDir(u.pos, target.pos, u.facing);
+            int32_t lane = 0;
+            nearbyNotOf(u.owner, target.pos.x, target.pos.y, kStoneRoll, [&](uint32_t i) {
+                const Unit& o = units_[i];
+                if (!o.alive() || o.owner == u.owner || o.routed || o.inAir()) return;
+                const Vec3 d = (o.pos - target.pos).flat();
+                const Fixed along = d.x * dir.x + d.y * dir.y, across = abs(d.x * dir.y - d.y * dir.x);
+                if (along < -kStoneShort || along > kStoneRoll || across > kStoneHalf) return;
+                lane += o.stats.maxHp >= kThriftGreatHp ? kStoneLane : 1;
+            });
+            return lane >= kStoneLane;
+        }
+    }
     // Water: oil goes out in it, and a fireball is a third of itself (World::explode).
     const bool wet = douses(target.pos);
     if (wet && w.kind == ProjectileKind::Molotov) return false;
@@ -300,20 +321,26 @@ bool World::shyAway(Unit& u) {
     u.menacedBy = foe->id;
     const Fixed gap = sqrt(best) - u.stats.radius - foe->stats.radius;
     if (gap <= kShyCaught) return false;  // caught: he fights
-    // Behind the nearest of his side who fights hand to hand; none near: straight away.
+    // Behind his guard, if he has one near; else the nearest of his side who fights hand to hand; none near: straight away.
     const Unit* cover = nullptr;
     Fixed nearest = kShyCover * kShyCover;
+    bool guards = false;
     nearby(u.pos.x, u.pos.y, kShyCover, [&](uint32_t i) {
         const Unit& o = units_[i];
         if (!o.alive() || o.owner != u.owner || o.id == u.id || o.routed || o.inAir() || precious(o.stats)) return;
         if (o.stats.melee.damage <= 0 || o.stats.ranged.muzzleSpeed > Fixed::zero()) return;
+        const bool mine = o.guard != kNoEntity && (o.guard == u.id || (u.squad != 0 && o.guardSquad == u.squad));
+        if (guards && !mine) return;
         const Fixed d = (o.pos - u.pos).flat().lengthSq();
-        if (d < nearest || (d == nearest && cover != nullptr && o.id < cover->id)) {
+        if ((mine && !guards) || d < nearest || (d == nearest && cover != nullptr && o.id < cover->id)) {
             nearest = d;
             cover = &o;
+            guards = guards || mine;
         }
     });
     const Vec3 away = flatDir(foe->pos, u.pos, -u.facing);
+    // (Guarded, he keeps inside the ring of his guard: where he stands, with them about him. world_guard.cpp)
+    if (guards) return false;
     Vec3 to = cover != nullptr ? cover->pos + flatDir(foe->pos, cover->pos, away) * kShyBehind : u.pos + away * kShyBehind;
     if (!standable(to) || douses(to)) to = u.pos + away * kShyBehind;
     if (!standable(to) || (to - u.pos).flat().lengthSq() < Fixed::one()) return false;

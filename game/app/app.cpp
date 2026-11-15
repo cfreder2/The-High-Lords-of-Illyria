@@ -1180,7 +1180,7 @@ ILLYRIA_API void illyria_set_keys(int force, int march) {
 }
 // 0 as usual, 1 attack, 2 force march, 3 lay satchels, 4 detonate: for one order (the phone's attack button, Z, V, T, L).
 ILLYRIA_API void illyria_set_order_mode(int mode) {
-    if (app && mode >= 0 && mode <= 4) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
+    if (app && mode >= 0 && mode <= 5) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
 }
 // The order mode in hand (a key of the battle's own may have set it: T, L), so that Esc lets go of it.
 ILLYRIA_API int illyria_order_mode() { return app ? static_cast<int>(app->battle->orderMode()) : 0; }
@@ -1849,6 +1849,10 @@ ILLYRIA_API void illyria_special() {
 // Detonate (L): with a grenadier or a wizard selected, the next tap is the satchel (or the ground) to set off.
 ILLYRIA_API void illyria_detonate() {
     if (app) app->battle->detonateAction();
+}
+// Guard (,): the next tap is the squad of yours the selection is to guard.
+ILLYRIA_API void illyria_guard() {
+    if (app) app->battle->guardAction();
 }
 // Hold fire (Shift+K): the selected shoot, throw and lay only when ordered; again, at will.
 ILLYRIA_API void illyria_hold_fire() {
@@ -3349,12 +3353,13 @@ ILLYRIA_API const char* illyria_hud() {
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
                       "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\","
-                      "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s}",
+                      "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s,\"guards\":\"%s\",\"guarded\":%s}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
-                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false");
+                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false",
+                      b.guards(q).c_str(), b.guarded(q) ? "true" : "false");
         s += buf;
         firstSquad = false;
     }

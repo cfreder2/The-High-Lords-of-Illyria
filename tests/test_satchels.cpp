@@ -244,7 +244,7 @@ TEST(explosives_are_carried_in_counts_and_none_is_made_in_battle) {
     CHECK(unitStats(UnitType::DwarfGrenadier).ranged.ammo == 3 && unitStats(UnitType::DwarfGrenadier).satchels.count == 3);
     CHECK(unitStats(UnitType::Wizards).ranged.ammo == 4);
     CHECK(unitStats(UnitType::Dragons).ranged.ammo == 6);
-    CHECK(unitStats(UnitType::Catapult).ranged.ammo == 16);
+    CHECK(unitStats(UnitType::Catapult).ranged.ammo == 4);  // four an engine: eight a train
     for (int t = 0; t < static_cast<int>(UnitType::Count); ++t) {
         const UnitStats s = unitStats(static_cast<UnitType>(t));
         if (s.ranged.muzzleSpeed > Fixed::zero() && s.ranged.explosive.radius > Fixed::zero()) CHECK(s.ranged.ammo > 0);
@@ -659,8 +659,9 @@ TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
     }
 }
 
-TEST(a_catapult_has_sixteen_boulders_and_no_more) {
+TEST(a_catapult_has_four_boulders_and_no_more) {
     // Ordered at a patch of ground for six minutes (a stone every 14 s: twenty-five if there were no end of them).
+    // Four an engine: a train of two has eight.
     World w(WorldConfig{});
     const EntityId engine = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Catapult));
     const Command shell = order(engine, Command::Type::AttackGround, {m(100), m(0), m(0)});
@@ -671,7 +672,27 @@ TEST(a_catapult_has_sixteen_boulders_and_no_more) {
         smashes += count(w, ImpactEvent::Kind::Smash);
     }
     std::printf("  %d boulders came down in six minutes, %d left on the cart\n", smashes, w.findUnit(engine)->ammo);
-    CHECK(smashes == 16 && w.findUnit(engine)->ammo == 0);
+    CHECK(smashes == 4 && w.findUnit(engine)->ammo == 0);
+}
+
+TEST(an_engine_keeps_its_stones_for_a_column_end_on) {
+    // Left to itself for a minute with foes 100 m east of it: one man; a line of eight across its throw; a column of
+    // eight down it. Only the column is worth a stone.
+    for (const int shape : {0, 1, 2}) {
+        World w(WorldConfig{});
+        const EntityId engine = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Catapult));
+        UnitStats still = dummy(UnitType::LightInfantry);
+        for (int k = 0; k < (shape == 0 ? 1 : 8); ++k)
+            w.spawnUnit(1, shape == 1 ? Vec3{m(100), m(k * 2 - 7), m(0)} : Vec3{m(100 + k * 2), m(0), m(0)}, kWest, still);
+        int thrown = 0;
+        for (int i = 0; i < 60 * kTicksPerSecond; ++i) {
+            w.step({});
+            thrown += count(w, ImpactEvent::Kind::Smash);
+        }
+        std::printf("  %s: %d stone(s) thrown, %d left\n", shape == 0 ? "one man" : shape == 1 ? "a line across" : "a column end-on", thrown, w.findUnit(engine)->ammo);
+        if (shape == 2) CHECK(thrown >= 1);
+        else CHECK(thrown == 0 && w.findUnit(engine)->ammo == 4);
+    }
 }
 
 TEST(a_charge_laid_in_the_deployment_lies_there_when_the_battle_begins) {
@@ -695,4 +716,118 @@ TEST(a_charge_laid_in_the_deployment_lies_there_when_the_battle_begins) {
     CHECK(!w.canPrepare(*w.findUnit(g), {m(55), m(0), m(0)}));  // within 50 m of the foe
     w.step(std::span(&far, 1));
     CHECK(laidSatchels(w) == 2 && w.findUnit(g)->hasMoveTarget);  // on his way there on foot
+}
+
+// --- Guard: you have to protect the dwarves ---------------------------------------------------------------------
+
+namespace {
+
+// A pair of dwarves with nothing left to throw at the origin (squad 1), a squad of twelve pikes 25 m west of them (squad 2), and four
+// heavy horse 70 m east ordered at a dwarf. `guard`: the pikes are told to guard the dwarves.
+struct Hunt {
+    int dwarvesLeft = 0, horseLeft = 0;
+    Fixed guardGap;      // the pikes' middle from the dwarves' at the end
+    bool called = false; // the dwarves called for help, hunted
+    int calledAt = -1, firstBlow = -1;
+};
+Hunt hunt(bool guard, bool pikesNear = true) {
+    World w(WorldConfig{});
+    std::vector<EntityId> dwarves, pikes, horse;
+    for (int k = 0; k < 2; ++k) {
+        dwarves.push_back(w.spawnUnit(0, {m(0), m(k * 2), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier)));
+        w.restoreLoad(dwarves.back(), 0, 0);
+        w.setSquad(dwarves.back(), 1, FormationKind::None);
+    }
+    for (int k = 0; k < 12; ++k) {
+        pikes.push_back(w.spawnUnit(0, {m((pikesNear ? -25 : -400) - (k / 6) * 2), m((k % 6) * 2 - 5), m(0)}, kEast, unitStats(UnitType::Pikemen)));
+        w.setSquad(pikes.back(), 2, FormationKind::None);
+    }
+    for (int k = 0; k < 4; ++k) {
+        horse.push_back(w.spawnUnit(1, {m(70), m(k * 3 - 4), m(0)}, kWest, unitStats(UnitType::HeavyCavalry)));
+        w.setSquad(horse.back(), 1, FormationKind::None);
+    }
+    std::vector<Command> cmds;
+    for (EntityId id : horse) {
+        Command c{1, id, Command::Type::AttackUnit, {}};
+        c.targetUnit = dwarves[0];
+        cmds.push_back(c);
+    }
+    if (guard)
+        for (EntityId id : pikes) {
+            Command c{0, id, Command::Type::Guard, {}};
+            c.targetUnit = dwarves[0];
+            cmds.push_back(c);
+        }
+    // (The pikes have a quarter of a minute to come up before the horse are let go.)
+    w.step(guard ? std::span<const Command>(cmds.data() + 4, cmds.size() - 4) : std::span<const Command>{});
+    for (int i = 0; i < 15 * kTicksPerSecond; ++i) w.step({});
+    w.step(std::span<const Command>(cmds.data(), 4));
+    Hunt h;
+    for (int i = 0; i < 40 * kTicksPerSecond; ++i) {
+        w.step({});
+        for (const HelpCall& c : w.helpCalls())
+            if (c.owner == 0 && c.why == HelpCall::Why::Hunted && !h.called) h.called = true, h.calledAt = i;
+        for (EntityId id : dwarves)
+            if (h.firstBlow < 0 && w.findUnit(id)->hp < w.findUnit(id)->stats.maxHp) h.firstBlow = i;
+    }
+    h.dwarvesLeft = alive(w, dwarves);
+    h.horseLeft = alive(w, horse);
+    Vec3 pm, dm;
+    int pn = 0, dn = 0;
+    for (EntityId id : pikes)
+        if (w.findUnit(id)->alive()) pm += w.findUnit(id)->pos, ++pn;
+    for (EntityId id : dwarves)
+        if (w.findUnit(id)->alive()) dm += w.findUnit(id)->pos, ++dn;
+    h.guardGap = pn && dn ? (pm / Fixed::fromInt(pn) - dm / Fixed::fromInt(dn)).flat().length() : m(-1);
+    return h;
+}
+
+}  // namespace
+
+TEST(unguarded_dwarves_are_ridden_down_and_guarded_ones_are_not) {
+    // Nobody near; a squad of pikes near but not told to guard (they answer the dwarves' call when it comes); the pikes on guard.
+    const Hunt bare = hunt(false, false), free = hunt(false), kept = hunt(true);
+    std::printf("  four heavy horse at a pair of dwarves. Alone: %d of 2 dwarves left, %d of 4 horse. Twelve pikes near, free: %d and %d. On guard: %d and %d, the pikes %.1f m from them\n",
+                bare.dwarvesLeft, bare.horseLeft, free.dwarvesLeft, free.horseLeft, kept.dwarvesLeft, kept.horseLeft, kept.guardGap.toDouble());
+    CHECK(free.dwarvesLeft <= kept.dwarvesLeft);
+    CHECK(bare.dwarvesLeft == 0);  // the design: nobody protected them
+    CHECK(kept.dwarvesLeft == 2);
+    CHECK(kept.horseLeft < bare.horseLeft);
+    CHECK(kept.guardGap >= Fixed::zero() && kept.guardGap < m(12));  // they stayed with them
+}
+
+TEST(hunted_dwarves_call_for_help_before_the_horse_are_on_them) {
+    const Hunt bare = hunt(false);
+    std::printf("  the call at %.1f s, the first blow at %.1f s\n", bare.calledAt / 30.0, bare.firstBlow / 30.0);
+    CHECK(bare.called);
+    CHECK(bare.firstBlow < 0 || bare.calledAt + 3 * kTicksPerSecond <= bare.firstBlow);  // three seconds' warning at the least
+}
+
+TEST(a_guard_goes_to_nobody_elses_help_and_an_order_ends_his_duty) {
+    World w(WorldConfig{});
+    const EntityId dwarf = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+    w.setSquad(dwarf, 1, FormationKind::None);
+    w.restoreLoad(dwarf, 0, 0);
+    const EntityId guard = w.spawnUnit(0, {m(-4), m(0), m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
+    w.setSquad(guard, 2, FormationKind::None);
+    // A friend fighting 12 m off (a free man would go to him: World::supportFoe).
+    const EntityId friendly = w.spawnUnit(0, {m(0), m(14), m(0)}, kEast, post());
+    w.setSquad(friendly, 3, FormationKind::None);
+    UnitStats brawler = unitStats(UnitType::LightInfantry);
+    brawler.maxHp = 5000;
+    const EntityId foe = w.spawnUnit(1, {m(1), m(15), m(0)}, kWest, brawler);
+    Command duty{0, guard, Command::Type::Guard, {}};
+    duty.targetUnit = dwarf;
+    w.step(std::span(&duty, 1));
+    CHECK(w.findUnit(guard)->guard == dwarf && w.guarded(*w.findUnit(dwarf)));
+    Fixed farthest;
+    for (int i = 0; i < 10 * kTicksPerSecond; ++i) {
+        w.step({});
+        farthest = max(farthest, (w.findUnit(guard)->pos - w.findUnit(dwarf)->pos).flat().length());
+    }
+    (void)foe;
+    CHECK(farthest < m(9));  // by his ward, not off to the fight 14 m away
+    const Command go = order(guard, Command::Type::Move, {m(-30), m(0), m(0)});
+    w.step(std::span(&go, 1));
+    CHECK(w.findUnit(guard)->guard == kNoEntity && !w.guarded(*w.findUnit(dwarf)));
 }

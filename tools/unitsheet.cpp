@@ -101,11 +101,14 @@ int main() {
                 "set off. A satchel is not laid in water, and one that ends there is dead. A fireball bursting on water, or on\n"
                 "a man standing in it, goes up in steam: a third of its blast radius and a third of its damage. Left to\n"
                 "themselves, grenadiers do not throw at men in a ford, and wizards weigh them by the smaller blast.\n\n"
-                "**Rare.** Those who throw a blast come alone (one dwarf, one wizard, one dragon to a squad), and an army has\n"
+                "**Rare.** Those who throw a blast come few (two dwarves, one wizard, one dragon to a squad; two engines to a\n"
+                "train, with eight stones between them), and an army has\n"
                 "few: at most %d Dwarven Grenadiers, %d Wizards, %d Dragons, %d Catapults (a Conquest realm keeps no more, and a\n"
                 "Skirmish host buys no more). A grenadier or a wizard with no order gives ground before a foe within 10 m,\n"
                 "to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. One bowman in\n"
-                "three picks out a foe's grenadier or wizard within 30 m before anyone else.\n\n",
+                "three picks out a foe's grenadier or wizard within 30 m before anyone else. A squad ordered to guard them\n"
+                "(comma, then click them) rings them and strikes what comes to the ring. An engine's stones go unasked only\n"
+                "at a gate, at four or more men in the lane a stone rolls down, or at three in its blast on a wall-walk.\n\n",
                 Conquest::keepCap(UnitType::DwarfGrenadier), Conquest::keepCap(UnitType::Wizards), Conquest::keepCap(UnitType::Dragons),
                 Conquest::keepCap(UnitType::Catapult));
     std::printf("| Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |\n");

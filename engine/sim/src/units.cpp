@@ -376,7 +376,7 @@ UnitStats unitStats(UnitType type) {
             s = base(type, r(8, 5), r(5, 2), r(7, 5), 380);
             explosive(s, ProjectileKind::Stone, m(40), sec(14), m(4), m(140), m(150), m(3), 100, m(9));
             s.ranged.minRange = m(30);
-            s.ranged.ammo = 16;  // the stones on its cart
+            s.ranged.ammo = 4;  // the stones on its cart: eight to a train of two engines, and none made in battle
             s.aggroRange = Fixed::zero();
             s.mass = m(25);
             s.bleeds = false;

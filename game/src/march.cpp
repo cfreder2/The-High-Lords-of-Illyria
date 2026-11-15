@@ -160,7 +160,7 @@ int March::resupplyCost(size_t squad) const {
     int carried, full;
     load(squad, carried, full);
     if (full <= 0 || carried >= full) return 0;
-    // Half the squad's price for a whole squad's whole load, in proportion (a dwarf's five satchels and six bottles: 30 gold).
+    // Half the squad's price for a whole squad's whole load, in proportion (a pair of dwarves' six satchels and six bottles: 30 gold).
     const Squad& q = squads[squad];
     const int whole = std::max(1, full / std::max<int>(1, static_cast<int>(q.men.size())) * q.full * 2);
     return std::max(1, (sim::Conquest::price(q.type) * (full - carried) + whole - 1) / whole);

@@ -1459,6 +1459,7 @@ void Battle::runEnemyAi() {
         const size_t q = static_cast<size_t>(&s - squads_.data());
         aiRally(q);
         aiFormation(q);
+        if (onGuard(s)) continue;  // on guard duty (world_guard.cpp): its own while its ward stands, as for every seat (aiFight)
         // Gone to a friend's call (aiAnswer): left to it until it is there, or a while.
         if (q < aiAnswering_.size() && world_->tick() < aiAnswering_[q]) {
             bool going = false;

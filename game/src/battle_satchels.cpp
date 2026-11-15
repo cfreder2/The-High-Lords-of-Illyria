@@ -215,6 +215,65 @@ void Battle::collectBlasts() {
 
 // --- The computer's own -------------------------------------------------------------------------------------------
 
+void Battle::guardAction() {
+    if (orderMode_ == OrderMode::Guard) {
+        orderMode_ = OrderMode::Normal;  // pressed again: let go
+        return;
+    }
+    if (selectedAlive().empty()) say("Select a squad first");
+    else orderMode_ = OrderMode::Guard;
+}
+
+void Battle::orderGuard(sim::EntityId friendly) {
+    const sim::Unit* ward = world_->findUnit(friendly);
+    if (ward == nullptr || !ward->alive() || ward->owner != local_) return;
+    std::vector<sim::EntityId> guardsmen;
+    for (sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (id == friendly || (ward->squad != 0 && u.squad == ward->squad)) continue;
+        sim::Command c{local_, id, sim::Command::Type::Guard, {}};
+        c.targetUnit = friendly;
+        pending_.push_back(c);
+        guardsmen.push_back(id);
+    }
+    if (guardsmen.empty()) {
+        say("Click another squad to guard");
+        return;
+    }
+    const int q = squadOfUnit_[friendly - 1];
+    say("Guarding " + (q >= 0 && !squads_[static_cast<size_t>(q)].name.empty() ? squads_[static_cast<size_t>(q)].name : std::string(sim::unitTypeName(static_cast<sim::UnitType>(ward->stats.type)))));
+    markOrdered(guardsmen);
+    orderMode_ = OrderMode::Normal;
+}
+
+std::string Battle::guards(const Squad& s) const {
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (!u.alive() || u.guard == sim::kNoEntity) continue;
+        const sim::Unit* ward = world_->wardOf(u);
+        if (ward == nullptr) continue;
+        const int q = squadOfUnit_[ward->id - 1];
+        return q >= 0 && !squads_[static_cast<size_t>(q)].name.empty() ? squads_[static_cast<size_t>(q)].name : std::string(sim::unitTypeName(static_cast<sim::UnitType>(ward->stats.type)));
+    }
+    return {};
+}
+
+bool Battle::onGuard(const Squad& s) const {
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.alive() && u.guard != sim::kNoEntity && world_->wardOf(u) != nullptr) return true;
+    }
+    for (const sim::Command& c : pending_)
+        if (c.type == sim::Command::Type::Guard && std::find(s.members.begin(), s.members.end(), c.unit) != s.members.end()) return true;
+    return false;
+}
+
+bool Battle::guarded(const Squad& s) const {
+    for (sim::EntityId id : s.members)
+        if (world_->units()[id - 1].alive()) return world_->guarded(world_->units()[id - 1]);
+    return false;
+}
+
 bool Battle::aiArmed(const Squad& s) const {
     for (sim::EntityId id : s.members) {
         const sim::Unit& u = world_->units()[id - 1];
@@ -278,10 +337,34 @@ bool Battle::aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& a
 bool Battle::aiPrecious(size_t squad, const V3& foe) {
     const Squad& s = squads_[squad];
     const Role role = roleOf(s.type);
+    // A squad on guard duty keeps to it (world_guard.cpp): the computer gives it no other order.
+    if (onGuard(s)) return true;
     if (role != Role::Bomber && role != Role::Caster) return false;
     if (aiMemo_.size() < squads_.size()) aiMemo_.resize(squads_.size());
     AiMemo& memo = aiMemo_[squad];
     const V3 c = squadCentre(s, false);
+    // His guard, once: the nearest squad of his side's foot that guards nobody yet (pikes before others: they stop horse).
+    if (!memo.guardAsked) {
+        memo.guardAsked = true;
+        const Squad* pick = nullptr;
+        float best = 1e30f;
+        for (const Squad& f : squads_) {
+            if (f.owner != s.owner || &f == &s || f.garrison || aliveCount(f) == 0 || roleOf(f.type) != Role::Melee || f.type == sim::UnitType::Hero || sim::unitStats(f.type).mounted) continue;
+            if (onGuard(f)) continue;
+            const float d = flat(squadCentre(f, false), c) * (f.type == sim::UnitType::Pikemen ? 0.5f : 1.0f);
+            if (d < best) best = d, pick = &f;
+        }
+        sim::EntityId ward = sim::kNoEntity;
+        for (sim::EntityId id : s.members)
+            if (ward == sim::kNoEntity && world_->units()[id - 1].alive()) ward = id;
+        if (pick != nullptr && best < 120.0f && ward != sim::kNoEntity)
+            for (sim::EntityId id : pick->members) {
+                if (!world_->units()[id - 1].alive()) continue;
+                sim::Command cmd{s.owner, id, sim::Command::Type::Guard, {}};
+                cmd.targetUnit = ward;
+                pending_.push_back(cmd);
+            }
+    }
     bool armed = false, laying = false;
     int satchels = 0;
     for (sim::EntityId id : s.members) {

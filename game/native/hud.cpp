@@ -1621,6 +1621,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         facts.rallyIn = static_cast<int>(q.num("rallyIn"));
         facts.calling = q.flag("calling"), facts.answering = q.flag("answering"), facts.hold = q.flag("hold"), facts.idle = q.flag("idle");
         facts.holdFire = q.flag("holdFire");
+        facts.guarding = !q.str("guards").empty(), facts.guarded = q.flag("guarded");
         facts.sat = static_cast<int>(q.num("sat")), facts.satMax = static_cast<int>(q.num("satMax"));
         facts.ammo = static_cast<int>(q.num("ammo")), facts.ammoMax = static_cast<int>(q.num("ammoMax"));
         facts.rank = q.num("level") > 0 ? 0 : static_cast<int>(q.num("rank"));  // (a hero's is his level: the selection line says it)
@@ -1835,6 +1836,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"T + click", "lay a satchel (Shift: a line)"},
               {"L + click", "detonate a satchel"},
               {"Shift + K", "hold fire"},
+              {", + click", "guard that squad (or its card)"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},

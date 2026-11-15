@@ -595,6 +595,18 @@ void World::applyCommand(const Command& cmd) {
         u->holdFire = cmd.hold;
         return;
     }
+    if (cmd.type == Command::Type::Guard) {
+        // His guard duty: what he was about is dropped (as a Stop), and he goes to his ward of himself (guardStep).
+        const Unit* ward = findUnit(cmd.targetUnit);
+        if (ward == nullptr || !ward->alive() || ward->owner != u->owner || ward->id == u->id || (ward->squad != 0 && ward->squad == u->squad)) return;
+        u->queue.clear();
+        Command stop = cmd;
+        stop.type = Command::Type::Stop;
+        startOrder(*u, stop);
+        u->guard = ward->id;
+        u->guardSquad = ward->squad;
+        return;
+    }
     if (cmd.type == Command::Type::SetFormation) {
         u->formation = cmd.formation;
         return;
@@ -634,6 +646,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
     u->posted = false;       // ... nor a post: the next order's end is the next post (Stop: none, he is free)
+    u->guard = kNoEntity;    // ... nor a guard duty (Command::Guard sets it again after its own Stop)
+    u->guardSquad = 0;
     u->helping = kNoEntity;  // ... nor an answer to a friend's call
     u->helpSince = 0;
     u->wheel = 0;
@@ -737,6 +751,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
         case Command::Type::SetGate:
         case Command::Type::SetStance:
         case Command::Type::HoldFire:
+        case Command::Type::Guard:
         case Command::Type::SetFormation:
         case Command::Type::Answer:
         case Command::Type::Rally: break;  // (applyCommand's own)
@@ -1574,6 +1589,8 @@ void World::updateUnit(Unit& u) {
     } else if (Unit* sortie = escortFoe(u)) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
+    } else if (u.guard != kNoEntity && guardStep(u)) {
+        // On guard: by his ward, between him and what threatens him (world_guard.cpp).
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
                enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
@@ -2932,6 +2949,10 @@ uint64_t World::checksum() const {
         if (u.stats.ranged.ammo > 0) h.addI64(u.ammo);
         if (u.holdFire || u.detonate) h.addU64(static_cast<uint64_t>(u.holdFire) | (static_cast<uint64_t>(u.detonate) << 1));
         if (u.menacedBy != kNoEntity) h.addU64(u.menacedBy);
+        if (u.guard != kNoEntity) {
+            h.addU64(u.guard);
+            h.addU64(u.guardSquad);
+        }
         // Only while a blast thrower is waiting on a friend in his way.
         if (u.aoeHeld != 0) {
             h.addI64(u.aoeHeld);

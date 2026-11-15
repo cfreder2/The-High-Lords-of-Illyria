@@ -1,15 +1,16 @@
 # The satchel trap at Oakhaven Ford (armies bought for 300 gold a side), as a person would play it. The isle in the
 # ford is where both hosts must come: the pole is on it.
-#   The deployment pause: the dwarf's five charges are laid in a line across the isle, west of the pole, within a
+#   The deployment pause: the pair's charges are laid in a line of five across the isle, west of the pole, within a
 #   Molotov's throw of your bank (charges laid in the deployment lie there when the battle begins; a click in the ford
-#   itself is refused: "Not in water"). He holds his fire and is sent down to your bank of the ford.
-#   The battle: when the Red Hand's foot stand on the isle raising their flag: the dwarf, L, click a charge. One bottle,
-#   lobbed onto the line.
+#   itself is refused: "Not in water"). The pair holds its fire and is sent down to your bank of the ford.
+#   The battle: when the Red Hand's foot stand on the isle raising their flag: the dwarves, L, click a charge. One
+#   bottle, lobbed onto the line.
 #
 #   Illyria --play tools/playtest/satchel-trap.txt --play-out out/trap --play-log out/trap/trap.log
 #
-# Compare with satchel-no-trap.txt (the same, no charges). The log's `event=` carries "Ambush: N down"; kills a satchel
-# is that N over the five laid. Coordinates are window points at 1600 x 900 with the camera below (north up).
+# The log's `event=` carries "Ambush: N down" (20 as committed: 4.0 a satchel). The pair is not guarded here:
+# satchel-trap-guarded.txt is the same with the pikes told to guard it. Coordinates are window points at 1600 x 900
+# with the camera below (north up).
 
 size 1600 900
 start skirmish ford budget 300 deploy
@@ -18,7 +19,7 @@ camera 498 510 55 1.5708
 wait 1.5
 cards
 
-# The dwarf (card 12): T, then Shift+click. The first click is in the ford: refused. Then five across the isle.
+# The dwarves (card 12): T, then Shift+click. The first click is in the ford: refused. Then five across the isle.
 select 12
 key t
 key shift down

@@ -61,6 +61,7 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::SetStance:
                 case sim::Command::Type::Rally:
                 case sim::Command::Type::HoldFire:
+                case sim::Command::Type::Guard:
                 case sim::Command::Type::SetFormation:
                 case sim::Command::Type::Answer: break;
             }
@@ -500,6 +501,7 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
         return p.kind == K::Ground && world_->douses(toSim(p.at)) ? Intent::Cannot : Intent::AttackGround;  // (not in water)
     }
     if (mode == OrderMode::Detonate) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::Guard) return p.kind == K::Own ? Intent::Select : Intent::Cannot;
     if (mode == OrderMode::Attack) {
         switch (p.kind) {
             case K::Own:

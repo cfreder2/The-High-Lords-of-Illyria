@@ -121,7 +121,7 @@ Unit* World::supportFoe(Unit& u) {
     // Not a man told to hold, a garrison at its station, a lord, a healer (seekWounded), a scavenger or an engine. A bowman
     // goes too: to where he can shoot the foe pressing his friend (support).
     const bool shooter = u.stats.ranged.muzzleSpeed > Fixed::zero();
-    if (u.hold || u.stationed || isHero(u) || (u.stats.melee.damage <= 0 && !shooter) || u.stats.gait == Gait::Wheeled || u.stats.healing.amount > 0 ||
+    if (u.hold || u.stationed || u.guard != kNoEntity || isHero(u) || (u.stats.melee.damage <= 0 && !shooter) || u.stats.gait == Gait::Wheeled || u.stats.healing.amount > 0 ||
         u.stats.scavenge.sight > Fixed::zero() || (shooter && u.stats.ranged.autoRange <= Fixed::zero()))
         return none();
     if ((tick_ + u.id) % kSupportLook == 0) {

@@ -415,6 +415,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
     const Squad& s = squads_[squad];
     const int alive = aliveCount(s);
     if (alive == 0 || standing(s).broken == alive) return;  // routed: beyond orders
+    if (onGuard(s)) return;                                 // on guard duty: its own (world_guard.cpp)
     const V3 c = squadCentre(s, false);
     const Role role = roleOf(s.type);
     const auto go = [&](const V3& to) {

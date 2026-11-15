@@ -88,7 +88,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `quit` | ends the run. |
 
 Key names: `a`-`z`, `0`-`9`, `space`, `tab`, `return` (begins a battle waiting on its deployment, fights a finished one again, else opens the menu), `escape`, `backspace`, `backtick` (or `` ` ``: plan
-orders), `slash` (help), `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates.) There are
+orders), `slash` (help), `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates; `key comma` then `select N` tells the selected to guard squad N.) There are
 no function keys (the game binds none). The game's keys are in the in-game help (`slash`).
 
 There is no `text` command: the game takes no typed text.
@@ -159,9 +159,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 | `march.txt` | The March: the first battle with no orders, its results sheet, the camp with the purse spent, the village set out. |
-| `satchel-trap.txt` | the Ford with bought armies (300 gold a side), as a person would play the trap: in the deployment pause the dwarf's five charges are laid along the bank (T, Shift+click; they lie there when the battle begins), he holds his fire in the rear, the pikes go forward on Hold; as the Red Hand's foot start across he is told to detonate (L, click a charge), walks up and lobs his bottle onto the line. The log's `event=` carries "Ambush: N down". |
-| `satchel-no-trap.txt` | its control: the same purse, camera, deployment and waits, no charges. |
-| `satchel-careless.txt` | a line of three, the Warriors marched onto it, Hold fire, then Detonate (L, click): the red rings, the blast, "Own blast: N down" in the log. |
+| `satchel-trap.txt` | Oakhaven Ford with bought armies (300 gold a side), as a person would play the trap: in the deployment pause the pair's charges are laid in a line of five across the isle (T, Shift+click; a click in the ford is refused), they hold their fire and go down to the bank; when the Red Hand's foot stand on the isle the pair is told to detonate (L, click a charge). The log's `event=` carries "Ambush: N down" (20 as committed). |
+| `satchel-trap-guarded.txt` | the same, the pikes told to guard the pair first (their card, comma, the dwarves' card): "Guarding Dwarven Grenadiers" in the log, the trap, and later "call for help: hunted". |
 | `satchel-ai-gate.txt` | a village's siege with bought armies, you outside: the keepers' dwarf mines the ground inside his gate. Nothing is ordered; two shots. |
 
 ```

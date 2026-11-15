@@ -38,7 +38,7 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 | Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.8 | 11 | slash | 1.40 s | 0.6 | 0 |  | never | no blood;  |
 | Archons | 8 | 170 | 2.40 | 0.80 | 2.0 | 2.8 | 26 | slash | 1.20 s | 0.8 | 3 |  | 30% |  |
 | Hero | 4 | 260 | 2.00 | 0.50 | 2.0 | 2.8 | 30 | slash | 1.10 s | 0.8 | 3 | 55% | never |  |
-| Dwarven Grenadiers | 4 | 110 | 1.30 | 0.45 | 1.0 | 1.6 | 5 | blunt | 1.20 s | 0.5 | 0 |  | 60% |  |
+| Dwarven Grenadiers | 4 | 70 | 1.30 | 0.45 | 1.0 | 1.6 | 5 | blunt | 1.20 s | 0.5 | 0 |  | 60% |  |
 | Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | blunt | 1.20 s | 0.5 | 0 |  | 120% | heals 35 every 2.5 s, 6 charges;  |
 | Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | slash | 1.20 s | 0.6 | 0 | 65% | 85% |  |
 | Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | cleave | 0.93 s | 0.6 | 0 |  | 35% |  |
@@ -67,19 +67,22 @@ set off. A satchel is not laid in water, and one that ends there is dead. A fire
 a man standing in it, goes up in steam: a third of its blast radius and a third of its damage. Left to
 themselves, grenadiers do not throw at men in a ford, and wizards weigh them by the smaller blast.
 
-**Rare.** Those who throw a blast come alone (one dwarf, one wizard, one dragon to a squad), and an army has
+**Rare.** Those who throw a blast come few (two dwarves, one wizard, one dragon to a squad; two engines to a
+train, with eight stones between them), and an army has
 few: at most 2 Dwarven Grenadiers, 1 Wizards, 1 Dragons, 3 Catapults (a Conquest realm keeps no more, and a
 Skirmish host buys no more). A grenadier or a wizard with no order gives ground before a foe within 10 m,
 to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. One bowman in
-three picks out a foe's grenadier or wizard within 30 m before anyone else.
+three picks out a foe's grenadier or wizard within 30 m before anyone else. A squad ordered to guard them
+(comma, then click them) rings them and strikes what comes to the ring. An engine's stones go unasked only
+at a gate, at four or more men in the lane a stone rolls down, or at three in its blast on a wall-walk.
 
 | Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Archers | arrow | pierce |  | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
 | Wizards | fireball | fire | 4 | 24 m/s | 7.0 s |  | 50 m | 45 m |  | 4 m |  | 4.5 m | 90 |  |
 | Dragons | fireball | fire | 6 | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
-| Dwarven Grenadiers | Molotov | fire | 6 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
-| Catapults | stone | blunt | 16 | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
+| Dwarven Grenadiers | Molotov | fire | 3 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
+| Catapults | stone | blunt | 4 | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 
 ## Satchel charges
 
@@ -88,7 +91,7 @@ a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11
 (8 to 15 ticks): a line goes up one after another. A blast also shakes the morale of everyone left standing
 within twice its radius.
 
-**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 80 m of him, 40 m clear
+**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 160 m of him, 50 m clear
 of any foe). In battle, Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his
 next order, or with none steps back out of its blast. Detonate (L, then click a satchel or the ground): of the
 grenadiers and wizards selected, the nearest in reach throws one missile at once at the satchel nearest the click
@@ -105,7 +108,7 @@ unlit, where he falls.
 
 | Unit | Carried | Blast radius | Blast damage | Between lays | All of them at once |
 |---|---|---|---|---|---|
-| Dwarven Grenadiers | 5 | 5.0 m | 150 | 3.0 s | 10.0 m, 450 |
+| Dwarven Grenadiers | 3 | 5.0 m | 150 | 3.0 s | 7.5 m, 300 |
 
 ## The boulder
 

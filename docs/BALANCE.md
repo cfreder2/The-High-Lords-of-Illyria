@@ -338,25 +338,27 @@ The owner's direction: the dwarf is the play of the battle, as in Myth; one is a
 
 | Change | Was | Now | Why |
 |---|---|---|---|
-| Grenadier squad | 6 dwarves (8 and 6 at the Ford) | **1 dwarf** | one is the unit; six made satchels a carpet and the dwarf nobody |
-| Grenadier body | 50 hp, 1.8 m/s, morale 100% | 110 hp, 1.6 m/s, 60% | tough for his size, slow, and used to standing alone (a lone man is always outnumbered) |
-| Grenadier price | 32 gold, 4 days, upkeep 8 | **60 gold, 6 days, upkeep 15** | one man at the price of three and a half squads of heavy foot |
-| Grenadiers kept | no limit | **2 to a realm, 2 to a Skirmish host** (the computer buys 1) | rare by rule, not by price alone |
+| Grenadier squad | 6 dwarves (8 and 6 at the Ford) | **2 dwarves** (was 1 for a while) | the owner's call: a dwarven unit is a pair, a wizard is alone |
+| Grenadier body | 50 hp, 1.8 m/s, morale 100% | **70 hp each** (the lone dwarf was 110), 1.6 m/s, 60% | fragile: the pair has 140 between two bodies, and each dies to what would have wounded the one |
+| Grenadier price | 32 gold, 4 days, upkeep 8 | **60 gold, 6 days, upkeep 15** a pair | the price of three and a half squads of heavy foot; unchanged by the pair |
+| Grenadiers kept | no limit | **2 pairs to a realm, 2 to a Skirmish host** (the computer buys 1) | rare by rule; the cap was not lowered for the pair: the load was split instead |
 | Satchel | 4 m, 80, five carried, 4 s between lays | **5 m, 150**, five carried, 3 s | a satchel under a column kills most of a squad of foot (light 60 hp dies within 3 m of it, heavy 90 hp within 2 m) |
-| Satchel on a gate | three times its blast (240) | twice (300) | seven for a town gate: more than one dwarf carries |
+| Satchel on a gate | three times its blast (240) | twice (300) | seven for a town gate: one more than a pair carries |
 | Chain | 4 to 11 ticks | 4 to 11 from a bottle, **8 to 15 from another satchel** | a line goes up one after another |
 | Blast on morale | the dead only | 150 off everyone left standing within twice the blast | survivors are shaken |
-| Molotovs | no end of them | **6** | a decision each; the last is kept for his satchels |
+| Load | no end of Molotovs, five satchels a dwarf | **3 Molotovs and 3 satchels a dwarf: 6 and 6 a pair** (the lone dwarf had 6 and 5) | the unit's whole load as it was, split; each keeps his last bottle for the satchels |
 | Wizard squad | 3 (2 at the Ford) | **1 wizard**, 1 kept at most | extremely rare |
 | Wizard | 45 hp; fireball 3.5 m, 50, every 8 s, no end of them | 40 hp; **4 fireballs**, 4.5 m, 90, every 7 s | powerful and fragile; four is one for the opening, one for the satchel line, two for the crisis |
 | Wizard levy | 30 | 70 | (a levy of them exists nowhere yet; a hero for hire's company and a ruin are how one comes) |
 | Dragon | fireballs without end | **6 breaths**, 1 kept at most | then 650 hp of claws |
-| Catapult | stones without end | **16 stones** an engine, 3 trains kept at most | a gate takes four or five good stones; a train of two has 32 |
+| Catapult | stones without end (then 16 an engine: 32 a train) | **4 stones an engine: 8 a train**, 3 trains kept at most | every stone a decision: a town gate takes 3 square on the doors (900 each of 2000), 4 in play, leaving 4; a capital's two doors want two trains |
 | Hyena-folk | throw what they pick up | the same | already limited by what lies on the field |
 | Thrift | fired at the nearest foe in reach | three or more in the blast (a 200 hp body counts as three), or a foe within 6 m but outside his own blast; never the routed | a store is not spent on one man |
 | A thrower's weight in the odds | his missile's damage rate | half of it while he has a store, his hands when it is spent | hyena-folk and supporters reckon a thrifty wizard for what he will do |
 | Water | none | Molotov and satchel dead in it; a fireball a third (radius and damage) | the ford is mined on its bank |
 | Left to himself | fought, or stood | gives ground before a foe within 10 m to behind his foot, who come to him | precious: never in the melee by his own choice |
+| Stones' thrift | at a man on a wall-walk, one at a time; on the ground three in the blast | four or more men in the lane the stone rolls down (a column end-on); three in the blast on a wall-walk; never a lone man or a thin line across | a boulder kills nothing there |
+| Guard | none | a squad ordered to guard another rings it and strikes what comes (comma, click) | you have to protect the dwarves: unguarded they die, by design |
 | Bowmen | shot the nearest | shoot a foe's dwarf or wizard in reach first | the counterplay; a line of bodies in front of him is his cover |
 
 ### Measured (tests/test_satchels.cpp, on open ground, one seed each)
@@ -372,30 +374,33 @@ The owner's direction: the dwarf is the play of the battle, as in Myth; one is a
 | Six bowmen, a foe's line at 30 m and his dwarf at 42 m beyond its flank | the dwarf dead at 34 s, the line untouched | | |
 | A Molotov into the ford; a satchel in the ford beside a burning one; a fireball on a man in the ford against one on the bank | doused; one blast, the wet one still lying; 3 hp against 19 | | |
 
-One dwarf used well is worth a squad and more; left alone he is worth a quarter of one and dies.
+| Four heavy horse sent at a pair with nothing left to throw: alone / twelve pikes near but not on guard / the pikes on guard | dwarves left 0 / 1 / **2** of 2; horse left 4 / 2 / **0** of 4 | | they called "hunted" 10 s before the first blow |
+| An engine left to itself for a minute, foes at 100 m: one man / eight in a line across / eight in a column end-on | 0 / 0 / 4 stones thrown | | |
 
-### Played (tools/playtest/satchel-*.txt, the Ford, 300 gold a side, Normal)
+(The rows above the last two were measured with one dwarf carrying the old load; they were not re-measured with a pair.) A pair used well is worth a squad and more; left alone it is worth a quarter of one and dies.
 
-**Before** (the first pass): the trap swung nothing. With three charges laid by a dwarf walking to them after the battle began, one "Ambush: 3 down" (1.0 a satchel), and at 233 s 64 of 95 of mine and 66 of 125 of the foe left against 73 and 70 without it. Why, found by playing it run after run:
+### Played (tools/playtest/satchel-trap.txt, satchel-trap-guarded.txt: Oakhaven Ford, 300 gold a side, Normal)
 
-1. **He could not get there.** A dwarf at 1.6 m/s takes over half a minute to reach a bank 50 m off and lay three charges; the foe's horse are over the ford in 24 s. Now charges ordered in the deployment pause are laid beforehand.
-2. **The detonator was dead.** The computer's horse ride for the dwarf first (by design), and every bow in reach picked him out: 36 archers had him dead from across the river. Forward of the line he never lived to throw. Now one bowman in three picks him out, within 30 m; and the play is to keep him in the rear until the horse are spent.
-3. **The ordered missile did not arrive.** A wizard's ordered fireball at the Ford burst on the boughs over his own head, or on the first man in its way; lobbed, the wind carried it into the river; landing 1.5 m from a charge on the bank it was "in water" by the ground's kind and went up in steam, a third as wide, lighting nothing. Now the ordered missile is placed (wind allowed for, lobbed, the boughs looked for) and water is where water stands.
-4. **The foe sprang it.** The Red Hand's own wizard and dragon threw at the player's charges when a man of his stood near one. Now nobody throws at a foe's charges of his own accord.
-5. **Spacing.** Charges 5.8 m apart (a guess at the screen's scale) are not in one another's 5 m blast: the chain stops. The script lays them 3.5 m apart; the ring on the ground shows it.
-6. **Timing.** From the order to the blast is the walk to his throw and the bottle's flight: about 25 s from the rear. Ordered when the foe were on the line it came down behind them. The order is given as their foot start across the ford.
-7. **Tough marks.** On the classic Ford's giants, minotaurs and fiends (230 to 350 hp) a line of 150s kills few; the trap is for foot.
+The isle in the ford is where both hosts must come (the pole is on it). In the deployment the pair's charges are laid in a line of five across the isle, a Molotov's throw from the near bank (a click in the ford itself is refused: "Not in water"); the pair holds its fire and walks down to the bank; when the Red Hand's foot stand on the isle raising their flag: L, click a charge.
 
-**After** (`satchel-trap.txt`, one run): five charges laid in the deployment along the bank, the dwarf holding his fire in the rear, the pikes forward on Hold; the foe's horse broke on the pikes twice; at 70 s the dwarf was told to detonate, walked up and lobbed one Molotov. **"Ambush: 10 down" at 104 s: eleven of the Red Hand's foot fell in one second, 2.0 a satchel, for one bottle; the dwarf lived.** At about 110 s: 81 of 95 of mine and 68 of 125 of the foe left; at 120 s 77 and 59. The control (`satchel-no-trap.txt`, the same deployment, no charges): 78 and 77 at 108 s, 75 and 66 at 118 s. Three other runs of the same play, with the dwarf brought up earlier to stand behind the pikes, lost him to the second charge of horse before the foot arrived, and sprang nothing: brought forward early he dies cheaply, in play as in the tests.
+| Run | Detonate ordered at | Result | The pair |
+|---|---|---|---|
+| Unguarded | 63 s | **"Ambush: 20 down"** at 72 s: 20 of 127 for five satchels and one Molotov, 4.0 a satchel; their flag stopped at 43% | lives; not hunted on its own bank in 160 s (the Red Hand's horse did not cross); with nothing else ordered the foe raised its flag again and won at 158 s |
+| Guarded by the pikes, six timings | 47, 52, 57, 62, 67, 72 s | 17, 18, 21, 20, 20, 19 down: **six of six** | lives; at about 105 s it called "hunted" and the guard took the charge: a pike or two lost, both dwarves alive |
 
-- `satchel-careless.txt` (before the ordered missile was lobbed): the Warriors marched onto a line of three, Detonate ordered: "Our own blast: 7 down" (now "Own blast"), the Warriors 12 and then 4. Not played again since.
-- The squads beside the blast were not seen to break (the strip tells only of the player's own squads); the morale shock is tested (`a_blast_shakes_the_men_it_leaves_standing`), its effect on a real line is not measured.
+The blast comes when the pair reaches its throw: at about 72 s for the four later orders, at 79 and 80 s for the two earliest. The pair ridden down unguarded was not seen on this level in these runs; it is the unit test's row above.
+
+Sieges with eight stones a train: `siege-catapults-first.txt`, the town gate down for **4 stones, 4 left**, the town taken; `capital.txt`, the first train spent 7 of its 8 (the road gate down, the side gate at 12%), the second none of its 8 by the script's end.
+
+Earlier findings on the classic Ford, with the lone dwarf (why the trap swung nothing at first): he could not walk to the bank in time (now charges ordered in the deployment are laid beforehand); every bow picked him out (now one in three within 30 m); the ordered missile burst on boughs, on the first man, or was carried by the wind (now placed and lobbed); the foe sprang the player's charges (now nobody throws at a foe's charges unasked); charges 5.8 m apart did not chain (lay them under 5 m apart); on beasts of 230 hp and more a line of 150s kills few (the trap is for foot).
+
+- The squads beside the blast were not seen to break; the morale shock is tested (`a_blast_shakes_the_men_it_leaves_standing`), its effect on a real line is not measured.
 
 ### Not measured
 
-- The matrix below was run before this change: its **Wizard, Dragon, Dwarven Grenadier and Catapult rows and columns are stale** (three wizards, six grenadiers, no stores). `illyria_balance` was not re-run. At equal gold one dwarf (60) now meets 51 light foot or 42 heavy; the matrix has no player in it, so it will read him as lost.
+- The matrix below was run before this change: its **Wizard, Dragon, Dwarven Grenadier and Catapult rows and columns are stale** (three wizards, six grenadiers, no stores). `illyria_balance` was not re-run. At equal gold one pair (60) now meets 51 light foot or 42 heavy; the matrix has no player in it, so it will read him as lost.
 - The Conquest's pace with dearer, capped grenadiers and catapults (`illyria_conquestsim`) was not re-run; the Ironhold Dwarves lose their cheap blast squads, and the computer lords will rarely choose a 60-gold dwarf.
-- Siege lengths: a train's 32 stones were not played against a capital's three gates.
+- Siege lengths: one script each (above); a capital's three gates against two trains' sixteen stones was played once, not to its end.
 
 ## Matrix
 

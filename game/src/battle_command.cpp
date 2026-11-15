@@ -366,6 +366,15 @@ void Battle::clearSelection() {
 
 void Battle::selectSquad(int index) {
     if (index < 0 || index >= static_cast<int>(squads_.size()) || squads_[static_cast<size_t>(index)].owner != local_) return;
+    // The Guard key, then a card: that squad is the one to guard (as a click on its men is).
+    if (orderMode_ == OrderMode::Guard && !selectedAlive().empty()) {
+        for (sim::EntityId id : squads_[static_cast<size_t>(index)].members)
+            if (world_->units()[id - 1].alive()) {
+                orderGuard(id);
+                break;
+            }
+        return;
+    }
     select(squads_[static_cast<size_t>(index)].members);
 }
 
@@ -1258,6 +1267,12 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         if (mode == OrderMode::ForceMarch) {
             V3 ground;
             if (camera.pickGround(x, y, ground)) orderForceMarch(ground);
+            return;
+        }
+        if (mode == OrderMode::Guard) {
+            if (pick.kind == K::Own && pick.index >= 0) orderGuard(units[static_cast<size_t>(pick.index)].id);
+            else if (pick.kind == K::Own && pick.squad >= 0) orderGuard(nearestOf(squads_[static_cast<size_t>(pick.squad)].members, centreOf(mine)));
+            else say("Click a squad of yours");
             return;
         }
         if (mode == OrderMode::LaySatchel || mode == OrderMode::Detonate) {

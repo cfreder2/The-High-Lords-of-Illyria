@@ -478,6 +478,13 @@ public:
     // friends in the blast or not: sim Command::Detonate. Hold fire: the selected shoot, throw and lay only when
     // ordered (again: at will). What a squad still carries is on its card.
     void orderDetonate(const V3& at, bool queue = false);
+    // Guard (sim Command::Guard, world_guard.cpp): the selected stay by that man's squad, between it and the nearest
+    // threat, and meet what comes at it. The Guard key: the next tap is the friend to guard. What a squad guards (its
+    // name, "" for none), and whether a squad is guarded, for the cards.
+    void orderGuard(sim::EntityId friendly);
+    void guardAction();
+    std::string guards(const Squad& s) const;
+    bool guarded(const Squad& s) const;
     void holdFireSelected();
     bool selectionSparks() const;
     bool selectionStores() const;
@@ -614,7 +621,8 @@ public:
     // there to lay a satchel each (sim Command::LaySatchel); with Shift held it
     // is queued and the mode stays, for a line of them. Detonate: the next tap
     // is a satchel (or ground) to set off (orderDetonate).
-    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel, Detonate };
+    // Guard: the next tap is the friend the selection is to guard (orderGuard).
+    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel, Detonate, Guard };
     void setOrderMode(OrderMode m) { orderMode_ = m; }
     OrderMode orderMode() const { return orderMode_; }
     // Modifier keys held on the desktop: force (Ctrl/Cmd) and march (Alt).
@@ -807,6 +815,9 @@ public:
     // The computer's dwarf or wizard (battle_satchels.cpp): taken out of a foe's way, set to mine a gate or a ford his
     // side holds and to wait behind the charges, kept behind the foot when he has nothing left. True: he has his order.
     bool aiPrecious(size_t squad, const V3& foe);
+    // A squad on guard duty (sim Command::Guard), or told to be in the commands not yet sent: the computer gives it no
+    // other order while its ward stands (runEnemyAi, aiFight).
+    bool onGuard(const Squad& s) const;
     bool aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& across, V3& wait) const;
     bool aiArmed(const Squad& s) const;  // a man of it has a missile left
     // The computer's purse on Easy, as a share of the player's.
@@ -1388,6 +1399,7 @@ private:
         int rested = 0;   // looks before it may wait again (a laggard stuck behind a cliff must not stall the army)
         bool raiding = false;
         uint32_t restUntil = 0;
+        bool guardAsked = false;             // a dwarf or a wizard: a squad of foot told to guard him (once)
         bool mined = false, mining = false;  // a dwarf: his choke looked for (once), and his trap laid and watched
         V3 mineAt;
         int bridge = -1;  // Oakhaven Ford: the bridge it goes round by, once it has set off for it; and how far it has got

@@ -110,7 +110,7 @@ The rare troops are the **heroes**; the beasts and monsters (**giants, minotaurs
 
 Minotaurs, where a hill town has them to muster, cost 30 gold each.
 
-**Siege engines and grenadiers are the exceptions.** A dwarven grenadier is trained, one dwarf at a time, in Deepforge and the hill towns: dear (60 gold), slow, and a realm keeps two at most, as it keeps three catapult trains, one wizard and one dragon at most. A city set to train one more waits until there is a place. Catapults are trained, at the three capitals that keep the craft, because walls are worth more than any army: without engines no capital would ever fall.
+**Siege engines and grenadiers are the exceptions.** Dwarven grenadiers are trained, one pair at a time, in Deepforge and the hill towns: dear (60 gold), slow, and a realm keeps two pairs at most, as it keeps three catapult trains, one wizard and one dragon at most. A city set to train one more waits until there is a place. Catapults are trained, at the three capitals that keep the craft, because walls are worth more than any army: without engines no capital would ever fall.
 
 ## Upkeep {#upkeep}
 

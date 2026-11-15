@@ -215,6 +215,8 @@ bool World::creepToWall(Unit& u) {
     if (!isEngine(u) || u.hasMoveTarget || u.hasAttackTarget) return false;
     const Unit* mark = wallShooter(u, autoReach(u) + kCreepMore);
     if (mark == nullptr) return false;
+    // (Its stones spent, or the mark in its reach already and not worth one of them: it stands where it is.)
+    if (!armed(u) || (mark->pos - u.pos).flat().length() <= shotRange(u, autoReach(u), mark->pos)) return false;
     walk(u, mark->pos);
     return true;
 }

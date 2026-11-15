@@ -227,7 +227,9 @@ struct Command {
     // Detonate: one missile, now, at the laid satchel nearest `target` (within World::kDetonatePick of it; else at
     // the ground there), walking into reach first: no waiting on friends in the blast, which is the player's business
     // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire };
+    // Guard: he guards the friend `targetUnit` and that man's squad (world_guard.cpp): stays by them, between them and
+    // the nearest threat, meets what comes at them, and goes to nobody else's help. Any order of his own ends it.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -428,6 +430,10 @@ struct Unit {
     bool detonate = false;
     // A dwarf or a wizard with a foe closing on him (World::shyAway): who. His friends near him come to it (supportFoe).
     EntityId menacedBy = kNoEntity;
+    // Guarding (Command::Guard, world_guard.cpp): a man of the squad he guards, and that squad's number (when the man
+    // falls his fellows are still guarded). kNoEntity: no guard duty.
+    EntityId guard = kNoEntity;
+    uint32_t guardSquad = 0;
     // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
     // tick he last held. Both rest at zero once he fires (or is left alone for a while).
     int32_t aoeHeld = 0;
@@ -635,7 +641,8 @@ struct TacticEvent {
 // RallyCall, for the voices, the cards, the minimap and the event line. A side is told only of its own calls.
 struct HelpCall {
     // Outnumbered in the melee; struck in the flank or back; wavering; under missiles it cannot answer; its lord has fallen.
-    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown };
+    // Hunted: a dwarf or a wizard with the foe's horse coming for him, or under arrows (world_guard.cpp).
+    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown, Hunted };
     EntityId caller = kNoEntity;  // a man of the squad that calls
     PlayerId owner = 0;
     uint32_t squad = 0;
@@ -837,6 +844,11 @@ public:
     static constexpr Fixed kPrepareReach = Fixed::fromInt(160);
     static constexpr Fixed kPrepareClear = Fixed::fromInt(50);
     bool canPrepare(const Unit& u, const Vec3& at) const;
+    // Whether anyone guards this man's squad (for the cards, and for where a hunted dwarf runs).
+    bool guarded(const Unit& u) const;
+    const Unit* wardOf(const Unit& u) const;  // the man he guards now (the one named, or a living fellow of that squad), or null
+    // A dwarf or a wizard with the foe's horse within 55 m and coming his way, or struck by a missile in the last 3 s.
+    bool hunted(const Unit& u) const;
     // Command::Detonate takes the laid satchel within this of the spot shown.
     static constexpr Fixed kDetonatePick = Fixed::fromInt(4);
     // Whether his missile's fire sets off a satchel (a Molotov, a fireball): who may be ordered to Detonate.
@@ -1445,6 +1457,10 @@ private:
     // fighting men, or straight away from the foe (true: he is walking). Not a man told to hold; one caught at arm's
     // length fights as he can.
     bool shyAway(Unit& u);
+    // Guard duty (world_guard.cpp). The man he guards now (the one named, or a living fellow of that squad), or null:
+    // then the duty is over. A tick of it for a man with no order: to his place by the ward, between him and the nearest
+    // threat within kGuardWatch; at a foe within kGuardMeet of the ward; else standing (true: he has done his tick).
+    bool guardStep(Unit& u);
     // A satchel's blast shakes those it leaves standing near it (twice its reach), of every side.
     void blastShock(const Vec3& at, const Explosive& ex);
     // Idle with satchels left and the enemy coming: lays one in their path (true).
