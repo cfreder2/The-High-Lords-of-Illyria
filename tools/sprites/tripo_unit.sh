@@ -23,8 +23,10 @@ rm -rf "$ART/$UNIT"
 "$PY" -I "$HERE/tripo/unit.py" render "$UNIT" --work "$WORK" --art "$ART" > "$WORK/units/$UNIT/render.log" 2>&1 || { tail -20 "$WORK/units/$UNIT/render.log"; exit 1; }
 grep WARNING "$WORK/units/$UNIT/render.log" | sort | uniq -c || true
 "$PY" "$HERE/tripo/contact.py" "$ART/$UNIT" "$WORK/units/$UNIT/contact"
-"$PY" "$HERE/tripo/burn_paint.py" "$ART/$UNIT/die_burn" > /dev/null
+PPM=$("$PY" -c "import sys, json; sys.path.insert(0, '$HERE'); import layout; print(layout.unit_class('$UNIT')['ppm'] * json.load(open('$ART/$UNIT/clips.json')).get('scale', 1))")
+"$PY" "$HERE/tripo/burn_paint.py" "$ART/$UNIT/die_burn" --ppm "$PPM" > /dev/null
 rm -rf "$ART/$UNIT/die_burn/unburnt"
 "$PY" "$HERE/import.py" "$ART" --units "$UNIT"
+"$PY" "$HERE/tripo/colours.py" "$HERE/../../game/web/sprites" "$UNIT" "$WORK/units/$UNIT/contact/${UNIT}_both_sides.png"
 [ -n "$KEEP_ART" ] || rm -rf "$ART/$UNIT"
 echo "$UNIT installed in game/web/sprites (a built app copies them on its next link; or copy them into its Resources/sprites)"

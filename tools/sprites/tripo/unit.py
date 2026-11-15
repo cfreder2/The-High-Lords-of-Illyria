@@ -24,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..', '..'))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'blender'))
+sys.path.insert(0, os.path.join(ROOT, 'tools', 'sprites'))
 
 import bpy  # noqa: E402
 import numpy as np  # noqa: E402
@@ -36,7 +37,14 @@ import styles  # noqa: E402
 from sprites import render as R  # noqa: E402
 
 FPS = keyer.FPS
-RES, PPM, ANCHOR_Y = 1024, 192.0, 560
+import layout  # noqa: E402  (tools/sprites: the size classes' canvases)
+
+
+def canvas_of(cfg):
+    """The unit's canvas (w, h), pixels a metre and anchor, its class's times the config's "scale"."""
+    c = layout.unit_class(cfg['unit'])
+    k = cfg.get('scale', 1)
+    return int(c['canvas'][0] * k), int(c['canvas'][1] * k), c['ppm'] * k, c['anchor'][0] * k, c['anchor'][1] * k
 
 
 def arg(name, default=None):
@@ -88,6 +96,8 @@ def build(cfg):
     root.matrix_world = Matrix.Translation(Vector((-feet.x, -feet.y, -float(pts[:, 2].min())))) @ root.matrix_world
     bpy.context.view_layer.update()
     rig = keyer.Rig(arm)
+    if cfg.get('cape'):
+        fitting.free_cloth(rig, body, cfg['cape'])
     fit = fitting.Fit(rig, body)
     print('%s: %d tris, %.2f m tall, hips %.2f m; %s' % (cfg['unit'], sum(len(p.vertices) - 2 for p in body.data.polygons),
                                                           cfg['height_m'], rig.rest_head['Hips'].z, fit.describe()), flush=True)
@@ -101,32 +111,69 @@ def build(cfg):
         scene.collection.objects.link(ob)
         ob.name = it['name']
         ob.parent = None
-        # Its mesh upright as delivered (y up in the file), its size as asked, its origin at the grip.
+        # Its mesh upright as delivered (y up in the file), its size as asked.
         me = ob.data
         me.transform(Matrix.Rotation(math.pi / 2, 4, 'X') @ Matrix.Scale(0.01, 4))
+        if it.get('tip') == 'down':                              # swords are delivered point down: the point is +z here
+            me.transform(Matrix.Rotation(math.pi, 4, 'X'))
         co = np.empty(len(me.vertices) * 3)
         me.vertices.foreach_get('co', co)
         co = co.reshape(-1, 3)
         lo, hi = co.min(0), co.max(0)
         s = it['size_m'] / float((hi - lo).max())
-        g = it.get('grip', [0.5, 0.5, 0.8])                      # where the hand holds it, as fractions of its box
-        grip = Vector([lo[i] + (hi[i] - lo[i]) * g[i] for i in range(3)])
-        me.transform(Matrix.Scale(s, 4) @ Matrix.Translation(-grip))
-        ob.matrix_world = Matrix()
+        hold = it.get('hold', 'hang')
         side = it.get('hand', 'Right')
         rig.rest()
-        kn = rig.knuckles(side)
-        fist = sum(kn, Vector()) / 4 + rig.palm(side) * it.get('palm_m', 0.03) + (kn[0] - kn[3]) * 0.0
-        ob.parent, ob.parent_type, ob.parent_bone = arm, 'BONE', B + side + 'Hand'
+        if hold == 'strap':
+            # A shield, strapped across the forearm (keyer.strap_shield): its mesh about its own middle.
+            mid = Vector((lo + hi) / 2)
+            me.transform(Matrix.Scale(s, 4) @ Matrix.Translation(-mid))
+            if it.get('front') == 'back':
+                me.transform(Matrix.Rotation(math.pi, 4, 'Z'))
+            ob.matrix_world = Matrix()
+            ob.parent, ob.parent_type, ob.parent_bone = arm, 'BONE', B + 'LeftForeArm'
+            bpy.context.view_layer.update()
+            rig.shield = ob
+            rig.strap_shield()
+        else:
+            g = it.get('grip', [0.5, 0.5, 0.8])                  # where the hand holds it, as fractions of its box
+            grip = Vector([lo[i] + (hi[i] - lo[i]) * g[i] for i in range(3)])
+            me.transform(Matrix.Scale(s, 4) @ Matrix.Translation(-grip))
+            ob.matrix_world = Matrix()
+            ob.parent, ob.parent_type, ob.parent_bone = arm, 'BONE', B + side + 'Hand'
+            bpy.context.view_layer.update()
+            fist = rig.fist(side)
+            if hold == 'hang':
+                ob.matrix_world = Matrix.Translation(fist)
+                c = ob.constraints.new('COPY_ROTATION')        # it hangs from the fist whatever the hand does
+                c.target = upright
+            else:
+                # Gripped: its length along the knuckles, the point out past the forefinger, its broad side (a
+                # blade's edge) where the fingers point.
+                kn = rig.knuckles(side)
+                along = (kn[0] - kn[3]).normalized()
+                fingers = (rig.head(side + 'HandMiddle1') - rig.head(side + 'Hand')).normalized()
+                edge = (fingers - along * along.dot(fingers)).normalized()
+                flat = along.cross(edge)
+                wide = 0 if (hi[0] - lo[0]) >= (hi[1] - lo[1]) else 1   # the mesh's broad horizontal axis
+                cols = [None, None, along]
+                cols[wide] = edge
+                cols[1 - wide] = flat if wide == 1 else -flat
+                frame = Matrix(cols).transposed()
+                if frame.determinant() < 0:
+                    cols[1 - wide] = -cols[1 - wide]
+                    frame = Matrix(cols).transposed()
+                ob.matrix_world = Matrix.Translation(fist) @ frame.to_4x4()
+                if side == 'Right':
+                    rig.sword = ob
+                    hand = rig.rot('RightHand').inverted()
+                    rig.blade_local, rig.flat_local = hand @ along, hand @ flat
         bpy.context.view_layer.update()
-        ob.matrix_world = Matrix.Translation(fist)
-        if it.get('hold', 'hang') == 'hang':
-            c = ob.constraints.new('COPY_ROTATION')            # it hangs from the fist whatever the hand does
-            c.target = upright
         ob['tripo_item'] = json.dumps(it)
         print('item %s: %.2f m, in the %s hand' % (it['name'], it['size_m'], side.lower()), flush=True)
     # The clips.
     P, clips = styles.STYLES[cfg['style']](cfg)
+    fit.options(cfg)
     posed = {}
     for name, pm in P.items():
         posed[name] = fit.pose(pm)
@@ -240,7 +287,7 @@ def open_scene(cfg):
     s.view_settings.exposure = cfg.get('exposure', 1.0)
     s.render.image_settings.file_format = 'PNG'
     s.render.image_settings.color_mode = 'RGBA'
-    s.render.resolution_x = s.render.resolution_y = RES
+    s.render.resolution_x, s.render.resolution_y = canvas_of(cfg)[:2]
     s.render.resolution_percentage = 100
     s.render.use_border = True
     s.render.use_crop_to_border = False
@@ -263,6 +310,7 @@ def render(cfg, look=False):
         art, views = os.path.join(cfg['dir'], 'look'), [1, 0] if not arg('--views') else views
     s, studio = open_scene(cfg)
     c = s.cycles
+    W, H, PPM, AX, AY = canvas_of(cfg)
     root = bpy.data.objects['rig_root']
     arm = next(o for o in s.objects if o.type == 'ARMATURE')
     body = bpy.data.objects['body']
@@ -304,6 +352,7 @@ def render(cfg, look=False):
         masks[o.name] = masks[it.name]
         twins[it.name] = o
     drawn = [body] + items + list(twins.values())
+    droppers = [it for it in items if json.loads(it['tripo_item']).get('drop', json.loads(it['tripo_item']).get('hold') != 'strap')]
     saved = {o.name: [sl.material for sl in o.material_slots] for o in drawn}
 
     def masked(on):
@@ -327,18 +376,16 @@ def render(cfg, look=False):
         right, up, _ = R.view(v)
         pts = np.concatenate([fitting.body_points(o) for o in drawn if not o.hide_render])
         u, w = pts @ np.array(right), pts @ np.array(up)
-        cv = (ANCHOR_Y - RES / 2) / PPM
-        x0, x1 = RES / 2 + u.min() * PPM - 8, RES / 2 + u.max() * PPM + 8
-        y0, y1 = RES / 2 + (w.min() - cv) * PPM - 8, RES / 2 + (w.max() - cv) * PPM + 8
-        if x0 < 0 or y0 < 0 or x1 > RES or y1 > RES:
+        x0, x1 = AX + u.min() * PPM - 8, AX + u.max() * PPM + 8
+        y0, y1 = (H - AY) + w.min() * PPM - 8, (H - AY) + w.max() * PPM + 8
+        if x0 < 0 or y0 < 0 or x1 > W or y1 > H:
             print('  WARNING: view %d leaves the canvas (%.0f..%.0f, %.0f..%.0f)' % (v, x0, x1, y0, y1), flush=True)
-        clamp = lambda a: min(1.0, max(0.0, a / RES))
-        s.render.border_min_x, s.render.border_max_x = clamp(x0), clamp(x1)
-        s.render.border_min_y, s.render.border_max_y = clamp(y0), clamp(y1)
+        s.render.border_min_x, s.render.border_max_x = min(1.0, max(0.0, x0 / W)), min(1.0, max(0.0, x1 / W))
+        s.render.border_min_y, s.render.border_max_y = min(1.0, max(0.0, y0 / H)), min(1.0, max(0.0, y1 / H))
 
     def shoot(d, j):
         for v in views:
-            studio.aim(v, 0.0, (ANCHOR_Y - RES / 2) / PPM, RES / PPM)
+            studio.aim(v, (W / 2 - AX) / PPM, (AY - H / 2) / PPM, max(W, H) / PPM)
             border(v)
             c.samples, c.use_denoising = int(arg('--samples', '32')), True
             s.render.filepath = '%s/v%d_f%02d.png' % (d, v, j)
@@ -381,10 +428,10 @@ def render(cfg, look=False):
                 place(h0)
                 for it in items:
                     held[it.name][f] = it.matrix_world.copy()
-                if release is None and ((e.get('drop_at') and f >= e['drop_at']) or (f > a + 3 and hips().z < 0.8 * stand)):
+                if release is None and droppers and ((e.get('drop_at') and f >= e['drop_at']) or (f > a + 3 and hips().z < 0.8 * stand)):
                     release = f
             release = release or int(a + (b - a) // 3)
-            for it in items:
+            for it in droppers:
                 free = twins[it.name]
                 free.animation_data_clear()
                 for f in range(int(a), release + 1):
@@ -407,8 +454,9 @@ def render(cfg, look=False):
             place(h0)
             dropped = release is not None and f >= release
             for it in items:
-                it.hide_render = dropped or (gone_at is not None and f >= gone_at - 1e-6 and f < b - 0.5)
-                twins[it.name].hide_render = not dropped
+                falls = it in droppers
+                it.hide_render = (dropped and falls) or (falls and gone_at is not None and f >= gone_at - 1e-6 and f < b - 0.5)
+                twins[it.name].hide_render = not (dropped and falls)
             hit = [k for k, x in enumerate(frames) if abs(f - x) < 1e-6]
             if hit:
                 shoot(d, hit[0])
@@ -430,16 +478,16 @@ def render(cfg, look=False):
             entry['release'] = round(e['release'], 4)
         clips.append(entry)
     if look:
-        sheet_look(os.path.join(art, cfg['unit']), plan, views)
+        sheet_look(os.path.join(art, cfg['unit']), plan, views, (W, H, PPM, AX, AY), cfg['height_m'])
     elif not only and not test:
         with open(os.path.join(art, cfg['unit'], 'clips.json'), 'w') as fh:
-            json.dump({'clips': clips}, fh, indent=1)
+            json.dump(dict({'clips': clips}, **({'scale': cfg['scale']} if cfg.get('scale', 1) != 1 else {})), fh, indent=1)
         print('wrote clips.json', flush=True)
     else:
         print(json.dumps(clips), flush=True)
 
 
-def sheet_look(d, plan, views):
+def sheet_look(d, plan, views, canvas, tall):
     """The look frames on one page: a row per clip and view."""
     from PIL import Image, ImageDraw
     rows = []
@@ -451,7 +499,9 @@ def sheet_look(d, plan, views):
     if not rows:
         return
     cw, ch = 300, 300
-    box = (512 - 250, 560 - 420, 512 + 250, 560 + 80)
+    W, H, PPM, AX, AY = canvas
+    r = tall * 0.8 * PPM
+    box = (int(AX - r), int(AY - 1.5 * r), int(AX + r), int(AY + 0.5 * r))
     page = Image.new('RGB', (cw * max(len(r[1]) for r in rows), ch * len(rows)), (150, 150, 150))
     dr = ImageDraw.Draw(page)
     for y, (label, files) in enumerate(rows):

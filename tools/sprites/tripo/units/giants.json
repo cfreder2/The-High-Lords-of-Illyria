@@ -1,0 +1,24 @@
+{
+ "unit": "giants",
+ "body": "caveman_figure_9b4f445b",
+ "height_m": 5.5,
+ "style": "giant",
+ "scale": 2,
+ "hunch": 15,
+ "items": [
+  {
+   "name": "club",
+   "model": "wooden_club_1fb0d8ac",
+   "hand": "Right",
+   "hold": "grip",
+   "size_m": 2.6,
+   "grip": [
+    0.5,
+    0.5,
+    0.12
+   ]
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}

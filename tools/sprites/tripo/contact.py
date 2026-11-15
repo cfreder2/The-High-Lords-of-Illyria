@@ -14,10 +14,17 @@ views = [int(v) for v in sys.argv[sys.argv.index('--views') + 1].split(',')] if 
 half = float(sys.argv[sys.argv.index('--half-m') + 1]) if '--half-m' in sys.argv else 1.3
 unit = os.path.basename(src.rstrip('/'))
 os.makedirs(out, exist_ok=True)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import layout  # noqa: E402
+
 with open(os.path.join(src, 'clips.json')) as fh:
-    clips = json.load(fh)['clips']
-PPM, AX, AY = 192, 512, 560
-box = (int(AX - half * PPM), int(AY - 1.9 * PPM * half / 1.3), int(AX + half * PPM), int(AY + 0.5 * PPM * half / 1.3))
+    doc = json.load(fh)
+clips, k = doc['clips'], doc.get('scale', 1)
+klass = layout.unit_class(unit)
+PPM, AX, AY = klass['ppm'] * k, klass['anchor'][0] * k, klass['anchor'][1] * k
+if '--half-m' not in sys.argv:
+    half = layout.UNITS[unit][2] * 0.75
+box = (int(AX - half * PPM), int(AY - 1.5 * PPM * half), int(AX + half * PPM), int(AY + 0.4 * PPM * half))
 cw, ch = 250, int(250 * (box[3] - box[1]) / (box[2] - box[0]))
 for c in clips:
     n = c['frames']

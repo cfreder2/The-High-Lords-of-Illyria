@@ -41,6 +41,7 @@ class Rig:
         self.lengths = {s: (L(s + 'Arm', s + 'ForeArm'), L(s + 'ForeArm', s + 'Hand'),
                             L(s + 'UpLeg', s + 'Leg'), L(s + 'Leg', s + 'Foot')) for s in ('Left', 'Right')}
         self.sword = self.shield = None
+        self.fist_depth = 0.03 * self.rest_head['Hips'].z / 1.04
 
     def gear(self, sword=None, shield=None):
         """The knight's own: a sword in the right hand (pose keys `blade`, `edge`) and a shield strapped across the
@@ -118,6 +119,15 @@ class Rig:
         if (self.head(side + 'HandThumb2') - kn[1]).dot(n) < 0:
             n = -n
         return n
+
+    def fist(self, side):
+        """The middle of the closed hand: where a hilt or shaft lies."""
+        kn = self.knuckles(side)
+        return sum(kn, Vector()) / 4 + self.palm(side) * self.fist_depth
+
+    def palm_offset(self, side):
+        """From the wrist to the middle of the closed hand, as the hand is now."""
+        return self.fist(side) - self.head(side + 'Hand')
 
     def curl(self, side, deg):
         """Close the hand: every finger joint bent `deg` toward the palm (a fist at about 60), the thumb half as far."""

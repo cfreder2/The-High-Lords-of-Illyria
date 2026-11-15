@@ -403,10 +403,21 @@ def import_unit(art, unit, man, args, report):
     if os.path.exists(clips_path):
         try:
             listed, fpv = layout.listed_clips(layout.read_clips(clips_path))
+            with open(clips_path) as fh:
+                scale = float(json.load(fh).get('scale', 1))
+            if not 1 <= scale <= 4 or scale * 2 != int(scale * 2):
+                raise ValueError('"scale" %r is not 1, 1.5, 2 .. 4' % scale)
         except (OSError, ValueError) as e:
             report.error('%s/%s: %s' % (unit, CLIPS_FILE, e))
             return
         entries = layout.unit_cells(unit, listed)
+        if scale != 1:
+            # Drawn that many times the class's canvas and pixels a metre (a giant at 80 px a metre has
+            # nothing to give a close-up sheet): every measure of the pictures goes up with it.
+            entries = [dict(e, canvas=[int(round(x * scale)) for x in e['canvas']], ppm=e['ppm'] * scale,
+                            anchor=[x * scale for x in e['anchor']]) for e in entries]
+            info = dict(info, ppm=info['ppm'] * scale, anchor=[x * scale for x in info['anchor']])
+            report.note('%s: drawn at %g times its class canvas (%g px/m)' % (unit, scale, info['ppm']))
         report.note('%s: its own %d clips (%s), %d frames a view' % (unit, len(listed), ', '.join(c['name'] for c in listed), fpv))
     else:
         fpv = layout.FRAMES_PER_VIEW
