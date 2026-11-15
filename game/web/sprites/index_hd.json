@@ -3,7 +3,7 @@
   "name": "light_infantry_hd",
   "size": [
    4096,
-   3720
+   3752
   ],
   "ppm": 90.76
  },
@@ -35,7 +35,7 @@
   "name": "light_cavalry_hd",
   "size": [
    4096,
-   3820
+   3852
   ],
   "ppm": 73.92
  },
@@ -43,7 +43,7 @@
   "name": "giants_hd",
   "size": [
    4096,
-   3752
+   3788
   ],
   "ppm": 45.16
  },
@@ -51,7 +51,7 @@
   "name": "minotaurs_hd",
   "size": [
    4096,
-   3568
+   3608
   ],
   "ppm": 77.81
  },
@@ -67,7 +67,7 @@
   "name": "hero_hd",
   "size": [
    4096,
-   3724
+   3792
   ],
   "ppm": 90.76
  },
@@ -75,7 +75,7 @@
   "name": "dwarf_grenadier_hd",
   "size": [
    4096,
-   3700
+   3724
   ],
   "ppm": 144.0
  },
@@ -83,9 +83,9 @@
   "name": "journeyman_hd",
   "size": [
    4096,
-   3868
+   3556
   ],
-  "ppm": 111.42
+  "ppm": 105.85
  },
  "24": {
   "name": "warrior_hd",
