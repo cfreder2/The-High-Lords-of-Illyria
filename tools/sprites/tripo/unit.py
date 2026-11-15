@@ -140,6 +140,25 @@ def attach_item(it, cfg, scene, arm, rig, upright):
     print('item %s: %.2f m, in the %s hand' % (it['name'], it['size_m'], side.lower()), flush=True)
 
 
+def thin(entry, n, seconds):
+    """A clip drawn in n frames instead (the config's "frames": a big body's sheet holds fewer pictures at a
+    density worth having): a loop resampled evenly, any other clip keeping its first, its last and its release."""
+    if not n or n >= len(entry['frames']):
+        return
+    if entry['kind'] in ('loop', 'cycle'):
+        entry['frames'] = [1 + seconds * FPS * i / n for i in range(n)]
+        return
+    fr = entry['frames']
+    keep = {0, len(fr) - 1}
+    if 'release' in entry:
+        keep.add(min(range(len(fr)), key=lambda i: abs((fr[i] - 1) / FPS - entry['release'])))
+    for i in range(n):
+        if len(keep) >= n:
+            break
+        keep.add(round(i * (len(fr) - 1) / (n - 1)))
+    entry['frames'] = [fr[i] for i in sorted(keep)]
+
+
 def build(cfg):
     os.makedirs(cfg['dir'], exist_ok=True)
     if cfg.get('mount'):
@@ -209,6 +228,7 @@ def build(cfg):
         for key in ('release', 'item_gone', 'drop_at'):
             if key in c:
                 entry[key] = c[key]
+        thin(entry, cfg.get('frames', {}).get(name), last)
         plan.append(entry)
         print('%s: %d action frames, %d drawn%s' % (name, int(act.frame_range[1]), len(entry['frames']),
                                                       ', stride %.2f m' % stride if stride else ''), flush=True)
@@ -319,6 +339,7 @@ def build_mounted(cfg):
             e['frames'] = sorted({round(1 + sec * FPS * i / (n - 1)) for i in range(n)})
         if name == 'die_burn':
             e['drop_at'] = 4
+        thin(e, cfg.get('frames', {}).get(name), sec)
         plan.append(e)
     with open(cfg['plan'], 'w') as fh:
         json.dump(plan, fh, indent=1)

@@ -20,5 +20,17 @@
   }
  ],
  "exposure": 1.0,
- "team_hue": 0.62
+ "team_hue": 0.62,
+ "frames": {
+  "idle": 6,
+  "walk": 8,
+  "run": 8,
+  "attack": 8,
+  "flinch": 3,
+  "die_back": 6,
+  "die_front": 6,
+  "die_crumple": 6,
+  "die_burn": 8,
+  "celebrate": 8
+ }
 }
