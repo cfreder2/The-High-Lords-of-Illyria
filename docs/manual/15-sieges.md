@@ -49,13 +49,31 @@ Four stones square on the doors, or seven satchels laid against them (one more t
 - **Gates swing.** The leaves take three seconds to open or shut, and block while they swing. Your own gate opens by itself for your men whose orders lead through it (they wait at it while it swings), stays open while any of them is near, and shuts behind them when the passage is clear. An enemy never opens it; he hacks at it, or walks through it when it stands open. Tap a gate of yours (men selected or not) and it opens, or shuts if it stood open, and is **held** so: a gate held shut stops your own men too, a gate held open lets everyone in. Its card says how it stands, with **Open gate** / **Close gate** and **Let go** (the gate goes back to opening for your men and shutting behind them); the keys are [[O]] and [[Shift]] + [[O]]. You can see how a gate stands only for your own.
 - **A garrison keeps its gate.** When a foe comes near, the men inside take their places: the archers go up the ramps to the embrasures nearest the gate; the foot form a horseshoe behind the doors, facing the opening, so that whatever comes through is hit in front and on both sides. The garrison takes its stations when a foe comes within 70 m of the gate. The doors stay shut to what is outside, and when the foot are ready and the doors are failing, or there are few foes at them, are swung open for four seconds to draw some in. Break the gate, or take the walls first. Every garrison keeps its gate so, the neutral towns' and the computer lords' alike; your own gates are yours to open and shut.
 
-**Walls do not break.** Stones and fireballs kill the men on them, and break gates; the stone stands.
+**Walls do not break.** Stones and fireballs kill the men on them, and break gates and timber; the stone stands.
 
 ## Engines {#engines}
 
 The **catapult** is a wheeled mangonel: slow (0.8 m/s, and it wants roads), no use hand to hand, reloading for 14 seconds. Its arm always slams the same padded crossbar, so the stone leaves at a fixed 53 degrees and the crew wind the skein for the range: out to **150 m**, never nearer than **30 m** (it would come down on them). A stone smashes everything within 3 m, 100 damage at the centre falling off to the edge, throws men off their feet and off the wall-walks, and does five times its damage to a gate. Idle catapults throw at any foe within 140 m.
 
 Tap a catapult, then a gate, and it batters the gate until it falls, then stands down. Ordered at a wall, it bombards the wall-walk there. In a Conquest siege, the catapults in your stack come with you; in the dice they break the walls' bonus and fight two points stronger (chapter [](#siege-map)).
+
+## Outworks and timber {#outworks}
+
+Each realm's seat and one walled town of each realm have **outworks**: a **ditch** round the walls (in low country by a river, a **moat** of wading depth), a **bank** inside it with a **palisade** along its lip, **abatis** (felled trees, boughs sharpened toward you) beyond it across the approaches, **watchtowers** on the bank beside the causeway, and a **ballista** on a gate tower (two at a seat). Every other walled town has a watchtower by its road, every village one at the end of its lane.
+
+- **Horse and wheels cannot cross a ditch** except on a causeway: every road and every door has one. Foot can, slowly, down a slope and up the other side, wading a moat. A palisade or abatis stops horse and engines; foot climb over or pick through at a third of their pace.
+- **Timber breaks.** A stone breaks a palisade run, a stretch of abatis or a watchtower (one good stone); a satchel does more; foot can hack it. Fire burns it: a Molotov's oil, a fireball, or **fire arrows** (your bowmen carry three, for timber only: order them at it). Burning timber spreads to its neighbours. Broken, the way is open.
+- **Flying timber kills.** What a stone breaks flies: beams, planks and splinters, hurting whoever they strike by their weight (a beam can kill). Men under a watchtower that goes over are in danger; the men on it fall.
+- **Watchtowers** hold two bowmen, out of reach of swords, shooting farther from the height. Send bowmen at your own watchtower and they climb it; send them anywhere else and they climb down.
+- **The ballista** outranges a catapult (about 175 m from its tower against 150) and shoots only at engines and the men beside them. Bring more than one engine, and throw at the tower first: two good stones break it.
+- **Sorties.** A garrison's light horse carry one Molotov each besides their swords. When your engines are in reach of the walls and weakly guarded, they ride out by a safe door (a capital's second door first), throw their oil (it burns an engine to nothing), cut down the crew and ride back. **Keep an escort by your engines.** Your own horse do the same when you tap an enemy engine with them selected.
+- **The barricade.** When a gate is battered, its garrison heaps a barricade across the gateway behind it, with the horseshoe of foot behind that: a breach is not yet a way in. Hack it, stone it or burn it.
+- **Bowmen forward.** A garrison with outworks stands a quarter of its bowmen forward, up the watchtowers and on the bank over the ditch, so that you cross it under their arrows. They fall back when you get close or round them; yours stay until you call them in.
+- **The keep's last stand.** When a capital's outer ward is lost, its garrison falls back through the bailey's doors to hold the keep.
+
+::: tip "Outworks"
+Clear the abatis before the gate with stones, keep your engines out of the ballista's reach until you can answer it, and never leave a train alone before a castle with horse in it. Defending, sally only when the engines stand bare, and bring the bowmen in off the bank before they are cut off.
+:::
 
 ## Taking the courtyard {#capture-point}
 

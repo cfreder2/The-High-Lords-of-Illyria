@@ -1,0 +1,24 @@
+# Abatis cleared by stones (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw's abatis before the road door, a run of
+# it west of the road at (424,475): stones thrown at it from 100 m smash it into flying timber, and the way through is open (horse and wheels
+# can pass where it stood).
+#
+#   Illyria --play tools/playtest/works-abatis.txt --play-out ~/Desktop/siege-defence/abatis
+
+size 1600 900
+start skirmish capital easy
+wait 1
+camera 424 475 30 2.4
+wait 0.5
+shot abatis-00-standing
+works count
+boulder throw 332 438 424 475
+wait_ticks 95
+shot abatis-01-struck
+boulder throw 333 436 425 474
+wait_ticks 95
+shot abatis-02-struck
+boulder throw 331 439 423 476
+wait_ticks 120
+shot abatis-03-cleared
+works count
+quit

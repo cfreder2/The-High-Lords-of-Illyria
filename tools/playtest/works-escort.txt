@@ -1,0 +1,33 @@
+# An escorted train survives where a bare one burns (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw, attacked: your
+# second siege train stands 132 m before the side door (the sally port, 475,562), and this time twenty-four of your foot
+# stand by it (pikes and heavy foot, the escort). The garrison is given eight light horse with a Molotov each: against an
+# escorted train it does not sally (the guard is more than half the riders' strength). After 40 s the escort is taken off
+# the field: the train stands bare, and the horse ride out at once.
+#
+#   Illyria --play tools/playtest/works-escort.txt --play-out ~/Desktop/siege-defence/escort
+
+size 1600 900
+start skirmish capital easy
+wait 1
+works squad 1 light_cavalry 8 481 545 475 562 garrison
+works squad 0 pikemen 12 400 646 475 562
+works squad 0 heavy_infantry 12 386 650 475 562
+camera 432 622 120 2.75
+wait 0.5
+shot escort-00-escorted
+speed 2
+wait_ticks 600
+shot escort-01-no-sortie
+works count
+wait_ticks 600
+shot escort-02-still-none
+works count
+works remove 0 pikemen
+works remove 0 heavy_infantry
+wait_ticks 300
+shot escort-03-bare-and-the-horse-come
+works count
+wait_ticks 900
+shot escort-04
+works count
+quit

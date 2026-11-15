@@ -425,8 +425,9 @@ void World::keepDoors(const std::vector<size_t>& doors) {
 void World::lastStand(const std::vector<size_t>& doors) {
     // A capital's outer ward lost (a door of it open or broken, and the foes inside it two to one of the garrison's fighting
     // men there, six at least): the garrison falls back through the bailey's doors, to hold the keep. The doors are opened
-    // first, and only once they stand open are the men sent, each by a lane of his own across the doorway: a way planned
-    // against shut doors led every man to the one point at their middle, and thirty of them jammed there (docs/BALANCE.md).
+    // first, and only once they stand open are the men sent, force-marched, each to a place of his own in ranks behind them
+    // (a way planned against shut doors led every man to the one point at their middle: docs/BALANCE.md). Not yet free of
+    // the jam: most still stop in the open doorway (docs/BALANCE.md, "Not done").
     const Region& rg = *config_.region;
     const PlayerId holder = gates_[doors.front()].holder;
     const int32_t outer = rg.gates()[doors.front()].ring;
@@ -480,16 +481,14 @@ void World::lastStand(const std::vector<size_t>& doors) {
     for (size_t k = 0; k < men.size(); ++k) {
         Unit& u = *men[k];
         const Fixed lateral = width * (Fixed::fromInt(static_cast<int64_t>(k % kLanes) * 2 + 1) / (kLanes * 2) - Fixed::fromRatio(1, 2)) * Fixed::fromRatio(4, 5);
-        Vec3 before = mid + bg.out * Fixed::fromInt(5) + along * lateral, after = mid - bg.out * Fixed::fromInt(6) + along * lateral;
         Vec3 home = mid - bg.out * (Fixed::fromInt(12) + Fixed::fromInt(static_cast<int64_t>(k / kLanes)) * Fixed::fromRatio(17, 10)) + along * lateral;
-        before.z = groundHeight(before.x, before.y);
-        after.z = groundHeight(after.x, after.y);
         home.z = groundHeight(home.x, home.y);
+        Command back{u.owner, u.id, Command::Type::Move, home};
+        back.force = true;  // (out of the fight he is in, deaf to the foe on the way: the way back is his order)
+        applyOrder(u, back);
         u.routeFrom = u.pos;
         beginMove(u, home, Fixed::zero(), bg.out);
-        planPath(u, before);
-        u.path.push_back(after);
-        u.path.push_back(home);
+        planPath(u, home);  // (planned now the doors stand open: the way runs through them)
         u.stationed = true;
     }
 }

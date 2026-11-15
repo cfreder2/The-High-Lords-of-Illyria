@@ -1,0 +1,50 @@
+# The barricade behind a battered gate, and the keep's last stand (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw,
+# attacked: stones on the road door (464,476) bring it under 85%, and the garrison's foot heap a barricade across the
+# gateway behind it, the horseshoe behind that; the door broken, everyone is sent at it (select all, a right-click on the
+# gate at the screen's middle); when the outer ward is lost, the garrison falls back by its lanes through the bailey's
+# doors (505,505) to the keep.
+#
+#   Illyria --play tools/playtest/works-barricade.txt --play-out ~/Desktop/siege-defence/barricade --play-log ~/Desktop/siege-defence/barricade/barricade.log
+
+size 1600 900
+start skirmish capital easy
+wait 1
+boulder throw 400 407 462 473.8
+wait_ticks 120
+boulder throw 401 405 462 473.8
+wait_ticks 240
+camera 474 486 32 2.4
+wait 0.5
+shot barricade-01-going-up
+wait_ticks 300
+shot barricade-02-up
+works count
+boulder throw 400 407 462 473.8
+wait_ticks 90
+boulder throw 401 405 462 473.8
+wait_ticks 90
+boulder throw 399 408 462 473.8
+wait_ticks 90
+boulder throw 400 407 462 473.8
+wait_ticks 120
+boulder count
+camera 464 476 60 2.4
+wait 0.5
+shot barricade-03-the-door-down
+select all
+click right 800 470
+speed 2
+wait_ticks 600
+camera 478 488 45 2.4
+wait 0.5
+shot barricade-04-at-the-barricade
+works count
+wait_ticks 900
+shot barricade-05
+camera 500 500 60 2.4
+wait 0.5
+shot barricade-06-the-bailey
+wait_ticks 900
+shot barricade-07-last-stand
+stats
+quit

@@ -268,3 +268,43 @@ TEST(outworks_in_battle_a_garrisons_light_horse_sally_against_an_unguarded_engin
     CHECK(out >= 1);
     CHECK(!w.findUnit(engine)->alive());
 }
+
+// The keep's last stand: the bailey's doors are opened and the garrison sent through them. (Not yet: that they all get in.
+// Most still stop in the open doorway, as the first try's did: docs/BALANCE.md, "Not done". This pins what holds.)
+TEST(outworks_in_battle_a_capitals_garrison_falls_back_to_the_keep_through_the_baileys_open_doors) {
+    World w = capitalWorld(5);
+    const Door door = roadDoor(w);
+    for (size_t g = 0; g < w.gates().size(); ++g) w.keepGate(g, 0, false);
+    for (size_t g = 0; g < w.gates().size(); ++g) w.setGateGarrisoned(g, true, true);
+    std::vector<const UnitStats*> stats;
+    const UnitStats foot = unitStats(UnitType::HeavyInfantry);
+    for (int i = 0; i < 24; ++i) stats.push_back(&foot);
+    std::vector<EntityId> mine;
+    for (const World::GarrisonPost& p : w.garrisonPosts(door.gate, stats)) mine.push_back(w.spawnUnit(0, p.pos, p.face, foot));
+    // The outer doors down, and a host in the outer ward.
+    const Rampart& ward = w.region()->ramparts()[static_cast<size_t>(w.region()->gates()[door.gate].ring)];
+    for (size_t g = 0; g < w.gates().size(); ++g)
+        if (w.region()->gates()[g].ring == w.region()->gates()[door.gate].ring) w.setGateHp(g, 0);
+    UnitStats foe = unitStats(UnitType::LightInfantry);
+    foe.aggroRange = Fixed::zero();
+    for (int i = 0; i < 60; ++i) {
+        Vec3 p = door.mid - door.out * mm(14 + (i / 10) * 2) + Vec3{mm(i % 10 - 5) * 2, Fixed::zero(), Fixed::zero()};
+        p.z = w.groundHeight(p.x, p.y);
+        w.spawnUnit(1, p, door.out, foe);
+    }
+    size_t bailey = 0;
+    for (size_t g = 0; g < w.gates().size(); ++g)
+        if (w.region()->gates()[g].ring != w.region()->gates()[door.gate].ring && Gate::inside(ward, w.region()->ramparts()[static_cast<size_t>(w.region()->gates()[g].ring)].centre)) bailey = g;
+    const Rampart& keep = w.region()->ramparts()[static_cast<size_t>(w.region()->gates()[bailey].ring)];
+    runFor(w, 45);
+    int in = 0, sent = 0, alive = 0;
+    for (const EntityId id : mine) {
+        const Unit& u = *w.findUnit(id);
+        alive += u.alive();
+        in += u.alive() && Gate::inside(keep, u.pos);
+        sent += u.alive() && (Gate::inside(keep, u.pos) || (u.hasMoveTarget && Gate::inside(keep, u.moveTarget)));
+    }
+    std::printf("  %d of %d alive sent to the keep, %d in the bailey after 45 s; its doors %s\n", sent, alive, in, w.gates()[bailey].opened() ? "open" : "shut");
+    CHECK(sent * 10 >= alive * 7);
+    CHECK(w.gates()[bailey].opened());
+}

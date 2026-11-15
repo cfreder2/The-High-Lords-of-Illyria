@@ -84,6 +84,10 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `boulder throw X Y TX TY` | throws a boulder as a catapult standing at (X, Y) would at the mark (TX, TY), with no scatter, and prints where it will come down and how far it will roll (`World::stonePath`, the forecast the player is shown). |
 | `boulder count` | prints one line: the demo's men unhurt, hurt and dead; where the last stone thrown lies and how far from where it came down; every gate's strength and place. |
 | `boulder ground X Y` | prints what the ground is at (X, Y), its height, and the heights 10 m each way: for finding a slope, a ford, a road. |
+| `works squad SIDE TYPE N X Y TX TY [garrison]` | the works demo (docs/GAME_DESIGN.md §4.2.2.1): raises a squad of N of TYPE (its name lower case, words joined by `_`: `light_cavalry`) for SIDE (0 yours) at (X, Y) facing (TX, TY), a garrison's with `garrison`. |
+| `works remove SIDE TYPE` | takes every man of that type of the side out of the battle (a scene cleared). |
+| `works sortie` | your riders out at the nearest engine of the foe's (as a right-click on it with them selected orders: `Command::Sortie`). |
+| `works count` | prints one line: each kind of work standing and in all, those burning, the tower engines' bolts, the riders out on a sortie (and the first's mark), the timber lying and flying, and every catapult (side:hp@x,y, `*` burning). |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
 
@@ -157,6 +161,12 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `boulder-level.txt`, `boulder-line.txt`, `boulder-downhill.txt`, `boulder-uphill.txt`, `boulder-ford.txt`, `boulder-own.txt` | the boulder demo on the open ground skirmish: a stone thrown at a file of sixteen on the level, at a rank across its way, down a hillside, up it, at a bank before the ford, and through your own men behind the foe; a frame every five ticks at quarter speed from just before it comes down, then the toll (`boulder count`) and a close look at where it lies. Figures in docs/BALANCE.md, "The boulder". |
 | `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
+| `outworks-look.txt` | Grathmaw's outworks close: the ditch and bank, the palisade, the abatis, the watchtowers with their bowmen. |
+| `works-sortie.txt`, `works-escort.txt` | a garrison's light horse sally by the sally port and burn a bare siege train; with an escort by it they do not, and once it is gone they do. |
+| `works-tower-engine.txt` | the ballistas on the road gate's towers against the road train at 127 m: they hunt the engines, the engines answer the towers. |
+| `works-watchtower.txt`, `works-abatis.txt` | stones thrown (`boulder throw`) at a watchtower with men behind it (it goes over, its bowmen fall, the timber flies among the men) and at the abatis (cleared). |
+| `works-bank.txt` | Grathmaw defended: the forward bowmen up the watchtowers and on the bank as the besiegers come. |
+| `works-barricade.txt` | stones on the road door and the barricade behind it; the door down and the army sent in. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 | `march.txt` | The March: the first battle with no orders, its results sheet, the camp with the purse spent, the village set out. |
 | `satchel-trap.txt` | Oakhaven Ford with bought armies (300 gold a side), as a person would play the trap: in the deployment pause the pair's charges are laid in a line of five across the isle (T, Shift+click; a click in the ford is refused), they hold their fire and go down to the bank; when the Red Hand's foot stand on the isle the pair is told to detonate (L, click a charge). The log's `event=` carries "Ambush: N down" (20 as committed). |

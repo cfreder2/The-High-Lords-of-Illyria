@@ -33,7 +33,7 @@ constexpr Fixed kDoorCauseway = Fixed::fromInt(5), kRoadCausewayMore = Fixed::fr
 // A moat: the town within this of a river's or a lake's water, on a ring no more uneven than this.
 constexpr Fixed kMoatNear = Fixed::fromInt(160), kMoatLevel = Fixed::fromRatio(6, 5);
 // The works' strength (hit points) and size.
-constexpr int32_t kPalisadeHp = 500, kAbatisHp = 400, kTowerHp = 700, kEngineHp = 260;
+constexpr int32_t kPalisadeHp = 500, kAbatisHp = 400, kTowerHp = 280, kEngineHp = 260;  // (a watchtower: one good stone)
 constexpr Fixed kPalisadeHeight = Fixed::fromRatio(13, 10), kAbatisHeight = Fixed::fromRatio(8, 5);
 constexpr Fixed kTowerPlatform = Fixed::fromInt(6), kTowerHalf = Fixed::fromRatio(3, 2);
 

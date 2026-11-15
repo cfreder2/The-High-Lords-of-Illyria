@@ -1,0 +1,27 @@
+# The tower engines and the ground engines (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw, attacked: your road
+# train sets up 132 m before the road door, 127 m from the ballistas on its gate towers (472,471 and 458,484). The
+# ballistas hunt the engines first (bolts, 55 a hit); your catapults answer the towers before anything else, and two good
+# stones break a ballista. The ground the castle stands on rises to the south-west: from a tower's top the ballista's
+# reach over the field (175 m on the level) shrinks up the hill, so the pure outranging (a catapult at 165 m shot and unable
+# to answer) is shown on level ground by tests/test_works.cpp, a_tower_engine_outranges_a_ground_engine.
+#
+#   Illyria --play tools/playtest/works-tower-engine.txt --play-out ~/Desktop/siege-defence/tower-engine
+
+size 1600 900
+start skirmish capital easy
+wait 1
+works count
+camera 410 430 95 2.4
+wait 0.5
+shot tower-engine-00
+speed 2
+wait_ticks 300
+shot tower-engine-01
+works count
+wait_ticks 600
+shot tower-engine-02
+works count
+wait_ticks 900
+shot tower-engine-03
+works count
+quit

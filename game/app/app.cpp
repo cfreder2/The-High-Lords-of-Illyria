@@ -1534,6 +1534,21 @@ ILLYRIA_API const char* illyria_works_demo(const char* what, int side, int count
         }
         return "works: no such unit type";
     }
+    if (w.rfind("remove ", 0) == 0) {
+        // Every man of that type of the side's taken out of the battle (a scene cleared for a demonstration).
+        const std::string name = w.substr(7);
+        int gone = 0;
+        for (const Unit& u : world.units()) {
+            if (!u.alive() || u.owner != side) continue;
+            std::string n = unitTypeName(static_cast<UnitType>(u.stats.type));
+            for (char& ch : n) ch = ch == ' ' || ch == '-' ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (n != name) continue;
+            world.removeUnit(u.id);
+            ++gone;
+        }
+        std::snprintf(line, sizeof line, "works: %d %s of side %d taken out", gone, name.c_str(), side);
+        return line;
+    }
     if (w == "sortie") {
         // The player's riders out at the nearest engine of the foe's, as a right-click on it with them selected orders.
         const auto& units = world.units();

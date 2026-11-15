@@ -30,7 +30,7 @@ TEST(world_matches_golden_checksum) {
     // x86-64/ARM, WebAssembly) must reproduce it bit for bit; if a deliberate
     // simulation change alters it, update the constant in the same commit.
     const uint64_t actual = runFord(1234);
-    constexpr uint64_t kGolden = 0x5bc08160ef035056;  // (was 0xc1ebb47ec8d3ae58 before position, support and the Rally: world_tactics.cpp, men with no order going to the help of friends and riders at the gallop riding straight at their man; was 0xb89f23afe4493e36 before the melee cap and wrap, the idle garrison's stations and the blast throwers' aim were merged; was 0xa35ef681b11c0ce9 before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
+    constexpr uint64_t kGolden = 0x0df11ea025a77d74;  // (was 0x5bc08160ef035056 before the siege defence (outworks: a ditch, bank, palisade, abatis, watchtowers and ballistas at a fair share of the castles, nothing grown on them; light horse with a Molotov, bowmen with fire arrows, precious by kind, a fall that hurts, flying timber: docs/GAME_DESIGN.md §4.2.2.1); was 0xc1ebb47ec8d3ae58 before position, support and the Rally: world_tactics.cpp, men with no order going to the help of friends and riders at the gallop riding straight at their man; was 0xb89f23afe4493e36 before the melee cap and wrap, the idle garrison's stations and the blast throwers' aim were merged; was 0xa35ef681b11c0ce9 before broken men who stand (cornered, or none near to run from) no longer being passed over by their foes)
     if (actual != kGolden) std::printf("  Ford checksum: 0x%016llx\n", static_cast<unsigned long long>(actual));
     CHECK(actual == kGolden);
 }

@@ -801,8 +801,16 @@ void World::engineTick(size_t i) {
     } while (dx * dx + dy * dy >= Fixed::one());
     const Fixed spread = kBoltSpread * best / 100;
     const Vec3 aim = mark->pos + up(mark->stats.height / 2) + Vec3{dx * spread, dy * spread, Fixed::zero()};
-    const LaunchSolution s = solveLowArc(origin, aim, kBoltSpeed, config_.gravity);
-    if (!s.inRange) return;
+    LaunchSolution s = solveLowArc(origin, aim, kBoltSpeed, config_.gravity);
+    // Over the brow, the trees and the timber between, or over its own walls, as a bowman's arrow goes: the flat shot, else
+    // the high one; neither clear, it waits for a mark it can see.
+    if (!s.inRange || !clearFlight(origin, s.velocity, aim, Fixed::fromInt(3))) {
+        s = solveHighArc(origin, aim, kBoltSpeed, config_.gravity);
+        if (!s.inRange || !clearFlight(origin, s.velocity, aim, Fixed::fromInt(3))) {
+            w.reload = kTicksPerSecond;  // (looks again in a second)
+            return;
+        }
+    }
     Projectile p;
     p.id = nextId_++;
     p.owner = holder;

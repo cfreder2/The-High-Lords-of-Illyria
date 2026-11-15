@@ -627,7 +627,8 @@ TEST(a_battle_with_a_queue_is_deterministic_and_hashes_the_queue_only_while_ther
     CHECK(play(true) == play(true));
     CHECK(play(false) == play(false));
     CHECK(play(true) != play(false));
-    constexpr uint64_t kGolden = 0xa13807e3b5d2af5c;  // (the first with a queue; no other golden moved with it)
+    constexpr uint64_t kGolden = 0x9e76becec350c7ef;  // (was 0xa13807e3b5d2af5c before bowmen carried fire arrows: docs/GAME_DESIGN.md §4.2.2.1; the first with a queue)
+    if (play(true) != kGolden) std::printf("  queue checksum: 0x%016llx\n", static_cast<unsigned long long>(play(true)));
     CHECK(play(true) == kGolden);
 }
 

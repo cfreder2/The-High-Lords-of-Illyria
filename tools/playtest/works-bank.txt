@@ -1,0 +1,24 @@
+# The ditch and the bank held by archers (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw, defended: a quarter of
+# the road door's bowmen stand forward, two up each watchtower and the rest on the bank behind the palisade; the besiegers
+# come on and cross the ditch under their arrows. Speed 2, a shot every 10 s of the game.
+#
+#   Illyria --play tools/playtest/works-bank.txt --play-out ~/Desktop/siege-defence/bank --play-log ~/Desktop/siege-defence/bank/bank.log
+
+size 1600 900
+start skirmish capital defend easy
+wait 1
+camera 446 462 45 2.4
+wait 0.5
+shot bank-00-posts
+speed 2
+wait_ticks 600
+shot bank-01
+wait_ticks 300
+shot bank-02
+wait_ticks 300
+shot bank-03
+wait_ticks 300
+shot bank-04
+works count
+stats
+quit

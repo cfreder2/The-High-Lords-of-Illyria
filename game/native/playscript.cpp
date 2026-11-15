@@ -175,7 +175,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         }
     } else if (verb == "works") {
         c.op = Op::Works;
-        static const char* kUsage = "works squad SIDE TYPE N X Y TX TY [garrison] | sortie | count";
+        static const char* kUsage = "works squad SIDE TYPE N X Y TX TY [garrison] | remove SIDE TYPE | sortie | count";
         if (n < 1) return usage(kUsage);
         c.text = w[1];
         if (c.text == "squad") {
@@ -186,6 +186,11 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             c.a = v[0], c.b = v[1], c.c = v[2], c.d = v[3];
             c.all = n == 9;
             c.text = "squad " + w[3];
+        } else if (c.text == "remove") {
+            double side = 0;
+            if (n != 3 || !number(w[2], side)) return usage(kUsage);
+            c.lord = static_cast<int>(side);
+            c.text = "remove " + w[3];
         } else if (n != 1 || (c.text != "count" && c.text != "sortie")) {
             return usage(kUsage);
         }

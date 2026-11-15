@@ -97,6 +97,53 @@ What was tried and left, with why:
 - **A longer clock on the gate**: one siege train opens a gate in about 20 to 30 s, too short for a sortie on foot (132 m is 55 s) to save it. The second train is kept off the gate (it shells the walks) so that it is not 15 s. The gate's strength and the stone's blow were left as the pass above set them.
 - **A slower flag** (33 s for fewer than eight men): the patient storm then stood on the flag's ground under the walls' bows while the garrison rallied, and lost 43 of 72; the rate above is the one that measured well.
 
+## Outworks, sorties and timber (2026-11-15)
+
+The owner's siege defence (docs/GAME_DESIGN.md §4.2.2.1): tower engines, sorties, the barricade and the keep's last stand,
+fire against engines and timber, outworks for a fair share of the castles, archers forward on the bank, wooden
+watchtowers, and timber that breaks like wood. The aim: an attacker who brings an escort and engines and uses them well
+still wins; one who walks engines up unguarded loses them; the defender has decisions throughout (when to sally, where to
+put bowmen, when to fall back). Measured with `tests/test_works.cpp`, `tests/test_outworks.cpp` and the play scripts
+`tools/playtest/works-*.txt` (pictures in ~/Desktop/siege-defence/), each figure one run.
+
+| Number | Value | Why |
+|---|---|---|
+| Fortified places | 16 of 29 walled: each realm's seat and its first-drafted town | fair: two a realm |
+| Ditch | 10 m outside the outermost stone, 8 m across, 2.4 m deep; bank 1.2 m | wide enough to need a causeway at 4 m terrain cells, shallow enough to scramble |
+| Palisade, abatis, watchtower, barricade, ballista | 500 a 6 m run, 400 a 5 m run, 280, 900, 260 hit points | one good stone each but the barricade (two) and the ballista (two) |
+| A stone on timber | 3 x its blow (300) and its smash twice over | "can be catapulted" |
+| Ballista | 12 bolts, 7 s, 55, 75 m/s, 160 m + height (about 175 m from a tower top) | outranges a catapult's 150 m, so trains must be placed; few bolts, so it cannot hold a siege alone |
+| Sortie | 2 to 6 riders, against a guard of half their power or less, within 230 m; back after 60 s, under half strength, or two to one | bare trains die, escorted ones are left alone |
+| Light horse | one Molotov each | "1 each plus their swords" |
+| Fire arrows | 3 a bowman | limited: timber only |
+| Forward bowmen | a quarter of a door's, 10 at most, half up the watchtowers | the risk is a choice of the garrison's, not its whole archery |
+| Barricade | under 85% of the gate, 4 a second a builder (four), bars at a third | about 20 s with four men: a fast battery still beats it |
+
+| Measured | Result |
+|---|---|
+| Sortie, unescorted engine (`a_sortie_burns_an_unescorted_engine_and_rides_home...`, level ground) | engine destroyed; 4 of 4 riders home, bottles all thrown |
+| The same with 16 pikes by it | engine untouched; the riders turn back, 4 of 4 alive |
+| Garrison's own decision (`outworks_in_battle_a_garrisons_light_horse_sally...`) | out by the sally port, the engine 130 m before the road door destroyed |
+| `works-sortie.txt` (Grathmaw, the side door's bare train) | six riders out over the rocks (40 s at the horse's pace on rock), both engines alight, the riders back |
+| `works-escort.txt` | with 24 foot by the train: no sortie in 40 s; the escort taken off: the horse out within 10 s |
+| Tower engine, level ground, catapult at 165 m (`a_tower_engine_outranges...`) | catapult destroyed by 5 bolts, unable to answer; a catapult at 135 m breaks the ballista within 120 s |
+| `works-tower-engine.txt` (the road train at 127 m, both in reach) | both ballistas broken within 60 s, one catapult down to 76 of 380: two engines win the duel; the ballistas hit about 1 bolt in 6 at that range |
+| A stone at a watchtower with two bowmen (`a_boulder_smashes_a_watchtower...`) | down at one stone; both bowmen thrown off and hurt (about 25 each); 12 pieces of timber flew, 12 lie; 1 of 12 men behind hurt (in `works-watchtower.txt`: 4 of 8 hurt) |
+| Abatis, three stones from 100 m (`works-abatis.txt`) | one 5 m run cleared, the horse's way open there |
+| Palisade (`a_palisade_bars_horse...`) | horse kept off it; foot over in 25 s for 40 m |
+| Fire arrows at a palisade | 3 arrows, one run alight in 20 s; it spread: 4 of 4 runs down in 110 s |
+| Barricade (`outworks_in_battle_a_battered_gate_gets_a_barricade...`) | up (900) behind the doors 5 to 9 m in; a giant kept out; six foot hack 124 off it in 20 s |
+| A fall | 8 m: 41 hit points |
+
+What this does to the siege: the road train before a fortified capital is shot at from its first tick and must beat the
+ballistas (two engines do, in about a minute) before it can batter; a train left bare before a castle with horse is lost
+to one sortie; the engines' escort (the World's own rule) is what keeps them. **Not measured:** whole sieges (`capital-keep.txt`,
+the computer's Conquest sieges) before and after; the computer lord does not yet weigh outworks or ballistas when it
+chooses a siege. **Not done:** wall padding; a filled place in a ditch (fascines); the keep's last stand still jams in
+the bailey's open doorway (19 of 24 sent, 1 in after 45 s: the men are sent once the doors stand open, force-marched,
+to their own places, and still stop in the passage); the tower-engine picture at 165 m on Grathmaw's ground (the land
+rises south-west of it, so the ballista's reach shrinks; the level-ground test stands for it).
+
 ## The boulder (2026-11-14)
 
 The owner: *"catapults should be able to fire boulders that roll on open ground smashing troops, while crushing doors, and smashing castles."* A catapult's stone no longer ends where it comes down: it smashes there as before (3 m, 100) and then bounces once and rolls on (`engine/sim/src/world_boulder.cpp`; the rules in docs/GAME_DESIGN.md, "The boulder"; the roll distances by ground and slope in docs/UNITS.md, "The boulder", made by the stone's own steps). The catapult's own figures (14 s, 150 m, 4 m of scatter at 100 m, the smash) are unchanged.
