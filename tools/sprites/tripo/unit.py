@@ -140,6 +140,15 @@ def attach_item(it, cfg, scene, arm, rig, upright):
     print('item %s: %.2f m, in the %s hand' % (it['name'], it['size_m'], side.lower()), flush=True)
 
 
+def swing_items(scene, e):
+    """In a clip marked `swing` (a throw) a thing that hangs from the fist goes with the hand instead: swung, it
+    stands out from the hand like more of the arm; hanging plumb it would lie through the arm that swings it."""
+    for o in scene.objects:
+        if o.type == 'MESH' and 'tripo_item' in o:
+            for con in o.constraints:
+                con.influence = 0.0 if e.get('swing') else 1.0
+
+
 def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=None):
     """Every frame of every clip checked for a weapon or shield through the body (clearance.py), turned clear where
     it is not; the table written beside the blend and printed; the build fails if anything is left."""
@@ -157,6 +166,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
             continue
         a, b = (int(x) for x in act.frame_range)
         until = {}
+        swing_items(scene, e)
         if 'item_gone' in e:
             for it in items:
                 if json.loads(it['tripo_item']).get('hold', 'hang') != 'strap':
@@ -185,6 +195,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
             assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
         w = clearance.wrist_report(rig, act, scene)
         wrists.append((e['clip'], w))
+    swing_items(scene, {})
     for o in [o for o in scene.objects if o.type == 'ARMATURE']:
         assign(o, None)
         for pb in o.pose.bones:
@@ -295,7 +306,7 @@ def build(cfg):
         else:
             n = c['frames']
             entry['frames'] = [round(1 + last * FPS * i / (n - 1)) for i in range(n)]
-        for key in ('release', 'item_gone', 'drop_at'):
+        for key in ('release', 'item_gone', 'drop_at', 'swing'):
             if key in c:
                 entry[key] = c[key]
         thin(entry, cfg.get('frames', {}).get(name), last)
@@ -620,6 +631,7 @@ def render(cfg, look=False):
         if only and clip not in only:
             continue
         act = bpy.data.actions[e['action']]
+        swing_items(s, e)
         for o in rigs:
             assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
         a, b = act.frame_range

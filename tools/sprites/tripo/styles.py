@@ -18,6 +18,10 @@ def _deaths(P, home='HOME', frames=8, flinch=None):
         p = dict(getattr(KP, name), fist={'Right': 30, 'Left': 30})
         if name in ('HIT', 'DB_STRUCK', 'DF_STRUCK', 'DC_STRUCK'):
             p['feet'] = dict(P[home]['feet'])     # struck where he stands
+        if name == 'DC_STRUCK':
+            p.update(sword_hand=(0.22, -0.50, 0.92), sword_elbow=(-0.10, -0.55, 1.15), blade=(0.55, -0.55, -0.62))
+        if name in ('DC_KNEEL', 'BURN_KNEES'):
+            p.update(sword_hand=(0.28, -0.52, 0.50), sword_elbow=(-0.05, -0.60, 0.80), blade=(0.70, -0.62, -0.35))
         P[name] = p
     return {
         'flinch': dict(keys=[(0.0, home, 'linear'), (0.10, 'HIT', 'out'), (0.18, 'HIT', 'linear'), (0.60, home, 'ease')],
@@ -102,7 +106,7 @@ def thrower(cfg):
         'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.30, 'THROW_BACK', 'ease'), (0.38, 'THROW_BACK', 'linear'),
                              (0.48, 'THROW_OVER', 'in'), (0.58, 'THROW_THROUGH', 'out'), (0.70, 'THROW_THROUGH', 'linear'),
                              (1.05, 'HOME', 'ease')], kind='still',
-                       times=[0.0, 0.125, 0.25, 0.3333, 0.4167, 0.5, 0.5833, 0.7083, 0.875], release=0.5, item_gone=0.5),
+                       times=[0.0, 0.125, 0.25, 0.3333, 0.4167, 0.5, 0.5833, 0.7083, 0.875], release=0.5, item_gone=0.5, swing=True),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.35, 'CEL_UP', 'out'), (0.65, 'CEL_PUMP', 'ease'), (0.95, 'CEL_UP', 'out'),
                                 (1.25, 'CEL_PUMP', 'ease'), (1.55, 'CEL_UP', 'out'), (1.9, 'CEL_UP', 'linear'), (2.4, 'HOME', 'ease')],
                           kind='loop', frames=12),
@@ -223,7 +227,7 @@ def dwarf_thrower(cfg):
                              (0.66, 'T_LEAD', 'in'), (0.75, 'T_LOOSE', 'linear'), (0.87, 'T_THROUGH', 'out'), (1.0, 'T_THROUGH', 'linear'),
                              (1.25, 'T_BACK', 'ease'), (1.45, 'HOME', 'ease')], kind='still',
                        times=[0.0, 0.0833, 0.1667, 0.25, 0.375, 0.5, 0.5833, 0.6667, 0.7083, 0.75, 0.7917, 0.875, 1.0, 1.125, 1.25, 1.375],
-                       release=0.75, item_gone=0.75),
+                       release=0.75, item_gone=0.75, swing=True),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.3, 'C_UP', 'out'), (0.6, 'C_DOWN_L', 'ease'), (0.9, 'C_UP', 'out'),
                                 (1.2, 'C_DOWN_R', 'ease'), (1.5, 'C_UP', 'out'), (1.8, 'C_DOWN_L', 'ease'), (2.1, 'C_UP', 'out'),
                                 (2.4, 'C_UP', 'linear'), (2.9, 'HOME', 'ease')], kind='loop', frames=16),
@@ -263,6 +267,9 @@ def hero(cfg):
     HOME = dict(KP.GUARD, fist=GRIP, **LOWSWORD)
     P = {k: dict(getattr(KP, k), fist=GRIP) for k in ('WINDUP', 'STRIKE', 'FOLLOW', 'CHARGE_DOWN_L', 'CHARGE_DOWN_R', 'CHARGE_UP', 'CEL_UP', 'CEL_PUMP', 'SALUTE')}
     P['HOME'] = HOME
+    P['WINDUP'] = dict(P['WINDUP'], sword_hand=(0.0, -0.36, 1.80), sword_elbow=(-0.20, -0.64, 1.50), blade=(-0.55, -0.32, 0.77), edge=(0.5, 0, 0.85))
+    P['STRIKE'] = dict(P['STRIKE'], shield_hand=(0.36, 0.14, 1.18), shield_elbow=(0.26, 0.54, 1.02))   # the shield held off his chest
+    P['FOLLOW'] = dict(P['FOLLOW'], shield_hand=(0.38, 0.24, 1.18), shield_elbow=(0.26, 0.58, 1.02))
     P['BREATHE'] = dict(HOME, hips=(0.0, 0.0, 0.96), chest=lean(pitch=8, turn=-10), shield_hand=(0.25, 0.03, 1.25))
     P['EASE'] = dict(HOME, hips=(0.0, 0.0, 0.97), chest=lean(pitch=8, turn=-4), head=lean(turn=30),
                      shield_hand=(0.26, 0.10, 1.16), shield_elbow=(0.22, 0.50, 1.02), shield_face=(1, 0.35, 0))

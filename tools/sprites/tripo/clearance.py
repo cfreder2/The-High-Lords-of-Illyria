@@ -30,6 +30,7 @@ from keyer import B
 
 TOLERANCE = 0.010      # metres a point may be under the skin, for a man 1.8 m tall (scaled by the figure's size)
 SHIELD_TOLERANCE = 0.03
+SACK_TOLERANCE = 0.04   # a soft sack on a cord gives against a leg
 WRIST = 40.0           # degrees the solver may turn a hand at the wrist before the arm must give
 WRIST_MOST = 78.0      # and the most a wrist may be bent from straight on the forearm when it has
 RAYS = (Vector((0.3, 0.2, 0.93)).normalized(), Vector((0.9, -0.4, 0.1)).normalized(), Vector((-0.2, 0.95, -0.2)).normalized())
@@ -104,7 +105,7 @@ class Held:
         self.side = 'Left' if self.strap else self.it.get('hand', 'Right')
         self.local = cloud(ob)
         self.scale = scale
-        self.tol = (SHIELD_TOLERANCE if self.strap or self.hangs else TOLERANCE) * scale
+        self.tol = (SACK_TOLERANCE if self.hangs else SHIELD_TOLERANCE if self.strap else TOLERANCE) * scale
 
     def frame(self):
         rig = self.rig
@@ -116,6 +117,9 @@ class Held:
         if self.strap:
             a, b = rig.head('LeftForeArm'), rig.head('LeftHand')
             self.spheres += [(a + (b - a) * t, 0.17 * k) for t in (0.0, 0.33, 0.66, 1.0)] + [(rig.fist('Left'), 0.14 * k)]
+            # and the arm it is on: a shield lies against its own upper arm and shoulder when the elbow folds
+            sh = rig.head('LeftArm')
+            self.spheres += [(sh + (a - sh) * t, 0.15 * k) for t in (0.0, 0.33, 0.66)] + [(rig.head('LeftShoulder'), 0.14 * k)]
         else:
             self.spheres.append((rig.fist(self.side), 0.15 * k))
             self.spheres.append((rig.head(self.side + 'Hand'), 0.10 * k))
