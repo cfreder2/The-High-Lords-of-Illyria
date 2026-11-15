@@ -33,6 +33,47 @@ def body_points(body):
     return co @ mw[:3, :3].T + mw[:3, 3]
 
 
+def free_cloth(rig, body, reach):
+    """A cape or long skirt skinned to the legs follows every stride like trousers. Its vertices are those the
+    leg bones hold from further off than any leg is thick (`reach`, as a share of the hips' height): their leg
+    weights go to the hips, so the cloth hangs from the body and the legs move inside it."""
+    arm = rig.arm
+    rig.rest()
+    W = np.array(arm.matrix_world)
+    me = body.data
+    n = len(me.vertices)
+    co = np.empty(n * 3)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(n, 3)
+    bw = np.array(body.matrix_world)
+    pts = co @ bw[:3, :3].T + bw[:3, 3]
+    far = np.full(n, True)
+    limit = reach * rig.rest_head['Hips'].z
+    legs = []
+    for side in ('Left', 'Right'):
+        for a, b in (('UpLeg', 'Leg'), ('Leg', 'Foot'), ('Foot', 'ToeBase')):
+            legs.append((np.array(rig.rest_head[side + a]), np.array(rig.rest_head[side + b])))
+    for a, b in legs:
+        ab = b - a
+        t = np.clip(((pts - a) @ ab) / (ab @ ab), 0, 1)
+        d = np.linalg.norm(pts - (a + t[:, None] * ab), axis=1)
+        far &= d > limit
+    names = {g.index: g.name for g in body.vertex_groups}
+    legset = {i for i, nm in names.items() if any(k in nm for k in ('UpLeg', 'Leg', 'Foot', 'Toe'))}
+    hips = body.vertex_groups[keyer.B + 'Hips']
+    moved = 0
+    for v in me.vertices:
+        if not far[v.index]:
+            continue
+        w = sum(g.weight for g in v.groups if g.group in legset)
+        if w > 1e-4:
+            for gi in [g.group for g in v.groups if g.group in legset]:
+                body.vertex_groups[gi].remove([v.index])
+            hips.add([v.index], w, 'ADD')
+            moved += 1
+    print('cloth freed from the legs: %d vertices' % moved, flush=True)
+
+
 class Fit:
     def __init__(self, rig, body, step=1.0):
         self.rig, self.body = rig, body
@@ -47,6 +88,11 @@ class Fit:
         band = pts[(pts[:, 2] > hips * 0.8) & (pts[:, 2] < chest) & (np.abs(pts[:, 1]) < arm_y * 1.05)]
         self.trunk = float(np.abs(band[:, 1]).max()) if len(band) else arm_y
         self.front = float(band[:, 0].max()) if len(band) else 0.15
+
+    def options(self, cfg):
+        """A unit's own allowances: "clear" false lets hands pass the trunk's side (a shield arm does)."""
+        self.clear = cfg.get('clear', True)
+        self.hunch = cfg.get('hunch', 0.0)   # degrees his rest pose stoops: taken out of him as he lies down
 
     def describe(self):
         return 'legs x%.2f, arms x%.2f, stance x%.2f, trunk half width %.2f m, belly %.2f m' % (self.S, self.A, self.Wf, self.trunk, self.front)
@@ -70,9 +116,13 @@ class Fit:
         hr = p.get('hips_rot', lean())
         rig.set_rot('Hips', hr @ rig.rest_rot['Hips'], Vector(p['hips']))
         chest = p.get('chest', lean())
+        look = p.get('head', chest)
+        if getattr(self, 'hunch', 0.0):
+            down = min(1.0, max(0.0, (0.55 - hm.z) / 0.40))
+            back = Quaternion(Vector((0, 1, 0)), math.radians(-self.hunch * down))
+            chest, look = chest @ back, look @ back
         for n, w in (('Spine', 0.34), ('Spine1', 0.67), ('Spine2', 1.0)):
             rig.set_rot(n, hr.slerp(chest, w) @ rig.rest_rot[n])
-        look = p.get('head', chest)
         rig.set_rot('Neck', chest.slerp(look, 0.5) @ rig.rest_rot['Neck'])
         rig.set_rot('Head', look @ rig.rest_rot['Head'])
         # A shoulder rolled forward (+, _shrug) or lifted (+, _lift), in degrees: the weight of a walk shows there.
@@ -89,7 +139,7 @@ class Fit:
             su = rig.head(side + 'Arm')
             h = su + (Vector(pm[hand]) - sm) * self.A
             e = su + (Vector(pm[elbow]) - sm) * self.A
-            if not lying:
+            if not lying and getattr(self, 'clear', True):
                 # A hand below the shoulder and not out in front stays clear of the trunk's side.
                 clear = self.trunk + 0.07
                 if h.z < su.z and h.x < self.front + 0.05 and sgn * h.y < clear:
@@ -100,6 +150,27 @@ class Fit:
             rig.hand_follows_forearm(side)
             if p.get('fist', {}).get(side):
                 rig.curl(side, p['fist'][side])
+        # What he holds: the weapon hand turned so the blade (or shaft) points along `blade`, its edge leading
+        # toward `edge`; the strapped shield turned to face `shield_face`; a second hand on a long hilt or shaft
+        # (`two_hands`: metres from the weapon hand toward the butt, or - toward the point).
+        if rig.sword is not None and 'blade' in p:
+            rig.grip(Vector(p['blade']), Vector(p.get('edge', (0, 0, -1))))
+        if rig.shield is not None and 'shield_face' in p:
+            rig.face_shield(Vector(p['shield_face']))
+            if p.get('fist', {}).get('Left'):
+                rig.curl('Left', p['fist']['Left'])
+        if rig.sword is not None and p.get('two_hands') is not None:
+            blade = (rig.rot('RightHand') @ rig.blade_local).normalized()
+            fist = rig.fist('Right')
+            want = fist - blade * (p['two_hands'] * self.A) - rig.palm_offset('Left')
+            la, lb = rig.lengths['Left'][:2]
+            su = rig.head('LeftArm')
+            e = su + (Vector(pm['shield_elbow']) - (hm + trunk_q @ Vector((MAN_SHOULDER.x, MAN_SHOULDER.y, MAN_SHOULDER.z)))) * self.A
+            rig.two_bone('LeftArm', 'LeftForeArm', 'LeftHand', want, e, la, lb)
+            rig.hand_follows_forearm('Left')
+            # The left palm to the shaft: its knuckle line along the weapon.
+            rig.turn_knuckles('Left', blade)
+            rig.curl('Left', 65)
         rig.legs(p['feet'], p.get('free', 0.0), {s: keyer.knee_dir(p, s) for s in ('Left', 'Right')})
         if lying and _lift is None:
             # Down on the ground: lying on his own thickness, not the knight's.

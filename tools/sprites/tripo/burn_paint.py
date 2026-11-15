@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-PPM = 192.0                  # the render's pixels a metre
+PPM = float(sys.argv[sys.argv.index('--ppm') + 1]) if '--ppm' in sys.argv else 192.0   # the render's pixels a metre
 TONGUE_M = 0.5               # how far a tongue reaches above what burns
 SMOKE_M = 0.55               # and the smoke above that
 

@@ -1,0 +1,23 @@
+{
+ "unit": "journeyman",
+ "body": "medieval_robe_8127036c",
+ "height_m": 2.0,
+ "style": "healer",
+ "step": 0.8,
+ "items": [
+  {
+   "name": "staff",
+   "model": "wooden_staff_8876d018",
+   "hand": "Right",
+   "hold": "grip",
+   "size_m": 2.0,
+   "grip": [
+    0.5,
+    0.5,
+    0.62
+   ]
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}

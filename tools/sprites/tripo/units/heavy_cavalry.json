@@ -1,0 +1,35 @@
+{
+ "unit": "heavy_cavalry",
+ "mount": {
+  "body": "armored_horse_56c79ca9",
+  "length_m": 2.6
+ },
+ "body": "medieval_knight_70d8bebe",
+ "rider_height_m": 2.0,
+ "height_m": 2.8,
+ "scale": 1.5,
+ "items": [
+  {
+   "name": "lance",
+   "model": "medieval_spear_238c39e5",
+   "hand": "Right",
+   "hold": "grip",
+   "size_m": 3.2,
+   "grip": [
+    0.5,
+    0.5,
+    0.3
+   ],
+   "team": true
+  },
+  {
+   "name": "shield",
+   "model": "medieval_shield_09ab60e2",
+   "hold": "strap",
+   "size_m": 0.9,
+   "team": true
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}

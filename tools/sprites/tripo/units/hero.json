@@ -1,0 +1,32 @@
+{
+ "unit": "hero",
+ "body": "medieval_knight_18bdecb9",
+ "height_m": 2.35,
+ "style": "hero",
+ "clear": false,
+ "cape": 0.16,
+ "items": [
+  {
+   "name": "sword",
+   "model": "fantasy_sword_b7aa65ea",
+   "hand": "Right",
+   "hold": "grip",
+   "tip": "down",
+   "size_m": 1.1,
+   "grip": [
+    0.5,
+    0.5,
+    0.12
+   ]
+  },
+  {
+   "name": "shield",
+   "model": "blue_cross_shield_5b0a00bc",
+   "hold": "strap",
+   "size_m": 0.95,
+   "team": true
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}

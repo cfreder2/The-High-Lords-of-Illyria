@@ -1,0 +1,30 @@
+{
+ "unit": "light_infantry",
+ "body": "medieval_knight_12677901",
+ "height_m": 2.0,
+ "style": "spearman",
+ "clear": false,
+ "items": [
+  {
+   "name": "spear",
+   "model": "spear_9b7e1888",
+   "hand": "Right",
+   "hold": "grip",
+   "size_m": 2.3,
+   "grip": [
+    0.5,
+    0.5,
+    0.42
+   ]
+  },
+  {
+   "name": "shield",
+   "model": "blue_round_shield_e8e93cdf",
+   "hold": "strap",
+   "size_m": 0.85,
+   "team": true
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}
