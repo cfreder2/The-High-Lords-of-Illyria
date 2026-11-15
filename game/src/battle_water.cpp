@@ -85,9 +85,9 @@ void Battle::waterColumn(const V3& at, float reach) {
         const float a = rnd() * 6.2832f, out = 2.0f + rnd() * reach * 1.4f;
         emit(Particle::Kind::Spray, at, V3{std::cos(a) * out, std::sin(a) * out, 2.0f + rnd() * 3.0f}, 0.7f + rnd() * 0.5f, 0.04f + rnd() * 0.05f);
     }
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < 6; ++i)
         emit(Particle::Kind::Steam, at + V3{(rnd() - 0.5f) * 1.2f, (rnd() - 0.5f) * 1.2f, 0.6f + rnd() * 1.5f}, V3{(rnd() - 0.5f) * 0.8f, (rnd() - 0.5f) * 0.8f, 0.6f + rnd()},
-             1.2f + rnd() * 0.8f, 0.7f + rnd() * 0.6f);
+             1.0f + rnd() * 0.8f, 0.4f + rnd() * 0.4f);
 }
 
 void Battle::steam(const V3& at, float reach) {
@@ -96,10 +96,10 @@ void Battle::steam(const V3& at, float reach) {
     ring(at, 1.7f);
     ring(at, 1.0f, 0.5f);
     // Fire on water: it flashes to steam, a white cloud boiling up and drifting off, and the surface spits.
-    for (int i = 0; i < 26; ++i) {
-        const float a = rnd() * 6.2832f, d = rnd() * reach * 0.6f;
-        emit(Particle::Kind::Steam, at + V3{std::cos(a) * d, std::sin(a) * d, 0.2f + rnd() * 0.6f}, V3{std::cos(a) * (0.4f + rnd()), std::sin(a) * (0.4f + rnd()), 1.4f + rnd() * 2.4f},
-             2.2f + rnd() * 2.2f, 0.6f + rnd() * 0.9f);
+    for (int i = 0; i < 12; ++i) {
+        const float a = rnd() * 6.2832f, d = rnd() * reach * 0.5f;
+        emit(Particle::Kind::Steam, at + V3{std::cos(a) * d, std::sin(a) * d, 0.2f + rnd() * 0.5f}, V3{std::cos(a) * (0.3f + rnd() * 0.8f), std::sin(a) * (0.3f + rnd() * 0.8f), 1.2f + rnd() * 2.2f},
+             1.5f + rnd() * 1.6f, 0.35f + rnd() * 0.5f);
     }
     for (int i = 0; i < 18; ++i) {
         const float a = rnd() * 6.2832f, out = 1.0f + rnd() * 3.0f;

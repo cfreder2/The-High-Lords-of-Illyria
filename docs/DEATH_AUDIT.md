@@ -155,8 +155,11 @@ eight visits, two runs; medians 17.0 and 21.8 against 16.3 and 19.3): between no
 outside the boxes the lists can touch (`uRingBox`, `uDyeBox`) does none of the work. The shaders compile and link as
 WebGL2 in headless Chrome (water, decal, particle); the page was not run.
 
-No golden moved: no pinned battle has a death in water deep enough to float (the Ford, the siege, Oakhaven, the raid,
-the melee, the queue, the conquest; read, not gated on).
+One golden moved, and was pinned again: the conquest's boats (`boats_are_deterministic`), whose landings are fought at
+the water's edge: 0xfb9210d597194218 before, 0xe571dcb0f29e17da now. (Its pin was already stale on the commit this
+began from, which gave the first of those and not the 0x2f21fd37f25706e9 written there: something merged before had
+moved it.) The Ford, the siege, Oakhaven, the raid, the melee, the queue and the conquest's own pin did not move (no
+death in them falls in water). Read, not gated on.
 
 Not done: a body lodged on a pier or a bank is not pushed off by the next one; floating bodies do not block or slow
 the living; rain, and the splash of a body thrown into water by a blast after its death.

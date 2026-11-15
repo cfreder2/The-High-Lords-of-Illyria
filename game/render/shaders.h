@@ -3445,8 +3445,8 @@ void main() {
         float a = (1.0 - smoothstep(0.35, 0.9, r)) * 0.85 * (1.0 - age * age);
         oColor = vec4(vec3(0.86, 0.91, 0.94) * a, a);
     } else {                  // steam: fire on water, and the mist a stone's column leaves
-        float a = soft * 0.42 * (1.0 - age) * smoothstep(0.0, 0.08, age);
-        oColor = vec4(vec3(0.9, 0.91, 0.92) * a, a);
+        float a = soft * 0.2 * (1.0 - age) * smoothstep(0.0, 0.08, age);
+        oColor = vec4(vec3(0.8, 0.81, 0.82) * a, a);  // (thin, and no brighter than a cloud: many overlap)
     }
 }
 )";

@@ -1070,7 +1070,7 @@ void Battle::updateParticles(float seconds) {
             case Particle::Kind::Steam:
                 p.vel = p.vel * std::exp(-0.8f * seconds);
                 p.pos += p.vel * seconds;
-                p.size += seconds * 1.2f;
+                p.size += seconds * (p.kind == Particle::Kind::Steam ? 0.6f : 1.2f);
                 break;
             case Particle::Kind::Spray:
                 p.vel.z -= kGravity * seconds;
