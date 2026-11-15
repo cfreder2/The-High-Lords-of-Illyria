@@ -141,8 +141,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
-| `satchel-trap.txt` | the Ford with bought armies: the pikes forward, the dwarf lays a line of three charges (T, Shift+click) between the ford and the line and falls back to the pikes; the marks and rings, the card's pips, `stats` every few seconds. |
-| `satchel-no-trap.txt` | its control: the same camera and waits, no orders. |
+| `satchel-trap.txt` | the Ford with bought armies (300 gold a side): the pikes forward, the dwarf lays a line of three charges (T, Shift+click) between the ford and the line and falls back to the pikes, then sparks them by his own judgement; the marks and rings, the card's pips, `stats` to tick 7000. The log's `event=` carries "Ambush: N down". |
+| `satchel-no-trap.txt` | its control: the same purse, camera and waits, the pikes moved the same, the dwarf told nothing. |
 | `satchel-careless.txt` | the same line, the Warriors marched onto it, Hold fire, then Detonate (L, click): the red rings, the blast at once, "Our own blast: N down" in the log. |
 | `satchel-ai-gate.txt` | a village's siege with bought armies, you outside: the keepers' dwarf mines the ground inside his gate. Nothing is ordered; two shots. |
 
