@@ -439,6 +439,7 @@ int runApp(int argc, char** argv) {
         }
 #endif
         if (pref) {
+            hud.setMarchFile(std::string(pref) + "march.save");
             hud.setSaveFile(std::string(pref) + "campaign.save");  // (the file keeps its old name: saves made before the rename must still load)
             hud.setSettingsFile(std::string(pref) + "settings.ini");  // the player's colour, the map shown
         }

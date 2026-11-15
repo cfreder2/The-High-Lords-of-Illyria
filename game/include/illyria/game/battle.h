@@ -77,6 +77,7 @@ struct Standing {
     int blessings = 0;
     int kills = 0;
     int broken = 0;     // soldiers routed (fleeing, deaf to orders)
+    int battles = 0;    // the fights it has been in before this one (a Conquest's squad, a march's): its history
 };
 
 struct Squad {
@@ -118,6 +119,19 @@ struct Buy {
     int squads;
 };
 
+// A squad carried from an earlier battle (the March, march.h): its name, kind and full strength, and every man left of it
+// as he stands. `hp` is thousandths of his full health; `slot` his place among the squad's men when the battle began
+// (Battle::carried tells it, so that whoever keeps the roster knows which man this is).
+struct CarriedMan {
+    int hp = 1000, rank = 0, kills = 0, slot = 0;
+};
+struct CarriedSquad {
+    std::string name;
+    sim::UnitType type = sim::UnitType::LightInfantry;
+    int full = 0;
+    std::vector<CarriedMan> men;
+};
+
 // A skirmish as the Skirmish screen sets it up: a Conquest with a fence, so its army is bought at the Conquest's prices from a
 // gold budget and the computer plays as a lord does (AiSkill). `budget` 0 is the classic muster of the Ford and the village
 // siege (the armies the first builds were made with); every other map, and any budget, buys.
@@ -127,6 +141,10 @@ struct SkirmishSetup {
     int budget = 0;
     std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
     bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
+    // The March: the player's army is these squads as they stand (its lord among them), not one bought; and the other
+    // side raises this much gold (0: as much as the player's purse).
+    std::vector<CarriedSquad> roster;
+    int foePurse = 0;
 };
 // The types a skirmish may buy: what a Conquest city trains (Conquest::trainable).
 std::vector<sim::UnitType> skirmishTypes();
@@ -750,6 +768,10 @@ public:
     int outcome() const;
     // The end of a battle (battle_end.cpp). The side that has quit the field and is being chased off it (or kNobody).
     sim::PlayerId routedSide() const { return rout_.quitter(); }
+    // The pursuit: seconds of it left (0: none going on), and the kinds that ride a beaten host down unasked.
+    int pursuitSeconds() const;
+    static bool pursues(sim::UnitType type);
+    static constexpr uint32_t kPursueLookTicks = sim::kTicksPerSecond;  // how often a pursuer with nobody in hand picks a runner
     // Decided: the clock runs slow over the last blow (kLastBlowTicks at kLastBlowPace), then the fight stops for good.
     // The ticks are the world's, so every peer stops on the same one; the slowing is the clock's alone.
     static constexpr uint32_t kLastBlowTicks = 8;
@@ -763,14 +785,29 @@ public:
         int seconds = 0, killed = 0, lost = 0;
         struct Row {
             std::string name;
-            int alive = 0, total = 0, kills = 0;
+            int alive = 0, total = 0, kills = 0;  // total: the men it began this battle with
             bool broke = false;
+            int rank = 0, promoted = 0;  // the survivors' rank (Standing; a hero's level), and how many of them rose a rank in this battle
+            bool hero = false;
         };
+        int promoted = 0;                 // men of the local side who rose a rank and lived
+        bool conquest = false;            // a fight of a Conquest (fightReport): the war goes on; a squad there has one rank
         std::vector<Row> rows;
         std::string best;                 // the squad with the most kills ("" with none)
         std::vector<std::string> fallen;  // heroes fallen, the local side's first
     };
     Result result() const;
+    // A Conquest has no end of battle, but its fights end (battle_events.cpp, observeFight): when the local side's
+    // men have fought and then not struck a blow for kFightOverTicks, the results sheet of that fight (who was in it,
+    // what each lost and killed, who rose a rank, whether a host quit the field). It stays until dismissed; whoever
+    // steps the conquest holds its clock while it is up. A brush under kFightWorth dead is not told.
+    static constexpr uint32_t kFightFreshTicks = 5 * sim::kTicksPerSecond, kFightOverTicks = 8 * sim::kTicksPerSecond;
+    static constexpr int kFightWorth = 6;
+    const Result* fightReport() const { return fightTold_ ? &fightReport_ : nullptr; }
+    void dismissFightReport() { fightTold_ = false; }
+    // The local side's squads as they stand now, for whoever carries them to another battle (march.h): every squad it
+    // began with, the wiped out too (no men), each living man with his health, rank and kills.
+    std::vector<CarriedSquad> carried() const;
     // Deployment: the battle waits at its first tick for the player to set his line. Orders are taken (they are held
     // as any order is until the next step, and their markers show); beginBattle starts the clock. The app asks for it
     // (a skirmish from the menu); a battle made by a test or a hook runs at once. Single player: over the network the
@@ -869,7 +906,12 @@ private:
     std::vector<Buy> playerBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines) const;
     std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines, int pct = 100) const;
     // An army in ranks (foot in front, bowmen behind, horse on the wings, engines last) about `anchor`, facing `facing`.
-    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false);
+    // `roster`: these squads as they stand instead (SkirmishSetup::roster), their lord among them. `skirmishers`: the
+    // bowmen stand out in front of the foot (open ground: the battle opens with their arrows).
+    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false,
+                const std::vector<CarriedSquad>* roster = nullptr, bool skirmishers = false);
+    // The last squad made takes a carried squad's men: each his health, rank and kills, and the squad its full strength.
+    void seatCarried(const CarriedSquad& c);
     void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
@@ -971,6 +1013,21 @@ private:
     }
     // The strip of events (events()), called once after each step of the world.
     void observeSquads();
+    void observeFight();
+    struct FightWatch {
+        struct Entry {
+            uint32_t army = 0;
+            std::string name;
+            int alive = 0, kills = 0, rank = 0;
+            bool hero = false;
+        };
+        std::vector<Entry> armies;  // the local side's squads that have fought in it, as each stood when it joined
+        uint32_t began = 0, last = 0;  // on the events' clock
+        bool weQuit = false, foeQuit = false;
+    };
+    FightWatch fight_;
+    Result fightReport_;
+    bool fightTold_ = false;
     void announce(const std::string& text);
     void collectTactics();
     sim::EntityId lordOf(sim::PlayerId owner, bool controllableOnly) const;
@@ -1137,8 +1194,10 @@ private:
     std::vector<sim::HostSquad> hosts_;
     uint32_t decidedTick_ = UINT32_MAX;
     std::vector<uint8_t> everBroke_;
+    std::vector<int32_t> startRank_;  // by EntityId - 1: each man's rank when the battle began (finish)
     bool deploy_ = false;
     void judge();
+    void pursue();
     void placeCapturePoint(const sim::Continent::City& town, sim::PlayerId keeper);
     std::unique_ptr<BattleMode> mode_;
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)

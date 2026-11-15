@@ -17,7 +17,7 @@ namespace {
 
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
-constexpr const char* kMagic = "ILC8.";  // bump the digit when the layout changes
+constexpr const char* kMagic = "ILC9.";  // bump the digit when the layout changes
 constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
 
 class Writer {
@@ -201,6 +201,8 @@ void writeArmy(Writer& w, const Army& a) {
     w.i(a.fullStrength);
     w.i(a.kills);
     w.i(a.rank);
+    w.i(a.battles);
+    w.u(a.foughtTick);
     w.i(a.blessings);
     w.u(a.bornDay);
     w.b(a.ally);
@@ -233,6 +235,8 @@ Army readArmy(Reader& r) {
     a.fullStrength = r.i32();
     a.kills = r.i32();
     a.rank = r.i32();
+    a.battles = r.i32();
+    a.foughtTick = r.u32();
     a.blessings = r.i32();
     a.bornDay = r.u32();
     a.ally = r.b();

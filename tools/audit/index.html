@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Audit: The High Lords of Illyria</title>
+<link rel="stylesheet" href="audit.css">
+</head>
+<body>
+<div class="bar" id="topbar">
+  <nav><a class="here" href="index.html">Audit</a><a href="sprites.html">Sprites</a><a href="sounds.html">Sounds</a></nav>
+</div>
+<main>
+  <p class="note" style="margin-top:16px">The game's own files, shown and played by the game's own rules, so they can be judged outside a battle.</p>
+  <div class="hub" id="hub">
+    <a class="card" href="sprites.html"><h3>Sprites</h3><p id="sprites-n">Every unit's sheet as the game draws it: clips in eight facings, the camera's zoom, body parts, and each unit's sounds beside its attack.</p></a>
+    <a class="card" href="sounds.html"><h3>Sounds</h3><p id="sounds-n">Every sound effect with what asks for it, its waveform and its faults, played as the game plays it; the 12-strip mix under load.</p></a>
+    <a class="card" href="sounds.html#events"><h3>Silent events</h3><p id="events-n">What a player expects to hear and nothing plays.</p></a>
+    <a class="card" href="sounds.html#voices"><h3>Voices</h3><p id="voices-n">Each voice set's lines, and what plays for each today.</p></a>
+  </div>
+</main>
+<script>
+(async () => {
+  "use strict";
+  const say = (id, text) => { document.getElementById(id).textContent = text; };
+  const json = (url) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const head = (url) => fetch(url, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
+  const web = location.pathname.includes("/tools/audit") ? "../../game/web/" : "../";
+  const [sprites, hd, sounds, lines, have, audit] = await Promise.all([json(web + "sprites/index.json"), json(web + "sprites/index_hd.json"), json(web + "sfx/sounds.json"),
+    json(web + "voice/lines.json"), json(web + "voice/available.json"), json("sound-audit.json")]);
+  if (sprites) say("sprites-n", `${Object.keys(sprites).length} units, ${hd ? Object.keys(hd).length : 0} with a close-up sheet. Clips in eight facings, the camera's zoom, body parts, and each unit's sounds beside its attack.`);
+  if (sounds) say("sounds-n", `${sounds.sounds.length} sounds in ${sounds.sounds.reduce((n, s) => n + s.files.length, 0)} files, with what asks for each, its waveform and its faults, played as the game plays it; the 12-strip mix under load.`);
+  if (audit && audit.coverage.length) say("events-n", `${audit.coverage.filter((c) => c.state.startsWith("silent")).length} of ${audit.coverage.length} things a player expects to hear make no sound at all.`);
+  if (lines) {
+    const n = lines.sets.reduce((k, s) => k + s.situations.reduce((j, x) => j + x.lines.length, 0), 0);
+    say("voices-n", `${lines.sets.length} voice sets, ${n} lines, ${(have || []).length} recorded. What plays for each today: a file, or the browser's speech.`);
+  }
+  // Things outside the repository that serve.sh also serves, when they are there.
+  const hub = document.getElementById("hub");
+  const card = (href, title, text) => {
+    const a = document.createElement("a");
+    a.className = "card"; a.href = href;
+    a.innerHTML = "<h3></h3><p></p>";
+    a.firstChild.textContent = title; a.lastChild.textContent = text;
+    hub.append(a);
+  };
+  if (await head("/_candidates/audition.html")) card("/_candidates/audition.html", "Candidate sounds", "CC0 candidates to replace the synthesised effects, with their own audition page (~/Desktop/sound-sources/candidates).");
+  else if (await head("/_candidates/")) card("/_candidates/", "Candidate sounds (files)", "CC0 candidates being gathered in ~/Desktop/sound-sources/candidates; no audition page there yet.");
+  if (await head("/_sound-audit/PUNCHLIST.md")) card("/_sound-audit/PUNCHLIST.md", "Sound punch list", "The sound audit's findings in full (~/Desktop/sound-audit/PUNCHLIST.md).");
+})();
+</script>
+</body>
+</html>

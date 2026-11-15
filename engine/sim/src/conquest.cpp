@@ -705,6 +705,8 @@ uint64_t Conquest::checksum() const {
             h.addI64(a.soldiers);
             h.addI64(a.kills);
             h.addI64(a.rank);
+            h.addI64(a.battles);
+            h.addU64(a.foughtTick);
             h.addI64(a.blessings);
             h.addU64(a.temples | (a.ally ? 0x100u : 0u));
             for (uint8_t k : a.artifacts) h.addU64(k);

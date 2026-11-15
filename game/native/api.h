@@ -11,6 +11,11 @@ int illyria_start_mode(const char* id, const char* options);
 const char* illyria_mode_error();
 const char* illyria_skirmish_offers();
 const char* illyria_skirmish_buy(int budget, int engines);
+const char* illyria_march_state();  // the March's book (march.h): {} with none
+int illyria_march_load(const char* save);
+const char* illyria_march_save();
+int illyria_march_reinforce(int squad);
+void illyria_march_end();
 const char* illyria_perf();
 const char* illyria_draw_counts();
 void illyria_hide_parts(unsigned mask);
@@ -70,6 +75,7 @@ void illyria_cycle_speed();
 void illyria_set_pace(float pace);
 void illyria_restart();
 void illyria_begin_battle();  // the deployment is done: the clock starts
+void illyria_result_dismiss();  // a Conquest fight's results sheet put away
 
 const char* illyria_hud();
 const char* illyria_labels();

@@ -11,7 +11,7 @@ namespace illyria::native::play {
 
 enum class Op {
     Size,       // size W H            (window, in points)
-    Start,      // start conquest | skirmish ford | skirmish siege | horde | ctf  [lord N] [easy]
+    Start,      // start conquest | skirmish ford | skirmish siege | march | horde | ctf  [lord N] [easy]
     Key,        // key NAME [down|up|SECONDS]
     Mouse,      // mouse X Y
     Click,      // click left|right|middle [X Y]

@@ -86,6 +86,11 @@ sim::Vec3 fieldCentre(const sim::Continent& c) {
 }
 
 constexpr int kDefaultBudget = 300;  // gold a side raises when the page says nothing
+// How far apart two bought hosts form up, front to front (docs/GAME_DESIGN.md §4.5.2): near enough that the first arrows
+// fly within about 25 s of the start. On open ground each host's bowmen stand out in front as skirmishers (muster), the
+// two lines inside a bowshot (70 m) of each other across the river; at the Ford the far host is a short march off.
+// (140 m and 230 m before, the bowmen behind two ranks of foot: 40 to 93 s passed before anyone fell.)
+constexpr float kFieldGapM = 64.0f, kFordGapM = 120.0f;
 
 }  // namespace
 
@@ -171,6 +176,34 @@ void Battle::finish() {
     prevUnitPos_.resize(n);
     seenGen_.assign(n, 0);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
+    startRank_.resize(n);
+    for (size_t i = 0; i < n; ++i) startRank_[i] = world_->units()[i].rank;
+}
+
+void Battle::seatCarried(const CarriedSquad& c) {
+    Squad& s = squads_.back();
+    s.total = std::max(c.full, static_cast<int>(s.members.size()));
+    for (size_t i = 0; i < s.members.size() && i < c.men.size(); ++i) {
+        const CarriedMan& m = c.men[i];
+        world_->setVeterancy(s.members[i], m.rank, 0);  // (a hero's levels make him tougher: before his wounds are put back)
+        const sim::Unit* u = world_->findUnit(s.members[i]);
+        world_->restoreUnit(s.members[i], static_cast<int32_t>(static_cast<int64_t>(u->stats.maxHp) * std::clamp(m.hp, 1, 1000) / 1000), m.kills, sim::kMoraleFull);
+    }
+}
+
+std::vector<CarriedSquad> Battle::carried() const {
+    std::vector<CarriedSquad> out;
+    for (const Squad& q : squads_) {
+        if (q.owner != local_) continue;
+        CarriedSquad c{q.name.empty() ? std::string(sim::unitTypeName(q.type)) : q.name, q.type, totalCount(q), {}};
+        for (size_t i = 0; i < q.members.size(); ++i) {
+            const sim::Unit* u = world_->findUnit(q.members[i]);
+            if (!u || !u->alive()) continue;
+            c.men.push_back({std::max(1, static_cast<int>(static_cast<int64_t>(u->hp) * 1000 / std::max(1, u->stats.maxHp))), u->rank, u->kills, static_cast<int>(i)});
+        }
+        out.push_back(std::move(c));
+    }
+    return out;
 }
 
 Standing Battle::standing(const Squad& s) const {
@@ -209,8 +242,9 @@ void Battle::setUpFord(const SkirmishSetup& setup) {
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
     const float px = cx - 60, ex = cx + 170;
     if (setup.budget > 0) {
-        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east);
-        muster(kEnemy, foeBuys(setup, false), {ex, cy, 0}, west);
+        // (Bought hosts form up kFordGapM apart, the far one just beyond the bowmen's reach: 230 m of walking was a dead minute.)
+        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east, false, false, &setup.roster);
+        muster(kEnemy, foeBuys(setup, false), {px + kFordGapM, cy, 0}, west);
         return;
     }
 
@@ -327,12 +361,13 @@ std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int e
     // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it;
     // and `pct` of that: walls are worth men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct),
     // whichever the player is.
-    const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
+    const int purse = setup.foePurse > 0 ? setup.foePurse : setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
     const int easy = setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse;
     return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, const std::vector<CarriedSquad>* roster, bool skirmishers) {
+    if (roster && roster->empty()) roster = nullptr;
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
     // `enginesFirst` (a siege's besiegers): the engines are the front rank, at their throw from the gate, and the army stands
@@ -361,24 +396,36 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
     struct Item {
         UnitType type;
         std::string name;
+        const CarriedSquad* carried = nullptr;
     };
-    std::vector<Item> foot, rear, engines, horse;
-    for (const Buy& b : army)
-        for (int i = 0; i < b.squads; ++i) {
-            Item it{b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : "")};
-            switch (b.type) {
-                case UnitType::LightCavalry:
-                case UnitType::HeavyCavalry:
-                case UnitType::WolfRiders: horse.push_back(it); break;
-                case UnitType::Catapult: engines.push_back(it); break;
-                case UnitType::Archers:
-                case UnitType::DwarfGrenadier:
-                case UnitType::Wizards:
-                case UnitType::Journeyman: rear.push_back(it); break;
-                default: foot.push_back(it);
-            }
+    std::vector<Item> all, foot, rear, engines, horse, lords, bows;
+    if (roster) {
+        for (const CarriedSquad& c : *roster)
+            if (!c.men.empty()) (c.type == UnitType::Hero ? lords : all).push_back({c.type, c.name, &c});
+    } else {
+        for (const Buy& b : army)
+            for (int i = 0; i < b.squads; ++i) all.push_back({b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : ""), nullptr});
+        if (lord) lords.push_back({UnitType::Hero, "The Lord", nullptr});
+    }
+    const auto count = [](const Item& it) { return it.carried ? static_cast<int>(it.carried->men.size()) : it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type); };
+    const auto raise = [&](const Item& it, V3 at) {
+        spawnSquad(it.name, owner, it.type, count(it), at, facing);
+        if (it.carried) seatCarried(*it.carried);
+    };
+    for (const Item& it : all) {
+        switch (it.type) {
+            case UnitType::LightCavalry:
+            case UnitType::HeavyCavalry:
+            case UnitType::WolfRiders: horse.push_back(it); break;
+            case UnitType::Catapult: engines.push_back(it); break;
+            case UnitType::Archers: (skirmishers ? bows : rear).push_back(it); break;
+            case UnitType::DwarfGrenadier:
+            case UnitType::Wizards:
+            case UnitType::Journeyman: rear.push_back(it); break;
+            default: foot.push_back(it);
         }
-    if (lord) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), {UnitType::Hero, "The Lord"});
+    }
+    for (const Item& it : lords) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), it);
     float row = 0;
     const auto rank = [&](const std::vector<Item>& items) {
         for (size_t i = 0; i < items.size(); i += kAcross, ++row) {
@@ -386,28 +433,29 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             for (size_t j = 0; j < n; ++j) {
                 const float lateral = (static_cast<float>(j) - static_cast<float>(n - 1) / 2) * kSlotM;
                 const Item& it = items[i + j];
-                spawnSquad(it.name, owner, it.type, it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type), settle(anchor + right * lateral - facing * (row * kRowM)), facing);
+                raise(it, settle(anchor + right * lateral - facing * (row * kRowM)));
             }
         }
     };
     if (enginesFirst) rank(engines);
+    rank(bows);  // skirmishers: the bowmen out in front, to open the battle (the player's to pull back as he sets his line)
     const float footRow = row;
     rank(foot);
     // The horse on either wing of the front rank, outside the foot.
     const float wing = (static_cast<float>(std::min<size_t>(kAcross, foot.size())) / 2 + 0.5f) * kSlotM;
     for (size_t i = 0; i < horse.size(); ++i) {
         const float side = i % 2 ? 1.0f : -1.0f, out = wing + static_cast<float>(i / 2) * kSlotM;
-        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)), facing);
+        raise(horse[i], settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)));
     }
     rank(rear);
     if (!enginesFirst) rank(engines);
 }
 
 void Battle::setUpField(const SkirmishSetup& setup) {
-    // Open ground: the two armies a long bowshot apart, facing.
+    // Open ground: the two armies a bowshot apart (kFieldGapM), facing.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
-    muster(kPlayer, playerBuys(setup, true), {cx - 70, cy, 0}, {1, 0, 0}, true);
-    muster(kEnemy, foeBuys(setup, false), {cx + 70, cy, 0}, {-1, 0, 0}, false);
+    muster(kPlayer, playerBuys(setup, true), {cx - kFieldGapM / 2, cy, 0}, {1, 0, 0}, true, false, &setup.roster, true);
+    muster(kEnemy, foeBuys(setup, false), {cx + kFieldGapM / 2, cy, 0}, {-1, 0, 0}, false, false, nullptr, true);
     foeName_ = "other host";
 }
 
@@ -443,6 +491,7 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
             std::string name;
             UnitType type;
             int count;
+            const CarriedSquad* carried = nullptr;
         };
         std::vector<Company> companies;
         if (classic) {
@@ -450,6 +499,9 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                          {"Gate Wardens", UnitType::Pikemen, 8},
                          {"Town Militia", UnitType::LightInfantry, 12},
                          {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        } else if (keeper == kPlayer && !setup.roster.empty()) {
+            for (const CarriedSquad& c : setup.roster)  // (the March: each squad its own company, its lord among them)
+                if (!c.men.empty()) companies.push_back({c.name, c.type, static_cast<int>(c.men.size()), &c});
         } else {
             for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false, kFieldEngines, 10000 / kSiegeOddsPct))
                 companies.push_back({sim::unitTypeName(b.type), b.type, b.squads * sim::Conquest::squadSize(b.type)});
@@ -476,7 +528,9 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
                 squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
             }
-            if (!s.members.empty()) squads_.push_back(std::move(s));
+            if (s.members.empty()) continue;
+            squads_.push_back(std::move(s));
+            if (c.carried) seatCarried(*c.carried);
         }
     }
 
@@ -520,6 +574,18 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 faces.push_back(V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized());
                 off.push_back(kFlankM);
             }
+        }
+        if (besieger == kPlayer && !setup.roster.empty()) {
+            // The March: the squads as they stand, dealt to the camps as a bought army's are (the engines first), the lord at the road's door.
+            std::vector<std::vector<CarriedSquad>> rosters(camps.size());
+            size_t engine = 0, other = 0;
+            for (const CarriedSquad& c : setup.roster) {
+                if (c.men.empty()) continue;
+                rosters[c.type == UnitType::Hero ? 0 : (c.type == UnitType::Catapult ? engine++ : other++) % camps.size()].push_back(c);
+            }
+            for (size_t d = 0; d < camps.size(); ++d)
+                if (!rosters[d].empty()) muster(besieger, {}, conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, false, true, &rosters[d]);
+            return;
         }
         std::vector<std::vector<Buy>> byCamp(camps.size());
         size_t engine = 0, other = 0;
