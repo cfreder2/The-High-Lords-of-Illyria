@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <deque>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "illyria/game/gmath.h"
@@ -63,12 +64,57 @@ enum class Sound : uint8_t {
     Frog,            // a croak from the marsh
     WarHorn,         // Horde: the next wave sets out
     Alarm,           // capture the flag: the player's flag in danger
+    // Movement: one textured sound for a body of men (or beasts) on the move, asked for by Sfx itself about twice a second.
+    FootMarch,       // men on foot over earth
+    FootArmor,       // men in mail and plate
+    FootWet,         // men in mud, marsh or shallows
+    Hooves,          // horses and wolves
+    GiantTread,      // giants, minotaurs, elephants: one great footfall
+    Wheels,          // an engine rolling
+    Wings,           // great wings
+    SatchelLay,      // a satchel set down and its match struck (heard by its owner)
+    // The player's own acts (Sfx::ui: in his ears, at once, paused or not).
+    OrderConfirm,    // an order given
+    OrderRefuse,     // an order that cannot be done
+    Toggle,          // Hold / Support, a gate held open or shut
+    Select,          // a squad selected
+    RallyHorn,       // the lord's Rally
+    DeployBegin,     // the battle begins
+    Results,         // the results sheet
+    // The Conquest (Sfx::conquest).
+    TownCaptured,
+    TownLost,
+    DayTick,         // dawn
+    Recruit,         // a squad trained
+    LordFallen,      // one of the player's lords is dead
+    // Hooks: features being built ask for these with Sfx::hook(sound, where) (docs/SOUND_EFFECTS.md, Hooks).
+    SplashSmall,     // feet, or a small thing, into water
+    SplashBody,      // a body falling in water
+    SplashBig,       // a boulder or a catapult's stone into water
+    BoulderLaunch,   // a boulder levered loose
+    BoulderRumble,   // rolling: ask again every half second or so while it rolls
+    BoulderImpact,   // striking ground or a wall
+    BoulderCrush,    // men under it
+    FireSteam,       // a fireball quenched in water
+    CallHelp,        // a squad calls for help
+    CallAnswer,      // and is answered
+    ChargeImpact,    // cavalry crashing into a line
+    Rout,            // a line breaking
     Count
 };
 constexpr int kSoundCount = static_cast<int>(Sound::Count);
 const char* soundName(Sound s);
 // 0 background .. 5 must be heard: the page cuts the lowest for the higher.
 int soundPriority(Sound s);
+
+// How a sound at `horiz` metres from the view centre is heard with the camera `zoom` away: what is on screen is heard. The
+// reach widens with the camera; its height takes the level down only to a floor (about -13 dB, -8 for the loud ones) and
+// dulls the tone instead, so a battle at the far camera is a mass, not silence; past 600 it fades toward nothing.
+struct Hearing {
+    float gain = 0;      // 0..1
+    float distance = 1;  // 0 near and bright .. 1 far and dull
+};
+Hearing hear(float horiz, float zoom, bool loud);
 
 struct SfxCue {
     uint32_t tick = 0;
@@ -91,6 +137,24 @@ struct Ambience {
     float flies = 0, fliesPan = 0;           // carrion flies over the dead
     float drums = 0, drumsPan = 0;           // the enemy's war drums
     float rain = 0;                          // light below 0.6, heavy above
+    // The loops sent by name (platform::sfxLayer): the mass of a fight seen from far above, columns on the march,
+    // the day's own air (never quite silent), ground and bodies burning.
+    float battle = 0, battlePan = 0;
+    float march = 0, marchPan = 0;
+    float bed = 0;
+    float fire = 0, firePan = 0;
+};
+// The loops of `Ambience` sent by name, in order: battle, march, bed, fire.
+constexpr const char* kLayerNames[4] = {"snd_amb_battle_far", "snd_amb_march_column", "snd_amb_bed_day", "snd_amb_fire"};
+
+// What Sfx::conquest watches for change (filled by the app from the conquest, once a frame).
+struct ConquestPulse {
+    uint32_t day = 0;
+    int winner = 0;  // 0 none yet, 1 the player, 2 another
+    std::vector<uint8_t> cityOwner;  // every town's lord
+    uint8_t side = 0;                // the player's
+    int lords = 0;                   // the player's living heroes
+    int squads = 0;                  // the player's squads
 };
 
 class Sfx {
@@ -110,6 +174,26 @@ public:
 
     // A match's alarm (mode.h): heard in the player's ears with this tick's cues.
     void alert(Sound s) { want(s, listenAt_, 0, false); }
+    // A hook for a feature (the Sound enum's last block, or any sound): heard from where it happens, merged and throttled
+    // with this tick's cues. Call it during the step, before observe.
+    void hook(Sound s, const V3& pos, float delay = 0) { want(s, pos, delay); }
+    // The player's own act: in his ears at once, whether or not the world is stepping (deployment, a pause).
+    void ui(Sound s);
+    // The game's speed (1, 2, 4, 8): gaps are kept in real time, delays shortened, the slightest cues thinned.
+    void setSpeed(float speed) { speed_ = speed < 1 ? 1 : speed; }
+    float speed() const { return speed_; }
+    // Where the ground and the dead burn, for the fire's loop.
+    void setFires(const std::vector<V3>& fires) { fires_ = fires; }
+    // The ambience worked out now (deployment and the pause do not step the world).
+    void refreshAmbience(const sim::World& world, const sim::Continent& continent, const V3& origin, bool enemyLand) {
+        tick_ = world.tick();
+        updateAmbience(world, continent, origin, enemyLand);
+    }
+    // The battle is decided: the drums stop and the field goes quiet under the results.
+    void calm();
+    // The Conquest's events, from what changed since the last pulse: dawn, towns taken and lost, a squad trained, a lord
+    // fallen, the war won or lost.
+    void conquest(const ConquestPulse& now);
 
     // Cues since the last take, for the page to play.
     std::vector<SfxCue> take();
@@ -131,7 +215,9 @@ private:
         SfxCue best;
         int count = 0;
     };
-    void want(Sound s, const V3& pos, float delay = 0, bool positional = true, float doppler = 0);
+    void want(Sound s, const V3& pos, float delay = 0, bool positional = true, float doppler = 0, float scale = 1);
+    void movement(const sim::World& world);
+    void fuses(const sim::World& world);
     void flush();
     void place(SfxCue& c) const;
     void updateAmbience(const sim::World& world, const sim::Continent& continent, const V3& origin, bool enemyLand);
@@ -152,6 +238,7 @@ private:
         sim::EntityId id;
         sim::ProjectileKind kind;
         V3 pos;
+        int32_t fuse = 0;
     };
     std::vector<Flight> flights_;
     std::vector<sim::EntityId> whistled_;  // arrows already heard passing (sorted)
@@ -161,6 +248,25 @@ private:
     bool heard_[kSoundCount] = {};
     uint32_t nextThunder_ = 0;
     uint32_t seed_ = 12345;
+
+    float speed_ = 1;
+    float moveBudget_ = 2;  // and footfalls, which have a small share of their own
+    float budget_ = 8;  // cues that may still start (refilled in real time: flush)
+    // Movement: where every man was at the last look, and when each body of men next sounds.
+    std::vector<V3> movedFrom_;
+    struct Tread {
+        uint64_t key;
+        uint32_t next;
+    };
+    std::vector<Tread> treads_;
+    float marching_ = 0, marchSide_ = 0, fighting_ = 0, fightSide_ = 0;
+    float contact_ = 1e9f;
+    uint32_t closingUntil_ = 0;
+    bool calm_ = false;
+    std::vector<V3> fires_;
+    std::vector<std::pair<sim::EntityId, uint32_t>> fuseNext_;  // lit satchels: when each next hisses
+    bool pulsed_ = false;
+    ConquestPulse pulse_;
 
     Ambience ambience_;
     uint32_t ambienceVersion_ = 0;

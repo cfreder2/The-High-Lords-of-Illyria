@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "illyria/game/point_grid.h"
+#include "illyria/game/sfx.h"
 
 namespace illyria::game {
 
@@ -25,7 +26,6 @@ constexpr uint32_t kWindow = 10 * kTps;
 constexpr size_t kWindowMax = 5;
 // Hearing: a cue fades out over kHearing metres from the view centre, the
 // camera's height counting against it (zoomed out, only the loudest carry).
-constexpr float kHearing = 140.0f;
 constexpr float kMinGain = 0.08f;
 // Contact: a foe within kSighted metres; lost after kContactLost of none within twice that.
 constexpr float kSighted = 55.0f;
@@ -311,11 +311,9 @@ bool Voice::gate(const sim::World& world, const Candidate& c) {
     if (hasListener_) {
         const V3 d = flat(cue.pos - listenAt_);
         const float horiz = d.length();
-        const float height = zoom_ * 0.6f;
-        const float eff = std::sqrt(horiz * horiz + height * height);
-        const float g = std::clamp(1.0f - eff / kHearing, 0.0f, 1.0f);
-        cue.gain = std::pow(g, 1.5f);
-        cue.pan = horiz > 1 ? std::clamp(d.dot(listenRight_) / std::max(horiz, eff * 0.5f), -0.8f, 0.8f) : 0.0f;
+        // Heard as the sound effects are (sfx.h hear): what is on screen, quieter and never silent as the camera rises.
+        cue.gain = hear(horiz, zoom_, false).gain;
+        cue.pan = std::clamp(d.dot(listenRight_) / std::max(zoom_ * 0.6f, 12.0f), -0.8f, 0.8f);
     }
     if (!c.positional) cue.gain = std::max(cue.gain, 0.85f);
     if (isReport(c.situation)) cue.pan = 0, cue.gain = 1;  // the herald speaks in the player's ear

@@ -70,7 +70,17 @@ void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
         ambienceSeen = sfx.ambienceVersion();
         const Ambience& a = sfx.ambience();
         set_sfx_ambience(a.windMountain, a.windValley, a.swamp, a.swampPan, a.flies, a.fliesPan, a.drums, a.drumsPan, a.rain);
+        // The loops sent by name (sfx.h kLayerNames): the far battle, the columns, the day's air, fire.
+        const float level[4] = {a.battle, a.march, a.bed, a.fire}, pan[4] = {a.battlePan, a.marchPan, 0, a.firePan};
+        for (int i = 0; i < 4; ++i) platform::sfxLayer(kLayerNames[i], level[i] * ambienceScale, pan[i]);
     }
+}
+// The player's pause, told to the sound when it changes: nothing new starts and what is in flight fades (platform.h).
+bool soundPaused = false;
+void pauseSounds(bool paused) {
+    if (paused == soundPaused) return;
+    soundPaused = paused;
+    platform::sfxPaused(paused);
 }
 
 constexpr uint64_t kBattleSeed = 20261027;
@@ -917,6 +927,7 @@ bool frame() {
         App::ConquestView& cv = app->camp;
         listenFromCamera();
         app->battle->flushOrders();  // (what was ordered since the last frame: the clock, paused or not, applies it with its next step)
+        app->battle->sfx().setSpeed(static_cast<float>(cv.speed));
         if (!cv.paused && cv.c->winner() == 0) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Conquest::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
@@ -928,20 +939,37 @@ bool frame() {
         placeBoats();
         presentConquest(static_cast<float>(dtMs / 1000.0));
         syncTownPanel();
-        playCues();
-        // No battle sounds over the conquest map.
-        if (!app->hushed) {
-            set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
-            app->hushed = true;
-            app->ambienceSeen = ~0u;
+        // The Conquest sounds as a battle does, from its own camera heights (sfx.h hear): the land's air, the far fight's
+        // rumble and the columns' tramp, and its own events: dawn, a town taken or lost, a squad trained, a lord fallen,
+        // the war won or lost.
+        {
+            using C = illyria::sim::Conquest;
+            const C& c = *cv.c;
+            ConquestPulse p;
+            p.day = c.day();
+            p.side = c.localSide();
+            p.winner = c.winner() == 0 ? 0 : c.winner() - 1 == static_cast<int32_t>(p.side) || c.winner() == static_cast<int32_t>(p.side) + 1 ? 1 : 2;
+            for (const C::CityState& cs : c.cities()) p.cityOwner.push_back(cs.owner);
+            for (const C::Stack& s : c.stacks()) {
+                if (s.owner != p.side) continue;
+                for (const illyria::sim::Army& a : s.armies) {
+                    if (a.soldiers <= 0) continue;
+                    ++p.squads;
+                    p.lords += a.hero();
+                }
+            }
+            app->battle->sfx().conquest(p);
         }
+        playCues();
+        playSounds(app->battle->sfx(), app->ambienceSeen);
+        pauseSounds(cv.paused);
     } else if (!app->title) {
         listenFromCamera();
         app->battle->sfx().setRain(app->rain);
         app->battle->advance(dtMs / 1000.0);
         playCues();
-        app->hushed = false;
         playSounds(app->battle->sfx(), app->ambienceSeen);
+        pauseSounds(app->battle->paused() && !app->battle->over());
     }
     placeFlags(static_cast<float>(dtMs / 1000.0));
     updateUnderwater(static_cast<float>(dtMs / 1000.0));

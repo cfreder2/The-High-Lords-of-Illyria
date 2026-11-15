@@ -745,7 +745,19 @@ float Battle::heightAt(float x, float y) const {
 }
 
 void Battle::advance(double seconds) {
-    if (paused_ || deploy_ || over()) return;
+    sfx_.setSpeed(decided() ? 1.0f : static_cast<float>(speed_));
+    const bool siege = scenario_ == Scenario::Siege || scenario_ == Scenario::Capital;
+    if (over() && !resultsCued_) {  // the results sheet: its own sound, and the field goes quiet under it
+        resultsCued_ = true;
+        sfx_.calm();
+        sfx_.ui(Sound::Results);
+    }
+    if (paused_ || deploy_ || over()) {
+        // The player studies the field: there is air, though nothing steps.
+        if (!over() && stillFrames_++ % 30 == 0) sfx_.refreshAmbience(*world_, *continent_, origin(), siege);
+        return;
+    }
+    stillFrames_ = 0;
     const double scaled = std::min(seconds, 0.25) * (decided() ? kLastBlowPace : speed_ * slow_);
     accumulator_ += scaled;
     int ticks = 0;
@@ -1265,7 +1277,7 @@ void Battle::chargeAll() {
     std::vector<sim::EntityId> ours;
     for (const sim::Unit& u : world_->units())
         if (u.alive() && controllable(u)) ours.push_back(u.id);
-    voice_.order(Situation::Charge, *world_, ours);
+    answer(Situation::Charge, ours);
 }
 
 }  // namespace illyria::game

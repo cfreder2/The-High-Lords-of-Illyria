@@ -56,6 +56,12 @@ void Battle::presentDeaths() {
         if (age < 4 * sim::kTicksPerSecond)
             emit(Particle::Kind::Fire, at, {0, 0, 0.6f}, 0.35f, 0.25f + unitOf(h >> 6) * 0.15f);
     }
+    {
+        std::vector<V3> fires;
+        for (const Smoulder& s : smouldering_)
+            if (tick - s.since < 15 * sim::kTicksPerSecond) fires.push_back(toV3(world_->units()[s.unit - 1].pos));
+        sfx_.setFires(fires);
+    }
     sfx_.observe(*world_, outcome(), *continent_, origin(), scenario_ == Scenario::Siege || scenario_ == Scenario::Capital);
 }
 

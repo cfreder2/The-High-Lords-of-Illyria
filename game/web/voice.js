@@ -15,11 +15,13 @@
   const kOrder = 3;         // orders: the newest answer replaces the last
   const kEnemyRate = 0.88;  // the other side sounds darker
   const kLogSize = 300;
-  const settingsKey = "illyria.voice.v1";
+  // (v2: the browser's speech is off unless asked for, whatever an older visit kept)
+  const settingsKey = "illyria.voice.v2";
   let version = "";
   try { version = new URL(document.currentScript.src).searchParams.get("v") || ""; } catch (e) {}
 
-  const settings = { on: true, volume: 0.8, speech: true };
+  const settings = { on: true, volume: 0.8, speech: false };
+  let paused = false;
   try {
     const saved = JSON.parse(localStorage.getItem(settingsKey));
     if (saved && typeof saved.on === "boolean") Object.assign(settings, saved);
@@ -190,8 +192,11 @@
   let speechVoices = null;
   function speak(set, cue, gain, text, now) {
     if (!window.speechSynthesis) return "no speech";
-    if (speaking && speaking.end > now) {
-      const outranks = cue.priority > speaking.priority || (cue.priority === speaking.priority && cue.priority >= kOrder);
+    // One utterance at a time, by what the browser says it is doing (not by a guess at its length): a new line either
+    // waits its turn by being dropped, or outranks the one being spoken and cuts it. Never two queued up.
+    const busy = speechSynthesis.speaking || speechSynthesis.pending || (speaking && speaking.end > now);
+    if (busy) {
+      const outranks = !speaking || cue.priority > speaking.priority || (cue.priority === speaking.priority && cue.priority >= kOrder);
       if (!outranks) return "speech busy";
       speechSynthesis.cancel();
     }
@@ -210,7 +215,10 @@
     const ph = set.placeholder || { pitch: 1, rate: 1 };
     u.pitch = Math.max(0.1, Math.min(2, ph.pitch * (cue.enemy ? 0.75 : 1)));
     u.rate = Math.max(0.5, Math.min(2, ph.rate * (0.95 + Math.random() * 0.15)));
-    u.volume = Math.max(0, Math.min(1, gain));
+    // Speech does not pass through the page's mix, so the master volume is applied here.
+    const m = window.IllyriaAudio ? window.IllyriaAudio.settings.master : 1;
+    u.volume = Math.max(0, Math.min(1, gain * m));
+    if (u.volume < 0.02) return "too quiet";
     const end = now + 400 + words.length * 70 / u.rate;
     speaking = { priority: cue.priority, end };
     u.onend = () => { if (speaking && speaking.end === end) speaking = null; };
@@ -222,6 +230,7 @@
   function cue(setId, situation, enemy, pan, gain, priority, speaker, tick) {
     const c = { set: setId, situation, enemy, pan, gain, priority, speaker, tick };
     if (!settings.on) { note({ ...c, mode: "off" }); return; }
+    if (paused) { note({ ...c, mode: "dropped: paused" }); return; }
     if (!manifest) { loadManifest(); note({ ...c, mode: "dropped: loading" }); return; }
     const set = sets.get(setId);
     const found = set && linesFor(set, situation);
@@ -242,7 +251,7 @@
       const p = playBuffer(buf, c, gain);
       playing.push({ priority, end: now + p.seconds * 1000, stop: p.stop });
       mode = available.has(line.file) ? "file" : "placeholder";
-    } else if (!found.set.verbal && ctx && settings.speech) {
+    } else if (!found.set.verbal && ctx) {
       if (!makeRoom(priority, now)) { note({ ...c, line: line.id, mode: "dropped: busy" }); return; }
       const p = playGrowl(found.set, c, gain, line.text);
       playing.push({ priority, end: now + p.seconds * 1000, stop: p.stop });
@@ -323,5 +332,13 @@
     recent: (n) => log.slice(-(n || 20)),
     load: loadManifest,
     unlock,
+    // Paused: what is being said stops, and nothing starts.
+    paused(on) {
+      paused = !!on;
+      if (!paused) return;
+      for (const p of playing.splice(0)) { try { p.stop(); } catch (e) {} }
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      speaking = null;
+    },
   };
 })();

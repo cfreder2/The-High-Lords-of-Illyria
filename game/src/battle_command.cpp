@@ -356,7 +356,7 @@ void Battle::applySelection(std::vector<sim::EntityId> units) {
     selKeep_ = true;
     selShape_ = {};
     if (selection_.empty()) return;
-    if (!selection_.empty()) voice_.order(Situation::Selected, *world_, selection_);
+    if (!selection_.empty()) answer(Situation::Selected, selection_);
     // Their own squad's formation if they are of one squad, else what suits their kind.
     int squad = -2;  // none yet
     bool oneSquad = true, oneType = true;
@@ -1099,9 +1099,9 @@ void Battle::stormGate(sim::PlayerId owner, const std::vector<sim::EntityId>& th
 void Battle::orderAtGate(int gate) {
     if (gate < 0 || gate >= static_cast<int>(worldRegion().gates().size())) return;
     const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(gate)];
-    if (marchOrder(toV3(g.a + g.b) * 0.5f)) return voice_.order(Situation::Attack, *world_, selection_);
+    if (marchOrder(toV3(g.a + g.b) * 0.5f)) return answer(Situation::Attack, selection_);
     attackGateWith(local_, selectedAlive(), selFormation_, gate);
-    voice_.order(Situation::Attack, *world_, selection_);
+    answer(Situation::Attack, selection_);
 }
 
 bool Battle::gateIsOurs(int gate) const {
@@ -1115,6 +1115,7 @@ void Battle::pinGate(int gate, sim::Command::GatePin pin) {
     c.objectIndex = gate;
     c.gatePin = pin;
     pending_.push_back(c);
+    sfx_.ui(Sound::Toggle);
     say(pin == sim::Command::GatePin::Open ? "The gate is held open" : pin == sim::Command::GatePin::Shut ? "The gate is held shut" : "The gate opens to your men, and shuts behind them");
 }
 
@@ -1143,22 +1144,22 @@ void Battle::swingGateByKey(bool release) {
             if (gateIsOurs(static_cast<int>(i)) && d < best) best = d, gate = static_cast<int>(i);
         }
     }
-    if (gate < 0) return say("No gate of yours to swing");
+    if (gate < 0) return refuse("No gate of yours to swing");
     inspect({Inspected::Kind::Gate, static_cast<uint32_t>(gate)});
     if (release) pinGate(gate, sim::Command::GatePin::Auto);
     else swingGate(gate);
 }
 
 void Battle::orderMove(const V3& to) {
-    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
+    if (marchOrder(to)) return answer(Situation::Move, selection_);
     marchSelection(selectedAlive(), to, nullptr, false);
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::orderMoveFacing(const V3& to, const V3& facing, float frontMetres) {
-    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
+    if (marchOrder(to)) return answer(Situation::Move, selection_);
     marchSelection(selectedAlive(), to, &facing, false, dragFrontage(frontMetres));
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::stopSelected() {
@@ -1167,7 +1168,7 @@ void Battle::stopSelected() {
         issue(local_, id, sim::Command::Type::Stop, {});
         std::erase_if(plan_, [&](const Planned& p) { return !p.far && p.cmd.unit == id; });
     }
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::scatter() {
@@ -1194,7 +1195,7 @@ void Battle::scatter() {
         slots_[id - 1] = {p + away * run, away, front, order};
     }
     markOrdered(alive);
-    voice_.order(Situation::Move, *world_, alive);
+    answer(Situation::Move, alive);
 }
 
 void Battle::setFormation(Formation f) {

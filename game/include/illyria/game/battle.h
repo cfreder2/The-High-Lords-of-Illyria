@@ -777,7 +777,10 @@ public:
     // start is every seat's to agree, as a change of pace is (docs/NETCODE.md).
     void setDeploying(bool on) { deploy_ = on; }
     bool deploying() const { return deploy_; }
-    void beginBattle() { deploy_ = false; }
+    void beginBattle() {
+        if (deploy_) sfx_.ui(Sound::DeployBegin);
+        deploy_ = false;
+    }
     // A town's capture point (battle_capture.h); inactive in the field.
     const CapturePoint& capturePoint() const { return capture_; }
     // A siege in a player's words, for every HUD (battle_capture.cpp). The doors of the besieged town with what is left of
@@ -956,6 +959,16 @@ private:
     // The player just gave these soldiers an order (their markers show a while).
     void markOrdered(const std::vector<sim::EntityId>& units);
     void say(const std::string& notice);
+    // An order that cannot be done: the notice, and the refusal's sound.
+    void refuse(const std::string& notice) {
+        say(notice);
+        sfx_.ui(Sound::OrderRefuse);
+    }
+    // An order given (or a squad selected): the men answer, and a sound of its own says it was taken, voices or none.
+    void answer(Situation s, const std::vector<sim::EntityId>& who) {
+        voice_.order(s, *world_, who);
+        sfx_.ui(s == Situation::Selected ? Sound::Select : Sound::OrderConfirm);
+    }
     // The strip of events (events()), called once after each step of the world.
     void observeSquads();
     void announce(const std::string& text);
@@ -1082,6 +1095,8 @@ private:
     bool hadArmy_ = false;  // a Conquest: the local side has had an army standing
     uint32_t quitSeen_ = 0;  // a Conquest: the tick of the last stack told of as quitting a field
     bool paused_ = false;
+    bool resultsCued_ = false;
+    int stillFrames_ = 0;  // frames not stepped (deployment, a pause): the ambience is still worked out
     int speed_ = 1;
     float slow_ = 1;
     V3 zoneCentre_{};

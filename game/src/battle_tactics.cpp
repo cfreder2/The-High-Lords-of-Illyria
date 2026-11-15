@@ -69,6 +69,7 @@ void Battle::holdSelected() {
         c.hold = hold;
         pending_.push_back(c);
     }
+    sfx_.ui(Sound::Toggle);
     say(hold ? "Hold: they keep their place" : "Support: they go to the help of friends fighting near them");
 }
 
@@ -106,7 +107,7 @@ int Battle::selectNextIdle() {
         select(s.members);
         return i;
     }
-    say("No squad is standing idle");
+    refuse("No squad is standing idle");
     return -1;
 }
 
@@ -137,19 +138,20 @@ Battle::RallyState Battle::rallyState() const {
 bool Battle::orderRally() {
     const sim::EntityId lord = lordOf(local_, true);
     if (lord == sim::kNoEntity) {
-        say("No lord is on the field to rally them");
+        refuse("No lord is on the field to rally them");
         return false;
     }
     const sim::Unit& u = world_->units()[lord - 1];
     if (!world_->canRally(u)) {
-        say("The lord has just called: " + std::to_string((u.rallyCooldown + sim::kTicksPerSecond - 1) / sim::kTicksPerSecond) + " s until he can again");
+        refuse("The lord has just called: " + std::to_string((u.rallyCooldown + sim::kTicksPerSecond - 1) / sim::kTicksPerSecond) + " s until he can again");
         return false;
     }
     if (world_->rallyHeard(u) == 0) {
-        say("No broken men are within the lord's call (40 m)");
+        refuse("No broken men are within the lord's call (40 m)");
         return false;
     }
     pending_.push_back({local_, lord, sim::Command::Type::Rally, {}});
+    sfx_.ui(Sound::RallyHorn);
     announce("The lord rallies them: " + std::to_string(world_->rallyHeard(u)) + " men turn back");
     return true;
 }

@@ -1,17 +1,46 @@
 # Sound effects
 
 Generated from `game/web/sfx/sounds.json` by `python3 tools/sfx/script.py`; do not edit by hand.
-89 sounds in 251 files (4.5 MB of MP3, each sound fetched the first time it plays).
+89 sounds in 251 files (4.5 MB of MP3; the page fetches what a battle needs when audio starts, the rest soon after).
 
 ## How it works
 
 The battle has no music (as in Myth): every sound tells the player something. `game/src/sfx.cpp` turns each
 tick's simulation events (missiles loosed and landing, blows by damage type and armour, blasts, gates, the
-death matrix's deaths) into positional cues, merged and throttled so a volley is one louder twang and never a
-roar of noise; it also works out the ambience (wind by the land under the view, swamp insects, carrion flies
-over the dead, the enemy's war drums, rain). `game/web/sfx.js` plays them with Web Audio: panned, quieter,
-duller and more reverberant with distance, at most 12 at once from a pool of reused channels, the gravest
-taking the place of the slightest. Cries of pain and death are voices (`docs/VOICE_LINES.md`).
+death matrix's deaths, bodies of men on the move, lit fuses) into positional cues, merged and throttled so a
+volley is one louder twang and never a roar of noise; it also works out the ambience (wind by the land under
+the view, the day's air, swamp insects, carrion flies over the dead, the enemy's war drums, fire, rain, and
+from the far camera the mass of a fight and the tramp of columns). The table of cues (`kSpecs` in `sfx.cpp`:
+id, priority, gap, whether it carries far) and this manifest (files, levels, and the `mix` block: channels,
+fade, the distance filter and reverb) are the one list both players read: `game/web/sfx.js` (Web Audio) and
+`game/native/audio.cpp` (the desktop's mixer). Each cue is panned, quieter, duller and more reverberant with
+distance, at most `mix.strips` at once, the gravest taking the place of the slightest with a short fade.
+Cries of pain and death are voices (`docs/VOICE_LINES.md`).
+
+**Hearing** (`hear()` in `sfx.cpp`): what is on screen is heard. The reach widens with the camera
+(160 m + 1.1 x its distance; 420 m + 1.5 x for the loud ones); its height takes the level down only to a floor
+(about -13 dB by distance 600, -8 dB for blasts and gates) and dulls the tone instead; past 600 single sounds fade
+out and the loops `snd_amb_battle_far` and `snd_amb_march_column` carry the field. **Pace**: at most 30 cues a
+second of real time (a burst of 8) whatever the game's speed, priority 4 and 5 always; gaps are real time, so
+at 4x and 8x they are four and eight times as many ticks, delays are divided by the speed, and priority 0 and
+movement are left out from 4x. Paused, nothing starts, what is playing fades, the ambience drops to a third.
+
+## Hooks: sounds for features being built
+
+Call `battle.sfx().hook(Sound::X, where)` during the step in which the thing happens (before
+`Sfx::observe`, i.e. from the battle's event collection); it is placed, merged and throttled like any cue.
+For a sound in the player's ears whatever the camera, `battle.sfx().ui(Sound::X)`.
+
+| Feature | Call | Notes |
+|---|---|---|
+| Feet, a body, a stone or boulder into water | `SplashSmall`, `SplashBody`, `SplashBig` | wading men already sound as `FootWet` by the ground under them |
+| Rolling boulder | `BoulderLaunch` once; `BoulderRumble` every half second while it rolls (its gap is 12 ticks); `BoulderImpact` on ground or wall; `BoulderCrush` for men under it | launch, rumble and impact carry far |
+| Satchel lay and detonate chain | nothing to call: a laid satchel sounds `SatchelLay` to its owner, any satchel whose fuse is burning down hisses `SatchelFuse` every 1.5 s (thrown, or lit by fire or a blast beside it), and each blast is `SatchelBlast` | read from the world's projectiles in `Sfx::fuses` |
+| Fireball quenched in water | `FireSteam` | in place of `FireballBlast` |
+| A call for help and its answer | `CallHelp` at the caller, `CallAnswer` at the squad that turns to it | each at most once in 2 s |
+| Cavalry charge striking a line | `ChargeImpact` | carries far |
+| A line breaking | `Rout` | at most once in 3 s |
+
 
 Every sound is rendered by `python3 tools/sfx/synth/render.py` (numpy, scipy and ffmpeg; deterministic) into
 `game/web/sfx/<id>_<n>.mp3`: one-shots mono at -18 LUFS, ambience loops stereo at -24 LUFS, made seamless. The
