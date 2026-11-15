@@ -224,7 +224,7 @@ A script loops over `manifest.json` `cells` (each has `file`, `unit`, `anim`,
 
 The importer keys the background, builds the team mask, checks the feet (with
 `--snap-feet` it moves each clip so they stand on the anchor), scales down to the
-game's resolution (48 px a metre: the normal sheet) and to twice that (the
+game's resolution (48 px a metre: the normal sheet) and to three times that, 144, where one 4096 atlas of 14 M texels allows (the
 close-up sheet), trims, draws the 1 px outline and packs the atlases in the game's
 format (`game/web/sprites/`, see `tools/blender/sprites/pack.py`), the new
 layout of 44 frames a view plus 20 gib slots (`sprite_layout.h`), or a unit's own
