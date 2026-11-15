@@ -68,7 +68,7 @@ Battle::Result Battle::result() const {
     // missiles, men gone with a quitting host) are a row of their own (`total` 0: no squad).
     int credited = 0;
     for (const Result::Row& row : r.rows) credited += row.kills;
-    if (r.killed > credited) r.rows.push_back({"Others (blasts, fire, their own arrows)", 0, 0, r.killed - credited, false});
+    if (r.killed > credited) r.rows.push_back({"Others (fled the field, blasts, fire)", 0, 0, r.killed - credited, false});
     return r;
 }
 

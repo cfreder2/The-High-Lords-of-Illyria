@@ -139,7 +139,7 @@ A climb also slows the horse, and a horse too slow has no charge at all: heavy c
 | up a 1 in 4 slope: too slow, no charge | 20 |
 | light cavalry on the flat, into his front / his back | 38 / 76 |
 
-Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands.
+Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands. Riders ordered to attack go at the gallop from wherever they are, each his own way in. A rider whose charge lands in a flank or a back does not stay to be cut down: he **wheels away** for a few seconds, re-forms, and comes again. One who charged a front that stood has made his bed, and fights it out there.
 
 ### Braced pikes {#pikes}
 

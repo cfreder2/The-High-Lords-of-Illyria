@@ -30,6 +30,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
 | Stance: Hold (keep their place; again: back to support) | | [[K]] |
 | The next squad standing idle | | [[J]] |
+| Go to a call for help, the nearest free squad picked (chapter [](#rules), Help, and answers) | | [[.]] |
 | Rally (your lord calls back the broken within 40 m) | | [[Y]], or the **Rally** button over the cards (desktop) |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |

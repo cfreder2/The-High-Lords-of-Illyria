@@ -146,6 +146,21 @@ void deployDefence(Battle& b, const Ground& g) {
     b.select({});
 }
 
+// The formations of the plan, looked at every second: the foot in loose order while arrows are all that reaches it, two
+// ranks closed up when a foe comes within a charge of it (the rules of world_formation.cpp, used as the manual says).
+void formUp(Battle& b) {
+    for (size_t i = 0; i < b.squads().size(); ++i) {
+        const Squad& s = b.squads()[i];
+        if (s.owner != Battle::kPlayer || s.garrison || !isFoot(s) || b.aliveCount(s) < 4) continue;
+        const bool near = b.nearestFoe(Battle::kPlayer, b.squadCentre(s, false), 34.0f) != sim::kNoEntity;
+        const Formation want = near ? Formation::DoubleLine : Formation::Loose;
+        if (s.formation == want) continue;
+        b.selectSquad(static_cast<int>(i));
+        b.setFormation(want);
+    }
+    b.select({});
+}
+
 // Command on top of the plan, every few seconds: a squad cut to a third is pulled out behind the line; the lord's Rally
 // when broken men can hear it.
 void micro(Battle& b, const Ground& g) {
@@ -187,7 +202,8 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     b.setAiSkill(std::getenv("TAC_SKILL") ? static_cast<Battle::AiSkill>(std::atoi(std::getenv("TAC_SKILL"))) : Battle::AiSkill::Normal);
     const Count start = living(b);
     const Ground g = readGround(b);
-    if (plan == Plan::Defend || plan == Plan::Micro) deployDefence(b, g);
+    // On a bank the plan is the line on it; in the open it is the army where it stands, and its formations.
+    if ((plan == Plan::Defend || plan == Plan::Micro) && g.bank) deployDefence(b, g);
     if (plan == Plan::Charge) {
         std::vector<sim::EntityId> all;
         for (const sim::Unit& u : b.world().units())
@@ -200,6 +216,7 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     Tally t;
     for (int tick = 0; tick < kEndSeconds * sim::kTicksPerSecond; ++tick) {
         b.advance(1.0 / sim::kTicksPerSecond + 1e-6);
+        if ((plan == Plan::Defend || plan == Plan::Micro) && tick % sim::kTicksPerSecond == 0) formUp(b);
         if (plan == Plan::Micro && tick % (5 * sim::kTicksPerSecond) == 0 && tick > 0) micro(b, g);
         if (tick % 5 == 0)
             for (size_t i = 0; i < b.squads().size() && i < fought.size(); ++i)

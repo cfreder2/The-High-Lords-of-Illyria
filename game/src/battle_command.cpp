@@ -139,8 +139,10 @@ std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing
             };
             for (int s : {0, 1, 3})
                 for (int k = 0; k < side; ++k) slots.push_back(at(s, k));
+            // (Five men: front and flanks are six places. One place too many sent a march to a man who is not there.)
+            if (static_cast<int>(slots.size()) > count) slots.resize(static_cast<size_t>(count));
             // The back takes the rest, spread along it.
-            const int back = count - 3 * side;
+            const int back = count - static_cast<int>(slots.size());
             for (int i = 0; i < back; ++i) slots.push_back(at(2, back == side ? i : (i * side + side / 2) / back % side));
             return slots;  // centred on the square, not on the men
         }

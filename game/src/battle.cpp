@@ -1308,7 +1308,7 @@ void Battle::runEnemyAi() {
             if (near != sim::kNoEntity) {
                 const V3 fp = toV3(world_->units()[near - 1].pos);
                 const float gap = V3{fp.x - c.x, fp.y - c.y, 0}.length();
-                if (gap > 32.0f) {
+                if (gap > 32.0f && gap < standM + 60.0f) {  // (farther off: the march as ever, massed: aiFight)
                     if (gap > standM + 4.0f) aiSteer(q, c + (fp - c) * ((gap - standM) / gap));
                     else aiHalt(q);
                     continue;
@@ -1316,7 +1316,7 @@ void Battle::runEnemyAi() {
             }
         }
         // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code
-        // path. Hard goes in on one point (every squad reads the foe from the host's middle); Normal, each at the foe before it.
+        // path.
         if (wing && !s.garrison && role == Role::Melee && s.type != UnitType::Hero) {
             // To the wing together; once there its men are let go, and fight as men with no order do (they close with what
             // is near, go to the help of friends, answer calls, horse by the flank: world_tactics.cpp, world_help.cpp). The
@@ -1328,11 +1328,12 @@ void Battle::runEnemyAi() {
             for (sim::EntityId id : s.members) answering = answering || (world_->units()[id - 1].alive() && world_->units()[id - 1].helping != sim::kNoEntity);
             if (answering) continue;  // (gone to a call: left to it)
             const float close = sim::unitStats(s.type).mounted ? 60.0f : 20.0f;
-            if (gap <= close) aiHalt(q);
+            if (gap > 120.0f || aiShattered(s)) aiFight(q, wingAt, c, 1e4f);  // (far off: the march as ever, massed; shattered: it falls back to mend)
+            else if (gap <= close) aiHalt(q);
             else aiSteer(q, gap < 70.0f ? c + (fp - c) * ((gap - close + 4.0f) / gap) : wingAt);
             continue;
         }
-        if (wing && !s.garrison) aiFight(q, wingAt, c, 80.0f);  // (bowmen and the rest: with the foot, shooting what is near it)
+        if (wing && !s.garrison) aiFight(q, wingAt, c, 1e4f);  // (bowmen and the rest: toward the wing, behind the foot, shooting what is in reach)
         else aiFight(q, goal, c, 1e4f);
     }
 }

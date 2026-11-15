@@ -2499,7 +2499,6 @@ void World::updateProjectiles() {
                 const HitSide side = hitSide(hit->facing, p.vel);
                 const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100 * (100 + formStruckPct(*hit, side, true)) / 100;
                 if (wading(*hit)) tell(TacticEvent::Kind::Volley, *hit);
-                if (side != HitSide::Front) hit->flankTick = tick_ + 1;
                 Unit* shooter = mutableUnit(p.shooter);
                 if (shooter != nullptr && shooter->alive()) ambush(*shooter, *hit);
                 const bool killed = damage(*hit, amount, shooter, {p.cause, p.vel, at, true});
