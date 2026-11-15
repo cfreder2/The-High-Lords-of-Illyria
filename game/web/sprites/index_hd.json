@@ -47,6 +47,14 @@
   ],
   "ppm": 45.16
  },
+ "9": {
+  "name": "minotaurs_hd",
+  "size": [
+   4096,
+   3568
+  ],
+  "ppm": 77.81
+ },
  "19": {
   "name": "undead_hd",
   "size": [
@@ -91,7 +99,7 @@
   "name": "berserker_hd",
   "size": [
    4096,
-   3620
+   3640
   ],
   "ppm": 90.76
  },

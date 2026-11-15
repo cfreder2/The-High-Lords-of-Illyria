@@ -154,7 +154,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
     it is not; the table written beside the blend and printed; the build fails if anything is left."""
     import clearance
     items = [o for o in scene.objects if o.type == 'MESH' and 'tripo_item' in o]
-    if not items or rig is None:
+    if rig is None:
         return
     prefix = arm.get('clip_prefix', '')
     main = stand_arm or arm
@@ -190,7 +190,30 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
         else:
             for o in [o for o in scene.objects if o.type == 'ARMATURE']:
                 assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
-        rows += clearance.settle(rig, bodies, items, act, scene, fix='--no-fix' not in sys.argv, until=until)
+        # His own arms out of his own body first (limbs.py), then what he holds (which puts a second hand back).
+        import limbs
+        own = next((o for o in bodies if o.name == 'body'), bodies[0])
+        rows += limbs.settle(rig, own, act, scene, fix='--no-fix' not in sys.argv)
+        for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+            assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+        if items:
+            rows += clearance.settle(rig, bodies, items, act, scene, fix='--no-fix' not in sys.argv, until=until)
+            if '--no-fix' not in sys.argv:
+                # And his arms once more as the weapon's turning left them; then both as they end, for the table.
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                limbs.settle(rig, own, act, scene, fix=True)
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                final = limbs.settle(rig, own, act, scene, fix=False)
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                final += clearance.settle(rig, bodies, items, act, scene, fix=False, until=until)
+                for r in rows:
+                    for fr in final:
+                        if r['clip'] == fr['clip'] and r['item'] == fr['item']:
+                            r.update(after_cm=fr['before_cm'], after_frame=fr['before_frame'], frames_left=fr['frames_in'],
+                                     where=fr['where'] if fr['frames_in'] else '')
         for o in [o for o in scene.objects if o.type == 'ARMATURE']:
             assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
         w = clearance.wrist_report(rig, act, scene)
@@ -200,7 +223,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
         assign(o, None)
         for pb in o.pose.bones:
             pb.matrix_basis = Matrix()
-    lines = ['%s: weapon through body, every frame of every clip (cm under the skin; tolerance in its column)' % cfg['unit'],
+    lines = ['%s: an arm in his own body, a weapon through him: every frame of every clip (cm under the skin; tolerance in its column)' % cfg['unit'],
              '%-12s %-9s %5s | %7s %6s %7s | %7s %6s %7s | %s' % ('clip', 'item', 'tol', 'before', 'frame', 'frames', 'after', 'frame', 'frames', 'turned  (still in)')]
     failed = []
     for r in rows:
@@ -218,7 +241,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
     print(text, flush=True)
     if failed and '--allow-penetration' not in sys.argv and not os.environ.get('TRIPO_ALLOW_PENETRATION'):
         bpy.ops.wm.save_as_mainfile(filepath=cfg['blend'], compress=True)
-        sys.exit('%s: %d clip(s) still have a weapon through the body: not built for drawing' % (cfg['unit'], len(failed)))
+        sys.exit('%s: %d clip(s) still have an arm or a weapon through the body: not built for drawing' % (cfg['unit'], len(failed)))
 
 
 def thin(entry, n, seconds):
