@@ -144,7 +144,7 @@
   const unbusy = () => $("busy").classList.add("hidden");
 
   // ---- Pages ----
-  const pages = { conquest: $("conquestScreen"), skirmish: $("skirmishScreen"), settings: $("settingsScreen"),
+  const pages = { conquest: $("conquestScreen"), skirmish: $("skirmishScreen"), march: $("marchScreen"), settings: $("settingsScreen"),
                   controls: $("controlsScreen"), credits: $("creditsScreen") };
   const open = [];  // the pages open, the top one last
   function openPage(name, arg) {
@@ -207,6 +207,7 @@
     if (d) html += `<button class="big primary" data-act="continue"><span>Continue</span><small>Day ${d.day} · ${d.cities} ${d.cities === 1 ? "city" : "cities"} · ${lordsName(d.hard)}</small></button>`;
     html += `<button class="big${d ? "" : " primary"}" data-act="conquest"><span>Conquest</span><small>${d ? "New game · load" : "The war for all Illyria"}</small></button>`;
     html += `<button class="big" data-act="skirmish"><span>Skirmish</span><small>Ford, siege, capital, open field</small></button>`;
+    html += `<button class="big" data-act="march"><span>The March</span><small>${marchNote()}</small></button>`;
     for (const m of extraModes) {
       html += `<button class="big" data-mode="${m.id}"><span>${m.name}</span>${available(m.id) ? "<small>New</small>" : '<span class="soon">soon</span>'}</button>`;
     }
@@ -219,6 +220,7 @@
         if (b.dataset.mode) startExtra(extraModes.find((m) => m.id === b.dataset.mode));
         else if (act === "continue") loadSlot(k);
         else if (act === "manual") manual();
+        else if (act === "march" && !marchBook()) openPage("skirmish", true);  // no march under way: buy the army for one
         else openPage(act);
       };
     }
@@ -361,23 +363,87 @@
     { name: "Open field", note: "", siege: false },
   ];
   const skirmishPurses = [100, 200, 300, 450, 600, 900, 1200];
+  // The March (march.h): five battles, one army. The engine keeps the book; this page keeps its text on the device
+  // between battles (one march at a time), shows the camp, and buys the army on the Skirmish page (render.skirmish, march).
+  const marchKey = "illyria.march";
+  const rankNames = ["recruits", "regulars", "veterans", "elite"];
+  function marchBook() {
+    const a = api();
+    if (!a) return null;
+    let st = JSON.parse(a.marchState());
+    if (st.stage === undefined) {
+      const saved = store.get(marchKey);
+      if (saved && a.marchLoad(saved)) st = JSON.parse(a.marchState());
+    }
+    return st.stage === undefined ? null : st;
+  }
+  function marchNote() {
+    const saved = store.get(marchKey), m = saved && /^march1;\d+;\d;(\d);\d+;(\d)/.exec(saved);
+    return m && m[2] === "0" && +m[1] < 5 ? `Carry on: battle ${+m[1] + 1} of 5` : "Five battles, one army";
+  }
+  function marchSaved() {
+    const a = api(), text = a ? a.marchSave() : "";
+    if (text) store.set(marchKey, text);
+  }
+  render.march = (el) => {
+    const st = marchBook();
+    const body = el.querySelector(".body");
+    if (!st) {  // (the title opens the army's page instead when there is no march)
+      body.innerHTML = `<p class="lead">No march is under way.</p>`;
+      return;
+    }
+    const plain = !st.over && !st.fighting;
+    const head = st.won ? "All five battles are won. These came through:"
+      : st.over ? `The march ended at battle ${Math.min(st.stage + 1, st.of)} of ${st.of}: ${st.stages[Math.min(st.stage, st.of - 1)]}.`
+      : `Battle ${st.stage + 1} of ${st.of}: ${st.next}${st.fighting ? " (being fought)" : ""}`;
+    const rank = (q) => q.type === "Hero" ? `level ${q.rank + 1}` : q.veterans > 0 ? `${q.veterans} ${q.veterans === 1 ? "veteran" : "veterans"}` : rankNames[Math.max(0, Math.min(3, q.rank))];
+    body.innerHTML = `<p class="lead">${esc(head)}</p>` +
+      (st.stage > 0 || st.over ? `<p class="note">Last battle: ${st.last.lost} lost, ${st.last.survivors} came through, ${st.last.promoted} promoted.</p>` : "") +
+      (plain ? `<p class="note">Purse: ${st.purse} gold. Fill a squad's gaps with recruits. The lord, the magi and dwarves are never replaced.</p>` : "") +
+      `<table style="width:100%;border-collapse:collapse;text-align:left"><tr><th>Squad</th><th>Men</th><th>Rank</th><th>Kills</th><th>Battles</th><th></th></tr>` +
+      st.squads.map((q) => `<tr><td>${esc(q.name)}</td><td>${q.men} / ${q.full}</td><td>${rank(q)}</td><td>${q.kills}</td><td>${q.battles}</td><td>` +
+        (plain && q.cost > 0 ? `<button data-fill="${q.i}" style="min-height:36px"${st.purse > 0 ? "" : " disabled"}>Fill, ${q.cost} gold</button>` : plain && q.fixed && q.men < q.full ? "never" : "") + `</td></tr>`).join("") +
+      `</table>` + (st.gone.length ? `<p class="note">Gone for good: ${st.gone.map(esc).join(", ")}</p>` : "") +
+      `<button class="big primary" data-on="1" style="margin-top:14px"><span>${st.fighting ? "Back to the battle" : st.over ? "Put the march away" : "March on"}</span><small>${plain ? esc(st.next) : ""}</small></button>` +
+      (plain ? `<button data-giveup="1" style="margin-top:8px;min-height:44px">Give up the march</button>` : "");
+    body.querySelectorAll("[data-fill]").forEach((b) => { b.onclick = () => { if (api().marchReinforce(+b.dataset.fill) > 0) marchSaved(); render.march(el); }; });
+    const away = () => { api().marchEnd(); store.remove(marchKey); back(); renderTitle(); };
+    body.querySelector("[data-on]").onclick = () => {
+      if (st.fighting) return closeAll();
+      if (st.over) return away();
+      busy("Raising the banners", st.next);
+      setTimeout(() => {
+        const ok = game().startMode("march", { deploy: 1 });
+        unbusy();
+        if (!ok) return failed("battle");
+        slot = 0;
+        closeAll();
+      }, 60);
+    };
+    const giveUp = body.querySelector("[data-giveup]");
+    if (giveUp) giveUp.onclick = away;
+    focusFirst(el);
+  };
   const skirmish = { map: 0, defend: false, purse: 2, hard: true, bought: {} };
   const parseArmy = (text) => { const out = {}; for (const p of text.split(",")) { const [t, n] = p.split(":"); if (t !== "") out[+t] = +n; } return out; };
-  render.skirmish = (el) => {
+  // `march`: the same page buys a march's army (the ground and the side are the march's own).
+  render.skirmish = (el, march) => {
     const offers = game().skirmishOffers();
     const body = el.querySelector(".body");
+    el.querySelector("h2").textContent = march ? "The March" : "Skirmish";
     const spent = () => offers.reduce((g, o) => g + o.price * (skirmish.bought[o.type] || 0), 0);
     const fill = () => { skirmish.bought = parseArmy(game().skirmishBuy(skirmishPurses[skirmish.purse])); };
     if (!Object.keys(skirmish.bought).length) fill();
-    body.innerHTML = `<p class="lead">A battle fought out in full, built as a Conquest is. Nothing carries over.</p>` +
-      `<h3>The ground</h3><div class="choice wrap" data-maps>` + skirmishMaps.map((m, i) => `<button data-map="${i}"><b>${m.name}</b><small>${m.note}</small></button>`).join("") + `</div>` +
-      `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div>` +
+    body.innerHTML = (march ? `<p class="lead">Five battles: a field, the Ford, a village stormed, a village held, the capital. One army, bought once. The living go on with their wounds half mended, their kills and rank; a squad wiped out is gone. A lord and three magi march with you; they, and dwarves, are never replaced. Lose a battle and the march is over.</p>`
+      : `<p class="lead">A battle fought out in full, built as a Conquest is. Nothing carries over.</p>`) +
+      `<div${march ? ' class="hidden"' : ""}><h3>The ground</h3><div class="choice wrap" data-maps>` + skirmishMaps.map((m, i) => `<button data-map="${i}"><b>${m.name}</b><small>${m.note}</small></button>`).join("") + `</div>` +
+      `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div></div>` +
       `<h3>Gold</h3><div class="choice wrap" data-purses>` + skirmishPurses.map((g, i) => `<button data-purse="${i}" style="min-height:44px"><b>${g}</b></button>`).join("") + `</div>` +
       `<h3>Your army <small data-left></small></h3><div data-army></div>` +
       `<h3>The computer plays</h3><div class="choice"><button data-hard="0"><b>Easy</b><small>Three quarters of your gold; comes late, piecemeal</small></button><button data-hard="1"><b>Normal</b><small>Your equal; it masses, flanks and falls back</small></button></div>` +
       `<h3>Your colour</h3><div data-colour></div>` +
       `<p class="note">Only you see it.</p>` +
-      `<button class="big primary" data-start="1" style="margin-top:14px"><span>Raise your banner</span><small data-startnote></small></button>`;
+      `<button class="big primary" data-start="1" style="margin-top:14px"><span>${march ? "Begin the march" : "Raise your banner"}</span><small data-startnote></small></button>`;
     const army = body.querySelector("[data-army]");
     army.innerHTML = offers.map((o) => `<div class="choice" style="margin-bottom:6px;align-items:center"><span style="flex:2"><b>${o.name}</b> <small>${o.men} ${o.men === 1 ? "man" : "men"}, ${o.price} gold${o.cap ? `, ${o.cap} at most` : ""}</small></span>` +
       `<button data-less="${o.type}" aria-label="Fewer ${o.name}" style="min-height:44px;flex:0 0 52px">-</button><b data-count="${o.type}" style="flex:0 0 36px;text-align:center"></b>` +
@@ -396,7 +462,7 @@
         body.querySelector(`[data-more="${o.type}"]`).disabled = o.price > left || (o.cap > 0 && (skirmish.bought[o.type] || 0) >= o.cap);
         body.querySelector(`[data-less="${o.type}"]`).disabled = !(skirmish.bought[o.type] > 0);
       }
-      body.querySelector("[data-startnote]").textContent = map.name;
+      body.querySelector("[data-startnote]").textContent = march ? "The open field" : map.name;
       body.querySelector("[data-start]").disabled = spent() === 0;
     };
     body.querySelectorAll("[data-map]").forEach((b) => { b.onclick = () => { skirmish.map = +b.dataset.map; sync(); }; });
@@ -409,10 +475,11 @@
     if (window.IllyriaPalette) IllyriaPalette.picker(body.querySelector("[data-colour]"), 6, null, lords.map((l) => l.name));  // (a skirmish leads the Moonward seat)
     body.querySelector("[data-start]").onclick = () => {
       const map = skirmishMaps[skirmish.map];
-      busy("Raising the banners", map.name);
+      busy("Raising the banners", march ? "The open field" : map.name);
       setTimeout(() => {
         const army = offers.filter((o) => skirmish.bought[o.type] > 0).map((o) => `${o.type}:${skirmish.bought[o.type]}`).join(",");
-        const ok = game().startMode("skirmish", { scenario: skirmish.map, budget: skirmishPurses[skirmish.purse], defend: skirmish.defend ? 1 : 0, hard: skirmish.hard ? 1 : 0, deploy: 1, army });
+        const ok = march ? game().startMode("march", { hard: skirmish.hard ? 1 : 0, deploy: 1, army })
+          : game().startMode("skirmish", { scenario: skirmish.map, budget: skirmishPurses[skirmish.purse], defend: skirmish.defend ? 1 : 0, hard: skirmish.hard ? 1 : 0, deploy: 1, army });
         unbusy();
         if (!ok) return failed("battle");
         slot = 0;
@@ -638,6 +705,7 @@
     notice,
     manual,
     autosave,
+    marchSaved,
     conquestTick,
     // The ☰ menu's Save: into this Conquest's slot, or choose one.
     saveNow() {

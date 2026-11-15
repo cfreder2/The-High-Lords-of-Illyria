@@ -20,6 +20,7 @@
 #include "illyria/game/flag_poles.h"
 #include "illyria/game/minimap.h"
 #include "illyria/game/gestures.h"
+#include "illyria/game/march.h"
 #include "illyria/game/mode.h"
 #include "illyria/game/mode_horde.h"
 #include "illyria/game/mode_sandbox.h"
@@ -70,7 +71,17 @@ void playSounds(Sfx& sfx, uint32_t& ambienceSeen) {
         ambienceSeen = sfx.ambienceVersion();
         const Ambience& a = sfx.ambience();
         set_sfx_ambience(a.windMountain, a.windValley, a.swamp, a.swampPan, a.flies, a.fliesPan, a.drums, a.drumsPan, a.rain);
+        // The loops sent by name (sfx.h kLayerNames): the far battle, the columns, the day's air, fire.
+        const float level[4] = {a.battle, a.march, a.bed, a.fire}, pan[4] = {a.battlePan, a.marchPan, 0, a.firePan};
+        for (int i = 0; i < 4; ++i) platform::sfxLayer(kLayerNames[i], level[i] * ambienceScale, pan[i]);
     }
+}
+// The player's pause, told to the sound when it changes: nothing new starts and what is in flight fades (platform.h).
+bool soundPaused = false;
+void pauseSounds(bool paused) {
+    if (paused == soundPaused) return;
+    soundPaused = paused;
+    platform::sfxPaused(paused);
 }
 
 constexpr uint64_t kBattleSeed = 20261027;
@@ -247,9 +258,14 @@ Scenario gScenario = Scenario::Ford;
 illyria::game::SkirmishSetup gSetup;  // the Skirmish screen's army and side, kept for a restart
 Battle::AiSkill gSkill = Battle::AiSkill::Normal;
 bool gDeploy = false;  // the skirmish waits for the player to set his line, and opens on the other host ("deploy":1)
+// The March (march.h): the book kept between its battles; whether the battle on the screen is one of them, which, and
+// whether its end has been written into the book (settleMarch). A march's battle is fought once: there is no Again.
+std::unique_ptr<March> gMarch;
+bool gMarchBattle = false, gMarchSettled = false;
+int gMarchStage = 0;
 
 void newBattle() {
-    app->battle = std::make_unique<Battle>(kBattleSeed, gScenario, gSetup);
+    app->battle = std::make_unique<Battle>(kBattleSeed + (gMarchBattle ? static_cast<uint64_t>(gMarchStage) : 0), gScenario, gSetup);
     app->battle->setAiSkill(gSkill);
     app->battle->setDeploying(gDeploy);
     app->battleMiniLand.clear();
@@ -257,6 +273,13 @@ void newBattle() {
     const V3 o = app->battle->origin();
     app->camera.setBounds(-o.x, -o.y, illyria::sim::Continent::kWidth - o.x, illyria::sim::Continent::kHeight - o.y);
     app->camera.setHeightFn([](float x, float y) { return app->battle->heightAt(x, y); });
+}
+
+// A march's battle has stopped: the survivors, their wounds and ranks go into the book, once.
+void settleMarch() {
+    if (!gMarchBattle || gMarchSettled || !gMarch || !app->battle->over()) return;
+    gMarch->settle(app->battle->outcome(), app->battle->carried());
+    gMarchSettled = true;
 }
 
 // Aims at 60: under 56 frames a second for a second (under 28 for half of one): a quarter step coarser, and that
@@ -899,6 +922,9 @@ void updateUnderwater(float dt) {
 // False when this frame drew nothing (the title screen draws every other).
 bool frame() {
     const double now = platform::nowMs();
+    // The blows sound on the frame that shows them: the attack clips' lengths, as the sheets loaded so far give them.
+    if (app->battle && app->frameCount % 60 == 0)
+        for (int t = 0; t < illyria::sim::kUnitTypeCount; ++t) app->battle->sfx().setBlowSeconds(t, app->renderer.blowSeconds(t));
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
@@ -917,7 +943,9 @@ bool frame() {
         App::ConquestView& cv = app->camp;
         listenFromCamera();
         app->battle->flushOrders();  // (what was ordered since the last frame: the clock, paused or not, applies it with its next step)
-        if (!cv.paused && cv.c->winner() == 0) {
+        app->battle->sfx().setSpeed(static_cast<float>(cv.speed));
+        // (A fight's results sheet holds the clock until it is dismissed, as a skirmish's end stops its own.)
+        if (!cv.paused && cv.c->winner() == 0 && !app->battle->fightReport()) {
             cv.acc += dtMs / 1000.0 * illyria::sim::Conquest::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
             // then the game runs slower than the clock (docs/ONE_WORLD.md, the fast-forward limit, step 4).
@@ -928,20 +956,46 @@ bool frame() {
         placeBoats();
         presentConquest(static_cast<float>(dtMs / 1000.0));
         syncTownPanel();
-        playCues();
-        // No battle sounds over the conquest map.
-        if (!app->hushed) {
-            set_sfx_ambience(0, 0, 0, 0, 0, 0, 0, 0, 0);
-            app->hushed = true;
-            app->ambienceSeen = ~0u;
+        // The Conquest sounds as a battle does, from its own camera heights (sfx.h hear): the land's air, the far fight's
+        // rumble and the columns' tramp, and its own events: dawn, a town taken or lost, a squad trained, a lord fallen,
+        // the war won or lost.
+        {
+            using C = illyria::sim::Conquest;
+            const C& c = *cv.c;
+            ConquestPulse p;
+            p.day = c.day();
+            p.side = c.localSide();
+            p.winner = c.winner() == 0 ? 0 : c.winner() - 1 == static_cast<int32_t>(p.side) || c.winner() == static_cast<int32_t>(p.side) + 1 ? 1 : 2;
+            for (const C::CityState& cs : c.cities()) p.cityOwner.push_back(cs.owner);
+            for (const C::Stack& s : c.stacks()) {
+                if (s.owner != p.side) continue;
+                for (const illyria::sim::Army& a : s.armies) {
+                    if (a.soldiers <= 0) continue;
+                    ++p.squads;
+                    p.lords += a.hero();
+                }
+            }
+            app->battle->sfx().conquest(p);
+            // A fight of the war decided: its sheet comes up with the fanfare or the drone, as a skirmish's does.
+            static bool reported = false;
+            const bool report = app->battle->fightReport() != nullptr;
+            if (report && !reported) {
+                app->battle->sfx().ui(app->battle->fightReport()->outcome == 1 ? Sound::Victory : Sound::Defeat);
+                app->battle->sfx().ui(Sound::Results);
+            }
+            reported = report;
         }
+        playCues();
+        playSounds(app->battle->sfx(), app->ambienceSeen);
+        pauseSounds(cv.paused);
     } else if (!app->title) {
         listenFromCamera();
         app->battle->sfx().setRain(app->rain);
         app->battle->advance(dtMs / 1000.0);
+        settleMarch();
         playCues();
-        app->hushed = false;
         playSounds(app->battle->sfx(), app->ambienceSeen);
+        pauseSounds(app->battle->paused() && !app->battle->over());
     }
     placeFlags(static_cast<float>(dtMs / 1000.0));
     updateUnderwater(static_cast<float>(dtMs / 1000.0));
@@ -1133,6 +1187,7 @@ ILLYRIA_API int illyria_order_mode() { return app ? static_cast<int>(app->battle
 ILLYRIA_API int illyria_hover(float x, float y) {
     if (!app) return 0;
     const float s = app->pixelRatio;
+    app->battle->aimHover(app->camera, x * s, y * s, s);  // (the catapults' forecast follows the pointer)
     return static_cast<int>(app->battle->intentAt(app->camera, x * s, y * s, s));
 }
 ILLYRIA_API void illyria_clear_selection() {
@@ -1391,12 +1446,31 @@ ILLYRIA_API void illyria_queue_demo() {
 // in a grid at (x, y), seven to a row, 10 m apart, of the player's side and facing south; the later stages kill every one of
 // them still standing in one way, as the sim's own blows would (World::testBlow): 1 a satchel's blast beside him, 2 a club's
 // blow that only fells him, 3 fire, 4 a cleaving cut far past death (a limb or the head off, for those a cut can), 5 an arrow.
+// Stage 6 (`deaths melee X Y`) is a fight to watch instead: two lines of foot, the player's and a foe's, four metres apart
+// either side of (x, y) along the north-south line through it, with a few horse behind each to ride in: for looking at a
+// fight where it stands (in a ford: tools/playtest/ford-water.txt).
 ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
     using namespace illyria::sim;
     static std::vector<EntityId> men;
     static char line[160];
     if (!app || !app->battle) return "deaths: no battle";
     World& w = app->battle->mutableWorld();
+    if (stage == 6) {
+        static constexpr UnitType kFoot[2][4] = {{UnitType::LightInfantry, UnitType::Warrior, UnitType::HeavyInfantry, UnitType::Pikemen},
+                                                 {UnitType::Berserker, UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Warrior}};
+        const auto stand = [&](int side, UnitType type, int64_t dxTenths, int64_t dyTenths) {
+            Vec3 p{Fixed::fromInt(static_cast<int64_t>(x)) + Fixed::fromRatio(dxTenths, 10), Fixed::fromInt(static_cast<int64_t>(y)) + Fixed::fromRatio(dyTenths, 10), Fixed::zero()};
+            p.z = w.groundHeight(p.x, p.y);
+            w.spawnUnit(static_cast<PlayerId>(side), p, Vec3{side == 0 ? Fixed::one() : -Fixed::one(), Fixed::zero(), Fixed::zero()}, unitStats(type));
+        };
+        for (int side = 0; side < 2; ++side) {
+            const int64_t sign = side == 0 ? -1 : 1;
+            for (int i = 0; i < 14; ++i) stand(side, kFoot[side][i % 4], sign * (20 + (i % 2) * 14), (i - 7) * 13);
+            for (int i = 0; i < 3; ++i) stand(side, UnitType::LightCavalry, sign * 160, (i - 1) * 40);
+        }
+        std::snprintf(line, sizeof line, "deaths: a melee of 17 a side at %.0f,%.0f", x, y);
+        return line;
+    }
     if (stage == 0) {
         men.clear();
         for (int t = 0; t < kUnitTypeCount; ++t) {
@@ -1433,6 +1507,83 @@ ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
         }
     }
     std::snprintf(line, sizeof line, "deaths: stage %d, %d struck", stage, struck);
+    return line;
+}
+
+// Test hook (the --play script's `boulder`, docs/PLAYTEST.md): the boulder demo. Stage 0 stands `n` light infantry who do
+// nothing from (a, b), each (c, d) metres on from the last, of the player's side (`own`) or the other; stage 1 throws a
+// stone as a catapult standing at (a, b) would at the mark (c, d), with no scatter, and says where it will come down and
+// lie (World::stonePath); stage 2 counts: the men standing, hurt and dead, where the stone lies, every held gate's strength and place;
+// stage 3 says what the ground is at (a, b).
+ILLYRIA_API const char* illyria_boulder_demo(int stage, float a, float b, float c, float d, int n, int own) {
+    using namespace illyria::sim;
+    static std::vector<EntityId> men;
+    static EntityId stone = kNoEntity;
+    static Vec3 landing;
+    static char line[400];
+    if (!app || !app->battle) return "boulder: no battle";
+    World& w = app->battle->mutableWorld();
+    const auto at = [&](float x, float y) {
+        Vec3 p{toFixed(x), toFixed(y), Fixed::zero()};
+        p.z = w.groundHeight(p.x, p.y);
+        return p;
+    };
+    static const char* kGround[] = {"plains", "road", "forest", "swamp", "shallows", "deep water", "rock", "bridge", "mud", "sand"};
+    if (stage == 0) {
+        UnitStats s = unitStats(UnitType::LightInfantry);
+        s.aggroRange = Fixed::zero();
+        s.melee.damage = 0;
+        const float len = std::sqrt(c * c + d * d);
+        const Vec3 face = len > 0 ? Vec3{toFixed(-c / len), toFixed(-d / len), Fixed::zero()} : Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()};
+        for (int k = 0; k < n; ++k) men.push_back(w.spawnUnit(own ? 0 : 1, at(a + c * static_cast<float>(k), b + d * static_cast<float>(k)), face, s));
+        std::snprintf(line, sizeof line, "boulder: %d men from %.0f,%.0f, %.1f,%.1f apart (%s)", n, a, b, c, d, own ? "ours" : "theirs");
+        return line;
+    }
+    if (stage == 1) {
+        Unit engine;
+        engine.stats = unitStats(UnitType::Catapult);
+        engine.pos = at(a, b);
+        const Vec3 mark = at(c, d);
+        const StonePath path = w.stonePath(engine, mark);
+        stone = w.throwStone(engine, path.landing);
+        landing = path.landing;
+        const Vec3 rest = path.roll.empty() ? path.landing : path.roll.back().pos;
+        std::snprintf(line, sizeof line, "boulder: thrown from %.0f,%.0f (z %.1f) at %.0f,%.0f (z %.1f, %s), %.0f m; forecast: rolls %.1f m to %.1f,%.1f (z %.1f)", a, b,
+                      engine.pos.z.toDouble(), c, d, mark.z.toDouble(), kGround[static_cast<int>(w.region()->groundAt(mark.x, mark.y))],
+                      (mark - engine.pos).flat().length().toDouble(), (rest - path.landing).flat().length().toDouble(), rest.x.toDouble(), rest.y.toDouble(), rest.z.toDouble());
+        return line;
+    }
+    if (stage == 3) {
+        const Vec3 p = at(a, b);
+        std::snprintf(line, sizeof line, "boulder: at %.0f,%.0f the ground is %s, z %.2f (10 m east %.2f, west %.2f, north %.2f, south %.2f)", a, b,
+                      kGround[static_cast<int>(w.region()->groundAt(p.x, p.y))], p.z.toDouble(), at(a + 10, b).z.toDouble(), at(a - 10, b).z.toDouble(),
+                      at(a, b + 10).z.toDouble(), at(a, b - 10).z.toDouble());
+        return line;
+    }
+    int standing = 0, hurt = 0, dead = 0;
+    for (const EntityId id : men) {
+        const Unit* u = w.findUnit(id);
+        if (u == nullptr) continue;
+        if (!u->alive()) ++dead;
+        else if (u->hp < u->stats.maxHp) ++hurt;
+        else ++standing;
+    }
+    int used = std::snprintf(line, sizeof line, "boulder: men %d unhurt, %d hurt, %d dead", standing, hurt, dead);
+    bool found = false;
+    for (const Projectile& p : w.projectiles()) {
+        if (p.id != stone) continue;
+        found = true;
+        used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; stone %s at %.1f,%.1f, %.1f m from where it came down (%.1f m rolled)",
+                              p.resting ? "lies" : p.landed ? "rolling" : "in the air", p.pos.x.toDouble(), p.pos.y.toDouble(), (p.pos - landing).flat().length().toDouble(),
+                              p.rolled.toDouble());
+    }
+    if (!found && stone != kNoEntity) used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; stone gone (sunk, or shattered on a wall-walk)");
+    for (size_t g = 0; g < w.gates().size() && used < static_cast<int>(sizeof line) - 60; ++g) {
+        const Gate& gate = w.region()->gates()[g];
+        if (w.gates()[g].holder == GateState::kNoHolder) continue;  // (a neighbour's, in nobody's battle)
+        used += std::snprintf(line + used, sizeof line - static_cast<size_t>(used), "; gate %zu %d/%d at %.0f,%.0f (out %.1f,%.1f)", g, w.gates()[g].hp, gate.maxHp,
+                              ((gate.a.x + gate.b.x) / 2).toDouble(), ((gate.a.y + gate.b.y) / 2).toDouble(), gate.out.x.toDouble(), gate.out.y.toDouble());
+    }
     return line;
 }
 
@@ -1717,6 +1868,7 @@ ILLYRIA_API void illyria_set_scenario(int scenario) {
     gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
     gSetup = {};
     gDeploy = false;
+    gMarchBattle = false;
     if (!app) return;
     app->title = false;
     newBattle();
@@ -1724,12 +1876,16 @@ ILLYRIA_API void illyria_set_scenario(int scenario) {
     frameCamera();
 }
 ILLYRIA_API void illyria_restart() {
-    if (!app) return;
+    if (!app || gMarchBattle) return;  // (a march's battle is fought once)
     app->title = false;
     newBattle();
     app->renderer.reset(*app->battle);
     if (gDeploy) startOpening();
     else frameCamera();
+}
+// The results sheet of a Conquest's fight put away: the war's clock runs again.
+ILLYRIA_API void illyria_result_dismiss() {
+    if (app) app->battle->dismissFightReport();
 }
 // The deployment is done: the battle's clock starts (Enter on the desktop, the page's Begin).
 ILLYRIA_API void illyria_begin_battle() {
@@ -1740,6 +1896,7 @@ ILLYRIA_API void illyria_fast_forward(double seconds) {
     if (!app) return;
     app->battle->beginBattle();
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
+    settleMarch();
     app->battle->voice().take();  // what was said while skipping ahead goes unheard
     app->battle->sfx().take();
 }
@@ -2632,8 +2789,8 @@ ILLYRIA_API const char* illyria_conquest_state() {
                 anyStack = true;
                 for (size_t k = 0; k < st.armies.size(); ++k) {
                     const illyria::sim::Army& a = st.armies[k];
-                    std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"men\":%d,\"of\":%d,\"rank\":%d,\"hero\":%s}", k ? "," : "",
-                                  a.name.empty() ? illyria::sim::unitTypeName(a.type) : a.name.c_str(), a.soldiers, a.fullStrength, a.rank, a.hero() ? "true" : "false");
+                    std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"men\":%d,\"of\":%d,\"rank\":%d,\"kills\":%d,\"battles\":%d,\"hero\":%s}", k ? "," : "",
+                                  a.name.empty() ? illyria::sim::unitTypeName(a.type) : a.name.c_str(), a.soldiers, a.fullStrength, a.rank, a.kills, a.battles, a.hero() ? "true" : "false");
                     s += buf;
                 }
                 s += "]}";
@@ -2952,8 +3109,8 @@ static void endState(const Battle& b, std::string& s) {
     char buf[512];
     const bool siege = b.scenario() == Scenario::Siege || b.scenario() == Scenario::Capital;
     const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.") : "Rout the " + b.foeName() + ".";
-    std::snprintf(buf, sizeof buf, ",\"deploy\":%s,\"brief\":\"%s\",\"routed\":%d,\"over\":%s", b.deploying() ? "true" : "false", brief.c_str(),
-                  b.routedSide() == illyria::sim::RoutRule::kNobody ? -1 : static_cast<int>(b.routedSide()), b.over() ? "true" : "false");
+    std::snprintf(buf, sizeof buf, ",\"deploy\":%s,\"brief\":\"%s\",\"routed\":%d,\"pursuit\":%d,\"over\":%s", b.deploying() ? "true" : "false", brief.c_str(),
+                  b.routedSide() == illyria::sim::RoutRule::kNobody ? -1 : static_cast<int>(b.routedSide()), b.pursuitSeconds(), b.over() ? "true" : "false");
     s += buf;
     {  // The tip: the kind selected (one kind only), the first time it is picked since the game was opened; shown eight seconds.
         static uint64_t seen = 0;
@@ -2980,27 +3137,59 @@ static void endState(const Battle& b, std::string& s) {
             s += buf;
         }
     }
-    if (!b.over()) return;
-    const Battle::Result r = b.result();
+    if (!b.over() && !b.fightReport()) return;
+    const Battle::Result r = b.fightReport() ? *b.fightReport() : b.result();
     static const char* kHow[] = {"wiped", "rout", "flag"};
-    // How it came, in a line (both HUDs print it under the word).
+    // How it came, in a line (both HUDs print it under the word). (A Conquest's fight: the field kept, or left.)
     static const char* kLine[3][2] = {{"No foe is left standing.", "None of yours is left standing."},
                                       {"The enemy quit the field.", "Your host quit the field."},
                                       {"The courtyard is taken.", "The courtyard is lost."}};
     // (A siege says it in its own words: the keep taken, the besiegers gone. Battle::siegeResult.)
     const std::string siegeWhy = b.siegeResult();
-    std::snprintf(buf, sizeof buf, ",\"result\":{\"outcome\":%d,\"how\":\"%s\",\"line\":\"%s\",\"seconds\":%d,\"killed\":%d,\"lost\":%d,\"best\":\"%s\",\"fallen\":[", r.outcome,
-                  kHow[static_cast<int>(r.how)], siegeWhy.empty() ? kLine[static_cast<int>(r.how)][r.outcome == 1 ? 0 : 1] : siegeWhy.c_str(), r.seconds, r.killed, r.lost, r.best.c_str());
+    const char* line = r.conquest && r.how == Battle::Result::How::Wiped ? (r.outcome == 1 ? "The field is yours." : "None of yours is left standing.") : kLine[static_cast<int>(r.how)][r.outcome == 1 ? 0 : 1];
+    std::snprintf(buf, sizeof buf, ",\"result\":{\"outcome\":%d,\"conquest\":%s,\"how\":\"%s\",\"line\":\"%s\",\"seconds\":%d,\"killed\":%d,\"lost\":%d,\"promoted\":%d,\"best\":\"%s\",\"fallen\":[", r.outcome,
+                  r.conquest ? "true" : "false", kHow[static_cast<int>(r.how)], siegeWhy.empty() || r.conquest ? line : siegeWhy.c_str(), r.seconds, r.killed, r.lost, r.promoted, r.best.c_str());
     s += buf;
     for (size_t i = 0; i < r.fallen.size(); ++i) s += (i ? ",\"" : "\"") + r.fallen[i] + "\"";
     s += "],\"rows\":[";
     for (size_t i = 0; i < r.rows.size(); ++i) {
         const Battle::Result::Row& row = r.rows[i];
-        std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"alive\":%d,\"total\":%d,\"kills\":%d,\"broke\":%s}", i ? "," : "", row.name.c_str(), row.alive, row.total,
-                      row.kills, row.broke ? "true" : "false");
+        std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"alive\":%d,\"total\":%d,\"kills\":%d,\"broke\":%s,\"rank\":%d,\"promoted\":%d,\"hero\":%s}", i ? "," : "", row.name.c_str(), row.alive, row.total,
+                      row.kills, row.broke ? "true" : "false", row.rank, row.promoted, row.hero ? "true" : "false");
         s += buf;
     }
     s += "]}";
+}
+
+static void jsonList(std::string& s, const char* key, const std::vector<std::string>& items) {
+    s += std::string("\"") + key + "\":[";
+    for (size_t i = 0; i < items.size(); ++i) s += (i ? ",\"" : "\"") + items[i] + "\"";
+    s += "]";
+}
+
+// What the last battle of the march left (March::Report), for the results sheet and the camp.
+static void marchReport(std::string& s) {
+    const March::Report& r = gMarch->last;
+    char buf[160];
+    std::snprintf(buf, sizeof buf, "\"last\":{\"survivors\":%d,\"lost\":%d,\"promoted\":%d,\"gold\":%d,", r.survivors, r.lost, r.promoted, r.gold);
+    s += buf;
+    jsonList(s, "promotions", r.promotions);
+    s += ",";
+    jsonList(s, "gone", r.gone);
+    s += "}";
+}
+
+// The march this battle is of (appended to illyria_hud): which battle of the five, and once it is settled what
+// carries over and what comes next.
+static void marchHud(std::string& s) {
+    if (!gMarchBattle || !gMarch) return;
+    char buf[256];
+    std::snprintf(buf, sizeof buf, ",\"march\":{\"battle\":%d,\"of\":%d,\"name\":\"%s\",\"settled\":%s,\"over\":%s,\"won\":%s,\"purse\":%d,\"men\":%d,\"squads\":%zu,\"next\":\"%s\",",
+                  gMarchStage + 1, March::kBattles, March::stageInfo(gMarchStage).name, gMarchSettled ? "true" : "false", gMarch->over() ? "true" : "false",
+                  gMarch->won() ? "true" : "false", gMarch->purse, gMarch->men(), gMarch->squads.size(), gMarch->over() ? "" : March::stageInfo(gMarch->stage).name);
+    s += buf;
+    marchReport(s);
+    s += "}";
 }
 
 // HUD state as JSON, polled by the page a few times a second.
@@ -3118,12 +3307,12 @@ ILLYRIA_API const char* illyria_hud() {
         const Battle::Load load = b.squadLoad(q);  // satchels and missiles left of a store (pips on the card)
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
-                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
+                      "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
                       "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,"
                       "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
-                      st.level, st.blessings, st.kills, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
+                      st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
                       state.hold ? "true" : "false", state.rally, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false");
         s += buf;
@@ -3132,6 +3321,7 @@ ILLYRIA_API const char* illyria_hud() {
     std::snprintf(buf, sizeof buf, "],\"foeAlive\":%d,\"foeTotal\":%d", foeAlive, foeTotal);
     s += buf;
     endState(b, s);
+    marchHud(s);
     // What is looked at and cannot be ordered (a man not ours, or a gate): view-only.
     if (const Battle::Glance g = b.glance(); g.any) {
         if (g.gate)
@@ -3196,10 +3386,52 @@ ILLYRIA_API const char* illyria_snap_colour(const char* hex, int faction) {
     out = illyria::game::palette::parseHex(hex, c) ? illyria::game::palette::hex(illyria::game::palette::snap(c, static_cast<uint8_t>(faction & 7))) : "";
     return out.c_str();
 }
+// The army of a start's options: "army":"type:squads,..." of the kinds a town trains.
+static std::vector<Buy> armyOption(const std::string& opts) {
+    std::vector<Buy> army;
+    const size_t at = opts.find("\"army\":\"");
+    if (at == std::string::npos) return army;
+    const char* p = opts.c_str() + at + 8;
+    while (*p && *p != '"') {
+        char* end = nullptr;
+        const long type = std::strtol(p, &end, 10);
+        if (*end != ':') break;
+        const long squads = std::strtol(end + 1, &end, 10);
+        if (type >= 0 && type < static_cast<long>(illyria::sim::UnitType::Count) && squads > 0 && illyria::sim::Conquest::trainable(static_cast<illyria::sim::UnitType>(type)))
+            army.push_back({static_cast<illyria::sim::UnitType>(type), static_cast<int>(std::min(squads, 40L))});
+        p = *end == ',' ? end + 1 : end;
+    }
+    return army;
+}
+
 static int startMode(const char* id, const char* options) {
     if (!app) return 0;
     const std::string mode = id ? id : "", opts = options ? options : "{}";
     app->error.clear();
+    if (mode == "march") {
+        // {"army":"type:squads,...","hard":0|1}: a new march, and its first battle. {}: the next battle of the march in
+        // the book (illyria_march_load puts a saved one there). Each battle is a skirmish set up by the book (March::setup).
+        if (const std::vector<Buy> army = armyOption(opts); !army.empty()) gMarch = std::make_unique<March>(March::begin(army, optionNumber(opts, "hard", 1) == 0));
+        if (!gMarch || gMarch->over()) {
+            app->error = gMarch ? "This march is over." : "Buy at least one squad.";
+            return 0;
+        }
+        stopPlaying();
+        app->title = false;
+        gMarchBattle = true;
+        gMarchSettled = false;
+        gMarchStage = gMarch->stage;
+        gScenario = gMarch->scenario();
+        gSetup = gMarch->setup();
+        gSkill = gMarch->easy ? Battle::AiSkill::Easy : Battle::AiSkill::Normal;
+        gDeploy = optionNumber(opts, "deploy", 1) != 0;
+        newBattle();
+        app->renderer.reset(*app->battle);
+        if (gDeploy) startOpening();
+        else frameCamera();
+        return 1;
+    }
+    gMarchBattle = false;
     if (mode == "title") {
         startTitle();
         return 1;
@@ -3214,19 +3446,8 @@ static int startMode(const char* id, const char* options) {
         gSetup = {};
         gSetup.budget = std::clamp(static_cast<int>(optionNumber(opts, "budget", 0)), 0, 2000);
         gSetup.defend = optionNumber(opts, "defend", 0) != 0 && (gScenario == Scenario::Siege || gScenario == Scenario::Capital);
-        if (const size_t at = opts.find("\"army\":\""); at != std::string::npos) {
-            const char* p = opts.c_str() + at + 8;
-            while (*p && *p != '"') {
-                char* end = nullptr;
-                const long type = std::strtol(p, &end, 10);
-                if (*end != ':') break;
-                const long squads = std::strtol(end + 1, &end, 10);
-                if (type >= 0 && type < static_cast<long>(illyria::sim::UnitType::Count) && squads > 0 && illyria::sim::Conquest::trainable(static_cast<illyria::sim::UnitType>(type)))
-                    gSetup.army.push_back({static_cast<illyria::sim::UnitType>(type), static_cast<int>(std::min(squads, 40L))});
-                p = *end == ',' ? end + 1 : end;
-            }
-            if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
-        }
+        gSetup.army = armyOption(opts);
+        if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
         gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
         gDeploy = optionNumber(opts, "deploy", 0) != 0;
         gSetup.easy = gSkill == Battle::AiSkill::Easy;
@@ -3273,7 +3494,69 @@ ILLYRIA_API const char* illyria_mode_error() { return app ? app->error.c_str() :
 // Whether a mode is built into this version (the title screen asks, to mark the rest "coming soon").
 ILLYRIA_API int illyria_mode_available(const char* id) {
     const std::string mode = id ? id : "";
-    return mode == "title" || mode == "skirmish" || mode == "conquest" || otherModeAvailable(mode) ? 1 : 0;
+    return mode == "title" || mode == "skirmish" || mode == "march" || mode == "conquest" || otherModeAvailable(mode) ? 1 : 0;
+}
+
+// The March (march.h). Its book as JSON for the camp between battles and the end: {} when there is none; else which
+// battle is next, the purse, every squad (men, full strength, the survivors' rank, veterans among them, kills, battles,
+// what filling it costs, whether it can be filled), the squads gone, and the last battle's report.
+ILLYRIA_API const char* illyria_march_state() {
+    static std::string s;
+    if (!gMarch) return "{}";
+    const March& m = *gMarch;
+    char buf[320];
+    std::snprintf(buf, sizeof buf, "{\"stage\":%d,\"of\":%d,\"next\":\"%s\",\"over\":%s,\"won\":%s,\"lost\":%s,\"purse\":%d,\"budget\":%d,\"men\":%d,\"easy\":%s,\"fighting\":%s,\"squads\":[",
+                  m.stage, March::kBattles, m.over() ? "" : March::stageInfo(m.stage).name, m.over() ? "true" : "false", m.won() ? "true" : "false", m.lost ? "true" : "false",
+                  m.purse, m.budget, m.men(), m.easy ? "true" : "false", gMarchBattle && !gMarchSettled ? "true" : "false");
+    s = buf;
+    for (size_t i = 0; i < m.squads.size(); ++i) {
+        const March::Squad& q = m.squads[i];
+        int rank = 0, veterans = 0, hp = 0;
+        for (const March::Man& man : q.men) rank = std::max(rank, man.rank), veterans += man.rank >= 2, hp += man.hp;
+        std::snprintf(buf, sizeof buf, "%s{\"i\":%zu,\"name\":\"%s\",\"type\":\"%s\",\"men\":%zu,\"full\":%d,\"rank\":%d,\"veterans\":%d,\"health\":%d,\"kills\":%d,\"battles\":%d,\"cost\":%d,\"fixed\":%s}",
+                      i ? "," : "", i, q.name.c_str(), illyria::sim::unitTypeName(q.type), q.men.size(), q.full, rank, veterans, hp / std::max<int>(1, static_cast<int>(q.men.size())) / 10, q.kills,
+                      q.battles, m.reinforceCost(i), March::irreplaceable(q.type) && m.reinforceCost(i) == 0 ? "true" : "false");
+        s += buf;
+        // What it carries of its satchels and missiles (those with a load: a dwarf, a wizard, an engine), for the camp's list.
+        int carried = 0, full = 0;
+        m.load(i, carried, full);
+        if (full > 0) {
+            s.pop_back();
+            std::snprintf(buf, sizeof buf, ",\"load\":%d,\"loadFull\":%d,\"resupply\":%d}", carried, full, m.resupplyCost(i));
+            s += buf;
+        }
+    }
+    s += "],";
+    jsonList(s, "gone", m.gone);
+    s += ",\"stages\":[";
+    for (int k = 0; k < March::kBattles; ++k) s += std::string(k ? ",\"" : "\"") + March::stageInfo(k).name + "\"";
+    s += "],";
+    marchReport(s);
+    s += "}";
+    return s.c_str();
+}
+// A saved march put in the book (not yet fought on: illyria_start_mode("march", "{}") fights its next battle). 0: unreadable.
+ILLYRIA_API int illyria_march_load(const char* save) {
+    March m;
+    if (!save || !March::load(save, m)) return 0;
+    gMarch = std::make_unique<March>(std::move(m));
+    return 1;
+}
+// The book as a line of text to keep ("" with no march, or while a battle of it is being fought: the save is of the camp).
+ILLYRIA_API const char* illyria_march_save() {
+    static std::string s;
+    s = gMarch && !(gMarchBattle && !gMarchSettled) ? gMarch->save() : "";
+    return s.c_str();
+}
+// The purse fills a squad's gaps (as many men as it pays for). How many joined.
+ILLYRIA_API int illyria_march_reinforce(int squad) {
+    if (!gMarch || (gMarchBattle && !gMarchSettled) || squad < 0) return 0;
+    return gMarch->reinforce(static_cast<size_t>(squad));
+}
+// The march given up, or put away once over.
+ILLYRIA_API void illyria_march_end() {
+    gMarch.reset();
+    gMarchBattle = false;
 }
 
 // The conquest as text, to keep in a save slot ("" when none is being played).

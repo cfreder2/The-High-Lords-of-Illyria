@@ -3,16 +3,44 @@
 //   ./build/tools/illyria_unitsheet > docs/UNITS.md
 
 #include <cstdio>
+#include <memory>
+#include <vector>
 #include <string>
 
 #include "illyria/sim/conquest.h"
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
+#include "illyria/sim/world.h"
 
 using namespace illyria::sim;
 
 namespace {
 double d(Fixed f) { return f.toDouble(); }
 double secs(int32_t ticks) { return static_cast<double>(ticks) / kTicksPerSecond; }
+
+// How far a catapult's boulder rolls on from where it comes down (World::stonePath: the stone's own steps), thrown
+// `away` metres over bare ground of one kind that rises `gradePct` metres in a hundred the way it is thrown.
+double rollMetres(Ground ground, int64_t away, int64_t gradePct = 0) {
+    constexpr int32_t kCells = 160;  // 640 m
+    std::vector<Fixed> heights;
+    if (gradePct != 0) {
+        heights.resize(static_cast<size_t>(kCells + 1) * (kCells + 1));
+        for (int64_t y = 0; y <= kCells; ++y)
+            for (int64_t x = 0; x <= kCells; ++x)
+                heights[static_cast<size_t>(y * (kCells + 1) + x)] = Fixed::fromRatio(x * 4 * gradePct, 100) + Fixed::fromInt(gradePct < 0 ? 200 : 0);
+    }
+    WorldConfig config;
+    config.region = std::make_shared<const Region>(Region::fromGround(kCells, std::vector<Ground>(static_cast<size_t>(kCells) * kCells, ground), heights));
+    const World w(config);
+    Unit engine;
+    engine.stats = unitStats(UnitType::Catapult);
+    engine.pos = {Fixed::fromInt(60), Fixed::fromInt(320), Fixed::zero()};
+    engine.pos.z = w.groundHeight(engine.pos.x, engine.pos.y);
+    Vec3 mark = engine.pos + Vec3{Fixed::fromInt(away), Fixed::zero(), Fixed::zero()};
+    mark.z = w.groundHeight(mark.x, mark.y);
+    const StonePath path = w.stonePath(engine, mark);
+    return path.roll.empty() ? 0 : d((path.roll.back().pos - path.landing).flat().length());
+}
 }  // namespace
 
 int main() {
@@ -57,8 +85,9 @@ int main() {
 
     std::printf("\n## Missile troops\n\n");
     std::printf("Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,\n"
-                "but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;\n"
-                "against a castle gate they do five times their blast damage (satchels twice, fireballs and Molotovs one and a half).\n"
+                "but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on\n"
+                "(its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);\n"
+                "against a castle gate its smash does nine times its blast damage (satchels twice, fireballs and Molotovs one and a half).\n"
                 "A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a\n"
                 "**draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it\n"
                 "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.\n\n"
@@ -128,6 +157,35 @@ int main() {
         std::printf("| %s | %d | %.1f m | %d | %.1f s | %.1f m, %d |\n", unitTypeName(static_cast<UnitType>(t)), n, d(c.radius), c.damage,
                     secs(s.satchels.layTicks), d(c.radius * (3 + n) / 4), c.damage * (1 + n) / 2);
     }
+
+    std::printf("\n## The boulder\n\n");
+    std::printf("A catapult's stone is a thing on the field (`engine/sim/src/world_boulder.cpp`, docs/GAME_DESIGN.md \"The boulder\").\n"
+                "It comes down with its smash (the blast above), bounces once and rolls on, %.1f m across, until the ground has\n"
+                "taken its speed: far on a road, a little way in sand, mud and bog; faster and farther down a slope, soon stopped up\n"
+                "one; dead in water (a splash), and all but dead against a tree, a rock, a house, a tower, a wall or a shut gate.\n"
+                "Every man its middle passes within its own half width and his is struck once: hurt by 30 and 12 more for each metre a\n"
+                "second it is going (to 250), thrown, and shaken (those of his side within 5 m a third as much); slower than 3 m/s it\n"
+                "hurts no one. Each body takes its share of the stone's speed (a man a fifteenth, a horseman a sixth, a giant a third,\n"
+                "an elephant near half, an engine two thirds), and a body of mass 4 or more that leaves it under 3 m/s has stopped it.\n"
+                "It knows no side. Rolled into a gate it does half the blow of its speed (a stone from the air is 24 m/s). Where it\n"
+                "stops it lies, in nobody's way.\n\n",
+                d(kStoneRadius * 2));
+    std::printf("How far it rolls on from where it comes down, over bare level ground (the hop included), by how far it was thrown:\n\n");
+    std::printf("| Ground | Thrown 40 m | 100 m | 150 m |\n|---|---|---|---|\n");
+    {
+        const struct {
+            const char* name;
+            Ground ground;
+        } kinds[] = {{"Road, bridge", Ground::Road}, {"Plains", Ground::Plains}, {"Rock", Ground::Rock}, {"Forest (between the trees)", Ground::Forest},
+                     {"Sand", Ground::Sand},         {"Mud", Ground::Mud},       {"Swamp", Ground::Swamp}};
+        for (const auto& k : kinds) std::printf("| %s | %.0f m | %.0f m | %.0f m |\n", k.name, rollMetres(k.ground, 40), rollMetres(k.ground, 100), rollMetres(k.ground, 150));
+        std::printf("| Shallows, deep water | stops | stops | stops |\n");
+    }
+    std::printf("\nOn plains, thrown 100 m along a slope (metres of rise in a hundred, the way it is thrown):\n\n");
+    std::printf("| Up 25 | Up 15 | Up 8 | Level | Down 8 | Down 15 | Down 25 | Down 35 |\n|---|---|---|---|---|---|---|---|\n|");
+    for (const int64_t grade : {25, 15, 8, 0, -8, -15, -25}) std::printf(" %.0f m |", rollMetres(Ground::Plains, 100, grade));
+    std::printf(" to the foot of the hill (%.0f m here) |\n", rollMetres(Ground::Plains, 100, -35));
+    std::printf("\n(On grass a slope steeper than about 28 in a hundred pulls it harder than the ground holds it: it gathers speed, to 32 m/s at most.)\n");
 
     std::printf("\n## Fliers\n\n");
     std::printf("Fliers walk by default. Moves longer than the minimum flight take a ground run, then they cruise at\n"

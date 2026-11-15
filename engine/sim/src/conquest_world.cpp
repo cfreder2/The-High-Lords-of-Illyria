@@ -559,6 +559,13 @@ void Conquest::syncMen(Stack& s) {
             if (u->ammo < u->stats.ranged.ammo) m.ammo = u->ammo;
             if (u->engaged || m.struckTick == tick_ || m.hurtTick == tick_) m.fightTick = tick_;
         }
+        // Its history: men of it fought this tick; after kBattleGapTicks of quiet that is another battle.
+        bool fought = false;
+        for (const Man& m : a.men) fought = fought || (m.unit && m.fightTick == tick_ && tick_ != 0);
+        if (fought) {
+            if (a.foughtTick == 0 || tick_ - a.foughtTick > static_cast<uint32_t>(kBattleGapTicks)) ++a.battles;
+            a.foughtTick = tick_;
+        }
     }
 }
 

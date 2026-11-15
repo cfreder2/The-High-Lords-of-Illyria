@@ -1,0 +1,64 @@
+# The boulder, through your own men.
+# Six of the foe in a knot and eight of your own in file 8 m beyond them, in the roll: the stone smashes the knot and goes on through your men.
+#
+#   Illyria --play tools/playtest/boulder-own.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 704 348 40 1.57
+boulder ground 690 350
+boulder men 689 349 1.5 0 3
+boulder men 689 351 1.5 0 3
+boulder men 700 350 2 0 8 own
+wait 2
+shot own-00-before
+boulder throw 590 350 690 350
+wait_ticks 142
+speed 0.25
+wait_ticks 5
+shot own-01
+wait_ticks 5
+shot own-02
+wait_ticks 5
+shot own-03
+wait_ticks 5
+shot own-04
+wait_ticks 5
+shot own-05
+wait_ticks 5
+shot own-06
+wait_ticks 5
+shot own-07
+wait_ticks 5
+shot own-08
+wait_ticks 5
+shot own-09
+wait_ticks 5
+shot own-10
+wait_ticks 5
+shot own-11
+wait_ticks 5
+shot own-12
+wait_ticks 5
+shot own-13
+wait_ticks 5
+shot own-14
+wait_ticks 5
+shot own-15
+wait_ticks 5
+shot own-16
+speed 1
+wait_ticks 300
+boulder count
+shot own-17-after
+camera 706 349 16 1.57
+wait 1.5
+shot own-18-close
+stats
+quit

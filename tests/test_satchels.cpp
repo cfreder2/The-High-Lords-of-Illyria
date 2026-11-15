@@ -642,3 +642,18 @@ TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
             if (c.cities()[i].options[o].type == UnitType::DwarfGrenadier) CHECK(ConquestOrders::produce(c, static_cast<int32_t>(i), static_cast<int32_t>(o)));
     }
 }
+
+TEST(a_catapult_has_sixteen_boulders_and_no_more) {
+    // Ordered at a patch of ground for six minutes (a stone every 14 s: twenty-five if there were no end of them).
+    World w(WorldConfig{});
+    const EntityId engine = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Catapult));
+    const Command shell = order(engine, Command::Type::AttackGround, {m(100), m(0), m(0)});
+    w.step(std::span(&shell, 1));
+    int smashes = 0;
+    for (int i = 0; i < 360 * kTicksPerSecond; ++i) {
+        w.step({});
+        smashes += count(w, ImpactEvent::Kind::Smash);
+    }
+    std::printf("  %d boulders came down in six minutes, %d left on the cart\n", smashes, w.findUnit(engine)->ammo);
+    CHECK(smashes == 16 && w.findUnit(engine)->ammo == 0);
+}

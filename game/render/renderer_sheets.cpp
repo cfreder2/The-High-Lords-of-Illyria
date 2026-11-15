@@ -514,3 +514,12 @@ bool Renderer::readSheet(int type, std::vector<uint8_t>& rgba, int& width, int& 
 }
 
 }  // namespace illyria::game
+
+namespace illyria::game {
+float Renderer::blowSeconds(int type) const {
+    float len = figures::attackSeconds(static_cast<sim::UnitType>(type));
+    if (const sprites::SheetClips* clips = clipsFor(type))
+        if (const sprites::SheetClip* c = clips->find("attack")) len = c->length(len);
+    return len * 0.5f;
+}
+}  // namespace illyria::game

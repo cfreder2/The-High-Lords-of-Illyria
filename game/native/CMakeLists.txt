@@ -85,10 +85,11 @@ endif()
 # Run from the source tree without copying: the folders the browser build serves.
 target_compile_definitions(illyria_app PRIVATE ILLYRIA_VERSION="${ILLYRIA_VERSION}" ILLYRIA_SOURCE_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/../web")
 
-# The same files the browser fetches: sprite sheets, models, sound effects (game/web/CMakeLists.txt).
+# The same files the browser fetches: sprite sheets, models, sound effects, voices (game/web/CMakeLists.txt).
 add_custom_command(TARGET illyria_app POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${ILLYRIA_ASSET_DIR}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../web/sprites" "${ILLYRIA_ASSET_DIR}/sprites"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../web/models" "${ILLYRIA_ASSET_DIR}/models"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../web/sfx" "${ILLYRIA_ASSET_DIR}/sfx"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/../web/voice" "${ILLYRIA_ASSET_DIR}/voice"
 )

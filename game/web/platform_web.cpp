@@ -27,6 +27,13 @@ EM_JS(void, js_sfx_ambience, (float wm, float wv, float sw, float swp, float fl,
 
 // The world heard from under water, and its two cues (game/web/sfx.js, audio.js). The sounds themselves are synthesised here
 // (game/underwater_audio.h, the one recipe the desktop plays too) and handed over as stereo float buffers.
+EM_JS(void, js_sfx_layer, (const char* id, float level, float pan), {
+    if (window.IllyriaSfx && window.IllyriaSfx.gameLayer) window.IllyriaSfx.gameLayer(UTF8ToString(id), level, pan);
+});
+EM_JS(void, js_sfx_paused, (int paused), {
+    if (window.IllyriaSfx && window.IllyriaSfx.paused) window.IllyriaSfx.paused(!!paused);
+    if (window.IllyriaVoice && window.IllyriaVoice.paused) window.IllyriaVoice.paused(!!paused);
+});
 EM_JS(void, js_sfx_underwater, (float cutoff, float gain, float wobble, float ambience), {
     if (window.IllyriaSfx && window.IllyriaSfx.underwater) window.IllyriaSfx.underwater(cutoff, gain, wobble, ambience);
 });
@@ -163,6 +170,8 @@ void sfxCue(const char* id, float gain, float pan, float dist, float delay, floa
 void sfxAmbience(float wm, float wv, float sw, float swp, float fl, float flp, float dr, float drp, float rain) {
     js_sfx_ambience(wm, wv, sw, swp, fl, flp, dr, drp, rain);
 }
+void sfxLayer(const char* id, float level, float pan) { js_sfx_layer(id, level, pan); }
+void sfxPaused(bool paused) { js_sfx_paused(paused ? 1 : 0); }
 void sfxUnderwater(float cutoffHz, float gain, float wobble, float ambience) {
     // The page makes its sounds from the one recipe, the first time the water is entered.
     static bool sent = false;

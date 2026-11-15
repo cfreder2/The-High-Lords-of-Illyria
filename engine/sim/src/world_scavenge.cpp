@@ -414,12 +414,13 @@ bool World::choosePrize(Unit& u) {
     }
     // The blades the dead still hold.
     for (const Unit& o : units_) {
-        if (!o.present() || o.alive() || o.gibbed || o.looted || o.inAir() || !bearsBlade(static_cast<UnitType>(o.stats.type))) continue;
+        if (!o.present() || o.alive() || o.gibbed || o.looted || o.inAir() || o.afloat || !bearsBlade(static_cast<UnitType>(o.stats.type))) continue;  // (none wades after what the river has)
         consider(Scavenger::Prize::Corpse, o.id, o.pos, kBladeValue);
     }
     // Body parts and thrown blades lying about.
     remainGrid_.query(u.pos.x, u.pos.y, sight, [&](uint32_t slot) {
         const Remain& r = remains_[slot];
+        if (r.afloat) return;
         if (const int32_t v = valueOf(r.kind); v > 0) consider(Scavenger::Prize::Remain, slot, r.pos, v);
     });
     if (!found) return false;

@@ -58,6 +58,11 @@
   </div>
   <nav id="toc"></nav>
 </header>
+<section>
+  <h2>A fight, as the game plays it</h2>
+  <p class="meta">Ten seconds of a melee's real cue pattern (about thirty cues a second through the game's channels, at the Distance above), then a march. Listen for clicks, for one sound rattling, for sounds cut short.</p>
+  <button id="melee">Play a melee</button> <button id="march">Play a march</button> <span id="meleeNote" class="meta"></span>
+</section>
 <main id="list"><p class="meta">Loading the list of sounds…</p></main>
 <section>
   <h2>Your notes</h2>
@@ -171,7 +176,7 @@ through the same chain as in battle: panned, duller and more distant-sounding wi
     return card;
   }
 
-  const order = ["ambience", "weapons", "impacts", "explosions", "gore", "deaths", "vocals", "notifications", "ui"];
+  const order = ["ambience", "movement", "weapons", "impacts", "explosions", "gore", "deaths", "vocals", "notifications", "conquest", "ui", "hooks"];
   const titles = { vocals: "Deaths and vocals (voices)" };
   const cries = ["pain", "death", "death_moan", "cackle", "groan", "casualties", "severe_casualties", "total_casualties"];
   const v = encodeURIComponent($("ver").textContent);
@@ -201,6 +206,30 @@ through the same chain as in battle: panned, duller and more distant-sounding wi
       for (const s of m.sounds) if (s.category === cat) list.append(soundCard(s));
     }
   }).catch((e) => { $("list").textContent = "Could not load the sounds: " + e; });
+
+  // The cue pattern of a fight (game/src/sfx.cpp: swing then hit 70 ms on, by kind, deaths now and then), through IllyriaSfx.cue.
+  function burst(seconds, perSecond, pick) {
+    IllyriaAudio.unlock();
+    const began = performance.now();
+    const t = setInterval(() => {
+      if (performance.now() - began > seconds * 1000) {
+        clearInterval(t);
+        const log = IllyriaSfx.recent(400).filter((x) => x.t * 1000 >= began);
+        const dropped = log.filter((x) => String(x.mode).indexOf("dropped") === 0).length;
+        $("meleeNote").textContent = `${log.length} cues, ${dropped} dropped`;
+        return;
+      }
+      const c = pick();
+      const p = (Math.random() * 2 - 1) * 0.7;
+      IllyriaSfx.cue(c[0], 0.5 + Math.random() * 0.5, p, dist, c[2] || 0, 0, c[1], 1, 0);
+    }, 1000 / perSecond);
+  }
+  const hits = [["snd_weap_sword_swing", 1], ["snd_weap_sword_flesh", 2, 0.07], ["snd_weap_sword_armor", 2, 0.07], ["snd_weap_block_shield", 1, 0.06],
+                ["snd_weap_heavy_swing", 2], ["snd_weap_blunt_crush", 2, 0.07], ["snd_weap_pierce_flesh", 2, 0.07], ["snd_gore_body_fall", 1, 0.15],
+                ["snd_gore_body_fall_armor", 1, 0.15], ["snd_weap_arrow_bowstring_release", 1], ["snd_impact_arrow_flesh", 2], ["snd_impact_arrow_shield", 1]];
+  const steps = [["snd_move_foot_march", 0], ["snd_move_foot_armor", 0], ["snd_move_hooves", 1], ["snd_move_foot_march", 0]];
+  $("melee").onclick = () => burst(10, 30, () => hits[Math.floor(Math.random() * hits.length)]);
+  $("march").onclick = () => burst(8, 5, () => steps[Math.floor(Math.random() * steps.length)]);
 
   $("copy").onclick = () => {
     const out = [`Illyria sound notes (version ${$("ver").textContent})`];

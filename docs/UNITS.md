@@ -48,8 +48,9 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 ## Missile troops
 
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
-but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;
-against a castle gate they do five times their blast damage (satchels twice, fireballs and Molotovs one and a half).
+but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on
+(its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);
+against a castle gate its smash does nine times its blast damage (satchels twice, fireballs and Molotovs one and a half).
 A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a
 **draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
 (to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
@@ -103,6 +104,40 @@ unlit, where he falls.
 | Unit | Carried | Blast radius | Blast damage | Between lays | All of them at once |
 |---|---|---|---|---|---|
 | Dwarven Grenadiers | 5 | 5.0 m | 150 | 3.0 s | 10.0 m, 450 |
+
+## The boulder
+
+A catapult's stone is a thing on the field (`engine/sim/src/world_boulder.cpp`, docs/GAME_DESIGN.md "The boulder").
+It comes down with its smash (the blast above), bounces once and rolls on, 1.1 m across, until the ground has
+taken its speed: far on a road, a little way in sand, mud and bog; faster and farther down a slope, soon stopped up
+one; dead in water (a splash), and all but dead against a tree, a rock, a house, a tower, a wall or a shut gate.
+Every man its middle passes within its own half width and his is struck once: hurt by 30 and 12 more for each metre a
+second it is going (to 250), thrown, and shaken (those of his side within 5 m a third as much); slower than 3 m/s it
+hurts no one. Each body takes its share of the stone's speed (a man a fifteenth, a horseman a sixth, a giant a third,
+an elephant near half, an engine two thirds), and a body of mass 4 or more that leaves it under 3 m/s has stopped it.
+It knows no side. Rolled into a gate it does half the blow of its speed (a stone from the air is 24 m/s). Where it
+stops it lies, in nobody's way.
+
+How far it rolls on from where it comes down, over bare level ground (the hop included), by how far it was thrown:
+
+| Ground | Thrown 40 m | 100 m | 150 m |
+|---|---|---|---|
+| Road, bridge | 17 m | 45 m | 70 m |
+| Plains | 11 m | 30 m | 45 m |
+| Rock | 11 m | 30 m | 46 m |
+| Forest (between the trees) | 7 m | 20 m | 30 m |
+| Sand | 2 m | 8 m | 12 m |
+| Mud | 1 m | 3 m | 5 m |
+| Swamp | 1 m | 2 m | 3 m |
+| Shallows, deep water | stops | stops | stops |
+
+On plains, thrown 100 m along a slope (metres of rise in a hundred, the way it is thrown):
+
+| Up 25 | Up 15 | Up 8 | Level | Down 8 | Down 15 | Down 25 | Down 35 |
+|---|---|---|---|---|---|---|---|
+| 21 m | 24 m | 27 m | 30 m | 34 m | 41 m | 79 m | to the foot of the hill (540 m here) |
+
+(On grass a slope steeper than about 28 in a hundred pulls it harder than the ground holds it: it gathers speed, to 32 m/s at most.)
 
 ## Fliers
 

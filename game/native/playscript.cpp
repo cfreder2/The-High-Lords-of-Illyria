@@ -68,7 +68,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         c.a = v[0], c.b = v[1];
     } else if (verb == "start") {
         c.op = Op::Start;
-        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend] [deploy]";
+        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | march | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend] [deploy]";
         if (n < 1) return usage(kUsage);
         size_t i = 1;
         std::string mode = w[i++];
@@ -79,7 +79,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             mode = "skirmish " + mode;
         } else if (mode == "conquest") {
             mode = "conquest";
-        } else if (mode != "conquest" && mode != "horde" && mode != "ctf") {
+        } else if (mode != "conquest" && mode != "horde" && mode != "ctf" && mode != "march") {
             return why = "unknown mode '" + mode + "'", false;
         }
         c.text = mode;
@@ -145,12 +145,32 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         if (n) return usage("stats");
     } else if (verb == "deaths") {
         c.op = Op::Deaths;
-        static const char* kUsage = "deaths spawn X Y | blast | fell | burn | cut | shot";
+        static const char* kUsage = "deaths spawn X Y | melee X Y | blast | fell | burn | cut | shot";
         if (n < 1) return usage(kUsage);
         c.text = w[1];
-        if (c.text == "spawn") {
+        if (c.text == "spawn" || c.text == "melee") {
             if (n != 3 || !number(w[2], c.a) || !number(w[3], c.b)) return usage(kUsage);
         } else if (n != 1 || (c.text != "blast" && c.text != "fell" && c.text != "burn" && c.text != "cut" && c.text != "shot")) {
+            return usage(kUsage);
+        }
+    } else if (verb == "boulder") {
+        c.op = Op::Boulder;
+        static const char* kUsage = "boulder men X Y DX DY N [own] | throw X Y TX TY | count | ground X Y";
+        if (n < 1) return usage(kUsage);
+        c.text = w[1];
+        if (c.text == "men") {
+            double count = 0;
+            if ((n != 6 && n != 7) || !nums(2, 4) || !number(w[6], count) || count < 1 || count > 200 || (n == 7 && w[7] != "own")) return usage(kUsage);
+            c.a = v[0], c.b = v[1], c.c = v[2], c.d = v[3];
+            c.seconds = count;
+            c.all = n == 7;
+        } else if (c.text == "throw") {
+            if (n != 5 || !nums(2, 4)) return usage(kUsage);
+            c.a = v[0], c.b = v[1], c.c = v[2], c.d = v[3];
+        } else if (c.text == "ground") {
+            if (n != 3 || !nums(2, 2)) return usage(kUsage);
+            c.a = v[0], c.b = v[1];
+        } else if (n != 1 || c.text != "count") {
             return usage(kUsage);
         }
     } else if (verb == "spread") {

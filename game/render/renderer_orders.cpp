@@ -108,6 +108,36 @@ void pushSatchelMarks(const Battle& battle, float seconds, std::vector<float>& d
     }
 }
 
+void pushStoneForecasts(const Battle& battle, float seconds, std::vector<float>& decals) {
+    constexpr float kAmber[3] = {1.0f, 0.66f, 0.2f};
+    constexpr float kSmash = 3.0f;    // the stone's smash, metres (sim units.cpp)
+    constexpr float kDotGap = 1.1f;   // metres between the dots of the roll
+    const auto mark = [&](V3 p, float size, float type, float fade) {
+        p.z = battle.floorAt(p);
+        decals.insert(decals.end(), {p.x, p.y, p.z, 0, size, 0, type, kAmber[0], kAmber[1], kAmber[2], fade});
+    };
+    for (const Battle::StoneForecast& f : battle.stoneForecasts()) {
+        mark(f.landing, kSmash * (1.0f + 0.04f * std::sin(seconds * 5.0f)), kDecalRing, 0.1f);
+        mark(f.landing, 0.35f, kDecalDot, 0.1f);
+        if (f.roll.size() < 2) continue;
+        float total = 0;
+        for (size_t i = 1; i < f.roll.size(); ++i) total += (f.roll[i] - f.roll[i - 1]).length();
+        if (total < 1.0f) continue;
+        // Dots along the roll, creeping the way it goes, fainter and smaller the slower it would be.
+        float gone = 0, next = std::fmod(seconds * 3.0f, kDotGap);
+        for (size_t i = 1; i < f.roll.size(); ++i) {
+            const V3 a = f.roll[i - 1], d = f.roll[i] - a;
+            const float len = d.length();
+            for (; len > 1e-4f && next <= gone + len; next += kDotGap) {
+                const float t = next / total;
+                mark(a + d * ((next - gone) / len), 0.36f - 0.14f * t, kDecalDot, 0.05f + 0.8f * t);
+            }
+            gone += len;
+        }
+        mark(f.roll.back(), 0.6f, kDecalRing, 0.55f);  // where it would lie
+    }
+}
+
 // --- Paths --------------------------------------------------------------------------------------------------------
 // Three line languages, apart by shape as well as colour (for the colour-blind): a patrol (he fights what he meets)
 // is a dashed line with chevrons ending in an open ring; a hunt (he ignores all but his quarry) a solid line with

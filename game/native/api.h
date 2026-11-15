@@ -11,6 +11,11 @@ int illyria_start_mode(const char* id, const char* options);
 const char* illyria_mode_error();
 const char* illyria_skirmish_offers();
 const char* illyria_skirmish_buy(int budget, int engines);
+const char* illyria_march_state();  // the March's book (march.h): {} with none
+int illyria_march_load(const char* save);
+const char* illyria_march_save();
+int illyria_march_reinforce(int squad);
+void illyria_march_end();
 const char* illyria_perf();
 const char* illyria_draw_counts();
 void illyria_hide_parts(unsigned mask);
@@ -36,6 +41,7 @@ void illyria_paths_demo();  // --paths-demo: see game/app/app.cpp
 void illyria_garrison_demo();  // --garrison-demo: see game/app/app.cpp
 void illyria_set_shader_time(double seconds);  // --time-step: the renderer's clock (the water's animation) moved on by this much
 const char* illyria_death_demo(int stage, float x, float y);  // --play's `deaths`: see game/app/app.cpp
+const char* illyria_boulder_demo(int stage, float a, float b, float c, float d, int n, int own);  // --play's `boulder`: see game/app/app.cpp
 const char* illyria_army_spread();  // --play's `spread`: where the local side's men stand
 void illyria_select_all();  // --play's `select all`: every soldier the local side commands
 #endif
@@ -73,6 +79,7 @@ void illyria_cycle_speed();
 void illyria_set_pace(float pace);
 void illyria_restart();
 void illyria_begin_battle();  // the deployment is done: the clock starts
+void illyria_result_dismiss();  // a Conquest fight's results sheet put away
 
 const char* illyria_hud();
 const char* illyria_labels();

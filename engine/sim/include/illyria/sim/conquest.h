@@ -59,6 +59,10 @@ struct Army {
     int32_t soldiers = 1, fullStrength = 1;  // men alive, and the squad's full size
     int32_t kills = 0;                       // enemy soldiers it has slain
     int32_t rank = 0;                        // 0-3; heroes: level - 1 (0-8)
+    // Its history: the fights it has been in (Conquest::syncMen: a fight is one more when its men fight again after
+    // kBattleGapTicks of quiet), and the tick a man of it last fought.
+    int32_t battles = 0;
+    uint32_t foughtTick = 0;
     int32_t blessings = 0;
     std::vector<Man> men;                    // every soldier it was raised with, the fallen among them
     bool seated = false;                     // its men are in the world (false: new, or aboard a boat)
@@ -307,6 +311,8 @@ public:
     // conquest's one world, and the world steps them all, every tick, as it steps a skirmish. The stacks only think
     // (look where their men are, send them on to the next cell of a route, meet whoever comes near) every kThinkTicks.
     static constexpr int32_t kThinkTicks = 15;
+    // A squad whose men fight again after this long without a blow is in another battle (Army::battles).
+    static constexpr int32_t kBattleGapTicks = 60 * kTicksPerSecond;
     // Where a stack's body is, in millimetres on the continent: the middle of its men; afloat, its cell's centre and
     // how far along its leg the boat has got, `ahead` hundredths of a tick on.
     void bodyOf(const Stack& s, int32_t ahead, int32_t& x, int32_t& y) const;

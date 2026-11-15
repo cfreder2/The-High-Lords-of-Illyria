@@ -111,6 +111,7 @@ constexpr int kDecalFloats = 11;  // centre 3, params 4, extra 4
 constexpr int kArrowFloats = 8;   // pos 3, dir 3, info 2
 
 constexpr float kDecalBlood = 0, kDecalShadow = 1, kDecalRing = 2, kDecalCrater = 4, kDecalDust = 5, kDecalDot = 7, kDecalArrow = 8;  // (9 a stretch of path, 10 a cross-hair: renderer_orders.cpp)
+constexpr float kDecalFurrow = 14;  // a stretch of a rolling boulder's track
 constexpr float kPlanBomb = 9, kPlanOrb = 10;
 
 // Instance record for a mesh: position, quaternion, scale, tint.
@@ -264,7 +265,7 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
         // cut, struck from behind or in front), resting on its last frame; a part cut off lies beside him as its own piece.
         frame = deathFrame(v.type, *u, v.died, &down);  // the death clip by how he died (renderer_sheets.cpp)
         // The figure falls backward: turned so that its head lands the way the blow went.
-        if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f;
+        if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f + v.turn;
         pushStuckArrows(p.arrows, *u, pos, u->airborne ? 0.3f : std::clamp(v.died / deathSeconds(v.type, *u), 0.0f, 1.0f));
     } else {
         if (u->shieldArrows > 0) pushStuckArrows(p.arrows, *u, pos, 0);
@@ -430,6 +431,11 @@ bool Renderer::buildPrograms() {
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
         s.p.lod = glGetUniformLocation(s.p.id, "uLod");
         s.p.uw = glGetUniformLocation(s.p.id, "uUw");
+        s.p.ripples = glGetUniformLocation(s.p.id, "uRipple");
+        s.p.dye = glGetUniformLocation(s.p.id, "uDye");
+        s.p.waterFx = glGetUniformLocation(s.p.id, "uWaterFx");
+        s.p.ringBox = glGetUniformLocation(s.p.id, "uRingBox");
+        s.p.dyeBox = glGetUniformLocation(s.p.id, "uDyeBox");
         s.p.territory = glGetUniformLocation(s.p.id, "uTerritory");
         s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
@@ -535,7 +541,7 @@ void Renderer::uploadMeshInstances(MeshBatch& b, const std::vector<float>& data)
 }
 
 std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
-    std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_};
+    std::vector<MeshBatch*> out{&houses_, &pillars_, &capsules_, &spheres_, &boulders_};
     if (includeSmall) {
         for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_}) for (MeshBatch& b : *list) out.push_back(&b);
         for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) out.push_back(b);
@@ -544,7 +550,7 @@ std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
 }
 
 const char* Renderer::partName(Part p) {
-    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
+    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui", "wake"};
     return names[static_cast<int>(p)];
 }
 
@@ -1598,6 +1604,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(pillars_, meshes::pillar(), 0);
     makeMeshBatch(capsules_, meshes::capsule(), 0);
     makeMeshBatch(spheres_, meshes::sphere(), 0);
+    makeMeshBatch(boulders_, meshes::boulder(), 0);
     makeMeshBatch(walls_, meshes::curtain(), 0);
     makeMeshBatch(parapets_, meshes::block(), 0);
     makeMeshBatch(drums_, meshes::drum(), 0);
@@ -1656,7 +1663,7 @@ bool Renderer::init(Battle& battle) {
     for (auto* list : {&bushes_, &rocks_, &detailBushes_, &detailRocks_})
         for (MeshBatch& b : *list) b.part = Part::Clutter;
     for (MeshBatch* b : {&logs_, &stumps_, &detailLogs_, &detailStumps_}) b->part = Part::Clutter;
-    for (MeshBatch* b : {&capsules_, &spheres_}) b->part = Part::Effects;
+    for (MeshBatch* b : {&capsules_, &spheres_, &boulders_}) b->part = Part::Effects;
     makeBatch(dynamicDecals_, {3, 4, 4}, 0);
     makeBatch(bigDecals_, {3, 4, 4}, 0);
     makeBatch(flyingArrows_, {3, 3, 2}, 0);
@@ -1679,6 +1686,7 @@ void Renderer::reset(Battle& battle) {
     remainArrows_.count = 0;
     battle.takeDirtyRemains();
     debrisLooks_.clear();
+    stoneLooks_.clear();
     remainLooks_.clear();
     landed_.clear();
     gibChunks_.clear();
@@ -2038,6 +2046,7 @@ void Renderer::uploadMarks(const Battle& battle) {
         const GroundMark& m = battle.groundMarks()[slot];
         const float type = m.kind == GroundMark::Kind::Blood ? kDecalBlood
                            : m.kind == GroundMark::Kind::Crater ? kDecalCrater
+                           : m.kind == GroundMark::Kind::Furrow ? kDecalFurrow
                                                                 : kDecalDust;
         const float data[kDecalFloats] = {m.pos.x, m.pos.y, m.pos.z, m.yaw, m.size, m.tick * tickSeconds, type,
                                           0, 0, 0, static_cast<float>(m.seed % 1000) / 1000.0f};
@@ -2053,9 +2062,13 @@ void Renderer::uploadRemains(Battle& battle) {
     for (uint32_t slot : battle.takeDirtyRemains()) {
         if (slot >= remains.size()) continue;
         const sim::Remain& r = remains[slot];
-        // A body part keeps the look it flew with (renderer_gibs.cpp).
+        // A body part keeps the look it flew with (renderer_gibs.cpp), and the one it has as the water carries it on.
         if (slot >= remainLooks_.size()) remainLooks_.resize(slot + 1);
-        remainLooks_[slot] = restingLook(battle, r, slot);
+        if (GibLook& had = remainLooks_[slot]; had.type >= 0 && had.kind == r.kind && had.owner == r.owner && r.kind != sim::RemainKind::None &&
+                                               (had.pos - toV3(r.pos)).length() < 0.6f)
+            had.pos = toV3(r.pos);
+        else
+            remainLooks_[slot] = restingLook(battle, r, slot);
         float arrow[kArrowFloats] = {0, 0, 0, 0, 0, 0, 0, 3};
         if (r.kind == sim::RemainKind::Arrow) {
             const V3 pos = toV3(r.pos), dir = toV3(r.dir);
@@ -2286,6 +2299,13 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     glUniform3f(p.camRight, right.x, right.y, right.z);
     glUniform1f(p.water, waterLevel_);
     if (p.uw >= 0) glUniform4fv(p.uw, 1, underwater_);
+    if (p.waterFx >= 0) {
+        glUniform4f(p.waterFx, static_cast<float>(waterRings_), static_cast<float>(waterDyes_), 0.0f, 0.0f);
+        if (p.ripples >= 0 && waterRings_ > 0) glUniform4fv(p.ripples, waterRings_, waterRing_);
+        if (p.dye >= 0 && waterDyes_ > 0) glUniform4fv(p.dye, waterDyes_, waterDye_);
+        if (p.ringBox >= 0) glUniform4fv(p.ringBox, 1, ringBox_);
+        if (p.dyeBox >= 0) glUniform4fv(p.dyeBox, 1, dyeBox_);
+    }
     if (p.waterTex >= 0) {
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, waterTex_);
@@ -2367,16 +2387,18 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     const sim::World& world = battle.world();
     const float gameSeconds = (static_cast<float>(world.tick()) + battle.alpha()) / sim::kTicksPerSecond;
     trackDebris(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));  // renderer_gibs.cpp
+    trackStones(battle, std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.1f));
     const float sinceLastDraw = std::clamp(gameSeconds - gameSeconds_, 0.0f, 0.25f);
     gameSeconds_ = gameSeconds;
     uploadMarks(battle);
     uploadRemains(battle);
     uploadGates(battle);
+    gatherWater(battle, camera, gameSeconds);
 
     const V3 eye = camera.eye();
     const V3 fwd = (camera.target() - eye).normalized();
     const V3 camRight = fwd.cross({0, 0, 1}).normalized();
-    std::vector<float> decals, sprites, arrows, particles, capsules, spheres, bars;
+    std::vector<float> decals, sprites, arrows, particles, capsules, spheres, boulders, bars;
     const auto& units = world.units();
     const float week = 86400.0f * 7.0f;
 
@@ -2415,6 +2437,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             walked_[i] = 0.0f;
             lastSeen_[i] = battle.unitPosition(i);
             clipMemory_[i] = {};
+            if (i < adrift_.size()) adrift_[i] = {};
         }
         ManView v;
         v.unit = &u;
@@ -2438,6 +2461,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         v.hurt = ago(battle.hitTick(i));
         v.died = ago(battle.deathTick(i));
         if (!u.present() || (!u.alive() && u.gibbed)) continue;  // taken out of the world, or blown apart: only the parts remain
+        if (!u.alive()) v.pos = bodyInWater(battle, i, u, v.pos, sinceLastDraw, gameSeconds, v.turn);  // the water bears him, or has him on its bed
         drawMan(v, pass);
     }
     battle.setSpriteBoxes(std::move(boxes));
@@ -2472,11 +2496,13 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 break;
             }
             case sim::ProjectileKind::Stone: {
-                // A dressed boulder, turning over in its flight.
-                const float t = static_cast<float>(timeSeconds) * 3.0f + static_cast<float>(p.id);
-                float q[4];
-                yprQuat(t, t * 0.6f, 0, q);
-                pushInstance(spheres, pos, q, {0.36f, 0.32f, 0.34f}, {0.62f, 0.6f, 0.56f});
+                // A boulder of rough granite: tumbling in its flight, turning as it rolls (trackStones), lying a
+                // little sunk where it stopped; its shadow on the ground under it.
+                const float r = static_cast<float>(sim::kStoneRadius.toDouble());
+                const float identity[4] = {0, 0, 0, 1};
+                const auto look = stoneLooks_.find(p.id);
+                pushInstance(boulders, pos + V3{0, 0, p.resting ? r * 0.82f : r}, look != stoneLooks_.end() ? look->second.q : identity, {2 * r, 2 * r, 2 * r}, {1, 1, 1});
+                decals.insert(decals.end(), {pos.x, pos.y, battle.floorAt(pos), 0, r * 1.7f, 0, kDecalShadow, 0, 1, 0, 0});
                 break;
             }
             case sim::ProjectileKind::Debris:
@@ -2556,14 +2582,21 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
     pushRangeRings(battle, static_cast<float>(timeSeconds), decals);
     pushSatchelMarks(battle, static_cast<float>(timeSeconds), decals);
+    pushStoneForecasts(battle, static_cast<float>(timeSeconds), decals);
     pushPathLines(battle, camera, static_cast<float>(timeSeconds), decals);
 
     // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.
     for (size_t slot = 0; slot < world.remains().size(); ++slot) {
         const sim::Remain& r = world.remains()[slot];
         if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
-        if (showUnits_ && slot < remainLooks_.size() && pushGib(byGroup, remainLooks_[slot], toV3(r.pos))) continue;
-        const V3 pos = toV3(r.pos), dir = toV3(r.dir);
+        V3 pos = toV3(r.pos);
+        const V3 dir = toV3(r.dir);
+        if (r.afloat) pos.z += std::sin(gameSeconds * 2.1f + static_cast<float>(slot) * 1.9f) * 0.025f - 0.04f;  // riding in the surface (sim world_drift.cpp)
+        if (showUnits_ && slot < remainLooks_.size()) {
+            GibLook look = remainLooks_[slot];
+            if (r.afloat) look.angle += gameSeconds * (hash01(static_cast<uint32_t>(slot) * 7u + 3u) - 0.5f) * 0.6f;  // turning as it goes
+            if (pushGib(byGroup, look, pos)) continue;
+        }
         const float* team = sideColor(r.owner);
         const float decay = std::clamp((gameSeconds - r.tick / 30.0f - 3600.0f) / week, 0.0f, 1.0f);
         float q[4];
@@ -2632,6 +2665,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     uploadDynamic(bars_, bars);
     uploadMeshInstances(capsules_, capsules);
     uploadMeshInstances(spheres_, spheres);
+    uploadMeshInstances(boulders_, boulders);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);

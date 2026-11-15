@@ -154,7 +154,7 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     std::vector<sim::EntityId> mine = selectedAlive();
     std::erase(mine, target);
     // Out of the men's reach: they march against his place, and the fight is where they meet.
-    if (marchOrder(toV3(t->pos))) return voice_.order(Situation::Attack, *world_, selection_);
+    if (marchOrder(toV3(t->pos))) return answer(Situation::Attack, selection_);
     if (mine.empty()) return;
     // A foe a good way off: the men who close with him go together at the slowest's pace, as for a march, and fight whom
     // they meet; else the hero and the healers (the quickest) arrive first, alone, and the rest come in one at a time.
@@ -180,12 +180,12 @@ void Battle::orderAttackUnit(sim::EntityId target) {
         pending_.push_back(c);
     }
     markOrdered(mine);
-    voice_.order(Situation::Attack, *world_, mine);
+    answer(Situation::Attack, mine);
     if (t->owner == local_) say("Attacking our own!");
 }
 
 void Battle::orderAttackGround(const V3& at) {
-    if (marchOrder(at)) return voice_.order(Situation::Attack, *world_, selection_);
+    if (marchOrder(at)) return answer(Situation::Attack, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     std::vector<sim::EntityId> march;
@@ -196,7 +196,7 @@ void Battle::orderAttackGround(const V3& at) {
     // The rest march there, fighting whoever they meet on the way.
     marchSelection(march, at, nullptr, false);
     markOrdered(mine);
-    voice_.order(Situation::Attack, *world_, mine);
+    answer(Situation::Attack, mine);
 }
 
 void Battle::orderLaySatchels(const V3& at, bool queue) {
@@ -205,7 +205,7 @@ void Battle::orderLaySatchels(const V3& at, bool queue) {
     for (sim::EntityId id : mine)
         if (world_->units()[id - 1].satchels > 0) layers.push_back(id);
     if (layers.empty()) {
-        say("No satchels to lay");
+        refuse("No satchels to lay");
         return;
     }
     // One each: the first where the tap is, the others abreast of it, a little under a blast apart (so one spark takes them all).
@@ -222,7 +222,7 @@ void Battle::orderLaySatchels(const V3& at, bool queue) {
     }
     if (wet) say("Not in water: a satchel there is dead");
     markOrdered(layers);
-    voice_.order(Situation::Attack, *world_, layers);
+    answer(Situation::Attack, layers);
 }
 
 bool Battle::selectionRaids() const {
@@ -243,13 +243,13 @@ bool Battle::orderRaid() {
     for (sim::EntityId id : selectedAlive())
         if (world_->units()[id - 1].stats.scavenge.sight > sim::Fixed::zero()) raiders.push_back(id);
     if (raiders.empty()) {
-        say("Only the hyena-folk raid");
+        refuse("Only the hyena-folk raid");
         return false;
     }
     // At once, from where they stand: a raid needs no target.
     for (sim::EntityId id : raiders) issue(local_, id, sim::Command::Type::Raid, {});
     markOrdered(raiders);
-    voice_.order(Situation::Attack, *world_, raiders);
+    answer(Situation::Attack, raiders);
     return true;
 }
 
@@ -270,19 +270,19 @@ void Battle::specialAction() {
     const bool raid = selectionRaids(), satchels = selectionLaysSatchels();
     if (raid) orderRaid();
     if (satchels) orderMode_ = OrderMode::LaySatchel;
-    if (!raid && !satchels) say("Nothing special to do: grenadiers lay satchels, the hyena-folk raid");
+    if (!raid && !satchels) refuse("Nothing special to do: grenadiers lay satchels, the hyena-folk raid");
 }
 
 void Battle::orderForceMarch(const V3& to, const V3* facing) {
-    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
+    if (marchOrder(to)) return answer(Situation::Move, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     marchSelection(mine, to, facing, true);
-    voice_.order(Situation::Move, *world_, mine);
+    answer(Situation::Move, mine);
 }
 
 void Battle::orderAttackObject(const Pick& pick) {
-    if (marchOrder(pick.at)) return voice_.order(Situation::Attack, *world_, selection_);
+    if (marchOrder(pick.at)) return answer(Situation::Attack, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
     if (pick.kind == Pick::Kind::Gate) {
@@ -303,7 +303,7 @@ void Battle::orderAttackObject(const Pick& pick) {
         }
         stormGate(local_, through, selFormation_, pick.index);
         markOrdered(mine);
-        voice_.order(Situation::Attack, *world_, mine);
+        answer(Situation::Attack, mine);
         return;
     }
     // A wall, a house or a tree: only what flies and bursts harms anyone there.
@@ -311,7 +311,7 @@ void Battle::orderAttackObject(const Pick& pick) {
     for (sim::EntityId id : mine)
         if (sim::World::canBatter(world_->units()[id - 1].stats)) able.push_back(id);
     if (able.empty()) {
-        say(pick.kind == Pick::Kind::Wall ? "Only engines, grenadiers and wizards can strike at a wall"
+        refuse(pick.kind == Pick::Kind::Wall ? "Only engines, grenadiers and wizards can strike at a wall"
                                           : "Only engines, grenadiers and wizards can strike at that");
         return;
     }
@@ -322,7 +322,7 @@ void Battle::orderAttackObject(const Pick& pick) {
         pending_.push_back(c);
     }
     markOrdered(able);
-    voice_.order(Situation::Attack, *world_, able);
+    answer(Situation::Attack, able);
 }
 
 bool Battle::pickFloor(const Camera& camera, float x, float y, V3& hit) const {
@@ -585,6 +585,36 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
             m.opacity = opacity;
             out.push_back(m);
         }
+    }
+    return out;
+}
+
+void Battle::aimHover(const Camera& camera, float x, float y, float pixelScale) {
+    stoneAimed_ = intentAt(camera, x, y, pixelScale) == Intent::AttackGround;
+    if (stoneAimed_) stoneAim_ = pickAt(camera, x, y, pixelScale).at;
+}
+
+std::vector<Battle::StoneForecast> Battle::stoneForecasts() const {
+    constexpr size_t kMost = 6;
+    constexpr size_t kStride = 3;  // a point each tenth of a second of its roll
+    std::vector<StoneForecast> out;
+    const auto& units = world_->units();
+    for (const sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = units[id - 1];
+        if (u.owner != local_ || u.stats.ranged.kind != sim::ProjectileKind::Stone) continue;
+        sim::Vec3 mark;
+        if (stoneAimed_ && (forceKey_ || orderMode_ == OrderMode::Attack)) mark = toSim(stoneAim_);  // (still the next click)
+        else if (u.hasAttackTarget && u.attackGate < 0 && u.targetUnit == sim::kNoEntity) mark = u.attackTarget;
+        else continue;
+        const sim::Fixed away = (mark - u.pos).flat().length();
+        if (away < u.stats.ranged.minRange || away > u.stats.ranged.maxRange) continue;
+        const sim::StonePath path = world_->stonePath(u, mark);
+        StoneForecast f;
+        f.landing = toV3(path.landing);
+        for (size_t i = 0; i + 1 < path.roll.size(); i += kStride) f.roll.push_back(toV3(path.roll[i].pos));
+        if (!path.roll.empty()) f.roll.push_back(toV3(path.roll.back().pos));
+        out.push_back(std::move(f));
+        if (out.size() >= kMost) break;
     }
     return out;
 }

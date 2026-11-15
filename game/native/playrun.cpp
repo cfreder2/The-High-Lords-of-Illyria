@@ -167,7 +167,8 @@ bool Runner::step() {
                 const unsigned tick = tickNow();
                 ticksWaited_ += tick >= lastTick_ ? tick - lastTick_ : tick;
                 lastTick_ = tick;
-                if (ticksWaited_ < tickTarget_ && !hudState().flag("over")) {  // (a battle that is over steps no more: the wait is done)
+                // (A battle that is over steps no more, and a Conquest stands still under a fight's results sheet: the wait is done.)
+                if (ticksWaited_ < tickTarget_ && !hudState().flag("over") && !hudState().find("result")) {
                     // (a paused game or an open menu never gets there: say so rather than hang)
                     if (t < until_) return true;
                     std::printf("play: line %d: wait_ticks gave up after %.0f s (is the game paused, or a menu open?)\n", script_.commands[next_ - 1].line, t - blockedAt_);
@@ -243,6 +244,11 @@ void Runner::execute(const Command& c) {
                 std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":%d}", scenario, c.budget, c.defend ? 1 : 0, c.easy ? 0 : 1,
                               c.deploy ? 1 : 0);
                 hud_.start("skirmish", buf);
+            } else if (c.text == "march") {
+                // A new march with the army a lord would buy for the purse; its later battles are the camp's "March on" (keys).
+                illyria_march_end();
+                std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"deploy\":%d,\"army\":\"%s\"}", c.easy ? 0 : 1, c.deploy ? 1 : 0, illyria_skirmish_buy(c.budget > 0 ? c.budget : 450, 1));
+                hud_.start("march", buf);
             } else {
                 hud_.start(c.text, "{}");
             }
@@ -298,9 +304,16 @@ void Runner::execute(const Command& c) {
         case Op::Stats: stats(); break;
         case Op::Spread: std::printf("%s\n", illyria_army_spread()), std::fflush(stdout); break;
         case Op::Deaths: {
-            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot"};
-            for (int k = 0; k < 6; ++k)
+            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot", "melee"};
+            for (int k = 0; k < 7; ++k)
                 if (c.text == kinds[k]) std::printf("%s\n", illyria_death_demo(k, static_cast<float>(c.a), static_cast<float>(c.b))), std::fflush(stdout);
+            break;
+        }
+        case Op::Boulder: {
+            const int stage = c.text == "men" ? 0 : c.text == "throw" ? 1 : c.text == "count" ? 2 : 3;
+            std::printf("%s\n", illyria_boulder_demo(stage, static_cast<float>(c.a), static_cast<float>(c.b), static_cast<float>(c.c), static_cast<float>(c.d),
+                                                     static_cast<int>(c.seconds), c.all ? 1 : 0));
+            std::fflush(stdout);
             break;
         }
         case Op::Cards: cards(); break;
