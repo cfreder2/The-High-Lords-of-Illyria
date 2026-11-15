@@ -34,6 +34,8 @@ constexpr Fixed kWaypointNear = Fixed::fromInt(4);
 constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 // Marching soldiers keep their files this far either side of the squad's route.
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
+// Personal space: men of a side keep this much room between their bodies (the press of a melee is a line, not a ball).
+constexpr Fixed kPersonalSpace = Fixed::fromRatio(1, 2);
 // ... and on open ground as far as this: a block's width, not a column's (planMarch).
 constexpr Fixed kMarchFileWide = Fixed::fromInt(40);
 // Bodies walking through loose remains kick them along.
@@ -547,7 +549,10 @@ void World::step(std::span<const Command> commands) {
     keepGates();
     updateSiege();
 
-    for (Unit& u : units_) {
+    // The men act in turn, first to last on even ticks and last to first on odd ones: whoever is raised first (a side's
+    // army, or the player's seat) does not always strike first when two blows fall in one tick.
+    for (size_t k = 0; k < units_.size(); ++k) {
+        Unit& u = units_[tick_ % 2 == 0 ? k : units_.size() - 1 - k];
         if (!u.present()) continue;
         if (!u.queue.empty()) advanceQueue(u);
         const Vec3 before = u.pos;
@@ -1596,6 +1601,8 @@ void World::updateUnit(Unit& u) {
         fight(u, *sortie);
     } else if (u.guard != kNoEntity && guardStep(u)) {
         // On guard: by his ward, between him and what threatens him (world_guard.cpp).
+    } else if (kite(u)) {
+        // Slower foot closing while he reloads: back a stride, to loose again (world_tactics.cpp).
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
                enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy)) &&
                !shootsInstead(u, *enemy)) {
@@ -1753,7 +1760,7 @@ void World::separateBodies() {
     unitGrid_.build();
     // The pairs: where each stands and how wide, in the grid's order and in step with the soldiers (a push moves both),
     // so that the many that are near but not touching are told apart by reading one run of numbers, not the soldiers.
-    const Fixed maxRadius = Fixed::fromInt(3);
+    const Fixed maxRadius = Fixed::fromInt(3) + kPersonalSpace;
     const std::vector<uint32_t>& items = unitGrid_.items();
     bodies_.resize(items.size());
     bodyOf_.resize(units_.size());
@@ -1771,16 +1778,24 @@ void World::separateBodies() {
                 const Body& body = bodies_[m];
                 const uint32_t j = body.index;
                 const Vec3 d{body.x - a.pos.x, body.y - a.pos.y, Fixed::zero()};
-                const Fixed reach = radius + body.radius;
+                // Men of one side keep a stride of room between them (they fight as a line or block, never a ball); a foe
+                // is kept off by his body alone.
+                Unit& b = units_[j];
+                const bool friends = b.owner == a.owner;
+                const Fixed reach = radius + body.radius + (friends ? kPersonalSpace : Fixed::zero());
                 const Fixed distSq = d.lengthSq();
                 if (j <= i || distSq >= reach * reach) continue;  // each pair once, and only the touching
-                Unit& b = units_[j];
                 Fixed dist = sqrt(distSq);
                 Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-                const Fixed overlap = reach - dist;
-                const Fixed total = a.stats.mass + b.stats.mass;
-                a.pos -= n * (overlap * b.stats.mass / total);
-                b.pos += n * (overlap * a.stats.mass / total);
+                // (Room is made over a few ticks; bodies that overlap are put apart at once.)
+                const Fixed bodies = radius + body.radius;
+                const Fixed overlap = dist < bodies ? bodies - dist + (reach - bodies) / 2 : (reach - dist) / 2;
+                // (Foe against foe, the ranks at a man's back push with him: a deep body drives a thin one back.)
+                const Fixed ma = friends ? a.stats.mass : a.stats.mass * (Fixed::one() + Fixed::fromRatio(a.backed, 2));
+                const Fixed mb = friends ? b.stats.mass : b.stats.mass * (Fixed::one() + Fixed::fromRatio(b.backed, 2));
+                const Fixed total = ma + mb;
+                a.pos -= n * (overlap * mb / total);
+                b.pos += n * (overlap * ma / total);
                 bodies_[m].x = b.pos.x;
                 bodies_[m].y = b.pos.y;
             }
@@ -2728,7 +2743,7 @@ void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, Proj
         const Vec3 dir = awayFrom(u.pos);
         if (u.scav.satchel) setOffHeld(u);  // the satchel in his hands goes off too
         if (u.alive()) {
-            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage).floorToInt()), nullptr, {cause, dir, centre, false, true});
+            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage * (100 + formBlastPct(u)) / 100).floorToInt()), nullptr, {cause, dir, centre, false, true});
             impacts_.push_back({ImpactEvent::Kind::Hit, centre, dir, kNoEntity, u.id, killed, {}, -1, cause});
             // Blown far past death, he is torn to pieces (world_death.cpp decides).
             if (killed && u.death.kind == DeathKind::Gibbed) spawnGibs(u, at, ex.impulse * f);
@@ -2932,6 +2947,10 @@ uint64_t World::checksum() const {
             h.addU64(u.called);
         }
         if (u.disorder != 0) h.addI64(u.disorder);
+        if (u.backed != 0 || u.flankShock != 0) {
+            h.addI64(u.backed);
+            h.addU64(u.flankShock);
+        }
         if (u.helping != kNoEntity) {
             h.addU64(u.helping);
             h.addU64(u.helpSince);

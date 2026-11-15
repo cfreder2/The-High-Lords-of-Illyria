@@ -23,22 +23,31 @@ constexpr World::FormationRule kRules[kFormationKinds] = {
     /* DoubleLine */ {0, 0, -30, 0, 0, 0, 15, 0, false, true},
     /* Box        */ {-25, 0, -15, 0, 0, 0, 40, 0, true, true},
     /* Wedge      */ {25, 0, 0, 50, 30, 0, 0, 0, false, true},
-    /* Loose      */ {-20, 0, 30, 0, 0, 0, 0, 40, false, false},
+    /* Loose      */ {-20, 0, 30, 0, 0, 0, 0, 50, false, false},
     /* Encircle   */ {0, 25, 30, 0, 0, 0, 0, 20, false, false},
     /* Vee        */ {0, 25, 0, 0, 0, 20, 0, 0, false, true},
 };
 // A man out of his formation: his blows this much weaker, shocks this much worse, for as long as it takes to re-form.
 constexpr int32_t kDisorderBlowPct = -20, kDisorderShockPct = 30;
+// Loose order: a blast hurts a man in it this much less.
+constexpr int32_t kLooseBlastPct = -50;
 // Squad-mates within this of him make a formation (kRankMates of them at least).
 constexpr Fixed kRankReach = Fixed::fromInt(6);
 constexpr int32_t kRankMates = 2;
+// Depth: squad-mates within kBackReach at his back (within 60 degrees of straight behind), counted to kBackedMost ranks;
+// each takes kBackedShockPct off the shocks to his nerve while he is formed: a deep body holds where a thin line breaks.
+constexpr Fixed kBackReach = Fixed::fromRatio(7, 2);
+constexpr int32_t kBackedMost = 2, kBackedShockPct = 15;
+// ... and the weight of the ranks behind is in his blows (the press), kBackedBlowPct a rank.
+constexpr int32_t kBackedBlowPct = 10;
 // Bad ground keeps a formation broken this long after he last stood on it.
 constexpr int32_t kGroundDisorder = 2 * kTicksPerSecond;
 // Among the trees: this share of the arrows meant for a man are stopped.
 constexpr int32_t kWoodsSparePct = 40;
-// A man on the move: this share of the arrows that would strike him go by, for each metre a second of his speed, at most
-// kSparedMostPct (a man walking 2.4 m/s about one in four, a horse at the gallop seven in ten).
-constexpr int32_t kSparedPerMps = 10, kSparedMostPct = 70;
+// A man on the move faster than a march: this share of the arrows that would strike him go by for each metre a second of
+// his speed above kSparedFrom, at most kSparedMostPct (foot walking or running: none; a horse at the gallop, 7 m/s, six in ten).
+constexpr Fixed kSparedFrom = Fixed::fromRatio(5, 2);
+constexpr int32_t kSparedPerMps = 14, kSparedMostPct = 70;
 // An ambush: the shock of the first blow from men unseen; it counts for this long after they break cover.
 constexpr int32_t kAmbushShock = 250;
 constexpr uint32_t kAmbushTicks = 5 * kTicksPerSecond;
@@ -80,7 +89,7 @@ int32_t World::formBlowPct(const Unit& u, HitSide side) const {
     if (u.disorder > 0) return footing(u) == Footing::Firm || footing(u) == Footing::Woods ? kDisorderBlowPct : 0;  // (water and mud take their own)
     if (!formed(u)) return 0;
     const FormationRule& r = formationRule(u.formation);
-    return r.blowPct + (side == HitSide::Front ? 0 : r.asidePct);
+    return r.blowPct + (side == HitSide::Front ? 0 : r.asidePct) + kBackedBlowPct * u.backed;
 }
 
 int32_t World::formStruckPct(const Unit& target, HitSide side, bool missile) const {
@@ -90,9 +99,16 @@ int32_t World::formStruckPct(const Unit& target, HitSide side, bool missile) con
     return side == HitSide::Front ? r.struckFrontPct : r.struckAsidePct;
 }
 
+int32_t World::formBlastPct(const Unit& u) const {
+    // Spread out, half the men a blast finds are not where it bursts (loose order: half the hurt); packed close, a blast
+    // finds them as missiles do (a square's and a double line's price).
+    if (!formed(u)) return 0;
+    return u.formation == FormationKind::Loose ? kLooseBlastPct : formationRule(u.formation).shotPct;
+}
+
 int32_t World::formShockPct(const Unit& u) const {
     if (u.disorder > 0) return kDisorderShockPct;
-    return formed(u) ? formationRule(u.formation).shockPct : 0;
+    return formed(u) ? formationRule(u.formation).shockPct - kBackedShockPct * u.backed : 0;
 }
 
 int32_t World::formFlankShockPct(const Unit& u) const { return formed(u) ? formationRule(u.formation).flankShockPct : 0; }
@@ -106,7 +122,7 @@ bool World::arrowSpared(const Unit& u, bool& covered) {
     covered = pct > 0 && static_cast<int32_t>(rng_.nextBelow(100)) < pct;
     if (covered) return true;
     // Going fast, he is past before it lands square: a galloping horse is hard to hit, a man standing is not.
-    const int32_t moving = std::min(kSparedMostPct, static_cast<int32_t>((u.stride.length() * kTicksPerSecond * kSparedPerMps).floorToInt()));
+    const int32_t moving = std::clamp(static_cast<int32_t>(((u.stride.length() * kTicksPerSecond - kSparedFrom) * kSparedPerMps).floorToInt()), 0, kSparedMostPct);
     return moving > 0 && static_cast<int32_t>(rng_.nextBelow(100)) < moving;
 }
 
@@ -135,14 +151,19 @@ void World::updateRanks() {
                             (f == Footing::Woods && (u.stats.mounted || (u.formation != FormationKind::None && formationRule(u.formation).tight)));
         if (broken) disorder(u, kGroundDisorder);
         else u.disorder = std::max(0, u.disorder - kCensusTicks);
-        // Squad-mates by him.
+        // Squad-mates by him, and those at his back (a rank behind him within kBackReach, in the half behind his facing).
         if (u.squad != 0) {
-            int32_t mates = 0;
+            int32_t mates = 0, behind = 0;
             nearby(u.pos.x, u.pos.y, kRankReach, [&](uint32_t i) {
                 const Unit& o = units_[i];
-                if (o.id != u.id && o.alive() && o.owner == u.owner && o.squad == u.squad && !o.routed && (o.pos - u.pos).flat().lengthSq() < kRankReach * kRankReach) ++mates;
+                if (o.id == u.id || !o.alive() || o.owner != u.owner || o.squad != u.squad || o.routed) return;
+                const Vec3 rel = (o.pos - u.pos).flat();
+                if (rel.lengthSq() >= kRankReach * kRankReach) return;
+                ++mates;
+                if (rel.lengthSq() < kBackReach * kBackReach && rel.dot(u.facing) * 2 < -rel.length()) ++behind;
             });
             u.ranked = mates;
+            u.backed = std::min(kBackedMost, behind);
         }
         // Who sees him among the trees.
         if (!inWoods(u)) {

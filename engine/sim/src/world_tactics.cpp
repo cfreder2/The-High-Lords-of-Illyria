@@ -36,6 +36,11 @@ constexpr int32_t kFlankedDisorder = 4 * kTicksPerSecond;
 constexpr int32_t kChargeFront = 150, kChargeFlank = 400, kChargeRear = 600, kChargeRearBusy = 950;
 constexpr Fixed kShoulder = Fixed::fromInt(6);
 constexpr int32_t kShoulderPct = 50;
+// A squad fighting to its front and struck in its flank or back (flankedInMelee): what it does to the nerve of every man of
+// it within kFlankedReach of the man struck, and how often (a squad is shaken once in this long, however many blows land).
+constexpr int32_t kFlankedSquad = 160, kRearSquad = 260;
+constexpr Fixed kFlankedReach = Fixed::fromInt(12);
+constexpr uint32_t kFlankedEvery = 3 * kTicksPerSecond;
 // Support: an idle man looks this far for a friend who is fighting, every kSupportLook ticks (each man on his own
 // tick), and gives the foe up beyond kSupportLeash.
 constexpr Fixed kSupportReach = Fixed::fromInt(40), kSupportLeash = Fixed::fromInt(60);
@@ -159,6 +164,42 @@ bool World::withinHold(const Unit& u, const Unit& foe) const {
     return gap <= u.stats.melee.reach + kHoldStride;
 }
 
+void World::flankedInMelee(Unit& struck, HitSide side) {
+    if (!struck.alive() || struck.squad == 0 || (struck.flankShock != 0 && tick_ + 1 - struck.flankShock < kFlankedEvery)) return;
+    const int32_t shock = (side == HitSide::Rear ? kRearSquad : kFlankedSquad) * (100 + formFlankShockPct(struck)) / 100;
+    nearby(struck.pos.x, struck.pos.y, kFlankedReach, [&](uint32_t i) {
+        Unit& o = units_[i];
+        if (o.owner != struck.owner || o.squad != struck.squad || !o.alive() || (o.pos - struck.pos).flat().lengthSq() >= kFlankedReach * kFlankedReach) return;
+        o.flankShock = tick_ + 1;
+        o.flankTick = tick_ + 1;
+        shakeMorale(o, o.id == struck.id ? shock : shock * 3 / 4);
+    });
+    if (struck.alive()) tell(side == HitSide::Rear ? TacticEvent::Kind::Rear : TacticEvent::Kind::Flanked, struck);
+}
+
+bool World::kite(Unit& u) {
+    constexpr Fixed kKiteReach = Fixed::fromInt(12), kKiteLeash = Fixed::fromInt(15);
+    if (!armed(u) || u.hold || u.holdFire || u.stats.ranged.autoRange <= Fixed::zero() || u.reloadRemaining == 0 || u.stats.mounted) return false;
+    const Unit* near = nullptr;
+    Fixed best = kKiteReach * kKiteReach;
+    nearbyNotOf(u.owner, u.pos.x, u.pos.y, kKiteReach, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (!o.alive() || o.routed || o.inAir() || o.stats.melee.damage <= 0 || o.stats.moveSpeed * 10 > u.stats.moveSpeed * 9) return;
+        const Fixed d = (o.pos - u.pos).flat().lengthSq();
+        if (d < best) best = d, near = &o;
+    });
+    if (near == nullptr) return false;
+    const Vec3 away = (u.pos - near->pos).flat();
+    const Fixed len = away.length();
+    if (len == Fixed::zero()) return false;
+    const Vec3 to = u.pos + away / len * u.stats.moveSpeed;
+    if (u.posted && (to - u.postAt).flat().lengthSq() > kKiteLeash * kKiteLeash) return false;
+    if (!standable(to) || isWater(to.x, to.y)) return false;
+    walk(u, to);
+    u.facing = -away / len;  // (looking at them, to loose again)
+    return true;
+}
+
 bool World::shootsInstead(const Unit& u, const Unit& foe) const {
     return armed(u) && !u.holdFire && u.stats.ranged.autoRange > Fixed::zero() && !withinHold(u, foe);
 }
@@ -176,8 +217,9 @@ void World::support(Unit& u, Unit& foe) {
         return;
     }
     if (braceFor(u, foe)) return;
-    // Horse does not ride in at the front: round to the side of the man his friend is fighting, then in at his flank.
-    const Unit* busyWith = u.stats.mounted && foe.foe != kNoEntity ? findUnit(foe.foe) : nullptr;
+    // Horse sent by a commander (Command::Answer) does not ride in at the front: round to the side of the man his friend is
+    // fighting, then in at his flank. Of himself a rider goes straight in: the flank is the commander's.
+    const Unit* busyWith = u.stats.mounted && u.helpFlank && foe.foe != kNoEntity ? findUnit(foe.foe) : nullptr;
     if (busyWith != nullptr && busyWith->alive() && busyWith->owner == u.owner && busyWith->id != u.id) {
         const Vec3 along = (foe.pos - busyWith->pos).flat();  // from the friend to the foe
         const Fixed len = along.length();

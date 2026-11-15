@@ -264,8 +264,11 @@ void frontage(int seeds) {
                 const PlayerId pa = static_cast<PlayerId>(swap), pb = static_cast<PlayerId>(1 - swap);
                 std::vector<Command> c;
                 const FormationKind f = ab == 24 ? FormationKind::Line : FormationKind::DoubleLine;
-                const Block a = raise(w, pa, UnitType::HeavyInfantry, 24, ab, 1.8, -12, 0, 1, 1, f);
-                const Block b = raise(w, pb, UnitType::HeavyInfantry, 24, 12, 1.8, 12, 0, -1, 2, FormationKind::DoubleLine);
+                // (Each side raised first in half the fights: the world steps its men in turn.)
+                Block a, b;
+                if (seed % 2) b = raise(w, pb, UnitType::HeavyInfantry, 24, 12, 1.8, 12, 0, -1, 2, FormationKind::DoubleLine);
+                a = raise(w, pa, UnitType::HeavyInfantry, 24, ab, 1.8, -12, 0, 1, 1, f);
+                if (seed % 2 == 0) b = raise(w, pb, UnitType::HeavyInfantry, 24, 12, 1.8, 12, 0, -1, 2, FormationKind::DoubleLine);
                 march(c, pa, a, w, 30, 0);
                 march(c, pb, b, w, -30, 0);
                 w.step(c);
@@ -303,8 +306,10 @@ void flank(int seeds) {
                 World w(cfg);
                 const PlayerId pa = static_cast<PlayerId>(swap), pb = static_cast<PlayerId>(1 - swap);
                 std::vector<Command> c;
-                Block a = p.n0 > 0 ? raise(w, pa, UnitType::LightInfantry, p.n0, p.n0 / 2, 1.8, -6, 0, 1, 1, FormationKind::DoubleLine) : Block{};
-                const Block b = raise(w, pb, UnitType::LightInfantry, p.nb, p.nb / 2, 1.8, 6, 0, -1, 2, FormationKind::DoubleLine);
+                Block a, b;
+                if (seed % 2) b = raise(w, pb, UnitType::LightInfantry, p.nb, p.nb / 2, 1.8, 6, 0, -1, 2, FormationKind::DoubleLine);
+                if (p.n0 > 0) a = raise(w, pa, UnitType::LightInfantry, p.n0, p.n0 / 2, 1.8, -6, 0, 1, 1, FormationKind::DoubleLine);
+                if (seed % 2 == 0) b = raise(w, pb, UnitType::LightInfantry, p.nb, p.nb / 2, 1.8, 6, 0, -1, 2, FormationKind::DoubleLine);
                 if (!a.ids.empty()) march(c, pa, a, w, 10, 0);
                 march(c, pb, b, w, -10, 0);
                 Block x;
@@ -507,8 +512,10 @@ void charge(int seeds) {
                 World w(cfg);
                 const PlayerId pa = static_cast<PlayerId>(swap), pb = static_cast<PlayerId>(1 - swap);
                 std::vector<Command> c;
-                const Block h = raise(w, pa, p.horse, p.nh, 4, 2.6, -35, 0, 1, 1, FormationKind::Line);
-                const Block f = raise(w, pb, p.foot, p.nf, p.nf / 2, 1.8, 35, 0, -1, 2, p.form);
+                Block h, f;
+                if (seed % 2) f = raise(w, pb, p.foot, p.nf, p.nf / 2, 1.8, 35, 0, -1, 2, p.form);
+                h = raise(w, pa, p.horse, p.nh, 4, 2.6, -35, 0, 1, 1, FormationKind::Line);
+                if (seed % 2 == 0) f = raise(w, pb, p.foot, p.nf, p.nf / 2, 1.8, 35, 0, -1, 2, p.form);
                 march(c, pa, h, w, 80, 0);
                 if (p.footMarches) march(c, pb, f, w, -40, 0);
                 w.step(c);

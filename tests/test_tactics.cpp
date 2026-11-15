@@ -159,23 +159,36 @@ TEST(a_man_with_no_order_goes_to_the_help_of_a_friend_fighting_near_him) {
     CHECK(heldX == -m(34));  // a man told to hold has not moved a step
 }
 
-TEST(horse_coming_to_help_rides_round_to_the_flank) {
-    World w(WorldConfig{});
-    UnitStats tough = unitStats(UnitType::HeavyInfantry);
-    tough.maxHp = 5000;
-    w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, tough);
-    const EntityId foe = w.spawnUnit(1, {m(2), m(0), m(0)}, kWest, tough);
-    const EntityId horse = w.spawnUnit(0, {-m(30), m(3), m(0)}, kEast, unitStats(UnitType::LightCavalry));
-    bool word = false;
-    Fixed widest = Fixed::zero();
-    for (int i = 0; i < 30 * kTicksPerSecond && !word; ++i) {
-        w.step({});
-        widest = max(widest, abs(w.findUnit(horse)->pos.y));
-        word = told(w, TacticEvent::Kind::Rear, foe) || told(w, TacticEvent::Kind::Flanked, foe) || told(w, TacticEvent::Kind::Broken, foe);
-    }
-    std::printf("  the horse swung %.1f m wide of the fight\n", widest.toDouble());
-    CHECK(widest > m(8));  // out to the wing, not in at the front past his friend
-    CHECK(word);           // and his charge landed in the flank or the back
+TEST(horse_sent_to_help_rides_round_to_the_flank_and_free_horse_rides_straight_in) {
+    // The ride round to the foe's flank is a commander's (Command::Answer); of himself a rider goes straight to his friend.
+    const auto run = [](bool commanded) {
+        World w(WorldConfig{});
+        UnitStats tough = unitStats(UnitType::HeavyInfantry);
+        tough.maxHp = 5000;
+        const EntityId friendly = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, tough);
+        const EntityId foe = w.spawnUnit(1, {m(2), m(0), m(0)}, kWest, tough);
+        const EntityId horse = w.spawnUnit(0, {-m(30), m(3), m(0)}, kEast, unitStats(UnitType::LightCavalry));
+        if (commanded) {
+            for (int i = 0; i < kTicksPerSecond; ++i) w.step({});  // (the two locked first)
+            Command c{0, horse, Command::Type::Answer, {}};
+            c.targetUnit = friendly;
+            w.step(std::span(&c, 1));
+        }
+        bool word = false;
+        Fixed widest = Fixed::zero();
+        for (int i = 0; i < 30 * kTicksPerSecond && !word; ++i) {
+            w.step({});
+            widest = max(widest, abs(w.findUnit(horse)->pos.y));
+            word = told(w, TacticEvent::Kind::Rear, foe) || told(w, TacticEvent::Kind::Flanked, foe) || told(w, TacticEvent::Kind::Broken, foe);
+        }
+        return std::pair{widest, word};
+    };
+    const auto [sentWide, sentWord] = run(true);
+    const auto [freeWide, freeWord] = run(false);
+    std::printf("  sent: swung %.1f m wide; free: %.1f m\n", sentWide.toDouble(), freeWide.toDouble());
+    CHECK(sentWide > m(8));  // out to the wing, not in at the front past his friend
+    CHECK(sentWord);         // and his charge landed in the flank or the back
+    CHECK(freeWide < m(6));  // of himself, straight in
 }
 
 TEST(the_lords_rally_brings_back_every_broken_man_in_earshot_and_then_waits) {

@@ -19,13 +19,15 @@ using namespace illyria::game;
 
 namespace {
 
-enum class Plan { None, Defend, Micro, Charge };
+enum class Plan { None, Defend, Micro, Charge, Flank, Counter };
 const char* planName(Plan p) {
     switch (p) {
         case Plan::None: return "no orders";
         case Plan::Defend: return "planned defence";
         case Plan::Micro: return "plan plus micro";
         case Plan::Charge: return "reckless charge";
+        case Plan::Flank: return "plan + flank charge";
+        case Plan::Counter: return "plan + horse at bows";
     }
     return "";
 }
@@ -193,6 +195,69 @@ void micro(Battle& b, const Ground& g, uint32_t& lastCall) {
     if (b.rallyState().lord && b.rallyState().cooldown == 0 && b.rallyState().heard >= 4) b.orderRally();
 }
 
+// The horse's part in a plan, looked at every second (the plan's line as deployDefence): each squad of horse, once, rides
+// to a place out on the side of its mark and a little behind it (a march), then goes in at the gallop at the nearest man of
+// it. Flank: the mark is the foe's foot squad locked with the line nearest it. Counter: the foe's bowmen, from the start.
+struct Ride {
+    int squad = -1, mark = -1;
+    V3 wing;
+    bool sent = false, in = false;
+};
+void horse(Battle& b, Plan plan, std::vector<Ride>& rides) {
+    if (rides.empty())
+        for (size_t i = 0; i < b.squads().size(); ++i)
+            if (b.squads()[i].owner == Battle::kPlayer && mounted(b.squads()[i])) rides.push_back({static_cast<int>(i)});
+    const V3 mine = centreOf(b, Battle::kPlayer), theirs = centreOf(b, Battle::kEnemy);
+    const V3 front = V3{theirs.x - mine.x, theirs.y - mine.y, 0}.normalized();
+    for (Ride& r : rides) {
+        const Squad& s = b.squads()[static_cast<size_t>(r.squad)];
+        if (b.aliveCount(s) == 0 || r.in) continue;
+        const V3 at = b.squadCentre(s, false);
+        if (!r.sent) {
+            int best = -1;
+            float bestD = 1e30f;
+            for (size_t j = 0; j < b.squads().size(); ++j) {
+                const Squad& f = b.squads()[j];
+                if (f.owner == Battle::kPlayer || b.aliveCount(f) == 0) continue;
+                const bool bows = sim::unitStats(f.type).ranged.muzzleSpeed > sim::Fixed::zero() && !mounted(f);
+                bool engaged = false;
+                for (sim::EntityId id : f.members) engaged = engaged || (b.world().units()[id - 1].alive() && b.world().units()[id - 1].engaged);
+                if (plan == Plan::Flank ? !(isFoot(f) && engaged) : !bows) continue;
+                const float d = (b.squadCentre(f, false) - at).length();
+                if (d < bestD && d < 160.0f) bestD = d, best = static_cast<int>(j);
+            }
+            if (best < 0) continue;
+            r.mark = best;
+            const V3 c = b.squadCentre(b.squads()[static_cast<size_t>(best)], false);
+            const V3 side{-front.y, front.x, 0};
+            const float sign = (at.x - c.x) * side.x + (at.y - c.y) * side.y >= 0 ? 1.0f : -1.0f;
+            r.wing = c + side * (22.0f * sign) + front * 8.0f;  // out on its side, a little beyond it
+            send(b, r.squad, r.wing, side * -sign);
+            r.sent = true;
+            continue;
+        }
+        const Squad& m = b.squads()[static_cast<size_t>(r.mark)];
+        if (b.aliveCount(m) == 0) {
+            r.sent = false;  // gone: the next mark
+            continue;
+        }
+        if ((at - r.wing).length() > 10.0f) continue;
+        b.selectSquad(r.squad);
+        b.orderAttackUnit(b.nearestFoe(Battle::kPlayer, at, 80.0f) != sim::kNoEntity ? [&] {
+            sim::EntityId near = sim::kNoEntity;
+            float nd = 1e30f;
+            for (sim::EntityId id : m.members) {
+                const sim::Unit& u = b.world().units()[id - 1];
+                const float d = (V3{static_cast<float>(u.pos.x.toDouble()), static_cast<float>(u.pos.y.toDouble()), 0} - at).length();
+                if (u.alive() && d < nd) nd = d, near = id;
+            }
+            return near;
+        }() : sim::kNoEntity);
+        r.in = true;
+    }
+    b.select({});
+}
+
 struct Tally {
     int killed = 0, lost = 0;  // when the battle was decided (or at kEndSeconds)
     int outcome = 0;
@@ -221,7 +286,8 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     b.setAiSkill(std::getenv("TAC_SKILL") ? static_cast<Battle::AiSkill>(std::atoi(std::getenv("TAC_SKILL"))) : Battle::AiSkill::Normal);
     const Count start = living(b);
     const Ground g = readGround(b);
-    if (plan == Plan::Defend || plan == Plan::Micro) deployDefence(b, g);
+    if (plan == Plan::Defend || plan == Plan::Micro || plan == Plan::Flank || plan == Plan::Counter) deployDefence(b, g);
+    std::vector<Ride> rides;
     uint32_t lastCall = 0;
     if (plan == Plan::Charge) {
         std::vector<sim::EntityId> all;
@@ -244,6 +310,7 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     for (int tick = 0; tick < kEndSeconds * sim::kTicksPerSecond; ++tick) {
         b.advance(1.0 / sim::kTicksPerSecond + 1e-6);
         if (plan == Plan::Micro && (tick - shift) % sim::kTicksPerSecond == 0 && tick > shift) micro(b, g, lastCall);
+        if ((plan == Plan::Flank || plan == Plan::Counter) && (tick - shift) % sim::kTicksPerSecond == 0 && tick > shift) horse(b, plan, rides);
         if (diag) {
             const sim::World& w = b.world();
             for (const sim::Projectile& p : w.projectiles())
@@ -376,7 +443,7 @@ void tacticsBattles(int seeds) {
         int budget;
     };
     const Map maps[] = {{"the open field, 450 gold", Scenario::Field, 450}, {"the Ford, classic muster", Scenario::Ford, 0}};
-    const Plan plans[] = {Plan::None, Plan::Defend, Plan::Micro, Plan::Charge};
+    const Plan plans[] = {Plan::None, Plan::Defend, Plan::Micro, Plan::Charge, Plan::Flank, Plan::Counter};
     // (TAC_MAP=field|ford and TAC_PLAN=0..3 in the environment run one of them.)
     const char* onlyMap = std::getenv("TAC_MAP");
     const char* onlyPlan = std::getenv("TAC_PLAN");

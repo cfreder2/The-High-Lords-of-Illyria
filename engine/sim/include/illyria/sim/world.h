@@ -338,6 +338,10 @@ struct Unit {
     FormationKind formation = FormationKind::None;
     int32_t ranked = 0;
     int32_t disorder = 0;
+    // `backed`: ranks of squad-mates at his back at the last census (0 to 2): a deep body holds (world_formation.cpp).
+    // `flankShock`: the tick his squad was last shaken by a foe in its flank or back while it fought to its front (0: never).
+    int32_t backed = 0;
+    uint32_t flankShock = 0;
     // Calls for help (world_help.cpp). `called`: the tick his squad last called (0: never). `helping`: the friend whose
     // call he is answering (his march to him is the answer's, not an order: any order ends it). `shotTick`, `flankTick`:
     // when a missile last struck him, and a blow in his flank or back (0: never).
@@ -1559,6 +1563,20 @@ private:
     Unit* supportFoe(Unit& u);
     // Holding, he meets only the foe who has come within a few strides of him.
     bool withinHold(const Unit& u, const Unit& foe) const;
+    // Foot that stands to receive a charge (world_combat.cpp): on foot, not marching, formed in closed ranks on firm ground.
+    // Met head on, a rider's charge breaks on it (pikes do more: their points). Anything else he rides through and wheels.
+    bool bracedFoot(const Unit& u) const;
+    // Where a blow travelling `dir` from `by` lands on `target` (world_combat.cpp): hitSide, then the ranks: a square has no
+    // flank (told), a man in closed ranks meets a blow from anywhere ahead as his front, and a man busy with another and
+    // out of the ranks is open in the flank as in the back. `busy`: he fights another; `behind`: truly at his back.
+    HitSide sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind);
+    // A bowman with slower foot closing within kKiteReach while he reloads steps back from them (world_tactics.cpp): bows
+    // beat slow foot at range. Not one told to hold, and a posted one no farther than kKiteLeash behind his post.
+    bool kite(Unit& u);
+    // A man struck in the flank or back while he fights another to his front (world_tactics.cpp): his squad-mates near
+    // him are shaken (a flank kFlankedSquad, the back kRearSquad; a line's weak flank more), once in kFlankedEvery, and it
+    // is told (Flanked, Hit from behind) for both sides to see.
+    void flankedInMelee(Unit& struck, HitSide side);
     // A bowman (any shooter with a reach of his own) with a foe near but not yet on him: he shoots, he does not stand to
     // meet him (world_tactics.cpp). Within kHoldStride of his reach he fights hand to hand.
     bool shootsInstead(const Unit& u, const Unit& foe) const;
@@ -1571,6 +1589,8 @@ private:
     int32_t formBlowPct(const Unit& u, HitSide side) const;
     int32_t formStruckPct(const Unit& target, HitSide side, bool missile) const;
     int32_t formShockPct(const Unit& u) const;
+    // What his formation does to a blast's hurt (percent): loose order halves it; close order pays the missiles' price.
+    int32_t formBlastPct(const Unit& u) const;
     int32_t formFlankShockPct(const Unit& u) const;
     bool allRound(const Unit& u) const;
     bool turnsSlowly(const Unit& u) const;

@@ -526,6 +526,7 @@ public:
         V3 pos;
         int squad = -1, answer = -1;  // squads_ indices (-1: none)
         sim::EntityId caller = sim::kNoEntity;  // a man of the squad that called
+        sim::HelpCall::Why why = sim::HelpCall::Why::Outnumbered;
     };
     const std::vector<Call>& calls() const { return calls_; }
     // Answering by hand: the latest call still standing is chosen, and the nearest free squad of the player's selected

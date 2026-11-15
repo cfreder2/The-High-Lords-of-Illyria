@@ -172,7 +172,7 @@ void Battle::collectCalls() {
         }
         const int q = squadOfNumber(c.squad), a = squadOfNumber(c.answer);
         if (q < 0) continue;
-        calls_.push_back({now, toV3(c.pos), q, a, c.caller});
+        calls_.push_back({now, toV3(c.pos), q, a, c.caller, c.why});
         // Over the squad that calls, and over the one that goes (the words floated, as position's are).
         floats_.push_back({now, c.caller, toV3(c.pos), "Help!", false});
         if (a >= 0) floats_.push_back({now, c.answerer, toV3(c.answerPos), "Answering", true});
@@ -269,12 +269,19 @@ bool Battle::answerCall(V3& at) {
     }
     const Call& call = calls_.back();
     at = call.pos;
-    // The nearest of the player's squads with nothing in hand (not the caller, not the lord).
+    // The nearest of the player's squads with nothing in hand (not the caller, not the lord), by kind as the world chooses
+    // (World::callForHelp): to a melee, foot or horse, bowmen only when none is free; under missiles, horse or bowmen.
     int best = -1;
     float bestD = 1e30f;
+    const bool melee = call.why != sim::HelpCall::Why::Shot;
+    for (int pass = 0; pass < 2 && best < 0; ++pass)
     for (size_t i = 0; i < squads_.size(); ++i) {
         const Squad& s = squads_[i];
         if (static_cast<int>(i) == call.squad || !controllable(s) || aliveCount(s) == 0 || s.garrison || s.type == sim::UnitType::Hero) continue;
+        const sim::UnitStats& st = sim::unitStats(s.type);
+        const bool bows = st.ranged.muzzleSpeed > sim::Fixed::zero();
+        if (melee && bows && pass == 0) continue;
+        if (!melee && !bows && !st.mounted && st.flyAltitude == sim::Fixed::zero()) continue;
         int alive = 0, freeMen = 0;
         for (sim::EntityId id : s.members) {
             const sim::Unit& u = world_->units()[id - 1];
