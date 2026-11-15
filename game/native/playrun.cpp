@@ -304,8 +304,8 @@ void Runner::execute(const Command& c) {
         case Op::Stats: stats(); break;
         case Op::Spread: std::printf("%s\n", illyria_army_spread()), std::fflush(stdout); break;
         case Op::Deaths: {
-            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot", "melee"};
-            for (int k = 0; k < 7; ++k)
+            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot", "melee", "foes"};
+            for (int k = 0; k < 8; ++k)
                 if (c.text == kinds[k]) std::printf("%s\n", illyria_death_demo(k, static_cast<float>(c.a), static_cast<float>(c.b))), std::fflush(stdout);
             break;
         }

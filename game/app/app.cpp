@@ -1446,7 +1446,8 @@ ILLYRIA_API void illyria_queue_demo() {
 // blow that only fells him, 3 fire, 4 a cleaving cut far past death (a limb or the head off, for those a cut can), 5 an arrow.
 // Stage 6 (`deaths melee X Y`) is a fight to watch instead: two lines of foot, the player's and a foe's, four metres apart
 // either side of (x, y) along the north-south line through it, with a few horse behind each to ride in: for looking at a
-// fight where it stands (in a ford: tools/playtest/ford-water.txt).
+// fight where it stands (in a ford: tools/playtest/ford-water.txt). Stage 7 (`deaths foes X Y`) stands the same grid of the
+// foe's side (the other team colour), added to stage 0's so the later stages fell both.
 ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
     using namespace illyria::sim;
     static std::vector<EntityId> men;
@@ -1469,12 +1470,12 @@ ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
         std::snprintf(line, sizeof line, "deaths: a melee of 17 a side at %.0f,%.0f", x, y);
         return line;
     }
-    if (stage == 0) {
-        men.clear();
+    if (stage == 0 || stage == 7) {
+        if (stage == 0) men.clear();
         for (int t = 0; t < kUnitTypeCount; ++t) {
             Vec3 p{Fixed::fromInt(static_cast<int64_t>(x) + (t % 7) * 10), Fixed::fromInt(static_cast<int64_t>(y) - (t / 7) * 10), Fixed::zero()};
             p.z = w.groundHeight(p.x, p.y);
-            men.push_back(w.spawnUnit(0, p, Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()}, unitStats(static_cast<UnitType>(t))));
+            men.push_back(w.spawnUnit(stage == 7 ? 1 : 0, p, Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()}, unitStats(static_cast<UnitType>(t))));
         }
         std::snprintf(line, sizeof line, "deaths: %d types at %.0f,%.0f, rows 10 m apart to the south", kUnitTypeCount, x, y);
         return line;
