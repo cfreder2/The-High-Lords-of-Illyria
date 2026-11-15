@@ -13,11 +13,11 @@
    "model": "medieval_battle_axe_d554dd37",
    "hand": "Right",
    "hold": "grip",
-   "size_m": 2.1,
+   "size_m": 1.9,
    "grip": [
     0.5,
     0.5,
-    0.22
+    0.07
    ]
   }
  ],
