@@ -155,6 +155,7 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
     import clearance
     items = [o for o in scene.objects if o.type == 'MESH' and 'tripo_item' in o]
     if rig is None:
+        scene['tripo_gate'] = 'passed'      # no figure of its own to check (a mount alone)
         return
     prefix = arm.get('clip_prefix', '')
     main = stand_arm or arm
@@ -239,6 +240,9 @@ def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=N
     with open(os.path.join(cfg['dir'], 'penetration.txt'), 'w') as fh:
         fh.write(text + '\n')
     print(text, flush=True)
+    # The verdict goes into the blend itself: render() draws nothing from a blend that failed, whoever built it and
+    # with whatever flags (an --allow-penetration build for looking, or another run's, left in the same work folder).
+    bpy.context.scene['tripo_gate'] = ('failed: %s' % ', '.join(sorted({'%s %s' % (r['clip'], r['item']) for r in failed}))) if failed else 'passed'
     if failed and '--allow-penetration' not in sys.argv and not os.environ.get('TRIPO_ALLOW_PENETRATION'):
         bpy.ops.wm.save_as_mainfile(filepath=cfg['blend'], compress=True)
         sys.exit('%s: %d clip(s) still have an arm or a weapon through the body: not built for drawing' % (cfg['unit'], len(failed)))
@@ -555,6 +559,9 @@ def render(cfg, look=False):
     if look:
         art, views = os.path.join(cfg['dir'], 'look'), [1, 0] if not arg('--views') else views
     s, studio = open_scene(cfg)
+    gate = s.get('tripo_gate', 'never checked')
+    if gate != 'passed' and not look and '--allow-penetration' not in sys.argv:
+        sys.exit('%s: the build did not pass the arm and weapon check (%s): not drawn' % (cfg['unit'], gate))
     c = s.cycles
     W, H, PPM, AX, AY = canvas_of(cfg)
     root = bpy.data.objects['rig_root']
