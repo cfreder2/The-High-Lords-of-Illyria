@@ -1063,6 +1063,58 @@ TEST(a_garrisons_foot_meet_a_foe_who_gets_in_and_a_man_driven_out_falls_back) {
     }
 }
 
+TEST(a_garrison_does_not_go_out_to_an_overwhelming_host_through_its_breach) {
+    // docs/BALANCE.md: the rush was the cheap way in because the garrison came out to meet it in the open. Thirty foes
+    // stand off before the breach of ten foot (more than two to a man): the foot keep behind the doors. Six: they are met.
+    const auto farthestOut = [](int nFoes) {
+        Keep k = keepField(9, 60, 10, 0);
+        World& w = *k.f.w;
+        w.setGateHp(k.f.gate, 0);
+        UnitStats still = unitStats(UnitType::Pikemen);
+        still.aggroRange = Fixed::zero();
+        const Vec3 across{k.f.out.y, -k.f.out.x, Fixed::zero()};
+        for (int i = 0; i < nFoes; ++i) {
+            const Vec3 at = k.f.centre + k.f.out * m(26 + i / 10 * 3) + across * m(i % 10 * 2 - 9);
+            w.spawnUnit(0, {at.x, at.y, w.groundHeight(at.x, at.y)}, -k.f.out, still);
+        }
+        Fixed most = -m(100);
+        for (int t = 0; t < 40 * kTicksPerSecond; ++t) {
+            w.step({});
+            for (EntityId id : k.foot)
+                if (w.findUnit(id)->alive()) most = max(most, (w.findUnit(id)->pos - k.f.centre).flat().dot(k.f.out));
+        }
+        return most;
+    };
+    const Fixed crowd = farthestOut(30), few = farthestOut(6);
+    std::printf("  the foot came %.1f m out of the breach to thirty, %.1f m to six\n", crowd.toDouble(), few.toDouble());
+    CHECK(crowd < m(2));
+    CHECK(few > m(8));
+}
+
+TEST(a_man_sent_to_hold_ground_goes_back_to_it_until_he_is_told_otherwise) {
+    World w(WorldConfig{});
+    const Vec3 east{Fixed::one(), Fixed::zero(), Fixed::zero()};
+    const EntityId holder = w.spawnUnit(0, {m(10), m(10), m(0)}, east, unitStats(UnitType::HeavyInfantry));
+    const EntityId walker = w.spawnUnit(0, {m(10), m(20), m(0)}, east, unitStats(UnitType::HeavyInfantry));
+    Command hold{0, holder, Command::Type::Move, {m(40), m(10), m(0)}};
+    hold.hold = true;
+    const Command plain{0, walker, Command::Type::Move, {m(40), m(20), m(0)}};
+    w.step(std::vector<Command>{hold, plain});
+    for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.findUnit(holder)->holding && !w.findUnit(walker)->holding);
+    CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(1));
+    // Driven off it (a rout that ended far away): both stand 25 m from where they were sent.
+    for (EntityId id : {holder, walker}) const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
+    const uint64_t before = w.checksum();
+    for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.checksum() != before);
+    CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(6));   // back on his ground
+    CHECK((w.findUnit(walker)->pos - Vec3{m(15), m(20), m(0)}).flat().length() < m(1));  // an ordinary march is done when it is done
+    // Any other order ends it.
+    w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}});
+    CHECK(!w.findUnit(holder)->holding);
+}
+
 TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
     // The grid men route on closes every 4 m cell a house touches, so rows of houses with gaps of a few metres, the keep and the
     // ramps could wall off a ramp's foot, or half the yard: in some towns a man who came down a ramp stood at its foot for good,

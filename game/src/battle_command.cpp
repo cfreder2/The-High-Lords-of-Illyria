@@ -1037,17 +1037,63 @@ void Battle::attackGateWith(sim::PlayerId owner, const std::vector<sim::EntityId
     const V3 centre = toV3(g.a + g.b) * 0.5f;
     // Engines and bombers shoot at it; the rest go through it, to the far
     // side: they hack at it until it gives.
+    // (A gate already down is a breach: the engines have no work there, and everyone else goes through.)
+    const bool down = world_->gates()[static_cast<size_t>(gate)].broken();
     std::vector<sim::EntityId> through;
     for (sim::EntityId id : units) {
         const Role role = roleOf(static_cast<UnitType>(world_->units()[id - 1].stats.type));
-        if (role == Role::Siege || role == Role::Bomber) issue(owner, id, sim::Command::Type::AttackGate, centre);
-        else through.push_back(id);
+        if (role == Role::Siege || (role == Role::Bomber && !down)) {
+            if (!down) issue(owner, id, sim::Command::Type::AttackGate, centre);
+        } else {
+            through.push_back(id);
+        }
     }
+    stormGate(owner, through, formation, gate);
+}
+
+bool Battle::groundBehind(int gate, V3& at) const {
+    const sim::Region& rg = worldRegion();
+    const sim::Gate& g = rg.gates()[static_cast<size_t>(gate)];
+    const sim::Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+    const auto within = [&](const sim::Rampart& outer) {
+        return &outer != &ring && !ring.corners.empty() &&
+               std::all_of(ring.corners.begin(), ring.corners.end(), [&](const sim::Vec3& c) { return sim::Gate::inside(outer, c); });
+    };
+    if (std::any_of(rg.ramparts().begin(), rg.ramparts().end(), within)) {
+        // An inner bailey: the first open ground behind its doors, before the keep.
+        const sim::Vec3 mid = (g.a + g.b) * sim::Fixed::fromRatio(1, 2);
+        for (int back = 6; back <= 16; back += 2) {
+            const sim::Vec3 p = mid - g.out * sim::Fixed::fromInt(back);
+            if (!world_->standable(p) || !sim::Gate::inside(ring, p)) continue;
+            at = toV3(p);
+            return true;
+        }
+        return false;
+    }
+    // A town's own walls: its courtyard.
+    for (const sim::Continent::City& city : continent_->cities()) {
+        if (!city.walled) continue;
+        const sim::Vec3 yard = city.castle.courtyard - rg.origin();
+        if (abs(yard.x - ring.centre.x) > sim::Fixed::fromInt(400) || abs(yard.y - ring.centre.y) > sim::Fixed::fromInt(400) || !sim::Gate::inside(ring, yard)) continue;
+        at = toV3(yard);
+        return true;
+    }
+    return false;
+}
+
+void Battle::stormGate(sim::PlayerId owner, const std::vector<sim::EntityId>& through, Formation formation, int gate) {
     if (through.empty()) return;
-    const V3 out = toV3(g.out);
-    const V3 from = centreOf(through);
-    const float side = (from - centre).dot(out) >= 0 ? -1.0f : 1.0f;
+    const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(gate)];
+    const V3 centre = toV3(g.a + g.b) * 0.5f, out = toV3(g.out);
+    const float side = (centreOf(through) - centre).dot(out) >= 0 ? -1.0f : 1.0f;
     moveGroup(owner, through, formation, centre + out * (10.0f * side), nullptr, out * side);
+    // Into a foe's town: the order carries on to the ground the doors guard (its courtyard; a bailey's, the ground before the
+    // keep), and they hold it until told otherwise (Command::hold). One rule for a skirmish's siege and a Conquest's town.
+    V3 ground;
+    if (side > 0 || world_->gates()[static_cast<size_t>(gate)].holder == owner || !groundBehind(gate, ground)) return;
+    const size_t first = pending_.size();
+    moveGroup(owner, through, formation, ground, nullptr, out * side);
+    for (size_t i = first; i < pending_.size(); ++i) pending_[i].queue = pending_[i].hold = true;
 }
 
 void Battle::orderAtGate(int gate) {

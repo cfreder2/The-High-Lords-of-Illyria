@@ -2861,9 +2861,18 @@ ILLYRIA_API const char* illyria_hud() {
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s},\"edges\":\"%s\",",
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"result\":\"%s\",\"gates\":[",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", edges.c_str());
+                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str(), b.siegeResult().c_str());
+        s += buf;
+        // The doors of the besieged town, with what is left of each.
+        bool firstGate = true;
+        for (const Battle::SiegeGate& g : b.siegeGates()) {
+            std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"hp\":%d}", firstGate ? "" : ",", g.name, g.hpPct);
+            s += buf;
+            firstGate = false;
+        }
+        std::snprintf(buf, sizeof buf, "]},\"edges\":\"%s\",", edges.c_str());
         s += buf;
     }
     // The selection (how many, in what formation, of what kind) and the saved groups.

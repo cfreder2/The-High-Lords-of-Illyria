@@ -30,10 +30,10 @@ constexpr Fixed kAlertRange = Fixed::fromInt(70);
 // Foes this near outside the doors may be drawn in, and counted inside this near.
 constexpr Fixed kLureRange = Fixed::fromInt(14);
 constexpr Fixed kInsideRange = Fixed::fromInt(20);
-// How long the doors stand open for a lure (seconds), and the doors' state below which they would rather fight at the mouth
-// than wait for the doors to go (percent of their hit points), or foes at the door at most this many to a man of the foot.
+// How long the doors stand open for a lure (seconds), and the most foes at a door to a man of its foot for it to be opened to
+// them. A host of more than that to a man of all the foot is overwhelming: the garrison does not go out to it through open
+// doors or a breach, it holds the horseshoe behind them (docs/BALANCE.md: the rush is not met in the open).
 constexpr int32_t kLureOpenSeconds = 4;
-constexpr int32_t kLureHpPct = 80;
 constexpr int32_t kLureOddsPerMan = 2;
 // The foot are formed when this share of them (percent) stand at their places.
 constexpr int32_t kFormedPct = 70;
@@ -97,6 +97,22 @@ bool World::gateKeeper(const Unit& u) const {
     return false;
 }
 
+size_t World::baileyOf(size_t gate) const {
+    // The standing gate, of the same holder, of a ring of walls that lies wholly within this gate's ring.
+    const Region& rg = *config_.region;
+    const Gate& g = rg.gates()[gate];
+    const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+    for (const size_t j : rg.gatesNear(ring.centre.x, ring.centre.y)) {
+        const Gate& in = rg.gates()[j];
+        if (in.ring == g.ring || j >= gates_.size() || gates_[j].broken() || gates_[j].holder != gates_[gate].holder) continue;
+        const Rampart& inner = rg.ramparts()[static_cast<size_t>(in.ring)];
+        bool nested = !inner.corners.empty();
+        for (const Vec3& c : inner.corners) nested = nested && Gate::inside(ring, c);
+        if (nested) return j;
+    }
+    return kNoGate;
+}
+
 std::vector<size_t> World::doorsOfRing(size_t gate) const {
     // The gates of the ring this one opens, in the world's order: a castle with two doors has one garrison between them.
     std::vector<size_t> out;
@@ -141,6 +157,12 @@ void World::keepDoors(const std::vector<size_t>& doors) {
         return best;
     };
 
+    // A bailey within this ring (a capital's, round its keep) whose own doors the holder still keeps: where the garrison makes
+    // its last stand when these walls are lost (below). Its men are the bailey's doors' to keep, not these.
+    const size_t keepGate = baileyOf(doors.front());
+    const Rampart* bailey = keepGate == kNoGate ? nullptr : &rg.ramparts()[static_cast<size_t>(rg.gates()[keepGate].ring)];
+    const auto inBailey = [&](const Unit& u) { return bailey != nullptr && (Gate::inside(*bailey, u.pos) || (u.stationed && u.hasMoveTarget && Gate::inside(*bailey, u.moveTarget))); };
+
     // Who is about: the garrison (in the world's order) and the foes, near any of the doors.
     std::vector<uint32_t> near;
     for (size_t d = 0; d < nd; ++d) unitGrid_.query(mids[d].x, mids[d].y, kAlertRange, [&](uint32_t j) { near.push_back(j); });
@@ -151,13 +173,17 @@ void World::keepDoors(const std::vector<size_t>& doors) {
         size_t door;
     };
     std::vector<Keeper> archers, foot;
+    std::vector<Unit*> rest;  // the lord, who is no door's keeper but goes where the garrison goes
     // By door: foes at the doors outside, all foes outside within the alert range, and inside.
     std::vector<int32_t> outside(nd, 0), coming(nd, 0), inside(nd, 0);
-    bool alert = false;
+    int32_t within = 0;  // foes on the ground inside these walls
+    bool alert = false, breached = false;
+    for (const size_t d : doors) breached = breached || gates_[d].broken();
     for (const uint32_t j : near) {
         Unit& u = units_[j];
         if (!u.alive() || u.routed) continue;
         if (u.owner != holder) {
+            within += !u.inAir() && u.flight == Unit::Flight::Grounded && Gate::inside(ring, u.pos) && config_.region->rampartAt(u.pos.x, u.pos.y, u.pos.z) < 0;
             for (size_t d = 0; d < nd; ++d) {
                 const Fixed d2 = (u.pos - mids[d]).flat().lengthSq();
                 if (d2 > kAlertRange * kAlertRange) continue;
@@ -173,15 +199,31 @@ void World::keepDoors(const std::vector<size_t>& doors) {
             const Fixed d2 = (u.pos - mids[d]).flat().lengthSq();
             mine = mine || (d2 <= kKeepRadius * kKeepRadius && (withinRing(ring, u.pos) || (gates_[doors[d]].recalls && d2 <= kRecallRange * kRecallRange)));
         }
-        if (!mine) continue;
+        if (!mine || inBailey(u)) continue;
         const Post post = postOf(u);
         if (ordered(u)) continue;
+        if (post == Post::Lord) rest.push_back(&u);
         // His door: the one he stands at, or (walking to a station) the one he is bound for.
         const size_t home = nearestDoor(u.stationed && u.hasMoveTarget ? u.moveTarget : u.pos);
         if (post == Post::Archer) archers.push_back({&u, home});
         else if (post == Post::Foot) foot.push_back({&u, home});
     }
     if (!alert) return;
+
+    // The last stand. A door is down and the foes inside the walls are more than the foot left to hold them: the ward is lost,
+    // and every keeper who can break away (bowmen and the lord too) goes back through the bailey's doors to stand before the
+    // keep, where the bailey's own doors are kept by the same rule as these (its horseshoe, its walk). A town of one ring has
+    // no such place and fights where it stands.
+    if (bailey != nullptr && breached && within > static_cast<int32_t>(foot.size())) {
+        std::vector<EntityId> going;
+        for (const Keeper& k : foot)
+            if (!k.u->engaged && k.u->foe == kNoEntity) going.push_back(k.u->id);
+        for (const Keeper& k : archers) going.push_back(k.u->id);
+        for (const Unit* u : rest) going.push_back(u->id);
+        std::sort(going.begin(), going.end());
+        if (!going.empty()) stationMen(keepGate, going);
+        return;
+    }
 
     // A door's horseshoe for n men: the places the wall or a house leaves free, the middle rank deepest, the wings bent in toward
     // the doors.
@@ -372,7 +414,11 @@ void World::keepDoors(const std::vector<size_t>& doors) {
     }
 
     // A foe who is in reach, inside the walls or through open doors, is met by the foot who stand idle, of whichever door (then
-    // back to the places); the foe outside a shut gate is not walked at.
+    // back to the places); the foe outside a shut gate is not walked at, nor is an overwhelming host outside any gate, shut,
+    // open or broken: it is waited for behind the doors.
+    int64_t host = 0;
+    for (size_t d = 0; d < nd; ++d) host += coming[d];
+    const bool overwhelmed = host > static_cast<int64_t>(foot.size()) * kLureOddsPerMan;
     for (const Keeper& k : foot) {
         Unit* u = k.u;
         if (!idle(*u)) continue;
@@ -383,7 +429,7 @@ void World::keepDoors(const std::vector<size_t>& doors) {
             if (f.owner == holder || !f.alive() || f.routed || f.inAir() || f.flight != Unit::Flight::Grounded) continue;
             bool reach = false;
             for (size_t d = 0; d < nd && !reach; ++d)
-                reach = (f.pos - mids[d]).flat().lengthSq() <= kMeetRange * kMeetRange && (gates_[doors[d]].passable() || townSide(rg.gates()[doors[d]], ring, f.pos));
+                reach = (f.pos - mids[d]).flat().lengthSq() <= kMeetRange * kMeetRange && ((gates_[doors[d]].passable() && !overwhelmed) || townSide(rg.gates()[doors[d]], ring, f.pos));
             if (!reach) continue;
             const Fixed d2 = (f.pos - u->pos).flat().lengthSq();
             if (best == nullptr || d2 < bestD2) best = &f, bestD2 = d2;
@@ -396,14 +442,13 @@ void World::keepDoors(const std::vector<size_t>& doors) {
     }
 
     // The doors: kept shut to what is outside, and swung open for a few seconds to draw foes in when the foot are formed to
-    // take them, the room inside is not yet full of them, and the doors are failing or the foes few.
+    // take them, the room inside is not yet full of them, and the foes are few (failing doors are no reason to open them to a
+    // crowd: the breach is held from behind).
     for (size_t d = 0; d < nd; ++d) {
         GateState& st = gates_[doors[d]];
-        const Gate& g = rg.gates()[doors[d]];
-        if (st.broken() || footAt[d] == 0 || outside[d] == 0 || inside[d] >= footAt[d]) continue;
+        if (st.broken() || footAt[d] == 0 || outside[d] == 0 || inside[d] >= footAt[d] || overwhelmed) continue;
         const bool formedUp = formed[d] * 100 >= footAt[d] * kFormedPct && manned[d] * 100 >= archersAt[d] * kMannedPct;
-        const bool failing = static_cast<int64_t>(st.hp) * 100 < static_cast<int64_t>(g.maxHp) * kLureHpPct;
-        if (formedUp && (failing || coming[d] <= footAt[d] * kLureOddsPerMan))
+        if (formedUp && coming[d] <= footAt[d] * kLureOddsPerMan)
             st.openUntil = std::max(st.openUntil, tick_ + static_cast<uint32_t>(kLureOpenSeconds * kTicksPerSecond));
     }
 }

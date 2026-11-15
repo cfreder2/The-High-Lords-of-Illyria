@@ -844,7 +844,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         const std::string town = siege && of != std::string::npos ? foe.substr(of + 4) : "";
         const std::string where = siege ? std::string(map == 2 ? "Siege of the capital" : "Siege") + (town.empty() ? "" : ": " + town)
                                         : map == 3 ? "Skirmish: open ground" : "Skirmish: the Ford";
-        const std::string goal = siege ? (defend ? "hold the courtyard" : "take the courtyard") : foe.empty() ? "" : "rout the " + foe;
+        const std::string goal = siege ? (defend ? "hold the walls" : map == 2 ? "take the courtyard and the keep" : "take the courtyard") : foe.empty() ? "" : "rout the " + foe;
         const std::string held = hud.flag("paused") ? "PAUSED   " : "";
         const std::string count = hud.num("foeTotal") > 0 ? "Foe " + std::to_string(static_cast<int>(hud.num("foeAlive"))) + "/" + std::to_string(static_cast<int>(hud.num("foeTotal"))) : "";
         status = {held + where + (goal.empty() ? "" : "   Objective: " + goal) + (count.empty() ? "" : "   " + count),
@@ -876,6 +876,35 @@ void Hud::draw(Overlay& o, float w, float h) {
     if (!conquest && outcome != 0) {
         const std::string t = outcome > 0 ? "VICTORY" : "DEFEAT";
         o.text((w - o.width(t, 40)) / 2, h * 0.3f, t, outcome > 0 ? kGold : kRed, 40);
+        // ... and, in a siege, why.
+        const std::string why = hud.find("capture") ? hud.find("capture")->str("result") : "";
+        if (!why.empty()) o.text((w - o.width(why, 18)) / 2, h * 0.3f + 50, why, kInk, 18);
+    }
+    if (const Json* cap = hud.find("capture"); !conquest && cap && cap->flag("on")) {
+        // A siege's clock, beside the minimap: each door's strength, and the flag (what blocks it, or how far it has climbed).
+        const std::vector<Json>& gates = cap->list("gates");
+        const float mh = std::clamp(h * 0.18f, 96.0f, 260.0f);
+        constexpr float kRowH = 22, kBarW = 110, kPad = 8;
+        const std::string line = cap->str("text");
+        float nameW = 0;
+        for (const Json& g : gates) nameW = std::max(nameW, o.width(g.str("name") + " 100%", 14));
+        const float pw = std::max(nameW + kBarW + 3 * kPad, o.width(line, 14) + 2 * kPad);
+        const float ph = kRowH * static_cast<float>(gates.size() + 2) + kPad, px = w - mh - 30 - pw, py = 42;
+        o.rect(px, py, pw, ph, rgba(0x000000, 150));
+        float y = py + kPad;
+        const auto bar = [&](float x, float fill, Colour c) {
+            o.rect(x, y + 3, kBarW, 10, rgba(0x000000, 200));
+            o.rect(x + 1, y + 4, (kBarW - 2) * std::clamp(fill, 0.0f, 1.0f), 8, c);
+        };
+        for (const Json& g : gates) {
+            const int hp = static_cast<int>(g.num("hp"));
+            o.text(px + kPad, y, g.str("name") + (hp > 0 ? " " + std::to_string(hp) + "%" : " down"), hp > 0 ? kInk : kRed, 14);
+            bar(px + pw - kPad - kBarW, static_cast<float>(hp) / 100.0f, hp > 30 ? kGold : kRed);
+            y += kRowH;
+        }
+        o.text(px + kPad, y, line, cap->flag("blocked") ? kRed : kInk, 14);
+        y += kRowH;
+        bar(px + kPad, static_cast<float>(cap->num("p")) / 100.0f, kGold);
     }
     if (conquest && camp.num("winner") != 0) {
         const std::string t = "The war is decided";

@@ -269,7 +269,9 @@ void Battle::orderAttackObject(const Pick& pick) {
         const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(pick.index)];
         std::vector<sim::EntityId> through;
         for (sim::EntityId id : mine) {
-            if (world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
+            const bool down = world_->gates()[static_cast<size_t>(pick.index)].broken();  // (a breach: nothing to shoot at)
+            if (down && sim::World::canBatter(world_->units()[id - 1].stats) && roleOf(static_cast<UnitType>(world_->units()[id - 1].stats.type)) == Role::Siege) continue;
+            if (!down && world_->units()[id - 1].stats.ranged.muzzleSpeed > sim::Fixed::zero()) {
                 sim::Command c{local_, id, sim::Command::Type::AttackObject, g.a};
                 c.object = sim::Command::Object::Gate;
                 c.objectIndex = pick.index;
@@ -278,11 +280,7 @@ void Battle::orderAttackObject(const Pick& pick) {
                 through.push_back(id);
             }
         }
-        if (!through.empty()) {
-            const V3 centre = toV3(g.a + g.b) * 0.5f, out = toV3(g.out);
-            const float side = (centreOf(through) - centre).dot(out) >= 0 ? -1.0f : 1.0f;
-            moveGroup(local_, through, selFormation_, centre + out * (10.0f * side), nullptr, out * side);
-        }
+        stormGate(local_, through, selFormation_, pick.index);
         markOrdered(mine);
         voice_.order(Situation::Attack, *world_, mine);
         return;

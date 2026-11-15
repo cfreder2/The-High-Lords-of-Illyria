@@ -63,9 +63,23 @@ void World::updateGates() {
         const Gate& g = gs[i];
         // Swinging: the doors block until they have swung right back (shut) or right open (and the way is cleared then).
         if ((st.mode == Mode::Opening || st.mode == Mode::Closing) && tick_ - st.since >= kGateSwingTicks) {
-            if (st.mode == Mode::Opening) nav_->openGate(i, false);
-            st.mode = st.mode == Mode::Opening ? Mode::Open : Mode::Shut;
+            const bool opened = st.mode == Mode::Opening;
+            if (opened) nav_->openGate(i, false);
+            st.mode = opened ? Mode::Open : Mode::Shut;
             st.since = tick_;
+            // The holder's men who waited before it find their way anew: the way planned against shut doors led every one of
+            // them to the one point at the doors' middle (routeToGate), where a company jams.
+            if (opened) {
+                const Vec3 at = (g.a + g.b) * Fixed::fromRatio(1, 2);
+                const Fixed near = (g.b - g.a).flat().length() / 2 + kHaltQueue;
+                std::vector<uint32_t> waiting;
+                unitGrid_.query(at.x, at.y, near, [&](uint32_t j) { waiting.push_back(j); });
+                std::sort(waiting.begin(), waiting.end());
+                for (const uint32_t j : waiting) {
+                    Unit& u = units_[j];
+                    if (u.alive() && u.owner == st.holder && u.hasMoveTarget && !u.inAir() && u.flight == Unit::Flight::Grounded) planPath(u, u.moveTarget);
+                }
+            }
         }
         const Rampart& ring = config_.region->ramparts()[static_cast<size_t>(g.ring)];
         const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);

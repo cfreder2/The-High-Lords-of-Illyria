@@ -229,6 +229,9 @@ struct Command {
     Vec3 face = {};
     // Move: a force march, deaf to the enemy on the way.
     bool force = false;
+    // Move: ground to be held (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight or a
+    // rout, until he is given another order.
+    bool hold = false;
     // AttackUnit: the target, and a friend to rejoin once it is down.
     EntityId targetUnit = kNoEntity;
     EntityId rally = kNoEntity;
@@ -372,6 +375,10 @@ struct Unit {
     // walls), not an order of the player's. Any order given to him (World::startOrder) clears it. A man with a move, an
     // attack or a queue and this unset is "ordered", and is not one of a gate's keepers (world_keep.cpp).
     bool stationed = false;
+    // Sent to hold a place (Command::hold): with nothing else in hand he goes back to it (World::holdGround), a rout
+    // and a rally later too. Any other order ends it.
+    bool holding = false;
+    Vec3 holdAt;
     // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
     // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
     std::vector<Command> queue;
@@ -1077,6 +1084,8 @@ private:
     void keepDoors(const std::vector<size_t>& doors);
     // The gates (in the world's order) of the ring this gate opens: a castle may have more than one door.
     std::vector<size_t> doorsOfRing(size_t gate) const;
+    // The gate of the bailey inside this gate's ring that its holder still keeps (a capital's keep), or kNoGate.
+    size_t baileyOf(size_t gate) const;
     // garrisonPosts for the one door.
     std::vector<GarrisonPost> garrisonPostsAt(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except, const std::vector<Vec3>& alsoHeld) const;
     // Ranks across the courtyard behind a gate for each of the groups of men (counts) in turn, each group in ranks of its own,
@@ -1124,6 +1133,8 @@ private:
     // the engines, walked to or held (false: no engine of his side near enough).
     Unit* escortFoe(const Unit& u);
     bool escortSpot(Unit& u);
+    // A man sent to hold ground (Unit::holding) who stands idle away from it walks back to it.
+    bool holdGround(Unit& u);
     // Suppression: the garrison's man on a wall-walk within reach, for a shooter outside the walls to answer first; and the
     // man a shooter takes on his own (that, unless a foe is on him, else the nearest).
     Unit* wallShooter(const Unit& u, Fixed reach);

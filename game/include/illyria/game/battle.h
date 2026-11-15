@@ -130,7 +130,8 @@ std::vector<sim::UnitType> skirmishTypes();
 // Gold for an army at the Conquest's prices.
 int armyCost(const std::vector<Buy>& army);
 // An army bought for `budget` gold: a mix of foot, bowmen, horse and (with `engines`) catapults, as a lord raises one.
-std::vector<Buy> buyArmy(int budget, bool engines);
+inline constexpr int kFieldEngines = 8, kSiegeEngines = 4;
+std::vector<Buy> buyArmy(int budget, bool engines, int every = kFieldEngines, int most = 99);
 
 // A battle fought from the conquest: the armies of each side, as they stand.
 const sim::Continent::City& siegeTown(const sim::Continent& c);
@@ -224,6 +225,15 @@ public:
     // Conquest: beyond this from the men (metres) an order is not the world's (no fight is there to be ordered), it is a
     // march of their squads (battle_conquest.cpp).
     static constexpr float kLocalReachM = 200.0f;
+    // A siege's besiegers set their engines up this far before a door (inside their 150 m throw less its margin, and the
+    // 140 m at which they begin on a gate unbidden), and a camp before a side wall this far from it (the 120 m at which they
+    // shell the walks).
+    static constexpr float kBatteryM = 132.0f, kFlankM = 112.0f;
+    // The besiegers break off when this share (percent) of their fighting men, or fewer, still stand unbroken.
+    static constexpr int kSpentPct = 30;
+    // A siege's besiegers buy with this share (percent) of the keepers' purse.
+    static constexpr int kSiegeOddsPct = 150;
+    static constexpr float kWallReachM = 160.0f;  // an engine left to itself comes up to the walks' men from this far (World::creepToWall)
     static constexpr float kSiegeScope = 250.0f;  // the engines of a computer side take the gates this near them (aimEngines): one siege at a time
     static constexpr float kGatherMetres = 60.0f;  // an attack on a foe farther than this is a march together first
     static constexpr size_t kMaxParticles = 4000;
@@ -241,6 +251,8 @@ public:
     Scenario scenario() const { return scenario_; }
     // A siege the player keeps the walls of (SkirmishSetup::defend).
     bool defending() const { return defend_; }
+    // The computer's siege has been given up (its host is spent): the keepers have won.
+    bool besiegersBrokeOff() const { return brokeOff_; }
     // A siege's view, for the camera: the point to look at (between the castle and the armies that come to its doors), how far
     // off to stand to hold the whole wall and every besieging squad, and the way out of the first (the road's) door. False when the
     // battle is no siege.
@@ -694,6 +706,16 @@ public:
     int outcome() const;
     // A town's capture point (battle_capture.h); inactive in the field.
     const CapturePoint& capturePoint() const { return capture_; }
+    // A siege in a player's words, for every HUD (battle_capture.cpp). The doors of the besieged town with what is left of
+    // each (percent), the outer wall's first and a bailey's last; one line on the flag (what blocks it, or how far it has
+    // climbed); and once the battle is decided, why.
+    struct SiegeGate {
+        const char* name;
+        int hpPct;
+    };
+    std::vector<SiegeGate> siegeGates() const;
+    std::string siegeLine() const;
+    std::string siegeResult() const;
     // Test hook: the gates battered in and every squad of ours sent to the capture point.
     void testStorm();
     int aliveCount(const Squad& s) const;
@@ -756,6 +778,9 @@ public:
 private:
     Scenario scenario_ = Scenario::Ford;
     bool defend_ = false;
+    // A siege the computer lays: its fighting men at the start (engines apart), and whether it has broken off (runEnemyAi).
+    int besiegers_ = 0;
+    bool brokeOff_ = false;
     V3 siegeCentre_{}, siegeOut_{};
     float siegeRadius_ = 0;
     int siegeDoors_ = 0;
@@ -764,19 +789,26 @@ private:
     void setUpField(const SkirmishSetup& setup);
     void setUpSiege(const sim::Continent::City& town, const SkirmishSetup& setup);
     // The player's army (what he bought, else bought for him) and the other side's, from the setup's budget.
-    std::vector<Buy> playerBuys(const SkirmishSetup& setup, bool engines) const;
-    std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines) const;
+    std::vector<Buy> playerBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines) const;
+    std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines, int pct = 100) const;
     // An army in ranks (foot in front, bowmen behind, horse on the wings, engines last) about `anchor`, facing `facing`.
-    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false);
+    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false);
     void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
                     V3 facing);
     void step();
     void runEnemyAi();
-    // A computer side with engines at a standing gate of the other's: where its engines are and the gate they are at. Its other
-    // squads escort them (aiEscort) until the gate is down.
-    bool aiSiege(sim::PlayerId owner, V3& engines, V3& gate) const;
+    // A computer side with engines at a standing gate of the other's: where its battery nearest `from` is and the gate being
+    // battered. Its other squads escort the battery nearest them (aiEscort) until the gate is down.
+    bool aiSiege(sim::PlayerId owner, const V3& from, V3& engines, V3& gate) const;
+    // A gate the computer's engines may be sent at: in a siege with a capture point, only the besieged town's own doors (its
+    // outer wall's and its bailey's), not a neighbouring town's that the field happens to hold; else any (aimEngines' scope).
+    bool siegeGate(size_t gate) const;
+    // A second battery (another is nearer the gate) with the foe's men on a wall-walk in its reach: it shells them, unordered.
+    bool aiShellsWalls(const Squad& s) const;
+    // The computer's siege is spent (kSpentPct of its fighting men or fewer stand): it marches off. True once it has.
+    bool aiBreakOff();
     void aiEscort(size_t squad, const V3& engines, const V3& gate);
     // Where the army's foot stands against `foe`: how far toward it the front reaches (metres along `dir`), false with no foot.
     bool footFront(sim::PlayerId owner, const Squad& except, const V3& dir, float& front) const;
@@ -790,6 +822,12 @@ private:
     void emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size);
     void updateParticles(float seconds);
     void moveSquad(const Squad& squad, const V3& to);
+    // Men sent through a gate (they hack at it while it stands). Through a foe's, from outside, the order carries on to the
+    // ground behind it (groundBehind) and they hold that until told otherwise.
+    void stormGate(sim::PlayerId owner, const std::vector<sim::EntityId>& through, Formation formation, int gate);
+    // The ground a gate guards: the courtyard of the town whose walls it is in, or for an inner bailey's gate the open
+    // ground behind its doors. False where there is none.
+    bool groundBehind(int gate, V3& at) const;
     // Soldiers marching as one formation to `to`: facing `face` there when
     // given, else the way they march.
     // `force`: a force march, deaf to the enemy on the way.

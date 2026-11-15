@@ -1,0 +1,53 @@
+# The capital, the patient way and on to the keep: the engines open on their own from where they are set up; when the road's
+# door is down everyone is ordered at it (the storm goes on to the courtyard and holds it); then everyone at the keep's gate.
+size 1600 900
+start skirmish capital
+wait 0.5
+camera 528 520 160 -1.57
+wait 1
+shot 000s
+cards
+speed 4
+wait_ticks 1800
+shot 060s
+stats
+wait_ticks 900
+shot 090s
+stats
+select all
+click right 797 790
+wait_ticks 1800
+shot 150s
+stats
+wait_ticks 1800
+shot 210s
+stats
+wait_ticks 1800
+shot 270s
+stats
+cards
+select all
+click right 872 450
+wait_ticks 1800
+shot 330s
+stats
+wait_ticks 1800
+shot 390s
+stats
+wait_ticks 1800
+shot 450s
+stats
+cards
+select all
+click right 872 450
+wait_ticks 1800
+shot 510s
+stats
+wait_ticks 1800
+shot 570s
+stats
+wait_ticks 3600
+shot 690s
+stats
+cards
+quit

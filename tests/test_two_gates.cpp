@@ -162,6 +162,72 @@ TEST(a_breach_at_one_door_pulls_reserves_from_the_other) {
     CHECK(k.near(1, World::GarrisonRole::Foot, 60) >= 3);
 }
 
+TEST(a_capitals_garrison_overrun_in_its_outer_ward_falls_back_to_the_bailey) {
+    // The last stand: a door down and more foes inside the walls than the foot left to hold them.
+    Case k;
+    if (k.doors.size() != 2) { CHECK(false); return; }
+    k.run(1);
+    const size_t keep = [&] {
+        for (size_t j = 0; j < k.w->region()->gates().size(); ++j) {
+            const Gate& g = k.w->region()->gates()[j];
+            if (g.ring != k.w->region()->gates()[k.doors[0]].ring && ((g.a + g.b) * Fixed::fromRatio(1, 2) - k.heart).flat().length() < Fixed::fromInt(80)) return j;
+        }
+        return World::kNoGate;
+    }();
+    CHECK(keep != World::kNoGate);
+    if (keep == World::kNoGate) return;
+    const Rampart& bailey = k.w->region()->ramparts()[static_cast<size_t>(k.w->region()->gates()[keep].ring)];
+    const auto inBailey = [&] {
+        int n = 0;
+        for (const EntityId id : k.ids) n += k.unit(id).alive() && Gate::inside(bailey, k.unit(id).pos);
+        return n;
+    };
+    CHECK(inBailey() == 0);
+    k.w->setGateHp(k.doors[0], 0);
+    // (Foes who only stand there, so that what the garrison does is its own choice and not a fight's.)
+    UnitStats still = unitStats(UnitType::LightInfantry);
+    still.aggroRange = Fixed::zero();
+    const int crowd = static_cast<int>(k.ids.size()) + 6;
+    for (int i = 0; i < crowd; ++i) {
+        Vec3 p = k.mid(0) - k.out(0) * Fixed::fromInt(5 + i / 12 * 2) + Vec3{Fixed::fromInt(i % 12 - 6), Fixed::zero(), Fixed::zero()};
+        p.z = k.w->groundHeight(p.x, p.y);
+        k.w->spawnUnit(0, p, -k.out(0), still);
+    }
+    k.run(5);
+    int bound = 0;
+    for (const EntityId id : k.ids) bound += k.unit(id).alive() && k.unit(id).hasMoveTarget && Gate::inside(bailey, k.unit(id).moveTarget);
+    std::printf("  after 5 s %d are bound for the bailey; its gate holder %d, the door's %d, gate mode %d\n", bound, k.w->gates()[keep].holder, k.w->gates()[k.doors[0]].holder, static_cast<int>(k.w->gates()[keep].mode));
+    for (int s = 0; s < 85; s += 5) {
+        k.run(5);
+        if (s == 40) {
+            const Unit* stuck = nullptr;
+            const Vec3 gm0 = (k.w->region()->gates()[keep].a + k.w->region()->gates()[keep].b) * Fixed::fromRatio(1, 2);
+            for (const EntityId id : k.ids)
+                if (k.unit(id).alive() && k.unit(id).hasMoveTarget && (k.unit(id).pos - gm0).flat().length() < Fixed::fromInt(12)) stuck = &k.unit(id);
+            if (stuck) {
+                const Vec3 o = k.w->region()->gates()[keep].out;
+                std::printf("  one stuck: %.1f m out from the doors (along out), %.1f m across; target %.1f m out; path %zu at %u; standable target %d; pos z %.1f target z %.1f\n",
+                            (stuck->pos - gm0).flat().dot(o).toDouble(), (stuck->pos - gm0).flat().dot(Vec3{o.y, -o.x, Fixed::zero()}).toDouble(),
+                            (stuck->moveTarget - gm0).flat().dot(o).toDouble(), stuck->path.size(), stuck->pathIndex, k.w->standable(stuck->moveTarget) ? 1 : 0,
+                            stuck->pos.z.toDouble(), stuck->moveTarget.z.toDouble());
+            }
+        }
+        int b2 = 0, near = 0, st = 0;
+        const Vec3 gm = (k.w->region()->gates()[keep].a + k.w->region()->gates()[keep].b) * Fixed::fromRatio(1, 2);
+        for (const EntityId id : k.ids) {
+            const Unit& u = k.unit(id);
+            b2 += u.alive() && u.hasMoveTarget && Gate::inside(bailey, u.moveTarget);
+            near += u.alive() && (u.pos - gm).flat().length() < Fixed::fromInt(12);
+            st += u.alive() && u.stationed;
+        }
+        std::printf("  t=%d bound %d, within 12 m of the keep gate %d, stationed %d, in %d, gate mode %d hp %d\n", s + 10, b2, near, st, inBailey(), static_cast<int>(k.w->gates()[keep].mode), k.w->gates()[keep].hp);
+    }
+    int alive = 0;
+    for (const EntityId id : k.ids) alive += k.unit(id).alive();
+    std::printf("  %d of the garrison's %d living men stand in the bailey\n", inBailey(), alive);
+    CHECK(inBailey() >= 3);
+}
+
 TEST(an_attacker_coming_to_the_walls_takes_the_door_that_is_weaker) {
     for (const size_t weak : {size_t{0}, size_t{1}}) {
         Case k;

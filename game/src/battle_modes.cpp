@@ -319,23 +319,83 @@ bool Battle::armyStrung(const Squad& s, const V3& dir) const {
 }
 
 
-bool Battle::aiSiege(sim::PlayerId owner, V3& engines, V3& gate) const {
-    // The engines (aimEngines has sent them at a gate): where they are, and the gate they are at, while it stands.
-    V3 sum{};
-    int n = 0, at = -1;
+bool Battle::aiSiege(sim::PlayerId owner, const V3& from, V3& engines, V3& gate) const {
+    // While any of its engines is at a standing gate (aimEngines has sent it), the siege is on: the battery nearest `from`
+    // (a camp before each door, or one before the gate and one before a side wall), and the gate being battered.
+    int at = -1;
+    float best = 1e30f;
     for (const Squad& s : squads_) {
-        if (s.owner != owner || roleOf(s.type) != Role::Siege) continue;
+        if (s.owner != owner || roleOf(s.type) != Role::Siege || aliveCount(s) == 0) continue;
         for (sim::EntityId id : s.members) {
             const sim::Unit& u = world_->units()[id - 1];
-            if (!u.alive()) continue;
-            sum = sum + toV3(u.pos);
-            ++n;
-            if (u.attackGate >= 0 && u.hasAttackTarget && !world_->gates()[static_cast<size_t>(u.attackGate)].broken()) at = u.attackGate;
+            if (u.alive() && u.attackGate >= 0 && u.hasAttackTarget && !world_->gates()[static_cast<size_t>(u.attackGate)].broken()) at = u.attackGate;
         }
+        const V3 c = squadCentre(s, false);
+        const float d = V3{c.x - from.x, c.y - from.y, 0}.length();
+        if (d < best) best = d, engines = c;
     }
-    if (n == 0 || at < 0) return false;
-    engines = sum * (1.0f / static_cast<float>(n));
+    if (at < 0) return false;
     gate = toV3(worldRegion().gates()[static_cast<size_t>(at)].a + worldRegion().gates()[static_cast<size_t>(at)].b) * 0.5f;
+    return true;
+}
+
+bool Battle::siegeGate(size_t gate) const {
+    if (!capture_.active()) return true;
+    for (const CapturePoint::Stage& stage : capture_.stages())
+        if (worldRegion().gates()[gate].ring == stage.ring) return true;
+    return false;
+}
+
+bool Battle::aiShellsWalls(const Squad& s) const {
+    // A second battery (another of its side's is nearer the gate, and has that work) with the foe's men on a wall-walk within
+    // the reach it creeps to (World::creepToWall): left to itself it shells them (World::autoTarget), which is its work, and
+    // the gate is battered by one train, not two (a keeper's clock is the gate's strength: battle_capture.h).
+    const sim::Region& rg = worldRegion();
+    const V3 c = squadCentre(s, false);
+    int gate = -1;
+    float best = kSiegeScope;
+    for (size_t i = 0; i < rg.gates().size(); ++i) {
+        const sim::GateState& gs = world_->gates()[i];
+        if (gs.broken() || gs.holder == s.owner || gs.holder == sim::GateState::kNoHolder || !siegeGate(i)) continue;
+        const V3 g = toV3(rg.gates()[i].a + rg.gates()[i].b) * 0.5f;
+        const float d = V3{g.x - c.x, g.y - c.y, 0}.length();
+        if (d < best) best = d, gate = static_cast<int>(i);
+    }
+    if (gate < 0) return false;
+    const V3 g = toV3(rg.gates()[static_cast<size_t>(gate)].a + rg.gates()[static_cast<size_t>(gate)].b) * 0.5f;
+    bool second = false;
+    for (const Squad& o : squads_) {
+        if (&o == &s || o.owner != s.owner || roleOf(o.type) != Role::Siege || aliveCount(o) == 0) continue;
+        const V3 oc = squadCentre(o, false);
+        second = second || V3{oc.x - g.x, oc.y - g.y, 0}.length() < best;
+    }
+    if (!second) return false;
+    for (const sim::Unit& o : world_->units()) {
+        if (!o.alive() || o.owner == s.owner || o.inAir() || rg.rampartAt(o.pos.x, o.pos.y, o.pos.z) < 0) continue;
+        const V3 p = toV3(o.pos);
+        if (V3{p.x - c.x, p.y - c.y, 0}.length() <= kWallReachM) return true;
+    }
+    return false;
+}
+
+bool Battle::aiBreakOff() {
+    if (besiegers_ == 0) return false;
+    if (!brokeOff_) {
+        // Spent: so few of its fighting men still stand that the storm cannot be made, or has failed.
+        int standing = 0;
+        for (const sim::Unit& u : world_->units())
+            standing += u.owner == kEnemy && u.alive() && !u.routed && roleOf(static_cast<UnitType>(u.stats.type)) != Role::Siege;
+        if (standing * 100 > besiegers_ * kSpentPct) return false;
+        brokeOff_ = true;
+    }
+    // Away from the town, deaf to the foe.
+    for (size_t q = 0; q < squads_.size(); ++q) {
+        const Squad& s = squads_[q];
+        if (s.owner != kEnemy || aliveCount(s) == 0) continue;
+        const V3 c = squadCentre(s, false);
+        const V3 to = c + dir2(siegeCentre_, c) * 150.0f;
+        aiForceMarch(q, {std::clamp(to.x, 40.0f, kWorldSize - 40.0f), std::clamp(to.y, 40.0f, kWorldSize - 40.0f), 0});
+    }
     return true;
 }
 

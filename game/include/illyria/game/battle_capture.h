@@ -1,14 +1,18 @@
 #pragma once
 
 // The heart of a besieged town (game/src/battle_capture.cpp, docs/GAME_DESIGN.md
-// §4.1.3): a flagpole in its courtyard, king of the hill. The side with more
-// men standing within kRadius raises its flag there, the quicker the more
-// they outnumber the others; when the attackers' flag reaches the top the
-// town is taken and the battle ends, whoever is still standing elsewhere. A
-// siege is won by taking the heart of the town, not by killing every last man.
+// §4.1.3): a flagpole in its courtyard. The attackers raise their flag there
+// while they have men at the pole and no defender still holds the courtyard's
+// ground: an unbroken man of the town's anywhere on the ground inside its
+// walls stops the flag where it is. A capital has a second pole behind the
+// doors of its inner bailey, before the keep: when the courtyard's flag is up
+// the keep must be taken the same way, and only then is the town taken and
+// the battle over. A siege is won by clearing the town's ground and holding
+// its heart, not by standing in it for nine seconds.
 // Deterministic: it counts the simulation's soldiers in fixed point.
 
 #include <cstdint>
+#include <vector>
 
 #include "illyria/sim/vec3.h"
 #include "illyria/sim/world.h"
@@ -19,28 +23,46 @@ class CapturePoint {
 public:
     static constexpr int32_t kFull = 1000;
     static constexpr int32_t kRadiusM = 14;
-    // A tick's climb: kBase + one point for each man more than the other
-    // side's, eight at most (one man more: 33 s; eight more: 10 s).
-    static constexpr int32_t kBase = 2, kMostAhead = 8;
+    // A tick's climb: kBase + one point for every kMenPerPoint attackers at the pole, kMostMen of them at most (one to
+    // three men: 33 s; four: 17 s; eight or more: 11 s). With nobody of theirs at the pole it sinks kBase a tick.
+    static constexpr int32_t kBase = 1, kMenPerPoint = 4, kMostMen = 8;
+    static constexpr int kNoRing = -1;
+
+    // One pole and the ground that goes with it: the inside of a ring of walls (the region's rampart `ring`, less any ring
+    // within it and the walks), or with no ring the pole's own radius.
+    struct Stage {
+        sim::Vec3 at;
+        int ring = kNoRing;
+    };
 
     // The pole at `at` (battle coordinates), the defenders' flag flying.
-    void place(const sim::Vec3& at, sim::PlayerId defender, sim::PlayerId attacker);
+    void place(const sim::Vec3& at, sim::PlayerId defender, sim::PlayerId attacker, int ring = kNoRing);
+    // A capital's keep: a pole to be taken after the one before it.
+    void addStage(const sim::Vec3& at, int ring);
     bool active() const { return active_; }
     void step(const sim::World& world);
 
-    const sim::Vec3& at() const { return at_; }
+    // The pole now fought for (the last, once all are taken).
+    const sim::Vec3& at() const { return stages_[stage_].at; }
+    const std::vector<Stage>& stages() const { return stages_; }
+    size_t stage() const { return stage_; }
     sim::PlayerId attacker() const { return attacker_; }
     sim::PlayerId defender() const { return defender_; }
-    // Towards kFull: how high the attackers' flag has climbed.
+    // Towards kFull: how high the attackers' flag has climbed on the pole now fought for.
     int32_t progress() const { return progress_; }
     bool taken() const { return taken_; }
-    // Men of each side within the radius at the last step.
+    // At the last step: the attackers at the pole, and the defenders who hold its ground (unbroken, on their feet).
     int32_t attackersIn() const { return attackersIn_; }
     int32_t defendersIn() const { return defendersIn_; }
+    // The attackers are at the pole and the flag does not climb: defenders hold the ground.
+    bool blocked() const { return !taken_ && attackersIn_ > 0 && defendersIn_ > 0; }
+    // Whether a place is on the ground of the pole now fought for.
+    bool onGround(const sim::World& world, const sim::Vec3& p) const;
 
 private:
     bool active_ = false, taken_ = false;
-    sim::Vec3 at_;
+    std::vector<Stage> stages_{Stage{}};
+    size_t stage_ = 0;
     sim::PlayerId defender_ = 1, attacker_ = 0;
     int32_t progress_ = 0, attackersIn_ = 0, defendersIn_ = 0;
 };
