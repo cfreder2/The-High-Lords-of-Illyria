@@ -122,6 +122,8 @@ void World::resolveDeath(Unit& u, const Blow& blow, int32_t overkill, const Unit
 
     deathEvents_.push_back({u.id, u.owner, u.stats.type, kind, blow.type, u.pos, d.dir, d.overkill,
                             killer != nullptr ? killer->id : kNoEntity, d.severed});
+    // Fallen in the water, it bears him (world_drift.cpp); thrown by the blow, where he comes down.
+    if (kind != DeathKind::Gibbed) floatBody(u);
 }
 
 bool World::rollDownhill(Projectile& p) {

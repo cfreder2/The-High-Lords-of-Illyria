@@ -1389,12 +1389,31 @@ ILLYRIA_API void illyria_queue_demo() {
 // in a grid at (x, y), seven to a row, 10 m apart, of the player's side and facing south; the later stages kill every one of
 // them still standing in one way, as the sim's own blows would (World::testBlow): 1 a satchel's blast beside him, 2 a club's
 // blow that only fells him, 3 fire, 4 a cleaving cut far past death (a limb or the head off, for those a cut can), 5 an arrow.
+// Stage 6 (`deaths melee X Y`) is a fight to watch instead: two lines of foot, the player's and a foe's, four metres apart
+// either side of (x, y) along the north-south line through it, with a few horse behind each to ride in: for looking at a
+// fight where it stands (in a ford: tools/playtest/ford-water.txt).
 ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
     using namespace illyria::sim;
     static std::vector<EntityId> men;
     static char line[160];
     if (!app || !app->battle) return "deaths: no battle";
     World& w = app->battle->mutableWorld();
+    if (stage == 6) {
+        static constexpr UnitType kFoot[2][4] = {{UnitType::LightInfantry, UnitType::Warrior, UnitType::HeavyInfantry, UnitType::Pikemen},
+                                                 {UnitType::Berserker, UnitType::LightInfantry, UnitType::HeavyInfantry, UnitType::Warrior}};
+        const auto stand = [&](int side, UnitType type, int64_t dxTenths, int64_t dyTenths) {
+            Vec3 p{Fixed::fromInt(static_cast<int64_t>(x)) + Fixed::fromRatio(dxTenths, 10), Fixed::fromInt(static_cast<int64_t>(y)) + Fixed::fromRatio(dyTenths, 10), Fixed::zero()};
+            p.z = w.groundHeight(p.x, p.y);
+            w.spawnUnit(static_cast<PlayerId>(side), p, Vec3{side == 0 ? Fixed::one() : -Fixed::one(), Fixed::zero(), Fixed::zero()}, unitStats(type));
+        };
+        for (int side = 0; side < 2; ++side) {
+            const int64_t sign = side == 0 ? -1 : 1;
+            for (int i = 0; i < 14; ++i) stand(side, kFoot[side][i % 4], sign * (20 + (i % 2) * 14), (i - 7) * 13);
+            for (int i = 0; i < 3; ++i) stand(side, UnitType::LightCavalry, sign * 160, (i - 1) * 40);
+        }
+        std::snprintf(line, sizeof line, "deaths: a melee of 17 a side at %.0f,%.0f", x, y);
+        return line;
+    }
     if (stage == 0) {
         men.clear();
         for (int t = 0; t < kUnitTypeCount; ++t) {

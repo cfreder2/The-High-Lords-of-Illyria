@@ -79,6 +79,11 @@ constexpr Spec kSpecs[kSoundCount] = {
     {"snd_amb_swamp_frogs", 0, 20, false},
     {"snd_state_war_horn", 5, 0, false},
     {"snd_state_alarm", 5, 150, false},
+    {"snd_water_wade", 0, 18, false},
+    {"snd_water_plop", 1, 3, false},
+    {"snd_water_splash_body", 2, 3, false},
+    {"snd_impact_stone_water", 4, 2, true},
+    {"snd_water_steam", 3, 2, false},
 };
 
 
@@ -189,6 +194,19 @@ void Sfx::flush() {
     }
 }
 
+// The slosh of whoever is going through water: a few of the men a tick are looked at (all of them in a third of a second),
+// and each one moving in it asks for the sound where he is; want() makes one louder slosh of many.
+void Sfx::wading(const sim::World& world) {
+    constexpr uint32_t kStride = 10;
+    const auto& units = world.units();
+    for (size_t i = tick_ % kStride; i < units.size(); i += kStride) {
+        const sim::Unit& u = units[i];
+        if (!u.alive() || u.inAir() || !world.wading(u)) continue;
+        if (!u.hasMoveTarget && !u.engaged && u.targetUnit == sim::kNoEntity) continue;  // standing still in it
+        want(Sound::Wade, toV3(u.pos));
+    }
+}
+
 Sound Sfx::arrowSurface(const sim::World& world, const sim::ImpactEvent& e) const {
     const sim::Region* region = world.region();
     const sim::Fixed ground = world.groundHeight(e.pos.x, e.pos.y);
@@ -216,6 +234,7 @@ Sound Sfx::arrowSurface(const sim::World& world, const sim::ImpactEvent& e) cons
 void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& continent, const V3& origin, bool enemyLand) {
     tick_ = world.tick();
     const auto& units = world.units();
+    const sim::Region* region = world.region();
     const auto unitAt = [&](sim::EntityId id) -> const sim::Unit* { return id >= 1 && id <= units.size() ? &units[id - 1] : nullptr; };
     const auto flightOf = [&](sim::EntityId id) -> const Flight* {
         auto it = std::lower_bound(flights_.begin(), flights_.end(), id, [](const Flight& f, sim::EntityId x) { return f.id < x; });
@@ -251,10 +270,14 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             if (e.kind != K::Explosion && e.kind != K::Smash && e.kind != K::Burst) continue;
             const V3 at = toV3(e.pos);
             blasts.push_back({at, static_cast<float>(e.radius.toDouble()) + 1.0f});
+            // On water (the battle shows a column, or steam: battle_water.cpp) a stone booms and splashes, and fire hisses out.
+            const bool wet = world.waterDepth(e.pos.x, e.pos.y) > sim::Fixed::zero() && region &&
+                             e.pos.z <= region->waterSurfaceAt(e.pos.x, e.pos.y) + sim::Fixed::fromRatio(3, 5);
             if (e.kind == K::Smash) {
-                want(Sound::StoneSmash, at);
+                want(wet ? Sound::StoneWater : Sound::StoneSmash, at);
                 continue;
             }
+            if (wet) want(Sound::Steam, at, 0.08f);
             if (e.kind == K::Burst) {
                 want(Sound::FireballBlast, at);  // glass shatter and fire roar: a Molotov
                 continue;
@@ -285,6 +308,8 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             const V3 at = toV3(e.pos);
             switch (e.kind) {
                 case K::Ground: want(arrowSurface(world, e), at); break;
+                // A part of a body into the water (sim world_drift.cpp): a trunk with a splash, the rest with a plop.
+                case K::Splash: want(e.radius > sim::Fixed::fromRatio(7, 10) ? Sound::BodySplash : e.radius < sim::Fixed::fromRatio(3, 10) ? Sound::ArrowWater : Sound::WaterPlop, at); break;
                 case K::Gate: want(e.killed ? Sound::GateBreak : Sound::GateHit, at); break;
                 case K::Heal: want(Sound::Heal, at); break;
                 case K::Blocked: {
@@ -330,7 +355,9 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             const auto type = static_cast<UnitType>(d.type);
             const sim::Unit* u = unitAt(d.unit);
             const bool bone = u && !u->stats.bleeds && type != UnitType::Catapult;
-            const Sound fall = bone ? Sound::BonesCollapse : armoured(type) || big(type) ? Sound::BodyFallArmor : Sound::BodyFall;
+            // Into water he goes with a splash, not a thud.
+            const bool wet = world.waterDepth(d.pos.x, d.pos.y) > sim::Fixed::fromRatio(1, 10) && region && d.pos.z <= region->waterSurfaceAt(d.pos.x, d.pos.y);
+            const Sound fall = wet ? Sound::BodySplash : bone ? Sound::BonesCollapse : armoured(type) || big(type) ? Sound::BodyFallArmor : Sound::BodyFall;
             switch (d.kind) {
                 case sim::DeathKind::Severed:
                     want(Sound::DismemberSnap, at, 0.05f);
@@ -349,6 +376,7 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
         }
 
         whistles(world);
+        wading(world);
 
         // The end of the battle.
         if (outcome != 0 && lastOutcome_ == 0) want(outcome == 1 ? Sound::Victory : Sound::Defeat, listenAt_, 1.2f, false);

@@ -76,6 +76,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `speed N` | the game's pace: 0.25, 0.5, 1, 2, 4 (Conquest: 1, 2, 4, 8). As the `-` and `=` keys. |
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `deaths spawn X Y` | the death demo: one soldier of every unit type, of your side, in a grid from (X, Y) in battle metres: seven to a row eastward, the rows 10 m apart southward, in unit type order. |
+| `deaths melee X Y` | a fight to watch where it stands: two lines of foot, yours and a foe's, four metres apart either side of (X, Y), a few horse behind each to ride in. They fight at once, with no order (in a ford: `ford-water.txt`). |
 | `deaths blast\|fell\|burn\|cut\|shot` | kills every one of them still standing that way, by a blow the simulation deals as a weapon's (`World::testBlow`; a satchel for `blast`): torn apart, felled whole, burned, a limb or the head cut off, shot. For looking at what each type leaves on the ground (docs/DEATH_AUDIT.md). |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
@@ -139,6 +140,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `capital.txt` | the capital's siege: both doors looked at close, the army split between them, each company ordered at its own door, speed 4 and a shot every 20 s of game time. |
 | `capital-keep.txt` | the capital to its keep: the engines open on their own, everyone is ordered at the road's door (the storm goes on to the courtyard and holds it), then at the keep's gate; the doors' strengths and the flag's line beside the minimap. |
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
+| `ford-water.txt` | the water: a melee set in the Ford seen close and from the middle distance (rings, wakes, spray, the blood going downstream), then the dead of every type felled in the river above it, floating down, grounding and sinking (docs/DEATH_AUDIT.md, "In the water"). |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 

@@ -264,7 +264,7 @@ void Renderer::drawMan(const ManView& v, ManPass& p) {
         // cut, struck from behind or in front), resting on its last frame; a part cut off lies beside him as its own piece.
         frame = deathFrame(v.type, *u, v.died, &down);  // the death clip by how he died (renderer_sheets.cpp)
         // The figure falls backward: turned so that its head lands the way the blow went.
-        if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f;
+        if (u->death.kind != sim::DeathKind::None) yaw = lieYaw(*u) + 3.14159265f + v.turn;
         pushStuckArrows(p.arrows, *u, pos, u->airborne ? 0.3f : std::clamp(v.died / deathSeconds(v.type, *u), 0.0f, 1.0f));
     } else {
         if (u->shieldArrows > 0) pushStuckArrows(p.arrows, *u, pos, 0);
@@ -430,6 +430,9 @@ bool Renderer::buildPrograms() {
         s.p.detailFade = glGetUniformLocation(s.p.id, "uDetailFade");
         s.p.lod = glGetUniformLocation(s.p.id, "uLod");
         s.p.uw = glGetUniformLocation(s.p.id, "uUw");
+        s.p.ripples = glGetUniformLocation(s.p.id, "uRipple");
+        s.p.dye = glGetUniformLocation(s.p.id, "uDye");
+        s.p.waterFx = glGetUniformLocation(s.p.id, "uWaterFx");
         s.p.territory = glGetUniformLocation(s.p.id, "uTerritory");
         s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
@@ -2053,9 +2056,13 @@ void Renderer::uploadRemains(Battle& battle) {
     for (uint32_t slot : battle.takeDirtyRemains()) {
         if (slot >= remains.size()) continue;
         const sim::Remain& r = remains[slot];
-        // A body part keeps the look it flew with (renderer_gibs.cpp).
+        // A body part keeps the look it flew with (renderer_gibs.cpp), and the one it has as the water carries it on.
         if (slot >= remainLooks_.size()) remainLooks_.resize(slot + 1);
-        remainLooks_[slot] = restingLook(battle, r, slot);
+        if (GibLook& had = remainLooks_[slot]; had.type >= 0 && had.kind == r.kind && had.owner == r.owner && r.kind != sim::RemainKind::None &&
+                                               (had.pos - toV3(r.pos)).length() < 0.6f)
+            had.pos = toV3(r.pos);
+        else
+            remainLooks_[slot] = restingLook(battle, r, slot);
         float arrow[kArrowFloats] = {0, 0, 0, 0, 0, 0, 0, 3};
         if (r.kind == sim::RemainKind::Arrow) {
             const V3 pos = toV3(r.pos), dir = toV3(r.dir);
@@ -2286,6 +2293,11 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     glUniform3f(p.camRight, right.x, right.y, right.z);
     glUniform1f(p.water, waterLevel_);
     if (p.uw >= 0) glUniform4fv(p.uw, 1, underwater_);
+    if (p.waterFx >= 0) {
+        glUniform4f(p.waterFx, static_cast<float>(waterRings_), static_cast<float>(waterDyes_), 0.0f, 0.0f);
+        if (p.ripples >= 0 && waterRings_ > 0) glUniform4fv(p.ripples, waterRings_, waterRing_);
+        if (p.dye >= 0 && waterDyes_ > 0) glUniform4fv(p.dye, waterDyes_, waterDye_);
+    }
     if (p.waterTex >= 0) {
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, waterTex_);
@@ -2372,6 +2384,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     uploadMarks(battle);
     uploadRemains(battle);
     uploadGates(battle);
+    gatherWater(battle, camera, gameSeconds);
 
     const V3 eye = camera.eye();
     const V3 fwd = (camera.target() - eye).normalized();
@@ -2415,6 +2428,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
             walked_[i] = 0.0f;
             lastSeen_[i] = battle.unitPosition(i);
             clipMemory_[i] = {};
+            if (i < adrift_.size()) adrift_[i] = {};
         }
         ManView v;
         v.unit = &u;
@@ -2438,6 +2452,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
         v.hurt = ago(battle.hitTick(i));
         v.died = ago(battle.deathTick(i));
         if (!u.present() || (!u.alive() && u.gibbed)) continue;  // taken out of the world, or blown apart: only the parts remain
+        if (!u.alive()) v.pos = bodyInWater(battle, i, u, v.pos, sinceLastDraw, gameSeconds, v.turn);  // the water bears him, or has him on its bed
         drawMan(v, pass);
     }
     battle.setSpriteBoxes(std::move(boxes));
@@ -2559,8 +2574,14 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     for (size_t slot = 0; slot < world.remains().size(); ++slot) {
         const sim::Remain& r = world.remains()[slot];
         if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
-        if (showUnits_ && slot < remainLooks_.size() && pushGib(byGroup, remainLooks_[slot], toV3(r.pos))) continue;
-        const V3 pos = toV3(r.pos), dir = toV3(r.dir);
+        V3 pos = toV3(r.pos);
+        const V3 dir = toV3(r.dir);
+        if (r.afloat) pos.z += std::sin(gameSeconds * 2.1f + static_cast<float>(slot) * 1.9f) * 0.025f - 0.04f;  // riding in the surface (sim world_drift.cpp)
+        if (showUnits_ && slot < remainLooks_.size()) {
+            GibLook look = remainLooks_[slot];
+            if (r.afloat) look.angle += gameSeconds * (hash01(static_cast<uint32_t>(slot) * 7u + 3u) - 0.5f) * 0.6f;  // turning as it goes
+            if (pushGib(byGroup, look, pos)) continue;
+        }
         const float* team = sideColor(r.owner);
         const float decay = std::clamp((gameSeconds - r.tick / 30.0f - 3600.0f) / week, 0.0f, 1.0f);
         float q[4];

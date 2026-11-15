@@ -61,7 +61,7 @@ Seen in play for all 28: the fall plays and rests on its last frame (`after/afte
 body (`after/after-shot-*.png`), fire leaves it black and smoking (`after/after-burn-*.png`), a cut throws the head or
 a limb as a piece of the picture with a pool where he fell (`after/after-cut-*.png`), a blast throws the lot
 (`after/after-blast-*.png`). Corpses and parts take the side's colour from the sheet's own cloth mask (red and blue
-bodies in `after/battle-*.png`). Nothing lands in the river and no blood is left on water (`after/river-2-rest.png`).
+bodies in `after/battle-*.png`). What falls in the water is the water's: see "In the water" below.
 
 ## What was wrong, and what was done
 
@@ -95,8 +95,60 @@ bodies in `after/battle-*.png`). Nothing lands in the river and no blood is left
 
 Already right, and left alone: the sim's arcs (a strike, a hop, a skid, a roll down a slope too steep to grip, a bounce
 off a wall), the splat at every strike and the smear along the skid, the pool under every bleeding death, parts and
-corpses staying for the battle (30,000 remains, 30,000 ground marks; ten minutes in the Conquest), sinking in water,
+corpses staying for the battle (30,000 remains, 30,000 ground marks; ten minutes in the Conquest),
 kicking by men walking through, and the hyena-folk's scavenging (their tests pass unchanged).
+
+## In the water
+
+*"Water should also swirl with blood, bodies should float down river, etc. There should be splashing."* Before, the water
+took no part: whatever fell in it was deleted (`placeRemain`), a man killed in a ford lay on its bed, blood was not
+drawn on water at all and nothing splashed. To see it: `Illyria --play tools/playtest/ford-water.txt`; the pictures
+are in `~/Desktop/water-fx/`.
+
+**Bodies and parts float, and that is simulation** (`engine/sim/src/world_drift.cpp`, `tests/test_drift.cpp`). The
+hyena-folk take parts and the blades of the dead, men kick parts along and blasts throw them, so where a body lies is
+read by the step: the drift is in fixed point, a function of where the thing is and how long it has been dead (no
+random draw, no floater reads another), and it is in the checksum (`Unit::afloat`, `Remain::afloat`, the list of what
+is afloat).
+
+- A body floats where the water is deeper than its draught (a quarter of its height, 0.45 m for a man), a part in
+  0.125 m (a trunk 0.2 m). In less it lies on the bed where it fell, as before.
+- The current is the river's own line (`World::flowAt`, the nearest river by its own width, so a brook's mouth does not
+  turn a river): 1.6 m/s in midstream, 0.9 at the banks, dying away over 30 m beyond them, with a little set toward the
+  middle. Over shallows a body drags (a quarter of the pace with no water to spare, the full pace with 0.6 m under it).
+- It grounds where the water thins below its draught, slides along a bank, a rock that breaks the surface or a stone
+  bridge's pier (the piers of `meshes::bridge`, worked out again in `World::pierAt`) the way that is clear, and lodges
+  where neither is. A footbridge stands on piles and lets it through.
+- In still water it wanders at 6 cm a second, changing its mind every six.
+- An armoured man, a horse or a beast (`armoured()`) sinks once he is over 1.2 m of water and 9 to 17 s dead, and lies
+  on the bed; everything else waterlogs after four minutes.
+- A part flying into water stops at the surface with a splash (`ImpactEvent::Kind::Splash`) and floats; an arrow, a
+  blade or a bone sinks out of sight as everything used to. At most 384 things are carried at once.
+- The hyena-folk leave what is afloat alone (they do not swim).
+
+**What is drawn** (`game/src/battle_water.cpp`, `game/render/renderer_water.cpp`, `kWaterFs`): the dead ride in the
+surface, rising to it as they fall, bobbing and turned slowly by the stream, and go down to the bed over a moment when
+the water lets them go. The water's shader takes two short lists, the nearest the view: up to 48 rings (each a train
+of crests behind a front running outward, lit and shaded, breaking white when big) and up to 40 clouds of blood
+(carried at 0.85 of the current, spreading 11 cm a second, gone in 48 s, pulled about by two octaves of noise and drawn
+out along the stream, so that a fight in a ford reddens the river below it). No decals and no textures: the cost is a
+loop over the lists on the water's own pixels, and nothing when the lists are empty.
+
+- Wading: every man, horse and beast moving through water leaves rings at its feet, sized by its girth and pace, a
+  wake as they spread behind it, and spray off its shins at a run; a man fighting in it stirs it as he strikes.
+- A man killed in it goes down with a splash and bleeds into it; a wound bleeds a little. A part: a plop and a ring.
+  An arrow: a small one. A catapult's stone: a column of water, three rings and the mist. A fireball or a burning
+  bottle: steam (the visual only; the blast is the explosives work's).
+- Sounds (`docs/SOUND_EFFECTS.md`): wading, a part's plop, a body's splash, a stone into water, fire on water. All
+  rendered placeholders.
+
+**Blood on land** was one shape at one size, hard-edged and red for four minutes. It is now one of four shapes by the
+mark's seed (a ragged pool, a splat with fingers, a spatter of drops, a smear), soft-edged, turned and sized at random,
+wet and dark-rimmed at first, a thinner brown stain within the minute (`kDecalFs`). A man hurt below six tenths of his
+health leaves drops along his way for 22 s. All within the 30,000 ground marks there were.
+
+Not done: a body lodged on a pier or a bank is not pushed off by the next one; floating bodies do not block or slow
+the living; rain, and the splash of a body thrown into water by a blast after its death.
 
 ## Still not a sprite
 

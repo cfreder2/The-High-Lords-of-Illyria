@@ -807,6 +807,9 @@ void Battle::forgetMen() {
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
     readied_.clear();
     smouldering_.clear();
+    bleeders_.clear();
+    rings_.clear();
+    dye_.clear();
     recent_.clear();
 }
 
@@ -855,6 +858,8 @@ void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint3
 
 void Battle::emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size) {
     if (particles_.size() >= kMaxParticles) return;
+    // Spray lives as long as it is in the air: up and back down to the water it left.
+    if (kind == Particle::Kind::Spray) life = std::max(0.15f, std::min(life * 3.0f, 2.0f * vel.z / kGravity));
     particles_.push_back({kind, pos, vel, 0.0f, life, size});
 }
 
@@ -871,6 +876,7 @@ void Battle::collectEvents() {
     }
 
     applyImpacts(world_->impacts(), *world_, V3{0, 0, 0}, true);
+    stepWater();
 
     // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
     // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
@@ -923,8 +929,10 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
         using K = sim::ImpactEvent::Kind;
         switch (e.kind) {
             case K::Ground:
+                if (presentInWater(e, pos, nullptr, {})) break;
                 for (int i = 0; i < 2; ++i) emit(Particle::Kind::Dirt, pos, {srnd(), srnd(), 1.5f + rnd()}, 0.5f, 0.06f);
                 break;
+            case K::Splash: presentInWater(e, pos, nullptr, {}); break;
             case K::Bleed: {
                 // A flung part struck or skidded here: a splat, and a few
                 // droplets thrown on ahead.
@@ -948,8 +956,10 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 break;
             case K::Explosion: {
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.5f}, {}, 0.18f, r * 1.3f);
+                // On water: the flash, and steam (battle_water.cpp); no crater, no fire left burning, no dirt thrown.
+                if (presentInWater(e, pos, nullptr, {})) break;
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());
                 for (int i = 0; i < 24; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 6, srnd() * 6, 5 + rnd() * 9}, 1.6f, 0.08f + rnd() * 0.1f);
@@ -959,8 +969,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 // A Molotov shatters: a sheet of flame rolling out low over the
                 // ground and burning a while, a black scorch, smoke; no blast of dirt.
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.3f}, {}, 0.12f, r * 0.8f);
+                if (presentInWater(e, pos, nullptr, {})) break;  // the oil goes out in a hiss of steam
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 for (int i = 0; i < 30; ++i) {
                     const float a = rnd() * 6.2832f, d = r * (0.2f + rnd() * 0.8f);
                     emit(Particle::Kind::Fire, pos + V3{std::cos(a) * d * 0.4f, std::sin(a) * d * 0.4f, 0.15f},
@@ -972,6 +983,7 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
             case K::Smash: {
                 // A stone shatters: a scar in the ground, a burst of dust and chips.
                 const float r = static_cast<float>(e.radius.toDouble());
+                if (presentInWater(e, pos, nullptr, {})) break;  // a column of water, not a scar
                 addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.5f, seed);
                 for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.3f}, {srnd() * 2, srnd() * 2, 0.8f + rnd()}, 1.8f + rnd(), 0.8f + rnd() * 0.6f);
                 for (int i = 0; i < 20; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 5, srnd() * 5, 3 + rnd() * 6}, 1.4f, 0.07f + rnd() * 0.1f);
@@ -997,6 +1009,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 }
                 const V3 body = toV3(victim.pos) + shift;
                 const float scale = static_cast<float>(victim.stats.height.toDouble()) / 1.8f;
+                if (own) noteWound(victim);  // hurt badly, he drips as he goes
+                // Standing in water, his blood goes into it (battle_water.cpp), not onto the bed under it.
+                if (presentInWater(e, pos, &victim, body)) break;
                 const int splats = e.killed ? 3 : 1;
                 for (int i = 0; i < splats; ++i) {
                     const uint32_t s = mix(seed, static_cast<uint32_t>(i));
@@ -1052,9 +1067,14 @@ void Battle::updateParticles(float seconds) {
                 p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Smoke:
+            case Particle::Kind::Steam:
                 p.vel = p.vel * std::exp(-0.8f * seconds);
                 p.pos += p.vel * seconds;
                 p.size += seconds * 1.2f;
+                break;
+            case Particle::Kind::Spray:
+                p.vel.z -= kGravity * seconds;
+                p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Heal:
             case Particle::Kind::Flash:

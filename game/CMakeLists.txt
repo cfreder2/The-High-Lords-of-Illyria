@@ -20,6 +20,7 @@ add_library(illyria_game
     src/voice.cpp
     src/sfx.cpp
     src/battle_deaths.cpp
+    src/battle_water.cpp
     src/battle_end.cpp
     src/battle_events.cpp
     src/battle_tactics.cpp
@@ -58,6 +59,7 @@ if(EMSCRIPTEN OR ILLYRIA_BUILD_APP)
         render/renderer_flags.cpp
         render/renderer_map.cpp
         render/renderer_gibs.cpp
+        render/renderer_water.cpp
         render/renderer_models.cpp
         render/renderer_trees.cpp
         render/renderer_post.cpp
