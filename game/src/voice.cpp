@@ -58,6 +58,8 @@ constexpr int kCooldownTenths[kSituationCount] = {
     80,   // Wounded
     120,  // ArrowFire
     90,   // Flanked
+    30,   // CallHelp (the world keeps calls apart: world_help.cpp)
+    30,   // Answering
     100,  // FriendlyFire
     60,   // Fuse
     100,  // Healing
@@ -90,7 +92,7 @@ constexpr const char* kSetNames[kVoiceSetCount] = {"soldier", "archer", "dwarf",
 constexpr const char* kSituationNames[kSituationCount] = {
     "selected",   "move",          "attack",        "charge",  "charge_seen", "hold_line", "hero_rally",
     "rallied",    "wavering",      "breaking",      "hero_fell", "enemy_hero_fell", "friend_killed", "kill",
-    "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "friendly_fire", "fuse",
+    "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "call_help", "answering", "friendly_fire", "fuse",
     "healing",    "engine_loose",  "gate_broken",   "enemy_sighted", "victory", "defeat", "idle",
     "pain",       "death",         "death_moan",    "cackle",  "groan",       "casualties", "severe_casualties",
     "total_casualties", "wave_incoming", "boss_wave", "wave_cleared", "reinforcements", "hill_contested",
@@ -226,7 +228,9 @@ int priorityOf(Situation s) {
         case S::Selected:
         case S::Move:
         case S::Attack:
+        case S::Answering:
         case S::EnemySighted: return 3;
+        case S::CallHelp:
         case S::HoldLine:
         case S::HeroRally:
         case S::EnemyHeroFell:
@@ -387,6 +391,12 @@ void Voice::observe(const sim::World& world, int outcome) {
     // Rally calls, as the simulation made them.
     for (const sim::RallyCall& c : world.rallyCalls())
         want(c.kind == sim::RallyCall::Kind::Veteran ? S::HoldLine : S::HeroRally, c.caller);
+    // A squad calls for help, and the squad that goes answers (world_help.cpp).
+    for (const sim::HelpCall& c : world.helpCalls()) {
+        if (c.owner != player_) continue;  // (a side hears its own calls: another's would tell of men it may not see)
+        want(S::CallHelp, c.caller);
+        if (c.answerer != sim::kNoEntity) want(S::Answering, c.answerer);
+    }
 
     // A target down: one who presses on cries out as he goes at the next
     // (going back to his friends, he goes quietly).

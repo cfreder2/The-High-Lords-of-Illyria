@@ -173,6 +173,7 @@ void Battle::conquestAi(std::vector<sim::Command>& out) {
         if (!st || !st->path.empty() || st->commanded || conquest_->holdsTown(*st) || roleOf(s.type) == Role::Siege) continue;
         const V3 c = squadCentre(s, false);
         if (nearestFoe(s.owner, c, kHoldM) == sim::kNoEntity) continue;  // nothing near: stand
+        aiFormation(q);  // (a square against horse, loose under arrows: the same rules as a skirmish's computer)
         aiFight(q, c, c, kHoldM);
     }
     // The computer's commands leave with this step; whatever the player's hand queued waits for flushOrders.

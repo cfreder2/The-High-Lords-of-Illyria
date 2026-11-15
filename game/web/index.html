@@ -534,6 +534,7 @@
       hold: Module.cwrap("illyria_hold", null, []),
       rally: Module.cwrap("illyria_rally", "number", []),
       nextIdle: Module.cwrap("illyria_next_idle", "number", []),
+      answerCall: Module.cwrap("illyria_answer_call", "number", []),
       gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
@@ -1121,6 +1122,7 @@
       case "KeyK": api.hold(); break;      // Hold: keep their place (again: back to support)
       case "KeyY": api.rally(); break;     // the lord's Rally
       case "KeyJ": api.nextIdle(); break;  // the next squad standing idle
+      case "Period": api.answerCall(); break;  // to a call for help, the nearest free squad picked
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
@@ -1741,7 +1743,7 @@
         $("result").innerHTML =
           `<p class="toll">Time ${Math.floor(r.seconds / 60)}:${String(r.seconds % 60).padStart(2, "0")} · Killed ${r.killed} · Lost ${r.lost}</p>` +
           `<table><tr><th>Squad</th><th>Left</th><th>Killed</th><th></th></tr>` +
-          r.rows.map((q) => `<tr class="${q.alive ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.alive} / ${q.total}</td><td>${q.kills}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
+          r.rows.map((q) => `<tr class="${q.alive || !q.total ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.total ? q.alive + " / " + q.total : ""}</td><td>${q.kills}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
           `</table>` + (best ? `<p class="note">Best squad: ${esc(best.name)}, ${best.kills} killed</p>` : "") +
           (r.fallen.length ? `<p class="note broke">Heroes fallen: ${r.fallen.map(esc).join(", ")}</p>` : "");
       }

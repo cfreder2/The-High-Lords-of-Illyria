@@ -155,7 +155,7 @@ void Battle::aiHalt(size_t squad) {
     s.hasGoal = false;
     for (sim::EntityId id : s.members) {
         const sim::Unit& u = world_->units()[id - 1];
-        if (u.alive() && (u.hasMoveTarget || u.targetUnit != sim::kNoEntity)) issue(s.owner, id, sim::Command::Type::Stop, {});
+        if (u.alive() && u.helping == sim::kNoEntity && (u.hasMoveTarget || u.targetUnit != sim::kNoEntity)) issue(s.owner, id, sim::Command::Type::Stop, {});  // (not a man answering a call: that march is his own)
     }
 }
 
@@ -206,7 +206,7 @@ sim::EntityId Battle::nearestFoe(sim::PlayerId owner, const V3& at, float reach)
     sim::EntityId best = sim::kNoEntity;
     float bestD2 = reach * reach;
     for (const sim::Unit& u : world_->units()) {
-        if (!u.alive() || u.owner == owner || u.routed || u.inAir()) continue;
+        if (!u.alive() || u.owner == owner || u.routed || u.inAir() || world_->concealed(u, owner)) continue;  // (not men unseen in a wood)
         const V3 d = toV3(u.pos) - at;
         const float d2 = d.x * d.x + d.y * d.y;
         if (d2 < bestD2) {
@@ -259,7 +259,7 @@ sim::EntityId Battle::pickFoe(sim::PlayerId owner, const V3& around, float reach
     sim::EntityId best = sim::kNoEntity;
     float bestScore = reach;
     for (const sim::Unit& u : world_->units()) {
-        if (!u.alive() || u.owner == owner || u.routed || u.inAir()) continue;
+        if (!u.alive() || u.owner == owner || u.routed || u.inAir() || world_->concealed(u, owner)) continue;  // (not men unseen in a wood)
         const V3 d = toV3(u.pos) - around;
         const float d2 = d.x * d.x + d.y * d.y;
         if (d2 >= reach * reach) continue;
@@ -464,7 +464,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         if (V3{goal.x - c.x, goal.y - c.y, 0}.length() > 6.0f) return;  // still on the way round
         memo.detour = 0;
     }
-    const bool smart = aiSkill_ == AiSkill::Normal;
+    const bool smart = aiSkill_ != AiSkill::Easy;
     if (memo.rested > 0) --memo.rested;
     const sim::UnitStats stats = sim::unitStats(s.type);
     if (smart) {
@@ -554,7 +554,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         const float keep = range * 0.8f;
         if (dist > keep) aiSteer(squad, c + (fp - c) * ((dist - keep + 4) / dist));
         else if (role != Role::Bomber) aiHalt(squad);  // (grenadiers in range lay satchels and step back from them: no halt)
-    } else if (dist < 30.0f) {
+    } else if (dist < (stats.mounted ? 90.0f : 30.0f)) {  // (horse from farther off: an attack is ridden at the gallop, a march is not)
         aiAttack(squad, foe);
     } else {
         aiSteer(squad, fp);

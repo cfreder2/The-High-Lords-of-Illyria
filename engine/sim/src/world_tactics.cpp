@@ -16,14 +16,20 @@ namespace illyria::sim {
 
 namespace {
 
-// Wading: his blows are this much weaker; a man on dry ground strikes him this much harder; a missile this much.
+// Wading (whichever side he is on): his blows are this much weaker; a man on firm ground strikes him this much harder; a
+// missile this much; and what he looses from the water himself is this much weaker.
 // (35, 35 and 50 were tried first: the held bank then paid no better than before, docs/BALANCE.md.)
-constexpr int32_t kWadeBlowPct = 50, kWadeStruckPct = 50, kWadeShotPct = 75;
-// The high ground in a melee: for each 0.01 of grade between the two, 2% more striking down (at most kHighMaxPct) and
-// 2% less striking up (at most kLowMaxPct). A 1 in 7 slope is the whole of it.
-constexpr int32_t kHighPctPerGrade = 200, kHighMaxPct = 30, kLowMaxPct = 20;
-// A volley from above: 5% more for each metre over the mark beyond the first, at most half again.
-constexpr int32_t kShotPctPerMetre = 5, kShotMaxPct = 50;
+constexpr int32_t kWadeBlowPct = 50, kWadeStruckPct = 50, kWadeShotPct = 75, kWadeLoosePct = 40;
+// Mired (mud, swamp): the same, less.
+constexpr int32_t kMireBlowPct = 25, kMireStruckPct = 25, kMireShotPct = 30;
+// The high ground in a melee: for each 0.01 of grade between the two, 3% more striking down (at most kHighMaxPct) and
+// 3% less striking up (at most kLowMaxPct). A 1 in 8 slope is the whole of it. (2%, +30 and -20 before.)
+constexpr int32_t kHighPctPerGrade = 300, kHighMaxPct = 40, kLowMaxPct = 35;
+// A volley from above: 5% more for each metre over the mark beyond the first, at most half again; from below as much
+// less, at most kShotLowMaxPct.
+constexpr int32_t kShotPctPerMetre = 5, kShotMaxPct = 50, kShotLowMaxPct = 40;
+// The men a charge takes in the flank or back are out of order this long (the rider's own: world_combat.cpp).
+constexpr int32_t kFlankedDisorder = 4 * kTicksPerSecond;
 // A charge's shock in morale points (of 1000, a man breaks under 200): met head on as ever; in the flank; in the back; in
 // the back of a man busy with another (broken on the spot unless a hero or veterans steady him). The friends within
 // kShoulder of him take kShoulderPct of it.
@@ -58,8 +64,11 @@ bool World::wading(const Unit& u) const {
 
 int32_t World::positionPct(const Unit& u, const Unit& enemy, Fixed dist, Fixed dz) const {
     int32_t pct = 0;
-    if (wading(u)) pct -= kWadeBlowPct;
-    else if (wading(enemy)) pct += kWadeStruckPct;
+    const Footing mine = footing(u), his = footing(enemy);
+    if (mine == Footing::Ford) pct -= kWadeBlowPct;
+    else if (mine == Footing::Mire) pct -= kMireBlowPct;
+    else if (his == Footing::Ford) pct += kWadeStruckPct;
+    else if (his == Footing::Mire) pct += kMireStruckPct;
     if (dist > Fixed::zero() && !u.inAir() && !enemy.inAir()) {
         const int32_t grade = static_cast<int32_t>((-dz * kHighPctPerGrade / dist).floorToInt());
         pct += std::clamp(grade, -kLowMaxPct, kHighMaxPct);
@@ -68,10 +77,16 @@ int32_t World::positionPct(const Unit& u, const Unit& enemy, Fixed dist, Fixed d
 }
 
 int32_t World::heightShotPct(Fixed above) {
+    if (above < Fixed::zero()) return 100 - std::clamp(static_cast<int32_t>(((-above - Fixed::one()) * kShotPctPerMetre).floorToInt()), 0, kShotLowMaxPct);
     return 100 + std::clamp(static_cast<int32_t>(((above - Fixed::one()) * kShotPctPerMetre).floorToInt()), 0, kShotMaxPct);
 }
 
-int32_t World::wadeShotPct(const Unit& mark) const { return wading(mark) ? 100 + kWadeShotPct : 100; }
+int32_t World::wadeShotPct(const Unit& mark) const {
+    const Footing f = footing(mark);
+    return f == Footing::Ford ? 100 + kWadeShotPct : f == Footing::Mire ? 100 + kMireShotPct : 100;
+}
+
+int32_t World::loosePct(const Unit& shooter) const { return wading(shooter) ? 100 - kWadeLoosePct : 100; }
 
 bool World::standsIdle(const Unit& u) {
     return u.alive() && !u.routed && !u.hold && !hasOrder(u) && u.queue.empty() && !u.engaged && u.foe == kNoEntity && u.support == kNoEntity &&
@@ -79,15 +94,20 @@ bool World::standsIdle(const Unit& u) {
 }
 
 void World::chargeShock(Unit& enemy, HitSide side, bool busy) {
-    const int32_t shock = side == HitSide::Front ? kChargeFront : side == HitSide::Flank ? kChargeFlank : busy ? kChargeRearBusy : kChargeRear;
+    int32_t shock = side == HitSide::Front ? kChargeFront : side == HitSide::Flank ? kChargeFlank : busy ? kChargeRearBusy : kChargeRear;
     const bool stood = !enemy.routed && enemy.morale >= kMoraleBreak;
+    if (side != HitSide::Front) shock = shock * (100 + formFlankShockPct(enemy)) / 100;  // (a line and a wedge have weak flanks)
     shakeMorale(enemy, shock);
     if (side == HitSide::Front) return;
+    enemy.flankTick = tick_ + 1;
+    disorder(enemy, kFlankedDisorder);
     // The friends at his shoulder see it come in behind them.
     nearby(enemy.pos.x, enemy.pos.y, kShoulder, [&](uint32_t i) {
         Unit& o = units_[i];
         if (o.owner != enemy.owner || o.id == enemy.id || !o.alive() || o.inAir()) return;
-        if ((o.pos - enemy.pos).flat().lengthSq() < kShoulder * kShoulder) shakeMorale(o, shock * kShoulderPct / 100);
+        if ((o.pos - enemy.pos).flat().lengthSq() >= kShoulder * kShoulder) return;
+        shakeMorale(o, shock * kShoulderPct / 100);
+        disorder(o, kFlankedDisorder);
     });
     if (!enemy.alive()) return;
     tell(stood && enemy.morale < kMoraleBreak ? TacticEvent::Kind::Broken : side == HitSide::Rear ? TacticEvent::Kind::Rear : TacticEvent::Kind::Flanked, enemy);
@@ -98,10 +118,11 @@ Unit* World::supportFoe(Unit& u) {
         u.support = kNoEntity;
         return nullptr;
     };
-    // Not a man told to hold, a garrison at its station, a lord, a healer, a scavenger, or anyone who fights with a
-    // missile (they shoot from where they stand: shootNearby).
-    if (u.hold || u.stationed || isHero(u) || u.stats.melee.damage <= 0 || u.stats.ranged.muzzleSpeed > Fixed::zero() || u.stats.healing.amount > 0 ||
-        u.stats.scavenge.sight > Fixed::zero())
+    // Not a man told to hold, a garrison at its station, a lord, a healer (seekWounded), a scavenger or an engine. A bowman
+    // goes too: to where he can shoot the foe pressing his friend (support).
+    const bool shooter = u.stats.ranged.muzzleSpeed > Fixed::zero();
+    if (u.hold || u.stationed || isHero(u) || (u.stats.melee.damage <= 0 && !shooter) || u.stats.gait == Gait::Wheeled || u.stats.healing.amount > 0 ||
+        u.stats.scavenge.sight > Fixed::zero() || (shooter && u.stats.ranged.autoRange <= Fixed::zero()))
         return none();
     if ((tick_ + u.id) % kSupportLook == 0) {
         u.support = kNoEntity;
@@ -135,6 +156,18 @@ bool World::withinHold(const Unit& u, const Unit& foe) const {
 }
 
 void World::support(Unit& u, Unit& foe) {
+    // A bowman: up to a good bowshot of the foe pressing his friend, never into the water, and no nearer; then he looses
+    // on his own (shootNearby).
+    if (u.stats.ranged.muzzleSpeed > Fixed::zero()) {
+        const Vec3 to = (foe.pos - u.pos).flat();
+        const Fixed dist = to.length(), keep = autoReach(u) * 4 / 5;
+        if (dist <= keep || dist == Fixed::zero()) return;
+        const Vec3 step = u.pos + to / dist * kBankProbe;
+        if (isWater(step.x, step.y) && !isWater(u.pos.x, u.pos.y)) return;
+        walk(u, u.pos + to / dist * min(dist - keep, u.stats.moveSpeed));
+        return;
+    }
+    if (braceFor(u, foe)) return;
     // Horse does not ride in at the front: round to the side of the man his friend is fighting, then in at his flank.
     const Unit* busyWith = u.stats.mounted && foe.foe != kNoEntity ? findUnit(foe.foe) : nullptr;
     if (busyWith != nullptr && busyWith->alive() && busyWith->owner == u.owner && busyWith->id != u.id) {

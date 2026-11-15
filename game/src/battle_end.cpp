@@ -64,6 +64,11 @@ Battle::Result Battle::result() const {
         }
     }
     r.fallen.insert(r.fallen.end(), foeFallen.begin(), foeFallen.end());
+    // The Killed column adds up: the dead no squad is credited with (blasts and fire with no hand behind them, the foe's own
+    // missiles, men gone with a quitting host) are a row of their own (`total` 0: no squad).
+    int credited = 0;
+    for (const Result::Row& row : r.rows) credited += row.kills;
+    if (r.killed > credited) r.rows.push_back({"Others (blasts, fire, their own arrows)", 0, 0, r.killed - credited, false});
     return r;
 }
 

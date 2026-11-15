@@ -45,6 +45,8 @@ constexpr int kFormationCount = 7;
 constexpr Formation kFormationOrder[kFormationCount] = {Formation::Line,  Formation::DoubleLine, Formation::Box,  Formation::Wedge,
                                                         Formation::Loose, Formation::Encircle,   Formation::Vee};
 const char* formationName(Formation f);
+// The world's name for it (sim::FormationKind has one more, None, first).
+constexpr sim::FormationKind simFormation(Formation f) { return static_cast<sim::FormationKind>(static_cast<int>(f) + 1); }
 // The picker's tenth entry, after the nine: the selection as it stands
 // (Battle::keepShape), its own arrangement kept as it moves.
 constexpr int kKeepShapeId = kFormationCount;
@@ -124,6 +126,8 @@ struct Buy {
 struct SkirmishSetup {
     // The computer plays Easy: a smaller purse (kEasyPursePct of the player's), and it comes late and piecemeal (Battle::runEnemyAi, aiFight).
     bool easy = false;
+    // The computer plays Hard: a larger purse in the open (Battle::kOpenHardPursePct), a shorter wait before it goes in, and it answers its own calls for help.
+    bool hard = false;
     int budget = 0;
     std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
     bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
@@ -423,11 +427,30 @@ public:
     bool selectionHolds() const;
     // What a squad's card says beyond its men: idle (no order, nothing to fight), holding, and broken: the seconds until it
     // rallies on its own (0: not broken; -1: a foe is too near for it to rally).
+    // ... calling for help (a few seconds after its call), answering a call (on its way to the squad that called), and the
+    // ground it stands on, in a word or two ("high ground", "in the ford", "in woods"; "" on plain ground).
     struct SquadState {
         bool idle = false, hold = false;
         int rally = 0;
+        bool calling = false, answering = false;
+        const char* ground = "";
     };
-    SquadState squadState(const Squad& s) const;
+    // The ground at a place as it would tell for the selection sent there ("ford", "woods", "higher ground"; "" plain).
+    const char* groundAt(const V3& at) const;
+    // A call for help the local side has heard, for the map and the mark over the squad: where, when, and who goes.
+    struct Call {
+        uint32_t tick = 0;
+        V3 pos;
+        int squad = -1, answer = -1;  // squads_ indices (-1: none)
+    };
+    const std::vector<Call>& calls() const { return calls_; }
+    // Answering by hand: the latest call still standing is chosen, and the nearest free squad of the player's selected
+    // (false and a notice when nobody calls; `at`: where the caller is, for the camera).
+    bool answerCall(V3& at);
+    // The squad a man's world squad number names (World::setSquad), or -1.
+    int squadOfNumber(uint32_t number) const;
+    SquadState squadState(const Squad& s, bool ground = false) const;
+    const char* groundTag(const Squad& s) const;
     // Selects the next of the player's squads standing idle (its index; -1 and a notice when none is).
     int selectNextIdle();
     // The lord's Rally: every broken man of his within 40 m turns back at once; then he waits a minute. False (and a notice)
@@ -676,6 +699,9 @@ public:
     void aiRally(size_t squad);
     // The computer's purse on Easy, as a share of the player's.
     static constexpr int kEasyPursePct = 75;
+    // In the open (the Field) Normal and Hard raise this share of the player's purse: the side that must come to the other pays
+    // for it in men, and an army nobody commands should lose (docs/BALANCE.md).
+    static constexpr int kOpenPursePct = 125, kOpenHardPursePct = 150;
     // Easy comes late: it stands this long before it marches (unless the player comes to it).
     static constexpr uint32_t kEasyWaitTicks = 45 * sim::kTicksPerSecond;
     // How well the computer plays (decision quality, never stats). Easy: the
@@ -684,7 +710,8 @@ public:
     // casters, engines, archers, the lord, the wounded), the army massed
     // before it engages, missile troops and the lord behind the foot, the
     // shattered pulled back to mend. The conquest's Easy/Hard map onto them.
-    enum class AiSkill : uint8_t { Easy, Normal };
+    // Hard: Normal, and it goes in on one point, answers its calls with horse round the flank, and gives the bows less time.
+    enum class AiSkill : uint8_t { Easy, Normal, Hard };
     void setAiSkill(AiSkill s) { aiSkill_ = s; }
     AiSkill aiSkill() const { return aiSkill_; }
     // Whether the squad is shattered enough that the computer pulls it back
@@ -905,6 +932,15 @@ private:
     // Soldiers marching as one formation to `to`: facing `face` there when
     // given, else the way they march.
     // `force`: a force march, deaf to the enemy on the way.
+    void tellFormation(sim::PlayerId owner, const std::vector<sim::EntityId>& men, Formation formation);
+    // Calls for help as the world made them (World::helpCalls): heard, shown and told for the local side's; the computer's
+    // squads sent to its own (aiAnswer), since they always have an order in hand and the world sends only free men.
+    void collectCalls();
+    void aiAnswer(const sim::HelpCall& call);
+    // The computer's choice of formation, by the same rules the player has (world_formation.cpp): a square against horse
+    // coming, loose order under arrows it cannot answer, else its kind's own.
+    void aiFormation(size_t squad);
+    std::vector<Call> calls_;
     void moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> units, Formation formation, const V3& to,
                    const V3* face, const V3& fallbackFacing, bool force = false);
     // Who goes where, and faces which way.
@@ -964,6 +1000,7 @@ private:
     std::vector<Float> floats_;
     std::map<uint64_t, uint32_t> floatSaid_;  // by word, side and place: when it was last floated
     int idleCursor_ = -1;                     // the squad the idle key last chose
+    std::vector<uint32_t> aiAnswering_;       // by squad: the tick until which the computer leaves it to its answer
     // Of these, the one nearest p.
     sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.
@@ -1142,6 +1179,9 @@ private:
         uint32_t restUntil = 0;
     };
     AiSkill aiSkill_ = AiSkill::Normal;
+    bool aiAssault_ = false;      // the computer's host has gone in (runEnemyAi: the bows first, then all together)
+    uint32_t aiDuelSince_ = 0;    // when its bows first loosed (0: not yet)
+    int aiWing_ = 0;              // the wing of the foe's line it goes in on (-1, 1; 0: not chosen)
     std::vector<AiMemo> aiMemo_;
     std::map<uint32_t, AiMemo> armyAi_;  // the computer's memory of each squad (aiMemo_), by army, kept across the frames' fresh squads
     // The per-soldier presentation state grown for soldiers raised mid-battle.

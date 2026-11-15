@@ -199,7 +199,7 @@ std::vector<V3> formationSlots(Formation f, int count, float spacing) {
 
 float formationPace(Formation f) {
     switch (f) {
-        case Formation::Box: return 0.85f;  // facing every way at once
+        case Formation::Box: return 0.7f;  // facing every way at once: slow
         case Formation::Line:
         case Formation::DoubleLine:
         case Formation::Wedge:
@@ -305,25 +305,9 @@ std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types, int f
 }
 
 Formation defaultFormation(UnitType type) {
-    switch (roleOf(type)) {
-        case Role::Ranged:
-        case Role::Bomber: return Formation::Loose;
-        case Role::Caster:
-        case Role::Healer:
-        case Role::Flier:
-        case Role::Scout: return Formation::Loose;
-        case Role::Siege: return Formation::Line;
-        case Role::Melee: break;
-    }
-    switch (type) {
-        case UnitType::LightCavalry:
-        case UnitType::HeavyCavalry:
-        case UnitType::WolfRiders:
-        case UnitType::Unicorns: return Formation::Wedge;
-        case UnitType::Berserker: return Formation::Loose;
-        case UnitType::Hero: return Formation::Box;
-        default: return Formation::DoubleLine;
-    }
+    // The world's rule (sim::musterFormation: a Conquest's armies are raised by it); a lord's guard, when he has one, is a box.
+    const sim::FormationKind f = sim::musterFormation(type);
+    return f == sim::FormationKind::None ? Formation::Box : static_cast<Formation>(static_cast<int>(f) - 1);
 }
 
 // --- Selection --------------------------------------------------------------
@@ -688,7 +672,18 @@ void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Fo
     const V3 from = centreOf(alive);
     V3 facing = flat(face ? *face : to - from).normalized();
     if (facing.length() == 0) facing = fallbackFacing;
+    tellFormation(owner, alive, formation);
     sendMarch(owner, planFormation(alive, formation, to, facing), from, to, facing, formationPace(formation), force);
+}
+
+void Battle::tellFormation(sim::PlayerId owner, const std::vector<sim::EntityId>& men, Formation formation) {
+    // The world keeps each man's formation (its strength and its cost: world_formation.cpp): told when it changes.
+    for (sim::EntityId id : men) {
+        if (world_->units()[id - 1].formation == simFormation(formation)) continue;
+        sim::Command c{owner, id, sim::Command::Type::SetFormation, {}};
+        c.formation = simFormation(formation);
+        pending_.push_back(c);
+    }
 }
 
 bool Battle::blockFits(Formation formation, int count) {

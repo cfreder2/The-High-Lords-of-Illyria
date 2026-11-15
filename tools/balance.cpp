@@ -17,6 +17,10 @@
 
 using namespace illyria::sim;
 
+// Whole battles through the game's own Battle (balance_battle.cpp): no orders, a planned defence, plan plus micro, a charge.
+void tacticsBattles(int seeds);
+void tacticsMap(bool ford, int plan, int seconds);
+
 namespace {
 Fixed m(int64_t v) { return Fixed::fromInt(v); }
 Fixed mm(double v) { return Fixed::fromRaw(static_cast<int64_t>(v * 65536.0)); }
@@ -317,7 +321,11 @@ int main(int argc, char** argv) {
     else if (!std::strcmp(mode, "march")) march();
     else if (!std::strcmp(mode, "trace") && argc > 3)
         trace(typeAt(byName(argv[2])), typeAt(byName(argv[3])), argc > 4 ? std::atoi(argv[4]) : 60);
-    else if (!std::strcmp(mode, "tactics")) tactics(argc > 2 ? std::atoi(argv[2]) : 8);
+    else if (!std::strcmp(mode, "map")) tacticsMap(argc > 2 && !std::strcmp(argv[2], "ford"), argc > 3 ? std::atoi(argv[3]) : 0, argc > 4 ? std::atoi(argv[4]) : 0);
+    else if (!std::strcmp(mode, "tactics")) {
+        tactics(argc > 2 ? std::atoi(argv[2]) : 8);
+        tacticsBattles(argc > 3 ? std::atoi(argv[3]) : 3);
+    }
     else if (!std::strcmp(mode, "duel") && argc > 3)
         duel(typeAt(byName(argv[2])), typeAt(byName(argv[3])), argc > 4 ? std::atoi(argv[4]) : 6, argc > 5 ? std::atoi(argv[5]) : 60);
     else matrix(argc > 2 ? std::atoi(argv[2]) : 6, argc > 3 ? std::atoi(argv[3]) : 60);

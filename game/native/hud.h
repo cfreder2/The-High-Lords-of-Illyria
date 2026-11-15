@@ -26,6 +26,7 @@ public:
     bool start(const std::string& mode, const std::string& options);  // illyria_start_mode, with the busy notice
     void startSaved();  // carry on the saved conquest
     bool menuOpen() const { return menu_; }
+    void setPointer(float x, float y) { pointerX_ = x, pointerY_ = y; }
     bool helpOpen() const { return help_; }
     void toggleHelp() { help_ = !help_; }
 
@@ -87,6 +88,8 @@ private:
     int lord_ = 6;      // the Moonward Order, the skirmish's blue
     int foes_ = 0xFF & ~(1 << 6);
     bool hard_ = true;
+    int skSkill_ = 1;  // a skirmish: 0 Easy, 1 Normal, 2 Hard
+    float pointerX_ = -1, pointerY_ = -1;  // where the mouse is (points), for the ground's word by the cursor
     std::string settingsPath_;
     struct Offer {
         int type;

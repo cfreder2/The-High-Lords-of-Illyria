@@ -411,6 +411,7 @@ void Conquest::seat(Stack& s) {
             }
             m.unit = world_->spawnUnit(s.owner, at, Vec3{fromMm(fx), fromMm(fy), Fixed::zero()}, stats);
             m.rank = std::max(m.rank, a.rank);
+            world_->setSquad(m.unit, a.id, musterFormation(a.type));  // (its army is its squad: formations, calls for help)
             world_->setVeterancy(m.unit, m.rank, a.blessings + arms + command);
             world_->restoreUnit(m.unit, m.hp < 0 ? INT32_MAX : m.hp, m.kills, m.morale);
             m.ax = m.bx = toMm(at.x + origin.x);

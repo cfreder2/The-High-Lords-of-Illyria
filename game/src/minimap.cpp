@@ -141,6 +141,11 @@ std::string battleMinimapText(const Battle& b) {
             out += buf;
         }
     }
+    // Calls for help (the viewer's own side's: Battle::calls): c|x|y, a ring that beats.
+    for (const Battle::Call& call : b.calls()) {
+        std::snprintf(buf, sizeof buf, "c|%.0f|%.0f\n", call.pos.x, call.pos.y);
+        out += buf;
+    }
     return out;
 }
 
