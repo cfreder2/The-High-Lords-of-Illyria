@@ -1,0 +1,28 @@
+{
+ "unit": "light_cavalry",
+ "mount": {
+  "body": "horse_b7cfd3e8",
+  "length_m": 2.4
+ },
+ "body": "medieval_knight_armor_a83472ab",
+ "rider_height_m": 1.95,
+ "height_m": 2.6,
+ "scale": 1.5,
+ "items": [
+  {
+   "name": "lance",
+   "model": "medieval_spear_238c39e5",
+   "hand": "Right",
+   "hold": "grip",
+   "size_m": 3.0,
+   "grip": [
+    0.5,
+    0.5,
+    0.3
+   ],
+   "team": true
+  }
+ ],
+ "exposure": 1.0,
+ "team_hue": 0.62
+}
