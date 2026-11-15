@@ -1,0 +1,38 @@
+# The units drawn from Tripo models, standing in the death demo's grid (one of every type, the player's side,
+# facing the camera), then felled: to see each new sheet in the game, close.
+#
+#   Illyria --play tools/playtest/tripo_units.txt --play-out out/tripo
+#
+# The grid: type t stands at (330 + (t % 7) * 10, 520 - (t / 7) * 10). Light infantry 0, light cavalry 4, heavy
+# cavalry 5, giants 8, minotaurs 9, hero 21, dwarven grenadiers 22, journeyman 23, berserker 25.
+
+size 1600 900
+start skirmish field
+wait 1
+deaths spawn 330 520
+wait_ticks 20
+camera 333 517 9 1.57
+wait 5
+shot tripo-light-infantry
+camera 375 517 14 1.57
+wait 5
+shot tripo-cavalry
+camera 345 506 22 1.57
+wait 5
+shot tripo-giants-minotaurs
+camera 340 487 10 1.57
+wait 5
+shot tripo-hero-dwarf-journeyman
+camera 380 487 9 1.57
+wait 5
+shot tripo-berserker
+deaths fell
+wait_ticks 90
+shot tripo-berserker-dead
+camera 340 487 10 1.57
+wait 3
+shot tripo-hero-dwarf-journeyman-dead
+camera 333 517 9 1.57
+wait 3
+shot tripo-light-infantry-dead
+quit

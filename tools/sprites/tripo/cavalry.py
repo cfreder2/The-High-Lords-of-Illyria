@@ -461,19 +461,19 @@ def bake_snaps(rig, name, keys, snaps):
 def rider_clips(horse_seconds):
     """The lancer's poses (hands from his hips' joint, a man's metres) and clips, timed to the horse's."""
     REINS = dict(shield_hand=(0.34, 0.08, 0.20), shield_elbow=(0.0, 0.45, 0.20), shield_face=(0.3, 1, 0))
-    UP = dict(REINS, sword_hand=(0.22, -0.30, 0.30), sword_elbow=(-0.15, -0.50, 0.15), blade=(0.06, -0.05, 1), edge=(1, 0, 0),
+    UP = dict(REINS, sword_hand=(0.24, -0.40, 0.30), sword_elbow=(-0.15, -0.58, 0.15), blade=(0.06, -0.10, 1), edge=(1, 0, 0),
               fist={'Right': 70, 'Left': 60})
-    COUCH = dict(REINS, chest=lean(pitch=14), head=lean(pitch=-6), sword_hand=(0.12, -0.26, 0.24), sword_elbow=(-0.30, -0.48, 0.30),
+    COUCH = dict(REINS, chest=lean(pitch=14), head=lean(pitch=-6), sword_hand=(0.14, -0.36, 0.26), sword_elbow=(-0.30, -0.56, 0.30),
                  blade=(1, 0.06, -0.02), edge=(0, 0, -1), fist={'Right': 70, 'Left': 60}, rise=0.05)
     P = {'SIT': UP,
-         'BREATHE': dict(UP, chest=lean(pitch=0), sword_hand=(0.22, -0.30, 0.32)),
+         'BREATHE': dict(UP, chest=lean(pitch=0), sword_hand=(0.24, -0.40, 0.32)),
          'LOOK': dict(UP, chest=lean(pitch=2, turn=10), head=lean(turn=38)),
          'SWAY_L': dict(UP, chest=lean(pitch=3, roll=3), hips_rot=lean(pitch=-4, roll=-2)),
          'SWAY_R': dict(UP, chest=lean(pitch=3, roll=-3), hips_rot=lean(pitch=-4, roll=2)),
          'COUCH': COUCH,
          'COUCH_UP': dict(COUCH, chest=lean(pitch=18), rise=0.10),
-         'DRAW': dict(COUCH, chest=lean(pitch=8, turn=-22), sword_hand=(-0.10, -0.30, 0.28), sword_elbow=(-0.45, -0.48, 0.40)),
-         'THRUST': dict(COUCH, chest=lean(pitch=26, turn=18), head=lean(pitch=-12), sword_hand=(0.62, -0.14, 0.34),
+         'DRAW': dict(COUCH, chest=lean(pitch=8, turn=-22), sword_hand=(-0.08, -0.38, 0.28), sword_elbow=(-0.45, -0.56, 0.40)),
+         'THRUST': dict(COUCH, chest=lean(pitch=26, turn=18), head=lean(pitch=-12), sword_hand=(0.62, -0.30, 0.34),
                         sword_elbow=(0.30, -0.45, 0.25), blade=(1, 0.05, -0.10), rise=0.12),
          'HIT': dict(UP, chest=lean(pitch=-16, turn=-8), head=lean(pitch=-20), sword_hand=(0.05, -0.45, 0.35), blade=(0.3, -0.3, 0.9)),
          'CLING': dict(UP, chest=lean(pitch=22), head=lean(pitch=-10), sword_hand=(0.30, -0.28, 0.25), blade=(0.92, -0.12, 0.36)),
