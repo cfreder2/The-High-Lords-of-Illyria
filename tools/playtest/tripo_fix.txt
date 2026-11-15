@@ -1,0 +1,67 @@
+# The units drawn from Tripo models, each close at the low camera from in front, in both team colours: the player's
+# (blue) death-demo grid and the foe's (red) one 120 m north of it, every man facing the camera. After the arm and
+# weapon fixes (tools/sprites/tripo: limbs.py, clearance.py).
+#
+#   Illyria --play tools/playtest/tripo_fix.txt --play-out out/tripo_fix
+
+size 1600 900
+start skirmish field
+wait 1
+deaths spawn 330 520
+deaths foes 330 640
+wait_ticks 20
+camera 350 612 8 1.57
+wait 1
+shot journeyman-red
+camera 370 612 8 1.57
+wait 1
+shot berserker-red
+camera 330 642 8 1.57
+wait 1
+shot light-infantry-red
+camera 370 643 12 1.57
+wait 1
+shot light-cavalry-red
+camera 380 643 12 1.57
+wait 1
+shot heavy-cavalry-red
+camera 340 636 24 1.57
+wait 1
+shot giants-red
+camera 350 634 14 1.57
+wait 1
+shot minotaurs-red
+camera 330 612 8 1.57
+wait 1
+shot hero-red
+camera 340 611.5 6 1.57
+wait 1
+shot dwarf-red
+camera 330 522 8 1.57
+wait 3
+shot light-infantry-blue
+camera 370 523 12 1.57
+wait 3
+shot light-cavalry-blue
+camera 380 523 12 1.57
+wait 3
+shot heavy-cavalry-blue
+camera 340 516 24 1.57
+wait 3
+shot giants-blue
+camera 350 514 14 1.57
+wait 3
+shot minotaurs-blue
+camera 330 492 8 1.57
+wait 3
+shot hero-blue
+camera 340 491.5 6 1.57
+wait 3
+shot dwarf-blue
+camera 350 492 8 1.57
+wait 3
+shot journeyman-blue
+camera 370 492 8 1.57
+wait 3
+shot berserker-blue
+quit

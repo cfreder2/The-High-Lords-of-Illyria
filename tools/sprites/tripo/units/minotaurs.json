@@ -5,6 +5,7 @@
  "style": "minotaur",
  "scale": 1.5,
  "hunch": 8,
+ "clear_m": 0.12,
  "exposure": 1.0,
  "team_hue": 0.62,
  "items": [

@@ -78,6 +78,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `speed N` | the game's pace: 0.25, 0.5, 1, 2, 4 (Conquest: 1, 2, 4, 8). As the `-` and `=` keys. |
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `deaths spawn X Y` | the death demo: one soldier of every unit type, of your side, in a grid from (X, Y) in battle metres: seven to a row eastward, the rows 10 m apart southward, in unit type order. |
+| `deaths foes X Y` | the same grid of the foe's side (the other team colour), beside yours if you like; the later stages fell both. |
 | `deaths melee X Y` | a fight to watch where it stands: two lines of foot, yours and a foe's, four metres apart either side of (X, Y), a few horse behind each to ride in. They fight at once, with no order (in a ford: `ford-water.txt`). |
 | `deaths blast\|fell\|burn\|cut\|shot` | kills every one of them still standing that way, by a blow the simulation deals as a weapon's (`World::testBlow`; a satchel for `blast`): torn apart, felled whole, burned, a limb or the head cut off, shot. For looking at what each type leaves on the ground (docs/DEATH_AUDIT.md). |
 | `boulder men X Y DX DY N [own]` | the boulder demo: N light infantry who stand and do nothing, in a file from (X, Y) in battle metres, each (DX, DY) on from the last; the other side's, or with `own` yours. |

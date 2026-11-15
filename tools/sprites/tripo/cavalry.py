@@ -463,22 +463,33 @@ def rider_clips(horse_seconds):
     REINS = dict(shield_hand=(0.34, 0.08, 0.20), shield_elbow=(0.0, 0.45, 0.20), shield_face=(0.3, 1, 0))
     UP = dict(REINS, sword_hand=(0.24, -0.40, 0.30), sword_elbow=(-0.15, -0.58, 0.15), blade=(0.06, -0.10, 1), edge=(1, 0, 0),
               fist={'Right': 70, 'Left': 60})
-    COUCH = dict(REINS, chest=lean(pitch=14), head=lean(pitch=-6), sword_hand=(0.14, -0.36, 0.26), sword_elbow=(-0.30, -0.56, 0.30),
-                 blade=(1, 0.06, -0.02), edge=(0, 0, -1), fist={'Right': 70, 'Left': 60}, rise=0.05)
+    # The lance couched as a lancer couches it: gripped before the right hip, the shaft back under the upper arm and
+    # clamped between it and the ribs, the elbow out at his side over it, pointed straight ahead past the horse's neck
+    # on its right. The hand and elbow were found by trying a grid of them on the knight on his warhorse
+    # (tools/sprites/tripo/couch_search.py): a fist holds a shaft across the forearm, so only a hand this close in and
+    # an elbow this far out let the wrist aim it level and straight ahead (1 degree off) with the shaft clear of his
+    # trunk and the horse; asked of a hand further forward, the wrist cannot turn that far and the lance comes round
+    # across his chest. The chest's lean and the rise in the stirrups carry the hand with them.
+    def couch(pitch, rise, down=0.03, **kw):
+        return dict(REINS, chest=lean(pitch=pitch), head=lean(pitch=-pitch * 0.5), rise=rise, fist={'Right': 75, 'Left': 60},
+                    sword_hand=(0.10, -0.30, 0.20), sword_elbow=(0.05, -0.42, 0.25),
+                    blade=(1, -0.06, -down), edge=(0, 0, -1), **kw)
+    COUCH = couch(14, 0.05)
     P = {'SIT': UP,
          'BREATHE': dict(UP, chest=lean(pitch=0), sword_hand=(0.24, -0.40, 0.32)),
          'LOOK': dict(UP, chest=lean(pitch=2, turn=10), head=lean(turn=38)),
          'SWAY_L': dict(UP, chest=lean(pitch=3, roll=3), hips_rot=lean(pitch=-4, roll=-2)),
          'SWAY_R': dict(UP, chest=lean(pitch=3, roll=-3), hips_rot=lean(pitch=-4, roll=2)),
          'COUCH': COUCH,
-         'COUCH_UP': dict(COUCH, chest=lean(pitch=18), rise=0.10),
-         'DRAW': dict(COUCH, chest=lean(pitch=8, turn=-22), sword_hand=(-0.08, -0.38, 0.28), sword_elbow=(-0.45, -0.56, 0.40)),
-         'THRUST': dict(COUCH, chest=lean(pitch=26, turn=18), head=lean(pitch=-12), sword_hand=(0.62, -0.30, 0.34),
-                        sword_elbow=(0.30, -0.45, 0.25), blade=(1, 0.05, -0.10), rise=0.12),
+         'COUCH_UP': couch(18, 0.10),
+         # The charge's strike: the point brought down on the man ahead, then up in the stirrups and into it, the
+         # body behind the lance (the horse's weight does the work: the arm does not thrust).
+         'DRAW': couch(20, 0.10),
+         'THRUST': couch(27, 0.14),
          'HIT': dict(UP, chest=lean(pitch=-16, turn=-8), head=lean(pitch=-20), sword_hand=(0.05, -0.45, 0.35), blade=(0.3, -0.3, 0.9)),
          'CLING': dict(UP, chest=lean(pitch=22), head=lean(pitch=-10), sword_hand=(0.30, -0.28, 0.25), blade=(0.92, -0.12, 0.36)),
-         'SLUMP': dict(UP, chest=lean(pitch=35, roll=-20), head=lean(pitch=40, roll=-15), sword_hand=(0.25, -0.35, -0.10),
-                       sword_elbow=(0.0, -0.50, 0.10), blade=(0.6, -0.3, -0.7), shield_hand=(0.30, 0.25, -0.05), fist={'Right': 20, 'Left': 20}),
+         'SLUMP': dict(UP, chest=lean(pitch=35, roll=-20), head=lean(pitch=40, roll=-15), sword_hand=(0.14, -0.50, -0.22),
+                       sword_elbow=(0.02, -0.56, 0.08), blade=(0.6, -0.3, -0.7), shield_hand=(0.30, 0.25, -0.05), fist={'Right': 20, 'Left': 20}),
          'CHEER': dict(UP, chest=lean(pitch=-8), head=lean(pitch=-15), sword_hand=(0.15, -0.34, 0.95), sword_elbow=(0.0, -0.60, 0.60),
                        blade=(0.0, -0.05, 1), rise=0.06)}
     T = horse_seconds

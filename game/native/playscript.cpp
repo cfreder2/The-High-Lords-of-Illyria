@@ -146,10 +146,10 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         if (n) return usage("stats");
     } else if (verb == "deaths") {
         c.op = Op::Deaths;
-        static const char* kUsage = "deaths spawn X Y | melee X Y | blast | fell | burn | cut | shot";
+        static const char* kUsage = "deaths spawn X Y | foes X Y | melee X Y | blast | fell | burn | cut | shot";
         if (n < 1) return usage(kUsage);
         c.text = w[1];
-        if (c.text == "spawn" || c.text == "melee") {
+        if (c.text == "spawn" || c.text == "foes" || c.text == "melee") {
             if (n != 3 || !number(w[2], c.a) || !number(w[3], c.b)) return usage(kUsage);
         } else if (n != 1 || (c.text != "blast" && c.text != "fell" && c.text != "burn" && c.text != "cut" && c.text != "shot")) {
             return usage(kUsage);
