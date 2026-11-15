@@ -171,7 +171,7 @@ TEST(battle_end_the_fight_stops_on_the_last_blow_and_the_result_counts_it) {
     const Battle::Result r = b.result();
     // (The one man left: he got away and the pursuit was called, or he was shot or ridden down.)
     CHECK(r.outcome == 1 && (r.how == Battle::Result::How::Rout ? r.killed == removed : r.killed == removed + 1));
-    CHECK(r.lost == 0 && static_cast<int>(r.rows.size()) == mine && r.promoted >= 0);
+    CHECK(r.lost == 0 && static_cast<int>(r.rows.size()) == mine + (r.rows.back().total == 0 ? 1 : 0) && r.promoted >= 0);
     CHECK(r.seconds == static_cast<int>((stopped - Battle::kLastBlowTicks) / kTicksPerSecond));
 }
 

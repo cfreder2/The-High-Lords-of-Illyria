@@ -465,4 +465,26 @@ int warlordsStrength(UnitType type) {
     return 1;
 }
 
+FormationKind musterFormation(UnitType type) {
+    switch (type) {
+        case UnitType::Archers:
+        case UnitType::DwarfGrenadier:
+        case UnitType::Wizards:
+        case UnitType::Journeyman:
+        case UnitType::Hyena:
+        case UnitType::Griffins:
+        case UnitType::Pegasi:
+        case UnitType::Archons:
+        case UnitType::Dragons:
+        case UnitType::Berserker: return FormationKind::Loose;
+        case UnitType::Catapult: return FormationKind::Line;
+        case UnitType::LightCavalry:
+        case UnitType::HeavyCavalry:
+        case UnitType::WolfRiders:
+        case UnitType::Unicorns: return FormationKind::Wedge;
+        case UnitType::Hero: return FormationKind::None;
+        default: return FormationKind::DoubleLine;
+    }
+}
+
 }  // namespace illyria::sim

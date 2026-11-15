@@ -21,11 +21,11 @@ Everything outside the Conquest is played against the computer, on one device. H
 
 ## The March {#the-march}
 
-*Five battles, one army.* Choose **The March** and buy an army with your gold, as for a skirmish. A lord and three magi march with it. Then you fight, in this order: the open field, the Ford, a village you storm, a village you hold, the capital.
+*Five battles, one army.* Choose **The March** and buy an army with your gold, as for a skirmish. A lord and three magi march with it. Then you fight, in this order: the open field, a village you storm, the Ford, a village you hold, the capital. A town you storm must be taken in its time (eight minutes for the village, thirteen for the capital; the clock is beside the map), or the battle is lost.
 
 - **The living go on.** After each battle the men left alive are your army for the next. Their wounds are half mended. They keep their kills and their rank: a soldier is a regular at 2 kills, a veteran at 5 and elite at 10, and living through two battles makes a regular, four a veteran. A rank is a few percent in a blow and a steadier man.
 - **The dead do not come back.** A squad with no man left is gone for the rest of the march.
-- **The purse.** Each battle won pays a little gold. In the camp between battles it fills the gaps in a squad with recruits. It never buys a new squad, and it is never enough to replace everything.
+- **The purse.** Each battle won pays a little gold. In the camp between battles it fills the gaps in a squad with recruits (**Fill what the purse can** spends it on the most worn squads first). It never buys a new squad, and it is never enough to replace everything.
 - **Never replaced:** the lord, the magi, dwarves.
 - **The other side grows** with every battle.
 - **The results sheet** says who goes on, who was promoted and who is gone for good. **Next battle** opens the camp; **March on** sets out the next battle.

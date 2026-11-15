@@ -60,14 +60,15 @@ bool isHero(const Unit& u) { return u.stats.type == static_cast<uint8_t>(UnitTyp
 
 void World::shakeMorale(Unit& u, int32_t points) {
     if (!u.alive() || u.stats.moraleShockPct == 0 || points <= 0) return;
+    // (His formation steadies him or does not; out of order he is shaken worse: world_formation.cpp.)
     const int32_t shock =
-        points * u.stats.moraleShockPct / 100 * (100 - kVetSteadyPct * veteranSteps(u)) / 100 * (100 - u.steady) / 100;
+        points * u.stats.moraleShockPct / 100 * (100 - kVetSteadyPct * veteranSteps(u)) / 100 * (100 - u.steady) / 100 * (100 + formShockPct(u)) / 100;
     u.morale = std::max(0, u.morale - shock);
     u.calmTicks = 0;
 }
 
 void World::shakeBySide(Unit& u, HitSide side, bool missile) {
-    const int32_t shock = side == HitSide::Rear ? kRearShock : side == HitSide::Flank ? kFlankShock : 0;
+    const int32_t shock = (side == HitSide::Rear ? kRearShock : side == HitSide::Flank ? kFlankShock : 0) * (100 + formFlankShockPct(u)) / 100;
     shakeMorale(u, missile ? shock / 2 : shock);
 }
 
@@ -91,7 +92,10 @@ void World::updateMorale() {
     // a line that holds a bank is not cowed by the numbers wading at it. Who is wading, reckoned once a census.
     if (census && config_.region) {
         wet_.assign(units_.size(), 0);
-        for (size_t i = 0; i < units_.size(); ++i) wet_[i] = wading(units_[i]);
+        // (A bridge is a choke as a ford is: the men filing over it are half their number to the men at its end.)
+        for (size_t i = 0; i < units_.size(); ++i)
+            wet_[i] = wading(units_[i]) || (units_[i].alive() && !units_[i].inAir() && groundAt(units_[i].pos.x, units_[i].pos.y) == Ground::Bridge &&
+                                            config_.region->underWater(units_[i].pos.x, units_[i].pos.y));
     } else if (census) {
         wet_.clear();
     }
@@ -138,6 +142,9 @@ void World::updateMorale() {
             // order is obeyed: World::applyCommand).
             u.routed = true;
             u.cornered = false;
+            u.helping = kNoEntity;
+            u.helpSince = 0;
+            u.wheel = 0;
             u.hasMoveTarget = false;
             u.hasAttackTarget = false;
             u.attackGate = -1;

@@ -1812,6 +1812,23 @@ ILLYRIA_API void illyria_hold() {
 ILLYRIA_API int illyria_rally() {
     return app && app->battle->orderRally() ? 1 : 0;
 }
+// Answer a call for help by hand (the full stop): the camera to the squad that called, the nearest free squad selected.
+// 1 when somebody is calling.
+ILLYRIA_API int illyria_answer_call() {
+    V3 at;
+    if (!app || !app->battle->answerCall(at)) return 0;
+    app->introStartMs = -1;
+    app->camera.lookAt(at.x, at.y, app->camera.distance());
+    return 1;
+}
+// The ground under the pointer as it would tell for the selection sent there ("ford", "woods", "higher ground"; "" plain),
+// for the word by the cursor while ordering.
+ILLYRIA_API const char* illyria_ground_at(float x, float y) {
+    if (!app || app->title || app->battle->selectedAlive().empty()) return "";
+    V3 hit;
+    const float s = app->pixelRatio;
+    return app->camera.pickGround(x * s, y * s, hit) ? app->battle->groundAt(hit) : "";
+}
 // The next squad standing idle (J), and the camera to it if it is off screen. 1 when there was one.
 ILLYRIA_API int illyria_next_idle() {
     if (!app || app->battle->selectNextIdle() < 0) return 0;
@@ -3305,16 +3322,16 @@ ILLYRIA_API const char* illyria_hud() {
         const Standing st = b.standing(q);
         // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
         const bool mine = b.controllable(q);
-        const Battle::SquadState state = b.squadState(q);
+        const Battle::SquadState state = b.squadState(q, mine && b.squadSelection(q) == 2);  // (the ground's word for the squads selected)
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d}",
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\"}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
-                      state.hold ? "true" : "false", state.rally);
+                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground);
         s += buf;
         firstSquad = false;
     }
@@ -3422,6 +3439,19 @@ static int startMode(const char* id, const char* options) {
         gMarchStage = gMarch->stage;
         gScenario = gMarch->scenario();
         gSetup = gMarch->setup();
+#ifdef ILLYRIA_DEV_HOOKS
+        // Tuning (docs/PLAYTEST.md): ILLYRIA_MARCH_PCT="85,120,60,55,75" plays the stages against those purses instead
+        // of the table's (March::stageInfo), so a curve can be tried by script without a build.
+        if (const char* pct = std::getenv("ILLYRIA_MARCH_PCT")) {
+            int at = 0, value = 0;
+            for (const char* q = pct; *q && at <= gMarchStage; ++at) {
+                value = std::atoi(q);
+                while (*q && *q != ',') ++q;
+                if (*q == ',') ++q;
+            }
+            if (at == gMarchStage + 1 && value > 0) gSetup.foePurse = std::max(1, gMarch->budget * value / 100);
+        }
+#endif
         gSkill = gMarch->easy ? Battle::AiSkill::Easy : Battle::AiSkill::Normal;
         gDeploy = optionNumber(opts, "deploy", 1) != 0;
         newBattle();
@@ -3447,9 +3477,10 @@ static int startMode(const char* id, const char* options) {
         gSetup.defend = optionNumber(opts, "defend", 0) != 0 && (gScenario == Scenario::Siege || gScenario == Scenario::Capital);
         gSetup.army = armyOption(opts);
         if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
-        gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
+        gSkill = static_cast<Battle::AiSkill>(std::clamp(static_cast<int>(optionNumber(opts, "hard", 1)), 0, 2));  // 0 Easy, 1 Normal, 2 Hard
         gDeploy = optionNumber(opts, "deploy", 0) != 0;
         gSetup.easy = gSkill == Battle::AiSkill::Easy;
+        gSetup.hard = gSkill == Battle::AiSkill::Hard;
         newBattle();
         app->renderer.reset(*app->battle);
         if (gDeploy) startOpening();
@@ -3539,10 +3570,10 @@ ILLYRIA_API const char* illyria_march_save() {
     s = gMarch && !(gMarchBattle && !gMarchSettled) ? gMarch->save() : "";
     return s.c_str();
 }
-// The purse fills a squad's gaps (as many men as it pays for). How many joined.
+// The purse fills a squad's gaps (as many men as it pays for); -1: every squad it can, the most worn first. How many joined.
 ILLYRIA_API int illyria_march_reinforce(int squad) {
-    if (!gMarch || (gMarchBattle && !gMarchSettled) || squad < 0) return 0;
-    return gMarch->reinforce(static_cast<size_t>(squad));
+    if (!gMarch || (gMarchBattle && !gMarchSettled)) return 0;
+    return squad < 0 ? gMarch->reinforceAll() : gMarch->reinforce(static_cast<size_t>(squad));
 }
 // The march given up, or put away once over.
 ILLYRIA_API void illyria_march_end() {

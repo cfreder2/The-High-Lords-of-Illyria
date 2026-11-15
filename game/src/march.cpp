@@ -9,16 +9,21 @@ namespace illyria::game {
 using sim::UnitType;
 
 const March::Stage& March::stageInfo(int stage) {
-    // A field, the Ford, a village stormed, a village held, the capital, against an army that only shrinks. `foePct` is
-    // the purse the siege's odds are reckoned from (Battle::kSiegeOddsPct: keepers raise two thirds of it, besiegers half
-    // as much again), so what stands against the player is 85 and 95 parts in a hundred of his army's cost in the open,
-    // 40 behind the village's walls, 82 before them when he holds it, and 50 behind the capital's. (100, 110, 75 and 125
-    // were tried first: a march that lost a quarter of its men in each of the first two battles met 154 keepers with 70 men.)
-    static const Stage kStages[kBattles] = {{"The open field", Scenario::Field, false, 85},
-                                            {"The Ford", Scenario::Ford, false, 95},
-                                            {"The village", Scenario::Siege, false, 60},
-                                            {"The defence", Scenario::Siege, true, 55},
-                                            {"The capital", Scenario::Capital, false, 75}};
+    // THE MARCH'S TUNING, all of it (with kPursePct, kHealShare and the two k...Battles in march.h). A field, a village
+    // stormed, the Ford, a village held, the capital, against an army that only shrinks. `foePct` is the purse the
+    // battle's odds are reckoned from, in parts of a hundred of the army's cost (in a siege the keepers raise two
+    // thirds of it and the besiegers half as much again: Battle::kSiegeOddsPct); `siegeSeconds` the time the player
+    // has to take a town he besieges. To try a curve without a build: ILLYRIA_MARCH_PCT (docs/PLAYTEST.md).
+    //
+    // Why this order: the village is second because it is the first battle that asks for an order. Measured by script
+    // (docs/GAME_DESIGN.md §3.7), a host that is given no order wins the field and the Ford against any purse a host
+    // that is given orders can also beat: the bank defends itself. Before a wall it only stands, and the siege's time
+    // runs out: a march without orders ends at battle two.
+    static const Stage kStages[kBattles] = {{"The open field", Scenario::Field, false, 100, 0},
+                                            {"The village", Scenario::Siege, false, 45, 8 * 60},
+                                            {"The Ford", Scenario::Ford, false, 100, 0},
+                                            {"The defence", Scenario::Siege, true, 40, 0},
+                                            {"The capital", Scenario::Capital, false, 45, 13 * 60}};
     return kStages[std::clamp(stage, 0, kBattles - 1)];
 }
 
@@ -56,6 +61,7 @@ SkirmishSetup March::setup() const {
     s.budget = budget;
     s.defend = st.defend;
     s.foePurse = std::max(1, budget * st.foePct / 100);
+    s.siegeSeconds = st.siegeSeconds;
     for (const Squad& q : squads) {
         CarriedSquad c{q.name, q.type, q.full, {}};
         for (size_t i = 0; i < q.men.size(); ++i) c.men.push_back({q.men[i].hp, q.men[i].rank, q.men[i].kills, static_cast<int>(i)});
@@ -139,6 +145,20 @@ int March::reinforce(size_t squad) {
     purse -= joined == missing ? cost : (sim::Conquest::price(q.type) * joined + q.full - 1) / q.full;
     q.men.insert(q.men.end(), static_cast<size_t>(joined), Man{});
     return joined;
+}
+
+int March::reinforceAll() {
+    int joined = 0;
+    for (;;) {
+        size_t pick = squads.size();
+        for (size_t i = 0; i < squads.size(); ++i) {
+            if (reinforceCost(i) <= 0) continue;
+            if (pick == squads.size() || static_cast<int64_t>(squads[i].men.size()) * squads[pick].full < static_cast<int64_t>(squads[pick].men.size()) * squads[i].full) pick = i;
+        }
+        const int n = pick < squads.size() ? reinforce(pick) : 0;
+        if (n <= 0) return joined;
+        joined += n;
+    }
 }
 
 // The save: "march1;budget;easy;stage;purse;lost" then a field a squad, "S|name|type|full|kills|battles|hp.rank.kills.battles,..."

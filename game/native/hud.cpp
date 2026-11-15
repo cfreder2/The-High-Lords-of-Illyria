@@ -57,7 +57,9 @@ constexpr int kAfterBattle = 3000;  // + Hud::After
 constexpr int kCardPageBack = -2000, kCardPageOn = -2001, kCardPageMore = -2002;  // the "+N more" cell: its arrows, and its middle (the next page, round)
 constexpr int kRallyHit = -3000;  // the Rally button over the cards
 constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
-constexpr int kMarchSquad = 9000, kMarchOn = 9500, kMarchGiveUp = 9501, kMarchBack = 9502;  // presses on the March's camp
+constexpr int kMarchSquad = 9000, kMarchFill = 9499, kMarchOn = 9500, kMarchGiveUp = 9501, kMarchBack = 9502;  // presses on the March's camp
+// The camp's buttons under the roll: between battles the purse, the road, giving up; else the one way on.
+std::vector<int> marchButtons(bool plain) { return plain ? std::vector<int>{kMarchFill, kMarchOn, kMarchGiveUp, kMarchBack} : std::vector<int>{kMarchOn, kMarchBack}; }
 const char* const kRankNames[4] = {"recruits", "regulars", "veterans", "elite"};
 
 constexpr Colour kInk = rgba(0xF2EBD8), kDim = rgba(0xB9B0A0), kGold = rgba(0xE8C25A), kRed = rgba(0xFF7060);
@@ -310,7 +312,7 @@ void Hud::marchOpen() {
     marchPage_ = true;
     audio::uiCue("snd_ui_page_turn");  // the camp's page
     skirmishPage_ = false;
-    mRow_ = static_cast<int>(st.list("squads").size());  // on "March on"
+    mRow_ = static_cast<int>(st.list("squads").size()) + (!st.flag("over") && !st.flag("fighting") ? 1 : 0);  // on "March on"
 }
 
 // What a row of the camp does: a squad is filled from the purse; then March on, Give up, Back.
@@ -319,8 +321,8 @@ void Hud::marchAct(int what) {
     const bool over = st.flag("over"), fighting = st.flag("fighting");
     if (what >= kMarchSquad && what < kMarchOn) {
         if (over || fighting) return;
-        if (illyria_march_reinforce(what - kMarchSquad) > 0) saveMarch();
-        else error_ = st.num("purse") <= 0 ? "The purse is empty." : "That squad cannot be filled.";
+        if (illyria_march_reinforce(what == kMarchFill ? -1 : what - kMarchSquad) > 0) saveMarch();
+        else error_ = st.num("purse") <= 0 ? "The purse is empty." : what == kMarchFill ? "No squad can be filled." : "That squad cannot be filled.";
     } else if (what == kMarchOn) {
         if (fighting) {  // (back to the battle being fought)
             marchPage_ = false;
@@ -347,7 +349,8 @@ void Hud::marchKey(Key k) {
     const Json st = read(illyria_march_state());
     const int squads = static_cast<int>(st.list("squads").size());
     const bool plain = !st.flag("over") && !st.flag("fighting");
-    const int rows = squads + (plain ? 3 : 2);  // the squads, March on, (Give up,) Back
+    const std::vector<int> buttons = marchButtons(plain);
+    const int rows = squads + static_cast<int>(buttons.size());
     error_.clear();
     switch (k) {
         case Key::Up: mRow_ = (mRow_ + rows - 1) % rows; break;
@@ -357,9 +360,8 @@ void Hud::marchKey(Key k) {
         case Key::Enter:
             if (mRow_ < squads) {
                 if (k == Key::Enter || plain) marchAct(kMarchSquad + mRow_);
-            } else if (k == Key::Enter) {
-                const int b = mRow_ - squads;
-                marchAct(b == 0 ? kMarchOn : b == 1 && plain ? kMarchGiveUp : kMarchBack);
+            } else if (k == Key::Enter && mRow_ < rows) {
+                marchAct(buttons[static_cast<size_t>(mRow_ - squads)]);
             }
             break;
         case Key::Back: marchPage_ = false; break;
@@ -407,7 +409,7 @@ void Hud::skirmishStep(int row, int by) {
         skGold_ = std::clamp(skGold_ + by, 0, kPurseCount - 1);
         skirmishFill();
     } else if (row == 3) {
-        hard_ = !hard_;
+        skSkill_ = (skSkill_ + (by < 0 ? 2 : 1)) % 3;
     } else if (row < 4 + units) {
         const size_t i = static_cast<size_t>(row - 4);
         if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_]) ++bought_[i];
@@ -431,7 +433,7 @@ void Hud::skirmishStart() {
         start("march", buf);
         return;
     }
-    std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":1,\"army\":\"%s\"}", skMap_, kPurses[skGold_], skDefend_ ? 1 : 0, hard_ ? 1 : 0, army.c_str());
+    std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":1,\"army\":\"%s\"}", skMap_, kPurses[skGold_], skDefend_ ? 1 : 0, skSkill_, army.c_str());
     start("skirmish", buf);
 }
 
@@ -698,7 +700,7 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
 }
 
 // What the computer does at each setting, under the Skirmish rows (Battle::kEasyPursePct, kEasyWaitTicks, aiFight).
-constexpr const char* kSkillLine = "Easy: three quarters of your gold, comes late and piecemeal. Normal: your equal; it masses, flanks and falls back.";
+constexpr const char* kSkillLine = "Easy: less gold, late and piecemeal. Normal: your equal; bows first, then one wing. Hard: a quarter more gold, and quicker.";
 
 // The Skirmish screen, on the same parchment: a Conquest with a fence, so the army is bought at the Conquest's prices.
 void Hud::drawSkirmish(Overlay& o, float w, float h) {
@@ -719,12 +721,12 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
     for (int r = 0; r < rows; ++r, y += kRow) {
         std::string label, value, info;
         bool arrows = r < 4 + units, dim = false;
-        if (skMarch_ && r == 0) label = "Battles", value = "Field, Ford, village, defence, capital", arrows = false;
+        if (skMarch_ && r == 0) label = "Battles", value = "Field, village, Ford, defence, capital", arrows = false;
         else if (skMarch_ && r == 1) label = "Army", value = "bought once; the living go on", arrows = false;
         else if (r == 0) label = "Map", value = map.name;
         else if (r == 1) label = "Side", value = side, dim = !map.siege;
         else if (r == 2) label = "Gold", value = std::to_string(purse);
-        else if (r == 3) label = "Computer plays", value = hard_ ? "Normal" : "Easy";
+        else if (r == 3) label = "Computer plays", value = skSkill_ == 0 ? "Easy" : skSkill_ == 1 ? "Normal" : "Hard";
         else if (r < 4 + units) {
             const Offer& of = offers_[static_cast<size_t>(r - 4)];
             label = of.name;
@@ -794,7 +796,8 @@ void Hud::drawMarch(Overlay& o, float w, float h) {
     if (won) head.push_back("All five battles are won. These came through:");
     else if (over) head.push_back("The march ended at battle " + std::to_string(std::min(stage + 1, of)) + " of " + std::to_string(of) + ": " + st.list("stages")[static_cast<size_t>(std::min(stage, of - 1))].string + ".");
     else head.push_back("Battle " + std::to_string(stage + 1) + " of " + std::to_string(of) + ": " + st.str("next") + (fighting ? " (being fought)" : ""));
-    if (const Json* last = st.find("last"); last && (stage > 0 || over)) {
+    // (The last battle's toll is told in the session that fought it: a march carried on from its save has none to tell.)
+    if (const Json* last = st.find("last"); last && (stage > 0 || over) && last->num("survivors") + last->num("lost") > 0) {
         std::snprintf(buf, sizeof buf, "Last battle: %d lost, %d came through, %d promoted.", static_cast<int>(last->num("lost")), static_cast<int>(last->num("survivors")), static_cast<int>(last->num("promoted")));
         head.push_back(buf);
     }
@@ -805,7 +808,8 @@ void Hud::drawMarch(Overlay& o, float w, float h) {
     std::string goneLine;
     for (const Json& g : st.list("gone")) goneLine += (goneLine.empty() ? "Gone for good: " : ", ") + g.string;
     const std::vector<std::string> gone = wrap(o, goneLine, 12, inner), errors = wrap(o, error_, 13, inner);
-    const int buttons = plain ? 3 : 2;
+    const std::vector<int> acts = marchButtons(plain);
+    const int buttons = static_cast<int>(acts.size());
     mRows_ = static_cast<int>(squads.size()) + buttons;
     mRow_ = std::clamp(mRow_, 0, mRows_ - 1);
     const float ph = kPad + 26 + 8 + static_cast<float>(head.size()) * 18 + 8 + 18 + kRow * static_cast<float>(squads.size()) + 8 + static_cast<float>(gone.size()) * 16 + 10 + 30 * static_cast<float>(buttons) + 18 +
@@ -856,14 +860,14 @@ void Hud::drawMarch(Overlay& o, float w, float h) {
     for (const std::string& l : gone) o.text(px + kPad, y, l, kSeal, 12), y += 16;
     y += 10;
     const char* const first = fighting ? "Back to the battle" : over ? "Put the march away" : "March on";
-    const char* const labels[3] = {first, plain ? "Give up the march" : "Back", "Back"};
-    const int whats[3] = {kMarchOn, plain ? kMarchGiveUp : kMarchBack, kMarchBack};
     for (int b = 0; b < buttons; ++b, y += 30) {
+        const int what = acts[static_cast<size_t>(b)];
+        const char* const label = what == kMarchFill ? "Fill what the purse can" : what == kMarchOn ? first : what == kMarchGiveUp ? "Give up the march" : "Back";
         const bool on = mRow_ == static_cast<int>(squads.size()) + b;
         o.rect(px + kPad, y, inner, 25, on ? rgba(0xB89A5A, 120) : rgba(0x2B1E10, 22));
         o.frame(px + kPad, y, inner, 25, 1.5f, on ? kSeal : kPaperOut);
-        o.text(px + kPad + 10, y + 5, labels[b], on ? kSeal : kPaperInk, 14);
-        hits_.push_back({px + kPad, y, inner, 25, whats[b]});
+        o.text(px + kPad + 10, y + 5, label, on ? kSeal : kPaperInk, 14);
+        hits_.push_back({px + kPad, y, inner, 25, what});
     }
     o.text(px + kPad, y + 2, "Up / down, Enter, Esc to go back.", kPaperDim, 12);
     y += 18;
@@ -955,6 +959,12 @@ void Hud::drawMinimap(Overlay& o, float w, float h) {
             o.rect(X(at(f, 2)) - 1.7f, Y(at(f, 3)) - 1.7f, 3.4f, 3.4f, ink);
             o.rect(X(at(f, 2)) - 1.2f, Y(at(f, 3)) - 1.2f, 2.4f, 2.4f, hex(f[1]));
         }
+    }
+    for (const auto& f : rows) {  // a call for help: a white ring that beats
+        if (f[0] != "c" || f.size() < 3) continue;
+        const float r = 5.0f + 3.0f * static_cast<float>(std::fmod(SDL_GetTicks() / 500.0, 1.0)), sx = X(at(f, 1)), sy = Y(at(f, 2));
+        o.frame(sx - r, sy - r, 2 * r, 2 * r, 1.5f, rgba(0xFFFFFF, 235));
+        o.frame(sx - r - 1.5f, sy - r - 1.5f, 2 * r + 3, 2 * r + 3, 1, rgba(0xC8281E, 235));
     }
     for (const auto& f : rows) {  // towns on top: a square in the holder's colour
         if (f[0] != "t" || f.size() < 5) continue;
@@ -1120,7 +1130,7 @@ void Hud::drawResult(Overlay& o, const Json& hud, float w, float h) {
     if (settled) {
         const Json* last = march->find("last");
         const bool ended = march->flag("over") && !march->flag("won");  // (a lost battle: nobody goes on)
-        std::snprintf(cbuf, sizeof cbuf, ended ? "Battle %d of %d. %d men in %d squads were left." : "Battle %d of %d. %d men in %d squads go on. %d promoted.", static_cast<int>(march->num("battle")),
+        std::snprintf(cbuf, sizeof cbuf, ended ? "Battle %d of %d. %d men in %d squads were left." : march->flag("won") ? "Battle %d of %d. %d men in %d squads came through. %d promoted." : "Battle %d of %d. %d men in %d squads go on. %d promoted.", static_cast<int>(march->num("battle")),
                       static_cast<int>(march->num("of")), static_cast<int>(march->num("men")), static_cast<int>(march->num("squads")), static_cast<int>(last ? last->num("promoted") : 0));
         carry.push_back(cbuf);
         std::string goneLine;
@@ -1155,11 +1165,12 @@ void Hud::drawResult(Overlay& o, const Json& hud, float w, float h) {
     y += 20;
     for (size_t i = 0; i < shown; ++i, y += kRow) {
         const Json& q = rows[i];
-        const bool gone = q.num("alive") == 0;
+        const bool other = q.num("total") == 0;  // (the dead no squad is credited with: no men of its own)
+        const bool gone = q.num("alive") == 0 && !other;
         const std::string name = q.str("name");
         o.text(cName, y, name, gone ? kPaperOff : kPaperInk, fit(o, name, 12, cLeft - cName - 10));
         std::snprintf(buf, sizeof buf, "%d / %d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));
-        o.text(cLeft, y, buf, gone ? kSeal : kPaperInk, 12);
+        if (!other) o.text(cLeft, y, buf, gone ? kSeal : kPaperInk, 12);
         std::snprintf(buf, sizeof buf, "%d", static_cast<int>(q.num("kills")));
         o.text(cKilled, y, buf, kPaperInk, 12);
         if (!gone) {  // the survivors' rank, and how many of them rose in this battle
@@ -1356,6 +1367,15 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
     }
 
+    // The ground under the pointer, for the squads selected ("ford", "woods", "higher ground"): a word by the cursor.
+    if (pointerX_ >= 0 && !menu_) {
+        const std::string ground = illyria_ground_at(pointerX_, pointerY_);
+        if (!ground.empty() && pointerY_ > 40 && pointerY_ < h - 120) {
+            const float gw = o.width(ground, 12);
+            o.rect(pointerX_ + 14, pointerY_ + 12, gw + 8, 17, rgba(0x000000, 150));
+            o.text(pointerX_ + 18, pointerY_ + 13, ground, rgba(0xF4EAD0), 12);
+        }
+    }
     // Position told: a word over the men it happened to, rising and fading (Battle::floats): gold for the viewer's gain, red for his loss.
     std::vector<std::pair<float, float>> floated;  // where a word already stands: the same ground seen from far is one word, not a pile
     for (const Json& f : hud.list("floats")) {
@@ -1635,9 +1655,15 @@ void Hud::draw(Overlay& o, float w, float h) {
         const float markW = mark.empty() ? 0.0f : o.width(mark, 10) + (broken ? 13.0f : 0.0f);
         std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));
         std::string count = buf;
-        const std::string tag = ig::cardGroundTag(q.str("ground"));
-        const std::string after = !tag.empty() ? tag : cards.compact ? std::string() : q.str("role");
-        if (!after.empty() && o.width(count + "  " + after, 10) <= cw - 12 - (markW > 0 ? markW + 6 : 0)) count += "  " + after;
+        // (A selected squad's ground, Battle::groundTag: "high ground", "in the ford", "hidden in woods": whole when there
+        // is room, else its one word; a squad on plain ground shows its role on the full card.)
+        const std::string ground = q.str("ground");
+        const float rowRoom = cw - 12 - (markW > 0 ? markW + 6 : 0);
+        for (const std::string& after : {ground, ig::cardGroundTag(ground), ground.empty() && !cards.compact ? q.str("role") : std::string()})
+            if (!after.empty() && o.width(count + "  " + after, 10) <= rowRoom) {
+                count += "  " + after;
+                break;
+            }
         o.text(x + 6, rowY, count, kDim, 10);
         if (!mark.empty()) {
             const float mx = x + cw - 6 - o.width(mark, 10);
@@ -1753,6 +1779,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"Space, B", "stop the march (halt)"},
               {"K", "hold: keep their place (again: support friends near)"},
               {"J", "the next squad standing idle"},
+              {". (full stop)", "send the nearest free squad to a call for help"},
               {"Y", "the lord rallies broken men within 40 m"},
               {"T, X, C", "special, scatter, find selection"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},

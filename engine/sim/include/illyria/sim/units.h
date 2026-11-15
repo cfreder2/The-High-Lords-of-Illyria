@@ -60,6 +60,9 @@ Gait gaitOf(UnitType type);
 // conquest saves) keeps its meaning. The Dwarven Legion is retired: the
 // grenadiers are the one dwarf, and old saves' legions load as grenadiers.
 bool retired(UnitType type);
+// What a squad of this type forms unless told otherwise (the computer's choice too): two ranks for foot, loose order for
+// missile troops, healers, fliers and the hyena-folk, a wedge for horse, a line for engines; a lone lord has none.
+FormationKind musterFormation(UnitType type);
 // Whether his body keeps a blade (a sword, axe or spear) a scavenger can take.
 bool bearsBlade(UnitType type);
 // Armoured, or too big and strong for a scavenger to stand up to in melee:

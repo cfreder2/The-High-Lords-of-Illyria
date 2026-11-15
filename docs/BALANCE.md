@@ -191,6 +191,120 @@ Reading it, and what is not there yet:
 
 Matrix (flat field, no water, so only the charge rules show): light cavalry 71 to 77, wolf riders 61 to 70, heavy cavalry 64 to 66, elephants 36 to 44 on the mean; warriors 74 to 67, berserkers 56 to 53, archers 74 to 72. Pikes still beat all horse 100 to 0. The matrix printed below is from before these rules.
 
+## Land, formations, calls for help, and a computer that comes on (2026-11-14, review3 item 2, review4)
+
+The owner's direction: "land, formations, tactics, high ground, etc should factor in. Units shouldn't sit by idle and not help their peers. Teams should call for help, they should answer." And: "fighting from the water should be a penalty." Review 4 added: the outcome did not depend on the player (23 of 25 skirmishes won, with no orders on every map), and horse sent into a flank died to a man.
+
+The rules are in `docs/GAME_DESIGN.md` §3.3 (Land, Formations, A cavalry attack, Nobody stands idle, Calls for help) and the manual's Rules of Battle; the code in `engine/sim/src/world_tactics.cpp`, `world_formation.cpp`, `world_help.cpp`, `world_combat.cpp`; tests in `tests/test_tactics.cpp`.
+
+### What was there, and its size (the audit)
+
+| Ground | Before | Now |
+|---|---|---|
+| Uphill, melee | -2% per 0.01 of grade, at most -20%; the climb slows the walk | -3%, at most **-35%**; and 25% slower to strike again |
+| Downhill, melee | +2%, at most +30% | +3%, at most **+40%** |
+| Volley from above | +5% a metre, at most +50%; reach +1 m a metre | the same |
+| Volley shot uphill | reach shorter (a quarter at most); no loss of effect | the same reach; **-5% a metre, at most -40%** |
+| Charge down a slope / up one | up to x2 / down to x0.25 | the same, and told |
+| Wading | blows -50%, struck +50%, missiles +75%, shield half against arrows | the same for **every side**, and: shield half against blows too, his own missiles **-40%**, no brace, no formation |
+| Mud, swamp | slow (50 to 55%), nothing else | blows **-25%**, struck **+25%**, missiles **+30%**, no brace, no formation |
+| Woods | slow for horse (50%); trunks stop some arrows as obstacles | also: **40%** of arrows on a man there stopped; horse and closed ranks disordered; unseen beyond 25 m by men acting on their own and by the computer; the first blow out is an ambush (250 to the nerve) |
+| Bridge | narrow: few fight at once | also: men on it count half in the census of the man at its end |
+| Roads | every pace doubled | the same |
+| Walls, gates | as built (§3.5) | the same |
+| Formations | shapes only: no rule read them | every formation a strength and a price (the table in GAME_DESIGN §3.3), disorder, slow wheel |
+
+### The open field was the Ford
+
+The Skirmish "open field" was meant to stand on the first hill the continent offers, away from towns. No hill passed the test, and it fell back to Oakhaven Ford: both "maps" the reviews measured were the same river, with the player on the defender's bank. `fieldCentre` now takes the open ground nearest the ford with no water, bog or (but for an outcrop) rock where the hosts stand or between them, clear of the towns. It is level grass with a road through it and a rocky ridge along its south edge. The review scripts' clicks were read off the old ground, so their plans (`07`, `26`, `31`, `38`) no longer put anyone on a bank; they are kept as a check that nothing breaks, not as a measure of a plan.
+
+### The computer
+
+On the open field a host that walked in under a standing line's arrows lost to an army nobody commanded, at any quality of its own squad handling. So (`Battle::runEnemyAi`):
+
+- **Bows first** (Normal, Hard): it comes up to a bowshot and stands, foot before bowmen, in loose order under the arrows that come back, and meets whoever comes out at it. It goes in when the foe's bows are down to a third of its own, when its own are down to half the foe's, when a fifth of it is fighting anyway, or after 60 s of shooting (Hard: 40 s).
+- **One wing:** it goes in on the end of the foe's line nearer to it, all its foot together, and rolls the line up. Arrived, its men are let go and fight as men with no order do (close with what is near, help friends, answer calls, horse by the flank). The computer's hand on each squad in a melee did worse than the support stance: letting go was worth more than any target choice tried.
+- **Formations by the rules:** a square when horse is coming at foot not yet fighting, loose under arrows with nobody at its throat, else its kind's own.
+- **Purse (first pass; undone in the second, below):** in the open, Normal raised **125%** of the player's purse and Hard **150%**; Easy three quarters, as before. At an even purse the host that must come to the other lost to an army with no orders in every battle run (ten, over five versions of its play; the idle army at 1.4 to 2.2 kills per loss). Purse was the lever that settled it; no unit's numbers differ by setting.
+- **Hard** also answers its own calls by command (`Command::Answer`: its squads always have an order, and the world only sends free men) and gives the bows less time.
+
+### Measured
+
+Whole battles, headless, through the game's own `Battle` and its orders (`illyria_balance tactics [set-piece seeds] [battle seeds]`, `tools/balance_battle.cpp`; `TAC_MAP`, `TAC_PLAN`, `TAC_SKILL` in the environment pick one). Open field, 450 gold, three seeds, kills for losses when the battle is decided. "Plan" is the scripted player's: the army where it stands, its foot in loose order while only arrows reach it and closed to two ranks when a foe is within 34 m. "Charge": everyone at the middle of the foe at once.
+
+| The player | Easy (75% purse) | Normal (125%) | Hard (150%) |
+|---|---|---|---|
+| no orders | 1.3 (359 for 269), won 3 of 3 | 1.5 (597 for 407), won 1, lost 1, one undecided at 360 s | 1.5 (571 for 370), lost 3 of 3 |
+| planned defence | 1.1 (412 for 384), won 3 of 3 | 1.4 (527 for 374), won 1, lost 2 | not run |
+| plan plus micro | not run | 1.0 (374 for 375), lost 3 of 3 | not run |
+| reckless charge | not run | 0.7 (246 for 378), lost 3 of 3 | not run |
+
+(Easy and the micro row were run a few changes earlier than the rest, with the plan that marched the line to the ridge; the Hard no-orders row before the last one-line change to what counts as "flanked" for a call. Before any of this, on the old field and counted at 180 s, the same tool gave no orders 2.8, planned defence 2.2, plan plus micro 2.1, charge 2.9, all of them wins.)
+
+The review's scripts on the play harness, one run each (real-time input: runs differ). Before is merge-master's build the same day, on the old field (the Ford's ground); after is this build, on the new field for `03`, `07`, `09`, `38`.
+
+| Script | Before | After |
+|---|---|---|
+| `03` no orders | 2.7 (139 for 51), won | 1.2 (147 for 125), **lost** (the foe 260 men, was 208) |
+| `07` the planned bank defence | 2.3 (145 for 62), won | 0.8 (100 for 127), lost (review4's `07`; there is no bank under it now) |
+| `26` plan plus micro | 4.1 (150 for 37), won | not run |
+| `09` everyone forward at once | 1.6 (155 for 98), won | 0.6 (75 for 129), lost |
+| review4 `38` horse ordered at a flank | horse 0 of 8 each time (review 4) | Heavy Cavalry 8 of 8 and Light Cavalry 8 of 8 left; the battle lost (86 for 127) |
+| `12` the Ford, no orders | 1.1 (71 for 64), won | 0.9 (83 for 93), won |
+
+(Run on the build before the last one-line change: an arrow in the flank no longer makes a squad call "flanked".)
+
+The set piece (flat ground, 8 seeds, at 60 s: 12 heavy infantry and 8 light cavalry against 24 light infantry):
+
+| What the horse does | Before | After |
+|---|---|---|
+| No horse | 0.0 (0 for 95) | 0.0 (0 for 95) |
+| Sent in at the front, through its own foot | 0.8 (79 for 100), the line broke 0 of 8 | 1.2 (107 for 92), 1 of 8 |
+| Left on the wing with no order | 6.4 (191 for 30), 8 of 8 | 2.7 (166 for 61), 6 of 8 |
+
+The wing lost ground: riders now come out of a flank charge and go in again, and the second time in they often meet a front that has turned, where they stay.
+
+Reading it, and what is not there:
+
+- **A plan does not yet double the exchange.** The target was a planned defence at twice the kills per loss of no orders. It is not met: on the new field the scripted plans (a line moved to the ridge; loose-then-closed formations; those plus pulling out mauled squads) all came out at or under no orders. An army with no orders now fights as one body (support, calls, horse by the flank), which is what was asked for, and it took most of what a simple plan used to add. What a plan can still add on this ground is not measured by any script here: where the line stands when the wing attack comes, horse held for the bowmen, a square at the right moment.
+- **A bad plan is punished.** The charge is at half of no orders (0.7 against 1.5) and loses every battle.
+- **No orders no longer wins on Normal, but does not yet reliably lose:** one win, one loss and one undecided of three headless, a loss in the script run; lost 3 of 3 on Hard; won 3 of 3 on Easy. The purse does most of it (see above).
+- **A sound plan winning on Normal is not shown.** The scripted plans lose on Normal too. Normal at 125% may be too much for a player who plans; it has not been played by hand.
+- **Flank charges happen, unevenly:** in the no-orders battles 9 of 63 of the player's charges landed in a flank or back in the last run and 23 of 95 in the one before, the computer's 93 of 251 (it was 1 to 3 charges a battle, all frontal). A rider who charged into a flank or back wheels out and comes again; one who charged a front that stood fights it out, as before.
+- **Nobody watches:** see the squads that never fought, per run, in the tool's output; the Ford no-orders line is below.
+
+The Ford, no orders (headless, three seeds): 1.0 (224 for 230), won 3 of 3. In the first seed the Lancers, the Elephants and the Pegasi fought and the Unicorns did not (they heal: healers go to the wounded within 40 m and do not answer calls); the Ferry Riders were still at their post at 150 s. In the script run (`12`) the Riders, Elephants, Pegasi, Griffins and Archons all fought and the **Lancers finished 8 of 8 again**, with the Unicorns 4 of 4. The nearest free squad answers each call; a squad that is never the nearest can still sit a battle out. Not fixed.
+
+### Found on the way
+
+- `World::tactics()` was never emptied between ticks: every word ever told was told again each tick (the presentation's six-second key hid it), and the list grew for the length of a battle. It is cleared with the other events.
+- A square of five men had six places (`formationLayout`): the sixth march order went to a man who is not there (a crash, found when the computer began to form squares). Fixed, with a test of every formation at every size to 40.
+- The results sheet's Killed column did not add up to the dead: men no squad is credited with (those who fled the field with a quitting host, blasts and fire with no hand behind them, the foe's own missiles) now have a row, "Others (fled the field, blasts, fire)".
+
+### Second pass: orders that add, a default that only reacts, an even purse (2026-11-14)
+
+The first pass ended with a planned defence at 1.4 against 1.5 for no orders, and Normal at 125% of the purse to make up for it. That was the wrong lever. The cause was that orders did not help:
+
+- **A placed line did not stay placed.** Every squad, ordered or not, was in the support stance once its march ended, so a line set on a height walked down to the first fight within 40 m and answered calls from 70 to 160 m. The ground the player chose was given up by the stance. Now a squad is **posted** where an order's march ends: it fights what comes within 20 m of its post, helps a neighbour whose foe is that near, goes back after, and answers no call. Halt frees it.
+- **The default army planned.** Left alone it answered calls from across the field and its horse rode for the flank unbidden: it played the commander's part. Now a squad left to itself reacts to what is near and no more: foot answer from 50 m, bowmen from 60, horse from 100, each a metre farther for every second since the side's first call (so the far wing comes late and piecemeal, but comes), and it goes straight to its friend. The ride round the foe's flank is given only by a command (`Command::Answer`: the player's full stop key, the computer's own answers on Normal and Hard).
+- **The scripted plans were poor ones**: a line marched across the slope it meant to stand on, loose order re-formed as the foe arrived, mauled squads pulled out with their backs turned. The plan measured now: the line along the contour of the nearest rise, facing down it, pikes on its ends, bowmen a rank above, the lord and the rest behind, horse held on the wings. "Micro" on top of it: each call for help answered with the full stop key, and the lord's Rally.
+- **Purse:** Normal is even again; Hard has 125% on the open field.
+
+Open field after the merge with The March (the hosts 64 m apart, bowmen in front), 450 gold, headless, kills for losses when decided:
+
+| The player | Normal, even purse, 5 seeds | Hard, 125%, 3 seeds |
+|---|---|---|
+| no orders | 1.0 (675 for 689), won 2, lost 3 | 0.8 (365 for 442), lost 3 |
+| planned defence | 1.4 (812 for 580), won 3, lost 0, two undecided at 360 s | not run |
+| plan plus micro | 1.5 (816 for 560), won 5 | 1.5 (570 for 373), won 2, lost 1 |
+| reckless charge | 1.1 (778 for 715), won 2, lost 3 | not run |
+
+Against the targets: no orders loses more often than not (met). A sound plan never lost and plan plus micro won every battle (met), at 1.4 to 1.5 times the exchange of no orders, **not the 2 times asked for**. The charge loses three in five but does **not lose badly**: with the hosts starting 64 m apart and the computer's bowmen in front of its foot, everyone forward at once reaches the bows before the foot is set. The computer does not yet pull its bows back through its line when charged at the start.
+
+The Ford, no orders (3 seeds): 1.3 (232 for 180), won 3. The Lancers and the Ferry Riders now both fight (the far wing comes when the word reaches it). In the first seed the Ferry Pikes, the Unicorns and the Pegasi still had not fought when the battle was decided: one squad answers each call, and a battle can end before the word has gone round. Review scripts were not re-run on this pass.
+
+Not mine: `tests/test_command.cpp` lines 613 and 818 (`a_shape_is_where_they_were_sent...`, `a_right_click_gives_the_tap_s_order...`) fail on merge-master itself, built clean beside this branch.
+
 ## What changed, and why
 
 | Change | Was | Now | Why |

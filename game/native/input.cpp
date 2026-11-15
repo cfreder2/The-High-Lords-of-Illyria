@@ -249,6 +249,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_K: illyria_hold(); break;       // Hold: keep their place (again: back to support)
         case SDL_SCANCODE_Y: illyria_rally(); break;      // the lord's Rally
         case SDL_SCANCODE_J: illyria_next_idle(); break;  // the next squad standing idle
+        case SDL_SCANCODE_PERIOD: illyria_answer_call(); break;  // to a call for help, the nearest free squad picked
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
         case SDL_SCANCODE_U: illyria_ungroup(); break;
@@ -304,6 +305,7 @@ void Input::handle(const SDL_Event& e) {
             }
             if (hud_.menuOpen()) break;
             pointer(1, e, e.motion.x, e.motion.y, 0);
+            hud_.setPointer(e.motion.x, e.motion.y);
             if (!e.motion.state) SDL_SetCursor(cursorFor(illyria_hover(e.motion.x, e.motion.y)));
             else if (e.motion.state & SDL_BUTTON_RMASK) SDL_SetCursor(SDL_GetDefaultCursor());
             break;
