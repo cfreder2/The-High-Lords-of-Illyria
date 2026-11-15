@@ -102,6 +102,42 @@ struct WallSeg {
 
 struct Rampart;
 
+// Timber works (docs/GAME_DESIGN.md, "Outworks and timber"): the low palisade along a castle's outer bank, the abatis
+// (felled trees, their branches toward the foe) before its ditch, wooden watchtowers, the engine on a castle tower and the
+// barricade a garrison throws up behind a battered gate (World). All timber: a run of it stops men (and, standing, the
+// horse and the wheels) and catches missiles; a boulder, a blast or fire breaks it, and what breaks it flies.
+struct Work {
+    // Palisade: a run of stakes a man's chest high on the bank; foot climb over it slowly, horse and wheels do not.
+    // Abatis: felled trees laid along the ground; foot pick through slowly, horse and wheels do not. Watchtower: a timber
+    // tower on four legs with a railed platform `height` up for one or two bowmen (World: perched). Barricade: carts,
+    // beams and doors heaped across a gateway: nobody passes until it is broken. Engine: a ballista on a castle tower's
+    // top (a is it, z its height above the sea): the garrison's own engine, not a man.
+    enum class Kind : uint8_t { Palisade, Abatis, Watchtower, Barricade, Engine };
+    Kind kind = Kind::Palisade;
+    Vec3 a, b;           // a run from a to b (z: its foot); a tower or an engine stands at a (b = a)
+    Fixed halfThick;     // half its depth across a run; a tower's half width
+    Fixed height;        // over its foot (a tower: its platform's floor)
+    Vec3 out;            // flat, unit: the side its foes come from
+    int32_t maxHp = 1;
+    int32_t ring = -1;   // the region's rampart whose gate's holder holds it (-1: whoever stands on it)
+    uint8_t variant = 0; // the picture's (timber, length of the trees)
+    bool tower() const { return kind == Kind::Watchtower || kind == Kind::Engine; }
+};
+
+// A castle's ditch (docs/MAP.md, "Outworks"): a ring `inner` to `outer` metres out from `centre`, a bank inside it from
+// `bankIn`, broken by causeways (flat unit direction out of the centre, z = half its width) where the roads and the doors
+// go out. A moat holds water.
+struct Ditch {
+    Vec3 centre;
+    Fixed bankIn, inner, outer;
+    bool wet = false;
+    std::vector<Vec3> causeways;
+    // On a causeway (the ground the ditch was not dug through).
+    bool causeway(Fixed x, Fixed y) const;
+    // In the ditch's cut (off the causeways).
+    bool holds(Fixed x, Fixed y) const;
+};
+
 // A castle gate: two heavy timber doors across the gap left in the curtain
 // wall, from a to b (z = the ground), halfThick either side, up to top. While
 // it stands it blocks walkers and missiles like the wall; once its hit points
@@ -171,6 +207,12 @@ public:
     const std::vector<WallSeg>& walls() const { return walls_; }
     const std::vector<Rampart>& ramparts() const { return ramparts_; }
     const std::vector<Gate>& gates() const { return gates_; }
+    // Timber works and ditches (Continent::City::works, Continent::Outworks): as they stand at the start; the World keeps
+    // what becomes of the works.
+    const std::vector<Work>& works() const { return works_; }
+    const std::vector<Ditch>& ditches() const { return ditches_; }
+    // In a ditch's cut here (off its causeways): horse and wheels cannot go, foot go slowly (NavGrid, World::walk).
+    bool inDitch(Fixed x, Fixed y) const;
     // The rampart whose walk this point is on, or -1.
     int rampartAt(Fixed x, Fixed y, Fixed z) const;
     // True on a bridge deck, with the deck's height.
@@ -291,6 +333,8 @@ private:
     std::vector<WallSeg> walls_;
     std::vector<Rampart> ramparts_;
     std::vector<Gate> gates_;
+    std::vector<Work> works_;
+    std::vector<Ditch> ditches_;
     // The grids of decks, walls and ramparts (decksAt and the rest), built on
     // first use: 16 m cells over the ground, each with the indices whose boxes meet it.
     struct BoxGrid {

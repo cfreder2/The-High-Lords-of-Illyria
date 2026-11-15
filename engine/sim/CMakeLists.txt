@@ -30,6 +30,7 @@ add_library(illyria_sim
     src/gait.cpp
     src/continent.cpp
     src/continent_roads.cpp
+    src/continent_outworks.cpp
     src/continent_relief.cpp
     src/conquest.cpp
     src/conquest_rules.cpp

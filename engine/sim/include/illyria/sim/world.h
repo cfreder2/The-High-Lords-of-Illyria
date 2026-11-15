@@ -50,7 +50,10 @@ enum class ProjectileKind : uint8_t {
 // from a body and threw (world_scavenge.cpp): it lies where it lands, to be
 // taken up again. (A body's own blade is not a remain: it stays with him
 // until taken, Unit::looted.)
-enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk, Blade };
+// Timber (world_works.cpp): a Beam (a post, a log, a tree's trunk), a Plank (a board, a stake) and a Splinter, thrown when
+// a work, a gate, an engine or a house's framing is broken; they lie where they land and float on water.
+enum class RemainKind : uint8_t { None, Arrow, Head, Arm, Leg, Bone, Torso, Chunk, Blade, Beam, Plank, Splinter };
+inline bool isTimber(RemainKind k) { return k == RemainKind::Beam || k == RemainKind::Plank || k == RemainKind::Splinter; }
 
 // What a weapon does to flesh (docs/GAME_DESIGN.md §5.5, the death matrix):
 // how the killing blow decides the body that is left, and the sound it makes.
@@ -161,6 +164,10 @@ struct UnitStats {
     int32_t moraleShockPct = 100;
     Scavenging scavenge;
     Satchels satchels;
+    // Fire arrows carried (bowmen), loosed only at timber: works, engines, wooden gates (world_works.cpp).
+    int32_t fireArrows = 0;
+    // Bottles of oil carried besides his own weapon (light horse: one), thrown at an engine or timber (world_sortie.cpp).
+    int32_t fireBottles = 0;
 };
 
 // A body part's soldier type unknown (arrows, and parts from before it was kept).
@@ -221,8 +228,12 @@ struct Command {
     // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
     // SetFormation: the formation the soldier is to keep (`formation`): no order of his own either. Answer: he goes to the
     // help of the friend `targetUnit`, who has called (world_help.cpp), as a man with no order would of himself.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer };
-    enum class Object : uint8_t { Gate, Wall, Obstacle };
+    // Sortie: horse ride out at the engine `targetUnit` (or the place `target`), throw the oil they carry at it, cut down
+    // what stands by it and ride back to where they set out from (world_sortie.cpp): the garrison's own sally, ordered.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Sortie };
+    // Work: one of the world's timber works (World::works): engines and bombers smash it, bowmen with fire arrows set it
+    // alight, the rest hack at it.
+    enum class Object : uint8_t { Gate, Wall, Obstacle, Work };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
     PlayerId player = 0;
@@ -424,6 +435,19 @@ struct Unit {
     // walls), not an order of the player's. Any order given to him (World::startOrder) clears it. A man with a move, an
     // attack or a queue and this unset is "ordered", and is not one of a gate's keepers (world_keep.cpp).
     bool stationed = false;
+    // On a watchtower's platform (world_works.cpp): the tower (World::works), and which of its two places. -1: on his feet.
+    int32_t perch = -1;
+    int32_t perchSlot = 0;
+    int32_t climb = 0;  // ticks of climbing up (or down) left
+    // A sortie (world_sortie.cpp): out to the engine, at it, or back; whom, from where, since when.
+    enum class Sortie : uint8_t { None, Out, Strike, Back };
+    Sortie sortie = Sortie::None;
+    EntityId sortieMark = kNoEntity;
+    Vec3 sortieHome;
+    uint32_t sortieTick = 0;
+    // Fire arrows and oil left (UnitStats::fireArrows, fireBottles).
+    int32_t fireArrows = 0;
+    int32_t fireBottles = 0;
     // Sent to occupy a place (Command::occupy): with nothing else in hand he goes back to it (World::occupyGround), a rout
     // and a rally later too. Any other order ends it.
     bool occupying = false;
@@ -468,6 +492,8 @@ struct Projectile {
     // `rolled` is how far it has gone on the ground (its turning, for the picture, and its furrow).
     bool landed = false;
     Fixed rolled;
+    // A fire arrow (or a burning timber): it sets alight the timber it strikes (world_works.cpp).
+    bool fire = false;
 };
 
 // A boulder's own size and throw (world_boulder.cpp). Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a
@@ -476,7 +502,22 @@ inline constexpr Fixed kStoneRadius = Fixed::fromRatio(11, 20);
 inline constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
 
 // What a boulder can strike that is not a man (World::strikeStructure).
-enum class Structure : uint8_t { Gate, Wall, Tower, House, Rock, Tree };
+enum class Structure : uint8_t { Gate, Wall, Tower, House, Rock, Tree, Timber };
+
+// A timber work as it stands in the battle (world_works.cpp): one of the region's (Region::works) or a barricade the garrison
+// threw up. It stands while it has hit points; it burns while `fire` lasts; broken, it lies open for good.
+struct WorkState {
+    Work def;
+    int32_t hp = 0;
+    int32_t fire = 0;         // ticks it has burned (0: not alight)
+    uint32_t fellTick = 0;    // when it broke
+    int32_t gate = -1;        // a barricade: the gate whose passage it bars
+    bool barring = false;     // in the way now (a barricade going up bars once a third of it stands)
+    // An engine: bolts left, the ticks to the next, the mark it last loosed at.
+    int32_t ammo = 0, reload = 0;
+    EntityId mark = kNoEntity;
+    bool standing() const { return hp > 0; }
+};
 
 // A boulder's predicted way over the ground (World::stonePath): where it comes down, then where it is and how fast at
 // each tick after, to its rest.
@@ -949,6 +990,29 @@ public:
     // a gate a stone ROLLED into, takes the doors' hit points (a stone from the air does that through its smash,
     // World::blastGates). Walls, towers and houses have no hit points yet: the work that gives them some takes them here.
     void strikeStructure(Structure kind, const Vec3& where, const Vec3& dir, Fixed energy, bool rolled);
+    // TIMBER WORKS (world_works.cpp; docs/GAME_DESIGN.md, "Outworks and timber"): the region's palisades, abatis,
+    // watchtowers and tower engines, and the barricades garrisons throw up. Who holds one (its ring's gate's holder; a
+    // watchtower of nobody's ring: whoever stands on it; GateState::kNoHolder: nobody).
+    const std::vector<WorkState>& works() const { return works_; }
+    PlayerId workHolder(size_t i) const;
+    // A blow on it (hit points; `heavy`: a boulder, a blast or a collapse: it breaks into flying timber).
+    void damageWork(size_t i, int32_t amount, const Vec3& at, const Vec3& dir, bool heavy);
+    // Fire set to it (a fire arrow, a Molotov's oil, a burning neighbour), and fire set to every work within `radius` of a place.
+    void igniteWork(size_t i);
+    void igniteWorksNear(const Vec3& at, Fixed radius);
+    // The work whose footprint (or platform) is within `margin` of a place, or -1: for picking one to order men at.
+    int32_t workAt(const Vec3& p, Fixed margin) const;
+    // A watchtower's places taken (two at most).
+    int32_t perchedOn(size_t tower) const;
+    static constexpr int32_t kPerchPlaces = 2;
+    // Timber flung from `from` along `dir` at about `speed` m/s: beams, planks and splinters (sim objects that hurt the
+    // men they strike by their weight and speed), `heft` the share of beams and planks against splinters (0 to 100).
+    void throwTimber(const Vec3& from, const Vec3& dir, Fixed speed, int32_t pieces, int32_t heft);
+    // Bottles of oil carried (a light horseman's one: Command::Sortie), and throwing one at a place (true: thrown).
+    int32_t bottlesLeft(const Unit& u) const { return u.fireBottles; }
+    bool throwBottle(Unit& u, const Vec3& at);
+    // Whether a man should sally against the engine `mark`: horse of a garrison, with an engine in reach and weakly guarded.
+    bool sortieWorth(const Unit& rider, const Unit& mark) const;
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -1557,6 +1621,48 @@ private:
         bool badlyHurtFriend = false;
     };
     RollToll rollToll(const Unit& u, const Vec3& mark, Fixed spread) const;
+    // Timber works (world_works.cpp).
+    void initWorks();
+    void updateWorks();
+    // The earliest crossing of segment a->b with a standing work's timber, as a fraction (-1: none), and which.
+    Fixed workHit(const Vec3& a, const Vec3& b, Fixed limitT, int32_t* which) const;
+    static constexpr int32_t kHitWork = -3;  // obstacleHit's `what` for work i: kHitWork - i
+    // Whether a standing work bars him at (x, y), and how it slows him (percent of his pace) where he stands.
+    bool workBars(const Unit& u, Fixed x, Fixed y) const;
+    int32_t workPacePct(const Unit& u) const;
+    // A ditch bars horse and wheels.
+    bool ditchBars(const Unit& u, Fixed x, Fixed y) const;
+    void blastWorks(const Vec3& at, const Explosive& ex, ProjectileKind kind);
+    void strikeWork(const Vec3& where, const Vec3& dir, Fixed energy);
+    void strikeTowerTop(const Vec3& where, Fixed energy);
+    void breakWork(size_t i, const Vec3& dir, Fixed strength);
+    // The nav grid's cells a work bars (on: while it stands).
+    void barWorkCells(size_t i, bool on);
+    // A man on a watchtower (true: he is, and has done his tick); a man come to its foot climbs it.
+    bool perched(Unit& u);
+    bool climbTower(Unit& u);
+    // A man on his way, barred by a work of his foes (or nobody's), hacks at it (true: he struck, or waits to).
+    bool hackWork(Unit& u);
+    // Ordered at a work (Command::Object::Work).
+    void orderAtWork(Unit& u, const Command& cmd);
+    // A tower's engine: its tick (aim and loose).
+    void engineTick(size_t i);
+    // A garrison throws up a barricade behind a battered gate.
+    void raiseBarricades();
+    // A fire arrow (or a burning thing) stuck in a work.
+    void arrowInWork(const Projectile& p, int32_t what);
+    // A bowman with fire arrows and a timber mark of his foes' in reach looses one (true).
+    bool fireAtTimber(Unit& u);
+    // Forward bowmen of a garrison (on the bank before the walls, in its watchtowers) fall back when foes close or get round.
+    void recallForward(const std::vector<size_t>& doors);
+    // Sorties (world_sortie.cpp): the garrison's decision, and a rider's tick of one.
+    void garrisonSorties(const std::vector<size_t>& doors);
+    bool sortieStep(Unit& u);
+    void startSortie(Unit& u, const Command& cmd);
+    std::vector<WorkState> works_;
+    SpatialHash workGrid_{8};   // the works by the cells their footprints cover (looked up, never walked)
+    std::map<int32_t, std::array<uint8_t, 3>> barred_;  // nav cells barred by works: how many of each kind of bar (World::barWorkCells)
+    uint32_t timberLying_ = 0;  // timber remains placed (the splinters stop lying about past a budget)
     // Castle walls (world_walls.cpp).
     // Earliest entry of segment a->b into a wall's stone: its slab below the
     // walk, the parapet, a merlon (not an embrasure); -1 if none.

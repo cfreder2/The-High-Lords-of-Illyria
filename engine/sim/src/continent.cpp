@@ -544,6 +544,7 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     routeApproaches();
     planCastles();
     layApproaches();
+    planOutworks();
     placeSites();
     // Then the battle-scale relief and the landmarks, clear of all of them.
     dress();
@@ -1552,6 +1553,17 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         const Fixed w = Fixed::one() - noise::smoothstep(inner, reach, d);
         z = z + (p.z - z) * w;
     }
+    // A fortified castle's bank and ditch (continent_outworks.cpp); not by a river, which is its moat there. A moat's water
+    // stands in its ditch as a pool in a hollow does.
+    if (!fortified_.empty() && s.riverDist >= s.riverHalfWidth + m(10))
+        for (const size_t ci : fortified_) {
+            const City& c = cities_[ci];
+            z = c.outworksAt(x, y, z);
+            if (c.ditch.wet && c.ditch.holds(x, y)) {
+                s.inBasin = true;
+                s.basinSurface = c.moatBed + City::kMoatWater;
+            }
+        }
 
     // A bank lower than the water beside it is built up to it (a levee, tapering off into the land at 1 in 4): the water stands in
     // its channel, not on a bank. (Not in a lake or the sea: they have their own shores.)
@@ -1681,6 +1693,9 @@ bool Continent::onBridge(Fixed x, Fixed y, Fixed& deck) const {
 
 Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fixed roadDist) const {
     if (roadDist < m(3)) return Ground::Road;
+    // A dry ditch's bottom is trodden mud (a moat's is water: Region and the close-up land see it so).
+    for (const size_t ci : fortified_)
+        if (cities_[ci].ditch.holds(x, y)) return Ground::Mud;
     for (const City& c : cities_) {
         const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y);
         if (dx < c.radius && dy < c.radius && dx * dx + dy * dy < c.radius * c.radius) return Ground::Plains;
@@ -1858,6 +1873,7 @@ void Continent::placeCities() {
         return a.score != b.score ? a.score > b.score : a.order < b.order;
     });
     std::vector<City> chosen = cities;
+    for (size_t f = 0; f < chosen.size() && f < kFactionCount; ++f) chosen[f].realm = static_cast<uint8_t>(f);  // (the seats, in the lords' order)
     // The gap from a candidate's edge to the nearest walls, and to the nearest place of any kind.
     std::vector<Fixed> toWalls(candidates.size(), m(100000)), toAny(candidates.size(), m(100000));
     const auto keepClear = [&](const City& o) {
@@ -1987,6 +2003,7 @@ void Continent::placeCities() {
         if (best == candidates.size()) continue;
         ++towns[realmAt(best)];
         addTown(best);
+        chosen.back().realm = static_cast<uint8_t>(realmAt(best));
     }
     // The next place for a realm: in its country, where the gap to its neighbours is widest (the better site first);
     // and with no room left there, the nearest site to its seat that there is room for anywhere.
@@ -2019,6 +2036,7 @@ void Continent::placeCities() {
             if (best == candidates.size()) continue;
             ++towns[f];
             addTown(best);
+            chosen.back().realm = static_cast<uint8_t>(f);
         }
     // The Isle of the Seer: one fishing village, the best site it has, counted among the villages of the lord whose
     // seat is nearest over the water (his one place beyond the sea).
@@ -2029,6 +2047,7 @@ void Continent::placeCities() {
             if ((candidates[i].pos - cities[static_cast<size_t>(f)].pos).flat().lengthSq() < (candidates[i].pos - cities[static_cast<size_t>(nearest)].pos).flat().lengthSq()) nearest = f;
         ++villages[nearest];
         addVillage(i);
+        chosen.back().realm = static_cast<uint8_t>(nearest);
         break;
     }
     // (A village for each town a realm had no room for, so that every realm has its ten places.)
@@ -2039,6 +2058,7 @@ void Continent::placeCities() {
             if (best == candidates.size()) continue;
             ++villages[f];
             addVillage(best);
+            chosen.back().realm = static_cast<uint8_t>(f);
         }
     for (size_t i = kFactionCount; i < chosen.size(); ++i) chosen[i].name = kCityNames[(i - kFactionCount) % kCityNameCount];
     cities_ = std::move(chosen);

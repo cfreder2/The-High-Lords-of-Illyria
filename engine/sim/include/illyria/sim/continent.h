@@ -224,6 +224,19 @@ public:
         // A capital or a walled town (rings, gates, towers), or an open village: houses round a green and a tower
         // house (the castle's keep, courtyard and houses, and no rings), taken by whoever holds its green.
         bool walled = true;
+        // The realm whose country it was drafted for (Continent::placeCities; a capital: its own lord), kNeutral if none.
+        uint8_t realm = kNeutral;
+        // Outworks (planOutworks, docs/MAP.md "Outworks"): a ditch round the walls with a bank inside it (Ditch: z of the
+        // centre is the pad), fair to every realm: its seat and one walled town of its country. `ditch.inner` zero: none.
+        Ditch ditch = {};
+        Fixed ditchDepth, bankRise;  // the cut below the land, the bank above it
+        Fixed moatBed;               // a moat's bed (its water stands kMoatWater over it)
+        static constexpr Fixed kMoatWater = Fixed::fromRatio(4, 5);
+        bool fortified() const { return ditch.inner > Fixed::zero(); }
+        // The land at (x, y) as the outworks leave it (`land`: as it lay): the bank built up, the ditch dug (a moat's bed level).
+        Fixed outworksAt(Fixed x, Fixed y, Fixed land) const;
+        // Its timber works (continent coordinates): palisade, abatis, watchtowers, tower engines.
+        std::vector<Work> works = {};
     };
     // Places heroes explore: ruins hold a guardian and a reward, temples bless,
     // sages tell what they know (first come, first served).
@@ -412,6 +425,8 @@ private:
     // A bridge's span from its place and direction: dry banks both ends along the axis, the deck's level, the ramps (placeBridges, fitBridgesToRoads).
     void spanCrossing(Crossing& cr);
     void planCastles();
+    // Outworks for a fair share of the castles, and every place's watchtowers (continent_outworks.cpp).
+    void planOutworks();
     // The roads to the towns' gates (continent_roads.cpp): each town's path to
     // the road network is found before its castle is planned (which way the
     // gate faces), and laid from the gate once it stands.
@@ -498,6 +513,7 @@ private:
     // The ruins' levelled ground (x, y, height; carve), laid once the land is
     // made, so nothing placed or dressed before moves.
     std::vector<Vec3> ruinPads_;
+    std::vector<size_t> fortified_;  // the cities with outworks (planOutworks), for carve
     std::vector<Landmark> landmarks_;
     // Where the set pieces go (planSetPieces): x, y, z = the radius of ground they need.
     std::vector<Vec3> setPieces_;

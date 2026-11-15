@@ -379,6 +379,12 @@ bool Region::underWater(Fixed x, Fixed y) const {
     return terrain_.heightAt(x, y) < surface;
 }
 
+bool Region::inDitch(Fixed x, Fixed y) const {
+    for (const Ditch& d : ditches_)
+        if (d.holds(x, y)) return true;
+    return false;
+}
+
 Ground Region::groundAt(Fixed x, Fixed y) const {
     const int32_t n = terrain_.cells();
     const int32_t ix = static_cast<int32_t>(std::clamp<int64_t>((x / terrain_.cellSize()).floorToInt(), 0, n - 1));
@@ -890,7 +896,9 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             const size_t i = static_cast<size_t>(iy) * n + ix;
             if (roadDist[i] >= m(7) || rg.water_[i].raw != kDryRaw) continue;
             bool padded = false;
-            for (const Continent::City* city : towns) padded = padded || flatDist(OX + cell * ix, OY + cell * iy, city->pos) <= city->radius;
+            // (Nor across a fortified castle's bank and ditch, whose causeways carry the roads level over them.)
+            for (const Continent::City* city : towns)
+                padded = padded || flatDist(OX + cell * ix, OY + cell * iy, city->pos) <= (city->fortified() ? max(city->radius, city->ditch.outer + m(10)) : city->radius);
             if (padded) continue;
             Fixed sum;
             for (int32_t dy = -2; dy <= 2; ++dy)
@@ -1072,6 +1080,20 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             o.height = hs.height;
             rg.obstacles_.push_back(o);
         }
+        // Its timber works and its ditch (continent_outworks.cpp), held by the garrison of its outer ring (the feet set on
+        // the battle's own ground below, once it is made).
+        for (const Work& w0 : city.works) {
+            Work w = w0;
+            w.a = toLocal(w.a);
+            w.b = toLocal(w.b);
+            if (w.ring >= 0) w.ring = static_cast<int32_t>(firstRampart) + w.ring;
+            rg.works_.push_back(w);
+        }
+        if (city.fortified()) {
+            Ditch d = city.ditch;
+            d.centre = toLocal(d.centre);
+            rg.ditches_.push_back(d);
+        }
     }
     rg.berms_.push_back({{Vec3{rg.ford_.x - m(57), rg.ford_.y - m(72), Fixed::zero()},
                           Vec3{rg.ford_.x - m(50), rg.ford_.y + m(78), Fixed::zero()}}, r(7, 2)});
@@ -1154,6 +1176,11 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             }
     }
     rg.terrain_ = Terrain::fromSamples(cells, cell, shaped);
+    for (Work& w : rg.works_) {
+        if (w.kind == Work::Kind::Engine) continue;  // (on its tower's top)
+        w.a.z = rg.terrain_.heightAt(w.a.x, w.a.y);
+        w.b.z = rg.terrain_.heightAt(w.b.x, w.b.y);
+    }
     // The level below which things look drowned: the lowest water in the
     // window (a town far from the ford may stand below the ford's river).
     rg.waterLevel_ = -m(1000);
@@ -1447,6 +1474,18 @@ uint64_t Region::checksum() const {
         for (Fixed v : {g.a.x, g.a.y, g.a.z, g.b.x, g.b.y, g.halfThick, g.top, g.out.x, g.out.y}) h.addI64(v.raw);
         h.addI64(g.maxHp);
         h.addI64(g.ring);
+    }
+    for (const Work& w : works_) {
+        h.addU64(static_cast<uint64_t>(w.kind));
+        for (Fixed v : {w.a.x, w.a.y, w.a.z, w.b.x, w.b.y, w.b.z, w.halfThick, w.height, w.out.x, w.out.y}) h.addI64(v.raw);
+        h.addI64(w.maxHp);
+        h.addI64(w.ring);
+    }
+    for (const Ditch& d : ditches_) {
+        for (Fixed v : {d.centre.x, d.centre.y, d.bankIn, d.inner, d.outer}) h.addI64(v.raw);
+        h.addU64(d.wet);
+        for (const Vec3& c : d.causeways)
+            for (Fixed v : {c.x, c.y, c.z}) h.addI64(v.raw);
     }
     return h.value();
 }

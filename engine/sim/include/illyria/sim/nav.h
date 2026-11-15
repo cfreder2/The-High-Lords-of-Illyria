@@ -70,6 +70,16 @@ public:
     // `forGood` false: a gate its holder's men swing open for a while (World::updateGates); shutGate closes it again.
     void openGate(size_t gate, bool forGood = true);
     void shutGate(size_t gate);
+    // Bars (docs/GAME_DESIGN.md, "Outworks and timber"): a ditch's cut and a standing palisade or abatis bar horse and wheels
+    // (kBarMounted) and slow foot (kBarSlow: three times the time); a barricade or a watchtower's legs bar everyone (kBarAll).
+    // The ditches are the region's; the World sets the works' as they stand and fall.
+    static constexpr uint8_t kBarMounted = 1, kBarAll = 2, kBarSlow = 4;
+    static bool mountedGait(Gait g) { return g == Gait::Horse || g == Gait::Wolf || g == Gait::Wheeled; }
+    // The cell of a point (-1 off the grid), its bars, and setting a cell's bars from the works (the ditch's stay).
+    int32_t cellAt(const Vec3& p) const;
+    uint8_t barsAt(const Vec3& p) const;
+    void setWorkBars(int32_t cell, uint8_t bars);
+    Vec3 cellCentre(int32_t cell) const;
     int32_t cells() const { return n_; }
 
 private:
@@ -119,6 +129,7 @@ private:
     int64_t cell_ = kCellSize;
     int32_t sub_ = 1;  // terrain cells across a nav cell
     std::vector<uint8_t> open_;     // 0: blocked (water, cliff, wall, house, shut gate)
+    std::vector<uint8_t> ditch_, bars_;  // per cell: the region's ditches' bars, and those with the works' (setWorkBars)
     std::vector<uint16_t> mask_;    // bit per walkable ground found in the cell
     std::vector<uint8_t> steep_;    // slopes that slow walkers
     std::vector<Fixed> height_;     // ground at the cell's centre

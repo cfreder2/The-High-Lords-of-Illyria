@@ -54,6 +54,20 @@ NavGrid::NavGrid(const Region& region) : terrain_(&region.terrain()), decks_(reg
     mask_.assign(count, 0);
     steep_.assign(count, 0);
     height_.assign(count, Fixed::zero());
+    // A ditch's cut bars horse and wheels (its causeways do not); the works' bars come and go with them (World).
+    if (!region.ditches().empty() || !region.works().empty()) {
+        ditch_.assign(count, 0);
+        for (const Ditch& dt : region.ditches()) {
+            const int32_t x0 = cellOf(dt.centre.x - dt.outer), x1 = cellOf(dt.centre.x + dt.outer);
+            const int32_t y0 = cellOf(dt.centre.y - dt.outer), y1 = cellOf(dt.centre.y + dt.outer);
+            for (int32_t y = y0; y <= y1; ++y)
+                for (int32_t x = x0; x <= x1; ++x) {
+                    const Fixed half = Fixed::fromInt(cell_) / 2;
+                    if (dt.holds(Fixed::fromInt(x * cell_) + half, Fixed::fromInt(y * cell_) + half)) ditch_[static_cast<size_t>(index(x, y))] |= kBarMounted;
+                }
+        }
+        bars_ = ditch_;
+    }
     // Cells an open deck passes over carry the way over the water, however narrow.
     std::vector<uint8_t> decked(count, 0);
     for (const Deck& d : decks_) {
@@ -738,6 +752,7 @@ int32_t NavGrid::cellOf(Fixed v) const {
 uint16_t NavGrid::cellCost(Gait gait, int32_t cell) const {
     const size_t k = static_cast<size_t>(cell);
     if (!open_[k]) return 0;
+    if (!bars_.empty() && ((bars_[k] & kBarAll) || ((bars_[k] & kBarMounted) && mountedGait(gait)))) return 0;
     // The best ground in the cell: a walker keeps to it.
     int32_t perGround[kGroundCount];
     for (int g = 0; g < kGroundCount; ++g) perGround[g] = perMetre(gait, static_cast<Ground>(g));
@@ -754,6 +769,7 @@ uint16_t NavGrid::cellCost(Gait gait, int32_t cell) const {
         if (it != ways.end() && it->cell == cell && !it->open) return 0;
     }
     if (steep_[k]) best = best * 5 / 4;
+    if (!bars_.empty() && (bars_[k] & kBarSlow) && !mountedGait(gait)) best = std::min(best * 3, 65535);
     return static_cast<uint16_t>(best);
 }
 
@@ -788,6 +804,33 @@ void NavGrid::shutGate(size_t gate) {
     }
     gateCells_[gate] = std::move(gateShut_[gate]);
     gateShut_[gate].clear();
+}
+
+int32_t NavGrid::cellAt(const Vec3& p) const {
+    if (p.x < Fixed::zero() || p.y < Fixed::zero()) return -1;
+    const int64_t x = p.x.floorToInt() / cell_, y = p.y.floorToInt() / cell_;
+    if (x >= n_ || y >= n_) return -1;
+    return index(static_cast<int32_t>(x), static_cast<int32_t>(y));
+}
+
+uint8_t NavGrid::barsAt(const Vec3& p) const {
+    const int32_t c = cellAt(p);
+    return c < 0 || bars_.empty() ? 0 : bars_[static_cast<size_t>(c)];
+}
+
+Vec3 NavGrid::cellCentre(int32_t cell) const {
+    const Fixed half = Fixed::fromInt(cell_) / 2;
+    return {Fixed::fromInt((cell % n_) * cell_) + half, Fixed::fromInt((cell / n_) * cell_) + half, Fixed::zero()};
+}
+
+void NavGrid::setWorkBars(int32_t cell, uint8_t bars) {
+    if (cell < 0 || bars_.empty()) return;
+    const size_t k = static_cast<size_t>(cell);
+    const uint8_t now = static_cast<uint8_t>(ditch_[k] | bars);
+    if (now == bars_[k]) return;
+    bars_[k] = now;
+    for (int gi = 0; gi < kGaitCount; ++gi)
+        if (!cost_[static_cast<size_t>(gi)].empty()) cost_[static_cast<size_t>(gi)][k] = cellCost(static_cast<Gait>(gi), cell);
 }
 
 bool NavGrid::groundBlocked(const Vec3& p) const { return open_[static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)))] == 0; }
@@ -884,6 +927,7 @@ bool NavGrid::groundClear(const Vec3& from, const Vec3& to, Gait gait) const {
         const Vec3 p = from + d * Fixed::fromRatio(i, steps);
         const size_t k = static_cast<size_t>(index(cellOf(p.x), cellOf(p.y)));
         if (open_[k] == 0) return false;  // groundBlocked
+        if (!bars_.empty() && bars_[k] != 0 && ((bars_[k] & (kBarAll | kBarSlow)) || mountedGait(gait))) return false;  // (a bar's way is the planner's: its cost)
         site = site || (!siteAt_.empty() && siteAt_[k] != siteAt_[k + 1]);
         if (!stoneAt_.empty()) {
             for (uint32_t j = stoneAt_[k]; j < stoneAt_[k + 1]; ++j) {

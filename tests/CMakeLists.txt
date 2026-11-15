@@ -49,6 +49,7 @@ add_executable(illyria_tests
     test_continent.cpp
     test_ground.cpp
     test_castle.cpp
+    test_outworks.cpp
     test_garrison.cpp
     test_garrison_keep.cpp
     test_two_gates.cpp
