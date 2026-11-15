@@ -293,6 +293,7 @@ def build(cfg):
     rig = keyer.Rig(arm)
     if cfg.get('cape'):
         fitting.free_cloth(rig, body, cfg['cape'])
+    fitting.trunk_off_arms(rig, body)
     fit = fitting.Fit(rig, body)
     print('%s: %d tris, %.2f m tall, hips %.2f m; %s' % (cfg['unit'], sum(len(p.vertices) - 2 for p in body.data.polygons),
                                                           cfg['height_m'], rig.rest_head['Hips'].z, fit.describe()), flush=True)
@@ -418,6 +419,7 @@ def build_mounted(cfg):
         for pb in rarm.pose.bones:
             pb.rotation_mode = 'QUATERNION'
         rig = keyer.Rig(rarm)
+        fitting.trunk_off_arms(rig, rbody)
         upright = bpy.data.objects.new('upright', None)
         scene.collection.objects.link(upright)
         for it in cfg.get('items', []):

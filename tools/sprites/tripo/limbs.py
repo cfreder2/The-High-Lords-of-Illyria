@@ -37,11 +37,14 @@ class Limbs:
         self.dom = dom
         self.upper = [n in ('LeftArm', 'RightArm') for n in dom]
         self.polys = [tuple(p.vertices) for p in me.polygons]
+        # A cape or skirt freed from the legs (fit.free_cloth) is cloth: an arm lying in it is not an arm in him.
+        g = body.vertex_groups.get('tripo_cloth')
+        cloth = {v.index for v in me.vertices if g is not None and any(x.group == g.index for x in v.groups)}
         self.sides = {}
         mw = body.matrix_world
         for side in ('Left', 'Right'):
             mine = [n.startswith((side + 'Shoulder', side + 'Arm', side + 'ForeArm', side + 'Hand')) for n in dom]
-            rest = [i for i, p in enumerate(self.polys) if not any(mine[v] for v in p)]
+            rest = [i for i, p in enumerate(self.polys) if not any(mine[v] or v in cloth for v in p)]
             sh, el = rig.rest_head[side + 'Arm'], rig.rest_head[side + 'ForeArm']
             pts = []
             for i, n in enumerate(dom):

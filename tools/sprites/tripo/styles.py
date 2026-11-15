@@ -21,8 +21,15 @@ def _deaths(P, home='HOME', frames=8, flinch=None):
         if name == 'DC_STRUCK':
             p.update(sword_hand=(0.22, -0.50, 0.92), sword_elbow=(-0.10, -0.55, 1.15), blade=(0.55, -0.55, -0.62))
             p.update(shield_hand=(0.38, 0.28, 1.12), shield_elbow=(0.10, 0.62, 0.95))
-        if name == 'DC_SLUMP':     # on his side: both arms flung out before him, not folded under a thick chest
-            p.update(sword_hand=(0.62, -0.50, 0.10), sword_elbow=(0.35, -0.60, 0.45), shield_hand=(0.66, 0.05, 0.22), shield_elbow=(0.35, 0.30, 0.60))
+        if name == 'DC_SLUMP':     # on his side: both arms flung out before him, not folded under a thick chest; the
+            # lower (right) arm straight out from its shoulder, which lies 0.6 m to his right, not angled back under his ribs
+            p.update(sword_hand=(0.70, -0.66, 0.10), sword_elbow=(0.38, -0.72, 0.30), shield_hand=(0.66, 0.05, 0.22), shield_elbow=(0.35, 0.30, 0.60))
+        if name == 'DC_KNEEL':
+            # Toppling from his knees onto his right side, a man puts that arm out to the ground: it goes out and
+            # down before he lands on it, not through his own side as the chest rolls over it.
+            P['DC_TOPPLE'] = dict(p, hips=(-0.02, -0.08, 0.42), hips_rot=lean(pitch=5, roll=-35), chest=lean(pitch=28, roll=-45),
+                                  head=lean(pitch=30, roll=-35), sword_hand=(0.42, -0.80, 0.22), sword_elbow=(0.18, -0.75, 0.55),
+                                  blade=(0.6, -0.6, -0.2), shield_hand=(0.30, 0.20, 0.55), shield_elbow=(0.0, 0.42, 0.60))
         if name in ('DC_KNEEL', 'BURN_KNEES'):
             p.update(sword_hand=(0.28, -0.52, 0.50), sword_elbow=(-0.05, -0.60, 0.80), blade=(0.70, -0.62, -0.35))
             p.update(shield_hand=(0.30, 0.42, 0.62), shield_elbow=(-0.05, 0.62, 0.70))
@@ -37,7 +44,7 @@ def _deaths(P, home='HOME', frames=8, flinch=None):
                                 (0.65, 'DF_FALLING', 'in'), (0.82, 'DF_IMPACT', 'in'), (1.0, 'DF_SETTLE', 'out'),
                                 (1.4, 'DF_SETTLE', 'linear')], kind='death', frames=frames),
         'die_crumple': dict(keys=[(0.0, home, 'linear'), (0.12, 'DC_STRUCK', 'out'), (0.55, 'DC_KNEEL', 'in'),
-                                  (0.75, 'DC_KNEEL', 'linear'), (1.15, 'DC_SLUMP', 'in'), (1.5, 'DC_SLUMP', 'linear')],
+                                  (0.75, 'DC_KNEEL', 'linear'), (0.97, 'DC_TOPPLE', 'in'), (1.15, 'DC_SLUMP', 'out'), (1.5, 'DC_SLUMP', 'linear')],
                             kind='death', frames=frames),
         'die_burn': dict(keys=[(0.0, home, 'linear'), (0.2, 'BURN_A', 'out'), (0.45, 'BURN_B', 'ease'), (0.7, 'BURN_A', 'ease'),
                                (0.95, 'BURN_B', 'ease'), (1.3, 'BURN_KNEES', 'in'), (1.45, 'BURN_KNEES', 'linear'),
@@ -172,6 +179,7 @@ def dwarf_thrower(cfg):
     # The throw, overarm. He sinks and swings the satchel back and low (the free hand out at the mark), rears up with
     # it behind his head, steps onto his left foot as his hips and chest come round and the elbow leads the hand over,
     # lets go with the arm long and high, and follows through across his body, his right heel coming off the ground.
+    # Reared and leading, the elbow is out at his side and the hand above it, clear of his helmet and beard.
     STEP0 = {'Left': (0.10, 0.19, 12), 'Right': (-0.12, -0.19, -30)}
     STEP1 = {'Left': (0.30, 0.17, 6), 'Right': (-0.16, -0.19, -35)}
     STEP2 = {'Left': (0.30, 0.17, 6), 'Right': (-0.05, -0.19, -20, 0.06)}
@@ -182,11 +190,11 @@ def dwarf_thrower(cfg):
                        shield_hand=(0.42, 0.22, 1.25), shield_elbow=(0.10, 0.50, 1.10))
     P['T_REAR'] = dict(T, feet=STEP0, hips=(-0.10, -0.04, 0.99), hips_rot=lean(pitch=-4, turn=-35), chest=lean(pitch=-14, turn=-60),
                        head=lean(pitch=-8, turn=5), Right_shrug=-15, Right_lift=10,
-                       sword_hand=(-0.42, -0.30, 1.78), sword_elbow=(-0.30, -0.62, 1.50),
+                       sword_hand=(-0.42, -0.40, 1.74), sword_elbow=(-0.30, -0.70, 1.48),
                        shield_hand=(0.48, 0.18, 1.45), shield_elbow=(0.15, 0.48, 1.20))
     P['T_LEAD'] = dict(T, feet=STEP1, hips=(0.08, 0.02, 0.94), hips_rot=lean(pitch=4, turn=5), chest=lean(pitch=2, turn=-15),
                        head=lean(pitch=-6), Right_lift=14,
-                       sword_hand=(-0.10, -0.28, 1.95), sword_elbow=(0.18, -0.50, 1.62),
+                       sword_hand=(-0.10, -0.42, 1.90), sword_elbow=(0.15, -0.66, 1.58),
                        shield_hand=(0.30, 0.34, 1.12), shield_elbow=(-0.10, 0.52, 1.15))
     P['T_LOOSE'] = dict(T, feet=STEP1, hips=(0.16, 0.04, 0.93), hips_rot=lean(pitch=10, turn=22), chest=lean(pitch=18, turn=30),
                         head=lean(pitch=-14), Right_shrug=14, Right_lift=10, fist={'Right': 5, 'Left': 30},
@@ -330,7 +338,7 @@ def spearman(cfg):
     P['LUNGE'] = dict(KP.THRUST_LUNGE, fist=GRIP, feet={'Left': (0.46, 0.16, 8), 'Right': (-0.34, -0.16, -45)},
                       hips=(0.16, 0.0, 0.84), hips_rot=lean(pitch=10, turn=12), chest=lean(pitch=16, turn=24), head=lean(pitch=-8),
                       sword_hand=(0.80, -0.14, 1.20), sword_elbow=(0.50, -0.44, 1.05), blade=(1, 0.04, 0.02),
-                      shield_hand=(0.30, 0.24, 1.22), shield_elbow=(0.20, 0.54, 1.08), shield_face=(0.8, 0.6, 0))
+                      shield_hand=(0.32, 0.26, 1.32), shield_elbow=(0.20, 0.58, 1.14), shield_face=(0.8, 0.6, 0))
     P['C_UP'] = dict(HOME, hips=(0.0, 0.0, 1.0), hips_rot=lean(turn=-10), chest=lean(pitch=-6), head=lean(pitch=-18),
                      sword_hand=(0.12, -0.36, 1.92), sword_elbow=(0.0, -0.60, 1.65), blade=(0.05, -0.08, 1),
                      shield_hand=(0.22, 0.42, 1.50), shield_elbow=(0.0, 0.62, 1.30), shield_face=(0.6, 0.8, 0.2))
@@ -365,7 +373,7 @@ def giant(cfg):
          'IN': dict(HOME, hips=(0.0, 0.0, 0.99), chest=lean(pitch=1), Left_lift=7, Right_lift=7, head=lean(pitch=-7)),
          'OUT': dict(HOME, hips=(0.0, 0.0, 0.965), chest=lean(pitch=9), head=lean(pitch=0)),
          'SCRATCH': dict(HOME, hips=(0.0, 0.04, 0.975), hips_rot=lean(roll=4), chest=lean(pitch=6, roll=-3, turn=8), head=lean(turn=30, pitch=4),
-                         shield_hand=(0.20, 0.10, 1.30), shield_elbow=(0.10, 0.55, 1.05)),
+                         shield_hand=(0.42, 0.20, 1.28), shield_elbow=(0.10, 0.75, 1.00)),
          'SWAY_R': dict(HOME, hips=(0.0, -0.05, 0.975), hips_rot=lean(roll=-4), chest=lean(pitch=6, roll=3, turn=-10), head=lean(turn=-32, pitch=2))}
     W = dict(HOME, hips_rot=lean(pitch=4), chest=lean(pitch=9), head=lean(pitch=-6))
     P['W_DOWN_L'] = dict(W, hips=(0.02, 0.03, 0.91), hips_rot=lean(pitch=4, turn=-12, roll=-3), chest=lean(pitch=12, turn=10, roll=3),
