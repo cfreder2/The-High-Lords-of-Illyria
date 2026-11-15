@@ -71,7 +71,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // (was 0x0e98f7b87d48c48d before this scene's engine threw from no store, the cart's four stones being fewer than its throws; was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
+constexpr uint64_t kAloneSum = 0x3d3d3ccbfa900926;  // (was 0x4706d43339ae7233 before the orders pass: men keep room, depth, the flank of a busy squad, braced foot, arrows led, aimed at the body and lofted over their own, the census by weight, the men stepping in turn; was 0x0e98f7b87d48c48d before this scene's engine threw from no store, the cart's four stones being fewer than its throws; was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
@@ -104,8 +104,8 @@ TEST(a_catapult_aims_to_spare_the_friends_beside_its_foes) {
                 alone.foesLost, static_cast<unsigned long long>(alone.sum), one.friendsLost, one.friendsDead, one.foesLost, three.friendsLost,
                 three.friendsDead, three.foesLost);
     // No friend near: the catapult throws as it did before the rule (the same stones at the same marks; each now rolls
-    // on through the pile, world_boulder.cpp, so the toll is 8380 where the smash alone took 6156).
-    CHECK(alone.foesLost == 8380);
+    // on through the pile, world_boulder.cpp, so the toll is 8160, 8380 before the pile kept room between its men, where the smash alone took 6156).
+    CHECK(alone.foesLost == 8160);  // (was 8380 before the orders pass: the pile keeps room between its men)
     CHECK(alone.sum == kAloneSum);
     // Friends near: nearly none of them hurt (a tenth of the old toll at most), and the pile still shelled to near as much.
     CHECK(one.friendsLost * 10 <= 90 && one.friendsDead == 0);
