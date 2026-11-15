@@ -17,7 +17,7 @@ the harness reads the same JSON the HUD reads (`illyria_hud`, `illyria_conquest_
 - **Real input is ignored while a script runs.** A stray keystroke is not a second player.
 - **The window takes no focus.** The app runs without a Dock icon and its window cannot become key, so starting a
   script does not pull typing away from whatever you were doing. The GL context still renders into the window.
-- **No sound**, and **no saved game or settings are read or written** (a played conquest never overwrites yours).
+- **No sound** (with `ILLYRIA_CUE_LOG=1` or `--log-cues` the mixer runs on SDL's dummy driver, still silent, and every sound cue, voice cue and ambience change is written to stderr: `cue <id> gain pan dist delay prio -> played`), and **no saved game or settings are read or written** (a played conquest never overwrites yours).
 - **Modifiers are the script's.** `key shift down` sets the keyboard modifier state the game reads, whatever the real
   keyboard holds.
 - **Coordinates are window points, the units the game's own input uses** (a 1600 x 900 window is 1600 x 900 points,

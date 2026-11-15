@@ -36,10 +36,11 @@ Cries of pain and death are voices (`docs/VOICE_LINES.md`).
 **Hearing** (`hear()` in `sfx.cpp`): what is on screen is heard. The reach widens with the camera
 (160 m + 1.1 x its distance; 420 m + 1.5 x for the loud ones); its height takes the level down only to a floor
 (about -13 dB by distance 600, -8 dB for blasts and gates) and dulls the tone instead; past 600 single sounds fade
-out and the loops `snd_amb_battle_far` and `snd_amb_march_column` carry the field. **Pace**: at most 30 cues a
+out and the loops `snd_amb_battle_far` and `snd_amb_march_column` carry the field. **Pace**: at most 24 cues a
 second of real time (a burst of 8) whatever the game's speed, priority 4 and 5 always; gaps are real time, so
 at 4x and 8x they are four and eight times as many ticks, delays are divided by the speed, and priority 0 and
-movement are left out from 4x. Paused, nothing starts, what is playing fades, the ambience drops to a third.
+movement are left out from 4x. **Blows and the picture**: a hand blow's hit sounds when its attack clip shows it land
+(half the clip after the strike, by the striker's kind: `Sfx::setBlowSeconds` from the sheets), the whoosh leading it. Paused, nothing starts, what is playing fades, the ambience drops to a third.
 
 ## Hooks: sounds for features being built
 

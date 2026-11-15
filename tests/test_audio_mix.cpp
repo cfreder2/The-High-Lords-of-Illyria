@@ -35,7 +35,10 @@ TEST(audio_mix_victim_is_lowest_priority_then_soonest_to_end) {
     CHECK(pickVictim(strips, 4, 0) == -1);  // (it ranks under everything playing: dropped)
     CHECK(pickVictim(strips, 0, 9) == -1);
     const Playing grave[] = {{4, 1.0f}, {4, 2.0f}};
-    CHECK(pickVictim(grave, 2, 4) == 0);
+    CHECK(pickVictim(grave, 2, 4) == -1);  // an equal in mid-sound is left to finish
+    CHECK(pickVictim(grave, 2, 5) == 0);
+    const Playing ending[] = {{4, 0.1f}, {4, 2.0f}};
+    CHECK(pickVictim(ending, 2, 4) == 0);
     CHECK(pickVictim(grave, 2, 3) == -1);
 }
 

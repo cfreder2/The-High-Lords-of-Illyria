@@ -45,14 +45,17 @@ struct Playing {
     float remaining;  // seconds until it ends
 };
 // With every strip playing, the one a cue of `priority` takes: the lowest priority, of those the one ending soonest, and only
-// if the cue does not rank under it. -1: none (the cue is dropped).
+// if the cue outranks it, or equals it and it is in its last quarter second (an equal is not cut short in mid-sound: the
+// newcomer is dropped instead). -1: none (the cue is dropped).
+constexpr float kEqualTail = 0.25f;
 inline int pickVictim(const Playing* strips, int count, int priority) {
     int best = -1;
     for (int i = 0; i < count; ++i)
         if (best < 0 || strips[i].priority < strips[best].priority ||
             (strips[i].priority == strips[best].priority && strips[i].remaining < strips[best].remaining))
             best = i;
-    return best >= 0 && strips[best].priority <= priority ? best : -1;
+    if (best < 0) return -1;
+    return strips[best].priority < priority || (strips[best].priority == priority && strips[best].remaining < kEqualTail) ? best : -1;
 }
 
 // The voices (game/web/voice.js makeRoom): with all of them speaking, a cue cuts off the slightest one if it outranks it, or

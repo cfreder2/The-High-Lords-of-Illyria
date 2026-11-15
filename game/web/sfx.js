@@ -117,7 +117,7 @@
     build(c);
     loadManifest().then(() => {
       if (manifest && manifest.mix) Object.assign(mix, manifest.mix);
-      kCore.forEach(loadSound);
+      kCore.forEach((id) => loadSound(id));
       for (const x of manifest ? manifest.sounds : []) {
         if (/^snd_(ui|state|expl|conq|move)_|gate_|stone_smash|catapult|fireball|satchel|body_fall|bed_day/.test(x.id)) loadSound(x.id);
       }
@@ -129,19 +129,40 @@
   if (window.IllyriaAudio) window.IllyriaAudio.onUnlock(unlock);
 
   const arrivals = new Map();  // file -> callbacks waiting for it
-  function fetchBuffer(file) {
-    if (buffers.has(file) || failed.has(file) || !ctx) return;
+  // Files are fetched six at a time, a cue's own before the preloading; one that fails is tried twice more before a
+  // stand-in blip takes its place.
+  const queue = [], tries = new Map();
+  let fetching = 0;
+  function fetchBuffer(file, urgent) {
+    if (failed.has(file) || !ctx) return;
+    if (buffers.has(file)) {
+      if (urgent) { const i = queue.indexOf(file); if (i > 0) { queue.splice(i, 1); queue.unshift(file); } }
+      return;
+    }
     buffers.set(file, null);
-    const done = () => { const w = arrivals.get(file); arrivals.delete(file); if (w) w.forEach((f) => f()); };
-    fetch(`${file}?v=${encodeURIComponent(version)}`)
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
-      .then((data) => new Promise((ok, bad) => ctx.decodeAudioData(data, ok, bad)))
-      .then((buf) => { buffers.set(file, buf); done(); })
-      .catch(() => { buffers.delete(file); failed.add(file); done(); });
+    if (urgent) queue.unshift(file); else queue.push(file);
+    pump();
   }
-  function loadSound(id) {
+  function pump() {
+    while (fetching < 6 && queue.length) {
+      const file = queue.shift();
+      ++fetching;
+      const done = () => { --fetching; const w = arrivals.get(file); arrivals.delete(file); if (w) w.forEach((f) => f()); pump(); };
+      fetch(`${file}?v=${encodeURIComponent(version)}`)
+        .then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then((data) => new Promise((ok, bad) => ctx.decodeAudioData(data, ok, bad)))
+        .then((buf) => { buffers.set(file, buf); done(); })
+        .catch(() => {
+          const n = (tries.get(file) || 0) + 1;
+          tries.set(file, n);
+          if (n < 3) { --fetching; setTimeout(() => { queue.push(file); pump(); }, 400 * n); return; }
+          buffers.delete(file); failed.add(file); done();
+        });
+    }
+  }
+  function loadSound(id, urgent) {
     const s = sounds.get(id);
-    if (s) s.files.forEach(fetchBuffer);
+    if (s) s.files.forEach((f) => fetchBuffer(f, urgent));
   }
 
   function pickVariant(s) {
@@ -168,7 +189,8 @@
       const v = voices[i], b = voices[low];
       if (v.priority < b.priority || (v.priority === b.priority && v.end < b.end)) low = i;
     }
-    if (voices[low].priority > priority) return false;
+    // (an equal in mid-sound is left to finish: the newcomer is dropped; one in its last quarter second gives way)
+    if (voices[low].priority > priority || (voices[low].priority === priority && voices[low].end - now > 0.25)) return false;
     fadeOut(voices[low], now, mix.fade_ms / 1000);
     voices.splice(low, 1);
     return true;
@@ -276,7 +298,7 @@
       loadManifest().then(() => {
         const s = sounds.get(id);
         if (!s || (performance.now() - asked) / 1000 > (delay || 0) + kLate) { note({ ...c, mode: "dropped: late" }); return; }
-        loadSound(id);
+        loadSound(id, true);
         if (pickVariant(s) >= 0) cue(id, gain, pan, dist, delay, doppler, priority, count, tick); else hold(s, c);
       });
       return;
@@ -284,7 +306,7 @@
     const s = sounds.get(id);
     if (!s) { note({ ...c, mode: "dropped: unknown" }); return; }
     if (gain * settings.volume < 0.01) { note({ ...c, mode: "dropped: too quiet" }); return; }
-    loadSound(id);
+    loadSound(id, true);
     const v = pickVariant(s);
     if (v < 0 && !s.files.every((f) => failed.has(f))) { hold(s, c); return; }
     const mode = play(s, v, c);
@@ -437,7 +459,7 @@
         seen.set(el, shown);
       }
     });
-    for (const el of document.querySelectorAll(".popup, #cityPanel, #levelPrompt")) {
+    for (const el of document.querySelectorAll(".popup, #cityPanel, #levelPrompt, #result, #marchScreen")) {
       seen.set(el, !el.classList.contains("hidden"));
       obs.observe(el, { attributes: true, attributeFilter: ["class"] });
     }

@@ -77,7 +77,7 @@
     const rate = el("select", {}, [[0.12, "a skirmish (a blow every few ticks)"], [0.45, "two companies at grips"], [1, "300 men: every sound wanted every tick"]].map(([v, t], i) => el("option", { value: v, selected: i === 2 }, t)));
     const secs = el("select", {}, [5, 10, 20].map((v) => el("option", { value: v, selected: v === 10 }, v + " s")));
     const pool = el("span", { class: "pool" }, Array.from({ length: A.kMaxSounds }, () => el("i")));
-    const read = el("div", { class: "read" }, "Fires the chosen sounds at battle rates through the game's throttle and its 12 strips, at the camera set above.");
+    const read = el("div", { class: "read" }, "Fires the chosen sounds at battle rates through the game's throttle and its 24 voices, at the camera set above.");
     let running = false;
     const go = el("button", { id: "stress-go", onclick: async () => {
       if (running) { A.stopAll(); return; }
@@ -89,15 +89,15 @@
         pool.classList.toggle("full", busy >= A.kMaxSounds);
         const per = (v) => fix(v / Math.max(t, 0.1), 0);
         read.replaceChildren(`${fix(t, 1)} s · asked for ${c.offered} (${per(c.offered)}/s) · `, el("b", {}, `played ${c.played} (${per(c.played)}/s)`), " · ",
-          el("span", { class: c.stolen ? "bad" : "" }, `cut off mid-sound ${c.stolen}`), " · ", el("span", { class: c.busy ? "warn" : "" }, `dropped, pool full ${c.busy}`),
-          ` · merged or inside the sound's gap ${c.gap} · over 6 a tick ${c.capped} · out of earshot ${c.quiet}`);
+          el("span", { class: c.stolen ? "bad" : "" }, `cut off mid-sound ${c.stolen}`), " · ", el("span", {}, `faded out for a graver one ${c.faded || 0}`), " · ", el("span", { class: c.busy ? "warn" : "" }, `dropped, pool full ${c.busy}`),
+          ` · merged or inside the sound's gap ${c.gap} · over 5 a tick or 24 a second ${c.capped} · out of earshot ${c.quiet}`);
       });
       running = false; go.textContent = "▶ stress";
       [...pool.children].forEach((i) => i.classList.remove("on"));
     } }, "▶ stress");
     return el("div", { class: "stress" }, el("div", { class: "kv" }, el("span", { class: "ctl" }, "Fire ", pick), el("span", { class: "ctl" }, "at ", rate), el("span", { class: "ctl" }, "for ", secs), go,
       el("span", { class: "ctl" }, "strips ", pool)), read,
-      el("p", { class: "note", style: "margin-top:6px" }, "sfx.cpp lets each sound start once a tick and no sooner than its gap, six cues a tick by priority; sfx.js has 12 strips, and a full pool stops the slightest sound dead to start an equal or graver one. \"Cut off\" counts those. At a far camera most of it is dropped as out of earshot instead."));
+      el("p", { class: "note", style: "margin-top:6px" }, "sfx.cpp lets each sound start once a tick and no sooner than its gap, five cues a tick by priority and 24 a second of real time (the gravest always); sfx.js plays 24 at once, and a full pool fades the slightest out over 12 ms to start an equal or graver one. \"Faded out\" counts those; \"cut off\" would be a hard stop, and there are none now. At a far camera most of it is dropped as out of earshot instead."));
   }
 
   // ---------------------------------------------------------------- every sound

@@ -24,8 +24,7 @@ constexpr uint32_t kSpeakerGap = 5 * kTps;
 constexpr uint32_t kAmbientGap = 3 * kTps / 2;
 constexpr uint32_t kWindow = 10 * kTps;
 constexpr size_t kWindowMax = 5;
-// Hearing: a cue fades out over kHearing metres from the view centre, the
-// camera's height counting against it (zoomed out, only the loudest carry).
+// Hearing: as the sound effects' (sfx.h hear).
 constexpr float kMinGain = 0.08f;
 // Contact: a foe within kSighted metres; lost after kContactLost of none within twice that.
 constexpr float kSighted = 55.0f;

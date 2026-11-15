@@ -327,6 +327,9 @@ public:
     // Pre-rendered sheets (tools/blender, renderer_sheets.cpp): the first time a
     // battle needs a type, request(type) is called so the page can fetch its
     // sheet; until it arrives, or if there is none, the type is baked as before.
+    // How long after a strike this kind's attack clip shows the blow land: half the clip (docs/SPRITE_SPEC.md: frame 3
+    // of 6), by the sheet's own length when it names one. For the sounds (Sfx::setBlowSeconds).
+    float blowSeconds(int type) const;
     void setSheetRequest(std::function<void(int)> request) { sheetRequest_ = std::move(request); }
     // A fetched sheet: RGBA rows top first (as image files store them), and
     // cellCount cells of 8 floats (x, y from the bottom, w, h in pixels; u0, v0, w,

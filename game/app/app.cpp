@@ -922,6 +922,9 @@ void updateUnderwater(float dt) {
 // False when this frame drew nothing (the title screen draws every other).
 bool frame() {
     const double now = platform::nowMs();
+    // The blows sound on the frame that shows them: the attack clips' lengths, as the sheets loaded so far give them.
+    if (app->battle && app->frameCount % 60 == 0)
+        for (int t = 0; t < illyria::sim::kUnitTypeCount; ++t) app->battle->sfx().setBlowSeconds(t, app->renderer.blowSeconds(t));
     const double dtMs = app->lastMs > 0 ? now - app->lastMs : 16.7;
     app->lastMs = now;
     app->fps = app->fps * 0.95 + (1000.0 / std::max(dtMs, 1.0)) * 0.05;
@@ -940,13 +943,9 @@ bool frame() {
         App::ConquestView& cv = app->camp;
         listenFromCamera();
         app->battle->flushOrders();  // (what was ordered since the last frame: the clock, paused or not, applies it with its next step)
-<<<<<<< HEAD
         app->battle->sfx().setSpeed(static_cast<float>(cv.speed));
-        if (!cv.paused && cv.c->winner() == 0) {
-=======
         // (A fight's results sheet holds the clock until it is dismissed, as a skirmish's end stops its own.)
         if (!cv.paused && cv.c->winner() == 0 && !app->battle->fightReport()) {
->>>>>>> merge-master
             cv.acc += dtMs / 1000.0 * illyria::sim::Conquest::kTicksPerSecond * cv.speed;
             // As many ticks as the clock owes, within a share of the frame: a big fight on may not keep up, and
             // then the game runs slower than the clock (docs/ONE_WORLD.md, the fast-forward limit, step 4).
@@ -977,6 +976,14 @@ bool frame() {
                 }
             }
             app->battle->sfx().conquest(p);
+            // A fight of the war decided: its sheet comes up with the fanfare or the drone, as a skirmish's does.
+            static bool reported = false;
+            const bool report = app->battle->fightReport() != nullptr;
+            if (report && !reported) {
+                app->battle->sfx().ui(app->battle->fightReport()->outcome == 1 ? Sound::Victory : Sound::Defeat);
+                app->battle->sfx().ui(Sound::Results);
+            }
+            reported = report;
         }
         playCues();
         playSounds(app->battle->sfx(), app->ambienceSeen);

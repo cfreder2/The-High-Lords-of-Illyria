@@ -1,14 +1,16 @@
 // The audit pages' sound: the game's files played through a copy of the game's own chain, so what is heard here is
 // what a battle does to a sound. Nothing here is the engine's code; each rule is copied from where the game keeps
 // it, and says where:
-//   - where a cue is heard from (game/src/sfx.cpp place): gain (1 - d/160)^2 with d from the view centre and 0.6 of
-//     the camera's distance as height; 420 m for the "loud" sounds; under 0.03 it is not played at all;
-//   - the strip (game/web/sfx.js play): low-pass 800 Hz + 17 kHz (1 - d)^2, the manifest's mix level, a reverb send
-//     of 0.08 + 0.55 d into one synthetic impulse, a pan, the pitch a few percent either way;
-//   - the pool (sfx.js strip): 12 strips, a full pool gives the slightest one to an equal or graver cue and stops
-//     what it was playing dead;
-//   - the bus (sfx.js build): everything through a DynamicsCompressor (-8 dB, 8:1) at the effects volume (0.8);
-//   - the throttle (sfx.cpp flush): a sound once a tick, its gap in ticks, six cues a tick by priority then gain;
+//   - where a cue is heard from (game/src/sfx.cpp hear): a reach of 160 m + 1.1 x the camera's distance (420 + 1.5 x
+//     for the "loud" sounds), gain (1 - off/reach)^2 x a level that the camera's height takes down to a floor (0.22;
+//     0.4 loud) by 600 and toward nothing after; under 0.04 it is not played at all;
+//   - the voice (game/web/sfx.js play): low-pass and reverb send from the manifest's "mix" block, the mix level, a pan,
+//     the pitch 6% and the level 1.5 dB either way;
+//   - the pool (sfx.js room): mix.strips at once (24), a full pool fades out the slightest one over mix.fade_ms for an
+//     equal or graver cue: never a hard cut;
+//   - the bus (sfx.js build): a compressor (-10 dB, 6:1), its make-up taken back, then a clip at -1 dB;
+//   - the throttle (sfx.cpp flush): a sound once a tick, its gap in ticks, five cues a tick by priority then gain, and
+//     24 a second of real time with a burst of 8 (priority 4 and 5 always);
 //   - the ambience (sfx.js setLayer): a loop at level x the mix level x 4, round its loop points;
 //   - the voices (game/web/voice.js): a recording, else a rendered placeholder, else the browser's speech
 //     synthesiser (the voice picked by a hash of the set from the device's English voices), else for the wordless
@@ -17,14 +19,16 @@
 // OfflineAudioContext, which needs none.
 (() => {
   "use strict";
-  const kMaxSounds = 12, kHearing = 160, kLoudHearing = 420, kMinGain = 0.03, kTps = 30, kMaxPerTick = 6;
+  const kHearing = 160, kLoudHearing = 420, kMinGain = 0.04, kTps = 30, kMaxPerTick = 5, kCuesPerSecond = 24, kBurst = 8;
+  let kMaxSounds = 24;
+  const mix = { strips: 24, fade_ms: 12, lowpass_near_hz: 18000, lowpass_far_hz: 1400, reverb_near: 0.04, reverb_far: 0.34, loop_gain: 4 };
   const NON_POSITIONAL = new Set(["snd_state_victory_fanfare", "snd_state_defeat_drone", "snd_amb_thunder", "snd_state_war_horn", "snd_state_alarm"]);
-  const CAMERAS = [[2, "lowest"], [15, "close"], [60, "sandbox opens"], [120, "a battle opens"], [220, "effects gone"], [583, "Conquest opens"]];
+  const CAMERAS = [[2, "lowest"], [15, "close"], [60, "sandbox opens"], [120, "a battle opens"], [300, "pulled back"], [583, "Conquest opens"]];
 
   const A = {
     root: "", manifest: null, stats: {}, audit: null, lines: null, available: new Set(), sounds: new Map(), sets: new Map(),
     settings: { volume: 0.8, mode: "game", camera: 120, off: 0, voiceVolume: 0.8 },
-    counters: { played: 0, stolen: 0, busy: 0, quiet: 0, offered: 0, gap: 0, capped: 0 },
+    counters: { played: 0, stolen: 0, faded: 0, busy: 0, quiet: 0, offered: 0, gap: 0, capped: 0 },
     CAMERAS, kHearing, kLoudHearing, kMaxSounds,
   };
   const dB = (x) => Math.pow(10, x / 20);
@@ -84,7 +88,7 @@
       reverb.buffer = impulse(2.2);
       const wet = ctx.createGain(); wet.gain.value = 0.55;
       reverb.connect(wet); wet.connect(sfxBus);
-      for (let i = 0; i < kMaxSounds; i++) strips.push(makeStrip());
+
       dry = ctx.createGain(); dry.connect(ctx.destination);
       voiceMaster = ctx.createGain(); voiceMaster.connect(ctx.destination);  // (voice.js: round the limiter)
       A.applyVolume();
@@ -111,57 +115,61 @@
     }
     return b;
   }
-  function makeStrip() {
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    const gain = ctx.createGain(), panner = ctx.createStereoPanner(), send = ctx.createGain();
-    filter.connect(gain); gain.connect(panner); panner.connect(sfxBus);
-    gain.connect(send); send.connect(reverb);
-    return { filter, gain, panner, send, end: 0, priority: -1, src: null };
-  }
-  function strip(priority, now) {
-    let best = null;
-    for (const s of strips) if (s.end <= now) return s;
-    for (const s of strips) if (!best || s.priority < best.priority || (s.priority === best.priority && s.end < best.end)) best = s;
-    if (best.priority > priority) return null;
-    try { best.src.stop(); } catch (e) { /* ended */ }
-    ++A.counters.stolen;
-    return best;
+  // sfx.js room: the sounds playing now; a full pool fades the slightest (the one ending soonest among those) for an
+  // equal or graver cue. `stolen` counts hard cuts (none now), `faded` those faded out to make room.
+  function room(priority, now) {
+    if (A.manifest && A.manifest.mix) { Object.assign(mix, A.manifest.mix); kMaxSounds = mix.strips; }
+    for (let i = strips.length - 1; i >= 0; i--) if (strips[i].end <= now) strips.splice(i, 1);
+    if (strips.length < kMaxSounds) return true;
+    let low = 0;
+    for (let i = 1; i < strips.length; i++) if (strips[i].priority < strips[low].priority || (strips[i].priority === strips[low].priority && strips[i].end < strips[low].end)) low = i;
+    if (strips[low].priority > priority || (strips[low].priority === priority && strips[low].end - now > 0.25)) return false;
+    const v = strips[low];
+    try { v.gain.gain.cancelScheduledValues(now); v.gain.gain.setTargetAtTime(0, now, mix.fade_ms / 3000); v.src.stop(now + mix.fade_ms * 1.5 / 1000); } catch (e) { /* ended */ }
+    strips.splice(low, 1);
+    ++A.counters.faded;
+    return true;
   }
   A.stripsBusy = () => (ctx ? strips.filter((s) => s.end > ctx.currentTime).length : 0);
 
   // sfx.cpp place: a cue `off` metres from the view centre, the camera `camera` from it.
   A.place = (id, camera, off) => {
     if (!A.positional(id)) return { gain: 1, dist: 0, pan: 0, positional: false, dropped: false, hearing: 0 };
-    const c = A.code(id), hearing = c && c.loud ? kLoudHearing : kHearing;
-    const eff = Math.hypot(off, camera * 0.6), g = Math.min(1, Math.max(0, 1 - eff / hearing));
-    const gain = g * g, pan = Math.abs(off) > 1 ? Math.max(-0.9, Math.min(0.9, off / Math.max(Math.abs(off), eff * 0.5))) : 0;
-    return { gain, dist: Math.min(1, eff / hearing), pan, positional: true, dropped: gain < kMinGain, hearing };
+    const c = A.code(id), loud = !!(c && c.loud), horiz = Math.abs(off);
+    const reach = (loud ? kLoudHearing : kHearing) + camera * (loud ? 1.5 : 1.1);
+    const lat = Math.min(1, Math.max(0, 1 - horiz / reach)), up = Math.pow(Math.min(1, Math.max(0, (camera - 60) / 540)), 0.7);
+    let level = 1 - (1 - (loud ? 0.4 : 0.22)) * up;
+    if (camera > 600) level *= 1 - Math.min(1, (camera - 600) / (loud ? 3000 : 900)) * (loud ? 0.6 : 0.85);
+    const gain = lat * lat * level, pan = Math.max(-0.9, Math.min(0.9, off / Math.max(camera * 0.6, 12)));
+    return { gain, dist: Math.min(1, Math.max(horiz / reach, up * 0.75)), pan, positional: true, dropped: gain < kMinGain, hearing: reach };
   };
   // What the strip does at that distance, in words.
   A.describe = (p, level) => {
     if (!p.positional) return "not positional: full gain at any camera";
     if (p.dropped) return `out of earshot (gain ${p.gain.toFixed(3)} is under ${kMinGain}): the game does not play it`;
-    return `${toDb(p.gain * dB(level || 0)).toFixed(1)} dB, low-pass ${Math.round(800 + 17000 * Math.pow(1 - p.dist, 2))} Hz, reverb send ${(0.08 + 0.55 * p.dist).toFixed(2)}${p.pan ? `, pan ${p.pan.toFixed(2)}` : ""}`;
+    return `${toDb(p.gain * dB(level || 0)).toFixed(1)} dB, low-pass ${Math.round(mix.lowpass_far_hz + (mix.lowpass_near_hz - mix.lowpass_far_hz) * Math.pow(1 - p.dist, 2))} Hz, reverb send ${(mix.reverb_near + (mix.reverb_far - mix.reverb_near) * p.dist).toFixed(2)}${p.pan ? `, pan ${p.pan.toFixed(2)}` : ""}`;
   };
 
   // sfx.js play: one buffer through a strip.
   function playStrip(s, buf, o) {
-    const now = ctx.currentTime, st = strip(o.priority || 0, now);
-    if (!st) { ++A.counters.busy; return null; }
+    const now = ctx.currentTime;
+    if (!room(o.priority || 0, now)) { ++A.counters.busy; return null; }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const when = now + Math.max(0, o.delay || 0);
-    const rate = 1 + (Math.random() * 2 - 1) * (s.id.indexOf("bowstring") >= 0 ? 0.05 : 0.035);
+    const rate = 1 + (Math.random() * 2 - 1) * (s.id.indexOf("bowstring") >= 0 ? 0.08 : 0.06);
     src.playbackRate.value = rate;
     const dist = Math.max(0, Math.min(1, o.dist || 0));
-    st.filter.frequency.setValueAtTime(800 + 17000 * Math.pow(1 - dist, 2), when);
-    st.gain.gain.setValueAtTime((o.gain == null ? 1 : o.gain) * dB(s.level || 0), when);
-    st.send.gain.setValueAtTime(0.08 + 0.55 * dist, when);
-    st.panner.pan.setValueAtTime(Math.max(-1, Math.min(1, o.pan || 0)), when);
-    src.connect(st.filter);
+    const filter = ctx.createBiquadFilter(), gain = ctx.createGain(), panner = ctx.createStereoPanner(), send = ctx.createGain();
+    filter.type = "lowpass";
+    filter.frequency.value = mix.lowpass_far_hz + (mix.lowpass_near_hz - mix.lowpass_far_hz) * Math.pow(1 - dist, 2);
+    gain.gain.value = (o.gain == null ? 1 : o.gain) * dB(s.level || 0) * dB((Math.random() * 2 - 1) * 1.5);
+    send.gain.value = mix.reverb_near + (mix.reverb_far - mix.reverb_near) * dist;
+    panner.pan.value = Math.max(-1, Math.min(1, o.pan || 0));
+    src.connect(filter); filter.connect(gain); gain.connect(panner); panner.connect(sfxBus);
+    gain.connect(send); send.connect(reverb);
     src.start(when);
-    st.src = src; st.priority = o.priority || 0; st.end = when + buf.duration / rate + 0.05;
+    strips.push({ src, gain, priority: o.priority || 0, end: when + buf.duration / rate + 0.05 });
     ++A.counters.played;
     return { src, seconds: buf.duration / rate + (o.delay || 0) };
   }
@@ -219,7 +227,7 @@
       const src = ctx.createBufferSource(), g = ctx.createGain();
       src.buffer = buf; src.loop = true;
       if (loopAt) { src.loopStart = loopAt[0]; src.loopEnd = loopAt[1]; }
-      g.gain.value = level * dB(s.level || 0) * 4;
+      g.gain.value = level * dB(s.level || 0) * mix.loop_gain;
       src.connect(g); g.connect(ambBus);
       src.start(0, loopAt ? loopAt[0] : 0);
       l = { src };
@@ -246,7 +254,7 @@
     Object.keys(A.counters).forEach((k) => { A.counters[k] = 0; });
     stress.stop = false;
     const last = new Map(), t0 = performance.now();
-    let tick = 0;
+    let tick = 0, budget = kBurst;
     return new Promise((done) => {
       const timer = setInterval(() => {
         const due = Math.floor((performance.now() - t0) / 1000 * kTps);
@@ -262,11 +270,13 @@
             const p = A.place(s.id, A.settings.camera, off * (Math.random() < 0.5 ? -1 : 1));
             if (p.dropped) { A.counters.quiet += count; continue; }
             if (last.has(s.id) && tick - last.get(s.id) < c.gapTicks) { A.counters.gap += count; continue; }
-            ready.push({ s, c, p, count, gain: Math.min(1, p.gain * (1 + 0.18 * Math.min(count - 1, 4))) });
+            ready.push({ s, c, p, count, gain: Math.min(1, p.gain * Math.min(2, 1 + 0.26 * Math.log2(count))) });
           }
           ready.sort((a, b) => (a.c.priority !== b.c.priority ? b.c.priority - a.c.priority : b.gain - a.gain));
+          budget = Math.min(kBurst, budget + kCuesPerSecond / kTps);
           ready.forEach((r, k) => {
-            if (k >= kMaxPerTick) { A.counters.capped += r.count; return; }
+            if (r.c.priority < 4 && (k >= kMaxPerTick || budget < 1)) { A.counters.capped += r.count; return; }
+            if (r.c.priority < 4) budget -= 1;
             last.set(r.s.id, tick);
             A.decode(r.s.files[A.pickVariant(r.s)]).then((b) => playStrip(r.s, b, { gain: r.gain, dist: r.p.dist, pan: r.p.pan, priority: r.c.priority }), () => null);
           });

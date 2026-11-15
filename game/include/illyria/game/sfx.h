@@ -18,6 +18,7 @@
 
 #include "illyria/game/gmath.h"
 #include "illyria/sim/continent.h"
+#include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
 
 namespace illyria::game {
@@ -189,6 +190,19 @@ public:
         tick_ = world.tick();
         updateAmbience(world, continent, origin, enemyLand);
     }
+    // The picture's blow: who struck this tick (Battle::attackTick), and how long after the strike each kind's attack
+    // clip shows the blow land (half its length: the renderer's clips, else the default of blowSeconds). The whoosh of
+    // a swing leads; what it met sounds on the frame that shows it.
+    struct Striker {
+        V3 pos;
+        uint8_t type = 0;
+        sim::PlayerId owner = 0;
+    };
+    void setStrikers(std::vector<Striker> strikers) { strikers_ = std::move(strikers); }
+    void setBlowSeconds(int type, float seconds) {
+        if (type >= 0 && type < sim::kUnitTypeCount) blow_[type] = seconds;
+    }
+    float blowSeconds(int type) const;
     // The battle is decided: the drums stop and the field goes quiet under the results.
     void calm();
     // The Conquest's events, from what changed since the last pulse: dawn, towns taken and lost, a squad trained, a lord
@@ -264,6 +278,8 @@ private:
     uint32_t closingUntil_ = 0;
     bool calm_ = false;
     std::vector<V3> fires_;
+    std::vector<Striker> strikers_;
+    float blow_[sim::kUnitTypeCount] = {};  // 0: not told, the default
     std::vector<std::pair<sim::EntityId, uint32_t>> fuseNext_;  // lit satchels: when each next hisses
     bool pulsed_ = false;
     ConquestPulse pulse_;

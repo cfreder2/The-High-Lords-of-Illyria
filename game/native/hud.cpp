@@ -306,6 +306,7 @@ void Hud::marchOpen() {
         return;
     }
     marchPage_ = true;
+    audio::uiCue("snd_ui_page_turn");  // the camp's page
     skirmishPage_ = false;
     mRow_ = static_cast<int>(st.list("squads").size());  // on "March on"
 }

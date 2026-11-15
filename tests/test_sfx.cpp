@@ -179,7 +179,7 @@ TEST(a_battle_sounds_sensibly_without_turning_to_noise) {
     std::printf("\n");
     CHECK(busiest <= 8);  // (five, and the grave ones that are always heard)
     CHECK(tooSoon == 0);
-    for (int n : perMinute) CHECK(n <= 60 * 30 + 8);  // a busy battle, never more than the channels carry (30 a second)
+    for (int n : perMinute) CHECK(n <= 60 * 24 + 8);  // a busy battle, never more than the channels carry (24 a second)
     CHECK(bySound.size() >= 8);
     CHECK(b.sfx().dropped() > 0);  // more happened than was played
     CHECK(count(cues, Sound::SwordSwing) + count(cues, Sound::HeavySwing) > 0);
@@ -469,8 +469,8 @@ TEST(cues_are_paced_in_real_time_whatever_the_game_speed) {
     std::printf("  a 120-man melee, 16 s of game time: %zu cues at 1x (most %d a second), %zu at 4x (%d), %zu at 8x (%d)\n", one.cues.size(), one.most,
                 four.cues.size(), four.most, eight.cues.size(), eight.most);
     CHECK(one.cues.size() > 40);
-    // No more than the channels can carry, at any speed: 30 a second and a burst of 8.
-    CHECK(one.most <= 38 && four.most <= 38 && eight.most <= 38);
+    // No more than the channels can carry, at any speed: 24 a second and a burst of 8.
+    CHECK(one.most <= 32 && four.most <= 32 && eight.most <= 32);
     // The same game time at 4x is a quarter of the real time: far fewer cues, not the same number squeezed together.
     CHECK(four.cues.size() * 2 < one.cues.size());
     CHECK(eight.cues.size() <= four.cues.size());
@@ -591,4 +591,44 @@ TEST(the_conquest_sounds_its_events_one_at_a_time_the_gravest_first) {
     one(Sound::Victory);
     s.conquest(p);
     CHECK(s.take().empty());
+}
+
+// The audit page's finding: the swing and the hit were sent at the start of the attack clip, 1.3 s before a giant's
+// club is shown to land. Now the hit waits for the blow's frame (half the clip) and the whoosh leads it.
+TEST(a_blow_sounds_on_the_frame_that_shows_it_land) {
+    Sfx probe;
+    CHECK(probe.blowSeconds(static_cast<int>(UnitType::LightInfantry)) >= 0.2f && probe.blowSeconds(static_cast<int>(UnitType::LightInfantry)) <= 0.45f);
+    for (const float giantClip : {0.0f, 2.6f}) {
+        sim::World w(sim::WorldConfig{});
+        w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, sim::unitStats(UnitType::Giants));
+        for (int i = 0; i < 3; ++i) w.spawnUnit(1, {m(3), m(i * 2 - 2), m(0)}, kWest, sim::unitStats(UnitType::LightInfantry));
+        Sfx s;
+        s.setListener({0, 0, 0}, {1, 0, 0}, 30);
+        if (giantClip > 0) s.setBlowSeconds(static_cast<int>(UnitType::Giants), giantClip * 0.5f);
+        const float want = s.blowSeconds(static_cast<int>(UnitType::Giants));
+        std::vector<uint16_t> cooldown(w.units().size(), 0);
+        int giantHits = 0;
+        for (int i = 0; i < 20 * sim::kTicksPerSecond && giantHits < 2; ++i) {
+            for (size_t k = 0; k < w.units().size(); ++k) cooldown[k] = static_cast<uint16_t>(w.units()[k].meleeCooldown);
+            w.step({});
+            std::vector<Sfx::Striker> strikers;  // as Battle::afterWorldStep finds them
+            for (size_t k = 0; k < w.units().size(); ++k)
+                if (w.units()[k].meleeCooldown > cooldown[k]) strikers.push_back({toV3(w.units()[k].pos), static_cast<uint8_t>(w.units()[k].stats.type), w.units()[k].owner});
+            const bool giantStruck = !strikers.empty() && strikers[0].owner == 0;
+            s.setStrikers(strikers);
+            s.observe(w, 0, scene().continent(), scene().origin(), false);
+            float swing = -1, hit = -1;
+            for (const SfxCue& c : s.take()) {
+                if (c.sound == Sound::HeavySwing) swing = c.delay;
+                if (c.sound == Sound::BluntCrush || c.sound == Sound::SwordArmor || c.sound == Sound::SwordFlesh) hit = c.delay;
+            }
+            if (!giantStruck || strikers.size() != 1 || hit < 0) continue;
+            ++giantHits;
+            CHECK(std::abs(hit - want) < 1e-3f);                  // on the blow's frame
+            if (swing >= 0) CHECK(swing < hit && swing >= hit - 0.3f);  // the whoosh leads, and not by much
+        }
+        std::printf("  a giant's blow: the hit sounds %.2f s after the strike (clip %s)\n", want, giantClip > 0 ? "2.6 s, from its sheet" : "default");
+        CHECK(giantHits >= 1);
+        if (giantClip > 0) CHECK(std::abs(want - 1.3f) < 1e-3f);
+    }
 }

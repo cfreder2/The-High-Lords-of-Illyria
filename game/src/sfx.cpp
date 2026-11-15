@@ -24,7 +24,7 @@ constexpr float kMinGain = 0.04f;
 // At most this many cues a tick (the gravest and nearest first), and this many a second of real time whatever the
 // game's speed (with a small burst): the players have two dozen channels, and a fight is a texture, not a count.
 constexpr int kMaxPerTick = 5;
-constexpr float kCuesPerSecond = 30.0f;
+constexpr float kCuesPerSecond = 24.0f;
 constexpr float kBurst = 8.0f;
 // Movement is looked at every kMoveTicks; a body of men is those of one kind in one kMoveCell.
 constexpr uint32_t kMoveTicks = 5;
@@ -348,6 +348,19 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             return false;
         };
 
+        // When the picture shows a hand blow land: the attack clip of whoever struck it (the nearest striker of this tick
+        // who is not of the struck man's side) begins now and shows the blow half way through.
+        const auto blowAfter = [&](const V3& at, const sim::Unit* victim) {
+            float best = 9.0f * 9.0f, after = 0.25f;
+            for (const Striker& k : strikers_) {
+                if (victim && k.owner == victim->owner) continue;
+                const V3 d = flat(k.pos - at);
+                if (d.dot(d) < best) best = d.dot(d), after = blowSeconds(k.type);
+            }
+            return after;
+        };
+        // The whoosh comes before the blow by this much (the swings' own level peaks 0.12 to 0.3 s in).
+        constexpr float kSwingLead = 0.15f, kHeavyLead = 0.28f;
         for (const sim::ImpactEvent& e : world.impacts()) {
             using K = sim::ImpactEvent::Kind;
             const V3 at = toV3(e.pos);
@@ -360,8 +373,9 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                     if (e.projectile != sim::kNoEntity) {
                         want(v && v->stats.shield.blockChance > sim::Fixed::zero() ? Sound::ArrowShield : Sound::ArrowStone, at);
                     } else {
-                        want(Sound::SwordSwing, at);
-                        want(Sound::BlockShield, at, 0.06f);
+                        const float blow = blowAfter(at, v);
+                        want(Sound::SwordSwing, at, std::max(0.0f, blow - kSwingLead));
+                        want(Sound::BlockShield, at, blow);
                     }
                     break;
                 }
@@ -379,13 +393,14 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                     if (inBlast(at) || e.cause == sim::DamageType::Explosive || e.cause == sim::DamageType::Fire) break;
                     // A hand blow: the swing, then what it met.
                     const bool heavy = e.cause == sim::DamageType::Blunt || e.cause == sim::DamageType::Cleave;
-                    want(heavy ? Sound::HeavySwing : Sound::SwordSwing, at);
+                    const float blow = blowAfter(at, v);
+                    want(heavy ? Sound::HeavySwing : Sound::SwordSwing, at, std::max(0.0f, blow - (heavy ? kHeavyLead : kSwingLead)));
                     Sound hit = Sound::SwordFlesh;
                     if (bone) hit = Sound::HitBone;
                     else if (e.cause == sim::DamageType::Blunt) hit = Sound::BluntCrush;
                     else if (e.cause == sim::DamageType::Pierce) hit = armoured(type) ? Sound::SwordArmor : Sound::PierceFlesh;
                     else if (armoured(type)) hit = Sound::SwordArmor;
-                    want(hit, at, 0.07f);
+                    want(hit, at, blow);
                     break;
                 }
                 default: break;
@@ -546,6 +561,14 @@ void Sfx::movement(const sim::World& world) {
         kept.push_back({b.key, next});
     }
     treads_.swap(kept);
+}
+
+float Sfx::blowSeconds(int type) const {
+    if (type < 0 || type >= sim::kUnitTypeCount) return 0.3f;
+    if (blow_[type] > 0) return blow_[type];
+    // (half of figures::attackSeconds, the attack clip's length when a sheet names none)
+    const float cooldown = static_cast<float>(sim::unitStats(static_cast<UnitType>(type)).melee.cooldownTicks) / kTps;
+    return std::clamp(cooldown * 0.6f, 0.45f, 0.9f) * 0.5f;
 }
 
 void Sfx::ui(Sound s) {
