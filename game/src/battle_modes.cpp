@@ -207,6 +207,7 @@ sim::EntityId Battle::nearestFoe(sim::PlayerId owner, const V3& at, float reach)
     float bestD2 = reach * reach;
     for (const sim::Unit& u : world_->units()) {
         if (!u.alive() || u.owner == owner || u.routed || u.inAir()) continue;
+        if (aiDryFoes_ && world_->wading(u)) continue;
         const V3 d = toV3(u.pos) - at;
         const float d2 = d.x * d.x + d.y * d.y;
         if (d2 < bestD2) {
@@ -260,6 +261,7 @@ sim::EntityId Battle::pickFoe(sim::PlayerId owner, const V3& around, float reach
     float bestScore = reach;
     for (const sim::Unit& u : world_->units()) {
         if (!u.alive() || u.owner == owner || u.routed || u.inAir()) continue;
+        if (aiDryFoes_ && world_->wading(u)) continue;
         const V3 d = toV3(u.pos) - around;
         const float d2 = d.x * d.x + d.y * d.y;
         if (d2 >= reach * reach) continue;

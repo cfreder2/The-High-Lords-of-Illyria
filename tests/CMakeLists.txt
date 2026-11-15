@@ -50,6 +50,7 @@ add_executable(illyria_tests
     test_two_gates.cpp
     test_battle_end.cpp
     test_skirmish.cpp
+    test_isle.cpp
     test_ramps.cpp
     test_walls.cpp
     test_conquest.cpp

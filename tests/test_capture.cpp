@@ -408,8 +408,9 @@ TEST(a_siege_has_a_capture_point_in_the_courtyard) {
     // Its defenders hold it to begin with.
     siege.advance(0.5);
     CHECK(cap.defendersIn() > 0 && cap.attackersIn() == 0);
-    illyria::game::Battle ford(5, illyria::game::Scenario::Ford);
-    CHECK(!ford.capturePoint().active());
+    // The open field has none (Oakhaven Ford's is the bare pole on its isle: tests/test_isle.cpp).
+    illyria::game::Battle field(5, illyria::game::Scenario::Field);
+    CHECK(!field.capturePoint().active());
 }
 
 // A town's roofs, flags and cones in its holder's colours (game/include/illyria/game/owner_look.h): one table.

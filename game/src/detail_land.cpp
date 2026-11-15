@@ -152,25 +152,68 @@ void DetailLand::rawRow(int s) {
         smp.height = lerp2([](const sim::Continent::Sample& q) { return q.height; });
         smp.land = lerp2([](const sim::Continent::Sample& q) { return q.land; });
         smp.mountain = lerp2([](const sim::Continent::Sample& q) { return q.mountain; });
-        const Fixed x = ox_ + m(sx * kCellM), y = oy_ + m(sy * kCellM);
-        // Fine detail. A battlefield fades it out toward its edges to meet the
-        // coarse land; out here it fades in the same way from the battlefield's
-        // edge, so the two meet without a step.
-        int edge;
-        if (sx >= 0 && sy >= 0 && sx <= hole_ && sy <= hole_) edge = std::min(std::min(sx, sy), std::min(hole_ - sx, hole_ - sy));
-        else edge = std::max(std::max(-sx, sx - hole_), std::max(-sy, sy - hole_));
-        const Fixed fade = sim::min(Fixed::one(), m(edge * kCellM) / 48);
-        smp.height += (sim::noise::fbm(detailSeed_, x, y, 48) - r(1, 2)) * (m(2) + smp.mountain / 20) * fade;
-        smp.height += (sim::noise::value(detailSeed_ ^ 0xB0B, x, y, 14) - r(1, 2)) * r(4, 5) * fade;
-        c.carve(smp, x, y);
         Raw& out = raw_[static_cast<size_t>(wrap(sy, kSamples)) * kSamples + wrap(sx, kSamples)];
-        out.h = smp.height;
-        out.roadDist = smp.roadDist;
-        out.mountain = smp.mountain;
-        Fixed surface;
-        out.water = c.waterSurfaceOf(smp, surface) ? surface : Fixed::fromRaw(sim::Region::kDryRaw);
+        out = rawFrom(smp, sx, sy);
+        // The fair ground: east of its axis a sample is its image's in the west, as on a battlefield (Region::fromContinent).
+        const sim::Continent::FairGround& fair = c.fairGround();
+        const int axis = fairAxis();
+        if (axis == INT32_MIN || sx <= axis) continue;
+        const Fixed w = fair.weight(ox_ + m(sx * kCellM), oy_ + m(sy * kCellM));
+        if (w == Fixed::zero()) continue;
+        const Raw twin = rawDirect(axis * 2 - sx, sy);
+        if (w == Fixed::one()) out = twin;
+        else out.h += (twin.h - out.h) * w;
     }
     ++sl.rawRows;
+}
+
+DetailLand::Raw DetailLand::rawFrom(sim::Continent::Sample smp, int sx, int sy) const {
+    const Fixed x = ox_ + m(sx * kCellM), y = oy_ + m(sy * kCellM);
+    // Fine detail. A battlefield fades it out toward its edges to meet the
+    // coarse land; out here it fades in the same way from the battlefield's
+    // edge, so the two meet without a step.
+    int edge;
+    if (sx >= 0 && sy >= 0 && sx <= hole_ && sy <= hole_) edge = std::min(std::min(sx, sy), std::min(hole_ - sx, hole_ - sy));
+    else edge = std::max(std::max(-sx, sx - hole_), std::max(-sy, sy - hole_));
+    const Fixed fade = sim::min(Fixed::one(), m(edge * kCellM) / 48);
+    smp.height += (sim::noise::fbm(detailSeed_, x, y, 48) - r(1, 2)) * (m(2) + smp.mountain / 20) * fade;
+    smp.height += (sim::noise::value(detailSeed_ ^ 0xB0B, x, y, 14) - r(1, 2)) * r(4, 5) * fade;
+    continent_->carve(smp, x, y);
+    Raw out;
+    out.h = smp.height;
+    out.roadDist = smp.roadDist;
+    out.mountain = smp.mountain;
+    Fixed surface;
+    out.water = continent_->waterSurfaceOf(smp, surface) ? surface : Fixed::fromRaw(sim::Region::kDryRaw);
+    return out;
+}
+
+DetailLand::Raw DetailLand::rawDirect(int sx, int sy) const {
+    const auto down = [](int v) { return v >= 0 ? v / kMacro : -((-v + kMacro - 1) / kMacro); };
+    const int mx = down(sx), my = down(sy);
+    const Fixed tx = Fixed::fromRatio(sx - mx * kMacro, kMacro), ty = Fixed::fromRatio(sy - my * kMacro, kMacro);
+    sim::Continent::Sample lat[4];
+    for (int k = 0; k < 4; ++k) lat[k] = continent_->landform(ox_ + m((mx + (k & 1)) * kMacro * kCellM), oy_ + m((my + (k >> 1)) * kMacro * kCellM));
+    const auto lerp2 = [&](auto field) {
+        const Fixed top = field(lat[0]) + (field(lat[1]) - field(lat[0])) * tx, bottom = field(lat[2]) + (field(lat[3]) - field(lat[2])) * tx;
+        return top + (bottom - top) * ty;
+    };
+    sim::Continent::Sample smp;
+    smp.height = lerp2([](const sim::Continent::Sample& q) { return q.height; });
+    smp.land = lerp2([](const sim::Continent::Sample& q) { return q.land; });
+    smp.mountain = lerp2([](const sim::Continent::Sample& q) { return q.mountain; });
+    return rawFrom(smp, sx, sy);
+}
+
+int DetailLand::fairAxis() const {
+    const Fixed at = continent_->fairGround().centre.x - ox_;
+    const int64_t ix = (at / kCellM).floorToInt();
+    return m(ix * kCellM) == at ? static_cast<int>(ix) : INT32_MIN;
+}
+
+bool DetailLand::fairImage(Fixed lx, Fixed ly) const {
+    const sim::Continent::FairGround& fair = continent_->fairGround();
+    return fairAxis() != INT32_MIN && lx + ox_ > fair.centre.x && sim::abs(lx + ox_ - fair.centre.x) <= fair.halfAcross && sim::abs(ly + oy_ - fair.centre.y) <= fair.halfAlong;
 }
 
 Fixed DetailLand::shapedAt(int sx, int sy) const {
@@ -235,11 +278,19 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
         const int ix = static_cast<int>(std::floor(x / kCell)), iy = static_cast<int>(std::floor(y / kCell));
         return static_cast<sim::Ground>(ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] / 16);
     };
+    // The fair ground (Region::scatterScenery): what stands east of its axis is the image of what stands west of it, so
+    // a chunk there is also grown from the scenery points of its own image (the ground under them is the same).
+    const Fixed axis = c.fairGround().centre.x;
+    const int64_t ax = axis.floorToInt();
+    const bool images = fairAxis() != INT32_MIN && x1 > ax && c.fairGround().holds(m(x0), m(y0), m(static_cast<int64_t>(kChunkSize)));
+    for (int pass = 0; pass < (images ? 2 : 1); ++pass)
     for (int64_t gy = floorDiv64(y0, step) - 1; gy * step < y1; ++gy) {
-        for (int64_t gx = floorDiv64(x0, step) - 1; gx * step < x1; ++gx) {
+        for (int64_t gx = floorDiv64(pass ? 2 * ax - x1 : x0, step) - 1; gx * step < (pass ? 2 * ax - x0 + step : x1); ++gx) {
             const sim::Region::SceneryPoint pt = sim::Region::sceneryPoint(scenerySeed_, gx, gy);
-            if (pt.x < m(x0) || pt.y < m(y0) || pt.x >= m(x1) || pt.y >= m(y1)) continue;
-            const Fixed lx = pt.x - ox_, ly = pt.y - oy_;
+            const Fixed px = pass ? axis * 2 - pt.x : pt.x;
+            if (px < m(x0) || pt.y < m(y0) || px >= m(x1) || pt.y >= m(y1)) continue;
+            const Fixed lx = px - ox_, ly = pt.y - oy_;
+            if ((pass == 1) != fairImage(lx, ly)) continue;  // (an image only where the fair ground holds, and there nothing else)
             const float x = static_cast<float>(lx.toDouble()), y = static_cast<float>(ly.toDouble());
             sim::Ground g = groundOf(x, y);
             if (g == sim::Ground::Bridge) continue;
@@ -260,6 +311,7 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
                 if (o.breaksSurface() && sim::Region::keepsRockOut(keepouts, lx, ly)) continue;
             }
             if (g == sim::Ground::Road) g = sim::Ground::Plains;  // (the cell's middle is on a road, this point may not be: the road's rule decides, below)
+            if (!wet && fairAxis() != INT32_MIN && c.fairGround().green(lx + ox_, ly + oy_)) continue;  // the fair ground's green is open meadow (Region::scatterScenery)
             bool clear = true;
             for (const Keep& k : keeps) clear = clear && std::hypot(x - k.x, y - k.y) >= k.reach;
             for (const sim::Deck& d : decks_) clear = clear && !sim::Deck{d.centre, d.dir, d.halfSpan + m(8), d.halfWidth}.contains(lx, ly);
@@ -333,6 +385,7 @@ bool DetailLand::finishStep(int s) {
             const Fixed slope = sim::max(sim::max(sim::abs(a - b), sim::abs(cc - d)), sim::max(sim::abs(a - cc), sim::abs(b - d))) / kCellM;
             const Fixed lx = m(ix * kCellM) + m(kCellM) / 2, ly = m(iy * kCellM) + m(kCellM) / 2;
             const Fixed x = ox_ + lx, y = oy_ + ly;
+            const bool image = fairImage(lx, ly);  // a cell of the fair ground east of its axis: its image's ground
             int wet = 0;
             Fixed surface, road, mtn;
             for (int k = 0; k < 4; ++k) {
@@ -362,12 +415,14 @@ bool DetailLand::finishStep(int s) {
             } else if (slope > r(3, 5) && road >= m(3)) {
                 g = sim::Ground::Rock;
             } else {
-                g = c.landGround(x, y, z, mtn, road);
+                g = c.landGround(image ? c.fairGround().twinX(x) : x, y, z, mtn, road);
             }
             // Mud: the trodden margins of the water, in patches.
             if (g == sim::Ground::Plains || g == sim::Ground::Road) {
-                const Fixed zc = a;
-                if (sim::muddyShore(mudSeed_, lx, ly, zc, [&](int dx, int dy) { return raw(ix + dx, iy + dy).water; })) g = sim::Ground::Mud;
+                // (An image's mud is its original's: that cell's own corner and patch, seen in the glass.)
+                const Fixed zc = image ? b : a;
+                const Fixed mlx = image ? (c.fairGround().centre.x - ox_) * 2 - lx : lx;
+                if (sim::muddyShore(mudSeed_, mlx, ly, zc, [&](int dx, int dy) { return raw(image ? ix + 1 - dx : ix + dx, iy + dy).water; })) g = sim::Ground::Mud;
             }
             ground_[static_cast<size_t>(wrap(iy, kSamples)) * kSamples + wrap(ix, kSamples)] = static_cast<uint8_t>(static_cast<int>(g) * 16);
         }

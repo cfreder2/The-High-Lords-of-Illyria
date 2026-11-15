@@ -52,6 +52,7 @@ public:
     struct Crossing {
         // Fords are waded; stone bridges carry roads over rivers and creeks;
         // footbridges are narrow timber spans, a file of infantry wide.
+        // (A footbridge given a half width of its own is a timber bridge a column wide: the Isle's two.)
         enum class Kind : uint8_t { Ford, Bridge, Footbridge };
         Kind kind;
         std::string name;
@@ -274,6 +275,36 @@ public:
         std::vector<Obstacle> buildings;  // pos.z = the ground they stand on
     };
 
+    // Fair ground (docs/MAP.md, "The Isle at Oakhaven"): a stretch of the Aldwater made for a battle neither host has
+    // the worse of. The river runs dead straight north to south along `axis` (x, a line of the 4 m grid), with an isle in
+    // the middle of its ford at `centre`, deep water above and below the ford and a timber bridge `bridgeOff` up and down
+    // stream. Within `halfAcross` east and west of the axis and `halfAlong` north and south of the centre the east bank is
+    // the west bank's mirror image: its heights (sample), and in a battle's window its ground, water, trees and rocks
+    // (Region::fromContinent); over `blend` metres more it eases back into the land as it lies.
+    struct FairGround {
+        Vec3 centre;  // the isle's middle (on the axis)
+        Fixed halfAcross, halfAlong, blend;
+        Fixed isleAcross, isleAlong, isleRise;  // the isle: half its width across the river and along it; its top above the water
+        Fixed bridgeOff;
+        Fixed bank;  // from the axis to dry ground on either bank, at the ford
+        // The green: open meadow along the road either side of the ford, this far east and west of the axis and this far
+        // north and south of the road, where no tree, bush or rock stands (a host forms up on it, and bowmen see the isle).
+        Fixed greenAcross, greenAlong;
+        bool green(Fixed x, Fixed y) const { return abs(x - centre.x) <= greenAcross && abs(y - centre.y) <= greenAlong; }
+        // How much of the mirror holds at a point: 1 inside, 0 beyond the blend.
+        Fixed weight(Fixed x, Fixed y) const;
+        // The point's image in the axis.
+        Fixed twinX(Fixed x) const { return centre.x * 2 - x; }
+        // 0 outside the isle, 1 on its level top.
+        Fixed isle(Fixed x, Fixed y) const;
+        // On it, or within `margin` of it: nothing one bank would have and the other lack is set here (a ruin, a creek,
+        // a pool, a lane to a town).
+        bool holds(Fixed x, Fixed y, Fixed margin = {}) const {
+            return abs(x - centre.x) < halfAcross + blend + margin && abs(y - centre.y) < halfAlong + blend + margin;
+        }
+    };
+    const FairGround& fairGround() const { return fair_; }
+
     // Where the land's shape comes from: the relief baked offline by
     // tools/terrainbake (hydraulic erosion and drainage, stored as data, so
     // identical everywhere), or the procedural design it was baked from.
@@ -421,6 +452,9 @@ private:
     void shapeLandmarks(Fixed& z, Fixed x, Fixed y) const;
 
     uint64_t seed_;
+    FairGround fair_;
+    // One sample of the land as it lies (sample: with the fair ground's mirror).
+    Sample sampleAsIs(Fixed x, Fixed y) const;
     std::vector<River> rivers_, streams_;
     bool baked_ = false;
     // The baked relief: decimetres on a regular grid.

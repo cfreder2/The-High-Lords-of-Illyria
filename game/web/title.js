@@ -355,7 +355,7 @@
   // A skirmish is a Conquest with a fence: the map, which side, the purse and the squads bought at the Conquest's prices (the
   // engine's list: IllyriaGame.skirmishOffers), how well the computer plays, your colour. The same choices as the desktop's screen.
   const skirmishMaps = [
-    { name: "Oakhaven Ford", note: "Hold the ford against the Red Hand", siege: false },
+    { name: "Oakhaven Ford", note: "", siege: false },
     { name: "A village siege", note: "", siege: true },
     { name: "A capital siege", note: "", siege: true },
     { name: "Open field", note: "", siege: false },

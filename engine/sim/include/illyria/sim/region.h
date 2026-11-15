@@ -187,6 +187,17 @@ public:
     const std::vector<Vec3>& ponds() const { return ponds_; }
     // Where armies are meant to meet: the ford.
     Vec3 ford() const { return ford_; }
+    // Fair ground in this window (Continent::FairGround): east of the line x = axis, out to halfAcross and between y0
+    // and y1, the heights, water, ground, trees and rocks are the west side's mirror image.
+    struct Mirror {
+        bool on = false;
+        Fixed axis, halfAcross, y0, y1;
+        bool holds(Fixed x, Fixed y) const { return on && abs(x - axis) <= halfAcross && y >= y0 && y <= y1; }
+        // Its green (Continent::FairGround::green): nothing grows or lies there.
+        Fixed greenAcross, greenAlong;
+        bool green(Fixed x, Fixed y) const { return on && abs(x - axis) <= greenAcross && abs(y - (y0 + y1) / 2) <= greenAlong; }
+    };
+    const Mirror& mirror() const { return mirror_; }
     // Hash of everything generated, for cross-platform checks.
     uint64_t checksum() const;
 
@@ -299,6 +310,7 @@ private:
     static std::span<const uint32_t> cellOf(const BoxGrid& g, Fixed x, Fixed y);
     static void cellsOf(const BoxGrid& g, Fixed x0, Fixed y0, Fixed x1, Fixed y1, std::vector<uint32_t>& out);
     Vec3 ford_;
+    Mirror mirror_;
     Vec3 origin_;
     std::vector<Fixed> water_;  // per sample
 };

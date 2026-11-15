@@ -236,7 +236,7 @@ A wheeled mangonel with its crew, the only engine of war in Illyria. Slow on the
 ::: unit Hyena-folk
 Hunched, laughing scavengers of the wastes with long scimitars, who care nothing for their own lives. Let loose to raid, they prey on whatever is weak: they snatch up what lies on the field and throw it at the stragglers and the soft men behind your line.
 
-**Conquest.** Not in the Conquest: nobody trains them and nothing gives them. They fight in the sandbox (chapter [](#sandbox)) and with the Red Hand at Oakhaven Ford (chapter [](#skirmish-ford)).
+**Conquest.** Not in the Conquest: nobody trains them and nothing gives them. They fight in the sandbox (chapter [](#sandbox)).
 
 **On the field.** Weak in a stand-up fight (35 hit points, an 8 blow) but fast (6 m/s): only riders catch them, and they never break. They hold where they are sent until you order them to **Raid** (chapter [](#raid)); then, knowing only what they see 35 m about them, they take the best thing in sight, a satchel charge before a blade, a blade before a head, and dart in to throw it at archers, healers, wizards, grenadiers, the wounded and the straggler, when the pack is strong enough for the men about him, then fall back for the next. A severed head they throw breaks the man it strikes. They keep clear of armoured men and, while there is other prey, out of archers' reach. Against them keep your men together and facing them (a shield facing a throw catches it), and let your riders hunt them.
 :::

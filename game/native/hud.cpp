@@ -689,6 +689,17 @@ void Hud::drawMinimap(Overlay& o, float w, float h) {
             o.rect(X(at(f, 2)) - 1.2f, Y(at(f, 3)) - 1.2f, 2.4f, 2.4f, hex(f[1]));
         }
     }
+    for (const auto& f : rows) {  // the pole fought for: a mast, the flag on it as high as it has climbed, in its side's colour
+        if (f[0] != "p" || f.size() < 5) continue;
+        const float sx = X(at(f, 1)), sy = Y(at(f, 2)), up = 10.0f, raised = std::clamp(at(f, 4) / 100.0f, 0.0f, 1.0f);
+        o.rect(sx - 1.4f, sy - up - 1, 2.8f, up + 2, ink);
+        o.rect(sx - 0.6f, sy - up, 1.2f, up, rgba(0xF4EAD0));
+        if (raised > 0) {
+            const float fy = sy - 4.0f - (up - 4.0f) * raised;
+            o.rect(sx + 0.2f, fy - 0.8f, 7.6f, 5.6f, ink);
+            o.rect(sx + 1.0f, fy, 6.0f, 4.0f, hex(f[3]));
+        }
+    }
     for (const auto& f : rows) {  // towns on top: a square in the holder's colour
         if (f[0] != "t" || f.size() < 5) continue;
         const float r = f[4] == "1" ? 3.4f : f[4] == "2" ? 1.7f : 2.6f, sx = X(at(f, 1)), sy = Y(at(f, 2));
@@ -944,8 +955,9 @@ void Hud::draw(Overlay& o, float w, float h) {
         const size_t of = foe.find(" of ");
         const std::string town = siege && of != std::string::npos ? foe.substr(of + 4) : "";
         const std::string where = siege ? std::string(map == 2 ? "Siege of the capital" : "Siege") + (town.empty() ? "" : ": " + town)
-                                        : map == 3 ? "Skirmish: open ground" : "Skirmish: the Ford";
-        const std::string goal = siege ? (defend ? "hold the walls" : map == 2 ? "take the courtyard and the keep" : "take the courtyard") : foe.empty() ? "" : "rout the " + foe;
+                                        : map == 3 ? "Skirmish: open ground" : "Skirmish: Oakhaven Ford";
+        const std::string goal = siege ? (defend ? "hold the walls" : map == 2 ? "take the courtyard and the keep" : "take the courtyard")
+                                 : foe.empty() ? "" : (map == 0 ? "raise your flag on the isle, or rout the " : "rout the ") + foe;
         const std::string held = hud.flag("paused") ? "PAUSED   " : "";
         const std::string count = hud.num("foeTotal") > 0 ? "Foe " + std::to_string(static_cast<int>(hud.num("foeAlive"))) + "/" + std::to_string(static_cast<int>(hud.num("foeTotal"))) : "";
         status = {held + where + (goal.empty() ? "" : "   Objective: " + goal) + (count.empty() ? "" : "   " + count),
@@ -1010,7 +1022,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
         o.text(px + kPad, y, line, cap->flag("blocked") ? kRed : kInk, 14);
         y += kRowH;
-        bar(px + kPad, static_cast<float>(cap->num("p")) / 100.0f, kGold);
+        bar(px + kPad, static_cast<float>(cap->num("p")) / 100.0f, cap->flag("mine") ? kGold : kRed);  // (whose flag is climbing)
     }
     if (conquest && camp.num("winner") != 0) {
         const std::string t = "The war is decided";

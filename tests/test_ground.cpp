@@ -100,7 +100,7 @@ TEST(the_high_ground_wins_an_even_duel) {
 }
 
 TEST(soldiers_cross_a_footbridge_without_wading) {
-    // The Heron Footbridge spans the Aldwater upstream of Oakhaven Ford.
+    // Heron Bridge (timber, 6 m wide) spans the Aldwater upstream of Oakhaven Ford.
     const Continent continent(20261027);
     WorldConfig cfg;
     cfg.region = std::make_shared<const Region>(Region::fromContinent(continent, continent.crossings().front().pos, 256));

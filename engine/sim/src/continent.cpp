@@ -145,8 +145,20 @@ constexpr int64_t kNarrowsReach = 260, kPassReach = 420, kNarrowsBack = 25;
 // No walled town on the Isle of the Seer (within this of its middle).
 constexpr Fixed kIsleClear = Fixed::fromInt(260);
 // No town this near Oakhaven Ford: the set battle there is fought on open
-// ground (Battle::setUpFord: the two armies 230 m apart either side of it).
+// ground (Battle::setUpFord: the two hosts 220 m apart either side of it, on the fair ground).
 constexpr Fixed kFordClear = Fixed::fromInt(350);
+
+// The fair ground at Oakhaven (Continent::FairGround): the isle in the ford, on the 4 m grid. The Aldwater runs straight down
+// its axis for kFairStraight either way and is back on its own course kFairBend off, kFairRiverHalf from its middle to
+// either bank; the ford's bar is shallow out to kFairShoalIn from the isle's middle and the water is at its full depth
+// kFairShoalOut off, so between the ford and each bridge it cannot be waded.
+constexpr int64_t kFairX = 1656, kFairY = 2420;
+constexpr Fixed kFairStraight = Fixed::fromInt(204), kFairBend = Fixed::fromInt(272), kFairRiverHalf = Fixed::fromInt(18);
+constexpr Fixed kFairShoalIn = Fixed::fromInt(20), kFairShoalOut = Fixed::fromInt(38), kFairFord = Fixed::fromInt(30);
+constexpr int64_t kFairBridgeOff = 96;
+constexpr size_t kFairRoad = 1;  // the road that crosses there, in the design's order
+constexpr Fixed kFairRoadStraight = Fixed::fromInt(200), kFairRoadBend = Fixed::fromInt(300);
+constexpr Fixed kFairBridgeHalfWidth = Fixed::fromInt(3);
 
 // Bounding boxes of runs of a river's segments (River::boxes), so a sample skips the far ones.
 void boxRiver(Continent::River& rv) {
@@ -324,7 +336,23 @@ void unsealCastle(Continent::Castle& k) {
 
 }  // namespace
 
+Fixed Continent::FairGround::weight(Fixed x, Fixed y) const {
+    const Fixed dx = abs(x - centre.x), dy = abs(y - centre.y);
+    if (dx >= halfAcross + blend || dy >= halfAlong + blend) return Fixed::zero();
+    return (Fixed::one() - noise::smoothstep(halfAcross, halfAcross + blend, dx)) * (Fixed::one() - noise::smoothstep(halfAlong, halfAlong + blend, dy));
+}
+
+Fixed Continent::FairGround::isle(Fixed x, Fixed y) const {
+    const Fixed dx = abs(x - centre.x), dy = abs(y - centre.y);
+    if (dx >= isleAcross || dy >= isleAlong) return Fixed::zero();
+    const Fixed u = dx / isleAcross, v = dy / isleAlong;
+    const Fixed q = sqrt(u * u + v * v);
+    // Its shore shelves up over the outer third; the rest is level.
+    return q >= Fixed::one() ? Fixed::zero() : noise::smoothstep(Fixed::zero(), Fixed::one(), (Fixed::one() - q) * 3);
+}
+
 Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
+    fair_ = {{m(kFairX), m(kFairY), Fixed::zero()}, m(200), m(160), m(40), m(13), m(17), r(7, 5), m(kFairBridgeOff), kFairRiverHalf + m(6), m(120), m(40)};
     // The sea along the west coast and around the north-west, and an isle.
     sea_.push_back({N(-100, 0), N(-60, 1000), scaled(2100), false});
     sea_.push_back({N(0, 1080), N(400, 1100), scaled(2000), false});
@@ -407,8 +435,8 @@ Continent::Continent(uint64_t seed, Relief relief) : seed_(seed) {
     crossings_.push_back({Crossing::Kind::Bridge, "Southbridge", N(566, 140)});
     crossings_.push_back({Crossing::Kind::Bridge, "Greymere Bridge", N(210, 705)});
     // Footbridges: narrow timber spans away from the roads, a way over for
-    // infantry that no cart or column can use quickly.
-    crossings_.push_back({Crossing::Kind::Footbridge, "Heron Footbridge", N(583, 702)});
+    // infantry that no cart or column can use quickly. (Heron Bridge is one of the fair ground's two, set square on the straightened river with its twin: meanderRivers.)
+    crossings_.push_back({Crossing::Kind::Footbridge, "Heron Bridge", N(583, 702)});
     crossings_.push_back({Crossing::Kind::Footbridge, "Millrace Footbridge", N(568, 300)});
     crossings_.push_back({Crossing::Kind::Footbridge, "Hangman's Span", N(240, 451)});
 
@@ -1107,6 +1135,10 @@ void Continent::shapeRoads() {
             out[i].z = Fixed::zero();
             rd.widths[i] = m(3) * (r(7, 10) + noise::fbm(sr ^ 0x31D, arc, m(static_cast<int64_t>(ri) * 7000), 700) * r(4, 5));
         }
+        // The road over the fair ground (the old east road, through Oakhaven): dead straight east to west through the isle,
+        // so each bank has the same road, easing back to its own way beyond.
+        if (ri == kFairRoad)
+            for (Vec3& p : out) p.y += (fair_.centre.y - p.y) * (Fixed::one() - noise::smoothstep(kFairRoadStraight, kFairRoadBend, abs(p.x - fair_.centre.x)));
         rd.points = std::move(out);
     }
 }
@@ -1166,6 +1198,13 @@ void Continent::meanderRivers() {
             // Wider in the slow reaches, narrower where it runs fast.
             rv.widths[i] = rv.halfWidth * (r(11, 20) + noise::fbm(sm ^ 0x5157, arc, m(static_cast<int64_t>(ri) * 5000), wave / 2) * r(11, 10));
         }
+        // The Aldwater through the fair ground: straight down its axis, one width, easing back to its own course beyond.
+        if (ri == 0)
+            for (size_t i = 0; i < out.size(); ++i) {
+                const Fixed u = Fixed::one() - noise::smoothstep(kFairStraight, kFairBend, abs(out[i].y - fair_.centre.y));
+                out[i].x += (fair_.centre.x - out[i].x) * u;
+                rv.widths[i] += (kFairRiverHalf - rv.widths[i]) * u;
+            }
         // A river that reaches the sea (or flows into a lake) opens out into it: an estuary, not a pipe's end.
         if (landDistance(out.back().x, out.back().y) < m(120) || ri == 0) {
             const Fixed total = arc;
@@ -1179,6 +1218,14 @@ void Continent::meanderRivers() {
         rv.points = std::move(out);
         boxRiver(rv);
     }
+    // The fair ground's crossings, set on the straightened river (the design had the ford and a footbridge by it; they were
+    // the anchors above, so the river beyond the fair ground runs as it did): the ford at the isle, and a timber bridge a
+    // column wide the same distance above and below it, square across the water.
+    crossings_.front().pos = fair_.centre;
+    for (Crossing& c : crossings_)
+        if (c.name == "Heron Bridge") c.pos = fair_.centre + Vec3{Fixed::zero(), fair_.bridgeOff, Fixed::zero()}, c.halfWidth = kFairBridgeHalfWidth;
+    crossings_.push_back({Crossing::Kind::Footbridge, "Teal Bridge", fair_.centre - Vec3{Fixed::zero(), fair_.bridgeOff, Fixed::zero()}});
+    crossings_.back().halfWidth = kFairBridgeHalfWidth;
 }
 
 void Continent::computeRiverSurfaces() {
@@ -1278,9 +1325,24 @@ void Continent::computeRiverSurfaces() {
     }
 }
 
-Continent::Sample Continent::sample(Fixed x, Fixed y) const {
+Continent::Sample Continent::sampleAsIs(Fixed x, Fixed y) const {
     Sample s = landform(x, y);
     carve(s, x, y);
+    return s;
+}
+
+Continent::Sample Continent::sample(Fixed x, Fixed y) const {
+    Sample s = sampleAsIs(x, y);
+    // The fair ground: east of the axis the land is the west bank's, mirrored (the river and its isle are the same both ways).
+    if (x > fair_.centre.x) {
+        const Fixed w = fair_.weight(x, y);
+        if (w > Fixed::zero()) {
+            const Sample twin = sampleAsIs(fair_.twinX(x), y);
+            s.height += (twin.height - s.height) * w;
+            s.relief += (twin.relief - s.relief) * w;
+            s.mountain += (twin.mountain - s.mountain) * w;  // (the Graycrown's foot, as the west bank has it: no hill to hold is found on it, mode_places.cpp)
+        }
+    }
     return s;
 }
 
@@ -1342,16 +1404,21 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         Fixed shoal;
         for (const Crossing& c : crossings_) {
             if (c.kind != Crossing::Kind::Ford) continue;
+            // (The fair ground's ford is a short bar round its isle, the deep water close above and below it.)
+            const bool fair = &c == &crossings_.front();
+            const Fixed ford = fair ? kFairFord : m(45), in = fair ? kFairShoalIn : m(30), out = fair ? kFairShoalOut : m(90);
             const Fixed dx = x - c.pos.x, dy = y - c.pos.y;
             const Fixed d2 = dx * dx + dy * dy;
-            if (d2 < m(45) * m(45)) s.atFord = true;
-            if (d2 < m(90) * m(90)) shoal = max(shoal, Fixed::one() - noise::smoothstep(m(30), m(90), sqrt(d2)));
+            if (d2 < ford * ford) s.atFord = true;
+            if (d2 < out * out) shoal = max(shoal, Fixed::one() - noise::smoothstep(in, out, sqrt(d2)));
         }
         const Fixed hw = s.riverHalfWidth + shoal * 6;
         const Fixed depth = s.riverDepth + (r(3, 5) - s.riverDepth) * shoal;
         if (s.riverDist < hw) {
             const Fixed t = s.riverDist / hw;
             z = min(z, s.riverSurface - depth * (Fixed::one() - t * t));
+            // The isle in the ford stands out of the water.
+            if (const Fixed top = fair_.isle(x, y); top > Fixed::zero()) z = max(z, s.riverSurface + fair_.isleRise * top);
             bed = min(bed, z);
         } else {
             // The valley floor near the river, its walls blending back into
@@ -1427,7 +1494,7 @@ void Continent::carve(Sample& s, Fixed x, Fixed y) const {
         const int64_t ix = clamp((x + Fixed::fromInt(reliefCell_ / 2)) / reliefCell_, Fixed::zero(), Fixed::fromInt(reliefNx_ - 1)).floorToInt();
         const int64_t iy = clamp((y + Fixed::fromInt(reliefCell_ / 2)) / reliefCell_, Fixed::zero(), Fixed::fromInt(reliefNy_ - 1)).floorToInt();
         const int16_t b = reliefBasin_[static_cast<size_t>(iy * reliefNx_ + ix)];
-        if (b != INT16_MIN) {
+        if (b != INT16_MIN && !fair_.holds(x, y)) {  // (no pool on the fair ground)
             s.inBasin = true;
             s.basinSurface = Fixed::fromRatio(b, 10);
         }
@@ -1603,7 +1670,8 @@ Ground Continent::landGround(Fixed x, Fixed y, Fixed height, Fixed mountain, Fix
         const Fixed dx = abs(x - c.pos.x), dy = abs(y - c.pos.y);
         if (dx < c.radius && dy < c.radius && dx * dx + dy * dy < c.radius * c.radius) return Ground::Plains;
     }
-    if ((mountain > peakM(70) && height > peakM(70)) || height > peakM(180)) return Ground::Rock;
+    // (The Graycrown's foot comes down to Oakhaven: its bare rock stops at the fair ground, which is meadow to its edge.)
+    if (((mountain > peakM(70) && height > peakM(70)) || height > peakM(180)) && fair_.weight(x, y) < Fixed::one()) return Ground::Rock;
     // Beaches: low ground along the sea is sand, wider where the shore is flat.
     if (height < m(5)) {
         const uint64_t sb = noise::nextSeed(seed_ ^ 0xBEAC);
@@ -1742,7 +1810,7 @@ void Continent::placeCities() {
     };
     std::vector<Candidate> candidates;
     const uint64_t sj = noise::nextSeed(seed_ ^ 0xC17E5);
-    const Vec3 ford = crossings_.front().pos;
+    const Vec3 ford = N(582, 680);  // (where the design drew Oakhaven Ford: the isle is two metres off)
     // The Isle of the Seer is too small for walls (a town and its bowshot covered all of it): a fishing village at most.
     const Vec3 seersIsle = N(70, 935);
     int64_t order = 0;
@@ -1793,7 +1861,7 @@ void Continent::placeCities() {
     // Ford, kept open) and every pass, a bowshot or two back from it, so that who holds the town holds the way.
     std::vector<Vec3> narrows;
     for (size_t i = 1; i < crossings_.size(); ++i)
-        if (!crossings_[i].name.empty()) narrows.push_back(crossings_[i].pos);
+        if (!crossings_[i].name.empty() && crossings_[i].name != "Teal Bridge") narrows.push_back(crossings_[i].pos);  // (the fair ground has one town's worth of narrows, as it had)
     const size_t firstPass = narrows.size();
     for (const Vec3& p : passes_) narrows.push_back(p);
     // How far each site is from each lord's seat on foot, as the conquest reckons it (Conquest::initTerrain): over its
@@ -2112,6 +2180,7 @@ void Continent::placeSites() {
             const Fixed y = m(j * grid + grid / 2) + (noise::lattice(sj ^ 0x77, i, j) - r(1, 2)) * scaledI(100);
             Sample c;
             Fixed slope;
+            if (fair_.holds(x, y, m(Site::kRuinPad + Site::kRuinPadBlend))) continue;  // (no ruin on the fair ground, nor its pad)
             if (!onFoot(x, y) || !buildable(x, y, m(25), peakM(150), c, slope) || slope > r(1, 3)) continue;
             Fixed score = noise::lattice(sj ^ 0x2A1, i, j);
             if (landGround(x, y, c.height, c.mountain, c.roadDist) == Ground::Forest) score += r(1, 2);
@@ -2233,6 +2302,14 @@ void Continent::loadBakedRelief() {
             st.widths.push_back(Fixed::fromRatio(hw, 100));
             widest = max(widest, st.widths.back());
         }
+        // No creek runs over the fair ground (one bank would have it and the other not): it ends where it comes to it,
+        // its gully's width short.
+        for (size_t i = 0; i < st.points.size(); ++i)
+            if (fair_.holds(st.points[i].x, st.points[i].y, m(44))) {
+                st.points.resize(i);
+                st.widths.resize(i);
+                break;
+            }
         st.halfWidth = widest;
         st.depth = widest / 3 + r(2, 5);
         for (size_t b = 0; b * River::kSpan + 1 < st.points.size(); ++b) {

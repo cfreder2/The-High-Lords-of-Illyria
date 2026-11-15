@@ -94,6 +94,14 @@ private:
     };
     void claim(int cx, int cy);
     void rawRow(int s);
+    // One raw sample from its landform (interpolated from the 16 m lattice): the fine detail, then the continent's carving.
+    Raw rawFrom(sim::Continent::Sample smp, int sx, int sy) const;
+    // The same with no chunk's lattice at hand: the four landforms about it are sampled here (the fair ground's images).
+    Raw rawDirect(int sx, int sy) const;
+    // The fair ground (sim::Continent::FairGround) in samples: the axis' column, or INT32_MIN when it is not on the grid.
+    int fairAxis() const;
+    // A point of the land (metres) whose image in the fair ground's axis stands for it: wholly inside it, east of the axis.
+    bool fairImage(sim::Fixed lx, sim::Fixed ly) const;
     bool finishStep(int s);  // true when the chunk is finished
     void growScenery(int s, const std::vector<Seg>& roads);
     bool inHole(int cx, int cy) const;

@@ -724,6 +724,9 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             const SceneryPoint pt = sceneryPoint(seed, gx, gy);
             const Fixed x = pt.x - origin_.x, y = pt.y - origin_.y;
             if (x < Fixed::zero() || y < Fixed::zero() || x >= m(extent) || y >= m(extent)) continue;
+            // Fair ground: what grows and lies east of the axis is the west side's, mirrored (below).
+            const bool fair = mirror_.holds(x, y);
+            if (fair && x > mirror_.axis) continue;
             Ground g = groundAt(x, y);
             if (g == Ground::Bridge) continue;
             const bool wet = g == Ground::Shallows || g == Ground::DeepWater;
@@ -742,6 +745,7 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
                 if (o.breaksSurface() && keepsRockOut(*waterKeepouts, x, y)) continue;
             }
             if (g == Ground::Road) g = Ground::Plains;  // (the cell's middle is on a road; this point may not be: roadClears decides)
+            if (!wet && mirror_.green(x, y)) continue;  // the fair ground's green is open meadow
             if (flatDist(x, y, clearCentre) < clearRadius) continue;
             bool cleared = false;
             for (const Vec3& c : clearings) cleared = cleared || flatDist(x, y, {c.x, c.y, Fixed::zero()}) < c.z;
@@ -798,6 +802,10 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
             if (onRoad) continue;
             o.pos = {x, y, z};
             obstacles_.push_back(o);
+            if (fair && x < mirror_.axis && mirror_.axis * 2 - x < m(extent)) {
+                o.pos.x = mirror_.axis * 2 - x;
+                obstacles_.push_back(o);
+            }
         }
     }
 }
@@ -1091,7 +1099,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 const int32_t reach = static_cast<int32_t>((radius * 2 / cell).floorToInt()) + 1;
                 if (ci - reach < 2 || cj - reach < 2 || ci + reach > cells - 2 || cj + reach > cells - 2) continue;
                 if (flatDist(px, py, rg.ford_) < m(140)) continue;
-                if (c.landmarkAt(px + OX, py + OY)) continue;  // its ground is shaped already
+                if (c.landmarkAt(px + OX, py + OY) || c.fairGround().weight(px + OX, py + OY) > Fixed::zero()) continue;  // its ground is shaped already
                 bool town = false;  // not inside a city's walls
                 for (const Continent::City& city : c.cities()) town = town || flatDist(px + OX, py + OY, city.pos) < city.radius * 2;
                 if (town) continue;
@@ -1122,6 +1130,28 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 rg.ponds_.push_back({px, py, radius});
             }
         }
+    }
+    // The fair ground (Continent::FairGround): each sample east of its axis takes the height of its image in the west
+    // (the fine detail and the berm with it), wholly inside it and by less and less across its blend; inside it the water
+    // and the road are the image's too. The axis is a line of the grid, so the image of a sample is a sample.
+    const Continent::FairGround& fair = c.fairGround();
+    const int64_t axisIx = ((fair.centre.x - OX) / cell).floorToInt();
+    if (fair.centre.x - OX == cell * axisIx) {
+        rg.mirror_ = {true, fair.centre.x - OX, fair.halfAcross, fair.centre.y - fair.halfAlong - OY, fair.centre.y + fair.halfAlong - OY, fair.greenAcross, fair.greenAlong};
+        for (int32_t iy = 0; iy < n; ++iy)
+            for (int64_t ix = std::max<int64_t>(axisIx + 1, 0); ix < n; ++ix) {
+                const int64_t tx = axisIx * 2 - ix;
+                if (tx < 0) break;
+                const Fixed w = fair.weight(OX + cell * ix, OY + cell * iy);
+                if (w == Fixed::zero()) continue;
+                const size_t i = static_cast<size_t>(iy) * n + static_cast<size_t>(ix), t = static_cast<size_t>(iy) * n + static_cast<size_t>(tx);
+                shaped[i] += (shaped[t] - shaped[i]) * w;
+                if (w < Fixed::one()) continue;
+                shaped[i] = shaped[t];
+                rg.water_[i] = rg.water_[t];
+                roadDist[i] = roadDist[t];
+                mountain[i] = mountain[t];
+            }
     }
     rg.terrain_ = Terrain::fromSamples(cells, cell, shaped);
     // The level below which things look drowned: the lowest water in the
@@ -1206,6 +1236,15 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
         }
         rg.ground_.swap(muddy);
     }
+    // The fair ground's cells east of the axis are their images' (wood, mud and road alike).
+    if (rg.mirror_.on)
+        for (int32_t iy = 0; iy < cells; ++iy)
+            for (int64_t ix = std::max<int64_t>(axisIx, 0); ix < cells; ++ix) {
+                const int64_t tx = axisIx * 2 - 1 - ix;
+                if (tx < 0) break;
+                if (rg.mirror_.holds(cell * ix + cell / 2, cell * iy + cell / 2))
+                    rg.ground_[static_cast<size_t>(iy) * cells + static_cast<size_t>(ix)] = rg.ground_[static_cast<size_t>(iy) * cells + static_cast<size_t>(tx)];
+            }
 
     // A hamlet along the road west of the ford.
     {
@@ -1233,6 +1272,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
             const Fixed side = (placed % 2 == 0) ? m(15) : -m(15);
             const Fixed hx = px, hy = py + side;
             if (rg.groundAt(hx, hy) == Ground::DeepWater || rg.groundAt(hx, hy) == Ground::Shallows) continue;
+            if (fair.weight(hx + OX, hy + OY) > Fixed::zero()) continue;  // (the fair ground has no house on one bank that the other lacks)
             Obstacle o;
             o.kind = Obstacle::Kind::House;
             o.pos = {hx, hy, rg.terrain_.heightAt(hx, hy)};
@@ -1329,6 +1369,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 const Ground g = rg.cellGround(ix, iy);
                 const Continent::Landmark* lm = c.landmarkAt(OX + cell * ix, OY + cell * iy);
                 if (lm && !lm->buildings.empty()) continue;
+                if (fair.weight(OX + cell * ix, OY + cell * iy) > Fixed::zero()) continue;  // (nor on the fair ground)
                 bool onSite = false;  // nor on a ruin's levelled ground, nor a temple's
                 for (const Vec3& s : clearings) onSite = onSite || flatDist(cell * ix, cell * iy, {s.x, s.y, Fixed::zero()}) < s.z + m(16);
                 if (onSite) continue;

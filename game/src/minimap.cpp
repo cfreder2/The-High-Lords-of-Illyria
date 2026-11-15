@@ -119,6 +119,12 @@ std::string battleMinimapText(const Battle& b) {
         shown.push_back({u.owner, p.x, p.y});
     }
     appendMen(out, shown, 8.0f);
+    // The pole fought for (a siege's courtyard or keep, the isle's): whose flag is on it and how high.
+    if (const CapturePoint& cap = b.capturePoint(); cap.active()) {
+        const V3 at = toV3(cap.at());
+        std::snprintf(buf, sizeof buf, "p|%.0f|%.0f|%s|%d\n", at.x, at.y, hex(factionColor(static_cast<uint8_t>(cap.attacker()))).c_str(), cap.progress() * 100 / CapturePoint::kFull);
+        out += buf;
+    }
     // Fights: where men struck or were struck in the last two seconds, binned 24 m.
     {
         std::map<std::pair<int, int>, std::tuple<int, float, float>> fights;

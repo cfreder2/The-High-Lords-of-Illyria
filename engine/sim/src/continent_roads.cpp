@@ -120,6 +120,7 @@ void Continent::routeApproaches() {
                 const uint32_t w = water(sample(p.x + m((k % 3 - 1) * 6), p.y + m((k / 3 - 1) * 6)));
                 c = w == kClosed ? kClosed : std::max(c, w);
             }
+            if (fair_.holds(p.x, p.y)) c = kClosed;  // (no lane to a town over the fair ground: the old road is the one road there)
             if (net[i] && c == kClosed) c = kBase;  // (a ford, or a causeway: the road is there already)
             cost[i] = c;
             shut[i] = c == kClosed && !net[i] && s.land >= m(20);  // (not the sea: that is far enough)

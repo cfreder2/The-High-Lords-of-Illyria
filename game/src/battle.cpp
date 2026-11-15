@@ -204,15 +204,24 @@ Standing Battle::standing(const Squad& s) const {
 }
 
 void Battle::setUpFord(const SkirmishSetup& setup) {
-    const V3 east{1, 0, 0}, west{-1, 0, 0};
-    // The armies face each other across the river, either side of the ford.
-    const float cx = kWorldSize / 2, cy = kWorldSize / 2;
-    const float px = cx - 60, ex = cx + 170;
-    if (setup.budget > 0) {
-        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east);
-        muster(kEnemy, foeBuys(setup, false), {ex, cy, 0}, west);
+    // Fair ground (sim::Continent::FairGround): each host the same distance back from the river, facing it, on the same land;
+    // between them the ford with its isle, and on the isle a bare pole. The first flag to its top wins (CapturePoint).
+    if (setup.budget > 0 || !setup.army.empty()) {
+        const sim::Vec3 at = continent_->fairGround().centre - region_->origin();
+        const V3 pole = toV3(at);
+        capture_.placeNeutral({at.x, at.y, sim::Fixed::zero()}, kPlayer, kEnemy);
+        muster(kPlayer, playerBuys(setup, false), {pole.x - kIsleCampM, pole.y, 0}, {1, 0, 0}, true);
+        muster(kEnemy, foeBuys(setup, false), {pole.x + kIsleCampM, pole.y, 0}, {-1, 0, 0}, true, false, true);
+        foeName_ = "other host";
         return;
     }
+    // The classic muster (`budget` 0): the two hosts the first builds were made with, every kind of soldier between them,
+    // where they always stood, with no pole: the Red Hand comes over the river and is fought to a rout. Not a fair fight and
+    // not on the Skirmish screen (a Skirmish started at the Ford buys: kFordPurse); it is the title's backdrop and the
+    // field the command tests are set on.
+    const V3 east{1, 0, 0}, west{-1, 0, 0};
+    const float cx = kWorldSize / 2, cy = kWorldSize / 2;
+    const float px = cx - 60, ex = cx + 170;
 
     // Oakhaven holds the berm above the ford: shield wall in front, archers and
     // grenadiers behind, healers at the rear, horse on the flanks, fliers behind.
@@ -253,8 +262,8 @@ void Battle::setUpFord(const SkirmishSetup& setup) {
     spawnSquad("Ashen Wyrm", kEnemy, UnitType::Dragons, 1, {ex + 60, cy, 0}, west);
     spawnSquad("Red Hand Mangonel", kEnemy, UnitType::Catapult, 1, {ex + 48, cy - 12, 0}, west);
     spawnSquad("Laughing Pack of Gnarl", kEnemy, UnitType::Hyena, 6, {ex - 10, cy - 92, 0}, west);
-
 }
+
 
 const sim::Continent::City& siegeTown(const sim::Continent& c) {
     // The neutral walled town nearest Oakhaven Ford.
@@ -332,14 +341,15 @@ std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int e
     return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, bool mirrored) {
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
     // `enginesFirst` (a siege's besiegers): the engines are the front rank, at their throw from the gate, and the army stands
     // behind them out of the walls' bowshot until the engines have done their work (World::escortSpot calls up their guard).
     constexpr float kSlotM = 28.0f, kRowM = 24.0f;
     constexpr int kAcross = 5;
-    const V3 right{facing.y, -facing.x, 0};
+    const float hand = mirrored ? -1.0f : 1.0f;
+    const V3 right{facing.y * hand, -facing.x * hand, 0};
     // A place to stand a squad: the slot, or the nearest open ground to it (dry, standable, not in a wall's ring), looking out
     // 10 m each way so a squad does not form up on a cliff's lip or in a wood.
     const auto settle = [&](V3 p) {
@@ -353,7 +363,7 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             for (int k = 0; k < 12; ++k) {
                 static const float kCos[12] = {1, 0.866f, 0.5f, 0, -0.5f, -0.866f, -1, -0.866f, -0.5f, 0, 0.5f, 0.866f};  // (no libm: peers place alike)
                 static const float kSin[12] = {0, 0.5f, 0.866f, 1, 0.866f, 0.5f, 0, -0.5f, -0.866f, -1, -0.866f, -0.5f};
-                const V3 q = p + V3{kCos[k] * static_cast<float>(r), kSin[k] * static_cast<float>(r), 0};
+                const V3 q = p + V3{kCos[k] * static_cast<float>(r) * hand, kSin[k] * static_cast<float>(r), 0};  // (a mirrored host looks the mirrored way round)
                 if (q.x > 40 && q.y > 40 && q.x < kWorldSize - 40 && q.y < kWorldSize - 40 && clear(q)) return q;
             }
         return p;
@@ -1167,7 +1177,7 @@ void Battle::runEnemyAi() {
     };
     if (aiBreakOff()) return;  // a siege it has lost: it marches off, and the day is the keepers'
     // A town it besieges, once a way in is open and nobody holds the ground: its foot go to the pole (battle_capture.h).
-    const bool toPole = capture_.active() && capture_.attacker() == kEnemy && capture_.defendersIn() == 0 && [&] {
+    const bool toPole = capture_.active() && !capture_.neutral() && capture_.attacker() == kEnemy && capture_.defendersIn() == 0 && [&] {
         const int ring = capture_.stages()[capture_.stage()].ring;
         for (size_t g = 0; g < world_->gates().size(); ++g)
             if (worldRegion().gates()[g].ring == ring && world_->gates()[g].broken()) return true;
@@ -1189,7 +1199,8 @@ void Battle::runEnemyAi() {
         // Easy comes late: it stands a while (the player has time to set his line), then each squad goes for the foe nearest
         // it, piecemeal, with no massing and no falling back (aiFight). (Every squad on the one foe nearest the army's middle,
         // "by one road", was tried: that is a concentration, and it cost a player who gave no orders 86 men for 57.)
-        if (easyMarch && world_->tick() < kEasyWaitTicks) continue;
+        // (Not at Oakhaven Ford, where a flag left alone for a minute is the battle: there only its squads that go round wait. aiIsle.)
+        if (easyMarch && world_->tick() < kEasyWaitTicks && !capture_.neutral()) continue;
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand: at a gate in their throw, or (a battery set
             // before a side wall, the gate beyond its throw) at the men on the walks until none are left in its reach.
@@ -1207,6 +1218,7 @@ void Battle::runEnemyAi() {
             if (V3{pole.x - c.x, pole.y - c.y, 0}.length() > 8.0f) aiSteer(q, pole);
             continue;
         }
+        if (aiIsle(q)) continue;  // Oakhaven Ford: the isle, the bridges and the banks (battle_isle.cpp)
         // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code path.
         aiFight(q, goal, c, 1e4f);
     }

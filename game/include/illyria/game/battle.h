@@ -105,7 +105,7 @@ struct Squad {
 
 // Which battle to fight.
 enum class Scenario {
-    Ford,      // Oakhaven Ford: the Red Hand comes over the river
+    Ford,      // Oakhaven Ford: two hosts on fair ground either side of the Aldwater, a bare pole on the isle in the ford (battle_isle.cpp)
     Siege,     // a neutral town near Oakhaven, held by its own small garrison
     Capital,   // the nearest capital: a castle of two doors and an inner bailey
     Field,     // open ground (the first hill the continent offers): two armies and nothing between them
@@ -120,7 +120,8 @@ struct Buy {
 
 // A skirmish as the Skirmish screen sets it up: a Conquest with a fence, so its army is bought at the Conquest's prices from a
 // gold budget and the computer plays as a lord does (AiSkill). `budget` 0 is the classic muster of the Ford and the village
-// siege (the armies the first builds were made with); every other map, and any budget, buys.
+// siege (the armies the first builds were made with); every other map, and any budget, buys. The Ford's classic hosts are
+// not alike, so a Skirmish started at the Ford always buys (kFordPurse a side when no purse is named).
 struct SkirmishSetup {
     // The computer plays Easy: a smaller purse (kEasyPursePct of the player's), and it comes late and piecemeal (Battle::runEnemyAi, aiFight).
     bool easy = false;
@@ -128,6 +129,7 @@ struct SkirmishSetup {
     std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
     bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
 };
+inline constexpr int kFordPurse = 300;
 // The types a skirmish may buy: what a Conquest city trains (Conquest::trainable).
 std::vector<sim::UnitType> skirmishTypes();
 // Gold for an army at the Conquest's prices.
@@ -668,6 +670,20 @@ public:
     // The computer's orders to a squad. Steer: march there with initiative
     // (a squad already on its way to about the same place keeps its route).
     // ForceMarch: deaf to the enemy. Attack: every soldier after one foe.
+    // Oakhaven Ford's ground in the battle's metres (battle_isle.cpp): the pole on the isle, how far the dry banks stand from
+    // the river's middle line (x = pole.x) at the ford, and the two bridges: where each crosses (y) and how far its deck and
+    // ramps reach either side of the line. False on any other field.
+    struct Isle {
+        V3 pole;
+        float bank = 0;
+        struct Bridge {
+            float y = 0, reach = 0;
+        };
+        Bridge bridges[2];
+    };
+    bool isle(Isle& out) const;
+    // The hosts stand this far back from the river's middle line, facing it.
+    static constexpr float kIsleCampM = 110.0f;
     void aiSteer(size_t squad, const V3& to);
     void aiForceMarch(size_t squad, const V3& to);
     void aiAttack(size_t squad, sim::EntityId target);
@@ -866,7 +882,8 @@ private:
     std::vector<Buy> playerBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines) const;
     std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines, int pct = 100) const;
     // An army in ranks (foot in front, bowmen behind, horse on the wings, engines last) about `anchor`, facing `facing`.
-    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false);
+    // (`mirrored`: laid out as the looking-glass image of a host facing the other way, squad for squad: Oakhaven Ford's.)
+    void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false, bool mirrored = false);
     void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);
     void finish();
     void spawnSquad(const std::string& name, sim::PlayerId owner, sim::UnitType type, int count, V3 centre,
@@ -884,6 +901,10 @@ private:
     // The computer's siege is spent (kSpentPct of its fighting men or fewer stand): it marches off. True once it has.
     bool aiBreakOff();
     void aiEscort(size_t squad, const V3& engines, const V3& gate);
+    // Oakhaven Ford as the computer plays it (battle_isle.cpp): true when the squad has its orders from it.
+    bool aiIsle(size_t squad);
+    // A squad to a post, facing `face`, and standing there on Hold.
+    void aiPost(size_t squad, const V3& post, const V3& face);
     // Where the army's foot stands against `foe`: how far toward it the front reaches (metres along `dir`), false with no foot.
     bool footFront(sim::PlayerId owner, const Squad& except, const V3& dir, float& front) const;
     // A squad of the owner's well behind this one (aiFight's massing): it would arrive piecemeal, ahead of the rest.
@@ -1073,6 +1094,7 @@ private:
     uint32_t noticeTick_ = 0;
     std::vector<Event> events_;
     uint32_t eventClock_ = 0, ordersGiven_ = 0;
+    int poleRising_ = 0;  // the isle's pole at the last look: 0 nobody's flag climbing, 1 ours, 2 theirs (observeSquads)
     struct SquadWatch {
         int alive = -1;  // -1: not seen yet
         bool broke = false;
@@ -1140,8 +1162,11 @@ private:
         int rested = 0;   // looks before it may wait again (a laggard stuck behind a cliff must not stall the army)
         bool raiding = false;
         uint32_t restUntil = 0;
+        int bridge = -1;  // Oakhaven Ford: the bridge it goes round by, once it has set off for it; and how far it has got
+        int flank = 0;    // (0 to its own end, 1 over, 2 across and loose)
     };
     AiSkill aiSkill_ = AiSkill::Normal;
+    mutable bool aiDryFoes_ = false;  // pickFoe leaves out the men standing in water (aiIsle: nobody wades in after them)
     std::vector<AiMemo> aiMemo_;
     std::map<uint32_t, AiMemo> armyAi_;  // the computer's memory of each squad (aiMemo_), by army, kept across the frames' fresh squads
     // The per-soldier presentation state grown for soldiers raised mid-battle.

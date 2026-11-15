@@ -174,8 +174,7 @@ void frameCamera() {
         app->camera.rotate(std::atan2(-out.y, -out.x) - app->camera.yaw());
         return;
     }
-    // Open just behind the Oakhaven shield wall, close enough to see soldiers, looking
-    // east toward the Red Hand.
+    // Open just behind the first squad of the player's line, close enough to see soldiers, looking east toward the other host.
     const V3 c = b.squadCentre(b.squads()[0]);
     app->camera.lookAt(c.x + 10, c.y, 55);
 }
@@ -558,8 +557,10 @@ void placeFlags(float dt) {
             V3 base = toV3(cap.at());
             base.z = app->battle->heightAt(base.x, base.y);
             const float p = static_cast<float>(cap.progress()) / CapturePoint::kFull;
-            // the battle's colours (factions.h: the defenders are the second seat, the player the first)
-            const PoleTarget t = contestedPole(illyria::game::factionColor(1), illyria::game::factionColor(0), p);
+            // the battle's colours (factions.h: the defenders are the second seat, the player the first); a bare pole's
+            // flag (the isle's) is its raiser's, as high as he has got it
+            const PoleTarget t = cap.neutral() ? PoleTarget{illyria::game::factionColor(static_cast<uint8_t>(cap.attacker())), p}
+                                               : contestedPole(illyria::game::factionColor(1), illyria::game::factionColor(0), p);
             put(kSiegePole, {base, 14, t.level, 3.4f, t.colour});
         }
     }
@@ -2941,7 +2942,9 @@ static const char* squadTip(illyria::sim::UnitType t) {
 static void endState(const Battle& b, std::string& s) {
     char buf[512];
     const bool siege = b.scenario() == Scenario::Siege || b.scenario() == Scenario::Capital;
-    const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.") : "Rout the " + b.foeName() + ".";
+    const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.")
+                              : b.capturePoint().neutral() ? "Raise your flag on the isle, or rout the " + b.foeName() + "."
+                                                           : "Rout the " + b.foeName() + ".";
     std::snprintf(buf, sizeof buf, ",\"deploy\":%s,\"brief\":\"%s\",\"routed\":%d,\"over\":%s", b.deploying() ? "true" : "false", brief.c_str(),
                   b.routedSide() == illyria::sim::RoutRule::kNobody ? -1 : static_cast<int>(b.routedSide()), b.over() ? "true" : "false");
     s += buf;
@@ -3010,9 +3013,10 @@ ILLYRIA_API const char* illyria_hud() {
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"gates\":[",
+        // (`mine`: the flag on the pole is the viewer's side's, so the bar is his colour: a siege's attacker, the isle's raiser.)
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"mine\":%s,\"text\":\"%s\",\"gates\":[",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str());
+                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", cap.attacker() == b.localSide() || cap.bare() ? "true" : "false", b.siegeLine().c_str());
         s += buf;
         // The doors of the besieged town, with what is left of each.
         bool firstGate = true;
@@ -3210,6 +3214,8 @@ static int startMode(const char* id, const char* options) {
             }
             if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
         }
+        // Oakhaven Ford is fought on fair ground by two hosts alike: it always buys (its classic muster is the title's backdrop).
+        if (gScenario == Scenario::Ford && gSetup.budget == 0) gSetup.budget = illyria::game::kFordPurse;
         gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
         gDeploy = optionNumber(opts, "deploy", 0) != 0;
         gSetup.easy = gSkill == Battle::AiSkill::Easy;

@@ -1,0 +1,64 @@
+# Oakhaven Ford left to the computer: no order is given. For looking at how it plays the ground (the isle, the two
+# bridges, the banks): from high up every 20 s of game time, and close at the isle and at a bridge.
+#
+#   Illyria --play tools/playtest/ford-watch.txt --play-out out/ford-watch --play-log out/ford-watch/watch.log
+#   (add `easy` to the start line for the battle AI's Easy)
+#
+# The pole is at (512, 512) in battle metres, the river runs north to south through it, the bridges cross at
+# (512, 608) and (512, 416). North is up the screen at yaw 1.5708.
+
+size 1600 900
+start skirmish ford budget 300
+wait 0.5
+camera 512 512 330 1.5708
+wait 1
+shot watch-000-high
+cards
+stats
+speed 4
+
+wait_ticks 600
+shot watch-020-high
+stats
+wait_ticks 600
+shot watch-040-high
+camera 512 512 70 1.5708
+wait 0.6
+shot watch-040-isle
+camera 560 608 60 1.5708
+wait 0.6
+shot watch-040-bridge
+camera 512 512 330 1.5708
+stats
+wait_ticks 600
+shot watch-060-high
+camera 512 512 70 1.5708
+wait 0.6
+shot watch-060-isle
+camera 512 512 330 1.5708
+stats
+wait_ticks 600
+shot watch-080-high
+camera 470 608 60 1.5708
+wait 0.6
+shot watch-080-bridge
+camera 512 512 330 1.5708
+stats
+wait_ticks 600
+shot watch-100-high
+stats
+wait_ticks 600
+shot watch-120-high
+camera 512 512 70 1.5708
+wait 0.6
+shot watch-120-isle
+camera 512 512 330 1.5708
+stats
+wait_ticks 900
+shot watch-150-high
+stats
+wait_ticks 900
+shot watch-180-high
+stats
+cards
+quit

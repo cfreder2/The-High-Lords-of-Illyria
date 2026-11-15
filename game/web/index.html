@@ -185,6 +185,9 @@
   #capture .bar { position: relative; height: 8px; margin-top: 4px; border-radius: 4px; background: #8a2a20; overflow: hidden; }
   #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); }
   #capture.taken { border-color: #8fd0ff; }
+  /* The flag climbing is the other side's (a siege you defend, the isle's pole in their hands). */
+  #capture.theirs .bar { background: #33302a; }
+  #capture.theirs .bar b { background: #c0392b; }
   /* The compass, under the top right buttons (left of the sandbox's panel): its needle points north; a tap turns the view north up. */
   #compass { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); z-index: 2; width: 40px; height: 40px;
              min-width: 0; min-height: 0; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
@@ -1221,7 +1224,7 @@
     if (t >= mini.next) {
       // Ten times a second is plenty for a map this small.
       mini.next = t + 100;
-      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = []; mini.fights = [];
+      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = []; mini.fights = []; mini.poles = [];
       for (const line of api.mini().split("\n")) {
         const f = line.split("|");
         if (f[0] === "m") { mini.w = +f[1]; mini.h = +f[2]; }
@@ -1230,6 +1233,7 @@
         else if (f[0] === "k") mini.heaps.push({ c: f[1], x: +f[2], y: +f[3], n: +f[4] });
         else if (f[0] === "d") mini.dots.push({ c: f[1], x: +f[2], y: +f[3] });
         else if (f[0] === "f") mini.fights.push({ x: +f[1], y: +f[2], n: +f[3] });
+        else if (f[0] === "p") mini.poles.push({ x: +f[1], y: +f[2], c: f[3], p: +f[4] });
       }
     }
     const g = cv.getContext("2d");
@@ -1273,6 +1277,17 @@
       grad.addColorStop(1, "rgba(255,60,20,0)");
       g.fillStyle = grad;
       g.beginPath(); g.arc(X(f.x), Y(f.y), r, 0, 7); g.fill();
+    }
+    // The pole fought for (a siege's, the isle's): a mast, the flag on it as high as it has climbed, in its side's colour.
+    for (const p of mini.poles || []) {
+      const x = X(p.x), y = Y(p.y), up = 10 * u;
+      g.fillStyle = "#000"; g.fillRect(x - 1.2 * u, y - up - u, 2.4 * u, up + 2 * u);
+      g.fillStyle = "#f4ead0"; g.fillRect(x - 0.5 * u, y - up, u, up);
+      if (p.p > 0) {
+        const fy = y - 4 * u - (up - 4 * u) * Math.min(1, p.p / 100);
+        g.fillStyle = "#000"; g.fillRect(x + 0.2 * u, fy - 0.8 * u, 7.6 * u, 5.6 * u);
+        g.fillStyle = p.c; g.fillRect(x + u, fy, 6 * u, 4 * u);
+      }
     }
     // Towns, always: a square in the holder's colour, larger for a capital, small for an open village.
     for (const tw of mini.towns) {
@@ -1517,6 +1532,7 @@
     if (cap.on) {
       $("captureBar").style.width = `${cap.p}%`;
       $("capture").classList.toggle("taken", cap.taken);
+      $("capture").classList.toggle("theirs", !cap.mine);
       // The engine's own words (Battle::siegeLine), and each door's strength.
       $("captureText").textContent = [cap.text, ...cap.gates.map(g => g.hp > 0 ? `${g.name} ${g.hp}%` : `${g.name} down`)].join(" · ");
     }

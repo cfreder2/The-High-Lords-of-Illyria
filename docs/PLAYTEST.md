@@ -57,7 +57,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | --- | --- |
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
-| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
+| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: Oakhaven Ford (the flag on the isle, a bridge up and down stream; docs/GAME_DESIGN.md §4.1.4), a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the village siege uses its classic muster, and the Ford and the field 300 gold a side: the two hosts at the Ford are always alike); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -133,7 +133,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | script | |
 | --- | --- |
 | `smoke.txt` | start the Ford, `cards`, `stats`, one shot. A check that the harness works on this machine. |
-| `ford.txt` | the Ford: select all, box-select, march across the ford, wait for the clash, a shot every 10 s for 90 s, `stats` at the end. |
+| `ford.txt` | Oakhaven Ford: the foot to the isle, the horse round by the upstream bridge, a shot every 10 s for 90 s (the flag's line is in the log as `capture=`), `stats` at the end. |
+| `ford-watch.txt` | Oakhaven Ford left to the computer: no order given, speed 4, a shot from high up every 20 s of game time and close shots of the isle and a bridge. For looking at how it plays the ground. |
 | `siege.txt` | the Siege: the siege engines and the foot to the gate, shots every 10 s, `stats`. |
 | `siege-catapults-first.txt` | the Siege the patient way: the catapults alone at the gate from their reach (the range ring shown), then the foot once it is down. |
 | `capital.txt` | the capital's siege: both doors looked at close, the army split between them, each company ordered at its own door, speed 4 and a shot every 20 s of game time. |
@@ -155,7 +156,7 @@ $Illyria --play tools/playtest/conquest.txt --play-out out/conquest --play-log o
   fixed by `camera` (or the start view, which is the same each run), and expect them to be wrong the first time. There is
   no "click the Archers": `select N` is the only way to pick a squad by name; everything else is a box or a click on the map.
 - **A squad card can be out of reach.** The HUD draws as many squad cards as fit the window's width and drops the rest
-  (`hud.cpp`: `if (x + cw > w - 8) break`). In the Ford at 1600 wide 11 of 18 have one. `select N` still reaches the others;
+  (`hud.cpp`: `if (x + cw > w - 8) break`). At 1600 wide 14 fit (the Ford's 300 gold a side is 14 squads); a bigger purse has more. `select N` still reaches the others;
   a click on a card does not.
 - **Picking several squads, not all, needs a box.** The HUD's card click replaces the selection; there is no add. `select`
   does the same. A box (`drag left`, with `key shift down` to add) is how a script, like a hand, picks a few.
