@@ -48,7 +48,7 @@
     if (!A.manifest) throw new Error("sfx/sounds.json not found: serve the repository's root (tools/audit/serve.sh)");
     const json = (url, or) => fetch(url).then((r) => (r.ok ? r.json() : or)).catch(() => or);
     const [stats, lines, available, audit] = await Promise.all([json(A.root + "sfx/stats.json", {}), json(A.root + "voice/lines.json", null),
-      json(A.root + "voice/available.json", []), json("sound-audit.json", null)]);
+      json(A.root + "voice/available.json", []), json((window.AUDIT_BASE || "") + "sound-audit.json", null)]);
     A.stats = stats; A.lines = lines; A.available = new Set(available); A.audit = audit;
     for (const s of A.manifest.sounds) A.sounds.set(s.id, s);
     if (lines) for (const s of lines.sets) A.sets.set(s.id, s);
@@ -210,6 +210,20 @@
     const c = A.code(id), p = playStrip(s, buf, { gain: place.gain * (o.boost || 1), dist: place.dist, pan: place.pan, delay: o.delay, priority: o.priority != null ? o.priority : c ? c.priority : 5 });
     return p ? { mode, variant: v, text, seconds: p.seconds } : { mode: "busy", variant: v, text: "dropped: the 12 strips are busy with graver sounds", seconds: 0 };
   };
+
+  // For the Sound Editor (tools/sound-editor): a buffer that is not in the game yet, played as sound `id` would be
+  // (its mix level, priority and reach), or dry; and a file's decoded copy dropped after the file was replaced.
+  A.playBuffer = (id, buf, o) => {
+    o = o || {};
+    A.unlock();
+    const s = A.sounds.get(id) || { id, level: 0 }, mode = o.mode || A.settings.mode;
+    if (mode === "dry" || !A.sounds.has(id)) { const p = playDry(buf); return { mode: "dry", text: "dry: the sound as it is", seconds: p.seconds }; }
+    const place = A.place(id, A.settings.camera, A.settings.off), text = A.describe(place, s.level);
+    if (place.dropped) return { mode: "dropped", text, seconds: 0 };
+    const c = A.code(id), p = playStrip(s, buf, { gain: place.gain, dist: place.dist, pan: place.pan, priority: c ? c.priority : 5 });
+    return p ? { mode, text, seconds: p.seconds } : { mode: "busy", text: "dropped: the strips are busy", seconds: 0 };
+  };
+  A.forget = (file) => { buffers.delete(file); };
 
   // sfx.js setLayer: an ambience loop at a level (0 stops it); dry: the file looped as it is.
   const layers = new Map();

@@ -9,13 +9,14 @@
 </head>
 <body>
 <div class="bar" id="topbar">
-  <nav><a class="here" href="index.html">Audit</a><a href="sprites.html">Sprites</a><a href="sounds.html">Sounds</a></nav>
+  <nav><a class="here" href="index.html">Audit</a><a href="sprites.html">Sprites</a><a class="repo-only" href="../sound-editor/index.html">Sound Editor</a><a href="sounds.html" title="the Sound Editor's inspecting half: what is there, measured, as the game plays it">Inspect</a><a class="repo-only" href="../sound-editor/effects.html">Effects</a><a class="repo-only" href="../sound-editor/voices.html">Voices</a></nav>
 </div>
 <main>
   <p class="note" style="margin-top:16px">The game's own files, shown and played by the game's own rules, so they can be judged outside a battle.</p>
   <div class="hub" id="hub">
     <a class="card" href="sprites.html"><h3>Sprites</h3><p id="sprites-n">Every unit's sheet as the game draws it: clips in eight facings, the camera's zoom, body parts, and each unit's sounds beside its attack.</p></a>
-    <a class="card" href="sounds.html"><h3>Sounds</h3><p id="sounds-n">Every sound effect with what asks for it, its waveform and its faults, played as the game plays it; the 12-strip mix under load.</p></a>
+    <a class="card repo-only" href="../sound-editor/index.html"><h3>Sound Editor</h3><p>One place for sound: inspect, audition candidates, record your own effects and voice lines, choose. Choosing installs into the working tree; start <code>tools/sound-editor/serve.py</code>.</p></a>
+    <a class="card" href="sounds.html"><h3>Sound Editor: inspect</h3><p id="sounds-n">Every sound effect with what asks for it, its waveform and its faults, played as the game plays it; the 12-strip mix under load.</p></a>
     <a class="card" href="sounds.html#events"><h3>Silent events</h3><p id="events-n">What a player expects to hear and nothing plays.</p></a>
     <a class="card" href="sounds.html#voices"><h3>Voices</h3><p id="voices-n">Each voice set's lines, and what plays for each today.</p></a>
   </div>
@@ -36,6 +37,7 @@
     const n = lines.sets.reduce((k, s) => k + s.situations.reduce((j, x) => j + x.lines.length, 0), 0);
     say("voices-n", `${lines.sets.length} voice sets, ${n} lines, ${(have || []).length} recorded. What plays for each today: a file, or the browser's speech.`);
   }
+  if (!location.pathname.includes("/tools/audit")) for (const a of document.querySelectorAll(".repo-only")) a.remove();  // (beside a web build there is no editor)
   // Things outside the repository that serve.sh also serves, when they are there.
   const hub = document.getElementById("hub");
   const card = (href, title, text) => {
@@ -45,8 +47,6 @@
     a.firstChild.textContent = title; a.lastChild.textContent = text;
     hub.append(a);
   };
-  if (await head("/_candidates/audition.html")) card("/_candidates/audition.html", "Candidate sounds", "CC0 candidates to replace the synthesised effects, with their own audition page (~/Desktop/sound-sources/candidates).");
-  else if (await head("/_candidates/")) card("/_candidates/", "Candidate sounds (files)", "CC0 candidates being gathered in ~/Desktop/sound-sources/candidates; no audition page there yet.");
   if (await head("/_sound-audit/PUNCHLIST.md")) card("/_sound-audit/PUNCHLIST.md", "Sound punch list", "The sound audit's findings in full (~/Desktop/sound-audit/PUNCHLIST.md).");
 })();
 </script>

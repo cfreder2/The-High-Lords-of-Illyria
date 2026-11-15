@@ -1,0 +1,54 @@
+/* The Sound Editor (tools/sound-editor), on top of the audit's look (../audit/audit.css). */
+h4 { font-size: 13px; margin: 12px 0 4px; font-weight: 650; }
+body.busy { cursor: progress; }
+body.busy .use, body.busy .only, body.busy .unuse, body.busy .original { opacity: .5; pointer-events: none; }
+details.sound { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; padding: 6px 10px; }
+details.sound > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.sbody { padding: 6px 0 4px; }
+.srow { display: grid; grid-template-columns: auto auto 1fr auto; gap: 4px 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--line); }
+.srow:not(.chosen) { grid-template-columns: auto 1fr auto; }
+.srow.chosen { background: #20262c; }
+.srow.over { outline: 1px dashed var(--amber); }
+.srow .slot { cursor: grab; color: var(--green); font-weight: 650; white-space: nowrap; padding: 0 4px; }
+.srow .what { min-width: 0; overflow-wrap: anywhere; }
+.srow .tools, .take { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.edhost { grid-column: 1 / -1; flex-basis: 100%; }
+.editor { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 8px; margin: 4px 0; }
+canvas.wave { width: 100%; height: 90px; display: block; cursor: ew-resize; touch-action: none; border-radius: 3px; }
+.readout { margin: 4px 0; font-variant-numeric: tabular-nums; }
+.editor input[type=number] { width: 62px; }
+.warn { color: var(--amber); } .bad { color: var(--red); } .ok { color: var(--green); }
+button.use, button.only { border-color: #69c27a88; }
+button.rec { border-color: #ff5d5588; color: #ff8d86; }
+button.rec.on { background: #7d2f2f; color: #fff; }
+button.big { padding: 6px 14px; font-weight: 650; }
+.recline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; }
+.meterbox { width: 180px; height: 10px; background: #101216; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; display: inline-block; }
+.meterbox .fill { height: 100%; width: 0; background: var(--green); }
+.meterbox .fill.hot { background: var(--amber); } .meterbox .fill.clip { background: var(--red); }
+#toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20; background: #26303a; border: 1px solid #5b7fd0; border-radius: 8px; padding: 10px 14px;
+  display: flex; gap: 10px; align-items: center; max-width: min(900px, 92vw); box-shadow: 0 6px 24px #000a; }
+#toast.bad { border-color: var(--red); }
+ul.howto { margin: 6px 0; padding-left: 20px; max-width: 110ch; color: var(--dim); } ul.howto li { margin: 3px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.chip { display: inline-flex; gap: 6px; align-items: center; } .chip.on { background: #3f5fa8; border-color: #5b7fd0; }
+.pbar { display: inline-flex; width: 70px; height: 7px; background: #101216; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; vertical-align: middle; }
+.pbar i { display: block; height: 100%; } .pbar .g { background: var(--green); } .pbar .t { background: #5b7fd0; }
+#overall .pbar, #setprog .pbar { width: 220px; }
+.casting { font-size: 15px; max-width: 100ch; margin: 6px 0; }
+.sitblock { margin: 14px 0; } .sithead { border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.direction { color: var(--amber); margin: 3px 0 4px; }
+.vline { padding: 5px 0 5px 8px; border-left: 3px solid var(--line); margin: 3px 0; }
+.vline.taken { border-left-color: #5b7fd0; } .vline.done { border-left-color: var(--green); }
+.vtop { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
+.vtext { font-size: 17px; font-weight: 600; } .wordless { font-style: italic; font-weight: 400; }
+.take { margin: 3px 0 3px 34px; } .take.on { background: #1f2b22; }
+.strip { position: relative; display: inline-block; width: 320px; height: 14px; background: #101216; border: 1px solid var(--line); border-radius: 3px; vertical-align: middle; }
+.strip .dot { position: absolute; top: 3px; width: 6px; height: 6px; margin-left: -3px; border-radius: 3px; background: var(--green); } .strip .dot.out { background: var(--red); }
+.strip .med { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--dim); }
+#studio { position: fixed; inset: 0; z-index: 10; background: #0d0f12f2; display: flex; align-items: center; justify-content: center; }
+.stbox { width: min(1100px, 94vw); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 22px; }
+.stsit { font-size: 15px; margin-top: 10px; } .stdir { font-size: 17px; color: var(--amber); margin: 6px 0; }
+.sttext { font-size: clamp(30px, 6vw, 64px); font-weight: 650; line-height: 1.15; margin: 18px 0; }
+.sttakes { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; } .stctl { margin: 14px 0 8px; align-items: center; }
+#st-status { min-height: 20px; }
