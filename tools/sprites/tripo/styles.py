@@ -22,8 +22,8 @@ def _deaths(P, home='HOME', frames=8, flinch=None):
             p.update(sword_hand=(0.22, -0.50, 0.92), sword_elbow=(-0.10, -0.55, 1.15), blade=(0.55, -0.55, -0.62))
             p.update(shield_hand=(0.38, 0.28, 1.12), shield_elbow=(0.10, 0.62, 0.95))
         if name == 'DC_SLUMP':     # on his side: both arms flung out before him, not folded under a thick chest; the
-            # lower (right) arm straight out from its shoulder, which lies 0.6 m to his right, not angled back under his ribs
-            p.update(sword_hand=(0.70, -0.66, 0.10), sword_elbow=(0.38, -0.72, 0.30), shield_hand=(0.66, 0.05, 0.22), shield_elbow=(0.35, 0.30, 0.60))
+            # lower (right) arm reaching out past his head as a man lies on his side, its armpit open, not under his ribs
+            p.update(sword_hand=(0.50, -0.92, 0.10), sword_elbow=(0.30, -0.80, 0.30), shield_hand=(0.66, 0.05, 0.22), shield_elbow=(0.35, 0.30, 0.60))
         if name == 'DC_KNEEL':
             # Toppling from his knees onto his right side, a man puts that arm out to the ground: it goes out and
             # down before he lands on it, not through his own side as the chest rolls over it.
