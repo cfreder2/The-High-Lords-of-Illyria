@@ -1,12 +1,24 @@
 {
  "unit": "dwarf_grenadier",
  "body": "dwarf_alchemist_f33c68ca",
- "height_m": 1.40,
+ "height_m": 1.4,
  "style": "dwarf_thrower",
  "step": 1.1,
  "exposure": 1.0,
  "team_hue": 0.62,
  "items": [
-  {"name": "satchel", "model": "burlap_pouch_443e4151", "hand": "Right", "hold": "hang", "size_m": 0.34, "grip": [0.5, 0.5, 0.86]}
- ]
+  {
+   "name": "satchel",
+   "model": "burlap_pouch_443e4151",
+   "hand": "Right",
+   "hold": "hang",
+   "size_m": 0.34,
+   "grip": [
+    0.5,
+    0.5,
+    0.86
+   ]
+  }
+ ],
+ "clear_m": 0.2
 }

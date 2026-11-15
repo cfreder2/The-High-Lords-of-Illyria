@@ -177,6 +177,26 @@ class Rig:
         F0 = Matrix((b0, e0, n0)).transposed()
         F1 = Matrix((b, e, n)).transposed()
         self.set_rot('RightHand', (F1 @ F0.inverted()).to_quaternion() @ q)
+        self.settle_wrist('Right')
+
+    def settle_wrist(self, side, limit=65.0):
+        """A hand turned to aim a weapon, made a hand an arm could hold so: the twist about the forearm's own line is
+        given to the forearm (it rolls: that is what forearms do), and what bend remains past `limit` degrees is
+        taken off (the weapon then points a little short of where the pose asked)."""
+        fa, hand = side + 'ForeArm', side + 'Hand'
+        want = self.rot(hand)
+        rel = self.rest_rot[fa].inverted() @ self.rest_rot[hand]
+        d = (self.rot(fa) @ rel).rotation_difference(want)
+        axis = self.yaxis(fa)
+        proj = Vector((d.x, d.y, d.z)).dot(axis)
+        twist = math.degrees(2.0 * math.atan2(proj, d.w))
+        twist = (twist + 180.0) % 360.0 - 180.0
+        self.roll(fa, max(-80.0, min(80.0, twist * 0.85)))
+        straight = self.rot(fa) @ rel
+        bend = math.degrees(straight.rotation_difference(want).angle)
+        if bend > 180.0:
+            bend = 360.0 - bend
+        self.set_rot(hand, straight.slerp(want, limit / bend) if bend > limit else want)
 
     def strap_shield(self):
         """Strap the shield ACROSS the left forearm (rest pose): the forearm crosses its upper third, the face

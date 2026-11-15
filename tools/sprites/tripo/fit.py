@@ -92,6 +92,7 @@ class Fit:
     def options(self, cfg):
         """A unit's own allowances: "clear" false lets hands pass the trunk's side (a shield arm does)."""
         self.clear = cfg.get('clear', True)
+        self.margin = cfg.get('clear_m', 0.07)   # metres a hanging hand keeps from the trunk's side
         self.hunch = cfg.get('hunch', 0.0)   # degrees his rest pose stoops: taken out of him as he lies down
 
     def describe(self):
@@ -141,7 +142,7 @@ class Fit:
             e = su + (Vector(pm[elbow]) - sm) * self.A
             if not lying and getattr(self, 'clear', True):
                 # A hand below the shoulder and not out in front stays clear of the trunk's side.
-                clear = self.trunk + 0.07
+                clear = self.trunk + getattr(self, 'margin', 0.07)
                 if h.z < su.z and h.x < self.front + 0.05 and sgn * h.y < clear:
                     h.y = sgn * clear
             h.z = max(h.z, 0.05)

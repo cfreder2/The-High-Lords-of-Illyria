@@ -31,6 +31,14 @@
   ],
   "ppm": 96.0
  },
+ "4": {
+  "name": "light_cavalry_hd",
+  "size": [
+   4096,
+   3728
+  ],
+  "ppm": 77.81
+ },
  "8": {
   "name": "giants_hd",
   "size": [
@@ -83,9 +91,9 @@
   "name": "berserker_hd",
   "size": [
    4096,
-   3840
+   3620
   ],
-  "ppm": 95.53
+  "ppm": 90.76
  },
  "27": {
   "name": "hyena_hd",
