@@ -88,6 +88,46 @@ md.vert_mapping = 'POLYINTERP_NEAREST'
 md.layers_vgroup_select_src = 'ALL'
 md.layers_vgroup_select_dst = 'NAME'
 bpy.ops.object.modifier_apply(modifier='weights')
+# The nearest donor surface is a rough guide where the figure is not the donor's shape (a bull's chest is deeper
+# than a caveman's, its horns stand out over the shoulders): whatever stands above the head's joint is the head's
+# alone (skull, ears, horns: they must not follow a shoulder), the weights are smoothed over the surface so no
+# vertex jumps from its neighbours, kept to four bones, and normalised.
+B = 'mixamorig:'
+head_z = (arm.matrix_world @ arm.data.bones[B + 'Head'].head_local).z
+hg = body.vertex_groups[B + 'Head']
+mwb = body.matrix_world
+names = {g.index: g.name for g in body.vertex_groups}
+crown = [v.index for v in body.data.vertices if (mwb @ v.co).z > head_z]
+for i in crown:
+    for g in list(body.data.vertices[i].groups):
+        if names[g.group] != B + 'Head':
+            body.vertex_groups[g.group].remove([i])
+    hg.add([i], 1.0, 'REPLACE')
+bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
+bpy.ops.object.vertex_group_smooth(group_select_mode='ALL', factor=0.5, repeat=4, expand=0.0)
+bpy.ops.object.vertex_group_limit_total(group_select_mode='ALL', limit=4)
+bpy.ops.object.vertex_group_normalize_all(group_select_mode='ALL', lock_active=False)
+bpy.ops.object.mode_set(mode='OBJECT')
+for i in crown:      # the smoothing spreads a little back into the crown
+    for g in list(body.data.vertices[i].groups):
+        if names[g.group] != B + 'Head':
+            body.vertex_groups[g.group].remove([i])
+    hg.add([i], 1.0, 'REPLACE')
+# A leg's bones hold nothing above the waist (the transfer gave the minotaur's flanks to its thighs).
+waist = (arm.matrix_world @ arm.data.bones[B + 'Spine1'].head_local).z
+legs = {g.index for g in body.vertex_groups if any(k in g.name for k in ('UpLeg', 'Leg', 'Foot', 'Toe'))}
+spine = body.vertex_groups[B + 'Spine']
+freed = 0
+for v in body.data.vertices:
+    if (mwb @ v.co).z > waist:
+        w = sum(g.weight for g in v.groups if g.group in legs)
+        if w > 0:
+            for g in [g for g in v.groups if g.group in legs]:
+                body.vertex_groups[g.group].remove([v.index])
+            spine.add([v.index], w, 'ADD')
+            freed += 1
+print('weights: %d vertices of the head and horns to the head alone; smoothed, four bones, normalised; %d above the waist off the legs'
+      % (len(crown), freed), flush=True)
 body.parent = arm
 am = body.modifiers.new('Armature', 'ARMATURE')
 am.object = arm

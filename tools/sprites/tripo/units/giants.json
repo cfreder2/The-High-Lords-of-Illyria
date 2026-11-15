@@ -5,6 +5,7 @@
  "style": "giant",
  "scale": 2,
  "hunch": 15,
+ "clear_m": 0.12,
  "items": [
   {
    "name": "club",
