@@ -26,7 +26,8 @@ void FarForest::grow(const sim::Continent& c, const FarGrid& land, const V3& ori
     };
     std::vector<Town> towns;
     for (const sim::Continent::City& city : c.cities())
-        towns.push_back({static_cast<float>(city.pos.x.toDouble()), static_cast<float>(city.pos.y.toDouble()), static_cast<float>(city.radius.toDouble()) * 1.25f});
+        towns.push_back({static_cast<float>(city.pos.x.toDouble()), static_cast<float>(city.pos.y.toDouble()),
+                         std::max(static_cast<float>(city.radius.toDouble()) * 1.25f, city.fortified() ? static_cast<float>((city.ditch.outer + sim::Region::kDitchClearing).toDouble()) : 0.0f)});
     for (int64_t gy = 0; gy * step < height; ++gy) {
         for (int64_t gx = 0; gx * step < width; ++gx) {
             const sim::Region::SceneryPoint pt = sim::Region::sceneryPoint(seed, gx, gy);

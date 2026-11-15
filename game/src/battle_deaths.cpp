@@ -71,6 +71,20 @@ void Battle::presentDeaths() {
         }
         if (tick % 8 == 0) emit(Particle::Kind::Smoke, c + V3{0, 0, 0.8f}, {0, 0, 1.2f}, 3.0f, 0.8f);
     }
+    // Timber works alight (sim world_works.cpp): flames along them, rising as they catch, and smoke.
+    for (size_t i = 0; i < world_->works().size(); ++i) {
+        const sim::WorkState& w = world_->works()[i];
+        if (w.fire <= 0 || !w.standing() || (tick + i) % 2 != 0) continue;
+        const V3 a = toV3(w.def.a), b = toV3(w.def.b);
+        const float h = static_cast<float>(w.def.height.toDouble()) * (w.def.kind == sim::Work::Kind::Watchtower ? 1.15f : 1.0f);
+        const uint32_t seed = hashMix(static_cast<uint32_t>(i) * 977u, tick);
+        for (int k = 0; k < 2; ++k) {
+            const uint32_t hh = hashMix(seed, static_cast<uint32_t>(k));
+            const V3 at = a + (b - a) * unitOf(hh) + V3{unitOf(hh >> 4) - 0.5f, unitOf(hh >> 12) - 0.5f, h * unitOf(hh >> 20) * std::min(1.0f, static_cast<float>(w.fire) / 90.0f)};
+            emit(Particle::Kind::Fire, at, {0, 0, 0.9f + unitOf(hh >> 8)}, 0.5f + unitOf(hh >> 16) * 0.5f, 0.35f + unitOf(hh >> 24) * 0.3f);
+        }
+        if ((tick + i) % 10 == 0) emit(Particle::Kind::Smoke, (a + b) * 0.5f + V3{0, 0, h + 0.5f}, {0, 0, 1.4f}, 4.0f, 0.9f);
+    }
     for (const sim::Unit& u : world_->units()) {
         if (u.burning <= 0 || !u.alive() || (tick + u.id) % 3 != 0) continue;
         const uint32_t h = hashMix(u.id, tick);

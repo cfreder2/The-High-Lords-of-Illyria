@@ -670,7 +670,7 @@ bool townTap(float px, float py) {
     }
     // Nothing of ours under the tap, but a town: its panel. (A man or a gate under it is the battle's to select or look at.)
     const Battle::Pick pick = app->battle->pickAt(app->camera, px, py, app->pixelRatio);
-    if (town < 0 || (pick.kind != Battle::Pick::Kind::Ground && pick.kind != Battle::Pick::Kind::Wall && pick.kind != Battle::Pick::Kind::Obstacle)) return false;
+    if (town < 0 || (pick.kind != Battle::Pick::Kind::Ground && pick.kind != Battle::Pick::Kind::Wall && pick.kind != Battle::Pick::Kind::Obstacle && pick.kind != Battle::Pick::Kind::Work)) return false;
     // The army standing in the town is picked with the tap (pickStackIn).
     if (pickStackIn(town)) return true;
     if (holding) return false;
@@ -1508,6 +1508,78 @@ ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
         }
     }
     std::snprintf(line, sizeof line, "deaths: stage %d, %d struck", stage, struck);
+    return line;
+}
+
+// Test hook (the --play script's `works`, docs/PLAYTEST.md): "squad TYPE" raises a squad of `count` of that type (its name
+// lower case, words joined by _) for `side` at (x, y) facing (tx, ty), a garrison's with `garrison`; "count" tells the
+// works: each kind standing and broken, burning, the tower engines' bolts, the engines of each side and their strength,
+// the riders out on a sortie, and the timber lying and flying.
+ILLYRIA_API const char* illyria_works_demo(const char* what, int side, int count, float x, float y, float tx, float ty, int garrison) {
+    using namespace illyria::sim;
+    static char line[600];
+    if (!app || !app->battle) return "works: no battle";
+    const std::string w = what;
+    World& world = app->battle->mutableWorld();
+    if (w.rfind("squad ", 0) == 0) {
+        const std::string name = w.substr(6);
+        for (int t = 0; t < kUnitTypeCount; ++t) {
+            std::string n = unitTypeName(static_cast<UnitType>(t));
+            for (char& ch : n) ch = ch == ' ' || ch == '-' ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (n != name) continue;
+            const illyria::game::V3 at{x, y, 0}, face = illyria::game::V3{tx - x, ty - y, 0}.normalized();
+            app->battle->demoSquad(static_cast<PlayerId>(side), static_cast<UnitType>(t), count, at, face, garrison != 0);
+            std::snprintf(line, sizeof line, "works: %d %s for side %d at %.0f,%.0f%s", count, name.c_str(), side, x, y, garrison ? " (garrison)" : "");
+            return line;
+        }
+        return "works: no such unit type";
+    }
+    if (w == "sortie") {
+        // The player's riders out at the nearest engine of the foe's, as a right-click on it with them selected orders.
+        const auto& units = world.units();
+        std::vector<Command> orders;
+        for (const Unit& u : units) {
+            if (!u.alive() || u.owner != 0 || !u.stats.mounted || u.stats.melee.damage == 0) continue;
+            const Unit* best = nullptr;
+            for (const Unit& e : units)
+                if (e.alive() && e.owner != 0 && e.stats.type == static_cast<uint8_t>(UnitType::Catapult) && (!best || (e.pos - u.pos).flat().lengthSq() < (best->pos - u.pos).flat().lengthSq())) best = &e;
+            if (!best) continue;
+            Command c{0, u.id, Command::Type::Sortie, best->pos};
+            c.targetUnit = best->id;
+            orders.push_back(c);
+        }
+        for (const Command& c : orders) app->battle->issueCommand(c);
+        std::snprintf(line, sizeof line, "works: %zu riders sent out", orders.size());
+        return line;
+    }
+    int standing[5] = {}, broken[5] = {}, burning = 0, bolts = 0, flying = 0, lying = 0, out = 0;
+    for (const WorkState& s : world.works()) {
+        const int k = static_cast<int>(s.def.kind);
+        (s.standing() ? standing : broken)[k] += 1;
+        burning += s.fire > 0 && s.standing();
+        if (s.def.kind == Work::Kind::Engine && s.standing()) bolts += s.ammo;
+    }
+    for (const Projectile& p : world.projectiles()) flying += p.kind == ProjectileKind::Debris && isTimber(p.remain);
+    for (const Remain& r : world.remains()) lying += isTimber(r.kind);
+    std::string engines;
+    for (const Unit& u : world.units()) {
+        if (u.alive() && u.sortie != Unit::Sortie::None) {
+            ++out;
+            if (const Unit* m = world.findUnit(u.sortieMark); m && out == 1) {
+                char e[96];
+                std::snprintf(e, sizeof e, " [first rider %d at %.0f,%.0f, at the engine at %.0f,%.0f]", static_cast<int>(u.sortie), u.pos.x.toDouble(), u.pos.y.toDouble(), m->pos.x.toDouble(), m->pos.y.toDouble());
+                engines += e;
+            }
+        }
+        if (u.present() && u.stats.type == static_cast<uint8_t>(UnitType::Catapult)) {
+            char e[64];
+            std::snprintf(e, sizeof e, " %d:%d%s@%.0f,%.0f", u.owner, u.hp, u.burning > 0 ? "*" : "", u.pos.x.toDouble(), u.pos.y.toDouble());
+            engines += e;
+        }
+    }
+    std::snprintf(line, sizeof line, "works: palisade %d/%d, abatis %d/%d, towers %d/%d, barricades %d/%d, engines %d/%d (%d bolts); %d burning; sortie %d riders; timber %d lying, %d flying; catapults (side:hp@x,y)%s",
+                  standing[0], standing[0] + broken[0], standing[1], standing[1] + broken[1], standing[2], standing[2] + broken[2], standing[3], standing[3] + broken[3],
+                  standing[4], standing[4] + broken[4], bolts, burning, out, lying, flying, engines.c_str());
     return line;
 }
 

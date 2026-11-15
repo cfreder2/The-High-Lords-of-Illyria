@@ -189,6 +189,11 @@ TEST(men_asleep_in_a_town_stand_in_open_ground_inside_its_walls) {
             const Continent::City& city = c.continent().cities()[static_cast<size_t>(town)];
             // (A garrison's bowmen stand up on the wall-walk, at the embrasures: on the wall by design, and above the ground.)
             if (m.unit && m.unit->pos.z > city.pos.z + Fixed::fromInt(4)) continue;
+            // (Nor are a fortified castle's forward bowmen, on its bank over the ditch, or up its watchtowers.)
+            if (city.fortified() && m.unit && m.unit->stats.ranged.kind == ProjectileKind::Arrow) {
+                const double r = std::hypot(m.x - city.ditch.centre.x.toDouble(), m.y - city.ditch.centre.y.toDouble());
+                if (r > city.ditch.bankIn.toDouble() - 2 && r < city.ditch.outer.toDouble()) continue;
+            }
             ++men;
             const bool wrong = onBuilding(city.castle, m.x, m.y) || !insideOuter(city.castle, m.x, m.y);
             if (wrong) ++bad;

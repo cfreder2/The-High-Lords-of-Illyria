@@ -258,6 +258,14 @@ void DetailLand::growScenery(int s, const std::vector<Seg>& roads) {
             keeps.push_back({cx, cy, reach});
         }
     }
+    // And a fortified castle's outworks, out beyond its ditch (Region::kDitchClearing, as the battle's scenery has it).
+    for (const sim::Continent::City& city : c.cities()) {
+        if (!city.fortified()) continue;
+        const float cx = static_cast<float>(city.ditch.centre.x.toDouble()) - ox_f, cy = static_cast<float>(city.ditch.centre.y.toDouble()) - oy_f;
+        const float reach = static_cast<float>((city.ditch.outer + sim::Region::kDitchClearing).toDouble());
+        if (cx + reach < lx0 || cy + reach < ly0 || cx - reach > lx0 + kChunkSize || cy - reach > ly0 + kChunkSize) continue;
+        keeps.push_back({cx, cy, reach});
+    }
     // And the sites': a glade round a ruin, the footprint of the rest (Region::siteClearing).
     for (const sim::Continent::Site& site : c.sites()) {
         const float cx = static_cast<float>(site.pos.x.toDouble()) - ox_f, cy = static_cast<float>(site.pos.y.toDouble()) - oy_f;

@@ -1,0 +1,25 @@
+# The capital's outworks (docs/MAP.md "Outworks"): the ditch and bank before the road's door, the palisade on the bank's lip,
+# the abatis beyond the ditch, the watchtowers either side of the causeway (each with its two bowmen) and the ballistas on
+# the gate towers. Grathmaw's road door is at (464, 476) facing south-west; the ditch is 84 to 92 m from its middle (515, 512).
+#
+#   Illyria --play tools/playtest/outworks-look.txt --play-out ~/Desktop/siege-defence/outworks
+
+size 1600 900
+start skirmish capital easy
+wait 1
+camera 440 450 60 0
+wait 0.6
+shot outworks-01-gate
+camera 438 466 22 0.4
+wait 0.6
+shot outworks-02-watchtower-close
+camera 452 452 16 -0.6
+wait 0.6
+shot outworks-03-palisade-close
+camera 425 470 16 0.9
+wait 0.6
+shot outworks-04-abatis-close
+camera 468 476 26 0.2
+wait 0.6
+shot outworks-05-ballista
+quit

@@ -41,7 +41,8 @@ sprites::Gib gibOf(sim::RemainKind k, uint32_t pick) {
     }
 }
 
-bool isPart(sim::RemainKind k) { return k != sim::RemainKind::None && k != sim::RemainKind::Arrow; }
+// (Timber is the works' own: Renderer::uploadWorks draws it as wood.)
+bool isPart(sim::RemainKind k) { return k != sim::RemainKind::None && k != sim::RemainKind::Arrow && !sim::isTimber(k); }
 
 // Long parts come to rest lying down, their length along the ground: a part drawn standing (a man's trunk, an arm,
 // a leg, a spear) turned a quarter either way, one drawn lying (a beast's barrel, cut from its side) as it is or

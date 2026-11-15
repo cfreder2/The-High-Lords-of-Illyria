@@ -1188,6 +1188,201 @@ Mesh log() {
     return b.mesh;
 }
 
+// ---------------------------------------------------------------- timber works (sim world_works.cpp)
+// In metres, +y toward the foe. Every piece of timber its own tone: oak fresh-cut and pale, seasoned brown, weathered grey,
+// and bark on what is a trunk or a pole in the round (bark: red and green close together, which the mesh shader's timber
+// surface reads as bark). A piece lying along x is marked for the shader with green + 2 (its grain runs along it), as the
+// turned stone is (Builder::turned); an upright's grain runs up it.
+namespace {
+float wobble(int i, int salt) {
+    uint32_t v = static_cast<uint32_t>(i) * 0x9E3779B1u ^ static_cast<uint32_t>(salt) * 0x85EBCA77u;
+    v ^= v >> 15;
+    v *= 0x2C1B3C6Du;
+    v ^= v >> 12;
+    return static_cast<float>(v & 0xFFFF) / 65535.0f;
+}
+// A timber's tone: fresh, seasoned or weathered, by a roll.
+V3 timberTone(float roll) {
+    const V3 fresh{0.58f, 0.42f, 0.25f}, seasoned{0.44f, 0.31f, 0.18f}, weathered{0.47f, 0.44f, 0.39f};
+    return roll < 0.35f ? fresh * (0.9f + 0.25f * roll) : roll < 0.75f ? seasoned * (0.92f + 0.2f * roll) : weathered * (0.85f + 0.2f * roll);
+}
+V3 barkTone(float roll) { return V3{0.3f, 0.27f, 0.22f} * (0.8f + 0.35f * roll); }
+// A board lying along x (marked so), its nails the shader's.
+void board(Builder& b, V3 c, V3 ax, V3 ay, V3 h, V3 colour) {
+    const size_t from = b.mark();
+    b.block(c, ax, ay, ax.cross(ay), h, colour);
+    b.turned(from);  // (lying: its grain along it)
+}
+// A pole lying along its length (marked so, after its shading is laid in: Builder::turned).
+void lyingPole(Builder& b, V3 a, V3 c, float r, int n, V3 tone) {
+    const size_t from = b.mark();
+    pole(b, a, c, r, n, tone);
+    b.turned(from);
+}
+}  // namespace
+
+Mesh palisade() {
+    // A run of stakes 6 m long (x from -3 to 3), a man's chest high, sharpened, leaning a little toward the foe; two
+    // ribbands pegged across their backs.
+    Builder b;
+    int i = 0;
+    for (float x = -2.9f; x <= 2.95f; x += 0.23f, ++i) {
+        const float r = 0.085f + 0.035f * wobble(i, 1), h = 1.2f + 0.2f * wobble(i, 2), lean = 0.08f + 0.05f * wobble(i, 3);
+        const V3 foot{x + 0.03f * (wobble(i, 4) - 0.5f), 0, 0}, top{x, lean, h};
+        const bool barked = wobble(i, 5) < 0.25f;
+        const V3 tone = barked ? barkTone(wobble(i, 6)) : timberTone(wobble(i, 6));
+        b.limb(foot - V3{0, 0, 0.3f}, top, r, r * 0.92f, 6, tone);
+        b.limb(top, top + V3{0, 0.04f, 0.22f + 0.08f * wobble(i, 7)}, r * 0.92f, 0.01f, 6, timberTone(wobble(i, 8)) * 1.05f);  // the point, hewn: pale wood
+    }
+    for (const float z : {0.42f, 0.95f}) board(b, {0, -0.13f, z}, {1, 0, 0}, {0, 1, 0}, {2.95f, 0.025f, 0.07f}, timberTone(z * 0.7f));
+    return b.mesh;
+}
+
+Mesh palisadeStumps() {
+    // A run of stakes broken off: splintered stumps a hand to a knee high, the ribbands gone.
+    Builder b;
+    int i = 0;
+    for (float x = -2.9f; x <= 2.95f; x += 0.23f, ++i) {
+        if (wobble(i, 11) < 0.25f) continue;
+        const float r = 0.085f + 0.035f * wobble(i, 1), h = 0.12f + 0.45f * wobble(i, 12);
+        b.limb({x, 0, -0.3f}, {x + 0.05f * (wobble(i, 13) - 0.5f), 0.03f, h}, r, r * 0.9f, 6, timberTone(wobble(i, 6)) * 0.7f);
+        b.limb({x, 0.03f, h}, {x + 0.04f, 0.06f, h + 0.08f + 0.1f * wobble(i, 14)}, r * 0.8f, 0.01f, 4, timberTone(0.1f));
+    }
+    return b.mesh;
+}
+
+Mesh abatis() {
+    // Felled trees 5 m long (x from -2.5 to 2.5) laid across one another, butts inward, their boughs lopped short and
+    // sharpened toward the foe (+y): a tangle higher than a man's belt, every bough pale where it was cut.
+    Builder b;
+    for (int t = 0; t < 3; ++t) {
+        const float y = -0.6f + 0.5f * static_cast<float>(t), z = 0.28f + 0.1f * static_cast<float>(t % 2), r = 0.24f - 0.04f * static_cast<float>(t);
+        const float skew = (wobble(t, 20) - 0.5f) * 0.9f;
+        const V3 a{-2.6f + 0.4f * wobble(t, 21), y - skew, z}, c{2.6f - 0.3f * wobble(t, 22), y + skew + 0.2f, z + 0.15f};
+        pole(b, a, c, r, 8, barkTone(0.55f + 0.4f * wobble(t, 23)));
+        for (int k = 0; k < 9; ++k) {
+            const int i = t * 9 + k;
+            const float along = 0.05f + 0.9f * (static_cast<float>(k) + wobble(i, 24) * 0.6f) / 9.0f;
+            const V3 at = a + (c - a) * along;
+            const V3 mid = at + V3{0.5f * (wobble(i, 25) - 0.5f), 0.6f + 0.5f * wobble(i, 26), 0.35f + 0.6f * wobble(i, 27)};
+            const V3 tip = mid + V3{0.4f * (wobble(i, 30) - 0.5f), 0.5f + 0.6f * wobble(i, 31), 0.1f + 0.3f * wobble(i, 32)};
+            const V3 tone = barkTone(0.4f + 0.5f * wobble(i, 29));
+            b.limb(at, mid, r * 0.45f, r * 0.3f, 5, tone);
+            b.limb(mid, tip, r * 0.3f, 0.012f, 5, timberTone(0.05f + 0.2f * wobble(i, 33)) * 1.1f);  // sharpened: pale wood
+            if (wobble(i, 34) < 0.6f) b.limb(mid, mid + V3{0.5f * (wobble(i, 35) - 0.5f), 0.3f, 0.5f + 0.3f * wobble(i, 36)}, r * 0.15f, 0.01f, 4, tone);
+        }
+    }
+    return b.mesh;
+}
+
+Mesh abatisCleared() {
+    // What a stone or the fire leaves of the abatis: a trunk or two lying broken, the boughs scattered.
+    Builder b;
+    pole(b, {-2.2f, -0.3f, 0.18f}, {-0.2f, 0.1f, 0.16f}, 0.18f, 7, barkTone(0.3f) * 0.75f);
+    pole(b, {0.6f, 0.4f, 0.14f}, {2.1f, -0.2f, 0.14f}, 0.14f, 7, barkTone(0.6f) * 0.6f);
+    for (int k = 0; k < 6; ++k) {
+        const V3 at{-2.0f + 0.8f * static_cast<float>(k), 0.6f * (wobble(k, 31) - 0.5f), 0.05f};
+        b.limb(at, at + V3{0.6f * (wobble(k, 32) - 0.5f), 0.5f + 0.4f * wobble(k, 33), 0.06f}, 0.04f, 0.012f, 4, barkTone(wobble(k, 34)) * 0.7f);
+    }
+    return b.mesh;
+}
+
+Mesh watchtower() {
+    // A timber watchtower 3 m square: four legs battered in a little from the corners to a platform at 6 m, braced
+    // across every side, a plank floor, a railing to 1.1 m over it, a ladder up its back (-y).
+    Builder b;
+    const float h = 6.0f, foot = 1.45f, head = 1.3f;
+    for (int c = 0; c < 4; ++c) {
+        const float sx = c % 2 ? 1.0f : -1.0f, sy = c / 2 ? 1.0f : -1.0f;
+        pole(b, {sx * foot, sy * foot, -0.3f}, {sx * head, sy * head, h + 1.15f}, 0.15f, 7, wobble(c, 41) < 0.5f ? barkTone(wobble(c, 42)) : timberTone(wobble(c, 42)));
+    }
+    // Braces: a rail at each lift and a cross between, on every face.
+    for (int side = 0; side < 4; ++side) {
+        const bool alongX = side < 2;
+        const float s = side % 2 ? 1.0f : -1.0f;
+        const auto at = [&](float u, float z) {
+            const float w = foot + (head - foot) * (z / h);
+            return alongX ? V3{u * w, s * w, z} : V3{s * w, u * w, z};
+        };
+        for (const float z : {1.4f, 3.7f}) {
+            lyingPole(b, at(-1, z), at(1, z), 0.07f, 5, timberTone(wobble(side * 3 + static_cast<int>(z), 43)));
+            pole(b, at(-1, z - 1.3f), at(1, z + 1.0f), 0.06f, 5, timberTone(wobble(side, 44)));
+        }
+    }
+    // The floor: planks across, their ends proud of the frame.
+    for (int k = 0; k < 11; ++k) {
+        const float y = -1.45f + 0.29f * static_cast<float>(k);
+        board(b, {0.02f * (wobble(k, 45) - 0.5f), y, h}, {1, 0, 0}, {0, 1, 0}, {1.55f + 0.06f * wobble(k, 46), 0.13f, 0.04f}, timberTone(wobble(k, 47)));
+    }
+    board(b, {0, 0, h - 0.12f}, {1, 0, 0}, {0, 1, 0}, {1.45f, 0.1f, 0.09f}, timberTone(0.5f));  // the joist under them
+    // The railing: a rail and a breast-board on three sides, the back left open for the ladder's head.
+    for (int side = 0; side < 3; ++side) {
+        const V3 ax = side == 0 ? V3{1, 0, 0} : V3{0, 1, 0}, ay = side == 0 ? V3{0, 1, 0} : V3{1, 0, 0};
+        const V3 c = side == 0 ? V3{0, head, 0} : V3{side == 1 ? -head : head, 0, 0};
+        board(b, c + V3{0, 0, h + 1.08f}, ax, ay, {head, 0.05f, 0.05f}, timberTone(wobble(side, 48)));
+        board(b, c + V3{0, 0, h + 0.45f}, ax, ay, {head, 0.03f, 0.25f}, timberTone(wobble(side, 49)) * 0.95f);
+    }
+    // The ladder up the back.
+    for (const float x : {-0.28f, 0.28f}) pole(b, {x, -foot - 0.55f, 0}, {x, -head - 0.05f, h + 0.9f}, 0.05f, 5, timberTone(0.2f));
+    for (int k = 1; k < 18; ++k) {
+        const float t = static_cast<float>(k) / 18.0f;
+        const V3 l{-0.28f, -foot - 0.55f + (foot + 0.55f - head - 0.05f) * t, (h + 0.9f) * t}, r{0.28f, l.y, l.z};
+        lyingPole(b, l, r, 0.025f, 4, timberTone(wobble(k, 50)));
+    }
+    return b.mesh;
+}
+
+Mesh barricade() {
+    // Carts, barrels, doors and beams heaped across a gateway 11 m wide (x from -5.5 to 5.5), a man's height and more.
+    Builder b;
+    for (int k = 0; k < 3; ++k) {
+        const float x = -3.6f + 3.6f * static_cast<float>(k);
+        // A cart on its side: its bed upright, a wheel up.
+        board(b, {x, 0, 0.75f}, {1, 0, 0}, {0, 0, 1}, {1.2f, 0.75f, 0.06f}, timberTone(wobble(k, 61)));
+        pole(b, {x + 0.6f * (wobble(k, 62) - 0.5f), 0.1f, 1.35f}, {x + 0.6f * (wobble(k, 62) - 0.5f), 0.25f, 1.35f}, 0.5f, 10, timberTone(wobble(k, 63)) * 0.8f);
+    }
+    for (int k = 0; k < 6; ++k) {
+        const float x = -5.0f + 2.0f * static_cast<float>(k) + 0.4f * wobble(k, 64);
+        const size_t from = b.mark();
+        b.frustum(0, 0.32f, 0.9f, 0.32f, 8, timberTone(wobble(k, 65)) * 0.9f);
+        b.shift(from, {x, -0.55f, 0});
+    }
+    for (int k = 0; k < 5; ++k) {
+        const float z = 0.3f + 0.35f * static_cast<float>(k);
+        lyingPole(b, {-5.5f + 0.5f * wobble(k, 66), 0.45f - 0.15f * static_cast<float>(k), z}, {5.4f - 0.5f * wobble(k, 67), 0.5f - 0.1f * static_cast<float>(k), z + 0.1f}, 0.13f, 6,
+                  k % 2 ? barkTone(wobble(k, 68)) : timberTone(wobble(k, 68)));
+    }
+    // A door, propped.
+    board(b, {1.6f, 0.75f, 0.95f}, {1, 0, 0}, {0, 0.35f, 0.94f}, {0.8f, 1.0f, 0.06f}, timberTone(0.4f));
+    return b.mesh;
+}
+
+Mesh ballista() {
+    // A ballista on a tower's top: a stand, a stock 2.4 m long along +y, its two arms bowed back, the cord, a bolt laid.
+    Builder b;
+    const V3 iron{0.3f, 0.3f, 0.32f};
+    for (const float a : {0.0f, 2.1f, 4.2f}) pole(b, {0, 0, 0.85f}, {0.8f * std::cos(a), 0.8f * std::sin(a), 0}, 0.06f, 5, timberTone(0.3f));
+    board(b, {0, 0.2f, 0.95f}, {0, 1, 0}, {1, 0, 0}, {1.2f, 0.12f, 0.1f}, timberTone(0.55f));
+    b.block({0, 0.95f, 0.98f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.28f, 0.14f, 0.2f}, iron);  // the skein frame, bound in iron
+    for (const float s : {-1.0f, 1.0f}) {
+        b.limb({s * 0.25f, 0.95f, 1.0f}, {s * 1.05f, 0.55f, 1.02f}, 0.05f, 0.03f, 5, timberTone(0.7f));
+        b.limb({s * 1.05f, 0.55f, 1.02f}, {0, -0.7f, 1.04f}, 0.008f, 0.008f, 3, {0.7f, 0.65f, 0.5f});  // the cord, drawn
+    }
+    b.limb({0, -0.6f, 1.07f}, {0, 1.4f, 1.07f}, 0.025f, 0.02f, 4, timberTone(0.2f));  // the bolt
+    b.limb({0, 1.4f, 1.07f}, {0, 1.55f, 1.07f}, 0.03f, 0.005f, 4, iron);
+    return b.mesh;
+}
+
+Mesh timberPiece() {
+    // A sawn timber along x from -1 to 1, its section [-1, 1] across and up (scaled to a beam, a plank or a splinter):
+    // pale end grain at its ends, one end ragged where it broke.
+    Builder b;
+    b.block({0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1, 1, 1}, timberTone(0.5f));
+    b.turned(0);
+    b.limb({1, 0, 0}, {1.25f, 0.3f, 0.2f}, 0.6f, 0.05f, 4, timberTone(0.05f) * 1.1f);
+    return b.mesh;
+}
+
 namespace {
 // A flat-lit triangle (normal up), for ground cover.
 void flatTri(Mesh& m, V3 a, V3 b, V3 c, V3 ca, V3 cb, V3 cc) {

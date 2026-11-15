@@ -1239,6 +1239,85 @@ void Renderer::uploadGates(const Battle& battle) {
     uploadMeshInstances(leavesRight_, rights);
 }
 
+void Renderer::uploadWorks(const Battle& battle, float gameSeconds) {
+    // Every work of the field, standing or broken (sim world_works.cpp; meshes.cpp palisade() and the rest, in metres, +y
+    // toward the foe), and the timber the breaking threw: lying as the sim laid it, flying turning end over end. Each
+    // piece its own tone (a hash of where it is); what burns chars as it goes.
+    const sim::World& world = battle.world();
+    std::vector<float> pal, stumps, aba, cleared, towers, barr, engines, wood;
+    const auto hash = [](float x, float y) {
+        uint32_t v = static_cast<uint32_t>(static_cast<int32_t>(x * 7.0f)) * 0x9E3779B1u ^ static_cast<uint32_t>(static_cast<int32_t>(y * 7.0f)) * 0x85EBCA77u;
+        v ^= v >> 15;
+        v *= 0x2C1B3C6Du;
+        v ^= v >> 12;
+        return static_cast<float>(v & 0xFFFF) / 65535.0f;
+    };
+    for (const sim::WorkState& w : world.works()) {
+        const sim::Work& d = w.def;
+        const V3 a = toV3(d.a), b = toV3(d.b), out = toV3(d.out);
+        float q[4];
+        yawQuat(std::atan2(-out.x, out.y), q);
+        const float char_ = w.fire > 0 ? std::max(0.35f, 1.0f - static_cast<float>(w.fire) / (40.0f * sim::kTicksPerSecond)) : 1.0f;
+        const float tone = (0.9f + 0.2f * hash(a.x, a.y)) * char_;
+        const V3 tint{tone, tone, tone};
+        const V3 mid = (a + b) * 0.5f;
+        const float len = (b - a).length();
+        switch (d.kind) {
+            case sim::Work::Kind::Palisade: pushInstance(w.standing() ? pal : stumps, mid, q, {len / 6.0f, 1, 1}, tint); break;
+            case sim::Work::Kind::Abatis: pushInstance(w.standing() ? aba : cleared, mid, q, {len / 5.0f, 1, 1}, tint); break;
+            case sim::Work::Kind::Watchtower:
+                if (w.standing()) pushInstance(towers, a, q, {static_cast<float>(d.halfThick.toDouble()) / 1.5f, static_cast<float>(d.halfThick.toDouble()) / 1.5f, static_cast<float>(d.height.toDouble()) / 6.0f}, tint);
+                break;
+            case sim::Work::Kind::Barricade: {
+                const float built = std::clamp(static_cast<float>(w.hp) / static_cast<float>(std::max(1, d.maxHp)), 0.0f, 1.0f);
+                if (w.standing() || w.fellTick == 0) pushInstance(barr, mid, q, {len / 11.0f, 1, 0.35f + 0.65f * (w.barring ? 1.0f : built)}, tint);
+                else pushInstance(cleared, mid, q, {len / 5.0f, 1, 1}, tint * 0.8f);
+                break;
+            }
+            case sim::Work::Kind::Engine: {
+                if (!w.standing()) break;
+                // Turned on its mark while it has one in reach, else out over the approach.
+                V3 face = out;
+                if (const sim::Unit* m = world.findUnit(w.mark); m && m->alive()) face = (toV3(m->pos) - a).normalized();
+                float e[4];
+                yawQuat(std::atan2(-face.x, face.y), e);
+                pushInstance(engines, a, e, {1, 1, 1}, tint);
+                break;
+            }
+        }
+    }
+    // Timber lying (beams, planks, splinters), and timber in the air, tumbling.
+    const auto size = [](sim::RemainKind k) {
+        return k == sim::RemainKind::Beam ? V3{1.1f, 0.11f, 0.11f} : k == sim::RemainKind::Plank ? V3{0.7f, 0.13f, 0.025f} : V3{0.28f, 0.03f, 0.02f};
+    };
+    for (const sim::Remain& r : world.remains()) {
+        if (!sim::isTimber(r.kind)) continue;
+        const V3 p = toV3(r.pos), dir = toV3(r.dir);
+        const V3 s = size(r.kind);
+        float q[4];
+        yawQuat(std::atan2(dir.y, dir.x), q);
+        const float t = 0.8f + 0.35f * hash(p.x, p.y);
+        pushInstance(wood, p + V3{0, 0, s.z}, q, s, {t, t, t});
+    }
+    for (const sim::Projectile& pr : world.projectiles()) {
+        if (pr.kind != sim::ProjectileKind::Debris || !sim::isTimber(pr.remain)) continue;
+        const V3 p = toV3(pr.pos), v = toV3(pr.vel);
+        const float spin = gameSeconds * (pr.remain == sim::RemainKind::Splinter ? 14.0f : pr.remain == sim::RemainKind::Plank ? 8.0f : 4.5f) + static_cast<float>(pr.id % 17);
+        float q[4];
+        yprQuat(std::atan2(v.y, v.x), spin, spin * 0.37f, q);
+        const float t = 0.8f + 0.35f * hash(static_cast<float>(pr.id), 3.0f);
+        pushInstance(wood, p, q, size(pr.remain), {t, t, t});
+    }
+    uploadMeshInstances(palisades_, pal);
+    uploadMeshInstances(palisadeStumps_, stumps);
+    uploadMeshInstances(abatis_, aba);
+    uploadMeshInstances(abatisCleared_, cleared);
+    uploadMeshInstances(watchtowers_, towers);
+    uploadMeshInstances(barricades_, barr);
+    uploadMeshInstances(ballistas_, engines);
+    uploadMeshInstances(timber_, wood);
+}
+
 void Renderer::uploadSettlements(const Battle& battle) {
     bannerCity_.clear();
     bannerIsKeep_.clear();
@@ -1635,6 +1714,15 @@ bool Renderer::init(Battle& battle) {
     for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &houses_, &cityHouses_, &temples_, &sages_}) b->grounded = true;
     for (MeshBatch& b : yard_) b.masonry = MeshBatch::Masonry::Building, b.grounded = true;
     makeMeshBatch(logs_, meshes::log(), 0);
+    makeMeshBatch(palisades_, meshes::palisade(), 0);
+    makeMeshBatch(palisadeStumps_, meshes::palisadeStumps(), 0);
+    makeMeshBatch(abatis_, meshes::abatis(), 0);
+    makeMeshBatch(abatisCleared_, meshes::abatisCleared(), 0);
+    makeMeshBatch(watchtowers_, meshes::watchtower(), 0);
+    makeMeshBatch(barricades_, meshes::barricade(), 0);
+    makeMeshBatch(ballistas_, meshes::ballista(), 0);
+    makeMeshBatch(timber_, meshes::timberPiece(), 0);
+    for (MeshBatch* b : timberWorks()) b->masonry = MeshBatch::Masonry::Timber, b->grounded = b != &timber_ && b != &ballistas_;
     makeMeshBatch(ships_, meshes::ship(), 0);
     makeMeshBatch(sails_, meshes::sail(), 0.01f);
     makeMeshBatch(piers_, meshes::pier(), 0);
@@ -2166,6 +2254,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_}) casters.push_back(b);
+    for (MeshBatch* b : timberWorks()) casters.push_back(b);
     for (MeshBatch& b : yard_) casters.push_back(&b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
@@ -2393,6 +2482,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     uploadMarks(battle);
     uploadRemains(battle);
     uploadGates(battle);
+    uploadWorks(battle, gameSeconds);
     gatherWater(battle, camera, gameSeconds);
 
     const V3 eye = camera.eye();
@@ -2506,7 +2596,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 break;
             }
             case sim::ProjectileKind::Debris:
-                if (p.remain == sim::RemainKind::Arrow) {
+                if (sim::isTimber(p.remain)) {
+                    // (flying timber: uploadWorks)
+                } else if (p.remain == sim::RemainKind::Arrow) {
                     // Tumbling end over end.
                     const float spin = static_cast<float>(timeSeconds) * 12.0f + static_cast<float>(p.id);
                     arrows.insert(arrows.end(), {pos.x, pos.y, pos.z, std::cos(spin), std::sin(spin * 0.7f),
@@ -2588,7 +2680,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Body parts at rest on the ground: pieces of their soldier's picture, or 3D where his sheet has none.
     for (size_t slot = 0; slot < world.remains().size(); ++slot) {
         const sim::Remain& r = world.remains()[slot];
-        if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow) continue;
+        if (r.kind == sim::RemainKind::None || r.kind == sim::RemainKind::Arrow || sim::isTimber(r.kind)) continue;  // (timber: uploadWorks)
         V3 pos = toV3(r.pos);
         const V3 dir = toV3(r.dir);
         if (r.afloat) pos.z += std::sin(gameSeconds * 2.1f + static_cast<float>(slot) * 1.9f) * 0.025f - 0.04f;  // riding in the surface (sim world_drift.cpp)
@@ -2765,6 +2857,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
     std::vector<MeshBatch*> town{&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_};
     for (MeshBatch& b : yard_) town.push_back(&b);
+    for (MeshBatch* b : timberWorks()) town.push_back(b);
     drawMeshes(town, camera, timeSeconds, gameSeconds);
     part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);

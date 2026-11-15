@@ -708,6 +708,11 @@ void Battle::breakGate(int gate) {
     if (gate >= 0) world_->setGateHp(static_cast<size_t>(gate), 0);
 }
 
+void Battle::demoSquad(sim::PlayerId owner, sim::UnitType type, int count, V3 centre, V3 facing, bool garrison) {
+    spawnSquad(sim::unitTypeName(type), owner, type, count, centre, facing);
+    if (!squads_.empty()) squads_.back().garrison = garrison;
+}
+
 void Battle::testShootAt(const V3& at) {
     for (const Squad& s : squads_)
         if (s.owner == kPlayer && s.type == UnitType::Archers)

@@ -168,7 +168,8 @@ private:
         float sway = 0;
         // Dressed stone (shaders.h kMeshFs uMasonry): Ashlar the castles' and bridges' coursed blocks; Building the same
         // under a tiled roof, with its woodwork grained (keep, temple, sage's tower, what stands in a yard).
-        enum class Masonry : uint8_t { None, Ashlar, Building };
+        // Timber: the works' and flying timber's own surface (timberSurface): grain, knots, bark, weathering, nails.
+        enum class Masonry : uint8_t { None, Ashlar, Building, Timber };
         Masonry masonry = Masonry::None;
         bool grounded = false;  // stands on the ground at its own z = 0: its foot is damp and shaded (uGrounded)
         bool rock = false;   // a boulder (see rockSurface)
@@ -215,6 +216,8 @@ private:
     void uploadContinent(const Battle& battle);
     void uploadSettlements(const Battle& battle);
     void uploadGates(const Battle& battle);
+    // The timber works as they stand (sim world_works.cpp), and timber lying and flying (beams, planks, splinters).
+    void uploadWorks(const Battle& battle, float gameSeconds);
     void drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& camera, double timeSeconds, float gameSeconds);
 
     Program motes_, sky_, terrain_, decal_, arrow_, sprite_, particle_, mesh_, water_, far_, ribbon_, falls_, cover_, meshDepth_, terrainDepth_;
@@ -589,6 +592,8 @@ private:
     MeshBatch gates_, brokenGates_, leavesLeft_, leavesRight_;  // shut, broken, and the leaves of those swinging
     std::vector<int16_t> gatesShown_;  // how each gate was last uploaded: -1 broken, else how far open (in twentieths)
     MeshBatch logs_;
+    MeshBatch palisades_, palisadeStumps_, abatis_, abatisCleared_, watchtowers_, barricades_, ballistas_, timber_;
+    std::vector<MeshBatch*> timberWorks() { return {&palisades_, &palisadeStumps_, &abatis_, &abatisCleared_, &watchtowers_, &barricades_, &ballistas_, &timber_}; }
     // Flags (renderer_flags.cpp): poles and their cloth, drawn in both views;
     // the castles' tower banners, retinted with whoever holds each town; territory.
     MeshBatch poles_, cloths_;

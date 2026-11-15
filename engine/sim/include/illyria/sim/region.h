@@ -213,6 +213,10 @@ public:
     const std::vector<Ditch>& ditches() const { return ditches_; }
     // In a ditch's cut here (off its causeways): horse and wheels cannot go, foot go slowly (NavGrid, World::walk).
     bool inDitch(Fixed x, Fixed y) const;
+    // On a ditch's sides or its bank (dug earth: mud, never bare rock however steep).
+    bool nearDitch(Fixed x, Fixed y) const;
+    // Nothing grows within this of a ditch's outer edge (Region's scenery, the close-up land's, the far forest's alike).
+    static constexpr Fixed kDitchClearing = Fixed::fromInt(12);
     // The rampart whose walk this point is on, or -1.
     int rampartAt(Fixed x, Fixed y, Fixed z) const;
     // True on a bridge deck, with the deck's height.

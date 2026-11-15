@@ -316,6 +316,11 @@ void Runner::execute(const Command& c) {
             std::fflush(stdout);
             break;
         }
+        case Op::Works:
+            std::printf("%s\n", illyria_works_demo(c.text.c_str(), c.lord, c.budget, static_cast<float>(c.a), static_cast<float>(c.b), static_cast<float>(c.c),
+                                                   static_cast<float>(c.d), c.all ? 1 : 0));
+            std::fflush(stdout);
+            break;
         case Op::Cards: cards(); break;
         case Op::Wait:
             // Waits follow on from one another without drift: a shot's own time is part of the wait before it.

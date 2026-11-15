@@ -1,0 +1,34 @@
+# A sortie burns an unescorted engine (docs/GAME_DESIGN.md, "Outworks and timber"). Grathmaw, attacked: your second siege
+# train has set up 132 m before the side door (the sally port, at 475,562), out in front of its company with nobody by it.
+# The garrison is given eight light horse, each with one Molotov. It sees engines in reach and weakly guarded, sends the
+# horse out by the sally port, they throw their oil at the nearer engine (it burns: one bottle is enough), and, the engine
+# alight and their bottles thrown, they ride back in. `works count` gives the engines' strength (side:hp, * burning).
+#
+#   Illyria --play tools/playtest/works-sortie.txt --play-out ~/Desktop/siege-defence/sortie --play-log ~/Desktop/siege-defence/sortie/sortie.log
+
+size 1600 900
+start skirmish capital easy
+wait 1
+works squad 1 light_cavalry 8 481 545 475 562 garrison
+works count
+camera 432 622 120 2.75
+wait 0.5
+shot sortie-00-the-train-alone
+speed 2
+wait_ticks 240
+shot sortie-01-out-by-the-sally-port
+works count
+wait_ticks 450
+shot sortie-02-over-the-rocks
+works count
+wait_ticks 300
+shot sortie-03-at-the-engine
+works count
+wait_ticks 300
+shot sortie-04-alight
+works count
+wait_ticks 450
+shot sortie-05-home
+works count
+stats
+quit

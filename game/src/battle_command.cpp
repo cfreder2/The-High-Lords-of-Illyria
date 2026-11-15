@@ -1293,6 +1293,7 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
                 return;
             case K::Gate:
             case K::Wall:
+            case K::Work:
             case K::Obstacle: orderAttackObject(pick); return;
             case K::Ground: orderAttackGround(pick.at); return;
             case K::None: return;
@@ -1331,7 +1332,9 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
             // Tapped an enemy: everyone selected goes after him (missile troops
             // shoot him); zoomed far out, each after the nearest of that squad.
             if (pick.index >= 0) {
-                orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
+                // Horse at a foe's engine: a sortie (they ride back once it burns).
+                if (selectionRides() && isEngine(units[static_cast<size_t>(pick.index)].id)) orderSortie(units[static_cast<size_t>(pick.index)].id);
+                else orderAttackUnit(units[static_cast<size_t>(pick.index)].id);
             } else {
                 const std::vector<sim::EntityId> all = selection_;
                 const std::vector<sim::EntityId>& foes = squads_[static_cast<size_t>(pick.squad)].members;
@@ -1347,6 +1350,11 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         case K::Gate:
             // A standing gate: engines and bombers shoot at it, the rest go to break it.
             orderAtGate(pick.index);
+            return;
+        case K::Work:
+            // A foe's timber (or nobody's in the way): at it; one's own (a watchtower: bowmen climb it), a march there.
+            if (workIsFoes(pick.index)) orderAttackObject(pick);
+            else orderMove(toV3(world_->works()[static_cast<size_t>(pick.index)].def.a));
             return;
         case K::Wall:
         case K::Obstacle:

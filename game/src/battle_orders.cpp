@@ -63,6 +63,7 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::HoldFire:
                 case sim::Command::Type::Guard:
                 case sim::Command::Type::SetFormation:
+                case sim::Command::Type::Sortie:  // (a sortie is begun at once: its ride back is its own)
                 case sim::Command::Type::Answer: break;
             }
         }
@@ -307,10 +308,68 @@ void Battle::orderForceMarch(const V3& to, const V3* facing) {
     answer(Situation::Move, mine);
 }
 
+bool Battle::selectionRides() const {
+    const std::vector<sim::EntityId> mine = selectedAlive();
+    for (sim::EntityId id : mine) {
+        const sim::UnitStats& s = world_->units()[id - 1].stats;
+        if (!s.mounted || s.melee.damage == 0) return false;
+    }
+    return !mine.empty();
+}
+
+bool Battle::workIsFoes(int index) const {
+    if (index < 0 || static_cast<size_t>(index) >= world_->works().size()) return false;
+    const sim::PlayerId holder = world_->workHolder(static_cast<size_t>(index));
+    if (holder == sim::GateState::kNoHolder) return world_->works()[static_cast<size_t>(index)].def.kind != sim::Work::Kind::Watchtower;
+    return holder != local_;
+}
+
+bool Battle::isEngine(sim::EntityId id) const {
+    const sim::Unit* u = world_->findUnit(id);
+    return u && u->alive() && roleOf(static_cast<UnitType>(u->stats.type)) == Role::Siege;
+}
+
+void Battle::orderSortie(sim::EntityId engine) {
+    const std::vector<sim::EntityId> mine = selectedAlive();
+    if (mine.empty()) return;
+    const sim::Unit* e = world_->findUnit(engine);
+    if (!e) return;
+    for (sim::EntityId id : mine) {
+        sim::Command c{local_, id, sim::Command::Type::Sortie, e->pos};
+        c.targetUnit = engine;
+        pending_.push_back(c);
+    }
+    markOrdered(mine);
+    answer(Situation::Attack, mine);
+}
+
 void Battle::orderAttackObject(const Pick& pick) {
     if (marchOrder(pick.at)) return answer(Situation::Attack, selection_);
     const std::vector<sim::EntityId> mine = selectedAlive();
     if (mine.empty()) return;
+    if (pick.kind == Pick::Kind::Work) {
+        // Timber: engines and bombers smash it, bowmen loose fire arrows at it (those with none cannot), the rest hack it.
+        std::vector<sim::EntityId> able;
+        for (sim::EntityId id : mine) {
+            const sim::Unit& u = world_->units()[id - 1];
+            const bool bow = u.stats.ranged.kind == sim::ProjectileKind::Arrow && u.stats.ranged.muzzleSpeed > sim::Fixed::zero();
+            if ((bow && u.fireArrows <= 0) || (!bow && !sim::World::canBatter(u.stats) && u.stats.melee.damage == 0)) continue;
+            able.push_back(id);
+        }
+        if (able.empty()) {
+            refuse("Plain arrows do nothing to timber");
+            return;
+        }
+        for (sim::EntityId id : able) {
+            sim::Command c{local_, id, sim::Command::Type::AttackObject, toSim(pick.at)};
+            c.object = sim::Command::Object::Work;
+            c.objectIndex = pick.index;
+            pending_.push_back(c);
+        }
+        markOrdered(able);
+        answer(Situation::Attack, able);
+        return;
+    }
     if (pick.kind == Pick::Kind::Gate) {
         // Missile troops shoot the doors; the rest go through, hacking at them.
         const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(pick.index)];
@@ -451,6 +510,24 @@ Battle::Pick Battle::pickAt(const Camera& camera, float x, float y, float pixelS
     if (!pickFloor(camera, x, y, ground)) return p;
     p.kind = Pick::Kind::Ground;
     p.at = ground;
+    // A timber work at the tap: its footprint, or a watchtower's platform on the screen.
+    if (const int32_t w = world_->workAt(toSim(ground), sim::Fixed::fromRatio(3, 2)); w >= 0) {
+        p.kind = Pick::Kind::Work;
+        p.index = w;
+        return p;
+    }
+    for (size_t i = 0; i < world_->works().size(); ++i) {
+        const sim::WorkState& w = world_->works()[i];
+        if (!w.standing() || w.def.kind != sim::Work::Kind::Watchtower) continue;
+        float px, py;
+        const V3 top = toV3(w.def.a) + V3{0, 0, static_cast<float>(w.def.height.toDouble()) + 0.5f};
+        if ((top - ground).length() > 40.0f || !camera.project(top, px, py)) continue;
+        if ((px - x) * (px - x) + (py - y) * (py - y) < kObstaclePickPx * pixelScale * kObstaclePickPx * pixelScale) {
+            p.kind = Pick::Kind::Work;
+            p.index = static_cast<int>(i);
+            return p;
+        }
+    }
     // The castle walls: the tap lands on its walk (struck in the face or on top), or at its foot.
     const auto& rings = worldRegion().ramparts();
     for (size_t r = 0; r < rings.size(); ++r) {
@@ -518,6 +595,7 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
                 for (sim::EntityId id : mine)
                     if (sim::World::canBatter(world_->units()[id - 1].stats)) return Intent::AttackObject;
                 return Intent::Cannot;
+            case K::Work: return Intent::AttackObject;
             case K::Ground: return Intent::AttackGround;
             case K::None: return Intent::None;
         }
@@ -526,6 +604,7 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
         case K::Own: return Intent::Select;
         case K::Enemy: return Intent::Attack;
         case K::Gate: return Intent::AttackObject;
+        case K::Work: return workIsFoes(p.index) ? Intent::AttackObject : Intent::Move;
         case K::Wall:
         case K::Obstacle:
         case K::Ground: return Intent::Move;

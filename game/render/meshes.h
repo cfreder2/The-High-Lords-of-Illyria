@@ -90,6 +90,18 @@ Mesh fence();
 Mesh barrel();
 // A fallen trunk along x from -1 to 1, radius 1 (scale: half length, girth, girth).
 Mesh log();
+// Timber works (sim world_works.cpp), in metres, +y toward the foe, the ground at z = 0: a palisade run 6 m long along x
+// (and its stumps, broken), abatis 5 m long (and what is left of it), a watchtower 3 m square with its platform at 6 m, a
+// barricade 11 m across a gateway, a ballista for a tower's top; and a timber piece along x from -1 to 1 (beams, planks
+// and splinters, scaled).
+Mesh palisade();
+Mesh palisadeStumps();
+Mesh abatis();
+Mesh abatisCleared();
+Mesh watchtower();
+Mesh barricade();
+Mesh ballista();
+Mesh timberPiece();
 // A conquest boat: a timber hull along x from -1 (stern) to 1 (bow), beam
 // about 0.5, the waterline at z = 0, a mast to z = 1.5. The sail is its own
 // mesh in white, to tint with the side's colour; same unit space.

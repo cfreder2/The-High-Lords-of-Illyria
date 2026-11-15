@@ -379,6 +379,16 @@ bool Region::underWater(Fixed x, Fixed y) const {
     return terrain_.heightAt(x, y) < surface;
 }
 
+bool Region::nearDitch(Fixed x, Fixed y) const {
+    for (const Ditch& d : ditches_) {
+        const Fixed dx = x - d.centre.x, dy = y - d.centre.y, reach = d.outer + m(3);
+        if (abs(dx) > reach || abs(dy) > reach) continue;
+        const Fixed r2 = dx * dx + dy * dy;
+        if (r2 <= reach * reach && r2 >= (d.bankIn - m(1)) * (d.bankIn - m(1))) return true;
+    }
+    return false;
+}
+
 bool Region::inDitch(Fixed x, Fixed y) const {
     for (const Ditch& d : ditches_)
         if (d.holds(x, y)) return true;
@@ -765,6 +775,12 @@ void Region::scatterScenery(uint64_t seed, size_t buildings, const Vec3& clearCe
                 const Fixed range = castleReach[k] + m(12);
                 if (abs(x - rp.centre.x) >= range || abs(y - rp.centre.y) >= range) continue;
                 inCastle = flatDist(x, y, rp.centre) < range;
+            }
+            // Nor on a castle's outworks: its bank, its ditch and the open ground before them (kept clear for a field of shot).
+            for (size_t k = 0; k < ditches_.size() && !inCastle; ++k) {
+                const Fixed range = ditches_[k].outer + kDitchClearing;
+                if (abs(x - ditches_[k].centre.x) >= range || abs(y - ditches_[k].centre.y) >= range) continue;
+                inCastle = flatDist(x, y, ditches_[k].centre) < range;
             }
             if (inCastle) continue;
             bool nearDeck = false;  // keep bridge approaches open
@@ -1234,7 +1250,7 @@ Region Region::fromContinent(const Continent& c, const Vec3& centre, int32_t cel
                 g = Ground::Bridge;
             } else if (wet >= 2 && surface / wet > z) {
                 g = surface / wet - z < r(11, 10) ? Ground::Shallows : Ground::DeepWater;
-            } else if (slope > r(3, 5) && road >= m(3)) {
+            } else if (slope > r(3, 5) && road >= m(3) && !rg.nearDitch(x - OX, y - OY)) {
                 g = Ground::Rock;
             } else {
                 const Fixed mtn = (mountain[i00] + mountain[i10] + mountain[i01] + mountain[i11]) / 4;

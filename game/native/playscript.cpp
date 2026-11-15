@@ -173,6 +173,22 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         } else if (n != 1 || c.text != "count") {
             return usage(kUsage);
         }
+    } else if (verb == "works") {
+        c.op = Op::Works;
+        static const char* kUsage = "works squad SIDE TYPE N X Y TX TY [garrison] | sortie | count";
+        if (n < 1) return usage(kUsage);
+        c.text = w[1];
+        if (c.text == "squad") {
+            double side = 0, count = 0;
+            if ((n != 8 && n != 9) || !number(w[2], side) || !number(w[4], count) || !nums(5, 4) || count < 1 || count > 60 || (n == 9 && w[9] != "garrison")) return usage(kUsage);
+            c.lord = static_cast<int>(side);
+            c.budget = static_cast<int>(count);
+            c.a = v[0], c.b = v[1], c.c = v[2], c.d = v[3];
+            c.all = n == 9;
+            c.text = "squad " + w[3];
+        } else if (n != 1 || (c.text != "count" && c.text != "sortie")) {
+            return usage(kUsage);
+        }
     } else if (verb == "spread") {
         c.op = Op::Spread;
         if (n) return usage("spread");

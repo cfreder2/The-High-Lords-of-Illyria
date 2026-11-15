@@ -574,6 +574,13 @@ public:
     // keep to a bowshot and shoot him, the rest run him down. When he falls
     // each decides for himself: another foe, or back to his squad.
     void orderAttackUnit(sim::EntityId target);
+    // Horse sent at a foe's engine ride out, throw their oil at it, cut down what stands by it and ride back (sim Command::Sortie).
+    void orderSortie(sim::EntityId engine);
+    // Whether everyone selected is a rider, and whether this man is a foe's engine.
+    bool selectionRides() const;
+    bool isEngine(sim::EntityId id) const;
+    // A work held by another side than ours (or nobody's but a watchtower, which is anyone's to climb).
+    bool workIsFoes(int index) const;
     // Missile troops shoot at the spot; the rest march there, fighting
     // whoever they meet.
     void orderAttackGround(const V3& at);
@@ -597,9 +604,10 @@ public:
     void orderForceMarch(const V3& to, const V3* facing = nullptr);
     // What lies under the finger.
     struct Pick {
-        enum class Kind : uint8_t { None, Own, Enemy, Gate, Wall, Obstacle, Ground };
+        // Work: a timber work (sim World::works): a palisade, abatis, a watchtower, a barricade, a tower's engine.
+        enum class Kind : uint8_t { None, Own, Enemy, Gate, Wall, Obstacle, Ground, Work };
         Kind kind = Kind::None;
-        int index = -1;  // the unit (index), gate, wall ring or obstacle
+        int index = -1;  // the unit (index), gate, wall ring, obstacle or work
         int squad = -1;  // zoomed far out: the squad nearest the finger (index -1)
         V3 at;           // where on the ground
     };
@@ -695,6 +703,11 @@ public:
     void breakGate(int gate);
     void giveGates(sim::PlayerId holder) { holdGates(holder); }
     void testShootAt(const V3& at);
+    // Test hook (the --play script's `works squad`): a squad of `count` raised for `owner` at `centre`, facing `facing`, a
+    // garrison's (kept by the walls it stands in) or a field force's.
+    void demoSquad(sim::PlayerId owner, sim::UnitType type, int count, V3 centre, V3 facing, bool garrison);
+    // Test hook: a command sent as the player's orders are (applied at the next step).
+    void issueCommand(const sim::Command& c) { pending_.push_back(c); }
     // Test hook: a soldier taken out of the world (as dead, to the orders).
     void testRemove(sim::EntityId unit) { world_->removeUnit(unit); }
     // Test hook: an order put in a soldier's queue (any side's), as the sim keeps it.

@@ -2164,7 +2164,8 @@ in vec3 vObj;
 flat in vec3 vScale;
 out vec4 oColor;
 uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges); 2: a stone building, its roof tiled and its
-                         // woodwork grained besides (the keep, the temple, the sage's tower, what stands in a yard)
+                         // woodwork grained besides (the keep, the temple, the sage's tower, what stands in a yard); 3: timber
+                         // through and through (the works: palisades, abatis, watchtowers, barricades, engines; flying timber)
 uniform float uGrounded; // 1: the mesh stands on the ground at its own z = 0: damp and shade gather at its foot
 uniform float uHouse;    // 1: the house mesh: shingles, framed plaster, a plank door (houseSurface)
 uniform float uRock;     // 1: boulders: bedding planes, cracks, grain, lichen (rockSurface)
@@ -2197,6 +2198,41 @@ vec3 coursedStone(vec3 albedo, vec2 uv, vec2 size, vec2 px, out vec2 bevel) {
 // Grain of wood running along `along` (metres), fading to its mean with distance.
 float woodGrain(float along, float across, float fade) {
     return mix(0.9, 0.74 + 0.36 * valueNoise2(vec2(along * 1.7, across * 48.0)), fade);
+}
+// Timber in the round and sawn (the works, docs/GAME_DESIGN.md "Outworks and timber"). `lying`: the piece runs along its
+// instance's x (meshes.cpp marks it), else it stands up. Each stake, pole and board keeps its own tone from the mesh; over
+// it: the grain along the piece, knots, checks (the splits of seasoning), weathering silver-grey on what faces the sky
+// and in patches, rot dark at the foot; bark (the mesh's grey-brown) ridged and fissured; on boards a seam every hand's
+// breadth and a pair of nail heads every pace. All of it fades to its mean as a pixel covers it.
+void timberSurface(inout vec3 albedo, inout vec3 n, bool lying) {
+    vec2 perp = normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0));
+    float along = lying ? dot(vWorld.xy, vAxis) : vWorld.z;
+    float across = lying ? (abs(n.z) > 0.7 ? dot(vWorld.xy, vec2(-vAxis.y, vAxis.x)) : vWorld.z) : dot(vWorld.xy, perp);
+    float px = max(fwidth(along), fwidth(across)), fade = 1.0 - smoothstep(0.03, 0.22, px);
+    bool bark = abs(vColor.r - vColor.g) < 0.075 && vColor.r < 0.42;
+    if (bark) {
+        // Ridges running along the trunk, fissures between them, a little moss on the side away from the sun.
+        float ridge = valueNoise2(vec2(along * 3.0, across * 22.0)), fissure = smoothstep(0.62, 0.8, valueNoise2(vec2(along * 1.4, across * 9.0)));
+        albedo *= mix(0.9, (0.7 + 0.5 * ridge) * (1.0 - 0.45 * fissure), fade);
+        albedo = mix(albedo, albedo * vec3(0.78, 0.92, 0.6), smoothstep(0.55, 0.8, valueNoise2(vWorld.xy * 0.9 + 5.0)) * 0.35 * step(n.y, 0.0));
+        n = normalize(n + vec3(perp, 0.0) * (ridge - 0.5) * 0.35 * fade);
+        return;
+    }
+    float g = woodGrain(along, across, fade);
+    float knot = smoothstep(0.86, 0.95, valueNoise2(vec2(along * 2.2, across * 6.0) + 17.0)) * fade;
+    float check = smoothstep(0.93, 0.99, valueNoise2(vec2(along * 0.8, across * 60.0) + 3.0)) * fade;
+    albedo *= g * (1.0 - 0.35 * knot) * (1.0 - 0.45 * check);
+    // Weathering: silver on the faces to the sky and in patches, the tone of the piece showing through.
+    float grey = clamp(0.25 * max(n.z, 0.0) + 0.4 * smoothstep(0.5, 0.85, valueNoise2(vWorld.xy * 0.37 + vWorld.z * 0.21)), 0.0, 0.6);
+    albedo = mix(albedo, vec3(dot(albedo, vec3(0.33))) * vec3(1.02, 1.0, 0.97) * 1.12, grey);
+    if (lying) {
+        // Boards: a dark seam every 0.22 m across, nail heads in pairs every 0.7 m along.
+        float b = across / 0.22, seam = min(fract(b), 1.0 - fract(b)) * 0.22;
+        albedo *= 1.0 - 0.45 * (1.0 - smoothstep(0.004, 0.004 + max(px, 0.006), seam)) * fade;
+        vec2 cellN = vec2(fract(along / 0.7) - 0.5, fract(b) - 0.5) * vec2(0.7, 0.22);
+        float nail = 1.0 - smoothstep(0.011, 0.011 + max(px, 0.004), min(length(cellN - vec2(0.0, 0.05)), length(cellN + vec2(0.0, 0.05))));
+        albedo = mix(albedo, vec3(0.13, 0.12, 0.12), nail * fade * 0.85);
+    }
 }
 // A boulder: sedimentary bedding planes (wavy bands, each its own tone, a dark
 // seam between), cracks that follow nothing, a grain of crystals, lichen
@@ -2465,6 +2501,12 @@ void main() {
     if (uHouse > 0.5) houseSurface(albedo, n);
     if (uRock > 0.5) rockSurface(albedo, n);
     bool cone = vCloth.x < -0.5 && vCloth.x > -1.5, drum = vCloth.x < -1.5;
+    if (uMasonry > 2.5) {
+        timberSurface(albedo, n, drum);
+        if (uGrounded > 0.5 && n.z < 0.7) albedo = footDamp(albedo, vWorld, vObj.z * vScale.z);
+        oColor = sceneryColor(albedo, n, vWorld);
+        return;
+    }
     vec2 side = vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
     if (uMasonry > 0.5 && cone) {
         // A tower's cone, a turret's cap: tiles, in its holder's colour.
