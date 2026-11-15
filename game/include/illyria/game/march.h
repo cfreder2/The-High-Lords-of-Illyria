@@ -33,6 +33,7 @@ struct March {
     struct Man {
         int hp = 1000;  // thousandths of his full health
         int rank = 0, kills = 0, battles = 0;
+        int satchels = -1, ammo = -1;  // what he still carries (-1: his full load); made up in camp for gold (resupply)
     };
     struct Squad {
         std::string name;
@@ -71,8 +72,14 @@ struct March {
     static bool irreplaceable(sim::UnitType type);
     // Gold to bring a squad back to its full strength (0: it is full, or cannot be filled), and doing it: as many men
     // as the purse pays for, recruits of no rank. How many joined.
+    // The cost is for both: the men missing (never for the irreplaceable) and the squad's spent satchels and missiles.
     int reinforceCost(size_t squad) const;
     int reinforce(size_t squad);
+    // The camp's powder and oil: gold to make up what a squad has laid and thrown (half its price for a whole load, in
+    // proportion), and doing it (all or nothing). What it carries, and what a full load is, for the camp's list.
+    int resupplyCost(size_t squad) const;
+    bool resupply(size_t squad);
+    void load(size_t squad, int& carried, int& full) const;
     // The purse spent as far as it goes: the squad with the smallest share of its men left first, again and again.
     int reinforceAll();
 

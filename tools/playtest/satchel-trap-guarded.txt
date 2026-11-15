@@ -1,0 +1,79 @@
+# The satchel trap at Oakhaven Ford (armies bought for 300 gold a side), as a person would play it. The isle in the
+# ford is where both hosts must come: the pole is on it.
+#   The deployment pause: the pair's charges are laid in a line of five across the isle, west of the pole, within a
+#   Molotov's throw of your bank (charges laid in the deployment lie there when the battle begins; a click in the ford
+#   itself is refused: "Not in water"). The pair holds its fire and is sent down to your bank of the ford.
+#   The battle: when the Red Hand's foot stand on the isle raising their flag: the dwarves, L, click a charge. One
+#   bottle, lobbed onto the line.
+#
+#   Illyria --play tools/playtest/satchel-trap-guarded.txt --play-out out/guard --play-log out/guard/guard.log
+#
+# This one with the pikes told to guard the pair first: the pikes' card, comma, the dwarves' card ("Guarding Dwarven
+# Grenadiers"). The log's `event=` carries "Ambush: N down" (20 as committed), and about 105 s in "Dwarven Grenadiers
+# call for help: hunted": the guard takes it, and the cards at the end show who is left. Coordinates are window points at 1600 x 900
+# with the camera below (north up).
+
+size 1600 900
+start skirmish ford budget 300 deploy
+wait 0.5
+camera 498 510 55 1.5708
+wait 1.5
+cards
+
+# The dwarves (card 12): T, then Shift+click. The first click is in the ford: refused. Then five across the isle.
+select 12
+key t
+key shift down
+click left 760 400
+click left 1050 300
+click left 1050 348
+click left 1050 396
+click left 1050 444
+click left 1050 492
+key shift up
+key escape
+key shift down
+key k
+key shift up
+# ... and down to your bank of the ford, a throw from the line.
+click right 705 400
+wait 0.5
+
+# The pikes (card 2) guard them: comma, then the dwarves' card.
+select 2
+key comma
+select 12
+wait 0.3
+shot trap-01-deployed
+
+# Begin.
+key return
+speed 4
+wait_ticks 60
+select 12
+wait 0.3
+shot trap-02-laid
+stats
+
+# A minute in the Red Hand's foot stand on the isle raising their flag, and the dwarf is at the bank: L, click a charge.
+wait_ticks 1840
+stats
+select 12
+shot trap-03-on-the-isle
+key l
+click left 1050 396
+wait_ticks 150
+shot trap-04-blast
+stats
+wait_ticks 300
+shot trap-05-after
+stats
+wait_ticks 600
+stats
+cards
+# ... and on, to the hunt.
+wait_ticks 1200
+shot trap-06-hunted
+stats
+cards
+quit

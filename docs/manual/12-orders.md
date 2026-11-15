@@ -35,8 +35,11 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Rally (your lord calls back the broken within 40 m) | | [[Y]], or the **Rally** button over the cards (desktop) |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |
-| Raid (hyena-folk) | **Raid** | [[T]] (or [[L]]) |
-| Lay satchels (grenadiers) | | [[T]], then click where |
+| Raid (hyena-folk) | **Raid** | [[T]] |
+| Lay a satchel (a grenadier) | **Lay satchel** | [[T]], then click where; [[Shift]] + click again for a line. Not in water |
+| Detonate (a grenadier or a wizard) | **Detonate** | [[L]], then click the satchel: the nearest of them in reach throws at once, friends in the red ring or not |
+| Guard another squad | (none) | [[,]], then click that squad or its card: they ring it and meet what comes, until ordered elsewhere |
+| Hold fire (again: at will) | **Hold fire** | [[Shift]] + [[K]]: they throw, shoot and lay only when ordered |
 | Cancel a mode | tap the mode's button again | [[Esc]] (with no mode in hand: in the browser it lets the selection go; in the desktop app it pauses and opens the menu) |
 | Pause | **Pause** | [[P]] (the desktop app: [[Esc]] pauses and opens the menu) |
 

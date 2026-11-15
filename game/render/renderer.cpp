@@ -2479,7 +2479,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
                 arrows.insert(arrows.end(), {pos.x, pos.y, pos.z, vel.x, vel.y, vel.z, 0, 0});
                 break;
             case sim::ProjectileKind::Bomb:
-                sprite(kPlanBomb, 0.4f, 0);
+                // The viewer's own lie plain; a foe's, laid and waiting, is small and shown only where his side sees (Battle::satchelShown).
+                if (!battle.satchelShown(p)) break;
+                sprite(kPlanBomb, p.owner == battle.localSide() || p.fuse != 0 || !p.resting ? 0.5f : 0.22f, 0);
                 break;
             case sim::ProjectileKind::Fireball:
                 sprite(kPlanOrb, 0.9f, 0);
@@ -2579,6 +2581,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     // Where the player's soldiers are going, and what they are after.
     pushOrderMarks(battle, static_cast<float>(timeSeconds), decals);
     pushRangeRings(battle, static_cast<float>(timeSeconds), decals);
+    pushSatchelMarks(battle, static_cast<float>(timeSeconds), decals);
     pushStoneForecasts(battle, static_cast<float>(timeSeconds), decals);
     pushPathLines(battle, camera, static_cast<float>(timeSeconds), decals);
 

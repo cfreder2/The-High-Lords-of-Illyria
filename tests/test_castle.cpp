@@ -333,7 +333,10 @@ TEST(men_idle_near_battering_engines_hold_a_line_in_front_and_meet_a_sortie) {
     CHECK(fallen <= 1);
 }
 
-TEST(an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_the_ground) {
+// (Was an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_the_ground, before a train carried eight
+// stones in all: with no order it keeps them from a thin line on the walk and from a lone man; ordered at the men on the
+// wall, it throws at them and not at the nearer man.)
+TEST(an_engine_keeps_its_stones_from_a_few_men_on_the_wall_and_ordered_at_them_throws_at_them) {
     WorldConfig cfg;
     cfg.region = siege();
     cfg.seed = 13;
@@ -360,9 +363,14 @@ TEST(an_engine_with_no_order_answers_the_men_on_the_wall_before_a_nearer_man_on_
     std::vector<EntityId> wall;
     for (int i = 0; i < 4; ++i) wall.push_back(w.spawnUnit(1, mid + along * m(i * 2 - 3), out, unitStats(UnitType::Archers)));
     CHECK(w.region()->rampartAt(w.findUnit(wall[0])->pos.x, w.findUnit(wall[0])->pos.y, w.findUnit(wall[0])->pos.z) >= 0);
-    w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    const EntityId engine = w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
     // A man of the other side's on the ground, nearer the engine than the wall is, with a good deal of life in him.
     const EntityId nearer = w.spawnUnit(1, mid + out * m(85), out, unitStats(UnitType::HeavyInfantry));
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) w.step({});
+    CHECK(w.findUnit(engine)->ammo == unitStats(UnitType::Catapult).ranged.ammo);  // not a stone thrown
+    Command at{0, engine, Command::Type::AttackUnit, {}};
+    at.targetUnit = wall[1];
+    w.step(std::span(&at, 1));
     bool wallHurt = false;
     for (int t = 0; t < 60 * kTicksPerSecond && !wallHurt; ++t) {
         w.step({});
@@ -379,7 +387,9 @@ TEST(an_engine_creeps_up_to_its_reach_of_the_men_on_the_wall_and_no_nearer) {
     const Gate& g = w.region()->gates()[f.gate];
     const Vec3 along = (g.b - g.a).flat() / (g.b - g.a).flat().length();
     std::vector<EntityId> wall;
-    for (int i = 0; i < 3; ++i) wall.push_back(w.spawnUnit(1, f.centre + along * m(14 + 2 * i) - f.out * m(1), f.out, unitStats(UnitType::Archers)));
+    // (Shoulder to shoulder, was 2 m apart: three in one stone's blast are worth a stone of its four unasked, a thin
+    // line is not. World::worthAShot)
+    for (int i = 0; i < 3; ++i) wall.push_back(w.spawnUnit(1, f.centre + along * m(14 + i) - f.out * m(1), f.out, unitStats(UnitType::Archers)));
     const Vec3 up = w.findUnit(wall[0])->pos;
     CHECK(w.region()->rampartAt(up.x, up.y, up.z) >= 0);
     const EntityId engine = w.spawnUnit(0, f.centre + f.out * m(150), -f.out, unitStats(UnitType::Catapult));
@@ -520,7 +530,11 @@ TEST(catapult_stones_kill_defenders_on_the_walls) {
     std::vector<EntityId> watch;
     for (int i = 0; i < 5; ++i) watch.push_back(w.spawnUnit(1, mid + along * m(i * 2 - 4), out, unitStats(UnitType::Archers)));
     const Fixed walk = w.findUnit(watch[0])->pos.z;
-    w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    // (Ordered at the middle of them: its four stones are not thrown at a thin line on a walk unasked.)
+    const EntityId engine = w.spawnUnit(0, mid + out * m(120), -out, unitStats(UnitType::Catapult));
+    Command at{0, engine, Command::Type::AttackUnit, {}};
+    at.targetUnit = watch[2];
+    w.step(std::span(&at, 1));
     for (int t = 0; t < 150 * kTicksPerSecond; ++t) w.step({});
     int hurt = 0;
     for (EntityId id : watch) hurt += w.findUnit(id)->hp < unitStats(UnitType::Archers).maxHp;
@@ -550,7 +564,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xab3a846c4f26bcd0;  // (was 0x1eaf19b9a7460fdb before merge-master's tactics and land rules (it stood unpinned there); was 0x6f19db3c170cfe79 before a catapult's stone rolled on from where it comes down, world_boulder.cpp; was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0xc81c78b47271c289;  // (was 0xab3a846c4f26bcd0 before a train carried 8 stones, squads guarded the dwarves (Command::Guard), dwarves and wizards answered no calls, and a Molotov became burning ground with no blast (world_fire.cpp); was 0x1eaf19b9a7460fdb before merge-master's tactics and land rules (it stood unpinned there); was 0x6f19db3c170cfe79 before a catapult's stone rolled on from where it comes down, world_boulder.cpp; was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -579,38 +593,74 @@ TEST(the_siege_train_batters_the_gate_when_ordered) {
 }
 
 TEST(the_computer_attacker_batters_from_range_with_its_foot_in_line_then_masses_and_goes_in) {
-    illyria::game::Battle b(1, illyria::game::Scenario::Siege);
+    // The player keeps the walls and the computer lays the siege (SkirmishSetup::defend): the battle a defence is, begun as
+    // the game begins it. (Before battles had ends this was a storm stood on its head, the player's camp struck dead and a
+    // gate handed to him: a host with its men dead quits the field at once now (sim::RoutRule), and nothing is fought.)
     using illyria::game::V3;
+    illyria::game::SkirmishSetup setup;
+    setup.budget = 300;
+    setup.defend = true;
+    illyria::game::Battle b(1, illyria::game::Scenario::Siege, setup);
     constexpr PlayerId kMe = illyria::game::Battle::kPlayer, kThem = illyria::game::Battle::kEnemy;
-    // The player's town: its gate is the computer's to take (the garrison is the player's, and far off).
+    CHECK(b.defending());
+    // The town's door, the player's to keep (the region holds its neighbours' gates too: the one nearest the courtyard).
     int gate = -1;
     float best = 1e9f;
-    const V3 camp = b.squadCentre(b.squads().front(), false);
+    const V3 yard = illyria::game::toV3(b.capturePoint().stages().front().at);
     for (size_t i = 0; i < b.region().gates().size(); ++i) {
-        const float d = (illyria::game::toV3(b.region().gates()[i].a) - camp).length();
+        const V3 door = illyria::game::toV3(b.region().gates()[i].a + b.region().gates()[i].b) * 0.5f;
+        const float d = V3{door.x - yard.x, door.y - yard.y, 0}.length();
         if (d < best) best = d, gate = static_cast<int>(i);
     }
+    CHECK(gate >= 0);
+    if (gate < 0) return;
     const size_t g = static_cast<size_t>(gate);
-    const_cast<World&>(b.world()).setGateHolder(g, kMe);
+    CHECK(b.world().gates()[g].holder == kMe);
     const V3 mid = illyria::game::toV3(b.region().gates()[g].a + b.region().gates()[g].b) * 0.5f;
-    const V3 out = illyria::game::toV3(b.region().gates()[g].out);
-    // (the player's camp is elsewhere and not in this: only the town's own men are his)
-    for (const illyria::game::Squad& sq : b.squads())
-        if (sq.owner == kMe)
-            for (EntityId id : sq.members) const_cast<Unit&>(*b.world().findUnit(id)).hp = 0;
-    b.addSquad("Garrison", kMe, UnitType::HeavyInfantry, 6, mid + out * -25.0f, out);
-    const int train = b.addSquad("Train", kThem, UnitType::Catapult, 2, mid + out * 140.0f, out * -1.0f);
-    const int foot = b.addSquad("Foot", kThem, UnitType::HeavyInfantry, 12, mid + out * 150.0f + V3{0, 14, 0}, out * -1.0f);
-    const auto dist = [&](int q) { return (b.squadCentre(b.squads()[static_cast<size_t>(q)], false) - mid).length(); };
-    for (int i = 0; i < 200; ++i) b.advance(0.1);
+    // The besiegers: the train within its throw of the door, and the fighting foot and horse of the whole host (a second
+    // battery stands before another wall with a company of its own).
+    const auto dist = [&](size_t q) { return (b.squadCentre(b.squads()[q], false) - mid).length(); };
+    int train = -1;
+    std::vector<size_t> melee;
+    for (size_t q = 0; q < b.squads().size(); ++q) {
+        const illyria::game::Squad& sq = b.squads()[q];
+        if (sq.owner != kThem) continue;
+        if (sq.type == UnitType::Catapult && (train < 0 || dist(q) < dist(static_cast<size_t>(train)))) train = static_cast<int>(q);
+        if (illyria::game::roleOf(sq.type) == illyria::game::Role::Melee) melee.push_back(q);
+    }
+    CHECK(train >= 0);
+    CHECK(melee.size() >= 6);
+    if (train < 0) return;
+    const size_t engines = static_cast<size_t>(train);
+    // Twenty seconds: the engines throw from where they stand and the doors take it, and not a company of the foot has
+    // come within a hundred metres of the doors while they stood.
+    float closest = 1e9f, enginesClosest = 1e9f;
+    int stood = 0;
+    for (int i = 0; i < 200; ++i) {
+        b.advance(0.1);
+        if (b.world().gates()[g].broken()) continue;
+        ++stood;
+        enginesClosest = std::min(enginesClosest, dist(engines));
+        for (size_t q : melee) closest = std::min(closest, dist(q));
+    }
     const int hpLeft = b.world().gates()[g].hp;
-    std::printf("  after 20 s: gate %d of %d hp, the foot %.0f m out, the engines %.0f m\n", hpLeft, b.region().gates()[g].maxHp, dist(foot), dist(train));
+    std::printf("  after 20 s: gate %d of %d hp, the foot no nearer than %.0f m while it stood, the engines %.0f m\n", hpLeft, b.region().gates()[g].maxHp, closest, enginesClosest);
     CHECK(hpLeft < b.region().gates()[g].maxHp);  // the engines are at the gate
-    CHECK(dist(foot) > 100.0f);                   // and the foot hold their line, they have not rushed it
-    b.breakGate(gate);
+    CHECK(enginesClosest > 100.0f);               // from their own reach
+    CHECK(stood >= 50 && closest > 100.0f);       // and the foot hold their line, they have not rushed it
+    CHECK(!b.decided());
+    // The line: the companies standing by that battery.
+    std::vector<size_t> line;
+    for (size_t q : melee)
+        if ((b.squadCentre(b.squads()[q], false) - b.squadCentre(b.squads()[engines], false)).length() < 60.0f) line.push_back(q);
+    CHECK(line.size() >= 4);
+    if (!b.world().gates()[g].broken()) b.breakGate(gate);
     for (int i = 0; i < 600; ++i) b.advance(0.1);
-    std::printf("  60 s after it fell: the foot %.0f m from the doors\n", dist(foot));
-    CHECK(dist(foot) < 100.0f);  // on the way in, to the gathering outside the breach, where they wait for the rest
+    float farthest = 0;
+    for (size_t q : line) farthest = std::max(farthest, dist(q));
+    std::printf("  60 s after it fell: the %zu companies of the line no farther than %.0f m from the doors\n", line.size(), farthest);
+    CHECK(farthest < 100.0f);  // on the way in, to the gathering outside the breach, where they wait for the rest
+    CHECK(!b.decided());       // (all of it in a battle still being fought)
 }
 
 TEST(archers_shoot_over_a_wall_not_into_it) {
@@ -1163,16 +1213,31 @@ TEST(a_man_sent_to_hold_ground_goes_back_to_it_until_he_is_told_otherwise) {
     for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
     CHECK(w.findUnit(holder)->occupying && !w.findUnit(walker)->occupying);
     CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(1));
+    // (The man of the ordinary march is posted where it ended, as every man sent somewhere is: World::returnToPost.)
+    CHECK(w.findUnit(walker)->posted && !w.findUnit(holder)->posted);
+    CHECK((w.findUnit(walker)->postAt - Vec3{m(40), m(20), m(0)}).flat().length() < m(1));
     // Driven off it (a rout that ended far away): both stand 25 m from where they were sent.
     for (EntityId id : {holder, walker}) const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
     const uint64_t before = w.checksum();
     for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
     CHECK(w.checksum() != before);
     CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(6));   // back on his ground
-    CHECK((w.findUnit(walker)->pos - Vec3{m(15), m(20), m(0)}).flat().length() < m(1));  // an ordinary march is done when it is done
-    // Any other order ends it.
-    w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}});
-    CHECK(!w.findUnit(holder)->occupying);
+    // And the other back at his post (to within the two metres a posted man is let stand off it), no ground of his to occupy.
+    CHECK((w.findUnit(walker)->pos - Vec3{m(40), m(20), m(0)}).flat().length() < Fixed::fromRatio(21, 10));
+    CHECK(w.findUnit(walker)->posted && !w.findUnit(walker)->occupying);
+    // Any other order ends it: told to stop, neither has ground or a post, and driven off again each stays where he is left.
+    w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}, Command{0, walker, Command::Type::Stop, {}}});
+    CHECK(!w.findUnit(holder)->occupying && !w.findUnit(holder)->posted);
+    CHECK(!w.findUnit(walker)->occupying && !w.findUnit(walker)->posted);
+    Vec3 left[2];
+    int k = 0;
+    for (EntityId id : {holder, walker}) {
+        const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
+        left[k++] = w.findUnit(id)->pos;
+    }
+    for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
+    CHECK((w.findUnit(holder)->pos - left[0]).flat().length() < m(1));
+    CHECK((w.findUnit(walker)->pos - left[1]).flat().length() < m(1));
 }
 
 TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
@@ -1208,4 +1273,30 @@ TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
     std::printf("  %d of %d ramp feet have no route to their courtyard\n", unreached, ramps);
     CHECK(unreached <= 8);
     CHECK(castlesWithoutAWay == 0);
+}
+
+TEST(a_molotov_burns_a_wooden_gate_slowly_and_does_not_smash_it) {
+    // A thrower of Molotovs (a dwarf with no satchels) left to himself 12 m before a foe's shut gate, nobody about: one
+    // bottle at the doors, and another only when the first fire is out. Each burns 8 s at 25 a second: 200 of a town
+    // gate's 2000, where the bottle's old blast smashed 60 at once. Satchels and stones are what break a gate.
+    GateField f = gateField(7);
+    World& w = *f.w;
+    UnitStats thrower = unitStats(UnitType::DwarfGrenadier);
+    thrower.satchels = {};
+    const EntityId dwarf = w.spawnUnit(0, f.centre + f.out * m(12), -f.out, thrower);
+    const int32_t full = w.gates()[f.gate].hp;
+    int bursts = 0, firstHit = -1, burst = -1;
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts()) {
+            if (e.kind == ImpactEvent::Kind::Burst) ++bursts, burst = burst < 0 ? t : burst;
+            if (e.kind == ImpactEvent::Kind::Gate && firstHit < 0) firstHit = t;
+        }
+    }
+    std::printf("  %d bottle(s) in 40 s; the gate %d of %d hp (the first burn %.1f s after the first bottle); %d left\n", bursts, w.gates()[f.gate].hp, full,
+                (firstHit - burst) / 30.0, w.findUnit(dwarf)->ammo);
+    CHECK(bursts >= 1 && bursts <= 3);
+    CHECK(w.gates()[f.gate].hp < full);
+    CHECK(full - w.gates()[f.gate].hp <= bursts * 225);
+    CHECK(!w.gates()[f.gate].broken());
 }

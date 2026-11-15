@@ -215,6 +215,8 @@ bool World::creepToWall(Unit& u) {
     if (!isEngine(u) || u.hasMoveTarget || u.hasAttackTarget) return false;
     const Unit* mark = wallShooter(u, autoReach(u) + kCreepMore);
     if (mark == nullptr) return false;
+    // (Its stones spent, or the mark in its reach already and not worth one of them: it stands where it is.)
+    if (!armed(u) || (mark->pos - u.pos).flat().length() <= shotRange(u, autoReach(u), mark->pos)) return false;
     walk(u, mark->pos);
     return true;
 }
@@ -222,6 +224,37 @@ bool World::creepToWall(Unit& u) {
 Unit* World::autoTarget(const Unit& u) {
     if (u.stats.ranged.autoRange <= Fixed::zero()) return nullptr;
     Unit* near = nearestEnemy(u, autoReach(u) * 3 / 2);
+    // One bowman in three picks out the foe's dwarf or wizard when he is within kPickOut (near enough to tell him from the
+    // men about him), unless a foe is on the bowman. (Every bow in reach on the one man was tried: thirty-six archers had
+    // a dwarf dead in the time it takes to light a fuse, from across a river, and no trap was ever sprung.)
+    constexpr Fixed kPickOut = Fixed::fromInt(30);
+    if (u.stats.ranged.kind == ProjectileKind::Arrow && u.id % 3 == 0 && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
+        Unit* mark = nullptr;
+        const Fixed pick = min(autoReach(u), kPickOut);
+        Fixed best = pick * pick;
+        nearbyNotOf(u.owner, u.pos.x, u.pos.y, pick, [&](uint32_t i) {
+            Unit& o = units_[i];
+            if (!o.alive() || o.owner == u.owner || o.inAir() || !precious(o.stats)) return;
+            const Fixed d = (o.pos - u.pos).flat().lengthSq();
+            if (d < best || (d == best && mark != nullptr && o.id < mark->id)) {
+                best = d;
+                mark = &o;
+            }
+        });
+        if (mark != nullptr) return mark;
+    }
+    // Fire for timber: a thrower of Molotovs takes a foe's engine in his reach not alight yet, unless a foe is on him.
+    if (u.stats.ranged.kind == ProjectileKind::Molotov && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
+        Unit* engine = nullptr;
+        Fixed best = autoReach(u) * autoReach(u);
+        nearbyNotOf(u.owner, u.pos.x, u.pos.y, autoReach(u), [&](uint32_t i) {
+            Unit& o = units_[i];
+            if (!o.alive() || o.owner == u.owner || o.stats.gait != Gait::Wheeled || o.burning > 0) return;
+            const Fixed d = (o.pos - u.pos).flat().lengthSq();
+            if (d < best || (d == best && engine != nullptr && o.id < engine->id)) best = d, engine = &o;
+        });
+        if (engine != nullptr) return engine;
+    }
     // The walls are cleared first, unless a foe is on him.
     if (Unit* wall = wallShooter(u, autoReach(u)); wall != nullptr && wall != near && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) return wall;
     return near;

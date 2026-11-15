@@ -2,6 +2,7 @@
 // battle to the next (the living, their wounds half mended, their kills and rank), what does not (a squad wiped out),
 // the purse and what it can and cannot buy, the save, and the roster seated in a real Battle by the one setup code.
 #include <algorithm>
+#include <cstdio>
 #include <string>
 
 #include "illyria/game/march.h"
@@ -31,7 +32,7 @@ TEST(march_begins_with_the_army_bought_a_lord_and_the_magi) {
     const March m = fresh();
     CHECK(m.squads.size() == 7 && m.stage == 0 && m.purse == 0 && !m.over());
     CHECK(m.budget == 2 * Conquest::price(UnitType::HeavyInfantry) + Conquest::price(UnitType::Archers) + Conquest::price(UnitType::LightCavalry) + Conquest::price(UnitType::DwarfGrenadier));
-    CHECK(find(m, "Heavy Infantry 1") && find(m, "Heavy Infantry 2") && find(m, "Archers") && find(m, "The Lord") && find(m, "Magi of the Tower"));
+    CHECK(find(m, "Heavy Infantry 1") && find(m, "Heavy Infantry 2") && find(m, "Archers") && find(m, "The Lord") && find(m, "Magus of the Tower"));
     CHECK(find(m, "The Lord")->men.size() == 1 && find(m, "Archers")->men.size() == static_cast<size_t>(Conquest::squadSize(UnitType::Archers)));
     // Five battles: a field first, a wall to storm second (the first that asks for an order, and it has a time
     // limit: a march that is given none ends there), the Ford, a wall to hold, the capital last.
@@ -214,7 +215,7 @@ TEST(march_roster_is_seated_in_a_battle_by_the_skirmish_setup_and_read_back) {
         }
         // The card counts the men against the squad's full strength; the result against what it brought.
         for (const Squad& q : b.squads())
-            if (q.name == "Heavy Infantry 1") {
+            if (q.name == "Heavy Infantry 1" && q.owner == Battle::kPlayer) {  // (the other host may have a squad of the name)
                 CHECK(b.aliveCount(q) == 3 && b.totalCount(q) == Conquest::squadSize(UnitType::HeavyInfantry) && b.standing(q).kills == 8);
             }
         const Battle::Result r = b.result();
@@ -255,5 +256,53 @@ TEST(march_settles_by_the_squads_names_whatever_order_the_battle_tells_them_in) 
     after.erase(after.begin());  // (the magi are not told of: gone)
     m.settle(1, after);
     CHECK(m.squads.size() == 6 && m.squads[0].name == "Heavy Infantry 1" && m.squads[0].men.size() == 5 && m.squads[5].name == "The Lord");
-    CHECK(m.gone.size() == 1 && m.gone[0] == "Magi of the Tower (The open field)");
+    CHECK(m.gone.size() == 1 && m.gone[0] == "Magus of the Tower (The open field)");
+}
+
+TEST(march_stores_stay_spent_between_battles_and_the_camp_makes_them_up_for_gold) {
+    // One dwarf of the pair comes out of a battle with two of his three satchels and one of his three bottles; the wizard
+    // with one fireball.
+    March m = fresh();
+    std::vector<CarriedSquad> after = untouched(m);
+    for (CarriedSquad& c : after) {
+        if (c.type == UnitType::DwarfGrenadier) c.men[0].satchels = 2, c.men[0].ammo = 1;
+        if (c.type == UnitType::Wizards) c.men[0].ammo = 1;
+    }
+    m.settle(1, after);
+    const size_t dwarf = static_cast<size_t>(find(m, "Dwarven Grenadiers") - m.squads.data());
+    CHECK(m.squads[dwarf].men[0].satchels == 2 && m.squads[dwarf].men[0].ammo == 1);
+    int carried = 0, full = 0;
+    m.load(dwarf, carried, full);
+    CHECK(carried == 9 && full == 12);  // (his fellow's three and three untouched)
+    // The next battle's roster says so, and the battle seats him so; a line of text keeps it.
+    for (const CarriedSquad& c : m.setup().roster)
+        if (c.type == UnitType::DwarfGrenadier) CHECK(c.men[0].satchels == 2 && c.men[0].ammo == 1);
+    Battle b(3, m.scenario(), m.setup());
+    int seen = 0;
+    for (const illyria::sim::Unit& u : b.world().units()) {
+        if (u.owner != Battle::kPlayer) continue;
+        if (static_cast<UnitType>(u.stats.type) == UnitType::DwarfGrenadier) seen += u.satchels == 2 && u.ammo == 1;
+        if (static_cast<UnitType>(u.stats.type) == UnitType::Wizards) seen += u.ammo == 1;
+    }
+    CHECK(seen == 2);  // (the one dwarf who had spent, and the wizard; his fellow has his full load)
+    for (const CarriedSquad& c : b.carried())
+        if (c.type == UnitType::DwarfGrenadier) CHECK(c.men[0].satchels == 2 && c.men[0].ammo == 1);
+    March again;
+    CHECK(March::load(m.save(), again) && again.save() == m.save());
+    CHECK(find(again, "Dwarven Grenadiers")->men[0].satchels == 2 && find(again, "Dwarven Grenadiers")->men[0].ammo == 1);
+    // A line written before loads were kept (four numbers a man) reads as a full load.
+    March old;
+    CHECK(March::load(fresh().save(), old) && old.squads[0].men[0].satchels == -1);
+    // The camp: 3 of the pair's 12 spent is 3/24 of their price, with the men (they cannot be replaced) costing nothing.
+    const int cost = m.resupplyCost(dwarf);
+    std::printf("  the dwarf's load made up for %d gold of a purse of %d (his price %d)\n", cost, m.purse, Conquest::price(UnitType::DwarfGrenadier));
+    CHECK(cost == (Conquest::price(UnitType::DwarfGrenadier) * 3 + 23) / 24 && m.reinforceCost(dwarf) == cost);
+    m.purse = 30;
+    const int purse = m.purse;
+    CHECK(m.reinforce(dwarf) > 0 && m.purse == purse - cost);
+    CHECK(m.squads[dwarf].men[0].satchels == -1 && m.squads[dwarf].men[0].ammo == -1 && m.resupplyCost(dwarf) == 0);
+    // An empty purse makes up nothing.
+    m.purse = 0;
+    const size_t wizard = static_cast<size_t>(find(m, "Magus of the Tower") - m.squads.data());
+    CHECK(m.resupplyCost(wizard) > 0 && m.reinforce(wizard) == 0 && m.squads[wizard].men[0].ammo == 1);
 }

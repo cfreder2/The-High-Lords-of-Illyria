@@ -47,14 +47,14 @@ Conquest::Option trained(UnitType t) {
         case T::Pikemen: return {t, 4, 18};
         case T::LightCavalry: return {t, 5, 20};
         case T::HeavyCavalry: return {t, 6, 26};
-        case T::DwarfGrenadier: return {t, 4, 32};  // where the retired legion was trained
+        case T::DwarfGrenadier: return {t, 6, 60};  // a pair of dwarves and their charges: dear, slow, and few are kept (keepCap)
         case T::WolfRiders: return {t, 5, 20};
         case T::Warrior: return {t, 4, 24};
         case T::Catapult: return {t, 6, 40};  // dear and slow to build, as Warlords II's siege engines
         // The levies, dearer or cheaper than a point of strength is worth (docs/BALANCE.md).
         case T::Berserker: return {t, 3, 40};
         case T::Archons: return {t, 3, 60};
-        case T::Wizards: return {t, 3, 30};
+        case T::Wizards: return {t, 3, 70};  // one wizard
         case T::Elephants: return {t, 3, 25};
         case T::Demons: return {t, 3, 26};
         case T::Dragons: return {t, 3, 40};
@@ -79,7 +79,6 @@ int32_t Conquest::squadSize(UnitType t) {
         case T::HeavyCavalry:
         case T::WolfRiders: return 8;
         case T::Giants:
-        case T::Wizards:
         case T::Archons:
         case T::Devils: return 3;
         case T::Griffins:
@@ -89,18 +88,55 @@ int32_t Conquest::squadSize(UnitType t) {
         case T::Journeyman: return 4;
         case T::Elephants:
         case T::Demons: return 2;
+        // Those who throw a blast are few (docs/GAME_DESIGN.md, "Explosives are rare"): a wizard and a dragon alone, the
+        // dwarves a pair.
+        case T::Wizards:
         case T::Dragons:
         case T::Hero: return 1;
+        case T::DwarfGrenadier: return 2;
         case T::Catapult: return 2;
         case T::Dwarves:
         case T::Berserker: return 10;
-        case T::Spiders:
-        case T::DwarfGrenadier: return 6;
+        case T::Spiders: return 6;
         default: return 12;
     }
 }
 
 int32_t Conquest::price(UnitType t) { return trained(t).cost; }
+
+int32_t Conquest::keepCap(UnitType t) {
+    switch (t) {
+        case T::DwarfGrenadier: return 2;
+        case T::Wizards:
+        case T::Dragons: return 1;
+        case T::Catapult: return 3;
+        default: return 0;
+    }
+}
+
+int32_t Conquest::kept(uint8_t side, UnitType t) const {
+    int32_t n = 0;
+    for (const Stack& s : stacks_)
+        if (s.owner == side)
+            for (const Army& a : s.armies) n += a.type == t;
+    for (const Transit& tr : transits_) n += tr.owner == side && tr.army.type == t;
+    for (const CityState& c : cities_)
+        n += c.owner == side && c.producing >= 0 && c.progress > 0 && c.options[static_cast<size_t>(c.producing)].type == t;
+    return n;
+}
+
+void Conquest::resupply() {
+    for (Stack& s : stacks_) {
+        const int32_t city = cityAt(s.cx, s.cy);
+        if (city < 0 || cities_[static_cast<size_t>(city)].owner != s.owner) continue;
+        for (Army& a : s.armies)
+            for (Man& m : a.men) {
+                if (m.satchels < 0 && m.ammo < 0) continue;
+                m.satchels = m.ammo = -1;
+                if (m.unit && world_) world_->restoreLoad(m.unit, INT32_MAX, INT32_MAX);
+            }
+    }
+}
 
 int32_t Conquest::upkeep(UnitType t) {
     // Common troops: a quarter of their training price a day. Rare ones what
@@ -354,6 +390,7 @@ bool Conquest::produce(int32_t city, int32_t option) {
     if (city < 0 || city >= static_cast<int32_t>(cities_.size())) return false;
     CityState& c = cities_[static_cast<size_t>(city)];
     if (option >= static_cast<int32_t>(c.options.size())) return false;
+    if (option >= 0 && option != c.producing && c.owner != kNeutral && atCap(c.owner, c.options[static_cast<size_t>(option)].type)) return false;
     c.producing = option;
     c.progress = 0;
     return true;
@@ -427,7 +464,7 @@ void Conquest::commandMen(const Order& o) {
             for (const Man& m : a.men)
                 if (m.unit == o.command.unit && m.alive()) {
                     // A stance or the lord's Rally is no order to go anywhere: the stack's march stands.
-                    if (o.command.type == Command::Type::SetStance || o.command.type == Command::Type::Rally) {
+                    if (o.command.type == Command::Type::SetStance || o.command.type == Command::Type::Rally || o.command.type == Command::Type::HoldFire) {
                         playerCommands_.push_back(o.command);
                         return;
                     }
@@ -537,6 +574,7 @@ void Conquest::newDay() {
     }
     deliverTransits();
     questsNewDay();
+    resupply();
     // Training: one army at a time per city, paid for when it starts.
     for (size_t i = 0; i < cities_.size(); ++i) {
         CityState& c = cities_[i];
@@ -545,6 +583,7 @@ void Conquest::newDay() {
         const Option& o = c.options[static_cast<size_t>(c.producing)];
         const bool sent = c.vectorTo >= 0;
         if (c.progress == 0) {
+            if (atCap(c.owner, o.type)) continue;  // the realm keeps its fill of them: waits for a place
             if (sides_[c.owner].gold < o.cost) continue;  // waits for the money
             sides_[c.owner].gold -= o.cost;
         }
@@ -718,6 +757,11 @@ uint64_t Conquest::checksum() const {
                 h.addU64(m.placed);
                 h.addI64(m.ax);
                 h.addI64(m.ay);
+                // Only once something has been spent, so conquests without it hash as before.
+                if (m.satchels >= 0 || m.ammo >= 0) {
+                    h.addI64(m.satchels);
+                    h.addI64(m.ammo);
+                }
             }
         }
     }

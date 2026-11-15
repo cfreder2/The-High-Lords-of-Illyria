@@ -168,13 +168,21 @@ TEST(a_save_of_the_layout_before_squads_had_a_history_loads_and_plays_on) {
     }
     // As it was saved: a day and a half in, the Sylvaran Elves against two lords; every squad's history at nothing.
     CHECK(c->tick() == 5400 && c->day() == 1 && c->setup().player == 4);
-    int armies = 0, men = 0;
+    int armies = 0, men = 0, wizards = 0, wizardMen = 0;
     for (const Conquest::Stack& s : c->stacks())
         for (const Army& a : s.armies) {
             ++armies;
             men += a.soldiers;
             CHECK(a.battles == 0 && a.foughtTick == 0 && a.rank >= 0 && a.kills >= 0);
+            // (It says nothing of what a man carries either: every load is full. And a squad raised under the old rules
+            // keeps its men: six grenadiers, three wizards, though the realm may now train no more of them.)
+            for (const Man& m : a.men) CHECK(m.satchels == -1 && m.ammo == -1);
+            if (a.type == UnitType::Wizards) ++wizards, wizardMen += static_cast<int>(a.men.size());
         }
+    std::printf("  its wizards: %d squads, %d men\n", wizards, wizardMen);
+    CHECK(wizardMen == 3 * wizards);  // as they were raised
+    for (uint8_t side = 0; side < 8; ++side)
+        if (c->kept(side, UnitType::Wizards) > 0) CHECK(c->atCap(side, UnitType::Wizards));
     CHECK(armies > 20 && men > 200);
     // It plays on, and is saved in today's layout, which loads to the same game.
     for (int k = 0; k < Conquest::kTicksPerDay; ++k) c->step();

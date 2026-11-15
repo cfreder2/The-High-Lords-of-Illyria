@@ -17,7 +17,7 @@ constexpr int32_t kGateBlowDivisor = 4;
 // stone flung at the doors, a satchel against them, a fireball (that scorches
 // more than it breaks).
 constexpr int32_t kStoneGatePct = 900;
-constexpr int32_t kBombGatePct = 300;
+constexpr int32_t kBombGatePct = 200;  // (three times, when a satchel was 80: one dwarf's load is not a town gate's whole strength)
 constexpr int32_t kFireGatePct = 150;
 // An engine stops this much inside its own throw when it begins on a gate (so a stone does not fall short).
 constexpr Fixed kEngineMargin = Fixed::fromInt(6);

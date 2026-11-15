@@ -635,6 +635,7 @@ private:
 void pushOrderMarks(const Battle& battle, float seconds, std::vector<float>& decals);
 // How far the selected shooters reach: a ring of dots for each kind (renderer_orders.cpp).
 void pushRangeRings(const Battle& battle, float seconds, std::vector<float>& decals);
+void pushSatchelMarks(const Battle& battle, float seconds, std::vector<float>& decals);
 // Where the selected catapults' boulders would come down (a ring) and roll (a line of dots fading out to where each
 // would lie): Battle::stoneForecasts (renderer_orders.cpp).
 void pushStoneForecasts(const Battle& battle, float seconds, std::vector<float>& decals);

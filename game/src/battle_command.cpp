@@ -366,6 +366,15 @@ void Battle::clearSelection() {
 
 void Battle::selectSquad(int index) {
     if (index < 0 || index >= static_cast<int>(squads_.size()) || squads_[static_cast<size_t>(index)].owner != local_) return;
+    // The Guard key, then a card: that squad is the one to guard (as a click on its men is).
+    if (orderMode_ == OrderMode::Guard && !selectedAlive().empty()) {
+        for (sim::EntityId id : squads_[static_cast<size_t>(index)].members)
+            if (world_->units()[id - 1].alive()) {
+                orderGuard(id);
+                break;
+            }
+        return;
+    }
     select(squads_[static_cast<size_t>(index)].members);
 }
 
@@ -936,6 +945,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
     if (near.empty()) return;
     for (MarchOrder& m : plan) {
         const float r = static_cast<float>(world_->units()[m.id - 1].stats.radius.toDouble()) + kSpare;
+        const V3 place = m.target;
         // Out of each in turn, twice over for those that touch.
         for (int pass = 0; pass < 2; ++pass)
             for (const sim::Obstacle* o : near) {
@@ -956,6 +966,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
                 d = len > 0.01f ? d * (1.0f / len) : V3{1, 0, 0};
                 m.target = c + d * reach;
             }
+        if (m.target.x != place.x || m.target.y != place.y) m.place = place, m.stoodOff = true;
     }
 }
 
@@ -1007,7 +1018,7 @@ void Battle::sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan,
         c.face = toSim(o.face);
         c.force = force;
         pending_.push_back(c);
-        slots_[o.id - 1] = {o.target, o.face, front, order};
+        slots_[o.id - 1] = {o.stoodOff ? o.place : o.target, o.face, front, order};
     }
     // Squads that marched whole remember the way they face.
     for (Squad& s : squads_) {
@@ -1253,15 +1264,24 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         return;
     }
     if (selecting && mode != OrderMode::Normal && pick.kind != K::None) {
-        orderMode_ = OrderMode::Normal;
+        // (A lay with Shift held is queued behind the last, and the mode stays for the next of the line.)
+        if (!(mode == OrderMode::LaySatchel && additive)) orderMode_ = OrderMode::Normal;
         if (mode == OrderMode::ForceMarch) {
             V3 ground;
             if (camera.pickGround(x, y, ground)) orderForceMarch(ground);
             return;
         }
-        if (mode == OrderMode::LaySatchel) {
+        if (mode == OrderMode::Guard) {
+            if (pick.kind == K::Own && pick.index >= 0) orderGuard(units[static_cast<size_t>(pick.index)].id);
+            else if (pick.kind == K::Own && pick.squad >= 0) orderGuard(nearestOf(squads_[static_cast<size_t>(pick.squad)].members, centreOf(mine)));
+            else say("Click a squad of yours");
+            return;
+        }
+        if (mode == OrderMode::LaySatchel || mode == OrderMode::Detonate) {
             V3 ground;
-            if (camera.pickGround(x, y, ground)) orderLaySatchels(ground);
+            if (!camera.pickGround(x, y, ground)) return;
+            if (mode == OrderMode::LaySatchel) orderLaySatchels(ground, additive);
+            else orderDetonate(ground, additive);
             return;
         }
         switch (pick.kind) {

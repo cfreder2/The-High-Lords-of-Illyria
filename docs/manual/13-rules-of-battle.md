@@ -160,7 +160,7 @@ No shot is sure. Every arrow, bottle, fireball and stone is a real thing in flig
 - **Aim.** Each shot is aimed at a point chosen evenly inside a **circle** around the mark. The circle's radius is the weapon's spread at 100 m (archers 6 m, wizards, dragons and catapults 4 m, grenadiers 10 m) in proportion to the range: an archer's circle at 50 m has a radius of 3 m, at 25 m of 1.5 m. Each **rank** makes it 15% smaller (a regular's 85%, a veteran's 70%, an elite's 55%); a **wavering** man's is half again as wide; a shot lobbed blind over a wall at a mark he cannot see, twice as wide.
 - **Leading.** Ordered at a soldier, an archer aims ahead of a walking man by his pace times the arrow's flight (and a fifth for the arc), at most 15 m.
 - **Range.** Every missile has a **maximum range** (archers 70 m, grenadiers 19 m, wizards 50 m, catapults 150 m, and no nearer than 30 m); ordered to shoot farther, they walk into range first. Idle missile troops shoot on their own at the nearest foe inside a shorter **auto range** (archers 55 m). Height adds to both and takes from both (above).
-- **Reload and draw.** An archer looses every **4 s** (a wizard every 9, a dragon 6, a grenadier 5, a catapult 14). On a fresh mark he must first **draw and aim for 1.5 s**, however long he has been idle. A wavering man reloads a quarter slower. Rank does not quicken the reload; a blessing does.
+- **Reload and draw.** An archer looses every **4 s** (a wizard every 7, a dragon 4, a grenadier 5, a catapult 14). On a fresh mark he must first **draw and aim for 1.5 s**, however long he has been idle. A wavering man reloads a quarter slower. Rank does not quicken the reload; a blessing does.
 - **The arc.** A shot goes by the flat arc when the way is clear. With a brow, a tree, a house or a wall in the way it is lofted just enough to clear it; if only the high lob gets over, it is lobbed. If no arc gets there, it is not loosed, and men under orders move to find one. A catapult always throws high, at 53 degrees, and its stone comes down plunging.
 - **What it hits.** A missile strikes the **first body on its path**, whoever's it is, the shooter's own excepted. An arrow that misses flies on and comes down where it comes down. **Friendly fire** is real; mind your archers when your own men are in the melee. (A kill of your own man earns no rank.)
 - **The hit.** A shield facing the arrow may turn it (above). If not, it does the bow's damage (an archer's 16), with the shooter's edges as they stood when he loosed, +30% in the flank, +60% in the back, and the plunge.
@@ -170,16 +170,21 @@ No shot is sure. Every arrow, bottle, fireball and stone is a real thing in flig
 
 ### Blasts {#blasts}
 
-Grenadiers throw **Molotovs**, bottles of burning oil that burst where they strike into fire three metres wide, and lay **satchel charges** on the ground. A laid satchel lies still and never goes off by itself: a blast or a Molotov's fire reaching it sets it off a moment later, throwing everyone near off his feet, and its blast sets off the satchels near it: chain reactions. A grenadier killed by fire or a blast goes up with every satchel he still carries. **Fireballs** (wizards, dragons) burst where they strike, and burn. A **catapult stone** lands in a plunging arc and smashes everything within 3 m. Blasts do far more to a gate than blows do (chapter [](#gates)).
+A grenadier throws **Molotovs**, bottles of burning oil that do not explode: each leaves a patch of burning ground three metres wide for eight seconds, burning whoever stands in it or walks through it (10 a second), frightening them and slowing them, and setting fire to timber it lands by (a catapult burns down; a gate burns slowly), and lays **satchel charges** on the ground. A laid satchel lies still and never goes off by itself: a blast, a Molotov's fire or a fireball reaching it sets it off a moment later, throwing everyone near off his feet, and its blast sets off the satchels near it a third of a second on: a line goes up one after another. A grenadier killed by fire or a blast goes up with every satchel he still carries.
+
+**Explosives are rare and counted.** Those who throw a blast come few (a pair of dwarves, one wizard, one dragon; two catapults to a train), an army has few of them (2 grenadiers, 1 wizard, 1 dragon, 3 trains at most), and each carries a fixed load into battle: a pair of grenadiers **6 Molotovs and 6 satchels** (three and three a dwarf), a wizard **4 fireballs**, a dragon **6 breaths**, a catapult train **8 stones** (four an engine). None is made in battle; in a Conquest a load is made up only at dawn in a town of your own. Left to themselves they are thrifty (three or more men in the blast, a great beast, or a foe within 6 m; never men running away; a grenadier keeps his last bottle for his satchels; an engine throws unasked only at a gate, a column end-on or a knot of men on a wall), and **Shift + K** holds their fire for your orders alone. The computer's men carry the same loads.
+
+**Guard them.** A dwarf or a wizard alone is ridden down: that is meant. Select a squad of pikes or heavy foot, press **,** and click the dwarves (or their card): the guards ring them, strike whatever comes to the ring, and stay until you order them elsewhere. The cards say GUARD and GUARDED. When horse or bowmen turn on your dwarves or wizard they call "hunted"; **.** sends the nearest free squad.
+
+**Water puts them out.** A Molotov that lands in water does nothing ("Doused"). A satchel cannot be laid in water, and one that ends there is dead. A fireball that bursts on water, or on a man standing in a ford, is steam: a third of its width and of its damage ("Steam"). Mine the bank, not the ford. **Fireballs** (wizards, dragons) burst where they strike, and burn. A **catapult stone** lands in a plunging arc and smashes everything within 3 m. Blasts do far more to a gate than blows do (chapter [](#gates)).
 
 A blast does its full damage at its centre, falling evenly to nothing at its edge, and throws in the same proportion:
 
 | Blast | Damage at the centre | Radius |
 |---|---|---|
-| Molotov | 40 | 3 m |
-| Wizard's fireball | 40 | 3.5 m |
-| Dragon's fireball | 50 | 5 m |
-| Satchel charge | 80 | 4 m |
+| Wizard's fireball | 90 | 4.5 m |
+| Dragon's fireball | 70 | 5 m |
+| Satchel charge | 150 | 5 m |
 | Catapult stone | 100 | 3 m |
 
 A blast spares nobody: friend and foe alike, shield or no shield, flank or front. It is not made stronger by the rank, the edges or the blessings of whoever threw it, and **the men it kills are nobody's kills**: wizards, grenadiers and catapults earn no rank by their blasts.

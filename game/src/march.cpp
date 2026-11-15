@@ -46,10 +46,11 @@ March March::begin(const std::vector<Buy>& army, bool easy) {
         m.squads.push_back(std::move(s));
     };
     for (const Buy& b : army)
-        for (int i = 0; i < b.squads; ++i)
+        // (Within the caps on those who throw a blast, whatever the screen sent: Conquest::keepCap.)
+        for (int i = 0; i < (sim::Conquest::keepCap(b.type) > 0 ? std::min(b.squads, sim::Conquest::keepCap(b.type)) : b.squads); ++i)
             add(std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : ""), b.type, sim::Conquest::squadSize(b.type));
     add("The Lord", UnitType::Hero, 1);
-    add("Magi of the Tower", UnitType::Wizards, sim::Conquest::squadSize(UnitType::Wizards));
+    add("Magus of the Tower", UnitType::Wizards, sim::Conquest::squadSize(UnitType::Wizards));
     return m;
 }
 
@@ -69,7 +70,7 @@ SkirmishSetup March::setup() const {
     s.siegeSeconds = st.siegeSeconds;
     for (const Squad& q : squads) {
         CarriedSquad c{q.name, q.type, q.full, {}};
-        for (size_t i = 0; i < q.men.size(); ++i) c.men.push_back({q.men[i].hp, q.men[i].rank, q.men[i].kills, static_cast<int>(i)});
+        for (size_t i = 0; i < q.men.size(); ++i) c.men.push_back({q.men[i].hp, q.men[i].rank, q.men[i].kills, static_cast<int>(i), q.men[i].satchels, q.men[i].ammo});
         s.roster.push_back(std::move(c));
     }
     return s;
@@ -98,6 +99,8 @@ void March::settle(int outcome, const std::vector<CarriedSquad>& after) {
                 gained += std::max(0, c.kills - m.kills);
                 m.kills = std::max(m.kills, c.kills);
                 m.rank = std::max(m.rank, c.rank);
+                m.satchels = c.satchels;  // what he laid and threw stays spent until the camp makes it up
+                m.ammo = c.ammo;
                 ++m.battles;
                 // Living through battles makes a soldier too (a hero's level is his kills' alone).
                 if (q.type != UnitType::Hero) m.rank = std::max(m.rank, m.battles >= kVeteranBattles ? 2 : m.battles >= kSeasonedBattles ? 1 : 0);
@@ -131,22 +134,62 @@ void March::settle(int outcome, const std::vector<CarriedSquad>& after) {
     }
 }
 
+namespace {
+int menCost(const March& m, size_t squad) {
+    const March::Squad& q = m.squads[squad];
+    const int missing = q.full - static_cast<int>(q.men.size());
+    if (missing <= 0 || March::irreplaceable(q.type)) return 0;
+    return (sim::Conquest::price(q.type) * missing + q.full - 1) / q.full;
+}
+}  // namespace
+
+void March::load(size_t squad, int& carried, int& full) const {
+    carried = full = 0;
+    if (squad >= squads.size()) return;
+    const Squad& q = squads[squad];
+    const sim::UnitStats st = sim::unitStats(q.type);
+    const int each = st.satchels.count + st.ranged.ammo;
+    for (const Man& man : q.men) {
+        full += each;
+        carried += (man.satchels < 0 ? st.satchels.count : std::min(man.satchels, st.satchels.count)) + (man.ammo < 0 ? st.ranged.ammo : std::min(man.ammo, st.ranged.ammo));
+    }
+}
+
+int March::resupplyCost(size_t squad) const {
+    if (over() || squad >= squads.size()) return 0;
+    int carried, full;
+    load(squad, carried, full);
+    if (full <= 0 || carried >= full) return 0;
+    // Half the squad's price for a whole squad's whole load, in proportion (a pair of dwarves' six satchels and six bottles: 30 gold).
+    const Squad& q = squads[squad];
+    const int whole = std::max(1, full / std::max<int>(1, static_cast<int>(q.men.size())) * q.full * 2);
+    return std::max(1, (sim::Conquest::price(q.type) * (full - carried) + whole - 1) / whole);
+}
+
+bool March::resupply(size_t squad) {
+    const int cost = resupplyCost(squad);
+    if (cost <= 0 || purse < cost) return false;
+    purse -= cost;
+    for (Man& man : squads[squad].men) man.satchels = man.ammo = -1;
+    return true;
+}
+
 int March::reinforceCost(size_t squad) const {
     if (over() || squad >= squads.size()) return 0;
-    const Squad& q = squads[squad];
-    const int missing = q.full - static_cast<int>(q.men.size());
-    if (missing <= 0 || irreplaceable(q.type)) return 0;
-    return (sim::Conquest::price(q.type) * missing + q.full - 1) / q.full;
+    return menCost(*this, squad) + resupplyCost(squad);
 }
 
 int March::reinforce(size_t squad) {
-    const int cost = reinforceCost(squad);
-    if (cost <= 0 || purse <= 0) return 0;
+    if (over() || squad >= squads.size()) return 0;
+    // The load first (it is the dearer loss: a dwarf with nothing to lay), then the men.
+    const int made = resupply(squad) ? 1 : 0;
+    const int cost = menCost(*this, squad);
+    if (cost <= 0 || purse <= 0) return made;
     Squad& q = squads[squad];
     const int missing = q.full - static_cast<int>(q.men.size());
     // All of them if the purse runs to it, else as many as it pays for.
     const int joined = purse >= cost ? missing : static_cast<int>(static_cast<int64_t>(purse) * q.full / std::max(1, sim::Conquest::price(q.type)));
-    if (joined <= 0) return 0;
+    if (joined <= 0) return made;
     purse -= joined == missing ? cost : (sim::Conquest::price(q.type) * joined + q.full - 1) / q.full;
     q.men.insert(q.men.end(), static_cast<size_t>(joined), Man{});
     return joined;
@@ -175,6 +218,12 @@ std::string March::save() const {
         for (size_t i = 0; i < q.men.size(); ++i) {
             const Man& m = q.men[i];
             s += (i ? "," : "") + std::to_string(m.hp) + "." + std::to_string(m.rank) + "." + std::to_string(m.kills) + "." + std::to_string(m.battles);
+            // (What he carries, only once something is spent: two more numbers, his satchels and his missiles left. A line
+            // written before loads were kept has four, and reads as a full load.)
+            if (m.satchels >= 0 || m.ammo >= 0) {
+                const sim::UnitStats st = sim::unitStats(q.type);
+                s += "." + std::to_string(m.satchels < 0 ? st.satchels.count : m.satchels) + "." + std::to_string(m.ammo < 0 ? st.ranged.ammo : m.ammo);
+            }
         }
     }
     for (const std::string& g : gone) s += ";G|" + g;
@@ -235,7 +284,8 @@ bool March::load(const std::string& text, March& out) {
         for (const std::string& man : split(p[6], ',')) {
             const std::vector<std::string> v = split(man, '.');
             Man one;
-            if (v.size() != 4 || !number(v[0], 1, 1000, one.hp) || !number(v[1], 0, 8, one.rank) || !number(v[2], 0, 1000000, one.kills) || !number(v[3], 0, 1000, one.battles)) return false;
+            if ((v.size() != 4 && v.size() != 6) || !number(v[0], 1, 1000, one.hp) || !number(v[1], 0, 8, one.rank) || !number(v[2], 0, 1000000, one.kills) || !number(v[3], 0, 1000, one.battles)) return false;
+            if (v.size() == 6 && (!number(v[4], 0, 1000, one.satchels) || !number(v[5], 0, 1000, one.ammo))) return false;
             q.men.push_back(one);
         }
         if (q.men.empty() || static_cast<int>(q.men.size()) > q.full) return false;

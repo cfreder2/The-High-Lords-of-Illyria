@@ -87,12 +87,38 @@ int main() {
     std::printf("Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,\n"
                 "but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on\n"
                 "(its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);\n"
-                "against a castle gate its smash does nine times its blast damage (satchels three times, fireballs and Molotovs one and a half).\n"
-                "A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a\n"
+                "against a castle gate its smash does nine times its blast damage (satchels twice, fireballs one and a half).\n"
+                "**A Molotov has no blast** (\"that is a satchel's job\"): it shatters into a patch of burning ground (its radius below)\n"
+                "that burns for its fuse, hurting everyone who stands in it or walks through it (its damage, a second), shaking\n"
+                "their nerve and halving their pace there. Timber on or beside it catches: an engine burns on for 15 s at 20 a\n"
+                "second wherever it goes (a catapult standing in the patch burns to nothing on one bottle), and a gate in the patch burns at 25 a second\n"
+                "while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line\n"
+                "is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a\n"
                 "**draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it\n"
-                "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.\n\n");
-    std::printf("| Unit | Missile | Wounds | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |\n");
-    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+                "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.\n\n"
+                "**Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's\n"
+                "quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of\n"
+                "his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast\n"
+                "(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away;\n"
+                "a Molotov goes at a foe's engine not alight, a foe's gate not burning, three or more men standing still in its\n"
+                "patch, or a satchel with foes on it; and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the\n"
+                "mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.\n\n"
+                "**Water.** A Molotov that lands in water (where it stands a hand deep or more) goes out: no fire, and nothing\n"
+                "set off. A satchel is not laid in water, and one that ends there is dead. A fireball bursting on water, or on\n"
+                "a man standing in it, goes up in steam: a third of its blast radius and a third of its damage. Left to\n"
+                "themselves, grenadiers do not throw at men in a ford, and wizards weigh them by the smaller blast.\n\n"
+                "**Rare.** Those who throw a blast come few (two dwarves, one wizard, one dragon to a squad; two engines to a\n"
+                "train, with eight stones between them), and an army has\n"
+                "few: at most %d Dwarven Grenadiers, %d Wizards, %d Dragons, %d Catapults (a Conquest realm keeps no more, and a\n"
+                "Skirmish host buys no more). A grenadier or a wizard with no order gives ground before a foe within 10 m,\n"
+                "to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. One bowman in\n"
+                "three picks out a foe's grenadier or wizard within 30 m before anyone else. A squad ordered to guard them\n"
+                "(comma, then click them) rings them and strikes what comes to the ring. An engine's stones go unasked only\n"
+                "at a gate, at four or more men in the lane a stone rolls down, or at three in its blast on a wall-walk.\n\n",
+                Conquest::keepCap(UnitType::DwarfGrenadier), Conquest::keepCap(UnitType::Wizards), Conquest::keepCap(UnitType::Dragons),
+                Conquest::keepCap(UnitType::Catapult));
+    std::printf("| Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |\n");
+    std::printf("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         if (retired(static_cast<UnitType>(t))) continue;
         const UnitStats s = unitStats(static_cast<UnitType>(t));
@@ -103,24 +129,36 @@ int main() {
                            : s.ranged.kind == ProjectileKind::Molotov ? "Molotov"
                                                                       : "fireball";
         const bool blast = s.ranged.kind != ProjectileKind::Arrow;
+        const bool fire = s.ranged.kind == ProjectileKind::Molotov;  // (no blast: burning ground, world_fire.cpp)
         char draw[16] = "";
         if (s.ranged.drawTicks > 0) std::snprintf(draw, sizeof draw, "%.2f s", secs(s.ranged.drawTicks));
-        std::printf("| %s | %s | %s | %.0f m/s | %.1f s | %s | %.0f m | %.0f m | %s | %.0f m | %s | %s | %s | %s |\n", unitTypeName(static_cast<UnitType>(t)),
-                    kind, damageTypeName(s.ranged.damageType), d(s.ranged.muzzleSpeed), secs(s.ranged.reloadTicks), draw, d(s.ranged.maxRange), d(s.ranged.autoRange),
+        std::printf("| %s | %s | %s | %s | %.0f m/s | %.1f s | %s | %.0f m | %.0f m | %s | %.0f m | %s | %s | %s | %s |\n", unitTypeName(static_cast<UnitType>(t)),
+                    kind, damageTypeName(s.ranged.damageType), s.ranged.ammo > 0 ? std::to_string(s.ranged.ammo).c_str() : "", d(s.ranged.muzzleSpeed), secs(s.ranged.reloadTicks), draw, d(s.ranged.maxRange), d(s.ranged.autoRange),
                     blast ? "" : std::to_string(s.ranged.damage).c_str(), d(s.ranged.dispersionAt100m),
                     s.ranged.minRange > Fixed::zero() ? (std::to_string(static_cast<int>(d(s.ranged.minRange))) + " m").c_str() : "",
-                    blast ? (std::to_string(static_cast<int>(d(s.ranged.explosive.radius) * 10) / 10.0).substr(0, 3) + " m").c_str() : "",
-                    blast ? std::to_string(s.ranged.explosive.damage).c_str() : "",
-                    s.ranged.explosive.fuseTicks ? (std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");
+                    blast ? (std::to_string(static_cast<int>(d(s.ranged.explosive.radius) * 10) / 10.0).substr(0, 3) + (fire ? " m of fire" : " m")).c_str() : "",
+                    blast ? (std::to_string(s.ranged.explosive.damage) + (fire ? " a second" : "")).c_str() : "",
+                    s.ranged.explosive.fuseTicks ? ((fire ? "burns " : "") + std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");
     }
 
     std::printf("\n## Satchel charges\n\n");
     std::printf("Carried into battle and laid on the ground, where a satchel lies still and never goes off by itself. A blast or\n"
-                "a Molotov's fire reaching it sets it off a moment later, and its blast the next: chains. Left to himself a\n"
-                "grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), steps back out of its blast,\n"
-                "and throws his Molotovs at a satchel with foes beside it (and none of his friends) before any one man. Killed by\n"
-                "fire or a blast with satchels still on him, he goes up with all of them at once: a blast a quarter wider and half\n"
-                "again as hard for each one beyond the first; any other death spills them, unlit, where he falls.\n\n");
+                "a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11 ticks), and its blast the next\n"
+                "(8 to 15 ticks): a line goes up one after another. A blast also shakes the morale of everyone left standing\n"
+                "within twice its radius.\n\n"
+                "**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 160 m of him, 50 m clear\n"
+                "of any foe). In battle, Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his\n"
+                "next order, or with none steps back out of its blast. Detonate (L, then click a satchel or the ground): of the\n"
+                "grenadiers and wizards selected, the nearest in reach throws one missile at once at the satchel nearest the click\n"
+                "(within 4 m), walking into reach first if none is; the missile is lobbed onto the charge, the wind allowed for.\n"
+                "A Detonate order does not wait for friends to clear the blast:\n"
+                "the ring over a laid satchel is red while one of yours stands in it, and he dies with the foe.\n\n"
+                "**Left to himself** a grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), clear of\n"
+                "his own men and of water, steps back out of its blast, and throws a Molotov at a satchel of his side's with two or more foes\n"
+                "on it and none of his friends (waiting up to 5 s for a friend to clear) before any one man; a wizard sparks\n"
+                "such a satchel too. Killed by fire or a blast with satchels still on him, he goes up with all of them at once:\n"
+                "a blast a quarter wider and half again as hard for each one beyond the first; any other death spills them,\n"
+                "unlit, where he falls.\n\n");
     std::printf("| Unit | Carried | Blast radius | Blast damage | Between lays | All of them at once |\n|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         if (retired(static_cast<UnitType>(t))) continue;

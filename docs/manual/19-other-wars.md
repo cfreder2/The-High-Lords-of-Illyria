@@ -66,7 +66,7 @@ When the battle is decided the last blow is shown slowly and the fight stops. A 
 
 The neutral walled town nearest the ford, and its garrison: archers of the **Town Watch** at the embrasures (two to each wall of the ring), 8 pikemen (the **Gate Wardens**) behind the gate, 12 light infantry (the **Town Militia**) in the courtyard and 6 heavy infantry (the **Castellan's Guard**) before the keep. They keep their gate as any garrison does (chapter [](#gates)).
 
-You besiege it with the foot of the same host, formed up on the road about 110 m before the gate: the Oakhaven Warriors and the Grey Watch (12 each), both squads of bowmen (12 each), both squads of sappers (8 and 6 grenadiers), 4 journeymen, Lord Aldric, 3 griffins, and the **Oakhaven Siege Train** of 2 catapults.
+You besiege it with the foot of the same host, formed up on the road about 110 m before the gate: the Oakhaven Warriors and the Grey Watch (12 each), both squads of bowmen (12 each), the two dwarves (Durgan and Brakk, a grenadier each), 4 journeymen, Lord Aldric, 3 griffins, and the **Oakhaven Siege Train** of 2 catapults.
 
 You **win** when your flag reaches the top of the pole in the courtyard (chapter [](#capture-point)), when the garrison quits the field ([](#rout)), or when no defender is left alive; you **lose** when your host quits it or none of yours is left.
 
@@ -131,11 +131,11 @@ Six of these eleven are offered at each break, a different six as the waves go b
 
 | Squad | Men | Points | Squad | Men | Points |
 |---|---|---|---|---|---|
-| Warriors | 6 | 4 | Dwarven Grenadiers | 3 | 4 |
+| Warriors | 6 | 4 | Dwarven Grenadiers | 1 | 4 |
 | Heavy Infantry | 6 | 4 | Journeymen | 2 | 3 |
 | Pikemen | 6 | 3 | Light Cavalry | 4 | 4 |
 | Archers | 6 | 4 | Heavy Cavalry | 4 | 6 |
-| Berserkers | 5 | 4 | Wizards | 2 | 6 |
+| Berserkers | 5 | 4 | Wizards | 1 | 6 |
 | | | | Griffins | 2 | 6 |
 
 Press **Ready: bring them on** when you are done: the next wave comes at once when every person on the hill is ready, or when the break runs out. (Before the first wave there is no panel and nothing to buy: the half minute simply runs.)

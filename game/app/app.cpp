@@ -1178,10 +1178,12 @@ ILLYRIA_API void illyria_set_shift(int down) {
 ILLYRIA_API void illyria_set_keys(int force, int march) {
     if (app) app->battle->setKeys(force != 0, march != 0);
 }
-// 0 as usual, 1 attack, 2 force march, 3 lay satchels: for one order (the phone's attack button, A, M, L).
+// 0 as usual, 1 attack, 2 force march, 3 lay satchels, 4 detonate: for one order (the phone's attack button, Z, V, T, L).
 ILLYRIA_API void illyria_set_order_mode(int mode) {
-    if (app && mode >= 0 && mode <= 3) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
+    if (app && mode >= 0 && mode <= 5) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
 }
+// The order mode in hand (a key of the battle's own may have set it: T, L), so that Esc lets go of it.
+ILLYRIA_API int illyria_order_mode() { return app ? static_cast<int>(app->battle->orderMode()) : 0; }
 // What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
 ILLYRIA_API int illyria_hover(float x, float y) {
     if (!app) return 0;
@@ -1840,9 +1842,21 @@ ILLYRIA_API int illyria_next_idle() {
 ILLYRIA_API void illyria_raid() {
     if (app) app->battle->orderRaid();
 }
-// The special action (T): the hyena-folk raid at once; grenadiers' next tap lays satchels.
+// The special action (T): the hyena-folk raid at once; a grenadier's next tap lays a satchel (Shift: a line of them).
 ILLYRIA_API void illyria_special() {
     if (app) app->battle->specialAction();
+}
+// Detonate (L): with a grenadier or a wizard selected, the next tap is the satchel (or the ground) to set off.
+ILLYRIA_API void illyria_detonate() {
+    if (app) app->battle->detonateAction();
+}
+// Guard (,): the next tap is the squad of yours the selection is to guard.
+ILLYRIA_API void illyria_guard() {
+    if (app) app->battle->guardAction();
+}
+// Hold fire (Shift+K): the selected shoot, throw and lay only when ordered; again, at will.
+ILLYRIA_API void illyria_hold_fire() {
+    if (app) app->battle->holdFireSelected();
 }
 // Debugging: draw a unit type's sprite sheet over the screen (-1 hides it).
 ILLYRIA_API void illyria_show_sheet(int type) {
@@ -3096,12 +3110,12 @@ static const char* squadTip(illyria::sim::UnitType t) {
         case T::Dragons: return "fly over walls and water, tire in the air";
         case T::Elephants: return "huge and strong, quick to panic";
         case T::Unicorns: return "fast, hard to break";
-        case T::Wizards: return "fireballs, keep them behind the foot";
+        case T::Wizards: return "";  // (what he has left is said live: storeLeft)
         case T::Devils:
         case T::Demons: return "strong, hard to break";
         case T::Undead: return "slow, never break";
         case T::Hero: return "steadies the men near him, they waver if he falls";
-        case T::DwarfGrenadier: return "throw fire, T lays a satchel";
+        case T::DwarfGrenadier: return "";  // (as the wizard)
         case T::Journeyman: return "heal the wounded near them";
         case T::Warrior: return "big shields, steady";
         case T::Berserker: return "fast, hard hitting, no shield";
@@ -3141,7 +3155,10 @@ static void endState(const Battle& b, std::string& s) {
             tipType = type;
             tipMs = now;
         }
-        if (type >= 0 && type == tipType && now - tipMs < 8000) {
+        if (const std::string left = type >= 0 ? b.storeLeft() : std::string(); !left.empty()) {
+            // Those who carry a store: what is left of it, counted now, for as long as they are selected.
+            s += ",\"tip\":\"" + left + "\"";
+        } else if (type >= 0 && type == tipType && now - tipMs < 8000) {
             const auto t = static_cast<illyria::sim::UnitType>(type);
             std::snprintf(buf, sizeof buf, ",\"tip\":\"%s: %s\"", illyria::sim::unitTypeName(t), squadTip(t));
             s += buf;
@@ -3268,7 +3285,7 @@ ILLYRIA_API const char* illyria_hud() {
                 float px, py;
                 if (!app->camera.project(p, px, py)) continue;
                 std::snprintf(buf, sizeof buf, "%s{\"x\":%.0f,\"y\":%.0f,\"text\":\"%s\",\"good\":%s,\"age\":%u}", any ? "," : "", px / app->pixelRatio,
-                              py / app->pixelRatio, f.text, f.good ? "true" : "false", b.world().tick() - f.tick);
+                              py / app->pixelRatio, f.text.c_str(), f.good ? "true" : "false", b.world().tick() - f.tick);
                 s += buf;
                 any = true;
             }
@@ -3277,6 +3294,10 @@ ILLYRIA_API const char* illyria_hud() {
             const Battle::RallyState r = b.rallyState();
             std::snprintf(buf, sizeof buf, "],\"rally\":{\"lord\":%s,\"cooldown\":%d,\"heard\":%d},\"holding\":%s,", r.lord ? "true" : "false", r.cooldown, r.heard,
                           b.selectionHolds() ? "true" : "false");
+            s += buf;
+            // The trap's buttons: someone selected lays satchels, can spark one, carries a store; and whether they hold their fire.
+            std::snprintf(buf, sizeof buf, "\"lays\":%s,\"sparks\":%s,\"stores\":%s,\"holdFire\":%s,", b.selectionLaysSatchels() ? "true" : "false",
+                          b.selectionSparks() ? "true" : "false", b.selectionStores() ? "true" : "false", b.selectionHoldsFire() ? "true" : "false");
             s += buf;
         }
         // The selection's ground markers that fall at the foot of the screen, where the squad cards stand: the HUD
@@ -3327,15 +3348,18 @@ ILLYRIA_API const char* illyria_hud() {
         // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
         const bool mine = b.controllable(q);
         const Battle::SquadState state = b.squadState(q, mine && b.squadSelection(q) == 2);  // (the ground's word for the squads selected)
+        const Battle::Load load = b.squadLoad(q);  // satchels and missiles left of a store (the card's counters)
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\"}",
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\","
+                      "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s,\"guards\":\"%s\",\"guarded\":%s}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
-                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground);
+                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false",
+                      b.guards(q).c_str(), b.guarded(q) ? "true" : "false");
         s += buf;
         firstSquad = false;
     }
@@ -3373,15 +3397,16 @@ ILLYRIA_API int illyria_start_mode(const char* id, const char* options) {
     if (ok && app) illyria::game::palette::bind(illyria::game::sideFactions()[app->battle->localSide() & 7]);
     return ok;
 }
-// What a skirmish may buy, at the Conquest's prices: [{"type":N,"name":"...","price":gold,"men":N}], and an army bought for a
+// What a skirmish may buy, at the Conquest's prices: [{"type":N,"name":"...","price":gold,"men":N,"cap":N}] (cap: the most squads of
+// it an army may have, 0 for no limit: Conquest::keepCap), and an army bought for a
 // purse as the page's starting point ("type:squads,...", the "army" option of a skirmish; engines: with catapults).
 ILLYRIA_API const char* illyria_skirmish_offers() {
     static std::string out;
     out = "[";
     for (illyria::sim::UnitType t : illyria::game::skirmishTypes()) {
         char buf[200];
-        std::snprintf(buf, sizeof buf, "%s{\"type\":%d,\"name\":\"%s\",\"price\":%d,\"men\":%d}", out.size() > 1 ? "," : "", static_cast<int>(t),
-                      illyria::sim::unitTypeName(t), illyria::sim::Conquest::price(t), illyria::sim::Conquest::squadSize(t));
+        std::snprintf(buf, sizeof buf, "%s{\"type\":%d,\"name\":\"%s\",\"price\":%d,\"men\":%d,\"cap\":%d}", out.size() > 1 ? "," : "", static_cast<int>(t),
+                      illyria::sim::unitTypeName(t), illyria::sim::Conquest::price(t), illyria::sim::Conquest::squadSize(t), illyria::sim::Conquest::keepCap(t));
         out += buf;
     }
     return (out += "]").c_str();
@@ -3551,8 +3576,16 @@ ILLYRIA_API const char* illyria_march_state() {
         for (const March::Man& man : q.men) rank = std::max(rank, man.rank), veterans += man.rank >= 2, hp += man.hp;
         std::snprintf(buf, sizeof buf, "%s{\"i\":%zu,\"name\":\"%s\",\"type\":\"%s\",\"men\":%zu,\"full\":%d,\"rank\":%d,\"veterans\":%d,\"health\":%d,\"kills\":%d,\"battles\":%d,\"cost\":%d,\"fixed\":%s}",
                       i ? "," : "", i, q.name.c_str(), illyria::sim::unitTypeName(q.type), q.men.size(), q.full, rank, veterans, hp / std::max<int>(1, static_cast<int>(q.men.size())) / 10, q.kills,
-                      q.battles, m.reinforceCost(i), March::irreplaceable(q.type) ? "true" : "false");
+                      q.battles, m.reinforceCost(i), March::irreplaceable(q.type) && m.reinforceCost(i) == 0 ? "true" : "false");
         s += buf;
+        // What it carries of its satchels and missiles (those with a load: a dwarf, a wizard, an engine), for the camp's list.
+        int carried = 0, full = 0;
+        m.load(i, carried, full);
+        if (full > 0) {
+            s.pop_back();
+            std::snprintf(buf, sizeof buf, ",\"load\":%d,\"loadFull\":%d,\"resupply\":%d}", carried, full, m.resupplyCost(i));
+            s += buf;
+        }
     }
     s += "],";
     jsonList(s, "gone", m.gone);

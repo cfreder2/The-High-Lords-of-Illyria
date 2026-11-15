@@ -331,6 +331,11 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
         std::vector<Blast> blasts;
         for (const sim::ImpactEvent& e : world.impacts()) {
             using K = sim::ImpactEvent::Kind;
+            // Water's own word (World::explode): a bottle or a satchel gone out, a fireball turned to steam. The hiss, no blast.
+            if (e.kind == K::Doused || e.kind == K::Steam) {
+                want(Sound::Steam, toV3(e.pos), 0.08f);
+                continue;
+            }
             if (e.kind != K::Explosion && e.kind != K::Smash && e.kind != K::Burst) continue;
             const V3 at = toV3(e.pos);
             blasts.push_back({at, static_cast<float>(e.radius.toDouble()) + 1.0f});

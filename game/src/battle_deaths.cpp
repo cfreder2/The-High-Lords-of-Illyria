@@ -56,10 +56,33 @@ void Battle::presentDeaths() {
         if (age < 4 * sim::kTicksPerSecond)
             emit(Particle::Kind::Fire, at, {0, 0, 0.6f}, 0.35f, 0.25f + unitOf(h >> 6) * 0.15f);
     }
+    // Burning ground where a Molotov fell (world_fire.cpp): low flames over the patch while it burns, and smoke; timber
+    // alight (an engine) flames and smokes where it stands.
+    for (const sim::GroundFire& f : world_->fires()) {
+        if (tick % 2 != 0) continue;
+        const V3 c = toV3(f.at);
+        const float r = static_cast<float>(f.radius.toDouble());
+        const uint32_t seed = hashMix(static_cast<uint32_t>(f.at.x.raw ^ f.at.y.raw), tick);
+        for (int i = 0; i < 3; ++i) {
+            const uint32_t h = hashMix(seed, static_cast<uint32_t>(i));
+            const float a = unitOf(h) * 6.2832f, d = r * std::sqrt(unitOf(h >> 8));
+            emit(Particle::Kind::Fire, c + V3{std::cos(a) * d, std::sin(a) * d, 0.1f}, {0, 0, 0.5f + unitOf(h >> 16) * 0.8f}, 0.4f + unitOf(h >> 20) * 0.4f,
+                 0.3f + unitOf(h >> 24) * 0.3f);
+        }
+        if (tick % 8 == 0) emit(Particle::Kind::Smoke, c + V3{0, 0, 0.8f}, {0, 0, 1.2f}, 3.0f, 0.8f);
+    }
+    for (const sim::Unit& u : world_->units()) {
+        if (u.burning <= 0 || !u.alive() || (tick + u.id) % 3 != 0) continue;
+        const uint32_t h = hashMix(u.id, tick);
+        const V3 at = toV3(u.pos) + V3{unitOf(h) - 0.5f, unitOf(h >> 8) - 0.5f, static_cast<float>(u.stats.height.toDouble()) * unitOf(h >> 16)};
+        emit(Particle::Kind::Fire, at, {0, 0, 0.8f}, 0.5f, 0.3f + unitOf(h >> 6) * 0.2f);
+        if ((tick + u.id) % 12 == 0) emit(Particle::Kind::Smoke, at + V3{0, 0, 0.5f}, {0, 0, 1.4f}, 3.0f, 0.7f);
+    }
     {
         std::vector<V3> fires;
         for (const Smoulder& s : smouldering_)
             if (tick - s.since < 15 * sim::kTicksPerSecond) fires.push_back(toV3(world_->units()[s.unit - 1].pos));
+        for (const sim::GroundFire& f : world_->fires()) fires.push_back(toV3(f.at));
         sfx_.setFires(fires);
         // Who struck this tick (their attack clips begin now): the blows' sounds wait for the frame that shows them.
         std::vector<Sfx::Striker> strikers;

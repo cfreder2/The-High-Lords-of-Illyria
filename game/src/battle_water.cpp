@@ -158,7 +158,9 @@ bool Battle::presentInWater(const sim::ImpactEvent& e, const V3& pos, const sim:
         case K::Splash: splash(at, static_cast<float>(e.radius.toDouble()), toV3(e.dir)); break;  // a part of a body
         case K::Smash: waterColumn(at, static_cast<float>(e.radius.toDouble())); break;           // a stone: a column of water
         case K::Explosion:
+        case K::Steam:
         case K::Burst: steam(at, static_cast<float>(e.radius.toDouble())); break;
+        case K::Doused: steam(at, static_cast<float>(e.radius.toDouble()) * 0.4f); break;  // a bottle or a satchel gone out
         default: return false;
     }
     return true;

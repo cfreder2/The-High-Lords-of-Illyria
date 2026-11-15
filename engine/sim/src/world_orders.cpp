@@ -102,7 +102,8 @@ int64_t World::fightingPower(const Unit& u) const {
     };
     const RangedWeapon& r = u.stats.ranged;
     int64_t dps = rate(u.stats.melee.damage, u.stats.melee.cooldownTicks);
-    if (r.muzzleSpeed > Fixed::zero()) dps = std::max(dps, rate(std::max(r.damage, r.explosive.damage), r.reloadTicks));
+    // (A store of missiles is spent thriftily, so it counts for half; spent, he has his hands: world_satchels.cpp.)
+    if (armed(u)) dps = std::max(dps, rate(std::max(r.damage, r.explosive.damage), r.reloadTicks) / (r.ammo > 0 ? 2 : 1));
     const int64_t prowess = 100 + 10 * (u.rank + u.blessings);
     return std::max<int64_t>(1, dps * u.hp / 1000 * prowess / 100);
 }
@@ -145,6 +146,7 @@ void World::applyOrder(Unit& u, const Command& cmd) {
             if (inMelee) u.graceTicks = kGraceTicks;
             break;
         case Command::Type::LaySatchel:  // a walk there, then the satchel (World::applyCommand)
+        case Command::Type::Detonate:    // into reach, then the one shot (world_satchels.cpp)
             u.routeFrom = u.pos;
             if (inMelee) u.graceTicks = kGraceTicks;
             break;
@@ -254,11 +256,14 @@ World::Stance World::stanceOfOrder(const Command& c) {
         case Command::Type::AttackUnit:
         case Command::Type::AttackGround:
         case Command::Type::AttackGate:
+        case Command::Type::Detonate:
         case Command::Type::AttackObject: return Stance::Hunt;
         case Command::Type::Stop:
         case Command::Type::Raid:
         case Command::Type::SetGate:
         case Command::Type::SetStance:
+        case Command::Type::HoldFire:
+        case Command::Type::Guard:
         case Command::Type::SetFormation:
         case Command::Type::Answer:
         case Command::Type::Rally: break;

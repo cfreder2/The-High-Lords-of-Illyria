@@ -251,7 +251,8 @@ constexpr Kin kKin[] = {
     {UnitType::Undead, 1, 30},       {UnitType::LightInfantry, 2, 24}, {UnitType::Archers, 2, 14},
     {UnitType::WolfRiders, 3, 12},   {UnitType::Spiders, 3, 10},       {UnitType::Berserker, 4, 14},
     {UnitType::Minotaurs, 4, 5},     {UnitType::LightCavalry, 5, 10},  {UnitType::Giants, 6, 3},
-    {UnitType::Devils, 7, 3},        {UnitType::DwarfGrenadier, 7, 6}, {UnitType::Wizards, 8, 3},
+    // (Those who throw a blast are few, in the horde as anywhere: a pair of dwarves, one wizard to a group.)
+    {UnitType::Devils, 7, 3},        {UnitType::DwarfGrenadier, 7, 2}, {UnitType::Wizards, 8, 1},
     {UnitType::Demons, 9, 2},
 };
 // Each wave's theme: what most of it is. The dead, men, beasts, brutes and
@@ -363,8 +364,8 @@ const std::vector<Offer>& squadOffers() {
     static const std::vector<Offer> kOffers = {
         {UnitType::Warrior, 6, 4},       {UnitType::HeavyInfantry, 6, 4}, {UnitType::Pikemen, 6, 3},
         {UnitType::Archers, 6, 4},       {UnitType::Berserker, 5, 4},
-        {UnitType::DwarfGrenadier, 3, 4}, {UnitType::Journeyman, 2, 3},   {UnitType::LightCavalry, 4, 4},
-        {UnitType::HeavyCavalry, 4, 6},  {UnitType::Wizards, 2, 6},       {UnitType::Griffins, 2, 6},
+        {UnitType::DwarfGrenadier, 2, 4}, {UnitType::Journeyman, 2, 3},   {UnitType::LightCavalry, 4, 4},
+        {UnitType::HeavyCavalry, 4, 6},  {UnitType::Wizards, 1, 6},       {UnitType::Griffins, 2, 6},
     };
     return kOffers;
 }

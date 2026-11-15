@@ -48,15 +48,17 @@ struct SquadSum {
     uint32_t called = 0;
     EntityId man = kNoEntity, fighter = kNoEntity, freeMan = kNoEntity;
     bool hero = false, shooters = false, quick = false;
+    int32_t hunted = 0;  // dwarves and wizards of it with the foe's horse coming, or under arrows (World::hunted)
 };
 
 }  // namespace
 
 bool World::freeToAnswer(const Unit& u) const {
     if (!u.alive() || u.routed || u.hold || hasOrder(u) || !u.queue.empty() || u.engaged || u.foe != kNoEntity || u.helping != kNoEntity || u.stationed ||
-        u.occupying || u.posted || u.inAir())
+        u.occupying || u.posted || u.guard != kNoEntity || u.inAir())
         return false;
-    if (isHero(u) || u.stats.gait == Gait::Wheeled || u.stats.scavenge.sight > Fixed::zero() || u.stats.healing.amount > 0) return false;
+    // (Nor a dwarf or a wizard: never into the melee of his own accord, World::shyAway.)
+    if (isHero(u) || precious(u.stats) || u.stats.gait == Gait::Wheeled || u.stats.scavenge.sight > Fixed::zero() || u.stats.healing.amount > 0) return false;
     return u.stats.melee.damage > 0 || shooter(u);
 }
 
@@ -82,6 +84,7 @@ void World::callForHelp() {
         s.shot += recent(u.shotTick, tick_);
         s.flanked += recent(u.flankTick, tick_);
         s.loosing += u.reloadRemaining > 0;
+        s.hunted += hunted(u);
         if (freeToAnswer(u) && !gateKeeper(u)) {
             ++s.free;
             if (s.freeMan == kNoEntity) s.freeMan = u.id;
@@ -108,6 +111,7 @@ void World::callForHelp() {
         for (const HeroDeath& d : heroDeaths_)
             if (d.owner == owner && (d.pos - centre).flat().lengthSq() < kFoeNear * kFoeNear && (s.engaged > 0 || s.shot > 0)) trouble = true, why = HelpCall::Why::HeroDown;
         if (!trouble && tick_ % kCallLook != 0) continue;
+        if (!trouble && s.hunted > 0) trouble = true, why = HelpCall::Why::Hunted;
         if (!trouble && s.flanked > 0) trouble = true, why = HelpCall::Why::Flanked;
         if (!trouble && s.engaged > 0 && s.pressed * 2 >= s.engaged) trouble = true, why = HelpCall::Why::Outnumbered;
         if (!trouble && s.shaken * 3 >= s.alive && (s.engaged > 0 || s.shot > 0)) trouble = true, why = HelpCall::Why::Wavering;

@@ -36,17 +36,20 @@ namespace illyria::game {
 struct CardFacts {
     int rallyIn = 0;  // broken: seconds to the rally, -1 while it cannot, 0 not broken
     bool calling = false, answering = false, hold = false, idle = false, holdFire = false;
+    bool guarding = false, guarded = false;  // on guard duty (Command::Guard); a squad that someone guards
     int sat = 0, satMax = 0, ammo = 0, ammoMax = 0;
     int rank = 0;
 };
 
-enum class CardStatus { None, Broken, Calling, Answering, Hold, Idle };
+enum class CardStatus { None, Broken, Calling, Answering, Guarding, Hold, Guarded, Idle };
 
 inline CardStatus cardStatus(const CardFacts& f) {
     if (f.rallyIn != 0) return CardStatus::Broken;
     if (f.calling) return CardStatus::Calling;
     if (f.answering) return CardStatus::Answering;
+    if (f.guarding) return CardStatus::Guarding;
     if (f.hold) return CardStatus::Hold;
+    if (f.guarded) return CardStatus::Guarded;
     if (f.idle) return CardStatus::Idle;
     return CardStatus::None;
 }
@@ -55,7 +58,9 @@ inline std::string cardStatusWord(const CardFacts& f) {
         case CardStatus::Broken: return f.rallyIn > 0 ? std::to_string(f.rallyIn) + "s" : "--";
         case CardStatus::Calling: return "HELP";
         case CardStatus::Answering: return "ANSWER";
+        case CardStatus::Guarding: return "GUARD";
         case CardStatus::Hold: return "HOLD";
+        case CardStatus::Guarded: return "GUARDED";
         case CardStatus::Idle: return "IDLE";
         case CardStatus::None: break;
     }
