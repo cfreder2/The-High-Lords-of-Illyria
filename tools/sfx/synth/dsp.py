@@ -334,20 +334,72 @@ def loudness(x):
     return -0.691 + 10 * np.log10(np.mean(zs2 if len(zs2) else zs) + 1e-12)
 
 
-def normalise(x, target_lufs, peak_db=-1.0, limit_db=6.0):
-    """Scales to the target loudness; transients that would go past the peak
-    ceiling are softly limited (up to limit_db of it), and beyond that the
-    whole sound is turned down instead."""
+def true_peak(x):
+    """The true peak in dBFS (4x oversampled), as a player's converter would see it."""
+    y = signal.resample_poly(x, 4, 1, axis=0)
+    return 20 * np.log10(max(np.max(np.abs(y)), np.max(np.abs(x))) + 1e-12)
+
+
+def limit(x, ceiling, hold=0.012, smooth=0.004):
+    """A look-ahead peak limiter: the gain is drawn down smoothly around any
+    sample past the ceiling (a few ms either side), so a transient is held
+    under it without bending the wave the way a clipper does."""
+    mono = np.abs(x) if x.ndim == 1 else np.abs(x).max(axis=1)
+    need = np.minimum(1.0, ceiling / np.maximum(mono, 1e-12))
+    if need.min() >= 1.0:
+        return x
+    from scipy.ndimage import minimum_filter1d
+    hold_n = max(3, int(hold * SR)) | 1
+    w = np.hanning(min(max(3, int(smooth * SR)) | 1, hold_n) + 2)[1:-1]
+    g = minimum_filter1d(need, size=hold_n, mode="nearest")
+    pad = len(w) // 2
+    g = np.convolve(np.pad(g, pad, mode="edge"), w / w.sum(), mode="valid")
+    return x * (g[:, None] if x.ndim == 2 else g)
+
+
+def normalise(x, target_lufs, peak_db=-2.0):
+    """Scales to the target loudness. A transient that would pass the peak
+    ceiling is limited (see limit) and the gain found again, so a sound with
+    a high crest still lands on the target instead of the whole of it being
+    left quiet under its one peak."""
     x = x - np.mean(x, axis=0)
-    l = loudness(x)
-    g = 10 ** ((target_lufs - l) / 20)
     ceiling = 10 ** (peak_db / 20)
-    peak = np.max(np.abs(x)) * g
-    over = ceiling * 10 ** (limit_db / 20)
-    if peak > over:
-        g *= over / peak
-    y = x * g
-    if peak > ceiling * 0.5:
-        # A soft knee: linear well below the ceiling, rounding off into it.
-        y = ceiling * np.tanh(y / ceiling)
+    g = 10 ** ((target_lufs - loudness(x)) / 20)
+    def held(gain):
+        # Holding down one side of a lopsided wave leaves a DC offset: take it out again.
+        y = limit(x * gain, ceiling)
+        return limit(y - np.mean(y, axis=0), ceiling)
+
+    y = held(g)
+    for _ in range(12):
+        err = target_lufs - loudness(y)
+        if abs(err) < 0.03:
+            break
+        g *= 10 ** (err / 20)
+        y = held(g)
     return y
+
+
+# Spectral balance: what a small speaker can and cannot carry.
+def _zero_phase(kind, f, x, order=4):
+    return signal.sosfiltfilt(signal.butter(order, f, kind, fs=SR, output="sos"), x, axis=0)
+
+
+def bands3(x, f1=300.0, f2=1000.0):
+    """Splits into low / mid / high (zero phase), summing back to x."""
+    low = _zero_phase("lowpass", f1, x)
+    rest = x - low
+    mid = _zero_phase("lowpass", f2, rest)
+    return low, mid, rest - mid
+
+
+def tilt(x, low, mid, high, f1=300.0, f2=1000.0):
+    """Re-weights the three bands to the given shares of the energy (they
+    need not sum to 1). Only for sounds that already have something in each."""
+    x = _zero_phase("highpass", 25.0, x, 2)  # nothing plays what lies under this; it would only pass for body
+    out = np.zeros_like(x)
+    for b, share in zip(bands3(x, f1, f2), (low, mid, high)):
+        e = np.sum(b ** 2)
+        if e > 1e-12:
+            out += b * np.sqrt(share / e)
+    return out

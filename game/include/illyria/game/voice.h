@@ -60,6 +60,8 @@ enum class Situation : uint8_t {
     Wounded,        // badly hurt
     ArrowFire,      // arrows falling on them
     Flanked,        // struck from the side or behind
+    CallHelp,       // his squad calls for help (World::helpCalls)
+    Answering,      // his squad goes to a squad that called
     FriendlyFire,   // hit by his own side's missiles
     Fuse,           // a grenadier's satchel lit
     Healing,        // a healer mending a friend

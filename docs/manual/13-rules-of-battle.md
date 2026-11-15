@@ -83,9 +83,46 @@ For **archers**, height is reach: missile range grows by a metre for every metre
 
 Beyond the small edge, position has teeth in the fight itself, and a word floats over the men when it tells:
 
-- **The high ground.** A blow struck downhill does **+2% for each 0.01 of grade**, at most **+30%** (a 1 in 7 slope); struck uphill it does as much less, at most **-20%** ("High ground").
-- **Wading.** A man in the shallows (not the giants and their like, who are at home there) strikes **half as hard**; a man on dry ground strikes him **half as hard again**, and each such blow shakes him; missiles do **three quarters more** to him and his shield turns half as many ("In the ford", "Shot in the water"). Hold the bank and make them come to you.
-- **A volley from above** does **+5% for each metre** the shooter stands over his mark beyond the first, at most **+50%**.
+- **The high ground.** A blow struck downhill does **+3% for each 0.01 of grade**, at most **+40%** (a 1 in 8 slope); struck uphill it does as much less, at most **-35%**, and the man who struck up is a quarter slower to strike again ("High ground", "Uphill").
+- **A volley from above** does **+5% for each metre** the shooter stands over his mark beyond the first, at most **+50%**; shot uphill it loses as much, at most **-40%**.
+- **Water.** Any man wading, on either side (not the giants and their like, who are at home there), strikes **half as hard**; a man on firm ground strikes him **half as hard again**, and each such blow shakes him; missiles do **three quarters more** to him; his shield turns half as many blows and arrows; what he looses from the water himself is **40% weaker**; he cannot brace a pike and keeps no formation ("In the ford", "Shot in the water"). Deep water is not crossed at all. Fight from the bank, never from the stream.
+- **Mud and swamp.** The same, less: a quarter weaker, struck a quarter harder, **+30%** from missiles, no brace, no formation ("In the mud").
+- **Woods.** Four arrows in ten meant for a man among the trees are stopped ("Cover"). Horse cannot gallop there, and neither horse nor closed ranks keep their order. Men in a wood are not shot at or gone for by a side with nobody within **25 m** of them, and their first blow or volley out of it is an **ambush**: it shakes the man struck by 250 and costs him his order ("Ambush").
+- **Bridges.** The men filing over a bridge count for half their number to the men waiting at its end. Numbers do not tell at a choke.
+
+The card of a selected squad says where it stands when the ground tells ("high ground", "low ground", "in the ford", "in the mud", "in woods", "hidden in woods", "on the road"), and with men selected a word by the cursor names the ground you are about to send them to ("ford", "woods", "higher ground").
+
+## Formations {#formation-rules}
+
+Every formation is a bargain. It counts only while its men stand together (two squad-mates within 6 m) and in order.
+
+| Formation | What it gives | What it costs |
+|---|---|---|
+| Line | the widest front | a blow or a charge in its flank or back shakes it half as much again |
+| Double line | it holds: shocks to its nerve 30% less | half the front; missiles +15% |
+| Box | no flank and no rear: every blow and charge meets a front, and its pikes are braced on every side | its blows 25% weaker; missiles +40%; it marches at 0.7 pace |
+| Wedge | its blows and its charges 25% harder | struck in the flank or back it takes 30% more, and half as much shock again |
+| Loose | four arrows in ten miss; a blast finds fewer men | its blows 20% weaker; shocks 30% worse |
+| Encircle | its blows into a flank or back 25% harder; two arrows in ten miss | shocks 30% worse |
+| V | its blows into a flank or back 25% harder | struck in the front it takes 20% more |
+
+A formed body turns as slowly as horse (120 degrees a second); loose order turns as a man does (270). So a line taken in the flank is struck before it can face about.
+
+**Disorder.** A formation is lost for a few seconds by a rider who has just charged home (3 s), by men taken in the flank or back by a charge and the friends at their shoulders (4 s), by anyone in water or mud, and by horse or closed ranks among trees (until 2 s after they are out). Out of order a man has no formation, strikes 20% weaker, is shaken 30% worse and cannot brace ("Disordered").
+
+::: tip
+Square when horse is coming and you have no pikes in the way. Loose when arrows fall and nobody is at your throat. Close up again before the foot arrives: loose order loses a melee. The computer follows the same rules.
+:::
+
+## Help, and answers {#calls}
+
+A man with no order does not watch a friend die. Within **40 m** of a friend who is fighting, foot go in beside him, horse ride round to the flank of his foe, bowmen walk to a bowshot of that foe (never into the water) and loose, healers go to the wounded, and pikes turn to face horse coming at the gallop. **Hold** (K) switches all of it off: they keep their place.
+
+From farther off they must be called. A squad **calls for help** when it is struck in the flank or back, when half its fighting men are outnumbered, when a third of it wavers, when arrows fall on it and it has no answer, or when its lord falls beside it. You hear it, "Help!" stands over it, its card says HELP, a ring beats on the map and the events say why. The nearest squad of yours that is **free** (never ordered, or halted; nobody to fight; not holding) **answers** and goes straight to its friend: foot from within 50 m, bowmen from 60 m, horse from 100 m, each a metre farther for every second the fight has lasted. Its card says ANSWER until it is there. Any order you give it ends the answer.
+
+A squad calls no more than once in 25 s, and your army once in 4 s. Press the **full stop** to send help yourself: the view goes to the latest call and the nearest squad with nothing in hand is sent, and if it is horse it rides round to the **flank** of the foe, which horse left to itself does not do.
+
+**Ground you chose is kept.** A squad you march to a place is posted there. It fights what comes within 20 m of its post, helps a neighbour whose foe is that near, and goes back to its place after; it does not run off to a call. So a line you set on a height stays on the height. [[Space]] (halt) lets a squad go again: then it helps and answers as an unordered squad does.
 
 ## Charges {#charges}
 
@@ -104,7 +141,7 @@ A climb also slows the horse, and a horse too slow has no charge at all: heavy c
 | up a 1 in 4 slope: too slow, no charge | 20 |
 | light cavalry on the flat, into his front / his back | 38 / 76 |
 
-Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands.
+Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands. Riders ordered to attack go at the gallop from wherever they are, each his own way in. A rider whose charge lands in a flank or a back does not stay to be cut down: he **wheels away** for a few seconds, re-forms, and comes again. One who charged a front that stood has made his bed, and fights it out there.
 
 ### Braced pikes {#pikes}
 
@@ -147,11 +184,13 @@ A blast does its full damage at its centre, falling evenly to nothing at its edg
 
 A blast spares nobody: friend and foe alike, shield or no shield, flank or front. It is not made stronger by the rank, the edges or the blessings of whoever threw it, and **the men it kills are nobody's kills**: wizards, grenadiers and catapults earn no rank by their blasts.
 
+**The boulder rolls on.** A catapult's stone is not spent where it comes down. It bounces once and rolls, about 30 m over level grass from a long throw: half as far again along a road, a few metres in sand, mud or marsh, far down a hillside and hardly at all up one. Water stops it dead, and so does a tree, a rock, a house, a tower, a wall or a shut gate (rolled into a gate it still hurts the doors). Every man in its lane is crushed and thrown, and it is slowed a little by each: a **column marching straight at the engine** loses six or seven men to one stone, a **line across its way** one, or none. A great beast or another engine may stop it. It rolls through **your own men** as readily; your catapults reckon the whole roll before they throw, and drop the stone aside or wait rather than plough their own file. With catapults selected, [[Z]] shows where the stone would come down and how it would roll.
+
 ::: sheet Missile troops
 :::
 
 ::: tip
-Against grenadiers, wizards and catapults, fight **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**.
+Against grenadiers, wizards and catapults, fight **Loose**: a blast that takes three men of a line takes one of a loose rank. When something is in the air above your men, **Scatter**. Against catapults, come on in **line**, not in column, and not straight down a hill's foot at them: the stone rolls the way it was thrown and downhill.
 :::
 
 ## Fliers {#fliers}

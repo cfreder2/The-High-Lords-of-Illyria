@@ -24,6 +24,8 @@ bool Battle::sees(uint8_t owner, float x, float y) const {
 void Battle::borrow(sim::Conquest* conquest) {
     conquest_ = conquest;
     quitSeen_ = 0;  // (a conquest begun or loaded has told of none)
+    fight_ = {};
+    fightTold_ = false;
     if (conquest == nullptr) {
         world_ = ownWorld_.get();
         alphaSet_ = false;
@@ -113,6 +115,7 @@ void Battle::presentConquest(const std::vector<sim::Conquest::Soldier>& men) {
             q.standing.level = a.hero() ? a.rank + 1 : 0;
             q.standing.blessings = a.blessings;
             q.standing.kills = a.kills;
+            q.standing.battles = a.battles;
             for (uint8_t k : a.artifacts) q.arms += (q.arms.empty() ? "" : ", ") + std::string(sim::Conquest::artifacts()[k].name);
             q.rare = sim::Conquest::rare(a.type) && !a.hero();
             q.hired = a.ally;
@@ -173,6 +176,7 @@ void Battle::conquestAi(std::vector<sim::Command>& out) {
         if (!st || !st->path.empty() || st->commanded || conquest_->holdsTown(*st) || roleOf(s.type) == Role::Siege) continue;
         const V3 c = squadCentre(s, false);
         if (nearestFoe(s.owner, c, kHoldM) == sim::kNoEntity) continue;  // nothing near: stand
+        aiFormation(q);  // (a square against horse, loose under arrows: the same rules as a skirmish's computer)
         aiFight(q, c, c, kHoldM);
     }
     // The computer's commands leave with this step; whatever the player's hand queued waits for flushOrders.

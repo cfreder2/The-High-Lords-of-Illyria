@@ -56,6 +56,18 @@ void Battle::presentDeaths() {
         if (age < 4 * sim::kTicksPerSecond)
             emit(Particle::Kind::Fire, at, {0, 0, 0.6f}, 0.35f, 0.25f + unitOf(h >> 6) * 0.15f);
     }
+    {
+        std::vector<V3> fires;
+        for (const Smoulder& s : smouldering_)
+            if (tick - s.since < 15 * sim::kTicksPerSecond) fires.push_back(toV3(world_->units()[s.unit - 1].pos));
+        sfx_.setFires(fires);
+        // Who struck this tick (their attack clips begin now): the blows' sounds wait for the frame that shows them.
+        std::vector<Sfx::Striker> strikers;
+        const auto& units = world_->units();
+        for (size_t i = 0; i < units.size() && i < attackTick_.size(); ++i)
+            if (attackTick_[i] == tick) strikers.push_back({toV3(units[i].pos), static_cast<uint8_t>(units[i].stats.type), units[i].owner});
+        sfx_.setStrikers(std::move(strikers));
+    }
     sfx_.observe(*world_, outcome(), *continent_, origin(), scenario_ == Scenario::Siege || scenario_ == Scenario::Capital);
 }
 

@@ -75,17 +75,51 @@ sim::Vec3 fieldCentre(const sim::Continent& c) {
         }
         return false;
     };
+    // Open: no water, bog or wood anywhere the two hosts stand or between them (the hosts muster 70 m either side of the
+    // middle, a hundred metres wide). A river between them would make it the Ford, and one side's map.
+    const auto open = [&](const sim::Vec3& p) {
+        int rock = 0;
+        for (int dy = -112; dy <= 112; dy += 14)
+            for (int dx = -154; dx <= 154; dx += 14) {
+                const sim::Ground g = c.groundAt(p.x + sim::Fixed::fromInt(dx), p.y + sim::Fixed::fromInt(dy));
+                sim::Fixed surface;
+                if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater || g == sim::Ground::Swamp || g == sim::Ground::Mud || c.waterSurface(p.x + sim::Fixed::fromInt(dx), p.y + sim::Fixed::fromInt(dy), surface)) return false;
+                if (g == sim::Ground::Rock && ++rock > 12) return false;  // (an outcrop or two, no more: 3% of the ground)
+            }
+        return true;
+    };
     const std::vector<Place> places = battlePlaces(c);
     for (const Place& p : places) {
         if (p.kind != Place::Kind::Hill) continue;
         bool near = false;
         for (const sim::Continent::City& city : c.cities()) near = near || (city.pos - p.pos).flat().lengthSq() < sim::Fixed::fromInt(300 * 300);
-        if (!near && !inArea(c.forests(), p.pos) && !inArea(c.swamps(), p.pos)) return p.pos;
+        if (!near && !inArea(c.forests(), p.pos) && !inArea(c.swamps(), p.pos) && open(p.pos)) return p.pos;
     }
-    return c.crossings().front().pos;
+    // No hill is open: the open ground nearest the ford, clear of the towns.
+    const sim::Vec3 ford = c.crossings().front().pos;
+    sim::Vec3 best = ford;
+    sim::Fixed bestD;
+    bool found = false;
+    for (int64_t y = 400; y < sim::Continent::kHeight - 400; y += 29)
+        for (int64_t x = 400; x < sim::Continent::kWidth - 400; x += 29) {
+            const sim::Vec3 p{sim::Fixed::fromInt(x), sim::Fixed::fromInt(y), sim::Fixed::zero()};
+            const sim::Fixed d = (p - ford).flat().lengthSq();
+            if (found && d >= bestD) continue;
+            bool near = false;
+            for (const sim::Continent::City& city : c.cities()) near = near || (city.pos - p).flat().lengthSq() < sim::Fixed::fromInt(200 * 200);
+            if (near || !open(p)) continue;
+            best = {p.x, p.y, c.heightAt(p.x, p.y)}, bestD = d, found = true;
+        }
+    return best;
 }
 
 constexpr int kDefaultBudget = 300;  // gold a side raises when the page says nothing
+// How far apart two bought hosts form up, front to front (docs/GAME_DESIGN.md §4.5.2): near enough that the first arrows
+// fly within about 25 s of the start. On open ground each host's bowmen stand out in front as skirmishers (muster), the
+// two lines inside a bowshot (70 m) of each other; at the Ford each host is Battle::kIsleCampM back from the river, a short
+// march from the isle. (140 m and 230 m before, the bowmen behind two ranks of foot: 40 to 93 s passed before anyone fell.)
+constexpr float kFieldGapM = 64.0f;
+constexpr float kSiegeBowsM = 60.0f;  // a besieging computer's bowmen begin this far from the road's door
 
 }  // namespace
 
@@ -121,6 +155,7 @@ Battle::Battle(uint64_t seed, Scenario scenario, const SkirmishSetup& setup) : s
     else if (scenario_ == Scenario::Field) setUpField(setup);
     else setUpFord(setup);
     if (siege) {
+        if (!setup.defend && setup.siegeSeconds > 0) siegeLimit_ = static_cast<uint32_t>(setup.siegeSeconds) * sim::kTicksPerSecond;
         const sim::PlayerId keeper = setup.defend ? kPlayer : kEnemy;
         placeCapturePoint(*town, keeper);
         holdGates(keeper);
@@ -171,6 +206,34 @@ void Battle::finish() {
     prevUnitPos_.resize(n);
     seenGen_.assign(n, 0);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
+    startRank_.resize(n);
+    for (size_t i = 0; i < n; ++i) startRank_[i] = world_->units()[i].rank;
+}
+
+void Battle::seatCarried(const CarriedSquad& c) {
+    Squad& s = squads_.back();
+    s.total = std::max(c.full, static_cast<int>(s.members.size()));
+    for (size_t i = 0; i < s.members.size() && i < c.men.size(); ++i) {
+        const CarriedMan& m = c.men[i];
+        world_->setVeterancy(s.members[i], m.rank, 0);  // (a hero's levels make him tougher: before his wounds are put back)
+        const sim::Unit* u = world_->findUnit(s.members[i]);
+        world_->restoreUnit(s.members[i], static_cast<int32_t>(static_cast<int64_t>(u->stats.maxHp) * std::clamp(m.hp, 1, 1000) / 1000), m.kills, sim::kMoraleFull);
+    }
+}
+
+std::vector<CarriedSquad> Battle::carried() const {
+    std::vector<CarriedSquad> out;
+    for (const Squad& q : squads_) {
+        if (q.owner != local_) continue;
+        CarriedSquad c{q.name.empty() ? std::string(sim::unitTypeName(q.type)) : q.name, q.type, totalCount(q), {}};
+        for (size_t i = 0; i < q.members.size(); ++i) {
+            const sim::Unit* u = world_->findUnit(q.members[i]);
+            if (!u || !u->alive()) continue;
+            c.men.push_back({std::max(1, static_cast<int>(static_cast<int64_t>(u->hp) * 1000 / std::max(1, u->stats.maxHp))), u->rank, u->kills, static_cast<int>(i)});
+        }
+        out.push_back(std::move(c));
+    }
+    return out;
 }
 
 Standing Battle::standing(const Squad& s) const {
@@ -205,13 +268,14 @@ Standing Battle::standing(const Squad& s) const {
 
 void Battle::setUpFord(const SkirmishSetup& setup) {
     // Fair ground (sim::Continent::FairGround): each host the same distance back from the river, facing it, on the same land;
-    // between them the ford with its isle, and on the isle a bare pole. The first flag to its top wins (CapturePoint).
-    if (setup.budget > 0 || !setup.army.empty()) {
+    // between them the ford with its isle, and on the isle a bare pole. The first flag to its top wins (CapturePoint). (A
+    // March's host is its roster as it stands, its lord among them.)
+    if (setup.budget > 0 || !setup.army.empty() || !setup.roster.empty()) {
         const sim::Vec3 at = continent_->fairGround().centre - region_->origin();
         const V3 pole = toV3(at);
         capture_.placeNeutral({at.x, at.y, sim::Fixed::zero()}, kPlayer, kEnemy);
-        muster(kPlayer, playerBuys(setup, false), {pole.x - kIsleCampM, pole.y, 0}, {1, 0, 0}, true);
-        muster(kEnemy, foeBuys(setup, false), {pole.x + kIsleCampM, pole.y, 0}, {-1, 0, 0}, true, false, true);
+        muster(kPlayer, playerBuys(setup, false), {pole.x - kIsleCampM, pole.y, 0}, {1, 0, 0}, true, false, &setup.roster);
+        muster(kEnemy, foeBuys(setup, false, kFieldEngines, setup.hard ? kOpenHardPursePct : 100), {pole.x + kIsleCampM, pole.y, 0}, {-1, 0, 0}, true, false, nullptr, false, 0, true);  // (Hard: the bigger purse it has in the open)
         foeName_ = "other host";
         return;
     }
@@ -336,12 +400,13 @@ std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int e
     // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it;
     // and `pct` of that: walls are worth men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct),
     // whichever the player is.
-    const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
+    const int purse = setup.foePurse > 0 ? setup.foePurse : setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
     const int easy = setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse;
     return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, bool mirrored) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, const std::vector<CarriedSquad>* roster, bool skirmishers, float bowsAhead, bool mirrored) {
+    if (roster && roster->empty()) roster = nullptr;
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
     // `enginesFirst` (a siege's besiegers): the engines are the front rank, at their throw from the gate, and the army stands
@@ -371,24 +436,36 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
     struct Item {
         UnitType type;
         std::string name;
+        const CarriedSquad* carried = nullptr;
     };
-    std::vector<Item> foot, rear, engines, horse;
-    for (const Buy& b : army)
-        for (int i = 0; i < b.squads; ++i) {
-            Item it{b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : "")};
-            switch (b.type) {
-                case UnitType::LightCavalry:
-                case UnitType::HeavyCavalry:
-                case UnitType::WolfRiders: horse.push_back(it); break;
-                case UnitType::Catapult: engines.push_back(it); break;
-                case UnitType::Archers:
-                case UnitType::DwarfGrenadier:
-                case UnitType::Wizards:
-                case UnitType::Journeyman: rear.push_back(it); break;
-                default: foot.push_back(it);
-            }
+    std::vector<Item> all, foot, rear, engines, horse, lords, bows;
+    if (roster) {
+        for (const CarriedSquad& c : *roster)
+            if (!c.men.empty()) (c.type == UnitType::Hero ? lords : all).push_back({c.type, c.name, &c});
+    } else {
+        for (const Buy& b : army)
+            for (int i = 0; i < b.squads; ++i) all.push_back({b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : ""), nullptr});
+        if (lord) lords.push_back({UnitType::Hero, "The Lord", nullptr});
+    }
+    const auto count = [](const Item& it) { return it.carried ? static_cast<int>(it.carried->men.size()) : it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type); };
+    const auto raise = [&](const Item& it, V3 at) {
+        spawnSquad(it.name, owner, it.type, count(it), at, facing);
+        if (it.carried) seatCarried(*it.carried);
+    };
+    for (const Item& it : all) {
+        switch (it.type) {
+            case UnitType::LightCavalry:
+            case UnitType::HeavyCavalry:
+            case UnitType::WolfRiders: horse.push_back(it); break;
+            case UnitType::Catapult: engines.push_back(it); break;
+            case UnitType::Archers: (skirmishers ? bows : rear).push_back(it); break;
+            case UnitType::DwarfGrenadier:
+            case UnitType::Wizards:
+            case UnitType::Journeyman: rear.push_back(it); break;
+            default: foot.push_back(it);
         }
-    if (lord) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), {UnitType::Hero, "The Lord"});
+    }
+    for (const Item& it : lords) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), it);
     float row = 0;
     const auto rank = [&](const std::vector<Item>& items) {
         for (size_t i = 0; i < items.size(); i += kAcross, ++row) {
@@ -396,28 +473,36 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             for (size_t j = 0; j < n; ++j) {
                 const float lateral = (static_cast<float>(j) - static_cast<float>(n - 1) / 2) * kSlotM;
                 const Item& it = items[i + j];
-                spawnSquad(it.name, owner, it.type, it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type), settle(anchor + right * lateral - facing * (row * kRowM)), facing);
+                raise(it, settle(anchor + right * lateral - facing * (row * kRowM)));
             }
         }
     };
+    if (bowsAhead > 0) {  // (a siege's skirmish line: ahead of the battery, and no rank of the camp's)
+        const float camp = row;
+        row = -bowsAhead / kRowM;
+        rank(bows);
+        row = camp;
+        bows.clear();
+    }
     if (enginesFirst) rank(engines);
+    rank(bows);  // skirmishers: the bowmen out in front, to open the battle (the player's to pull back as he sets his line)
     const float footRow = row;
     rank(foot);
     // The horse on either wing of the front rank, outside the foot.
     const float wing = (static_cast<float>(std::min<size_t>(kAcross, foot.size())) / 2 + 0.5f) * kSlotM;
     for (size_t i = 0; i < horse.size(); ++i) {
         const float side = i % 2 ? 1.0f : -1.0f, out = wing + static_cast<float>(i / 2) * kSlotM;
-        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)), facing);
+        raise(horse[i], settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)));
     }
     rank(rear);
     if (!enginesFirst) rank(engines);
 }
 
 void Battle::setUpField(const SkirmishSetup& setup) {
-    // Open ground: the two armies a long bowshot apart, facing.
+    // Open ground: the two armies a bowshot apart (kFieldGapM), facing.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
-    muster(kPlayer, playerBuys(setup, true), {cx - 70, cy, 0}, {1, 0, 0}, true);
-    muster(kEnemy, foeBuys(setup, false), {cx + 70, cy, 0}, {-1, 0, 0}, false);
+    muster(kPlayer, playerBuys(setup, true), {cx - kFieldGapM / 2, cy, 0}, {1, 0, 0}, true, false, &setup.roster, true);
+    muster(kEnemy, foeBuys(setup, false, kFieldEngines, setup.hard ? kOpenHardPursePct : 100), {cx + kFieldGapM / 2, cy, 0}, {-1, 0, 0}, false, false, nullptr, true);
     foeName_ = "other host";
 }
 
@@ -453,6 +538,7 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
             std::string name;
             UnitType type;
             int count;
+            const CarriedSquad* carried = nullptr;
         };
         std::vector<Company> companies;
         if (classic) {
@@ -460,6 +546,9 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                          {"Gate Wardens", UnitType::Pikemen, 8},
                          {"Town Militia", UnitType::LightInfantry, 12},
                          {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        } else if (keeper == kPlayer && !setup.roster.empty()) {
+            for (const CarriedSquad& c : setup.roster)  // (the March: each squad its own company, its lord among them)
+                if (!c.men.empty()) companies.push_back({c.name, c.type, static_cast<int>(c.men.size()), &c});
         } else {
             for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false, kFieldEngines, 10000 / kSiegeOddsPct))
                 companies.push_back({sim::unitTypeName(b.type), b.type, b.squads * sim::Conquest::squadSize(b.type)});
@@ -482,11 +571,14 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
             for (int i = 0; i < c.count; ++i, ++next) {
                 if (next >= posts.size()) break;
                 const sim::EntityId id = world_->spawnUnit(keeper, posts[next].pos, posts[next].face, stats);
+                world_->setSquad(id, static_cast<uint32_t>(squads_.size()) + 1, simFormation(s.formation));
                 s.members.push_back(id);
                 if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
                 squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
             }
-            if (!s.members.empty()) squads_.push_back(std::move(s));
+            if (s.members.empty()) continue;
+            squads_.push_back(std::move(s));
+            if (c.carried) seatCarried(*c.carried);
         }
     }
 
@@ -531,6 +623,18 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 off.push_back(kFlankM);
             }
         }
+        if (besieger == kPlayer && !setup.roster.empty()) {
+            // The March: the squads as they stand, dealt to the camps as a bought army's are (the engines first), the lord at the road's door.
+            std::vector<std::vector<CarriedSquad>> rosters(camps.size());
+            size_t engine = 0, other = 0;
+            for (const CarriedSquad& c : setup.roster) {
+                if (c.men.empty()) continue;
+                rosters[c.type == UnitType::Hero ? 0 : (c.type == UnitType::Catapult ? engine++ : other++) % camps.size()].push_back(c);
+            }
+            for (size_t d = 0; d < camps.size(); ++d)
+                if (!rosters[d].empty()) muster(besieger, {}, conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, false, true, &rosters[d]);
+            return;
+        }
         std::vector<std::vector<Buy>> byCamp(camps.size());
         size_t engine = 0, other = 0;
         for (const Buy& b : all)
@@ -541,8 +645,11 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 if (!mine.empty() && mine.back().type == b.type) ++mine.back().squads;
                 else mine.push_back({b.type, 1});
             }
+        // A computer's host before the road's door sends its bowmen up to a bowshot of the walls at once (kSiegeBowsM
+        // from the door): the keeper is under arrows from the first seconds, not watching stones fall for a minute.
         for (size_t d = 0; d < camps.size(); ++d)
-            muster(besieger, byCamp[d], conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, besieger == kPlayer && d == 0, true);
+            muster(besieger, byCamp[d], conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, besieger == kPlayer && d == 0, true, nullptr,
+                   besieger != kPlayer && d == 0, besieger != kPlayer && d == 0 ? off[d] - kSiegeBowsM : 0.0f);
         if (besieger != kPlayer)
             for (const sim::Unit& u : world_->units()) besiegers_ += u.owner == besieger && roleOf(static_cast<UnitType>(u.stats.type)) != Role::Siege;
         return;
@@ -666,6 +773,7 @@ void Battle::spawnSquad(const std::string& name, sim::PlayerId owner, UnitType t
     for (int i = 0; i < count; ++i) {
         const V3 p = centre + right * slots[static_cast<size_t>(i)].x + facing * slots[static_cast<size_t>(i)].y;
         const sim::EntityId id = world_->spawnUnit(owner, toSim(p), toSim(facing), stats);
+        world_->setSquad(id, static_cast<uint32_t>(squads_.size()) + 1, simFormation(s.formation));  // (a lone man has no formation: World::formed)
         s.members.push_back(id);
         if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
         squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
@@ -755,7 +863,19 @@ float Battle::heightAt(float x, float y) const {
 }
 
 void Battle::advance(double seconds) {
-    if (paused_ || deploy_ || over()) return;
+    sfx_.setSpeed(decided() ? 1.0f : static_cast<float>(speed_));
+    const bool siege = scenario_ == Scenario::Siege || scenario_ == Scenario::Capital;
+    if (over() && !resultsCued_) {  // the results sheet: its own sound, and the field goes quiet under it
+        resultsCued_ = true;
+        sfx_.calm();
+        sfx_.ui(Sound::Results);
+    }
+    if (paused_ || deploy_ || over()) {
+        // The player studies the field: there is air, though nothing steps.
+        if (!over() && stillFrames_++ % 30 == 0) sfx_.refreshAmbience(*world_, *continent_, origin(), siege);
+        return;
+    }
+    stillFrames_ = 0;
     const double scaled = std::min(seconds, 0.25) * (decided() ? kLastBlowPace : speed_ * slow_);
     accumulator_ += scaled;
     int ticks = 0;
@@ -800,6 +920,7 @@ void Battle::afterWorldStep() {
         if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
     collectEvents();
     collectTactics();
+    collectCalls();
     voice_.observe(*world_, outcome());
     presentDeaths();
     observeSquads();
@@ -817,6 +938,9 @@ void Battle::forgetMen() {
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
     readied_.clear();
     smouldering_.clear();
+    bleeders_.clear();
+    rings_.clear();
+    dye_.clear();
     recent_.clear();
 }
 
@@ -865,6 +989,8 @@ void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint3
 
 void Battle::emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size) {
     if (particles_.size() >= kMaxParticles) return;
+    // Spray lives as long as it is in the air: up and back down to the water it left.
+    if (kind == Particle::Kind::Spray) life = std::max(0.15f, std::min(life * 3.0f, 2.0f * vel.z / kGravity));
     particles_.push_back({kind, pos, vel, 0.0f, life, size});
 }
 
@@ -881,6 +1007,7 @@ void Battle::collectEvents() {
     }
 
     applyImpacts(world_->impacts(), *world_, V3{0, 0, 0}, true);
+    stepWater();
 
     // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
     // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
@@ -894,6 +1021,16 @@ void Battle::collectEvents() {
             emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
         } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
             emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
+        } else if (p.kind == sim::ProjectileKind::Stone && p.landed && !p.resting && p.vel.z == sim::Fixed::zero()) {
+            // A boulder rolling: its furrow in the grass (a stretch each half metre it has gone), the dust it raises
+            // and the clods it throws up behind it.
+            const V3 at = toV3(p.pos), v = toV3(p.vel);
+            const float speed = std::sqrt(v.x * v.x + v.y * v.y), rolled = static_cast<float>(p.rolled.toDouble());
+            if (speed < 0.5f) continue;
+            if (static_cast<int>(rolled * 2.0f) != static_cast<int>((rolled - speed / sim::kTicksPerSecond) * 2.0f))
+                addMark(GroundMark::Kind::Furrow, at, std::atan2(v.y, v.x), 0.8f, mix(p.id, static_cast<uint32_t>(rolled * 2.0f)));
+            if (rnd() < speed / 9.0f) emit(Particle::Kind::Smoke, at + V3{srnd() * 0.4f, srnd() * 0.4f, 0.25f}, V3{srnd() - v.x * 0.08f, srnd() - v.y * 0.08f, 0.5f + rnd()}, 1.0f + rnd(), 0.5f + rnd() * 0.6f);
+            if (speed > 4.0f && (tick & 1)) emit(Particle::Kind::Dirt, at, V3{srnd() * 2.0f + v.x * 0.15f, srnd() * 2.0f + v.y * 0.15f, 2.0f + rnd() * 2.5f}, 0.9f, 0.05f + rnd() * 0.07f);
         }
     }
 }
@@ -933,6 +1070,7 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
         using K = sim::ImpactEvent::Kind;
         switch (e.kind) {
             case K::Ground:
+                if (presentInWater(e, pos, nullptr, {})) break;
                 for (int i = 0; i < 2; ++i) emit(Particle::Kind::Dirt, pos, {srnd(), srnd(), 1.5f + rnd()}, 0.5f, 0.06f);
                 break;
             case K::Bleed: {
@@ -958,8 +1096,10 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 break;
             case K::Explosion: {
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.5f}, {}, 0.18f, r * 1.3f);
+                // On water: the flash, and steam (battle_water.cpp); no crater, no fire left burning, no dirt thrown.
+                if (presentInWater(e, pos, nullptr, {})) break;
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());
                 for (int i = 0; i < 24; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 6, srnd() * 6, 5 + rnd() * 9}, 1.6f, 0.08f + rnd() * 0.1f);
@@ -969,8 +1109,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 // A Molotov shatters: a sheet of flame rolling out low over the
                 // ground and burning a while, a black scorch, smoke; no blast of dirt.
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.3f}, {}, 0.12f, r * 0.8f);
+                if (presentInWater(e, pos, nullptr, {})) break;  // the oil goes out in a hiss of steam
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 for (int i = 0; i < 30; ++i) {
                     const float a = rnd() * 6.2832f, d = r * (0.2f + rnd() * 0.8f);
                     emit(Particle::Kind::Fire, pos + V3{std::cos(a) * d * 0.4f, std::sin(a) * d * 0.4f, 0.15f},
@@ -982,9 +1123,37 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
             case K::Smash: {
                 // A stone shatters: a scar in the ground, a burst of dust and chips.
                 const float r = static_cast<float>(e.radius.toDouble());
+                if (presentInWater(e, pos, nullptr, {})) break;  // a column of water, not a scar
                 addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.5f, seed);
                 for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.3f}, {srnd() * 2, srnd() * 2, 0.8f + rnd()}, 1.8f + rnd(), 0.8f + rnd() * 0.6f);
                 for (int i = 0; i < 20; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 5, srnd() * 5, 3 + rnd() * 6}, 1.4f, 0.07f + rnd() * 0.1f);
+                break;
+            }
+            case K::Bounce: {
+                // A boulder strikes the ground and goes on: a gouge, dust, clods thrown the way it is going.
+                const float hard = std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 10.0f);
+                const V3 on = toV3(e.dir);
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, 0.7f + 0.7f * hard, seed);
+                for (int i = 0; i < 5 + static_cast<int>(8 * hard); ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * 0.6f, srnd() * 0.6f, 0.3f}, {srnd() * 1.5f, srnd() * 1.5f, 0.6f + rnd()}, 1.4f + rnd(), 0.6f + rnd() * 0.6f);
+                for (int i = 0; i < 8 + static_cast<int>(12 * hard); ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3 + on.x * 0.3f, srnd() * 3 + on.y * 0.3f, 2 + rnd() * 5}, 1.2f, 0.06f + rnd() * 0.09f);
+                break;
+            }
+            case K::Splash: {
+                // Into the water: the rings, the blood and the spray of whatever fell in (battle_water.cpp); a boulder
+                // (a projectile's splash, a heavy one) also throws up a column of spray and a ring of it.
+                presentInWater(e, pos, nullptr, {});
+                if (e.radius.toDouble() < 3.0) break;
+                for (int i = 0; i < 26; ++i) {
+                    const float a = rnd() * 6.2832f, out = 0.5f + rnd() * 2.5f;
+                    emit(Particle::Kind::Smoke, pos + V3{std::cos(a) * 0.3f, std::sin(a) * 0.3f, 0.2f}, V3{std::cos(a) * out, std::sin(a) * out, 2.5f + rnd() * 4.5f}, 0.7f + rnd() * 0.6f, 0.35f + rnd() * 0.4f);
+                }
+                break;
+            }
+            case K::Struck: {
+                // A boulder against stone, timber or a tree: chips and dust thrown back off it.
+                const int chips = 6 + static_cast<int>(std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 100.0f) * 22);
+                for (int i = 0; i < chips; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3, srnd() * 3, 1.5f + rnd() * 4} - dir * 3, 1.1f, 0.06f + rnd() * 0.1f);
+                for (int i = 0; i < chips / 3; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), srnd() * 0.5f}, V3{srnd(), srnd(), 0.8f + rnd()} - dir, 1.6f + rnd(), 0.7f + rnd() * 0.7f);
                 break;
             }
             case K::Gate: {
@@ -1007,6 +1176,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 }
                 const V3 body = toV3(victim.pos) + shift;
                 const float scale = static_cast<float>(victim.stats.height.toDouble()) / 1.8f;
+                if (own) noteWound(victim);  // hurt badly, he drips as he goes
+                // Standing in water, his blood goes into it (battle_water.cpp), not onto the bed under it.
+                if (presentInWater(e, pos, &victim, body)) break;
                 const int splats = e.killed ? 3 : 1;
                 for (int i = 0; i < splats; ++i) {
                     const uint32_t s = mix(seed, static_cast<uint32_t>(i));
@@ -1062,9 +1234,14 @@ void Battle::updateParticles(float seconds) {
                 p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Smoke:
+            case Particle::Kind::Steam:
                 p.vel = p.vel * std::exp(-0.8f * seconds);
                 p.pos += p.vel * seconds;
-                p.size += seconds * 1.2f;
+                p.size += seconds * (p.kind == Particle::Kind::Steam ? 0.6f : 1.2f);
+                break;
+            case Particle::Kind::Spray:
+                p.vel.z -= kGravity * seconds;
+                p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Heal:
             case Particle::Kind::Flash:
@@ -1186,6 +1363,62 @@ void Battle::runEnemyAi() {
     V3 anyEngines, anyDoor;
     const bool siege = aiSiege(kEnemy, {}, anyEngines, anyDoor);
     constexpr float kEasyNearM = 60.0f;  // Easy: a foe this near a squad is fought at once, however early
+    // Normal and Hard, in the open: the bows first. The host comes up to a bowshot and stands, its foot in front of its
+    // bowmen, and shoots (its foot in loose order under the arrows that come back: aiFormation); whoever comes out at
+    // it is met by all of it. Then it goes in together: when the foe's bows are beaten or its own are, when the fight
+    // is joined anyway, or after kDuelSeconds. (A host that walks in piecemeal under a standing line's arrows loses to
+    // an army nobody commands.)
+    V3 armyAt, wingAt;
+    bool wing = false;
+    float standM = 0;
+    if (aiSkill_ != AiSkill::Easy && !siege && !capture_.active()) {
+        int mine = 0, myBows = 0, hisBows = 0, fighting = 0, loosing = 0;
+        for (const sim::Unit& u : world_->units()) {
+            if (!u.alive() || u.routed) continue;
+            const bool bow = u.stats.ranged.muzzleSpeed > sim::Fixed::zero() && u.stats.ranged.autoRange > sim::Fixed::zero() && u.stats.gait != sim::Gait::Wheeled;
+            if (u.owner != kEnemy) {
+                hisBows += bow && u.owner == kPlayer;
+                continue;
+            }
+            ++mine;
+            myBows += bow;
+            fighting += u.engaged || u.foe != sim::kNoEntity;
+            loosing += bow && u.reloadRemaining > 0;
+            armyAt += toV3(u.pos);
+        }
+        if (mine > 0) armyAt = armyAt * (1.0f / static_cast<float>(mine));
+        const uint32_t now = world_->tick();
+        if (loosing > 0 && aiDuelSince_ == 0) aiDuelSince_ = now;
+        const uint32_t duel = (aiSkill_ == AiSkill::Hard ? 40u : 60u) * sim::kTicksPerSecond;
+        if (!aiAssault_ && (myBows == 0 || hisBows * 3 <= myBows || myBows * 2 < hisBows || fighting * 5 >= mine || (aiDuelSince_ != 0 && now - aiDuelSince_ > duel)))
+            aiAssault_ = true;
+        if (!aiAssault_) standM = static_cast<float>(sim::unitStats(UnitType::Archers).ranged.autoRange.toDouble()) * 0.8f - 10.0f;
+        // Going in, it goes in on one wing: the end of the foe's line nearer to it, every squad of foot together, and rolls
+        // the line up from there (the end squad of what is left, look by look). A line nobody commands is beaten in detail.
+        if (aiAssault_) {
+            V3 foeAt;
+            int foes = 0;
+            for (const Squad& t : squads_)
+                if (t.owner == kPlayer && aliveCount(t) > 0 && !t.garrison) foeAt += squadCentre(t, false), ++foes;
+            if (foes > 0) {
+                foeAt = foeAt * (1.0f / static_cast<float>(foes));
+                const V3 axis = V3{foeAt.x - armyAt.x, foeAt.y - armyAt.y, 0}.normalized();
+                const V3 across{-axis.y, axis.x, 0};
+                float lo = 0, hi = 0;
+                V3 loAt = foeAt, hiAt = foeAt;
+                for (const Squad& t : squads_) {
+                    if (t.owner != kPlayer || aliveCount(t) == 0 || t.garrison || standing(t).broken == aliveCount(t)) continue;
+                    const V3 tc = squadCentre(t, false);
+                    const float lat = V3{tc.x - foeAt.x, tc.y - foeAt.y, 0}.dot(across);
+                    if (lat < lo) lo = lat, loAt = tc;
+                    if (lat > hi) hi = lat, hiAt = tc;
+                }
+                if (aiWing_ == 0) aiWing_ = (loAt - armyAt).length() <= (hiAt - armyAt).length() ? -1 : 1;
+                wingAt = aiWing_ < 0 ? loAt : hiAt;
+                wing = true;
+            }
+        }
+    }
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
@@ -1195,6 +1428,14 @@ void Battle::runEnemyAi() {
         if (dist == 1e30f) return;
         const size_t q = static_cast<size_t>(&s - squads_.data());
         aiRally(q);
+        aiFormation(q);
+        // Gone to a friend's call (aiAnswer): left to it until it is there, or a while.
+        if (q < aiAnswering_.size() && world_->tick() < aiAnswering_[q]) {
+            bool going = false;
+            for (sim::EntityId id : s.members) going = going || (world_->units()[id - 1].alive() && world_->units()[id - 1].helping != sim::kNoEntity);
+            if (going) continue;
+            aiAnswering_[q] = 0;
+        }
         const bool easyMarch = aiSkill_ == AiSkill::Easy && !siege && !s.garrison && role != Role::Siege && dist > kEasyNearM;
         // Easy comes late: it stands a while (the player has time to set his line), then each squad goes for the foe nearest
         // it, piecemeal, with no massing and no falling back (aiFight). (Every squad on the one foe nearest the army's middle,
@@ -1219,8 +1460,39 @@ void Battle::runEnemyAi() {
             continue;
         }
         if (aiIsle(q)) continue;  // Oakhaven Ford: the isle, the bridges and the banks (battle_isle.cpp)
-        // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code path.
-        aiFight(q, goal, c, 1e4f);
+        if (standM > 0 && role == Role::Melee && s.type != UnitType::Hero) {
+            // Standing off: up to the line and no farther, unless a foe has come within a charge of it.
+            const sim::EntityId near = nearestFoe(kEnemy, c, 1e4f);
+            if (near != sim::kNoEntity) {
+                const V3 fp = toV3(world_->units()[near - 1].pos);
+                const float gap = V3{fp.x - c.x, fp.y - c.y, 0}.length();
+                if (gap > 32.0f && gap < standM + 60.0f) {  // (farther off: the march as ever, massed: aiFight)
+                    if (gap > standM + 4.0f) aiSteer(q, c + (fp - c) * ((gap - standM) / gap));
+                    else aiHalt(q);
+                    continue;
+                }
+            }
+        }
+        // Healers behind the nearest friend, the hyena-folk let loose (aiRaid), the rest as every computer seat plays: one code
+        // path.
+        if (wing && !s.garrison && role == Role::Melee && s.type != UnitType::Hero) {
+            // To the wing together; once there its men are let go, and fight as men with no order do (they close with what
+            // is near, go to the help of friends, answer calls, horse by the flank: world_tactics.cpp, world_help.cpp). The
+            // computer's hand on each squad in a melee did worse than that. Horse stop a charge short and wait to be called.
+            const sim::EntityId near = nearestFoe(kEnemy, c, 1e4f);
+            const V3 fp = near != sim::kNoEntity ? toV3(world_->units()[near - 1].pos) : wingAt;
+            const float gap = V3{fp.x - c.x, fp.y - c.y, 0}.length();
+            bool answering = false;
+            for (sim::EntityId id : s.members) answering = answering || (world_->units()[id - 1].alive() && world_->units()[id - 1].helping != sim::kNoEntity);
+            if (answering) continue;  // (gone to a call: left to it)
+            const float close = sim::unitStats(s.type).mounted ? 60.0f : 20.0f;
+            if (gap > 120.0f || aiShattered(s)) aiFight(q, wingAt, c, 1e4f);  // (far off: the march as ever, massed; shattered: it falls back to mend)
+            else if (gap <= close) aiHalt(q);
+            else aiSteer(q, gap < 70.0f ? c + (fp - c) * ((gap - close + 4.0f) / gap) : wingAt);
+            continue;
+        }
+        if (wing && !s.garrison) aiFight(q, wingAt, c, 1e4f);  // (bowmen and the rest: toward the wing, behind the foot, shooting what is in reach)
+        else aiFight(q, goal, c, 1e4f);
     }
 }
 
@@ -1236,6 +1508,7 @@ int Battle::outcome() const {
     if (!playerAlive) return 2;
     if (brokeOff_) return 1;  // the besiegers are spent and have gone (aiBreakOff): the walls are held
     if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
+    if (siegeTimedOut()) return 2;  // the player's siege has run out of its time
     if (rout_.called(*world_)) return rout_.quitter() == kPlayer ? 2 : 1;  // a host has quit the field
     return 0;
 }
@@ -1277,7 +1550,7 @@ void Battle::chargeAll() {
     std::vector<sim::EntityId> ours;
     for (const sim::Unit& u : world_->units())
         if (u.alive() && controllable(u)) ours.push_back(u.id);
-    voice_.order(Situation::Charge, *world_, ours);
+    answer(Situation::Charge, ours);
 }
 
 }  // namespace illyria::game

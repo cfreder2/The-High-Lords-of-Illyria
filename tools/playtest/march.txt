@@ -1,0 +1,25 @@
+# The March: the first battle with no orders, its results sheet, the camp (the purse spent on the most worn squads),
+# and the second battle, the village, set out. See docs/GAME_DESIGN.md §3.7 and docs/PLAYTEST.md.
+size 1600 900
+start march budget 450
+wait 1
+shot 01-field
+speed 4
+wait_ticks 12000
+wait 1.5
+shot 02-result
+stats
+# Next battle: the camp, the cursor on March on. Up is "Fill what the purse can"; Enter spends the purse.
+key return
+wait 0.6
+key up
+key return
+wait 0.3
+shot 03-camp
+# Down to March on; the village is set out and waits on its deployment (its clock starts with Enter).
+key down
+key return
+wait 5
+shot 04-village-deploy
+cards
+quit

@@ -31,6 +31,60 @@ void Battle::announce(const std::string& text) {
     if (events_.size() > kMaxEvents) events_.erase(events_.begin(), events_.end() - static_cast<std::ptrdiff_t>(kMaxEvents));
 }
 
+void Battle::observeFight() {
+    const uint32_t now = conquest_->tick();
+    const uint8_t me = conquest_->localSide();
+    const auto armyOf = [&](uint32_t id) -> const sim::Army* {
+        for (const sim::Conquest::Stack& st : conquest_->stacks())
+            if (st.owner == me)
+                for (const sim::Army& a : st.armies)
+                    if (a.id == id) return &a;
+        return nullptr;
+    };
+    bool fighting = false;
+    for (const sim::Conquest::Stack& st : conquest_->stacks()) {
+        if (st.owner != me) continue;
+        for (const sim::Army& a : st.armies) {
+            bool fresh = false;
+            for (const sim::Man& m : a.men) fresh = fresh || (m.alive() && m.unit && m.fightTick != 0 && now - m.fightTick < kFightFreshTicks);
+            if (!fresh) continue;
+            fighting = true;
+            if (std::none_of(fight_.armies.begin(), fight_.armies.end(), [&](const FightWatch::Entry& e) { return e.army == a.id; })) {
+                if (fight_.armies.empty()) fight_.began = eventClock_;
+                fight_.armies.push_back({a.id, a.name.empty() ? std::string(sim::unitTypeName(a.type)) : a.name, a.soldiers, a.kills, a.rank, a.hero()});
+            }
+        }
+    }
+    if (fighting) {
+        fight_.last = eventClock_;
+        return;
+    }
+    if (fight_.armies.empty() || eventClock_ - fight_.last < kFightOverTicks) return;
+    // It is over: what each squad that fought has left and did.
+    Result r;
+    r.conquest = true;
+    r.seconds = static_cast<int>((fight_.last - fight_.began) / sim::kTicksPerSecond);
+    int best = 0, left = 0;
+    for (const FightWatch::Entry& e : fight_.armies) {
+        const sim::Army* a = armyOf(e.army);  // (nullptr: wiped out, and taken off the roll)
+        Result::Row row{e.name, a ? a->soldiers : 0, e.alive, a ? std::max(0, a->kills - e.kills) : 0, false, a ? a->rank : e.rank, a && a->rank > e.rank ? 1 : 0, e.hero};
+        if (e.hero) row.rank += 1;  // (a hero's level)
+        left += row.alive;
+        r.lost += row.total - row.alive;
+        r.killed += row.kills;
+        r.promoted += row.promoted;
+        if (e.hero && row.alive == 0) r.fallen.push_back(e.name);
+        if (row.kills > best) best = row.kills, r.best = e.name;
+        r.rows.push_back(std::move(row));
+    }
+    r.outcome = fight_.weQuit || left == 0 ? 2 : 1;
+    r.how = fight_.weQuit || fight_.foeQuit ? Result::How::Rout : Result::How::Wiped;
+    fight_ = {};
+    if (r.killed + r.lost < kFightWorth) return;
+    fightReport_ = std::move(r);
+    fightTold_ = true;
+}
+
 void Battle::observeSquads() {
     ++eventClock_;
     if (eventClock_ % 5 != 0) return;
@@ -76,9 +130,15 @@ void Battle::observeSquads() {
         for (const sim::Conquest::Quit& q : conquest_->quits()) {
             if (q.tick <= quitSeen_) continue;
             quitSeen_ = q.tick;
-            if (q.owner == conquest_->localSide()) announce("Your host has quit the field");
-            else if (sees(q.owner, static_cast<float>(q.px) / 1000.0f - o.x, static_cast<float>(q.py) / 1000.0f - o.y)) announce("The enemy has quit the field");
+            if (q.owner == conquest_->localSide()) {
+                announce("Your host has quit the field");
+                fight_.weQuit = !fight_.armies.empty();
+            } else if (sees(q.owner, static_cast<float>(q.px) / 1000.0f - o.x, static_cast<float>(q.py) / 1000.0f - o.y)) {
+                announce("The enemy has quit the field");
+                fight_.foeQuit = !fight_.armies.empty();
+            }
         }
+        observeFight();
     }
     // A Conquest: the last army of the local side gone. The map's banner stays while it is so; this is the moment.
     if (conquest_ && eventClock_ % 30 == 0) {

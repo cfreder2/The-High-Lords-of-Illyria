@@ -40,7 +40,7 @@ enum class ProjectileKind : uint8_t {
     Bomb,      // a satchel charge: laid, it lies still until a blast or fire sets it off (a burning fuse, then it explodes)
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
-    Stone,     // a catapult's stone: a high arc, then it smashes whatever it lands on
+    Stone,     // a catapult's boulder: a high arc, a smash where it comes down, and then it bounces and rolls on (world_boulder.cpp)
     Molotov,   // a grenadier's bottle of burning oil: shatters on any impact into a burst of fire, which sets off satchels
 };
 
@@ -201,6 +201,11 @@ struct Scavenger {
     bool holding() const { return satchel || held != RemainKind::None; }
 };
 
+// How a squad stands (the game's formations, game::Formation, with one more for "none"). The world knows each man's so
+// that every formation has its strength and its cost (world_formation.cpp). None: a man of no squad, or one never formed.
+enum class FormationKind : uint8_t { None, Line, DoubleLine, Box, Wedge, Loose, Encircle, Vee };
+inline constexpr int kFormationKinds = 8;
+
 // Player input, the only thing exchanged between lockstep peers.
 struct Command {
     // AttackGate: missile troops shoot at the gate nearest `target`.
@@ -214,7 +219,9 @@ struct Command {
     // SetStance: the soldier's stance with no order in hand (`hold`): Hold keeps his place, else he goes to the help of a
     // friend fighting near him (world_tactics.cpp). It touches no order he has. Rally: the lord's call (`unit` is the
     // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally };
+    // SetFormation: the formation the soldier is to keep (`formation`): no order of his own either. Answer: he goes to the
+    // help of the friend `targetUnit`, who has called (world_help.cpp), as a man with no order would of himself.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -246,6 +253,8 @@ struct Command {
     GatePin gatePin = GatePin::Auto;
     // SetStance: stand fast (true) or support (false).
     bool hold = false;
+    // SetFormation: which.
+    FormationKind formation = FormationKind::None;
     // Shift: add this order to the end of the soldier's queue (an order that replaces his current one and clears the
     // queue when false). A soldier with no order of his own begins it at once. Meaningless for Stop, Raid and SetGate.
     bool queue = false;
@@ -301,6 +310,33 @@ struct Unit {
     EntityId support = kNoEntity;
     // A lord: ticks before he may call the Rally again (Command::Rally).
     int32_t rallyCooldown = 0;
+    // His squad (0: none; the game's, or a Conquest army's id) and the formation it keeps (world_formation.cpp). `ranked`:
+    // squad-mates within a few strides of him at the last census (a formation is its men together). `disorder`: ticks until
+    // he has re-formed (after a charge, struck in the flank, in woods, mud or water): no formation counts meanwhile.
+    uint32_t squad = 0;
+    FormationKind formation = FormationKind::None;
+    int32_t ranked = 0;
+    int32_t disorder = 0;
+    // Calls for help (world_help.cpp). `called`: the tick his squad last called (0: never). `helping`: the friend whose
+    // call he is answering (his march to him is the answer's, not an order: any order ends it). `shotTick`, `flankTick`:
+    // when a missile last struck him, and a blow in his flank or back (0: never).
+    uint32_t called = 0;
+    EntityId helping = kNoEntity;
+    uint32_t helpSince = 0;
+    bool helpFlank = false;  // the answer was commanded (Command::Answer): horse ride round to the foe's flank; of itself it goes straight to the friend
+    // Posted: where an order's march ended is ground he keeps. He fights what comes within kPostLeash of it and helps a
+    // friend whose foe is within it, goes back to it after, and does not leave it for a call. Any order ends it (Stop: he
+    // is free again, and goes where the support stance takes him).
+    bool posted = false;
+    Vec3 postAt;
+    // A rider who has charged home wheels away to re-form and come again: ticks of it left, and the way he rides.
+    int32_t wheel = 0;
+    Vec3 wheelDir;
+    uint32_t shotTick = 0, flankTick = 0;
+    // Woods (world_formation.cpp): the sides with a man near enough to see him among the trees, a bit each, as of the
+    // last census (every side, for a man in the open); and the tick he last stood unseen by every foe (0: never).
+    uint8_t seenBy = 0xFF;
+    uint32_t hidTick = 0;
     bool wavering() const;
 
     enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
@@ -366,6 +402,7 @@ struct Unit {
     Death death;
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
     bool looted = false;       // dead: a scavenger took his blade
+    bool afloat = false;       // dead: the water bears him, and a river carries him (world_drift.cpp)
     Scavenger scav;            // scavengers only (UnitStats::scavenge)
     // Struck by something a scavenger threw: by whom, and when. With no
     // order of his own he turns his shield to him (World::shieldTarget).
@@ -427,6 +464,29 @@ struct Projectile {
     // Hurled by a scavenger's hand (shooter is he): a head breaks the man it
     // strikes, a blade cuts him, a satchel bursts where it strikes.
     bool thrown = false;
+    // A boulder that has come down (world_boulder.cpp): it bounces and rolls on over the ground until it rests, and
+    // `rolled` is how far it has gone on the ground (its turning, for the picture, and its furrow).
+    bool landed = false;
+    Fixed rolled;
+};
+
+// A boulder's own size and throw (world_boulder.cpp). Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a
+// high, plunging arc.
+inline constexpr Fixed kStoneRadius = Fixed::fromRatio(11, 20);
+inline constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
+
+// What a boulder can strike that is not a man (World::strikeStructure).
+enum class Structure : uint8_t { Gate, Wall, Tower, House, Rock, Tree };
+
+// A boulder's predicted way over the ground (World::stonePath): where it comes down, then where it is and how fast at
+// each tick after, to its rest.
+struct StonePath {
+    struct Point {
+        Vec3 pos;
+        Fixed speed;  // over the ground
+    };
+    Vec3 landing;
+    std::vector<Point> roll;
 };
 
 struct Remain {
@@ -436,6 +496,7 @@ struct Remain {
     Vec3 dir;            // arrows: shaft direction (tip first); parts: lying direction
     uint32_t tick = 0;   // when it came to rest
     uint8_t source = kNoSource;  // as Projectile::source
+    bool afloat = false;  // a part the water bears, carried by a river (world_drift.cpp)
 };
 
 
@@ -457,7 +518,11 @@ struct ImpactEvent {
     // Smash: a stone shattered here (radius = its reach). Gate: a blow or blast
     // struck a gate (gate = which; killed = it broke).
     // Burst: a Molotov shattered here and its fire spread (radius).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst };
+    // A boulder (world_boulder.cpp; projectile = it, dir = its velocity): Bounce, it struck the ground and went on
+    // (radius = how hard, m/s); Splash, it went into water and stopped; Struck, it hit a wall, tower, house, rock, tree
+    // or gate (radius = the blow, World::strikeStructure's energy; gate = the Structure struck).
+    // Splash: a flying part (or a loose arrow) went into the water here, at the surface (radius = how big a splash).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Bounce, Splash, Struck };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -538,11 +603,31 @@ struct TacticEvent {
     // Flanked, Rear: struck in the flank or the back (a charge, or a blow on a man busy with another). Broken: a charge
     // there broke him on the spot. Braced: his pike stopped a charge head on. Ford: struck while wading. HighGround:
     // struck from above. Volley: shot from a height, or shot while wading.
-    enum class Kind : uint8_t { Flanked, Rear, Broken, Braced, Ford, HighGround, Volley };
+    // Mire: struck while in mud or swamp. Uphill: he struck up a slope (slower, weaker). Cover: the trees (or his loose
+    // order) spared him an arrow. Ambush: struck by men he had not seen among the trees. Disordered: his formation is
+    // lost. Square: a blow at his flank or back met a square's front. Charge: a rider's charge struck him (`detail`:
+    // 0 front, 1 flank, 2 rear), told of every charge whatever else it did. Downhill: that charge had the slope behind it.
+    enum class Kind : uint8_t { Flanked, Rear, Broken, Braced, Ford, HighGround, Volley, Mire, Uphill, Cover, Ambush, Disordered, Square, Charge, Downhill };
     Kind kind = Kind::Flanked;
     EntityId unit = kNoEntity;  // the man it happened to (Braced: the pikeman who stood)
     PlayerId owner = 0;         // his side
     Vec3 pos;
+    int32_t detail = 0;
+};
+
+// A squad in trouble called for help this tick (world_help.cpp), and who answers. Derived from the simulation like
+// RallyCall, for the voices, the cards, the minimap and the event line. A side is told only of its own calls.
+struct HelpCall {
+    // Outnumbered in the melee; struck in the flank or back; wavering; under missiles it cannot answer; its lord has fallen.
+    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown };
+    EntityId caller = kNoEntity;  // a man of the squad that calls
+    PlayerId owner = 0;
+    uint32_t squad = 0;
+    Vec3 pos;                     // the middle of the squad
+    Why why = Why::Outnumbered;
+    uint32_t answer = 0;              // the squad that answers (0: none is free)
+    EntityId answerer = kNoEntity;    // a man of it
+    Vec3 answerPos;                   // its middle
 };
 
 // A hero's hit points grow by this share of a fresh hero's with every level.
@@ -645,6 +730,33 @@ public:
     const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
     // Position that told during the last step (world_tactics.cpp).
     const std::vector<TacticEvent>& tactics() const { return tactics_; }
+    // Calls for help made during the last step (world_help.cpp).
+    const std::vector<HelpCall>& helpCalls() const { return helpCalls_; }
+    // A man's squad and its formation, as he is raised (the game's squads, a Conquest's armies).
+    void setSquad(EntityId id, uint32_t squad, FormationKind formation);
+    // Formations (world_formation.cpp). Whether he fights in his formation now: he has one, squad-mates stand by him, he
+    // is not broken and not disordered.
+    bool formed(const Unit& u) const;
+    // The ground under him, as it tells in a fight: firm; a ford he wades; mud or swamp he is mired in; woods (that
+    // break up horse and close ranks). A kind at home on the ground (gait.h) stands firm on it.
+    enum class Footing : uint8_t { Firm, Ford, Mire, Woods };
+    Footing footing(const Unit& u) const;
+    // Among the trees (any kind of man): arrows are stopped, and he is hidden from afar.
+    bool inWoods(const Unit& u) const;
+    // Hidden from `side`: among the trees with no man of that side within kSpotReach of him.
+    bool concealed(const Unit& u, PlayerId side) const;
+    static constexpr Fixed kSpotReach = Fixed::fromInt(25);
+    // A call lasts this long on a card and a map; a squad calls again no sooner than kCallAgainTicks.
+    static constexpr uint32_t kCallShownTicks = 8 * kTicksPerSecond, kCallAgainTicks = 25 * kTicksPerSecond;
+    // Whether a man is free to answer a call: no order, nobody to fight, not holding, not broken, a fighter, a bowman or a healer.
+    bool freeToAnswer(const Unit& u) const;
+    // What a formation does, for the manual and the HUD (percent; 0: nothing): to his blows, to shocks to his nerve, to
+    // missiles landing on him, and the arrows it spares him.
+    struct FormationRule {
+        int32_t blowPct, asidePct, shockPct, flankShockPct, struckAsidePct, struckFrontPct, shotPct, sparePct;
+        bool allRound, tight;
+    };
+    static const FormationRule& formationRule(FormationKind f);
     // Position (world_tactics.cpp). A man wading (in the shallows, on his feet, his kind not at home in water) strikes at
     // kWadeBlowPct less and is struck harder by a man on dry ground and by missiles.
     bool wading(const Unit& u) const;
@@ -678,6 +790,15 @@ public:
     int32_t oddsAgainst(const Unit& u, const Unit& foe) const;
     // Everyone killed during the last step, and how (world_death.cpp).
     const std::vector<DeathEvent>& deathEvents() const { return deathEvents_; }
+    // The water (world_drift.cpp): the metres of it over the bed at a point (none: 0), the current there (m/s, along
+    // the nearest river's line; nothing in still water and on dry land), and how deep a body of these stats rides:
+    // in less it grounds. Read by the step and by the presentation alike (the cache behind flowAt is a function of
+    // the ground alone).
+    Fixed waterDepth(Fixed x, Fixed y) const;
+    Vec3 flowAt(Fixed x, Fixed y) const;
+    static Fixed draughtOf(const UnitStats& s);
+    // Whether a stone bridge's pier (or its cutwater) stands in the water at a point: what floats lodges against it.
+    bool pierAt(Fixed x, Fixed y) const;
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -809,10 +930,25 @@ public:
     // (`fuseTicks` zero), as a grenadier lays it, it waits for a blast or
     // fire; else its fuse burns that long (in tests). Its id.
     EntityId placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& ex, int32_t fuseTicks = 0);
-    // What bursts on impact (fireballs, stones, Molotovs) rather than bouncing or sticking.
+    // What bursts on impact (fireballs, stones, Molotovs) rather than bouncing or sticking. (A stone then rolls on.)
     static bool burstsOnImpact(ProjectileKind k) {
         return k == ProjectileKind::Fireball || k == ProjectileKind::Stone || k == ProjectileKind::Molotov;
     }
+    // The boulder (world_boulder.cpp). A stone thrown by `engine` at `mark`: where it would come down and roll, over
+    // the ground as it is (slopes, soft ground, water, trees and stone in its way), the men not reckoned. The same
+    // steps the thrown stone takes; for the aim (World::fireAt) and for showing the player before he orders it.
+    StonePath stonePath(const Unit& engine, const Vec3& mark) const;
+    // A boulder let go at `pos` with `vel` (in tests): as a catapult's in the air. Its id. And one thrown as `engine`
+    // would throw it at `mark`, with no scatter (in tests, and the boulder demo of the --play scripts).
+    EntityId launchStone(PlayerId owner, const Vec3& pos, const Vec3& vel);
+    EntityId throwStone(const Unit& engine, const Vec3& mark);
+    // THE HOOK FOR CASTLE DAMAGE (docs/GAME_DESIGN.md, "The boulder"). Every blow of a boulder on something built or
+    // grown comes through here: `kind` what it struck, `where`, `dir` the stone's travel, `energy` the blow in the
+    // stone's own damage (100 is a catapult's stone straight from the air; one that rolled into it has less, by its
+    // speed), `rolled` whether it rolled into it. Today it tells the presentation (ImpactEvent::Kind::Struck) and, for
+    // a gate a stone ROLLED into, takes the doors' hit points (a stone from the air does that through its smash,
+    // World::blastGates). Walls, towers and houses have no hit points yet: the work that gives them some takes them here.
+    void strikeStructure(Structure kind, const Vec3& where, const Vec3& dir, Fixed energy, bool rolled);
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -1322,7 +1458,39 @@ private:
     void support(Unit& u, Unit& foe);
     // A charge's shock, by where it lands, to the man struck and (less) the friends at his shoulder.
     void chargeShock(Unit& enemy, HitSide side, bool busy);
-    void tell(TacticEvent::Kind kind, const Unit& u) { tactics_.push_back({kind, u.id, u.owner, u.pos}); }
+    void tell(TacticEvent::Kind kind, const Unit& u, int32_t detail = 0) { tactics_.push_back({kind, u.id, u.owner, u.pos, detail}); }
+    // Formations (world_formation.cpp): what his formation adds to his blow where it lands (percent), to a blow or a
+    // missile landing on him, and to a shock to his nerve; whether it has no flank (a square); whether it turns slowly.
+    int32_t formBlowPct(const Unit& u, HitSide side) const;
+    int32_t formStruckPct(const Unit& target, HitSide side, bool missile) const;
+    int32_t formShockPct(const Unit& u) const;
+    int32_t formFlankShockPct(const Unit& u) const;
+    bool allRound(const Unit& u) const;
+    bool turnsSlowly(const Unit& u) const;
+    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover).
+    bool arrowSpared(const Unit& u);
+    // His formation is lost for `ticks` (told once, when it goes).
+    void disorder(Unit& u, int32_t ticks);
+    // The census of the ranks and the woods, with the morale census: squad-mates near, who sees whom among the trees.
+    void updateRanks();
+    // The first blow out of hiding: what it does to the nerve of the man struck.
+    void ambush(Unit& striker, Unit& struck);
+    // Calls for help and their answers (world_help.cpp).
+    void callForHelp();
+    // Sets a man on his way to a friend who has called (the sim's own answer, and Command::Answer).
+    void answerCall(Unit& u, const Unit& caller, bool flank = false);
+    static constexpr Fixed kPostLeash = Fixed::fromInt(20);
+    bool withinPost(const Unit& u, const Unit& foe) const { return (foe.pos - u.postAt).flat().lengthSq() <= kPostLeash * kPostLeash; }
+    // A posted man with nothing to fight who is off his post walks back to it (true: he walks).
+    bool returnToPost(Unit& u);
+    // A man answering: true while he is on his way (his march), false once he is there (support takes him in) or it is over.
+    bool answering(Unit& u);
+    // Pikes with no order stand to receive horse coming at the gallop: turned to it, braced (true: he stands).
+    bool braceFor(Unit& u, const Unit& foe);
+    // A healer with no order goes to a wounded friend near him who is out of his reach (true: he walks).
+    bool seekWounded(Unit& u);
+    // What a man looses from where he stands, in percent of his shot (a man in the water shoots worse).
+    int32_t loosePct(const Unit& shooter) const;
     // Missile reach from the unit's height over the target: farther down a hill, shorter up one.
     Fixed shotRange(const Unit& u, Fixed base, const Vec3& target) const;
     bool tryHeal(Unit& unit);
@@ -1355,7 +1523,40 @@ private:
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     // `stone` (if given) tells whether it was stone (walls, towers, houses,
     // rocks), off which arrows glance, or wood (trees, gates), which they stick in.
-    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false, bool* stone = nullptr) const;
+    // `what` (if given): which obstacle of the region it was, or kHitWall, kHitGate.
+    static constexpr int32_t kHitWall = -1, kHitGate = -2;
+    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false, bool* stone = nullptr, int32_t* what = nullptr) const;
+    // The boulder (world_boulder.cpp). How it came down: on the ground, on a man, or against something standing.
+    enum class StoneFall : uint8_t { Ground, Man, Obstacle };
+    // A stone in the air struck at `at` (its smash is the caller's): it goes on as a thing on the ground. False if it is
+    // gone (shattered on a wall-walk, sunk).
+    bool landStone(Projectile& p, const Vec3& at, StoneFall how, int32_t what);
+    // One tick of a stone on the ground: its way, and the men under it. True when it is gone.
+    bool rollStone(Projectile& p);
+    // One tick of its way alone (no man, no chance): what it met, for rollStone to tell and stonePath to follow.
+    struct StoneStep {
+        enum class Met : uint8_t { Nothing, Bounce, Water, Obstacle, Rest } met = Met::Nothing;
+        Vec3 at;
+        Fixed blow;        // Bounce: its speed into the ground; Obstacle: its speed into the thing
+        int32_t what = 0;  // Obstacle: as obstacleHit's
+    };
+    StoneStep stepStone(Projectile& p) const;
+    // The ground's answer to a stone coming down on it at p.pos (stepStone's, and the first landing's).
+    StoneStep groundStone(Projectile& p) const;
+    // The land's rise each way under a stone on `floor` there (x, y; nothing on a deck, which is level).
+    Vec3 stoneSlope(Fixed x, Fixed y, Fixed floor) const;
+    // What a step met, told and done: dust, a splash, the blow on a structure. True when the stone is gone.
+    bool tellStone(Projectile& p, const StoneStep& step);
+    Structure structureOf(int32_t what) const;
+    // The velocity `engine` gives a stone to come down at `at`, and where it leaves the arm (`origin`), as World::fire has it.
+    Vec3 stoneLaunch(const Unit& engine, const Vec3& at, Vec3& origin) const;
+    // What a stone thrown by `u` at `mark` would do as it rolls on from there, to the foe and to his own side, as
+    // World::fireAt's tally of a blast reckons a wound (one stone's worth; `spread` is how wide of the mark it may fall).
+    struct RollToll {
+        Fixed foe, friends;
+        bool badlyHurtFriend = false;
+    };
+    RollToll rollToll(const Unit& u, const Vec3& mark, Fixed spread) const;
     // Castle walls (world_walls.cpp).
     // Earliest entry of segment a->b into a wall's stone: its slab below the
     // walk, the parapet, a merlon (not an embrasure); -1 if none.
@@ -1398,6 +1599,17 @@ private:
     Unit* debrisHit(const Vec3& a, const Vec3& b, EntityId ignore = kNoEntity);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source = kNoSource);
     void clearRemain(uint32_t slot);
+    // The dead in the water (world_drift.cpp). A body come to rest (killed, or landed after a blast) is borne up if
+    // the water is deep enough for it; a part laid in a slot likewise (false: it lies on the bed); what never floats
+    // (an arrow, a blade, a bone); a flying thing that has just gone under (it tells of the splash); and the step
+    // that carries everything afloat.
+    void floatBody(Unit& u);
+    bool floatRemain(uint32_t slot);
+    static bool sinksInWater(RemainKind kind);
+    bool plunge(const Projectile& p, const Vec3& before);
+    void driftAfloat();
+    bool carry(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
+    bool drift(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
     bool steeperThan(Fixed x, Fixed y, Fixed limit) const;  // slopeAt(x, y) > limit, without the root
@@ -1428,6 +1640,8 @@ private:
     std::vector<HeroDeath> heroDeaths_;
     std::vector<RallyCall> rallyCalls_;
     std::vector<TacticEvent> tactics_;
+    std::vector<HelpCall> helpCalls_;
+    std::array<uint32_t, 8> firstCall_ = {};  // by side: the tick of its first call for help in this fight (0: none yet), state
     std::vector<uint8_t> wet_;  // updateMorale's scratch: who is wading, by place, as of this census (derived, not state)
     std::vector<OrderDecision> decisions_;
     std::vector<DeathEvent> deathEvents_;
@@ -1438,6 +1652,13 @@ private:
     std::vector<PlayerId> brokenSides_;  // breakSide, ascending
     uint64_t remainsAdded_ = 0;
     std::vector<uint32_t> changedRemains_;
+    // What the water is carrying, in the order it took them: a body (its id) or a part (its slot).
+    struct Floater {
+        bool unit;
+        uint32_t ref;
+    };
+    std::vector<Floater> afloat_;
+    mutable std::unordered_map<uint64_t, Vec3> flowCache_;  // flowAt, a square at a time: looked up, never walked
     struct PendingExplosion {
         Vec3 at;
         Explosive ex;

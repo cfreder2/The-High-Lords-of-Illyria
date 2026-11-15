@@ -133,7 +133,7 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Conquest::load(continent(), "hello", &why) == nullptr);
     CHECK(why == "not a saved conquest");
     // A save from before the men were on the land (layout 2: stacks of armies with a count of soldiers) is refused as such.
-    CHECK(text.compare(0, 5, "ILC8.") == 0);
+    CHECK(text.compare(0, 5, "ILC9.") == 0);
     CHECK(Conquest::load(continent(), "ILC4." + text.substr(5), &why) == nullptr);
     CHECK(why == "saved by another version of the game");
     // ... as is the layout before the orders waiting behind a man's own were kept (ILC6).
@@ -149,6 +149,49 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     bent[k] = bent[k] == 'A' ? 'B' : 'A';
     CHECK(Conquest::load(continent(), bent, &why) == nullptr);
     CHECK(Conquest::load(continent(), text, &why) != nullptr);
+}
+
+// Players have saves of the layout before squads had a history (ILC8: the browser's slots, the desktop's
+// campaign.save). They load: the history begins at nothing, the war carries on, and what is saved from it is today's
+// layout. The fixture was written by the game as it was then (tests/fixtures/conquest_ilc8.txt). It is tied to the map,
+// as every save is: if the island is redrawn it is refused as "saved on another map", and so are the players' saves.
+extern const char* const kConquestIlc8;
+TEST(a_save_of_the_layout_before_squads_had_a_history_loads_and_plays_on) {
+    const std::string old = kConquestIlc8;
+    CHECK(old.compare(0, 5, "ILC8.") == 0 && old.size() > 10000);
+    std::string why;
+    std::unique_ptr<Conquest> c = Conquest::load(continent(), old, &why);
+    CHECK(c != nullptr);
+    if (!c) {
+        std::printf("  the ILC8 save was refused: %s\n", why.c_str());
+        return;
+    }
+    // As it was saved: a day and a half in, the Sylvaran Elves against two lords; every squad's history at nothing.
+    CHECK(c->tick() == 5400 && c->day() == 1 && c->setup().player == 4);
+    int armies = 0, men = 0;
+    for (const Conquest::Stack& s : c->stacks())
+        for (const Army& a : s.armies) {
+            ++armies;
+            men += a.soldiers;
+            CHECK(a.battles == 0 && a.foughtTick == 0 && a.rank >= 0 && a.kills >= 0);
+        }
+    CHECK(armies > 20 && men > 200);
+    // It plays on, and is saved in today's layout, which loads to the same game.
+    for (int k = 0; k < Conquest::kTicksPerDay; ++k) c->step();
+    CHECK(c->day() == 2);
+    const std::string now = c->save();
+    CHECK(now.compare(0, 5, "ILC9.") == 0);
+    std::unique_ptr<Conquest> r = Conquest::load(continent(), now, &why);
+    CHECK(r != nullptr);
+    if (!r) return;
+    CHECK(r->checksum() == c->checksum() && r->save() == now);
+    // Damage to it is still caught (the bytes' seal), and a layout older than it is refused in plain words.
+    std::string bent = old;
+    bent[bent.size() / 2] = bent[bent.size() / 2] == 'A' ? 'B' : 'A';
+    CHECK(Conquest::load(continent(), bent, &why) == nullptr);
+    CHECK(Conquest::load(continent(), "ILC7." + old.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
+    std::printf("  an ILC8 save of %d squads and %d men loaded, played a day and saved as ILC9\n", armies, men);
 }
 
 // Who plays (Conquest::Setup): the chosen faction is side 0, the chosen computer lords are the other sides, and
@@ -465,7 +508,7 @@ TEST(a_save_on_a_voyage_carries_the_stack_afloat_exactly) {
     CHECK(saves >= 2);
 }
 
-// A man's queue of orders is kept in a save (ILC8): the orders behind his own come back on the man put back in the world,
+// A man's queue of orders is kept in a save (since ILC8): the orders behind his own come back on the man put back in the world,
 // and the loaded game carries on as the saved one does. The order he was walking is a moment and is not kept (a save puts
 // every man back standing), so the first of his queue begins; an attack on a soldier names a unit of the world's, which
 // are made anew, so it is not kept either.
@@ -500,7 +543,7 @@ TEST(the_orders_queued_behind_a_mans_own_are_saved_with_the_game) {
     c.step();
     CHECK(w.findUnit(unit)->queue.size() == 2);
     const std::string text = c.save();
-    CHECK(text.compare(0, 5, "ILC8.") == 0);
+    CHECK(text.compare(0, 5, "ILC9.") == 0);
     std::string why;
     std::unique_ptr<Conquest> r = Conquest::load(continent(), text, &why);
     if (!r) std::printf("  load refused: %s\n", why.c_str());

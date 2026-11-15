@@ -4,13 +4,18 @@ placeholder cries listed in game/web/voice/lines.json) into the game's MP3s.
 
     python3 tools/sfx/synth/render.py              # everything
     python3 tools/sfx/synth/render.py snd_expl_satchel snd_ui_click   # just these
+    python3 tools/sfx/synth/render.py --sfx        # every sound effect, not the voices' cries
     python3 tools/sfx/synth/render.py --check      # every file there, and sane
 
 Deterministic: each variant's noise comes from a seed made of its id and
-number. One-shots are normalised to -18 LUFS (peaks at most -1 dBFS) and
-written as mono MP3; ambience loops to -24 LUFS, stereo, made seamless and
-padded so the page can loop the middle (loop_start/loop_seconds in
-stats.json). A recording dropped in by tools/sfx/convert.sh is never
+number. One-shots are normalised to -18 LUFS and written as mono MP3;
+ambience loops to -24 LUFS, stereo, made seamless and padded so the page can
+loop the middle (loop_start/loop_seconds in stats.json). A sound effect is
+finished against its own decoded MP3: encoded, decoded and measured, and the
+gain and the limiter's ceiling corrected until the file itself is on the
+target with its true peak under -1 dBFS (the buffer goes to the encoder with
+2 dB of headroom). The lufs and peak_db in stats.json are those of the
+decoded file. A recording dropped in by tools/sfx/convert.sh is never
 overwritten: ids listed in game/web/sfx/recorded.json are skipped.
 Needs numpy, scipy and ffmpeg.
 """
@@ -61,10 +66,59 @@ def encode(x, path, stereo):
         os.unlink(tmp)
 
 
-def stats_of(x, path, loop=None):
-    mono = x if x.ndim == 1 else x.mean(axis=1)
-    s = {"seconds": round(len(x) / dsp.SR, 3), "peak_db": round(20 * np.log10(np.max(np.abs(x)) + 1e-12), 2),
-         "lufs": round(float(dsp.loudness(x)), 2), "dc": round(float(np.mean(mono)), 5),
+def decode(path):
+    """The MP3 as a player will hear it: decoded by ffmpeg to float samples."""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp = f.name
+    try:
+        subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", path, "-ar", str(dsp.SR),
+                        "-c:a", "pcm_f32le", tmp], check=True)
+        _, d = wavfile.read(tmp)
+    finally:
+        os.unlink(tmp)
+    return d.astype(np.float64)
+
+
+HEADROOM_DB = -2.0   # the buffer's peak ceiling going into the encoder
+TRUE_PEAK_DB = -1.0  # the decoded file's true peak must stay under this
+
+
+def finish(x, target, path, ceiling_db=HEADROOM_DB, fades=None):
+    """Normalises, encodes and checks the decoded file, correcting the gain
+    (the encoder's low-pass takes loudness from a bright sound) and the
+    ceiling (it adds overshoot) until the file is on target. Returns the
+    buffer and the decoded samples."""
+    aim, ceil = target, min(ceiling_db, HEADROOM_DB)
+    best = None
+    for _ in range(6):
+        y = dsp.normalise(x, aim, ceil)
+        if fades:
+            y = dsp.fade(y, *fades)
+        encode(y, path, y.ndim == 2)
+        d = decode(path)
+        err, tp = target - dsp.loudness(d), dsp.true_peak(d)
+        if tp <= TRUE_PEAK_DB and (best is None or abs(err) < best[0]):
+            best = (abs(err), aim, ceil)
+        if abs(err) <= 0.1 and tp <= TRUE_PEAK_DB:
+            return y, d
+        aim += err
+        if tp > TRUE_PEAK_DB:
+            ceil -= tp - TRUE_PEAK_DB + 0.2
+    if best:
+        aim, ceil = best[1], best[2]
+    y = dsp.normalise(x, aim, ceil)
+    if fades:
+        y = dsp.fade(y, *fades)
+    encode(y, path, y.ndim == 2)
+    return y, decode(path)
+
+
+def stats_of(x, path, loop=None, decoded=None):
+    d = x if decoded is None else decoded
+    mono = d if d.ndim == 1 else d.mean(axis=1)
+    peak = dsp.true_peak(d) if decoded is not None else 20 * np.log10(np.max(np.abs(x)) + 1e-12)
+    s = {"seconds": round(len(x) / dsp.SR, 3), "peak_db": round(float(peak), 2),
+         "lufs": round(float(dsp.loudness(d)), 2), "dc": round(float(np.mean(mono)), 5),
          "bytes": os.path.getsize(path)}
     if loop:
         s["loop_start"] = LOOP_PAD
@@ -82,16 +136,16 @@ def render_sound(job):
         loop = len(x) / dsp.SR
         pad = int(LOOP_PAD * dsp.SR)
         x = np.concatenate([x[-pad:], x, x[:pad]])
-        x = dsp.normalise(x, LOOP_LUFS, -3.0)
+        path = os.path.join(WEB, rel)
+        x, d = finish(x, LOOP_LUFS, path, -3.0)
     else:
         tail, wet = fin["space"]
         if tail > 0:
             ir = dsp.reverb_ir(np.random.default_rng(seed("space", sid, v)), tail, tail / 3.5, 7000)
             x = dsp.trim_tail(dsp.convolve(x, ir, wet), -60)
-        x = dsp.fade(dsp.normalise(x, ONESHOT_LUFS, -1.0), 0.0005, 0.01)
-    path = os.path.join(WEB, rel)
-    encode(x, path, x.ndim == 2)
-    return rel, stats_of(x, path, loop)
+        path = os.path.join(WEB, rel)
+        x, d = finish(x, ONESHOT_LUFS, path, fades=(0.0005, 0.01))
+    return rel, stats_of(x, path, loop, d)
 
 
 def render_vocal(job):
@@ -100,10 +154,9 @@ def render_vocal(job):
     x = vocals.render(rng, voice, situation, v)
     ir = dsp.reverb_ir(np.random.default_rng(seed("space", voice, situation, v)), 0.4, 0.1, 6000)
     x = dsp.trim_tail(dsp.convolve(x, ir, 0.12), -60)
-    x = dsp.fade(dsp.normalise(x, VOICE_LUFS, -1.0), 0.0005, 0.01)
     path = os.path.join(WEB, rel)
-    encode(x, path, False)
-    return rel, stats_of(x, path)
+    x, d = finish(x, VOICE_LUFS, path, fades=(0.0005, 0.01))
+    return rel, stats_of(x, path, None, d)
 
 
 def jobs(only):
@@ -141,6 +194,12 @@ def check():
         lines = json.load(f)
     bad = []
     files = [rel for s in m["sounds"] for rel in s["files"]]
+    target = {rel: (LOOP_LUFS if sounds.FINISH.get(s["id"], {}).get("loop") else ONESHOT_LUFS)
+              for s in m["sounds"] for rel in s["files"]}
+    recorded = set()
+    if os.path.exists(RECORDED):
+        with open(RECORDED, encoding="utf-8") as f:
+            recorded = set(json.load(f))
     files += [l["placeholder"] for st in lines["sets"] for sit in st["situations"] for l in sit["lines"] if "placeholder" in l]
     missing_recipe = [s["id"] for s in m["sounds"] if s["id"] not in sounds.RECIPES]
     for rel in files:
@@ -157,7 +216,9 @@ def check():
             bad.append(f"near silent: {rel} ({s['lufs']} LUFS)")
         if abs(s["dc"]) > 0.01:
             bad.append(f"DC offset: {rel} ({s['dc']})")
-        if not 0.04 <= s["seconds"] <= 12:
+        if rel in target and rel not in recorded and abs(s["lufs"] - target[rel]) > 1.0:
+            bad.append(f"off its loudness target: {rel} ({s['lufs']} LUFS, wants {target[rel]})")
+        if not 0.04 <= s["seconds"] <= (21 if s.get("loop_seconds") else 12):
             bad.append(f"odd length: {rel} ({s['seconds']} s)")
     for sid in missing_recipe:
         bad.append(f"no recipe: {sid}")
@@ -173,6 +234,8 @@ def main(argv):
         return check()
     only = set(a for a in argv if not a.startswith("-"))
     m, sfx, voc = jobs(only)
+    if "--sfx" in argv:
+        voc = []
     stats = {}
     if os.path.exists(STATS):
         with open(STATS, encoding="utf-8") as f:

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "illyria/game/point_grid.h"
+#include "illyria/game/sfx.h"
 
 namespace illyria::game {
 
@@ -23,9 +24,7 @@ constexpr uint32_t kSpeakerGap = 5 * kTps;
 constexpr uint32_t kAmbientGap = 3 * kTps / 2;
 constexpr uint32_t kWindow = 10 * kTps;
 constexpr size_t kWindowMax = 5;
-// Hearing: a cue fades out over kHearing metres from the view centre, the
-// camera's height counting against it (zoomed out, only the loudest carry).
-constexpr float kHearing = 140.0f;
+// Hearing: as the sound effects' (sfx.h hear).
 constexpr float kMinGain = 0.08f;
 // Contact: a foe within kSighted metres; lost after kContactLost of none within twice that.
 constexpr float kSighted = 55.0f;
@@ -58,6 +57,8 @@ constexpr int kCooldownTenths[kSituationCount] = {
     80,   // Wounded
     120,  // ArrowFire
     90,   // Flanked
+    30,   // CallHelp (the world keeps calls apart: world_help.cpp)
+    30,   // Answering
     100,  // FriendlyFire
     60,   // Fuse
     100,  // Healing
@@ -90,7 +91,7 @@ constexpr const char* kSetNames[kVoiceSetCount] = {"soldier", "archer", "dwarf",
 constexpr const char* kSituationNames[kSituationCount] = {
     "selected",   "move",          "attack",        "charge",  "charge_seen", "hold_line", "hero_rally",
     "rallied",    "wavering",      "breaking",      "hero_fell", "enemy_hero_fell", "friend_killed", "kill",
-    "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "friendly_fire", "fuse",
+    "vet_kill",   "promoted",      "wounded",       "arrow_fire", "flanked",  "call_help", "answering", "friendly_fire", "fuse",
     "healing",    "engine_loose",  "gate_broken",   "enemy_sighted", "victory", "defeat", "idle",
     "pain",       "death",         "death_moan",    "cackle",  "groan",       "casualties", "severe_casualties",
     "total_casualties", "wave_incoming", "boss_wave", "wave_cleared", "reinforcements", "hill_contested",
@@ -226,7 +227,9 @@ int priorityOf(Situation s) {
         case S::Selected:
         case S::Move:
         case S::Attack:
+        case S::Answering:
         case S::EnemySighted: return 3;
+        case S::CallHelp:
         case S::HoldLine:
         case S::HeroRally:
         case S::EnemyHeroFell:
@@ -311,11 +314,9 @@ bool Voice::gate(const sim::World& world, const Candidate& c) {
     if (hasListener_) {
         const V3 d = flat(cue.pos - listenAt_);
         const float horiz = d.length();
-        const float height = zoom_ * 0.6f;
-        const float eff = std::sqrt(horiz * horiz + height * height);
-        const float g = std::clamp(1.0f - eff / kHearing, 0.0f, 1.0f);
-        cue.gain = std::pow(g, 1.5f);
-        cue.pan = horiz > 1 ? std::clamp(d.dot(listenRight_) / std::max(horiz, eff * 0.5f), -0.8f, 0.8f) : 0.0f;
+        // Heard as the sound effects are (sfx.h hear): what is on screen, quieter and never silent as the camera rises.
+        cue.gain = hear(horiz, zoom_, false).gain;
+        cue.pan = std::clamp(d.dot(listenRight_) / std::max(zoom_ * 0.6f, 12.0f), -0.8f, 0.8f);
     }
     if (!c.positional) cue.gain = std::max(cue.gain, 0.85f);
     if (isReport(c.situation)) cue.pan = 0, cue.gain = 1;  // the herald speaks in the player's ear
@@ -387,6 +388,12 @@ void Voice::observe(const sim::World& world, int outcome) {
     // Rally calls, as the simulation made them.
     for (const sim::RallyCall& c : world.rallyCalls())
         want(c.kind == sim::RallyCall::Kind::Veteran ? S::HoldLine : S::HeroRally, c.caller);
+    // A squad calls for help, and the squad that goes answers (world_help.cpp).
+    for (const sim::HelpCall& c : world.helpCalls()) {
+        if (c.owner != player_) continue;  // (a side hears its own calls: another's would tell of men it may not see)
+        want(S::CallHelp, c.caller);
+        if (c.answerer != sim::kNoEntity) want(S::Answering, c.answerer);
+    }
 
     // A target down: one who presses on cries out as he goes at the next
     // (going back to his friends, he goes quietly).

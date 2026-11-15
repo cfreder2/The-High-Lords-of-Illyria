@@ -96,6 +96,14 @@
     }
   }
   for (const ev of ["pointerdown", "touchend", "keydown", "click"]) document.addEventListener(ev, unlock, { capture: true, passive: true });
+  try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+  document.addEventListener("visibilitychange", () => {
+    if (!ctx || !unlocked) return;
+    try {
+      if (document.hidden) { ctx.suspend(); if (window.speechSynthesis) speechSynthesis.cancel(); }
+      else ctx.resume();
+    } catch (e) {}
+  });
 
   window.IllyriaAudio = {
     context,

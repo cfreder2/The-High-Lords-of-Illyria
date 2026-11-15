@@ -119,6 +119,18 @@
    "priority": 1
   },
   {
+   "id": "call_help",
+   "title": "Call for help",
+   "when": "His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.",
+   "priority": 4
+  },
+  {
+   "id": "answering",
+   "title": "Answering",
+   "when": "His squad goes to the help of one that called.",
+   "priority": 3
+  },
+  {
    "id": "friendly_fire",
    "title": "Friendly fire",
    "when": "Hit by his own side's arrows or bombs.",
@@ -707,6 +719,48 @@
        "id": "soldier.flanked.3",
        "text": "Turn, turn!",
        "file": "voice/soldier/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "soldier.call_help.1",
+       "text": "To us! To us!",
+       "file": "voice/soldier/call_help_1.mp3"
+      },
+      {
+       "id": "soldier.call_help.2",
+       "text": "We are hard pressed!",
+       "file": "voice/soldier/call_help_2.mp3"
+      },
+      {
+       "id": "soldier.call_help.3",
+       "text": "Help here, for pity!",
+       "file": "voice/soldier/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "soldier.answering.1",
+       "text": "We are coming!",
+       "file": "voice/soldier/answering_1.mp3"
+      },
+      {
+       "id": "soldier.answering.2",
+       "text": "Hold on, we come!",
+       "file": "voice/soldier/answering_2.mp3"
+      },
+      {
+       "id": "soldier.answering.3",
+       "text": "On our way!",
+       "file": "voice/soldier/answering_3.mp3"
       }
      ]
     },
@@ -1356,6 +1410,48 @@
        "id": "archer.flanked.3",
        "text": "Behind!",
        "file": "voice/archer/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "archer.call_help.1",
+       "text": "They are on us! Help!",
+       "file": "voice/archer/call_help_1.mp3"
+      },
+      {
+       "id": "archer.call_help.2",
+       "text": "Foot to the bows!",
+       "file": "voice/archer/call_help_2.mp3"
+      },
+      {
+       "id": "archer.call_help.3",
+       "text": "We cannot hold them off!",
+       "file": "voice/archer/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "archer.answering.1",
+       "text": "Bows are with you!",
+       "file": "voice/archer/answering_1.mp3"
+      },
+      {
+       "id": "archer.answering.2",
+       "text": "We have them in sight!",
+       "file": "voice/archer/answering_2.mp3"
+      },
+      {
+       "id": "archer.answering.3",
+       "text": "Coming up!",
+       "file": "voice/archer/answering_3.mp3"
       }
      ]
     },
@@ -2011,6 +2107,48 @@
        "id": "dwarf.flanked.3",
        "text": "Sneaky devils!",
        "file": "voice/dwarf/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "dwarf.call_help.1",
+       "text": "To the dwarves! Now!",
+       "file": "voice/dwarf/call_help_1.mp3"
+      },
+      {
+       "id": "dwarf.call_help.2",
+       "text": "Lend an axe here!",
+       "file": "voice/dwarf/call_help_2.mp3"
+      },
+      {
+       "id": "dwarf.call_help.3",
+       "text": "We are beset!",
+       "file": "voice/dwarf/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "dwarf.answering.1",
+       "text": "Hold fast, we come!",
+       "file": "voice/dwarf/answering_1.mp3"
+      },
+      {
+       "id": "dwarf.answering.2",
+       "text": "Axes coming!",
+       "file": "voice/dwarf/answering_2.mp3"
+      },
+      {
+       "id": "dwarf.answering.3",
+       "text": "Dwarves are with you!",
+       "file": "voice/dwarf/answering_3.mp3"
       }
      ]
     },
@@ -2717,6 +2855,48 @@
      ]
     },
     {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "rider.call_help.1",
+       "text": "Riders beset! To us!",
+       "file": "voice/rider/call_help_1.mp3"
+      },
+      {
+       "id": "rider.call_help.2",
+       "text": "We are caught! Help!",
+       "file": "voice/rider/call_help_2.mp3"
+      },
+      {
+       "id": "rider.call_help.3",
+       "text": "Bring the foot up!",
+       "file": "voice/rider/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "rider.answering.1",
+       "text": "We ride to you!",
+       "file": "voice/rider/answering_1.mp3"
+      },
+      {
+       "id": "rider.answering.2",
+       "text": "Hold, we are riding!",
+       "file": "voice/rider/answering_2.mp3"
+      },
+      {
+       "id": "rider.answering.3",
+       "text": "Into their flank!",
+       "file": "voice/rider/answering_3.mp3"
+      }
+     ]
+    },
+    {
      "id": "friendly_fire",
      "note": "angry shout back over the shoulder",
      "lines": [
@@ -3304,6 +3484,48 @@
        "id": "hero.flanked.3",
        "text": "Cowards, from behind!",
        "file": "voice/hero/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "hero.call_help.1",
+       "text": "To me! To your lord!",
+       "file": "voice/hero/call_help_1.mp3"
+      },
+      {
+       "id": "hero.call_help.2",
+       "text": "I am pressed! Rally here!",
+       "file": "voice/hero/call_help_2.mp3"
+      },
+      {
+       "id": "hero.call_help.3",
+       "text": "Stand by me, all who can!",
+       "file": "voice/hero/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "hero.answering.1",
+       "text": "I am with you!",
+       "file": "voice/hero/answering_1.mp3"
+      },
+      {
+       "id": "hero.answering.2",
+       "text": "Hold, I come!",
+       "file": "voice/hero/answering_2.mp3"
+      },
+      {
+       "id": "hero.answering.3",
+       "text": "Stand, help is here!",
+       "file": "voice/hero/answering_3.mp3"
       }
      ]
     },
@@ -3948,6 +4170,48 @@
        "id": "wizard.flanked.3",
        "text": "Guard my back!",
        "file": "voice/wizard/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "wizard.call_help.1",
+       "text": "Guard me! They are close!",
+       "file": "voice/wizard/call_help_1.mp3"
+      },
+      {
+       "id": "wizard.call_help.2",
+       "text": "Swords here, quickly!",
+       "file": "voice/wizard/call_help_2.mp3"
+      },
+      {
+       "id": "wizard.call_help.3",
+       "text": "I am no swordsman! Help!",
+       "file": "voice/wizard/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "wizard.answering.1",
+       "text": "I come, hold them.",
+       "file": "voice/wizard/answering_1.mp3"
+      },
+      {
+       "id": "wizard.answering.2",
+       "text": "Help is at hand.",
+       "file": "voice/wizard/answering_2.mp3"
+      },
+      {
+       "id": "wizard.answering.3",
+       "text": "Stand a moment longer.",
+       "file": "voice/wizard/answering_3.mp3"
       }
      ]
     },
@@ -4627,6 +4891,48 @@
      ]
     },
     {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "berserker.call_help.1",
+       "text": "More blades here!",
+       "file": "voice/berserker/call_help_1.mp3"
+      },
+      {
+       "id": "berserker.call_help.2",
+       "text": "Come and share the killing!",
+       "file": "voice/berserker/call_help_2.mp3"
+      },
+      {
+       "id": "berserker.call_help.3",
+       "text": "They are many! To us!",
+       "file": "voice/berserker/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "berserker.answering.1",
+       "text": "Leave some for us!",
+       "file": "voice/berserker/answering_1.mp3"
+      },
+      {
+       "id": "berserker.answering.2",
+       "text": "We come running!",
+       "file": "voice/berserker/answering_2.mp3"
+      },
+      {
+       "id": "berserker.answering.3",
+       "text": "Aye, we come!",
+       "file": "voice/berserker/answering_3.mp3"
+      }
+     ]
+    },
+    {
      "id": "friendly_fire",
      "note": "angry shout back over the shoulder",
      "lines": [
@@ -5266,6 +5572,48 @@
        "id": "archon.flanked.3",
        "text": "Turn.",
        "file": "voice/archon/flanked_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "call_help",
+     "note": "urgent shout across the field, carrying",
+     "lines": [
+      {
+       "id": "archon.call_help.1",
+       "text": "Aid us, brothers.",
+       "file": "voice/archon/call_help_1.mp3"
+      },
+      {
+       "id": "archon.call_help.2",
+       "text": "The host is pressed.",
+       "file": "voice/archon/call_help_2.mp3"
+      },
+      {
+       "id": "archon.call_help.3",
+       "text": "Come to us.",
+       "file": "voice/archon/call_help_3.mp3"
+      }
+     ]
+    },
+    {
+     "id": "answering",
+     "note": "loud and steady, called back across the field",
+     "lines": [
+      {
+       "id": "archon.answering.1",
+       "text": "We come.",
+       "file": "voice/archon/answering_1.mp3"
+      },
+      {
+       "id": "archon.answering.2",
+       "text": "Aid is here.",
+       "file": "voice/archon/answering_2.mp3"
+      },
+      {
+       "id": "archon.answering.3",
+       "text": "Be steadfast, we come.",
+       "file": "voice/archon/answering_3.mp3"
       }
      ]
     },

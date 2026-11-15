@@ -197,6 +197,21 @@ void RoutRule::step(World& world, const std::vector<HostSquad>& squads) {
     world.quitField(worst);
 }
 
+bool RoutRule::away(const World& world, const Unit& u) {
+    const Region* region = world.region();
+    if (region == nullptr) return false;  // (a plain with no edge: nobody gets away)
+    const Fixed lo = Fixed::fromInt(kAwayM), hi = region->terrain().size() - lo;
+    return u.pos.x <= lo || u.pos.y <= lo || u.pos.x >= hi || u.pos.y >= hi;
+}
+
+bool RoutRule::called(const World& world) const {
+    if (quitter_ == kNobody) return false;
+    if (world.tick() >= quitTick_ + kPursuitTicks) return true;
+    for (const Unit& u : world.units())
+        if (u.owner == quitter_ && u.alive() && !away(world, u)) return false;
+    return true;
+}
+
 void RoutRule::hash(StateHasher& h) const {
     h.addU64(quitter_);
     h.addU64(quitTick_);

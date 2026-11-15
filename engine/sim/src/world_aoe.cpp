@@ -7,6 +7,9 @@
 // take the best. If even that would badly hurt a friend they hold their fire a
 // few ticks for the melee to shift, up to a cap; then they let it go where it
 // hurts their own least. A man with a foe on top of him does not wait.
+// A catapult's stone rolls on from where it comes down (world_boulder.cpp): the
+// men in the way of its roll are weighed with those in its smash, and it is
+// tried longer and shorter along the throw as well.
 #include <algorithm>
 #include <vector>
 
@@ -36,6 +39,9 @@ constexpr Fixed kOverrunReach = Fixed::fromInt(6);
 // The places tried round the mark, in shares of the blast's radius: along the line
 // to him (nearer and farther) and across it.
 constexpr int32_t kStepsEighths[] = {-8, -4, 4, 8};
+// A stone, which rolls on: these too, along the throw (short of the mark, to roll through it; long, to roll on clear of
+// a friend) and, the nearer of them, across it (its lane is narrow: a little aside is clear of a file).
+constexpr int32_t kStoneStepsEighths[] = {-16, 16, -32, 32};
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
 
@@ -153,7 +159,14 @@ bool World::fireAt(Unit& u, const Vec3& target, bool atWalk) {
         Vec3 falls[kSamples];
         const Vec3 spots[kSamples] = {mark, mark + along * rho, mark - along * rho, mark + across * rho, mark - across * rho};
         for (int32_t k = 0; k < kSamples; ++k) falls[k] = flat ? burstPoint(u, origin, spots[k]) : spots[k];
-        return tallyAt(bodies, falls, ex, w.kind);
+        AoeTally t = tallyAt(bodies, falls, ex, w.kind);
+        if (w.kind == ProjectileKind::Stone) {
+            const RollToll roll = rollToll(u, mark, spread);
+            t.foe += roll.foe * kSamples;
+            t.friends += roll.friends * kSamples;
+            t.badlyHurtFriend = t.badlyHurtFriend || roll.badlyHurtFriend;
+        }
+        return t;
     };
     const AoeTally base = tally(target);
     // No friend in the blast, or no men at the mark (a wall, a gate): nothing to weigh.
@@ -164,12 +177,13 @@ bool World::fireAt(Unit& u, const Vec3& target, bool atWalk) {
     Vec3 bestAim = target, safeAim = target;
     AoeTally best = base, safest = base;
     Fixed bestScore = base.foe - base.friends * kFriendlyWeight;
-    const auto consider = [&](const Vec3& mark) {
+    // (`mustHurt`: a place that would hurt no foe at all is not a throw: the stone's farther places.)
+    const auto consider = [&](const Vec3& mark, bool mustHurt = false) {
         const Fixed d = (mark - u.pos).flat().length();
         if (d > reach || d < w.minRange) return;
         const AoeTally t = tally(mark);
         const Fixed score = t.foe - t.friends * kFriendlyWeight;
-        if (score > bestScore) {
+        if (score > bestScore && (!mustHurt || t.foe > Fixed::zero())) {
             bestScore = score;
             bestAim = mark;
             best = t;
@@ -185,6 +199,11 @@ bool World::fireAt(Unit& u, const Vec3& target, bool atWalk) {
         consider(target + along * off);
         consider(target + across * off);
     }
+    if (w.kind == ProjectileKind::Stone)
+        for (const int32_t s : kStoneStepsEighths) {
+            consider(target + along * (ex.radius * s / 8), true);
+            if (s == 16 || s == -16) consider(target + across * (ex.radius * s / 8), true);
+        }
 
     if (!best.badlyHurtFriend) return loose(bestAim);
 

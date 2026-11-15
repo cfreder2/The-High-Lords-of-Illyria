@@ -348,7 +348,7 @@
       <h3>Voices</h3>
       <label class="set"><span>Soldiers' voices</span><input type="checkbox" id="voiceOn"></label>
       <label class="set"><span>Volume</span><input type="range" id="voiceVolume" min="0" max="100" step="5" aria-label="Voice volume"></label>
-      <label class="set"><span>Read unrecorded lines aloud<small>The browser's own voice, for lines not yet recorded</small></span><input type="checkbox" id="voiceSpeech"></label>
+      <label class="set"><span>Read unrecorded lines aloud<small>Off unless you turn it on: the browser's own voice, for lines not yet recorded. Cries and orders have sounds of their own without it</small></span><input type="checkbox" id="voiceSpeech"></label>
       <h3>Effects</h3>
       <label class="set"><span>Sound effects</span><input type="checkbox" id="sfxOn"></label>
       <label class="set"><span>Volume</span><input type="range" id="sfxVolume" min="0" max="100" step="5" aria-label="Sound effects volume"></label>
@@ -450,6 +450,10 @@
   <header><button class="back" aria-label="Back">‹</button><h2 id="skirmishTitle">Skirmish</h2></header>
   <div class="body"></div>
 </div>
+<div id="marchScreen" class="screen hidden popup" role="dialog" aria-labelledby="marchTitle">
+  <header><button class="back" aria-label="Back">‹</button><h2 id="marchTitle">The March</h2></header>
+  <div class="body"></div>
+</div>
 <div id="controlsScreen" class="screen hidden popup" role="dialog" aria-labelledby="controlsTitle">
   <header><button class="back" aria-label="Back">‹</button><h2 id="controlsTitle">Controls</h2></header>
   <div class="body"></div>
@@ -537,6 +541,7 @@
       hold: Module.cwrap("illyria_hold", null, []),
       rally: Module.cwrap("illyria_rally", "number", []),
       nextIdle: Module.cwrap("illyria_next_idle", "number", []),
+      answerCall: Module.cwrap("illyria_answer_call", "number", []),
       gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
@@ -598,6 +603,13 @@
       modeError: Module.cwrap("illyria_mode_error", "string", []),
       skirmishOffers: Module.cwrap("illyria_skirmish_offers", "string", []),
       skirmishBuy: Module.cwrap("illyria_skirmish_buy", "string", ["number", "number"]),
+      // The March (march.h): its book between battles, kept by the page in localStorage (title.js).
+      marchState: Module.cwrap("illyria_march_state", "string", []),
+      marchSave: Module.cwrap("illyria_march_save", "string", []),
+      marchReinforce: Module.cwrap("illyria_march_reinforce", "number", ["number"]),
+      marchEnd: Module.cwrap("illyria_march_end", null, []),
+      marchLoad: (text) => callWithStrings("illyria_march_load", text),
+      resultDismiss: Module.cwrap("illyria_result_dismiss", null, []),
       modeAvailable: (id) => callWithStrings("illyria_mode_available", id),
       startMode: (id, options) => callWithStrings("illyria_start_mode", id, options),
     };
@@ -964,7 +976,15 @@
   };
   $("hireYes").onclick = () => { if (api && api.conqHire(1)) toast(`${conqState.offer.name} rides to your banner`); };
   $("hireNo").onclick = () => api && api.conqHire(0);
-  $("overlayButton").onclick = () => { if (api) api.restart(); };
+  // The results sheet's first button: fight it again; a march's battle is fought once (on to its camp, or its end); a
+  // Conquest's fight is put away and the war goes on.
+  $("overlayButton").onclick = () => {
+    if (!api) return;
+    const s = JSON.parse(api.hud());
+    if (s.result && s.result.conquest) { api.resultDismiss(); $("overlay").classList.add("hidden"); return; }
+    if (s.march) { toMenu(false); if (window.IllyriaTitle) IllyriaTitle.open("march"); return; }
+    api.restart();
+  };
   $("overlayMenu").onclick = () => api && toMenu(true);
   $("overlayArmy").onclick = () => { if (!api) return; toMenu(false); if (window.IllyriaTitle) IllyriaTitle.open("skirmish"); };
   $("deployBegin").onclick = () => api && api.begin();
@@ -1124,6 +1144,7 @@
       case "KeyK": api.hold(); break;      // Hold: keep their place (again: back to support)
       case "KeyY": api.rally(); break;     // the lord's Rally
       case "KeyJ": api.nextIdle(); break;  // the next squad standing idle
+      case "Period": api.answerCall(); break;  // to a call for help, the nearest free squad picked
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
@@ -1735,12 +1756,14 @@
     // A battle's start and end, from the same state as the desktop's HUD: the deployment and its briefing, a host
     // chased off the field, a kind's tip the first time it is picked.
     const playing = mode !== "title" && !conquest;
+    const rankNames = ["recruits", "regulars", "veterans", "elite"];
     deploying = playing && !!s.deploy;
     const chased = playing && !s.result && s.routed >= 0;
     $("deploy").classList.toggle("hidden", !(deploying || chased));
     if (deploying || chased) {
       $("deployTitle").textContent = deploying ? (coarse ? "Place your line" : "Place your line. Enter to begin") : s.routed === s.side ? "Your host has quit the field" : "The enemy has quit the field";
-      $("deployBrief").textContent = deploying ? s.brief : "";
+      // (The pursuit: the horse and the light foot ride the runners down until it is called.)
+      $("deployBrief").textContent = deploying ? s.brief : s.pursuit > 0 ? (s.routed === s.side ? "They are riding your men down" : "Ride them down") + `: ${s.pursuit} s` : "";
       $("deployBegin").classList.toggle("hidden", !(deploying && coarse));
     }
     $("tip").classList.toggle("hidden", !s.tip);
@@ -1754,15 +1777,32 @@
         $("overlayText").textContent = r.line;
         const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
         const best = r.rows.find((q) => q.name === r.best);
+        // The survivors' rank, and who rose in this battle (a skirmish's men each have a rank; a Conquest's squad has one).
+        const rank = (q) => !q.alive ? "" : (q.hero ? `level ${q.rank}` : rankNames[Math.max(0, Math.min(3, q.rank))]) + (q.promoted > 0 ? (r.conquest ? " (promoted)" : ` +${q.promoted}`) : "");
+        // What carries over: in a march, who goes on and who is gone for good; else the men promoted.
+        const m = s.march && s.march.settled ? s.march : null;
+        let carry = "";
+        if (m) {
+          carry = `<p class="note">Battle ${m.battle} of ${m.of}. ${m.men} men in ${m.squads} squads ${m.over && !m.won ? "were left." : `${m.won ? "came through" : "go on"}. ${m.last.promoted} promoted.`}</p>` +
+            (m.last.gone.length ? `<p class="note broke">Gone for good: ${m.last.gone.map(esc).join(", ")}</p>` : "") +
+            `<p class="note">${m.won ? "The march is won." : m.over ? "The march ends here." : `Next: ${esc(m.next)}. ${m.last.gold} gold for the purse.`}</p>`;
+        } else if (r.promoted > 0) {
+          carry = `<p class="note">${r.promoted} ${r.conquest ? (r.promoted === 1 ? "squad" : "squads") : r.promoted === 1 ? "man" : "men"} promoted.</p>`;
+        }
         $("result").innerHTML =
           `<p class="toll">Time ${Math.floor(r.seconds / 60)}:${String(r.seconds % 60).padStart(2, "0")} · Killed ${r.killed} · Lost ${r.lost}</p>` +
-          `<table><tr><th>Squad</th><th>Left</th><th>Killed</th><th></th></tr>` +
-          r.rows.map((q) => `<tr class="${q.alive ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.alive} / ${q.total}</td><td>${q.kills}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
+          `<table><tr><th>Squad</th><th>Left</th><th>Killed</th><th>Rank</th><th></th></tr>` +
+          r.rows.map((q) => `<tr class="${q.alive || !q.total ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.total ? q.alive + " / " + q.total : ""}</td><td>${q.kills}</td><td>${rank(q)}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
           `</table>` + (best ? `<p class="note">Best squad: ${esc(best.name)}, ${best.kills} killed</p>` : "") +
-          (r.fallen.length ? `<p class="note broke">Heroes fallen: ${r.fallen.map(esc).join(", ")}</p>` : "");
+          (r.fallen.length ? `<p class="note broke">Heroes fallen: ${r.fallen.map(esc).join(", ")}</p>` : "") + carry;
+        // The book as the battle left it, kept on this device: what "The March" carries on from.
+        if (m && window.IllyriaTitle) IllyriaTitle.marchSaved();
       }
       $("overlay").classList.remove("hidden");
-      for (const id of ["result", "overlayButton", "overlayArmy", "overlayMenu"]) $(id).classList.remove("hidden");
+      $("overlayButton").textContent = r.conquest ? "Carry on" : s.march ? (s.march.over ? "The march's end" : "Next battle") : "Again";
+      for (const id of ["result", "overlayButton"]) $(id).classList.remove("hidden");
+      $("overlayArmy").classList.toggle("hidden", !!(r.conquest || s.march));
+      $("overlayMenu").classList.toggle("hidden", !!r.conquest);
     } else if ($("overlayButton").offsetParent !== null) {
       $("overlay").classList.add("hidden");
       $("result").classList.add("hidden");

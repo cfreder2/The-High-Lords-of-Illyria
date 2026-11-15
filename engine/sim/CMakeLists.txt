@@ -8,6 +8,8 @@ add_library(illyria_sim
     src/world_gates.cpp
     src/world_siege.cpp
     src/world_tactics.cpp
+    src/world_formation.cpp
+    src/world_help.cpp
     src/world_keep.cpp
     src/world_walls.cpp
     src/castle_walls.cpp
@@ -16,8 +18,10 @@ add_library(illyria_sim
     src/world_orders.cpp
     src/world_satchels.cpp
     src/world_aoe.cpp
+    src/world_boulder.cpp
     src/world_scavenge.cpp
     src/world_death.cpp
+    src/world_drift.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp

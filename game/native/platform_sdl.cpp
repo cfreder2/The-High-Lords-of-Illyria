@@ -58,6 +58,7 @@ struct Options {
     int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
     std::string play, playOut, playLog;  // --play SCRIPT, --play-out DIR, --play-log FILE (docs/PLAYTEST.md)
+    std::string playSaves;               // --play-saves DIR: a played script keeps its saved games there (else it keeps none)
 #endif
     bool worldCamera = false;  // --world: --camera's x, y are continent metres
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
@@ -81,6 +82,7 @@ void usage() {
         "  --skirmish            a skirmish at the Ford at once;  --siege  the siege\n"
         "  --assets DIR          the folder holding sprites/, models/, sfx/\n"
         "  --size WxH, --fullscreen, --no-sound\n"
+        "  --log-cues            a line on stderr for every sound cue, voice cue and ambience change (or ILLYRIA_CUE_LOG=1)\n"
         "  --stats               print the frame rate and its split every two seconds\n"
         "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
         "  --trees N|all         draw trees as 0 one card, 1 two crossed cards, 2 three, 3 four (default: the game's);\n"
@@ -122,6 +124,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--size") std::sscanf(next(), "%dx%d", &o.width, &o.height);
         else if (a == "--fullscreen") o.fullscreen = true;
         else if (a == "--no-sound") o.sound = false;
+        else if (a == "--log-cues") illyria::native::audio::setCueLog(true);
         else if (a == "--stats") o.stats = true;
         else if (a == "--novsync") o.vsync = false;
         else if (a == "--trees") o.trees = std::strcmp(next(), "all") == 0 ? kAllTreeStyles : std::atoi(argv[i]);
@@ -153,6 +156,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--play") o.play = next();
         else if (a == "--play-out") o.playOut = next();
         else if (a == "--play-log") o.playLog = next();
+        else if (a == "--play-saves") o.playSaves = next();
 #endif
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -318,7 +322,12 @@ void present() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void voiceCue(const char*, const char*, bool, float, float, int, int, int) {}  // (the desktop has no voices yet)
+// (the lines that have a file: recordings and the rendered cries; there is no speech synthesis here)
+void voiceCue(const char* set, const char* situation, bool enemy, float pan, float gain, int priority, int, int) {
+    native::audio::voiceCue(set, situation, enemy, pan, gain, priority);
+}
+void sfxLayer(const char* id, float level, float pan) { native::audio::layer(id, level, pan); }
+void sfxPaused(bool paused) { native::audio::setPaused(paused); }
 void sfxCue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int, int) {
     native::audio::sfxCue(id, gain, pan, dist, delay, doppler, priority);
 }
@@ -357,7 +366,11 @@ int runApp(int argc, char** argv) {
         if (!script.ok()) return 2;
         const size_t slash = opt.play.rfind('/');
         scriptDir = slash == std::string::npos ? "." : opt.play.substr(0, slash);
-        opt.sound = false;
+        // No sound, unless the cue log is asked for: then the mixer runs (so the log is what a player's run would say), into
+        // SDL's dummy driver so the run is still silent (the environment's SDL_AUDIO_DRIVER outranks this hint: name a real
+        // driver there, coreaudio say, to hear the run).
+        if (!native::audio::cueLog()) opt.sound = false;
+        else SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
         SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     }
 #endif
@@ -427,7 +440,15 @@ int runApp(int argc, char** argv) {
             pref = nullptr;
         }
 #endif
+#ifdef ILLYRIA_DEV_HOOKS
+        if (playing && !opt.playSaves.empty()) {  // (its own folder: to play a save and a carrying on, never the player's)
+            SDL_CreateDirectory(opt.playSaves.c_str());
+            hud.setMarchFile(opt.playSaves + "/march.save");
+            hud.setSaveFile(opt.playSaves + "/campaign.save");
+        }
+#endif
         if (pref) {
+            hud.setMarchFile(std::string(pref) + "march.save");
             hud.setSaveFile(std::string(pref) + "campaign.save");  // (the file keeps its old name: saves made before the rename must still load)
             hud.setSettingsFile(std::string(pref) + "settings.ini");  // the player's colour, the map shown
         }

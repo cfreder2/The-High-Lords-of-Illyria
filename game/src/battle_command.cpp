@@ -139,8 +139,10 @@ std::vector<FormationSlot> formationLayout(Formation f, int count, float spacing
             };
             for (int s : {0, 1, 3})
                 for (int k = 0; k < side; ++k) slots.push_back(at(s, k));
+            // (Five men: front and flanks are six places. One place too many sent a march to a man who is not there.)
+            if (static_cast<int>(slots.size()) > count) slots.resize(static_cast<size_t>(count));
             // The back takes the rest, spread along it.
-            const int back = count - 3 * side;
+            const int back = count - static_cast<int>(slots.size());
             for (int i = 0; i < back; ++i) slots.push_back(at(2, back == side ? i : (i * side + side / 2) / back % side));
             return slots;  // centred on the square, not on the men
         }
@@ -199,7 +201,7 @@ std::vector<V3> formationSlots(Formation f, int count, float spacing) {
 
 float formationPace(Formation f) {
     switch (f) {
-        case Formation::Box: return 0.85f;  // facing every way at once
+        case Formation::Box: return 0.7f;  // facing every way at once: slow
         case Formation::Line:
         case Formation::DoubleLine:
         case Formation::Wedge:
@@ -305,25 +307,9 @@ std::vector<FormationSlot> blockLayout(const std::vector<UnitType>& types, int f
 }
 
 Formation defaultFormation(UnitType type) {
-    switch (roleOf(type)) {
-        case Role::Ranged:
-        case Role::Bomber: return Formation::Loose;
-        case Role::Caster:
-        case Role::Healer:
-        case Role::Flier:
-        case Role::Scout: return Formation::Loose;
-        case Role::Siege: return Formation::Line;
-        case Role::Melee: break;
-    }
-    switch (type) {
-        case UnitType::LightCavalry:
-        case UnitType::HeavyCavalry:
-        case UnitType::WolfRiders:
-        case UnitType::Unicorns: return Formation::Wedge;
-        case UnitType::Berserker: return Formation::Loose;
-        case UnitType::Hero: return Formation::Box;
-        default: return Formation::DoubleLine;
-    }
+    // The world's rule (sim::musterFormation: a Conquest's armies are raised by it); a lord's guard, when he has one, is a box.
+    const sim::FormationKind f = sim::musterFormation(type);
+    return f == sim::FormationKind::None ? Formation::Box : static_cast<Formation>(static_cast<int>(f) - 1);
 }
 
 // --- Selection --------------------------------------------------------------
@@ -356,7 +342,7 @@ void Battle::applySelection(std::vector<sim::EntityId> units) {
     selKeep_ = true;
     selShape_ = {};
     if (selection_.empty()) return;
-    if (!selection_.empty()) voice_.order(Situation::Selected, *world_, selection_);
+    if (!selection_.empty()) answer(Situation::Selected, selection_);
     // Their own squad's formation if they are of one squad, else what suits their kind.
     int squad = -2;  // none yet
     bool oneSquad = true, oneType = true;
@@ -688,7 +674,18 @@ void Battle::moveGroup(sim::PlayerId owner, std::vector<sim::EntityId> alive, Fo
     const V3 from = centreOf(alive);
     V3 facing = flat(face ? *face : to - from).normalized();
     if (facing.length() == 0) facing = fallbackFacing;
+    tellFormation(owner, alive, formation);
     sendMarch(owner, planFormation(alive, formation, to, facing), from, to, facing, formationPace(formation), force);
+}
+
+void Battle::tellFormation(sim::PlayerId owner, const std::vector<sim::EntityId>& men, Formation formation) {
+    // The world keeps each man's formation (its strength and its cost: world_formation.cpp): told when it changes.
+    for (sim::EntityId id : men) {
+        if (world_->units()[id - 1].formation == simFormation(formation)) continue;
+        sim::Command c{owner, id, sim::Command::Type::SetFormation, {}};
+        c.formation = simFormation(formation);
+        pending_.push_back(c);
+    }
 }
 
 bool Battle::blockFits(Formation formation, int count) {
@@ -1099,9 +1096,9 @@ void Battle::stormGate(sim::PlayerId owner, const std::vector<sim::EntityId>& th
 void Battle::orderAtGate(int gate) {
     if (gate < 0 || gate >= static_cast<int>(worldRegion().gates().size())) return;
     const sim::Gate& g = worldRegion().gates()[static_cast<size_t>(gate)];
-    if (marchOrder(toV3(g.a + g.b) * 0.5f)) return voice_.order(Situation::Attack, *world_, selection_);
+    if (marchOrder(toV3(g.a + g.b) * 0.5f)) return answer(Situation::Attack, selection_);
     attackGateWith(local_, selectedAlive(), selFormation_, gate);
-    voice_.order(Situation::Attack, *world_, selection_);
+    answer(Situation::Attack, selection_);
 }
 
 bool Battle::gateIsOurs(int gate) const {
@@ -1115,6 +1112,7 @@ void Battle::pinGate(int gate, sim::Command::GatePin pin) {
     c.objectIndex = gate;
     c.gatePin = pin;
     pending_.push_back(c);
+    sfx_.ui(Sound::Toggle);
     say(pin == sim::Command::GatePin::Open ? "The gate is held open" : pin == sim::Command::GatePin::Shut ? "The gate is held shut" : "The gate opens to your men, and shuts behind them");
 }
 
@@ -1143,22 +1141,22 @@ void Battle::swingGateByKey(bool release) {
             if (gateIsOurs(static_cast<int>(i)) && d < best) best = d, gate = static_cast<int>(i);
         }
     }
-    if (gate < 0) return say("No gate of yours to swing");
+    if (gate < 0) return refuse("No gate of yours to swing");
     inspect({Inspected::Kind::Gate, static_cast<uint32_t>(gate)});
     if (release) pinGate(gate, sim::Command::GatePin::Auto);
     else swingGate(gate);
 }
 
 void Battle::orderMove(const V3& to) {
-    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
+    if (marchOrder(to)) return answer(Situation::Move, selection_);
     marchSelection(selectedAlive(), to, nullptr, false);
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::orderMoveFacing(const V3& to, const V3& facing, float frontMetres) {
-    if (marchOrder(to)) return voice_.order(Situation::Move, *world_, selection_);
+    if (marchOrder(to)) return answer(Situation::Move, selection_);
     marchSelection(selectedAlive(), to, &facing, false, dragFrontage(frontMetres));
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::stopSelected() {
@@ -1167,7 +1165,7 @@ void Battle::stopSelected() {
         issue(local_, id, sim::Command::Type::Stop, {});
         std::erase_if(plan_, [&](const Planned& p) { return !p.far && p.cmd.unit == id; });
     }
-    voice_.order(Situation::Move, *world_, selection_);
+    answer(Situation::Move, selection_);
 }
 
 void Battle::scatter() {
@@ -1194,7 +1192,7 @@ void Battle::scatter() {
         slots_[id - 1] = {p + away * run, away, front, order};
     }
     markOrdered(alive);
-    voice_.order(Situation::Move, *world_, alive);
+    answer(Situation::Move, alive);
 }
 
 void Battle::setFormation(Formation f) {

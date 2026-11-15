@@ -102,10 +102,8 @@ constexpr Fixed kStickSpeed = Fixed::fromInt(9);
 constexpr Fixed kDebrisHurtSpeed = Fixed::fromInt(6);
 // Healers look this far for wounded friends.
 constexpr Fixed kHealSeekRange = Fixed::fromInt(25);
-// Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a high, plunging arc.
 // An engine ordered to a place this near a foe's gate batters the gate from its own reach instead of walking up to the doors.
 constexpr Fixed kEngineGrab = Fixed::fromInt(40);
-constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
 
 constexpr Vec3 up(Fixed z) { return {Fixed::zero(), Fixed::zero(), z}; }
 
@@ -398,11 +396,13 @@ void World::clearFight(uint64_t seed) {
     heroDeaths_.clear();
     rallyCalls_.clear();
     tactics_.clear();
+    firstCall_ = {};
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
     remains_.clear();
     changedRemains_.clear();
+    afloat_.clear();
     pendingExplosions_.clear();
     brokenSides_.clear();
     remainGrid_.clear();
@@ -503,6 +503,8 @@ void World::step(std::span<const Command> commands) {
     impacts_.clear();
     heroDeaths_.clear();
     rallyCalls_.clear();
+    tactics_.clear();
+    helpCalls_.clear();
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
@@ -529,6 +531,7 @@ void World::step(std::span<const Command> commands) {
     // Those let loose together go as packs (world_scavenge.cpp).
     if (raids) formPacks();
     buildBroad();
+    updateRanks();
     updateGates();
     keepGates();
     updateSiege();
@@ -542,7 +545,9 @@ void World::step(std::span<const Command> commands) {
     }
     separateBodies();
     updateProjectiles();
+    driftAfloat();
     updateMorale();
+    callForHelp();
     applyZone();
     pathCache_.clear();
     ++tick_;
@@ -576,6 +581,21 @@ void World::applyCommand(const Command& cmd) {
         orderRally(*u);
         return;
     }
+    if (cmd.type == Command::Type::SetFormation) {
+        u->formation = cmd.formation;
+        return;
+    }
+    if (cmd.type == Command::Type::Answer) {
+        // To a friend's help, as a free man goes of himself (world_help.cpp): it replaces what he was about.
+        const Unit* caller = findUnit(cmd.targetUnit);
+        if (caller == nullptr || !caller->alive() || caller->owner != u->owner || u->routed) return;
+        u->queue.clear();
+        Command stop = cmd;
+        stop.type = Command::Type::Stop;
+        startOrder(*u, stop);
+        answerCall(*u, *caller, true);  // (commanded: horse ride for the flank)
+        return;
+    }
     // Only a scavenger raids; to anyone else the order means nothing.
     if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
     // Shift: after the order in hand (or the ones already waiting). A soldier with nothing in hand and nothing waiting begins it now.
@@ -598,6 +618,10 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->layOrdered = false;  // every order replaces the last
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
+    u->posted = false;       // ... nor a post: the next order's end is the next post (Stop: none, he is free)
+    u->helping = kNoEntity;  // ... nor an answer to a friend's call
+    u->helpSince = 0;
+    u->wheel = 0;
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -687,6 +711,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             break;
         case Command::Type::SetGate:
         case Command::Type::SetStance:
+        case Command::Type::SetFormation:
+        case Command::Type::Answer:
         case Command::Type::Rally: break;  // (applyCommand's own)
     }
 }
@@ -1400,6 +1426,18 @@ void World::updateUnit(Unit& u) {
         u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         return;
     }
+    // A rider who has just charged home wheels away to re-form (world_combat.cpp); then he comes again.
+    if (u.wheel > 0) {
+        --u.wheel;
+        walk(u, u.pos + u.wheelDir * Fixed::fromInt(10));
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        return;
+    }
+    // Answering a friend's call (world_help.cpp): the march below is the answer, while it stands.
+    if (u.helping != kNoEntity && !answering(u)) {
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        return;
+    }
 
     if (const int gate = gateToHack(u); gate >= 0) {
         // At a shut gate on the way in: hack at the timbers.
@@ -1465,6 +1503,14 @@ void World::updateUnit(Unit& u) {
         if (followPath(u, pace)) {
             u.hasMoveTarget = false;
             u.path.clear();
+            // Where an order sent him is ground he keeps (world_tactics.cpp, "posted"). Not an answer's end: he is there to
+            // go in as any free man does. Not a garrison's station or ground to occupy: those have their own rules.
+            if (u.helping == kNoEntity && !u.stationed && !u.occupying) {
+                u.posted = true;
+                u.postAt = u.pos;
+            }
+            u.helping = kNoEntity;
+            u.helpSince = 0;
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
             // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
             if (u.layOrdered) {
@@ -1494,7 +1540,7 @@ void World::updateUnit(Unit& u) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
-               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy))) {
+               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
         u.support = kNoEntity;
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
@@ -1514,6 +1560,10 @@ void World::updateUnit(Unit& u) {
     } else if (Unit* helped = supportFoe(u)) {
         // No spectators: to the help of a friend fighting near him (world_tactics.cpp).
         support(u, *helped);
+    } else if (returnToPost(u)) {
+        // Back to the ground he was posted on (world_tactics.cpp).
+    } else if (seekWounded(u)) {
+        // A healer: to the wounded (world_help.cpp).
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
         // his shield to him, holding his place (world_scavenge.cpp).
@@ -1779,7 +1829,7 @@ void World::kickRemains(Unit& u, const Vec3& moveDir) {
     }
 }
 
-Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly, bool* stone) const {
+Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly, bool* stone, int32_t* what) const {
     if (!config_.region) return -Fixed::one();
     const auto& obstacles = config_.region->obstacles();
     const Vec3 seg = b - a;
@@ -1801,6 +1851,7 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
         best = t;
         hit = true;
         if (stone) *stone = o.kind != Obstacle::Kind::Pine && o.kind != Obstacle::Kind::Oak && o.kind != Obstacle::Kind::Log;
+        if (what) *what = static_cast<int32_t>(k);
     });
     // Castle walls: their stone, open at the embrasures (world_walls.cpp).
     const Fixed wall = wallHit(a, b, best);
@@ -1808,10 +1859,12 @@ Fixed World::obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonr
         best = wall;
         hit = true;
         if (stone) *stone = true;
+        if (what) *what = kHitWall;
     }
     const Fixed gate = gateHit(a, b, best);
     if (gate >= Fixed::zero()) {
         if (stone) *stone = false;  // oak
+        if (what) *what = kHitGate;
         return gate;
     }
     return hit ? best : -Fixed::one();
@@ -1854,6 +1907,7 @@ void World::updateAirborne(Unit& u) {
     }
     u.vel = {};
     u.airborne = false;
+    if (!u.alive()) floatBody(u);  // a body thrown into the water
     if (u.alive()) {
         u.reloadRemaining = std::max(u.reloadRemaining, recoverTicks(u));
         u.meleeCooldown = std::max(u.meleeCooldown, recoverTicks(u));
@@ -1911,6 +1965,7 @@ Unit* World::nearestEnemy(const Unit& u, Fixed range) {
         if (!other.alive() || other.owner == u.owner) return;
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
         if (d > bestDistSq) return;  // (too far: no need to look at the height)
+        if (concealed(other, u.owner)) return;  // (unseen among the trees: world_formation.cpp)
         // (Above the land itself, or above the soldier: a foe up a hillside is fair game.)
         if (groundBound) {
             const Fixed land = config_.terrain ? config_.terrain->heightAt(other.pos.x, other.pos.y) : Fixed::zero();
@@ -2188,7 +2243,7 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
         }
     }
     // (From a height over the mark the shot tells more: world_tactics.cpp.)
-    p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z));
+    p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z) * loosePct(u) / 100);
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     p.cause = w.damageType;
@@ -2316,7 +2371,8 @@ void World::updateProjectiles() {
             const Vec3 travel = p.vel.flat();
             const Vec3 prev = p.pos;
             const Fixed speedSq = p.vel.lengthSq();
-            const bool done = tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks;
+            // Into the water: it does not bounce along the bed, it is the water's (world_drift.cpp).
+            const bool done = tumble(p) || p.ageTicks >= kMaxProjectileAgeTicks || plunge(p, prev);
             // A body part flying fast (thrown by a blast, or by a hand) hurts
             // the first man it strikes, a little, once; a kick never does.
             if (!done && p.remain != RemainKind::Arrow && p.damage == 0 && speedSq >= kDebrisHurtSpeed * kDebrisHurtSpeed) {
@@ -2373,7 +2429,13 @@ void World::updateProjectiles() {
             continue;
         }
 
-        // Arrows and fireballs: ballistic flight, hitting the first thing in their path.
+        // A boulder come down goes on over the ground (world_boulder.cpp).
+        if (p.kind == ProjectileKind::Stone && p.landed) {
+            removed[i] = rollStone(p);
+            continue;
+        }
+
+        // Arrows, fireballs and stones: ballistic flight, hitting the first thing in their path.
         const Vec3 prev = p.pos;
         // Exact for constant acceleration, so flight paths match the aiming solution.
         // A stone is too heavy for the wind to carry.
@@ -2420,11 +2482,18 @@ void World::updateProjectiles() {
 
         // Trees, rocks and walls in the way stop it first.
         bool stone = false;
-        const Fixed obstacleT = obstacleHit(prev, p.pos, hitT, false, &stone);
+        int32_t what = 0;
+        const Fixed obstacleT = obstacleHit(prev, p.pos, hitT, false, &stone, &what);
+        // What bursts is spent where it strikes; a boulder smashes there and goes on (false: it is gone too).
+        const auto burst = [&](const Vec3& at, StoneFall how) {
+            pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+            return p.kind != ProjectileKind::Stone || !landStone(p, at, how, what);
+        };
+        bool spent = true;
         if (obstacleT >= Fixed::zero()) {
             const Vec3 at = prev + seg * obstacleT;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Obstacle);
             } else if (stone) {
                 // Off stone it glances back and drops to the foot of it.
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
@@ -2433,11 +2502,17 @@ void World::updateProjectiles() {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));  // stuck in the wood
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
+            if (!burstsOnImpact(p.kind)) hit->shotTick = tick_ + 1;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Man);
+            } else if (p.kind == ProjectileKind::Arrow && !p.thrown && arrowSpared(*hit)) {
+                // Stopped by a trunk, or stepped aside from in loose order (world_formation.cpp): it sticks in the ground by him.
+                tell(TacticEvent::Kind::Cover, *hit);
+                placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
+                impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             } else if (shieldBlocks(*hit, p.vel, wading(*hit) ? Fixed::fromRatio(1, 2) : Fixed::one())) {  // (a man wading cannot keep his shield up)
                 // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
@@ -2450,22 +2525,24 @@ void World::updateProjectiles() {
             } else {
                 // Worse in the flank or back, and from a plunging shot from above.
                 const HitSide side = hitSide(hit->facing, p.vel);
-                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100;
+                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100 * (100 + formStruckPct(*hit, side, true)) / 100;
                 if (wading(*hit)) tell(TacticEvent::Kind::Volley, *hit);
-                const bool killed = damage(*hit, amount, mutableUnit(p.shooter), {p.cause, p.vel, at, true});
+                Unit* shooter = mutableUnit(p.shooter);
+                if (shooter != nullptr && shooter->alive()) ambush(*shooter, *hit);
+                const bool killed = damage(*hit, amount, shooter, {p.cause, p.vel, at, true});
                 shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (groundT <= Fixed::one()) {
             const Vec3 at = prev + seg * groundT;
             if (burstsOnImpact(p.kind)) {
-                pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
+                spent = burst(at, StoneFall::Ground);
             } else {
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             }
-            removed[i] = 1;
+            removed[i] = spent;
         } else if (p.ageTicks >= kMaxProjectileAgeTicks) {
             removed[i] = 1;
         }
@@ -2635,8 +2712,10 @@ EntityId World::placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& e
 }
 
 void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source) {
-    // Whatever falls in the water sinks out of sight.
-    if (isWater(pos.x, pos.y) && pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2)) return;
+    // In the water an arrow, a blade or a bone sinks out of sight; a part of a body stays, and floats if there is
+    // water enough under it (world_drift.cpp).
+    const bool wet = isWater(pos.x, pos.y) && (pos.z <= groundHeight(pos.x, pos.y) + Fixed::fromRatio(1, 2) || pos.z <= config_.region->waterSurfaceAt(pos.x, pos.y));
+    if (wet && sinksInWater(kind)) return;
     const uint32_t slot = static_cast<uint32_t>(remainsAdded_ % config_.maxRemains);
     const Remain r{kind, owner, pos, dir, tick_, source};
     if (remains_.size() < config_.maxRemains) {
@@ -2648,6 +2727,7 @@ void World::placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const 
     remainGrid_.insert(slot, pos.x, pos.y);
     ++remainsAdded_;
     changedRemains_.push_back(slot);
+    if (wet) remains_[slot].afloat = floatRemain(slot);
 }
 
 uint64_t World::checksum() const {
@@ -2656,6 +2736,8 @@ uint64_t World::checksum() const {
     h.addU64(nextId_);
     h.addU64(rng_.state());
     h.addU64(rng_.increment());
+    for (const uint32_t first : firstCall_)
+        if (first != 0) h.addU64(first);  // (only once a side has called for help)
     // Only once a pack has been let loose to raid, so battles without one hash as before.
     if (packs_ > 0) h.addU64(packs_);
     // Only for a match with a field's edge, so battles without one hash as before.
@@ -2701,6 +2783,33 @@ uint64_t World::checksum() const {
             h.addU64(u.support);
             h.addI64(u.rallyCooldown);
         }
+        // Only for a man of a squad (formations, calls: world_formation.cpp, world_help.cpp), and the rest only once it has
+        // happened, so battles of men in no squad hash as before.
+        if (u.squad != 0) {
+            h.addU64(u.squad);
+            h.addU64(static_cast<uint64_t>(u.formation));
+            h.addI64(u.ranked);
+            h.addU64(u.called);
+        }
+        if (u.disorder != 0) h.addI64(u.disorder);
+        if (u.helping != kNoEntity) {
+            h.addU64(u.helping);
+            h.addU64(u.helpSince);
+        }
+        if (u.shotTick != 0 || u.flankTick != 0) {
+            h.addU64(u.shotTick);
+            h.addU64(u.flankTick);
+        }
+        if (u.seenBy != 0xFF || u.hidTick != 0) {
+            h.addU64(u.seenBy);
+            h.addU64(u.hidTick);
+        }
+        if (u.wheel != 0) {
+            h.addI64(u.wheel);
+            hashVec(h, u.wheelDir);
+        }
+        if (u.posted) hashVec(h, u.postAt);
+        if (u.helpFlank) h.addU64(0xF1A);
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);
@@ -2722,6 +2831,7 @@ uint64_t World::checksum() const {
         if (u.shieldArrows != 0) h.addI64(u.shieldArrows);
         // Only once a scavenger is about, so battles without one hash as before.
         if (u.looted) h.addU64(u.looted);
+        if (u.afloat) h.addU64(0xAF10A7);  // only while the water bears him (world_drift.cpp), likewise
         // Only for those who carry satchels, so battles without them hash as before.
         if (u.stats.satchels.count > 0) {
             h.addI64(u.satchels);
@@ -2826,6 +2936,11 @@ uint64_t World::checksum() const {
         h.addU64(static_cast<uint64_t>(p.cause));
         hashExplosive(h, p.explosive);
         if (p.thrown) h.addU64(p.thrown);
+        // (Only once a boulder is on the ground, so a world with none hashes as before.)
+        if (p.landed) {
+            h.addU64(p.landed);
+            h.addI64(p.rolled.raw);
+        }
     }
     // Only once a side is out of a match, so battles without one hash as before.
     if (!brokenSides_.empty()) {
@@ -2841,6 +2956,12 @@ uint64_t World::checksum() const {
         hashVec(h, r.pos);
         hashVec(h, r.dir);
         h.addU64(r.tick);
+        if (r.afloat) h.addU64(0xAF10A7);  // only while the water bears it, so battles with nothing afloat hash as before
+    }
+    // What the water carries, in the order it took them: only while there is any.
+    if (!afloat_.empty()) {
+        h.addU64(afloat_.size());
+        for (const Floater& f : afloat_) h.addU64((static_cast<uint64_t>(f.unit) << 32) | f.ref);
     }
     return h.value();
 }

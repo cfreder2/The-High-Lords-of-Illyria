@@ -211,4 +211,38 @@ bool Renderer::pushGib(std::map<int, std::vector<float>>& groups, const GibLook&
     return true;
 }
 
+void Renderer::trackStones(const Battle& battle, float dt) {
+    for (auto& [id, look] : stoneLooks_) look.seen = false;
+    const float radius = static_cast<float>(sim::kStoneRadius.toDouble());
+    for (const sim::Projectile& p : battle.world().projectiles()) {
+        if (p.kind != sim::ProjectileKind::Stone) continue;
+        auto it = stoneLooks_.find(p.id);
+        if (it == stoneLooks_.end()) {
+            // Each stone its own way up.
+            it = stoneLooks_.emplace(p.id, StoneLook{}).first;
+            const float a = static_cast<float>(p.id) * 2.4f, b = static_cast<float>(p.id) * 1.7f;
+            const float q[4] = {std::sin(a) * std::cos(b), std::sin(a) * std::sin(b), std::cos(a) * std::sin(b * 0.7f), std::cos(a) * std::cos(b * 0.7f) + 0.2f};
+            const float n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+            for (int k = 0; k < 4; ++k) it->second.q[k] = q[k] / n;
+        }
+        StoneLook& look = it->second;
+        look.seen = true;
+        if (p.resting) continue;
+        const V3 v = toV3(p.vel);
+        const float speed = std::sqrt(v.x * v.x + v.y * v.y);
+        if (speed < 1e-3f) continue;
+        // About the axis across its way (up x forward), top going forward: thrown, a slow tumble; on the ground (and
+        // in its hops), as fast as it rolls.
+        const float turn = (p.landed ? speed / radius : 2.2f) * dt;
+        const float ax = -v.y / speed, ay = v.x / speed, sn = std::sin(turn * 0.5f), cs = std::cos(turn * 0.5f);
+        const float d[4] = {ax * sn, ay * sn, 0, cs};
+        const float* q = look.q;
+        const float r[4] = {d[3] * q[0] + d[0] * q[3] + d[1] * q[2] - d[2] * q[1], d[3] * q[1] - d[0] * q[2] + d[1] * q[3] + d[2] * q[0],
+                            d[3] * q[2] + d[0] * q[1] - d[1] * q[0] + d[2] * q[3], d[3] * q[3] - d[0] * q[0] - d[1] * q[1] - d[2] * q[2]};
+        const float n = std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3]);
+        for (int k = 0; k < 4; ++k) look.q[k] = r[k] / n;
+    }
+    std::erase_if(stoneLooks_, [](const auto& entry) { return !entry.second.seen; });
+}
+
 }  // namespace illyria::game

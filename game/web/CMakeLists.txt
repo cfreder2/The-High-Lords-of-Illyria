@@ -35,10 +35,16 @@ add_custom_command(TARGET illyria_web POST_BUILD
 add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
 )
-# The sprite audit page (tools/sprites/audit): plain HTML and script that read the sheets above, no engine code.
-add_custom_target(illyria_web_sprites_audit ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${ILLYRIA_SITE_DIR}/sprites-audit"
-    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/tools/sprites/audit/index.html" "${CMAKE_SOURCE_DIR}/tools/sprites/audit/audit.js" "${ILLYRIA_SITE_DIR}/sprites-audit/"
+# The audit pages (tools/audit): plain HTML and script that read the sprite sheets, sounds and voice lines of the
+# site, no engine code. /sprites-audit/, where the sprite page first was, sends you on to it.
+set(ILLYRIA_AUDIT_DIR "${CMAKE_SOURCE_DIR}/tools/audit")
+add_custom_target(illyria_web_audit ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ILLYRIA_SITE_DIR}/audit" "${ILLYRIA_SITE_DIR}/sprites-audit"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${ILLYRIA_AUDIT_DIR}/index.html" "${ILLYRIA_AUDIT_DIR}/audit.css" "${ILLYRIA_AUDIT_DIR}/sprites.html" "${ILLYRIA_AUDIT_DIR}/sprites.js"
+        "${ILLYRIA_AUDIT_DIR}/sounds.html" "${ILLYRIA_AUDIT_DIR}/sounds.js" "${ILLYRIA_AUDIT_DIR}/sound-core.js" "${ILLYRIA_AUDIT_DIR}/sound-ui.js"
+        "${ILLYRIA_AUDIT_DIR}/sound-audit.json" "${ILLYRIA_SITE_DIR}/audit/"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/tools/sprites/audit/index.html" "${ILLYRIA_SITE_DIR}/sprites-audit/"
 )
 # 3D models (tools/models): each a mesh and its texture, fetched at start.
 add_custom_target(illyria_web_models ALL

@@ -1,0 +1,66 @@
+# The boulder, into a ford.
+# Thrown at the east bank 28 m short of the ford with a file standing from the bank out into the water: it rolls to the water's edge and stops there with a splash.
+#
+#   Illyria --play tools/playtest/boulder-ford.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 522 523 46 1.57
+boulder ground 540 525
+boulder men 534 525 -2 0 16
+wait 2
+shot ford-00-before
+boulder throw 620 525 540 525
+wait_ticks 125
+speed 0.25
+wait_ticks 5
+shot ford-01
+wait_ticks 5
+shot ford-02
+wait_ticks 5
+shot ford-03
+wait_ticks 5
+shot ford-04
+wait_ticks 5
+shot ford-05
+wait_ticks 5
+shot ford-06
+wait_ticks 5
+shot ford-07
+wait_ticks 5
+shot ford-08
+wait_ticks 5
+shot ford-09
+wait_ticks 5
+shot ford-10
+wait_ticks 5
+shot ford-11
+wait_ticks 5
+shot ford-12
+wait_ticks 5
+shot ford-13
+wait_ticks 5
+shot ford-14
+wait_ticks 5
+shot ford-15
+wait_ticks 5
+shot ford-16
+wait_ticks 5
+shot ford-17
+wait_ticks 5
+shot ford-18
+speed 1
+wait_ticks 300
+boulder count
+shot ford-19-after
+camera 514 524 18 1.57
+wait 1.5
+shot ford-20-close
+stats
+quit

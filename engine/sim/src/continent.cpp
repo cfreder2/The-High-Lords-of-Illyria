@@ -222,8 +222,23 @@ void unsealCastle(Continent::Castle& k) {
     for (int pass = 0; pass < 96; ++pass) {
         std::vector<uint8_t> closed(static_cast<size_t>(nx * ny), 0);
         for (const Castle::Ring& ring : k.rings)
-            for (size_t i = 0; i < ring.corners.size(); ++i)
-                if (!ring.gateOn(i)) closeWall(closed, ring.corners[i], ring.corners[(i + 1) % ring.corners.size()], ring.thick / 2);
+            for (size_t i = 0; i < ring.corners.size(); ++i) {
+                const Vec3 a = ring.corners[i], b = ring.corners[(i + 1) % ring.corners.size()];
+                if (!ring.gateOn(i)) {
+                    closeWall(closed, a, b, ring.thick / 2);
+                    continue;
+                }
+                // A gate's wall is a wall either side of the gate (the passage in its middle is the way in). Left open from
+                // corner to corner, as it was, a second gate in a long side wall let the yard's two halves meet round the
+                // outside: Caldermouth, turned to face a new lane, had its keep and three houses across the yard and no ramp
+                // a man in the courtyard could get to.
+                const Vec3 ab = (b - a).flat();
+                const Fixed len = ab.length();
+                if (len <= ring.gateWidth) continue;
+                const Vec3 along = ab / len, mid = a + ab * r(1, 2);
+                closeWall(closed, a, mid - along * (ring.gateWidth / 2), ring.thick / 2);
+                closeWall(closed, mid + along * (ring.gateWidth / 2), b, ring.thick / 2);
+            }
         {
             const Vec3 ax = k.keepAxis, ay{-ax.y, ax.x, Fixed::zero()};
             const Vec3 corner[4] = {k.keep + (ax + ay) * k.keepHalf, k.keep + (ax - ay) * k.keepHalf, k.keep - (ax + ay) * k.keepHalf, k.keep - (ax - ay) * k.keepHalf};

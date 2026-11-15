@@ -17,6 +17,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Attack a soldier | tap the enemy | right-click the enemy (a red sword cursor) |
 | Attack a friend (force attack) | **⚔ Attack**, then tap him | [[Ctrl]] (or [[Cmd]]) + click him, or [[Z]] then click (or right-click) |
 | Shoot at, or march on, the ground | **⚔ Attack**, then tap the ground | [[Z]], then click (a crosshair); or [[Ctrl]] + click the ground |
+| Roll a boulder through a formation | select catapults, **⚔ Attack**, then tap the ground before it | [[Z]]: an amber ring (where the stone will come down) and a line of dots (how it will roll, fading where it slows) follow the pointer; click. It rolls through your own men too |
 | Batter an enemy gate | tap the gate (or **⚔ Attack**, then the gate) | right-click it (a target cursor) |
 | Open or shut a gate of yours | tap it (men selected or not), or **Open gate** / **Close gate** on its card | click it (a gate cursor), or [[O]] |
 | Let a gate of yours go back to its habit | **Let go** on its card | [[Shift]] + [[O]] |
@@ -30,6 +31,7 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
 | Stance: Hold (keep their place; again: back to support) | | [[K]] |
 | The next squad standing idle | | [[J]] |
+| Send help to a call: the nearest squad with nothing in hand goes, horse by the flank (chapter [](#rules), Help, and answers) | | [[.]] |
 | Rally (your lord calls back the broken within 40 m) | | [[Y]], or the **Rally** button over the cards (desktop) |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |

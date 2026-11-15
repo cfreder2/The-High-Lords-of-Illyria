@@ -12,11 +12,26 @@ The title screen offers five things to play. All are fought on the same continen
 |---|---|---|
 | **Conquest** (and **Continue**, when a war is saved) | The war for all Illyria: chapters [](#continent) to [](#lords). You choose which of the eight lords you are, which of the other seven are in the war (any, from none to all), and whether they play *Easy* or *Hard*; three save slots | By conquest (chapter [](#victory)). With no lord against you it is a free game with no end |
 | **Skirmish** | One set battle, fought out in full: **Oakhaven Ford** or **The siege** | The enemy destroyed, or the courtyard taken; or your army destroyed |
+| **The March** | Five battles in a row with one army, bought once: [](#the-march) | All five won; or one lost |
 | **Horde** | Your hero and a small army hold a hilltop against wave after wave | The waves you chose survived; or the hill lost, or every holder dead |
 | **Capture the Flag** | Two to four armies each guard a flag and go for the others' | One flag left standing; or time |
 | **Sandbox** | Any squads of any side set down on a field of your choosing, to watch, command and tune | It does not: nothing is won or lost |
 
 Everything outside the Conquest is played against the computer, on one device. Horde and Capture the Flag are built to be played between people, by **seats** ([](#seats)), but **no play between people is in the game yet**: there is no network play of any kind (chapter [](#online)).
+
+## The March {#the-march}
+
+*Five battles, one army.* Choose **The March** and buy an army with your gold, as for a skirmish. A lord and three magi march with it. Then you fight, in this order: the open field, a village you storm, the Ford, a village you hold, the capital. A town you storm must be taken in its time (eight minutes for the village, thirteen for the capital; the clock is beside the map), or the battle is lost.
+
+- **The living go on.** After each battle the men left alive are your army for the next. Their wounds are half mended. They keep their kills and their rank: a soldier is a regular at 2 kills, a veteran at 5 and elite at 10, and living through two battles makes a regular, four a veteran. A rank is a few percent in a blow and a steadier man.
+- **The dead do not come back.** A squad with no man left is gone for the rest of the march.
+- **The purse.** Each battle won pays a little gold. In the camp between battles it fills the gaps in a squad with recruits (**Fill what the purse can** spends it on the most worn squads first). It never buys a new squad, and it is never enough to replace everything.
+- **Never replaced:** the lord, the magi, dwarves.
+- **The other side grows** with every battle.
+- **The results sheet** says who goes on, who was promoted and who is gone for good. **Next battle** opens the camp; **March on** sets out the next battle.
+- **Lose a battle and the march is over.** Win all five and the sheet lists who came through.
+
+The march is saved in the camp, between battles. A battle left half fought is fought again from its start.
 
 ## Skirmish {#skirmish}
 
@@ -24,7 +39,7 @@ Everything outside the Conquest is played against the computer, on one device. H
 
 ### Oakhaven Ford {#skirmish-ford}
 
-The field is Oakhaven Ford, where the old east road crosses the Aldwater, and it is fair ground: the river runs straight between the two hosts, and the east bank is the west bank's image, hill for hill and tree for tree. Each host stands 110 m back from the water, squad for squad the other's image, bought with the same purse.
+The field is Oakhaven Ford, where the old east road crosses the Aldwater, and it is fair ground: the river runs straight between the two hosts, and the east bank is the west bank's image, hill for hill and tree for tree. Each host stands 80 m back from the water, squad for squad the other's image, bought with the same purse.
 
 - **The ford** is in the middle: 11 m of shallows either side of an **isle** with a bare flagpole on it. Men in the water strike weaker and are struck harder, and a satchel or a fire bottle thrown into it is lost.
 - **Above and below the ford the river is deep.** Nobody wades it.

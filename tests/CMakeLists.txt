@@ -27,6 +27,10 @@ endforeach()
 set(ILLYRIA_SPRITE_FILES_FILE "${CMAKE_SOURCE_DIR}/docs/sprite_templates/files.txt")
 file(READ "${ILLYRIA_SPRITE_FILES_FILE}" ILLYRIA_SPRITE_FILES)
 configure_file(sprite_files.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" @ONLY)
+# A Conquest saved in the layout before this one (ILC8), which must still load: tests/test_conquest_save.cpp.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conquest_ilc8.txt" ILLYRIA_CONQUEST_ILC8)
+configure_file(conquest_ilc8.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conquest_ilc8.txt")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SPRITE_FILES_FILE}")
 
 add_executable(illyria_tests
@@ -49,6 +53,7 @@ add_executable(illyria_tests
     test_garrison_keep.cpp
     test_two_gates.cpp
     test_battle_end.cpp
+    test_march.cpp
     test_skirmish.cpp
     test_isle.cpp
     test_ramps.cpp
@@ -68,6 +73,7 @@ add_executable(illyria_tests
     test_conquest_nav.cpp
     test_fliers.cpp
     test_underwater.cpp
+    test_audio_mix.cpp
     test_conquest_battle.cpp
     test_paths.cpp
     test_command.cpp
@@ -75,6 +81,7 @@ add_executable(illyria_tests
     test_morale_rally.cpp
     test_voice.cpp
     test_death.cpp
+    test_drift.cpp
     test_capture.cpp
     test_palette.cpp
     test_card_name.cpp
@@ -83,6 +90,7 @@ add_executable(illyria_tests
     test_sprite_layout.cpp
     test_sprite_clips.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp
     test_markers.cpp
     test_path_lines.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
@@ -98,6 +106,7 @@ add_executable(illyria_tests
     test_site_clearance.cpp
     test_satchels.cpp
     test_friendly_fire.cpp
+    test_boulder.cpp
     test_scavenge.cpp
     test_match_seats.cpp
     test_playscript.cpp
@@ -120,4 +129,4 @@ else()
 endif()
 # The manifest is one long string; every compiler here takes it.
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" "${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp"
-                            "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)
+                            "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" "${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

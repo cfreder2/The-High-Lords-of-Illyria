@@ -411,6 +411,7 @@ void Conquest::seat(Stack& s) {
             }
             m.unit = world_->spawnUnit(s.owner, at, Vec3{fromMm(fx), fromMm(fy), Fixed::zero()}, stats);
             m.rank = std::max(m.rank, a.rank);
+            world_->setSquad(m.unit, a.id, musterFormation(a.type));  // (its army is its squad: formations, calls for help)
             world_->setVeterancy(m.unit, m.rank, a.blessings + arms + command);
             world_->restoreUnit(m.unit, m.hp < 0 ? INT32_MAX : m.hp, m.kills, m.morale);
             m.ax = m.bx = toMm(at.x + origin.x);
@@ -554,6 +555,13 @@ void Conquest::syncMen(Stack& s) {
             m.lastReload = u->reloadRemaining;
             m.morale = u->morale;
             if (u->engaged || m.struckTick == tick_ || m.hurtTick == tick_) m.fightTick = tick_;
+        }
+        // Its history: men of it fought this tick; after kBattleGapTicks of quiet that is another battle.
+        bool fought = false;
+        for (const Man& m : a.men) fought = fought || (m.unit && m.fightTick == tick_ && tick_ != 0);
+        if (fought) {
+            if (a.foughtTick == 0 || tick_ - a.foughtTick > static_cast<uint32_t>(kBattleGapTicks)) ++a.battles;
+            a.foughtTick = tick_;
         }
     }
 }
