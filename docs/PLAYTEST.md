@@ -58,6 +58,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
 | `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
+| `start march [budget GOLD] [easy] [deploy]` | a new March (docs/GAME_DESIGN.md §3.7) with the army a lord would buy for the purse (450 unless said), and its first battle. Its later battles are the player's own keys: with the results sheet up `key return` opens the camp (the cursor on March on; `key up` reaches the squads, `key return` on one fills it from the purse), `key return` on March on sets out the next battle, which waits on its deployment (`key return` again begins it). No march is read from or written to the disk. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -97,6 +98,11 @@ stats t=41.2 tick=1080 fps=60 frame_ms=16.7 cpu_ms=4.1 gpu_ms=6.2 sim_ms=0.35 mi
 squads on your side's cards (allies' too), `foe=alive/total` the others; `outcome` 0 while it is undecided (1 won, 2 lost: the fight stops eight ticks later and the results sheet is up);
 `selected` the soldiers selected; `cam_*` the camera (battle metres; `cam_height` is its distance). In a Conquest
 `day`, `gold`, `cities` and `winner` follow.
+
+A skirmish is not called the moment a host quits: the beaten run for the edge for up to 25 s while horse and light
+foot ride them down (`outcome` stays 0 until then). In a Conquest a fight of the player's that ends puts up the results
+sheet and holds the war's clock until `key return` puts it away: `wait_ticks` ends at once while it is up, so a script
+that plays a Conquest presses `key c` now and then (it puts the sheet away; with none up it only finds the selection).
 
 ### The log
 
@@ -141,6 +147,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
+| `march.txt` | The March: the first battle with no orders, its results sheet, the camp with a squad filled from the purse, the Ford set out. |
 
 ```
 Illyria=build-play/game/native/Illyria.app/Contents/MacOS/Illyria

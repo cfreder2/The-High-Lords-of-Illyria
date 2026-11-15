@@ -90,7 +90,8 @@ private:
 // fifth of its full strength, or when every man left of it is broken. A host whose every squad is spent has lost; so
 // has one with under a third of its men left alive that the unbroken men against it outnumber three to two (it
 // has pulled its mauled squads back and will not come again). A skirmish breaks the side, sends it running for its
-// edge of the ground (World::quitField) and calls the battle after a few seconds of pursuit; a Conquest marches the
+// edge of the ground (World::quitField) and calls the battle when the pursuit is over: after kPursuitTicks, or as soon
+// as no man of it is left on the field (each is dead or within kAwayM of the ground's edge: away); a Conquest marches the
 // stack off to its nearest town (Conquest::quitFields). Engines hold no field by themselves: a squad with only
 // engines left is not counted among the spent.
 struct HostSquad {
@@ -106,14 +107,17 @@ bool hostBeaten(const World& world, const std::vector<HostSquad>& squads, Player
 
 class RoutRule {
 public:
-    static constexpr int32_t kPursuitTicks = 6 * kTicksPerSecond;
+    static constexpr int32_t kPursuitTicks = 25 * kTicksPerSecond;  // (6 s before: no rout to ride down)
+    static constexpr int32_t kAwayM = 14;
     static constexpr PlayerId kNobody = 255;
     // After each step of the world. The first host beaten quits (two at once: the one with fewer men standing).
     void step(World& world, const std::vector<HostSquad>& squads);
     PlayerId quitter() const { return quitter_; }
     uint32_t quitTick() const { return quitTick_; }
     // The pursuit is over: the battle is called.
-    bool called(const World& world) const { return quitter_ != kNobody && world.tick() >= quitTick_ + kPursuitTicks; }
+    bool called(const World& world) const;
+    // A man of the beaten host who has reached the edge of the ground: out of the pursuit's reach.
+    static bool away(const World& world, const Unit& u);
     void hash(StateHasher& h) const;
 
 private:

@@ -19,6 +19,10 @@ class Hud {
 public:
     // Where the conquest is kept between runs (empty: not saved).
     void setSaveFile(std::string path) { savePath_ = std::move(path); }
+    // Where the March's book is kept between its battles (empty: not saved).
+    void setMarchFile(std::string path) { marchPath_ = std::move(path); }
+    // The March's page, opened: the camp of the march in the book (or of the saved one), else the army to buy for a new one.
+    void marchOpen();
     // Where the choices kept on this device are (the player's colour, the minimap shown): read now, written when they change.
     void setSettingsFile(std::string path);
     void openMenu();
@@ -67,6 +71,11 @@ private:
     void skirmishKey(Key k);
     void skirmishStep(int row, int by);  // Left / Right on a row (or a click on its arrows)
     void skirmishFill();                 // buy the purse's army as a lord would (the starting point to change)
+    // The March (march.h): its camp between battles and its end, on parchment; the keys and presses on it.
+    void drawMarch(Overlay& o, float w, float h);
+    void marchKey(Key k);
+    void marchAct(int what);
+    void saveMarch() const;
     void skirmishStart();
     int skirmishSpent() const;
     int skirmishRows() const { return 4 + static_cast<int>(offers_.size()) + 2; }  // map, side, gold, difficulty, each squad, start, back
@@ -80,7 +89,10 @@ private:
     void activate(int row);
     bool loadSave(std::string& text) const;
 
-    std::string savePath_, perf_;
+    std::string savePath_, marchPath_, perf_;
+    bool marchPage_ = false, skMarch_ = false;  // the March's camp is up; the Skirmish screen is buying a march's army
+    int mRow_ = 0, mRows_ = 1;
+    int marchSaved_ = -1;  // the battle of the march whose end was last written to the file
     bool showStats_ = false;
     bool menu_ = false, help_ = false, playing_ = false, heldByMenu_ = false;
     int row_ = 0;
