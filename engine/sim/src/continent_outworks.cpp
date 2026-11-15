@@ -30,6 +30,8 @@ constexpr Fixed kAbatisArc = Fixed::fromRatio(26, 100);
 constexpr Fixed kPalisadeRun = Fixed::fromInt(6), kAbatisRun = Fixed::fromInt(5);
 // A causeway: a door's is this half wide; a road's its own half width and this much more.
 constexpr Fixed kDoorCauseway = Fixed::fromInt(5), kRoadCausewayMore = Fixed::fromInt(3);
+// The way toward a crossing near the walls is left open this far either side.
+constexpr Fixed kCrossingClear = Fixed::fromInt(25);
 // A moat: the town within this of a river's or a lake's water, on a ring no more uneven than this.
 constexpr Fixed kMoatNear = Fixed::fromInt(160), kMoatLevel = Fixed::fromRatio(6, 5);
 // The works' strength (hit points) and size.
@@ -167,6 +169,14 @@ void Continent::planOutworks() {
                 const Vec3 out = unitFlat(at - c);
                 d.causeways.push_back({out.x, out.y, road.widthAt(si, t) + kRoadCausewayMore});
             }
+        }
+        // A crossing near the walls keeps its way open: the ground toward it is not dug, staked or felled (a ford's
+        // riders and wheels come up from the water off any road).
+        for (const Crossing& cr : crossings_) {
+            const Fixed far = (cr.pos - c).flat().length();
+            if (far > d.outer + kCrossingClear * 3 || far < m(1)) continue;
+            const Vec3 out = unitFlat(cr.pos - c);
+            d.causeways.push_back({out.x, out.y, kCrossingClear});
         }
         city.ditchDepth = kDitchDepth;
         city.bankRise = kBankRise;
