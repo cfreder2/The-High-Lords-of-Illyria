@@ -345,7 +345,7 @@ TEST(soldiers_go_round_a_temple_a_sages_tower_and_a_shrine_clear_of_their_stone)
         CHECK(r.stalled == 0);
         CHECK(r.worst > -0.1);
     }
-    // A sage's tower: eight-sided, 0.3 of its size to the corners at its foot.
+    // A sage's tower: twelve-sided, 0.3 of its size to the corners at its foot.
     const SiteView& s = siteView(Continent::Site::Kind::Sage);
     const Gap tower = [&s](const Vec3& p, double) {
         double x, y;

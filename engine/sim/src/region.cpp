@@ -122,7 +122,7 @@ const std::vector<SiteStone>& siteStones(Continent::Site::Kind k) {
             for (int i = -2; i <= 2; ++i) t.push_back({i * 120, j * 120, 60, 60, 450, false});
         return t;
     }();
-    // The tower is an eight-sided frustum, 0.3 of the site's size to its
+    // The tower is a twelve-sided frustum, 0.3 of the site's size to its
     // corners at the foot: the circle through them.
     static const std::vector<SiteStone> sage = {{0, 0, 300, 300, 1150, true}};
     return k == Continent::Site::Kind::Ruin ? kRuinStones : k == Continent::Site::Kind::Temple ? temple : sage;

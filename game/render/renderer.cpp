@@ -394,6 +394,7 @@ bool Renderer::buildPrograms() {
         s.p.patch = glGetUniformLocation(s.p.id, "uPatch");
         s.p.patchSink = glGetUniformLocation(s.p.id, "uPatchSink");
         s.p.masonry = glGetUniformLocation(s.p.id, "uMasonry");
+        s.p.grounded = glGetUniformLocation(s.p.id, "uGrounded");
         s.p.house = glGetUniformLocation(s.p.id, "uHouse");
         s.p.owned = glGetUniformLocation(s.p.id, "uOwned");
         s.p.rock = glGetUniformLocation(s.p.id, "uRock");
@@ -582,7 +583,8 @@ void Renderer::drawMeshes(const std::vector<MeshBatch*>& batches, const Camera& 
     for (MeshBatch* b : batches) {
         if (b->count == 0) continue;
         glUniform1f(mesh_.sway, b->sway);
-        glUniform1f(mesh_.masonry, b->masonry ? 1.0f : 0.0f);
+        glUniform1f(mesh_.masonry, static_cast<float>(b->masonry));
+        glUniform1f(mesh_.grounded, b->grounded ? 1.0f : 0.0f);
         glUniform1f(mesh_.house, b->house ? 1.0f : 0.0f);
         glUniform1f(mesh_.owned, b->owned ? 1.0f : 0.0f);
         glUniform1f(mesh_.rock, b->rock ? 1.0f : 0.0f);
@@ -1152,7 +1154,7 @@ void Renderer::uploadContinent(const Battle& battle) {
                        [&](float x, float y) { return battle.heightAt(x, y); });
     }
     makeMeshBatch(bridges_, bridges, 0);
-    bridges_.masonry = true;
+    bridges_.masonry = MeshBatch::Masonry::Ashlar;
     std::vector<float> one;
     const float identity[4] = {0, 0, 0, 1};
     pushInstance(one, {0, 0, 0}, identity, {1, 1, 1}, {1, 1, 1});
@@ -1243,6 +1245,13 @@ void Renderer::uploadSettlements(const Battle& battle) {
     const V3 stone{1, 1, 1};
     std::vector<float> drums, keeps, stairs, parapets, galleries;
     std::vector<uint32_t> houseCity, towerCity, keepCity;
+    // The shade on the ground at each structure's foot (kDecalFs type 12): a box of half extents hx, hy turned by yaw,
+    // its corners rounded by `round` (a round tower is all radius), fading out over `reach` metres.
+    std::vector<float> shade;
+    const auto shadeAt = [&](V3 at, float yaw, float hx, float hy, float round) {
+        const float reach = 1.8f;
+        shade.insert(shade.end(), {at.x, at.y, at.z, yaw, std::max(hx, hy) + round + reach, 0, 12, hx, hy, round, reach});
+    };
     const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
     const auto yawOf = [](V3 d) { return std::atan2(d.y, d.x); };
     for (size_t ci = 0; ci < cont.cities().size(); ++ci) {
@@ -1288,6 +1297,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
                     spans = {{0, len}};
                 }
                 for (const auto& [s0, s1] : spans) {
+                    shadeAt(a + along * ((s0 + s1) / 2), yawOf(dir), (s1 - s0) / 2, thick / 2, 0);
                     const int pieces = std::max(1, static_cast<int>(std::ceil((s1 - s0) / 10.0f)));
                     for (int p = 0; p < pieces; ++p) section(s0 + (s1 - s0) * p / pieces, s0 + (s1 - s0) * (p + 1) / pieces, 0, height);
                 }
@@ -1354,6 +1364,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
         for (const sim::Continent::Castle::Tower& t : k.towers) {
             const float r = static_cast<float>(t.radius.toDouble()), h = static_cast<float>(t.height.toDouble());
             const V3 p = local(t.pos);
+            shadeAt(p, 0, 0, 0, r);
             if (t.roofed) {
                 pushInstance(towers, p, flat, {r, r, h}, look.cone);
                 towerCity.push_back(static_cast<uint32_t>(ci));
@@ -1370,6 +1381,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             const float half = static_cast<float>(k.keepHalf.toDouble()), h = static_cast<float>(k.keepHeight.toDouble());
             const V3 p = local(k.keep);
             pushInstance(keeps, p, q, {half, half, h}, look.cone);  // (the stone ignores the tint; the turrets' caps wear it)
+            shadeAt(p, yawOf(toV3(k.keepAxis)), half, half, 0);
             keepCity.push_back(static_cast<uint32_t>(ci));
             const float s = c.capital ? 14.0f : c.walled ? 9.0f : 6.0f;
             pushInstance(banners, p + V3{0, 0, h + 0.3f}, flat, {s, s, s}, colour);
@@ -1389,6 +1401,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             yawQuat(yawOf(run), q);
             pushInstance(stairs, V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z}, q, {len / 2, half, head.z - foot.z}, {1, 1, 1});
             const V3 dir = run * (1.0f / len);
+            shadeAt(V3{(foot.x + head.x) / 2, (foot.y + head.y) / 2, foot.z} + dir * (landing / 2), yawOf(run), (len + landing) / 2, half, 0);
             pushInstance(walls, V3{head.x, head.y, foot.z - 1} + dir * (landing / 2), q, {landing / 2, half, head.z - foot.z + 1}, {1, 1, 1});
         }
         for (size_t hi = 0; hi < k.houses.size(); ++hi) {
@@ -1401,6 +1414,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
             pushInstance(houses, local(hs.pos), q, hx > hy ? V3{hy, hx, static_cast<float>(hs.height.toDouble())} : V3{hx, hy, static_cast<float>(hs.height.toDouble())},
                          look.roof);
             houseCity.push_back(static_cast<uint32_t>(ci));
+            shadeAt(local(hs.pos), 0, hx, hy, 0);
         }
     }
     for (size_t si = 0; si < cont.sites().size(); ++si) {
@@ -1410,10 +1424,17 @@ void Renderer::uploadSettlements(const Battle& battle) {
         float q[4];
         yawQuat(static_cast<float>(sim::Continent::Site::turns(si)) * 1.5707963f, q);
         const float s = static_cast<float>(sim::Continent::Site::size(st.kind));
+        const float turn = static_cast<float>(sim::Continent::Site::turns(si)) * 1.5707963f;
         switch (st.kind) {
             case sim::Continent::Site::Kind::Ruin: pushInstance(ruins, p, q, {s, s, s}, {1, 1, 1}); break;
-            case sim::Continent::Site::Kind::Temple: pushInstance(temples, p, q, {s, s, s}, {1, 1, 1}); break;
-            case sim::Continent::Site::Kind::Sage: pushInstance(sages, p, q, {s, s, s}, {1, 1, 1}); break;
+            case sim::Continent::Site::Kind::Temple:
+                pushInstance(temples, p, q, {s, s, s}, {1, 1, 1});
+                shadeAt(p, turn, 0.3f * s, 0.18f * s, 0);  // (meshes::temple: its hall; the colonnade stands in the hall's)
+                break;
+            case sim::Continent::Site::Kind::Sage:
+                pushInstance(sages, p, q, {s, s, s}, {1, 1, 1});
+                shadeAt(p, 0, 0, 0, 0.29f * s);
+                break;
         }
     }
     uploadMeshInstances(walls_, walls);
@@ -1432,6 +1453,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadRuins(ruins);  // the model, if it has come, else the box ruin (renderer_models.cpp)
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
+    uploadDynamic(footShade_, shade);
 
     uploadFarForest(battle);
 }
@@ -1515,6 +1537,7 @@ bool Renderer::init(Battle& battle) {
     makeBatch(detailRockRings_, {3, 3, 4}, 0);
     makeBatch(remainArrows_, {3, 3, 2}, Battle::kMaxRemains);
     makeBatch(sceneryShadows_, {3, 4, 4}, 0);
+    makeBatch(footShade_, {3, 4, 4}, 0);
     const auto makeAll = [&](std::vector<MeshBatch>& out, const std::vector<Mesh>& meshes, float sway) {
         out.resize(meshes.size());
         for (size_t v = 0; v < meshes.size(); ++v) makeMeshBatch(out[v], meshes[v], sway);
@@ -1538,7 +1561,8 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(brokenGates_, meshes::gate(true), 0);
     makeMeshBatch(leavesLeft_, meshes::gateLeaf(false), 0);
     makeMeshBatch(leavesRight_, meshes::gateLeaf(true), 0);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_}) b->masonry = true;
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &galleries_}) b->masonry = MeshBatch::Masonry::Ashlar;
+    stairs_.masonry = MeshBatch::Masonry::Stair;
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
     makeMeshBatch(cityHouses_, meshes::house(), 0);
@@ -1547,6 +1571,9 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(ruins_, meshes::ruin(), 0);
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
+    // Every town structure is of the castles' stone, under the houses' tiles: one material for all of them.
+    for (MeshBatch* b : {&keeps_, &temples_, &sages_}) b->masonry = MeshBatch::Masonry::Building;
+    for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &houses_, &cityHouses_, &temples_, &sages_}) b->grounded = true;
     makeMeshBatch(logs_, meshes::log(), 0);
     makeMeshBatch(ships_, meshes::ship(), 0);
     makeMeshBatch(sails_, meshes::sail(), 0.01f);
@@ -2661,7 +2688,7 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
     glPolygonOffset(0.0f, -2.0f);  // constant: a slope term pulls grazing decals through nearby stone
     setCommon(decal_, camera, timeSeconds, gameSeconds);
     const bool realShadows = shadowInfo_[2] > 0;
-    for (Batch* b : {&marks_, &sceneryShadows_, &dynamicDecals_, &bigDecals_}) {
+    for (Batch* b : {&footShade_, &marks_, &sceneryShadows_, &dynamicDecals_, &bigDecals_}) {
         // Blob shadows under the battlefield's trees only while they stand (see sceneryNear in kMeshVs).
         if (b->count == 0 || (b == &sceneryShadows_ && (realShadows || camera.distance() > 850.0f))) continue;
         // Per-frame marks (rings, order markers) can be big: more cells to follow the land.
