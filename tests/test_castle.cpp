@@ -579,38 +579,74 @@ TEST(the_siege_train_batters_the_gate_when_ordered) {
 }
 
 TEST(the_computer_attacker_batters_from_range_with_its_foot_in_line_then_masses_and_goes_in) {
-    illyria::game::Battle b(1, illyria::game::Scenario::Siege);
+    // The player keeps the walls and the computer lays the siege (SkirmishSetup::defend): the battle a defence is, begun as
+    // the game begins it. (Before battles had ends this was a storm stood on its head, the player's camp struck dead and a
+    // gate handed to him: a host with its men dead quits the field at once now (sim::RoutRule), and nothing is fought.)
     using illyria::game::V3;
+    illyria::game::SkirmishSetup setup;
+    setup.budget = 300;
+    setup.defend = true;
+    illyria::game::Battle b(1, illyria::game::Scenario::Siege, setup);
     constexpr PlayerId kMe = illyria::game::Battle::kPlayer, kThem = illyria::game::Battle::kEnemy;
-    // The player's town: its gate is the computer's to take (the garrison is the player's, and far off).
+    CHECK(b.defending());
+    // The town's door, the player's to keep (the region holds its neighbours' gates too: the one nearest the courtyard).
     int gate = -1;
     float best = 1e9f;
-    const V3 camp = b.squadCentre(b.squads().front(), false);
+    const V3 yard = illyria::game::toV3(b.capturePoint().stages().front().at);
     for (size_t i = 0; i < b.region().gates().size(); ++i) {
-        const float d = (illyria::game::toV3(b.region().gates()[i].a) - camp).length();
+        const V3 door = illyria::game::toV3(b.region().gates()[i].a + b.region().gates()[i].b) * 0.5f;
+        const float d = V3{door.x - yard.x, door.y - yard.y, 0}.length();
         if (d < best) best = d, gate = static_cast<int>(i);
     }
+    CHECK(gate >= 0);
+    if (gate < 0) return;
     const size_t g = static_cast<size_t>(gate);
-    const_cast<World&>(b.world()).setGateHolder(g, kMe);
+    CHECK(b.world().gates()[g].holder == kMe);
     const V3 mid = illyria::game::toV3(b.region().gates()[g].a + b.region().gates()[g].b) * 0.5f;
-    const V3 out = illyria::game::toV3(b.region().gates()[g].out);
-    // (the player's camp is elsewhere and not in this: only the town's own men are his)
-    for (const illyria::game::Squad& sq : b.squads())
-        if (sq.owner == kMe)
-            for (EntityId id : sq.members) const_cast<Unit&>(*b.world().findUnit(id)).hp = 0;
-    b.addSquad("Garrison", kMe, UnitType::HeavyInfantry, 6, mid + out * -25.0f, out);
-    const int train = b.addSquad("Train", kThem, UnitType::Catapult, 2, mid + out * 140.0f, out * -1.0f);
-    const int foot = b.addSquad("Foot", kThem, UnitType::HeavyInfantry, 12, mid + out * 150.0f + V3{0, 14, 0}, out * -1.0f);
-    const auto dist = [&](int q) { return (b.squadCentre(b.squads()[static_cast<size_t>(q)], false) - mid).length(); };
-    for (int i = 0; i < 200; ++i) b.advance(0.1);
+    // The besiegers: the train within its throw of the door, and the fighting foot and horse of the whole host (a second
+    // battery stands before another wall with a company of its own).
+    const auto dist = [&](size_t q) { return (b.squadCentre(b.squads()[q], false) - mid).length(); };
+    int train = -1;
+    std::vector<size_t> melee;
+    for (size_t q = 0; q < b.squads().size(); ++q) {
+        const illyria::game::Squad& sq = b.squads()[q];
+        if (sq.owner != kThem) continue;
+        if (sq.type == UnitType::Catapult && (train < 0 || dist(q) < dist(static_cast<size_t>(train)))) train = static_cast<int>(q);
+        if (illyria::game::roleOf(sq.type) == illyria::game::Role::Melee) melee.push_back(q);
+    }
+    CHECK(train >= 0);
+    CHECK(melee.size() >= 6);
+    if (train < 0) return;
+    const size_t engines = static_cast<size_t>(train);
+    // Twenty seconds: the engines throw from where they stand and the doors take it, and not a company of the foot has
+    // come within a hundred metres of the doors while they stood.
+    float closest = 1e9f, enginesClosest = 1e9f;
+    int stood = 0;
+    for (int i = 0; i < 200; ++i) {
+        b.advance(0.1);
+        if (b.world().gates()[g].broken()) continue;
+        ++stood;
+        enginesClosest = std::min(enginesClosest, dist(engines));
+        for (size_t q : melee) closest = std::min(closest, dist(q));
+    }
     const int hpLeft = b.world().gates()[g].hp;
-    std::printf("  after 20 s: gate %d of %d hp, the foot %.0f m out, the engines %.0f m\n", hpLeft, b.region().gates()[g].maxHp, dist(foot), dist(train));
+    std::printf("  after 20 s: gate %d of %d hp, the foot no nearer than %.0f m while it stood, the engines %.0f m\n", hpLeft, b.region().gates()[g].maxHp, closest, enginesClosest);
     CHECK(hpLeft < b.region().gates()[g].maxHp);  // the engines are at the gate
-    CHECK(dist(foot) > 100.0f);                   // and the foot hold their line, they have not rushed it
-    b.breakGate(gate);
+    CHECK(enginesClosest > 100.0f);               // from their own reach
+    CHECK(stood >= 50 && closest > 100.0f);       // and the foot hold their line, they have not rushed it
+    CHECK(!b.decided());
+    // The line: the companies standing by that battery.
+    std::vector<size_t> line;
+    for (size_t q : melee)
+        if ((b.squadCentre(b.squads()[q], false) - b.squadCentre(b.squads()[engines], false)).length() < 60.0f) line.push_back(q);
+    CHECK(line.size() >= 4);
+    if (!b.world().gates()[g].broken()) b.breakGate(gate);
     for (int i = 0; i < 600; ++i) b.advance(0.1);
-    std::printf("  60 s after it fell: the foot %.0f m from the doors\n", dist(foot));
-    CHECK(dist(foot) < 100.0f);  // on the way in, to the gathering outside the breach, where they wait for the rest
+    float farthest = 0;
+    for (size_t q : line) farthest = std::max(farthest, dist(q));
+    std::printf("  60 s after it fell: the %zu companies of the line no farther than %.0f m from the doors\n", line.size(), farthest);
+    CHECK(farthest < 100.0f);  // on the way in, to the gathering outside the breach, where they wait for the rest
+    CHECK(!b.decided());       // (all of it in a battle still being fought)
 }
 
 TEST(archers_shoot_over_a_wall_not_into_it) {
@@ -1163,16 +1199,31 @@ TEST(a_man_sent_to_hold_ground_goes_back_to_it_until_he_is_told_otherwise) {
     for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
     CHECK(w.findUnit(holder)->occupying && !w.findUnit(walker)->occupying);
     CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(1));
+    // (The man of the ordinary march is posted where it ended, as every man sent somewhere is: World::returnToPost.)
+    CHECK(w.findUnit(walker)->posted && !w.findUnit(holder)->posted);
+    CHECK((w.findUnit(walker)->postAt - Vec3{m(40), m(20), m(0)}).flat().length() < m(1));
     // Driven off it (a rout that ended far away): both stand 25 m from where they were sent.
     for (EntityId id : {holder, walker}) const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
     const uint64_t before = w.checksum();
     for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
     CHECK(w.checksum() != before);
     CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(6));   // back on his ground
-    CHECK((w.findUnit(walker)->pos - Vec3{m(15), m(20), m(0)}).flat().length() < m(1));  // an ordinary march is done when it is done
-    // Any other order ends it.
-    w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}});
-    CHECK(!w.findUnit(holder)->occupying);
+    // And the other back at his post (to within the two metres a posted man is let stand off it), no ground of his to occupy.
+    CHECK((w.findUnit(walker)->pos - Vec3{m(40), m(20), m(0)}).flat().length() < Fixed::fromRatio(21, 10));
+    CHECK(w.findUnit(walker)->posted && !w.findUnit(walker)->occupying);
+    // Any other order ends it: told to stop, neither has ground or a post, and driven off again each stays where he is left.
+    w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}, Command{0, walker, Command::Type::Stop, {}}});
+    CHECK(!w.findUnit(holder)->occupying && !w.findUnit(holder)->posted);
+    CHECK(!w.findUnit(walker)->occupying && !w.findUnit(walker)->posted);
+    Vec3 left[2];
+    int k = 0;
+    for (EntityId id : {holder, walker}) {
+        const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
+        left[k++] = w.findUnit(id)->pos;
+    }
+    for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
+    CHECK((w.findUnit(holder)->pos - left[0]).flat().length() < m(1));
+    CHECK((w.findUnit(walker)->pos - left[1]).flat().length() < m(1));
 }
 
 TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
