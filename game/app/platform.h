@@ -43,6 +43,12 @@ void voiceCue(const char* set, const char* situation, bool enemy, float pan, flo
 void sfxCue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int count, int tick);
 void sfxAmbience(float windMountain, float windValley, float swamp, float swampPan, float flies, float fliesPan, float drums, float drumsPan,
                  float rain);
+// One more ambience loop by its id in sfx/sounds.json (the far battle's rumble, a marching column, the day's bed, fire), faded to
+// `level` (0..1; 0 stops it) and panned. The same call on both platforms: the list of loops is the manifest's, not the player's.
+void sfxLayer(const char* id, float level, float pan);
+// The game is paused (or let go): one-shots and voices in flight fade out and none start, the ambience drops low; nothing is
+// queued to burst out on resuming.
+void sfxPaused(bool paused);
 
 // The world heard from under water (game/underwater.h, underwater_audio.h): everything the mix plays goes through a low-pass at
 // `cutoffHz`, quieter by `gain` (linear) and with a slow wobble of pitch (0..1), all already scaled by how far under it is (0:
