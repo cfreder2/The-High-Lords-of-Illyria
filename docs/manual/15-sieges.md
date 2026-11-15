@@ -37,7 +37,7 @@ Every gate is two leaves of oak banded with iron, shut. While it stands it block
 | What strikes the gate | To the gate | At most, a hit |
 |---|---|---|
 | A blow of sword, axe, club or claw | a quarter of the blow | 2 to 4 from a foot soldier, 11 from a giant |
-| A Molotov | one and a half times its blast | 60 |
+| A Molotov's burning ground | 25 a second while it burns (8 s) | 200 a bottle, slowly |
 | A wizard's fireball | one and a half times its blast | 135 |
 | A dragon's fireball | one and a half times its blast | 105 |
 | A satchel charge, laid at the doors and set off with fire | twice its blast | 300 |

@@ -831,3 +831,89 @@ TEST(a_guard_goes_to_nobody_elses_help_and_an_order_ends_his_duty) {
     w.step(std::span(&go, 1));
     CHECK(w.findUnit(guard)->guard == kNoEntity && !w.guarded(*w.findUnit(dwarf)));
 }
+
+// --- The Molotov: burning ground, no blast (world_fire.cpp) -------------------------------------------------------
+
+TEST(a_molotov_burns_the_ground_where_it_falls_and_has_no_blast) {
+    // A bottle at four men standing together 14 m off; a fifth 6 m beyond them; a sixth walks across the patch later.
+    World w(WorldConfig{});
+    const EntityId dwarf = w.spawnUnit(0, {m(-14), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+    std::vector<EntityId> in;
+    for (int k = 0; k < 4; ++k) in.push_back(w.spawnUnit(1, {m(k % 2), m(k / 2), m(0)}, kWest, dummy(UnitType::LightInfantry)));
+    const EntityId beyond = w.spawnUnit(1, {m(7), m(0), m(0)}, kWest, dummy(UnitType::LightInfantry));
+    const Command fire{0, dwarf, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+    w.step(std::span(&fire, 1));
+    int bursts = 0, blasts = 0, burnedFor = 0, thrown = 0;
+    for (int i = 0; i < 4 * kTicksPerSecond && bursts == 0; ++i) {
+        w.step({});
+        bursts += count(w, ImpactEvent::Kind::Burst);
+    }
+    // (One bottle, then no more: the dwarf is told to stop.)
+    const Command stop{0, dwarf, Command::Type::Stop, {}};
+    w.step(std::span(&stop, 1));
+    const int hpAtBurst = w.findUnit(in[0])->hp;
+    for (int i = 0; i < 12 * kTicksPerSecond; ++i) {
+        w.step({});
+        blasts += count(w, ImpactEvent::Kind::Explosion);
+        burnedFor += !w.fires().empty();
+        for (EntityId id : in) thrown += w.findUnit(id)->airborne;
+    }
+    int lost = 0;
+    for (EntityId id : in) lost += unitStats(UnitType::LightInfantry).maxHp - std::max(0, w.findUnit(id)->hp);
+    std::printf("  a bottle among four: %d hp lost by them in 12 s (the first %d at the burst), the man 7 m off %d; burned %.1f s; blasts %d\n", lost,
+                unitStats(UnitType::LightInfantry).maxHp - hpAtBurst, unitStats(UnitType::LightInfantry).maxHp - w.findUnit(beyond)->hp, burnedFor / 30.0, blasts);
+    CHECK(bursts == 1 && blasts == 0 && thrown == 0);
+    CHECK(hpAtBurst > unitStats(UnitType::LightInfantry).maxHp - 15);  // no blast: the hurt comes as it burns
+    CHECK(lost >= 4 * 40);                                             // and it burns: 10 a second for 8 s to each who stands in it
+    CHECK(w.findUnit(beyond)->hp == unitStats(UnitType::LightInfantry).maxHp);
+    CHECK(burnedFor >= 7 * kTicksPerSecond && burnedFor <= 9 * kTicksPerSecond);
+    CHECK(w.fires().empty());
+}
+
+TEST(a_man_walking_through_burning_ground_is_slowed_and_burned) {
+    for (const bool alight : {false, true}) {
+        World w(WorldConfig{});
+        if (alight) {
+            const EntityId thrower = w.spawnUnit(0, {m(0), m(-15), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+            const Command fire{0, thrower, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+            w.step(std::span(&fire, 1));
+            for (int i = 0; i < 4 * kTicksPerSecond && w.fires().empty(); ++i) w.step({});
+            const Command stop{0, thrower, Command::Type::Stop, {}};
+            w.step(std::span(&stop, 1));
+        }
+        UnitStats walker = dummy(UnitType::HeavyInfantry);
+        walker.moraleShockPct = 0;  // (his nerve is not what is measured)
+        const EntityId man = w.spawnUnit(1, {m(-6), m(0), m(0)}, kEast, walker);
+        const Command go{1, man, Command::Type::Move, {m(6), m(0), m(0)}};
+        w.step(std::span(&go, 1));
+        int ticks = 0;
+        while (w.findUnit(man)->hasMoveTarget && ticks < 30 * kTicksPerSecond) w.step({}), ++ticks;
+        std::printf("  12 m %s: %.1f s, %d hp lost\n", alight ? "through a burning patch" : "on open ground", ticks / 30.0, walker.maxHp - w.findUnit(man)->hp);
+        if (!alight) CHECK(w.findUnit(man)->hp == walker.maxHp);
+        else CHECK(w.findUnit(man)->hp < walker.maxHp);
+        static int open = 0;
+        if (!alight) open = ticks;
+        else CHECK(ticks > open + kTicksPerSecond);
+    }
+}
+
+TEST(a_molotov_sets_an_engine_alight_and_it_burns_down) {
+    // A thrower of Molotovs left to himself (a dwarf with no satchels: any unit may carry the bottles), a foe's engine
+    // 15 m off and nobody else: it is his mark, and one bottle sets it burning.
+    World w(WorldConfig{});
+    UnitStats bottles3 = unitStats(UnitType::DwarfGrenadier);
+    bottles3.satchels = {};
+    const EntityId dwarf = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, bottles3);
+    UnitStats engine = unitStats(UnitType::Catapult);
+    engine.ranged = {};
+    const EntityId cat = w.spawnUnit(1, {m(15), m(0), m(0)}, kWest, engine);
+    int bottles = 0, burnt = -1;
+    for (int i = 0; i < 60 * kTicksPerSecond && burnt < 0; ++i) {
+        w.step({});
+        bottles += count(w, ImpactEvent::Kind::Burst);
+        if (!w.findUnit(cat)->alive()) burnt = i;
+    }
+    std::printf("  the engine: %d bottle(s), burned to nothing at %.1f s; %d left in his bag\n", bottles, burnt / 30.0, w.findUnit(dwarf)->ammo);
+    CHECK(bottles >= 1 && bottles <= 2);
+    CHECK(burnt > 0);
+}

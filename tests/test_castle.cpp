@@ -564,7 +564,7 @@ TEST(siege_with_engines_is_deterministic_and_pinned) {
     const uint64_t a = run(21);
     CHECK(a == run(21));
     CHECK(a != run(22));
-    constexpr uint64_t kGolden = 0xab3a846c4f26bcd0;  // (was 0x1eaf19b9a7460fdb before merge-master's tactics and land rules (it stood unpinned there); was 0x6f19db3c170cfe79 before a catapult's stone rolled on from where it comes down, world_boulder.cpp; was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
+    constexpr uint64_t kGolden = 0xc81c78b47271c289;  // (was 0xab3a846c4f26bcd0 before a train carried 8 stones, squads guarded the dwarves (Command::Guard), dwarves and wizards answered no calls, and a Molotov became burning ground with no blast (world_fire.cpp); was 0x1eaf19b9a7460fdb before merge-master's tactics and land rules (it stood unpinned there); was 0x6f19db3c170cfe79 before a catapult's stone rolled on from where it comes down, world_boulder.cpp; was 0xc0152e80aebee905 before engines batter a gate from their own reach and a stone does 900% to a gate, was 500%; was 0xcc4911f58899422d before two-door castles, the battle AI and the balance pass were merged; earlier was 0x35d11cff10818db0 before capitals and long towns were given a second gate in a side wall, the castle fixture's town chosen among the one-door ones; was 0xcfd237112427840d before the central lake was redrawn as one smooth body with the rivers ending at its shore, on top of the merged melee, garrison and aiming changes; was 0xe96650fb3913d5c3 before the lakes became calm pebbles with one cove, rivers ended at their shores and the Heartmere lost its three rocks (docs/TERRAIN_AUDIT.md); was 0x632a6e70584e7371 before every realm was given the same share of the land (three walled towns and six villages drafted from its own country: docs/MAP.md); was 0x6f6e531b9580e6f3 before the land was opened (walled towns and villages, the lords' seats moved: docs/MAP.md) and the siege is of another town; was 0x98c2b5b325be05b8 before gates raised for giants: the lintel at least 5.8 m, neutral walls at least 8 m; was 0xfa3902fc254acd29 before the roads (classes, junctions, bridges that meet the ground) and the lakes (natural shores, level river surfaces) were merged, with the castles' houses no longer walling their ramps off; was 0xe5356b18ea785712 before roads of classes by traffic (a lane to four wide, `Polyline::widths` read by the ground and the drawing), clean junctions (no spurs or loops), bends round boulders, bridges with ramps to the ground and no bridge under a castle's wall; was 0xb4bb26218dc4d8bd before roads laid to every castle's gate, the gates facing their roads, no town astride a road and a rule for towers; was 0x1aa5a57fd79f59bd before every gate's fields were hashed always; was 0x1fddebc5e04c2cad before gates swung: a holder's men wait three seconds at the doors, and do not walk at a foe across a shut gate)
     if (a != kGolden) std::printf("  Siege checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }
@@ -1222,4 +1222,30 @@ TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {
     std::printf("  %d of %d ramp feet have no route to their courtyard\n", unreached, ramps);
     CHECK(unreached <= 8);
     CHECK(castlesWithoutAWay == 0);
+}
+
+TEST(a_molotov_burns_a_wooden_gate_slowly_and_does_not_smash_it) {
+    // A thrower of Molotovs (a dwarf with no satchels) left to himself 12 m before a foe's shut gate, nobody about: one
+    // bottle at the doors, and another only when the first fire is out. Each burns 8 s at 25 a second: 200 of a town
+    // gate's 2000, where the bottle's old blast smashed 60 at once. Satchels and stones are what break a gate.
+    GateField f = gateField(7);
+    World& w = *f.w;
+    UnitStats thrower = unitStats(UnitType::DwarfGrenadier);
+    thrower.satchels = {};
+    const EntityId dwarf = w.spawnUnit(0, f.centre + f.out * m(12), -f.out, thrower);
+    const int32_t full = w.gates()[f.gate].hp;
+    int bursts = 0, firstHit = -1, burst = -1;
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts()) {
+            if (e.kind == ImpactEvent::Kind::Burst) ++bursts, burst = burst < 0 ? t : burst;
+            if (e.kind == ImpactEvent::Kind::Gate && firstHit < 0) firstHit = t;
+        }
+    }
+    std::printf("  %d bottle(s) in 40 s; the gate %d of %d hp (the first burn %.1f s after the first bottle); %d left\n", bursts, w.gates()[f.gate].hp, full,
+                (firstHit - burst) / 30.0, w.findUnit(dwarf)->ammo);
+    CHECK(bursts >= 1 && bursts <= 3);
+    CHECK(w.gates()[f.gate].hp < full);
+    CHECK(full - w.gates()[f.gate].hp <= bursts * 225);
+    CHECK(!w.gates()[f.gate].broken());
 }

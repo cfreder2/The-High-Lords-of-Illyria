@@ -41,7 +41,7 @@ enum class ProjectileKind : uint8_t {
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
     Stone,     // a catapult's boulder: a high arc, a smash where it comes down, and then it bounces and rolls on (world_boulder.cpp)
-    Molotov,   // a grenadier's bottle of burning oil: shatters on any impact into a burst of fire, which sets off satchels
+    Molotov,   // a bottle of burning oil: no blast; shatters into a patch of burning ground that burns men and timber and sets off satchels (world_fire.cpp)
 };
 
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
@@ -271,6 +271,16 @@ struct Command {
 };
 
 // One soldier (or beast). Squads are a conquest-layer grouping of these.
+// A patch of burning ground where a Molotov shattered (world_fire.cpp): its middle, how wide, hit points a second to a man
+// standing in it, ticks left, and whose bottle it was.
+struct GroundFire {
+    Vec3 at;
+    Fixed radius;
+    int32_t burn = 0;
+    int32_t ticks = 0;
+    PlayerId owner = 0;
+};
+
 struct Unit {
     EntityId id = kNoEntity;
     PlayerId owner = 0;
@@ -434,6 +444,8 @@ struct Unit {
     // falls his fellows are still guarded). kNoEntity: no guard duty.
     EntityId guard = kNoEntity;
     uint32_t guardSquad = 0;
+    // Timber alight (an engine a Molotov's fire caught, world_fire.cpp): ticks it burns on. 0: not burning.
+    int32_t burning = 0;
     // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
     // tick he last held. Both rest at zero once he fires (or is left alone for a while).
     int32_t aoeHeld = 0;
@@ -844,6 +856,11 @@ public:
     static constexpr Fixed kPrepareReach = Fixed::fromInt(160);
     static constexpr Fixed kPrepareClear = Fixed::fromInt(50);
     bool canPrepare(const Unit& u, const Vec3& at) const;
+    // Burning ground (world_fire.cpp): the patches alight now (for drawing), whether `p` is in one, and the pace of a
+    // walk there in percent (100 out of the fire).
+    const std::vector<GroundFire>& fires() const { return fires_; }
+    bool inFire(const Vec3& p) const;
+    int32_t fireWalkPct(const Vec3& p) const;
     // Whether anyone guards this man's squad (for the cards, and for where a hunted dwarf runs).
     bool guarded(const Unit& u) const;
     const Unit* wardOf(const Unit& u) const;  // the man he guards now (the one named, or a living fellow of that squad), or null
@@ -1461,6 +1478,11 @@ private:
     // then the duty is over. A tick of it for a man with no order: to his place by the ward, between him and the nearest
     // threat within kGuardWatch; at a foe within kGuardMeet of the ward; else standing (true: he has done his tick).
     bool guardStep(Unit& u);
+    // Fire (world_fire.cpp): a Molotov's patch lit at `at`; a tick of the patches and of timber alight; a fire thrower
+    // with nothing better to do throws at a foe's gate in his reach not burning already (true: he is about it).
+    void kindle(const Vec3& at, const Explosive& ex, PlayerId owner);
+    void updateFires();
+    bool burnGate(Unit& u);
     // A satchel's blast shakes those it leaves standing near it (twice its reach), of every side.
     void blastShock(const Vec3& at, const Explosive& ex);
     // Idle with satchels left and the enemy coming: lays one in their path (true).
@@ -1741,6 +1763,7 @@ private:
         DamageType cause;
     };
     std::vector<PendingExplosion> pendingExplosions_;
+    std::vector<GroundFire> fires_;
     struct TestBlow {
         EntityId id;
         int32_t amount;

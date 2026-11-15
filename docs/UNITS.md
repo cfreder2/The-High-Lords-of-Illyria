@@ -50,16 +50,22 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
 but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on
 (its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);
-against a castle gate its smash does nine times its blast damage (satchels twice, fireballs and Molotovs one and a half).
-A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a
+against a castle gate its smash does nine times its blast damage (satchels twice, fireballs one and a half).
+**A Molotov has no blast** ("that is a satchel's job"): it shatters into a patch of burning ground (its radius below)
+that burns for its fuse, hurting everyone who stands in it or walks through it (its damage, a second), shaking
+their nerve and halving their pace there. Timber on or beside it catches: an engine burns on for 15 s at 20 a
+second wherever it goes (a catapult standing in the patch burns to nothing on one bottle), and a gate in the patch burns at 25 a second
+while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line
+is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a
 **draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
 (to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
 
 **Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's
 quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of
 his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast
-(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away,
-and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the
+(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away;
+a Molotov goes at a foe's engine not alight, a foe's gate not burning, three or more men standing still in its
+patch, or a satchel with foes on it; and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the
 mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.
 
 **Water.** A Molotov that lands in water (where it stands a hand deep or more) goes out: no fire, and nothing
@@ -81,7 +87,7 @@ at a gate, at four or more men in the lane a stone rolls down, or at three in it
 | Archers | arrow | pierce |  | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
 | Wizards | fireball | fire | 4 | 24 m/s | 7.0 s |  | 50 m | 45 m |  | 4 m |  | 4.5 m | 90 |  |
 | Dragons | fireball | fire | 6 | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
-| Dwarven Grenadiers | Molotov | fire | 3 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
+| Dwarven Grenadiers | Molotov | fire | 3 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m of fire | 10 a second | burns 8 s |
 | Catapults | stone | blunt | 4 | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 
 ## Satchel charges

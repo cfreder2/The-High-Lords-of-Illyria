@@ -87,15 +87,21 @@ int main() {
     std::printf("Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,\n"
                 "but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on\n"
                 "(its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);\n"
-                "against a castle gate its smash does nine times its blast damage (satchels twice, fireballs and Molotovs one and a half).\n"
-                "A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a\n"
+                "against a castle gate its smash does nine times its blast damage (satchels twice, fireballs one and a half).\n"
+                "**A Molotov has no blast** (\"that is a satchel's job\"): it shatters into a patch of burning ground (its radius below)\n"
+                "that burns for its fuse, hurting everyone who stands in it or walks through it (its damage, a second), shaking\n"
+                "their nerve and halving their pace there. Timber on or beside it catches: an engine burns on for 15 s at 20 a\n"
+                "second wherever it goes (a catapult standing in the patch burns to nothing on one bottle), and a gate in the patch burns at 25 a second\n"
+                "while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line\n"
+                "is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a\n"
                 "**draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it\n"
                 "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.\n\n"
                 "**Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's\n"
                 "quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of\n"
                 "his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast\n"
-                "(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away,\n"
-                "and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the\n"
+                "(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away;\n"
+                "a Molotov goes at a foe's engine not alight, a foe's gate not burning, three or more men standing still in its\n"
+                "patch, or a satchel with foes on it; and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the\n"
                 "mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.\n\n"
                 "**Water.** A Molotov that lands in water (where it stands a hand deep or more) goes out: no fire, and nothing\n"
                 "set off. A satchel is not laid in water, and one that ends there is dead. A fireball bursting on water, or on\n"
@@ -123,15 +129,16 @@ int main() {
                            : s.ranged.kind == ProjectileKind::Molotov ? "Molotov"
                                                                       : "fireball";
         const bool blast = s.ranged.kind != ProjectileKind::Arrow;
+        const bool fire = s.ranged.kind == ProjectileKind::Molotov;  // (no blast: burning ground, world_fire.cpp)
         char draw[16] = "";
         if (s.ranged.drawTicks > 0) std::snprintf(draw, sizeof draw, "%.2f s", secs(s.ranged.drawTicks));
         std::printf("| %s | %s | %s | %s | %.0f m/s | %.1f s | %s | %.0f m | %.0f m | %s | %.0f m | %s | %s | %s | %s |\n", unitTypeName(static_cast<UnitType>(t)),
                     kind, damageTypeName(s.ranged.damageType), s.ranged.ammo > 0 ? std::to_string(s.ranged.ammo).c_str() : "", d(s.ranged.muzzleSpeed), secs(s.ranged.reloadTicks), draw, d(s.ranged.maxRange), d(s.ranged.autoRange),
                     blast ? "" : std::to_string(s.ranged.damage).c_str(), d(s.ranged.dispersionAt100m),
                     s.ranged.minRange > Fixed::zero() ? (std::to_string(static_cast<int>(d(s.ranged.minRange))) + " m").c_str() : "",
-                    blast ? (std::to_string(static_cast<int>(d(s.ranged.explosive.radius) * 10) / 10.0).substr(0, 3) + " m").c_str() : "",
-                    blast ? std::to_string(s.ranged.explosive.damage).c_str() : "",
-                    s.ranged.explosive.fuseTicks ? (std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");
+                    blast ? (std::to_string(static_cast<int>(d(s.ranged.explosive.radius) * 10) / 10.0).substr(0, 3) + (fire ? " m of fire" : " m")).c_str() : "",
+                    blast ? (std::to_string(s.ranged.explosive.damage) + (fire ? " a second" : "")).c_str() : "",
+                    s.ranged.explosive.fuseTicks ? ((fire ? "burns " : "") + std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");
     }
 
     std::printf("\n## Satchel charges\n\n");

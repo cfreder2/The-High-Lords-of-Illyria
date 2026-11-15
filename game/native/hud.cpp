@@ -1574,6 +1574,9 @@ void Hud::draw(Overlay& o, float w, float h) {
             const int battles = static_cast<int>(q.num("battles")), kills = static_cast<int>(q.num("kills"));
             history = "  -  " + (q.num("level") > 0 ? "level " + std::to_string(static_cast<int>(q.num("level"))) : std::string(kRankNames[std::clamp(static_cast<int>(q.num("rank")), 0, 3)])) + ", " +
                       std::to_string(kills) + (kills == 1 ? " kill" : " kills") + (battles > 0 ? ", " + std::to_string(battles) + (battles == 1 ? " battle" : " battles") : "");
+            // On guard duty, or guarded: whom (the card says GUARD or GUARDED).
+            if (!q.str("guards").empty()) history += "  -  guards " + q.str("guards");
+            else if (q.flag("guarded")) history += "  -  guarded";
         }
         std::snprintf(buf, sizeof buf, "%zu selected  %s%s%s", sel, hud.str("selLabel").c_str(), history.c_str(), hud.flag("holding") ? "  HOLD (K: support)" : "");
         selEnd = o.width(buf, 13) + 20;

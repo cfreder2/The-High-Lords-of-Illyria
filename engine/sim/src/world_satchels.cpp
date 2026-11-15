@@ -287,6 +287,20 @@ bool World::worthAShot(const Unit& u, const Unit& target) const {
     // Water: oil goes out in it, and a fireball is a third of itself (World::explode).
     const bool wet = douses(target.pos);
     if (wet && w.kind == ProjectileKind::Molotov) return false;
+    // A Molotov (world_fire.cpp) goes at an engine not alight yet, or at kThriftCluster men standing still in its patch
+    // (a great body is as many) where none burns already: men on the move walk out of it.
+    if (w.kind == ProjectileKind::Molotov) {
+        if (target.stats.gait == Gait::Wheeled) return target.burning == 0;
+        if (inFire(target.pos) || (target.pos - u.pos).flat().lengthSq() < w.explosive.radius * w.explosive.radius) return false;
+        int32_t still = 0;
+        const Fixed r2 = w.explosive.radius * w.explosive.radius;
+        nearbyNotOf(u.owner, target.pos.x, target.pos.y, w.explosive.radius, [&](uint32_t i) {
+            const Unit& o = units_[i];
+            if (!o.alive() || o.owner == u.owner || o.routed || o.inAir() || o.hasMoveTarget || (o.pos - target.pos).flat().lengthSq() >= r2) return;
+            still += o.stats.maxHp >= kThriftGreatHp ? kThriftCluster : 1;
+        });
+        return still >= kThriftCluster;
+    }
     const Fixed radius = wet && w.kind == ProjectileKind::Fireball ? w.explosive.radius / 3 : w.explosive.radius;
     // Not at a mark so near that the blast is his own death too (he gives ground, or fights with his hands).
     const Fixed near2 = (target.pos - u.pos).flat().lengthSq();

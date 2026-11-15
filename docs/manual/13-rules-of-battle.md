@@ -170,7 +170,7 @@ No shot is sure. Every arrow, bottle, fireball and stone is a real thing in flig
 
 ### Blasts {#blasts}
 
-A grenadier throws **Molotovs**, bottles of burning oil that burst where they strike into fire three metres wide, and lays **satchel charges** on the ground. A laid satchel lies still and never goes off by itself: a blast, a Molotov's fire or a fireball reaching it sets it off a moment later, throwing everyone near off his feet, and its blast sets off the satchels near it a third of a second on: a line goes up one after another. A grenadier killed by fire or a blast goes up with every satchel he still carries.
+A grenadier throws **Molotovs**, bottles of burning oil that do not explode: each leaves a patch of burning ground three metres wide for eight seconds, burning whoever stands in it or walks through it (10 a second), frightening them and slowing them, and setting fire to timber it lands by (a catapult burns down; a gate burns slowly), and lays **satchel charges** on the ground. A laid satchel lies still and never goes off by itself: a blast, a Molotov's fire or a fireball reaching it sets it off a moment later, throwing everyone near off his feet, and its blast sets off the satchels near it a third of a second on: a line goes up one after another. A grenadier killed by fire or a blast goes up with every satchel he still carries.
 
 **Explosives are rare and counted.** Those who throw a blast come few (a pair of dwarves, one wizard, one dragon; two catapults to a train), an army has few of them (2 grenadiers, 1 wizard, 1 dragon, 3 trains at most), and each carries a fixed load into battle: a pair of grenadiers **6 Molotovs and 6 satchels** (three and three a dwarf), a wizard **4 fireballs**, a dragon **6 breaths**, a catapult train **8 stones** (four an engine). None is made in battle; in a Conquest a load is made up only at dawn in a town of your own. Left to themselves they are thrifty (three or more men in the blast, a great beast, or a foe within 6 m; never men running away; a grenadier keeps his last bottle for his satchels; an engine throws unasked only at a gate, a column end-on or a knot of men on a wall), and **Shift + K** holds their fire for your orders alone. The computer's men carry the same loads.
 
@@ -182,7 +182,6 @@ A blast does its full damage at its centre, falling evenly to nothing at its edg
 
 | Blast | Damage at the centre | Radius |
 |---|---|---|
-| Molotov | 40 | 3 m |
 | Wizard's fireball | 90 | 4.5 m |
 | Dragon's fireball | 70 | 5 m |
 | Satchel charge | 150 | 5 m |

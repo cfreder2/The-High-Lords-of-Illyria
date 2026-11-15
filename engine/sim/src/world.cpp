@@ -407,6 +407,7 @@ void World::clearFight(uint64_t seed) {
     changedRemains_.clear();
     afloat_.clear();
     pendingExplosions_.clear();
+    fires_.clear();
     brokenSides_.clear();
     remainGrid_.clear();
     unitGrid_.clear();
@@ -555,6 +556,7 @@ void World::step(std::span<const Command> commands) {
     }
     separateBodies();
     updateProjectiles();
+    updateFires();
     driftAfloat();
     updateMorale();
     callForHelp();
@@ -1334,6 +1336,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
     else if (onOwnLand(u, under)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
+    if (!fires_.empty()) speed = speed * fireWalkPct(u.pos) / 100;  // through burning ground (world_fire.cpp)
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
@@ -1598,6 +1601,8 @@ void World::updateUnit(Unit& u) {
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
     } else if (armed(u) && !u.holdFire && shootNearby(u)) {
         // (From high ground the bow carries farther: shotRange; the walls' shooters first: autoTarget.)
+    } else if (burnGate(u)) {
+        // A thrower of fire: a foe's gate in his reach, alight (world_fire.cpp).
     } else if (creepToWall(u)) {
         // (Closer to the walls' men, to be within the throw.)
     } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
@@ -2662,17 +2667,21 @@ void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, Proj
         impacts_.push_back({ImpactEvent::Kind::Doused, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
         return;
     }
+    // A Molotov has no blast: burning ground (world_fire.cpp).
+    if (kind == ProjectileKind::Molotov) {
+        kindle(at, ex, owner);
+        return;
+    }
     const bool steam = wet && kind == ProjectileKind::Fireball;
     if (steam) {
         ex.radius = ex.radius / 3;
         ex.damage = ex.damage / 3;
         ex.impulse = ex.impulse / 3;
     }
-    // A stone smashes and scatters, without fire; a Molotov's oil bursts into flame.
-    const ImpactEvent::Kind event = kind == ProjectileKind::Stone     ? ImpactEvent::Kind::Smash
-                                    : kind == ProjectileKind::Molotov ? ImpactEvent::Kind::Burst
-                                    : steam                           ? ImpactEvent::Kind::Steam
-                                                                      : ImpactEvent::Kind::Explosion;
+    // A stone smashes and scatters, without fire.
+    const ImpactEvent::Kind event = kind == ProjectileKind::Stone ? ImpactEvent::Kind::Smash
+                                    : steam                       ? ImpactEvent::Kind::Steam
+                                                                  : ImpactEvent::Kind::Explosion;
     impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
     blastGates(at, ex, kind);
     if (kind == ProjectileKind::Bomb) blastShock(at, ex);
@@ -2724,7 +2733,7 @@ void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, Proj
     }
 
     // Satchels nearby (laid, burning or flying) are thrown and set off a
-    // moment later, or sooner: chain reactions. A Molotov's fire does it too.
+    // moment later, or sooner: chain reactions. (A Molotov's fire does it too: world_fire.cpp.)
     for (Projectile& p : projectiles_) {
         if (p.kind != ProjectileKind::Bomb || p.fuse < 0) continue;  // (going off already)
         if (p.resting && douses(p.pos)) continue;  // (lying in water: dead)
@@ -2953,6 +2962,7 @@ uint64_t World::checksum() const {
             h.addU64(u.guard);
             h.addU64(u.guardSquad);
         }
+        if (u.burning != 0) h.addI64(u.burning);
         // Only while a blast thrower is waiting on a friend in his way.
         if (u.aoeHeld != 0) {
             h.addI64(u.aoeHeld);
@@ -3032,6 +3042,15 @@ uint64_t World::checksum() const {
         h.addU64(g.since);
         h.addU64(g.openUntil);
         h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u) | (g.garrisoned && !g.recalls ? 8u : 0u));
+    }
+    // (Only while a patch burns: a world with no fire hashes as it did before there was any.)
+    for (const GroundFire& f : fires_) {
+        h.addI64(f.at.x.raw);
+        h.addI64(f.at.y.raw);
+        h.addI64(f.radius.raw);
+        h.addI64(f.burn);
+        h.addI64(f.ticks);
+        h.addU64(f.owner);
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

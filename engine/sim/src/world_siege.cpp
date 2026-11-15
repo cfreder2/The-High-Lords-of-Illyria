@@ -243,6 +243,18 @@ Unit* World::autoTarget(const Unit& u) {
         });
         if (mark != nullptr) return mark;
     }
+    // Fire for timber: a thrower of Molotovs takes a foe's engine in his reach not alight yet, unless a foe is on him.
+    if (u.stats.ranged.kind == ProjectileKind::Molotov && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
+        Unit* engine = nullptr;
+        Fixed best = autoReach(u) * autoReach(u);
+        nearbyNotOf(u.owner, u.pos.x, u.pos.y, autoReach(u), [&](uint32_t i) {
+            Unit& o = units_[i];
+            if (!o.alive() || o.owner == u.owner || o.stats.gait != Gait::Wheeled || o.burning > 0) return;
+            const Fixed d = (o.pos - u.pos).flat().lengthSq();
+            if (d < best || (d == best && engine != nullptr && o.id < engine->id)) best = d, engine = &o;
+        });
+        if (engine != nullptr) return engine;
+    }
     // The walls are cleared first, unless a foe is on him.
     if (Unit* wall = wallShooter(u, autoReach(u)); wall != nullptr && wall != near && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) return wall;
     return near;
