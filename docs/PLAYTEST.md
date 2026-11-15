@@ -170,9 +170,10 @@ $Illyria --play tools/playtest/conquest.txt --play-out out/conquest --play-log o
 - **It cannot see.** The script does not know where a squad is on the screen. Read coordinates off a `shot`, with the camera
   fixed by `camera` (or the start view, which is the same each run), and expect them to be wrong the first time. There is
   no "click the Archers": `select N` is the only way to pick a squad by name; everything else is a box or a click on the map.
-- **A squad card can be out of reach.** The HUD draws as many squad cards as fit the window's width and drops the rest
-  (`hud.cpp`: `if (x + cw > w - 8) break`). In the Ford at 1600 wide 11 of 18 have one. `select N` still reaches the others;
-  a click on a card does not.
+- **A squad card can be on another page.** Every squad has a card (`card_layout.h`): one row while they fit, two rows of
+  compact cards in a window 900 points wide or more, and past that pages behind the last cell ("+N more": a click on it
+  turns the page, its ends are arrows). The cards are in order of role (foot, bows, horse, then the rare ones from the
+  right-hand end), not of index: `select N` and `cards` still use the squad's index.
 - **Picking several squads, not all, needs a box.** The HUD's card click replaces the selection; there is no add. `select`
   does the same. A box (`drag left`, with `key shift down` to add) is how a script, like a hand, picks a few.
 - **Time is the game's, not frozen.** `wait` is wall time; the simulation runs at 30 ticks a second in real time (faster

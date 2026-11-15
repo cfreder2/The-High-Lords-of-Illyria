@@ -109,4 +109,23 @@ bool fitCardName(const std::string& name, Width width, float maxW, size_t maxLin
     return false;
 }
 
+// The same, for a squad that is one of several of its kind ("Heavy Infantry 3"): when the name has to be cut the
+// number stays, for it is what tells the cards apart ("Heavy Inf. 3", not "Heavy Infa."). The desktop's cards use this
+// (their compact card has one line); the page's cards are heroes and groups, which carry no such number.
+template <class Width>
+bool fitCardNameNumbered(const std::string& name, Width width, float maxW, size_t maxLines, std::vector<std::string>& out) {
+    if (fitCardName(name, width, maxW, maxLines, out)) return true;
+    const std::vector<std::string> words = detail::cardWords(name);
+    if (words.size() < 2 || words.back().find_first_not_of("0123456789") != std::string::npos) return false;
+    const std::string tail = " " + words.back();
+    std::vector<std::string> head;
+    fitCardName(detail::joinCardWords({words.begin(), words.end() - 1}), width, maxW - width(tail), maxLines, head);
+    if (head.empty() || head.back().empty()) return false;
+    head.back() += tail;
+    for (const auto& l : head)
+        if (width(l) > maxW) return false;  // (no room for a letter and the number: the plain cut stands)
+    out = head;
+    return false;
+}
+
 }  // namespace illyria::game

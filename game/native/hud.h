@@ -127,6 +127,7 @@ private:
     int savedDay_ = -1;
     std::vector<Rect> hits_;
     int town_ = -1;  // the town whose screen is open (drawTown), for the presses on it
+    int cardSelected_ = -1;  // the squad selected last frame: a new one turns the strip to its page
     int cardPage_ = 0, cardPages_ = 1;  // the page of squad cards shown when there are too many for the strip
     bool stripPaged_ = false;
     float stripX_ = 0, stripY_ = 0, stripW_ = 0, stripH_ = 0;  // the strip of cards, for the wheel

@@ -3258,6 +3258,22 @@ ILLYRIA_API const char* illyria_hud() {
                           b.selectionHolds() ? "true" : "false");
             s += buf;
         }
+        // The selection's ground markers that fall at the foot of the screen, where the squad cards stand: the HUD
+        // lets the ground show through a card that is over one (hud.cpp), so an order's end is never hidden by it.
+        s += "\"marksLow\":[";
+        {
+            int n = 0;
+            const float foot = static_cast<float>(app->camera.height()) - 110.0f * app->pixelRatio;
+            for (const Battle::OrderMark& m : b.orderMarks()) {
+                if (m.opacity < 1 || n >= 64) continue;
+                float px, py;
+                if (!app->camera.project(m.pos, px, py) || py < foot || px < 0 || px > static_cast<float>(app->camera.width())) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"x\":%.0f,\"y\":%.0f}", n ? "," : "", px / app->pixelRatio, py / app->pixelRatio);
+                s += buf;
+                ++n;
+            }
+        }
+        s += "],";
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
                       b.selectionSize(), b.selectionLabel(), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),

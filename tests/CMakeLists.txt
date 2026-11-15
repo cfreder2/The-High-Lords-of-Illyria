@@ -80,6 +80,7 @@ add_executable(illyria_tests
     test_capture.cpp
     test_palette.cpp
     test_card_name.cpp
+    test_card_layout.cpp
     test_territory.cpp
     test_realm_land.cpp
     test_sprite_layout.cpp
