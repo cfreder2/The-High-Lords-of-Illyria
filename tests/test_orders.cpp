@@ -314,12 +314,27 @@ TEST(the_destination_markers_are_where_they_end_up) {
     for (const Battle::OrderMark& mk : b.orderMarks())
         if (mk.kind == Battle::OrderMark::Kind::Slot) slots.push_back(mk);
     CHECK(slots.size() == b.selectedAlive().size());
-    run(b, 45);
+    // Each as he arrives (the way he faces afterwards is the battle's business: the Red Hand's bowmen come within their
+    // reach of the wizard standing by this place before the 45 s are out, and a man shot at turns his shield to them).
+    std::vector<V3> stood(slots.size()), faced(slots.size());
+    std::vector<bool> there(slots.size(), false);
+    for (int t = 0; t < 45 * kTicksPerSecond; ++t) {
+        b.advance(1.0 / kTicksPerSecond + 1e-6);
+        for (size_t k = 0; k < slots.size(); ++k) {
+            const Unit& u = b.world().units()[slots[k].unit - 1];
+            if (there[k] || u.hasMoveTarget) continue;
+            there[k] = true;
+            stood[k] = illyria::game::toV3(u.pos);
+            faced[k] = illyria::game::toV3(u.facing);
+        }
+    }
     float worst = 0;
-    for (const Battle::OrderMark& mk : slots) {
-        const V3 p = illyria::game::toV3(b.world().units()[mk.unit - 1].pos);
+    for (size_t k = 0; k < slots.size(); ++k) {
+        const Battle::OrderMark& mk = slots[k];
+        CHECK(there[k]);
+        const V3 p = stood[k];
         worst = std::max(worst, V3{p.x - mk.pos.x, p.y - mk.pos.y, 0}.length());
-        CHECK(illyria::game::toV3(b.world().units()[mk.unit - 1].facing).dot(mk.face) > 0.95f);
+        CHECK(faced[k].dot(mk.face) > 0.95f);
     }
     std::printf("  %zu soldiers, at most %.2f m from their markers\n", slots.size(), worst);
     CHECK(worst < 1.0f);
@@ -393,7 +408,20 @@ TEST(tapping_an_enemy_sends_the_selection_after_him) {
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
     b.tap(cam, px, py, 1.0f);
     b.advance(0.05);
-    for (EntityId id : b.selectedAlive()) CHECK(b.world().units()[id - 1].targetUnit == foe);
+    // He is a long way off (past Battle::kGatherMetres): they do not each run at him, the quickest to arrive alone. They
+    // march against his place as one body, at one pace, and the order to go for him waits behind the march.
+    const std::vector<EntityId> sent = b.selectedAlive();
+    CHECK((c - fp).length() > Battle::kGatherMetres);
+    CHECK(!sent.empty());
+    for (EntityId id : sent) {
+        const Unit& u = b.world().units()[id - 1];
+        CHECK(u.targetUnit == kNoEntity);
+        CHECK(u.hasMoveTarget);
+        CHECK(u.marchSpeed > illyria::sim::Fixed::zero());
+        CHECK(u.marchSpeed == b.world().units()[sent.front() - 1].marchSpeed);
+        CHECK((illyria::game::toV3(u.moveTarget) - fp).length() < 12.0f);
+        CHECK(u.queue.size() == 1 && u.queue.front().type == illyria::sim::Command::Type::AttackUnit && u.queue.front().targetUnit == foe);
+    }
     int rings = 0;
     for (const Battle::OrderMark& mk : b.orderMarks()) rings += mk.kind == Battle::OrderMark::Kind::Target;
     CHECK(rings == static_cast<int>(b.selectedAlive().size()));
@@ -413,6 +441,55 @@ TEST(tapping_an_enemy_sends_the_selection_after_him) {
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
     b.setKeys(false, false);
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Select);
+    // The march done, it is the man they were sent after that each goes for, wherever he has got to: the moment a soldier's
+    // march is over (and he is not already fighting someone met on the way), the tapped foe is his quarry.
+    const V3 again = b.unitPosition(foe - 1);
+    cam.lookAt(again.x, again.y, 60);
+    CHECK(cam.project(again + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.pickAt(cam, px, py, 1.0f).kind == Battle::Pick::Kind::Enemy);
+    b.tap(cam, px, py, 1.0f);  // (the Watch, at the far foe again)
+    b.advance(0.05);
+    for (EntityId id : sent) CHECK(b.world().units()[id - 1].queue.size() == 1);
+    int wentForHim = 0;
+    std::vector<uint8_t> marching(b.world().units().size(), 1);
+    for (int tick = 0; tick < 20 * 240 && wentForHim == 0 && b.world().units()[foe - 1].alive(); ++tick) {
+        b.advance(0.05);
+        for (EntityId id : sent) {
+            const Unit& u = b.world().units()[id - 1];
+            if (!u.alive() || !marching[id - 1] || !u.queue.empty()) continue;
+            marching[id - 1] = 0;
+            CHECK(u.targetUnit == foe);
+            wentForHim += u.targetUnit == foe;
+        }
+    }
+    CHECK(wentForHim > 0);
+    // A foe near at hand (within kGatherMetres of them) is each man's quarry at once, as it always was.
+    const std::vector<EntityId> left = b.selectedAlive();
+    CHECK(!left.empty());
+    if (left.empty()) return;
+    V3 mid{};
+    for (EntityId id : left) mid = mid + illyria::game::toV3(b.world().units()[id - 1].pos) * (1.0f / static_cast<float>(left.size()));
+    EntityId near = kNoEntity;
+    best = 1e9f;
+    for (const Unit& u : b.world().units()) {
+        if (u.owner != Battle::kEnemy || !u.alive() || u.id == foe) continue;
+        const float d = (illyria::game::toV3(u.pos) - mid).length();
+        if (d < best) best = d, near = u.id;
+    }
+    CHECK(best < Battle::kGatherMetres);
+    const V3 np = b.unitPosition(near - 1);
+    cam.lookAt(np.x, np.y, 60);
+    CHECK(cam.project(np + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.pickAt(cam, px, py, 1.0f).kind == Battle::Pick::Kind::Enemy);
+    b.tap(cam, px, py, 1.0f);
+    b.advance(0.05);
+    const EntityId picked = b.world().units()[left.front() - 1].targetUnit;
+    CHECK(picked != kNoEntity && picked != foe && b.world().units()[picked - 1].owner == Battle::kEnemy);
+    for (EntityId id : left) {
+        if (!b.world().units()[id - 1].alive()) continue;
+        CHECK(b.world().units()[id - 1].targetUnit == picked);
+        CHECK(b.world().units()[id - 1].queue.empty());
+    }
 }
 
 TEST(orders_replay_identically) {

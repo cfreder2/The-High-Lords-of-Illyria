@@ -126,6 +126,9 @@ struct Buy {
 // (Battle::carried tells it, so that whoever keeps the roster knows which man this is).
 struct CarriedMan {
     int hp = 1000, rank = 0, kills = 0, slot = 0;
+    // What he still carries of his satchels and his store of missiles (-1: his full load): nothing is made in a battle,
+    // and what was spent in the last is still spent in the next (sim::World::restoreLoad).
+    int satchels = -1, ammo = -1;
 };
 struct CarriedSquad {
     std::string name;
@@ -470,6 +473,41 @@ public:
     // help of a friend fighting within 40 m). holdSelected switches between the two.
     void holdSelected();
     bool selectionHolds() const;
+    // The trap and the stores (battle_satchels.cpp). Detonate: of those selected who can spark a satchel (a grenadier's
+    // Molotov, a wizard's fireball) the nearest in reach throws at the charge nearest `at` (or the ground there) at once,
+    // friends in the blast or not: sim Command::Detonate. Hold fire: the selected shoot, throw and lay only when
+    // ordered (again: at will). What a squad still carries is on its card.
+    void orderDetonate(const V3& at, bool queue = false);
+    // Guard (sim Command::Guard, world_guard.cpp): the selected stay by that man's squad, between it and the nearest
+    // threat, and meet what comes at it. The Guard key: the next tap is the friend to guard. What a squad guards (its
+    // name, "" for none), and whether a squad is guarded, for the cards.
+    void orderGuard(sim::EntityId friendly);
+    void guardAction();
+    std::string guards(const Squad& s) const;
+    bool guarded(const Squad& s) const;
+    void holdFireSelected();
+    bool selectionSparks() const;
+    bool selectionStores() const;
+    bool selectionHoldsFire() const;
+    struct Load {
+        int satchels = 0, satchelsMax = 0, ammo = 0, ammoMax = 0;
+        bool holdFire = false;
+    };
+    Load squadLoad(const Squad& s) const;
+    // What the selected still carry, in words, counted now: "4 fireballs left", "5 satchels, 6 Molotovs left", "No fireballs
+    // left"; "" when none of them carries a store.
+    std::string storeLeft() const;
+    // The charges the local side has laid, shown while a man who lays or sparks them is selected (or the next tap is
+    // a lay or a detonation): where, how wide the blast, and who stands in it (friends: the ring is red).
+    struct SatchelMark {
+        V3 pos;
+        float radius = 0;
+        int friends = 0, foes = 0;
+        bool dead = false;  // lying in water
+    };
+    std::vector<SatchelMark> satchelMarks() const;
+    // Whether a missile is drawn for the viewer: a foe's laid satchel only where his side sees the ground.
+    bool satchelShown(const sim::Projectile& p) const;
     // What a squad's card says beyond its men: idle (no order, nothing to fight), holding, and broken: the seconds until it
     // rallies on its own (0: not broken; -1: a foe is too near for it to rally).
     // ... calling for help (a few seconds after its call), answering a call (on its way to the squad that called), and the
@@ -514,7 +552,7 @@ public:
         uint32_t tick = 0;
         sim::EntityId unit = sim::kNoEntity;
         V3 pos;
-        const char* text = "";
+        std::string text;
         bool good = false;
     };
     static constexpr uint32_t kFloatShown = 3 * sim::kTicksPerSecond;
@@ -540,7 +578,8 @@ public:
     // whoever they meet.
     void orderAttackGround(const V3& at);
     // The selected who carry satchels walk there and lay one each, a few metres apart.
-    void orderLaySatchels(const V3& at);
+    // `queue` (Shift): behind the orders they have, for a line of charges.
+    void orderLaySatchels(const V3& at, bool queue = false);
     // The selected scavengers let loose to raid from where they stand (sim
     // Command::Raid); false (and a notice) when none is selected.
     bool orderRaid();
@@ -548,6 +587,8 @@ public:
     // scavengers raid at once; with grenadiers selected, the next tap on the
     // ground lays their satchels (OrderMode::LaySatchel; again, it is let go).
     void specialAction();
+    // The Detonate key: with a grenadier or a wizard selected, the next tap is the satchel (or ground) to set off.
+    void detonateAction();
     // Whether any selected soldier is a scavenger (the Raid button shows), or carries satchels.
     bool selectionRaids() const;
     bool selectionLaysSatchels() const;
@@ -577,8 +618,11 @@ public:
     // force march (a long press on the attack button, Alt-click or M).
     // Attack and force-march modes last for one order.
     // LaySatchel: the next tap on the ground sends the selected grenadiers
-    // there to lay a satchel each (sim Command::LaySatchel).
-    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel };
+    // there to lay a satchel each (sim Command::LaySatchel); with Shift held it
+    // is queued and the mode stays, for a line of them. Detonate: the next tap
+    // is a satchel (or ground) to set off (orderDetonate).
+    // Guard: the next tap is the friend the selection is to guard (orderGuard).
+    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel, Detonate, Guard };
     void setOrderMode(OrderMode m) { orderMode_ = m; }
     OrderMode orderMode() const { return orderMode_; }
     // Modifier keys held on the desktop: force (Ctrl/Cmd) and march (Alt).
@@ -768,6 +812,14 @@ public:
     void aiHalt(size_t squad);
     // A computer's lord calls the Rally when enough of his broken men hear him: the player's own command (Command::Rally).
     void aiRally(size_t squad);
+    // The computer's dwarf or wizard (battle_satchels.cpp): taken out of a foe's way, set to mine a gate or a ford his
+    // side holds and to wait behind the charges, kept behind the foot when he has nothing left. True: he has his order.
+    bool aiPrecious(size_t squad, const V3& foe);
+    // A squad on guard duty (sim Command::Guard), or told to be in the commands not yet sent: the computer gives it no
+    // other order while its ward stands (runEnemyAi, aiFight).
+    bool onGuard(const Squad& s) const;
+    bool aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& across, V3& wait) const;
+    bool aiArmed(const Squad& s) const;  // a man of it has a missile left
     // The computer's purse on Easy, as a share of the player's.
     static constexpr int kEasyPursePct = 75;
     // In the open (the Field) Hard raises this share of the player's purse; Normal is his equal (docs/BALANCE.md).
@@ -1067,6 +1119,11 @@ private:
     struct MarchOrder {
         sim::EntityId id;
         V3 target, face;
+        // His place in the arrangement, where keepClear has stood him off it round a tree, a rock or a log (`stoodOff`): the
+        // place is what the shape remembers (Slot::pos), so the next ground they are sent to has them as they were set out and
+        // not bent round a thing that is no longer there.
+        V3 place = {};
+        bool stoodOff = false;
     };
     // The block (blockLayout) of a big army, men placed by post and then by where they stand.
     static bool blockFits(Formation formation, int count);
@@ -1141,6 +1198,14 @@ private:
     bool fightTold_ = false;
     void announce(const std::string& text);
     void collectTactics();
+    // A satchel blast's dead counted into one word, and water's ("Doused", "Steam"): battle_satchels.cpp.
+    void collectBlasts();
+    struct BlastTally {
+        uint32_t last = 0;
+        int foes = 0, own = 0;
+        V3 at;
+    };
+    BlastTally blast_;
     sim::EntityId lordOf(sim::PlayerId owner, bool controllableOnly) const;
     std::vector<Float> floats_;
     std::map<uint64_t, uint32_t> floatSaid_;  // by word, side and place: when it was last floated
@@ -1238,6 +1303,7 @@ private:
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
     // he was to face there and the front of the whole, and which order it was.
+    // (His place in the arrangement: where an obstacle stood him off it, MarchOrder::place, not the ground he took instead.)
     struct Slot {
         V3 pos, face, front;
         uint32_t order = 0;  // 0: never sent
@@ -1339,6 +1405,9 @@ private:
         int rested = 0;   // looks before it may wait again (a laggard stuck behind a cliff must not stall the army)
         bool raiding = false;
         uint32_t restUntil = 0;
+        bool guardAsked = false;             // a dwarf or a wizard: a squad of foot told to guard him (once)
+        bool mined = false, mining = false;  // a dwarf: his choke looked for (once), and his trap laid and watched
+        V3 mineAt;
         int bridge = -1;  // Oakhaven Ford: the bridge it goes round by, once it has set off for it; and how far it has got
         int flank = 0;    // (0 to its own end, 1 over, 2 across and loose)
     };

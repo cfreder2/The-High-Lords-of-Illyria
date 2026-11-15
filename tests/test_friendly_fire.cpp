@@ -53,7 +53,10 @@ struct Scene {
 // catapult's own men stand about it, the nearest 2.5 m west of the middle.
 Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t away = 100) {
     Scene s(seed);
-    const EntityId cat = s.w.spawnUnit(0, {m(-away), m(0), m(0)}, kEast, unitStats(shooter));
+    // (No end of stones here: the aim is what is measured, over more throws than the four on an engine's cart.)
+    UnitStats thrower = unitStats(shooter);
+    thrower.ranged.ammo = 0;
+    const EntityId cat = s.w.spawnUnit(0, {m(-away), m(0), m(0)}, kEast, thrower);
     for (int k = 0; k < 6; ++k) {
         const Fixed x = r((k % 3 - 1) * 3, 2), y = r((k / 3) * 3 - 3 + 1, 2);
         s.foes.push_back(s.w.spawnUnit(1, {x, y, m(0)}, kWest, stander(UnitType::LightInfantry, 600)));
@@ -68,7 +71,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
+constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // (was 0x0e98f7b87d48c48d before this scene's engine threw from no store, the cart's four stones being fewer than its throws; was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
@@ -237,6 +240,9 @@ TEST(a_wizard_throws_his_fireball_so_as_to_spare_his_own_men) {
     const Toll alone = shell(0, UnitType::Wizards, 40), three = shell(3, UnitType::Wizards, 40);
     std::printf("  wizard: no friends: foes lost %d | three friends: friends lost %d (dead %d), foes %d\n", alone.foesLost, three.friendsLost,
                 three.friendsDead, three.foesLost);
-    CHECK(three.friendsLost * 5 <= 903);                // a fifth of the old toll at most
+    // (He has four fireballs now, each 4.5 m wide and 90 at the centre: men 1.8 m from the pile cannot be spared wholly. None
+    // dies, and they lose under a twentieth of what the pile does. Was: a fifth at most of the 903 hp lost before the rule,
+    // with fireballs of 3.5 m and 50 and no end of them.)
+    CHECK(three.friendsDead == 0 && three.friendsLost * 20 <= three.foesLost);
     CHECK(three.foesLost * 10 >= alone.foesLost * 9);   // and the pile as hard hit
 }

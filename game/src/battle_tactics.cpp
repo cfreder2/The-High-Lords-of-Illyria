@@ -51,6 +51,7 @@ const char* whyOf(sim::HelpCall::Why why) {
         case sim::HelpCall::Why::Wavering: return "wavering";
         case sim::HelpCall::Why::Shot: return "under arrows";
         case sim::HelpCall::Why::HeroDown: return "their lord is down";
+        case sim::HelpCall::Why::Hunted: return "hunted";
     }
     return "";
 }

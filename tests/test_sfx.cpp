@@ -200,9 +200,22 @@ TEST(sounds_follow_the_death_matrix) {
     CHECK(count(cuts, Sound::SwordFlesh) + count(cuts, Sound::SwordArmor) > 0);
 
     sim::World f(sim::WorldConfig{});
-    for (int i = 0; i < 3; ++i) f.spawnUnit(0, {m(0), m(i * 3), m(0)}, kEast, sim::unitStats(UnitType::Wizards));
+    std::vector<sim::Command> hold, loose;
+    for (int i = 0; i < 3; ++i) {
+        const sim::EntityId wizard = f.spawnUnit(0, {m(0), m(i * 3), m(0)}, kEast, sim::unitStats(UnitType::Wizards));
+        sim::Command c{0, wizard, sim::Command::Type::HoldFire, {}};
+        loose.push_back(c);
+        c.hold = true;
+        hold.push_back(c);
+    }
     for (int i = 0; i < 6; ++i) f.spawnUnit(1, {m(35), m(i * 2), m(0)}, kWest, sim::unitStats(UnitType::Journeyman));
-    const std::vector<SfxCue> fire = listen(f, {30, 5, 0}, 90);
+    // (A wizard has four fireballs and does not throw them at a knot already burned: his first volley is the one to hear. He
+    // holds it for the second the listener takes to begin.)
+    Sfx ears;
+    f.step(hold);
+    listen(f, {30, 5, 0}, 1, 25, 0, &ears);
+    f.step(loose);
+    const std::vector<SfxCue> fire = listen(f, {30, 5, 0}, 90, 25, 0, &ears);
     CHECK(count(fire, Sound::FireballCast) > 0);
     CHECK(count(fire, Sound::FireballBlast) > 0);
     CHECK(count(fire, Sound::FleshBurn) > 0);

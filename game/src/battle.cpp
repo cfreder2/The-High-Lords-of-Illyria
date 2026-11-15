@@ -218,6 +218,7 @@ void Battle::seatCarried(const CarriedSquad& c) {
         world_->setVeterancy(s.members[i], m.rank, 0);  // (a hero's levels make him tougher: before his wounds are put back)
         const sim::Unit* u = world_->findUnit(s.members[i]);
         world_->restoreUnit(s.members[i], static_cast<int32_t>(static_cast<int64_t>(u->stats.maxHp) * std::clamp(m.hp, 1, 1000) / 1000), m.kills, sim::kMoraleFull);
+        world_->restoreLoad(s.members[i], m.satchels, m.ammo);
     }
 }
 
@@ -229,7 +230,8 @@ std::vector<CarriedSquad> Battle::carried() const {
         for (size_t i = 0; i < q.members.size(); ++i) {
             const sim::Unit* u = world_->findUnit(q.members[i]);
             if (!u || !u->alive()) continue;
-            c.men.push_back({std::max(1, static_cast<int>(static_cast<int64_t>(u->hp) * 1000 / std::max(1, u->stats.maxHp))), u->rank, u->kills, static_cast<int>(i)});
+            c.men.push_back({std::max(1, static_cast<int>(static_cast<int64_t>(u->hp) * 1000 / std::max(1, u->stats.maxHp))), u->rank, u->kills, static_cast<int>(i),
+                             u->satchels < u->stats.satchels.count ? u->satchels : -1, u->ammo < u->stats.ranged.ammo ? u->ammo : -1});
         }
         out.push_back(std::move(c));
     }
@@ -287,18 +289,19 @@ void Battle::setUpFord(const SkirmishSetup& setup) {
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
     const float px = cx - 60, ex = cx + 170;
 
-    // Oakhaven holds the berm above the ford: shield wall in front, archers and
-    // grenadiers behind, healers at the rear, horse on the flanks, fliers behind.
+    // Oakhaven holds the berm above the ford: shield wall in front, archers behind, healers at the rear, horse on the
+    // flanks, fliers behind; and its two pairs of dwarves and its one wizard, behind the foot (those who throw a
+    // blast are rare: Conquest::keepCap).
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, {px, cy - 12, 0}, east);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, {px, cy + 12, 0}, east);
     spawnSquad("Ferry Pikes", kPlayer, UnitType::Pikemen, 12, {px, cy + 36, 0}, east);
-    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 8, {px, cy - 36, 0}, east);
+    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 2, {px - 10, cy - 30, 0}, east);
     spawnSquad("Wildmen of Kell", kPlayer, UnitType::Berserker, 10, {px + 6, cy - 58, 0}, east);
     spawnSquad("1st Oakhaven Bowmen", kPlayer, UnitType::Archers, 12, {px - 18, cy - 14, 0}, east);
     spawnSquad("Silverwood Archers", kPlayer, UnitType::Archers, 12, {px - 18, cy + 14, 0}, east);
-    spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 6, {px - 10, cy, 0}, east);
+    spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 2, {px - 10, cy, 0}, east);
     spawnSquad("Brothers of the Root", kPlayer, UnitType::Journeyman, 4, {px - 28, cy, 0}, east);
-    spawnSquad("Magi of the Tower", kPlayer, UnitType::Wizards, 3, {px - 26, cy + 30, 0}, east);
+    spawnSquad("Magus of the Tower", kPlayer, UnitType::Wizards, 1, {px - 26, cy + 30, 0}, east);
     spawnSquad("Lord Aldric", kPlayer, UnitType::Hero, 1, {px - 8, cy + 2, 0}, east);
     spawnSquad("Oakhaven Lancers", kPlayer, UnitType::HeavyCavalry, 8, {px - 6, cy - 82, 0}, east);
     spawnSquad("Ferry Riders", kPlayer, UnitType::LightCavalry, 8, {px - 6, cy + 64, 0}, east);
@@ -320,8 +323,8 @@ void Battle::setUpFord(const SkirmishSetup& setup) {
     spawnSquad("Pit Devils", kEnemy, UnitType::Devils, 3, {ex + 24, cy - 16, 0}, west);
     spawnSquad("Demons of the Rift", kEnemy, UnitType::Demons, 2, {ex + 24, cy + 18, 0}, west);
     spawnSquad("Red Hand Longbows", kEnemy, UnitType::Archers, 12, {ex + 30, cy, 0}, west);
-    spawnSquad("Gnarl Bombers", kEnemy, UnitType::DwarfGrenadier, 4, {ex + 20, cy - 4, 0}, west);
-    spawnSquad("Witch-Kings", kEnemy, UnitType::Wizards, 2, {ex + 36, cy + 26, 0}, west);
+    spawnSquad("Gnarl Bombers", kEnemy, UnitType::DwarfGrenadier, 2, {ex + 20, cy - 4, 0}, west);
+    spawnSquad("Witch-King", kEnemy, UnitType::Wizards, 1, {ex + 36, cy + 26, 0}, west);
     spawnSquad("Red Hand Menders", kEnemy, UnitType::Journeyman, 3, {ex + 40, cy - 30, 0}, west);
     spawnSquad("Ashen Wyrm", kEnemy, UnitType::Dragons, 1, {ex + 60, cy, 0}, west);
     spawnSquad("Red Hand Mangonel", kEnemy, UnitType::Catapult, 1, {ex + 48, cy - 12, 0}, west);
@@ -380,9 +383,17 @@ std::vector<Buy> buyArmy(int budget, bool engines, int every, int most) {
             }
         army.push_back({t, 1});
     };
+    const auto has = [&](UnitType t) {
+        for (const Buy& b : army)
+            if (b.type == t) return b.squads;
+        return 0;
+    };
+    most = std::min(most, sim::Conquest::keepCap(UnitType::Catapult));
     int left = budget, n = 0, trains = 0;
     for (size_t k = 0; left >= sim::Conquest::price(UnitType::LightInfantry) && n < 60; ++k) {
         UnitType t = order[k % (sizeof order / sizeof order[0])];
+        // Those who throw a blast are few (Conquest::keepCap): one pair of dwarves to an army here, and the place of another goes to the foot.
+        if (t == UnitType::DwarfGrenadier && has(t) >= 1) t = UnitType::HeavyInfantry;
         if (engines && n > 0 && n % every == 0 && trains < most && left >= sim::Conquest::price(UnitType::Catapult)) t = UnitType::Catapult, ++trains;
         if (sim::Conquest::price(t) > left) t = UnitType::LightInfantry;
         add(t);
@@ -393,7 +404,12 @@ std::vector<Buy> buyArmy(int budget, bool engines, int every, int most) {
 }
 
 std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines, int every) const {
-    return setup.army.empty() ? buyArmy(setup.budget > 0 ? setup.budget : kDefaultBudget, engines, every) : setup.army;
+    if (setup.army.empty()) return buyArmy(setup.budget > 0 ? setup.budget : kDefaultBudget, engines, every);
+    // What the screen sent, within the caps it shows (Conquest::keepCap), whatever sent it.
+    std::vector<Buy> army = setup.army;
+    for (Buy& b : army)
+        if (const int cap = sim::Conquest::keepCap(b.type); cap > 0) b.squads = std::min(b.squads, cap);
+    return army;
 }
 
 std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int every, int pct) const {
@@ -658,10 +674,10 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
     const V3 side{out.y, -out.x, 0};
     spawnSquad("Oakhaven Warriors", kPlayer, UnitType::Warrior, 12, camp + side * -14.0f, in);
     spawnSquad("The Grey Watch", kPlayer, UnitType::HeavyInfantry, 12, camp + side * 14.0f, in);
-    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 8, camp + side * 40.0f, in);
+    spawnSquad("Iron Hill Sappers", kPlayer, UnitType::DwarfGrenadier, 2, camp + out * 10.0f + side * 24.0f, in);
     spawnSquad("1st Oakhaven Bowmen", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * -16.0f, in);
     spawnSquad("Silverwood Archers", kPlayer, UnitType::Archers, 12, camp + out * 18.0f + side * 16.0f, in);
-    spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 6, camp + out * 10.0f, in);
+    spawnSquad("Deepdelve Sappers", kPlayer, UnitType::DwarfGrenadier, 2, camp + out * 10.0f, in);
     spawnSquad("Brothers of the Root", kPlayer, UnitType::Journeyman, 4, camp + out * 30.0f, in);
     spawnSquad("Lord Aldric", kPlayer, UnitType::Hero, 1, camp + out * 6.0f, in);
     spawnSquad("Eyrie Griffins", kPlayer, UnitType::Griffins, 3, camp + out * 36.0f + side * -30.0f, in);
@@ -920,6 +936,7 @@ void Battle::afterWorldStep() {
         if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
     collectEvents();
     collectTactics();
+    collectBlasts();
     collectCalls();
     voice_.observe(*world_, outcome());
     presentDeaths();
@@ -1062,7 +1079,7 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
             }
         }
         if (e.kind != sim::ImpactEvent::Kind::Ground && e.kind != sim::ImpactEvent::Kind::Bleed && recent_.size() < 600 && sees(whose, pos.x, pos.y)) {
-            const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst;
+            const bool blast = e.kind == sim::ImpactEvent::Kind::Explosion || e.kind == sim::ImpactEvent::Kind::Burst || e.kind == sim::ImpactEvent::Kind::Steam;
             recent_.push_back({pos, tick, blast ? 8.0f : (e.killed ? 3.0f : 1.0f)});
         }
         const V3 dir = toV3(e.dir).normalized();
@@ -1094,6 +1111,19 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
             case K::Heal:
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Heal, pos + V3{srnd() * 0.5f, srnd() * 0.5f, srnd()}, {0, 0, 0.8f + rnd()}, 1.2f, 0.12f);
                 break;
+            case K::Doused:
+                // Oil or powder in the water: a hiss and a wisp of steam (battle_water.cpp), nothing else.
+                if (presentInWater(e, pos, nullptr, {})) break;
+                for (int i = 0; i < 6; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * 0.4f, srnd() * 0.4f, 0.3f}, {srnd() * 0.5f, srnd() * 0.5f, 1.0f + rnd()}, 1.5f + rnd(), 0.4f + rnd() * 0.3f);
+                break;
+            case K::Steam: {
+                // A fireball on water: a white puff standing up from it, no crater, little flame.
+                const float r = static_cast<float>(e.radius.toDouble());
+                emit(Particle::Kind::Flash, pos + V3{0, 0, 0.4f}, {}, 0.12f, r);
+                if (presentInWater(e, pos, nullptr, {})) break;  // (at the surface: the water's own steam)
+                for (int i = 0; i < 22; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * r, srnd() * r, 0.4f}, {srnd() * 1.2f, srnd() * 1.2f, 2.5f + rnd() * 2.5f}, 2.0f + rnd() * 1.5f, 0.9f + rnd() * 0.8f);
+                break;
+            }
             case K::Explosion: {
                 const float r = static_cast<float>(e.radius.toDouble());
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.5f}, {}, 0.18f, r * 1.3f);
@@ -1429,6 +1459,7 @@ void Battle::runEnemyAi() {
         const size_t q = static_cast<size_t>(&s - squads_.data());
         aiRally(q);
         aiFormation(q);
+        if (onGuard(s)) continue;  // on guard duty (world_guard.cpp): its own while its ward stands, as for every seat (aiFight)
         // Gone to a friend's call (aiAnswer): left to it until it is there, or a while.
         if (q < aiAnswering_.size() && world_->tick() < aiAnswering_[q]) {
             bool going = false;
@@ -1448,6 +1479,7 @@ void Battle::runEnemyAi() {
             if (!s.garrison && !aiShellsWalls(s)) aimEngines(s);
             continue;
         }
+        if (s.garrison && role == Role::Bomber) aiPrecious(q, goal);  // a keeper's dwarf mines the ground inside his gate (battle_satchels.cpp)
         if (s.garrison && role != Role::Healer) continue;  // its gate's keepers (World::keepGates): stations on the walls and behind the doors, then it meets what comes
         V3 engineAt, doorAt;
         if (role != Role::Healer && role != Role::Scout && aiSiege(kEnemy, c, engineAt, doorAt)) {

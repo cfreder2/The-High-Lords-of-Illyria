@@ -815,6 +815,7 @@ private:
             int32_t want = -1, bestScore = INT32_MIN;
             for (size_t o = 0; o < cs.options.size(); ++o) {
                 const C::Option& op = cs.options[o];
+                if (static_cast<int32_t>(o) != cs.producing && c_.atCap(side_, op.type)) continue;  // (the realm keeps its fill of them)
                 // What an army is worth in the dice: against a strength-5
                 // foe it lands s(10-5) hits for every 5(10-s) it takes. Now
                 // that training is slow, the days count twice over: in the
@@ -830,11 +831,13 @@ private:
                 }
             }
             // An Easy lord's fancy: whatever, as long as no enemy is at the gates.
-            if (!danger && !cs.options.empty() && (cs.progress == 0 || cs.producing < 0) && chance(t_.whim))
-                want = static_cast<int32_t>(c_.aiRng_.nextBelow(static_cast<uint32_t>(cs.options.size())));
+            if (!danger && !cs.options.empty() && (cs.progress == 0 || cs.producing < 0) && chance(t_.whim)) {
+                const int32_t fancy = static_cast<int32_t>(c_.aiRng_.nextBelow(static_cast<uint32_t>(cs.options.size())));
+                if (!c_.atCap(side_, cs.options[static_cast<size_t>(fancy)].type)) want = fancy;
+            }
             if (wantEngines && !danger && v.frontier) {
                 for (size_t o = 0; o < cs.options.size(); ++o)
-                    if (cs.options[o].type == UnitType::Catapult) {
+                    if (cs.options[o].type == UnitType::Catapult && !c_.atCap(side_, UnitType::Catapult)) {
                         want = static_cast<int32_t>(o);
                         wantEngines = cs.producing == want;  // one more a day at most
                     }

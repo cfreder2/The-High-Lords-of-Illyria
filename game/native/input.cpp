@@ -244,11 +244,16 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_V: setMode(orderMode_ == 2 ? 0 : 2); break;
         case SDL_SCANCODE_M: hud_.toggleMinimap(); break;  // the map in the corner
         case SDL_SCANCODE_I: hud_.toggleStats(); break;    // the developer line: frame rate and where the frame went
-        case SDL_SCANCODE_T: case SDL_SCANCODE_L: illyria_special(); break;
+        case SDL_SCANCODE_T: illyria_special(); break;   // a grenadier's next tap lays a satchel (Shift+tap: a line); the hyena-folk raid
+        case SDL_SCANCODE_L: illyria_detonate(); break;  // the next tap is the satchel to set off
         case SDL_SCANCODE_B: illyria_stop(); break;
-        case SDL_SCANCODE_K: illyria_hold(); break;       // Hold: keep their place (again: back to support)
+        case SDL_SCANCODE_K:  // Hold: keep their place (again: back to support). With Shift: hold fire (again: at will)
+            if (shift) illyria_hold_fire();
+            else illyria_hold();
+            break;
         case SDL_SCANCODE_Y: illyria_rally(); break;      // the lord's Rally
         case SDL_SCANCODE_J: illyria_next_idle(); break;  // the next squad standing idle
+        case SDL_SCANCODE_COMMA: illyria_guard(); break;  // the next click is the squad of yours to guard
         case SDL_SCANCODE_PERIOD: illyria_answer_call(); break;  // to a call for help, the nearest free squad picked
         case SDL_SCANCODE_O: illyria_gate(shift ? 1 : 0); break;
         case SDL_SCANCODE_C: illyria_focus_selection(); break;
@@ -259,7 +264,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_TAB: illyria_cycle_group(shift ? -1 : 1); break;  // the next group of units (Shift: the previous)
         case SDL_SCANCODE_ESCAPE:
             // Cancels an order mode in hand; else pauses the game and brings up the menu (Esc again: back).
-            if (orderMode_) setMode(0);
+            if (orderMode_ || illyria_order_mode()) setMode(0);
             else hud_.openMenu();
             break;
         case SDL_SCANCODE_SPACE: illyria_stop(); break;  // the march stops: the selection halts

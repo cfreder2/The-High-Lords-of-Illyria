@@ -23,7 +23,7 @@ int scancodeOf(const std::string& raw) {
         const char* name;
         int code;
     } kNames[] = {{"return", 40}, {"enter", 40}, {"escape", 41}, {"esc", 41}, {"backspace", 42}, {"tab", 43},  {"space", 44},
-                  {"minus", 45},  {"equals", 46}, {"backtick", 53}, {"grave", 53}, {"slash", 56}, {"right", 79}, {"left", 80},
+                  {"minus", 45},  {"equals", 46}, {"backtick", 53}, {"grave", 53}, {"slash", 56}, {"comma", 54}, {"period", 55}, {"right", 79}, {"left", 80},
                   {"down", 81},   {"up", 82},     {"ctrl", 224},   {"shift", 225}, {"alt", 226},  {"cmd", 227}};
     for (const auto& k : kNames)
         if (n == k.name) return k.code;

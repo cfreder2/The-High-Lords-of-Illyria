@@ -56,6 +56,7 @@ constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 constexpr int kAfterBattle = 3000;  // + Hud::After
 constexpr int kCardPageBack = -2000, kCardPageOn = -2001, kCardPageMore = -2002;  // the "+N more" cell: its arrows, and its middle (the next page, round)
 constexpr int kRallyHit = -3000;  // the Rally button over the cards
+constexpr int kLayHit = -3001, kDetonateHit = -3002, kHoldFireHit = -3003;  // the trap's buttons beside it
 constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
 constexpr int kMarchSquad = 9000, kMarchFill = 9499, kMarchOn = 9500, kMarchGiveUp = 9501, kMarchBack = 9502;  // presses on the March's camp
 // The camp's buttons under the roll: between battles the purse, the road, giving up; else the one way on.
@@ -372,7 +373,7 @@ void Hud::skirmishOpen() {
     if (offers_.empty()) {
         Json list;
         Json::parse(illyria_skirmish_offers(), list);
-        for (const Json& j : list.items) offers_.push_back({static_cast<int>(j.num("type")), j.str("name"), static_cast<int>(j.num("price")), static_cast<int>(j.num("men"))});
+        for (const Json& j : list.items) offers_.push_back({static_cast<int>(j.num("type")), j.str("name"), static_cast<int>(j.num("price")), static_cast<int>(j.num("men")), static_cast<int>(j.num("cap"))});
         bought_.assign(offers_.size(), 0);
     }
     skirmishPage_ = true;
@@ -412,7 +413,7 @@ void Hud::skirmishStep(int row, int by) {
         skSkill_ = (skSkill_ + (by < 0 ? 2 : 1)) % 3;
     } else if (row < 4 + units) {
         const size_t i = static_cast<size_t>(row - 4);
-        if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_]) ++bought_[i];
+        if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_] && (offers_[i].cap == 0 || bought_[i] < offers_[i].cap)) ++bought_[i];
         else if (by < 0 && bought_[i] > 0) --bought_[i];
     }
 }
@@ -535,6 +536,12 @@ bool Hud::click(float x, float y, bool left) {
             strip.pages = cardPages_;
             using Hit = illyria::game::CardHit;
             cardPage_ = illyria::game::cardPageAfter(strip, cardPage_, r.what == kCardPageBack ? Hit::Back : r.what == kCardPageOn ? Hit::On : Hit::More);
+        } else if (r.what == kLayHit) {
+            illyria_special();
+        } else if (r.what == kDetonateHit) {
+            illyria_detonate();
+        } else if (r.what == kHoldFireHit) {
+            illyria_hold_fire();
         } else if (r.what == kRallyHit) {
             illyria_rally();
         } else if (r.what <= -1 && r.what > -1000) {
@@ -730,7 +737,7 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
         else if (r < 4 + units) {
             const Offer& of = offers_[static_cast<size_t>(r - 4)];
             label = of.name;
-            info = std::to_string(of.men) + " men, " + std::to_string(of.price) + " gold";
+            info = std::to_string(of.men) + (of.men == 1 ? " man, " : " men, ") + std::to_string(of.price) + " gold" + (of.cap > 0 ? ", " + std::to_string(of.cap) + " at most" : "");
             value = std::to_string(bought_[static_cast<size_t>(r - 4)]);
         } else label = r == 4 + units ? (skMarch_ ? "Begin the march" : "Start the battle") : "Back";
         const bool on = r == skRow_;
@@ -839,7 +846,9 @@ void Hud::drawMarch(Overlay& o, float w, float h) {
             o.frame(px + 12, y - 3, pw - 24, kRow, 1.5f, kSeal);
         }
         const Colour ink = on ? kSeal : kPaperInk;
-        const std::string name = q.str("name");
+        std::string name = q.str("name");
+        // (What it carries of its satchels and missiles, of a full load: made up with the same key, for gold.)
+        if (q.num("loadFull") > 0) name += "  (" + std::to_string(static_cast<int>(q.num("load"))) + " of " + std::to_string(static_cast<int>(q.num("loadFull"))) + " left)";
         o.text(px + kPad, y, name, ink, fit(o, name, 13, cMen - px - kPad - 8));
         std::snprintf(buf, sizeof buf, "%d / %d", static_cast<int>(q.num("men")), static_cast<int>(q.num("full")));
         o.text(cMen, y, buf, q.num("men") < q.num("full") ? kSeal : ink, 13);
@@ -1565,6 +1574,9 @@ void Hud::draw(Overlay& o, float w, float h) {
             const int battles = static_cast<int>(q.num("battles")), kills = static_cast<int>(q.num("kills"));
             history = "  -  " + (q.num("level") > 0 ? "level " + std::to_string(static_cast<int>(q.num("level"))) : std::string(kRankNames[std::clamp(static_cast<int>(q.num("rank")), 0, 3)])) + ", " +
                       std::to_string(kills) + (kills == 1 ? " kill" : " kills") + (battles > 0 ? ", " + std::to_string(battles) + (battles == 1 ? " battle" : " battles") : "");
+            // On guard duty, or guarded: whom (the card says GUARD or GUARDED).
+            if (!q.str("guards").empty()) history += "  -  guards " + q.str("guards");
+            else if (q.flag("guarded")) history += "  -  guarded";
         }
         std::snprintf(buf, sizeof buf, "%zu selected  %s%s%s", sel, hud.str("selLabel").c_str(), history.c_str(), hud.flag("holding") ? "  HOLD (K: support)" : "");
         selEnd = o.width(buf, 13) + 20;
@@ -1612,6 +1624,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         facts.rallyIn = static_cast<int>(q.num("rallyIn"));
         facts.calling = q.flag("calling"), facts.answering = q.flag("answering"), facts.hold = q.flag("hold"), facts.idle = q.flag("idle");
         facts.holdFire = q.flag("holdFire");
+        facts.guarding = !q.str("guards").empty(), facts.guarded = q.flag("guarded");
         facts.sat = static_cast<int>(q.num("sat")), facts.satMax = static_cast<int>(q.num("satMax"));
         facts.ammo = static_cast<int>(q.num("ammo")), facts.ammoMax = static_cast<int>(q.num("ammoMax"));
         facts.rank = q.num("level") > 0 ? 0 : static_cast<int>(q.num("rank"));  // (a hero's is his level: the selection line says it)
@@ -1731,6 +1744,35 @@ void Hud::draw(Overlay& o, float w, float h) {
         hits_.push_back({bx, by, bw, 22, kRallyHit});
     }
 
+    // The trap's buttons over the cards, left of the Rally: shown with a man selected who lays, sparks or carries a store.
+    if (squadCards && sel > 0 && (hud.flag("lays") || hud.flag("sparks") || hud.flag("stores"))) {
+        const int mode = static_cast<int>(hud.num("mode"));
+        struct Btn {
+            const char* label;
+            int hit;
+            bool show, lit;
+        };
+        const Btn btns[] = {{"Lay satchel (T)", kLayHit, hud.flag("lays"), mode == 3},
+                            {"Detonate (L)", kDetonateHit, hud.flag("sparks"), mode == 4},
+                            {hud.flag("holdFire") ? "Holding fire (Shift+K)" : "Hold fire (Shift+K)", kHoldFireHit, hud.flag("stores"), hud.flag("holdFire")}};
+        float bx = 8.0f;
+        const float by = cardsTop - 84;  // (above the selection's line, the first-order hint and a card's tip)
+        for (const Btn& b : btns) {
+            if (!b.show) continue;
+            const float bw = o.width(b.label, 13) + 20;
+            o.rect(bx, by, bw, 22, rgba(0x0E0B08, 220));
+            o.frame(bx, by, bw, 22, b.lit ? 2.0f : 1.0f, b.lit ? kGold : rgba(0x7C6E50));
+            o.text(bx + 10, by + 4, b.label, b.lit ? kGold : kInk, 13);
+            hits_.push_back({bx, by, bw, 22, b.hit});
+            bx += bw + 6;
+        }
+        if (mode == 3 || mode == 4) {
+            const char* what = mode == 3 ? "Click to lay. Shift+click: a line." : "Click a satchel. Red ring: your men are in it.";
+            o.rect(bx + 6, by, o.width(what, 13) + 16, 22, rgba(0x000000, 190));
+            o.text(bx + 14, by + 4, what, kGold, 13);
+        }
+    }
+
     drawMinimap(o, w, h);
     town_ = -1;
     if (conquest && !menu_) {
@@ -1794,6 +1836,10 @@ void Hud::draw(Overlay& o, float w, float h) {
               {". (full stop)", "send the nearest free squad to a call for help"},
               {"Y", "the lord rallies broken men within 40 m"},
               {"T, X, C", "special, scatter, find selection"},
+              {"T + click", "lay a satchel (Shift: a line)"},
+              {"L + click", "detonate a satchel"},
+              {"Shift + K", "hold fire"},
+              {", + click", "guard that squad (or its card)"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},

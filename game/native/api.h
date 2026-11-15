@@ -50,6 +50,7 @@ void illyria_set_shift(int down);
 void illyria_set_mouse(int mouse);
 void illyria_set_keys(int force, int march);
 void illyria_set_order_mode(int mode);
+int illyria_order_mode();
 int illyria_hover(float x, float y);
 
 void illyria_select_squad(int index);
@@ -73,6 +74,9 @@ int illyria_answer_call();
 const char* illyria_ground_at(float x, float y);
 void illyria_gate(int release);
 void illyria_special();
+void illyria_detonate();
+void illyria_hold_fire();
+void illyria_guard();
 void illyria_toggle_pause();
 void illyria_cycle_speed();
 void illyria_set_pace(float pace);

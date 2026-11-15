@@ -63,7 +63,7 @@ Cities train **common troops** only, and slowly. In *Warlords* light infantry to
 | Heavy Infantry | 12 | 4 | 2 | 20 | 5 | hill and plain towns; the Throne, Giants, Dwarves, Malvoren |
 | Archers | 12 | 4 | 2 | 20 | 5 | woodland towns; the Elves, the Order |
 | Pikemen | 12 | 4 | 2 | 20 | 5 | hill and plain towns; the Giants, the Order |
-| Dwarven Grenadiers | 6 | 4 | 2 | 24 | 6 | hill towns; the Dwarves |
+| Dwarven Grenadiers | 1 | 6 | 3 | 60 | 15 | hill towns; the Dwarves (a realm keeps two at most) |
 | Warriors | 12 | 4 | 2 | 24 | 6 | woodland towns; the Orcs |
 | Light Cavalry | 8 | 5 | 3 | 28 | 7 | plain towns; the Elves, the Riders |
 | Wolf Riders | 8 | 5 | 3 | 28 | 7 | woodland towns; the Orcs, Malvoren |
@@ -110,11 +110,11 @@ The rare troops are the **heroes**; the beasts and monsters (**giants, minotaurs
 
 Minotaurs, where a hill town has them to muster, cost 30 gold each.
 
-**Siege engines and grenadiers are the exceptions.** The dwarves' grenadiers are trained like any common troops, in Deepforge and the hill towns. Catapults are trained, at the three capitals that keep the craft, because walls are worth more than any army: without engines no capital would ever fall.
+**Siege engines and grenadiers are the exceptions.** Dwarven grenadiers are trained, one pair at a time, in Deepforge and the hill towns: dear (60 gold), slow, and a realm keeps two pairs at most, as it keeps three catapult trains, one wizard and one dragon at most. A city set to train one more waits until there is a place. Catapults are trained, at the three capitals that keep the craft, because walls are worth more than any army: without engines no capital would ever fall.
 
 ## Upkeep {#upkeep}
 
-Every army costs gold every day it lives, however few of its men are left. A trained army costs a **quarter of its training price** (rounded up): light infantry 3, grenadiers and warriors 6, heavy cavalry 9, catapults 10 (the table above has them all). Rare troops cost what *Warlords* asked for them:
+Every army costs gold every day it lives, however few of its men are left. A trained army costs a **quarter of its training price** (rounded up): light infantry 4, warriors 6, heavy cavalry 7, catapults 10, a grenadier 15 (the table above has them all). Rare troops cost what *Warlords* asked for them:
 
 | Rare army | Upkeep a day |
 |---|---|

@@ -121,7 +121,7 @@ Unit* World::supportFoe(Unit& u) {
     // Not a man told to hold, a garrison at its station, a lord, a healer (seekWounded), a scavenger or an engine. A bowman
     // goes too: to where he can shoot the foe pressing his friend (support).
     const bool shooter = u.stats.ranged.muzzleSpeed > Fixed::zero();
-    if (u.hold || u.stationed || isHero(u) || (u.stats.melee.damage <= 0 && !shooter) || u.stats.gait == Gait::Wheeled || u.stats.healing.amount > 0 ||
+    if (u.hold || u.stationed || u.guard != kNoEntity || isHero(u) || (u.stats.melee.damage <= 0 && !shooter) || u.stats.gait == Gait::Wheeled || u.stats.healing.amount > 0 ||
         u.stats.scavenge.sight > Fixed::zero() || (shooter && u.stats.ranged.autoRange <= Fixed::zero()))
         return none();
     if ((tick_ + u.id) % kSupportLook == 0) {
@@ -132,9 +132,11 @@ Unit* World::supportFoe(Unit& u) {
         Fixed best = kSupportLeash * kSupportLeash;
         nearby(u.pos.x, u.pos.y, kSupportReach, [&](uint32_t i) {
             const Unit& o = units_[i];
-            if (o.owner != u.owner || o.id == u.id || !o.alive() || o.routed || o.foe == kNoEntity) return;
+            // (A dwarf or a wizard with a foe closing on him is a friend to go to, though he strikes no blow: World::shyAway.)
+            const EntityId against = o.foe != kNoEntity ? o.foe : o.menacedBy;
+            if (o.owner != u.owner || o.id == u.id || !o.alive() || o.routed || against == kNoEntity) return;
             if ((o.pos - u.pos).flat().lengthSq() > kSupportReach * kSupportReach) return;
-            const Unit* f = findUnit(o.foe);
+            const Unit* f = findUnit(against);
             if (f == nullptr || !f->alive() || f->inAir() || f->owner == u.owner || f->fleeing()) return;
             const Fixed d = (f->pos - u.pos).flat().lengthSq();
             if (d < best || (d == best && f->id < u.support)) {

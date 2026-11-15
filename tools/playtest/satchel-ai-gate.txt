@@ -1,0 +1,19 @@
+# The computer mines its gate: a village's siege with bought armies (450 gold), you besieging. The keepers' purse buys
+# one pair of dwarves, and it lays a line of three just inside the doors and waits behind it (Battle::aiPrecious). You do nothing
+# but look: the shots are of the gate from outside and above. (A Skirmish has no fog: a foe's charges are drawn, small.)
+#
+#   Illyria --play tools/playtest/satchel-ai-gate.txt --play-out out/ai-gate --play-log out/ai-gate/ai-gate.log
+
+size 1600 900
+start skirmish siege budget 450
+wait 0.5
+camera 440 500 250 1.610
+wait 1
+shot ai-gate-00-start
+cards
+stats
+speed 2
+wait_ticks 1200
+shot ai-gate-01-after-40s
+stats
+quit

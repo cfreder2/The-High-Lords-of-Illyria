@@ -447,7 +447,7 @@
       `<p class="note">Only you see it.</p>` +
       `<button class="big primary" data-start="1" style="margin-top:14px"><span>${march ? "Begin the march" : "Raise your banner"}</span><small data-startnote></small></button>`;
     const army = body.querySelector("[data-army]");
-    army.innerHTML = offers.map((o) => `<div class="choice" style="margin-bottom:6px;align-items:center"><span style="flex:2"><b>${o.name}</b> <small>${o.men} men, ${o.price} gold</small></span>` +
+    army.innerHTML = offers.map((o) => `<div class="choice" style="margin-bottom:6px;align-items:center"><span style="flex:2"><b>${o.name}</b> <small>${o.men} ${o.men === 1 ? "man" : "men"}, ${o.price} gold${o.cap ? `, ${o.cap} at most` : ""}</small></span>` +
       `<button data-less="${o.type}" aria-label="Fewer ${o.name}" style="min-height:44px;flex:0 0 52px">-</button><b data-count="${o.type}" style="flex:0 0 36px;text-align:center"></b>` +
       `<button data-more="${o.type}" aria-label="More ${o.name}" style="min-height:44px;flex:0 0 52px">+</button></div>`).join("");
     const sync = () => {
@@ -461,7 +461,7 @@
       body.querySelector("[data-left]").textContent = `(${left} gold left)`;
       for (const o of offers) {
         body.querySelector(`[data-count="${o.type}"]`).textContent = skirmish.bought[o.type] || 0;
-        body.querySelector(`[data-more="${o.type}"]`).disabled = o.price > left;
+        body.querySelector(`[data-more="${o.type}"]`).disabled = o.price > left || (o.cap > 0 && (skirmish.bought[o.type] || 0) >= o.cap);
         body.querySelector(`[data-less="${o.type}"]`).disabled = !(skirmish.bought[o.type] > 0);
       }
       body.querySelector("[data-startnote]").textContent = march ? "The open field" : map.name;
@@ -627,7 +627,9 @@
     `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 keeps the arrangement they are in.</td></tr>` +
     `<tr><td>${k("Z")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground). Or hold ${k("Ctrl")} as you click.</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
-    `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; grenadiers lay satchels where the next click is, one each.</td></tr>` +
+    `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid; a dwarf lays a satchel at the next click (Shift + click: a line).</td></tr>` +
+    `<tr><td>${k("L")}</td><td>Detonate: click a satchel. Your men in the red ring die too.</td></tr>` +
+    `<tr><td>${k("Shift")} + ${k("K")}</td><td>Hold fire (again: fire at will).</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
     `<tr><td>${k("K")}</td><td>Hold: the selection keeps its place. Again: back to support, where men with no order go to the help of friends fighting within 40 m.</td></tr>` +

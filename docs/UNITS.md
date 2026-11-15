@@ -31,14 +31,14 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 | Pegasi | 6 | 95 | 2.30 | 1.10 | 2.5 | 4.5 | 14 | slash | 1.20 s | 0.8 | 0 |  | 90% | mounted;  |
 | Elephants | 7 | 450 | 4.00 | 1.80 | 12.0 | 3.2 | 38 | blunt | 2.20 s | 1.2 | 14 |  | 120% | mounted;  |
 | Unicorns | 6 | 115 | 2.20 | 0.90 | 3.0 | 7.0 | 24 | pierce | 1.30 s | 1.0 | 3 |  | 70% |  |
-| Wizards | 7 | 45 | 1.90 | 0.40 | 1.0 | 2.0 | 4 | blunt | 1.20 s | 0.5 | 0 |  | 100% |  |
+| Wizards | 7 | 40 | 1.90 | 0.40 | 1.0 | 2.0 | 4 | blunt | 1.20 s | 0.5 | 0 |  | 100% |  |
 | Dragons | 9 | 650 | 4.50 | 2.50 | 15.0 | 2.5 | 40 | cleave | 1.80 s | 1.2 | 10 |  | 25% |  |
 | Devils | 8 | 270 | 3.00 | 1.00 | 4.0 | 3.2 | 36 | cleave | 1.50 s | 1.0 | 6 |  | 20% |  |
 | Demons | 8 | 320 | 3.60 | 1.10 | 5.0 | 3.4 | 40 | cleave | 1.60 s | 1.2 | 8 |  | 30% |  |
 | Undead | 5 | 70 | 1.80 | 0.40 | 1.0 | 1.8 | 11 | slash | 1.40 s | 0.6 | 0 |  | never | no blood;  |
 | Archons | 8 | 170 | 2.40 | 0.80 | 2.0 | 2.8 | 26 | slash | 1.20 s | 0.8 | 3 |  | 30% |  |
 | Hero | 4 | 260 | 2.00 | 0.50 | 2.0 | 2.8 | 30 | slash | 1.10 s | 0.8 | 3 | 55% | never |  |
-| Dwarven Grenadiers | 4 | 50 | 1.30 | 0.45 | 1.0 | 1.8 | 5 | blunt | 1.20 s | 0.5 | 0 |  | 100% |  |
+| Dwarven Grenadiers | 4 | 70 | 1.30 | 0.45 | 1.0 | 1.6 | 5 | blunt | 1.20 s | 0.5 | 0 |  | 60% |  |
 | Journeymen | 2 | 50 | 1.80 | 0.40 | 1.0 | 2.3 | 6 | blunt | 1.20 s | 0.5 | 0 |  | 120% | heals 35 every 2.5 s, 6 charges;  |
 | Warriors | 5 | 80 | 1.90 | 0.45 | 1.2 | 2.2 | 17 | slash | 1.20 s | 0.6 | 0 | 65% | 85% |  |
 | Berserkers | 5 | 85 | 1.90 | 0.45 | 1.2 | 3.6 | 25 | cleave | 0.93 s | 0.6 | 0 |  | 35% |  |
@@ -50,31 +50,71 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
 but never at targets inside **min range**. A catapult's boulder flies a fixed 53 degree arc, smashes what it lands on
 (its blast, below) and then rolls on over the ground, crushing the men in its way, friend and foe (see **The boulder**);
-against a castle gate its smash does nine times its blast damage (satchels three times, fireballs and Molotovs one and a half).
-A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a
+against a castle gate its smash does nine times its blast damage (satchels twice, fireballs one and a half).
+**A Molotov has no blast** ("that is a satchel's job"): it shatters into a patch of burning ground (its radius below)
+that burns for its fuse, hurting everyone who stands in it or walks through it (its damage, a second), shaking
+their nerve and halving their pace there. Timber on or beside it catches: an engine burns on for 15 s at 20 a
+second wherever it goes (a catapult standing in the patch burns to nothing on one bottle), and a gate in the patch burns at 25 a second
+while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line
+is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a
 **draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
 (to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
 
-| Unit | Missile | Wounds | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Archers | arrow | pierce | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
-| Wizards | fireball | fire | 24 m/s | 8.0 s |  | 50 m | 45 m |  | 4 m |  | 3.5 m | 50 |  |
-| Dragons | fireball | fire | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
-| Dwarven Grenadiers | Molotov | fire | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m | 40 |  |
-| Catapults | stone | blunt | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
+**Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's
+quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of
+his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast
+(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away;
+a Molotov goes at a foe's engine not alight, a foe's gate not burning, three or more men standing still in its
+patch, or a satchel with foes on it; and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the
+mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.
+
+**Water.** A Molotov that lands in water (where it stands a hand deep or more) goes out: no fire, and nothing
+set off. A satchel is not laid in water, and one that ends there is dead. A fireball bursting on water, or on
+a man standing in it, goes up in steam: a third of its blast radius and a third of its damage. Left to
+themselves, grenadiers do not throw at men in a ford, and wizards weigh them by the smaller blast.
+
+**Rare.** Those who throw a blast come few (two dwarves, one wizard, one dragon to a squad; two engines to a
+train, with eight stones between them), and an army has
+few: at most 2 Dwarven Grenadiers, 1 Wizards, 1 Dragons, 3 Catapults (a Conquest realm keeps no more, and a
+Skirmish host buys no more). A grenadier or a wizard with no order gives ground before a foe within 10 m,
+to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. One bowman in
+three picks out a foe's grenadier or wizard within 30 m before anyone else. A squad ordered to guard them
+(comma, then click them) rings them and strikes what comes to the ring. An engine's stones go unasked only
+at a gate, at four or more men in the lane a stone rolls down, or at three in its blast on a wall-walk.
+
+| Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Archers | arrow | pierce |  | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
+| Wizards | fireball | fire | 4 | 24 m/s | 7.0 s |  | 50 m | 45 m |  | 4 m |  | 4.5 m | 90 |  |
+| Dragons | fireball | fire | 6 | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
+| Dwarven Grenadiers | Molotov | fire | 3 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m of fire | 10 a second | burns 8 s |
+| Catapults | stone | blunt | 4 | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
 
 ## Satchel charges
 
 Carried into battle and laid on the ground, where a satchel lies still and never goes off by itself. A blast or
-a Molotov's fire reaching it sets it off a moment later, and its blast the next: chains. Left to himself a
-grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), steps back out of its blast,
-and throws his Molotovs at a satchel with foes beside it (and none of his friends) before any one man. Killed by
-fire or a blast with satchels still on him, he goes up with all of them at once: a blast a quarter wider and half
-again as hard for each one beyond the first; any other death spills them, unlit, where he falls.
+a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11 ticks), and its blast the next
+(8 to 15 ticks): a line goes up one after another. A blast also shakes the morale of everyone left standing
+within twice its radius.
+
+**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 160 m of him, 50 m clear
+of any foe). In battle, Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his
+next order, or with none steps back out of its blast. Detonate (L, then click a satchel or the ground): of the
+grenadiers and wizards selected, the nearest in reach throws one missile at once at the satchel nearest the click
+(within 4 m), walking into reach first if none is; the missile is lobbed onto the charge, the wind allowed for.
+A Detonate order does not wait for friends to clear the blast:
+the ring over a laid satchel is red while one of yours stands in it, and he dies with the foe.
+
+**Left to himself** a grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), clear of
+his own men and of water, steps back out of its blast, and throws a Molotov at a satchel of his side's with two or more foes
+on it and none of his friends (waiting up to 5 s for a friend to clear) before any one man; a wizard sparks
+such a satchel too. Killed by fire or a blast with satchels still on him, he goes up with all of them at once:
+a blast a quarter wider and half again as hard for each one beyond the first; any other death spills them,
+unlit, where he falls.
 
 | Unit | Carried | Blast radius | Blast damage | Between lays | All of them at once |
 |---|---|---|---|---|---|
-| Dwarven Grenadiers | 5 | 4.0 m | 80 | 4.0 s | 8.0 m, 240 |
+| Dwarven Grenadiers | 3 | 5.0 m | 150 | 3.0 s | 7.5 m, 300 |
 
 ## The boulder
 
@@ -115,18 +155,9 @@ On plains, thrown 100 m along a slope (metres of rise in a hundred, the way it i
 Fliers walk by default. Moves longer than the minimum flight take a ground run, then they cruise at
 altitude over the terrain, tire, and must land to recover (rest restores stamina at half the rate
 flight spends it). They never attack from the air. Cruise heights are within a giant's reach, and
-arrows can hit them. On the Conquest map a stack of fliers alone moves at the **long-run pace** of
+arrows can hit them. On the conquest map a stack of fliers alone moves at the **long-run pace** of
 that cycle, whatever is below: the take-off run (at half again its walking pace), a flight as long as
 its endurance, then twice as long resting (`Conquest::flightPace`). A stack with a walker in it walks.
-
-A flier takes wing (`World::takesWing`) for a goal, or a man he is ordered at, that is 50 m or more off; up onto a
-wall-walk from below and down off one (a wall is a hop, not a mile of stairs); and over any curtain wall between him and
-his goal (he does not queue at a gate, or stop at one that is shut to him). A tired flier (under half his endurance) walks,
-and then a gate is a gate to him as to any man. From a wall-walk he needs no ground run: he steps off the parapet. A run
-that is blocked outright (a wall at his beak) lifts him where he stands. He lands on his goal, skimming over any wall or
-tower on the way down rather than touching down on the first battlement he crosses. An order's place on a wall-walk is
-drawn in from the parapet to where a body of his size can stand (a Dragon is wider than the walk's lane), so that the
-order is done and he is free to fight; a lane's waypoint counts as reached within his own radius.
 
 | Unit | Ground speed | Air speed | Cruise height | Take-off run | Min flight | Endurance | Long-run pace |
 |---|---|---|---|---|---|---|---|
@@ -171,7 +202,7 @@ slows it more than the detour does. A road doubles every gait's pace. A bridge i
 of the fields: Bridge is the ground of every deck, a castle's walls and ramps as well as the bridges
 over rivers. Deep water is impassable on foot. Climbing divides speed by 1 + grade x 2.5 x the gait's
 climb percentage; going down is up to 15% quicker; slopes steeper than 35% slow walkers a further
-20%. Fliers walk like men. The Conquest map marches by the same table and the same climbs, cell by
+20%. Fliers walk like men. The conquest map marches by the same table and the same climbs, cell by
 cell (`engine/sim/src/conquest_march.cpp`): a stack at the pace of its slowest army, a road cell as
 road, a hill as plains to be climbed, marsh as swamp, mountains and water closed.
 

@@ -170,6 +170,8 @@ void hashStats(StateHasher& h, const UnitStats& s) {
         hashExplosive(h, s.satchels.charge);
         h.addI64(s.satchels.layTicks);
     }
+    // Only for those with a store of missiles, so battles without them hash as before.
+    if (s.ranged.ammo > 0) h.addI64(s.ranged.ammo);
     // Only for scavengers, so battles without them hash as before.
     if (s.scavenge.sight > Fixed::zero()) {
         h.addI64(s.scavenge.sight.raw);
@@ -328,6 +330,7 @@ EntityId World::spawnUnit(PlayerId owner, const Vec3& pos, const Vec3& facing,
     u.healCharges = stats.healing.charges;
     u.stamina = stats.staminaTicks;
     u.satchels = stats.satchels.count;
+    u.ammo = stats.ranged.ammo;
     u.pos = pos;
     if (config_.terrain) u.pos.z = groundHeight(pos.x, pos.y);
     u.facing = facing;
@@ -404,6 +407,7 @@ void World::clearFight(uint64_t seed) {
     changedRemains_.clear();
     afloat_.clear();
     pendingExplosions_.clear();
+    fires_.clear();
     brokenSides_.clear();
     remainGrid_.clear();
     unitGrid_.clear();
@@ -431,6 +435,13 @@ void World::restoreUnit(EntityId id, int32_t hp, int32_t kills, int32_t morale) 
     u->hp = std::clamp(hp, 1, u->stats.maxHp);
     u->kills = kills;
     u->morale = std::clamp(morale, 0, kMoraleFull);
+}
+
+void World::restoreLoad(EntityId id, int32_t satchels, int32_t ammo) {
+    Unit* u = mutableUnit(id);
+    if (!u) return;
+    if (satchels >= 0) u->satchels = std::min(satchels, u->stats.satchels.count);
+    if (ammo >= 0) u->ammo = std::min(ammo, u->stats.ranged.ammo);
 }
 
 void World::restoreQueue(EntityId id, std::vector<Command> queue) {
@@ -545,6 +556,7 @@ void World::step(std::span<const Command> commands) {
     }
     separateBodies();
     updateProjectiles();
+    updateFires();
     driftAfloat();
     updateMorale();
     callForHelp();
@@ -579,6 +591,22 @@ void World::applyCommand(const Command& cmd) {
     }
     if (cmd.type == Command::Type::Rally) {
         orderRally(*u);
+        return;
+    }
+    if (cmd.type == Command::Type::HoldFire) {
+        u->holdFire = cmd.hold;
+        return;
+    }
+    if (cmd.type == Command::Type::Guard) {
+        // His guard duty: what he was about is dropped (as a Stop), and he goes to his ward of himself (guardStep).
+        const Unit* ward = findUnit(cmd.targetUnit);
+        if (ward == nullptr || !ward->alive() || ward->owner != u->owner || ward->id == u->id || (ward->squad != 0 && ward->squad == u->squad)) return;
+        u->queue.clear();
+        Command stop = cmd;
+        stop.type = Command::Type::Stop;
+        startOrder(*u, stop);
+        u->guard = ward->id;
+        u->guardSquad = ward->squad;
         return;
     }
     if (cmd.type == Command::Type::SetFormation) {
@@ -616,9 +644,12 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     Unit* u = &unit;
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
+    u->detonate = false;
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
     u->posted = false;       // ... nor a post: the next order's end is the next post (Stop: none, he is free)
+    u->guard = kNoEntity;    // ... nor a guard duty (Command::Guard sets it again after its own Stop)
+    u->guardSquad = 0;
     u->helping = kNoEntity;  // ... nor an answer to a friend's call
     u->helpSince = 0;
     u->wheel = 0;
@@ -655,9 +686,15 @@ void World::startOrder(Unit& unit, const Command& cmd) {
         }
         case Command::Type::LaySatchel:
             // There, and lay one (world_satchels.cpp); at hand, at once.
-            if (u->satchels <= 0) return;
+            if (u->satchels <= 0 || douses(cmd.target)) return;  // (none is laid in water)
             u->hasAttackTarget = false;
             u->attackGate = -1;
+            if (cmd.force && canPrepare(*u, cmd.target)) {
+                // Laid before the battle began: it lies there, and he stands where he stood.
+                placeSatchel(u->owner, cmd.target, u->stats.satchels.charge, 0);
+                --u->satchels;
+                break;
+            }
             if ((cmd.target - u->pos).flat().length() <= Fixed::fromRatio(3, 2)) {
                 u->hasMoveTarget = false;
                 laySatchel(*u, cmd.target);
@@ -669,6 +706,10 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             u->arriveFacing = {};
             u->layOrdered = true;
             planPath(*u, cmd.target);
+            break;
+        case Command::Type::Detonate:
+            if (!sparks(u->stats) || !armed(*u)) return;
+            startDetonate(*u, cmd.target);
             break;
         case Command::Type::Move: {
             const Vec3 target = insideParapet(clearOfStone(cmd.target, u->stats), u->stats.radius);
@@ -711,6 +752,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             break;
         case Command::Type::SetGate:
         case Command::Type::SetStance:
+        case Command::Type::HoldFire:
+        case Command::Type::Guard:
         case Command::Type::SetFormation:
         case Command::Type::Answer:
         case Command::Type::Rally: break;  // (applyCommand's own)
@@ -1293,6 +1336,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     if (speed == Fixed::zero()) speed = u.stats.moveSpeed / 4;  // wading out of deep water
     else if (onOwnLand(u, under)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
+    if (!fires_.empty()) speed = speed * fireWalkPct(u.pos) / 100;  // through burning ground (world_fire.cpp)
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
@@ -1518,6 +1562,11 @@ void World::updateUnit(Unit& u) {
                 laySatchel(u, u.pos + u.facing);
             }
         }
+    } else if (u.hasAttackTarget && u.detonate) {
+        if (detonateStep(u)) {
+            u.hasAttackTarget = false;
+            u.detonate = false;
+        }
     } else if (u.hasAttackTarget) {
         u.facing = flatDirection(u.pos, u.attackTarget, u.facing);
         const Fixed range = (u.attackTarget - u.pos).flat().length();
@@ -1532,22 +1581,28 @@ void World::updateUnit(Unit& u) {
         // A scavenger let loose runs his own fight (world_scavenge.cpp); else
         // he holds and fights like anyone.
         raid(u);
-    } else if (u.satchels > 0 && layInPath(u)) {
+    } else if (sparks(u.stats) && armed(u) && !u.holdFire && shootSatchel(u)) {
+        // Fire on a satchel lying among the enemy, before any one man, and before another is laid.
+    } else if (u.satchels > 0 && !u.holdFire && layInPath(u)) {
         // The enemy coming: a satchel in their path, then back from it (world_satchels.cpp).
+    } else if (precious(u.stats) && shyAway(u)) {
+        // A foe closing on a dwarf or a wizard: behind the foot, not into the melee.
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
     } else if (Unit* sortie = escortFoe(u)) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
+    } else if (u.guard != kNoEntity && guardStep(u)) {
+        // On guard: by his ward, between him and what threatens him (world_guard.cpp).
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
                enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
         u.support = kNoEntity;
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
-    } else if (u.stats.ranged.kind == ProjectileKind::Molotov && shootSatchel(u)) {
-        // Fire on a satchel lying among the enemy, before any one man.
-    } else if (shootNearby(u)) {
+    } else if (armed(u) && !u.holdFire && shootNearby(u)) {
         // (From high ground the bow carries farther: shotRange; the walls' shooters first: autoTarget.)
+    } else if (burnGate(u)) {
+        // A thrower of fire: a foe's gate in his reach, alight (world_fire.cpp).
     } else if (creepToWall(u)) {
         // (Closer to the walls' men, to be within the throw.)
     } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
@@ -1575,6 +1630,8 @@ void World::updateUnit(Unit& u) {
 bool World::shootNearby(Unit& u) {
     Unit* target = autoTarget(u);
     if (target == nullptr || (target->pos - u.pos).flat().length() > shotRange(u, autoReach(u), target->pos)) return false;
+    // A store of missiles is not spent on a mark not worth one: he watches it, and does what else he can.
+    if (u.stats.ranged.ammo > 0 && !worthAShot(u, *target)) return false;
     u.facing = flatDirection(u.pos, target->pos, u.facing);
     if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
         Vec3 aim = target->pos;
@@ -1656,7 +1713,10 @@ void World::updateFlight(Unit& u) {
             const auto onDeck = [&](const Vec3& p, Fixed height) {
                 return height > (config_.terrain ? config_.terrain->heightAt(p.x, p.y) : Fixed::zero()) + kLandedReach / 6;
             };
-            const bool skimming = onDeck(u.pos, below) && !onDeck(goal, groundHeight(goal.x, goal.y));
+            // Nor on a deck that is not his goal's: bound for a wall-walk, he came down on the slope of a ramp built against
+            // that wall a few metres short of it, could not walk on from there, rose, and came down on it again, for ever.
+            const Fixed goalFloor = groundHeight(goal.x, goal.y);
+            const bool skimming = onDeck(u.pos, below) && (!onDeck(goal, goalFloor) || abs(goalFloor - below) > kLandedReach / 6);
             if (u.pos.z <= below && !skimming) {
                 u.flight = Unit::Flight::Grounded;
                 // Walk the rest of the way (a tired flier may have come down early).
@@ -2176,8 +2236,25 @@ Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) co
     return need;
 }
 
-bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
+bool World::canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity) const {
+    const LaunchSolution high = solveHighArc(origin, target, u.stats.ranged.muzzleSpeed, config_.gravity);
+    if (!high.inRange) return false;
+    // The first second of the climb, as updateProjectiles will fly it: boughs.
+    Vec3 prev = origin;
+    for (int i = 1; i <= 8; ++i) {
+        const Fixed t = Fixed::fromRatio(i, 8);
+        const Vec3 at = origin + high.velocity * t + up(-config_.gravity * (t * t / 2));
+        if (obstacleHit(prev, at, Fixed::one(), false) >= Fixed::zero()) return false;
+        prev = at;
+    }
+    if (!clearFlight(origin, high.velocity, target, kClearShort)) return false;
+    if (velocity) *velocity = high.velocity;
+    return true;
+}
+
+bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
     const RangedWeapon& w = u.stats.ranged;
+    if (!armed(u)) return false;
     Vec3 origin = u.pos + up(u.stats.height * kMuzzleHeightFraction);
     // From a wall-walk, out over the wall only through an embrasure.
     if (!walkShot(u, target, origin)) return false;
@@ -2191,7 +2268,10 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
     // would strike it; shot blind (the mark itself hidden), they scatter more.
     Vec3 lob;
     bool lobbed = false;
-    if (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov) {
+    if (placed == Placed::Lobbed && !atWalk) {
+        lobbed = canLob(u, origin, target, &lob);
+    }
+    if (!lobbed && (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov)) {
         // A defender on a wall-walk is shot at direct, over the parapet, or not at all.
         const Vec3 mark = atWalk ? target : target + up(Fixed::one());
         const Fixed shortOf = atWalk ? kClearShortAtWalk : kClearShort;
@@ -2242,12 +2322,30 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
                 p.vel = solveFixedElevation(origin, aim, need, w.muzzleSpeed, config_.gravity).velocity;
         }
     }
+    // A missile ordered at a place is thrown with the wind allowed for: where this throw would come down is reckoned as it
+    // will fly (updateProjectiles), and the aim moved back by the miss, twice over.
+    if (placed != Placed::No && w.kind != ProjectileKind::Stone) {
+        const Vec3 drift = config_.wind + up(-config_.gravity);
+        Vec3 at = aim;
+        for (int pass = 0; pass < 2; ++pass) {
+            Vec3 q = origin, v = p.vel;
+            for (int i = 0; i < 20 * kTicksPerSecond && !(v.z < Fixed::zero() && q.z <= aim.z); ++i) {
+                q += v * kTickDt + drift * (kTickDt * kTickDt / 2);
+                v += drift * kTickDt;
+            }
+            at = at - (q - aim).flat();
+            const LaunchSolution again = lobbed ? solveHighArc(origin, at, w.muzzleSpeed, config_.gravity) : solveLowArc(origin, at, w.muzzleSpeed, config_.gravity);
+            if (!again.inRange) break;
+            p.vel = again.velocity;
+        }
+    }
     // (From a height over the mark the shot tells more: world_tactics.cpp.)
     p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z) * loosePct(u) / 100);
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     p.cause = w.damageType;
     projectiles_.push_back(p);
+    if (w.ammo > 0) --u.ammo;
     return true;
 }
 
@@ -2563,13 +2661,33 @@ void World::updateProjectiles() {
     spawned_.clear();
 }
 
-void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, ProjectileKind kind, DamageType cause) {
-    // A stone smashes and scatters, without fire; a Molotov's oil bursts into flame.
-    const ImpactEvent::Kind event = kind == ProjectileKind::Stone     ? ImpactEvent::Kind::Smash
-                                    : kind == ProjectileKind::Molotov ? ImpactEvent::Kind::Burst
-                                                                      : ImpactEvent::Kind::Explosion;
+void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, ProjectileKind kind, DamageType cause) {
+    // In water a Molotov goes out and a satchel is dead: no fire, no blast, nothing set off. A fireball there
+    // goes up in steam, a third as wide and a third as hard.
+    Explosive ex = burst;
+    const bool wet = douses(at);
+    if (wet && (kind == ProjectileKind::Molotov || kind == ProjectileKind::Bomb)) {
+        impacts_.push_back({ImpactEvent::Kind::Doused, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
+        return;
+    }
+    // A Molotov has no blast: burning ground (world_fire.cpp).
+    if (kind == ProjectileKind::Molotov) {
+        kindle(at, ex, owner);
+        return;
+    }
+    const bool steam = wet && kind == ProjectileKind::Fireball;
+    if (steam) {
+        ex.radius = ex.radius / 3;
+        ex.damage = ex.damage / 3;
+        ex.impulse = ex.impulse / 3;
+    }
+    // A stone smashes and scatters, without fire.
+    const ImpactEvent::Kind event = kind == ProjectileKind::Stone ? ImpactEvent::Kind::Smash
+                                    : steam                       ? ImpactEvent::Kind::Steam
+                                                                  : ImpactEvent::Kind::Explosion;
     impacts_.push_back({event, at, up(Fixed::one()), kNoEntity, kNoEntity, false, ex.radius, -1, cause});
     blastGates(at, ex, kind);
+    if (kind == ProjectileKind::Bomb) blastShock(at, ex);
     const auto awayFrom = [&](const Vec3& p) {
         Vec3 d = flatDirection(at, p, {});
         if (d.lengthSq() == Fixed::zero()) {
@@ -2618,15 +2736,17 @@ void World::explode(const Vec3& at, const Explosive& ex, PlayerId owner, Project
     }
 
     // Satchels nearby (laid, burning or flying) are thrown and set off a
-    // moment later, or sooner: chain reactions. A Molotov's fire does it too.
+    // moment later, or sooner: chain reactions. (A Molotov's fire does it too: world_fire.cpp.)
     for (Projectile& p : projectiles_) {
         if (p.kind != ProjectileKind::Bomb || p.fuse < 0) continue;  // (going off already)
+        if (p.resting && douses(p.pos)) continue;  // (lying in water: dead)
         const Fixed d = (p.pos - at).length();
         if (d >= ex.radius) continue;
         const Fixed v = ex.impulse * (Fixed::one() - d / ex.radius);
         p.vel += awayFrom(p.pos) * v + up(v * kLiftFraction);
         p.resting = false;
-        const int32_t fuse = 4 + static_cast<int32_t>(rng_.nextBelow(8));
+        // (A satchel set off by another waits a little longer than one a bottle lit, so a line goes up one after another.)
+        const int32_t fuse = (kind == ProjectileKind::Bomb ? 8 : 4) + static_cast<int32_t>(rng_.nextBelow(8));
         p.fuse = p.fuse > 0 ? std::min(p.fuse, fuse) : fuse;
     }
     (void)owner;
@@ -2838,6 +2958,14 @@ uint64_t World::checksum() const {
             h.addI64(u.layCooldown);
             h.addU64(u.layOrdered);
         }
+        if (u.stats.ranged.ammo > 0) h.addI64(u.ammo);
+        if (u.holdFire || u.detonate) h.addU64(static_cast<uint64_t>(u.holdFire) | (static_cast<uint64_t>(u.detonate) << 1));
+        if (u.menacedBy != kNoEntity) h.addU64(u.menacedBy);
+        if (u.guard != kNoEntity) {
+            h.addU64(u.guard);
+            h.addU64(u.guardSquad);
+        }
+        if (u.burning != 0) h.addI64(u.burning);
         // Only while a blast thrower is waiting on a friend in his way.
         if (u.aoeHeld != 0) {
             h.addI64(u.aoeHeld);
@@ -2917,6 +3045,15 @@ uint64_t World::checksum() const {
         h.addU64(g.since);
         h.addU64(g.openUntil);
         h.addU64(static_cast<uint64_t>(g.pin) | (g.garrisoned ? 4u : 0u) | (g.garrisoned && !g.recalls ? 8u : 0u));
+    }
+    // (Only while a patch burns: a world with no fire hashes as it did before there was any.)
+    for (const GroundFire& f : fires_) {
+        h.addI64(f.at.x.raw);
+        h.addI64(f.at.y.raw);
+        h.addI64(f.radius.raw);
+        h.addI64(f.burn);
+        h.addI64(f.ticks);
+        h.addU64(f.owner);
     }
     h.addU64(projectiles_.size());
     for (const Projectile& p : projectiles_) {

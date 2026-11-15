@@ -53,12 +53,15 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::AttackGround:
                 case sim::Command::Type::AttackGate:
                 case sim::Command::Type::AttackObject:
+                case sim::Command::Type::Detonate:
                 case sim::Command::Type::LaySatchel: c.queue = true; break;
                 case sim::Command::Type::Stop:
                 case sim::Command::Type::Raid:
                 case sim::Command::Type::SetGate:
                 case sim::Command::Type::SetStance:
                 case sim::Command::Type::Rally:
+                case sim::Command::Type::HoldFire:
+                case sim::Command::Type::Guard:
                 case sim::Command::Type::SetFormation:
                 case sim::Command::Type::Answer: break;
             }
@@ -168,10 +171,11 @@ void Battle::orderAttackUnit(sim::EntityId target) {
         std::erase_if(mine, [&](sim::EntityId id) { return std::find(together.begin(), together.end(), id) != together.end(); });
         marchSelection(together, toV3(t->pos), nullptr, false);
     }
-    for (sim::EntityId id : mine) {
+    const auto attack = [&](sim::EntityId id, bool afterTheMarch) {
         const sim::Unit& u = world_->units()[id - 1];
         sim::Command c{local_, id, sim::Command::Type::AttackUnit, t->pos};
         c.targetUnit = target;
+        c.queue = afterTheMarch;
         // The squad-mate left behind (nearest him) is whom he goes back to.
         if (const int s = squadOfUnit_[id - 1]; s >= 0) {
             std::vector<sim::EntityId> stay;
@@ -180,7 +184,12 @@ void Battle::orderAttackUnit(sim::EntityId target) {
             c.rally = nearestOf(stay, toV3(u.pos));
         }
         pending_.push_back(c);
-    }
+    };
+    // The march is to where he stood when they were sent, and he may not wait there: the order to go for him stands behind it
+    // (Command::queue), so that they come up together and it is still him they are after.
+    for (sim::EntityId id : together) attack(id, true);
+    for (sim::EntityId id : mine) attack(id, false);
+    mine.insert(mine.end(), together.begin(), together.end());
     markOrdered(mine);
     answer(Situation::Attack, mine);
     if (t->owner == local_) say("Attacking our own!");
@@ -201,7 +210,14 @@ void Battle::orderAttackGround(const V3& at) {
     answer(Situation::Attack, mine);
 }
 
-void Battle::orderLaySatchels(const V3& at) {
+void Battle::orderLaySatchels(const V3& at, bool queue) {
+    // What a dwarf has been told to lay and has not yet been handed to the world (a deployment's clicks wait in pending_).
+    const auto promised = [&](sim::EntityId id) {
+        int n = 0;
+        for (const sim::Command& c : pending_) n += c.unit == id && c.type == sim::Command::Type::LaySatchel;
+        for (const Planned& p : plan_) n += p.cmd.unit == id && p.cmd.type == sim::Command::Type::LaySatchel;
+        return n;
+    };
     const std::vector<sim::EntityId> mine = selectedAlive();
     std::vector<sim::EntityId> layers;
     for (sim::EntityId id : mine)
@@ -210,11 +226,27 @@ void Battle::orderLaySatchels(const V3& at) {
         refuse("No satchels to lay");
         return;
     }
-    // Three abreast, three metres apart, a row behind for each three more.
-    for (size_t k = 0; k < layers.size(); ++k) {
-        const V3 spot = at + V3{(static_cast<float>(k % 3) - 1.0f) * 3.0f, static_cast<float>(k / 3) * 3.0f, 0};
-        issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
+    // One charge a click, laid by the dwarf of them who carries the most (the nearer of equals): his fellow keeps his
+    // place, and his bottles. Water: a satchel there is dead, and none is laid.
+    if (world_->douses(toSim(at))) {
+        say("Not in water");
+        return;
     }
+    sim::EntityId who = layers.front();
+    for (sim::EntityId id : layers) {
+        const sim::Unit& u = world_->units()[id - 1];
+        const sim::Unit& best = world_->units()[who - 1];
+        // (Counting what he is already bound to lay: a line is shared out between them.)
+        const int left = u.satchels - static_cast<int>(u.queue.size()) - (u.layOrdered ? 1 : 0) - promised(id);
+        const int bestLeft = best.satchels - static_cast<int>(best.queue.size()) - (best.layOrdered ? 1 : 0) - promised(who);
+        if (left > bestLeft || (left == bestLeft && (toV3(u.pos) - at).length() < (toV3(best.pos) - at).length())) who = id;
+    }
+    issue(local_, who, sim::Command::Type::LaySatchel, at);
+    pending_.back().queue = queue;
+    // The deployment: the charges are laid before the battle begins (within 160 m of him, clear of the foe), and lie
+    // there when it does. Farther off he walks there once it has begun.
+    pending_.back().force = deploy_ && !conquest_;
+    layers = {who};
     markOrdered(layers);
     answer(Situation::Attack, layers);
 }
@@ -245,6 +277,15 @@ bool Battle::orderRaid() {
     markOrdered(raiders);
     answer(Situation::Attack, raiders);
     return true;
+}
+
+void Battle::detonateAction() {
+    if (orderMode_ == OrderMode::Detonate) {
+        orderMode_ = OrderMode::Normal;  // pressed again: let go
+        return;
+    }
+    if (selectionSparks()) orderMode_ = OrderMode::Detonate;
+    else say("Select a dwarf or a wizard");
 }
 
 void Battle::specialAction() {
@@ -461,7 +502,12 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     if (selectionSize() == 0) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
     using K = Pick::Kind;
     if (mode == OrderMode::ForceMarch) return p.kind == K::None ? Intent::None : Intent::ForceMarch;
-    if (mode == OrderMode::LaySatchel) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::LaySatchel) {
+        if (p.kind == K::None) return Intent::None;
+        return p.kind == K::Ground && world_->douses(toSim(p.at)) ? Intent::Cannot : Intent::AttackGround;  // (not in water)
+    }
+    if (mode == OrderMode::Detonate) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::Guard) return p.kind == K::Own ? Intent::Select : Intent::Cannot;
     if (mode == OrderMode::Attack) {
         switch (p.kind) {
             case K::Own:
@@ -533,10 +579,14 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
         const float opacity = markOpacity(i);
         if (opacity <= 0.0f) continue;
         const V3 at = unitPosition(i);
-        if (u.targetUnit != sim::kNoEntity) {
-            const sim::Unit& t = units[u.targetUnit - 1];
+        // Whom he is after: his quarry, or the one he marches against with the rest (Battle::orderAttackUnit: the attack waits
+        // behind the march), so that a tap on a far foe rings the foe as a tap on a near one does.
+        sim::EntityId quarry = u.targetUnit;
+        if (quarry == sim::kNoEntity && u.hasMoveTarget && !u.queue.empty() && u.queue.front().type == sim::Command::Type::AttackUnit) quarry = u.queue.front().targetUnit;
+        if (quarry != sim::kNoEntity) {
+            const sim::Unit& t = units[quarry - 1];
             if (!t.alive()) continue;
-            const V3 tp = unitPosition(u.targetUnit - 1);
+            const V3 tp = unitPosition(quarry - 1);
             OrderMark m{OrderMark::Kind::Target, u.id, {tp.x, tp.y, floorAt(tp)}, {}, at};
             m.size = static_cast<float>(t.stats.radius.toDouble()) * 2.0f + 0.5f;
             m.opacity = opacity;

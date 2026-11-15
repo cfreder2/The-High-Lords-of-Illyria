@@ -41,7 +41,7 @@ enum class ProjectileKind : uint8_t {
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
     Stone,     // a catapult's boulder: a high arc, a smash where it comes down, and then it bounces and rolls on (world_boulder.cpp)
-    Molotov,   // a grenadier's bottle of burning oil: shatters on any impact into a burst of fire, which sets off satchels
+    Molotov,   // a bottle of burning oil: no blast; shatters into a patch of burning ground that burns men and timber and sets off satchels (world_fire.cpp)
 };
 
 // Persistent physical leftovers (docs/GAME_DESIGN.md §5.5). They are part of
@@ -81,6 +81,9 @@ struct RangedWeapon {
     ProjectileKind kind = ProjectileKind::Arrow;
     DamageType damageType = DamageType::Pierce;
     Explosive explosive;      // bombs and fireballs
+    // Missiles carried into battle, none made there (zero: as many as he likes, a bowman's quiver). A man with a
+    // store is thrifty with it on his own (World::worthAShot) and out of it has only his hands.
+    int32_t ammo = 0;
 };
 
 struct MeleeWeapon {
@@ -221,7 +224,12 @@ struct Command {
     // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
     // SetFormation: the formation the soldier is to keep (`formation`): no order of his own either. Answer: he goes to the
     // help of the friend `targetUnit`, who has called (world_help.cpp), as a man with no order would of himself.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer };
+    // Detonate: one missile, now, at the laid satchel nearest `target` (within World::kDetonatePick of it; else at
+    // the ground there), walking into reach first: no waiting on friends in the blast, which is the player's business
+    // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
+    // Guard: he guards the friend `targetUnit` and that man's squad (world_guard.cpp): stays by them, between them and
+    // the nearest threat, meets what comes at them, and goes to nobody else's help. Any order of his own ends it.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -237,7 +245,9 @@ struct Command {
     // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
     // the way he walked.
     Vec3 face = {};
-    // Move: a force march, deaf to the enemy on the way.
+    // Move: a force march, deaf to the enemy on the way. LaySatchel: laid beforehand (the deployment, before the battle
+    // begins: Battle sets it only then): the charge lies there at once, if the place is within World::kPrepareReach of
+    // him and no foe is within World::kPrepareClear of it; else he walks there and lays it as ever.
     bool force = false;
     // Move: ground to be occupied (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight
     // or a rout, until he is given another order. (Not the stance below: a man occupying ground still goes to his friends.)
@@ -261,6 +271,16 @@ struct Command {
 };
 
 // One soldier (or beast). Squads are a conquest-layer grouping of these.
+// A patch of burning ground where a Molotov shattered (world_fire.cpp): its middle, how wide, hit points a second to a man
+// standing in it, ticks left, and whose bottle it was.
+struct GroundFire {
+    Vec3 at;
+    Fixed radius;
+    int32_t burn = 0;
+    int32_t ticks = 0;
+    PlayerId owner = 0;
+};
+
 struct Unit {
     EntityId id = kNoEntity;
     PlayerId owner = 0;
@@ -413,6 +433,19 @@ struct Unit {
     int32_t satchels = 0;
     int32_t layCooldown = 0;
     bool layOrdered = false;
+    // Missiles left of a store (RangedWeapon::ammo; unused when it is zero), whether he keeps them for orders alone
+    // (Command::HoldFire), and whether the attack in hand is one direct shot (Command::Detonate).
+    int32_t ammo = 0;
+    bool holdFire = false;
+    bool detonate = false;
+    // A dwarf or a wizard with a foe closing on him (World::shyAway): who. His friends near him come to it (supportFoe).
+    EntityId menacedBy = kNoEntity;
+    // Guarding (Command::Guard, world_guard.cpp): a man of the squad he guards, and that squad's number (when the man
+    // falls his fellows are still guarded). kNoEntity: no guard duty.
+    EntityId guard = kNoEntity;
+    uint32_t guardSquad = 0;
+    // Timber alight (an engine a Molotov's fire caught, world_fire.cpp): ticks it burns on. 0: not burning.
+    int32_t burning = 0;
     // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
     // tick he last held. Both rest at zero once he fires (or is left alone for a while).
     int32_t aoeHeld = 0;
@@ -522,7 +555,8 @@ struct ImpactEvent {
     // (radius = how hard, m/s); Splash, it went into water and stopped; Struck, it hit a wall, tower, house, rock, tree
     // or gate (radius = the blow, World::strikeStructure's energy; gate = the Structure struck).
     // Splash: a flying part (or a loose arrow) went into the water here, at the surface (radius = how big a splash).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Bounce, Splash, Struck };
+    // Doused: a Molotov or a satchel met water here and did nothing. Steam: a fireball burst on water, a third of itself (radius).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Bounce, Splash, Struck, Doused, Steam };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -619,7 +653,8 @@ struct TacticEvent {
 // RallyCall, for the voices, the cards, the minimap and the event line. A side is told only of its own calls.
 struct HelpCall {
     // Outnumbered in the melee; struck in the flank or back; wavering; under missiles it cannot answer; its lord has fallen.
-    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown };
+    // Hunted: a dwarf or a wizard with the foe's horse coming for him, or under arrows (world_guard.cpp).
+    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown, Hunted };
     EntityId caller = kNoEntity;  // a man of the squad that calls
     PlayerId owner = 0;
     uint32_t squad = 0;
@@ -817,6 +852,37 @@ public:
     // At most this many orders wait in a soldier's queue; one more is dropped. Eight legs is a patrol round a town or a
     // plan of attack; more would make every man carry, hash and save a long script, and a line of numbers on the screen.
     static constexpr size_t kMaxQueuedOrders = 8;
+    // A charge laid beforehand (Command::force on a LaySatchel): how far from where he stands, and how clear of any foe.
+    static constexpr Fixed kPrepareReach = Fixed::fromInt(160);
+    static constexpr Fixed kPrepareClear = Fixed::fromInt(50);
+    bool canPrepare(const Unit& u, const Vec3& at) const;
+    // Burning ground (world_fire.cpp): the patches alight now (for drawing), whether `p` is in one, and the pace of a
+    // walk there in percent (100 out of the fire).
+    const std::vector<GroundFire>& fires() const { return fires_; }
+    bool inFire(const Vec3& p) const;
+    int32_t fireWalkPct(const Vec3& p) const;
+    // Whether anyone guards this man's squad (for the cards, and for where a hunted dwarf runs).
+    bool guarded(const Unit& u) const;
+    const Unit* wardOf(const Unit& u) const;  // the man he guards now (the one named, or a living fellow of that squad), or null
+    // A dwarf or a wizard with the foe's horse within 55 m and coming his way, or struck by a missile in the last 3 s.
+    bool hunted(const Unit& u) const;
+    // Command::Detonate takes the laid satchel within this of the spot shown.
+    static constexpr Fixed kDetonatePick = Fixed::fromInt(4);
+    // Whether his missile's fire sets off a satchel (a Molotov, a fireball): who may be ordered to Detonate.
+    static bool sparks(const UnitStats& s) {
+        return s.ranged.muzzleSpeed > Fixed::zero() && (s.ranged.kind == ProjectileKind::Molotov || s.ranged.kind == ProjectileKind::Fireball);
+    }
+    // The few who throw a blast and cannot fight: a grenadier, a wizard (not a dragon, who can). Kept out of the melee
+    // (World::shyAway), guarded by the men near them (supportFoe), and the first mark of a foe's bowmen (autoTarget).
+    static bool precious(const UnitStats& s) { return s.satchels.count > 0 || (sparks(s) && s.flyAltitude == Fixed::zero()); }
+    // Whether he has a missile to loose (a store spent leaves him his hands).
+    static bool armed(const Unit& u) { return u.stats.ranged.muzzleSpeed > Fixed::zero() && (u.stats.ranged.ammo == 0 || u.ammo > 0); }
+    // Water puts out oil and powder: nothing burns or is laid where it stands over the ground a hand deep or more (the
+    // water that is drawn, World::waterDepth: a bank beside the shallows is dry, though its ground is of the ford's kind).
+    static constexpr Fixed kDouseDepth = Fixed::fromRatio(1, 10);
+    bool douses(const Vec3& at) const { return waterDepth(at.x, at.y) >= kDouseDepth; }
+    // What a man carries, as the conquest kept it between fights (a negative count: his full load).
+    void restoreLoad(EntityId id, int32_t satchels, int32_t ammo);
     // A standing attack on the ground, a wall, a house or a tree never ends of itself: with orders waiting it is over after this long.
     static constexpr uint32_t kStandingAttackTicks = 10 * kTicksPerSecond;
     // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
@@ -1232,7 +1298,14 @@ private:
     // Looses at a target; false (and nothing loosed) when no arc gets there
     // past the walls, gates and trees in the way.
     // `atWalk`: the target is a defender on a wall-walk, shot at direct (never lobbed).
-    bool fire(Unit& unit, const Vec3& target, bool atWalk = false);
+    // `placed`: a missile ordered at a place (a Detonate order's, at a charge): thrown with the wind allowed for, so that
+    // it comes down where it was sent; Lobbed, by the high arc as well, over the men standing before the mark (the flat
+    // throw bursts on the first man in its way).
+    enum class Placed : uint8_t { No, Flat, Lobbed };
+    // Whether his missile can be lobbed from `origin` onto `target`: in the high arc's reach, clear of walls and trunks
+    // all the way, and clear of the boughs over his own head (which a missile strikes as it does a trunk).
+    bool canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity = nullptr) const;
+    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No);
     // `fire`, and the reload that follows, for any shooter (world_aoe.cpp). One with a blast to throw (stones, fireballs,
     // Molotovs) chooses where it falls so as to spare his own side, or holds his fire a while (true, loosing nothing,
     // when held); a bowman's flat shot is as ever: whoever stands in the line takes it. False: no clear shot.
@@ -1389,6 +1462,29 @@ private:
     // Satchel charges (world_satchels.cpp).
     // Lays one where he stands, toward `toward`, and steps back from it.
     void laySatchel(Unit& u, const Vec3& toward, Fixed reach = Fixed::zero());
+    // Command::Detonate begun: the mark is the laid satchel nearest the spot shown, or the spot.
+    void startDetonate(Unit& u, const Vec3& at);
+    // ... and carried out, a tick of it: into reach, then the one shot, loosed direct (true: the order is done).
+    bool detonateStep(Unit& u);
+    // A man with a store of missiles and no order asks whether this mark is worth one: a cluster in the blast
+    // (kThriftCluster men, a great beast counting for them all), or a foe on top of him; never a man running away,
+    // and a grenadier's last bottle is kept for his satchels.
+    bool worthAShot(const Unit& u, const Unit& target) const;
+    // A dwarf or a wizard with no order and a foe within kShyReach of him: back behind the nearest of his side's
+    // fighting men, or straight away from the foe (true: he is walking). Not a man told to hold; one caught at arm's
+    // length fights as he can.
+    bool shyAway(Unit& u);
+    // Guard duty (world_guard.cpp). The man he guards now (the one named, or a living fellow of that squad), or null:
+    // then the duty is over. A tick of it for a man with no order: to his place by the ward, between him and the nearest
+    // threat within kGuardWatch; at a foe within kGuardMeet of the ward; else standing (true: he has done his tick).
+    bool guardStep(Unit& u);
+    // Fire (world_fire.cpp): a Molotov's patch lit at `at`; a tick of the patches and of timber alight; a fire thrower
+    // with nothing better to do throws at a foe's gate in his reach not burning already (true: he is about it).
+    void kindle(const Vec3& at, const Explosive& ex, PlayerId owner);
+    void updateFires();
+    bool burnGate(Unit& u);
+    // A satchel's blast shakes those it leaves standing near it (twice its reach), of every side.
+    void blastShock(const Vec3& at, const Explosive& ex);
     // Idle with satchels left and the enemy coming: lays one in their path (true).
     bool layInPath(Unit& u);
     // A Molotov thrower's shot at a satchel lying among the enemy, if he has
@@ -1667,6 +1763,7 @@ private:
         DamageType cause;
     };
     std::vector<PendingExplosion> pendingExplosions_;
+    std::vector<GroundFire> fires_;
     struct TestBlow {
         EntityId id;
         int32_t amount;
