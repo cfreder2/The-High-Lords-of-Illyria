@@ -917,3 +917,79 @@ TEST(a_molotov_sets_an_engine_alight_and_it_burns_down) {
     CHECK(bottles >= 1 && bottles <= 2);
     CHECK(burnt > 0);
 }
+
+namespace {
+// The satchel run's ground: a satchel laid at (0, 0), a hyena beside it, a knot of six foes (bowmen) 20 m on.
+struct Run {
+    World w{WorldConfig{}};
+    EntityId hyena = kNoEntity;
+    std::vector<EntityId> bows;
+    Run() {
+        w.placeSatchel(0, {m(0), m(0), m(0)}, charge());
+        hyena = w.spawnUnit(0, {m(-6), m(0), m(0)}, kEast, unitStats(UnitType::Hyena));
+        for (int i = 0; i < 6; ++i) bows.push_back(w.spawnUnit(1, {m(20 + (i % 2) * 2), m((i / 2) * 2 - 2), m(0)}, kWest, dummy(UnitType::Archers)));
+    }
+    void order(Command c) {
+        c.player = 0;
+        c.unit = hyena;
+        w.step(std::span(&c, 1));
+    }
+    int bowsHurt() const {
+        int n = 0;
+        for (EntityId id : bows) n += w.findUnit(id)->hp < w.findUnit(id)->stats.maxHp;
+        return n;
+    }
+};
+}  // namespace
+
+TEST(a_hyena_takes_up_a_laid_satchel_and_lit_runs_it_into_the_bowmen) {
+    // Command::TakeSatchel: he walks to it and takes it up (it lies on the ground no more). Command::LightFuse: lit, he
+    // runs at the man shown, deaf to all else, and it goes off where he is: among them, and he with it.
+    Run r;
+    r.order({0, 0, Command::Type::TakeSatchel, {m(0), m(0), m(0)}});
+    for (int i = 0; i < 5 * kTicksPerSecond && !r.w.findUnit(r.hyena)->scav.satchel; ++i) r.w.step({});
+    CHECK(r.w.findUnit(r.hyena)->scav.satchel);
+    CHECK(laidSatchels(r.w) == 0);
+    Command light{0, 0, Command::Type::LightFuse, r.w.findUnit(r.bows[0])->pos};
+    light.targetUnit = r.bows[0];
+    r.order(light);
+    CHECK(r.w.findUnit(r.hyena)->scav.lit);
+    int blasts = 0;
+    Vec3 where;
+    for (int i = 0; i < 8 * kTicksPerSecond && blasts == 0; ++i) {
+        r.w.step({});
+        for (const ImpactEvent& e : r.w.impacts())
+            if (e.kind == ImpactEvent::Kind::Explosion) ++blasts, where = e.pos;
+    }
+    std::printf("  went off %.1f m from the bowmen's middle; %d of 6 hurt; the runner %s\n", (where - Vec3{m(21), m(0), m(0)}).flat().length().toDouble(), r.bowsHurt(),
+                r.w.findUnit(r.hyena)->alive() ? "lives" : "is dead");
+    CHECK(blasts == 1);
+    CHECK((where - Vec3{m(21), m(0), m(0)}).flat().length() < m(5));
+    CHECK(r.bowsHurt() >= 3);
+    CHECK(!r.w.findUnit(r.hyena)->alive());
+}
+
+TEST(a_molotov_thrown_at_the_satchel_carrier_sets_it_off_in_his_hands) {
+    // Carried into them unlit (a march), and his own side's dwarf throws a bottle at him (a force attack on a friend): the
+    // fire reaches the satchel in his hands and it goes off there (world_fire.cpp). Friendly fire as ever.
+    Run r;
+    r.order({0, 0, Command::Type::TakeSatchel, {m(0), m(0), m(0)}});
+    for (int i = 0; i < 5 * kTicksPerSecond && !r.w.findUnit(r.hyena)->scav.satchel; ++i) r.w.step({});
+    r.order({0, 0, Command::Type::Move, {m(18), m(0), m(0)}, {}, false, {}, {}, {}, true});
+    for (int i = 0; i < 4 * kTicksPerSecond; ++i) r.w.step({});
+    CHECK(r.w.findUnit(r.hyena)->scav.satchel);
+    CHECK(!r.w.findUnit(r.hyena)->scav.lit);
+    const EntityId dwarf = r.w.spawnUnit(0, {m(4), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+    Command bottle{0, dwarf, Command::Type::AttackUnit, r.w.findUnit(r.hyena)->pos};
+    bottle.targetUnit = r.hyena;
+    r.w.step(std::span(&bottle, 1));
+    int blasts = 0;
+    for (int i = 0; i < 10 * kTicksPerSecond && blasts == 0; ++i) {
+        r.w.step({});
+        for (const ImpactEvent& e : r.w.impacts()) blasts += e.kind == ImpactEvent::Kind::Explosion;
+    }
+    std::printf("  %d blast; %d of 6 bowmen hurt; the carrier %s\n", blasts, r.bowsHurt(), r.w.findUnit(r.hyena)->alive() ? "lives" : "is dead");
+    CHECK(blasts == 1);
+    CHECK(!r.w.findUnit(r.hyena)->alive());
+    CHECK(r.bowsHurt() >= 2);
+}

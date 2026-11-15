@@ -1449,7 +1449,8 @@ ILLYRIA_API void illyria_queue_demo() {
 // blow that only fells him, 3 fire, 4 a cleaving cut far past death (a limb or the head off, for those a cut can), 5 an arrow.
 // Stage 6 (`deaths melee X Y`) is a fight to watch instead: two lines of foot, the player's and a foe's, four metres apart
 // either side of (x, y) along the north-south line through it, with a few horse behind each to ride in: for looking at a
-// fight where it stands (in a ford: tools/playtest/ford-water.txt).
+// fight where it stands (in a ford: tools/playtest/ford-water.txt). Stage 7 (`deaths foes X Y`) stands the same grid of the
+// foe's side (the other team colour), added to stage 0's so the later stages fell both.
 ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
     using namespace illyria::sim;
     static std::vector<EntityId> men;
@@ -1472,12 +1473,12 @@ ILLYRIA_API const char* illyria_death_demo(int stage, float x, float y) {
         std::snprintf(line, sizeof line, "deaths: a melee of 17 a side at %.0f,%.0f", x, y);
         return line;
     }
-    if (stage == 0) {
-        men.clear();
+    if (stage == 0 || stage == 7) {
+        if (stage == 0) men.clear();
         for (int t = 0; t < kUnitTypeCount; ++t) {
             Vec3 p{Fixed::fromInt(static_cast<int64_t>(x) + (t % 7) * 10), Fixed::fromInt(static_cast<int64_t>(y) - (t / 7) * 10), Fixed::zero()};
             p.z = w.groundHeight(p.x, p.y);
-            men.push_back(w.spawnUnit(0, p, Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()}, unitStats(static_cast<UnitType>(t))));
+            men.push_back(w.spawnUnit(stage == 7 ? 1 : 0, p, Vec3{Fixed::zero(), -Fixed::one(), Fixed::zero()}, unitStats(static_cast<UnitType>(t))));
         }
         std::snprintf(line, sizeof line, "deaths: %d types at %.0f,%.0f, rows 10 m apart to the south", kUnitTypeCount, x, y);
         return line;
@@ -1936,6 +1937,14 @@ ILLYRIA_API void illyria_special() {
 // Detonate (L): with a grenadier or a wizard selected, the next tap is the satchel (or the ground) to set off.
 ILLYRIA_API void illyria_detonate() {
     if (app) app->battle->detonateAction();
+}
+// Take (;): with hyena-folk selected, the next tap is the satchel lying on the ground that one of them goes to take up.
+ILLYRIA_API void illyria_take() {
+    if (app) app->battle->takeAction();
+}
+// Light ('): with a satchel carrier selected, the next tap is the man (or place) he runs at with its fuse lit.
+ILLYRIA_API void illyria_light() {
+    if (app) app->battle->lightAction();
 }
 // Guard (,): the next tap is the squad of yours the selection is to guard.
 ILLYRIA_API void illyria_guard() {
@@ -3108,6 +3117,18 @@ ILLYRIA_API int illyria_sandbox_spawn(int type, int side, int count, float x, fl
              std::clamp(count, 1, 60), at);
     return 1;
 }
+// Test hook (the --play script's `sandbox squad`, docs/PLAYTEST.md): a squad set down `dx`, `dy` metres from the field's
+// middle (battle coordinates), as a click would set it; says where, in battle metres, for the script's camera.
+ILLYRIA_API const char* illyria_sandbox_place(int type, int side, int count, float dx, float dy) {
+    static char line[160];
+    SandboxMode* m = sandbox();
+    if (!m || type < 0 || type >= illyria::sim::kUnitTypeCount) return "sandbox: no sandbox, or no such type";
+    const V3 c = app->battle->zoneCentre();
+    const int q = m->spawn(*app->battle, static_cast<illyria::sim::UnitType>(type), static_cast<illyria::sim::PlayerId>(side & 3), std::clamp(count, 1, 60), c + V3{dx, dy, 0});
+    const V3 at = app->battle->squadCentre(app->battle->squads()[static_cast<size_t>(q)], false);
+    std::snprintf(line, sizeof line, "sandbox: squad %d, %d %s of side %d at %.1f,%.1f", q, count, illyria::sim::unitTypeName(static_cast<illyria::sim::UnitType>(type)), side, at.x, at.y);
+    return line;
+}
 // The side commanded from this screen.
 ILLYRIA_API void illyria_sandbox_side(int side) {
     if (sandbox()) app->battle->setLocalSide(static_cast<illyria::sim::PlayerId>(side & 3));
@@ -3440,12 +3461,12 @@ ILLYRIA_API const char* illyria_hud() {
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
                       "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\","
-                      "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s,\"guards\":\"%s\",\"guarded\":%s}",
+                      "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s,\"lit\":%s,\"guards\":\"%s\",\"guarded\":%s}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
-                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false",
+                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false", load.lit ? "true" : "false",
                       b.guards(q).c_str(), b.guarded(q) ? "true" : "false");
         s += buf;
         firstSquad = false;

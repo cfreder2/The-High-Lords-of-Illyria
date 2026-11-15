@@ -11,6 +11,7 @@
 // All of it from the men's own state, Fixed and integers only, the same for every side and for Skirmish and Conquest.
 #include <algorithm>
 #include <map>
+#include <tuple>
 
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
@@ -129,18 +130,25 @@ void World::callForHelp() {
             if (u.alive() && u.owner == owner && u.squad == key.second) u.called = tick_ + 1;
         HelpCall call{s.fighter != kNoEntity ? s.fighter : s.man, owner, key.second, centre, why, 0, kNoEntity, {}};
         // Who answers: the nearest free squad of the side within its kind's reach (horse count nearer: they are there
-        // first, and they take the flank). Against missiles, horse or bowmen only.
-        const SquadSum* best = nullptr;
-        uint32_t bestSquad = 0;
-        Fixed bestScore;
-        for (const auto& [k2, t] : squads) {
-            if (k2.first != owner || k2.second == key.second || t.hero || t.free == 0 || t.free * 2 < t.alive) continue;
-            if (why == HelpCall::Why::Shot && !t.quick && !t.shooters) continue;
-            const Fixed dist = (t.sum / Fixed::fromInt(t.alive) - centre).flat().length();
-            if (dist > (t.quick ? kHorseAnswer : t.shooters ? kBowAnswer : kFootAnswer) + word) continue;
-            const Fixed score = t.quick ? dist / 2 : dist;
-            if (best == nullptr || score < bestScore) best = &t, bestScore = score, bestSquad = k2.second;
-        }
+        // first). Against missiles, horse or bowmen only; to a melee (outnumbered, flanked, wavering, the lord down), foot
+        // or horse, and bowmen only when none is free (they go to a bowshot of the foe, never into the press).
+        const auto pick = [&](bool bowsToo) {
+            const SquadSum* best = nullptr;
+            uint32_t bestSquad = 0;
+            Fixed bestScore;
+            for (const auto& [k2, t] : squads) {
+                if (k2.first != owner || k2.second == key.second || t.hero || t.free == 0 || t.free * 2 < t.alive) continue;
+                if (why == HelpCall::Why::Shot && !t.quick && !t.shooters) continue;
+                if (why != HelpCall::Why::Shot && t.shooters && !bowsToo) continue;
+                const Fixed dist = (t.sum / Fixed::fromInt(t.alive) - centre).flat().length();
+                if (dist > (t.quick ? kHorseAnswer : t.shooters ? kBowAnswer : kFootAnswer) + word) continue;
+                const Fixed score = t.quick ? dist / 2 : dist;
+                if (best == nullptr || score < bestScore) best = &t, bestScore = score, bestSquad = k2.second;
+            }
+            return std::pair{best, bestSquad};
+        };
+        auto [best, bestSquad] = pick(false);
+        if (best == nullptr && why != HelpCall::Why::Shot) std::tie(best, bestSquad) = pick(true);
         if (best != nullptr) {
             call.answer = bestSquad;
             call.answerer = best->freeMan;
@@ -246,7 +254,9 @@ bool World::answering(Unit& u) {
 }
 
 bool World::braceFor(Unit& u, const Unit& foe) {
-    if (u.stats.melee.bonusVsMountedPct <= 0 || u.stats.mounted || !foe.stats.mounted || foe.momentum < kGallop || u.disorder > 0 || footing(u) != Footing::Firm) return false;
+    // (Pikes, and any foot in closed ranks that hold: World::bracedFoot.)
+    const bool closed = formed(u) && formationRule(u.formation).tight;
+    if ((u.stats.melee.bonusVsMountedPct <= 0 && !closed) || u.stats.mounted || !foe.stats.mounted || foe.momentum < kGallop || u.disorder > 0 || footing(u) != Footing::Firm) return false;
     const Vec3 to = (foe.pos - u.pos).flat();
     const Fixed dist = to.length();
     if (dist == Fixed::zero() || dist - u.stats.radius - foe.stats.radius <= u.stats.melee.reach) return false;  // (in reach: he strikes)

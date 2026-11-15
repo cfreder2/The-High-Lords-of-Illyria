@@ -12,12 +12,13 @@
 //
 //   STATUS slot  one word, the most urgent of (cardStatus):
 //                  broken     "rallyIn" != 0   a white flag and the seconds to its rally ("--" while a foe is on it)
+//                  lit        "lit"            FUSE LIT (a man of it runs with a satchel's fuse burning)
 //                  calling    "calling"        HELP   (it has called for help)
 //                  answering  "answering"      ANSWER (it is on its way to one that called)
 //                  hold       "hold"           HOLD
 //                  idle       "idle"           IDLE
 //   COUNTER slot what it has left to throw, as a pip and a number each:
-//                  "sat" of "satMax"    satchels (dwarves; an amber square)
+//                  "sat" of "satMax"    satchels (dwarves; hyena-folk while one carries a satchel: an amber square)
 //                  "ammo" of "ammoMax"  Molotovs, fireballs, any counted store (a red bar); a store over 24 (arrows)
 //                                       is not shown until it is down to a quarter
 //                  "holdFire"           two gold bars before them (a pause mark): it is holding its fire
@@ -37,14 +38,16 @@ struct CardFacts {
     int rallyIn = 0;  // broken: seconds to the rally, -1 while it cannot, 0 not broken
     bool calling = false, answering = false, hold = false, idle = false, holdFire = false;
     bool guarding = false, guarded = false;  // on guard duty (Command::Guard); a squad that someone guards
+    bool lit = false;                         // a man of it runs with a satchel's fuse lit (the satchel run)
     int sat = 0, satMax = 0, ammo = 0, ammoMax = 0;
     int rank = 0;
 };
 
-enum class CardStatus { None, Broken, Calling, Answering, Guarding, Hold, Guarded, Idle };
+enum class CardStatus { None, Broken, Lit, Calling, Answering, Guarding, Hold, Guarded, Idle };
 
 inline CardStatus cardStatus(const CardFacts& f) {
     if (f.rallyIn != 0) return CardStatus::Broken;
+    if (f.lit) return CardStatus::Lit;
     if (f.calling) return CardStatus::Calling;
     if (f.answering) return CardStatus::Answering;
     if (f.guarding) return CardStatus::Guarding;
@@ -56,6 +59,7 @@ inline CardStatus cardStatus(const CardFacts& f) {
 inline std::string cardStatusWord(const CardFacts& f) {
     switch (cardStatus(f)) {
         case CardStatus::Broken: return f.rallyIn > 0 ? std::to_string(f.rallyIn) + "s" : "--";
+        case CardStatus::Lit: return "FUSE LIT";
         case CardStatus::Calling: return "HELP";
         case CardStatus::Answering: return "ANSWER";
         case CardStatus::Guarding: return "GUARD";

@@ -250,7 +250,7 @@ void Runner::execute(const Command& c) {
                 std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"deploy\":%d,\"army\":\"%s\"}", c.easy ? 0 : 1, c.deploy ? 1 : 0, illyria_skirmish_buy(c.budget > 0 ? c.budget : 450, 1));
                 hud_.start("march", buf);
             } else {
-                hud_.start(c.text, "{}");
+                hud_.start(c.text, c.place >= 0 ? "{\"place\":" + std::to_string(c.place) + "}" : std::string("{}"));
             }
             block_ = Block::Start;
             blockedAt_ = t;
@@ -304,8 +304,8 @@ void Runner::execute(const Command& c) {
         case Op::Stats: stats(); break;
         case Op::Spread: std::printf("%s\n", illyria_army_spread()), std::fflush(stdout); break;
         case Op::Deaths: {
-            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot", "melee"};
-            for (int k = 0; k < 7; ++k)
+            const char* kinds[] = {"spawn", "blast", "fell", "burn", "cut", "shot", "melee", "foes"};
+            for (int k = 0; k < 8; ++k)
                 if (c.text == kinds[k]) std::printf("%s\n", illyria_death_demo(k, static_cast<float>(c.a), static_cast<float>(c.b))), std::fflush(stdout);
             break;
         }
@@ -319,6 +319,11 @@ void Runner::execute(const Command& c) {
         case Op::Works:
             std::printf("%s\n", illyria_works_demo(c.text.c_str(), c.lord, c.budget, static_cast<float>(c.a), static_cast<float>(c.b), static_cast<float>(c.c),
                                                    static_cast<float>(c.d), c.all ? 1 : 0));
+            std::fflush(stdout);
+            break;
+        case Op::Sandbox:
+            if (c.text == "squad") std::printf("%s\n", illyria_sandbox_place(static_cast<int>(c.b), static_cast<int>(c.a), static_cast<int>(c.c), static_cast<float>(c.d), static_cast<float>(c.seconds)));
+            else illyria_sandbox_fight(static_cast<int>(c.a), static_cast<int>(c.b));
             std::fflush(stdout);
             break;
         case Op::Cards: cards(); break;

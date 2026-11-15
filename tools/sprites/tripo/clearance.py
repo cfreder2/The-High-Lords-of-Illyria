@@ -5,7 +5,8 @@ all) is taken as it is deformed and put in a BVH tree. Each held thing is a clou
 mesh's vertices (thinned to a few hundred: they lie along a blade's edges, a shaft's sides, a shield's rim and
 face) and its long axis from butt to point. A point is inside the body when the nearest skin faces away from it
 and rays from it in three directions each cross the skin an odd number of times (Tripo's skins have holes: either
-test alone gives false alarms); how deep is how far it is from the skin. Points in the hand that holds the thing
+test alone gives false alarms; a point three rays call inside is asked along twelve more, and nine of the fifteen
+must agree); how deep is how far it is from the skin. Points in the hand that holds the thing
 are left out (a sphere round each gripping fist; for a strapped shield, round the forearm and hand that carry it).
 BVHTree.overlap of the thing's own faces with the skin's is counted too, as a second witness.
 
@@ -34,6 +35,12 @@ SACK_TOLERANCE = 0.04   # a soft sack on a cord gives against a leg
 WRIST = 40.0           # degrees the solver may turn a hand at the wrist before the arm must give
 WRIST_MOST = 78.0      # and the most a wrist may be bent from straight on the forearm when it has
 RAYS = (Vector((0.3, 0.2, 0.93)).normalized(), Vector((0.9, -0.4, 0.1)).normalized(), Vector((-0.2, 0.95, -0.2)).normalized())
+# A point the three rays call inside is asked again along twelve more, spread over the sphere: a skin with open cloth
+# (a giant's fur mantle, a loincloth) crosses three rays an odd number of times from outside often enough to call a
+# point 37 cm deep that is in the open air beside him. Inside, nine in ten rays agree; outside, a third or fewer.
+MORE_RAYS = tuple(Vector(v).normalized() for v in (
+    (0.0, 0.0, -1.0), (-0.9, 0.3, 0.2), (0.4, -0.85, -0.3), (0.1, 0.4, -0.9), (-0.5, -0.6, 0.6), (0.7, 0.6, -0.35),
+    (-0.6, 0.1, -0.8), (0.2, -0.3, 0.93), (-0.35, -0.9, -0.25), (0.85, 0.15, 0.5), (-0.75, 0.6, 0.25), (0.5, 0.5, 0.7)))
 
 
 OWNERS = []   # of the last tree built: per face, (body, a vertex of it), to say which part of him a point is in
@@ -88,7 +95,10 @@ def depth_of(tree, p, reach):
     loc, normal, _, dist = tree.find_nearest(p, reach)
     if loc is None or dist < 1e-5 or (p - loc).dot(normal) >= 0:
         return 0.0, None
-    if sum(crossings(tree, p, d) % 2 for d in RAYS) < 2:
+    first = sum(crossings(tree, p, d) % 2 for d in RAYS)
+    if first < 2:
+        return 0.0, None
+    if first + sum(crossings(tree, p, d) % 2 for d in MORE_RAYS) < 9:      # of fifteen
         return 0.0, None
     return dist, normal
 

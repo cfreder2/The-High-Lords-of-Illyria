@@ -58,7 +58,9 @@ second wherever it goes (a catapult standing in the patch burns to nothing on on
 while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line
 is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a
 **draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
-(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
+(to march, to fight hand to hand); while he holds it, the draw comes inside his reload. A bowman aims at the body, leads a
+moving man by his pace and the flight (misjudged), and lofts his arrow over his own line; a man going faster than
+a march is past before many land square (docs/GAME_DESIGN.md §3.1).
 
 **Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's
 quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of
@@ -196,6 +198,11 @@ by its speed, a trunk half again), a blade cuts (5 to 14), a head breaks the man
 nothing; the dead and heroes never break), and a satchel bursts where it strikes; a shield facing the throw
 catches a part or a blade. A burning satchel is taken only with the fuse to throw it on. A soldier with no order
 does not chase a scavenger quicker than him; struck by a throw, he turns his shield to the thrower.
+
+The satchel run (`Command::TakeSatchel`, `Command::LightFuse`): ordered to a satchel lying on the ground, a
+scavenger takes it up and carries it; any blast or fire reaching him sets it off in his hands (a Molotov's
+burning ground too). Ordered to light it, he lights a 5 s fuse and sprints (30% quicker) at the man shown, deaf to
+all else, and it goes off where he is; a lit satchel is never thrown away.
 
 | Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |
 |---|---|---|---|---|---|---|

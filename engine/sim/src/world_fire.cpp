@@ -67,6 +67,12 @@ void World::updateFires() {
             if ((p.pos - f.at).flat().lengthSq() >= r2 || p.pos.z > f.at.z + Fixed::fromInt(2)) continue;
             p.fuse = 4 + static_cast<int32_t>(rng_.nextBelow(8));
         }
+        // ... and one in a man's hands goes up in them (the satchel run's end: a Molotov at the carrier).
+        for (Unit& u : units_) {
+            if (!u.alive() || !u.scav.satchel || u.inAir() || (u.scav.lit && u.scav.fuse <= 2) || (u.pos - f.at).flat().lengthSq() >= r2) continue;
+            u.scav.fuse = 2;
+            u.scav.lit = true;
+        }
         if (second) {
             // Those in it, on the ground: burned and frightened; timber in it catches.
             for (Unit& u : units_) {

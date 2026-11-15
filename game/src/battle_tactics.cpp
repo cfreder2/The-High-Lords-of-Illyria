@@ -76,6 +76,13 @@ void Battle::collectTactics() {
         const bool good = goodFor(e.kind) == (e.owner == local_);
         floats_.push_back({now, e.unit, at, wordOf(e.kind), good});
         if (floats_.size() > kMaxFloats) floats_.erase(floats_.begin());
+        // A squad taken in the flank or the back is a line in the events too, the viewer's own or the foe's.
+        if (e.kind == sim::TacticEvent::Kind::Flanked || e.kind == sim::TacticEvent::Kind::Rear || e.kind == sim::TacticEvent::Kind::Broken) {
+            const int q = e.unit != sim::kNoEntity ? squadOfNumber(world_->units()[e.unit - 1].squad) : -1;
+            if (q < 0) continue;
+            const char* how = e.kind == sim::TacticEvent::Kind::Flanked ? " flanked" : e.kind == sim::TacticEvent::Kind::Rear ? " hit from behind" : " broken by the charge";
+            announce((e.owner == local_ ? "" : "Their ") + squads_[static_cast<size_t>(q)].name + how);
+        }
     }
     if (now % (20 * sim::kTicksPerSecond) == 0) std::erase_if(floatSaid_, [&](const auto& kv) { return now - kv.second > kFloatAgain; });
 }
@@ -172,7 +179,7 @@ void Battle::collectCalls() {
         }
         const int q = squadOfNumber(c.squad), a = squadOfNumber(c.answer);
         if (q < 0) continue;
-        calls_.push_back({now, toV3(c.pos), q, a, c.caller});
+        calls_.push_back({now, toV3(c.pos), q, a, c.caller, c.why});
         // Over the squad that calls, and over the one that goes (the words floated, as position's are).
         floats_.push_back({now, c.caller, toV3(c.pos), "Help!", false});
         if (a >= 0) floats_.push_back({now, c.answerer, toV3(c.answerPos), "Answering", true});
@@ -269,12 +276,19 @@ bool Battle::answerCall(V3& at) {
     }
     const Call& call = calls_.back();
     at = call.pos;
-    // The nearest of the player's squads with nothing in hand (not the caller, not the lord).
+    // The nearest of the player's squads with nothing in hand (not the caller, not the lord), by kind as the world chooses
+    // (World::callForHelp): to a melee, foot or horse, bowmen only when none is free; under missiles, horse or bowmen.
     int best = -1;
     float bestD = 1e30f;
+    const bool melee = call.why != sim::HelpCall::Why::Shot;
+    for (int pass = 0; pass < 2 && best < 0; ++pass)
     for (size_t i = 0; i < squads_.size(); ++i) {
         const Squad& s = squads_[i];
         if (static_cast<int>(i) == call.squad || !controllable(s) || aliveCount(s) == 0 || s.garrison || s.type == sim::UnitType::Hero) continue;
+        const sim::UnitStats& st = sim::unitStats(s.type);
+        const bool bows = st.ranged.muzzleSpeed > sim::Fixed::zero();
+        if (melee && bows && pass == 0) continue;
+        if (!melee && !bows && !st.mounted && st.flyAltitude == sim::Fixed::zero()) continue;
         int alive = 0, freeMen = 0;
         for (sim::EntityId id : s.members) {
             const sim::Unit& u = world_->units()[id - 1];

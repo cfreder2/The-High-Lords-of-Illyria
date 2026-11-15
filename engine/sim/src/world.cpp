@@ -34,6 +34,10 @@ constexpr Fixed kWaypointNear = Fixed::fromInt(4);
 constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 // Marching soldiers keep their files this far either side of the squad's route.
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
+// Personal space: men of a side keep this much room between their bodies (the press of a melee is a line, not a ball).
+constexpr Fixed kPersonalSpace = Fixed::fromRatio(1, 2);
+// A man running with a satchel's fuse lit goes this much faster than his run (World::lightAndRun).
+constexpr int32_t kSprintPct = 130;
 // ... and on open ground as far as this: a block's width, not a column's (planMarch).
 constexpr Fixed kMarchFileWide = Fixed::fromInt(40);
 // Bodies walking through loose remains kick them along.
@@ -211,6 +215,7 @@ void hashScavenger(StateHasher& h, const Scavenger& c) {
     h.addI64(c.quiet);
     h.addI64(c.replan);
     h.addU64(c.shotBy);
+    if (c.fetching || c.lit) h.addU64(0x5A7C + c.fetching * 2 + c.lit);  // (only once a satchel run is ordered)
 }
 
 // Unit-length horizontal direction from `from` to `to`, or `fallback` if they coincide.
@@ -558,12 +563,17 @@ void World::step(std::span<const Command> commands) {
     keepGates();
     updateSiege();
 
-    for (Unit& u : units_) {
+    // The men act in turn, first to last on even ticks and last to first on odd ones: whoever is raised first (a side's
+    // army, or the player's seat) does not always strike first when two blows fall in one tick.
+    for (size_t k = 0; k < units_.size(); ++k) {
+        Unit& u = units_[tick_ % 2 == 0 ? k : units_.size() - 1 - k];
         if (!u.present()) continue;
         if (!u.queue.empty()) advanceQueue(u);
         const Vec3 before = u.pos;
         updateUnit(u);
         trackMomentum(u, before);
+        // (Thrown, or a jump of more than a metre a tick: not a pace to lead him by.)
+        u.stride = u.inAir() || (u.pos - before).flat().lengthSq() > Fixed::one() ? Vec3{} : (u.pos - before).flat();
     }
     separateBodies();
     updateProjectiles();
@@ -656,6 +666,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     Unit* u = &unit;
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
+    u->scav.fetching = false;
     u->detonate = false;
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
@@ -725,6 +736,16 @@ void World::startOrder(Unit& unit, const Command& cmd) {
         case Command::Type::Detonate:
             if (!sparks(u->stats) || !armed(*u)) return;
             startDetonate(*u, cmd.target);
+            break;
+        case Command::Type::TakeSatchel:
+            // To the satchel shown, and he takes it up there (world_scavenge.cpp): only a scavenger with his hands empty.
+            if (u->stats.scavenge.sight == Fixed::zero() || u->scav.holding()) return;
+            beginMove(*u, cmd.target, Fixed::zero(), {});
+            planPath(*u, cmd.target);
+            u->scav.fetching = true;
+            break;
+        case Command::Type::LightFuse:
+            lightAndRun(*u, cmd);
             break;
         case Command::Type::Move: {
             const Vec3 target = insideParapet(clearOfStone(cmd.target, u->stats), u->stats.radius);
@@ -1360,6 +1381,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (!fires_.empty()) speed = speed * fireWalkPct(u.pos) / 100;  // through burning ground (world_fire.cpp)
     if (!works_.empty()) speed = speed * workPacePct(u) / 100;  // over a palisade, through abatis (world_works.cpp)
+    if (u.scav.lit) speed = speed * kSprintPct / 100;  // a fuse burning in his hands: he sprints (the satchel run)
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.
@@ -1466,7 +1488,7 @@ void World::updateUnit(Unit& u) {
     // A satchel in a scavenger's hands burns on whatever he is doing.
     if (u.scav.satchel) burnHeld(u);
     // Not raiding, he throws it before it goes off in his hands.
-    if (u.scav.satchel && !u.scav.raiding && u.targetUnit == kNoEntity && u.alive() && !u.inAir()) shedBurning(u);
+    if (u.scav.satchel && !u.scav.lit && !u.scav.raiding && u.targetUnit == kNoEntity && u.alive() && !u.inAir()) shedBurning(u);
     if (u.airborne) {
         updateAirborne(u);
         return;
@@ -1582,6 +1604,8 @@ void World::updateUnit(Unit& u) {
             u.helping = kNoEntity;
             u.helpSince = 0;
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
+            // Sent to take up a satchel: here (world_scavenge.cpp).
+            if (u.scav.fetching) takeUp(u);
             // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
             if (u.layOrdered) {
                 u.layOrdered = false;
@@ -1620,13 +1644,18 @@ void World::updateUnit(Unit& u) {
         fight(u, *sortie);
     } else if (u.guard != kNoEntity && guardStep(u)) {
         // On guard: by his ward, between him and what threatens him (world_guard.cpp).
+    } else if (kite(u)) {
+        // Slower foot closing while he reloads: back a stride, to loose again (world_tactics.cpp).
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
-               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
+               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy)) &&
+               !shootsInstead(u, *enemy)) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
         u.support = kNoEntity;
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
     } else if (armed(u) && !u.holdFire && shootNearby(u)) {
         // (From high ground the bow carries farther: shotRange; the walls' shooters first: autoTarget.)
+    } else if (armed(u) && !u.holdFire && closeToShoot(u)) {
+        // Posted, a foe just out of his reach: up to a bowshot of him, never farther than his post's leash (world_tactics.cpp).
     } else if (burnGate(u)) {
         // A thrower of fire: a foe's gate in his reach, alight (world_fire.cpp).
     } else if (creepToWall(u)) {
@@ -1661,9 +1690,11 @@ bool World::shootNearby(Unit& u) {
     if (u.stats.ranged.ammo > 0 && !worthAShot(u, *target)) return false;
     u.facing = flatDirection(u.pos, target->pos, u.facing);
     if ((target->pos - u.pos).flat().length() >= u.stats.ranged.minRange && readyToLoose(u)) {
-        Vec3 aim = target->pos;
+        Fixed spread;
+        Vec3 aim = leadMark(u, *target, spread);
         const bool atWalk = aimHigh(u, aim, target->stats.height);
-        fireAt(u, aim, atWalk);
+        if (!atWalk) aim = chestOf(u, *target, aim);
+        fireAt(u, aim, atWalk, spread);
     }
     return true;
 }
@@ -1775,7 +1806,7 @@ void World::separateBodies() {
     unitGrid_.build();
     // The pairs: where each stands and how wide, in the grid's order and in step with the soldiers (a push moves both),
     // so that the many that are near but not touching are told apart by reading one run of numbers, not the soldiers.
-    const Fixed maxRadius = Fixed::fromInt(3);
+    const Fixed maxRadius = Fixed::fromInt(3) + kPersonalSpace;
     const std::vector<uint32_t>& items = unitGrid_.items();
     bodies_.resize(items.size());
     bodyOf_.resize(units_.size());
@@ -1793,16 +1824,24 @@ void World::separateBodies() {
                 const Body& body = bodies_[m];
                 const uint32_t j = body.index;
                 const Vec3 d{body.x - a.pos.x, body.y - a.pos.y, Fixed::zero()};
-                const Fixed reach = radius + body.radius;
+                // Men of one side keep a stride of room between them (they fight as a line or block, never a ball); a foe
+                // is kept off by his body alone.
+                Unit& b = units_[j];
+                const bool friends = b.owner == a.owner;
+                const Fixed reach = radius + body.radius + (friends ? kPersonalSpace : Fixed::zero());
                 const Fixed distSq = d.lengthSq();
                 if (j <= i || distSq >= reach * reach) continue;  // each pair once, and only the touching
-                Unit& b = units_[j];
                 Fixed dist = sqrt(distSq);
                 Vec3 n = dist > Fixed::zero() ? d / dist : Vec3{Fixed::one(), Fixed::zero(), Fixed::zero()};
-                const Fixed overlap = reach - dist;
-                const Fixed total = a.stats.mass + b.stats.mass;
-                a.pos -= n * (overlap * b.stats.mass / total);
-                b.pos += n * (overlap * a.stats.mass / total);
+                // (Room is made over a few ticks; bodies that overlap are put apart at once.)
+                const Fixed bodies = radius + body.radius;
+                const Fixed overlap = dist < bodies ? bodies - dist + (reach - bodies) / 2 : (reach - dist) / 2;
+                // (Foe against foe, the ranks at a man's back push with him: a deep body drives a thin one back.)
+                const Fixed ma = friends ? a.stats.mass : a.stats.mass * (Fixed::one() + Fixed::fromRatio(a.backed, 2));
+                const Fixed mb = friends ? b.stats.mass : b.stats.mass * (Fixed::one() + Fixed::fromRatio(b.backed, 2));
+                const Fixed total = ma + mb;
+                a.pos -= n * (overlap * mb / total);
+                b.pos += n * (overlap * ma / total);
                 bodies_[m].x = b.pos.x;
                 bodies_[m].y = b.pos.y;
             }
@@ -2213,7 +2252,7 @@ bool World::clearFlight(const Vec3& origin, const Vec3& velocity, const Vec3& ta
     return true;
 }
 
-Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const {
+Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf, PlayerId friendsOf) const {
     const Vec3 flat = (mark - origin).flat();
     const Fixed dist = flat.length();
     Fixed need = -Fixed::fromInt(1000);
@@ -2234,6 +2273,20 @@ Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) co
         const Fixed x = dist * Fixed::fromRatio(i, steps);
         const Vec3 p = origin + dir * x;
         over(x, groundHeight(p.x, p.y));
+    }
+    // The shooter's own men standing in the way (his own rank, the line he shoots over), but not within kFriendNearMark of
+    // the mark: a friend fighting the man shot at takes his chance, as a friend stepping into the line does.
+    if (friendsOf != 0xFF) {
+        constexpr Fixed kFriendNearMark = Fixed::fromInt(4);
+        nearby(origin.x + flat.x / 2, origin.y + flat.y / 2, dist / 2 + Fixed::fromInt(2), [&](uint32_t k) {
+            const Unit& o = units_[k];
+            if (o.owner != friendsOf || !o.alive() || o.inAir()) return;
+            const Vec3 rel = (o.pos - origin).flat();
+            const Fixed along = rel.dot(dir);
+            if (along <= Fixed::zero() || along >= dist - kFriendNearMark) return;
+            if (abs(cross(rel, dir)) >= o.stats.radius + kLoftClear) return;
+            over(along, o.pos.z + o.stats.height);
+        });
     }
     if (!config_.region) return need;
     // Rocks, trees and houses across the way: over their near edge, middle and
@@ -2293,7 +2346,7 @@ bool World::canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* 
     return true;
 }
 
-bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
+bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed, Fixed spread) {
     const RangedWeapon& w = u.stats.ranged;
     if (!armed(u)) return false;
     Vec3 origin = u.pos + up(u.stats.height * kMuzzleHeightFraction);
@@ -2304,7 +2357,7 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
     const Fixed range = (target - origin).flat().length();
     Fixed rankFactor = max(Fixed::one() - kDispersionPerRank * u.rank, kMinDispersionFactor);
     if (u.wavering()) rankFactor = rankFactor * 3 / 2;  // shaken hands shoot wide
-    Fixed radius = w.dispersionAt100m * range / 100 * rankFactor;
+    Fixed radius = w.dispersionAt100m * range / 100 * rankFactor + spread;
     // Arrows and fireballs go over what is in the way when the flat shot
     // would strike it; shot blind (the mark itself hidden), they scatter more.
     Vec3 lob;
@@ -2356,7 +2409,7 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
     // or the full lob over masonry; a defender on a wall-walk is shot direct.
     if (!atWalk && (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov)) {
         const LaunchSolution flat = solveLowArc(origin, aim, w.muzzleSpeed, config_.gravity);
-        const Fixed need = clearingTan(origin, aim, kClearShort);
+        const Fixed need = clearingTan(origin, aim, kClearShort, u.owner);
         if (flat.inRange && need > elevationTan(flat.velocity)) {
             const LaunchSolution steep = solveHighArc(origin, aim, w.muzzleSpeed, config_.gravity);
             if (steep.inRange && need <= elevationTan(steep.velocity))
@@ -2656,9 +2709,10 @@ void World::updateProjectiles() {
             if (!burstsOnImpact(p.kind)) hit->shotTick = tick_ + 1;
             if (burstsOnImpact(p.kind)) {
                 spent = burst(at, StoneFall::Man);
-            } else if (p.kind == ProjectileKind::Arrow && !p.thrown && arrowSpared(*hit)) {
-                // Stopped by a trunk, or stepped aside from in loose order (world_formation.cpp): it sticks in the ground by him.
-                tell(TacticEvent::Kind::Cover, *hit);
+            } else if (bool covered = false; p.kind == ProjectileKind::Arrow && !p.thrown && arrowSpared(*hit, covered)) {
+                // Stopped by a trunk, stepped aside from in loose order, or past a man going too fast (world_formation.cpp):
+                // it sticks in the ground by him.
+                if (covered) tell(TacticEvent::Kind::Cover, *hit);
                 placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
                 impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             } else if (shieldBlocks(*hit, p.vel, wading(*hit) ? Fixed::fromRatio(1, 2) : Fixed::one())) {  // (a man wading cannot keep his shield up)
@@ -2761,7 +2815,7 @@ void World::explode(const Vec3& at, const Explosive& burst, PlayerId owner, Proj
         const Vec3 dir = awayFrom(u.pos);
         if (u.scav.satchel) setOffHeld(u);  // the satchel in his hands goes off too
         if (u.alive()) {
-            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage).floorToInt()), nullptr, {cause, dir, centre, false, true});
+            const bool killed = damage(u, static_cast<int32_t>((f * ex.damage * (100 + formBlastPct(u)) / 100).floorToInt()), nullptr, {cause, dir, centre, false, true});
             impacts_.push_back({ImpactEvent::Kind::Hit, centre, dir, kNoEntity, u.id, killed, {}, -1, cause});
             // Blown far past death, he is torn to pieces (world_death.cpp decides).
             if (killed && u.death.kind == DeathKind::Gibbed) spawnGibs(u, at, ex.impulse * f);
@@ -2965,6 +3019,10 @@ uint64_t World::checksum() const {
             h.addU64(u.called);
         }
         if (u.disorder != 0) h.addI64(u.disorder);
+        if (u.backed != 0 || u.flankShock != 0) {
+            h.addI64(u.backed);
+            h.addU64(u.flankShock);
+        }
         if (u.helping != kNoEntity) {
             h.addU64(u.helping);
             h.addU64(u.helpSince);
@@ -3072,7 +3130,7 @@ uint64_t World::checksum() const {
             u.graceTicks != 0 || u.lastAttacker != kNoEntity) {
             h.addU64(u.targetUnit);
             h.addU64(u.targetChosen);
-            hashVec(h, u.targetSeen);
+            hashVec(h, u.stride);
             h.addU64(u.rally);
             hashVec(h, u.rallyOffset);
             h.addU64(u.forceMarch);

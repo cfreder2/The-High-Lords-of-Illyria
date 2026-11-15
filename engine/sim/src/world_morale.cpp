@@ -56,6 +56,13 @@ constexpr int32_t kCallCooldown = 15 * kTicksPerSecond, kHeroCallCooldown = 12 *
 
 bool isHero(const Unit& u) { return u.stats.type == static_cast<uint8_t>(UnitType::Hero); }
 
+// What a man counts for in the census, in tenths: his mass (a man 1, a horse and rider 2.5), at least a man, at most
+// kWeightMost: a few knights are not cowed by a crowd of footmen as a few footmen would be.
+constexpr int32_t kWeightOfAMan = 10, kWeightMost = 25;
+int32_t censusWeight(const Unit& u) {
+    return std::clamp(static_cast<int32_t>((u.stats.mass * kWeightOfAMan).floorToInt()), kWeightOfAMan, kWeightMost);
+}
+
 }  // namespace
 
 void World::shakeMorale(Unit& u, int32_t points) {
@@ -107,8 +114,9 @@ void World::updateMorale() {
         if (!u.alive() || u.stats.moraleShockPct == 0) continue;
         u.calmTicks = std::min(u.calmTicks + 1, kCalmTicks);
         if (census) {
-            int32_t friends = 1, foes = 0;  // itself among its friends
-            int32_t wetFoes = 0;            // of the foes, those wading while he is not
+            // In tenths of a man, each by his weight (censusWeight): itself among its friends.
+            int32_t friends = censusWeight(u), foes = 0;
+            int32_t wetFoes = 0;  // of the foes, those wading while he is not
             const bool dry = !wet_.empty() && !wet_[static_cast<size_t>(&u - units_.data())];
             int32_t steady = 0;
             bool hero = false, lordClose = false;
@@ -125,16 +133,17 @@ void World::updateMorale() {
                     const int32_t og = veteranGrade(o);
                     if (og >= 2 && og > grade) steady += og >= 3 ? kSteadyElite : kSteadyVeteran;
                 }
-                if (d2 >= kCensusReach * kCensusReach) return;
-                (o.owner == u.owner ? friends : foes) += 1;
-                if (dry && o.owner != u.owner && wet_[i]) ++wetFoes;
+                // (A broken man is no help to his friends and no threat to his foes: he is running.)
+                if (d2 >= kCensusReach * kCensusReach || o.routed) return;
+                (o.owner == u.owner ? friends : foes) += censusWeight(o);
+                if (dry && o.owner != u.owner && wet_[i]) wetFoes += censusWeight(o);
             });
             foes -= wetFoes / 2;
             u.steady = std::min(steady, kSteadyMax);
             if (foes > friends) {
-                shakeMorale(u, (foes - friends) * kOutnumberedShock);
+                shakeMorale(u, (foes - friends) * kOutnumberedShock / kWeightOfAMan);
             } else if (u.calmTicks >= kCalmTicks) {
-                u.morale = std::min(kMoraleFull, u.morale + recoveryGain(u, friends, hero, lordClose));
+                u.morale = std::min(kMoraleFull, u.morale + recoveryGain(u, friends / kWeightOfAMan, hero, lordClose));
             }
         }
         if (!u.routed && u.morale < kMoraleBreak) {

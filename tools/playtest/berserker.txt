@@ -1,0 +1,40 @@
+# The Berserkers of the Ford, close: standing in guard, on the march, and sent at the Red Hand's own berserkers.
+#
+#   Illyria --play tools/playtest/berserker.txt --play-out out/berserker
+
+size 1600 900
+start skirmish ford
+wait 1
+camera 458 454 7 3.14
+wait 5
+shot berserker-1-guard-blue
+camera 458 454 5 1.57
+wait 3
+shot berserker-1b-guard-blue-side
+select 4
+camera 676 560 60 1.57
+wait 1
+click right 800 450
+camera 470 458 8 3.14
+wait_ticks 45
+shot berserker-2-moving-a
+camera 478 462 8 1.57
+wait_ticks 30
+shot berserker-2-moving-b
+speed 4
+camera 640 545 16 1.57
+wait_ticks 1300
+shot berserker-3-far-a
+wait_ticks 150
+shot berserker-3-far-b
+wait_ticks 150
+shot berserker-3-far-c
+wait_ticks 150
+shot berserker-3-far-d
+camera 676 560 14 1.57
+wait_ticks 150
+shot berserker-3-far-e
+wait_ticks 150
+shot berserker-3-far-f
+stats
+quit

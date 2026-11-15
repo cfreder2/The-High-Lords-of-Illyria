@@ -38,6 +38,7 @@ constexpr Fixed kStandOff = Fixed::fromInt(2);
 // within kFlankCrowd of a place counts kCrowdCost metres against it.
 constexpr Fixed kSlotRange = Fixed::fromInt(4), kFlankCrowd = Fixed::fromRatio(5, 2), kCrowdCost = Fixed::fromRatio(3, 4);
 constexpr Fixed kRingShare = Fixed::fromRatio(3, 1);  // of the ring round a foe, a third is the front
+constexpr Fixed kSlotBehind = Fixed::fromRatio(1, 4);  // (cos of about 105 degrees: how far round a foe a man looks for his place)
 // Melee blows are blocked less often than arrows: the attacker can work round the shield.
 constexpr Fixed kMeleeBlockScale = Fixed::fromRatio(7, 10);
 // Charges. Momentum builds toward the rider's speed by this share a tick
@@ -55,6 +56,8 @@ constexpr Fixed kChargeKnock = Fixed::fromRatio(1, 3);
 // (What a charge does to the nerve of the man ridden down, by where it lands: chargeShock, world_tactics.cpp.)
 // Braced pikes: their blow on the horse that runs onto them, in percent, and what it does to the rider's nerve.
 constexpr int32_t kBracedPct = 150, kBracedShock = 250;
+// Any other foot standing formed (bracedFoot) and met head on: this share of the impact lands, and of the pike's shock on the rider.
+constexpr int32_t kBracedFootImpactPct = 25;
 // A blow from this much above (hundredths of grade: 0.06, about 1 in 16) is told as the high ground's.
 constexpr int32_t kHighToldGrade = 6;
 // A man wading, struck by a man on dry ground: what each such blow does to his nerve.
@@ -84,6 +87,12 @@ constexpr Fixed kHeightRangePerMetre = Fixed::one();
 // (about 15 degrees, a long flat shot), at most +25%.
 constexpr Fixed kPlungeSine = Fixed::fromRatio(1, 4);
 constexpr int32_t kPlungePctMax = 25;
+
+// A moving mark: the shooter leads a man by his pace times the missile's flight, misjudging it (kLeadLowPct to
+// kLeadHighPct of the true lead, evenly), and aims within a circle wider by kMovingSpreadPct of the way the man goes
+// while it flies; never more than kMaxLead ahead. A stone flies its steep arc, a third longer than a bowshot's time.
+constexpr int32_t kLeadLowPct = 60, kLeadHighPct = 110, kMovingSpreadPct = 30;
+constexpr Fixed kMaxLead = Fixed::fromInt(15);
 
 int32_t floorPct(Fixed v) { return static_cast<int32_t>(v.floorToInt()); }
 
@@ -138,6 +147,24 @@ int32_t World::sidePct(HitSide side, bool missile) {
     return 100;
 }
 
+Vec3 World::leadMark(const Unit& u, const Unit& t, Fixed& spread) {
+    spread = Fixed::zero();
+    const Vec3 vel = t.stride * Fixed::fromInt(kTicksPerSecond);
+    const Fixed speed = vel.length(), muzzle = u.stats.ranged.muzzleSpeed;
+    if (speed == Fixed::zero() || muzzle <= Fixed::zero()) return t.pos;
+    const Fixed dist = (t.pos - u.pos).flat().length();
+    const Fixed flight = dist / muzzle * (u.stats.ranged.kind == ProjectileKind::Stone ? Fixed::fromRatio(5, 3) : Fixed::fromRatio(11, 10));
+    const int32_t judged = kLeadLowPct + static_cast<int32_t>(rng_.nextBelow(static_cast<uint32_t>(kLeadHighPct - kLeadLowPct + 1)));
+    Vec3 lead = vel * (flight * judged / 100);
+    if (lead.length() > kMaxLead) lead = lead / lead.length() * kMaxLead;
+    spread = speed * flight * kMovingSpreadPct / 100;
+    return t.pos + lead;
+}
+
+Vec3 World::chestOf(const Unit& u, const Unit& t, const Vec3& at) {
+    return u.stats.ranged.kind == ProjectileKind::Arrow ? at + up(t.stats.height * 3 / 5) : at;
+}
+
 Fixed World::shotRange(const Unit& u, Fixed base, const Vec3& target) const {
     const Fixed above = u.pos.z - target.z;
     return base + clamp(above * kHeightRangePerMetre, -base / 4, base / 2);
@@ -167,6 +194,24 @@ bool World::turnToward(Unit& u, const Vec3& dir) const {
     if (len > Fixed::zero()) turned = turned / len;
     u.facing = turned;
     return u.facing.dot(dir) >= kStrikeCos;
+}
+
+HitSide World::sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind, bool charge) {
+    HitSide side = hitSide(target.facing, dir);
+    const bool closed = charge && formed(target) && formationRule(target.formation).tight;
+    if (side != HitSide::Front && allRound(target)) {
+        // A square has no flank.
+        side = HitSide::Front;
+        tell(TacticEvent::Kind::Square, target);
+    } else if (side == HitSide::Flank && closed && target.facing.dot(dir) <= Fixed::zero()) {
+        // A charge into closed ranks from anywhere ahead of the line meets its front: the men at his shoulder cover him.
+        side = HitSide::Front;
+    }
+    behind = side == HitSide::Rear;  // truly at his back
+    // Busy with someone else, he is off guard: a flank is as open as his back (a rider's charge excepted into closed ranks).
+    busy = target.foe != kNoEntity && target.foe != by;
+    if (side == HitSide::Flank && busy && !closed) side = HitSide::Rear;
+    return side;
 }
 
 int32_t World::meleeCap(const Unit& u, const Unit& foe) const {
@@ -203,7 +248,13 @@ bool World::ringSlot(const Unit& u, const Unit& foe, Vec3& slot) const {
                                  {-Fixed::one(), Fixed::zero(), Fixed::zero()}, {-kD, -kD, Fixed::zero()},
                                  {Fixed::zero(), -Fixed::one(), Fixed::zero()}, {kD, -kD, Fixed::zero()}};
     const Fixed radius = foe.stats.radius + u.stats.radius + u.stats.melee.reach - kCloseIn;
-    const Fixed width = u.stats.radius * 2 * Fixed::fromRatio(9, 10);
+    // (A place a friend's body and his room are in is taken.)
+    const Fixed width = u.stats.radius * 2 + Fixed::fromRatio(2, 5);
+    // Only the places on his own side of the foe (within about 100 degrees of the way he comes from): the ends of a wider line
+    // wrap a foe's flank, the ranks behind a front wait their turn behind it; nobody walks round a man to his back.
+    const Vec3 from = (u.pos - foe.pos).flat();
+    const Fixed fromLen = from.length();
+    const Vec3 bearing = fromLen > Fixed::zero() ? from / fromLen : -foe.facing;
     Vec3 at[8];
     Fixed crowd[8] = {};
     bool taken[8] = {};
@@ -220,7 +271,7 @@ bool World::ringSlot(const Unit& u, const Unit& foe, Vec3& slot) const {
     int best = -1;
     Fixed bestScore;
     for (int k = 0; k < 8; ++k) {
-        if (taken[k]) continue;
+        if (taken[k] || dirs[k].dot(bearing) < -kSlotBehind) continue;
         const Fixed score = (at[k] - u.pos).flat().length() + crowd[k] * kCrowdCost;
         if (best < 0 || score < bestScore) best = k, bestScore = score;
     }
@@ -317,14 +368,8 @@ void World::fight(Unit& u, Unit& enemy) {
     }
 
     const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
-    HitSide side = hitSide(enemy.facing, dir);
-    if (side != HitSide::Front && allRound(enemy)) {
-        // A square has no flank.
-        side = HitSide::Front;
-        tell(TacticEvent::Kind::Square, enemy);
-    }
-    // Busy with someone else, it is off guard: a flank is as open as its back.
-    if (side == HitSide::Flank && enemy.foe != kNoEntity && enemy.foe != u.id) side = HitSide::Rear;
+    bool busyAside = false, behind = false;
+    const HitSide side = sideStruck(enemy, dir, u.id, busyAside, behind, false);
     // Position, told (world_tactics.cpp): a man caught wading or mired, a blow from well above.
     const Footing his = footing(enemy), mine = footing(u);
     if (his == Footing::Ford && mine != Footing::Ford) {
@@ -347,11 +392,19 @@ void World::fight(Unit& u, Unit& enemy) {
     const bool killed = damage(enemy, amount, &u, {m.damageType, dir, at});
     if (side != HitSide::Front) enemy.flankTick = tick_ + 1;
     shakeBySide(enemy, side, false);
+    // Struck in the flank or back while he fights another to his front: his whole squad feels it (world_tactics.cpp).
+    if (side != HitSide::Front && busyAside) flankedInMelee(enemy, side);
     if (m.knockback > Fixed::zero()) {
         const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
         knock(enemy, dir, m.knockback * (Fixed::one() + downhill));
     }
     impacts_.push_back({ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}, -1, m.damageType});
+}
+
+bool World::bracedFoot(const Unit& u) const {
+    // On foot, standing (not on the march), in closed ranks that hold (formed, a tight formation), on firm ground.
+    return !u.stats.mounted && u.stats.melee.damage > 0 && formed(u) && formationRule(u.formation).tight && footing(u) == Footing::Firm &&
+           (!u.hasMoveTarget || u.engageFoe != kNoEntity) && u.stride.lengthSq() * 4 < Fixed::fromRatio(1, 100);
 }
 
 bool World::chargeReady(const Unit& u) const {
@@ -370,22 +423,17 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
                                      : std::max(kChargeUphillPctMin, -floorPct(grade * kChargeUphillPctPerGrade)));
     const Fixed weight = speed * u.stats.mass * slopePct / 100;
     const int32_t impact = floorPct(weight * kChargeDamage);
-    HitSide side = hitSide(enemy.facing, dir);
-    if (side != HitSide::Front && allRound(enemy)) {
-        // A square has no flank: the charge meets a front (and its pikes, braced).
-        side = HitSide::Front;
-        tell(TacticEvent::Kind::Square, enemy);
-    }
-    const bool busy = enemy.foe != kNoEntity && enemy.foe != u.id;
-    const bool behind = side == HitSide::Rear;  // truly at his back (not a flank that counts as one because he is busy)
-    if (side == HitSide::Flank && busy) side = HitSide::Rear;
+    // (A square's front meets it all round, and its pikes are braced.)
+    bool busy = false, behind = false;
+    const HitSide side = sideStruck(enemy, dir, u.id, busy, behind, true);
     tell(TacticEvent::Kind::Charge, enemy, static_cast<int32_t>(side));
     if (slopePct >= 100 + kDownhillTold) tell(TacticEvent::Kind::Downhill, enemy);
     ambush(u, enemy);
-    // Charged home: out of order. Into a flank or a back he does not stand in the melee to die: away to re-form and come
-    // again (unless told to hold). Into a front that stood, he has made his bed: he fights it out as before.
+    // Charged home: out of order. He does not stand in the melee to die: away to re-form and come again (unless told to
+    // hold). Only a front that stood braced for him (below) holds him there, where he has made his bed.
     disorder(u, kChargeDisorder);
-    if (!u.hold && side != HitSide::Front) {
+    const bool braced = side == HitSide::Front && bracedFoot(enemy);
+    if (!u.hold && !braced) {
         u.wheel = kWheelTicks;
         u.wheelDir = -dir;
     }
@@ -409,6 +457,19 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     }
 
     const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
+    if (braced) {
+        // Foot standing formed to meet him: the charge breaks on the front rank. His blow lands, the weight behind it
+        // half, and he is shaken and stuck in the press (a body that marched, or stood loose or broken, is ridden through).
+        tell(TacticEvent::Kind::Braced, enemy);
+        const bool caught = shieldBlocks(enemy, dir, kMeleeBlockScale);
+        const int32_t amount = (caught ? 0 : scaledDamage(u.stats.melee.damage, blowPct(u, enemy, dist, dz))) + impact * kBracedFootImpactPct / 100;
+        const bool killed = damage(enemy, amount, &u, {u.stats.melee.damageType, dir, at});
+        chargeShock(enemy, side, false);
+        knock(u, -dir, weight * kChargeKnock / 2);  // (thrown back off the shields: he does not ride through)
+        shakeMorale(u, kBracedShock);
+        impacts_.push_back({caught ? ImpactEvent::Kind::Blocked : ImpactEvent::Kind::Hit, at, dir, kNoEntity, enemy.id, killed, {}, -1, u.stats.melee.damageType});
+        return;
+    }
     // A shield turns the lance or sword but not the weight behind it.
     const bool blocked = shieldBlocks(enemy, dir, kMeleeBlockScale);
     const int32_t blow = blocked ? 0 : scaledDamage(u.stats.melee.damage, blowPct(u, enemy, dist, dz));

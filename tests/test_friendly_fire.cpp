@@ -71,7 +71,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // (was 0x0e98f7b87d48c48d before this scene's engine threw from no store, the cart's four stones being fewer than its throws; was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
+constexpr uint64_t kAloneSum = 0x3d3d3ccbfa900926;  // (was 0x4706d43339ae7233 before the orders pass: men keep room, depth, the flank of a busy squad, braced foot, arrows led, aimed at the body and lofted over their own, the census by weight, the men stepping in turn; was 0x0e98f7b87d48c48d before this scene's engine threw from no store, the cart's four stones being fewer than its throws; was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
@@ -104,8 +104,8 @@ TEST(a_catapult_aims_to_spare_the_friends_beside_its_foes) {
                 alone.foesLost, static_cast<unsigned long long>(alone.sum), one.friendsLost, one.friendsDead, one.foesLost, three.friendsLost,
                 three.friendsDead, three.foesLost);
     // No friend near: the catapult throws as it did before the rule (the same stones at the same marks; each now rolls
-    // on through the pile, world_boulder.cpp, so the toll is 8380 where the smash alone took 6156).
-    CHECK(alone.foesLost == 8380);
+    // on through the pile, world_boulder.cpp, so the toll is 8160, 8380 before the pile kept room between its men, where the smash alone took 6156).
+    CHECK(alone.foesLost == 8160);  // (was 8380 before the orders pass: the pile keeps room between its men)
     CHECK(alone.sum == kAloneSum);
     // Friends near: nearly none of them hurt (a tenth of the old toll at most), and the pile still shelled to near as much.
     CHECK(one.friendsLost * 10 <= 90 && one.friendsDead == 0);
@@ -114,27 +114,31 @@ TEST(a_catapult_aims_to_spare_the_friends_beside_its_foes) {
     CHECK(one.foesLost * 10 >= alone.foesLost * 8);
 }
 
-TEST(an_archer_shoots_the_friend_standing_in_the_line) {
-    // Six metres in front of the bowman, on the line to his foe: he does not look; the friend takes the arrows in the back.
-    int hitFriend = 0, hitFoe = 0;
-    for (uint64_t seed = 1; seed <= 6; ++seed) {
-        Scene s(seed);
-        const EntityId bow = s.w.spawnUnit(0, {m(-40), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
-        s.friends.push_back(s.w.spawnUnit(0, {m(-34), m(0), m(0)}, kEast, stander(UnitType::HeavyInfantry, 5000)));
-        s.foes.push_back(s.w.spawnUnit(1, {m(0), m(0), m(0)}, kWest, stander(UnitType::HeavyInfantry, 5000)));
-        const Command shoot{0, bow, Command::Type::AttackGround, {m(0), m(0), m(0)}};
-        s.w.step(std::span(&shoot, 1));
-        for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
-            s.w.step({});
-            for (const ImpactEvent& e : s.w.impacts()) {
-                if (e.kind != ImpactEvent::Kind::Hit) continue;
-                hitFriend += e.hitUnit == s.friends[0];
-                hitFoe += e.hitUnit == s.foes[0];
+TEST(an_archer_shoots_over_his_own_line_and_into_the_melee_at_the_mark) {
+    // A friend six metres in front of the bowman, on the line to his foe: the arrow is lofted over his head (the shooter's
+    // own rank and line, docs/GAME_DESIGN.md §3.1). A friend at the foe's side, in the melee at the mark: he takes his chance.
+    int nearFriend = 0, markFriend = 0, hitFoe = 0;
+    for (uint64_t seed = 1; seed <= 6; ++seed)
+        for (const bool atMark : {false, true}) {
+            Scene s(seed);
+            const EntityId bow = s.w.spawnUnit(0, {m(-40), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
+            s.friends.push_back(s.w.spawnUnit(0, {atMark ? Fixed::fromRatio(-12, 10) : m(-34), m(0), m(0)}, kEast, stander(UnitType::HeavyInfantry, 5000)));
+            s.foes.push_back(s.w.spawnUnit(1, {m(0), m(0), m(0)}, kWest, stander(UnitType::HeavyInfantry, 5000)));
+            const Command shoot{0, bow, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+            s.w.step(std::span(&shoot, 1));
+            for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
+                s.w.step({});
+                for (const ImpactEvent& e : s.w.impacts()) {
+                    if (e.kind != ImpactEvent::Kind::Hit) continue;
+                    (atMark ? markFriend : nearFriend) += e.hitUnit == s.friends[0];
+                    hitFoe += e.hitUnit == s.foes[0];
+                }
             }
         }
-    }
-    std::printf("  arrows into the friend %d, into the foe %d\n", hitFriend, hitFoe);
-    CHECK(hitFriend > 0);
+    std::printf("  arrows into the friend in front %d, the friend at the mark %d, the foe %d\n", nearFriend, markFriend, hitFoe);
+    CHECK(nearFriend == 0);
+    CHECK(markFriend > 0);
+    CHECK(hitFoe > 0);
 }
 
 // First tick (from the order) a stone smashes, in a pile ringed by friends if `ring`, whom a Move order sends off at tick `leave` if > 0.

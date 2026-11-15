@@ -29,6 +29,7 @@ enum class Op {
     Deaths,     // deaths spawn X Y | melee X Y | blast | fell | burn | cut | shot   (the death demo: every unit type in a grid, then killed that way; or two lines set to fight there)
     Boulder,    // boulder men X Y DX DY N [own] | throw X Y TX TY | count | ground X Y   (the boulder demo: standing men, a stone thrown, the toll)
     Works,      // works squad SIDE TYPE N X Y TX TY [garrison] | count   (the works demo: a squad raised where it is wanted; the works' state)
+    Sandbox,    // sandbox squad SIDE TYPE N DX DY | fight SIDE 0|1   (set pieces: a squad set down DX, DY metres from the field's middle)
     Print,      // print TEXT...       (a line to stdout, to mark a place in the log)
     Quit,       // quit
 };
@@ -45,6 +46,7 @@ struct Command {
     bool full = false;      // Shot: the drawable's pixels, not the window's points
     bool easy = false;      // Start
     int lord = -1;          // Start
+    int place = -1;         // Start sandbox (or another match): which of the continent's places (-1: the first recommended)
     int budget = 0;         // Start skirmish: the gold each side raises (0: the classic muster of the Ford and the village siege)
     bool defend = false;    // Start skirmish siege or capital: the player keeps the walls
     bool deploy = false;    // Start skirmish: with the deployment pause and the opening glide (else the clock runs at once)

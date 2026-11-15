@@ -1277,6 +1277,20 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
             else say("Click a squad of yours");
             return;
         }
+        if (mode == OrderMode::LightRun) {
+            V3 ground;
+            if (!camera.pickGround(x, y, ground)) return;
+            const sim::EntityId man = (pick.kind == K::Own || pick.kind == K::Enemy) && pick.index >= 0 ? units[static_cast<size_t>(pick.index)].id
+                                      : (pick.kind == K::Own || pick.kind == K::Enemy) && pick.squad >= 0 ? nearestOf(squads_[static_cast<size_t>(pick.squad)].members, ground)
+                                                                                                           : sim::kNoEntity;
+            orderLightRun(man != sim::kNoEntity ? toV3(world_->units()[man - 1].pos) : ground, man);
+            return;
+        }
+        if (mode == OrderMode::TakeSatchel) {
+            V3 ground;
+            if (camera.pickGround(x, y, ground)) orderTakeSatchel(ground);
+            return;
+        }
         if (mode == OrderMode::LaySatchel || mode == OrderMode::Detonate) {
             V3 ground;
             if (!camera.pickGround(x, y, ground)) return;

@@ -629,6 +629,8 @@
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
     `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid; a dwarf lays a satchel at the next click (Shift + click: a line).</td></tr>` +
     `<tr><td>${k("L")}</td><td>Detonate: click a satchel. Your men in the red ring die too.</td></tr>` +
+    `<tr><td>${k(";")}</td><td>Take: hyena-folk selected, click a satchel lying on the ground. One goes and carries it.</td></tr>` +
+    `<tr><td>${k("'")}</td><td>Light and run: the carrier runs at the man you click, fuse lit. It goes off where he is.</td></tr>` +
     `<tr><td>${k("Shift")} + ${k("K")}</td><td>Hold fire (again: fire at will).</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +

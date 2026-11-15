@@ -483,6 +483,13 @@ public:
     // name, "" for none), and whether a squad is guarded, for the cards.
     void orderGuard(sim::EntityId friendly);
     void guardAction();
+    // The satchel run (battle_satchels.cpp; sim Command::TakeSatchel and LightFuse, world_scavenge.cpp). Take (;): the
+    // next tap is a satchel lying on the ground, and the nearest of the selected hyena-folk with empty hands goes and takes
+    // it up. Light ('): the next tap is the man (or the place) a carrier runs at, its fuse lit: it goes off where he is.
+    void takeAction();
+    void lightAction();
+    void orderTakeSatchel(const V3& at);
+    void orderLightRun(const V3& at, sim::EntityId target);
     std::string guards(const Squad& s) const;
     bool guarded(const Squad& s) const;
     void holdFireSelected();
@@ -492,6 +499,7 @@ public:
     struct Load {
         int satchels = 0, satchelsMax = 0, ammo = 0, ammoMax = 0;
         bool holdFire = false;
+        bool lit = false;  // a man of it runs with a satchel's fuse lit (the satchel run)
     };
     Load squadLoad(const Squad& s) const;
     // What the selected still carry, in words, counted now: "4 fireballs left", "5 satchels, 6 Molotovs left", "No fireballs
@@ -526,6 +534,7 @@ public:
         V3 pos;
         int squad = -1, answer = -1;  // squads_ indices (-1: none)
         sim::EntityId caller = sim::kNoEntity;  // a man of the squad that called
+        sim::HelpCall::Why why = sim::HelpCall::Why::Outnumbered;
     };
     const std::vector<Call>& calls() const { return calls_; }
     // Answering by hand: the latest call still standing is chosen, and the nearest free squad of the player's selected
@@ -630,7 +639,7 @@ public:
     // is queued and the mode stays, for a line of them. Detonate: the next tap
     // is a satchel (or ground) to set off (orderDetonate).
     // Guard: the next tap is the friend the selection is to guard (orderGuard).
-    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel, Detonate, Guard };
+    enum class OrderMode : uint8_t { Normal, Attack, ForceMarch, LaySatchel, Detonate, Guard, TakeSatchel, LightRun };
     void setOrderMode(OrderMode m) { orderMode_ = m; }
     OrderMode orderMode() const { return orderMode_; }
     // Modifier keys held on the desktop: force (Ctrl/Cmd) and march (Alt).

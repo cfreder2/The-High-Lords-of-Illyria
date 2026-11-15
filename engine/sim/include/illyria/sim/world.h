@@ -206,6 +206,9 @@ struct Scavenger {
     bool satchel = false;
     int32_t fuse = 0;  // the satchel's fuse left, burning down in his hands
     Explosive blast;   // and its charge
+    // The satchel run (Command::TakeSatchel, Command::LightFuse): `fetching`, sent to take one up where his march ends;
+    // `lit`, its fuse lit in his hands by his own hand (or by fire): he runs in with it and does not throw it away.
+    bool fetching = false, lit = false;
     bool holding() const { return satchel || held != RemainKind::None; }
 };
 
@@ -234,9 +237,12 @@ struct Command {
     // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
     // Guard: he guards the friend `targetUnit` and that man's squad (world_guard.cpp): stays by them, between them and
     // the nearest threat, meets what comes at them, and goes to nobody else's help. Any order of his own ends it.
+    // TakeSatchel: a scavenger goes to `target` and takes up the satchel lying there (world_scavenge.cpp, the satchel run).
+    // LightFuse: a scavenger with a satchel in his hands lights its fuse and runs, deaf to all else, at `targetUnit` (or
+    // to `target`): it goes off where he is when the fuse is out. A sacrifice the player chooses.
     // Sortie: horse ride out at the engine `targetUnit` (or the place `target`), throw the oil they carry at it, cut down
     // what stands by it and ride back to where they set out from (world_sortie.cpp): the garrison's own sally, ordered.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard, Sortie };
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard, TakeSatchel, LightFuse, Sortie };
     // Work: one of the world's timber works (World::works): engines and bombers smash it, bowmen with fire arrows set it
     // alight, the rest hack at it.
     enum class Object : uint8_t { Gate, Wall, Obstacle, Work };
@@ -306,6 +312,7 @@ struct Unit {
     Vec3 pos;
     Vec3 facing;  // unit-length, horizontal
     Vec3 vel;     // only while thrown through the air
+    Vec3 stride;  // how far he went over the ground last tick (flat; nothing while thrown): a shooter leads him by it
     bool airborne = false;  // thrown by a blow or blast (not flying)
     bool engaged = false;   // fought in melee this tick
     // The enemy it is trading blows with: it keeps to that one while in reach,
@@ -346,6 +353,10 @@ struct Unit {
     FormationKind formation = FormationKind::None;
     int32_t ranked = 0;
     int32_t disorder = 0;
+    // `backed`: ranks of squad-mates at his back at the last census (0 to 2): a deep body holds (world_formation.cpp).
+    // `flankShock`: the tick his squad was last shaken by a foe in its flank or back while it fought to its front (0: never).
+    int32_t backed = 0;
+    uint32_t flankShock = 0;
     // Calls for help (world_help.cpp). `called`: the tick his squad last called (0: never). `helping`: the friend whose
     // call he is answering (his march to him is the answer's, not an order: any order ends it). `shotTick`, `flankTick`:
     // when a missile last struck him, and a blow in his flank or back (0: never).
@@ -400,7 +411,6 @@ struct Unit {
     // when he picked it himself after a kill (then he lets it run if it flees).
     EntityId targetUnit = kNoEntity;
     bool targetChosen = false;
-    Vec3 targetSeen;  // where the target stood last tick: missile troops lead him
     // AttackUnit: the friend to rejoin once the target is down, and where
     // beside him (his old place in the formation).
     EntityId rally = kNoEntity;
@@ -976,7 +986,9 @@ public:
     // the ground, rocks, trees, houses, walls and standing gates, but not the
     // trees and bushes within 6 m of the mark (the wood that shelters him).
     // Very low when nothing rises into the way.
-    Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
+    // With `friendsOf` a side, its men standing in the way too (an arrow goes over the heads of the shooter's own rank and
+    // line), but not those near the mark: friends in the melee there take their chance.
+    Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf, PlayerId friendsOf = 0xFF) const;
     const Region* region() const { return config_.region.get(); }
     // Whose land each part of the field is (the conquest's territory, which changes as the war goes; a set battle
     // or a match is fought on nobody's): a side for each square of `cell` metres, `nx` to a row from `origin` (a place of the
@@ -1370,11 +1382,17 @@ private:
     // Whether his missile can be lobbed from `origin` onto `target`: in the high arc's reach, clear of walls and trunks
     // all the way, and clear of the boughs over his own head (which a missile strikes as it does a trunk).
     bool canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity = nullptr) const;
-    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No);
+    // `spread`: metres more on the circle he aims within (a moving mark: leadMark).
+    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No, Fixed spread = {});
     // `fire`, and the reload that follows, for any shooter (world_aoe.cpp). One with a blast to throw (stones, fireballs,
     // Molotovs) chooses where it falls so as to spare his own side, or holds his fire a while (true, loosing nothing,
     // when held); a bowman's flat shot is as ever: whoever stands in the line takes it. False: no clear shot.
-    bool fireAt(Unit& unit, const Vec3& target, bool atWalk = false);
+    bool fireAt(Unit& unit, const Vec3& target, bool atWalk = false, Fixed spread = {});
+    // Where to aim at a man (world_combat.cpp): ahead of him by his pace and the missile's flight, misjudged (a lead of
+    // kLeadLowPct..kLeadHighPct of the true one), and the metres to widen the aim by (a share of the way he goes while it flies).
+    Vec3 leadMark(const Unit& shooter, const Unit& target, Fixed& spread);
+    // A bowman aims at the body, not at the feet: `at` raised to the man's chest (an arrow; anything else is thrown at the ground).
+    static Vec3 chestOf(const Unit& shooter, const Unit& target, const Vec3& at);
     // Where a missile aimed at `aim` from `origin` bursts: a flat shot (fireball, Molotov) on the first man in its way.
     Vec3 burstPoint(const Unit& shooter, const Vec3& origin, const Vec3& aim) const;
     // A foe within a few metres of him: he is not to wait on his aim.
@@ -1616,6 +1634,32 @@ private:
     Unit* supportFoe(Unit& u);
     // Holding, he meets only the foe who has come within a few strides of him.
     bool withinHold(const Unit& u, const Unit& foe) const;
+    // Foot that stands to receive a charge (world_combat.cpp): on foot, not marching, formed in closed ranks on firm ground.
+    // Met head on, a rider's charge breaks on it (pikes do more: their points). Anything else he rides through and wheels.
+    bool bracedFoot(const Unit& u) const;
+    // Where a blow travelling `dir` from `by` lands on `target` (world_combat.cpp): hitSide, then the ranks: a square has no
+    // flank (told); a `charge` into closed ranks from anywhere ahead meets their front; a man busy with another is open in
+    // the flank as in the back (not, to a charge, in closed ranks). `busy`: he fights another; `behind`: truly at his back.
+    HitSide sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind, bool charge);
+    // A bowman with slower foot closing within kKiteReach while he reloads steps back from them (world_tactics.cpp): bows
+    // beat slow foot at range. Not one told to hold, and a posted one no farther than kKiteLeash behind his post.
+    bool kite(Unit& u);
+    // The satchel run (world_scavenge.cpp): a scavenger at the end of a TakeSatchel march takes up the satchel lying
+    // nearest him within 3 m (none: nothing); a LightFuse order lights the one in his hands (kRunFuseTicks) and
+    // sends him at his mark, deaf to the enemy.
+    void takeUp(Unit& u);
+    void lightAndRun(Unit& u, const Command& cmd);
+    // A posted bowman with a foe beyond his reach but within it of the ground his post's leash covers walks up to a bowshot
+    // of him, no farther than kPostLeash from his post (a line set back from its foot still shoots what comes; it walks
+    // back after: returnToPost).
+    bool closeToShoot(Unit& u);
+    // A man struck in the flank or back while he fights another to his front (world_tactics.cpp): his squad-mates near
+    // him are shaken (a flank kFlankedSquad, the back kRearSquad; a line's weak flank more), once in kFlankedEvery, and it
+    // is told (Flanked, Hit from behind) for both sides to see.
+    void flankedInMelee(Unit& struck, HitSide side);
+    // A bowman (any shooter with a reach of his own) with a foe near but not yet on him: he shoots, he does not stand to
+    // meet him (world_tactics.cpp). Within kHoldStride of his reach he fights hand to hand.
+    bool shootsInstead(const Unit& u, const Unit& foe) const;
     void support(Unit& u, Unit& foe);
     // A charge's shock, by where it lands, to the man struck and (less) the friends at his shoulder.
     void chargeShock(Unit& enemy, HitSide side, bool busy);
@@ -1625,11 +1669,14 @@ private:
     int32_t formBlowPct(const Unit& u, HitSide side) const;
     int32_t formStruckPct(const Unit& target, HitSide side, bool missile) const;
     int32_t formShockPct(const Unit& u) const;
+    // What his formation does to a blast's hurt (percent): loose order halves it; close order pays the missiles' price.
+    int32_t formBlastPct(const Unit& u) const;
     int32_t formFlankShockPct(const Unit& u) const;
     bool allRound(const Unit& u) const;
     bool turnsSlowly(const Unit& u) const;
-    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover).
-    bool arrowSpared(const Unit& u);
+    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover), or
+    // he goes too fast to be hit square (a share by his speed, world_formation.cpp; not told).
+    bool arrowSpared(const Unit& u, bool& covered);
     // His formation is lost for `ticks` (told once, when it goes).
     void disorder(Unit& u, int32_t ticks);
     // The census of the ranks and the woods, with the morale census: squad-mates near, who sees whom among the trees.

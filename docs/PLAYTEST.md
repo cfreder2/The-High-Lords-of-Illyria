@@ -78,6 +78,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `speed N` | the game's pace: 0.25, 0.5, 1, 2, 4 (Conquest: 1, 2, 4, 8). As the `-` and `=` keys. |
 | `camera X Y DISTANCE YAW` | puts the camera there, in battle metres, as `--camera`. A shortcut: a player would pan with the keys. |
 | `deaths spawn X Y` | the death demo: one soldier of every unit type, of your side, in a grid from (X, Y) in battle metres: seven to a row eastward, the rows 10 m apart southward, in unit type order. |
+| `deaths foes X Y` | the same grid of the foe's side (the other team colour), beside yours if you like; the later stages fell both. |
 | `deaths melee X Y` | a fight to watch where it stands: two lines of foot, yours and a foe's, four metres apart either side of (X, Y), a few horse behind each to ride in. They fight at once, with no order (in a ford: `ford-water.txt`). |
 | `deaths blast\|fell\|burn\|cut\|shot` | kills every one of them still standing that way, by a blow the simulation deals as a weapon's (`World::testBlow`; a satchel for `blast`): torn apart, felled whole, burned, a limb or the head cut off, shot. For looking at what each type leaves on the ground (docs/DEATH_AUDIT.md). |
 | `boulder men X Y DX DY N [own]` | the boulder demo: N light infantry who stand and do nothing, in a file from (X, Y) in battle metres, each (DX, DY) on from the last; the other side's, or with `own` yours. |
@@ -88,11 +89,14 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `works remove SIDE TYPE` | takes every man of that type of the side out of the battle (a scene cleared). |
 | `works sortie` | your riders out at the nearest engine of the foe's (as a right-click on it with them selected orders: `Command::Sortie`). |
 | `works count` | prints one line: each kind of work standing and in all, those burning, the tower engines' bolts, the riders out on a sortie (and the first's mark), the timber lying and flying, and every catapult (side:hp@x,y, `*` burning). |
+| `start sandbox [place N]` | the sandbox: an open field of the continent's (place N of the match places; without it the first recommended), a squad of heavy infantry a side in its middle. |
+| `sandbox squad SIDE TYPE N DX DY` | sets down a squad of N of unit type number TYPE (0 light infantry, 1 heavy, 2 archers, 3 pikes, 4 light cavalry, 5 heavy cavalry, 22 grenadiers, 27 hyena-folk: `illyria_sandbox_types`) for SIDE (0 yours) DX, DY metres from the field's middle, facing the nearest foe; prints its card index and where it stands in battle metres (for `camera`). |
+| `sandbox fight SIDE 0\|1` | whether that side fights on its own (the computer's handling); 0: it stands until ordered (its men still shoot and fight what comes). Set pieces: `~/Desktop/orders-pass/scripts`. |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
 
 Key names: `a`-`z`, `0`-`9`, `space`, `tab`, `return` (begins a battle waiting on its deployment, fights a finished one again, else opens the menu), `escape`, `backspace`, `backtick` (or `` ` ``: plan
-orders), `slash` (help), `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates; `key comma` then `select N` tells the selected to guard squad N.) There are
+orders), `slash` (help), `comma`, `period`, `semicolon`, `quote`, `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates; `key comma` then `select N` tells the selected to guard squad N.) There are
 no function keys (the game binds none). The game's keys are in the in-game help (`slash`).
 
 There is no `text` command: the game takes no typed text.

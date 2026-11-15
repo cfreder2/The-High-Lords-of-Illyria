@@ -31,12 +31,8 @@ constexpr int32_t kGraceTicks = 2 * kTicksPerSecond;
 constexpr Fixed kCloseIn = Fixed::fromInt(6);
 constexpr uint32_t kReplanTicks = kTicksPerSecond / 2;
 constexpr Fixed kReplanSlack = Fixed::fromInt(3);
-// Missile troops after a soldier keep to 90% of their reach, and aim ahead
-// of him by his pace times the missile's flight (distance over muzzle speed,
-// a fifth more for the arc), at most 15 m.
+// Missile troops after a soldier keep to 90% of their reach (and aim ahead of him: World::leadMark).
 constexpr int32_t kKeepRangePct = 90;
-constexpr int32_t kLeadPct = 120;
-constexpr Fixed kMaxLead = Fixed::fromInt(15);
 // After the target falls: foes within this reach are a fighter's candidates
 // (missile troops: their own reach), and the odds count the friends and foes
 // within kSupportReach of the candidate (friends at half weight: they are
@@ -151,6 +147,8 @@ void World::applyOrder(Unit& u, const Command& cmd) {
             break;
         case Command::Type::LaySatchel:  // a walk there, then the satchel (World::applyCommand)
         case Command::Type::Detonate:    // into reach, then the one shot (world_satchels.cpp)
+        case Command::Type::TakeSatchel:  // a walk there, then he takes it up (World::startOrder)
+        case Command::Type::LightFuse:    // he lights it and runs (World::lightAndRun)
             u.routeFrom = u.pos;
             if (inMelee) u.graceTicks = kGraceTicks;
             break;
@@ -159,7 +157,6 @@ void World::applyOrder(Unit& u, const Command& cmd) {
             if (t == nullptr || !t->alive() || t->id == u.id) return;
             if (u.stats.melee.damage == 0 && u.stats.ranged.muzzleSpeed == Fixed::zero()) return;
             u.targetUnit = t->id;
-            u.targetSeen = t->pos;
             u.hasMoveTarget = false;
             u.hasAttackTarget = false;
             u.attackGate = -1;
@@ -260,7 +257,9 @@ bool World::hasOrder(const Unit& u) {
 World::Stance World::stanceOfOrder(const Command& c) {
     switch (c.type) {
         case Command::Type::Move: return c.force ? Stance::Move : Stance::Patrol;
-        case Command::Type::LaySatchel: return Stance::Patrol;
+        case Command::Type::LaySatchel:
+        case Command::Type::TakeSatchel: return Stance::Patrol;
+        case Command::Type::LightFuse: return Stance::Move;
         case Command::Type::AttackUnit:
         case Command::Type::AttackGround:
         case Command::Type::AttackGate:
@@ -486,7 +485,6 @@ void World::targetDown(Unit& u, bool marching) {
             u.engageFoe = cand->id;
         } else {
             u.targetUnit = cand->id;
-            u.targetSeen = cand->pos;
             u.targetChosen = true;
             u.path.clear();
             u.pathIndex = 0;
@@ -522,10 +520,6 @@ void World::pursue(Unit& u) {
         if (u.targetUnit == kNoEntity) return;
         t = mutableUnit(u.targetUnit);
     }
-    // How he moved since last tick (thrown bodies aside), to shoot ahead of him.
-    Vec3 stride = (t->pos - u.targetSeen).flat();
-    if (t->inAir() || stride.length() > Fixed::one()) stride = {};
-    u.targetSeen = t->pos;
     const Vec3 delta = (t->pos - u.pos).flat();
     const Fixed dist = delta.length();
     const Fixed gap = dist - u.stats.radius - t->stats.radius;
@@ -554,12 +548,10 @@ void World::pursue(Unit& u) {
             else walk(u, u.pos - dir * Fixed::fromInt(4));  // too near for the engine: back off
         } else {
             u.facing = dir;
-            // Ahead of a walking man, by about the missile's time in flight.
-            Vec3 lead = stride * (dist / u.stats.ranged.muzzleSpeed * kLeadPct / 100 * kTicksPerSecond);
-            if (lead.length() > kMaxLead) lead = lead / lead.length() * kMaxLead;
-            const Vec3 aim = t->pos + lead;
             if (readyToLoose(u)) {
-                if (!fireAt(u, aim)) approach();  // no clear shot from here (a wall, a house): closer
+                Fixed spread;
+                const Vec3 aim = chestOf(u, *t, leadMark(u, *t, spread));
+                if (!fireAt(u, aim, false, spread)) approach();  // no clear shot from here (a wall, a house): closer
             }
         }
         return;

@@ -46,6 +46,10 @@ constexpr Fixed kRunCost = Fixed::fromInt(2);
 // gets there: enough to fly clear of him (its blast and more, at his
 // throw's speed). He snatches it up on the run, and it goes at once.
 constexpr int32_t kSatchelSpareTicks = 2 * kTicksPerSecond / 3;
+// The satchel run: the reach within which a man sent to take up a satchel finds it, and the fuse he lights (a short one:
+// a hyena runs about 30 m on it).
+constexpr Fixed kFetchReach = Fixed::fromInt(3);
+constexpr int32_t kRunFuseTicks = 5 * kTicksPerSecond;
 // A satchel lying still enough to snatch up: near the ground, and slow.
 constexpr Fixed kSatchelLow = Fixed::fromRatio(1, 2);
 constexpr Fixed kSatchelSlow = Fixed::fromInt(3);
@@ -210,6 +214,7 @@ void emptyHands(Scavenger& s) {
     s.satchel = false;
     s.fuse = 0;
     s.blast = {};
+    s.lit = false;
 }
 
 }  // namespace
@@ -871,7 +876,8 @@ void World::raid(Unit& u) {
 }
 
 bool World::scavengeOrdered(Unit& u) {
-    if (u.stats.scavenge.sight == Fixed::zero() || !u.scav.holding()) return false;
+    // (A lit satchel is not thrown: he runs in with it, World::lightAndRun.)
+    if (u.stats.scavenge.sight == Fixed::zero() || !u.scav.holding() || u.scav.lit) return false;
     Unit* t = mutableUnit(u.targetUnit);
     if (t == nullptr || !t->alive() || t->inAir()) {
         u.targetUnit = kNoEntity;  // gone: he holds where he is
@@ -880,6 +886,44 @@ bool World::scavengeOrdered(Unit& u) {
     if (u.scav.mark != t->id) u.scav.timer = 0;
     if (strike(u, *t)) u.targetUnit = kNoEntity;  // thrown: the order is done
     return true;
+}
+
+void World::takeUp(Unit& u) {
+    Scavenger& s = u.scav;
+    s.fetching = false;
+    if (s.holding() || !u.alive()) return;
+    // The nearest satchel lying still within his reach (laid by a dwarf, dropped by the fallen: anyone's), burning or not.
+    size_t best = projectiles_.size();
+    Fixed bestD = kFetchReach * kFetchReach;
+    for (size_t i = 0; i < projectiles_.size(); ++i) {
+        const Projectile& p = projectiles_[i];
+        if (p.kind != ProjectileKind::Bomb || p.thrown || p.pos.z - surfaceBelow(p.pos.x, p.pos.y, p.pos.z) > kSatchelLow || p.vel.lengthSq() > kSatchelSlow * kSatchelSlow)
+            continue;
+        const Fixed d = (p.pos - u.pos).flat().lengthSq();
+        if (d < bestD) bestD = d, best = i;
+    }
+    if (best == projectiles_.size()) return;
+    const Projectile& p = projectiles_[best];
+    s.satchel = true;
+    s.fuse = p.fuse;
+    s.lit = p.fuse > 0;  // (taken up burning: he does not throw it either; light it is what he was sent for)
+    s.blast = p.explosive;
+    s.heldOwner = p.owner;
+    projectiles_.erase(projectiles_.begin() + static_cast<long>(best));
+    u.reloadRemaining = std::max(u.reloadRemaining, kTakeTicks);  // (a stoop)
+}
+
+void World::lightAndRun(Unit& u, const Command& cmd) {
+    Scavenger& s = u.scav;
+    if (!s.satchel || u.stats.scavenge.sight == Fixed::zero()) return;
+    if (s.fuse <= 0) s.fuse = kRunFuseTicks;
+    s.lit = true;
+    // At the man shown, or to the place: a sprint deaf to the enemy (he strikes the man he is sent at when he reaches him).
+    Command run = cmd;
+    const Unit* t = findUnit(cmd.targetUnit);
+    run.type = t != nullptr && t->alive() && t->id != u.id ? Command::Type::AttackUnit : Command::Type::Move;
+    run.force = true;
+    startOrder(u, run);
 }
 
 void World::shedBurning(Unit& u) {
