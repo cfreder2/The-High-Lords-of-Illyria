@@ -1625,6 +1625,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         facts.calling = q.flag("calling"), facts.answering = q.flag("answering"), facts.hold = q.flag("hold"), facts.idle = q.flag("idle");
         facts.holdFire = q.flag("holdFire");
         facts.guarding = !q.str("guards").empty(), facts.guarded = q.flag("guarded");
+        facts.lit = q.flag("lit");
         facts.sat = static_cast<int>(q.num("sat")), facts.satMax = static_cast<int>(q.num("satMax"));
         facts.ammo = static_cast<int>(q.num("ammo")), facts.ammoMax = static_cast<int>(q.num("ammoMax"));
         facts.rank = q.num("level") > 0 ? 0 : static_cast<int>(q.num("rank"));  // (a hero's is his level: the selection line says it)
@@ -1692,7 +1693,7 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.text(x + 6, rowY, count, kDim, 10);
         if (!mark.empty()) {
             const float mx = x + cw - 6 - o.width(mark, 10);
-            o.text(mx, rowY, mark, broken ? rgba(0xFFFFFF) : status == ig::CardStatus::Calling ? kRed : status == ig::CardStatus::Idle ? rgba(0x9FD0FF) : kGold, 10);
+            o.text(mx, rowY, mark, broken ? rgba(0xFFFFFF) : status == ig::CardStatus::Calling || status == ig::CardStatus::Lit ? kRed : status == ig::CardStatus::Idle ? rgba(0x9FD0FF) : kGold, 10);
             if (broken) {
                 o.rect(mx - 13, rowY - 1, 1.5f, 12, rgba(0xFFFFFF));     // the pole
                 o.rect(mx - 11.5f, rowY - 1, 8, 6, rgba(0xFFFFFF));      // the white flag

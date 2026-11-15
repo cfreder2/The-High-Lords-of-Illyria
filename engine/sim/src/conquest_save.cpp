@@ -187,7 +187,8 @@ Command readCommand(Reader& r) {
     Command c;
     const uint64_t type = r.u();
     // (What may wait in a queue: the orders to a place. A stance, a call, a hold of fire never wait.)
-    if ((type > static_cast<uint64_t>(Command::Type::SetGate) && type != static_cast<uint64_t>(Command::Type::Detonate)) ||
+    if ((type > static_cast<uint64_t>(Command::Type::SetGate) && type != static_cast<uint64_t>(Command::Type::Detonate) &&
+         type != static_cast<uint64_t>(Command::Type::TakeSatchel)) ||
         type == static_cast<uint64_t>(Command::Type::AttackUnit))
         r.refuse();
     c.type = static_cast<Command::Type>(type);

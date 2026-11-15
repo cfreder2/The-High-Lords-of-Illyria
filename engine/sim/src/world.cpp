@@ -205,6 +205,7 @@ void hashScavenger(StateHasher& h, const Scavenger& c) {
     h.addI64(c.quiet);
     h.addI64(c.replan);
     h.addU64(c.shotBy);
+    if (c.fetching || c.lit) h.addU64(0x5A7C + c.fetching * 2 + c.lit);  // (only once a satchel run is ordered)
 }
 
 // Unit-length horizontal direction from `from` to `to`, or `fallback` if they coincide.
@@ -651,6 +652,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     Unit* u = &unit;
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
+    u->scav.fetching = false;
     u->detonate = false;
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
@@ -717,6 +719,16 @@ void World::startOrder(Unit& unit, const Command& cmd) {
         case Command::Type::Detonate:
             if (!sparks(u->stats) || !armed(*u)) return;
             startDetonate(*u, cmd.target);
+            break;
+        case Command::Type::TakeSatchel:
+            // To the satchel shown, and he takes it up there (world_scavenge.cpp): only a scavenger with his hands empty.
+            if (u->stats.scavenge.sight == Fixed::zero() || u->scav.holding()) return;
+            beginMove(*u, cmd.target, Fixed::zero(), {});
+            planPath(*u, cmd.target);
+            u->scav.fetching = true;
+            break;
+        case Command::Type::LightFuse:
+            lightAndRun(*u, cmd);
             break;
         case Command::Type::Move: {
             const Vec3 target = insideParapet(clearOfStone(cmd.target, u->stats), u->stats.radius);
@@ -1449,7 +1461,7 @@ void World::updateUnit(Unit& u) {
     // A satchel in a scavenger's hands burns on whatever he is doing.
     if (u.scav.satchel) burnHeld(u);
     // Not raiding, he throws it before it goes off in his hands.
-    if (u.scav.satchel && !u.scav.raiding && u.targetUnit == kNoEntity && u.alive() && !u.inAir()) shedBurning(u);
+    if (u.scav.satchel && !u.scav.lit && !u.scav.raiding && u.targetUnit == kNoEntity && u.alive() && !u.inAir()) shedBurning(u);
     if (u.airborne) {
         updateAirborne(u);
         return;
@@ -1563,6 +1575,8 @@ void World::updateUnit(Unit& u) {
             u.helping = kNoEntity;
             u.helpSince = 0;
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
+            // Sent to take up a satchel: here (world_scavenge.cpp).
+            if (u.scav.fetching) takeUp(u);
             // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
             if (u.layOrdered) {
                 u.layOrdered = false;

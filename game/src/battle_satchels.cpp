@@ -123,6 +123,9 @@ Battle::Load Battle::squadLoad(const Squad& s) const {
         if (!u.alive()) continue;
         l.satchels += u.satchels;
         l.satchelsMax += u.stats.satchels.count;
+        // A satchel in a scavenger's hands (the satchel run): counted as a dwarf's, shown only while he carries it.
+        l.satchels += u.scav.satchel, l.satchelsMax += u.scav.satchel;
+        l.lit = l.lit || (u.scav.satchel && u.scav.lit);
         if (u.stats.ranged.ammo > 0) l.ammo += u.ammo, l.ammoMax += u.stats.ranged.ammo;
         l.holdFire = l.holdFire || u.holdFire;
     }
@@ -150,10 +153,10 @@ std::string Battle::storeLeft() const {
 std::vector<Battle::SatchelMark> Battle::satchelMarks() const {
     std::vector<SatchelMark> out;
     // Shown with a man who lays or sparks them selected, or while the next tap is a lay or a detonation.
-    bool show = orderMode_ == OrderMode::LaySatchel || orderMode_ == OrderMode::Detonate;
+    bool show = orderMode_ == OrderMode::LaySatchel || orderMode_ == OrderMode::Detonate || orderMode_ == OrderMode::TakeSatchel;
     for (sim::EntityId id : selectedAlive()) {
         const sim::Unit& u = world_->units()[id - 1];
-        show = show || u.stats.satchels.count > 0 || sim::World::sparks(u.stats);
+        show = show || u.stats.satchels.count > 0 || sim::World::sparks(u.stats) || u.stats.scavenge.sight > sim::Fixed::zero();
     }
     if (!show) return out;
     for (const sim::Projectile& p : world_->projectiles()) {
@@ -211,6 +214,83 @@ void Battle::collectBlasts() {
         floats_.push_back({now, sim::kNoEntity, at + V3{0, 0, 1.5f}, word, false});
     }
     blast_ = {};
+}
+
+// --- The satchel run ------------------------------------------------------------------------------------------------
+
+void Battle::takeAction() {
+    if (orderMode_ == OrderMode::TakeSatchel) {
+        orderMode_ = OrderMode::Normal;  // pressed again: let go
+        return;
+    }
+    for (sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.stats.scavenge.sight > sim::Fixed::zero() && !u.scav.holding()) {
+            orderMode_ = OrderMode::TakeSatchel;
+            return;
+        }
+    }
+    say("Select hyena-folk with empty hands");
+}
+
+void Battle::lightAction() {
+    if (orderMode_ == OrderMode::LightRun) {
+        orderMode_ = OrderMode::Normal;
+        return;
+    }
+    for (sim::EntityId id : selectedAlive())
+        if (world_->units()[id - 1].scav.satchel) {
+            orderMode_ = OrderMode::LightRun;
+            return;
+        }
+    say("Nobody selected carries a satchel");
+}
+
+void Battle::orderTakeSatchel(const V3& at) {
+    // The satchel lying nearest the tap (anyone's: a dwarf's laid, one dropped by the fallen), within a few metres.
+    V3 mark;
+    float best = 4.0f;
+    for (const sim::Projectile& p : world_->projectiles()) {
+        if (!laid(p) || !satchelShown(p)) continue;
+        const float d = flat(toV3(p.pos), at);
+        if (d < best) best = d, mark = toV3(p.pos);
+    }
+    if (best >= 4.0f) {
+        say("No satchel there");
+        return;
+    }
+    // The nearest of the selected with empty hands goes for it.
+    sim::EntityId who = sim::kNoEntity;
+    float nearest = 1e30f;
+    for (sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.stats.scavenge.sight == sim::Fixed::zero() || u.scav.holding()) continue;
+        if (const float d = flat(toV3(u.pos), mark); d < nearest) nearest = d, who = id;
+    }
+    if (who == sim::kNoEntity) {
+        say("Select hyena-folk with empty hands");
+        return;
+    }
+    issue(local_, who, sim::Command::Type::TakeSatchel, mark);
+    markOrdered({who});
+    say("He goes for the satchel");
+}
+
+void Battle::orderLightRun(const V3& at, sim::EntityId target) {
+    std::vector<sim::EntityId> runners;
+    for (sim::EntityId id : selectedAlive())
+        if (world_->units()[id - 1].scav.satchel) runners.push_back(id);
+    if (runners.empty()) {
+        say("Nobody selected carries a satchel");
+        return;
+    }
+    for (sim::EntityId id : runners) {
+        sim::Command c{local_, id, sim::Command::Type::LightFuse, toSim(at)};
+        c.targetUnit = target;
+        pending_.push_back(c);
+    }
+    markOrdered(runners);
+    say("Fuse lit");
 }
 
 // --- The computer's own -------------------------------------------------------------------------------------------

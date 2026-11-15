@@ -250,7 +250,7 @@ void Runner::execute(const Command& c) {
                 std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"deploy\":%d,\"army\":\"%s\"}", c.easy ? 0 : 1, c.deploy ? 1 : 0, illyria_skirmish_buy(c.budget > 0 ? c.budget : 450, 1));
                 hud_.start("march", buf);
             } else {
-                hud_.start(c.text, "{}");
+                hud_.start(c.text, c.place >= 0 ? "{\"place\":" + std::to_string(c.place) + "}" : std::string("{}"));
             }
             block_ = Block::Start;
             blockedAt_ = t;
@@ -316,6 +316,11 @@ void Runner::execute(const Command& c) {
             std::fflush(stdout);
             break;
         }
+        case Op::Sandbox:
+            if (c.text == "squad") std::printf("%s\n", illyria_sandbox_place(static_cast<int>(c.b), static_cast<int>(c.a), static_cast<int>(c.c), static_cast<float>(c.d), static_cast<float>(c.seconds)));
+            else illyria_sandbox_fight(static_cast<int>(c.a), static_cast<int>(c.b));
+            std::fflush(stdout);
+            break;
         case Op::Cards: cards(); break;
         case Op::Wait:
             // Waits follow on from one another without drift: a shot's own time is part of the wait before it.

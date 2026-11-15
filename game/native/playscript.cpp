@@ -23,7 +23,7 @@ int scancodeOf(const std::string& raw) {
         const char* name;
         int code;
     } kNames[] = {{"return", 40}, {"enter", 40}, {"escape", 41}, {"esc", 41}, {"backspace", 42}, {"tab", 43},  {"space", 44},
-                  {"minus", 45},  {"equals", 46}, {"backtick", 53}, {"grave", 53}, {"slash", 56}, {"comma", 54}, {"period", 55}, {"right", 79}, {"left", 80},
+                  {"minus", 45},  {"equals", 46}, {"backtick", 53}, {"grave", 53}, {"slash", 56}, {"comma", 54}, {"period", 55}, {"semicolon", 51}, {"quote", 52}, {"right", 79}, {"left", 80},
                   {"down", 81},   {"up", 82},     {"ctrl", 224},   {"shift", 225}, {"alt", 226},  {"cmd", 227}};
     for (const auto& k : kNames)
         if (n == k.name) return k.code;
@@ -79,7 +79,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             mode = "skirmish " + mode;
         } else if (mode == "conquest") {
             mode = "conquest";
-        } else if (mode != "conquest" && mode != "horde" && mode != "ctf" && mode != "march") {
+        } else if (mode != "conquest" && mode != "horde" && mode != "ctf" && mode != "march" && mode != "sandbox") {
             return why = "unknown mode '" + mode + "'", false;
         }
         c.text = mode;
@@ -89,6 +89,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             else if (w[i] == "deploy") c.deploy = true;
             else if (w[i] == "budget" && i < n && number(w[i + 1], v[0]) && v[0] >= 50 && v[0] <= 2000) c.budget = static_cast<int>(v[0]), ++i;
             else if (w[i] == "lord" && i < n && number(w[i + 1], v[0]) && v[0] >= 0 && v[0] <= 7) c.lord = static_cast<int>(v[0]), ++i;
+            else if (w[i] == "place" && i < n && number(w[i + 1], v[0]) && v[0] >= 0 && v[0] <= 999) c.place = static_cast<int>(v[0]), ++i;
             else return why = "start: what is '" + w[i] + "'? (lord 0-7, easy, budget 50-2000, defend, deploy)", false;
         }
     } else if (verb == "key") {
@@ -151,6 +152,20 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         if (c.text == "spawn" || c.text == "melee") {
             if (n != 3 || !number(w[2], c.a) || !number(w[3], c.b)) return usage(kUsage);
         } else if (n != 1 || (c.text != "blast" && c.text != "fell" && c.text != "burn" && c.text != "cut" && c.text != "shot")) {
+            return usage(kUsage);
+        }
+    } else if (verb == "sandbox") {
+        c.op = Op::Sandbox;
+        static const char* kUsage = "sandbox squad SIDE TYPE N DX DY | fight SIDE 0|1  (TYPE: the type's number, `cards` names them)";
+        if (n < 1) return usage(kUsage);
+        c.text = w[1];
+        if (c.text == "squad") {
+            if (n != 6 || !nums(2, 5)) return usage(kUsage);
+            c.a = v[0], c.b = v[1], c.c = v[2], c.d = v[3], c.seconds = v[4];
+        } else if (c.text == "fight") {
+            if (n != 3 || !nums(2, 2)) return usage(kUsage);
+            c.a = v[0], c.b = v[1];
+        } else {
             return usage(kUsage);
         }
     } else if (verb == "boulder") {

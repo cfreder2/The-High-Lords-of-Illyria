@@ -42,6 +42,8 @@ void illyria_garrison_demo();  // --garrison-demo: see game/app/app.cpp
 void illyria_set_shader_time(double seconds);  // --time-step: the renderer's clock (the water's animation) moved on by this much
 const char* illyria_death_demo(int stage, float x, float y);  // --play's `deaths`: see game/app/app.cpp
 const char* illyria_boulder_demo(int stage, float a, float b, float c, float d, int n, int own);  // --play's `boulder`: see game/app/app.cpp
+const char* illyria_sandbox_place(int type, int side, int count, float dx, float dy);  // --play's `sandbox squad`: see game/app/app.cpp
+void illyria_sandbox_fight(int side, int on);
 const char* illyria_army_spread();  // --play's `spread`: where the local side's men stand
 void illyria_select_all();  // --play's `select all`: every soldier the local side commands
 #endif
@@ -77,6 +79,8 @@ void illyria_special();
 void illyria_detonate();
 void illyria_hold_fire();
 void illyria_guard();
+void illyria_take();
+void illyria_light();
 void illyria_toggle_pause();
 void illyria_cycle_speed();
 void illyria_set_pace(float pace);

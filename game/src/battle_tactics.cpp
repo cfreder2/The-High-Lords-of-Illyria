@@ -76,6 +76,13 @@ void Battle::collectTactics() {
         const bool good = goodFor(e.kind) == (e.owner == local_);
         floats_.push_back({now, e.unit, at, wordOf(e.kind), good});
         if (floats_.size() > kMaxFloats) floats_.erase(floats_.begin());
+        // A squad taken in the flank or the back is a line in the events too, the viewer's own or the foe's.
+        if (e.kind == sim::TacticEvent::Kind::Flanked || e.kind == sim::TacticEvent::Kind::Rear || e.kind == sim::TacticEvent::Kind::Broken) {
+            const int q = e.unit != sim::kNoEntity ? squadOfNumber(world_->units()[e.unit - 1].squad) : -1;
+            if (q < 0) continue;
+            const char* how = e.kind == sim::TacticEvent::Kind::Flanked ? " flanked" : e.kind == sim::TacticEvent::Kind::Rear ? " hit from behind" : " broken by the charge";
+            announce((e.owner == local_ ? "" : "Their ") + squads_[static_cast<size_t>(q)].name + how);
+        }
     }
     if (now % (20 * sim::kTicksPerSecond) == 0) std::erase_if(floatSaid_, [&](const auto& kv) { return now - kv.second > kFloatAgain; });
 }

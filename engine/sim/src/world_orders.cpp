@@ -143,6 +143,8 @@ void World::applyOrder(Unit& u, const Command& cmd) {
             break;
         case Command::Type::LaySatchel:  // a walk there, then the satchel (World::applyCommand)
         case Command::Type::Detonate:    // into reach, then the one shot (world_satchels.cpp)
+        case Command::Type::TakeSatchel:  // a walk there, then he takes it up (World::startOrder)
+        case Command::Type::LightFuse:    // he lights it and runs (World::lightAndRun)
             u.routeFrom = u.pos;
             if (inMelee) u.graceTicks = kGraceTicks;
             break;
@@ -247,7 +249,9 @@ bool World::hasOrder(const Unit& u) {
 World::Stance World::stanceOfOrder(const Command& c) {
     switch (c.type) {
         case Command::Type::Move: return c.force ? Stance::Move : Stance::Patrol;
-        case Command::Type::LaySatchel: return Stance::Patrol;
+        case Command::Type::LaySatchel:
+        case Command::Type::TakeSatchel: return Stance::Patrol;
+        case Command::Type::LightFuse: return Stance::Move;
         case Command::Type::AttackUnit:
         case Command::Type::AttackGround:
         case Command::Type::AttackGate:

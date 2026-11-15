@@ -201,6 +201,9 @@ struct Scavenger {
     bool satchel = false;
     int32_t fuse = 0;  // the satchel's fuse left, burning down in his hands
     Explosive blast;   // and its charge
+    // The satchel run (Command::TakeSatchel, Command::LightFuse): `fetching`, sent to take one up where his march ends;
+    // `lit`, its fuse lit in his hands by his own hand (or by fire): he runs in with it and does not throw it away.
+    bool fetching = false, lit = false;
     bool holding() const { return satchel || held != RemainKind::None; }
 };
 
@@ -229,7 +232,10 @@ struct Command {
     // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
     // Guard: he guards the friend `targetUnit` and that man's squad (world_guard.cpp): stays by them, between them and
     // the nearest threat, meets what comes at them, and goes to nobody else's help. Any order of his own ends it.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard };
+    // TakeSatchel: a scavenger goes to `target` and takes up the satchel lying there (world_scavenge.cpp, the satchel run).
+    // LightFuse: a scavenger with a satchel in his hands lights its fuse and runs, deaf to all else, at `targetUnit` (or
+    // to `target`): it goes off where he is when the fuse is out. A sacrifice the player chooses.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire, Guard, TakeSatchel, LightFuse };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -1573,6 +1579,11 @@ private:
     // A bowman with slower foot closing within kKiteReach while he reloads steps back from them (world_tactics.cpp): bows
     // beat slow foot at range. Not one told to hold, and a posted one no farther than kKiteLeash behind his post.
     bool kite(Unit& u);
+    // The satchel run (world_scavenge.cpp): a scavenger at the end of a TakeSatchel march takes up the satchel lying
+    // nearest him within 3 m (none: nothing); a LightFuse order lights the one in his hands (kRunFuseTicks) and
+    // sends him at his mark, deaf to the enemy.
+    void takeUp(Unit& u);
+    void lightAndRun(Unit& u, const Command& cmd);
     // A posted bowman with a foe beyond his reach but within it of the ground his post's leash covers walks up to a bowshot
     // of him, no farther than kPostLeash from his post (a line set back from its foot still shoots what comes; it walks
     // back after: returnToPost).

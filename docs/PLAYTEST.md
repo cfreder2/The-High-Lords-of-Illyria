@@ -88,7 +88,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `quit` | ends the run. |
 
 Key names: `a`-`z`, `0`-`9`, `space`, `tab`, `return` (begins a battle waiting on its deployment, fights a finished one again, else opens the menu), `escape`, `backspace`, `backtick` (or `` ` ``: plan
-orders), `slash` (help), `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates; `key comma` then `select N` tells the selected to guard squad N.) There are
+orders), `slash` (help), `comma`, `period`, `semicolon`, `quote`, `minus`, `equals`, `left`, `right`, `up`, `down`, `shift`, `ctrl`, `alt`, `cmd`. (`key shift down`, `key k`, `key shift up` is Shift+K, hold fire; `key t` then clicks with shift down lay a line of satchels; `key l` then a click detonates; `key comma` then `select N` tells the selected to guard squad N.) There are
 no function keys (the game binds none). The game's keys are in the in-game help (`slash`).
 
 There is no `text` command: the game takes no typed text.

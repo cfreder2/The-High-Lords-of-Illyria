@@ -54,7 +54,9 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::AttackGate:
                 case sim::Command::Type::AttackObject:
                 case sim::Command::Type::Detonate:
+                case sim::Command::Type::TakeSatchel:
                 case sim::Command::Type::LaySatchel: c.queue = true; break;
+                case sim::Command::Type::LightFuse:  // (lit at once, never waiting)
                 case sim::Command::Type::Stop:
                 case sim::Command::Type::Raid:
                 case sim::Command::Type::SetGate:
@@ -506,7 +508,8 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
         if (p.kind == K::None) return Intent::None;
         return p.kind == K::Ground && world_->douses(toSim(p.at)) ? Intent::Cannot : Intent::AttackGround;  // (not in water)
     }
-    if (mode == OrderMode::Detonate) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::Detonate || mode == OrderMode::TakeSatchel) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::LightRun) return p.kind == K::None ? Intent::None : p.kind == K::Own || p.kind == K::Enemy ? Intent::Attack : Intent::AttackGround;
     if (mode == OrderMode::Guard) return p.kind == K::Own ? Intent::Select : Intent::Cannot;
     if (mode == OrderMode::Attack) {
         switch (p.kind) {
