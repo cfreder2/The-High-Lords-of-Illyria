@@ -62,6 +62,84 @@ struct Builder {
         const float shade[6] = {0.7f, 1.08f, 0.95f, 0.95f, 0.88f, 0.88f};
         for (int i = 0; i < 6; ++i) quad(p[f[i][0]], p[f[i][1]], p[f[i][2]], p[f[i][3]], color * shade[i]);
     }
+    // A quad turned to face `want`, whichever way its corners were given.
+    void facing(V3 a, V3 b, V3 c, V3 d, V3 want, V3 color) {
+        if ((b - a).cross(c - a).dot(want) < 0) quad(d, c, b, a, color);
+        else quad(a, b, c, d, color);
+    }
+    // A quad whose foot (a, b) and head (c, d) differ in colour: the shade that gathers in a corner, laid in the vertices.
+    void quad2(V3 a, V3 b, V3 c, V3 d, V3 low, V3 high) {
+        const V3 n = (b - a).cross(c - a).normalized();
+        const auto put = [&](V3 p, V3 col) { mesh.data.insert(mesh.data.end(), {p.x, p.y, p.z, n.x, n.y, n.z, col.x, col.y, col.z}); };
+        put(a, low), put(b, low), put(c, high), put(a, low), put(c, high), put(d, high);
+    }
+    // A fluted shaft around z: `flutes` hollows between sharp arrises, radius r0 at z0 to r1 at z1.
+    void fluted(float z0, float r0, float z1, float r1, int flutes, V3 color, float hollow = 0.9f) {
+        const int n = flutes * 2;
+        for (int i = 0; i < n; ++i) {
+            const float a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+            const float k0 = i % 2 ? hollow : 1.0f, k1 = i % 2 ? 1.0f : hollow;
+            const V3 p0{std::cos(a0) * r0 * k0, std::sin(a0) * r0 * k0, z0}, p1{std::cos(a1) * r0 * k1, std::sin(a1) * r0 * k1, z0};
+            const V3 q0{std::cos(a0) * r1 * k0, std::sin(a0) * r1 * k0, z1}, q1{std::cos(a1) * r1 * k1, std::sin(a1) * r1 * k1, z1};
+            quad(p0, p1, q1, q0, color);
+        }
+    }
+    // A flat disc at z, radius r, n sides, facing up (or down).
+    void disc(V3 c, float r, int n, V3 color, bool down = false) {
+        for (int i = 0; i < n; ++i) {
+            const float a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+            const V3 p0 = c + V3{std::cos(a0) * r, std::sin(a0) * r, 0}, p1 = c + V3{std::cos(a1) * r, std::sin(a1) * r, 0};
+            if (down) tri(c, p1, p0, color);
+            else tri(c, p0, p1, color);
+        }
+    }
+    size_t mark() const { return mesh.data.size(); }
+    // What was built since `from`, moved by d.
+    void shift(size_t from, V3 d) {
+        for (size_t v = from; v < mesh.data.size(); v += 9) mesh.data[v] += d.x, mesh.data[v + 1] += d.y, mesh.data[v + 2] += d.z;
+    }
+    // What was built since `from` is turned stone (a column's drums): the mesh shader reads green + 2 as that and
+    // courses it in drums, not in blocks (shaders.h kMeshVs).
+    void turned(size_t from) {
+        for (size_t v = from; v < mesh.data.size(); v += 9) mesh.data[v + 7] += 2.0f;
+    }
+    // A wall's face with openings cut in it: from `origin` along u (unit, flat) for `width` and up for `height`, facing
+    // u x up. Each opening (u0, u1, z0, z1 on the face) goes back `depth` between reveals in the wall's own stone,
+    // shaded, to a pane of its own colour: a window's dark, a door's planks.
+    struct Opening {
+        float u0, u1, z0, z1;
+        V3 pane;
+    };
+    void pierced(V3 origin, V3 u, float width, float height, const std::vector<Opening>& openings, float depth, V3 color) {
+        const V3 out{u.y, -u.x, 0}, up{0, 0, 1};
+        std::vector<float> zs{0, height};
+        for (const Opening& o : openings) zs.push_back(o.z0), zs.push_back(o.z1);
+        std::sort(zs.begin(), zs.end());
+        for (size_t k = 0; k + 1 < zs.size(); ++k) {
+            const float z0 = zs[k], z1 = zs[k + 1];
+            if (z1 - z0 < 1e-5f) continue;
+            std::vector<std::pair<float, float>> gaps;
+            for (const Opening& o : openings)
+                if (o.z0 <= z0 + 1e-5f && o.z1 >= z1 - 1e-5f) gaps.push_back({o.u0, o.u1});
+            std::sort(gaps.begin(), gaps.end());
+            float from = 0;
+            const auto run = [&](float a, float b2) {
+                if (b2 - a > 1e-5f) quad(origin + u * a + up * z0, origin + u * b2 + up * z0, origin + u * b2 + up * z1, origin + u * a + up * z1, color);
+            };
+            for (const auto& [a, b2] : gaps) run(from, a), from = b2;
+            run(from, width);
+        }
+        for (const Opening& o : openings) {
+            const V3 a = origin + u * o.u0 + up * o.z0, b2 = origin + u * o.u1 + up * o.z0, c = origin + u * o.u1 + up * o.z1, d = origin + u * o.u0 + up * o.z1;
+            const V3 in = out * -depth;
+            const V3 shade = color * 0.62f;
+            facing(a, a + in, d + in, d, u, shade);
+            facing(b2, b2 + in, c + in, c, u * -1.0f, shade * 0.9f);
+            facing(d, d + in, c + in, c, up * -1.0f, shade * 0.7f);
+            if (o.z0 > 1e-4f) facing(a, a + in, b2 + in, b2, up, shade * 1.25f);
+            quad2(a + in, b2 + in, c + in, d + in, o.pane, o.pane * 0.55f);  // (darker under its head)
+        }
+    }
     // Faceted blob: an icosahedron, optionally squashed and dented.
     void blob(V3 centre, V3 radii, V3 color, float dent = 0, int seed = 0) {
         const float t = (1.0f + std::sqrt(5.0f)) / 2;
@@ -341,8 +419,28 @@ Mesh house() {
     b.quad({hi.x, hi.y, lo.z}, {lo.x, hi.y, lo.z}, {lo.x, hi.y, hi.z}, {hi.x, hi.y, hi.z}, flue);
     b.quad({lo.x, hi.y, lo.z}, {lo.x, lo.y, lo.z}, {lo.x, lo.y, hi.z}, {lo.x, hi.y, hi.z}, flue * 0.9f);
     b.quad({lo.x, lo.y, hi.z}, {hi.x, lo.y, hi.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}, flue * 0.3f);
-    // Door and timber beams on the long side.
+    // The rafters' ends under each eave, out of the wall to the fascia.
+    for (float side : {-1.0f, 1.0f}) {
+        for (int i = 0; i < 7; ++i) {
+            const float y = -0.9f + 0.3f * static_cast<float>(i), w = 0.035f;
+            const V3 in{side * 1.0f, y, 0.955f}, out{side * (eaveX - 0.01f), y, eaveZ - thick}, drop{0, 0, -0.045f};
+            b.facing(in + V3{0, -w, 0}, out + V3{0, -w, 0}, out + V3{0, -w, 0} + drop, in + V3{0, -w, 0} + drop, {0, -1, 0}, beam * 0.75f);
+            b.facing(in + V3{0, w, 0}, out + V3{0, w, 0}, out + V3{0, w, 0} + drop, in + V3{0, w, 0} + drop, {0, 1, 0}, beam * 0.75f);
+            b.facing(in + V3{0, -w, 0} + drop, out + V3{0, -w, 0} + drop, out + V3{0, w, 0} + drop, in + V3{0, w, 0} + drop, {0, 0, -1}, beam * 0.55f);
+        }
+    }
+    // The door in its frame (two posts and a lintel standing proud of the wall, the door set back between them), a
+    // stone step before it; timber beams on the long sides.
     b.quad({1.002f, -0.2f, 0}, {1.002f, 0.2f, 0}, {1.002f, 0.2f, 0.6f}, {1.002f, -0.2f, 0.6f}, door);
+    const float proud = 1.035f;
+    for (float side : {-1.0f, 1.0f}) {
+        const float y0 = side * 0.2f, y1 = side * 0.25f;
+        b.facing({proud, y0, 0}, {proud, y1, 0}, {proud, y1, 0.66f}, {proud, y0, 0.66f}, {1, 0, 0}, door * 1.25f);
+        b.facing({1.002f, y0, 0}, {proud, y0, 0}, {proud, y0, 0.6f}, {1.002f, y0, 0.6f}, {0, -side, 0}, door * 0.7f);
+        b.facing({1.0f, y1, 0}, {proud, y1, 0}, {proud, y1, 0.66f}, {1.0f, y1, 0.66f}, {0, side, 0}, door * 0.95f);
+    }
+    b.facing({proud, -0.2f, 0.6f}, {proud, 0.2f, 0.6f}, {proud, 0.2f, 0.66f}, {proud, -0.2f, 0.66f}, {1, 0, 0}, door * 1.25f);
+    b.facing({1.002f, -0.2f, 0.6f}, {proud, -0.2f, 0.6f}, {proud, 0.2f, 0.6f}, {1.002f, 0.2f, 0.6f}, {0, 0, -1}, door * 0.55f);
     b.quad({1.003f, -1, 0.95f}, {1.003f, 1, 0.95f}, {1.003f, 1, 1.0f}, {1.003f, -1, 1.0f}, beam);
     b.quad({-1.003f, 1, 0.95f}, {-1.003f, -1, 0.95f}, {-1.003f, -1, 1.0f}, {-1.003f, 1, 1.0f}, beam);
     return b.mesh;
@@ -400,9 +498,21 @@ Mesh wall() {
 
 Mesh tower() {
     Builder b;
-    b.frustum(0, 1.0f, 1.0f, 0.92f, 10, kStone);
-    b.frustum(1.0f, 1.08f, 1.06f, 1.08f, 10, kStone * 0.9f);
-    b.frustum(1.06f, 1.12f, 1.75f, 0, 10, kCone);
+    b.frustum(0, 1.04f, 0.1f, 1.0f, 10, kStone * 0.92f);  // battered foot
+    b.frustum(0.1f, 1.0f, 1.0f, 0.92f, 10, kStone);
+    b.frustum(0.93f, 0.93f, 0.97f, 1.08f, 10, kStone * 0.8f);  // corbelled out under the eave
+    b.frustum(0.97f, 1.08f, 1.06f, 1.08f, 10, kStone * 0.9f);
+    // The roof: a bell-cast eave thrown out over the wall, then the spire (the banner's pole is its finial).
+    b.frustum(1.06f, 1.2f, 1.17f, 1.0f, 10, V3{0.86f, 1.0f, 3.0f});
+    b.frustum(1.17f, 1.0f, 1.75f, 0, 10, kCone);
+    b.frustum(1.06f, 1.2f, 1.06f, 0, 10, kStone * 0.5f);  // (the eave's underside)
+    // Arrow loops.
+    for (int i = 0; i < 5; ++i) {
+        const float a = 2 * kPi * (2 * i + 0.5f) / 10, z = 0.38f + 0.2f * static_cast<float>(i % 2);
+        const float r = (1.0f - 0.089f * (z - 0.04f)) * std::cos(kPi / 10) + 0.004f;
+        const V3 o{std::cos(a) * r, std::sin(a) * r, z}, t{-std::sin(a) * 0.025f, std::cos(a) * 0.025f, 0};
+        b.quad(o - t, o + t, o + t + V3{0, 0, 0.13f}, o - t + V3{0, 0, 0.13f}, V3{0.1f, 0.09f, 0.08f});
+    }
     return b.mesh;
 }
 
@@ -534,102 +644,110 @@ Mesh drum() {
 }
 
 Mesh keep() {
+    // Everything a man could touch stands within the battle's box for the keep ([-1, 1]^2): the wall's face is set
+    // back (kWall), so the plinth, the buttresses, the string courses and the sills have room to stand proud of it.
+    // Only the parapet on its corbels and the corner turrets, far overhead, oversail the box.
     Builder b;
-    const V3 dark{0.1f, 0.09f, 0.08f}, oak{0.25f, 0.17f, 0.1f};
+    const V3 dark{0.075f, 0.07f, 0.065f}, oak{0.25f, 0.17f, 0.1f};
     const auto up = [](float z) { return V3{0, 0, z}; };
-    b.box({-1, -1, 0}, {1, 1, 1}, kStone);
-    // A battered plinth, clasping buttresses at the corners and a pilaster up the middle of each face, a string course
-    // at each floor, and a row of corbels that carries the parapet out over the wall.
-    const float foot = 1.025f, plinth = 0.06f;  // (all of it within a pace of the wall the battle knows)
+    const float kWall = 0.962f, kHead = 0.94f, kOver = 1.03f;
     for (int side = 0; side < 4; ++side) {
         const V3 u = side == 0 ? V3{1, 0, 0} : side == 1 ? V3{0, 1, 0} : side == 2 ? V3{-1, 0, 0} : V3{0, -1, 0};  // along the face
         const V3 o{u.y, -u.x, 0};                                                                               // out of it
-        b.quad(o * foot - u * foot, o * foot + u * foot, o + u + up(plinth), o - u + up(plinth), kStone * 0.9f);
-        for (float at : {-0.9f, 0.0f, 0.9f}) {
-            const float half = at == 0 ? 0.09f : 0.13f, top = at == 0 ? 0.86f : 0.94f, deep = 0.022f;
-            const V3 c = o * (1 + deep) + u * at;
-            b.quad(c - u * half, c + u * half, c + u * half + up(top), c - u * half + up(top), kStone * 1.03f);
-            b.quad(c + u * half, c + u * half - o * deep, c + u * half - o * deep + up(top), c + u * half + up(top), kStone * 0.85f);
-            b.quad(c - u * half - o * deep, c - u * half, c - u * half + up(top), c - u * half - o * deep + up(top), kStone * 0.85f);
-            // (its weathered top, sloping back into the wall)
-            b.quad(c - u * half + up(top), c + u * half + up(top), c + u * half - o * deep + up(top + 0.03f), c - u * half - o * deep + up(top + 0.03f), kStone * 1.05f);
-        }
-        for (float z : {0.33f, 0.6f}) {
-            const V3 c = o * 1.012f + up(z);
-            b.quad(c - u * 1.012f, c + u * 1.012f, c + u * 1.012f + up(0.018f), c - u * 1.012f + up(0.018f), kStone * 1.06f);
-            b.quad(c - u * 1.012f + up(0.018f), c + u * 1.012f + up(0.018f), o + u + up(z + 0.026f), o - u + up(z + 0.026f), kStone * 1.08f);
-        }
-        for (int i = 0; i < 12; ++i) {
-            const V3 c = o + u * (-0.92f + i * 0.1673f) + up(0.9f), tip = o * 0.05f + up(0.04f);
-            b.quad(c - u * 0.03f, c + u * 0.03f, c + u * 0.03f + tip, c - u * 0.03f + tip, kStone * 0.8f);
-            b.tri(c + u * 0.03f, c + u * 0.03f + up(0.04f), c + u * 0.03f + tip, kStone * 0.75f);
-            b.tri(c - u * 0.03f, c - u * 0.03f + tip, c - u * 0.03f + up(0.04f), kStone * 0.75f);
-        }
-        // Windows: a pair of lancets to each upper floor either side of the pilaster, each in a dressed surround under
-        // a pointed head; the lowest floor has only loops.
+        // The face, its windows and (in the -y face) the door let into it: loops to the lowest floor, a pair of
+        // lancets to each floor above, each with a sill under it and a hood over it.
+        std::vector<Builder::Opening> openings;
         for (float at : {-0.45f, 0.45f}) {
-            for (int floor = 0; floor < 3; ++floor) {
-                const float z = floor == 0 ? 0.2f : floor == 1 ? 0.42f : 0.7f;
-                const float w = floor == 0 ? 0.014f : 0.04f, h = floor == 0 ? 0.07f : 0.1f;
-                const V3 c = o * 1.004f + u * at + up(z);
-                if (floor > 0) {
-                    const V3 f = o * 1.002f + u * at + up(z);
-                    const float fw = w + 0.022f;
-                    b.quad(f - u * fw + up(-0.02f), f + u * fw + up(-0.02f), f + u * fw + up(h), f - u * fw + up(h), kStone * 1.12f);
-                    b.tri(f - u * fw + up(h), f + u * fw + up(h), f + up(h + fw * 1.5f), kStone * 1.12f);
-                    b.tri(c - u * w + up(h), c + u * w + up(h), c + up(h + w * 1.5f), dark);
+            const float x = at + kWall;
+            if (side == 0 && at < 0) openings.push_back({x - 0.085f, x + 0.085f, 0, 0.155f, oak});
+            else openings.push_back({x - 0.013f, x + 0.013f, 0.19f, 0.27f, dark});
+            for (float z : {0.42f, 0.68f}) {
+                openings.push_back({x - 0.036f, x + 0.036f, z, z + 0.115f, dark});
+                const V3 c = o * kWall + u * at + up(z);
+                for (float edge : {-0.016f, 0.115f}) {  // sill, hood
+                    const float w = 0.052f;
+                    const V3 lo = c + up(edge), tip = o * 0.014f;
+                    b.quad(lo - u * w + tip, lo + u * w + tip, lo + u * w + tip + up(0.016f), lo - u * w + tip + up(0.016f), kStone * 1.1f);
+                    b.quad(lo - u * w + tip + up(0.016f), lo + u * w + tip + up(0.016f), lo + u * w + up(0.024f), lo - u * w + up(0.024f), kStone * 1.14f);
+                    b.facing(lo - u * w, lo + u * w, lo + u * w + tip, lo - u * w + tip, {0, 0, -1}, kStone * 0.6f);
                 }
-                b.quad(c - u * w, c + u * w, c + u * w + up(h), c - u * w + up(h), dark);
             }
         }
+        b.pierced(o * kWall - u * kWall, u, 2 * kWall, kHead, openings, 0.035f, kStone);
+        if (side == 0) {  // the door's lintel and its step
+            const V3 c = o * kWall + u * -0.45f;
+            b.block(c + up(0.167f), u, o, {0, 0, 1}, {0.11f, 0.014f, 0.012f}, kStone * 1.1f);
+            b.block(c + o * 0.015f + up(0.006f), u, o, {0, 0, 1}, {0.1f, 0.02f, 0.006f}, kStone * 0.95f);
+        }
+        // A battered plinth, clasping buttresses at the corners and a pilaster up the middle of each face, a string
+        // course at each floor, and a row of corbels that carries the parapet out over the wall.
+        b.quad(o - u, o + u, o * kWall + u * kWall + up(0.06f), o * kWall - u * kWall + up(0.06f), kStone * 0.9f);
+        for (float at : {-0.867f, 0.0f, 0.867f}) {
+            const float half = at == 0 ? 0.08f : 0.095f, top = at == 0 ? 0.84f : 0.9f, deep = 0.995f - kWall;
+            const V3 c = o * 0.995f + u * at;
+            b.quad2(c - u * half, c + u * half, c + u * half + up(top), c - u * half + up(top), kStone * 0.95f, kStone * 1.04f);
+            b.quad(c + u * half, c + u * half - o * deep, c + u * half - o * deep + up(top), c + u * half + up(top), kStone * 0.82f);
+            b.quad(c - u * half - o * deep, c - u * half, c - u * half + up(top), c - u * half - o * deep + up(top), kStone * 0.82f);
+            b.quad(c - u * half + up(top), c + u * half + up(top), c + u * half - o * deep + up(top + 0.04f), c - u * half - o * deep + up(top + 0.04f), kStone * 1.06f);
+        }
+        for (float z : {0.33f, 0.6f}) {
+            const float out = kWall + 0.014f;
+            const V3 c = o * out + up(z);
+            b.quad(c - u * out, c + u * out, c + u * out + up(0.018f), c - u * out + up(0.018f), kStone * 1.06f);
+            b.quad(c - u * out + up(0.018f), c + u * out + up(0.018f), o * kWall + u * kWall + up(z + 0.028f), o * kWall - u * kWall + up(z + 0.028f), kStone * 1.1f);
+            b.facing(c - u * out, c + u * out, o * kWall + u * kWall + up(z), o * kWall - u * kWall + up(z), {0, 0, -1}, kStone * 0.55f);
+        }
+        for (int i = 0; i < 12; ++i) {
+            const V3 c = o * kWall + u * (-0.9f + i * 0.1636f) + up(0.87f), tip = o * (kOver - kWall) + up(0.07f);
+            b.quad(c - u * 0.03f, c + u * 0.03f, c + u * 0.03f + tip, c - u * 0.03f + tip, kStone * 0.7f);
+            b.tri(c + u * 0.03f, c + u * 0.03f + up(0.07f), c + u * 0.03f + tip, kStone * 0.66f);
+            b.tri(c - u * 0.03f, c - u * 0.03f + tip, c - u * 0.03f + up(0.07f), kStone * 0.66f);
+        }
+        // (the parapet's underside between them, in its own shade)
+        b.facing(o * kWall - u * kWall + up(kHead), o * kWall + u * kWall + up(kHead), o * kOver + u * kOver + up(kHead), o * kOver - u * kOver + up(kHead), {0, 0, -1}, kStone * 0.45f);
     }
-    b.box({-1.05f, -1.05f, 0.94f}, {1.05f, 1.05f, 1.0f}, kStone * 0.9f);
+    b.box({-kOver, -kOver, kHead}, {kOver, kOver, 1.0f}, kStone * 0.9f);
     for (int side = 0; side < 4; ++side) {
         for (int i = 0; i < 7; ++i) {
-            const float t0 = -1 + i * 0.3f + 0.05f, t1 = t0 + 0.15f;
-            const V3 lo = side == 0 ? V3{t0, -1.05f, 1} : side == 1 ? V3{t0, 0.95f, 1} : side == 2 ? V3{-1.05f, t0, 1} : V3{0.95f, t0, 1};
-            const V3 hi = side == 0 ? V3{t1, -0.95f, 1.08f} : side == 1 ? V3{t1, 1.05f, 1.08f} : side == 2 ? V3{-0.95f, t1, 1.08f} : V3{1.05f, t1, 1.08f};
+            const float t0 = -1 + i * 0.3f + 0.05f, t1 = t0 + 0.15f, in = kOver - 0.09f;
+            const V3 lo = side == 0 ? V3{t0, -kOver, 1} : side == 1 ? V3{t0, in, 1} : side == 2 ? V3{-kOver, t0, 1} : V3{in, t0, 1};
+            const V3 hi = side == 0 ? V3{t1, -in, 1.08f} : side == 1 ? V3{t1, kOver, 1.08f} : side == 2 ? V3{-in, t1, 1.08f} : V3{kOver, t1, 1.08f};
             b.box(lo, hi, kStone * 0.95f);
         }
     }
-    // Corner turrets rise above the roof, with slate caps.
+    // Corner turrets rise above the roof on their corbels, with tiled caps and a gilt ball on each.
     for (int k = 0; k < 4; ++k) {
-        const float x = k & 1 ? 0.92f : -0.92f, y = k & 2 ? 0.92f : -0.92f;
-        Builder t;
-        t.frustum(0.6f, 0.2f, 1.18f, 0.2f, 8, kStone * 0.95f);
-        t.frustum(1.14f, 0.225f, 1.18f, 0.225f, 8, kStone * 0.85f);  // (a ring under the eave)
-        t.frustum(1.18f, 0.26f, 1.42f, 0.0f, 8, kCone);
-        for (size_t v = 0; v < t.mesh.data.size(); v += 9) {
-            t.mesh.data[v] += x;
-            t.mesh.data[v + 1] += y;
-        }
-        b.mesh.data.insert(b.mesh.data.end(), t.mesh.data.begin(), t.mesh.data.end());
+        const size_t from = b.mark();
+        b.frustum(0.52f, 0.06f, 0.62f, 0.2f, 8, kStone * 0.75f);
+        b.frustum(0.62f, 0.2f, 1.18f, 0.2f, 8, kStone * 0.95f);
+        b.frustum(1.14f, 0.225f, 1.18f, 0.225f, 8, kStone * 0.85f);  // (a ring under the eave)
+        b.frustum(1.18f, 0.28f, 1.24f, 0.21f, 8, V3{0.86f, 1.0f, 3.0f});
+        b.frustum(1.24f, 0.21f, 1.46f, 0.0f, 8, kCone);
+        b.frustum(1.18f, 0.28f, 1.18f, 0.0f, 8, kStone * 0.5f);
+        b.blob({0, 0, 1.47f}, {0.022f, 0.022f, 0.022f}, {1.0f, 0.9f, 0.5f}, 0, 11);
+        b.shift(from, {k & 1 ? 0.92f : -0.92f, k & 2 ? 0.92f : -0.92f, 0});
     }
-    // The door: oak under a pointed arch in a dressed surround, in the -y face between the pilaster and a buttress.
-    const float dx = -0.45f, dw = 0.09f, dh = 0.12f, sw = dw + 0.03f;
-    b.quad({dx - sw, -1.006f, 0}, {dx + sw, -1.006f, 0}, {dx + sw, -1.006f, dh}, {dx - sw, -1.006f, dh}, kStone * 1.12f);
-    b.tri({dx - sw, -1.006f, dh}, {dx + sw, -1.006f, dh}, {dx, -1.006f, dh + 0.075f}, kStone * 1.12f);
-    b.quad({dx - dw, -1.008f, 0}, {dx + dw, -1.008f, 0}, {dx + dw, -1.008f, dh}, {dx - dw, -1.008f, dh}, oak);
-    b.tri({dx - dw, -1.008f, dh}, {dx + dw, -1.008f, dh}, {dx, -1.008f, dh + 0.05f}, oak);
     return b.mesh;
 }
 
 Mesh ramp() {
-    // A solid wedge of stone; its sides run on below the ground (z < 0) so
-    // the foot meets the ground wherever the ground dips a little. The slope
-    // is one plane, exactly the one the sim walks (no cleats: strips laid on
-    // it fought it for depth and banded it across), worn as the wall-walk
-    // is; the sides as the curtain's faces. The landing at the top is a
-    // curtain block, so slope, landing and walk read as one paved way.
+    // A stair of stone, kRampSteps treads from the ground (x = -1) to the landing (x = 1, z = 1). The sim walks the
+    // one plane from foot to head; the treads lie half a riser under it at their backs and half over it at their
+    // noses, so a man's feet are never more than half a riser (a hand's breadth) from the stone. The sides run on
+    // below the ground (z < 0), so the foot meets the ground wherever it dips a little; they are the curtain's faces,
+    // and the landing at the top is a curtain block: stair, landing and walk read as one paved way.
     Builder b;
     const float base = -0.15f;
-    const V3 a0{-1, -1, 0}, a1{-1, 1, 0}, b0{1, -1, 1}, b1{1, 1, 1};
-    const V3 lo0{-1, -1, base}, lo1{-1, 1, base}, hi0{1, -1, base}, hi1{1, 1, base};
-    b.quad(a0, b0, b1, a1, kStone * 0.8f);    // the slope
-    b.quad(lo0, hi0, b0, a0, kStone);         // the sides
-    b.quad(hi1, lo1, a1, b1, kStone);
-    b.quad(hi0, hi1, b1, b0, kStone * 0.9f);  // the high end, against the landing
-    b.quad(lo1, lo0, a0, a1, kStone * 0.9f);  // the toe, below ground
+    const int n = kRampSteps;
+    for (int i = 0; i < n; ++i) {
+        const float x0 = -1 + 2.0f * static_cast<float>(i) / n, x1 = -1 + 2.0f * static_cast<float>(i + 1) / n;
+        const float z = (static_cast<float>(i) + 0.5f) / n, below = i == 0 ? base : (static_cast<float>(i) - 0.5f) / n;
+        b.quad({x0, 1, below}, {x0, -1, below}, {x0, -1, z}, {x0, 1, z}, kStone * 0.74f);  // the riser
+        b.quad2({x0, 1, z}, {x0, -1, z}, {x1, -1, z}, {x1, 1, z}, kStone * 0.86f, kStone * 0.66f);  // the tread, shaded at its back
+        b.quad({x0, -1, base}, {x1, -1, base}, {x1, -1, z}, {x0, -1, z}, kStone);    // the sides
+        b.quad({x1, 1, base}, {x0, 1, base}, {x0, 1, z}, {x1, 1, z}, kStone);
+    }
+    b.quad({1, -1, base}, {1, 1, base}, {1, 1, 1}, {1, -1, 1}, kStone * 0.9f);  // the high end, against the landing
     return b.mesh;
 }
 
@@ -708,57 +826,90 @@ Mesh ruin() {
 }
 
 Mesh temple() {
-    // A hall between two colonnades on its step: a column to each of the battle's stones (square there, round here
-    // within the square), each on a base under a capital; the hall behind them with its bronze doors in the east end;
-    // over all an architrave, a frieze and a cornice, a pediment at either end and a tiled roof with gilt finials.
+    // A hall between two colonnades on a stepped base (three shallow treads up to the floor the battle walks: the
+    // floor's height is the battle's, kSitePlinth). A fluted column to each of the battle's stones (square there,
+    // round here within the square), each on a base under a capital. The hall is the battle's hall: its east end is
+    // an open porch between the side walls' ends, two columns standing in it before the bronze doors, which are set
+    // back in the wall behind. Over all an architrave, a frieze of triglyphs and a cornice; a pediment at either end,
+    // its field set back under the raking cornice; a tiled roof with gilt finials.
     Builder b;
-    const V3 marble{0.92f, 0.9f, 0.84f}, roof{0.7f, 0.42f, 0.28f}, bronze{0.42f, 0.3f, 0.16f}, gilt{1.0f, 0.9f, 0.5f}, dark{0.12f, 0.11f, 0.1f};
+    const V3 marble{0.92f, 0.9f, 0.84f}, roof{0.7f, 0.42f, 0.28f}, bronze{0.42f, 0.3f, 0.16f}, gilt{1.0f, 0.9f, 0.5f};
     const float p = kSitePlinth;
-    b.box({-0.5f, -0.32f, 0}, {0.5f, 0.32f, p}, marble * 0.92f);
-    for (int i = 0; i < 6; ++i) {
-        for (int side = -1; side <= 1; side += 2) {
-            Builder c;
-            c.box({-0.03f, -0.03f, p}, {0.03f, 0.03f, p + 0.012f}, marble * 0.95f);
-            c.frustum(p + 0.012f, 0.03f, p + 0.024f, 0.026f, 8, marble * 0.9f, kPi / 8);
-            c.frustum(p + 0.024f, 0.026f, 0.468f, 0.022f, 8, marble, kPi / 8);
-            c.frustum(0.468f, 0.022f, 0.486f, 0.031f, 8, marble * 0.92f, kPi / 8);
-            c.box({-0.032f, -0.032f, 0.486f}, {0.032f, 0.032f, 0.5f}, marble * 0.97f);
-            const float x = -0.42f + i * 0.168f, y = side * 0.25f;
-            for (size_t v = 0; v < c.mesh.data.size(); v += 9) {
-                c.mesh.data[v] += x;
-                c.mesh.data[v + 1] += y;
-            }
-            b.mesh.data.insert(b.mesh.data.end(), c.mesh.data.begin(), c.mesh.data.end());
-        }
-    }
-    // The hall, a course proud at its foot and its head; the doors and their surround.
-    b.box({-0.3f, -0.18f, p}, {0.3f, 0.18f, 0.5f}, marble * 0.85f);
-    b.box({-0.302f, -0.182f, p}, {0.302f, 0.182f, p + 0.03f}, marble * 0.8f);  // (a hand's breadth: the battle's hall is the wall's)
-    b.box({-0.306f, -0.186f, 0.43f}, {0.306f, 0.186f, 0.45f}, marble * 0.9f);
-    b.quad({0.3025f, -0.075f, p}, {0.3025f, 0.075f, p}, {0.3025f, 0.075f, 0.33f}, {0.3025f, -0.075f, 0.33f}, marble * 1.02f);
-    b.quad({0.303f, -0.055f, p}, {0.303f, 0.055f, p}, {0.303f, 0.055f, 0.31f}, {0.303f, -0.055f, 0.31f}, bronze);
-    b.quad({0.3035f, -0.002f, p}, {0.3035f, 0.002f, p}, {0.3035f, 0.002f, 0.31f}, {0.3035f, -0.002f, 0.31f}, dark);
-    // Architrave, frieze (set back, darker) and cornice (thrown out over them).
-    b.box({-0.5f, -0.3f, 0.5f}, {0.5f, 0.3f, 0.522f}, marble * 0.97f);
-    b.box({-0.492f, -0.292f, 0.522f}, {0.492f, 0.292f, 0.546f}, marble * 0.8f);
-    b.box({-0.52f, -0.32f, 0.546f}, {0.52f, 0.32f, 0.56f}, marble);
-    // The roof: tiles on a slab whose edge shows as the raking cornice of each pediment, the tympanum set back in it.
-    const V3 up{0, 0, 0.016f};
+    b.box({-0.524f, -0.344f, 0}, {0.524f, 0.344f, p / 3}, marble * 0.86f);
+    b.box({-0.512f, -0.332f, 0}, {0.512f, 0.332f, p * 2 / 3}, marble * 0.9f);
+    b.box({-0.5f, -0.32f, 0}, {0.5f, 0.32f, p}, marble * 0.94f);
+    // A column: base, fluted shaft swelling a little below its middle, necking, echinus, abacus.
+    const auto column = [&](float x, float y, float r, float top) {
+        const size_t from = b.mark();
+        const float foot = p + 0.012f, neck = top - 0.038f, belly = foot + (neck - foot) * 0.4f;
+        b.frustum(p, r * 1.07f, p + 0.007f, r * 1.07f, 12, marble * 0.9f);
+        b.frustum(p + 0.007f, r * 1.07f, foot, r, 12, marble * 0.97f);
+        const size_t shaft = b.mark();
+        b.fluted(foot, r, belly, r * 0.955f, 10, marble);
+        b.fluted(belly, r * 0.955f, neck, r * 0.82f, 10, marble);
+        b.turned(shaft);
+        b.frustum(neck, r * 0.86f, neck + 0.005f, r * 0.86f, 12, marble * 0.9f);
+        b.frustum(neck + 0.005f, r * 0.84f, top - 0.014f, r * 1.12f, 12, marble * 0.86f);
+        b.box({-r * 1.14f, -r * 1.14f, top - 0.014f}, {r * 1.14f, r * 1.14f, top}, marble * 0.97f);
+        b.shift(from, {x, y, 0});
+    };
+    for (int i = 0; i < 6; ++i)
+        for (int side = -1; side <= 1; side += 2) column(-0.42f + i * 0.168f, side * 0.25f, 0.0295f, 0.5f);
+    // The hall: its walls shaded toward the ceiling and the floor; the porch at the east end.
+    const float back = -0.3f, front = 0.3f, wall = 0.18f, door = 0.2f, anta = 0.03f, head = 0.5f;
+    const V3 lit = marble * 0.93f, dim = marble * 0.72f, low = marble * 0.84f;
+    const auto face = [&](V3 a, V3 c, V3 want) {  // a wall from a (at the floor) to c (at the same height), up to the head
+        const V3 mid{0, 0, (head - p) * 0.55f}, top{0, 0, head - p};
+        if ((c - a).cross(mid).dot(want) < 0) std::swap(a, c);
+        b.quad2(a, c, c + mid, a + mid, low, lit);
+        b.quad2(a + mid, c + mid, c + top, a + top, lit, dim);
+    };
+    face({back, -wall, p}, {front, -wall, p}, {0, -1, 0});
+    face({back, wall, p}, {front, wall, p}, {0, 1, 0});
+    face({back, -wall, p}, {back, wall, p}, {-1, 0, 0});
     for (float side : {-1.0f, 1.0f}) {
-        const V3 e0{-0.53f, side * 0.335f, 0.56f}, e1{0.53f, side * 0.335f, 0.56f}, r0{-0.53f, 0, 0.752f}, r1{0.53f, 0, 0.752f};
-        if (side < 0) b.quad(e0 + up, e1 + up, r1 + up, r0 + up, roof);
-        else b.quad(e1 + up, e0 + up, r0 + up, r1 + up, roof * 0.85f);
-        if (side < 0) b.quad(e0, e1, e1 + up, e0 + up, marble * 0.95f);  // the eave's edge
-        else b.quad(e1, e0, e0 + up, e1 + up, marble * 0.95f);
+        face({front, side * wall, p}, {front, side * (wall - anta), p}, {1, 0, 0});            // the anta's end
+        face({door, side * (wall - anta), p}, {front, side * (wall - anta), p}, {0, -side, 0});  // the porch's side
+        column(0.268f, side * 0.062f, 0.021f, head);
+    }
+    // The door wall, the doors let into it between jambs under a lintel.
+    b.pierced({door, -(wall - anta), p}, {0, 1, 0}, 2 * (wall - anta), head - p, {{wall - anta - 0.05f, wall - anta + 0.05f, 0, 0.3f, bronze}}, 0.014f, marble * 0.7f);
+    b.block({door + 0.004f, 0, p + 0.312f}, {0, 1, 0}, {1, 0, 0}, {0, 0, 1}, {0.066f, 0.006f, 0.012f}, marble * 0.95f);
+    for (float side : {-1.0f, 1.0f}) b.block({door + 0.003f, side * 0.056f, p + 0.15f}, {0, 1, 0}, {1, 0, 0}, {0, 0, 1}, {0.006f, 0.004f, 0.15f}, marble * 0.92f);
+    b.facing({door - 0.0135f, -0.001f, p}, {door - 0.0135f, 0.001f, p}, {door - 0.0135f, 0.001f, p + 0.3f}, {door - 0.0135f, -0.001f, p + 0.3f}, {1, 0, 0}, marble * 0.1f);
+    b.facing({door, -(wall - anta), p + 0.0005f}, {front, -(wall - anta), p + 0.0005f}, {front, wall - anta, p + 0.0005f}, {door, wall - anta, p + 0.0005f}, {0, 0, 1}, marble * 0.7f);  // the porch's floor, in shade
+    // The ceiling over the colonnades and the porch: the architrave's underside, in its own shade.
+    b.facing({-0.5f, -0.3f, head}, {0.5f, -0.3f, head}, {0.5f, 0.3f, head}, {-0.5f, 0.3f, head}, {0, 0, -1}, marble * 0.42f);
+    // Architrave, frieze (set back, darker, a triglyph over each column and between) and cornice (thrown out).
+    b.box({-0.5f, -0.3f, 0.5f}, {0.5f, 0.3f, 0.522f}, marble * 0.97f);
+    b.box({-0.49f, -0.29f, 0.522f}, {0.49f, 0.29f, 0.548f}, marble * 0.84f);
+    for (int i = 0; i <= 10; ++i)
+        for (float side : {-1.0f, 1.0f}) b.block({-0.42f + i * 0.084f, side * 0.293f, 0.535f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.011f, 0.004f, 0.013f}, marble * 0.93f);
+    for (int i = 0; i <= 6; ++i)
+        for (float end : {-1.0f, 1.0f}) b.block({end * 0.493f, -0.25f + i * 0.0833f, 0.535f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.004f, 0.011f, 0.013f}, marble * 0.93f);
+    b.box({-0.528f, -0.328f, 0.548f}, {0.528f, 0.328f, 0.562f}, marble);
+    b.facing({-0.528f, -0.328f, 0.548f}, {0.528f, -0.328f, 0.548f}, {0.528f, 0.328f, 0.548f}, {-0.528f, 0.328f, 0.548f}, {0, 0, -1}, marble * 0.5f);
+    // The roof: tiles on a slab whose edge is the raking cornice of each pediment; the pediment's field stands back
+    // under it, in its shade, and the slab's underside shows over that.
+    const float eave = 0.345f, verge = 0.54f, ridge = 0.762f, foot = 0.562f, field = 0.492f;
+    const V3 up{0, 0, 0.022f};
+    for (float side : {-1.0f, 1.0f}) {
+        const V3 e0{-verge, side * eave, foot}, e1{verge, side * eave, foot}, r0{-verge, 0, ridge}, r1{verge, 0, ridge};
+        b.facing(e0 + up, e1 + up, r1 + up, r0 + up, {0, side, 1}, roof * (side < 0 ? 1.0f : 0.85f));
+        b.facing(e0, e1, e1 + up, e0 + up, {0, side, 0}, marble * 0.95f);  // the eave's edge
+        b.facing(e0, e1, r1, r0, {0, -side, -1}, marble * 0.45f);          // the underside
         for (float end : {-1.0f, 1.0f}) {
-            const V3 e{end * 0.53f, side * 0.335f, 0.56f}, r{end * 0.53f, 0, 0.752f};
-            if (side * end < 0) b.quad(e, r, r + up, e + up, marble);
-            else b.quad(r, e, e + up, r + up, marble);
+            const V3 e{end * verge, side * eave, foot}, r{end * verge, 0, ridge};
+            b.facing(e, r, r + up, e + up, {end, 0, 0}, marble);
         }
     }
-    b.tri({-0.5f, -0.3f, 0.56f}, {-0.5f, 0.3f, 0.56f}, {-0.5f, 0, 0.74f}, marble * 0.82f);
-    b.tri({0.5f, 0.3f, 0.56f}, {0.5f, -0.3f, 0.56f}, {0.5f, 0, 0.74f}, marble * 0.82f);
-    for (float end : {-1.0f, 1.0f}) b.blob({end * 0.525f, 0, 0.785f}, {0.014f, 0.014f, 0.022f}, gilt, 0, 11);
+    for (float end : {-1.0f, 1.0f}) {
+        const V3 a{end * field, -0.3f, foot}, c{end * field, 0.3f, foot}, top{end * field, 0, foot + 0.3f * (ridge - foot) / eave};
+        if (end > 0) b.tri(c, a, top, marble * 0.8f);
+        else b.tri(a, c, top, marble * 0.8f);
+        b.blob({end * (verge - 0.006f), 0, ridge + 0.04f}, {0.014f, 0.014f, 0.024f}, gilt, 0, 11);
+        for (float side : {-1.0f, 1.0f}) b.blob({end * (verge - 0.008f), side * (eave - 0.008f), foot + 0.034f}, {0.01f, 0.01f, 0.016f}, gilt, 0, 7);
+    }
     return b.mesh;
 }
 
@@ -802,6 +953,105 @@ Mesh sageTower() {
     b.box({0.2f, -0.05f, 0.4f}, {0.285f, 0.05f, 0.52f}, {0.95f, 0.8f, 0.4f});  // the oriel, lit, between its sill and its head
     b.box({0.195f, -0.058f, 0.52f}, {0.292f, 0.058f, 0.535f}, stone * 0.85f);
     b.box({0.2f, -0.055f, 0.385f}, {0.29f, 0.055f, 0.4f}, stone * 0.85f);
+    return b.mesh;
+}
+
+// What stands about a house or on a green (each in metres, its own origin on the ground): drawn, not solid.
+namespace {
+const V3 kPlank{0.4f, 0.28f, 0.15f}, kEndGrain{0.52f, 0.42f, 0.27f};
+// A log or a pole from a to c with its cut ends.
+void pole(Builder& b, V3 a, V3 c, float r, int n, V3 bark) {
+    b.limb(a, c, r, r, n, bark);
+    const V3 axis = (c - a).normalized(), helper = std::fabs(axis.z) < 0.9f ? V3{0, 0, 1} : V3{1, 0, 0};
+    const V3 u = axis.cross(helper).normalized(), v = axis.cross(u);
+    for (int i = 0; i < n; ++i) {
+        const float a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+        const V3 d0 = (u * std::cos(a0) + v * std::sin(a0)) * r, d1 = (u * std::cos(a1) + v * std::sin(a1)) * r;
+        b.tri(a, a + d1, a + d0, kEndGrain);
+        b.tri(c, c + d0, c + d1, kEndGrain);
+    }
+}
+}  // namespace
+
+Mesh well() {
+    Builder b;
+    const V3 stone = kStone * 0.95f;
+    b.frustum(0, 1.0f, 0.85f, 0.92f, 10, stone);
+    for (int i = 0; i < 10; ++i) {  // the kerb's top, and the dark of the shaft within
+        const float a0 = 2 * kPi * i / 10, a1 = 2 * kPi * (i + 1) / 10;
+        const V3 o0{std::cos(a0), std::sin(a0), 0}, o1{std::cos(a1), std::sin(a1), 0}, z{0, 0, 0.85f};
+        b.quad(o0 * 0.92f + z, o1 * 0.92f + z, o1 * 0.62f + z, o0 * 0.62f + z, stone * 1.08f);
+        b.quad(o1 * 0.62f + z, o0 * 0.62f + z, o0 * 0.62f + V3{0, 0, 0.2f}, o1 * 0.62f + V3{0, 0, 0.2f}, stone * 0.3f);
+    }
+    b.disc({0, 0, 0.2f}, 0.62f, 10, {0.05f, 0.08f, 0.1f});
+    for (float side : {-1.0f, 1.0f}) b.block({side * 0.8f, 0, 1.55f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.07f, 0.07f, 0.75f}, kPlank);
+    pole(b, {-0.9f, 0, 1.75f}, {0.9f, 0, 1.75f}, 0.07f, 6, kPlank * 0.85f);
+    b.limb({0, 0, 1.7f}, {0, 0, 1.15f}, 0.012f, 0.012f, 4, {0.3f, 0.27f, 0.2f});
+    b.frustum(0.95f, 0.13f, 1.18f, 0.16f, 8, kPlank * 0.9f);  // the bucket
+    b.facing({-1.05f, -0.6f, 2.25f}, {1.05f, -0.6f, 2.25f}, {1.05f, 0, 2.65f}, {-1.05f, 0, 2.65f}, {0, -1, 1}, kPlank * 0.8f);
+    b.facing({-1.05f, 0.6f, 2.25f}, {1.05f, 0.6f, 2.25f}, {1.05f, 0, 2.65f}, {-1.05f, 0, 2.65f}, {0, 1, 1}, kPlank * 0.7f);
+    return b.mesh;
+}
+
+Mesh woodpile() {
+    // Split logs stacked along y against a wall at x = 0, three high, between two stakes.
+    Builder b;
+    const V3 bark{0.33f, 0.25f, 0.17f};
+    for (int row = 0; row < 3; ++row)
+        for (int i = 0; i < 4 - row; ++i) {
+            const float x = 0.16f + 0.3f * static_cast<float>(i) + 0.15f * static_cast<float>(row), z = 0.14f + 0.26f * static_cast<float>(row);
+            pole(b, {x, -0.55f, z}, {x, 0.55f + 0.06f * static_cast<float>((i + row) % 3), z}, 0.14f, 5, bark * (0.85f + 0.1f * static_cast<float>((i * 3 + row) % 4)));
+        }
+    return b.mesh;
+}
+
+Mesh cart() {
+    // A two-wheeled cart along x, tipped onto its shafts.
+    Builder b;
+    b.block({0, 0, 0.8f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1.1f, 0.55f, 0.05f}, kPlank);
+    for (float side : {-1.0f, 1.0f}) {
+        b.block({0, side * 0.55f, 1.05f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1.1f, 0.03f, 0.22f}, kPlank * 0.9f);
+        pole(b, {0, side * 0.62f, 0.55f}, {0, side * 0.72f, 0.55f}, 0.55f, 10, kPlank * 0.7f);
+        pole(b, {0.9f, side * 0.4f, 0.8f}, {2.5f, side * 0.4f, 0.06f}, 0.04f, 5, kPlank * 0.85f);
+    }
+    b.block({-1.1f, 0, 1.05f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.03f, 0.55f, 0.22f}, kPlank * 0.85f);
+    return b.mesh;
+}
+
+Mesh stall() {
+    // A market stall along x: a board on trestles under a canvas awning on four poles; baskets on the board.
+    Builder b;
+    const V3 canvas{0.86f, 0.8f, 0.66f};
+    for (float x : {-1.2f, 1.2f})
+        for (float y : {-0.6f, 0.6f}) b.block({x, y, y < 0 ? 1.0f : 1.2f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.04f, 0.04f, y < 0 ? 1.0f : 1.2f}, kPlank * 0.85f);
+    b.block({0, 0, 0.85f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1.15f, 0.5f, 0.035f}, kPlank);
+    for (int i = 0; i < 6; ++i) {  // the awning, in stripes
+        const float x0 = -1.35f + 0.45f * static_cast<float>(i), x1 = x0 + 0.45f;
+        b.facing({x0, -0.8f, 1.95f}, {x1, -0.8f, 1.95f}, {x1, 0.7f, 2.45f}, {x0, 0.7f, 2.45f}, {0, -0.3f, 1}, i % 2 ? canvas : canvas * 0.8f);
+    }
+    for (int i = 0; i < 3; ++i) {
+        const size_t from = b.mark();
+        b.frustum(0.885f, 0.16f, 1.05f, 0.2f, 7, V3{0.62f, 0.5f, 0.3f} * (0.85f + 0.1f * static_cast<float>(i)));
+        b.disc({0, 0, 1.03f}, 0.19f, 7, i == 1 ? V3{0.75f, 0.2f, 0.12f} : V3{0.45f, 0.5f, 0.16f});
+        b.shift(from, {-0.7f + 0.7f * static_cast<float>(i), 0.1f, 0});
+    }
+    return b.mesh;
+}
+
+Mesh fence() {
+    // A run of post and rail along x from -1 to 1 (scaled by its half length), a metre high.
+    Builder b;
+    for (float x : {-1.0f, 0.0f, 1.0f}) b.block({x, 0, 0.5f}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.03f, 0.05f, 0.5f}, kPlank * 0.8f);
+    for (float z : {0.4f, 0.8f}) b.block({0, 0.03f, z}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {1.0f, 0.02f, 0.045f}, kPlank * 0.95f);
+    return b.mesh;
+}
+
+Mesh barrel() {
+    Builder b;
+    b.frustum(0, 0.3f, 0.45f, 0.38f, 9, kPlank * 0.95f);
+    b.frustum(0.45f, 0.38f, 0.9f, 0.3f, 9, kPlank);
+    b.disc({0, 0, 0.86f}, 0.29f, 9, kPlank * 0.7f);
+    for (float z : {0.14f, 0.76f}) b.frustum(z, 0.345f, z + 0.05f, 0.345f, 9, kIron);
     return b.mesh;
 }
 

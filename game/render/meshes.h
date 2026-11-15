@@ -49,9 +49,9 @@ Mesh tower();
 //   block: a stone block [-1, 1] x [-1, 1] x [0, 1]
 //   drum: a round tower radius 1, 1 high, crenellated, no roof
 //   keep: a square keep [-1, 1]^2, 1 high, battlements and corner turrets
-//   ramp: a solid wedge whose top (one plane) rises along x from z = 0 at
-//     x = -1 to z = 1 at x = 1, [-1, 1] across; its sides run on a little
-//     below z = 0
+//   ramp: a stair of kRampSteps treads rising along x from z = 0 at x = -1
+//     to z = 1 at x = 1, [-1, 1] across; its sides run on a little below
+//     z = 0
 Mesh curtain();
 Mesh block();
 // A piece of a gallery round a tower, `width` metres from the tower's face out.
@@ -59,6 +59,7 @@ Mesh gallery(float width);
 Mesh drum();
 Mesh keep();
 Mesh ramp();
+inline constexpr int kRampSteps = 28;
 //   gate: two timber doors banded with iron across x in [-1, 1] (+y outward),
 //     z from 0 to 1; broken: battered in, hanging and strewn in the passage
 Mesh gate(bool broken);
@@ -76,6 +77,15 @@ Mesh bannerCloth();
 Mesh ruin();
 Mesh temple();
 Mesh sageTower();
+// What stands about a town's houses, drawn and not solid (a man walks through them): each in metres on the ground at
+// its own origin. A well; split logs stacked against a wall at x = 0; a cart tipped on its shafts; a market stall
+// under an awning; a run of post and rail from x = -1 to 1; a barrel.
+Mesh well();
+Mesh woodpile();
+Mesh cart();
+Mesh stall();
+Mesh fence();
+Mesh barrel();
 // A fallen trunk along x from -1 to 1, radius 1 (scale: half length, girth, girth).
 Mesh log();
 // A conquest boat: a timber hull along x from -1 (stern) to 1 (bow), beam

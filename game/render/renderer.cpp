@@ -386,6 +386,7 @@ bool Renderer::buildPrograms() {
         s.p.shadowMap = glGetUniformLocation(s.p.id, "uShadowMap");
         s.p.lightViewProj = glGetUniformLocation(s.p.id, "uLightViewProj");
         s.p.shadowInfo = glGetUniformLocation(s.p.id, "uShadowInfo");
+        s.p.shadowMore = glGetUniformLocation(s.p.id, "uShadowMore");
         s.p.focus = glGetUniformLocation(s.p.id, "uFocus");
         s.p.canopy = glGetUniformLocation(s.p.id, "uCanopy");
         s.p.cover = glGetUniformLocation(s.p.id, "uCover");
@@ -1249,8 +1250,18 @@ void Renderer::uploadSettlements(const Battle& battle) {
     // its corners rounded by `round` (a round tower is all radius), fading out over `reach` metres.
     std::vector<float> shade;
     const auto shadeAt = [&](V3 at, float yaw, float hx, float hy, float round) {
-        const float reach = 1.8f;
+        const float reach = 2.2f;
         shade.insert(shade.end(), {at.x, at.y, at.z, yaw, std::max(hx, hy) + round + reach, 0, 12, hx, hy, round, reach});
+    };
+    // Trodden earth (kDecalFs type 13), `radius` metres about a point: before a door, round a well.
+    const auto wornAt = [&](V3 at, float radius, float seed) { shade.insert(shade.end(), {at.x, at.y, at.z, seed * 6.283f, radius, 0, 13, 0, 0, 0, seed}); };
+    // What stands in the yards (meshes.h): drawn only, so each is set where a man seldom walks: against a house's
+    // back or its end, beside its door, between two houses.
+    std::vector<float> yard[kYardKinds];
+    const auto prop = [&](Yard kind, V3 at, float yaw, V3 scale = {1, 1, 1}) {
+        float q[4];
+        yawQuat(yaw, q);
+        pushInstance(yard[kind], at, q, scale, {1, 1, 1});
     };
     const auto local = [&](const sim::Vec3& p) { return toV3(p) - V3{o.x, o.y, 0}; };
     const auto yawOf = [](V3 d) { return std::atan2(d.y, d.x); };
@@ -1414,7 +1425,42 @@ void Renderer::uploadSettlements(const Battle& battle) {
             pushInstance(houses, local(hs.pos), q, hx > hy ? V3{hy, hx, static_cast<float>(hs.height.toDouble())} : V3{hx, hy, static_cast<float>(hs.height.toDouble())},
                          look.roof);
             houseCity.push_back(static_cast<uint32_t>(ci));
-            shadeAt(local(hs.pos), 0, hx, hy, 0);
+            const V3 at = local(hs.pos);
+            shadeAt(at, 0, hx, hy, 0);
+            // Its door looks out of the long side the mesh's +x is turned to; `ridge` runs along the house.
+            const V3 door = hx > hy ? V3{0, 1, 0} : V3{1, 0, 0}, ridge = hx > hy ? V3{1, 0, 0} : V3{0, 1, 0};
+            const float deep = std::min(hx, hy), wide = std::max(hx, hy), facing = yawOf(door);
+            const uint32_t id = static_cast<uint32_t>(ci) * 7919u + static_cast<uint32_t>(hi) * 104729u;
+            const auto roll = [&](uint32_t n) { return hash01(id + n * 2654435761u); };
+            wornAt(at + door * (deep + 0.9f), 1.9f, roll(1));
+            if (roll(2) < 0.5f) prop(kWoodpile, at - door * deep + ridge * ((roll(3) - 0.5f) * (wide - 1.2f)), facing + 3.1415927f);
+            if (roll(4) < 0.55f) {
+                const float end = roll(5) < 0.5f ? -1.0f : 1.0f;
+                prop(kBarrel, at + door * (deep + 0.42f) + ridge * (end * wide * 0.72f), roll(6) * 6.283f);
+                if (roll(7) < 0.5f) prop(kBarrel, at + door * (deep + 0.45f) + ridge * (end * (wide * 0.72f - 0.8f)), roll(8) * 6.283f, {0.85f, 0.85f, 0.8f});
+            }
+            if (roll(9) < 0.4f) {  // a length of fence from a back corner, along the house's line
+                const float end = roll(10) < 0.5f ? -1.0f : 1.0f;
+                prop(kFence, at - door * deep + ridge * (end * (wide + 2.0f)), yawOf(ridge), {2.0f, 1, 1});
+            }
+            if (roll(11) < (c.walled ? 0.12f : 0.3f)) prop(kCart, at - door * (deep + 1.3f) + ridge * ((roll(12) - 0.5f) * wide), yawOf(ridge) + (roll(13) - 0.5f) * 0.5f);
+        }
+        if (!k.houses.empty()) {
+            // The well, between the keep and the first house and out of the straight way between them, the ground
+            // trodden round it; in a walled town, market stalls beside it.
+            const V3 from = local(k.keep), to = local(k.houses[0].pos);
+            V3 way{to.x - from.x, to.y - from.y, 0};
+            const float len = way.length(), keepHalf = static_cast<float>(k.keepHalf.toDouble());
+            const float reach = static_cast<float>(std::max(k.houses[0].halfX, k.houses[0].halfY).toDouble());
+            if (len > keepHalf * 1.42f + reach + 5.0f) {
+                way = way * (1.0f / len);
+                const V3 across{-way.y, way.x, 0};
+                const float mid = keepHalf * 1.42f + (len - keepHalf * 1.42f - reach) / 2;
+                const V3 well = V3{from.x, from.y, to.z} + way * mid + across * 2.5f;
+                prop(kWell, well, yawOf(way));
+                wornAt(well, 3.2f, hash01(static_cast<uint32_t>(ci) * 613u));
+                if (c.walled && len > keepHalf * 1.42f + reach + 9.0f) prop(kStall, well - across * 5.5f, yawOf(way) + 1.5707963f);
+            }
         }
     }
     for (size_t si = 0; si < cont.sites().size(); ++si) {
@@ -1454,6 +1500,7 @@ void Renderer::uploadSettlements(const Battle& battle) {
     uploadMeshInstances(temples_, temples);
     uploadMeshInstances(sages_, sages);
     uploadDynamic(footShade_, shade);
+    for (int kind = 0; kind < kYardKinds; ++kind) uploadMeshInstances(yard_[kind], yard[kind]);
 
     uploadFarForest(battle);
 }
@@ -1561,8 +1608,7 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(brokenGates_, meshes::gate(true), 0);
     makeMeshBatch(leavesLeft_, meshes::gateLeaf(false), 0);
     makeMeshBatch(leavesRight_, meshes::gateLeaf(true), 0);
-    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &galleries_}) b->masonry = MeshBatch::Masonry::Ashlar;
-    stairs_.masonry = MeshBatch::Masonry::Stair;
+    for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &stairs_, &galleries_}) b->masonry = MeshBatch::Masonry::Ashlar;
     makeMeshBatch(towers_, meshes::tower(), 0);
     makeMeshBatch(banners_, meshes::banner(), 0.02f);
     makeMeshBatch(cityHouses_, meshes::house(), 0);
@@ -1572,8 +1618,15 @@ bool Renderer::init(Battle& battle) {
     makeMeshBatch(temples_, meshes::temple(), 0);
     makeMeshBatch(sages_, meshes::sageTower(), 0);
     // Every town structure is of the castles' stone, under the houses' tiles: one material for all of them.
+    makeMeshBatch(yard_[kWell], meshes::well(), 0);
+    makeMeshBatch(yard_[kWoodpile], meshes::woodpile(), 0);
+    makeMeshBatch(yard_[kCart], meshes::cart(), 0);
+    makeMeshBatch(yard_[kStall], meshes::stall(), 0);
+    makeMeshBatch(yard_[kFence], meshes::fence(), 0);
+    makeMeshBatch(yard_[kBarrel], meshes::barrel(), 0);
     for (MeshBatch* b : {&keeps_, &temples_, &sages_}) b->masonry = MeshBatch::Masonry::Building;
     for (MeshBatch* b : {&walls_, &towers_, &drums_, &keeps_, &stairs_, &houses_, &cityHouses_, &temples_, &sages_}) b->grounded = true;
+    for (MeshBatch& b : yard_) b.masonry = MeshBatch::Masonry::Building, b.grounded = true;
     makeMeshBatch(logs_, meshes::log(), 0);
     makeMeshBatch(ships_, meshes::ship(), 0);
     makeMeshBatch(sails_, meshes::sail(), 0.01f);
@@ -2081,6 +2134,8 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     shadowInfo_[1] = radius * 0.7f;
     shadowInfo_[2] = radius * 0.95f;
     shadowInfo_[3] = (0.06f + texel * 1.2f) / (depthFar - depthNear) * 2.0f * 0.5f;  // metres, in [0, 1] depth
+    shadowMore_[0] = texel;
+    shadowMore_[1] = 1.0f / (depthFar - depthNear);
 
     glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo_);
     glViewport(0, 0, shadowSize_, shadowSize_);
@@ -2098,6 +2153,7 @@ void Renderer::renderShadowMap(const Camera& camera, double timeSeconds, float g
     setCommon(meshDepth_, camera, timeSeconds, gameSeconds);
     std::vector<MeshBatch*> casters = scenery(true);
     for (MeshBatch* b : {&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_}) casters.push_back(b);
+    for (MeshBatch& b : yard_) casters.push_back(&b);
     for (MeshBatch* b : casters) {
         if (b->count == 0) continue;
         glUniform1f(meshDepth_.sway, b->sway);
@@ -2253,6 +2309,7 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
     }
     if (p.lightViewProj >= 0) glUniformMatrix4fv(p.lightViewProj, 1, GL_FALSE, lightViewProj_.m);
     if (p.shadowInfo >= 0) glUniform4fv(p.shadowInfo, 1, shadowInfo_);
+    if (p.shadowMore >= 0) glUniform4fv(p.shadowMore, 1, shadowMore_);
     if (p.forestMap >= 0) {
         glActiveTexture(GL_TEXTURE14);
         glBindTexture(GL_TEXTURE_2D, forestMap_);
@@ -2669,7 +2726,9 @@ void Renderer::draw(Battle& battle, const Camera& camera, double timeSeconds) {
 
     // Solid 3D things: scenery, corpses and loose body parts.
     // From high up, undergrowth and small rocks are sub-pixel: skip them (phones).
-    drawMeshes({&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_}, camera, timeSeconds, gameSeconds);
+    std::vector<MeshBatch*> town{&walls_, &parapets_, &towers_, &drums_, &keeps_, &stairs_, &galleries_, &banners_, &cityHouses_, &ruins_, &temples_, &sages_, &bridges_, &gates_, &brokenGates_, &leavesLeft_, &leavesRight_, &poles_, &cloths_};
+    for (MeshBatch& b : yard_) town.push_back(&b);
+    drawMeshes(town, camera, timeSeconds, gameSeconds);
     part_ = Part::Buildings;
     drawModel(model_, ruinModel_, camera, timeSeconds, gameSeconds);
     if (!showUnits_) drawMeshes({&ships_, &sails_, &piers_}, camera, timeSeconds, gameSeconds);

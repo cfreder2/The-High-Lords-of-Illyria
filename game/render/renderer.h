@@ -147,7 +147,7 @@ private:
         GLint viewProj = -1, eye = -1, heights = -1, cells = -1, cellSize = -1;
         GLint time = -1, gameSeconds = -1, camDist = -1, pxScale = -1, camRight = -1;
         GLint water = -1, sway = -1, ground = -1, road = -1, waterTex = -1, hole = -1;
-        GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, focus = -1, canopy = -1, cover = -1;
+        GLint features = -1, shadowMap = -1, lightViewProj = -1, shadowInfo = -1, shadowMore = -1, focus = -1, canopy = -1, cover = -1;
         GLint ring = -1, sink = -1, patch = -1, patchSink = -1, masonry = -1, grounded = -1, house = -1, owned = -1, rock = -1, camFwd = -1, camUp = -1, proj = -1, flow = -1;
         GLint bakeRight = -1, bakeUp = -1, bakeToward = -1, bakeRect = -1, scratch = -1, resolve = -1;
         GLint lightDepth = -1, lightRight = -1, lightUp = -1, lightToward = -1, lightRect = -1, lightRange = -1, sheetView = -1;
@@ -165,8 +165,8 @@ private:
         size_t capacity = 0;
         float sway = 0;
         // Dressed stone (shaders.h kMeshFs uMasonry): Ashlar the castles' and bridges' coursed blocks; Building the same
-        // under a tiled roof, with wooden doors (keep, temple, sage's tower); Stair the same with steps on its slope.
-        enum class Masonry : uint8_t { None, Ashlar, Building, Stair };
+        // under a tiled roof, with its woodwork grained (keep, temple, sage's tower, what stands in a yard).
+        enum class Masonry : uint8_t { None, Ashlar, Building };
         Masonry masonry = Masonry::None;
         bool grounded = false;  // stands on the ground at its own z = 0: its foot is damp and shaded (uGrounded)
         bool rock = false;   // a boulder (see rockSurface)
@@ -554,6 +554,9 @@ private:
     // Cities, castles and the places heroes explore, across the whole continent.
     MeshBatch walls_, parapets_, towers_, banners_, cityHouses_, ruins_, temples_, sages_;
     MeshBatch drums_, keeps_, stairs_, galleries_;
+    // What stands about a town's houses (meshes.h well ... barrel): drawn only, a man walks through them.
+    enum Yard { kWell, kWoodpile, kCart, kStall, kFence, kBarrel, kYardKinds };
+    MeshBatch yard_[kYardKinds];
     MeshBatch gates_, brokenGates_, leavesLeft_, leavesRight_;  // shut, broken, and the leaves of those swinging
     std::vector<int16_t> gatesShown_;  // how each gate was last uploaded: -1 broken, else how far open (in twentieths)
     MeshBatch logs_;
@@ -595,6 +598,7 @@ private:
     int shadowSize_ = 0;
     M4 lightViewProj_;
     float shadowInfo_[4] = {0, 0, 0, 0};
+    float shadowMore_[4] = {1, 0, 0, 0};  // metres a texel spans, map depth per metre (uShadowMore)
     const M4* viewProjOverride_ = nullptr;  // the shadow pass renders from the sun
 };
 
