@@ -1,0 +1,46 @@
+size 1600 900
+start skirmish ford
+wait 1
+camera 452 476 6 3.14
+wait 4
+shot dwarf-1-idle-blue-close
+camera 452 476 2 3.14
+wait 3
+shot dwarf-2-idle-lowest-camera
+stats
+camera 438 505 9 3.14
+wait 4
+shot dwarf-3-beside-archers-hd
+camera 452 476 7 3.14
+select 3
+click right 800 840
+wait_ticks 30
+shot dwarf-4-walk
+wait_ticks 9
+shot dwarf-4b-walk
+deaths spawn 680 538
+camera 690 508 6 1.57
+wait_ticks 12
+shot dwarf-5-attack-a
+wait_ticks 5
+shot dwarf-5-attack-b
+wait_ticks 5
+shot dwarf-5-attack-c
+wait_ticks 5
+shot dwarf-5-attack-d
+wait_ticks 5
+shot dwarf-5-attack-e
+wait_ticks 5
+shot dwarf-5-attack-f
+deaths fell
+wait_ticks 12
+shot dwarf-6-dying
+wait_ticks 60
+shot dwarf-7-dead
+camera 702 508 30 0.8
+wait 3
+shot dwarf-8-red-search-a
+camera 712 500 12 0
+wait 3
+shot dwarf-8-red-search-b
+quit
