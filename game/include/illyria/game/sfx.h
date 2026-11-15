@@ -89,18 +89,20 @@ enum class Sound : uint8_t {
     Recruit,         // a squad trained
     LordFallen,      // one of the player's lords is dead
     // Hooks: features being built ask for these with Sfx::hook(sound, where) (docs/SOUND_EFFECTS.md, Hooks).
-    SplashSmall,     // feet, or a small thing, into water
-    SplashBody,      // a body falling in water
-    SplashBig,       // a boulder or a catapult's stone into water
     BoulderLaunch,   // a boulder levered loose
-    BoulderRumble,   // rolling: ask again every half second or so while it rolls
+    BoulderRumble,   // rolling (asked for by Sfx itself while a landed stone moves)
     BoulderImpact,   // striking ground or a wall
     BoulderCrush,    // men under it
-    FireSteam,       // a fireball quenched in water
     CallHelp,        // a squad calls for help
     CallAnswer,      // and is answered
     ChargeImpact,    // cavalry crashing into a line
     Rout,            // a line breaking
+    // Water (sim world_drift.cpp, Sfx::wading).
+    Wade,            // men and beasts going through water
+    WaterPlop,       // a part of a body landing in water
+    BodySplash,      // a body going down into water
+    StoneWater,      // a catapult's stone into water: the column
+    Steam,           // fire on water
     Count
 };
 constexpr int kSoundCount = static_cast<int>(Sound::Count);
@@ -232,10 +234,12 @@ private:
     void want(Sound s, const V3& pos, float delay = 0, bool positional = true, float doppler = 0, float scale = 1);
     void movement(const sim::World& world);
     void fuses(const sim::World& world);
+    void rolling(const sim::World& world);
     void flush();
     void place(SfxCue& c) const;
     void updateAmbience(const sim::World& world, const sim::Continent& continent, const V3& origin, bool enemyLand);
     void whistles(const sim::World& world);
+    void wading(const sim::World& world);
     Sound arrowSurface(const sim::World& world, const sim::ImpactEvent& e) const;
 
     sim::PlayerId player_;

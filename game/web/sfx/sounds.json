@@ -454,6 +454,39 @@
    ]
   },
   {
+   "id": "snd_water_wade",
+   "category": "impacts",
+   "title": "Wading",
+   "when": "Men, horses and beasts going through water (a ford, the shallows): the slosh at their feet, louder the more of them and the faster.",
+   "behaviour": "one-shot, positional",
+   "variants": 4,
+   "record": "Walk and run through a stream or a paddling pool in boots; a hand swept through a full bath.",
+   "emitted_by": "game",
+   "level": -12,
+   "files": [
+    "sfx/snd_water_wade_1.mp3",
+    "sfx/snd_water_wade_2.mp3",
+    "sfx/snd_water_wade_3.mp3",
+    "sfx/snd_water_wade_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_plop",
+   "category": "impacts",
+   "title": "Something falls in the water",
+   "when": "A head, a limb or a gobbet lands in a river or lake.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Drop an apple and a wet sponge into a bath from shoulder height.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_water_plop_1.mp3",
+    "sfx/snd_water_plop_2.mp3",
+    "sfx/snd_water_plop_3.mp3"
+   ]
+  },
+  {
    "id": "snd_impact_stone_smash",
    "category": "impacts",
    "title": "Stone lands",
@@ -467,6 +500,22 @@
     "sfx/snd_impact_stone_smash_1.mp3",
     "sfx/snd_impact_stone_smash_2.mp3",
     "sfx/snd_impact_stone_smash_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_impact_stone_water",
+   "category": "impacts",
+   "title": "Stone into water",
+   "when": "A catapult stone lands in a river or lake: a boom, a column of water and its rain.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "Throw the biggest rock you can lift into a deep pond, mic well back.",
+   "emitted_by": "game",
+   "level": 0,
+   "files": [
+    "sfx/snd_impact_stone_water_1.mp3",
+    "sfx/snd_impact_stone_water_2.mp3",
+    "sfx/snd_impact_stone_water_3.mp3"
    ]
   },
   {
@@ -534,6 +583,22 @@
     "sfx/snd_expl_fireball_2.mp3",
     "sfx/snd_expl_fireball_3.mp3",
     "sfx/snd_expl_fireball_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_steam",
+   "category": "explosions",
+   "title": "Fire on water",
+   "when": "A fireball or a burning bottle bursts on water: a hiss of steam, the surface boiling and spitting.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Quench a hot pan or a burning stick in a bucket of water.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_water_steam_1.mp3",
+    "sfx/snd_water_steam_2.mp3",
+    "sfx/snd_water_steam_3.mp3"
    ]
   },
   {
@@ -619,6 +684,22 @@
     "sfx/snd_gore_body_fall_armor_2.mp3",
     "sfx/snd_gore_body_fall_armor_3.mp3",
     "sfx/snd_gore_body_fall_armor_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_splash_body",
+   "category": "deaths",
+   "title": "Body falls in water",
+   "when": "A man or a beast killed in the water goes down into it; a trunk thrown into it.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Push a full sack or a big log into a pond; a belly flop recorded from the bank.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_water_splash_body_1.mp3",
+    "sfx/snd_water_splash_body_2.mp3",
+    "sfx/snd_water_splash_body_3.mp3"
    ]
   },
   {
@@ -1287,53 +1368,6 @@
    ]
   },
   {
-   "id": "snd_water_splash_small",
-   "category": "hooks",
-   "title": "Small splash",
-   "when": "Feet or a small thing going into water.",
-   "behaviour": "one-shot, positional",
-   "variants": 3,
-   "record": "A stone the size of a fist dropped into a bucket or pond.",
-   "emitted_by": "hook",
-   "level": -8,
-   "files": [
-    "sfx/snd_water_splash_small_1.mp3",
-    "sfx/snd_water_splash_small_2.mp3",
-    "sfx/snd_water_splash_small_3.mp3"
-   ]
-  },
-  {
-   "id": "snd_water_splash_body",
-   "category": "hooks",
-   "title": "Body into water",
-   "when": "A body falls into water.",
-   "behaviour": "one-shot, positional",
-   "variants": 3,
-   "record": "A full sack or a large log dropped flat into a pond.",
-   "emitted_by": "hook",
-   "level": -4,
-   "files": [
-    "sfx/snd_water_splash_body_1.mp3",
-    "sfx/snd_water_splash_body_2.mp3",
-    "sfx/snd_water_splash_body_3.mp3"
-   ]
-  },
-  {
-   "id": "snd_water_splash_big",
-   "category": "hooks",
-   "title": "Great splash",
-   "when": "A boulder or a catapult's stone lands in water: a deep plunge and the spray falling after.",
-   "behaviour": "one-shot, positional, carries far",
-   "variants": 2,
-   "record": "A big rock heaved into deep water from a bank; keep the two seconds of spray coming down.",
-   "emitted_by": "hook",
-   "level": -1,
-   "files": [
-    "sfx/snd_water_splash_big_1.mp3",
-    "sfx/snd_water_splash_big_2.mp3"
-   ]
-  },
-  {
    "id": "snd_boulder_launch",
    "category": "hooks",
    "title": "Boulder levered loose",
@@ -1394,22 +1428,6 @@
     "sfx/snd_boulder_crush_1.mp3",
     "sfx/snd_boulder_crush_2.mp3",
     "sfx/snd_boulder_crush_3.mp3"
-   ]
-  },
-  {
-   "id": "snd_fire_steam",
-   "category": "hooks",
-   "title": "Fire quenched",
-   "when": "A fireball or burning thing goes into water: a burst of hissing steam.",
-   "behaviour": "one-shot, positional",
-   "variants": 3,
-   "record": "A hot pan plunged into a sink of water; or water thrown on embers.",
-   "emitted_by": "hook",
-   "level": -4,
-   "files": [
-    "sfx/snd_fire_steam_1.mp3",
-    "sfx/snd_fire_steam_2.mp3",
-    "sfx/snd_fire_steam_3.mp3"
    ]
   },
   {

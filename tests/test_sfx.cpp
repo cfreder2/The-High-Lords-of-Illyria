@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "illyria/game/battle.h"
 #include "illyria/game/sfx.h"
 #include "illyria/game/voice.h"
+#include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "json.h"
 #include "test.h"
@@ -224,6 +226,31 @@ TEST(sounds_follow_the_death_matrix) {
         CHECK(count(c, Sound::FireballBlast) > 0);   // and shattering into flame
     }
     CHECK(blasts > 0 && gibs > 0 && rain > 0);
+}
+
+TEST(the_water_is_heard) {
+    // A fight stood in the old ford (the river's 0.6 m of water at (560, 512)): the slosh of the men in it, and the dead
+    // going down with a splash, not a thud. A head thrown into the deep river above it: a plop.
+    sim::WorldConfig cfg;
+    cfg.seed = 3;
+    cfg.region = std::make_shared<const sim::Region>(sim::Region::generateIllyria(20261027));
+    sim::World w(cfg);
+    for (int i = 0; i < 8; ++i) {
+        const sim::Fixed y = m(506 + i * 2);
+        w.spawnUnit(0, {m(556), y, w.groundHeight(m(556), y)}, kEast, sim::unitStats(UnitType::Warrior));
+        w.spawnUnit(1, {m(564), y, w.groundHeight(m(564), y)}, kWest, sim::unitStats(UnitType::Berserker));
+    }
+    w.launchPart(sim::RemainKind::Head, 0, {m(555), m(570), cfg.region->waterSurfaceAt(m(555), m(570)) + m(3)}, {});
+    const std::vector<SfxCue> cues = listen(w, {560, 512, 0}, 45);
+    int dead = 0;
+    for (const sim::Unit& u : w.units()) dead += !u.alive();
+    std::printf("  %d dead in the ford: %d wading, %d splashes, %d falls on ground, %d plops\n", dead, count(cues, Sound::Wade), count(cues, Sound::BodySplash),
+                count(cues, Sound::BodyFall) + count(cues, Sound::BodyFallArmor), count(cues, Sound::WaterPlop));
+    CHECK(dead > 0);
+    CHECK(count(cues, Sound::Wade) > 0);
+    CHECK(count(cues, Sound::Wade) < 45 * 2);  // a slosh now and then, not a roar
+    CHECK(count(cues, Sound::BodySplash) > 0);
+    CHECK(count(cues, Sound::WaterPlop) >= 1);  // (the head, and whatever the berserkers cut off)
 }
 
 TEST(arrows_whistle_past_a_listener_among_them) {

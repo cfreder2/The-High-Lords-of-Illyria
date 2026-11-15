@@ -415,27 +415,6 @@
 "dc": 2e-05,
 "bytes": 35372
 },
-"sfx/snd_fire_steam_1.mp3": {
-"seconds": 1.435,
-"peak_db": -1.4,
-"lufs": -18.04,
-"dc": 2e-05,
-"bytes": 11948
-},
-"sfx/snd_fire_steam_2.mp3": {
-"seconds": 1.435,
-"peak_db": -2.24,
-"lufs": -17.96,
-"dc": 3e-05,
-"bytes": 11948
-},
-"sfx/snd_fire_steam_3.mp3": {
-"seconds": 1.452,
-"peak_db": -2.01,
-"lufs": -17.97,
-"dc": 2e-05,
-"bytes": 12140
-},
 "sfx/snd_gore_blood_rain_1.mp3": {
 "seconds": 1.668,
 "peak_db": -1.28,
@@ -898,6 +877,27 @@
 "dc": -2e-05,
 "bytes": 17132
 },
+"sfx/snd_impact_stone_water_1.mp3": {
+"seconds": 3.44,
+"peak_db": -3.55,
+"lufs": -18.09,
+"dc": -5e-05,
+"bytes": 28076
+},
+"sfx/snd_impact_stone_water_2.mp3": {
+"seconds": 3.548,
+"peak_db": -3.03,
+"lufs": -18.08,
+"dc": -6e-05,
+"bytes": 28844
+},
+"sfx/snd_impact_stone_water_3.mp3": {
+"seconds": 3.427,
+"peak_db": -3.85,
+"lufs": -18.03,
+"dc": 7e-05,
+"bytes": 27884
+},
 "sfx/snd_magic_heal_1.mp3": {
 "seconds": 2.882,
 "peak_db": -5.09,
@@ -1269,19 +1269,26 @@
 "dc": 0.00014,
 "bytes": 1388
 },
-"sfx/snd_water_splash_big_1.mp3": {
-"seconds": 2.641,
-"peak_db": -2.24,
-"lufs": -18.07,
-"dc": 4e-05,
-"bytes": 21740
+"sfx/snd_water_plop_1.mp3": {
+"seconds": 0.701,
+"peak_db": -1.46,
+"lufs": -18.09,
+"dc": -1e-05,
+"bytes": 6188
 },
-"sfx/snd_water_splash_big_2.mp3": {
-"seconds": 2.692,
-"peak_db": -2.75,
-"lufs": -17.99,
-"dc": -8e-05,
-"bytes": 22124
+"sfx/snd_water_plop_2.mp3": {
+"seconds": 0.679,
+"peak_db": -1.63,
+"lufs": -17.98,
+"dc": 1e-05,
+"bytes": 5996
+},
+"sfx/snd_water_plop_3.mp3": {
+"seconds": 0.644,
+"peak_db": -1.92,
+"lufs": -17.96,
+"dc": -1e-05,
+"bytes": 5612
 },
 "sfx/snd_water_splash_body_1.mp3": {
 "seconds": 1.469,
@@ -1304,26 +1311,54 @@
 "dc": -4e-05,
 "bytes": 12332
 },
-"sfx/snd_water_splash_small_1.mp3": {
-"seconds": 0.645,
-"peak_db": -1.34,
-"lufs": -17.97,
-"dc": 5e-05,
-"bytes": 5612
+"sfx/snd_water_steam_1.mp3": {
+"seconds": 2.64,
+"peak_db": -2.33,
+"lufs": -18.03,
+"dc": -0.0,
+"bytes": 21548
 },
-"sfx/snd_water_splash_small_2.mp3": {
-"seconds": 0.696,
-"peak_db": -1.88,
-"lufs": -17.97,
-"dc": 5e-05,
+"sfx/snd_water_steam_2.mp3": {
+"seconds": 2.666,
+"peak_db": -3.32,
+"lufs": -18.05,
+"dc": -0.0,
+"bytes": 21932
+},
+"sfx/snd_water_steam_3.mp3": {
+"seconds": 2.622,
+"peak_db": -3.49,
+"lufs": -18.06,
+"dc": -0.0,
+"bytes": 21548
+},
+"sfx/snd_water_wade_1.mp3": {
+"seconds": 0.743,
+"peak_db": -2.36,
+"lufs": -18.06,
+"dc": -0.0,
+"bytes": 6380
+},
+"sfx/snd_water_wade_2.mp3": {
+"seconds": 0.788,
+"peak_db": -1.23,
+"lufs": -17.96,
+"dc": 0.0,
+"bytes": 6764
+},
+"sfx/snd_water_wade_3.mp3": {
+"seconds": 0.714,
+"peak_db": -2.2,
+"lufs": -18.04,
+"dc": -0.0,
 "bytes": 6188
 },
-"sfx/snd_water_splash_small_3.mp3": {
-"seconds": 0.668,
-"peak_db": -1.37,
-"lufs": -18.03,
-"dc": 4e-05,
-"bytes": 5804
+"sfx/snd_water_wade_4.mp3": {
+"seconds": 0.732,
+"peak_db": -1.23,
+"lufs": -18.06,
+"dc": 1e-05,
+"bytes": 6380
 },
 "sfx/snd_weap_arrow_bowstring_release_1.mp3": {
 "seconds": 0.477,

@@ -50,10 +50,10 @@ For a sound in the player's ears whatever the camera, `battle.sfx().ui(Sound::X)
 
 | Feature | Call | Notes |
 |---|---|---|
-| Feet, a body, a stone or boulder into water | `SplashSmall`, `SplashBody`, `SplashBig` | wading men already sound as `FootWet` by the ground under them |
-| Rolling boulder | `BoulderLaunch` once; `BoulderRumble` every half second while it rolls (its gap is 12 ticks); `BoulderImpact` on ground or wall; `BoulderCrush` for men under it | launch, rumble and impact carry far |
+| Feet, a body, a part, a stone into water | nothing to call: `Wade`, `BodySplash`, `WaterPlop`, `StoneWater` are read from the world (`Sfx::wading`, the `Splash` impact by its radius) | men in mud and marsh sound as `FootWet`, men in water as `Wade` |
+| Rolling boulder | wired: `BoulderRumble` while a landed stone moves, `BoulderImpact` on a hard bounce or a wall, `BoulderCrush` for men under it; `BoulderLaunch` is still a hook, to call once where it is levered loose | launch, rumble and impact carry far |
 | Satchel lay and detonate chain | nothing to call: a laid satchel sounds `SatchelLay` to its owner, any satchel whose fuse is burning down hisses `SatchelFuse` every 1.5 s (thrown, or lit by fire or a blast beside it), and each blast is `SatchelBlast` | read from the world's projectiles in `Sfx::fuses` |
-| Fireball quenched in water | `FireSteam` | in place of `FireballBlast` |
+| Fire on water | nothing to call: `Steam` | the water work's |
 | A call for help and its answer | `CallHelp` at the caller, `CallAnswer` at the squad that turns to it | each at most once in 2 s |
 | Cavalry charge striking a line | `ChargeImpact` | carries far |
 | A line breaking | `Rout` | at most once in 3 s |

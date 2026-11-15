@@ -40,7 +40,7 @@ enum class ProjectileKind : uint8_t {
     Bomb,      // a satchel charge: laid, it lies still until a blast or fire sets it off (a burning fuse, then it explodes)
     Fireball,  // explodes on any impact
     Debris,    // something thrown by an explosion (or a deflected arrow); settles as a remain
-    Stone,     // a catapult's stone: a high arc, then it smashes whatever it lands on
+    Stone,     // a catapult's boulder: a high arc, a smash where it comes down, and then it bounces and rolls on (world_boulder.cpp)
     Molotov,   // a grenadier's bottle of burning oil: shatters on any impact into a burst of fire, which sets off satchels
 };
 
@@ -366,6 +366,7 @@ struct Unit {
     Death death;
     int32_t shieldArrows = 0;  // arrows caught in his shield and stuck there
     bool looted = false;       // dead: a scavenger took his blade
+    bool afloat = false;       // dead: the water bears him, and a river carries him (world_drift.cpp)
     Scavenger scav;            // scavengers only (UnitStats::scavenge)
     // Struck by something a scavenger threw: by whom, and when. With no
     // order of his own he turns his shield to him (World::shieldTarget).
@@ -427,6 +428,29 @@ struct Projectile {
     // Hurled by a scavenger's hand (shooter is he): a head breaks the man it
     // strikes, a blade cuts him, a satchel bursts where it strikes.
     bool thrown = false;
+    // A boulder that has come down (world_boulder.cpp): it bounces and rolls on over the ground until it rests, and
+    // `rolled` is how far it has gone on the ground (its turning, for the picture, and its furrow).
+    bool landed = false;
+    Fixed rolled;
+};
+
+// A boulder's own size and throw (world_boulder.cpp). Catapults throw at a fixed elevation (tan 4/3, 53 degrees): a
+// high, plunging arc.
+inline constexpr Fixed kStoneRadius = Fixed::fromRatio(11, 20);
+inline constexpr Fixed kStoneElevation = Fixed::fromRatio(4, 3);
+
+// What a boulder can strike that is not a man (World::strikeStructure).
+enum class Structure : uint8_t { Gate, Wall, Tower, House, Rock, Tree };
+
+// A boulder's predicted way over the ground (World::stonePath): where it comes down, then where it is and how fast at
+// each tick after, to its rest.
+struct StonePath {
+    struct Point {
+        Vec3 pos;
+        Fixed speed;  // over the ground
+    };
+    Vec3 landing;
+    std::vector<Point> roll;
 };
 
 struct Remain {
@@ -436,6 +460,7 @@ struct Remain {
     Vec3 dir;            // arrows: shaft direction (tip first); parts: lying direction
     uint32_t tick = 0;   // when it came to rest
     uint8_t source = kNoSource;  // as Projectile::source
+    bool afloat = false;  // a part the water bears, carried by a river (world_drift.cpp)
 };
 
 
@@ -457,7 +482,11 @@ struct ImpactEvent {
     // Smash: a stone shattered here (radius = its reach). Gate: a blow or blast
     // struck a gate (gate = which; killed = it broke).
     // Burst: a Molotov shattered here and its fire spread (radius).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst };
+    // A boulder (world_boulder.cpp; projectile = it, dir = its velocity): Bounce, it struck the ground and went on
+    // (radius = how hard, m/s); Splash, it went into water and stopped; Struck, it hit a wall, tower, house, rock, tree
+    // or gate (radius = the blow, World::strikeStructure's energy; gate = the Structure struck).
+    // Splash: a flying part (or a loose arrow) went into the water here, at the surface (radius = how big a splash).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Bounce, Splash, Struck };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -678,6 +707,15 @@ public:
     int32_t oddsAgainst(const Unit& u, const Unit& foe) const;
     // Everyone killed during the last step, and how (world_death.cpp).
     const std::vector<DeathEvent>& deathEvents() const { return deathEvents_; }
+    // The water (world_drift.cpp): the metres of it over the bed at a point (none: 0), the current there (m/s, along
+    // the nearest river's line; nothing in still water and on dry land), and how deep a body of these stats rides:
+    // in less it grounds. Read by the step and by the presentation alike (the cache behind flowAt is a function of
+    // the ground alone).
+    Fixed waterDepth(Fixed x, Fixed y) const;
+    Vec3 flowAt(Fixed x, Fixed y) const;
+    static Fixed draughtOf(const UnitStats& s);
+    // Whether a stone bridge's pier (or its cutwater) stands in the water at a point: what floats lodges against it.
+    bool pierAt(Fixed x, Fixed y) const;
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -809,10 +847,25 @@ public:
     // (`fuseTicks` zero), as a grenadier lays it, it waits for a blast or
     // fire; else its fuse burns that long (in tests). Its id.
     EntityId placeSatchel(PlayerId owner, const Vec3& pos, const Explosive& ex, int32_t fuseTicks = 0);
-    // What bursts on impact (fireballs, stones, Molotovs) rather than bouncing or sticking.
+    // What bursts on impact (fireballs, stones, Molotovs) rather than bouncing or sticking. (A stone then rolls on.)
     static bool burstsOnImpact(ProjectileKind k) {
         return k == ProjectileKind::Fireball || k == ProjectileKind::Stone || k == ProjectileKind::Molotov;
     }
+    // The boulder (world_boulder.cpp). A stone thrown by `engine` at `mark`: where it would come down and roll, over
+    // the ground as it is (slopes, soft ground, water, trees and stone in its way), the men not reckoned. The same
+    // steps the thrown stone takes; for the aim (World::fireAt) and for showing the player before he orders it.
+    StonePath stonePath(const Unit& engine, const Vec3& mark) const;
+    // A boulder let go at `pos` with `vel` (in tests): as a catapult's in the air. Its id. And one thrown as `engine`
+    // would throw it at `mark`, with no scatter (in tests, and the boulder demo of the --play scripts).
+    EntityId launchStone(PlayerId owner, const Vec3& pos, const Vec3& vel);
+    EntityId throwStone(const Unit& engine, const Vec3& mark);
+    // THE HOOK FOR CASTLE DAMAGE (docs/GAME_DESIGN.md, "The boulder"). Every blow of a boulder on something built or
+    // grown comes through here: `kind` what it struck, `where`, `dir` the stone's travel, `energy` the blow in the
+    // stone's own damage (100 is a catapult's stone straight from the air; one that rolled into it has less, by its
+    // speed), `rolled` whether it rolled into it. Today it tells the presentation (ImpactEvent::Kind::Struck) and, for
+    // a gate a stone ROLLED into, takes the doors' hit points (a stone from the air does that through its smash,
+    // World::blastGates). Walls, towers and houses have no hit points yet: the work that gives them some takes them here.
+    void strikeStructure(Structure kind, const Vec3& where, const Vec3& dir, Fixed energy, bool rolled);
     // Whether a man can stand at `p`: not inside a building, a wall or deep water (the nav grid).
     bool standable(const Vec3& p) const { return !nav_ || !nav_->blocked(p); }
     // The sandbox's tuning (game mode_sandbox.h; a match never calls it):
@@ -1355,7 +1408,40 @@ private:
     // Earliest solid obstacle crossed by segment a->b, as a fraction in [0, 1); -1 if none.
     // `stone` (if given) tells whether it was stone (walls, towers, houses,
     // rocks), off which arrows glance, or wood (trees, gates), which they stick in.
-    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false, bool* stone = nullptr) const;
+    // `what` (if given): which obstacle of the region it was, or kHitWall, kHitGate.
+    static constexpr int32_t kHitWall = -1, kHitGate = -2;
+    Fixed obstacleHit(const Vec3& a, const Vec3& b, Fixed limitT, bool masonryOnly = false, bool* stone = nullptr, int32_t* what = nullptr) const;
+    // The boulder (world_boulder.cpp). How it came down: on the ground, on a man, or against something standing.
+    enum class StoneFall : uint8_t { Ground, Man, Obstacle };
+    // A stone in the air struck at `at` (its smash is the caller's): it goes on as a thing on the ground. False if it is
+    // gone (shattered on a wall-walk, sunk).
+    bool landStone(Projectile& p, const Vec3& at, StoneFall how, int32_t what);
+    // One tick of a stone on the ground: its way, and the men under it. True when it is gone.
+    bool rollStone(Projectile& p);
+    // One tick of its way alone (no man, no chance): what it met, for rollStone to tell and stonePath to follow.
+    struct StoneStep {
+        enum class Met : uint8_t { Nothing, Bounce, Water, Obstacle, Rest } met = Met::Nothing;
+        Vec3 at;
+        Fixed blow;        // Bounce: its speed into the ground; Obstacle: its speed into the thing
+        int32_t what = 0;  // Obstacle: as obstacleHit's
+    };
+    StoneStep stepStone(Projectile& p) const;
+    // The ground's answer to a stone coming down on it at p.pos (stepStone's, and the first landing's).
+    StoneStep groundStone(Projectile& p) const;
+    // The land's rise each way under a stone on `floor` there (x, y; nothing on a deck, which is level).
+    Vec3 stoneSlope(Fixed x, Fixed y, Fixed floor) const;
+    // What a step met, told and done: dust, a splash, the blow on a structure. True when the stone is gone.
+    bool tellStone(Projectile& p, const StoneStep& step);
+    Structure structureOf(int32_t what) const;
+    // The velocity `engine` gives a stone to come down at `at`, and where it leaves the arm (`origin`), as World::fire has it.
+    Vec3 stoneLaunch(const Unit& engine, const Vec3& at, Vec3& origin) const;
+    // What a stone thrown by `u` at `mark` would do as it rolls on from there, to the foe and to his own side, as
+    // World::fireAt's tally of a blast reckons a wound (one stone's worth; `spread` is how wide of the mark it may fall).
+    struct RollToll {
+        Fixed foe, friends;
+        bool badlyHurtFriend = false;
+    };
+    RollToll rollToll(const Unit& u, const Vec3& mark, Fixed spread) const;
     // Castle walls (world_walls.cpp).
     // Earliest entry of segment a->b into a wall's stone: its slab below the
     // walk, the parapet, a merlon (not an embrasure); -1 if none.
@@ -1398,6 +1484,17 @@ private:
     Unit* debrisHit(const Vec3& a, const Vec3& b, EntityId ignore = kNoEntity);
     void placeRemain(RemainKind kind, PlayerId owner, const Vec3& pos, const Vec3& dir, uint8_t source = kNoSource);
     void clearRemain(uint32_t slot);
+    // The dead in the water (world_drift.cpp). A body come to rest (killed, or landed after a blast) is borne up if
+    // the water is deep enough for it; a part laid in a slot likewise (false: it lies on the bed); what never floats
+    // (an arrow, a blade, a bone); a flying thing that has just gone under (it tells of the splash); and the step
+    // that carries everything afloat.
+    void floatBody(Unit& u);
+    bool floatRemain(uint32_t slot);
+    static bool sinksInWater(RemainKind kind);
+    bool plunge(const Projectile& p, const Vec3& before);
+    void driftAfloat();
+    bool carry(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
+    bool drift(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
     bool steeperThan(Fixed x, Fixed y, Fixed limit) const;  // slopeAt(x, y) > limit, without the root
@@ -1438,6 +1535,13 @@ private:
     std::vector<PlayerId> brokenSides_;  // breakSide, ascending
     uint64_t remainsAdded_ = 0;
     std::vector<uint32_t> changedRemains_;
+    // What the water is carrying, in the order it took them: a body (its id) or a part (its slot).
+    struct Floater {
+        bool unit;
+        uint32_t ref;
+    };
+    std::vector<Floater> afloat_;
+    mutable std::unordered_map<uint64_t, Vec3> flowCache_;  // flowAt, a square at a time: looked up, never walked
     struct PendingExplosion {
         Vec3 at;
         Explosive ex;

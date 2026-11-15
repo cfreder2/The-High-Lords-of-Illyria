@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 #include "illyria/game/gmath.h"
 
@@ -476,6 +477,55 @@ Mesh capsule() {
 Mesh sphere() {
     Builder b;
     b.blob({0, 0, 0}, {0.5f, 0.5f, 0.5f}, {1, 1, 1});
+    return b.mesh;
+}
+
+Mesh boulder() {
+    Builder b;
+    // A ball of twenty faces, each split in four twice over (320), every corner pushed out or in by the stone's own
+    // lumps and flats: round enough to roll, never a sphere. Faces are flat, each its own grey, darker in the hollows.
+    static const V3 kLumps[] = {{0.3f, 0.2f, 0.93f}, {-0.8f, 0.3f, 0.52f}, {0.5f, -0.8f, 0.33f}, {-0.2f, -0.6f, -0.77f}, {0.9f, 0.4f, -0.17f}, {-0.5f, 0.8f, -0.33f}, {0.1f, 0.95f, 0.3f}};
+    static const float kSwell[] = {0.05f, -0.07f, 0.045f, -0.06f, 0.04f, -0.05f, 0.035f};
+    const auto shape = [](V3 n) {
+        float r = 0.5f;
+        for (int i = 0; i < 7; ++i) {
+            const float d = n.dot(kLumps[i].normalized());
+            if (d > 0.45f) {
+                const float t = (d - 0.45f) / 0.55f;
+                r += kSwell[i] * t * t * (3.0f - 2.0f * t);
+            }
+        }
+        r += 0.016f * std::sin(n.x * 9.1f + n.y * 5.3f) * std::cos(n.z * 7.7f + n.x * 3.1f) + 0.01f * std::sin(n.y * 17.0f + n.z * 13.0f);
+        return n * r;
+    };
+    int face = 0;
+    const auto put = [&](V3 a0, V3 b0, V3 c0) {
+        const V3 a = shape(a0), bb = shape(b0), c = shape(c0);
+        const V3 mid = (a + bb + c) * (1.0f / 3.0f);
+        // Granite: a cool grey, each face a little its own, a fleck of dark or pale here and there, shade in the hollows.
+        uint32_t h = static_cast<uint32_t>(++face) * 2654435761u;
+        h ^= h >> 15;
+        const float k = static_cast<float>(h & 0xff) / 255.0f, fleck = static_cast<float>((h >> 8) & 0xff) / 255.0f;
+        float shade = 0.84f + 0.2f * k + (mid.length() - 0.5f) * 2.2f;
+        if (fleck > 0.93f) shade *= 1.14f;
+        else if (fleck < 0.08f) shade *= 0.8f;
+        const V3 grey = fleck > 0.55f ? V3{0.6f, 0.585f, 0.56f} : V3{0.56f, 0.56f, 0.57f};
+        b.tri(a, bb, c, grey * shade);
+    };
+    const std::function<void(V3, V3, V3, int)> split = [&](V3 a, V3 bb, V3 c, int depth) {
+        if (depth == 0) return put(a, bb, c);
+        const V3 ab = (a + bb).normalized(), bc = (bb + c).normalized(), ca = (c + a).normalized();
+        split(a, ab, ca, depth - 1);
+        split(ab, bb, bc, depth - 1);
+        split(ca, bc, c, depth - 1);
+        split(ab, bc, ca, depth - 1);
+    };
+    const float t = 1.618034f;
+    V3 v[12] = {{-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0}, {0, -1, t}, {0, 1, t}, {0, -1, -t}, {0, 1, -t}, {t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1}};
+    for (V3& p : v) p = p.normalized();
+    static const int kFaces[20][3] = {{0, 11, 5}, {0, 5, 1}, {0, 1, 7}, {0, 7, 10}, {0, 10, 11}, {1, 5, 9}, {5, 11, 4}, {11, 10, 2}, {10, 7, 6}, {7, 1, 8},
+                                      {3, 9, 4}, {3, 4, 2}, {3, 2, 6}, {3, 6, 8}, {3, 8, 9}, {4, 9, 5}, {2, 4, 11}, {6, 2, 10}, {8, 6, 7}, {9, 8, 1}};
+    for (const auto& f : kFaces) split(v[f[0]], v[f[1]], v[f[2]], 2);
     return b.mesh;
 }
 

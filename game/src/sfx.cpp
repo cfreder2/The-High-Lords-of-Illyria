@@ -107,18 +107,19 @@ constexpr Spec kSpecs[kSoundCount] = {
     {"snd_conq_day_tick", 3, 0, false},
     {"snd_conq_recruit", 3, 0, false},
     {"snd_conq_lord_fallen", 5, 0, false},
-    {"snd_water_splash_small", 0, 4, false},
-    {"snd_water_splash_body", 2, 4, false},
-    {"snd_water_splash_big", 4, 3, true},
     {"snd_boulder_launch", 4, 6, true},
     {"snd_boulder_rumble", 3, 12, true},
     {"snd_boulder_impact", 4, 3, true},
     {"snd_boulder_crush", 3, 4, false},
-    {"snd_fire_steam", 3, 6, false},
     {"snd_call_help", 4, 60, false},
     {"snd_call_answer", 4, 60, false},
     {"snd_charge_impact", 4, 8, true},
     {"snd_morale_rout", 3, 90, false},
+    {"snd_water_wade", 0, 18, false},
+    {"snd_water_plop", 1, 3, false},
+    {"snd_water_splash_body", 2, 3, false},
+    {"snd_impact_stone_water", 4, 2, true},
+    {"snd_water_steam", 3, 2, false},
 };
 static_assert(sizeof(kSpecs) / sizeof(kSpecs[0]) == kSoundCount);
 
@@ -256,6 +257,19 @@ void Sfx::flush() {
     }
 }
 
+// The slosh of whoever is going through water: a few of the men a tick are looked at (all of them in a third of a second),
+// and each one moving in it asks for the sound where he is; want() makes one louder slosh of many.
+void Sfx::wading(const sim::World& world) {
+    constexpr uint32_t kStride = 10;
+    const auto& units = world.units();
+    for (size_t i = tick_ % kStride; i < units.size(); i += kStride) {
+        const sim::Unit& u = units[i];
+        if (!u.alive() || u.inAir() || !world.wading(u)) continue;
+        if (!u.hasMoveTarget && !u.engaged && u.targetUnit == sim::kNoEntity) continue;  // standing still in it
+        want(Sound::Wade, toV3(u.pos));
+    }
+}
+
 Sound Sfx::arrowSurface(const sim::World& world, const sim::ImpactEvent& e) const {
     const sim::Region* region = world.region();
     const sim::Fixed ground = world.groundHeight(e.pos.x, e.pos.y);
@@ -283,6 +297,7 @@ Sound Sfx::arrowSurface(const sim::World& world, const sim::ImpactEvent& e) cons
 void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& continent, const V3& origin, bool enemyLand) {
     tick_ = world.tick();
     const auto& units = world.units();
+    const sim::Region* region = world.region();
     const auto unitAt = [&](sim::EntityId id) -> const sim::Unit* { return id >= 1 && id <= units.size() ? &units[id - 1] : nullptr; };
     const auto flightOf = [&](sim::EntityId id) -> const Flight* {
         auto it = std::lower_bound(flights_.begin(), flights_.end(), id, [](const Flight& f, sim::EntityId x) { return f.id < x; });
@@ -319,10 +334,14 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             if (e.kind != K::Explosion && e.kind != K::Smash && e.kind != K::Burst) continue;
             const V3 at = toV3(e.pos);
             blasts.push_back({at, static_cast<float>(e.radius.toDouble()) + 1.0f});
+            // On water (the battle shows a column, or steam: battle_water.cpp) a stone booms and splashes, and fire hisses out.
+            const bool wet = world.waterDepth(e.pos.x, e.pos.y) > sim::Fixed::zero() && region &&
+                             e.pos.z <= region->waterSurfaceAt(e.pos.x, e.pos.y) + sim::Fixed::fromRatio(3, 5);
             if (e.kind == K::Smash) {
-                want(Sound::StoneSmash, at);
+                want(wet ? Sound::StoneWater : Sound::StoneSmash, at);
                 continue;
             }
+            if (wet) want(Sound::Steam, at, 0.08f);
             if (e.kind == K::Burst) {
                 want(Sound::FireballBlast, at);  // glass shatter and fire roar: a Molotov
                 continue;
@@ -366,8 +385,20 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             const V3 at = toV3(e.pos);
             switch (e.kind) {
                 case K::Ground: want(arrowSurface(world, e), at); break;
+                // A part of a body into the water (sim world_drift.cpp): a trunk with a splash, the rest with a plop.
+                case K::Splash: want(e.radius > sim::Fixed::fromRatio(7, 10) ? Sound::BodySplash : e.radius < sim::Fixed::fromRatio(3, 10) ? Sound::ArrowWater : Sound::WaterPlop, at); break;
                 case K::Gate: want(e.killed ? Sound::GateBreak : Sound::GateHit, at); break;
                 case K::Heal: want(Sound::Heal, at); break;
+                // The boulder on the ground (sim world_boulder.cpp): its crash where it comes down hard, and against what
+                // stands in its way; its rumble while it rolls is Sfx::rolling.
+                case K::Bounce:
+                    if (e.radius >= sim::Fixed::fromInt(3)) want(Sound::BoulderImpact, at);
+                    break;
+                case K::Struck:
+                    // (A gate's own blow is heard as the gate's: K::Gate.)
+                    if (static_cast<sim::Structure>(e.gate) == sim::Structure::Tree) want(Sound::ArrowWood, at);
+                    else if (static_cast<sim::Structure>(e.gate) != sim::Structure::Gate) want(Sound::BoulderImpact, at);
+                    break;
                 case K::Blocked: {
                     const sim::Unit* v = unitAt(e.hitUnit);
                     if (e.projectile != sim::kNoEntity) {
@@ -386,6 +417,8 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                     const bool bone = !v->stats.bleeds && type != UnitType::Catapult;
                     if (e.projectile != sim::kNoEntity) {
                         const Flight* f = flightOf(e.projectile);
+                        // Under a rolling boulder: the crush.
+                        if (f && f->kind == sim::ProjectileKind::Stone) want(bone ? Sound::HitBone : Sound::BoulderCrush, at);
                         if (f && f->kind != sim::ProjectileKind::Arrow) break;
                         want(bone ? Sound::HitBone : armoured(type) ? Sound::ArrowArmor : type == UnitType::Catapult ? Sound::ArrowWood : Sound::ArrowFlesh, at);
                         break;
@@ -413,7 +446,9 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             const auto type = static_cast<UnitType>(d.type);
             const sim::Unit* u = unitAt(d.unit);
             const bool bone = u && !u->stats.bleeds && type != UnitType::Catapult;
-            const Sound fall = bone ? Sound::BonesCollapse : armoured(type) || big(type) ? Sound::BodyFallArmor : Sound::BodyFall;
+            // Into water he goes with a splash, not a thud.
+            const bool wet = world.waterDepth(d.pos.x, d.pos.y) > sim::Fixed::fromRatio(1, 10) && region && d.pos.z <= region->waterSurfaceAt(d.pos.x, d.pos.y);
+            const Sound fall = wet ? Sound::BodySplash : bone ? Sound::BonesCollapse : armoured(type) || big(type) ? Sound::BodyFallArmor : Sound::BodyFall;
             switch (d.kind) {
                 case sim::DeathKind::Severed:
                     want(Sound::DismemberSnap, at, 0.05f);
@@ -433,6 +468,7 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
 
         whistles(world);
         fuses(world);
+        rolling(world);
         if (tick_ % kMoveTicks == 0) movement(world);
         // The fight near the view, for the far camera's loop: blows this tick, fading.
         for (const sim::ImpactEvent& e : world.impacts()) {
@@ -443,6 +479,7 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
             fighting_ += 1.0f;
             fightSide_ += d.dot(listenRight_) > 0 ? 1.0f : -1.0f;
         }
+        wading(world);
 
         // The end of the battle.
         if (outcome != 0 && lastOutcome_ == 0) want(outcome == 1 ? Sound::Victory : Sound::Defeat, listenAt_, 1.2f, false);
@@ -479,6 +516,16 @@ void Sfx::fuses(const sim::World& world) {
         still.emplace_back(p.id, next);
     }
     fuseNext_.swap(still);
+}
+
+// A stone come down and still moving over the ground is rolling: its rumble, for as long as it rolls (the sound's own gap
+// spaces it).
+void Sfx::rolling(const sim::World& world) {
+    for (const sim::Projectile& p : world.projectiles()) {
+        if (p.kind != sim::ProjectileKind::Stone || !p.landed || p.resting) continue;
+        const V3 v = flat(toV3(p.vel));
+        if (v.dot(v) > 1.0f) want(Sound::BoulderRumble, toV3(p.pos));
+    }
 }
 
 // Footfalls, hooves, a giant's tread, wheels and wings: every body of men of one kind in one cell is one textured sound,
@@ -523,7 +570,8 @@ void Sfx::movement(const sim::World& world) {
         else if (u.stats.gait == sim::Gait::Horse || u.stats.gait == sim::Gait::Wolf) s = Sound::Hooves;
         else if (region) {
             const sim::Ground g = region->groundAt(u.pos.x, u.pos.y);
-            if (g == sim::Ground::Swamp || g == sim::Ground::Mud || g == sim::Ground::Shallows) s = Sound::FootWet;
+            if (g == sim::Ground::Shallows || g == sim::Ground::DeepWater) continue;  // (in water: Sfx::wading sounds them)
+            if (g == sim::Ground::Swamp || g == sim::Ground::Mud) s = Sound::FootWet;
         }
         const uint64_t cx = static_cast<uint64_t>(static_cast<int64_t>(std::floor(p.x / kMoveCell)) + 100000);
         const uint64_t cy = static_cast<uint64_t>(static_cast<int64_t>(std::floor(p.y / kMoveCell)) + 100000);

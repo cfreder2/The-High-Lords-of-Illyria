@@ -1,7 +1,7 @@
 # Sound effects
 
 Generated from `game/web/sfx/sounds.json` by `python3 tools/sfx/script.py`; do not edit by hand.
-89 sounds in 251 files (4.5 MB of MP3; the page fetches what a battle needs when audio starts, the rest soon after).
+90 sounds in 256 files (4.6 MB of MP3; the page fetches what a battle needs when audio starts, the rest soon after).
 
 ## How it works
 
@@ -34,10 +34,10 @@ For a sound in the player's ears whatever the camera, `battle.sfx().ui(Sound::X)
 
 | Feature | Call | Notes |
 |---|---|---|
-| Feet, a body, a stone or boulder into water | `SplashSmall`, `SplashBody`, `SplashBig` | wading men already sound as `FootWet` by the ground under them |
-| Rolling boulder | `BoulderLaunch` once; `BoulderRumble` every half second while it rolls (its gap is 12 ticks); `BoulderImpact` on ground or wall; `BoulderCrush` for men under it | launch, rumble and impact carry far |
+| Feet, a body, a part, a stone into water | nothing to call: `Wade`, `BodySplash`, `WaterPlop`, `StoneWater` are read from the world (`Sfx::wading`, the `Splash` impact by its radius) | men in mud and marsh sound as `FootWet`, men in water as `Wade` |
+| Rolling boulder | wired: `BoulderRumble` while a landed stone moves, `BoulderImpact` on a hard bounce or a wall, `BoulderCrush` for men under it; `BoulderLaunch` is still a hook, to call once where it is levered loose | launch, rumble and impact carry far |
 | Satchel lay and detonate chain | nothing to call: a laid satchel sounds `SatchelLay` to its owner, any satchel whose fuse is burning down hisses `SatchelFuse` every 1.5 s (thrown, or lit by fire or a blast beside it), and each blast is `SatchelBlast` | read from the world's projectiles in `Sfx::fuses` |
-| Fireball quenched in water | `FireSteam` | in place of `FireballBlast` |
+| Fire on water | nothing to call: `Steam` | the water work's |
 | A call for help and its answer | `CallHelp` at the caller, `CallAnswer` at the squad that turns to it | each at most once in 2 s |
 | Cavalry charge striking a line | `ChargeImpact` | carries far |
 | A line breaking | `Rout` | at most once in 3 s |
@@ -117,7 +117,10 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 | **Arrow off armour**<br>`snd_impact_arrow_armor` | An arrow strikes mail or plate: a metallic ring. | one-shot, positional, 0.7-0.8 s | 4 (rendered) | -6 dB | Flick a nail at a steel pan or a shovel blade. |
 | **Arrow into flesh**<br>`snd_impact_arrow_flesh` | An arrow hits a man: a wet thwack. | one-shot, positional, 0.4-0.4 s | 5 (rendered) | -4 dB | Slap a wet towel; a dart into a raw steak. |
 | **Arrow into water**<br>`snd_impact_arrow_water` | An arrow falls in a river or lake. | one-shot, positional, 0.6-0.6 s | 3 (rendered) | -10 dB | Drop a pencil into a bath from a height. |
+| **Wading**<br>`snd_water_wade` | Men, horses and beasts going through water (a ford, the shallows): the slosh at their feet, louder the more of them and the faster. | one-shot, positional, 0.7-0.8 s | 4 (rendered) | -12 dB | Walk and run through a stream or a paddling pool in boots; a hand swept through a full bath. |
+| **Something falls in the water**<br>`snd_water_plop` | A head, a limb or a gobbet lands in a river or lake. | one-shot, positional, 0.6-0.7 s | 3 (rendered) | -8 dB | Drop an apple and a wet sponge into a bath from shoulder height. |
 | **Stone lands**<br>`snd_impact_stone_smash` | A catapult stone smashes down: crash, crunch and scattering grit. | one-shot, positional, carries far, 2.0-2.2 s | 3 (rendered) | +0 dB | Drop a paving slab onto gravel; a rock onto a pile of stones. |
+| **Stone into water**<br>`snd_impact_stone_water` | A catapult stone lands in a river or lake: a boom, a column of water and its rain. | one-shot, positional, carries far, 3.4-3.5 s | 3 (rendered) | +0 dB | Throw the biggest rock you can lift into a deep pond, mic well back. |
 | **Gate struck**<br>`snd_impact_gate_wood` | A blow or blast hits a castle gate: a deep wooden boom. | one-shot, positional, carries far, 1.4-1.5 s | 4 (rendered) | -2 dB | A sledgehammer on a thick wooden door; record from inside the room too. |
 | **Gate breaks**<br>`snd_impact_gate_break` | A gate gives way: splintering timbers and a crash. | one-shot, positional, carries far, 3.4-3.6 s | 3 (rendered) | +0 dB | Break a pallet or old crates with a sledgehammer; layer a heavy fall. |
 
@@ -127,6 +130,7 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 |---|---|---|---:|---:|---|
 | **Satchel charge**<br>`snd_expl_satchel` | A satchel charge explodes: huge sub-bass blast with a long tail. | one-shot, positional, carries far, 4.3-4.5 s | 4 (rendered) | +0 dB | Not recordable at home: use a CC0 explosion library, or a balloon burst close up pitched down an octave and layered with a sub sine drop. |
 | **Fireball bursts**<br>`snd_expl_fireball` | A fireball (or a dwarf's cocktail) lands: glass shatter crossfaded into a roaring, crackling fire whoosh. | one-shot, positional, carries far, 4.2-4.2 s | 4 (rendered) | -1 dB | A bottle broken in a bin (wear goggles) layered with a gas burner whoosh and crackling kindling. |
+| **Fire on water**<br>`snd_water_steam` | A fireball or a burning bottle bursts on water: a hiss of steam, the surface boiling and spitting. | one-shot, positional, 2.6-2.7 s | 3 (rendered) | -5 dB | Quench a hot pan or a burning stick in a bucket of water. |
 
 ## Gore
 
@@ -142,6 +146,7 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 |---|---|---|---:|---:|---|
 | **Body falls**<br>`snd_gore_body_fall` | A body hits the ground (after the death cry). | one-shot, positional, 0.7-0.9 s | 5 (rendered) | -5 dB | Drop a sack of potatoes or a duffel bag of clothes onto earth. |
 | **Armoured body falls**<br>`snd_gore_body_fall_armor` | A man in armour (or a great beast) hits the ground: thud and clatter. | one-shot, positional, 1.0-1.0 s | 4 (rendered) | -4 dB | Drop a duffel bag with a few pans and chains in it. |
+| **Body falls in water**<br>`snd_water_splash_body` | A man or a beast killed in the water goes down into it; a trunk thrown into it. | one-shot, positional, 1.3-1.5 s | 3 (rendered) | -4 dB | Push a full sack or a big log into a pond; a belly flop recorded from the bank. |
 | **Bones collapse**<br>`snd_gore_bones_collapse` | One of the walking dead falls apart: a dry clattering heap. | one-shot, positional, 1.1-1.4 s | 4 (rendered) | -5 dB | Drop a bundle of dry sticks and a few wooden spoons onto a floor. |
 | **Burning body**<br>`snd_gore_flesh_burn` | A body killed by fire: sizzle and crackle as it burns. | one-shot, positional, 2.2-2.3 s | 3 (rendered) | -7 dB | Bacon in a hot pan, close; crackling twigs on a fire. |
 
@@ -194,14 +199,10 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 
 | Sound | When it plays | How | Variants | Level | How to record or source it |
 |---|---|---|---:|---:|---|
-| **Small splash**<br>`snd_water_splash_small` | Feet or a small thing going into water. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, 0.6-0.7 s | 3 (rendered) | -8 dB | A stone the size of a fist dropped into a bucket or pond. |
-| **Body into water**<br>`snd_water_splash_body` | A body falls into water. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, 1.3-1.5 s | 3 (rendered) | -4 dB | A full sack or a large log dropped flat into a pond. |
-| **Great splash**<br>`snd_water_splash_big` | A boulder or a catapult's stone lands in water: a deep plunge and the spray falling after. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, carries far, 2.6-2.7 s | 2 (rendered) | -1 dB | A big rock heaved into deep water from a bank; keep the two seconds of spray coming down. |
 | **Boulder levered loose**<br>`snd_boulder_launch` | A boulder is set rolling: timber cracking and stone grinding. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, 1.9-1.9 s | 2 (rendered) | -3 dB | A crowbar levering a paving slab; a thick branch broken. |
 | **Boulder rolling**<br>`snd_boulder_rumble` | A boulder on its way down: rumble with stones clattering. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, retriggered while it rolls, 1.2-1.2 s | 3 (rendered) | -4 dB | A bowling ball or a heavy stone rolled over gravel and boards; cut 1.2 s pieces from the middle. |
 | **Boulder strikes**<br>`snd_boulder_impact` | A boulder hits the ground or a wall: a crash and a scatter of stone. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, carries far, 2.2-2.5 s | 3 (rendered) | +0 dB | A big rock dropped on rubble from a height. |
 | **Crushed by a boulder**<br>`snd_boulder_crush` | Men under a rolling boulder: a wet crunch and a clatter of gear. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, 0.9-0.9 s | 3 (rendered) | -2 dB | A rock dropped on a crate of celery, wet rags and pan lids. |
-| **Fire quenched**<br>`snd_fire_steam` | A fireball or burning thing goes into water: a burst of hissing steam. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, 1.4-1.5 s | 3 (rendered) | -4 dB | A hot pan plunged into a sink of water; or water thrown on embers. |
 | **Call for help**<br>`snd_call_help` | A squad in trouble calls for help: an urgent horn, two quick rising notes. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, 2D, 1.0-1.0 s | 2 (rendered) | -5 dB | A bugle or horn: two quick rising notes, urgent, 1 s. |
 | **The call answered**<br>`snd_call_answer` | Help is coming: one lower steady note in answer. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, 2D, 0.8-0.8 s | 2 (rendered) | -6 dB | The same horn: one steady note a fifth or more below the call, 0.8 s. |
 | **Charge strikes home**<br>`snd_charge_impact` | Cavalry crashes into a line: bodies, cracking lances, harness. (a hook: the feature that plays it is being built; ask for it with Sfx::hook) | one-shot, positional, carries far, 1.2-1.2 s | 3 (rendered) | -1 dB | Layer a dropped sack, broom handles snapped, a bag of chain thrown down and a horse blowing. |

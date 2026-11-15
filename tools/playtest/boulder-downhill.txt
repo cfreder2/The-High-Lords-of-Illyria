@@ -1,0 +1,74 @@
+# The boulder, down a slope.
+# A stone thrown 54 m south from the hillside comes down on the slope (30 in 100, bearing a little west) above a block of sixty, five files of twelve, and runs down through it and on to the foot of the hill.
+#
+#   Illyria --play tools/playtest/boulder-downhill.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 716 712 62 3.14
+boulder ground 700 746
+boulder men 692 741 0 -2 12
+boulder men 694 741 0 -2 12
+boulder men 696 741 0 -2 12
+boulder men 698 741 0 -2 12
+boulder men 700 741 0 -2 12
+wait 2
+shot downhill-00-before
+boulder throw 700 800 700 746
+wait_ticks 100
+speed 0.25
+wait_ticks 5
+shot downhill-01
+wait_ticks 5
+shot downhill-02
+wait_ticks 5
+shot downhill-03
+wait_ticks 5
+shot downhill-04
+wait_ticks 5
+shot downhill-05
+wait_ticks 5
+shot downhill-06
+wait_ticks 5
+shot downhill-07
+wait_ticks 5
+shot downhill-08
+wait_ticks 5
+shot downhill-09
+wait_ticks 5
+shot downhill-10
+wait_ticks 5
+shot downhill-11
+wait_ticks 5
+shot downhill-12
+wait_ticks 5
+shot downhill-13
+wait_ticks 5
+shot downhill-14
+wait_ticks 5
+shot downhill-15
+wait_ticks 5
+shot downhill-16
+wait_ticks 5
+shot downhill-17
+wait_ticks 5
+shot downhill-18
+wait_ticks 5
+shot downhill-19
+wait_ticks 5
+shot downhill-20
+speed 1
+wait_ticks 300
+boulder count
+shot downhill-21-after
+camera 692 706 30 3.14
+wait 1.5
+shot downhill-22-close
+stats
+quit

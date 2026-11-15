@@ -564,6 +564,36 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
     return out;
 }
 
+void Battle::aimHover(const Camera& camera, float x, float y, float pixelScale) {
+    stoneAimed_ = intentAt(camera, x, y, pixelScale) == Intent::AttackGround;
+    if (stoneAimed_) stoneAim_ = pickAt(camera, x, y, pixelScale).at;
+}
+
+std::vector<Battle::StoneForecast> Battle::stoneForecasts() const {
+    constexpr size_t kMost = 6;
+    constexpr size_t kStride = 3;  // a point each tenth of a second of its roll
+    std::vector<StoneForecast> out;
+    const auto& units = world_->units();
+    for (const sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = units[id - 1];
+        if (u.owner != local_ || u.stats.ranged.kind != sim::ProjectileKind::Stone) continue;
+        sim::Vec3 mark;
+        if (stoneAimed_ && (forceKey_ || orderMode_ == OrderMode::Attack)) mark = toSim(stoneAim_);  // (still the next click)
+        else if (u.hasAttackTarget && u.attackGate < 0 && u.targetUnit == sim::kNoEntity) mark = u.attackTarget;
+        else continue;
+        const sim::Fixed away = (mark - u.pos).flat().length();
+        if (away < u.stats.ranged.minRange || away > u.stats.ranged.maxRange) continue;
+        const sim::StonePath path = world_->stonePath(u, mark);
+        StoneForecast f;
+        f.landing = toV3(path.landing);
+        for (size_t i = 0; i + 1 < path.roll.size(); i += kStride) f.roll.push_back(toV3(path.roll[i].pos));
+        if (!path.roll.empty()) f.roll.push_back(toV3(path.roll.back().pos));
+        out.push_back(std::move(f));
+        if (out.size() >= kMost) break;
+    }
+    return out;
+}
+
 std::vector<Battle::RangeRing> Battle::rangeRings() const {
     std::vector<RangeRing> out;
     std::vector<int> count;
