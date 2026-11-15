@@ -506,6 +506,58 @@ TEST(twenty_days_of_war_keep_the_worlds_places_bounded_and_a_reused_place_has_no
 // A group is a list of men, and in the conquest a unit id is a place in the world that men come to and leave as fights begin
 // and end: a group of unit ids would name whoever stands there. A conquest's group is of man ids, found again among the men
 // awake and asleep, so the keys serve a conquest as a skirmish.
+TEST(a_conquests_fight_ends_with_a_results_sheet_of_the_squads_that_fought) {
+    // The war has no end of battle, but its fights end: when the player's men have fought and then struck no blow
+    // for a while, the one results sheet says what each squad of his that fought has left and did (Battle::fightReport).
+    Island isl;
+    Conquest& c = isl.c;
+    const Conquest::Stack* home = nullptr;
+    for (const Conquest::Stack& st : c.stacks())
+        if (st.owner == 0) home = &st;
+    CHECK(home != nullptr);
+    if (!home) return;
+    const int32_t x = std::min(home->cx + 8, c.width() - 12), y = home->cy;
+    const uint32_t mine = c.raise(0, x, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers, UnitType::Archers});
+    const uint32_t theirs = c.raise(1, x + 4, y, {UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::HeavyInfantry, UnitType::Archers});
+    CHECK(isl.b->fightReport() == nullptr);
+    // Each host is sent at the other until a fight worth telling of has been fought and is over (nobody moves but by
+    // these orders: a first brush of a few dead is not told).
+    int guard = 0;
+    while (!isl.b->fightReport() && guard++ < 200) {
+        const Conquest::Stack* ms = c.findStack(mine);
+        const Conquest::Stack* ts = c.findStack(theirs);
+        if (!ms || !ts) break;
+        if (guard % 10 == 1) {
+            ConquestOrders::move(c, mine, ts->cx, ts->cy);
+            ConquestOrders::move(c, theirs, ms->cx, ms->cy);
+        }
+        isl.tick(30, 30);
+    }
+    for (int k = 0; k < 20 && !isl.b->fightReport(); ++k) isl.tick(30, 30);  // (the quiet after the last blow)
+    const Battle::Result* r = isl.b->fightReport();
+    CHECK(r != nullptr);
+    if (!r) return;
+    CHECK(r->conquest && (r->outcome == 1 || r->outcome == 2) && !r->rows.empty() && r->rows.size() <= 4);
+    CHECK(r->killed + r->lost >= Battle::kFightWorth);
+    int lost = 0, killed = 0;
+    for (const Battle::Result::Row& row : r->rows) {
+        CHECK(row.alive <= row.total && row.total > 0 && row.kills >= 0 && (row.name == "Heavy Infantry" || row.name == "Archers"));
+        lost += row.total - row.alive;
+        killed += row.kills;
+    }
+    CHECK(lost == r->lost && killed == r->killed);
+    std::printf("  the fight: outcome %d, %d killed, %d lost, %d s, %zu squads on the sheet\n", r->outcome, r->killed, r->lost, r->seconds, r->rows.size());
+    // Its history is on the squads' cards; and the sheet goes when it is put away.
+    isl.b->dismissFightReport();
+    CHECK(isl.b->fightReport() == nullptr);
+    if (const Conquest::Stack* s = c.findStack(mine))
+        for (const Army& a : s->armies) {
+            CHECK(a.battles >= 1);
+            for (const illyria::game::Squad& q : isl.b->squads())
+                if (q.army == a.id) CHECK(isl.b->standing(q).battles == a.battles && isl.b->standing(q).kills == a.kills);
+        }
+}
+
 TEST(a_group_in_the_conquest_is_of_men_and_is_recalled_asleep_or_awake) {
     Island w;
     const int foot = w.squadOf(UnitType::LightInfantry);

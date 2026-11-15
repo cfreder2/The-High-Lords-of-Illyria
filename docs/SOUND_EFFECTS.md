@@ -1,7 +1,7 @@
 # Sound effects
 
 Generated from `game/web/sfx/sounds.json` by `python3 tools/sfx/script.py`; do not edit by hand.
-53 sounds in 168 files (3.0 MB of MP3, each sound fetched the first time it plays).
+58 sounds in 184 files (3.2 MB of MP3, each sound fetched the first time it plays).
 
 ## How it works
 
@@ -82,7 +82,11 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 | **Arrow off armour**<br>`snd_impact_arrow_armor` | An arrow strikes mail or plate: a metallic ring. | one-shot, positional, 0.6-0.6 s | 4 (rendered) | -6 dB | Flick a nail at a steel pan or a shovel blade. |
 | **Arrow into flesh**<br>`snd_impact_arrow_flesh` | An arrow hits a man: a wet thwack. | one-shot, positional, 0.4-0.5 s | 5 (rendered) | -4 dB | Slap a wet towel; a dart into a raw steak. |
 | **Arrow into water**<br>`snd_impact_arrow_water` | An arrow falls in a river or lake. | one-shot, positional, 0.6-0.6 s | 3 (rendered) | -10 dB | Drop a pencil into a bath from a height. |
+| **Wading**<br>`snd_water_wade` | Men, horses and beasts going through water (a ford, the shallows): the slosh at their feet, louder the more of them and the faster. | one-shot, positional, 0.7-0.8 s | 4 (rendered) | -12 dB | Walk and run through a stream or a paddling pool in boots; a hand swept through a full bath. |
+| **Something falls in the water**<br>`snd_water_plop` | A head, a limb or a gobbet lands in a river or lake. | one-shot, positional, 0.6-0.7 s | 3 (rendered) | -8 dB | Drop an apple and a wet sponge into a bath from shoulder height. |
 | **Stone lands**<br>`snd_impact_stone_smash` | A catapult stone smashes down: crash, crunch and scattering grit. | one-shot, positional, carries far, 2.2-2.3 s | 3 (rendered) | +0 dB | Drop a paving slab onto gravel; a rock onto a pile of stones. |
+| **Boulder rolling** (not yet rendered: no id) | A catapult's boulder rumbling over the ground after it lands, louder the faster it goes, until it stops. | a loop, positional, following the stone | 0 (wanted) | | Roll a bowling ball or a big stone down a gravel track; a cart wheel on cobbles for a road. The hook is the stone itself (`Projectile::landed` and not `resting`, `game/src/sfx.cpp`). Until it is made a boulder is heard where it strikes: its bounce and what it rolls into are **Stone lands**, a tree **Arrow into wood**, water **Arrow into water**, a gate **Gate struck**, a man under it the club's **crush**. |
+| **Stone into water**<br>`snd_impact_stone_water` | A catapult stone lands in a river or lake: a boom, a column of water and its rain. | one-shot, positional, carries far, 3.4-3.5 s | 3 (rendered) | +0 dB | Throw the biggest rock you can lift into a deep pond, mic well back. |
 | **Gate struck**<br>`snd_impact_gate_wood` | A blow or blast hits a castle gate: a deep wooden boom. | one-shot, positional, carries far, 1.5-1.7 s | 4 (rendered) | -2 dB | A sledgehammer on a thick wooden door; record from inside the room too. |
 | **Gate breaks**<br>`snd_impact_gate_break` | A gate gives way: splintering timbers and a crash. | one-shot, positional, carries far, 3.4-3.6 s | 3 (rendered) | +0 dB | Break a pallet or old crates with a sledgehammer; layer a heavy fall. |
 
@@ -92,6 +96,7 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 |---|---|---|---:|---:|---|
 | **Satchel charge**<br>`snd_expl_satchel` | A satchel charge explodes: huge sub-bass blast with a long tail. | one-shot, positional, carries far, 5.4-5.5 s | 4 (rendered) | +0 dB | Not recordable at home: use a CC0 explosion library, or a balloon burst close up pitched down an octave and layered with a sub sine drop. |
 | **Fireball bursts**<br>`snd_expl_fireball` | A fireball (or a dwarf's cocktail) lands: glass shatter crossfaded into a roaring, crackling fire whoosh. | one-shot, positional, carries far, 4.2-4.2 s | 4 (rendered) | -1 dB | A bottle broken in a bin (wear goggles) layered with a gas burner whoosh and crackling kindling. |
+| **Fire on water**<br>`snd_water_steam` | A fireball or a burning bottle bursts on water: a hiss of steam, the surface boiling and spitting. | one-shot, positional, 2.6-2.7 s | 3 (rendered) | -5 dB | Quench a hot pan or a burning stick in a bucket of water. |
 
 ## Gore
 
@@ -107,6 +112,7 @@ level column is the mix level the page applies on top. Audition them all on `sfx
 |---|---|---|---:|---:|---|
 | **Body falls**<br>`snd_gore_body_fall` | A body hits the ground (after the death cry). | one-shot, positional, 0.8-0.8 s | 5 (rendered) | -5 dB | Drop a sack of potatoes or a duffel bag of clothes onto earth. |
 | **Armoured body falls**<br>`snd_gore_body_fall_armor` | A man in armour (or a great beast) hits the ground: thud and clatter. | one-shot, positional, 0.9-1.0 s | 4 (rendered) | -4 dB | Drop a duffel bag with a few pans and chains in it. |
+| **Body falls in water**<br>`snd_water_splash_body` | A man or a beast killed in the water goes down into it; a trunk thrown into it. | one-shot, positional, 1.6-1.7 s | 3 (rendered) | -4 dB | Push a full sack or a big log into a pond; a belly flop recorded from the bank. |
 | **Bones collapse**<br>`snd_gore_bones_collapse` | One of the walking dead falls apart: a dry clattering heap. | one-shot, positional, 1.1-1.4 s | 4 (rendered) | -5 dB | Drop a bundle of dry sticks and a few wooden spoons onto a floor. |
 | **Burning body**<br>`snd_gore_flesh_burn` | A body killed by fire: sizzle and crackle as it burns. | one-shot, positional, 2.2-2.3 s | 3 (rendered) | -7 dB | Bacon in a hot pan, close; crackling twigs on a fire. |
 

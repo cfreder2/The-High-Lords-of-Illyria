@@ -207,7 +207,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
     }
     if (k.repeat) return;
     if (c == SDL_SCANCODE_RETURN || c == SDL_SCANCODE_KP_ENTER) {
-        // A battle waiting on its deployment begins; one that is over is fought again; else the menu.
+        // A battle waiting on its deployment begins; one that is over is fought again (a march's: on to its camp); else the menu.
         if (hud_.deploying()) illyria_begin_battle();
         else if (hud_.resultOpen()) hud_.afterBattle(Hud::After::Again);
         else hud_.openMenu();

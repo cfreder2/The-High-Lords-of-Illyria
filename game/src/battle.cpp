@@ -114,6 +114,11 @@ sim::Vec3 fieldCentre(const sim::Continent& c) {
 }
 
 constexpr int kDefaultBudget = 300;  // gold a side raises when the page says nothing
+// How far apart two bought hosts form up, front to front (docs/GAME_DESIGN.md §4.5.2): near enough that the first arrows
+// fly within about 25 s of the start. On open ground each host's bowmen stand out in front as skirmishers (muster), the
+// two lines inside a bowshot (70 m) of each other across the river; at the Ford the far host is a short march off.
+// (140 m and 230 m before, the bowmen behind two ranks of foot: 40 to 93 s passed before anyone fell.)
+constexpr float kFieldGapM = 64.0f, kFordGapM = 120.0f;
 
 }  // namespace
 
@@ -199,6 +204,34 @@ void Battle::finish() {
     prevUnitPos_.resize(n);
     seenGen_.assign(n, 0);
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
+    startRank_.resize(n);
+    for (size_t i = 0; i < n; ++i) startRank_[i] = world_->units()[i].rank;
+}
+
+void Battle::seatCarried(const CarriedSquad& c) {
+    Squad& s = squads_.back();
+    s.total = std::max(c.full, static_cast<int>(s.members.size()));
+    for (size_t i = 0; i < s.members.size() && i < c.men.size(); ++i) {
+        const CarriedMan& m = c.men[i];
+        world_->setVeterancy(s.members[i], m.rank, 0);  // (a hero's levels make him tougher: before his wounds are put back)
+        const sim::Unit* u = world_->findUnit(s.members[i]);
+        world_->restoreUnit(s.members[i], static_cast<int32_t>(static_cast<int64_t>(u->stats.maxHp) * std::clamp(m.hp, 1, 1000) / 1000), m.kills, sim::kMoraleFull);
+    }
+}
+
+std::vector<CarriedSquad> Battle::carried() const {
+    std::vector<CarriedSquad> out;
+    for (const Squad& q : squads_) {
+        if (q.owner != local_) continue;
+        CarriedSquad c{q.name.empty() ? std::string(sim::unitTypeName(q.type)) : q.name, q.type, totalCount(q), {}};
+        for (size_t i = 0; i < q.members.size(); ++i) {
+            const sim::Unit* u = world_->findUnit(q.members[i]);
+            if (!u || !u->alive()) continue;
+            c.men.push_back({std::max(1, static_cast<int>(static_cast<int64_t>(u->hp) * 1000 / std::max(1, u->stats.maxHp))), u->rank, u->kills, static_cast<int>(i)});
+        }
+        out.push_back(std::move(c));
+    }
+    return out;
 }
 
 Standing Battle::standing(const Squad& s) const {
@@ -237,8 +270,9 @@ void Battle::setUpFord(const SkirmishSetup& setup) {
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
     const float px = cx - 60, ex = cx + 170;
     if (setup.budget > 0) {
-        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east);
-        muster(kEnemy, foeBuys(setup, false), {ex, cy, 0}, west);
+        // (Bought hosts form up kFordGapM apart, the far one just beyond the bowmen's reach: 230 m of walking was a dead minute.)
+        muster(kPlayer, playerBuys(setup, true), {px, cy, 0}, east, false, false, &setup.roster);
+        muster(kEnemy, foeBuys(setup, false), {px + kFordGapM, cy, 0}, west);
         return;
     }
 
@@ -355,12 +389,13 @@ std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int e
     // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it;
     // and `pct` of that: walls are worth men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct),
     // whichever the player is.
-    const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
+    const int purse = setup.foePurse > 0 ? setup.foePurse : setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
     const int easy = setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse;
     return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, const std::vector<CarriedSquad>* roster, bool skirmishers) {
+    if (roster && roster->empty()) roster = nullptr;
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
     // `enginesFirst` (a siege's besiegers): the engines are the front rank, at their throw from the gate, and the army stands
@@ -389,24 +424,36 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
     struct Item {
         UnitType type;
         std::string name;
+        const CarriedSquad* carried = nullptr;
     };
-    std::vector<Item> foot, rear, engines, horse;
-    for (const Buy& b : army)
-        for (int i = 0; i < b.squads; ++i) {
-            Item it{b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : "")};
-            switch (b.type) {
-                case UnitType::LightCavalry:
-                case UnitType::HeavyCavalry:
-                case UnitType::WolfRiders: horse.push_back(it); break;
-                case UnitType::Catapult: engines.push_back(it); break;
-                case UnitType::Archers:
-                case UnitType::DwarfGrenadier:
-                case UnitType::Wizards:
-                case UnitType::Journeyman: rear.push_back(it); break;
-                default: foot.push_back(it);
-            }
+    std::vector<Item> all, foot, rear, engines, horse, lords, bows;
+    if (roster) {
+        for (const CarriedSquad& c : *roster)
+            if (!c.men.empty()) (c.type == UnitType::Hero ? lords : all).push_back({c.type, c.name, &c});
+    } else {
+        for (const Buy& b : army)
+            for (int i = 0; i < b.squads; ++i) all.push_back({b.type, std::string(sim::unitTypeName(b.type)) + (b.squads > 1 ? " " + std::to_string(i + 1) : ""), nullptr});
+        if (lord) lords.push_back({UnitType::Hero, "The Lord", nullptr});
+    }
+    const auto count = [](const Item& it) { return it.carried ? static_cast<int>(it.carried->men.size()) : it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type); };
+    const auto raise = [&](const Item& it, V3 at) {
+        spawnSquad(it.name, owner, it.type, count(it), at, facing);
+        if (it.carried) seatCarried(*it.carried);
+    };
+    for (const Item& it : all) {
+        switch (it.type) {
+            case UnitType::LightCavalry:
+            case UnitType::HeavyCavalry:
+            case UnitType::WolfRiders: horse.push_back(it); break;
+            case UnitType::Catapult: engines.push_back(it); break;
+            case UnitType::Archers: (skirmishers ? bows : rear).push_back(it); break;
+            case UnitType::DwarfGrenadier:
+            case UnitType::Wizards:
+            case UnitType::Journeyman: rear.push_back(it); break;
+            default: foot.push_back(it);
         }
-    if (lord) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), {UnitType::Hero, "The Lord"});
+    }
+    for (const Item& it : lords) rear.insert(rear.begin() + static_cast<long>(rear.size() / 2), it);
     float row = 0;
     const auto rank = [&](const std::vector<Item>& items) {
         for (size_t i = 0; i < items.size(); i += kAcross, ++row) {
@@ -414,28 +461,29 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             for (size_t j = 0; j < n; ++j) {
                 const float lateral = (static_cast<float>(j) - static_cast<float>(n - 1) / 2) * kSlotM;
                 const Item& it = items[i + j];
-                spawnSquad(it.name, owner, it.type, it.type == UnitType::Hero ? 1 : sim::Conquest::squadSize(it.type), settle(anchor + right * lateral - facing * (row * kRowM)), facing);
+                raise(it, settle(anchor + right * lateral - facing * (row * kRowM)));
             }
         }
     };
     if (enginesFirst) rank(engines);
+    rank(bows);  // skirmishers: the bowmen out in front, to open the battle (the player's to pull back as he sets his line)
     const float footRow = row;
     rank(foot);
     // The horse on either wing of the front rank, outside the foot.
     const float wing = (static_cast<float>(std::min<size_t>(kAcross, foot.size())) / 2 + 0.5f) * kSlotM;
     for (size_t i = 0; i < horse.size(); ++i) {
         const float side = i % 2 ? 1.0f : -1.0f, out = wing + static_cast<float>(i / 2) * kSlotM;
-        spawnSquad(horse[i].name, owner, horse[i].type, sim::Conquest::squadSize(horse[i].type), settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)), facing);
+        raise(horse[i], settle(anchor + right * (side * out) - facing * (8.0f + footRow * kRowM)));
     }
     rank(rear);
     if (!enginesFirst) rank(engines);
 }
 
 void Battle::setUpField(const SkirmishSetup& setup) {
-    // Open ground: the two armies a long bowshot apart, facing.
+    // Open ground: the two armies a bowshot apart (kFieldGapM), facing.
     const float cx = kWorldSize / 2, cy = kWorldSize / 2;
-    muster(kPlayer, playerBuys(setup, true), {cx - 70, cy, 0}, {1, 0, 0}, true);
-    muster(kEnemy, foeBuys(setup, false, kFieldEngines, setup.easy ? 100 : setup.hard ? kOpenHardPursePct : kOpenPursePct), {cx + 70, cy, 0}, {-1, 0, 0}, false);
+    muster(kPlayer, playerBuys(setup, true), {cx - kFieldGapM / 2, cy, 0}, {1, 0, 0}, true, false, &setup.roster, true);
+    muster(kEnemy, foeBuys(setup, false, kFieldEngines, setup.hard ? kOpenHardPursePct : 100), {cx + kFieldGapM / 2, cy, 0}, {-1, 0, 0}, false, false, nullptr, true);
     foeName_ = "other host";
 }
 
@@ -471,6 +519,7 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
             std::string name;
             UnitType type;
             int count;
+            const CarriedSquad* carried = nullptr;
         };
         std::vector<Company> companies;
         if (classic) {
@@ -478,6 +527,9 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                          {"Gate Wardens", UnitType::Pikemen, 8},
                          {"Town Militia", UnitType::LightInfantry, 12},
                          {"Castellan's Guard", UnitType::HeavyInfantry, 6}};
+        } else if (keeper == kPlayer && !setup.roster.empty()) {
+            for (const CarriedSquad& c : setup.roster)  // (the March: each squad its own company, its lord among them)
+                if (!c.men.empty()) companies.push_back({c.name, c.type, static_cast<int>(c.men.size()), &c});
         } else {
             for (const Buy& b : keeper == kPlayer ? playerBuys(setup, false) : foeBuys(setup, false, kFieldEngines, 10000 / kSiegeOddsPct))
                 companies.push_back({sim::unitTypeName(b.type), b.type, b.squads * sim::Conquest::squadSize(b.type)});
@@ -505,7 +557,9 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 if (squadOfUnit_.size() < id) squadOfUnit_.resize(id, -1);
                 squadOfUnit_[id - 1] = static_cast<int>(squads_.size());
             }
-            if (!s.members.empty()) squads_.push_back(std::move(s));
+            if (s.members.empty()) continue;
+            squads_.push_back(std::move(s));
+            if (c.carried) seatCarried(*c.carried);
         }
     }
 
@@ -549,6 +603,18 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 faces.push_back(V3{mid.x - centre.x, mid.y - centre.y, 0}.normalized());
                 off.push_back(kFlankM);
             }
+        }
+        if (besieger == kPlayer && !setup.roster.empty()) {
+            // The March: the squads as they stand, dealt to the camps as a bought army's are (the engines first), the lord at the road's door.
+            std::vector<std::vector<CarriedSquad>> rosters(camps.size());
+            size_t engine = 0, other = 0;
+            for (const CarriedSquad& c : setup.roster) {
+                if (c.men.empty()) continue;
+                rosters[c.type == UnitType::Hero ? 0 : (c.type == UnitType::Catapult ? engine++ : other++) % camps.size()].push_back(c);
+            }
+            for (size_t d = 0; d < camps.size(); ++d)
+                if (!rosters[d].empty()) muster(besieger, {}, conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, false, true, &rosters[d]);
+            return;
         }
         std::vector<std::vector<Buy>> byCamp(camps.size());
         size_t engine = 0, other = 0;
@@ -838,6 +904,9 @@ void Battle::forgetMen() {
     for (size_t i = 0; i < n; ++i) prevUnitPos_[i] = toV3(world_->units()[i].pos), seenGen_[i] = world_->generation(world_->units()[i].id);
     readied_.clear();
     smouldering_.clear();
+    bleeders_.clear();
+    rings_.clear();
+    dye_.clear();
     recent_.clear();
 }
 
@@ -886,6 +955,8 @@ void Battle::addMark(GroundMark::Kind kind, V3 pos, float yaw, float size, uint3
 
 void Battle::emit(Particle::Kind kind, V3 pos, V3 vel, float life, float size) {
     if (particles_.size() >= kMaxParticles) return;
+    // Spray lives as long as it is in the air: up and back down to the water it left.
+    if (kind == Particle::Kind::Spray) life = std::max(0.15f, std::min(life * 3.0f, 2.0f * vel.z / kGravity));
     particles_.push_back({kind, pos, vel, 0.0f, life, size});
 }
 
@@ -902,6 +973,7 @@ void Battle::collectEvents() {
     }
 
     applyImpacts(world_->impacts(), *world_, V3{0, 0, 0}, true);
+    stepWater();
 
     // Trails: fireballs burn, a Molotov's rag flames at the bottle's neck,
     // a satchel's fuse fizzes once something has lit it (laid, it lies quiet).
@@ -915,6 +987,16 @@ void Battle::collectEvents() {
             emit(Particle::Kind::Fire, toV3(p.pos) + V3{0, 0, 0.12f}, V3{srnd(), srnd(), 1.0f + rnd()} * 0.4f, 0.25f, 0.16f);
         } else if (p.kind == sim::ProjectileKind::Bomb && p.fuse > 0 && (tick & 1)) {
             emit(Particle::Kind::Spark, toV3(p.pos) + V3{0, 0, 0.25f}, {srnd(), srnd(), 1.5f}, 0.25f, 0.04f);
+        } else if (p.kind == sim::ProjectileKind::Stone && p.landed && !p.resting && p.vel.z == sim::Fixed::zero()) {
+            // A boulder rolling: its furrow in the grass (a stretch each half metre it has gone), the dust it raises
+            // and the clods it throws up behind it.
+            const V3 at = toV3(p.pos), v = toV3(p.vel);
+            const float speed = std::sqrt(v.x * v.x + v.y * v.y), rolled = static_cast<float>(p.rolled.toDouble());
+            if (speed < 0.5f) continue;
+            if (static_cast<int>(rolled * 2.0f) != static_cast<int>((rolled - speed / sim::kTicksPerSecond) * 2.0f))
+                addMark(GroundMark::Kind::Furrow, at, std::atan2(v.y, v.x), 0.8f, mix(p.id, static_cast<uint32_t>(rolled * 2.0f)));
+            if (rnd() < speed / 9.0f) emit(Particle::Kind::Smoke, at + V3{srnd() * 0.4f, srnd() * 0.4f, 0.25f}, V3{srnd() - v.x * 0.08f, srnd() - v.y * 0.08f, 0.5f + rnd()}, 1.0f + rnd(), 0.5f + rnd() * 0.6f);
+            if (speed > 4.0f && (tick & 1)) emit(Particle::Kind::Dirt, at, V3{srnd() * 2.0f + v.x * 0.15f, srnd() * 2.0f + v.y * 0.15f, 2.0f + rnd() * 2.5f}, 0.9f, 0.05f + rnd() * 0.07f);
         }
     }
 }
@@ -954,6 +1036,7 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
         using K = sim::ImpactEvent::Kind;
         switch (e.kind) {
             case K::Ground:
+                if (presentInWater(e, pos, nullptr, {})) break;
                 for (int i = 0; i < 2; ++i) emit(Particle::Kind::Dirt, pos, {srnd(), srnd(), 1.5f + rnd()}, 0.5f, 0.06f);
                 break;
             case K::Bleed: {
@@ -979,8 +1062,10 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 break;
             case K::Explosion: {
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.5f}, {}, 0.18f, r * 1.3f);
+                // On water: the flash, and steam (battle_water.cpp); no crater, no fire left burning, no dirt thrown.
+                if (presentInWater(e, pos, nullptr, {})) break;
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.95f, seed);
                 for (int i = 0; i < 18; ++i) emit(Particle::Kind::Fire, pos + V3{0, 0, 0.3f}, V3{srnd(), srnd(), rnd() * 0.8f} * (r * 2.5f), 0.45f + rnd() * 0.3f, 0.5f + rnd() * 0.6f);
                 for (int i = 0; i < 14; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.5f}, {srnd() * 1.5f, srnd() * 1.5f, 1.5f + rnd() * 2}, 2.5f + rnd() * 2, 1.0f + rnd());
                 for (int i = 0; i < 24; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 6, srnd() * 6, 5 + rnd() * 9}, 1.6f, 0.08f + rnd() * 0.1f);
@@ -990,8 +1075,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 // A Molotov shatters: a sheet of flame rolling out low over the
                 // ground and burning a while, a black scorch, smoke; no blast of dirt.
                 const float r = static_cast<float>(e.radius.toDouble());
-                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 emit(Particle::Kind::Flash, pos + V3{0, 0, 0.3f}, {}, 0.12f, r * 0.8f);
+                if (presentInWater(e, pos, nullptr, {})) break;  // the oil goes out in a hiss of steam
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.8f, seed);
                 for (int i = 0; i < 30; ++i) {
                     const float a = rnd() * 6.2832f, d = r * (0.2f + rnd() * 0.8f);
                     emit(Particle::Kind::Fire, pos + V3{std::cos(a) * d * 0.4f, std::sin(a) * d * 0.4f, 0.15f},
@@ -1003,9 +1089,37 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
             case K::Smash: {
                 // A stone shatters: a scar in the ground, a burst of dust and chips.
                 const float r = static_cast<float>(e.radius.toDouble());
+                if (presentInWater(e, pos, nullptr, {})) break;  // a column of water, not a scar
                 addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, r * 0.5f, seed);
                 for (int i = 0; i < 10; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), 0.3f}, {srnd() * 2, srnd() * 2, 0.8f + rnd()}, 1.8f + rnd(), 0.8f + rnd() * 0.6f);
                 for (int i = 0; i < 20; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 5, srnd() * 5, 3 + rnd() * 6}, 1.4f, 0.07f + rnd() * 0.1f);
+                break;
+            }
+            case K::Bounce: {
+                // A boulder strikes the ground and goes on: a gouge, dust, clods thrown the way it is going.
+                const float hard = std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 10.0f);
+                const V3 on = toV3(e.dir);
+                addMark(GroundMark::Kind::Crater, pos, rnd() * 6.28f, 0.7f + 0.7f * hard, seed);
+                for (int i = 0; i < 5 + static_cast<int>(8 * hard); ++i) emit(Particle::Kind::Smoke, pos + V3{srnd() * 0.6f, srnd() * 0.6f, 0.3f}, {srnd() * 1.5f, srnd() * 1.5f, 0.6f + rnd()}, 1.4f + rnd(), 0.6f + rnd() * 0.6f);
+                for (int i = 0; i < 8 + static_cast<int>(12 * hard); ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3 + on.x * 0.3f, srnd() * 3 + on.y * 0.3f, 2 + rnd() * 5}, 1.2f, 0.06f + rnd() * 0.09f);
+                break;
+            }
+            case K::Splash: {
+                // Into the water: the rings, the blood and the spray of whatever fell in (battle_water.cpp); a boulder
+                // (a projectile's splash, a heavy one) also throws up a column of spray and a ring of it.
+                presentInWater(e, pos, nullptr, {});
+                if (e.radius.toDouble() < 3.0) break;
+                for (int i = 0; i < 26; ++i) {
+                    const float a = rnd() * 6.2832f, out = 0.5f + rnd() * 2.5f;
+                    emit(Particle::Kind::Smoke, pos + V3{std::cos(a) * 0.3f, std::sin(a) * 0.3f, 0.2f}, V3{std::cos(a) * out, std::sin(a) * out, 2.5f + rnd() * 4.5f}, 0.7f + rnd() * 0.6f, 0.35f + rnd() * 0.4f);
+                }
+                break;
+            }
+            case K::Struck: {
+                // A boulder against stone, timber or a tree: chips and dust thrown back off it.
+                const int chips = 6 + static_cast<int>(std::min(1.0f, static_cast<float>(e.radius.toDouble()) / 100.0f) * 22);
+                for (int i = 0; i < chips; ++i) emit(Particle::Kind::Dirt, pos, V3{srnd() * 3, srnd() * 3, 1.5f + rnd() * 4} - dir * 3, 1.1f, 0.06f + rnd() * 0.1f);
+                for (int i = 0; i < chips / 3; ++i) emit(Particle::Kind::Smoke, pos + V3{srnd(), srnd(), srnd() * 0.5f}, V3{srnd(), srnd(), 0.8f + rnd()} - dir, 1.6f + rnd(), 0.7f + rnd() * 0.7f);
                 break;
             }
             case K::Gate: {
@@ -1028,6 +1142,9 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 }
                 const V3 body = toV3(victim.pos) + shift;
                 const float scale = static_cast<float>(victim.stats.height.toDouble()) / 1.8f;
+                if (own) noteWound(victim);  // hurt badly, he drips as he goes
+                // Standing in water, his blood goes into it (battle_water.cpp), not onto the bed under it.
+                if (presentInWater(e, pos, &victim, body)) break;
                 const int splats = e.killed ? 3 : 1;
                 for (int i = 0; i < splats; ++i) {
                     const uint32_t s = mix(seed, static_cast<uint32_t>(i));
@@ -1083,9 +1200,14 @@ void Battle::updateParticles(float seconds) {
                 p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Smoke:
+            case Particle::Kind::Steam:
                 p.vel = p.vel * std::exp(-0.8f * seconds);
                 p.pos += p.vel * seconds;
-                p.size += seconds * 1.2f;
+                p.size += seconds * (p.kind == Particle::Kind::Steam ? 0.6f : 1.2f);
+                break;
+            case Particle::Kind::Spray:
+                p.vel.z -= kGravity * seconds;
+                p.pos += p.vel * seconds;
                 break;
             case Particle::Kind::Heal:
             case Particle::Kind::Flash:

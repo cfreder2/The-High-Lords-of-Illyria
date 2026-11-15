@@ -1,0 +1,62 @@
+# The boulder, on level open ground, at a line across its way.
+# The same throw at sixteen men in one rank across the roll: it takes the man in its lane, if any, and goes on.
+#
+#   Illyria --play tools/playtest/boulder-line.txt --play-out ~/Desktop/boulder
+#
+# `boulder men X Y DX DY N [own]` stands N men who do nothing in a file from (X, Y); `boulder throw X Y TX TY` throws a
+# stone as a catapult at (X, Y) would at (TX, TY), with no scatter, and prints the forecast; `boulder count` prints the
+# toll and where the stone lies (docs/PLAYTEST.md). The frames are taken at a quarter speed, 5 ticks apart.
+
+size 1600 900
+start skirmish field
+wait 1
+
+camera 708 318 46 1.57
+boulder ground 690 320
+boulder men 698 305 0 2 16
+wait 2
+shot line-00-before
+boulder throw 590 320 690 320
+wait_ticks 142
+speed 0.25
+wait_ticks 5
+shot line-01
+wait_ticks 5
+shot line-02
+wait_ticks 5
+shot line-03
+wait_ticks 5
+shot line-04
+wait_ticks 5
+shot line-05
+wait_ticks 5
+shot line-06
+wait_ticks 5
+shot line-07
+wait_ticks 5
+shot line-08
+wait_ticks 5
+shot line-09
+wait_ticks 5
+shot line-10
+wait_ticks 5
+shot line-11
+wait_ticks 5
+shot line-12
+wait_ticks 5
+shot line-13
+wait_ticks 5
+shot line-14
+wait_ticks 5
+shot line-15
+wait_ticks 5
+shot line-16
+speed 1
+wait_ticks 300
+boulder count
+shot line-17-after
+camera 704 319 20 1.57
+wait 1.5
+shot line-18-close
+stats
+quit

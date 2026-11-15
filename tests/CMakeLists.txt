@@ -49,6 +49,7 @@ add_executable(illyria_tests
     test_garrison_keep.cpp
     test_two_gates.cpp
     test_battle_end.cpp
+    test_march.cpp
     test_skirmish.cpp
     test_ramps.cpp
     test_walls.cpp
@@ -74,6 +75,7 @@ add_executable(illyria_tests
     test_morale_rally.cpp
     test_voice.cpp
     test_death.cpp
+    test_drift.cpp
     test_capture.cpp
     test_palette.cpp
     test_card_name.cpp
@@ -97,6 +99,7 @@ add_executable(illyria_tests
     test_site_clearance.cpp
     test_satchels.cpp
     test_friendly_fire.cpp
+    test_boulder.cpp
     test_scavenge.cpp
     test_match_seats.cpp
     test_playscript.cpp

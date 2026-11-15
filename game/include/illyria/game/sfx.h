@@ -63,6 +63,11 @@ enum class Sound : uint8_t {
     Frog,            // a croak from the marsh
     WarHorn,         // Horde: the next wave sets out
     Alarm,           // capture the flag: the player's flag in danger
+    Wade,            // men and beasts going through water
+    WaterPlop,       // a part of a body landing in water
+    BodySplash,      // a body going down into water
+    StoneWater,      // a catapult's stone into water: the column
+    Steam,           // fire on water
     Count
 };
 constexpr int kSoundCount = static_cast<int>(Sound::Count);
@@ -136,6 +141,7 @@ private:
     void place(SfxCue& c) const;
     void updateAmbience(const sim::World& world, const sim::Continent& continent, const V3& origin, bool enemyLand);
     void whistles(const sim::World& world);
+    void wading(const sim::World& world);
     Sound arrowSurface(const sim::World& world, const sim::ImpactEvent& e) const;
 
     sim::PlayerId player_;

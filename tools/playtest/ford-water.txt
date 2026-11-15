@@ -1,0 +1,75 @@
+# The water at the Ford (docs/DEATH_AUDIT.md, "In the water"): a melee set in the ford, seen close and from the middle
+# distance (rings and wakes, spray, the blood blooming and going down with the current), then the dead of every type
+# felled in the river above the footbridge, to watch them float down under it, ground and sink.
+#
+#   Illyria --play tools/playtest/ford-water.txt --play-out out/water
+#
+# The river runs south along x = 515, through the ford at (515, 514); the footbridge crosses it at y = 592. The camera
+# looks north, so downstream is toward the bottom of the screen. The armies of the skirmish are left where they
+# start: the fight is `deaths melee`, two lines stood in the water.
+
+size 1600 900
+start skirmish ford
+wait 1
+camera 515 512 34 1.592
+wait 1.5
+shot water-00-ford-empty
+deaths melee 515 514
+wait_ticks 24
+shot water-01-closing
+wait_ticks 30
+shot water-02-clash
+wait_ticks 30
+shot water-03-clash
+wait_ticks 45
+shot water-04-fight
+wait_ticks 90
+shot water-05-fight
+camera 515 510 22 1.592
+wait_ticks 60
+shot water-06-close
+wait_ticks 20
+shot water-07-close
+wait_ticks 20
+shot water-08-close
+wait_ticks 150
+shot water-09-close
+camera 515 500 60 1.592
+wait_ticks 150
+shot water-10-mid
+wait_ticks 300
+shot water-11-mid-downstream
+stats
+wait_ticks 600
+shot water-12-mid-later
+camera 513 470 60 1.592
+wait_ticks 300
+shot water-13-below-the-ford
+stats
+
+# The dead of every type in the river above the footbridge (seven to a row across it and onto the east bank, the rows
+# 10 m apart down the stream), felled whole.
+deaths spawn 499 640
+wait_ticks 20
+camera 517 622 48 1.592
+wait 1.5
+shot water-20-standing
+deaths fell
+wait_ticks 12
+shot water-21-falling
+wait_ticks 30
+shot water-22-fallen
+wait_ticks 150
+shot water-23-adrift
+wait_ticks 300
+shot water-24-adrift
+camera 515 590 48 1.592
+wait_ticks 300
+shot water-25-to-the-bridge
+wait_ticks 450
+shot water-26-under-the-bridge
+camera 515 535 60 1.592
+wait_ticks 900
+shot water-27-at-the-ford
+stats
+quit

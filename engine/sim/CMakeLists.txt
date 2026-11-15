@@ -18,8 +18,10 @@ add_library(illyria_sim
     src/world_orders.cpp
     src/world_satchels.cpp
     src/world_aoe.cpp
+    src/world_boulder.cpp
     src/world_scavenge.cpp
     src/world_death.cpp
+    src/world_drift.cpp
     src/scenario.cpp
     src/terrain.cpp
     src/units.cpp

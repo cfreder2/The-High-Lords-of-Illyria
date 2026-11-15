@@ -355,6 +355,67 @@ def arrow_water(rng, v):
     return trim_tail(x, -50)
 
 
+def splash_body(rng, dur, lo=300, hi=5000):
+    """Water thrown up and falling back: a burst of band noise that drops in pitch, and the drops after it."""
+    t = t_axis(dur)
+    burst = svf_bandpass(white(rng, dur), hi * np.exp(-t / (dur / 3)) + lo, q=0.6) * env_ad(dur, 0.004, dur / 4)
+    drops = grains(rng, dur, 70, lambda r: sine_sweep(r.uniform(700, 2200), r.uniform(1800, 4200), 0.025) * env_ad(0.025, 0.001, 0.006) * r.uniform(0.1, 0.5),
+                   density_curve=lambda u: (1 - u) ** 1.5)
+    return place(burst, drops, dur * 0.12, 0.7)
+
+
+@recipe("snd_water_wade", space=(0.4, 0.1))
+def water_wade(rng, v):
+    dur = 0.5
+    slosh = bandpass(white(rng, dur), rng.uniform(350, 600), rng.uniform(2200, 3500)) * env_points(dur, [(0, 0), (0.04, 1), (0.18, 0.45), (dur, 0)])
+    gulp = sine_sweep(rng.uniform(260, 380), rng.uniform(500, 800), 0.07) * env_ad(0.07, 0.004, 0.025) * 0.5
+    drips = grains(rng, 0.35, 28, lambda r: sine_sweep(r.uniform(900, 2400), r.uniform(2000, 4000), 0.02) * env_ad(0.02, 0.001, 0.005) * r.uniform(0.08, 0.3))
+    x = place(slosh * 0.8, gulp, rng.uniform(0.01, 0.05))
+    x = place(x, drips, 0.1)
+    return trim_tail(x, -50)
+
+
+@recipe("snd_water_plop", space=(0.4, 0.1))
+def water_plop(rng, v):
+    dur = 0.5
+    plop = sine_sweep(rng.uniform(300, 480), rng.uniform(900, 1500), 0.08) * env_ad(0.08, 0.002, 0.03)
+    splash = bandpass(white(rng, dur), 700, 5000) * env_ad(dur, 0.003, 0.06) * 0.5
+    drops = grains(rng, 0.35, 30, lambda r: sine_sweep(r.uniform(900, 2500), r.uniform(2000, 4000), 0.02) * env_ad(0.02, 0.001, 0.005) * r.uniform(0.1, 0.4))
+    x = place(splash, plop, 0)
+    x = place(x, drops, 0.05)
+    return trim_tail(x, -50)
+
+
+@recipe("snd_water_splash_body", space=(0.7, 0.16))
+def water_splash_body(rng, v):
+    dur = 1.3
+    slap = thud(rng, rng.uniform(90, 130), 0.3, 0.5, 700) * 0.9
+    x = place(splash_body(rng, dur), slap, 0)
+    return trim_tail(saturate(x, 1.2), -52)
+
+
+@recipe("snd_impact_stone_water", space=(1.4, 0.3))
+def stone_water(rng, v):
+    dur = 2.4
+    boom = thud(rng, rng.uniform(50, 65), 0.9, 0.45, 350) * 1.5
+    column = splash_body(rng, dur, 250, 6500) * 1.2
+    rain = grains(rng, 1.4, 160, lambda r: click_grain(r, 1500, 7000, (0.001, 0.006), (0.05, 0.4)), density_curve=lambda u: np.sin(np.pi * u) ** 2)
+    x = place(column, boom, 0)
+    x = place(x, rain, 0.7, 0.7)
+    return trim_tail(saturate(x, 1.5), -55)
+
+
+@recipe("snd_water_steam", space=(0.9, 0.2))
+def water_steam(rng, v):
+    dur = 2.4
+    t = t_axis(dur)
+    hiss = highpass(white(rng, dur), rng.uniform(2500, 3500)) * env_points(dur, [(0, 0), (0.03, 1), (0.4, 0.6), (dur, 0)])
+    boil = bandpass(white(rng, dur), 300, 1500) * (0.4 + 0.6 * np.abs(lowpass(white(rng, dur), 14)) * 3) * np.exp(-t / 0.5) * 0.6
+    spit = grains(rng, 1.2, 45, lambda r: click_grain(r, 800, 6000, (0.001, 0.006), (0.1, 0.7)), density_curve=lambda u: (1 - u) ** 2)
+    x = place(hiss * 0.8 + boil, spit, 0.02, 0.6)
+    return fade(trim_tail(x, -52), 0.004, 0.2)
+
+
 @recipe("snd_impact_stone_smash", space=(1.4, 0.3))
 def stone_smash(rng, v):
     dur = 1.6

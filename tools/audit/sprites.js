@@ -11,6 +11,7 @@
 //     sheet's own list, their lengths and fallbacks;
 //   - the camera (camera.h, camera.cpp, closeup.h): 45 degree field of view, 2 m the closest, pitch by distance.
 // Not drawn: the sun's shade on a soldier (x0.72 to 1), fog, the burnt tint, the pull toward the viewer.
+// A unit's sounds (its voice, its weapon, its fall) are sound-core.js's, with the Sounds page.
 (() => {
   "use strict";
 
@@ -62,7 +63,7 @@
   const state = {
     base: "", index: {}, indexHd: {}, units: [], team: "#335bd1", mode: 0, screen: 1080,
     gridClock: 0, detail: { t: 0, t0: 0, paused: false, speed: 1, loop: true, step: 0, scale: 96, hd: false, unit: null,
-      zoomClip: "idle", zoomFacing: 1, focus: 0.75, halved: false, custom: 8 },
+      zoomClip: "idle", zoomFacing: 1, focus: 0.75, halved: false, custom: 8, sync: "off", victim: "flesh" },
     compare: { a: "archers", b: "heavy_infantry", clip: "idle", facing: 1, scale: 96, hd: true },
     grid: { clip: "cycle", facing: 1, same: false },
     errors: [],
@@ -77,7 +78,7 @@
       else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
       else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v);
     }
-    for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+    for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
     return e;
   }
   const fix = (v, n = 1) => (Math.round(v * 10 ** n) / 10 ** n).toFixed(n);
@@ -493,7 +494,9 @@ void main() {
     last = now;
     state.gridClock += dt;
     const dc = state.detail;
+    const before = dc.t;
     if (!dc.paused) dc.t += dt * dc.speed;
+    if (dc.unit && dc.sync !== "off" && dc.t !== before) attackSound(unitBy(dc.unit), before, dc.t);
     const cv = gl.canvas, vw = document.documentElement.clientWidth, vh = window.innerHeight;
     const W = Math.round(vw * dpr), H = Math.round(vh * dpr);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; cv.style.width = vw + "px"; cv.style.height = vh + "px"; }
@@ -786,11 +789,80 @@ void main() {
       el("h2", {}, "Zoom: the game's camera"),
       el("p", { class: "note" }, `Each box is a ${250}x${330} px window of the screen, the figure at the size the camera shows it there (a ${state.screen} px high screen, 45 degree field of view) and through the game's filter: nearest-neighbour when magnified, trilinear over three mip levels when shrunk. Figures stand a little taller than wide as the camera drops (the billboard is upright, the pictures were rendered from 30 degrees). The number is screen pixels per sheet pixel across.`),
       zoomCtl, zoomBox,
+      el("h2", { id: "sounds-h" }, "Sounds"), soundsPanel(u, drawBar),
       el("h2", {}, "Clips"), clipBox,
       el("h2", {}, "Body parts"),
       el("p", { class: "note" }, "The 20 part cells after the views' (10 parts, two looks each), as stored; the game spins them in the picture's plane."),
       gibBox);
     window.scrollTo(0, 0);
+  }
+
+  // ---------------------------------------------------------------- a unit's sounds
+  const S = window.AuditSound, SU = window.AuditSoundUi;
+  let soundsReady = false;
+  // When in its attack clip the game sends the sound, and when the picture shows the blow.
+  //   The game: Battle::attackTick is the tick the blow was struck or the missile loosed, and the attack clip starts
+  //   there (renderer_sheets.cpp listedFrame, sprite_clips.cpp fixedLayoutFrame), as do the cues (sfx.cpp: the swing
+  //   at once, what it met 70 ms on). A missile clip that names its `release` is played so that frame meets the shot.
+  //   The picture: docs/SPRITE_SPEC.md: the blow lands on frame 3 of 6, the missile has left on frame 4 of 6.
+  function attackTiming(u, mode) {
+    const c = playClip(u.clips, "attack"), k = S.unitSounds(u.type);
+    if (!c) return null;
+    const len = clipLength(c, u), ranged = !!k.launch;
+    const shown = c.release >= 0 ? c.release : len * (ranged ? 4 / 6 : 3 / 6);
+    const at = mode === "game" ? (ranged && c.release >= 0 ? c.release : 0) : shown;
+    return { c, len, at, shown, ranged, k };
+  }
+  function attackSound(u, t0, t1) {
+    const d = state.detail, a = u && soundsReady && attackTiming(u, d.sync);
+    if (!a) return;
+    const period = d.loop ? (a.c.loop ? a.len : a.len + 0.6) : Infinity;
+    const local = (t) => (d.loop ? t - Math.floor(t / period) * period : t - d.t0);
+    const crossed = (when) => { const x = local(t0), y = local(t1); return x <= y ? x < when && when <= y : when <= y || when > x; };
+    if (a.ranged) {
+      if (crossed(Math.max(a.at, 1e-3))) S.play(a.k.launch, -1).then((r) => SU.say(`with the attack clip: ${S.sounds.get(a.k.launch).title}: ${r.text}`, r.seconds ? "" : "bad"));
+      return;
+    }
+    // The swing, then 70 ms on what it met; on the blow frame, the swing 70 ms before it.
+    const swing = d.sync === "game" ? a.at : Math.max(0, a.at - 0.07);
+    if (crossed(Math.max(swing, 1e-3))) {
+      if (a.k.swing) S.play(a.k.swing, -1).then((r) => SU.say(`with the attack clip: ${S.sounds.get(a.k.swing).title}, then ${S.sounds.get(a.k.met[d.victim]).title}: ${r.text}`, r.seconds ? "" : "bad"));
+      const met = a.k.met[d.victim];
+      if (met) S.play(met, -1, { delay: (d.sync === "game" ? 0.07 : a.at - swing) / Math.max(d.speed, 0.1) });
+    }
+  }
+  function soundsPanel(u, redraw) {
+    const d = state.detail;
+    if (!soundsReady) return el("p", { class: "note bad" }, "The sounds could not be read (game/web/sfx/sounds.json).");
+    const k = S.unitSounds(u.type), set = S.sets.get(k.voice), box = el("div", {}), said = el("span", { class: "said", id: "said" }, "Nothing plays until you press a button.");
+    SU.sayTo(said);
+    const t = attackTiming(u, "game"), blow = attackTiming(u, "blow");
+    const group = (name, ...kids) => el("div", { style: "margin:8px 0" }, el("h3", {}, name), kids);
+    const weapon = { slash: "a cut (sword, sabre, claw)", pierce: "a thrust (pike, lance, fang, horn)", cleave: "a cleaving blow (axe, great sword, claw)", blunt: "a blunt blow (club, staff, hoof)" }[k.melee];
+    const sync = el("select", { id: "sync", onchange: (e) => { d.sync = e.target.value; if (d.sync !== "off") S.unlock(); } },
+      [["off", "off"], ["game", "when the game sends it"], ["blow", "on the frame that shows the blow"]].map(([v, text]) => el("option", { value: v, selected: v === d.sync }, text)));
+    const victim = el("select", { onchange: (e) => { d.victim = e.target.value; } }, [["flesh", "flesh"], ["armour", "mail and plate"], ["bone", "the walking dead"], ["shield", "a shield (blocked)"]].map(([v, text]) => el("option", { value: v, selected: v === d.victim }, text)));
+    const lines = (only) => SU.voiceLines(set, only);
+    const more = el("details", { class: "set" }, el("summary", {}, `Every line of the ${set.name} voice`));
+    more.addEventListener("toggle", () => { if (more.open && !more._built) { more._built = true; more.append(lines(null)); } });
+    box.append(
+      el("div", { class: "kv" }, SU.controls(), said),
+      t ? group("The attack clip and its sound",
+        el("div", { class: "kv" }, el("span", { class: "ctl" }, "Play the attack's sound with the clip ", sync), k.ranged ? null : el("span", { class: "ctl" }, "striking ", victim)),
+        el("p", { class: "note" }, `The game starts the attack clip and sends ${k.ranged ? "the launch sound" : "the swing (and 70 ms later what it met)"} in the same tick, the one the ${k.ranged ? "missile is loosed" : "blow is struck"}: ${fix(t.at, 2)} s into this ${fix(t.len, 2)} s clip. `,
+          Math.abs(t.at - blow.shown) > 0.05 ? el("span", { class: "warn" }, `The picture shows the ${k.ranged ? "missile leaving" : "blow landing"} about ${fix(blow.shown, 2)} s in (${u.own && t.c.release >= 0 ? "the clip's release" : u.own ? "taken as " + (k.ranged ? "two thirds" : "half") + " way through: the clip does not say" : k.ranged ? "frame 5 of 6" : "frame 4 of 6"}): the sound comes ${fix(blow.shown - t.at, 2)} s before it.`)
+            : el("span", { class: "ok" }, "The picture shows it at the same moment."), " Set the clips looping below and choose one to hear both.")) : null,
+      group(`Its weapon: ${k.ranged ? { arrow: "a bow", fireball: "a fireball", molotov: "a thrown firebomb", stone: "a hurled stone" }[k.ranged] + (k.swing ? ", and " + weapon + " at arm's length" : "") : weapon}`,
+        k.launch ? SU.soundLine(k.launch, "as the missile leaves") : null, k.lands.map((id) => SU.soundLine(id, "where it lands")),
+        k.swing ? [SU.soundLine(k.swing, "the swing"), SU.soundLine(k.met.flesh, "70 ms on, into flesh"), k.met.armour !== k.met.flesh ? SU.soundLine(k.met.armour, "on mail and plate") : null,
+          SU.soundLine(k.met.bone, "on the walking dead"), SU.soundLine(k.met.shield, "blocked by a shield")] : null,
+        k.heals ? SU.soundLine(k.heals, "his healing") : null),
+      group(`When it is struck (${k.bone ? "bone" : u.type === 26 ? "timber" : k.armoured ? "armoured" : "flesh"})`, k.struck.map((id) => SU.soundLine(id, id.indexOf("impact_arrow") >= 0 ? "an arrow" : "a blade")), lines(["pain"])),
+      group("Its death", SU.soundLine(k.fall, "the body, 0.6 s after the blow"), SU.soundLine("snd_gore_dismember_snap", "a limb or the head off"), SU.soundLine("snd_gore_gib_burst", "blown apart"),
+        k.bone ? null : SU.soundLine("snd_gore_flesh_burn", "burned"), lines(["death", "death_moan"])),
+      group("Moving", el("p", { class: "bad", style: "font-weight:400" }, `No sound: nothing that moves makes one (no footsteps, hooves, wings or wheels in the Sound enum). The ${playClip(u.clips, "walk") ? "walk" : "move"} clips play in silence.`)),
+      group(`Its voice: ${set.name}`, el("p", { class: "note" }, `Shared with ${set.units.join(", ")}. `, SU.voiceCounts(set)), lines(["selected", "move", "attack"]), more));
+    return box;
   }
 
   // ---------------------------------------------------------------- the page
@@ -819,15 +891,15 @@ void main() {
   }
   async function findBase() {
     // Beside the web build's sprites (/sprites-audit/), or in the repository served from its root.
-    const bases = ["../sprites/", "../../../game/web/sprites/", "sprites/"];
-    if (location.pathname.includes("/tools/sprites/audit")) bases.unshift(bases.splice(1, 1)[0]);
+    const bases = ["../sprites/", "../../game/web/sprites/"];
+    if (location.pathname.includes("/tools/audit")) bases.reverse();
     for (const base of bases) {
       try {
         const r = await fetch(base + "index.json");
         if (r.ok) return { base, index: await r.json() };
       } catch (e) { /* the next */ }
     }
-    throw new Error("sprites/index.json not found: serve the repository's root (tools/sprites/audit/serve.sh)");
+    throw new Error("sprites/index.json not found: serve the repository's root (tools/audit/serve.sh)");
   }
   async function start() {
     initGl();
@@ -849,6 +921,8 @@ void main() {
       const name = state.index[t], hd = state.indexHd[t];
       return buildUnit(t, name, await meta(name), hd ? await meta(hd.name).catch(() => null) : null);
     }));
+    // The sounds, for a unit's Sounds panel (the sprites work without them).
+    try { await S.load(); S.settings.camera = 15; soundsReady = true; } catch (e) { console.warn("sounds: " + e.message); }
     drawTeams();
     $("#team-own").oninput = (e) => { state.team = e.target.value.toLowerCase(); drawTeams(); };
     $("#bg").onchange = (e) => { document.body.dataset.bg = e.target.value; };
@@ -864,7 +938,7 @@ void main() {
     setTimeout(() => window.__audit.checkAll(), 1200);
   }
 
-  // For scripts (tools/sprites/audit/shots.mjs): the numbers behind the page.
+  // For scripts (tools/audit/shots.mjs): the numbers behind the page.
   window.__audit = {
     state,
     ready: null,

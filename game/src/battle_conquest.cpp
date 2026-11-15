@@ -24,6 +24,8 @@ bool Battle::sees(uint8_t owner, float x, float y) const {
 void Battle::borrow(sim::Conquest* conquest) {
     conquest_ = conquest;
     quitSeen_ = 0;  // (a conquest begun or loaded has told of none)
+    fight_ = {};
+    fightTold_ = false;
     if (conquest == nullptr) {
         world_ = ownWorld_.get();
         alphaSet_ = false;
@@ -113,6 +115,7 @@ void Battle::presentConquest(const std::vector<sim::Conquest::Soldier>& men) {
             q.standing.level = a.hero() ? a.rank + 1 : 0;
             q.standing.blessings = a.blessings;
             q.standing.kills = a.kills;
+            q.standing.battles = a.battles;
             for (uint8_t k : a.artifacts) q.arms += (q.arms.empty() ? "" : ", ") + std::string(sim::Conquest::artifacts()[k].name);
             q.rare = sim::Conquest::rare(a.type) && !a.hero();
             q.hired = a.ally;

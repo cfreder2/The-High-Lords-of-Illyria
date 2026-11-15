@@ -34,6 +34,8 @@ Mesh pine();
 Mesh oak();
 Mesh bush();
 Mesh rock();
+// A catapult's boulder: a rough ball of granite about its own middle, radius about 0.5 (lumps and flats, no two faces alike).
+Mesh boulder();
 Mesh house();
 // A standing stone: a shaft of radius 1, its foot flaring to kPillarFoot (an
 // obstacle's radius is its foot's, so it is drawn scaled by 1 / kPillarFoot).
