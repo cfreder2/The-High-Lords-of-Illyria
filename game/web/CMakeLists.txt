@@ -35,6 +35,11 @@ add_custom_command(TARGET illyria_web POST_BUILD
 add_custom_target(illyria_web_sprites ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/sprites" "${ILLYRIA_SITE_DIR}/sprites"
 )
+# The sprite audit page (tools/sprites/audit): plain HTML and script that read the sheets above, no engine code.
+add_custom_target(illyria_web_sprites_audit ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ILLYRIA_SITE_DIR}/sprites-audit"
+    COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/tools/sprites/audit/index.html" "${CMAKE_SOURCE_DIR}/tools/sprites/audit/audit.js" "${ILLYRIA_SITE_DIR}/sprites-audit/"
+)
 # 3D models (tools/models): each a mesh and its texture, fetched at start.
 add_custom_target(illyria_web_models ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/models" "${ILLYRIA_SITE_DIR}/models"
