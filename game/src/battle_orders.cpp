@@ -168,10 +168,11 @@ void Battle::orderAttackUnit(sim::EntityId target) {
         std::erase_if(mine, [&](sim::EntityId id) { return std::find(together.begin(), together.end(), id) != together.end(); });
         marchSelection(together, toV3(t->pos), nullptr, false);
     }
-    for (sim::EntityId id : mine) {
+    const auto attack = [&](sim::EntityId id, bool afterTheMarch) {
         const sim::Unit& u = world_->units()[id - 1];
         sim::Command c{local_, id, sim::Command::Type::AttackUnit, t->pos};
         c.targetUnit = target;
+        c.queue = afterTheMarch;
         // The squad-mate left behind (nearest him) is whom he goes back to.
         if (const int s = squadOfUnit_[id - 1]; s >= 0) {
             std::vector<sim::EntityId> stay;
@@ -180,7 +181,12 @@ void Battle::orderAttackUnit(sim::EntityId target) {
             c.rally = nearestOf(stay, toV3(u.pos));
         }
         pending_.push_back(c);
-    }
+    };
+    // The march is to where he stood when they were sent, and he may not wait there: the order to go for him stands behind it
+    // (Command::queue), so that they come up together and it is still him they are after.
+    for (sim::EntityId id : together) attack(id, true);
+    for (sim::EntityId id : mine) attack(id, false);
+    mine.insert(mine.end(), together.begin(), together.end());
     markOrdered(mine);
     answer(Situation::Attack, mine);
     if (t->owner == local_) say("Attacking our own!");
@@ -533,10 +539,14 @@ std::vector<Battle::OrderMark> Battle::orderMarks() const {
         const float opacity = markOpacity(i);
         if (opacity <= 0.0f) continue;
         const V3 at = unitPosition(i);
-        if (u.targetUnit != sim::kNoEntity) {
-            const sim::Unit& t = units[u.targetUnit - 1];
+        // Whom he is after: his quarry, or the one he marches against with the rest (Battle::orderAttackUnit: the attack waits
+        // behind the march), so that a tap on a far foe rings the foe as a tap on a near one does.
+        sim::EntityId quarry = u.targetUnit;
+        if (quarry == sim::kNoEntity && u.hasMoveTarget && !u.queue.empty() && u.queue.front().type == sim::Command::Type::AttackUnit) quarry = u.queue.front().targetUnit;
+        if (quarry != sim::kNoEntity) {
+            const sim::Unit& t = units[quarry - 1];
             if (!t.alive()) continue;
-            const V3 tp = unitPosition(u.targetUnit - 1);
+            const V3 tp = unitPosition(quarry - 1);
             OrderMark m{OrderMark::Kind::Target, u.id, {tp.x, tp.y, floorAt(tp)}, {}, at};
             m.size = static_cast<float>(t.stats.radius.toDouble()) * 2.0f + 0.5f;
             m.opacity = opacity;

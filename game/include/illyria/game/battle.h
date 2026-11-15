@@ -1067,6 +1067,11 @@ private:
     struct MarchOrder {
         sim::EntityId id;
         V3 target, face;
+        // His place in the arrangement, where keepClear has stood him off it round a tree, a rock or a log (`stoodOff`): the
+        // place is what the shape remembers (Slot::pos), so the next ground they are sent to has them as they were set out and
+        // not bent round a thing that is no longer there.
+        V3 place = {};
+        bool stoodOff = false;
     };
     // The block (blockLayout) of a big army, men placed by post and then by where they stand.
     static bool blockFits(Formation formation, int count);
@@ -1238,6 +1243,7 @@ private:
     Shape selShape_;       // a recalled group's arrangement, until the selection changes
     // Where each soldier was last sent in a march (by EntityId - 1), the way
     // he was to face there and the front of the whole, and which order it was.
+    // (His place in the arrangement: where an obstacle stood him off it, MarchOrder::place, not the ground he took instead.)
     struct Slot {
         V3 pos, face, front;
         uint32_t order = 0;  // 0: never sent

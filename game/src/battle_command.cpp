@@ -936,6 +936,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
     if (near.empty()) return;
     for (MarchOrder& m : plan) {
         const float r = static_cast<float>(world_->units()[m.id - 1].stats.radius.toDouble()) + kSpare;
+        const V3 place = m.target;
         // Out of each in turn, twice over for those that touch.
         for (int pass = 0; pass < 2; ++pass)
             for (const sim::Obstacle* o : near) {
@@ -956,6 +957,7 @@ void Battle::keepClear(std::vector<MarchOrder>& plan) const {
                 d = len > 0.01f ? d * (1.0f / len) : V3{1, 0, 0};
                 m.target = c + d * reach;
             }
+        if (m.target.x != place.x || m.target.y != place.y) m.place = place, m.stoodOff = true;
     }
 }
 
@@ -1007,7 +1009,7 @@ void Battle::sendMarch(sim::PlayerId owner, const std::vector<MarchOrder>& plan,
         c.face = toSim(o.face);
         c.force = force;
         pending_.push_back(c);
-        slots_[o.id - 1] = {o.target, o.face, front, order};
+        slots_[o.id - 1] = {o.stoodOff ? o.place : o.target, o.face, front, order};
     }
     // Squads that marched whole remember the way they face.
     for (Squad& s : squads_) {
