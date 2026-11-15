@@ -135,7 +135,7 @@ def resample(rgb, alpha, team, ax, ay, src_ppm, dst_ppm):
     (source pixels from the top left): straight colour, coverage, team share,
     and the lattice's left column and top row (i0, j1) in dest pixels."""
     s = src_ppm / dst_ppm
-    pad = int(math.ceil(s)) + 4
+    pad = int(math.ceil(2 * s)) + 4  # the box below reaches up to two destination pixels past the picture
     H, W = alpha.shape
     ax, ay = ax + pad, ay + pad
 
