@@ -1008,7 +1008,6 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 if (presentInWater(e, pos, nullptr, {})) break;
                 for (int i = 0; i < 2; ++i) emit(Particle::Kind::Dirt, pos, {srnd(), srnd(), 1.5f + rnd()}, 0.5f, 0.06f);
                 break;
-            case K::Splash: presentInWater(e, pos, nullptr, {}); break;
             case K::Bleed: {
                 // A flung part struck or skidded here: a splat, and a few
                 // droplets thrown on ahead.
@@ -1075,7 +1074,10 @@ void Battle::applyImpacts(const std::vector<sim::ImpactEvent>& events, const sim
                 break;
             }
             case K::Splash: {
-                // Into the water: a column of spray thrown up and a ring of it thrown out.
+                // Into the water: the rings, the blood and the spray of whatever fell in (battle_water.cpp); a boulder
+                // (a projectile's splash, a heavy one) also throws up a column of spray and a ring of it.
+                presentInWater(e, pos, nullptr, {});
+                if (e.radius.toDouble() < 3.0) break;
                 for (int i = 0; i < 26; ++i) {
                     const float a = rnd() * 6.2832f, out = 0.5f + rnd() * 2.5f;
                     emit(Particle::Kind::Smoke, pos + V3{std::cos(a) * 0.3f, std::sin(a) * 0.3f, 0.2f}, V3{std::cos(a) * out, std::sin(a) * out, 2.5f + rnd() * 4.5f}, 0.7f + rnd() * 0.6f, 0.35f + rnd() * 0.4f);

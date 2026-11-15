@@ -317,7 +317,6 @@ void Sfx::observe(const sim::World& world, int outcome, const sim::Continent& co
                 case K::Bounce:
                     if (e.radius >= sim::Fixed::fromInt(3)) want(Sound::StoneSmash, at);
                     break;
-                case K::Splash: want(Sound::ArrowWater, at); break;
                 case K::Struck:
                     // (A gate's own blow is heard as the gate's: K::Gate.)
                     if (static_cast<sim::Structure>(e.gate) == sim::Structure::Tree) want(Sound::ArrowWood, at);
