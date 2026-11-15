@@ -263,3 +263,45 @@ TEST(the_keepers_dwarf_mines_the_ground_inside_his_gate) {
     CHECK(farthest < 30.0f);
     CHECK(dwarfAt > nearest);  // behind his charges, not on them
 }
+
+TEST(at_the_ford_the_wizards_ordered_fireball_comes_down_on_the_charge_wind_and_all) {
+    // The classic Ford as it is mustered: a line of charges laid on the player's bank east of the wizard, and he is told to
+    // detonate the middle one. He walks into his reach and throws; the line goes up.
+    Battle b(1, Scenario::Ford);
+    illyria::sim::World& w = const_cast<illyria::sim::World&>(b.world());
+    illyria::sim::EntityId wizard = illyria::sim::kNoEntity;
+    for (const illyria::sim::Unit& u : w.units())
+        if (u.owner == Battle::kPlayer && static_cast<UnitType>(u.stats.type) == UnitType::Wizards) wizard = u.id;
+    CHECK(wizard != illyria::sim::kNoEntity);
+    if (wizard == illyria::sim::kNoEntity) return;
+    using illyria::sim::Fixed;
+    using illyria::sim::Vec3;
+    // The bank: east of him, the last dry ground before the water, and 4 m back from it.
+    Vec3 at = w.findUnit(wizard)->pos;
+    while (!w.douses(at) && at.x < Fixed::fromInt(700)) at.x += Fixed::one();
+    at.x -= Fixed::fromInt(5);
+    const illyria::sim::Explosive charge = illyria::sim::unitStats(UnitType::DwarfGrenadier).satchels.charge;
+    for (int k = -2; k <= 2; ++k) w.placeSatchel(Battle::kPlayer, at + Vec3{Fixed::zero(), Fixed::fromInt(k * 4), Fixed::zero()}, charge);
+    const float far = (toV3(at) - toV3(w.findUnit(wizard)->pos)).length();
+    illyria::sim::Command fire{Battle::kPlayer, wizard, illyria::sim::Command::Type::Detonate, at};
+    std::vector<illyria::sim::Command> cmds{fire};
+    int blasts = 0, steam = 0;
+    float nearest = 1e9f;
+    for (int i = 0; i < 60 * illyria::sim::kTicksPerSecond && blasts < 6; ++i) {
+        w.step(i == 0 ? std::span<const illyria::sim::Command>(cmds) : std::span<const illyria::sim::Command>{});
+        for (const illyria::sim::ImpactEvent& e : w.impacts()) {
+            if (e.kind != illyria::sim::ImpactEvent::Kind::Explosion && e.kind != illyria::sim::ImpactEvent::Kind::Steam) continue;
+            const V3 off = toV3(e.pos) - toV3(at);
+            const float d = (V3{off.x, off.y, 0}).length();
+            if (d < 30.0f) {
+                blasts += e.kind == illyria::sim::ImpactEvent::Kind::Explosion;
+                steam += e.kind == illyria::sim::ImpactEvent::Kind::Steam;
+                nearest = std::min(nearest, d);
+            }
+        }
+    }
+    std::printf("  the charge %.0f m from him; blasts within 30 m of it %d (steam %d), the nearest %.1f m off; fireballs left %d\n", far, blasts, steam, nearest,
+                w.findUnit(wizard)->ammo);
+    CHECK(blasts == 6);  // his fireball and the five of the line
+    CHECK(nearest < 1.5f);  // on the charge, not in the river beyond it
+}

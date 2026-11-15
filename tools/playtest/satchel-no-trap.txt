@@ -1,38 +1,36 @@
-# The control for satchel-trap.txt: the same Ford and purse, the same camera, the pikes moved the same, the same
-# waits, and the dwarf given no order (he does what he does left to himself). Compare `stats` (foe=alive/total,
-# mine=) at the same ticks, and the log's events.
+# The control for satchel-trap.txt: the same Ford and purse, the same deployment (the pikes forward, holding their
+# place; the dwarf holding his fire in the rear), the same waits, and no charges laid. Compare `stats` (foe=alive/total,
+# mine=) at the same ticks.
 #
 #   Illyria --play tools/playtest/satchel-no-trap.txt --play-out out/no-trap --play-log out/no-trap/no-trap.log
 
 size 1600 900
-start skirmish ford budget 300
+start skirmish ford budget 300 deploy
 wait 0.5
 camera 476 506 45 1.5708
 wait 1.5
-cards
+select 8
+key shift down
+key k
+key shift up
 select 2
-click right 300 480
+click right 930 505
+key k
 wait 0.5
+key return
 speed 4
-wait_ticks 1500
+wait_ticks 2045
 stats
-wait_ticks 500
+wait_ticks 600
 stats
-wait_ticks 200
+wait_ticks 120
 stats
-wait_ticks 200
+wait_ticks 180
+shot no-trap-t3000
 stats
-wait_ticks 200
+wait_ticks 300
 stats
-wait_ticks 1300
-stats
-wait_ticks 1000
-shot no-trap-05-t5000
-stats
-wait_ticks 1000
-stats
-wait_ticks 1000
-shot no-trap-06-t7000
+wait_ticks 300
 stats
 cards
 quit

@@ -3088,12 +3088,12 @@ static const char* squadTip(illyria::sim::UnitType t) {
         case T::Dragons: return "fly over walls and water, tire in the air";
         case T::Elephants: return "huge and strong, quick to panic";
         case T::Unicorns: return "fast, hard to break";
-        case T::Wizards: return "four fireballs, no more: L detonates a satchel, Shift+K holds fire";
+        case T::Wizards: return "";  // (what he has left is said live: storeLeft)
         case T::Devils:
         case T::Demons: return "strong, hard to break";
         case T::Undead: return "slow, never break";
         case T::Hero: return "steadies the men near him, they waver if he falls";
-        case T::DwarfGrenadier: return "T lays a satchel (Shift: a line), L detonates, Shift+K holds fire";
+        case T::DwarfGrenadier: return "";  // (as the wizard)
         case T::Journeyman: return "heal the wounded near them";
         case T::Warrior: return "big shields, steady";
         case T::Berserker: return "fast, hard hitting, no shield";
@@ -3131,7 +3131,10 @@ static void endState(const Battle& b, std::string& s) {
             tipType = type;
             tipMs = now;
         }
-        if (type >= 0 && type == tipType && now - tipMs < 8000) {
+        if (const std::string left = type >= 0 ? b.storeLeft() : std::string(); !left.empty()) {
+            // Those who carry a store: what is left of it, counted now, for as long as they are selected.
+            s += ",\"tip\":\"" + left + "\"";
+        } else if (type >= 0 && type == tipType && now - tipMs < 8000) {
             const auto t = static_cast<illyria::sim::UnitType>(type);
             std::snprintf(buf, sizeof buf, ",\"tip\":\"%s: %s\"", illyria::sim::unitTypeName(t), squadTip(t));
             s += buf;

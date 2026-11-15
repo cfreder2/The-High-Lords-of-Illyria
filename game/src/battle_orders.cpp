@@ -219,8 +219,11 @@ void Battle::orderLaySatchels(const V3& at, bool queue) {
         }
         issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
         pending_.back().queue = queue;
+        // The deployment: the charges are laid before the battle begins (within 80 m of him, clear of the foe), and lie
+        // there when it does. Farther off he walks there once it has begun.
+        pending_.back().force = deploy_ && !conquest_;
     }
-    if (wet) say("Not in water: a satchel there is dead");
+    if (wet) say("Not in water");
     markOrdered(layers);
     answer(Situation::Attack, layers);
 }
@@ -259,7 +262,7 @@ void Battle::detonateAction() {
         return;
     }
     if (selectionSparks()) orderMode_ = OrderMode::Detonate;
-    else say("Select a grenadier or a wizard to detonate");
+    else say("Select a dwarf or a wizard");
 }
 
 void Battle::specialAction() {

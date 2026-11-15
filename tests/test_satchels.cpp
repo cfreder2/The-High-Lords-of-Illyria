@@ -225,12 +225,14 @@ std::shared_ptr<const Region> fordRegion() {
     static const auto region = std::make_shared<const Region>(Region::generateIllyria(20261027));
     return region;
 }
-// The middle of the ford (water), and the first dry ground west of it.
+// The middle of the ford (water), and the bank west of it: 3 m back from the last place where water stands (World::douses).
 void fordPlaces(Vec3& water, Vec3& bank) {
-    const Region& r = *fordRegion();
-    water = r.ford();
+    WorldConfig cfg;
+    cfg.region = fordRegion();
+    const World w(cfg);
+    water = fordRegion()->ford();
     Fixed x = water.x;
-    while (r.groundAt(x, water.y) == Ground::Shallows || r.groundAt(x, water.y) == Ground::DeepWater) x -= Fixed::one();
+    while (w.douses({x, water.y, m(0)}) || w.douses({x - m(1), water.y, m(0)}) || w.douses({x - m(2), water.y, m(0)})) x -= Fixed::one();
     bank = {x - m(3), water.y, m(0)};
 }
 
@@ -482,10 +484,16 @@ TEST(water_puts_out_molotovs_and_satchels_and_turns_a_fireball_to_steam) {
         for (int i = 0; i < 20 * kTicksPerSecond; ++i) w.step({});
         CHECK(laidSatchels(w) == 0 && w.findUnit(g)->satchels == unitStats(UnitType::DwarfGrenadier).satchels.count);
         CHECK(!w.wading(*w.findUnit(g)));
-        const Vec3 wetSpot = bank + Vec3{m(5), m(0), m(0)};
-        CHECK(w.douses(wetSpot));
+    }
+    {
+        World w(cfg);
+        Vec3 wetSpot = bank + Vec3{m(3), m(0), m(0)};
+        while (!w.douses(wetSpot)) wetSpot.x += Fixed::fromRatio(1, 2);
+        wetSpot.x += Fixed::fromRatio(1, 2);
+        CHECK(w.douses(wetSpot) && (wetSpot - bank).flat().length() < m(8));
         w.placeSatchel(0, wetSpot, charge());                           // one that ended up in the water
-        w.placeSatchel(0, bank + Vec3{m(2), m(0), m(0)}, charge(), 5);  // and one burning on the bank, 3 m from it
+        w.placeSatchel(0, wetSpot - Vec3{m(3), m(0), m(0)}, charge(), 5);  // and one burning on the bank, 3 m from it
+        CHECK(!w.douses(wetSpot - Vec3{m(3), m(0), m(0)}));
         int blasts = 0;
         for (int i = 0; i < 5 * kTicksPerSecond; ++i) {
             w.step({});
@@ -499,11 +507,13 @@ TEST(water_puts_out_molotovs_and_satchels_and_turns_a_fireball_to_steam) {
             World w(cfg);
             const EntityId wizard = w.spawnUnit(0, at - Vec3{m(25), m(0), m(0)}, kEast, unitStats(UnitType::Wizards));
             const EntityId foe = w.spawnUnit(1, at, kWest, post());
-            const Command fire = order(wizard, Command::Type::Detonate, at);
-            w.step(std::span(&fire, 1));
+            Command hold = order(wizard, Command::Type::HoldFire, {});  // (the one ordered fireball, and no more of his own)
+            hold.hold = true;
+            const Command both[] = {hold, order(wizard, Command::Type::Detonate, at)};
+            w.step(both);
             steam = 0;
             Fixed radius;
-            for (int i = 0; i < 4 * kTicksPerSecond; ++i) {
+            for (int i = 0; i < 9 * kTicksPerSecond; ++i) {  // (an ordered fireball is lobbed: four seconds in the air)
                 w.step({});
                 for (const ImpactEvent& e : w.impacts())
                     if (e.kind == ImpactEvent::Kind::Steam) ++steam, radius = e.radius;
@@ -588,28 +598,31 @@ TEST(a_dwarf_gives_ground_behind_the_foot_and_the_foot_comes_to_him) {
     CHECK(heldX > m(-1));  // a man told to hold keeps his place
 }
 
-TEST(bowmen_shoot_the_foes_dwarf_before_his_line) {
-    // The foe's line 30 m off, his dwarf farther (42 m) and out to one side of it, where no body stands between. (Straight
-    // behind the line he is covered: an arrow strikes the first man in its way.)
-    World w(WorldConfig{});
-    for (int k = 0; k < 6; ++k) w.spawnUnit(0, {m(0), m(k * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers));
-    std::vector<EntityId> line;
-    for (int k = 0; k < 6; ++k) line.push_back(w.spawnUnit(1, {m(30), m(k * 2 - 5), m(0)}, kWest, post()));
-    UnitStats idle = dummy(UnitType::DwarfGrenadier);
-    idle.satchels = unitStats(UnitType::DwarfGrenadier).satchels;  // (still a dwarf to the eye; he lays nothing: his load is taken)
-    idle.moraleShockPct = 0;
-    const EntityId g = w.spawnUnit(1, {m(38), m(18), m(0)}, kWest, idle);
-    w.restoreLoad(g, 0, 0);
-    int dwarfDied = -1;
-    for (int i = 0; i < 40 * kTicksPerSecond && dwarfDied < 0; ++i) {
-        w.step({});
-        if (!w.findUnit(g)->alive()) dwarfDied = i;
-    }
-    int lineHurt = 0;
-    for (EntityId id : line) lineHurt += 5000 - w.findUnit(id)->hp;
-    std::printf("  six bowmen: the dwarf beyond his line dead at %.1f s; the line had taken %d hp by then\n", dwarfDied / 30.0, lineHurt);
-    CHECK(dwarfDied >= 0);
-    CHECK(lineHurt < 110);  // less than what killed him: the arrows went at the dwarf
+TEST(one_bowman_in_three_picks_out_the_foes_dwarf_within_thirty_metres) {
+    // The foe's line 20 m off and his dwarf 29 m off, out to one side of it, where no body stands between. (Straight behind
+    // the line he is covered: an arrow strikes the first man in its way.) Without the rule every arrow goes at the nearer
+    // line; with it two of the six bowmen shoot the dwarf. At 40 m nobody picks him out.
+    const auto dwarfHurt = [](int dwarfX, int dwarfY, int& lineHurt) {
+        World w(WorldConfig{});
+        for (int k = 0; k < 6; ++k) w.spawnUnit(0, {m(0), m(k * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers));
+        std::vector<EntityId> line;
+        for (int k = 0; k < 6; ++k) line.push_back(w.spawnUnit(1, {m(20), m(k * 2 - 5), m(0)}, kWest, post()));
+        UnitStats idle = dummy(UnitType::DwarfGrenadier);
+        idle.satchels = unitStats(UnitType::DwarfGrenadier).satchels;  // (still a dwarf to the eye; he lays nothing: his load is taken)
+        idle.moraleShockPct = 0;
+        idle.maxHp = 5000;
+        const EntityId g = w.spawnUnit(1, {m(dwarfX), m(dwarfY), m(0)}, kWest, idle);
+        w.restoreLoad(g, 0, 0);
+        for (int i = 0; i < 30 * kTicksPerSecond; ++i) w.step({});
+        lineHurt = 0;
+        for (EntityId id : line) lineHurt += 5000 - w.findUnit(id)->hp;
+        return 5000 - w.findUnit(g)->hp;
+    };
+    int lineNear = 0, lineFar = 0;
+    const int near = dwarfHurt(22, 19, lineNear), far = dwarfHurt(34, 21, lineFar);
+    std::printf("  six bowmen, 30 s: the dwarf at 29 m took %d hp and the line %d; at 40 m he took %d and the line %d\n", near, lineNear, far, lineFar);
+    CHECK(near > 0 && lineNear > near);  // some at him, most at the line
+    CHECK(far == 0 && lineFar > 0);
 }
 
 TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
@@ -656,4 +669,27 @@ TEST(a_catapult_has_sixteen_boulders_and_no_more) {
     }
     std::printf("  %d boulders came down in six minutes, %d left on the cart\n", smashes, w.findUnit(engine)->ammo);
     CHECK(smashes == 16 && w.findUnit(engine)->ammo == 0);
+}
+
+TEST(a_charge_laid_in_the_deployment_lies_there_when_the_battle_begins) {
+    // Three lay orders marked as laid beforehand (Command::force, the deployment's): 30 m from him, with the foe 100 m off,
+    // they lie there at the first tick and he has not moved. One 120 m away, or beside the foe, he walks to as ever.
+    World w(WorldConfig{});
+    const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, sapper());
+    w.spawnUnit(1, {m(100), m(0), m(0)}, kWest, dummy(UnitType::LightInfantry));
+    std::vector<Command> orders;
+    for (int k = 0; k < 3; ++k) {
+        Command c = order(g, Command::Type::LaySatchel, {m(30), m(k * 4 - 4), m(0)}, k > 0);
+        c.force = true;
+        orders.push_back(c);
+    }
+    w.step(orders);
+    CHECK(laidSatchels(w) == 3 && w.findUnit(g)->satchels == 2);
+    CHECK((w.findUnit(g)->pos - Vec3{}).flat().length() < Fixed::one() && !w.findUnit(g)->hasMoveTarget);
+    Command far = order(g, Command::Type::LaySatchel, {m(-120), m(0), m(0)});
+    far.force = true;
+    CHECK(!w.canPrepare(*w.findUnit(g), far.target));
+    CHECK(!w.canPrepare(*w.findUnit(g), {m(75), m(0), m(0)}));  // within 40 m of the foe
+    w.step(std::span(&far, 1));
+    CHECK(laidSatchels(w) == 3 && w.findUnit(g)->hasMoveTarget);  // on his way there on foot
 }

@@ -68,7 +68,7 @@ void Battle::holdFireSelected() {
         if (u.stats.ranged.muzzleSpeed > sim::Fixed::zero() || u.stats.satchels.count > 0) shooters.push_back(id);
     }
     if (shooters.empty()) {
-        say("No one selected shoots or throws");
+        say("No shooters selected");
         return;
     }
     const bool hold = !selectionHoldsFire();
@@ -77,7 +77,7 @@ void Battle::holdFireSelected() {
         c.hold = hold;
         pending_.push_back(c);
     }
-    say(hold ? "Hold fire: they shoot and lay only when ordered" : "Fire at will");
+    say(hold ? "Holding fire" : "Fire at will");
 }
 
 void Battle::orderDetonate(const V3& at, bool queue) {
@@ -106,10 +106,10 @@ void Battle::orderDetonate(const V3& at, bool queue) {
         if ((in && !reach) || (in == reach && d < nearest)) who = id, nearest = d, reach = in;
     }
     if (who == sim::kNoEntity) {
-        say(spent ? "Nothing left to throw" : "Select a grenadier or a wizard to detonate");
+        say(spent ? "Nothing left to throw" : "Select a dwarf or a wizard");
         return;
     }
-    if (satchel && world_->douses(toSim(mark))) say("That satchel lies in water: it is dead");
+    if (satchel && world_->douses(toSim(mark))) say("That satchel is wet");
     issue(local_, who, sim::Command::Type::Detonate, mark);
     pending_.back().queue = queue;
     markOrdered({who});
@@ -127,6 +127,24 @@ Battle::Load Battle::squadLoad(const Squad& s) const {
         l.holdFire = l.holdFire || u.holdFire;
     }
     return l;
+}
+
+std::string Battle::storeLeft() const {
+    int satchels = 0, missiles = 0;
+    bool lays = false, throws = false;
+    sim::ProjectileKind kind = sim::ProjectileKind::Arrow;
+    for (sim::EntityId id : selectedAlive()) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.stats.satchels.count > 0) lays = true, satchels += u.satchels;
+        if (u.stats.ranged.ammo > 0) throws = true, missiles += u.ammo, kind = u.stats.ranged.kind;
+    }
+    if (!lays && !throws) return {};
+    const auto count = [](int n, const char* one, const char* many) { return std::to_string(n) + " " + (n == 1 ? one : many); };
+    const char* one = kind == sim::ProjectileKind::Molotov ? "Molotov" : kind == sim::ProjectileKind::Stone ? "stone" : "fireball";
+    const char* many = kind == sim::ProjectileKind::Molotov ? "Molotovs" : kind == sim::ProjectileKind::Stone ? "stones" : "fireballs";
+    if (lays && throws) return count(satchels, "satchel", "satchels") + ", " + count(missiles, one, many) + " left";
+    if (lays) return satchels > 0 ? count(satchels, "satchel", "satchels") + " left" : "No satchels left";
+    return missiles > 0 ? count(missiles, one, many) + " left" : std::string("No ") + many + " left";
 }
 
 std::vector<Battle::SatchelMark> Battle::satchelMarks() const {
@@ -188,7 +206,7 @@ void Battle::collectBlasts() {
         floats_.push_back({now, sim::kNoEntity, at, word, true});
     }
     if (blast_.own > 0) {
-        const std::string word = "Our own blast: " + std::to_string(blast_.own) + " down";
+        const std::string word = "Own blast: " + std::to_string(blast_.own) + " down";
         announce(word);
         floats_.push_back({now, sim::kNoEntity, at + V3{0, 0, 1.5f}, word, false});
     }
@@ -308,6 +326,8 @@ bool Battle::aiPrecious(size_t squad, const V3& foe) {
                 const auto queued = [&](sim::Command::Type type, const V3& to, bool queue) {
                     sim::Command cmd{s.owner, id, type, toSim(to)};
                     cmd.queue = queue;
+                    // (As the player's deployment: what he mines at the battle's first look was laid beforehand.)
+                    cmd.force = type == sim::Command::Type::LaySatchel && !conquest_ && world_->tick() < 2 * sim::kTicksPerSecond;
                     pending_.push_back(cmd);
                 };
                 for (int k = 0; k < n; ++k) queued(sim::Command::Type::LaySatchel, spot + across * (static_cast<float>(k - n / 2) * kMineGapM), k > 0);

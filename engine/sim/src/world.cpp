@@ -649,6 +649,12 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             if (u->satchels <= 0 || douses(cmd.target)) return;  // (none is laid in water)
             u->hasAttackTarget = false;
             u->attackGate = -1;
+            if (cmd.force && canPrepare(*u, cmd.target)) {
+                // Laid before the battle began: it lies there, and he stands where he stood.
+                placeSatchel(u->owner, cmd.target, u->stats.satchels.charge, 0);
+                --u->satchels;
+                break;
+            }
             if ((cmd.target - u->pos).flat().length() <= Fixed::fromRatio(3, 2)) {
                 u->hasMoveTarget = false;
                 laySatchel(*u, cmd.target);
@@ -2154,7 +2160,23 @@ Fixed World::clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) co
     return need;
 }
 
-bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
+bool World::canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity) const {
+    const LaunchSolution high = solveHighArc(origin, target, u.stats.ranged.muzzleSpeed, config_.gravity);
+    if (!high.inRange) return false;
+    // The first second of the climb, as updateProjectiles will fly it: boughs.
+    Vec3 prev = origin;
+    for (int i = 1; i <= 8; ++i) {
+        const Fixed t = Fixed::fromRatio(i, 8);
+        const Vec3 at = origin + high.velocity * t + up(-config_.gravity * (t * t / 2));
+        if (obstacleHit(prev, at, Fixed::one(), false) >= Fixed::zero()) return false;
+        prev = at;
+    }
+    if (!clearFlight(origin, high.velocity, target, kClearShort)) return false;
+    if (velocity) *velocity = high.velocity;
+    return true;
+}
+
+bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
     const RangedWeapon& w = u.stats.ranged;
     if (!armed(u)) return false;
     Vec3 origin = u.pos + up(u.stats.height * kMuzzleHeightFraction);
@@ -2170,7 +2192,10 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
     // would strike it; shot blind (the mark itself hidden), they scatter more.
     Vec3 lob;
     bool lobbed = false;
-    if (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov) {
+    if (placed == Placed::Lobbed && !atWalk) {
+        lobbed = canLob(u, origin, target, &lob);
+    }
+    if (!lobbed && (w.kind == ProjectileKind::Arrow || w.kind == ProjectileKind::Fireball || w.kind == ProjectileKind::Molotov)) {
         // A defender on a wall-walk is shot at direct, over the parapet, or not at all.
         const Vec3 mark = atWalk ? target : target + up(Fixed::one());
         const Fixed shortOf = atWalk ? kClearShortAtWalk : kClearShort;
@@ -2219,6 +2244,23 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
             const LaunchSolution steep = solveHighArc(origin, aim, w.muzzleSpeed, config_.gravity);
             if (steep.inRange && need <= elevationTan(steep.velocity))
                 p.vel = solveFixedElevation(origin, aim, need, w.muzzleSpeed, config_.gravity).velocity;
+        }
+    }
+    // A missile ordered at a place is thrown with the wind allowed for: where this throw would come down is reckoned as it
+    // will fly (updateProjectiles), and the aim moved back by the miss, twice over.
+    if (placed != Placed::No && w.kind != ProjectileKind::Stone) {
+        const Vec3 drift = config_.wind + up(-config_.gravity);
+        Vec3 at = aim;
+        for (int pass = 0; pass < 2; ++pass) {
+            Vec3 q = origin, v = p.vel;
+            for (int i = 0; i < 20 * kTicksPerSecond && !(v.z < Fixed::zero() && q.z <= aim.z); ++i) {
+                q += v * kTickDt + drift * (kTickDt * kTickDt / 2);
+                v += drift * kTickDt;
+            }
+            at = at - (q - aim).flat();
+            const LaunchSolution again = lobbed ? solveHighArc(origin, at, w.muzzleSpeed, config_.gravity) : solveLowArc(origin, at, w.muzzleSpeed, config_.gravity);
+            if (!again.inRange) break;
+            p.vel = again.velocity;
         }
     }
     // (From a height over the mark the shot tells more: world_tactics.cpp.)

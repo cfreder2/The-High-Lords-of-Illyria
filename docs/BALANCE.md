@@ -260,12 +260,22 @@ The owner's direction: the dwarf is the play of the battle, as in Myth; one is a
 
 One dwarf used well is worth a squad and more; left alone he is worth a quarter of one and dies.
 
-### Played (tools/playtest/satchel-*.txt, the Ford, 300 gold a side, Normal, one run each)
+### Played (tools/playtest/satchel-*.txt, the Ford, 300 gold a side, Normal)
 
-- `satchel-careless.txt`: a line of three, the Warriors marched onto it, Detonate ordered. The rings were red, the dwarf stepped back out of the blast of the charge he was to light and threw, and the strip read **"Our own blast: 7 down"**: the Warriors were 12 and are 4, and the dwarf lives. (A run before he stepped back first read "Our own blast: 4 down", the dwarf among them.)
-- `satchel-trap.txt` against `satchel-no-trap.txt`, read at tick 7000 (233 s): **with the trap 64 of 95 of mine and 66 of 125 of the foe were left; without it 73 and 70.** The strip read **"Ambush: 3 down"** once (at 192 s); the dwarf was dead at 204 s. In a whole battle on a script's fixed clicks the trap swung nothing: the foe's horse cross first and ride for the dwarf, the pikes sent to cover him fight on top of the charges (and he rightly will not spark them with his own men there), and the computer's foot come over two minutes later onto ground where the fight already stands. A scripted hand cannot time a Detonate to a column it cannot see. **That one dwarf used well swings a battle is shown by the unit tests above, not by play.**
-- Runs before those, the classic Ford: the foe's dragon killed the player's dwarf with fire in the first half minute, and the two satchels he still carried took four Warriors beside him with him; in the bought Ford the foe's horse killed a dwarf left alone on the bank before any foot arrived. A dwarf left alone dies cheaply, in play as in the tests.
-- `satchel-ai-gate.txt` ran (144 of the player's, 113 of the keepers'), but its two shots are of the whole field and were not read for the charges; the computer's mining of its gate is measured by `the_keepers_dwarf_mines_the_ground_inside_his_gate` (tests/test_skirmish.cpp).
+**Before** (the first pass): the trap swung nothing. With three charges laid by a dwarf walking to them after the battle began, one "Ambush: 3 down" (1.0 a satchel), and at 233 s 64 of 95 of mine and 66 of 125 of the foe left against 73 and 70 without it. Why, found by playing it run after run:
+
+1. **He could not get there.** A dwarf at 1.6 m/s takes over half a minute to reach a bank 50 m off and lay three charges; the foe's horse are over the ford in 24 s. Now charges ordered in the deployment pause are laid beforehand.
+2. **The detonator was dead.** The computer's horse ride for the dwarf first (by design), and every bow in reach picked him out: 36 archers had him dead from across the river. Forward of the line he never lived to throw. Now one bowman in three picks him out, within 30 m; and the play is to keep him in the rear until the horse are spent.
+3. **The ordered missile did not arrive.** A wizard's ordered fireball at the Ford burst on the boughs over his own head, or on the first man in its way; lobbed, the wind carried it into the river; landing 1.5 m from a charge on the bank it was "in water" by the ground's kind and went up in steam, a third as wide, lighting nothing. Now the ordered missile is placed (wind allowed for, lobbed, the boughs looked for) and water is where water stands.
+4. **The foe sprang it.** The Red Hand's own wizard and dragon threw at the player's charges when a man of his stood near one. Now nobody throws at a foe's charges of his own accord.
+5. **Spacing.** Charges 5.8 m apart (a guess at the screen's scale) are not in one another's 5 m blast: the chain stops. The script lays them 3.5 m apart; the ring on the ground shows it.
+6. **Timing.** From the order to the blast is the walk to his throw and the bottle's flight: about 25 s from the rear. Ordered when the foe were on the line it came down behind them. The order is given as their foot start across the ford.
+7. **Tough marks.** On the classic Ford's giants, minotaurs and fiends (230 to 350 hp) a line of 150s kills few; the trap is for foot.
+
+**After** (`satchel-trap.txt`, one run): five charges laid in the deployment along the bank, the dwarf holding his fire in the rear, the pikes forward on Hold; the foe's horse broke on the pikes twice; at 70 s the dwarf was told to detonate, walked up and lobbed one Molotov. **"Ambush: 10 down" at 104 s: eleven of the Red Hand's foot fell in one second, 2.0 a satchel, for one bottle; the dwarf lived.** At about 110 s: 81 of 95 of mine and 68 of 125 of the foe left; at 120 s 77 and 59. The control (`satchel-no-trap.txt`, the same deployment, no charges): 78 and 77 at 108 s, 75 and 66 at 118 s. Three other runs of the same play, with the dwarf brought up earlier to stand behind the pikes, lost him to the second charge of horse before the foot arrived, and sprang nothing: brought forward early he dies cheaply, in play as in the tests.
+
+- `satchel-careless.txt` (before the ordered missile was lobbed): the Warriors marched onto a line of three, Detonate ordered: "Our own blast: 7 down" (now "Own blast"), the Warriors 12 and then 4. Not played again since.
+- The squads beside the blast were not seen to break (the strip tells only of the player's own squads); the morale shock is tested (`a_blast_shakes_the_men_it_leaves_standing`), its effect on a real line is not measured.
 
 ### Not measured
 

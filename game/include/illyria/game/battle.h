@@ -475,6 +475,9 @@ public:
         bool holdFire = false;
     };
     Load squadLoad(const Squad& s) const;
+    // What the selected still carry, in words, counted now: "4 fireballs left", "5 satchels, 6 Molotovs left", "No fireballs
+    // left"; "" when none of them carries a store.
+    std::string storeLeft() const;
     // The charges the local side has laid, shown while a man who lays or sparks them is selected (or the next tap is
     // a lay or a detonation): where, how wide the blast, and who stands in it (friends: the ring is red).
     struct SatchelMark {

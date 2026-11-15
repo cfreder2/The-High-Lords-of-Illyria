@@ -157,9 +157,9 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 | `march.txt` | The March: the first battle with no orders, its results sheet, the camp with a squad filled from the purse, the Ford set out. |
-| `satchel-trap.txt` | the Ford with bought armies (300 gold a side): the pikes forward, the dwarf lays a line of three charges (T, Shift+click) between the ford and the line and falls back to the pikes, then sparks them by his own judgement; the marks and rings, the card's pips, `stats` to tick 7000. The log's `event=` carries "Ambush: N down". |
-| `satchel-no-trap.txt` | its control: the same purse, camera and waits, the pikes moved the same, the dwarf told nothing. |
-| `satchel-careless.txt` | the same line, the Warriors marched onto it, Hold fire, then Detonate (L, click): the red rings, the blast at once, "Our own blast: N down" in the log. |
+| `satchel-trap.txt` | the Ford with bought armies (300 gold a side), as a person would play the trap: in the deployment pause the dwarf's five charges are laid along the bank (T, Shift+click; they lie there when the battle begins), he holds his fire in the rear, the pikes go forward on Hold; as the Red Hand's foot start across he is told to detonate (L, click a charge), walks up and lobs his bottle onto the line. The log's `event=` carries "Ambush: N down". |
+| `satchel-no-trap.txt` | its control: the same purse, camera, deployment and waits, no charges. |
+| `satchel-careless.txt` | a line of three, the Warriors marched onto it, Hold fire, then Detonate (L, click): the red rings, the blast, "Own blast: N down" in the log. |
 | `satchel-ai-gate.txt` | a village's siege with bought armies, you outside: the keepers' dwarf mines the ground inside his gate. Nothing is ordered; two shots. |
 
 ```

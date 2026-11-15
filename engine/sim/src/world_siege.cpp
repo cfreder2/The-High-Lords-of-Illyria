@@ -222,12 +222,15 @@ bool World::creepToWall(Unit& u) {
 Unit* World::autoTarget(const Unit& u) {
     if (u.stats.ranged.autoRange <= Fixed::zero()) return nullptr;
     Unit* near = nearestEnemy(u, autoReach(u) * 3 / 2);
-    // A bowman's first mark is the foe's dwarf or wizard in his reach (one arrow storm ends the foe's whole blast),
-    // unless a foe is on him.
-    if (u.stats.ranged.kind == ProjectileKind::Arrow && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
+    // One bowman in three picks out the foe's dwarf or wizard when he is within kPickOut (near enough to tell him from the
+    // men about him), unless a foe is on the bowman. (Every bow in reach on the one man was tried: thirty-six archers had
+    // a dwarf dead in the time it takes to light a fuse, from across a river, and no trap was ever sprung.)
+    constexpr Fixed kPickOut = Fixed::fromInt(30);
+    if (u.stats.ranged.kind == ProjectileKind::Arrow && u.id % 3 == 0 && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
         Unit* mark = nullptr;
-        Fixed best = autoReach(u) * autoReach(u);
-        nearbyNotOf(u.owner, u.pos.x, u.pos.y, autoReach(u), [&](uint32_t i) {
+        const Fixed pick = min(autoReach(u), kPickOut);
+        Fixed best = pick * pick;
+        nearbyNotOf(u.owner, u.pos.x, u.pos.y, pick, [&](uint32_t i) {
             Unit& o = units_[i];
             if (!o.alive() || o.owner == u.owner || o.inAir() || !precious(o.stats)) return;
             const Fixed d = (o.pos - u.pos).flat().lengthSq();

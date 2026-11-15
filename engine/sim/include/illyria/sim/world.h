@@ -236,7 +236,9 @@ struct Command {
     // Move: the way to face on arrival (Myth's gesture rotation); zero keeps
     // the way he walked.
     Vec3 face = {};
-    // Move: a force march, deaf to the enemy on the way.
+    // Move: a force march, deaf to the enemy on the way. LaySatchel: laid beforehand (the deployment, before the battle
+    // begins: Battle sets it only then): the charge lies there at once, if the place is within World::kPrepareReach of
+    // him and no foe is within World::kPrepareClear of it; else he walks there and lays it as ever.
     bool force = false;
     // Move: ground to be occupied (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight
     // or a rout, until he is given another order. (Not the stance below: a man occupying ground still goes to his friends.)
@@ -748,6 +750,10 @@ public:
     // At most this many orders wait in a soldier's queue; one more is dropped. Eight legs is a patrol round a town or a
     // plan of attack; more would make every man carry, hash and save a long script, and a line of numbers on the screen.
     static constexpr size_t kMaxQueuedOrders = 8;
+    // A charge laid beforehand (Command::force on a LaySatchel): how far from where he stands, and how clear of any foe.
+    static constexpr Fixed kPrepareReach = Fixed::fromInt(80);
+    static constexpr Fixed kPrepareClear = Fixed::fromInt(40);
+    bool canPrepare(const Unit& u, const Vec3& at) const;
     // Command::Detonate takes the laid satchel within this of the spot shown.
     static constexpr Fixed kDetonatePick = Fixed::fromInt(4);
     // Whether his missile's fire sets off a satchel (a Molotov, a fireball): who may be ordered to Detonate.
@@ -759,8 +765,10 @@ public:
     static bool precious(const UnitStats& s) { return s.satchels.count > 0 || (sparks(s) && s.flyAltitude == Fixed::zero()); }
     // Whether he has a missile to loose (a store spent leaves him his hands).
     static bool armed(const Unit& u) { return u.stats.ranged.muzzleSpeed > Fixed::zero() && (u.stats.ranged.ammo == 0 || u.ammo > 0); }
-    // Water (the shallows a man wades, and the deep) puts out oil and powder: nothing burns or is laid there.
-    bool douses(const Vec3& at) const { return isWater(at.x, at.y); }
+    // Water puts out oil and powder: nothing burns or is laid where it stands over the ground a hand deep or more (the
+    // water that is drawn, World::waterDepth: a bank beside the shallows is dry, though its ground is of the ford's kind).
+    static constexpr Fixed kDouseDepth = Fixed::fromRatio(1, 10);
+    bool douses(const Vec3& at) const { return waterDepth(at.x, at.y) >= kDouseDepth; }
     // What a man carries, as the conquest kept it between fights (a negative count: his full load).
     void restoreLoad(EntityId id, int32_t satchels, int32_t ammo);
     // A standing attack on the ground, a wall, a house or a tree never ends of itself: with orders waiting it is over after this long.
@@ -1178,7 +1186,14 @@ private:
     // Looses at a target; false (and nothing loosed) when no arc gets there
     // past the walls, gates and trees in the way.
     // `atWalk`: the target is a defender on a wall-walk, shot at direct (never lobbed).
-    bool fire(Unit& unit, const Vec3& target, bool atWalk = false);
+    // `placed`: a missile ordered at a place (a Detonate order's, at a charge): thrown with the wind allowed for, so that
+    // it comes down where it was sent; Lobbed, by the high arc as well, over the men standing before the mark (the flat
+    // throw bursts on the first man in its way).
+    enum class Placed : uint8_t { No, Flat, Lobbed };
+    // Whether his missile can be lobbed from `origin` onto `target`: in the high arc's reach, clear of walls and trunks
+    // all the way, and clear of the boughs over his own head (which a missile strikes as it does a trunk).
+    bool canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity = nullptr) const;
+    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No);
     // `fire`, and the reload that follows, for any shooter (world_aoe.cpp). One with a blast to throw (stones, fireballs,
     // Molotovs) chooses where it falls so as to spare his own side, or holds his fire a while (true, loosing nothing,
     // when held); a bowman's flat shot is as ever: whoever stands in the line takes it. False: no clear shot.

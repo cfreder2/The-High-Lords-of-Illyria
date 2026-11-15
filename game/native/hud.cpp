@@ -839,7 +839,7 @@ void Hud::drawMarch(Overlay& o, float w, float h) {
         const Colour ink = on ? kSeal : kPaperInk;
         std::string name = q.str("name");
         // (What it carries of its satchels and missiles, of a full load: made up with the same key, for gold.)
-        if (q.num("loadFull") > 0) name += "  (load " + std::to_string(static_cast<int>(q.num("load"))) + " of " + std::to_string(static_cast<int>(q.num("loadFull"))) + ")";
+        if (q.num("loadFull") > 0) name += "  (" + std::to_string(static_cast<int>(q.num("load"))) + " of " + std::to_string(static_cast<int>(q.num("loadFull"))) + " left)";
         o.text(px + kPad, y, name, ink, fit(o, name, 13, cMen - px - kPad - 8));
         std::snprintf(buf, sizeof buf, "%d / %d", static_cast<int>(q.num("men")), static_cast<int>(q.num("full")));
         o.text(cMen, y, buf, q.num("men") < q.num("full") ? kSeal : ink, 13);
@@ -1661,7 +1661,7 @@ void Hud::draw(Overlay& o, float w, float h) {
                             {"Detonate (L)", kDetonateHit, hud.flag("sparks"), mode == 4},
                             {hud.flag("holdFire") ? "Holding fire (Shift+K)" : "Hold fire (Shift+K)", kHoldFireHit, hud.flag("stores"), hud.flag("holdFire")}};
         float bx = 8.0f;
-        const float by = cardsTop - 56;  // (a row above the selection's line and the first-order hint)
+        const float by = cardsTop - 84;  // (above the selection's line, the first-order hint and a card's tip)
         for (const Btn& b : btns) {
             if (!b.show) continue;
             const float bw = o.width(b.label, 13) + 20;
@@ -1672,7 +1672,7 @@ void Hud::draw(Overlay& o, float w, float h) {
             bx += bw + 6;
         }
         if (mode == 3 || mode == 4) {
-            const char* what = mode == 3 ? "Click where to lay it. Shift+click: a line. Not in water." : "Click the satchel to set off. It fires at once: friends in the red ring die.";
+            const char* what = mode == 3 ? "Click to lay. Shift+click: a line." : "Click a satchel. Red ring: your men are in it.";
             o.rect(bx + 6, by, o.width(what, 13) + 16, 22, rgba(0x000000, 190));
             o.text(bx + 14, by + 4, what, kGold, 13);
         }
@@ -1740,9 +1740,9 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"J", "the next squad standing idle"},
               {"Y", "the lord rallies broken men within 40 m"},
               {"T, X, C", "special, scatter, find selection"},
-              {"T + click", "a dwarf lays a satchel (Shift: a line)"},
-              {"L + click", "detonate that satchel, at once"},
-              {"Shift + K", "hold fire: shoot and lay only on orders"},
+              {"T + click", "lay a satchel (Shift: a line)"},
+              {"L + click", "detonate a satchel"},
+              {"Shift + K", "hold fire"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
               {"1-9, Alt + 1-9", "pick a group, save one"},
               {"Shift + 1-9, 0", "formation, scatter"},

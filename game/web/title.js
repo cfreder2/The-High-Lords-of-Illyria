@@ -625,9 +625,9 @@
     `<tr><td>${k("Shift")} + ${k("1")}…${k("8")}, keypad</td><td>Formation: 1 Line, 2 Double line, 3 Box, 4 Wedge, 5 Loose, 6 Encircle, 7 V; 8 keeps the arrangement they are in.</td></tr>` +
     `<tr><td>${k("Z")}</td><td>Attack mode: the next click attacks (a soldier, ours too, or shoots the ground). Or hold ${k("Ctrl")} as you click.</td></tr>` +
     `<tr><td>${k("V")}</td><td>Force-march mode: the next click, and they run there deaf to the enemy.</td></tr>` +
-    `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid at once from where they stand; a grenadier lays a satchel where the next click is (hold Shift and click again for a line of them). Not in water.</td></tr>` +
-    `<tr><td>${k("L")}</td><td>Detonate: the next click is the satchel to set off. The nearest grenadier or wizard selected throws at it at once. Your own men in the red ring die with the foe.</td></tr>` +
-    `<tr><td>${k("Shift")} + ${k("K")}</td><td>Hold fire: those selected throw, shoot and lay only when ordered (again: at will). Molotovs, fireballs, stones and satchels are counted, and none is made in battle.</td></tr>` +
+    `<tr><td>${k("T")}</td><td>The special action of those selected: the hyena-folk raid; a dwarf lays a satchel at the next click (Shift + click: a line).</td></tr>` +
+    `<tr><td>${k("L")}</td><td>Detonate: click a satchel. Your men in the red ring die too.</td></tr>` +
+    `<tr><td>${k("Shift")} + ${k("K")}</td><td>Hold fire (again: fire at will).</td></tr>` +
     `<tr><td>${k("X")}, ${k("Shift")}+${k("0")}, keypad ${k("0")}</td><td>Scatter.</td></tr>` +
     `<tr><td>${k("Space")}, ${k("B")}</td><td>Halt: stop the march.</td></tr>` +
     `<tr><td>${k("K")}</td><td>Hold: the selection keeps its place. Again: back to support, where men with no order go to the help of friends fighting within 40 m.</td></tr>` +

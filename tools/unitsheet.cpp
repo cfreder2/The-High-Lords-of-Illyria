@@ -97,15 +97,15 @@ int main() {
                 "(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away,\n"
                 "and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the\n"
                 "mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.\n\n"
-                "**Water.** A Molotov that lands in water (the shallows a man wades, or deeper) goes out: no fire, and nothing\n"
+                "**Water.** A Molotov that lands in water (where it stands a hand deep or more) goes out: no fire, and nothing\n"
                 "set off. A satchel is not laid in water, and one that ends there is dead. A fireball bursting on water, or on\n"
                 "a man standing in it, goes up in steam: a third of its blast radius and a third of its damage. Left to\n"
                 "themselves, grenadiers do not throw at men in a ford, and wizards weigh them by the smaller blast.\n\n"
                 "**Rare.** Those who throw a blast come alone (one dwarf, one wizard, one dragon to a squad), and an army has\n"
                 "few: at most %d Dwarven Grenadiers, %d Wizards, %d Dragons, %d Catapults (a Conquest realm keeps no more, and a\n"
                 "Skirmish host buys no more). A grenadier or a wizard with no order gives ground before a foe within 10 m,\n"
-                "to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. Bowmen shoot\n"
-                "a foe's grenadier or wizard in their reach before anyone else.\n\n",
+                "to behind the nearest of his side's fighting men (who go to his help); told to hold, he stands. One bowman in\n"
+                "three picks out a foe's grenadier or wizard within 30 m before anyone else.\n\n",
                 Conquest::keepCap(UnitType::DwarfGrenadier), Conquest::keepCap(UnitType::Wizards), Conquest::keepCap(UnitType::Dragons),
                 Conquest::keepCap(UnitType::Catapult));
     std::printf("| Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |\n");
@@ -136,13 +136,15 @@ int main() {
                 "a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11 ticks), and its blast the next\n"
                 "(8 to 15 ticks): a line goes up one after another. A blast also shakes the morale of everyone left standing\n"
                 "within twice its radius.\n\n"
-                "**The trap.** Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his\n"
+                "**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 80 m of him, 40 m clear\n"
+                "of any foe). In battle, Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his\n"
                 "next order, or with none steps back out of its blast. Detonate (L, then click a satchel or the ground): of the\n"
                 "grenadiers and wizards selected, the nearest in reach throws one missile at once at the satchel nearest the click\n"
-                "(within 4 m), walking into reach first if none is. A Detonate order does not wait for friends to clear the blast:\n"
+                "(within 4 m), walking into reach first if none is; the missile is lobbed onto the charge, the wind allowed for.\n"
+                "A Detonate order does not wait for friends to clear the blast:\n"
                 "the ring over a laid satchel is red while one of yours stands in it, and he dies with the foe.\n\n"
                 "**Left to himself** a grenadier lays one in the path of a foe coming within 25 m (not yet within 6 m), clear of\n"
-                "his own men and of water, steps back out of its blast, and throws a Molotov at a satchel with two or more foes\n"
+                "his own men and of water, steps back out of its blast, and throws a Molotov at a satchel of his side's with two or more foes\n"
                 "on it and none of his friends (waiting up to 5 s for a friend to clear) before any one man; a wizard sparks\n"
                 "such a satchel too. Killed by fire or a blast with satchels still on him, he goes up with all of them at once:\n"
                 "a blast a quarter wider and half again as hard for each one beyond the first; any other death spills them,\n"

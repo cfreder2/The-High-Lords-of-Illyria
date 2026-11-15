@@ -137,7 +137,9 @@ bool World::shootSatchel(Unit& u) {
     Vec3 blockedAt;
     int32_t fewestFriends = 0, blockedFoes = 0;
     for (const Projectile& p : projectiles_) {
-        if (!laid(p) || douses(p.pos)) continue;
+        // His own side's charges: where they lie is what his side knows. (A foe's are small and easy to miss; an order
+        // may be given at one he has found, and any blast that reaches it sets it off.)
+        if (!laid(p) || p.owner != u.owner || douses(p.pos)) continue;
         const Fixed d = (p.pos - u.pos).flat().length();
         if (d > shotRange(u, w.autoRange, p.pos) || d < p.explosive.radius + kShootMargin) continue;
         const Fixed reach2 = p.explosive.radius * p.explosive.radius;
@@ -180,6 +182,16 @@ bool World::shootSatchel(Unit& u) {
         u.sparkHeld = 0;
     }
     return true;
+}
+
+bool World::canPrepare(const Unit& u, const Vec3& at) const {
+    if ((at - u.pos).flat().lengthSq() > kPrepareReach * kPrepareReach || !standable(at)) return false;
+    bool clear = true;
+    nearbyNotOf(u.owner, at.x, at.y, kPrepareClear, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (o.alive() && o.owner != u.owner && (o.pos - at).flat().lengthSq() < kPrepareClear * kPrepareClear) clear = false;
+    });
+    return clear;
 }
 
 void World::startDetonate(Unit& u, const Vec3& at) {
@@ -225,7 +237,21 @@ bool World::detonateStep(Unit& u) {
     if (u.reloadRemaining > 0) return false;
     // Direct: no weighing of friends, no waiting (the player's business). A shot that cannot be made from here
     // (a wall in the way) is given up.
-    if (fire(u, u.attackTarget)) u.reloadRemaining = attackTicks(u, w.reloadTicks);
+    // Lobbed, to come down on the charge over the heads of the men standing before it; where he cannot lob (boughs over
+    // him, a wall), the flat throw if it would burst at the charge; else he goes nearer until he can do one or the other,
+    // and from as near as he may go throws flat whatever is in the way.
+    const Vec3 origin = u.pos + up(u.stats.height * Fixed::fromRatio(9, 10));
+    const Fixed near = w.explosive.radius / 2;
+    Placed how = Placed::Lobbed;
+    if (!canLob(u, origin, u.attackTarget)) {
+        how = Placed::Flat;
+        const bool atMark = (burstPoint(u, origin, u.attackTarget) - u.attackTarget).flat().lengthSq() <= near * near;
+        if (!atMark && range > w.explosive.radius + kShootMargin + Fixed::fromInt(4)) {
+            walk(u, u.attackTarget);
+            return false;
+        }
+    }
+    if (fire(u, u.attackTarget, false, how)) u.reloadRemaining = attackTicks(u, w.reloadTicks);
     return true;
 }
 

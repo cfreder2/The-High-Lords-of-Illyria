@@ -1,6 +1,6 @@
 # A careless detonation: the same line of charges as satchel-trap.txt, but the Warriors are marched onto it and the
 # dwarf is told to detonate while they stand there. The rings turn red; the blast is at once (an order does not wait
-# for friends, as his own judgement would); the strip says "Our own blast: N down".
+# for friends, as his own judgement would); the strip says "Own blast: N down".
 #
 #   Illyria --play tools/playtest/satchel-careless.txt --play-out out/careless --play-log out/careless/careless.log
 
