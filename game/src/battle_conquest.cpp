@@ -22,6 +22,15 @@ bool Battle::sees(uint8_t owner, float x, float y) const {
 }
 
 void Battle::borrow(sim::Conquest* conquest) {
+    // Everything that names units of the world presented now goes before another is: ids of one world are not places in
+    // the other (a conquest's 1700 men against a field of none: setLocalSide read the old selection in the new world).
+    dropUnits();
+    selMen_.clear();
+    groups_ = {};  // (a skirmish's groups are of its units, a conquest's of its men)
+    armyMemo_.clear();
+    inspected_ = {};
+    selStack_ = 0;
+    planning_ = false;
     conquest_ = conquest;
     quitSeen_ = 0;  // (a conquest begun or loaded has told of none)
     fight_ = {};
@@ -34,20 +43,23 @@ void Battle::borrow(sim::Conquest* conquest) {
         world_ = conquest->presentedWorld();
         setLocalSide(conquest->localSide());
     }
+    forgetMen();
+}
+
+void Battle::dropUnits() {
+    for (const Squad& q : squads_) armyMemo_[q.army] = {q.formation, q.facing};  // (an army's own, kept by army)
     squads_.clear();
     squadOfUnit_.clear();
-    selection_.clear();
-    selMen_.clear();
     manOfUnit_.clear();
-    armyMemo_.clear();
     squadOfArmy_.clear();
-    inspected_ = {};
+    selection_.clear();
+    selectedFlag_.clear();
     inspectedUnit_ = 0;
-    selStack_ = 0;
+    foreign_.clear();
+    orderTick_.clear();
+    slots_.clear();
     pending_.clear();
     plan_.clear();
-    planning_ = false;
-    forgetMen();
 }
 
 int Battle::squadOfArmy(uint32_t army) const {

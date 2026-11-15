@@ -192,17 +192,89 @@ void requestModel(int kind) { js_request_model(kind); }
 
 }  // namespace illyria::platform
 
+// Which set of context attributes was taken, and what draws: the page starts a software or fallback context on a lighter
+// preset (index.html: initGraphics).
+EM_JS(void, js_gl_taken, (int ctx, int set, const char* name, int antialias), {
+    let renderer = "";
+    try {
+        const gl = GL.getContext(ctx).GLctx;
+        const info = gl.getExtension("WEBGL_debug_renderer_info");
+        renderer = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    } catch (e) {}
+    const software = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(renderer);
+    window.illyriaGL = { set: set, name: UTF8ToString(name), antialias: !!antialias, renderer: renderer, software: software };
+    console.log("WebGL 2 context: set " + set + " (" + UTF8ToString(name) + ")" + (renderer ? ", " + renderer : ""));
+});
+EM_JS(void, js_gl_refused, (int set, const char* name), {
+    console.warn("WebGL 2 context refused: set " + set + " (" + UTF8ToString(name) + ")");
+});
+// No set was taken: why, as plainly as the browser lets us tell.
+EM_JS(void, js_gl_fatal, (), {
+    let why = "The browser refused every WebGL 2 setting the game tried.";
+    try {
+        if (!window.WebGL2RenderingContext) why = "This browser does not support WebGL 2.";
+        else if (!document.createElement("canvas").getContext("webgl2")) {
+            why = document.createElement("canvas").getContext("webgl")
+                      ? "This device's graphics driver offers WebGL 1 but not WebGL 2."
+                      : "WebGL is turned off or blocked here (check that hardware acceleration is on in the browser's settings).";
+        }
+    } catch (e) {}
+    console.error("Cannot start: " + why);
+    if (window.illyriaFatal) window.illyriaFatal(why);
+});
+
+namespace {
+
+// The WebGL 2 context, asked for as the game would like it and then more plainly, one wish given up at a time: some
+// browsers and drivers (a blocklisted GPU, a software renderer, Chrome's new headless mode) refuse the first sets. The
+// renderer needs no extension (anisotropic filtering is used when there; float textures are sampled unfiltered), so any
+// WebGL 2 context will do.
+struct ContextWish {
+    const char* name;
+    bool antialias, highPerformance, failIfSlow, plain;
+};
+constexpr ContextWish kContextWishes[] = {
+    {"preferred: antialias, high-performance", true, true, true, false},
+    {"no antialias", false, true, true, false},
+    {"default power, software allowed", true, false, false, false},
+    {"no antialias, default power, software allowed", false, false, false, false},
+    {"browser defaults", true, false, false, true},
+    {"browser defaults, no antialias", false, false, false, true},
+};
+
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE createContext() {
+    int set = 0;
+    for (const ContextWish& w : kContextWishes) {
+        EmscriptenWebGLContextAttributes attrs;
+        emscripten_webgl_init_context_attributes(&attrs);  // (depth on, stencil off, no preserved buffer, default power)
+        attrs.majorVersion = 2;
+        attrs.minorVersion = 0;
+        attrs.antialias = w.antialias;
+        attrs.failIfMajorPerformanceCaveat = w.failIfSlow;
+        if (!w.plain) {
+            attrs.alpha = false;
+            attrs.depth = true;
+            attrs.stencil = false;
+            attrs.preserveDrawingBuffer = false;
+            attrs.powerPreference = w.highPerformance ? EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE : EM_WEBGL_POWER_PREFERENCE_DEFAULT;
+        }
+        const EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context("#canvas", &attrs);
+        if (ctx > 0) {
+            js_gl_taken(static_cast<int>(ctx), set, w.name, w.antialias ? 1 : 0);
+            return ctx;
+        }
+        js_gl_refused(set, w.name);
+        ++set;
+    }
+    return 0;
+}
+
+}  // namespace
+
 int main() {
-    EmscriptenWebGLContextAttributes attrs;
-    emscripten_webgl_init_context_attributes(&attrs);
-    attrs.majorVersion = 2;
-    attrs.minorVersion = 0;
-    attrs.alpha = false;
-    attrs.antialias = true;
-    attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
-    const EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context("#canvas", &attrs);
+    const EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = createContext();
     if (ctx <= 0) {
-        EM_ASM({ if (window.illyriaFatal) window.illyriaFatal("WebGL 2 is not available on this device."); });
+        js_gl_fatal();
         return 1;
     }
     emscripten_webgl_make_context_current(ctx);

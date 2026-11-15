@@ -1591,7 +1591,9 @@ void Hud::draw(Overlay& o, float w, float h) {
             hintSeen_ = true;
             saveSettings();
         }
-        if (!hintSeen_) {
+        // Not under a sheet: the results, a town's screen, the keys (the menus and setup pages draw nothing of a battle).
+        const bool sheetUp = hud.find("result") != nullptr || (conquest && camp.find("city") != nullptr) || help_;
+        if (!hintSeen_ && !sheetUp) {
             const std::string hint = conquest ? "Right-click a town to march there. Hold the right button, then drag, to face." : "Right-click to march or attack. Hold the right button, then drag, to face.";
             const float hw = o.width(hint, 14), alpha = hintFade_ < 0 ? 1.0f : static_cast<float>(hintFade_) / 45.0f;
             const float hx = std::max((w - hw) / 2, selEnd + 20), hy = cardsTop - 26;

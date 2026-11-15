@@ -324,7 +324,11 @@ std::vector<sim::EntityId> Battle::selectedAlive() const {
 void Battle::refreshSelection() {
     std::sort(selection_.begin(), selection_.end());
     selection_.erase(std::unique(selection_.begin(), selection_.end()), selection_.end());
-    selectedFlag_.assign(world_->units().size(), 0);
+    // (Sorted: any id past this world's last unit is at the end, and is not a unit of it.)
+    const size_t n = world_->units().size();
+    selection_.erase(std::upper_bound(selection_.begin(), selection_.end(), static_cast<sim::EntityId>(n)), selection_.end());
+    if (!selection_.empty() && selection_.front() == sim::kNoEntity) selection_.erase(selection_.begin());
+    selectedFlag_.assign(n, 0);
     for (sim::EntityId id : selection_) selectedFlag_[id - 1] = 1;
 }
 

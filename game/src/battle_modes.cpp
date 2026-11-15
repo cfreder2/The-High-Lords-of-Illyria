@@ -77,17 +77,36 @@ void Battle::setLocalSide(sim::PlayerId side) {
     local_ = side;
     voice_.setPlayer(side);
     sfx_.setPlayer(side);
-    std::erase_if(selection_, [&](sim::EntityId id) { return !controllable(world_->units()[id - 1]); });
+    dropUncontrollable();
+}
+
+void Battle::dropUncontrollable() {
+    std::erase_if(selection_, [&](sim::EntityId id) {
+        const sim::Unit* u = world_->findUnit(id);  // (an id not of this world is not his to keep)
+        return u == nullptr || !controllable(*u);
+    });
     refreshSelection();
 }
 
 void Battle::setForeign(size_t squad, bool foreign) {
     if (squad >= squads_.size()) return;
     foreign_.resize(world_->units().size(), 0);
-    for (sim::EntityId id : squads_[squad].members) foreign_[id - 1] = foreign ? 1 : 0;
+    for (sim::EntityId id : squads_[squad].members)
+        if (id >= 1 && id <= foreign_.size()) foreign_[id - 1] = foreign ? 1 : 0;
     // Nobody keeps an ally's men selected.
-    std::erase_if(selection_, [&](sim::EntityId id) { return !controllable(world_->units()[id - 1]); });
-    refreshSelection();
+    dropUncontrollable();
+}
+
+bool Battle::holdsOnlyItsUnits() const {
+    const size_t n = world_->units().size();
+    const auto of = [&](sim::EntityId id) { return id >= 1 && id <= n; };
+    for (const Squad& q : squads_)
+        for (sim::EntityId id : q.members)
+            if (!of(id)) return false;
+    for (sim::EntityId id : selection_)
+        if (!of(id)) return false;
+    if (inspectedUnit_ != 0 && !of(inspectedUnit_)) return false;
+    return squadOfUnit_.size() <= n && manOfUnit_.size() <= n && selectedFlag_.size() <= n;
 }
 
 sim::EntityId Battle::returnFallen(size_t squad, sim::EntityId fallen, V3 at, V3 facing, int32_t hpPct) {

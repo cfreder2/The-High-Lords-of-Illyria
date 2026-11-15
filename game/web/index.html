@@ -134,6 +134,7 @@
     text-align: center; color: var(--ink); pointer-events: none; transition: opacity 0.6s;
   }
   #hint b { color: var(--gold); font-weight: 600; }
+  #hint.covered { display: none; }  /* under a sheet: the results, a menu, a town's panel, a setup screen */
   #overlay {
     position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;  /* the paper is title.css's */
     flex-direction: column; gap: 14px; text-align: center; padding: 24px;
@@ -509,6 +510,7 @@
     if (window.IllyriaTitle && !IllyriaTitle.pref("hints")) return;
     hintShown = true;
     $("hint").classList.remove("hidden", "fade");
+    $("hint").classList.toggle("covered", sheetUp());
     clearTimeout(hintTimer);
     hintTimer = setTimeout(hideHint, 9000);
   }
@@ -657,7 +659,10 @@
     try { gfx = JSON.parse(localStorage.getItem(gfxKey)); } catch (e) { gfx = null; }
     if (!gfx || typeof gfx.features !== "number") {
       const phone = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
-      const level = phone ? 1 : 2;
+      // A context got only by asking less (platform_web.cpp: createContext) starts lighter: Low on a software renderer,
+      // Medium on any other fallback.
+      const glInfo = window.illyriaGL || { set: 0, software: false };
+      const level = glInfo.software ? 0 : Math.min(phone ? 1 : 2, glInfo.set > 0 ? 1 : 2);
       gfx = { preset: level, features: api.preset(level), fullRes: !phone };
     }
     // A saved preset means what the preset means now (a build may add to it: the film look joined Medium and High).
@@ -1569,8 +1574,16 @@
     box.classList.toggle("ours", !!ours);
     box.classList.remove("hidden");
   }
+  // Whether a sheet is up over the battle (the results, the menu, a town's panel, the title or a setup screen): the
+  // first-order hint is not drawn under it.
+  function sheetUp() {
+    const shown = (id) => { const e = $(id); return !!e && !e.classList.contains("hidden"); };
+    return shown("overlay") || shown("cityPanel") || document.body.classList.contains("menu-open") ||
+      document.body.classList.contains("at-title") || !!document.querySelector(".screen:not(.hidden)");
+  }
   function updateHud() {
     if (api) $("perf").textContent = api.perf();
+    $("hint").classList.toggle("covered", sheetUp());
     if (!api) return;
     const s = JSON.parse(api.hud());
     selected = s.selected;

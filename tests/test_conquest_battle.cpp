@@ -582,3 +582,41 @@ TEST(a_group_in_the_conquest_is_of_men_and_is_recalled_asleep_or_awake) {
     CHECK(w.b->ungroupSelection() == 1);
     CHECK(w.b->groupSize(slot) == 0);
 }
+
+// Out of a conquest with men selected (the menu's next game, review 6's crash): the field's own world has none of the
+// conquest's units, so nothing the Battle holds by unit id may outlive the borrowing, and the side is set on what is left.
+TEST(leaving_a_conquest_with_men_selected_holds_no_unit_of_its_world) {
+    Island w;
+    const int foot = w.squadOf(UnitType::LightInfantry);
+    CHECK(foot >= 0);
+    if (foot < 0) return;
+    w.b->selectSquad(foot);
+    CHECK(w.b->selectionSize() > 0);
+    CHECK(w.b->holdsOnlyItsUnits());
+    w.b->borrow(nullptr);  // (stopPlaying: read the conquest's ids in the field's empty world, and fell over)
+    CHECK(!w.b->borrowing());
+    CHECK(w.b->selectionSize() == 0);
+    CHECK(w.b->squads().empty());
+    CHECK(w.b->holdsOnlyItsUnits());
+    CHECK(w.b->groupSize(0) == 0);
+}
+
+// The conquest's world cleared under a selection (a save settles every man and seats him again, Conquest::reseatAll):
+// until the frame presents the men again the Battle holds none of the ids of the world that was, and then the same men
+// are selected as before.
+TEST(a_cleared_conquest_world_leaves_no_unit_id_and_the_selection_comes_back_by_man) {
+    Island w;
+    const int foot = w.squadOf(UnitType::LightInfantry);
+    CHECK(foot >= 0);
+    if (foot < 0) return;
+    w.b->selectSquad(foot);
+    const size_t n = w.b->selectionSize();
+    CHECK(n > 0);
+    (void)w.c.save();  // (the world is cleared and the men seated again: forgetMen)
+    CHECK(w.b->selectionSize() == 0);
+    CHECK(w.b->squads().empty());
+    CHECK(w.b->holdsOnlyItsUnits());
+    w.frame();
+    CHECK(w.b->selectionSize() == n);
+    CHECK(w.b->holdsOnlyItsUnits());
+}

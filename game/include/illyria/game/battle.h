@@ -334,6 +334,8 @@ public:
     void setAlpha(float a) { alphaSet_ = true, alphaOver_ = a; }
     // The fight in the borrowed world was cleared away (its men are gone, new ones are not those): forget them.
     void forgetMen();
+    // Whether every unit id the battle holds (squads, selection, the one looked at) is a unit of the world it presents.
+    bool holdsOnlyItsUnits() const;
     // Every man as the conquest says he stands this frame (Conquest::visibleSoldiers): the squads of the armies he is
     // of (every man is a unit of the world), who is selected or looked at, and the selection kept through a man's
     // boarding a boat and landing (it is of men, not of the world's units, which come and go).
@@ -1314,6 +1316,10 @@ private:
     ManPick manPick(const Camera& camera, float x, float y, float pixelScale) const;
     void applySelection(std::vector<sim::EntityId> units);
     void keepSelectedMen();
+    // Everything held by unit id (squads, selection, ids kept by place, held orders) let go: the world those ids were of
+    // is gone or no longer presented (borrow, forgetMen). Each army's formation and facing are kept by army.
+    void dropUnits();
+    void dropUncontrollable();  // the selection less any man not the local side's to order
     int squadOfArmy(uint32_t army) const;
     void inspect(Inspected what);
     struct Memo {  // what a squad keeps between frames, by army: the squads are made afresh from the conquest each frame

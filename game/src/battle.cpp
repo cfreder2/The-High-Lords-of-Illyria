@@ -949,7 +949,9 @@ void Battle::afterWorldStep() {
 }
 
 void Battle::forgetMen() {
-    plan_.clear();  // held orders name men of the world that was
+    // Held orders, the selection, the squads' members: all name men of the world that was. What is kept by man (selMen_,
+    // inspected_) and by army (armyMemo_) stays, and presentConquest finds them again among the men now.
+    dropUnits();
     const size_t n = world_->units().size();
     deathTick_.assign(n, UINT32_MAX);
     attackTick_.assign(n, UINT32_MAX);
