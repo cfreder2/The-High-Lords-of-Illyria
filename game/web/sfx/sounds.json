@@ -3,6 +3,17 @@
  "about": "Every sound effect in the game. The single source of truth: game/src/sfx.cpp emits the game's sounds by these ids, game/web/sfx.js plays them, tools/sfx/synth/render.py renders a placeholder for each and docs/SOUND_EFFECTS.md is generated from this file (python3 tools/sfx/script.py). Drop a recording at any listed path (tools/sfx/convert.sh) to replace the rendered one.",
  "format": "mp3",
  "path": "sfx/{id}_{n}.mp3",
+ "mix": {
+  "strips": 24,
+  "voice_strips": 3,
+  "fade_ms": 12,
+  "lowpass_near_hz": 18000,
+  "lowpass_far_hz": 1400,
+  "reverb_near": 0.04,
+  "reverb_far": 0.34,
+  "loop_gain": 4,
+  "sfx_volume": 0.8
+ },
  "categories": [
   {
    "id": "ambience",
@@ -35,6 +46,18 @@
   {
    "id": "ui",
    "title": "UI"
+  },
+  {
+   "id": "movement",
+   "title": "Movement"
+  },
+  {
+   "id": "conquest",
+   "title": "Conquest"
+  },
+  {
+   "id": "hooks",
+   "title": "Hooks for features being built"
   }
  ],
  "sounds": [
@@ -708,11 +731,11 @@
    "category": "ui",
    "title": "Button",
    "when": "Any button tapped.",
-   "behaviour": "one-shot, 2D, quiet",
+   "behaviour": "one-shot, 2D",
    "variants": 3,
    "record": "A pen click or a wooden bead tapped on a table.",
    "emitted_by": "page",
-   "level": -16,
+   "level": -8,
    "files": [
     "sfx/snd_ui_click_1.mp3",
     "sfx/snd_ui_click_2.mp3",
@@ -724,11 +747,11 @@
    "category": "ui",
    "title": "Page turn",
    "when": "A panel opens (settings, news, a town, a briefing).",
-   "behaviour": "one-shot, 2D, quiet",
+   "behaviour": "one-shot, 2D",
    "variants": 3,
    "record": "Turn a stiff page of an old book, close mic.",
    "emitted_by": "page",
-   "level": -12,
+   "level": -8,
    "files": [
     "sfx/snd_ui_page_turn_1.mp3",
     "sfx/snd_ui_page_turn_2.mp3",
@@ -897,6 +920,557 @@
    "future": "caves",
    "files": [
     "sfx/snd_amb_subterranean_rumble_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_foot_march",
+   "category": "movement",
+   "title": "Men marching",
+   "when": "A squad on foot moving over earth: a loose cluster of footfalls, cloth and leather.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 4,
+   "record": "Four or five people walking out of step on packed earth or a lawn, coats on; cut 0.7 s pieces with no single clear step at the start.",
+   "emitted_by": "game",
+   "level": -9,
+   "files": [
+    "sfx/snd_move_foot_march_1.mp3",
+    "sfx/snd_move_foot_march_2.mp3",
+    "sfx/snd_move_foot_march_3.mp3",
+    "sfx/snd_move_foot_march_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_foot_armor",
+   "category": "movement",
+   "title": "Armoured men marching",
+   "when": "A squad in mail or plate moving: footfalls with the clink and rattle of harness.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 4,
+   "record": "As the march, with a bag of chain, buckles and a few pan lids shaken in step.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_move_foot_armor_1.mp3",
+    "sfx/snd_move_foot_armor_2.mp3",
+    "sfx/snd_move_foot_armor_3.mp3",
+    "sfx/snd_move_foot_armor_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_foot_wet",
+   "category": "movement",
+   "title": "Men in mud or shallows",
+   "when": "A squad moving through mud, marsh or shallow water: sloshing, sucking steps.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 3,
+   "record": "Wellington boots in a muddy ditch or the edge of a pond, several steps overlapping.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_move_foot_wet_1.mp3",
+    "sfx/snd_move_foot_wet_2.mp3",
+    "sfx/snd_move_foot_wet_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_hooves",
+   "category": "movement",
+   "title": "Hooves",
+   "when": "Cavalry moving: several horses at the trot or gallop on turf.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 4,
+   "record": "Horses on grass at a riding school; or halved coconut shells and fists on turf, three or four beats to a stride, layered.",
+   "emitted_by": "game",
+   "level": -6,
+   "files": [
+    "sfx/snd_move_hooves_1.mp3",
+    "sfx/snd_move_hooves_2.mp3",
+    "sfx/snd_move_hooves_3.mp3",
+    "sfx/snd_move_hooves_4.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_giant_tread",
+   "category": "movement",
+   "title": "A giant's tread",
+   "when": "A great beast or giant sets a foot down: a heavy thump with a crunch.",
+   "behaviour": "one-shot, positional, one per footfall",
+   "variants": 3,
+   "record": "Drop a sandbag on gravel; layer a fist on a mattress for the weight.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_move_giant_tread_1.mp3",
+    "sfx/snd_move_giant_tread_2.mp3",
+    "sfx/snd_move_giant_tread_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_wheels",
+   "category": "movement",
+   "title": "Siege engine rolling",
+   "when": "A catapult or other engine on the move: the axle creaking, wheels grinding over the ground.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 3,
+   "record": "A loaded wheelbarrow or handcart pushed over gravel; an unoiled gate hinge worked slowly for the axle.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_move_wheels_1.mp3",
+    "sfx/snd_move_wheels_2.mp3",
+    "sfx/snd_move_wheels_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_move_wings",
+   "category": "movement",
+   "title": "Great wings",
+   "when": "A griffin, dragon or other winged beast beats its wings once or twice.",
+   "behaviour": "one-shot, positional, retriggered while they move",
+   "variants": 3,
+   "record": "Snap a heavy coat, a leather jacket or a tarpaulin through the air, once or twice a take.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_move_wings_1.mp3",
+    "sfx/snd_move_wings_2.mp3",
+    "sfx/snd_move_wings_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_weap_satchel_lay",
+   "category": "weapons",
+   "title": "Satchel laid",
+   "when": "A satchel is set down as a trap and its slow match struck: a soft thump, a flint scratch.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "Set a canvas bag of sand on earth, then strike a match or a flint and steel close to the mic.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_weap_satchel_lay_1.mp3",
+    "sfx/snd_weap_satchel_lay_2.mp3",
+    "sfx/snd_weap_satchel_lay_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_order_confirm",
+   "category": "ui",
+   "title": "Order given",
+   "when": "The player's order is accepted (move, attack, any command): a short soft drum tap with a creak of leather.",
+   "behaviour": "one-shot, 2D",
+   "variants": 3,
+   "record": "A finger tap on a small hand drum or a leather-bound book, with a belt flexed; 0.2 s, dry.",
+   "emitted_by": "game",
+   "level": -9,
+   "files": [
+    "sfx/snd_ui_order_confirm_1.mp3",
+    "sfx/snd_ui_order_confirm_2.mp3",
+    "sfx/snd_ui_order_confirm_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_order_refuse",
+   "category": "ui",
+   "title": "Order refused",
+   "when": "An order that cannot be carried out: a dull double knock, the second lower.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "Two knuckle knocks on a table, the second nearer the middle; 0.25 s, dry.",
+   "emitted_by": "game",
+   "level": -9,
+   "files": [
+    "sfx/snd_ui_order_refuse_1.mp3",
+    "sfx/snd_ui_order_refuse_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_toggle",
+   "category": "ui",
+   "title": "Toggle",
+   "when": "Hold/Support and other switches: a wooden latch, a two-tone click.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "A wooden latch or a clothes peg opened and closed.",
+   "emitted_by": "game",
+   "level": -11,
+   "files": [
+    "sfx/snd_ui_toggle_1.mp3",
+    "sfx/snd_ui_toggle_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_ui_select",
+   "category": "ui",
+   "title": "Squad selected",
+   "when": "A squad or lord is selected: a very short soft tick.",
+   "behaviour": "one-shot, 2D, quiet",
+   "variants": 3,
+   "record": "A fingernail on a wooden bead or the edge of a book.",
+   "emitted_by": "game",
+   "level": -13,
+   "files": [
+    "sfx/snd_ui_select_1.mp3",
+    "sfx/snd_ui_select_2.mp3",
+    "sfx/snd_ui_select_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_rally_horn",
+   "category": "notifications",
+   "title": "The lord's Rally",
+   "when": "The lord calls his men to him: a short bright horn call, two rising notes.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "A hunting horn, bugle or trumpet: two quick rising notes, 1.2 s.",
+   "emitted_by": "game",
+   "level": -5,
+   "files": [
+    "sfx/snd_state_rally_horn_1.mp3",
+    "sfx/snd_state_rally_horn_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_deploy_begin",
+   "category": "notifications",
+   "title": "The battle begins",
+   "when": "Deployment ends and the battle starts: a short drum roll into a horn stab.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "A snare or tabor roll of under a second into one stroke of a big drum and a single brass chord.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_state_deploy_begin_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_state_results",
+   "category": "notifications",
+   "title": "The results sheet",
+   "when": "The results are shown: parchment unrolled and one low drum stroke.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "Unroll a sheet of stiff paper close to the mic; one soft stroke on a floor tom.",
+   "emitted_by": "game",
+   "level": -8,
+   "files": [
+    "sfx/snd_state_results_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_conq_town_captured",
+   "category": "conquest",
+   "title": "Town taken",
+   "when": "Conquest: one of your armies takes a town: a bright peal of bells and a short fanfare.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "Church bells ringing rounds (CC0), under a three-note rising brass call.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_conq_town_captured_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_conq_town_lost",
+   "category": "conquest",
+   "title": "Town lost",
+   "when": "Conquest: a town of yours falls: a low bell tolling twice and a horn in the minor.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "One low bell struck twice, a second apart; a horn or trombone holding a minor third and falling.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_conq_town_lost_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_conq_day_tick",
+   "category": "conquest",
+   "title": "A new day",
+   "when": "Conquest: dawn of a new day: one soft bell.",
+   "behaviour": "one-shot, 2D, quiet",
+   "variants": 2,
+   "record": "A small hand bell or a wine glass struck once with a soft beater.",
+   "emitted_by": "game",
+   "level": -12,
+   "files": [
+    "sfx/snd_conq_day_tick_1.mp3",
+    "sfx/snd_conq_day_tick_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_conq_recruit",
+   "category": "conquest",
+   "title": "Squad trained",
+   "when": "Conquest: a squad is trained in a town: a drum tap, a clink of coin and steel.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "A tap on a small drum, coins dropped on a table, a knife set down on a plate.",
+   "emitted_by": "game",
+   "level": -9,
+   "files": [
+    "sfx/snd_conq_recruit_1.mp3",
+    "sfx/snd_conq_recruit_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_conq_lord_fallen",
+   "category": "conquest",
+   "title": "A lord has fallen",
+   "when": "Conquest: a lord is killed: a low horn falling away over a muffled drum.",
+   "behaviour": "one-shot, 2D",
+   "variants": 1,
+   "record": "A horn or trombone holding a low note and letting it fall a fourth; a big drum with a cloth over the head, three slow strokes.",
+   "emitted_by": "game",
+   "level": -4,
+   "files": [
+    "sfx/snd_conq_lord_fallen_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_battle_far",
+   "category": "ambience",
+   "title": "Battle, far off",
+   "when": "A fight heard from high above or from the map: steel, thuds and shouting as one murmur, no blow distinct.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "A crowd at a match and a re-enactment melee, mixed and heard through a wall; 12 s or more.",
+   "emitted_by": "ambience",
+   "level": -12,
+   "files": [
+    "sfx/snd_amb_battle_far_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_march_column",
+   "category": "ambience",
+   "title": "Column on the march",
+   "when": "An army on the move heard from afar: a steady tramp with the jingle of gear.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "A walking group in step on a track, recorded from fifty metres, keys and buckles jingling; a whole number of paces.",
+   "emitted_by": "ambience",
+   "level": -14,
+   "files": [
+    "sfx/snd_amb_march_column_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_bed_day",
+   "category": "ambience",
+   "title": "Open air by day",
+   "when": "Always there by day: very light air and a few distant birds, so the field is never dead silent.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "A quiet field in the morning away from roads, 20 s or more with no one bird dominating.",
+   "emitted_by": "ambience",
+   "level": -22,
+   "files": [
+    "sfx/snd_amb_bed_day_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_amb_fire",
+   "category": "ambience",
+   "title": "Ground burning",
+   "when": "Fire on the ground near the view: crackle over a low roar.",
+   "behaviour": "loop, 2D stereo",
+   "variants": 1,
+   "record": "A bonfire of dry wood from two metres, with no voices.",
+   "emitted_by": "ambience",
+   "level": -14,
+   "files": [
+    "sfx/snd_amb_fire_1.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_splash_small",
+   "category": "hooks",
+   "title": "Small splash",
+   "when": "Feet or a small thing going into water.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A stone the size of a fist dropped into a bucket or pond.",
+   "emitted_by": "hook",
+   "level": -8,
+   "files": [
+    "sfx/snd_water_splash_small_1.mp3",
+    "sfx/snd_water_splash_small_2.mp3",
+    "sfx/snd_water_splash_small_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_splash_body",
+   "category": "hooks",
+   "title": "Body into water",
+   "when": "A body falls into water.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A full sack or a large log dropped flat into a pond.",
+   "emitted_by": "hook",
+   "level": -4,
+   "files": [
+    "sfx/snd_water_splash_body_1.mp3",
+    "sfx/snd_water_splash_body_2.mp3",
+    "sfx/snd_water_splash_body_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_water_splash_big",
+   "category": "hooks",
+   "title": "Great splash",
+   "when": "A boulder or a catapult's stone lands in water: a deep plunge and the spray falling after.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 2,
+   "record": "A big rock heaved into deep water from a bank; keep the two seconds of spray coming down.",
+   "emitted_by": "hook",
+   "level": -1,
+   "files": [
+    "sfx/snd_water_splash_big_1.mp3",
+    "sfx/snd_water_splash_big_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_boulder_launch",
+   "category": "hooks",
+   "title": "Boulder levered loose",
+   "when": "A boulder is set rolling: timber cracking and stone grinding.",
+   "behaviour": "one-shot, positional",
+   "variants": 2,
+   "record": "A crowbar levering a paving slab; a thick branch broken.",
+   "emitted_by": "hook",
+   "level": -3,
+   "files": [
+    "sfx/snd_boulder_launch_1.mp3",
+    "sfx/snd_boulder_launch_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_boulder_rumble",
+   "category": "hooks",
+   "title": "Boulder rolling",
+   "when": "A boulder on its way down: rumble with stones clattering.",
+   "behaviour": "one-shot, positional, retriggered while it rolls",
+   "variants": 3,
+   "record": "A bowling ball or a heavy stone rolled over gravel and boards; cut 1.2 s pieces from the middle.",
+   "emitted_by": "hook",
+   "level": -4,
+   "files": [
+    "sfx/snd_boulder_rumble_1.mp3",
+    "sfx/snd_boulder_rumble_2.mp3",
+    "sfx/snd_boulder_rumble_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_boulder_impact",
+   "category": "hooks",
+   "title": "Boulder strikes",
+   "when": "A boulder hits the ground or a wall: a crash and a scatter of stone.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "A big rock dropped on rubble from a height.",
+   "emitted_by": "hook",
+   "level": 0,
+   "files": [
+    "sfx/snd_boulder_impact_1.mp3",
+    "sfx/snd_boulder_impact_2.mp3",
+    "sfx/snd_boulder_impact_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_boulder_crush",
+   "category": "hooks",
+   "title": "Crushed by a boulder",
+   "when": "Men under a rolling boulder: a wet crunch and a clatter of gear.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A rock dropped on a crate of celery, wet rags and pan lids.",
+   "emitted_by": "hook",
+   "level": -2,
+   "files": [
+    "sfx/snd_boulder_crush_1.mp3",
+    "sfx/snd_boulder_crush_2.mp3",
+    "sfx/snd_boulder_crush_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_fire_steam",
+   "category": "hooks",
+   "title": "Fire quenched",
+   "when": "A fireball or burning thing goes into water: a burst of hissing steam.",
+   "behaviour": "one-shot, positional",
+   "variants": 3,
+   "record": "A hot pan plunged into a sink of water; or water thrown on embers.",
+   "emitted_by": "hook",
+   "level": -4,
+   "files": [
+    "sfx/snd_fire_steam_1.mp3",
+    "sfx/snd_fire_steam_2.mp3",
+    "sfx/snd_fire_steam_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_call_help",
+   "category": "hooks",
+   "title": "Call for help",
+   "when": "A squad in trouble calls for help: an urgent horn, two quick rising notes.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "A bugle or horn: two quick rising notes, urgent, 1 s.",
+   "emitted_by": "hook",
+   "level": -5,
+   "files": [
+    "sfx/snd_call_help_1.mp3",
+    "sfx/snd_call_help_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_call_answer",
+   "category": "hooks",
+   "title": "The call answered",
+   "when": "Help is coming: one lower steady note in answer.",
+   "behaviour": "one-shot, 2D",
+   "variants": 2,
+   "record": "The same horn: one steady note a fifth or more below the call, 0.8 s.",
+   "emitted_by": "hook",
+   "level": -6,
+   "files": [
+    "sfx/snd_call_answer_1.mp3",
+    "sfx/snd_call_answer_2.mp3"
+   ]
+  },
+  {
+   "id": "snd_charge_impact",
+   "category": "hooks",
+   "title": "Charge strikes home",
+   "when": "Cavalry crashes into a line: bodies, cracking lances, harness.",
+   "behaviour": "one-shot, positional, carries far",
+   "variants": 3,
+   "record": "Layer a dropped sack, broom handles snapped, a bag of chain thrown down and a horse blowing.",
+   "emitted_by": "hook",
+   "level": -1,
+   "files": [
+    "sfx/snd_charge_impact_1.mp3",
+    "sfx/snd_charge_impact_2.mp3",
+    "sfx/snd_charge_impact_3.mp3"
+   ]
+  },
+  {
+   "id": "snd_morale_rout",
+   "category": "hooks",
+   "title": "A line breaks",
+   "when": "A squad routs: a ragged falling cry of many voices and arms dropped.",
+   "behaviour": "one-shot, positional",
+   "variants": 2,
+   "record": "Six or more people crying out and trailing off as they turn away from the mic; pans and poles dropped after.",
+   "emitted_by": "hook",
+   "level": -4,
+   "files": [
+    "sfx/snd_morale_rout_1.mp3",
+    "sfx/snd_morale_rout_2.mp3"
    ]
   }
  ]

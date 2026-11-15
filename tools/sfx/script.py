@@ -82,7 +82,8 @@ def doc(m):
             secs = [stats[f]["seconds"] for f in s["files"] if f in stats]
             length = f", {min(secs):.1f}-{max(secs):.1f} s" if secs else ""
             state = f"{rec} recorded" if rec else "rendered"
-            who = {"page": " (played by the page)", "ambience": " (an ambience loop, faded by the game)", "future": f" (for {s.get('future', 'later')}: not played yet)"}.get(s["emitted_by"], "")
+            who = {"page": " (played by the page)", "ambience": " (an ambience loop, faded by the game)", "future": f" (for {s.get('future', 'later')}: not played yet)",
+                   "hook": " (a hook: the feature that plays it is being built; ask for it with Sfx::hook)"}.get(s["emitted_by"], "")
             out.append(f"| **{s['title']}**<br>`{s['id']}` | {s['when']}{who} | {s['behaviour']}{length} | {len(s['files'])} ({state}) | "
                        f"{s['level']:+.0f} dB | {s['record']} |")
         out.append("")
