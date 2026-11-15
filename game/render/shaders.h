@@ -468,33 +468,21 @@ ivec2 conquestHex(vec2 p) {
     }
     return ivec2(best);
 }
-// The grids over all land alike, world-aligned so they run on unbroken across
-// the battlefield's edge: the tactical hex grid fades in as the camera rises,
-// then hands over to the conquest's (laid on the continent's own hexes, which
-// are under twice as wide since the map shrank to a third).
+// The Conquest's hexes, over all land alike and laid on the continent's own (so they run on unbroken across the
+// battlefield's edge): whose land each is, and from high up the hexes' own outlines. Only where land is held, which is
+// the Conquest: a Skirmish reckons no territory, and no line is drawn on its ground.
 vec3 landGrids(vec3 c, vec2 xy) {
+    if (uTerritoryInfo.z <= 0.0 || uCamDist <= 170.0) return c;
     vec2 land = xy + uTerritoryInfo.xy;
-    if (uTerritoryInfo.z > 0.0 && uCamDist > 170.0) {
-        // Whose land: a faint wash of the holder's colour, stronger along each hex's rim.
-        ivec2 size = textureSize(uTerritory, 0);
-        vec4 t = texelFetch(uTerritory, clamp(conquestHex(land), ivec2(0), size - 1), 0);
-        float e = hexEdge(land, 89.0);
-        float rim = 1.0 - smoothstep(0.0, max(0.035, fwidth(e) * 2.5), e);
-        float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(170.0, 300.0, uCamDist);
-        c = mix(c, t.rgb, k);
-    }
-    float gridFade = smoothstep(120.0, 400.0, uCamDist) * (1.0 - smoothstep(450.0, 600.0, uCamDist)) * 0.35;
-    if (gridFade > 0.0) {
-        float e = hexEdge(xy, 48.0);
-        float w = fwidth(e) * 1.5;
-        c = mix(c, vec3(0.95, 0.92, 0.8), gridFade * (1.0 - smoothstep(0.0, w, e)));
-    }
+    float e = hexEdge(land, 89.0);
+    // Whose land: a faint wash of the holder's colour, stronger along each hex's rim.
+    ivec2 size = textureSize(uTerritory, 0);
+    vec4 t = texelFetch(uTerritory, clamp(conquestHex(land), ivec2(0), size - 1), 0);
+    float rim = 1.0 - smoothstep(0.0, max(0.035, fwidth(e) * 2.5), e);
+    float k = uTerritoryInfo.z * t.a * (0.13 + 0.42 * rim) * smoothstep(170.0, 300.0, uCamDist);
+    c = mix(c, t.rgb, k);
     float bigFade = smoothstep(600.0, 1350.0, uCamDist) * 0.3;
-    if (bigFade > 0.0) {
-        float e = hexEdge(land, 89.0);
-        float w = fwidth(e) * 1.5;
-        c = mix(c, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, w, e)));
-    }
+    if (bigFade > 0.0) c = mix(c, vec3(0.95, 0.9, 0.78), bigFade * (1.0 - smoothstep(0.0, fwidth(e) * 1.5, e)));
     return c;
 }
 // The land's look from afar, from its base colour and ground kinds (weights of
@@ -1115,6 +1103,14 @@ void main() {
         if ((mask & 64) != 0) lit = max(lit, 1.0 - smoothstep(w, w + 0.05, seg(p, vec2(-0.26, 0.0), vec2(0.26, 0.0))));
         float ink = max(ring, lit);
         color = vec4(mix(vec3(0.03, 0.03, 0.04), vExtra.rgb, ink), max(disc * 0.78, ink) * (1.0 - vExtra.w));
+    } else if (type > 11.5 && type < 12.5) {
+        // The shade at a building's foot, where the sky is shut out of the corner between wall and ground: darkest
+        // against the stone, gone within extra.w metres of it. The foot is a box of half extents extra.xy (m) with
+        // its corners rounded by extra.z (a round tower: all radius).
+        vec2 q = abs(vUv) * vParams.y - vExtra.xy;
+        float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - vExtra.z;
+        float k = 1.0 - smoothstep(0.0, vExtra.w, d);
+        color = vec4(0.03, 0.04, 0.02, 0.5 * k * k);
     } else {
         // Body part on the ground: extra.x = kind (2 head, 3 arm, 4 leg, 5 bone), extra.y = owner.
         float kind = vExtra.x;
@@ -2040,7 +2036,9 @@ flat in vec2 vAxis;
 in vec3 vObj;
 flat in vec3 vScale;
 out vec4 oColor;
-uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges)
+uniform float uMasonry;  // 1: lay coursed ashlar over the surface (castles, bridges); 2: a stone building, its roof tiled and its
+                         // doors of wood besides (the keep, the temple, the sage's tower); 3: a stair (the castles' ramps)
+uniform float uGrounded; // 1: the mesh stands on the ground at its own z = 0: damp and shade gather at its foot
 uniform float uHouse;    // 1: the house mesh: shingles, framed plaster, a plank door (houseSurface)
 uniform float uRock;     // 1: boulders: bedding planes, cracks, grain, lichen (rockSurface)
 // Courses of dressed blocks, staggered row by row, each its own tone, with
@@ -2086,44 +2084,68 @@ void rockSurface(inout vec3 albedo, inout vec3 n) {
     albedo = mix(mean, detail, fade);
     n = normalize(n + (vec3(valueNoise2(uv * 9.0 + 1.0), valueNoise2(uv * 9.0 + 5.0), valueNoise2(uv * 9.0 + 9.0)) - 0.5) * 0.45 * fade);
 }
-// The house mesh (meshes::house): clay shingles in staggered rows with
-// rounded tips that shade the row below; plaster framed in timber (posts a
-// bay apart, sill, plate, braces) on a stone footing; a plank door in a
-// frame with two iron straps and a ring. Everything is laid out in metres on
-// the mesh's own axes (vObj, vScale), so it sits the same on every house, and
-// each pattern fades to its mean colour before a pixel spans it. The pattern
-// also tilts the normal a little, for the light.
+// A roof of tiles (every roof: the houses' shingles, the temple's, the sage's slates): staggered rows with rounded tips
+// that shade the row below, each tile its own tone, here and there a mossy one, the weather in broad patches. uv: metres
+// along the eave and up the slope; scale: the size of a tile against a house's (0.26 by 0.3 m); px: metres a pixel spans.
+// Fades to its mean colour before a pixel spans a row, and tilts the normal a little, for the light.
+void roofTiles(inout vec3 albedo, inout vec3 n, vec2 uv, float scale, float px) {
+    vec3 base = albedo;
+    vec3 R = normalize(vec3(-n.y, n.x, 0.0) + vec3(1e-4, 0.0, 0.0));
+    vec3 S = cross(R, n);
+    if (S.z < 0.0) S = -S;
+    float rowH = 0.3 * scale, tileW = 0.26 * scale;
+    float fade = 1.0 - smoothstep(0.08 * rowH, 0.3 * rowH, px);
+    float r = uv.y / rowH, row = floor(r);
+    vec2 f = vec2(fract(uv.x / tileW + 0.5 * mod(row, 2.0)), fract(r));
+    float tip = 0.1 * pow(abs(2.0 * f.x - 1.0), 2.0);  // rounded tips reach lowest in the middle
+    bool under = f.y < tip;                              // below the tip: the row beneath, in its shade
+    float rr = under ? row - 1.0 : row;
+    float cx = floor(uv.x / tileW + 0.5 * mod(rr, 2.0));
+    float h = hash12(vec2(cx, rr));
+    float tone = 0.78 + 0.4 * h;
+    vec3 tile = base * tone;
+    tile = mix(tile, tile * vec3(0.7, 0.85, 0.6), smoothstep(0.88, 0.97, hash12(vec2(cx + 7.0, rr + 3.0))) * 0.7);  // a mossy one
+    if (under) tile *= 0.55;
+    else tile *= 1.0 + 0.2 * (1.0 - smoothstep(0.0, 0.08, f.y - tip));  // the lit edge of the tip
+    tile *= 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.06, min(f.x, 1.0 - f.x))) * (under ? 0.0 : 1.0);  // the joint between tiles
+    tile *= 0.94 + 0.1 * valueNoise2(uv * 4.0 / scale + 3.0);
+    albedo = mix(base * 0.9, tile, fade);
+    vec3 tilt = S * (0.5 - f.y) * 0.4 + R * (f.x - 0.5) * 0.3;
+    n = normalize(n + tilt * fade);
+    albedo *= 0.92 + 0.12 * valueNoise2(uv * 0.6 / scale + 11.0);  // weathering in broad patches
+}
+// The house mesh (meshes::house): clay shingles (roofTiles) over fascia and
+// bargeboards, a ridge course and a stone chimney; plaster framed in timber
+// (posts a bay apart, sill, plate, a rail at each floor, braces) on a stone
+// footing, with shuttered windows of leaded panes in the open bays; a plank
+// door in a frame with two iron straps and a ring. Everything is laid out in
+// metres on the mesh's own axes (vObj, vScale), so it sits the same on every
+// house, and each pattern fades to its mean colour before a pixel spans it.
+// The pattern also tilts the normal a little, for the light.
 void houseSurface(inout vec3 albedo, inout vec3 n) {
     vec3 m = vObj * vScale;
     float px = length(fwidth(m));
     vec3 base = albedo;
     float tint = clamp(base.g / 0.76, 0.6, 1.4);  // the instance's tint (the wall's own green is 0.76)
+    if (vObj.z > 1.76 && n.z > 0.5) {  // the chimney's top: its flue, sooted
+        albedo = vec3(0.07, 0.065, 0.06);
+        return;
+    }
     if (n.z > 0.25) {
         // Roof: v up the slope from the eave (the eaves are at x = +-1.15, z = 0.9; the ridge x = 0, z = 1.7).
-        vec3 R = normalize(vec3(-n.y, n.x, 0.0) + vec3(1e-4, 0.0, 0.0));
-        vec3 S = cross(R, n);
-        if (S.z < 0.0) S = -S;
-        const float rowH = 0.3, tileW = 0.26;
         vec2 uv = vec2(m.y, length(vec2((1.15 - abs(vObj.x)) * vScale.x, (vObj.z - 0.9) * vScale.z)));
-        float fade = 1.0 - smoothstep(0.08 * rowH, 0.3 * rowH, px);
-        float r = uv.y / rowH, row = floor(r);
-        vec2 f = vec2(fract(uv.x / tileW + 0.5 * mod(row, 2.0)), fract(r));
-        float tip = 0.1 * pow(abs(2.0 * f.x - 1.0), 2.0);  // rounded tips reach lowest in the middle
-        bool under = f.y < tip;                              // below the tip: the row beneath, in its shade
-        float rr = under ? row - 1.0 : row;
-        float cx = floor(uv.x / tileW + 0.5 * mod(rr, 2.0));
-        float h = hash12(vec2(cx, rr));
-        float tone = 0.78 + 0.4 * h;
-        vec3 tile = base * tone;
-        tile = mix(tile, tile * vec3(0.7, 0.85, 0.6), smoothstep(0.88, 0.97, hash12(vec2(cx + 7.0, rr + 3.0))) * 0.7);  // a mossy one
-        if (under) tile *= 0.55;
-        else tile *= 1.0 + 0.2 * (1.0 - smoothstep(0.0, 0.08, f.y - tip));  // the lit edge of the tip
-        tile *= 1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.06, min(f.x, 1.0 - f.x))) * (under ? 0.0 : 1.0);  // the joint between tiles
-        tile *= 0.94 + 0.1 * valueNoise2(uv * 4.0 + 3.0);
-        albedo = mix(base * 0.9, tile, fade);
-        vec3 tilt = S * (0.5 - f.y) * 0.4 + R * (f.x - 0.5) * 0.3;
-        n = normalize(n + tilt * fade);
-        albedo *= 0.92 + 0.12 * valueNoise2(uv * 0.6 + 11.0);  // weathering in broad patches
+        roofTiles(albedo, n, uv, 1.0, px);
+        albedo *= mix(0.6, 1.0, smoothstep(0.0, 0.09, uv.y));  // the eave course, in the shade of its own overhang
+        return;
+    }
+    if (n.z < -0.05 || abs(vObj.y) > 1.05) {  // the boards under the tiles: the overhang's underside, the bargeboards
+        albedo *= woodGrain(length(m.xz), m.y, 1.0 - smoothstep(0.04, 0.25, px));
+        return;
+    }
+    if (vObj.z > 1.02 && abs(vObj.y) < 0.95 && abs(vObj.x) < 0.95) {  // the chimney: small coursed rubble, sooted toward its top
+        bool alongY = abs(n.x) > abs(n.y);
+        albedo = coursedStone(base, vec2(alongY ? m.y : m.x, m.z), vec2(0.34, 0.17), px);
+        albedo *= mix(1.0, 0.62, smoothstep(1.7, 1.9, vObj.z));
         return;
     }
     bool onX = abs(vObj.x) > 0.999;
@@ -2182,11 +2204,16 @@ void houseSurface(inout vec3 albedo, inout vec3 n) {
         float fb = bay - bi;
         float postD = abs(bay - floor(bay + 0.5)) * bayW;
         float topPlate = H - 0.1;
-        float hh = max(topPlate - foot - 0.14, 0.5);
-        float fv = clamp((v - foot - 0.14) / hh, 0.0, 1.0);
-        float diag = abs(fb - (mod(bi, 2.0) < 0.5 ? fv : 1.0 - fv)) * bayW * hh / length(vec2(bayW, hh));
-        float braced = step(0.55, hash12(vec2(bi, 5.1))) * step(v, topPlate) * step(1.2, bayW);
-        float sd = min(min(postD - 0.06, abs(v - (foot + 0.07)) - 0.07), min(abs(v - topPlate) - 0.1, braced > 0.5 ? diag - 0.045 : 1.0));
+        // Floors: one to about 2.5 m of wall, a rail across the posts at each; the braces and the windows are a floor's.
+        float floors = max(1.0, floor((topPlate - foot) / 2.5 + 0.35));
+        float hh = max(topPlate - foot - 0.14, 0.5) / floors;
+        float fl = clamp(floor((v - foot - 0.14) / hh), 0.0, floors - 1.0);
+        float z0 = foot + 0.14 + fl * hh;
+        float fv = clamp((v - z0) / hh, 0.0, 1.0);
+        float diag = abs(fb - (mod(bi + fl, 2.0) < 0.5 ? fv : 1.0 - fv)) * bayW * hh / length(vec2(bayW, hh));
+        float braced = step(0.55, hash12(vec2(bi, 5.1 + fl))) * step(v, topPlate) * step(1.2, bayW);
+        float rail = fl > 0.5 ? abs(v - z0) - 0.07 : 1.0;
+        float sd = min(min(postD - 0.06, abs(v - (foot + 0.07)) - 0.07), min(min(abs(v - topPlate) - 0.1, rail), braced > 0.5 ? diag - 0.045 : 1.0));
         float tim = 1.0 - smoothstep(-px, px, sd);
         float ao = 0.8 + 0.2 * smoothstep(0.0, 0.1, sd);
         float spot = valueNoise2(vec2(u, v) * 7.0);
@@ -2202,6 +2229,31 @@ void houseSurface(inout vec3 albedo, inout vec3 n) {
         vec3 tm = timber * (vertical ? woodGrain(v, u, fade) : woodGrain(u, v, fade));
         wall = mix(pl, tm, tim);
         wall = mix(mix(plaster, timber, 0.16) * 0.88, wall, fade);
+        // A window in the bays that carry no brace (and not over the door): a timber frame round small leaded panes,
+        // dark within, a mullion and a transom, and a shutter folded back on the wall to one side. It outlasts the
+        // framing as the camera rises (a dark opening reads from much further than a post).
+        vec2 wc = vec2((bi + 0.5) * bayW - W, z0 + hh * 0.56);
+        vec2 wh = vec2(min(0.3, bayW * 0.26), min(0.4, hh * 0.24));
+        bool overDoor = onX && vObj.x > 0.0 && fl < 0.5 && abs(wc.x) < 0.2 * vScale.y + wh.x + 0.25;
+        if (braced < 0.5 && v < topPlate && !overDoor && bayW > 0.9 && hash12(vec2(bi + 3.0, fl + (onX ? 11.0 : 4.0))) > 0.3) {
+            vec2 d = abs(vec2(u, v) - wc) - wh;
+            float wsd = max(d.x, d.y);
+            float far = 1.0 - smoothstep(0.12, 0.45, px);
+            float bars = min(abs(u - wc.x), abs(v - wc.y - wh.y * 0.3));
+            vec2 pane = vec2(u + v, u - v) / 0.11;  // the leads, a lattice on the slant
+            float lead = min(min(fract(pane.x), 1.0 - fract(pane.x)), min(fract(pane.y), 1.0 - fract(pane.y))) * 0.11;
+            vec3 glass = vec3(0.1, 0.115, 0.13) * (0.75 + 0.6 * hash12(floor(pane) + bi));
+            glass = mix(vec3(0.05), glass, mix(1.0, smoothstep(0.006, 0.006 + px, lead), fade));
+            glass = mix(timber * 0.9, glass, mix(1.0, smoothstep(0.022, 0.022 + px, bars), fade));
+            vec3 frame = timber * 1.15 * woodGrain(v, u, fade);
+            vec3 win = mix(frame, glass, 1.0 - smoothstep(-px, px, wsd + 0.05));
+            wall = mix(wall, win, (1.0 - smoothstep(-px, px, wsd)) * far);
+            // The shutter: boards, hung outside the frame on the side away from the nearer post.
+            float su = (u - wc.x) * (fb < 0.5 ? 1.0 : -1.0) - wh.x;
+            float inS = (1.0 - smoothstep(-px, px, max(max(-su + 0.02, su - wh.x * 0.9), abs(v - wc.y) - wh.y))) * step(1.5, bayW);
+            vec3 board = timber * 1.25 * (0.8 + 0.3 * hash12(vec2(floor(su / 0.1), bi))) * woodGrain(v, u, fade);
+            wall = mix(wall, board, inS * far);
+        }
     }
     albedo = wall;
 }
@@ -2267,7 +2319,43 @@ void main() {
             float drift = smoothstep(0.45, 0.75, valueNoise2(uv * 0.16 + 3.0) * 0.6 + valueNoise2(uv * 0.7 + 9.0) * 0.4);
             albedo = mix(albedo, vec3(0.37, 0.31, 0.23) * (0.85 + 0.3 * valueNoise2(uv * 2.3)), drift * 0.5);
             albedo *= 0.86 + 0.2 * valueNoise2(uv * 0.09 + 21.0);
+            float slope = length(n.xy);
+            if (uMasonry > 2.5 && slope > 0.15) {
+                // A stair, cut in the light alone (the slope stays the one plane the sim walks): a step every 0.6 m of
+                // the way down, its riser turned to face downhill and its tread to the sky, the nosing worn pale and
+                // the back of each tread in the shade of the riser above it. Fades to the plain slope with distance.
+                vec2 down = n.xy / slope;
+                float going = 0.6, f = fract(dot(vWorld.xy, down) / going);  // 0 at a nosing, rising downhill
+                float spx = fwidth(dot(vWorld.xy, down)) / going;
+                float steps = 1.0 - smoothstep(0.12, 0.45, spx);
+                float riser = 1.0 - smoothstep(0.24 - spx, 0.24 + spx, f);
+                vec3 stepN = mix(vec3(0.0, 0.0, 1.0), vec3(down, 0.0), riser);
+                n = normalize(mix(n, stepN, steps));
+                float shade = mix(1.0, 0.62, riser) * mix(0.8, 1.0, smoothstep(0.24, 0.5, f)) * (1.0 + 0.16 * smoothstep(0.9, 1.0, f));
+                albedo *= mix(0.9, shade, steps);
+            }
         }
+    } else if (uMasonry > 1.5 && vColor.g < 0.6) {  // (not what shines of itself: a lit window, gilt)
+        vec2 side = vec2(dot(vWorld.xy, normalize(vec2(-n.y, n.x) + vec2(1e-4, 0.0))), vWorld.z);
+        if (n.z > 0.25) {
+            // A building's roof: tiles half as large again as a house's, in metres along the eave and up the slope.
+            vec2 uv = vec2(side.x, vWorld.z / max(length(n.xy), 0.2));
+            roofTiles(albedo, n, uv, 1.5, max(fwidth(uv.x), fwidth(uv.y)));
+        } else {
+            // Its doors: planks standing, a dark seam between them.
+            float px = max(fwidth(side.x), fwidth(side.y)), fade = 1.0 - smoothstep(0.04, 0.25, px);
+            float plank = side.x / 0.22, seam = min(fract(plank), 1.0 - fract(plank)) * 0.22;
+            albedo *= (0.82 + 0.3 * hash12(vec2(floor(plank), 2.0))) * woodGrain(side.y, side.x, fade);
+            albedo *= 1.0 - 0.5 * (1.0 - smoothstep(0.004, 0.004 + max(px, 0.006), seam)) * fade;
+        }
+    }
+    if (uGrounded > 0.5 && n.z < 0.7) {
+        // Where it meets the ground: the damp that climbs a wall's foot, the green on it, and the sky shut out of the
+        // corner (the same on every building that stands on the ground, castle or cottage).
+        float h = vObj.z * vScale.z;
+        float foot = 1.0 - smoothstep(0.0, 1.5, h + 0.35 * (valueNoise2(vWorld.xy * 0.9 + vWorld.z * 0.5) - 0.5));
+        albedo = mix(albedo, albedo * vec3(0.5, 0.56, 0.44), foot * 0.75);
+        albedo *= 0.9 + 0.1 * smoothstep(0.0, 5.0, h);
     }
     oColor = sceneryColor(albedo, n, vWorld);
 }
