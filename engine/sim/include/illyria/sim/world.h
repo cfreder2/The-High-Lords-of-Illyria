@@ -387,6 +387,8 @@ struct Unit {
     int32_t ammo = 0;
     bool holdFire = false;
     bool detonate = false;
+    // A dwarf or a wizard with a foe closing on him (World::shyAway): who. His friends near him come to it (supportFoe).
+    EntityId menacedBy = kNoEntity;
     // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
     // tick he last held. Both rest at zero once he fires (or is left alone for a while).
     int32_t aoeHeld = 0;
@@ -714,6 +716,9 @@ public:
     static bool sparks(const UnitStats& s) {
         return s.ranged.muzzleSpeed > Fixed::zero() && (s.ranged.kind == ProjectileKind::Molotov || s.ranged.kind == ProjectileKind::Fireball);
     }
+    // The few who throw a blast and cannot fight: a grenadier, a wizard (not a dragon, who can). Kept out of the melee
+    // (World::shyAway), guarded by the men near them (supportFoe), and the first mark of a foe's bowmen (autoTarget).
+    static bool precious(const UnitStats& s) { return s.satchels.count > 0 || (sparks(s) && s.flyAltitude == Fixed::zero()); }
     // Whether he has a missile to loose (a store spent leaves him his hands).
     static bool armed(const Unit& u) { return u.stats.ranged.muzzleSpeed > Fixed::zero() && (u.stats.ranged.ammo == 0 || u.ammo > 0); }
     // Water (the shallows a man wades, and the deep) puts out oil and powder: nothing burns or is laid there.
@@ -1285,6 +1290,10 @@ private:
     // (kThriftCluster men, a great beast counting for them all), or a foe on top of him; never a man running away,
     // and a grenadier's last bottle is kept for his satchels.
     bool worthAShot(const Unit& u, const Unit& target) const;
+    // A dwarf or a wizard with no order and a foe within kShyReach of him: back behind the nearest of his side's
+    // fighting men, or straight away from the foe (true: he is walking). Not a man told to hold; one caught at arm's
+    // length fights as he can.
+    bool shyAway(Unit& u);
     // A satchel's blast shakes those it leaves standing near it (twice its reach), of every side.
     void blastShock(const Vec3& at, const Explosive& ex);
     // Idle with satchels left and the enemy coming: lays one in their path (true).

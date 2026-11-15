@@ -222,6 +222,22 @@ bool World::creepToWall(Unit& u) {
 Unit* World::autoTarget(const Unit& u) {
     if (u.stats.ranged.autoRange <= Fixed::zero()) return nullptr;
     Unit* near = nearestEnemy(u, autoReach(u) * 3 / 2);
+    // A bowman's first mark is the foe's dwarf or wizard in his reach (one arrow storm ends the foe's whole blast),
+    // unless a foe is on him.
+    if (u.stats.ranged.kind == ProjectileKind::Arrow && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) {
+        Unit* mark = nullptr;
+        Fixed best = autoReach(u) * autoReach(u);
+        nearbyNotOf(u.owner, u.pos.x, u.pos.y, autoReach(u), [&](uint32_t i) {
+            Unit& o = units_[i];
+            if (!o.alive() || o.owner == u.owner || o.inAir() || !precious(o.stats)) return;
+            const Fixed d = (o.pos - u.pos).flat().lengthSq();
+            if (d < best || (d == best && mark != nullptr && o.id < mark->id)) {
+                best = d;
+                mark = &o;
+            }
+        });
+        if (mark != nullptr) return mark;
+    }
     // The walls are cleared first, unless a foe is on him.
     if (Unit* wall = wallShooter(u, autoReach(u)); wall != nullptr && wall != near && (near == nullptr || (near->pos - u.pos).flat().lengthSq() > kCloseFoe * kCloseFoe)) return wall;
     return near;

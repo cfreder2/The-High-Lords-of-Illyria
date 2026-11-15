@@ -45,6 +45,12 @@ constexpr int32_t kThriftCluster = 3;
 constexpr int32_t kThriftGreatHp = 200;
 constexpr Fixed kThriftNear = Fixed::fromInt(6);
 constexpr int32_t kSparkFoes = 2;
+// A dwarf or a wizard gives ground before a foe this near, to behind a fighting friend within kShyCover (kShyBehind
+// beyond him); a foe within kShyCaught has him, and he fights.
+constexpr Fixed kShyReach = Fixed::fromInt(10);
+constexpr Fixed kShyCover = Fixed::fromInt(30);
+constexpr Fixed kShyBehind = Fixed::fromInt(6);
+constexpr Fixed kShyCaught = Fixed::fromRatio(3, 2);
 // What a satchel's blast takes from the morale of those left standing within twice its reach.
 constexpr int32_t kBlastShock = 150;
 
@@ -230,6 +236,46 @@ bool World::worthAShot(const Unit& u, const Unit& target) const {
         worth += o.stats.maxHp >= kThriftGreatHp ? kThriftCluster : 1;
     });
     return worth >= kThriftCluster;
+}
+
+bool World::shyAway(Unit& u) {
+    u.menacedBy = kNoEntity;
+    if (u.hold || u.stationed || u.inAir()) return false;
+    // The nearest foe on the ground coming at him (ascending place, the first of equals).
+    const Unit* foe = nullptr;
+    Fixed best = kShyReach * kShyReach;
+    nearbyNotOf(u.owner, u.pos.x, u.pos.y, kShyReach, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (!o.alive() || o.owner == u.owner || o.inAir() || o.routed || o.stats.melee.damage <= 0) return;
+        const Fixed d = (o.pos - u.pos).flat().lengthSq();
+        if (d < best || (d == best && foe != nullptr && o.id < foe->id)) {
+            best = d;
+            foe = &o;
+        }
+    });
+    if (foe == nullptr) return false;
+    u.menacedBy = foe->id;
+    const Fixed gap = sqrt(best) - u.stats.radius - foe->stats.radius;
+    if (gap <= kShyCaught) return false;  // caught: he fights
+    // Behind the nearest of his side who fights hand to hand; none near: straight away.
+    const Unit* cover = nullptr;
+    Fixed nearest = kShyCover * kShyCover;
+    nearby(u.pos.x, u.pos.y, kShyCover, [&](uint32_t i) {
+        const Unit& o = units_[i];
+        if (!o.alive() || o.owner != u.owner || o.id == u.id || o.routed || o.inAir() || precious(o.stats)) return;
+        if (o.stats.melee.damage <= 0 || o.stats.ranged.muzzleSpeed > Fixed::zero()) return;
+        const Fixed d = (o.pos - u.pos).flat().lengthSq();
+        if (d < nearest || (d == nearest && cover != nullptr && o.id < cover->id)) {
+            nearest = d;
+            cover = &o;
+        }
+    });
+    const Vec3 away = flatDir(foe->pos, u.pos, -u.facing);
+    Vec3 to = cover != nullptr ? cover->pos + flatDir(foe->pos, cover->pos, away) * kShyBehind : u.pos + away * kShyBehind;
+    if (!standable(to) || douses(to)) to = u.pos + away * kShyBehind;
+    if (!standable(to) || (to - u.pos).flat().lengthSq() < Fixed::one()) return false;
+    walk(u, to);
+    return true;
 }
 
 void World::blastShock(const Vec3& at, const Explosive& ex) {

@@ -52,8 +52,9 @@ TEST(unit_sheet_is_locked) {
         w.spawnUnit(0, {}, kEast, unitStats(static_cast<UnitType>(t)));
         h.addU64(w.checksum());
     }
-    // (was 0xf46df2f1066b8a8e before the balance pass: giants 3.0 m/s, undead 1.8, catapults 1.4, wizard and dragon fireballs, docs/BALANCE.md)
-    constexpr uint64_t kSheet = 0xc0ea5f002036ab67;
+    // (was 0xc0ea5f002036ab67 before explosives became rare and counted: one dwarf of 110 hp at 1.6 m/s with 6 Molotovs and 5 satchels
+    // of 5 m and 150, one wizard of 40 hp with 4 fireballs of 4.5 m and 90, a dragon's 6 breaths, a catapult's 16 stones, docs/BALANCE.md)
+    constexpr uint64_t kSheet = 0xd0bd2f594c9f87da;
     if (h.value() != kSheet) std::printf("  unit sheet checksum: 0x%016llx\n", static_cast<unsigned long long>(h.value()));
     CHECK(h.value() == kSheet);
 }

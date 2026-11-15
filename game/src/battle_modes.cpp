@@ -270,10 +270,11 @@ sim::EntityId Battle::pickFoe(sim::PlayerId owner, const V3& around, float reach
         else
             switch (roleOf(static_cast<UnitType>(u.stats.type))) {
                 case Role::Healer: f = 0.45f; break;
-                case Role::Caster: f = 0.5f; break;
+                // The one dwarf, the one wizard: the foe's whole blast. Horse ride for them before anyone.
+                case Role::Caster:
+                case Role::Bomber: f = 0.3f; break;
                 case Role::Siege: f = 0.5f; break;
-                case Role::Ranged:
-                case Role::Bomber: f = 0.55f; break;
+                case Role::Ranged: f = 0.55f; break;
                 default: break;
             }
         if (!mounted) f = (1.0f + f) * 0.5f;
@@ -497,6 +498,8 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
             }
         }
     }
+    // The dwarf and the wizard are kept, not spent (battle_satchels.cpp): out of a foe's way, at their mining, behind the foot.
+    if (aiPrecious(squad, goal)) return;
     const sim::EntityId foe = pickFoe(s.owner, around, reach, stats.mounted);
     if (foe == sim::kNoEntity) {
         go(goal);
@@ -524,7 +527,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         }
     }
     V3 flank;
-    const bool covered = smart && (role == Role::Ranged || role == Role::Caster || s.type == UnitType::Hero);
+    const bool covered = (smart && (role == Role::Ranged || s.type == UnitType::Hero)) || role == Role::Caster || role == Role::Bomber;
     float front = 0;
     if (covered && footFront(s.owner, s, fdir, front)) {
         // Behind the foot: the archers and the lord never stand ahead of it.
@@ -553,7 +556,7 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
         // A good bowshot off, then they shoot on their own.
         const float keep = range * 0.8f;
         if (dist > keep) aiSteer(squad, c + (fp - c) * ((dist - keep + 4) / dist));
-        else if (role != Role::Bomber) aiHalt(squad);  // (grenadiers in range lay satchels and step back from them: no halt)
+        else if (role != Role::Bomber) aiHalt(squad);  // (a grenadier in range lays a satchel and steps back from it: no halt)
     } else if (dist < 30.0f) {
         aiAttack(squad, foe);
     } else {

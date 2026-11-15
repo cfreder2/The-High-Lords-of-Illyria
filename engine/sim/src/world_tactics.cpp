@@ -111,9 +111,11 @@ Unit* World::supportFoe(Unit& u) {
         Fixed best = kSupportLeash * kSupportLeash;
         nearby(u.pos.x, u.pos.y, kSupportReach, [&](uint32_t i) {
             const Unit& o = units_[i];
-            if (o.owner != u.owner || o.id == u.id || !o.alive() || o.routed || o.foe == kNoEntity) return;
+            // (A dwarf or a wizard with a foe closing on him is a friend to go to, though he strikes no blow: World::shyAway.)
+            const EntityId against = o.foe != kNoEntity ? o.foe : o.menacedBy;
+            if (o.owner != u.owner || o.id == u.id || !o.alive() || o.routed || against == kNoEntity) return;
             if ((o.pos - u.pos).flat().lengthSq() > kSupportReach * kSupportReach) return;
-            const Unit* f = findUnit(o.foe);
+            const Unit* f = findUnit(against);
             if (f == nullptr || !f->alive() || f->inAir() || f->owner == u.owner || f->fleeing()) return;
             const Fixed d = (f->pos - u.pos).flat().lengthSq();
             if (d < best || (d == best && f->id < u.support)) {

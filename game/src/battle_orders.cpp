@@ -53,9 +53,13 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::AttackGround:
                 case sim::Command::Type::AttackGate:
                 case sim::Command::Type::AttackObject:
+                case sim::Command::Type::Detonate:
                 case sim::Command::Type::LaySatchel: c.queue = true; break;
                 case sim::Command::Type::Stop:
                 case sim::Command::Type::Raid:
+                case sim::Command::Type::SetStance:
+                case sim::Command::Type::HoldFire:
+                case sim::Command::Type::Rally:
                 case sim::Command::Type::SetGate: break;
             }
         }
@@ -204,11 +208,18 @@ void Battle::orderLaySatchels(const V3& at) {
         say("No satchels to lay");
         return;
     }
-    // Three abreast, three metres apart, a row behind for each three more.
+    // One each: the first where the tap is, the others abreast of it, a little under a blast apart (so one spark takes them all).
+    bool wet = false;
     for (size_t k = 0; k < layers.size(); ++k) {
-        const V3 spot = at + V3{(static_cast<float>(k % 3) - 1.0f) * 3.0f, static_cast<float>(k / 3) * 3.0f, 0};
+        const float step = static_cast<float>((k + 1) / 2) * (k % 2 ? 4.0f : -4.0f);
+        const V3 spot = at + V3{step, 0, 0};
+        if (world_->douses(toSim(spot))) {
+            wet = true;  // water: a satchel there is dead, and none is laid
+            continue;
+        }
         issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
     }
+    if (wet) say("Not in water: a satchel there is dead");
     markOrdered(layers);
     voice_.order(Situation::Attack, *world_, layers);
 }
@@ -239,6 +250,15 @@ bool Battle::orderRaid() {
     markOrdered(raiders);
     voice_.order(Situation::Attack, *world_, raiders);
     return true;
+}
+
+void Battle::detonateAction() {
+    if (orderMode_ == OrderMode::Detonate) {
+        orderMode_ = OrderMode::Normal;  // pressed again: let go
+        return;
+    }
+    if (selectionSparks()) orderMode_ = OrderMode::Detonate;
+    else say("Select a grenadier or a wizard to detonate");
 }
 
 void Battle::specialAction() {
@@ -455,7 +475,11 @@ Battle::Intent Battle::intentAt(const Camera& camera, float x, float y, float pi
     if (selectionSize() == 0) return p.kind == Pick::Kind::Own ? Intent::Select : Intent::None;
     using K = Pick::Kind;
     if (mode == OrderMode::ForceMarch) return p.kind == K::None ? Intent::None : Intent::ForceMarch;
-    if (mode == OrderMode::LaySatchel) return p.kind == K::None ? Intent::None : Intent::AttackGround;
+    if (mode == OrderMode::LaySatchel) {
+        if (p.kind == K::None) return Intent::None;
+        return p.kind == K::Ground && world_->douses(toSim(p.at)) ? Intent::Cannot : Intent::AttackGround;  // (not in water)
+    }
+    if (mode == OrderMode::Detonate) return p.kind == K::None ? Intent::None : Intent::AttackGround;
     if (mode == OrderMode::Attack) {
         switch (p.kind) {
             case K::Own:

@@ -47,6 +47,7 @@ constexpr int kPurseCount = sizeof kPurses / sizeof kPurses[0];
 // What a press on the open town's screen is (Hud::click): from kTownAct up, the option's number, or one of these.
 constexpr int kAfterBattle = 3000;  // + Hud::After
 constexpr int kRallyHit = -3000;  // the Rally button over the cards
+constexpr int kLayHit = -3001, kDetonateHit = -3002, kHoldFireHit = -3003;  // the trap's buttons beside it
 constexpr int kTownAct = 7000, kTownStop = 7100, kTownSend = 7101, kTownKeep = 7102, kTownClose = 7103, kTownBoat = 7104, kTownSwallow = 7105;
 static_assert(kContinue == 2, "Hud::startSaved");
 
@@ -247,7 +248,7 @@ void Hud::skirmishOpen() {
     if (offers_.empty()) {
         Json list;
         Json::parse(illyria_skirmish_offers(), list);
-        for (const Json& j : list.items) offers_.push_back({static_cast<int>(j.num("type")), j.str("name"), static_cast<int>(j.num("price")), static_cast<int>(j.num("men"))});
+        for (const Json& j : list.items) offers_.push_back({static_cast<int>(j.num("type")), j.str("name"), static_cast<int>(j.num("price")), static_cast<int>(j.num("men")), static_cast<int>(j.num("cap"))});
         bought_.assign(offers_.size(), 0);
     }
     skirmishPage_ = true;
@@ -286,7 +287,7 @@ void Hud::skirmishStep(int row, int by) {
         hard_ = !hard_;
     } else if (row < 4 + units) {
         const size_t i = static_cast<size_t>(row - 4);
-        if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_]) ++bought_[i];
+        if (by > 0 && skirmishSpent() + offers_[i].price <= kPurses[skGold_] && (offers_[i].cap == 0 || bought_[i] < offers_[i].cap)) ++bought_[i];
         else if (by < 0 && bought_[i] > 0) --bought_[i];
     }
 }
@@ -390,6 +391,12 @@ bool Hud::click(float x, float y, bool left) {
             return true;
         } else if (r.what == -2000 || r.what == -2001) {  // the page arrows of a long strip of cards
             cardPage_ = std::clamp(cardPage_ + (r.what == -2000 ? -1 : 1), 0, std::max(0, cardPages_ - 1));
+        } else if (r.what == kLayHit) {
+            illyria_special();
+        } else if (r.what == kDetonateHit) {
+            illyria_detonate();
+        } else if (r.what == kHoldFireHit) {
+            illyria_hold_fire();
         } else if (r.what == kRallyHit) {
             illyria_rally();
         } else if (r.what <= -1 && r.what > -1000) {
@@ -553,7 +560,7 @@ void Hud::drawSkirmish(Overlay& o, float w, float h) {
         else if (r < 4 + units) {
             const Offer& of = offers_[static_cast<size_t>(r - 4)];
             label = of.name;
-            info = std::to_string(of.men) + " men, " + std::to_string(of.price) + " gold";
+            info = std::to_string(of.men) + (of.men == 1 ? " man, " : " men, ") + std::to_string(of.price) + " gold" + (of.cap > 0 ? ", " + std::to_string(of.cap) + " at most" : "");
             value = std::to_string(bought_[static_cast<size_t>(r - 4)]);
         } else label = r == 4 + units ? "Start the battle" : "Back";
         const bool on = r == skRow_;
@@ -1262,6 +1269,22 @@ void Hud::draw(Overlay& o, float w, float h) {
         }
         const double total = std::max(1.0, q.num("total"));
         o.rect(x + 6, y + ch - 14, (cw - 12) * static_cast<float>(q.num("alive") / total), 5, q.num("broken") ? kRed : side);
+        // What it still carries, as pips over the bar: satchels (squares), then the missiles of its store (bars); spent ones dim.
+        {
+            const int sat = static_cast<int>(q.num("sat")), satMax = static_cast<int>(q.num("satMax"));
+            const int ammo = static_cast<int>(q.num("ammo")), ammoMax = static_cast<int>(q.num("ammoMax"));
+            if (satMax + ammoMax > 0 && satMax + ammoMax <= 24) {
+                float px = x + 6;
+                const float py = y + ch - 24;
+                for (int k = 0; k < satMax; ++k, px += 8) o.rect(px, py, 6, 6, k < sat ? rgba(0xE0A030) : rgba(0x4A4032));
+                if (satMax > 0) px += 4;
+                for (int k = 0; k < ammoMax; ++k, px += 5) o.rect(px, py, 3, 6, k < ammo ? rgba(0xFF6030) : rgba(0x4A3A32));
+                if (q.flag("holdFire")) o.text(px + 4, py - 3, "HELD", kGold, 9);
+            } else if (ammoMax > 24) {
+                std::snprintf(buf, sizeof buf, "%d shots", ammo);
+                o.text(x + 6, y + ch - 27, buf, ammo ? kDim : kRed, 9);
+            }
+        }
         hits_.push_back({x, y, cw, ch, -1 - i});
         // What its kind is for, over the card, the first time the kind is picked (illyria_hud: tip).
         if (const std::string tip = hud.str("tip"); sq && !tip.empty() && !tipDrawn) {
@@ -1301,6 +1324,35 @@ void Hud::draw(Overlay& o, float w, float h) {
         o.frame(bx, by, bw, 22, ready ? 2.0f : 1.0f, ready ? rgba(0xFFFFFF) : rgba(0x7C6E50));
         o.text(bx + 10, by + 4, buf, ready ? rgba(0xFFFFFF) : kDim, 13);
         hits_.push_back({bx, by, bw, 22, kRallyHit});
+    }
+
+    // The trap's buttons over the cards, left of the Rally: shown with a man selected who lays, sparks or carries a store.
+    if (squadCards && sel > 0 && (hud.flag("lays") || hud.flag("sparks") || hud.flag("stores"))) {
+        const int mode = static_cast<int>(hud.num("mode"));
+        struct Btn {
+            const char* label;
+            int hit;
+            bool show, lit;
+        };
+        const Btn btns[] = {{"Lay satchel (T)", kLayHit, hud.flag("lays"), mode == 3},
+                            {"Detonate (L)", kDetonateHit, hud.flag("sparks"), mode == 4},
+                            {hud.flag("holdFire") ? "Holding fire (Shift+K)" : "Hold fire (Shift+K)", kHoldFireHit, hud.flag("stores"), hud.flag("holdFire")}};
+        float bx = std::max(selEnd + 12, 8.0f);
+        const float by = cardsTop - 28;
+        for (const Btn& b : btns) {
+            if (!b.show) continue;
+            const float bw = o.width(b.label, 13) + 20;
+            o.rect(bx, by, bw, 22, rgba(0x0E0B08, 220));
+            o.frame(bx, by, bw, 22, b.lit ? 2.0f : 1.0f, b.lit ? kGold : rgba(0x7C6E50));
+            o.text(bx + 10, by + 4, b.label, b.lit ? kGold : kInk, 13);
+            hits_.push_back({bx, by, bw, 22, b.hit});
+            bx += bw + 6;
+        }
+        if (mode == 3 || mode == 4) {
+            const char* what = mode == 3 ? "Click where to lay it. Shift+click: a line. Not in water." : "Click the satchel to set off. It fires at once: friends in the red ring die.";
+            o.rect(bx + 6, by, o.width(what, 13) + 16, 22, rgba(0x000000, 190));
+            o.text(bx + 14, by + 4, what, kGold, 13);
+        }
     }
 
     drawMinimap(o, w, h);

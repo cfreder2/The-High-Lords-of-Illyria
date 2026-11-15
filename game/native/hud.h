@@ -92,6 +92,7 @@ private:
         int type;
         std::string name;
         int price, men;
+        int cap = 0;  // the most squads of it an army may have (0: no limit)
     };
     std::vector<Offer> offers_;  // what a skirmish may buy (the engine's list, read on first opening)
     std::vector<int> bought_;    // squads of each offer bought

@@ -8,6 +8,8 @@
 #include <memory>
 #include <vector>
 
+#include "conquest_orders.h"
+#include "illyria/sim/conquest.h"
 #include "illyria/sim/region.h"
 
 #include "illyria/sim/units.h"
@@ -540,4 +542,103 @@ TEST(no_bottle_is_thrown_at_men_in_the_ford_of_his_own_accord) {
     std::printf("  at four men in the ford / on dry ground: Molotovs %d / %d, fireballs %d / %d\n", dwarfWet, dwarfDry, wizardWet, wizardDry);
     CHECK(dwarfWet == 0 && dwarfDry >= 1);
     CHECK(wizardWet == 0 && wizardDry >= 1);
+}
+
+// --- Precious: kept out of the melee, guarded, hunted, and few --------------------------------------------------
+
+TEST(a_dwarf_gives_ground_behind_the_foot_and_the_foot_comes_to_him) {
+    // A dwarf with nothing left to throw, a swordsman of his side 8 m behind him, one foe coming for him. Left to himself
+    // he gives ground toward the swordsman, who comes to the foe (and has him before the dwarf has gone far); told to
+    // hold, he stands where he is.
+    const auto run = [](bool hold, Fixed& dwarfX, bool& friendFought, bool& lives) {
+        World w(WorldConfig{});
+        const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::DwarfGrenadier));
+        w.restoreLoad(g, 0, 0);
+        const EntityId guard = w.spawnUnit(0, {m(-8), m(0), m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
+        const EntityId foe = w.spawnUnit(1, {m(22), m(0), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+        std::vector<Command> cmds;
+        Command hunt{1, foe, Command::Type::AttackUnit, {}};
+        hunt.targetUnit = g;
+        cmds.push_back(hunt);
+        if (hold) {
+            Command stand{0, g, Command::Type::SetStance, {}};
+            stand.hold = true;
+            cmds.push_back(stand);
+        }
+        w.step(cmds);
+        friendFought = false;
+        Fixed least = m(100);
+        for (int i = 0; i < 12 * kTicksPerSecond; ++i) {
+            w.step({});
+            friendFought = friendFought || w.findUnit(guard)->engaged || w.findUnit(guard)->foe == foe;
+            least = min(least, w.findUnit(g)->pos.x);
+        }
+        dwarfX = least;
+        lives = w.findUnit(g)->alive();
+    };
+    Fixed shyX, heldX;
+    bool shyFought = false, heldFought = false, shyLives = false, heldLives = false;
+    run(false, shyX, shyFought, shyLives);
+    run(true, heldX, heldFought, heldLives);
+    std::printf("  left to himself he gave ground to x = %.1f (the guard at -8) and %s; told to hold he stood at %.1f\n", shyX.toDouble(), shyLives ? "lives" : "died",
+                heldX.toDouble());
+    CHECK(shyX < m(-2));   // back toward the swordsman
+    CHECK(shyFought);      // who came to the foe
+    CHECK(shyLives);
+    CHECK(heldX > m(-1));  // a man told to hold keeps his place
+}
+
+TEST(bowmen_shoot_the_foes_dwarf_before_his_line) {
+    // The foe's line 30 m off, his dwarf farther (42 m) and out to one side of it, where no body stands between. (Straight
+    // behind the line he is covered: an arrow strikes the first man in its way.)
+    World w(WorldConfig{});
+    for (int k = 0; k < 6; ++k) w.spawnUnit(0, {m(0), m(k * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers));
+    std::vector<EntityId> line;
+    for (int k = 0; k < 6; ++k) line.push_back(w.spawnUnit(1, {m(30), m(k * 2 - 5), m(0)}, kWest, post()));
+    UnitStats idle = dummy(UnitType::DwarfGrenadier);
+    idle.satchels = unitStats(UnitType::DwarfGrenadier).satchels;  // (still a dwarf to the eye; he lays nothing: his load is taken)
+    idle.moraleShockPct = 0;
+    const EntityId g = w.spawnUnit(1, {m(38), m(18), m(0)}, kWest, idle);
+    w.restoreLoad(g, 0, 0);
+    int dwarfDied = -1;
+    for (int i = 0; i < 40 * kTicksPerSecond && dwarfDied < 0; ++i) {
+        w.step({});
+        if (!w.findUnit(g)->alive()) dwarfDied = i;
+    }
+    int lineHurt = 0;
+    for (EntityId id : line) lineHurt += 5000 - w.findUnit(id)->hp;
+    std::printf("  six bowmen: the dwarf beyond his line dead at %.1f s; the line had taken %d hp by then\n", dwarfDied / 30.0, lineHurt);
+    CHECK(dwarfDied >= 0);
+    CHECK(lineHurt < 110);  // less than what killed him: the arrows went at the dwarf
+}
+
+TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
+    CHECK(Conquest::squadSize(UnitType::DwarfGrenadier) == 1);
+    CHECK(Conquest::squadSize(UnitType::Wizards) == 1);
+    CHECK(Conquest::squadSize(UnitType::Dragons) == 1);
+    CHECK(Conquest::keepCap(UnitType::DwarfGrenadier) == 2);
+    CHECK(Conquest::keepCap(UnitType::Wizards) == 1 && Conquest::keepCap(UnitType::Dragons) == 1);
+    CHECK(Conquest::keepCap(UnitType::Catapult) == 3);
+    CHECK(Conquest::keepCap(UnitType::LightInfantry) == 0);
+    // One dwarf costs as much as three squads of heavy foot and more, and takes the longest of all to train.
+    CHECK(Conquest::price(UnitType::DwarfGrenadier) >= 3 * Conquest::price(UnitType::HeavyInfantry));
+    CHECK(Conquest::price(UnitType::Wizards) > Conquest::price(UnitType::DwarfGrenadier));
+    CHECK(!Conquest::trainable(UnitType::Wizards));
+    // The Moonward Order begins with its one wizard, and is at its cap; no other realm has one.
+    static const Continent continent(20261027);
+    Conquest c(continent, 1);
+    for (uint8_t side = 0; side < 8; ++side) {
+        CHECK(c.kept(side, UnitType::Wizards) == (side == 6 ? 1 : 0));
+        CHECK(c.kept(side, UnitType::DwarfGrenadier) <= Conquest::keepCap(UnitType::DwarfGrenadier));
+    }
+    CHECK(c.atCap(6, UnitType::Wizards));
+    for (const Conquest::Stack& s : c.stacks())
+        for (const Army& a : s.armies)
+            if (a.type == UnitType::Wizards || a.type == UnitType::DwarfGrenadier) CHECK(a.men.size() == 1);
+    // Ironhold may set a grenadier training (none kept yet); a city of a realm at its cap may not begin another.
+    for (size_t i = 0; i < c.cities().size(); ++i) {
+        if (c.cities()[i].owner != 2) continue;
+        for (size_t o = 0; o < c.cities()[i].options.size(); ++o)
+            if (c.cities()[i].options[o].type == UnitType::DwarfGrenadier) CHECK(ConquestOrders::produce(c, static_cast<int32_t>(i), static_cast<int32_t>(o)));
+    }
 }

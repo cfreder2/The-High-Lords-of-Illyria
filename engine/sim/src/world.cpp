@@ -1515,6 +1515,8 @@ void World::updateUnit(Unit& u) {
         // Fire on a satchel lying among the enemy, before any one man, and before another is laid.
     } else if (u.satchels > 0 && !u.holdFire && layInPath(u)) {
         // The enemy coming: a satchel in their path, then back from it (world_satchels.cpp).
+    } else if (precious(u.stats) && shyAway(u)) {
+        // A foe closing on a dwarf or a wizard: behind the foot, not into the melee.
     } else if (tryHeal(u)) {
         // Healing a wounded friend takes priority over fighting.
     } else if (Unit* sortie = escortFoe(u)) {
@@ -2777,6 +2779,7 @@ uint64_t World::checksum() const {
         }
         if (u.stats.ranged.ammo > 0) h.addI64(u.ammo);
         if (u.holdFire || u.detonate) h.addU64(static_cast<uint64_t>(u.holdFire) | (static_cast<uint64_t>(u.detonate) << 1));
+        if (u.menacedBy != kNoEntity) h.addU64(u.menacedBy);
         // Only while a blast thrower is waiting on a friend in his way.
         if (u.aoeHeld != 0) {
             h.addI64(u.aoeHeld);

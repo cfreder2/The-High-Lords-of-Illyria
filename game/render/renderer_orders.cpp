@@ -87,6 +87,27 @@ void pushRangeRings(const Battle& battle, float seconds, std::vector<float>& dec
     }
 }
 
+// The charges the viewer's side has laid (Battle::satchelMarks): a mark on each and a ring of dots as wide as its blast, amber;
+// red, and pulsing, with a friend standing inside; grey for one lying dead in water.
+void pushSatchelMarks(const Battle& battle, float seconds, std::vector<float>& decals) {
+    constexpr float kAmber[3] = {1.0f, 0.72f, 0.2f}, kDanger[3] = {1.0f, 0.15f, 0.1f}, kDead[3] = {0.55f, 0.6f, 0.65f};
+    for (const Battle::SatchelMark& m : battle.satchelMarks()) {
+        const float* c = m.dead ? kDead : m.friends > 0 ? kDanger : kAmber;
+        const float pulse = m.friends > 0 && !m.dead ? 1.0f + 0.25f * std::sin(seconds * 9.0f) : 1.0f;
+        V3 at = m.pos;
+        at.z = battle.floorAt(at);
+        decals.insert(decals.end(), {at.x, at.y, at.z, 0, 0.7f * pulse, 0, kDecalRing, c[0], c[1], c[2], 0});
+        if (m.dead) continue;
+        const int dots = std::max(16, static_cast<int>(6.2831853f * m.radius / 1.2f));
+        for (int i = 0; i < dots; ++i) {
+            const float a = 6.2831853f * (static_cast<float>(i) + 0.3f * seconds) / static_cast<float>(dots);
+            V3 p{m.pos.x + std::cos(a) * m.radius, m.pos.y + std::sin(a) * m.radius, 0};
+            p.z = battle.floorAt(p);
+            decals.insert(decals.end(), {p.x, p.y, p.z, 0, 0.16f * pulse, 0, kDecalDot, c[0], c[1], c[2], 0});
+        }
+    }
+}
+
 // --- Paths --------------------------------------------------------------------------------------------------------
 // Three line languages, apart by shape as well as colour (for the colour-blind): a patrol (he fights what he meets)
 // is a dashed line with chevrons ending in an open ring; a hunt (he ignores all but his quarry) a solid line with

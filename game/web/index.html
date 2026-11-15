@@ -537,6 +537,8 @@
       gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
+      detonate: Module.cwrap("illyria_detonate", null, []),
+      holdFire: Module.cwrap("illyria_hold_fire", null, []),
       charge: Module.cwrap("illyria_charge", null, []),
       formation: Module.cwrap("illyria_cycle_formation", null, []),
       setFormation: Module.cwrap("illyria_set_formation", null, ["number"]),
@@ -1116,9 +1118,10 @@
       case "KeyV": setMode(orderMode === 2 ? 0 : 2); break;
       case "KeyM": toggleMinimap(); break;  // the map in the corner, kept on this device
       case "KeyI": gfx.showPerf = !gfx.showPerf; applyGraphics(); break;  // the developer line: frame rate and where the frame went
-      case "KeyT": case "KeyL": api.special(); break;
+      case "KeyT": api.special(); break;    // a grenadier's next click lays a satchel (Shift+click: a line); the hyena-folk raid
+      case "KeyL": api.detonate(); break;   // the next click is the satchel to set off
       case "KeyB": api.stop(); break;
-      case "KeyK": api.hold(); break;      // Hold: keep their place (again: back to support)
+      case "KeyK": if (e.shiftKey) api.holdFire(); else api.hold(); break;  // Hold: keep their place (again: back to support); with Shift, hold fire
       case "KeyY": api.rally(); break;     // the lord's Rally
       case "KeyJ": api.nextIdle(); break;  // the next squad standing idle
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go

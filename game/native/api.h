@@ -65,6 +65,8 @@ int illyria_rally();
 int illyria_next_idle();
 void illyria_gate(int release);
 void illyria_special();
+void illyria_detonate();
+void illyria_hold_fire();
 void illyria_toggle_pause();
 void illyria_cycle_speed();
 void illyria_set_pace(float pace);
