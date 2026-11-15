@@ -11,6 +11,7 @@
 
 #include "api.h"
 #include "assets.h"
+#include "audio.h"
 #include "illyria/game/card_layout.h"
 #include "illyria/game/card_name.h"
 #include "illyria/game/palette.h"
@@ -31,6 +32,12 @@ constexpr Lord kLords[8] = {
 };
 
 enum Row { kConquest, kSkirmish, kContinue, kQuit, kRows };
+// Under the menu's rows, the Sound block's four: Up / Down reach them, Left / Right (or a press on - / +) turn one by a tenth.
+constexpr int kSoundRows = 4, kMenuRows = kRows + kSoundRows;
+constexpr int kVolumeStep = 500, kVolumeRow = 520;  // hits: kVolumeStep + 2 row (less), + 1 (more); kVolumeRow + row (focus)
+constexpr const char* kVolumeName[kSoundRows] = {"Master", "Effects", "Voices", "Ambience"};
+constexpr const char* kVolumeKey[kSoundRows] = {"vol_master", "vol_sfx", "vol_voice", "vol_ambience"};
+int tenths(int row) { return static_cast<int>(std::lround(audio::volume(static_cast<audio::Bus>(row)) * 10)); }
 
 // The Skirmish screen's maps (the engine's scenario numbers) and purses.
 struct SkirmishMap {
@@ -89,6 +96,7 @@ void Hud::openMenu() {
     if (menu_) return;
     menu_ = true;
     help_ = false;
+    audio::uiCue("snd_ui_page_turn");
     if (playing_ && !gamePaused()) {
         togglePause();
         heldByMenu_ = true;
@@ -123,6 +131,10 @@ void Hud::setSettingsFile(std::string path) {
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
         const std::string key = line.substr(0, eq), value = line.substr(eq + 1);
+        bool volume = false;
+        for (int i = 0; i < kSoundRows; ++i)
+            if (key == kVolumeKey[i]) audio::setVolume(static_cast<audio::Bus>(i), static_cast<float>(std::atof(value.c_str()))), volume = true;
+        if (volume) continue;
         if (key == "minimap") minimapOn_ = value != "0";
         else if (key == "hint") hintSeen_ = value != "0";
         else if (key == "colour") {
@@ -145,6 +157,19 @@ void Hud::saveSettings() const {
     f << "minimap=" << (minimapOn_ ? 1 : 0) << "\n";
     f << "hint=" << (hintSeen_ ? 1 : 0) << "\n";
     if (colour_ >= 0) f << "colour=" << illyria::game::palette::hex(illyria::game::palette::swatch(colour_).rgb) << "\n";
+    for (int i = 0; i < kSoundRows; ++i) f << kVolumeKey[i] << "=" << tenths(i) / 10.0 << "\n";
+}
+
+// A volume of the Sound block a tenth up or down, kept at once.
+void Hud::volumeStep(int row, int by) {
+    if (row < 0 || row >= kSoundRows) return;
+    audio::setVolume(static_cast<audio::Bus>(row), static_cast<float>(std::clamp(tenths(row) + by, 0, 10)) / 10.0f);
+    saveSettings();
+}
+
+void Hud::toggleHelp() {
+    help_ = !help_;
+    if (help_) audio::uiCue("snd_ui_page_turn");
 }
 
 std::string Hud::chosenColour() const {
@@ -324,12 +349,14 @@ void Hud::skirmishKey(Key k) {
 
 void Hud::menuKey(Key k) {
     if (!menu_) return;
+    if (k != Key::Back || playing_ || skirmishPage_) audio::uiCue("snd_ui_click");
     if (skirmishPage_) return skirmishKey(k);
+    const bool sound = row_ >= kRows;  // on a row of the Sound block: left / right turn it
     switch (k) {
-        case Key::Up: row_ = (row_ + kRows - 1) % kRows; break;
-        case Key::Down: row_ = (row_ + 1) % kRows; break;
-        case Key::Left: lord_ = (lord_ + 7) % 8; foes_ &= ~(1 << lord_); break;
-        case Key::Right: lord_ = (lord_ + 1) % 8; foes_ &= ~(1 << lord_); break;
+        case Key::Up: row_ = (row_ + kMenuRows - 1) % kMenuRows; break;
+        case Key::Down: row_ = (row_ + 1) % kMenuRows; break;
+        case Key::Left: if (sound) volumeStep(row_ - kRows, -1); else lord_ = (lord_ + 7) % 8, foes_ &= ~(1 << lord_); break;
+        case Key::Right: if (sound) volumeStep(row_ - kRows, 1); else lord_ = (lord_ + 1) % 8, foes_ &= ~(1 << lord_); break;
         case Key::Enter: activate(row_); break;
         case Key::Back: if (playing_) closeMenu(); break;  // (back to the game, if there is one)
     }
@@ -384,6 +411,11 @@ bool Hud::click(float x, float y, bool left) {
                 const int i = r.what - 400;
                 colour_ = i == lord_ ? -1 : i;
                 saveSettings();
+            } else if (r.what >= kVolumeStep && r.what < kVolumeStep + 2 * kSoundRows) {
+                row_ = kRows + (r.what - kVolumeStep) / 2;
+                volumeStep(row_ - kRows, (r.what - kVolumeStep) % 2 ? 1 : -1);
+            } else if (r.what >= kVolumeRow && r.what < kVolumeRow + kSoundRows) {
+                row_ = kRows + r.what - kVolumeRow;
             }
         } else if (r.what == 2000) {
             lookAt(x, y);
@@ -403,6 +435,7 @@ bool Hud::click(float x, float y, bool left) {
         } else if (r.what >= 1000) {
             illyria_conquest_select(static_cast<unsigned>(r.what - 1000));
         }
+        if (r.what != kTownSwallow) audio::uiCue("snd_ui_click");  // a press the HUD took: a row, a card, a button
         return true;
     }
     return false;
@@ -456,8 +489,9 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
 
     const std::string colourLabel = "Your colour (C, or click):";
     const float colourSize = fit(o, colourLabel, 13, inner);
-    constexpr float kSwatch = 24;
-    const float ph = kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 + colourSize + 8 + kSwatch + 14 +
+    constexpr float kSwatch = 24, kVolume = 20;
+    const float soundH = 13 + 6 + kVolume * kSoundRows + 8;
+    const float ph = soundH + kPad + titleSize + 8 + 12 + 18 + kRow * kRows + 12 + leadSize + 9 + 4 * kLordRow + 8 + colourSize + 8 + kSwatch + 14 +
                      static_cast<float>(hints.size()) * 16 + (errors.empty() ? 0 : 6 + static_cast<float>(errors.size()) * 17) + kPad - 4;
     const float px = (w - pw) / 2, py = std::max(10.0f, (h - ph) / 2);
     o.paper(px, py, pw, ph, 7);
@@ -514,6 +548,33 @@ void Hud::drawMenu(Overlay& o, float w, float h) {
         }
         y += kSwatch + 14;
     }
+    // The sound: four volumes, each ten pips between a - and a +.
+    o.text(px + kPad, y, "Sound (- / +, or left / right on a row):", kPaperDim, fit(o, "Sound (- / +, or left / right on a row):", 13, inner));
+    y += 13 + 6;
+    for (int i = 0; i < kSoundRows; ++i, y += kVolume) {
+        const bool at = row_ == kRows + i;
+        const int level = tenths(i);
+        if (at) {
+            o.rect(px + 12, y - 2, pw - 24, kVolume, rgba(0xB89A5A, 120));
+            o.frame(px + 12, y - 2, pw - 24, kVolume, 1.5f, kSeal);
+        }
+        o.text(px + kPad, y + 1, kVolumeName[i], at ? kSeal : kPaperInk, 13);
+        const float pip = std::clamp((inner - 96 - 2 * 24 - 48) / 10, 6.0f, 14.0f);
+        const float less = px + kPad + 96, pips = less + 24, more = pips + pip * 10 + 4;
+        o.frame(less, y, 18, 16, 1.2f, kPaperInk);
+        o.text(less + 6, y + 1, "-", kPaperInk, 13);
+        for (int k = 0; k < 10; ++k) {
+            o.rect(pips + pip * static_cast<float>(k), y + 3, pip - 3, 10, k < level ? kSeal : rgba(0xCDB988));
+            o.frame(pips + pip * static_cast<float>(k), y + 3, pip - 3, 10, 1, kPaperOut);
+        }
+        o.frame(more, y, 18, 16, 1.2f, kPaperInk);
+        o.text(more + 5, y + 1, "+", kPaperInk, 13);
+        o.text(more + 26, y + 1, std::to_string(level * 10) + "%", kPaperDim, 12);
+        hits_.push_back({less - 3, y - 2, 24, kVolume, kVolumeStep + 2 * i});
+        hits_.push_back({more - 3, y - 2, 24, kVolume, kVolumeStep + 2 * i + 1});
+        hits_.push_back({px + 12, y - 2, pw - 24, kVolume, kVolumeRow + i});
+    }
+    y += 8;
     for (size_t i = 0; i < hints.size(); ++i, y += 16) {
         o.text(px + kPad, y, hints[i], kPaperDim, 12);
         if (i < difficultyLines) hits_.push_back({px + kPad, y - 3, inner, 18, 300});
@@ -1308,6 +1369,11 @@ void Hud::draw(Overlay& o, float w, float h) {
     if (conquest && !menu_) {
         if (const Json* city = camp.find("city")) drawTown(o, *city, static_cast<int>(camp.num("gold")), w);
     }
+    // A sheet laid down: the town's screen, the results.
+    const bool townUp = town_ >= 0, resultUp = hud.find("result") != nullptr;
+    if ((townUp && !townWas_) || (resultUp && !resultWas_)) audio::uiCue("snd_ui_page_turn");
+    townWas_ = townUp;
+    resultWas_ = resultUp;
 
     // Looking at a man or gate that is not ours.
     if (const Json* in = hud.find("inspect")) {

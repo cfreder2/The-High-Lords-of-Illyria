@@ -3,7 +3,8 @@
 // The desktop's HUD and start menu, drawn by the shell over the frame (overlay.h) from the same state
 // the page's HUD reads: illyria_hud, illyria_conquest_state, illyria_labels, illyria_drag_box. It is small: the
 // status line, the squad cards, the conquest's banners and the start menu (which lord, which computer
-// lords, skirmish or conquest). The town's screen is here, the settings and the manual are the page's, not here yet.
+// lords, skirmish or conquest) with the sound's four volumes. The town's screen is here; the manual is the page's, not here yet.
+// The HUD's own sounds (a click for a press it takes, a page turned for a sheet laid down) are played from here.
 
 #include <string>
 #include <vector>
@@ -27,7 +28,7 @@ public:
     void startSaved();  // carry on the saved conquest
     bool menuOpen() const { return menu_; }
     bool helpOpen() const { return help_; }
-    void toggleHelp() { help_ = !help_; }
+    void toggleHelp();
 
     // The frame rate and where the frame went, a line top left: a developer's, shown when asked for (I, or --stats).
     void setPerf(std::string line) { perf_ = std::move(line); }
@@ -76,6 +77,7 @@ private:
     void drawResult(Overlay& o, const Json& hud, float w, float h);  // the results sheet, when the fight has stopped
     void lookAt(float x, float y);
     void saveSettings() const;
+    void volumeStep(int row, int by);  // a row of the menu's Sound block (master, effects, voices, ambience), a tenth
     std::string chosenColour() const;  // "#rrggbb" for the engine, "" when each lord keeps his own
     void activate(int row);
     bool loadSave(std::string& text) const;
@@ -120,6 +122,7 @@ private:
     // The first-order hint: shown until the first order is given (kept on the device), fading over the frames after.
     bool hintSeen_ = false;
     int hintFade_ = -1;
+    bool townWas_ = false, resultWas_ = false;  // a sheet that was up last frame (its opening turns a page)
 };
 
 }  // namespace illyria::native

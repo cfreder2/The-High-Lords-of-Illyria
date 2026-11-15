@@ -67,6 +67,7 @@ add_executable(illyria_tests
     test_conquest_nav.cpp
     test_fliers.cpp
     test_underwater.cpp
+    test_audio_mix.cpp
     test_conquest_battle.cpp
     test_paths.cpp
     test_command.cpp

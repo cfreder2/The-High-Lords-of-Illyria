@@ -81,6 +81,7 @@ void usage() {
         "  --skirmish            a skirmish at the Ford at once;  --siege  the siege\n"
         "  --assets DIR          the folder holding sprites/, models/, sfx/\n"
         "  --size WxH, --fullscreen, --no-sound\n"
+        "  --log-cues            a line on stderr for every sound cue, voice cue and ambience change (or ILLYRIA_CUE_LOG=1)\n"
         "  --stats               print the frame rate and its split every two seconds\n"
         "  --profile N           after N frames, hide each kind of drawing in turn and print what it cost (with --novsync)\n"
         "  --trees N|all         draw trees as 0 one card, 1 two crossed cards, 2 three, 3 four (default: the game's);\n"
@@ -122,6 +123,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--size") std::sscanf(next(), "%dx%d", &o.width, &o.height);
         else if (a == "--fullscreen") o.fullscreen = true;
         else if (a == "--no-sound") o.sound = false;
+        else if (a == "--log-cues") illyria::native::audio::setCueLog(true);
         else if (a == "--stats") o.stats = true;
         else if (a == "--novsync") o.vsync = false;
         else if (a == "--trees") o.trees = std::strcmp(next(), "all") == 0 ? kAllTreeStyles : std::atoi(argv[i]);
@@ -318,7 +320,12 @@ void present() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void voiceCue(const char*, const char*, bool, float, float, int, int, int) {}  // (the desktop has no voices yet)
+// (the lines that have a file: recordings and the rendered cries; there is no speech synthesis here)
+void voiceCue(const char* set, const char* situation, bool enemy, float pan, float gain, int priority, int, int) {
+    native::audio::voiceCue(set, situation, enemy, pan, gain, priority);
+}
+void sfxLayer(const char* id, float level, float pan) { native::audio::layer(id, level, pan); }
+void sfxPaused(bool paused) { native::audio::setPaused(paused); }
 void sfxCue(const char* id, float gain, float pan, float dist, float delay, float doppler, int priority, int, int) {
     native::audio::sfxCue(id, gain, pan, dist, delay, doppler, priority);
 }
@@ -357,7 +364,11 @@ int runApp(int argc, char** argv) {
         if (!script.ok()) return 2;
         const size_t slash = opt.play.rfind('/');
         scriptDir = slash == std::string::npos ? "." : opt.play.substr(0, slash);
-        opt.sound = false;
+        // No sound, unless the cue log is asked for: then the mixer runs (so the log is what a player's run would say), into
+        // SDL's dummy driver so the run is still silent (the environment's SDL_AUDIO_DRIVER outranks this hint: name a real
+        // driver there, coreaudio say, to hear the run).
+        if (!native::audio::cueLog()) opt.sound = false;
+        else SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
         SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
     }
 #endif
