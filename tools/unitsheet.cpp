@@ -95,7 +95,9 @@ int main() {
                 "while it does (200 a bottle; a town gate has 2000). Its fire sets off any satchel it reaches: that is how the line\n"
                 "is sprung. Any unit may carry Molotovs (a count, like any store). A bowman with a\n"
                 "**draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it\n"
-                "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload.\n\n"
+                "(to march, to fight hand to hand); while he holds it, the draw comes inside his reload. A bowman aims at the body, leads a\n"
+                "moving man by his pace and the flight (misjudged), and lofts his arrow over his own line; a man going faster than\n"
+                "a march is past before many land square (docs/GAME_DESIGN.md §3.1).\n\n"
                 "**Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's\n"
                 "quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of\n"
                 "his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast\n"
@@ -234,7 +236,11 @@ int main() {
                 "by its speed, a trunk half again), a blade cuts (5 to 14), a head breaks the man it strikes (his morale to\n"
                 "nothing; the dead and heroes never break), and a satchel bursts where it strikes; a shield facing the throw\n"
                 "catches a part or a blade. A burning satchel is taken only with the fuse to throw it on. A soldier with no order\n"
-                "does not chase a scavenger quicker than him; struck by a throw, he turns his shield to the thrower.\n\n");
+                "does not chase a scavenger quicker than him; struck by a throw, he turns his shield to the thrower.\n\n"
+                "The satchel run (`Command::TakeSatchel`, `Command::LightFuse`): ordered to a satchel lying on the ground, a\n"
+                "scavenger takes it up and carries it; any blast or fire reaching him sets it off in his hands (a Molotov's\n"
+                "burning ground too). Ordered to light it, he lights a 5 s fuse and sprints (30%% quicker) at the man shown, deaf to\n"
+                "all else, and it goes off where he is; a lit satchel is never thrown away.\n\n");
     std::printf("| Unit | Sight | Throw speed | Throw range | Darts in to | Spread at 100 m | Wind-up |\n|---|---|---|---|---|---|---|\n");
     for (int t = 0; t < kUnitTypeCount; ++t) {
         if (retired(static_cast<UnitType>(t))) continue;

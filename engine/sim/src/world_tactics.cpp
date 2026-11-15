@@ -154,8 +154,13 @@ Unit* World::supportFoe(Unit& u) {
     Unit* f = mutableUnit(u.support);
     if (f == nullptr || !f->alive() || f->inAir() || f->owner == u.owner || f->fleeing()) return none();
     if ((f->pos - u.pos).flat().lengthSq() > kSupportLeash * kSupportLeash || shutGateBetween(u, f->pos)) return none();
-    // Posted, he keeps his ground: he helps against a foe who is within the leash of it (a bowman shoots from it anyway).
-    if (u.posted && !withinPost(u, *f)) return none();
+    // Posted, he keeps his ground: he helps against a foe who is within the leash of it (a bowman shoots from it anyway),
+    // or against one who has a friend of his in the flank or back this moment (the line closes on a flank attack).
+    if (u.posted && !withinPost(u, *f)) {
+        const Unit* friendly = f->foe != kNoEntity ? findUnit(f->foe) : nullptr;
+        const bool flanked = friendly != nullptr && friendly->owner == u.owner && friendly->flankShock != 0 && tick_ + 1 - friendly->flankShock < kFlankedEvery;
+        if (!flanked) return none();
+    }
     return f;
 }
 

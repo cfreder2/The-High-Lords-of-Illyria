@@ -39,6 +39,8 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Lay a satchel (a grenadier) | **Lay satchel** | [[T]], then click where; [[Shift]] + click again for a line. Not in water |
 | Detonate (a grenadier or a wizard) | **Detonate** | [[L]], then click the satchel: the nearest of them in reach throws at once, friends in the red ring or not |
 | Guard another squad | (none) | [[,]], then click that squad or its card: they ring it and meet what comes, until ordered elsewhere |
+| Take up a satchel (hyena-folk) | (none) | [[;]], then click a satchel lying on the ground: the nearest with empty hands goes and carries it |
+| Light and run (a satchel carrier) | (none) | [[']], then click the man: the fuse is lit (5 s) and he sprints at him. It goes off where he is |
 | Hold fire (again: at will) | **Hold fire** | [[Shift]] + [[K]]: they throw, shoot and lay only when ordered |
 | Cancel a mode | tap the mode's button again | [[Esc]] (with no mode in hand: in the browser it lets the selection go; in the desktop app it pauses and opens the menu) |
 | Pause | **Pause** | [[P]] (the desktop app: [[Esc]] pauses and opens the menu) |
@@ -142,6 +144,8 @@ The hyena-folk are soldiers like any others until you let them loose. Sent somew
 - **They count before they go.** A pack weighs itself against the men about its mark and the bowmen covering the ground it would throw from. A lone hyena takes only a lone archer, healer or wizard; a big pack dares more. They keep out of archers' reach while there is other prey, and never stand up to armoured men in a melee.
 - **Hit and run.** After each throw a hyena runs to one spot well clear, toward where the raid began, and comes again from there.
 - **The raid ends** when you give them any other order, when the pack has lost half its men, or when nothing worth taking has been in sight for 15 seconds. Then they hold where they are.
+
+**The satchel run.** Have a dwarf lay a satchel ([[T]]), then with hyena-folk selected press [[;]] and click it: one goes and takes it up, and the card counts it. March him in among the foe; a Molotov thrown at him (your own dwarf, [[Ctrl]] + click on him) or a fireball sets it off in his hands, and he dies with them. Or press [[']] and click a man: he lights the fuse and sprints at him, and it goes off where he is when it burns down, or where he falls. Alert bowmen at 20 m usually shoot a lone runner down short of them; screen him, or pick bowmen who are busy.
 
 **Against them,** keep your men in hand: a soldier with no orders of his own does not chase the hyena-folk (only riders catch them). He turns to face one who throws at him, and his shield takes the next throw. Guard your archers and healers with heavy infantry facing out, keep stragglers close, and send horse after the pack.
 

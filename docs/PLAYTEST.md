@@ -85,6 +85,9 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `boulder throw X Y TX TY` | throws a boulder as a catapult standing at (X, Y) would at the mark (TX, TY), with no scatter, and prints where it will come down and how far it will roll (`World::stonePath`, the forecast the player is shown). |
 | `boulder count` | prints one line: the demo's men unhurt, hurt and dead; where the last stone thrown lies and how far from where it came down; every gate's strength and place. |
 | `boulder ground X Y` | prints what the ground is at (X, Y), its height, and the heights 10 m each way: for finding a slope, a ford, a road. |
+| `start sandbox [place N]` | the sandbox: an open field of the continent's (place N of the match places; without it the first recommended), a squad of heavy infantry a side in its middle. |
+| `sandbox squad SIDE TYPE N DX DY` | sets down a squad of N of unit type number TYPE (0 light infantry, 1 heavy, 2 archers, 3 pikes, 4 light cavalry, 5 heavy cavalry, 22 grenadiers, 27 hyena-folk: `illyria_sandbox_types`) for SIDE (0 yours) DX, DY metres from the field's middle, facing the nearest foe; prints its card index and where it stands in battle metres (for `camera`). |
+| `sandbox fight SIDE 0\|1` | whether that side fights on its own (the computer's handling); 0: it stands until ordered (its men still shoot and fight what comes). Set pieces: `~/Desktop/orders-pass/scripts`. |
 | `print TEXT` | prints `play: TEXT` to stdout, to mark a place. |
 | `quit` | ends the run. |
 

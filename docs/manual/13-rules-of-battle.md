@@ -6,7 +6,7 @@
 — Torvald Ironhand
 :::
 
-No battle is settled by one roll of the dice. It is decided man by man: an arrow flies until it strikes something; a blow lands on a shield, a flank or a back; a man walks slower uphill than down; and the side whose men are all dead or fled has lost. Chance has two small parts only: whether a shield turns a blow, and where inside its circle a shot is aimed. This chapter is how the field works, with every number.
+No battle is settled by one roll of the dice. It is decided man by man: an arrow flies until it strikes something (over the heads of the bowman's own line, at the body, ahead of a moving man: the faster he goes the more go by him, a galloping horse half or more); a blow lands on a shield, a flank or a back; a man walks slower uphill than down; and the side whose men are all dead or fled has lost. Chance has two small parts only: whether a shield turns a blow, and where inside its circle a shot is aimed. This chapter is how the field works, with every number.
 
 ## Ground and gaits {#terrain}
 
@@ -64,6 +64,8 @@ Every soldier faces a way, and it matters.
 - A blow lands on his **front** (the 120 degrees he faces, which his shield covers), a **flank**, or his **rear** (the 120 degrees behind). A blow in the flank does **half as much again**; one in the rear **twice** as much. A berserker strikes 25 to the front, 37 or 38 to the flank, 50 to the back.
 - Missiles do **+30%** in the flank and **+60%** in the back (an archer's arrow: 16, 20, 25).
 - **Off guard.** A soldier trading blows keeps to his foe while the foe is within reach; anyone else who comes at him then finds him off guard, and a blow in the flank counts as one in the back. Two men on one is murder.
+- **Flanked.** A squad fighting to its front and struck in its flank or back is shaken as one: every man of it within 12 m loses 160 of his nerve (260 for the back; a line half again), once in 3 s. "Flanked" or "Hit from behind" stands over it and the events say whose. It is how a smaller squad beats a bigger one.
+- **Room.** Men of a side keep half a metre between them, so a melee is a line, not a ball. A man takes his place against a foe on his own side of him: the ends of a wider line wrap the enemy's flank, the ranks behind wait and step up as men fall. Each rank at a man's back (two at most) steadies him 15% and adds 10% to his blows, and they push with him: deep holds and pushes, wide envelops.
 - **Turning.** Soldiers turn on the spot at 270 degrees a second; riders, and anything as heavy as a minotaur, at 120. They strike only within 45 degrees of facing their foe. So a man struck from behind loses a blow or two turning round.
 - A blow in the flank or rear also shakes the man struck (chapter [](#morale)).
 
@@ -102,7 +104,7 @@ Every formation is a bargain. It counts only while its men stand together (two s
 | Double line | it holds: shocks to its nerve 30% less | half the front; missiles +15% |
 | Box | no flank and no rear: every blow and charge meets a front, and its pikes are braced on every side | its blows 25% weaker; missiles +40%; it marches at 0.7 pace |
 | Wedge | its blows and its charges 25% harder | struck in the flank or back it takes 30% more, and half as much shock again |
-| Loose | four arrows in ten miss; a blast finds fewer men | its blows 20% weaker; shocks 30% worse |
+| Loose | half the arrows miss; a blast does half its hurt | its blows 20% weaker; shocks 30% worse |
 | Encircle | its blows into a flank or back 25% harder; two arrows in ten miss | shocks 30% worse |
 | V | its blows into a flank or back 25% harder | struck in the front it takes 20% more |
 
@@ -116,11 +118,11 @@ Square when horse is coming and you have no pikes in the way. Loose when arrows 
 
 ## Help, and answers {#calls}
 
-A man with no order does not watch a friend die. Within **40 m** of a friend who is fighting, foot go in beside him, horse ride round to the flank of his foe, bowmen walk to a bowshot of that foe (never into the water) and loose, healers go to the wounded, and pikes turn to face horse coming at the gallop. **Hold** (K) switches all of it off: they keep their place.
+A man with no order does not watch a friend die. Within **40 m** of a friend who is fighting, foot go in beside him, horse ride straight at his foe (round to the flank only when you send them: the full stop), bowmen walk to a bowshot of that foe (never into the water) and loose, healers go to the wounded, and pikes turn to face horse coming at the gallop. **Hold** (K) switches all of it off: they keep their place.
 
 From farther off they must be called. A squad **calls for help** when it is struck in the flank or back, when half its fighting men are outnumbered, when a third of it wavers, when arrows fall on it and it has no answer, or when its lord falls beside it. You hear it, "Help!" stands over it, its card says HELP, a ring beats on the map and the events say why. The nearest squad of yours that is **free** (never ordered, or halted; nobody to fight; not holding) **answers** and goes straight to its friend: foot from within 50 m, bowmen from 60 m, horse from 100 m, each a metre farther for every second the fight has lasted. Its card says ANSWER until it is there. Any order you give it ends the answer.
 
-A squad calls no more than once in 25 s, and your army once in 4 s. Press the **full stop** to send help yourself: the view goes to the latest call and the nearest squad with nothing in hand is sent, and if it is horse it rides round to the **flank** of the foe, which horse left to itself does not do.
+A melee call is answered by foot or horse, bowmen only when none is free (and they go to a bowshot, never into the press); arrows are answered by horse or bowmen. A bowman with a foe near but not on him keeps shooting, steps back from slower foot while he reloads, and, posted, walks up to a bowshot within 20 m of his post. A squad calls no more than once in 25 s, and your army once in 4 s. Press the **full stop** to send help yourself: the view goes to the latest call and the nearest squad with nothing in hand is sent, and if it is horse it rides round to the **flank** of the foe, which horse left to itself does not do.
 
 **Ground you chose is kept.** A squad you march to a place is posted there. It fights what comes within 20 m of its post, helps a neighbour whose foe is that near, and goes back to its place after; it does not run off to a call. So a line you set on a height stays on the height. [[Space]] (halt) lets a squad go again: then it helps and answers as an unordered squad does.
 
@@ -141,13 +143,15 @@ A climb also slows the horse, and a horse too slow has no charge at all: heavy c
 | up a 1 in 4 slope: too slow, no charge | 20 |
 | light cavalry on the flat, into his front / his back | 38 / 76 |
 
-Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands. Riders ordered to attack go at the gallop from wherever they are, each his own way in. A rider whose charge lands in a flank or a back does not stay to be cut down: he **wheels away** for a few seconds, re-forms, and comes again. One who charged a front that stood has made his bed, and fights it out there.
+Being charged shakes a man (chapter [](#morale)): **150** met head on, **400** in the flank, **600** in the back, and **950** in the back of a man who is busy with another, which breaks him on the spot unless a hero or veterans steady him. The friends within 6 m of him take half of it, so a charge into the back of a squad that is fighting breaks the squad ("Flanked", "Hit from behind", "Broken by the charge"). A rider at the gallop rides straight at his man, so the charge lands. Riders ordered to attack go at the gallop from wherever they are, each his own way in. A rider whose charge goes home does not stay to be cut down: he **wheels away** for a few seconds, re-forms, and comes again. Only one who charged braced foot or braced pikes (below) is stuck there, and fights it out.
 
 ### Braced pikes {#pikes}
 
 A charge into the **front** of pikemen who are standing or already fighting (not marching) runs onto their points: the rider deals nothing, takes the pikeman's blow with its bonus against riders, half again (+150%, then x1.5: 52) and the whole of his own impact, is thrown back and badly shaken ("Braced"). Heavy cavalry lose about 78 of their 130 hit points in that moment. Into their flank or rear, the charge goes home as usual (69 to the pikeman in the flank, 92 in the back), and pikemen carry no shield.
 
 In an ordinary melee the pike's bonus holds too: a pikeman's blow on any rider is 35 where it is 14 on a man on foot.
+
+**Braced foot.** Any foot standing formed in closed ranks (a line, a double line, a box, a wedge, a V) on firm ground is braced as well: a charge into its front breaks on the front rank, a quarter of its weight lands, and the rider is thrown back, shaken and stuck in the press. Foot that marched, stood loose or lost its order is ridden through: the rider wheels away and comes again. Closed foot turn to face horse coming at the gallop.
 
 ::: tip
 Halt your pikes facing the horse, and let them come. The computer's riders know this: they look for a squad of yours locked in melee within 120 m and ride round its nearer flank, 28 m out, to come at its back.

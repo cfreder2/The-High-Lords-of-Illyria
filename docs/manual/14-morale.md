@@ -21,7 +21,8 @@ Every soldier has **morale**, from 1000 (fresh and willing) down to nothing. Sho
 | A friend killed within 12 m | 70 |
 | A blow in the flank / in the rear | 25 / 50 (missiles half) |
 | Being charged by riders | 150 in the front, 225 in the flank, 300 in the rear |
-| Outnumbered: every third of a second, for each foe within 15 m beyond the friends there (counting himself) | 10 |
+| Outnumbered: every third of a second, for each foe within 15 m beyond the friends there (counting himself; a rider counts two and a half, a broken man nothing) | 10 |
+| His squad flanked while it fights to its front (each man within 12 m, once in 3 s) | 160, the back 260 |
 | Struck by a head the hyena-folk have thrown | all of it: he breaks |
 
 A blow or an arrow in the front shakes nobody; a blast shakes only by the friends it kills.
