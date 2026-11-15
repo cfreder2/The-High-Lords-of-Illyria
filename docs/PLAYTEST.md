@@ -40,6 +40,7 @@ build-play/game/native/Illyria.app/Contents/MacOS/Illyria --play tools/playtest/
 | `--play FILE` | the script. A bad line is named (`line 7: no key called 'f1'`) and nothing runs (exit 2). |
 | `--play-out DIR` | where `shot` writes (default: the script's folder). Made if missing. |
 | `--play-log FILE` | one line a second of game time, see below. |
+| `--play-saves DIR` | the run keeps its saved games in DIR (`march.save`, `campaign.save`) and reads them from there: to play a save and a carrying on across two runs. Without it nothing is saved. |
 | `--size WxH`, `--novsync`, `--lord N`, `--foes MASK`, `--easy` | as for the game; `--lord`, `--foes` and `--easy` are what `start conquest` uses unless the script says otherwise. |
 
 The program prints `play: shot <path>` for each picture and `stats ...` lines to stdout, and exits when the script
@@ -58,7 +59,7 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
 | `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
-| `start march [budget GOLD] [easy] [deploy]` | a new March (docs/GAME_DESIGN.md §3.7) with the army a lord would buy for the purse (450 unless said), and its first battle. Its later battles are the player's own keys: with the results sheet up `key return` opens the camp (the cursor on March on; `key up` reaches the squads, `key return` on one fills it from the purse), `key return` on March on sets out the next battle, which waits on its deployment (`key return` again begins it). No march is read from or written to the disk. |
+| `start march [budget GOLD] [easy] [deploy]` | a new March (docs/GAME_DESIGN.md §3.7) with the army a lord would buy for the purse (450 unless said), and its first battle. Its later battles are the player's own keys: with the results sheet up `key return` opens the camp (the cursor on March on; `key up` is Fill what the purse can, above it the squads, `key return` on one fills it from the purse), `key return` on March on sets out the next battle, which waits on its deployment (`key return` again begins it). No march is read from or written to the disk (unless `--play-saves`). For tuning, the environment's `ILLYRIA_MARCH_PCT="85,120,60,55,75"` plays the five stages against those purses (parts in a hundred of the army's cost) instead of the table's in `game/src/march.cpp`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -156,7 +157,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `boulder-level.txt`, `boulder-line.txt`, `boulder-downhill.txt`, `boulder-uphill.txt`, `boulder-ford.txt`, `boulder-own.txt` | the boulder demo on the open ground skirmish: a stone thrown at a file of sixteen on the level, at a rank across its way, down a hillside, up it, at a bank before the ford, and through your own men behind the foe; a frame every five ticks at quarter speed from just before it comes down, then the toll (`boulder count`) and a close look at where it lies. Figures in docs/BALANCE.md, "The boulder". |
 | `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
-| `march.txt` | The March: the first battle with no orders, its results sheet, the camp with a squad filled from the purse, the Ford set out. |
+| `march.txt` | The March: the first battle with no orders, its results sheet, the camp with the purse spent, the village set out. |
 
 ```
 Illyria=build-play/game/native/Illyria.app/Contents/MacOS/Illyria

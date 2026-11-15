@@ -3423,6 +3423,19 @@ static int startMode(const char* id, const char* options) {
         gMarchStage = gMarch->stage;
         gScenario = gMarch->scenario();
         gSetup = gMarch->setup();
+#ifdef ILLYRIA_DEV_HOOKS
+        // Tuning (docs/PLAYTEST.md): ILLYRIA_MARCH_PCT="85,120,60,55,75" plays the stages against those purses instead
+        // of the table's (March::stageInfo), so a curve can be tried by script without a build.
+        if (const char* pct = std::getenv("ILLYRIA_MARCH_PCT")) {
+            int at = 0, value = 0;
+            for (const char* q = pct; *q && at <= gMarchStage; ++at) {
+                value = std::atoi(q);
+                while (*q && *q != ',') ++q;
+                if (*q == ',') ++q;
+            }
+            if (at == gMarchStage + 1 && value > 0) gSetup.foePurse = std::max(1, gMarch->budget * value / 100);
+        }
+#endif
         gSkill = gMarch->easy ? Battle::AiSkill::Easy : Battle::AiSkill::Normal;
         gDeploy = optionNumber(opts, "deploy", 1) != 0;
         newBattle();
@@ -3541,10 +3554,10 @@ ILLYRIA_API const char* illyria_march_save() {
     s = gMarch && !(gMarchBattle && !gMarchSettled) ? gMarch->save() : "";
     return s.c_str();
 }
-// The purse fills a squad's gaps (as many men as it pays for). How many joined.
+// The purse fills a squad's gaps (as many men as it pays for); -1: every squad it can, the most worn first. How many joined.
 ILLYRIA_API int illyria_march_reinforce(int squad) {
-    if (!gMarch || (gMarchBattle && !gMarchSettled) || squad < 0) return 0;
-    return gMarch->reinforce(static_cast<size_t>(squad));
+    if (!gMarch || (gMarchBattle && !gMarchSettled)) return 0;
+    return squad < 0 ? gMarch->reinforceAll() : gMarch->reinforce(static_cast<size_t>(squad));
 }
 // The march given up, or put away once over.
 ILLYRIA_API void illyria_march_end() {

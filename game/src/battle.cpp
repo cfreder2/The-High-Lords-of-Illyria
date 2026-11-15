@@ -119,6 +119,7 @@ constexpr int kDefaultBudget = 300;  // gold a side raises when the page says no
 // two lines inside a bowshot (70 m) of each other across the river; at the Ford the far host is a short march off.
 // (140 m and 230 m before, the bowmen behind two ranks of foot: 40 to 93 s passed before anyone fell.)
 constexpr float kFieldGapM = 64.0f, kFordGapM = 120.0f;
+constexpr float kSiegeBowsM = 60.0f;  // a besieging computer's bowmen begin this far from the road's door
 
 }  // namespace
 
@@ -154,6 +155,7 @@ Battle::Battle(uint64_t seed, Scenario scenario, const SkirmishSetup& setup) : s
     else if (scenario_ == Scenario::Field) setUpField(setup);
     else setUpFord(setup);
     if (siege) {
+        if (!setup.defend && setup.siegeSeconds > 0) siegeLimit_ = static_cast<uint32_t>(setup.siegeSeconds) * sim::kTicksPerSecond;
         const sim::PlayerId keeper = setup.defend ? kPlayer : kEnemy;
         placeCapturePoint(*town, keeper);
         holdGates(keeper);
@@ -394,7 +396,7 @@ std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int e
     return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
-void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, const std::vector<CarriedSquad>* roster, bool skirmishers) {
+void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst, const std::vector<CarriedSquad>* roster, bool skirmishers, float bowsAhead) {
     if (roster && roster->empty()) roster = nullptr;
     // Ranks behind `anchor` (the middle of the front), away from `facing`: foot in front, bowmen, bombers and the lord behind
     // them, engines at the back; horse on the wings of the front. One squad to a place of kSlotM across.
@@ -465,6 +467,13 @@ void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor
             }
         }
     };
+    if (bowsAhead > 0) {  // (a siege's skirmish line: ahead of the battery, and no rank of the camp's)
+        const float camp = row;
+        row = -bowsAhead / kRowM;
+        rank(bows);
+        row = camp;
+        bows.clear();
+    }
     if (enginesFirst) rank(engines);
     rank(bows);  // skirmishers: the bowmen out in front, to open the battle (the player's to pull back as he sets his line)
     const float footRow = row;
@@ -626,8 +635,11 @@ void Battle::setUpSiege(const sim::Continent::City& town, const SkirmishSetup& s
                 if (!mine.empty() && mine.back().type == b.type) ++mine.back().squads;
                 else mine.push_back({b.type, 1});
             }
+        // A computer's host before the road's door sends its bowmen up to a bowshot of the walls at once (kSiegeBowsM
+        // from the door): the keeper is under arrows from the first seconds, not watching stones fall for a minute.
         for (size_t d = 0; d < camps.size(); ++d)
-            muster(besieger, byCamp[d], conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, besieger == kPlayer && d == 0, true);
+            muster(besieger, byCamp[d], conqBefore(*region_, *world_, camps[d], faces[d], off[d]), faces[d] * -1.0f, besieger == kPlayer && d == 0, true, nullptr,
+                   besieger != kPlayer && d == 0, besieger != kPlayer && d == 0 ? off[d] - kSiegeBowsM : 0.0f);
         if (besieger != kPlayer)
             for (const sim::Unit& u : world_->units()) besiegers_ += u.owner == besieger && roleOf(static_cast<UnitType>(u.stats.type)) != Role::Siege;
         return;
@@ -1484,6 +1496,7 @@ int Battle::outcome() const {
     if (!playerAlive) return 2;
     if (brokeOff_) return 1;  // the besiegers are spent and have gone (aiBreakOff): the walls are held
     if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
+    if (siegeTimedOut()) return 2;  // the player's siege has run out of its time
     if (rout_.called(*world_)) return rout_.quitter() == kPlayer ? 2 : 1;  // a host has quit the field
     return 0;
 }

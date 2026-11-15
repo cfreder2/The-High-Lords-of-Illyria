@@ -1767,7 +1767,7 @@
         const m = s.march && s.march.settled ? s.march : null;
         let carry = "";
         if (m) {
-          carry = `<p class="note">Battle ${m.battle} of ${m.of}. ${m.men} men in ${m.squads} squads ${m.over && !m.won ? "were left." : `go on. ${m.last.promoted} promoted.`}</p>` +
+          carry = `<p class="note">Battle ${m.battle} of ${m.of}. ${m.men} men in ${m.squads} squads ${m.over && !m.won ? "were left." : `${m.won ? "came through" : "go on"}. ${m.last.promoted} promoted.`}</p>` +
             (m.last.gone.length ? `<p class="note broke">Gone for good: ${m.last.gone.map(esc).join(", ")}</p>` : "") +
             `<p class="note">${m.won ? "The march is won." : m.over ? "The march ends here." : `Next: ${esc(m.next)}. ${m.last.gold} gold for the purse.`}</p>`;
         } else if (r.promoted > 0) {
