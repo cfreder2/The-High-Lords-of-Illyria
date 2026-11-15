@@ -29,6 +29,7 @@ float ringLife(float size) { return 1.4f + 1.3f * size; }
 
 void Renderer::gatherWater(const Battle& battle, const Camera& camera, float gameSeconds) {
     waterRings_ = waterDyes_ = 0;
+    if (hidden_ >> static_cast<int>(Part::Wake) & 1) return;  // (timing what they cost: --hide, --cycle)
     const V3 focus = camera.target();
     // From high up a foot's ring is less than a pixel: only the big ones are worth the shader's while.
     const float least = camera.distance() > 320.0f ? 1e9f : camera.distance() > 150.0f ? 1.0f : camera.distance() > 80.0f ? 0.45f : 0.0f;
@@ -50,9 +51,15 @@ void Renderer::gatherWater(const Battle& battle, const Camera& camera, float gam
         std::nth_element(picks.begin(), picks.begin() + kWaterRings, picks.end(), [](const Pick& a, const Pick& b) { return a.score < b.score; });
         picks.resize(kWaterRings);
     }
+    const auto grow = [](float* box, bool first, float x, float y, float r) {
+        if (first) box[0] = x - r, box[1] = y - r, box[2] = x + r, box[3] = y + r;
+        box[0] = std::min(box[0], x - r), box[1] = std::min(box[1], y - r), box[2] = std::max(box[2], x + r), box[3] = std::max(box[3], y + r);
+    };
     for (const Pick& p : picks) {
-        float* out = &waterRing_[waterRings_++ * 4];
+        float* out = &waterRing_[waterRings_ * 4];
         out[0] = p.ring->pos.x, out[1] = p.ring->pos.y, out[2] = gameSeconds - p.ring->born, out[3] = p.ring->size;
+        // (As kWaterFs `ripples`: how far its front has run, and the margin it is tested with.)
+        grow(ringBox_, waterRings_++ == 0, out[0], out[1], 0.1f * out[3] + (0.8f + 0.3f * out[3]) * out[2] + 0.4f);
     }
     for (const WaterDye& d : battle.waterDye()) {
         if (waterDyes_ >= kWaterDyes) break;
@@ -60,8 +67,10 @@ void Renderer::gatherWater(const Battle& battle, const Camera& camera, float gam
         const float bloom = std::min(1.0f, 0.25f + d.age * 1.5f);
         const float strength = d.strength() * bloom * std::pow(0.6f / std::max(d.radius, 0.6f), 0.55f);
         if (strength < 0.01f) continue;
-        float* out = &waterDye_[waterDyes_++ * 4];
+        float* out = &waterDye_[waterDyes_ * 4];
         out[0] = d.pos.x, out[1] = d.pos.y, out[2] = d.radius * std::min(1.0f, 0.5f + d.age), out[3] = strength;
+        // (As kWaterFs `bloodIn`: a cloud reaches root-five radii, drawn out 1.9 times along the stream, pulled 1.6 m by the eddies.)
+        grow(dyeBox_, waterDyes_++ == 0, out[0], out[1], out[2] * 2.24f * 1.9f + 1.7f);
     }
 }
 

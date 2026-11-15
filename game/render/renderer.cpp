@@ -433,6 +433,8 @@ bool Renderer::buildPrograms() {
         s.p.ripples = glGetUniformLocation(s.p.id, "uRipple");
         s.p.dye = glGetUniformLocation(s.p.id, "uDye");
         s.p.waterFx = glGetUniformLocation(s.p.id, "uWaterFx");
+        s.p.ringBox = glGetUniformLocation(s.p.id, "uRingBox");
+        s.p.dyeBox = glGetUniformLocation(s.p.id, "uDyeBox");
         s.p.territory = glGetUniformLocation(s.p.id, "uTerritory");
         s.p.territoryInfo = glGetUniformLocation(s.p.id, "uTerritoryInfo");
         s.p.decalGrid = glGetUniformLocation(s.p.id, "uDecalGrid");
@@ -547,7 +549,7 @@ std::vector<Renderer::MeshBatch*> Renderer::scenery(bool includeSmall) {
 }
 
 const char* Renderer::partName(Part p) {
-    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui"};
+    static const char* const names[] = {"shadows", "sky", "land", "far", "water", "cover", "trees", "clutter", "buildings", "men", "dots", "effects", "ui", "wake"};
     return names[static_cast<int>(p)];
 }
 
@@ -2297,6 +2299,8 @@ void Renderer::setCommon(const Program& p, const Camera& camera, double timeSeco
         glUniform4f(p.waterFx, static_cast<float>(waterRings_), static_cast<float>(waterDyes_), 0.0f, 0.0f);
         if (p.ripples >= 0 && waterRings_ > 0) glUniform4fv(p.ripples, waterRings_, waterRing_);
         if (p.dye >= 0 && waterDyes_ > 0) glUniform4fv(p.dye, waterDyes_, waterDye_);
+        if (p.ringBox >= 0) glUniform4fv(p.ringBox, 1, ringBox_);
+        if (p.dyeBox >= 0) glUniform4fv(p.dyeBox, 1, dyeBox_);
     }
     if (p.waterTex >= 0) {
         glActiveTexture(GL_TEXTURE3);

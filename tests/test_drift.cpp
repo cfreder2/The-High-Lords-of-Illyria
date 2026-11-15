@@ -1,8 +1,10 @@
 // What the water does with the dead (engine/sim/src/world_drift.cpp): bodies and parts float down a river, ground
 // in the shallows, sink in armour, and it is all the simulation's own (fixed point, in the checksum).
+#include <chrono>
 #include <cstdio>
 #include <memory>
 
+#include "illyria/sim/continent.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
@@ -219,4 +221,56 @@ TEST(the_drift_is_the_simulations_own) {
     run(c, 1);
     CHECK(c.findUnit(id)->pos != at);
     CHECK(c.checksum() != fell);
+}
+
+TEST(a_stone_bridge_stands_on_piers_a_body_lodges_against) {
+    // The land about Oakhaven Ford: its road bridge is stone, a bay every eleven metres or so on piers 1.8 m thick
+    // (game/render/meshes.cpp draws them; World::pierAt is where the simulation has them).
+    static const Continent continent(20261027);
+    WorldConfig cfg;
+    cfg.region = std::make_shared<const Region>(Region::fromContinent(continent, continent.crossings().front().pos, 256));
+    World w(cfg);
+    int bridges = 0;
+    for (const Deck& d : cfg.region->decks()) {
+        if (d.foot || d.raised || d.ramp || d.arc || d.halfSpan < m(9)) continue;
+        ++bridges;
+        const Fixed step = Fixed::fromRatio(1, 8);
+        int piers = 0;
+        Fixed width, widest;
+        bool in = false;
+        for (Fixed s = -d.halfSpan; s <= d.halfSpan; s += step) {
+            const bool pier = w.pierAt(d.centre.x + d.dir.x * s, d.centre.y + d.dir.y * s);
+            if (pier && !in) ++piers, width = Fixed::zero();
+            if (pier) width += step, widest = max(widest, width);
+            in = pier;
+        }
+        const int64_t bays = ((d.halfSpan * 2 + Fixed::fromRatio(11, 2)) / 11).floorToInt();
+        std::printf("  a stone bridge %.0f m long: %d piers, %.2f m thick\n", (d.halfSpan * 2).toDouble(), piers, widest.toDouble());
+        CHECK(piers == bays - 1);
+        CHECK(!in);  // it ends on a bay, not a pier
+        if (piers > 0) CHECK(widest > Fixed::fromRatio(3, 2) && widest < Fixed::fromRatio(21, 10));
+        // Beside the deck, beyond the cutwaters, the water is open.
+        const Fixed out = d.halfWidth + m(2);
+        for (Fixed s = -d.halfSpan; s <= d.halfSpan; s += Fixed::one())
+            CHECK(!w.pierAt(d.centre.x + d.dir.x * s - d.dir.y * out, d.centre.y + d.dir.y * s + d.dir.x * out));
+    }
+    CHECK(bridges > 0);
+}
+
+TEST(carrying_the_dead_costs_little) {
+    // Two hundred parts in the river at once (a great slaughter at a ford), stepped for ten seconds with nothing else
+    // in the world: what the drift adds to a tick. (A fight is about 4 microseconds a man a tick.)
+    World w = world();
+    const Fixed surface = ground()->waterSurfaceAt(kMidstream.x, kMidstream.y);
+    for (int i = 0; i < 200; ++i)
+        w.launchPart(RemainKind::Arm, 0, {kMidstream.x + Fixed::fromRatio(i % 10 - 5, 1), kMidstream.y + m(i / 10) * 3, surface + Fixed::one()}, {});
+    run(w, 1);
+    int afloat = 0;
+    for (const Remain& r : w.remains()) afloat += r.afloat;
+    CHECK(afloat > 150);
+    const auto t0 = std::chrono::steady_clock::now();
+    run(w, 10);
+    const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / (10.0 * kTicksPerSecond);
+    std::printf("  %d afloat: %.1f microseconds a tick, %.2f each\n", afloat, us, us / afloat);
+    CHECK(us / afloat < 25.0);  // (loose: the machine may be busy)
 }

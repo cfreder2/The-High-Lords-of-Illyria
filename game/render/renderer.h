@@ -64,7 +64,8 @@ public:
 
     // Where a frame's drawing goes, counted as it is issued (the desktop's --stats table), and each kind switchable
     // off to time what it costs. Cosmetic like everything here.
-    enum class Part : int { Shadows, Sky, Land, Far, Water, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Count };
+    // (Wake: the rings and the blood on the water, renderer_water.cpp. It draws nothing of its own: hidden, the water is drawn bare.)
+    enum class Part : int { Shadows, Sky, Land, Far, Water, Cover, Trees, Clutter, Buildings, Men, Dots, Effects, Ui, Wake, Count };
     struct PartCount {
         int draws = 0;
         long triangles = 0;
@@ -154,7 +155,7 @@ private:
         GLint cellTable = -1, cloth = -1, sheetSize = -1, toViewer = -1, lift = -1, team = -1, sheet = -1, framesPerView = -1;
         GLint wrap = -1, detailMask = -1, detailRect = -1, detailFade = -1, lod = -1, decalGrid = -1, flag = -1;
         GLint territory = -1, territoryInfo = -1, uw = -1;
-        GLint ripples = -1, dye = -1, waterFx = -1;  // the water's rings and blood (renderer_water.cpp)
+        GLint ripples = -1, dye = -1, waterFx = -1, ringBox = -1, dyeBox = -1;  // the water's rings and blood (renderer_water.cpp)
         GLint albedo = -1, viewport = -1, dotPx = -1, rim = -1;
         GLint board = -1, cell = -1, boardNormal = -1, bakeBox = -1, forestMap = -1, forestRect = -1, farField = -1, farFieldRect = -1;
     };
@@ -442,6 +443,7 @@ private:
     // the bed when the water lets him go) and how far the stream has turned it.
     static constexpr int kWaterRings = 48, kWaterDyes = 40;  // (kWaterFs MAX_RIPPLES, MAX_DYE)
     float waterRing_[kWaterRings * 4] = {}, waterDye_[kWaterDyes * 4] = {};
+    float ringBox_[4] = {}, dyeBox_[4] = {};  // the ground each list can touch: min x, y, max x, y
     int waterRings_ = 0, waterDyes_ = 0;
     void gatherWater(const Battle& battle, const Camera& camera, float gameSeconds);
     struct Adrift {

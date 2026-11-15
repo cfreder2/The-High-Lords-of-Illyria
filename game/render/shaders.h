@@ -2943,12 +2943,15 @@ uniform sampler2D uFlow;  // RG8: downstream direction per terrain sample (0.5 =
 uniform sampler2D uWaterTex;  // R32F water surface per sample; very negative where dry
 float waterTexel(vec2 c) { return texelFetch(uWaterTex, texCell(c, uCells), 0).r; }
 // What a fight does to the water (game/src/battle_water.cpp, renderer_water.cpp): the rings spreading from whatever
-// wades or falls in, and the blood in it. Short lists, nearest the view; uWaterFx.xy says how many of each.
+// wades or falls in, and the blood in it. Short lists, nearest the view; uWaterFx.xy says how many of each, and
+// uRingBox / uDyeBox the ground they can touch (min xy, max xy): water outside them does none of the work.
 #define MAX_RIPPLES 48
 #define MAX_DYE 40
 uniform vec4 uRipple[MAX_RIPPLES];  // x, y, seconds since it began, size (0.2 a foot .. 2.6 a stone)
 uniform vec4 uDye[MAX_DYE];         // x, y, radius (m), strength
 uniform vec4 uWaterFx;
+uniform vec4 uRingBox, uDyeBox;
+bool inBox(vec2 p, vec4 box) { return p.x > box.x && p.y > box.y && p.x < box.z && p.y < box.w; }
 out vec4 oColor;
 // The rings over p: xy the slope they give the surface, z their height (crest +, trough -), each a short train of
 // crests behind a front that runs outward and dies away.
@@ -3044,12 +3047,12 @@ void main() {
     // (seaChop), the far land's lakes' too, so a lake is the same water near and far and shows no seam where they meet.
     if (speed <= 0.05) gw = seaChop(p, pxw, uTime) * 0.45 / 0.06;
     float calm = 1.0 - smoothstep(30.0, 300.0, dist) * 0.7;
-    vec3 rings = uWaterFx.x > 0.5 ? ripples(p) : vec3(0.0);
+    vec3 rings = uWaterFx.x > 0.5 && inBox(p, uRingBox) ? ripples(p) : vec3(0.0);
     vec3 n = normalize(vec3(-gw * 0.06 * (speed <= 0.05 ? 1.0 : calm) - rings.xy * 0.6, 1.0));
     // Colour: the bed shows through the shallows; silt-green to deep blue.
     vec3 c = inlandWater(depth, p);
     // Blood in it: red where it is thin, dark where it is thick, and thick enough it hides the bed.
-    float blood = uWaterFx.y > 0.5 ? 1.0 - exp(-1.25 * bloodIn(p, dir, speed, uTime)) : 0.0;
+    float blood = uWaterFx.y > 0.5 && inBox(p, uDyeBox) ? 1.0 - exp(-1.25 * bloodIn(p, dir, speed, uTime)) : 0.0;
     c = mix(c, mix(vec3(0.6, 0.08, 0.06), vec3(0.36, 0.02, 0.025), blood), blood * 0.86);
     // Sky in the surface, more at grazing angles.
     vec3 v = normalize(uEye - vWorld);

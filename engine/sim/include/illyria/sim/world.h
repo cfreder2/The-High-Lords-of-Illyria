@@ -688,6 +688,8 @@ public:
     Fixed waterDepth(Fixed x, Fixed y) const;
     Vec3 flowAt(Fixed x, Fixed y) const;
     static Fixed draughtOf(const UnitStats& s);
+    // Whether a stone bridge's pier (or its cutwater) stands in the water at a point: what floats lodges against it.
+    bool pierAt(Fixed x, Fixed y) const;
     // Ring of remains; slots whose kind is None are empty.
     const std::vector<Remain>& remains() const { return remains_; }
     // Remain slots that changed during the last step.
@@ -1419,7 +1421,6 @@ private:
     void driftAfloat();
     bool carry(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
     bool drift(Vec3& pos, Fixed draught, bool heavy, uint32_t age, uint32_t who) const;
-    bool pierAt(Fixed x, Fixed y) const;
     void applyZone();
     Fixed slopeAt(Fixed x, Fixed y) const;
     bool steeperThan(Fixed x, Fixed y, Fixed limit) const;  // slopeAt(x, y) > limit, without the root

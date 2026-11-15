@@ -147,6 +147,17 @@ mark's seed (a ragged pool, a splat with fingers, a spatter of drops, a smear), 
 wet and dark-rimmed at first, a thinner brown stain within the minute (`kDecalFs`). A man hurt below six tenths of his
 health leaves drops along his way for 22 s. All within the 30,000 ground marks there were.
 
+Cost. The drift: 0.09 microseconds a floater a tick (200 parts in a river, `carrying_the_dead_costs_little`). The
+shader: the renderer's "wake" part switches the two lists off, so `--cycle 255,255h8192` times them against the bare
+water in one run (`tools/playtest/ford-water-bench.txt`: the melee in the ford held close, 1600 x 900 at ratio 1). On
+a machine shared with other builds the GPU read 12.7 and 17.0 ms with them against 12.9 and 15.4 without (the least of
+eight visits, two runs; medians 17.0 and 21.8 against 16.3 and 19.3): between nothing and 1.6 ms, inside the noise. Water
+outside the boxes the lists can touch (`uRingBox`, `uDyeBox`) does none of the work. The shaders compile and link as
+WebGL2 in headless Chrome (water, decal, particle); the page was not run.
+
+No golden moved: no pinned battle has a death in water deep enough to float (the Ford, the siege, Oakhaven, the raid,
+the melee, the queue, the conquest; read, not gated on).
+
 Not done: a body lodged on a pier or a bank is not pushed off by the next one; floating bodies do not block or slow
 the living; rain, and the splash of a body thrown into water by a blast after its death.
 

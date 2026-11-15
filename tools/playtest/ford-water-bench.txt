@@ -1,0 +1,14 @@
+# What the water's rings and blood cost in a fight in the ford: the melee of ford-water.txt held close, to be run with
+# the renderer's own A/B (the "wake" part, bit 13, hidden every other 80 frames):
+#
+#   Illyria --play tools/playtest/ford-water-bench.txt --novsync --cycle 255,255h8192
+#
+# It prints the GPU milliseconds of each (the least of eight visits is the honest figure on a shared machine).
+
+size 1600 900
+start skirmish ford
+wait 1
+camera 515 510 24 1.592
+deaths melee 515 514
+wait_ticks 3000
+quit

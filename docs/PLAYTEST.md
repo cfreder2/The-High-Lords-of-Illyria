@@ -141,6 +141,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `capital-keep.txt` | the capital to its keep: the engines open on their own, everyone is ordered at the road's door (the storm goes on to the courtyard and holds it), then at the keep's gate; the doors' strengths and the flag's line beside the minimap. |
 | `skirmish-setup.txt` | the Skirmish setup screen by keys: capital, hold the walls, 450 gold, Easy, an extra catapult squad, start. |
 | `ford-water.txt` | the water: a melee set in the Ford seen close and from the middle distance (rings, wakes, spray, the blood going downstream), then the dead of every type felled in the river above it, floating down, grounding and sinking (docs/DEATH_AUDIT.md, "In the water"). |
+| `ford-water-bench.txt` | the same melee held close, for timing what the water's rings and blood cost: run it with `--novsync --ratio 1 --cycle 255,255h8192` (the renderer's "wake" part hidden every other 80 frames). |
 | `deaths.txt` | the death demo: every unit type on open grass, blown apart, shots close up of the pieces flying and lying (change one word for the other deaths). |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
 
