@@ -528,5 +528,22 @@ def healer(cfg):
     return P, {k: clips[k] for k in ORDER}
 
 
-STYLES = {'thrower': thrower, 'dwarf_thrower': dwarf_thrower, 'hero': hero, 'spearman': spearman, 'berserker': berserker,
+def minotaur(cfg):
+    """The minotaur: the giant's weight at a bull's pace. His poses are the giant's (a stooped brute with a long
+    haft in one hand); every clip runs in six tenths of the time, so the axe comes down like a charge, not a tree."""
+    P, clips = giant(cfg)
+    k = 0.62
+    for c in clips.values():
+        c['keys'] = [(t * k, n, e) for t, n, e in c['keys']]
+        if 'times' in c:
+            c['times'] = [round(t * k * 24) / 24 for t in c['times']]
+            c['times'] = sorted(set(c['times']))
+        if 'seconds' in c:
+            c['seconds'] *= k
+        if 'gait' in c:
+            c['gait'] = dict(c['gait'], period=c['gait']['period'] * k)
+    return P, clips
+
+
+STYLES = {'minotaur': minotaur, 'thrower': thrower, 'dwarf_thrower': dwarf_thrower, 'hero': hero, 'spearman': spearman, 'berserker': berserker,
           'giant': giant, 'healer': healer}
