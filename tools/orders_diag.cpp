@@ -293,6 +293,8 @@ void flank(int seeds) {
                             {"8 more in at B's flank", 16, 16, 8, 6, 22},
                             {"8 more in at B's back", 16, 16, 8, 20, 0},
                             {"12 v 12, then 6 of A at B's back", 12, 12, 6, 20, 0},
+                            {"8 of A v 12 head on, then 4 of A at the front", 8, 12, 4, -14, 0},
+                            {"8 of A v 12 head on, then 4 of A at B's back", 8, 12, 4, 20, 0},
                             {"12 v 12, 6 of A head on, alone (control)", 0, 12, 6, -10, 0}};
     for (const Piece& p : pieces) {
         Outcome o;
@@ -451,8 +453,12 @@ void arrows(int seeds) {
                 }
                 w.step(c);
                 std::map<EntityId, int> bin;  // arrow -> range bin when loosed
+                std::map<EntityId, Vec3> last;  // where each target stood a tick ago
+                for (EntityId id : tgt.ids) last[id] = w.findUnit(id)->pos;
                 for (int t = 1; t <= secs * kTicksPerSecond; ++t) {
+                    std::map<EntityId, Vec3> before = last;
                     w.step({});
+                    for (EntityId id : tgt.ids) last[id] = w.findUnit(id)->pos;
                     for (const Projectile& p : w.projectiles()) {
                         if (p.kind != ProjectileKind::Arrow || bin.count(p.id)) continue;
                         double near = 1e9;
@@ -460,7 +466,7 @@ void arrows(int seeds) {
                         for (EntityId id : tgt.ids) {
                             const Unit* q = w.findUnit(id);
                             const double d = D((q->pos - p.pos).flat().length());
-                            if (d < near) near = d, moving = wy.still || q->stride != Vec3{};
+                            if (d < near) near = d, moving = wy.still || q->pos != before[id];
                         }
                         // (Only while the mark is on the move: a target come to its stop is a standing one.)
                         const int k = !moving ? -1 : wy.across ? ri : near < 27.5 ? 0 : near < 42.5 ? 1 : near < 57.5 ? 2 : near < 72.5 ? 3 : -1;

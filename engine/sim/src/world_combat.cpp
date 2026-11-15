@@ -196,19 +196,19 @@ bool World::turnToward(Unit& u, const Vec3& dir) const {
     return u.facing.dot(dir) >= kStrikeCos;
 }
 
-HitSide World::sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind) {
+HitSide World::sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind, bool charge) {
     HitSide side = hitSide(target.facing, dir);
-    const bool closed = formed(target) && formationRule(target.formation).tight;
+    const bool closed = charge && formed(target) && formationRule(target.formation).tight;
     if (side != HitSide::Front && allRound(target)) {
         // A square has no flank.
         side = HitSide::Front;
         tell(TacticEvent::Kind::Square, target);
     } else if (side == HitSide::Flank && closed && target.facing.dot(dir) <= Fixed::zero()) {
-        // In closed ranks a blow from anywhere ahead of the line meets its front: the man at his shoulder covers him.
+        // A charge into closed ranks from anywhere ahead of the line meets its front: the men at his shoulder cover him.
         side = HitSide::Front;
     }
     behind = side == HitSide::Rear;  // truly at his back
-    // Busy with someone else, a man out of the ranks is off guard: a flank is as open as his back.
+    // Busy with someone else, he is off guard: a flank is as open as his back (a rider's charge excepted into closed ranks).
     busy = target.foe != kNoEntity && target.foe != by;
     if (side == HitSide::Flank && busy && !closed) side = HitSide::Rear;
     return side;
@@ -369,7 +369,7 @@ void World::fight(Unit& u, Unit& enemy) {
 
     const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
     bool busyAside = false, behind = false;
-    const HitSide side = sideStruck(enemy, dir, u.id, busyAside, behind);
+    const HitSide side = sideStruck(enemy, dir, u.id, busyAside, behind, false);
     // Position, told (world_tactics.cpp): a man caught wading or mired, a blow from well above.
     const Footing his = footing(enemy), mine = footing(u);
     if (his == Footing::Ford && mine != Footing::Ford) {
@@ -425,7 +425,7 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const int32_t impact = floorPct(weight * kChargeDamage);
     // (A square's front meets it all round, and its pikes are braced.)
     bool busy = false, behind = false;
-    const HitSide side = sideStruck(enemy, dir, u.id, busy, behind);
+    const HitSide side = sideStruck(enemy, dir, u.id, busy, behind, true);
     tell(TacticEvent::Kind::Charge, enemy, static_cast<int32_t>(side));
     if (slopePct >= 100 + kDownhillTold) tell(TacticEvent::Kind::Downhill, enemy);
     ambush(u, enemy);

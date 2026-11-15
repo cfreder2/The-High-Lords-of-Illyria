@@ -36,6 +36,8 @@ constexpr Fixed kRaisedReach = Fixed::fromRatio(1, 2);
 constexpr Fixed kMarchFile = Fixed::fromInt(2);
 // Personal space: men of a side keep this much room between their bodies (the press of a melee is a line, not a ball).
 constexpr Fixed kPersonalSpace = Fixed::fromRatio(1, 2);
+// A man running with a satchel's fuse lit goes this much faster than his run (World::lightAndRun).
+constexpr int32_t kSprintPct = 130;
 // ... and on open ground as far as this: a block's width, not a column's (planMarch).
 constexpr Fixed kMarchFileWide = Fixed::fromInt(40);
 // Bodies walking through loose remains kick them along.
@@ -1356,6 +1358,7 @@ bool World::walk(Unit& u, const Vec3& to, Fixed speedScale) {
     else if (onOwnLand(u, under)) speed = speed * (100 + kRealmPacePct) / 100;  // his realm's own kind of country
     if (steeperThan(u.pos.x, u.pos.y, kSteepSlope)) speed *= kSteepSpeed;
     if (!fires_.empty()) speed = speed * fireWalkPct(u.pos) / 100;  // through burning ground (world_fire.cpp)
+    if (u.scav.lit) speed = speed * kSprintPct / 100;  // a fuse burning in his hands: he sprints (the satchel run)
     if (dist == Fixed::zero()) return true;
     u.facing = delta / dist;
     // Uphill is slow going; downhill a little quicker.

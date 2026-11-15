@@ -1573,9 +1573,9 @@ private:
     // Met head on, a rider's charge breaks on it (pikes do more: their points). Anything else he rides through and wheels.
     bool bracedFoot(const Unit& u) const;
     // Where a blow travelling `dir` from `by` lands on `target` (world_combat.cpp): hitSide, then the ranks: a square has no
-    // flank (told), a man in closed ranks meets a blow from anywhere ahead as his front, and a man busy with another and
-    // out of the ranks is open in the flank as in the back. `busy`: he fights another; `behind`: truly at his back.
-    HitSide sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind);
+    // flank (told); a `charge` into closed ranks from anywhere ahead meets their front; a man busy with another is open in
+    // the flank as in the back (not, to a charge, in closed ranks). `busy`: he fights another; `behind`: truly at his back.
+    HitSide sideStruck(Unit& target, const Vec3& dir, EntityId by, bool& busy, bool& behind, bool charge);
     // A bowman with slower foot closing within kKiteReach while he reloads steps back from them (world_tactics.cpp): bows
     // beat slow foot at range. Not one told to hold, and a posted one no farther than kKiteLeash behind his post.
     bool kite(Unit& u);
