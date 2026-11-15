@@ -117,5 +117,8 @@
     return box;
   };
 
+  // The Sound Editor (tools/sound-editor) lives in the repository only: beside a web build its links go.
+  if (!/\/tools\/(audit|sound-editor)\//.test(location.pathname)) for (const a of document.querySelectorAll(".repo-only")) a.remove();
+  U.inRepo = /\/tools\/(audit|sound-editor)\//.test(location.pathname);
   window.AuditSoundUi = U;
 })();

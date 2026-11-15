@@ -844,7 +844,12 @@ void main() {
     const victim = el("select", { onchange: (e) => { d.victim = e.target.value; } }, [["flesh", "flesh"], ["armour", "mail and plate"], ["bone", "the walking dead"], ["shield", "a shield (blocked)"]].map(([v, text]) => el("option", { value: v, selected: v === d.victim }, text)));
     const lines = (only) => SU.voiceLines(set, only);
     const more = el("details", { class: "set" }, el("summary", {}, `Every line of the ${set.name} voice`));
+    // This unit's own sounds in the Sound Editor: its effects (to choose, trim, record) and its voice set (to record).
+    const mine = [...new Set([k.launch, ...(k.lands || []), k.swing, ...(k.met ? Object.values(k.met) : []), k.heals, ...(k.struck || []), k.fall].filter(Boolean))];
+    const editor = SU.inRepo ? el("p", { class: "kv" }, el("b", {}, "Open in Sound Editor: "), el("a", { href: "../sound-editor/effects.html#ids=" + mine.join(",") }, `its ${mine.length} effects`),
+      el("a", { href: "../sound-editor/voices.html#set=" + set.id }, `its voice (${set.name})`)) : null;
     more.addEventListener("toggle", () => { if (more.open && !more._built) { more._built = true; more.append(lines(null)); } });
+    if (editor) box.append(editor);
     box.append(
       el("div", { class: "kv" }, SU.controls(), said),
       t ? group("The attack clip and its sound",
