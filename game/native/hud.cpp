@@ -1257,7 +1257,8 @@ void Hud::draw(Overlay& o, float w, float h) {
         else if (q.flag("hold")) std::snprintf(mark, sizeof mark, "HOLD");
         else if (q.flag("idle")) std::snprintf(mark, sizeof mark, "IDLE");
         std::snprintf(buf, sizeof buf, "%d/%d  %s", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")), q.str("role").c_str());
-        if (mark[0] || o.width(buf, 10) > cw - 12) std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));  // (a narrow card: the count, not the role)
+        // (A narrow card, or one with a load to show under the count: the count, not the role.)
+        if (mark[0] || q.num("satMax") + q.num("ammoMax") > 0 || o.width(buf, 10) > cw - 12) std::snprintf(buf, sizeof buf, "%d/%d", static_cast<int>(q.num("alive")), static_cast<int>(q.num("total")));
         o.text(x + 6, ny + 4, buf, kDim, 10);
         if (mark[0]) {
             const float mx = x + cw - 6 - o.width(mark, 10);
@@ -1275,11 +1276,11 @@ void Hud::draw(Overlay& o, float w, float h) {
             const int ammo = static_cast<int>(q.num("ammo")), ammoMax = static_cast<int>(q.num("ammoMax"));
             if (satMax + ammoMax > 0 && satMax + ammoMax <= 24) {
                 float px = x + 6;
-                const float py = y + ch - 24;
-                for (int k = 0; k < satMax; ++k, px += 8) o.rect(px, py, 6, 6, k < sat ? rgba(0xE0A030) : rgba(0x4A4032));
+                const float py = y + ch - 20;  // (between the count's line and the bar)
+                for (int k = 0; k < satMax; ++k, px += 7) o.rect(px, py, 5, 4, k < sat ? rgba(0xE0A030) : rgba(0x4A4032));
                 if (satMax > 0) px += 4;
-                for (int k = 0; k < ammoMax; ++k, px += 5) o.rect(px, py, 3, 6, k < ammo ? rgba(0xFF6030) : rgba(0x4A3A32));
-                if (q.flag("holdFire")) o.text(px + 4, py - 3, "HELD", kGold, 9);
+                for (int k = 0; k < ammoMax; ++k, px += 4) o.rect(px, py, 2, 4, k < ammo ? rgba(0xFF6030) : rgba(0x4A3A32));
+                if (q.flag("holdFire")) o.rect(px + 3, py, 8, 4, kGold);  // a gold bar: holding fire
             } else if (ammoMax > 24) {
                 std::snprintf(buf, sizeof buf, "%d shots", ammo);
                 o.text(x + 6, y + ch - 27, buf, ammo ? kDim : kRed, 9);
@@ -1337,8 +1338,8 @@ void Hud::draw(Overlay& o, float w, float h) {
         const Btn btns[] = {{"Lay satchel (T)", kLayHit, hud.flag("lays"), mode == 3},
                             {"Detonate (L)", kDetonateHit, hud.flag("sparks"), mode == 4},
                             {hud.flag("holdFire") ? "Holding fire (Shift+K)" : "Hold fire (Shift+K)", kHoldFireHit, hud.flag("stores"), hud.flag("holdFire")}};
-        float bx = std::max(selEnd + 12, 8.0f);
-        const float by = cardsTop - 28;
+        float bx = 8.0f;
+        const float by = cardsTop - 56;  // (a row above the selection's line and the first-order hint)
         for (const Btn& b : btns) {
             if (!b.show) continue;
             const float bw = o.width(b.label, 13) + 20;

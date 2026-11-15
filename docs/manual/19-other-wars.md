@@ -31,15 +31,15 @@ The field is Oakhaven Ford. Your host stands 60 m west of the middle of the fiel
 | Oakhaven Warriors | 12 warriors | Red Hand Warband | 16 light infantry |
 | The Grey Watch | 12 heavy infantry | Barrow Dead | 16 undead |
 | Ferry Pikes | 12 pikemen | Blood Berserks | 8 berserkers |
-| Iron Hill Sappers, Deepdelve Sappers | 8 and 6 grenadiers | Wolf Riders of Gnarl | 8 wolf riders |
+| Durgan of Iron Hill, Brakk of Deepdelve | 2 grenadiers, each alone | Wolf Riders of Gnarl | 8 wolf riders |
 | Wildmen of Kell | 10 berserkers | Steppe Riders | 6 light cavalry |
 | 1st Oakhaven Bowmen, Silverwood Archers | 12 and 12 archers | Hill Giants | 3 giants |
 | Brothers of the Root | 4 journeymen | Minotaurs of the Maze | 4 minotaurs |
-| Magi of the Tower | 3 wizards | Brood of Mirkwold | 6 spiders |
+| Magus of the Tower | 1 wizard | Brood of Mirkwold | 6 spiders |
 | Lord Aldric | the hero | Pit Devils, Demons of the Rift | 3 devils, 2 demons |
 | Oakhaven Lancers | 8 heavy cavalry | Red Hand Longbows | 12 archers |
-| Ferry Riders | 8 light cavalry | Gnarl Bombers | 4 grenadiers |
-| Moonwood Unicorns | 4 unicorns | Witch-Kings | 2 wizards |
+| Ferry Riders | 8 light cavalry | Gnarl Bomber | 1 grenadier |
+| Moonwood Unicorns | 4 unicorns | Witch-King | 1 wizard |
 | War Elephants of Tal | 2 elephants | Red Hand Menders | 3 journeymen |
 | Sky Lancers | 4 pegasi | Ashen Wyrm | 1 dragon |
 | Eyrie Griffins | 3 griffins | Red Hand Mangonel | 1 catapult |
@@ -61,7 +61,7 @@ When the battle is decided the last blow is shown slowly and the fight stops. A 
 
 The neutral walled town nearest the ford, and its garrison: archers of the **Town Watch** at the embrasures (two to each wall of the ring), 8 pikemen (the **Gate Wardens**) behind the gate, 12 light infantry (the **Town Militia**) in the courtyard and 6 heavy infantry (the **Castellan's Guard**) before the keep. They keep their gate as any garrison does (chapter [](#gates)).
 
-You besiege it with the foot of the same host, formed up on the road about 110 m before the gate: the Oakhaven Warriors and the Grey Watch (12 each), both squads of bowmen (12 each), both squads of sappers (8 and 6 grenadiers), 4 journeymen, Lord Aldric, 3 griffins, and the **Oakhaven Siege Train** of 2 catapults.
+You besiege it with the foot of the same host, formed up on the road about 110 m before the gate: the Oakhaven Warriors and the Grey Watch (12 each), both squads of bowmen (12 each), the two dwarves (Durgan and Brakk, a grenadier each), 4 journeymen, Lord Aldric, 3 griffins, and the **Oakhaven Siege Train** of 2 catapults.
 
 You **win** when your flag reaches the top of the pole in the courtyard (chapter [](#capture-point)), when the garrison quits the field ([](#rout)), or when no defender is left alive; you **lose** when your host quits it or none of yours is left.
 

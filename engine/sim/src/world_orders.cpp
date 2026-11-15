@@ -102,7 +102,8 @@ int64_t World::fightingPower(const Unit& u) const {
     };
     const RangedWeapon& r = u.stats.ranged;
     int64_t dps = rate(u.stats.melee.damage, u.stats.melee.cooldownTicks);
-    if (r.muzzleSpeed > Fixed::zero()) dps = std::max(dps, rate(std::max(r.damage, r.explosive.damage), r.reloadTicks));
+    // (A store of missiles is spent thriftily, so it counts for half; spent, he has his hands: world_satchels.cpp.)
+    if (armed(u)) dps = std::max(dps, rate(std::max(r.damage, r.explosive.damage), r.reloadTicks) / (r.ammo > 0 ? 2 : 1));
     const int64_t prowess = 100 + 10 * (u.rank + u.blessings);
     return std::max<int64_t>(1, dps * u.hp / 1000 * prowess / 100);
 }

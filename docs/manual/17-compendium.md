@@ -138,11 +138,11 @@ White horses with a single spiralled horn, swift as light cavalry and fiercer, w
 :::
 
 ::: unit Wizards | wizards
-Mages of the old learning, who gather light in their hands and throw it as fire. A fireball bursts where it lands and burns everyone near.
+A mage of the old learning, who gathers light in his hands and throws it as fire. A fireball bursts where it lands and burns everyone near. He comes alone, and he has four of them.
 
-**Conquest.** 3 wizards. 2 m/s on open ground. Rare: the Order's lord has them from the start, ruins give them as allies, and heroes for hire sometimes bring them. Upkeep 10 a day (allies serve for nothing). A special army: +1 to every army in the stack in the dice.
+**Conquest.** 1 wizard. 2 m/s on open ground. Very rare: the Order's lord has one from the start, a ruin may give one as an ally, a hero for hire sometimes brings one; no realm trains them, and a realm keeps one at most. Upkeep 10 a day (allies serve for nothing). A special army: +1 to every army in the stack in the dice. His fireballs are made up again only at dawn in a town of yours.
 
-**On the field.** Fragile (45 hit points) and slow to reload (9 s), but a fireball into a close-packed line kills several and breaks the rest. Keep them **Loose**, behind the line, and well away from riders. They can strike at the men on a wall.
+**On the field.** Frail (40 hit points). **Four fireballs** for the whole battle (the bars on his card), one every 7 s at most, each 4.5 m wide and 90 at the centre: into a close-packed squad it kills most of it. Left to himself he is thrifty: he throws at three or more men together (or a great beast), at a satchel with foes on it, or at a foe within 6 m, and never at men running. **Shift + K** holds his fire for your orders. **L**, then a click on a laid satchel, has him set it off at once. A fireball on water, or on a man standing in a ford, is steam: a third of itself. With none left he has a staff and should be behind the foot; a foe's bowmen and horse go for him first. He gives ground of his own accord before a foe within 10 m unless told to hold.
 :::
 
 ::: unit Dragons | dragons
@@ -150,7 +150,7 @@ The ancient wyrms of the deep places, which guard the fiercest ruins and sometim
 
 **Conquest.** 1 dragon. On its own it flies at 4.9 m/s in the long run; with walkers it walks at 2.5 m/s. Rare: found only in ruins, behind the fiercest guardians. A flier and a special army: +2 to every army in its stack in the dice. Strength 9.
 
-**On the field.** 650 hit points and a cleaving bite of 40; fireballs that burst five metres wide. Steady (25%) and slow on the ground. A dragon wins battles alone, but it is one creature: everything on the field will shoot at it.
+**On the field.** 650 hit points and a cleaving bite of 40; **six breaths** of fire that burst five metres wide (70 at the centre), and then its claws. Steady (25%) and slow on the ground. A dragon wins battles alone, but it is one creature: everything on the field will shoot at it.
 :::
 
 ::: unit Devils | devils
@@ -194,11 +194,17 @@ A named champion: a lord of the realm, or a sword for hire. A hero leads, explor
 :::
 
 ::: unit Dwarven Grenadiers | dwarf_grenadier
-The one dwarf of Illyria: demolitionists with bottles of burning oil to throw and five satchel charges each to lay. (The old dwarven legion is no more; its men carry satchels now.)
+The one dwarf of Illyria, and he comes alone: a demolitionist with six bottles of burning oil to throw and five satchel charges to lay. One is already worth a squad of foot when he is used well, and he dies in one careless moment. (The old dwarven legion is no more.)
 
-**Conquest.** 6 grenadiers. 1.8 m/s on open ground; climbing slows them half as much as men. Trained in hill towns and at Deepforge: 4 days, 24 gold, 6 a day. They have the familiar-ground edge (+4%) on rock.
+**Conquest.** 1 dwarf. 1.6 m/s on open ground; climbing slows him half as much as men. Trained in hill towns and at Deepforge: 6 days (3 in the capital), 60 gold, 15 a day, and a realm keeps **two at most** (a city set to train a third waits). He has the familiar-ground edge (+4%) on rock. What he has laid and thrown is made up again only at dawn in a town of yours.
 
-**On the field.** A Molotov (19 m at most) bursts where it strikes into fire three metres wide (40, burning the dead black). A laid satchel (80, four metres wide, three times as hard on a gate) lies still until a blast or fire reaches it, then sets off the next. Left alone they lay satchels in the path of whoever comes at them, step back, and throw fire at the satchels when the enemy stands on them. A grenadier killed by fire or a blast with satchels still on him goes up with all of them at once: keep them **Loose**, and away from your own line. Raiding hyena-folk steal laid satchels and throw them back, bursting where they strike.
+**On the field.** Tough for his size (110 hit points), slow, and steady (he is used to standing alone). His card shows what he has left: five squares for satchels, six bars for Molotovs.
+
+- **Lay the trap.** **T**, then click the ground: he walks there, lays one and comes back out of its blast. Hold **Shift** and click again for a line; a Shift + right-click after it sends him on behind it. Lay them a little under 5 m apart, so each is in the next one's blast. Not in water: a satchel there is dead, and the cursor refuses it.
+- **Spring it.** With a dwarf or a wizard selected your laid satchels show a ring as wide as the blast (5 m). **L**, then click a satchel: the nearest of them in reach throws at it at once (a Molotov carries 19 m). A satchel is 150 at the centre; its blast sets off the next a third of a second later, so a line goes up one after another, kills most of a squad standing on it, shakes the survivors, and the strip tells you ("Ambush: 9 down"). **The ring is red while one of your own men stands in it: an ordered blast does not wait for him.**
+- **Left to himself** he lays a satchel in the path of a foe coming at him, steps back, and throws at a satchel with two or more foes on it and none of yours (waiting up to 5 s for yours to clear); he throws a Molotov at three or more men together, and keeps his last bottle for his satchels. **Shift + K** holds his fire and his charges for your orders.
+- **Keep him alive.** A Molotov (40, three metres of fire) will not save him from a squad. Behind the foot he is covered from arrows by the bodies in front; alone he is the first mark of every bowman and rider. He gives ground of his own accord before a foe within 10 m, and the foot near him go to his help, unless he is told to hold. Killed by fire or a blast with satchels still on him he goes up with all of them at once (five: 10 m wide): keep him away from your own line while he carries them. Raiding hyena-folk steal laid satchels and throw them back.
+- **At a gate.** A satchel does twice its blast to a gate (300): seven laid at the doors and lit break a town gate, more than one dwarf carries.
 :::
 
 ::: unit Journeymen | journeyman
@@ -228,9 +234,9 @@ Wild men who fight without shields and without fear, faster than any other foot 
 ::: unit Catapults | catapult
 A wheeled mangonel with its crew, the only engine of war in Illyria. Slow on the road, useless in a melee, and the one thing that makes a walled capital fall.
 
-**Conquest.** 2 catapults. 0.8 m/s on open ground, a quarter of that in a marsh: they want roads. Trained at Kingshold, Deepforge and Dreadspire: 6 days, 40 gold, 10 a day. In the dice, strength 3 in the field, 5 against a city, and each one takes a point off the walls' bonus; in the fight itself what counts is its stones on the gate.
+**Conquest.** 2 catapults (a realm keeps three trains at most). 1.4 m/s on open ground, a quarter of that in a marsh: they want roads. Trained at Kingshold, Deepforge and Dreadspire: 6 days, 40 gold, 10 a day. In the dice, strength 3 in the field, 5 against a city, and each one takes a point off the walls' bonus; in the fight itself what counts is its stones on the gate.
 
-**On the field.** Throws a stone 30 to 150 m that smashes everything within 3 m, and does five times its damage to a gate: four stones square on the doors break a town gate (chapter [](#gates)). Keep it well back, guarded; it cannot fight anything that reaches it.
+**On the field.** Throws a stone 30 to 150 m that smashes everything within 3 m, and does five times its damage to a gate: four stones square on the doors break a town gate (chapter [](#gates)). Each engine has **16 stones** on its cart and no more are made in battle; left to itself it throws at a gate, or at three or more men together. Keep it well back, guarded; it cannot fight anything that reaches it.
 :::
 
 ::: unit Hyena-folk

@@ -12,7 +12,7 @@ Strength, soldiers in a fresh army, speed on open ground in metres a second (fli
 | Pikemen | 4 | 12 | 2.0 | 4 d, 20 g | 5 |
 | Light Cavalry | 4 | 8 | 7.0 | 5 d, 28 g | 7 |
 | Heavy Cavalry | 6 | 8 | 5.5 | 6 d, 36 g | 9 |
-| Dwarven Grenadiers | 4 | 6 | 1.8 | 4 d, 24 g | 6 |
+| Dwarven Grenadiers | 4 | 1 | 1.6 | 6 d, 60 g (two kept at most) | 15 |
 | Wolf Riders | 5 | 8 | 7.5 | 5 d, 28 g | 7 |
 | Warriors | 5 | 12 | 2.2 | 4 d, 24 g | 6 |
 | Catapults | 3 | 2 | 0.8 | 6 d, 40 g (three capitals) | 10 |
@@ -23,7 +23,7 @@ Strength, soldiers in a fresh army, speed on open ground in metres a second (fli
 | Pegasi | 6 | 4 | 4.7 (4.5) | realm, levy, temple, hire | 8 |
 | Elephants | 7 | 2 | 3.2 | realm, levy | 6 |
 | Unicorns | 6 | 4 | 7.0 | realm, levy, temple, hire | 7 |
-| Wizards | 7 | 3 | 2.0 | realm, ruins, hire | 10 |
+| Wizards | 7 | 1 | 2.0 | realm, ruins, hire (one kept at most) | 10 |
 | Dragons | 9 | 1 | 4.9 (2.5) | ruins | 10 |
 | Devils | 8 | 3 | 3.2 | ruins | 10 |
 | Demons | 8 | 2 | 3.4 | ruins | 10 |
@@ -45,7 +45,7 @@ What the cities train (chapter [](#training)). The price is paid at the dawn the
 | Heavy Infantry | 12 | 4 | 2 | 20 | 5 | hill and plain towns; Kingshold, Highcrag, Deepforge, Dreadspire |
 | Archers | 12 | 4 | 2 | 20 | 5 | woodland towns; Sylvaris, Moonhaven |
 | Pikemen | 12 | 4 | 2 | 20 | 5 | hill and plain towns; Highcrag, Moonhaven |
-| Dwarven Grenadiers | 6 | 4 | 2 | 24 | 6 | hill towns; Deepforge |
+| Dwarven Grenadiers | 1 | 6 | 3 | 60 | 15 | hill towns; Deepforge |
 | Warriors | 12 | 4 | 2 | 24 | 6 | woodland towns; Grathmaw |
 | Light Cavalry | 8 | 5 | 3 | 28 | 7 | plain towns; Sylvaris, Sunreach |
 | Wolf Riders | 8 | 5 | 3 | 28 | 7 | woodland towns; Grathmaw, Dreadspire |

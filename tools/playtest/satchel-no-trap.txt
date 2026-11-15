@@ -1,0 +1,26 @@
+# The control for satchel-trap.txt: the same Ford, the same camera, the same waits, and no orders at all (the dwarf
+# does what he does left to himself). Compare `stats` (foe=alive/total, mine=) at the same ticks.
+#
+#   Illyria --play tools/playtest/satchel-no-trap.txt --play-out out/no-trap --play-log out/no-trap/no-trap.log
+
+size 1600 900
+start skirmish ford
+wait 0.5
+camera 476 506 45 1.5708
+wait 1.5
+cards
+wait_ticks 600
+stats
+speed 2
+wait_ticks 1500
+shot no-trap-03-coming
+stats
+wait_ticks 300
+shot no-trap-04
+wait_ticks 90
+stats
+wait_ticks 300
+shot no-trap-06-after
+stats
+cards
+quit

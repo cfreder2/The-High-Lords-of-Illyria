@@ -49,7 +49,7 @@ Retired, no longer raised anywhere (the type number is kept for old saves and sp
 
 Targets beyond **max range** are approached on foot first. Idle units fire on their own inside **auto range**,
 but never at targets inside **min range**. Catapult stones fly a fixed 53 degree arc and smash what they land on;
-against a castle gate they do five times their blast damage (satchels three times, fireballs and Molotovs one and a half).
+against a castle gate they do five times their blast damage (satchels twice, fireballs and Molotovs one and a half).
 A Molotov shatters where it strikes into a burst of fire, and its fire sets off satchel charges. A bowman with a
 **draw** looses his first shot at a mark only once he has drawn on it, and draws afresh whenever he leaves it
 (to march, to fight hand to hand); while he holds it, the draw comes inside his reload.
@@ -57,7 +57,7 @@ A Molotov shatters where it strikes into a burst of fire, and its fire sets off 
 **Nothing that bursts is carried without end.** **Carried** is the store a man brings into battle (a bowman's
 quiver has no count); none is made there, and in a Conquest a load is made up again only at dawn in a town of
 his own side. A man with a store is thrifty with it on his own: he throws at three or more men in the blast
-(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him, never at men running away,
+(a great beast of 200 hp or more counts as three) or at a foe within 6 m of him (but none inside his own blast), never at men running away,
 and a grenadier keeps his last Molotov for his satchels. An order (attack, Detonate) spends one whatever the
 mark; Hold fire (Shift+K) keeps the store for orders alone. Out of missiles he has only his hands.
 

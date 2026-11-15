@@ -211,6 +211,17 @@ bool World::detonateStep(Unit& u) {
         walk(u, u.attackTarget);
         return false;
     }
+    // Standing in the blast of the charge he is to light, he steps back out of it first (the others of a line are the
+    // player's to mind, as his friends are).
+    for (const Projectile& p : projectiles_) {
+        if (!laid(p) || (p.pos - u.attackTarget).flat().lengthSq() > Fixed::one()) continue;
+        const Fixed clear = p.explosive.radius + kShootMargin;
+        if (range >= clear) break;
+        const Vec3 to = u.pos + flatDir(u.attackTarget, u.pos, -u.facing) * (clear - range + Fixed::one());
+        if (!standable(to)) break;
+        walk(u, to);
+        return false;
+    }
     if (u.reloadRemaining > 0) return false;
     // Direct: no weighing of friends, no waiting (the player's business). A shot that cannot be made from here
     // (a wall in the way) is given up.
@@ -226,8 +237,11 @@ bool World::worthAShot(const Unit& u, const Unit& target) const {
     // Water: oil goes out in it, and a fireball is a third of itself (World::explode).
     const bool wet = douses(target.pos);
     if (wet && w.kind == ProjectileKind::Molotov) return false;
-    if ((target.pos - u.pos).flat().lengthSq() < kThriftNear * kThriftNear) return true;
     const Fixed radius = wet && w.kind == ProjectileKind::Fireball ? w.explosive.radius / 3 : w.explosive.radius;
+    // Not at a mark so near that the blast is his own death too (he gives ground, or fights with his hands).
+    const Fixed near2 = (target.pos - u.pos).flat().lengthSq();
+    if (near2 < radius * radius) return false;
+    if (near2 < kThriftNear * kThriftNear) return true;
     const Fixed reach2 = radius * radius;
     int32_t worth = 0;
     nearbyNotOf(u.owner, target.pos.x, target.pos.y, radius, [&](uint32_t i) {

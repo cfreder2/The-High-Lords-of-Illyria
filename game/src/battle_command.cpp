@@ -1255,8 +1255,8 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         return;
     }
     if (selecting && mode != OrderMode::Normal && pick.kind != K::None) {
-        // (A lay with Shift held is queued, and the mode stays for the next of the line.)
-        if (!(mode == OrderMode::LaySatchel && appending_)) orderMode_ = OrderMode::Normal;
+        // (A lay with Shift held is queued behind the last, and the mode stays for the next of the line.)
+        if (!(mode == OrderMode::LaySatchel && additive)) orderMode_ = OrderMode::Normal;
         if (mode == OrderMode::ForceMarch) {
             V3 ground;
             if (camera.pickGround(x, y, ground)) orderForceMarch(ground);
@@ -1265,9 +1265,8 @@ void Battle::tap(const Camera& camera, float x, float y, float pixelScale, bool 
         if (mode == OrderMode::LaySatchel || mode == OrderMode::Detonate) {
             V3 ground;
             if (!camera.pickGround(x, y, ground)) return;
-            OrderScope scope(*this, false);
-            if (mode == OrderMode::LaySatchel) orderLaySatchels(ground);
-            else orderDetonate(ground);
+            if (mode == OrderMode::LaySatchel) orderLaySatchels(ground, additive);
+            else orderDetonate(ground, additive);
             return;
         }
         switch (pick.kind) {

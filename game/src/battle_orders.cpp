@@ -199,7 +199,7 @@ void Battle::orderAttackGround(const V3& at) {
     voice_.order(Situation::Attack, *world_, mine);
 }
 
-void Battle::orderLaySatchels(const V3& at) {
+void Battle::orderLaySatchels(const V3& at, bool queue) {
     const std::vector<sim::EntityId> mine = selectedAlive();
     std::vector<sim::EntityId> layers;
     for (sim::EntityId id : mine)
@@ -218,6 +218,7 @@ void Battle::orderLaySatchels(const V3& at) {
             continue;
         }
         issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
+        pending_.back().queue = queue;
     }
     if (wet) say("Not in water: a satchel there is dead");
     markOrdered(layers);

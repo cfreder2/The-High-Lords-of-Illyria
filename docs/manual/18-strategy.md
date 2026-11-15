@@ -66,6 +66,8 @@ These remarks assume you are playing against Hard computer lords; Easy ones, and
 
 **Spread out against blasts.** Against grenadiers, wizards, dragons and catapults, fight **Loose**, and **Scatter** when something is in the air.
 
+**The dwarf is the play of the battle.** One dwarf, five satchels: lay a line where the foe must come (the bank of a ford, the mouth of a bridge, just inside a gate), take him back 15 m behind it with his fire held (Shift + K), and when the column is on the charges, L and a click. Measured: twelve light foot coming down a road at a lone dwarf, three satchels and one Molotov, twelve dead; the same dwarf with no trap laid killed three and died. Keep your own men out of the red ring. **Kill theirs first:** send horse round for the foe's dwarf and wizard, or shoot them where no line covers them; a dwarf killed by fire with his satchels on him takes everyone within 10 m with him.
+
 **Mind your arrows.** Missed arrows fall on whoever is under them. Shoot at the enemy before the lines meet, and at his reserves after.
 
 **Use the force march.** A squad caught in the wrong fight will keep answering blows; a force march pulls it out (it gets two seconds to break off), or runs it past a fight to where it is needed.

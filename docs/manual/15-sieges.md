@@ -37,12 +37,13 @@ Every gate is two leaves of oak banded with iron, shut. While it stands it block
 | What strikes the gate | To the gate | At most, a hit |
 |---|---|---|
 | A blow of sword, axe, club or claw | a quarter of the blow | 2 to 4 from a foot soldier, 11 from a giant |
-| A Molotov, or a wizard's fireball | one and a half times its blast | 60 |
-| A dragon's fireball | one and a half times its blast | 75 |
-| A satchel charge, laid at the doors and set off with fire | three times its blast | 240 |
+| A Molotov | one and a half times its blast | 60 |
+| A wizard's fireball | one and a half times its blast | 135 |
+| A dragon's fireball | one and a half times its blast | 105 |
+| A satchel charge, laid at the doors and set off with fire | twice its blast | 300 |
 | A catapult's stone | five times its blast | 500 |
 
-Four stones square on the doors, or nine satchels laid against them, break a town gate; stones that land a little wide do less, so count on more. Arrows do nothing to a gate.
+Four stones square on the doors, or seven satchels laid against them (more than one dwarf carries), break a town gate; stones that land a little wide do less, so count on more. Arrows do nothing to a gate.
 - **Broken is broken.** The leaves hang shattered from their hinges and the timbers lie in the passage; everyone on the march finds the new way in, and missiles fly through. Nobody mends a gate: in the Conquest a broken gate lies open for the rest of the war, whoever holds the town, and a damaged one keeps its wounds from siege to siege. Arrows stuck in the doors fall when they break. A town's own side never hacks at its own gate.
 
 - **Gates swing.** The leaves take three seconds to open or shut, and block while they swing. Your own gate opens by itself for your men whose orders lead through it (they wait at it while it swings), stays open while any of them is near, and shuts behind them when the passage is clear. An enemy never opens it; he hacks at it, or walks through it when it stands open. Tap a gate of yours (men selected or not) and it opens, or shuts if it stood open, and is **held** so: a gate held shut stops your own men too, a gate held open lets everyone in. Its card says how it stands, with **Open gate** / **Close gate** and **Let go** (the gate goes back to opening for your men and shutting behind them); the keys are [[O]] and [[Shift]] + [[O]]. You can see how a gate stands only for your own.

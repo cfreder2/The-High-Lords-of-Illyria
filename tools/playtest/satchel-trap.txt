@@ -1,0 +1,66 @@
+# The satchel trap at the Ford (armies bought for 300 gold a side: foot, bowmen, horse, one dwarf each, engines).
+# Your one dwarf mines the ground between the ford and your line, falls back to the pikes, and sets the charges off
+# when the Red Hand is on them (his own judgement: two or more foes on a charge and none of yours; a Detonate order,
+# L then a click, does it at once whoever stands there: satchel-careless.txt).
+#
+#   Illyria --play tools/playtest/satchel-trap.txt --play-out out/trap --play-log out/trap/trap.log
+#
+# Compare with satchel-no-trap.txt (the same waits, the pikes moved the same, the dwarf told nothing): `stats` and the
+# log's `foe=` at the same ticks, and the log's event line ("Ambush: N down"). Coordinates are window points at
+# 1600 x 900 with the camera below (north up). Satchels are dead in water: the line is laid on the bank, not in the ford.
+# The foe's horse ride for the dwarf first: leave him alone on the bank and he is dead before the foot arrive.
+
+size 1600 900
+start skirmish ford budget 300
+wait 0.5
+camera 476 506 45 1.5708
+wait 1.5
+cards
+
+# The pikes (card 2) forward a little, to cover him.
+select 2
+click right 300 480
+
+# The dwarf (card 8): T, then Shift+click three places across the way from the ford to your line, each inside the next
+# one's blast (the ring): a line. Shift+right-click: then back beside the pikes, within his throw of the nearest.
+select 8
+key t
+key shift down
+click left 700 380
+click left 630 420
+click left 560 460
+click right 350 450
+key shift up
+wait 0.5
+shot trap-01-ordered
+speed 4
+wait_ticks 1500
+select 8
+wait 0.3
+shot trap-02-laid
+cards
+stats
+
+# The Red Hand comes over the ford.
+wait_ticks 500
+stats
+wait_ticks 200
+shot trap-03-t2300
+stats
+wait_ticks 200
+stats
+wait_ticks 200
+shot trap-04-t2700
+stats
+wait_ticks 1300
+stats
+wait_ticks 1000
+shot trap-05-t5000
+stats
+wait_ticks 1000
+stats
+wait_ticks 1000
+shot trap-06-t7000
+stats
+cards
+quit

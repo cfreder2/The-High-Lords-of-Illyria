@@ -15,11 +15,11 @@ An **army** is a company of soldiers of one kind, raised together, named togethe
 | 12 | light and heavy infantry, archers, pikemen, warriors, undead |
 | 10 | berserkers |
 | 8 | light and heavy cavalry, wolf riders |
-| 6 | giant spiders, dwarven grenadiers |
+| 6 | giant spiders |
 | 4 | griffins, pegasi, minotaurs, unicorns, journeymen |
-| 3 | giants, wizards, archons, devils |
+| 3 | giants, archons, devils |
 | 2 | elephants, demons, catapults |
-| 1 | a hero; a dragon |
+| 1 | a hero; a dragon; a wizard; a dwarven grenadier (those who throw a blast come alone, and an army has few: chapter [](#blasts)) |
 
 Losses are real. An army that comes out of a battle with five men left is an army of five, until it is gone; nothing in the game refills it. Its card shows how many still stand, and a bar how many that is of its full number.
 

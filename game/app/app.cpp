@@ -1127,6 +1127,8 @@ ILLYRIA_API void illyria_set_keys(int force, int march) {
 ILLYRIA_API void illyria_set_order_mode(int mode) {
     if (app && mode >= 0 && mode <= 4) app->battle->setOrderMode(static_cast<Battle::OrderMode>(mode));
 }
+// The order mode in hand (a key of the battle's own may have set it: T, L), so that Esc lets go of it.
+ILLYRIA_API int illyria_order_mode() { return app ? static_cast<int>(app->battle->orderMode()) : 0; }
 // What a click at (x, y) CSS pixels would do, for the desktop cursor (Battle::Intent).
 ILLYRIA_API int illyria_hover(float x, float y) {
     if (!app) return 0;

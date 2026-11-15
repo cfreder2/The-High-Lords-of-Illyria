@@ -224,3 +224,42 @@ TEST(what_the_player_bought_is_what_he_fields) {
     CHECK(heavy == 3);
     CHECK(archers == 2);
 }
+
+TEST(the_keepers_dwarf_mines_the_ground_inside_his_gate) {
+    // A village's siege with bought armies, the computer keeping the walls: its purse buys one dwarf, and he lays a line of
+    // charges just inside the doors and waits behind it (Battle::aiPrecious). The player's host is left standing.
+    SkirmishSetup setup;
+    setup.budget = 450;
+    Battle b(1, Scenario::Siege, setup);
+    int dwarves = 0;
+    for (const Squad& s : b.squads()) dwarves += s.owner == Battle::kEnemy && s.type == UnitType::DwarfGrenadier;
+    CHECK(dwarves == 1);
+    const int gate = townGate(b);
+    CHECK(gate >= 0);
+    if (gate < 0 || dwarves != 1) return;
+    const V3 door = doorOf(b, static_cast<size_t>(gate));
+    // (He has the streets to go round, at a dwarf's pace: two minutes.)
+    for (int i = 0; i < 120 * illyria::sim::kTicksPerSecond; ++i) b.advance(1.0 / illyria::sim::kTicksPerSecond + 1e-6);
+    int laid = 0;
+    float nearest = 1e30f, farthest = 0;
+    for (const illyria::sim::Projectile& p : b.world().projectiles()) {
+        if (p.kind != illyria::sim::ProjectileKind::Bomb || p.owner != Battle::kEnemy || p.fuse != 0) continue;
+        const V3 at = toV3(p.pos);
+        const float d = (V3{at.x - door.x, at.y - door.y, 0}).length();
+        ++laid;
+        nearest = std::min(nearest, d);
+        farthest = std::max(farthest, d);
+    }
+    float dwarfAt = -1;
+    int carried = -1;
+    for (const illyria::sim::Unit& u : b.world().units())
+        if (u.alive() && u.owner == Battle::kEnemy && static_cast<UnitType>(u.stats.type) == UnitType::DwarfGrenadier) {
+            const V3 at = toV3(u.pos);
+            dwarfAt = (V3{at.x - door.x, at.y - door.y, 0}).length();
+            carried = u.satchels;
+        }
+    std::printf("  %d charges laid %.1f to %.1f m from the middle of the doors; the dwarf %.1f m from them with %d left\n", laid, nearest, farthest, dwarfAt, carried);
+    CHECK(laid >= 2);
+    CHECK(farthest < 30.0f);
+    CHECK(dwarfAt > nearest);  // behind his charges, not on them
+}

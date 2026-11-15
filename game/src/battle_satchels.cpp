@@ -80,7 +80,7 @@ void Battle::holdFireSelected() {
     say(hold ? "Hold fire: they shoot and lay only when ordered" : "Fire at will");
 }
 
-void Battle::orderDetonate(const V3& at) {
+void Battle::orderDetonate(const V3& at, bool queue) {
     // The laid satchel nearest the tap (as the world will take it), else the ground there.
     V3 mark = at;
     float best = static_cast<float>(sim::World::kDetonatePick.toDouble());
@@ -111,6 +111,7 @@ void Battle::orderDetonate(const V3& at) {
     }
     if (satchel && world_->douses(toSim(mark))) say("That satchel lies in water: it is dead");
     issue(local_, who, sim::Command::Type::Detonate, mark);
+    pending_.back().queue = queue;
     markOrdered({who});
     voice_.order(Situation::Attack, *world_, {who});
 }
@@ -209,11 +210,18 @@ bool Battle::aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& a
         const float d = flat(mid, c);
         if (d >= best || d < 4.0f) continue;
         const V3 in = V3{c.x - mid.x, c.y - mid.y, 0} * (1.0f / d);
-        best = d;
-        found = true;
-        spot = mid + in * 7.0f;
-        across = V3{b.x - a.x, b.y - a.y, 0}.normalized();
-        wait = spot + in * kMineWaitM;
+        // Clear of the gatehouse: the first place inward where a line can lie down the way in (the column that breaks in
+        // comes along it), each charge where a man can stand.
+        for (float inward = 8.0f; inward <= 24.0f; inward += 2.0f) {
+            const V3 at = mid + in * (inward + kMineGapM);  // (the middle of the three)
+            if (!world_->standable(vec(at)) || !world_->standable(vec(at + in * kMineGapM)) || !world_->standable(vec(at - in * kMineGapM))) continue;
+            best = d;
+            found = true;
+            spot = at;
+            across = in;
+            wait = spot + in * (kMineGapM + kMineWaitM);
+            break;
+        }
     }
     if (found) return true;
     // A ford between it and the foe: its own bank, clear of the water.
@@ -224,6 +232,12 @@ bool Battle::aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& a
     const V3 toFoe = V3{foe.x - c.x, foe.y - c.y, 0} * (1.0f / span);
     const float along = (ford.x - c.x) * toFoe.x + (ford.y - c.y) * toFoe.y;
     if (along < 8.0f || along > span) return false;  // not between them
+    // Not once his own foot are over it: the ford is mined by a side that waits behind it, not one that has crossed.
+    for (const Squad& f : squads_) {
+        if (f.owner != s.owner || aliveCount(f) == 0 || roleOf(f.type) != Role::Melee) continue;
+        const V3 fc = squadCentre(f, false);
+        if ((fc.x - ford.x) * toFoe.x + (fc.y - ford.y) * toFoe.y > 0) return false;
+    }
     const float len = flat(ford, c);
     const V3 home = V3{c.x - ford.x, c.y - ford.y, 0} * (1.0f / len);
     float out = 0;
@@ -274,9 +288,9 @@ bool Battle::aiPrecious(size_t squad, const V3& foe) {
     if (laying) return true;  // at his work: no other order
     // A place to mine, once: a gate of his side's, or the ford before the foe. A line of three, then back behind it to wait.
     if (!memo.mined && satchels >= 2 && armed) {
-        memo.mined = true;
         V3 spot, across, wait;
         if (aiChoke(s, c, foe, spot, across, wait)) {
+            memo.mined = true;
             std::vector<sim::EntityId> men;
             for (sim::EntityId id : s.members)
                 if (world_->units()[id - 1].alive() && world_->units()[id - 1].satchels > 0) men.push_back(id);

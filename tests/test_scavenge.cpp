@@ -516,7 +516,7 @@ TEST(raid_scenario_is_deterministic) {
     std::printf("  raid: %d things thrown (%d heads), %d killed by hyena-folk\n", thrown, heads, kills);
     CHECK(a == run(1234, nullptr, nullptr, nullptr));
     CHECK(thrown > 0);
-    constexpr uint64_t kGolden = 0x591f94ca645b7631;  // (was 0x4aeed14a9b200dab before position, support and the Rally: world_tactics.cpp; was 0xfcb20a3e241a1bf3 before two-door castles, the battle AI and the balance pass were merged; earlier was 0xe3e62aedfc458a83 before the melee cap and wrap, the idle garrison's stations and the blast throwers' aim were merged; was 0xd332945f49867e4f before a foe was struck by no more than his share of men at once (meleeCap), the rest wrapping him by free places on his ring (ringSlot))
+    constexpr uint64_t kGolden = 0xd7111037035740eb;  // (was 0x591f94ca645b7631 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp); was 0x4aeed14a9b200dab before position, support and the Rally: world_tactics.cpp; was 0xfcb20a3e241a1bf3 before two-door castles, the battle AI and the balance pass were merged; earlier was 0xe3e62aedfc458a83 before the melee cap and wrap, the idle garrison's stations and the blast throwers' aim were merged; was 0xd332945f49867e4f before a foe was struck by no more than his share of men at once (meleeCap), the rest wrapping him by free places on his ring (ringSlot))
     if (a != kGolden) std::printf("  Raid checksum: 0x%016llx\n", static_cast<unsigned long long>(a));
     CHECK(a == kGolden);
 }

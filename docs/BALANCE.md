@@ -172,6 +172,60 @@ Matrix (flat field, no water, so only the charge rules show): light cavalry 71 t
 
 Everything else (the other prices, hit points, blows, morale, charge, the gait table, the climb shares) is unchanged. Prices live in `trained()` in `engine/sim/src/conquest.cpp`, stats in `engine/sim/src/units.cpp` (docs/UNITS.md follows it).
 
+## Explosives are rare, counted and precious (2026-11-14)
+
+The owner's direction: the dwarf is the play of the battle, as in Myth; one is already valuable; explosive units are rare and you protect them; nobody has unlimited fireballs, Molotovs or satchels; oil and powder are useless in water. Rules: docs/GAME_DESIGN.md, "Explosives are rare, counted and precious"; numbers: docs/UNITS.md.
+
+| Change | Was | Now | Why |
+|---|---|---|---|
+| Grenadier squad | 6 dwarves (8 and 6 at the Ford) | **1 dwarf** | one is the unit; six made satchels a carpet and the dwarf nobody |
+| Grenadier body | 50 hp, 1.8 m/s, morale 100% | 110 hp, 1.6 m/s, 60% | tough for his size, slow, and used to standing alone (a lone man is always outnumbered) |
+| Grenadier price | 32 gold, 4 days, upkeep 8 | **60 gold, 6 days, upkeep 15** | one man at the price of three and a half squads of heavy foot |
+| Grenadiers kept | no limit | **2 to a realm, 2 to a Skirmish host** (the computer buys 1) | rare by rule, not by price alone |
+| Satchel | 4 m, 80, five carried, 4 s between lays | **5 m, 150**, five carried, 3 s | a satchel under a column kills most of a squad of foot (light 60 hp dies within 3 m of it, heavy 90 hp within 2 m) |
+| Satchel on a gate | three times its blast (240) | twice (300) | seven for a town gate: more than one dwarf carries |
+| Chain | 4 to 11 ticks | 4 to 11 from a bottle, **8 to 15 from another satchel** | a line goes up one after another |
+| Blast on morale | the dead only | 150 off everyone left standing within twice the blast | survivors are shaken |
+| Molotovs | no end of them | **6** | a decision each; the last is kept for his satchels |
+| Wizard squad | 3 (2 at the Ford) | **1 wizard**, 1 kept at most | extremely rare |
+| Wizard | 45 hp; fireball 3.5 m, 50, every 8 s, no end of them | 40 hp; **4 fireballs**, 4.5 m, 90, every 7 s | powerful and fragile; four is one for the opening, one for the satchel line, two for the crisis |
+| Wizard levy | 30 | 70 | (a levy of them exists nowhere yet; a hero for hire's company and a ruin are how one comes) |
+| Dragon | fireballs without end | **6 breaths**, 1 kept at most | then 650 hp of claws |
+| Catapult | stones without end | **16 stones** an engine, 3 trains kept at most | a gate takes four or five good stones; a train of two has 32 |
+| Hyena-folk | throw what they pick up | the same | already limited by what lies on the field |
+| Thrift | fired at the nearest foe in reach | three or more in the blast (a 200 hp body counts as three), or a foe within 6 m but outside his own blast; never the routed | a store is not spent on one man |
+| A thrower's weight in the odds | his missile's damage rate | half of it while he has a store, his hands when it is spent | hyena-folk and supporters reckon a thrifty wizard for what he will do |
+| Water | none | Molotov and satchel dead in it; a fireball a third (radius and damage) | the ford is mined on its bank |
+| Left to himself | fought, or stood | gives ground before a foe within 10 m to behind his foot, who come to him | precious: never in the melee by his own choice |
+| Bowmen | shot the nearest | shoot a foe's dwarf or wizard in reach first | the counterplay; a line of bodies in front of him is his cover |
+
+### Measured (tests/test_satchels.cpp, on open ground, one seed each)
+
+| | Foes down | Spent | The dwarf |
+|---|---|---|---|
+| Twelve light foot come down a road for a lone dwarf; three satchels laid along it beforehand, fire held, one Detonate when the column's head is on the line | **12 of 12** | 3 satchels, 1 Molotov: **4.0 a satchel** | lives, with 2 satchels and 5 Molotovs |
+| The same twelve, the dwarf left to himself with nothing laid | 3 of 12 | 5 satchels, 1 Molotov | dead |
+| A line of three with six foes on it and one of his own in the blast, Detonate ordered | 6 of 6, and the friend | 1 Molotov | first blast 1.3 s after the order (his own judgement waits 5 s for the friend), the line over 0.3 s |
+| A wizard, 90 s ordered at a patch of ground | | 4 fireballs, then none | |
+| A wizard left to himself, 6 s: one man at 30 m / four together / four running | 0 / 1 / 0 fireballs | | |
+| A dwarf with two bottles and a knot of four in reach for 30 s, then a satchel under them | 1 thrown, 1 kept; the kept one lights the satchel | | |
+| Six bowmen, a foe's line at 30 m and his dwarf at 42 m beyond its flank | the dwarf dead at 34 s, the line untouched | | |
+| A Molotov into the ford; a satchel in the ford beside a burning one; a fireball on a man in the ford against one on the bank | doused; one blast, the wet one still lying; 3 hp against 19 | | |
+
+One dwarf used well is worth a squad and more; left alone he is worth a quarter of one and dies.
+
+### Played (tools/playtest/satchel-*.txt, the Ford, 300 gold a side, Normal)
+
+- `satchel-careless.txt`: a line of three, the Warriors marched onto it, Detonate ordered. The rings were red, the blast came at once, and the strip read **"Our own blast: 4 down"**: three Warriors and the dwarf himself, who was still walking off his last charge. (Since then a dwarf ordered to detonate steps back out of the blast of the charge he is to light before he throws; the men of his side in it are still the player's to mind. Not played again.)
+- `satchel-trap.txt` and the runs before it: the trap was laid and shown (marks, rings, the card's pips), but **no column was caught on it in play**. Twice the foe's horse crossed first and rode for the dwarf (once he was dead on the bank before the foot arrived; once the pikes sent to cover him fought the horse on top of the charges, and he rightly would not spark them with his own men there). The computer's foot came over two minutes later, onto ground where the fight already stood. A scripted hand cannot time a Detonate to a column it cannot see; a person can. The trap's numbers above are the unit tests'.
+- In the classic Ford the foe's dragon killed the player's dwarf with fire in the first half minute, and his satchels took four Warriors beside him with him: the careless moment, unscripted.
+
+### Not measured
+
+- The matrix below was run before this change: its **Wizard, Dragon, Dwarven Grenadier and Catapult rows and columns are stale** (three wizards, six grenadiers, no stores). `illyria_balance` was not re-run. At equal gold one dwarf (60) now meets 51 light foot or 42 heavy; the matrix has no player in it, so it will read him as lost.
+- The Conquest's pace with dearer, capped grenadiers and catapults (`illyria_conquestsim`) was not re-run; the Ironhold Dwarves lose their cheap blast squads, and the computer lords will rarely choose a 60-gold dwarf.
+- Siege lengths: a train's 32 stones were not played against a capital's three gates.
+
 ## Matrix
 
 Before (the Conquest base, melee marching on the enemy line):

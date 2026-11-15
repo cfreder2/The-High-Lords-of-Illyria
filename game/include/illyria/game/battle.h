@@ -425,7 +425,7 @@ public:
     // Molotov, a wizard's fireball) the nearest in reach throws at the charge nearest `at` (or the ground there) at once,
     // friends in the blast or not: sim Command::Detonate. Hold fire: the selected shoot, throw and lay only when
     // ordered (again: at will). What a squad still carries is on its card.
-    void orderDetonate(const V3& at);
+    void orderDetonate(const V3& at, bool queue = false);
     void holdFireSelected();
     bool selectionSparks() const;
     bool selectionStores() const;
@@ -496,7 +496,8 @@ public:
     // whoever they meet.
     void orderAttackGround(const V3& at);
     // The selected who carry satchels walk there and lay one each, a few metres apart.
-    void orderLaySatchels(const V3& at);
+    // `queue` (Shift): behind the orders they have, for a line of charges.
+    void orderLaySatchels(const V3& at, bool queue = false);
     // The selected scavengers let loose to raid from where they stand (sim
     // Command::Raid); false (and a notice) when none is selected.
     bool orderRaid();

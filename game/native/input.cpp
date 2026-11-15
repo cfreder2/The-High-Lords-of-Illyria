@@ -262,7 +262,7 @@ void Input::key(const SDL_KeyboardEvent& k) {
         case SDL_SCANCODE_TAB: illyria_cycle_group(shift ? -1 : 1); break;  // the next group of units (Shift: the previous)
         case SDL_SCANCODE_ESCAPE:
             // Cancels an order mode in hand; else pauses the game and brings up the menu (Esc again: back).
-            if (orderMode_) setMode(0);
+            if (orderMode_ || illyria_order_mode()) setMode(0);
             else hud_.openMenu();
             break;
         case SDL_SCANCODE_SPACE: illyria_stop(); break;  // the march stops: the selection halts
