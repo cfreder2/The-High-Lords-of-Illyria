@@ -1798,6 +1798,7 @@ uniform vec2 uSheetSize;  // px
 uniform float uToViewer;
 uniform float uLift;     // metres drawn toward the viewer, against the ground
 out vec2 vUv;
+flat out vec4 vCell;  // the picture's place in the sheet, px: left, bottom, w, h
 flat out float vSelected;
 flat out float vDot;
 out float vFog;
@@ -1847,6 +1848,7 @@ void main() {
     }
     vec2 inCell = vec2(mirror ? 1.0 - corner.x : corner.x, corner.y) * place.zw;
     vUv = (place.xy + inCell) / uSheetSize;
+    vCell = place;
     vSelected = iSelected;
     vFog = uwFogFactor(fogFactor(dist), dist);
     vShade = 0.72 + 0.28 * shadowAt(iPos + vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0)) * cloudShade(iPos.xy);
@@ -1871,6 +1873,7 @@ uniform sampler2D uSheet;
 uniform vec3 uTeam;   // the side's colour, for specks
 uniform vec3 uCloth;  // and as its cloth is dyed
 in vec2 vUv;
+flat in vec4 vCell;
 flat in float vSelected;
 flat in float vDot;
 in float vFog;
@@ -1882,9 +1885,39 @@ void main() {
         oColor = vec4(mix(team, uwSky(), uwFull(vFog * 0.5, vFog)), 1.0);
         return;
     }
-    vec4 t = texture(uSheet, vUv);
-    if (t.a < 0.5) discard;
-    vec3 c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    vec3 c;
+    vec2 size = vec2(textureSize(uSheet, 0));
+    vec2 st = vUv * size;
+    vec2 grain = fwidth(st);  // sheet pixels a screen pixel
+    if (max(grain.x, grain.y) < 0.9) {
+        // Magnified: the four sheet pixels round the point, blended. A sheet's alpha is a code (empty, outline,
+        // the side's cloth, plain), not a coverage, so it cannot be filtered by the sampler: each tap is read
+        // whole, dyed if it is cloth, and weighed by whether anything is there. The edge is where the blended
+        // cover crosses a half: a smooth line through the sheet's pixel stairs, and since empty pixels lend no
+        // colour, no dark fringe. Taps stay inside the picture's own cell.
+        st -= 0.5;
+        vec2 base = floor(st), f = st - base;
+        vec2 lo = vCell.xy, hi = vCell.xy + vCell.zw - 1.0;
+        vec3 sum = vec3(0.0);
+        float cover = 0.0;
+        for (int k = 0; k < 4; ++k) {
+            vec2 o = vec2(float(k & 1), float(k >> 1));
+            vec2 at = base + o;
+            vec2 w2 = mix(1.0 - f, f, o);
+            float w = w2.x * w2.y;
+            if (any(lessThan(at, lo)) || any(greaterThan(at, hi))) continue;
+            vec4 t = texelFetch(uSheet, ivec2(at), 0);
+            if (t.a < 0.5) continue;
+            sum += w * (t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb);
+            cover += w;
+        }
+        if (cover < 0.5) discard;
+        c = sum / cover;
+    } else {
+        vec4 t = texture(uSheet, vUv);
+        if (t.a < 0.5) discard;
+        c = t.a > 0.68 && t.a < 0.88 ? t.rgb * uCloth : t.rgb;
+    }
     // Burned black (vSelected below zero, by how far: renderer.cpp drawMan), cloth and all.
     float charred = clamp(-vSelected, 0.0, 1.0);
     c = mix(c, vec3(0.05, 0.04, 0.035) + dot(c, vec3(0.3, 0.59, 0.11)) * vec3(0.2, 0.15, 0.12), charred * 0.94);

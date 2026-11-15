@@ -66,7 +66,7 @@ CHROMA_KEY = '#00FF00'  # background, when the tool cannot write alpha
 # Camera and light, as tools/blender/sprites/render.py renders them.
 ELEVATION_DEG = 30.0  # figures::kElevation = 0.52 rad
 GAME_PPM = 48.0       # the normal sheet's pixels a metre (less for the biggest types)
-HD_SCALE = 2.0        # the close-up sheet: twice the normal sheet's pixels a metre
+HD_SCALE = 3.0        # the close-up sheet: three times the normal sheet's pixels a metre (144), where its atlas allows
 
 # The unit types: sheet name (unit_type_id) -> number, class, height (m),
 # attack seconds (figures::attackSeconds), flier, ranged, gib parts, look.

@@ -217,7 +217,7 @@ def main():
     check(meta['framesPerView'] == layout.FRAMES_PER_VIEW and len(meta['cells']) == layout.CELLS, 'the new layout: 44 frames a view, 240 cells')
     check(loadable(meta, (W, H)), 'the normal sheet passes the renderer\'s checks')
     check(loadable(hd, Image.open(os.path.join(out, UNIT + '_hd.webp')).size), 'the close-up sheet passes them too')
-    check(abs(hd['ppm'] - 2 * meta['ppm']) < 0.01, 'close-up at twice the pixels a metre (%.1f, %.1f)' % (meta['ppm'], hd['ppm']))
+    check(abs(hd['ppm'] - layout.HD_SCALE * meta['ppm']) < 0.01, 'close-up at HD_SCALE times the pixels a metre (%.1f, %.1f)' % (meta['ppm'], hd['ppm']))
     idle = meta['cells'][2 * 44 + 0]
     expect = height * math.cos(math.radians(30))
     check(abs(idle[7] - expect) < 0.08, 'an idle cell is the figure\'s height (%.2f m, %.2f expected)' % (idle[7], expect))
