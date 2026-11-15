@@ -39,7 +39,9 @@ cards
 key l
 click left 630 420
 wait_ticks 150
-shot careless-02-blast
+shot careless-02-throwing
+wait_ticks 300
+shot careless-03-blast
 stats
 cards
 quit

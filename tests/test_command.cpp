@@ -44,6 +44,13 @@ void run(Battle& b, double seconds) {
 
 V3 facingOf(const Battle& b, illyria::sim::EntityId id) { return toV3(b.world().units()[id - 1].facing); }
 
+// The Red Hand's dragon has six breaths of fire now and then comes down with its claws: it is on the player's line within
+// half a minute. These are tests of orders given on a quiet field, so it is taken off it.
+[[maybe_unused]] void noDragon(Battle& b) {
+    for (const illyria::sim::Unit& u : b.world().units())
+        if (u.owner == Battle::kEnemy && u.stats.type == static_cast<uint8_t>(illyria::sim::UnitType::Dragons)) const_cast<illyria::sim::Unit&>(u).hp = 0;
+}
+
 }  // namespace
 
 TEST(every_formation_has_a_place_for_each_and_keeps_its_gaps) {
@@ -241,6 +248,7 @@ TEST(groups_are_saved_and_recalled) {
 
 TEST(a_move_with_facing_arrives_facing_that_way_laid_across_the_line) {
     Battle b(42);
+    noDragon(b);
     const int watch = squadNamed(b, "The Grey Watch");
     b.selectSquad(watch);
     run(b, 1);
@@ -266,6 +274,7 @@ TEST(press_and_drag_draws_the_facing_line_with_its_ghost) {
     // Pressed where they are to go and dragged south: the ghost of them stands
     // there and turns to face south; before the drag, as they face now.
     Battle b(42);
+    noDragon(b);
     const int watch = squadNamed(b, "The Grey Watch");
     b.selectSquad(watch);
     V3 at = b.squadCentre(b.squads()[static_cast<size_t>(watch)]) + V3{-30, 0, 0};
@@ -344,6 +353,7 @@ TEST(pressed_on_the_selected_they_turn_where_they_stand) {
     // A hold on one of the selected and a drag south: not a box, but the
     // facing line from their middle; they turn there and stay put.
     Battle b(42);
+    noDragon(b);
     const int watch = squadNamed(b, "The Grey Watch");
     b.selectSquad(watch);
     const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
@@ -520,7 +530,10 @@ TEST(a_block_ordered_across_open_ground_arrives_in_time_and_keeps_its_width) {
         if (headT < 0 && nearest < 8.0f) headT = static_cast<float>(t);
         if (tailT < 0 && (middleOf(b, all) - to).length() < 8.0f) tailT = static_cast<float>(t);
     }
-    CHECK(headT > 0 && headT <= 60.0f);  // 80 m at the army's pace (it was 90 s and more with a single lane down the road)
+    std::printf("  the head there at %.0f s, the middle at %.0f s\n", headT, tailT);
+    // 80 m at the army's pace, its engines' 1.4 m/s: 57 s, and the block's depth (it was 90 s and more with a single lane down
+    // the road; 60 s was the bound while fourteen sappers filled two places of the block, 61 s measured with a dwarf in each).
+    CHECK(headT > 0 && headT <= 65.0f);
     CHECK(tailT > 0 && tailT <= 120.0f);
     // The army holds a block's width across the way it went, never a column's, and never a thin line.
     std::vector<float> ys;
@@ -576,8 +589,20 @@ TEST(dragged_to_face_a_way_every_one_of_them_faces_it) {
     CHECK(spread > 0.5f);  // they did face different ways
     b.selectSquad(squadNamed(b, "The Grey Watch"));
     b.orderMoveFacing(start + V3{-25, 10, 0}, V3{0, 1, 0});
-    run(b, 45);
-    for (illyria::sim::EntityId id : men) CHECK(facingOf(b, id).dot(V3{0, 1, 0}) > 0.95f);
+    // Each as he arrives (afterwards the Red Hand's bowmen come within reach of the wizard standing by this place, and a man
+    // shot at turns his shield to them: the battle's business, not the order's).
+    std::vector<bool> there(men.size(), false);
+    std::vector<V3> faced(men.size());
+    run(b, 0.2);
+    for (int t = 0; t < 450; ++t) {
+        b.advance(0.1);
+        for (size_t k = 0; k < men.size(); ++k) {
+            if (there[k] || b.world().units()[men[k] - 1].hasMoveTarget) continue;
+            there[k] = true;
+            faced[k] = facingOf(b, men[k]);
+        }
+    }
+    for (size_t k = 0; k < men.size(); ++k) CHECK(there[k] && faced[k].dot(V3{0, 1, 0}) > 0.95f);
 }
 
 TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {
@@ -649,7 +674,7 @@ TEST(encircled_soldiers_face_outward_from_the_point) {
 
 TEST(scatter_spreads_them_outward) {
     Battle b(42);
-    b.selectSquad(squadNamed(b, "Iron Hill Sappers"));
+    b.selectSquad(squadNamed(b, "Oakhaven Warriors"));  // (the sappers were a squad of eight; a dwarf comes alone now)
     const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
     const auto spread = [&] {
         V3 c;

@@ -314,12 +314,27 @@ TEST(the_destination_markers_are_where_they_end_up) {
     for (const Battle::OrderMark& mk : b.orderMarks())
         if (mk.kind == Battle::OrderMark::Kind::Slot) slots.push_back(mk);
     CHECK(slots.size() == b.selectedAlive().size());
-    run(b, 45);
+    // Each as he arrives (the way he faces afterwards is the battle's business: the Red Hand's bowmen come within their
+    // reach of the wizard standing by this place before the 45 s are out, and a man shot at turns his shield to them).
+    std::vector<V3> stood(slots.size()), faced(slots.size());
+    std::vector<bool> there(slots.size(), false);
+    for (int t = 0; t < 45 * kTicksPerSecond; ++t) {
+        b.advance(1.0 / kTicksPerSecond + 1e-6);
+        for (size_t k = 0; k < slots.size(); ++k) {
+            const Unit& u = b.world().units()[slots[k].unit - 1];
+            if (there[k] || u.hasMoveTarget) continue;
+            there[k] = true;
+            stood[k] = illyria::game::toV3(u.pos);
+            faced[k] = illyria::game::toV3(u.facing);
+        }
+    }
     float worst = 0;
-    for (const Battle::OrderMark& mk : slots) {
-        const V3 p = illyria::game::toV3(b.world().units()[mk.unit - 1].pos);
+    for (size_t k = 0; k < slots.size(); ++k) {
+        const Battle::OrderMark& mk = slots[k];
+        CHECK(there[k]);
+        const V3 p = stood[k];
         worst = std::max(worst, V3{p.x - mk.pos.x, p.y - mk.pos.y, 0}.length());
-        CHECK(illyria::game::toV3(b.world().units()[mk.unit - 1].facing).dot(mk.face) > 0.95f);
+        CHECK(faced[k].dot(mk.face) > 0.95f);
     }
     std::printf("  %zu soldiers, at most %.2f m from their markers\n", slots.size(), worst);
     CHECK(worst < 1.0f);

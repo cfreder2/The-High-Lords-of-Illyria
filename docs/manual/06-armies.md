@@ -8,7 +8,7 @@
 
 ## What an army is {#army}
 
-An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Iron Hill Sappers*, the *Garrison of Ashcombe*. On the Conquest map it is one of the squads in a stack; on the battlefield too it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
+An **army** is a company of soldiers of one kind, raised together, named together and fighting together: the *1st Oakhaven Bowmen*, the *Grey Watch*, the *Garrison of Ashcombe*. On the Conquest map it is one of the squads in a stack; on the battlefield too it is a **squad**, every one of its soldiers a figure of his own. A fresh army has its full number:
 
 | Soldiers | Armies |
 |---|---|

@@ -708,6 +708,7 @@ public:
     // side holds and to wait behind the charges, kept behind the foot when he has nothing left. True: he has his order.
     bool aiPrecious(size_t squad, const V3& foe);
     bool aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& across, V3& wait) const;
+    bool aiArmed(const Squad& s) const;  // a man of it has a missile left
     // The computer's purse on Easy, as a share of the player's.
     static constexpr int kEasyPursePct = 75;
     // Easy comes late: it stands this long before it marches (unless the player comes to it).

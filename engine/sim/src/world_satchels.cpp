@@ -234,6 +234,9 @@ bool World::worthAShot(const Unit& u, const Unit& target) const {
     const RangedWeapon& w = u.stats.ranged;
     // The last bottle is for his satchels.
     if (u.stats.satchels.count > 0 && sparks(u.stats) && u.ammo <= 1) return false;
+    // An engine's stones clear the walls: a man on a wall-walk is its work, one at a time (world_siege.cpp).
+    if (w.kind == ProjectileKind::Stone)
+        if (WalkSpot spot; walkSpot(target.pos, spot)) return true;
     // Water: oil goes out in it, and a fireball is a third of itself (World::explode).
     const bool wet = douses(target.pos);
     if (wet && w.kind == ProjectileKind::Molotov) return false;

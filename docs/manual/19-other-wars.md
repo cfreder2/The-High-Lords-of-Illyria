@@ -126,11 +126,11 @@ Six of these eleven are offered at each break, a different six as the waves go b
 
 | Squad | Men | Points | Squad | Men | Points |
 |---|---|---|---|---|---|
-| Warriors | 6 | 4 | Dwarven Grenadiers | 3 | 4 |
+| Warriors | 6 | 4 | Dwarven Grenadiers | 1 | 4 |
 | Heavy Infantry | 6 | 4 | Journeymen | 2 | 3 |
 | Pikemen | 6 | 3 | Light Cavalry | 4 | 4 |
 | Archers | 6 | 4 | Heavy Cavalry | 4 | 6 |
-| Berserkers | 5 | 4 | Wizards | 2 | 6 |
+| Berserkers | 5 | 4 | Wizards | 1 | 6 |
 | | | | Griffins | 2 | 6 |
 
 Press **Ready: bring them on** when you are done: the next wave comes at once when every person on the hill is ready, or when the break runs out. (Before the first wave there is no panel and nothing to buy: the half minute simply runs.)

@@ -197,6 +197,14 @@ void Battle::collectBlasts() {
 
 // --- The computer's own -------------------------------------------------------------------------------------------
 
+bool Battle::aiArmed(const Squad& s) const {
+    for (sim::EntityId id : s.members) {
+        const sim::Unit& u = world_->units()[id - 1];
+        if (u.alive() && sim::World::armed(u)) return true;
+    }
+    return false;
+}
+
 bool Battle::aiChoke(const Squad& s, const V3& c, const V3& foe, V3& spot, V3& across, V3& wait) const {
     const sim::Region& rg = worldRegion();
     const auto vec = [](const V3& p) { return toSim(p); };

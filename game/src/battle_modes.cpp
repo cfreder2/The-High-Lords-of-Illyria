@@ -270,9 +270,9 @@ sim::EntityId Battle::pickFoe(sim::PlayerId owner, const V3& around, float reach
         else
             switch (roleOf(static_cast<UnitType>(u.stats.type))) {
                 case Role::Healer: f = 0.45f; break;
-                // The one dwarf, the one wizard: the foe's whole blast. Horse ride for them before anyone.
-                case Role::Caster:
-                case Role::Bomber: f = 0.3f; break;
+                // The one dwarf, the one wizard: the foe's whole blast. Horse ride for them before anyone (foot as before).
+                case Role::Caster: f = mounted ? 0.3f : 0.5f; break;
+                case Role::Bomber: f = mounted ? 0.3f : 0.55f; break;
                 case Role::Siege: f = 0.5f; break;
                 case Role::Ranged: f = 0.55f; break;
                 default: break;
@@ -552,8 +552,9 @@ void Battle::aiFight(size_t squad, const V3& goal, const V3& around, float reach
     }
     if (stats.mounted && role == Role::Melee && flankPoint(s, flank)) {
         aiSteer(squad, flank);  // round a foe locked in melee, into its flank or rear
-    } else if (range > 0 && role != Role::Flier) {
-        // A good bowshot off, then they shoot on their own.
+    } else if (range > 0 && (role != Role::Flier || aiArmed(s))) {
+        // A good bowshot off, then they shoot on their own (a dragon too, while it has fire: left to itself it breathes on
+        // a knot of men, not on one, and an order to attack would spend its six breaths on the first man it met).
         const float keep = range * 0.8f;
         if (dist > keep) aiSteer(squad, c + (fp - c) * ((dist - keep + 4) / dist));
         else if (role != Role::Bomber) aiHalt(squad);  // (a grenadier in range lays a satchel and steps back from it: no halt)
