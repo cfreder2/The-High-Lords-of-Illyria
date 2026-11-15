@@ -123,6 +123,11 @@ class Held:
         else:
             self.spheres.append((rig.fist(self.side), 0.15 * k))
             self.spheres.append((rig.head(self.side + 'Hand'), 0.10 * k))
+            if self.it.get('couched'):
+                # A lance is clamped under the arm that holds it: that arm is left out, as a shield's is.
+                sh, el, wr = rig.head(self.side + 'Arm'), rig.head(self.side + 'ForeArm'), rig.head(self.side + 'Hand')
+                self.spheres += [(sh + (el - sh) * t, 0.13 * k) for t in (0.0, 0.33, 0.66, 1.0)]
+                self.spheres += [(el + (wr - el) * t, 0.12 * k) for t in (0.33, 0.66)]
             other = 'Left' if self.side == 'Right' else 'Right'
             fo = rig.fist(other)
             # A second hand on it: its fist lies on the thing.

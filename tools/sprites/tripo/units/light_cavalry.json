@@ -18,9 +18,10 @@
    "grip": [
     0.5,
     0.5,
-    0.3
+    0.15
    ],
-   "team": true
+   "team": true,
+   "couched": true
   }
  ],
  "exposure": 1.0,
