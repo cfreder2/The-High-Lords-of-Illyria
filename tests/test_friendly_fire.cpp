@@ -68,7 +68,7 @@ Scene pile(uint64_t seed, int n, UnitType shooter = UnitType::Catapult, int64_t 
 }
 
 // Over `seeds` worlds of `pile(seed, n)`, 90 s of shelling: the friends' hit points lost, the foes', and the friends dead.
-constexpr uint64_t kAloneSum = 0x4706d43339ae7233;  // the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
+constexpr uint64_t kAloneSum = 0x0e98f7b87d48c48d;  // (was 0x4706d43339ae7233 before explosives became rare and counted (one dwarf, one wizard, stores of missiles and their thrift, satchels of 5 m and 150, water, the dwarf and the wizard kept out of the melee: world_satchels.cpp)) the twelve worlds with no friend near (was 0x2fad2b1c31c46429 before a catapult's stone rolled on from where it comes down, world_boulder.cpp: the same throws, and the foes' toll 8380, was 6156; was 0xcd43c73604019bef before the siege train's gate reach and the balance pass)
 
 struct Toll {
     int32_t friendsLost = 0, foesLost = 0;
