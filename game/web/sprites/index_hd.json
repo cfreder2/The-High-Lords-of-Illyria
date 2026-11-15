@@ -63,6 +63,14 @@
   ],
   "ppm": 96.0
  },
+ "25": {
+  "name": "berserker_hd",
+  "size": [
+   4096,
+   3840
+  ],
+  "ppm": 95.53
+ },
  "27": {
   "name": "hyena_hd",
   "size": [
