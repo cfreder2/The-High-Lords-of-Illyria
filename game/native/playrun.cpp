@@ -167,7 +167,8 @@ bool Runner::step() {
                 const unsigned tick = tickNow();
                 ticksWaited_ += tick >= lastTick_ ? tick - lastTick_ : tick;
                 lastTick_ = tick;
-                if (ticksWaited_ < tickTarget_ && !hudState().flag("over")) {  // (a battle that is over steps no more: the wait is done)
+                // (A battle that is over steps no more, and a Conquest stands still under a fight's results sheet: the wait is done.)
+                if (ticksWaited_ < tickTarget_ && !hudState().flag("over") && !hudState().find("result")) {
                     // (a paused game or an open menu never gets there: say so rather than hang)
                     if (t < until_) return true;
                     std::printf("play: line %d: wait_ticks gave up after %.0f s (is the game paused, or a menu open?)\n", script_.commands[next_ - 1].line, t - blockedAt_);
@@ -243,6 +244,11 @@ void Runner::execute(const Command& c) {
                 std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":%d}", scenario, c.budget, c.defend ? 1 : 0, c.easy ? 0 : 1,
                               c.deploy ? 1 : 0);
                 hud_.start("skirmish", buf);
+            } else if (c.text == "march") {
+                // A new march with the army a lord would buy for the purse; its later battles are the camp's "March on" (keys).
+                illyria_march_end();
+                std::snprintf(buf, sizeof buf, "{\"hard\":%d,\"deploy\":%d,\"army\":\"%s\"}", c.easy ? 0 : 1, c.deploy ? 1 : 0, illyria_skirmish_buy(c.budget > 0 ? c.budget : 450, 1));
+                hud_.start("march", buf);
             } else {
                 hud_.start(c.text, "{}");
             }

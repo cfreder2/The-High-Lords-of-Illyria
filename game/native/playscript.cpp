@@ -68,7 +68,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         c.a = v[0], c.b = v[1];
     } else if (verb == "start") {
         c.op = Op::Start;
-        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend] [deploy]";
+        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | march | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend] [deploy]";
         if (n < 1) return usage(kUsage);
         size_t i = 1;
         std::string mode = w[i++];
@@ -79,7 +79,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
             mode = "skirmish " + mode;
         } else if (mode == "conquest") {
             mode = "conquest";
-        } else if (mode != "conquest" && mode != "horde" && mode != "ctf") {
+        } else if (mode != "conquest" && mode != "horde" && mode != "ctf" && mode != "march") {
             return why = "unknown mode '" + mode + "'", false;
         }
         c.text = mode;
