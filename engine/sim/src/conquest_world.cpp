@@ -413,6 +413,7 @@ void Conquest::seat(Stack& s) {
             m.rank = std::max(m.rank, a.rank);
             world_->setVeterancy(m.unit, m.rank, a.blessings + arms + command);
             world_->restoreUnit(m.unit, m.hp < 0 ? INT32_MAX : m.hp, m.kills, m.morale);
+            world_->restoreLoad(m.unit, m.satchels, m.ammo);
             m.ax = m.bx = toMm(at.x + origin.x);
             m.ay = m.by = toMm(at.y + origin.y);
             m.fx = fx;
@@ -553,6 +554,9 @@ void Conquest::syncMen(Stack& s) {
             m.lastCool = u->meleeCooldown;
             m.lastReload = u->reloadRemaining;
             m.morale = u->morale;
+            // (What he has laid or thrown stays spent: -1, his full load, only while nothing is.)
+            if (u->satchels < u->stats.satchels.count) m.satchels = u->satchels;
+            if (u->ammo < u->stats.ranged.ammo) m.ammo = u->ammo;
             if (u->engaged || m.struckTick == tick_ || m.hurtTick == tick_) m.fightTick = tick_;
         }
     }

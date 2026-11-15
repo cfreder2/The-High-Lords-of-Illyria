@@ -18,7 +18,7 @@ namespace {
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
 constexpr const char* kMagic = "ILC8.";  // bump the digit when the layout changes
-constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
+constexpr uint32_t kFormat = 8;  // 8: what each man still carries (Man::satchels, Man::ammo); 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
 
 class Writer {
 public:
@@ -174,7 +174,10 @@ void writeCommand(Writer& w, const Command& c) {
 Command readCommand(Reader& r) {
     Command c;
     const uint64_t type = r.u();
-    if (type > static_cast<uint64_t>(Command::Type::SetGate) || type == static_cast<uint64_t>(Command::Type::AttackUnit)) r.refuse();
+    // (What may wait in a queue: the orders to a place. A stance, a call, a hold of fire never wait.)
+    if ((type > static_cast<uint64_t>(Command::Type::SetGate) && type != static_cast<uint64_t>(Command::Type::Detonate)) ||
+        type == static_cast<uint64_t>(Command::Type::AttackUnit))
+        r.refuse();
     c.type = static_cast<Command::Type>(type);
     c.target = readVec(r);
     c.speed.raw = r.i();
@@ -219,6 +222,8 @@ void writeArmy(Writer& w, const Army& a) {
         w.i(m.ay);
         w.i(m.fx);
         w.i(m.fy);
+        w.i(m.satchels);
+        w.i(m.ammo);
         w.u(m.queue.size());
         for (const Command& c : m.queue) writeCommand(w, c);
     }
@@ -251,6 +256,8 @@ Army readArmy(Reader& r) {
         m.ay = m.by = r.i32();
         m.fx = r.i32();
         m.fy = r.i32();
+        m.satchels = r.i32();
+        m.ammo = r.i32();
         const size_t waiting = r.count();
         if (waiting > World::kMaxQueuedOrders) r.refuse();
         for (size_t k = 0; k < waiting && r.ok() && waiting <= World::kMaxQueuedOrders; ++k) m.queue.push_back(readCommand(r));

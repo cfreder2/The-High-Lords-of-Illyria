@@ -183,7 +183,7 @@ int32_t moraleShockPct(UnitType type) {
         case T::Undead: return 0;
         case T::Archons: return 30;
         case T::Hero: return 0;
-        case T::DwarfGrenadier: return 100;
+        case T::DwarfGrenadier: return 60;  // stout, and used to standing alone
         case T::Journeyman: return 120;
         case T::Warrior: return 85;
         case T::Berserker: return 35;
@@ -298,14 +298,17 @@ UnitStats unitStats(UnitType type) {
             s.aggroRange = m(30);
             break;
         case T::Wizards:
-            s = base(type, r(2, 5), r(19, 10), m(2), 45);
-            explosive(s, ProjectileKind::Fireball, m(24), sec(8), m(4), m(45), m(50), r(7, 2), 50, m(8));
+            // One man, rare and frail: four fireballs for the whole battle, each worth a squad when it finds one.
+            s = base(type, r(2, 5), r(19, 10), m(2), 40);
+            explosive(s, ProjectileKind::Fireball, m(24), sec(7), m(4), m(45), m(50), r(9, 2), 90, m(9));
+            s.ranged.ammo = 4;
             melee(s, 4, r(1, 2), sec(6, 5));
             s.aggroRange = m(5);
             break;
         case T::Dragons:
             s = base(type, r(5, 2), r(9, 2), r(5, 2), 650);
             explosive(s, ProjectileKind::Fireball, m(30), sec(4), m(4), m(50), m(60), m(5), 70, m(10));
+            s.ranged.ammo = 6;  // six breaths of fire; then his claws
             melee(s, 40, r(6, 5), sec(9, 5), m(10));
             flier(s, m(10), m(15), m(30), sec(25));
             s.mass = m(15);
@@ -343,10 +346,11 @@ UnitStats unitStats(UnitType type) {
             s.mass = m(2);
             s.aggroRange = m(25);
             break;
-        case T::DwarfGrenadier:  // the one dwarf: Molotovs to throw, five satchel charges to lay and set off with them
-            s = base(type, r(9, 20), r(13, 10), r(9, 5), 50);
+        case T::DwarfGrenadier:  // the one dwarf, alone: six Molotovs to throw, five satchel charges to lay and set off with them
+            s = base(type, r(9, 20), r(13, 10), r(8, 5), 110);
             explosive(s, ProjectileKind::Molotov, m(14), sec(5), m(10), m(16), m(19), m(3), 40, m(1));
-            s.satchels = {5, {m(4), 80, m(9), 0, r(7, 20)}, sec(4)};
+            s.ranged.ammo = 6;
+            s.satchels = {5, {m(5), 150, m(10), 0, r(7, 20)}, sec(3)};
             melee(s, 5, r(1, 2), sec(6, 5));
             s.aggroRange = m(4);
             break;
@@ -372,6 +376,7 @@ UnitStats unitStats(UnitType type) {
             s = base(type, r(8, 5), r(5, 2), r(7, 5), 380);
             explosive(s, ProjectileKind::Stone, m(40), sec(14), m(4), m(140), m(150), m(3), 100, m(9));
             s.ranged.minRange = m(30);
+            s.ranged.ammo = 16;  // the stones on its cart
             s.aggroRange = Fixed::zero();
             s.mass = m(25);
             s.bleeds = false;

@@ -41,6 +41,9 @@ struct Man {
     bool placed = false;
     int32_t ax = 0, ay = 0, bx = 0, by = 0, fx = 0, fy = -1000;
     int32_t lastCool = 0, lastReload = 0;
+    // What he still carries of his satchels and his store of missiles (Unit::satchels, Unit::ammo; -1: his full load),
+    // kept from fight to fight: made up again only at dawn in a town of his own side (Conquest::resupply).
+    int32_t satchels = -1, ammo = -1;
     uint32_t struckTick = 0, hurtTick = 0, fightTick = 0;  // when he last struck, was hurt, or fought at all (presentation)
     // The orders waiting behind his own (Unit::queue), kept while he is out of the world (aboard a boat, or in a save). An order
     // against a particular soldier is not kept: the world's ids are made anew when the men are put back.
@@ -434,6 +437,11 @@ public:
     static int32_t armyUpkeep(const Army& a) { return a.ally ? 0 : upkeep(a.type); }  // allies serve for nothing
     // How many soldiers a fresh army of this type has.
     static int32_t squadSize(UnitType t);
+    // The most armies of a type a realm keeps (and a Skirmish host buys): those who throw a blast are rare. Zero: no limit.
+    static int32_t keepCap(UnitType t);
+    // The armies of a type a side has: in its stacks, on the road to it (LOC), and being trained (paid for).
+    int32_t kept(uint8_t side, UnitType t) const;
+    bool atCap(uint8_t side, UnitType t) const { return keepCap(t) > 0 && kept(side, t) >= keepCap(t); }
     int32_t cityAt(int32_t cx, int32_t cy) const;
     int32_t citiesOwned(uint8_t side) const;
     // Gold a side's cities pay it a day (an Easy computer side wastes a fifth).
@@ -536,7 +544,9 @@ private:
     friend class ConquestAi;
     friend struct ConquestOrders;  // the tests' way to ask one of them for its answer (tests/conquest_orders.h)
     bool move(uint32_t stackId, int32_t cx, int32_t cy);
-    bool produce(int32_t city, int32_t option);  // -1 stops
+    bool produce(int32_t city, int32_t option);  // -1 stops; refused for a type the realm keeps its fill of (keepCap)
+    // Dawn in a town of their own: satchels, bottles, fireballs and stones made up to the full load.
+    void resupply();
     // Warlords' LOC: send what a city trains to another city of ours (-1 stops); at most four cities may send to one.
     bool vectorProduction(int32_t city, int32_t to);
     // Warlords' DISBAND: send an army home to stop paying for it (never a hero).

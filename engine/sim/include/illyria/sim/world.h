@@ -81,6 +81,9 @@ struct RangedWeapon {
     ProjectileKind kind = ProjectileKind::Arrow;
     DamageType damageType = DamageType::Pierce;
     Explosive explosive;      // bombs and fireballs
+    // Missiles carried into battle, none made there (zero: as many as he likes, a bowman's quiver). A man with a
+    // store is thrifty with it on his own (World::worthAShot) and out of it has only his hands.
+    int32_t ammo = 0;
 };
 
 struct MeleeWeapon {
@@ -214,7 +217,10 @@ struct Command {
     // SetStance: the soldier's stance with no order in hand (`hold`): Hold keeps his place, else he goes to the help of a
     // friend fighting near him (world_tactics.cpp). It touches no order he has. Rally: the lord's call (`unit` is the
     // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally };
+    // Detonate: one missile, now, at the laid satchel nearest `target` (within World::kDetonatePick of it; else at
+    // the ground there), walking into reach first: no waiting on friends in the blast, which is the player's business
+    // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, Detonate, HoldFire };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -376,6 +382,11 @@ struct Unit {
     int32_t satchels = 0;
     int32_t layCooldown = 0;
     bool layOrdered = false;
+    // Missiles left of a store (RangedWeapon::ammo; unused when it is zero), whether he keeps them for orders alone
+    // (Command::HoldFire), and whether the attack in hand is one direct shot (Command::Detonate).
+    int32_t ammo = 0;
+    bool holdFire = false;
+    bool detonate = false;
     // A blast thrower holding his fire for a friend in the way (world_aoe.cpp): ticks held so far in this wait, and the
     // tick he last held. Both rest at zero once he fires (or is left alone for a while).
     int32_t aoeHeld = 0;
@@ -457,7 +468,8 @@ struct ImpactEvent {
     // Smash: a stone shattered here (radius = its reach). Gate: a blow or blast
     // struck a gate (gate = which; killed = it broke).
     // Burst: a Molotov shattered here and its fire spread (radius).
-    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst };
+    // Doused: a Molotov or a satchel met water here and did nothing. Steam: a fireball burst on water, a third of itself (radius).
+    enum class Kind : uint8_t { Hit, Ground, Blocked, Explosion, Heal, Bleed, Smash, Gate, Burst, Doused, Steam };
     Kind kind = Kind::Hit;
     Vec3 pos;
     Vec3 dir;                         // direction of the blow or projectile
@@ -696,6 +708,18 @@ public:
     // At most this many orders wait in a soldier's queue; one more is dropped. Eight legs is a patrol round a town or a
     // plan of attack; more would make every man carry, hash and save a long script, and a line of numbers on the screen.
     static constexpr size_t kMaxQueuedOrders = 8;
+    // Command::Detonate takes the laid satchel within this of the spot shown.
+    static constexpr Fixed kDetonatePick = Fixed::fromInt(4);
+    // Whether his missile's fire sets off a satchel (a Molotov, a fireball): who may be ordered to Detonate.
+    static bool sparks(const UnitStats& s) {
+        return s.ranged.muzzleSpeed > Fixed::zero() && (s.ranged.kind == ProjectileKind::Molotov || s.ranged.kind == ProjectileKind::Fireball);
+    }
+    // Whether he has a missile to loose (a store spent leaves him his hands).
+    static bool armed(const Unit& u) { return u.stats.ranged.muzzleSpeed > Fixed::zero() && (u.stats.ranged.ammo == 0 || u.ammo > 0); }
+    // Water (the shallows a man wades, and the deep) puts out oil and powder: nothing burns or is laid there.
+    bool douses(const Vec3& at) const { return isWater(at.x, at.y); }
+    // What a man carries, as the conquest kept it between fights (a negative count: his full load).
+    void restoreLoad(EntityId id, int32_t satchels, int32_t ammo);
     // A standing attack on the ground, a wall, a house or a tree never ends of itself: with orders waiting it is over after this long.
     static constexpr uint32_t kStandingAttackTicks = 10 * kTicksPerSecond;
     // The rest of his route: the waypoints of his path still ahead of him, the last where he can get to (a hunter's: the
@@ -1253,6 +1277,16 @@ private:
     // Satchel charges (world_satchels.cpp).
     // Lays one where he stands, toward `toward`, and steps back from it.
     void laySatchel(Unit& u, const Vec3& toward, Fixed reach = Fixed::zero());
+    // Command::Detonate begun: the mark is the laid satchel nearest the spot shown, or the spot.
+    void startDetonate(Unit& u, const Vec3& at);
+    // ... and carried out, a tick of it: into reach, then the one shot, loosed direct (true: the order is done).
+    bool detonateStep(Unit& u);
+    // A man with a store of missiles and no order asks whether this mark is worth one: a cluster in the blast
+    // (kThriftCluster men, a great beast counting for them all), or a foe on top of him; never a man running away,
+    // and a grenadier's last bottle is kept for his satchels.
+    bool worthAShot(const Unit& u, const Unit& target) const;
+    // A satchel's blast shakes those it leaves standing near it (twice its reach), of every side.
+    void blastShock(const Vec3& at, const Explosive& ex);
     // Idle with satchels left and the enemy coming: lays one in their path (true).
     bool layInPath(Unit& u);
     // A Molotov thrower's shot at a satchel lying among the enemy, if he has
