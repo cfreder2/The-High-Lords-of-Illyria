@@ -297,6 +297,7 @@ struct Unit {
     Vec3 pos;
     Vec3 facing;  // unit-length, horizontal
     Vec3 vel;     // only while thrown through the air
+    Vec3 stride;  // how far he went over the ground last tick (flat; nothing while thrown): a shooter leads him by it
     bool airborne = false;  // thrown by a blow or blast (not flying)
     bool engaged = false;   // fought in melee this tick
     // The enemy it is trading blows with: it keeps to that one while in reach,
@@ -391,7 +392,6 @@ struct Unit {
     // when he picked it himself after a kill (then he lets it run if it flees).
     EntityId targetUnit = kNoEntity;
     bool targetChosen = false;
-    Vec3 targetSeen;  // where the target stood last tick: missile troops lead him
     // AttackUnit: the friend to rejoin once the target is down, and where
     // beside him (his old place in the formation).
     EntityId rally = kNoEntity;
@@ -935,7 +935,9 @@ public:
     // the ground, rocks, trees, houses, walls and standing gates, but not the
     // trees and bushes within 6 m of the mark (the wood that shelters him).
     // Very low when nothing rises into the way.
-    Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf) const;
+    // With `friendsOf` a side, its men standing in the way too (an arrow goes over the heads of the shooter's own rank and
+    // line), but not those near the mark: friends in the melee there take their chance.
+    Fixed clearingTan(const Vec3& origin, const Vec3& mark, Fixed shortOf, PlayerId friendsOf = 0xFF) const;
     const Region* region() const { return config_.region.get(); }
     // Whose land each part of the field is (the conquest's territory, which changes as the war goes; a set battle
     // or a match is fought on nobody's): a side for each square of `cell` metres, `nx` to a row from `origin` (a place of the
@@ -1305,11 +1307,17 @@ private:
     // Whether his missile can be lobbed from `origin` onto `target`: in the high arc's reach, clear of walls and trunks
     // all the way, and clear of the boughs over his own head (which a missile strikes as it does a trunk).
     bool canLob(const Unit& u, const Vec3& origin, const Vec3& target, Vec3* velocity = nullptr) const;
-    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No);
+    // `spread`: metres more on the circle he aims within (a moving mark: leadMark).
+    bool fire(Unit& unit, const Vec3& target, bool atWalk = false, Placed placed = Placed::No, Fixed spread = {});
     // `fire`, and the reload that follows, for any shooter (world_aoe.cpp). One with a blast to throw (stones, fireballs,
     // Molotovs) chooses where it falls so as to spare his own side, or holds his fire a while (true, loosing nothing,
     // when held); a bowman's flat shot is as ever: whoever stands in the line takes it. False: no clear shot.
-    bool fireAt(Unit& unit, const Vec3& target, bool atWalk = false);
+    bool fireAt(Unit& unit, const Vec3& target, bool atWalk = false, Fixed spread = {});
+    // Where to aim at a man (world_combat.cpp): ahead of him by his pace and the missile's flight, misjudged (a lead of
+    // kLeadLowPct..kLeadHighPct of the true one), and the metres to widen the aim by (a share of the way he goes while it flies).
+    Vec3 leadMark(const Unit& shooter, const Unit& target, Fixed& spread);
+    // A bowman aims at the body, not at the feet: `at` raised to the man's chest (an arrow; anything else is thrown at the ground).
+    static Vec3 chestOf(const Unit& shooter, const Unit& target, const Vec3& at);
     // Where a missile aimed at `aim` from `origin` bursts: a flat shot (fireball, Molotov) on the first man in its way.
     Vec3 burstPoint(const Unit& shooter, const Vec3& origin, const Vec3& aim) const;
     // A foe within a few metres of him: he is not to wait on his aim.
@@ -1551,6 +1559,9 @@ private:
     Unit* supportFoe(Unit& u);
     // Holding, he meets only the foe who has come within a few strides of him.
     bool withinHold(const Unit& u, const Unit& foe) const;
+    // A bowman (any shooter with a reach of his own) with a foe near but not yet on him: he shoots, he does not stand to
+    // meet him (world_tactics.cpp). Within kHoldStride of his reach he fights hand to hand.
+    bool shootsInstead(const Unit& u, const Unit& foe) const;
     void support(Unit& u, Unit& foe);
     // A charge's shock, by where it lands, to the man struck and (less) the friends at his shoulder.
     void chargeShock(Unit& enemy, HitSide side, bool busy);
@@ -1563,8 +1574,9 @@ private:
     int32_t formFlankShockPct(const Unit& u) const;
     bool allRound(const Unit& u) const;
     bool turnsSlowly(const Unit& u) const;
-    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover).
-    bool arrowSpared(const Unit& u);
+    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover), or
+    // he goes too fast to be hit square (a share by his speed, world_formation.cpp; not told).
+    bool arrowSpared(const Unit& u, bool& covered);
     // His formation is lost for `ticks` (told once, when it goes).
     void disorder(Unit& u, int32_t ticks);
     // The census of the ranks and the woods, with the morale census: squad-mates near, who sees whom among the trees.

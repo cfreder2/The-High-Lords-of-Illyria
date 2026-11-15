@@ -1,4 +1,5 @@
 // Facing, charges, veterans and height in battle (world_combat.cpp).
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <tuple>
@@ -450,4 +451,65 @@ TEST(broken_troops_flee_from_the_enemy) {
     const Fixed x0 = w.findUnit(man)->pos.x;
     for (int i = 0; i < kTicksPerSecond; ++i) w.step({});
     CHECK(!w.findUnit(man)->alive() || w.findUnit(man)->pos.x < x0 - Fixed::one());  // running west, away from them
+}
+
+namespace {
+// Arrows of twelve bowmen into eight horse at 35 m, standing or galloping across the line of fire: those that strike.
+int arrowsInto(bool galloping, uint64_t seed) {
+    WorldConfig cfg;
+    cfg.seed = seed;
+    World w(cfg);
+    for (int i = 0; i < 12; ++i) w.spawnUnit(0, {m(-(i / 6) * 2), m((i % 6) * 2 - 5), m(0)}, kEast, unitStats(UnitType::Archers));
+    std::vector<Command> go;
+    std::vector<EntityId> horse;
+    for (int i = 0; i < 8; ++i) {
+        UnitStats s = dummy(UnitType::LightCavalry);
+        s.moraleShockPct = 0;
+        s.maxHp = 100000;
+        horse.push_back(w.spawnUnit(1, {m(35 + (i % 2) * 4), m(galloping ? -56 + (i / 2) * 4 : (i / 2) * 4 - 6), m(0)}, kNorth, s));
+        if (galloping) go.push_back({1, horse.back(), Command::Type::Move, {m(35 + (i % 2) * 4), m(200), m(0)}});
+    }
+    w.step(go);
+    int hits = 0;
+    for (int t = 0; t < 16 * kTicksPerSecond; ++t) {
+        w.step({});
+        for (const ImpactEvent& e : w.impacts())
+            if (e.kind == ImpactEvent::Kind::Hit && e.projectile != kNoEntity && std::find(horse.begin(), horse.end(), e.hitUnit) != horse.end()) ++hits;
+    }
+    return hits;
+}
+}  // namespace
+
+TEST(galloping_horse_are_far_harder_to_hit_than_standing_horse) {
+    // The bowman leads a moving mark and misjudges it, and a man going fast is past before many arrows land square
+    // (World::leadMark, World::arrowSpared): horse at the gallop across the line of fire take well under half the arrows.
+    int still = 0, gallop = 0;
+    for (uint64_t seed = 1; seed <= 4; ++seed) still += arrowsInto(false, seed), gallop += arrowsInto(true, seed);
+    std::printf("  arrows into standing horse %d, galloping %d\n", still, gallop);
+    CHECK(gallop * 5 < still * 2);
+    CHECK(gallop > 0);
+}
+
+TEST(a_bowman_shoots_a_foe_coming_at_him_until_the_foe_is_upon_him) {
+    // A foe walking in from 25 m: the bowman looses at him all the way in (he does not stand idle once the foe is in his
+    // own reach of 20 m), and fights hand to hand only at the last strides (World::shootsInstead).
+    WorldConfig cfg;
+    cfg.seed = 3;
+    World w(cfg);
+    const EntityId bow = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
+    UnitStats s = dummy(UnitType::LightInfantry);
+    s.maxHp = 100000;
+    s.moraleShockPct = 0;
+    const EntityId foe = w.spawnUnit(1, {m(25), m(0), m(0)}, kWest, s);
+    const Command walk{1, foe, Command::Type::Move, {m(2), m(0), m(0)}, r(1, 2)};
+    w.step(std::span(&walk, 1));
+    int insideReach = 0;
+    for (int t = 0; t < 40 * kTicksPerSecond; ++t) {
+        w.step({});
+        const Fixed gap = (w.findUnit(foe)->pos - w.findUnit(bow)->pos).flat().length();
+        for (const Projectile& p : w.projectiles())
+            if (p.shooter == bow && p.ageTicks == 1 && gap < m(18) && gap > m(4)) ++insideReach;
+    }
+    std::printf("  arrows loosed at him inside 18 m: %d\n", insideReach);
+    CHECK(insideReach >= 3);
 }

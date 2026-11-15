@@ -50,12 +50,16 @@ struct Force {
 };
 
 // Raises both armies, their soldiers interleaved in the order they are spawned (the simulation walks units in
-// that order, so a side raised first would strike first), and sends the melee types forward.
+// that order, so a side raised first would strike first), and sends the melee types forward as the game's attack does:
+// foot march on the enemy's line, file for file, and fight whom they meet; riders go at the gallop for the man of the
+// enemy's front nearest their own file (Battle::orderAttackUnit), and choose the next for themselves.
 void deploy(World& w, const Force& a, const Force& b, bool aFirst) {
     const Force* sides[2] = {aFirst ? &a : &b, aFirst ? &b : &a};
-    std::vector<Command> cmds;
+    std::vector<EntityId> ids[2];
+    std::vector<double> ys[2];
     for (int i = 0; i < std::max(a.n, b.n); ++i)
-        for (const Force* s : sides) {
+        for (int k = 0; k < 2; ++k) {
+            const Force* s = sides[k];
             if (i >= s->n) continue;
             const UnitStats st = unitStats(s->type);
             const double gap = 2.0 * st.radius.toDouble() + 0.5;
@@ -66,14 +70,30 @@ void deploy(World& w, const Force& a, const Force& b, bool aFirst) {
             const EntityId id = w.spawnUnit(s->side, {mm(x), mm(y), m(0)}, s->dir > 0 ? kEast : -kEast, st);
             // One squad a side, in its kind's own formation (as a Conquest army is raised: musterFormation).
             w.setSquad(id, s->side + 1u, musterFormation(s->type));
-            if (ranged(s->type) || s->hold) continue;  // shooters hold and fire inside their auto range
+            ids[k].push_back(id);
+            ys[k].push_back(y);
+        }
+    std::vector<Command> cmds;
+    for (int k = 0; k < 2; ++k) {
+        const Force* s = sides[k];
+        if (ranged(s->type) || s->hold) continue;  // shooters hold and fire inside their auto range
+        for (size_t i = 0; i < ids[k].size(); ++i) {
             Command c;
             c.player = s->side;
-            c.unit = id;
-            c.type = Command::Type::Move;
-            c.target = {mm(-s->front), mm(0), m(0)};  // the enemy's line: fight on the way
+            c.unit = ids[k][i];
+            if (unitStats(s->type).mounted) {
+                size_t best = 0;
+                for (size_t j = 1; j < ids[1 - k].size(); ++j)
+                    if (std::fabs(ys[1 - k][j] - ys[k][i]) < std::fabs(ys[1 - k][best] - ys[k][i]) - 1e-9) best = j;
+                c.type = Command::Type::AttackUnit;
+                c.targetUnit = ids[1 - k][best];
+            } else {
+                c.type = Command::Type::Move;
+                c.target = {mm(-s->front), mm(ys[k][i]), m(0)};  // the enemy's line: fight on the way
+            }
             cmds.push_back(c);
         }
+    }
     w.step(cmds);
 }
 
@@ -261,6 +281,16 @@ void trace(UnitType a, UnitType b, int gold) {
                 }
             std::printf("t=%3d  men %3d/%3d  routed %3d/%3d  hp %5.0f/%5.0f  mean x %5.1f/%5.1f\n", t / kTicksPerSecond, n[0], n[1],
                         r[0], r[1], hp[0], hp[1], n[0] ? x[0] / n[0] : 0.0, n[1] ? x[1] / n[1] : 0.0);
+            if (std::getenv("BAL_TRACE_MAN"))
+                for (const Unit& u : w.units())
+                    if (u.hp > 0 && u.owner == 0) {
+                        double near = 1e9;
+                        for (const Unit& o : w.units())
+                            if (o.hp > 0 && o.owner != u.owner) near = std::min(near, (o.pos - u.pos).flat().length().toDouble());
+                        std::printf("    man %u at %.1f,%.1f foe %u engaged %d posted %d move %d wheel %d morale %d routed %d nearest foe %.1f m\n", u.id, u.pos.x.toDouble(),
+                                    u.pos.y.toDouble(), u.foe, u.engaged, u.posted, u.hasMoveTarget, u.wheel, u.morale, u.routed, near);
+                        break;
+                    }
         }
         w.step({});
     }

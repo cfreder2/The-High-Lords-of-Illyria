@@ -159,6 +159,10 @@ bool World::withinHold(const Unit& u, const Unit& foe) const {
     return gap <= u.stats.melee.reach + kHoldStride;
 }
 
+bool World::shootsInstead(const Unit& u, const Unit& foe) const {
+    return armed(u) && !u.holdFire && u.stats.ranged.autoRange > Fixed::zero() && !withinHold(u, foe);
+}
+
 void World::support(Unit& u, Unit& foe) {
     // A bowman: up to a good bowshot of the foe pressing his friend, never into the water, and no nearer; then he looses
     // on his own (shootNearby).

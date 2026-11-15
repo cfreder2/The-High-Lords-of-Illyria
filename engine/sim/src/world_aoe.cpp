@@ -121,10 +121,10 @@ Vec3 World::burstPoint(const Unit& shooter, const Vec3& origin, const Vec3& aim)
     return hit;
 }
 
-bool World::fireAt(Unit& u, const Vec3& target, bool atWalk) {
+bool World::fireAt(Unit& u, const Vec3& target, bool atWalk, Fixed widen) {
     const RangedWeapon& w = u.stats.ranged;
     const auto loose = [&](const Vec3& at) {
-        if (!fire(u, at, atWalk)) return false;
+        if (!fire(u, at, atWalk, Placed::No, widen)) return false;
         u.reloadRemaining = attackTicks(u, w.reloadTicks);
         u.aoeHeld = 0;
         return true;

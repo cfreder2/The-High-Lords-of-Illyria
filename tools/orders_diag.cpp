@@ -440,7 +440,7 @@ void arrows(int seeds) {
                         m.unit = id;
                         m.type = Command::Type::Move;
                         m.force = true;
-                        m.target = wy.across ? at(x, y + speed * secs * 2) : at(8 + (i / 4) * gap, y);
+                        m.target = wy.across ? at(x, y + speed * secs * 2) : at(14 + (i / 4) * gap, y);
                         c.push_back(m);
                     }
                 }
@@ -451,8 +451,14 @@ void arrows(int seeds) {
                     for (const Projectile& p : w.projectiles()) {
                         if (p.kind != ProjectileKind::Arrow || bin.count(p.id)) continue;
                         double near = 1e9;
-                        for (EntityId id : tgt.ids) near = std::min(near, D((w.findUnit(id)->pos - p.pos).flat().length()));
-                        const int k = wy.across ? ri : near < 27.5 ? 0 : near < 42.5 ? 1 : near < 57.5 ? 2 : near < 72.5 ? 3 : -1;
+                        bool moving = wy.still;
+                        for (EntityId id : tgt.ids) {
+                            const Unit* q = w.findUnit(id);
+                            const double d = D((q->pos - p.pos).flat().length());
+                            if (d < near) near = d, moving = wy.still || q->stride != Vec3{};
+                        }
+                        // (Only while the mark is on the move: a target come to its stop is a standing one.)
+                        const int k = !moving ? -1 : wy.across ? ri : near < 27.5 ? 0 : near < 42.5 ? 1 : near < 57.5 ? 2 : near < 72.5 ? 3 : -1;
                         bin[p.id] = k;
                         if (k >= 0) ++loosed[k];
                     }

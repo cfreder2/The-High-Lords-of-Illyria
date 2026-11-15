@@ -36,6 +36,9 @@ constexpr int32_t kRankMates = 2;
 constexpr int32_t kGroundDisorder = 2 * kTicksPerSecond;
 // Among the trees: this share of the arrows meant for a man are stopped.
 constexpr int32_t kWoodsSparePct = 40;
+// A man on the move: this share of the arrows that would strike him go by, for each metre a second of his speed, at most
+// kSparedMostPct (a man walking 2.4 m/s about one in four, a horse at the gallop seven in ten).
+constexpr int32_t kSparedPerMps = 10, kSparedMostPct = 70;
 // An ambush: the shock of the first blow from men unseen; it counts for this long after they break cover.
 constexpr int32_t kAmbushShock = 250;
 constexpr uint32_t kAmbushTicks = 5 * kTicksPerSecond;
@@ -98,9 +101,13 @@ bool World::allRound(const Unit& u) const { return formed(u) && formationRule(u.
 
 bool World::turnsSlowly(const Unit& u) const { return formed(u) && formationRule(u.formation).tight; }
 
-bool World::arrowSpared(const Unit& u) {
+bool World::arrowSpared(const Unit& u, bool& covered) {
     const int32_t pct = std::max(inWoods(u) ? kWoodsSparePct : 0, formed(u) ? formationRule(u.formation).sparePct : 0);
-    return pct > 0 && static_cast<int32_t>(rng_.nextBelow(100)) < pct;
+    covered = pct > 0 && static_cast<int32_t>(rng_.nextBelow(100)) < pct;
+    if (covered) return true;
+    // Going fast, he is past before it lands square: a galloping horse is hard to hit, a man standing is not.
+    const int32_t moving = std::min(kSparedMostPct, static_cast<int32_t>((u.stride.length() * kTicksPerSecond * kSparedPerMps).floorToInt()));
+    return moving > 0 && static_cast<int32_t>(rng_.nextBelow(100)) < moving;
 }
 
 void World::disorder(Unit& u, int32_t ticks) {

@@ -85,6 +85,12 @@ constexpr Fixed kHeightRangePerMetre = Fixed::one();
 constexpr Fixed kPlungeSine = Fixed::fromRatio(1, 4);
 constexpr int32_t kPlungePctMax = 25;
 
+// A moving mark: the shooter leads a man by his pace times the missile's flight, misjudging it (kLeadLowPct to
+// kLeadHighPct of the true lead, evenly), and aims within a circle wider by kMovingSpreadPct of the way the man goes
+// while it flies; never more than kMaxLead ahead. A stone flies its steep arc, a third longer than a bowshot's time.
+constexpr int32_t kLeadLowPct = 60, kLeadHighPct = 110, kMovingSpreadPct = 30;
+constexpr Fixed kMaxLead = Fixed::fromInt(15);
+
 int32_t floorPct(Fixed v) { return static_cast<int32_t>(v.floorToInt()); }
 
 }  // namespace
@@ -136,6 +142,24 @@ int32_t World::sidePct(HitSide side, bool missile) {
         case HitSide::Rear: return missile ? kRearMissilePct : kRearBlowPct;
     }
     return 100;
+}
+
+Vec3 World::leadMark(const Unit& u, const Unit& t, Fixed& spread) {
+    spread = Fixed::zero();
+    const Vec3 vel = t.stride * Fixed::fromInt(kTicksPerSecond);
+    const Fixed speed = vel.length(), muzzle = u.stats.ranged.muzzleSpeed;
+    if (speed == Fixed::zero() || muzzle <= Fixed::zero()) return t.pos;
+    const Fixed dist = (t.pos - u.pos).flat().length();
+    const Fixed flight = dist / muzzle * (u.stats.ranged.kind == ProjectileKind::Stone ? Fixed::fromRatio(5, 3) : Fixed::fromRatio(11, 10));
+    const int32_t judged = kLeadLowPct + static_cast<int32_t>(rng_.nextBelow(static_cast<uint32_t>(kLeadHighPct - kLeadLowPct + 1)));
+    Vec3 lead = vel * (flight * judged / 100);
+    if (lead.length() > kMaxLead) lead = lead / lead.length() * kMaxLead;
+    spread = speed * flight * kMovingSpreadPct / 100;
+    return t.pos + lead;
+}
+
+Vec3 World::chestOf(const Unit& u, const Unit& t, const Vec3& at) {
+    return u.stats.ranged.kind == ProjectileKind::Arrow ? at + up(t.stats.height * 3 / 5) : at;
 }
 
 Fixed World::shotRange(const Unit& u, Fixed base, const Vec3& target) const {

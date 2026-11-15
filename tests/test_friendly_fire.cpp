@@ -114,27 +114,31 @@ TEST(a_catapult_aims_to_spare_the_friends_beside_its_foes) {
     CHECK(one.foesLost * 10 >= alone.foesLost * 8);
 }
 
-TEST(an_archer_shoots_the_friend_standing_in_the_line) {
-    // Six metres in front of the bowman, on the line to his foe: he does not look; the friend takes the arrows in the back.
-    int hitFriend = 0, hitFoe = 0;
-    for (uint64_t seed = 1; seed <= 6; ++seed) {
-        Scene s(seed);
-        const EntityId bow = s.w.spawnUnit(0, {m(-40), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
-        s.friends.push_back(s.w.spawnUnit(0, {m(-34), m(0), m(0)}, kEast, stander(UnitType::HeavyInfantry, 5000)));
-        s.foes.push_back(s.w.spawnUnit(1, {m(0), m(0), m(0)}, kWest, stander(UnitType::HeavyInfantry, 5000)));
-        const Command shoot{0, bow, Command::Type::AttackGround, {m(0), m(0), m(0)}};
-        s.w.step(std::span(&shoot, 1));
-        for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
-            s.w.step({});
-            for (const ImpactEvent& e : s.w.impacts()) {
-                if (e.kind != ImpactEvent::Kind::Hit) continue;
-                hitFriend += e.hitUnit == s.friends[0];
-                hitFoe += e.hitUnit == s.foes[0];
+TEST(an_archer_shoots_over_his_own_line_and_into_the_melee_at_the_mark) {
+    // A friend six metres in front of the bowman, on the line to his foe: the arrow is lofted over his head (the shooter's
+    // own rank and line, docs/GAME_DESIGN.md §3.1). A friend at the foe's side, in the melee at the mark: he takes his chance.
+    int nearFriend = 0, markFriend = 0, hitFoe = 0;
+    for (uint64_t seed = 1; seed <= 6; ++seed)
+        for (const bool atMark : {false, true}) {
+            Scene s(seed);
+            const EntityId bow = s.w.spawnUnit(0, {m(-40), m(0), m(0)}, kEast, unitStats(UnitType::Archers));
+            s.friends.push_back(s.w.spawnUnit(0, {atMark ? Fixed::fromRatio(-12, 10) : m(-34), m(0), m(0)}, kEast, stander(UnitType::HeavyInfantry, 5000)));
+            s.foes.push_back(s.w.spawnUnit(1, {m(0), m(0), m(0)}, kWest, stander(UnitType::HeavyInfantry, 5000)));
+            const Command shoot{0, bow, Command::Type::AttackGround, {m(0), m(0), m(0)}};
+            s.w.step(std::span(&shoot, 1));
+            for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
+                s.w.step({});
+                for (const ImpactEvent& e : s.w.impacts()) {
+                    if (e.kind != ImpactEvent::Kind::Hit) continue;
+                    (atMark ? markFriend : nearFriend) += e.hitUnit == s.friends[0];
+                    hitFoe += e.hitUnit == s.foes[0];
+                }
             }
         }
-    }
-    std::printf("  arrows into the friend %d, into the foe %d\n", hitFriend, hitFoe);
-    CHECK(hitFriend > 0);
+    std::printf("  arrows into the friend in front %d, the friend at the mark %d, the foe %d\n", nearFriend, markFriend, hitFoe);
+    CHECK(nearFriend == 0);
+    CHECK(markFriend > 0);
+    CHECK(hitFoe > 0);
 }
 
 // First tick (from the order) a stone smashes, in a pile ringed by friends if `ring`, whom a Move order sends off at tick `leave` if > 0.
