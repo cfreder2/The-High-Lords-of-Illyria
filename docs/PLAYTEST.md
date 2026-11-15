@@ -40,6 +40,7 @@ build-play/game/native/Illyria.app/Contents/MacOS/Illyria --play tools/playtest/
 | `--play FILE` | the script. A bad line is named (`line 7: no key called 'f1'`) and nothing runs (exit 2). |
 | `--play-out DIR` | where `shot` writes (default: the script's folder). Made if missing. |
 | `--play-log FILE` | one line a second of game time, see below. |
+| `--play-saves DIR` | the run keeps its saved games in DIR (`march.save`, `campaign.save`) and reads them from there: to play a save and a carrying on across two runs. Without it nothing is saved. |
 | `--size WxH`, `--novsync`, `--lord N`, `--foes MASK`, `--easy` | as for the game; `--lord`, `--foes` and `--easy` are what `start conquest` uses unless the script says otherwise. |
 
 The program prints `play: shot <path>` for each picture and `stats ...` lines to stdout, and exits when the script
@@ -57,8 +58,8 @@ One command a line. `#` starts a comment. Names are lower case. Numbers are plai
 | --- | --- |
 | `size W H` | the window, in points. Do this before `start`. (A display smaller than that gives you what fits, and says so.) |
 | `start conquest [lord N] [easy]` | the menu's Conquest. `lord` 0-7 is whom you lead (default 6, the Moonward Order). Also `conquest`. |
-| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: the Ford, a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the Ford and the village siege use their classic musters); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
-| `start march [budget GOLD] [easy] [deploy]` | a new March (docs/GAME_DESIGN.md §3.7) with the army a lord would buy for the purse (450 unless said), and its first battle. Its later battles are the player's own keys: with the results sheet up `key return` opens the camp (the cursor on March on; `key up` reaches the squads, `key return` on one fills it from the purse), `key return` on March on sets out the next battle, which waits on its deployment (`key return` again begins it). No march is read from or written to the disk. |
+| `start skirmish ford\|siege\|capital\|field [budget GOLD] [defend] [easy] [deploy]` | a Skirmish: Oakhaven Ford (the flag on the isle, a bridge up and down stream; docs/GAME_DESIGN.md §4.1.4), a village's siege (one gate), a capital's siege (two doors and an inner bailey) or open ground. With `budget` both sides buy their armies at the Conquest's prices (`budget` alone: the other side as much, bought for you; without it the village siege uses its classic muster, and the Ford and the field 300 gold a side: the two hosts at the Ford are always alike); `defend` keeps the walls of a siege; `easy` is the battle AI's Easy (else Normal); `deploy` starts it as the menu does, paused for the deployment with the camera opening on the other host (`key return` begins it; without the word the clock runs at once). The setup screen itself is driven with keys: `return` opens the menu, `down`, `return` chooses Skirmish, and left / right / up / down change its rows. Also `start horde`, `start ctf`. |
+| `start march [budget GOLD] [easy] [deploy]` | a new March (docs/GAME_DESIGN.md §3.7) with the army a lord would buy for the purse (450 unless said), and its first battle. Its later battles are the player's own keys: with the results sheet up `key return` opens the camp (the cursor on March on; `key up` is Fill what the purse can, above it the squads, `key return` on one fills it from the purse), `key return` on March on sets out the next battle, which waits on its deployment (`key return` again begins it). No march is read from or written to the disk (unless `--play-saves`). For tuning, the environment's `ILLYRIA_MARCH_PCT="85,120,60,55,75"` plays the five stages against those purses (parts in a hundred of the army's cost) instead of the table's in `game/src/march.cpp`. |
 | `key NAME` | a tap: down, a beat (0.06 s), up. |
 | `key NAME SECONDS` | held down that long (camera keys: `key w 1.5`). |
 | `key NAME down` / `key NAME up` | down, and later up: for modifiers (`shift`, `ctrl`, `alt`, `cmd`) and keys held across other commands. |
@@ -144,7 +145,8 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | script | |
 | --- | --- |
 | `smoke.txt` | start the Ford, `cards`, `stats`, one shot. A check that the harness works on this machine. |
-| `ford.txt` | the Ford: select all, box-select, march across the ford, wait for the clash, a shot every 10 s for 90 s, `stats` at the end. |
+| `ford.txt` | Oakhaven Ford: the foot to the isle, the horse round by the upstream bridge, a shot every 10 s for 90 s (the flag's line is in the log as `capture=`), `stats` at the end. |
+| `ford-watch.txt` | Oakhaven Ford left to the computer: no order given, speed 4, a shot from high up every 20 s of game time and close shots of the isle and a bridge. For looking at how it plays the ground. |
 | `siege.txt` | the Siege: the siege engines and the foot to the gate, shots every 10 s, `stats`. |
 | `siege-catapults-first.txt` | the Siege the patient way: the catapults alone at the gate from their reach (the range ring shown), then the foot once it is down. |
 | `capital.txt` | the capital's siege: both doors looked at close, the army split between them, each company ordered at its own door, speed 4 and a shot every 20 s of game time. |
@@ -156,7 +158,7 @@ Under `tools/playtest/`. Each starts its own game and ends with `quit`.
 | `boulder-level.txt`, `boulder-line.txt`, `boulder-downhill.txt`, `boulder-uphill.txt`, `boulder-ford.txt`, `boulder-own.txt` | the boulder demo on the open ground skirmish: a stone thrown at a file of sixteen on the level, at a rank across its way, down a hillside, up it, at a bank before the ford, and through your own men behind the foe; a frame every five ticks at quarter speed from just before it comes down, then the toll (`boulder count`) and a close look at where it lies. Figures in docs/BALANCE.md, "The boulder". |
 | `boulder-gate.txt` | a village's siege: the catapults selected and a ground attack aimed before the gate (the forecast ring and roll line under the pointer), the order given, and the stones that land short rolling into the doors. |
 | `conquest.txt` | Conquest: the capital, a stack, a march to the nearest neutral town, speed 4, a shot every 20 s for three game minutes. |
-| `march.txt` | The March: the first battle with no orders, its results sheet, the camp with a squad filled from the purse, the Ford set out. |
+| `march.txt` | The March: the first battle with no orders, its results sheet, the camp with the purse spent, the village set out. |
 | `satchel-trap.txt` | the Ford with bought armies (300 gold a side), as a person would play the trap: in the deployment pause the dwarf's five charges are laid along the bank (T, Shift+click; they lie there when the battle begins), he holds his fire in the rear, the pikes go forward on Hold; as the Red Hand's foot start across he is told to detonate (L, click a charge), walks up and lobs his bottle onto the line. The log's `event=` carries "Ambush: N down". |
 | `satchel-no-trap.txt` | its control: the same purse, camera, deployment and waits, no charges. |
 | `satchel-careless.txt` | a line of three, the Warriors marched onto it, Hold fire, then Detonate (L, click): the red rings, the blast, "Own blast: N down" in the log. |
@@ -174,9 +176,10 @@ $Illyria --play tools/playtest/conquest.txt --play-out out/conquest --play-log o
 - **It cannot see.** The script does not know where a squad is on the screen. Read coordinates off a `shot`, with the camera
   fixed by `camera` (or the start view, which is the same each run), and expect them to be wrong the first time. There is
   no "click the Archers": `select N` is the only way to pick a squad by name; everything else is a box or a click on the map.
-- **A squad card can be out of reach.** The HUD draws as many squad cards as fit the window's width and drops the rest
-  (`hud.cpp`: `if (x + cw > w - 8) break`). In the Ford at 1600 wide 11 of 18 have one. `select N` still reaches the others;
-  a click on a card does not.
+- **A squad card can be on another page.** Every squad has a card (`card_layout.h`): one row while they fit, two rows of
+  compact cards in a window 900 points wide or more, and past that pages behind the last cell ("+N more": a click on it
+  turns the page, its ends are arrows). The cards are in order of role (foot, bows, horse, then the rare ones from the
+  right-hand end), not of index: `select N` and `cards` still use the squad's index.
 - **Picking several squads, not all, needs a box.** The HUD's card click replaces the selection; there is no add. `select`
   does the same. A box (`drag left`, with `key shift down` to add) is how a script, like a hand, picks a few.
 - **Time is the game's, not frozen.** `wait` is wall time; the simulation runs at 30 ticks a second in real time (faster

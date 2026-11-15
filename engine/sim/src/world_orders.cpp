@@ -263,6 +263,8 @@ World::Stance World::stanceOfOrder(const Command& c) {
         case Command::Type::SetGate:
         case Command::Type::SetStance:
         case Command::Type::HoldFire:
+        case Command::Type::SetFormation:
+        case Command::Type::Answer:
         case Command::Type::Rally: break;
     }
     return Stance::Idle;

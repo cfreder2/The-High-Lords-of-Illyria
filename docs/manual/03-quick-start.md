@@ -10,7 +10,7 @@ The game runs in a web browser, on a phone, a tablet or a computer, with nothing
 
 ## The title screen and settings {#title-screen}
 
-The game opens on its title screen, where you choose what to play: **Continue** (your latest saved war, once there is one), the **Conquest** (a new war, or one you saved), a **Skirmish** (a battle on its own: Oakhaven Ford, or the siege), **Horde** or **Capture the Flag** (chapter [](#other-wars)), the **Sandbox** (set any army down and let them fight), and along the bottom the **Manual**, the **Settings**, the **Controls** (every tap, click and key on one page) and **About**. While you play, the ☰ menu at the top right has Restart (in a battle), Save (in a Conquest), Settings, Controls, the Manual and **Main menu**, which brings you back here. The manual opens in a tab of its own, so the game waits where you left it.
+The game opens on its title screen, where you choose what to play: **Continue** (your latest saved war, once there is one), the **Conquest** (a new war, or one you saved), a **Skirmish** (a battle on its own: Oakhaven Ford, a siege, or open ground), **Horde** or **Capture the Flag** (chapter [](#other-wars)), the **Sandbox** (set any army down and let them fight), and along the bottom the **Manual**, the **Settings**, the **Controls** (every tap, click and key on one page) and **About**. While you play, the ☰ menu at the top right has Restart (in a battle), Save (in a Conquest), Settings, Controls, the Manual and **Main menu**, which brings you back here. The manual opens in a tab of its own, so the game waits where you left it.
 
 The **settings** (⚙) have four tabs, and the game keeps your choices on the device:
 
@@ -21,19 +21,21 @@ The **settings** (⚙) have four tabs, and the game keeps your choices on the de
 
 ## Your first battle, in five minutes {#first-battle}
 
-Choose **Skirmish**, then **Oakhaven Ford**. You are where the northern road crosses the Aldwater. Your host stands on the near bank in blue; across the river the warband of the **Red Hand** is forming in red: footmen, dead men risen from the barrows, berserkers, wolf riders and hyena-folk, giants, minotaurs, spiders, devils and demons, archers, bombers, wizards, a mangonel and a dragon at the back. Their number is at the top of the screen, beside their name.
+Choose **Skirmish**, then **Oakhaven Ford**, and start the battle. You are where the old east road crosses the Aldwater. Your host stands on the west bank in blue; across the river another host, the same size as yours, is forming in red on ground the image of your own. In the middle of the ford is an **isle** with a bare flagpole on it. Above and below the ford the river is too deep to wade, and further up and down stream a timber **bridge** crosses it. The battle waits for you: look, give your first orders, then press **Enter** (or **Begin**).
 
-![The field at Oakhaven Ford as the battle opens: your squads in line on the near bank, the ford beyond the trees.](images/shots/ford_start.jpg)
+![The field at Oakhaven Ford as the battle opens: the two hosts either side of the river, the isle in the ford between them, a bridge up and down stream.](images/shots/ford_start.jpg)
+
+**Raise your flag on the isle and you have won.** A host with men at the pole and none of the other's there raises its flag: a minute to the top. The line beside the map says how it stands ("Your flag 40%, rising"). You also win if the other host quits the field.
 
 1. **Look around.** Pinch to zoom (or turn the mouse wheel), drag one finger to move over the land (the left mouse button), and twist two fingers to turn the view (the right mouse button). You can come down until one soldier fills the screen, or go up until the whole island is a map.
-2. **Pick a squad.** Tap one soldier of the **Grey Watch**, your heavy infantry in their blue tunics, and tap him again: every heavy infantryman in view is selected. They wear blue rings. (Or hold on them and drag a box round them.)
-3. **March.** Tap the ground near the ford. The Grey Watch march there in line and halt facing the way they marched. Yellow rings on the ground show where each man will stand.
-4. **Face the enemy.** With them still selected, press and **hold** on the ground where you want them, and when a gold ghost of the formation appears, **drag** toward the river. They will form up across your line, facing along it.
-5. **Shoot.** Tap one of the **1st Oakhaven Bowmen** twice to select them, then tap a soldier of the Red Hand. The archers walk until he is in range and loose. Watch the arrows: they fly, and they can miss.
-6. **Charge.** When the enemy are across the ford and in your bowmen's arrows, press **Charge** at the top: every squad goes at the nearest enemy, the archers and others who shoot stopping at a long bowshot (the engines stay where they are).
+2. **Pick a squad.** Tap one soldier of your **heavy infantry** in the front rank, and tap him again: every heavy infantryman in view is selected. They wear blue rings. (Or hold on them and drag a box round them.)
+3. **March to the isle.** Tap the isle. They march down to the ford, wade the shallows and form up at the pole. Yellow rings on the ground show where each man will stand. Men in the water fight badly and are easy marks: get them over quickly, and do not stop to fight in the ford.
+4. **Cover them.** Tap one of your **archers** twice to select them, press and **hold** on your bank above the ford, and when a gold ghost of the formation appears, **drag** toward the river. They form up across that line facing the isle, and shoot whoever comes onto it. Watch the arrows: they fly, and they can miss.
+5. **Hold a bridge.** Send your **pikemen** to your end of one bridge, facing it the same way. A bridge is six metres wide: a squad of pikes on Hold stops anything that comes over it.
+6. **Go round.** Send your horse over the other bridge and at the archers on the far bank.
 7. **Find the fight.** **Fight!** brings the camera to the fiercest fighting, on the field or on the Conquest map. **Pause** stops the battle while you think (and orders can still be given); **1×** cycles the speed.
 
-The battle is won when the last of the Red Hand is dead (a man who has broken and run is still on the field, and must be ridden down), and lost when the last of yours is. Then you may fight it again, or go back to the main menu. To learn the walls and gates instead, choose **Skirmish** and **The siege**: the foot of the same host, without its horse, before the gate of the walled town nearest the ford, with two catapults and two squads of grenadiers, against a garrison on its walls (chapter [](#sieges)).
+When it is over you may fight it again, change your army, or go back to the main menu. To learn the walls and gates instead, choose **Skirmish** and a siege: a host with its catapults before the gate of the walled town nearest the ford, against a garrison on its walls (chapter [](#sieges)).
 
 ## Your first Conquest, in ten minutes {#first-conquest}
 

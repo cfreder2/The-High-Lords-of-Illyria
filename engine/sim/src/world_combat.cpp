@@ -59,6 +59,12 @@ constexpr int32_t kBracedPct = 150, kBracedShock = 250;
 constexpr int32_t kHighToldGrade = 6;
 // A man wading, struck by a man on dry ground: what each such blow does to his nerve.
 constexpr int32_t kFordShock = 40;
+// Striking up a slope steeper than kHighToldGrade he is slower to strike again, by this share (the climb tires him).
+constexpr int32_t kUphillSlowPct = 25;
+// A rider who has charged home is out of order this long, and wheels away this long to come again (not one told to hold).
+constexpr int32_t kChargeDisorder = 3 * kTicksPerSecond, kWheelTicks = 5 * kTicksPerSecond / 2;
+// A charge down a slope is told when the slope added this much (percent).
+constexpr int32_t kDownhillTold = 20;
 // The run in: each unit of grade downhill adds 200% (a 1 in 3 slope: x1.67, at
 // most x2); uphill takes 250% a unit (a 1 in 3 slope: x0.17, at least x0.25).
 constexpr int32_t kChargeDownhillPctPerGrade = 200, kChargeDownhillPctMax = 100;
@@ -145,7 +151,8 @@ int32_t World::plungePct(const Vec3& vel) {
 }
 
 bool World::turnToward(Unit& u, const Vec3& dir) const {
-    const bool heavy = u.stats.mounted || u.stats.mass >= kHeavyMass;
+    // (A formed body wheels as slowly as horse: its men keep their places as they turn.)
+    const bool heavy = u.stats.mounted || u.stats.mass >= kHeavyMass || turnsSlowly(u);
     const Fixed c = heavy ? kSlowTurnCos : kQuickTurnCos, s = heavy ? kSlowTurnSin : kQuickTurnSin;
     if (u.facing.dot(dir) >= c) {
         u.facing = dir;
@@ -303,23 +310,42 @@ void World::fight(Unit& u, Unit& enemy) {
     }
     if (u.meleeCooldown > 0) return;
     u.meleeCooldown = attackTicks(u, m.cooldownTicks);
+    // Up a slope: weaker (positionPct) and slower to strike again.
+    if (dist > Fixed::zero() && dz * 100 >= dist * kHighToldGrade) {
+        u.meleeCooldown = u.meleeCooldown * (100 + kUphillSlowPct) / 100;
+        tell(TacticEvent::Kind::Uphill, u);
+    }
 
     const Vec3 at = enemy.pos + up(enemy.stats.height * 3 / 5);
     HitSide side = hitSide(enemy.facing, dir);
+    if (side != HitSide::Front && allRound(enemy)) {
+        // A square has no flank.
+        side = HitSide::Front;
+        tell(TacticEvent::Kind::Square, enemy);
+    }
     // Busy with someone else, it is off guard: a flank is as open as its back.
     if (side == HitSide::Flank && enemy.foe != kNoEntity && enemy.foe != u.id) side = HitSide::Rear;
-    // Position, told (world_tactics.cpp): a man caught wading, a blow from well above.
-    if (wading(enemy) && !wading(u)) {
+    // Position, told (world_tactics.cpp): a man caught wading or mired, a blow from well above.
+    const Footing his = footing(enemy), mine = footing(u);
+    if (his == Footing::Ford && mine != Footing::Ford) {
         tell(TacticEvent::Kind::Ford, enemy);
         shakeMorale(enemy, kFordShock);  // struck from the bank with the water round his knees
+    } else if (his == Footing::Mire && mine == Footing::Firm) {
+        tell(TacticEvent::Kind::Mire, enemy);
+    } else if (dist > Fixed::zero() && -dz * 100 >= dist * kHighToldGrade) {
+        tell(TacticEvent::Kind::HighGround, enemy);
     }
-    else if (dist > Fixed::zero() && -dz * 100 >= dist * kHighToldGrade) tell(TacticEvent::Kind::HighGround, enemy);
-    if (shieldBlocks(enemy, dir, kMeleeBlockScale)) {
+    ambush(u, enemy);
+    // (A man in the water cannot keep his shield up.)
+    if (shieldBlocks(enemy, dir, his == Footing::Ford ? kMeleeBlockScale / 2 : kMeleeBlockScale)) {
         impacts_.push_back({ImpactEvent::Kind::Blocked, at, dir, kNoEntity, enemy.id, false, {}, -1, m.damageType});
         return;
     }
-    const int32_t amount = scaledDamage(m.damage, blowPct(u, enemy, dist, dz), sidePct(side, false));
+    // ... and the formations (world_formation.cpp): his own where the blow lands, and the one it lands on.
+    const int32_t amount = scaledDamage(m.damage, std::max(10, blowPct(u, enemy, dist, dz) + formBlowPct(u, side)),
+                                        sidePct(side, false) * (100 + formStruckPct(enemy, side, false)) / 100);
     const bool killed = damage(enemy, amount, &u, {m.damageType, dir, at});
+    if (side != HitSide::Front) enemy.flankTick = tick_ + 1;
     shakeBySide(enemy, side, false);
     if (m.knockback > Fixed::zero()) {
         const Fixed downhill = dist > Fixed::zero() ? clamp(-dz / dist, Fixed::zero(), Fixed::fromRatio(1, 2)) : Fixed::zero();
@@ -345,13 +371,29 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     const Fixed weight = speed * u.stats.mass * slopePct / 100;
     const int32_t impact = floorPct(weight * kChargeDamage);
     HitSide side = hitSide(enemy.facing, dir);
+    if (side != HitSide::Front && allRound(enemy)) {
+        // A square has no flank: the charge meets a front (and its pikes, braced).
+        side = HitSide::Front;
+        tell(TacticEvent::Kind::Square, enemy);
+    }
     const bool busy = enemy.foe != kNoEntity && enemy.foe != u.id;
     const bool behind = side == HitSide::Rear;  // truly at his back (not a flank that counts as one because he is busy)
     if (side == HitSide::Flank && busy) side = HitSide::Rear;
+    tell(TacticEvent::Kind::Charge, enemy, static_cast<int32_t>(side));
+    if (slopePct >= 100 + kDownhillTold) tell(TacticEvent::Kind::Downhill, enemy);
+    ambush(u, enemy);
+    // Charged home: out of order. Into a flank or a back he does not stand in the melee to die: away to re-form and come
+    // again (unless told to hold). Into a front that stood, he has made his bed: he fights it out as before.
+    disorder(u, kChargeDisorder);
+    if (!u.hold && side != HitSide::Front) {
+        u.wheel = kWheelTicks;
+        u.wheelDir = -dir;
+    }
 
     // Braced pikes, met head on: the charge runs onto their points.
     const MeleeWeapon& pike = enemy.stats.melee;
-    if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() &&
+    // (Not pikes out of order, nor in water, mud or woods: no brace without firm ground and closed ranks.)
+    if (side == HitSide::Front && pike.bonusVsMountedPct > 0 && pike.damage > 0 && !enemy.inAir() && enemy.disorder == 0 && footing(enemy) == Footing::Firm &&
         (!enemy.hasMoveTarget || enemy.engageFoe != kNoEntity)) {
         // The horse's own weight is what drives it on: the whole of the impact, and the pike's blow half again. The
         // charge is stopped cold (thrown back, his nerve shaken), and the pikeman takes nothing.
@@ -362,6 +404,7 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
         shakeMorale(u, kBracedShock);
         tell(TacticEvent::Kind::Braced, enemy);
         impacts_.push_back({ImpactEvent::Kind::Hit, at, -dir, kNoEntity, u.id, killed, {}, -1, pike.damageType});
+        u.wheel = 0;  // (stopped cold: nothing to wheel)
         return;
     }
 
@@ -369,7 +412,10 @@ void World::charge(Unit& u, Unit& enemy, const Vec3& dir, Fixed dist, Fixed dz) 
     // A shield turns the lance or sword but not the weight behind it.
     const bool blocked = shieldBlocks(enemy, dir, kMeleeBlockScale);
     const int32_t blow = blocked ? 0 : scaledDamage(u.stats.melee.damage, blowPct(u, enemy, dist, dz));
-    const int32_t amount = (blow + (blocked ? impact / 2 : impact)) * sidePct(side, false) / 100;
+    // (A wedge strikes harder; a wedge struck in the flank takes more: world_formation.cpp. The rider's own disorder, just
+    // set, is not counted against this blow.)
+    const int32_t formPct = (formed(enemy) ? 100 + formStruckPct(enemy, side, false) : 100) * (100 + formationRule(u.formation).blowPct * (u.ranked >= 2 && u.formation != FormationKind::None)) / 100;
+    const int32_t amount = (blow + (blocked ? impact / 2 : impact)) * sidePct(side, false) / 100 * formPct / 100;
     const bool killed = damage(enemy, amount, &u, {u.stats.melee.damageType, dir, at});
     chargeShock(enemy, side, busy && behind);
     knock(enemy, dir, weight * kChargeKnock * (blocked ? Fixed::fromRatio(1, 2) : Fixed::one()) + u.stats.melee.knockback);

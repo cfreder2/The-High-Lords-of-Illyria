@@ -3,9 +3,9 @@
   "name": "light_infantry_hd",
   "size": [
    4096,
-   3840
+   3720
   ],
-  "ppm": 95.53
+  "ppm": 90.76
  },
  "1": {
   "name": "heavy_infantry_hd",
@@ -31,13 +31,29 @@
   ],
   "ppm": 96.0
  },
+ "4": {
+  "name": "light_cavalry_hd",
+  "size": [
+   4096,
+   3820
+  ],
+  "ppm": 73.92
+ },
  "8": {
   "name": "giants_hd",
   "size": [
    4096,
-   3680
+   3752
   ],
-  "ppm": 34.94
+  "ppm": 45.16
+ },
+ "9": {
+  "name": "minotaurs_hd",
+  "size": [
+   4096,
+   3568
+  ],
+  "ppm": 77.81
  },
  "19": {
   "name": "undead_hd",
@@ -51,7 +67,7 @@
   "name": "hero_hd",
   "size": [
    4096,
-   3732
+   3724
   ],
   "ppm": 90.76
  },
@@ -59,7 +75,7 @@
   "name": "dwarf_grenadier_hd",
   "size": [
    4096,
-   3304
+   3700
   ],
   "ppm": 144.0
  },
@@ -67,7 +83,7 @@
   "name": "journeyman_hd",
   "size": [
    4096,
-   3748
+   3868
   ],
   "ppm": 111.42
  },
@@ -83,9 +99,9 @@
   "name": "berserker_hd",
   "size": [
    4096,
-   3840
+   3640
   ],
-  "ppm": 95.53
+  "ppm": 90.76
  },
  "27": {
   "name": "hyena_hd",

@@ -185,8 +185,7 @@ void frameCamera() {
         app->camera.rotate(std::atan2(-out.y, -out.x) - app->camera.yaw());
         return;
     }
-    // Open just behind the Oakhaven shield wall, close enough to see soldiers, looking
-    // east toward the Red Hand.
+    // Open just behind the first squad of the player's line, close enough to see soldiers, looking east toward the other host.
     const V3 c = b.squadCentre(b.squads()[0]);
     app->camera.lookAt(c.x + 10, c.y, 55);
 }
@@ -581,8 +580,10 @@ void placeFlags(float dt) {
             V3 base = toV3(cap.at());
             base.z = app->battle->heightAt(base.x, base.y);
             const float p = static_cast<float>(cap.progress()) / CapturePoint::kFull;
-            // the battle's colours (factions.h: the defenders are the second seat, the player the first)
-            const PoleTarget t = contestedPole(illyria::game::factionColor(1), illyria::game::factionColor(0), p);
+            // the battle's colours (factions.h: the defenders are the second seat, the player the first); a bare pole's
+            // flag (the isle's) is its raiser's, as high as he has got it
+            const PoleTarget t = cap.neutral() ? PoleTarget{illyria::game::factionColor(static_cast<uint8_t>(cap.attacker())), p}
+                                               : contestedPole(illyria::game::factionColor(1), illyria::game::factionColor(0), p);
             put(kSiegePole, {base, 14, t.level, 3.4f, t.colour});
         }
     }
@@ -1813,6 +1814,23 @@ ILLYRIA_API void illyria_hold() {
 // The lord's Rally (Y): 1 when he called.
 ILLYRIA_API int illyria_rally() {
     return app && app->battle->orderRally() ? 1 : 0;
+}
+// Answer a call for help by hand (the full stop): the camera to the squad that called, the nearest free squad selected.
+// 1 when somebody is calling.
+ILLYRIA_API int illyria_answer_call() {
+    V3 at;
+    if (!app || !app->battle->answerCall(at)) return 0;
+    app->introStartMs = -1;
+    app->camera.lookAt(at.x, at.y, app->camera.distance());
+    return 1;
+}
+// The ground under the pointer as it would tell for the selection sent there ("ford", "woods", "higher ground"; "" plain),
+// for the word by the cursor while ordering.
+ILLYRIA_API const char* illyria_ground_at(float x, float y) {
+    if (!app || app->title || app->battle->selectedAlive().empty()) return "";
+    V3 hit;
+    const float s = app->pixelRatio;
+    return app->camera.pickGround(x * s, y * s, hit) ? app->battle->groundAt(hit) : "";
 }
 // The next squad standing idle (J), and the camera to it if it is off screen. 1 when there was one.
 ILLYRIA_API int illyria_next_idle() {
@@ -3108,7 +3126,9 @@ static const char* squadTip(illyria::sim::UnitType t) {
 static void endState(const Battle& b, std::string& s) {
     char buf[512];
     const bool siege = b.scenario() == Scenario::Siege || b.scenario() == Scenario::Capital;
-    const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.") : "Rout the " + b.foeName() + ".";
+    const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.")
+                              : b.capturePoint().neutral() ? "Raise your flag on the isle, or rout the " + b.foeName() + "."
+                                                           : "Rout the " + b.foeName() + ".";
     std::snprintf(buf, sizeof buf, ",\"deploy\":%s,\"brief\":\"%s\",\"routed\":%d,\"pursuit\":%d,\"over\":%s", b.deploying() ? "true" : "false", brief.c_str(),
                   b.routedSide() == illyria::sim::RoutRule::kNobody ? -1 : static_cast<int>(b.routedSide()), b.pursuitSeconds(), b.over() ? "true" : "false");
     s += buf;
@@ -3212,9 +3232,10 @@ ILLYRIA_API const char* illyria_hud() {
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"gates\":[",
+        // (`mine`: the flag on the pole is the viewer's side's, so the bar is his colour: a siege's attacker, the isle's raiser.)
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"mine\":%s,\"text\":\"%s\",\"gates\":[",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str());
+                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", cap.attacker() == b.localSide() || cap.bare() ? "true" : "false", b.siegeLine().c_str());
         s += buf;
         // The doors of the besieged town, with what is left of each.
         bool firstGate = true;
@@ -3275,6 +3296,22 @@ ILLYRIA_API const char* illyria_hud() {
                           b.selectionSparks() ? "true" : "false", b.selectionStores() ? "true" : "false", b.selectionHoldsFire() ? "true" : "false");
             s += buf;
         }
+        // The selection's ground markers that fall at the foot of the screen, where the squad cards stand: the HUD
+        // lets the ground show through a card that is over one (hud.cpp), so an order's end is never hidden by it.
+        s += "\"marksLow\":[";
+        {
+            int n = 0;
+            const float foot = static_cast<float>(app->camera.height()) - 110.0f * app->pixelRatio;
+            for (const Battle::OrderMark& m : b.orderMarks()) {
+                if (m.opacity < 1 || n >= 64) continue;
+                float px, py;
+                if (!app->camera.project(m.pos, px, py) || py < foot || px < 0 || px > static_cast<float>(app->camera.width())) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"x\":%.0f,\"y\":%.0f}", n ? "," : "", px / app->pixelRatio, py / app->pixelRatio);
+                s += buf;
+                ++n;
+            }
+        }
+        s += "],";
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
                       b.selectionSize(), b.selectionLabel(), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
@@ -3306,18 +3343,18 @@ ILLYRIA_API const char* illyria_hud() {
         const Standing st = b.standing(q);
         // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
         const bool mine = b.controllable(q);
-        const Battle::SquadState state = b.squadState(q);
-        const Battle::Load load = b.squadLoad(q);  // satchels and missiles left of a store (pips on the card)
+        const Battle::SquadState state = b.squadState(q, mine && b.squadSelection(q) == 2);  // (the ground's word for the squads selected)
+        const Battle::Load load = b.squadLoad(q);  // satchels and missiles left of a store (the card's counters)
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"battles\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,"
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d,\"calling\":%s,\"answering\":%s,\"ground\":\"%s\","
                       "\"sat\":%d,\"satMax\":%d,\"ammo\":%d,\"ammoMax\":%d,\"holdFire\":%s}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.battles, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
                       q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
-                      state.hold ? "true" : "false", state.rally, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false");
+                      state.hold ? "true" : "false", state.rally, state.calling ? "true" : "false", state.answering ? "true" : "false", state.ground, load.satchels, load.satchelsMax, load.ammo, load.ammoMax, load.holdFire ? "true" : "false");
         s += buf;
         firstSquad = false;
     }
@@ -3426,6 +3463,19 @@ static int startMode(const char* id, const char* options) {
         gMarchStage = gMarch->stage;
         gScenario = gMarch->scenario();
         gSetup = gMarch->setup();
+#ifdef ILLYRIA_DEV_HOOKS
+        // Tuning (docs/PLAYTEST.md): ILLYRIA_MARCH_PCT="85,120,60,55,75" plays the stages against those purses instead
+        // of the table's (March::stageInfo), so a curve can be tried by script without a build.
+        if (const char* pct = std::getenv("ILLYRIA_MARCH_PCT")) {
+            int at = 0, value = 0;
+            for (const char* q = pct; *q && at <= gMarchStage; ++at) {
+                value = std::atoi(q);
+                while (*q && *q != ',') ++q;
+                if (*q == ',') ++q;
+            }
+            if (at == gMarchStage + 1 && value > 0) gSetup.foePurse = std::max(1, gMarch->budget * value / 100);
+        }
+#endif
         gSkill = gMarch->easy ? Battle::AiSkill::Easy : Battle::AiSkill::Normal;
         gDeploy = optionNumber(opts, "deploy", 1) != 0;
         newBattle();
@@ -3451,9 +3501,12 @@ static int startMode(const char* id, const char* options) {
         gSetup.defend = optionNumber(opts, "defend", 0) != 0 && (gScenario == Scenario::Siege || gScenario == Scenario::Capital);
         gSetup.army = armyOption(opts);
         if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
-        gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
+        // Oakhaven Ford is fought on fair ground by two hosts alike: it always buys (its classic muster is the title's backdrop).
+        if (gScenario == Scenario::Ford && gSetup.budget == 0) gSetup.budget = illyria::game::kFordPurse;
+        gSkill = static_cast<Battle::AiSkill>(std::clamp(static_cast<int>(optionNumber(opts, "hard", 1)), 0, 2));  // 0 Easy, 1 Normal, 2 Hard
         gDeploy = optionNumber(opts, "deploy", 0) != 0;
         gSetup.easy = gSkill == Battle::AiSkill::Easy;
+        gSetup.hard = gSkill == Battle::AiSkill::Hard;
         newBattle();
         app->renderer.reset(*app->battle);
         if (gDeploy) startOpening();
@@ -3551,10 +3604,10 @@ ILLYRIA_API const char* illyria_march_save() {
     s = gMarch && !(gMarchBattle && !gMarchSettled) ? gMarch->save() : "";
     return s.c_str();
 }
-// The purse fills a squad's gaps (as many men as it pays for). How many joined.
+// The purse fills a squad's gaps (as many men as it pays for); -1: every squad it can, the most worn first. How many joined.
 ILLYRIA_API int illyria_march_reinforce(int squad) {
-    if (!gMarch || (gMarchBattle && !gMarchSettled) || squad < 0) return 0;
-    return gMarch->reinforce(static_cast<size_t>(squad));
+    if (!gMarch || (gMarchBattle && !gMarchSettled)) return 0;
+    return squad < 0 ? gMarch->reinforceAll() : gMarch->reinforce(static_cast<size_t>(squad));
 }
 // The march given up, or put away once over.
 ILLYRIA_API void illyria_march_end() {

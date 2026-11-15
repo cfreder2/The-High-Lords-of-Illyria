@@ -34,21 +34,18 @@ TEST(march_begins_with_the_army_bought_a_lord_and_the_magi) {
     CHECK(m.budget == 2 * Conquest::price(UnitType::HeavyInfantry) + Conquest::price(UnitType::Archers) + Conquest::price(UnitType::LightCavalry) + Conquest::price(UnitType::DwarfGrenadier));
     CHECK(find(m, "Heavy Infantry 1") && find(m, "Heavy Infantry 2") && find(m, "Archers") && find(m, "The Lord") && find(m, "Magus of the Tower"));
     CHECK(find(m, "The Lord")->men.size() == 1 && find(m, "Archers")->men.size() == static_cast<size_t>(Conquest::squadSize(UnitType::Archers)));
-    // Five battles, the other side's gold growing against an army that only shrinks; a field first, the capital last.
-    CHECK(March::stageInfo(0).scenario == Scenario::Field && March::stageInfo(1).scenario == Scenario::Ford && March::stageInfo(4).scenario == Scenario::Capital);
-    CHECK(March::stageInfo(2).scenario == Scenario::Siege && !March::stageInfo(2).defend && March::stageInfo(3).defend);
-    CHECK(m.setup().foePurse == m.budget * March::stageInfo(0).foePct / 100 && m.setup().roster.size() == m.squads.size());
-    // What stands against the march, in parts of a hundred of its army's cost (a siege's keepers raise two thirds of
-    // the stage's purse, its besiegers half as much again): more at the Ford than on the field, more before the walls
-    // the player holds than behind those he storms, more in the capital than in the village.
-    int fielded[March::kBattles];
+    // Five battles: a field first, a wall to storm second (the first that asks for an order, and it has a time
+    // limit: a march that is given none ends there), the Ford, a wall to hold, the capital last.
+    CHECK(March::stageInfo(0).scenario == Scenario::Field && March::stageInfo(1).scenario == Scenario::Siege && !March::stageInfo(1).defend);
+    CHECK(March::stageInfo(2).scenario == Scenario::Ford && March::stageInfo(3).scenario == Scenario::Siege && March::stageInfo(3).defend && March::stageInfo(4).scenario == Scenario::Capital);
+    CHECK(m.setup().foePurse == m.budget * March::stageInfo(0).foePct / 100 && m.setup().roster.size() == m.squads.size() && m.setup().siegeSeconds == 0);
     for (int k = 0; k < March::kBattles; ++k) {
         const March::Stage& st = March::stageInfo(k);
-        const bool siege = st.scenario == Scenario::Siege || st.scenario == Scenario::Capital;
-        fielded[k] = !siege ? st.foePct : st.defend ? st.foePct * Battle::kSiegeOddsPct / 100 : st.foePct * 100 / Battle::kSiegeOddsPct;
+        const bool storm = (st.scenario == Scenario::Siege || st.scenario == Scenario::Capital) && !st.defend;
+        CHECK(st.foePct >= 30 && st.foePct <= 200);
+        CHECK(storm ? st.siegeSeconds >= 5 * 60 : st.siegeSeconds == 0);  // a storm has its time; nothing else has
     }
-    CHECK(fielded[1] > fielded[0] && fielded[3] > fielded[2] && fielded[4] > fielded[2]);
-    for (int k = 0; k < March::kBattles; ++k) CHECK(fielded[k] >= 30 && fielded[k] <= 100);  // (never more than the army cost: it only shrinks)
+    CHECK(March::stageInfo(4).siegeSeconds > March::stageInfo(1).siegeSeconds);  // (a capital has two walls)
 }
 
 TEST(march_survivors_carry_their_wounds_half_mended_their_kills_and_rank_and_a_wiped_squad_is_gone) {
@@ -142,6 +139,23 @@ TEST(march_the_purse_fills_gaps_a_man_at_a_time_and_never_the_irreplaceable) {
     CHECK(m.reinforce(0) == 4 && m.purse == 1000 - cost && m.reinforceCost(0) == 0 && m.squads[0].men.size() == static_cast<size_t>(full));
 }
 
+TEST(march_the_purse_spent_at_once_goes_to_the_most_worn_squads_first) {
+    March m = fresh();
+    std::vector<CarriedSquad> after = untouched(m);
+    const int full = Conquest::squadSize(UnitType::HeavyInfantry);
+    after[0].men.resize(static_cast<size_t>(full - 2));  // Heavy Infantry 1: two gone
+    after[1].men.resize(2);                              // Heavy Infantry 2: cut to two
+    after[4].men.resize(1);                              // the dwarves: never filled
+    m.settle(1, after);
+    const int need = m.reinforceCost(0) + m.reinforceCost(1) + m.reinforceCost(2) + m.reinforceCost(3);
+    m.purse = m.reinforceCost(1);  // enough for the worst of them and no more
+    CHECK(m.reinforceAll() == full - 2 && m.squads[1].men.size() == static_cast<size_t>(full) && m.squads[0].men.size() == static_cast<size_t>(full - 2) && m.purse == 0);
+    CHECK(m.reinforceAll() == 0);
+    m.purse = 1000;
+    CHECK(m.reinforceAll() == 2 && m.squads[0].men.size() == static_cast<size_t>(full) && m.squads[4].men.size() == 1);
+    CHECK(m.purse > 1000 - need && m.reinforceAll() == 0);
+}
+
 TEST(march_saves_to_one_line_and_loads_the_same) {
     March m = fresh();
     std::vector<CarriedSquad> after = untouched(m);
@@ -201,7 +215,7 @@ TEST(march_roster_is_seated_in_a_battle_by_the_skirmish_setup_and_read_back) {
         }
         // The card counts the men against the squad's full strength; the result against what it brought.
         for (const Squad& q : b.squads())
-            if (q.name == "Heavy Infantry 1") {
+            if (q.name == "Heavy Infantry 1" && q.owner == Battle::kPlayer) {  // (the other host may have a squad of the name)
                 CHECK(b.aliveCount(q) == 3 && b.totalCount(q) == Conquest::squadSize(UnitType::HeavyInfantry) && b.standing(q).kills == 8);
             }
         const Battle::Result r = b.result();
@@ -210,7 +224,28 @@ TEST(march_roster_is_seated_in_a_battle_by_the_skirmish_setup_and_read_back) {
         int foes = 0;
         for (const illyria::sim::Unit& u : b.world().units()) foes += u.owner == Battle::kEnemy;
         CHECK(foes > 0);
+        CHECK(b.siegeSecondsLeft() == (stage == 4 ? March::stageInfo(4).siegeSeconds : -1) && !b.siegeTimedOut());
     }
+}
+
+TEST(march_a_siege_the_player_lays_is_lost_when_its_time_runs_out) {
+    SkirmishSetup setup;
+    setup.budget = 100;
+    setup.siegeSeconds = 20;
+    Battle b(42, Scenario::Siege, setup);
+    CHECK(b.siegeSecondsLeft() == 20 && b.outcome() == 0);
+    CHECK(b.siegeLine().find("0:20 left") != std::string::npos);
+    for (int k = 0; k < 190; ++k) b.advance(0.1);
+    CHECK(b.outcome() == 0 && b.siegeSecondsLeft() > 0 && b.siegeSecondsLeft() <= 2);
+    for (int k = 0; k < 40 && !b.over(); ++k) b.advance(0.1);
+    CHECK(b.siegeTimedOut() && b.outcome() == 2 && b.over() && b.siegeResult() == "The siege ran out of time.");
+    // The keeper of a wall has no such clock, nor has a plain skirmish's besieger.
+    setup.defend = true;
+    CHECK(Battle(42, Scenario::Siege, setup).siegeSecondsLeft() == -1);
+    setup.defend = false;
+    setup.siegeSeconds = 0;
+    const Battle plain(42, Scenario::Siege, setup);
+    CHECK(plain.siegeSecondsLeft() == -1 && plain.siegeLine().find("left") == std::string::npos);
 }
 
 TEST(march_settles_by_the_squads_names_whatever_order_the_battle_tells_them_in) {
@@ -225,7 +260,8 @@ TEST(march_settles_by_the_squads_names_whatever_order_the_battle_tells_them_in) 
 }
 
 TEST(march_stores_stay_spent_between_battles_and_the_camp_makes_them_up_for_gold) {
-    // The dwarf comes out of a battle with two of his five satchels and one of his six bottles; the wizard with one fireball.
+    // One dwarf of the pair comes out of a battle with two of his three satchels and one of his three bottles; the wizard
+    // with one fireball.
     March m = fresh();
     std::vector<CarriedSquad> after = untouched(m);
     for (CarriedSquad& c : after) {
@@ -237,7 +273,7 @@ TEST(march_stores_stay_spent_between_battles_and_the_camp_makes_them_up_for_gold
     CHECK(m.squads[dwarf].men[0].satchels == 2 && m.squads[dwarf].men[0].ammo == 1);
     int carried = 0, full = 0;
     m.load(dwarf, carried, full);
-    CHECK(carried == 3 && full == 11);
+    CHECK(carried == 9 && full == 12);  // (his fellow's three and three untouched)
     // The next battle's roster says so, and the battle seats him so; a line of text keeps it.
     for (const CarriedSquad& c : m.setup().roster)
         if (c.type == UnitType::DwarfGrenadier) CHECK(c.men[0].satchels == 2 && c.men[0].ammo == 1);
@@ -248,7 +284,7 @@ TEST(march_stores_stay_spent_between_battles_and_the_camp_makes_them_up_for_gold
         if (static_cast<UnitType>(u.stats.type) == UnitType::DwarfGrenadier) seen += u.satchels == 2 && u.ammo == 1;
         if (static_cast<UnitType>(u.stats.type) == UnitType::Wizards) seen += u.ammo == 1;
     }
-    CHECK(seen == 2);
+    CHECK(seen == 2);  // (the one dwarf who had spent, and the wizard; his fellow has his full load)
     for (const CarriedSquad& c : b.carried())
         if (c.type == UnitType::DwarfGrenadier) CHECK(c.men[0].satchels == 2 && c.men[0].ammo == 1);
     March again;
@@ -257,10 +293,10 @@ TEST(march_stores_stay_spent_between_battles_and_the_camp_makes_them_up_for_gold
     // A line written before loads were kept (four numbers a man) reads as a full load.
     March old;
     CHECK(March::load(fresh().save(), old) && old.squads[0].men[0].satchels == -1);
-    // The camp: 8 of his 11 spent is 8/22 of a dwarf's price, with the men (he cannot be replaced) costing nothing.
+    // The camp: 3 of the pair's 12 spent is 3/24 of their price, with the men (they cannot be replaced) costing nothing.
     const int cost = m.resupplyCost(dwarf);
     std::printf("  the dwarf's load made up for %d gold of a purse of %d (his price %d)\n", cost, m.purse, Conquest::price(UnitType::DwarfGrenadier));
-    CHECK(cost == (Conquest::price(UnitType::DwarfGrenadier) * 8 + 21) / 22 && m.reinforceCost(dwarf) == cost);
+    CHECK(cost == (Conquest::price(UnitType::DwarfGrenadier) * 3 + 23) / 24 && m.reinforceCost(dwarf) == cost);
     m.purse = 30;
     const int purse = m.purse;
     CHECK(m.reinforce(dwarf) > 0 && m.purse == purse - cost);

@@ -21,11 +21,11 @@ Everything outside the Conquest is played against the computer, on one device. H
 
 ## The March {#the-march}
 
-*Five battles, one army.* Choose **The March** and buy an army with your gold, as for a skirmish. A lord and three magi march with it. Then you fight, in this order: the open field, the Ford, a village you storm, a village you hold, the capital.
+*Five battles, one army.* Choose **The March** and buy an army with your gold, as for a skirmish. A lord and three magi march with it. Then you fight, in this order: the open field, a village you storm, the Ford, a village you hold, the capital. A town you storm must be taken in its time (eight minutes for the village, thirteen for the capital; the clock is beside the map), or the battle is lost.
 
 - **The living go on.** After each battle the men left alive are your army for the next. Their wounds are half mended. They keep their kills and their rank: a soldier is a regular at 2 kills, a veteran at 5 and elite at 10, and living through two battles makes a regular, four a veteran. A rank is a few percent in a blow and a steadier man.
 - **The dead do not come back.** A squad with no man left is gone for the rest of the march.
-- **The purse.** Each battle won pays a little gold. In the camp between battles it fills the gaps in a squad with recruits. It never buys a new squad, and it is never enough to replace everything.
+- **The purse.** Each battle won pays a little gold. In the camp between battles it fills the gaps in a squad with recruits (**Fill what the purse can** spends it on the most worn squads first). It never buys a new squad, and it is never enough to replace everything.
 - **Never replaced:** the lord, the magi, dwarves.
 - **The other side grows** with every battle.
 - **The results sheet** says who goes on, who was promoted and who is gone for good. **Next battle** opens the camp; **March on** sets out the next battle.
@@ -35,32 +35,22 @@ The march is saved in the camp, between battles. A battle left half fought is fo
 
 ## Skirmish {#skirmish}
 
-*One battle, fought out in full. Nothing carries over.* Choose **Skirmish**, then one of two battles. Both are always the same armies on the same ground, you in blue against the computer in red; there is nothing to set.
+*One battle, fought out in full. Nothing carries over.* Choose **Skirmish**, then the map, the gold each side raises, the squads you buy with it and how well the computer plays: you in blue against the computer in red.
 
 ### Oakhaven Ford {#skirmish-ford}
 
-The field is Oakhaven Ford. Your host stands 60 m west of the middle of the field, the Red Hand 170 m east of it, and comes on.
+The field is Oakhaven Ford, where the old east road crosses the Aldwater, and it is fair ground: the river runs straight between the two hosts, and the east bank is the west bank's image, hill for hill and tree for tree. Each host stands 80 m back from the water, squad for squad the other's image, bought with the same purse.
 
-| Yours (Oakhaven) | | The Red Hand | |
-|---|---|---|---|
-| Oakhaven Warriors | 12 warriors | Red Hand Warband | 16 light infantry |
-| The Grey Watch | 12 heavy infantry | Barrow Dead | 16 undead |
-| Ferry Pikes | 12 pikemen | Blood Berserks | 8 berserkers |
-| Durgan of Iron Hill, Brakk of Deepdelve | 2 grenadiers, each alone | Wolf Riders of Gnarl | 8 wolf riders |
-| Wildmen of Kell | 10 berserkers | Steppe Riders | 6 light cavalry |
-| 1st Oakhaven Bowmen, Silverwood Archers | 12 and 12 archers | Hill Giants | 3 giants |
-| Brothers of the Root | 4 journeymen | Minotaurs of the Maze | 4 minotaurs |
-| Magus of the Tower | 1 wizard | Brood of Mirkwold | 6 spiders |
-| Lord Aldric | the hero | Pit Devils, Demons of the Rift | 3 devils, 2 demons |
-| Oakhaven Lancers | 8 heavy cavalry | Red Hand Longbows | 12 archers |
-| Ferry Riders | 8 light cavalry | Gnarl Bomber | 1 grenadier |
-| Moonwood Unicorns | 4 unicorns | Witch-King | 1 wizard |
-| War Elephants of Tal | 2 elephants | Red Hand Menders | 3 journeymen |
-| Sky Lancers | 4 pegasi | Ashen Wyrm | 1 dragon |
-| Eyrie Griffins | 3 griffins | Red Hand Mangonel | 1 catapult |
-| Host of Archons | 3 archons | Laughing Pack of Gnarl | 6 hyena-folk |
+- **The ford** is in the middle: 11 m of shallows either side of an **isle** with a bare flagpole on it. Men in the water strike weaker and are struck harder, and a satchel or a fire bottle thrown into it is lost.
+- **Above and below the ford the river is deep.** Nobody wades it.
+- **A timber bridge** crosses 96 m up stream and another 96 m down stream, each 6 m wide: the ways round on dry feet.
+- **Each bank has a berm** above the ford, 54 m from the isle: a bowshot from the pole.
 
-You **win** when the Red Hand quits the field (below), or when no soldier of it is left alive; you **lose** when your host quits it, or when none of yours is left.
+**The flag.** A host with men within 12 m of the pole and none of the other's there raises its own flag: a minute to the top, however many men. The other host, alone at the pole, hauls it down three times as fast, and then raises its own. With both there, or nobody, the flag stays where it is. The line and the bar beside the map say how it stands, and the pole is on the map.
+
+You **win** when your flag reaches the top, when the other host quits the field (below), or when no soldier of it is left alive; you **lose** when their flag reaches the top, when your host quits the field, or when none of yours is left.
+
+**The computer** sends two squads of foot to the isle, holds its own ends of the bridges with pikes and lines its berm with bowmen. The rest of its foot waits at one bridge and its horse at the other until you come forward to the river; then they cross, unless you hold the far end. On Easy it has three quarters of your gold, sends one squad to the isle, and the squads that go round wait three quarters of a minute and come one at a time.
 
 ### A host quits the field {#rout}
 

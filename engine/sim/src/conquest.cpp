@@ -47,7 +47,7 @@ Conquest::Option trained(UnitType t) {
         case T::Pikemen: return {t, 4, 18};
         case T::LightCavalry: return {t, 5, 20};
         case T::HeavyCavalry: return {t, 6, 26};
-        case T::DwarfGrenadier: return {t, 6, 60};  // one dwarf and his charges: dear, slow, and few are kept (keepCap)
+        case T::DwarfGrenadier: return {t, 6, 60};  // a pair of dwarves and their charges: dear, slow, and few are kept (keepCap)
         case T::WolfRiders: return {t, 5, 20};
         case T::Warrior: return {t, 4, 24};
         case T::Catapult: return {t, 6, 40};  // dear and slow to build, as Warlords II's siege engines
@@ -88,11 +88,12 @@ int32_t Conquest::squadSize(UnitType t) {
         case T::Journeyman: return 4;
         case T::Elephants:
         case T::Demons: return 2;
-        // Those who throw a blast come alone (docs/GAME_DESIGN.md, "Explosives are rare").
+        // Those who throw a blast are few (docs/GAME_DESIGN.md, "Explosives are rare"): a wizard and a dragon alone, the
+        // dwarves a pair.
         case T::Wizards:
-        case T::DwarfGrenadier:
         case T::Dragons:
         case T::Hero: return 1;
+        case T::DwarfGrenadier: return 2;
         case T::Catapult: return 2;
         case T::Dwarves:
         case T::Berserker: return 10;

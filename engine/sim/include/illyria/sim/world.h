@@ -204,6 +204,11 @@ struct Scavenger {
     bool holding() const { return satchel || held != RemainKind::None; }
 };
 
+// How a squad stands (the game's formations, game::Formation, with one more for "none"). The world knows each man's so
+// that every formation has its strength and its cost (world_formation.cpp). None: a man of no squad, or one never formed.
+enum class FormationKind : uint8_t { None, Line, DoubleLine, Box, Wedge, Loose, Encircle, Vee };
+inline constexpr int kFormationKinds = 8;
+
 // Player input, the only thing exchanged between lockstep peers.
 struct Command {
     // AttackGate: missile troops shoot at the gate nearest `target`.
@@ -217,10 +222,12 @@ struct Command {
     // SetStance: the soldier's stance with no order in hand (`hold`): Hold keeps his place, else he goes to the help of a
     // friend fighting near him (world_tactics.cpp). It touches no order he has. Rally: the lord's call (`unit` is the
     // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
+    // SetFormation: the formation the soldier is to keep (`formation`): no order of his own either. Answer: he goes to the
+    // help of the friend `targetUnit`, who has called (world_help.cpp), as a man with no order would of himself.
     // Detonate: one missile, now, at the laid satchel nearest `target` (within World::kDetonatePick of it; else at
     // the ground there), walking into reach first: no waiting on friends in the blast, which is the player's business
     // (world_satchels.cpp). HoldFire: with `hold`, he throws, looses and lays nothing of his own accord (orders only).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, Detonate, HoldFire };
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally, SetFormation, Answer, Detonate, HoldFire };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -254,6 +261,8 @@ struct Command {
     GatePin gatePin = GatePin::Auto;
     // SetStance: stand fast (true) or support (false).
     bool hold = false;
+    // SetFormation: which.
+    FormationKind formation = FormationKind::None;
     // Shift: add this order to the end of the soldier's queue (an order that replaces his current one and clears the
     // queue when false). A soldier with no order of his own begins it at once. Meaningless for Stop, Raid and SetGate.
     bool queue = false;
@@ -309,6 +318,33 @@ struct Unit {
     EntityId support = kNoEntity;
     // A lord: ticks before he may call the Rally again (Command::Rally).
     int32_t rallyCooldown = 0;
+    // His squad (0: none; the game's, or a Conquest army's id) and the formation it keeps (world_formation.cpp). `ranked`:
+    // squad-mates within a few strides of him at the last census (a formation is its men together). `disorder`: ticks until
+    // he has re-formed (after a charge, struck in the flank, in woods, mud or water): no formation counts meanwhile.
+    uint32_t squad = 0;
+    FormationKind formation = FormationKind::None;
+    int32_t ranked = 0;
+    int32_t disorder = 0;
+    // Calls for help (world_help.cpp). `called`: the tick his squad last called (0: never). `helping`: the friend whose
+    // call he is answering (his march to him is the answer's, not an order: any order ends it). `shotTick`, `flankTick`:
+    // when a missile last struck him, and a blow in his flank or back (0: never).
+    uint32_t called = 0;
+    EntityId helping = kNoEntity;
+    uint32_t helpSince = 0;
+    bool helpFlank = false;  // the answer was commanded (Command::Answer): horse ride round to the foe's flank; of itself it goes straight to the friend
+    // Posted: where an order's march ended is ground he keeps. He fights what comes within kPostLeash of it and helps a
+    // friend whose foe is within it, goes back to it after, and does not leave it for a call. Any order ends it (Stop: he
+    // is free again, and goes where the support stance takes him).
+    bool posted = false;
+    Vec3 postAt;
+    // A rider who has charged home wheels away to re-form and come again: ticks of it left, and the way he rides.
+    int32_t wheel = 0;
+    Vec3 wheelDir;
+    uint32_t shotTick = 0, flankTick = 0;
+    // Woods (world_formation.cpp): the sides with a man near enough to see him among the trees, a bit each, as of the
+    // last census (every side, for a man in the open); and the tick he last stood unseen by every foe (0: never).
+    uint8_t seenBy = 0xFF;
+    uint32_t hidTick = 0;
     bool wavering() const;
 
     enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
@@ -583,11 +619,31 @@ struct TacticEvent {
     // Flanked, Rear: struck in the flank or the back (a charge, or a blow on a man busy with another). Broken: a charge
     // there broke him on the spot. Braced: his pike stopped a charge head on. Ford: struck while wading. HighGround:
     // struck from above. Volley: shot from a height, or shot while wading.
-    enum class Kind : uint8_t { Flanked, Rear, Broken, Braced, Ford, HighGround, Volley };
+    // Mire: struck while in mud or swamp. Uphill: he struck up a slope (slower, weaker). Cover: the trees (or his loose
+    // order) spared him an arrow. Ambush: struck by men he had not seen among the trees. Disordered: his formation is
+    // lost. Square: a blow at his flank or back met a square's front. Charge: a rider's charge struck him (`detail`:
+    // 0 front, 1 flank, 2 rear), told of every charge whatever else it did. Downhill: that charge had the slope behind it.
+    enum class Kind : uint8_t { Flanked, Rear, Broken, Braced, Ford, HighGround, Volley, Mire, Uphill, Cover, Ambush, Disordered, Square, Charge, Downhill };
     Kind kind = Kind::Flanked;
     EntityId unit = kNoEntity;  // the man it happened to (Braced: the pikeman who stood)
     PlayerId owner = 0;         // his side
     Vec3 pos;
+    int32_t detail = 0;
+};
+
+// A squad in trouble called for help this tick (world_help.cpp), and who answers. Derived from the simulation like
+// RallyCall, for the voices, the cards, the minimap and the event line. A side is told only of its own calls.
+struct HelpCall {
+    // Outnumbered in the melee; struck in the flank or back; wavering; under missiles it cannot answer; its lord has fallen.
+    enum class Why : uint8_t { Outnumbered, Flanked, Wavering, Shot, HeroDown };
+    EntityId caller = kNoEntity;  // a man of the squad that calls
+    PlayerId owner = 0;
+    uint32_t squad = 0;
+    Vec3 pos;                     // the middle of the squad
+    Why why = Why::Outnumbered;
+    uint32_t answer = 0;              // the squad that answers (0: none is free)
+    EntityId answerer = kNoEntity;    // a man of it
+    Vec3 answerPos;                   // its middle
 };
 
 // A hero's hit points grow by this share of a fresh hero's with every level.
@@ -690,6 +746,33 @@ public:
     const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
     // Position that told during the last step (world_tactics.cpp).
     const std::vector<TacticEvent>& tactics() const { return tactics_; }
+    // Calls for help made during the last step (world_help.cpp).
+    const std::vector<HelpCall>& helpCalls() const { return helpCalls_; }
+    // A man's squad and its formation, as he is raised (the game's squads, a Conquest's armies).
+    void setSquad(EntityId id, uint32_t squad, FormationKind formation);
+    // Formations (world_formation.cpp). Whether he fights in his formation now: he has one, squad-mates stand by him, he
+    // is not broken and not disordered.
+    bool formed(const Unit& u) const;
+    // The ground under him, as it tells in a fight: firm; a ford he wades; mud or swamp he is mired in; woods (that
+    // break up horse and close ranks). A kind at home on the ground (gait.h) stands firm on it.
+    enum class Footing : uint8_t { Firm, Ford, Mire, Woods };
+    Footing footing(const Unit& u) const;
+    // Among the trees (any kind of man): arrows are stopped, and he is hidden from afar.
+    bool inWoods(const Unit& u) const;
+    // Hidden from `side`: among the trees with no man of that side within kSpotReach of him.
+    bool concealed(const Unit& u, PlayerId side) const;
+    static constexpr Fixed kSpotReach = Fixed::fromInt(25);
+    // A call lasts this long on a card and a map; a squad calls again no sooner than kCallAgainTicks.
+    static constexpr uint32_t kCallShownTicks = 8 * kTicksPerSecond, kCallAgainTicks = 25 * kTicksPerSecond;
+    // Whether a man is free to answer a call: no order, nobody to fight, not holding, not broken, a fighter, a bowman or a healer.
+    bool freeToAnswer(const Unit& u) const;
+    // What a formation does, for the manual and the HUD (percent; 0: nothing): to his blows, to shocks to his nerve, to
+    // missiles landing on him, and the arrows it spares him.
+    struct FormationRule {
+        int32_t blowPct, asidePct, shockPct, flankShockPct, struckAsidePct, struckFrontPct, shotPct, sparePct;
+        bool allRound, tight;
+    };
+    static const FormationRule& formationRule(FormationKind f);
     // Position (world_tactics.cpp). A man wading (in the shallows, on his feet, his kind not at home in water) strikes at
     // kWadeBlowPct less and is struck harder by a man on dry ground and by missiles.
     bool wading(const Unit& u) const;
@@ -751,8 +834,8 @@ public:
     // plan of attack; more would make every man carry, hash and save a long script, and a line of numbers on the screen.
     static constexpr size_t kMaxQueuedOrders = 8;
     // A charge laid beforehand (Command::force on a LaySatchel): how far from where he stands, and how clear of any foe.
-    static constexpr Fixed kPrepareReach = Fixed::fromInt(80);
-    static constexpr Fixed kPrepareClear = Fixed::fromInt(40);
+    static constexpr Fixed kPrepareReach = Fixed::fromInt(160);
+    static constexpr Fixed kPrepareClear = Fixed::fromInt(50);
     bool canPrepare(const Unit& u, const Vec3& at) const;
     // Command::Detonate takes the laid satchel within this of the spot shown.
     static constexpr Fixed kDetonatePick = Fixed::fromInt(4);
@@ -1433,7 +1516,39 @@ private:
     void support(Unit& u, Unit& foe);
     // A charge's shock, by where it lands, to the man struck and (less) the friends at his shoulder.
     void chargeShock(Unit& enemy, HitSide side, bool busy);
-    void tell(TacticEvent::Kind kind, const Unit& u) { tactics_.push_back({kind, u.id, u.owner, u.pos}); }
+    void tell(TacticEvent::Kind kind, const Unit& u, int32_t detail = 0) { tactics_.push_back({kind, u.id, u.owner, u.pos, detail}); }
+    // Formations (world_formation.cpp): what his formation adds to his blow where it lands (percent), to a blow or a
+    // missile landing on him, and to a shock to his nerve; whether it has no flank (a square); whether it turns slowly.
+    int32_t formBlowPct(const Unit& u, HitSide side) const;
+    int32_t formStruckPct(const Unit& target, HitSide side, bool missile) const;
+    int32_t formShockPct(const Unit& u) const;
+    int32_t formFlankShockPct(const Unit& u) const;
+    bool allRound(const Unit& u) const;
+    bool turnsSlowly(const Unit& u) const;
+    // An arrow meant for him that never lands: among trees, or in loose order with room to step aside (told: Cover).
+    bool arrowSpared(const Unit& u);
+    // His formation is lost for `ticks` (told once, when it goes).
+    void disorder(Unit& u, int32_t ticks);
+    // The census of the ranks and the woods, with the morale census: squad-mates near, who sees whom among the trees.
+    void updateRanks();
+    // The first blow out of hiding: what it does to the nerve of the man struck.
+    void ambush(Unit& striker, Unit& struck);
+    // Calls for help and their answers (world_help.cpp).
+    void callForHelp();
+    // Sets a man on his way to a friend who has called (the sim's own answer, and Command::Answer).
+    void answerCall(Unit& u, const Unit& caller, bool flank = false);
+    static constexpr Fixed kPostLeash = Fixed::fromInt(20);
+    bool withinPost(const Unit& u, const Unit& foe) const { return (foe.pos - u.postAt).flat().lengthSq() <= kPostLeash * kPostLeash; }
+    // A posted man with nothing to fight who is off his post walks back to it (true: he walks).
+    bool returnToPost(Unit& u);
+    // A man answering: true while he is on his way (his march), false once he is there (support takes him in) or it is over.
+    bool answering(Unit& u);
+    // Pikes with no order stand to receive horse coming at the gallop: turned to it, braced (true: he stands).
+    bool braceFor(Unit& u, const Unit& foe);
+    // A healer with no order goes to a wounded friend near him who is out of his reach (true: he walks).
+    bool seekWounded(Unit& u);
+    // What a man looses from where he stands, in percent of his shot (a man in the water shoots worse).
+    int32_t loosePct(const Unit& shooter) const;
     // Missile reach from the unit's height over the target: farther down a hill, shorter up one.
     Fixed shotRange(const Unit& u, Fixed base, const Vec3& target) const;
     bool tryHeal(Unit& unit);
@@ -1583,6 +1698,8 @@ private:
     std::vector<HeroDeath> heroDeaths_;
     std::vector<RallyCall> rallyCalls_;
     std::vector<TacticEvent> tactics_;
+    std::vector<HelpCall> helpCalls_;
+    std::array<uint32_t, 8> firstCall_ = {};  // by side: the tick of its first call for help in this fight (0: none yet), state
     std::vector<uint8_t> wet_;  // updateMorale's scratch: who is wading, by place, as of this census (derived, not state)
     std::vector<OrderDecision> decisions_;
     std::vector<DeathEvent> deathEvents_;

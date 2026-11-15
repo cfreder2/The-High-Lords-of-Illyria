@@ -39,7 +39,7 @@ const char* hordeName(UnitType t) {
         case UnitType::LightCavalry: return "Steppe Riders";
         case UnitType::Giants: return "Hill Giants";
         case UnitType::Devils: return "Pit Devils";
-        case UnitType::DwarfGrenadier: return "Gnarl Bomber";
+        case UnitType::DwarfGrenadier: return "Gnarl Bombers";
         case UnitType::Wizards: return "Witch-King";
         case UnitType::Demons: return "Demons of the Rift";
         case UnitType::Dragons: return "Ashen Wyrm";

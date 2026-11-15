@@ -18,7 +18,7 @@ class Battle;
 std::string minimapText(const sim::Conquest& conquest, uint8_t viewer);
 
 // A battle's overview, in the same lines ("m", "k", "d", "f"; no towns or sites) in the field's own metres from its
-// south-west corner. The men are those Battle::sees allows, so a field with fog of war leaves out the foe it cannot see.
+// south-west corner, and "p|x|y|colour|percent" the pole fought for (a siege's, the isle's): whose flag and how high. The men are those Battle::sees allows, so a field with fog of war leaves out the foe it cannot see.
 std::string battleMinimapText(const Battle& battle);
 
 // The battlefield's ground as RGBA, w x h, rows from the north: water, woods, roads, rock and the lie of the hills.

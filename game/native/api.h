@@ -70,6 +70,8 @@ void illyria_stop();
 void illyria_hold();
 int illyria_rally();
 int illyria_next_idle();
+int illyria_answer_call();
+const char* illyria_ground_at(float x, float y);
 void illyria_gate(int release);
 void illyria_special();
 void illyria_detonate();

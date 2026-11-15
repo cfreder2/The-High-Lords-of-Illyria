@@ -240,7 +240,8 @@ void fordPlaces(Vec3& water, Vec3& bank) {
 
 TEST(explosives_are_carried_in_counts_and_none_is_made_in_battle) {
     // What each carries: the unit sheet's numbers, pinned here as the rule (no thrower without a count).
-    CHECK(unitStats(UnitType::DwarfGrenadier).ranged.ammo == 6 && unitStats(UnitType::DwarfGrenadier).satchels.count == 5);
+    // (A dwarf is one of a pair: the pair carries six bottles and six satchels.)
+    CHECK(unitStats(UnitType::DwarfGrenadier).ranged.ammo == 3 && unitStats(UnitType::DwarfGrenadier).satchels.count == 3);
     CHECK(unitStats(UnitType::Wizards).ranged.ammo == 4);
     CHECK(unitStats(UnitType::Dragons).ranged.ammo == 6);
     CHECK(unitStats(UnitType::Catapult).ranged.ammo == 16);
@@ -626,7 +627,7 @@ TEST(one_bowman_in_three_picks_out_the_foes_dwarf_within_thirty_metres) {
 }
 
 TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
-    CHECK(Conquest::squadSize(UnitType::DwarfGrenadier) == 1);
+    CHECK(Conquest::squadSize(UnitType::DwarfGrenadier) == 2);  // a duo
     CHECK(Conquest::squadSize(UnitType::Wizards) == 1);
     CHECK(Conquest::squadSize(UnitType::Dragons) == 1);
     CHECK(Conquest::keepCap(UnitType::DwarfGrenadier) == 2);
@@ -646,8 +647,10 @@ TEST(those_who_throw_a_blast_come_alone_and_a_realm_keeps_few) {
     }
     CHECK(c.atCap(6, UnitType::Wizards));
     for (const Conquest::Stack& s : c.stacks())
-        for (const Army& a : s.armies)
-            if (a.type == UnitType::Wizards || a.type == UnitType::DwarfGrenadier) CHECK(a.men.size() == 1);
+        for (const Army& a : s.armies) {
+            if (a.type == UnitType::Wizards) CHECK(a.men.size() == 1);
+            if (a.type == UnitType::DwarfGrenadier) CHECK(a.men.size() == 2);
+        }
     // Ironhold may set a grenadier training (none kept yet); a city of a realm at its cap may not begin another.
     for (size_t i = 0; i < c.cities().size(); ++i) {
         if (c.cities()[i].owner != 2) continue;
@@ -672,24 +675,24 @@ TEST(a_catapult_has_sixteen_boulders_and_no_more) {
 }
 
 TEST(a_charge_laid_in_the_deployment_lies_there_when_the_battle_begins) {
-    // Three lay orders marked as laid beforehand (Command::force, the deployment's): 30 m from him, with the foe 100 m off,
-    // they lie there at the first tick and he has not moved. One 120 m away, or beside the foe, he walks to as ever.
+    // Two lay orders marked as laid beforehand (Command::force, the deployment's): 30 m from him, with the foe 100 m off,
+    // they lie there at the first tick and he has not moved. One 200 m away, or within 50 m of the foe, he walks to as ever.
     World w(WorldConfig{});
     const EntityId g = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, sapper());
     w.spawnUnit(1, {m(100), m(0), m(0)}, kWest, dummy(UnitType::LightInfantry));
     std::vector<Command> orders;
-    for (int k = 0; k < 3; ++k) {
+    for (int k = 0; k < 2; ++k) {
         Command c = order(g, Command::Type::LaySatchel, {m(30), m(k * 4 - 4), m(0)}, k > 0);
         c.force = true;
         orders.push_back(c);
     }
     w.step(orders);
-    CHECK(laidSatchels(w) == 3 && w.findUnit(g)->satchels == 2);
+    CHECK(laidSatchels(w) == 2 && w.findUnit(g)->satchels == 1);
     CHECK((w.findUnit(g)->pos - Vec3{}).flat().length() < Fixed::one() && !w.findUnit(g)->hasMoveTarget);
-    Command far = order(g, Command::Type::LaySatchel, {m(-120), m(0), m(0)});
+    Command far = order(g, Command::Type::LaySatchel, {m(-200), m(0), m(0)});
     far.force = true;
     CHECK(!w.canPrepare(*w.findUnit(g), far.target));
-    CHECK(!w.canPrepare(*w.findUnit(g), {m(75), m(0), m(0)}));  // within 40 m of the foe
+    CHECK(!w.canPrepare(*w.findUnit(g), {m(55), m(0), m(0)}));  // within 50 m of the foe
     w.step(std::span(&far, 1));
-    CHECK(laidSatchels(w) == 3 && w.findUnit(g)->hasMoveTarget);  // on his way there on foot
+    CHECK(laidSatchels(w) == 2 && w.findUnit(g)->hasMoveTarget);  // on his way there on foot
 }

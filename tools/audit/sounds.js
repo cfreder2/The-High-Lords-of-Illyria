@@ -161,7 +161,8 @@
           el("span", {}, "Heard to ", el("b", {}, A.positional(s.id) ? (c.loud ? A.kLoudHearing : A.kHearing) + " m" : "anywhere (not positional)"))] : null,
         el("span", {}, "Asked for by ", el("b", { class: s.emitted_by === "future" || (c && !c.asked.length) ? "bad" : "" }, c && !c.asked.length ? "nothing" : TRIGGER[s.emitted_by] || s.emitted_by))),
       c && c.asked.length ? el("details", {}, el("summary", {}, `${c.asked.length} place${c.asked.length > 1 ? "s" : ""} in the code ask for it (Sound::${c.enum})`), c.asked.map((a) => el("code", {}, `${a.at}   ${a.code}`))) : null,
-      el("div", { class: "kv", style: "margin:6px 0" }, U.variants(s).firstChild, all, loop),
+      el("div", { class: "kv", style: "margin:6px 0" }, U.variants(s).firstChild, all, loop,
+        U.inRepo ? el("a", { href: "../sound-editor/effects.html#s=" + s.id, title: "its candidates and your takes: choose, trim, record" }, "Edit in the Sound Editor") : null),
       variants);
   }
   function applyFilter() {
@@ -213,6 +214,7 @@
       d.addEventListener("toggle", () => {
         if (!d.open || d._built) return;
         d._built = true;
+        if (U.inRepo) d.append(el("p", {}, el("a", { href: "../sound-editor/voices.html#set=" + s.id }, `Record the ${s.name} lines in the Sound Editor`)));
         d.append(el("p", { class: "note" }, el("b", {}, "Casting: "), s.casting, s.fallback ? ` Situations it lacks are spoken by the ${s.fallback} set.` : "",
           s.verbal ? ` Unrecorded lines are read by the browser's speech synthesiser at pitch ${s.placeholder.pitch}, rate ${s.placeholder.rate}.` : " Wordless: an unrecorded line is a burst of band-passed noise."), U.voiceLines(s));
       });

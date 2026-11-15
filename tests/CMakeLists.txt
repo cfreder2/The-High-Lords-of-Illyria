@@ -27,12 +27,11 @@ endforeach()
 set(ILLYRIA_SPRITE_FILES_FILE "${CMAKE_SOURCE_DIR}/docs/sprite_templates/files.txt")
 file(READ "${ILLYRIA_SPRITE_FILES_FILE}" ILLYRIA_SPRITE_FILES)
 configure_file(sprite_files.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" @ONLY)
+# A Conquest saved in the layout before this one (ILC8), which must still load: tests/test_conquest_save.cpp.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conquest_ilc8.txt" ILLYRIA_CONQUEST_ILC8)
+configure_file(conquest_ilc8.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp" @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conquest_ilc8.txt")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_SPRITE_FILES_FILE}")
-# A Conquest save written by an older build (tests/test_conquest_save.cpp: old saves load, brought up in memory).
-set(ILLYRIA_OLD_SAVE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/conquest_ilc8_day3.txt")
-file(READ "${ILLYRIA_OLD_SAVE_FILE}" ILLYRIA_OLD_SAVE)
-configure_file(old_save.cpp.in "${CMAKE_CURRENT_BINARY_DIR}/old_save.cpp" @ONLY)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ILLYRIA_OLD_SAVE_FILE}")
 
 add_executable(illyria_tests
     test_main.cpp
@@ -56,6 +55,7 @@ add_executable(illyria_tests
     test_battle_end.cpp
     test_march.cpp
     test_skirmish.cpp
+    test_isle.cpp
     test_ramps.cpp
     test_walls.cpp
     test_conquest.cpp
@@ -85,12 +85,13 @@ add_executable(illyria_tests
     test_capture.cpp
     test_palette.cpp
     test_card_name.cpp
+    test_card_layout.cpp
     test_territory.cpp
     test_realm_land.cpp
     test_sprite_layout.cpp
     test_sprite_clips.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/old_save.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp
     test_markers.cpp
     test_path_lines.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp
@@ -129,4 +130,4 @@ else()
 endif()
 # The manifest is one long string; every compiler here takes it.
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/voice_manifest.cpp" "${CMAKE_CURRENT_BINARY_DIR}/sfx_manifest.cpp"
-                            "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" "${CMAKE_CURRENT_BINARY_DIR}/old_save.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)
+                            "${CMAKE_CURRENT_BINARY_DIR}/sprite_files.cpp" "${CMAKE_CURRENT_BINARY_DIR}/conquest_ilc8.cpp" PROPERTIES COMPILE_OPTIONS -Wno-overlength-strings)

@@ -18,21 +18,18 @@ namespace {
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
 constexpr const char* kMagic = "ILC9.";  // bump the digit when the layout changes
-// The layout within the magic. 8: what each man still carries (Man::satchels, Man::ammo); 7: the orders waiting behind each
-// man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the
-// gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
+// Older saves are a player's game all the same: they are read as they were written and brought up in memory, here and
+// nowhere else. Two older layouts are read. "ILC8." is before a squad's history was kept (Army::battles, foughtTick):
+// the history begins at nothing. Layout 7 (under either magic) is before what each man carries was kept (Man::satchels,
+// Man::ammo): every load is full. A realm that already keeps more of a capped kind than it now may (six grenadiers to a
+// squad, three wizards) keeps them and trains no more (Conquest::atCap). What is saved is the layout of today. Anything
+// older is refused.
+constexpr const char* kMagic8 = "ILC8.";
+// 8: what each man still carries; 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are
+// middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every
+// man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
 constexpr uint32_t kFormat = 8;
-// Older saves are a player's game all the same: they are read as they were written and brought up in memory, in this one
-// place (Conquest::load picks the Layout; readArmy asks it). What an old save does not say is the plain answer: a squad
-// has fought no battle it remembers, a man carries his full load. A realm that already keeps more of a capped kind than
-// it now may (six grenadiers to a squad, three wizards) keeps them; it simply trains no more (Conquest::atCap).
-constexpr const char* kMagicBefore = "ILC8.";  // before a squad's battles were kept (Army::battles, Army::foughtTick)
-constexpr uint32_t kFormatBeforeStores = 7;    // before what each man carries was kept
-struct Layout {
-    bool battles = true;
-    bool stores = true;
-    bool current() const { return battles && stores; }
-};
+constexpr uint32_t kFormatBeforeStores = 7;
 
 class Writer {
 public:
@@ -109,7 +106,7 @@ public:
     }
     bool ok() const { return ok_; }
     void refuse() { ok_ = false; }
-    Layout layout;  // how the save being read was written
+    bool stores = true;  // the save being read says what each man carries (layout 8)
     bool done() const { return at_ == bytes_.size(); }
 
 private:
@@ -246,7 +243,7 @@ void writeArmy(Writer& w, const Army& a) {
     }
 }
 
-Army readArmy(Reader& r) {
+Army readArmy(Reader& r, bool history) {
     Army a;
     a.id = r.u32();
     a.type = r.type();
@@ -255,7 +252,7 @@ Army readArmy(Reader& r) {
     a.fullStrength = r.i32();
     a.kills = r.i32();
     a.rank = r.i32();
-    if (r.layout.battles) {
+    if (history) {  // (a save of the layout before: no battles yet, as a squad just raised)
         a.battles = r.i32();
         a.foughtTick = r.u32();
     }
@@ -277,7 +274,7 @@ Army readArmy(Reader& r) {
         m.ay = m.by = r.i32();
         m.fx = r.i32();
         m.fy = r.i32();
-        if (r.layout.stores) {
+        if (r.stores) {
             m.satchels = r.i32();
             m.ammo = r.i32();
         }
@@ -470,14 +467,13 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
         if (error) *error = why;
         return std::unique_ptr<Conquest>();
     };
-    const std::string magic = kMagic, before = kMagicBefore;
+    const std::string magic = kMagic;
     std::vector<uint8_t> bytes;
-    Layout layout;
-    const bool known = text.compare(0, magic.size(), magic) == 0 || text.compare(0, before.size(), before) == 0;
-    layout.battles = text.compare(0, magic.size(), magic) == 0;
-    // A layout older than those read here ("ILC2." before the men were on the land) is a conquest all the same: say so.
-    if (!known && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
-    if (!known || !fromBase64(text, magic.size(), bytes)) return fail("not a saved conquest");
+    // The layout before this one is read and brought up to date in memory (its squads' histories begin at nothing).
+    const bool before = text.compare(0, magic.size(), kMagic8) == 0;
+    // An older layout still ("ILC2." before the men were on the land) is a conquest all the same: say so.
+    if (!before && text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
+    if ((!before && text.compare(0, magic.size(), magic) != 0) || !fromBase64(text, magic.size(), bytes)) return fail("not a saved conquest");
     if (bytes.size() < 8) return fail("damaged (cut short)");
     uint64_t seal = 0;
     for (int k = 0; k < 8; ++k) seal |= static_cast<uint64_t>(bytes[bytes.size() - 8 + static_cast<size_t>(k)]) << (8 * k);
@@ -486,9 +482,8 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
     Reader r(std::move(bytes));
     const uint64_t format = r.u();
     if (format != kFormat && format != kFormatBeforeStores) return fail("saved by another version of the game");
-    if (!layout.battles && format != kFormatBeforeStores) return fail("saved by another version of the game");
-    layout.stores = format == kFormat;
-    r.layout = layout;
+    if (before && format != kFormatBeforeStores) return fail("saved by another version of the game");
+    r.stores = format == kFormat;
     const uint64_t seed = r.u();
     Conquest::Setup setup;
     setup.player = static_cast<uint8_t>(r.u());
@@ -544,7 +539,7 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
         s.cx = r.i32();
         s.cy = r.i32();
         s.armies.resize(r.count());
-        for (Army& a : s.armies) a = readArmy(r);
+        for (Army& a : s.armies) a = readArmy(r, !before);
         s.path.resize(r.count());
         for (auto& p : s.path) {
             p.first = r.i32();
@@ -573,7 +568,7 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
         t.from = r.i32();
         t.to = r.i32();
         t.arriveDay = r.u32();
-        t.army = readArmy(r);
+        t.army = readArmy(r, !before);
     }
     if (r.count() != c->sites_.size()) return fail("damaged (sites)");
     for (SiteState& s : c->sites_) {
@@ -632,9 +627,9 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
     const uint64_t sum = r.u();
     if (!r.ok() || !r.done()) return fail("damaged (cut short)");
     c->freshWorld();  // as the game that saved it left its world (Conquest::reseatAll)
-    // (A save brought up from an older layout hashes what it did not hold, so its own sum is not this game's: the seal over
-    // its bytes, checked above, is what says it is whole.)
-    if (layout.current() && sum != c->checksum()) return fail("damaged (its checksum does not match)");
+    // (The layout before hashed no history: its checksum is of that state, and the bytes' seal has vouched for them. A
+    // save without the men's loads hashes as today's does while every load is full, so its sum is still asked for.)
+    if (!before && sum != c->checksum()) return fail("damaged (its checksum does not match)");
     return c;
 }
 

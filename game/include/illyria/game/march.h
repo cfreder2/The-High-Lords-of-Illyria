@@ -1,6 +1,6 @@
 #pragma once
 
-// The March (docs/GAME_DESIGN.md §4.5.3): five skirmishes fought one after another by one army. The army is bought
+// The March (docs/GAME_DESIGN.md §3.7): five skirmishes fought one after another by one army. The army is bought
 // once. After each battle the men left alive go on to the next with their wounds half mended, their kills and their
 // rank; a squad with no man left is gone for good; a small purse fills gaps in the squads that can be filled. The
 // lord, the wizards and the dwarves cannot be replaced. Lose a battle and the march is over.
@@ -25,7 +25,8 @@ struct March {
         const char* name;
         Scenario scenario;
         bool defend;
-        int foePct;  // the other side's gold, as a share of what the player's army cost
+        int foePct;        // the other side's gold, as a share of what the player's army cost
+        int siegeSeconds;  // a siege the player lays: the time he has to take the town (0: none)
     };
     static const Stage& stageInfo(int stage);
 
@@ -79,6 +80,8 @@ struct March {
     int resupplyCost(size_t squad) const;
     bool resupply(size_t squad);
     void load(size_t squad, int& carried, int& full) const;
+    // The purse spent as far as it goes: the squad with the smallest share of its men left first, again and again.
+    int reinforceAll();
 
     // One line of text, with no quote in it; load is false for anything it did not write.
     std::string save() const;

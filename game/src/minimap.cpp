@@ -119,6 +119,12 @@ std::string battleMinimapText(const Battle& b) {
         shown.push_back({u.owner, p.x, p.y});
     }
     appendMen(out, shown, 8.0f);
+    // The pole fought for (a siege's courtyard or keep, the isle's): whose flag is on it and how high.
+    if (const CapturePoint& cap = b.capturePoint(); cap.active()) {
+        const V3 at = toV3(cap.at());
+        std::snprintf(buf, sizeof buf, "p|%.0f|%.0f|%s|%d\n", at.x, at.y, hex(factionColor(static_cast<uint8_t>(cap.attacker()))).c_str(), cap.progress() * 100 / CapturePoint::kFull);
+        out += buf;
+    }
     // Fights: where men struck or were struck in the last two seconds, binned 24 m.
     {
         std::map<std::pair<int, int>, std::tuple<int, float, float>> fights;
@@ -140,6 +146,11 @@ std::string battleMinimapText(const Battle& b) {
             std::snprintf(buf, sizeof buf, "f|%.0f|%.0f|%d\n", std::get<1>(f) / static_cast<float>(n), std::get<2>(f) / static_cast<float>(n), n);
             out += buf;
         }
+    }
+    // Calls for help (the viewer's own side's: Battle::calls): c|x|y, a ring that beats.
+    for (const Battle::Call& call : b.calls()) {
+        std::snprintf(buf, sizeof buf, "c|%.0f|%.0f\n", call.pos.x, call.pos.y);
+        out += buf;
     }
     return out;
 }

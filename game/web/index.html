@@ -79,6 +79,17 @@
   .card .name { font-size: 13px; line-height: 1.15; white-space: pre-line; overflow: hidden; min-width: 0; }
   .card .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
   .card .bar i { display: block; height: 100%; background: var(--blue); }
+  /* Two rows on a wide screen when one row will not hold the cards (cardStrip, the rule of the desktop's strip:
+     game/include/illyria/game/card_layout.h): compact cards, the name on one line, so two rows stand little taller
+     than one. A phone keeps one row and scrolls it. */
+  #cards.two { flex-wrap: wrap; gap: 6px 8px; overflow-x: hidden; overflow-y: auto; max-height: 72px; }
+  #cards.two .card { padding: 3px 10px; gap: 1px 8px; }
+  #cards.two .card svg { width: 18px; height: 18px; }
+  #cards.two .card .name { white-space: nowrap; }
+  #cards.two .card .badge { flex-direction: row; gap: 3px; padding: 1px 5px 2px; border-radius: 4px; }
+  #cards.two .card .badge b { font-size: 13px; }
+  #cards.two .card .badge svg { width: 12px; margin-top: 0; }
+  #cards.two .card.save b { display: inline; font-size: 14px; margin-right: 4px; }
   #actions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; align-items: center; }
   #actions svg { width: 18px; height: 18px; vertical-align: -4px; margin-right: 4px; }
   #formation { min-width: 112px; }
@@ -185,6 +196,9 @@
   #capture .bar { position: relative; height: 8px; margin-top: 4px; border-radius: 4px; background: #8a2a20; overflow: hidden; }
   #capture .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); }
   #capture.taken { border-color: #8fd0ff; }
+  /* The flag climbing is the other side's (a siege you defend, the isle's pole in their hands). */
+  #capture.theirs .bar { background: #33302a; }
+  #capture.theirs .bar b { background: #c0392b; }
   /* The compass, under the top right buttons (left of the sandbox's panel): its needle points north; a tap turns the view north up. */
   #compass { position: fixed; top: calc(56px + var(--safe-t)); right: calc(8px + var(--safe-r)); z-index: 2; width: 40px; height: 40px;
              min-width: 0; min-height: 0; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
@@ -538,6 +552,7 @@
       hold: Module.cwrap("illyria_hold", null, []),
       rally: Module.cwrap("illyria_rally", "number", []),
       nextIdle: Module.cwrap("illyria_next_idle", "number", []),
+      answerCall: Module.cwrap("illyria_answer_call", "number", []),
       gate: Module.cwrap("illyria_gate", null, ["number"]),
       raid: Module.cwrap("illyria_raid", null, []),
       special: Module.cwrap("illyria_special", null, []),
@@ -809,6 +824,23 @@
   }
   // The strip of cards scrolls sideways, so no card is out of reach (the desktop's strip wraps and pages for the same
   // reason); a mouse's wheel over it turns into that scroll, a trackpad's own sideways swipe already is one.
+  // The strip's rows and the cards' order: the rule and the numbers of game/include/illyria/game/card_layout.h
+  // (cardRowsFor, layoutCards, cardRoleRank), which tests/test_card_layout.cpp reads here and checks against it. One
+  // row while the cards fit; a wide window takes a second row of compact cards; a narrow one (a phone) keeps one row.
+  // Past that the desktop's strip pages and this one scrolls. The cards here differ in width (a hero's, a group's), so
+  // `needed` is their widths summed, where the desktop counts cards of one width.
+  const kCardTwoRowWidth = 900, kCardMaxRows = 2;
+  const kCardRoleOrder = { "Archers": 1, "Light Cavalry": 2, "Heavy Cavalry": 2, "Wolf Riders": 2, "Elephants": 2, "Unicorns": 2, "Griffins": 2, "Pegasi": 2,
+    "Dwarven Grenadiers": 3, "Dwarven Legion": 3, "Wizards": 4, "Journeymen": 4, "Dragons": 4, "Devils": 4, "Demons": 4, "Archons": 4, "Catapults": 5, "Hero": 6 };
+  const cardRoleRank = (type) => kCardRoleOrder[type] || 0;  // foot 0, bows 1, horse 2, then the rare ones
+  const cardRowsFor = (windowWidth) => (windowWidth >= kCardTwoRowWidth ? kCardMaxRows : 1);
+  const cardStrip = (needed, avail, windowWidth) => (needed <= avail ? 1 : cardRowsFor(windowWidth));
+  function layCardStrip() {
+    const strip = $("cards");
+    let needed = -8;
+    for (const b of strip.children) needed += b.offsetWidth + 8;
+    strip.classList.toggle("two", cardStrip(needed, strip.clientWidth, window.innerWidth) === 2);
+  }
   $("cards").addEventListener("wheel", (e) => {
     const strip = $("cards");
     if (e.deltaX || strip.scrollWidth <= strip.clientWidth) return;
@@ -1143,6 +1175,7 @@
       case "KeyK": if (e.shiftKey) api.holdFire(); else api.hold(); break;  // Hold: keep their place (again: back to support); with Shift, hold fire
       case "KeyY": api.rally(); break;     // the lord's Rally
       case "KeyJ": api.nextIdle(); break;  // the next squad standing idle
+      case "Period": api.answerCall(); break;  // to a call for help, the nearest free squad picked
       case "KeyO": api.gate(e.shiftKey ? 1 : 0); break;  // open or shut a gate of ours; Shift lets it go
       case "KeyC": api.focusSelection(); break;
       case "KeyU": {
@@ -1243,7 +1276,7 @@
     if (t >= mini.next) {
       // Ten times a second is plenty for a map this small.
       mini.next = t + 100;
-      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = []; mini.fights = [];
+      mini.towns = []; mini.sites = []; mini.heaps = []; mini.dots = []; mini.fights = []; mini.poles = [];
       for (const line of api.mini().split("\n")) {
         const f = line.split("|");
         if (f[0] === "m") { mini.w = +f[1]; mini.h = +f[2]; }
@@ -1252,6 +1285,7 @@
         else if (f[0] === "k") mini.heaps.push({ c: f[1], x: +f[2], y: +f[3], n: +f[4] });
         else if (f[0] === "d") mini.dots.push({ c: f[1], x: +f[2], y: +f[3] });
         else if (f[0] === "f") mini.fights.push({ x: +f[1], y: +f[2], n: +f[3] });
+        else if (f[0] === "p") mini.poles.push({ x: +f[1], y: +f[2], c: f[3], p: +f[4] });
       }
     }
     const g = cv.getContext("2d");
@@ -1295,6 +1329,17 @@
       grad.addColorStop(1, "rgba(255,60,20,0)");
       g.fillStyle = grad;
       g.beginPath(); g.arc(X(f.x), Y(f.y), r, 0, 7); g.fill();
+    }
+    // The pole fought for (a siege's, the isle's): a mast, the flag on it as high as it has climbed, in its side's colour.
+    for (const p of mini.poles || []) {
+      const x = X(p.x), y = Y(p.y), up = 10 * u;
+      g.fillStyle = "#000"; g.fillRect(x - 1.2 * u, y - up - u, 2.4 * u, up + 2 * u);
+      g.fillStyle = "#f4ead0"; g.fillRect(x - 0.5 * u, y - up, u, up);
+      if (p.p > 0) {
+        const fy = y - 4 * u - (up - 4 * u) * Math.min(1, p.p / 100);
+        g.fillStyle = "#000"; g.fillRect(x + 0.2 * u, fy - 0.8 * u, 7.6 * u, 5.6 * u);
+        g.fillStyle = p.c; g.fillRect(x + u, fy, 6 * u, 4 * u);
+      }
     }
     // Towns, always: a square in the holder's colour, larger for a capital, small for an open village.
     for (const tw of mini.towns) {
@@ -1539,6 +1584,7 @@
     if (cap.on) {
       $("captureBar").style.width = `${cap.p}%`;
       $("capture").classList.toggle("taken", cap.taken);
+      $("capture").classList.toggle("theirs", !cap.mine);
       // The engine's own words (Battle::siegeLine), and each door's strength.
       $("captureText").textContent = [cap.text, ...cap.gates.map(g => g.hp > 0 ? `${g.name} ${g.hp}%` : `${g.name} down`)].join(" · ");
     }
@@ -1638,11 +1684,12 @@
     }
     function setCardName(el, name, tail) {
       const maxW = el.clientWidth;
-      const key = `${name}|${tail}|${maxW}`;
+      const rows = $("cards").classList.contains("two") ? 2 : 1;  // (the compact card of a two-row strip: one line)
+      const key = `${name}|${tail}|${maxW}|${rows}`;
       if (!maxW || el.dataset.fit === key) return;
       el.dataset.fit = key;
       cardCtx.font = getComputedStyle(el).font;
-      const lines = cardNameLines(name, (t) => cardCtx.measureText(t).width, maxW - cardCtx.measureText(tail).width, 2);
+      const lines = cardNameLines(name, (t) => cardCtx.measureText(t).width, maxW - cardCtx.measureText(tail).width, rows === 2 ? 1 : 2);
       el.textContent = lines.join("\n") + tail;
     }
     function squadCard(q) {
@@ -1666,6 +1713,7 @@
     // the player has made, and "+ New group" while the selection is not one of
     // them. No card for every squad: a long row of them is no use.
     const mine = s.squads.filter((q) => q.mine && q.type === "Hero");
+    mine.sort((a, b) => cardRoleRank(a.type) - cardRoleRank(b.type));  // (the desktop's order; heroes are one role, so as mustered)
     const heroSelected = s.selected >= 0 && (s.squads.find((q) => q.i === s.selected) || {}).type === "Hero";  // (s.selected: an index, now)
     const isCard = heroSelected || s.groups.some((g) => g.sel === 2);  // a hero's card, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
@@ -1704,6 +1752,7 @@
         $("cards").appendChild(b);
       }
     }
+    layCardStrip();
     for (const b of $("cards").children) {
       if (b.dataset.group !== undefined) {
         const g = s.groups.find((x) => x.slot === +b.dataset.group);
@@ -1768,7 +1817,7 @@
         const m = s.march && s.march.settled ? s.march : null;
         let carry = "";
         if (m) {
-          carry = `<p class="note">Battle ${m.battle} of ${m.of}. ${m.men} men in ${m.squads} squads ${m.over && !m.won ? "were left." : `go on. ${m.last.promoted} promoted.`}</p>` +
+          carry = `<p class="note">Battle ${m.battle} of ${m.of}. ${m.men} men in ${m.squads} squads ${m.over && !m.won ? "were left." : `${m.won ? "came through" : "go on"}. ${m.last.promoted} promoted.`}</p>` +
             (m.last.gone.length ? `<p class="note broke">Gone for good: ${m.last.gone.map(esc).join(", ")}</p>` : "") +
             `<p class="note">${m.won ? "The march is won." : m.over ? "The march ends here." : `Next: ${esc(m.next)}. ${m.last.gold} gold for the purse.`}</p>`;
         } else if (r.promoted > 0) {
@@ -1777,7 +1826,7 @@
         $("result").innerHTML =
           `<p class="toll">Time ${Math.floor(r.seconds / 60)}:${String(r.seconds % 60).padStart(2, "0")} · Killed ${r.killed} · Lost ${r.lost}</p>` +
           `<table><tr><th>Squad</th><th>Left</th><th>Killed</th><th>Rank</th><th></th></tr>` +
-          r.rows.map((q) => `<tr class="${q.alive ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.alive} / ${q.total}</td><td>${q.kills}</td><td>${rank(q)}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
+          r.rows.map((q) => `<tr class="${q.alive || !q.total ? "" : "gone"}"><td>${esc(q.name)}</td><td>${q.total ? q.alive + " / " + q.total : ""}</td><td>${q.kills}</td><td>${rank(q)}</td><td class="broke">${q.broke ? "broke" : ""}</td></tr>`).join("") +
           `</table>` + (best ? `<p class="note">Best squad: ${esc(best.name)}, ${best.kills} killed</p>` : "") +
           (r.fallen.length ? `<p class="note broke">Heroes fallen: ${r.fallen.map(esc).join(", ")}</p>` : "") + carry;
         // The book as the battle left it, kept on this device: what "The March" carries on from.

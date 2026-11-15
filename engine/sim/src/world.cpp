@@ -399,6 +399,7 @@ void World::clearFight(uint64_t seed) {
     heroDeaths_.clear();
     rallyCalls_.clear();
     tactics_.clear();
+    firstCall_ = {};
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
@@ -512,6 +513,8 @@ void World::step(std::span<const Command> commands) {
     impacts_.clear();
     heroDeaths_.clear();
     rallyCalls_.clear();
+    tactics_.clear();
+    helpCalls_.clear();
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
@@ -538,6 +541,7 @@ void World::step(std::span<const Command> commands) {
     // Those let loose together go as packs (world_scavenge.cpp).
     if (raids) formPacks();
     buildBroad();
+    updateRanks();
     updateGates();
     keepGates();
     updateSiege();
@@ -553,6 +557,7 @@ void World::step(std::span<const Command> commands) {
     updateProjectiles();
     driftAfloat();
     updateMorale();
+    callForHelp();
     applyZone();
     pathCache_.clear();
     ++tick_;
@@ -590,6 +595,21 @@ void World::applyCommand(const Command& cmd) {
         u->holdFire = cmd.hold;
         return;
     }
+    if (cmd.type == Command::Type::SetFormation) {
+        u->formation = cmd.formation;
+        return;
+    }
+    if (cmd.type == Command::Type::Answer) {
+        // To a friend's help, as a free man goes of himself (world_help.cpp): it replaces what he was about.
+        const Unit* caller = findUnit(cmd.targetUnit);
+        if (caller == nullptr || !caller->alive() || caller->owner != u->owner || u->routed) return;
+        u->queue.clear();
+        Command stop = cmd;
+        stop.type = Command::Type::Stop;
+        startOrder(*u, stop);
+        answerCall(*u, *caller, true);  // (commanded: horse ride for the flank)
+        return;
+    }
     // Only a scavenger raids; to anyone else the order means nothing.
     if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
     // Shift: after the order in hand (or the ones already waiting). A soldier with nothing in hand and nothing waiting begins it now.
@@ -613,6 +633,10 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->detonate = false;
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
+    u->posted = false;       // ... nor a post: the next order's end is the next post (Stop: none, he is free)
+    u->helping = kNoEntity;  // ... nor an answer to a friend's call
+    u->helpSince = 0;
+    u->wheel = 0;
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -713,6 +737,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
         case Command::Type::SetGate:
         case Command::Type::SetStance:
         case Command::Type::HoldFire:
+        case Command::Type::SetFormation:
+        case Command::Type::Answer:
         case Command::Type::Rally: break;  // (applyCommand's own)
     }
 }
@@ -1426,6 +1452,18 @@ void World::updateUnit(Unit& u) {
         u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
         return;
     }
+    // A rider who has just charged home wheels away to re-form (world_combat.cpp); then he comes again.
+    if (u.wheel > 0) {
+        --u.wheel;
+        walk(u, u.pos + u.wheelDir * Fixed::fromInt(10));
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        return;
+    }
+    // Answering a friend's call (world_help.cpp): the march below is the answer, while it stands.
+    if (u.helping != kNoEntity && !answering(u)) {
+        u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        return;
+    }
 
     if (const int gate = gateToHack(u); gate >= 0) {
         // At a shut gate on the way in: hack at the timbers.
@@ -1491,6 +1529,14 @@ void World::updateUnit(Unit& u) {
         if (followPath(u, pace)) {
             u.hasMoveTarget = false;
             u.path.clear();
+            // Where an order sent him is ground he keeps (world_tactics.cpp, "posted"). Not an answer's end: he is there to
+            // go in as any free man does. Not a garrison's station or ground to occupy: those have their own rules.
+            if (u.helping == kNoEntity && !u.stationed && !u.occupying) {
+                u.posted = true;
+                u.postAt = u.pos;
+            }
+            u.helping = kNoEntity;
+            u.helpSince = 0;
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
             // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
             if (u.layOrdered) {
@@ -1529,7 +1575,7 @@ void World::updateUnit(Unit& u) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
-               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy))) {
+               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
         u.support = kNoEntity;
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
@@ -1547,6 +1593,10 @@ void World::updateUnit(Unit& u) {
     } else if (Unit* helped = supportFoe(u)) {
         // No spectators: to the help of a friend fighting near him (world_tactics.cpp).
         support(u, *helped);
+    } else if (returnToPost(u)) {
+        // Back to the ground he was posted on (world_tactics.cpp).
+    } else if (seekWounded(u)) {
+        // A healer: to the wounded (world_help.cpp).
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
         // his shield to him, holding his place (world_scavenge.cpp).
@@ -1950,6 +2000,7 @@ Unit* World::nearestEnemy(const Unit& u, Fixed range) {
         if (!other.alive() || other.owner == u.owner) return;
         const Fixed d = (other.pos - u.pos).flat().lengthSq();
         if (d > bestDistSq) return;  // (too far: no need to look at the height)
+        if (concealed(other, u.owner)) return;  // (unseen among the trees: world_formation.cpp)
         // (Above the land itself, or above the soldier: a foe up a hillside is fair game.)
         if (groundBound) {
             const Fixed land = config_.terrain ? config_.terrain->heightAt(other.pos.x, other.pos.y) : Fixed::zero();
@@ -2264,7 +2315,7 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk, Placed placed) {
         }
     }
     // (From a height over the mark the shot tells more: world_tactics.cpp.)
-    p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z));
+    p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z) * loosePct(u) / 100);
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     p.cause = w.damageType;
@@ -2527,8 +2578,14 @@ void World::updateProjectiles() {
             removed[i] = spent;
         } else if (hit != nullptr) {
             const Vec3 at = prev + seg * hitT;
+            if (!burstsOnImpact(p.kind)) hit->shotTick = tick_ + 1;
             if (burstsOnImpact(p.kind)) {
                 spent = burst(at, StoneFall::Man);
+            } else if (p.kind == ProjectileKind::Arrow && !p.thrown && arrowSpared(*hit)) {
+                // Stopped by a trunk, or stepped aside from in loose order (world_formation.cpp): it sticks in the ground by him.
+                tell(TacticEvent::Kind::Cover, *hit);
+                placeRemain(RemainKind::Arrow, p.owner, at, normalized(p.vel));
+                impacts_.push_back({ImpactEvent::Kind::Ground, at, p.vel, p.id, kNoEntity, false, {}});
             } else if (shieldBlocks(*hit, p.vel, wading(*hit) ? Fixed::fromRatio(1, 2) : Fixed::one())) {  // (a man wading cannot keep his shield up)
                 // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
@@ -2541,9 +2598,11 @@ void World::updateProjectiles() {
             } else {
                 // Worse in the flank or back, and from a plunging shot from above.
                 const HitSide side = hitSide(hit->facing, p.vel);
-                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100;
+                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100 * (100 + formStruckPct(*hit, side, true)) / 100;
                 if (wading(*hit)) tell(TacticEvent::Kind::Volley, *hit);
-                const bool killed = damage(*hit, amount, mutableUnit(p.shooter), {p.cause, p.vel, at, true});
+                Unit* shooter = mutableUnit(p.shooter);
+                if (shooter != nullptr && shooter->alive()) ambush(*shooter, *hit);
+                const bool killed = damage(*hit, amount, shooter, {p.cause, p.vel, at, true});
                 shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
             }
@@ -2768,6 +2827,8 @@ uint64_t World::checksum() const {
     h.addU64(nextId_);
     h.addU64(rng_.state());
     h.addU64(rng_.increment());
+    for (const uint32_t first : firstCall_)
+        if (first != 0) h.addU64(first);  // (only once a side has called for help)
     // Only once a pack has been let loose to raid, so battles without one hash as before.
     if (packs_ > 0) h.addU64(packs_);
     // Only for a match with a field's edge, so battles without one hash as before.
@@ -2813,6 +2874,33 @@ uint64_t World::checksum() const {
             h.addU64(u.support);
             h.addI64(u.rallyCooldown);
         }
+        // Only for a man of a squad (formations, calls: world_formation.cpp, world_help.cpp), and the rest only once it has
+        // happened, so battles of men in no squad hash as before.
+        if (u.squad != 0) {
+            h.addU64(u.squad);
+            h.addU64(static_cast<uint64_t>(u.formation));
+            h.addI64(u.ranked);
+            h.addU64(u.called);
+        }
+        if (u.disorder != 0) h.addI64(u.disorder);
+        if (u.helping != kNoEntity) {
+            h.addU64(u.helping);
+            h.addU64(u.helpSince);
+        }
+        if (u.shotTick != 0 || u.flankTick != 0) {
+            h.addU64(u.shotTick);
+            h.addU64(u.flankTick);
+        }
+        if (u.seenBy != 0xFF || u.hidTick != 0) {
+            h.addU64(u.seenBy);
+            h.addU64(u.hidTick);
+        }
+        if (u.wheel != 0) {
+            h.addI64(u.wheel);
+            hashVec(h, u.wheelDir);
+        }
+        if (u.posted) hashVec(h, u.postAt);
+        if (u.helpFlank) h.addU64(0xF1A);
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);

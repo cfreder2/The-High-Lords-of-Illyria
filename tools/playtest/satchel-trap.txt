@@ -1,43 +1,40 @@
-# The satchel trap at the Ford (armies bought for 300 gold a side: foot, bowmen, horse, one dwarf each, engines), as
-# a person would play it.
-#   The deployment pause: the dwarf's five charges are laid in a line on your bank where the ford comes up out of the
-#   water (charges laid in the deployment lie there when the battle begins); he stays in the rear and holds his fire;
-#   the pikes go forward to stand a dozen metres short of the line, holding their place.
-#   The battle: the Red Hand's horse come first and break on the pikes. As its foot start across the ford: the dwarf,
-#   L, click a charge. He walks up to his throw and lobs his bottle onto the line as they come up out of the water.
+# The satchel trap at Oakhaven Ford (armies bought for 300 gold a side), as a person would play it. The isle in the
+# ford is where both hosts must come: the pole is on it.
+#   The deployment pause: the dwarf's five charges are laid in a line across the isle, west of the pole, within a
+#   Molotov's throw of your bank (charges laid in the deployment lie there when the battle begins; a click in the ford
+#   itself is refused: "Not in water"). He holds his fire and is sent down to your bank of the ford.
+#   The battle: when the Red Hand's foot stand on the isle raising their flag: the dwarf, L, click a charge. One bottle,
+#   lobbed onto the line.
 #
 #   Illyria --play tools/playtest/satchel-trap.txt --play-out out/trap --play-log out/trap/trap.log
 #
-# Compare with satchel-no-trap.txt (the same orders without the charges). The log's `event=` carries "Ambush: N down";
-# kills a satchel is that N over the five laid. Coordinates are window points at 1600 x 900 with the camera below
-# (north up). Satchels are dead in water: the line is on the bank, not in the ford.
+# Compare with satchel-no-trap.txt (the same, no charges). The log's `event=` carries "Ambush: N down"; kills a satchel
+# is that N over the five laid. Coordinates are window points at 1600 x 900 with the camera below (north up).
 
 size 1600 900
 start skirmish ford budget 300 deploy
 wait 0.5
-camera 476 506 45 1.5708
+camera 498 510 55 1.5708
 wait 1.5
 cards
 
-# The dwarf (card 8): T, then Shift+click five places down the bank, each inside the next one's blast (the ring).
-select 8
+# The dwarf (card 12): T, then Shift+click. The first click is in the ford: refused. Then five across the isle.
+select 12
 key t
 key shift down
-click left 1157 448
-click left 1170 480
-click left 1185 512
-click left 1200 544
-click left 1215 576
+click left 760 400
+click left 1050 300
+click left 1050 348
+click left 1050 396
+click left 1050 444
+click left 1050 492
 key shift up
 key escape
 key shift down
 key k
 key shift up
-
-# The pikes (card 2) forward, holding their place (K).
-select 2
-click right 930 505
-key k
+# ... and down to your bank of the ford, a throw from the line.
+click right 705 400
 wait 0.5
 shot trap-01-deployed
 
@@ -45,32 +42,25 @@ shot trap-01-deployed
 key return
 speed 4
 wait_ticks 60
-select 8
+select 12
 wait 0.3
 shot trap-02-laid
 stats
 
-# Their horse come first, twice, and break on the pikes; the dwarf is kept in the rear, out of their way (forward, he is
-# the first man they ride for). As their second charge is spent and their foot start across: the dwarf, L, click a
-# charge. He has 35 m to walk to his throw, about twenty-five seconds, as long as their foot take to wade the ford.
-wait_ticks 1985
+# A minute in the Red Hand's foot stand on the isle raising their flag, and the dwarf is at the bank: L, click a charge.
+wait_ticks 1840
 stats
-select 8
-shot trap-03-they-come
+select 12
+shot trap-03-on-the-isle
 key l
-click left 1185 512
-wait_ticks 600
-shot trap-03b-walking
-stats
-wait_ticks 120
+click left 1050 396
+wait_ticks 150
 shot trap-04-blast
 stats
-wait_ticks 180
+wait_ticks 300
 shot trap-05-after
 stats
-wait_ticks 300
-stats
-wait_ticks 300
+wait_ticks 600
 stats
 cards
 quit

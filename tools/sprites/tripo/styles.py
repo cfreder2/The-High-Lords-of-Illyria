@@ -18,6 +18,14 @@ def _deaths(P, home='HOME', frames=8, flinch=None):
         p = dict(getattr(KP, name), fist={'Right': 30, 'Left': 30})
         if name in ('HIT', 'DB_STRUCK', 'DF_STRUCK', 'DC_STRUCK'):
             p['feet'] = dict(P[home]['feet'])     # struck where he stands
+        if name == 'DC_STRUCK':
+            p.update(sword_hand=(0.22, -0.50, 0.92), sword_elbow=(-0.10, -0.55, 1.15), blade=(0.55, -0.55, -0.62))
+            p.update(shield_hand=(0.38, 0.28, 1.12), shield_elbow=(0.10, 0.62, 0.95))
+        if name == 'DC_SLUMP':     # on his side: both arms flung out before him, not folded under a thick chest
+            p.update(sword_hand=(0.62, -0.50, 0.10), sword_elbow=(0.35, -0.60, 0.45), shield_hand=(0.66, 0.05, 0.22), shield_elbow=(0.35, 0.30, 0.60))
+        if name in ('DC_KNEEL', 'BURN_KNEES'):
+            p.update(sword_hand=(0.28, -0.52, 0.50), sword_elbow=(-0.05, -0.60, 0.80), blade=(0.70, -0.62, -0.35))
+            p.update(shield_hand=(0.30, 0.42, 0.62), shield_elbow=(-0.05, 0.62, 0.70))
         P[name] = p
     return {
         'flinch': dict(keys=[(0.0, home, 'linear'), (0.10, 'HIT', 'out'), (0.18, 'HIT', 'linear'), (0.60, home, 'ease')],
@@ -102,7 +110,7 @@ def thrower(cfg):
         'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.30, 'THROW_BACK', 'ease'), (0.38, 'THROW_BACK', 'linear'),
                              (0.48, 'THROW_OVER', 'in'), (0.58, 'THROW_THROUGH', 'out'), (0.70, 'THROW_THROUGH', 'linear'),
                              (1.05, 'HOME', 'ease')], kind='still',
-                       times=[0.0, 0.125, 0.25, 0.3333, 0.4167, 0.5, 0.5833, 0.7083, 0.875], release=0.5, item_gone=0.5),
+                       times=[0.0, 0.125, 0.25, 0.3333, 0.4167, 0.5, 0.5833, 0.7083, 0.875], release=0.5, item_gone=0.5, swing=True),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.35, 'CEL_UP', 'out'), (0.65, 'CEL_PUMP', 'ease'), (0.95, 'CEL_UP', 'out'),
                                 (1.25, 'CEL_PUMP', 'ease'), (1.55, 'CEL_UP', 'out'), (1.9, 'CEL_UP', 'linear'), (2.4, 'HOME', 'ease')],
                           kind='loop', frames=12),
@@ -190,18 +198,19 @@ def dwarf_thrower(cfg):
                           shield_hand=(-0.22, 0.36, 1.02), shield_elbow=(-0.45, 0.48, 1.25))
     P['T_BACK'] = dict(T, feet=STEP0, hips=(0.04, 0.0, 0.95), hips_rot=lean(pitch=6, turn=8), chest=lean(pitch=12, turn=10),
                        sword_hand=(0.22, -0.26, 0.95), sword_elbow=(-0.10, -0.50, 1.10), fist={'Right': 25, 'Left': 30})
-    # The cheer: the satchel shaken overhead, the free fist punched up with it, a stamp either side.
+    # The cheer: the free fist punched up, a stamp either side; the satchel held out clear at his side (a sack on a
+    # cord swung overhead would hang down through his own shoulder).
     C = dict(HOME, chest=lean(pitch=-6), head=lean(pitch=-18), fist={'Right': 65, 'Left': 65})
-    P['C_UP'] = dict(C, hips=(0.0, 0.0, 1.03), Left_lift=12, Right_lift=12,
-                     sword_hand=(0.10, -0.32, 2.0), sword_elbow=(0.0, -0.60, 1.70),
+    P['C_UP'] = dict(C, hips=(0.0, 0.0, 1.03), Left_lift=12,
+                     sword_hand=(0.14, -0.46, 1.00), sword_elbow=(-0.25, -0.60, 1.15),
                      shield_hand=(0.10, 0.32, 2.0), shield_elbow=(0.0, 0.60, 1.70))
     P['C_DOWN_L'] = dict(C, feet={'Left': (0.0, 0.19, 14), 'Right': (0.0, -0.19, -14, 0.10)}, hips=(0.0, 0.05, 0.93),
                          hips_rot=lean(roll=5), chest=lean(pitch=2, roll=6), head=lean(pitch=-8),
-                         sword_hand=(0.16, -0.38, 1.55), sword_elbow=(0.0, -0.65, 1.25),
+                         sword_hand=(0.12, -0.46, 0.96), sword_elbow=(-0.25, -0.60, 1.12),
                          shield_hand=(0.16, 0.36, 1.50), shield_elbow=(0.0, 0.65, 1.25))
     P['C_DOWN_R'] = dict(C, feet={'Left': (0.0, 0.19, 14, 0.10), 'Right': (0.0, -0.19, -14)}, hips=(0.0, -0.05, 0.93),
                          hips_rot=lean(roll=-5), chest=lean(pitch=2, roll=-6), head=lean(pitch=-8),
-                         sword_hand=(0.16, -0.36, 1.50), sword_elbow=(0.0, -0.65, 1.25),
+                         sword_hand=(0.12, -0.46, 0.96), sword_elbow=(-0.25, -0.60, 1.12),
                          shield_hand=(0.16, 0.38, 1.55), shield_elbow=(0.0, 0.65, 1.25))
     step = cfg.get('step', 1.0)
     wT, rT = 0.84, 0.52
@@ -222,7 +231,7 @@ def dwarf_thrower(cfg):
                              (0.66, 'T_LEAD', 'in'), (0.75, 'T_LOOSE', 'linear'), (0.87, 'T_THROUGH', 'out'), (1.0, 'T_THROUGH', 'linear'),
                              (1.25, 'T_BACK', 'ease'), (1.45, 'HOME', 'ease')], kind='still',
                        times=[0.0, 0.0833, 0.1667, 0.25, 0.375, 0.5, 0.5833, 0.6667, 0.7083, 0.75, 0.7917, 0.875, 1.0, 1.125, 1.25, 1.375],
-                       release=0.75, item_gone=0.75),
+                       release=0.75, item_gone=0.75, swing=True),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.3, 'C_UP', 'out'), (0.6, 'C_DOWN_L', 'ease'), (0.9, 'C_UP', 'out'),
                                 (1.2, 'C_DOWN_R', 'ease'), (1.5, 'C_UP', 'out'), (1.8, 'C_DOWN_L', 'ease'), (2.1, 'C_UP', 'out'),
                                 (2.4, 'C_UP', 'linear'), (2.9, 'HOME', 'ease')], kind='loop', frames=16),
@@ -246,26 +255,43 @@ ORDER = ['idle', 'walk', 'run', 'attack', 'flinch', 'die_back', 'die_front', 'di
 GRIP = {'Right': 70, 'Left': 30}
 
 
+def _shuffle(period, step=1.0):
+    """The advance in guard: the front foot goes forward a short step and the back foot is brought up after it; they
+    never pass. Each foot treads its own ground (front and back of its reach), half a period apart."""
+    return dict(period=period, swing=0.42, lift=0.07,
+                feet={'Left': (0.34 * step, 0.10 * step, 0.16, 15, 0.55), 'Right': (-0.08 * step, -0.32 * step, -0.16, -40, 0.05)})
+
+
 def hero(cfg):
-    """The champion: sword and heater shield, the knight's own poses (he is the knight's build). He stands tall, his
-    shield at his side and his point low; walks with a measured stride; charges behind his shield; cuts overhead
-    through to his left hip; and salutes with his sword for a cheer."""
-    P = {k: dict(getattr(KP, k), fist=GRIP) for k in (
-        'RELAXED', 'RELAXED_LOOK_L', 'RELAXED_LOOK_R', 'GUARD', 'WINDUP', 'STRIKE', 'FOLLOW', 'WALK_L', 'WALK_PASS', 'WALK_R',
-        'CHARGE_DOWN_L', 'CHARGE_DOWN_R', 'CHARGE_UP', 'CEL_UP', 'CEL_PUMP', 'SALUTE')}
-    P['HOME'] = P['RELAXED']
-    P['BREATHE'] = dict(P['HOME'], hips=(0.0, 0.0, 1.015), chest=lean(pitch=0), Left_lift=4, Right_lift=4)
-    wT, rT = 1.04, 0.62
+    """The champion, sword and heater shield, as a man fights with them: always behind the shield. He stands in
+    guard, left foot and shield leading, the sword held back and low at his right hip, point at the foe; advances
+    with short guarded steps; charges with the shield before him; throws the cut over his shoulder past the
+    shield's edge and through; and salutes for a cheer."""
+    LOWSWORD = dict(sword_hand=(0.02, -0.34, 0.98), sword_elbow=(-0.35, -0.45, 1.10), blade=(0.90, 0.02, 0.42), edge=(0.3, 0, -1))
+    HOME = dict(KP.GUARD, fist=GRIP, **LOWSWORD)
+    P = {k: dict(getattr(KP, k), fist=GRIP) for k in ('WINDUP', 'STRIKE', 'FOLLOW', 'CHARGE_DOWN_L', 'CHARGE_DOWN_R', 'CHARGE_UP', 'CEL_UP', 'CEL_PUMP', 'SALUTE')}
+    P['HOME'] = HOME
+    P['WINDUP'] = dict(P['WINDUP'], sword_hand=(0.0, -0.36, 1.80), sword_elbow=(-0.20, -0.64, 1.50), blade=(-0.55, -0.32, 0.77), edge=(0.5, 0, 0.85))
+    P['STRIKE'] = dict(P['STRIKE'], shield_hand=(0.36, 0.14, 1.18), shield_elbow=(0.26, 0.54, 1.02))   # the shield held off his chest
+    P['FOLLOW'] = dict(P['FOLLOW'], shield_hand=(0.38, 0.24, 1.18), shield_elbow=(0.26, 0.58, 1.02))
+    P['BREATHE'] = dict(HOME, hips=(0.0, 0.0, 0.96), chest=lean(pitch=8, turn=-10), shield_hand=(0.25, 0.03, 1.25))
+    P['EASE'] = dict(HOME, hips=(0.0, 0.0, 0.97), chest=lean(pitch=8, turn=-4), head=lean(turn=30),
+                     shield_hand=(0.26, 0.10, 1.16), shield_elbow=(0.22, 0.50, 1.02), shield_face=(1, 0.35, 0))
+    P['WATCH'] = dict(HOME, chest=lean(pitch=10, turn=-16), head=lean(turn=-28), sword_hand=(0.04, -0.36, 1.0))
+    P['ADV_L'] = dict(HOME, hips=(0.02, 0.0, 0.93), chest=lean(pitch=11, turn=-8), shield_hand=(0.27, 0.03, 1.26))
+    P['ADV_UP'] = dict(HOME, hips=(0.0, 0.01, 0.96), chest=lean(pitch=9, turn=-10))
+    P['ADV_R'] = dict(HOME, hips=(0.02, 0.0, 0.93), chest=lean(pitch=11, turn=-12), sword_hand=(0.05, -0.34, 0.98))
+    P['ADV_UP2'] = dict(HOME, hips=(0.0, -0.01, 0.96), chest=lean(pitch=9, turn=-10))
+    wT, rT = 0.72, 0.62
     clips = {
-        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.8, 'BREATHE', 'ease'), (1.6, 'RELAXED_LOOK_L', 'ease'), (2.2, 'RELAXED_LOOK_L', 'linear'),
-                           (3.0, 'RELAXED_LOOK_R', 'ease'), (3.5, 'RELAXED_LOOK_R', 'linear'), (4.2, 'HOME', 'ease')], kind='loop', frames=12),
-        'walk': dict(keys=_cycle(wT, 'WALK_L', 'WALK_PASS', 'WALK_R', 'WALK_PASS'), kind='cycle', frames=12,
-                     gait=_gait(wT, 0.40, 0.09, 0.36, -0.29, 0.15, 6, 0.62)),
+        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.8, 'BREATHE', 'ease'), (1.6, 'EASE', 'ease'), (2.4, 'EASE', 'linear'),
+                           (3.2, 'WATCH', 'ease'), (3.8, 'WATCH', 'linear'), (4.6, 'HOME', 'ease')], kind='loop', frames=12),
+        'walk': dict(keys=_cycle(wT, 'ADV_L', 'ADV_UP', 'ADV_R', 'ADV_UP2'), kind='cycle', frames=12, gait=_shuffle(wT)),
         'run': dict(keys=_cycle(rT, 'CHARGE_DOWN_L', 'CHARGE_UP', 'CHARGE_DOWN_R', 'CHARGE_UP'), kind='cycle', frames=10,
                     gait=_gait(rT, 0.64, 0.20, 0.50, -0.42, 0.12, 6, 0.38)),
-        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.16, 'GUARD', 'ease'), (0.34, 'WINDUP', 'ease'), (0.40, 'WINDUP', 'linear'),
-                             (0.50, 'STRIKE', 'in'), (0.60, 'FOLLOW', 'out'), (0.72, 'FOLLOW', 'linear'), (0.92, 'GUARD', 'ease'), (1.15, 'HOME', 'ease')],
-                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.4167, 0.4583, 0.5, 0.5417, 0.5833, 0.6667, 0.7917, 0.9167, 1.0417]),
+        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.28, 'WINDUP', 'ease'), (0.36, 'WINDUP', 'linear'),
+                             (0.48, 'STRIKE', 'in'), (0.58, 'FOLLOW', 'out'), (0.70, 'FOLLOW', 'linear'), (1.05, 'HOME', 'ease')],
+                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.4167, 0.4583, 0.5, 0.5417, 0.5833, 0.6667, 0.7917, 0.9167]),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.4, 'SALUTE', 'ease'), (0.8, 'SALUTE', 'linear'), (1.1, 'CEL_UP', 'out'), (1.4, 'CEL_PUMP', 'ease'),
                                 (1.7, 'CEL_UP', 'out'), (2.0, 'CEL_PUMP', 'ease'), (2.3, 'CEL_UP', 'out'), (2.6, 'CEL_UP', 'linear'), (3.1, 'HOME', 'ease')],
                           kind='loop', frames=16),
@@ -275,122 +301,53 @@ def hero(cfg):
 
 
 def spearman(cfg):
-    """Light infantry: a spear held at mid shaft and a round shield. Light on his feet: a quick springy step with
-    the spear sloped at his shoulder, a run with it levelled, and an underarm thrust from behind the shield, his
-    back foot driving him onto the front one."""
-    UPRIGHT = dict(sword_hand=(0.16, -0.31, 1.08), sword_elbow=(-0.20, -0.42, 0.90), blade=(0.04, -0.03, 1), edge=(1, 0, 0))
-    HOME = dict(KP.RELAXED, fist=GRIP, **UPRIGHT)
-    SLOPE = dict(sword_hand=(0.14, -0.30, 1.10), sword_elbow=(-0.20, -0.42, 0.90), blade=(-0.22, -0.04, 0.97), edge=(1, 0, 0))
+    """Light infantry: spear and round shield, fought from behind the shield. He stands in guard, the shield before
+    him covering shoulder to thigh, the spear couched under his arm at the hip, its point out past the rim;
+    advances in short steps without uncovering; runs with the spear levelled; and thrusts underarm from behind the
+    shield, the back leg driving him onto the front one."""
+    COUCH = dict(sword_hand=(0.06, -0.31, 1.06), sword_elbow=(-0.30, -0.46, 1.08), blade=(0.98, 0.03, 0.12), edge=(0, 0, -1))
+    HOME = dict(KP.GUARD, fist=GRIP, **COUCH)
     P = {'HOME': HOME,
-         'BREATHE': dict(HOME, hips=(0.0, 0.0, 1.012), chest=lean(pitch=1), Left_lift=4, Right_lift=4),
-         'LOOK_L': dict(HOME, chest=lean(pitch=2, turn=8), head=lean(turn=40), hips=(0.0, 0.02, 1.02)),
-         'LEAN': dict(HOME, hips=(0.02, -0.04, 1.01), hips_rot=lean(roll=-4), chest=lean(pitch=5, roll=3, turn=-8), head=lean(turn=-30),
-                      sword_hand=(0.20, -0.34, 1.16), blade=(0.10, -0.06, 1))}
-    # The walk: up on the ball of the planted foot at each passing, the spear sloped back, the shield swinging a little.
-    W = dict(KP.RELAXED, fist=GRIP, **SLOPE)
-    P['W_DOWN_L'] = dict(W, hips=(0.01, 0.01, 0.955), hips_rot=lean(pitch=3, turn=-7), chest=lean(pitch=5, turn=6),
-                         shield_hand=(0.18, 0.28, 1.08), sword_hand=(0.20, -0.30, 1.10))
-    P['W_UP_L'] = dict(W, hips=(0.0, 0.03, 1.0), hips_rot=lean(pitch=2, roll=2), chest=lean(pitch=4, roll=2))
-    P['W_DOWN_R'] = dict(W, hips=(0.01, -0.01, 0.955), hips_rot=lean(pitch=3, turn=7), chest=lean(pitch=5, turn=-6),
-                         shield_hand=(0.32, 0.26, 1.12), sword_hand=(0.08, -0.31, 1.09))
-    P['W_UP_R'] = dict(W, hips=(0.0, -0.03, 1.0), hips_rot=lean(pitch=2, roll=-2), chest=lean(pitch=4, roll=-2))
+         'BREATHE': dict(HOME, hips=(0.0, 0.0, 0.96), chest=lean(pitch=8, turn=-10), shield_hand=(0.25, 0.03, 1.25)),
+         'PEER': dict(HOME, hips=(0.0, 0.01, 0.96), chest=lean(pitch=9, turn=-4), head=lean(turn=32),
+                      shield_hand=(0.26, 0.06, 1.20), blade=(0.97, 0.10, 0.16)),
+         'SETTLE': dict(HOME, hips=(0.0, -0.01, 0.94), chest=lean(pitch=11, turn=-14), head=lean(turn=-25),
+                        sword_hand=(0.02, -0.32, 1.05), blade=(0.98, -0.04, 0.10))}
+    P['ADV_L'] = dict(HOME, hips=(0.02, 0.0, 0.93), chest=lean(pitch=11, turn=-8), shield_hand=(0.27, 0.03, 1.26))
+    P['ADV_UP'] = dict(HOME, hips=(0.0, 0.01, 0.96), chest=lean(pitch=9, turn=-10))
+    P['ADV_R'] = dict(HOME, hips=(0.02, 0.0, 0.93), chest=lean(pitch=11, turn=-12), sword_hand=(0.10, -0.31, 1.06))
+    P['ADV_UP2'] = dict(HOME, hips=(0.0, -0.01, 0.96), chest=lean(pitch=9, turn=-10))
     # The run: the spear levelled at his hip, the shield forward, long low strides.
-    R = dict(KP.GUARD, fist=GRIP, feet=KP.RELAXED['feet'], sword_hand=(0.02, -0.32, 1.02), sword_elbow=(-0.35, -0.42, 1.10),
-             blade=(1, 0.0, 0.10), edge=(0, 0, -1), shield_hand=(0.38, 0.06, 1.22), shield_elbow=(0.30, 0.45, 1.05), shield_face=(1, 0.2, 0.05))
+    R = dict(KP.GUARD, fist=GRIP, feet=KP.RELAXED['feet'], sword_hand=(0.02, -0.33, 1.04), sword_elbow=(-0.35, -0.45, 1.12),
+             blade=(1, 0.0, 0.10), edge=(0, 0, -1), shield_hand=(0.38, 0.06, 1.24), shield_elbow=(0.30, 0.46, 1.08), shield_face=(1, 0.2, 0.05))
     P['R_DOWN_L'] = dict(R, hips=(0.06, 0.0, 0.87), hips_rot=lean(pitch=12, turn=-8), chest=lean(pitch=20, turn=6), head=lean(pitch=-6),
-                         sword_hand=(0.10, -0.32, 1.02))
+                         sword_hand=(0.10, -0.33, 1.04))
     P['R_UP'] = dict(R, hips=(0.06, 0.0, 0.95), hips_rot=lean(pitch=12), chest=lean(pitch=18), head=lean(pitch=-5))
     P['R_DOWN_R'] = dict(R, hips=(0.06, 0.0, 0.87), hips_rot=lean(pitch=12, turn=8), chest=lean(pitch=20, turn=-6), head=lean(pitch=-6),
-                         sword_hand=(-0.06, -0.32, 1.02))
-    # The thrust: on guard behind the shield, the spear drawn back level at the hip, then the lunge: the back leg
-    # straightens, the front knee bends, the arm goes long, and the shield comes round out of its way.
-    P['ON_GUARD'] = dict(KP.GUARD, fist=GRIP, sword_hand=(0.10, -0.30, 1.08), sword_elbow=(-0.25, -0.45, 1.05), blade=(1, 0.04, 0.04), edge=(0, 0, -1))
-    P['DRAW'] = dict(KP.THRUST_CHAMBER, fist=GRIP, sword_hand=(-0.22, -0.30, 1.10), sword_elbow=(-0.55, -0.42, 1.15), blade=(1, 0.03, 0.03),
+                         sword_hand=(-0.06, -0.33, 1.04))
+    P['DRAW'] = dict(KP.THRUST_CHAMBER, fist=GRIP, sword_hand=(-0.22, -0.32, 1.10), sword_elbow=(-0.55, -0.44, 1.18), blade=(1, 0.03, 0.03),
                      hips=(-0.08, 0.0, 0.93), hips_rot=lean(pitch=3, turn=-34), chest=lean(pitch=6, turn=-38))
     P['LUNGE'] = dict(KP.THRUST_LUNGE, fist=GRIP, feet={'Left': (0.46, 0.16, 8), 'Right': (-0.34, -0.16, -45)},
                       hips=(0.16, 0.0, 0.84), hips_rot=lean(pitch=10, turn=12), chest=lean(pitch=16, turn=24), head=lean(pitch=-8),
-                      sword_hand=(0.80, -0.12, 1.20), sword_elbow=(0.50, -0.42, 1.05), blade=(1, 0.04, 0.02),
-                      shield_hand=(0.30, 0.22, 1.18), shield_elbow=(0.20, 0.52, 1.05), shield_face=(0.8, 0.6, 0))
-    P['C_UP'] = dict(HOME, hips=(0.0, 0.0, 1.03), chest=lean(pitch=-6), head=lean(pitch=-18),
-                     sword_hand=(0.12, -0.30, 1.95), sword_elbow=(0.0, -0.55, 1.70), blade=(0.05, 0, 1),
-                     shield_hand=(0.20, 0.40, 1.50), shield_elbow=(0.0, 0.60, 1.30), shield_face=(0.6, 0.8, 0.2))
-    P['C_DOWN'] = dict(P['C_UP'], hips=(0.0, 0.0, 0.97), head=lean(pitch=-8), sword_hand=(0.16, -0.32, 1.62), sword_elbow=(0.0, -0.60, 1.35),
-                       shield_hand=(0.22, 0.38, 1.30))
-    wT, rT = 0.92, 0.56
+                      sword_hand=(0.80, -0.14, 1.20), sword_elbow=(0.50, -0.44, 1.05), blade=(1, 0.04, 0.02),
+                      shield_hand=(0.30, 0.24, 1.22), shield_elbow=(0.20, 0.54, 1.08), shield_face=(0.8, 0.6, 0))
+    P['C_UP'] = dict(HOME, hips=(0.0, 0.0, 1.0), hips_rot=lean(turn=-10), chest=lean(pitch=-6), head=lean(pitch=-18),
+                     sword_hand=(0.12, -0.36, 1.92), sword_elbow=(0.0, -0.60, 1.65), blade=(0.05, -0.08, 1),
+                     shield_hand=(0.22, 0.42, 1.50), shield_elbow=(0.0, 0.62, 1.30), shield_face=(0.6, 0.8, 0.2))
+    P['C_DOWN'] = dict(P['C_UP'], hips=(0.0, 0.0, 0.95), head=lean(pitch=-8), sword_hand=(0.16, -0.38, 1.62), sword_elbow=(0.0, -0.62, 1.35),
+                       shield_hand=(0.24, 0.40, 1.32))
+    wT, rT = 0.66, 0.56
     clips = {
-        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.7, 'BREATHE', 'ease'), (1.4, 'LOOK_L', 'ease'), (2.0, 'LOOK_L', 'linear'),
-                           (2.8, 'LEAN', 'ease'), (3.5, 'LEAN', 'linear'), (4.2, 'HOME', 'ease')], kind='loop', frames=12),
-        'walk': dict(keys=_cycle(wT, 'W_DOWN_L', 'W_UP_L', 'W_DOWN_R', 'W_UP_R'), kind='cycle', frames=12,
-                     gait=_gait(wT, 0.42, 0.10, 0.38, -0.30, 0.14, 5, 0.58)),
+        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.7, 'BREATHE', 'ease'), (1.4, 'PEER', 'ease'), (2.0, 'PEER', 'linear'),
+                           (2.8, 'SETTLE', 'ease'), (3.5, 'SETTLE', 'linear'), (4.2, 'HOME', 'ease')], kind='loop', frames=12),
+        'walk': dict(keys=_cycle(wT, 'ADV_L', 'ADV_UP', 'ADV_R', 'ADV_UP2'), kind='cycle', frames=12, gait=_shuffle(wT, 1.05)),
         'run': dict(keys=_cycle(rT, 'R_DOWN_L', 'R_UP', 'R_DOWN_R', 'R_UP'), kind='cycle', frames=10,
                     gait=_gait(rT, 0.66, 0.22, 0.55, -0.45, 0.11, 4, 0.36)),
-        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.18, 'ON_GUARD', 'ease'), (0.36, 'DRAW', 'ease'), (0.42, 'DRAW', 'linear'),
-                             (0.52, 'LUNGE', 'in'), (0.64, 'LUNGE', 'linear'), (0.84, 'ON_GUARD', 'ease'), (1.1, 'HOME', 'ease')],
-                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.4167, 0.4583, 0.5, 0.5417, 0.625, 0.7083, 0.8333, 0.9583]),
+        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.26, 'DRAW', 'ease'), (0.32, 'DRAW', 'linear'),
+                             (0.42, 'LUNGE', 'in'), (0.56, 'LUNGE', 'linear'), (0.95, 'HOME', 'ease')],
+                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.375, 0.4167, 0.4583, 0.5417, 0.625, 0.7083, 0.8333]),
         'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.35, 'C_UP', 'out'), (0.65, 'C_DOWN', 'ease'), (0.95, 'C_UP', 'out'), (1.25, 'C_DOWN', 'ease'),
                                 (1.55, 'C_UP', 'out'), (1.9, 'C_UP', 'linear'), (2.5, 'HOME', 'ease')], kind='loop', frames=14),
-    }
-    clips.update(_deaths(P, frames=10, flinch=[0.0, 0.0417, 0.0833, 0.1667, 0.2917, 0.4167]))
-    return P, {k: clips[k] for k in ORDER}
-
-
-def berserker(cfg):
-    """A claymore in both hands: he stands with it across his body, walks with it on his shoulder, runs with it
-    trailing, and cleaves from over his right shoulder down through to his left foot with his whole back."""
-    WIDE = {'Left': (0.14, 0.20, 18), 'Right': (-0.12, -0.20, -30)}
-    TWO = dict(two_hands=0.17, fist={'Right': 70, 'Left': 70}, shield_elbow=(0.05, 0.50, 0.95), shield_hand=(0.2, 0.1, 0.9))
-    HOME = dict(KP.RELAXED, feet=WIDE, hips=(0.0, 0.0, 0.99), hips_rot=lean(turn=-12), chest=lean(pitch=6, turn=-8), head=lean(pitch=-2),
-                sword_hand=(0.26, -0.08, 0.98), sword_elbow=(-0.05, -0.50, 1.00), blade=(0.30, 0.45, 0.84), edge=(1, 0, -0.3), **TWO)
-    P = {'HOME': HOME,
-         'HEAVE': dict(HOME, hips=(0.0, 0.0, 1.0), chest=lean(pitch=2, turn=-8), Left_lift=6, Right_lift=6, sword_hand=(0.26, -0.08, 1.01)),
-         'SAG': dict(HOME, hips=(0.0, 0.0, 0.97), chest=lean(pitch=10, turn=-8)),
-         'GLARE_L': dict(HOME, hips=(0.0, 0.03, 0.98), chest=lean(pitch=6, turn=6), head=lean(turn=40, pitch=4),
-                         sword_hand=(0.24, 0.0, 1.0), blade=(0.25, 0.55, 0.80)),
-         'GLARE_R': dict(HOME, hips=(0.0, -0.03, 0.98), chest=lean(pitch=8, turn=-22), head=lean(turn=-38, pitch=4),
-                         sword_hand=(0.28, -0.16, 0.96), blade=(0.40, 0.30, 0.86))}
-    # The walk: the claymore on his right shoulder in one hand, the free arm swinging wide, a rolling swagger.
-    SH = dict(KP.RELAXED, fist={'Right': 70, 'Left': 35}, sword_hand=(0.16, -0.24, 1.36), sword_elbow=(0.05, -0.55, 1.10),
-              blade=(-0.62, -0.04, 0.78), edge=(0, 0, -1), shield_elbow=(-0.25, 0.42, 1.10))
-    P['W_DOWN_L'] = dict(SH, hips=(0.02, 0.02, 0.94), hips_rot=lean(pitch=3, turn=-10), chest=lean(pitch=6, turn=10, roll=2), Left_shrug=-8,
-                         shield_hand=(-0.20, 0.36, 0.92))
-    P['W_UP_L'] = dict(SH, hips=(0.0, 0.05, 1.0), hips_rot=lean(pitch=3, roll=4), chest=lean(pitch=4, roll=5), shield_hand=(0.05, 0.36, 0.88))
-    P['W_DOWN_R'] = dict(SH, hips=(0.02, -0.02, 0.94), hips_rot=lean(pitch=3, turn=10), chest=lean(pitch=6, turn=-10, roll=-2), Left_shrug=10,
-                         shield_hand=(0.30, 0.30, 0.98))
-    P['W_UP_R'] = dict(SH, hips=(0.0, -0.05, 1.0), hips_rot=lean(pitch=3, roll=-4), chest=lean(pitch=4, roll=-5), shield_hand=(0.05, 0.36, 0.88))
-    # The run: head down, the blade trailing low behind his right hip, the free fist driving.
-    RN = dict(KP.RELAXED, fist={'Right': 70, 'Left': 65}, hips_rot=lean(pitch=14), chest=lean(pitch=26), head=lean(pitch=-16),
-              sword_hand=(-0.10, -0.34, 0.92), sword_elbow=(-0.45, -0.45, 1.15), blade=(-0.85, -0.15, -0.30), edge=(0, 0, -1))
-    P['R_DOWN_L'] = dict(RN, hips=(0.10, 0.0, 0.85), chest=lean(pitch=28, turn=10), shield_hand=(-0.20, 0.32, 1.02), shield_elbow=(-0.50, 0.42, 1.30))
-    P['R_UP'] = dict(RN, hips=(0.10, 0.0, 0.95), shield_hand=(0.12, 0.30, 1.08), shield_elbow=(-0.30, 0.48, 1.12))
-    P['R_DOWN_R'] = dict(RN, hips=(0.10, 0.0, 0.85), chest=lean(pitch=28, turn=-10), shield_hand=(0.40, 0.22, 1.25), shield_elbow=(-0.05, 0.48, 1.00))
-    # The cleave.
-    LUNGE = {'Left': (0.34, 0.18, 10), 'Right': (-0.28, -0.20, -40)}
-    P['HEFT'] = dict(HOME, feet=LUNGE, hips=(-0.06, 0.0, 0.97), hips_rot=lean(turn=-30), chest=lean(pitch=-8, turn=-50), head=lean(pitch=-5, turn=10),
-                     sword_hand=(-0.12, -0.20, 1.86), sword_elbow=(-0.25, -0.60, 1.55), blade=(-0.62, -0.30, 0.72), edge=(0.6, 0, 0.8),
-                     shield_elbow=(0.10, 0.20, 1.50))
-    P['CLEAVE'] = dict(HOME, feet=LUNGE, hips=(0.12, 0.0, 0.88), hips_rot=lean(pitch=12, turn=10), chest=lean(pitch=24, turn=15), head=lean(pitch=-12),
-                       sword_hand=(0.58, -0.02, 1.12), sword_elbow=(0.35, -0.48, 1.05), blade=(0.80, 0.22, -0.30), edge=(0.3, 0, -1),
-                       shield_elbow=(0.30, 0.50, 1.00))
-    P['THROUGH'] = dict(HOME, feet=LUNGE, hips=(0.14, 0.02, 0.84), hips_rot=lean(pitch=16, turn=28), chest=lean(pitch=34, turn=48), head=lean(pitch=-18),
-                        sword_hand=(0.36, 0.26, 0.66), sword_elbow=(0.36, -0.30, 0.95), blade=(0.25, 0.60, -0.76), edge=(-0.6, 0.4, -0.4),
-                        shield_elbow=(0.20, 0.60, 0.90))
-    P['ROAR'] = dict(HOME, hips=(-0.02, 0.0, 1.0), hips_rot=lean(), chest=lean(pitch=-12), head=lean(pitch=-24),
-                     sword_hand=(0.10, -0.10, 1.72), sword_elbow=(0.0, -0.55, 1.45), blade=(0.50, 0.10, 0.86), edge=(1, 0, 0), shield_elbow=(0.0, 0.55, 1.45))
-    P['ROAR_DOWN'] = dict(P['ROAR'], hips=(0.0, 0.0, 0.93), chest=lean(pitch=-4), head=lean(pitch=-12),
-                          sword_hand=(0.16, -0.10, 1.48), sword_elbow=(0.0, -0.60, 1.25), shield_elbow=(0.0, 0.60, 1.25))
-    wT, rT = 0.98, 0.54
-    clips = {
-        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.5, 'HEAVE', 'ease'), (1.0, 'SAG', 'ease'), (1.5, 'GLARE_L', 'ease'), (2.1, 'GLARE_L', 'linear'),
-                           (2.6, 'HEAVE', 'ease'), (3.1, 'GLARE_R', 'ease'), (3.6, 'GLARE_R', 'linear'), (4.2, 'HOME', 'ease')], kind='loop', frames=12),
-        'walk': dict(keys=_cycle(wT, 'W_DOWN_L', 'W_UP_L', 'W_DOWN_R', 'W_UP_R'), kind='cycle', frames=12,
-                     gait=_gait(wT, 0.40, 0.09, 0.40, -0.32, 0.17, 10, 0.62)),
-        'run': dict(keys=_cycle(rT, 'R_DOWN_L', 'R_UP', 'R_DOWN_R', 'R_UP'), kind='cycle', frames=10,
-                    gait=_gait(rT, 0.66, 0.22, 0.58, -0.46, 0.12, 5, 0.36)),
-        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.30, 'HEFT', 'ease'), (0.36, 'HEFT', 'linear'), (0.46, 'CLEAVE', 'in'), (0.56, 'THROUGH', 'out'),
-                             (0.70, 'THROUGH', 'linear'), (1.05, 'HOME', 'ease')],
-                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.375, 0.4167, 0.4583, 0.5, 0.5417, 0.625, 0.75, 0.875, 0.9583]),
-        'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.35, 'ROAR', 'out'), (0.65, 'ROAR_DOWN', 'ease'), (0.95, 'ROAR', 'out'), (1.25, 'ROAR_DOWN', 'ease'),
-                                (1.55, 'ROAR', 'out'), (2.0, 'ROAR', 'linear'), (2.6, 'HOME', 'ease')], kind='loop', frames=14),
     }
     clips.update(_deaths(P, frames=10, flinch=[0.0, 0.0417, 0.0833, 0.1667, 0.2917, 0.4167]))
     return P, {k: clips[k] for k in ORDER}
@@ -545,5 +502,77 @@ def minotaur(cfg):
     return P, clips
 
 
-STYLES = {'minotaur': minotaur, 'thrower': thrower, 'dwarf_thrower': dwarf_thrower, 'hero': hero, 'spearman': spearman, 'berserker': berserker,
+def longsword(cfg):
+    """The berserker's claymore as a two-handed sword is carried and used (the German longsword's stances). Low
+    guard to stand in (left foot forward, knees bent, hands before the right hip, the point at the other man's
+    face); on the right shoulder to walk and to run (one hand, the blade over the shoulder behind him, never across
+    his body); the high guard at the right shoulder; and from it the cut: a passing step onto the left foot, the
+    hips and chest coming round, the hands thrown out and down, the edge leading, through to the left hip, and back
+    to the low guard. The pommel is always clear of his belly: the hands are held a forearm out from the body."""
+    STANCE = {'Left': (0.20, 0.16, 12), 'Right': (-0.20, -0.17, -40)}
+    BACK = {'Left': (0.14, 0.16, 12), 'Right': (-0.26, -0.17, -45)}
+    PASS = {'Left': (0.40, 0.15, 6), 'Right': (-0.26, -0.17, -45)}
+    TWO = dict(two_hands=0.17, fist={'Right': 70, 'Left': 70}, shield_hand=(0.3, 0.0, 0.9))
+    LOW = dict(KP.RELAXED, feet=STANCE, hips=(0.0, 0.0, 0.95), hips_rot=lean(pitch=4, turn=-18), chest=lean(pitch=8, turn=-12), head=lean(pitch=-2),
+               sword_hand=(0.56, -0.10, 1.02), sword_elbow=(0.05, -1.00, 1.05), blade=(0.80, 0.10, 0.59), edge=(0.5, 0, -0.8),
+               shield_elbow=(0.05, 1.00, 1.00), **TWO)
+    HIGH = dict(LOW, feet=BACK, hips=(-0.06, 0.0, 0.96), hips_rot=lean(turn=-30), chest=lean(pitch=-2, turn=-38), head=lean(turn=8),
+                sword_hand=(0.34, -0.26, 1.60), sword_elbow=(0.0, -0.68, 1.28), blade=(-0.22, -0.06, 0.97), edge=(1, 0, 0.2),
+                shield_elbow=(0.36, 0.52, 1.10))
+    P = {'HOME': LOW,
+         'BREATHE': dict(LOW, hips=(0.0, 0.0, 0.96), chest=lean(pitch=5, turn=-12), Left_lift=5, Right_lift=5, sword_hand=(0.56, -0.10, 1.04)),
+         'SINK': dict(LOW, hips=(0.01, 0.0, 0.93), chest=lean(pitch=10, turn=-12), sword_hand=(0.57, -0.10, 1.00), blade=(0.82, 0.10, 0.56)),
+         'EYE_L': dict(LOW, hips=(0.0, 0.02, 0.95), chest=lean(pitch=8, turn=-4), head=lean(turn=38, pitch=2),
+                       sword_hand=(0.56, -0.05, 1.03), blade=(0.78, 0.22, 0.58)),
+         'EYE_R': dict(LOW, hips=(0.0, -0.02, 0.95), chest=lean(pitch=8, turn=-22), head=lean(turn=-34, pitch=2),
+                       sword_hand=(0.54, -0.16, 1.02), blade=(0.80, -0.04, 0.59)),
+         'HIGH': HIGH}
+    # On the shoulder: one hand on the grip before the right breast, the flat on the shoulder, the point up behind.
+    CARRY = dict(KP.RELAXED, fist={'Right': 70, 'Left': 40}, sword_hand=(0.32, -0.34, 1.40), sword_elbow=(0.05, -0.62, 1.10),
+                 blade=(-0.42, -0.24, 0.87), edge=(0, 0, -1), shield_elbow=(-0.25, 0.42, 1.10))
+    P['W_DOWN_L'] = dict(CARRY, hips=(0.02, 0.02, 0.94), hips_rot=lean(pitch=3, turn=-9), chest=lean(pitch=6, turn=7, roll=2),
+                         shield_hand=(-0.18, 0.36, 0.92))
+    P['W_UP_L'] = dict(CARRY, hips=(0.0, 0.05, 1.0), hips_rot=lean(pitch=3, roll=4), chest=lean(pitch=4, roll=4), shield_hand=(0.05, 0.36, 0.88))
+    P['W_DOWN_R'] = dict(CARRY, hips=(0.02, -0.02, 0.94), hips_rot=lean(pitch=3, turn=9), chest=lean(pitch=6, turn=-7, roll=-2),
+                         shield_hand=(0.30, 0.30, 0.98))
+    P['W_UP_R'] = dict(CARRY, hips=(0.0, -0.05, 1.0), hips_rot=lean(pitch=3, roll=-4), chest=lean(pitch=4, roll=-4), shield_hand=(0.05, 0.36, 0.88))
+    # Running: the same carry, the hand a little higher and tighter in, his trunk forward, the free arm driving.
+    RUN = dict(CARRY, fist={'Right': 70, 'Left': 65}, hips_rot=lean(pitch=12), chest=lean(pitch=20), head=lean(pitch=-12),
+               sword_hand=(0.26, -0.31, 1.32), sword_elbow=(0.02, -0.62, 1.08), blade=(-0.36, -0.24, 0.90))
+    P['R_DOWN_L'] = dict(RUN, hips=(0.10, 0.0, 0.86), chest=lean(pitch=22, turn=8), shield_hand=(-0.20, 0.32, 1.02), shield_elbow=(-0.50, 0.42, 1.30))
+    P['R_UP'] = dict(RUN, hips=(0.10, 0.0, 0.95), shield_hand=(0.12, 0.30, 1.08), shield_elbow=(-0.30, 0.48, 1.12))
+    P['R_DOWN_R'] = dict(RUN, hips=(0.10, 0.0, 0.86), chest=lean(pitch=22, turn=-8), shield_hand=(0.38, 0.22, 1.22), shield_elbow=(-0.05, 0.48, 1.00))
+    # The cut from the high guard.
+    P['CUT'] = dict(LOW, feet=PASS, hips=(0.14, 0.0, 0.90), hips_rot=lean(pitch=10, turn=12), chest=lean(pitch=20, turn=18), head=lean(pitch=-10),
+                    sword_hand=(0.68, -0.04, 1.24), sword_elbow=(0.35, -0.50, 1.10), blade=(0.93, 0.14, 0.08), edge=(0.2, 0, -1),
+                    shield_elbow=(0.36, 0.64, 0.95))
+    P['THROUGH'] = dict(LOW, feet=PASS, hips=(0.17, 0.02, 0.86), hips_rot=lean(pitch=14, turn=26), chest=lean(pitch=28, turn=40), head=lean(pitch=-14),
+                        sword_hand=(0.66, 0.22, 1.04), sword_elbow=(0.42, -0.35, 1.10), blade=(0.66, 0.40, -0.64), edge=(-0.4, 0.3, -0.85),
+                        shield_elbow=(0.34, 0.70, 0.85))
+    P['RECOVER'] = dict(LOW, feet=PASS, hips=(0.10, 0.0, 0.93), hips_rot=lean(pitch=6, turn=4), chest=lean(pitch=12, turn=6),
+                        sword_hand=(0.60, 0.02, 1.06), blade=(0.84, 0.20, 0.50))
+    # The cheer: the sword thrust up at arm's length out to his right, the left fist shaken.
+    P['SKY'] = dict(KP.RELAXED, feet=STANCE, hips=(0.0, 0.0, 1.0), chest=lean(pitch=-8), head=lean(pitch=-20), fist={'Right': 70, 'Left': 70},
+                    sword_hand=(0.08, -0.44, 1.82), sword_elbow=(-0.05, -0.62, 1.50), blade=(0.05, -0.22, 0.97), edge=(1, 0, 0),
+                    shield_hand=(0.20, 0.36, 1.50), shield_elbow=(0.0, 0.62, 1.25))
+    P['SKY_DOWN'] = dict(P['SKY'], hips=(0.0, 0.0, 0.95), head=lean(pitch=-10), sword_hand=(0.12, -0.46, 1.62), shield_hand=(0.24, 0.38, 1.28))
+    wT, rT = 0.98, 0.56
+    clips = {
+        'idle': dict(keys=[(0.0, 'HOME', 'linear'), (0.6, 'BREATHE', 'ease'), (1.2, 'SINK', 'ease'), (1.8, 'EYE_L', 'ease'), (2.4, 'EYE_L', 'linear'),
+                           (3.0, 'BREATHE', 'ease'), (3.6, 'EYE_R', 'ease'), (4.1, 'EYE_R', 'linear'), (4.8, 'HOME', 'ease')], kind='loop', frames=12),
+        'walk': dict(keys=_cycle(wT, 'W_DOWN_L', 'W_UP_L', 'W_DOWN_R', 'W_UP_R'), kind='cycle', frames=12,
+                     gait=_gait(wT, 0.40, 0.09, 0.40, -0.32, 0.15, 8, 0.62)),
+        'run': dict(keys=_cycle(rT, 'R_DOWN_L', 'R_UP', 'R_DOWN_R', 'R_UP'), kind='cycle', frames=10,
+                    gait=_gait(rT, 0.66, 0.22, 0.58, -0.46, 0.12, 5, 0.36)),
+        'attack': dict(keys=[(0.0, 'HOME', 'linear'), (0.30, 'HIGH', 'ease'), (0.38, 'HIGH', 'linear'), (0.50, 'CUT', 'in'), (0.60, 'THROUGH', 'out'),
+                             (0.72, 'THROUGH', 'linear'), (0.95, 'RECOVER', 'ease'), (1.2, 'HOME', 'ease')],
+                       kind='still', times=[0.0, 0.0833, 0.1667, 0.25, 0.3333, 0.4167, 0.4583, 0.5, 0.5417, 0.5833, 0.6667, 0.7917, 0.9167, 1.0417, 1.125]),
+        'celebrate': dict(keys=[(0.0, 'HOME', 'linear'), (0.45, 'SKY', 'out'), (0.75, 'SKY_DOWN', 'ease'), (1.05, 'SKY', 'out'), (1.35, 'SKY_DOWN', 'ease'),
+                                (1.65, 'SKY', 'out'), (2.1, 'SKY', 'linear'), (2.8, 'HOME', 'ease')], kind='loop', frames=14),
+    }
+    clips.update(_deaths(P, frames=10, flinch=[0.0, 0.0417, 0.0833, 0.1667, 0.2917, 0.4167]))
+    return P, {k: clips[k] for k in ORDER}
+
+
+STYLES = {'longsword': longsword, 'minotaur': minotaur, 'thrower': thrower, 'dwarf_thrower': dwarf_thrower, 'hero': hero, 'spearman': spearman,
           'giant': giant, 'healer': healer}

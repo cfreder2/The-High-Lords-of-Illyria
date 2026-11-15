@@ -1,6 +1,6 @@
 # The High Lords of Illyria
 
-A real-time strategy game in two layers. Above, a conquest of a continent after *Warlords*: eight lords, castles and towns, armies marching on roads, heroes, gold. Below, wherever two armies meet, a battle after *Myth: The Fallen Lords*: every soldier is a figure on real ground, arrows fly and can miss. The land you march over is the land you fight on. It also has skirmishes (Oakhaven Ford and a siege), Horde, Capture the Flag and a sandbox in the web build. The simulation is a custom C++ engine, deterministic for lockstep play.
+A real-time strategy game in two layers. Above, a conquest of a continent after *Warlords*: eight lords, castles and towns, armies marching on roads, heroes, gold. Below, wherever two armies meet, a battle after *Myth: The Fallen Lords*: every soldier is a figure on real ground, arrows fly and can miss. The land you march over is the land you fight on. It also has skirmishes (a flag to raise on the isle at Oakhaven Ford, two sieges, open ground), Horde, Capture the Flag and a sandbox in the web build. The simulation is a custom C++ engine, deterministic for lockstep play.
 
 **Play the live build:** https://cfreder2.github.io/The-High-Lords-of-Illyria/ (desktop or phone browser). Every push to `master` deploys it; the version is under the game's name at the top left.
 

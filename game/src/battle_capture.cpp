@@ -29,6 +29,36 @@ void CapturePoint::place(const sim::Vec3& at, sim::PlayerId defender, sim::Playe
     attacker_ = attacker;
 }
 
+void CapturePoint::placeNeutral(const sim::Vec3& at, sim::PlayerId a, sim::PlayerId b) {
+    place(at, b, a);
+    neutral_ = true;
+}
+
+void CapturePoint::stepNeutral(const sim::World& world) {
+    const sim::Fixed r = sim::Fixed::fromInt(kNeutralRadiusM);
+    const sim::Vec3 pole = at();
+    int32_t mine = 0, theirs = 0;  // of the host whose flag is on the pole, and of the other
+    for (const sim::Unit& u : world.units()) {
+        if (!u.alive() || u.routed || u.inAir() || (u.owner != attacker_ && u.owner != defender_)) continue;
+        if ((u.pos - pole).flat().lengthSq() <= r * r) ++(u.owner == attacker_ ? mine : theirs);
+    }
+    if (theirs > 0 && mine == 0) {
+        // The other host alone at the pole: this flag comes down, and from the foot of the pole theirs goes up.
+        progress_ = std::max(0, progress_ - kHaulDown);
+        if (progress_ == 0) {
+            std::swap(attacker_, defender_);
+            std::swap(mine, theirs);
+        }
+    } else if (mine > 0 && theirs == 0) {
+        // kFull in kNeutralSeconds: five points every nine ticks.
+        static_assert(kFull * 9 == kNeutralSeconds * sim::kTicksPerSecond * 5);
+        if (world.tick() % 9 < 5) ++progress_;
+    }
+    attackersIn_ = mine;
+    defendersIn_ = theirs;
+    if (progress_ >= kFull) taken_ = true;
+}
+
 void CapturePoint::addStage(const sim::Vec3& at, int ring) { stages_.push_back({at, ring}); }
 
 bool CapturePoint::onGround(const sim::World& world, const sim::Vec3& p) const {
@@ -49,6 +79,7 @@ bool CapturePoint::onGround(const sim::World& world, const sim::Vec3& p) const {
 
 void CapturePoint::step(const sim::World& world) {
     if (!active_ || taken_) return;
+    if (neutral_) return stepNeutral(world);
     const sim::Fixed r = sim::Fixed::fromInt(kRadiusM);
     const sim::Vec3 pole = at();
     int32_t att = 0, def = 0;
@@ -119,15 +150,27 @@ std::vector<Battle::SiegeGate> Battle::siegeGates() const {
 
 std::string Battle::siegeLine() const {
     if (!capture_.active()) return "";
+    if (capture_.neutral()) {
+        const bool ours = capture_.attacker() == local_;
+        const std::string flag = (ours ? "Your flag " : "Their flag ") + std::to_string(capture_.progress() * 100 / CapturePoint::kFull) + "%";
+        if (capture_.taken()) return ours ? "Your flag flies over the isle" : "Their flag flies over the isle";
+        if (capture_.blocked()) return capture_.progress() > 0 ? flag + ", contested" : "The isle is contested";
+        if (capture_.attackersIn() > 0) return flag + ", rising";
+        if (capture_.defendersIn() > 0 && capture_.progress() > 0) return flag + ", coming down";
+        return capture_.progress() > 0 ? flag : "Raise your flag on the isle";
+    }
     const bool mine = capture_.attacker() == local_, keep = capture_.stage() > 0, castle = capture_.stages().size() > 1;
     const std::string pole = keep ? "keep" : "courtyard", Pole = keep ? "Keep" : "Courtyard";
     const std::string pct = " " + std::to_string(capture_.progress() * 100 / CapturePoint::kFull) + "%";
     if (capture_.taken()) return mine ? "The town is yours" : "The town is lost";
     if (mine) {
-        if (capture_.blocked()) return "Defenders hold the " + (keep ? std::string("keep") : castle ? std::string("bailey") : pole);
-        if (capture_.attackersIn() > 0) return Pole + pct;
-        if (capture_.progress() > 0) return Pole + pct + ", falling";
-        return keep ? "Courtyard taken. Take the keep" : "Take the courtyard";
+        // (A siege with a limit says how long is left: SkirmishSetup::siegeSeconds.)
+        const int left = siegeSecondsLeft();
+        const std::string clock = left < 0 ? "" : "  " + std::to_string(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + std::to_string(left % 60) + " left";
+        if (capture_.blocked()) return "Defenders hold the " + (keep ? std::string("keep") : castle ? std::string("bailey") : pole) + clock;
+        if (capture_.attackersIn() > 0) return Pole + pct + clock;
+        if (capture_.progress() > 0) return Pole + pct + ", falling" + clock;
+        return (keep ? "Courtyard taken. Take the keep" : "Take the courtyard") + clock;
     }
     if (capture_.attackersIn() > 0 && capture_.defendersIn() == 0) return Pole + " falling" + pct;
     if (capture_.attackersIn() > 0) return "Your men hold the " + pole;
@@ -136,7 +179,9 @@ std::string Battle::siegeLine() const {
 
 std::string Battle::siegeResult() const {
     if (brokeOff_) return "The besiegers break off.";
+    if (siegeTimedOut()) return "The siege ran out of time.";
     if (!capture_.taken()) return "";
+    if (capture_.neutral()) return capture_.attacker() == local_ ? "Your flag flies over the isle." : "Their flag flies over the isle.";
     if (capture_.attacker() != local_) return "The town is lost.";
     return capture_.stages().size() > 1 ? "The keep is taken." : "The courtyard is taken.";
 }

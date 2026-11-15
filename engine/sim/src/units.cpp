@@ -346,11 +346,11 @@ UnitStats unitStats(UnitType type) {
             s.mass = m(2);
             s.aggroRange = m(25);
             break;
-        case T::DwarfGrenadier:  // the one dwarf, alone: six Molotovs to throw, five satchel charges to lay and set off with them
-            s = base(type, r(9, 20), r(13, 10), r(8, 5), 110);
+        case T::DwarfGrenadier:  // a dwarf of a pair: three Molotovs to throw, three satchel charges to lay and set off with them
+            s = base(type, r(9, 20), r(13, 10), r(8, 5), 70);
             explosive(s, ProjectileKind::Molotov, m(14), sec(5), m(10), m(16), m(19), m(3), 40, m(1));
-            s.ranged.ammo = 6;
-            s.satchels = {5, {m(5), 150, m(10), 0, r(7, 20)}, sec(3)};
+            s.ranged.ammo = 3;
+            s.satchels = {3, {m(5), 150, m(10), 0, r(7, 20)}, sec(3)};
             melee(s, 5, r(1, 2), sec(6, 5));
             s.aggroRange = m(4);
             break;
@@ -468,6 +468,28 @@ int warlordsStrength(UnitType type) {
         case T::Count: break;
     }
     return 1;
+}
+
+FormationKind musterFormation(UnitType type) {
+    switch (type) {
+        case UnitType::Archers:
+        case UnitType::DwarfGrenadier:
+        case UnitType::Wizards:
+        case UnitType::Journeyman:
+        case UnitType::Hyena:
+        case UnitType::Griffins:
+        case UnitType::Pegasi:
+        case UnitType::Archons:
+        case UnitType::Dragons:
+        case UnitType::Berserker: return FormationKind::Loose;
+        case UnitType::Catapult: return FormationKind::Line;
+        case UnitType::LightCavalry:
+        case UnitType::HeavyCavalry:
+        case UnitType::WolfRiders:
+        case UnitType::Unicorns: return FormationKind::Wedge;
+        case UnitType::Hero: return FormationKind::None;
+        default: return FormationKind::DoubleLine;
+    }
 }
 
 }  // namespace illyria::sim

@@ -57,10 +57,12 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::LaySatchel: c.queue = true; break;
                 case sim::Command::Type::Stop:
                 case sim::Command::Type::Raid:
+                case sim::Command::Type::SetGate:
                 case sim::Command::Type::SetStance:
-                case sim::Command::Type::HoldFire:
                 case sim::Command::Type::Rally:
-                case sim::Command::Type::SetGate: break;
+                case sim::Command::Type::HoldFire:
+                case sim::Command::Type::SetFormation:
+                case sim::Command::Type::Answer: break;
             }
         }
     }
@@ -161,8 +163,10 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     // (Missile troops keep to the order: they stop at a bowshot and loose.)
     std::vector<sim::EntityId> together;
     if (t->owner != local_ && (centreOf(mine) - toV3(t->pos)).length() > kGatherMetres) {
+        // (Not horse: riders ordered at a foe go for him at the gallop and strike with it, each his own way in; a march at
+        // the squad's pace would bring them up at a walk to stop in front of him.)
         for (sim::EntityId id : mine)
-            if (world_->units()[id - 1].stats.ranged.muzzleSpeed <= sim::Fixed::zero()) together.push_back(id);
+            if (world_->units()[id - 1].stats.ranged.muzzleSpeed <= sim::Fixed::zero() && !world_->units()[id - 1].stats.mounted) together.push_back(id);
         std::erase_if(mine, [&](sim::EntityId id) { return std::find(together.begin(), together.end(), id) != together.end(); });
         marchSelection(together, toV3(t->pos), nullptr, false);
     }
@@ -200,6 +204,13 @@ void Battle::orderAttackGround(const V3& at) {
 }
 
 void Battle::orderLaySatchels(const V3& at, bool queue) {
+    // What a dwarf has been told to lay and has not yet been handed to the world (a deployment's clicks wait in pending_).
+    const auto promised = [&](sim::EntityId id) {
+        int n = 0;
+        for (const sim::Command& c : pending_) n += c.unit == id && c.type == sim::Command::Type::LaySatchel;
+        for (const Planned& p : plan_) n += p.cmd.unit == id && p.cmd.type == sim::Command::Type::LaySatchel;
+        return n;
+    };
     const std::vector<sim::EntityId> mine = selectedAlive();
     std::vector<sim::EntityId> layers;
     for (sim::EntityId id : mine)
@@ -208,22 +219,27 @@ void Battle::orderLaySatchels(const V3& at, bool queue) {
         refuse("No satchels to lay");
         return;
     }
-    // One each: the first where the tap is, the others abreast of it, a little under a blast apart (so one spark takes them all).
-    bool wet = false;
-    for (size_t k = 0; k < layers.size(); ++k) {
-        const float step = static_cast<float>((k + 1) / 2) * (k % 2 ? 4.0f : -4.0f);
-        const V3 spot = at + V3{step, 0, 0};
-        if (world_->douses(toSim(spot))) {
-            wet = true;  // water: a satchel there is dead, and none is laid
-            continue;
-        }
-        issue(local_, layers[k], sim::Command::Type::LaySatchel, spot);
-        pending_.back().queue = queue;
-        // The deployment: the charges are laid before the battle begins (within 80 m of him, clear of the foe), and lie
-        // there when it does. Farther off he walks there once it has begun.
-        pending_.back().force = deploy_ && !conquest_;
+    // One charge a click, laid by the dwarf of them who carries the most (the nearer of equals): his fellow keeps his
+    // place, and his bottles. Water: a satchel there is dead, and none is laid.
+    if (world_->douses(toSim(at))) {
+        say("Not in water");
+        return;
     }
-    if (wet) say("Not in water");
+    sim::EntityId who = layers.front();
+    for (sim::EntityId id : layers) {
+        const sim::Unit& u = world_->units()[id - 1];
+        const sim::Unit& best = world_->units()[who - 1];
+        // (Counting what he is already bound to lay: a line is shared out between them.)
+        const int left = u.satchels - static_cast<int>(u.queue.size()) - (u.layOrdered ? 1 : 0) - promised(id);
+        const int bestLeft = best.satchels - static_cast<int>(best.queue.size()) - (best.layOrdered ? 1 : 0) - promised(who);
+        if (left > bestLeft || (left == bestLeft && (toV3(u.pos) - at).length() < (toV3(best.pos) - at).length())) who = id;
+    }
+    issue(local_, who, sim::Command::Type::LaySatchel, at);
+    pending_.back().queue = queue;
+    // The deployment: the charges are laid before the battle begins (within 160 m of him, clear of the foe), and lie
+    // there when it does. Farther off he walks there once it has begun.
+    pending_.back().force = deploy_ && !conquest_;
+    layers = {who};
     markOrdered(layers);
     answer(Situation::Attack, layers);
 }

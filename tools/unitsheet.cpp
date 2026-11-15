@@ -136,7 +136,7 @@ int main() {
                 "a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11 ticks), and its blast the next\n"
                 "(8 to 15 ticks): a line goes up one after another. A blast also shakes the morale of everyone left standing\n"
                 "within twice its radius.\n\n"
-                "**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 80 m of him, 40 m clear\n"
+                "**The trap.** In the deployment pause a charge is laid at once where it is ordered (within 160 m of him, 50 m clear\n"
                 "of any foe). In battle, Lay satchel (T, then click; Shift+click queues a line): he walks there, lays one and goes on to his\n"
                 "next order, or with none steps back out of its blast. Detonate (L, then click a satchel or the ground): of the\n"
                 "grenadiers and wizards selected, the nearest in reach throws one missile at once at the satchel nearest the click\n"

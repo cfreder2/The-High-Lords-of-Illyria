@@ -533,7 +533,8 @@ TEST(a_block_ordered_across_open_ground_arrives_in_time_and_keeps_its_width) {
     std::printf("  the head there at %.0f s, the middle at %.0f s\n", headT, tailT);
     // 80 m at the army's pace, its engines' 1.4 m/s: 57 s, and the block's depth (it was 90 s and more with a single lane down
     // the road; 60 s was the bound while fourteen sappers filled two places of the block, 61 s measured with a dwarf in each).
-    CHECK(headT > 0 && headT <= 65.0f);
+    // (And 74 s with the siege's two pairs of sappers at a dwarf's 1.6 m/s, was 1.8: the block keeps its slowest man's pace.)
+    CHECK(headT > 0 && headT <= 80.0f);
     CHECK(tailT > 0 && tailT <= 120.0f);
     // The army holds a block's width across the way it went, never a column's, and never a thin line.
     std::vector<float> ys;

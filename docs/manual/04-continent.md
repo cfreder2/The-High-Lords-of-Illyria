@@ -41,7 +41,8 @@ The rivers are the walls of the realms and the crossings are their gates. There 
 
 | Crossing | Kind | Where |
 |---|---|---|
-| Oakhaven Ford | ford | the Aldwater, north of Kingsbridge: the set battle |
+| Oakhaven Ford | ford | the Aldwater, north of Kingsbridge: the set battle, an isle in the middle of it and deep water above and below |
+| Heron Bridge, Teal Bridge | timber bridges, 6 m wide | the Aldwater, 96 m above and below Oakhaven Ford |
 | Westrun Ford | ford | the Westrun, on the south road |
 | Sorrow Ford | ford | the Sorrow, in the south, between Sylvaris and Dreadspire |
 | Emberflow Ford | ford | the Emberflow, below Silverlake |
@@ -49,7 +50,7 @@ The rivers are the walls of the realms and the crossings are their gates. There 
 | Kingsbridge | bridge | the Aldwater, above the Heartmere, on the great road |
 | Old Bridge | ford | the Westrun, where the road wades its broad mouth |
 | Greymere Bridge | bridge | the lower Greymere, on the north road |
-| Heron Footbridge, Millrace Footbridge, Hangman's Span | footbridges | for men on foot only |
+| Millrace Footbridge, Hangman's Span | footbridges | for men on foot only |
 
 Every crossing has an **outpost tower** beside it, and whoever holds the land there holds the tower (chapter [](#territory)). A **walled town** stands within 260 m of every named ford and bridge but Oakhaven Ford, where there was a good site for one, and within 420 m of the foot of each of the three passes: who holds the town holds the way. Oakhaven Ford is kept open: no place stands within 350 m of it.
 

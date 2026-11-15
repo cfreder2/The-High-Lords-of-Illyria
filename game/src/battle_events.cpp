@@ -110,6 +110,19 @@ void Battle::observeSquads() {
     }
     if (!wiped.empty()) announce(listOf(wiped, "squads") + (wiped.size() == 1 ? " was wiped out" : " were wiped out"));
     if (!broke.empty()) announce(listOf(broke, "squads") + (broke.size() == 1 ? " broke and is running" : " broke and are running"));
+    // The isle's pole (Oakhaven Ford): the other host's flag starting up it unopposed is news, with the alarm; so is ours.
+    if (capture_.active() && capture_.neutral() && !capture_.taken()) {
+        const int rising = capture_.attackersIn() > 0 && capture_.defendersIn() == 0 ? (capture_.attacker() == local_ ? 1 : 2) : 0;
+        if (rising != poleRising_) {
+            if (rising == 2) {
+                announce("Their flag is going up on the isle");
+                sfx_.alert(Sound::Alarm);
+            } else if (rising == 1) {
+                announce("Your flag is going up on the isle");
+            }
+            poleRising_ = rising;
+        }
+    }
     // A Conquest: a stack beaten in a fight has quit the field (Conquest::quitFields): the local side's own, or
     // another's that the viewer may see.
     if (conquest_) {

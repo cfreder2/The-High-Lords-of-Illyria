@@ -9,6 +9,11 @@
 // the keep must be taken the same way, and only then is the town taken and
 // the battle over. A siege is won by clearing the town's ground and holding
 // its heart, not by standing in it for nine seconds.
+//
+// A pole nobody holds (the isle at Oakhaven, placeNeutral) is fought for by both hosts alike: whichever has men at the
+// pole with none of the other's there raises its own flag, kNeutralSeconds of that to the top (a minute: time for the other host to come back at it by a bridge); the other host, alone at
+// the pole, hauls it down three times as fast before its own goes up; with both there, or neither, it stays where it is.
+// The first flag to the top wins the battle.
 // Deterministic: it counts the simulation's soldiers in fixed point.
 
 #include <cstdint>
@@ -37,6 +42,12 @@ public:
 
     // The pole at `at` (battle coordinates), the defenders' flag flying.
     void place(const sim::Vec3& at, sim::PlayerId defender, sim::PlayerId attacker, int ring = kNoRing);
+    // A bare pole at `at` that either of two hosts may raise its flag on: men within `radiusM` of it are at the pole.
+    static constexpr int32_t kNeutralSeconds = 60, kNeutralRadiusM = 12, kHaulDown = 3;
+    void placeNeutral(const sim::Vec3& at, sim::PlayerId a, sim::PlayerId b);
+    bool neutral() const { return neutral_; }
+    // A neutral pole: whose flag is on it (attacker()), and none is while it is bare.
+    bool bare() const { return neutral_ && progress_ == 0 && attackersIn_ == 0; }
     // A capital's keep: a pole to be taken after the one before it.
     void addStage(const sim::Vec3& at, int ring);
     bool active() const { return active_; }
@@ -46,6 +57,7 @@ public:
     const sim::Vec3& at() const { return stages_[stage_].at; }
     const std::vector<Stage>& stages() const { return stages_; }
     size_t stage() const { return stage_; }
+    // (A neutral pole: the host whose flag is on it, or was last.)
     sim::PlayerId attacker() const { return attacker_; }
     sim::PlayerId defender() const { return defender_; }
     // Towards kFull: how high the attackers' flag has climbed on the pole now fought for.
@@ -60,7 +72,8 @@ public:
     bool onGround(const sim::World& world, const sim::Vec3& p) const;
 
 private:
-    bool active_ = false, taken_ = false;
+    void stepNeutral(const sim::World& world);
+    bool active_ = false, taken_ = false, neutral_ = false;
     std::vector<Stage> stages_{Stage{}};
     size_t stage_ = 0;
     sim::PlayerId defender_ = 1, attacker_ = 0;

@@ -140,6 +140,129 @@ def attach_item(it, cfg, scene, arm, rig, upright):
     print('item %s: %.2f m, in the %s hand' % (it['name'], it['size_m'], side.lower()), flush=True)
 
 
+def swing_items(scene, e):
+    """In a clip marked `swing` (a throw) a thing that hangs from the fist goes with the hand instead: swung, it
+    stands out from the hand like more of the arm; hanging plumb it would lie through the arm that swings it."""
+    for o in scene.objects:
+        if o.type == 'MESH' and 'tripo_item' in o:
+            for con in o.constraints:
+                con.influence = 0.0 if e.get('swing') else 1.0
+
+
+def clear_weapons(cfg, scene, rig, arm, bodies, plan, ref_bone=None, stand_arm=None):
+    """Every frame of every clip checked for a weapon or shield through the body (clearance.py), turned clear where
+    it is not; the table written beside the blend and printed; the build fails if anything is left."""
+    import clearance
+    items = [o for o in scene.objects if o.type == 'MESH' and 'tripo_item' in o]
+    if rig is None:
+        return
+    prefix = arm.get('clip_prefix', '')
+    main = stand_arm or arm
+    bone = ref_bone or B + 'Hips'
+    rows, wrists = [], []
+    for e in plan:
+        act = bpy.data.actions.get(prefix + e['action'])
+        if act is None:
+            continue
+        a, b = (int(x) for x in act.frame_range)
+        until = {}
+        swing_items(scene, e)
+        if 'item_gone' in e:
+            for it in items:
+                if json.loads(it['tripo_item']).get('hold', 'hang') != 'strap':
+                    until[it.name] = int(e['item_gone'] * FPS)
+        if e['kind'] == 'death':
+            # As the render lets go of what he holds: his hips a fifth below standing, or the clip's drop_at.
+            for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+            scene.frame_set(a)
+            stand = (main.matrix_world @ main.pose.bones[bone].head).z
+            release = None
+            for f in range(a, b + 1):
+                scene.frame_set(f)
+                if (e.get('drop_at') and f >= e['drop_at']) or (f > a + 3 and (main.matrix_world @ main.pose.bones[bone].head).z < 0.8 * stand):
+                    release = f
+                    break
+            release = release or int(a + (b - a) // 3)
+            for it in items:
+                if json.loads(it['tripo_item']).get('drop', json.loads(it['tripo_item']).get('hold') != 'strap'):
+                    until[it.name] = release - 1
+        else:
+            for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+        # His own arms out of his own body first (limbs.py), then what he holds (which puts a second hand back).
+        import limbs
+        own = next((o for o in bodies if o.name == 'body'), bodies[0])
+        rows += limbs.settle(rig, own, act, scene, fix='--no-fix' not in sys.argv)
+        for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+            assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+        if items:
+            rows += clearance.settle(rig, bodies, items, act, scene, fix='--no-fix' not in sys.argv, until=until)
+            if '--no-fix' not in sys.argv:
+                # And his arms once more as the weapon's turning left them; then both as they end, for the table.
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                limbs.settle(rig, own, act, scene, fix=True)
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                final = limbs.settle(rig, own, act, scene, fix=False)
+                for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+                    assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+                final += clearance.settle(rig, bodies, items, act, scene, fix=False, until=until)
+                for r in rows:
+                    for fr in final:
+                        if r['clip'] == fr['clip'] and r['item'] == fr['item']:
+                            r.update(after_cm=fr['before_cm'], after_frame=fr['before_frame'], frames_left=fr['frames_in'],
+                                     where=fr['where'] if fr['frames_in'] else '')
+        for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+            assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
+        w = clearance.wrist_report(rig, act, scene)
+        wrists.append((e['clip'], w))
+    swing_items(scene, {})
+    for o in [o for o in scene.objects if o.type == 'ARMATURE']:
+        assign(o, None)
+        for pb in o.pose.bones:
+            pb.matrix_basis = Matrix()
+    lines = ['%s: an arm in his own body, a weapon through him: every frame of every clip (cm under the skin; tolerance in its column)' % cfg['unit'],
+             '%-12s %-9s %5s | %7s %6s %7s | %7s %6s %7s | %s' % ('clip', 'item', 'tol', 'before', 'frame', 'frames', 'after', 'frame', 'frames', 'turned  (still in)')]
+    failed = []
+    for r in rows:
+        lines.append('%-12s %-9s %5.1f | %7.1f %6d %3d/%-3d | %7.1f %6d %3d/%-3d | %d  %s' % (
+            r['clip'].split('|')[-1], r['item'], r['tolerance_cm'], r['before_cm'], r['before_frame'], r['frames_in'], r['frames'],
+            r['after_cm'], r['after_frame'], r['frames_left'], r['frames'], r['turned'], r.get('where', '')))
+        if r['frames_left']:
+            failed.append(r)
+    lines.append('')
+    lines.append('wrists, worst bend from straight on the forearm (degrees, frame): ' + '; '.join(
+        '%s L %.0f@%d R %.0f@%d' % (c, w['Left'][0], w['Left'][1], w['Right'][0], w['Right'][1]) for c, w in wrists))
+    text = '\n'.join(lines)
+    with open(os.path.join(cfg['dir'], 'penetration.txt'), 'w') as fh:
+        fh.write(text + '\n')
+    print(text, flush=True)
+    if failed and '--allow-penetration' not in sys.argv and not os.environ.get('TRIPO_ALLOW_PENETRATION'):
+        bpy.ops.wm.save_as_mainfile(filepath=cfg['blend'], compress=True)
+        sys.exit('%s: %d clip(s) still have an arm or a weapon through the body: not built for drawing' % (cfg['unit'], len(failed)))
+
+
+def thin(entry, n, seconds):
+    """A clip drawn in n frames instead (the config's "frames": a big body's sheet holds fewer pictures at a
+    density worth having): a loop resampled evenly, any other clip keeping its first, its last and its release."""
+    if not n or n >= len(entry['frames']):
+        return
+    if entry['kind'] in ('loop', 'cycle'):
+        entry['frames'] = [1 + seconds * FPS * i / n for i in range(n)]
+        return
+    fr = entry['frames']
+    keep = {0, len(fr) - 1}
+    if 'release' in entry:
+        keep.add(min(range(len(fr)), key=lambda i: abs((fr[i] - 1) / FPS - entry['release'])))
+    for i in range(n):
+        if len(keep) >= n:
+            break
+        keep.add(round(i * (len(fr) - 1) / (n - 1)))
+    entry['frames'] = [fr[i] for i in sorted(keep)]
+
+
 def build(cfg):
     os.makedirs(cfg['dir'], exist_ok=True)
     if cfg.get('mount'):
@@ -206,15 +329,19 @@ def build(cfg):
         else:
             n = c['frames']
             entry['frames'] = [round(1 + last * FPS * i / (n - 1)) for i in range(n)]
-        for key in ('release', 'item_gone', 'drop_at'):
+        for key in ('release', 'item_gone', 'drop_at', 'swing'):
             if key in c:
                 entry[key] = c[key]
+        thin(entry, cfg.get('frames', {}).get(name), last)
         plan.append(entry)
         print('%s: %d action frames, %d drawn%s' % (name, int(act.frame_range[1]), len(entry['frames']),
                                                       ', stride %.2f m' % stride if stride else ''), flush=True)
     rig.rest()
     with open(cfg['plan'], 'w') as fh:
         json.dump(plan, fh, indent=1)
+    clear_weapons(cfg, scene, rig, arm, [body], plan)
+    rig.W = arm.matrix_world.copy()
+    rig.Wi = rig.W.inverted()
     bpy.ops.wm.save_as_mainfile(filepath=cfg['blend'], compress=True)
     print('saved', cfg['blend'], flush=True)
 
@@ -319,9 +446,12 @@ def build_mounted(cfg):
             e['frames'] = sorted({round(1 + sec * FPS * i / (n - 1)) for i in range(n)})
         if name == 'die_burn':
             e['drop_at'] = 4
+        thin(e, cfg.get('frames', {}).get(name), sec)
         plan.append(e)
     with open(cfg['plan'], 'w') as fh:
         json.dump(plan, fh, indent=1)
+    if rig is not None:
+        clear_weapons(cfg, scene, rig, rarm, [rbody, hbody], plan, ref_bone=seat_bone, stand_arm=harm)
     bpy.ops.wm.save_as_mainfile(filepath=cfg['blend'], compress=True)
     print('saved', cfg['blend'], flush=True)
 
@@ -524,6 +654,7 @@ def render(cfg, look=False):
         if only and clip not in only:
             continue
         act = bpy.data.actions[e['action']]
+        swing_items(s, e)
         for o in rigs:
             assign(o, bpy.data.actions.get(o.get('clip_prefix', '') + e['action']))
         a, b = act.frame_range

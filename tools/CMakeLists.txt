@@ -9,8 +9,8 @@ if(EMSCRIPTEN)
 endif()
 
 # Balance harness: march speeds, campaign marches and the equal-gold matchup matrix (docs/BALANCE.md).
-add_executable(illyria_balance balance.cpp)
-target_link_libraries(illyria_balance PRIVATE illyria_sim)
+add_executable(illyria_balance balance.cpp balance_battle.cpp)
+target_link_libraries(illyria_balance PRIVATE illyria_game)
 
 # An all-computer Conquest, headless: days to victory, towns by side, fights (illyria_conquestsim [days] [hard|easy] [seed ...]).
 add_executable(illyria_conquestsim conquestsim.cpp)

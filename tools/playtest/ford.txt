@@ -1,38 +1,47 @@
-# Example 1: Skirmish at the Ford. Your army starts west of the river; the Red Hand are across it, to the east.
-# Plan: everyone forms one line on the near bank facing east; then a box round the middle of the line crosses the
-# ford; a shot every 10 s of game time for 90 s; the numbers at the end.
+# Example 1: Skirmish at Oakhaven Ford. Your host stands west of the river, the other host east of it, on ground that
+# is its mirror image. The flag is raised on the isle in the ford; a bridge crosses 96 m up stream and 96 m down.
+# Plan: two squads of heavy infantry to the isle, the archers to the bank above the ford, a squad of pikes to our end
+# of each bridge, the heavy cavalry over the upstream bridge; at 40 s the foot (and the warriors) at whoever is at the
+# pole; a shot every 10 s of game time for 100 s, with close looks at the isle and the bridge; the numbers at the end. The flag's line is in the log (`capture=`).
 #
 #   Illyria --play tools/playtest/ford.txt --play-out out/ford --play-log out/ford/ford.log
 #
-# The coordinates are window points at 1600 x 900 with the camera set below (north is up the screen). They were read off
-# pictures taken with it: if you change the camera or the size, take `shot` again and move them.
+# The coordinates are window points at 1600 x 900 with the camera set below (north is up the screen; the pole is at
+# (512, 512) in battle metres, the middle of the window). They were read off pictures taken with it: if you change
+# the camera or the size, take `shot` again and move them. The cards are in the order `cards` prints.
 
 size 1600 900
-start skirmish ford
+start skirmish ford budget 300
 wait 0.5
-camera 520 500 230 1.592
+camera 512 512 330 1.5708
 wait 1
 shot ford-00-start
 cards
 stats
 
-# Everyone: select all, then a right-button drag (held still first, as a march with a facing) from the ford's near
-# bank eastward: the army marches there and ends in a line facing east.
-select all
-drag right 640 420 740 420 0.6
-wait_ticks 600
-shot ford-01-line
-stats
-
-# A box round the middle of the line, and a march across the ford onto the far bank.
-drag left 420 300 720 520
-wait 0.3
-shot ford-02-box
-click right 950 410
+# The isle: Heavy Infantry 1 and 2.
+select 0
+click right 800 440
+select 1
+click right 800 464
+# The bank above the ford: the three squads of archers.
+select 9
+click right 640 450
+select 10
+click right 640 400
+select 12
+click right 640 505
+# Our end of each bridge: the pikes.
+select 3
+click right 690 215
+select 4
+click right 678 768
+# Round by the upstream bridge: the heavy cavalry, to the far bank.
+select 7
+click right 965 215
 wait 0.5
-shot ford-03-crossing
+shot ford-01-ordered
 
-# Let the game run: a shot every 10 s of game time (300 ticks) for 90 s.
 wait_ticks 300
 shot ford-10
 stats
@@ -41,24 +50,57 @@ shot ford-20
 stats
 wait_ticks 300
 shot ford-30
+camera 512 512 70 1.5708
+wait 0.6
+shot ford-30-isle
+camera 512 512 330 1.5708
 stats
-wait_ticks 300
+# The cavalry is on the upstream bridge about now: a close look at its far end, where their pikes stand.
+wait_ticks 225
+camera 540 608 55 1.5708
+wait 0.5
+shot ford-38-bridge
+wait_ticks 45
+shot ford-39-bridge
+camera 512 512 330 1.5708
+wait_ticks 30
 shot ford-40
 stats
+# The other host is at the pole by now: at them (a right click on a foe is an attack), the warriors with the rest.
+select 0
+click right 798 452
+select 1
+click right 798 452
+select 5
+click right 798 452
 wait_ticks 300
 shot ford-50
+camera 512 512 70 1.5708
+wait 0.6
+shot ford-50-isle
+camera 512 512 330 1.5708
 stats
 wait_ticks 300
 shot ford-60
 stats
 wait_ticks 300
 shot ford-70
+camera 512 512 70 1.5708
+wait 0.6
+shot ford-70-isle
+camera 512 512 330 1.5708
 stats
 wait_ticks 300
 shot ford-80
 stats
 wait_ticks 300
 shot ford-90
+stats
+wait_ticks 300
+shot ford-100
+camera 512 512 70 1.5708
+wait 0.6
+shot ford-100-isle
 stats
 cards
 quit
