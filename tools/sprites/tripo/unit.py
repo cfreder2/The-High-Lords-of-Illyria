@@ -452,6 +452,8 @@ def build_mounted(cfg):
             e['frames'] = sorted({round(1 + sec * FPS * i / (n - 1)) for i in range(n)})
         if name == 'die_burn':
             e['drop_at'] = 4
+        elif name == 'die_back':
+            e['drop_at'] = 12      # thrown back, he lets the lance go before it swings up across his own shoulder
         thin(e, cfg.get('frames', {}).get(name), sec)
         plan.append(e)
     with open(cfg['plan'], 'w') as fh:

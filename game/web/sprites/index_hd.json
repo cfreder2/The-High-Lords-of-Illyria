@@ -39,6 +39,14 @@
   ],
   "ppm": 73.92
  },
+ "5": {
+  "name": "heavy_cavalry_hd",
+  "size": [
+   4096,
+   3652
+  ],
+  "ppm": 66.71
+ },
  "8": {
   "name": "giants_hd",
   "size": [
