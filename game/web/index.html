@@ -79,6 +79,17 @@
   .card .name { font-size: 13px; line-height: 1.15; white-space: pre-line; overflow: hidden; min-width: 0; }
   .card .bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
   .card .bar i { display: block; height: 100%; background: var(--blue); }
+  /* Two rows on a wide screen when one row will not hold the cards (cardStrip, the rule of the desktop's strip:
+     game/include/illyria/game/card_layout.h): compact cards, the name on one line, so two rows stand little taller
+     than one. A phone keeps one row and scrolls it. */
+  #cards.two { flex-wrap: wrap; gap: 6px 8px; overflow-x: hidden; overflow-y: auto; max-height: 72px; }
+  #cards.two .card { padding: 3px 10px; gap: 1px 8px; }
+  #cards.two .card svg { width: 18px; height: 18px; }
+  #cards.two .card .name { white-space: nowrap; }
+  #cards.two .card .badge { flex-direction: row; gap: 3px; padding: 1px 5px 2px; border-radius: 4px; }
+  #cards.two .card .badge b { font-size: 13px; }
+  #cards.two .card .badge svg { width: 12px; margin-top: 0; }
+  #cards.two .card.save b { display: inline; font-size: 14px; margin-right: 4px; }
   #actions { display: flex; gap: 6px; margin-bottom: 8px; pointer-events: auto; align-items: center; }
   #actions svg { width: 18px; height: 18px; vertical-align: -4px; margin-right: 4px; }
   #formation { min-width: 112px; }
@@ -811,6 +822,23 @@
   }
   // The strip of cards scrolls sideways, so no card is out of reach (the desktop's strip wraps and pages for the same
   // reason); a mouse's wheel over it turns into that scroll, a trackpad's own sideways swipe already is one.
+  // The strip's rows and the cards' order: the rule and the numbers of game/include/illyria/game/card_layout.h
+  // (cardRowsFor, layoutCards, cardRoleRank), which tests/test_card_layout.cpp reads here and checks against it. One
+  // row while the cards fit; a wide window takes a second row of compact cards; a narrow one (a phone) keeps one row.
+  // Past that the desktop's strip pages and this one scrolls. The cards here differ in width (a hero's, a group's), so
+  // `needed` is their widths summed, where the desktop counts cards of one width.
+  const kCardTwoRowWidth = 900, kCardMaxRows = 2;
+  const kCardRoleOrder = { "Archers": 1, "Light Cavalry": 2, "Heavy Cavalry": 2, "Wolf Riders": 2, "Elephants": 2, "Unicorns": 2, "Griffins": 2, "Pegasi": 2,
+    "Dwarven Grenadiers": 3, "Dwarven Legion": 3, "Wizards": 4, "Journeymen": 4, "Dragons": 4, "Devils": 4, "Demons": 4, "Archons": 4, "Catapults": 5, "Hero": 6 };
+  const cardRoleRank = (type) => kCardRoleOrder[type] || 0;  // foot 0, bows 1, horse 2, then the rare ones
+  const cardRowsFor = (windowWidth) => (windowWidth >= kCardTwoRowWidth ? kCardMaxRows : 1);
+  const cardStrip = (needed, avail, windowWidth) => (needed <= avail ? 1 : cardRowsFor(windowWidth));
+  function layCardStrip() {
+    const strip = $("cards");
+    let needed = -8;
+    for (const b of strip.children) needed += b.offsetWidth + 8;
+    strip.classList.toggle("two", cardStrip(needed, strip.clientWidth, window.innerWidth) === 2);
+  }
   $("cards").addEventListener("wheel", (e) => {
     const strip = $("cards");
     if (e.deltaX || strip.scrollWidth <= strip.clientWidth) return;
@@ -1653,11 +1681,12 @@
     }
     function setCardName(el, name, tail) {
       const maxW = el.clientWidth;
-      const key = `${name}|${tail}|${maxW}`;
+      const rows = $("cards").classList.contains("two") ? 2 : 1;  // (the compact card of a two-row strip: one line)
+      const key = `${name}|${tail}|${maxW}|${rows}`;
       if (!maxW || el.dataset.fit === key) return;
       el.dataset.fit = key;
       cardCtx.font = getComputedStyle(el).font;
-      const lines = cardNameLines(name, (t) => cardCtx.measureText(t).width, maxW - cardCtx.measureText(tail).width, 2);
+      const lines = cardNameLines(name, (t) => cardCtx.measureText(t).width, maxW - cardCtx.measureText(tail).width, rows === 2 ? 1 : 2);
       el.textContent = lines.join("\n") + tail;
     }
     function squadCard(q) {
@@ -1681,6 +1710,7 @@
     // the player has made, and "+ New group" while the selection is not one of
     // them. No card for every squad: a long row of them is no use.
     const mine = s.squads.filter((q) => q.mine && q.type === "Hero");
+    mine.sort((a, b) => cardRoleRank(a.type) - cardRoleRank(b.type));  // (the desktop's order; heroes are one role, so as mustered)
     const heroSelected = s.selected >= 0 && (s.squads.find((q) => q.i === s.selected) || {}).type === "Hero";  // (s.selected: an index, now)
     const isCard = heroSelected || s.groups.some((g) => g.sel === 2);  // a hero's card, or one group
     const canSave = s.selCount > 0 && !isCard && s.groups.length < 10;
@@ -1719,6 +1749,7 @@
         $("cards").appendChild(b);
       }
     }
+    layCardStrip();
     for (const b of $("cards").children) {
       if (b.dataset.group !== undefined) {
         const g = s.groups.find((x) => x.slot === +b.dataset.group);
