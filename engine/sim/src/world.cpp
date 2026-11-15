@@ -1611,6 +1611,8 @@ void World::updateUnit(Unit& u) {
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
     } else if (armed(u) && !u.holdFire && shootNearby(u)) {
         // (From high ground the bow carries farther: shotRange; the walls' shooters first: autoTarget.)
+    } else if (armed(u) && !u.holdFire && closeToShoot(u)) {
+        // Posted, a foe just out of his reach: up to a bowshot of him, never farther than his post's leash (world_tactics.cpp).
     } else if (burnGate(u)) {
         // A thrower of fire: a foe's gate in his reach, alight (world_fire.cpp).
     } else if (creepToWall(u)) {

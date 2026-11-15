@@ -200,6 +200,20 @@ bool World::kite(Unit& u) {
     return true;
 }
 
+bool World::closeToShoot(Unit& u) {
+    if (!u.posted || u.hold || u.stats.ranged.autoRange <= Fixed::zero() || u.stats.mounted) return false;
+    const Fixed reach = autoReach(u);
+    const Unit* foe = nearestEnemy(u, reach + kPostLeash);
+    if (foe == nullptr || foe->routed) return false;
+    const Vec3 to = (foe->pos - u.pos).flat();
+    const Fixed dist = to.length();
+    if (dist <= reach * 19 / 20 || dist == Fixed::zero()) return false;
+    const Vec3 step = u.pos + to / dist * min(dist - reach * 9 / 10, u.stats.moveSpeed);
+    if ((step - u.postAt).flat().lengthSq() > kPostLeash * kPostLeash || isWater(step.x, step.y) || !standable(step)) return false;
+    walk(u, step);
+    return true;
+}
+
 bool World::shootsInstead(const Unit& u, const Unit& foe) const {
     return armed(u) && !u.holdFire && u.stats.ranged.autoRange > Fixed::zero() && !withinHold(u, foe);
 }

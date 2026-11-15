@@ -1573,6 +1573,10 @@ private:
     // A bowman with slower foot closing within kKiteReach while he reloads steps back from them (world_tactics.cpp): bows
     // beat slow foot at range. Not one told to hold, and a posted one no farther than kKiteLeash behind his post.
     bool kite(Unit& u);
+    // A posted bowman with a foe beyond his reach but within it of the ground his post's leash covers walks up to a bowshot
+    // of him, no farther than kPostLeash from his post (a line set back from its foot still shoots what comes; it walks
+    // back after: returnToPost).
+    bool closeToShoot(Unit& u);
     // A man struck in the flank or back while he fights another to his front (world_tactics.cpp): his squad-mates near
     // him are shaken (a flank kFlankedSquad, the back kRearSquad; a line's weak flank more), once in kFlankedEvery, and it
     // is told (Flanked, Hit from behind) for both sides to see.

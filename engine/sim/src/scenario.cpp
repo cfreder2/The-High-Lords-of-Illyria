@@ -197,9 +197,14 @@ Replay Raid::replay(uint64_t seed) {
     // The infantry charge the wall; the hyena-folk go round toward the
     // army's rear and are let loose there.
     for (EntityId id = 23; id <= 34; ++id) r.commands.push_back({0, {1, id, Command::Type::Move, {m(112), m(120), m(0)}}});
+    // (Wide of the archers' line, out of a bowshot, and then in: the bowmen lead a runner now, World::leadMark.)
     for (EntityId id = 35; id <= 40; ++id) {
         const int64_t i = id - 35;
-        r.commands.push_back({0, {1, id, Command::Type::Move, {m(74 + (i % 2) * 2), m(86 + (i / 2) * 3), m(0)}}});
+        r.commands.push_back({0, {1, id, Command::Type::Move, {m(70 + (i % 2) * 2), m(40 + (i / 2) * 3), m(0)}}});
+    }
+    for (EntityId id = 35; id <= 40; ++id) {
+        const int64_t i = id - 35;
+        r.commands.push_back({12 * kTicksPerSecond, {1, id, Command::Type::Move, {m(66 + (i % 2) * 2), m(80 + (i / 2) * 3), m(0)}}});
     }
     for (EntityId id = 35; id <= 40; ++id) r.commands.push_back({16 * kTicksPerSecond, {1, id, Command::Type::Raid, {}}});
     return r;
