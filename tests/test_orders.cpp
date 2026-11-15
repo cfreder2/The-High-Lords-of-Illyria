@@ -408,7 +408,20 @@ TEST(tapping_an_enemy_sends_the_selection_after_him) {
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
     b.tap(cam, px, py, 1.0f);
     b.advance(0.05);
-    for (EntityId id : b.selectedAlive()) CHECK(b.world().units()[id - 1].targetUnit == foe);
+    // He is a long way off (past Battle::kGatherMetres): they do not each run at him, the quickest to arrive alone. They
+    // march against his place as one body, at one pace, and the order to go for him waits behind the march.
+    const std::vector<EntityId> sent = b.selectedAlive();
+    CHECK((c - fp).length() > Battle::kGatherMetres);
+    CHECK(!sent.empty());
+    for (EntityId id : sent) {
+        const Unit& u = b.world().units()[id - 1];
+        CHECK(u.targetUnit == kNoEntity);
+        CHECK(u.hasMoveTarget);
+        CHECK(u.marchSpeed > illyria::sim::Fixed::zero());
+        CHECK(u.marchSpeed == b.world().units()[sent.front() - 1].marchSpeed);
+        CHECK((illyria::game::toV3(u.moveTarget) - fp).length() < 12.0f);
+        CHECK(u.queue.size() == 1 && u.queue.front().type == illyria::sim::Command::Type::AttackUnit && u.queue.front().targetUnit == foe);
+    }
     int rings = 0;
     for (const Battle::OrderMark& mk : b.orderMarks()) rings += mk.kind == Battle::OrderMark::Kind::Target;
     CHECK(rings == static_cast<int>(b.selectedAlive().size()));
@@ -428,6 +441,55 @@ TEST(tapping_an_enemy_sends_the_selection_after_him) {
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
     b.setKeys(false, false);
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Select);
+    // The march done, it is the man they were sent after that each goes for, wherever he has got to: the moment a soldier's
+    // march is over (and he is not already fighting someone met on the way), the tapped foe is his quarry.
+    const V3 again = b.unitPosition(foe - 1);
+    cam.lookAt(again.x, again.y, 60);
+    CHECK(cam.project(again + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.pickAt(cam, px, py, 1.0f).kind == Battle::Pick::Kind::Enemy);
+    b.tap(cam, px, py, 1.0f);  // (the Watch, at the far foe again)
+    b.advance(0.05);
+    for (EntityId id : sent) CHECK(b.world().units()[id - 1].queue.size() == 1);
+    int wentForHim = 0;
+    std::vector<uint8_t> marching(b.world().units().size(), 1);
+    for (int tick = 0; tick < 20 * 240 && wentForHim == 0 && b.world().units()[foe - 1].alive(); ++tick) {
+        b.advance(0.05);
+        for (EntityId id : sent) {
+            const Unit& u = b.world().units()[id - 1];
+            if (!u.alive() || !marching[id - 1] || !u.queue.empty()) continue;
+            marching[id - 1] = 0;
+            CHECK(u.targetUnit == foe);
+            wentForHim += u.targetUnit == foe;
+        }
+    }
+    CHECK(wentForHim > 0);
+    // A foe near at hand (within kGatherMetres of them) is each man's quarry at once, as it always was.
+    const std::vector<EntityId> left = b.selectedAlive();
+    CHECK(!left.empty());
+    if (left.empty()) return;
+    V3 mid{};
+    for (EntityId id : left) mid = mid + illyria::game::toV3(b.world().units()[id - 1].pos) * (1.0f / static_cast<float>(left.size()));
+    EntityId near = kNoEntity;
+    best = 1e9f;
+    for (const Unit& u : b.world().units()) {
+        if (u.owner != Battle::kEnemy || !u.alive() || u.id == foe) continue;
+        const float d = (illyria::game::toV3(u.pos) - mid).length();
+        if (d < best) best = d, near = u.id;
+    }
+    CHECK(best < Battle::kGatherMetres);
+    const V3 np = b.unitPosition(near - 1);
+    cam.lookAt(np.x, np.y, 60);
+    CHECK(cam.project(np + V3{0, 0, 0.9f}, px, py));
+    CHECK(b.pickAt(cam, px, py, 1.0f).kind == Battle::Pick::Kind::Enemy);
+    b.tap(cam, px, py, 1.0f);
+    b.advance(0.05);
+    const EntityId picked = b.world().units()[left.front() - 1].targetUnit;
+    CHECK(picked != kNoEntity && picked != foe && b.world().units()[picked - 1].owner == Battle::kEnemy);
+    for (EntityId id : left) {
+        if (!b.world().units()[id - 1].alive()) continue;
+        CHECK(b.world().units()[id - 1].targetUnit == picked);
+        CHECK(b.world().units()[id - 1].queue.empty());
+    }
 }
 
 TEST(orders_replay_identically) {

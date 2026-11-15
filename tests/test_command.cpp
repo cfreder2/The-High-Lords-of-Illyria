@@ -614,6 +614,8 @@ TEST(a_shape_is_where_they_were_sent_not_where_the_march_has_them) {
     const std::vector<illyria::sim::EntityId> men = b.selectedAlive();
     const V3 start = middleOf(b, men);
     const std::vector<V3> places = placesFrom(b, men, start);
+    // (The first ground they are sent to has a fallen log on it, and the places there are stood off round the log
+    // (Battle::keepClear). That is not their shape: sent on to open ground, they stand as they were set out.)
     b.orderMove(start + V3{-60, 0, 0});
     run(b, 4);
     // Somewhere about 40 m off with no tree, bush or rock in the way of the
@@ -841,7 +843,19 @@ TEST(a_right_click_gives_the_tap_s_order_and_never_selects) {
     CHECK(b.intentAt(cam, px, py, 1.0f) == Battle::Intent::Attack);
     rightClick(px, py);
     CHECK(b.selectedAlive() == chosen);
-    for (illyria::sim::EntityId id : chosen) CHECK(b.world().units()[id - 1].targetUnit == foe);
+    // (He is far off, past Battle::kGatherMetres: the foot march against his place together with the order to go for him
+    // waiting behind the march; archers and horse have him for their quarry at once. See Battle::orderAttackUnit.)
+    CHECK(best > Battle::kGatherMetres);
+    for (illyria::sim::EntityId id : chosen) {
+        const illyria::sim::Unit& u = b.world().units()[id - 1];
+        if (u.stats.ranged.muzzleSpeed > illyria::sim::Fixed::zero() || u.stats.mounted) {
+            CHECK(u.targetUnit == foe);
+            continue;
+        }
+        CHECK(u.targetUnit == illyria::sim::kNoEntity && u.hasMoveTarget);
+        CHECK(u.queue.size() == 1 && u.queue.front().type == illyria::sim::Command::Type::AttackUnit && u.queue.front().targetUnit == foe);
+    }
+    CHECK(flatGap(meanTarget(), fp) < 6.0f);
     // Nothing selected: a right click on one of ours selects nobody.
     b.clearSelection();
     cam.lookAt(pp.x, pp.y, 60);

@@ -139,22 +139,32 @@ TEST(a_battle_window_shows_the_road_at_the_gate) {
 }
 
 TEST(towers_stand_where_the_wall_turns_and_not_at_every_corner) {
-    size_t most = 0;
+    size_t most = 0, twoDoors = 0;
     for (const Continent::City& city : continent().cities()) {
         const Continent::Castle& k = city.castle;
         most = std::max(most, k.towers.size());
         // A pair at each gate; a corner tower only where the wall turns sharply or kTowerSpacing of wall has passed.
-        size_t corners = 0;
-        for (const Continent::Castle::Ring& ring : k.rings)
+        // (A capital's outer wall and a long town's have a second gate in a side wall, with its own pair: Ring::gateEdge2.)
+        size_t corners = 0, gates = 0;
+        for (const Continent::Castle::Ring& ring : k.rings) {
             for (size_t i = 0; i < ring.corners.size(); ++i) corners += ring.towerAt(i);
-        CHECK(k.towers.size() == corners + 2 * k.rings.size());
-        // A town: at most a tower to each corner of a square (four) and the gate's pair; a capital with its bailey.
-        CHECK(k.towers.size() <= (city.capital ? 11u : 6u));
+            const bool second = ring.gateEdge2 != Continent::Castle::Ring::kNoEdge;
+            gates += second ? 2 : 1;
+            // The second door is the outer wall's alone, never where the first is, and only a capital or a long town has one.
+            CHECK(!second || (&ring == &k.rings.front() && ring.gateEdge2 != ring.gateEdge && (city.capital || k.shape == 1)));
+        }
+        CHECK(k.towers.size() == corners + 2 * gates);
+        const bool second = gates > k.rings.size();
+        twoDoors += second;
+        // A town: at most a tower to each corner of a square (four) and the gate's pair; a capital with its bailey. Two more
+        // for a second door, and no others.
+        CHECK(k.towers.size() <= (city.capital ? 11u : 6u) + (second ? 2u : 0u));
         // No two towers crowded against each other.
         const audit::CastleReport r = audit::inspect(continent(), city);
         CHECK(r.crowded == 0);
     }
-    CHECK(most <= 11);
+    CHECK(most <= 13);
+    CHECK(twoDoors > 0);
 }
 
 TEST(the_walk_round_a_bare_corner_stays_on_the_wall_top) {
