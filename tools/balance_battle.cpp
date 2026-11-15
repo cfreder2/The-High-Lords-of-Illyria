@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -200,6 +201,13 @@ struct Tally {
     int charges[3] = {0, 0, 0};          // the player's charges home: front, flank, rear
     int foeCharges[3] = {0, 0, 0};
     int calls = 0, answers = 0;
+    // TAC_DIAG: what the battle is made of (docs/BALANCE.md, "Why formations did not matter").
+    int arrows[2] = {0, 0}, arrowFoe[2] = {0, 0}, arrowFriend[2] = {0, 0};  // by the shooter's side: 0 the player
+    int flankBlows[2] = {0, 0}, rearBlows[2] = {0, 0}, frontBlows[2] = {0, 0};  // melee blows landed on side s's men
+    int bowAnswers = 0, bowAnswersMelee = 0;  // the player's answers by bow squads, and of those to a call that was not "shot"
+    std::vector<std::string> breaks;          // "t side squad lost% why" as each squad first breaks (half its men routed)
+    double engagedShare = 0;                  // of the men of squads in a melee, the share striking, sampled each second
+    int engagedSamples = 0;
 };
 
 constexpr int kEndSeconds = 360;
@@ -225,9 +233,73 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     }
     std::vector<uint8_t> fought(b.squads().size(), 0);
     Tally t;
+    const bool diag = std::getenv("TAC_DIAG") != nullptr;
+    // (TAC_SHIFT=n delays every order the scripted player gives by n ticks: the same plan, its timing moved.)
+    const int shift = std::getenv("TAC_SHIFT") ? std::atoi(std::getenv("TAC_SHIFT")) : 0;
+    std::map<sim::EntityId, sim::PlayerId> arrowOwner;
+    std::vector<uint8_t> broke(b.squads().size(), 0);
+    std::vector<int> squadStart(b.squads().size(), 0);
+    std::vector<uint32_t> lastFlanked(b.squads().size(), 0);
+    for (size_t i = 0; i < b.squads().size(); ++i) squadStart[i] = b.aliveCount(b.squads()[i]);
     for (int tick = 0; tick < kEndSeconds * sim::kTicksPerSecond; ++tick) {
         b.advance(1.0 / sim::kTicksPerSecond + 1e-6);
-        if (plan == Plan::Micro && tick % sim::kTicksPerSecond == 0 && tick > 0) micro(b, g, lastCall);
+        if (plan == Plan::Micro && (tick - shift) % sim::kTicksPerSecond == 0 && tick > shift) micro(b, g, lastCall);
+        if (diag) {
+            const sim::World& w = b.world();
+            for (const sim::Projectile& p : w.projectiles())
+                if (p.kind == sim::ProjectileKind::Arrow && !p.thrown && !arrowOwner.count(p.id)) arrowOwner[p.id] = p.owner, ++t.arrows[p.owner == Battle::kPlayer ? 0 : 1];
+            for (const sim::ImpactEvent& e : w.impacts()) {
+                if (e.kind != sim::ImpactEvent::Kind::Hit && e.kind != sim::ImpactEvent::Kind::Blocked) continue;
+                const sim::Unit* v = e.hitUnit != sim::kNoEntity ? &w.units()[e.hitUnit - 1] : nullptr;
+                if (v == nullptr) continue;
+                const int vs = v->owner == Battle::kPlayer ? 0 : 1;
+                if (e.projectile != sim::kNoEntity) {
+                    auto it = arrowOwner.find(e.projectile);
+                    if (it == arrowOwner.end()) continue;
+                    const int ss = it->second == Battle::kPlayer ? 0 : 1;
+                    (ss == vs ? t.arrowFriend : t.arrowFoe)[ss] += 1;
+                } else if (e.kind == sim::ImpactEvent::Kind::Hit) {
+                    const sim::HitSide side = sim::hitSide(v->facing, e.dir);
+                    (side == sim::HitSide::Front ? t.frontBlows : side == sim::HitSide::Flank ? t.flankBlows : t.rearBlows)[vs] += 1;
+                }
+            }
+            for (const sim::TacticEvent& e : w.tactics())
+                if (e.kind == sim::TacticEvent::Kind::Flanked || e.kind == sim::TacticEvent::Kind::Rear || e.kind == sim::TacticEvent::Kind::Broken) {
+                    const int q = b.squadOfNumber(w.units()[e.unit - 1].squad);
+                    if (q >= 0) lastFlanked[static_cast<size_t>(q)] = static_cast<uint32_t>(tick);
+                }
+            for (const sim::HelpCall& c : w.helpCalls())
+                if (c.owner == Battle::kPlayer && c.answer != 0) {
+                    const int q = b.squadOfNumber(c.answer);
+                    if (q >= 0 && sim::unitStats(b.squads()[static_cast<size_t>(q)].type).ranged.muzzleSpeed > sim::Fixed::zero()) {
+                        ++t.bowAnswers;
+                        t.bowAnswersMelee += c.why != sim::HelpCall::Why::Shot;
+                    }
+                }
+            if (tick % sim::kTicksPerSecond == 0) {
+                int inMelee = 0, striking = 0;
+                for (size_t i = 0; i < b.squads().size(); ++i) {
+                    const Squad& s = b.squads()[i];
+                    int alive = 0, routed = 0, eng = 0;
+                    for (sim::EntityId id : s.members) {
+                        const sim::Unit& u = w.units()[id - 1];
+                        alive += u.alive(), routed += u.alive() && u.routed, eng += u.alive() && u.engaged;
+                    }
+                    if (eng > 0) inMelee += alive - routed, striking += eng;
+                    if (!broke[i] && alive > 0 && routed * 2 >= alive && squadStart[i] > 0) {
+                        broke[i] = 1;
+                        const int lostPct = 100 - 100 * alive / squadStart[i];
+                        // Why: flanked in the last 5 s; a friend of its side broke within 10 s before it; else its losses.
+                        std::string why = tick - static_cast<int>(lastFlanked[i]) <= 5 * sim::kTicksPerSecond && lastFlanked[i] != 0 ? "flanked" : "";
+                        char line[160];
+                        std::snprintf(line, sizeof line, "%3d %s %s %d%%%s", tick / sim::kTicksPerSecond, s.owner == Battle::kPlayer ? "mine" : "foe ",
+                                      s.name.c_str(), lostPct, why.empty() ? "" : (" " + why).c_str());
+                        t.breaks.push_back(line);
+                    }
+                }
+                if (inMelee > 0) t.engagedShare += static_cast<double>(striking) / inMelee, ++t.engagedSamples;
+            }
+        }
         if (tick % 5 == 0)
             for (size_t i = 0; i < b.squads().size() && i < fought.size(); ++i)
                 for (sim::EntityId id : b.squads()[i].members) {
@@ -317,6 +389,16 @@ void tacticsBattles(int seeds) {
             std::string idle;
             for (int s = 0; s < seeds; ++s) {
                 const Tally t = fight(map.scenario, map.budget, plan, 5 + static_cast<uint64_t>(s));
+                if (std::getenv("TAC_DIAG")) {
+                    std::printf("    seed %d: %s %d for %d at %d s; arrows mine %d (foe hit %d, own hit %d), theirs %d (%d, %d); blows on mine front/flank/rear %d/%d/%d, on theirs %d/%d/%d;"
+                                " bow answers %d (to melee calls %d); striking share in a melee %.0f%%\n",
+                                s, t.outcome == 1 ? "won" : t.outcome == 2 ? "lost" : "undecided", t.killed, t.lost, t.seconds, t.arrows[0], t.arrowFoe[0], t.arrowFriend[0], t.arrows[1],
+                                t.arrowFoe[1], t.arrowFriend[1], t.frontBlows[0], t.flankBlows[0], t.rearBlows[0], t.frontBlows[1], t.flankBlows[1], t.rearBlows[1], t.bowAnswers,
+                                t.bowAnswersMelee, 100 * t.engagedShare / std::max(1, t.engagedSamples));
+                    std::string line;
+                    for (const std::string& br : t.breaks) line += "[" + br + "] ";
+                    std::printf("      breaks: %s\n", line.c_str());
+                }
                 k += t.killed, l += t.lost, secs += t.seconds;
                 won += t.outcome == 1, lostBattles += t.outcome == 2;
                 calls += t.calls, answers += t.answers;

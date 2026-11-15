@@ -60,3 +60,8 @@ target_include_directories(illyria_terrainaudit PRIVATE ${CMAKE_CURRENT_SOURCE_D
 #   illyria_clumpcheck [scenario|all] [seed]       illyria_clumpcheck mirror [seeds]
 add_executable(illyria_clumpcheck clumpcheck.cpp)
 target_link_libraries(illyria_clumpcheck PRIVATE illyria_sim)
+
+# Why formations and orders do or do not matter (docs/BALANCE.md): spacing, frontage, flanks, arrows by speed, horse.
+#   illyria_ordersdiag spacing|frontage|flank|arrows|charge|all [seeds]
+add_executable(illyria_ordersdiag orders_diag.cpp)
+target_link_libraries(illyria_ordersdiag PRIVATE illyria_sim)

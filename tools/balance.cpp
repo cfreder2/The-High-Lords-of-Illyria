@@ -3,6 +3,7 @@
 //   illyria_balance march                       campaign marches between neighbouring towns
 //   illyria_balance matrix [seeds] [gold]       equal-gold armies of every type against every other
 //   illyria_balance duel A B [seeds] [gold]     one pairing, seed by seed
+//   illyria_balance counters [seeds] [gold]     the counters: horse and archers, pikes and horse, braced foot, heavy and light foot
 //   illyria_balance tactics [seeds]             set pieces: the same horse sent in at the front, or left to ride round to the flank
 #include <algorithm>
 #include <cmath>
@@ -45,6 +46,7 @@ struct Force {
     UnitType type;
     int n;
     double front, dir;
+    bool hold = false;  // stands where it is, formed (else melee types march on the enemy line)
 };
 
 // Raises both armies, their soldiers interleaved in the order they are spawned (the simulation walks units in
@@ -62,7 +64,9 @@ void deploy(World& w, const Force& a, const Force& b, bool aFirst) {
             const double y = (col - (wide - 1) / 2.0) * gap;
             const double x = s->front - s->dir * row * gap;  // later ranks stand behind
             const EntityId id = w.spawnUnit(s->side, {mm(x), mm(y), m(0)}, s->dir > 0 ? kEast : -kEast, st);
-            if (ranged(s->type)) continue;  // shooters hold and fire inside their auto range
+            // One squad a side, in its kind's own formation (as a Conquest army is raised: musterFormation).
+            w.setSquad(id, s->side + 1u, musterFormation(s->type));
+            if (ranged(s->type) || s->hold) continue;  // shooters hold and fire inside their auto range
             Command c;
             c.player = s->side;
             c.unit = id;
@@ -91,19 +95,21 @@ struct Result {
     double score;  // side A's share of the value left standing, 0..1
     bool timeout;
     int aLeft, bLeft;
+    double aSpent = 0, bSpent = 0;  // gold's worth of each side killed or broken
 };
 
 // A fights B with `gold` each, 90 m apart. `variant` picks the end of the field A starts at (bit 0) and whether it
 // is player 0 or 1 (bit 1): the simulation resolves player 0's orders and blows first, so both are alternated.
-Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int maxSeconds = 100) {
+Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int maxSeconds = 100, bool holdA = false, bool holdB = false) {
     const bool aWest = variant % 2 == 0;
     const PlayerId pa = static_cast<PlayerId>(variant / 2 % 2), pb = static_cast<PlayerId>(1 - pa);
     WorldConfig cfg;
     cfg.seed = seed;
     World w(cfg);
     const double dist = 45;
-    deploy(w, {pa, a, gMen[0] ? gMen[0] : soldiersFor(a, gold), aWest ? -dist : dist, aWest ? 1.0 : -1.0},
-           {pb, b, gMen[1] ? gMen[1] : soldiersFor(b, gold), aWest ? dist : -dist, aWest ? -1.0 : 1.0}, variant / 4 % 2 == 0);
+    const int na = gMen[0] ? gMen[0] : soldiersFor(a, gold), nb = gMen[1] ? gMen[1] : soldiersFor(b, gold);
+    deploy(w, {pa, a, na, aWest ? -dist : dist, aWest ? 1.0 : -1.0, holdA}, {pb, b, nb, aWest ? dist : -dist, aWest ? -1.0 : 1.0, holdB}, variant / 4 % 2 == 0);
+    const double a0 = value(w, pa), b0 = value(w, pb);
     for (int t = 0; t < maxSeconds * kTicksPerSecond; ++t) {
         w.step({});
         if (t % 15 == 0 && (alive(w, pa) == 0 || alive(w, pb) == 0)) break;
@@ -114,6 +120,8 @@ Result fight(UnitType a, UnitType b, int gold, uint64_t seed, int variant, int m
     r.aLeft = alive(w, pa);
     r.bLeft = alive(w, pb);
     r.score = va + vb > 0 ? va / (va + vb) : 0.5;
+    r.aSpent = a0 - va;
+    r.bSpent = b0 - vb;
     return r;
 }
 
@@ -306,6 +314,44 @@ void tactics(int seeds) {
     }
 }
 
+// The counters (docs/BALANCE.md, "Counters"): equal gold, both ends of the field, both player numbers; the share of fights the
+// first won and the exchange: the gold's worth of the second killed or broken for each of the first's.
+void counters(int seeds, int gold) {
+    struct Pair {
+        const char* name;
+        UnitType a, b;
+        bool holdA, holdB;
+        const char* want;
+    };
+    const Pair pairs[] = {
+        {"light horse at archers", UnitType::LightCavalry, UnitType::Archers, false, false, "horse"},
+        {"heavy horse at archers", UnitType::HeavyCavalry, UnitType::Archers, false, false, "horse"},
+        {"light horse at pikes standing (braced)", UnitType::LightCavalry, UnitType::Pikemen, false, true, "pikes"},
+        {"heavy horse at pikes standing (braced)", UnitType::HeavyCavalry, UnitType::Pikemen, false, true, "pikes"},
+        {"heavy horse at heavy foot standing formed", UnitType::HeavyCavalry, UnitType::HeavyInfantry, false, true, "foot"},
+        {"heavy horse and heavy foot both coming on", UnitType::HeavyCavalry, UnitType::HeavyInfantry, false, false, "horse"},
+        {"light horse at light foot standing formed", UnitType::LightCavalry, UnitType::LightInfantry, false, true, "foot"},
+        {"light horse and light foot both coming on", UnitType::LightCavalry, UnitType::LightInfantry, false, false, "horse"},
+        {"archers at heavy foot coming on", UnitType::Archers, UnitType::HeavyInfantry, false, false, "archers"},
+        {"archers at pikes coming on", UnitType::Archers, UnitType::Pikemen, false, false, "archers"},
+        {"archers at light foot coming on", UnitType::Archers, UnitType::LightInfantry, false, false, "even"},
+        {"heavy foot at light foot", UnitType::HeavyInfantry, UnitType::LightInfantry, false, false, "heavy"},
+        {"heavy foot at pikes", UnitType::HeavyInfantry, UnitType::Pikemen, false, false, "heavy"},
+    };
+    std::printf("counters: equal gold (%d), %d fights a pair; won = %% the first won, exchange = the second's gold lost per gold of the first's\n", gold, seeds);
+    for (const Pair& p : pairs) {
+        double wins = 0, aSpent = 0, bSpent = 0;
+        for (int s = 0; s < seeds; ++s) {
+            const Result r = fight(p.a, p.b, gold, 1000 + static_cast<uint64_t>(s), variantOf(s, seeds), 100, p.holdA, p.holdB);
+            wins += r.score > 0.5 ? 1.0 : r.score == 0.5 ? 0.5 : 0.0;
+            aSpent += r.aSpent, bSpent += r.bSpent;
+        }
+        std::printf("  %-44s %2d v %-2d  won %3.0f%%  exchange %5.2f   (should win: %s)\n", p.name, soldiersFor(p.a, gold), soldiersFor(p.b, gold), 100 * wins / seeds,
+                    bSpent / std::max(0.01, aSpent), p.want);
+        std::fflush(stdout);
+    }
+}
+
 int byName(const char* s) {
     for (int i = 0; i < kUnitTypeCount; ++i)
         if (std::strncmp(unitTypeName(typeAt(i)), s, std::strlen(s)) == 0) return i;
@@ -321,6 +367,7 @@ int main(int argc, char** argv) {
     else if (!std::strcmp(mode, "march")) march();
     else if (!std::strcmp(mode, "trace") && argc > 3)
         trace(typeAt(byName(argv[2])), typeAt(byName(argv[3])), argc > 4 ? std::atoi(argv[4]) : 60);
+    else if (!std::strcmp(mode, "counters")) counters(argc > 2 ? std::atoi(argv[2]) : 8, argc > 3 ? std::atoi(argv[3]) : 60);
     else if (!std::strcmp(mode, "map")) tacticsMap(argc > 2 && !std::strcmp(argv[2], "ford"), argc > 3 ? std::atoi(argv[3]) : 0, argc > 4 ? std::atoi(argv[4]) : 0);
     else if (!std::strcmp(mode, "tactics")) {
         tactics(argc > 2 ? std::atoi(argv[2]) : 8);
