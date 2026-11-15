@@ -151,6 +151,49 @@ TEST(a_damaged_or_foreign_save_is_refused) {
     CHECK(Conquest::load(continent(), text, &why) != nullptr);
 }
 
+// Players have saves of the layout before squads had a history (ILC8: the browser's slots, the desktop's
+// campaign.save). They load: the history begins at nothing, the war carries on, and what is saved from it is today's
+// layout. The fixture was written by the game as it was then (tests/fixtures/conquest_ilc8.txt). It is tied to the map,
+// as every save is: if the island is redrawn it is refused as "saved on another map", and so are the players' saves.
+extern const char* const kConquestIlc8;
+TEST(a_save_of_the_layout_before_squads_had_a_history_loads_and_plays_on) {
+    const std::string old = kConquestIlc8;
+    CHECK(old.compare(0, 5, "ILC8.") == 0 && old.size() > 10000);
+    std::string why;
+    std::unique_ptr<Conquest> c = Conquest::load(continent(), old, &why);
+    CHECK(c != nullptr);
+    if (!c) {
+        std::printf("  the ILC8 save was refused: %s\n", why.c_str());
+        return;
+    }
+    // As it was saved: a day and a half in, the Sylvaran Elves against two lords; every squad's history at nothing.
+    CHECK(c->tick() == 5400 && c->day() == 1 && c->setup().player == 4);
+    int armies = 0, men = 0;
+    for (const Conquest::Stack& s : c->stacks())
+        for (const Army& a : s.armies) {
+            ++armies;
+            men += a.soldiers;
+            CHECK(a.battles == 0 && a.foughtTick == 0 && a.rank >= 0 && a.kills >= 0);
+        }
+    CHECK(armies > 20 && men > 200);
+    // It plays on, and is saved in today's layout, which loads to the same game.
+    for (int k = 0; k < Conquest::kTicksPerDay; ++k) c->step();
+    CHECK(c->day() == 2);
+    const std::string now = c->save();
+    CHECK(now.compare(0, 5, "ILC9.") == 0);
+    std::unique_ptr<Conquest> r = Conquest::load(continent(), now, &why);
+    CHECK(r != nullptr);
+    if (!r) return;
+    CHECK(r->checksum() == c->checksum() && r->save() == now);
+    // Damage to it is still caught (the bytes' seal), and a layout older than it is refused in plain words.
+    std::string bent = old;
+    bent[bent.size() / 2] = bent[bent.size() / 2] == 'A' ? 'B' : 'A';
+    CHECK(Conquest::load(continent(), bent, &why) == nullptr);
+    CHECK(Conquest::load(continent(), "ILC7." + old.substr(5), &why) == nullptr);
+    CHECK(why == "saved by another version of the game");
+    std::printf("  an ILC8 save of %d squads and %d men loaded, played a day and saved as ILC9\n", armies, men);
+}
+
 // Who plays (Conquest::Setup): the chosen faction is side 0, the chosen computer lords are the other sides, and
 // every faction left out is not in the game: neutral towns, no lord, no AI.
 TEST(a_game_with_one_chosen_enemy_has_the_other_lords_out_of_it) {

@@ -145,6 +145,9 @@ struct SkirmishSetup {
     // side raises this much gold (0: as much as the player's purse).
     std::vector<CarriedSquad> roster;
     int foePurse = 0;
+    // A siege the player lays must take the town within this many seconds of the clock's start, or it is lost (0: no
+    // limit, as a plain skirmish). The March sets it: a besieger who does nothing does not sit before the walls for ever.
+    int siegeSeconds = 0;
 };
 // The types a skirmish may buy: what a Conquest city trains (Conquest::trainable).
 std::vector<sim::UnitType> skirmishTypes();
@@ -274,6 +277,9 @@ public:
     bool defending() const { return defend_; }
     // The computer's siege has been given up (its host is spent): the keepers have won.
     bool besiegersBrokeOff() const { return brokeOff_; }
+    // The player's siege has run out of its time (SkirmishSetup::siegeSeconds), and the seconds it has left (-1: no limit).
+    bool siegeTimedOut() const { return siegeLimit_ != 0 && !capture_.taken() && world_->tick() >= siegeLimit_; }
+    int siegeSecondsLeft() const { return siegeLimit_ == 0 ? -1 : siegeLimit_ > world_->tick() ? static_cast<int>((siegeLimit_ - world_->tick() + sim::kTicksPerSecond - 1) / sim::kTicksPerSecond) : 0; }
     // A siege's view, for the camera: the point to look at (between the castle and the armies that come to its doors), how far
     // off to stand to hold the whole wall and every besieging squad, and the way out of the first (the road's) door. False when the
     // battle is no siege.
@@ -892,6 +898,7 @@ private:
     // A siege the computer lays: its fighting men at the start (engines apart), and whether it has broken off (runEnemyAi).
     int besiegers_ = 0;
     bool brokeOff_ = false;
+    uint32_t siegeLimit_ = 0;  // the tick by which the player's siege must have taken the town (0: none)
     V3 siegeCentre_{}, siegeOut_{};
     float siegeRadius_ = 0;
     int siegeDoors_ = 0;
@@ -904,9 +911,10 @@ private:
     std::vector<Buy> foeBuys(const SkirmishSetup& setup, bool engines, int every = kFieldEngines, int pct = 100) const;
     // An army in ranks (foot in front, bowmen behind, horse on the wings, engines last) about `anchor`, facing `facing`.
     // `roster`: these squads as they stand instead (SkirmishSetup::roster), their lord among them. `skirmishers`: the
-    // bowmen stand out in front of the foot (open ground: the battle opens with their arrows).
+    // bowmen stand out in front of the foot (open ground: the battle opens with their arrows); `bowsAhead`: that many
+    // metres before the anchor instead (a siege's bowmen, sent up ahead of the battery).
     void muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord = false, bool enginesFirst = false,
-                const std::vector<CarriedSquad>* roster = nullptr, bool skirmishers = false);
+                const std::vector<CarriedSquad>* roster = nullptr, bool skirmishers = false, float bowsAhead = 0);
     // The last squad made takes a carried squad's men: each his health, rank and kills, and the squad its full strength.
     void seatCarried(const CarriedSquad& c);
     void build(uint64_t seed, const sim::Vec3& centre, float farReachM = 0);

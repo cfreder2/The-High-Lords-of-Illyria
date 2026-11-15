@@ -18,6 +18,9 @@ namespace {
 // 2: the one clock (30 ticks a second, 3600 a day) and marches timed at the
 // battle's speeds: a stack's progress is a time, not movement points.
 constexpr const char* kMagic = "ILC9.";  // bump the digit when the layout changes
+// The layout before a squad's history was kept (Army::battles, foughtTick): still read (players have such saves), the
+// history begun at nothing; what is saved from it is the layout of today. Anything older is refused.
+constexpr const char* kMagic8 = "ILC8.";
 constexpr uint32_t kFormat = 7;  // 7: the orders waiting behind each man's own (Unit::queue); 6: where a stack's men are middled (px, py), which a stack afloat keeps as it last was on land; 5: the gates the player holds open or shut; 4: every man is a unit, saved where he stands; 3: who plays (Conquest::Setup)
 
 class Writer {
@@ -226,7 +229,7 @@ void writeArmy(Writer& w, const Army& a) {
     }
 }
 
-Army readArmy(Reader& r) {
+Army readArmy(Reader& r, bool history) {
     Army a;
     a.id = r.u32();
     a.type = r.type();
@@ -235,8 +238,10 @@ Army readArmy(Reader& r) {
     a.fullStrength = r.i32();
     a.kills = r.i32();
     a.rank = r.i32();
-    a.battles = r.i32();
-    a.foughtTick = r.u32();
+    if (history) {  // (a save of the layout before: no battles yet, as a squad just raised)
+        a.battles = r.i32();
+        a.foughtTick = r.u32();
+    }
     a.blessings = r.i32();
     a.bornDay = r.u32();
     a.ally = r.b();
@@ -446,9 +451,11 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
     };
     const std::string magic = kMagic;
     std::vector<uint8_t> bytes;
-    // An older layout ("ILC2." before the men were on the land) is a conquest all the same: say so.
-    if (text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
-    if (text.compare(0, magic.size(), magic) != 0 || !fromBase64(text, magic.size(), bytes)) return fail("not a saved conquest");
+    // The layout before this one is read and brought up to date in memory (its squads' histories begin at nothing).
+    const bool before = text.compare(0, magic.size(), kMagic8) == 0;
+    // An older layout still ("ILC2." before the men were on the land) is a conquest all the same: say so.
+    if (!before && text.compare(0, magic.size(), magic) != 0 && text.compare(0, 3, magic, 0, 3) == 0) return fail("saved by another version of the game");
+    if ((!before && text.compare(0, magic.size(), magic) != 0) || !fromBase64(text, magic.size(), bytes)) return fail("not a saved conquest");
     if (bytes.size() < 8) return fail("damaged (cut short)");
     uint64_t seal = 0;
     for (int k = 0; k < 8; ++k) seal |= static_cast<uint64_t>(bytes[bytes.size() - 8 + static_cast<size_t>(k)]) << (8 * k);
@@ -511,7 +518,7 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
         s.cx = r.i32();
         s.cy = r.i32();
         s.armies.resize(r.count());
-        for (Army& a : s.armies) a = readArmy(r);
+        for (Army& a : s.armies) a = readArmy(r, !before);
         s.path.resize(r.count());
         for (auto& p : s.path) {
             p.first = r.i32();
@@ -540,7 +547,7 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
         t.from = r.i32();
         t.to = r.i32();
         t.arriveDay = r.u32();
-        t.army = readArmy(r);
+        t.army = readArmy(r, !before);
     }
     if (r.count() != c->sites_.size()) return fail("damaged (sites)");
     for (SiteState& s : c->sites_) {
@@ -599,7 +606,8 @@ std::unique_ptr<Conquest> Conquest::load(const Continent& continent, const std::
     const uint64_t sum = r.u();
     if (!r.ok() || !r.done()) return fail("damaged (cut short)");
     c->freshWorld();  // as the game that saved it left its world (Conquest::reseatAll)
-    if (sum != c->checksum()) return fail("damaged (its checksum does not match)");
+    // (The layout before hashed no history: its checksum is of that state, and the bytes' seal has vouched for them.)
+    if (!before && sum != c->checksum()) return fail("damaged (its checksum does not match)");
     return c;
 }
 

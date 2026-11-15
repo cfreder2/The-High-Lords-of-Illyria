@@ -124,10 +124,13 @@ std::string Battle::siegeLine() const {
     const std::string pct = " " + std::to_string(capture_.progress() * 100 / CapturePoint::kFull) + "%";
     if (capture_.taken()) return mine ? "The town is yours" : "The town is lost";
     if (mine) {
-        if (capture_.blocked()) return "Defenders hold the " + (keep ? std::string("keep") : castle ? std::string("bailey") : pole);
-        if (capture_.attackersIn() > 0) return Pole + pct;
-        if (capture_.progress() > 0) return Pole + pct + ", falling";
-        return keep ? "Courtyard taken. Take the keep" : "Take the courtyard";
+        // (A siege with a limit says how long is left: SkirmishSetup::siegeSeconds.)
+        const int left = siegeSecondsLeft();
+        const std::string clock = left < 0 ? "" : "  " + std::to_string(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + std::to_string(left % 60) + " left";
+        if (capture_.blocked()) return "Defenders hold the " + (keep ? std::string("keep") : castle ? std::string("bailey") : pole) + clock;
+        if (capture_.attackersIn() > 0) return Pole + pct + clock;
+        if (capture_.progress() > 0) return Pole + pct + ", falling" + clock;
+        return (keep ? "Courtyard taken. Take the keep" : "Take the courtyard") + clock;
     }
     if (capture_.attackersIn() > 0 && capture_.defendersIn() == 0) return Pole + " falling" + pct;
     if (capture_.attackersIn() > 0) return "Your men hold the " + pole;
@@ -136,6 +139,7 @@ std::string Battle::siegeLine() const {
 
 std::string Battle::siegeResult() const {
     if (brokeOff_) return "The besiegers break off.";
+    if (siegeTimedOut()) return "The siege ran out of time.";
     if (!capture_.taken()) return "";
     if (capture_.attacker() != local_) return "The town is lost.";
     return capture_.stages().size() > 1 ? "The keep is taken." : "The courtyard is taken.";

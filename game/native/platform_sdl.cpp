@@ -58,6 +58,7 @@ struct Options {
     int queueDemo = 0;  // --queue-demo FRAME: queued and held (planned) orders, to see their paths
     int pathsDemo = 0;  // --paths-demo FRAME: at that frame three squads are sent three ways (a hunt, a patrol, a force march)
     std::string play, playOut, playLog;  // --play SCRIPT, --play-out DIR, --play-log FILE (docs/PLAYTEST.md)
+    std::string playSaves;               // --play-saves DIR: a played script keeps its saved games there (else it keeps none)
 #endif
     bool worldCamera = false;  // --world: --camera's x, y are continent metres
     int profile = 0;  // --profile N: after N frames, time what each kind of drawing costs
@@ -153,6 +154,7 @@ bool parse(int argc, char** argv, Options& o) {
         else if (a == "--play") o.play = next();
         else if (a == "--play-out") o.playOut = next();
         else if (a == "--play-log") o.playLog = next();
+        else if (a == "--play-saves") o.playSaves = next();
 #endif
         else if (a == "--click") o.clicks.push_back(next());
         else if (a == "--help" || a == "-h") return usage(), false;
@@ -425,6 +427,13 @@ int runApp(int argc, char** argv) {
         if (playing) {
             SDL_free(pref);  // (a played script neither reads nor overwrites the player's saved conquest and settings)
             pref = nullptr;
+        }
+#endif
+#ifdef ILLYRIA_DEV_HOOKS
+        if (playing && !opt.playSaves.empty()) {  // (its own folder: to play a save and a carrying on, never the player's)
+            SDL_CreateDirectory(opt.playSaves.c_str());
+            hud.setMarchFile(opt.playSaves + "/march.save");
+            hud.setSaveFile(opt.playSaves + "/campaign.save");
         }
 #endif
         if (pref) {

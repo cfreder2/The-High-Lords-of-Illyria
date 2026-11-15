@@ -398,14 +398,16 @@
       : `Battle ${st.stage + 1} of ${st.of}: ${st.next}${st.fighting ? " (being fought)" : ""}`;
     const rank = (q) => q.type === "Hero" ? `level ${q.rank + 1}` : q.veterans > 0 ? `${q.veterans} ${q.veterans === 1 ? "veteran" : "veterans"}` : rankNames[Math.max(0, Math.min(3, q.rank))];
     body.innerHTML = `<p class="lead">${esc(head)}</p>` +
-      (st.stage > 0 || st.over ? `<p class="note">Last battle: ${st.last.lost} lost, ${st.last.survivors} came through, ${st.last.promoted} promoted.</p>` : "") +
+      ((st.stage > 0 || st.over) && st.last.survivors + st.last.lost > 0 ? `<p class="note">Last battle: ${st.last.lost} lost, ${st.last.survivors} came through, ${st.last.promoted} promoted.</p>` : "") +
       (plain ? `<p class="note">Purse: ${st.purse} gold. Fill a squad's gaps with recruits. The lord, the magi and dwarves are never replaced.</p>` : "") +
       `<table style="width:100%;border-collapse:collapse;text-align:left"><tr><th>Squad</th><th>Men</th><th>Rank</th><th>Kills</th><th>Battles</th><th></th></tr>` +
       st.squads.map((q) => `<tr><td>${esc(q.name)}</td><td>${q.men} / ${q.full}</td><td>${rank(q)}</td><td>${q.kills}</td><td>${q.battles}</td><td>` +
         (plain && q.cost > 0 ? `<button data-fill="${q.i}" style="min-height:36px"${st.purse > 0 ? "" : " disabled"}>Fill, ${q.cost} gold</button>` : plain && q.fixed && q.men < q.full ? "never" : "") + `</td></tr>`).join("") +
       `</table>` + (st.gone.length ? `<p class="note">Gone for good: ${st.gone.map(esc).join(", ")}</p>` : "") +
       `<button class="big primary" data-on="1" style="margin-top:14px"><span>${st.fighting ? "Back to the battle" : st.over ? "Put the march away" : "March on"}</span><small>${plain ? esc(st.next) : ""}</small></button>` +
-      (plain ? `<button data-giveup="1" style="margin-top:8px;min-height:44px">Give up the march</button>` : "");
+      (plain ? `<button data-fillall="1" style="margin-top:8px;min-height:44px"${st.purse > 0 ? "" : " disabled"}>Fill what the purse can</button> <button data-giveup="1" style="margin-top:8px;min-height:44px">Give up the march</button>` : "");
+    const fillAll = body.querySelector("[data-fillall]");
+    if (fillAll) fillAll.onclick = () => { if (api().marchReinforce(-1) > 0) marchSaved(); render.march(el); };
     body.querySelectorAll("[data-fill]").forEach((b) => { b.onclick = () => { if (api().marchReinforce(+b.dataset.fill) > 0) marchSaved(); render.march(el); }; });
     const away = () => { api().marchEnd(); store.remove(marchKey); back(); renderTitle(); };
     body.querySelector("[data-on]").onclick = () => {
@@ -434,7 +436,7 @@
     const spent = () => offers.reduce((g, o) => g + o.price * (skirmish.bought[o.type] || 0), 0);
     const fill = () => { skirmish.bought = parseArmy(game().skirmishBuy(skirmishPurses[skirmish.purse])); };
     if (!Object.keys(skirmish.bought).length) fill();
-    body.innerHTML = (march ? `<p class="lead">Five battles: a field, the Ford, a village stormed, a village held, the capital. One army, bought once. The living go on with their wounds half mended, their kills and rank; a squad wiped out is gone. A lord and three magi march with you; they, and dwarves, are never replaced. Lose a battle and the march is over.</p>`
+    body.innerHTML = (march ? `<p class="lead">Five battles: a field, a village stormed, the Ford, a village held, the capital. One army, bought once. The living go on with their wounds half mended, their kills and rank; a squad wiped out is gone. A lord and three magi march with you; they, and dwarves, are never replaced. Lose a battle and the march is over.</p>`
       : `<p class="lead">A battle fought out in full, built as a Conquest is. Nothing carries over.</p>`) +
       `<div${march ? ' class="hidden"' : ""}><h3>The ground</h3><div class="choice wrap" data-maps>` + skirmishMaps.map((m, i) => `<button data-map="${i}"><b>${m.name}</b><small>${m.note}</small></button>`).join("") + `</div>` +
       `<h3>Your side</h3><div class="choice" data-sides><button data-defend="0"><b>Storm the walls</b></button><button data-defend="1"><b>Hold the walls</b></button></div></div>` +
