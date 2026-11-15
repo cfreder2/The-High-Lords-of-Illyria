@@ -52,6 +52,8 @@ constexpr Fixed kSlotTolerance = Fixed::fromInt(2);
 // An archer at an embrasure: this near it (flat) and this near its height.
 constexpr Fixed kEmbrasureTolerance = Fixed::fromRatio(6, 5);
 constexpr Fixed kEmbrasureHeight = Fixed::fromRatio(3, 2);
+// At most this many bowmen of a garrison stand forward on its outworks (a quarter of them, World::forwardPosts).
+constexpr size_t kForwardMost = 10;
 
 enum class Post : uint8_t { None, Archer, Foot, Lord };
 
@@ -185,9 +187,10 @@ void World::keepDoors(const std::vector<size_t>& doors) {
         if (post == Post::Archer) archers.push_back({&u, home});
         else if (post == Post::Foot) foot.push_back({&u, home});
     }
+    garrisonSorties(doors);  // (world_sortie.cpp: no foe need be at the doors; an engine in reach is reason enough)
     if (!alert) return;
     recallForward(doors);  // (world_works.cpp)
-    garrisonSorties(doors);  // (world_sortie.cpp)
+    lastStand(doors);
 
     // A door's horseshoe for n men: the places the wall or a house leaves free, the middle rank deepest, the wings bent in toward
     // the doors.
@@ -417,6 +420,80 @@ void World::keepDoors(const std::vector<size_t>& doors) {
     }
 }
 
+// ---------------------------------------------------------------- the keep's last stand
+
+void World::lastStand(const std::vector<size_t>& doors) {
+    // A capital's outer ward lost (a door of it open or broken, and the foes inside it two to one of the garrison's fighting
+    // men there, six at least): the garrison falls back through the bailey's doors, to hold the keep. The doors are opened
+    // first, and only once they stand open are the men sent, each by a lane of his own across the doorway: a way planned
+    // against shut doors led every man to the one point at their middle, and thirty of them jammed there (docs/BALANCE.md).
+    const Region& rg = *config_.region;
+    const PlayerId holder = gates_[doors.front()].holder;
+    const int32_t outer = rg.gates()[doors.front()].ring;
+    const Rampart& ward = rg.ramparts()[static_cast<size_t>(outer)];
+    size_t bailey = kNoGate;
+    for (size_t j = 0; j < rg.gates().size() && j < gates_.size(); ++j) {
+        const Gate& g = rg.gates()[j];
+        if (g.ring == outer || gates_[j].holder != holder) continue;
+        const Rampart& inner = rg.ramparts()[static_cast<size_t>(g.ring)];
+        bool within = !inner.corners.empty();
+        for (const Vec3& c : inner.corners) within = within && Gate::inside(ward, c);
+        if (within) bailey = j;
+    }
+    if (bailey == kNoGate) return;
+    bool open = false;
+    for (const size_t d : doors) open = open || gates_[d].passable();
+    if (!open) return;
+    const Gate& bg = rg.gates()[bailey];
+    const Rampart& keep = rg.ramparts()[static_cast<size_t>(bg.ring)];
+    int32_t foes = 0, mine = 0;
+    std::vector<Unit*> men;
+    Fixed reach;
+    for (const Vec3& c : ward.corners) reach = max(reach, (c - ward.centre).flat().length());
+    nearby(ward.centre.x, ward.centre.y, reach, [&](uint32_t k) {
+        Unit& u = units_[k];
+        if (!u.alive() || u.routed || u.inAir() || !withinRing(ward, u.pos) || withinRing(keep, u.pos) || u.pos.z > groundHeight(u.pos.x, u.pos.y) + Fixed::one()) return;
+        if (u.owner != holder) {
+            foes += u.stats.melee.damage > 0;
+            return;
+        }
+        const Post post = postOf(u);
+        if (post == Post::None) return;
+        ++mine;
+        if (ordered(u) || u.sortie != Unit::Sortie::None) return;
+        if (u.hasMoveTarget && withinRing(keep, u.moveTarget)) return;  // (on his way in already)
+        men.push_back(&u);
+    });
+    if (foes < 6 || foes < mine * 2 || men.empty()) return;
+    // The doors open to them, and stay open while they come (World::updateGates: the holder's men bound through ask it).
+    GateState& st = gates_[bailey];
+    if (!st.broken()) st.openUntil = std::max(st.openUntil, tick_ + static_cast<uint32_t>(6 * kTicksPerSecond));
+    if (!st.passable()) return;
+    const Vec3 mid = (bg.a + bg.b) * Fixed::fromRatio(1, 2);
+    const Vec3 along = (bg.b - bg.a).flat() / max(Fixed::fromRatio(1, 10), (bg.b - bg.a).flat().length());
+    const Fixed width = (bg.b - bg.a).flat().length();
+    std::sort(men.begin(), men.end(), [&](const Unit* a, const Unit* b) {
+        const Fixed da = (a->pos - mid).flat().lengthSq(), db = (b->pos - mid).flat().lengthSq();
+        return da < db || (da == db && a->id < b->id);
+    });
+    constexpr int32_t kLanes = 5;
+    for (size_t k = 0; k < men.size(); ++k) {
+        Unit& u = *men[k];
+        const Fixed lateral = width * (Fixed::fromInt(static_cast<int64_t>(k % kLanes) * 2 + 1) / (kLanes * 2) - Fixed::fromRatio(1, 2)) * Fixed::fromRatio(4, 5);
+        Vec3 before = mid + bg.out * Fixed::fromInt(5) + along * lateral, after = mid - bg.out * Fixed::fromInt(6) + along * lateral;
+        Vec3 home = mid - bg.out * (Fixed::fromInt(12) + Fixed::fromInt(static_cast<int64_t>(k / kLanes)) * Fixed::fromRatio(17, 10)) + along * lateral;
+        before.z = groundHeight(before.x, before.y);
+        after.z = groundHeight(after.x, after.y);
+        home.z = groundHeight(home.x, home.y);
+        u.routeFrom = u.pos;
+        beginMove(u, home, Fixed::zero(), bg.out);
+        planPath(u, before);
+        u.path.push_back(after);
+        u.path.push_back(home);
+        u.stationed = true;
+    }
+}
+
 // ---------------------------------------------------------------- where a garrison is put
 
 bool World::courtyardSpot(const Rampart& ring, const Vec3& p) const {
@@ -576,6 +653,17 @@ std::vector<World::GarrisonPost> World::garrisonPostsAt(size_t gate, const std::
         }
     }
 
+    // On a castle with outworks, a share of the bowmen stand forward, before the main door (World::forwardPosts): in its
+    // watchtowers and on the bank behind the palisade, over the ditch.
+    {
+        const size_t share = std::min<size_t>(wall.size() / 4, kForwardMost);
+        const std::vector<GarrisonPost> fwd = forwardPosts(gate, share, held);
+        for (size_t k = 0; k < fwd.size(); ++k) {
+            out[wall.front()] = fwd[k];
+            held.push_back(fwd[k].pos);
+            wall.erase(wall.begin());
+        }
+    }
     // The bowmen: an embrasure each, the two nearest the doors first (one either side; nothing stands over the gate), the rest
     // spread by an even pitch round the rest of the ring. More bowmen than embrasures: the others take the line, behind the foot.
     {

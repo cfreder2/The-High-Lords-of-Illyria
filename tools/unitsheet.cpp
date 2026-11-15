@@ -141,6 +141,26 @@ int main() {
                     s.ranged.explosive.fuseTicks ? ((fire ? "burns " : "") + std::to_string(static_cast<int>(secs(s.ranged.explosive.fuseTicks))) + " s").c_str() : "");
     }
 
+    // Fire arrows and the tower engine (world_works.cpp; docs/GAME_DESIGN.md, "Outworks and timber").
+    std::printf("\n**Fire arrows** (tow and pitch) are loosed only at timber: a foe's engine (it burns, as in a Molotov's fire), a\n"
+                "palisade, abatis, a watchtower or a barricade (two in three catch). Carried: ");
+    {
+        bool first = true;
+        for (int t = 0; t < kUnitTypeCount; ++t) {
+            const UnitStats s = unitStats(static_cast<UnitType>(t));
+            if (s.fireArrows <= 0 || retired(static_cast<UnitType>(t))) continue;
+            std::printf("%s%s %d", first ? "" : ", ", unitTypeName(static_cast<UnitType>(t)), s.fireArrows);
+            first = false;
+        }
+    }
+    std::printf(". Light horse carry one Molotov besides their swords, for an engine (a sortie); once it is thrown they fight\n"
+                "as they always did.\n\n"
+                "**A tower's engine** (a ballista on a gate tower of a castle with outworks) is the garrison's, not a man: %d bolts a\n"
+                "fight, one every 7 s, 55 damage, 75 m/s, 160 m on the level and a metre more for every metre it stands above its mark\n"
+                "(about 175 m from a tower top over the field: a catapult throws 150), at enemy engines first and then the men within\n"
+                "12 m of one, never at anyone else. A stone that strikes it on its tower breaks it (260 hit points).\n",
+                World::kEngineBolts);
+
     std::printf("\n## Satchel charges\n\n");
     std::printf("Carried into battle and laid on the ground, where a satchel lies still and never goes off by itself. A blast or\n"
                 "a Molotov's or a fireball's fire reaching it sets it off a moment later (4 to 11 ticks), and its blast the next\n"

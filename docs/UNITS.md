@@ -85,10 +85,20 @@ at a gate, at four or more men in the lane a stone rolls down, or at three in it
 | Unit | Missile | Wounds | Carried | Muzzle speed | Reload | Draw | Max range | Auto range | Damage | Spread at 100 m | Min range | Blast radius | Blast damage | Fuse |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Archers | arrow | pierce |  | 42 m/s | 4.0 s | 1.47 s | 70 m | 55 m | 16 | 6 m |  |  |  |  |
+| Light Cavalry | Molotov | fire | 1 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m of fire | 10 a second | burns 8 s |
 | Wizards | fireball | fire | 4 | 24 m/s | 7.0 s |  | 50 m | 45 m |  | 4 m |  | 4.5 m | 90 |  |
 | Dragons | fireball | fire | 6 | 30 m/s | 4.0 s |  | 60 m | 50 m |  | 4 m |  | 5.0 m | 70 |  |
 | Dwarven Grenadiers | Molotov | fire | 3 | 14 m/s | 5.0 s |  | 19 m | 16 m |  | 10 m |  | 3.0 m of fire | 10 a second | burns 8 s |
 | Catapults | stone | blunt | 4 | 40 m/s | 14.0 s |  | 150 m | 140 m |  | 4 m | 30 m | 3.0 m | 100 |  |
+
+**Fire arrows** (tow and pitch) are loosed only at timber: a foe's engine (it burns, as in a Molotov's fire), a
+palisade, abatis, a watchtower or a barricade (two in three catch). Carried: Archers 3. Light horse carry one Molotov besides their swords, for an engine (a sortie); once it is thrown they fight
+as they always did.
+
+**A tower's engine** (a ballista on a gate tower of a castle with outworks) is the garrison's, not a man: 12 bolts a
+fight, one every 7 s, 55 damage, 75 m/s, 160 m on the level and a metre more for every metre it stands above its mark
+(about 175 m from a tower top over the field: a catapult throws 150), at enemy engines first and then the men within
+12 m of one, never at anyone else. A stone that strikes it on its tower breaks it (260 hit points).
 
 ## Satchel charges
 

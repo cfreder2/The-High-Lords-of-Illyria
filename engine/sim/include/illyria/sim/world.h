@@ -543,6 +543,7 @@ struct WorkState {
     int32_t fire = 0;         // ticks it has burned (0: not alight)
     uint32_t fellTick = 0;    // when it broke
     int32_t gate = -1;        // a barricade: the gate whose passage it bars
+    PlayerId holder = 255;    // who holds it when it is of no ring and no gate (GateState::kNoHolder: nobody)
     bool barring = false;     // in the way now (a barricade going up bars once a third of it stands)
     // An engine: bolts left, the ticks to the next, the mark it last loosed at.
     int32_t ammo = 0, reload = 0;
@@ -1062,6 +1063,8 @@ public:
     PlayerId workHolder(size_t i) const;
     // A blow on it (hit points; `heavy`: a boulder, a blast or a collapse: it breaks into flying timber).
     void damageWork(size_t i, int32_t amount, const Vec3& at, const Vec3& dir, bool heavy);
+    // A work put up in the battle (a garrison's barricade; tests): its index. `holder` holds it when it is of no ring.
+    size_t placeWork(const Work& w, PlayerId holder = GateState::kNoHolder, int32_t gate = -1);
     // Fire set to it (a fire arrow, a Molotov's oil, a burning neighbour), and fire set to every work within `radius` of a place.
     void igniteWork(size_t i);
     void igniteWorksNear(const Vec3& at, Fixed radius);
@@ -1756,6 +1759,10 @@ private:
     // Whether he stands at a forward post of this ring's: up a watchtower, or on the bank before the walls (its ditch's).
     bool onForwardPost(const Unit& u, const Rampart& ring) const;
     const Ditch* ditchOf(const Rampart& ring) const;
+    // A ring with outworks: `count` forward posts for bowmen before this door (watchtowers, then the bank), clear of `held`.
+    std::vector<GarrisonPost> forwardPosts(size_t gate, size_t count, const std::vector<Vec3>& held) const;
+    // A capital's last stand: its outer ward lost, the garrison falls back through the bailey's doors to the keep.
+    void lastStand(const std::vector<size_t>& doors);
     // Sorties (world_sortie.cpp): the garrison's decision, and a rider's tick of one.
     void garrisonSorties(const std::vector<size_t>& doors);
     bool sortieStep(Unit& u);

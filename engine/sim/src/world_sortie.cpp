@@ -165,7 +165,9 @@ bool World::sortieStep(Unit& u) {
         return false;
     }
     const Unit* mark = findUnit(u.sortieMark);
-    if (mark == nullptr || !mark->alive() || tick_ - u.sortieTick > kSortieTicks || u.hp * 2 < u.stats.maxHp) {
+    // Back once it is down, or alight and his bottle thrown (the fire does the rest: he does not stand in it), or after a
+    // while, or hurt.
+    if (mark == nullptr || !mark->alive() || (mark->burning > 0 && !armed(u)) || tick_ - u.sortieTick > kSortieTicks || u.hp * 2 < u.stats.maxHp) {
         back();
         return false;
     }

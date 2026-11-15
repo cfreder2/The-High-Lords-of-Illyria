@@ -28,7 +28,7 @@ constexpr Fixed kRailing = Fixed::fromRatio(11, 10);
 // Climbing a watchtower's ladder, up or down.
 constexpr int32_t kClimbTicks = 3 * kTicksPerSecond;
 // A man bound for a tower climbs once his feet are this near its foot.
-constexpr Fixed kFootReach = Fixed::fromRatio(5, 2);
+constexpr Fixed kFootReach = Fixed::fromInt(4);
 // What breaks timber: a boulder's blow (its energy, 100 from the air) this many times over; a blast's damage at its
 // middle by kind (percent); a hand's blow as a gate takes it (a quarter).
 constexpr int32_t kStoneOnTimber = 3;
@@ -38,7 +38,7 @@ constexpr int32_t kBlowDivisor = 4;
 constexpr int32_t kBurnPerSec = 12, kSpreadAfter = 8 * kTicksPerSecond, kSpreadEighths = 3, kBurnMan = 3;
 constexpr Fixed kSpreadReach = Fixed::fromInt(2), kBurnBeside = Fixed::fromRatio(3, 5);
 // The pieces a work throws when it breaks, and how heavy they run (percent beams and planks).
-constexpr int32_t kPiecesPalisade = 4, kPiecesAbatis = 4, kPiecesTower = 10, kPiecesBarricade = 6, kPiecesEngine = 5, kPiecesGate = 8;
+constexpr int32_t kPiecesPalisade = 4, kPiecesAbatis = 4, kPiecesTower = 12, kPiecesBarricade = 6, kPiecesEngine = 5, kPiecesGate = 8;
 constexpr int32_t kHeftPalisade = 60, kHeftAbatis = 70, kHeftTower = 60, kHeftBarricade = 50, kHeftEngine = 50, kHeftGate = 60;
 // The barricade: begun when the doors are under this share of their strength, this far behind the wall's inner face, this
 // much wider than the gateway, its strength, how fast it goes up for each of the garrison's foot at work (four at most,
@@ -129,26 +129,32 @@ const std::vector<uint32_t>& worksNear(const Grid& grid, Fixed x, Fixed y, Fixed
 // ------------------------------------------------------------------------------------------------------------ standing
 
 void World::initWorks() {
+    for (size_t i = 0; i < works_.size(); ++i)
+        if (works_[i].standing() && works_[i].barring) barWorkCells(i, false);
     works_.clear();
     workGrid_.clear();
     barred_.clear();
     timberLying_ = 0;
     if (!config_.region) return;
-    for (const Work& w : config_.region->works()) {
-        WorkState st;
-        st.def = w;
-        st.hp = w.maxHp;
-        st.barring = true;
-        if (w.kind == Work::Kind::Engine) st.ammo = kEngineBolts;
-        works_.push_back(st);
-    }
-    for (size_t i = 0; i < works_.size(); ++i) {
-        const Box b = boxOf(works_[i].def);
-        const Fixed reach = max(b.hu, b.hn) + Fixed::one();
-        for (Fixed y = b.c.y - reach; y <= b.c.y + reach + Fixed::fromInt(8); y += Fixed::fromInt(8))
-            for (Fixed x = b.c.x - reach; x <= b.c.x + reach + Fixed::fromInt(8); x += Fixed::fromInt(8)) workGrid_.insert(static_cast<uint32_t>(i), min(x, b.c.x + reach), min(y, b.c.y + reach));
-        barWorkCells(i, true);
-    }
+    for (const Work& w : config_.region->works()) placeWork(w);
+}
+
+size_t World::placeWork(const Work& w, PlayerId holder, int32_t gate) {
+    WorkState st;
+    st.def = w;
+    st.hp = w.maxHp;
+    st.barring = gate < 0;  // (a barricade bars once a third of it is up: raiseBarricades)
+    st.holder = holder;
+    st.gate = gate;
+    if (w.kind == Work::Kind::Engine) st.ammo = kEngineBolts;
+    works_.push_back(st);
+    const size_t i = works_.size() - 1;
+    const Box b = boxOf(w);
+    const Fixed reach = max(b.hu, b.hn) + Fixed::one();
+    for (Fixed y = b.c.y - reach; y <= b.c.y + reach + Fixed::fromInt(8); y += Fixed::fromInt(8))
+        for (Fixed x = b.c.x - reach; x <= b.c.x + reach + Fixed::fromInt(8); x += Fixed::fromInt(8)) workGrid_.insert(static_cast<uint32_t>(i), min(x, b.c.x + reach), min(y, b.c.y + reach));
+    barWorkCells(i, true);
+    return i;
 }
 
 PlayerId World::workHolder(size_t i) const {
@@ -160,6 +166,7 @@ PlayerId World::workHolder(size_t i) const {
             if (config_.region->gates()[g].ring == w.def.ring) return gates_[g].holder;
     }
     // A watchtower of nobody's ring: whoever stands on it.
+    if (w.holder != GateState::kNoHolder) return w.holder;
     if (w.def.kind == Work::Kind::Watchtower)
         for (const Unit& u : units_)
             if (u.alive() && u.perch == static_cast<int32_t>(i)) return u.owner;
@@ -187,7 +194,10 @@ void World::barWorkCells(size_t i, bool on) {
     std::sort(cells.begin(), cells.end());
     cells.erase(std::unique(cells.begin(), cells.end()), cells.end());
     const uint8_t kinds[3] = {NavGrid::kBarMounted, NavGrid::kBarAll, NavGrid::kBarSlow};
-    const uint8_t mine = on ? bars : barsOf(WorkState{w.def, 1, 0, 0, w.gate, true});
+    WorkState whole = w;  // (what it barred while it stood)
+    whole.hp = std::max(whole.hp, 1);
+    whole.barring = true;
+    const uint8_t mine = on ? bars : barsOf(whole);
     for (const int32_t c : cells) {
         std::array<uint8_t, 3>& count = barred_[c];
         uint8_t now = 0;
@@ -227,8 +237,16 @@ Fixed World::workHit(const Vec3& a, const Vec3& b, Fixed limitT, int32_t* which)
     bool hit = false;
     for (const uint32_t k : worksNear(workGrid_, mid.x, mid.y, seg.flat().length() / 2 + Fixed::fromInt(4))) {
         const WorkState& w = works_[k];
-        if (!w.standing() || w.def.kind == Work::Kind::Engine || !w.barring) continue;
-        const Box bx = boxOf(w.def);
+        if (!w.standing() || !w.barring) continue;
+        Box bx = boxOf(w.def);
+        // (A tower's engine: its frame on the top, which a stone that strikes it meets.)
+        if (w.def.kind == Work::Kind::Engine) {
+            bx.hu = bx.hn = w.def.halfThick * 2;
+            bx.foot = w.def.a.z - Fixed::fromInt(2);
+            bx.top = w.def.a.z + Fixed::fromRatio(3, 2);
+        }
+        // (A missile leaving it, loosed from its platform, is not caught by it.)
+        if (outside(bx, a, Fixed::zero()) <= Fixed::zero() && a.z >= bx.foot + w.def.height - Fixed::fromInt(3)) continue;
         // Where the flight enters the box (slab by slab), then whether it is under the top there.
         Fixed t0 = Fixed::zero(), t1 = Fixed::one();
         bool miss = false;
@@ -271,9 +289,10 @@ bool World::workBars(const Unit& u, Fixed x, Fixed y) const {
         const uint8_t bars = barsOf(w);
         if (bars == 0 || (!(bars & NavGrid::kBarAll) && !mounted)) continue;
         const Box b = boxOf(w.def);
-        if (outside(b, {x, y, Fixed::zero()}, u.stats.radius) > Fixed::zero()) continue;
-        // (A man already in it may go out of it: one caught by a barricade going up is not held there.)
-        if (outside(b, u.pos, u.stats.radius) <= Fixed::zero()) continue;
+        const Fixed there = outside(b, {x, y, Fixed::zero()}, u.stats.radius);
+        if (there > Fixed::zero()) continue;
+        // (A man already in it may go out of it, never deeper: one caught by a barricade going up is not held there.)
+        if (there > outside(b, u.pos, u.stats.radius)) continue;
         return true;
     }
     return false;
@@ -303,7 +322,7 @@ void World::damageWork(size_t i, int32_t amount, const Vec3& at, const Vec3& dir
     w.hp -= amount;
     impacts_.push_back({ImpactEvent::Kind::Struck, at, dir, kNoEntity, kNoEntity, w.hp <= 0, Fixed::fromInt(amount), static_cast<int32_t>(Structure::Timber)});
     if (w.hp <= 0) {
-        breakWork(i, unitFlat(dir, -w.def.out), heavy ? Fixed::fromInt(std::min(amount, 400)) / 25 : Fixed::fromInt(2));
+        breakWork(i, unitFlat(dir, -w.def.out), heavy ? Fixed::fromInt(std::min(amount, 450)) / 15 : Fixed::fromInt(2));
     } else if (heavy && amount >= 60) {
         // A heavy blow that leaves it standing chips it: splinters, a stave.
         throwTimber(at, unitFlat(dir, -w.def.out), Fixed::fromInt(amount) / 30, 2, 20);
@@ -312,7 +331,7 @@ void World::damageWork(size_t i, int32_t amount, const Vec3& at, const Vec3& dir
 
 void World::breakWork(size_t i, const Vec3& dir, Fixed strength) {
     WorkState& w = works_[i];
-    barWorkCells(i, false);
+    if (w.barring) barWorkCells(i, false);
     w.hp = 0;
     w.fire = 0;
     w.fellTick = tick_;
@@ -320,12 +339,12 @@ void World::breakWork(size_t i, const Vec3& dir, Fixed strength) {
     int32_t heft = 50;
     const int32_t pieces = piecesOf(w.def.kind, heft);
     const Box b = boxOf(w.def);
-    // Its timbers fly from its middle, half way up (a tower's from its platform as it goes over).
-    const Vec3 from = b.c + up((b.top - b.foot) / 2 + (b.foot - b.c.z));
+    // Its timbers fly from about a man's height (a tower's legs go first; its engine's from the top of its tower).
+    const Vec3 from = b.c + up(w.def.kind == Work::Kind::Engine ? Fixed::one() : min((b.top - b.foot) / 2, Fixed::fromRatio(3, 2)) + (b.foot - b.c.z));
     throwTimber(from, dir, max(strength, Fixed::fromInt(2)), pieces, heft);
     // The men on a watchtower go over with it: thrown off, falling (World::updateAirborne).
     for (Unit& u : units_) {
-        if (!u.alive() || (u.perch != static_cast<int32_t>(i) && u.perch != -2 - static_cast<int32_t>(i))) continue;
+        if (!u.present() || (u.perch != static_cast<int32_t>(i) && u.perch != -2 - static_cast<int32_t>(i))) continue;  // (the dead on it too)
         const bool up_ = u.perch == static_cast<int32_t>(i);
         u.perch = -1;
         u.climb = 0;
@@ -344,11 +363,11 @@ void World::throwTimber(const Vec3& from, const Vec3& dir, Fixed speed, int32_t 
         const RemainKind kind = roll < heft / 2 ? RemainKind::Beam : roll < heft ? RemainKind::Plank : RemainKind::Splinter;
         const Fixed out = Fixed::fromRatio(3, 5) + rng_.nextUnit() * 3 / 5;
         const Fixed across = rng_.nextSigned();
-        const Fixed lift = Fixed::fromRatio(3, 10) + rng_.nextUnit() / 2;
+        const Fixed lift = Fixed::fromRatio(1, 10) + rng_.nextUnit() / 4;
         // Heavier timber flies slower; splinters fastest.
         const Fixed heft_ = kind == RemainKind::Beam ? Fixed::fromRatio(3, 5) : kind == RemainKind::Plank ? Fixed::fromRatio(4, 5) : Fixed::fromRatio(6, 5);
         const Fixed v = speed * heft_;
-        spawnDebris(kind, GateState::kNoHolder, from + side * (across * 2), dir * (v * out) + side * (v * across / 2) + up(v * lift + Fixed::one()));
+        spawnDebris(kind, GateState::kNoHolder, from + side * (across * 2), dir * (v * out) + side * (v * across / 2) + up(v * lift));
     }
 }
 
@@ -453,16 +472,16 @@ bool World::worksTick(Unit& u) {
     if (works_.empty()) return false;
     if (u.perch >= 0 || u.climb > 0) return perched(u);
     if (u.perch <= -2) return climbTower(u);
-    // A bowman come up onto a watchtower's platform (placed there, or thrown up) is on it.
-    if (!u.inAir() && u.stats.ranged.muzzleSpeed > Fixed::zero() && !u.stats.mounted)
+    // A bowman put on a watchtower's place (a garrison's post: World::garrisonPosts) is up on it.
+    if (!u.inAir() && !u.hasMoveTarget && u.stats.ranged.kind == ProjectileKind::Arrow && u.stats.ranged.muzzleSpeed > Fixed::zero() && !u.stats.mounted)
         for (const uint32_t k : worksNear(workGrid_, u.pos.x, u.pos.y, Fixed::one())) {
             const WorkState& w = works_[k];
-            if (!w.standing() || w.def.kind != Work::Kind::Watchtower || u.pos.z < w.def.a.z + w.def.height - Fixed::one()) continue;
+            if (!w.standing() || w.def.kind != Work::Kind::Watchtower || perchedOn(k) >= kPerchPlaces) continue;
             if (outside(boxOf(w.def), u.pos, Fixed::zero()) > Fixed::zero()) continue;
             u.perch = static_cast<int32_t>(k);
-            u.perchSlot = perchedOn(k) > 1 ? 1 : 0;
+            u.perchSlot = 0;
             for (const Unit& o : units_)
-                if (o.id != u.id && o.alive() && o.perch == u.perch && o.perchSlot == u.perchSlot) u.perchSlot = 1 - u.perchSlot;
+                if (o.id != u.id && o.alive() && o.perch == u.perch && o.perchSlot == 0) u.perchSlot = 1;
             return perched(u);
         }
     if (u.attackWork >= 0) {
@@ -490,7 +509,12 @@ bool World::climbTower(Unit& u) {
         return false;
     }
     const WorkState& w = works_[static_cast<size_t>(t)];
-    if (outside(boxOf(w.def), u.pos, Fixed::zero()) > kFootReach) return false;  // on his way there: his move
+    const Fixed off = outside(boxOf(w.def), u.pos, Fixed::zero());
+    if (off > kFootReach) {
+        // On his way there (his move); stopped short of it with nowhere nearer to go, he gives it up.
+        if (!u.hasMoveTarget) u.perch = -1;
+        return false;
+    }
     if (perchedOn(static_cast<size_t>(t)) - (u.climb > 0 ? 1 : 0) >= kPerchPlaces) {
         u.perch = -1;  // no room: he stands at its foot
         u.hasMoveTarget = false;
@@ -500,9 +524,6 @@ bool World::climbTower(Unit& u) {
     u.hasMoveTarget = false;
     u.path.clear();
     u.climb = kClimbTicks;
-    u.perchSlot = 0;
-    for (const Unit& o : units_)
-        if (o.id != u.id && o.alive() && (o.perch == t || o.perch == u.perch) && o.perchSlot == 0) u.perchSlot = 1;
     return true;
 }
 
@@ -511,7 +532,11 @@ bool World::perched(Unit& u) {
     if (u.climb > 0) {
         if (--u.climb > 0) return true;
         if (u.perch <= -2) {
+            // Up: the free place of the two.
             u.perch = -2 - u.perch;
+            u.perchSlot = 0;
+            for (const Unit& o : units_)
+                if (o.id != u.id && o.alive() && o.perch == u.perch && o.perchSlot == 0) u.perchSlot = 1;
         } else if (u.perch >= 0) {
             // Down at its foot, on the side he is going.
             const WorkState& w = works_[static_cast<size_t>(u.perch)];
@@ -556,7 +581,25 @@ bool World::perched(Unit& u) {
         if (readyToLoose(u)) fireAt(u, u.attackTarget);
         return true;
     }
-    if (!shootNearby(u)) u.facing = w.def.out;
+    // The nearest foe in his reach and out of the dead ground under the platform (the men hugging its legs it hides).
+    const Unit* best = nullptr;
+    Fixed bestD;
+    const Fixed dead = w.def.halfThick + Fixed::fromInt(4);
+    nearbyNotOf(u.owner, u.pos.x, u.pos.y, u.stats.ranged.autoRange + Fixed::fromInt(20), [&](uint32_t k) {
+        const Unit& e = units_[k];
+        if (!e.alive() || e.owner == u.owner || concealed(e, u.owner)) return;
+        if ((e.pos - w.def.a).flat().length() < dead) return;
+        const Fixed d = (e.pos - u.pos).flat().length();
+        if (d > shotRange(u, u.stats.ranged.autoRange, e.pos) || (best != nullptr && d >= bestD)) return;
+        best = &e;
+        bestD = d;
+    });
+    if (best == nullptr) {
+        u.facing = w.def.out;
+        return true;
+    }
+    u.facing = unitFlat(best->pos - u.pos, u.facing);
+    if (readyToLoose(u)) fireAt(u, best->pos);
     return true;
 }
 
@@ -581,9 +624,35 @@ bool World::hackWork(Unit& u) {
     const Box b = boxOf(w.def);
     const Fixed gap = outside(b, u.pos, Fixed::zero()) - u.stats.radius;
     if (gap > u.stats.melee.reach + Fixed::fromRatio(1, 2)) {
+        // Near it: straight up to it (the nav's cells are coarser than a stake, and a barricade's close the gateway it is in).
+        if (u.attackWork >= 0 && gap < Fixed::fromInt(16) && (nav_ == nullptr || nav_->clearLine(u.pos, b.c + (u.pos - b.c).flat() * Fixed::fromRatio(1, 2), Gait::Foot) || gap < Fixed::fromInt(5))) {
+            u.hasMoveTarget = false;
+            u.path.clear();
+            const Vec3 rel = (u.pos - b.c).flat();
+            const Fixed span = max(b.hu - (w.gate >= 0 ? kBarricadeWider + Fixed::one() : Fixed::zero()), Fixed::zero());
+            const Fixed lat = clamp(rel.dot(b.u), -span, span);
+            const Fixed side = rel.dot(b.n) >= Fixed::zero() ? Fixed::one() : -Fixed::one();
+            walk(u, b.c + b.u * lat + b.n * (side * (b.hn + u.stats.radius + Fixed::fromRatio(1, 5))));
+            u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+            return true;
+        }
         // Ordered at it and not there yet: his walk there is the move.
         if (u.attackWork >= 0 && !u.hasMoveTarget) {
-            const Vec3 face = b.c + unitFlat(u.pos - b.c, w.def.out) * (max(b.hu, b.hn) + u.stats.radius);
+            // Its face on his side, the point of it nearest him.
+            const Vec3 rel = (u.pos - b.c).flat();
+            // (A barricade's ends are in the stone either side of the gateway: up to it within the passage.)
+            const Fixed span = max(b.hu - (w.gate >= 0 ? kBarricadeWider + Fixed::fromRatio(3, 2) : Fixed::one()), Fixed::zero());
+            const Fixed lat = clamp(rel.dot(b.u), -span, span);
+            Fixed side = rel.dot(b.n) >= Fixed::zero() ? Fixed::one() : -Fixed::one();
+            // (A barricade's: the gateway's side, for a man outside the walls.)
+            if (w.gate >= 0 && config_.region) {
+                const Gate& g = config_.region->gates()[static_cast<size_t>(w.gate)];
+                const bool in = Gate::inside(config_.region->ramparts()[static_cast<size_t>(g.ring)], u.pos);
+                side = (b.n.dot(g.out) >= Fixed::zero()) != in ? Fixed::one() : -Fixed::one();
+            }
+            Vec3 face = b.c + b.u * lat + b.n * (side * (b.hn + max(u.stats.radius, Fixed::fromInt(2)) + Fixed::one()));
+            // (Out of the cells it bars, or the way there is no way.)
+            for (int k = 0; k < 4 && nav_ && (nav_->barsAt(face) & NavGrid::kBarAll); ++k) face = face + b.n * (side * Fixed::fromInt(2));
             beginMove(u, {face.x, face.y, groundHeight(face.x, face.y)}, Fixed::zero(), {});
             planPath(u, u.moveTarget);
         }
@@ -724,7 +793,7 @@ void World::engineTick(size_t i) {
     if (mark == nullptr) return;
     w.mark = mark->id;
     // A bolt, flat and quick, from the top of the tower; a little scatter at long range.
-    const Vec3 origin = w.def.a + up(Fixed::fromRatio(6, 5));
+    const Vec3 origin = w.def.a + up(Fixed::fromRatio(17, 10));  // (over its own frame)
     Fixed dx, dy;
     do {
         dx = rng_.nextSigned();
@@ -780,17 +849,8 @@ void World::raiseBarricades() {
             w.out = gate.out;
             w.maxHp = kBarricadeHp;
             w.ring = gate.ring;
-            WorkState s;
-            s.def = w;
-            s.hp = 1;
-            s.gate = static_cast<int32_t>(g);
-            s.barring = false;
-            works_.push_back(s);
-            const size_t i = works_.size() - 1;
-            const Box b = boxOf(w);
-            const Fixed reach = max(b.hu, b.hn) + Fixed::one();
-            for (Fixed y = b.c.y - reach; y <= b.c.y + reach + Fixed::fromInt(8); y += Fixed::fromInt(8))
-                for (Fixed x = b.c.x - reach; x <= b.c.x + reach + Fixed::fromInt(8); x += Fixed::fromInt(8)) workGrid_.insert(static_cast<uint32_t>(i), min(x, b.c.x + reach), min(y, b.c.y + reach));
+            const size_t i = placeWork(w, GateState::kNoHolder, static_cast<int32_t>(g));
+            works_[i].hp = 1;
             have = static_cast<int32_t>(i);
         }
         WorkState& w = works_[static_cast<size_t>(have)];
@@ -832,6 +892,50 @@ bool World::onForwardPost(const Unit& u, const Rampart& ring) const {
     if (d == nullptr || Gate::inside(ring, u.pos)) return false;
     const Fixed r = (u.pos - d->centre).flat().length();
     return r >= d->bankIn - Fixed::fromInt(2) && r <= d->outer;
+}
+
+std::vector<World::GarrisonPost> World::forwardPosts(size_t gate, size_t count, const std::vector<Vec3>& held) const {
+    // On a castle with outworks, before its main door: the watchtowers' places first, then the bank behind the palisade,
+    // either side of the causeway outward along it, a few paces apart, every man facing out over the ditch.
+    std::vector<GarrisonPost> out;
+    if (!config_.region || count == 0) return out;
+    const Region& rg = *config_.region;
+    const Gate& g = rg.gates()[gate];
+    if (g.side) return out;
+    const Rampart& ring = rg.ramparts()[static_cast<size_t>(g.ring)];
+    const Ditch* d = ditchOf(ring);
+    if (d == nullptr) return out;
+    const auto free = [&](const Vec3& p) {
+        for (const Vec3& q : held)
+            if ((q - p).flat().lengthSq() < Fixed::fromInt(2)) return false;
+        for (const GarrisonPost& q : out)
+            if ((q.pos - p).flat().lengthSq() < Fixed::fromInt(2)) return false;
+        return true;
+    };
+    // (The watchtowers take half of them at most: the rest line the bank.)
+    const size_t towers = (count + 1) / 2;
+    for (size_t i = 0; i < works_.size() && out.size() < towers; ++i) {
+        const WorkState& w = works_[i];
+        if (!w.standing() || w.def.kind != Work::Kind::Watchtower || w.def.ring != g.ring) continue;
+        if ((w.def.a - (g.a + g.b) * Fixed::fromRatio(1, 2)).flat().length() > Fixed::fromInt(60)) continue;
+        bool taken = false;
+        for (const Vec3& q : held) taken = taken || (q - w.def.a).flat().lengthSq() < Fixed::fromInt(4);
+        for (int32_t s = taken ? kPerchPlaces : perchedOn(i); s < kPerchPlaces && out.size() < towers; ++s) out.push_back({w.def.a, w.def.out, GarrisonRole::Wall});
+    }
+    const Vec3 mid = (g.a + g.b) * Fixed::fromRatio(1, 2);
+    const Vec3 dir = unitFlat(mid - d->centre, g.out);
+    const Fixed r = d->inner - Fixed::fromRatio(11, 5);
+    const Vec3 side{-dir.y, dir.x, Fixed::zero()};
+    for (int32_t step = 0; step < 40 && out.size() < count; ++step) {
+        const Fixed lateral = Fixed::fromInt(8) + Fixed::fromRatio(5, 2) * (step / 2);
+        const Vec3 guess = d->centre + dir * r + side * (step % 2 == 0 ? lateral : -lateral);
+        const Vec3 rad = unitFlat(guess - d->centre, dir);
+        Vec3 p = d->centre + rad * r;
+        p.z = groundHeight(p.x, p.y);
+        if (d->causeway(p.x, p.y) || !standable(p) || workAt(p, Fixed::fromRatio(1, 2)) >= 0 || !free(p)) continue;
+        out.push_back({p, rad, GarrisonRole::Wall});
+    }
+    return out;
 }
 
 void World::recallForward(const std::vector<size_t>& doors) {

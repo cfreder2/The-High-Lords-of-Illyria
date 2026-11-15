@@ -256,10 +256,12 @@ TEST(a_towns_garrison_wakes_inside_its_walls) {
         }
     CHECK(id != 0);
     const Continent::City& t = continent().cities()[static_cast<size_t>(town)];
+    // (Its garrison's forward bowmen stand on its outworks, out to its ditch.)
+    const Fixed reach = t.fortified() ? t.ditch.outer + m(2) : m(70);
     const auto woken = [&] {
         int n = 0;
         if (const World* w = c.world())
-            for (const Unit& u : w->units()) n += u.owner == Conquest::kNeutral && (u.pos - local(*w->region(), t.pos)).flat().length() <= m(70);
+            for (const Unit& u : w->units()) n += u.owner == Conquest::kNeutral && (u.pos - local(*w->region(), t.pos)).flat().length() <= reach;
         return n;
     };
     for (int k = 0; k < 6000 && woken() < most; ++k) c.step();
@@ -273,10 +275,12 @@ TEST(a_towns_garrison_wakes_inside_its_walls) {
     const Rampart& rp = outer(r, centre);
     int men = 0, misplaced = 0;
     for (const Unit& u : w->units()) {
-        if (u.owner != Conquest::kNeutral || (u.pos - centre).flat().length() > m(70)) continue;  // (the neighbouring towns' own are woken too)
+        if (u.owner != Conquest::kNeutral || (u.pos - centre).flat().length() > reach) continue;  // (the neighbouring towns' own are woken too)
         ++men;
         const bool onWalk = u.pos.z > t.pos.z + m(3);
-        const bool inside = onWalk || Gate::inside(rp, u.pos);
+        const Fixed rr = (u.pos - centre).flat().length();
+        const bool forward = t.fortified() && (u.perch >= 0 || (rr > t.ditch.bankIn - m(2) && rr < t.ditch.outer));
+        const bool inside = onWalk || forward || Gate::inside(rp, u.pos);
         if (!inside || (!onWalk && nav.blocked(u.pos))) {
             ++misplaced;
             std::printf("  at (%.1f, %.1f) %s\n", u.pos.x.toDouble(), u.pos.y.toDouble(), inside ? "on closed ground" : "outside");

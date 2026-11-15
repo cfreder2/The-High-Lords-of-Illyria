@@ -1887,7 +1887,7 @@ void World::separateBodies() {
         if (u.present()) keepOnWalk(u);  // the thrown too
     }
     for (Unit& u : units_) {
-        if (u.present() && !u.inAir() && u.flight == Unit::Flight::Grounded) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
+        if (u.present() && !u.inAir() && u.flight == Unit::Flight::Grounded && u.perch < 0) u.pos.z = standingHeight(u.pos.x, u.pos.y, u.pos.z);
     }
 }
 

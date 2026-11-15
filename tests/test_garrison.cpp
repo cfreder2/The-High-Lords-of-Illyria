@@ -45,7 +45,7 @@ const Unit* unitOf(const World& w, const Man& m) { return m.unit ? w.findUnit(m.
 
 namespace {
 struct Layout {
-    int wall = 0, foot = 0, rear = 0;
+    int wall = 0, foot = 0, rear = 0, forward = 0;
     std::set<size_t> embrasures;
     bool allOnGrid = true, noneInStone = true, wallOnWalk = true, groundInside = true, facing = true, rearBehind = true, wallPitch = true;
     double footDepth = 0, rearDepth = 1e9;
@@ -74,6 +74,18 @@ Layout inspect(const Seat& s) {
                         at = true;
                         l.embrasures.insert(e);
                     }
+                // (A castle with outworks stands a quarter of its bowmen forward: up its watchtowers, on the bank over its ditch.)
+                if (!at) {
+                    bool forward = u->perch >= 0;
+                    for (const Ditch& d : w.region()->ditches()) {
+                        const Fixed r = (u->pos - d.centre).flat().length();
+                        forward = forward || (r > d.bankIn - Fixed::fromInt(2) && r < d.outer);
+                    }
+                    if (forward) {
+                        ++l.forward;
+                        continue;
+                    }
+                }
                 l.wallOnWalk = l.wallOnWalk && at;
                 for (const Vec3& q : walls) l.wallPitch = l.wallPitch && (q - u->pos).flat().length() >= Fixed::fromInt(3);
                 walls.push_back(u->pos);
@@ -110,10 +122,11 @@ TEST(a_capitals_garrison_stands_as_one_bowmen_on_the_walk_foot_in_ranks_the_rest
         CHECK(s.stack != nullptr);
         CHECK(s.gate != World::kNoGate);
         const Layout l = inspect(s);
-        std::printf("  lord %d: %d bowmen on %zu embrasures, %d foot, %d behind\n", lord, l.wall, l.embrasures.size(), l.foot, l.rear);
+        std::printf("  lord %d: %d bowmen on %zu embrasures and %d forward, %d foot, %d behind\n", lord, l.wall, l.embrasures.size(), l.forward, l.foot, l.rear);
         CHECK(l.wall >= 12 && l.foot >= 24 && l.rear >= 1);
-        CHECK(l.wallOnWalk);  // every bowman at an embrasure of the walk
-        CHECK(static_cast<int>(l.embrasures.size()) == l.wall);  // one to an embrasure
+        CHECK(l.wallOnWalk);  // every bowman at an embrasure of the walk, or forward on the outworks
+        CHECK(l.forward >= 1 && l.forward * 4 <= l.wall + l.forward);  // (a quarter at most: a seat has outworks)
+        CHECK(static_cast<int>(l.embrasures.size()) == l.wall - l.forward);  // one to an embrasure
         CHECK(l.wallPitch);  // none bunched
         CHECK(l.allOnGrid);
         CHECK(l.groundInside);  // the rest on the courtyard's ground, inside the ring
