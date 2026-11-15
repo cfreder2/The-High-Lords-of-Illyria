@@ -45,21 +45,21 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 
 | Voice | Used by | Situations | Lines |
 |---|---|---:|---:|
-| Soldier (`soldier`) | Light Infantry, Heavy Infantry, Pikemen, Warriors | 27 | 93 |
-| Archer (`archer`) | Archers | 27 | 92 |
-| Dwarf (`dwarf`) | Dwarves, Dwarf Grenadiers | 29 | 100 |
-| Rider (`rider`) | Light Cavalry, Heavy Cavalry, Wolf Riders | 27 | 92 |
-| Hero (`hero`) | Heroes | 24 | 83 |
-| Wizard (`wizard`) | Wizards, Journeymen | 28 | 96 |
-| Berserker (`berserker`) | Berserkers | 27 | 91 |
-| Archon (`archon`) | Archons | 27 | 90 |
+| Soldier (`soldier`) | Light Infantry, Heavy Infantry, Pikemen, Warriors | 29 | 99 |
+| Archer (`archer`) | Archers | 29 | 98 |
+| Dwarf (`dwarf`) | Dwarves, Dwarf Grenadiers | 31 | 106 |
+| Rider (`rider`) | Light Cavalry, Heavy Cavalry, Wolf Riders | 29 | 98 |
+| Hero (`hero`) | Heroes | 26 | 89 |
+| Wizard (`wizard`) | Wizards, Journeymen | 30 | 102 |
+| Berserker (`berserker`) | Berserkers | 29 | 97 |
+| Archon (`archon`) | Archons | 29 | 96 |
 | Engine crew (`engine`) (else soldier) | Catapult | 17 | 58 |
 | Brute (`brute`) | Giants, Minotaurs | 15 | 49 |
 | Undead (`undead`) | Undead | 11 | 38 |
 | Fiend (`fiend`) | Devils, Demons | 14 | 46 |
 | Beast (`beast`) | Spiders, Griffins, Pegasi, Elephants, Unicorns, Dragons | 14 | 46 |
 | Herald (`herald`) | (the battle's narrator) | 11 | 33 |
-| **Total** | | | **1007** |
+| **Total** | | | **1055** |
 
 ## Situations
 
@@ -84,6 +84,8 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 | `wounded` | Badly wounded | Down to a third of his strength. | 1 |
 | `arrow_fire` | Under arrow fire | Arrows falling on them. | 1 |
 | `flanked` | Flanked | Struck from the side or behind. | 1 |
+| `call_help` | Call for help | His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends. | 4 |
+| `answering` | Answering | His squad goes to the help of one that called. | 3 |
 | `friendly_fire` | Friendly fire | Hit by his own side's arrows or bombs. | 2 |
 | `fuse` | Fire in the hole | A grenadier lights and throws a satchel. | 2 |
 | `healing` | Healing | A healer mends a wounded friend. | 1 |
@@ -112,7 +114,7 @@ the sound. Growl, moan, hiss, roar; layering two takes, or an animal recording, 
 
 Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only when all is quiet).
 
-## Soldier (`soldier`): 93 lines
+## Soldier (`soldier`): 99 lines
 
 *Used by:* Light Infantry, Heavy Infantry, Pikemen, Warriors.  
 *Casting:* A seasoned foot soldier of thirty or forty: plain-spoken, rough, dependable. Myth's dwarf-less warriors; no accent needed.
@@ -324,6 +326,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `soldier/flanked_2.wav` | On our flank! | alarmed shout, turning round |
 | `soldier/flanked_3.wav` | Turn, turn! | alarmed shout, turning round |
 
+### Soldier: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `soldier/call_help_1.wav` | To us! To us! | urgent shout across the field, carrying |
+| `soldier/call_help_2.wav` | We are hard pressed! | urgent shout across the field, carrying |
+| `soldier/call_help_3.wav` | Help here, for pity! | urgent shout across the field, carrying |
+
+### Soldier: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `soldier/answering_1.wav` | We are coming! | loud and steady, called back across the field |
+| `soldier/answering_2.wav` | Hold on, we come! | loud and steady, called back across the field |
+| `soldier/answering_3.wav` | On our way! | loud and steady, called back across the field |
+
 ### Soldier: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -426,7 +450,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `soldier/death_moan_2.wav` | Uhhh... (a gurgling moan) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `soldier/death_moan_3.wav` | Ghh... (choking) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Archer (`archer`): 92 lines
+## Archer (`archer`): 98 lines
 
 *Used by:* Archers.  
 *Casting:* A younger bowman: sharp-eyed, a little cocky, quick-tongued. Lighter and higher than the Soldier.
@@ -637,6 +661,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `archer/flanked_2.wav` | Flank! Flank! | alarmed shout, turning round |
 | `archer/flanked_3.wav` | Behind! | alarmed shout, turning round |
 
+### Archer: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `archer/call_help_1.wav` | They are on us! Help! | urgent shout across the field, carrying |
+| `archer/call_help_2.wav` | Foot to the bows! | urgent shout across the field, carrying |
+| `archer/call_help_3.wav` | We cannot hold them off! | urgent shout across the field, carrying |
+
+### Archer: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `archer/answering_1.wav` | Bows are with you! | loud and steady, called back across the field |
+| `archer/answering_2.wav` | We have them in sight! | loud and steady, called back across the field |
+| `archer/answering_3.wav` | Coming up! | loud and steady, called back across the field |
+
 ### Archer: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -739,7 +785,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `archer/death_moan_2.wav` | Ohh... (a short moan) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `archer/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Dwarf (`dwarf`): 100 lines
+## Dwarf (`dwarf`): 106 lines
 
 *Used by:* Dwarves, Dwarf Grenadiers.  
 *Casting:* A gruff old dwarf: deep, gravelly, stubborn, dry humour. Myth's dwarves: a Scots or northern burr suits.
@@ -951,6 +997,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `dwarf/flanked_2.wav` | Turn about! | alarmed shout, turning round |
 | `dwarf/flanked_3.wav` | Sneaky devils! | alarmed shout, turning round |
 
+### Dwarf: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/call_help_1.wav` | To the dwarves! Now! | urgent shout across the field, carrying |
+| `dwarf/call_help_2.wav` | Lend an axe here! | urgent shout across the field, carrying |
+| `dwarf/call_help_3.wav` | We are beset! | urgent shout across the field, carrying |
+
+### Dwarf: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `dwarf/answering_1.wav` | Hold fast, we come! | loud and steady, called back across the field |
+| `dwarf/answering_2.wav` | Axes coming! | loud and steady, called back across the field |
+| `dwarf/answering_3.wav` | Dwarves are with you! | loud and steady, called back across the field |
+
 ### Dwarf: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -1076,7 +1144,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `dwarf/cackle_3.wav` | Hee hee! Look at 'em fly! | manic, breathless glee; 1-1.5 s |
 | `dwarf/cackle_4.wav` | Ha! Another! | manic, breathless glee; 1-1.5 s |
 
-## Rider (`rider`): 92 lines
+## Rider (`rider`): 98 lines
 
 *Used by:* Light Cavalry, Heavy Cavalry, Wolf Riders.  
 *Casting:* A horseman: proud, dashing, loud from the saddle. Breathier on the move lines, as if riding.
@@ -1287,6 +1355,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `rider/flanked_2.wav` | Flank! Wheel about! | alarmed shout, turning round |
 | `rider/flanked_3.wav` | From the side! | alarmed shout, turning round |
 
+### Rider: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `rider/call_help_1.wav` | Riders beset! To us! | urgent shout across the field, carrying |
+| `rider/call_help_2.wav` | We are caught! Help! | urgent shout across the field, carrying |
+| `rider/call_help_3.wav` | Bring the foot up! | urgent shout across the field, carrying |
+
+### Rider: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `rider/answering_1.wav` | We ride to you! | loud and steady, called back across the field |
+| `rider/answering_2.wav` | Hold, we are riding! | loud and steady, called back across the field |
+| `rider/answering_3.wav` | Into their flank! | loud and steady, called back across the field |
+
 ### Rider: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -1389,7 +1479,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `rider/death_moan_2.wav` | Ohh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `rider/death_moan_3.wav` | Ghh... (gurgling) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Hero (`hero`): 83 lines
+## Hero (`hero`): 89 lines
 
 *Used by:* Heroes.  
 *Casting:* The lord or lady at the army's head: noble, commanding, warm with his own men and iron with the foe. One actor; the enemy's heroes play the same lines pitched darker.
@@ -1568,6 +1658,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `hero/flanked_2.wav` | Turn! They flank us! | alarmed shout, turning round |
 | `hero/flanked_3.wav` | Cowards, from behind! | alarmed shout, turning round |
 
+### Hero: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `hero/call_help_1.wav` | To me! To your lord! | urgent shout across the field, carrying |
+| `hero/call_help_2.wav` | I am pressed! Rally here! | urgent shout across the field, carrying |
+| `hero/call_help_3.wav` | Stand by me, all who can! | urgent shout across the field, carrying |
+
+### Hero: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `hero/answering_1.wav` | I am with you! | loud and steady, called back across the field |
+| `hero/answering_2.wav` | Hold, I come! | loud and steady, called back across the field |
+| `hero/answering_3.wav` | Stand, help is here! | loud and steady, called back across the field |
+
 ### Hero: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -1669,7 +1781,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `hero/death_moan_2.wav` | Uhhh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `hero/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Wizard (`wizard`): 96 lines
+## Wizard (`wizard`): 102 lines
 
 *Used by:* Wizards, Journeymen.  
 *Casting:* An old scholar-mage and healer: measured, faintly eerie, a little proud. Speaks as if half his mind is elsewhere.
@@ -1880,6 +1992,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `wizard/flanked_2.wav` | They're around us! | alarmed shout, turning round |
 | `wizard/flanked_3.wav` | Guard my back! | alarmed shout, turning round |
 
+### Wizard: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `wizard/call_help_1.wav` | Guard me! They are close! | urgent shout across the field, carrying |
+| `wizard/call_help_2.wav` | Swords here, quickly! | urgent shout across the field, carrying |
+| `wizard/call_help_3.wav` | I am no swordsman! Help! | urgent shout across the field, carrying |
+
+### Wizard: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `wizard/answering_1.wav` | I come, hold them. | loud and steady, called back across the field |
+| `wizard/answering_2.wav` | Help is at hand. | loud and steady, called back across the field |
+| `wizard/answering_3.wav` | Stand a moment longer. | loud and steady, called back across the field |
+
 ### Wizard: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -1994,7 +2128,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `wizard/death_moan_2.wav` | Ohh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `wizard/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Berserker (`berserker`): 91 lines
+## Berserker (`berserker`): 97 lines
 
 *Used by:* Berserkers.  
 *Casting:* A wild northman, half-mad with battle joy: hoarse, laughing, shouting. Little patience for orders.
@@ -2205,6 +2339,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `berserker/flanked_2.wav` | Turn! Kill! | alarmed shout, turning round |
 | `berserker/flanked_3.wav` | Behind! | alarmed shout, turning round |
 
+### Berserker: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `berserker/call_help_1.wav` | More blades here! | urgent shout across the field, carrying |
+| `berserker/call_help_2.wav` | Come and share the killing! | urgent shout across the field, carrying |
+| `berserker/call_help_3.wav` | They are many! To us! | urgent shout across the field, carrying |
+
+### Berserker: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `berserker/answering_1.wav` | Leave some for us! | loud and steady, called back across the field |
+| `berserker/answering_2.wav` | We come running! | loud and steady, called back across the field |
+| `berserker/answering_3.wav` | Aye, we come! | loud and steady, called back across the field |
+
 ### Berserker: Friendly fire (`friendly_fire`)
 
 *When:* Hit by his own side's arrows or bombs.  
@@ -2306,7 +2462,7 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `berserker/death_moan_2.wav` | Grrr... (a dying growl) | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 | `berserker/death_moan_3.wav` | Ghh... | short, choked, as if the breath were cut off; 0.4-0.8 s; quieter |
 
-## Archon (`archon`): 90 lines
+## Archon (`archon`): 96 lines
 
 *Used by:* Archons.  
 *Casting:* A winged warrior of the heavens: calm, resonant, unearthly, never hurried. Record dry; the page adds no reverb.
@@ -2516,6 +2672,28 @@ Priority 5 is the gravest news (always heard); 0 is idle chatter (heard only whe
 | `archon/flanked_1.wav` | Behind us. | alarmed shout, turning round |
 | `archon/flanked_2.wav` | They circle. | alarmed shout, turning round |
 | `archon/flanked_3.wav` | Turn. | alarmed shout, turning round |
+
+### Archon: Call for help (`call_help`)
+
+*When:* His squad is in trouble (outnumbered, flanked, wavering, shot at, its lord down) and calls to its friends.  
+*Delivery:* urgent shout across the field, carrying
+
+| File | Line | Delivery |
+|---|---|---|
+| `archon/call_help_1.wav` | Aid us, brothers. | urgent shout across the field, carrying |
+| `archon/call_help_2.wav` | The host is pressed. | urgent shout across the field, carrying |
+| `archon/call_help_3.wav` | Come to us. | urgent shout across the field, carrying |
+
+### Archon: Answering (`answering`)
+
+*When:* His squad goes to the help of one that called.  
+*Delivery:* loud and steady, called back across the field
+
+| File | Line | Delivery |
+|---|---|---|
+| `archon/answering_1.wav` | We come. | loud and steady, called back across the field |
+| `archon/answering_2.wav` | Aid is here. | loud and steady, called back across the field |
+| `archon/answering_3.wav` | Be steadfast, we come. | loud and steady, called back across the field |
 
 ### Archon: Friendly fire (`friendly_fire`)
 

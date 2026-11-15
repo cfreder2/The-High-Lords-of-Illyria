@@ -553,3 +553,9 @@ TEST(a_battle_with_a_queue_is_deterministic_and_hashes_the_queue_only_while_ther
     constexpr uint64_t kGolden = 0xa13807e3b5d2af5c;  // (the first with a queue; no other golden moved with it)
     CHECK(play(true) == kGolden);
 }
+
+TEST(every_formation_has_exactly_a_place_a_man) {
+    // (A square of five had six places: a march went to a man who was not there.)
+    for (int f = 0; f < illyria::game::kFormationCount; ++f)
+        for (int n = 1; n <= 40; ++n) CHECK(illyria::game::formationLayout(illyria::game::kFormationOrder[f], n, 1.5f).size() == static_cast<size_t>(n));
+}

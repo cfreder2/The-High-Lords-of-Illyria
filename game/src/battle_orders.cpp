@@ -56,7 +56,11 @@ void Battle::settleOrders(size_t first) {
                 case sim::Command::Type::LaySatchel: c.queue = true; break;
                 case sim::Command::Type::Stop:
                 case sim::Command::Type::Raid:
-                case sim::Command::Type::SetGate: break;
+                case sim::Command::Type::SetGate:
+                case sim::Command::Type::SetStance:
+                case sim::Command::Type::Rally:
+                case sim::Command::Type::SetFormation:
+                case sim::Command::Type::Answer: break;
             }
         }
     }
@@ -157,8 +161,10 @@ void Battle::orderAttackUnit(sim::EntityId target) {
     // (Missile troops keep to the order: they stop at a bowshot and loose.)
     std::vector<sim::EntityId> together;
     if (t->owner != local_ && (centreOf(mine) - toV3(t->pos)).length() > kGatherMetres) {
+        // (Not horse: riders ordered at a foe go for him at the gallop and strike with it, each his own way in; a march at
+        // the squad's pace would bring them up at a walk to stop in front of him.)
         for (sim::EntityId id : mine)
-            if (world_->units()[id - 1].stats.ranged.muzzleSpeed <= sim::Fixed::zero()) together.push_back(id);
+            if (world_->units()[id - 1].stats.ranged.muzzleSpeed <= sim::Fixed::zero() && !world_->units()[id - 1].stats.mounted) together.push_back(id);
         std::erase_if(mine, [&](sim::EntityId id) { return std::find(together.begin(), together.end(), id) != together.end(); });
         marchSelection(together, toV3(t->pos), nullptr, false);
     }

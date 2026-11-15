@@ -65,15 +65,16 @@ TEST(the_high_ground_tells_in_a_melee_and_a_volley) {
     const Unit& ua = *w.findUnit(a);
     const Unit& ub = *w.findUnit(b);
     CHECK(w.positionPct(ua, ub, m(10), m(0)) == 0);
-    CHECK(w.positionPct(ua, ub, m(10), -m(1)) == 20);   // a 1 in 10 slope, striking down
-    CHECK(w.positionPct(ua, ub, m(10), -m(3)) == 30);   // at most
-    CHECK(w.positionPct(ua, ub, m(10), Fixed::fromRatio(1, 2)) == -10);  // striking up
-    CHECK(w.positionPct(ua, ub, m(10), m(5)) == -20);   // at most
+    CHECK(w.positionPct(ua, ub, m(10), -m(1)) == 30);   // a 1 in 10 slope, striking down (was 20 before the land pass)
+    CHECK(w.positionPct(ua, ub, m(10), -m(3)) == 40);   // at most (was 30)
+    CHECK(w.positionPct(ua, ub, m(10), Fixed::fromRatio(1, 2)) == -15);  // striking up (was -10)
+    CHECK(w.positionPct(ua, ub, m(10), m(5)) == -35);   // at most (was -20)
     CHECK(World::heightShotPct(m(0)) == 100);
     CHECK(World::heightShotPct(m(1)) == 100);
     CHECK(World::heightShotPct(m(5)) == 120);
     CHECK(World::heightShotPct(m(30)) == 150);
-    CHECK(World::heightShotPct(-m(8)) == 100);
+    CHECK(World::heightShotPct(-m(8)) == 65);  // shooting up a hill loses as much (was 100: nothing, before the land pass)
+    CHECK(World::heightShotPct(-m(30)) == 60);
 }
 
 TEST(a_charge_into_the_back_of_men_fighting_breaks_them_on_the_spot) {
@@ -363,4 +364,310 @@ TEST(tactics_replay_to_the_same_checksum) {
         return w.checksum();
     };
     CHECK(run() == run());
+}
+
+// --- Land, formations, calls (world_formation.cpp, world_help.cpp) ---
+
+namespace {
+// A squad of `n` raised in a rank across y at x, of one formation.
+std::vector<EntityId> squadAt(World& w, PlayerId owner, uint32_t squad, FormationKind f, const UnitStats& stats, int n, Fixed x, Fixed y0, const Vec3& facing) {
+    std::vector<EntityId> ids;
+    for (int i = 0; i < n; ++i) {
+        ids.push_back(w.spawnUnit(owner, {x, y0 + Fixed::fromRatio(3 * i, 2), m(0)}, facing, stats));
+        w.setSquad(ids.back(), squad, f);
+    }
+    return ids;
+}
+int toldCount(const World& w, TacticEvent::Kind kind) {
+    int n = 0;
+    for (const TacticEvent& e : w.tactics()) n += e.kind == kind;
+    return n;
+}
+bool findGround(const Region& r, Ground want, Vec3& at) {
+    for (int y = 40; y < 980; y += 4)
+        for (int x = 40; x < 980; x += 4) {
+            bool all = true;
+            for (int dy = -8; dy <= 8 && all; dy += 4)
+                for (int dx = -8; dx <= 8 && all; dx += 4) all = r.groundAt(m(x + dx), m(y + dy)) == want;
+            if (all) {
+                at = {m(x), m(y), m(0)};
+                return true;
+            }
+        }
+    return false;
+}
+}  // namespace
+
+TEST(every_formation_has_a_price) {
+    // The table the manual prints: none of them is free, none is useless.
+    const auto& line = World::formationRule(FormationKind::Line);
+    const auto& two = World::formationRule(FormationKind::DoubleLine);
+    const auto& box = World::formationRule(FormationKind::Box);
+    const auto& wedge = World::formationRule(FormationKind::Wedge);
+    const auto& loose = World::formationRule(FormationKind::Loose);
+    CHECK(line.flankShockPct > 0);                       // a line's flanks are weak
+    CHECK(two.shockPct < 0 && two.shotPct > 0);          // two ranks hold their nerve, and are a deeper mark
+    CHECK(box.allRound && box.blowPct < 0 && box.shotPct > two.shotPct);  // no flank; poor attack; the arrows' best mark
+    CHECK(wedge.blowPct > 0 && wedge.struckAsidePct > 0);                 // strikes hard, dies in the flank
+    CHECK(loose.sparePct > 0 && loose.blowPct < 0 && loose.shockPct > 0); // arrows pass; fights and stands worse
+    CHECK(World::formationRule(FormationKind::None).blowPct == 0);
+}
+
+TEST(a_formation_is_its_men_together_and_in_order) {
+    World w(WorldConfig{});
+    const auto ids = squadAt(w, 0, 1, FormationKind::DoubleLine, dummy(), 4, m(0), m(0), kEast);
+    const EntityId alone = w.spawnUnit(0, {m(60), m(0), m(0)}, kEast, dummy());
+    w.setSquad(alone, 2, FormationKind::Box);
+    for (int i = 0; i < 12; ++i) w.step({});
+    CHECK(w.formed(*w.findUnit(ids[0])));
+    CHECK(!w.formed(*w.findUnit(alone)));  // a man by himself is no square
+    // Struck in the back by a charge, the men there are out of order until they re-form.
+    const EntityId rider = w.spawnUnit(1, {-m(30), m(1), m(0)}, kEast, unitStats(UnitType::LightCavalry));
+    Command at{1, rider, Command::Type::AttackUnit, {}};
+    at.targetUnit = ids[1];
+    w.step(std::vector<Command>{at});
+    bool disordered = false, lost = false;
+    for (int i = 0; i < 6 * kTicksPerSecond; ++i) {
+        w.step({});
+        disordered = disordered || toldCount(w, TacticEvent::Kind::Disordered) > 0;
+        lost = lost || !w.formed(*w.findUnit(ids[0])) || !w.formed(*w.findUnit(ids[1]));
+    }
+    CHECK(disordered);
+    CHECK(lost);
+}
+
+TEST(a_square_has_no_flank_and_a_line_has) {
+    // Light horse rides into the back of four pikemen. In a square the charge meets a front, and its pikes; in a line it
+    // lands in their backs.
+    const auto run = [](FormationKind f, bool& braced, bool& square, bool& rear) {
+        World w(WorldConfig{});
+        const auto ids = squadAt(w, 1, 1, f, dummy(UnitType::Pikemen), 4, m(0), m(0), kEast);
+        for (int i = 0; i < 12; ++i) w.step({});
+        const EntityId rider = w.spawnUnit(0, {-m(30), m(2), m(0)}, kEast, unitStats(UnitType::LightCavalry));
+        Command c{0, rider, Command::Type::AttackUnit, {}};
+        c.targetUnit = ids[1];
+        w.step(std::vector<Command>{c});
+        braced = square = rear = false;
+        for (int i = 0; i < 8 * kTicksPerSecond; ++i) {
+            w.step({});
+            braced = braced || toldCount(w, TacticEvent::Kind::Braced) > 0;
+            square = square || toldCount(w, TacticEvent::Kind::Square) > 0;
+            rear = rear || toldCount(w, TacticEvent::Kind::Rear) + toldCount(w, TacticEvent::Kind::Broken) + toldCount(w, TacticEvent::Kind::Flanked) > 0;
+        }
+    };
+    bool braced, square, rear;
+    run(FormationKind::Box, braced, square, rear);
+    CHECK(braced && square && !rear);
+    run(FormationKind::Line, braced, square, rear);
+    CHECK(!braced && !square && rear);
+}
+
+TEST(loose_order_lets_arrows_by) {
+    // Twelve bowmen loose at six men for twenty seconds: in loose order the six take well under what two ranks take.
+    const auto hurt = [](FormationKind f) {
+        WorldConfig cfg;
+        cfg.seed = 7;
+        World w(cfg);
+        const auto marks = squadAt(w, 1, 1, f, dummy(), 6, m(45), m(0), kWest);
+        for (int i = 0; i < 12; ++i) w.spawnUnit(0, {m(0), Fixed::fromRatio(3 * i, 2), m(0)}, kEast, unitStats(UnitType::Archers));
+        for (int i = 0; i < 20 * kTicksPerSecond; ++i) w.step({});
+        int lost = 0;
+        for (EntityId id : marks) lost += w.findUnit(id)->stats.maxHp - w.findUnit(id)->hp;
+        return lost;
+    };
+    const int loose = hurt(FormationKind::Loose), two = hurt(FormationKind::DoubleLine);
+    std::printf("  arrows on six men in 20 s: loose order %d, two ranks %d\n", loose, two);
+    CHECK(two > 0);
+    CHECK(loose * 100 < two * 80);
+}
+
+TEST(a_rider_who_has_charged_wheels_away_to_come_again) {
+    World w(WorldConfig{});
+    const EntityId foe = w.spawnUnit(1, {m(0), m(0), m(0)}, kEast, dummy());  // (his back to the rider: a charge into a front that stands is fought out where it lands)
+    const EntityId rider = w.spawnUnit(0, {-m(30), m(0), m(0)}, kEast, unitStats(UnitType::LightCavalry));
+    Command c{0, rider, Command::Type::AttackUnit, {}};
+    c.targetUnit = foe;
+    w.step(std::vector<Command>{c});
+    int charges = 0;
+    Fixed farthest;
+    bool struck = false;
+    for (int i = 0; i < 20 * kTicksPerSecond; ++i) {
+        w.step({});
+        if (toldCount(w, TacticEvent::Kind::Charge) > 0) ++charges, struck = true;
+        if (struck) farthest = max(farthest, (w.findUnit(rider)->pos - w.findUnit(foe)->pos).flat().length());
+    }
+    std::printf("  one rider on one man in 20 s: %d charges home, wheeled out to %.1f m\n", charges, farthest.toDouble());
+    CHECK(charges >= 2);              // not one charge and then a standing melee
+    CHECK(farthest > m(8));           // he rides clear between them
+    CHECK(w.findUnit(rider)->alive());
+}
+
+TEST(a_squad_in_trouble_calls_and_the_nearest_free_squad_answers) {
+    // Three foot beset by nine, a squad of six friends 45 m off (beyond the 40 m at which a man goes of himself): the
+    // three call, the six answer and march. Told to hold, the six stay, and the call goes unanswered.
+    const auto run = [](bool hold, int& calls, int& answered, int& fought, uint64_t& sum) {
+        World w(WorldConfig{});
+        UnitStats tough = unitStats(UnitType::HeavyInfantry);
+        tough.maxHp = 4000;
+        tough.aggroRange = m(3);  // (they stand where they are and take what comes)
+        squadAt(w, 0, 1, FormationKind::DoubleLine, tough, 3, m(0), m(0), kEast);
+        const auto friends = squadAt(w, 0, 2, FormationKind::DoubleLine, unitStats(UnitType::HeavyInfantry), 6, -m(45), m(0), kEast);
+        std::vector<Command> cmds;
+        for (int i = 0; i < 9; ++i) {
+            const EntityId f = w.spawnUnit(1, {m(22), Fixed::fromRatio(3 * i, 2) - m(5), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+            w.setSquad(f, 1, FormationKind::Line);
+            cmds.push_back({1, f, Command::Type::Move, {m(0), m(1), m(0)}});
+        }
+        if (hold)
+            for (EntityId id : friends) {
+                Command c{0, id, Command::Type::SetStance, {}};
+                c.hold = true;
+                cmds.push_back(c);
+            }
+        w.step(cmds);
+        calls = answered = fought = 0;
+        for (int i = 0; i < 75 * kTicksPerSecond; ++i) {
+            w.step({});
+            for (const HelpCall& c : w.helpCalls())
+                if (c.owner == 0) {
+                    calls += c.squad == 1;
+                    if (c.answer != 0) {
+                        ++answered;
+                        CHECK(c.answer == 2);
+                    }
+                }
+            for (EntityId id : friends) fought += w.findUnit(id)->engaged;
+        }
+        sum = w.checksum();
+    };
+    int calls, answered, fought;
+    uint64_t sum, again;
+    run(false, calls, answered, fought, sum);
+    std::printf("  three beset for 75 s: %d calls, %d answered, the six fought %d man-ticks\n", calls, answered, fought);
+    CHECK(calls >= 1 && calls <= 3);  // it calls, and not every second (kCallAgainTicks)
+    CHECK(answered >= 1);
+    CHECK(fought > 0);
+    run(false, calls, answered, fought, again);
+    CHECK(sum == again);  // the same every time: no clock, no chance outside the world's dice
+    run(true, calls, answered, fought, sum);
+    CHECK(calls >= 1);
+    CHECK(answered == 0);
+    CHECK(fought == 0);  // hold means hold
+}
+
+TEST(horse_that_answer_take_the_flank) {
+    // Twelve foot hold twenty-four; eight light horse stand 90 m behind their own line with no order. They are called,
+    // and come round: their charges land in flanks and backs, not on the front.
+    World w(WorldConfig{});
+    UnitStats line = unitStats(UnitType::HeavyInfantry);
+    line.maxHp = 600;  // (they stand long enough to be helped)
+    squadAt(w, 0, 1, FormationKind::DoubleLine, line, 12, m(0), -m(9), kEast);
+    const auto horse = squadAt(w, 0, 2, FormationKind::Wedge, unitStats(UnitType::LightCavalry), 8, -m(90), -m(6), kEast);
+    std::vector<Command> cmds;
+    for (int i = 0; i < 24; ++i) {
+        const EntityId f = w.spawnUnit(1, {m(40 + (i / 12) * 2), Fixed::fromRatio(3 * (i % 12), 2) - m(9), m(0)}, kWest, unitStats(UnitType::LightInfantry));
+        w.setSquad(f, 1, FormationKind::DoubleLine);
+        cmds.push_back({1, f, Command::Type::Move, {m(0), Fixed::fromRatio(3 * (i % 12), 2) - m(9), m(0)}});
+    }
+    w.step(cmds);
+    int front = 0, aside = 0, answers = 0;
+    for (int i = 0; i < 60 * kTicksPerSecond; ++i) {
+        w.step({});
+        // (The commander sends them: of themselves they would ride straight to their friends; the flank is an order.)
+        std::vector<Command> send;
+        for (const HelpCall& c : w.helpCalls()) {
+            if (c.owner != 0 || c.squad != 1) continue;
+            ++answers;
+            for (EntityId id : horse) {
+                Command a{0, id, Command::Type::Answer, {}};
+                a.targetUnit = c.caller;
+                send.push_back(a);
+            }
+        }
+        if (!send.empty()) w.step(send);
+        for (const TacticEvent& e : w.tactics())
+            if (e.kind == TacticEvent::Kind::Charge && e.owner == 1) (e.detail == 0 ? front : aside) += 1;
+    }
+    int left = 0;
+    for (EntityId id : horse) left += w.findUnit(id)->alive();
+    std::printf("  horse called from 90 m: %d answers, charges %d in the flank or back, %d on the front, %d of 8 riders left\n", answers, aside, front, left);
+    CHECK(answers >= 1);
+    CHECK(aside >= 4);
+    CHECK(left >= 5);
+}
+
+TEST(answering_is_a_march_of_his_own_that_any_order_ends) {
+    World w(WorldConfig{});
+    const EntityId caller = w.spawnUnit(0, {m(60), m(0), m(0)}, kEast, dummy());
+    const EntityId man = w.spawnUnit(0, {m(0), m(0), m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
+    CHECK(w.freeToAnswer(*w.findUnit(man)));
+    Command c{0, man, Command::Type::Answer, {}};
+    c.targetUnit = caller;
+    w.step(std::vector<Command>{c});
+    CHECK(w.findUnit(man)->helping == caller);
+    CHECK(!w.freeToAnswer(*w.findUnit(man)));
+    for (int i = 0; i < 2 * kTicksPerSecond; ++i) w.step({});
+    CHECK(w.findUnit(man)->pos.x > m(2));  // on his way
+    w.step(std::vector<Command>{{0, man, Command::Type::Stop, {}}});
+    CHECK(w.findUnit(man)->helping == kNoEntity);
+    // ... and he is there when he arrives: free again.
+    w.step(std::vector<Command>{c});
+    for (int i = 0; i < 40 * kTicksPerSecond && w.findUnit(man)->helping != kNoEntity; ++i) w.step({});
+    CHECK(w.findUnit(man)->helping == kNoEntity);
+    CHECK((w.findUnit(man)->pos - w.findUnit(caller)->pos).flat().length() < m(6));
+}
+
+TEST(woods_hide_men_and_stop_arrows_and_mud_mires) {
+    WorldConfig cfg;
+    cfg.region = illyriaRegion();
+    Vec3 wood, mud;
+    if (!findGround(*cfg.region, Ground::Forest, wood)) {
+        std::printf("  (no wood on this ground: not tested)\n");
+        return;
+    }
+    {
+        World w(cfg);
+        const EntityId hidden = w.spawnUnit(0, wood, kEast, dummy());
+        const EntityId far = w.spawnUnit(1, wood + Vec3{m(50), m(0), m(0)}, kWest, unitStats(UnitType::Archers));
+        for (int i = 0; i < 3 * kTicksPerSecond; ++i) w.step({});
+        CHECK(w.inWoods(*w.findUnit(hidden)));
+        CHECK(w.concealed(*w.findUnit(hidden), 1));
+        CHECK(!w.concealed(*w.findUnit(hidden), 0));     // never from his own side
+        CHECK(w.findUnit(far)->reloadRemaining == 0);    // the bowman has not loosed at a man he cannot see
+        w.spawnUnit(1, wood + Vec3{m(12), m(0), m(0)}, kWest, dummy());
+        for (int i = 0; i < kTicksPerSecond; ++i) w.step({});
+        CHECK(!w.concealed(*w.findUnit(hidden), 1));     // a foe within 25 m sees him
+    }
+    if (findGround(*cfg.region, Ground::Mud, mud) || findGround(*cfg.region, Ground::Swamp, mud)) {
+        World w(cfg);
+        const EntityId stuck = w.spawnUnit(0, mud, kEast, unitStats(UnitType::HeavyInfantry));
+        const EntityId dry = w.spawnUnit(1, {m(500), m(600), m(0)}, kWest, unitStats(UnitType::HeavyInfantry));
+        CHECK(w.footing(*w.findUnit(stuck)) == World::Footing::Mire);
+        CHECK(w.positionPct(*w.findUnit(stuck), *w.findUnit(dry), m(1), m(0)) == -25);
+        CHECK(w.positionPct(*w.findUnit(dry), *w.findUnit(stuck), m(1), m(0)) == 25);
+        CHECK(w.wadeShotPct(*w.findUnit(stuck)) == 130);
+    }
+}
+
+TEST(a_squad_keeps_the_ground_it_was_ordered_to) {
+    // A man marched to a place by an order is posted there: a friend fighting 30 m off does not draw him away (with no
+    // order he would go). Stop frees him, and he goes.
+    World w(WorldConfig{});
+    UnitStats tough = unitStats(UnitType::HeavyInfantry);
+    tough.maxHp = 5000;
+    const EntityId posted = w.spawnUnit(0, {m(0), m(8), m(0)}, kEast, unitStats(UnitType::HeavyInfantry));
+    w.step(std::vector<Command>{{0, posted, Command::Type::Move, {m(0), m(0), m(0)}}});
+    for (int i = 0; i < 8 * kTicksPerSecond; ++i) w.step({});
+    CHECK(w.findUnit(posted)->posted);
+    CHECK(!w.freeToAnswer(*w.findUnit(posted)));
+    w.spawnUnit(0, {m(30), m(0), m(0)}, kEast, tough);
+    UnitStats weak = tough;
+    weak.melee.damage = 1;
+    const EntityId foe = w.spawnUnit(1, {m(32), m(0), m(0)}, kWest, weak);
+    for (int i = 0; i < 8 * kTicksPerSecond; ++i) w.step({});
+    CHECK((w.findUnit(posted)->pos - Vec3{m(0), m(0), m(0)}).flat().length() < m(3));  // he kept his ground
+    w.step(std::vector<Command>{{0, posted, Command::Type::Stop, {}}});
+    CHECK(!w.findUnit(posted)->posted);
+    for (int i = 0; i < 14 * kTicksPerSecond; ++i) w.step({});
+    CHECK((w.findUnit(posted)->pos - w.findUnit(foe)->pos).flat().length() < m(6));
 }
