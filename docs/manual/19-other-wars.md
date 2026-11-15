@@ -45,7 +45,17 @@ The field is Oakhaven Ford. Your host stands 60 m west of the middle of the fiel
 | Eyrie Griffins | 3 griffins | Red Hand Mangonel | 1 catapult |
 | Host of Archons | 3 archons | Laughing Pack of Gnarl | 6 hyena-folk |
 
-You **win** when no soldier of the Red Hand is left alive, and **lose** when none of yours is. A broken man who has run is not dead: he may rally and come back, and the battle is not over while he lives.
+You **win** when the Red Hand quits the field (below), or when no soldier of it is left alive; you **lose** when your host quits it, or when none of yours is left.
+
+### A host quits the field {#rout}
+
+A squad is **spent** when it is under a fifth of its strength, or when every man left of it is broken. A host has lost when every squad of it is spent, or when under a third of its men are left alive and the unbroken men against it outnumber it three to two. It then breaks for good and runs for its own edge of the ground. For six seconds the victors may ride the runners down; then the battle is called. Catapults hold no field by themselves: a host with only its engines left has lost.
+
+### Before and after {#deployment}
+
+A skirmish begins **paused**, on a view of the other host that glides to your own: *Place your line. Enter to begin*, with the objective under it. Orders given now are kept and obeyed when the battle begins. The first time you pick a kind of soldier a line over his squad's card says what the kind is for.
+
+When the battle is decided the last blow is shown slowly and the fight stops. A sheet gives the time, the men killed and lost, each of your squads (men left, men it killed, whether it broke), the best squad and the heroes fallen, and three choices: **Again**, **Change army** (the Skirmish screen as you left it), **Menu**.
 
 ### The siege {#skirmish-siege}
 
@@ -53,9 +63,7 @@ The neutral walled town nearest the ford, and its garrison: archers of the **Tow
 
 You besiege it with the foot of the same host, formed up on the road about 110 m before the gate: the Oakhaven Warriors and the Grey Watch (12 each), both squads of bowmen (12 each), both squads of sappers (8 and 6 grenadiers), 4 journeymen, Lord Aldric, 3 griffins, and the **Oakhaven Siege Train** of 2 catapults.
 
-You **win** when your flag reaches the top of the pole in the courtyard (chapter [](#capture-point)), or when no defender is left alive; you **lose** when none of yours is.
-
-When a skirmish is over you may fight it again or go back to the main menu.
+You **win** when your flag reaches the top of the pole in the courtyard (chapter [](#capture-point)), when the garrison quits the field ([](#rout)), or when no defender is left alive; you **lose** when your host quits it or none of yours is left.
 
 ## Starting a match {#starting-a-match}
 

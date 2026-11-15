@@ -38,6 +38,12 @@ public:
     bool click(float x, float y, bool left = true);
     // The wheel over a strip of cards too long for one page turns its page (true: taken).
     bool wheel(float x, float y, float notches);
+    // The start and the end of a battle (illyria_hud: deploy, result). Enter begins a battle waiting on its deployment;
+    // with the results up, Enter fights it again, C changes the army and Esc is the menu.
+    bool deploying() const;
+    bool resultOpen() const;
+    enum class After { Again, ChangeArmy, Menu };
+    void afterBattle(After what);
     void menuKey(Key k);
     void menuDigit(int digit);  // 1-8 toggle a computer lord
     void menuToggleDifficulty() { hard_ = !hard_; }
@@ -67,6 +73,7 @@ private:
     void townAction(int what);  // a press on the open town's screen
     void drawTown(Overlay& o, const Json& city, int gold, float w);  // the open town on parchment
     void drawMinimap(Overlay& o, float w, float h);
+    void drawResult(Overlay& o, const Json& hud, float w, float h);  // the results sheet, when the fight has stopped
     void lookAt(float x, float y);
     void saveSettings() const;
     std::string chosenColour() const;  // "#rrggbb" for the engine, "" when each lord keeps his own

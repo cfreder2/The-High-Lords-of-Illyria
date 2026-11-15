@@ -60,12 +60,16 @@ int illyria_cycle_group(int dir);
 int illyria_plan(int op);
 const char* illyria_formations();
 void illyria_stop();
+void illyria_hold();
+int illyria_rally();
+int illyria_next_idle();
 void illyria_gate(int release);
 void illyria_special();
 void illyria_toggle_pause();
 void illyria_cycle_speed();
 void illyria_set_pace(float pace);
 void illyria_restart();
+void illyria_begin_battle();  // the deployment is done: the clock starts
 
 const char* illyria_hud();
 const char* illyria_labels();

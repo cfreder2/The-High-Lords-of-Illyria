@@ -211,7 +211,10 @@ struct Command {
     // scavenger let loose to raid from where he stands (world_scavenge.cpp);
     // it needs no target, and anyone else ignores it.
     // SetGate: the holder's hand on his gate (`objectIndex`; no soldier named): how it is to be kept (`gatePin`).
-    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate };
+    // SetStance: the soldier's stance with no order in hand (`hold`): Hold keeps his place, else he goes to the help of a
+    // friend fighting near him (world_tactics.cpp). It touches no order he has. Rally: the lord's call (`unit` is the
+    // hero): every broken man of his side in earshot turns back at once, and then he must wait before he calls again.
+    enum class Type : uint8_t { Move, AttackGround, Stop, AttackGate, AttackUnit, AttackObject, LaySatchel, Raid, SetGate, SetStance, Rally };
     enum class Object : uint8_t { Gate, Wall, Obstacle };
     enum class GatePin : uint8_t { Auto, Open, Shut };
 
@@ -229,9 +232,9 @@ struct Command {
     Vec3 face = {};
     // Move: a force march, deaf to the enemy on the way.
     bool force = false;
-    // Move: ground to be held (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight or a
-    // rout, until he is given another order.
-    bool hold = false;
+    // Move: ground to be occupied (a storm's objective, world_siege.cpp): once sent there he comes back to it after a fight
+    // or a rout, until he is given another order. (Not the stance below: a man occupying ground still goes to his friends.)
+    bool occupy = false;
     // AttackUnit: the target, and a friend to rejoin once it is down.
     EntityId targetUnit = kNoEntity;
     EntityId rally = kNoEntity;
@@ -241,6 +244,8 @@ struct Command {
     int32_t objectIndex = -1;
     // SetGate: Auto lets it open to his men bound through and shut behind them; Open and Shut hold it so.
     GatePin gatePin = GatePin::Auto;
+    // SetStance: stand fast (true) or support (false).
+    bool hold = false;
     // Shift: add this order to the end of the soldier's queue (an order that replaces his current one and clears the
     // queue when false). A soldier with no order of his own begins it at once. Meaningless for Stop, Raid and SetGate.
     bool queue = false;
@@ -289,6 +294,13 @@ struct Unit {
     // call "Hold the line!" again.
     int32_t steady = 0;
     int32_t callCooldown = 0;
+    // The stance of a man with no order (Command::SetStance): Hold keeps his place and strikes only what comes to him; else
+    // (support, the default) he goes to the help of a friend fighting within kSupportReach: `support` is the foe he has
+    // gone to meet, looked for afresh a few times a second (world_tactics.cpp).
+    bool hold = false;
+    EntityId support = kNoEntity;
+    // A lord: ticks before he may call the Rally again (Command::Rally).
+    int32_t rallyCooldown = 0;
     bool wavering() const;
 
     enum class Flight : uint8_t { Grounded, TakingOff, Flying, Landing };
@@ -375,10 +387,10 @@ struct Unit {
     // walls), not an order of the player's. Any order given to him (World::startOrder) clears it. A man with a move, an
     // attack or a queue and this unset is "ordered", and is not one of a gate's keepers (world_keep.cpp).
     bool stationed = false;
-    // Sent to hold a place (Command::hold): with nothing else in hand he goes back to it (World::holdGround), a rout
+    // Sent to occupy a place (Command::occupy): with nothing else in hand he goes back to it (World::occupyGround), a rout
     // and a rally later too. Any other order ends it.
-    bool holding = false;
-    Vec3 holdAt;
+    bool occupying = false;
+    Vec3 occupyAt;
     // Orders to come (Command::queue), the next first: each begins when the one before is done or given up (World::advanceQueue).
     // At most World::kMaxQueuedOrders. Kept as the Commands that will be applied, so a later order is planned when it begins.
     std::vector<Command> queue;
@@ -510,13 +522,27 @@ struct HeroDeath {
 // this tick ("Hold the line!"), lifting the morale of those within earshot.
 // Derived from the simulation like HeroDeath, for the voices and the HUD.
 struct RallyCall {
-    enum class Kind : uint8_t { Veteran, Hero };
+    // Order: the lord's Rally, ordered (Command::Rally), which brings back every broken man in earshot.
+    enum class Kind : uint8_t { Veteran, Hero, Order };
     EntityId caller = kNoEntity;
     PlayerId owner = 0;
     Vec3 pos;
     Kind kind = Kind::Veteran;
     int32_t heard = 0;    // friends whose morale it lifted
     int32_t rallied = 0;  // of them, broken men it brought back
+};
+
+// Position told (world_tactics.cpp): a blow that landed with the ground or the facing behind it, for the word floated over
+// the squad it happened to. Derived from the simulation like RallyCall; not part of its state.
+struct TacticEvent {
+    // Flanked, Rear: struck in the flank or the back (a charge, or a blow on a man busy with another). Broken: a charge
+    // there broke him on the spot. Braced: his pike stopped a charge head on. Ford: struck while wading. HighGround:
+    // struck from above. Volley: shot from a height, or shot while wading.
+    enum class Kind : uint8_t { Flanked, Rear, Broken, Braced, Ford, HighGround, Volley };
+    Kind kind = Kind::Flanked;
+    EntityId unit = kNoEntity;  // the man it happened to (Braced: the pikeman who stood)
+    PlayerId owner = 0;         // his side
+    Vec3 pos;
 };
 
 // A hero's hit points grow by this share of a fresh hero's with every level.
@@ -617,6 +643,28 @@ public:
     const std::vector<HeroDeath>& heroDeaths() const { return heroDeaths_; }
     // Rally calls made during the last step (world_morale.cpp).
     const std::vector<RallyCall>& rallyCalls() const { return rallyCalls_; }
+    // Position that told during the last step (world_tactics.cpp).
+    const std::vector<TacticEvent>& tactics() const { return tactics_; }
+    // Position (world_tactics.cpp). A man wading (in the shallows, on his feet, his kind not at home in water) strikes at
+    // kWadeBlowPct less and is struck harder by a man on dry ground and by missiles.
+    bool wading(const Unit& u) const;
+    // What position adds to (or takes from) a blow of `attacker` on `target`, in percent: wading, and the high ground
+    // (dz: the target's height over the attacker, over `dist`).
+    int32_t positionPct(const Unit& attacker, const Unit& target, Fixed dist, Fixed dz) const;
+    // A missile's share more for the height it was loosed from over its mark, in percent (100: none).
+    static int32_t heightShotPct(Fixed above);
+    // ... and for a mark who is wading.
+    int32_t wadeShotPct(const Unit& mark) const;
+    // Whether a man with no order stands idle: nothing in hand, nobody to fight or shoot, not broken (for the cards).
+    static bool standsIdle(const Unit& u);
+    // The Rally (Command::Rally). A broken man: the ticks until he rallies on his own as things stand (the lord within
+    // kRallyLordReach halves it), or -1 while a foe is too near for him to rally at all; 0 for a man not broken.
+    int32_t rallyTicks(const Unit& u) const;
+    // A lord: whether he may call the Rally now, the ticks until he may, and how many broken men of his are in earshot.
+    bool canRally(const Unit& lord) const;
+    int32_t rallyHeard(const Unit& lord) const;
+    static constexpr int32_t kRallyCooldownTicks = 60 * kTicksPerSecond;
+    static constexpr Fixed kRallyLordReach = Fixed::fromInt(20);
     // What soldiers whose targets fell chose during the last step.
     const std::vector<OrderDecision>& orderDecisions() const { return decisions_; }
     // Who can harm what (world_orders.cpp): engines and bombers batter walls,
@@ -740,6 +788,9 @@ public:
     // and none ever rallies.
     void breakSide(PlayerId owner);
     bool sideBroken(PlayerId owner) const;
+    // A beaten host quits the field (RoutRule, mode_rules.h): breakSide, and every man of it runs, deaf to the enemy,
+    // for the edge of the ground away from the foes' middle.
+    void quitField(PlayerId owner);
     // A match's field, a circle round `centre` (radius zero: none, the
     // default): a soldier outside it loses `pctPerSecond` of his full health
     // every second, so armies stay on the field the match loaded (and a
@@ -1084,8 +1135,6 @@ private:
     void keepDoors(const std::vector<size_t>& doors);
     // The gates (in the world's order) of the ring this gate opens: a castle may have more than one door.
     std::vector<size_t> doorsOfRing(size_t gate) const;
-    // The gate of the bailey inside this gate's ring that its holder still keeps (a capital's keep), or kNoGate.
-    size_t baileyOf(size_t gate) const;
     // garrisonPosts for the one door.
     std::vector<GarrisonPost> garrisonPostsAt(size_t gate, const std::vector<const UnitStats*>& men, const std::vector<EntityId>& except, const std::vector<Vec3>& alsoHeld) const;
     // Ranks across the courtyard behind a gate for each of the groups of men (counts) in turn, each group in ranks of its own,
@@ -1133,8 +1182,8 @@ private:
     // the engines, walked to or held (false: no engine of his side near enough).
     Unit* escortFoe(const Unit& u);
     bool escortSpot(Unit& u);
-    // A man sent to hold ground (Unit::holding) who stands idle away from it walks back to it.
-    bool holdGround(Unit& u);
+    // A man sent to occupy ground (Unit::occupying) who stands idle away from it walks back to it.
+    bool occupyGround(Unit& u);
     // Suppression: the garrison's man on a wall-walk within reach, for a shooter outside the walls to answer first; and the
     // man a shooter takes on his own (that, unless a foe is on him, else the nearest).
     Unit* wallShooter(const Unit& u, Fixed reach);
@@ -1261,6 +1310,19 @@ private:
     Fixed safeReach(const Unit& u) const;
     void flee(Unit& u);
     void shakeBySide(Unit& u, HitSide side, bool missile);
+    // What a man gains at a census once calm (`friends` near him, a hero within his lead, a lord close by a broken man).
+    int32_t recoveryGain(const Unit& u, int32_t friends, bool heroLeads, bool lordClose) const;
+    // The lord's Rally (Command::Rally).
+    void orderRally(Unit& lord);
+    // Support (world_tactics.cpp): the foe of a friend fighting near him that an idle man goes to meet (null: none, or he
+    // holds), and how he goes: foot straight in, horse round to the flank.
+    Unit* supportFoe(Unit& u);
+    // Holding, he meets only the foe who has come within a few strides of him.
+    bool withinHold(const Unit& u, const Unit& foe) const;
+    void support(Unit& u, Unit& foe);
+    // A charge's shock, by where it lands, to the man struck and (less) the friends at his shoulder.
+    void chargeShock(Unit& enemy, HitSide side, bool busy);
+    void tell(TacticEvent::Kind kind, const Unit& u) { tactics_.push_back({kind, u.id, u.owner, u.pos}); }
     // Missile reach from the unit's height over the target: farther down a hill, shorter up one.
     Fixed shotRange(const Unit& u, Fixed base, const Vec3& target) const;
     bool tryHeal(Unit& unit);
@@ -1365,6 +1427,8 @@ private:
     std::vector<ImpactEvent> impacts_;
     std::vector<HeroDeath> heroDeaths_;
     std::vector<RallyCall> rallyCalls_;
+    std::vector<TacticEvent> tactics_;
+    std::vector<uint8_t> wet_;  // updateMorale's scratch: who is wading, by place, as of this census (derived, not state)
     std::vector<OrderDecision> decisions_;
     std::vector<DeathEvent> deathEvents_;
     // Soldiers killed this step (owner, where), for their friends' morale.

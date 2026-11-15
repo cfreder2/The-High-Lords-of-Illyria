@@ -14,6 +14,7 @@
 
 #include "illyria/sim/conquest.h"
 #include "illyria/sim/isqrt.h"
+#include "illyria/sim/mode_rules.h"
 #include "placement.h"
 
 namespace illyria::sim {
@@ -816,6 +817,45 @@ void Conquest::fightAi(Stack& s, std::vector<Command>& commands) {
     }
 }
 
+void Conquest::quitFields() {
+    std::vector<EntityId> ids;
+    for (Stack& s : stacks_) {
+        if (s.boat || s.garrison || s.armies.empty() || tick_ < s.forceUntil || holdsTown(s)) continue;
+        // Only in a fight: one of its men fought in the last five seconds.
+        bool fighting = false, beaten = true, men = false;
+        for (const Army& a : s.armies)
+            for (const Man& m : a.men) fighting = fighting || (m.alive() && m.unit && m.fightTick != 0 && tick_ - m.fightTick < 5 * kTicksPerSecond);
+        if (!fighting) continue;
+        for (const Army& a : s.armies) {
+            ids.clear();
+            for (const Man& m : a.men)
+                if (m.alive() && m.unit) ids.push_back(m.unit);
+            if (ids.empty() || unitStats(a.type).ranged.kind == ProjectileKind::Stone) continue;  // (engines hold no field)
+            men = true;
+            beaten = beaten && squadSpent(*world_, ids, a.fullStrength);
+        }
+        if (!men || !beaten) continue;
+        // The nearest town of its side it has a way to.
+        std::vector<std::pair<int32_t, int32_t>> best, path;
+        int64_t bestD = INT64_MAX;
+        for (const CityState& t : cities_) {
+            if (t.owner != s.owner) continue;
+            const int64_t dx = t.cx - s.cx, dy = t.cy - s.cy, d = dx * dx + dy * dy;
+            if (d >= bestD || !planRoute(s, t.cx, t.cy, path) || path.empty()) continue;
+            bestD = d;
+            best = path;
+        }
+        if (best.empty()) continue;  // (no town left: it stands and dies)
+        s.path = std::move(best);
+        s.progress = 0;
+        s.commanded = false;
+        s.orderCell = -1;
+        s.forceUntil = tick_ + kQuitTicks;
+        if (quits_.size() >= 16) quits_.erase(quits_.begin());
+        quits_.push_back({tick_, s.owner, s.px, s.py});
+    }
+}
+
 bool Conquest::holdsTown(const Stack& s) const {
     const int32_t city = cityAt(s.cx, s.cy);
     return city >= 0 && cities_[static_cast<size_t>(city)].owner == s.owner;
@@ -852,6 +892,7 @@ void Conquest::stepWorld() {
     foeGridBuilt_ = false;
     commands_.clear();
     boarding_.clear();
+    if (think) quitFields();
     for (Stack& s : stacks_) {
         if (s.boat || s.armies.empty()) continue;
         steer(s, commands_, think);

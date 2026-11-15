@@ -36,6 +36,7 @@ add_executable(illyria_tests
     test_rng.cpp
     test_ballistics.cpp
     test_world.cpp
+    test_tactics.cpp
     test_terrain_combat.cpp
     test_combat.cpp
     test_game.cpp
@@ -47,6 +48,7 @@ add_executable(illyria_tests
     test_garrison.cpp
     test_garrison_keep.cpp
     test_two_gates.cpp
+    test_battle_end.cpp
     test_skirmish.cpp
     test_ramps.cpp
     test_walls.cpp
@@ -58,6 +60,7 @@ add_executable(illyria_tests
     test_conquest_quests.cpp
     test_conquest_sea.cpp
     test_conquest_ai.cpp
+    test_conquest_realm.cpp
     test_conquest_rare.cpp
     test_conquest_save.cpp
     test_conquest_soldiers.cpp

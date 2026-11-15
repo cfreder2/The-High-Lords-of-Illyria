@@ -68,7 +68,7 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         c.a = v[0], c.b = v[1];
     } else if (verb == "start") {
         c.op = Op::Start;
-        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend]";
+        static const char* kUsage = "start conquest | skirmish ford|siege|capital|field | horde | ctf [lord 0-7] [easy] [budget GOLD] [defend] [deploy]";
         if (n < 1) return usage(kUsage);
         size_t i = 1;
         std::string mode = w[i++];
@@ -86,9 +86,10 @@ bool command(const std::vector<std::string>& w, Command& c, std::string& why) {
         for (; i <= n; ++i) {
             if (w[i] == "easy") c.easy = true;
             else if (w[i] == "defend") c.defend = true;
+            else if (w[i] == "deploy") c.deploy = true;
             else if (w[i] == "budget" && i < n && number(w[i + 1], v[0]) && v[0] >= 50 && v[0] <= 2000) c.budget = static_cast<int>(v[0]), ++i;
             else if (w[i] == "lord" && i < n && number(w[i + 1], v[0]) && v[0] >= 0 && v[0] <= 7) c.lord = static_cast<int>(v[0]), ++i;
-            else return why = "start: what is '" + w[i] + "'? (lord 0-7, easy, budget 50-2000, defend)", false;
+            else return why = "start: what is '" + w[i] + "'? (lord 0-7, easy, budget 50-2000, defend, deploy)", false;
         }
     } else if (verb == "key") {
         c.op = Op::Key;

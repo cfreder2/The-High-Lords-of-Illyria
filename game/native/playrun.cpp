@@ -167,7 +167,7 @@ bool Runner::step() {
                 const unsigned tick = tickNow();
                 ticksWaited_ += tick >= lastTick_ ? tick - lastTick_ : tick;
                 lastTick_ = tick;
-                if (ticksWaited_ < tickTarget_) {
+                if (ticksWaited_ < tickTarget_ && !hudState().flag("over")) {  // (a battle that is over steps no more: the wait is done)
                     // (a paused game or an open menu never gets there: say so rather than hang)
                     if (t < until_) return true;
                     std::printf("play: line %d: wait_ticks gave up after %.0f s (is the game paused, or a menu open?)\n", script_.commands[next_ - 1].line, t - blockedAt_);
@@ -193,7 +193,7 @@ bool Runner::step() {
             }
             case Block::Start: {
                 ++startFrames_;
-                const bool begun = tickNow() > 0 || conquestState().find("day") != nullptr;
+                const bool begun = tickNow() > 0 || hudState().flag("deploy") || conquestState().find("day") != nullptr;  // (a deployment waits at tick 0)
                 if (startFrames_ >= 4 && begun) {
                     block_ = Block::None;
                     lastDeadline_ = 0;
@@ -240,7 +240,8 @@ void Runner::execute(const Command& c) {
             } else if (c.text.rfind("skirmish ", 0) == 0) {
                 const std::string map = c.text.substr(9);
                 const int scenario = map == "ford" ? 0 : map == "siege" ? 1 : map == "capital" ? 2 : 3;
-                std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d}", scenario, c.budget, c.defend ? 1 : 0, c.easy ? 0 : 1);
+                std::snprintf(buf, sizeof buf, "{\"scenario\":%d,\"budget\":%d,\"defend\":%d,\"hard\":%d,\"deploy\":%d}", scenario, c.budget, c.defend ? 1 : 0, c.easy ? 0 : 1,
+                              c.deploy ? 1 : 0);
                 hud_.start("skirmish", buf);
             } else {
                 hud_.start(c.text, "{}");

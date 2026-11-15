@@ -59,6 +59,53 @@ void World::breakSide(PlayerId owner) {
     }
 }
 
+void World::quitField(PlayerId owner) {
+    if (sideBroken(owner)) return;
+    Vec3 mine, theirs;
+    int32_t nMine = 0, nTheirs = 0;
+    for (const Unit& u : units_) {
+        if (!u.alive()) continue;
+        if (u.owner == owner) mine += u.pos.flat(), ++nMine;
+        else theirs += u.pos.flat(), ++nTheirs;
+    }
+    breakSide(owner);
+    if (nMine == 0 || nTheirs == 0) return;
+    mine = mine / Fixed::fromInt(nMine);
+    theirs = theirs / Fixed::fromInt(nTheirs);
+    Vec3 away = mine - theirs;
+    const Fixed len = away.length();
+    if (len == Fixed::zero()) return;
+    away = away / len;
+    // Along that way to the edge of the ground, a few metres short of it (a plain with no edge: 200 m off).
+    const Terrain* ground = config_.region ? &config_.region->terrain() : config_.terrain.get();
+    const Fixed lo = ground ? Fixed::fromInt(8) : Fixed::fromInt(-1000000), hi = ground ? ground->size() - Fixed::fromInt(8) : Fixed::fromInt(1000000);
+    Fixed reach = Fixed::fromInt(200);
+    const auto bound = [&](Fixed at, Fixed dir) {
+        if (dir > Fixed::fromRatio(1, 1000)) reach = min(reach, (hi - at) / dir);
+        else if (dir < -Fixed::fromRatio(1, 1000)) reach = min(reach, (lo - at) / dir);
+    };
+    if (ground) reach = Fixed::fromInt(100000);
+    bound(mine.x, away.x);
+    bound(mine.y, away.y);
+    if (reach <= Fixed::zero()) return;  // (already at it)
+    const Vec3 edge = mine + away * reach;
+    for (Unit& u : units_) {
+        if (u.owner != owner || !u.alive() || u.inAir()) continue;
+        Command c;
+        c.player = owner;
+        c.unit = u.id;
+        c.type = Command::Type::Move;
+        const Vec3 to = edge + (u.pos.flat() - mine);  // each keeps his place beside the others
+        c.target = Vec3{min(max(to.x, lo), hi), min(max(to.y, lo), hi), Fixed::zero()};
+        c.force = true;
+        c.march = true;
+        c.marchFrom = mine;
+        c.marchTo = edge;
+        u.queue.clear();
+        startOrder(u, c);
+    }
+}
+
 bool World::sideBroken(PlayerId owner) const {
     return std::binary_search(brokenSides_.begin(), brokenSides_.end(), owner);
 }

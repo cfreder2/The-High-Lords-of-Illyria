@@ -144,7 +144,7 @@ TEST(a_defence_starts_with_the_engines_throwing_from_two_camps_and_ends_when_the
     for (int i = 0; i < 30; ++i) b.advance(0.1);
     CHECK(b.besiegersBrokeOff());
     CHECK(b.outcome() == 1);
-    CHECK(b.siegeResult() == "The besiegers break off");
+    CHECK(b.siegeResult() == "The besiegers break off.");
 }
 
 TEST(a_storm_ordered_at_a_gate_goes_on_to_the_courtyard_and_holds_it) {
@@ -155,11 +155,17 @@ TEST(a_storm_ordered_at_a_gate_goes_on_to_the_courtyard_and_holds_it) {
         if (b.squads()[i].owner == Battle::kPlayer && b.squads()[i].type == UnitType::HeavyInfantry) foot = static_cast<int>(i);
     CHECK(foot >= 0);
     if (foot < 0) return;
-    // (Nobody to fight: the order itself is what is looked at.)
-    for (const illyria::sim::Unit& u : b.world().units())
-        if (u.owner == Battle::kEnemy) const_cast<illyria::sim::Unit&>(u).hp = 0;
-    const_cast<illyria::sim::World&>(b.world()).spawnUnit(Battle::kEnemy, {illyria::sim::Fixed::fromInt(20), illyria::sim::Fixed::fromInt(20), {}}, {illyria::sim::Fixed::one(), {}, {}},
-                                                          illyria::sim::unitStats(UnitType::Archers));  // (one far away, so the battle is not over)
+    // (Nobody on the town's ground to fight: the order itself is what is looked at. The garrison's foot are stood in a far
+    // corner of the field and its watch left on the walls, so that it is no beaten host and the battle goes on.)
+    int far = 0;
+    for (const illyria::sim::Unit& u : b.world().units()) {
+        if (u.owner != Battle::kEnemy || static_cast<UnitType>(u.stats.type) == UnitType::Archers) continue;
+        illyria::sim::Unit& man = const_cast<illyria::sim::Unit&>(u);
+        man.pos.x = illyria::sim::Fixed::fromInt(60 + far % 8 * 2);
+        man.pos.y = illyria::sim::Fixed::fromInt(60 + far / 8 * 2);
+        man.pos.z = b.world().groundHeight(man.pos.x, man.pos.y);
+        ++far;
+    }
     b.breakGate(townGate(b));
     b.selectSquad(foot);
     b.orderAtGate(townGate(b));
@@ -168,8 +174,8 @@ TEST(a_storm_ordered_at_a_gate_goes_on_to_the_courtyard_and_holds_it) {
     int holding = 0, queued = 0;
     for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(foot)].members) {
         const illyria::sim::Unit& u = *b.world().findUnit(id);
-        queued += !u.queue.empty() && u.queue.back().hold;
-        holding += u.holding;
+        queued += !u.queue.empty() && u.queue.back().occupy;
+        holding += u.occupying;
     }
     CHECK(queued == 12);  // through the doors first, then on, to hold
     CHECK(holding == 0);
@@ -178,9 +184,9 @@ TEST(a_storm_ordered_at_a_gate_goes_on_to_the_courtyard_and_holds_it) {
     for (illyria::sim::EntityId id : b.squads()[static_cast<size_t>(foot)].members) {
         const illyria::sim::Unit& u = *b.world().findUnit(id);
         const V3 p = toV3(u.pos);
-        there += u.holding && (V3{p.x - yard.x, p.y - yard.y, 0}).length() < 14.0f;
+        there += u.occupying && (V3{p.x - yard.x, p.y - yard.y, 0}).length() < 14.0f;
     }
-    std::printf("  %d of 12 hold the courtyard; the flag is %s\n", there, b.capturePoint().taken() ? "up" : "not up");
+    std::printf("  %d of 12 hold the courtyard; the flag is %s (outcome %d at tick %u, flag %d, holders %d)\n", there, b.capturePoint().taken() ? "up" : "not up", b.outcome(), b.world().tick(), b.capturePoint().progress(), b.capturePoint().defendersIn());
     CHECK(there >= 8);
     CHECK(b.capturePoint().taken());
     CHECK(b.outcome() == 1);

@@ -153,6 +153,9 @@ struct App {
     double introStartMs = -1;
     V3 introFrom, introTo;
     float introFromDist = 0, introToDist = 0, introToYaw = 0;
+    float introFromYaw = kNorthUp;
+    double introHoldMs = 1200, introMoveMs = 5000;
+    bool introSettles = false;  // a press during it puts the camera where it was going (a skirmish's opening)
 };
 
 App* app = nullptr;
@@ -188,16 +191,47 @@ void startIntro() {
     app->introFromDist = kOverviewDistance;
     app->introToYaw = app->camera.yaw();
     // North up over the continent, like the conquest map.
+    app->introFromYaw = kNorthUp;
+    app->introHoldMs = 1200, app->introMoveMs = 5000;
+    app->introSettles = false;
     app->camera.rotate(kNorthUp - app->camera.yaw());
     app->camera.lookAt(app->introFrom.x, app->introFrom.y, app->introFromDist);
     app->introStartMs = 0;  // set on the first frame
 }
 
+// A skirmish opens on the other host, then glides to the player's own (the same glide as the intro's).
+void startOpening() {
+    const Battle& b = *app->battle;
+    frameCamera();
+    V3 sum;
+    int n = 0;
+    for (const Squad& q : b.squads())
+        if (q.owner != b.localSide() && b.aliveCount(q) > 0) sum = sum + b.squadCentre(q), ++n;
+    if (n == 0) return;
+    app->introTo = app->camera.target();
+    app->introToDist = app->camera.distance();
+    app->introToYaw = app->introFromYaw = app->camera.yaw();
+    app->introFrom = sum * (1.0f / static_cast<float>(n));
+    app->introFromDist = 110;
+    app->introHoldMs = 1800, app->introMoveMs = 2600;
+    app->introSettles = true;
+    app->camera.lookAt(app->introFrom.x, app->introFrom.y, app->introFromDist);
+    app->introStartMs = 0;
+}
+
+// The camera where the glide was taking it (a press during a skirmish's opening).
+void settleIntro() {
+    if (app->introStartMs >= 0 && app->introSettles) {
+        app->camera.lookAt(app->introTo.x, app->introTo.y, app->introToDist);
+        app->camera.rotate(app->introToYaw - app->camera.yaw());
+    }
+    app->introStartMs = -1;
+}
+
 void stepIntro(double now) {
     if (app->introStartMs < 0) return;
     if (app->introStartMs == 0) app->introStartMs = now;
-    constexpr double kHoldMs = 1200, kSwoopMs = 5000;
-    const double t = std::clamp((now - app->introStartMs - kHoldMs) / kSwoopMs, 0.0, 1.0);
+    const double t = std::clamp((now - app->introStartMs - app->introHoldMs) / app->introMoveMs, 0.0, 1.0);
     const float s = static_cast<float>(t * t * (3 - 2 * t));
     // Pan early, descend on a log scale so the zoom feels even all the way down.
     const float pan = std::min(1.0f, s * 1.6f);
@@ -205,17 +239,19 @@ void stepIntro(double now) {
     const float y = app->introFrom.y + (app->introTo.y - app->introFrom.y) * pan;
     const float d = app->introFromDist * std::pow(app->introToDist / app->introFromDist, s);
     app->camera.lookAt(x, y, d);
-    app->camera.rotate(kNorthUp + (app->introToYaw - kNorthUp) * s - app->camera.yaw());
+    app->camera.rotate(app->introFromYaw + (app->introToYaw - app->introFromYaw) * s - app->camera.yaw());
     if (t >= 1) app->introStartMs = -1;
 }
 
 Scenario gScenario = Scenario::Ford;
 illyria::game::SkirmishSetup gSetup;  // the Skirmish screen's army and side, kept for a restart
 Battle::AiSkill gSkill = Battle::AiSkill::Normal;
+bool gDeploy = false;  // the skirmish waits for the player to set his line, and opens on the other host ("deploy":1)
 
 void newBattle() {
     app->battle = std::make_unique<Battle>(kBattleSeed, gScenario, gSetup);
     app->battle->setAiSkill(gSkill);
+    app->battle->setDeploying(gDeploy);
     app->battleMiniLand.clear();
     // The whole continent, in battle-local coordinates.
     const V3 o = app->battle->origin();
@@ -1000,7 +1036,7 @@ ILLYRIA_API void illyria_set_rain(float rain) {
 ILLYRIA_API void illyria_pointer(int type, int id, float x, float y, int button, double timeMs) {
     if (!app) return;
     const float s = app->pixelRatio;
-    if (type == 0) app->introStartMs = -1;  // any touch takes the camera
+    if (type == 0) settleIntro();  // any touch takes the camera
     app->gestures->pointer(static_cast<PointerEvent>(type), id, x * s, y * s, button, timeMs);
 }
 
@@ -1617,6 +1653,20 @@ ILLYRIA_API int illyria_plan(int op) {
 ILLYRIA_API void illyria_stop() {
     if (app) app->battle->stopSelected();
 }
+// Hold (K): the selection keeps its place with no order in hand; again: back to support.
+ILLYRIA_API void illyria_hold() {
+    if (app) app->battle->holdSelected();
+}
+// The lord's Rally (Y): 1 when he called.
+ILLYRIA_API int illyria_rally() {
+    return app && app->battle->orderRally() ? 1 : 0;
+}
+// The next squad standing idle (J), and the camera to it if it is off screen. 1 when there was one.
+ILLYRIA_API int illyria_next_idle() {
+    if (!app || app->battle->selectNextIdle() < 0) return 0;
+    focusSelection(true);
+    return 1;
+}
 // The selected hyena-folk let loose to raid from where they stand (the Raid button).
 ILLYRIA_API void illyria_raid() {
     if (app) app->battle->orderRaid();
@@ -1656,6 +1706,7 @@ ILLYRIA_API void illyria_set_pace(float pace) {
 ILLYRIA_API void illyria_set_scenario(int scenario) {
     gScenario = scenario == 1 ? Scenario::Siege : Scenario::Ford;
     gSetup = {};
+    gDeploy = false;
     if (!app) return;
     app->title = false;
     newBattle();
@@ -1667,11 +1718,17 @@ ILLYRIA_API void illyria_restart() {
     app->title = false;
     newBattle();
     app->renderer.reset(*app->battle);
-    frameCamera();
+    if (gDeploy) startOpening();
+    else frameCamera();
+}
+// The deployment is done: the battle's clock starts (Enter on the desktop, the page's Begin).
+ILLYRIA_API void illyria_begin_battle() {
+    if (app) app->battle->beginBattle();
 }
 // Test hook: run the simulation forward instantly.
 ILLYRIA_API void illyria_fast_forward(double seconds) {
     if (!app) return;
+    app->battle->beginBattle();
     for (double t = 0; t < seconds; t += 0.1) app->battle->advance(0.1);
     app->battle->voice().take();  // what was said while skipping ahead goes unheard
     app->battle->sfx().take();
@@ -2844,6 +2901,98 @@ ILLYRIA_API void illyria_sandbox_play(const char* clip, int loop) {
     if (sandbox()) app->renderer.playClip(app->battle->selectedAlive(), std::string(clip ? clip : ""), loop != 0);
 }
 
+// One line on a kind of soldier, shown on his squad's card the first time the kind is picked ("" for none).
+static const char* squadTip(illyria::sim::UnitType t) {
+    using T = illyria::sim::UnitType;
+    switch (t) {
+        case T::LightInfantry: return "quick foot, small shields";
+        case T::HeavyInfantry: return "the shield wall, slow";
+        case T::Archers: return "a 70 m bowshot, keep them behind the foot";
+        case T::Pikemen: return "long reach, strong against horse";
+        case T::LightCavalry: return "fast, ride down archers and broken men";
+        case T::HeavyCavalry: return "charge a flank or the rear, not the front";
+        case T::WolfRiders: return "the fastest riders, lightly armed";
+        case T::Giants: return "slow, their blows throw men back";
+        case T::Minotaurs: return "heavy blows, hard to break";
+        case T::Spiders: return "fast, hard to break";
+        case T::Griffins:
+        case T::Pegasi:
+        case T::Archons:
+        case T::Dragons: return "fly over walls and water, tire in the air";
+        case T::Elephants: return "huge and strong, quick to panic";
+        case T::Unicorns: return "fast, hard to break";
+        case T::Wizards: return "fireballs, keep them behind the foot";
+        case T::Devils:
+        case T::Demons: return "strong, hard to break";
+        case T::Undead: return "slow, never break";
+        case T::Hero: return "steadies the men near him, they waver if he falls";
+        case T::DwarfGrenadier: return "throw fire, T lays a satchel";
+        case T::Journeyman: return "heal the wounded near them";
+        case T::Warrior: return "big shields, steady";
+        case T::Berserker: return "fast, hard hitting, no shield";
+        case T::Catapult: return "break gates from far off, guard them";
+        case T::Hyena: return "T lets them loose to raid";
+        default: return "";
+    }
+}
+
+// The start and the end of a battle, for both HUDs (appended to illyria_hud): the deployment and its one-line
+// briefing, a kind's tip the first time it is picked, the side being chased off, and the results once the fight has stopped.
+static void endState(const Battle& b, std::string& s) {
+    char buf[512];
+    const bool siege = b.scenario() == Scenario::Siege || b.scenario() == Scenario::Capital;
+    const std::string brief = b.mode() || b.borrowing() ? "" : siege ? (b.defending() ? "Hold the courtyard." : "Take the courtyard.") : "Rout the " + b.foeName() + ".";
+    std::snprintf(buf, sizeof buf, ",\"deploy\":%s,\"brief\":\"%s\",\"routed\":%d,\"over\":%s", b.deploying() ? "true" : "false", brief.c_str(),
+                  b.routedSide() == illyria::sim::RoutRule::kNobody ? -1 : static_cast<int>(b.routedSide()), b.over() ? "true" : "false");
+    s += buf;
+    {  // The tip: the kind selected (one kind only), the first time it is picked since the game was opened; shown eight seconds.
+        static uint64_t seen = 0;
+        static int tipType = -1;
+        static double tipMs = 0;
+        int type = -1;
+        for (illyria::sim::EntityId id : b.selectedAlive()) {
+            const int t = b.world().units()[id - 1].stats.type;
+            if (type >= 0 && t != type) {
+                type = -2;
+                break;
+            }
+            type = t;
+        }
+        const double now = platform::nowMs();
+        if (type >= 0 && !(seen >> type & 1) && *squadTip(static_cast<illyria::sim::UnitType>(type))) {
+            seen |= uint64_t{1} << type;
+            tipType = type;
+            tipMs = now;
+        }
+        if (type >= 0 && type == tipType && now - tipMs < 8000) {
+            const auto t = static_cast<illyria::sim::UnitType>(type);
+            std::snprintf(buf, sizeof buf, ",\"tip\":\"%s: %s\"", illyria::sim::unitTypeName(t), squadTip(t));
+            s += buf;
+        }
+    }
+    if (!b.over()) return;
+    const Battle::Result r = b.result();
+    static const char* kHow[] = {"wiped", "rout", "flag"};
+    // How it came, in a line (both HUDs print it under the word).
+    static const char* kLine[3][2] = {{"No foe is left standing.", "None of yours is left standing."},
+                                      {"The enemy quit the field.", "Your host quit the field."},
+                                      {"The courtyard is taken.", "The courtyard is lost."}};
+    // (A siege says it in its own words: the keep taken, the besiegers gone. Battle::siegeResult.)
+    const std::string siegeWhy = b.siegeResult();
+    std::snprintf(buf, sizeof buf, ",\"result\":{\"outcome\":%d,\"how\":\"%s\",\"line\":\"%s\",\"seconds\":%d,\"killed\":%d,\"lost\":%d,\"best\":\"%s\",\"fallen\":[", r.outcome,
+                  kHow[static_cast<int>(r.how)], siegeWhy.empty() ? kLine[static_cast<int>(r.how)][r.outcome == 1 ? 0 : 1] : siegeWhy.c_str(), r.seconds, r.killed, r.lost, r.best.c_str());
+    s += buf;
+    for (size_t i = 0; i < r.fallen.size(); ++i) s += (i ? ",\"" : "\"") + r.fallen[i] + "\"";
+    s += "],\"rows\":[";
+    for (size_t i = 0; i < r.rows.size(); ++i) {
+        const Battle::Result::Row& row = r.rows[i];
+        std::snprintf(buf, sizeof buf, "%s{\"name\":\"%s\",\"alive\":%d,\"total\":%d,\"kills\":%d,\"broke\":%s}", i ? "," : "", row.name.c_str(), row.alive, row.total,
+                      row.kills, row.broke ? "true" : "false");
+        s += buf;
+    }
+    s += "]}";
+}
+
 // HUD state as JSON, polled by the page a few times a second.
 ILLYRIA_API const char* illyria_hud() {
     if (!app) return "{}";
@@ -2861,9 +3010,9 @@ ILLYRIA_API const char* illyria_hud() {
     {
         const CapturePoint& cap = b.capturePoint();
         const std::string edges = b.selectionEdges();
-        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"result\":\"%s\",\"gates\":[",
+        std::snprintf(buf, sizeof buf, "\"capture\":{\"on\":%s,\"p\":%d,\"att\":%d,\"def\":%d,\"taken\":%s,\"blocked\":%s,\"text\":\"%s\",\"gates\":[",
                       cap.active() ? "true" : "false", cap.progress() * 100 / CapturePoint::kFull, cap.attackersIn(), cap.defendersIn(),
-                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str(), b.siegeResult().c_str());
+                      cap.taken() ? "true" : "false", cap.blocked() ? "true" : "false", b.siegeLine().c_str());
         s += buf;
         // The doors of the besieged town, with what is left of each.
         bool firstGate = true;
@@ -2898,6 +3047,28 @@ ILLYRIA_API const char* illyria_hud() {
         }
         std::snprintf(buf, sizeof buf, "],\"orders\":%u,", b.ordersGiven());
         s += buf;
+        // Position told: the words floated over the men it happened to, where they are on the screen (Battle::floats).
+        s += "\"floats\":[";
+        {
+            bool any = false;
+            for (const Battle::Float& f : b.floats()) {
+                V3 p = f.pos;
+                if (f.unit >= 1 && f.unit <= b.world().units().size() && b.world().units()[f.unit - 1].alive()) p = b.unitPosition(f.unit - 1);
+                p.z += 3.0f;
+                float px, py;
+                if (!app->camera.project(p, px, py)) continue;
+                std::snprintf(buf, sizeof buf, "%s{\"x\":%.0f,\"y\":%.0f,\"text\":\"%s\",\"good\":%s,\"age\":%u}", any ? "," : "", px / app->pixelRatio,
+                              py / app->pixelRatio, f.text, f.good ? "true" : "false", b.world().tick() - f.tick);
+                s += buf;
+                any = true;
+            }
+        }
+        {
+            const Battle::RallyState r = b.rallyState();
+            std::snprintf(buf, sizeof buf, "],\"rally\":{\"lord\":%s,\"cooldown\":%d,\"heard\":%d},\"holding\":%s,", r.lord ? "true" : "false", r.cooldown, r.heard,
+                          b.selectionHolds() ? "true" : "false");
+            s += buf;
+        }
         const bool asTheyStand = b.keepingShape();
         std::snprintf(buf, sizeof buf, "\"selCount\":%zu,\"selLabel\":\"%s\",\"formation\":\"%s\",\"formationId\":%d,\"groups\":[",
                       b.selectionSize(), b.selectionLabel(), asTheyStand ? kKeepShapeName : formationName(b.selectionFormation()),
@@ -2929,19 +3100,22 @@ ILLYRIA_API const char* illyria_hud() {
         const Standing st = b.standing(q);
         // Whose it is, seen from the local side (Battle::localSide): mine to order, or an ally's (my side, another seat).
         const bool mine = b.controllable(q);
+        const Battle::SquadState state = b.squadState(q);
         std::snprintf(buf, sizeof buf,
                       "%s{\"i\":%zu,\"key\":\"%s%u\",\"name\":\"%s\",\"type\":\"%s\",\"owner\":%d,\"role\":\"%s\",\"formation\":\"%s\",\"alive\":%d,\"total\":%d,"
                       "\"strength\":%d,\"rank\":%d,\"level\":%d,\"blessings\":%d,\"kills\":%d,\"broken\":%d,\"sel\":%d,\"mine\":%s,"
-                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\"}",
+                      "\"ally\":%s,\"rare\":%s,\"hired\":%s,\"command\":%d,\"arms\":\"%s\",\"idle\":%s,\"hold\":%s,\"rallyIn\":%d}",
                       firstSquad ? "" : ",", i, q.army ? "a" : "s", q.army ? q.army : static_cast<uint32_t>(i), q.name.c_str(), illyria::sim::unitTypeName(q.type), q.owner,
                       kRoles[static_cast<int>(roleOf(q.type))], formationName(q.formation), b.aliveCount(q), b.totalCount(q), st.strength, st.rank,
                       st.level, st.blessings, st.kills, st.broken, mine ? b.squadSelection(q) : 0, mine ? "true" : "false", !mine ? "true" : "false",
-                      q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str());
+                      q.rare ? "true" : "false", q.hired ? "true" : "false", q.command, q.arms.c_str(), mine && state.idle ? "true" : "false",
+                      state.hold ? "true" : "false", state.rally);
         s += buf;
         firstSquad = false;
     }
     std::snprintf(buf, sizeof buf, "],\"foeAlive\":%d,\"foeTotal\":%d", foeAlive, foeTotal);
     s += buf;
+    endState(b, s);
     // What is looked at and cannot be ordered (a man not ours, or a gate): view-only.
     if (const Battle::Glance g = b.glance(); g.any) {
         if (g.gate)
@@ -3037,9 +3211,12 @@ static int startMode(const char* id, const char* options) {
             if (!gSetup.army.empty() && gSetup.budget == 0) gSetup.budget = 1;  // (bought armies are the generic musters)
         }
         gSkill = optionNumber(opts, "hard", 1) != 0 ? Battle::AiSkill::Normal : Battle::AiSkill::Easy;
+        gDeploy = optionNumber(opts, "deploy", 0) != 0;
+        gSetup.easy = gSkill == Battle::AiSkill::Easy;
         newBattle();
         app->renderer.reset(*app->battle);
-        frameCamera();
+        if (gDeploy) startOpening();
+        else frameCamera();
         return 1;
     }
     if (mode == "conquest") {

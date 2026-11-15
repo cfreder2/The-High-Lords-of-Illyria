@@ -397,6 +397,7 @@ void World::clearFight(uint64_t seed) {
     impacts_.clear();
     heroDeaths_.clear();
     rallyCalls_.clear();
+    tactics_.clear();
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
@@ -565,6 +566,16 @@ void World::applyCommand(const Command& cmd) {
     // A broken unit too: orders always win (it runs only when it has none; updateUnit).
     // Not a side that is out of the match (its flag fallen: sideBroken).
     if (u == nullptr || !u->alive() || u->owner != cmd.player || sideBroken(u->owner)) return;
+    // A stance and the lord's Rally are no order of his own: what he has in hand, and what waits, stand.
+    if (cmd.type == Command::Type::SetStance) {
+        u->hold = cmd.hold;
+        if (u->hold) u->support = kNoEntity;
+        return;
+    }
+    if (cmd.type == Command::Type::Rally) {
+        orderRally(*u);
+        return;
+    }
     // Only a scavenger raids; to anyone else the order means nothing.
     if (cmd.type == Command::Type::Raid && u->stats.scavenge.sight == Fixed::zero()) return;
     // Shift: after the order in hand (or the ones already waiting). A soldier with nothing in hand and nothing waiting begins it now.
@@ -586,7 +597,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->orderTick = tick_;
     u->layOrdered = false;  // every order replaces the last
     u->stationed = false;   // ... and an order is not a garrison's station
-    u->holding = false;     // ... nor ground to hold, unless it says so (Move, below)
+    u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
     if (u->scav.raiding) endRaid(*u);  // a raid too
     // Pursuits, force marches and attacks on things (world_orders.cpp).
     applyOrder(*u, cmd);
@@ -640,8 +651,8 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             beginMove(*u, target, cmd.speed, cmd.face);
             if (cmd.march) planMarch(*u, target, cmd.marchFrom, cmd.marchTo);
             else planPath(*u, target);
-            u->holding = cmd.hold;
-            u->holdAt = target;
+            u->occupying = cmd.occupy;
+            u->occupyAt = target;
             break;
         }
         case Command::Type::AttackGate:
@@ -674,6 +685,9 @@ void World::startOrder(Unit& unit, const Command& cmd) {
             u->hasAttackTarget = false;
             u->attackGate = -1;
             break;
+        case Command::Type::SetGate:
+        case Command::Type::SetStance:
+        case Command::Type::Rally: break;  // (applyCommand's own)
     }
 }
 
@@ -1479,9 +1493,11 @@ void World::updateUnit(Unit& u) {
     } else if (Unit* sortie = escortFoe(u)) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
-    } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr; enemy != nullptr && !outruns(u, *enemy)) {
-        // (Not one he cannot catch: shieldTarget, below.)
-        fight(u, *enemy);
+    } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
+               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy))) {
+        // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
+        u.support = kNoEntity;
+        support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
     } else if (u.stats.ranged.kind == ProjectileKind::Molotov && shootSatchel(u)) {
         // Fire on a satchel lying among the enemy, before any one man.
     } else if (shootNearby(u)) {
@@ -1491,10 +1507,13 @@ void World::updateUnit(Unit& u) {
     } else if (const int gate = engineGateInReach(u, u.pos, u.stats.ranged.autoRange); gate >= 0) {
         // An engine with no foe in reach throws at a gate of a foe's that is (never walking up to it).
         batterGate(u, gate);
-    } else if (holdGround(u)) {
-        // Back to the ground he was sent to hold (world_siege.cpp).
+    } else if (occupyGround(u)) {
+        // Back to the ground he was sent to occupy (world_siege.cpp).
     } else if (escortSpot(u)) {
         // Idle near engines at a gate: the line in front of them (world_siege.cpp).
+    } else if (Unit* helped = supportFoe(u)) {
+        // No spectators: to the help of a friend fighting near him (world_tactics.cpp).
+        support(u, *helped);
     } else if (Unit* t = shieldTarget(u, enemy)) {
         // Struck at by one he cannot reach, or one he cannot catch at hand:
         // his shield to him, holding his place (world_scavenge.cpp).
@@ -2168,7 +2187,8 @@ bool World::fire(Unit& u, const Vec3& target, bool atWalk) {
                 p.vel = solveFixedElevation(origin, aim, need, w.muzzleSpeed, config_.gravity).velocity;
         }
     }
-    p.damage = scaledDamage(w.damage, prowessPct(u));
+    // (From a height over the mark the shot tells more: world_tactics.cpp.)
+    p.damage = scaledDamage(w.damage, prowessPct(u), heightShotPct(origin.z - target.z));
     p.explosive = w.explosive;
     p.fuse = w.explosive.fuseTicks;
     p.cause = w.damageType;
@@ -2418,7 +2438,7 @@ void World::updateProjectiles() {
             const Vec3 at = prev + seg * hitT;
             if (burstsOnImpact(p.kind)) {
                 pendingExplosions_.push_back({at, p.explosive, p.owner, p.kind, p.cause});
-            } else if (shieldBlocks(*hit, p.vel, Fixed::one())) {
+            } else if (shieldBlocks(*hit, p.vel, wading(*hit) ? Fixed::fromRatio(1, 2) : Fixed::one())) {  // (a man wading cannot keep his shield up)
                 // Caught: half the time the arrow sticks in the shield (a few at most), else it glances off.
                 impacts_.push_back({ImpactEvent::Kind::Blocked, at, p.vel, p.id, hit->id, false, {}});
                 if (hit->shieldArrows < kMaxShieldArrows && rng_.nextBelow(2) == 0) {
@@ -2430,7 +2450,8 @@ void World::updateProjectiles() {
             } else {
                 // Worse in the flank or back, and from a plunging shot from above.
                 const HitSide side = hitSide(hit->facing, p.vel);
-                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100;
+                const int32_t amount = p.damage * sidePct(side, true) / 100 * plungePct(p.vel) / 100 * wadeShotPct(*hit) / 100;
+                if (wading(*hit)) tell(TacticEvent::Kind::Volley, *hit);
                 const bool killed = damage(*hit, amount, mutableUnit(p.shooter), {p.cause, p.vel, at, true});
                 shakeBySide(*hit, side, true);
                 impacts_.push_back({ImpactEvent::Kind::Hit, at, p.vel, p.id, hit->id, killed, {}});
@@ -2674,6 +2695,12 @@ uint64_t World::checksum() const {
             h.addI64(u.steady);
             h.addI64(u.callCooldown);
         }
+        // Only once a man holds, has gone to a friend's help or a lord has called the Rally, so battles without hash as before.
+        if (u.hold || u.support != kNoEntity || u.rallyCooldown != 0) {
+            h.addU64(u.hold);
+            h.addU64(u.support);
+            h.addI64(u.rallyCooldown);
+        }
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);
@@ -2717,7 +2744,7 @@ uint64_t World::checksum() const {
             h.addU64(u.thrownTick);
         }
         if (u.stationed) h.addU64(u.stationed);  // only once a garrison has stationed him, so battles without one hash as before
-        if (u.holding) hashVec(h, u.holdAt);     // only while he holds ground, likewise
+        if (u.occupying) hashVec(h, u.occupyAt);  // only while he occupies ground, likewise
         h.addU64(u.hasAttackTarget);
         hashVec(h, u.attackTarget);
         h.addI64(u.reloadRemaining);
@@ -2763,7 +2790,7 @@ uint64_t World::checksum() const {
                 hashVec(h, c.marchFrom);
                 hashVec(h, c.marchTo);
                 hashVec(h, c.face);
-                h.addU64((c.force ? 1u : 0u) | (c.hold ? 2u : 0u));
+                h.addU64((c.force ? 1u : 0u) | (c.occupy ? 2u : 0u));
                 h.addU64(c.targetUnit);
                 h.addU64(c.rally);
                 h.addU64(static_cast<uint64_t>(c.object));

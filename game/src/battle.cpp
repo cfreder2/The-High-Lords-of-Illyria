@@ -183,6 +183,7 @@ Standing Battle::standing(const Squad& s) const {
     int alive = 0, ranks = 0, bless = 0, best = 0;
     for (sim::EntityId id : s.members) {
         const sim::Unit* u = world_->findUnit(id);
+        if (!u) continue;  // (taken out of the world)
         st.kills += u->kills;
         if (!u->alive()) continue;
         ++alive;
@@ -323,10 +324,12 @@ std::vector<Buy> Battle::playerBuys(const SkirmishSetup& setup, bool engines, in
 }
 
 std::vector<Buy> Battle::foeBuys(const SkirmishSetup& setup, bool engines, int every, int pct) const {
-    // The same purse as the player's (what he bought is what the other side has to match), or `pct` of it: walls are worth
-    // men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct), whichever the player is.
+    // The same purse as the player's (what he bought is what the other side has to match); on Easy, three quarters of it;
+    // and `pct` of that: walls are worth men, so a siege's besiegers have half as much again as its keepers (kSiegeOddsPct),
+    // whichever the player is.
     const int purse = setup.army.empty() ? (setup.budget > 0 ? setup.budget : kDefaultBudget) : std::max(armyCost(setup.army), 1);
-    return buyArmy(purse * pct / 100, engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
+    const int easy = setup.easy ? std::max(purse * kEasyPursePct / 100, 1) : purse;
+    return buyArmy(std::max(easy * pct / 100, 1), engines, every, every == kSiegeEngines ? 2 : 99);  // (a computer's siege: a train a camp)
 }
 
 void Battle::muster(sim::PlayerId owner, const std::vector<Buy>& army, V3 anchor, V3 facing, bool lord, bool enginesFirst) {
@@ -742,11 +745,11 @@ float Battle::heightAt(float x, float y) const {
 }
 
 void Battle::advance(double seconds) {
-    if (paused_) return;
-    const double scaled = std::min(seconds, 0.25) * speed_ * slow_;
+    if (paused_ || deploy_ || over()) return;
+    const double scaled = std::min(seconds, 0.25) * (decided() ? kLastBlowPace : speed_ * slow_);
     accumulator_ += scaled;
     int ticks = 0;
-    while (accumulator_ >= kTickSeconds && ticks < kMaxTicksPerFrame) {
+    while (accumulator_ >= kTickSeconds && ticks < kMaxTicksPerFrame && !over()) {
         step();
         accumulator_ -= kTickSeconds;
         ++ticks;
@@ -786,6 +789,7 @@ void Battle::afterWorldStep() {
     for (size_t i = 0; i < units.size() && i < readied_.size(); ++i)
         if (units[i].meleeCooldown > readied_[i].first || units[i].reloadRemaining > readied_[i].second) attackTick_[i] = world_->tick();
     collectEvents();
+    collectTactics();
     voice_.observe(*world_, outcome());
     presentDeaths();
     observeSquads();
@@ -822,6 +826,7 @@ void Battle::step() {
     pending_.clear();
     capture_.step(*world_);  // battle_capture.cpp
     if (mode_) mode_->afterStep(*this);  // its rules: the hill, the flags, the waves
+    else judge();                        // battle_end.cpp: a host quits the field, the defenders lay down arms
     afterWorldStep();
 }
 
@@ -1168,6 +1173,9 @@ void Battle::runEnemyAi() {
             if (worldRegion().gates()[g].ring == ring && world_->gates()[g].broken()) return true;
         return false;
     }();
+    V3 anyEngines, anyDoor;
+    const bool siege = aiSiege(kEnemy, {}, anyEngines, anyDoor);
+    constexpr float kEasyNearM = 60.0f;  // Easy: a foe this near a squad is fought at once, however early
     for (const Squad& s : squads_) {
         if (s.owner != kEnemy || aliveCount(s) == 0 || standing(s).broken == aliveCount(s)) continue;  // routed: beyond orders
         const V3 c = squadCentre(s, false);
@@ -1176,6 +1184,12 @@ void Battle::runEnemyAi() {
         const V3 goal = nearest(c, kPlayer, dist);
         if (dist == 1e30f) return;
         const size_t q = static_cast<size_t>(&s - squads_.data());
+        aiRally(q);
+        const bool easyMarch = aiSkill_ == AiSkill::Easy && !siege && !s.garrison && role != Role::Siege && dist > kEasyNearM;
+        // Easy comes late: it stands a while (the player has time to set his line), then each squad goes for the foe nearest
+        // it, piecemeal, with no massing and no falling back (aiFight). (Every squad on the one foe nearest the army's middle,
+        // "by one road", was tried: that is a concentration, and it cost a player who gave no orders 86 men for 57.)
+        if (easyMarch && world_->tick() < kEasyWaitTicks) continue;
         if (role == Role::Siege) {
             // Engines never march at the foe; they throw from where they stand: at a gate in their throw, or (a battery set
             // before a side wall, the gate beyond its throw) at the men on the walks until none are left in its reach.
@@ -1210,6 +1224,7 @@ int Battle::outcome() const {
     if (!playerAlive) return 2;
     if (brokeOff_) return 1;  // the besiegers are spent and have gone (aiBreakOff): the walls are held
     if (capture_.taken()) return capture_.attacker() == kPlayer ? 1 : 2;  // the town's heart is taken
+    if (rout_.called(*world_)) return rout_.quitter() == kPlayer ? 2 : 1;  // a host has quit the field
     return 0;
 }
 

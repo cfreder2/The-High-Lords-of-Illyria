@@ -62,6 +62,89 @@ What was tried and left, with why:
 
 The lever left is the garrison, not the attackers: a gatehouse that gives the defenders more to lose by coming out (docs/CASTLE_GATEHOUSE.md), or a third and fourth engine in the train.
 
+## Sieges with a second act (2026-11-14, review3 items 5, 6, 7)
+
+Three things were wrong: a keeper waited four minutes with nobody in reach and the battle never ended; a storm lifted the flag and walked home; a capital fell in nine seconds with most of its garrison alive. And from the pass above: the rush was cheaper than the patient siege.
+
+| Change | Was | Now | Why |
+|---|---|---|---|
+| The flag (`CapturePoint`) | the side with more men within 14 m raised it, up to 10 points a tick (3.3 s) | climbs only with attackers at the pole and **no unbroken defender on the ground inside the walls**; 1 point a tick and one more for every four men there, eight at most (11 s at the least); stops, not falls, while defenders hold; sinks 1 a tick with no attacker there | a town is taken by clearing its ground, not by outnumbering two men at a pole |
+| A capital | one flag in the outer ward | a second pole behind the bailey's doors, fought for after the first by the same rule | the keep must be taken too |
+| An order at a foe's gate (standing or down) | through the doors, 10 m, and stop | through, then on to the courtyard (a bailey's gate: the ground before the keep), and **occupy** it: an idle man more than 6 m from his place there walks back, after a rout and a rally too (`Command::occupy`) | the storm stays on the flag's ground |
+| A garrison and a host of more than two to a man of its foot | failing doors were opened to it, and the foot went out through open doors or a breach | the doors stay shut and the foot hold the horseshoe behind the breach | the rush is no longer met in the open, where its numbers told |
+| Besiegers' muster | foot in front 110 m from the door, engines last (60 to 90 m to walk) | engines in front, 132 m from the door, throwing from the first tick | a defence has a clock from the start |
+| A computer besieging a town of one door | one camp | a second camp (a third of the host, the second siege train) 112 m before a side wall; its engines shell the wall-walks while the first train batters the gate | two batteries to watch, and the walls are worth manning or leaving |
+| Siege purses | the same for both sides | besiegers have 150% of the keepers' (`kSiegeOddsPct`), whichever the player is; a siege train to every four squads, two at most for a computer | walls are worth men; with the honest flag an attacker at parity could not take a capital |
+| The end of a defence | none | the besiegers break off when 30% or fewer of their fighting men stand unbroken (`kSpentPct`): the keeper has won | a defence ends |
+| On screen | a flag on a pole | each door's strength and a line on the flag beside the minimap ("Gate 54%", "Defenders hold the bailey", "Courtyard 45%") | the clock, and what blocks the flag |
+
+Measured with the play harness on this branch merged with the battle endings (the clock stops at the decision, so `mine` is the price at the moment of victory), before on merge-master 7331ef2:
+
+| Script | Before | After |
+|---|---|---|
+| `10-siege-defend-look`, `22-siege-defend-hold` (keep the walls, 300 gold) | first man lost at about 280 s; 104 v 12 at 422 s and 92 v 2 at 667 s, undecided | the gate at 54% by 8 s and down by 30 s; first man lost at 71 s; **won at 184 s**, 71 of 143 left against 59 of 182 |
+| `siege-catapults-first.txt` (the patient way) | won at 136 s with 67 of 72 (the flag in 4 s, 27 of 36 defenders alive) | won at 146 s with 65 of 72 (7 lost) |
+| `08-siege-all-in.txt` (the rush) | won at 91 s with 65 of 72 (7 lost) | won at 100 s with 57 of 72 (**15 lost**) |
+| `13-siege-attack-patient` | flag 11% to 100% in 3 s; won at 169 s, 69 v 25 | flag in 39 s, the storm staying on it; won at 207 s, 60 v 13 |
+| `21-capital-patient` | flag 4% to 100% in 6 s; "won" at 342 s with 93 against 95 | no flag; 71 v 34 at 612 s, undecided (the script's squad numbers are those of the old muster, and it gives no order after the first storm) |
+| `capital-keep.txt` (everyone at the road's door, then at the keep's) | | won at 338 s with 68 of 99 against 28 of 86: the garrison quit the field with the courtyard's flag at 18% |
+
+Engines first is now the cheaper way into a town (7 lost against the rush's 15). Each figure is one run.
+
+What was tried and left, with why:
+
+- **The garrison's last stand at the keep** (a capital's garrison falling back through the bailey's doors when the outer ward is lost): written and taken out. The men were sent and the bailey's gate opened to them, but thirty of them jammed at its doors and none passed in 90 s (the way planned against shut doors leads every man to the one point at their middle; planning it again when the doors opened did not free them). So the keep's gate and ground are taken after the courtyard, but the garrison fights for the outer ward where it stands, and a garrison that breaks there ends the battle as a rout before the keep is asked for.
+- **A longer clock on the gate**: one siege train opens a gate in about 20 to 30 s, too short for a sortie on foot (132 m is 55 s) to save it. The second train is kept off the gate (it shells the walks) so that it is not 15 s. The gate's strength and the stone's blow were left as the pass above set them.
+- **A slower flag** (33 s for fewer than eight men): the patient storm then stood on the flag's ground under the walls' bows while the garrison rallied, and lost 43 of 72; the rate above is the one that measured well.
+
+## Tactics: position, support, the Rally, Easy (2026-11-14, review3 items 2, 3, 8, 15)
+
+The review's finding: on the open field at 450 gold a planned defence killed about as many per man lost as giving no order at all. The rules below are the World's (`engine/sim/src/world_tactics.cpp`, tests in `tests/test_tactics.cpp`), from the men's own state, `Fixed` only, the same for every side and for Skirmish and Conquest. Each tells the presentation when it happens (`World::tactics()`), which floats a word over the men (`Battle::floats`, only over men the viewer can see).
+
+| Rule | Was | Now | Word |
+|---|---|---|---|
+| A man wading (shallows; not the giants' gait) | slower, no other cost | his blows 50% weaker; a man on dry ground strikes him 50% harder and each such blow shakes him 40; missiles +75% and his shield turns half as many | In the ford, Shot in the water |
+| The morale census | every foe within 15 m counts | to a man on dry ground a wading foe is half a foe | |
+| A man with no order, a foe in the water | walks in after him | keeps the dry ground and lets him come (an order takes him across) | |
+| The high ground, melee | the small edge only (+4% at most) | also +2% for each 0.01 of grade striking down (at most +30%), as much less striking up (at most -20%) | High ground |
+| A volley from above | reach, and the plunge (+25% at most) | also +5% a metre over the mark beyond the first (at most +50%) | |
+| Charge, shock to the man struck | 150 front, 225 flank, 300 rear | 150 front, 400 flank, 600 rear, 950 in the back of a man busy with another; half of it to his friends within 6 m | Flanked, Hit from behind, Broken by the charge |
+| A rider at the gallop | wheeled to a free place on his man's ring, and lost the charge | rides straight at his man | |
+| Braced pikes, met head on | the pike's blow and half the impact | the pike's blow half again and the whole impact, and the rider shaken 250 (heavy horse loses 78 of 130, was about 48) | Braced |
+| A man with no order | fights what comes within his own reach (20 to 30 m) | goes to the help of a friend fighting within 40 m; horse ride round to the flank; `Hold` (K) keeps him in his place | |
+| A broken squad | comes back on its own clock, unseen | a white flag and the seconds on its card; the lord within 20 m halves it; the lord's Rally (Y, a minute's cooldown) brings back every broken man within 40 m, the computer's lords too | |
+| Easy (Skirmish) | the player's purse; attacks at once, piecemeal | three quarters of the purse; stands 45 s, then piecemeal; no massing, flanking or falling back | |
+
+Kills per man lost, the review's scripts on the play harness (`~/Desktop/review3/scripts`, field, 450 gold; the scripts take real-time input, so runs of one script differ: each run is listed). Before is merge-master's build run the same day.
+
+| Script | Before | After |
+|---|---|---|
+| `03` Normal, no orders (the army starts on the bank) | 2.1 (152 for 71) | 2.6 (156 for 61) |
+| `07` Normal, the planned bank defence, at 180 s | 2.2 (review), 2.7, 2.2, 2.4, 2.5 | 3.2, 3.3, 3.1 (145 to 161 for 46 to 49) |
+| `07` with the Rally pressed at each look | | 3.0 (153 for 51) |
+| `09` Normal, everyone across the river at once | 1.4 (169 for 124) | 1.6 (202 for 126) |
+| `12` the Ford, no orders | 1.4 (97 for 70) | 1.3 (90 for 70) |
+| `04` Easy, no orders | 3.1 (176 for 57) | 2.2 (146 of 166 for 66) |
+| `08` Easy, the same plan as `07` | 1.4 (179 for 132) | 2.8 (135 of 166 for 49; 134 of 183 left, was 51) |
+
+The set piece (`illyria_balance tactics`, flat open ground, 8 seeds, at 60 s): 12 heavy infantry and 8 light cavalry against 24 light infantry.
+
+| What the horse does | Kills per loss | The foe's line broke |
+|---|---|---|
+| No horse | 0.0 (0 for 95) | 0 of 8 |
+| Sent in at the front, through its own foot | 0.8 (79 for 100) | 0 of 8 |
+| Left on the wing with no order (support: round to the flank) | 6.4 (191 for 30) | 8 of 8 |
+
+Reading it, and what is not there yet:
+
+- **The held bank pays more and steadier, but not 4 to 1.** The plan loses 46 to 49 men where it lost 67 to 91, and for its first 110 s it kills about nine for one; the rest is lost where the foe's main body comes ashore on one squad of twelve. First teeth of 35%, 35% and +50% gave 1.7 to 3.7 run to run and were raised.
+- **No orders also gained** (2.1 to 2.6), because the field's army starts on the bank and men with no order now keep the dry ground and help each other. The plan beats it by about a quarter, not by a wide margin.
+- **A flank charge pays in the set piece (6.4 against 0.8) but is rare in the field battle**: two instrumented runs of `07` landed one and three charges in the whole fight, all frontal. Horse given a march to a place fights at a walk; the computer's riders halt behind their mark before they strike. The lever left is the order, not the rule: an attack order for horse that keeps the gallop.
+- **The Rally pressed blind did not help** (3.0 against 3.2): it brings men back into the fight they ran from. It is for the moment the lord is beside them and the foe is not.
+- **Easy is no longer harder than Normal for the plan** (49 lost against 46 to 49, where it was 132 against 67 to 91), **but it is not yet clearly easier**: with no orders it costs 66 men where Normal costs 61, from a smaller host. Easy by one road was tried and left: every squad on the one foe nearest the army's middle is a concentration (no orders: 86 lost).
+
+Matrix (flat field, no water, so only the charge rules show): light cavalry 71 to 77, wolf riders 61 to 70, heavy cavalry 64 to 66, elephants 36 to 44 on the mean; warriors 74 to 67, berserkers 56 to 53, archers 74 to 72. Pikes still beat all horse 100 to 0. The matrix printed below is from before these rules.
+
 ## What changed, and why
 
 | Change | Was | Now | Why |
@@ -173,4 +256,104 @@ Walls and gates (engines against a castle), terrain in the fight (high ground, f
 
 ## All-computer Conquest pacing (illyria_conquestsim [days] [hard|easy] [seed ...])
 
-Eight Hard lords, headless, seeds 1 to 3, before and after the men-aware attack gate and retaking bonus (conquest_ai.cpp). No war was decided in 60 days (70 to 75 with the later "weary" boldness): the most any lord held was 11 to 17 of 80 towns (41 are needed), nobody snowballed, and from about day 30 towns changed hands about once in five days. Men in the field stay near 2,600 because upkeep takes the income, so equal lords stand off behind their walls. Left as a design decision: a stalemate breaker in the economy (income per hex, cheaper upkeep for a lord with fewer towns).
+Eight Hard lords, headless, seeds 1 to 3, before and after the men-aware attack gate and retaking bonus (conquest_ai.cpp). No war was decided in 60 days (70 to 75 with the later "weary" boldness): the most any lord held was 11 to 17 of 80 towns (41 are needed), nobody snowballed, and from about day 30 towns changed hands about once in five days. Men in the field stay near 2,600 because upkeep takes the income, so equal lords stand off behind their walls. The stalemate breaker is the next section.
+
+## A Conquest that ends (2026-11-14)
+
+A Conquest between eight equal Hard lords never ended. This section is why, what was changed, and what it measures now. The tool is `tools/conquestsim.cpp`: `illyria_conquestsim [days] [hard|easy|mixed] [seed ...]` plays the whole war headless and prints, per seed, the day the first lord fell, the day a lord first held 41 towns, the day the war was decided and the leader's towns every ten days (`ILLYRIA_SIM_REALMS=1` adds each lord's armies, gold, income and upkeep, the armies in his seat and his biggest host); `illyria_conquestsim siege [squads] [seat|town][+engines] [seed ...]` marches so many squads of light infantry at one walled place and prints the men left on each side.
+
+### Why it stalled
+
+1. **Nobody takes a wall.** By day 20 the fifty-odd open villages are shared out and the towns in lords' hands stop near 60 of 80. The other twenty are the neutral walled towns, each with a garrison of 36 to 60 men, and nobody ever takes one. From then on villages change hands about once in five days and nothing else happens: on seeds 1 and 2 the leader held 10 and 9 towns on day 20 and 14 and 12 on day 95, and no lord had fallen.
+2. **The lords' sums were right about that.** The computer lords reckon an attack with the Warlords dice, which count armies one against one. Against a held wall the dice all but forbid it (24 squads of heavy infantry against 14 in a capital: 30 in 100). The first attempt here replaced the dice with a count of men and let a lord go at a wall with half as many men again as stood behind it. The hosts went, and bled: by day 25 lords had lost a third of their armies at neutral walls and held no more towns. The siege runs say why:
+
+| Light infantry marched at the gate | Men | Held by | To one | After four days |
+|---|---|---|---|---|
+| A walled town (Brookhaven, walls 4), seed 1 | 96 | 48 | 2.0 | held: 47 of ours left, 36 of theirs |
+| the same, seed 3 | 120 | 48 | 2.5 | held: 64 left, 8 of theirs |
+| the same, seeds 1 and 2 | 144 | 48 | 3.0 | taken with 92 left; held with 77 left, 32 of theirs |
+| the same, seed 1 | 192 | 48 | 4.0 | taken in 2.6 days, 139 left |
+| the same, two of the eight squads catapults | 76 | 48 | 1.6 | held: 17 left, 21 of theirs |
+| A lord's seat as it stands on day 1 (Highcrag), seeds 1 and 2 | 72 | 43 | 1.7 | held: 43 and 24 left, 19 and 15 of theirs |
+| the same, seed 1 | 96 | 43 | 2.2 | the garrison dead on day 3.75, 66 left |
+
+   A man behind a wall is worth three in front of it, and a siege takes two to four days, long enough for everything the defender has within three days' march to come home.
+3. **A lord has about 240 men.** Upkeep is a quarter of the price a day, so a realm of ten towns (about 190 gold) keeps 25 to 45 squads, and most of them stand within a day of his seat: the men a host would meet at a seat on day 20 were 140 to 245. Three to one of that is more than any lord has. Equal lords cannot take each other's seats, and that is not a fault of the computer's play: a person facing an equal could not either.
+4. **Gold sat in the chest.** On day 10 lords held 300 to 850 gold and trained nothing with it, because upkeep is capped by income.
+
+So the war does not stall for want of boldness. Making the computer bolder was tried first and cost it armies for nothing. It stalls because nothing a lord can do to an equal is final, and because nothing makes two lords unequal. Raising every lord's army to the size a wall wants (halving upkeep) would have doubled the men on the island, which the frame budget of docs/ONE_WORLD.md does not have. The changes below make conquest final and make it pay, and give the computer lords the sense to know when they are beaten.
+
+### What changed, and why
+
+| Change | Was | Now | Why |
+|---|---|---|---|
+| **A seat is a realm** (`Conquest::fallOfRealm`) | "no rule depends on the capital after the start": a lord who lost his capital played on from his villages, and a lord with one hero and no town was still in the war | when a banner reaches the top over the capital a lord began in, he is out of the war; his chest, his towns and their land are the victor's; the garrisons standing in his towns swear to the victor, man for man; his armies in the field and at sea are gone, and his heroes | the one siege that matters now decides something, for the player as for the computer: seven seats is the war, and a superpower can be undone by one blow at its heart. The garrisons go over so that the victor is handed towns, not empty walls for the neighbours to walk into |
+| Banner over a seat (`kSeatBannerSlow`) | as any town: 19 s to 64 s at normal speed | a third of the pace: 58 s to 3 min 12 s (half a day to a day and a half) | a realm should not be lost in the time it takes to notice. The lord (or the player) is given the time to come back and fight in his own courtyard |
+| Victory (`Conquest::winner`) | last lord standing, or more than half the towns with no rival within 15 | last lord standing, or more than half the towns (41); and the war is over when every person in it has lost his seat | with 41 towns no rival can hold more than 39: "within 15" only drew out a war already won |
+| **The council of the tenth day** (`Conquest::council`) | none | from day 30, at every tenth dawn, the weakest computer lord bends the knee to the strongest lord in the war if that lord holds twice his towns (an Easy lord: three times). His realm goes over as if his seat had fallen. One lord a council; never a person | the stalemate breaker. A lord with four towns facing one with ten has lost, and the only thing that kept him in the war was that nobody could afford the siege to say so. It is a decision the computer makes, not a rule that takes a person's realm: the player is never made to yield, and may be the one yielded to. One a council and every tenth day, so that the war is a story of one power rising with time to stop it, not a collapse in a morning |
+| The sack (`kSackDays`) | taking a lord's town paid half his chest's share for it | that, and four days of the town's own income | conquest pays for the men it cost: a walled town's sack (84 to 120 gold) buys back six to eight squads |
+| The computer's chest | pay kept within 95% of income and a twentieth of the chest | 95% of income and a twelfth of the chest | the 300 to 850 gold of the first weeks, a sack, a ruin's hoard and a fallen lord's treasury now become squads within days instead of sitting |
+| Walls, in the computer's sums (`menOdds`) | the dice, and never fewer than 90% of the men to be met | for a host (and for a stack the dice would not send): even at as many men as it will meet, counting men behind a wall three times; it wants 45 in 100 (less as the war drags on) | honest in both directions. It no longer refuses a walled town held by one squad, and no longer throws eight squads at one held by five. The same sum tells a lord that a host marching on his town is a threat |
+| Hosts and the muster (`host`, `muster`) | every stack chose its own target, and no two stacks went at one town | a Hard lord's idle stacks muster at his town nearest the best prize; the fewest of the stacks standing together that have the men for it, three at most, go as one at a prize half as good again as one of them could take alone | a wall wants three to one, and no single stack of eight squads has that against more than a token guard |
+| What a seat is worth to a Hard lord | a capital: 10 points more than a town | and 4 points more for every town its lord holds | all of them come with it |
+| The guard of a computer lord's own seat | his weakest army | one army, and one more for every four towns he holds, five at most | his realm hangs on it; the guard grows with what he stands to lose and leaves the first days' race alone |
+
+No statistic of a computer lord's men, prices or income was touched; the sack, the seat, the slow banner and victory are the same code for the player and the computer. The council is the one thing only a computer lord does, and it is a thing he does to himself.
+
+### Measured
+
+Eight Hard lords, the same seeds before and after. "Leader" is the most towns any lord held on days 10, 20, 30 and so on.
+
+Before (stopped at day 95; seeds 1 and 2):
+
+| Seed | First lord out | A lord holds 41 | Decided | Leader's towns every ten days |
+|---|---|---|---|---|
+| 1 | never | never | not by day 95 | 6 10 11 11 12 12 12 14 14 |
+| 2 | never | never | not by day 95 | 8 9 9 10 11 10 11 12 12 |
+
+(The earlier runs of this section's predecessor, seeds 1 to 3 to day 60 and 75, read the same: 11 to 17 towns, nobody out.)
+
+After:
+
+| Seed | First lord out | A lord holds 41 | Decided | Lords out (seats stormed) | Leader's towns every ten days | How |
+|---|---|---|---|---|---|---|
+| 1 | day 30 | day 70 | day 70 | 6 (1) | 8 10 14 16 25 31 42 | councils on days 30 and 40 to one lord; on day 45 another stormed a neighbour's seat (11 towns with it) and overtook him; councils on 50, 60 and 70 to the new leader |
+| 2 | day 30 | day 70 | day 70 | 5 (0) | 7 11 15 21 28 36 43 | a council every tenth day to the lord who led on day 30 |
+| 3 | day 30 | day 70 | day 70 | 6 (1) | 8 9 15 20 25 26 46 | the leader was ganged up on and fell from 25 to 22 towns while a rival rose from 9 to 18; he stormed a seat on day 68 and the last council gave him the war |
+| 4 | day 29 | day 60 | day 60 | 5 (1) | 8 9 19 27 35 45 | a seat stormed on day 29, then a council every tenth day |
+| 5 | day 30 | day 80 | day 80 | 6 (0) | 7 9 14 19 26 33 40 50 | a council every tenth day; 40 towns on day 70, one short |
+
+Men under arms stayed between 2,300 and 3,500 throughout, as before (no more men on the island). The pins moved: `conquest_is_deterministic` and `boats_are_deterministic` (re-pinned, both read twice).
+
+All Easy lords, sixty days, seeds 1 and 2 (no person in the war, so no council sits: a Knight yields only to a person): one seat fell in each (days 27 and 31, both walked into with no guard in them), the leader held 16 and 14 towns on day 60, and nothing was decided. That is the war an Easy player walks into: seven lords who do not combine, do not kneel to each other, and leave their seats thin.
+
+### Reading it
+
+- **The targets are met on five seeds of five:** a first lord out on day 29 or 30 (asked: 20 to 40), a winner on day 60 to 80 (asked: 60 to 120), nobody ahead by more than two towns on day 10 and no leader above 11 on day 20.
+- **The council carries most of it.** Of the 28 lords who left these five wars, 3 had their seats stormed and 25 bent the knee. The walls are as strong as they were; what changed is that being beaten now has a consequence. The storms that did happen mattered: on seed 1 one of them changed who won.
+- **It is regular.** With one lord kneeling every tenth day, a war that nobody interrupts ends between day 60 and day 80, and the lord who leads on day 30 usually wins it (four seeds of five). On seeds 2 and 5 nothing interrupted it at all. That is the cost of a rule that always ends the war; the cure in play is the seat rule, which lets one siege undo a leader, and the leader being ganged up on (seed 3).
+- **Position decides who leads on day 30.** The Sunreach Riders won three seeds of five; the central realm (the Aurelian Throne, the player's default) held 4 or 5 towns on day 25 in every seed and was first to kneel in four. That is the map's balance, not this change's, but the council now turns it into a result. It wants looking at before the default realm is left as it is.
+- **A person on Hard** who is not the strongest on day 30 has about forty days to become it or to take the leader's seat. **On Easy** nobody else is handed anything, the Knights' seats are thin, and every realm the player earns twice over kneels to him. No person has played either; see below.
+
+### Tried and left
+
+- **Bolder dice** (the earlier "weary" rule, kept): two thousandths less asked for each day after day 30. It moves villages, not walls.
+- **A host on the dice alone:** three stacks reckoned together by the dice. Twenty-four squads against fourteen in a capital is 30 in 100 by the dice, so no host ever went.
+- **Men behind a wall counted one and a half times, and a seat's one and three quarters:** hosts went at neutral walled towns at two to one and were beaten off; lords lost a third of their armies between days 20 and 25 for no town. Three times is what the siege runs measure.
+- **Catapults in the host:** two engines among eight squads did worse than eight squads of foot (17 of 76 left against 21 of 48). The patient siege of the section above is the player's; the computer's stacks do not yet play it well enough to count on, so the sums take no account of engines.
+
+### Not done
+
+- **Starving a town out** (a walled place that yields to a host camped round it, without an assault). It would let two to one decide a siege with time instead of blood, and would make relief armies and field battles the centre of the war. It needs a rule, a way for a stack to stand off instead of going in, and something on the screen; it is the next thing to build if sieges are to carry more of the war than the councils do.
+- **Bigger armies** (cheaper upkeep): see "Why it stalled", 3.
+- **A day limit.** Not needed: every war measured was decided by the towns.
+- **The council between people.** In a war of several people a person is never made to yield and cannot offer to; fealty between people wants an Order of its own.
+
+### Not verified
+
+- **No person has played it.** "A person of average skill can win on Easy" rests on the all-Easy runs above and on the rules (Knights yield only to a person, and do not mass), not on a played game.
+- `hard_lords_outplay_easy_ones` (tests/test_conquest_ai.cpp: ten 25-day wars) was not run; the Hard lord's play changed (hosts, the muster, the chest), so its tally will have moved and may want its bounds looked at.
+- The other long tests that play computer lords for days (the save round trips on many seeds, the sea and quest tests) and the full suite were not run. Run here: the new tests in tests/test_conquest_realm.cpp, the banner tests in tests/test_capture.cpp, `the_computer_saves_a_threatened_capital`, `computer_lords_keep_out_of_debt`, and the two pins.
+- The page and the desktop app were not built or looked at: the news lines for a fallen realm and a council, and the *Illyria is lost* overlay when the player's seat falls, go through paths that exist (`deeds`, `winner`), but nobody has seen them on the screen. Nothing on the screen yet warns that a seat is a realm, or that a council is coming.
+- The before table is two seeds stopped at day 95, not five at 120 (the machine was shared and each war costs twenty to sixty minutes).
+- The wars above were run before the last two edits (the council told to every lord as news; a Knight yielding only to a person). Neither is on the path of an all-Hard war, and the pins, which do not reach day 30, were read after them.

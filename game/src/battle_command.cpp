@@ -1088,12 +1088,12 @@ void Battle::stormGate(sim::PlayerId owner, const std::vector<sim::EntityId>& th
     const float side = (centreOf(through) - centre).dot(out) >= 0 ? -1.0f : 1.0f;
     moveGroup(owner, through, formation, centre + out * (10.0f * side), nullptr, out * side);
     // Into a foe's town: the order carries on to the ground the doors guard (its courtyard; a bailey's, the ground before the
-    // keep), and they hold it until told otherwise (Command::hold). One rule for a skirmish's siege and a Conquest's town.
+    // keep), and they hold it until told otherwise (Command::occupy). One rule for a skirmish's siege and a Conquest's town.
     V3 ground;
     if (side > 0 || world_->gates()[static_cast<size_t>(gate)].holder == owner || !groundBehind(gate, ground)) return;
     const size_t first = pending_.size();
     moveGroup(owner, through, formation, ground, nullptr, out * side);
-    for (size_t i = first; i < pending_.size(); ++i) pending_[i].queue = pending_[i].hold = true;
+    for (size_t i = first; i < pending_.size(); ++i) pending_[i].queue = pending_[i].occupy = true;
 }
 
 void Battle::orderAtGate(int gate) {

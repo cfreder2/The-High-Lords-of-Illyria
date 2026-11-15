@@ -26,7 +26,11 @@ As in *Myth*, every soldier is worth commanding on his own: you may move one man
 | Plan: hold orders, then send them all at once | **Plan**, give orders, **Send** | [[`]] to start, [[`]] to send, [[Backspace]] to drop them |
 | Formation | **Formation**, then pick one (or the last cell, a face drawn in men) | the keypad 1-7 (8: keep the arrangement), or shift + 1-8 |
 | Scatter | **Scatter** | [[X]], or the keypad 0 |
+| No order at all | men with no order go to the help of friends fighting within 40 m (**support**); a card marked IDLE has no order and nothing to fight | |
 | Halt (stop the march, and the queue) | **Hold** | [[Space]] or [[B]] |
+| Stance: Hold (keep their place; again: back to support) | | [[K]] |
+| The next squad standing idle | | [[J]] |
+| Rally (your lord calls back the broken within 40 m) | | [[Y]], or the **Rally** button over the cards (desktop) |
 | The camera to the selection | **Find** | [[C]] |
 | The next / previous group of units | | [[Tab]] / [[Shift]] + [[Tab]] |
 | Raid (hyena-folk) | **Raid** | [[T]] (or [[L]]) |

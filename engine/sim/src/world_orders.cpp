@@ -257,7 +257,9 @@ World::Stance World::stanceOfOrder(const Command& c) {
         case Command::Type::AttackObject: return Stance::Hunt;
         case Command::Type::Stop:
         case Command::Type::Raid:
-        case Command::Type::SetGate: break;
+        case Command::Type::SetGate:
+        case Command::Type::SetStance:
+        case Command::Type::Rally: break;
     }
     return Stance::Idle;
 }

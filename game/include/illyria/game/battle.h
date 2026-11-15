@@ -17,6 +17,7 @@
 #include "illyria/game/voice.h"
 #include "illyria/sim/conquest.h"
 #include "illyria/sim/continent.h"
+#include "illyria/sim/mode_rules.h"
 #include "illyria/sim/region.h"
 #include "illyria/sim/units.h"
 #include "illyria/sim/world.h"
@@ -121,6 +122,8 @@ struct Buy {
 // gold budget and the computer plays as a lord does (AiSkill). `budget` 0 is the classic muster of the Ford and the village
 // siege (the armies the first builds were made with); every other map, and any budget, buys.
 struct SkirmishSetup {
+    // The computer plays Easy: a smaller purse (kEasyPursePct of the player's), and it comes late and piecemeal (Battle::runEnemyAi, aiFight).
+    bool easy = false;
     int budget = 0;
     std::vector<Buy> army;  // what the player bought (empty: bought for him from the budget)
     bool defend = false;    // a siege: hold the castle against the other side's army instead of storming it
@@ -413,6 +416,40 @@ public:
     // `frontMetres`: the drag's length, the width the front is made (0: the usual block).
     void orderMoveFacing(const V3& to, const V3& facing, float frontMetres = 0);
     void stopSelected();
+    // Tactics told and commanded (battle_tactics.cpp; the rules are the world's: world_tactics.cpp).
+    // The selection's stance with no order in hand: Hold (they keep their place), or support (the default: they go to the
+    // help of a friend fighting within 40 m). holdSelected switches between the two.
+    void holdSelected();
+    bool selectionHolds() const;
+    // What a squad's card says beyond its men: idle (no order, nothing to fight), holding, and broken: the seconds until it
+    // rallies on its own (0: not broken; -1: a foe is too near for it to rally).
+    struct SquadState {
+        bool idle = false, hold = false;
+        int rally = 0;
+    };
+    SquadState squadState(const Squad& s) const;
+    // Selects the next of the player's squads standing idle (its index; -1 and a notice when none is).
+    int selectNextIdle();
+    // The lord's Rally: every broken man of his within 40 m turns back at once; then he waits a minute. False (and a notice)
+    // when there is no lord, he has just called, or nobody broken hears him.
+    bool orderRally();
+    struct RallyState {
+        bool lord = false;  // a lord of the player's is on the field
+        int cooldown = 0;   // seconds until he may call again
+        int heard = 0;      // broken men in his earshot now
+    };
+    RallyState rallyState() const;
+    // A word floated over the men it happened to ("Flanked", "In the ford", "Braced"): where, and whether it is good news
+    // for the viewer. Only what he can see (sees()).
+    struct Float {
+        uint32_t tick = 0;
+        sim::EntityId unit = sim::kNoEntity;
+        V3 pos;
+        const char* text = "";
+        bool good = false;
+    };
+    static constexpr uint32_t kFloatShown = 3 * sim::kTicksPerSecond;
+    const std::vector<Float>& floats() const { return floats_; }
     // Planning (client side only; the sim and the other peers know nothing of it until the release). While on, the orders a
     // gesture gives (a right click, a facing drag, an attack, a formation, scatter, raid) are not sent but held, per man, and
     // drawn as pending paths for every man that has any. Releasing sends them all in the one tick in the order given, exactly as if
@@ -635,6 +672,12 @@ public:
     void aiForceMarch(size_t squad, const V3& to);
     void aiAttack(size_t squad, sim::EntityId target);
     void aiHalt(size_t squad);
+    // A computer's lord calls the Rally when enough of his broken men hear him: the player's own command (Command::Rally).
+    void aiRally(size_t squad);
+    // The computer's purse on Easy, as a share of the player's.
+    static constexpr int kEasyPursePct = 75;
+    // Easy comes late: it stands this long before it marches (unless the player comes to it).
+    static constexpr uint32_t kEasyWaitTicks = 45 * sim::kTicksPerSecond;
     // How well the computer plays (decision quality, never stats). Easy: the
     // nearest foe, marching piecemeal, archers wherever they like, the
     // broken fighting on. Normal: weak and exposed foes first (healers,
@@ -702,13 +745,44 @@ public:
     int groupSelection(int slot) const;
     bool paused() const { return paused_; }
     int speed() const { return speed_; }
-    // 0 in progress, 1 victory, 2 defeat.
+    // 0 in progress, 1 victory, 2 defeat. A battle is won when no foe is left, when the town's heart is taken, or when
+    // a host has quit the field (sim::RoutRule) and the pursuit is over.
     int outcome() const;
+    // The end of a battle (battle_end.cpp). The side that has quit the field and is being chased off it (or kNobody).
+    sim::PlayerId routedSide() const { return rout_.quitter(); }
+    // Decided: the clock runs slow over the last blow (kLastBlowTicks at kLastBlowPace), then the fight stops for good.
+    // The ticks are the world's, so every peer stops on the same one; the slowing is the clock's alone.
+    static constexpr uint32_t kLastBlowTicks = 8;
+    static constexpr double kLastBlowPace = 0.25;
+    bool decided() const { return decidedTick_ != UINT32_MAX; }
+    bool over() const { return decided() && world_->tick() >= decidedTick_ + kLastBlowTicks; }
+    // What the results sheet says: how long, what each of the local side's squads did and lost, who fell.
+    struct Result {
+        int outcome = 0;
+        enum class How : uint8_t { Wiped, Rout, Flag } how = How::Wiped;
+        int seconds = 0, killed = 0, lost = 0;
+        struct Row {
+            std::string name;
+            int alive = 0, total = 0, kills = 0;
+            bool broke = false;
+        };
+        std::vector<Row> rows;
+        std::string best;                 // the squad with the most kills ("" with none)
+        std::vector<std::string> fallen;  // heroes fallen, the local side's first
+    };
+    Result result() const;
+    // Deployment: the battle waits at its first tick for the player to set his line. Orders are taken (they are held
+    // as any order is until the next step, and their markers show); beginBattle starts the clock. The app asks for it
+    // (a skirmish from the menu); a battle made by a test or a hook runs at once. Single player: over the network the
+    // start is every seat's to agree, as a change of pace is (docs/NETCODE.md).
+    void setDeploying(bool on) { deploy_ = on; }
+    bool deploying() const { return deploy_; }
+    void beginBattle() { deploy_ = false; }
     // A town's capture point (battle_capture.h); inactive in the field.
     const CapturePoint& capturePoint() const { return capture_; }
     // A siege in a player's words, for every HUD (battle_capture.cpp). The doors of the besieged town with what is left of
     // each (percent), the outer wall's first and a bailey's last; one line on the flag (what blocks it, or how far it has
-    // climbed); and once the battle is decided, why.
+    // climbed); and once the battle is decided, why (the result screen's line).
     struct SiegeGate {
         const char* name;
         int hpPct;
@@ -885,6 +959,11 @@ private:
     // The strip of events (events()), called once after each step of the world.
     void observeSquads();
     void announce(const std::string& text);
+    void collectTactics();
+    sim::EntityId lordOf(sim::PlayerId owner, bool controllableOnly) const;
+    std::vector<Float> floats_;
+    std::map<uint64_t, uint32_t> floatSaid_;  // by word, side and place: when it was last floated
+    int idleCursor_ = -1;                     // the squad the idle key last chose
     // Of these, the one nearest p.
     sim::EntityId nearestOf(const std::vector<sim::EntityId>& ids, const V3& p) const;
     // Sieges: the town's gates belong to its defenders.
@@ -1001,6 +1080,7 @@ private:
     };
     std::map<uint32_t, SquadWatch> squadWatch_;  // by army (a Conquest's) or squad
     bool hadArmy_ = false;  // a Conquest: the local side has had an army standing
+    uint32_t quitSeen_ = 0;  // a Conquest: the tick of the last stack told of as quitting a field
     bool paused_ = false;
     int speed_ = 1;
     float slow_ = 1;
@@ -1037,6 +1117,13 @@ private:
     };
     std::vector<Smoulder> smouldering_;  // the burned, still smoking
     CapturePoint capture_;
+    // The end (battle_end.cpp): the rout rule, when the battle was decided, and the squads that ever broke.
+    sim::RoutRule rout_;
+    std::vector<sim::HostSquad> hosts_;
+    uint32_t decidedTick_ = UINT32_MAX;
+    std::vector<uint8_t> everBroke_;
+    bool deploy_ = false;
+    void judge();
     void placeCapturePoint(const sim::Continent::City& town, sim::PlayerId keeper);
     std::unique_ptr<BattleMode> mode_;
     std::vector<uint8_t> foreign_;  // by EntityId - 1: an ally's soldiers (setForeign)

@@ -386,7 +386,7 @@ void Voice::observe(const sim::World& world, int outcome) {
 
     // Rally calls, as the simulation made them.
     for (const sim::RallyCall& c : world.rallyCalls())
-        want(c.kind == sim::RallyCall::Kind::Hero ? S::HeroRally : S::HoldLine, c.caller);
+        want(c.kind == sim::RallyCall::Kind::Veteran ? S::HoldLine : S::HeroRally, c.caller);
 
     // A target down: one who presses on cries out as he goes at the next
     // (going back to his friends, he goes quietly).

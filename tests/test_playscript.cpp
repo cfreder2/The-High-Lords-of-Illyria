@@ -71,6 +71,7 @@ TEST(playscript_start_modes) {
     CHECK(parse("start siege").commands[0].text == "skirmish siege");
     const Script s = parse("start conquest lord 3 easy");
     CHECK(s.ok() && s.commands[0].lord == 3 && s.commands[0].easy);
+    CHECK(parse("start skirmish field budget 450 deploy").commands[0].deploy && !parse("start skirmish field").commands[0].deploy);  // the deployment pause is asked for
     CHECK(!parse("start skirmish").ok());
     CHECK(!parse("start skirmish moat").ok());
     CHECK(!parse("start conquest lord 9").ok());

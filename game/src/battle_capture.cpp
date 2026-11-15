@@ -135,10 +135,10 @@ std::string Battle::siegeLine() const {
 }
 
 std::string Battle::siegeResult() const {
-    if (brokeOff_) return "The besiegers break off";
+    if (brokeOff_) return "The besiegers break off.";
     if (!capture_.taken()) return "";
-    if (capture_.attacker() != local_) return "The town is lost";
-    return capture_.stages().size() > 1 ? "The keep is taken" : "The courtyard is taken";
+    if (capture_.attacker() != local_) return "The town is lost.";
+    return capture_.stages().size() > 1 ? "The keep is taken." : "The courtyard is taken.";
 }
 
 void Battle::testStorm() {

@@ -3,6 +3,7 @@
 //   illyria_balance march                       campaign marches between neighbouring towns
 //   illyria_balance matrix [seeds] [gold]       equal-gold armies of every type against every other
 //   illyria_balance duel A B [seeds] [gold]     one pairing, seed by seed
+//   illyria_balance tactics [seeds]             set pieces: the same horse sent in at the front, or left to ride round to the flank
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -253,6 +254,54 @@ void trace(UnitType a, UnitType b, int gold) {
     }
 }
 
+// Position set pieces (docs/BALANCE.md, Tactics), on flat open ground: 12 heavy infantry hold a line against 24 light
+// infantry who march on them, with 8 light cavalry of the line's side. The same men each time; only where the horse is put
+// and what it is told differs. Kills and losses are the line's side's, summed over the seeds, at 60 s.
+void tactics(int seeds) {
+    struct Piece {
+        const char* name;
+        double hx, hy;  // where the horse starts
+        bool ordered;   // sent at the middle of the foe's line (a march, so they fight whom they meet); else no order: support
+    };
+    const Piece pieces[] = {{"no horse at all", 0, 0, false},
+                            {"horse sent in at the front, through its own foot", -30, 0, true},
+                            {"horse on the wing with no order (support: round to the flank)", 10, 38, false}};
+    std::printf("12 heavy infantry and 8 light cavalry against 24 light infantry, %d seeds, at 60 s\n", seeds);
+    for (const Piece& p : pieces) {
+        int killed = 0, lost = 0, broke = 0;
+        for (int s = 0; s < seeds; ++s) {
+            WorldConfig cfg;
+            cfg.seed = 2000 + static_cast<uint64_t>(s);
+            World w(cfg);
+            std::vector<Command> cmds;
+            std::vector<EntityId> mine, foes;
+            for (int i = 0; i < 24; ++i) {
+                if (i < 12) mine.push_back(w.spawnUnit(0, {m(0), mm((i - 5.5) * 1.6), m(0)}, kEast, unitStats(UnitType::HeavyInfantry)));
+                const EntityId f = w.spawnUnit(1, {mm(40 + (i / 12) * 1.6), mm((i % 12 - 5.5) * 1.6), m(0)}, -kEast, unitStats(UnitType::LightInfantry));
+                foes.push_back(f);
+                cmds.push_back({1, f, Command::Type::Move, {m(0), mm((i % 12 - 5.5) * 1.6), m(0)}});
+                if (i < 8 && p.name[0] != 'n') {
+                    const EntityId h = w.spawnUnit(0, {mm(p.hx), mm(p.hy + (i - 3.5) * 2.2), m(0)}, kEast, unitStats(UnitType::LightCavalry));
+                    mine.push_back(h);
+                    if (p.ordered) cmds.push_back({0, h, Command::Type::Move, {m(45), mm((i - 3.5) * 2.2), m(0)}});
+                }
+            }
+            bool broken = false;
+            for (int t = 0; t < 60 * kTicksPerSecond; ++t) {
+                w.step(t == 0 ? std::span<const Command>(cmds) : std::span<const Command>{});
+                int routed = 0, alive = 0;
+                for (EntityId f : foes) alive += w.findUnit(f)->alive(), routed += w.findUnit(f)->alive() && w.findUnit(f)->routed;
+                broken = broken || (alive > 0 && routed * 2 >= alive);
+            }
+            for (EntityId f : foes) killed += !w.findUnit(f)->alive();
+            for (EntityId f : mine) lost += !w.findUnit(f)->alive();
+            broke += broken;
+        }
+        std::printf("  %-64s killed %3d lost %3d  %.1f kills per loss, the foe's line broke in %d of %d\n", p.name, killed, lost,
+                    static_cast<double>(killed) / std::max(1, lost), broke, seeds);
+    }
+}
+
 int byName(const char* s) {
     for (int i = 0; i < kUnitTypeCount; ++i)
         if (std::strncmp(unitTypeName(typeAt(i)), s, std::strlen(s)) == 0) return i;
@@ -268,6 +317,7 @@ int main(int argc, char** argv) {
     else if (!std::strcmp(mode, "march")) march();
     else if (!std::strcmp(mode, "trace") && argc > 3)
         trace(typeAt(byName(argv[2])), typeAt(byName(argv[3])), argc > 4 ? std::atoi(argv[4]) : 60);
+    else if (!std::strcmp(mode, "tactics")) tactics(argc > 2 ? std::atoi(argv[2]) : 8);
     else if (!std::strcmp(mode, "duel") && argc > 3)
         duel(typeAt(byName(argv[2])), typeAt(byName(argv[3])), argc > 4 ? std::atoi(argv[4]) : 6, argc > 5 ? std::atoi(argv[5]) : 60);
     else matrix(argc > 2 ? std::atoi(argv[2]) : 6, argc > 3 ? std::atoi(argv[3]) : 60);

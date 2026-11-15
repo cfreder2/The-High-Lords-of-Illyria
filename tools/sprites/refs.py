@@ -63,6 +63,22 @@ UNITS = {
         items=[('lance', 'a heavy jousting lance: a long tapered wooden shaft about 4 metres, a steel head and a round vamplate hand guard, '
                          'with a blue #0050FF pennon, shown vertical and whole'),
                ('shield', 'a steel-rimmed heater shield with a plain cross, its field saturated blue #0050FF, seen face-on')]),
+    'heavy_cavalry_rider': dict(cls='man', kind='man', look=(
+        'a Heavy Cavalry knight ON FOOT, dismounted, no horse anywhere: a man in full plate armour with a closed great helm and a team-blue plume, '
+        'a team-blue surcoat over the plate, steel gauntlets and sabatons with spurs, a sheathed arming sword on his belt. He stands on the ground.'),
+        items=[('lance', 'a heavy jousting lance: a long tapered wooden shaft about 4 metres, a steel head and a round vamplate hand guard, '
+                         'with a blue #0050FF pennon, shown vertical and whole'),
+               ('shield', 'a steel-rimmed heater shield with a plain cross, its field saturated blue #0050FF, seen face-on')]),
+    'warhorse': dict(cls='large', kind='beast', wide=True, look=(
+        'a big armoured warhorse with NO rider: a heavy grey horse standing square on all four legs, head level, barded in plate on the head '
+        '(chanfron), neck and chest, with a team-blue caparison cloth hanging to its knees, a high war saddle with stirrups, and a bridle. '
+        'The saddle is empty.'),
+        items=[]),
+    'light_cavalry_rider': dict(cls='man', kind='man', look=(
+        'a Light Cavalry horseman ON FOOT, dismounted, no horse anywhere: a man in leather armour and an open helm with a team-blue tabard, '
+        'riding boots with spurs and a sheathed sabre on his belt. He stands on the ground.'),
+        items=[('lance', 'a light cavalry lance: a slim wooden shaft about 3 metres long with a small steel head and a hand guard, '
+                         'with a small blue #0050FF pennon below the head, shown vertical and whole')]),
     'dwarves': dict(cls='man', kind='man', look=(
         'a Dwarf axeman of the hills: stocky and short, broad, about 1.35 metres tall, a long braided beard, a steel helm with a nose guard, '
         'a mail shirt under a team-blue tabard, thick belted arms, heavy boots. Proportions: big head, wide shoulders, short legs.'),
@@ -76,6 +92,15 @@ UNITS = {
         'his left holding the bridle.'),
         items=[('spear', 'a goblin spear: a rough wooden shaft about 1.6 metres with a crude iron head tied on with sinew and a few feathers, '
                          'shown vertical and whole')]),
+    'wolf_rider_goblin': dict(cls='man', kind='man', look=(
+        'a Wolf Rider goblin ON FOOT, dismounted, no wolf anywhere: a small wiry goblin about 1.2 metres tall (green-grey skin, big pointed ears, '
+        'a sharp-toothed grin) in scrappy leather armour and a rag-trimmed team-blue tabard, bare feet. He stands on the ground.'),
+        items=[('spear', 'a goblin spear: a rough wooden shaft about 1.6 metres with a crude iron head tied on with sinew and a few feathers, '
+                         'shown vertical and whole')]),
+    'wolf': dict(cls='large', kind='beast', wide=True, look=(
+        'a great grey riding wolf with NO rider, as big as a pony: shaggy grey fur, yellow eyes, standing square on all four legs, head level, '
+        'mouth closed, with a rope-and-leather bridle and a team-blue blanket strapped on its back for a saddle. Nobody on it.'),
+        items=[]),
     'giants': dict(cls='huge', kind='man', look=(
         'a Hill Giant of the northern heights, about 5.5 metres tall (shown as a normal standing figure): a huge, broad, shaggy, '
         'weathered man with a heavy brow, a rough beard and matted hair, bare chested with a fur pelt over one shoulder, '
@@ -109,6 +134,10 @@ UNITS = {
         'a team-blue caparison cloth over its back and flanks with a fringe, and on its back a wooden howdah (a tower-like box with a '
         'team-blue canopy and railings) carrying two crewmen in helms and mail with team-blue tabards, standing, hands resting on the '
         'rail. Elephant, howdah and crew are ONE subject.'),
+        items=[]),
+    'horse': dict(cls='large', kind='beast', wide=True, look=(
+        'a riding horse for cavalry, with NO rider: a lean, strong brown horse (bay, dark mane and tail) standing square on all four legs, '
+        'head level, with a plain leather saddle, girth, stirrups and bridle and a team-blue saddle cloth. The saddle is empty.'),
         items=[]),
     'unicorns': dict(cls='large', kind='beast', wide=True, look=(
         'a Unicorn: a slim, fierce white horse with a single long spiralled ivory horn, a flowing white mane and tail, with a team-blue '
@@ -175,7 +204,8 @@ UNITS = {
         'a wooden siege Catapult, a wheeled mangonel: a sturdy timber frame on four iron-shod wooden wheels, a throwing arm with a '
         'sling cup resting down against the frame, a twisted-rope torsion bundle, ratchet and windlass, and a team-blue pennant on a '
         'short pole at the rear. No crew, no stone in the cup.'),
-        items=[]),
+        items=[('stone', 'a catapult stone: one rough-hewn grey granite boulder about 40 centimetres across, roughly round, chipped, seen alone'),
+               ('molotov', 'a fire bottle: a squat green glass bottle of oil stoppered with a burning rag wick, a small flame on the rag, seen alone, upright')]),
 }
 
 CLASSES = ('man', 'large', 'huge')

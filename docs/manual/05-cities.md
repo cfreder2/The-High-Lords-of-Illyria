@@ -43,7 +43,7 @@ Each lord begins the war with a chest of its own:
 
 Where does it go? Into training (paid when an army is begun), into **upkeep** (paid every day for every army you have), into building boats and hiring heroes. There is never enough.
 
-When you take a city from another lord, its treasury suffers: the loser gives up its chest's share for that city (its gold divided by the cities it held, this one among them), and half of that comes to you. Neutral towns have no chest to lose. A city that changes hands stops what it was training, and forgets where it was sending its armies.
+When you take a city from another lord, its treasury suffers: the loser gives up its chest's share for that city (its gold divided by the cities it held, this one among them), and half of that comes to you. You also **sack** it: four days of its own income, at once. Neutral towns have no chest to lose and nothing to sack. Take a lord's **seat**, the capital he began in, and his whole chest and his whole realm are yours ([](#seat)). A city that changes hands stops what it was training, and forgets where it was sending its armies.
 
 ## Training armies {#training}
 
@@ -146,5 +146,5 @@ A city far behind the front can send what it trains to another of your cities. I
 A walled city's **walls** are real: the stone, the towers, the gate and the walk along the top that you see on the map are the ones its garrison fights on and its attackers must breach (chapter [](#sieges)). The number the panel shows beside *Walls* (a capital 6, a walled town 3 to 5, a village 1) is the old *Warlords* rating, which the computer lords still use to reckon whether an attack is worth making; it falls by one each time the city is taken, never below 1. It cannot be bought up: walls that change nothing a soldier can see were not worth the gold.
 
 ::: note "Not yet built"
-*Warlords* let a lord **raze** a city to the ground, and chose a new capital when the old one fell. Neither is in the game: a capital that falls stays a capital, and pays its 50 gold and drills at its double pace for its new lord.
+*Warlords* let a lord **raze** a city to the ground, and chose a new capital when the old one fell. Neither is in the game: a capital that falls stays a capital, and pays its 50 gold and drills at its double pace for its new lord; and the lord who lost it has lost his realm with it ([](#seat)).
 :::

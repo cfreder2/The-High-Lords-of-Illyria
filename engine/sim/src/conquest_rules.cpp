@@ -346,27 +346,26 @@ int32_t Conquest::upkeepOf(uint8_t side) const {
 }
 
 int32_t Conquest::winner() const {
-    // The last side standing wins; and as in Warlords §14, the others
-    // surrender to a side holding more than half the cities when no rival is
-    // within fifteen of it.
-    int32_t alive = 0, last = -1, best = -1, bestCities = -1, second = 0;
+    // The last side standing wins; and the others lay down their arms before a side that holds more than half the
+    // towns (Warlords §14 asked also that no rival be within fifteen of it: that only drew out a war already won).
+    // A war that every person in it has lost is over too: the lord with the most towns has won it.
+    int32_t alive = 0, last = -1, best = -1, bestCities = -1, people = 0, peopleAlive = 0;
     for (size_t s = 0; s < sides_.size(); ++s) {
+        people += sides_[s].human;
         if (!sides_[s].alive) continue;
+        peopleAlive += sides_[s].human;
         ++alive;
         last = static_cast<int32_t>(s);
         const int32_t n = citiesOwned(static_cast<uint8_t>(s));
         if (n > bestCities) {
-            second = std::max(second, bestCities);
             bestCities = n;
             best = static_cast<int32_t>(s);
-        } else {
-            second = std::max(second, n);
         }
     }
     // With no rival chosen there is nobody to beat: a game of towns and neutrals to take, with no end.
     if ((setup_.enemies & ~(1u << setup_.player) & 0xFFu) == 0) return 0;
     if (alive == 1) return last + 1;
-    if (best >= 0 && bestCities * 2 > static_cast<int32_t>(cities_.size()) && bestCities - second > 15) return best + 1;
+    if (best >= 0 && (bestCities * 2 > static_cast<int32_t>(cities_.size()) || (people > 0 && peopleAlive == 0))) return best + 1;
     return 0;
 }
 

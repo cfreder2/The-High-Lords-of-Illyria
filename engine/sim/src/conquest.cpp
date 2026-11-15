@@ -426,6 +426,11 @@ void Conquest::commandMen(const Order& o) {
         for (const Army& a : s.armies)
             for (const Man& m : a.men)
                 if (m.unit == o.command.unit && m.alive()) {
+                    // A stance or the lord's Rally is no order to go anywhere: the stack's march stands.
+                    if (o.command.type == Command::Type::SetStance || o.command.type == Command::Type::Rally) {
+                        playerCommands_.push_back(o.command);
+                        return;
+                    }
                     // The men are the player's now: no route of the stack's is walked, no habit of its own taken.
                     s.commanded = true;
                     s.path.clear();
@@ -570,6 +575,7 @@ void Conquest::newDay() {
         home->armies.push_back(army);
     }
     stacks_.erase(std::remove_if(stacks_.begin(), stacks_.end(), [](const Stack& s) { return s.armies.empty(); }), stacks_.end());
+    if (day() >= kCouncilFrom && day() % kCouncilEvery == 0) council();  // (a lord who bends the knee today gives no orders)
     for (size_t s = 0; s < sides_.size(); ++s)
         if (!sides_[s].human && sides_[s].alive) runAi(static_cast<uint8_t>(s));
     for (size_t s = 0; s < sides_.size(); ++s) {

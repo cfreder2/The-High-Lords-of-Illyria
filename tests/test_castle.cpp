@@ -1097,11 +1097,11 @@ TEST(a_man_sent_to_hold_ground_goes_back_to_it_until_he_is_told_otherwise) {
     const EntityId holder = w.spawnUnit(0, {m(10), m(10), m(0)}, east, unitStats(UnitType::HeavyInfantry));
     const EntityId walker = w.spawnUnit(0, {m(10), m(20), m(0)}, east, unitStats(UnitType::HeavyInfantry));
     Command hold{0, holder, Command::Type::Move, {m(40), m(10), m(0)}};
-    hold.hold = true;
+    hold.occupy = true;
     const Command plain{0, walker, Command::Type::Move, {m(40), m(20), m(0)}};
     w.step(std::vector<Command>{hold, plain});
     for (int t = 0; t < 30 * kTicksPerSecond; ++t) w.step({});
-    CHECK(w.findUnit(holder)->holding && !w.findUnit(walker)->holding);
+    CHECK(w.findUnit(holder)->occupying && !w.findUnit(walker)->occupying);
     CHECK((w.findUnit(holder)->pos - Vec3{m(40), m(10), m(0)}).flat().length() < m(1));
     // Driven off it (a rout that ended far away): both stand 25 m from where they were sent.
     for (EntityId id : {holder, walker}) const_cast<Unit&>(*w.findUnit(id)).pos.x -= m(25);
@@ -1112,7 +1112,7 @@ TEST(a_man_sent_to_hold_ground_goes_back_to_it_until_he_is_told_otherwise) {
     CHECK((w.findUnit(walker)->pos - Vec3{m(15), m(20), m(0)}).flat().length() < m(1));  // an ordinary march is done when it is done
     // Any other order ends it.
     w.step(std::vector<Command>{Command{0, holder, Command::Type::Stop, {}}});
-    CHECK(!w.findUnit(holder)->holding);
+    CHECK(!w.findUnit(holder)->occupying);
 }
 
 TEST(a_ramps_foot_has_a_way_to_the_courtyard_in_every_castle) {

@@ -1,7 +1,7 @@
 // A siege played as one: the engines batter a gate from their own reach, the men near them hold a line in front and meet
 // the garrison's sorties (escort), the shooters answer the wall-walks first (suppression), and once the doors are down the
-// attackers mass outside the breach before they go in together (rally), and those sent to hold the ground beyond it stay on it
-// (hold). These are rules of the World, for every side, the
+// attackers mass outside the breach before they go in together (rally), and those sent to occupy the ground beyond it stay on it
+// (occupy). These are rules of the World, for every side, the
 // player's and the computer's alike, a skirmish's and a Conquest's (docs/BALANCE.md, the siege). All derived from the men's
 // own state each step: nothing here is saved, and nothing reads a float.
 #include <algorithm>
@@ -41,8 +41,8 @@ constexpr Fixed kRallyFar = Fixed::fromInt(220);
 constexpr int32_t kRallyShare = 70;
 constexpr uint32_t kRallyWait = 60 * kTicksPerSecond;
 constexpr uint32_t kRallyCap = 240 * kTicksPerSecond;
-// Hold: a man sent to hold ground who is idle farther than this from his place goes back to it.
-constexpr Fixed kHoldSlack = Fixed::fromInt(6);
+// Occupy: a man sent to occupy ground who is idle farther than this from his place goes back to it.
+constexpr Fixed kOccupySlack = Fixed::fromInt(6);
 
 bool isEngine(const Unit& u) { return u.stats.ranged.kind == ProjectileKind::Stone; }
 
@@ -167,13 +167,13 @@ bool World::escortSpot(Unit& u) {
     return false;
 }
 
-bool World::holdGround(Unit& u) {
+bool World::occupyGround(Unit& u) {
     // The storm that took a courtyard stays in it: after the fight, and after a rout and a rally, each man goes back to his place
     // there, until an order says otherwise (World::startOrder).
-    if (!u.holding || u.inAir() || u.flight != Unit::Flight::Grounded || (u.holdAt - u.pos).flat().lengthSq() <= kHoldSlack * kHoldSlack) return false;
+    if (!u.occupying || u.inAir() || u.flight != Unit::Flight::Grounded || (u.occupyAt - u.pos).flat().lengthSq() <= kOccupySlack * kOccupySlack) return false;
     const Vec3 face = u.arriveFacing;
-    beginMove(u, u.holdAt, Fixed::zero(), face);
-    planPath(u, u.holdAt);
+    beginMove(u, u.occupyAt, Fixed::zero(), face);
+    planPath(u, u.occupyAt);
     return true;
 }
 

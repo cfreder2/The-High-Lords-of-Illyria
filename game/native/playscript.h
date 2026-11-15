@@ -45,6 +45,7 @@ struct Command {
     int lord = -1;          // Start
     int budget = 0;         // Start skirmish: the gold each side raises (0: the classic muster of the Ford and the village siege)
     bool defend = false;    // Start skirmish siege or capital: the player keeps the walls
+    bool deploy = false;    // Start skirmish: with the deployment pause and the opening glide (else the clock runs at once)
     int scancode = 0;       // Key: the USB usage id, which is SDL's scancode
     KeyAction action = KeyAction::Press;
     std::string text;  // Start: the mode ("conquest", "skirmish ford", ...); Shot: the name; Key: the name; Print: the text
