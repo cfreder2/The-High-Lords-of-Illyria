@@ -165,12 +165,12 @@ void Battle::collectCalls() {
         if (c.owner != local_) {
             // Another side's: nothing of it is shown or told (it would give away men the viewer may not see). The computer
             // answers its own with the same march the world gives a free squad.
-            if (c.answer == 0) aiAnswer(c);
+            aiAnswer(c);
             continue;
         }
         const int q = squadOfNumber(c.squad), a = squadOfNumber(c.answer);
         if (q < 0) continue;
-        calls_.push_back({now, toV3(c.pos), q, a});
+        calls_.push_back({now, toV3(c.pos), q, a, c.caller});
         // Over the squad that calls, and over the one that goes (the words floated, as position's are).
         floats_.push_back({now, c.caller, toV3(c.pos), "Help!", false});
         if (a >= 0) floats_.push_back({now, c.answerer, toV3(c.answerPos), "Answering", true});
@@ -182,9 +182,23 @@ void Battle::collectCalls() {
 
 void Battle::aiAnswer(const sim::HelpCall& call) {
     // Only a side the computer plays here (a skirmish's foe; a Conquest's lords are theirs to run: conquestAi).
-    if (conquest_ || call.owner != kEnemy || aiSkill_ != AiSkill::Hard) return;
+    if (conquest_ || call.owner != kEnemy || aiSkill_ == AiSkill::Easy) return;
     const sim::Unit* caller = world_->findUnit(call.caller);
     if (caller == nullptr) return;
+    const auto send = [&](const Squad& s) {
+        for (sim::EntityId id : s.members) {
+            if (!world_->units()[id - 1].alive()) continue;
+            sim::Command c{call.owner, id, sim::Command::Type::Answer, {}};
+            c.targetUnit = call.caller;
+            pending_.push_back(c);
+        }
+    };
+    // A squad of its horse that the world has already sent goes by the flank: that ride is a commander's (Command::Answer).
+    if (call.answer != 0) {
+        const int a = squadOfNumber(call.answer);
+        if (a >= 0 && sim::unitStats(squads_[static_cast<size_t>(a)].type).mounted) send(squads_[static_cast<size_t>(a)]);
+        return;
+    }
     // The nearest squad that is not itself fighting, horse first (they take the flank).
     int best = -1;
     float bestScore = 140.0f;
@@ -206,12 +220,7 @@ void Battle::aiAnswer(const sim::HelpCall& call) {
         if (score < bestScore) bestScore = score, best = static_cast<int>(i);
     }
     if (best < 0) return;
-    for (sim::EntityId id : squads_[static_cast<size_t>(best)].members) {
-        if (!world_->units()[id - 1].alive()) continue;
-        sim::Command c{call.owner, id, sim::Command::Type::Answer, {}};
-        c.targetUnit = call.caller;
-        pending_.push_back(c);
-    }
+    send(squads_[static_cast<size_t>(best)]);
     squads_[static_cast<size_t>(best)].hasGoal = false;
     if (aiAnswering_.size() < squads_.size()) aiAnswering_.resize(squads_.size(), 0);
     aiAnswering_[static_cast<size_t>(best)] = world_->tick() + 20 * sim::kTicksPerSecond;
@@ -278,8 +287,15 @@ bool Battle::answerCall(V3& at) {
         say("No squad is free to answer");
         return true;
     }
+    // Sent: the same march the world gives a free squad, and for horse the ride round the flank that only a command gives.
     select(squads_[static_cast<size_t>(best)].members);
-    say(squads_[static_cast<size_t>(best)].name + ": free, nearest the call");
+    for (sim::EntityId id : squads_[static_cast<size_t>(best)].members) {
+        if (!world_->units()[id - 1].alive()) continue;
+        sim::Command c{local_, id, sim::Command::Type::Answer, {}};
+        c.targetUnit = call.caller;
+        pending_.push_back(c);
+    }
+    say(squads_[static_cast<size_t>(best)].name + " answer the call");
     return true;
 }
 

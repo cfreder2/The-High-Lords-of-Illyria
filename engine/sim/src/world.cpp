@@ -396,6 +396,7 @@ void World::clearFight(uint64_t seed) {
     heroDeaths_.clear();
     rallyCalls_.clear();
     tactics_.clear();
+    firstCall_ = {};
     decisions_.clear();
     deathEvents_.clear();
     deaths_.clear();
@@ -592,7 +593,7 @@ void World::applyCommand(const Command& cmd) {
         Command stop = cmd;
         stop.type = Command::Type::Stop;
         startOrder(*u, stop);
-        answerCall(*u, *caller);
+        answerCall(*u, *caller, true);  // (commanded: horse ride for the flank)
         return;
     }
     // Only a scavenger raids; to anyone else the order means nothing.
@@ -617,6 +618,7 @@ void World::startOrder(Unit& unit, const Command& cmd) {
     u->layOrdered = false;  // every order replaces the last
     u->stationed = false;   // ... and an order is not a garrison's station
     u->occupying = false;   // ... nor ground to occupy, unless it says so (Move, below)
+    u->posted = false;       // ... nor a post: the next order's end is the next post (Stop: none, he is free)
     u->helping = kNoEntity;  // ... nor an answer to a friend's call
     u->helpSince = 0;
     u->wheel = 0;
@@ -1501,7 +1503,13 @@ void World::updateUnit(Unit& u) {
         if (followPath(u, pace)) {
             u.hasMoveTarget = false;
             u.path.clear();
-            u.helping = kNoEntity;  // (an answer: he is there, and goes in as any free man does)
+            // Where an order sent him is ground he keeps (world_tactics.cpp, "posted"). Not an answer's end: he is there to
+            // go in as any free man does. Not a garrison's station or ground to occupy: those have their own rules.
+            if (u.helping == kNoEntity && !u.stationed && !u.occupying) {
+                u.posted = true;
+                u.postAt = u.pos;
+            }
+            u.helping = kNoEntity;
             u.helpSince = 0;
             if (u.arriveFacing != Vec3{}) u.facing = u.arriveFacing;
             // Sent to lay a satchel: here, the way he came (world_satchels.cpp).
@@ -1532,7 +1540,7 @@ void World::updateUnit(Unit& u) {
         // A sortie against the engines he guards: he meets it.
         fight(u, *sortie);
     } else if (Unit* enemy = u.stats.melee.damage > 0 ? meleeTarget(u, lastFoe) : nullptr;
-               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy))) {
+               enemy != nullptr && !outruns(u, *enemy) && (!u.hold || withinHold(u, *enemy)) && (!u.posted || withinPost(u, *enemy))) {
         // (Not one he cannot catch: shieldTarget, below. A man told to hold strikes only what comes to him.)
         u.support = kNoEntity;
         support(u, *enemy);  // (horse round to the flank of a man busy with a friend; anyone else straight in)
@@ -1552,6 +1560,8 @@ void World::updateUnit(Unit& u) {
     } else if (Unit* helped = supportFoe(u)) {
         // No spectators: to the help of a friend fighting near him (world_tactics.cpp).
         support(u, *helped);
+    } else if (returnToPost(u)) {
+        // Back to the ground he was posted on (world_tactics.cpp).
     } else if (seekWounded(u)) {
         // A healer: to the wounded (world_help.cpp).
     } else if (Unit* t = shieldTarget(u, enemy)) {
@@ -2726,6 +2736,8 @@ uint64_t World::checksum() const {
     h.addU64(nextId_);
     h.addU64(rng_.state());
     h.addU64(rng_.increment());
+    for (const uint32_t first : firstCall_)
+        if (first != 0) h.addU64(first);  // (only once a side has called for help)
     // Only once a pack has been let loose to raid, so battles without one hash as before.
     if (packs_ > 0) h.addU64(packs_);
     // Only for a match with a field's edge, so battles without one hash as before.
@@ -2796,6 +2808,8 @@ uint64_t World::checksum() const {
             h.addI64(u.wheel);
             hashVec(h, u.wheelDir);
         }
+        if (u.posted) hashVec(h, u.postAt);
+        if (u.helpFlank) h.addU64(0xF1A);
         h.addU64(u.hasMoveTarget);
         hashVec(h, u.moveTarget);
         h.addI64(u.marchSpeed.raw);

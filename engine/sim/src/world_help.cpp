@@ -23,7 +23,10 @@ constexpr uint32_t kCallLook = kTicksPerSecond;          // squads are looked ov
 constexpr uint32_t kSideCallGap = 4 * kTicksPerSecond;   // a side's calls are this far apart at least
 constexpr uint32_t kRecent = 3 * kTicksPerSecond;        // "lately" struck in the flank, or shot
 // How far a free squad comes from: foot, bowmen, horse (and anything as quick).
-constexpr Fixed kFootAnswer = Fixed::fromInt(70), kBowAnswer = Fixed::fromInt(90), kHorseAnswer = Fixed::fromInt(160);
+// (70, 90 and 160 at first, with horse riding for the flank of themselves: an army nobody commanded then fought as well
+// as one that was commanded. Of itself a squad reacts to what is near; the reach and the flank are the commander's.)
+constexpr Fixed kFootAnswer = Fixed::fromInt(50), kBowAnswer = Fixed::fromInt(60), kHorseAnswer = Fixed::fromInt(100);
+constexpr int64_t kWordFarthest = 200;                   // ... and at most this much farther as the fight goes on
 constexpr Fixed kPressReach = Fixed::fromInt(10);        // friends and foes within this of a man fighting are his melee
 constexpr Fixed kFoeNear = Fixed::fromInt(30);           // the foe pressing a caller is looked for this far from him
 // Horse answering ride for a place this far out to the side of the foe and this far behind him (then in: World::support).
@@ -51,7 +54,7 @@ struct SquadSum {
 
 bool World::freeToAnswer(const Unit& u) const {
     if (!u.alive() || u.routed || u.hold || hasOrder(u) || !u.queue.empty() || u.engaged || u.foe != kNoEntity || u.helping != kNoEntity || u.stationed ||
-        u.occupying || u.inAir())
+        u.occupying || u.posted || u.inAir())
         return false;
     if (isHero(u) || u.stats.gait == Gait::Wheeled || u.stats.scavenge.sight > Fixed::zero() || u.stats.healing.amount > 0) return false;
     return u.stats.melee.damage > 0 || shooter(u);
@@ -114,6 +117,10 @@ void World::callForHelp() {
         if (s.called != 0 && tick_ + 1 - s.called < kCallAgainTicks) continue;
         if (const uint32_t side = sideCalled[owner]; side != 0 && tick_ + 1 - side < kSideCallGap) continue;
         sideCalled[owner] = tick_ + 1;
+        // The longer the side has been fighting, the farther the word has gone: a metre a second on every reach, so that
+        // the far wing comes late (an army nobody commands is slow, and arrives piecemeal) but nobody sits a battle out.
+        if (owner < firstCall_.size() && firstCall_[owner] == 0) firstCall_[owner] = tick_ + 1;
+        const Fixed word = owner < firstCall_.size() ? Fixed::fromInt(std::min<int64_t>((tick_ + 1 - firstCall_[owner]) / kTicksPerSecond, kWordFarthest)) : Fixed::zero();
         for (Unit& u : units_)
             if (u.alive() && u.owner == owner && u.squad == key.second) u.called = tick_ + 1;
         HelpCall call{s.fighter != kNoEntity ? s.fighter : s.man, owner, key.second, centre, why, 0, kNoEntity, {}};
@@ -126,7 +133,7 @@ void World::callForHelp() {
             if (k2.first != owner || k2.second == key.second || t.hero || t.free == 0 || t.free * 2 < t.alive) continue;
             if (why == HelpCall::Why::Shot && !t.quick && !t.shooters) continue;
             const Fixed dist = (t.sum / Fixed::fromInt(t.alive) - centre).flat().length();
-            if (dist > (t.quick ? kHorseAnswer : t.shooters ? kBowAnswer : kFootAnswer)) continue;
+            if (dist > (t.quick ? kHorseAnswer : t.shooters ? kBowAnswer : kFootAnswer) + word) continue;
             const Fixed score = t.quick ? dist / 2 : dist;
             if (best == nullptr || score < bestScore) best = &t, bestScore = score, bestSquad = k2.second;
         }
@@ -142,7 +149,13 @@ void World::callForHelp() {
     }
 }
 
-void World::answerCall(Unit& u, const Unit& caller) {
+bool World::returnToPost(Unit& u) {
+    if (!u.posted || u.hold || (u.postAt - u.pos).flat().lengthSq() < Fixed::fromInt(4)) return false;
+    walk(u, u.postAt);
+    return true;
+}
+
+void World::answerCall(Unit& u, const Unit& caller, bool flank) {
     if (!u.alive() || !caller.alive() || caller.owner != u.owner || caller.id == u.id) return;
     // The foe pressing the caller: the man he fights, the man who last struck him, or the nearest to him.
     const Unit* foe = caller.foe != kNoEntity ? findUnit(caller.foe) : nullptr;
@@ -159,7 +172,7 @@ void World::answerCall(Unit& u, const Unit& caller) {
             // A good bowshot from the foe, on his own side of him.
             const Fixed keep = autoReach(u) * 4 / 5;
             spot = far > keep && far > Fixed::zero() ? foe->pos + toMe / far * keep : u.pos;
-        } else if (u.stats.mounted && len > Fixed::zero()) {
+        } else if (flank && u.stats.mounted && len > Fixed::zero()) {
             // Round to the wing: out to the side of the foe (his own side of it), a little behind him.
             const Vec3 axis = along / len;
             const Vec3 side{-axis.y, axis.x, Fixed::zero()};
@@ -172,6 +185,7 @@ void World::answerCall(Unit& u, const Unit& caller) {
         }
     }
     u.helping = caller.id;
+    u.helpFlank = flank;
     if (u.helpSince == 0) u.helpSince = tick_ + 1;
     if ((spot - u.pos).flat().lengthSq() < Fixed::fromInt(9)) {
         // There already: nothing to march (support and his bow do the rest).
@@ -216,12 +230,12 @@ bool World::answering(Unit& u) {
             u.helpSince = 0;
             return true;
         }
-        answerCall(u, *next);
+        answerCall(u, *next, u.helpFlank);
         return u.helping != kNoEntity;
     }
     // Horse ride for where the foe's flank is now, not where it was.
-    if (u.stats.mounted && (tick_ + u.id) % kWingReplan == 0 && u.engageFoe == kNoEntity) {
-        answerCall(u, *caller);
+    if (u.helpFlank && u.stats.mounted && (tick_ + u.id) % kWingReplan == 0 && u.engageFoe == kNoEntity) {
+        answerCall(u, *caller, u.helpFlank);
         return u.helping != kNoEntity;
     }
     return true;

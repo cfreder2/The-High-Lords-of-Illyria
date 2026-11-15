@@ -118,9 +118,11 @@ Square when horse is coming and you have no pikes in the way. Loose when arrows 
 
 A man with no order does not watch a friend die. Within **40 m** of a friend who is fighting, foot go in beside him, horse ride round to the flank of his foe, bowmen walk to a bowshot of that foe (never into the water) and loose, healers go to the wounded, and pikes turn to face horse coming at the gallop. **Hold** (K) switches all of it off: they keep their place.
 
-From farther off they must be called. A squad **calls for help** when it is struck in the flank or back, when half its fighting men are outnumbered, when a third of it wavers, when arrows fall on it and it has no answer, or when its lord falls beside it. You hear it, "Help!" stands over it, its card says HELP, a ring beats on the map and the events say why. The nearest squad of yours that is **free** (no order, nobody to fight, not holding) **answers** and goes: foot from within 70 m, bowmen from 90 m, horse from 160 m and round the flank. Its card says ANSWER until it is there. Any order you give it ends the answer.
+From farther off they must be called. A squad **calls for help** when it is struck in the flank or back, when half its fighting men are outnumbered, when a third of it wavers, when arrows fall on it and it has no answer, or when its lord falls beside it. You hear it, "Help!" stands over it, its card says HELP, a ring beats on the map and the events say why. The nearest squad of yours that is **free** (never ordered, or halted; nobody to fight; not holding) **answers** and goes straight to its friend: foot from within 50 m, bowmen from 60 m, horse from 100 m, each a metre farther for every second the fight has lasted. Its card says ANSWER until it is there. Any order you give it ends the answer.
 
-A squad calls no more than once in 25 s, and your army once in 4 s. Press the **full stop** to go to the latest call with the nearest free squad selected, and send it yourself.
+A squad calls no more than once in 25 s, and your army once in 4 s. Press the **full stop** to send help yourself: the view goes to the latest call and the nearest squad with nothing in hand is sent, and if it is horse it rides round to the **flank** of the foe, which horse left to itself does not do.
+
+**Ground you chose is kept.** A squad you march to a place is posted there. It fights what comes within 20 m of its post, helps a neighbour whose foe is that near, and goes back to its place after; it does not run off to a call. So a line you set on a height stays on the height. [[Space]] (halt) lets a squad go again: then it helps and answers as an unordered squad does.
 
 ## Charges {#charges}
 

@@ -155,7 +155,7 @@ void Battle::aiHalt(size_t squad) {
     s.hasGoal = false;
     for (sim::EntityId id : s.members) {
         const sim::Unit& u = world_->units()[id - 1];
-        if (u.alive() && u.helping == sim::kNoEntity && (u.hasMoveTarget || u.targetUnit != sim::kNoEntity)) issue(s.owner, id, sim::Command::Type::Stop, {});  // (not a man answering a call: that march is his own)
+        if (u.alive() && u.helping == sim::kNoEntity && (u.hasMoveTarget || u.targetUnit != sim::kNoEntity || u.posted)) issue(s.owner, id, sim::Command::Type::Stop, {});  // (not a man answering a call: that march is his own)
     }
 }
 

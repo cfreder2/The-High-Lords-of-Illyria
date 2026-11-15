@@ -101,8 +101,11 @@ Ground readGround(const Battle& b) {
         for (float along = -30.0f; along <= 60.0f; along += 6.0f)
             for (float across = -60.0f; across <= 60.0f; across += 6.0f) {
                 const V3 p = mine + g.front * along + side * across;
-                if (const float h = heightAt(b, p); h > best + 0.5f && !wet(groundAt(b, p))) best = h, g.line = p;
+                if (const float h = heightAt(b, p); h > best + 0.5f && h < heightAt(b, mine) + 7.0f && groundAt(b, p) == sim::Ground::Plains) best = h, g.line = p;
             }
+        // The line faces down the slope it stands on (the foe must climb to it), if there is a slope to speak of.
+        const V3 fall{heightAt(b, g.line - V3{6, 0, 0}) - heightAt(b, g.line + V3{6, 0, 0}), heightAt(b, g.line - V3{0, 6, 0}) - heightAt(b, g.line + V3{0, 6, 0}), 0};
+        if (fall.length() > 0.6f) g.front = fall.normalized();
     }
     return g;
 }
@@ -116,7 +119,7 @@ void send(Battle& b, int squad, const V3& to, const V3& face) {
 // healers and the lord behind them, horse and fliers on the wings with no order (they answer whoever calls).
 void deployDefence(Battle& b, const Ground& g) {
     const V3 side{-g.front.y, g.front.x, 0};
-    std::vector<int> foot, shooters, rear, wings;
+    std::vector<int> foot, pikes, shooters, rear, wings;
     bool atBridge = false;
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& s = b.squads()[i];
@@ -124,6 +127,7 @@ void deployDefence(Battle& b, const Ground& g) {
         const int q = static_cast<int>(i);
         const Role r = roleOf(s.type);
         if (g.bridge && isPike(s) && !atBridge) send(b, q, g.bridgeEnd, g.front), atBridge = true;
+        else if (isFoot(s) && isPike(s)) pikes.push_back(q);
         else if (isFoot(s)) foot.push_back(q);
         else if (r == Role::Ranged || r == Role::Caster || r == Role::Bomber) shooters.push_back(q);
         else if (mounted(s) || flier(s) || r == Role::Scout) wings.push_back(q);
@@ -135,6 +139,8 @@ void deployDefence(Battle& b, const Ground& g) {
             send(b, squads[k], g.line + side * across - g.front * back, g.front);
         }
     };
+    // (The pikes braced on the ends of the line, where horse comes.)
+    for (size_t k = 0; k < pikes.size(); ++k) foot.insert(k % 2 ? foot.end() : foot.begin(), pikes[k]);
     rank(foot, 0, 15.0f);
     rank(shooters, 13.0f, 15.0f);
     rank(rear, 24.0f, 10.0f);
@@ -163,7 +169,7 @@ void formUp(Battle& b) {
 
 // Command on top of the plan, every few seconds: a squad cut to a third is pulled out behind the line; the lord's Rally
 // when broken men can hear it.
-void micro(Battle& b, const Ground& g) {
+void micro(Battle& b, const Ground& g, uint32_t& lastCall) {
     for (size_t i = 0; i < b.squads().size(); ++i) {
         const Squad& s = b.squads()[i];
         if (s.owner != Battle::kPlayer || s.garrison || s.type == sim::UnitType::Hero) continue;
@@ -174,8 +180,13 @@ void micro(Battle& b, const Ground& g) {
             engaged += u.alive() && u.engaged;
         }
         if (alive == 0 || engaged == 0 || alive * 3 > static_cast<int>(s.members.size())) continue;
-        const V3 c = b.squadCentre(s, false);
-        send(b, static_cast<int>(i), c - g.front * 30.0f, g.front);
+        (void)g;
+    }
+    // A call for help: the nearest squad with nothing in hand is sent (horse held on the wing go by the flank).
+    if (!b.calls().empty() && b.calls().back().tick != lastCall) {
+        lastCall = b.calls().back().tick;
+        V3 at;
+        b.answerCall(at);
     }
     b.select({});
     if (b.rallyState().lord && b.rallyState().cooldown == 0 && b.rallyState().heard >= 4) b.orderRally();
@@ -202,8 +213,8 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     b.setAiSkill(std::getenv("TAC_SKILL") ? static_cast<Battle::AiSkill>(std::atoi(std::getenv("TAC_SKILL"))) : Battle::AiSkill::Normal);
     const Count start = living(b);
     const Ground g = readGround(b);
-    // On a bank the plan is the line on it; in the open it is the army where it stands, and its formations.
-    if ((plan == Plan::Defend || plan == Plan::Micro) && g.bank) deployDefence(b, g);
+    if (plan == Plan::Defend || plan == Plan::Micro) deployDefence(b, g);
+    uint32_t lastCall = 0;
     if (plan == Plan::Charge) {
         std::vector<sim::EntityId> all;
         for (const sim::Unit& u : b.world().units())
@@ -216,8 +227,7 @@ Tally fight(Scenario scenario, int budget, Plan plan, uint64_t seed) {
     Tally t;
     for (int tick = 0; tick < kEndSeconds * sim::kTicksPerSecond; ++tick) {
         b.advance(1.0 / sim::kTicksPerSecond + 1e-6);
-        if ((plan == Plan::Defend || plan == Plan::Micro) && tick % sim::kTicksPerSecond == 0) formUp(b);
-        if (plan == Plan::Micro && tick % (5 * sim::kTicksPerSecond) == 0 && tick > 0) micro(b, g);
+        if (plan == Plan::Micro && tick % sim::kTicksPerSecond == 0 && tick > 0) micro(b, g, lastCall);
         if (tick % 5 == 0)
             for (size_t i = 0; i < b.squads().size() && i < fought.size(); ++i)
                 for (sim::EntityId id : b.squads()[i].members) {
@@ -275,8 +285,14 @@ void tacticsMap(bool ford, int plan, int seconds) {
         const int i = static_cast<int>(std::lround((c.x - mid.x) / 4.0f)), j = static_cast<int>(std::lround((c.y - mid.y) / 4.0f));
         if (std::abs(i) > half || std::abs(j) > half) continue;
         rows[static_cast<size_t>(half - j)][static_cast<size_t>(i + half)] = static_cast<char>((s.owner == Battle::kPlayer ? 'A' : 'a') + static_cast<int>(q % 26));
-        std::printf("%c %s (%s) %d at %.0f,%.0f h %.1f\n", (s.owner == Battle::kPlayer ? 'A' : 'a') + static_cast<int>(q % 26), s.name.c_str(), sim::unitTypeName(s.type),
-                    b.aliveCount(s), c.x, c.y, heightAt(b, c));
+        int freeMen = 0, helping = 0, posted = 0, supporting = 0, fighting = 0;
+        for (sim::EntityId id : s.members) {
+            const sim::Unit& u = b.world().units()[id - 1];
+            if (!u.alive()) continue;
+            freeMen += b.world().freeToAnswer(u), helping += u.helping != sim::kNoEntity, posted += u.posted, supporting += u.support != sim::kNoEntity, fighting += u.engaged;
+        }
+        std::printf("%c %s (%s) %d at %.0f,%.0f h %.1f  free %d answering %d posted %d supporting %d fighting %d\n", (s.owner == Battle::kPlayer ? 'A' : 'a') + static_cast<int>(q % 26),
+                    s.name.c_str(), sim::unitTypeName(s.type), b.aliveCount(s), c.x, c.y, heightAt(b, c), freeMen, helping, posted, supporting, fighting);
     }
     for (const std::string& r : rows) std::printf("%s\n", r.c_str());
 }

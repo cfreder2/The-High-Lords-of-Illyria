@@ -225,7 +225,7 @@ On the open field a host that walked in under a standing line's arrows lost to a
 - **Bows first** (Normal, Hard): it comes up to a bowshot and stands, foot before bowmen, in loose order under the arrows that come back, and meets whoever comes out at it. It goes in when the foe's bows are down to a third of its own, when its own are down to half the foe's, when a fifth of it is fighting anyway, or after 60 s of shooting (Hard: 40 s).
 - **One wing:** it goes in on the end of the foe's line nearer to it, all its foot together, and rolls the line up. Arrived, its men are let go and fight as men with no order do (close with what is near, help friends, answer calls, horse by the flank). The computer's hand on each squad in a melee did worse than the support stance: letting go was worth more than any target choice tried.
 - **Formations by the rules:** a square when horse is coming at foot not yet fighting, loose under arrows with nobody at its throat, else its kind's own.
-- **Purse:** in the open, Normal raises **125%** of the player's purse and Hard **150%**; Easy three quarters, as before. At an even purse the host that must come to the other lost to an army with no orders in every battle run (ten, over five versions of its play; the idle army at 1.4 to 2.2 kills per loss). Purse was the lever that settled it; no unit's numbers differ by setting.
+- **Purse (first pass; undone in the second, below):** in the open, Normal raised **125%** of the player's purse and Hard **150%**; Easy three quarters, as before. At an even purse the host that must come to the other lost to an army with no orders in every battle run (ten, over five versions of its play; the idle army at 1.4 to 2.2 kills per loss). Purse was the lever that settled it; no unit's numbers differ by setting.
 - **Hard** also answers its own calls by command (`Command::Answer`: its squads always have an order, and the world only sends free men) and gives the bows less time.
 
 ### Measured
@@ -280,6 +280,30 @@ The Ford, no orders (headless, three seeds): 1.0 (224 for 230), won 3 of 3. In t
 - `World::tactics()` was never emptied between ticks: every word ever told was told again each tick (the presentation's six-second key hid it), and the list grew for the length of a battle. It is cleared with the other events.
 - A square of five men had six places (`formationLayout`): the sixth march order went to a man who is not there (a crash, found when the computer began to form squares). Fixed, with a test of every formation at every size to 40.
 - The results sheet's Killed column did not add up to the dead: men no squad is credited with (those who fled the field with a quitting host, blasts and fire with no hand behind them, the foe's own missiles) now have a row, "Others (fled the field, blasts, fire)".
+
+### Second pass: orders that add, a default that only reacts, an even purse (2026-11-14)
+
+The first pass ended with a planned defence at 1.4 against 1.5 for no orders, and Normal at 125% of the purse to make up for it. That was the wrong lever. The cause was that orders did not help:
+
+- **A placed line did not stay placed.** Every squad, ordered or not, was in the support stance once its march ended, so a line set on a height walked down to the first fight within 40 m and answered calls from 70 to 160 m. The ground the player chose was given up by the stance. Now a squad is **posted** where an order's march ends: it fights what comes within 20 m of its post, helps a neighbour whose foe is that near, goes back after, and answers no call. Halt frees it.
+- **The default army planned.** Left alone it answered calls from across the field and its horse rode for the flank unbidden: it played the commander's part. Now a squad left to itself reacts to what is near and no more: foot answer from 50 m, bowmen from 60, horse from 100, each a metre farther for every second since the side's first call (so the far wing comes late and piecemeal, but comes), and it goes straight to its friend. The ride round the foe's flank is given only by a command (`Command::Answer`: the player's full stop key, the computer's own answers on Normal and Hard).
+- **The scripted plans were poor ones**: a line marched across the slope it meant to stand on, loose order re-formed as the foe arrived, mauled squads pulled out with their backs turned. The plan measured now: the line along the contour of the nearest rise, facing down it, pikes on its ends, bowmen a rank above, the lord and the rest behind, horse held on the wings. "Micro" on top of it: each call for help answered with the full stop key, and the lord's Rally.
+- **Purse:** Normal is even again; Hard has 125% on the open field.
+
+Open field after the merge with The March (the hosts 64 m apart, bowmen in front), 450 gold, headless, kills for losses when decided:
+
+| The player | Normal, even purse, 5 seeds | Hard, 125%, 3 seeds |
+|---|---|---|
+| no orders | 1.0 (675 for 689), won 2, lost 3 | 0.8 (365 for 442), lost 3 |
+| planned defence | 1.4 (812 for 580), won 3, lost 0, two undecided at 360 s | not run |
+| plan plus micro | 1.5 (816 for 560), won 5 | 1.5 (570 for 373), won 2, lost 1 |
+| reckless charge | 1.1 (778 for 715), won 2, lost 3 | not run |
+
+Against the targets: no orders loses more often than not (met). A sound plan never lost and plan plus micro won every battle (met), at 1.4 to 1.5 times the exchange of no orders, **not the 2 times asked for**. The charge loses three in five but does **not lose badly**: with the hosts starting 64 m apart and the computer's bowmen in front of its foot, everyone forward at once reaches the bows before the foot is set. The computer does not yet pull its bows back through its line when charged at the start.
+
+The Ford, no orders (3 seeds): 1.3 (232 for 180), won 3. The Lancers and the Ferry Riders now both fight (the far wing comes when the word reaches it). In the first seed the Ferry Pikes, the Unicorns and the Pegasi still had not fought when the battle was decided: one squad answers each call, and a battle can end before the word has gone round. Review scripts were not re-run on this pass.
+
+Not mine: `tests/test_command.cpp` lines 613 and 818 (`a_shape_is_where_they_were_sent...`, `a_right_click_gives_the_tap_s_order...`) fail on merge-master itself, built clean beside this branch.
 
 ## What changed, and why
 

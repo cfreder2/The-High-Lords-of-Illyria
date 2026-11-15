@@ -147,6 +147,8 @@ Unit* World::supportFoe(Unit& u) {
     Unit* f = mutableUnit(u.support);
     if (f == nullptr || !f->alive() || f->inAir() || f->owner == u.owner || f->fleeing()) return none();
     if ((f->pos - u.pos).flat().lengthSq() > kSupportLeash * kSupportLeash || shutGateBetween(u, f->pos)) return none();
+    // Posted, he keeps his ground: he helps against a foe who is within the leash of it (a bowman shoots from it anyway).
+    if (u.posted && !withinPost(u, *f)) return none();
     return f;
 }
 

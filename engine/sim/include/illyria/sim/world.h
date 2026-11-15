@@ -323,6 +323,12 @@ struct Unit {
     uint32_t called = 0;
     EntityId helping = kNoEntity;
     uint32_t helpSince = 0;
+    bool helpFlank = false;  // the answer was commanded (Command::Answer): horse ride round to the foe's flank; of itself it goes straight to the friend
+    // Posted: where an order's march ended is ground he keeps. He fights what comes within kPostLeash of it and helps a
+    // friend whose foe is within it, goes back to it after, and does not leave it for a call. Any order ends it (Stop: he
+    // is free again, and goes where the support stance takes him).
+    bool posted = false;
+    Vec3 postAt;
     // A rider who has charged home wheels away to re-form and come again: ticks of it left, and the way he rides.
     int32_t wheel = 0;
     Vec3 wheelDir;
@@ -1472,7 +1478,11 @@ private:
     // Calls for help and their answers (world_help.cpp).
     void callForHelp();
     // Sets a man on his way to a friend who has called (the sim's own answer, and Command::Answer).
-    void answerCall(Unit& u, const Unit& caller);
+    void answerCall(Unit& u, const Unit& caller, bool flank = false);
+    static constexpr Fixed kPostLeash = Fixed::fromInt(20);
+    bool withinPost(const Unit& u, const Unit& foe) const { return (foe.pos - u.postAt).flat().lengthSq() <= kPostLeash * kPostLeash; }
+    // A posted man with nothing to fight who is off his post walks back to it (true: he walks).
+    bool returnToPost(Unit& u);
     // A man answering: true while he is on his way (his march), false once he is there (support takes him in) or it is over.
     bool answering(Unit& u);
     // Pikes with no order stand to receive horse coming at the gallop: turned to it, braced (true: he stands).
@@ -1631,6 +1641,7 @@ private:
     std::vector<RallyCall> rallyCalls_;
     std::vector<TacticEvent> tactics_;
     std::vector<HelpCall> helpCalls_;
+    std::array<uint32_t, 8> firstCall_ = {};  // by side: the tick of its first call for help in this fight (0: none yet), state
     std::vector<uint8_t> wet_;  // updateMorale's scratch: who is wading, by place, as of this census (derived, not state)
     std::vector<OrderDecision> decisions_;
     std::vector<DeathEvent> deathEvents_;

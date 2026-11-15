@@ -1636,7 +1636,7 @@ void Hud::draw(Overlay& o, float w, float h) {
               {"Space, B", "stop the march (halt)"},
               {"K", "hold: keep their place (again: support friends near)"},
               {"J", "the next squad standing idle"},
-              {". (full stop)", "go to a call for help, pick the nearest free squad"},
+              {". (full stop)", "send the nearest free squad to a call for help"},
               {"Y", "the lord rallies broken men within 40 m"},
               {"T, X, C", "special, scatter, find selection"},
               {"O, Shift + O", "open or shut a gate of yours, let it go"},
